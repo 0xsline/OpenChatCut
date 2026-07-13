@@ -50,11 +50,14 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
   const [zoom, setZoom] = usePersistedState('cc.timelineZoom', 1);
   const px = PX_PER_FRAME * zoom; // pixels per frame at the current time-zoom
   const zoomBy = (f: number) => setZoom((z) => Math.min(6, Math.max(0.5, z * f)));
-  const innerW = HEADER_W + total * px + 240;
   const [drag, setDrag] = useState<Drag | null>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [availH, setAvailH] = useState(190);
+  const [availW, setAvailW] = useState(0);
+  // content is at least as wide as the panel, so track rows/ruler never stop
+  // short of the right edge when the project is short or zoomed out.
+  const innerW = Math.max(HEADER_W + total * px + 240, availW);
   // vertical track-height zoom (source: trackHeightScale). 1 = weighted fill;
   // >1 makes rows taller than the panel (scrolls); Alt+wheel over the timeline.
   const [trackScale, setTrackScale] = usePersistedState('cc.trackScale', 1);
@@ -64,7 +67,10 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const measure = () => setAvailH(el.clientHeight - RULER_H);
+    const measure = () => {
+      setAvailH(el.clientHeight - RULER_H);
+      setAvailW(el.clientWidth);
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -295,7 +301,8 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
           >
             <div style={{ width: HEADER_W, flexShrink: 0 }} />
             <div style={{ position: 'relative', flex: 1 }}>
-              {Array.from({ length: Math.ceil(total / (state.fps * 2)) + 1 }).map((_, i) => (
+              {/* ticks span the whole visible width, not just the content */}
+              {Array.from({ length: Math.ceil((innerW - HEADER_W) / px / (state.fps * 2)) + 1 }).map((_, i) => (
                 <span key={i} style={{ position: 'absolute', left: i * state.fps * 2 * px, top: 5 }}>{fmt(i * state.fps * 2, state.fps)}</span>
               ))}
               {/* marker layer (source: bookmark pins over the ruler; range bar to the right) */}
