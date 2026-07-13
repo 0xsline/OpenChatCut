@@ -7,6 +7,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const base = env.LLM_BASE_URL || 'https://api.aijws.com';
   const key = env.LLM_API_KEY || '';
+  const aaiKey = env.ASSEMBLYAI_API_KEY || '';
 
   return {
     plugins: [react()],
@@ -37,6 +38,17 @@ export default defineConfig(({ mode }) => {
               if (!ct.includes('application/json') && !ct.includes('text/event-stream')) {
                 proxyRes.headers['content-type'] = 'application/json';
               }
+            });
+          },
+        },
+        // AssemblyAI transcription — key injected server-side (never in browser).
+        '/assemblyai': {
+          target: 'https://api.assemblyai.com',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/assemblyai/, ''),
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              if (aaiKey) proxyReq.setHeader('authorization', aaiKey);
             });
           },
         },

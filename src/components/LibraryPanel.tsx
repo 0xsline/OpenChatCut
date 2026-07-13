@@ -1,12 +1,16 @@
-import { useState } from 'react';
+import { useState, type RefObject } from 'react';
+import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import type { Tpl } from '../types';
 import { AUDIO_ASSETS, type AudioAsset } from '../audio/library';
+import { TranscriptPanel } from './TranscriptPanel';
 
 interface LibraryPanelProps {
   templates: Tpl[];
   onAddTemplate: (tpl: Tpl) => void;
   onAddAudio: (asset: AudioAsset) => void;
+  playerRef: RefObject<PlayerRef | null>;
+  fps: number;
 }
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿'] as const;
@@ -22,10 +26,11 @@ function CATEGORIES(templates: Tpl[]): { cat: string; items: Tpl[] }[] {
   return [...map.entries()].map(([cat, items]) => ({ cat, items }));
 }
 
-export function LibraryPanel({ templates, onAddTemplate, onAddAudio }: LibraryPanelProps) {
+export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps }: LibraryPanelProps) {
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('资源库');
   const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('G 动画');
   const showAudio = mainTab === '资源库' && (subTab === 'Audio' || subTab === '音效');
+  const isTranscript = mainTab === '文字稿';
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', borderRight: `1px solid ${theme.border}`, background: theme.panel, minHeight: 0, overflow: 'hidden' }}>
@@ -35,6 +40,12 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio }: LibraryPa
             style={{ background: 'none', border: 'none', cursor: 'pointer', paddingBottom: 8, color: mainTab === t ? theme.text : theme.textDim, fontWeight: mainTab === t ? 600 : 400, borderBottom: `2px solid ${mainTab === t ? theme.text : 'transparent'}` }}>{t}</button>
         ))}
       </div>
+      {isTranscript ? (
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, borderTop: `1px solid ${theme.border}` }}>
+          <TranscriptPanel playerRef={playerRef} fps={fps} />
+        </div>
+      ) : (
+      <>
       <div style={{ display: 'flex', gap: 14, padding: '10px 16px', fontSize: 12, borderBottom: `1px solid ${theme.border}`, flexWrap: 'wrap' }}>
         {SUB_TABS.map((t) => (
           <button key={t} onClick={() => setSubTab(t)}
@@ -85,6 +96,8 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio }: LibraryPa
           <div style={{ color: theme.textDim, fontSize: 12, padding: 8 }}>「{mainTab} · {subTab}」内容待接入。</div>
         )}
       </div>
+      </>
+      )}
     </section>
   );
 }
