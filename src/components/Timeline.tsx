@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
-import { TRACK_ORDER, timelineDuration, type TimelineState, type TrackId } from '../editor/types';
+import { MARKER_HEX, TRACK_ORDER, timelineDuration, type MarkerColor, type TimelineState, type TrackId } from '../editor/types';
 import type { EditorCommands } from '../editor/store';
 import { usePersistedState } from '../hooks/usePersistedState';
 
@@ -99,16 +99,36 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
     setPlayhead(f);
   };
 
+  const seekFrame = (f: number) => {
+    const c = Math.max(0, Math.min(f, total - 1));
+    playerRef.current?.seekTo(c);
+    setPlayhead(c);
+  };
+
   // blade (B): split the selected clip at the playhead. splitItem no-ops if the
   // playhead is outside the clip, so no guard needed here.
   const bladeSelected = () => { if (state.selectedId) commands.splitItem(state.selectedId, playhead); };
-  const bladeRef = useRef(bladeSelected);
-  bladeRef.current = bladeSelected;
+  // markers (source manage_markers): add at the playhead + open its note editor
+  const [editMarker, setEditMarker] = useState<string | null>(null);
+  const markers = state.markers ?? [];
+  const addMarkerAtPlayhead = () => setEditMarker(commands.addMarker(playhead));
+  const gotoMarker = (dir: 1 | -1) => {
+    const sorted = [...markers].filter((m) => m.scope === 'project').sort((a, b) => a.fromFrame - b.fromFrame);
+    const next = dir === 1 ? sorted.find((m) => m.fromFrame > playhead) : [...sorted].reverse().find((m) => m.fromFrame < playhead);
+    if (next) seekFrame(next.fromFrame);
+  };
+  // keyboard shortcuts (ref so the listener attaches once but reads fresh state)
+  const kbRef = useRef({ bladeSelected, addMarkerAtPlayhead, gotoMarker });
+  kbRef.current = { bladeSelected, addMarkerAtPlayhead, gotoMarker };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return;
-      if (e.key === 'b' || e.key === 'B') { e.preventDefault(); bladeRef.current(); }
+      const k = e.key.toLowerCase();
+      if (k === 'b') { e.preventDefault(); kbRef.current.bladeSelected(); }
+      else if (k === 'm') { e.preventDefault(); kbRef.current.addMarkerAtPlayhead(); }
+      else if (e.key === '[') { e.preventDefault(); kbRef.current.gotoMarker(-1); }
+      else if (e.key === ']') { e.preventDefault(); kbRef.current.gotoMarker(1); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -129,6 +149,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
       if (it.id === drag?.id) continue;
       targets.push(it.startFrame, it.startFrame + it.durationInFrames);
     }
+    for (const m of markers) targets.push(m.fromFrame); // markers are snap points too
     const nearest = (edge: number): number | null => {
       let best: number | null = null, bestDist = thresh;
       for (const t of targets) {
@@ -180,8 +201,39 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
     setDrag(null);
   };
 
+  const editing = markers.find((m) => m.id === editMarker) ?? null;
+
   return (
-    <section style={{ borderTop: `1px solid ${theme.border}`, background: theme.panel, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+    <section style={{ borderTop: `1px solid ${theme.border}`, background: theme.panel, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+      {/* marker note editor (source: click a pin → note popup) */}
+      {editing && (
+        <div style={{ position: 'absolute', top: 40, left: 12, zIndex: 20, width: 260, background: theme.panelAlt, border: `1px solid ${theme.border}`, borderRadius: 10, padding: 12, boxShadow: '0 8px 28px rgba(0,0,0,0.45)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontSize: 12, color: theme.textDim }}>
+            <svg width="12" height="14" viewBox="0 0 24 24" fill={MARKER_HEX[editing.color]}><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
+            标记 · {fmt(editing.fromFrame, state.fps)}
+          </div>
+          <textarea autoFocus value={editing.note} onChange={(e) => commands.updateMarker(editing.id, { note: e.target.value })} rows={3} placeholder="批注…"
+            style={{ width: '100%', resize: 'vertical', background: theme.bg, color: theme.text, border: `1px solid ${theme.borderLight}`, borderRadius: 6, padding: '6px 8px', fontSize: 12, fontFamily: 'inherit' }} />
+          <div style={{ display: 'flex', gap: 6, margin: '9px 0' }}>
+            {(Object.keys(MARKER_HEX) as MarkerColor[]).map((c) => (
+              <button key={c} onClick={() => commands.updateMarker(editing.id, { color: c })} title={c}
+                style={{ width: 16, height: 16, borderRadius: '50%', background: MARKER_HEX[c], border: editing.color === c ? '2px solid #fff' : '2px solid transparent', cursor: 'pointer', padding: 0 }} />
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 9, fontSize: 12, color: theme.textDim }}>
+            <span>时长</span>
+            <input type="number" min={0} step={0.1} value={+(editing.durationFrames / state.fps).toFixed(2)}
+              onChange={(e) => commands.updateMarker(editing.id, { durationFrames: Math.max(0, Math.round(Number(e.target.value) * state.fps)) })}
+              style={{ width: 56, background: theme.bg, color: theme.text, border: `1px solid ${theme.borderLight}`, borderRadius: 6, padding: '3px 6px', fontSize: 12 }} />
+            <span>秒{editing.durationFrames > 0 ? '（区间）' : '（点）'}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button onClick={() => { commands.removeMarker(editing.id); setEditMarker(null); }} style={{ ...toolBtn, color: theme.accent, fontSize: 12 }}>删除</button>
+            <span style={{ flex: 1 }} />
+            <button onClick={() => setEditMarker(null)} style={{ background: theme.accent, border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, padding: '4px 12px' }}>完成</button>
+          </div>
+        </div>
+      )}
       {/* toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: `1px solid ${theme.border}` }}>
         <button style={toolBtn} title="播放" onClick={() => playerRef.current?.toggle()}>▶</button>
@@ -189,6 +241,9 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
         <button style={toolBtn} title="复制选中" onClick={() => state.selectedId && commands.duplicateItem(state.selectedId)}>⧉</button>
         <button style={toolBtn} title="刀片：在播放头处切分选中片段 (B)" onClick={bladeSelected}>✂</button>
         <button style={{ ...toolBtn, fontWeight: 700 }} title="加文字（在播放头，V2 轨）" onClick={() => commands.addTextClip({ startFrame: playhead })}>T＋</button>
+        <button style={toolBtn} title="上一个标记 (【)" onClick={() => gotoMarker(-1)}>◃</button>
+        <button style={toolBtn} title="加标记（在播放头，M）" onClick={addMarkerAtPlayhead}>🔖</button>
+        <button style={toolBtn} title="下一个标记 (】)" onClick={() => gotoMarker(1)}>▹</button>
         <button style={toolBtn} title="删除选中" onClick={() => state.selectedId && commands.removeItem(state.selectedId)}>🗑</button>
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: 12, color: theme.text, fontVariantNumeric: 'tabular-nums' }}>{fmt(playhead, state.fps)} / {fmt(total, state.fps)}</span>
@@ -212,6 +267,20 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
             <div style={{ position: 'relative', flex: 1 }}>
               {Array.from({ length: Math.ceil(total / (state.fps * 2)) + 1 }).map((_, i) => (
                 <span key={i} style={{ position: 'absolute', left: i * state.fps * 2 * px, top: 5 }}>{fmt(i * state.fps * 2, state.fps)}</span>
+              ))}
+              {/* marker layer (source: bookmark pins over the ruler; range bar to the right) */}
+              {markers.filter((m) => m.scope === 'project').map((m) => (
+                <div key={m.id} style={{ position: 'absolute', left: m.fromFrame * px, top: 0, zIndex: 4, pointerEvents: 'none' }}>
+                  {m.durationFrames > 0 && (
+                    <div style={{ position: 'absolute', left: 0, top: 12, height: 4, width: Math.max(4, m.durationFrames * px), background: MARKER_HEX[m.color], borderRadius: 2, opacity: 0.85 }} />
+                  )}
+                  <button onPointerDown={(e) => e.stopPropagation()} onClick={() => setEditMarker(m.id)} title={m.note || '标记'}
+                    style={{ pointerEvents: 'auto', position: 'absolute', left: 0, top: -1, transform: 'translateX(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 0 }}>
+                    <svg width="13" height="15" viewBox="0 0 24 24" fill={MARKER_HEX[m.color]} stroke="rgba(0,0,0,0.9)" strokeWidth="1.6" style={{ display: 'block' }}>
+                      <path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                    </svg>
+                  </button>
+                </div>
               ))}
             </div>
           </div>

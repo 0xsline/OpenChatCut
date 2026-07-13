@@ -1,5 +1,5 @@
 import { useMemo, useReducer } from 'react';
-import type { AspectFit, ClipFilters, ClipTransform, MediaAsset, TimelineItem, TimelineState, TrackId, TransitionItem, TransitionType, ZoomEffect } from './types';
+import type { AspectFit, ClipFilters, ClipTransform, Marker, MediaAsset, TimelineItem, TimelineState, TrackId, TransitionItem, TransitionType, ZoomEffect } from './types';
 import { trackEnd } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
@@ -18,6 +18,9 @@ export type Action =
   | { type: 'setTransform'; id: string; patch: ClipTransform }
   | { type: 'setFilters'; id: string; patch: ClipFilters }
   | { type: 'setZoom'; id: string; patch: Partial<ZoomEffect> | null }
+  | { type: 'addMarker'; marker: Marker }
+  | { type: 'updateMarker'; id: string; patch: Partial<Marker> }
+  | { type: 'removeMarker'; id: string }
   | { type: 'reframeKeyframe'; id: string; frame: number; focalPointX: number; focalPointY: number; magnification: number }
   | { type: 'removeReframeKeyframe'; id: string; frame: number }
   | { type: 'addTransition'; id: string; incomingItemId: string; transType: TransitionType; durationInFrames?: number }
@@ -43,7 +46,7 @@ export type Action =
 /** dispatch accepted by the command set: store actions + history undo/redo */
 export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState']);
 
 const EMPTY_CURVE = { version: 1, timebase: 'effect-frame', coordinateSpace: 'composition-normalized', keyframes: [] } as const;
 
@@ -165,6 +168,12 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       const others = (s.transitions ?? []).filter((x) => x.incomingItemId !== inItem.id); // one in-transition per clip
       return { ...s, transitions: [...others, t] };
     }
+    case 'addMarker':
+      return { ...s, markers: [...(s.markers ?? []), a.marker] };
+    case 'updateMarker':
+      return { ...s, markers: (s.markers ?? []).map((m) => (m.id === a.id ? { ...m, ...a.patch } : m)) };
+    case 'removeMarker':
+      return { ...s, markers: (s.markers ?? []).filter((m) => m.id !== a.id) };
     case 'setTransition':
       return {
         ...s,
@@ -318,6 +327,10 @@ export interface EditorCommands {
   setItemTransform: (id: string, patch: ClipTransform) => void;
   setItemFilters: (id: string, patch: ClipFilters) => void;
   setItemZoom: (id: string, patch: Partial<ZoomEffect> | null) => void;
+  /** add a ruler/clip marker at a frame (source manage_markers create); returns its id */
+  addMarker: (fromFrame: number, opts?: { note?: string; color?: Marker['color']; durationFrames?: number; scope?: Marker['scope']; itemId?: string }) => string;
+  updateMarker: (id: string, patch: Partial<Marker>) => void;
+  removeMarker: (id: string) => void;
   setReframeKeyframe: (id: string, frame: number, focalPointX: number, focalPointY: number, magnification: number) => void;
   removeReframeKeyframe: (id: string, frame: number) => void;
   addTransition: (incomingItemId: string, type: TransitionType, durationInFrames?: number) => void;
@@ -432,6 +445,21 @@ function buildCommands(dispatch: Dispatch): EditorCommands {
       setItemTransform: (id, patch) => dispatch({ type: 'setTransform', id, patch }),
       setItemFilters: (id, patch) => dispatch({ type: 'setFilters', id, patch }),
       setItemZoom: (id, patch) => dispatch({ type: 'setZoom', id, patch }),
+      addMarker: (fromFrame, opts) => {
+        const marker: Marker = {
+          id: uid('mk'),
+          scope: opts?.scope ?? 'project',
+          itemId: opts?.itemId,
+          fromFrame: Math.max(0, Math.round(fromFrame)),
+          durationFrames: Math.max(0, Math.round(opts?.durationFrames ?? 0)),
+          note: opts?.note ?? '',
+          color: opts?.color ?? 'blue',
+        };
+        dispatch({ type: 'addMarker', marker });
+        return marker.id;
+      },
+      updateMarker: (id, patch) => dispatch({ type: 'updateMarker', id, patch }),
+      removeMarker: (id) => dispatch({ type: 'removeMarker', id }),
       setReframeKeyframe: (id, frame, focalPointX, focalPointY, magnification) => dispatch({ type: 'reframeKeyframe', id, frame, focalPointX, focalPointY, magnification }),
       removeReframeKeyframe: (id, frame) => dispatch({ type: 'removeReframeKeyframe', id, frame }),
       addTransition: (incomingItemId, type, durationInFrames) => dispatch({ type: 'addTransition', id: uid('tr'), incomingItemId, transType: type, durationInFrames }),
