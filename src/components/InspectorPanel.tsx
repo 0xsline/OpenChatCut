@@ -7,11 +7,23 @@ interface InspectorPanelProps {
   templates: Tpl[];
   selectedItem: TimelineItem | null;
   onItemPropChange: (key: string, value: unknown) => void;
+  onItemVolumeChange: (volume: number) => void;
+}
+
+// audio + video clips carry a playback volume; image/MG do not.
+function VolumeControl({ item, onChange }: { item: TimelineItem; onChange: (v: number) => void }) {
+  const vol = item.volume ?? 1;
+  return (
+    <label style={{ display: 'block', fontSize: 11, color: theme.textDim }}>
+      <div style={{ marginBottom: 4 }}>音量 <span style={{ opacity: 0.7 }}>{Math.round(vol * 100)}%</span></div>
+      <input type="range" min={0} max={2} step={0.05} value={vol} onChange={(e) => onChange(Number(e.target.value))} style={{ width: '100%' }} />
+    </label>
+  );
 }
 
 // Property editor for the selected timeline item (sits under the preview).
 // Collapsible so it doesn't crowd the preview when you don't need it.
-export function InspectorPanel({ templates, selectedItem, onItemPropChange }: InspectorPanelProps) {
+export function InspectorPanel({ templates, selectedItem, onItemPropChange, onItemVolumeChange }: InspectorPanelProps) {
   const [collapsed, setCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const schema = selectedItem
     ? templates.find((t) => t.id === selectedItem.templateId)?.propSchema ?? []
@@ -32,7 +44,15 @@ export function InspectorPanel({ templates, selectedItem, onItemPropChange }: In
         {!selectedItem ? (
           <div style={{ fontSize: 12, color: theme.textDim }}>选中时间线上的片段以编辑属性。</div>
         ) : selectedItem.kind === 'audio' ? (
-          <div style={{ fontSize: 12, color: theme.textDim }}>🎵 音频片段。可在时间线上拖动位置、裁剪首尾。</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontSize: 12, color: theme.textDim }}>🎵 音频片段。可在时间线上拖动位置、裁剪首尾。</div>
+            <VolumeControl item={selectedItem} onChange={onItemVolumeChange} />
+          </div>
+        ) : selectedItem.kind === 'video' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontSize: 12, color: theme.textDim }}>🎬 视频片段。可在时间线上拖动位置、裁剪首尾（左裁剪推进源入点）。</div>
+            <VolumeControl item={selectedItem} onChange={onItemVolumeChange} />
+          </div>
         ) : schema.length === 0 ? (
           <div style={{ fontSize: 12, color: theme.textDim }}>该模板用内置默认值（无可编辑属性）。</div>
         ) : (

@@ -147,6 +147,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
               templates={TEMPLATES}
               selectedItem={selectedItem}
               onItemPropChange={(key, value) => state.selectedId && commands.updateItemProps(state.selectedId, { [key]: value })}
+              onItemVolumeChange={(v) => state.selectedId && commands.setItemVolume(state.selectedId, v)}
             />
           </div>
         </div>

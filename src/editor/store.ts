@@ -13,6 +13,7 @@ type Action =
   | { type: 'updateProps'; id: string; patch: Record<string, unknown> }
   | { type: 'move'; id: string; track?: TrackId; startFrame?: number }
   | { type: 'retime'; id: string; startFrame?: number; durationInFrames?: number; srcInFrame?: number }
+  | { type: 'setVolume'; id: string; volume: number }
   | { type: 'duplicate'; id: string; newId: string }
   | { type: 'remove'; id: string }
   | { type: 'split'; id: string; atFrame: number; newId: string }
@@ -29,7 +30,7 @@ type Action =
   | { type: 'clearEdits'; id: string }
   | { type: 'select'; id: string | null };
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
 
 // recompute a transcript-edited clip's duration under its current edit state
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
@@ -73,6 +74,11 @@ function reduce(s: TimelineState, a: Action): TimelineState {
               }
             : it,
         ),
+      };
+    case 'setVolume':
+      return {
+        ...s,
+        items: s.items.map((it) => (it.id === a.id ? { ...it, volume: Math.max(0, Math.min(2, a.volume)) } : it)),
       };
     case 'duplicate': {
       const it = s.items.find((x) => x.id === a.id);
@@ -199,6 +205,7 @@ export interface EditorCommands {
   updateItemProps: (id: string, patch: Record<string, unknown>) => void;
   moveItem: (id: string, to: { track?: TrackId; startFrame?: number }) => void;
   setItemTiming: (id: string, timing: { startFrame?: number; durationInFrames?: number; srcInFrame?: number }) => void;
+  setItemVolume: (id: string, volume: number) => void;
   duplicateItem: (id: string) => void;
   removeItem: (id: string) => void;
   splitItem: (id: string, atFrame: number) => void;
@@ -278,6 +285,7 @@ export function useEditor(initial: TimelineState): {
       updateItemProps: (id, patch) => dispatch({ type: 'updateProps', id, patch }),
       moveItem: (id, to) => dispatch({ type: 'move', id, ...to }),
       setItemTiming: (id, timing) => dispatch({ type: 'retime', id, ...timing }),
+      setItemVolume: (id, volume) => dispatch({ type: 'setVolume', id, volume }),
       duplicateItem: (id) => dispatch({ type: 'duplicate', id, newId: uid('item') }),
       removeItem: (id) => dispatch({ type: 'remove', id }),
       splitItem: (id, atFrame) => dispatch({ type: 'split', id, atFrame, newId: uid('item') }),
