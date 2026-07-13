@@ -18,7 +18,7 @@ const TRACK_META: Record<TrackId, { color: string; kind: 'video' | 'audio' }> = 
 };
 
 const HEADER_W = 104;
-const ROW_H = 38;
+const MIN_ROW = 34;
 const RULER_H = 22;
 const PX_PER_FRAME = 6;
 const toolBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14, padding: '2px 5px' };
@@ -43,6 +43,20 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
   const [playhead, setPlayhead] = useState(0);
   const [drag, setDrag] = useState<Drag | null>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [rowH, setRowH] = useState(38);
+
+  // tracks fill the timeline's height: split the scroll area (minus the ruler)
+  // among the tracks so dragging the timeline taller grows every row to match.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => setRowH(Math.max(MIN_ROW, (el.clientHeight - RULER_H) / TRACK_ORDER.length));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // sync playhead with the Remotion Player (follow playback + reflect seeks)
   useEffect(() => {
@@ -67,7 +81,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
   const trackFromClientY = (clientY: number): TrackId => {
     const r = innerRef.current?.getBoundingClientRect();
     if (!r) return 'V1';
-    const idx = Math.floor((clientY - r.top - RULER_H) / ROW_H);
+    const idx = Math.floor((clientY - r.top - RULER_H) / rowH);
     return TRACK_ORDER[Math.min(Math.max(idx, 0), TRACK_ORDER.length - 1)];
   };
 
@@ -124,7 +138,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
       </div>
 
       {/* scrollable ruler + tracks (playhead spans both) */}
-      <div style={{ overflow: 'auto', flex: 1, minHeight: 0 }} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
+      <div ref={scrollRef} style={{ overflow: 'auto', flex: 1, minHeight: 0 }} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
         <div ref={innerRef} style={{ position: 'relative', width: innerW }}>
           {/* ruler (click to seek) */}
           <div
@@ -146,7 +160,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
             const dragIsAudio = drag ? state.items.find((it) => it.id === drag.id)?.kind === 'audio' : false;
             const isDropTarget = drag?.mode === 'move' && drag.targetTrack === trackId && meta.kind === (dragIsAudio ? 'audio' : 'video');
             return (
-              <div key={trackId} style={{ display: 'flex', height: ROW_H, borderBottom: `1px solid ${theme.border}`, background: isDropTarget ? '#1b2b1b' : undefined }}>
+              <div key={trackId} style={{ display: 'flex', height: rowH, borderBottom: `1px solid ${theme.border}`, background: isDropTarget ? '#1b2b1b' : undefined }}>
                 <div style={{ width: HEADER_W, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>
                   <span style={{ background: meta.color, color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px' }}>{trackId}</span>
                   <span style={{ color: theme.textDim, fontSize: 11 }}>👁</span>
@@ -165,7 +179,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
                         title={it.name}
                         onPointerDown={(e) => startDrag(e, it.id, 'move', it.startFrame, it.durationInFrames, it.track)}
                         style={{
-                          position: 'absolute', left: Math.max(0, start) * PX_PER_FRAME, top: 4, height: ROW_H - 8, width: dur * PX_PER_FRAME,
+                          position: 'absolute', left: Math.max(0, start) * PX_PER_FRAME, top: 4, height: rowH - 8, width: dur * PX_PER_FRAME,
                           background: meta.kind === 'video' ? theme.clipVideo : theme.clipAudio,
                           borderRadius: 5, color: '#fff', fontSize: 10.5,
                           display: 'flex', alignItems: 'center', padding: '0 10px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
@@ -188,7 +202,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
           })}
 
           {/* playhead */}
-          <div style={{ position: 'absolute', top: 0, left: HEADER_W + playhead * PX_PER_FRAME, width: 2, height: RULER_H + TRACK_ORDER.length * ROW_H, background: theme.accent, pointerEvents: 'none' }}>
+          <div style={{ position: 'absolute', top: 0, left: HEADER_W + playhead * PX_PER_FRAME, width: 2, height: RULER_H + TRACK_ORDER.length * rowH, background: theme.accent, pointerEvents: 'none' }}>
             <div style={{ position: 'absolute', top: 0, left: -4, width: 10, height: 10, background: theme.accent, clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
           </div>
         </div>
