@@ -1,52 +1,84 @@
-// The "drop-in seam": turn a raw ChatCut template (a no-import `({item}) => JSX`
-// arrow function stored as a code string) into a real React/Remotion component.
+// The "drop-in seam" + a sandbox for evaluating templates.
 //
-// ChatCut templates use INJECTED globals (useCurrentFrame/spring/interpolate/…)
-// instead of imports. We transpile the JSX (Babel, classic runtime → React.createElement)
-// then eval it inside a scope where those globals are provided. This mirrors how
-// ChatCut itself evaluates templates in a sandbox.
+// ChatCut templates are no-import `({item}) => JSX` arrow functions that use
+// INJECTED globals. They can be AI-generated / user-supplied, so evaluating
+// them is a security-critical path (arbitrary JS runs every frame).
+//
+// Defense in depth (two layers):
+//   1. static validation — reject code containing network / storage / DOM-escape
+//      / dynamic-code / infinite-loop patterns before it ever runs.
+//   2. restricted scope — the eval Function shadows every reachable dangerous
+//      global (window/document/fetch/eval/Function/…) with `undefined`, and runs
+//      in strict mode (no implicit globals, `this` === undefined).
+//
+// ⚠️ This is hardening, NOT a hard VM boundary. A determined attacker could still
+// reach the real global via a dynamically-computed prototype-chain constructor
+// traversal that slips past the static check. PRODUCTION must additionally run
+// templates in a sandboxed <iframe sandbox="allow-scripts"> (opaque origin) or a
+// QuickJS WASM realm. See PRD «复刻规格» §11-②.
 import * as Babel from '@babel/standalone';
 import * as React from 'react';
 import {
-  useCurrentFrame,
-  useVideoConfig,
-  interpolate,
-  interpolateColors,
-  spring,
-  Easing,
-  random,
-  Img,
-  Video,
-  Audio,
-  Sequence,
-  AbsoluteFill,
-  staticFile,
+  useCurrentFrame, useVideoConfig, interpolate, interpolateColors,
+  spring, Easing, random, Img, Video, Audio, Sequence, AbsoluteFill, staticFile,
 } from 'remotion';
 
-export type MgItem = {
-  props: Record<string, unknown>;
-  width: number;
-  height: number;
-};
+export type MgItem = { props: Record<string, unknown>; width: number; height: number };
 export type MgComponent = React.FC<{ item: MgItem }>;
 
-// The exact global set ChatCut templates reference (verified across all 211).
-const SCOPE: Record<string, unknown> = {
-  React,
-  useCurrentFrame,
-  useVideoConfig,
-  interpolate,
-  interpolateColors,
-  spring,
-  Easing,
-  random,
-  Img,
-  Video,
-  Audio,
-  Sequence,
-  AbsoluteFill,
-  staticFile,
+// The only globals a template legitimately needs (verified across all 211).
+const WHITELIST: Record<string, unknown> = {
+  React, useCurrentFrame, useVideoConfig, interpolate, interpolateColors,
+  spring, Easing, random, Img, Video, Audio, Sequence, AbsoluteFill, staticFile,
 };
+
+// Everything reachable that a template must NOT touch → shadowed to undefined.
+// NB: 'eval' and 'arguments' are reserved in strict mode and CANNOT be
+// parameter names — they are blocked by the static check instead.
+const SHADOW = [
+  'window', 'self', 'globalThis', 'document', 'navigator', 'location', 'history',
+  'parent', 'top', 'opener', 'frames', 'Function', 'require', 'module',
+  'exports', 'process', 'importScripts', 'postMessage', 'fetch', 'XMLHttpRequest',
+  'WebSocket', 'EventSource', 'localStorage', 'sessionStorage', 'indexedDB',
+  'setTimeout', 'setInterval', 'setImmediate', 'queueMicrotask', 'requestAnimationFrame',
+  'alert', 'prompt', 'confirm', 'open', 'Worker', 'SharedWorker', 'Notification',
+];
+
+// Layer 1: static blocklist (targets usage patterns, not bare words in comments).
+const FORBIDDEN: [RegExp, string][] = [
+  [/\bimport\s*[({]/, 'dynamic import()'],
+  [/(^|[^.\w])import\s+[\w{*"']/m, 'import statement'],
+  [/\brequire\s*\(/, 'require()'],
+  [/\beval\b/, 'eval (any form)'],
+  [/\barguments\b/, 'arguments'],
+  [/\bnew\s+Function\b/, 'new Function'],
+  [/\.\s*constructor\b/, '.constructor (escape vector)'],
+  [/\bwindow\s*[.[]/, 'window access'],
+  [/\bdocument\s*[.[]/, 'document access'],
+  [/\bglobalThis\b/, 'globalThis'],
+  [/\bfetch\s*\(/, 'fetch()'],
+  [/\bnew\s+(XMLHttpRequest|WebSocket|EventSource|Worker)\b/, 'network/worker'],
+  [/\b(localStorage|sessionStorage|indexedDB)\s*[.[]/, 'storage access'],
+  [/\.\s*cookie\b/, 'cookie access'],
+  [/\bimportScripts\b/, 'importScripts'],
+  [/\b(setTimeout|setInterval)\s*\(/, 'timers'],
+  [/while\s*\(\s*true\s*\)/, 'infinite loop while(true)'],
+  [/for\s*\(\s*;\s*;\s*\)/, 'infinite loop for(;;)'],
+  [/\bdebugger\b/, 'debugger'],
+];
+
+// strip comments so prose like "video window." doesn't trip the blocklist.
+// (only used for the security scan — the original code is what actually runs.)
+function stripComments(code: string): string {
+  return code.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+}
+
+export function validateTemplate(code: string): void {
+  const scan = stripComments(code);
+  for (const [re, reason] of FORBIDDEN) {
+    if (re.test(scan)) throw new Error(`sandbox 拒绝：检测到「${reason}」`);
+  }
+}
 
 const cache = new Map<string, MgComponent>();
 
@@ -54,23 +86,21 @@ export function compileTemplate(code: string): MgComponent {
   const cached = cache.get(code);
   if (cached) return cached;
 
-  // 1. find the declared component name: `const NAME = ({item}) => ...`
-  const m = code.match(/const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\(|\basync\b|function)/);
+  validateTemplate(code); // layer 1
+
+  const m = code.match(/const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\(|async\b|function)/);
   const name = m?.[1];
-  if (!name) throw new Error('template: could not find `const NAME = (...)` declaration');
+  if (!name) throw new Error('template: 找不到 `const NAME = (...)` 声明');
 
-  // 2. transpile JSX → React.createElement (classic runtime references injected `React`)
-  const out = Babel.transform(code, {
-    presets: [['react', { runtime: 'classic' }]],
-    filename: 'template.jsx',
-  });
+  const out = Babel.transform(code, { presets: [['react', { runtime: 'classic' }]], filename: 'template.jsx' });
   const transpiled = out.code;
-  if (!transpiled) throw new Error('template: babel produced no output');
+  if (!transpiled) throw new Error('template: babel 无输出');
 
-  // 3. eval inside the injected scope, return the component
-  const keys = Object.keys(SCOPE);
-  const factory = new Function(...keys, `"use strict";\n${transpiled}\n;return ${name};`);
-  const Component = factory(...keys.map((k) => SCOPE[k])) as MgComponent;
+  // layer 2: whitelist real globals; shadow dangerous ones to undefined; strict mode.
+  const names = [...Object.keys(WHITELIST), ...SHADOW];
+  const values = [...Object.values(WHITELIST), ...SHADOW.map(() => undefined)];
+  const factory = new Function(...names, `"use strict";\n${transpiled}\n;return ${name};`);
+  const Component = factory(...values) as MgComponent;
 
   cache.set(code, Component);
   return Component;
