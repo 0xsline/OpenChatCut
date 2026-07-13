@@ -12,7 +12,7 @@ type Action =
   | { type: 'add'; item: Omit<TimelineItem, 'startFrame'>; startFrame?: number }
   | { type: 'updateProps'; id: string; patch: Record<string, unknown> }
   | { type: 'move'; id: string; track?: TrackId; startFrame?: number }
-  | { type: 'retime'; id: string; startFrame?: number; durationInFrames?: number }
+  | { type: 'retime'; id: string; startFrame?: number; durationInFrames?: number; srcInFrame?: number }
   | { type: 'duplicate'; id: string; newId: string }
   | { type: 'remove'; id: string }
   | { type: 'split'; id: string; atFrame: number; newId: string }
@@ -68,6 +68,7 @@ function reduce(s: TimelineState, a: Action): TimelineState {
                 ...it,
                 startFrame: Math.max(0, a.startFrame ?? it.startFrame),
                 durationInFrames: Math.max(1, a.durationInFrames ?? it.durationInFrames),
+                srcInFrame: a.srcInFrame === undefined ? it.srcInFrame : Math.max(0, a.srcInFrame),
               }
             : it,
         ),
@@ -187,7 +188,7 @@ export interface EditorCommands {
   addMediaItem: (asset: MediaAsset, at?: { track?: TrackId; startFrame?: number }) => void;
   updateItemProps: (id: string, patch: Record<string, unknown>) => void;
   moveItem: (id: string, to: { track?: TrackId; startFrame?: number }) => void;
-  setItemTiming: (id: string, timing: { startFrame?: number; durationInFrames?: number }) => void;
+  setItemTiming: (id: string, timing: { startFrame?: number; durationInFrames?: number; srcInFrame?: number }) => void;
   duplicateItem: (id: string) => void;
   removeItem: (id: string) => void;
   splitItem: (id: string, atFrame: number) => void;

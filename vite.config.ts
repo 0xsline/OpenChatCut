@@ -14,6 +14,8 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), exportPlugin(), uploadPlugin()],
     server: {
+      port: 5199,
+      strictPort: true,
       // Proxy /llm → relay, injecting the API key on the server so it never
       // reaches the browser (mirrors ChatCut's server-side agent key handling).
       // The agent uses Anthropic's native Messages API (/v1/messages), which

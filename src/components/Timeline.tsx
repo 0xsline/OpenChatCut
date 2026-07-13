@@ -38,7 +38,7 @@ function fmt(frames: number, fps: number): string {
 type DragMode = 'move' | 'trim-left' | 'trim-right';
 interface Drag {
   id: string; mode: DragMode; baseStart: number; baseDur: number; baseTrack: TrackId;
-  startX: number; deltaF: number; targetTrack: TrackId;
+  baseSrcIn: number; startX: number; deltaF: number; targetTrack: TrackId;
 }
 
 export function Timeline({ state, commands, playerRef }: TimelineProps) {
@@ -111,11 +111,11 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
     setPlayhead(f);
   };
 
-  const startDrag = (e: React.PointerEvent, id: string, mode: DragMode, baseStart: number, baseDur: number, baseTrack: TrackId) => {
+  const startDrag = (e: React.PointerEvent, id: string, mode: DragMode, baseStart: number, baseDur: number, baseTrack: TrackId, baseSrcIn = 0) => {
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     commands.selectItem(id);
-    setDrag({ id, mode, baseStart, baseDur, baseTrack, startX: e.clientX, deltaF: 0, targetTrack: baseTrack });
+    setDrag({ id, mode, baseStart, baseDur, baseTrack, baseSrcIn, startX: e.clientX, deltaF: 0, targetTrack: baseTrack });
   };
   const onPointerMove = (e: React.PointerEvent) => {
     if (!drag) return;
@@ -125,7 +125,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
   };
   const onPointerUp = () => {
     if (!drag) { return; }
-    const { id, mode, baseStart, baseDur, deltaF, targetTrack, baseTrack } = drag;
+    const { id, mode, baseStart, baseDur, baseSrcIn, deltaF, targetTrack, baseTrack } = drag;
     if (mode === 'move') {
       // keep video clips on video tracks, audio clips on audio tracks
       const isAudio = state.items.find((it) => it.id === id)?.kind === 'audio';
@@ -133,8 +133,9 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
       const track = okTrack ? targetTrack : baseTrack;
       if (deltaF !== 0 || track !== baseTrack) commands.moveItem(id, { startFrame: Math.max(0, baseStart + deltaF), track });
     } else if (mode === 'trim-left') {
-      const d = Math.min(deltaF, baseDur - 1);
-      if (d !== 0) commands.setItemTiming(id, { startFrame: Math.max(0, baseStart + d), durationInFrames: baseDur - d });
+      // clamp so the source in-point can't go negative (limits how far left media extends)
+      const d = Math.max(Math.min(deltaF, baseDur - 1), -baseSrcIn);
+      if (d !== 0) commands.setItemTiming(id, { startFrame: Math.max(0, baseStart + d), durationInFrames: baseDur - d, srcInFrame: baseSrcIn + d });
     } else if (mode === 'trim-right') {
       if (deltaF !== 0) commands.setItemTiming(id, { durationInFrames: Math.max(1, baseDur + deltaF) });
     }
@@ -199,7 +200,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
                       <div
                         key={it.id}
                         title={it.name}
-                        onPointerDown={(e) => startDrag(e, it.id, 'move', it.startFrame, it.durationInFrames, it.track)}
+                        onPointerDown={(e) => startDrag(e, it.id, 'move', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                         style={{
                           position: 'absolute', left: Math.max(0, start) * px, top: 4, height: rowHeightOf(trackId) - 8, width: dur * px,
                           background: meta.kind === 'video' ? theme.clipVideo : theme.clipAudio,
@@ -210,10 +211,10 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
                         }}
                       >
                         {/* trim handles */}
-                        <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track)}
+                        <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: 'rgba(0,0,0,0.25)' }} />
                         <span style={{ pointerEvents: 'none' }}>✦ {it.name}</span>
-                        <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track)}
+                        <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', right: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: 'rgba(0,0,0,0.25)' }} />
                       </div>
                     );

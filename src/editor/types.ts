@@ -32,10 +32,12 @@ export interface TimelineItem {
   /** natural box size the template designs against */
   width?: number;
   height?: number;
-  // audio fields:
+  // audio / video / image source:
   src?: string;
-  /** 0..1 playback volume (default 1) */
+  /** 0..1 playback volume (default 1) — audio + video */
   volume?: number;
+  /** source in-point (frames) for video/audio trimming — left-trim advances it */
+  srcInFrame?: number;
   /** transcript-based editing: the clip's words + which are deleted (by index).
    * durationInFrames reflects the EDITED length (kept words only). */
   transcript?: TranscriptWord[];

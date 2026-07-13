@@ -22,7 +22,7 @@ function AudioClip({ item, fps }: { item: TimelineItem; fps: number }) {
   }
   return (
     <Sequence from={item.startFrame} durationInFrames={item.durationInFrames} name={item.name}>
-      <Audio src={item.src!} volume={item.volume ?? 1} />
+      <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0} volume={item.volume ?? 1} />
     </Sequence>
   );
 }
@@ -35,7 +35,7 @@ function MediaFill({ item, fit }: { item: TimelineItem; fit: AspectFit }) {
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
       {item.kind === 'image'
         ? <Img src={item.src!} style={style} />
-        : <OffthreadVideo src={item.src!} volume={item.volume ?? 1} style={style} />}
+        : <OffthreadVideo src={item.src!} trimBefore={item.srcInFrame ?? 0} volume={item.volume ?? 1} style={style} />}
     </AbsoluteFill>
   );
 }
