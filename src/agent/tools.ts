@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
-import type { TrackId } from '../editor/types';
+import { ASPECT_PRESETS, type AspectFit, type TrackId } from '../editor/types';
 import type { Tpl } from '../types';
 import { compileTemplate } from '../template-host';
 import { anthropic, MODEL } from './client';
@@ -123,6 +123,18 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
     name: 'clear_timeline',
     description: 'Remove ALL clips from the timeline. Only when the user clearly asks to start over / clear everything.',
     input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'set_aspect_ratio',
+    description: 'Retarget the canvas to a different aspect ratio for long-to-short (source manage_timelines ratio+fit). E.g. turn a 16:9 video vertical for Shorts/Reels. fit: contain (letterbox) keeps everything; cover (fill+crop) fills the frame and crops the sides.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ratio: { type: 'string', enum: ['16:9', '9:16', '1:1', '4:3', '3:4'] },
+        fit: { type: 'string', enum: ['contain', 'cover'], description: 'How existing clips adapt to the new ratio.' },
+      },
+      required: ['ratio'],
+    },
   },
   // transcript / captions / delete-text-=-delete-video (source: transcribe, find_transcript, clean_script, apply_script, edit_captions)
   ...TRANSCRIPT_TOOL_SCHEMAS,
@@ -273,6 +285,13 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
     case 'clear_timeline':
       ctx.commands.clearTimeline();
       return { ok: true };
+    case 'set_aspect_ratio': {
+      const preset = ASPECT_PRESETS.find((p) => p.label === String(args.ratio));
+      if (!preset) return { error: `unknown ratio ${args.ratio}` };
+      const fit = (args.fit as AspectFit) ?? ctx.getState().fit ?? 'contain';
+      ctx.commands.setAspect(preset.width, preset.height, fit);
+      return { ok: true, ratio: preset.label, width: preset.width, height: preset.height, fit };
+    }
     case 'remove_item': {
       const it = findItem(ctx, args.itemId);
       if (!it) return { error: `no item ${args.itemId}` };

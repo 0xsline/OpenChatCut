@@ -34,10 +34,30 @@ export interface TimelineItem {
   silenceFrames?: number;
 }
 
+/** how 16:9-designed content adapts when the canvas ratio changes (source `fit`) */
+export type AspectFit = 'contain' | 'cover';
+
+export interface AspectPreset {
+  label: string;
+  width: number;
+  height: number;
+}
+
+/** canvas ratios for long-to-short retargeting (source manage_timelines `ratio`) */
+export const ASPECT_PRESETS: AspectPreset[] = [
+  { label: '16:9', width: 1920, height: 1080 },
+  { label: '9:16', width: 1080, height: 1920 },
+  { label: '1:1', width: 1080, height: 1080 },
+  { label: '4:3', width: 1440, height: 1080 },
+  { label: '3:4', width: 1080, height: 1440 },
+];
+
 export interface TimelineState {
   fps: number;
   width: number;
   height: number;
+  /** how items fit when the canvas ratio differs from their design box */
+  fit?: AspectFit;
   items: TimelineItem[];
   selectedId: string | null;
   /** captions overlay (字幕), rendered on top + burned into export */

@@ -147,7 +147,7 @@ export default function App() {
           <Divider onResize={(dx) => setLibW((w) => clamp(w + dx, 260, 640))} />
           {/* right column: preview on top, inspector below */}
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-            <PreviewPanel state={state} playerRef={playerRef} />
+            <PreviewPanel state={state} playerRef={playerRef} onSetAspect={commands.setAspect} />
             <InspectorPanel
               templates={TEMPLATES}
               selectedItem={selectedItem}

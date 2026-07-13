@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useReducer } from 'react';
-import type { TimelineItem, TimelineState, TrackId } from './types';
+import type { AspectFit, TimelineItem, TimelineState, TrackId } from './types';
 import { trackEnd } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
@@ -17,6 +17,7 @@ type Action =
   | { type: 'remove'; id: string }
   | { type: 'split'; id: string; atFrame: number; newId: string }
   | { type: 'clear' }
+  | { type: 'setCanvas'; width: number; height: number; fit?: AspectFit }
   | { type: 'setCaptions'; captions: CaptionsData | null }
   | { type: 'updateCaptions'; patch: Partial<CaptionsData> }
   | { type: 'setItemTranscript'; id: string; words: TranscriptWord[] }
@@ -26,7 +27,7 @@ type Action =
   | { type: 'clearEdits'; id: string }
   | { type: 'select'; id: string | null };
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'duplicate', 'remove', 'split', 'clear', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'duplicate', 'remove', 'split', 'clear', 'setCanvas', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
 
 // recompute a transcript-edited clip's duration under its current edit state
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
@@ -78,6 +79,8 @@ function reduce(s: TimelineState, a: Action): TimelineState {
     }
     case 'clear':
       return { ...s, items: [], selectedId: null };
+    case 'setCanvas':
+      return { ...s, width: a.width, height: a.height, fit: a.fit ?? s.fit ?? 'contain' };
     case 'setCaptions':
       return { ...s, captions: a.captions };
     case 'updateCaptions':
@@ -184,6 +187,7 @@ export interface EditorCommands {
   removeItem: (id: string) => void;
   splitItem: (id: string, atFrame: number) => void;
   clearTimeline: () => void;
+  setAspect: (width: number, height: number, fit?: AspectFit) => void;
   setCaptions: (captions: CaptionsData | null) => void;
   updateCaptions: (patch: Partial<CaptionsData>) => void;
   setItemTranscript: (id: string, words: TranscriptWord[]) => void;
@@ -244,6 +248,7 @@ export function useEditor(initial: TimelineState): {
       removeItem: (id) => dispatch({ type: 'remove', id }),
       splitItem: (id, atFrame) => dispatch({ type: 'split', id, atFrame, newId: uid('item') }),
       clearTimeline: () => dispatch({ type: 'clear' }),
+      setAspect: (width, height, fit) => dispatch({ type: 'setCanvas', width, height, fit }),
       setCaptions: (captions) => dispatch({ type: 'setCaptions', captions }),
       updateCaptions: (patch) => dispatch({ type: 'updateCaptions', patch }),
       setItemTranscript: (id, words) => dispatch({ type: 'setItemTranscript', id, words }),
