@@ -20,11 +20,25 @@ import * as Babel from '@babel/standalone';
 import * as React from 'react';
 import {
   useCurrentFrame, useVideoConfig, interpolate, interpolateColors,
-  spring, Easing, random, Img, Video, Audio, Sequence, AbsoluteFill, staticFile,
+  spring, Easing, random, Img as RemotionImg, Video, Audio, Sequence, AbsoluteFill, staticFile,
 } from 'remotion';
 
 export type MgItem = { props: Record<string, unknown>; width: number; height: number };
 export type MgComponent = React.FC<{ item: MgItem }>;
+
+// Scraped templates often carry a DANGLING bgImage — a bare asset id like
+// "04ff45a7b0" (not a URL). In the browser Player that just 404s harmlessly, but
+// under headless render Remotion's <Img> waits on delayRender() until it times
+// out (fatal). So: only render an <Img> when the src is a genuinely loadable URL
+// (http/https/data/blob or a root path); otherwise render nothing. For a real
+// URL that still fails, onError makes Remotion swallow it instead of throwing.
+const isLoadableSrc = (src: unknown): boolean =>
+  typeof src === 'string' && /^(https?:|data:|blob:|\/)/.test(src.trim());
+
+const Img: React.FC<Record<string, unknown>> = (props) =>
+  isLoadableSrc(props.src)
+    ? React.createElement(RemotionImg, { ...props, onError: props.onError ?? (() => undefined) })
+    : null;
 
 // The only globals a template legitimately needs (verified across all 211).
 const WHITELIST: Record<string, unknown> = {
