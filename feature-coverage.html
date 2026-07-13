@@ -207,7 +207,7 @@
       ["Ripple 编辑（插入/覆盖）", "todo", "插入模式后续片段整体位移合缝。源站 edit_item ripple", "P1"],
       ["片段变换（缩放/位置/旋转）", "done", "ClipTransform{scale,x,y,rotation}→CSS transform（ClipWrapper，translate%→rotate→scale）；属性面板缩放/水平/垂直/旋转滑块。导出验证 scale0.5+x25%。源站 缩放 tab", "P1"],
       ["关键帧 + bezier 缓动", "todo", "属性随帧打点，渲染 interpolate + cubic-bezier（变换/透明度已有静态版，加时间轴打点）。源站 keyframe/bezier", "P1"],
-      ["更多媒体类型 image/gif/svg/text/solid", "partial", "image + video 已做（<code>MediaFill</code>）；gif/svg/text/solid 待补。源站按类型拆表"],
+      ["更多媒体类型 image/gif/svg/text/solid", "partial", "image + video + text 已做（<code>MediaFill</code>/<code>TextLayer</code>，text 含内容/字号/色/对齐/粗细 + T＋ 按钮）；gif/svg/solid 待补。源站按类型拆表"],
       ["视频素材片段（video item）", "done", "导入真视频 → <code>OffthreadVideo</code> 渲染（预览+导出）。源站 video_item", "P0"],
       ["特效（blur/zoom/mosaic/CRT/ASCII…）", "partial", "基础调整已做：亮度/对比度/饱和度/模糊（ClipFilters→CSS filter 于 ClipWrapper，属性面板滑块，导出验证）；mosaic/CRT/ASCII 等 WebGL 特效待补。源站域 F", "P1"],
       ["转场（dissolve/dip/whip-pan/zoom/luma…）", "todo", "两片段重叠区 GLSL 混合（可从 editor bundle 提取源码）。源站 26 个 -frag", "P1"],
@@ -397,7 +397,7 @@
   document.getElementById("nDone").textContent = counts.done;
   document.getElementById("nPartial").textContent = counts.partial;
   document.getElementById("nTodo").textContent = counts.todo;
-  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：片段滤镜 亮度/对比度/饱和度/模糊（CSS filter，属性面板分组滑块，导出验证）`;
+  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：文字/标题片段（TextLayer 可编辑内容/字号/色/对齐/粗细，T＋ 加到 V2，复用变换/淡入淡出/滤镜）`;
 
   requestAnimationFrame(() => {
     document.getElementById("barDone").style.width = counts.done / total * 100 + "%";
