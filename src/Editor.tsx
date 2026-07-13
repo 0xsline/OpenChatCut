@@ -7,24 +7,25 @@ import { LibraryPanel } from './components/LibraryPanel';
 import { PreviewPanel } from './components/PreviewPanel';
 import { InspectorPanel } from './components/InspectorPanel';
 import { Timeline } from './components/Timeline';
+import { TimelineTabs } from './components/TimelineTabs';
 import { Divider } from './components/Divider';
 import { usePersistedState } from './hooks/usePersistedState';
 import { useEditor } from './editor/store';
-import type { TimelineState } from './editor/types';
+import type { ProjectDoc, TimelineState } from './editor/types';
 import { TEMPLATES } from './editor/initial';
 import { saveProject, type ProjectMeta } from './persist/projectStore';
 import { importMedia } from './media/upload';
 import { AUDIO_ASSETS } from './audio/library';
 
 interface EditorProps {
-  initial: TimelineState;
+  initial: ProjectDoc;
   project: ProjectMeta;
   onHome: () => void;
   onRename: (name: string) => void;
 }
 
 export default function Editor({ initial, project, onHome, onRename }: EditorProps) {
-  const { state, commands, canUndo, canRedo } = useEditor(initial);
+  const { state, doc, commands, canUndo, canRedo } = useEditor(initial);
   const selectedItem = state.items.find((it) => it.id === state.selectedId) ?? null;
 
   // keep a live ref of state so agent tools always read the latest timeline
@@ -56,11 +57,18 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     return () => { if (raf) cancelAnimationFrame(raf); detach?.(); };
   }, []);
 
-  // autosave this project to IndexedDB (debounced) so a reload restores the timeline
+  // autosave this project (all timelines) to IndexedDB (debounced) so a reload restores it
   useEffect(() => {
-    const id = setTimeout(() => saveProject(project.id, state), 500);
+    const id = setTimeout(() => saveProject(project.id, doc), 500);
     return () => clearTimeout(id);
-  }, [state, project.id]);
+  }, [doc, project.id]);
+
+  // switching timelines: reset the playhead to 0 (the new sequence has its own
+  // length/content) and seek the shared Player so it doesn't show a stale frame.
+  useEffect(() => {
+    setPlayhead(0);
+    playerRef.current?.seekTo(0);
+  }, [doc.activeTimelineId]);
 
   // resizable / collapsible panels (persisted across refreshes)
   const [chatW, setChatW] = usePersistedState('cc.chatW', 300);
@@ -190,7 +198,10 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           </div>
         </div>
         <Divider orientation="horizontal" onResize={(dy) => setTimelineH((h) => clamp(h - dy, 120, 300))} />
-        <Timeline state={state} commands={commands} playerRef={playerRef} playhead={playhead} setPlayhead={setPlayhead} />
+        <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+          <TimelineTabs doc={doc} commands={commands} />
+          <Timeline state={state} commands={commands} playerRef={playerRef} playhead={playhead} setPlayhead={setPlayhead} />
+        </div>
       </div>
     </div>
   );

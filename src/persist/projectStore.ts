@@ -1,4 +1,4 @@
-import type { TimelineState } from '../editor/types';
+import type { ProjectDoc, Timeline, TimelineState } from '../editor/types';
 
 // IndexedDB-backed multi-project store (local-first stand-in for the source's
 // Rocicorp Zero + IndexedDB). One store holds a `projects` index (metadata for
@@ -59,6 +59,29 @@ function isTimelineState(v: unknown): v is TimelineState {
     && typeof (v as { fps?: unknown }).fps === 'number';
 }
 
+function isProjectDoc(v: unknown): v is ProjectDoc {
+  return !!v && typeof v === 'object'
+    && Array.isArray((v as { timelines?: unknown }).timelines)
+    && typeof (v as { activeTimelineId?: unknown }).activeTimelineId === 'string';
+}
+
+const tlId = () => `tl_${newId()}`;
+
+/** wrap a single timeline into a one-sequence project (new projects + migration). */
+export function docFromTimeline(ts: TimelineState, name = '序列 1'): ProjectDoc {
+  const id = tlId();
+  const timeline: Timeline = { ...ts, id, name, order: 0 };
+  return { timelines: [timeline], activeTimelineId: id };
+}
+
+/** migrate a persisted value to a ProjectDoc: already a doc → as-is; an old
+ * single-timeline state → wrapped; anything else → null. */
+function toDoc(v: unknown): ProjectDoc | null {
+  if (isProjectDoc(v)) return v;
+  if (isTimelineState(v)) return docFromTimeline(v);
+  return null;
+}
+
 async function readIndex(): Promise<ProjectMeta[]> {
   const raw = await idbGet<unknown>(INDEX_KEY);
   return Array.isArray(raw) ? (raw as ProjectMeta[]).filter((m) => m && typeof m.id === 'string') : [];
@@ -73,19 +96,18 @@ export async function listProjects(): Promise<ProjectMeta[]> {
   }
 }
 
-export async function loadProject(id: string): Promise<TimelineState | null> {
+export async function loadProject(id: string): Promise<ProjectDoc | null> {
   try {
-    const v = await idbGet<unknown>(projectKey(id));
-    return isTimelineState(v) ? v : null;
+    return toDoc(await idbGet<unknown>(projectKey(id)));
   } catch {
     return null;
   }
 }
 
-/** Save a project's timeline and bump its index entry's updatedAt. */
-export async function saveProject(id: string, state: TimelineState): Promise<void> {
+/** Save a project's document (all timelines) and bump its index entry's updatedAt. */
+export async function saveProject(id: string, doc: ProjectDoc): Promise<void> {
   try {
-    await idbSet(projectKey(id), state);
+    await idbSet(projectKey(id), doc);
     const index = await readIndex();
     const entry = index.find((m) => m.id === id);
     if (entry) {
@@ -96,9 +118,9 @@ export async function saveProject(id: string, state: TimelineState): Promise<voi
   }
 }
 
-export async function createProject(name: string, state: TimelineState): Promise<ProjectMeta> {
+export async function createProject(name: string, doc: ProjectDoc): Promise<ProjectMeta> {
   const meta: ProjectMeta = { id: newId(), name, updatedAt: now() };
-  await idbSet(projectKey(meta.id), state);
+  await idbSet(projectKey(meta.id), doc);
   await idbSet(INDEX_KEY, [meta, ...(await readIndex())]);
   return meta;
 }
@@ -109,10 +131,10 @@ export async function renameProject(id: string, name: string): Promise<void> {
 }
 
 export async function duplicateProject(id: string): Promise<ProjectMeta | null> {
-  const state = await loadProject(id);
-  if (!state) return null;
+  const doc = await loadProject(id);
+  if (!doc) return null;
   const src = (await readIndex()).find((m) => m.id === id);
-  return createProject(`${src?.name ?? '工程'} 副本`, state);
+  return createProject(`${src?.name ?? '工程'} 副本`, doc);
 }
 
 export async function deleteProject(id: string): Promise<void> {

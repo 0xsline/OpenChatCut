@@ -184,6 +184,36 @@ export interface Marker {
   color: MarkerColor;
 }
 
+/** one timeline/sequence within a project (source: a project holds many timelines).
+ * A Timeline IS a TimelineState plus identity — so every component that consumes
+ * a TimelineState keeps working when handed the active timeline. */
+export interface Timeline extends TimelineState {
+  id: string;
+  name: string;
+  /** tab order (ascending) */
+  order: number;
+}
+
+/** a project = an ordered set of timelines + which one is active (source
+ * manage_timelines). Persisted per project; the active timeline is what the
+ * editor/composition/export operate on. */
+export interface ProjectDoc {
+  timelines: Timeline[];
+  activeTimelineId: string;
+}
+
+/** the active timeline of a project (falls back to the first if the id is stale). */
+export function activeTimeline(doc: ProjectDoc): Timeline {
+  return doc.timelines.find((t) => t.id === doc.activeTimelineId) ?? doc.timelines[0];
+}
+
+/** short ratio badge for a canvas size, e.g. 1920×1080 → "16:9". */
+export function ratioLabel(width: number, height: number): string {
+  const g = (a: number, b: number): number => (b ? g(b, a % b) : a);
+  const d = g(width, height) || 1;
+  return `${width / d}:${height / d}`;
+}
+
 export interface TimelineState {
   fps: number;
   width: number;

@@ -204,7 +204,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
   const editing = markers.find((m) => m.id === editMarker) ?? null;
 
   return (
-    <section style={{ borderTop: `1px solid ${theme.border}`, background: theme.panel, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+    <section style={{ flex: 1, borderTop: `1px solid ${theme.border}`, background: theme.panel, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
       {/* marker note editor (source: click a pin → note popup) */}
       {editing && (
         <div style={{ position: 'absolute', top: 40, left: 12, zIndex: 20, width: 260, background: theme.panelAlt, border: `1px solid ${theme.border}`, borderRadius: 10, padding: 12, boxShadow: '0 8px 28px rgba(0,0,0,0.45)' }}>

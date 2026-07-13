@@ -1,6 +1,6 @@
-import { useMemo, useReducer } from 'react';
-import type { AspectFit, ClipFilters, ClipTransform, Marker, MediaAsset, TimelineItem, TimelineState, TrackId, TransitionItem, TransitionType, ZoomEffect } from './types';
-import { trackEnd } from './types';
+import { useMemo, useReducer, useRef } from 'react';
+import type { AspectFit, ClipFilters, ClipTransform, Marker, MediaAsset, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackId, TransitionItem, TransitionType, ZoomEffect } from './types';
+import { activeTimeline, trackEnd } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
 import type { CaptionsData } from '../captions/types';
@@ -43,10 +43,26 @@ export type Action =
   | { type: 'select'; id: string | null }
   | { type: 'setFullState'; state: TimelineState };
 
+// ── project-level actions (multi-timeline; source manage_timelines) ────────
+// These operate on the ProjectDoc (the set of timelines), not on any single
+// timeline's items. All per-timeline Actions above are routed to the active
+// timeline by projectReduce.
+export type ProjectAction =
+  | { type: 'tl.create'; timeline: Timeline }
+  | { type: 'tl.switch'; id: string }
+  | { type: 'tl.duplicate'; id: string; newId: string; name: string; retarget?: { width: number; height: number; fit?: AspectFit } }
+  | { type: 'tl.delete'; id: string }
+  | { type: 'tl.rename'; id: string; name: string }
+  | { type: 'tl.retarget'; id: string; width: number; height: number; fit?: AspectFit };
+
 /** dispatch accepted by the command set: store actions + history undo/redo */
 export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void;
+/** dispatch at the project level: per-timeline + project actions + undo/redo */
+export type ProjectDispatch = (a: Action | ProjectAction | { type: 'undo' } | { type: 'redo' }) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState',
+  // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
+  'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget']);
 
 const EMPTY_CURVE = { version: 1, timebase: 'effect-frame', coordinateSpace: 'composition-normalized', keyframes: [] } as const;
 
@@ -283,14 +299,63 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
   }
 }
 
-// ── history wrapper (snapshot-based undo/redo) ────────────────────────────
-interface History {
-  past: TimelineState[];
-  present: TimelineState;
-  future: TimelineState[];
+// ── project reducer (routes per-timeline actions to the active timeline) ───
+const maxOrder = (p: ProjectDoc) => p.timelines.reduce((m, t) => Math.max(m, t.order), -1);
+const isProjectAction = (a: { type: string }): a is ProjectAction => a.type.startsWith('tl.');
+
+// stamp a per-timeline reducer result back onto its identity (setFullState
+// returns a bare TimelineState, so id/name/order must be re-applied).
+const stamp = (next: TimelineState, id: string, name: string, order: number): Timeline => ({ ...next, id, name, order });
+
+export function projectReduce(p: ProjectDoc, a: Action | ProjectAction): ProjectDoc {
+  if (isProjectAction(a)) {
+    switch (a.type) {
+      case 'tl.create':
+        return { timelines: [...p.timelines, a.timeline], activeTimelineId: a.timeline.id };
+      case 'tl.switch':
+        return p.timelines.some((t) => t.id === a.id) ? { ...p, activeTimelineId: a.id } : p;
+      case 'tl.duplicate': {
+        const src = p.timelines.find((t) => t.id === a.id);
+        if (!src) return p;
+        // clone verbatim (item ids stay — timelines never share one items[] array,
+        // so ids can't collide; retarget swaps the canvas for long→short).
+        const copy: Timeline = {
+          ...src, id: a.newId, name: a.name, order: maxOrder(p) + 1, selectedId: null,
+          ...(a.retarget ? { width: a.retarget.width, height: a.retarget.height, fit: a.retarget.fit ?? src.fit ?? 'contain' } : {}),
+        };
+        return { timelines: [...p.timelines, copy], activeTimelineId: copy.id };
+      }
+      case 'tl.delete': {
+        if (p.timelines.length <= 1) return p; // keep at least one timeline
+        const rest = p.timelines.filter((t) => t.id !== a.id);
+        const activeTimelineId = p.activeTimelineId === a.id ? rest[0].id : p.activeTimelineId;
+        return { timelines: rest, activeTimelineId };
+      }
+      case 'tl.rename':
+        return { ...p, timelines: p.timelines.map((t) => (t.id === a.id ? { ...t, name: a.name } : t)) };
+      case 'tl.retarget':
+        return { ...p, timelines: p.timelines.map((t) => (t.id === a.id ? { ...t, width: a.width, height: a.height, fit: a.fit ?? t.fit ?? 'contain' } : t)) };
+      default:
+        return p;
+    }
+  }
+  // per-timeline action → apply to the active timeline only
+  const active = activeTimeline(p);
+  if (!active) return p;
+  const next = reduce(active, a);
+  if (next === active) return p;
+  const stamped = stamp(next, active.id, active.name, active.order);
+  return { ...p, timelines: p.timelines.map((t) => (t.id === active.id ? stamped : t)) };
 }
 
-function historyReduce(h: History, a: Action | { type: 'undo' } | { type: 'redo' }): History {
+// ── history wrapper (snapshot-based undo/redo over the whole project) ──────
+interface History {
+  past: ProjectDoc[];
+  present: ProjectDoc;
+  future: ProjectDoc[];
+}
+
+function historyReduce(h: History, a: Action | ProjectAction | { type: 'undo' } | { type: 'redo' }): History {
   if (a.type === 'undo') {
     if (!h.past.length) return h;
     const previous = h.past[h.past.length - 1];
@@ -301,10 +366,10 @@ function historyReduce(h: History, a: Action | { type: 'undo' } | { type: 'redo'
     const next = h.future[0];
     return { past: [...h.past, h.present], present: next, future: h.future.slice(1) };
   }
-  const next = reduce(h.present, a);
+  const next = projectReduce(h.present, a);
   if (next === h.present) return h;
   if (MUTATING.has(a.type)) return { past: [...h.past, h.present], present: next, future: [] };
-  return { ...h, present: next }; // select: no history
+  return { ...h, present: next }; // select / tl.switch: no history
 }
 
 // Ids must stay unique across sessions: items are persisted to IndexedDB, so a
@@ -352,21 +417,59 @@ export interface EditorCommands {
   selectItem: (id: string | null) => void;
   /** atomically replace the whole timeline (proposal apply → one undo step) */
   applyState: (state: TimelineState) => void;
+  // ── multi-timeline (source manage_timelines) ──
+  /** add a new empty timeline (inherits the active canvas) and switch to it */
+  createTimeline: (name?: string) => void;
+  /** make a timeline active (no history step) */
+  switchTimeline: (id: string) => void;
+  /** copy a timeline (optionally retargeting the canvas for long→short) and switch to it */
+  duplicateTimeline: (id: string, opts?: { name?: string; retarget?: { width: number; height: number; fit?: AspectFit } }) => void;
+  deleteTimeline: (id: string) => void;
+  renameTimeline: (id: string, name: string) => void;
+  retargetTimeline: (id: string, width: number, height: number, fit?: AspectFit) => void;
   undo: () => void;
   redo: () => void;
 }
 
-export function useEditor(initial: TimelineState): {
-  state: TimelineState;
+export function useEditor(initial: ProjectDoc): {
+  /** the active timeline — what the composition/export/inspector operate on */
+  state: Timeline;
+  /** the whole project (all timelines + which is active) — persisted, tab bar */
+  doc: ProjectDoc;
   commands: EditorCommands;
   canUndo: boolean;
   canRedo: boolean;
 } {
   const [h, dispatch] = useReducer(historyReduce, { past: [], present: initial, future: [] });
+  const doc = h.present;
+  // timeline commands need the CURRENT project (new timeline count, source ids);
+  // a ref keeps buildCommands' memo stable while reading live state.
+  const docRef = useRef(doc);
+  docRef.current = doc;
 
-  const commands = useMemo(() => buildCommands(dispatch), []);
+  const commands = useMemo<EditorCommands>(() => ({
+    ...buildCommands(dispatch),
+    createTimeline: (name) => {
+      const d = docRef.current;
+      const base = activeTimeline(d);
+      const t: Timeline = {
+        fps: base.fps, width: base.width, height: base.height, fit: base.fit,
+        items: [], selectedId: null,
+        id: uid('tl'), name: name ?? `序列 ${d.timelines.length + 1}`, order: maxOrder(d) + 1,
+      };
+      dispatch({ type: 'tl.create', timeline: t });
+    },
+    switchTimeline: (id) => dispatch({ type: 'tl.switch', id }),
+    duplicateTimeline: (id, opts) => {
+      const src = docRef.current.timelines.find((t) => t.id === id);
+      dispatch({ type: 'tl.duplicate', id, newId: uid('tl'), name: opts?.name ?? `${src?.name ?? '序列'} 副本`, retarget: opts?.retarget });
+    },
+    deleteTimeline: (id) => dispatch({ type: 'tl.delete', id }),
+    renameTimeline: (id, name) => dispatch({ type: 'tl.rename', id, name }),
+    retargetTimeline: (id, width, height, fit) => dispatch({ type: 'tl.retarget', id, width, height, fit }),
+  }), []);
 
-  return { state: h.present, commands, canUndo: h.past.length > 0, canRedo: h.future.length > 0 };
+  return { state: activeTimeline(doc), doc, commands, canUndo: h.past.length > 0, canRedo: h.future.length > 0 };
 }
 
 // The editor command set over a dispatch fn — reused by the live store (real
