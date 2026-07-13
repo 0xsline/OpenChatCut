@@ -51,6 +51,15 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
   const [zoom, setZoom] = usePersistedState('cc.timelineZoom', 1);
   const px = PX_PER_FRAME * zoom; // pixels per frame at the current time-zoom
   const zoomBy = (f: number) => setZoom((z) => Math.min(6, Math.max(0.5, z * f)));
+  // magnetic snapping (source: Snapping toggle, S). On = edges lock to guides.
+  const [snapping, setSnapping] = usePersistedState('cc.snapping', true);
+  // fit whole timeline to the viewport width (source: Fit to view, ⇧Z)
+  const fitToView = () => {
+    const w = scrollRef.current?.clientWidth ?? 0;
+    if (w <= HEADER_W || total <= 0) return;
+    setZoom(Math.min(6, Math.max(0.5, (w - HEADER_W - 24) / (total * PX_PER_FRAME))));
+    if (scrollRef.current) scrollRef.current.scrollLeft = 0;
+  };
   const [drag, setDrag] = useState<Drag | null>(null);
   // clip right-click menu + effect clipboard (source: 复制效果/粘贴效果)
   const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -158,15 +167,18 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
     if (next) seekFrame(next.fromFrame);
   };
   // keyboard shortcuts (ref so the listener attaches once but reads fresh state)
-  const kbRef = useRef({ bladeSelected, addMarkerAtPlayhead, gotoMarker });
-  kbRef.current = { bladeSelected, addMarkerAtPlayhead, gotoMarker };
+  const kbRef = useRef({ bladeSelected, addMarkerAtPlayhead, gotoMarker, fitToView, toggleSnap: () => setSnapping((s) => !s) });
+  kbRef.current = { bladeSelected, addMarkerAtPlayhead, gotoMarker, fitToView, toggleSnap: () => setSnapping((s) => !s) };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return;
+      if (e.metaKey || e.ctrlKey) return; // leave undo/redo etc. to Editor
       const k = e.key.toLowerCase();
       if (k === 'b') { e.preventDefault(); kbRef.current.bladeSelected(); }
       else if (k === 'm') { e.preventDefault(); kbRef.current.addMarkerAtPlayhead(); }
+      else if (k === 's') { e.preventDefault(); kbRef.current.toggleSnap(); }
+      else if (k === 'z' && e.shiftKey) { e.preventDefault(); kbRef.current.fitToView(); }
       else if (e.key === '[') { e.preventDefault(); kbRef.current.gotoMarker(-1); }
       else if (e.key === ']') { e.preventDefault(); kbRef.current.gotoMarker(1); }
     };
@@ -183,6 +195,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
   // snap a dragged edge to the nearest guide (frame 0, playhead, any other
   // clip's start/end) within SNAP_PX; returns the adjusted delta + snap frame.
   const applySnap = (mode: DragMode, baseStart: number, baseDur: number, rawDelta: number): { deltaF: number; snapAt: number | null } => {
+    if (!snapping) return { deltaF: rawDelta, snapAt: null };
     const thresh = SNAP_PX / px; // pixels → frames
     const targets = [0, playhead];
     for (const it of state.items) {
@@ -284,12 +297,14 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
         <button style={toolBtn} title="上一个标记 (【)" onClick={() => gotoMarker(-1)}>◃</button>
         <button style={toolBtn} title="加标记（在播放头，M）" onClick={addMarkerAtPlayhead}>🔖</button>
         <button style={toolBtn} title="下一个标记 (】)" onClick={() => gotoMarker(1)}>▹</button>
+        <button style={{ ...toolBtn, color: snapping ? theme.accent : theme.textDim }} title={`磁性吸附：${snapping ? '开' : '关'} (S)`} onClick={() => setSnapping((s) => !s)}>🧲</button>
         <button style={toolBtn} title="删除选中" onClick={() => state.selectedId && commands.removeItem(state.selectedId)}>🗑</button>
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: 12, color: theme.text, fontVariantNumeric: 'tabular-nums' }}>{fmt(playhead, state.fps)} / {fmt(total, state.fps)}</span>
         <span style={{ flex: 1 }} />
-        <button style={toolBtn} title="缩小时间轴" onClick={() => zoomBy(1 / 1.4)}>🔍−</button>
-        <button style={toolBtn} title="放大时间轴" onClick={() => zoomBy(1.4)}>🔍＋</button>
+        <button style={toolBtn} title="缩小时间轴 (⌘−)" onClick={() => zoomBy(1 / 1.4)}>🔍−</button>
+        <button style={toolBtn} title="放大时间轴 (⌘＋)" onClick={() => zoomBy(1.4)}>🔍＋</button>
+        <button style={toolBtn} title="适应宽度 (⇧Z)" onClick={fitToView}>↔</button>
         <button style={toolBtn} title="重置缩放" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
       </div>
 
@@ -303,7 +318,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
             onPointerDown={(e) => seekTo(e.clientX)}
             style={{ display: 'flex', height: RULER_H, borderBottom: `1px solid ${theme.border}`, fontSize: 10, color: theme.textDim, cursor: 'text' }}
           >
-            <div style={{ width: HEADER_W, flexShrink: 0 }} />
+            <div style={{ width: HEADER_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 6, background: theme.panel, borderRight: `1px solid ${theme.border}` }} />
             <div style={{ position: 'relative', flex: 1 }}>
               {/* ticks span the whole visible width, not just the content */}
               {Array.from({ length: Math.ceil((innerW - HEADER_W) / px / (state.fps * 2)) + 1 }).map((_, i) => (
@@ -337,7 +352,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
             const flagBtn = (active: boolean): React.CSSProperties => ({ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, padding: 0, lineHeight: 1, color: theme.textDim, opacity: active ? 0.35 : 1 });
             return (
               <div key={trackId} style={{ display: 'flex', height: rowHeightOf(trackId), borderBottom: `1px solid ${theme.border}`, background: isDropTarget ? '#1b2b1b' : undefined }}>
-                <div style={{ width: HEADER_W, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>
+                <div style={{ width: HEADER_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>
                   <span style={{ background: meta.color, color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px' }}>{trackId}</span>
                   <button style={flagBtn(hidden)} title={hidden ? '显示轨道' : '隐藏轨道'} onClick={() => commands.toggleTrackFlag(trackId, 'hidden')}>{hidden ? '🚫' : '👁'}</button>
                   <button style={flagBtn(muted)} title={muted ? '取消静音' : '静音轨道'} onClick={() => commands.toggleTrackFlag(trackId, 'muted')}>{muted ? '🔇' : '🔊'}</button>
