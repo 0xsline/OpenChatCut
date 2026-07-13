@@ -48,21 +48,25 @@ export type Action =
 // timeline's items. All per-timeline Actions above are routed to the active
 // timeline by projectReduce.
 export type ProjectAction =
-  | { type: 'tl.create'; timeline: Timeline }
+  | { type: 'tl.create'; timeline: Timeline; activate?: boolean }
   | { type: 'tl.switch'; id: string }
-  | { type: 'tl.duplicate'; id: string; newId: string; name: string; retarget?: { width: number; height: number; fit?: AspectFit } }
+  | { type: 'tl.duplicate'; id: string; newId: string; name: string; retarget?: { width: number; height: number; fit?: AspectFit }; activate?: boolean }
   | { type: 'tl.delete'; id: string }
   | { type: 'tl.rename'; id: string; name: string }
-  | { type: 'tl.retarget'; id: string; width: number; height: number; fit?: AspectFit };
+  | { type: 'tl.retarget'; id: string; width: number; height: number; fit?: AspectFit }
+  | { type: 'tl.setHidden'; id: string; hidden: boolean }
+  | { type: 'tl.setDoc'; doc: ProjectDoc };
 
+/** any store action: per-timeline or project-level (what a draft records) */
+export type AnyAction = Action | ProjectAction;
 /** dispatch accepted by the command set: store actions + history undo/redo */
 export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void;
 /** dispatch at the project level: per-timeline + project actions + undo/redo */
-export type ProjectDispatch = (a: Action | ProjectAction | { type: 'undo' } | { type: 'redo' }) => void;
+export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' }) => void;
 
 const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
-  'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget']);
+  'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc']);
 
 const EMPTY_CURVE = { version: 1, timebase: 'effect-frame', coordinateSpace: 'composition-normalized', keyframes: [] } as const;
 
@@ -310,8 +314,10 @@ const stamp = (next: TimelineState, id: string, name: string, order: number): Ti
 export function projectReduce(p: ProjectDoc, a: Action | ProjectAction): ProjectDoc {
   if (isProjectAction(a)) {
     switch (a.type) {
-      case 'tl.create':
-        return { timelines: [...p.timelines, a.timeline], activeTimelineId: a.timeline.id };
+      case 'tl.create': {
+        const activeTimelineId = a.activate === false ? p.activeTimelineId : a.timeline.id;
+        return { timelines: [...p.timelines, a.timeline], activeTimelineId };
+      }
       case 'tl.switch':
         return p.timelines.some((t) => t.id === a.id) ? { ...p, activeTimelineId: a.id } : p;
       case 'tl.duplicate': {
@@ -320,21 +326,36 @@ export function projectReduce(p: ProjectDoc, a: Action | ProjectAction): Project
         // clone verbatim (item ids stay — timelines never share one items[] array,
         // so ids can't collide; retarget swaps the canvas for long→short).
         const copy: Timeline = {
-          ...src, id: a.newId, name: a.name, order: maxOrder(p) + 1, selectedId: null,
+          ...src, id: a.newId, name: a.name, order: maxOrder(p) + 1, selectedId: null, hidden: false,
           ...(a.retarget ? { width: a.retarget.width, height: a.retarget.height, fit: a.retarget.fit ?? src.fit ?? 'contain' } : {}),
         };
-        return { timelines: [...p.timelines, copy], activeTimelineId: copy.id };
+        return { timelines: [...p.timelines, copy], activeTimelineId: a.activate === false ? p.activeTimelineId : copy.id };
       }
       case 'tl.delete': {
         if (p.timelines.length <= 1) return p; // keep at least one timeline
         const rest = p.timelines.filter((t) => t.id !== a.id);
-        const activeTimelineId = p.activeTimelineId === a.id ? rest[0].id : p.activeTimelineId;
+        const fallback = rest.find((t) => !t.hidden) ?? rest[0];
+        const activeTimelineId = p.activeTimelineId === a.id ? fallback.id : p.activeTimelineId;
         return { timelines: rest, activeTimelineId };
       }
       case 'tl.rename':
         return { ...p, timelines: p.timelines.map((t) => (t.id === a.id ? { ...t, name: a.name } : t)) };
       case 'tl.retarget':
         return { ...p, timelines: p.timelines.map((t) => (t.id === a.id ? { ...t, width: a.width, height: a.height, fit: a.fit ?? t.fit ?? 'contain' } : t)) };
+      case 'tl.setHidden': {
+        // source rule: the last visible timeline can't be hidden
+        const visible = p.timelines.filter((t) => !t.hidden);
+        if (a.hidden && visible.length <= 1 && visible[0]?.id === a.id) return p;
+        const timelines = p.timelines.map((t) => (t.id === a.id ? { ...t, hidden: a.hidden } : t));
+        // hiding the active timeline: the editor must show something → first visible
+        const activeTimelineId =
+          a.hidden && p.activeTimelineId === a.id
+            ? (timelines.find((t) => !t.hidden)?.id ?? p.activeTimelineId)
+            : p.activeTimelineId;
+        return { timelines, activeTimelineId };
+      }
+      case 'tl.setDoc':
+        return a.doc; // atomic commit of a project-level proposal (one history step)
       default:
         return p;
     }

@@ -17,7 +17,7 @@ export function TimelineTabs({ doc, commands }: TimelineTabsProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => { if (renaming) inputRef.current?.select(); }, [renaming]);
 
-  const timelines = [...doc.timelines].sort((a, b) => a.order - b.order);
+  const timelines = doc.timelines.filter((t) => !t.hidden).sort((a, b) => a.order - b.order);
   const commitRename = () => {
     if (renaming && draft.trim()) commands.renameTimeline(renaming, draft.trim());
     setRenaming(null);

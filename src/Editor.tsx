@@ -28,12 +28,14 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const { state, doc, commands, canUndo, canRedo } = useEditor(initial);
   const selectedItem = state.items.find((it) => it.id === state.selectedId) ?? null;
 
-  // keep a live ref of state so agent tools always read the latest timeline
+  // keep live refs so agent tools always read the latest timeline/project
   const stateRef = useRef(state);
   stateRef.current = state;
+  const docRef = useRef(doc);
+  docRef.current = doc;
   const playerRef = useRef<PlayerRef | null>(null);
   const agentCtx = useMemo(
-    () => ({ commands, getState: () => stateRef.current, templates: TEMPLATES, audio: AUDIO_ASSETS }),
+    () => ({ commands, getState: () => stateRef.current, getDoc: () => docRef.current, templates: TEMPLATES, audio: AUDIO_ASSETS }),
     [commands],
   );
 

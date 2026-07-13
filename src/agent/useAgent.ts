@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { AgentContext } from './context';
 import { initialMessages, runAgent, type LLMMessage } from './runtime';
 import { makeDraft, replayActions } from '../editor/store';
+import { activeTimeline } from '../editor/types';
 import { buildOperation, buildProposal, type Operation, type Proposal } from './proposal';
 
 export interface DisplayMessage {
@@ -29,11 +30,11 @@ export function useAgent(ctx: AgentContext) {
       llmRef.current.push({ role: 'user', content: trimmed });
       setRunning(true);
       // Faithful propose→apply: run the agent's tools against a DRAFT copy of the
-      // timeline (so it sees its own pending edits) without touching the real
-      // store; capture each mutating tool call as an operation.
-      const base = ctxRef.current.getState();
-      const draft = makeDraft(base);
-      const draftCtx: AgentContext = { commands: draft.commands, getState: draft.getState, templates: ctxRef.current.templates, audio: ctxRef.current.audio };
+      // PROJECT (so it sees its own pending edits, incl. timeline switches)
+      // without touching the real store; capture each mutating tool call as an operation.
+      const baseDoc = ctxRef.current.getDoc();
+      const draft = makeDraft(baseDoc);
+      const draftCtx: AgentContext = { commands: draft.commands, getState: draft.getState, getDoc: draft.getDoc, templates: ctxRef.current.templates, audio: ctxRef.current.audio };
       const ops: Operation[] = [];
       let assistantText = '';
       try {
@@ -55,7 +56,7 @@ export function useAgent(ctx: AgentContext) {
             setMessages((m) => [...m, { role: 'error', text: ev.message }]);
           }
         });
-        if (ops.length) setProposal(buildProposal(ops, assistantText, base, draft.getState()));
+        if (ops.length) setProposal(buildProposal(ops, assistantText, activeTimeline(baseDoc), draft.getState()));
       } finally {
         setRunning(false);
       }
@@ -64,15 +65,15 @@ export function useAgent(ctx: AgentContext) {
   );
 
   // apply the selected operations atomically (one undo step), replaying on the
-  // CURRENT state so it composes with any manual edits made meanwhile. Side
+  // CURRENT project so it composes with any manual edits made meanwhile. Side
   // effects live OUTSIDE the state updater (a setState updater must be pure —
   // React double-invokes it in dev, which would double-commit).
   const applyProposal = useCallback((selected: Set<number>) => {
     const p = proposalRef.current;
     if (!p) return;
     const chosen = p.options[0].operations.filter((_, i) => selected.has(i));
-    const result = replayActions(ctxRef.current.getState(), chosen.flatMap((o) => o.actions));
-    ctxRef.current.commands.applyState(result);
+    const result = replayActions(ctxRef.current.getDoc(), chosen.flatMap((o) => o.actions));
+    ctxRef.current.commands.applyDoc(result);
     llmRef.current.push({ role: 'user', content: `（已应用提案：${chosen.length}/${p.options[0].operations.length} 项操作。）` });
     setProposal(null);
   }, []);

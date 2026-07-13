@@ -5,11 +5,11 @@ import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
-import type { Action, Dispatch } from './reduce';
-import { historyReduce, maxOrder, reduce } from './reduce';
+import type { AnyAction, ProjectDispatch } from './reduce';
+import { historyReduce, maxOrder, projectReduce } from './reduce';
 
 // Re-export the reducer layer so existing importers (`from './editor/store'`) keep working.
-export type { Action, ProjectAction, Dispatch, ProjectDispatch } from './reduce';
+export type { Action, AnyAction, ProjectAction, Dispatch, ProjectDispatch } from './reduce';
 export { reduce, projectReduce } from './reduce';
 
 // Ids must stay unique across sessions: items are persisted to IndexedDB, so a
@@ -57,16 +57,20 @@ export interface EditorCommands {
   selectItem: (id: string | null) => void;
   /** atomically replace the whole timeline (proposal apply → one undo step) */
   applyState: (state: TimelineState) => void;
+  /** atomically replace the whole project (project-level proposal apply → one undo step) */
+  applyDoc: (doc: ProjectDoc) => void;
   // ── multi-timeline (source manage_timelines) ──
-  /** add a new empty timeline (inherits the active canvas) and switch to it */
-  createTimeline: (name?: string) => void;
+  /** add a new empty timeline (inherits the active canvas unless sized); returns its id */
+  createTimeline: (opts?: { name?: string; width?: number; height?: number; fit?: AspectFit; activate?: boolean }) => string;
   /** make a timeline active (no history step) */
   switchTimeline: (id: string) => void;
-  /** copy a timeline (optionally retargeting the canvas for long→short) and switch to it */
-  duplicateTimeline: (id: string, opts?: { name?: string; retarget?: { width: number; height: number; fit?: AspectFit } }) => void;
+  /** copy a timeline (optionally retargeting the canvas for long→short); returns the copy's id */
+  duplicateTimeline: (id: string, opts?: { name?: string; retarget?: { width: number; height: number; fit?: AspectFit }; activate?: boolean }) => string;
   deleteTimeline: (id: string) => void;
   renameTimeline: (id: string, name: string) => void;
   retargetTimeline: (id: string, width: number, height: number, fit?: AspectFit) => void;
+  /** hide/restore a timeline tab (source update.hidden); the last visible one can't hide */
+  setTimelineHidden: (id: string, hidden: boolean) => void;
   undo: () => void;
   redo: () => void;
 }
@@ -87,36 +91,42 @@ export function useEditor(initial: ProjectDoc): {
   const docRef = useRef(doc);
   docRef.current = doc;
 
-  const commands = useMemo<EditorCommands>(() => ({
-    ...buildCommands(dispatch),
-    createTimeline: (name) => {
-      const d = docRef.current;
-      const base = activeTimeline(d);
-      const t: Timeline = {
-        fps: base.fps, width: base.width, height: base.height, fit: base.fit,
-        items: [], selectedId: null,
-        id: uid('tl'), name: name ?? `序列 ${d.timelines.length + 1}`, order: maxOrder(d) + 1,
-      };
-      dispatch({ type: 'tl.create', timeline: t });
-    },
-    switchTimeline: (id) => dispatch({ type: 'tl.switch', id }),
-    duplicateTimeline: (id, opts) => {
-      const src = docRef.current.timelines.find((t) => t.id === id);
-      dispatch({ type: 'tl.duplicate', id, newId: uid('tl'), name: opts?.name ?? `${src?.name ?? '序列'} 副本`, retarget: opts?.retarget });
-    },
-    deleteTimeline: (id) => dispatch({ type: 'tl.delete', id }),
-    renameTimeline: (id, name) => dispatch({ type: 'tl.rename', id, name }),
-    retargetTimeline: (id, width, height, fit) => dispatch({ type: 'tl.retarget', id, width, height, fit }),
-  }), []);
+  const commands = useMemo<EditorCommands>(() => buildCommands(dispatch, () => docRef.current), []);
 
   return { state: activeTimeline(doc), doc, commands, canUndo: h.past.length > 0, canRedo: h.future.length > 0 };
 }
 
-// The editor command set over a dispatch fn — reused by the live store (real
-// dispatch → history) and by the proposal draft engine (draft dispatch that
-// records + applies to a scratch state without touching the real timeline).
-function buildCommands(dispatch: Dispatch): EditorCommands {
+// The editor command set over a project dispatch fn — reused by the live store
+// (real dispatch → history) and by the proposal draft engine (draft dispatch
+// that records + applies to a scratch ProjectDoc without touching the real one).
+function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): EditorCommands {
   return {
+      createTimeline: (opts) => {
+        const d = getDoc();
+        const base = activeTimeline(d);
+        const t: Timeline = {
+          fps: base.fps,
+          width: opts?.width ?? base.width,
+          height: opts?.height ?? base.height,
+          fit: opts?.fit ?? base.fit,
+          items: [], selectedId: null,
+          id: uid('tl'), name: opts?.name ?? `序列 ${d.timelines.length + 1}`, order: maxOrder(d) + 1,
+        };
+        dispatch({ type: 'tl.create', timeline: t, activate: opts?.activate });
+        return t.id;
+      },
+      switchTimeline: (id) => dispatch({ type: 'tl.switch', id }),
+      duplicateTimeline: (id, opts) => {
+        const src = getDoc().timelines.find((t) => t.id === id);
+        const newId = uid('tl');
+        dispatch({ type: 'tl.duplicate', id, newId, name: opts?.name ?? `${src?.name ?? '序列'} 副本`, retarget: opts?.retarget, activate: opts?.activate });
+        return newId;
+      },
+      deleteTimeline: (id) => dispatch({ type: 'tl.delete', id }),
+      renameTimeline: (id, name) => dispatch({ type: 'tl.rename', id, name }),
+      retargetTimeline: (id, width, height, fit) => dispatch({ type: 'tl.retarget', id, width, height, fit }),
+      setTimelineHidden: (id, hidden) => dispatch({ type: 'tl.setHidden', id, hidden }),
+      applyDoc: (doc) => dispatch({ type: 'tl.setDoc', doc }),
       addMotionGraphic: (tpl, at) =>
         dispatch({
           type: 'add',
@@ -229,31 +239,35 @@ function buildCommands(dispatch: Dispatch): EditorCommands {
 }
 
 // ── proposal draft engine ─────────────────────────────────────────────────
-// Runs the agent's tools against a scratch copy of the timeline (so it sees its
-// own pending edits) WITHOUT touching the real store, recording every store
-// action. The recorded actions are grouped per agent tool call into operations,
-// and replayed on approve to commit atomically.
+// Runs the agent's tools against a scratch copy of the PROJECT (so it sees its
+// own pending edits, including timeline switches) WITHOUT touching the real
+// store, recording every store action. The recorded actions are grouped per
+// agent tool call into operations, and replayed on approve to commit atomically.
 export interface DraftEngine {
   commands: EditorCommands;
+  /** the draft's ACTIVE timeline (what per-clip tools operate on) */
   getState: () => TimelineState;
-  /** actions recorded since the last checkpoint() */
-  takeActions: () => Action[];
+  /** the whole draft project (manage_timelines operates on this) */
+  getDoc: () => ProjectDoc;
+  /** actions recorded since the last takeActions() */
+  takeActions: () => AnyAction[];
 }
 
-export function makeDraft(base: TimelineState): DraftEngine {
-  let state = base;
-  let pending: Action[] = [];
-  const dispatch: Dispatch = (a) => {
+export function makeDraft(base: ProjectDoc): DraftEngine {
+  let doc = base;
+  let pending: AnyAction[] = [];
+  const dispatch: ProjectDispatch = (a) => {
     if (a.type === 'undo' || a.type === 'redo') return; // history is meaningless in a draft
-    const next = reduce(state, a);
-    if (next !== state) {
-      state = next;
+    const next = projectReduce(doc, a);
+    if (next !== doc) {
+      doc = next;
       pending.push(a);
     }
   };
   return {
-    commands: buildCommands(dispatch),
-    getState: () => state,
+    commands: buildCommands(dispatch, () => doc),
+    getState: () => activeTimeline(doc),
+    getDoc: () => doc,
     takeActions: () => {
       const out = pending;
       pending = [];
@@ -262,7 +276,7 @@ export function makeDraft(base: TimelineState): DraftEngine {
   };
 }
 
-/** replay recorded actions on a base state (proposal apply, subset-safe) */
-export function replayActions(base: TimelineState, actions: Action[]): TimelineState {
-  return actions.reduce((s, a) => reduce(s, a), base);
+/** replay recorded actions on a base project (proposal apply, subset-safe) */
+export function replayActions(base: ProjectDoc, actions: AnyAction[]): ProjectDoc {
+  return actions.reduce((d, a) => projectReduce(d, a), base);
 }

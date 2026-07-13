@@ -5,6 +5,7 @@ import type { Tpl } from '../types';
 import { compileTemplate } from '../template-host';
 import { anthropic, MODEL } from './client';
 import { TRANSCRIPT_TOOL_SCHEMAS, TRANSCRIPT_TOOL_NAMES, execTranscriptTool } from './transcript-tools';
+import { TIMELINE_TOOL_SCHEMAS, TIMELINE_TOOL_NAMES, execTimelineTool } from './timeline-tools';
 import { GENERATE_TOOL_SCHEMAS, GENERATE_TOOL_NAMES, execGenerateTool } from './generate-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
@@ -139,6 +140,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   // transcript / captions / delete-text-=-delete-video (source: transcribe, find_transcript, clean_script, apply_script, edit_captions)
   ...TRANSCRIPT_TOOL_SCHEMAS,
+  // multi-timeline management (source manage_timelines: list/create/duplicate/switch/update/delete)
+  ...TIMELINE_TOOL_SCHEMAS,
   // AI 生成套件（GPT 主攻，定义在 generate-tools.ts：submit_image/video/voice/music/sound）
   ...GENERATE_TOOL_SCHEMAS,
 ];
@@ -181,6 +184,7 @@ function findItem(ctx: AgentContext, itemId: unknown) {
 // Execute a tool call against the live editor. Returns a JSON-serializable result.
 export async function executeTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   if (TRANSCRIPT_TOOL_NAMES.has(name)) return execTranscriptTool(name, args, ctx);
+  if (TIMELINE_TOOL_NAMES.has(name)) return execTimelineTool(name, args, ctx);
   if (GENERATE_TOOL_NAMES.has(name)) return execGenerateTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {

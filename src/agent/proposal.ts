@@ -5,14 +5,14 @@
 // Option{id,label,recommended,summary,totalImpact,operations[]} →
 // Operation{tool,args,action,target,impact,risk,rationale}); we additionally
 // carry the store actions per operation so approve can replay them atomically.
-import type { Action } from '../editor/store';
+import type { AnyAction } from '../editor/store';
 import type { TimelineState } from '../editor/types';
 
 export interface Operation {
   tool: string;
   args: Record<string, unknown>;
   /** store actions this tool produced — replayed on approve (one atomic commit) */
-  actions: Action[];
+  actions: AnyAction[];
   action: string; // human verb (source field: action)
   target: string; // what it affects (source field: target)
   impact: string; // per-op impact (source field: impact)
@@ -56,37 +56,43 @@ const VERB: Record<string, string> = {
   delete_text: '删文字=删视频',
   clean_script: '清理口播',
   edit_captions: '编辑字幕',
+  manage_timelines: '管理序列',
 };
 
-function targetOf(args: Record<string, unknown>, actions: Action[]): string {
+function targetOf(args: Record<string, unknown>, actions: AnyAction[]): string {
   const name = args.name ?? args.query ?? args.template ?? args.ratio;
   if (typeof name === 'string') return name;
-  const id = args.id ?? args.itemId;
+  const id = args.id ?? args.itemId ?? args.timelineId;
   if (typeof id === 'string') return id;
-  // fall back to the first added/edited item's name
+  // fall back to the first added/edited item's or timeline's name
   for (const a of actions) {
     if (a.type === 'add' && a.item?.name) return a.item.name;
+    if (a.type === 'tl.create') return a.timeline.name;
+    if (a.type === 'tl.duplicate' || a.type === 'tl.rename') return a.name;
   }
   return '时间线';
 }
 
-function impactOf(actions: Action[]): string {
-  let add = 0;
-  let del = 0;
-  let mod = 0;
+function impactOf(actions: AnyAction[]): string {
+  let add = 0, del = 0, mod = 0, addSeq = 0, delSeq = 0;
   for (const a of actions) {
     if (a.type === 'add' || a.type === 'duplicate' || a.type === 'split') add++;
     else if (a.type === 'remove') del++;
+    else if (a.type === 'tl.create' || a.type === 'tl.duplicate') addSeq++;
+    else if (a.type === 'tl.delete') delSeq++;
+    else if (a.type === 'tl.switch') continue; // navigation, not an edit
     else mod++;
   }
   const parts: string[] = [];
+  if (addSeq) parts.push(`+${addSeq} 序列`);
+  if (delSeq) parts.push(`−${delSeq} 序列`);
   if (add) parts.push(`+${add} 片段`);
   if (del) parts.push(`−${del} 片段`);
   if (mod) parts.push(`${mod} 处改动`);
   return parts.join(' · ') || '无变化';
 }
 
-export function buildOperation(tool: string, args: Record<string, unknown>, actions: Action[]): Operation {
+export function buildOperation(tool: string, args: Record<string, unknown>, actions: AnyAction[]): Operation {
   return {
     tool,
     args,

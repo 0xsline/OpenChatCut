@@ -192,6 +192,8 @@ export interface Timeline extends TimelineState {
   name: string;
   /** tab order (ascending) */
   order: number;
+  /** hidden tab (source manage_timelines update.hidden): data kept, tab not shown */
+  hidden?: boolean;
 }
 
 /** a project = an ordered set of timelines + which one is active (source
