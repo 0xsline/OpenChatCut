@@ -1,6 +1,6 @@
 import { theme } from '../theme';
 import type { Tpl } from '../types';
-import type { TimelineItem } from '../editor/types';
+import type { ClipTransform, TimelineItem } from '../editor/types';
 import { usePersistedState } from '../hooks/usePersistedState';
 
 interface FadePatch {
@@ -15,6 +15,27 @@ interface InspectorPanelProps {
   onItemPropChange: (key: string, value: unknown) => void;
   onItemVolumeChange: (volume: number) => void;
   onItemFadeChange: (fade: FadePatch) => void;
+  onItemTransformChange: (patch: ClipTransform) => void;
+}
+
+// scale / position / rotation for visual clips (source 缩放 tab).
+function TransformControl({ item, onChange }: { item: TimelineItem; onChange: (p: ClipTransform) => void }) {
+  const t = item.transform ?? {};
+  const slider = (label: string, val: number, min: number, max: number, step: number, fmt: string, key: keyof ClipTransform) => (
+    <label style={{ display: 'block', fontSize: 11, color: theme.textDim }}>
+      <div style={{ marginBottom: 4 }}>{label} <span style={{ opacity: 0.7 }}>{fmt}</span></div>
+      <input type="range" min={min} max={max} step={step} value={val} onChange={(e) => onChange({ [key]: Number(e.target.value) })} style={{ width: '100%' }} />
+    </label>
+  );
+  const scale = t.scale ?? 1;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {slider('缩放', scale, 0.1, 3, 0.05, `${Math.round(scale * 100)}%`, 'scale')}
+      {slider('水平位置', t.x ?? 0, -100, 100, 1, `${Math.round(t.x ?? 0)}%`, 'x')}
+      {slider('垂直位置', t.y ?? 0, -100, 100, 1, `${Math.round(t.y ?? 0)}%`, 'y')}
+      {slider('旋转', t.rotation ?? 0, -180, 180, 1, `${Math.round(t.rotation ?? 0)}°`, 'rotation')}
+    </div>
+  );
 }
 
 // audio + video clips carry a playback volume; image/MG do not.
@@ -51,7 +72,7 @@ function FadeControl({ item, fps, onChange }: { item: TimelineItem; fps: number;
 
 // Property editor for the selected timeline item (sits under the preview).
 // Collapsible so it doesn't crowd the preview when you don't need it.
-export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange }: InspectorPanelProps) {
+export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange }: InspectorPanelProps) {
   const [collapsed, setCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const schema = selectedItem
     ? templates.find((t) => t.id === selectedItem.templateId)?.propSchema ?? []
@@ -67,6 +88,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
       : null
     : null;
   const hasVolume = selectedItem?.kind === 'audio' || selectedItem?.kind === 'video';
+  const isVisual = selectedItem != null && selectedItem.kind !== 'audio';
 
   return (
     <section style={{ borderTop: `1px solid ${theme.border}`, background: theme.panel, display: 'flex', flexDirection: 'column', minHeight: 0, flex: '0 0 auto', maxHeight: collapsed ? undefined : '42%', overflow: 'hidden' }}>
@@ -86,6 +108,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {hint && <div style={{ fontSize: 12, color: theme.textDim }}>{hint}</div>}
             {hasVolume && <VolumeControl item={selectedItem} onChange={onItemVolumeChange} />}
+            {isVisual && <TransformControl item={selectedItem} onChange={onItemTransformChange} />}
             <FadeControl item={selectedItem} fps={fps} onChange={onItemFadeChange} />
             {selectedItem.kind === 'motion-graphic' && (
               schema.length === 0 ? (

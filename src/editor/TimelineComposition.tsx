@@ -13,11 +13,17 @@ function fadeFactor(frame: number, dur: number, fadeIn = 0, fadeOut = 0): number
   return Math.max(0, Math.min(1, f));
 }
 
-// Wraps a visual clip and ramps its opacity for fade in/out.
-function FadeWrapper({ item, children }: { item: TimelineItem; children: React.ReactNode }) {
+// Wraps a visual clip: ramps opacity for fade in/out and applies its static
+// transform (scale / position / rotation). x/y are percent of canvas, so
+// translate(x%,y%) offsets by that fraction of the full-frame layer.
+function ClipWrapper({ item, children }: { item: TimelineItem; children: React.ReactNode }) {
   const frame = useCurrentFrame();
   const o = fadeFactor(frame, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames);
-  return <AbsoluteFill style={{ opacity: o }}>{children}</AbsoluteFill>;
+  const t = item.transform;
+  const transform = t
+    ? `translate(${t.x ?? 0}%, ${t.y ?? 0}%) rotate(${t.rotation ?? 0}deg) scale(${t.scale ?? 1})`
+    : undefined;
+  return <AbsoluteFill style={{ opacity: o, transform }}>{children}</AbsoluteFill>;
 }
 
 // One audio clip. With a transcript attached it renders the KEPT segments
@@ -102,11 +108,11 @@ export function TimelineComposition({ state }: { state: TimelineState }) {
     <AbsoluteFill style={{ background: GRID }}>
       {ordered.map((item) => (
         <Sequence key={item.id} from={item.startFrame} durationInFrames={item.durationInFrames} layout="none" name={item.name}>
-          <FadeWrapper item={item}>
+          <ClipWrapper item={item}>
             {item.kind === 'motion-graphic'
               ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
               : <MediaFill item={item} fit={fit} muted={isMuted(item.track)} />}
-          </FadeWrapper>
+          </ClipWrapper>
         </Sequence>
       ))}
       {audio.map((item) => (

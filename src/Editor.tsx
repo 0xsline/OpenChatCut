@@ -150,6 +150,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
               onItemPropChange={(key, value) => state.selectedId && commands.updateItemProps(state.selectedId, { [key]: value })}
               onItemVolumeChange={(v) => state.selectedId && commands.setItemVolume(state.selectedId, v)}
               onItemFadeChange={(fade) => state.selectedId && commands.setItemFade(state.selectedId, fade)}
+              onItemTransformChange={(patch) => state.selectedId && commands.setItemTransform(state.selectedId, patch)}
             />
           </div>
         </div>

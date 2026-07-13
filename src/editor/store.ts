@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useReducer } from 'react';
-import type { AspectFit, MediaAsset, TimelineItem, TimelineState, TrackId } from './types';
+import type { AspectFit, ClipTransform, MediaAsset, TimelineItem, TimelineState, TrackId } from './types';
 import { trackEnd } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
@@ -15,6 +15,7 @@ type Action =
   | { type: 'retime'; id: string; startFrame?: number; durationInFrames?: number; srcInFrame?: number }
   | { type: 'setVolume'; id: string; volume: number }
   | { type: 'setFade'; id: string; fadeInFrames?: number; fadeOutFrames?: number }
+  | { type: 'setTransform'; id: string; patch: ClipTransform }
   | { type: 'duplicate'; id: string; newId: string }
   | { type: 'remove'; id: string }
   | { type: 'split'; id: string; atFrame: number; newId: string }
@@ -31,7 +32,7 @@ type Action =
   | { type: 'clearEdits'; id: string }
   | { type: 'select'; id: string | null };
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
 
 // recompute a transcript-edited clip's duration under its current edit state
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
@@ -94,6 +95,11 @@ function reduce(s: TimelineState, a: Action): TimelineState {
             fadeOutFrames: a.fadeOutFrames === undefined ? it.fadeOutFrames : Math.max(0, Math.min(cap, a.fadeOutFrames)),
           };
         }),
+      };
+    case 'setTransform':
+      return {
+        ...s,
+        items: s.items.map((it) => (it.id === a.id ? { ...it, transform: { ...it.transform, ...a.patch } } : it)),
       };
     case 'duplicate': {
       const it = s.items.find((x) => x.id === a.id);
@@ -222,6 +228,7 @@ export interface EditorCommands {
   setItemTiming: (id: string, timing: { startFrame?: number; durationInFrames?: number; srcInFrame?: number }) => void;
   setItemVolume: (id: string, volume: number) => void;
   setItemFade: (id: string, fade: { fadeInFrames?: number; fadeOutFrames?: number }) => void;
+  setItemTransform: (id: string, patch: ClipTransform) => void;
   duplicateItem: (id: string) => void;
   removeItem: (id: string) => void;
   splitItem: (id: string, atFrame: number) => void;
@@ -303,6 +310,7 @@ export function useEditor(initial: TimelineState): {
       setItemTiming: (id, timing) => dispatch({ type: 'retime', id, ...timing }),
       setItemVolume: (id, volume) => dispatch({ type: 'setVolume', id, volume }),
       setItemFade: (id, fade) => dispatch({ type: 'setFade', id, ...fade }),
+      setItemTransform: (id, patch) => dispatch({ type: 'setTransform', id, patch }),
       duplicateItem: (id) => dispatch({ type: 'duplicate', id, newId: uid('item') }),
       removeItem: (id) => dispatch({ type: 'remove', id }),
       splitItem: (id, atFrame) => dispatch({ type: 'split', id, atFrame, newId: uid('item') }),

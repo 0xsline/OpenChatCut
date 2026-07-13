@@ -18,6 +18,18 @@ export interface MediaAsset {
   height?: number;
 }
 
+/** per-clip visual transform (scale/position/rotation) — source 缩放 tab */
+export interface ClipTransform {
+  /** 1 = 100% */
+  scale?: number;
+  /** horizontal offset as percent of canvas width (-100..100) */
+  x?: number;
+  /** vertical offset as percent of canvas height (-100..100) */
+  y?: number;
+  /** rotation in degrees */
+  rotation?: number;
+}
+
 export interface TimelineItem {
   id: string;
   track: TrackId;
@@ -42,6 +54,8 @@ export interface TimelineItem {
    * for audio (source edit_item fade, stored in seconds → frames). */
   fadeInFrames?: number;
   fadeOutFrames?: number;
+  /** static transform for visual clips (source 缩放/transform: scale, position, rotate) */
+  transform?: ClipTransform;
   /** transcript-based editing: the clip's words + which are deleted (by index).
    * durationInFrames reflects the EDITED length (kept words only). */
   transcript?: TranscriptWord[];
