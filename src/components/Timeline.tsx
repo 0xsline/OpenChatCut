@@ -29,7 +29,7 @@ function fmt(frames: number, fps: number): string {
 export function Timeline({ clip }: TimelineProps) {
   const clipW = clip.durationInFrames * PX_PER_FRAME;
   return (
-    <section style={{ borderTop: `1px solid ${theme.border}`, background: theme.panel, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <section style={{ borderTop: `1px solid ${theme.border}`, background: theme.panel, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
       {/* toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: `1px solid ${theme.border}` }}>
         <button style={toolBtn}>＋</button>

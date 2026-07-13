@@ -19,7 +19,7 @@ export function LibraryPanel({ templates, selectedIdx, onSelect, props, onPropCh
   const selected = templates[selectedIdx];
 
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', borderRight: `1px solid ${theme.border}`, background: theme.panel, minHeight: 0 }}>
+    <section style={{ display: 'flex', flexDirection: 'column', borderRight: `1px solid ${theme.border}`, background: theme.panel, minHeight: 0, overflow: 'hidden' }}>
       {/* main tabs */}
       <div style={{ display: 'flex', gap: 16, padding: '10px 16px 0', fontSize: 13 }}>
         {MAIN_TABS.map((t) => (

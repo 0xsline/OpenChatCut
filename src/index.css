@@ -1,2 +1,5 @@
+:root { color-scheme: dark; }   /* tell the browser we're already dark → skip force-dark-mode */
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
+html, body { overflow: hidden; }
+#root { overflow: hidden; }

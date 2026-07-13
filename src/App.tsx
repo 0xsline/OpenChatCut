@@ -32,8 +32,9 @@ export default function App() {
       style={{
         display: 'grid',
         gridTemplateColumns: '320px 1fr',
-        gridTemplateRows: '48px 1fr',
+        gridTemplateRows: '48px minmax(0, 1fr)',
         height: '100vh',
+        overflow: 'hidden',
         background: theme.bg,
         color: theme.text,
         fontFamily: 'system-ui, -apple-system, sans-serif',
@@ -49,12 +50,13 @@ export default function App() {
           gridColumn: 2,
           gridRow: 2,
           display: 'grid',
-          gridTemplateRows: '1fr 300px',
+          gridTemplateRows: 'minmax(0, 1fr) 300px',
           minHeight: 0,
           minWidth: 0,
+          overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'grid', gridTemplateColumns: '440px 1fr', minHeight: 0 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '440px 1fr', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
           <LibraryPanel
             templates={TEMPLATES}
             selectedIdx={idx}

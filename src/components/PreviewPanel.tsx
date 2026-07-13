@@ -11,7 +11,7 @@ interface PreviewPanelProps {
 export function PreviewPanel({ template, props }: PreviewPanelProps) {
   const item = { props, width: template.width, height: template.height };
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', background: theme.panel, minHeight: 0 }}>
+    <section style={{ display: 'flex', flexDirection: 'column', background: theme.panel, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
       <div style={{ padding: '10px 16px', fontSize: 12, color: theme.textDim, borderBottom: `1px solid ${theme.border}` }}>预览</div>
       <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 20, minHeight: 0, background: theme.bg }}>
         <Player
