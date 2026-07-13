@@ -7,6 +7,7 @@ import { LibraryPanel } from './components/LibraryPanel';
 import { PreviewPanel } from './components/PreviewPanel';
 import { InspectorPanel } from './components/InspectorPanel';
 import { Timeline } from './components/Timeline';
+import { Divider } from './components/Divider';
 import { useEditor } from './editor/store';
 import type { TimelineState } from './editor/types';
 import templatesJson from './chatcut-templates.json';
@@ -46,6 +47,12 @@ export default function App() {
     () => ({ commands, getState: () => stateRef.current, templates: TEMPLATES, audio: AUDIO_ASSETS }),
     [commands],
   );
+
+  // resizable / collapsible panels
+  const [chatW, setChatW] = useState(300);
+  const [libW, setLibW] = useState(360);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
+  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
   // Export: POST the current timeline to the dev-server /export endpoint (which
   // renders it in headless Chrome via @remotion/renderer) and download the MP4.
@@ -100,7 +107,7 @@ export default function App() {
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '320px 1fr',
+        gridTemplateColumns: `${chatCollapsed ? 46 : chatW}px 5px 1fr`,
         gridTemplateRows: '48px minmax(0, 1fr)',
         height: '100vh',
         overflow: 'hidden',
@@ -120,17 +127,22 @@ export default function App() {
         exporting={exporting}
       />
 
-      <ChatPanel ctx={agentCtx} />
+      <ChatPanel ctx={agentCtx} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} />
+
+      <div style={{ gridColumn: 2, gridRow: 2 }}>
+        {!chatCollapsed && <Divider onResize={(dx) => setChatW((w) => clamp(w + dx, 220, 520))} />}
+      </div>
 
       <div
         style={{
-          gridColumn: 2, gridRow: 2, display: 'grid',
+          gridColumn: 3, gridRow: 2, display: 'grid',
           gridTemplateRows: 'minmax(0, 1fr) 224px',
           minHeight: 0, minWidth: 0, overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `${libW}px 5px 1fr`, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
           <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} />
+          <Divider onResize={(dx) => setLibW((w) => clamp(w + dx, 260, 640))} />
           {/* right column: preview on top, inspector below */}
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
             <PreviewPanel state={state} playerRef={playerRef} />
