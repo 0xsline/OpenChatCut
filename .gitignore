@@ -12,3 +12,6 @@ out.mp4
 
 # parallel agent worktrees
 .claude/worktrees/
+
+# user-imported media (dev upload endpoint)
+public/media/uploads/

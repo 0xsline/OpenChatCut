@@ -13,6 +13,7 @@ import { useEditor } from './editor/store';
 import type { TimelineState } from './editor/types';
 import { TEMPLATES } from './editor/initial';
 import { saveProject, type ProjectMeta } from './persist/projectStore';
+import { importMedia } from './media/upload';
 import { AUDIO_ASSETS } from './audio/library';
 
 interface EditorProps {
@@ -137,7 +138,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         }}
       >
         <div style={{ display: 'grid', gridTemplateColumns: `${libW}px 5px 1fr`, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-          <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onClearEdits={commands.clearEdits} />
+          <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onClearEdits={commands.clearEdits} assets={state.assets ?? []} onImportMedia={async (file) => { commands.addAsset(await importMedia(file, state.fps)); }} onAddMediaItem={(asset) => commands.addMediaItem(asset)} />
           <Divider onResize={(dx) => setLibW((w) => clamp(w + dx, 260, 640))} />
           {/* right column: preview on top, inspector below */}
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>

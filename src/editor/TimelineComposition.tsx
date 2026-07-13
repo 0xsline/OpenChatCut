@@ -1,4 +1,4 @@
-import { AbsoluteFill, Audio, Sequence } from 'remotion';
+import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence } from 'remotion';
 import { compileTemplate } from '../template-host';
 import { CaptionsLayer } from '../captions/CaptionsLayer';
 import { keptSegments } from '../transcript/edit';
@@ -24,6 +24,19 @@ function AudioClip({ item, fps }: { item: TimelineItem; fps: number }) {
     <Sequence from={item.startFrame} durationInFrames={item.durationInFrames} name={item.name}>
       <Audio src={item.src!} volume={item.volume ?? 1} />
     </Sequence>
+  );
+}
+
+// Imported image / video fills the canvas by the fit mode (objectFit).
+function MediaFill({ item, fit }: { item: TimelineItem; fit: AspectFit }) {
+  const objectFit = fit === 'cover' ? 'cover' : 'contain';
+  const style: React.CSSProperties = { width: '100%', height: '100%', objectFit };
+  return (
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+      {item.kind === 'image'
+        ? <Img src={item.src!} style={style} />
+        : <OffthreadVideo src={item.src!} volume={item.volume ?? 1} style={style} />}
+    </AbsoluteFill>
   );
 }
 
@@ -57,7 +70,8 @@ function ItemLayer({ item, canvasW, canvasH, fit }: { item: TimelineItem; canvas
 // Renders the ENTIRE timeline. Visual tracks composite bottom-up: V1 then V2 on
 // top. Audio items (A1/A2) play via <Audio> and produce no picture.
 export function TimelineComposition({ state }: { state: TimelineState }) {
-  const visual = state.items.filter((it) => it.kind === 'motion-graphic' && (it.track === 'V1' || it.track === 'V2'));
+  const isVisual = (k: TimelineItem['kind']) => k === 'motion-graphic' || k === 'image' || k === 'video';
+  const visual = state.items.filter((it) => isVisual(it.kind) && (it.track === 'V1' || it.track === 'V2'));
   const ordered = [...visual].sort((a, b) => (a.track === b.track ? 0 : a.track === 'V1' ? -1 : 1));
   const audio = state.items.filter((it) => it.kind === 'audio' && it.src);
   const fit: AspectFit = state.fit ?? 'contain';
@@ -66,7 +80,9 @@ export function TimelineComposition({ state }: { state: TimelineState }) {
     <AbsoluteFill style={{ background: GRID }}>
       {ordered.map((item) => (
         <Sequence key={item.id} from={item.startFrame} durationInFrames={item.durationInFrames} layout="none" name={item.name}>
-          <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
+          {item.kind === 'motion-graphic'
+            ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
+            : <MediaFill item={item} fit={fit} />}
         </Sequence>
       ))}
       {audio.map((item) => (

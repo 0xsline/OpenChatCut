@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { exportPlugin } from './vite-plugin-export.ts';
+import { uploadPlugin } from './vite-plugin-upload.ts';
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -11,7 +12,7 @@ export default defineConfig(({ mode }) => {
   const aaiKey = env.ASSEMBLYAI_API_KEY || '';
 
   return {
-    plugins: [react(), exportPlugin()],
+    plugins: [react(), exportPlugin(), uploadPlugin()],
     server: {
       // Proxy /llm → relay, injecting the API key on the server so it never
       // reaches the browser (mirrors ChatCut's server-side agent key handling).

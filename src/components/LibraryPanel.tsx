@@ -2,11 +2,12 @@ import { useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import type { Tpl } from '../types';
-import type { TimelineItem } from '../editor/types';
+import type { MediaAsset, TimelineItem } from '../editor/types';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
 import { AUDIO_ASSETS, type AudioAsset } from '../audio/library';
 import { TranscriptPanel } from './TranscriptPanel';
+import { MediaPoolPanel } from './MediaPoolPanel';
 
 interface LibraryPanelProps {
   templates: Tpl[];
@@ -22,6 +23,9 @@ interface LibraryPanelProps {
   onToggleWord: (id: string, idx: number) => void;
   onCleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
   onClearEdits: (id: string) => void;
+  assets: MediaAsset[];
+  onImportMedia: (file: File) => Promise<void>;
+  onAddMediaItem: (asset: MediaAsset) => void;
 }
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿'] as const;
@@ -37,11 +41,12 @@ function CATEGORIES(templates: Tpl[]): { cat: string; items: Tpl[] }[] {
   return [...map.entries()].map(([cat, items]) => ({ cat, items }));
 }
 
-export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits }: LibraryPanelProps) {
+export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits, assets, onImportMedia, onAddMediaItem }: LibraryPanelProps) {
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('资源库');
   const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('G 动画');
   const showAudio = mainTab === '资源库' && (subTab === 'Audio' || subTab === '音效');
   const isTranscript = mainTab === '文字稿';
+  const isMyAssets = mainTab === '我的素材';
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', borderRight: `1px solid ${theme.border}`, background: theme.panel, minHeight: 0, overflow: 'hidden' }}>
@@ -54,6 +59,10 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
       {isTranscript ? (
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, borderTop: `1px solid ${theme.border}` }}>
           <TranscriptPanel playerRef={playerRef} fps={fps} items={items} captions={captions} onSetCaptions={onSetCaptions} onUpdateCaptions={onUpdateCaptions} onSetItemTranscript={onSetItemTranscript} onToggleWord={onToggleWord} onCleanScript={onCleanScript} onClearEdits={onClearEdits} />
+        </div>
+      ) : isMyAssets ? (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, borderTop: `1px solid ${theme.border}` }}>
+          <MediaPoolPanel assets={assets} fps={fps} onImport={onImportMedia} onAddAsset={onAddMediaItem} />
         </div>
       ) : (
       <>

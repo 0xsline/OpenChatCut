@@ -7,13 +7,24 @@ import type { TranscriptWord } from '../transcript/types';
 export type TrackId = 'V2' | 'V1' | 'A1' | 'A2';
 export const TRACK_ORDER: TrackId[] = ['V2', 'V1', 'A1', 'A2'];
 
+/** An imported media file in the project's media pool (source: S3 asset). */
+export interface MediaAsset {
+  id: string;
+  name: string;
+  kind: 'video' | 'image' | 'audio';
+  src: string; // same-origin path under /media/uploads
+  durationInFrames: number;
+  width?: number;
+  height?: number;
+}
+
 export interface TimelineItem {
   id: string;
   track: TrackId;
   startFrame: number;
   durationInFrames: number;
   name: string;
-  kind: 'motion-graphic' | 'audio';
+  kind: 'motion-graphic' | 'audio' | 'video' | 'image';
   // motion-graphic fields:
   templateId?: string;
   code?: string;
@@ -59,6 +70,8 @@ export interface TimelineState {
   /** how items fit when the canvas ratio differs from their design box */
   fit?: AspectFit;
   items: TimelineItem[];
+  /** imported media pool ("我的素材") */
+  assets?: MediaAsset[];
   selectedId: string | null;
   /** captions overlay (字幕), rendered on top + burned into export */
   captions?: CaptionsData | null;

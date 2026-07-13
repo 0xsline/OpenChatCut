@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useReducer } from 'react';
-import type { AspectFit, TimelineItem, TimelineState, TrackId } from './types';
+import type { AspectFit, MediaAsset, TimelineItem, TimelineState, TrackId } from './types';
 import { trackEnd } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
@@ -17,6 +17,7 @@ type Action =
   | { type: 'remove'; id: string }
   | { type: 'split'; id: string; atFrame: number; newId: string }
   | { type: 'clear' }
+  | { type: 'addAsset'; asset: MediaAsset }
   | { type: 'setCanvas'; width: number; height: number; fit?: AspectFit }
   | { type: 'setCaptions'; captions: CaptionsData | null }
   | { type: 'updateCaptions'; patch: Partial<CaptionsData> }
@@ -27,7 +28,7 @@ type Action =
   | { type: 'clearEdits'; id: string }
   | { type: 'select'; id: string | null };
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'duplicate', 'remove', 'split', 'clear', 'setCanvas', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
 
 // recompute a transcript-edited clip's duration under its current edit state
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
@@ -79,6 +80,8 @@ function reduce(s: TimelineState, a: Action): TimelineState {
     }
     case 'clear':
       return { ...s, items: [], selectedId: null };
+    case 'addAsset':
+      return { ...s, assets: [...(s.assets ?? []), a.asset] };
     case 'setCanvas':
       return { ...s, width: a.width, height: a.height, fit: a.fit ?? s.fit ?? 'contain' };
     case 'setCaptions':
@@ -180,6 +183,8 @@ const uid = (p: string) => `${p}_${++counter}`;
 export interface EditorCommands {
   addMotionGraphic: (tpl: Tpl, at?: { track?: TrackId; startFrame?: number }) => void;
   addAudio: (asset: AudioAsset, at?: { track?: TrackId; startFrame?: number }) => void;
+  addAsset: (asset: MediaAsset) => void;
+  addMediaItem: (asset: MediaAsset, at?: { track?: TrackId; startFrame?: number }) => void;
   updateItemProps: (id: string, patch: Record<string, unknown>) => void;
   moveItem: (id: string, to: { track?: TrackId; startFrame?: number }) => void;
   setItemTiming: (id: string, timing: { startFrame?: number; durationInFrames?: number }) => void;
@@ -239,6 +244,23 @@ export function useEditor(initial: TimelineState): {
             name: asset.name,
             src: asset.src,
             volume: 1,
+          },
+        }),
+      addAsset: (asset) => dispatch({ type: 'addAsset', asset }),
+      addMediaItem: (asset, at) =>
+        dispatch({
+          type: 'add',
+          startFrame: at?.startFrame,
+          item: {
+            id: uid('item'),
+            track: at?.track ?? (asset.kind === 'audio' ? 'A1' : 'V1'),
+            durationInFrames: asset.durationInFrames,
+            kind: asset.kind,
+            name: asset.name,
+            src: asset.src,
+            volume: asset.kind === 'audio' || asset.kind === 'video' ? 1 : undefined,
+            width: asset.width,
+            height: asset.height,
           },
         }),
       updateItemProps: (id, patch) => dispatch({ type: 'updateProps', id, patch }),
