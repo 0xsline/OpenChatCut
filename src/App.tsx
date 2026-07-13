@@ -143,7 +143,7 @@ export default function App() {
         }}
       >
         <div style={{ display: 'grid', gridTemplateColumns: `${libW}px 5px 1fr`, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-          <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onClearEdits={commands.clearEdits} />
+          <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onClearEdits={commands.clearEdits} />
           <Divider onResize={(dx) => setLibW((w) => clamp(w + dx, 260, 640))} />
           {/* right column: preview on top, inspector below */}
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>

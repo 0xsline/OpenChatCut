@@ -18,6 +18,7 @@ interface TranscriptPanelProps {
   onUpdateCaptions: (patch: Partial<CaptionsData>) => void;
   onSetItemTranscript: (id: string, words: TranscriptWord[]) => void;
   onToggleWord: (id: string, idx: number) => void;
+  onCleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
   onClearEdits: (id: string) => void;
 }
 
@@ -25,13 +26,14 @@ const TRACKS: TrackId[] = ['V1', 'V2', 'A1', 'A2'];
 const SAMPLE = '/media/speech-sample.mp3';
 
 // 文字稿:轨道选择 + 说话人分段 + 段落/片段视图 + 停顿 + 转写即编辑(删词=删视频)。
-export function TranscriptPanel({ playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onClearEdits }: TranscriptPanelProps) {
+export function TranscriptPanel({ playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits }: TranscriptPanelProps) {
   const { status, result, error, run } = useTranscript();
   const [track, setTrack] = useState<TrackId>('A1');
   const [view, setView] = useState<'paragraph' | 'segment'>('paragraph');
   const [editMode, setEditMode] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(false);
   const [compressSec, setCompressSec] = useState(0.5);
+  const [removeFillers, setRemoveFillers] = useState(true);
   const [pauseResult, setPauseResult] = useState<string | null>(null);
   const busy = status === 'uploading' || status === 'processing';
 
@@ -61,11 +63,22 @@ export function TranscriptPanel({ playerRef, fps, items, captions, onSetCaptions
   const applyPause = () => {
     if (!hasWords) return;
     const { count, savedMs } = analyzeSilences(words, compressSec * 1000);
-    setPauseResult(`> ${compressSec}s 的停顿 ${count} 处 → 压缩后省 ${(savedMs / 1000).toFixed(1)}s`);
+    const fillers = words.filter((w) => /^[\s]*([uU][hm]+|[eE]r+m?|嗯|呃|啊|唔|额)[\s.,]*$/.test(w.text)).length;
+    if (editable && audioItem) {
+      onCleanScript(audioItem.id, { silenceFrames: Math.round(compressSec * fps), removeFillers });
+      setPauseResult(`已压缩 ${count} 处长停顿到 ${compressSec}s（约省 ${(savedMs / 1000).toFixed(1)}s）${removeFillers ? ` · 去填充词 ${fillers}` : ''}`);
+    } else {
+      setPauseResult(`> ${compressSec}s 的停顿 ${count} 处 → 压缩后约省 ${(savedMs / 1000).toFixed(1)}s（先把语音加到该轨才能真压缩）`);
+    }
   };
   const generateCaptions = () => {
     if (!hasWords) return;
-    onSetCaptions({ enabled: true, template: captions?.template ?? 'tiktok', pacing: captions?.pacing ?? 'phrase', offsetFrames: audioItem?.startFrame ?? 0, words });
+    onSetCaptions({
+      enabled: true, template: captions?.template ?? 'tiktok', pacing: captions?.pacing ?? 'phrase',
+      sourceItemId: audioItem?.id ?? null,
+      words: audioItem ? undefined : words,
+      offsetFrames: audioItem ? undefined : 0,
+    });
   };
 
   const groups = view === 'paragraph' ? toParagraphs(words) : toSegments(words);
@@ -93,8 +106,12 @@ export function TranscriptPanel({ playerRef, fps, items, captions, onSetCaptions
               <span style={{ fontSize: 12, width: 42, textAlign: 'right' }}>{compressSec.toFixed(2)}s</span>
             </div>
             <div style={{ fontSize: 10.5, color: theme.textDim, margin: '6px 0 8px', lineHeight: 1.5 }}>设置整段口播的停顿时长。较长的停顿压缩到这个长度,较短的从原始录音恢复。</div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: theme.text, margin: '0 0 8px', cursor: 'pointer' }}>
+              <input type="checkbox" checked={removeFillers} onChange={(e) => setRemoveFillers(e.target.checked)} style={{ accentColor: theme.accent }} />
+              去掉填充词(嗯 / 呃 / um / uh…)
+            </label>
             {pauseResult && <div style={{ fontSize: 11, color: theme.text, marginBottom: 8 }}>{pauseResult}</div>}
-            <button onClick={applyPause} disabled={!hasWords} style={{ ...toolBtn, width: '100%', background: theme.accent, color: '#fff', opacity: hasWords ? 1 : 0.5, justifyContent: 'center' }}>应用</button>
+            <button onClick={applyPause} disabled={!hasWords} style={{ ...toolBtn, width: '100%', background: theme.accent, color: '#fff', opacity: hasWords ? 1 : 0.5, justifyContent: 'center' }}>{editable ? '应用(压缩静音)' : '预览可省时长'}</button>
           </div>
         )}
       </div>

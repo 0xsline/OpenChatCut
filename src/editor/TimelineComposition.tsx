@@ -12,7 +12,7 @@ function AudioClip({ item, fps }: { item: TimelineItem; fps: number }) {
     const del = new Set(item.deletedWordIdx ?? []);
     return (
       <>
-        {keptSegments(item.transcript, del, fps, item.startFrame).map((seg, k) => (
+        {keptSegments(item.transcript, del, fps, item.startFrame, { maxGapFrames: item.silenceFrames }).map((seg, k) => (
           <Sequence key={`${item.id}_${k}`} from={seg.fromFrame} durationInFrames={seg.durFrames} name={item.name}>
             <Audio src={item.src!} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame} volume={item.volume ?? 1} />
           </Sequence>
@@ -59,7 +59,7 @@ export function TimelineComposition({ state }: { state: TimelineState }) {
       {audio.map((item) => (
         <AudioClip key={item.id} item={item} fps={state.fps} />
       ))}
-      {state.captions?.enabled && <CaptionsLayer captions={state.captions} />}
+      {state.captions?.enabled && <CaptionsLayer captions={state.captions} items={state.items} />}
     </AbsoluteFill>
   );
 }

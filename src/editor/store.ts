@@ -5,7 +5,7 @@ import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
-import { editedFrames } from '../transcript/edit';
+import { editedFrames, fillerIndices } from '../transcript/edit';
 
 // ── command actions (these map 1:1 to the future agent tools) ─────────────
 type Action =
@@ -21,10 +21,17 @@ type Action =
   | { type: 'updateCaptions'; patch: Partial<CaptionsData> }
   | { type: 'setItemTranscript'; id: string; words: TranscriptWord[] }
   | { type: 'toggleWord'; id: string; idx: number }
+  | { type: 'deleteWords'; id: string; idxs: number[] }
+  | { type: 'cleanScript'; id: string; silenceFrames?: number; removeFillers: boolean }
   | { type: 'clearEdits'; id: string }
   | { type: 'select'; id: string | null };
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'duplicate', 'remove', 'split', 'clear', 'setCaptions', 'updateCaptions', 'toggleWord', 'clearEdits']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'duplicate', 'remove', 'split', 'clear', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
+
+// recompute a transcript-edited clip's duration under its current edit state
+function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
+  return editedFrames(it.transcript!, deleted, fps, { maxGapFrames: it.silenceFrames });
+}
 
 function reduce(s: TimelineState, a: Action): TimelineState {
   switch (a.type) {
@@ -79,7 +86,7 @@ function reduce(s: TimelineState, a: Action): TimelineState {
       return {
         ...s,
         items: s.items.map((it) =>
-          it.id === a.id ? { ...it, transcript: a.words, deletedWordIdx: [], durationInFrames: editedFrames(a.words, new Set(), s.fps) } : it,
+          it.id === a.id ? { ...it, transcript: a.words, deletedWordIdx: [], silenceFrames: undefined, durationInFrames: editedFrames(a.words, new Set(), s.fps) } : it,
         ),
       };
     case 'toggleWord':
@@ -89,14 +96,35 @@ function reduce(s: TimelineState, a: Action): TimelineState {
           if (it.id !== a.id || !it.transcript) return it;
           const del = new Set(it.deletedWordIdx ?? []);
           del.has(a.idx) ? del.delete(a.idx) : del.add(a.idx);
-          return { ...it, deletedWordIdx: [...del], durationInFrames: editedFrames(it.transcript, del, s.fps) };
+          return { ...it, deletedWordIdx: [...del], durationInFrames: editedDuration(it, del, s.fps) };
+        }),
+      };
+    case 'deleteWords':
+      return {
+        ...s,
+        items: s.items.map((it) => {
+          if (it.id !== a.id || !it.transcript) return it;
+          const del = new Set(it.deletedWordIdx ?? []);
+          for (const idx of a.idxs) if (idx >= 0 && idx < it.transcript.length) del.add(idx);
+          return { ...it, deletedWordIdx: [...del], durationInFrames: editedDuration(it, del, s.fps) };
+        }),
+      };
+    case 'cleanScript':
+      return {
+        ...s,
+        items: s.items.map((it) => {
+          if (it.id !== a.id || !it.transcript) return it;
+          const del = new Set(it.deletedWordIdx ?? []);
+          if (a.removeFillers) for (const idx of fillerIndices(it.transcript)) del.add(idx);
+          const next = { ...it, deletedWordIdx: [...del], silenceFrames: a.silenceFrames };
+          return { ...next, durationInFrames: editedDuration(next, del, s.fps) };
         }),
       };
     case 'clearEdits':
       return {
         ...s,
         items: s.items.map((it) =>
-          it.id === a.id && it.transcript ? { ...it, deletedWordIdx: [], durationInFrames: editedFrames(it.transcript, new Set(), s.fps) } : it,
+          it.id === a.id && it.transcript ? { ...it, deletedWordIdx: [], silenceFrames: undefined, durationInFrames: editedFrames(it.transcript, new Set(), s.fps) } : it,
         ),
       };
     case 'remove':
@@ -160,6 +188,8 @@ export interface EditorCommands {
   updateCaptions: (patch: Partial<CaptionsData>) => void;
   setItemTranscript: (id: string, words: TranscriptWord[]) => void;
   toggleWord: (id: string, idx: number) => void;
+  deleteWords: (id: string, idxs: number[]) => void;
+  cleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
   clearEdits: (id: string) => void;
   selectItem: (id: string | null) => void;
   undo: () => void;
@@ -218,6 +248,8 @@ export function useEditor(initial: TimelineState): {
       updateCaptions: (patch) => dispatch({ type: 'updateCaptions', patch }),
       setItemTranscript: (id, words) => dispatch({ type: 'setItemTranscript', id, words }),
       toggleWord: (id, idx) => dispatch({ type: 'toggleWord', id, idx }),
+      deleteWords: (id, idxs) => dispatch({ type: 'deleteWords', id, idxs }),
+      cleanScript: (id, opts) => dispatch({ type: 'cleanScript', id, silenceFrames: opts.silenceFrames, removeFillers: opts.removeFillers }),
       clearEdits: (id) => dispatch({ type: 'clearEdits', id }),
       selectItem: (id) => dispatch({ type: 'select', id }),
       undo: () => dispatch({ type: 'undo' }),

@@ -29,6 +29,9 @@ export interface TimelineItem {
    * durationInFrames reflects the EDITED length (kept words only). */
   transcript?: TranscriptWord[];
   deletedWordIdx?: number[];
+  /** clean_script silence compression: cap inter-word pauses to this many frames
+   * (undefined = keep every pause at its recorded length). */
+  silenceFrames?: number;
 }
 
 export interface TimelineState {

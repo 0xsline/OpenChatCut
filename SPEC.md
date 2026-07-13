@@ -35,3 +35,16 @@
 ## Agent = Anthropic 原生 tool-use(忠实源站)
 
 官方 `@anthropic-ai/sdk`,Messages API `tool_use`/`tool_result`。换真 Claude 只改 `client.ts` 的 `MODEL`。中转站坑见 `memory/chatcut-clone-build.md`。
+
+## 对标源站(每做一个功能都遵守)⭐
+
+我们已对 ChatCut 做过完整逆向,原始数据在 `~/Desktop/project/chatcut-reverse/`。**做任何功能前,先去逆向资料里找源站怎么做的,能用原数据/原算法/原命名就用,不要凭空发明。**
+
+1. **先查逆向再动手**:相关规格/事实优先读
+   - `复刻规格-Agent工具与后端.md` —— 52 个 Agent 工具的权威语义(名字/参数/后端映射)。**加 agent 工具就从这里取真名真语义**(如 `clean_script`/`edit_captions`/`find_transcript`),别自造。
+   - `PRD.md` / `deep_mining.md` / `architecture_findings.md` / `oss_stack.md` —— 架构与栈事实。
+   - `resources/bundles/decompiled/editor/{entry.js,oGe.js}` —— 反编译前端。要精确算法/常量时挖它(单行大文件,用 `python3` 正则,别裸 `grep`)。
+2. **用原数据**:模板(211)、音频清单、工具 schema、算法常量、UI 文案,凡逆向里有的一律复用,不重造。
+3. **算法对齐**:功能行为对标源站语义。例:静音压缩=源站 `clean_script`(词级时间戳规则处理,非 LLM;`silence`/`longSilence` 阈值;"较长停顿压到阈值,较短的从原录音恢复");字幕=单例 overlay,样式为命名预设。
+4. **三条护城河不变式**(源站 §11,复刻必守):① NL→确定性可撤销的时间线变更(propose→apply);② MG/shader eval 安全沙箱;③ **词↔帧双向一致**(转写词、帧、item source 映射永远对齐——删词/压静音/切割必须同时更新文本与帧位)。
+5. 找不到源站依据时,在提交说明里注明"源站无据,自定",便于日后对齐。

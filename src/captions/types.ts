@@ -1,9 +1,13 @@
 import type { TranscriptWord } from '../transcript/types';
 
-// Captions (字幕) = a styled overlay burned onto the video, separate from the
-// 文字稿 editing surface. Words are paginated into "pages" and shown in sync
-// with playback. Timestamps are ms relative to the SOURCE clip; offsetFrames is
-// where that clip sits on the timeline.
+// Captions (字幕) = a styled singleton overlay burned onto the video, separate
+// from the 文字稿 editing surface. Words are paginated into "pages" and shown in
+// sync with playback (timings are TIMELINE ms once resolved).
+//
+// Source-faithful: captions mirror an audio item's transcript. When that item is
+// edited (words deleted / silence compressed) the caption words are re-projected
+// onto the edited timeline (see retimeWords) — captions follow edits. If no item
+// is referenced, `words` + `offsetFrames` provide a standalone (sample) source.
 export type CaptionTemplate = 'plain' | 'tiktok' | 'netflix';
 export type CaptionPacing = 'word' | 'phrase';
 
@@ -11,8 +15,12 @@ export interface CaptionsData {
   enabled: boolean;
   template: CaptionTemplate;
   pacing: CaptionPacing;
-  offsetFrames: number;
-  words: TranscriptWord[];
+  /** audio item whose (edited) transcript drives the captions */
+  sourceItemId?: string | null;
+  /** standalone fallback source words (source ms) when no item is referenced */
+  words?: TranscriptWord[];
+  /** timeline offset (frames) for the standalone words */
+  offsetFrames?: number;
 }
 
 export interface CaptionPage {

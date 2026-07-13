@@ -20,6 +20,7 @@ interface LibraryPanelProps {
   onUpdateCaptions: (patch: Partial<CaptionsData>) => void;
   onSetItemTranscript: (id: string, words: TranscriptWord[]) => void;
   onToggleWord: (id: string, idx: number) => void;
+  onCleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
   onClearEdits: (id: string) => void;
 }
 
@@ -36,7 +37,7 @@ function CATEGORIES(templates: Tpl[]): { cat: string; items: Tpl[] }[] {
   return [...map.entries()].map(([cat, items]) => ({ cat, items }));
 }
 
-export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onClearEdits }: LibraryPanelProps) {
+export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits }: LibraryPanelProps) {
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('资源库');
   const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('G 动画');
   const showAudio = mainTab === '资源库' && (subTab === 'Audio' || subTab === '音效');
@@ -52,7 +53,7 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
       </div>
       {isTranscript ? (
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, borderTop: `1px solid ${theme.border}` }}>
-          <TranscriptPanel playerRef={playerRef} fps={fps} items={items} captions={captions} onSetCaptions={onSetCaptions} onUpdateCaptions={onUpdateCaptions} onSetItemTranscript={onSetItemTranscript} onToggleWord={onToggleWord} onClearEdits={onClearEdits} />
+          <TranscriptPanel playerRef={playerRef} fps={fps} items={items} captions={captions} onSetCaptions={onSetCaptions} onUpdateCaptions={onUpdateCaptions} onSetItemTranscript={onSetItemTranscript} onToggleWord={onToggleWord} onCleanScript={onCleanScript} onClearEdits={onClearEdits} />
         </div>
       ) : (
       <>

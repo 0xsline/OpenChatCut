@@ -2,6 +2,22 @@ import { useMemo } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { CaptionsData, CaptionTemplate } from './types';
 import { paginate, activePage, currentWordIndex } from './types';
+import type { TimelineItem } from '../editor/types';
+import type { TranscriptWord } from '../transcript/types';
+import { retimeWords } from '../transcript/edit';
+
+// Resolve the caption words as TIMELINE-ms words. Prefer the referenced audio
+// item's transcript re-projected onto the edited timeline (captions follow
+// deletions + silence compression); else shift the standalone words by offset.
+function resolveWords(captions: CaptionsData, items: TimelineItem[], fps: number): TranscriptWord[] {
+  const item = captions.sourceItemId ? items.find((it) => it.id === captions.sourceItemId) : undefined;
+  if (item?.transcript?.length) {
+    const del = new Set(item.deletedWordIdx ?? []);
+    return retimeWords(item.transcript, del, fps, item.startFrame, { maxGapFrames: item.silenceFrames });
+  }
+  const offMs = ((captions.offsetFrames ?? 0) / fps) * 1000;
+  return (captions.words ?? []).map((w) => ({ ...w, start: w.start + offMs, end: w.end + offMs }));
+}
 
 // Per-template look. `active` marks the word currently being spoken.
 function wordStyle(template: CaptionTemplate, active: boolean): React.CSSProperties {
@@ -33,12 +49,13 @@ function containerStyle(template: CaptionTemplate): React.CSSProperties {
 
 // Renders the active caption page for the current frame. Lives inside the
 // Remotion composition, so it shows in the Player preview AND burns into export.
-export function CaptionsLayer({ captions }: { captions: CaptionsData }) {
+export function CaptionsLayer({ captions, items }: { captions: CaptionsData; items: TimelineItem[] }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const ms = ((frame - captions.offsetFrames) / fps) * 1000;
+  const ms = (frame / fps) * 1000; // absolute timeline ms (words already re-timed)
 
-  const pages = useMemo(() => paginate(captions.words, captions.pacing), [captions.words, captions.pacing]);
+  const words = useMemo(() => resolveWords(captions, items, fps), [captions, items, fps]);
+  const pages = useMemo(() => paginate(words, captions.pacing), [words, captions.pacing]);
   const page = activePage(pages, ms);
   if (!page) return null;
   const curIdx = currentWordIndex(page, ms);

@@ -4,6 +4,7 @@ import type { TrackId } from '../editor/types';
 import type { Tpl } from '../types';
 import { compileTemplate } from '../template-host';
 import { anthropic, MODEL } from './client';
+import { TRANSCRIPT_TOOL_SCHEMAS, TRANSCRIPT_TOOL_NAMES, execTranscriptTool } from './transcript-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -123,6 +124,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
     description: 'Remove ALL clips from the timeline. Only when the user clearly asks to start over / clear everything.',
     input_schema: { type: 'object', properties: {} },
   },
+  // transcript / captions / delete-text-=-delete-video (source: transcribe, find_transcript, clean_script, apply_script, edit_captions)
+  ...TRANSCRIPT_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -162,6 +165,7 @@ function findItem(ctx: AgentContext, itemId: unknown) {
 
 // Execute a tool call against the live editor. Returns a JSON-serializable result.
 export async function executeTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
+  if (TRANSCRIPT_TOOL_NAMES.has(name)) return execTranscriptTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();
