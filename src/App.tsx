@@ -12,14 +12,21 @@ import type { Tpl } from './types';
 
 const TEMPLATES = templatesJson as Tpl[];
 
+const pick = (name: string): Tpl => TEMPLATES.find((t) => t.name.includes(name)) ?? TEMPLATES[0];
+const seedItem = (id: string, tpl: Tpl, startFrame: number) => ({
+  id, track: 'V1' as const, startFrame, durationInFrames: tpl.durationInFrames,
+  kind: 'motion-graphic' as const, templateId: tpl.id, name: tpl.name,
+  code: tpl.code, props: { ...tpl.props }, width: tpl.width, height: tpl.height,
+});
+const SEED_A = pick('Finance Explainer');
+const SEED_B = pick('Dark Tech');
 const INITIAL: TimelineState = {
   fps: 30,
   width: 1920,
   height: 1080,
-  // seed with a couple items so the timeline isn't empty on first load
   items: [
-    { id: 'seed_1', track: 'V1', startFrame: 0, durationInFrames: TEMPLATES[6].durationInFrames, kind: 'motion-graphic', templateId: TEMPLATES[6].id, name: TEMPLATES[6].name, code: TEMPLATES[6].code, props: { ...TEMPLATES[6].props }, width: TEMPLATES[6].width, height: TEMPLATES[6].height },
-    { id: 'seed_2', track: 'V1', startFrame: TEMPLATES[6].durationInFrames, durationInFrames: TEMPLATES[0].durationInFrames, kind: 'motion-graphic', templateId: TEMPLATES[0].id, name: TEMPLATES[0].name, code: TEMPLATES[0].code, props: { ...TEMPLATES[0].props }, width: TEMPLATES[0].width, height: TEMPLATES[0].height },
+    seedItem('seed_1', SEED_A, 0),
+    seedItem('seed_2', SEED_B, SEED_A.durationInFrames),
   ],
   selectedId: 'seed_1',
 };

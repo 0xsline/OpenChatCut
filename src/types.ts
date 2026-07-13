@@ -14,5 +14,6 @@ export interface Tpl {
   durationInFrames: number;
   props: Record<string, unknown>;
   propSchema: PropSpec[];
+  thumb: string | null;
   code: string;
 }
