@@ -139,7 +139,7 @@ Contract (MUST follow exactly):
 - Style inline. Make it clean and visually appealing (large readable text, tasteful colors, smooth fade/slide/scale animations).`;
   const msg = await anthropic.messages.create({
     model: MODEL,
-    max_tokens: 16000, // don't truncate generated components
+    max_tokens: 64000, // don't truncate generated components
     system: sys,
     messages: [{ role: 'user', content: description }],
   });

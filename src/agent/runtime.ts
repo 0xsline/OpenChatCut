@@ -4,10 +4,11 @@ import { TOOL_SCHEMAS, executeTool } from './tools';
 import { SYSTEM_PROMPT } from './systemPrompt';
 import { anthropic, MODEL } from './client';
 
-// Generous caps — the user has ample token budget; don't throttle. MAX_TURNS is
-// only a runaway backstop (normal edits finish in a handful of turns).
-const MAX_TURNS = 100;
-const MAX_TOKENS = 16000;
+// No artificial limits — the loop runs until the model itself stops requesting
+// tools (stop_reason !== 'tool_use'). max_tokens is a required per-request
+// ceiling (can't be infinite); set to the highest the relay accepts — the model
+// stops on its own well before it.
+const MAX_TOKENS = 64000;
 
 // Anthropic message history is the source of truth we pass back each turn.
 export type LLMMessage = Anthropic.MessageParam;
@@ -32,7 +33,7 @@ export async function runAgent(
 ): Promise<LLMMessage[]> {
   const conv = [...messages];
 
-  for (let turn = 0; turn < MAX_TURNS; turn++) {
+  for (;;) {
     let resp: Anthropic.Message;
     try {
       const stream = anthropic.messages.stream({
@@ -73,9 +74,6 @@ export async function runAgent(
       continue; // let the model observe results and continue
     }
 
-    return conv; // stop_reason end_turn / max_tokens / stop_sequence
+    return conv; // model stopped on its own (end_turn / max_tokens / stop_sequence)
   }
-
-  onEvent({ type: 'error', message: `已达最大轮数(${MAX_TURNS})` });
-  return conv;
 }
