@@ -156,7 +156,7 @@
       <div class="brand">
         <span class="eyebrow">对标源站 · 复刻进度</span>
         <h1>ChatCut 复刻 · 功能覆盖</h1>
-        <span class="sub">逆向 52 工具规格 + PRD 全量差集 · 每完成一项即勾选 · 已铺完：直接操作层（trim/blade/snap/轨道/音量/淡入淡出/变换/滤镜/文字）+ 转场 + 动画（zoom/ReframeCurve）+ propose→apply 提案契约（护城河①）+ 标记 markers + 多时间线/序列（长转短）+ manage_timelines 工具 + 12 转场全量(GLSL 底座)｜Claude 下一步：view_timeline_frames(agent 自检) · 色度键/LUT(GL 底座收割) · auto-reframe｜GPT 并行：AI 生成套件</span>
+        <span class="sub">逆向 52 工具规格 + PRD 全量差集 · 每完成一项即勾选 · 已铺完：直接操作层（trim/blade/snap/轨道/音量/淡入淡出/变换/滤镜/文字）+ 转场 + 动画（zoom/ReframeCurve）+ propose→apply 提案契约（护城河①）+ 标记 markers + 多时间线/序列（长转短）+ manage_timelines 工具 + 12 转场全量(GLSL 底座)｜Claude 进行中：源站编辑器 UI 细节复刻(工具栏/轨道头/右键菜单/库分类,侦察中)｜之后：色度键/LUT · auto-reframe｜GPT 并行：AI 生成套件</span>
       </div>
       <div class="score">
         <span class="pct mono" id="pct">0%</span>
@@ -284,7 +284,7 @@
       ["URL → 资产（push_asset/download_media）", "todo", "公网媒体 URL 注册/下载为工程资产"],
       ["网页抓取（web_browser）", "todo", "Firecrawl/Jina 抓网页作参考。源站 web_browser"],
       ["字体搜索（search_fonts）", "partial", "已加载 4 字体，无搜索。做：按需动态加载。源站 search_fonts"],
-      ["多模态自检（view_timeline_frames）", "todo", "agent renderStill 渲帧 → base64 回传自己「看」。源站护城河"],
+      ["多模态自检（view_timeline_frames）", "done", "renderStill 无头渲帧(640px jpeg)→/render-still→tool_result 多模态 image blocks；state=草稿态(提案未应用即可自检)；e2e：agent 渲 2 帧准确描述画面内容(中转层透传图片成功)。源站护城河", "claude"],
     ]],
     ["10 · 导出 / 交付", [
       ["导出 MP4（服务端 @remotion/renderer）", "done", "<code>vite-plugin-export.ts</code>，h264+aac"],
@@ -407,7 +407,7 @@
   document.getElementById("nDone").textContent = counts.done;
   document.getElementById("nPartial").textContent = counts.partial;
   document.getElementById("nTodo").textContent = counts.todo;
-  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：Script 系统 timeline.md 往返（护城河③核心：段 id Markdown→~~删词~~/删行/移行→确定性 diff 回命令，8 组 check + 真 agent 改稿删片段 e2e）`;
+  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：view_timeline_frames 多模态自检（agent 渲帧亲眼看草稿态编辑，真 agent 准确描述画面 e2e）`;
 
   requestAnimationFrame(() => {
     document.getElementById("barDone").style.width = counts.done / total * 100 + "%";
