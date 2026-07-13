@@ -215,7 +215,7 @@
       ["变速 / 重定时", "partial", "有改时长，无保音调变速。做：item playbackRate。源站 dH 含 rate 语义"],
     ]],
     ["3 · 音频处理", [
-      ["音频片段 + 音量", "done", "<code>&lt;Audio volume&gt;</code>"],
+      ["音频片段 + 音量", "done", "<code>&lt;Audio/OffthreadVideo volume&gt;</code> + 属性面板音量滑块（音/视频片段 0–200%，setItemVolume）"],
       ["淡入淡出（fadeIn/Out 秒）", "todo", "对音量 interpolate + 视觉斜角。源站 edit_item fade（秒）"],
       ["响度归一化（-14 LUFS）", "todo", "Web Audio 离线算增益或导出 ffmpeg loudnorm。源站 normalize/loudness"],
       ["自动闪避 ducking", "todo", "voice 活动区间 → music 降音量关键帧。源站 track role ducking"],
@@ -396,7 +396,7 @@
   document.getElementById("nDone").textContent = counts.done;
   document.getElementById("nPartial").textContent = counts.partial;
   document.getElementById("nTodo").textContent = counts.todo;
-  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：轨道隐藏/静音（👁/🔊 生效于预览+导出）`;
+  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：片段音量滑块（音/视频，属性面板 0–200%）`;
 
   requestAnimationFrame(() => {
     document.getElementById("barDone").style.width = counts.done / total * 100 + "%";
