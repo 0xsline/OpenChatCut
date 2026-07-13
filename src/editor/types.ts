@@ -46,7 +46,7 @@ export interface TimelineItem {
   startFrame: number;
   durationInFrames: number;
   name: string;
-  kind: 'motion-graphic' | 'audio' | 'video' | 'image';
+  kind: 'motion-graphic' | 'audio' | 'video' | 'image' | 'text';
   // motion-graphic fields:
   templateId?: string;
   code?: string;

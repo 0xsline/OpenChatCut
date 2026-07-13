@@ -71,6 +71,29 @@ function MediaFill({ item, fit, muted }: { item: TimelineItem; fit: AspectFit; m
 
 const GRID = 'repeating-conic-gradient(#242424 0% 25%, #1c1c1c 0% 50%) 50% / 40px 40px';
 
+// Render a text clip in the 1920×1080 design box (so fontSize is resolution-
+// independent), scaled+aligned to the canvas. Props: text/fontSize/color/
+// fontWeight/align. Position/rotation come from the clip transform.
+function TextLayer({ item, canvasW, canvasH, fit }: { item: TimelineItem; canvasW: number; canvasH: number; fit: AspectFit }) {
+  const dw = item.width ?? 1920;
+  const dh = item.height ?? 1080;
+  const scale = fit === 'cover' ? Math.max(canvasW / dw, canvasH / dh) : Math.min(canvasW / dw, canvasH / dh);
+  const p = item.props ?? {};
+  const text = String(p.text ?? '文字');
+  const fontSize = Number(p.fontSize ?? 96);
+  const color = String(p.color ?? '#ffffff');
+  const fontWeight = Number(p.fontWeight ?? 700);
+  const align = (p.align === 'left' || p.align === 'right' ? p.align : 'center') as 'left' | 'center' | 'right';
+  const justify = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
+  return (
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
+      <div style={{ width: dw, height: dh, flexShrink: 0, transform: `scale(${scale})`, display: 'flex', alignItems: 'center', justifyContent: justify, padding: '0 96px', boxSizing: 'border-box' }}>
+        <div style={{ color, fontSize, fontWeight, textAlign: align, width: '100%', fontFamily: 'system-ui, -apple-system, sans-serif', textShadow: '0 3px 16px rgba(0,0,0,0.55)', whiteSpace: 'pre-wrap', lineHeight: 1.2 }}>{text}</div>
+      </div>
+    </AbsoluteFill>
+  );
+}
+
 // Render one MG in its DESIGN box (width×height), then scale+center it to the
 // canvas by the fit mode (source manage_timelines `fit`): contain letterboxes,
 // cover fills+crops. At 16:9 with 1920×1080 designs the scale is 1 (no change).
@@ -101,7 +124,7 @@ function ItemLayer({ item, canvasW, canvasH, fit }: { item: TimelineItem; canvas
 export function TimelineComposition({ state }: { state: TimelineState }) {
   const isHidden = (t: TimelineItem['track']) => state.tracks?.[t]?.hidden ?? false;
   const isMuted = (t: TimelineItem['track']) => state.tracks?.[t]?.muted ?? false;
-  const isVisual = (k: TimelineItem['kind']) => k === 'motion-graphic' || k === 'image' || k === 'video';
+  const isVisual = (k: TimelineItem['kind']) => k === 'motion-graphic' || k === 'image' || k === 'video' || k === 'text';
   // hidden track = fully disabled (no picture, no sound)
   const visual = state.items.filter((it) => isVisual(it.kind) && (it.track === 'V1' || it.track === 'V2') && !isHidden(it.track));
   const ordered = [...visual].sort((a, b) => (a.track === b.track ? 0 : a.track === 'V1' ? -1 : 1));
@@ -115,6 +138,8 @@ export function TimelineComposition({ state }: { state: TimelineState }) {
           <ClipWrapper item={item}>
             {item.kind === 'motion-graphic'
               ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
+              : item.kind === 'text'
+              ? <TextLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
               : <MediaFill item={item} fit={fit} muted={isMuted(item.track)} />}
           </ClipWrapper>
         </Sequence>

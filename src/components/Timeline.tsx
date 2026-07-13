@@ -202,6 +202,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
         <button style={{ ...toolBtn, color: theme.accent }}>⧉</button>
         <button style={toolBtn} title="复制选中" onClick={() => state.selectedId && commands.duplicateItem(state.selectedId)}>⧉</button>
         <button style={toolBtn} title="刀片：在播放头处切分选中片段 (B)" onClick={bladeSelected}>✂</button>
+        <button style={{ ...toolBtn, fontWeight: 700 }} title="加文字（在播放头，V2 轨）" onClick={() => commands.addTextClip({ startFrame: playhead })}>T＋</button>
         <button style={toolBtn} title="删除选中" onClick={() => state.selectedId && commands.removeItem(state.selectedId)}>🗑</button>
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: 12, color: theme.text, fontVariantNumeric: 'tabular-nums' }}>{fmt(playhead, state.fps)} / {fmt(total, state.fps)}</span>

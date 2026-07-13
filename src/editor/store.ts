@@ -229,6 +229,7 @@ export interface EditorCommands {
   addAudio: (asset: AudioAsset, at?: { track?: TrackId; startFrame?: number }) => void;
   addAsset: (asset: MediaAsset) => void;
   addMediaItem: (asset: MediaAsset, at?: { track?: TrackId; startFrame?: number }) => void;
+  addTextClip: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number }) => void;
   updateItemProps: (id: string, patch: Record<string, unknown>) => void;
   moveItem: (id: string, to: { track?: TrackId; startFrame?: number }) => void;
   setItemTiming: (id: string, timing: { startFrame?: number; durationInFrames?: number; srcInFrame?: number }) => void;
@@ -293,6 +294,21 @@ export function useEditor(initial: TimelineState): {
             name: asset.name,
             src: asset.src,
             volume: 1,
+          },
+        }),
+      addTextClip: (at) =>
+        dispatch({
+          type: 'add',
+          startFrame: at?.startFrame,
+          item: {
+            id: uid('item'),
+            track: at?.track ?? 'V2', // titles default to the top video track
+            durationInFrames: at?.durationInFrames ?? 90,
+            kind: 'text',
+            name: '文字',
+            width: 1920,
+            height: 1080,
+            props: { text: '双击编辑文字', fontSize: 96, color: '#ffffff', fontWeight: 700, align: 'center' },
           },
         }),
       addAsset: (asset) => dispatch({ type: 'addAsset', asset }),

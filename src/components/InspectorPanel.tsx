@@ -71,6 +71,42 @@ function FadeControl({ item, fps, onChange }: { item: TimelineItem; fps: number;
   );
 }
 
+// text clip content controls (text/fontSize/color/weight/align) — props-backed.
+function TextControl({ item, onPropChange }: { item: TimelineItem; onPropChange: (key: string, value: unknown) => void }) {
+  const p = item.props ?? {};
+  const selStyle: React.CSSProperties = { background: theme.bg, color: theme.text, border: `1px solid ${theme.borderLight}`, borderRadius: 4, padding: '3px 5px' };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <label style={{ fontSize: 11, color: theme.textDim }}>
+        <div style={{ marginBottom: 4 }}>文字内容</div>
+        <textarea value={String(p.text ?? '')} onChange={(e) => onPropChange('text', e.target.value)} rows={2}
+          style={{ width: '100%', padding: '6px 8px', background: theme.bg, color: theme.text, border: `1px solid ${theme.borderLight}`, borderRadius: 5, resize: 'vertical', fontFamily: 'inherit', fontSize: 12 }} />
+      </label>
+      <label style={{ fontSize: 11, color: theme.textDim }}>
+        <div style={{ marginBottom: 4 }}>字号 <span style={{ opacity: 0.7 }}>{Number(p.fontSize ?? 96)}</span></div>
+        <input type="range" min={24} max={300} step={2} value={Number(p.fontSize ?? 96)} onChange={(e) => onPropChange('fontSize', Number(e.target.value))} style={{ width: '100%' }} />
+      </label>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
+          颜色 <input type="color" value={String(p.color ?? '#ffffff')} onChange={(e) => onPropChange('color', e.target.value)} />
+        </label>
+        <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
+          对齐
+          <select value={String(p.align ?? 'center')} onChange={(e) => onPropChange('align', e.target.value)} style={selStyle}>
+            <option value="left">左</option><option value="center">中</option><option value="right">右</option>
+          </select>
+        </label>
+        <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
+          粗细
+          <select value={String(p.fontWeight ?? 700)} onChange={(e) => onPropChange('fontWeight', Number(e.target.value))} style={selStyle}>
+            <option value="400">常规</option><option value="700">粗体</option><option value="900">特粗</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  );
+}
+
 // small uppercase-ish divider label between control groups.
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10.5, color: theme.textDim, letterSpacing: '0.08em', opacity: 0.7, marginTop: 2, borderTop: `1px solid ${theme.border}`, paddingTop: 8 }}>{children}</div>;
@@ -110,6 +146,8 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
       ? '🎬 视频片段。可在时间线上拖动位置、裁剪首尾（左裁剪推进源入点）。'
       : selectedItem.kind === 'image'
       ? '🖼 图片片段。'
+      : selectedItem.kind === 'text'
+      ? '📝 文字片段。'
       : null
     : null;
   const hasVolume = selectedItem?.kind === 'audio' || selectedItem?.kind === 'video';
@@ -132,6 +170,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {hint && <div style={{ fontSize: 12, color: theme.textDim }}>{hint}</div>}
+            {selectedItem.kind === 'text' && <><SectionLabel>文字</SectionLabel><TextControl item={selectedItem} onPropChange={onItemPropChange} /></>}
             {hasVolume && <><SectionLabel>音量</SectionLabel><VolumeControl item={selectedItem} onChange={onItemVolumeChange} /></>}
             {isVisual && <><SectionLabel>变换</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} /></>}
             {isVisual && <><SectionLabel>滤镜</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} /></>}
