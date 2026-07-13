@@ -2,7 +2,7 @@ import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, useCurrentFrame } f
 import { compileTemplate } from '../template-host';
 import { CaptionsLayer } from '../captions/CaptionsLayer';
 import { keptSegments } from '../transcript/edit';
-import type { AspectFit, TimelineItem, TimelineState } from './types';
+import type { AspectFit, TimelineItem, TimelineState, TransitionType, TransitionDirection } from './types';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
 // fadeIn, then 1→0 across fadeOut. Used for visual opacity + audio volume.
@@ -28,6 +28,55 @@ function ClipWrapper({ item, children }: { item: TimelineItem; children: React.R
     ? `brightness(${fl.brightness ?? 1}) contrast(${fl.contrast ?? 1}) saturate(${fl.saturate ?? 1}) blur(${fl.blur ?? 0}px)`
     : undefined;
   return <AbsoluteFill style={{ opacity: o, transform, filter }}>{children}</AbsoluteFill>;
+}
+
+// ── transitions (source transition_item, CSS approximation of the GLSL set) ──
+function smoothstep(x: number): number { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); }
+
+interface Entrance { opacity: number; transform?: string; filter?: string; maskImage?: string; overlay?: { background: string; opacity: number }; }
+
+// entrance style for the INCOMING clip at transition progress p (0→1). Mirrors
+// each source transition's look: cross-dissolve = smoothstep mix, dip-to-black/
+// flash = colored overlay peaking mid, soft-wipe = feathered directional reveal,
+// whip-pan = directional slide + motion blur, luma-blend = dissolve + bloom.
+function entranceStyle(type: TransitionType, p: number, dir: TransitionDirection): Entrance {
+  const tri = 1 - Math.abs(2 * p - 1); // 0→1→0, peak at the midpoint
+  switch (type) {
+    case 'cross-dissolve':
+      return { opacity: smoothstep(p) };
+    case 'luma-blend':
+      return { opacity: smoothstep(p), filter: `brightness(${1 + tri * 0.6})` };
+    case 'dip-to-black':
+      return { opacity: p >= 0.5 ? 1 : 0, overlay: { background: '#000', opacity: tri } };
+    case 'flash':
+      return { opacity: p >= 0.5 ? 1 : 0, overlay: { background: '#fff', opacity: tri * tri } };
+    case 'soft-wipe': {
+      const pct = p * 100;
+      const edge = (d: string) => `linear-gradient(${d}, #000 ${Math.max(0, pct - 7).toFixed(2)}%, transparent ${Math.min(100, pct + 7).toFixed(2)}%)`;
+      const d = dir === 'right' ? 'to left' : dir === 'up' ? 'to bottom' : dir === 'down' ? 'to top' : 'to right';
+      return { opacity: 1, maskImage: edge(d) };
+    }
+    case 'whip-pan': {
+      const off = (1 - p) * 100;
+      const sign = dir === 'right' || dir === 'down' ? -1 : 1;
+      const axis = dir === 'up' || dir === 'down' ? 'Y' : 'X';
+      return { opacity: 1, transform: `translate${axis}(${sign * off}%)`, filter: `blur(${tri * 24}px)` };
+    }
+  }
+}
+
+// Wraps the incoming clip and drives its entrance over the transition window.
+function TransitionIn({ type, L, dir, children }: { type: TransitionType; L: number; dir: TransitionDirection; children: React.ReactNode }) {
+  const frame = useCurrentFrame();
+  const p = L > 0 ? frame / L : 1;
+  if (p >= 1) return <AbsoluteFill>{children}</AbsoluteFill>;
+  const e = entranceStyle(type, Math.max(0, p), dir);
+  return (
+    <AbsoluteFill>
+      <AbsoluteFill style={{ opacity: e.opacity, transform: e.transform, filter: e.filter, WebkitMaskImage: e.maskImage, maskImage: e.maskImage }}>{children}</AbsoluteFill>
+      {e.overlay && <AbsoluteFill style={{ background: e.overlay.background, opacity: e.overlay.opacity }} />}
+    </AbsoluteFill>
+  );
 }
 
 // One audio clip. With a transcript attached it renders the KEPT segments
@@ -127,14 +176,33 @@ export function TimelineComposition({ state }: { state: TimelineState }) {
   const isVisual = (k: TimelineItem['kind']) => k === 'motion-graphic' || k === 'image' || k === 'video' || k === 'text';
   // hidden track = fully disabled (no picture, no sound)
   const visual = state.items.filter((it) => isVisual(it.kind) && (it.track === 'V1' || it.track === 'V2') && !isHidden(it.track));
-  const ordered = [...visual].sort((a, b) => (a.track === b.track ? 0 : a.track === 'V1' ? -1 : 1));
+  // paint V1 below V2; within a track paint earlier clips first so a transition's
+  // incoming clip (later startFrame) composites on top of the outgoing one.
+  const ordered = [...visual].sort((a, b) => (a.track === b.track ? a.startFrame - b.startFrame : a.track === 'V1' ? -1 : 1));
   const audio = state.items.filter((it) => it.kind === 'audio' && it.src && !isHidden(it.track));
   const fit: AspectFit = state.fit ?? 'contain';
 
+  // A transition straddles the cut (source: half retreats into outgoing, half
+  // into incoming). Extend each clip's render window so both are visible across
+  // the window, and drive the incoming clip's entrance over it.
+  const enabledTransitions = (state.transitions ?? []).filter((t) => t.enabled !== false);
+  const entranceOf = new Map<string, { type: TransitionType; L: number; dir: TransitionDirection }>();
+  const extendBefore = new Map<string, number>();
+  const extendAfter = new Map<string, number>();
+  for (const t of enabledTransitions) {
+    const half = Math.floor(t.durationInFrames / 2);
+    entranceOf.set(t.incomingItemId, { type: t.type, L: t.durationInFrames, dir: t.direction ?? 'left' });
+    extendBefore.set(t.incomingItemId, half);
+    extendAfter.set(t.outgoingItemId, t.durationInFrames - half);
+  }
+
   return (
     <AbsoluteFill style={{ background: GRID }}>
-      {ordered.map((item) => (
-        <Sequence key={item.id} from={item.startFrame} durationInFrames={item.durationInFrames} layout="none" name={item.name}>
+      {ordered.map((item) => {
+        const eb = extendBefore.get(item.id) ?? 0;
+        const ea = extendAfter.get(item.id) ?? 0;
+        const entrance = entranceOf.get(item.id);
+        const content = (
           <ClipWrapper item={item}>
             {item.kind === 'motion-graphic'
               ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
@@ -142,8 +210,15 @@ export function TimelineComposition({ state }: { state: TimelineState }) {
               ? <TextLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
               : <MediaFill item={item} fit={fit} muted={isMuted(item.track)} />}
           </ClipWrapper>
-        </Sequence>
-      ))}
+        );
+        return (
+          <Sequence key={item.id} from={item.startFrame - eb} durationInFrames={item.durationInFrames + eb + ea} layout="none" name={item.name}>
+            {entrance
+              ? <TransitionIn type={entrance.type} L={entrance.L} dir={entrance.dir}>{content}</TransitionIn>
+              : content}
+          </Sequence>
+        );
+      })}
       {audio.map((item) => (
         <AudioClip key={item.id} item={item} fps={state.fps} muted={isMuted(item.track)} />
       ))}

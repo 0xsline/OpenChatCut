@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useReducer } from 'react';
-import type { AspectFit, ClipFilters, ClipTransform, MediaAsset, TimelineItem, TimelineState, TrackId } from './types';
+import type { AspectFit, ClipFilters, ClipTransform, MediaAsset, TimelineItem, TimelineState, TrackId, TransitionItem, TransitionType } from './types';
 import { trackEnd } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
@@ -17,6 +17,9 @@ type Action =
   | { type: 'setFade'; id: string; fadeInFrames?: number; fadeOutFrames?: number }
   | { type: 'setTransform'; id: string; patch: ClipTransform }
   | { type: 'setFilters'; id: string; patch: ClipFilters }
+  | { type: 'addTransition'; id: string; incomingItemId: string; transType: TransitionType; durationInFrames?: number }
+  | { type: 'setTransition'; id: string; patch: Partial<TransitionItem> }
+  | { type: 'removeTransition'; id: string }
   | { type: 'duplicate'; id: string; newId: string }
   | { type: 'remove'; id: string }
   | { type: 'split'; id: string; atFrame: number; newId: string }
@@ -33,7 +36,7 @@ type Action =
   | { type: 'clearEdits'; id: string }
   | { type: 'select'; id: string | null };
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'addTransition', 'setTransition', 'removeTransition', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
 
 // recompute a transcript-edited clip's duration under its current edit state
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
@@ -107,6 +110,40 @@ function reduce(s: TimelineState, a: Action): TimelineState {
         ...s,
         items: s.items.map((it) => (it.id === a.id ? { ...it, filters: { ...it.filters, ...a.patch } } : it)),
       };
+    case 'addTransition': {
+      const inItem = s.items.find((x) => x.id === a.incomingItemId);
+      if (!inItem || inItem.kind === 'audio') return s;
+      // outgoing = the same-track visual clip whose end sits at (adjacent to) the incoming's start
+      const prior = s.items.filter(
+        (x) => x.id !== inItem.id && x.track === inItem.track && x.kind !== 'audio' && x.startFrame + x.durationInFrames <= inItem.startFrame + 2,
+      );
+      if (!prior.length) return s;
+      const out = prior.reduce((best, x) => (x.startFrame + x.durationInFrames > best.startFrame + best.durationInFrames ? x : best));
+      if (inItem.startFrame - (out.startFrame + out.durationInFrames) > 2) return s; // must be adjacent
+      const maxL = Math.max(2, Math.min(out.durationInFrames, inItem.durationInFrames));
+      const L = Math.max(2, Math.min(a.durationInFrames ?? Math.min(30, maxL), maxL));
+      const t: TransitionItem = { id: a.id, type: a.transType, durationInFrames: L, outgoingItemId: out.id, incomingItemId: inItem.id, trackId: inItem.track, enabled: true };
+      const others = (s.transitions ?? []).filter((x) => x.incomingItemId !== inItem.id); // one in-transition per clip
+      return { ...s, transitions: [...others, t] };
+    }
+    case 'setTransition':
+      return {
+        ...s,
+        transitions: (s.transitions ?? []).map((t) => {
+          if (t.id !== a.id) return t;
+          const merged = { ...t, ...a.patch };
+          if (a.patch.durationInFrames !== undefined) {
+            // can't exceed either clip's length (avoids freeze frames / overlap, like source edit_item)
+            const out = s.items.find((x) => x.id === t.outgoingItemId);
+            const inc = s.items.find((x) => x.id === t.incomingItemId);
+            const maxL = Math.max(2, Math.min(out?.durationInFrames ?? 2, inc?.durationInFrames ?? 2));
+            merged.durationInFrames = Math.max(2, Math.min(merged.durationInFrames, maxL));
+          }
+          return merged;
+        }),
+      };
+    case 'removeTransition':
+      return { ...s, transitions: (s.transitions ?? []).filter((t) => t.id !== a.id) };
     case 'duplicate': {
       const it = s.items.find((x) => x.id === a.id);
       if (!it) return s;
@@ -176,6 +213,8 @@ function reduce(s: TimelineState, a: Action): TimelineState {
       return {
         ...s,
         items: s.items.filter((it) => it.id !== a.id),
+        // drop transitions that referenced the removed clip
+        transitions: (s.transitions ?? []).filter((t) => t.incomingItemId !== a.id && t.outgoingItemId !== a.id),
         selectedId: s.selectedId === a.id ? null : s.selectedId,
       };
     case 'split': {
@@ -237,6 +276,9 @@ export interface EditorCommands {
   setItemFade: (id: string, fade: { fadeInFrames?: number; fadeOutFrames?: number }) => void;
   setItemTransform: (id: string, patch: ClipTransform) => void;
   setItemFilters: (id: string, patch: ClipFilters) => void;
+  addTransition: (incomingItemId: string, type: TransitionType, durationInFrames?: number) => void;
+  setTransition: (id: string, patch: Partial<TransitionItem>) => void;
+  removeTransition: (id: string) => void;
   duplicateItem: (id: string) => void;
   removeItem: (id: string) => void;
   splitItem: (id: string, atFrame: number) => void;
@@ -335,6 +377,9 @@ export function useEditor(initial: TimelineState): {
       setItemFade: (id, fade) => dispatch({ type: 'setFade', id, ...fade }),
       setItemTransform: (id, patch) => dispatch({ type: 'setTransform', id, patch }),
       setItemFilters: (id, patch) => dispatch({ type: 'setFilters', id, patch }),
+      addTransition: (incomingItemId, type, durationInFrames) => dispatch({ type: 'addTransition', id: uid('tr'), incomingItemId, transType: type, durationInFrames }),
+      setTransition: (id, patch) => dispatch({ type: 'setTransition', id, patch }),
+      removeTransition: (id) => dispatch({ type: 'removeTransition', id }),
       duplicateItem: (id) => dispatch({ type: 'duplicate', id, newId: uid('item') }),
       removeItem: (id) => dispatch({ type: 'remove', id }),
       splitItem: (id, atFrame) => dispatch({ type: 'split', id, atFrame, newId: uid('item') }),

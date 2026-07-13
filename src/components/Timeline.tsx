@@ -276,6 +276,18 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
                       </div>
                     );
                   })}
+                  {/* transition badges at each cut on this track */}
+                  {(state.transitions ?? []).filter((t) => t.trackId === trackId).map((t) => {
+                    const inItem = state.items.find((it) => it.id === t.incomingItemId);
+                    if (!inItem) return null;
+                    return (
+                      <div key={t.id} title={`转场:${t.type} · ${(t.durationInFrames / state.fps).toFixed(1)}s`}
+                        onClick={() => commands.selectItem(t.incomingItemId)}
+                        style={{ position: 'absolute', top: '50%', left: inItem.startFrame * px, transform: 'translate(-50%, -50%)', width: 15, height: 15, borderRadius: 3, background: '#3a3f52', border: '1px solid #6b7bb5', color: '#cfe3ff', fontSize: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', zIndex: 3 }}>
+                        ⧓
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );

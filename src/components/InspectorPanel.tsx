@@ -1,6 +1,6 @@
 import { theme } from '../theme';
 import type { Tpl } from '../types';
-import type { ClipFilters, ClipTransform, TimelineItem } from '../editor/types';
+import type { ClipFilters, ClipTransform, TimelineItem, TransitionItem, TransitionType } from '../editor/types';
 import { usePersistedState } from '../hooks/usePersistedState';
 
 interface FadePatch {
@@ -17,6 +17,10 @@ interface InspectorPanelProps {
   onItemFadeChange: (fade: FadePatch) => void;
   onItemTransformChange: (patch: ClipTransform) => void;
   onItemFiltersChange: (patch: ClipFilters) => void;
+  transition: TransitionItem | null;
+  onAddTransition: (type: TransitionType) => void;
+  onSetTransition: (patch: Partial<TransitionItem>) => void;
+  onRemoveTransition: () => void;
 }
 
 // scale / position / rotation for visual clips (source 缩放 tab).
@@ -107,6 +111,61 @@ function TextControl({ item, onPropChange }: { item: TimelineItem; onPropChange:
   );
 }
 
+const TRANSITION_LABELS: Record<TransitionType, string> = {
+  'cross-dissolve': '交叉溶解',
+  'dip-to-black': '黑场过渡',
+  'soft-wipe': '柔化擦除',
+  'whip-pan': '甩镜',
+  flash: '闪白',
+  'luma-blend': '亮度混合',
+};
+
+// transition INTO the selected clip from the previous adjacent same-track clip
+// (source transition_item). Picking a type creates it; 无 removes it.
+function TransitionControl({ transition, fps, onAdd, onSet, onRemove }: {
+  transition: TransitionItem | null;
+  fps: number;
+  onAdd: (type: TransitionType) => void;
+  onSet: (patch: Partial<TransitionItem>) => void;
+  onRemove: () => void;
+}) {
+  const selStyle: React.CSSProperties = { background: theme.bg, color: theme.text, border: `1px solid ${theme.borderLight}`, borderRadius: 4, padding: '3px 5px' };
+  const needsDir = transition && (transition.type === 'soft-wipe' || transition.type === 'whip-pan');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 10.5, color: theme.textDim, opacity: 0.8 }}>从前一个相邻片段进入本片段</div>
+      <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 8 }}>
+        类型
+        <select value={transition?.type ?? ''} style={selStyle} onChange={(e) => {
+          const v = e.target.value as TransitionType | '';
+          if (!v) { if (transition) onRemove(); }
+          else if (transition) onSet({ type: v });
+          else onAdd(v);
+        }}>
+          <option value="">无</option>
+          {(Object.keys(TRANSITION_LABELS) as TransitionType[]).map((k) => <option key={k} value={k}>{TRANSITION_LABELS[k]}</option>)}
+        </select>
+      </label>
+      {transition && (
+        <>
+          <label style={{ fontSize: 11, color: theme.textDim }}>
+            <div style={{ marginBottom: 4 }}>时长 <span style={{ opacity: 0.7 }}>{(transition.durationInFrames / fps).toFixed(1)}s</span></div>
+            <input type="range" min={2} max={Math.max(4, fps * 2)} step={1} value={transition.durationInFrames} onChange={(e) => onSet({ durationInFrames: Number(e.target.value) })} style={{ width: '100%' }} />
+          </label>
+          {needsDir && (
+            <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 8 }}>
+              方向
+              <select value={transition.direction ?? 'left'} style={selStyle} onChange={(e) => onSet({ direction: e.target.value as TransitionItem['direction'] })}>
+                <option value="left">左</option><option value="right">右</option><option value="up">上</option><option value="down">下</option>
+              </select>
+            </label>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // small uppercase-ish divider label between control groups.
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10.5, color: theme.textDim, letterSpacing: '0.08em', opacity: 0.7, marginTop: 2, borderTop: `1px solid ${theme.border}`, paddingTop: 8 }}>{children}</div>;
@@ -133,7 +192,7 @@ function FilterControl({ item, onChange }: { item: TimelineItem; onChange: (p: C
 
 // Property editor for the selected timeline item (sits under the preview).
 // Collapsible so it doesn't crowd the preview when you don't need it.
-export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange }: InspectorPanelProps) {
+export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, transition, onAddTransition, onSetTransition, onRemoveTransition }: InspectorPanelProps) {
   const [collapsed, setCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const schema = selectedItem
     ? templates.find((t) => t.id === selectedItem.templateId)?.propSchema ?? []
@@ -174,6 +233,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
             {hasVolume && <><SectionLabel>音量</SectionLabel><VolumeControl item={selectedItem} onChange={onItemVolumeChange} /></>}
             {isVisual && <><SectionLabel>变换</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} /></>}
             {isVisual && <><SectionLabel>滤镜</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} /></>}
+            {isVisual && <><SectionLabel>转场</SectionLabel><TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} /></>}
             <SectionLabel>淡入淡出</SectionLabel>
             <FadeControl item={selectedItem} fps={fps} onChange={onItemFadeChange} />
             {selectedItem.kind === 'motion-graphic' && (

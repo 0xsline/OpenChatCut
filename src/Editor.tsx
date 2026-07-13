@@ -152,6 +152,16 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
               onItemFadeChange={(fade) => state.selectedId && commands.setItemFade(state.selectedId, fade)}
               onItemTransformChange={(patch) => state.selectedId && commands.setItemTransform(state.selectedId, patch)}
               onItemFiltersChange={(patch) => state.selectedId && commands.setItemFilters(state.selectedId, patch)}
+              transition={state.transitions?.find((t) => t.incomingItemId === state.selectedId) ?? null}
+              onAddTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}
+              onSetTransition={(patch) => {
+                const t = state.transitions?.find((x) => x.incomingItemId === state.selectedId);
+                if (t) commands.setTransition(t.id, patch);
+              }}
+              onRemoveTransition={() => {
+                const t = state.transitions?.find((x) => x.incomingItemId === state.selectedId);
+                if (t) commands.removeTransition(t.id);
+              }}
             />
           </div>
         </div>

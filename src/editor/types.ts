@@ -103,6 +103,32 @@ export interface TrackFlags {
   muted?: boolean;
 }
 
+/** source transition builtin ids (subset of the 12 video transitions) */
+export type TransitionType =
+  | 'cross-dissolve'
+  | 'dip-to-black'
+  | 'soft-wipe'
+  | 'whip-pan'
+  | 'flash'
+  | 'luma-blend';
+
+export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
+
+/** an independent transition item straddling the cut between two adjacent
+ * same-track clips (source transition_item: outgoing→incoming). */
+export interface TransitionItem {
+  id: string;
+  type: TransitionType;
+  /** transition length in frames (half retreats into outgoing, half into incoming) */
+  durationInFrames: number;
+  outgoingItemId: string;
+  incomingItemId: string;
+  trackId: TrackId;
+  enabled?: boolean;
+  /** direction for wipe/whip transitions (default 'left') */
+  direction?: TransitionDirection;
+}
+
 export interface TimelineState {
   fps: number;
   width: number;
@@ -112,6 +138,8 @@ export interface TimelineState {
   items: TimelineItem[];
   /** per-track hide/mute (keyed by TrackId; absent = both false) */
   tracks?: Partial<Record<TrackId, TrackFlags>>;
+  /** transitions between adjacent same-track clips (source transition_item) */
+  transitions?: TransitionItem[];
   /** imported media pool ("我的素材") */
   assets?: MediaAsset[];
   selectedId: string | null;
