@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme } from './theme';
 import { TopBar } from './components/TopBar';
@@ -47,6 +47,38 @@ export default function App() {
     [commands],
   );
 
+  // Export: POST the current timeline to the dev-server /export endpoint (which
+  // renders it in headless Chrome via @remotion/renderer) and download the MP4.
+  const [exporting, setExporting] = useState(false);
+  const onExport = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const res = await fetch('/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: stateRef.current }),
+      });
+      if (!res.ok) {
+        const info = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(info?.error ?? `导出失败 (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'export.mp4';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '导出失败');
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting]);
+
   // keyboard: delete selected, undo/redo
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -84,6 +116,8 @@ export default function App() {
         canRedo={canRedo}
         onUndo={commands.undo}
         onRedo={commands.redo}
+        onExport={onExport}
+        exporting={exporting}
       />
 
       <ChatPanel ctx={agentCtx} />

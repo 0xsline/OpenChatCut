@@ -3,6 +3,9 @@ dist
 *.log
 .DS_Store
 
+# export output
+out.mp4
+
 # secrets
 .env
 .env.*
