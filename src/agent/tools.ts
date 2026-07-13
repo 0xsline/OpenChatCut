@@ -1,148 +1,116 @@
+import Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import type { TrackId } from '../editor/types';
 import type { Tpl } from '../types';
 import { compileTemplate } from '../template-host';
+import { anthropic, MODEL } from './client';
 
-// OpenAI-style tool schemas. These mirror ChatCut's domain tools; each one
-// executes against the EditorCore command layer (tool == command).
-export const TOOL_SCHEMAS = [
+// Anthropic native tool definitions (name / description / input_schema). Each
+// one executes against the EditorCore command layer (tool == command). This is
+// the source-faithful shape: Claude's Messages API tool-use, `strict`-exact.
+export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
-    type: 'function',
-    function: {
-      name: 'read_timeline',
-      description: 'Read the current timeline: fps and every clip (id, track, name, startFrame, durationInFrames, props). Call this first to see current state before editing.',
-      parameters: { type: 'object', properties: {} },
-    },
+    name: 'read_timeline',
+    description: 'Read the current timeline: fps and every clip (id, track, name, startFrame, durationInFrames, props). Call this first to see current state before editing.',
+    input_schema: { type: 'object', properties: {} },
   },
   {
-    type: 'function',
-    function: {
-      name: 'list_templates',
-      description: 'Discover motion-graphic templates. With no args: returns the category list with counts. With a category: returns the template names in it. There are ~211 templates, so prefer a category or search_templates instead of listing everything.',
-      parameters: { type: 'object', properties: { category: { type: 'string', description: 'Optional category to list (e.g. "title-cards", "lower-thirds").' } } },
-    },
+    name: 'list_templates',
+    description: 'Discover motion-graphic templates. With no args: returns the category list with counts. With a category: returns the template names in it. There are ~211 templates, so prefer a category or search_templates instead of listing everything.',
+    input_schema: { type: 'object', properties: { category: { type: 'string', description: 'Optional category to list (e.g. "title-cards", "lower-thirds").' } } },
   },
   {
-    type: 'function',
-    function: {
-      name: 'search_templates',
-      description: 'Fuzzy-search templates by name/category keyword. Use this to find a specific template among the ~211.',
-      parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
-    },
+    name: 'search_templates',
+    description: 'Fuzzy-search templates by name/category keyword. Use this to find a specific template among the ~211.',
+    input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
   },
   {
-    type: 'function',
-    function: {
-      name: 'add_motion_graphic',
-      description: 'Add a motion-graphic template as a new clip. Placed at the end of the track unless startFrame is given.',
-      parameters: {
-        type: 'object',
-        properties: {
-          templateName: { type: 'string', description: 'Template name (fuzzy match against list_templates).' },
-          track: { type: 'string', enum: ['V1', 'V2'], description: 'Video track (default V1).' },
-          startFrame: { type: 'number', description: 'Optional exact start frame; omit to append.' },
-        },
-        required: ['templateName'],
+    name: 'add_motion_graphic',
+    description: 'Add a motion-graphic template as a new clip. Placed at the end of the track unless startFrame is given.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        templateName: { type: 'string', description: 'Template name (fuzzy match against list_templates).' },
+        track: { type: 'string', enum: ['V1', 'V2'], description: 'Video track (default V1).' },
+        startFrame: { type: 'number', description: 'Optional exact start frame; omit to append.' },
       },
+      required: ['templateName'],
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'update_item_props',
-      description: 'Change one or more editable props of a clip (e.g. text, colors). Only props from the template schema.',
-      parameters: {
-        type: 'object',
-        properties: {
-          itemId: { type: 'string' },
-          props: { type: 'object', description: 'Map of propKey → new value.' },
-        },
-        required: ['itemId', 'props'],
+    name: 'update_item_props',
+    description: 'Change one or more editable props of a clip (e.g. text, colors). Only props from the template schema.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string' },
+        props: { type: 'object', description: 'Map of propKey → new value.' },
       },
+      required: ['itemId', 'props'],
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'move_item',
-      description: 'Move a clip to a different track and/or start frame.',
-      parameters: {
-        type: 'object',
-        properties: {
-          itemId: { type: 'string' },
-          track: { type: 'string', enum: ['V1', 'V2', 'A1', 'A2'] },
-          startFrame: { type: 'number' },
-        },
-        required: ['itemId'],
+    name: 'move_item',
+    description: 'Move a clip to a different track and/or start frame.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string' },
+        track: { type: 'string', enum: ['V1', 'V2', 'A1', 'A2'] },
+        startFrame: { type: 'number' },
       },
+      required: ['itemId'],
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'set_item_timing',
-      description: 'Retime a clip: change its start frame and/or its duration (in frames). Use this to trim or lengthen a clip.',
-      parameters: {
-        type: 'object',
-        properties: { itemId: { type: 'string' }, startFrame: { type: 'number' }, durationInFrames: { type: 'number' } },
-        required: ['itemId'],
+    name: 'set_item_timing',
+    description: 'Retime a clip: change its start frame and/or its duration (in frames). Use this to trim or lengthen a clip.',
+    input_schema: {
+      type: 'object',
+      properties: { itemId: { type: 'string' }, startFrame: { type: 'number' }, durationInFrames: { type: 'number' } },
+      required: ['itemId'],
+    },
+  },
+  {
+    name: 'duplicate_item',
+    description: 'Duplicate a clip (the copy is appended to the end of its track).',
+    input_schema: { type: 'object', properties: { itemId: { type: 'string' } }, required: ['itemId'] },
+  },
+  {
+    name: 'remove_item',
+    description: 'Delete a clip from the timeline.',
+    input_schema: { type: 'object', properties: { itemId: { type: 'string' } }, required: ['itemId'] },
+  },
+  {
+    name: 'split_item',
+    description: 'Split a clip into two at the given absolute frame.',
+    input_schema: { type: 'object', properties: { itemId: { type: 'string' }, atFrame: { type: 'number' } }, required: ['itemId', 'atFrame'] },
+  },
+  {
+    name: 'create_motion_graphic',
+    description: 'Generate a BRAND-NEW motion graphic from a description (writes fresh Remotion code, not from the library). Use only when no library template fits the user\'s intent.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        description: { type: 'string', description: 'What the motion graphic should show/animate.' },
+        name: { type: 'string', description: 'Short display name.' },
+        durationSeconds: { type: 'number', description: 'Duration in seconds (default 3).' },
+        track: { type: 'string', enum: ['V1', 'V2'] },
       },
+      required: ['description', 'name'],
     },
   },
   {
-    type: 'function',
-    function: {
-      name: 'duplicate_item',
-      description: 'Duplicate a clip (the copy is appended to the end of its track).',
-      parameters: { type: 'object', properties: { itemId: { type: 'string' } }, required: ['itemId'] },
-    },
+    name: 'clear_timeline',
+    description: 'Remove ALL clips from the timeline. Only when the user clearly asks to start over / clear everything.',
+    input_schema: { type: 'object', properties: {} },
   },
-  {
-    type: 'function',
-    function: {
-      name: 'remove_item',
-      description: 'Delete a clip from the timeline.',
-      parameters: { type: 'object', properties: { itemId: { type: 'string' } }, required: ['itemId'] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'split_item',
-      description: 'Split a clip into two at the given absolute frame.',
-      parameters: { type: 'object', properties: { itemId: { type: 'string' }, atFrame: { type: 'number' } }, required: ['itemId', 'atFrame'] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'create_motion_graphic',
-      description: 'Generate a BRAND-NEW motion graphic from a description (writes fresh Remotion code, not from the library). Use only when no library template fits the user\'s intent.',
-      parameters: {
-        type: 'object',
-        properties: {
-          description: { type: 'string', description: 'What the motion graphic should show/animate.' },
-          name: { type: 'string', description: 'Short display name.' },
-          durationSeconds: { type: 'number', description: 'Duration in seconds (default 3).' },
-          track: { type: 'string', enum: ['V1', 'V2'] },
-        },
-        required: ['description', 'name'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'clear_timeline',
-      description: 'Remove ALL clips from the timeline. Only when the user clearly asks to start over / clear everything.',
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-] as const;
+];
 
 let genCounter = 0;
 
-// Ask the LLM to write a fresh Remotion MG component following the template contract.
+// Ask the model to write a fresh Remotion MG component following the template
+// contract. Uses the same native Anthropic client as the agent loop.
 async function generateMgCode(description: string): Promise<string> {
   const sys = `You write ONE Remotion motion-graphic React component. Output ONLY the code — no markdown fences, no prose.
 Contract (MUST follow exactly):
@@ -151,13 +119,17 @@ Contract (MUST follow exactly):
 - Canvas is 1920x1080. Animate with useCurrentFrame()+interpolate()/spring({fps,frame,config}). Get { fps, durationInFrames } from useVideoConfig().
 - Pure, synchronous rendering only. FORBIDDEN: fetch, XMLHttpRequest, WebSocket, document, window, globalThis, eval, new Function, .constructor, localStorage, setTimeout, setInterval, while(true), for(;;), debugger.
 - Style inline. Make it clean and visually appealing (large readable text, tasteful colors, smooth fade/slide/scale animations).`;
-  const resp = await fetch('/llm/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'grok-4.5', messages: [{ role: 'system', content: sys }, { role: 'user', content: description }], max_tokens: 2200 }),
+  const msg = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 2200,
+    system: sys,
+    messages: [{ role: 'user', content: description }],
   });
-  const data = await resp.json();
-  let code: string = data?.choices?.[0]?.message?.content ?? '';
+  let code = msg.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('')
+    .trim();
   code = code.replace(/^\s*```[a-zA-Z]*\s*\n?/, '').replace(/\n?```\s*$/, '').trim(); // strip fences
   return code;
 }

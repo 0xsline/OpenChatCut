@@ -13,6 +13,8 @@ export default defineConfig(({ mode }) => {
     server: {
       // Proxy /llm → relay, injecting the API key on the server so it never
       // reaches the browser (mirrors ChatCut's server-side agent key handling).
+      // The agent uses Anthropic's native Messages API (/v1/messages), which
+      // authenticates with x-api-key + anthropic-version.
       proxy: {
         '/llm': {
           target: base,
@@ -20,7 +22,20 @@ export default defineConfig(({ mode }) => {
           rewrite: (p) => p.replace(/^\/llm/, ''),
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
-              if (key) proxyReq.setHeader('Authorization', `Bearer ${key}`);
+              if (key) {
+                proxyReq.setHeader('x-api-key', key);
+                proxyReq.setHeader('anthropic-version', '2023-06-01');
+                proxyReq.setHeader('Authorization', `Bearer ${key}`); // relay also accepts Bearer
+              }
+            });
+            // The relay returns valid Anthropic JSON but with a non-JSON
+            // Content-Type; the @anthropic-ai/sdk only parses bodies typed as
+            // application/json, so force it here (we never stream).
+            proxy.on('proxyRes', (proxyRes) => {
+              const ct = proxyRes.headers['content-type'] || '';
+              if (!ct.includes('application/json')) {
+                proxyRes.headers['content-type'] = 'application/json';
+              }
             });
           },
         },
