@@ -203,7 +203,7 @@
       ["时间线上下拖高 + 加权轨道高度", "done", "cc.timelineH + WEIGHT（video 高于 audio）"],
       ["多时间线 / 序列（每工程多条）", "todo", "TimelineState 升成 timelines[]+activeId。源站 manage_timelines —— 长转短地基", "P1"],
       ["轨道管理（增删/序/角色/锁隐静/收紧）", "partial", "现固定 4 轨、图标是死的。做：轨道数组化 + role 驱动闪避。源站 edit_track", "P1"],
-      ["刀片(B)/修剪(N)/吸附", "partial", "有拖拽裁剪，无模式化工具 + 吸附对齐。源站编辑器工具栏", "P1"],
+      ["刀片(B)/修剪(N)/吸附", "done", "刀片 ✂ / B 键在播放头切分（切口 srcInFrame 递进，无缝）；拖拽/裁剪吸附到 0/播放头/邻近片段边（7px + 蓝色吸附线）", "P1"],
       ["Ripple 编辑（插入/覆盖）", "todo", "插入模式后续片段整体位移合缝。源站 edit_item ripple", "P1"],
       ["关键帧 + bezier 缓动", "todo", "属性随帧打点，渲染 interpolate + cubic-bezier。源站 keyframe/bezier", "P1"],
       ["更多媒体类型 image/gif/svg/text/solid", "partial", "image + video 已做（<code>MediaFill</code>）；gif/svg/text/solid 待补。源站按类型拆表"],
@@ -396,7 +396,7 @@
   document.getElementById("nDone").textContent = counts.done;
   document.getElementById("nPartial").textContent = counts.partial;
   document.getElementById("nTodo").textContent = counts.todo;
-  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：源剪辑 srcInFrame（左裁剪推进源入点，导出 timecode 验证）`;
+  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：刀片 ✂/B + 吸附（切口 srcInFrame 无缝；顺带修掉跨会话 id 碰撞 bug）`;
 
   requestAnimationFrame(() => {
     document.getElementById("barDone").style.width = counts.done / total * 100 + "%";
