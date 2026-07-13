@@ -1,27 +1,87 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { theme } from './theme';
 import Editor from './Editor';
+import { Dashboard } from './components/Dashboard';
 import { INITIAL } from './editor/initial';
-import { loadProject } from './persist/projectStore';
+import {
+  listProjects, loadProject, createProject, renameProject, duplicateProject, deleteProject,
+  randomProjectName, type ProjectMeta,
+} from './persist/projectStore';
 import type { TimelineState } from './editor/types';
 
-// Load the persisted project from IndexedDB before mounting the editor (so we
-// don't flash the seed project then swap). First run has nothing saved → INITIAL.
-export default function App() {
-  const [initial, setInitial] = useState<TimelineState | null>(null);
+// A brand-new project starts empty; the first-run "示例工程" gets the seed clips.
+const emptyState = (): TimelineState => ({ ...INITIAL, items: [], selectedId: null });
 
+type Route = { name: 'dashboard' } | { name: 'editor'; id: string };
+function parseHash(): Route {
+  const m = window.location.hash.match(/^#\/editor\/(.+)$/);
+  return m ? { name: 'editor', id: m[1] } : { name: 'dashboard' };
+}
+const go = (hash: string) => { window.location.hash = hash; };
+
+function Splash({ text }: { text: string }) {
+  return (
+    <div style={{ height: '100vh', display: 'grid', placeItems: 'center', background: theme.bg, color: theme.textDim, fontFamily: 'system-ui, sans-serif', fontSize: 13 }}>
+      {text}
+    </div>
+  );
+}
+
+// Load one project's timeline, then mount the editor for it.
+function EditorLoader({ meta, onHome, onRename }: { meta: ProjectMeta; onHome: () => void; onRename: (name: string) => void }) {
+  const [initial, setInitial] = useState<TimelineState | null>(null);
   useEffect(() => {
     let alive = true;
-    loadProject().then((saved) => { if (alive) setInitial(saved ?? INITIAL); });
+    loadProject(meta.id).then((s) => { if (alive) setInitial(s ?? emptyState()); });
     return () => { alive = false; };
+  }, [meta.id]);
+  if (!initial) return <Splash text="加载工程…" />;
+  return <Editor initial={initial} project={meta} onHome={onHome} onRename={onRename} />;
+}
+
+export default function App() {
+  const [projects, setProjects] = useState<ProjectMeta[] | null>(null);
+  const [route, setRoute] = useState<Route>(parseHash());
+
+  useEffect(() => {
+    const onHash = () => setRoute(parseHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
-  if (!initial) {
+  const refresh = useCallback(async () => { setProjects(await listProjects()); }, []);
+
+  useEffect(() => {
+    (async () => {
+      let list = await listProjects();
+      if (list.length === 0) list = [await createProject('示例工程', INITIAL)];
+      setProjects(list);
+    })();
+  }, []);
+
+  if (!projects) return <Splash text="加载中…" />;
+
+  if (route.name === 'editor') {
+    const meta = projects.find((p) => p.id === route.id);
+    if (!meta) { go('#/'); return <Splash text="工程不存在，返回…" />; }
     return (
-      <div style={{ height: '100vh', display: 'grid', placeItems: 'center', background: theme.bg, color: theme.textDim, fontFamily: 'system-ui, sans-serif', fontSize: 13 }}>
-        加载工程…
-      </div>
+      <EditorLoader
+        key={meta.id}
+        meta={meta}
+        onHome={() => go('#/')}
+        onRename={async (name) => { await renameProject(meta.id, name); refresh(); }}
+      />
     );
   }
-  return <Editor initial={initial} />;
+
+  return (
+    <Dashboard
+      projects={projects}
+      onOpen={(id) => go(`#/editor/${id}`)}
+      onNew={async () => { const m = await createProject(randomProjectName(), emptyState()); await refresh(); go(`#/editor/${m.id}`); }}
+      onRename={async (id, name) => { await renameProject(id, name); refresh(); }}
+      onDuplicate={async (id) => { await duplicateProject(id); refresh(); }}
+      onDelete={async (id) => { await deleteProject(id); refresh(); }}
+    />
+  );
 }

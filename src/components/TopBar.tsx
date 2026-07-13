@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { theme } from '../theme';
 
 interface TopBarProps {
@@ -9,6 +10,8 @@ interface TopBarProps {
   onRedo: () => void;
   onExport?: () => void;
   exporting?: boolean;
+  onHome?: () => void;
+  onRename?: (name: string) => void;
 }
 
 const iconBtn: React.CSSProperties = {
@@ -21,7 +24,10 @@ const iconBtn: React.CSSProperties = {
   borderRadius: 6,
 };
 
-export function TopBar({ projectName, credits, canUndo, canRedo, onUndo, onRedo, onExport, exporting }: TopBarProps) {
+export function TopBar({ projectName, credits, canUndo, canRedo, onUndo, onRedo, onExport, exporting, onHome, onRename }: TopBarProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(projectName);
+  const commit = () => { setEditing(false); if (onRename && draft.trim() && draft.trim() !== projectName) onRename(draft.trim()); };
   return (
     <header
       style={{
@@ -36,9 +42,19 @@ export function TopBar({ projectName, credits, canUndo, canRedo, onUndo, onRedo,
         gap: 12,
       }}
     >
-      <button style={iconBtn} title="首页">⌂</button>
+      <button style={iconBtn} title="返回工程列表" onClick={onHome}>⌂</button>
       <div style={{ flex: 1, textAlign: 'center', fontSize: 13, color: theme.text, display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center' }}>
-        <span>{projectName}</span>
+        {editing ? (
+          <input
+            autoFocus value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+            style={{ font: 'inherit', fontSize: 13, textAlign: 'center', background: theme.panelAlt, color: theme.text, border: `1px solid ${theme.accent}`, borderRadius: 5, padding: '2px 8px', minWidth: 200 }}
+          />
+        ) : (
+          <span onDoubleClick={() => { if (onRename) { setDraft(projectName); setEditing(true); } }} title={onRename ? '双击重命名' : undefined} style={{ cursor: onRename ? 'text' : 'default' }}>{projectName}</span>
+        )}
         <span style={{ color: theme.textDim }} title="协作者">⧉</span>
       </div>
       <button style={{ ...iconBtn, opacity: canUndo ? 1 : 0.3, cursor: canUndo ? 'pointer' : 'default' }} title="撤销" onClick={onUndo} disabled={!canUndo}>↶</button>

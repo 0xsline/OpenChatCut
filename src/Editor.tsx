@@ -12,10 +12,17 @@ import { usePersistedState } from './hooks/usePersistedState';
 import { useEditor } from './editor/store';
 import type { TimelineState } from './editor/types';
 import { TEMPLATES } from './editor/initial';
-import { saveProject } from './persist/projectStore';
+import { saveProject, type ProjectMeta } from './persist/projectStore';
 import { AUDIO_ASSETS } from './audio/library';
 
-export default function Editor({ initial }: { initial: TimelineState }) {
+interface EditorProps {
+  initial: TimelineState;
+  project: ProjectMeta;
+  onHome: () => void;
+  onRename: (name: string) => void;
+}
+
+export default function Editor({ initial, project, onHome, onRename }: EditorProps) {
   const { state, commands, canUndo, canRedo } = useEditor(initial);
   const selectedItem = state.items.find((it) => it.id === state.selectedId) ?? null;
 
@@ -28,11 +35,11 @@ export default function Editor({ initial }: { initial: TimelineState }) {
     [commands],
   );
 
-  // autosave the project to IndexedDB (debounced) so a reload restores the timeline
+  // autosave this project to IndexedDB (debounced) so a reload restores the timeline
   useEffect(() => {
-    const id = setTimeout(() => saveProject(state), 500);
+    const id = setTimeout(() => saveProject(project.id, state), 500);
     return () => clearTimeout(id);
-  }, [state]);
+  }, [state, project.id]);
 
   // resizable / collapsible panels (persisted across refreshes)
   const [chatW, setChatW] = usePersistedState('cc.chatW', 300);
@@ -104,7 +111,7 @@ export default function Editor({ initial }: { initial: TimelineState }) {
       }}
     >
       <TopBar
-        projectName="Directus 选型与内部机制 (clone)"
+        projectName={project.name}
         credits={18.5}
         canUndo={canUndo}
         canRedo={canRedo}
@@ -112,6 +119,8 @@ export default function Editor({ initial }: { initial: TimelineState }) {
         onRedo={commands.redo}
         onExport={onExport}
         exporting={exporting}
+        onHome={onHome}
+        onRename={onRename}
       />
 
       <ChatPanel ctx={agentCtx} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} />
