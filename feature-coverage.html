@@ -216,7 +216,7 @@
     ]],
     ["3 · 音频处理", [
       ["音频片段 + 音量", "done", "<code>&lt;Audio/OffthreadVideo volume&gt;</code> + 属性面板音量滑块（音/视频片段 0–200%，setItemVolume）"],
-      ["淡入淡出（fadeIn/Out 秒）", "todo", "对音量 interpolate + 视觉斜角。源站 edit_item fade（秒）"],
+      ["淡入淡出（fadeIn/Out 秒）", "done", "fadeInFrames/fadeOutFrames：视觉走 opacity（FadeWrapper），音频走 volume 函数；属性面板淡入/淡出滑块（秒）。导出验证 0→47%→100% 斜坡。源站 edit_item fade"],
       ["响度归一化（-14 LUFS）", "todo", "Web Audio 离线算增益或导出 ffmpeg loudnorm。源站 normalize/loudness"],
       ["自动闪避 ducking", "todo", "voice 活动区间 → music 降音量关键帧。源站 track role ducking"],
       ["AI 降噪 / 人声隔离", "todo", "接 DeepFilterNet3（开源 Rust）产降噪 wav。源站 isolate_voice"],
@@ -396,7 +396,7 @@
   document.getElementById("nDone").textContent = counts.done;
   document.getElementById("nPartial").textContent = counts.partial;
   document.getElementById("nTodo").textContent = counts.todo;
-  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：片段音量滑块（音/视频，属性面板 0–200%）`;
+  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：片段淡入淡出（视觉 opacity + 音频 volume，属性面板秒滑块，导出验证斜坡）`;
 
   requestAnimationFrame(() => {
     document.getElementById("barDone").style.width = counts.done / total * 100 + "%";
