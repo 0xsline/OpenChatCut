@@ -12,7 +12,9 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
     "@babel/standalone": "^8.0.4",
+    "@remotion/bundler": "4.0.489",
     "@remotion/player": "^4.0.489",
+    "@remotion/renderer": "4.0.489",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "remotion": "^4.0.489"

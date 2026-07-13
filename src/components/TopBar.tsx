@@ -7,6 +7,8 @@ interface TopBarProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  onExport?: () => void;
+  exporting?: boolean;
 }
 
 const iconBtn: React.CSSProperties = {
@@ -19,7 +21,7 @@ const iconBtn: React.CSSProperties = {
   borderRadius: 6,
 };
 
-export function TopBar({ projectName, credits, canUndo, canRedo, onUndo, onRedo }: TopBarProps) {
+export function TopBar({ projectName, credits, canUndo, canRedo, onUndo, onRedo, onExport, exporting }: TopBarProps) {
   return (
     <header
       style={{
@@ -44,6 +46,9 @@ export function TopBar({ projectName, credits, canUndo, canRedo, onUndo, onRedo 
       <button style={iconBtn} title="历史">🕑</button>
       <button style={iconBtn} title="布局">▦</button>
       <button
+        onClick={onExport}
+        disabled={exporting || !onExport}
+        title="导出 MP4"
         style={{
           background: theme.accent,
           color: '#fff',
@@ -52,10 +57,11 @@ export function TopBar({ projectName, credits, canUndo, canRedo, onUndo, onRedo 
           padding: '6px 16px',
           fontSize: 13,
           fontWeight: 600,
-          cursor: 'pointer',
+          cursor: exporting || !onExport ? 'default' : 'pointer',
+          opacity: exporting || !onExport ? 0.6 : 1,
         }}
       >
-        导出
+        {exporting ? '导出中…' : '导出'}
       </button>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: theme.text }}>
         <span style={{ color: theme.accent }}>✦</span>
