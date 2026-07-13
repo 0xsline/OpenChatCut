@@ -7,14 +7,15 @@ import type { AspectFit, TimelineItem, TimelineState } from './types';
 // One audio clip. With a transcript attached it renders the KEPT segments
 // (deleted words' source ranges are skipped, remaining ranges play back-to-back);
 // otherwise it plays the whole source.
-function AudioClip({ item, fps }: { item: TimelineItem; fps: number }) {
+function AudioClip({ item, fps, muted }: { item: TimelineItem; fps: number; muted: boolean }) {
+  const vol = muted ? 0 : item.volume ?? 1;
   if (item.transcript && item.transcript.length) {
     const del = new Set(item.deletedWordIdx ?? []);
     return (
       <>
         {keptSegments(item.transcript, del, fps, item.startFrame, { maxGapFrames: item.silenceFrames }).map((seg, k) => (
           <Sequence key={`${item.id}_${k}`} from={seg.fromFrame} durationInFrames={seg.durFrames} name={item.name}>
-            <Audio src={item.src!} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame} volume={item.volume ?? 1} />
+            <Audio src={item.src!} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame} volume={vol} />
           </Sequence>
         ))}
       </>
@@ -22,20 +23,20 @@ function AudioClip({ item, fps }: { item: TimelineItem; fps: number }) {
   }
   return (
     <Sequence from={item.startFrame} durationInFrames={item.durationInFrames} name={item.name}>
-      <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0} volume={item.volume ?? 1} />
+      <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0} volume={vol} />
     </Sequence>
   );
 }
 
 // Imported image / video fills the canvas by the fit mode (objectFit).
-function MediaFill({ item, fit }: { item: TimelineItem; fit: AspectFit }) {
+function MediaFill({ item, fit, muted }: { item: TimelineItem; fit: AspectFit; muted: boolean }) {
   const objectFit = fit === 'cover' ? 'cover' : 'contain';
   const style: React.CSSProperties = { width: '100%', height: '100%', objectFit };
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
       {item.kind === 'image'
         ? <Img src={item.src!} style={style} />
-        : <OffthreadVideo src={item.src!} trimBefore={item.srcInFrame ?? 0} volume={item.volume ?? 1} style={style} />}
+        : <OffthreadVideo src={item.src!} trimBefore={item.srcInFrame ?? 0} volume={muted ? 0 : item.volume ?? 1} style={style} />}
     </AbsoluteFill>
   );
 }
@@ -70,10 +71,13 @@ function ItemLayer({ item, canvasW, canvasH, fit }: { item: TimelineItem; canvas
 // Renders the ENTIRE timeline. Visual tracks composite bottom-up: V1 then V2 on
 // top. Audio items (A1/A2) play via <Audio> and produce no picture.
 export function TimelineComposition({ state }: { state: TimelineState }) {
+  const isHidden = (t: TimelineItem['track']) => state.tracks?.[t]?.hidden ?? false;
+  const isMuted = (t: TimelineItem['track']) => state.tracks?.[t]?.muted ?? false;
   const isVisual = (k: TimelineItem['kind']) => k === 'motion-graphic' || k === 'image' || k === 'video';
-  const visual = state.items.filter((it) => isVisual(it.kind) && (it.track === 'V1' || it.track === 'V2'));
+  // hidden track = fully disabled (no picture, no sound)
+  const visual = state.items.filter((it) => isVisual(it.kind) && (it.track === 'V1' || it.track === 'V2') && !isHidden(it.track));
   const ordered = [...visual].sort((a, b) => (a.track === b.track ? 0 : a.track === 'V1' ? -1 : 1));
-  const audio = state.items.filter((it) => it.kind === 'audio' && it.src);
+  const audio = state.items.filter((it) => it.kind === 'audio' && it.src && !isHidden(it.track));
   const fit: AspectFit = state.fit ?? 'contain';
 
   return (
@@ -82,11 +86,11 @@ export function TimelineComposition({ state }: { state: TimelineState }) {
         <Sequence key={item.id} from={item.startFrame} durationInFrames={item.durationInFrames} layout="none" name={item.name}>
           {item.kind === 'motion-graphic'
             ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
-            : <MediaFill item={item} fit={fit} />}
+            : <MediaFill item={item} fit={fit} muted={isMuted(item.track)} />}
         </Sequence>
       ))}
       {audio.map((item) => (
-        <AudioClip key={item.id} item={item} fps={state.fps} />
+        <AudioClip key={item.id} item={item} fps={state.fps} muted={isMuted(item.track)} />
       ))}
       {state.captions?.enabled && <CaptionsLayer captions={state.captions} items={state.items} />}
     </AbsoluteFill>

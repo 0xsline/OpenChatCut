@@ -235,14 +235,17 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
             const items = state.items.filter((it) => it.track === trackId);
             const dragIsAudio = drag ? state.items.find((it) => it.id === drag.id)?.kind === 'audio' : false;
             const isDropTarget = drag?.mode === 'move' && drag.targetTrack === trackId && meta.kind === (dragIsAudio ? 'audio' : 'video');
+            const hidden = state.tracks?.[trackId]?.hidden ?? false;
+            const muted = state.tracks?.[trackId]?.muted ?? false;
+            const flagBtn = (active: boolean): React.CSSProperties => ({ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, padding: 0, lineHeight: 1, color: theme.textDim, opacity: active ? 0.35 : 1 });
             return (
               <div key={trackId} style={{ display: 'flex', height: rowHeightOf(trackId), borderBottom: `1px solid ${theme.border}`, background: isDropTarget ? '#1b2b1b' : undefined }}>
                 <div style={{ width: HEADER_W, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>
                   <span style={{ background: meta.color, color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px' }}>{trackId}</span>
-                  <span style={{ color: theme.textDim, fontSize: 11 }}>👁</span>
-                  <span style={{ color: theme.textDim, fontSize: 11 }}>🔊</span>
+                  <button style={flagBtn(hidden)} title={hidden ? '显示轨道' : '隐藏轨道'} onClick={() => commands.toggleTrackFlag(trackId, 'hidden')}>{hidden ? '🚫' : '👁'}</button>
+                  <button style={flagBtn(muted)} title={muted ? '取消静音' : '静音轨道'} onClick={() => commands.toggleTrackFlag(trackId, 'muted')}>{muted ? '🔇' : '🔊'}</button>
                 </div>
-                <div style={{ flex: 1, position: 'relative', background: theme.bg }}>
+                <div style={{ flex: 1, position: 'relative', background: theme.bg, opacity: hidden ? 0.4 : 1 }}>
                   {items.map((it) => {
                     const dragging = drag?.id === it.id;
                     const start = it.startFrame + (dragging && drag.mode !== 'trim-right' ? drag.deltaF : 0);

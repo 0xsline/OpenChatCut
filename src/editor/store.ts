@@ -19,6 +19,7 @@ type Action =
   | { type: 'clear' }
   | { type: 'addAsset'; asset: MediaAsset }
   | { type: 'setCanvas'; width: number; height: number; fit?: AspectFit }
+  | { type: 'toggleTrack'; track: TrackId; flag: 'hidden' | 'muted' }
   | { type: 'setCaptions'; captions: CaptionsData | null }
   | { type: 'updateCaptions'; patch: Partial<CaptionsData> }
   | { type: 'setItemTranscript'; id: string; words: TranscriptWord[] }
@@ -28,7 +29,7 @@ type Action =
   | { type: 'clearEdits'; id: string }
   | { type: 'select'; id: string | null };
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
 
 // recompute a transcript-edited clip's duration under its current edit state
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
@@ -85,6 +86,10 @@ function reduce(s: TimelineState, a: Action): TimelineState {
       return { ...s, assets: [...(s.assets ?? []), a.asset] };
     case 'setCanvas':
       return { ...s, width: a.width, height: a.height, fit: a.fit ?? s.fit ?? 'contain' };
+    case 'toggleTrack': {
+      const cur = s.tracks?.[a.track] ?? {};
+      return { ...s, tracks: { ...s.tracks, [a.track]: { ...cur, [a.flag]: !cur[a.flag] } } };
+    }
     case 'setCaptions':
       return { ...s, captions: a.captions };
     case 'updateCaptions':
@@ -199,6 +204,7 @@ export interface EditorCommands {
   splitItem: (id: string, atFrame: number) => void;
   clearTimeline: () => void;
   setAspect: (width: number, height: number, fit?: AspectFit) => void;
+  toggleTrackFlag: (track: TrackId, flag: 'hidden' | 'muted') => void;
   setCaptions: (captions: CaptionsData | null) => void;
   updateCaptions: (patch: Partial<CaptionsData>) => void;
   setItemTranscript: (id: string, words: TranscriptWord[]) => void;
@@ -277,6 +283,7 @@ export function useEditor(initial: TimelineState): {
       splitItem: (id, atFrame) => dispatch({ type: 'split', id, atFrame, newId: uid('item') }),
       clearTimeline: () => dispatch({ type: 'clear' }),
       setAspect: (width, height, fit) => dispatch({ type: 'setCanvas', width, height, fit }),
+      toggleTrackFlag: (track, flag) => dispatch({ type: 'toggleTrack', track, flag }),
       setCaptions: (captions) => dispatch({ type: 'setCaptions', captions }),
       updateCaptions: (patch) => dispatch({ type: 'updateCaptions', patch }),
       setItemTranscript: (id, words) => dispatch({ type: 'setItemTranscript', id, words }),

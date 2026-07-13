@@ -65,6 +65,14 @@ export const ASPECT_PRESETS: AspectPreset[] = [
   { label: '3:4', width: 1080, height: 1440 },
 ];
 
+/** per-track visibility/audio flags (source edit_track: visible / mute) */
+export interface TrackFlags {
+  /** hidden track is fully disabled — its items render neither picture nor sound */
+  hidden?: boolean;
+  /** muted track keeps its picture but produces no audio */
+  muted?: boolean;
+}
+
 export interface TimelineState {
   fps: number;
   width: number;
@@ -72,6 +80,8 @@ export interface TimelineState {
   /** how items fit when the canvas ratio differs from their design box */
   fit?: AspectFit;
   items: TimelineItem[];
+  /** per-track hide/mute (keyed by TrackId; absent = both false) */
+  tracks?: Partial<Record<TrackId, TrackFlags>>;
   /** imported media pool ("我的素材") */
   assets?: MediaAsset[];
   selectedId: string | null;
