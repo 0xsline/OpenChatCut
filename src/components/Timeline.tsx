@@ -3,6 +3,7 @@ import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import { TRACK_ORDER, timelineDuration, type TimelineState, type TrackId } from '../editor/types';
 import type { EditorCommands } from '../editor/store';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 interface TimelineProps {
   state: TimelineState;
@@ -42,7 +43,10 @@ interface Drag {
 
 export function Timeline({ state, commands, playerRef }: TimelineProps) {
   const total = timelineDuration(state);
-  const innerW = HEADER_W + total * PX_PER_FRAME + 240;
+  const [zoom, setZoom] = usePersistedState('cc.timelineZoom', 1);
+  const px = PX_PER_FRAME * zoom; // pixels per frame at the current time-zoom
+  const zoomBy = (f: number) => setZoom((z) => Math.min(3, Math.max(0.35, z * f)));
+  const innerW = HEADER_W + total * px + 240;
   const [playhead, setPlayhead] = useState(0);
   const [drag, setDrag] = useState<Drag | null>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -84,7 +88,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
   const frameFromClientX = (clientX: number): number => {
     const r = innerRef.current?.getBoundingClientRect();
     if (!r) return 0;
-    return Math.max(0, Math.round((clientX - r.left - HEADER_W) / PX_PER_FRAME));
+    return Math.max(0, Math.round((clientX - r.left - HEADER_W) / px));
   };
   const trackFromClientY = (clientY: number): TrackId => {
     const r = innerRef.current?.getBoundingClientRect();
@@ -111,7 +115,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
   };
   const onPointerMove = (e: React.PointerEvent) => {
     if (!drag) return;
-    const deltaF = Math.round((e.clientX - drag.startX) / PX_PER_FRAME);
+    const deltaF = Math.round((e.clientX - drag.startX) / px);
     const targetTrack = drag.mode === 'move' ? trackFromClientY(e.clientY) : drag.baseTrack;
     setDrag((d) => (d ? { ...d, deltaF, targetTrack } : d));
   };
@@ -144,9 +148,9 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: 12, color: theme.text, fontVariantNumeric: 'tabular-nums' }}>{fmt(playhead, state.fps)} / {fmt(total, state.fps)}</span>
         <span style={{ flex: 1 }} />
-        <button style={toolBtn}>🔍−</button>
-        <button style={toolBtn}>🔍＋</button>
-        <button style={toolBtn}>CC</button>
+        <button style={toolBtn} title="缩小时间轴" onClick={() => zoomBy(1 / 1.4)}>🔍−</button>
+        <button style={toolBtn} title="放大时间轴" onClick={() => zoomBy(1.4)}>🔍＋</button>
+        <button style={toolBtn} title="重置缩放" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
       </div>
 
       {/* scrollable ruler + tracks (playhead spans both) */}
@@ -160,7 +164,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
             <div style={{ width: HEADER_W, flexShrink: 0 }} />
             <div style={{ position: 'relative', flex: 1 }}>
               {Array.from({ length: Math.ceil(total / (state.fps * 2)) + 1 }).map((_, i) => (
-                <span key={i} style={{ position: 'absolute', left: i * state.fps * 2 * PX_PER_FRAME, top: 5 }}>{fmt(i * state.fps * 2, state.fps)}</span>
+                <span key={i} style={{ position: 'absolute', left: i * state.fps * 2 * px, top: 5 }}>{fmt(i * state.fps * 2, state.fps)}</span>
               ))}
             </div>
           </div>
@@ -191,7 +195,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
                         title={it.name}
                         onPointerDown={(e) => startDrag(e, it.id, 'move', it.startFrame, it.durationInFrames, it.track)}
                         style={{
-                          position: 'absolute', left: Math.max(0, start) * PX_PER_FRAME, top: 4, height: rowHeightOf(trackId) - 8, width: dur * PX_PER_FRAME,
+                          position: 'absolute', left: Math.max(0, start) * px, top: 4, height: rowHeightOf(trackId) - 8, width: dur * px,
                           background: meta.kind === 'video' ? theme.clipVideo : theme.clipAudio,
                           borderRadius: 5, color: '#fff', fontSize: 10.5,
                           display: 'flex', alignItems: 'center', padding: '0 10px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
@@ -214,7 +218,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
           })}
 
           {/* playhead */}
-          <div style={{ position: 'absolute', top: 0, left: HEADER_W + playhead * PX_PER_FRAME, width: 2, height: RULER_H + tracksHeight, background: theme.accent, pointerEvents: 'none' }}>
+          <div style={{ position: 'absolute', top: 0, left: HEADER_W + playhead * px, width: 2, height: RULER_H + tracksHeight, background: theme.accent, pointerEvents: 'none' }}>
             <div style={{ position: 'absolute', top: 0, left: -4, width: 10, height: 10, background: theme.accent, clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
           </div>
         </div>
