@@ -2,6 +2,7 @@ import { useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import type { Tpl } from '../types';
+import type { TimelineItem } from '../editor/types';
 import { AUDIO_ASSETS, type AudioAsset } from '../audio/library';
 import { TranscriptPanel } from './TranscriptPanel';
 
@@ -11,6 +12,7 @@ interface LibraryPanelProps {
   onAddAudio: (asset: AudioAsset) => void;
   playerRef: RefObject<PlayerRef | null>;
   fps: number;
+  items: TimelineItem[];
 }
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿'] as const;
@@ -26,7 +28,7 @@ function CATEGORIES(templates: Tpl[]): { cat: string; items: Tpl[] }[] {
   return [...map.entries()].map(([cat, items]) => ({ cat, items }));
 }
 
-export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps }: LibraryPanelProps) {
+export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items }: LibraryPanelProps) {
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('资源库');
   const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('G 动画');
   const showAudio = mainTab === '资源库' && (subTab === 'Audio' || subTab === '音效');
@@ -42,7 +44,7 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
       </div>
       {isTranscript ? (
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, borderTop: `1px solid ${theme.border}` }}>
-          <TranscriptPanel playerRef={playerRef} fps={fps} />
+          <TranscriptPanel playerRef={playerRef} fps={fps} items={items} />
         </div>
       ) : (
       <>

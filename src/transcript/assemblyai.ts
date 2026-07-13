@@ -17,7 +17,7 @@ async function createTranscript(audioUrl: string): Promise<string> {
   const r = await fetch(`${BASE}/transcript`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ audio_url: audioUrl }),
+    body: JSON.stringify({ audio_url: audioUrl, speaker_labels: true }),
   });
   if (!r.ok) throw new Error(`create failed: HTTP ${r.status}`);
   const { id, error } = await r.json();
@@ -32,8 +32,13 @@ async function poll(id: string, onWait?: () => void): Promise<TranscriptResult> 
     if (!r.ok) throw new Error(`poll failed: HTTP ${r.status}`);
     const d = await r.json();
     if (d.status === 'completed') {
-      const words = (d.words ?? []).map((w: { text: string; start: number; end: number }) => ({ text: w.text, start: w.start, end: w.end }));
-      return { text: d.text ?? '', words };
+      const mapW = (w: { text: string; start: number; end: number; speaker?: string | null }) => ({ text: w.text, start: w.start, end: w.end, speaker: w.speaker ?? null });
+      const words = (d.words ?? []).map(mapW);
+      const utterances = (d.utterances ?? []).map((u: { speaker: string; text: string; start: number; end: number; words?: unknown[] }) => ({
+        speaker: u.speaker, text: u.text, start: u.start, end: u.end,
+        words: ((u.words ?? []) as { text: string; start: number; end: number; speaker?: string | null }[]).map(mapW),
+      }));
+      return { text: d.text ?? '', words, utterances };
     }
     if (d.status === 'error') throw new Error(d.error ?? 'transcription error');
     onWait?.();

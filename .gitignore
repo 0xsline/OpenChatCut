@@ -6,3 +6,6 @@ dist
 # secrets
 .env
 .env.*
+
+# parallel agent worktrees
+.claude/worktrees/
