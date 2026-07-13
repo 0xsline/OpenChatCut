@@ -28,6 +28,40 @@ export interface ClipFilters {
   blur?: number;
 }
 
+/** one sparse reframe keyframe (source ReframeCurveV1: named scalar channels) */
+export interface ReframeKeyframe {
+  /** effect-local frame */
+  frame: number;
+  /** 0..1 composition-normalized focal point */
+  focalPointX: number;
+  focalPointY: number;
+  /** zoom magnification at this keyframe (0.05..16) */
+  magnification: number;
+}
+
+/** source ReframeCurveV1 — the only real sparse-keyframe model (zoom focal/mag) */
+export interface ReframeCurveV1 {
+  version: 1;
+  timebase: 'effect-frame';
+  coordinateSpace: 'composition-normalized';
+  keyframes: ReframeKeyframe[];
+}
+
+/** source builtin:zoom — parametric animated zoom (shape curve) or a reframe curve */
+export type ZoomShape = 'hold' | 'punch' | 'slow-push' | 'instant';
+export interface ZoomEffect {
+  /** peak magnification (source 1..16, default 1.5) */
+  magnification?: number;
+  /** 0..1 focal point the zoom pushes toward */
+  focalPointX?: number;
+  focalPointY?: number;
+  shape?: ZoomShape;
+  easeInFrames?: number;
+  easeOutFrames?: number;
+  /** sparse keyframes (source __chatcutReframeCurve); overrides the shape curve */
+  reframeCurve?: ReframeCurveV1;
+}
+
 /** per-clip visual transform (scale/position/rotation) — source 缩放 tab */
 export interface ClipTransform {
   /** 1 = 100% */
@@ -68,6 +102,8 @@ export interface TimelineItem {
   transform?: ClipTransform;
   /** color/blur adjustments for visual clips (source 特效/LUT) */
   filters?: ClipFilters;
+  /** animated zoom (source builtin:zoom) — shape curve or reframe keyframes */
+  zoom?: ZoomEffect;
   /** transcript-based editing: the clip's words + which are deleted (by index).
    * durationInFrames reflects the EDITED length (kept words only). */
   transcript?: TranscriptWord[];

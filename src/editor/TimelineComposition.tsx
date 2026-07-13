@@ -2,6 +2,7 @@ import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, useCurrentFrame } f
 import { compileTemplate } from '../template-host';
 import { CaptionsLayer } from '../captions/CaptionsLayer';
 import { keptSegments } from '../transcript/edit';
+import { zoomAt } from './zoom';
 import type { AspectFit, TimelineItem, TimelineState, TransitionType, TransitionDirection } from './types';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
@@ -27,7 +28,17 @@ function ClipWrapper({ item, children }: { item: TimelineItem; children: React.R
   const filter = fl
     ? `brightness(${fl.brightness ?? 1}) contrast(${fl.contrast ?? 1}) saturate(${fl.saturate ?? 1}) blur(${fl.blur ?? 0}px)`
     : undefined;
-  return <AbsoluteFill style={{ opacity: o, transform, filter }}>{children}</AbsoluteFill>;
+  // animated zoom (builtin:zoom): scale content toward its focal point over time.
+  let inner = children;
+  if (item.zoom) {
+    const z = zoomAt(item.zoom, frame, item.durationInFrames);
+    inner = (
+      <AbsoluteFill style={{ transform: `scale(${z.magnification})`, transformOrigin: `${z.focalX * 100}% ${z.focalY * 100}%` }}>
+        {children}
+      </AbsoluteFill>
+    );
+  }
+  return <AbsoluteFill style={{ opacity: o, transform, filter }}>{inner}</AbsoluteFill>;
 }
 
 // ── transitions (source transition_item, CSS approximation of the GLSL set) ──

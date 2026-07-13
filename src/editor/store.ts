@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useReducer } from 'react';
-import type { AspectFit, ClipFilters, ClipTransform, MediaAsset, TimelineItem, TimelineState, TrackId, TransitionItem, TransitionType } from './types';
+import type { AspectFit, ClipFilters, ClipTransform, MediaAsset, TimelineItem, TimelineState, TrackId, TransitionItem, TransitionType, ZoomEffect } from './types';
 import { trackEnd } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
@@ -17,6 +17,7 @@ type Action =
   | { type: 'setFade'; id: string; fadeInFrames?: number; fadeOutFrames?: number }
   | { type: 'setTransform'; id: string; patch: ClipTransform }
   | { type: 'setFilters'; id: string; patch: ClipFilters }
+  | { type: 'setZoom'; id: string; patch: Partial<ZoomEffect> | null }
   | { type: 'addTransition'; id: string; incomingItemId: string; transType: TransitionType; durationInFrames?: number }
   | { type: 'setTransition'; id: string; patch: Partial<TransitionItem> }
   | { type: 'removeTransition'; id: string }
@@ -36,7 +37,7 @@ type Action =
   | { type: 'clearEdits'; id: string }
   | { type: 'select'; id: string | null };
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'addTransition', 'setTransition', 'removeTransition', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'addTransition', 'setTransition', 'removeTransition', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
 
 // recompute a transcript-edited clip's duration under its current edit state
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
@@ -109,6 +110,11 @@ function reduce(s: TimelineState, a: Action): TimelineState {
       return {
         ...s,
         items: s.items.map((it) => (it.id === a.id ? { ...it, filters: { ...it.filters, ...a.patch } } : it)),
+      };
+    case 'setZoom':
+      return {
+        ...s,
+        items: s.items.map((it) => (it.id === a.id ? { ...it, zoom: a.patch === null ? undefined : { ...it.zoom, ...a.patch } } : it)),
       };
     case 'addTransition': {
       const inItem = s.items.find((x) => x.id === a.incomingItemId);
@@ -276,6 +282,7 @@ export interface EditorCommands {
   setItemFade: (id: string, fade: { fadeInFrames?: number; fadeOutFrames?: number }) => void;
   setItemTransform: (id: string, patch: ClipTransform) => void;
   setItemFilters: (id: string, patch: ClipFilters) => void;
+  setItemZoom: (id: string, patch: Partial<ZoomEffect> | null) => void;
   addTransition: (incomingItemId: string, type: TransitionType, durationInFrames?: number) => void;
   setTransition: (id: string, patch: Partial<TransitionItem>) => void;
   removeTransition: (id: string) => void;
@@ -377,6 +384,7 @@ export function useEditor(initial: TimelineState): {
       setItemFade: (id, fade) => dispatch({ type: 'setFade', id, ...fade }),
       setItemTransform: (id, patch) => dispatch({ type: 'setTransform', id, patch }),
       setItemFilters: (id, patch) => dispatch({ type: 'setFilters', id, patch }),
+      setItemZoom: (id, patch) => dispatch({ type: 'setZoom', id, patch }),
       addTransition: (incomingItemId, type, durationInFrames) => dispatch({ type: 'addTransition', id: uid('tr'), incomingItemId, transType: type, durationInFrames }),
       setTransition: (id, patch) => dispatch({ type: 'setTransition', id, patch }),
       removeTransition: (id) => dispatch({ type: 'removeTransition', id }),

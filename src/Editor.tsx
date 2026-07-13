@@ -152,6 +152,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
               onItemFadeChange={(fade) => state.selectedId && commands.setItemFade(state.selectedId, fade)}
               onItemTransformChange={(patch) => state.selectedId && commands.setItemTransform(state.selectedId, patch)}
               onItemFiltersChange={(patch) => state.selectedId && commands.setItemFilters(state.selectedId, patch)}
+              onItemZoomChange={(patch) => state.selectedId && commands.setItemZoom(state.selectedId, patch)}
               transition={state.transitions?.find((t) => t.incomingItemId === state.selectedId) ?? null}
               onAddTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}
               onSetTransition={(patch) => {

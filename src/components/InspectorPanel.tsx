@@ -1,6 +1,6 @@
 import { theme } from '../theme';
 import type { Tpl } from '../types';
-import type { ClipFilters, ClipTransform, TimelineItem, TransitionItem, TransitionType } from '../editor/types';
+import type { ClipFilters, ClipTransform, TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../editor/types';
 import { usePersistedState } from '../hooks/usePersistedState';
 
 interface FadePatch {
@@ -17,6 +17,7 @@ interface InspectorPanelProps {
   onItemFadeChange: (fade: FadePatch) => void;
   onItemTransformChange: (patch: ClipTransform) => void;
   onItemFiltersChange: (patch: ClipFilters) => void;
+  onItemZoomChange: (patch: Partial<ZoomEffect> | null) => void;
   transition: TransitionItem | null;
   onAddTransition: (type: TransitionType) => void;
   onSetTransition: (patch: Partial<TransitionItem>) => void;
@@ -111,6 +112,46 @@ function TextControl({ item, onPropChange }: { item: TimelineItem; onPropChange:
   );
 }
 
+const ZOOM_SHAPE_LABELS: Record<ZoomShape, string> = {
+  hold: '推入保持 (hold)',
+  punch: '猛推 (punch)',
+  'slow-push': '缓推 (slow-push)',
+  instant: '瞬时 (instant)',
+};
+
+// animated zoom (source builtin:zoom): shape curve + magnification + focal point.
+function ZoomControl({ zoom, onChange }: { zoom: ZoomEffect | undefined; onChange: (patch: Partial<ZoomEffect> | null) => void }) {
+  const selStyle: React.CSSProperties = { background: theme.bg, color: theme.text, border: `1px solid ${theme.borderLight}`, borderRadius: 4, padding: '3px 5px' };
+  const slider = (label: string, val: number, min: number, max: number, step: number, fmt: string, key: keyof ZoomEffect) => (
+    <label style={{ display: 'block', fontSize: 11, color: theme.textDim }}>
+      <div style={{ marginBottom: 4 }}>{label} <span style={{ opacity: 0.7 }}>{fmt}</span></div>
+      <input type="range" min={min} max={max} step={step} value={val} onChange={(e) => onChange({ [key]: Number(e.target.value) })} style={{ width: '100%' }} />
+    </label>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 8 }}>
+        曲线
+        <select value={zoom?.shape ?? ''} style={selStyle} onChange={(e) => {
+          const v = e.target.value as ZoomShape | '';
+          if (!v) onChange(null);
+          else onChange({ shape: v });
+        }}>
+          <option value="">无</option>
+          {(Object.keys(ZOOM_SHAPE_LABELS) as ZoomShape[]).map((k) => <option key={k} value={k}>{ZOOM_SHAPE_LABELS[k]}</option>)}
+        </select>
+      </label>
+      {zoom && (
+        <>
+          {slider('放大倍数', zoom.magnification ?? 1.5, 1, 4, 0.05, `${(zoom.magnification ?? 1.5).toFixed(2)}×`, 'magnification')}
+          {slider('焦点 X', zoom.focalPointX ?? 0.5, 0, 1, 0.01, `${Math.round((zoom.focalPointX ?? 0.5) * 100)}%`, 'focalPointX')}
+          {slider('焦点 Y', zoom.focalPointY ?? 0.5, 0, 1, 0.01, `${Math.round((zoom.focalPointY ?? 0.5) * 100)}%`, 'focalPointY')}
+        </>
+      )}
+    </div>
+  );
+}
+
 const TRANSITION_LABELS: Record<TransitionType, string> = {
   'cross-dissolve': '交叉溶解',
   'dip-to-black': '黑场过渡',
@@ -192,7 +233,7 @@ function FilterControl({ item, onChange }: { item: TimelineItem; onChange: (p: C
 
 // Property editor for the selected timeline item (sits under the preview).
 // Collapsible so it doesn't crowd the preview when you don't need it.
-export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, transition, onAddTransition, onSetTransition, onRemoveTransition }: InspectorPanelProps) {
+export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, onItemZoomChange, transition, onAddTransition, onSetTransition, onRemoveTransition }: InspectorPanelProps) {
   const [collapsed, setCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const schema = selectedItem
     ? templates.find((t) => t.id === selectedItem.templateId)?.propSchema ?? []
@@ -233,6 +274,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
             {hasVolume && <><SectionLabel>音量</SectionLabel><VolumeControl item={selectedItem} onChange={onItemVolumeChange} /></>}
             {isVisual && <><SectionLabel>变换</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} /></>}
             {isVisual && <><SectionLabel>滤镜</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} /></>}
+            {isVisual && <><SectionLabel>缩放动画</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} /></>}
             {isVisual && <><SectionLabel>转场</SectionLabel><TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} /></>}
             <SectionLabel>淡入淡出</SectionLabel>
             <FadeControl item={selectedItem} fps={fps} onChange={onItemFadeChange} />
