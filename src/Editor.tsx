@@ -41,6 +41,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
 
   // a pending proposal's draft result, previewed in the player (null = committed)
   const [previewState, setPreviewState] = useState<TimelineState | null>(null);
+  // library「用 AI 生成」→ prefill the chat composer (nonce forces re-seed of the same text)
+  const [chatSeed, setChatSeed] = useState<{ text: string; nonce: number } | null>(null);
 
   // current playhead frame, synced from the Remotion Player (shared by the
   // timeline's playhead line + the inspector's keyframe-at-playhead controls).
@@ -154,7 +156,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         onRename={onRename}
       />
 
-      <ChatPanel ctx={agentCtx} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} />
+      <ChatPanel ctx={agentCtx} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} seed={chatSeed} />
 
       <div style={{ gridColumn: 2, gridRow: 2 }}>
         {!chatCollapsed && <Divider onResize={(dx) => setChatW((w) => clamp(w + dx, 220, 520))} />}
@@ -168,7 +170,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         }}
       >
         <div style={{ display: 'grid', gridTemplateColumns: `${libW}px 5px 1fr`, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-          <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onClearEdits={commands.clearEdits} assets={state.assets ?? []} onImportMedia={async (file) => { commands.addAsset(await importMedia(file, state.fps)); }} onAddMediaItem={(asset) => commands.addMediaItem(asset)} />
+          <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onClearEdits={commands.clearEdits} assets={state.assets ?? []} onImportMedia={async (file) => { commands.addAsset(await importMedia(file, state.fps)); }} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onUseTemplateAI={(tpl) => { setChatCollapsed(false); setChatSeed({ text: `参考模板「${tpl.name}」，用 create_motion_graphic 生成一个类似风格的动画：`, nonce: Date.now() }); }} />
           <Divider onResize={(dx) => setLibW((w) => clamp(w + dx, 260, 640))} />
           {/* right column: preview on top, inspector below */}
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>

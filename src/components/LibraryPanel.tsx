@@ -8,6 +8,7 @@ import type { TranscriptWord } from '../transcript/types';
 import { AUDIO_ASSETS, type AudioAsset } from '../audio/library';
 import { TranscriptPanel } from './TranscriptPanel';
 import { MediaPoolPanel } from './MediaPoolPanel';
+import { TemplateBrowser } from './TemplateBrowser';
 
 interface LibraryPanelProps {
   templates: Tpl[];
@@ -26,24 +27,16 @@ interface LibraryPanelProps {
   assets: MediaAsset[];
   onImportMedia: (file: File) => Promise<void>;
   onAddMediaItem: (asset: MediaAsset) => void;
+  /** ⋮ menu「用 AI 生成」: seed the chat with this template as a reference */
+  onUseTemplateAI: (tpl: Tpl) => void;
 }
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿'] as const;
-const SUB_TABS = ['G 动画', '音效', '转场', '特效', '缩放', 'LUT', 'Audio'] as const;
+const SUB_TABS = ['MG 动画', '音效', '转场', '特效', '缩放', 'LUT', 'Audio'] as const;
 
-// group templates by category, preserving first-seen order
-function CATEGORIES(templates: Tpl[]): { cat: string; items: Tpl[] }[] {
-  const map = new Map<string, Tpl[]>();
-  for (const t of templates) {
-    if (!map.has(t.category)) map.set(t.category, []);
-    map.get(t.category)!.push(t);
-  }
-  return [...map.entries()].map(([cat, items]) => ({ cat, items }));
-}
-
-export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits, assets, onImportMedia, onAddMediaItem }: LibraryPanelProps) {
+export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits, assets, onImportMedia, onAddMediaItem, onUseTemplateAI }: LibraryPanelProps) {
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('资源库');
-  const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('G 动画');
+  const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('MG 动画');
   const showAudio = mainTab === '资源库' && (subTab === 'Audio' || subTab === '音效');
   const isTranscript = mainTab === '文字稿';
   const isMyAssets = mainTab === '我的素材';
@@ -74,30 +67,8 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: 12, minHeight: 0 }}>
-        {mainTab === '资源库' && subTab === 'G 动画' ? (
-          <>
-            <div style={{ fontSize: 11, color: theme.textDim, marginBottom: 8 }}>{templates.length} 个模板</div>
-            {CATEGORIES(templates).map(({ cat, items }) => (
-              <div key={cat} style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 11, color: theme.textDim, margin: '4px 2px 8px', textTransform: 'capitalize' }}>{cat} · {items.length}</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
-                  {items.map((tp) => (
-                    <button key={tp.id} onClick={() => onAddTemplate(tp)} title={`点击加到时间线：${tp.name}`}
-                      style={{ cursor: 'pointer', textAlign: 'left', padding: 0, overflow: 'hidden', border: `1px solid ${theme.border}`, borderRadius: 8, background: theme.panelAlt, color: theme.text }}>
-                      <div style={{ aspectRatio: '16 / 9', background: '#0c0c0c', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
-                        {tp.thumb ? (
-                          <img src={tp.thumb} alt={tp.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                          <span style={{ fontSize: 20, color: theme.textDim }}>＋</span>
-                        )}
-                      </div>
-                      <div style={{ padding: '5px 7px', fontSize: 10.5, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tp.name}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </>
+        {mainTab === '资源库' && subTab === 'MG 动画' ? (
+          <TemplateBrowser templates={templates} onAdd={onAddTemplate} onUseAI={onUseTemplateAI} />
         ) : showAudio ? (
           <>
             <div style={{ fontSize: 11, color: theme.textDim, marginBottom: 8 }}>{AUDIO_ASSETS.length} 个音频 · 点击加到 A1</div>

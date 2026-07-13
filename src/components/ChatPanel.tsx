@@ -24,16 +24,28 @@ interface ChatPanelProps {
   onToggleCollapse: () => void;
   /** show a proposal's draft result in the player (null = show committed state) */
   onPreviewState: (state: TimelineState | null) => void;
+  /** prefill the composer (library「用 AI 生成」); bump the number to re-seed */
+  seed?: { text: string; nonce: number } | null;
 }
 
-export function ChatPanel({ ctx, collapsed, onToggleCollapse, onPreviewState }: ChatPanelProps) {
+export function ChatPanel({ ctx, collapsed, onToggleCollapse, onPreviewState, seed }: ChatPanelProps) {
   const { messages, running, send, proposal, applyProposal, rejectProposal } = useAgent(ctx);
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, running, proposal]);
+
+  // library「用 AI 生成」seeds the composer (source: attach template as chat ref)
+  useEffect(() => {
+    if (seed && !collapsed) {
+      setInput(seed.text);
+      taRef.current?.focus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed?.nonce]);
 
   // clear any preview when the proposal is resolved (applied/rejected)
   useEffect(() => {
@@ -86,6 +98,7 @@ export function ChatPanel({ ctx, collapsed, onToggleCollapse, onPreviewState }: 
       <div style={{ padding: 12, borderTop: `1px solid ${theme.border}` }}>
         <div style={{ background: theme.panelAlt, border: `1px solid ${theme.border}`, borderRadius: 10, padding: 10 }}>
           <textarea
+            ref={taRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
