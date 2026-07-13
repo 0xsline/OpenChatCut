@@ -4,6 +4,8 @@ import { trackEnd } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
 import type { CaptionsData } from '../captions/types';
+import type { TranscriptWord } from '../transcript/types';
+import { editedFrames } from '../transcript/edit';
 
 // ── command actions (these map 1:1 to the future agent tools) ─────────────
 type Action =
@@ -17,9 +19,12 @@ type Action =
   | { type: 'clear' }
   | { type: 'setCaptions'; captions: CaptionsData | null }
   | { type: 'updateCaptions'; patch: Partial<CaptionsData> }
+  | { type: 'setItemTranscript'; id: string; words: TranscriptWord[] }
+  | { type: 'toggleWord'; id: string; idx: number }
+  | { type: 'clearEdits'; id: string }
   | { type: 'select'; id: string | null };
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'duplicate', 'remove', 'split', 'clear', 'setCaptions', 'updateCaptions']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'duplicate', 'remove', 'split', 'clear', 'setCaptions', 'updateCaptions', 'toggleWord', 'clearEdits']);
 
 function reduce(s: TimelineState, a: Action): TimelineState {
   switch (a.type) {
@@ -70,6 +75,30 @@ function reduce(s: TimelineState, a: Action): TimelineState {
       return { ...s, captions: a.captions };
     case 'updateCaptions':
       return s.captions ? { ...s, captions: { ...s.captions, ...a.patch } } : s;
+    case 'setItemTranscript':
+      return {
+        ...s,
+        items: s.items.map((it) =>
+          it.id === a.id ? { ...it, transcript: a.words, deletedWordIdx: [], durationInFrames: editedFrames(a.words, new Set(), s.fps) } : it,
+        ),
+      };
+    case 'toggleWord':
+      return {
+        ...s,
+        items: s.items.map((it) => {
+          if (it.id !== a.id || !it.transcript) return it;
+          const del = new Set(it.deletedWordIdx ?? []);
+          del.has(a.idx) ? del.delete(a.idx) : del.add(a.idx);
+          return { ...it, deletedWordIdx: [...del], durationInFrames: editedFrames(it.transcript, del, s.fps) };
+        }),
+      };
+    case 'clearEdits':
+      return {
+        ...s,
+        items: s.items.map((it) =>
+          it.id === a.id && it.transcript ? { ...it, deletedWordIdx: [], durationInFrames: editedFrames(it.transcript, new Set(), s.fps) } : it,
+        ),
+      };
     case 'remove':
       return {
         ...s,
@@ -129,6 +158,9 @@ export interface EditorCommands {
   clearTimeline: () => void;
   setCaptions: (captions: CaptionsData | null) => void;
   updateCaptions: (patch: Partial<CaptionsData>) => void;
+  setItemTranscript: (id: string, words: TranscriptWord[]) => void;
+  toggleWord: (id: string, idx: number) => void;
+  clearEdits: (id: string) => void;
   selectItem: (id: string | null) => void;
   undo: () => void;
   redo: () => void;
@@ -184,6 +216,9 @@ export function useEditor(initial: TimelineState): {
       clearTimeline: () => dispatch({ type: 'clear' }),
       setCaptions: (captions) => dispatch({ type: 'setCaptions', captions }),
       updateCaptions: (patch) => dispatch({ type: 'updateCaptions', patch }),
+      setItemTranscript: (id, words) => dispatch({ type: 'setItemTranscript', id, words }),
+      toggleWord: (id, idx) => dispatch({ type: 'toggleWord', id, idx }),
+      clearEdits: (id) => dispatch({ type: 'clearEdits', id }),
       selectItem: (id) => dispatch({ type: 'select', id }),
       undo: () => dispatch({ type: 'undo' }),
       redo: () => dispatch({ type: 'redo' }),

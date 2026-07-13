@@ -2,6 +2,7 @@
 // agent tools operate on (items with frame positions on named tracks).
 
 import type { CaptionsData } from '../captions/types';
+import type { TranscriptWord } from '../transcript/types';
 
 export type TrackId = 'V2' | 'V1' | 'A1' | 'A2';
 export const TRACK_ORDER: TrackId[] = ['V2', 'V1', 'A1', 'A2'];
@@ -24,6 +25,10 @@ export interface TimelineItem {
   src?: string;
   /** 0..1 playback volume (default 1) */
   volume?: number;
+  /** transcript-based editing: the clip's words + which are deleted (by index).
+   * durationInFrames reflects the EDITED length (kept words only). */
+  transcript?: TranscriptWord[];
+  deletedWordIdx?: number[];
 }
 
 export interface TimelineState {
