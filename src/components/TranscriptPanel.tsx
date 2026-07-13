@@ -5,18 +5,23 @@ import type { TimelineItem, TrackId } from '../editor/types';
 import { useTranscript } from '../transcript/useTranscript';
 import { msToFrame, type TranscriptWord } from '../transcript/types';
 import { toParagraphs, toSegments, speakerLabel, analyzeSilences } from '../transcript/segment';
+import { CaptionsControls } from './CaptionsControls';
+import type { CaptionsData } from '../captions/types';
 
 interface TranscriptPanelProps {
   playerRef: RefObject<PlayerRef | null>;
   fps: number;
   items: TimelineItem[];
+  captions: CaptionsData | null;
+  onSetCaptions: (c: CaptionsData | null) => void;
+  onUpdateCaptions: (patch: Partial<CaptionsData>) => void;
 }
 
 const TRACKS: TrackId[] = ['V1', 'V2', 'A1', 'A2'];
 const SAMPLE = '/media/speech-sample.mp3';
 
 // 文字稿面板 — 忠实源站:轨道选择 + 说话人分段 + 段落/片段视图 + 停顿工具。
-export function TranscriptPanel({ playerRef, fps, items }: TranscriptPanelProps) {
+export function TranscriptPanel({ playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions }: TranscriptPanelProps) {
   const { status, result, error, run } = useTranscript();
   const [track, setTrack] = useState<TrackId>('A1');
   const [view, setView] = useState<'paragraph' | 'segment'>('paragraph');
@@ -35,6 +40,16 @@ export function TranscriptPanel({ playerRef, fps, items }: TranscriptPanelProps)
     // ponytail: 分析停顿(真正压缩音频需要 transcript-editing 引擎重排源区间,此处先给出结果)
     const { count, savedMs } = analyzeSilences(result.words, compressSec * 1000);
     setPauseResult(`> ${compressSec}s 的停顿 ${count} 处 → 压缩后省 ${(savedMs / 1000).toFixed(1)}s`);
+  };
+  const generateCaptions = () => {
+    if (!result) return;
+    onSetCaptions({
+      enabled: true,
+      template: captions?.template ?? 'tiktok',
+      pacing: captions?.pacing ?? 'phrase',
+      offsetFrames: audioItem?.startFrame ?? 0,
+      words: result.words,
+    });
   };
 
   return (
@@ -82,6 +97,8 @@ export function TranscriptPanel({ playerRef, fps, items }: TranscriptPanelProps)
           <SegmentView utterancesResult={result.utterances} onWord={seek} fps={fps} />
         )}
       </div>
+
+      <CaptionsControls captions={captions} hasTranscript={!!result} onGenerate={generateCaptions} onUpdate={onUpdateCaptions} />
     </div>
   );
 }

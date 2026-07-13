@@ -1,6 +1,8 @@
 // Timeline domain model. Deliberately small; mirrors the shape ChatCut's
 // agent tools operate on (items with frame positions on named tracks).
 
+import type { CaptionsData } from '../captions/types';
+
 export type TrackId = 'V2' | 'V1' | 'A1' | 'A2';
 export const TRACK_ORDER: TrackId[] = ['V2', 'V1', 'A1', 'A2'];
 
@@ -30,6 +32,8 @@ export interface TimelineState {
   height: number;
   items: TimelineItem[];
   selectedId: string | null;
+  /** captions overlay (字幕), rendered on top + burned into export */
+  captions?: CaptionsData | null;
 }
 
 /** total timeline length = last item's end (min 1s). */

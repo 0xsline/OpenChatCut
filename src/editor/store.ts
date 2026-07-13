@@ -3,6 +3,7 @@ import type { TimelineItem, TimelineState, TrackId } from './types';
 import { trackEnd } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
+import type { CaptionsData } from '../captions/types';
 
 // ── command actions (these map 1:1 to the future agent tools) ─────────────
 type Action =
@@ -14,9 +15,11 @@ type Action =
   | { type: 'remove'; id: string }
   | { type: 'split'; id: string; atFrame: number; newId: string }
   | { type: 'clear' }
+  | { type: 'setCaptions'; captions: CaptionsData | null }
+  | { type: 'updateCaptions'; patch: Partial<CaptionsData> }
   | { type: 'select'; id: string | null };
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'duplicate', 'remove', 'split', 'clear']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'duplicate', 'remove', 'split', 'clear', 'setCaptions', 'updateCaptions']);
 
 function reduce(s: TimelineState, a: Action): TimelineState {
   switch (a.type) {
@@ -63,6 +66,10 @@ function reduce(s: TimelineState, a: Action): TimelineState {
     }
     case 'clear':
       return { ...s, items: [], selectedId: null };
+    case 'setCaptions':
+      return { ...s, captions: a.captions };
+    case 'updateCaptions':
+      return s.captions ? { ...s, captions: { ...s.captions, ...a.patch } } : s;
     case 'remove':
       return {
         ...s,
@@ -120,6 +127,8 @@ export interface EditorCommands {
   removeItem: (id: string) => void;
   splitItem: (id: string, atFrame: number) => void;
   clearTimeline: () => void;
+  setCaptions: (captions: CaptionsData | null) => void;
+  updateCaptions: (patch: Partial<CaptionsData>) => void;
   selectItem: (id: string | null) => void;
   undo: () => void;
   redo: () => void;
@@ -173,6 +182,8 @@ export function useEditor(initial: TimelineState): {
       removeItem: (id) => dispatch({ type: 'remove', id }),
       splitItem: (id, atFrame) => dispatch({ type: 'split', id, atFrame, newId: uid('item') }),
       clearTimeline: () => dispatch({ type: 'clear' }),
+      setCaptions: (captions) => dispatch({ type: 'setCaptions', captions }),
+      updateCaptions: (patch) => dispatch({ type: 'updateCaptions', patch }),
       selectItem: (id) => dispatch({ type: 'select', id }),
       undo: () => dispatch({ type: 'undo' }),
       redo: () => dispatch({ type: 'redo' }),

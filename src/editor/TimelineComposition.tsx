@@ -1,5 +1,6 @@
 import { AbsoluteFill, Audio, Sequence } from 'remotion';
 import { compileTemplate } from '../template-host';
+import { CaptionsLayer } from '../captions/CaptionsLayer';
 import type { TimelineItem, TimelineState } from './types';
 
 const GRID = 'repeating-conic-gradient(#242424 0% 25%, #1c1c1c 0% 50%) 50% / 40px 40px';
@@ -36,6 +37,7 @@ export function TimelineComposition({ state }: { state: TimelineState }) {
           <Audio src={item.src!} volume={item.volume ?? 1} />
         </Sequence>
       ))}
+      {state.captions?.enabled && <CaptionsLayer captions={state.captions} />}
     </AbsoluteFill>
   );
 }

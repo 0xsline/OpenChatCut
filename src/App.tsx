@@ -130,7 +130,7 @@ export default function App() {
         }}
       >
         <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-          <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} />
+          <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} />
           {/* right column: preview on top, inspector below */}
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
             <PreviewPanel state={state} playerRef={playerRef} />
