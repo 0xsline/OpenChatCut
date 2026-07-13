@@ -38,8 +38,10 @@ function fmt(frames: number, fps: number): string {
 type DragMode = 'move' | 'trim-left' | 'trim-right';
 interface Drag {
   id: string; mode: DragMode; baseStart: number; baseDur: number; baseTrack: TrackId;
-  baseSrcIn: number; startX: number; deltaF: number; targetTrack: TrackId;
+  baseSrcIn: number; startX: number; deltaF: number; targetTrack: TrackId; snapAt: number | null;
 }
+// how close (px) an edge must come to a snap target before it locks on
+const SNAP_PX = 7;
 
 export function Timeline({ state, commands, playerRef }: TimelineProps) {
   const total = timelineDuration(state);
@@ -111,17 +113,67 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
     setPlayhead(f);
   };
 
+  // blade (B): split the selected clip at the playhead. splitItem no-ops if the
+  // playhead is outside the clip, so no guard needed here.
+  const bladeSelected = () => { if (state.selectedId) commands.splitItem(state.selectedId, playhead); };
+  const bladeRef = useRef(bladeSelected);
+  bladeRef.current = bladeSelected;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return;
+      if (e.key === 'b' || e.key === 'B') { e.preventDefault(); bladeRef.current(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const startDrag = (e: React.PointerEvent, id: string, mode: DragMode, baseStart: number, baseDur: number, baseTrack: TrackId, baseSrcIn = 0) => {
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     commands.selectItem(id);
-    setDrag({ id, mode, baseStart, baseDur, baseTrack, baseSrcIn, startX: e.clientX, deltaF: 0, targetTrack: baseTrack });
+    setDrag({ id, mode, baseStart, baseDur, baseTrack, baseSrcIn, startX: e.clientX, deltaF: 0, targetTrack: baseTrack, snapAt: null });
+  };
+  // snap a dragged edge to the nearest guide (frame 0, playhead, any other
+  // clip's start/end) within SNAP_PX; returns the adjusted delta + snap frame.
+  const applySnap = (mode: DragMode, baseStart: number, baseDur: number, rawDelta: number): { deltaF: number; snapAt: number | null } => {
+    const thresh = SNAP_PX / px; // pixels → frames
+    const targets = [0, playhead];
+    for (const it of state.items) {
+      if (it.id === drag?.id) continue;
+      targets.push(it.startFrame, it.startFrame + it.durationInFrames);
+    }
+    const nearest = (edge: number): number | null => {
+      let best: number | null = null, bestDist = thresh;
+      for (const t of targets) {
+        const dist = Math.abs(edge - t);
+        if (dist <= bestDist) { bestDist = dist; best = t; }
+      }
+      return best;
+    };
+    if (mode === 'trim-left') {
+      const snap = nearest(baseStart + rawDelta);
+      return snap === null ? { deltaF: rawDelta, snapAt: null } : { deltaF: snap - baseStart, snapAt: snap };
+    }
+    if (mode === 'trim-right') {
+      const snap = nearest(baseStart + baseDur + rawDelta);
+      return snap === null ? { deltaF: rawDelta, snapAt: null } : { deltaF: snap - (baseStart + baseDur), snapAt: snap };
+    }
+    // move: snap whichever of the clip's two edges lands closest to a guide
+    const s0 = baseStart + rawDelta, e0 = baseStart + baseDur + rawDelta;
+    const snapS = nearest(s0), snapE = nearest(e0);
+    const dS = snapS === null ? Infinity : Math.abs(s0 - snapS);
+    const dE = snapE === null ? Infinity : Math.abs(e0 - snapE);
+    if (dS <= dE && snapS !== null) return { deltaF: snapS - baseStart, snapAt: snapS };
+    if (snapE !== null) return { deltaF: snapE - (baseStart + baseDur), snapAt: snapE };
+    return { deltaF: rawDelta, snapAt: null };
   };
   const onPointerMove = (e: React.PointerEvent) => {
     if (!drag) return;
-    const deltaF = Math.round((e.clientX - drag.startX) / px);
+    const rawDelta = Math.round((e.clientX - drag.startX) / px);
+    const { deltaF, snapAt } = applySnap(drag.mode, drag.baseStart, drag.baseDur, rawDelta);
     const targetTrack = drag.mode === 'move' ? trackFromClientY(e.clientY) : drag.baseTrack;
-    setDrag((d) => (d ? { ...d, deltaF, targetTrack } : d));
+    setDrag((d) => (d ? { ...d, deltaF, targetTrack, snapAt } : d));
   };
   const onPointerUp = () => {
     if (!drag) { return; }
@@ -149,6 +201,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
         <button style={toolBtn} title="播放" onClick={() => playerRef.current?.toggle()}>▶</button>
         <button style={{ ...toolBtn, color: theme.accent }}>⧉</button>
         <button style={toolBtn} title="复制选中" onClick={() => state.selectedId && commands.duplicateItem(state.selectedId)}>⧉</button>
+        <button style={toolBtn} title="刀片：在播放头处切分选中片段 (B)" onClick={bladeSelected}>✂</button>
         <button style={toolBtn} title="删除选中" onClick={() => state.selectedId && commands.removeItem(state.selectedId)}>🗑</button>
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: 12, color: theme.text, fontVariantNumeric: 'tabular-nums' }}>{fmt(playhead, state.fps)} / {fmt(total, state.fps)}</span>
@@ -223,6 +276,11 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
               </div>
             );
           })}
+
+          {/* snap guide — appears while a drag edge is locked onto a target */}
+          {drag && drag.snapAt !== null && (
+            <div style={{ position: 'absolute', top: 0, left: HEADER_W + drag.snapAt * px, width: 1, height: RULER_H + tracksHeight, background: '#4fd1ff', pointerEvents: 'none', boxShadow: '0 0 4px #4fd1ff' }} />
+          )}
 
           {/* playhead */}
           <div style={{ position: 'absolute', top: 0, left: HEADER_W + playhead * px, width: 2, height: RULER_H + tracksHeight, background: theme.accent, pointerEvents: 'none' }}>

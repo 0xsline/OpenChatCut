@@ -143,8 +143,10 @@ function reduce(s: TimelineState, a: Action): TimelineState {
     case 'split': {
       const it = s.items.find((x) => x.id === a.id);
       if (!it || a.atFrame <= it.startFrame || a.atFrame >= it.startFrame + it.durationInFrames) return s;
-      const left = { ...it, durationInFrames: a.atFrame - it.startFrame };
-      const right = { ...it, id: a.newId, startFrame: a.atFrame, durationInFrames: it.startFrame + it.durationInFrames - a.atFrame };
+      const cut = a.atFrame - it.startFrame; // frames of source consumed by the left half
+      const left = { ...it, durationInFrames: cut };
+      // the right half resumes the source where the left one ended (advances srcInFrame)
+      const right = { ...it, id: a.newId, startFrame: a.atFrame, durationInFrames: it.durationInFrames - cut, srcInFrame: (it.srcInFrame ?? 0) + cut };
       return { ...s, items: s.items.flatMap((x) => (x.id === a.id ? [left, right] : [x])) };
     }
     case 'select':
@@ -178,8 +180,11 @@ function historyReduce(h: History, a: Action | { type: 'undo' } | { type: 'redo'
   return { ...h, present: next }; // select: no history
 }
 
-let counter = 0;
-const uid = (p: string) => `${p}_${++counter}`;
+// Ids must stay unique across sessions: items are persisted to IndexedDB, so a
+// process-local counter (which resets to 0 on every reload) would regenerate ids
+// that already exist and collide (e.g. split/duplicate reusing a live id →
+// two items share an id → moveItem moves both). crypto.randomUUID avoids that.
+const uid = (p: string) => `${p}_${crypto.randomUUID()}`;
 
 export interface EditorCommands {
   addMotionGraphic: (tpl: Tpl, at?: { track?: TrackId; startFrame?: number }) => void;
