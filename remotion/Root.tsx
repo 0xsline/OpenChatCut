@@ -1,6 +1,12 @@
 import { Composition } from 'remotion';
 import { TimelineComposition } from '../src/editor/TimelineComposition';
 import { timelineDuration, type TimelineState } from '../src/editor/types';
+import { loadProjectFonts } from '../src/fonts/googleFonts';
+
+// Load the project's Google Fonts so the headless render burns in the real
+// faces (matches the Player). loadFont() registers a delayRender the renderer
+// waits on before the first frame.
+loadProjectFonts();
 
 // A single composition that renders the entire editor timeline. Its dimensions
 // and length are derived per-render from the `state` input prop, so the headless
