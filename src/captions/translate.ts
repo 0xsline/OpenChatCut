@@ -1,3 +1,4 @@
+import type Anthropic from '@anthropic-ai/sdk';
 import type { TimelineItem } from '../editor/types';
 import type { CaptionsData, TranslatedCue } from './types';
 import { paginate } from './types';
@@ -32,7 +33,7 @@ async function translatePhrases(phrases: string[], lang: string): Promise<string
     messages: [{ role: 'user', content: numbered }],
   });
   const text = msg.content
-    .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
     .map((b) => b.text)
     .join('')
     .trim();

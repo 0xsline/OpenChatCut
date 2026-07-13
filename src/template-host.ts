@@ -37,7 +37,10 @@ const isLoadableSrc = (src: unknown): boolean =>
 
 const Img: React.FC<Record<string, unknown>> = (props) =>
   isLoadableSrc(props.src)
-    ? React.createElement(RemotionImg, { ...props, onError: props.onError ?? (() => undefined) })
+    ? React.createElement(RemotionImg, {
+        ...props,
+        onError: props.onError ?? (() => undefined),
+      } as React.ComponentProps<typeof RemotionImg>)
     : null;
 
 // The only globals a template legitimately needs (verified across all 211).
