@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { theme } from '../theme';
 import type { Tpl } from '../types';
+import { AUDIO_ASSETS, type AudioAsset } from '../audio/library';
 
 interface LibraryPanelProps {
   templates: Tpl[];
   onAddTemplate: (tpl: Tpl) => void;
+  onAddAudio: (asset: AudioAsset) => void;
 }
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿'] as const;
@@ -20,9 +22,10 @@ function CATEGORIES(templates: Tpl[]): { cat: string; items: Tpl[] }[] {
   return [...map.entries()].map(([cat, items]) => ({ cat, items }));
 }
 
-export function LibraryPanel({ templates, onAddTemplate }: LibraryPanelProps) {
+export function LibraryPanel({ templates, onAddTemplate, onAddAudio }: LibraryPanelProps) {
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('资源库');
   const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('G 动画');
+  const showAudio = mainTab === '资源库' && (subTab === 'Audio' || subTab === '音效');
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', borderRight: `1px solid ${theme.border}`, background: theme.panel, minHeight: 0, overflow: 'hidden' }}>
@@ -63,6 +66,20 @@ export function LibraryPanel({ templates, onAddTemplate }: LibraryPanelProps) {
                 </div>
               </div>
             ))}
+          </>
+        ) : showAudio ? (
+          <>
+            <div style={{ fontSize: 11, color: theme.textDim, marginBottom: 8 }}>{AUDIO_ASSETS.length} 个音频 · 点击加到 A1</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {AUDIO_ASSETS.map((a) => (
+                <button key={a.id} onClick={() => onAddAudio(a)} title={`点击加到 A1 轨:${a.name}`}
+                  style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', border: `1px solid ${theme.border}`, borderRadius: 8, background: theme.panelAlt, color: theme.text }}>
+                  <span style={{ fontSize: 16 }}>🎵</span>
+                  <span style={{ flex: 1, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</span>
+                  <span style={{ fontSize: 10.5, color: theme.textDim }}>{Math.round(a.durationInFrames / 30)}s</span>
+                </button>
+              ))}
+            </div>
           </>
         ) : (
           <div style={{ color: theme.textDim, fontSize: 12, padding: 8 }}>「{mainTab} · {subTab}」内容待接入。</div>

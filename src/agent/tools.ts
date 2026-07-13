@@ -87,6 +87,24 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { itemId: { type: 'string' }, atFrame: { type: 'number' } }, required: ['itemId', 'atFrame'] },
   },
   {
+    name: 'list_audio',
+    description: 'List available audio assets (music / SFX) that can be placed on audio tracks A1/A2.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'add_audio',
+    description: 'Add an audio asset (music/SFX) as a clip on an audio track (A1/A2). Appended to the track end unless startFrame is given.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        audioName: { type: 'string', description: 'Audio asset name (fuzzy match against list_audio).' },
+        track: { type: 'string', enum: ['A1', 'A2'], description: 'Audio track (default A1).' },
+        startFrame: { type: 'number', description: 'Optional exact start frame; omit to append.' },
+      },
+      required: ['audioName'],
+    },
+  },
+  {
     name: 'create_motion_graphic',
     description: 'Generate a BRAND-NEW motion graphic from a description (writes fresh Remotion code, not from the library). Use only when no library template fits the user\'s intent.',
     input_schema: {
@@ -121,7 +139,7 @@ Contract (MUST follow exactly):
 - Style inline. Make it clean and visually appealing (large readable text, tasteful colors, smooth fade/slide/scale animations).`;
   const msg = await anthropic.messages.create({
     model: MODEL,
-    max_tokens: 2200,
+    max_tokens: 16000, // don't truncate generated components
     system: sys,
     messages: [{ role: 'user', content: description }],
   });
@@ -205,6 +223,17 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
       if (!it) return { error: `no item ${args.itemId}` };
       ctx.commands.duplicateItem(it.id);
       return { ok: true, duplicated: it.name };
+    }
+    case 'list_audio':
+      return ctx.audio.map((a) => ({ name: a.name, category: a.category, seconds: Math.round(a.durationInFrames / 30) }));
+    case 'add_audio': {
+      const q = String(args.audioName ?? '').toLowerCase();
+      const asset = ctx.audio.find((a) => a.name.toLowerCase().includes(q));
+      if (!asset) return { error: `no audio matching "${args.audioName}"`, available: ctx.audio.map((a) => a.name) };
+      const track = (args.track as TrackId) ?? 'A1';
+      const startFrame = typeof args.startFrame === 'number' ? args.startFrame : undefined;
+      ctx.commands.addAudio(asset, { track, startFrame });
+      return { ok: true, added: asset.name, track };
     }
     case 'create_motion_graphic': {
       const description = String(args.description ?? '').trim();

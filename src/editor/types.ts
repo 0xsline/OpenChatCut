@@ -9,14 +9,19 @@ export interface TimelineItem {
   track: TrackId;
   startFrame: number;
   durationInFrames: number;
-  kind: 'motion-graphic';
-  templateId: string;
   name: string;
-  code: string;
-  props: Record<string, unknown>;
+  kind: 'motion-graphic' | 'audio';
+  // motion-graphic fields:
+  templateId?: string;
+  code?: string;
+  props?: Record<string, unknown>;
   /** natural box size the template designs against */
-  width: number;
-  height: number;
+  width?: number;
+  height?: number;
+  // audio fields:
+  src?: string;
+  /** 0..1 playback volume (default 1) */
+  volume?: number;
 }
 
 export interface TimelineState {

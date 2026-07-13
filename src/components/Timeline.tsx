@@ -93,7 +93,10 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
     if (!drag) { return; }
     const { id, mode, baseStart, baseDur, deltaF, targetTrack, baseTrack } = drag;
     if (mode === 'move') {
-      const track = TRACK_META[targetTrack].kind === 'video' ? targetTrack : baseTrack; // MG only on video tracks
+      // keep video clips on video tracks, audio clips on audio tracks
+      const isAudio = state.items.find((it) => it.id === id)?.kind === 'audio';
+      const okTrack = TRACK_META[targetTrack].kind === (isAudio ? 'audio' : 'video');
+      const track = okTrack ? targetTrack : baseTrack;
       if (deltaF !== 0 || track !== baseTrack) commands.moveItem(id, { startFrame: Math.max(0, baseStart + deltaF), track });
     } else if (mode === 'trim-left') {
       const d = Math.min(deltaF, baseDur - 1);
@@ -140,7 +143,8 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
           {TRACK_ORDER.map((trackId) => {
             const meta = TRACK_META[trackId];
             const items = state.items.filter((it) => it.track === trackId);
-            const isDropTarget = drag?.mode === 'move' && drag.targetTrack === trackId && meta.kind === 'video';
+            const dragIsAudio = drag ? state.items.find((it) => it.id === drag.id)?.kind === 'audio' : false;
+            const isDropTarget = drag?.mode === 'move' && drag.targetTrack === trackId && meta.kind === (dragIsAudio ? 'audio' : 'video');
             return (
               <div key={trackId} style={{ display: 'flex', height: ROW_H, borderBottom: `1px solid ${theme.border}`, background: isDropTarget ? '#1b2b1b' : undefined }}>
                 <div style={{ width: HEADER_W, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>

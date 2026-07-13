@@ -4,8 +4,10 @@ import { TOOL_SCHEMAS, executeTool } from './tools';
 import { SYSTEM_PROMPT } from './systemPrompt';
 import { anthropic, MODEL } from './client';
 
-const MAX_TURNS = 8;
-const MAX_TOKENS = 1500;
+// Generous caps — the user has ample token budget; don't throttle. MAX_TURNS is
+// only a runaway backstop (normal edits finish in a handful of turns).
+const MAX_TURNS = 100;
+const MAX_TOKENS = 16000;
 
 // Anthropic message history is the source of truth we pass back each turn.
 export type LLMMessage = Anthropic.MessageParam;

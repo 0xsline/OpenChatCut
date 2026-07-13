@@ -11,6 +11,7 @@ import { useEditor } from './editor/store';
 import type { TimelineState } from './editor/types';
 import templatesJson from './chatcut-templates.json';
 import type { Tpl } from './types';
+import { AUDIO_ASSETS } from './audio/library';
 
 const TEMPLATES = templatesJson as Tpl[];
 
@@ -42,7 +43,7 @@ export default function App() {
   stateRef.current = state;
   const playerRef = useRef<PlayerRef | null>(null);
   const agentCtx = useMemo(
-    () => ({ commands, getState: () => stateRef.current, templates: TEMPLATES }),
+    () => ({ commands, getState: () => stateRef.current, templates: TEMPLATES, audio: AUDIO_ASSETS }),
     [commands],
   );
 
@@ -95,7 +96,7 @@ export default function App() {
         }}
       >
         <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-          <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} />
+          <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} onAddAudio={(a) => commands.addAudio(a)} />
           {/* right column: preview on top, inspector below */}
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
             <PreviewPanel state={state} playerRef={playerRef} />

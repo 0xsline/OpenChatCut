@@ -2,6 +2,7 @@ import { useCallback, useMemo, useReducer } from 'react';
 import type { TimelineItem, TimelineState, TrackId } from './types';
 import { trackEnd } from './types';
 import type { Tpl } from '../types';
+import type { AudioAsset } from '../audio/library';
 
 // ── command actions (these map 1:1 to the future agent tools) ─────────────
 type Action =
@@ -111,6 +112,7 @@ const uid = (p: string) => `${p}_${++counter}`;
 
 export interface EditorCommands {
   addMotionGraphic: (tpl: Tpl, at?: { track?: TrackId; startFrame?: number }) => void;
+  addAudio: (asset: AudioAsset, at?: { track?: TrackId; startFrame?: number }) => void;
   updateItemProps: (id: string, patch: Record<string, unknown>) => void;
   moveItem: (id: string, to: { track?: TrackId; startFrame?: number }) => void;
   setItemTiming: (id: string, timing: { startFrame?: number; durationInFrames?: number }) => void;
@@ -148,6 +150,20 @@ export function useEditor(initial: TimelineState): {
             props: { ...tpl.props },
             width: tpl.width,
             height: tpl.height,
+          },
+        }),
+      addAudio: (asset, at) =>
+        dispatch({
+          type: 'add',
+          startFrame: at?.startFrame,
+          item: {
+            id: uid('item'),
+            track: at?.track ?? 'A1',
+            durationInFrames: asset.durationInFrames,
+            kind: 'audio',
+            name: asset.name,
+            src: asset.src,
+            volume: 1,
           },
         }),
       updateItemProps: (id, patch) => dispatch({ type: 'updateProps', id, patch }),
