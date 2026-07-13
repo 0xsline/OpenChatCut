@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { theme } from './theme';
 import { TopBar } from './components/TopBar';
 import { ChatPanel } from './components/ChatPanel';
@@ -27,6 +27,14 @@ const INITIAL: TimelineState = {
 export default function App() {
   const { state, commands, canUndo, canRedo } = useEditor(INITIAL);
   const selectedItem = state.items.find((it) => it.id === state.selectedId) ?? null;
+
+  // keep a live ref of state so agent tools always read the latest timeline
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const agentCtx = useMemo(
+    () => ({ commands, getState: () => stateRef.current, templates: TEMPLATES }),
+    [commands],
+  );
 
   // keyboard: delete selected, undo/redo
   useEffect(() => {
@@ -67,7 +75,7 @@ export default function App() {
         onRedo={commands.redo}
       />
 
-      <ChatPanel />
+      <ChatPanel ctx={agentCtx} />
 
       <div
         style={{

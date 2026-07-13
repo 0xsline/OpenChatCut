@@ -5,7 +5,7 @@ import type { Tpl } from '../types';
 
 // ── command actions (these map 1:1 to the future agent tools) ─────────────
 type Action =
-  | { type: 'add'; item: TimelineItem }
+  | { type: 'add'; item: Omit<TimelineItem, 'startFrame'>; startFrame?: number }
   | { type: 'updateProps'; id: string; patch: Record<string, unknown> }
   | { type: 'move'; id: string; track?: TrackId; startFrame?: number }
   | { type: 'remove'; id: string }
@@ -16,8 +16,12 @@ const MUTATING = new Set(['add', 'updateProps', 'move', 'remove', 'split']);
 
 function reduce(s: TimelineState, a: Action): TimelineState {
   switch (a.type) {
-    case 'add':
-      return { ...s, items: [...s.items, a.item], selectedId: a.item.id };
+    case 'add': {
+      // compute placement from CURRENT state (correct for sequential adds)
+      const startFrame = a.startFrame ?? trackEnd(s, a.item.track);
+      const item: TimelineItem = { ...a.item, startFrame };
+      return { ...s, items: [...s.items, item], selectedId: item.id };
+    }
     case 'updateProps':
       return {
         ...s,
@@ -105,10 +109,10 @@ export function useEditor(initial: TimelineState): {
       addMotionGraphic: (tpl, at) =>
         dispatch({
           type: 'add',
+          startFrame: at?.startFrame,
           item: {
             id: uid('item'),
             track: at?.track ?? 'V1',
-            startFrame: at?.startFrame ?? trackEnd(h.present, at?.track ?? 'V1'),
             durationInFrames: tpl.durationInFrames,
             kind: 'motion-graphic',
             templateId: tpl.id,
@@ -127,7 +131,7 @@ export function useEditor(initial: TimelineState): {
       undo: () => dispatch({ type: 'undo' }),
       redo: () => dispatch({ type: 'redo' }),
     }),
-    [h.present],
+    [], // dispatch is stable; placement now computed in the reducer
   );
 
   return { state: h.present, commands, canUndo: h.past.length > 0, canRedo: h.future.length > 0 };
