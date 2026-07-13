@@ -191,6 +191,13 @@ const TRANSITION_LABELS: Record<TransitionType, string> = {
   'whip-pan': '甩镜',
   flash: '闪白',
   'luma-blend': '亮度混合',
+  // GLSL 组（真着色器，作用于视频/图片片段；MG/文字回退交叉溶解）
+  'clean-line-wipe': '利落划线',
+  'page-curl': '翻页',
+  'rack-focus': '焦点切换',
+  'organic-dissolve': '有机溶解',
+  'impact-shake': '冲击震动',
+  'anticipation-zoom': '蓄力推近',
 };
 
 // transition INTO the selected clip from the previous adjacent same-track clip

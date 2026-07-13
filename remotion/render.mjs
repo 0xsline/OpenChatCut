@@ -19,7 +19,19 @@ const COMPOSITION_ID = 'timeline';
 let bundlePromise;
 
 async function buildServeUrl() {
-  const serveUrl = await bundle({ entryPoint: ENTRY_POINT, publicDir: PUBLIC_DIR });
+  const serveUrl = await bundle({
+    entryPoint: ENTRY_POINT,
+    publicDir: PUBLIC_DIR,
+    // GLSL shaders are imported as strings via Vite's `?raw`; teach the export
+    // bundle's webpack the same trick (asset/source = raw text module).
+    webpackOverride: (config) => ({
+      ...config,
+      module: {
+        ...config.module,
+        rules: [...(config.module?.rules ?? []), { test: /\.frag$/, type: 'asset/source' }],
+      },
+    }),
+  });
   // Remotion copies publicDir to <serveUrl>/public and only exposes it through
   // staticFile(). But the app (like Vite) addresses assets with root-absolute
   // paths — e.g. <Audio src="/audio/track-1.mp3"> in TimelineComposition — so
@@ -60,6 +72,9 @@ export async function renderTimeline({ state, outputLocation, onProgress }) {
     codec: 'h264',
     inputProps,
     outputLocation,
+    // GLSL transitions need WebGL2 in headless Chrome; 'angle' uses the native
+    // GPU backend (Metal on macOS). Swap to 'swangle' (SwiftShader) on servers.
+    chromiumOptions: { gl: 'angle' },
     onProgress: onProgress ? ({ progress }) => onProgress(progress) : undefined,
   });
 

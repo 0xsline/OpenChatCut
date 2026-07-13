@@ -139,14 +139,31 @@ export interface TrackFlags {
   muted?: boolean;
 }
 
-/** source transition builtin ids (subset of the 12 video transitions) */
-export type TransitionType =
+/** transitions we approximate in CSS (DOM clips can't be GL textures —
+ * the source has the same split: MG/caption layers stay DOM). */
+export type CssTransitionType =
   | 'cross-dissolve'
   | 'dip-to-black'
   | 'soft-wipe'
   | 'whip-pan'
   | 'flash'
   | 'luma-blend';
+
+/** transitions that run the source's real GLSL (video/image clips only) */
+export type GlslTransitionType =
+  | 'page-curl'
+  | 'rack-focus'
+  | 'organic-dissolve'
+  | 'impact-shake'
+  | 'anticipation-zoom'
+  | 'clean-line-wipe';
+
+/** source transition builtin ids (the 12 video transitions) */
+export type TransitionType = CssTransitionType | GlslTransitionType;
+
+export const GLSL_TRANSITION_TYPES: ReadonlySet<TransitionType> = new Set<TransitionType>([
+  'page-curl', 'rack-focus', 'organic-dissolve', 'impact-shake', 'anticipation-zoom', 'clean-line-wipe',
+]);
 
 export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
 

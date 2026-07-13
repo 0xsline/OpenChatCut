@@ -1,9 +1,11 @@
 import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, useCurrentFrame } from 'remotion';
 import { compileTemplate } from '../template-host';
 import { CaptionsLayer } from '../captions/CaptionsLayer';
+import { GlTransition } from '../gl/GlTransition';
 import { keptSegments } from '../transcript/edit';
 import { zoomAt } from './zoom';
-import type { AspectFit, TimelineItem, TimelineState, TransitionType, TransitionDirection } from './types';
+import { GLSL_TRANSITION_TYPES } from './types';
+import type { AspectFit, CssTransitionType, GlslTransitionType, TimelineItem, TimelineState, TransitionDirection } from './types';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
 // fadeIn, then 1→0 across fadeOut. Used for visual opacity + audio volume.
@@ -50,7 +52,7 @@ interface Entrance { opacity: number; transform?: string; filter?: string; maskI
 // each source transition's look: cross-dissolve = smoothstep mix, dip-to-black/
 // flash = colored overlay peaking mid, soft-wipe = feathered directional reveal,
 // whip-pan = directional slide + motion blur, luma-blend = dissolve + bloom.
-function entranceStyle(type: TransitionType, p: number, dir: TransitionDirection): Entrance {
+function entranceStyle(type: CssTransitionType, p: number, dir: TransitionDirection): Entrance {
   const tri = 1 - Math.abs(2 * p - 1); // 0→1→0, peak at the midpoint
   switch (type) {
     case 'cross-dissolve':
@@ -77,7 +79,7 @@ function entranceStyle(type: TransitionType, p: number, dir: TransitionDirection
 }
 
 // Wraps the incoming clip and drives its entrance over the transition window.
-function TransitionIn({ type, L, dir, children }: { type: TransitionType; L: number; dir: TransitionDirection; children: React.ReactNode }) {
+function TransitionIn({ type, L, dir, children }: { type: CssTransitionType; L: number; dir: TransitionDirection; children: React.ReactNode }) {
   const frame = useCurrentFrame();
   const p = L > 0 ? frame / L : 1;
   if (p >= 1) return <AbsoluteFill>{children}</AbsoluteFill>;
@@ -195,16 +197,41 @@ export function TimelineComposition({ state }: { state: TimelineState }) {
 
   // A transition straddles the cut (source: half retreats into outgoing, half
   // into incoming). Extend each clip's render window so both are visible across
-  // the window, and drive the incoming clip's entrance over it.
+  // the window, and drive the incoming clip's entrance over it. GLSL types run
+  // the source's real fragment shader when BOTH clips are texturable
+  // (video/image); with a DOM clip involved (MG/text — no GL texture, same
+  // limit as the source's DOM layers) they fall back to a CSS cross-dissolve.
+  const byId = new Map(state.items.map((it) => [it.id, it]));
+  const texturable = (it?: TimelineItem) => it?.kind === 'video' || it?.kind === 'image';
   const enabledTransitions = (state.transitions ?? []).filter((t) => t.enabled !== false);
-  const entranceOf = new Map<string, { type: TransitionType; L: number; dir: TransitionDirection }>();
+  const entranceOf = new Map<string, { type: CssTransitionType; L: number; dir: TransitionDirection }>();
   const extendBefore = new Map<string, number>();
   const extendAfter = new Map<string, number>();
+  interface GlWindow { key: string; type: GlslTransitionType; from: number; L: number; outgoing: TimelineItem; incoming: TimelineItem; trimOut: number; trimIn: number }
+  const glWindows: GlWindow[] = [];
   for (const t of enabledTransitions) {
     const half = Math.floor(t.durationInFrames / 2);
-    entranceOf.set(t.incomingItemId, { type: t.type, L: t.durationInFrames, dir: t.direction ?? 'left' });
     extendBefore.set(t.incomingItemId, half);
     extendAfter.set(t.outgoingItemId, t.durationInFrames - half);
+    const out = byId.get(t.outgoingItemId);
+    const inc = byId.get(t.incomingItemId);
+    if (GLSL_TRANSITION_TYPES.has(t.type) && texturable(out) && texturable(inc)) {
+      const from = inc!.startFrame - half; // R = incoming.from - floor(L/2)
+      glWindows.push({
+        key: t.id,
+        type: t.type as GlslTransitionType,
+        from,
+        L: t.durationInFrames,
+        outgoing: out!,
+        incoming: inc!,
+        trimOut: Math.max(0, (out!.srcInFrame ?? 0) + (from - out!.startFrame)),
+        trimIn: Math.max(0, (inc!.srcInFrame ?? 0) + (from - inc!.startFrame)),
+      });
+    } else {
+      // CSS entrance: native CSS type as-is; GLSL type over DOM clips → dissolve
+      const cssType = GLSL_TRANSITION_TYPES.has(t.type) ? 'cross-dissolve' : (t.type as CssTransitionType);
+      entranceOf.set(t.incomingItemId, { type: cssType, L: t.durationInFrames, dir: t.direction ?? 'left' });
+    }
   }
 
   return (
@@ -230,6 +257,16 @@ export function TimelineComposition({ state }: { state: TimelineState }) {
           </Sequence>
         );
       })}
+      {/* GLSL transition windows: painted over both clips, beneath captions */}
+      {glWindows.map((w) => (
+        <Sequence key={w.key} from={w.from} durationInFrames={w.L} layout="none" name={`tr:${w.type}`}>
+          <GlTransition
+            type={w.type} L={w.L} windowStart={w.from}
+            outgoing={w.outgoing} incoming={w.incoming} trimOut={w.trimOut} trimIn={w.trimIn}
+            width={state.width} height={state.height} fit={fit}
+          />
+        </Sequence>
+      ))}
       {audio.map((item) => (
         <AudioClip key={item.id} item={item} fps={state.fps} muted={isMuted(item.track)} />
       ))}
