@@ -206,8 +206,8 @@
       ["刀片(B)/修剪(N)/吸附", "partial", "有拖拽裁剪，无模式化工具 + 吸附对齐。源站编辑器工具栏", "P1"],
       ["Ripple 编辑（插入/覆盖）", "todo", "插入模式后续片段整体位移合缝。源站 edit_item ripple", "P1"],
       ["关键帧 + bezier 缓动", "todo", "属性随帧打点，渲染 interpolate + cubic-bezier。源站 keyframe/bezier", "P1"],
-      ["更多媒体类型 image/gif/svg/text/solid", "todo", "kind 扩枚举 + 各自渲染。源站按类型拆表"],
-      ["视频素材片段（video item）", "todo", "导入真视频 → <code>OffthreadVideo</code> + trim。源站 video_item + duration-probe", "P0"],
+      ["更多媒体类型 image/gif/svg/text/solid", "partial", "image + video 已做（<code>MediaFill</code>）；gif/svg/text/solid 待补。源站按类型拆表"],
+      ["视频素材片段（video item）", "done", "导入真视频 → <code>OffthreadVideo</code> 渲染（预览+导出）。源站 video_item", "P0"],
       ["特效（blur/zoom/mosaic/CRT/ASCII…）", "todo", "effect_item.target_item 包裹目标做 CSS/WebGL 滤镜。源站域 F", "P1"],
       ["转场（dissolve/dip/whip-pan/zoom/luma…）", "todo", "两片段重叠区 GLSL 混合（可从 editor bundle 提取源码）。源站 26 个 -frag", "P1"],
       ["标记 markers（点/段批注）", "todo", "锚帧/转写段的注释 + 时间轴标记。源站 manage_markers", "P1"],
@@ -270,8 +270,8 @@
     ["9 · 素材 / 媒体", [
       ["音频素材库（3 音乐 + voice）", "done", "<code>audio/library.ts</code>"],
       ["MG 模板库（211）", "done", "内置 JSON"],
-      ["通用媒体导入（上传视频/图/音）", "partial", "转写会传字节，无「导入到媒体池」。做：file 输入 → asset → 自动转写。源站 import_media", "P0"],
-      ["媒体池（文件夹/搜索/排序/收藏）", "todo", "「我的素材」面板 + assets[] + folder 树。源站 manage_media_pool", "P0"],
+      ["通用媒体导入（上传视频/图/音）", "done", "上传端点 <code>vite-plugin-upload</code>→public/media/uploads（预览+导出同源）+ 客户端探时长/尺寸。源站 import_media", "P0"],
+      ["媒体池（文件夹/搜索/排序/收藏）", "partial", "「我的素材」面板 + assets[] 已做（导入/点击落轨）；文件夹/搜索/排序/收藏待补。源站 manage_media_pool", "P0"],
       ["手机上传 /m/:token", "todo", "扫码手机传素材。源站 phone-upload"],
       ["库素材浏览（转场/特效/LUT/缩放/音效）", "partial", "只有 MG 库。做成 7 类库。源站 browse_library"],
       ["LUT（Sony S-Log3 / Canon Log3）", "todo", "WebGL 3D LUT 采样。源站 2 个内置 log 转换"],
@@ -396,7 +396,7 @@
   document.getElementById("nDone").textContent = counts.done;
   document.getElementById("nPartial").textContent = counts.partial;
   document.getElementById("nTodo").textContent = counts.todo;
-  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：多工程 + 仪表盘（P0）`;
+  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：媒体导入 + 视频/图片 item（P0，真·视频剪辑）`;
 
   requestAnimationFrame(() => {
     document.getElementById("barDone").style.width = counts.done / total * 100 + "%";
