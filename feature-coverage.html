@@ -198,7 +198,7 @@
     ["2 · 编辑器核心 / 时间线", [
       ["增删改查片段", "done", "add/move/retime/duplicate/remove/split，1:1 映射 agent 工具"],
       ["撤销 / 重做", "done", "快照式 history"],
-      ["拖拽移动 / 裁剪 / 跨轨约束", "done", "<code>Timeline.tsx</code> pointer 拖拽 + trim 手柄"],
+      ["拖拽移动 / 裁剪 / 跨轨约束", "done", "<code>Timeline.tsx</code> pointer 拖拽 + trim 手柄；左裁剪推进源入点 <code>srcInFrame</code>（video/audio 真·源剪辑，导出验证 timecode）"],
       ["横向缩放 🔍 / 竖向轨道缩放 Alt+滚轮", "done", "zoom / trackScale 状态"],
       ["时间线上下拖高 + 加权轨道高度", "done", "cc.timelineH + WEIGHT（video 高于 audio）"],
       ["多时间线 / 序列（每工程多条）", "todo", "TimelineState 升成 timelines[]+activeId。源站 manage_timelines —— 长转短地基", "P1"],
@@ -396,7 +396,7 @@
   document.getElementById("nDone").textContent = counts.done;
   document.getElementById("nPartial").textContent = counts.partial;
   document.getElementById("nTodo").textContent = counts.todo;
-  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：媒体导入 + 视频/图片 item（P0，真·视频剪辑）`;
+  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：源剪辑 srcInFrame（左裁剪推进源入点，导出 timecode 验证）`;
 
   requestAnimationFrame(() => {
     document.getElementById("barDone").style.width = counts.done / total * 100 + "%";
