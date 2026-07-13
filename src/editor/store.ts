@@ -8,11 +8,14 @@ type Action =
   | { type: 'add'; item: Omit<TimelineItem, 'startFrame'>; startFrame?: number }
   | { type: 'updateProps'; id: string; patch: Record<string, unknown> }
   | { type: 'move'; id: string; track?: TrackId; startFrame?: number }
+  | { type: 'retime'; id: string; startFrame?: number; durationInFrames?: number }
+  | { type: 'duplicate'; id: string; newId: string }
   | { type: 'remove'; id: string }
   | { type: 'split'; id: string; atFrame: number; newId: string }
+  | { type: 'clear' }
   | { type: 'select'; id: string | null };
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'remove', 'split']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'duplicate', 'remove', 'split', 'clear']);
 
 function reduce(s: TimelineState, a: Action): TimelineState {
   switch (a.type) {
@@ -38,6 +41,27 @@ function reduce(s: TimelineState, a: Action): TimelineState {
             : it,
         ),
       };
+    case 'retime':
+      return {
+        ...s,
+        items: s.items.map((it) =>
+          it.id === a.id
+            ? {
+                ...it,
+                startFrame: Math.max(0, a.startFrame ?? it.startFrame),
+                durationInFrames: Math.max(1, a.durationInFrames ?? it.durationInFrames),
+              }
+            : it,
+        ),
+      };
+    case 'duplicate': {
+      const it = s.items.find((x) => x.id === a.id);
+      if (!it) return s;
+      const copy: TimelineItem = { ...it, id: a.newId, props: { ...it.props }, startFrame: trackEnd(s, it.track) };
+      return { ...s, items: [...s.items, copy], selectedId: copy.id };
+    }
+    case 'clear':
+      return { ...s, items: [], selectedId: null };
     case 'remove':
       return {
         ...s,
@@ -89,8 +113,11 @@ export interface EditorCommands {
   addMotionGraphic: (tpl: Tpl, at?: { track?: TrackId; startFrame?: number }) => void;
   updateItemProps: (id: string, patch: Record<string, unknown>) => void;
   moveItem: (id: string, to: { track?: TrackId; startFrame?: number }) => void;
+  setItemTiming: (id: string, timing: { startFrame?: number; durationInFrames?: number }) => void;
+  duplicateItem: (id: string) => void;
   removeItem: (id: string) => void;
   splitItem: (id: string, atFrame: number) => void;
+  clearTimeline: () => void;
   selectItem: (id: string | null) => void;
   undo: () => void;
   redo: () => void;
@@ -125,8 +152,11 @@ export function useEditor(initial: TimelineState): {
         }),
       updateItemProps: (id, patch) => dispatch({ type: 'updateProps', id, patch }),
       moveItem: (id, to) => dispatch({ type: 'move', id, ...to }),
+      setItemTiming: (id, timing) => dispatch({ type: 'retime', id, ...timing }),
+      duplicateItem: (id) => dispatch({ type: 'duplicate', id, newId: uid('item') }),
       removeItem: (id) => dispatch({ type: 'remove', id }),
       splitItem: (id, atFrame) => dispatch({ type: 'split', id, atFrame, newId: uid('item') }),
+      clearTimeline: () => dispatch({ type: 'clear' }),
       selectItem: (id) => dispatch({ type: 'select', id }),
       undo: () => dispatch({ type: 'undo' }),
       redo: () => dispatch({ type: 'redo' }),

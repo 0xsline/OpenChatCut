@@ -16,8 +16,16 @@ export const TOOL_SCHEMAS = [
     type: 'function',
     function: {
       name: 'list_templates',
-      description: 'List the available motion-graphic templates (name + category) that can be added to the timeline.',
-      parameters: { type: 'object', properties: {} },
+      description: 'Discover motion-graphic templates. With no args: returns the category list with counts. With a category: returns the template names in it. There are ~211 templates, so prefer a category or search_templates instead of listing everything.',
+      parameters: { type: 'object', properties: { category: { type: 'string', description: 'Optional category to list (e.g. "title-cards", "lower-thirds").' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_templates',
+      description: 'Fuzzy-search templates by name/category keyword. Use this to find a specific template among the ~211.',
+      parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
     },
   },
   {
@@ -70,6 +78,26 @@ export const TOOL_SCHEMAS = [
   {
     type: 'function',
     function: {
+      name: 'set_item_timing',
+      description: 'Retime a clip: change its start frame and/or its duration (in frames). Use this to trim or lengthen a clip.',
+      parameters: {
+        type: 'object',
+        properties: { itemId: { type: 'string' }, startFrame: { type: 'number' }, durationInFrames: { type: 'number' } },
+        required: ['itemId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'duplicate_item',
+      description: 'Duplicate a clip (the copy is appended to the end of its track).',
+      parameters: { type: 'object', properties: { itemId: { type: 'string' } }, required: ['itemId'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'remove_item',
       description: 'Delete a clip from the timeline.',
       parameters: { type: 'object', properties: { itemId: { type: 'string' } }, required: ['itemId'] },
@@ -81,6 +109,14 @@ export const TOOL_SCHEMAS = [
       name: 'split_item',
       description: 'Split a clip into two at the given absolute frame.',
       parameters: { type: 'object', properties: { itemId: { type: 'string' }, atFrame: { type: 'number' } }, required: ['itemId', 'atFrame'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'clear_timeline',
+      description: 'Remove ALL clips from the timeline. Only when the user clearly asks to start over / clear everything.',
+      parameters: { type: 'object', properties: {} },
     },
   },
 ] as const;
@@ -106,8 +142,22 @@ export function executeTool(name: string, args: Args, ctx: AgentContext): unknow
         })),
       };
     }
-    case 'list_templates':
-      return ctx.templates.map((t) => ({ name: t.name, category: t.category }));
+    case 'list_templates': {
+      const cat = args.category ? String(args.category).toLowerCase() : null;
+      if (!cat) {
+        const counts: Record<string, number> = {};
+        for (const t of ctx.templates) counts[t.category] = (counts[t.category] ?? 0) + 1;
+        return { categories: counts, total: ctx.templates.length, hint: '传 category 或用 search_templates 精确找' };
+      }
+      return ctx.templates.filter((t) => t.category.toLowerCase() === cat).map((t) => t.name);
+    }
+    case 'search_templates': {
+      const q = String(args.query ?? '').toLowerCase();
+      return ctx.templates
+        .filter((t) => t.name.toLowerCase().includes(q) || t.category.toLowerCase().includes(q))
+        .slice(0, 15)
+        .map((t) => ({ name: t.name, category: t.category }));
+    }
 
     case 'add_motion_graphic': {
       const q = String(args.templateName ?? '').toLowerCase();
@@ -131,6 +181,21 @@ export function executeTool(name: string, args: Args, ctx: AgentContext): unknow
       ctx.commands.moveItem(it.id, { track: args.track as TrackId, startFrame: args.startFrame as number });
       return { ok: true, itemId: it.id };
     }
+    case 'set_item_timing': {
+      const it = findItem(ctx, args.itemId);
+      if (!it) return { error: `no item ${args.itemId}` };
+      ctx.commands.setItemTiming(it.id, { startFrame: args.startFrame as number, durationInFrames: args.durationInFrames as number });
+      return { ok: true, itemId: it.id };
+    }
+    case 'duplicate_item': {
+      const it = findItem(ctx, args.itemId);
+      if (!it) return { error: `no item ${args.itemId}` };
+      ctx.commands.duplicateItem(it.id);
+      return { ok: true, duplicated: it.name };
+    }
+    case 'clear_timeline':
+      ctx.commands.clearTimeline();
+      return { ok: true };
     case 'remove_item': {
       const it = findItem(ctx, args.itemId);
       if (!it) return { error: `no item ${args.itemId}` };
