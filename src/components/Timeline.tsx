@@ -52,6 +52,10 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
   const innerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [availH, setAvailH] = useState(190);
+  // vertical track-height zoom (source: trackHeightScale). 1 = weighted fill;
+  // >1 makes rows taller than the panel (scrolls); Alt+wheel over the timeline.
+  const [trackScale, setTrackScale] = usePersistedState('cc.trackScale', 1);
+  const scaleBy = (f: number) => setTrackScale((z) => Math.min(3, Math.max(0.6, z * f)));
 
   // tracks fill the timeline's height, weighted by type (video taller than
   // audio) — resizing the timeline grows every row while keeping the ratio.
@@ -67,7 +71,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
 
   const totalWeight = TRACK_ORDER.reduce((sum, t) => sum + WEIGHT[TRACK_META[t].kind], 0);
   const unit = availH / totalWeight;
-  const rowHeightOf = (t: TrackId) => Math.max(MIN_ROW, unit * WEIGHT[TRACK_META[t].kind]);
+  const rowHeightOf = (t: TrackId) => Math.max(MIN_ROW, unit * WEIGHT[TRACK_META[t].kind] * trackScale);
   const tracksHeight = TRACK_ORDER.reduce((sum, t) => sum + rowHeightOf(t), 0);
 
   // sync playhead with the Remotion Player (follow playback + reflect seeks)
@@ -153,8 +157,10 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
         <button style={toolBtn} title="重置缩放" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
       </div>
 
-      {/* scrollable ruler + tracks (playhead spans both) */}
-      <div ref={scrollRef} style={{ overflow: 'auto', flex: 1, minHeight: 0 }} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
+      {/* scrollable ruler + tracks (playhead spans both). Alt+wheel = track-height zoom. */}
+      <div ref={scrollRef} style={{ overflow: 'auto', flex: 1, minHeight: 0 }} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+        onWheel={(e) => { if (e.altKey) { e.preventDefault(); scaleBy(e.deltaY < 0 ? 1.1 : 1 / 1.1); } }}
+        title="Alt+滚轮 缩放轨道高度">
         <div ref={innerRef} style={{ position: 'relative', width: innerW }}>
           {/* ruler (click to seek) */}
           <div
