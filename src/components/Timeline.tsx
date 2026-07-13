@@ -30,6 +30,11 @@ const WEIGHT: Record<'video' | 'audio', number> = { video: 1.4, audio: 1 };
 const PX_PER_FRAME = 3; // default time scale (1s ≈ 90px @30fps) — compact by default
 const toolBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14, padding: '2px 5px' };
 
+// vertical divider between toolbar tool groups (source-style grouping)
+function ToolSep() {
+  return <span style={{ width: 1, height: 16, background: theme.border, margin: '0 4px', flexShrink: 0 }} />;
+}
+
 function fmt(frames: number, fps: number): string {
   const s = frames / fps;
   const mm = Math.floor(s / 60);
@@ -287,25 +292,31 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
           </div>
         </div>
       )}
-      {/* toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: `1px solid ${theme.border}` }}>
-        <button style={toolBtn} title="播放" onClick={() => playerRef.current?.toggle()}>▶</button>
-        <button style={{ ...toolBtn, color: theme.accent }}>⧉</button>
-        <button style={toolBtn} title="复制选中" onClick={() => state.selectedId && commands.duplicateItem(state.selectedId)}>⧉</button>
+      {/* toolbar — source layout: left=edit tools · center=transport · right=view */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '6px 10px', borderBottom: `1px solid ${theme.border}` }}>
+        {/* left: edit tools */}
+        <button style={{ ...toolBtn, color: snapping ? theme.accent : theme.textDim }} title={`磁性吸附：${snapping ? '开' : '关'} (S)`} onClick={() => setSnapping((s) => !s)}>🧲</button>
         <button style={toolBtn} title="刀片：在播放头处切分选中片段 (B)" onClick={bladeSelected}>✂</button>
+        <ToolSep />
         <button style={{ ...toolBtn, fontWeight: 700 }} title="加文字（在播放头，V2 轨）" onClick={() => commands.addTextClip({ startFrame: playhead })}>T＋</button>
+        <button style={toolBtn} title="复制选中" onClick={() => state.selectedId && commands.duplicateItem(state.selectedId)}>⧉</button>
+        <button style={toolBtn} title="删除选中" onClick={() => state.selectedId && commands.removeItem(state.selectedId)}>🗑</button>
+        <ToolSep />
         <button style={toolBtn} title="上一个标记 (【)" onClick={() => gotoMarker(-1)}>◃</button>
         <button style={toolBtn} title="加标记（在播放头，M）" onClick={addMarkerAtPlayhead}>🔖</button>
         <button style={toolBtn} title="下一个标记 (】)" onClick={() => gotoMarker(1)}>▹</button>
-        <button style={{ ...toolBtn, color: snapping ? theme.accent : theme.textDim }} title={`磁性吸附：${snapping ? '开' : '关'} (S)`} onClick={() => setSnapping((s) => !s)}>🧲</button>
-        <button style={toolBtn} title="删除选中" onClick={() => state.selectedId && commands.removeItem(state.selectedId)}>🗑</button>
         <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 12, color: theme.text, fontVariantNumeric: 'tabular-nums' }}>{fmt(playhead, state.fps)} / {fmt(total, state.fps)}</span>
+        {/* center: transport + timecode */}
+        <button style={toolBtn} title="播放 / 暂停 (空格)" onClick={() => playerRef.current?.toggle()}>▶</button>
+        <span style={{ fontSize: 12, color: theme.text, fontVariantNumeric: 'tabular-nums', minWidth: 128, textAlign: 'center' }}>{fmt(playhead, state.fps)} / {fmt(total, state.fps)}</span>
         <span style={{ flex: 1 }} />
+        {/* right: view tools (zoom out · slider · zoom in · fit · reset) */}
         <button style={toolBtn} title="缩小时间轴 (⌘−)" onClick={() => zoomBy(1 / 1.4)}>🔍−</button>
+        <input type="range" min={0.5} max={6} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))}
+          title="缩放时间轴" style={{ width: 96, accentColor: theme.accent, cursor: 'pointer' }} />
         <button style={toolBtn} title="放大时间轴 (⌘＋)" onClick={() => zoomBy(1.4)}>🔍＋</button>
         <button style={toolBtn} title="适应宽度 (⇧Z)" onClick={fitToView}>↔</button>
-        <button style={toolBtn} title="重置缩放" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
+        <button style={{ ...toolBtn, minWidth: 42 }} title="重置缩放 (100%)" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
       </div>
 
       {/* scrollable ruler + tracks (playhead spans both). Ctrl/⌘+wheel = time
