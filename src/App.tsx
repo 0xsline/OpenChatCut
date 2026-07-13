@@ -52,6 +52,7 @@ export default function App() {
   // resizable / collapsible panels (persisted across refreshes)
   const [chatW, setChatW] = usePersistedState('cc.chatW', 300);
   const [libW, setLibW] = usePersistedState('cc.libW', 360);
+  const [timelineH, setTimelineH] = usePersistedState('cc.timelineH', 224);
   const [chatCollapsed, setChatCollapsed] = usePersistedState('cc.chatCollapsed', false);
   const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
@@ -137,7 +138,7 @@ export default function App() {
       <div
         style={{
           gridColumn: 3, gridRow: 2, display: 'grid',
-          gridTemplateRows: 'minmax(0, 1fr) 224px',
+          gridTemplateRows: `minmax(0, 1fr) 5px ${timelineH}px`,
           minHeight: 0, minWidth: 0, overflow: 'hidden',
         }}
       >
@@ -154,6 +155,7 @@ export default function App() {
             />
           </div>
         </div>
+        <Divider orientation="horizontal" onResize={(dy) => setTimelineH((h) => clamp(h - dy, 120, 520))} />
         <Timeline state={state} commands={commands} playerRef={playerRef} />
       </div>
     </div>
