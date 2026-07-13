@@ -6,6 +6,7 @@ import { compileTemplate } from '../template-host';
 import { anthropic, MODEL } from './client';
 import { TRANSCRIPT_TOOL_SCHEMAS, TRANSCRIPT_TOOL_NAMES, execTranscriptTool } from './transcript-tools';
 import { TIMELINE_TOOL_SCHEMAS, TIMELINE_TOOL_NAMES, execTimelineTool } from './timeline-tools';
+import { SCRIPT_TOOL_SCHEMAS, SCRIPT_TOOL_NAMES, execScriptTool } from './script-tools';
 import { GENERATE_TOOL_SCHEMAS, GENERATE_TOOL_NAMES, execGenerateTool } from './generate-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
@@ -142,6 +143,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...TRANSCRIPT_TOOL_SCHEMAS,
   // multi-timeline management (source manage_timelines: list/create/duplicate/switch/update/delete)
   ...TIMELINE_TOOL_SCHEMAS,
+  // Script system (source read_script/apply_script — timeline.md 往返, 护城河③)
+  ...SCRIPT_TOOL_SCHEMAS,
   // AI 生成套件（GPT 主攻，定义在 generate-tools.ts：submit_image/video/voice/music/sound）
   ...GENERATE_TOOL_SCHEMAS,
 ];
@@ -185,6 +188,7 @@ function findItem(ctx: AgentContext, itemId: unknown) {
 export async function executeTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   if (TRANSCRIPT_TOOL_NAMES.has(name)) return execTranscriptTool(name, args, ctx);
   if (TIMELINE_TOOL_NAMES.has(name)) return execTimelineTool(name, args, ctx);
+  if (SCRIPT_TOOL_NAMES.has(name)) return execScriptTool(name, args, ctx);
   if (GENERATE_TOOL_NAMES.has(name)) return execGenerateTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {

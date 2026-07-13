@@ -57,6 +57,7 @@ const VERB: Record<string, string> = {
   clean_script: '清理口播',
   edit_captions: '编辑字幕',
   manage_timelines: '管理序列',
+  apply_script: '改稿应用',
 };
 
 function targetOf(args: Record<string, unknown>, actions: AnyAction[]): string {
