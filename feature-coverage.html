@@ -190,7 +190,7 @@
     ["1 · 项目 / 会话生命周期", [
       ["单工程内存编辑", "done", "<code>useEditor</code> reducer + App 内存态"],
       ["工程持久化（自动保存/恢复）", "done", "IndexedDB 自动保存 + 启动恢复 <code>persist/projectStore.ts</code>；正式版对标 Zero+IDB（local-first）", "P0"],
-      ["多工程 + 仪表盘 /projects", "todo", "加路由 + 工程列表页（搜索/排序/新建/复制/软删）。源站 create/list/duplicate/delete_project", "P0"],
+      ["多工程 + 仪表盘 /projects", "done", "hash 路由 + 工程列表页（新建/打开/重命名/复制/删除）<code>Dashboard.tsx</code>；每工程独立持久化", "P0"],
       ["版本历史（快照/回滚）", "todo", "复用 undo 快照机制 + 命名/diff/回滚。源站 /api/versions"],
       ["ask_followup_questions 交互卡", "todo", "Agent 澄清时返回结构化表单卡。源站 followup-questions widget"],
       ["get_editor_url / target_project", "todo", "多工程后才有意义（会话绑定工程）"],
@@ -396,7 +396,7 @@
   document.getElementById("nDone").textContent = counts.done;
   document.getElementById("nPartial").textContent = counts.partial;
   document.getElementById("nTodo").textContent = counts.todo;
-  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：工程持久化（P0 地基）`;
+  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：多工程 + 仪表盘（P0）`;
 
   requestAnimationFrame(() => {
     document.getElementById("barDone").style.width = counts.done / total * 100 + "%";
