@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import { TRACK_ORDER, timelineDuration, type TimelineState, type TrackId } from '../editor/types';
 import type { EditorCommands } from '../editor/store';
@@ -6,6 +7,7 @@ import type { EditorCommands } from '../editor/store';
 interface TimelineProps {
   state: TimelineState;
   commands: EditorCommands;
+  playerRef: RefObject<PlayerRef | null>;
 }
 
 const TRACK_META: Record<TrackId, { color: string; kind: 'video' | 'audio' }> = {
@@ -16,6 +18,8 @@ const TRACK_META: Record<TrackId, { color: string; kind: 'video' | 'audio' }> = 
 };
 
 const HEADER_W = 120;
+const ROW_H = 56;
+const RULER_H = 24;
 const PX_PER_FRAME = 6;
 const toolBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 15, padding: '2px 6px' };
 
@@ -27,95 +31,163 @@ function fmt(frames: number, fps: number): string {
   return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 }
 
-export function Timeline({ state, commands }: TimelineProps) {
-  const total = timelineDuration(state);
-  const [drag, setDrag] = useState<{ id: string; base: number; delta: number } | null>(null);
-  const dragRef = useRef<{ startX: number } | null>(null);
+type DragMode = 'move' | 'trim-left' | 'trim-right';
+interface Drag {
+  id: string; mode: DragMode; baseStart: number; baseDur: number; baseTrack: TrackId;
+  startX: number; deltaF: number; targetTrack: TrackId;
+}
 
-  const onPointerDown = (e: React.PointerEvent, id: string, base: number) => {
+export function Timeline({ state, commands, playerRef }: TimelineProps) {
+  const total = timelineDuration(state);
+  const innerW = HEADER_W + total * PX_PER_FRAME + 240;
+  const [playhead, setPlayhead] = useState(0);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+
+  // sync playhead with the Remotion Player (follow playback + reflect seeks)
+  useEffect(() => {
+    let raf = 0;
+    let detach: (() => void) | null = null;
+    const attach = () => {
+      const p = playerRef.current;
+      if (!p) { raf = requestAnimationFrame(attach); return; }
+      const onFrame = (e: { detail: { frame: number } }) => setPlayhead(e.detail.frame);
+      p.addEventListener('frameupdate', onFrame);
+      detach = () => p.removeEventListener('frameupdate', onFrame);
+    };
+    attach();
+    return () => { if (raf) cancelAnimationFrame(raf); detach?.(); };
+  }, [playerRef]);
+
+  const frameFromClientX = (clientX: number): number => {
+    const r = innerRef.current?.getBoundingClientRect();
+    if (!r) return 0;
+    return Math.max(0, Math.round((clientX - r.left - HEADER_W) / PX_PER_FRAME));
+  };
+  const trackFromClientY = (clientY: number): TrackId => {
+    const r = innerRef.current?.getBoundingClientRect();
+    if (!r) return 'V1';
+    const idx = Math.floor((clientY - r.top - RULER_H) / ROW_H);
+    return TRACK_ORDER[Math.min(Math.max(idx, 0), TRACK_ORDER.length - 1)];
+  };
+
+  const seekTo = (clientX: number) => {
+    const f = Math.min(frameFromClientX(clientX), total - 1);
+    playerRef.current?.seekTo(f);
+    setPlayhead(f);
+  };
+
+  const startDrag = (e: React.PointerEvent, id: string, mode: DragMode, baseStart: number, baseDur: number, baseTrack: TrackId) => {
+    e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     commands.selectItem(id);
-    dragRef.current = { startX: e.clientX };
-    setDrag({ id, base, delta: 0 });
+    setDrag({ id, mode, baseStart, baseDur, baseTrack, startX: e.clientX, deltaF: 0, targetTrack: baseTrack });
   };
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag || !dragRef.current) return;
-    const deltaFrames = Math.round((e.clientX - dragRef.current.startX) / PX_PER_FRAME);
-    setDrag((d) => (d ? { ...d, delta: Math.max(deltaFrames, -d.base) } : d));
+    if (!drag) return;
+    const deltaF = Math.round((e.clientX - drag.startX) / PX_PER_FRAME);
+    const targetTrack = drag.mode === 'move' ? trackFromClientY(e.clientY) : drag.baseTrack;
+    setDrag((d) => (d ? { ...d, deltaF, targetTrack } : d));
   };
   const onPointerUp = () => {
-    if (drag && drag.delta !== 0) commands.moveItem(drag.id, { startFrame: drag.base + drag.delta });
+    if (!drag) { return; }
+    const { id, mode, baseStart, baseDur, deltaF, targetTrack, baseTrack } = drag;
+    if (mode === 'move') {
+      const track = TRACK_META[targetTrack].kind === 'video' ? targetTrack : baseTrack; // MG only on video tracks
+      if (deltaF !== 0 || track !== baseTrack) commands.moveItem(id, { startFrame: Math.max(0, baseStart + deltaF), track });
+    } else if (mode === 'trim-left') {
+      const d = Math.min(deltaF, baseDur - 1);
+      if (d !== 0) commands.setItemTiming(id, { startFrame: Math.max(0, baseStart + d), durationInFrames: baseDur - d });
+    } else if (mode === 'trim-right') {
+      if (deltaF !== 0) commands.setItemTiming(id, { durationInFrames: Math.max(1, baseDur + deltaF) });
+    }
     setDrag(null);
-    dragRef.current = null;
   };
 
   return (
     <section style={{ borderTop: `1px solid ${theme.border}`, background: theme.panel, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
       {/* toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: `1px solid ${theme.border}` }}>
-        <button style={toolBtn}>＋</button>
-        <button style={toolBtn}>▮</button>
+        <button style={toolBtn} title="播放" onClick={() => playerRef.current?.toggle()}>▶</button>
         <button style={{ ...toolBtn, color: theme.accent }}>⧉</button>
-        <button style={toolBtn}>▬</button>
+        <button style={toolBtn} title="复制选中" onClick={() => state.selectedId && commands.duplicateItem(state.selectedId)}>⧉</button>
         <button style={toolBtn} title="删除选中" onClick={() => state.selectedId && commands.removeItem(state.selectedId)}>🗑</button>
         <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 12, color: theme.text, fontVariantNumeric: 'tabular-nums' }}>00:00.00 / {fmt(total, state.fps)}</span>
+        <span style={{ fontSize: 12, color: theme.text, fontVariantNumeric: 'tabular-nums' }}>{fmt(playhead, state.fps)} / {fmt(total, state.fps)}</span>
         <span style={{ flex: 1 }} />
         <button style={toolBtn}>🔍−</button>
         <button style={toolBtn}>🔍＋</button>
         <button style={toolBtn}>CC</button>
       </div>
 
-      {/* ruler */}
-      <div style={{ display: 'flex', borderBottom: `1px solid ${theme.border}`, fontSize: 10, color: theme.textDim }}>
-        <div style={{ width: HEADER_W, flexShrink: 0, textAlign: 'center', padding: '4px 0' }}>{fmt(0, state.fps)}</div>
-        <div style={{ flex: 1, position: 'relative', height: 22, overflow: 'hidden' }}>
-          {Array.from({ length: Math.ceil(total / (state.fps * 2)) + 1 }).map((_, i) => (
-            <span key={i} style={{ position: 'absolute', left: i * state.fps * 2 * PX_PER_FRAME, top: 4 }}>{fmt(i * state.fps * 2, state.fps)}</span>
-          ))}
-        </div>
-      </div>
-
-      {/* tracks */}
+      {/* scrollable ruler + tracks (playhead spans both) */}
       <div style={{ overflow: 'auto', flex: 1, minHeight: 0 }} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
-        {TRACK_ORDER.map((trackId) => {
-          const meta = TRACK_META[trackId];
-          const items = state.items.filter((it) => it.track === trackId);
-          return (
-            <div key={trackId} style={{ display: 'flex', height: 56, borderBottom: `1px solid ${theme.border}` }}>
-              <div style={{ width: HEADER_W, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px', borderRight: `1px solid ${theme.border}` }}>
-                <span style={{ background: meta.color, color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 4, padding: '2px 6px' }}>{trackId}</span>
-                <span style={{ color: theme.textDim, fontSize: 12 }}>👁</span>
-                <span style={{ color: theme.textDim, fontSize: 12 }}>🔊</span>
-              </div>
-              <div style={{ flex: 1, position: 'relative', background: theme.bg }}>
-                {items.map((it) => {
-                  const isDragging = drag?.id === it.id;
-                  const startFrame = it.startFrame + (isDragging ? drag.delta : 0);
-                  const selected = state.selectedId === it.id;
-                  return (
-                    <div
-                      key={it.id}
-                      title={it.name}
-                      onPointerDown={(e) => onPointerDown(e, it.id, it.startFrame)}
-                      style={{
-                        position: 'absolute', left: startFrame * PX_PER_FRAME, top: 6, height: 44,
-                        width: it.durationInFrames * PX_PER_FRAME,
-                        background: meta.kind === 'video' ? theme.clipVideo : theme.clipAudio,
-                        borderRadius: 5, color: '#fff', fontSize: 11,
-                        display: 'flex', alignItems: 'center', padding: '0 8px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
-                        border: selected ? '2px solid #fff' : '2px solid transparent',
-                        cursor: 'grab', userSelect: 'none', touchAction: 'none',
-                      }}
-                    >
-                      <span>✦</span>{it.name}
-                    </div>
-                  );
-                })}
-              </div>
+        <div ref={innerRef} style={{ position: 'relative', width: innerW }}>
+          {/* ruler (click to seek) */}
+          <div
+            onPointerDown={(e) => seekTo(e.clientX)}
+            style={{ display: 'flex', height: RULER_H, borderBottom: `1px solid ${theme.border}`, fontSize: 10, color: theme.textDim, cursor: 'text' }}
+          >
+            <div style={{ width: HEADER_W, flexShrink: 0 }} />
+            <div style={{ position: 'relative', flex: 1 }}>
+              {Array.from({ length: Math.ceil(total / (state.fps * 2)) + 1 }).map((_, i) => (
+                <span key={i} style={{ position: 'absolute', left: i * state.fps * 2 * PX_PER_FRAME, top: 5 }}>{fmt(i * state.fps * 2, state.fps)}</span>
+              ))}
             </div>
-          );
-        })}
+          </div>
+
+          {/* tracks */}
+          {TRACK_ORDER.map((trackId) => {
+            const meta = TRACK_META[trackId];
+            const items = state.items.filter((it) => it.track === trackId);
+            const isDropTarget = drag?.mode === 'move' && drag.targetTrack === trackId && meta.kind === 'video';
+            return (
+              <div key={trackId} style={{ display: 'flex', height: ROW_H, borderBottom: `1px solid ${theme.border}`, background: isDropTarget ? '#1b2b1b' : undefined }}>
+                <div style={{ width: HEADER_W, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>
+                  <span style={{ background: meta.color, color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 4, padding: '2px 6px' }}>{trackId}</span>
+                  <span style={{ color: theme.textDim, fontSize: 12 }}>👁</span>
+                  <span style={{ color: theme.textDim, fontSize: 12 }}>🔊</span>
+                </div>
+                <div style={{ flex: 1, position: 'relative', background: theme.bg }}>
+                  {items.map((it) => {
+                    const dragging = drag?.id === it.id;
+                    const start = it.startFrame + (dragging && drag.mode !== 'trim-right' ? drag.deltaF : 0);
+                    const durTrim = dragging && drag.mode === 'trim-left' ? -drag.deltaF : dragging && drag.mode === 'trim-right' ? drag.deltaF : 0;
+                    const dur = Math.max(1, it.durationInFrames + durTrim);
+                    const selected = state.selectedId === it.id;
+                    return (
+                      <div
+                        key={it.id}
+                        title={it.name}
+                        onPointerDown={(e) => startDrag(e, it.id, 'move', it.startFrame, it.durationInFrames, it.track)}
+                        style={{
+                          position: 'absolute', left: Math.max(0, start) * PX_PER_FRAME, top: 6, height: 44, width: dur * PX_PER_FRAME,
+                          background: meta.kind === 'video' ? theme.clipVideo : theme.clipAudio,
+                          borderRadius: 5, color: '#fff', fontSize: 11,
+                          display: 'flex', alignItems: 'center', padding: '0 12px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
+                          border: selected ? '2px solid #fff' : '2px solid transparent',
+                          cursor: 'grab', userSelect: 'none', touchAction: 'none',
+                        }}
+                      >
+                        {/* trim handles */}
+                        <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track)}
+                          style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: 'rgba(0,0,0,0.25)' }} />
+                        <span style={{ pointerEvents: 'none' }}>✦ {it.name}</span>
+                        <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track)}
+                          style={{ position: 'absolute', right: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: 'rgba(0,0,0,0.25)' }} />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* playhead */}
+          <div style={{ position: 'absolute', top: 0, left: HEADER_W + playhead * PX_PER_FRAME, width: 2, height: RULER_H + TRACK_ORDER.length * ROW_H, background: theme.accent, pointerEvents: 'none' }}>
+            <div style={{ position: 'absolute', top: 0, left: -4, width: 10, height: 10, background: theme.accent, clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
+          </div>
+        </div>
       </div>
     </section>
   );

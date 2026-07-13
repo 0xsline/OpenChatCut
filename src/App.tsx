@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import type { PlayerRef } from '@remotion/player';
 import { theme } from './theme';
 import { TopBar } from './components/TopBar';
 import { ChatPanel } from './components/ChatPanel';
@@ -38,6 +39,7 @@ export default function App() {
   // keep a live ref of state so agent tools always read the latest timeline
   const stateRef = useRef(state);
   stateRef.current = state;
+  const playerRef = useRef<PlayerRef | null>(null);
   const agentCtx = useMemo(
     () => ({ commands, getState: () => stateRef.current, templates: TEMPLATES }),
     [commands],
@@ -98,9 +100,9 @@ export default function App() {
             selectedItem={selectedItem}
             onItemPropChange={(key, value) => state.selectedId && commands.updateItemProps(state.selectedId, { [key]: value })}
           />
-          <PreviewPanel state={state} />
+          <PreviewPanel state={state} playerRef={playerRef} />
         </div>
-        <Timeline state={state} commands={commands} />
+        <Timeline state={state} commands={commands} playerRef={playerRef} />
       </div>
     </div>
   );

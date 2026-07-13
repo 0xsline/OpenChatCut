@@ -1,13 +1,15 @@
-import { Player } from '@remotion/player';
+import type { RefObject } from 'react';
+import { Player, type PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import { TimelineComposition } from '../editor/TimelineComposition';
 import { timelineDuration, type TimelineState } from '../editor/types';
 
 interface PreviewPanelProps {
   state: TimelineState;
+  playerRef: RefObject<PlayerRef | null>;
 }
 
-export function PreviewPanel({ state }: PreviewPanelProps) {
+export function PreviewPanel({ state, playerRef }: PreviewPanelProps) {
   const duration = timelineDuration(state);
   return (
     <section style={{ display: 'flex', flexDirection: 'column', background: theme.panel, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
@@ -20,6 +22,7 @@ export function PreviewPanel({ state }: PreviewPanelProps) {
           </div>
         ) : (
           <Player
+            ref={playerRef}
             component={TimelineComposition}
             inputProps={{ state }}
             durationInFrames={duration}
