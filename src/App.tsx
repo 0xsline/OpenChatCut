@@ -155,7 +155,7 @@ export default function App() {
             />
           </div>
         </div>
-        <Divider orientation="horizontal" onResize={(dy) => setTimelineH((h) => clamp(h - dy, 120, 520))} />
+        <Divider orientation="horizontal" onResize={(dy) => setTimelineH((h) => clamp(h - dy, 120, 300))} />
         <Timeline state={state} commands={commands} playerRef={playerRef} />
       </div>
     </div>

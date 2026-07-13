@@ -18,8 +18,11 @@ const TRACK_META: Record<TrackId, { color: string; kind: 'video' | 'audio' }> = 
 };
 
 const HEADER_W = 104;
-const MIN_ROW = 34;
+const MIN_ROW = 30;
 const RULER_H = 22;
+// source weights tracks by type: video rows are taller than audio rows
+// (videoTrackHeight > audioTrackHeight), not an equal split.
+const WEIGHT: Record<'video' | 'audio', number> = { video: 1.4, audio: 1 };
 const PX_PER_FRAME = 6;
 const toolBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14, padding: '2px 5px' };
 
@@ -44,19 +47,24 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [rowH, setRowH] = useState(38);
+  const [availH, setAvailH] = useState(190);
 
-  // tracks fill the timeline's height: split the scroll area (minus the ruler)
-  // among the tracks so dragging the timeline taller grows every row to match.
+  // tracks fill the timeline's height, weighted by type (video taller than
+  // audio) — resizing the timeline grows every row while keeping the ratio.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const measure = () => setRowH(Math.max(MIN_ROW, (el.clientHeight - RULER_H) / TRACK_ORDER.length));
+    const measure = () => setAvailH(el.clientHeight - RULER_H);
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  const totalWeight = TRACK_ORDER.reduce((sum, t) => sum + WEIGHT[TRACK_META[t].kind], 0);
+  const unit = availH / totalWeight;
+  const rowHeightOf = (t: TrackId) => Math.max(MIN_ROW, unit * WEIGHT[TRACK_META[t].kind]);
+  const tracksHeight = TRACK_ORDER.reduce((sum, t) => sum + rowHeightOf(t), 0);
 
   // sync playhead with the Remotion Player (follow playback + reflect seeks)
   useEffect(() => {
@@ -81,8 +89,12 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
   const trackFromClientY = (clientY: number): TrackId => {
     const r = innerRef.current?.getBoundingClientRect();
     if (!r) return 'V1';
-    const idx = Math.floor((clientY - r.top - RULER_H) / rowH);
-    return TRACK_ORDER[Math.min(Math.max(idx, 0), TRACK_ORDER.length - 1)];
+    let y = clientY - r.top - RULER_H;
+    for (const t of TRACK_ORDER) {
+      y -= rowHeightOf(t);
+      if (y < 0) return t;
+    }
+    return TRACK_ORDER[TRACK_ORDER.length - 1];
   };
 
   const seekTo = (clientX: number) => {
@@ -160,7 +172,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
             const dragIsAudio = drag ? state.items.find((it) => it.id === drag.id)?.kind === 'audio' : false;
             const isDropTarget = drag?.mode === 'move' && drag.targetTrack === trackId && meta.kind === (dragIsAudio ? 'audio' : 'video');
             return (
-              <div key={trackId} style={{ display: 'flex', height: rowH, borderBottom: `1px solid ${theme.border}`, background: isDropTarget ? '#1b2b1b' : undefined }}>
+              <div key={trackId} style={{ display: 'flex', height: rowHeightOf(trackId), borderBottom: `1px solid ${theme.border}`, background: isDropTarget ? '#1b2b1b' : undefined }}>
                 <div style={{ width: HEADER_W, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>
                   <span style={{ background: meta.color, color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px' }}>{trackId}</span>
                   <span style={{ color: theme.textDim, fontSize: 11 }}>👁</span>
@@ -179,7 +191,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
                         title={it.name}
                         onPointerDown={(e) => startDrag(e, it.id, 'move', it.startFrame, it.durationInFrames, it.track)}
                         style={{
-                          position: 'absolute', left: Math.max(0, start) * PX_PER_FRAME, top: 4, height: rowH - 8, width: dur * PX_PER_FRAME,
+                          position: 'absolute', left: Math.max(0, start) * PX_PER_FRAME, top: 4, height: rowHeightOf(trackId) - 8, width: dur * PX_PER_FRAME,
                           background: meta.kind === 'video' ? theme.clipVideo : theme.clipAudio,
                           borderRadius: 5, color: '#fff', fontSize: 10.5,
                           display: 'flex', alignItems: 'center', padding: '0 10px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
@@ -202,7 +214,7 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
           })}
 
           {/* playhead */}
-          <div style={{ position: 'absolute', top: 0, left: HEADER_W + playhead * PX_PER_FRAME, width: 2, height: RULER_H + TRACK_ORDER.length * rowH, background: theme.accent, pointerEvents: 'none' }}>
+          <div style={{ position: 'absolute', top: 0, left: HEADER_W + playhead * PX_PER_FRAME, width: 2, height: RULER_H + tracksHeight, background: theme.accent, pointerEvents: 'none' }}>
             <div style={{ position: 'absolute', top: 0, left: -4, width: 10, height: 10, background: theme.accent, clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
           </div>
         </div>
