@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { theme } from '../theme';
 import type { AgentContext } from '../agent/context';
+import type { TimelineState } from '../editor/types';
 import { useAgent, type DisplayMessage } from '../agent/useAgent';
+import { ProposalCard } from './ProposalCard';
 
 function ToolCard({ msg }: { msg: DisplayMessage }) {
   const t = msg.tool!;
@@ -20,16 +22,23 @@ interface ChatPanelProps {
   ctx: AgentContext;
   collapsed: boolean;
   onToggleCollapse: () => void;
+  /** show a proposal's draft result in the player (null = show committed state) */
+  onPreviewState: (state: TimelineState | null) => void;
 }
 
-export function ChatPanel({ ctx, collapsed, onToggleCollapse }: ChatPanelProps) {
-  const { messages, running, send } = useAgent(ctx);
+export function ChatPanel({ ctx, collapsed, onToggleCollapse, onPreviewState }: ChatPanelProps) {
+  const { messages, running, send, proposal, applyProposal, rejectProposal } = useAgent(ctx);
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages, running]);
+  }, [messages, running, proposal]);
+
+  // clear any preview when the proposal is resolved (applied/rejected)
+  useEffect(() => {
+    if (!proposal) onPreviewState(null);
+  }, [proposal, onPreviewState]);
 
   const submit = () => {
     if (!input.trim() || running) return;
@@ -64,6 +73,14 @@ export function ChatPanel({ ctx, collapsed, onToggleCollapse }: ChatPanelProps) 
           return <div key={i} style={{ color: theme.accent, fontSize: 12, margin: '6px 0' }}>⚠ {m.text}</div>;
         })}
         {running && <div style={{ color: theme.textDim, fontSize: 12, margin: '8px 0' }}>思考中…</div>}
+        {proposal && (
+          <ProposalCard
+            proposal={proposal}
+            onApply={applyProposal}
+            onReject={rejectProposal}
+            onPreview={(on) => onPreviewState(on ? proposal.resultState : null)}
+          />
+        )}
       </div>
 
       <div style={{ padding: 12, borderTop: `1px solid ${theme.border}` }}>

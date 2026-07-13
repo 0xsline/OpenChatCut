@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useReducer } from 'react';
+import { useMemo, useReducer } from 'react';
 import type { AspectFit, ClipFilters, ClipTransform, MediaAsset, TimelineItem, TimelineState, TrackId, TransitionItem, TransitionType, ZoomEffect } from './types';
 import { trackEnd } from './types';
 import type { Tpl } from '../types';
@@ -8,7 +8,7 @@ import type { TranscriptWord } from '../transcript/types';
 import { editedFrames, fillerIndices } from '../transcript/edit';
 
 // ── command actions (these map 1:1 to the future agent tools) ─────────────
-type Action =
+export type Action =
   | { type: 'add'; item: Omit<TimelineItem, 'startFrame'>; startFrame?: number }
   | { type: 'updateProps'; id: string; patch: Record<string, unknown> }
   | { type: 'move'; id: string; track?: TrackId; startFrame?: number }
@@ -37,9 +37,13 @@ type Action =
   | { type: 'deleteWords'; id: string; idxs: number[] }
   | { type: 'cleanScript'; id: string; silenceFrames?: number; removeFillers: boolean }
   | { type: 'clearEdits'; id: string }
-  | { type: 'select'; id: string | null };
+  | { type: 'select'; id: string | null }
+  | { type: 'setFullState'; state: TimelineState };
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
+/** dispatch accepted by the command set: store actions + history undo/redo */
+export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void;
+
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState']);
 
 const EMPTY_CURVE = { version: 1, timebase: 'effect-frame', coordinateSpace: 'composition-normalized', keyframes: [] } as const;
 
@@ -48,7 +52,7 @@ function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): nu
   return editedFrames(it.transcript!, deleted, fps, { maxGapFrames: it.silenceFrames });
 }
 
-function reduce(s: TimelineState, a: Action): TimelineState {
+export function reduce(s: TimelineState, a: Action): TimelineState {
   switch (a.type) {
     case 'add': {
       // compute placement from CURRENT state (correct for sequential adds)
@@ -263,6 +267,8 @@ function reduce(s: TimelineState, a: Action): TimelineState {
     }
     case 'select':
       return { ...s, selectedId: a.id };
+    case 'setFullState':
+      return a.state; // atomic commit of a proposal's result (one history step)
     default:
       return s;
   }
@@ -331,6 +337,8 @@ export interface EditorCommands {
   cleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
   clearEdits: (id: string) => void;
   selectItem: (id: string | null) => void;
+  /** atomically replace the whole timeline (proposal apply → one undo step) */
+  applyState: (state: TimelineState) => void;
   undo: () => void;
   redo: () => void;
 }
@@ -343,8 +351,16 @@ export function useEditor(initial: TimelineState): {
 } {
   const [h, dispatch] = useReducer(historyReduce, { past: [], present: initial, future: [] });
 
-  const commands = useMemo<EditorCommands>(
-    () => ({
+  const commands = useMemo(() => buildCommands(dispatch), []);
+
+  return { state: h.present, commands, canUndo: h.past.length > 0, canRedo: h.future.length > 0 };
+}
+
+// The editor command set over a dispatch fn — reused by the live store (real
+// dispatch → history) and by the proposal draft engine (draft dispatch that
+// records + applies to a scratch state without touching the real timeline).
+function buildCommands(dispatch: Dispatch): EditorCommands {
+  return {
       addMotionGraphic: (tpl, at) =>
         dispatch({
           type: 'add',
@@ -435,11 +451,47 @@ export function useEditor(initial: TimelineState): {
       cleanScript: (id, opts) => dispatch({ type: 'cleanScript', id, silenceFrames: opts.silenceFrames, removeFillers: opts.removeFillers }),
       clearEdits: (id) => dispatch({ type: 'clearEdits', id }),
       selectItem: (id) => dispatch({ type: 'select', id }),
+      applyState: (state) => dispatch({ type: 'setFullState', state }),
       undo: () => dispatch({ type: 'undo' }),
       redo: () => dispatch({ type: 'redo' }),
-    }),
-    [], // dispatch is stable; placement now computed in the reducer
-  );
+  };
+}
 
-  return { state: h.present, commands, canUndo: h.past.length > 0, canRedo: h.future.length > 0 };
+// ── proposal draft engine ─────────────────────────────────────────────────
+// Runs the agent's tools against a scratch copy of the timeline (so it sees its
+// own pending edits) WITHOUT touching the real store, recording every store
+// action. The recorded actions are grouped per agent tool call into operations,
+// and replayed on approve to commit atomically.
+export interface DraftEngine {
+  commands: EditorCommands;
+  getState: () => TimelineState;
+  /** actions recorded since the last checkpoint() */
+  takeActions: () => Action[];
+}
+
+export function makeDraft(base: TimelineState): DraftEngine {
+  let state = base;
+  let pending: Action[] = [];
+  const dispatch: Dispatch = (a) => {
+    if (a.type === 'undo' || a.type === 'redo') return; // history is meaningless in a draft
+    const next = reduce(state, a);
+    if (next !== state) {
+      state = next;
+      pending.push(a);
+    }
+  };
+  return {
+    commands: buildCommands(dispatch),
+    getState: () => state,
+    takeActions: () => {
+      const out = pending;
+      pending = [];
+      return out;
+    },
+  };
+}
+
+/** replay recorded actions on a base state (proposal apply, subset-safe) */
+export function replayActions(base: TimelineState, actions: Action[]): TimelineState {
+  return actions.reduce((s, a) => reduce(s, a), base);
 }
