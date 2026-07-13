@@ -26,7 +26,7 @@ const RULER_H = 22;
 // source weights tracks by type: video rows are taller than audio rows
 // (videoTrackHeight > audioTrackHeight), not an equal split.
 const WEIGHT: Record<'video' | 'audio', number> = { video: 1.4, audio: 1 };
-const PX_PER_FRAME = 6;
+const PX_PER_FRAME = 3; // default time scale (1s ≈ 90px @30fps) — compact by default
 const toolBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14, padding: '2px 5px' };
 
 function fmt(frames: number, fps: number): string {
@@ -49,7 +49,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
   const total = timelineDuration(state);
   const [zoom, setZoom] = usePersistedState('cc.timelineZoom', 1);
   const px = PX_PER_FRAME * zoom; // pixels per frame at the current time-zoom
-  const zoomBy = (f: number) => setZoom((z) => Math.min(3, Math.max(0.35, z * f)));
+  const zoomBy = (f: number) => setZoom((z) => Math.min(6, Math.max(0.5, z * f)));
   const innerW = HEADER_W + total * px + 240;
   const [drag, setDrag] = useState<Drag | null>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -58,7 +58,6 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
   // vertical track-height zoom (source: trackHeightScale). 1 = weighted fill;
   // >1 makes rows taller than the panel (scrolls); Alt+wheel over the timeline.
   const [trackScale, setTrackScale] = usePersistedState('cc.trackScale', 1);
-  const scaleBy = (f: number) => setTrackScale((z) => Math.min(3, Math.max(0.6, z * f)));
 
   // tracks fill the timeline's height, weighted by type (video taller than
   // audio) — resizing the timeline grows every row while keeping the ratio.
@@ -70,6 +69,37 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+
+  // Ctrl/Cmd+wheel = time zoom anchored at the cursor (the frame under the
+  // pointer stays put); Alt+wheel = track-height zoom. Native non-passive
+  // listener: ctrl+wheel is the browser's page-zoom (and trackpad pinch), so
+  // preventDefault must actually work — React's root wheel listener is passive.
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const oldZoom = zoomRef.current;
+        const next = Math.min(6, Math.max(0.5, oldZoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+        if (next === oldZoom) return;
+        const viewX = e.clientX - el.getBoundingClientRect().left;
+        const frame = (viewX + el.scrollLeft - HEADER_W) / (PX_PER_FRAME * oldZoom);
+        setZoom(next);
+        requestAnimationFrame(() => {
+          el.scrollLeft = Math.max(0, frame * PX_PER_FRAME * next + HEADER_W - viewX);
+        });
+      } else if (e.altKey) {
+        e.preventDefault();
+        setTrackScale((z) => Math.min(3, Math.max(0.6, z * (e.deltaY < 0 ? 1.1 : 1 / 1.1))));
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const totalWeight = TRACK_ORDER.reduce((sum, t) => sum + WEIGHT[TRACK_META[t].kind], 0);
@@ -253,10 +283,10 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
         <button style={toolBtn} title="重置缩放" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
       </div>
 
-      {/* scrollable ruler + tracks (playhead spans both). Alt+wheel = track-height zoom. */}
+      {/* scrollable ruler + tracks (playhead spans both). Ctrl/⌘+wheel = time
+          zoom at cursor, Alt+wheel = track-height zoom (native listener above). */}
       <div ref={scrollRef} style={{ overflow: 'auto', flex: 1, minHeight: 0 }} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-        onWheel={(e) => { if (e.altKey) { e.preventDefault(); scaleBy(e.deltaY < 0 ? 1.1 : 1 / 1.1); } }}
-        title="Alt+滚轮 缩放轨道高度">
+        title="Ctrl/⌘+滚轮 缩放时间轴 · Alt+滚轮 缩放轨道高度">
         <div ref={innerRef} style={{ position: 'relative', width: innerW }}>
           {/* ruler (click to seek) */}
           <div
