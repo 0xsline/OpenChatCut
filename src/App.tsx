@@ -1,31 +1,49 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { theme } from './theme';
 import { TopBar } from './components/TopBar';
 import { ChatPanel } from './components/ChatPanel';
 import { LibraryPanel } from './components/LibraryPanel';
 import { PreviewPanel } from './components/PreviewPanel';
 import { Timeline } from './components/Timeline';
+import { useEditor } from './editor/store';
+import type { TimelineState } from './editor/types';
 import templatesJson from './chatcut-templates.json';
 import type { Tpl } from './types';
 
 const TEMPLATES = templatesJson as Tpl[];
 
-// ChatCut editor layout (dockview later; static grid for now):
-//   ┌──────────────── TopBar ─────────────────┐
-//   │ AI chat │ Library     │ Preview          │
-//   │ (left,  ├─────────────┴──────────────────┤
-//   │  full)  │ Timeline (V2/V1/A1/A2)         │
-export default function App() {
-  const [idx, setIdx] = useState(0);
-  const [props, setProps] = useState<Record<string, unknown>>(TEMPLATES[0].props);
-  const t = TEMPLATES[idx];
+const INITIAL: TimelineState = {
+  fps: 30,
+  width: 1920,
+  height: 1080,
+  // seed with a couple items so the timeline isn't empty on first load
+  items: [
+    { id: 'seed_1', track: 'V1', startFrame: 0, durationInFrames: TEMPLATES[6].durationInFrames, kind: 'motion-graphic', templateId: TEMPLATES[6].id, name: TEMPLATES[6].name, code: TEMPLATES[6].code, props: { ...TEMPLATES[6].props }, width: TEMPLATES[6].width, height: TEMPLATES[6].height },
+    { id: 'seed_2', track: 'V1', startFrame: TEMPLATES[6].durationInFrames, durationInFrames: TEMPLATES[0].durationInFrames, kind: 'motion-graphic', templateId: TEMPLATES[0].id, name: TEMPLATES[0].name, code: TEMPLATES[0].code, props: { ...TEMPLATES[0].props }, width: TEMPLATES[0].width, height: TEMPLATES[0].height },
+  ],
+  selectedId: 'seed_1',
+};
 
-  const pick = (i: number) => {
-    setIdx(i);
-    setProps(TEMPLATES[i].props);
-  };
-  const onPropChange = (key: string, value: unknown) =>
-    setProps((s) => ({ ...s, [key]: value }));
+export default function App() {
+  const { state, commands, canUndo, canRedo } = useEditor(INITIAL);
+  const selectedItem = state.items.find((it) => it.id === state.selectedId) ?? null;
+
+  // keyboard: delete selected, undo/redo
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+      if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedId) {
+        e.preventDefault();
+        commands.removeItem(state.selectedId);
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        e.shiftKey ? commands.redo() : commands.undo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [state.selectedId, commands]);
 
   return (
     <div
@@ -40,33 +58,34 @@ export default function App() {
         fontFamily: 'system-ui, -apple-system, sans-serif',
       }}
     >
-      <TopBar projectName="Directus 选型与内部机制 (clone)" credits={18.5} />
+      <TopBar
+        projectName="Directus 选型与内部机制 (clone)"
+        credits={18.5}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={commands.undo}
+        onRedo={commands.redo}
+      />
 
       <ChatPanel />
 
-      {/* right of AI: library+preview on top, timeline on bottom */}
       <div
         style={{
-          gridColumn: 2,
-          gridRow: 2,
-          display: 'grid',
+          gridColumn: 2, gridRow: 2, display: 'grid',
           gridTemplateRows: 'minmax(0, 1fr) 300px',
-          minHeight: 0,
-          minWidth: 0,
-          overflow: 'hidden',
+          minHeight: 0, minWidth: 0, overflow: 'hidden',
         }}
       >
         <div style={{ display: 'grid', gridTemplateColumns: '440px 1fr', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
           <LibraryPanel
             templates={TEMPLATES}
-            selectedIdx={idx}
-            onSelect={pick}
-            props={props}
-            onPropChange={onPropChange}
+            onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)}
+            selectedItem={selectedItem}
+            onItemPropChange={(key, value) => state.selectedId && commands.updateItemProps(state.selectedId, { [key]: value })}
           />
-          <PreviewPanel template={t} props={props} />
+          <PreviewPanel state={state} />
         </div>
-        <Timeline clip={t} />
+        <Timeline state={state} commands={commands} />
       </div>
     </div>
   );

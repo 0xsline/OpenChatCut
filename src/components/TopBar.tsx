@@ -3,6 +3,10 @@ import { theme } from '../theme';
 interface TopBarProps {
   projectName: string;
   credits: number;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
 }
 
 const iconBtn: React.CSSProperties = {
@@ -15,7 +19,7 @@ const iconBtn: React.CSSProperties = {
   borderRadius: 6,
 };
 
-export function TopBar({ projectName, credits }: TopBarProps) {
+export function TopBar({ projectName, credits, canUndo, canRedo, onUndo, onRedo }: TopBarProps) {
   return (
     <header
       style={{
@@ -35,8 +39,8 @@ export function TopBar({ projectName, credits }: TopBarProps) {
         <span>{projectName}</span>
         <span style={{ color: theme.textDim }} title="协作者">⧉</span>
       </div>
-      <button style={iconBtn} title="撤销">↶</button>
-      <button style={iconBtn} title="重做">↷</button>
+      <button style={{ ...iconBtn, opacity: canUndo ? 1 : 0.3, cursor: canUndo ? 'pointer' : 'default' }} title="撤销" onClick={onUndo} disabled={!canUndo}>↶</button>
+      <button style={{ ...iconBtn, opacity: canRedo ? 1 : 0.3, cursor: canRedo ? 'pointer' : 'default' }} title="重做" onClick={onRedo} disabled={!canRedo}>↷</button>
       <button style={iconBtn} title="历史">🕑</button>
       <button style={iconBtn} title="布局">▦</button>
       <button
