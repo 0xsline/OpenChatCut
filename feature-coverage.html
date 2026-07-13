@@ -210,7 +210,7 @@
       ["更多媒体类型 image/gif/svg/text/solid", "partial", "image + video + text 已做（<code>MediaFill</code>/<code>TextLayer</code>，text 含内容/字号/色/对齐/粗细 + T＋ 按钮）；gif/svg/solid 待补。源站按类型拆表"],
       ["视频素材片段（video item）", "done", "导入真视频 → <code>OffthreadVideo</code> 渲染（预览+导出）。源站 video_item", "P0"],
       ["特效（blur/zoom/mosaic/CRT/ASCII…）", "partial", "基础调整已做：亮度/对比度/饱和度/模糊（ClipFilters→CSS filter 于 ClipWrapper，属性面板滑块，导出验证）；mosaic/CRT/ASCII 等 WebGL 特效待补。源站域 F", "P1"],
-      ["转场（dissolve/dip/whip-pan/zoom/luma…）", "todo", "两片段重叠区 GLSL 混合（可从 editor bundle 提取源码）。源站 26 个 -frag", "P1"],
+      ["转场（dissolve/dip/whip-pan/zoom/luma…）", "partial", "忠实源模型:独立 transition_item 挂两相邻同轨片段(outgoing→incoming),骑切点(半退半进,progress=(frame-R)/L)。6 种:交叉溶解/黑场/柔化擦除(带方向)/甩镜/闪白/亮度混合。DOM 片段非 GL 纹理→用 CSS 复刻每种观感(opacity mix/黑白 overlay/羽化 mask/位移+运动模糊)。属性面板转场区+时间线 ⧓ 徽标。导出验证(溶解=双帧混合/黑场=中点全黑/擦除=明暗羽化分割)+预览实时。剩:page-curl/rack-focus/organic 等需真 GLSL 的复杂转场。源站 12+1", "P1"],
       ["标记 markers（点/段批注）", "todo", "锚帧/转写段的注释 + 时间轴标记。源站 manage_markers", "P1"],
       ["色度键 / 绿幕", "todo", "WebGL shader 抠色。源站 chroma"],
       ["变速 / 重定时", "partial", "有改时长，无保音调变速。做：item playbackRate。源站 dH 含 rate 语义"],
@@ -397,7 +397,7 @@
   document.getElementById("nDone").textContent = counts.done;
   document.getElementById("nPartial").textContent = counts.partial;
   document.getElementById("nTodo").textContent = counts.todo;
-  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：文字/标题片段（TextLayer 可编辑内容/字号/色/对齐/粗细，T＋ 加到 V2，复用变换/淡入淡出/滤镜）`;
+  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：转场（忠实源 transition_item 模型 + 6 种 CSS 复刻:溶解/黑场/柔化擦除/甩镜/闪白/亮度混合，导出+预览验证）`;
 
   requestAnimationFrame(() => {
     document.getElementById("barDone").style.width = counts.done / total * 100 + "%";
