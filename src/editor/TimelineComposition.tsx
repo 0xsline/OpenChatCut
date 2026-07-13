@@ -1,8 +1,24 @@
-import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence } from 'remotion';
+import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, useCurrentFrame } from 'remotion';
 import { compileTemplate } from '../template-host';
 import { CaptionsLayer } from '../captions/CaptionsLayer';
 import { keptSegments } from '../transcript/edit';
 import type { AspectFit, TimelineItem, TimelineState } from './types';
+
+// fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
+// fadeIn, then 1→0 across fadeOut. Used for visual opacity + audio volume.
+function fadeFactor(frame: number, dur: number, fadeIn = 0, fadeOut = 0): number {
+  let f = 1;
+  if (fadeIn > 0) f = Math.min(f, frame / fadeIn);
+  if (fadeOut > 0) f = Math.min(f, (dur - frame) / fadeOut);
+  return Math.max(0, Math.min(1, f));
+}
+
+// Wraps a visual clip and ramps its opacity for fade in/out.
+function FadeWrapper({ item, children }: { item: TimelineItem; children: React.ReactNode }) {
+  const frame = useCurrentFrame();
+  const o = fadeFactor(frame, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames);
+  return <AbsoluteFill style={{ opacity: o }}>{children}</AbsoluteFill>;
+}
 
 // One audio clip. With a transcript attached it renders the KEPT segments
 // (deleted words' source ranges are skipped, remaining ranges play back-to-back);
@@ -23,7 +39,8 @@ function AudioClip({ item, fps, muted }: { item: TimelineItem; fps: number; mute
   }
   return (
     <Sequence from={item.startFrame} durationInFrames={item.durationInFrames} name={item.name}>
-      <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0} volume={vol} />
+      <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0}
+        volume={(f) => vol * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
     </Sequence>
   );
 }
@@ -36,7 +53,8 @@ function MediaFill({ item, fit, muted }: { item: TimelineItem; fit: AspectFit; m
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
       {item.kind === 'image'
         ? <Img src={item.src!} style={style} />
-        : <OffthreadVideo src={item.src!} trimBefore={item.srcInFrame ?? 0} volume={muted ? 0 : item.volume ?? 1} style={style} />}
+        : <OffthreadVideo src={item.src!} trimBefore={item.srcInFrame ?? 0}
+            volume={(f) => (muted ? 0 : item.volume ?? 1) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} style={style} />}
     </AbsoluteFill>
   );
 }
@@ -84,9 +102,11 @@ export function TimelineComposition({ state }: { state: TimelineState }) {
     <AbsoluteFill style={{ background: GRID }}>
       {ordered.map((item) => (
         <Sequence key={item.id} from={item.startFrame} durationInFrames={item.durationInFrames} layout="none" name={item.name}>
-          {item.kind === 'motion-graphic'
-            ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
-            : <MediaFill item={item} fit={fit} muted={isMuted(item.track)} />}
+          <FadeWrapper item={item}>
+            {item.kind === 'motion-graphic'
+              ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
+              : <MediaFill item={item} fit={fit} muted={isMuted(item.track)} />}
+          </FadeWrapper>
         </Sequence>
       ))}
       {audio.map((item) => (

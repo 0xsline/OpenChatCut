@@ -38,6 +38,10 @@ export interface TimelineItem {
   volume?: number;
   /** source in-point (frames) for video/audio trimming — left-trim advances it */
   srcInFrame?: number;
+  /** fade in/out durations (frames): opacity ramp for visual clips, volume ramp
+   * for audio (source edit_item fade, stored in seconds → frames). */
+  fadeInFrames?: number;
+  fadeOutFrames?: number;
   /** transcript-based editing: the clip's words + which are deleted (by index).
    * durationInFrames reflects the EDITED length (kept words only). */
   transcript?: TranscriptWord[];

@@ -14,6 +14,7 @@ type Action =
   | { type: 'move'; id: string; track?: TrackId; startFrame?: number }
   | { type: 'retime'; id: string; startFrame?: number; durationInFrames?: number; srcInFrame?: number }
   | { type: 'setVolume'; id: string; volume: number }
+  | { type: 'setFade'; id: string; fadeInFrames?: number; fadeOutFrames?: number }
   | { type: 'duplicate'; id: string; newId: string }
   | { type: 'remove'; id: string }
   | { type: 'split'; id: string; atFrame: number; newId: string }
@@ -30,7 +31,7 @@ type Action =
   | { type: 'clearEdits'; id: string }
   | { type: 'select'; id: string | null };
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
 
 // recompute a transcript-edited clip's duration under its current edit state
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
@@ -79,6 +80,20 @@ function reduce(s: TimelineState, a: Action): TimelineState {
       return {
         ...s,
         items: s.items.map((it) => (it.id === a.id ? { ...it, volume: Math.max(0, Math.min(2, a.volume)) } : it)),
+      };
+    case 'setFade':
+      return {
+        ...s,
+        items: s.items.map((it) => {
+          if (it.id !== a.id) return it;
+          // clamp each fade to at most the clip's length; keep the other side unchanged
+          const cap = it.durationInFrames;
+          return {
+            ...it,
+            fadeInFrames: a.fadeInFrames === undefined ? it.fadeInFrames : Math.max(0, Math.min(cap, a.fadeInFrames)),
+            fadeOutFrames: a.fadeOutFrames === undefined ? it.fadeOutFrames : Math.max(0, Math.min(cap, a.fadeOutFrames)),
+          };
+        }),
       };
     case 'duplicate': {
       const it = s.items.find((x) => x.id === a.id);
@@ -206,6 +221,7 @@ export interface EditorCommands {
   moveItem: (id: string, to: { track?: TrackId; startFrame?: number }) => void;
   setItemTiming: (id: string, timing: { startFrame?: number; durationInFrames?: number; srcInFrame?: number }) => void;
   setItemVolume: (id: string, volume: number) => void;
+  setItemFade: (id: string, fade: { fadeInFrames?: number; fadeOutFrames?: number }) => void;
   duplicateItem: (id: string) => void;
   removeItem: (id: string) => void;
   splitItem: (id: string, atFrame: number) => void;
@@ -286,6 +302,7 @@ export function useEditor(initial: TimelineState): {
       moveItem: (id, to) => dispatch({ type: 'move', id, ...to }),
       setItemTiming: (id, timing) => dispatch({ type: 'retime', id, ...timing }),
       setItemVolume: (id, volume) => dispatch({ type: 'setVolume', id, volume }),
+      setItemFade: (id, fade) => dispatch({ type: 'setFade', id, ...fade }),
       duplicateItem: (id) => dispatch({ type: 'duplicate', id, newId: uid('item') }),
       removeItem: (id) => dispatch({ type: 'remove', id }),
       splitItem: (id, atFrame) => dispatch({ type: 'split', id, atFrame, newId: uid('item') }),

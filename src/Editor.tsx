@@ -146,8 +146,10 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             <InspectorPanel
               templates={TEMPLATES}
               selectedItem={selectedItem}
+              fps={state.fps}
               onItemPropChange={(key, value) => state.selectedId && commands.updateItemProps(state.selectedId, { [key]: value })}
               onItemVolumeChange={(v) => state.selectedId && commands.setItemVolume(state.selectedId, v)}
+              onItemFadeChange={(fade) => state.selectedId && commands.setItemFade(state.selectedId, fade)}
             />
           </div>
         </div>
