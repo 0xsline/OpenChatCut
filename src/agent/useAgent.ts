@@ -24,9 +24,19 @@ export function useAgent(ctx: AgentContext) {
       setRunning(true);
       try {
         llmRef.current = await runAgent(llmRef.current, ctxRef.current, (ev) => {
-          if (ev.type === 'text') setMessages((m) => [...m, { role: 'assistant', text: ev.content }]);
-          else if (ev.type === 'tool') setMessages((m) => [...m, { role: 'tool', text: '', tool: { name: ev.name, args: ev.args, result: ev.result } }]);
-          else setMessages((m) => [...m, { role: 'error', text: ev.message }]);
+          if (ev.type === 'text-start') {
+            setMessages((m) => [...m, { role: 'assistant', text: '' }]);
+          } else if (ev.type === 'text-delta') {
+            setMessages((m) => {
+              const last = m[m.length - 1];
+              if (last?.role === 'assistant') return [...m.slice(0, -1), { ...last, text: last.text + ev.delta }];
+              return [...m, { role: 'assistant', text: ev.delta }];
+            });
+          } else if (ev.type === 'tool') {
+            setMessages((m) => [...m, { role: 'tool', text: '', tool: { name: ev.name, args: ev.args, result: ev.result } }]);
+          } else {
+            setMessages((m) => [...m, { role: 'error', text: ev.message }]);
+          }
         });
       } finally {
         setRunning(false);

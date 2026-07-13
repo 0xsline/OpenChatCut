@@ -11,7 +11,8 @@ const MAX_TOKENS = 1500;
 export type LLMMessage = Anthropic.MessageParam;
 
 export type AgentEvent =
-  | { type: 'text'; content: string }
+  | { type: 'text-start' } // a new assistant text block begins
+  | { type: 'text-delta'; delta: string } // streamed token(s) to append
   | { type: 'tool'; name: string; args: unknown; result: unknown }
   | { type: 'error'; message: string };
 
@@ -19,9 +20,9 @@ export function initialMessages(): LLMMessage[] {
   return []; // system prompt is a top-level param in the Messages API, not a message
 }
 
-// The agent loop, source-faithful to ChatCut: call Claude's Messages API with
-// native tools, run any tool_use blocks against the editor, feed tool_result
-// blocks back, repeat until the model stops requesting tools.
+// The agent loop, source-faithful to ChatCut: STREAM Claude's Messages API with
+// native tools, surfacing assistant text token-by-token; when a turn requests
+// tools, run them against the editor, feed tool_result blocks back, repeat.
 export async function runAgent(
   messages: LLMMessage[],
   ctx: AgentContext,
@@ -32,13 +33,23 @@ export async function runAgent(
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     let resp: Anthropic.Message;
     try {
-      resp = await anthropic.messages.create({
+      const stream = anthropic.messages.stream({
         model: MODEL,
         max_tokens: MAX_TOKENS,
         system: SYSTEM_PROMPT,
         messages: conv,
         tools: TOOL_SCHEMAS,
       });
+      let textStarted = false;
+      stream.on('text', (delta) => {
+        if (!delta) return;
+        if (!textStarted) {
+          onEvent({ type: 'text-start' });
+          textStarted = true;
+        }
+        onEvent({ type: 'text-delta', delta });
+      });
+      resp = await stream.finalMessage();
     } catch (e) {
       const msg = e instanceof Anthropic.APIError ? `${e.status ?? ''} ${e.message}` : e instanceof Error ? e.message : String(e);
       onEvent({ type: 'error', message: msg.trim() });
@@ -46,11 +57,6 @@ export async function runAgent(
     }
 
     conv.push({ role: 'assistant', content: resp.content });
-
-    // surface any assistant text blocks
-    for (const block of resp.content) {
-      if (block.type === 'text' && block.text.trim()) onEvent({ type: 'text', content: block.text });
-    }
 
     if (resp.stop_reason === 'tool_use') {
       const toolResults: Anthropic.ToolResultBlockParam[] = [];

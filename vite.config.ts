@@ -28,12 +28,13 @@ export default defineConfig(({ mode }) => {
                 proxyReq.setHeader('Authorization', `Bearer ${key}`); // relay also accepts Bearer
               }
             });
-            // The relay returns valid Anthropic JSON but with a non-JSON
-            // Content-Type; the @anthropic-ai/sdk only parses bodies typed as
-            // application/json, so force it here (we never stream).
+            // The relay returns non-streaming bodies as valid Anthropic JSON
+            // but with a wrong Content-Type; the @anthropic-ai/sdk only parses
+            // bodies typed as application/json, so force it. MUST leave SSE
+            // (text/event-stream) untouched or streaming breaks.
             proxy.on('proxyRes', (proxyRes) => {
               const ct = proxyRes.headers['content-type'] || '';
-              if (!ct.includes('application/json')) {
+              if (!ct.includes('application/json') && !ct.includes('text/event-stream')) {
                 proxyRes.headers['content-type'] = 'application/json';
               }
             });
