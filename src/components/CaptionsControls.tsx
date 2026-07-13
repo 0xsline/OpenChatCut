@@ -6,13 +6,18 @@ interface CaptionsControlsProps {
   hasTranscript: boolean;
   onGenerate: () => void; // (re)build captions from the current transcript
   onUpdate: (patch: Partial<CaptionsData>) => void;
+  onTranslate: (lang: string) => void; // build a translated 2nd line (async, LLM)
+  translating: boolean;
+  translateError: string | null;
 }
 
 const TEMPLATES: CaptionTemplate[] = ['tiktok', 'netflix', 'plain'];
 const PACINGS: { v: CaptionPacing; label: string }[] = [{ v: 'phrase', label: '短语' }, { v: 'word', label: '逐词' }];
+const LANGS = ['中文', 'English', '日本語', 'Español', 'Français'];
 
 // 字幕 overlay controls — live in the 文字稿 panel (captions derive from transcript).
-export function CaptionsControls({ captions, hasTranscript, onGenerate, onUpdate }: CaptionsControlsProps) {
+export function CaptionsControls({ captions, hasTranscript, onGenerate, onUpdate, onTranslate, translating, translateError }: CaptionsControlsProps) {
+  const lang = captions?.translationLang ?? '中文';
   return (
     <div style={{ borderTop: `1px solid ${theme.border}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>字幕 overlay</div>
@@ -35,6 +40,26 @@ export function CaptionsControls({ captions, hasTranscript, onGenerate, onUpdate
             </select>
           </div>
           <button onClick={onGenerate} disabled={!hasTranscript} style={{ ...btn, opacity: hasTranscript ? 1 : 0.5 }}>用当前文字稿重新生成</button>
+
+          {/* 双语字幕:翻译成第二语言,作为第二行显示 */}
+          <div style={{ borderTop: `1px dashed ${theme.border}`, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 11.5, color: theme.textDim }}>双语字幕(翻译第二行)</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select value={lang} onChange={(e) => onTranslate(e.target.value)} disabled={translating} style={sel}>
+                {LANGS.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+              <button onClick={() => onTranslate(lang)} disabled={translating} style={{ ...btn, background: theme.accent, color: '#fff', opacity: translating ? 0.6 : 1, whiteSpace: 'nowrap' }}>
+                {translating ? '翻译中…' : (captions.translation ? '重新翻译' : `翻译成 ${lang}`)}
+              </button>
+            </div>
+            {captions.translation && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: theme.text }}>
+                <input type="checkbox" checked={!!captions.bilingual} onChange={(e) => onUpdate({ bilingual: e.target.checked })} />
+                显示双语第二行({captions.translationLang})
+              </label>
+            )}
+            {translateError && <div style={{ fontSize: 11, color: '#f88' }}>{translateError}</div>}
+          </div>
         </>
       )}
     </div>

@@ -11,6 +11,13 @@ import type { TranscriptWord } from '../transcript/types';
 export type CaptionTemplate = 'plain' | 'tiktok' | 'netflix';
 export type CaptionPacing = 'word' | 'phrase';
 
+/** One translated caption phrase, timed on the (edited) timeline in ms. */
+export interface TranslatedCue {
+  start: number;
+  end: number;
+  text: string;
+}
+
 export interface CaptionsData {
   enabled: boolean;
   template: CaptionTemplate;
@@ -21,6 +28,12 @@ export interface CaptionsData {
   words?: TranscriptWord[];
   /** timeline offset (frames) for the standalone words */
   offsetFrames?: number;
+  /** bilingual: show a translated second line under the original */
+  bilingual?: boolean;
+  /** translation language label (e.g. "中文") — display/regeneration hint */
+  translationLang?: string;
+  /** translated phrase cues (timeline ms), aligned to the source phrases */
+  translation?: TranslatedCue[];
 }
 
 export interface CaptionPage {
@@ -71,4 +84,15 @@ export function currentWordIndex(page: CaptionPage, ms: number): number {
   let idx = 0;
   for (let i = 0; i < page.words.length; i++) if (ms >= page.words[i].start) idx = i;
   return idx;
+}
+
+// The translated cue active at time `ms` (held until the next cue starts).
+export function activeTranslation(cues: TranslatedCue[], ms: number): TranslatedCue | null {
+  for (let i = cues.length - 1; i >= 0; i--) {
+    if (ms >= cues[i].start) {
+      const until = cues[i + 1]?.start ?? cues[i].end + LINGER_MS;
+      return ms < until ? cues[i] : null;
+    }
+  }
+  return null;
 }

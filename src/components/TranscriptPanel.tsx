@@ -8,6 +8,7 @@ import { toParagraphs, toSegments, analyzeSilences, type IndexedWord } from '../
 import { ParagraphView, SegmentView } from './TranscriptViews';
 import { CaptionsControls } from './CaptionsControls';
 import type { CaptionsData } from '../captions/types';
+import { buildTranslation } from '../captions/translate';
 
 interface TranscriptPanelProps {
   playerRef: RefObject<PlayerRef | null>;
@@ -35,6 +36,8 @@ export function TranscriptPanel({ playerRef, fps, items, captions, onSetCaptions
   const [compressSec, setCompressSec] = useState(0.5);
   const [removeFillers, setRemoveFillers] = useState(true);
   const [pauseResult, setPauseResult] = useState<string | null>(null);
+  const [translating, setTranslating] = useState(false);
+  const [translateError, setTranslateError] = useState<string | null>(null);
   const busy = status === 'uploading' || status === 'processing';
 
   const audioItem = items.find((it) => it.kind === 'audio' && it.track === track && it.src);
@@ -79,6 +82,20 @@ export function TranscriptPanel({ playerRef, fps, items, captions, onSetCaptions
       words: audioItem ? undefined : words,
       offsetFrames: audioItem ? undefined : 0,
     });
+  };
+
+  const onTranslate = async (lang: string) => {
+    if (!captions || translating) return;
+    setTranslating(true);
+    setTranslateError(null);
+    try {
+      const cues = await buildTranslation(captions, items, fps, lang);
+      onUpdateCaptions({ bilingual: true, translationLang: lang, translation: cues });
+    } catch (e) {
+      setTranslateError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTranslating(false);
+    }
   };
 
   const groups = view === 'paragraph' ? toParagraphs(words) : toSegments(words);
@@ -140,7 +157,7 @@ export function TranscriptPanel({ playerRef, fps, items, captions, onSetCaptions
         )}
       </div>
 
-      <CaptionsControls captions={captions} hasTranscript={hasWords} onGenerate={generateCaptions} onUpdate={onUpdateCaptions} />
+      <CaptionsControls captions={captions} hasTranscript={hasWords} onGenerate={generateCaptions} onUpdate={onUpdateCaptions} onTranslate={onTranslate} translating={translating} translateError={translateError} />
     </div>
   );
 }

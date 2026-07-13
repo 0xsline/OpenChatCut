@@ -5,7 +5,8 @@ import type { TranscriptWord } from '../transcript/types';
 import { msToFrame } from '../transcript/types';
 import { transcribePath } from '../transcript/assemblyai';
 import { fillerIndices } from '../transcript/edit';
-import type { CaptionTemplate, CaptionPacing } from '../captions/types';
+import type { CaptionTemplate, CaptionPacing, CaptionsData } from '../captions/types';
+import { buildTranslation } from '../captions/translate';
 
 // Agent tools for the transcript / caption / "delete text = delete video" surface.
 // Names + semantics mirror ChatCut's real tools (see chatcut-reverse
@@ -44,7 +45,7 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'edit_captions',
-    description: 'Turn the captions overlay on/off and set its style. Captions are a single overlay that mirrors a track\'s transcript and follow edits automatically. Templates: plain, tiktok (big karaoke), netflix (bottom). Pacing: word or phrase.',
+    description: 'Turn the captions overlay on/off and set its style. Captions are a single overlay that mirrors a track\'s transcript and follow edits automatically. Templates: plain, tiktok (big karaoke), netflix (bottom). Pacing: word or phrase. translateTo adds a bilingual translated 2nd line.',
     input_schema: {
       type: 'object',
       properties: {
@@ -52,6 +53,7 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
         template: { type: 'string', enum: ['plain', 'tiktok', 'netflix'] },
         pacing: { type: 'string', enum: ['word', 'phrase'] },
         track: { type: 'string', enum: TRACK_ENUM, description: 'Source track whose transcript drives captions (default A1).' },
+        translateTo: { type: 'string', description: 'Also generate a translated 2nd caption line in this language (e.g. "中文", "English", "日本語").' },
       },
     },
   },
@@ -147,15 +149,25 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
         return { ok: true, enabled: false };
       }
       const it = trackClip(ctx, track, true);
+      if (!s.captions && !it?.transcript) return { error: `no transcript on ${track}; call transcribe_track first (captions need a transcript source)` };
       const template = (args.template as CaptionTemplate) ?? s.captions?.template ?? 'tiktok';
       const pacing = (args.pacing as CaptionPacing) ?? s.captions?.pacing ?? 'phrase';
-      if (s.captions) {
-        ctx.commands.updateCaptions({ enabled: true, template, pacing, ...(it ? { sourceItemId: it.id } : {}) });
-      } else {
-        if (!it?.transcript) return { error: `no transcript on ${track}; call transcribe_track first (captions need a transcript source)` };
-        ctx.commands.setCaptions({ enabled: true, template, pacing, sourceItemId: it.id });
+      const base: CaptionsData = { ...(s.captions ?? {}), enabled: true, template, pacing, ...(it ? { sourceItemId: it.id } : {}) };
+      let translatedTo: string | null = null;
+      if (args.translateTo) {
+        try {
+          const cues = await buildTranslation(base, s.items, s.fps, String(args.translateTo));
+          base.translation = cues;
+          base.translationLang = String(args.translateTo);
+          base.bilingual = true;
+          translatedTo = String(args.translateTo);
+        } catch (e) {
+          return { error: `translation failed: ${e instanceof Error ? e.message : String(e)}` };
+        }
       }
-      return { ok: true, enabled: true, template, pacing, source: it?.track ?? null };
+      if (s.captions) ctx.commands.updateCaptions(base);
+      else ctx.commands.setCaptions(base);
+      return { ok: true, enabled: true, template, pacing, source: it?.track ?? null, translatedTo };
     }
     default:
       return undefined;

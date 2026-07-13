@@ -1,23 +1,9 @@
 import { useMemo } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { CaptionsData, CaptionTemplate } from './types';
-import { paginate, activePage, currentWordIndex } from './types';
+import { paginate, activePage, currentWordIndex, activeTranslation } from './types';
 import type { TimelineItem } from '../editor/types';
-import type { TranscriptWord } from '../transcript/types';
-import { retimeWords } from '../transcript/edit';
-
-// Resolve the caption words as TIMELINE-ms words. Prefer the referenced audio
-// item's transcript re-projected onto the edited timeline (captions follow
-// deletions + silence compression); else shift the standalone words by offset.
-function resolveWords(captions: CaptionsData, items: TimelineItem[], fps: number): TranscriptWord[] {
-  const item = captions.sourceItemId ? items.find((it) => it.id === captions.sourceItemId) : undefined;
-  if (item?.transcript?.length) {
-    const del = new Set(item.deletedWordIdx ?? []);
-    return retimeWords(item.transcript, del, fps, item.startFrame, { maxGapFrames: item.silenceFrames });
-  }
-  const offMs = ((captions.offsetFrames ?? 0) / fps) * 1000;
-  return (captions.words ?? []).map((w) => ({ ...w, start: w.start + offMs, end: w.end + offMs }));
-}
+import { resolveCaptionWords } from './resolve';
 
 // Per-template look. `active` marks the word currently being spoken.
 function wordStyle(template: CaptionTemplate, active: boolean): React.CSSProperties {
@@ -37,8 +23,8 @@ function wordStyle(template: CaptionTemplate, active: boolean): React.CSSPropert
 
 function containerStyle(template: CaptionTemplate): React.CSSProperties {
   const base: React.CSSProperties = {
-    position: 'absolute', left: 0, right: 0, display: 'flex', flexWrap: 'wrap',
-    justifyContent: 'center', gap: '0.2em', padding: '0 10%', textAlign: 'center',
+    position: 'absolute', left: 0, right: 0, display: 'flex', flexDirection: 'column',
+    alignItems: 'center', gap: '0.1em', padding: '0 10%', textAlign: 'center',
     fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 800, lineHeight: 1.25,
   };
   if (template === 'tiktok') return { ...base, top: '58%', transform: 'translateY(-50%)', fontSize: 96, textTransform: 'uppercase' };
@@ -54,23 +40,35 @@ export function CaptionsLayer({ captions, items }: { captions: CaptionsData; ite
   const { fps } = useVideoConfig();
   const ms = (frame / fps) * 1000; // absolute timeline ms (words already re-timed)
 
-  const words = useMemo(() => resolveWords(captions, items, fps), [captions, items, fps]);
+  const words = useMemo(() => resolveCaptionWords(captions, items, fps), [captions, items, fps]);
   const pages = useMemo(() => paginate(words, captions.pacing), [words, captions.pacing]);
   const page = activePage(pages, ms);
   if (!page) return null;
   const curIdx = currentWordIndex(page, ms);
+  const translated = captions.bilingual && captions.translation ? activeTranslation(captions.translation, ms) : null;
 
   const isPlain = captions.template === 'plain';
   return (
     <AbsoluteFill style={{ pointerEvents: 'none' }}>
       <div style={containerStyle(captions.template)}>
         {isPlain && <PlainBg />}
-        {page.words.map((w, i) => (
-          <span key={i} style={{ position: 'relative', ...wordStyle(captions.template, i === curIdx) }}>{w.text}</span>
-        ))}
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0.2em' }}>
+          {page.words.map((w, i) => (
+            <span key={i} style={{ position: 'relative', ...wordStyle(captions.template, i === curIdx) }}>{w.text}</span>
+          ))}
+        </div>
+        {translated?.text && <div style={translationStyle(captions.template)}>{translated.text}</div>}
       </div>
     </AbsoluteFill>
   );
+}
+
+// The translated second line: smaller, non-uppercase, sits under the original.
+function translationStyle(template: CaptionTemplate): React.CSSProperties {
+  const base: React.CSSProperties = { marginTop: '0.35em', textTransform: 'none', fontWeight: 600, textAlign: 'center' };
+  if (template === 'tiktok') return { ...base, fontSize: 54, color: '#ffe14d', textShadow: '0 3px 12px rgba(0,0,0,0.7)' };
+  if (template === 'netflix') return { ...base, fontSize: 42, color: '#e8e8e8', textShadow: '0 2px 6px rgba(0,0,0,0.9)' };
+  return { ...base, fontSize: 40, color: '#ffe14d' };
 }
 
 // plain template shows words on a translucent bar; approximate with a wrapper bg.
