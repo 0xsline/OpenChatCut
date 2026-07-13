@@ -1,0 +1,294 @@
+[
+  {
+    "id": "8744f05e-4976-4430-a14e-85a167301c14",
+    "name": "Dark Tech — Callout Tag",
+    "category": "popular-uncategorized",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationInFrames": 90,
+    "props": {
+      "textContent": "TECH REVIEW 2024",
+      "boxColor": "#1a1a1a",
+      "textColor": "#ffffff",
+      "skewAngle": 15,
+      "fontFamily": "Oswald, Impact, sans-serif",
+      "transparentBackground": true
+    },
+    "propSchema": [
+      {
+        "key": "textContent",
+        "type": "text",
+        "defaultValue": "TECH REVIEW 2024"
+      },
+      {
+        "key": "boxColor",
+        "type": "color",
+        "defaultValue": "#1a1a1a"
+      },
+      {
+        "key": "textColor",
+        "type": "color",
+        "defaultValue": "#ffffff"
+      },
+      {
+        "key": "skewAngle",
+        "type": "number",
+        "defaultValue": 15
+      },
+      {
+        "key": "fontFamily",
+        "type": "font",
+        "defaultValue": "Oswald, Impact, sans-serif"
+      },
+      {
+        "key": "transparentBackground",
+        "type": "boolean",
+        "defaultValue": true
+      }
+    ],
+    "code": "const ParallelogramCallout = ({item}) => {\n  const frame = useCurrentFrame();\n  const { durationInFrames } = useVideoConfig();\n  const props = item.props || {};\n  const textContent = props.textContent;\n  const boxColor = props.boxColor;\n  const textColor = props.textColor;\n  const skewAngle = props.skewAngle;\n  const fontFamily = props.fontFamily;\n  const transparentBackground = props.transparentBackground;\n  const DESIGN_WIDTH = 1920;\n  const DESIGN_HEIGHT = 1080;\n  const scale = Math.min((item?.width || DESIGN_WIDTH) / DESIGN_WIDTH, (item?.height || DESIGN_HEIGHT) / DESIGN_HEIGHT);\n  const IN_END = 36;\n  const OUT_START = durationInFrames - 28;\n  // In: slow start, accelerates hard near the end — peak velocity at ~85% of duration\n  // cubic-bezier(0.6, 0, 0.1, 1): long flat start, steep drop near end\n  const easeIn  = Easing.bezier(0.6, 0, 0.1, 1);\n  // Out: launches fast immediately, decelerates gently — mirror of in\n  const easeOut = Easing.bezier(0.9, 0, 0.4, 1);\n  const slideIn = interpolate(frame, [0, IN_END], [1, 0], {\n    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',\n    easing: easeIn\n  });\n  const slideOut = interpolate(frame, [OUT_START, durationInFrames], [0, 1], {\n    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',\n    easing: easeOut\n  });\n  const slideT = frame < OUT_START ? slideIn : slideOut;\n  const FONT_SIZE = 72;\n  const PAD_H = 36;\n  const PAD_V = 24;\n  const SHAPE_H = FONT_SIZE + PAD_V * 2;\n  const skewDeg = typeof skewAngle === 'number' ? skewAngle : 15;\n  const OFFSET = Math.tan(skewDeg * Math.PI / 180) * SHAPE_H;\n  const txt = textContent ? String(textContent).toUpperCase() : '';\n  const SHAPE_W = Math.round(txt.length * FONT_SIZE * 0.58 + PAD_H * 2);\n  const TOTAL_W = SHAPE_W + OFFSET;\n  const pts = '0,' + SHAPE_H + ' ' + SHAPE_W + ',' + SHAPE_H + ' ' + TOTAL_W + ',0 ' + OFFSET + ',0';\n  const RIGHT_MARGIN = 150;\n  const BOTTOM_MARGIN = 100;\n  const svgLeft = DESIGN_WIDTH - RIGHT_MARGIN - TOTAL_W;\n  const svgTop  = DESIGN_HEIGHT - BOTTOM_MARGIN - SHAPE_H;\n  const slideOffsetX = slideT * (DESIGN_WIDTH - svgLeft + 50);\n  const actualLeft = svgLeft + slideOffsetX;\n  const textX = OFFSET + PAD_H;\n  const textY = SHAPE_H / 2;\n  const scaleStr = 'scale(' + scale + ')';\n  const svgLeftStr = actualLeft + 'px';\n  const svgTopStr  = svgTop + 'px';\n  const rootStyle = {\n    position:'absolute', top:0, left:0,\n    width:DESIGN_WIDTH, height:DESIGN_HEIGHT,\n    transform:scaleStr, transformOrigin:'top left',\n    overflow:'hidden',\n    backgroundColor: transparentBackground ? 'transparent' : '#e8e8e8'\n  };\n  const svgStyle = { position:'absolute', left:svgLeftStr, top:svgTopStr, overflow:'visible' };\n  return (\n    <div style={rootStyle}>\n      <svg width={TOTAL_W} height={SHAPE_H} style={svgStyle}>\n        <polygon points={pts} fill={boxColor} />\n        <text\n          x={textX} y={textY}\n          fill={textColor}\n          fontFamily={fontFamily}\n          fontSize={FONT_SIZE}\n          fontWeight=\"900\"\n          dominantBaseline=\"middle\"\n          textAnchor=\"start\"\n          style={{textTransform:'uppercase', letterSpacing:'1px'}}\n        >{textContent}</text>\n      </svg>\n    </div>\n  );\n};"
+  },
+  {
+    "id": "614fbd3c-90b1-4e2b-b52d-e78876757b4b",
+    "name": "Quote card slide-in with word-by-word reveal",
+    "category": "popular-uncategorized",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationInFrames": 90,
+    "props": {
+      "quoteText": "Most people overestimate what they can do in a day, and underestimate what they can do in a decade.",
+      "fontFamily": "Playfair Display",
+      "cardColor": "#f5965f",
+      "cardOpacity": 0.88,
+      "textColor": "#ffffff",
+      "cardBorderRadius": 43,
+      "wordDelay": 7,
+      "slideInDuration": 25,
+      "fontSize": 54
+    },
+    "propSchema": [
+      {
+        "key": "quoteText",
+        "type": "text",
+        "defaultValue": "Most people overestimate what they can do in a day, and underestimate what they can do in a decade."
+      },
+      {
+        "key": "fontFamily",
+        "type": "font",
+        "defaultValue": "Playfair Display"
+      },
+      {
+        "key": "cardColor",
+        "type": "color",
+        "defaultValue": "#f5965f"
+      },
+      {
+        "key": "cardOpacity",
+        "type": "number",
+        "defaultValue": 0.88
+      },
+      {
+        "key": "textColor",
+        "type": "color",
+        "defaultValue": "#ffffff"
+      },
+      {
+        "key": "cardBorderRadius",
+        "type": "number",
+        "defaultValue": 43
+      },
+      {
+        "key": "wordDelay",
+        "type": "number",
+        "defaultValue": 7
+      },
+      {
+        "key": "slideInDuration",
+        "type": "number",
+        "defaultValue": 25
+      },
+      {
+        "key": "fontSize",
+        "type": "number",
+        "defaultValue": 54
+      }
+    ],
+    "code": "const QuoteCardOverlay = ({ item }) => {\n  const frame = useCurrentFrame();\n  const { fps } = useVideoConfig();\n  \n  const props = item.props || {};\n  const quoteText = props.quoteText;\n  const fontFamily = props.fontFamily;\n  const cardColor = props.cardColor;\n  const cardOpacity = typeof props.cardOpacity === 'number' ? props.cardOpacity : 0.88;\n  const textColor = props.textColor;\n  const cardBorderRadius = props.cardBorderRadius;\n  const wordDelay = props.wordDelay;\n  const slideInDuration = props.slideInDuration;\n  const fontSize = props.fontSize;\n\n  const DESIGN_WIDTH = 1920;\n  const DESIGN_HEIGHT = 1080;\n  const scale = Math.min((item?.width || DESIGN_WIDTH) / DESIGN_WIDTH, (item?.height || DESIGN_HEIGHT) / DESIGN_HEIGHT);\n\n  // 贝塞尔缓动：快进慢出，无弹跳\n  const cardProgress = interpolate(\n    frame,\n    [0, slideInDuration],\n    [0, 1],\n    {\n      extrapolateLeft: 'clamp',\n      extrapolateRight: 'clamp',\n      easing: Easing.bezier(0.22, 1, 0.36, 1)\n    }\n  );\n  const cardY = interpolate(cardProgress, [0, 1], [-600, 80]);\n\n  const words = quoteText.split(' ');\n\n  return (\n    <div style={{ position: 'absolute', top: 0, left: 0, width: DESIGN_WIDTH, height: DESIGN_HEIGHT, transform: `scale(${scale})`, transformOrigin: 'top left', backgroundColor: 'transparent', overflow: 'hidden' }}>\n      <div style={{ position: 'absolute', top: 0, left: 80, transform: `translateY(${cardY}px)`, width: 760, borderRadius: cardBorderRadius, boxSizing: 'border-box' }}>\n        <div style={{ position: 'absolute', inset: 0, backgroundColor: cardColor, opacity: cardOpacity, borderRadius: cardBorderRadius, boxShadow: '0 24px 48px rgba(0,0,0,0.08)' }} />\n        <div style={{ position: 'relative', padding: '60px', boxSizing: 'border-box' }}>\n          <div style={{ position: 'absolute', top: 40, right: 40 }}>\n            <svg width=\"56\" height=\"56\" viewBox=\"0 0 24 24\">\n              <path fillRule=\"evenodd\" clipRule=\"evenodd\"\n                d=\"M20 2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h4v3.5l5.5-3.5H20c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z M10.5 7.5h-3v4h2c-.3 1.2-1.2 1.8-2 2v1.5c1.5-.1 3-1.5 3-3.5v-4z M16.5 7.5h-3v4h2c-.3 1.2-1.2 1.8-2 2v1.5c1.5-.1 3-1.5 3-3.5v-4z\"\n                fill={textColor}\n              />\n            </svg>\n          </div>\n          <div style={{ fontFamily, color: textColor, fontSize, lineHeight: 1.25, fontWeight: 'bold', letterSpacing: '-0.02em', marginTop: 10 }}>\n            {words.map((word, i) => {\n              const wordStartFrame = slideInDuration + i * wordDelay;\n              const wordProgress = interpolate(\n                frame,\n                [wordStartFrame, wordStartFrame + 12],\n                [0, 1],\n                { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.bezier(0.22, 1, 0.36, 1) }\n              );\n              const wordOpacity = wordProgress;\n              const wordX = interpolate(wordProgress, [0, 1], [18, 0]);\n              return (\n                <React.Fragment key={i}>\n                  <span style={{ display: 'inline-block', opacity: wordOpacity, transform: `translateX(${wordX}px)`, willChange: 'opacity, transform' }}>{word}</span>\n                  {i < words.length - 1 && ' '}\n                </React.Fragment>\n              );\n            })}\n          </div>\n        </div>\n      </div>\n    </div>\n  );\n};"
+  },
+  {
+    "id": "476fed54-d5de-4a5d-85ce-b9c12dc15abb",
+    "name": "Name card animation",
+    "category": "popular-uncategorized",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationInFrames": 90,
+    "props": {
+      "nameText": "Jane Smith",
+      "subtitleText": "Senior Editor, The Atlantic",
+      "color1": "#f5c842",
+      "color2": "#d94f7a",
+      "color3": "#4bc4c4",
+      "transparentBackground": true
+    },
+    "propSchema": [
+      {
+        "key": "nameText",
+        "type": "text",
+        "defaultValue": "Jane Smith"
+      },
+      {
+        "key": "subtitleText",
+        "type": "text",
+        "defaultValue": "Senior Editor, The Atlantic"
+      },
+      {
+        "key": "color1",
+        "type": "color",
+        "defaultValue": "#f5c842"
+      },
+      {
+        "key": "color2",
+        "type": "color",
+        "defaultValue": "#d94f7a"
+      },
+      {
+        "key": "color3",
+        "type": "color",
+        "defaultValue": "#4bc4c4"
+      },
+      {
+        "key": "transparentBackground",
+        "type": "boolean",
+        "defaultValue": true
+      }
+    ],
+    "code": "const LowerThirdNameBar = ({item}) => {\n  const baseFrame = useCurrentFrame();\n  const {fps, durationInFrames} = useVideoConfig();\n\n  const props = item.props || {};\n  const nameText = props.nameText;\n  const subtitleText = props.subtitleText;\n  const color1 = props.color1;\n  const color2 = props.color2;\n  const color3 = props.color3;\n  const transparentBackground = props.transparentBackground;\n\n  const DESIGN_WIDTH = 1920;\n  const DESIGN_HEIGHT = 1080;\n  const scale = Math.min((item?.width || DESIGN_WIDTH) / DESIGN_WIDTH, (item?.height || DESIGN_HEIGHT) / DESIGN_HEIGHT);\n\n  const qFrame = Math.floor(baseFrame / 3) * 3;\n\n  const nameLen = nameText ? nameText.length : 0;\n  const TYPE_START = 6;\n  const TYPE_SPEED = 1;\n  const charsToShow = Math.min(nameLen, Math.max(0, Math.floor((qFrame - TYPE_START) / TYPE_SPEED)));\n  const displayedName = nameText ? nameText.substring(0, charsToShow) : '';\n\n  const nameFinishFrame = TYPE_START + nameLen * TYPE_SPEED;\n  const subStartFrame = nameFinishFrame + 4;\n  const subEndFrame = subStartFrame + 12;\n  const subHeight = interpolate(qFrame, [subStartFrame, subEndFrame], [0, 48], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n\n  const BAR_HEIGHT = 140;\n  const BAR_DURATION = 9;\n  const yellowStart  = subEndFrame - BAR_DURATION;\n  const magentaStart = yellowStart - 4;\n  const cyanStart    = magentaStart - 6;\n\n  const cyanHeight    = interpolate(qFrame, [cyanStart,    cyanStart    + BAR_DURATION], [0, BAR_HEIGHT], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const magentaHeight = interpolate(qFrame, [magentaStart, magentaStart + BAR_DURATION], [0, BAR_HEIGHT], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const yellowHeight  = interpolate(qFrame, [yellowStart,  yellowStart  + BAR_DURATION], [0, BAR_HEIGHT], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n\n  const rootStyle = {\n    position: 'absolute', top: 0, left: 0,\n    width: DESIGN_WIDTH, height: DESIGN_HEIGHT,\n    transform: `scale(${scale})`, transformOrigin: 'top left',\n    backgroundColor: transparentBackground ? 'transparent' : '#1a1a1a',\n    overflow: 'hidden'\n  };\n\n  return (\n    <div style={rootStyle}>\n      <div style={{ position: 'absolute', left: 80, top: 760, width: 1700, height: 200 }}>\n        <div style={{ position: 'absolute', left: 0, top: 8, width: 14, height: BAR_HEIGHT }}>\n          <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: cyanHeight,    backgroundColor: color3, zIndex: 1 }} />\n          <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: magentaHeight, backgroundColor: color2, zIndex: 2 }} />\n          <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: yellowHeight,  backgroundColor: color1, zIndex: 3 }} />\n        </div>\n        <div style={{\n          position: 'absolute', left: 38, top: 0,\n          fontFamily: 'Roboto, sans-serif',\n          fontSize: 88, fontWeight: 'bold', color: '#ffffff',\n          lineHeight: '92px', whiteSpace: 'nowrap', letterSpacing: '0.5px'\n        }}>{displayedName}</div>\n        <div style={{\n          position: 'absolute', left: 40, top: 94,\n          width: 1600, height: subHeight, overflow: 'hidden'\n        }}>\n          <div style={{\n            fontFamily: 'Roboto, sans-serif',\n            fontSize: 34, color: 'rgba(255,255,255,0.85)',\n            lineHeight: '48px', whiteSpace: 'nowrap', fontWeight: 'normal', letterSpacing: '0.4px'\n          }}>{subtitleText}</div>\n        </div>\n      </div>\n    </div>\n  );\n};"
+  },
+  {
+    "id": "c480c5c8-9812-49ab-a04b-1dfef0405aa8",
+    "name": "Alert Card",
+    "category": "title-cards",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationInFrames": 90,
+    "props": {
+      "titleText": "NEW VIDEO",
+      "subtitleText": "NOW LIVE ON YOUTUBE",
+      "marqueeText": "NEW VIDEO UPLOADED • ",
+      "accentColor": "#FF69B4",
+      "primaryColor": "#000000",
+      "backgroundColor": "#FFFFFF"
+    },
+    "propSchema": [
+      {
+        "key": "titleText",
+        "type": "text",
+        "defaultValue": "NEW VIDEO"
+      },
+      {
+        "key": "subtitleText",
+        "type": "text",
+        "defaultValue": "NOW LIVE ON YOUTUBE"
+      },
+      {
+        "key": "marqueeText",
+        "type": "text",
+        "defaultValue": "NEW VIDEO UPLOADED • "
+      },
+      {
+        "key": "accentColor",
+        "type": "color",
+        "defaultValue": "#FF69B4"
+      },
+      {
+        "key": "primaryColor",
+        "type": "color",
+        "defaultValue": "#000000"
+      },
+      {
+        "key": "backgroundColor",
+        "type": "color",
+        "defaultValue": "#FFFFFF"
+      }
+    ],
+    "code": "const SmartTitles = ({item}) => {\n  const frame = useCurrentFrame();\n  const {fps} = useVideoConfig();\n  \n  // Props\n  const props = item.props || {};\n  const titleText = props.titleText || 'NEW VIDEO';\n  const subtitleText = props.subtitleText || 'NOW LIVE ON YOUTUBE';\n  const marqueeText = props.marqueeText || 'NEW VIDEO UPLOADED • ';\n  const accentColor = props.accentColor || '#FF69B4';\n  const primaryColor = props.primaryColor || '#000000';\n  const backgroundColor = props.backgroundColor || '#FFFFFF';\n  const fontFamily = props.fontFamily || '\"Press Start 2P\", cursive';\n\n  // Dimensions\n  const DESIGN_WIDTH = 820;\n  const DESIGN_HEIGHT = 220;\n  const scale = Math.min((item?.width || DESIGN_WIDTH) / DESIGN_WIDTH, (item?.height || DESIGN_HEIGHT) / DESIGN_HEIGHT);\n\n  // Card Spec\n  const CARD_WIDTH = 700;\n  const CARD_HEIGHT = 160;\n  const BORDER_WIDTH = 2;\n\n  // Animation: Entrance Spring (Bouncier)\n  const entrance = spring({\n    frame,\n    fps,\n    config: { damping: 12, stiffness: 120, mass: 1.2 }\n  });\n\n  // Entrance Y: start below canvas, end at center\n  // Centering Y: (220 - 160) / 2 = 30px from top. \n  // But we have shadow offsets (+12px), so we shift slightly up to optical center.\n  const targetY = 20; \n  const startY = 300;\n  const currentY = interpolate(entrance, [0, 1], [startY, targetY]);\n\n  // Animation: Text Reveal (After card lands)\n  const textOpacity = interpolate(frame, [15, 25], [0, 1], { extrapolateRight: 'clamp' });\n  const textY = interpolate(frame, [15, 25], [10, 0], { extrapolateRight: 'clamp' });\n\n  // Animation: Marquee Scroll\n  // Continuous scroll right-to-left\n  const scrollSpeed = 2;\n  const scrollOffset = (frame * scrollSpeed);\n\n  // Animation: Pulse Line\n  const pulse = (Math.sin(frame / 5) + 1) / 2; // 0 to 1 oscillating\n  const pulseOpacity = interpolate(pulse, [0, 1], [0.3, 1]);\n\n  // Styles\n  const rootStyle = {\n    position: 'absolute',\n    top: 0,\n    left: 0,\n    width: DESIGN_WIDTH,\n    height: DESIGN_HEIGHT,\n    transform: `scale(${scale})`,\n    transformOrigin: 'top left',\n    display: 'flex',\n    justifyContent: 'center',\n    fontFamily: fontFamily,\n    backgroundColor: 'transparent',\n  };\n\n  const wrapperStyle = {\n    position: 'relative',\n    width: CARD_WIDTH,\n    height: CARD_HEIGHT,\n    marginTop: currentY, // Animate position\n  };\n\n  const commonCardStyle = {\n    position: 'absolute',\n    width: '100%',\n    height: '100%',\n    border: `${BORDER_WIDTH}px solid ${primaryColor}`,\n    backgroundColor: backgroundColor,\n    boxSizing: 'border-box',\n  };\n\n  // Offset shadows\n  const shadow2Style = {\n    ...commonCardStyle,\n    top: 12,\n    left: 12,\n    zIndex: 0,\n  };\n\n  const shadow1Style = {\n    ...commonCardStyle,\n    top: 6,\n    left: 6,\n    zIndex: 1,\n  };\n\n  // Main content card\n  const mainCardStyle = {\n    ...commonCardStyle,\n    top: 0,\n    left: 0,\n    zIndex: 2,\n    display: 'flex',\n    flexDirection: 'column',\n    overflow: 'hidden',\n  };\n\n  // Pink Header\n  const headerStyle = {\n    height: 24,\n    backgroundColor: accentColor,\n    borderBottom: `${BORDER_WIDTH}px solid ${primaryColor}`,\n    display: 'flex',\n    alignItems: 'center',\n    overflow: 'hidden',\n    whiteSpace: 'nowrap',\n  };\n\n  const marqueeTextStyle = {\n    color: '#FFFFFF',\n    fontSize: 10,\n    fontWeight: 'bold',\n    paddingLeft: 10,\n    transform: `translateX(-${scrollOffset}px)`,\n    display: 'inline-block',\n  };\n\n  // Body Content\n  const bodyStyle = {\n    flex: 1,\n    padding: '20px 24px',\n    display: 'flex',\n    flexDirection: 'column',\n    justifyContent: 'center',\n    opacity: textOpacity,\n    transform: `translateY(${textY}px)`,\n  };\n\n  const titleStyle = {\n    fontSize: 22,\n    color: primaryColor,\n    lineHeight: 1.2,\n    marginBottom: 8,\n    textTransform: 'uppercase',\n  };\n\n  const subtitleStyle = {\n    fontSize: 12,\n    color: '#666666',\n    marginBottom: 16,\n    textTransform: 'uppercase',\n  };\n\n  const pulseLineStyle = {\n    width: 60,\n    height: 4,\n    backgroundColor: accentColor,\n    opacity: pulseOpacity,\n  };\n\n  // Helper to repeat text for marquee\n  const repeatedMarquee = Array(40).fill(marqueeText).join(' ');\n\n  return (\n    <div style={rootStyle}>\n      <div style={wrapperStyle}>\n        <div style={shadow2Style} />\n        <div style={shadow1Style} />\n        <div style={mainCardStyle}>\n          <div style={headerStyle}>\n            <div style={marqueeTextStyle}>\n              {repeatedMarquee}\n            </div>\n          </div>\n          <div style={bodyStyle}>\n            <div style={titleStyle}>{titleText}</div>\n            <div style={subtitleStyle}>{subtitleText}</div>\n            <div style={pulseLineStyle} />\n          </div>\n        </div>\n      </div>\n    </div>\n  );\n};"
+  },
+  {
+    "id": "1bdbddfd-60bc-4fb3-ab57-c8a6427777ae",
+    "name": "Black Title - Box Title",
+    "category": "title-cards",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationInFrames": 90,
+    "props": {},
+    "propSchema": [],
+    "code": "const SharpTitleGraphic = ({item}) => {\n  const frame = useCurrentFrame();\n  const { fps, durationInFrames } = useVideoConfig();\n\n  const props = item.props || {};\n  const mainTitle = props.mainTitle || 'UNIQUE DESIGN';\n  const textColor = props.textColor || '#FFFFFF';\n  const borderColor = props.borderColor || '#FFFFFF';\n\n  const DESIGN_WIDTH = 1920;\n  const DESIGN_HEIGHT = 1080;\n  const scale = Math.min(\n    (item?.width || DESIGN_WIDTH) / DESIGN_WIDTH,\n    (item?.height || DESIGN_HEIGHT) / DESIGN_HEIGHT\n  );\n\n  const safeFps = fps || 30;\n  const safeDuration = durationInFrames || 150;\n\n  const boxScaleIn = spring({\n    frame,\n    fps: safeFps,\n    config: { damping: 12, stiffness: 140, mass: 1 }\n  });\n\n  const exitStartFrame = safeDuration - 25;\n\n  const exitSpring = spring({\n    frame: Math.max(0, frame - exitStartFrame),\n    fps: safeFps,\n    config: { damping: 18, stiffness: 200 }\n  });\n\n  const boxScale = frame < exitStartFrame ? boxScaleIn : Math.max(0, 1 - exitSpring);\n\n  const wipeProgress = interpolate(frame - 15, [0, 20], [100, 0], {\n    extrapolateLeft: 'clamp',\n    extrapolateRight: 'clamp'\n  });\n\n  const textVisible = frame < exitStartFrame;\n\n  const rootStyle = {\n    position: 'absolute',\n    top: 0,\n    left: 0,\n    width: DESIGN_WIDTH,\n    height: DESIGN_HEIGHT,\n    transform: `scale(${scale})`,\n    transformOrigin: 'top left',\n    backgroundColor: 'transparent',\n    display: 'flex',\n    alignItems: 'center',\n    justifyContent: 'center',\n    overflow: 'hidden'\n  };\n\n  const boxStyle = {\n    width: '1306px',\n    height: '160px',\n    backgroundColor: 'transparent',\n    border: `2px solid ${borderColor}`,\n    display: 'flex',\n    alignItems: 'center',\n    justifyContent: 'center',\n    transform: `scale(${boxScale})`,\n    boxSizing: 'border-box'\n  };\n\n  const textStyle = {\n    fontFamily: '\"Montserrat\", sans-serif',\n    fontWeight: 800,\n    fontSize: '105px',\n    color: textColor,\n    clipPath: `inset(0 ${wipeProgress}% 0 0)`,\n    opacity: textVisible ? 1 : 0,\n    margin: 0,\n    lineHeight: 1.2,\n    letterSpacing: '0.08em',\n    textTransform: 'uppercase',\n    whiteSpace: 'nowrap'\n  };\n\n  return (\n    <div style={rootStyle}>\n      <div style={boxStyle}>\n        <div style={textStyle}>\n          {mainTitle}\n        </div>\n      </div>\n    </div>\n  );\n};"
+  },
+  {
+    "id": "b90365b4-68f6-4de6-9d79-96f6bb9f90e4",
+    "name": "Bold Glitch Title",
+    "category": "text-effects",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationInFrames": 90,
+    "props": {},
+    "propSchema": [],
+    "code": "const BoldGlitchTitle05 = ({item}) => {\n  const frame = useCurrentFrame();\n  const {durationInFrames} = useVideoConfig();\n  const props = item.props || {};\n  const mainTitle = props.mainTitle || 'EASY TO USE';\n  const subtitleText = props.subtitleText || 'NEON GLITCH TEMPLATE';\n  const textColor = props.textColor || '#FFFFFF';\n  const glowColor = props.glowColor || 'rgba(255,255,255,0.5)';\n  const bgOpacity = props.bgOpacity !== undefined ? parseFloat(props.bgOpacity) : 0.88;\n\n  const DESIGN_WIDTH = 1920, DESIGN_HEIGHT = 1080;\n  const scale = Math.min((item?.width||DESIGN_WIDTH)/DESIGN_WIDTH, (item?.height||DESIGN_HEIGHT)/DESIGN_HEIGHT);\n\n  const outStart = Math.max(0, durationInFrames - 30);\n\n  let textOpacity = 1, shadowStr = 'none', scanI = 0.06;\n\n  if (frame < 8) {\n    textOpacity = 0.08; scanI = 0.35;\n  } else if (frame < 12) {\n    textOpacity = frame%2===0 ? 1 : 0.1;\n    scanI = 0.5;\n  } else if (frame < 25) {\n    const n = Math.abs(Math.sin(frame*12.9898)*43758.5453)%1;\n    textOpacity = n>0.3 ? 1 : 0.6;\n    const spread = n>0.5 ? 22 : 0;\n    shadowStr = `0 0 6px ${textColor}, 0 0 ${spread}px ${glowColor}`;\n    scanI = 0.3;\n  } else if (frame < outStart) {\n    const micro = (frame-25)%22<2;\n    textOpacity = micro ? 0.7 : 1;\n    shadowStr = `0 0 28px ${glowColor}`;\n    scanI = 0.06;\n  } else if (frame < outStart+10) {\n    const n = Math.abs(Math.sin(frame*78.233)*43758.5453)%1;\n    textOpacity = n>0.5 ? 1 : 0.15;\n    shadowStr = n>0.5 ? `0 0 22px ${glowColor}` : 'none';\n    scanI = 0.45;\n  } else {\n    const fp = (frame-(outStart+10))/20;\n    textOpacity = interpolate(fp,[0,1],[1,0],{extrapolateRight:'clamp'});\n    shadowStr = `0 0 ${interpolate(fp,[0,1],[30,0],{extrapolateRight:'clamp'})}px ${glowColor}`;\n    scanI = 0.3;\n  }\n\n  // Fine glitch slices during flicker phases\n  const isFlicker = frame < 25 || frame >= outStart;\n  const NUM_SLICES = 12;\n  const sliceShifts = Array.from({length:NUM_SLICES}).map((_,i) => {\n    if (!isFlicker) return 0;\n    const maxS = frame<12 ? 40 : 18;\n    const active = random(`fa${i}${Math.floor(frame/2)}`) > 0.72;\n    return active ? (random(`fs${i}${frame}`)-0.5)*2*maxS : 0;\n  });\n\n  // RGB offset during flicker\n  const rgbActive = frame < 25 || frame >= outStart;\n  const rOff = rgbActive ? (random('r'+frame)-0.5)*2*(frame<12?18:9) : 0;\n  const cOff = rgbActive ? (random('c'+frame)-0.5)*2*(frame<12?18:9)*-1 : 0;\n\n  const rootStyle = {\n    position:'absolute', top:0, left:0, width:DESIGN_WIDTH, height:DESIGN_HEIGHT,\n    transform:`scale(${scale})`, transformOrigin:'top left',\n    backgroundColor:`rgba(10,10,10,${bgOpacity})`, overflow:'hidden'\n  };\n\n  return (\n    <div style={rootStyle}>\n      {/* Scanlines */}\n      <div style={{\n        position:'absolute', top:0, left:0, width:'100%', height:'100%',\n        background:'repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(0,0,0,0.4) 4px, rgba(0,0,0,0.4) 5px)',\n        opacity:scanI, pointerEvents:'none', mixBlendMode:'overlay', zIndex:20\n      }}/>\n\n      {/* RGB Red layer */}\n      {rOff !== 0 && <div style={{position:'absolute', top:0, left:rOff, width:'100%', height:'100%', mixBlendMode:'screen', opacity:0.55}}>\n        <div style={{position:'absolute', top:'48%', left:'50%', transform:'translate(-50%,-50%)',\n          fontFamily:'\"Montserrat\",\"Inter\",sans-serif', fontWeight:900, fontSize:'125px',\n          textTransform:'uppercase', color:'#ff3030', whiteSpace:'nowrap', opacity:textOpacity}}>{mainTitle}</div>\n      </div>}\n      {/* RGB Cyan layer */}\n      {cOff !== 0 && <div style={{position:'absolute', top:0, left:cOff, width:'100%', height:'100%', mixBlendMode:'screen', opacity:0.55}}>\n        <div style={{position:'absolute', top:'48%', left:'50%', transform:'translate(-50%,-50%)',\n          fontFamily:'\"Montserrat\",\"Inter\",sans-serif', fontWeight:900, fontSize:'125px',\n          textTransform:'uppercase', color:'#00e5ff', whiteSpace:'nowrap', opacity:textOpacity}}>{mainTitle}</div>\n      </div>}\n\n      {/* Main text */}\n      <div style={{position:'absolute', top:'48%', left:'50%', transform:'translate(-50%,-50%)',\n        fontFamily:'\"Montserrat\",\"Inter\",sans-serif', fontWeight:900, fontSize:'125px',\n        textTransform:'uppercase', color:textColor, opacity:textOpacity, textShadow:shadowStr,\n        whiteSpace:'nowrap', textAlign:'center', lineHeight:1}}>{mainTitle}</div>\n\n      {/* Subtitle */}\n      <div style={{position:'absolute', top:'56%', left:'50%', transform:'translate(-50%,-50%)',\n        fontFamily:'\"Montserrat\",\"Inter\",sans-serif', fontWeight:400, fontSize:'20px',\n        letterSpacing:'0.2em', textTransform:'uppercase', color:textColor,\n        opacity:textOpacity, textShadow:shadowStr, whiteSpace:'nowrap', textAlign:'center', lineHeight:1}}>{subtitleText}</div>\n\n      {/* Fine glitch slice overlays */}\n      {sliceShifts.map((shift,i) => shift !== 0 && (\n        <div key={i} style={{\n          position:'absolute', top:0, left:shift, width:'100%', height:'100%',\n          clipPath:`inset(${(i/NUM_SLICES)*100}% 0 ${100-((i+1)/NUM_SLICES)*100}% 0)`\n        }}>\n          <div style={{position:'absolute', top:'48%', left:'50%', transform:'translate(-50%,-50%)',\n            fontFamily:'\"Montserrat\",\"Inter\",sans-serif', fontWeight:900, fontSize:'125px',\n            textTransform:'uppercase', color:textColor, opacity:textOpacity*0.8,\n            textShadow:shadowStr, whiteSpace:'nowrap'}}>{mainTitle}</div>\n        </div>\n      ))}\n    </div>\n  );\n};\n"
+  },
+  {
+    "id": "6d5ae7e6-e458-40ef-8633-383bfc0e8279",
+    "name": "Finance Explainer — Chapter Title Card (Light)",
+    "category": "text-effects",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationInFrames": 90,
+    "props": {
+      "seriesTitle": "FINANCE EXPLAINER",
+      "mainTitle": "MONEY, EXPLAINED",
+      "highlightColor": "#FFEA00",
+      "transparentBackground": false,
+      "fontFamilySeries": "Roboto",
+      "fontFamilyMain": "Roboto"
+    },
+    "propSchema": [
+      {
+        "key": "seriesTitle",
+        "type": "text",
+        "defaultValue": "FINANCE EXPLAINER"
+      },
+      {
+        "key": "mainTitle",
+        "type": "text",
+        "defaultValue": "MONEY, EXPLAINED"
+      },
+      {
+        "key": "highlightColor",
+        "type": "color",
+        "defaultValue": "#FFEA00"
+      },
+      {
+        "key": "transparentBackground",
+        "type": "boolean",
+        "defaultValue": false
+      },
+      {
+        "key": "fontFamilySeries",
+        "type": "font",
+        "defaultValue": "Roboto"
+      },
+      {
+        "key": "fontFamilyMain",
+        "type": "font",
+        "defaultValue": "Roboto"
+      }
+    ],
+    "code": "const CinematicTitle = ({item}) => {\n  const frame = useCurrentFrame();\n  const { fps, durationInFrames } = useVideoConfig();\n\n  const props = item.props || {};\n  const seriesTitle = props.seriesTitle;\n  const mainTitle = props.mainTitle;\n  const highlightColor = props.highlightColor;\n  const bgColor = \"#e8e6e0\";\n  const transparentBackground = props.transparentBackground;\n  const fontFamilySeries = props.fontFamilySeries;\n  const fontFamilyMain = props.fontFamilyMain;\n\n  const safeFps = fps || 30;\n  const safeDuration = durationInFrames || 330;\n  // Cut at 0.8s (24 frames) — instant switch, no fade\n  const cutFrame = Math.round(safeFps * 0.8);\n\n  const parseHex = (hex) => {\n    if (!hex || !hex.startsWith('#')) return [255, 234, 0];\n    let c = hex.substring(1).split('');\n    if(c.length === 3){\n        c = [c[0], c[0], c[1], c[1], c[2], c[2]];\n    }\n    c = '0x' + c.join('');\n    return [(c>>16)&255, (c>>8)&255, c&255];\n  };\n  const rgb = parseHex(highlightColor);\n\n  const isHighlight = frame < cutFrame;\n  const textColor = isHighlight ? highlightColor : '#111111';\n  const textShadow = 'none';\n\n  const scale = interpolate(frame, [0, safeDuration], [1, 1.05]);\n\n  const splitTitle = (title) => {\n    if (!title) return { left: '', right: '' };\n    const commaIdx = title.lastIndexOf(',');\n    if (commaIdx !== -1) {\n      return {\n        left: title.substring(0, commaIdx + 1) + ' ',\n        right: title.substring(commaIdx + 1).trim()\n      };\n    }\n    const spaceIdx = title.lastIndexOf(' ');\n    if (spaceIdx !== -1) {\n      return {\n        left: title.substring(0, spaceIdx + 1),\n        right: title.substring(spaceIdx + 1)\n      };\n    }\n    return { left: '', right: title };\n  };\n\n  const { left, right } = React.useMemo(() => splitTitle(mainTitle), [mainTitle]);\n\n  const watermarks = React.useMemo(() => {\n    const symbols = ['∑','∫','π','Δ','α','β','∞','≈','≠','≤','≥','Ω','µ','√'];\n    const out = [];\n    let seed = 12345;\n    const rng = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };\n    for (let i = 0; i < 40; i++) {\n      out.push({ id: i, char: symbols[Math.floor(rng() * symbols.length)],\n        left: rng()*110-5 + '%', top: rng()*110-5 + '%',\n        size: 150 + rng()*450, rot: (rng()-0.5)*120, opacity: 0.02+rng()*0.03 });\n    }\n    return out;\n  }, []);\n\n  const rootStyle = {\n    position: 'absolute',\n    inset: 0,\n    backgroundColor: transparentBackground ? 'transparent' : bgColor,\n    overflow: 'hidden'\n  };\n\n  return (\n    <div style={rootStyle}>\n      {/* Grid layer — identical to Background Layer MG */}\n      {!transparentBackground && (\n        <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none' }}>\n          <svg width=\"100%\" height=\"100%\">\n            <defs>\n              <pattern id=\"title_grid\" width=\"80\" height=\"80\" patternUnits=\"userSpaceOnUse\">\n                <path d=\"M 40 0 L 40 80 M 0 40 L 80 40\" stroke=\"#999\" strokeOpacity=\"0.06\" strokeWidth=\"1.5\"/>\n                <path d=\"M 33 40 L 47 40 M 40 33 L 40 47\" stroke=\"#999\" strokeOpacity=\"0.15\" strokeWidth=\"2\"/>\n              </pattern>\n            </defs>\n            <rect width=\"100%\" height=\"100%\" fill=\"url(#title_grid)\"/>\n          </svg>\n        </div>\n      )}\n      {/* Watermark symbols — identical to Background Layer MG */}\n      {!transparentBackground && (\n        <div style={{ position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none' }}>\n          {watermarks.map(wm => (\n            <div key={wm.id} style={{\n              position: 'absolute', left: wm.left, top: wm.top,\n              fontSize: wm.size, color: '#888', opacity: wm.opacity,\n              transform: 'rotate(' + wm.rot + 'deg)', lineHeight: 1, fontFamily: 'serif',\n            }}>{wm.char}</div>\n          ))}\n        </div>\n      )}\n      {/* Film grain */}\n      <div style={{ position: 'absolute', inset: 0, opacity: 0.06, pointerEvents: 'none', zIndex: 3 }}>\n        <svg style={{ width: '100%', height: '100%' }}>\n          <filter id=\"film-grain\">\n            <feTurbulence type=\"fractalNoise\" baseFrequency=\"0.75\" numOctaves=\"3\" stitchTiles=\"stitch\" />\n            <feColorMatrix type=\"saturate\" values=\"0\" />\n          </filter>\n          <rect width=\"100%\" height=\"100%\" filter=\"url(#film-grain)\" />\n        </svg>\n      </div>\n\n      <div style={{\n        position: 'absolute',\n        inset: 0,\n        display: 'flex',\n        flexDirection: 'column',\n        alignItems: 'center',\n        justifyContent: 'center',\n        transform: `scale(${scale})`,\n        transformOrigin: 'center center',\n        padding: '0 80px',\n        zIndex: 10\n      }}>\n        <div style={{\n          fontFamily: fontFamilySeries,\n          fontWeight: 400,\n          fontSize: 32,\n          letterSpacing: '0.15em',\n          color: '#555555',\n          textTransform: 'uppercase',\n          marginBottom: 24,\n          textAlign: 'center'\n        }}>\n          {seriesTitle}\n        </div>\n\n        <div style={{\n          fontFamily: fontFamilyMain,\n          fontWeight: 900,\n          fontSize: 130,\n          letterSpacing: '-0.02em',\n          textTransform: 'uppercase',\n          lineHeight: 1.1,\n          textAlign: 'center',\n          whiteSpace: 'pre-wrap',\n          maxWidth: 1700\n        }}>\n          {left && <span style={{ color: '#111111' }}>{left}</span>}\n          <span style={{ color: textColor, textShadow: textShadow }}>{right}</span>\n        </div>\n      </div>\n    </div>\n  );\n};\n"
+  }
+]
