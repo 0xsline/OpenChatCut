@@ -4,6 +4,7 @@ import { theme } from '../theme';
 import { MARKER_HEX, TRACK_ORDER, timelineDuration, type MarkerColor, type TimelineState, type TrackId } from '../editor/types';
 import type { EditorCommands } from '../editor/store';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { ClipContextMenu, type FxClip } from './ClipContextMenu';
 
 interface TimelineProps {
   state: TimelineState;
@@ -51,6 +52,9 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
   const px = PX_PER_FRAME * zoom; // pixels per frame at the current time-zoom
   const zoomBy = (f: number) => setZoom((z) => Math.min(6, Math.max(0.5, z * f)));
   const [drag, setDrag] = useState<Drag | null>(null);
+  // clip right-click menu + effect clipboard (source: 复制效果/粘贴效果)
+  const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [fxClip, setFxClip] = useState<FxClip | null>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [availH, setAvailH] = useState(190);
@@ -350,6 +354,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
                         key={it.id}
                         title={it.name}
                         onPointerDown={(e) => startDrag(e, it.id, 'move', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
+                        onContextMenu={(e) => { e.preventDefault(); commands.selectItem(it.id); setCtxMenu({ id: it.id, x: e.clientX, y: e.clientY }); }}
                         style={{
                           position: 'absolute', left: Math.max(0, start) * px, top: 4, height: rowHeightOf(trackId) - 8, width: dur * px,
                           background: meta.kind === 'video' ? theme.clipVideo : theme.clipAudio,
@@ -396,6 +401,16 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
           </div>
         </div>
       </div>
+
+      {/* clip right-click menu (source Hyt) */}
+      {ctxMenu && (() => {
+        const item = state.items.find((it) => it.id === ctxMenu.id);
+        if (!item) return null;
+        return (
+          <ClipContextMenu item={item} x={ctxMenu.x} y={ctxMenu.y} playhead={playhead} commands={commands}
+            fxClip={fxClip} onCopyFx={setFxClip} onClose={() => setCtxMenu(null)} />
+        );
+      })()}
     </section>
   );
 }
