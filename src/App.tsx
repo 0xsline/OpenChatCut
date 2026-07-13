@@ -125,7 +125,7 @@ export default function App() {
       <div
         style={{
           gridColumn: 2, gridRow: 2, display: 'grid',
-          gridTemplateRows: 'minmax(0, 1fr) 300px',
+          gridTemplateRows: 'minmax(0, 1fr) 224px',
           minHeight: 0, minWidth: 0, overflow: 'hidden',
         }}
       >

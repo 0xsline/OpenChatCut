@@ -17,11 +17,11 @@ const TRACK_META: Record<TrackId, { color: string; kind: 'video' | 'audio' }> = 
   A2: { color: theme.trackAudioA2, kind: 'audio' },
 };
 
-const HEADER_W = 120;
-const ROW_H = 56;
-const RULER_H = 24;
+const HEADER_W = 104;
+const ROW_H = 38;
+const RULER_H = 22;
 const PX_PER_FRAME = 6;
-const toolBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 15, padding: '2px 6px' };
+const toolBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14, padding: '2px 5px' };
 
 function fmt(frames: number, fps: number): string {
   const s = frames / fps;
@@ -147,10 +147,10 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
             const isDropTarget = drag?.mode === 'move' && drag.targetTrack === trackId && meta.kind === (dragIsAudio ? 'audio' : 'video');
             return (
               <div key={trackId} style={{ display: 'flex', height: ROW_H, borderBottom: `1px solid ${theme.border}`, background: isDropTarget ? '#1b2b1b' : undefined }}>
-                <div style={{ width: HEADER_W, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>
-                  <span style={{ background: meta.color, color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 4, padding: '2px 6px' }}>{trackId}</span>
-                  <span style={{ color: theme.textDim, fontSize: 12 }}>👁</span>
-                  <span style={{ color: theme.textDim, fontSize: 12 }}>🔊</span>
+                <div style={{ width: HEADER_W, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>
+                  <span style={{ background: meta.color, color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px' }}>{trackId}</span>
+                  <span style={{ color: theme.textDim, fontSize: 11 }}>👁</span>
+                  <span style={{ color: theme.textDim, fontSize: 11 }}>🔊</span>
                 </div>
                 <div style={{ flex: 1, position: 'relative', background: theme.bg }}>
                   {items.map((it) => {
@@ -165,10 +165,10 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
                         title={it.name}
                         onPointerDown={(e) => startDrag(e, it.id, 'move', it.startFrame, it.durationInFrames, it.track)}
                         style={{
-                          position: 'absolute', left: Math.max(0, start) * PX_PER_FRAME, top: 6, height: 44, width: dur * PX_PER_FRAME,
+                          position: 'absolute', left: Math.max(0, start) * PX_PER_FRAME, top: 4, height: ROW_H - 8, width: dur * PX_PER_FRAME,
                           background: meta.kind === 'video' ? theme.clipVideo : theme.clipAudio,
-                          borderRadius: 5, color: '#fff', fontSize: 11,
-                          display: 'flex', alignItems: 'center', padding: '0 12px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
+                          borderRadius: 5, color: '#fff', fontSize: 10.5,
+                          display: 'flex', alignItems: 'center', padding: '0 10px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
                           border: selected ? '2px solid #fff' : '2px solid transparent',
                           cursor: 'grab', userSelect: 'none', touchAction: 'none',
                         }}

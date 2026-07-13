@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { theme } from '../theme';
 import type { Tpl } from '../types';
 import type { TimelineItem } from '../editor/types';
@@ -9,16 +10,24 @@ interface InspectorPanelProps {
 }
 
 // Property editor for the selected timeline item (sits under the preview).
+// Collapsible so it doesn't crowd the preview when you don't need it.
 export function InspectorPanel({ templates, selectedItem, onItemPropChange }: InspectorPanelProps) {
+  const [collapsed, setCollapsed] = useState(false);
   const schema = selectedItem
     ? templates.find((t) => t.id === selectedItem.templateId)?.propSchema ?? []
     : [];
 
   return (
-    <section style={{ borderTop: `1px solid ${theme.border}`, background: theme.panel, display: 'flex', flexDirection: 'column', minHeight: 0, flex: '0 0 auto', maxHeight: '42%', overflow: 'hidden' }}>
-      <div style={{ padding: '8px 16px', fontSize: 12, color: theme.textDim, borderBottom: `1px solid ${theme.border}`, flexShrink: 0 }}>
+    <section style={{ borderTop: `1px solid ${theme.border}`, background: theme.panel, display: 'flex', flexDirection: 'column', minHeight: 0, flex: '0 0 auto', maxHeight: collapsed ? undefined : '42%', overflow: 'hidden' }}>
+      <button
+        onClick={() => setCollapsed((v) => !v)}
+        title={collapsed ? '展开属性' : '收起属性'}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left', padding: '8px 16px', fontSize: 12, color: theme.textDim, background: 'none', border: 'none', borderBottom: `1px solid ${theme.border}`, cursor: 'pointer', flexShrink: 0 }}
+      >
+        <span style={{ transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', display: 'inline-block' }}>▾</span>
         属性{selectedItem ? ` · ${selectedItem.name}` : ''}
-      </div>
+      </button>
+      {!collapsed && (
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px 16px', minHeight: 0 }}>
         {!selectedItem ? (
           <div style={{ fontSize: 12, color: theme.textDim }}>选中时间线上的片段以编辑属性。</div>
@@ -48,6 +57,7 @@ export function InspectorPanel({ templates, selectedItem, onItemPropChange }: In
           </div>
         )}
       </div>
+      )}
     </section>
   );
 }
