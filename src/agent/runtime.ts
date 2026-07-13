@@ -68,7 +68,20 @@ export async function runAgent(
         const args = (block.input ?? {}) as Record<string, unknown>;
         const result = await executeTool(block.name, args, ctx);
         onEvent({ type: 'tool', name: block.name, args, result });
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) });
+        // tools may return image blocks (view_timeline_frames: the model SEES
+        // rendered frames) via { __images: [{frame, base64}], note } — build a
+        // multimodal tool_result; everything else stays JSON text.
+        const imgs = (result as { __images?: { frame: number; base64: string }[]; note?: string } | null)?.__images;
+        const content: Anthropic.ToolResultBlockParam['content'] = Array.isArray(imgs)
+          ? [
+              ...imgs.map((im) => ({
+                type: 'image' as const,
+                source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data: im.base64 },
+              })),
+              { type: 'text' as const, text: (result as { note?: string }).note ?? `${imgs.length} frames rendered` },
+            ]
+          : JSON.stringify(result);
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content });
       }
       conv.push({ role: 'user', content: toolResults });
       continue; // let the model observe results and continue

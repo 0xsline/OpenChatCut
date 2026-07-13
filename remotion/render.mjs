@@ -4,7 +4,7 @@
 // at render time in headless Chrome exactly as the Player does, so audio muxes
 // natively and no template porting is needed.
 import { bundle } from '@remotion/bundler';
-import { selectComposition, renderMedia } from '@remotion/renderer';
+import { selectComposition, renderMedia, renderStill } from '@remotion/renderer';
 import path from 'node:path';
 import { cp } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -79,4 +79,32 @@ export async function renderTimeline({ state, outputLocation, onProgress }) {
   });
 
   return outputLocation;
+}
+
+/**
+ * Render still frames of a timeline as small JPEGs (source view_timeline_frames
+ * — the agent "sees" its own draft edits). Returns [{frame, base64}].
+ * @param {object} args
+ * @param {import('../src/editor/types').TimelineState} args.state
+ * @param {number[]} args.frames  frame numbers to render
+ */
+export async function renderTimelineStills({ state, frames }) {
+  if (!state || !Array.isArray(state.items)) throw new Error('renderTimelineStills: state.items required');
+  if (!Array.isArray(frames) || !frames.length) throw new Error('renderTimelineStills: frames[] required');
+  const serveUrl = await getServeUrl();
+  const inputProps = { state };
+  const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps });
+  const out = [];
+  for (const frame of frames.slice(0, 8)) { // cap: keep tool_result payload sane
+    const f = Math.max(0, Math.min(composition.durationInFrames - 1, Math.round(frame)));
+    const { buffer } = await renderStill({
+      serveUrl, composition, inputProps, frame: f,
+      imageFormat: 'jpeg', jpegQuality: 70,
+      scale: 640 / composition.width, // ~640px wide → small base64 for the LLM
+      chromiumOptions: { gl: 'angle' },
+      output: null,
+    });
+    out.push({ frame: f, base64: buffer.toString('base64') });
+  }
+  return out;
 }

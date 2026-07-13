@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readFile, unlink } from 'node:fs/promises';
 // @ts-expect-error — plain .mjs render pipeline shared with scripts/export.mjs (no .d.ts)
-import { renderTimeline } from './remotion/render.mjs';
+import { renderTimeline, renderTimelineStills } from './remotion/render.mjs';
 
 const MAX_BODY_BYTES = 32 * 1024 * 1024; // 32MB — timelines carry inlined template code.
 
@@ -48,6 +48,37 @@ export function exportPlugin(): Plugin {
   return {
     name: 'chatcut-export',
     configureServer(server) {
+      // POST /render-still { state, frames:[n] } → { frames: [{frame, base64}] }
+      // (source view_timeline_frames: the agent renders stills to "see" its edits)
+      server.middlewares.use('/render-still', async (req, res) => {
+        if (req.method !== 'POST') {
+          sendError(res, 405, 'method not allowed — use POST');
+          return;
+        }
+        try {
+          const body = (await readJsonBody(req)) as { state?: unknown; frames?: unknown } | null;
+          const state = body?.state;
+          const frames = body?.frames;
+          if (!state || typeof state !== 'object' || !Array.isArray((state as { items?: unknown }).items)) {
+            sendError(res, 400, 'body must be { state, frames[] }');
+            return;
+          }
+          if (!Array.isArray(frames) || !frames.length || !frames.every((f) => typeof f === 'number')) {
+            sendError(res, 400, 'frames must be a non-empty number[]');
+            return;
+          }
+          const rendered = await renderTimelineStills({ state, frames });
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ frames: rendered }));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          server.config.logger.error(`[render-still] ${message}`);
+          if (!res.headersSent) sendError(res, 500, message);
+          else res.end();
+        }
+      });
+
       server.middlewares.use('/export', async (req, res) => {
         if (req.method !== 'POST') {
           sendError(res, 405, 'method not allowed — use POST');
