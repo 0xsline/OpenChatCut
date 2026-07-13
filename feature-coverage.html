@@ -1,0 +1,422 @@
+<title>ChatCut 复刻 · 功能覆盖</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #131118;
+    --panel: #1b1922;
+    --panel-2: #232030;
+    --line: #2e2a3a;
+    --line-soft: #241f2e;
+    --text: #ece9f2;
+    --text-dim: #9d97ad;
+    --text-faint: #6f6980;
+    --accent: #c07bf5;
+    --accent-dim: #8a63c0;
+    --done: #4fbf93;
+    --done-bg: rgba(79, 191, 147, 0.13);
+    --partial: #e3ab45;
+    --partial-bg: rgba(227, 171, 69, 0.13);
+    --todo: #837e95;
+    --todo-bg: rgba(131, 126, 149, 0.12);
+    --shadow: 0 1px 0 rgba(255,255,255,0.02), 0 8px 30px rgba(0,0,0,0.35);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg: #f5f3fa;
+      --panel: #ffffff;
+      --panel-2: #f1eef8;
+      --line: #e5e1ee;
+      --line-soft: #efecf6;
+      --text: #211d2b;
+      --text-dim: #665f76;
+      --text-faint: #948da4;
+      --accent: #8f3fe0;
+      --accent-dim: #a978d8;
+      --done: #2f9d72;
+      --done-bg: rgba(47, 157, 114, 0.11);
+      --partial: #b47f22;
+      --partial-bg: rgba(180, 127, 34, 0.12);
+      --todo: #8b8698;
+      --todo-bg: rgba(139, 134, 152, 0.1);
+      --shadow: 0 1px 2px rgba(30,20,50,0.04), 0 10px 30px rgba(70,50,110,0.07);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #131118; --panel: #1b1922; --panel-2: #232030; --line: #2e2a3a; --line-soft: #241f2e;
+    --text: #ece9f2; --text-dim: #9d97ad; --text-faint: #6f6980; --accent: #c07bf5; --accent-dim: #8a63c0;
+    --done: #4fbf93; --done-bg: rgba(79,191,147,0.13); --partial: #e3ab45; --partial-bg: rgba(227,171,69,0.13);
+    --todo: #837e95; --todo-bg: rgba(131,126,149,0.12); --shadow: 0 1px 0 rgba(255,255,255,0.02), 0 8px 30px rgba(0,0,0,0.35);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f5f3fa; --panel: #ffffff; --panel-2: #f1eef8; --line: #e5e1ee; --line-soft: #efecf6;
+    --text: #211d2b; --text-dim: #665f76; --text-faint: #948da4; --accent: #8f3fe0; --accent-dim: #a978d8;
+    --done: #2f9d72; --done-bg: rgba(47,157,114,0.11); --partial: #b47f22; --partial-bg: rgba(180,127,34,0.12);
+    --todo: #8b8698; --todo-bg: rgba(139,134,152,0.1); --shadow: 0 1px 2px rgba(30,20,50,0.04), 0 10px 30px rgba(70,50,110,0.07);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, monospace; font-variant-numeric: tabular-nums; }
+
+  /* ---- header ---- */
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line);
+  }
+  .head-inner { max-width: 1040px; margin: 0 auto; padding: 20px 24px 14px; }
+  .head-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+  .brand { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  h1 { margin: 0; font-size: clamp(19px, 3vw, 25px); font-weight: 700; letter-spacing: -0.02em; text-wrap: balance; }
+  .sub { color: var(--text-dim); font-size: 12.5px; }
+  .score { text-align: right; display: flex; align-items: baseline; gap: 10px; }
+  .score .pct { font-size: clamp(30px, 6vw, 44px); font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+  .score .of { color: var(--text-dim); font-size: 12.5px; }
+
+  .bar { display: flex; height: 9px; border-radius: 6px; overflow: hidden; margin-top: 14px; background: var(--panel-2); border: 1px solid var(--line); }
+  .bar > span { display: block; height: 100%; transition: width 0.9s cubic-bezier(.22,.61,.36,1); }
+  .bar .s-done { background: var(--done); }
+  .bar .s-partial { background: var(--partial); }
+  @media (prefers-reduced-motion: reduce) { .bar > span { transition: none; } }
+
+  .legend { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    background: none; border: 1px solid transparent; border-radius: 999px;
+    padding: 4px 11px 4px 8px; color: var(--text-dim); font: inherit; font-size: 12.5px;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .chip:hover { background: var(--panel-2); color: var(--text); }
+  .chip[aria-pressed="true"] { color: var(--text); border-color: var(--line); background: var(--panel-2); }
+  .chip .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .chip .n { color: var(--text-faint); font-size: 12px; }
+  .chip.all .dot { background: linear-gradient(135deg, var(--done), var(--partial) 55%, var(--todo)); }
+  .chip.done .dot { background: var(--done); }
+  .chip.partial .dot { background: var(--partial); }
+  .chip.todo .dot { background: var(--todo); }
+  .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- main ---- */
+  main { max-width: 1040px; margin: 0 auto; padding: 22px 24px 80px; }
+  .note-top {
+    font-size: 12.5px; color: var(--text-dim); background: var(--panel);
+    border: 1px solid var(--line); border-left: 2px solid var(--accent);
+    border-radius: 8px; padding: 11px 14px; margin-bottom: 22px;
+  }
+  .note-top b { color: var(--text); font-weight: 600; }
+
+  .domain { margin-bottom: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .domain.empty { display: none; }
+  .dhead { display: flex; align-items: center; gap: 14px; padding: 13px 16px; border-bottom: 1px solid var(--line-soft); }
+  .dhead .idx { color: var(--text-faint); font-size: 12px; width: 20px; flex-shrink: 0; }
+  .dhead .dname { font-weight: 650; font-size: 14.5px; flex: 1; letter-spacing: -0.01em; }
+  .dbar { width: 84px; height: 5px; border-radius: 4px; background: var(--panel-2); overflow: hidden; display: flex; flex-shrink: 0; }
+  .dbar .s-done { background: var(--done); height: 100%; }
+  .dbar .s-partial { background: var(--partial); height: 100%; }
+  .dcount { font-size: 12px; color: var(--text-dim); width: 58px; text-align: right; flex-shrink: 0; }
+
+  .rows { display: flex; flex-direction: column; }
+  .row { display: grid; grid-template-columns: 92px 1fr auto; gap: 14px; padding: 11px 16px; align-items: start; border-top: 1px solid var(--line-soft); }
+  .row:first-child { border-top: none; }
+  .row.hide { display: none; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; padding: 3px 9px 3px 7px; border-radius: 6px; white-space: nowrap; margin-top: 1px; }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .pill.done { color: var(--done); background: var(--done-bg); } .pill.done .dot { background: var(--done); }
+  .pill.partial { color: var(--partial); background: var(--partial-bg); } .pill.partial .dot { background: var(--partial); }
+  .pill.todo { color: var(--todo); background: var(--todo-bg); } .pill.todo .dot { background: var(--todo); }
+  .rbody { min-width: 0; }
+  .rname { font-size: 13.5px; font-weight: 550; letter-spacing: -0.005em; }
+  .rnote { font-size: 12px; color: var(--text-dim); margin-top: 2px; max-width: 62ch; }
+  .rnote code { font-family: ui-monospace, Menlo, monospace; font-size: 11px; background: var(--panel-2); padding: 0.5px 4px; border-radius: 4px; color: var(--text); }
+  .pri { font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); border-radius: 5px; padding: 1px 6px; margin-top: 2px; white-space: nowrap; }
+
+  footer { max-width: 1040px; margin: 0 auto; padding: 0 24px 60px; color: var(--text-faint); font-size: 11.5px; }
+  @media (max-width: 620px) {
+    .row { grid-template-columns: 78px 1fr; }
+    .pri { grid-column: 2; justify-self: start; }
+    .dbar { display: none; }
+  }
+</style>
+
+<header>
+  <div class="head-inner">
+    <div class="head-top">
+      <div class="brand">
+        <span class="eyebrow">对标源站 · 复刻进度</span>
+        <h1>ChatCut 复刻 · 功能覆盖</h1>
+        <span class="sub">逆向 52 工具规格 + PRD 全量差集 · 每完成一项即勾选</span>
+      </div>
+      <div class="score">
+        <span class="pct mono" id="pct">0%</span>
+        <span class="of mono" id="scoreOf">0 / 0 完成</span>
+      </div>
+    </div>
+    <div class="bar" role="img" aria-label="总体进度">
+      <span class="s-done" id="barDone" style="width:0"></span>
+      <span class="s-partial" id="barPartial" style="width:0"></span>
+    </div>
+    <div class="legend" id="legend">
+      <button class="chip all" data-f="all" aria-pressed="true"><span class="dot"></span>全部 <span class="n mono" id="nAll">0</span></button>
+      <button class="chip done" data-f="done" aria-pressed="false"><span class="dot"></span>已实现 <span class="n mono" id="nDone">0</span></button>
+      <button class="chip partial" data-f="partial" aria-pressed="false"><span class="dot"></span>部分 <span class="n mono" id="nPartial">0</span></button>
+      <button class="chip todo" data-f="todo" aria-pressed="false"><span class="dot"></span>未实现 <span class="n mono" id="nTodo">0</span></button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="note-top">
+    <b>怎么读：</b>每项标注 <b>已实现 / 部分 / 未实现</b>，未实现的附「怎么做 · 技术 · 对应源站」。<b>P0–P2</b> 徽标 = 建议优先级。点上方状态可筛选。源文档：<code>FEATURE-COVERAGE.md</code>
+  </div>
+  <div id="domains"></div>
+</main>
+<footer id="foot"></footer>
+
+<script>
+  // status: 'done' | 'partial' | 'todo'.  pri: 'P0'|'P1'|'P2' (建议优先级) 可选.
+  const DATA = [
+    ["1 · 项目 / 会话生命周期", [
+      ["单工程内存编辑", "done", "<code>useEditor</code> reducer + App 内存态"],
+      ["工程持久化（保存/加载）", "todo", "IndexedDB 存 TimelineState 快照；正式版对标 Rocicorp Zero + IDB（local-first）", "P0"],
+      ["多工程 + 仪表盘 /projects", "todo", "加路由 + 工程列表页（搜索/排序/新建/复制/软删）。源站 create/list/duplicate/delete_project", "P0"],
+      ["版本历史（快照/回滚）", "todo", "复用 undo 快照机制 + 命名/diff/回滚。源站 /api/versions"],
+      ["ask_followup_questions 交互卡", "todo", "Agent 澄清时返回结构化表单卡。源站 followup-questions widget"],
+      ["get_editor_url / target_project", "todo", "多工程后才有意义（会话绑定工程）"],
+    ]],
+    ["2 · 编辑器核心 / 时间线", [
+      ["增删改查片段", "done", "add/move/retime/duplicate/remove/split，1:1 映射 agent 工具"],
+      ["撤销 / 重做", "done", "快照式 history"],
+      ["拖拽移动 / 裁剪 / 跨轨约束", "done", "<code>Timeline.tsx</code> pointer 拖拽 + trim 手柄"],
+      ["横向缩放 🔍 / 竖向轨道缩放 Alt+滚轮", "done", "zoom / trackScale 状态"],
+      ["时间线上下拖高 + 加权轨道高度", "done", "cc.timelineH + WEIGHT（video 高于 audio）"],
+      ["多时间线 / 序列（每工程多条）", "todo", "TimelineState 升成 timelines[]+activeId。源站 manage_timelines —— 长转短地基", "P1"],
+      ["轨道管理（增删/序/角色/锁隐静/收紧）", "partial", "现固定 4 轨、图标是死的。做：轨道数组化 + role 驱动闪避。源站 edit_track", "P1"],
+      ["刀片(B)/修剪(N)/吸附", "partial", "有拖拽裁剪，无模式化工具 + 吸附对齐。源站编辑器工具栏", "P1"],
+      ["Ripple 编辑（插入/覆盖）", "todo", "插入模式后续片段整体位移合缝。源站 edit_item ripple", "P1"],
+      ["关键帧 + bezier 缓动", "todo", "属性随帧打点，渲染 interpolate + cubic-bezier。源站 keyframe/bezier", "P1"],
+      ["更多媒体类型 image/gif/svg/text/solid", "todo", "kind 扩枚举 + 各自渲染。源站按类型拆表"],
+      ["视频素材片段（video item）", "todo", "导入真视频 → <code>OffthreadVideo</code> + trim。源站 video_item + duration-probe", "P0"],
+      ["特效（blur/zoom/mosaic/CRT/ASCII…）", "todo", "effect_item.target_item 包裹目标做 CSS/WebGL 滤镜。源站域 F", "P1"],
+      ["转场（dissolve/dip/whip-pan/zoom/luma…）", "todo", "两片段重叠区 GLSL 混合（可从 editor bundle 提取源码）。源站 26 个 -frag", "P1"],
+      ["标记 markers（点/段批注）", "todo", "锚帧/转写段的注释 + 时间轴标记。源站 manage_markers", "P1"],
+      ["色度键 / 绿幕", "todo", "WebGL shader 抠色。源站 chroma"],
+      ["变速 / 重定时", "partial", "有改时长，无保音调变速。做：item playbackRate。源站 dH 含 rate 语义"],
+    ]],
+    ["3 · 音频处理", [
+      ["音频片段 + 音量", "done", "<code>&lt;Audio volume&gt;</code>"],
+      ["淡入淡出（fadeIn/Out 秒）", "todo", "对音量 interpolate + 视觉斜角。源站 edit_item fade（秒）"],
+      ["响度归一化（-14 LUFS）", "todo", "Web Audio 离线算增益或导出 ffmpeg loudnorm。源站 normalize/loudness"],
+      ["自动闪避 ducking", "todo", "voice 活动区间 → music 降音量关键帧。源站 track role ducking"],
+      ["AI 降噪 / 人声隔离", "todo", "接 DeepFilterNet3（开源 Rust）产降噪 wav。源站 isolate_voice"],
+      ["旁白录制（麦克风）", "todo", "MediaRecorder 录麦 → A 轨 → 自动转写。源站 record mic/voiceover"],
+    ]],
+    ["4 · 转写 / 文字稿编辑", [
+      ["AssemblyAI 词级转写 + 说话人分离", "done", "<code>transcript/assemblyai.ts</code>，speaker_labels"],
+      ["段落/片段视图 + 说话人 + 轨道选择", "done", "TranscriptPanel"],
+      ["删词 = 删视频（keptSegments 重排）", "done", "<code>transcript/edit.ts</code>"],
+      ["静音压缩 + 去填充词（clean_script）", "done", "maxGapFrames + fillerIndices"],
+      ["find_transcript 定位短语 → 帧位", "done", "agent 工具"],
+      ["timeline.md / read_script / apply_script", "partial", "有 delete_text，无「序列化成时间码 Markdown → 编辑 → diff 回操作」。源站最独特交互"],
+      ["read_av_script（结构化 AV 脚本）", "todo", "时间线导成 agent 可读脚本文本。源站 read_av_script"],
+      ["转写校正（改文本）", "todo", "改错字，词↔帧映射不变。源站 manage_transcript"],
+      ["多语言转写变体（共享时间轴）", "partial", "有双语字幕（短语级），无完整 variant 体系。源站 transcription_sub_asset"],
+      ["说话人重命名 / 合并", "todo", "面板改 speaker 名、合并两说话人"],
+    ]],
+    ["5 · 字幕", [
+      ["字幕 overlay（tiktok/netflix/plain）", "done", "CaptionsLayer"],
+      ["卡拉OK逐词高亮 + pacing 词/短语", "done", "activePage / currentWordIndex"],
+      ["字幕随编辑重排（retime）", "done", "retimeWords（源站 dVe/fVe/dH 模型）"],
+      ["双语字幕（译文第二行）", "done", "<code>captions/translate.ts</code>"],
+      ["烧录进导出", "done", "合成内渲染"],
+      ["样式预设扩充（Persona/Bubble Pop/Submagic…）", "partial", "现 3 个。加更多命名预设。源站 caption_style_preset"],
+      ["逐词覆盖（隐藏/遮罩/拆/并/改字）", "todo", "caption_word_override 渲染时套用。源站 edit_captions display_text"],
+      ["字幕源路由（多轨合并生成）", "partial", "有单轨 sourceItemId。源站 sourceScope/trackOrder"],
+    ]],
+    ["6 · Motion Graphics", [
+      ["211 模板库 drop-in + 沙箱", "done", "<code>template-host.ts</code>（黑名单 + 受限 eval）"],
+      ["create_motion_graphic（LLM 现写代码）", "done", "agent 工具"],
+      ["设计框缩放（1920×1080 + scale）", "done", "ItemLayer fit"],
+      ["属性面板（properties schema 驱动）", "partial", "能改 props 但没吃模板 propSchema（类型化控件）。源站 9 种属性类型"],
+      ["transparentBackground 叠加开关", "todo", "MG 作透明覆盖层，渲染不铺底"],
+      ["manage_template（工程模板打包/应用）", "todo", "一组 MG+风格打包 apply 落轨。源站 manage_template"],
+      ["MG → 透明视频（convert_to_video）", "todo", "renderer 渲 MG 单段（vp8/WebM alpha）。源站 convert_motion_graphic_to_video"],
+      ["导出 MG 为 ProRes4444 alpha .mov", "todo", "renderMedia codec=prores。源站 export_motion_graphic_prores（PRO）"],
+    ]],
+    ["7 · 设计风格 / 品牌", [
+      ["设计风格库（颜色/字体/动效预设）", "todo", "存工程 + 注入 MG/字幕默认色字。源站 manage_design_style", "P2"],
+      ["品牌套件 brand kit（logo/色/字）", "todo", "agent 自动套用。源站 manage_brand_kit"],
+    ]],
+    ["8 · AI 生成（花钱域）", [
+      ["AI 视频生成", "todo", "submit_video；接 Seedance2/Kling（或开源 Wan2.1），文/图生视。产 asset → 落轨", "P2"],
+      ["AI 图片生成", "todo", "submit image；gpt-image-2 / nano-banana（或开源 FLUX.1）", "P2"],
+      ["AI 配音 TTS", "todo", "submit_voice；Doubao BigTTS + ElevenLabs（有 35 试听样本）。先试听选音", "P2"],
+      ["AI 音乐生成", "todo", "submit_music；Mureka/Suno（或 MusicGen）", "P2"],
+      ["AI 音效生成", "todo", "submit_sound；ElevenLabs SFX。先查库再生成", "P2"],
+      ["着色器生成（转场/特效）", "todo", "submit_shader；Gemini→GLSL/TS，须编译校验+沙箱", "P2"],
+      ["任务队列 + 轮询 + 积分计量", "todo", "统一 generation_job（幂等+poll）+ track_progress + api_usage 计费。源站 G3/G4", "P2"],
+    ]],
+    ["9 · 素材 / 媒体", [
+      ["音频素材库（3 音乐 + voice）", "done", "<code>audio/library.ts</code>"],
+      ["MG 模板库（211）", "done", "内置 JSON"],
+      ["通用媒体导入（上传视频/图/音）", "partial", "转写会传字节，无「导入到媒体池」。做：file 输入 → asset → 自动转写。源站 import_media", "P0"],
+      ["媒体池（文件夹/搜索/排序/收藏）", "todo", "「我的素材」面板 + assets[] + folder 树。源站 manage_media_pool", "P0"],
+      ["手机上传 /m/:token", "todo", "扫码手机传素材。源站 phone-upload"],
+      ["库素材浏览（转场/特效/LUT/缩放/音效）", "partial", "只有 MG 库。做成 7 类库。源站 browse_library"],
+      ["LUT（Sony S-Log3 / Canon Log3）", "todo", "WebGL 3D LUT 采样。源站 2 个内置 log 转换"],
+      ["在线素材搜索（Pexels/Pixabay/…）", "todo", "search_stock_media 归一各家 API → import URL"],
+      ["URL → 资产（push_asset/download_media）", "todo", "公网媒体 URL 注册/下载为工程资产"],
+      ["网页抓取（web_browser）", "todo", "Firecrawl/Jina 抓网页作参考。源站 web_browser"],
+      ["字体搜索（search_fonts）", "partial", "已加载 4 字体，无搜索。做：按需动态加载。源站 search_fonts"],
+      ["多模态自检（view_timeline_frames）", "todo", "agent renderStill 渲帧 → base64 回传自己「看」。源站护城河"],
+    ]],
+    ["10 · 导出 / 交付", [
+      ["导出 MP4（服务端 @remotion/renderer）", "done", "<code>vite-plugin-export.ts</code>，h264+aac"],
+      ["字幕烧录 + 字体保真", "done", "CaptionsLayer + Google Fonts"],
+      ["宽高比 / fit（长转短基础）", "done", "16:9/9:16/1:1/4:3/3:4 · contain/cover"],
+      ["导出字幕文件（srt/txt）", "todo", "caption cues 序列化成 SubRip/txt。源站 format=subtitles", "P3"],
+      ["导出音频（mp3/wav）", "todo", "renderMedia codec=mp3 或 ffmpeg 抽轨", "P3"],
+      ["导出 XML → Premiere/DaVinci（fcpxml）", "todo", "时间线序列化成 FCPXML + MG ProRes 引用。源站 nleFormat", "P3"],
+      ["浏览器端 WebCodecs 快导", "todo", "VideoEncoder + muxer，不经服务端。源站快路径"],
+      ["异步渲染 job + 轮询（track_export）", "todo", "现同步；改队列返 renderId 轮询。源站 Remotion Lambda"],
+      ["部分导出（帧范围）", "todo", "renderMedia frame range"],
+      ["字体兜底确认（confirmFontFallback）", "partial", "已加载常用字体，无不支持清单门。源站 §10"],
+      ["免费档水印", "todo", "合成加水印层（按 plan）。源站 updateWatermark"],
+      ["导出历史 + 渲染后评分", "todo", "export_history 表 + 反馈"],
+    ]],
+    ["11 · Agent / 对话平台", [
+      ["Anthropic 原生 tool-use（可换真 Claude 一行）", "done", "<code>agent/</code>，现跑 grok 中转"],
+      ["流式输出（text/thinking）", "done", "messages.stream"],
+      ["~19 个工具（读/加/改/转写/字幕/删词/比例）", "done", "tools.ts + transcript-tools.ts"],
+      ["propose → review → apply（提案审阅再落地）", "todo", "结构编辑先产 proposal（options+creditEstimate）→ 审阅 → 原子提交。源站核心契约（必抄）", "P0"],
+      ["多轮会话持久化（session/reset/max_turns）", "partial", "有循环无存储。做：chat_block 有序存对话"],
+      ["@ 引用素材进对话", "todo", "聊天 @ 某片段带上下文。源站 chat_context_entry"],
+      ["对话历史持久化", "todo", "刷新即丢。源站 chat_block"],
+      ["扩展思考展示（thinking block UI）", "partial", "中转透传 thinking，UI 未渲染折叠块"],
+      ["Agent 设置（模型/速度/思考/MG 质量）", "todo", "设置面板"],
+      ["Bash/Edit/Read/Write（工程即目录）", "todo", "源站底座 = Claude Agent SDK，工程当虚拟文件系统。护城河③"],
+    ]],
+    ["12 · 技能 Skills", [
+      ["内置技能预设（6 创作模式）", "todo", "= 系统提示 + 允许工具 + 默认参数。选中改 agent。源站 agent_skill/scenario_preset"],
+      ["自定义技能（建/改名/删 + 存为技能）", "todo", "把一次编辑流程冻结成可复用技能。源站 manage_skill"],
+      ["skill_guard（按技能的工具放行门）", "todo", "高风险/高成本操作弹审批。源站 skill_guard"],
+    ]],
+    ["13 · 协作 / 分享", [
+      ["实时同步 + 在线状态", "todo", "Rocicorp Zero（local-first）或 Yjs/Liveblocks。源站 viewsyncer=zero-cache"],
+      ["分享链接（只读/认领/协作）", "todo", "/share /v/ /share-claim 路由 + 只读渲染。源站 share-api"],
+      ["邀请协作者 + 成员角色", "todo", "better-auth organization。源站 project_member(role)"],
+      ["评论 / 批注", "todo", "片段/时间点留评论。源站 comment/annotation"],
+      ["webhook / API key（团队自动化）", "todo", "源站 job_api_key"],
+    ]],
+    ["14 · 账号 / 计费 / 积分", [
+      ["鉴权（登录/会话/登出）", "todo", "better-auth（开源，+organization）。源站 /api/auth", "P3"],
+      ["多租户 / 工作区 / 组织", "todo", "better-auth organization。源站 workspace 切换"],
+      ["积分系统（授予/流水/花费门控）", "todo", "TopBar 现静态 18.5。做 credit_grant+credit_tx+服务端扣费门控。源站 G4", "P3"],
+      ["Stripe 计费（plans/checkout/portal）", "todo", "free/premium/business。源站 payment-api"],
+      ["功能门控（featureKey/配额）", "todo", "按功能设时长/片段/起点配额"],
+      ["限流", "todo", "速率限制"],
+    ]],
+    ["15 · 多端 / MCP / 集成", [
+      ["外部 MCP server（52 工具暴露给 ChatGPT/Codex/TRAE）", "todo", "把 executeTool 包成 MCP server（OAuth2+动态注册）。源站 external-mcp/mcp"],
+      ["CLI / 桌面授权 / connect", "todo", "editor_boot_token 设备配对。源站 cli-auth/desktop-auth"],
+      ["公开 API 网关", "todo", "router.chatcut.io/public-api + api key"],
+      ["多宿主安装页", "todo", "ChatGPT/Codex/TRAE/WorkBuddy 安装页"],
+      ["内嵌编辑器授权（inline-editor embed）", "todo", "/auth/inline-editor 第三方内嵌 + browserHandoff"],
+    ]],
+    ["16 · 长转短（专项）", [
+      ["宽高比 + fit（16:9↔9:16/1:1/4:3/3:4）", "done", "ItemLayer contain/cover"],
+      ["自动重构图（人脸/主体跟踪 auto-reframe）", "todo", "MediaPipe/TF.js 检测 → 裁切窗关键帧。源站 reframe(×71)"],
+      ["智能切片（按转写找高光 → 多条短视频）", "todo", "LLM 读转写打分 → 批量短视频序列"],
+      ["垂直安全区", "todo", "9:16 显示安全框辅助排版"],
+    ]],
+    ["17 · 引导 / 场景 / Roadmap", [
+      ["6 创作模式场景（含 prompt+guidance）", "todo", "新建选模式 → 预填 agent 系统。逆向已存 19 生成预设。源站 scenario_preset"],
+      ["公开路线图（提交+投票）", "todo", "/roadmap 页 + roadmap_item/vote"],
+    ]],
+    ["18 · 遥测 / 增长（最后做）", [
+      ["遥测（Axiom + PostHog，679 事件）", "todo", "埋点"],
+      ["联盟 / 归因（FirstPromoter/utm）", "todo", "源站 campaign_link"],
+      ["注册反滥用（email/ip/fingerprint）", "todo", "源站 signup_attempt"],
+      ["自定义快捷键", "todo", "user_shortcut_preset"],
+      ["i18n（/zh /en）", "todo", "UI 双语（默认中文）"],
+      ["dockview 可拖拽面板布局", "partial", "有固定分隔条+localStorage，非完整 dockview"],
+      ["反馈组件", "todo", "报告问题/评分"],
+    ]],
+  ];
+
+  const LABEL = { done: "已实现", partial: "部分", todo: "未实现" };
+  const el = (t, c, h) => { const e = document.createElement(t); if (c) e.className = c; if (h != null) e.innerHTML = h; return e; };
+  let counts = { done: 0, partial: 0, todo: 0 }, total = 0;
+
+  const domainsEl = document.getElementById("domains");
+  DATA.forEach(([name, items], di) => {
+    let dc = { done: 0, partial: 0, todo: 0 };
+    const card = el("section", "domain");
+    card.dataset.domain = di;
+    const rows = el("div", "rows");
+    items.forEach(([nm, st, note, pri]) => {
+      counts[st]++; dc[st]++; total++;
+      const row = el("div", "row"); row.dataset.status = st;
+      const pill = el("span", "pill " + st, '<span class="dot"></span>' + LABEL[st]);
+      const body = el("div", "rbody");
+      body.append(el("div", "rname", nm), el("div", "rnote", note));
+      row.append(pill, body);
+      if (pri) row.append(el("span", "pri", pri));
+      rows.append(row);
+    });
+    const done = dc.done, part = dc.partial, n = items.length;
+    const head = el("div", "dhead");
+    head.append(
+      el("span", "idx mono", String(di + 1).padStart(2, "0")),
+      el("span", "dname", name.replace(/^\d+ · /, "")),
+      el("div", "dbar", `<span class="s-done" style="width:${done/n*100}%"></span><span class="s-partial" style="width:${part/n*100}%"></span>`),
+      el("span", "dcount mono", `${done}/${n}`)
+    );
+    card.append(head, rows);
+    domainsEl.append(card);
+  });
+
+  // headline numbers (partial counts as half-done for the % + bar)
+  const score = counts.done + counts.partial * 0.5;
+  const pctVal = Math.round(score / total * 100);
+  document.getElementById("pct").textContent = pctVal + "%";
+  document.getElementById("scoreOf").textContent = `${counts.done} 完成 · ${counts.partial} 部分 · ${total} 项`;
+  document.getElementById("nAll").textContent = total;
+  document.getElementById("nDone").textContent = counts.done;
+  document.getElementById("nPartial").textContent = counts.partial;
+  document.getElementById("nTodo").textContent = counts.todo;
+  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 更新于功能 ⑪（宽高比长转短）`;
+
+  requestAnimationFrame(() => {
+    document.getElementById("barDone").style.width = counts.done / total * 100 + "%";
+    document.getElementById("barPartial").style.width = counts.partial / total * 100 + "%";
+  });
+
+  // filter
+  let filter = "all";
+  document.getElementById("legend").addEventListener("click", (e) => {
+    const btn = e.target.closest(".chip"); if (!btn) return;
+    filter = btn.dataset.f;
+    document.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", c === btn));
+    document.querySelectorAll(".domain").forEach(card => {
+      let shown = 0;
+      card.querySelectorAll(".row").forEach(r => {
+        const hit = filter === "all" || r.dataset.status === filter;
+        r.classList.toggle("hide", !hit);
+        if (hit) shown++;
+      });
+      card.classList.toggle("empty", shown === 0);
+    });
+  });
+</script>
