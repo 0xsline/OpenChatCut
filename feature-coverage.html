@@ -180,6 +180,9 @@
   <div class="note-top">
     <b>怎么读：</b>每项标注 <b>已实现 / 部分 / 未实现</b>，未实现的附「怎么做 · 技术 · 对应源站」。<b>P0–P2</b> 徽标 = 建议优先级。点上方状态可筛选。源文档：<code>FEATURE-COVERAGE.md</code>
   </div>
+  <div class="note-top" style="border-left-color:#34d399">
+    <b>并行分工（2026-07-14）：</b>带 <span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px;background:rgba(16,185,129,.16);color:#34d399">GPT</span> 的项 = GPT 主攻（AI 生成套件 + 导出增强），在独立分支 <code>gpt/generation-suite</code> 开发；带 <span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px;background:rgba(59,130,246,.16);color:#60a5fa">Claude</span> 的项 = Claude 认领（共享脊柱 + manage_timelines 工具 + 复杂 GLSL 转场 + 着色器/沙箱 + 护城河③）。<b>未标注项默认归 Claude（脊柱/集成/合并）。</b>交接约定见 <code>GPT-HANDOFF.md</code>。
+  </div>
   <div id="domains"></div>
 </main>
 <footer id="foot"></footer>
@@ -260,12 +263,12 @@
       ["品牌套件 brand kit（logo/色/字）", "todo", "agent 自动套用。源站 manage_brand_kit"],
     ]],
     ["8 · AI 生成（花钱域）", [
-      ["AI 视频生成", "todo", "submit_video；接 Seedance2/Kling（或开源 Wan2.1），文/图生视。产 asset → 落轨", "P2"],
-      ["AI 图片生成", "todo", "submit image；gpt-image-2 / nano-banana（或开源 FLUX.1）", "P2"],
-      ["AI 配音 TTS", "todo", "submit_voice；Doubao BigTTS + ElevenLabs（有 35 试听样本）。先试听选音", "P2"],
-      ["AI 音乐生成", "todo", "submit_music；Mureka/Suno（或 MusicGen）", "P2"],
-      ["AI 音效生成", "todo", "submit_sound；ElevenLabs SFX。先查库再生成", "P2"],
-      ["着色器生成（转场/特效）", "todo", "submit_shader；Gemini→GLSL/TS，须编译校验+沙箱", "P2"],
+      ["AI 视频生成", "todo", "submit_video；接 Seedance2/Kling（或开源 Wan2.1），文/图生视。产 asset → 落轨", "P2", "gpt"],
+      ["AI 图片生成", "todo", "submit image；gpt-image-2 / nano-banana（或开源 FLUX.1）", "P2", "gpt"],
+      ["AI 配音 TTS", "todo", "submit_voice；Doubao BigTTS + ElevenLabs（有 35 试听样本）。先试听选音", "P2", "gpt"],
+      ["AI 音乐生成", "todo", "submit_music；Mureka/Suno（或 MusicGen）", "P2", "gpt"],
+      ["AI 音效生成", "todo", "submit_sound；ElevenLabs SFX。先查库再生成", "P2", "gpt"],
+      ["着色器生成（转场/特效）", "todo", "submit_shader；Gemini→GLSL/TS，须编译校验+沙箱", "P2", "claude"],
       ["任务队列 + 轮询 + 积分计量", "todo", "统一 generation_job（幂等+poll）+ track_progress + api_usage 计费。源站 G3/G4", "P2"],
     ]],
     ["9 · 素材 / 媒体", [
@@ -286,7 +289,7 @@
       ["导出 MP4（服务端 @remotion/renderer）", "done", "<code>vite-plugin-export.ts</code>，h264+aac"],
       ["字幕烧录 + 字体保真", "done", "CaptionsLayer + Google Fonts"],
       ["宽高比 / fit（长转短基础）", "done", "16:9/9:16/1:1/4:3/3:4 · contain/cover"],
-      ["导出字幕文件（srt/txt）", "todo", "caption cues 序列化成 SubRip/txt。源站 format=subtitles", "P3"],
+      ["导出字幕文件（srt/txt）", "todo", "caption cues 序列化成 SubRip/txt。源站 format=subtitles", "P3", "gpt"],
       ["导出音频（mp3/wav）", "todo", "renderMedia codec=mp3 或 ffmpeg 抽轨", "P3"],
       ["导出 XML → Premiere/DaVinci（fcpxml）", "todo", "时间线序列化成 FCPXML + MG ProRes 引用。源站 nleFormat", "P3"],
       ["浏览器端 WebCodecs 快导", "todo", "VideoEncoder + muxer，不经服务端。源站快路径"],
@@ -306,7 +309,7 @@
       ["对话历史持久化", "todo", "刷新即丢。源站 chat_block"],
       ["扩展思考展示（thinking block UI）", "partial", "中转透传 thinking，UI 未渲染折叠块"],
       ["Agent 设置（模型/速度/思考/MG 质量）", "todo", "设置面板"],
-      ["Bash/Edit/Read/Write（工程即目录）", "todo", "源站底座 = Claude Agent SDK，工程当虚拟文件系统。护城河③"],
+      ["Bash/Edit/Read/Write（工程即目录）", "todo", "源站底座 = Claude Agent SDK，工程当虚拟文件系统。护城河③", "claude"],
     ]],
     ["12 · 技能 Skills", [
       ["内置技能预设（6 创作模式）", "todo", "= 系统提示 + 允许工具 + 默认参数。选中改 agent。源站 agent_skill/scenario_preset"],
@@ -366,13 +369,19 @@
     const card = el("section", "domain");
     card.dataset.domain = di;
     const rows = el("div", "rows");
-    items.forEach(([nm, st, note, pri]) => {
+    items.forEach(([nm, st, note, pri, owner]) => {
       counts[st]++; dc[st]++; total++;
       const row = el("div", "row"); row.dataset.status = st;
       const pill = el("span", "pill " + st, '<span class="dot"></span>' + LABEL[st]);
       const body = el("div", "rbody");
       body.append(el("div", "rname", nm), el("div", "rnote", note));
       row.append(pill, body);
+      if (owner) {
+        const o = el("span", "owner", owner === "gpt" ? "GPT" : "Claude");
+        o.style.cssText = "font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;letter-spacing:.03em;white-space:nowrap;" +
+          (owner === "gpt" ? "background:rgba(16,185,129,.16);color:#34d399" : "background:rgba(59,130,246,.16);color:#60a5fa");
+        row.append(o);
+      }
       if (pri) row.append(el("span", "pri", pri));
       rows.append(row);
     });
