@@ -6,6 +6,7 @@ import type { EditorCommands } from '../editor/store';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { ClipContextMenu, type FxClip } from './ClipContextMenu';
 import { Icon, type IconName } from './icons';
+import { useRecorder } from '../audio/recorder';
 
 interface TimelineProps {
   state: TimelineState;
@@ -13,6 +14,8 @@ interface TimelineProps {
   playerRef: RefObject<PlayerRef | null>;
   playhead: number;
   setPlayhead: (frame: number) => void;
+  /** record a mic voiceover → upload the blob → drop it on an audio track */
+  onRecordVoiceover?: (blob: Blob) => void;
 }
 
 const TRACK_META: Record<TrackId, { color: string; kind: 'video' | 'audio' }> = {
@@ -66,7 +69,7 @@ interface Drag {
 // how close (px) an edge must come to a snap target before it locks on
 const SNAP_PX = 7;
 
-export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: TimelineProps) {
+export function Timeline({ state, commands, playerRef, playhead, setPlayhead, onRecordVoiceover }: TimelineProps) {
   const total = timelineDuration(state);
   const [zoom, setZoom] = usePersistedState('cc.timelineZoom', 1);
   const px = PX_PER_FRAME * zoom; // pixels per frame at the current time-zoom
@@ -76,6 +79,9 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
   const [editMode, setEditMode] = usePersistedState<'selection' | 'blade' | 'trim'>('cc.editMode', 'selection');
   // magnetic snapping (source: Snapping toggle, S). On = edges lock to guides.
   const [snapping, setSnapping] = usePersistedState('cc.snapping', true);
+  // mic voiceover recording (source: 录制旁白). Toggle to start/stop; the blob
+  // is uploaded + dropped on an audio track by the parent.
+  const recorder = useRecorder(onRecordVoiceover ?? (() => {}));
   // fit whole timeline to the viewport width (source: Fit to view, ⇧Z)
   const fitToView = () => {
     const w = scrollRef.current?.clientWidth ?? 0;
@@ -340,7 +346,11 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
         <TB icon="blade" title="刀片模式 (B)：点击片段在该处切分" active={editMode === 'blade'} onClick={() => setEditMode('blade')} />
         <TB icon="scissors" title="在播放头切分选中片段 (C)" onClick={bladeSelected} />
         <TB icon="magnet" title={`磁性吸附：${snapping ? '开' : '关'} (S)`} active={snapping} onClick={() => setSnapping((s) => !s)} />
-        <TB icon="mic" title="录制旁白（暂未实现）" disabled />
+        <TB icon="mic" active={recorder.recording}
+          title={recorder.recording ? '● 录音中，点击停止' : recorder.error ? `录音失败：${recorder.error}` : '录制旁白（麦克风 → 音频轨）'}
+          disabled={!onRecordVoiceover} onClick={recorder.toggle} />
+        {recorder.recording && <span title="录音中" style={{ width: 8, height: 8, borderRadius: '50%', background: theme.accent, boxShadow: `0 0 0 0 ${theme.accent}`, animation: 'cc-rec-pulse 1.2s ease-out infinite', flexShrink: 0 }} />}
+        {!recorder.recording && recorder.error && <span title={recorder.error} style={{ fontSize: 10.5, color: theme.accent, maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{recorder.error}</span>}
         <ToolSep />
         <TB icon="text" title="加文字（在播放头，V2 轨）" onClick={() => commands.addTextClip({ startFrame: playhead })} />
         <TB icon="copy" title="复制选中" onClick={() => state.selectedId && commands.duplicateItem(state.selectedId)} />

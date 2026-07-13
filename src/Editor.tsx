@@ -204,7 +204,13 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         <Divider orientation="horizontal" onResize={(dy) => setTimelineH((h) => clamp(h - dy, 120, 300))} />
         <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
           <TimelineTabs doc={doc} commands={commands} />
-          <Timeline state={state} commands={commands} playerRef={playerRef} playhead={playhead} setPlayhead={setPlayhead} />
+          <Timeline state={state} commands={commands} playerRef={playerRef} playhead={playhead} setPlayhead={setPlayhead}
+            onRecordVoiceover={async (blob) => {
+              const ext = blob.type.includes('ogg') ? 'ogg' : 'webm';
+              const asset = await importMedia(new File([blob], `旁白.${ext}`, { type: blob.type }), state.fps);
+              commands.addAsset(asset);
+              commands.addMediaItem(asset, { track: 'A1', startFrame: playhead });
+            }} />
         </div>
       </div>
     </div>

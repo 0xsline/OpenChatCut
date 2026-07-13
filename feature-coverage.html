@@ -225,7 +225,7 @@
       ["响度归一化（-14 LUFS）", "todo", "Web Audio 离线算增益或导出 ffmpeg loudnorm。源站 normalize/loudness"],
       ["自动闪避 ducking", "todo", "voice 活动区间 → music 降音量关键帧。源站 track role ducking"],
       ["AI 降噪 / 人声隔离", "todo", "接 DeepFilterNet3（开源 Rust）产降噪 wav。源站 isolate_voice"],
-      ["旁白录制（麦克风）", "todo", "MediaRecorder 录麦 → A 轨 → 自动转写。源站 record mic/voiceover"],
+      ["旁白录制（麦克风）", "partial", "工具栏 mic 键切换录音：<code>audio/recorder.ts</code>(getUserMedia+MediaRecorder)→上传→落 A1 轨(播放头处)；录音中红点脉冲、权限拒绝友好提示。<b>缺</b>：录后自动转写、Camera/Screen 录制模式、设备选择/倒计时"],
     ]],
     ["4 · 转写 / 文字稿编辑", [
       ["AssemblyAI 词级转写 + 说话人分离", "done", "<code>transcript/assemblyai.ts</code>，speaker_labels"],
@@ -357,6 +357,7 @@
       ["i18n（/zh /en）", "todo", "UI 双语（默认中文）"],
       ["dockview 可拖拽面板布局", "partial", "有固定分隔条+localStorage，非完整 dockview"],
       ["反馈组件", "todo", "报告问题/评分"],
+      ["编辑器 UI 细节对标源站", "partial", "已复刻(侦察源站 bundle)：时间线工具栏源站线条图标+三段式布局，<b>全部图标皆有功能</b>(选择V/修剪T/刀片B/播放头切分C/磁性吸附S/录制旁白mic/文字/复制/删除/标记跳转)、缩放滑杆、适应宽度(⇧Z)、Ctrl+滚轮光标锚定缩放、轨道头 sticky 左固定、片段右键上下文菜单(源站 Hyt 项序+PRO/禁用)、MG 库子分类 chips+⭐收藏+⋮菜单(用 AI 生成)。剩:轨道自定义名/锁定/角色ducking、canvas 渲染波形+缩略图", "P1", "claude"],
     ]],
   ];
 

@@ -3,3 +3,10 @@
 html, body, #root { margin: 0; height: 100%; }
 html, body { overflow: hidden; }
 #root { overflow: hidden; }
+
+/* recording indicator pulse (timeline mic button) */
+@keyframes cc-rec-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(240, 86, 46, 0.55); opacity: 1; }
+  70%  { box-shadow: 0 0 0 6px rgba(240, 86, 46, 0);   opacity: 0.7; }
+  100% { box-shadow: 0 0 0 0 rgba(240, 86, 46, 0);     opacity: 1; }
+}
