@@ -18,6 +18,8 @@ type Action =
   | { type: 'setTransform'; id: string; patch: ClipTransform }
   | { type: 'setFilters'; id: string; patch: ClipFilters }
   | { type: 'setZoom'; id: string; patch: Partial<ZoomEffect> | null }
+  | { type: 'reframeKeyframe'; id: string; frame: number; focalPointX: number; focalPointY: number; magnification: number }
+  | { type: 'removeReframeKeyframe'; id: string; frame: number }
   | { type: 'addTransition'; id: string; incomingItemId: string; transType: TransitionType; durationInFrames?: number }
   | { type: 'setTransition'; id: string; patch: Partial<TransitionItem> }
   | { type: 'removeTransition'; id: string }
@@ -37,7 +39,9 @@ type Action =
   | { type: 'clearEdits'; id: string }
   | { type: 'select'; id: string | null };
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'addTransition', 'setTransition', 'removeTransition', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits']);
+
+const EMPTY_CURVE = { version: 1, timebase: 'effect-frame', coordinateSpace: 'composition-normalized', keyframes: [] } as const;
 
 // recompute a transcript-edited clip's duration under its current edit state
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
@@ -115,6 +119,31 @@ function reduce(s: TimelineState, a: Action): TimelineState {
       return {
         ...s,
         items: s.items.map((it) => (it.id === a.id ? { ...it, zoom: a.patch === null ? undefined : { ...it.zoom, ...a.patch } } : it)),
+      };
+    case 'reframeKeyframe':
+      return {
+        ...s,
+        items: s.items.map((it) => {
+          if (it.id !== a.id) return it;
+          const zoom = it.zoom ?? {};
+          const curve = zoom.reframeCurve ?? EMPTY_CURVE;
+          // replace any keyframe at the same frame, then keep sorted
+          const keyframes = [
+            ...curve.keyframes.filter((k) => k.frame !== a.frame),
+            { frame: a.frame, focalPointX: a.focalPointX, focalPointY: a.focalPointY, magnification: a.magnification },
+          ].sort((x, y) => x.frame - y.frame);
+          return { ...it, zoom: { ...zoom, reframeCurve: { ...curve, keyframes } } };
+        }),
+      };
+    case 'removeReframeKeyframe':
+      return {
+        ...s,
+        items: s.items.map((it) => {
+          if (it.id !== a.id || !it.zoom?.reframeCurve) return it;
+          const keyframes = it.zoom.reframeCurve.keyframes.filter((k) => k.frame !== a.frame);
+          const reframeCurve = keyframes.length ? { ...it.zoom.reframeCurve, keyframes } : undefined;
+          return { ...it, zoom: { ...it.zoom, reframeCurve } };
+        }),
       };
     case 'addTransition': {
       const inItem = s.items.find((x) => x.id === a.incomingItemId);
@@ -283,6 +312,8 @@ export interface EditorCommands {
   setItemTransform: (id: string, patch: ClipTransform) => void;
   setItemFilters: (id: string, patch: ClipFilters) => void;
   setItemZoom: (id: string, patch: Partial<ZoomEffect> | null) => void;
+  setReframeKeyframe: (id: string, frame: number, focalPointX: number, focalPointY: number, magnification: number) => void;
+  removeReframeKeyframe: (id: string, frame: number) => void;
   addTransition: (incomingItemId: string, type: TransitionType, durationInFrames?: number) => void;
   setTransition: (id: string, patch: Partial<TransitionItem>) => void;
   removeTransition: (id: string) => void;
@@ -385,6 +416,8 @@ export function useEditor(initial: TimelineState): {
       setItemTransform: (id, patch) => dispatch({ type: 'setTransform', id, patch }),
       setItemFilters: (id, patch) => dispatch({ type: 'setFilters', id, patch }),
       setItemZoom: (id, patch) => dispatch({ type: 'setZoom', id, patch }),
+      setReframeKeyframe: (id, frame, focalPointX, focalPointY, magnification) => dispatch({ type: 'reframeKeyframe', id, frame, focalPointX, focalPointY, magnification }),
+      removeReframeKeyframe: (id, frame) => dispatch({ type: 'removeReframeKeyframe', id, frame }),
       addTransition: (incomingItemId, type, durationInFrames) => dispatch({ type: 'addTransition', id: uid('tr'), incomingItemId, transType: type, durationInFrames }),
       setTransition: (id, patch) => dispatch({ type: 'setTransition', id, patch }),
       removeTransition: (id) => dispatch({ type: 'removeTransition', id }),

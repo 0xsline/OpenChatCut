@@ -18,6 +18,9 @@ interface InspectorPanelProps {
   onItemTransformChange: (patch: ClipTransform) => void;
   onItemFiltersChange: (patch: ClipFilters) => void;
   onItemZoomChange: (patch: Partial<ZoomEffect> | null) => void;
+  playhead: number;
+  onSetReframeKeyframe: (frame: number, focalPointX: number, focalPointY: number, magnification: number) => void;
+  onRemoveReframeKeyframe: (frame: number) => void;
   transition: TransitionItem | null;
   onAddTransition: (type: TransitionType) => void;
   onSetTransition: (patch: Partial<TransitionItem>) => void;
@@ -119,8 +122,16 @@ const ZOOM_SHAPE_LABELS: Record<ZoomShape, string> = {
   instant: '瞬时 (instant)',
 };
 
-// animated zoom (source builtin:zoom): shape curve + magnification + focal point.
-function ZoomControl({ zoom, onChange }: { zoom: ZoomEffect | undefined; onChange: (patch: Partial<ZoomEffect> | null) => void }) {
+// animated zoom (source builtin:zoom): shape curve + magnification + focal point,
+// plus ReframeCurveV1 sparse keyframes (drop focal+mag at the playhead).
+function ZoomControl({ zoom, onChange, localFrame, fps, onSetKeyframe, onRemoveKeyframe }: {
+  zoom: ZoomEffect | undefined;
+  onChange: (patch: Partial<ZoomEffect> | null) => void;
+  localFrame: number;
+  fps: number;
+  onSetKeyframe: (frame: number, fx: number, fy: number, mag: number) => void;
+  onRemoveKeyframe: (frame: number) => void;
+}) {
   const selStyle: React.CSSProperties = { background: theme.bg, color: theme.text, border: `1px solid ${theme.borderLight}`, borderRadius: 4, padding: '3px 5px' };
   const slider = (label: string, val: number, min: number, max: number, step: number, fmt: string, key: keyof ZoomEffect) => (
     <label style={{ display: 'block', fontSize: 11, color: theme.textDim }}>
@@ -146,6 +157,27 @@ function ZoomControl({ zoom, onChange }: { zoom: ZoomEffect | undefined; onChang
           {slider('放大倍数', zoom.magnification ?? 1.5, 1, 4, 0.05, `${(zoom.magnification ?? 1.5).toFixed(2)}×`, 'magnification')}
           {slider('焦点 X', zoom.focalPointX ?? 0.5, 0, 1, 0.01, `${Math.round((zoom.focalPointX ?? 0.5) * 100)}%`, 'focalPointX')}
           {slider('焦点 Y', zoom.focalPointY ?? 0.5, 0, 1, 0.01, `${Math.round((zoom.focalPointY ?? 0.5) * 100)}%`, 'focalPointY')}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+            <button
+              onClick={() => onSetKeyframe(localFrame, zoom.focalPointX ?? 0.5, zoom.focalPointY ?? 0.5, zoom.magnification ?? 1.5)}
+              title="在播放头记录焦点+倍数为关键帧"
+              style={{ background: theme.panelAlt, border: `1px solid ${theme.borderLight}`, borderRadius: 5, color: theme.text, cursor: 'pointer', fontSize: 11, padding: '4px 9px' }}>
+              ◆ 在播放头打关键帧
+            </button>
+            <span style={{ fontSize: 10.5, color: theme.textDim }}>@ {(localFrame / fps).toFixed(2)}s</span>
+          </div>
+          {(zoom.reframeCurve?.keyframes.length ?? 0) > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: 10.5, color: theme.textDim, opacity: 0.8 }}>关键帧（覆盖曲线，逐帧插值）</div>
+              {zoom.reframeCurve!.keyframes.map((k) => (
+                <div key={k.frame} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: theme.textDim }}>
+                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>◆ {(k.frame / fps).toFixed(2)}s</span>
+                  <span style={{ opacity: 0.8 }}>{k.magnification.toFixed(2)}× · ({Math.round(k.focalPointX * 100)},{Math.round(k.focalPointY * 100)})</span>
+                  <button onClick={() => onRemoveKeyframe(k.frame)} title="删除关键帧" style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 12, marginLeft: 'auto' }}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -233,7 +265,7 @@ function FilterControl({ item, onChange }: { item: TimelineItem; onChange: (p: C
 
 // Property editor for the selected timeline item (sits under the preview).
 // Collapsible so it doesn't crowd the preview when you don't need it.
-export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, onItemZoomChange, transition, onAddTransition, onSetTransition, onRemoveTransition }: InspectorPanelProps) {
+export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, onItemZoomChange, playhead, onSetReframeKeyframe, onRemoveReframeKeyframe, transition, onAddTransition, onSetTransition, onRemoveTransition }: InspectorPanelProps) {
   const [collapsed, setCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const schema = selectedItem
     ? templates.find((t) => t.id === selectedItem.templateId)?.propSchema ?? []
@@ -274,7 +306,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
             {hasVolume && <><SectionLabel>音量</SectionLabel><VolumeControl item={selectedItem} onChange={onItemVolumeChange} /></>}
             {isVisual && <><SectionLabel>变换</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} /></>}
             {isVisual && <><SectionLabel>滤镜</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} /></>}
-            {isVisual && <><SectionLabel>缩放动画</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} /></>}
+            {isVisual && <><SectionLabel>缩放动画</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} localFrame={Math.max(0, Math.min(selectedItem.durationInFrames - 1, playhead - selectedItem.startFrame))} fps={fps} onSetKeyframe={onSetReframeKeyframe} onRemoveKeyframe={onRemoveReframeKeyframe} /></>}
             {isVisual && <><SectionLabel>转场</SectionLabel><TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} /></>}
             <SectionLabel>淡入淡出</SectionLabel>
             <FadeControl item={selectedItem} fps={fps} onChange={onItemFadeChange} />

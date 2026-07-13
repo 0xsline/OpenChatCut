@@ -9,6 +9,8 @@ interface TimelineProps {
   state: TimelineState;
   commands: EditorCommands;
   playerRef: RefObject<PlayerRef | null>;
+  playhead: number;
+  setPlayhead: (frame: number) => void;
 }
 
 const TRACK_META: Record<TrackId, { color: string; kind: 'video' | 'audio' }> = {
@@ -43,13 +45,12 @@ interface Drag {
 // how close (px) an edge must come to a snap target before it locks on
 const SNAP_PX = 7;
 
-export function Timeline({ state, commands, playerRef }: TimelineProps) {
+export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: TimelineProps) {
   const total = timelineDuration(state);
   const [zoom, setZoom] = usePersistedState('cc.timelineZoom', 1);
   const px = PX_PER_FRAME * zoom; // pixels per frame at the current time-zoom
   const zoomBy = (f: number) => setZoom((z) => Math.min(3, Math.max(0.35, z * f)));
   const innerW = HEADER_W + total * px + 240;
-  const [playhead, setPlayhead] = useState(0);
   const [drag, setDrag] = useState<Drag | null>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -75,21 +76,6 @@ export function Timeline({ state, commands, playerRef }: TimelineProps) {
   const unit = availH / totalWeight;
   const rowHeightOf = (t: TrackId) => Math.max(MIN_ROW, unit * WEIGHT[TRACK_META[t].kind] * trackScale);
   const tracksHeight = TRACK_ORDER.reduce((sum, t) => sum + rowHeightOf(t), 0);
-
-  // sync playhead with the Remotion Player (follow playback + reflect seeks)
-  useEffect(() => {
-    let raf = 0;
-    let detach: (() => void) | null = null;
-    const attach = () => {
-      const p = playerRef.current;
-      if (!p) { raf = requestAnimationFrame(attach); return; }
-      const onFrame = (e: { detail: { frame: number } }) => setPlayhead(e.detail.frame);
-      p.addEventListener('frameupdate', onFrame);
-      detach = () => p.removeEventListener('frameupdate', onFrame);
-    };
-    attach();
-    return () => { if (raf) cancelAnimationFrame(raf); detach?.(); };
-  }, [playerRef]);
 
   const frameFromClientX = (clientX: number): number => {
     const r = innerRef.current?.getBoundingClientRect();

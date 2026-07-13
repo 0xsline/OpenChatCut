@@ -36,6 +36,23 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     [commands],
   );
 
+  // current playhead frame, synced from the Remotion Player (shared by the
+  // timeline's playhead line + the inspector's keyframe-at-playhead controls).
+  const [playhead, setPlayhead] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    let detach: (() => void) | null = null;
+    const attach = () => {
+      const p = playerRef.current;
+      if (!p) { raf = requestAnimationFrame(attach); return; }
+      const onFrame = (e: { detail: { frame: number } }) => setPlayhead(e.detail.frame);
+      p.addEventListener('frameupdate', onFrame);
+      detach = () => p.removeEventListener('frameupdate', onFrame);
+    };
+    attach();
+    return () => { if (raf) cancelAnimationFrame(raf); detach?.(); };
+  }, []);
+
   // autosave this project to IndexedDB (debounced) so a reload restores the timeline
   useEffect(() => {
     const id = setTimeout(() => saveProject(project.id, state), 500);
@@ -153,6 +170,9 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
               onItemTransformChange={(patch) => state.selectedId && commands.setItemTransform(state.selectedId, patch)}
               onItemFiltersChange={(patch) => state.selectedId && commands.setItemFilters(state.selectedId, patch)}
               onItemZoomChange={(patch) => state.selectedId && commands.setItemZoom(state.selectedId, patch)}
+              playhead={playhead}
+              onSetReframeKeyframe={(frame, fx, fy, mag) => state.selectedId && commands.setReframeKeyframe(state.selectedId, frame, fx, fy, mag)}
+              onRemoveReframeKeyframe={(frame) => state.selectedId && commands.removeReframeKeyframe(state.selectedId, frame)}
               transition={state.transitions?.find((t) => t.incomingItemId === state.selectedId) ?? null}
               onAddTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}
               onSetTransition={(patch) => {
@@ -167,7 +187,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           </div>
         </div>
         <Divider orientation="horizontal" onResize={(dy) => setTimelineH((h) => clamp(h - dy, 120, 300))} />
-        <Timeline state={state} commands={commands} playerRef={playerRef} />
+        <Timeline state={state} commands={commands} playerRef={playerRef} playhead={playhead} setPlayhead={setPlayhead} />
       </div>
     </div>
   );
