@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "check:generation": "node --experimental-strip-types vite-generation-jobs.check.ts",
     "lint": "oxlint",
     "preview": "vite preview"
   },

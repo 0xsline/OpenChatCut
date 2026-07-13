@@ -264,13 +264,13 @@
       ["品牌套件 brand kit（logo/色/字）", "todo", "agent 自动套用。源站 manage_brand_kit"],
     ]],
     ["8 · AI 生成（花钱域）", [
-      ["AI 视频生成", "partial", "submit_video 已接 Seedance 2.0 + Kling V3 Omni（首末帧/分类引用/Kling 多镜头/轮询下载→媒体池），浏览器 mock 已验证两家；待真实 key + 统一异步 job", "P2", "gpt"],
+      ["AI 视频生成", "partial", "submit_video 已接 Seedance 2.0 + Kling V3 Omni；提交即返 jobId，track_progress 等待后幂等下载入媒体池，浏览器 mock 已验证异步闭环且不自动落轨；待真实 key", "P2", "gpt"],
       ["AI 图片生成", "partial", "submit_image 已接 gpt-image-2 / nano-banana，支持比例/尺寸/质量/参考图/多张，浏览器 mock 已验证；待真实图片权限 key", "P2", "gpt"],
       ["AI 配音 TTS", "partial", "submit_voice 已接 Doubao Seed TTS 2.0 + ElevenLabs，含两家参数、35 试听样本、时长探测；浏览器 mock 已验证，待真实 key + voice 卡", "P2", "gpt"],
-      ["AI 音乐生成", "partial", "submit_music 已接 Mureka async task + poll + 下载入媒体池，浏览器 mock 已验证；待真实 key + 后台 job", "P2", "gpt"],
+      ["AI 音乐生成", "partial", "submit_music 已接 Mureka；提交即返 jobId，track_progress 等待 provider task 后幂等下载入媒体池，浏览器 mock 已验证异步闭环；待真实 key", "P2", "gpt"],
       ["AI 音效生成", "partial", "submit_sound 已接 ElevenLabs SFX（时长/promptInfluence/时长探测），浏览器 mock 已验证；待真实 key", "P2", "gpt"],
       ["着色器生成（转场/特效）", "todo", "submit_shader；Gemini→GLSL/TS，须编译校验+沙箱", "P2", "claude"],
-      ["任务队列 + 轮询 + 积分计量", "todo", "统一 generation_job（幂等+poll）+ track_progress + api_usage 计费。源站 G3/G4", "P2"],
+      ["任务队列 + 轮询 + 积分计量", "partial", "音乐/视频已共享进程内 generation job，支持 track_progress params/status/wait、失败状态和幂等入库；待持久队列、覆盖其余生成类型及 api_usage 计费。源站 G3/G4", "P2"],
     ]],
     ["9 · 素材 / 媒体", [
       ["音频素材库（3 音乐 + voice）", "done", "<code>audio/library.ts</code>"],

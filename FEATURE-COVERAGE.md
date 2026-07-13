@@ -6,7 +6,7 @@
 >
 > 每个 🟡/❌ 项给：**怎么做 / 用什么技术 / 对应源站**。初始生成于 2026-07-13；状态于 2026-07-14 从 `feature-coverage.html` 同步。
 
-当前共 **131** 项：✅ 已实现 **39** · 🟡 部分实现 **17** · ❌ 未实现 **75**。按“已实现=1、部分实现=0.5”计算，路线图覆盖率为 **36.3%**。
+当前共 **132** 项：✅ 已实现 **44** · 🟡 部分实现 **23** · ❌ 未实现 **65**。按“已实现=1、部分实现=0.5”计算，路线图覆盖率为 **42.0%**。
 
 ---
 
@@ -18,8 +18,8 @@
 | MG 模板 | ✅ 基本完整（211+生成+沙箱），缺属性面板/设计风格 |
 | 转写 / 文字稿编辑 | 🟡 核心在（删词=删视频/静音压缩），缺 timeline.md/av_script/校正/变体 |
 | 字幕 | 🟡 3 模板+卡拉OK+跟随+双语，缺预设扩充/逐词覆盖 |
-| AI 生成（视频/图/配音/音乐/音效/着色器）| ❌ 全缺（本地无生成能力，仅占位素材）|
-| 导出 | 🟡 仅 MP4（服务端渲染），缺 srt/xml/audio/ProRes/WebCodecs/异步job |
+| AI 生成（视频/图/配音/音乐/音效/着色器）| 🟡 图/视频/配音/音乐/音效已接 provider 适配层并完成本地浏览器联调；音乐/视频已接统一异步 job + `track_progress`，缺真实供应商凭据实测、着色器、持久队列/积分计量 |
+| 导出 | 🟡 MP4 服务端渲染 + srt/txt 同步导出已完成；缺 xml/audio/ProRes/WebCodecs/异步job |
 | 项目/持久化/多工程 | 🟡 IndexedDB 自动保存恢复、多工程和仪表盘已完成；版本历史/交互卡/工程绑定待补 |
 | 协作 / 分享 / 实时同步 | ❌ 全缺 |
 | 账号 / 计费 / 积分 | ❌ 全缺（TopBar 静态 18.5）|
@@ -121,19 +121,19 @@
 | **设计风格库（颜色/字体/动效预设）** | ❌ | 应用到模板/字幕/整片的品牌视觉。做：`designStyle{palette,fonts,motion}` 存工程 + 注入 MG/字幕默认色字体。源站 `manage_design_style`，`design_style` 表（当前应用的即工程品牌）|
 | **品牌套件 brand kit（logo/色/字）** | ❌ | agent 自动套用。源站 `manage_brand_kit`，`brand_kit` 表 |
 
-## 8. AI 生成（花钱域，全部未实现）
+## 8. AI 生成（花钱域）
 
-> 全部对标源站 §8 `submit_*`（异步 job + 积分门控）。本地方案：接对应 API 或开源自建，统一走 job/队列。当前仓库只有占位素材（3 音乐+voice 样本），**零生成能力**。
+> 全部对标源站 §8 `submit_*`（异步 job + 积分门控）。当前已完成 5 个 provider 适配层、服务器密钥隔离、生成文件入库与 Agent 工具接线；音乐/视频已统一为提交即返 `jobId`，再由 `track_progress` 的 params/status/wait 幂等落入媒体池，并在浏览器自建工程用本地 provider mock 验证。真实供应商凭据、进程外持久队列、其余生成类型异步化与积分计量仍待补。
 
 | 功能 | 状 | 怎么做 / 技术 / 源站 |
 |---|---|---|
-| **AI 视频生成** | ❌ | `submit_video`；接 BytePlus **Seedance2**/Kling API（或开源 Wan2.1）；文/图生视，1–15s，首末帧。产 asset→edit_item 落轨 |
-| **AI 图片生成** | ❌ | `submit image`；OpenAI **gpt-image-2** / Gemini nano-banana（或开源 **FLUX.1**）|
-| **AI 配音 TTS** | ❌ | `submit_voice`；火山 **Doubao BigTTS**（中文优，uranus/saturn 音色）+ **ElevenLabs**（或开源 CosyVoice/F5-TTS）。先跑试听选音（voice 卡）。有 35 个试听样本在逆向资源 |
-| **AI 音乐生成** | ❌ | `submit_music`；**Mureka**/Suno（或开源 MusicGen/Stable Audio）|
-| **AI 音效生成** | ❌ | `submit_sound`；**ElevenLabs SFX**（或 Stable Audio Open）。先查库再生成省钱 |
+| **AI 视频生成** | 🟡 | `submit_video` 已接火山方舟 **Seedance 2.0** 与 **Kling V3 Omni**：文/图/参考生成、首末帧、3/4–15s、Kling customize/intelligence 多镜头；提交立即返 `jobId`，由 `track_progress` 等待后幂等下载入媒体池。浏览器 mock 已验证两家、异步闭环且不自动落轨；待真实 key 实测 |
+| **AI 图片生成** | 🟡 | `submit_image` 已接 OpenAI **gpt-image-2** / Gemini nano-banana（当前映射 `gemini-3.1-flash-image`），支持尺寸/比例/质量/参考图/多张并写媒体池+时间线；浏览器 mock 已验证两模型。待真实图片权限 key 实测 |
+| **AI 配音 TTS** | 🟡 | `submit_voice` 已接火山 **Doubao Seed TTS 2.0** + **ElevenLabs**，支持两家专属参数、ffprobe 时长与 35 个试听样本；浏览器 mock 已验证两家且仅入媒体池。待真实供应商 key 实测与 voice 选择卡 |
+| **AI 音乐生成** | 🟡 | `submit_music` 已接 **Mureka** `/v1/instrumental/generate`，提交立即返 `jobId`，由 `track_progress` 等待 provider task 后幂等下载入媒体池；兼容 `audio_url/url/wav_url/flac_url`。浏览器 mock 已验证异步闭环；待真实 key 实测 |
+| **AI 音效生成** | 🟡 | `submit_sound` 已接 **ElevenLabs Sound Effects**，支持时长/`promptInfluence`、ffprobe 时长、仅入媒体池；浏览器 mock 已验证。待真实 key 实测 |
 | **着色器生成（转场/特效）** | ❌ | `submit_shader`；Gemini→GLSL/TS，产 `EffectProcessor`/`TransitionProcessor` 子类，**必须编译校验+沙箱**（同 MG）|
-| **任务队列 + 轮询 + 积分计量** | ❌ | 上述全走统一 `job/generation_job`（幂等+poll_due）+ `track_progress` 轮询 + `api_usage.service` 按供应商计费。源站 G3/G4 |
+| **任务队列 + 轮询 + 积分计量** | 🟡 | 音乐/视频已共享进程内 generation job，支持 `track_progress` params/status/wait、失败状态和成功结果幂等入库。待改为进程外持久队列、覆盖图片/配音/音效，并接 `api_usage.service` 按供应商计费。源站 G3/G4 |
 
 ## 9. 素材 / 媒体
 
@@ -159,12 +159,12 @@
 | 导出 MP4（服务端 @remotion/renderer, h264+aac）| ✅ | `vite-plugin-export.ts` + `remotion/render.mjs` |
 | 字幕烧录 + 字体保真 | ✅ | CaptionsLayer + Google Fonts |
 | 宽高比/fit（长转短基础）| ✅ | 见功能 ⑪ |
-| **导出字幕文件（srt/txt）** | ❌ | 把 caption cues 序列化成 SubRip/txt（同步返回）。源站 `submit_export` format=subtitles |
+| **导出字幕文件（srt/txt）** | ✅ | `submit_export format=subtitles`：从当前 caption words/phrase/双语 cue 生成 UTF-8 SRT 或 TXT，支持帧/秒范围、同步下载与安全文件名；已在浏览器用真实转写字幕端到端验证 |
 | **导出音频（mp3/wav）** | ❌ | renderMedia codec=mp3，或 ffmpeg 抽音轨。源站 audio tab |
 | **导出 XML → Premiere/DaVinci（fcpxml）** | ❌ | 时间线序列化成 FCPXML 方言 + MG 作 ProRes 引用。源站 `nleFormat` fcp_xml/fcp_xml_resolve —— 长转短交付口 |
 | **浏览器端 WebCodecs 快导** | ❌ | 轻量导出走 `VideoEncoder`+muxer（不经服务端 Chrome）。源站 in-browser 快路径 |
 | **异步渲染 job + 轮询（track_export）** | ❌ | 现同步阻塞。做：导出入队列返 renderId，前端轮询进度。源站 `track_export` + Remotion Lambda |
-| **部分导出（帧范围）** | ❌ | renderMedia frame range。源站 startFrame/endFrameExclusive |
+| **部分导出（帧范围）** | 🟡 | 字幕导出已支持 `startFrame`/`endFrameExclusive`（及秒兼容）并归零时间码；MP4/audio 的 renderMedia frame range 仍待补 |
 | **字体兜底确认（confirmFontFallback）** | 🟡 | 已加载常用字体；无「不支持字体清单→二次确认」门。源站 §10 |
 | **免费档水印** | ❌ | 合成加水印层（按 plan）。源站 `updateWatermark` |
 | **导出历史 + 渲染后评分** | ❌ | `export_history` 表 + 反馈。源站 |

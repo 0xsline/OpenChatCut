@@ -9,6 +9,7 @@ out.mp4
 # secrets
 .env
 .env.*
+!.env.example
 
 # parallel agent worktrees
 .claude/worktrees/
