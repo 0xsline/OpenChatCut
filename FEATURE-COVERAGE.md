@@ -4,7 +4,9 @@
 >
 > **图例**：✅ 已实现 · 🟡 部分实现 · ❌ 未实现
 >
-> 每个 🟡/❌ 项给：**怎么做 / 用什么技术 / 对应源站**。生成日期 2026-07-13，实现进度停在功能 ⑪（宽高比长转短）。
+> 每个 🟡/❌ 项给：**怎么做 / 用什么技术 / 对应源站**。初始生成于 2026-07-13；状态于 2026-07-14 从 `feature-coverage.html` 同步。
+
+当前共 **131** 项：✅ 已实现 **39** · 🟡 部分实现 **17** · ❌ 未实现 **75**。按“已实现=1、部分实现=0.5”计算，路线图覆盖率为 **36.3%**。
 
 ---
 
@@ -12,16 +14,16 @@
 
 | 域 | 状态 |
 |---|---|
-| 编辑器核心 / 时间线 | 🟡 骨架全、pro 工具缺（keyframe/effect/transition/marker/多轨管理）|
+| 编辑器核心 / 时间线 | 🟡 剪辑、变换、动画、标记已完成；特效/转场/轨道管理部分完成，多时间线/ripple 待补 |
 | MG 模板 | ✅ 基本完整（211+生成+沙箱），缺属性面板/设计风格 |
 | 转写 / 文字稿编辑 | 🟡 核心在（删词=删视频/静音压缩），缺 timeline.md/av_script/校正/变体 |
 | 字幕 | 🟡 3 模板+卡拉OK+跟随+双语，缺预设扩充/逐词覆盖 |
 | AI 生成（视频/图/配音/音乐/音效/着色器）| ❌ 全缺（本地无生成能力，仅占位素材）|
 | 导出 | 🟡 仅 MP4（服务端渲染），缺 srt/xml/audio/ProRes/WebCodecs/异步job |
-| 项目/持久化/多工程 | ❌ 内存单工程，刷新即丢 |
+| 项目/持久化/多工程 | 🟡 IndexedDB 自动保存恢复、多工程和仪表盘已完成；版本历史/交互卡/工程绑定待补 |
 | 协作 / 分享 / 实时同步 | ❌ 全缺 |
 | 账号 / 计费 / 积分 | ❌ 全缺（TopBar 静态 18.5）|
-| Agent 平台 | 🟡 原生 tool-use 跑通，缺 propose→apply/技能/会话持久化/多模态自检 |
+| Agent 平台 | 🟡 原生 tool-use、流式输出、约 19 个工具、propose→apply 已完成；技能/会话持久化/多模态自检待补 |
 | 多端 / MCP / 集成 | ❌ 全缺 |
 
 ---
@@ -31,8 +33,8 @@
 | 功能 | 状 | 怎么做 / 技术 / 源站 |
 |---|---|---|
 | 单工程内存编辑 | ✅ | `useEditor` reducer，App 内存态 |
-| **工程持久化（保存/加载）** | ❌ | 先落 localStorage/IndexedDB 存 `TimelineState`（快照 JSON）；正式版对标源站 **Rocicorp Zero + IndexedDB**（local-first）。源站 `zero/mutate`·`zero/query`。MVP：`idb-keyval` 存工程 |
-| **多工程 + 仪表盘 `/projects`** | ❌ | 加路由（React Router）+ 工程列表页（grid/list/搜索/排序/新建/重命名/复制/删除/软删回收站）。源站 `project-list` 模块 + `create_project`/`list_projects`/`duplicate_project`/`delete_project`/`restore_project`。存储层同上 |
+| **工程持久化（保存/加载）** | ✅ | IndexedDB 自动保存 + 启动恢复，见 `persist/projectStore.ts`；正式版对标 Zero + IndexedDB（local-first）|
+| **多工程 + 仪表盘 `/projects`** | ✅ | hash 路由 + 工程列表页，支持新建/打开/重命名/复制/删除；每工程独立持久化，见 `Dashboard.tsx` |
 | **版本历史（快照/回滚）** | ❌ | 每次保存打快照（已有 undo 快照机制可复用），列表+命名+diff+回滚。源站 `/api/versions` + 顶栏「版本」 |
 | ask_followup_questions（交互卡）| ❌ | Agent 需要澄清时返回结构化表单卡（单选/多选/文本/voice/scenario 卡），前端渲染。源站 `ui://chatcut/followup-questions-v31` |
 | get_editor_url / target_project | ❌ | 多工程后才有意义（会话绑定工程）。源站 G1 projectId 绑定 |
@@ -48,14 +50,15 @@
 | 时间线上下拖高 + 加权轨道高度 | ✅ | `cc.timelineH` + WEIGHT |
 | **多时间线/序列（每工程多条）** | ❌ | `TimelineState` 升成 `{timelines: Timeline[], activeId}`；tab 切换/新建/复制/删除/隐藏。源站 `manage_timelines`，`active_timeline` 表。**长转短的地基**（每比例一条序列）|
 | **轨道管理（增删/改序/角色/锁/隐/静音/收紧）** | 🟡 | 现固定 V2/V1/A1/A2、👁🔊 是死图标。做：轨道数组化 + 每轨 `{visible,muted,locked,collapsed,role}`；role 驱动自动闪避。源站 `edit_track`（list/create/update/delete/**tighten**）|
-| **刀片工具(B)/修剪工具(N)/吸附** | 🟡 | 有拖拽裁剪，无模式化工具。做：工具状态机（V/N/B）+ 点击落刀调 `splitItem`；吸附=拖拽时对齐相邻端点/播放头。源站编辑器工具栏 |
+| **刀片工具(B)/修剪工具(N)/吸附** | ✅ | 刀片按钮/B 键在播放头切分，切口 `srcInFrame` 递进；拖拽/裁剪可吸附到 0、播放头和邻近片段边 |
 | **Ripple 编辑（插入/覆盖模式）** | ❌ | `edit_item` 的 `ripple` 语义：插入模式后续片段整体位移+合缝。做：reducer 加 ripple 参数，move/add 时顺延同轨后续 item。源站域 C 核心 |
-| **关键帧 + bezier 缓动** | ❌ | 片段属性（位置/缩放/透明度）随时间打点。做：item 加 `keyframes: {prop, frames:[{f,v,ease}]}`；渲染时 `interpolate` 按帧取值 + cubic-bezier。源站 `keyframe`/`bezier` |
-| **更多媒体类型：image / gif / svg / text / solid** | ❌ | 现只有 motion-graphic + audio。做：`kind` 扩枚举 + 各自 `<Img>/<Video>/<Sequence>` 渲染；text/solid 是纯文字/色块 item。源站按类型拆表 `image_item`/`text_item`/`solid_item` 等 |
-| **视频素材片段（video item）** | ❌ | 导入真视频文件→`<OffthreadVideo>` 渲染 + trim。源站 `video_item`（asset+track），配 duration-probe worker 探测 |
-| **特效（blur/zoom/mosaic/CRT/ASCII…）** | ❌ | `effect_item.target_item` 作用于某片段。做：effect 层包裹目标片段做 CSS/WebGL 滤镜；auto-zoom=对片段做缩放关键帧。源站域 F，GLSL `EffectProcessor` |
-| **转场（cross-dissolve/dip/whip-pan/zoom/slide/luma…）** | ❌ | `transition_item.incoming/outgoing` 连两片段。做：两片段重叠区做 GLSL 片元着色器混合（Three.js/WebGL）或 CSS 过渡近似。源站 26 个内置 `-frag` 着色器（可从 beautified editor bundle 提取源码）|
-| **标记 markers（点/段批注）** | ❌ | 锚在帧或转写段上的注释。做：`state.markers[]` + 时间轴上画标记 + 面板列表。源站 `manage_markers`，`marker` 表，契约 marker-note-v2 |
+| **片段变换（缩放/位置/旋转）** | ✅ | `ClipTransform {scale,x,y,rotation}` 通过 `ClipWrapper` 应用 CSS transform；属性面板提供缩放、位置、旋转滑块 |
+| **动画/关键帧（源真相：无通用 K 帧）** | ✅ | MG 使用 `interpolate`/`spring`/bezier；`builtin:zoom` 提供参数化缩放动画；`ReframeCurveV1` 提供焦点与倍率稀疏关键帧 |
+| **更多媒体类型：image / gif / svg / text / solid** | 🟡 | image、video、text 已完成；gif、svg、solid 待补。text 支持内容、字号、颜色、对齐和字重 |
+| **视频素材片段（video item）** | ✅ | 导入真视频并通过 `<OffthreadVideo>` 预览和导出 |
+| **特效（blur/zoom/mosaic/CRT/ASCII…）** | 🟡 | 亮度、对比度、饱和度、模糊已完成；mosaic、CRT、ASCII 等 WebGL 特效待补 |
+| **转场（cross-dissolve/dip/whip-pan/zoom/slide/luma…）** | 🟡 | 已完成溶解、黑场、柔化擦除、甩镜、闪白、亮度混合；page-curl、rack-focus 等复杂 GLSL 转场待补 |
+| **标记 markers（点/段批注）** | ✅ | 支持点/区间标记、批注、8 色、跳转和标记帧吸附；源站 `manage_markers` |
 | **色度键 / 绿幕（chroma key）** | ❌ | 对 video item 做颜色抠像。做：WebGL shader 抠指定色。源站 `chroma` |
 | **变速 / 重定时（variable speed）** | 🟡 | 有 set_item_timing 改时长，无保音调变速。做：item 加 `playbackRate`，`<Audio>/<Video>` 用 `playbackRate` + 时间线时长按 rate 换算（源站 caption 的 `dH` 已含 playbackRate 语义）|
 
@@ -64,7 +67,7 @@
 | 功能 | 状 | 怎么做 / 技术 / 源站 |
 |---|---|---|
 | 音频片段 + 音量 | ✅ | `<Audio volume>` |
-| **淡入淡出（fadeIn/Out 秒）** | ❌ | item 加 `fadeIn/fadeOut` 秒，渲染时对音量做 `interpolate`（+视觉斜角）。源站 `edit_item` fade 字段是秒（G6）|
+| **淡入淡出（fadeIn/Out 秒）** | ✅ | `fadeInFrames`/`fadeOutFrames`：视觉通过 `ClipWrapper` opacity，音频通过 volume 函数处理；属性面板按秒调节 |
 | **响度归一化（-14 LUFS）** | ❌ | 分析音频 RMS/LUFS → 增益。做：Web Audio `AnalyserNode` 离线算，或导出后 ffmpeg `loudnorm`。源站 `normalize`/`loudness` |
 | **自动闪避 ducking（music 遇 voice 降）** | ❌ | 检测 voice 轨活动区间 → music 轨该区间降音量关键帧。源站 track role 驱动 `ducking` |
 | **AI 降噪 / 人声隔离** | ❌ | `denoised_audio_asset`。做：接 **DeepFilterNet3**（开源 Rust，可本地跑 wasm/服务端）产一条降噪 wav，item 可切换源。源站 `isolate_voice` |
@@ -97,7 +100,6 @@
 | **样式预设扩充（Persona/Bubble Pop/Submagic/Noir…）** | 🟡 | 现 3 个。做：加更多命名预设（字体/描边/背景/动画）到 `caption_style_preset` 风格表。源站 `caption_style_preset`(owner) + 十来个预设名 |
 | **逐词覆盖（隐藏/遮罩/拆/并/改字）** | ❌ | 对单个词做显示覆盖。做：`caption_word_override[{wordId, action, text}]`，渲染时套用。源站 `caption_word_override` 表，`edit_captions` display_text 动作（需先 read_captions）|
 | 字幕源路由（选哪些音轨生成）| 🟡 | 有 sourceItemId（单轨）。多轨合并生成可扩。源站 `sourceScope`/`trackOrder` |
-| 导出字幕文件（srt/txt）| ❌ | 见「导出」域 |
 
 ## 6. Motion Graphics
 
@@ -108,8 +110,6 @@
 | 设计框缩放（1920×1080 + scale）| ✅ | ItemLayer fit |
 | **属性面板（properties schema 驱动）** | 🟡 | InspectorPanel 能改 props，但没吃模板的 `properties` schema（类型化控件：text/color/number/font/boolean/image/select）。做：模板 meta 带 propSchema → 生成对应控件。源站 9 种属性类型自动生成参数面板 |
 | **transparentBackground 叠加开关** | ❌ | MG 作透明覆盖层。做：item flag，渲染时不铺底。源站标准 overlay 开关 |
-| **image 属性解析 host 资产 id→URL** | 🟡 | `Img` 已判可加载 URL；缺资产库 id 解析。多媒体池后接上 |
-| **create_motion_graphic_from_code（内联 JSX+可编辑属性）** | 🟡 | 有生成，缺让模型同时定义 `properties`。做：生成时产出 propSchema |
 | **manage_template（工程模板打包/应用）** | ❌ | 一组 MG+设计风格打包。做：模板=item 组+风格快照，apply 落轨。源站 `manage_template` |
 | **MG→透明视频（convert_motion_graphic_to_video）** | ❌ | 云渲 MG 为 vp8/WebM alpha。做：`@remotion/renderer` 渲 MG 单独段（透明 codec）。源站 `convert_motion_graphic_to_video`+`register_converted_video` |
 | **导出 MG 为 ProRes4444 alpha .mov** | ❌ | NLE XML 导出前用。做：renderMedia codec=prores。源站 `export_motion_graphic_prores`（PRO 门控）|
@@ -141,8 +141,8 @@
 |---|---|---|
 | 音频素材库（3 音乐+voice）| ✅ | `audio/library.ts` |
 | MG 模板库（211）| ✅ | 内置 JSON |
-| **通用媒体导入（上传视频/图/音）** | 🟡 | 转写会上传字节，但没有「导入到媒体池」。做：`<input type=file>`→读字节→（S3 presigned 或本地 blob URL）→建 asset→自动转写。源站 `import_media`/`request_asset_upload_url`/`finalize` |
-| **媒体池（文件夹/搜索/排序/收藏/网格）** | ❌ | 「我的素材」面板。做：`assets[]` + folder 树 + UI。源站 `manage_media_pool` |
+| **通用媒体导入（上传视频/图/音）** | ✅ | 上传端点 `vite-plugin-upload` 写入 `public/media/uploads`，客户端探测时长/尺寸，预览与导出同源 |
+| **媒体池（文件夹/搜索/排序/收藏/网格）** | 🟡 | 「我的素材」面板与 `assets[]` 已完成，支持导入和点击落轨；文件夹/搜索/排序/收藏待补 |
 | **手机上传 `/m/:token`** | ❌ | 扫码手机传素材。源站 phone-upload 模块 |
 | **库素材浏览（转场/特效/LUT/缩放/音效）** | 🟡 | 只有 MG 库。做：把转场/特效/LUT/zoom/sfx 也做成库分类。源站 `browse_library`（7 类）|
 | **LUT（Sony S-Log3/Canon Log3）** | ❌ | 对 video 应用 .cube LUT。做：WebGL 3D LUT 采样。源站 2 个内置相机 log 转换 |
@@ -176,7 +176,7 @@
 | Anthropic 原生 tool-use（可换真 Claude 一行）| ✅ | `agent/`，现跑 grok 中转 |
 | 流式输出（text/thinking）| ✅ | `messages.stream` |
 | ~19 个工具（读/加/改/转写/字幕/删词/比例）| ✅ | `tools.ts`+`transcript-tools.ts` |
-| **propose → review → apply（提案审阅再落地）** | ❌ | 现在 agent 直接改。做：结构性编辑先产 `proposal{options:[{operations,creditEstimate}]}`→UI 展示→用户 Apply/Repropose/Cancel→原子提交。**源站核心交互契约（G5，必抄）**，把 LLM 关进笼子 |
+| **propose → review → apply（提案审阅再落地）** | ✅ | Agent 先在草稿态执行结构编辑并生成 proposal；`ProposalCard` 支持逐操作勾选、预览、应用和拒绝，批准后作为一次原子提交，可一次 undo |
 | **多轮会话持久化（session/reset/max_turns）** | 🟡 | 有循环，无会话存储。做：`chat_block` 有序存对话；reset/继续。源站 `sdk_session` |
 | **@ 引用素材进对话** | ❌ | 聊天里 @某片段/资产带上下文。源站 `chat_context_entry` |
 | **对话历史持久化** | ❌ | 刷新即丢。源站 `chat_block`(project_seq) |
@@ -256,14 +256,14 @@
 ## 建议实现顺序（优先级）
 
 **P0 地基（不做后面都虚）**
-1. 工程持久化（IndexedDB 存 TimelineState）+ 多工程 + 仪表盘
-2. propose→apply 交互契约（agent 落地的正确姿势）
-3. 通用媒体导入 + 媒体池 + 视频 item（真视频剪辑）
+1. ✅ 工程持久化（IndexedDB）+ 多工程 + 仪表盘
+2. ✅ propose→apply 交互契约
+3. 🟡 通用媒体导入 + 视频 item 已完成；媒体池基础完成，管理能力待补
 
 **P1 补齐 NLE 核心**
-4. 多时间线/序列（长转短地基）+ 轨道管理（增删/角色/锁隐静）
-5. 刀片/吸附/ripple；关键帧+bezier
-6. 转场 + 特效（先 CSS/WebGL 近似，再上 GLSL）+ 标记
+4. 🟡 多时间线/序列待完成；轨道管理部分完成
+5. 🟡 刀片/吸附和现有动画模型已完成；ripple 待补
+6. 🟡 转场和特效已完成基础版本；标记已完成，复杂 GLSL 效果待补
 
 **P2 生成矩阵（护城河，接 API）**
 7. 统一 job 队列 + 积分计量骨架
