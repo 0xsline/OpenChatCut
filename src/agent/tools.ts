@@ -1,5 +1,7 @@
 import type { AgentContext } from './context';
 import type { TrackId } from '../editor/types';
+import type { Tpl } from '../types';
+import { compileTemplate } from '../template-host';
 
 // OpenAI-style tool schemas. These mirror ChatCut's domain tools; each one
 // executes against the EditorCore command layer (tool == command).
@@ -114,12 +116,51 @@ export const TOOL_SCHEMAS = [
   {
     type: 'function',
     function: {
+      name: 'create_motion_graphic',
+      description: 'Generate a BRAND-NEW motion graphic from a description (writes fresh Remotion code, not from the library). Use only when no library template fits the user\'s intent.',
+      parameters: {
+        type: 'object',
+        properties: {
+          description: { type: 'string', description: 'What the motion graphic should show/animate.' },
+          name: { type: 'string', description: 'Short display name.' },
+          durationSeconds: { type: 'number', description: 'Duration in seconds (default 3).' },
+          track: { type: 'string', enum: ['V1', 'V2'] },
+        },
+        required: ['description', 'name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'clear_timeline',
       description: 'Remove ALL clips from the timeline. Only when the user clearly asks to start over / clear everything.',
       parameters: { type: 'object', properties: {} },
     },
   },
 ] as const;
+
+let genCounter = 0;
+
+// Ask the LLM to write a fresh Remotion MG component following the template contract.
+async function generateMgCode(description: string): Promise<string> {
+  const sys = `You write ONE Remotion motion-graphic React component. Output ONLY the code — no markdown fences, no prose.
+Contract (MUST follow exactly):
+- Shape: const Name = ({item}) => { ...; return (<AbsoluteFill>...</AbsoluteFill>); };
+- NO import / require / export. These globals are already injected: React, useCurrentFrame, useVideoConfig, interpolate, interpolateColors, spring, Easing, random, Img, Audio, Sequence, AbsoluteFill.
+- Canvas is 1920x1080. Animate with useCurrentFrame()+interpolate()/spring({fps,frame,config}). Get { fps, durationInFrames } from useVideoConfig().
+- Pure, synchronous rendering only. FORBIDDEN: fetch, XMLHttpRequest, WebSocket, document, window, globalThis, eval, new Function, .constructor, localStorage, setTimeout, setInterval, while(true), for(;;), debugger.
+- Style inline. Make it clean and visually appealing (large readable text, tasteful colors, smooth fade/slide/scale animations).`;
+  const resp = await fetch('/llm/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'grok-4.5', messages: [{ role: 'system', content: sys }, { role: 'user', content: description }], max_tokens: 2200 }),
+  });
+  const data = await resp.json();
+  let code: string = data?.choices?.[0]?.message?.content ?? '';
+  code = code.replace(/^\s*```[a-zA-Z]*\s*\n?/, '').replace(/\n?```\s*$/, '').trim(); // strip fences
+  return code;
+}
 
 type Args = Record<string, unknown>;
 
@@ -130,7 +171,7 @@ function findItem(ctx: AgentContext, itemId: unknown) {
 }
 
 // Execute a tool call against the live editor. Returns a JSON-serializable result.
-export function executeTool(name: string, args: Args, ctx: AgentContext): unknown {
+export async function executeTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();
@@ -192,6 +233,37 @@ export function executeTool(name: string, args: Args, ctx: AgentContext): unknow
       if (!it) return { error: `no item ${args.itemId}` };
       ctx.commands.duplicateItem(it.id);
       return { ok: true, duplicated: it.name };
+    }
+    case 'create_motion_graphic': {
+      const description = String(args.description ?? '').trim();
+      if (!description) return { error: 'description is required' };
+      const fps = ctx.getState().fps;
+      const durationInFrames = Math.max(15, Math.round((Number(args.durationSeconds) || 3) * fps));
+      let code: string;
+      try {
+        code = await generateMgCode(description);
+      } catch (e) {
+        return { error: `generation failed: ${e instanceof Error ? e.message : String(e)}` };
+      }
+      if (!code) return { error: 'model returned empty code' };
+      // Sandbox gate: compileTemplate runs the static blocklist (validateTemplate)
+      // then compiles in the restricted scope — both must pass before we add it.
+      try {
+        compileTemplate(code);
+      } catch (e) {
+        return { error: `generated code rejected by sandbox: ${e instanceof Error ? e.message : String(e)}`, code };
+      }
+      const tpl: Tpl = {
+        id: `gen_${++genCounter}`,
+        name: String(args.name ?? 'Generated MG'),
+        category: 'generated',
+        width: 1920, height: 1080, fps,
+        durationInFrames,
+        props: {}, propSchema: [], thumb: null, code,
+      };
+      const track = (args.track as TrackId) ?? 'V1';
+      ctx.commands.addMotionGraphic(tpl, { track });
+      return { ok: true, generated: tpl.name, track, durationInFrames };
     }
     case 'clear_timeline':
       ctx.commands.clearTimeline();

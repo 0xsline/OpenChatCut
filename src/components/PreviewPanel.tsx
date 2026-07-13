@@ -14,7 +14,7 @@ export function PreviewPanel({ state, playerRef }: PreviewPanelProps) {
   return (
     <section style={{ display: 'flex', flexDirection: 'column', background: theme.panel, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
       <div style={{ padding: '10px 16px', fontSize: 12, color: theme.textDim, borderBottom: `1px solid ${theme.border}` }}>预览</div>
-      <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 20, minHeight: 0, background: theme.bg }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, minHeight: 0, minWidth: 0, overflow: 'hidden', background: theme.bg }}>
         {state.items.length === 0 ? (
           <div style={{ color: theme.textDim, fontSize: 13, textAlign: 'center' }}>
             时间线为空<br />

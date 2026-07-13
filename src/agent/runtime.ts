@@ -73,7 +73,7 @@ export async function runAgent(
         } catch {
           /* leave empty */
         }
-        const result = executeTool(tc.function.name, args, ctx);
+        const result = await executeTool(tc.function.name, args, ctx);
         onEvent({ type: 'tool', name: tc.function.name, args, result });
         conv.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
       }
