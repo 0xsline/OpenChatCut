@@ -206,7 +206,7 @@
       ["刀片(B)/修剪(N)/吸附", "done", "刀片 ✂ / B 键在播放头切分（切口 srcInFrame 递进，无缝）；拖拽/裁剪吸附到 0/播放头/邻近片段边（7px + 蓝色吸附线）", "P1"],
       ["Ripple 编辑（插入/覆盖）", "todo", "插入模式后续片段整体位移合缝。源站 edit_item ripple", "P1"],
       ["片段变换（缩放/位置/旋转）", "done", "ClipTransform{scale,x,y,rotation}→CSS transform（ClipWrapper，translate%→rotate→scale）；属性面板缩放/水平/垂直/旋转滑块。导出验证 scale0.5+x25%。源站 缩放 tab", "P1"],
-      ["关键帧 + bezier 缓动", "todo", "属性随帧打点，渲染 interpolate + cubic-bezier（变换/透明度已有静态版，加时间轴打点）。源站 keyframe/bezier", "P1"],
+      ["动画/关键帧（源真相：无通用 K 帧）", "done", "侦察发现源站<b>没有</b>通用逐属性关键帧(item.keyframes/add_keyframe 都不存在,PRD 那句是未证实推测)。真动画=①MG 模板 interpolate/spring/Easing.bezier(已做)②<b>builtin:zoom</b> 参数化动画(shape 曲线 hold/punch/slow-push/instant + magnification + 焦点,zoom.ts 照抄源 A2/uPe 曲线数学 + zoom.check.ts 断言)③<b>ReframeCurveV1</b> 稀疏关键帧(唯一真 K 帧模型:{frame,focalPointX,focalPointY,magnification},◆在播放头打点)。属性面板缩放动画区。导出验证(slow-push 1→2×;reframe 曲线焦点 0.15→0.85 边推边缩 1.2→2.5×)。源站 builtin:zoom/ReframeCurveV1", "P1"],
       ["更多媒体类型 image/gif/svg/text/solid", "partial", "image + video + text 已做（<code>MediaFill</code>/<code>TextLayer</code>，text 含内容/字号/色/对齐/粗细 + T＋ 按钮）；gif/svg/solid 待补。源站按类型拆表"],
       ["视频素材片段（video item）", "done", "导入真视频 → <code>OffthreadVideo</code> 渲染（预览+导出）。源站 video_item", "P0"],
       ["特效（blur/zoom/mosaic/CRT/ASCII…）", "partial", "基础调整已做：亮度/对比度/饱和度/模糊（ClipFilters→CSS filter 于 ClipWrapper，属性面板滑块，导出验证）；mosaic/CRT/ASCII 等 WebGL 特效待补。源站域 F", "P1"],
@@ -397,7 +397,7 @@
   document.getElementById("nDone").textContent = counts.done;
   document.getElementById("nPartial").textContent = counts.partial;
   document.getElementById("nTodo").textContent = counts.todo;
-  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：转场（忠实源 transition_item 模型 + 6 种 CSS 复刻:溶解/黑场/柔化擦除/甩镜/闪白/亮度混合，导出+预览验证）`;
+  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：动画/关键帧（源真相=builtin:zoom 参数化动画 + ReframeCurveV1 稀疏关键帧，非通用 K 帧；导出+预览验证）`;
 
   requestAnimationFrame(() => {
     document.getElementById("barDone").style.width = counts.done / total * 100 + "%";
