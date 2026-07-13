@@ -71,6 +71,9 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
   const [zoom, setZoom] = usePersistedState('cc.timelineZoom', 1);
   const px = PX_PER_FRAME * zoom; // pixels per frame at the current time-zoom
   const zoomBy = (f: number) => setZoom((z) => Math.min(6, Math.max(0.5, z * f)));
+  // editing mode (source: Selection V / Blade B / Trim T). selection = drag/move;
+  // blade = click a clip to cut it there; trim = edge-trim ripples following clips.
+  const [editMode, setEditMode] = usePersistedState<'selection' | 'blade' | 'trim'>('cc.editMode', 'selection');
   // magnetic snapping (source: Snapping toggle, S). On = edges lock to guides.
   const [snapping, setSnapping] = usePersistedState('cc.snapping', true);
   // fit whole timeline to the viewport width (source: Fit to view, ⇧Z)
@@ -187,15 +190,19 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
     if (next) seekFrame(next.fromFrame);
   };
   // keyboard shortcuts (ref so the listener attaches once but reads fresh state)
-  const kbRef = useRef({ bladeSelected, addMarkerAtPlayhead, gotoMarker, fitToView, toggleSnap: () => setSnapping((s) => !s) });
-  kbRef.current = { bladeSelected, addMarkerAtPlayhead, gotoMarker, fitToView, toggleSnap: () => setSnapping((s) => !s) };
+  const kb = { bladeSelected, addMarkerAtPlayhead, gotoMarker, fitToView, toggleSnap: () => setSnapping((s) => !s), setEditMode };
+  const kbRef = useRef(kb);
+  kbRef.current = kb;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return;
       if (e.metaKey || e.ctrlKey) return; // leave undo/redo etc. to Editor
       const k = e.key.toLowerCase();
-      if (k === 'b') { e.preventDefault(); kbRef.current.bladeSelected(); }
+      if (k === 'v') { e.preventDefault(); kbRef.current.setEditMode('selection'); }
+      else if (k === 'b') { e.preventDefault(); kbRef.current.setEditMode('blade'); }
+      else if (k === 't') { e.preventDefault(); kbRef.current.setEditMode('trim'); }
+      else if (k === 'c') { e.preventDefault(); kbRef.current.bladeSelected(); }
       else if (k === 'm') { e.preventDefault(); kbRef.current.addMarkerAtPlayhead(); }
       else if (k === 's') { e.preventDefault(); kbRef.current.toggleSnap(); }
       else if (k === 'z' && e.shiftKey) { e.preventDefault(); kbRef.current.fitToView(); }
@@ -269,7 +276,23 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
       const d = Math.max(Math.min(deltaF, baseDur - 1), -baseSrcIn);
       if (d !== 0) commands.setItemTiming(id, { startFrame: Math.max(0, baseStart + d), durationInFrames: baseDur - d, srcInFrame: baseSrcIn + d });
     } else if (mode === 'trim-right') {
-      if (deltaF !== 0) commands.setItemTiming(id, { durationInFrames: Math.max(1, baseDur + deltaF) });
+      const newDur = Math.max(1, baseDur + deltaF);
+      const actual = newDur - baseDur;
+      if (actual !== 0) {
+        if (editMode === 'trim') {
+          // ripple: retime this clip + slide every later same-track clip by the
+          // duration change (one atomic step via applyState, so it's a single undo)
+          const clipEnd = baseStart + baseDur;
+          const items = state.items.map((it) =>
+            it.id === id ? { ...it, durationInFrames: newDur }
+              : it.track === baseTrack && it.startFrame >= clipEnd ? { ...it, startFrame: it.startFrame + actual }
+              : it,
+          );
+          commands.applyState({ ...state, items });
+        } else {
+          commands.setItemTiming(id, { durationInFrames: newDur });
+        }
+      }
     }
     setDrag(null);
   };
@@ -312,9 +335,10 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '6px 10px', borderBottom: `1px solid ${theme.border}` }}>
         {/* left: edit tools (source order: +/cursor/trim/blade/snap/mic) */}
         <TB icon="plus" title="新建序列" onClick={() => commands.createTimeline()} />
-        <TB icon="cursor" title="选择模式 (V)" active />
-        <TB icon="trim" title="修剪模式 (T)（暂未实现）" disabled />
-        <TB icon="blade" title="刀片：在播放头处切分选中片段 (B)" onClick={bladeSelected} />
+        <TB icon="cursor" title="选择模式 (V)：拖动移动 / 裁剪首尾" active={editMode === 'selection'} onClick={() => setEditMode('selection')} />
+        <TB icon="trim" title="修剪模式 (T)：裁剪片段边缘，后续片段自动跟随合缝（波纹）" active={editMode === 'trim'} onClick={() => setEditMode('trim')} />
+        <TB icon="blade" title="刀片模式 (B)：点击片段在该处切分" active={editMode === 'blade'} onClick={() => setEditMode('blade')} />
+        <TB icon="scissors" title="在播放头切分选中片段 (C)" onClick={bladeSelected} />
         <TB icon="magnet" title={`磁性吸附：${snapping ? '开' : '关'} (S)`} active={snapping} onClick={() => setSnapping((s) => !s)} />
         <TB icon="mic" title="录制旁白（暂未实现）" disabled />
         <ToolSep />
@@ -399,7 +423,15 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
                       <div
                         key={it.id}
                         title={it.name}
-                        onPointerDown={(e) => startDrag(e, it.id, 'move', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
+                        onPointerDown={(e) => {
+                          if (editMode === 'blade') { // blade mode: click cuts the clip here
+                            e.stopPropagation();
+                            const f = Math.round(frameFromClientX(e.clientX));
+                            if (f > it.startFrame && f < it.startFrame + it.durationInFrames) commands.splitItem(it.id, f);
+                            return;
+                          }
+                          startDrag(e, it.id, 'move', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0);
+                        }}
                         onContextMenu={(e) => { e.preventDefault(); commands.selectItem(it.id); setCtxMenu({ id: it.id, x: e.clientX, y: e.clientY }); }}
                         style={{
                           position: 'absolute', left: Math.max(0, start) * px, top: 4, height: rowHeightOf(trackId) - 8, width: dur * px,
@@ -407,15 +439,15 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
                           borderRadius: 5, color: '#fff', fontSize: 10.5,
                           display: 'flex', alignItems: 'center', padding: '0 10px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
                           border: selected ? '2px solid #fff' : '2px solid transparent',
-                          cursor: 'grab', userSelect: 'none', touchAction: 'none',
+                          cursor: editMode === 'blade' ? 'crosshair' : 'grab', userSelect: 'none', touchAction: 'none',
                         }}
                       >
-                        {/* trim handles */}
-                        <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
-                          style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: 'rgba(0,0,0,0.25)' }} />
+                        {/* trim handles (hidden in blade mode) */}
+                        {editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
+                          style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
                         <span style={{ pointerEvents: 'none' }}>✦ {it.name}</span>
-                        <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
-                          style={{ position: 'absolute', right: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: 'rgba(0,0,0,0.25)' }} />
+                        {editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
+                          style={{ position: 'absolute', right: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
                       </div>
                     );
                   })}
