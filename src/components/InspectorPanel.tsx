@@ -1,7 +1,7 @@
-import { useState } from 'react';
 import { theme } from '../theme';
 import type { Tpl } from '../types';
 import type { TimelineItem } from '../editor/types';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 interface InspectorPanelProps {
   templates: Tpl[];
@@ -12,7 +12,7 @@ interface InspectorPanelProps {
 // Property editor for the selected timeline item (sits under the preview).
 // Collapsible so it doesn't crowd the preview when you don't need it.
 export function InspectorPanel({ templates, selectedItem, onItemPropChange }: InspectorPanelProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const schema = selectedItem
     ? templates.find((t) => t.id === selectedItem.templateId)?.propSchema ?? []
     : [];

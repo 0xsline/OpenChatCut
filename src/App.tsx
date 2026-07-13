@@ -8,6 +8,7 @@ import { PreviewPanel } from './components/PreviewPanel';
 import { InspectorPanel } from './components/InspectorPanel';
 import { Timeline } from './components/Timeline';
 import { Divider } from './components/Divider';
+import { usePersistedState } from './hooks/usePersistedState';
 import { useEditor } from './editor/store';
 import type { TimelineState } from './editor/types';
 import templatesJson from './chatcut-templates.json';
@@ -48,10 +49,10 @@ export default function App() {
     [commands],
   );
 
-  // resizable / collapsible panels
-  const [chatW, setChatW] = useState(300);
-  const [libW, setLibW] = useState(360);
-  const [chatCollapsed, setChatCollapsed] = useState(false);
+  // resizable / collapsible panels (persisted across refreshes)
+  const [chatW, setChatW] = usePersistedState('cc.chatW', 300);
+  const [libW, setLibW] = usePersistedState('cc.libW', 360);
+  const [chatCollapsed, setChatCollapsed] = usePersistedState('cc.chatCollapsed', false);
   const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
   // Export: POST the current timeline to the dev-server /export endpoint (which
