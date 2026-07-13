@@ -156,7 +156,7 @@
       <div class="brand">
         <span class="eyebrow">对标源站 · 复刻进度</span>
         <h1>ChatCut 复刻 · 功能覆盖</h1>
-        <span class="sub">逆向 52 工具规格 + PRD 全量差集 · 每完成一项即勾选 · 已铺完：直接操作层（trim/blade/snap/轨道/音量/淡入淡出/变换/滤镜/文字）+ 转场 + 动画（zoom/ReframeCurve）｜下一步大件：多时间线 · propose→apply · 标记</span>
+        <span class="sub">逆向 52 工具规格 + PRD 全量差集 · 每完成一项即勾选 · 已铺完：直接操作层（trim/blade/snap/轨道/音量/淡入淡出/变换/滤镜/文字）+ 转场 + 动画（zoom/ReframeCurve）+ propose→apply 提案契约（护城河①）｜下一步大件：多时间线 · 标记 · 复杂 GLSL 转场</span>
       </div>
       <div class="score">
         <span class="pct mono" id="pct">0%</span>
@@ -300,7 +300,7 @@
       ["Anthropic 原生 tool-use（可换真 Claude 一行）", "done", "<code>agent/</code>，现跑 grok 中转"],
       ["流式输出（text/thinking）", "done", "messages.stream"],
       ["~19 个工具（读/加/改/转写/字幕/删词/比例）", "done", "tools.ts + transcript-tools.ts"],
-      ["propose → review → apply（提案审阅再落地）", "todo", "结构编辑先产 proposal（options+creditEstimate）→ 审阅 → 原子提交。源站核心契约（必抄）", "P0"],
+      ["propose → review → apply（提案审阅再落地）", "done", "护城河①落地:agent 结构编辑不直接改时间线,先跑在<b>草稿态</b>(见自己的待定编辑)产 proposal→审阅→原子提交。忠实源 edit-proposal 模型(Proposal{title,summary,totalImpact,options[]}→Option→Operation{tool,args,action,target,impact,rationale});每 op 带 store actions,批准即重放为一次原子提交(一次 undo)。ProposalCard:逐 op 勾选/取消、预览(player 显草稿 vs 时间线显已提交)、应用/拒绝。store 抽 buildCommands(dispatch)+makeDraft+replayActions+setFullState。proposal.check 断言 + 真 agent 全流程实测(提案卡→时间线不动→预览 0:06 vs 已提交 0:03→应用只加 1 片段→一次 undo 全撤)。修掉 StrictMode 双提交 bug。源站 edit-proposal(注:creditEstimate 属另一层 skill_guard)", "P0"],
       ["多轮会话持久化（session/reset/max_turns）", "partial", "有循环无存储。做：chat_block 有序存对话"],
       ["@ 引用素材进对话", "todo", "聊天 @ 某片段带上下文。源站 chat_context_entry"],
       ["对话历史持久化", "todo", "刷新即丢。源站 chat_block"],
@@ -397,7 +397,7 @@
   document.getElementById("nDone").textContent = counts.done;
   document.getElementById("nPartial").textContent = counts.partial;
   document.getElementById("nTodo").textContent = counts.todo;
-  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：动画/关键帧（源真相=builtin:zoom 参数化动画 + ReframeCurveV1 稀疏关键帧，非通用 K 帧；导出+预览验证）`;
+  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：propose→apply 提案契约（护城河①：agent 草稿态产提案→审阅→原子提交，真 agent 全流程实测）`;
 
   requestAnimationFrame(() => {
     document.getElementById("barDone").style.width = counts.done / total * 100 + "%";
