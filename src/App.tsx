@@ -5,6 +5,7 @@ import { TopBar } from './components/TopBar';
 import { ChatPanel } from './components/ChatPanel';
 import { LibraryPanel } from './components/LibraryPanel';
 import { PreviewPanel } from './components/PreviewPanel';
+import { InspectorPanel } from './components/InspectorPanel';
 import { Timeline } from './components/Timeline';
 import { useEditor } from './editor/store';
 import type { TimelineState } from './editor/types';
@@ -93,14 +94,17 @@ export default function App() {
           minHeight: 0, minWidth: 0, overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'grid', gridTemplateColumns: '440px 1fr', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-          <LibraryPanel
-            templates={TEMPLATES}
-            onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)}
-            selectedItem={selectedItem}
-            onItemPropChange={(key, value) => state.selectedId && commands.updateItemProps(state.selectedId, { [key]: value })}
-          />
-          <PreviewPanel state={state} playerRef={playerRef} />
+        <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+          <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} />
+          {/* right column: preview on top, inspector below */}
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+            <PreviewPanel state={state} playerRef={playerRef} />
+            <InspectorPanel
+              templates={TEMPLATES}
+              selectedItem={selectedItem}
+              onItemPropChange={(key, value) => state.selectedId && commands.updateItemProps(state.selectedId, { [key]: value })}
+            />
+          </div>
         </div>
         <Timeline state={state} commands={commands} playerRef={playerRef} />
       </div>

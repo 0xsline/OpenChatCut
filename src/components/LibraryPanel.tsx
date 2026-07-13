@@ -1,13 +1,10 @@
 import { useState } from 'react';
 import { theme } from '../theme';
 import type { Tpl } from '../types';
-import type { TimelineItem } from '../editor/types';
 
 interface LibraryPanelProps {
   templates: Tpl[];
   onAddTemplate: (tpl: Tpl) => void;
-  selectedItem: TimelineItem | null;
-  onItemPropChange: (key: string, value: unknown) => void;
 }
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿'] as const;
@@ -23,13 +20,9 @@ function CATEGORIES(templates: Tpl[]): { cat: string; items: Tpl[] }[] {
   return [...map.entries()].map(([cat, items]) => ({ cat, items }));
 }
 
-export function LibraryPanel({ templates, onAddTemplate, selectedItem, onItemPropChange }: LibraryPanelProps) {
+export function LibraryPanel({ templates, onAddTemplate }: LibraryPanelProps) {
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('资源库');
   const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('G 动画');
-
-  const schema = selectedItem
-    ? templates.find((t) => t.id === selectedItem.templateId)?.propSchema ?? []
-    : [];
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', borderRight: `1px solid ${theme.border}`, background: theme.panel, minHeight: 0, overflow: 'hidden' }}>
@@ -73,34 +66,6 @@ export function LibraryPanel({ templates, onAddTemplate, selectedItem, onItemPro
           </>
         ) : (
           <div style={{ color: theme.textDim, fontSize: 12, padding: 8 }}>「{mainTab} · {subTab}」内容待接入。</div>
-        )}
-      </div>
-
-      {/* selected timeline item props */}
-      <div style={{ borderTop: `1px solid ${theme.border}`, padding: '10px 14px', maxHeight: 220, overflowY: 'auto', background: theme.panelAlt }}>
-        {!selectedItem ? (
-          <div style={{ fontSize: 12, color: theme.textDim }}>选中时间线上的片段以编辑属性。</div>
-        ) : (
-          <>
-            <div style={{ fontSize: 12, color: theme.text, marginBottom: 8, fontWeight: 600 }}>属性 · {selectedItem.name}</div>
-            {schema.length === 0 && <div style={{ fontSize: 12, color: theme.textDim }}>该模板用内置默认值。</div>}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              {schema.map((p) => (
-                <label key={p.key} style={{ fontSize: 11, color: theme.textDim }}>
-                  <div style={{ marginBottom: 3 }}>{p.key}</div>
-                  {p.type === 'boolean' ? (
-                    <input type="checkbox" checked={!!selectedItem.props[p.key]} onChange={(e) => onItemPropChange(p.key, e.target.checked)} />
-                  ) : p.type === 'color' ? (
-                    <input type="color" value={String(selectedItem.props[p.key] ?? '#000000')} onChange={(e) => onItemPropChange(p.key, e.target.value)} />
-                  ) : (
-                    <input type={p.type === 'number' ? 'number' : 'text'} value={String(selectedItem.props[p.key] ?? '')}
-                      onChange={(e) => onItemPropChange(p.key, p.type === 'number' ? Number(e.target.value) : e.target.value)}
-                      style={{ width: '100%', padding: '4px 6px', background: theme.bg, color: theme.text, border: `1px solid ${theme.borderLight}`, borderRadius: 5 }} />
-                  )}
-                </label>
-              ))}
-            </div>
-          </>
         )}
       </div>
     </section>
