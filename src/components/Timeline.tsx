@@ -5,6 +5,7 @@ import { MARKER_HEX, TRACK_ORDER, timelineDuration, type MarkerColor, type Timel
 import type { EditorCommands } from '../editor/store';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { ClipContextMenu, type FxClip } from './ClipContextMenu';
+import { Icon, type IconName } from './icons';
 
 interface TimelineProps {
   state: TimelineState;
@@ -33,6 +34,20 @@ const toolBtn: React.CSSProperties = { background: 'none', border: 'none', color
 // vertical divider between toolbar tool groups (source-style grouping)
 function ToolSep() {
   return <span style={{ width: 1, height: 16, background: theme.border, margin: '0 4px', flexShrink: 0 }} />;
+}
+
+// one icon toolbar button (source: monochrome line glyphs, active = accent)
+function TB({ icon, title, onClick, active, disabled }: {
+  icon: IconName; title: string; onClick?: () => void; active?: boolean; disabled?: boolean;
+}) {
+  return (
+    <button title={title} onClick={onClick} disabled={disabled}
+      style={{ background: 'none', border: 'none', cursor: disabled ? 'default' : 'pointer', padding: '5px 6px', borderRadius: 5, display: 'grid', placeItems: 'center', lineHeight: 0, color: disabled ? theme.textDim : active ? theme.accent : theme.text, opacity: disabled ? 0.4 : 1 }}
+      onMouseEnter={(e) => { if (!disabled && !active) e.currentTarget.style.background = theme.panelAlt; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
+      <Icon name={icon} />
+    </button>
+  );
 }
 
 function fmt(frames: number, fps: number): string {
@@ -292,31 +307,36 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead }: 
           </div>
         </div>
       )}
-      {/* toolbar — source layout: left=edit tools · center=transport · right=view */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '6px 10px', borderBottom: `1px solid ${theme.border}` }}>
-        {/* left: edit tools */}
-        <button style={{ ...toolBtn, color: snapping ? theme.accent : theme.textDim }} title={`磁性吸附：${snapping ? '开' : '关'} (S)`} onClick={() => setSnapping((s) => !s)}>🧲</button>
-        <button style={toolBtn} title="刀片：在播放头处切分选中片段 (B)" onClick={bladeSelected}>✂</button>
+      {/* toolbar — source layout+icons (entry.js:178857-859): 左编辑·中传输·右视图.
+          Modes we don't have (选择/修剪/录音) render disabled like the source greys them. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '6px 10px', borderBottom: `1px solid ${theme.border}` }}>
+        {/* left: edit tools (source order: +/cursor/trim/blade/snap/mic) */}
+        <TB icon="plus" title="新建序列" onClick={() => commands.createTimeline()} />
+        <TB icon="cursor" title="选择模式 (V)" active />
+        <TB icon="trim" title="修剪模式 (T)（暂未实现）" disabled />
+        <TB icon="blade" title="刀片：在播放头处切分选中片段 (B)" onClick={bladeSelected} />
+        <TB icon="magnet" title={`磁性吸附：${snapping ? '开' : '关'} (S)`} active={snapping} onClick={() => setSnapping((s) => !s)} />
+        <TB icon="mic" title="录制旁白（暂未实现）" disabled />
         <ToolSep />
-        <button style={{ ...toolBtn, fontWeight: 700 }} title="加文字（在播放头，V2 轨）" onClick={() => commands.addTextClip({ startFrame: playhead })}>T＋</button>
-        <button style={toolBtn} title="复制选中" onClick={() => state.selectedId && commands.duplicateItem(state.selectedId)}>⧉</button>
-        <button style={toolBtn} title="删除选中" onClick={() => state.selectedId && commands.removeItem(state.selectedId)}>🗑</button>
+        <TB icon="text" title="加文字（在播放头，V2 轨）" onClick={() => commands.addTextClip({ startFrame: playhead })} />
+        <TB icon="copy" title="复制选中" onClick={() => state.selectedId && commands.duplicateItem(state.selectedId)} />
+        <TB icon="trash" title="删除选中" onClick={() => state.selectedId && commands.removeItem(state.selectedId)} />
         <ToolSep />
-        <button style={toolBtn} title="上一个标记 (【)" onClick={() => gotoMarker(-1)}>◃</button>
-        <button style={toolBtn} title="加标记（在播放头，M）" onClick={addMarkerAtPlayhead}>🔖</button>
-        <button style={toolBtn} title="下一个标记 (】)" onClick={() => gotoMarker(1)}>▹</button>
+        <TB icon="prev" title="上一个标记 (【)" onClick={() => gotoMarker(-1)} />
+        <TB icon="bookmark" title="加标记（在播放头，M）" onClick={addMarkerAtPlayhead} />
+        <TB icon="next" title="下一个标记 (】)" onClick={() => gotoMarker(1)} />
         <span style={{ flex: 1 }} />
         {/* center: transport + timecode */}
-        <button style={toolBtn} title="播放 / 暂停 (空格)" onClick={() => playerRef.current?.toggle()}>▶</button>
-        <span style={{ fontSize: 12, color: theme.text, fontVariantNumeric: 'tabular-nums', minWidth: 128, textAlign: 'center' }}>{fmt(playhead, state.fps)} / {fmt(total, state.fps)}</span>
+        <TB icon="play" title="播放 / 暂停 (空格)" onClick={() => playerRef.current?.toggle()} />
+        <span style={{ fontSize: 12.5, color: theme.text, fontVariantNumeric: 'tabular-nums', minWidth: 132, textAlign: 'center', letterSpacing: 0.2 }}>{fmt(playhead, state.fps)} / {fmt(total, state.fps)}</span>
         <span style={{ flex: 1 }} />
         {/* right: view tools (zoom out · slider · zoom in · fit · reset) */}
-        <button style={toolBtn} title="缩小时间轴 (⌘−)" onClick={() => zoomBy(1 / 1.4)}>🔍−</button>
+        <TB icon="zoomOut" title="缩小时间轴 (⌘−)" onClick={() => zoomBy(1 / 1.4)} />
         <input type="range" min={0.5} max={6} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))}
-          title="缩放时间轴" style={{ width: 96, accentColor: theme.accent, cursor: 'pointer' }} />
-        <button style={toolBtn} title="放大时间轴 (⌘＋)" onClick={() => zoomBy(1.4)}>🔍＋</button>
-        <button style={toolBtn} title="适应宽度 (⇧Z)" onClick={fitToView}>↔</button>
-        <button style={{ ...toolBtn, minWidth: 42 }} title="重置缩放 (100%)" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
+          title="缩放时间轴" style={{ width: 92, accentColor: theme.accent, cursor: 'pointer' }} />
+        <TB icon="zoomIn" title="放大时间轴 (⌘＋)" onClick={() => zoomBy(1.4)} />
+        <TB icon="fit" title="适应宽度 (⇧Z)" onClick={fitToView} />
+        <button style={{ ...toolBtn, minWidth: 44, fontSize: 12, color: theme.textDim }} title="重置缩放 (100%)" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
       </div>
 
       {/* scrollable ruler + tracks (playhead spans both). Ctrl/⌘+wheel = time
