@@ -18,6 +18,16 @@ export interface MediaAsset {
   height?: number;
 }
 
+/** per-clip color/blur adjustments (CSS filter) — source 特效(blur)/LUT(color) */
+export interface ClipFilters {
+  /** 1 = normal */
+  brightness?: number;
+  contrast?: number;
+  saturate?: number;
+  /** gaussian blur radius in px (0 = none) */
+  blur?: number;
+}
+
 /** per-clip visual transform (scale/position/rotation) — source 缩放 tab */
 export interface ClipTransform {
   /** 1 = 100% */
@@ -56,6 +66,8 @@ export interface TimelineItem {
   fadeOutFrames?: number;
   /** static transform for visual clips (source 缩放/transform: scale, position, rotate) */
   transform?: ClipTransform;
+  /** color/blur adjustments for visual clips (source 特效/LUT) */
+  filters?: ClipFilters;
   /** transcript-based editing: the clip's words + which are deleted (by index).
    * durationInFrames reflects the EDITED length (kept words only). */
   transcript?: TranscriptWord[];

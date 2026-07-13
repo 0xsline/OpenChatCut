@@ -23,7 +23,11 @@ function ClipWrapper({ item, children }: { item: TimelineItem; children: React.R
   const transform = t
     ? `translate(${t.x ?? 0}%, ${t.y ?? 0}%) rotate(${t.rotation ?? 0}deg) scale(${t.scale ?? 1})`
     : undefined;
-  return <AbsoluteFill style={{ opacity: o, transform }}>{children}</AbsoluteFill>;
+  const fl = item.filters;
+  const filter = fl
+    ? `brightness(${fl.brightness ?? 1}) contrast(${fl.contrast ?? 1}) saturate(${fl.saturate ?? 1}) blur(${fl.blur ?? 0}px)`
+    : undefined;
+  return <AbsoluteFill style={{ opacity: o, transform, filter }}>{children}</AbsoluteFill>;
 }
 
 // One audio clip. With a transcript attached it renders the KEPT segments

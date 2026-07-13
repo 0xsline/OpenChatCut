@@ -1,6 +1,6 @@
 import { theme } from '../theme';
 import type { Tpl } from '../types';
-import type { ClipTransform, TimelineItem } from '../editor/types';
+import type { ClipFilters, ClipTransform, TimelineItem } from '../editor/types';
 import { usePersistedState } from '../hooks/usePersistedState';
 
 interface FadePatch {
@@ -16,6 +16,7 @@ interface InspectorPanelProps {
   onItemVolumeChange: (volume: number) => void;
   onItemFadeChange: (fade: FadePatch) => void;
   onItemTransformChange: (patch: ClipTransform) => void;
+  onItemFiltersChange: (patch: ClipFilters) => void;
 }
 
 // scale / position / rotation for visual clips (source 缩放 tab).
@@ -70,9 +71,33 @@ function FadeControl({ item, fps, onChange }: { item: TimelineItem; fps: number;
   );
 }
 
+// small uppercase-ish divider label between control groups.
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 10.5, color: theme.textDim, letterSpacing: '0.08em', opacity: 0.7, marginTop: 2, borderTop: `1px solid ${theme.border}`, paddingTop: 8 }}>{children}</div>;
+}
+
+// brightness / contrast / saturation / blur (CSS filter) — source 特效/LUT.
+function FilterControl({ item, onChange }: { item: TimelineItem; onChange: (p: ClipFilters) => void }) {
+  const fl = item.filters ?? {};
+  const slider = (label: string, val: number, min: number, max: number, step: number, fmt: string, key: keyof ClipFilters) => (
+    <label style={{ display: 'block', fontSize: 11, color: theme.textDim }}>
+      <div style={{ marginBottom: 4 }}>{label} <span style={{ opacity: 0.7 }}>{fmt}</span></div>
+      <input type="range" min={min} max={max} step={step} value={val} onChange={(e) => onChange({ [key]: Number(e.target.value) })} style={{ width: '100%' }} />
+    </label>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {slider('亮度', fl.brightness ?? 1, 0, 2, 0.05, `${Math.round((fl.brightness ?? 1) * 100)}%`, 'brightness')}
+      {slider('对比度', fl.contrast ?? 1, 0, 2, 0.05, `${Math.round((fl.contrast ?? 1) * 100)}%`, 'contrast')}
+      {slider('饱和度', fl.saturate ?? 1, 0, 2, 0.05, `${Math.round((fl.saturate ?? 1) * 100)}%`, 'saturate')}
+      {slider('模糊', fl.blur ?? 0, 0, 30, 1, `${Math.round(fl.blur ?? 0)}px`, 'blur')}
+    </div>
+  );
+}
+
 // Property editor for the selected timeline item (sits under the preview).
 // Collapsible so it doesn't crowd the preview when you don't need it.
-export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange }: InspectorPanelProps) {
+export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange }: InspectorPanelProps) {
   const [collapsed, setCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const schema = selectedItem
     ? templates.find((t) => t.id === selectedItem.templateId)?.propSchema ?? []
@@ -107,8 +132,10 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {hint && <div style={{ fontSize: 12, color: theme.textDim }}>{hint}</div>}
-            {hasVolume && <VolumeControl item={selectedItem} onChange={onItemVolumeChange} />}
-            {isVisual && <TransformControl item={selectedItem} onChange={onItemTransformChange} />}
+            {hasVolume && <><SectionLabel>音量</SectionLabel><VolumeControl item={selectedItem} onChange={onItemVolumeChange} /></>}
+            {isVisual && <><SectionLabel>变换</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} /></>}
+            {isVisual && <><SectionLabel>滤镜</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} /></>}
+            <SectionLabel>淡入淡出</SectionLabel>
             <FadeControl item={selectedItem} fps={fps} onChange={onItemFadeChange} />
             {selectedItem.kind === 'motion-graphic' && (
               schema.length === 0 ? (
