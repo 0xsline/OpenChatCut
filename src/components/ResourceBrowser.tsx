@@ -20,9 +20,11 @@ interface ResourceBrowserProps {
   applicable: boolean;
   /** when set, cards are non-clickable and this explains why (e.g. LUT blocked) */
   disabledNote?: string;
+  /** optional preview thumbnail (data URL) per item id */
+  thumb?: (id: string) => string;
 }
 
-export function ResourceBrowser({ hint, items, onApply, applicable, disabledNote }: ResourceBrowserProps) {
+export function ResourceBrowser({ hint, items, onApply, applicable, disabledNote, thumb }: ResourceBrowserProps) {
   const clickable = applicable && !disabledNote;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -39,6 +41,9 @@ export function ResourceBrowser({ hint, items, onApply, applicable, disabledNote
           }}
           onMouseEnter={(e) => { if (clickable) e.currentTarget.style.borderColor = theme.accent; }}
           onMouseLeave={(e) => { e.currentTarget.style.borderColor = theme.border; }}>
+          {thumb && (() => { const src = thumb(it.id); return src
+            ? <img src={src} alt="" style={{ width: '100%', height: 66, objectFit: 'cover', borderRadius: 5, marginBottom: 5, background: '#141414' }} />
+            : null; })()}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 12.5, fontWeight: 500 }}>{it.name}</span>
             {it.badge && <span style={{ fontSize: 9, color: theme.accent, border: `1px solid ${theme.accent}`, borderRadius: 3, padding: '0 3px' }}>{it.badge}</span>}

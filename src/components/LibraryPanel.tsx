@@ -7,7 +7,8 @@ import { GLSL_TRANSITION_TYPES, TRANSITION_LABELS, ZOOM_SHAPE_LABELS } from '../
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
 import { AUDIO_ASSETS, type AudioAsset } from '../audio/library';
-import { FX_EFFECTS, FX_IDS, LUT_EFFECTS, LUT_IDS } from '../gl/fx/effects';
+import { ALL_FX, FX_EFFECTS, FX_IDS, LUT_EFFECTS, LUT_IDS } from '../gl/fx/effects';
+import { fxThumbUrl } from '../gl/fxThumb';
 import { TranscriptPanel } from './TranscriptPanel';
 import { MediaPoolPanel } from './MediaPoolPanel';
 import { TemplateBrowser } from './TemplateBrowser';
@@ -108,13 +109,15 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
             applicable={selectedItem != null} onApply={(id) => onApplyTransition(id as TransitionType)} />
         ) : subTab === '特效' ? (
           <ResourceBrowser hint="点击把 WebGL 特效应用到选中的视频/图片片段" items={FX_ITEMS}
-            applicable={selKind === 'video' || selKind === 'image'} onApply={(id) => onApplyFx(id)} />
+            applicable={selKind === 'video' || selKind === 'image'} onApply={(id) => onApplyFx(id)}
+            thumb={(id) => fxThumbUrl(ALL_FX[id])} />
         ) : subTab === '缩放' ? (
           <ResourceBrowser hint="点击给选中片段加一个缩放动画（默认 1.5×，可在属性面板细调）" items={ZOOM_ITEMS}
             applicable={isVisual} onApply={(id) => onApplyZoom(id as ZoomShape)} />
         ) : subTab === 'LUT' ? (
           <ResourceBrowser hint="点击把相机 log→Rec.709 调色应用到选中的视频/图片（强度可在属性面板细调；公式实现）" items={LUT_ITEMS}
-            applicable={selKind === 'video' || selKind === 'image'} onApply={(id) => onApplyFx(id)} />
+            applicable={selKind === 'video' || selKind === 'image'} onApply={(id) => onApplyFx(id)}
+            thumb={(id) => fxThumbUrl(ALL_FX[id])} />
         ) : (
           <div style={{ color: theme.textDim, fontSize: 12, padding: 8 }}>「{mainTab} · {subTab}」内容待接入。</div>
         )}
