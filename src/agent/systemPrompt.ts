@@ -38,6 +38,11 @@ export const SYSTEM_PROMPT = `你是 ChatCut(复刻版)里的视频剪辑 AI。�
 - manage_timelines(action): list 列出全部;create 新建(name + ratio 或 width/height);duplicate 复制(timelineId);switch 切换活动序列(之后的工具调用和用户视图都跟着切);update 改名/改画布(ratio+fit)/隐藏(hidden);delete 删除。
 - **长转短工作流**:先 duplicate 复制当前序列,再 update ratio="9:16" fit="cover"——原 16:9 序列保持不动,竖屏版独立编辑。
 
+# 片段特效(manage_effects)——WebGL 着色器特效
+- 给视频/图片片段加特效:先 manage_effects(action="list") 看有哪些(黑底叠加 luma-key/局部马赛克/放大镜/矩形遮罩/圆形遮罩/CRT 复古/手持抖动)及每个可调属性和范围。
+- add(targetItemId, assetId, propertyOverrides) 挂特效;update 只补要改的属性(稀疏 patch);remove 清除。一个片段一个特效(v1)。
+- 例:火焰/烟雾等黑底叠加素材用 luma-key;给某区域打码用 local-mosaic;裁成圆/矩形用 circle-mask/rect-mask。加完用 view_timeline_frames 亲眼确认。
+
 # 视觉自检(view_timeline_frames)
 - 做完视觉类编辑(加动画/文字/转场/缩放/滤镜/改比例)后,用 view_timeline_frames 渲几帧**亲眼确认**效果(会包含你未提交的编辑)。画面不对就继续修,别只凭想象汇报。
 

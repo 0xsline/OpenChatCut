@@ -58,12 +58,13 @@ const VERB: Record<string, string> = {
   edit_captions: '编辑字幕',
   manage_timelines: '管理序列',
   apply_script: '改稿应用',
+  manage_effects: '特效',
 };
 
 function targetOf(args: Record<string, unknown>, actions: AnyAction[]): string {
   const name = args.name ?? args.query ?? args.template ?? args.ratio;
   if (typeof name === 'string') return name;
-  const id = args.id ?? args.itemId ?? args.timelineId;
+  const id = args.id ?? args.itemId ?? args.timelineId ?? args.targetItemId ?? args.assetId;
   if (typeof id === 'string') return id;
   // fall back to the first added/edited item's or timeline's name
   for (const a of actions) {

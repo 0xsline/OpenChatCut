@@ -9,6 +9,7 @@ import { TIMELINE_TOOL_SCHEMAS, TIMELINE_TOOL_NAMES, execTimelineTool } from './
 import { SCRIPT_TOOL_SCHEMAS, SCRIPT_TOOL_NAMES, execScriptTool } from './script-tools';
 import { FRAMES_TOOL_SCHEMAS, FRAMES_TOOL_NAMES, execFramesTool } from './frames-tool';
 import { GENERATE_TOOL_SCHEMAS, GENERATE_TOOL_NAMES, execGenerateTool } from './generate-tools';
+import { EFFECT_TOOL_SCHEMAS, EFFECT_TOOL_NAMES, execEffectTool } from './effect-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -150,6 +151,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...FRAMES_TOOL_SCHEMAS,
   // AI 生成套件（GPT 主攻，定义在 generate-tools.ts：submit_image/video/voice/music/sound）
   ...GENERATE_TOOL_SCHEMAS,
+  // 每片段 WebGL 特效（source edit_item type:effect — manage_effects list/add/update/remove）
+  ...EFFECT_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -194,6 +197,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (SCRIPT_TOOL_NAMES.has(name)) return execScriptTool(name, args, ctx);
   if (FRAMES_TOOL_NAMES.has(name)) return execFramesTool(name, args, ctx);
   if (GENERATE_TOOL_NAMES.has(name)) return execGenerateTool(name, args, ctx);
+  if (EFFECT_TOOL_NAMES.has(name)) return execEffectTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();
