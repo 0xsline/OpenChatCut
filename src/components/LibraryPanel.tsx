@@ -2,8 +2,8 @@ import { useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import type { Tpl } from '../types';
-import type { MediaAsset, MediaFolder, TimelineItem, TransitionType, ZoomShape } from '../editor/types';
-import { GLSL_TRANSITION_TYPES, TRANSITION_LABELS, ZOOM_SHAPE_LABELS } from '../editor/types';
+import type { GlslTransitionType, MediaAsset, MediaFolder, TimelineItem, TransitionType, ZoomShape } from '../editor/types';
+import { TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS } from '../editor/types';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
 import { AUDIO_ASSETS, type AudioAsset } from '../audio/library';
@@ -14,14 +14,16 @@ import { TranscriptPanel } from './TranscriptPanel';
 import { MediaPoolPanel } from './MediaPoolPanel';
 import { TemplateBrowser } from './TemplateBrowser';
 import { ResourceBrowser, type ResourceItem } from './ResourceBrowser';
+import { TransitionThumb } from './TransitionThumb';
 import { Icon } from './icons';
 
 // the 2 built-in LUTs (source luts_items.json) — implemented via published
 // camera-log transfer functions (source ships them as real .cube data on its
 // CDN; we don't fetch its backend). Apply like an fx effect.
 const LUT_ITEMS: ResourceItem[] = LUT_IDS.map((id) => ({ id, name: LUT_EFFECTS[id].name, desc: LUT_EFFECTS[id].desc }));
-const TRANSITION_ITEMS: ResourceItem[] = (Object.keys(TRANSITION_LABELS) as TransitionType[]).map((t) => ({
-  id: t, name: TRANSITION_LABELS[t], badge: GLSL_TRANSITION_TYPES.has(t) ? 'GLSL' : undefined,
+/** 画面转场 — 12 source video GLSL transitions in catalog order */
+const TRANSITION_ITEMS: ResourceItem[] = TRANSITION_ORDER.map((t) => ({
+  id: t, name: TRANSITION_LABELS[t],
 }));
 const FX_ITEMS: ResourceItem[] = FX_IDS.map((id) => ({ id, name: FX_EFFECTS[id].name, desc: FX_EFFECTS[id].desc }));
 const ZOOM_ITEMS: ResourceItem[] = (Object.keys(ZOOM_SHAPE_LABELS) as ZoomShape[]).map((s) => ({ id: s, name: ZOOM_SHAPE_LABELS[s] }));
@@ -61,12 +63,15 @@ interface LibraryPanelProps {
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿'] as const;
 const SUB_TABS = ['MG 动画', '音效', '转场', '特效', '缩放', 'LUT', 'Audio'] as const;
+/** source 转场 tab: 画面转场 | 音频转场 pills */
+const TRANSITION_SUB = ['画面转场', '音频转场'] as const;
 
 export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits, assets, mediaFolders, onImportMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('我的素材');
   const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('MG 动画');
+  const [trSub, setTrSub] = useState<(typeof TRANSITION_SUB)[number]>('画面转场');
   const showAudio = mainTab === '资源库' && subTab === 'Audio';   // music
   const showSfx = mainTab === '资源库' && subTab === '音效';       // sound effects
   const isTranscript = mainTab === '文字稿';
@@ -141,8 +146,34 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
             })}
           </>
         ) : subTab === '转场' ? (
-          <ResourceBrowser hint="点击应用为选中片段的入场转场（从前一个相邻同轨片段进入）" items={TRANSITION_ITEMS}
-            applicable={selectedItem != null} onApply={(id) => onApplyTransition(id as TransitionType)} />
+          <div className="cc-transition-browser">
+            <div className="cc-transition-subtabs">
+              {TRANSITION_SUB.map((t) => (
+                <button key={t} type="button" onClick={() => setTrSub(t)}
+                  className={`cc-transition-subtab${trSub === t ? ' selected' : ''}`}>{t}</button>
+              ))}
+            </div>
+            {trSub === '画面转场' ? (
+              <ResourceBrowser
+                layout="grid"
+                hint="悬停预览转场动画 · 点击应用到选中片段（入场，从前一个相邻同轨片段进入）"
+                items={TRANSITION_ITEMS}
+                applicable={selectedItem != null}
+                onApply={(id) => onApplyTransition(id as TransitionType)}
+                renderThumb={(id, hovered) => (
+                  <TransitionThumb type={id as GlslTransitionType} playing={hovered} />
+                )}
+              />
+            ) : (
+              <div className="cc-resource-empty">
+                <div style={{ fontSize: 12, color: theme.textDim, lineHeight: 1.5, textAlign: 'center', padding: '28px 12px' }}>
+                  音频转场暂未接入（源站独立分类）。
+                  <br />
+                  画面转场共 {TRANSITION_ITEMS.length} 个，已全部支持。
+                </div>
+              </div>
+            )}
+          </div>
         ) : subTab === '特效' ? (
           <ResourceBrowser hint="点击把 WebGL 特效应用到选中的视频/图片片段" items={FX_ITEMS}
             applicable={selKind === 'video' || selKind === 'image'} onApply={(id) => onApplyFx(id)}

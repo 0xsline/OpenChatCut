@@ -57,7 +57,7 @@
 | **更多媒体类型：image / gif / svg / text / solid** | 🟡 | image、video、text 已完成；gif、svg、solid 待补。text 支持内容、字号、颜色、对齐和字重 |
 | **视频素材片段（video item）** | ✅ | 导入真视频并通过 `<OffthreadVideo>` 预览和导出 |
 | **特效（blur/zoom/mosaic/CRT/ASCII…）** | ✅ | 9/9 个已定位源特效均已接入 WebGL：luma-key、local-mosaic、magnify、rect/circle-mask、CRT、shake、tilt-shift 与 **ASCII Rain**。ASCII Rain 使用源站 4-pass DAG；运行时可把多个特效的局部 pass graph 重编号后串成有序栈。Inspector 支持追加、移除、上下排序、逐项调参和 ASCII RGB 颜色；`manage_effects` 同步支持 effectId 定位的栈操作 |
-| **转场（cross-dissolve/dip/whip-pan/zoom/slide/luma…）** | ✅ | 12/12 均使用从线上 bundle 抽出的源 GLSL：交叉溶解、黑场、柔化擦除、甩镜、闪白、亮度混合、page-curl、rack-focus、organic-dissolve、impact-shake、charge-zoom、clean-swipe。图片/视频走 WebGL；DOM/MG/text 走 6 个可表达转场的 CSS fallback，其余安全回退溶解 |
+| **转场（画面转场 12 GLSL）** | ✅ | 12/12 源站 GLSL（推进/白色划线/叠化/闪黑/闪白/冲击抖动/叠加/光溶/翻页/焦点/柔化擦除/甩镜）。资源库·转场：画面转场/音频转场 子 Tab + 三列卡片网格 + WebGL 中段预览缩略图。图片/视频走 WebGL；DOM/MG/text 走 6 个 CSS fallback，其余回退溶解。音频转场 UI 占位未接 |
 | **标记 markers（点/段批注）** | ✅ | 支持点/区间标记、批注、8 色、跳转和标记帧吸附；源站 `manage_markers` |
 | **色度键 / 绿幕（chroma key）** | ❌ | 对 video item 做颜色抠像。做：WebGL shader 抠指定色。源站 `chroma` |
 | **变速 / 重定时（variable speed）** | 🟡 | 有 set_item_timing 改时长，无保音调变速。做：item 加 `playbackRate`，`<Audio>/<Video>` 用 `playbackRate` + 时间线时长按 rate 换算（源站 caption 的 `dH` 已含 playbackRate 语义）|

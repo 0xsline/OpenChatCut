@@ -1,8 +1,12 @@
+import { useState, type ReactNode } from 'react';
 import { theme } from '../theme';
 
-// Generic resource-library category list (转场/特效/缩放/LUT): clickable cards
-// that apply the resource to the currently-selected clip. Mirrors the source
-// library tabs where you pick a preset and it attaches to the selected item.
+// Generic resource-library category browser (转场/特效/缩放/LUT).
+// `layout="grid"` mirrors source card grids (thumb + label under);
+// `layout="list"` is the denser list used by some categories.
+//
+// Grid cards never use native `disabled` — browsers suppress mouseenter on
+// disabled <button>, which kills source-style hover previews.
 
 export interface ResourceItem {
   id: string;
@@ -22,17 +26,79 @@ interface ResourceBrowserProps {
   disabledNote?: string;
   /** optional preview thumbnail (data URL) per item id */
   thumb?: (id: string) => string;
+  /**
+   * custom thumb renderer (e.g. animated GLSL transition on hover).
+   * `hovered` is true while the pointer is over that card.
+   */
+  renderThumb?: (id: string, hovered: boolean) => ReactNode;
+  /** list (default) or source-style card grid */
+  layout?: 'list' | 'grid';
 }
 
-export function ResourceBrowser({ hint, items, onApply, applicable, disabledNote, thumb }: ResourceBrowserProps) {
+export function ResourceBrowser({
+  hint, items, onApply, applicable, disabledNote, thumb, renderThumb, layout = 'list',
+}: ResourceBrowserProps) {
   const clickable = applicable && !disabledNote;
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const hintText = disabledNote
+    ? disabledNote
+    : applicable
+      ? hint
+      : `${hint}（先在时间线选中目标片段）`;
+
+  if (layout === 'grid') {
+    return (
+      <div className="cc-resource-browser">
+        <div
+          className="cc-resource-hint"
+          style={{ color: disabledNote ? theme.accent : theme.textDim }}
+        >
+          {hintText}
+        </div>
+        <div className="cc-resource-grid">
+          {items.map((it) => {
+            const hovered = hoveredId === it.id;
+            const src = !renderThumb ? (thumb?.(it.id) ?? '') : '';
+            return (
+              <button
+                key={it.id}
+                type="button"
+                // NEVER native disabled — hover preview must still work (source parity)
+                aria-disabled={!clickable}
+                onClick={() => { if (clickable) onApply(it.id); }}
+                title={clickable ? `应用到选中片段：${it.name}` : `预览：${it.name}（选中片段后可应用）`}
+                className={`cc-resource-card${clickable ? '' : ' disabled'}${hovered ? ' hovered' : ''}`}
+                onPointerEnter={() => setHoveredId(it.id)}
+                onPointerLeave={() => setHoveredId((h) => (h === it.id ? null : h))}
+                onFocus={() => setHoveredId(it.id)}
+                onBlur={() => setHoveredId((h) => (h === it.id ? null : h))}
+              >
+                <div className="cc-resource-thumb">
+                  {renderThumb
+                    ? renderThumb(it.id, hovered)
+                    : src
+                      ? <img src={src} alt="" draggable={false} />
+                      : <span className="cc-resource-thumb-placeholder" />}
+                </div>
+                <div className="cc-resource-name">{it.name}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ fontSize: 11, color: disabledNote ? theme.accent : theme.textDim, marginBottom: 2, lineHeight: 1.4 }}>
-        {disabledNote ? disabledNote : applicable ? hint : `${hint}（先在时间线选中目标片段）`}
+        {hintText}
       </div>
       {items.map((it) => (
-        <button key={it.id} disabled={!clickable} onClick={() => onApply(it.id)}
+        <button key={it.id}
+          type="button"
+          aria-disabled={!clickable}
+          onClick={() => { if (clickable) onApply(it.id); }}
           title={clickable ? `应用到选中片段：${it.name}` : undefined}
           style={{
             cursor: clickable ? 'pointer' : 'default', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 3,

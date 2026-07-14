@@ -102,7 +102,9 @@ function makeTexture(gl: WebGL2RenderingContext): WebGLTexture {
 
 /** create a runtime bound to (and sized like) the given canvas */
 export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
-  const gl = canvas.getContext('webgl2', { premultipliedAlpha: false, alpha: true });
+  // preserveDrawingBuffer: thumb previews copy via drawImage right after draw;
+  // without it some GPUs present+clear before the 2D readback lands.
+  const gl = canvas.getContext('webgl2', { premultipliedAlpha: false, alpha: true, preserveDrawingBuffer: true });
   if (!gl) throw new Error('WebGL2 not available');
 
   // fullscreen quad as a triangle strip: interleaved [posX posY | u v]

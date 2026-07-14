@@ -28,6 +28,61 @@ button, input, select { font: inherit; }
 .cc-main-tab { padding:0; border:0; background:none; color:#808080; cursor:pointer; font-size:13px; line-height:30px; white-space:nowrap; }
 .cc-main-tab.selected { color:#e2e2e2; font-weight:400; }
 
+/* Resource library: 转场 card grid (source 画面转场 / 音频转场) */
+.cc-transition-browser { display:flex; flex-direction:column; gap:10px; min-height:0; }
+.cc-transition-subtabs { display:flex; gap:6px; flex-wrap:wrap; }
+.cc-transition-subtab {
+  flex-shrink:0; cursor:pointer; font-size:12px; padding:4px 12px; border-radius:999px;
+  border:1px solid #363636; background:transparent; color:#9a9a9a; white-space:nowrap;
+}
+.cc-transition-subtab:hover { border-color:#4a4a4a; color:#ccc; }
+.cc-transition-subtab.selected { border-color:#e2e2e2; background:#e2e2e2; color:#181818; font-weight:600; }
+
+.cc-resource-browser { display:flex; flex-direction:column; gap:8px; min-height:0; }
+.cc-resource-hint { font-size:11px; line-height:1.4; margin-bottom:2px; }
+.cc-resource-grid {
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:12px 10px;
+  align-content:start;
+}
+.cc-resource-card {
+  min-width:0; padding:0; border:0; background:transparent; color:#c9c9c9;
+  cursor:pointer; text-align:left; display:flex; flex-direction:column; gap:6px;
+}
+/* dim when not applicable, but keep pointer-events for hover preview */
+.cc-resource-card.disabled { cursor:pointer; opacity:0.72; }
+.cc-resource-thumb {
+  width:100%; aspect-ratio:16 / 10; border-radius:6px; overflow:hidden;
+  background:#1c1c1c; border:1px solid #2e2e2e; position:relative;
+}
+.cc-resource-card.hovered .cc-resource-thumb,
+.cc-resource-card:hover .cc-resource-thumb { border-color:#6a6a6a; box-shadow:0 0 0 1px #ffffff14; }
+.cc-resource-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.cc-resource-thumb-placeholder { display:block; width:100%; height:100%; background:linear-gradient(135deg,#222,#333); }
+.cc-resource-name {
+  font-size:11px; line-height:1.3; color:#b8b8b8;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 1px;
+}
+.cc-resource-card.hovered .cc-resource-name,
+.cc-resource-card:hover .cc-resource-name { color:#e8e8e8; }
+.cc-resource-empty { min-height:80px; }
+
+/* Hover-play transition preview (source library cards) */
+.cc-transition-thumb { position:relative; width:100%; height:100%; }
+.cc-transition-thumb-still,
+.cc-transition-thumb-canvas {
+  position:absolute; inset:0; width:100%; height:100%;
+  object-fit:cover; display:block;
+}
+/* canvas always on top; hidden until playing so still shows at rest */
+.cc-transition-thumb-canvas {
+  opacity:0; z-index:1; pointer-events:none;
+  transition: opacity 80ms linear;
+}
+.cc-transition-thumb.is-playing .cc-transition-thumb-canvas { opacity:1; }
+.cc-transition-thumb.is-playing .cc-transition-thumb-still { opacity:0; }
+
 .cc-media-pool { position:relative; display:flex; flex:1; min-height:0; flex-direction:column; overflow:hidden; padding:9px 7px 0 12px; background:#181818; color:#ddd; }
 .cc-media-toolbar { position:relative; z-index:5; display:flex; align-items:center; gap:4px; margin-bottom:10px; }
 .cc-media-search { height:24px; min-width:0; flex:1; display:flex; align-items:center; gap:0; margin-right:5px; padding:0 0 0 7px; border:1px solid #363636; border-radius:4px; background:#181818; color:#808080; }

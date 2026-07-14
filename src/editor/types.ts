@@ -223,22 +223,38 @@ export const CSS_TRANSITION_TYPES: ReadonlySet<TransitionType> = new Set<Transit
   'cross-dissolve', 'dip-to-black', 'soft-wipe', 'whip-pan', 'flash', 'luma-blend',
 ]);
 
-// zh labels + display order for the 12 transitions (CSS group first, then the
-// real-GLSL group). Shared by the inspector select + the resource-library tab.
+// zh labels matching source library cards (app.chatcut.io 资源库·转场·画面转场).
+// Shared by the inspector select + the resource-library grid.
 export const TRANSITION_LABELS: Record<TransitionType, string> = {
-  'cross-dissolve': '交叉溶解',
-  'dip-to-black': '黑场过渡',
-  'soft-wipe': '柔化擦除',
-  'whip-pan': '甩镜',
-  flash: '闪白',
-  'luma-blend': '亮度混合',
-  'clean-line-wipe': '利落划线',
-  'page-curl': '翻页',
-  'rack-focus': '焦点切换',
-  'organic-dissolve': '有机溶解',
-  'impact-shake': '冲击震动',
-  'anticipation-zoom': '蓄力推近',
+  'anticipation-zoom': '推进转场',
+  'clean-line-wipe': '白色划线转场',
+  'cross-dissolve': '叠化转场',
+  'dip-to-black': '闪黑转场',
+  flash: '闪白转场',
+  'impact-shake': '冲击抖动转场',
+  'luma-blend': '叠加转场',
+  'organic-dissolve': '光溶转场',
+  'page-curl': '翻页转场',
+  'rack-focus': '焦点转场',
+  'soft-wipe': '柔化擦除转场',
+  'whip-pan': '甩镜转场',
 };
+
+/** source catalog order (library-catalog/transitions_items.json, EN alpha). */
+export const TRANSITION_ORDER: readonly TransitionType[] = [
+  'anticipation-zoom',
+  'clean-line-wipe',
+  'cross-dissolve',
+  'dip-to-black',
+  'flash',
+  'impact-shake',
+  'luma-blend',
+  'organic-dissolve',
+  'page-curl',
+  'rack-focus',
+  'soft-wipe',
+  'whip-pan',
+];
 
 export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
 

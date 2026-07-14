@@ -1,7 +1,7 @@
 import { theme } from '../theme';
 import type { Tpl } from '../types';
 import type { ClipEffect, ClipEffectValue, ClipFilters, ClipTransform, TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../editor/types';
-import { TRANSITION_LABELS, ZOOM_SHAPE_LABELS } from '../editor/types';
+import { TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS } from '../editor/types';
 import { ALL_FX as FX_EFFECTS } from '../gl/fx/effects';
 const FX_IDS = Object.keys(FX_EFFECTS);
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -208,7 +208,7 @@ function TransitionControl({ transition, fps, onAdd, onSet, onRemove }: {
           else onAdd(v);
         }}>
           <option value="">无</option>
-          {(Object.keys(TRANSITION_LABELS) as TransitionType[]).map((k) => <option key={k} value={k}>{TRANSITION_LABELS[k]}</option>)}
+          {TRANSITION_ORDER.map((k) => <option key={k} value={k}>{TRANSITION_LABELS[k]}</option>)}
         </select>
       </label>
       {transition && (
