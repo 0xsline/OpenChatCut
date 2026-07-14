@@ -3,30 +3,31 @@ import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import type { Tpl } from '../types';
 import type { GlslTransitionType, MediaAsset, MediaFolder, TimelineItem, TransitionType, ZoomShape } from '../editor/types';
-import { TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS } from '../editor/types';
+import { TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../editor/types';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
 import { AUDIO_ASSETS, type AudioAsset } from '../audio/library';
 import { SOUND_EFFECTS, SOUND_GROUPS, soundEffectSrc } from '../audio/soundLibrary';
-import { ALL_FX, FX_EFFECTS, FX_IDS, LUT_EFFECTS, LUT_IDS } from '../gl/fx/effects';
-import { fxThumbUrl } from '../gl/fxThumb';
+import { FX_EFFECTS, FX_IDS, LUT_EFFECTS, LUT_IDS } from '../gl/fx/effects';
 import { TranscriptPanel } from './TranscriptPanel';
 import { MediaPoolPanel } from './MediaPoolPanel';
 import { TemplateBrowser } from './TemplateBrowser';
 import { ResourceBrowser, type ResourceItem } from './ResourceBrowser';
 import { TransitionThumb } from './TransitionThumb';
+import { FxThumb } from './FxThumb';
+import { ZoomThumb } from './ZoomThumb';
 import { Icon } from './icons';
 
 // the 2 built-in LUTs (source luts_items.json) — implemented via published
 // camera-log transfer functions (source ships them as real .cube data on its
 // CDN; we don't fetch its backend). Apply like an fx effect.
-const LUT_ITEMS: ResourceItem[] = LUT_IDS.map((id) => ({ id, name: LUT_EFFECTS[id].name, desc: LUT_EFFECTS[id].desc }));
+const LUT_ITEMS: ResourceItem[] = LUT_IDS.map((id) => ({ id, name: LUT_EFFECTS[id].name }));
 /** 画面转场 — 12 source video GLSL transitions in catalog order */
 const TRANSITION_ITEMS: ResourceItem[] = TRANSITION_ORDER.map((t) => ({
   id: t, name: TRANSITION_LABELS[t],
 }));
-const FX_ITEMS: ResourceItem[] = FX_IDS.map((id) => ({ id, name: FX_EFFECTS[id].name, desc: FX_EFFECTS[id].desc }));
-const ZOOM_ITEMS: ResourceItem[] = (Object.keys(ZOOM_SHAPE_LABELS) as ZoomShape[]).map((s) => ({ id: s, name: ZOOM_SHAPE_LABELS[s] }));
+const FX_ITEMS: ResourceItem[] = FX_IDS.map((id) => ({ id, name: FX_EFFECTS[id].name }));
+const ZOOM_ITEMS: ResourceItem[] = ZOOM_SHAPE_ORDER.map((s) => ({ id: s, name: ZOOM_SHAPE_LABELS[s] }));
 
 interface LibraryPanelProps {
   templates: Tpl[];
@@ -104,7 +105,7 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
         ))}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: 12, minHeight: 0 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 10px 14px', minHeight: 0 }}>
         {mainTab === '资源库' && subTab === 'MG 动画' ? (
           <TemplateBrowser templates={templates} onAdd={onAddTemplate} onUseAI={onUseTemplateAI} />
         ) : showAudio ? (
@@ -175,16 +176,32 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
             )}
           </div>
         ) : subTab === '特效' ? (
-          <ResourceBrowser hint="点击把 WebGL 特效应用到选中的视频/图片片段" items={FX_ITEMS}
-            applicable={selKind === 'video' || selKind === 'image'} onApply={(id) => onApplyFx(id)}
-            thumb={(id) => fxThumbUrl(ALL_FX[id])} />
+          <ResourceBrowser
+            layout="grid"
+            hint="悬停预览 · 点击应用到选中的视频/图片片段"
+            items={FX_ITEMS}
+            applicable={selKind === 'video' || selKind === 'image'}
+            onApply={(id) => onApplyFx(id)}
+            renderThumb={(id, hovered) => <FxThumb assetId={id} playing={hovered} />}
+          />
         ) : subTab === '缩放' ? (
-          <ResourceBrowser hint="点击给选中片段加一个缩放动画（默认 1.5×，可在属性面板细调）" items={ZOOM_ITEMS}
-            applicable={isVisual} onApply={(id) => onApplyZoom(id as ZoomShape)} />
+          <ResourceBrowser
+            layout="grid"
+            hint="悬停预览缩放曲线 · 点击应用到选中片段（默认 1.5×，属性面板可细调）"
+            items={ZOOM_ITEMS}
+            applicable={isVisual}
+            onApply={(id) => onApplyZoom(id as ZoomShape)}
+            renderThumb={(id, hovered) => <ZoomThumb shape={id as ZoomShape} playing={hovered} />}
+          />
         ) : subTab === 'LUT' ? (
-          <ResourceBrowser hint="点击把相机 log→Rec.709 调色应用到选中的视频/图片（强度可在属性面板细调；公式实现）" items={LUT_ITEMS}
-            applicable={selKind === 'video' || selKind === 'image'} onApply={(id) => onApplyFx(id)}
-            thumb={(id) => fxThumbUrl(ALL_FX[id])} />
+          <ResourceBrowser
+            layout="grid"
+            hint="悬停预览 · 点击把相机 log→Rec.709 调色应用到选中视频/图片（强度可在属性面板细调）"
+            items={LUT_ITEMS}
+            applicable={selKind === 'video' || selKind === 'image'}
+            onApply={(id) => onApplyFx(id)}
+            renderThumb={(id, hovered) => <FxThumb assetId={id} playing={hovered} />}
+          />
         ) : (
           <div style={{ color: theme.textDim, fontSize: 12, padding: 8 }}>「{mainTab} · {subTab}」内容待接入。</div>
         )}

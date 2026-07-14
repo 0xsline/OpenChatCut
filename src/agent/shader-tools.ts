@@ -172,7 +172,7 @@ export const SHADER_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'submit_shader',
     description:
-      'Generate a custom per-clip WebGL fragment-shader effect from a natural-language description. An LLM writes GLSL conforming to the runtime effect contract; it is statically validated and compile-checked, then registered as a runtime effect. Returns effectId — this only REGISTERS the effect; apply it separately with manage_effects action=add assetId=<effectId>. Use for one-off custom looks (color grade, distortion, mask, stylize) not covered by the built-in effect catalog.',
+      'Generate a custom per-clip WebGL fragment-shader effect from a natural-language description. An LLM writes GLSL conforming to the runtime effect contract; it is statically validated and compile-checked, then registered as a runtime effect. Returns effectId — this only REGISTERS the effect (source submit_shader). Apply separately with edit_item adds:[{type:"effect",targetItemId,assetId:<effectId>}] (or manage_effects action=add). Use for one-off custom looks not in browse_library.',
     input_schema: {
       type: 'object',
       properties: {

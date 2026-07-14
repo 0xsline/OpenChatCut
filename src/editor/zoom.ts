@@ -5,12 +5,20 @@ import type { ZoomEffect, ZoomShape } from './types';
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
 // source shape curves (entry.js A2): punch = cubic ease-out, hold = cubic
-// ease-in-out, slow-push / instant = linear.
+// ease-in-out, slow-push / instant = linear. Extended: zoom-out / ease-in / bounce.
 export function shapeCurve(shape: ZoomShape, t: number): number {
   const c = clamp01(t);
   if (shape === 'punch') return 1 - Math.pow(1 - c, 3);
   if (shape === 'hold') return c < 0.5 ? 4 * c * c * c : 1 - Math.pow(-2 * c + 2, 3) / 2;
-  return c; // slow-push / instant → linear
+  if (shape === 'ease-in') return c * c * c;
+  if (shape === 'bounce') {
+    // overshoot then settle near 1
+    const s = 1.70158 * 1.2;
+    const x = c - 1;
+    return 1 + x * x * ((s + 1) * x + s);
+  }
+  // slow-push / instant / zoom-out use linear envelope; zoom-out inverts in zoomAt
+  return c;
 }
 
 // source default ease frames per shape (entry.js uPe/dPe), overridable by the effect.
@@ -22,6 +30,9 @@ export function easeFrames(z: ZoomEffect, dur: number): { easeIn: number; easeOu
     case 'instant': easeIn = 0; easeOut = 0; break;
     case 'slow-push': easeIn = dur; easeOut = 0; break;
     case 'punch': easeIn = Math.round(dur * 0.2) || 8; easeOut = 0; break;
+    case 'zoom-out': easeIn = Math.round(dur * 0.35) || 10; easeOut = 0; break;
+    case 'ease-in': easeIn = Math.round(dur * 0.55) || 12; easeOut = 0; break;
+    case 'bounce': easeIn = Math.round(dur * 0.4) || 12; easeOut = Math.round(dur * 0.15) || 4; break;
     default: easeIn = 8; easeOut = 8; // hold
   }
   if (z.easeInFrames !== undefined) easeIn = z.easeInFrames;
@@ -74,5 +85,10 @@ export function zoomAt(z: ZoomEffect, f: number, dur: number): ZoomState {
   if (easeIn > 0 && f < easeIn) env = shapeCurve(shape, f / easeIn);
   else if (easeOut > 0 && f > dur - easeOut) env = shapeCurve(shape, (dur - f) / easeOut);
   else env = 1;
-  return { magnification: 1 + (mag - 1) * clamp01(env), focalX, focalY };
+  env = clamp01(env);
+  // zoom-out: start tight, pull back to 1×
+  if (shape === 'zoom-out') {
+    return { magnification: mag + (1 - mag) * env, focalX, focalY };
+  }
+  return { magnification: 1 + (mag - 1) * env, focalX, focalY };
 }

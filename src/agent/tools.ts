@@ -11,6 +11,8 @@ import { SCRIPT_TOOL_SCHEMAS, SCRIPT_TOOL_NAMES, execScriptTool } from './script
 import { FRAMES_TOOL_SCHEMAS, FRAMES_TOOL_NAMES, execFramesTool } from './frames-tool';
 import { GENERATE_TOOL_SCHEMAS, GENERATE_TOOL_NAMES, execGenerateTool } from './generate-tools';
 import { EFFECT_TOOL_SCHEMAS, EFFECT_TOOL_NAMES, execEffectTool } from './effect-tools';
+import { LIBRARY_TOOL_SCHEMAS, LIBRARY_TOOL_NAMES, execLibraryTool } from './library-tools';
+import { EDIT_ITEM_TOOL_SCHEMAS, EDIT_ITEM_TOOL_NAMES, execEditItemTool } from './edit-item-tools';
 import { MEDIA_POOL_TOOL_SCHEMAS, MEDIA_POOL_TOOL_NAMES, execMediaPoolTool } from './media-pool-tools';
 import { TRACK_TOOL_SCHEMAS, TRACK_TOOL_NAMES, execTrackTool } from './track-tools';
 import { DESIGN_TOOL_SCHEMAS, DESIGN_TOOL_NAMES, execDesignTool } from './design-tools';
@@ -167,7 +169,10 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...FRAMES_TOOL_SCHEMAS,
   // AI 生成套件（GPT 主攻，定义在 generate-tools.ts：submit_image/video/voice/music/sound）
   ...GENERATE_TOOL_SCHEMAS,
-  // 每片段 WebGL 特效（source edit_item type:effect — manage_effects list/add/update/remove）
+  // 源站 browse_library → edit_item（fx/lut/zoom/transition/sound 统一发现与落地）
+  ...LIBRARY_TOOL_SCHEMAS,
+  ...EDIT_ITEM_TOOL_SCHEMAS,
+  // 兼容捷径：manage_effects（等价 edit_item type=effect 的 list/add/update/remove）
   ...EFFECT_TOOL_SCHEMAS,
   // 设计风格 = 工程品牌（source manage_design_style：list/get/apply/update/clear）
   ...DESIGN_TOOL_SCHEMAS,
@@ -234,6 +239,8 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (SCRIPT_TOOL_NAMES.has(name)) return execScriptTool(name, args, ctx);
   if (FRAMES_TOOL_NAMES.has(name)) return execFramesTool(name, args, ctx);
   if (GENERATE_TOOL_NAMES.has(name)) return execGenerateTool(name, args, ctx);
+  if (LIBRARY_TOOL_NAMES.has(name)) return execLibraryTool(name, args, ctx);
+  if (EDIT_ITEM_TOOL_NAMES.has(name)) return execEditItemTool(name, args, ctx);
   if (EFFECT_TOOL_NAMES.has(name)) return execEffectTool(name, args, ctx);
   if (DESIGN_TOOL_NAMES.has(name)) return execDesignTool(name, args, ctx);
   if (STOCK_TOOL_NAMES.has(name)) return execStockTool(name, args, ctx);
@@ -253,6 +260,14 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
         items: s.items.map((it) => ({
           id: it.id, trackId: it.track, track: trackAlias(s, it.track), name: it.name,
           startFrame: it.startFrame, durationInFrames: it.durationInFrames, props: it.props,
+          // library-facing fields (source read_project track-fx / transitions)
+          zoom: it.zoom ?? null,
+          effects: (it.effects ?? []).map((e) => ({ effectId: e.id, assetId: e.assetId, overrides: e.overrides ?? {} })),
+        })),
+        transitions: (s.transitions ?? []).map((t) => ({
+          id: t.id, type: t.type, assetId: `builtin:tr-${t.type}`,
+          durationInFrames: t.durationInFrames,
+          outgoingItemId: t.outgoingItemId, incomingItemId: t.incomingItemId, trackId: t.trackId,
         })),
       };
     }

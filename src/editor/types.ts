@@ -63,14 +63,21 @@ export interface ReframeCurveV1 {
 }
 
 /** source builtin:zoom — parametric animated zoom (shape curve) or a reframe curve */
-export type ZoomShape = 'hold' | 'punch' | 'slow-push' | 'instant';
-// zh labels + order for the built-in zoom curves (shared by inspector + library)
+export type ZoomShape = 'hold' | 'punch' | 'slow-push' | 'instant' | 'zoom-out' | 'ease-in' | 'bounce';
+// zh labels: source four + extended library curves
 export const ZOOM_SHAPE_LABELS: Record<ZoomShape, string> = {
-  hold: '推入保持 (hold)',
-  punch: '猛推 (punch)',
-  'slow-push': '缓推 (slow-push)',
-  instant: '瞬时 (instant)',
+  punch: '冲击',
+  hold: '推进拉回',
+  'slow-push': '慢推',
+  instant: '瞬时',
+  'zoom-out': '拉远',
+  'ease-in': '缓入推近',
+  bounce: '弹性推近',
 };
+/** library display order */
+export const ZOOM_SHAPE_ORDER: readonly ZoomShape[] = [
+  'punch', 'hold', 'slow-push', 'instant', 'zoom-out', 'ease-in', 'bounce',
+];
 export interface ZoomEffect {
   /** peak magnification (source 1..16, default 1.5) */
   magnification?: number;

@@ -61,6 +61,8 @@ const VERB: Record<string, string> = {
   manage_media_pool: '整理素材池',
   apply_script: '改稿应用',
   manage_effects: '特效',
+  edit_item: '编辑片段',
+  browse_library: '浏览资源库',
 };
 
 function targetOf(args: Record<string, unknown>, actions: AnyAction[]): string {

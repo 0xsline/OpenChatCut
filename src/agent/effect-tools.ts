@@ -25,14 +25,14 @@ export const EFFECT_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'manage_effects',
     description:
-      "Manage an ordered per-clip WebGL effect stack. action=list returns the catalog. add appends an effect; update patches one effect; remove deletes one effect when effectId/assetId is supplied, otherwise clears the stack. Mutating actions flow through propose→apply.",
+      'Shorthand for per-clip WebGL effects (compat). Prefer source path: browse_library then edit_item adds:[{type:"effect",targetItemId,assetId}]. action=list returns catalog; add/update/remove mutate the clip effect stack. Also covers LUT assetIds. For zoom/transitions use edit_item.',
     input_schema: {
       type: 'object',
       properties: {
         action: { type: 'string', enum: ['list', 'add', 'update', 'remove'], description: 'What to do.' },
         targetItemId: { type: 'string', description: 'Clip id to affect (prefix ok). Required for add/update/remove. Must be a video or image clip.' },
         effectId: { type: 'string', description: 'update/remove: target effect instance id. Omit to target the first effect.' },
-        assetId: { type: 'string', description: 'add: which effect, e.g. "builtin:fx-luma-key". Get ids from action="list".' },
+        assetId: { type: 'string', description: 'add: which effect, e.g. "builtin:fx-luma-key". Get ids from action="list" or browse_library.' },
         propertyOverrides: { type: 'object', description: 'add/update: sparse patch. Numeric properties use numbers; colors use RGB arrays in 0..1, e.g. {"color":[1,0,0]}. Omit for defaults.' },
       },
       required: ['action'],

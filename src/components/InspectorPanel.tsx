@@ -1,7 +1,7 @@
 import { theme } from '../theme';
 import type { Tpl } from '../types';
 import type { ClipEffect, ClipEffectValue, ClipFilters, ClipTransform, TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../editor/types';
-import { TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS } from '../editor/types';
+import { TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../editor/types';
 import { ALL_FX as FX_EFFECTS } from '../gl/fx/effects';
 const FX_IDS = Object.keys(FX_EFFECTS);
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -149,7 +149,7 @@ function ZoomControl({ zoom, onChange, getLocalFrame, fps, onSetKeyframe, onRemo
           else onChange({ shape: v });
         }}>
           <option value="">无</option>
-          {(Object.keys(ZOOM_SHAPE_LABELS) as ZoomShape[]).map((k) => <option key={k} value={k}>{ZOOM_SHAPE_LABELS[k]}</option>)}
+          {ZOOM_SHAPE_ORDER.map((k) => <option key={k} value={k}>{ZOOM_SHAPE_LABELS[k]}</option>)}
         </select>
       </label>
       {zoom && (

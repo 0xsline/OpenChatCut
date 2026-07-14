@@ -4,6 +4,20 @@ html, body, #root { margin: 0; height: 100%; }
 html, body { overflow: hidden; }
 #root { overflow: hidden; }
 
+/* Hairline scrollbars — as thin as browsers allow */
+* {
+  scrollbar-width: thin; /* Firefox min practical width */
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+*::-webkit-scrollbar { width: 1px; height: 1px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
+*::-webkit-scrollbar-corner { background: transparent; }
+
 /* recording indicator pulse (timeline mic button) */
 @keyframes cc-rec-pulse {
   0%   { box-shadow: 0 0 0 0 rgba(240, 86, 46, 0.55); opacity: 1; }
@@ -38,50 +52,54 @@ button, input, select { font: inherit; }
 .cc-transition-subtab:hover { border-color:#4a4a4a; color:#ccc; }
 .cc-transition-subtab.selected { border-color:#e2e2e2; background:#e2e2e2; color:#181818; font-weight:600; }
 
-.cc-resource-browser { display:flex; flex-direction:column; gap:8px; min-height:0; }
-.cc-resource-hint { font-size:11px; line-height:1.4; margin-bottom:2px; }
+.cc-resource-browser { display:flex; flex-direction:column; gap:6px; min-height:0; }
+.cc-resource-hint { font-size:10.5px; line-height:1.35; margin-bottom:2px; }
+/* Compact 3-col grid — thumbs smaller than earlier 16/10 full-bleed cards */
 .cc-resource-grid {
   display:grid;
   grid-template-columns:repeat(3, minmax(0, 1fr));
-  gap:12px 10px;
+  gap:10px 8px;
   align-content:start;
 }
 .cc-resource-card {
   min-width:0; padding:0; border:0; background:transparent; color:#c9c9c9;
-  cursor:pointer; text-align:left; display:flex; flex-direction:column; gap:6px;
+  cursor:pointer; text-align:left; display:flex; flex-direction:column; gap:4px;
 }
 /* dim when not applicable, but keep pointer-events for hover preview */
 .cc-resource-card.disabled { cursor:pointer; opacity:0.72; }
 .cc-resource-thumb {
-  width:100%; aspect-ratio:16 / 10; border-radius:6px; overflow:hidden;
+  /* ~source card proportion, shorter + smaller overall */
+  width:100%; max-width:118px; aspect-ratio:16 / 11; border-radius:5px; overflow:hidden;
   background:#1c1c1c; border:1px solid #2e2e2e; position:relative;
+  margin:0 auto; /* center in grid cell when max-width caps size */
 }
 .cc-resource-card.hovered .cc-resource-thumb,
 .cc-resource-card:hover .cc-resource-thumb { border-color:#6a6a6a; box-shadow:0 0 0 1px #ffffff14; }
 .cc-resource-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
 .cc-resource-thumb-placeholder { display:block; width:100%; height:100%; background:linear-gradient(135deg,#222,#333); }
 .cc-resource-name {
-  font-size:11px; line-height:1.3; color:#b8b8b8;
+  font-size:10px; line-height:1.25; color:#b0b0b0; text-align:center;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 1px;
+  max-width:118px; margin:0 auto; width:100%;
 }
 .cc-resource-card.hovered .cc-resource-name,
 .cc-resource-card:hover .cc-resource-name { color:#e8e8e8; }
 .cc-resource-empty { min-height:80px; }
 
-/* Hover-play transition preview (source library cards) */
-.cc-transition-thumb { position:relative; width:100%; height:100%; }
-.cc-transition-thumb-still,
-.cc-transition-thumb-canvas {
+/* Shared live thumb (转场 / 特效 / 缩放 / LUT) — still + hover canvas */
+.cc-live-thumb { position:relative; width:100%; height:100%; }
+.cc-live-thumb-still,
+.cc-live-thumb-canvas {
   position:absolute; inset:0; width:100%; height:100%;
   object-fit:cover; display:block;
 }
-/* canvas always on top; hidden until playing so still shows at rest */
-.cc-transition-thumb-canvas {
+.cc-live-thumb-canvas {
   opacity:0; z-index:1; pointer-events:none;
   transition: opacity 80ms linear;
 }
-.cc-transition-thumb.is-playing .cc-transition-thumb-canvas { opacity:1; }
-.cc-transition-thumb.is-playing .cc-transition-thumb-still { opacity:0; }
+.cc-live-thumb-canvas.always-on { opacity:1; }
+.cc-live-thumb.is-playing .cc-live-thumb-canvas { opacity:1; }
+.cc-live-thumb.is-playing .cc-live-thumb-still { opacity:0; }
 
 .cc-media-pool { position:relative; display:flex; flex:1; min-height:0; flex-direction:column; overflow:hidden; padding:9px 7px 0 12px; background:#181818; color:#ddd; }
 .cc-media-toolbar { position:relative; z-index:5; display:flex; align-items:center; gap:4px; margin-bottom:10px; }
@@ -106,7 +124,7 @@ button, input, select { font: inherit; }
 .cc-media-status, .cc-media-error { margin:-5px 0 8px; font-size:11px; }
 .cc-media-status { color:#999; }
 .cc-media-error { color:#e27f75; }
-.cc-media-grid { position:relative; flex:1; min-height:0; overflow-y:auto; display:grid; align-content:start; grid-template-columns:repeat(3,minmax(0,1fr)); gap:25px 12px; padding:0 0 28px; scrollbar-color:#4a4a4a transparent; scrollbar-width:thin; }
+.cc-media-grid { position:relative; flex:1; min-height:0; overflow-y:auto; display:grid; align-content:start; grid-template-columns:repeat(3,minmax(0,1fr)); gap:25px 12px; padding:0 0 28px; }
 .cc-media-grid.list { display:flex; flex-direction:column; gap:0; }
 .cc-asset-card, .cc-folder-card { position:relative; min-width:0; color:#c9c9c9; }
 .cc-folder-card { height:96px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; border:1px solid #303030; border-radius:6px; background:#252525; cursor:pointer; }
