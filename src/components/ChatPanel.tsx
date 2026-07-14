@@ -113,7 +113,8 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
               const next = { ...f };
               if (next[i] === v) delete next[i]; else next[i] = v;
               return next;
-            })} />
+            })}
+            onWidgetSubmit={(answer) => { if (!running) send(answer, { askOnly: mode === 'ask' }); }} />
         ))}
         {running && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: theme.textDim, fontSize: 12.5, margin: '10px 0' }}>

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { theme } from '../../theme';
 import type { DisplayMessage } from '../../agent/useAgent';
 import { Icon, type IconName } from '../icons';
+import { parseWidgets } from './widget-parse';
+import { WidgetCard } from './WidgetCard';
 
 const GREEN = '#3fae6a';
 
@@ -23,9 +25,11 @@ interface ChatMessageProps {
   streaming?: boolean;
   feedback?: 'up' | 'down' | null;
   onFeedback?: (v: 'up' | 'down') => void;
+  /** 用户填完 <widget> 表单卡并提交后，回传拼好的答案文本（source ask_followup_questions） */
+  onWidgetSubmit?: (answer: string) => void;
 }
 
-export function ChatMessage({ msg, streaming, feedback, onFeedback }: ChatMessageProps) {
+export function ChatMessage({ msg, streaming, feedback, onFeedback, onWidgetSubmit }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     navigator.clipboard?.writeText(msg.text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); }).catch(() => {});
@@ -57,10 +61,17 @@ export function ChatMessage({ msg, streaming, feedback, onFeedback }: ChatMessag
     return <div style={{ color: theme.accent, fontSize: 12.5, margin: '8px 0' }}>⚠ {msg.text}</div>;
   }
 
-  // assistant
+  // assistant — 文本里可能嵌了 <widget> 表单块（source ask_followup_questions），拆段落分别渲染
+  const segments = parseWidgets(msg.text);
   return (
     <div style={{ margin: '16px 0' }}>
-      <div style={{ color: theme.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.6 }}>{msg.text}</div>
+      {segments.map((seg, i) =>
+        seg.type === 'widget' ? (
+          <WidgetCard key={i} fields={seg.fields} onSubmit={(answer) => onWidgetSubmit?.(answer)} />
+        ) : (
+          seg.text && <div key={i} style={{ color: theme.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.6 }}>{seg.text}</div>
+        ),
+      )}
       {!streaming && msg.text.trim() && (
         <div style={{ display: 'flex', gap: 1, marginTop: 6, marginLeft: -5 }}>
           <ActBtn icon="copy" title={copied ? '已复制' : '复制'} active={copied} onClick={copy} />
