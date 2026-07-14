@@ -9,6 +9,7 @@ import { InspectorPanel } from './components/InspectorPanel';
 import { Timeline } from './components/Timeline';
 import { TimelineTabs } from './components/TimelineTabs';
 import { Divider } from './components/Divider';
+import { DesignStylePanel } from './components/DesignStylePanel';
 import { usePersistedState } from './hooks/usePersistedState';
 import { useEditor } from './editor/store';
 import type { ProjectDoc, TimelineState } from './editor/types';
@@ -51,6 +52,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const [previewState, setPreviewState] = useState<TimelineState | null>(null);
   // library「用 AI 生成」→ prefill the chat composer (nonce forces re-seed of the same text)
   const [chatSeed, setChatSeed] = useState<{ text: string; nonce: number } | null>(null);
+  // 设计风格(品牌)编辑器弹窗 (source manage_design_style)
+  const [showDesign, setShowDesign] = useState(false);
 
   // current playhead frame, synced from the Remotion Player (shared by the
   // timeline's playhead line + the inspector's keyframe-at-playhead controls).
@@ -171,7 +174,12 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         onHome={onHome}
         onRename={onRename}
         onToggleLayout={() => setChatCollapsed((v) => !v)}
+        onDesignStyle={() => setShowDesign(true)}
       />
+
+      {showDesign && (
+        <DesignStylePanel style={doc.designStyle} onApply={commands.setDesignStyle} onClose={() => setShowDesign(false)} />
+      )}
 
       <ChatPanel ctx={agentCtx} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} seed={chatSeed} />
 

@@ -15,6 +15,8 @@ interface TopBarProps {
   onRename?: (name: string) => void;
   /** panel-layout toggle (source: collapses/expands the side panel) */
   onToggleLayout?: () => void;
+  /** open the design-style (brand) editor (source manage_design_style) */
+  onDesignStyle?: () => void;
 }
 
 // one right-side icon button (source: monochrome lucide, hover-lit)
@@ -29,7 +31,7 @@ function TBtn({ icon, title, onClick, disabled }: { icon: IconName; title: strin
   );
 }
 
-export function TopBar({ projectName, credits, canUndo, canRedo, onUndo, onRedo, onExport, exporting, onHome, onRename, onToggleLayout }: TopBarProps) {
+export function TopBar({ projectName, credits, canUndo, canRedo, onUndo, onRedo, onExport, exporting, onHome, onRename, onToggleLayout, onDesignStyle }: TopBarProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   const commit = () => { setEditing(false); if (onRename && draft.trim() && draft.trim() !== projectName) onRename(draft.trim()); };
@@ -63,6 +65,7 @@ export function TopBar({ projectName, credits, canUndo, canRedo, onUndo, onRedo,
       {/* right: undo · redo · history · layout · export · credits · avatar */}
       <TBtn icon="undo" title="撤销" onClick={onUndo} disabled={!canUndo} />
       <TBtn icon="redo" title="重做" onClick={onRedo} disabled={!canRedo} />
+      <TBtn icon="palette" title="设计风格(品牌)" onClick={onDesignStyle} />
       <TBtn icon="history" title="历史版本" />
       <TBtn icon="layoutPanel" title="切换面板布局" onClick={onToggleLayout} />
       <button onClick={onExport} disabled={exporting || !onExport} title="导出 MP4"

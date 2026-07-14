@@ -4,6 +4,7 @@ import { ASPECT_PRESETS, defaultTrackId, resolveTrackId, timelineTrackIds, track
 import type { Tpl } from '../types';
 import { compileTemplate } from '../template-host';
 import { createMessage, MODEL } from './client';
+import { designStyleHint } from './systemPrompt';
 import { TRANSCRIPT_TOOL_SCHEMAS, TRANSCRIPT_TOOL_NAMES, execTranscriptTool } from './transcript-tools';
 import { TIMELINE_TOOL_SCHEMAS, TIMELINE_TOOL_NAMES, execTimelineTool } from './timeline-tools';
 import { SCRIPT_TOOL_SCHEMAS, SCRIPT_TOOL_NAMES, execScriptTool } from './script-tools';
@@ -12,6 +13,7 @@ import { GENERATE_TOOL_SCHEMAS, GENERATE_TOOL_NAMES, execGenerateTool } from './
 import { EFFECT_TOOL_SCHEMAS, EFFECT_TOOL_NAMES, execEffectTool } from './effect-tools';
 import { MEDIA_POOL_TOOL_SCHEMAS, MEDIA_POOL_TOOL_NAMES, execMediaPoolTool } from './media-pool-tools';
 import { TRACK_TOOL_SCHEMAS, TRACK_TOOL_NAMES, execTrackTool } from './track-tools';
+import { DESIGN_TOOL_SCHEMAS, DESIGN_TOOL_NAMES, execDesignTool } from './design-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -159,20 +161,23 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...GENERATE_TOOL_SCHEMAS,
   // 每片段 WebGL 特效（source edit_item type:effect — manage_effects list/add/update/remove）
   ...EFFECT_TOOL_SCHEMAS,
+  // 设计风格 = 工程品牌（source manage_design_style：list/get/apply/update/clear）
+  ...DESIGN_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
 
 // Ask the model to write a fresh Remotion MG component following the template
-// contract. Uses the same native Anthropic client as the agent loop.
-async function generateMgCode(description: string): Promise<string> {
+// contract. Uses the same native Anthropic client as the agent loop. `brandHint`
+// injects the project's applied design style so generated MGs match the brand.
+async function generateMgCode(description: string, brandHint = ''): Promise<string> {
   const sys = `You write ONE Remotion motion-graphic React component. Output ONLY the code — no markdown fences, no prose.
 Contract (MUST follow exactly):
 - Shape: const Name = ({item}) => { ...; return (<AbsoluteFill>...</AbsoluteFill>); };
 - NO import / require / export. These globals are already injected: React, useCurrentFrame, useVideoConfig, interpolate, interpolateColors, spring, Easing, random, Img, Audio, Sequence, AbsoluteFill.
 - Canvas is 1920x1080. Animate with useCurrentFrame()+interpolate()/spring({fps,frame,config}). Get { fps, durationInFrames } from useVideoConfig().
 - Pure, synchronous rendering only. FORBIDDEN: fetch, XMLHttpRequest, WebSocket, document, window, globalThis, eval, new Function, .constructor, localStorage, setTimeout, setInterval, while(true), for(;;), debugger.
-- Style inline. Make it clean and visually appealing (large readable text, tasteful colors, smooth fade/slide/scale animations).`;
+- Style inline. Make it clean and visually appealing (large readable text, tasteful colors, smooth fade/slide/scale animations).${brandHint}`;
   const msg = await createMessage({
     model: MODEL,
     max_tokens: 64000, // don't truncate generated components
@@ -206,6 +211,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (FRAMES_TOOL_NAMES.has(name)) return execFramesTool(name, args, ctx);
   if (GENERATE_TOOL_NAMES.has(name)) return execGenerateTool(name, args, ctx);
   if (EFFECT_TOOL_NAMES.has(name)) return execEffectTool(name, args, ctx);
+  if (DESIGN_TOOL_NAMES.has(name)) return execDesignTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();
@@ -294,7 +300,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
       const durationInFrames = Math.max(15, Math.round((Number(args.durationSeconds) || 3) * fps));
       let code: string;
       try {
-        code = await generateMgCode(description);
+        code = await generateMgCode(description, designStyleHint(ctx.getDoc().designStyle));
       } catch (e) {
         return { error: `generation failed: ${e instanceof Error ? e.message : String(e)}` };
       }

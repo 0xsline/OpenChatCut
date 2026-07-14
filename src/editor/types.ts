@@ -279,6 +279,31 @@ export interface Timeline extends TimelineState {
   hidden?: boolean;
 }
 
+/** design style = the project's brand identity (source manage_design_style).
+ * The applied style IS the brand — there is no separate "project brand" — and it
+ * drives the colors + fonts the agent uses when generating MG / captions. Roles
+ * are the source's fixed lists (colors `Ey`, fonts `Ay`). */
+export type ColorRole = 'primary' | 'secondary' | 'accent' | 'background' | 'text';
+export type FontRole = 'heading' | 'body';
+export const COLOR_ROLES: readonly ColorRole[] = ['primary', 'secondary', 'accent', 'background', 'text'];
+export const FONT_ROLES: readonly FontRole[] = ['heading', 'body'];
+
+export interface DesignColor { role: ColorRole; value: string; }
+export interface DesignFont { family: string; role: FontRole; }
+export interface DesignStyle {
+  colors: DesignColor[];
+  fonts: DesignFont[];
+  /** free-text brand guidelines (source designSpec.styleGuide) */
+  styleGuide?: string;
+}
+
+/** value of a color role in a style (undefined if the role is unset). */
+export const colorOf = (s: DesignStyle | undefined, role: ColorRole): string | undefined =>
+  s?.colors.find((c) => c.role === role)?.value;
+/** font family for a role in a style (undefined if unset). */
+export const fontOf = (s: DesignStyle | undefined, role: FontRole): string | undefined =>
+  s?.fonts.find((f) => f.role === role)?.family;
+
 /** a project = shared media + ordered timelines + which one is active (source
  * manage_timelines). `version` makes persisted-document migrations explicit. */
 export interface ProjectDoc {
@@ -288,6 +313,8 @@ export interface ProjectDoc {
   mediaFolders: MediaFolder[];
   timelines: Timeline[];
   activeTimelineId: string;
+  /** applied brand identity (source manage_design_style); absent = no style set */
+  designStyle?: DesignStyle;
 }
 
 /** the active timeline of a project (falls back to the first if the id is stale). */

@@ -1,7 +1,7 @@
 // Pure reducer layer: the per-timeline reducer (`reduce`) + the project reducer
 // (`projectReduce`, routing per-timeline actions to the active timeline) + the
 // undo/redo history wrapper. The command set + React hook live in store.ts.
-import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, Marker, MediaAsset, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, ZoomEffect } from './types';
+import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, Marker, MediaAsset, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, ZoomEffect } from './types';
 import { activeTimeline, timelineTrackIds, trackEnd, trackKind } from './types';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
@@ -67,7 +67,9 @@ export type ProjectAction =
   | { type: 'pool.renameFolder'; id: string; name: string }
   | { type: 'pool.deleteFolder'; id: string }
   | { type: 'pool.moveAssets'; ids: string[]; folderId?: string }
-  | { type: 'pool.updateAsset'; id: string; patch: Partial<Pick<MediaAsset, 'name' | 'favorite'>> };
+  | { type: 'pool.updateAsset'; id: string; patch: Partial<Pick<MediaAsset, 'name' | 'favorite'>> }
+  | { type: 'design.set'; style: DesignStyle | null }
+  | { type: 'design.patch'; patch: Partial<DesignStyle> };
 
 /** any store action: per-timeline or project-level (what a draft records) */
 export type AnyAction = Action | ProjectAction;
@@ -421,7 +423,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
 
 // ── project reducer (routes per-timeline actions to the active timeline) ───
 export const maxOrder = (p: ProjectDoc) => p.timelines.reduce((m, t) => Math.max(m, t.order), -1);
-const isProjectAction = (a: { type: string }): a is ProjectAction => a.type.startsWith('tl.') || a.type.startsWith('pool.');
+const isProjectAction = (a: { type: string }): a is ProjectAction => a.type.startsWith('tl.') || a.type.startsWith('pool.') || a.type.startsWith('design.');
 
 // stamp a per-timeline reducer result back onto its identity (setFullState
 // returns a bare TimelineState, so id/name/order must be re-applied).
@@ -503,6 +505,11 @@ export function projectReduce(p: ProjectDoc, a: Action | ProjectAction): Project
         if (!asset || Object.entries(a.patch).every(([key, value]) => asset[key as keyof MediaAsset] === value)) return p;
         return { ...p, assets: p.assets.map((item) => item.id === a.id ? { ...item, ...a.patch } : item) };
       }
+      // design style = the project's brand (source manage_design_style)
+      case 'design.set':
+        return { ...p, designStyle: a.style ?? undefined };
+      case 'design.patch':
+        return { ...p, designStyle: { colors: [], fonts: [], ...p.designStyle, ...a.patch } };
       default:
         return p;
     }

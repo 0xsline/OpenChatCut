@@ -1,5 +1,5 @@
 import { useMemo, useReducer, useRef } from 'react';
-import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, ZoomEffect } from './types';
+import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, ZoomEffect } from './types';
 import { activeEditorState, activeTimeline, defaultTrackId, resolveTrackId } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
@@ -89,6 +89,11 @@ export interface EditorCommands {
   retargetTimeline: (id: string, width: number, height: number, fit?: AspectFit) => void;
   /** hide/restore a timeline tab (source update.hidden); the last visible one can't hide */
   setTimelineHidden: (id: string, hidden: boolean) => void;
+  // ── design style = project brand (source manage_design_style) ──
+  /** apply a whole design style to the project (null clears it) */
+  setDesignStyle: (style: DesignStyle | null) => void;
+  /** merge a partial design style into the current one */
+  patchDesignStyle: (patch: Partial<DesignStyle>) => void;
   undo: () => void;
   redo: () => void;
 }
@@ -166,6 +171,8 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       moveMediaAssets: (ids, folderId) => dispatch({ type: 'pool.moveAssets', ids, folderId }),
       renameMediaAsset: (id, name) => dispatch({ type: 'pool.updateAsset', id, patch: { name } }),
       setMediaAssetFavorite: (id, favorite) => dispatch({ type: 'pool.updateAsset', id, patch: { favorite } }),
+      setDesignStyle: (style) => dispatch({ type: 'design.set', style }),
+      patchDesignStyle: (patch) => dispatch({ type: 'design.patch', patch }),
       addMotionGraphic: (tpl, at) =>
         dispatch({
           type: 'add',

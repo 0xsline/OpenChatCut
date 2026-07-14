@@ -11,7 +11,8 @@ export type IconName =
   | 'undo' | 'redo' | 'history' | 'layoutPanel' | 'users'
   | 'download' | 'film' | 'clipboard'
   | 'music' | 'video' | 'image' | 'swap' | 'star' | 'pencil' | 'x' | 'diamond'
-  | 'search' | 'upload' | 'folder' | 'folderPlus' | 'grid' | 'list' | 'sort' | 'filter' | 'more' | 'bug';
+  | 'search' | 'upload' | 'folder' | 'folderPlus' | 'grid' | 'list' | 'sort' | 'filter' | 'more' | 'bug'
+  | 'palette';
 
 // stroke path(s) per icon; a few are fill-based (play/pause/cursor/bookmark)
 const FILL = new Set<IconName>(['play', 'pause', 'cursor', 'bookmark']);
@@ -88,6 +89,8 @@ const P: Record<IconName, string> = {
   filter: 'M3 5h18l-7 8v6l-4 2v-8z',
   more: 'M5 12h.01 M12 12h.01 M19 12h.01',
   bug: 'M8 2l1.5 2h5L16 2 M9 9h6v7a3 3 0 0 1-6 0z M5 9h4 M15 9h4 M4 13h5 M15 13h5 M5 18h4 M15 18h4 M12 9v10',
+  // source lucide `palette` — outline + 4 paint dots drawn as tiny circle arcs
+  palette: 'M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z M7.5 12.5m-.6 0a.6 .6 0 1 0 1.2 0a.6 .6 0 1 0-1.2 0 M8.5 7.5m-.6 0a.6 .6 0 1 0 1.2 0a.6 .6 0 1 0-1.2 0 M13.5 6.5m-.6 0a.6 .6 0 1 0 1.2 0a.6 .6 0 1 0-1.2 0 M17.5 10.5m-.6 0a.6 .6 0 1 0 1.2 0a.6 .6 0 1 0-1.2 0',
 };
 
 interface IconProps {

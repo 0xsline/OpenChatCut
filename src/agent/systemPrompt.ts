@@ -1,6 +1,42 @@
 // The orchestration system prompt — the piece ChatCut keeps server-side.
 // We author our own, grounded in the reverse-engineered skills + tool model.
 import { GENERATE_WORKFLOW } from './generate-tools';
+import { colorOf, fontOf, type DesignStyle } from '../editor/types';
+
+// Source manage_design_style: the applied style IS the project brand and drives
+// the colors/fonts the agent uses for MG + captions. Render it as a prompt block
+// so every generation follows the brand. Empty style → empty string (no-op).
+export function designStylePrompt(style: DesignStyle | undefined): string {
+  if (!style || (style.colors.length === 0 && style.fonts.length === 0 && !style.styleGuide)) return '';
+  const lines: string[] = ['', '# 设计风格（工程品牌 · 生成时必须遵守）'];
+  const cols = style.colors.map((c) => `${c.role} ${c.value}`).join(' · ');
+  if (cols) lines.push(`- 配色：${cols}`);
+  const heading = fontOf(style, 'heading');
+  const body = fontOf(style, 'body');
+  if (heading || body) lines.push(`- 字体：标题 ${heading ?? '—'} / 正文 ${body ?? '—'}`);
+  if (style.styleGuide) lines.push(`- 品牌指引：${style.styleGuide}`);
+  lines.push('生成/编辑 Motion Graphic 与字幕时,配色与字体都套用上面的品牌;背景用 background、正文用 text、强调用 accent/primary。');
+  return lines.join('\n');
+}
+
+/** compact one-line brand hint for the MG code writer (create_motion_graphic). */
+export function designStyleHint(style: DesignStyle | undefined): string {
+  if (!style) return '';
+  const parts: string[] = [];
+  const bg = colorOf(style, 'background');
+  const text = colorOf(style, 'text');
+  const primary = colorOf(style, 'primary');
+  const accent = colorOf(style, 'accent');
+  if (bg || text || primary || accent) {
+    parts.push(`Brand colors — background:${bg ?? 'n/a'} text:${text ?? 'n/a'} primary:${primary ?? 'n/a'} accent:${accent ?? 'n/a'}`);
+  }
+  const heading = fontOf(style, 'heading');
+  const body = fontOf(style, 'body');
+  if (heading || body) parts.push(`Brand fonts — heading:"${heading ?? 'n/a'}" body:"${body ?? 'n/a'}"`);
+  if (style.styleGuide) parts.push(`Style guide: ${style.styleGuide}`);
+  if (parts.length === 0) return '';
+  return `\n- BRAND: use this project's brand identity for all colors and fonts. ${parts.join('. ')}.`;
+}
 
 export const SYSTEM_PROMPT = `你是 ChatCut(复刻版)里的视频剪辑 AI。你通过调用工具来编辑用户的时间线。
 

@@ -5,9 +5,10 @@
 > 由 5 个并行 agent 逐项对照 **当前 `src/` 真代码** vs **逆向源码规格** 重新核实。
 >
 > **口径**：✅ 已完成 · 🟡 部分 · ❌ 未做。共 132 项。
-> **总覆盖**：约 **65 ✅ / 15 🟡 / 52 ❌**，加权 ≈ **55%**（旧 42.8%）。
+> **总覆盖**：约 **66 ✅ / 16 🟡 / 50 ❌**，加权 ≈ **56%**（旧 42.8%）。
+> （2026-07-14 更新：域 7 设计风格 `manage_design_style` 落地 → +1✅/+1🟡/−2❌）
 > 但只看**产品核心域（编辑器·Agent·媒体·字幕·生成，域 1–11+16，共 104 项）**，
-> 加权覆盖 ≈ **69%**（65✅/13🟡/26❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
+> 加权覆盖 ≈ **70%**（66✅/14🟡/24❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
 > "需真后端、单机克隆无对象可服务"的基建域（域 13/14/15 全 0%）。
 >
 > **开发纪律（本文存在的意义）**：做任何一项前，先读它在"源码依据"列指向的
@@ -26,7 +27,7 @@
 | 4 | 转写 / 文字稿 | 10 | 7 | 1 | 2 | 核心 | 缺改错字、说话人重命名 |
 | 5 | 字幕 | 8 | 6 | 1 | 1 | 核心 | 21 样式已做，缺逐词覆盖、多源合并 |
 | 6 | Motion Graphics | 8 | 6 | 1 | 1 | 核心 | 缺 manage_template、MG→透明视频补 alpha |
-| 7 | 设计风格 / 品牌 | 2 | 0 | 0 | 2 | 核心 | **整域空白**（manage_design_style） |
+| 7 | 设计风格 / 品牌 | 2 | 1 | 1 | 0 | 核心 | ✅ manage_design_style(库+应用+注入MG/字幕)；brand-kit 的 logo 资产随后端做 |
 | 8 | AI 生成（花钱域） | 7 | 5 | 1 | 1 | 核心 | 5 生成工具已接，缺 submit_shader、积分门 |
 | 9 | 素材 / 媒体 | 12 | 7 | 1 | 4 | 核心 | 媒体池/库/LUT 已做，缺在线素材/URL 资产 |
 | 10 | 导出 / 交付 | 12 | 4 | 2 | 6 | 核心 | MP4/字幕已做，缺音频/XML/异步/水印 |
@@ -45,7 +46,7 @@
 
 ### P0 — 补齐产品核心的显眼缺口
 1. **对话历史持久化**（域11 ❌）—— 刷新即丢是硬伤。`messages`+`llmRef` 按工程存 IDB（复用 `persist/projectStore.ts`），加载恢复 + reset。源：`chat_block`。
-2. **设计风格 `manage_design_style`**（域7 ❌，整域空白）—— `ProjectDoc.designStyle{colors,fonts,motionPresets}` + `agent/design-tools.ts`，注入 MG/字幕默认色字。源：`复刻规格 §9 manage_design_style`。
+2. ✅ **设计风格 `manage_design_style`**（域7）—— 已落地：`ProjectDoc.designStyle{colors[role,value],fonts[family,role],styleGuide}`(对齐源 `Ey/Ay/bM` 规范)+`editor/design-presets.ts`(4 内置预设=源 `/api/design-styles/owned` 类比)+`agent/design-tools.ts`(`manage_design_style` list/get/apply/update/clear，含旧式对象→数组规整)+注入(`systemPrompt.designStylePrompt` 进 agent loop、`designStyleHint` 进 MG 代码生成)+UI(`DesignStylePanel` 弹窗，TopBar 调色板入口，即时预览)。检查 `design-tools.check.ts` 绿。源：`复刻规格 §9 manage_design_style`。
 3. **导出音频 mp3/wav + 帧范围**（域10 ❌/🟡）—— `remotion/render.mjs` 加 `renderAudio`（codec mp3）+ `renderMedia frameRange` 透传；`submit_export` 放开 `format=audio`。源：`submit_export format=audio`。
 
 ### P1 — 高价值增量
@@ -110,9 +111,9 @@
 - 🟡 **（子）propSchema 补 select/font/image 控件** — 现 9 类型里 font/select/image/asset 退化成 text。→ InspectorPanel schema 映射加三种控件。
 - ❌ **manage_template（工程模板打包/应用）** — 源 `manage_template`（get/list_assets/apply）。→ `agent/template-tools.ts`，依赖域7 design-style 先落。
 
-### 域 7 · 设计风格 / 品牌（**整域空白**）
-- ❌ **设计风格库 manage_design_style** — 源 `复刻规格 §9`（designSpec/applyToProject/presetId/patch，"当前 design style 即工程品牌"）。→ `ProjectDoc.designStyle{colors,fonts,motionPresets}` + `agent/design-tools.ts`；注入 MG/字幕默认。
-- ❌ **品牌套件 brand kit** — 源站与 design-style 合一。→ 随 `manage_design_style` 一起做，logo 存资产。
+### 域 7 · 设计风格 / 品牌
+- ✅ **设计风格库 manage_design_style** — 源 `复刻规格 §9`（designSpec/applyToProject/presetId/patch）。已实现 list/get/apply/update/clear + 4 内置预设 + 注入 MG/字幕生成。designSpec 结构对齐源 `Ey=[primary,secondary,accent,background,text] / Ay=[heading,body]`，规整器对齐 `bM/yM/xM`(旧式对象→数组)。
+- 🟡 **品牌套件 brand kit** — 源与 design-style 合一;`styleGuide` 文本已含。**logo/product-images 资产上传** 留待(源 designSpec.logos/images，本地需资产上传链路)。
 
 ### 域 8 · AI 生成
 - ❌ **着色器生成 submit_shader** — 源 `复刻规格 §8`（Gemini→GLSL/TS，type=effect\|transition）。→ `agent/shader-tools.ts` + `vite-plugin-shader.ts` LLM codegen，编译校验走 `gl/runtime.ts`，产物喂 `manage_effects`/transitions。
