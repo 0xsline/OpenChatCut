@@ -14,6 +14,7 @@ import { EFFECT_TOOL_SCHEMAS, EFFECT_TOOL_NAMES, execEffectTool } from './effect
 import { MEDIA_POOL_TOOL_SCHEMAS, MEDIA_POOL_TOOL_NAMES, execMediaPoolTool } from './media-pool-tools';
 import { TRACK_TOOL_SCHEMAS, TRACK_TOOL_NAMES, execTrackTool } from './track-tools';
 import { DESIGN_TOOL_SCHEMAS, DESIGN_TOOL_NAMES, execDesignTool } from './design-tools';
+import { STOCK_TOOL_SCHEMAS, STOCK_TOOL_NAMES, execStockTool } from './stock-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -163,6 +164,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...EFFECT_TOOL_SCHEMAS,
   // 设计风格 = 工程品牌（source manage_design_style：list/get/apply/update/clear）
   ...DESIGN_TOOL_SCHEMAS,
+  // 在线素材导入（source push_asset/download_media + search_stock_media）
+  ...STOCK_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -212,6 +215,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (GENERATE_TOOL_NAMES.has(name)) return execGenerateTool(name, args, ctx);
   if (EFFECT_TOOL_NAMES.has(name)) return execEffectTool(name, args, ctx);
   if (DESIGN_TOOL_NAMES.has(name)) return execDesignTool(name, args, ctx);
+  if (STOCK_TOOL_NAMES.has(name)) return execStockTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();

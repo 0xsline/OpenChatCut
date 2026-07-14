@@ -9,6 +9,7 @@ import { musicGenerationPlugin } from './vite-plugin-music.ts';
 import { videoGenerationPlugin } from './vite-plugin-video.ts';
 import { subtitleExportPlugin } from './vite-plugin-subtitles.ts';
 import { generationProgressPlugin } from './vite-generation-jobs.ts';
+import { stockSearchPlugin } from './vite-plugin-stock.ts';
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -39,6 +40,8 @@ export default defineConfig(({ mode }) => {
   const klingBase = env.KLING_BASE_URL || 'https://api-singapore.klingai.com';
   const klingKey = env.KLING_API_KEY || '';
   const klingModel = env.KLING_VIDEO_MODEL || 'kling-v3-omni';
+  const pexelsKey = env.PEXELS_API_KEY || '';
+  const pixabayKey = env.PIXABAY_API_KEY || '';
 
   return {
     plugins: [react(), exportPlugin(), uploadPlugin(), imageGenerationPlugin({
@@ -59,7 +62,8 @@ export default defineConfig(({ mode }) => {
     musicGenerationPlugin({ baseUrl: murekaBase, apiKey: murekaKey, model: murekaModel }),
     videoGenerationPlugin({ seedanceBaseUrl: seedanceBase, seedanceApiKey: seedanceKey, seedanceModel, klingBaseUrl: klingBase, klingApiKey: klingKey, klingModel }),
     generationProgressPlugin(),
-    subtitleExportPlugin()],
+    subtitleExportPlugin(),
+    stockSearchPlugin({ pexelsApiKey: pexelsKey, pixabayApiKey: pixabayKey })],
     server: {
       port: 5199,
       strictPort: true,
