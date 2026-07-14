@@ -1,10 +1,12 @@
 // Runnable source-contract check: `npx tsx src/agent/captions-tools.check.ts`.
-// 覆盖两层:① paginate/applyWordOverrides 的纯逻辑(隐藏/换文本/强制换页/无覆盖时字节级不变);
-// ② execCaptionsTool 经 makeDraft 落到 updateCaptions,read_captions 能读回覆盖状态。
+// 覆盖三层:① paginate/applyWordOverrides 的纯逻辑(隐藏/换文本/强制换页/无覆盖时字节级不变);
+// ② execCaptionsTool 经 makeDraft 落到 updateCaptions,read_captions 能读回覆盖状态;
+// ③ 字幕多源合并(sources[]/sourceMode:'timeline')——resolveCaptionWords 按绝对时间排序合并 +
+// 单源路径字节级不变 + set_caption_sources 工具。
 import assert from 'node:assert/strict';
 import { paginate } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
-import { applyWordOverrides } from '../captions/resolve';
+import { applyWordOverrides, resolveCaptionWords, resolveCaptionWordIndices } from '../captions/resolve';
 import { makeDraft } from '../editor/store';
 import type { TimelineState } from '../editor/types';
 import { docFromTimeline } from '../persist/projectStore';
@@ -135,3 +137,86 @@ assert.equal(rOff.enabled, false);
 assert.ok(rOff.note);
 
 console.log('captions-tools.check: ok');
+
+// ── 3) 多源合并:resolveCaptionWords/resolveCaptionWordIndices ──────────
+// fps=1000 让 frame 数与 ms 一一对应(msToFrame(ms,1000)===ms),期望值可手算、免浮点误差。
+const wordsA: TranscriptWord[] = [
+  { text: 'hi', start: 0, end: 100 },
+  { text: 'there', start: 100, end: 200 },
+];
+const wordsB: TranscriptWord[] = [
+  { text: 'yo', start: 0, end: 100 },
+  { text: 'friend', start: 100, end: 200 },
+];
+const itemA = { id: 'a', track: 'A1' as const, startFrame: 0, durationInFrames: 200, name: 'spk-a', kind: 'audio' as const, src: '/a.mp3', transcript: wordsA };
+const itemB = { id: 'b', track: 'A2' as const, startFrame: 50, durationInFrames: 200, name: 'spk-b', kind: 'audio' as const, src: '/b.mp3', transcript: wordsB };
+const itemC = { id: 'c', track: 'A3' as const, startFrame: 0, durationInFrames: 100, name: 'no-transcript', kind: 'audio' as const, src: '/c.mp3' };
+const multiState: TimelineState = {
+  fps: 1000, width: 1920, height: 1080, selectedId: null,
+  items: [itemA, itemB, itemC],
+  captions: { enabled: true, template: 'plain', pacing: 'phrase', sourceItemId: 'a' },
+};
+
+// 单源路径(无 sources/sourceMode)字节级不变:与"合并功能加入前"完全同一段代码路径。
+{
+  const single = resolveCaptionWords(multiState.captions!, multiState.items, multiState.fps);
+  assert.deepEqual(single, [
+    { text: 'hi', start: 0, end: 100, speaker: undefined },
+    { text: 'there', start: 100, end: 200, speaker: undefined },
+  ], 'no sources/sourceMode → identical to the pre-merge sourceItemId-only path');
+  assert.deepEqual(resolveCaptionWordIndices(multiState.captions!, multiState.items), [0, 1], 'single-source indices stay the original transcript indices');
+}
+
+// sources:['a','b'] → 两条转写合并,按绝对开始时间排序(不是简单拼接:b 的第一个词落在 a 两词之间)
+{
+  const merged = { ...multiState.captions!, sources: ['a', 'b'] };
+  const words = resolveCaptionWords(merged, multiState.items, multiState.fps);
+  assert.deepEqual(words.map((w) => w.text), ['hi', 'yo', 'there', 'friend'], 'merged + sorted by absolute start (not source concat order)');
+  assert.deepEqual(words.map((w) => [w.start, w.end]), [[0, 100], [50, 150], [100, 200], [150, 250]], '护城河③: each word keeps its own text/start/end, unchanged by the merge');
+  assert.deepEqual(resolveCaptionWordIndices(merged, multiState.items), [0, 1, 2, 3], 'multi-source indices are sequential positions in the merged output');
+}
+
+// sourceMode:'timeline' → 等价于"全部已转写 item"(c 没有 transcript,被自动排除)
+{
+  const timeline = { ...multiState.captions!, sourceMode: 'timeline' as const };
+  const words = resolveCaptionWords(timeline, multiState.items, multiState.fps);
+  assert.deepEqual(words.map((w) => w.text), ['hi', 'yo', 'there', 'friend'], "sourceMode:'timeline' merges every transcribed item, skips untranscribed ones");
+}
+
+console.log('captions-tools.check: multi-source merge ok');
+
+// ── 4) set_caption_sources 工具:校验 + 落盘 + read_captions 反映合并结果 ──
+const draft2 = makeDraft(docFromTimeline(multiState));
+const ctx2: AgentContext = { commands: draft2.commands, getState: draft2.getState, getDoc: draft2.getDoc, getCreativeMode: () => null, templates: [], audio: [] };
+
+// 未知/未转写 item id → 报错,不落盘
+const bad = await execCaptionsTool('set_caption_sources', { sources: ['a', 'does-not-exist'] }, ctx2) as { error?: string };
+assert.ok(bad.error?.includes('does-not-exist'), 'unknown item id surfaces in the error');
+assert.equal(draft2.getState().captions?.sources, undefined, 'rejected call does not persist');
+
+// 合法 sources → 落盘 + wordCount 反映合并后的词数
+const ok1 = await execCaptionsTool('set_caption_sources', { sources: ['a', 'b'] }, ctx2) as { ok: boolean; sources: string[]; mode: string; wordCount: number };
+assert.equal(ok1.ok, true);
+assert.deepEqual(ok1.sources, ['a', 'b']);
+assert.equal(ok1.mode, 'item');
+assert.equal(ok1.wordCount, 4);
+assert.deepEqual(draft2.getState().captions?.sources, ['a', 'b'], 'persisted via updateCaptions on TimelineState.captions.sources');
+
+// read_captions 之后反映合并结果:四个词、按开始时间排序
+const r2 = await execCaptionsTool('read_captions', {}, ctx2) as { pages: { words: { text: string }[] }[] };
+assert.deepEqual(r2.pages.flatMap((p) => p.words).map((w) => w.text), ['hi', 'yo', 'there', 'friend'], 'read_captions reflects the merged word stream');
+
+// mode:'timeline' → 落盘 mode,c(无转写)仍被排除
+const ok2 = await execCaptionsTool('set_caption_sources', { mode: 'timeline' }, ctx2) as { ok: boolean; mode: string; wordCount: number };
+assert.equal(ok2.ok, true);
+assert.equal(ok2.mode, 'timeline');
+assert.equal(ok2.wordCount, 4);
+assert.equal(draft2.getState().captions?.sourceMode, 'timeline');
+
+// 空参数 / 非法 mode → 报错,不静默改动
+const empty = await execCaptionsTool('set_caption_sources', {}, ctx2) as { error?: string };
+assert.ok(empty.error?.includes('nothing to update'));
+const badMode = await execCaptionsTool('set_caption_sources', { mode: 'bogus' }, ctx2) as { error?: string };
+assert.ok(badMode.error?.includes('invalid mode'));
+
+console.log('captions-tools.check: set_caption_sources ok');

@@ -5,11 +5,11 @@
 > 由 5 个并行 agent 逐项对照 **当前 `src/` 真代码** vs **逆向源码规格** 重新核实。
 >
 > **口径**：✅ 已完成 · 🟡 部分 · ❌ 未做。共 132 项。
-> **总覆盖**：约 **77 ✅ / 12 🟡 / 43 ❌**，加权 ≈ **64%**（旧 42.8%）。
+> **总覆盖**：约 **80 ✅ / 12 🟡 / 40 ❌**，加权 ≈ **66%**（旧 42.8%）。
 > （2026-07-14 更新：域 7 设计风格、域 11 对话历史持久化、域 10 音频/范围导出；
 > 又一轮并行落地 域 4 说话人重命名/合并、域 5 逐词字幕覆盖、域 8 submit_shader）
 > 但只看**产品核心域（编辑器·Agent·媒体·字幕·生成，域 1–11+16，共 104 项）**，
-> 加权覆盖 ≈ **81%**（77✅/9🟡/18❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
+> 加权覆盖 ≈ **84%**（80✅/9🟡/15❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
 > "需真后端、单机克隆无对象可服务"的基建域（域 13/14/15 全 0%）。
 >
 > **开发纪律（本文存在的意义）**：做任何一项前，先读它在"源码依据"列指向的
@@ -27,10 +27,10 @@
 |---|---|---:|---:|---:|---:|---|---|
 | 1 | 项目 / 会话生命周期 | 6 | 4 | 0 | 2 | 核心 | ✅ 版本历史(命名快照/回滚);缺 followup 已另做、resume |
 | 2 | 编辑器核心 / 时间线 | 19 | 18 | 1 | 0 | 核心 | **几近完备**；✅ 色度键/绿幕(chroma-key fx);仅剩 gif/svg/solid 🟡 |
-| 3 | 音频处理 | 6 | 4 | 0 | 2 | 核心 | ducking 已做，缺降噪/响度归一 |
+| 3 | 音频处理 | 6 | 5 | 0 | 1 | 核心 | ducking + ✅ 响度归一(-14 LUFS,WebAudio 离线);缺 AI 降噪/人声隔离 |
 | 4 | 转写 / 文字稿 | 10 | 9 | 0 | 1 | 核心 | ✅ manage_transcript 改错字 + 说话人重命名/合并(均只改文本/label,词↔帧不变) |
-| 5 | 字幕 | 8 | 7 | 0 | 1 | 核心 | ✅ 21 样式 + 逐词覆盖(隐藏/改词/强制换行,预览·burn-in·SRT 三处同步);缺多源合并 |
-| 6 | Motion Graphics | 8 | 6 | 1 | 1 | 核心 | 缺 manage_template、MG→透明视频补 alpha |
+| 5 | 字幕 | 8 | 8 | 0 | 0 | 核心 | ✅ 21 样式 + 逐词覆盖 + 多源合并(多轨转写按时间归并);**全绿** |
+| 6 | Motion Graphics | 8 | 7 | 1 | 0 | 核心 | ✅ manage_template 工程模板(打包/套用 MG+设计风格);仅 MG→透明视频 🟡 |
 | 7 | 设计风格 / 品牌 | 2 | 1 | 1 | 0 | 核心 | ✅ manage_design_style:24 真 catalog 预设+owned 我的风格+自由 role+注入;brand-kit logo 🟡 |
 | 8 | AI 生成（花钱域） | 7 | 6 | 1 | 0 | 核心 | ✅ 5 生成工具 + submit_shader(LLM 写 GLSL→编译校验→注册特效);积分门 🟡 |
 | 9 | 素材 / 媒体 | 12 | 9 | 1 | 2 | 核心 | ✅ import_url_asset + search_stock_media(需key);缺工作区pull/presigned |
@@ -99,7 +99,7 @@
 
 ### 域 3 · 音频处理
 - ❌ **AI 降噪 / 人声隔离** — 源 `isolate_voice`（DeepFilterNet3，action apply/attach/clear，strength 0-100）。→ `src/audio/isolate-tools.ts` 注册工具 + `item.isolatedSrc`；纯前端先做 "attach 已传 wav"，apply 走后端占位。
-- ❌ **响度归一化 (-14 LUFS)** — 源站无独立工具（唯 duck 深度从响度 auto-init）；标"自定"。→ `audio/loudness.ts` WebAudio 离线分析 LUFS 套增益；MVP 先 per-clip target-gain。
+- ✅ **响度归一化 (-14 LUFS)** — `audio/loudness.ts`：纯函数 `integratedLoudnessFromSamples`(BS.1770 简化:400ms 块+绝对门,ponytail 标了无 K-weighting 上限)+ `gainForTarget`;浏览器 `analyzeClipLoudness`(OfflineAudioContext 解码);`normalize_loudness` 工具逐 audio 片段量测→算增益→现成 `setItemVolume`。源站无独立工具→自定。检查 `loudness.check` 绿。commit 待提交。
 
 ### 域 4 · 转写 / 文字稿
 - 🟡 **多语言转写变体** — 源 `manage_transcript translation_ensure/create`（变体挂 source 共享时间轴）。→ `transcript/types.ts` 加 `variants`；字幕改"选变体显示"而非现场翻译。
@@ -107,14 +107,14 @@
 - ✅ **说话人重命名 / 合并** — `manage_transcript action=renameSpeaker(from,to)`：reduce 只改 `word.speaker`（rename 与 merge 同机制），text/timing 零改动、含无操作守卫、单步可撤销。commit 99a17c8。
 
 ### 域 5 · 字幕
-- 🟡 **字幕源路由（多轨合并）** — 源 `edit_captions source_set/source_add` + sourceScope（first-on-top 堆叠）。→ `CaptionsData.sources: CaptionSource[]` 取代单 sourceItemId；`resolve.ts` 合并多源；默认 `mode:'timeline'` 扫全部含转写音频。
+- ✅ **字幕源路由（多轨合并）** — `CaptionsData.sources?: string[]` + `sourceMode?: 'item'|'timeline'`(向后兼容 `sourceItemId`,单源字节等同);`resolve.ts` `resolveCaptionWords` 按 sources/timeline 归并多轨转写、按 start 时间排序(护城河③ 词 text/timing 不动);新 `set_caption_sources` 工具(自动挂 captions 模块)。源 action 名无据→自定。检查 `captions-tools.check` 绿。commit 待提交。
 - 🟡 **（子）edit_captions template enum 仅 3/21** — → `transcript-tools.ts` enum 改 `CAPTION_STYLES.map(id)` 全量。
 - ✅ **逐词覆盖（隐藏/改字/强制换行）** — `CaptionsData.wordOverrides`（按源词序号键）+ `read_captions`/`edit_caption_words`；预览·burn-in·SRT 三处同一 `applyWordOverrides` 管线。commit 772398b。（遮罩/拆/并留待多源合并一并处理）
 
 ### 域 6 · Motion Graphics
 - 🟡 **MG → 透明视频（convert_to_video）** — 现"转为视频"压平 alpha + 无 agent 工具。源 `convert_motion_graphic_to_video`+`register_converted_video`。→ `render.mjs` 加 vp8/webm-alpha；`generate-tools.ts` 加两工具入媒体池。
 - 🟡 **（子）propSchema 补 select/font/image 控件** — 现 9 类型里 font/select/image/asset 退化成 text。→ InspectorPanel schema 映射加三种控件。
-- ❌ **manage_template（工程模板打包/应用）** — 源 `manage_template`（get/list_assets/apply）。→ `agent/template-tools.ts`，依赖域7 design-style 先落。
+- ✅ **manage_template（工程模板打包/应用）** — `agent/template-tools.ts`(get/list_assets/apply 真名 + save 自定)+ `persist/templateStore.ts`(全局 kv `templates:all`,ProjectDoc 打包,`migrateProjectDoc` 校验)。apply 合成一份 ProjectDoc→单次 `applyDoc`(护城河① 原子可撤销);placement append/replace、`omitAssetIds` 连带跳过引用片段、item id 重生避免双击碰撞。检查 `template-tools.check` 绿。源 `manage_template`。commit 待提交。
 
 ### 域 7 · 设计风格 / 品牌
 - ✅ **设计风格库 manage_design_style** — 源 `复刻规格 §9` + **活体抓包核对**(`/api/design-styles/owned` + `/public-api/design-styles/catalog`)。已实现 list(catalog+owned)/get/apply/update/clear/**save/delete**;**全搬 24 个真实 catalog 预设**(curl 公开端点 verbatim);**owned「我的风格」本地库**(存/应用/删)。**role 是自由文本**(真值 "accent copper"/"text secondary"/"Chinese heading"——之前照 bundle 的 Ey/Ay 限死枚举会丢真数据,已改 role:string)。规整器对齐 `bM/yM/xM`(旧式对象→数组仍按常用键)。注入 MG/字幕生成(枚举全部自由角色)。

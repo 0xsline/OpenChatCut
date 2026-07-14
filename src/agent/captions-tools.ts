@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import { trackAlias } from '../editor/types';
-import type { CaptionWordOverride } from '../captions/types';
+import type { CaptionWordOverride, CaptionsData } from '../captions/types';
 import { paginate } from '../captions/types';
 import { resolveCaptionWords, resolveCaptionWordIndices, applyWordOverrides } from '../captions/resolve';
 import { CAPTION_STYLE_BY_ID } from '../captions/styles';
@@ -10,6 +10,12 @@ import { CAPTION_STYLE_BY_ID } from '../captions/styles';
 // 隐藏某个词、替换其显示文本、或在某词前强制换页。数据落在 CaptionsData.wordOverrides
 // (src/captions/types.ts),分页/渲染逻辑见 src/captions/resolve.ts + CaptionsLayer.tsx。
 // 这里只是读/写这份覆盖表的两个 agent 工具。
+//
+// set_caption_sources(自定工具名——逆向 `复刻规格-Agent工具与后端.md` 的 edit_captions
+// 条目只写"源路由",未见 source_set/source_add/sourceScope 等真实动作名):把字幕源从
+// 单个 sourceItemId 扩到"多轨转写合并成一条时间线"(CaptionsData.sources/sourceMode,
+// src/captions/types.ts)。真正的合并/排序在 resolve.ts 的 resolveCaptionWords 里,这里
+// 只做校验 + 落盘(ctx.commands.updateCaptions),不碰 reducer/store。
 
 export const CAPTIONS_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
@@ -40,6 +46,25 @@ export const CAPTIONS_TOOL_SCHEMAS: Anthropic.Tool[] = [
         },
       },
       required: ['overrides'],
+    },
+  },
+  {
+    name: 'set_caption_sources',
+    description: "Route the captions overlay to merge word-level transcripts from MULTIPLE items/tracks into one time-ordered caption stream (e.g. two speakers on two audio tracks -> one caption overlay), instead of a single sourceItemId. Pass `sources` (item ids, each must already have a transcript) to merge exactly those items, or `mode:'timeline'` to merge EVERY transcribed item on the timeline. Omitting both `sources` and `mode` leaves the existing single-source routing untouched.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        sources: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'item ids whose transcripts merge into the captions, sorted by absolute start time. Each id must reference an item that already has a transcript.',
+        },
+        mode: {
+          type: 'string',
+          enum: ['item', 'timeline'],
+          description: "'timeline' merges every transcribed item on the timeline (ignores `sources`/sourceItemId); 'item' returns to single-source routing (sourceItemId, or `sources` if set).",
+        },
+      },
     },
   },
 ];
@@ -116,6 +141,36 @@ export async function execCaptionsTool(name: string, args: Args, ctx: AgentConte
       }
       ctx.commands.updateCaptions({ wordOverrides: next });
       return { ok: true, overrides: Object.keys(next).length, ...(errors.length ? { errors } : {}) };
+    }
+    case 'set_caption_sources': {
+      if (!c) return { error: 'captions are not set up yet; call edit_captions first' };
+      const rawMode = args.mode;
+      if (rawMode !== undefined && rawMode !== 'item' && rawMode !== 'timeline') {
+        return { error: `invalid mode: ${JSON.stringify(rawMode)} (expected 'item' or 'timeline')` };
+      }
+      const rawSources = args.sources;
+      let sources: string[] | undefined;
+      if (rawSources !== undefined) {
+        if (!Array.isArray(rawSources) || rawSources.some((id) => typeof id !== 'string')) {
+          return { error: 'sources must be an array of item ids' };
+        }
+        const missing = rawSources.filter((id) => !s.items.some((it) => it.id === id && (it.transcript?.length ?? 0) > 0));
+        if (missing.length) return { error: `unknown or untranscribed item id(s): ${missing.join(', ')}` };
+        sources = rawSources;
+      }
+      const mode = rawMode as 'item' | 'timeline' | undefined;
+      if (sources === undefined && mode === undefined) return { error: 'nothing to update: pass sources and/or mode' };
+      const patch: Partial<CaptionsData> = {};
+      if (sources !== undefined) patch.sources = sources;
+      if (mode !== undefined) patch.sourceMode = mode;
+      ctx.commands.updateCaptions(patch);
+      const nextCaptions: CaptionsData = { ...c, ...patch };
+      return {
+        ok: true,
+        sources: nextCaptions.sources ?? null,
+        mode: nextCaptions.sourceMode ?? 'item',
+        wordCount: resolveCaptionWords(nextCaptions, s.items, s.fps).length,
+      };
     }
     default:
       return undefined;

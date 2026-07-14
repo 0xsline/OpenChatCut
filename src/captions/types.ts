@@ -24,6 +24,15 @@ export interface CaptionsData {
   pacing: CaptionPacing;
   /** audio item whose (edited) transcript drives the captions */
   sourceItemId?: string | null;
+  /** MULTI-source merge (新增,自定字段名 — 逆向 `复刻规格-Agent工具与后端.md` 的
+   * edit_captions 条目只提"源路由",未见 source_set/source_add/sourceScope 等动作名,
+   * 按"字幕可汇总全部已转写轨"的产品意图自定): item ids whose (edited) transcripts
+   * merge into ONE time-ordered caption stream (see resolveCaptionWords in resolve.ts).
+   * Empty/undefined → no effect, `sourceItemId` still drives (backward compatible). */
+  sources?: string[];
+  /** 'timeline' = ignore `sources`/`sourceItemId`, merge EVERY item with a transcript;
+   * 'item' or undefined (default) = single-source `sourceItemId`, or `sources` if set. */
+  sourceMode?: 'item' | 'timeline';
   /** standalone fallback source words (source ms) when no item is referenced */
   words?: TranscriptWord[];
   /** timeline offset (frames) for the standalone words */
@@ -37,7 +46,10 @@ export interface CaptionsData {
   /** per-word DISPLAY overrides for the captions overlay (hide / retext / force
    * a page break), WITHOUT touching the transcript or its timing. Keyed by the
    * word's index in the source track transcript (or in the standalone `words`
-   * fallback) — see `read_captions`/`edit_caption_words` in src/agent. */
+   * fallback) — see `read_captions`/`edit_caption_words` in src/agent. When
+   * MULTIPLE sources are merged (`sources`/`sourceMode:'timeline'`), the index
+   * space instead keys off the word's POSITION in the merged output (0..N-1) —
+   * see resolveCaptionWordIndices in resolve.ts. */
   wordOverrides?: Record<number, CaptionWordOverride>;
 }
 
