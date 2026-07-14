@@ -4,18 +4,23 @@ import {
   COLOR_ROLES, FONT_ROLES, type DesignColor, type DesignFont, type DesignStyle,
 } from '../editor/types';
 import { DESIGN_STYLE_PRESETS, findPreset } from '../editor/design-presets';
+import { loadOwnedStyles, saveOwnedStyle, deleteOwnedStyle } from '../persist/projectStore';
 
 // Source tool: manage_design_style — the design-style library IS the project's
 // brand identity; it drives the colors + fonts the agent picks for MG/captions.
-// Params mirror source: action / designSpec / applyToProject / presetId / patch.
+// Two style sources: the public catalog (design-presets.ts) AND the user's own
+// saved styles ("我的风格" — a GLOBAL library, not per-project; source
+// /api/design-styles/owned). Params mirror source: action / designSpec /
+// applyToProject / presetId / patch / name.
 export const DESIGN_TOOL_SCHEMAS: Anthropic.Tool[] = [{
   name: 'manage_design_style',
   description: [
     '管理工程的设计风格(品牌)。应用中的设计风格就是本工程的品牌,驱动你生成 MG/字幕时用的配色与字体。',
-    'action: list | get | apply | update | clear.',
-    'list=列出内置预设风格库; get=查看当前工程已应用的风格;',
-    'apply=把某预设(presetId)或自定义 designSpec 套用到工程(applyToProject 默认 true);',
-    'update=对当前风格做局部修改(patch,只补要改的字段); clear=清除风格。',
+    'action: list | get | apply | update | clear | save | delete.',
+    'list=列出风格库,返回 {catalog(内置预设), owned(用户"我的风格"收藏)}; get=查看当前工程已应用的风格;',
+    'apply=把某风格(presetId,内置或用户收藏均可)或自定义 designSpec 套用到工程(applyToProject 默认 true);',
+    'update=对当前风格做局部修改(patch,只补要改的字段); clear=清除风格;',
+    'save=把 designSpec(或未传时用当前工程已应用的风格)存入用户的"我的风格"收藏,需 name; delete=从"我的风格"收藏中删除(presetId 为收藏项 id;内置预设不可删除)。',
     'designSpec/patch 结构: {colors:[{role,value}], fonts:[{family,role}], styleGuide}。',
     `role 是自由文本(源站真实取值如 "accent copper"/"text secondary"/"Chinese heading"),常用 color role: ${COLOR_ROLES.join('/')}; font role: ${FONT_ROLES.join('/')},但不限于这些。`,
     'styleGuide 可写详细的动效/spring/stagger 规格(源站就是这么用的)。',
@@ -24,11 +29,12 @@ export const DESIGN_TOOL_SCHEMAS: Anthropic.Tool[] = [{
   input_schema: {
     type: 'object',
     properties: {
-      action: { type: 'string', enum: ['list', 'get', 'apply', 'update', 'clear'] },
-      presetId: { type: 'string', description: 'apply: 内置预设 id(先用 list 查看)。' },
-      designSpec: { type: 'string', description: 'apply: 自定义风格的 JSON,含 colors/fonts/styleGuide。' },
+      action: { type: 'string', enum: ['list', 'get', 'apply', 'update', 'clear', 'save', 'delete'] },
+      presetId: { type: 'string', description: 'apply/delete: 风格 id(内置预设或"我的风格"收藏项,先用 list 查看)。' },
+      designSpec: { type: 'string', description: 'apply/save: 自定义风格的 JSON,含 colors/fonts/styleGuide。' },
       patch: { type: 'string', description: 'update: 局部修改的 JSON(只写要改的字段)。' },
       applyToProject: { type: 'boolean', description: 'apply: 是否立即套到当前工程(默认 true)。' },
+      name: { type: 'string', description: 'save: 收藏名称(必填;同名会覆盖已有收藏)。' },
     },
     required: ['action'],
   },
@@ -92,8 +98,13 @@ export async function execDesignTool(name: string, args: Args, ctx: AgentContext
   const action = String(args.action ?? '');
 
   switch (action) {
-    case 'list':
-      return DESIGN_STYLE_PRESETS.map((p) => ({ presetId: p.id, name: p.name, style: summarize(p.style) }));
+    case 'list': {
+      const owned = await loadOwnedStyles();
+      return {
+        catalog: DESIGN_STYLE_PRESETS.map((p) => ({ presetId: p.id, name: p.name, style: summarize(p.style) })),
+        owned: owned.map((s) => ({ presetId: s.id, name: s.name, style: summarize(s.style) })),
+      };
+    }
 
     case 'get':
       return { designStyle: summarize(ctx.getDoc().designStyle) };
@@ -101,9 +112,15 @@ export async function execDesignTool(name: string, args: Args, ctx: AgentContext
     case 'apply': {
       let style: DesignStyle | null = null;
       if (args.presetId) {
-        const preset = findPreset(String(args.presetId));
-        if (!preset) return { error: `no preset "${args.presetId}"`, available: DESIGN_STYLE_PRESETS.map((p) => p.id) };
-        style = preset.style;
+        const id = String(args.presetId);
+        const preset = findPreset(id);
+        if (preset) {
+          style = preset.style;
+        } else {
+          const ownedMatch = (await loadOwnedStyles()).find((s) => s.id === id);
+          if (!ownedMatch) return { error: `no style "${id}"`, available: DESIGN_STYLE_PRESETS.map((p) => p.id) };
+          style = ownedMatch.style;
+        }
       } else {
         const spec = parseSpec(args.designSpec);
         if ('error' in spec) return spec;
@@ -134,7 +151,40 @@ export async function execDesignTool(name: string, args: Args, ctx: AgentContext
       ctx.commands.setDesignStyle(null);
       return { ok: true, cleared: true };
 
+    // "我的风格" — a GLOBAL personal library (source /api/design-styles/owned),
+    // NOT scoped to this project. Writes go straight to the store, bypassing
+    // ctx.commands (there is no timeline edit / undo entry to make).
+    case 'save': {
+      const styleName = String(args.name ?? '').trim();
+      if (!styleName) return { error: 'save requires a non-empty "name"' };
+      let style: DesignStyle;
+      if (args.designSpec) {
+        const spec = parseSpec(args.designSpec);
+        if ('error' in spec) return spec;
+        style = normStyle(spec);
+        if (style.colors.length === 0 && style.fonts.length === 0 && !style.styleGuide) {
+          return { error: 'empty designSpec: need at least one color, font, or styleGuide' };
+        }
+      } else {
+        const current = ctx.getDoc().designStyle;
+        if (!current) return { error: 'no designSpec given and no style applied to the project yet' };
+        style = current;
+      }
+      const saved = await saveOwnedStyle(styleName, style);
+      return { ok: true, saved };
+    }
+
+    case 'delete': {
+      const id = String(args.presetId ?? '').trim();
+      if (!id) return { error: 'delete requires "presetId" (the owned style id)' };
+      if (findPreset(id)) return { error: "catalog styles can't be deleted" };
+      const owned = await loadOwnedStyles();
+      if (!owned.some((s) => s.id === id)) return { error: `no owned style "${id}"` };
+      await deleteOwnedStyle(id);
+      return { ok: true, deleted: id };
+    }
+
     default:
-      return { error: `unknown action "${action}"; use list|get|apply|update|clear` };
+      return { error: `unknown action "${action}"; use list|get|apply|update|clear|save|delete` };
   }
 }

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { theme } from '../theme';
 import { Icon } from './icons';
 import {
   COLOR_ROLES, FONT_ROLES, colorOf, fontOf, type DesignStyle,
 } from '../editor/types';
 import { DESIGN_STYLE_PRESETS } from '../editor/design-presets';
+import { loadOwnedStyles, saveOwnedStyle, deleteOwnedStyle, type OwnedStyle } from '../persist/projectStore';
 
 interface DesignStylePanelProps {
   style: DesignStyle | undefined;
@@ -36,6 +37,33 @@ const pick = (s: DesignStyle, roles: string[]): string | undefined => {
  * 本地草稿即时预览,「应用到工程」一次性提交(单条历史)。 */
 export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelProps) {
   const [draft, setDraft] = useState<DesignStyle>(style ?? EMPTY);
+
+  // "我的风格" — the user's own saved-style library (source /api/design-styles/owned,
+  // a GLOBAL personal library, not scoped to this project).
+  const [owned, setOwned] = useState<OwnedStyle[]>([]);
+  const [savingName, setSavingName] = useState<string | null>(null); // null = input hidden
+
+  useEffect(() => {
+    let cancelled = false;
+    loadOwnedStyles().then((list) => { if (!cancelled) setOwned(list); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const refreshOwned = () => { loadOwnedStyles().then(setOwned); };
+
+  const handleDeleteOwned = async (id: string) => {
+    await deleteOwnedStyle(id);
+    refreshOwned();
+  };
+
+  const handleSaveOwned = async () => {
+    const name = (savingName ?? '').trim();
+    if (!name) return;
+    if (draft.colors.length === 0 && draft.fonts.length === 0 && !draft.styleGuide) return;
+    await saveOwnedStyle(name, draft);
+    setSavingName(null);
+    refreshOwned();
+  };
 
   const setColor = (role: string, value: string) =>
     setDraft((d) => ({ ...d, colors: upsert(d.colors, role, value, (v) => ({ role, value: v })) }));
@@ -81,6 +109,29 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
               ))}
             </div>
           </section>
+
+          {/* owned styles ("我的风格" — user's own saved-style library) */}
+          {owned.length > 0 && (
+            <section>
+              <div style={sectionTitle}>我的风格</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {owned.map((o) => (
+                  <div key={o.id} style={{ position: 'relative' }}>
+                    <button onClick={() => setDraft(o.style)} title={o.style.styleGuide} style={{ ...presetChip, paddingRight: 24 }}>
+                      <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', height: 18, width: 66 }}>
+                        {o.style.colors.map((c) => <span key={c.role} style={{ flex: 1, background: c.value }} />)}
+                      </div>
+                      <span style={{ fontSize: 12 }}>{o.name}</span>
+                    </button>
+                    <button onClick={() => handleDeleteOwned(o.id)} title="删除此风格"
+                      style={{ ...iconBtn, position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', padding: 2 }}>
+                      <Icon name="x" size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* colors (roles are free-form; hex swatch only shows for #hex values) */}
           <section>
@@ -137,11 +188,24 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
         </div>
 
         {/* footer */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderTop: `1px solid ${theme.border}` }}>
-          <button onClick={() => { onApply(null); onClose(); }} style={{ ...ghostBtn, color: theme.textDim }}>清除风格</button>
-          <div style={{ flex: 1 }} />
-          <button onClick={onClose} style={ghostBtn}>取消</button>
-          <button onClick={() => { onApply(draft); onClose(); }} style={primaryBtn}>应用到工程</button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 16px', borderTop: `1px solid ${theme.border}` }}>
+          {savingName !== null && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input autoFocus value={savingName} placeholder="风格名称"
+                onChange={(e) => setSavingName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveOwned(); if (e.key === 'Escape') setSavingName(null); }}
+                style={{ ...textInput, flex: 1 }} />
+              <button onClick={handleSaveOwned} style={primaryBtn}>确定</button>
+              <button onClick={() => setSavingName(null)} style={ghostBtn}>取消</button>
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={() => { onApply(null); onClose(); }} style={{ ...ghostBtn, color: theme.textDim }}>清除风格</button>
+            <button onClick={() => setSavingName('')} style={ghostBtn}>保存为我的风格</button>
+            <div style={{ flex: 1 }} />
+            <button onClick={onClose} style={ghostBtn}>取消</button>
+            <button onClick={() => { onApply(draft); onClose(); }} style={primaryBtn}>应用到工程</button>
+          </div>
         </div>
       </div>
     </div>

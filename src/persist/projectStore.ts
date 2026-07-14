@@ -222,6 +222,57 @@ export async function clearChat(projectId: string): Promise<void> {
   }
 }
 
+// ── owned design styles (source /api/design-styles/owned): the user's OWN saved
+// styles — a single GLOBAL personal library (not scoped to a project), stored
+// under one key alongside the catalog presets in design-presets.ts. ──
+const OWNED_STYLES_KEY = 'design-styles:owned';
+
+export interface OwnedStyle {
+  id: string;
+  name: string;
+  style: DesignStyle;
+}
+
+function isOwnedStyle(v: unknown): v is OwnedStyle {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as Partial<OwnedStyle>;
+  return typeof o.id === 'string' && typeof o.name === 'string' && isDesignStyle(o.style);
+}
+
+/** The user's saved style library. Corrupt/partial persisted data is dropped, not trusted. */
+export async function loadOwnedStyles(): Promise<OwnedStyle[]> {
+  try {
+    const raw = await idbGet<unknown>(OWNED_STYLES_KEY);
+    return Array.isArray(raw) ? raw.filter(isOwnedStyle) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Save a style under `name` (replacing any existing entry with the same name). */
+export async function saveOwnedStyle(name: string, style: DesignStyle): Promise<OwnedStyle> {
+  const trimmed = name.trim() || '未命名风格';
+  const current = await loadOwnedStyles();
+  const existing = current.find((s) => s.name === trimmed);
+  const entry: OwnedStyle = { id: existing?.id ?? newId(), name: trimmed, style };
+  const next = existing ? current.map((s) => (s.id === entry.id ? entry : s)) : [...current, entry];
+  try {
+    await idbSet(OWNED_STYLES_KEY, next);
+  } catch {
+    /* ignore persist failures; caller still gets the entry back for in-session use */
+  }
+  return entry;
+}
+
+export async function deleteOwnedStyle(id: string): Promise<void> {
+  try {
+    const current = await loadOwnedStyles();
+    await idbSet(OWNED_STYLES_KEY, current.filter((s) => s.id !== id));
+  } catch {
+    /* ignore */
+  }
+}
+
 async function readIndex(): Promise<ProjectMeta[]> {
   const raw = await idbGet<unknown>(INDEX_KEY);
   return Array.isArray(raw) ? (raw as ProjectMeta[]).filter((m) => m && typeof m.id === 'string') : [];
