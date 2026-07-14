@@ -95,43 +95,37 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
         </div>
 
         <div style={{ padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {/* presets */}
+          {/* 风格选择器（像素对标源站 21_design_style：紧凑「缩略图 64×36 + 名 12px」行、
+              11px/500 暗色区块标题、选中橙点、顶部「无」卡） */}
           <section>
-            <div style={sectionTitle}>预设风格</div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={sectionTitle}>选择 MG 动画的视觉风格</div>
+            <div style={styleList}>
+              <StyleRow name="无" selected={isEmpty(draft)} onClick={() => setDraft(EMPTY)} />
+            </div>
+
+            <div style={{ ...sectionTitle, marginTop: 12 }}>预设</div>
+            <div style={styleList}>
               {DESIGN_STYLE_PRESETS.map((p) => (
-                <button key={p.id} onClick={() => setDraft(p.style)} title={p.style.styleGuide} style={presetChip}>
-                  <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', height: 18, width: 66 }}>
-                    {p.style.colors.map((c) => <span key={c.role} style={{ flex: 1, background: c.value }} />)}
-                  </div>
-                  <span style={{ fontSize: 12 }}>{p.name}</span>
-                </button>
+                <StyleRow key={p.id} name={p.name} title={p.style.styleGuide}
+                  colors={p.style.colors.map((c) => c.value)}
+                  selected={sameStyle(draft, p.style)} onClick={() => setDraft(p.style)} />
               ))}
             </div>
-          </section>
 
-          {/* owned styles ("我的风格" — user's own saved-style library) */}
-          {owned.length > 0 && (
-            <section>
-              <div style={sectionTitle}>我的风格</div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {owned.map((o) => (
-                  <div key={o.id} style={{ position: 'relative' }}>
-                    <button onClick={() => setDraft(o.style)} title={o.style.styleGuide} style={{ ...presetChip, paddingRight: 24 }}>
-                      <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', height: 18, width: 66 }}>
-                        {o.style.colors.map((c) => <span key={c.role} style={{ flex: 1, background: c.value }} />)}
-                      </div>
-                      <span style={{ fontSize: 12 }}>{o.name}</span>
-                    </button>
-                    <button onClick={() => handleDeleteOwned(o.id)} title="删除此风格"
-                      style={{ ...iconBtn, position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', padding: 2 }}>
-                      <Icon name="x" size={11} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
+            {owned.length > 0 && (
+              <>
+                <div style={{ ...sectionTitle, marginTop: 12 }}>我的风格</div>
+                <div style={styleList}>
+                  {owned.map((o) => (
+                    <StyleRow key={o.id} name={o.name} title={o.style.styleGuide}
+                      colors={o.style.colors.map((c) => c.value)}
+                      selected={sameStyle(draft, o.style)} onClick={() => setDraft(o.style)}
+                      onDelete={() => handleDeleteOwned(o.id)} />
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
 
           {/* colors (roles are free-form; hex swatch only shows for #hex values) */}
           <section>
@@ -218,6 +212,54 @@ function upsert<T extends { role: string }>(list: T[], role: string, value: stri
   return value.trim() ? [...rest, make(value)] : rest;
 }
 
+const isEmpty = (s: DesignStyle): boolean => s.colors.length === 0 && s.fonts.length === 0 && !s.styleGuide;
+const sameStyle = (a: DesignStyle, b: DesignStyle): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+/** 一行风格选项（像素对标源站：64×36 缩略图 + 12px 名 + 选中橙点，行 hover 白@3.5%）。
+ *  无 colors → 画一条对角线占位（源站「无」卡）。 */
+function StyleRow({ colors, name, title, selected, onClick, onDelete }: {
+  colors?: string[]; name: string; title?: string; selected: boolean; onClick: () => void; onDelete?: () => void;
+}) {
+  return (
+    <div style={{ position: 'relative' }}>
+      <button onClick={onClick} title={title} style={{ ...styleRowBtn, background: selected ? 'rgba(255,255,255,0.06)' : 'transparent', paddingRight: onDelete ? 28 : 12 }}
+        onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'rgba(255,255,255,0.035)'; }}
+        onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = selected ? 'rgba(255,255,255,0.06)' : 'transparent'; }}>
+        <div style={colors && colors.length ? thumb : noneThumb}>
+          {colors?.map((c, i) => <span key={i} style={{ flex: 1, background: c }} />)}
+        </div>
+        <span style={rowName}>{name}</span>
+        <div style={{ flex: 1 }} />
+        {selected && <span style={dot} />}
+      </button>
+      {onDelete && (
+        <button onClick={onDelete} title="删除此风格"
+          style={{ ...iconBtn, position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', padding: 2 }}>
+          <Icon name="x" size={11} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+// 行样式（源站实测：行高 ~44、缩略图 64×36 radius 4、名 12px、gap 10、pl 8、radius 4）。
+const styleList: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 2 };
+const styleRowBtn: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+  border: 'none', color: theme.text, borderRadius: 4, padding: '5px 12px 5px 8px',
+  cursor: 'pointer', textAlign: 'left', transition: 'background 0.12s',
+};
+const thumb: React.CSSProperties = {
+  display: 'flex', width: 64, height: 36, borderRadius: 4, overflow: 'hidden',
+  flexShrink: 0, border: `1px solid ${theme.border}`,
+};
+const noneThumb: React.CSSProperties = {
+  ...thumb,
+  background: `linear-gradient(to top right, transparent calc(50% - 1px), ${theme.border} calc(50% - 1px), ${theme.border} calc(50% + 1px), transparent calc(50% + 1px))`,
+};
+const rowName: React.CSSProperties = { fontSize: 12, color: theme.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+const dot: React.CSSProperties = { width: 8, height: 8, borderRadius: '50%', background: theme.accent, flexShrink: 0 };
+
 const backdrop: React.CSSProperties = {
   position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 60,
   display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
@@ -227,11 +269,8 @@ const card: React.CSSProperties = {
   background: theme.panel, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: 12,
   boxShadow: '0 20px 60px rgba(0,0,0,.5)',
 };
-const sectionTitle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: theme.textDim, marginBottom: 8 };
-const presetChip: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 8, background: theme.panelAlt, color: theme.text,
-  border: `1px solid ${theme.border}`, borderRadius: 8, padding: '7px 10px', cursor: 'pointer',
-};
+// 区块标题：源站 21_design_style 实测 11px / font-weight 500 / oklch(0.6) 暗灰 / pl 8。
+const sectionTitle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: theme.textDim, paddingLeft: 8, marginBottom: 6, letterSpacing: 0.2 };
 const colorRow: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, background: theme.panelAlt,
   border: `1px solid ${theme.border}`, borderRadius: 7, padding: '4px 7px',
