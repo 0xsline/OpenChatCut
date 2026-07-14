@@ -27,7 +27,7 @@
 | 4 | 转写 / 文字稿 | 10 | 7 | 1 | 2 | 核心 | 缺改错字、说话人重命名 |
 | 5 | 字幕 | 8 | 6 | 1 | 1 | 核心 | 21 样式已做，缺逐词覆盖、多源合并 |
 | 6 | Motion Graphics | 8 | 6 | 1 | 1 | 核心 | 缺 manage_template、MG→透明视频补 alpha |
-| 7 | 设计风格 / 品牌 | 2 | 1 | 1 | 0 | 核心 | ✅ manage_design_style(库+应用+注入MG/字幕)；brand-kit 的 logo 资产随后端做 |
+| 7 | 设计风格 / 品牌 | 2 | 1 | 1 | 0 | 核心 | ✅ manage_design_style:24 真 catalog 预设+owned 我的风格+自由 role+注入;brand-kit logo 🟡 |
 | 8 | AI 生成（花钱域） | 7 | 5 | 1 | 1 | 核心 | 5 生成工具已接，缺 submit_shader、积分门 |
 | 9 | 素材 / 媒体 | 12 | 7 | 1 | 4 | 核心 | 媒体池/库/LUT 已做，缺在线素材/URL 资产 |
 | 10 | 导出 / 交付 | 12 | 4 | 2 | 6 | 核心 | MP4/字幕已做，缺音频/XML/异步/水印 |
@@ -85,7 +85,7 @@
 
 ### 域 1 · 项目 / 会话生命周期
 - ❌ **版本历史（快照/回滚）** — 源 `/api/versions`。→ 新 `src/persist/versionStore.ts`（IDB 存命名 `ProjectDoc` 快照），TopBar/Dashboard 加入口，回滚=现成 `commands.applyDoc`。
-- ❌ **ask_followup_questions 交互卡** — 源 `ask_followup_questions`（复刻规格:75，fields≤12 单选/多选/文本 + variant=visual\|voice\|scenario）。→ `src/agent/followup-tool.ts` 返 pending 表单卡，`ChatPanel` 渲染结构化表单→tool_result。
+- ✅ **ask_followup_questions 交互卡** — 已实现 `<widget>` 内联问答卡:`components/chat/widget-parse.ts`(解析 form-single/multi/visual)+ `WidgetCard.tsx` 渲染 + 提交回填 "- 标签：显示" 续对话 + systemPrompt 教 agent 关键信息不足时发卡。真实语法抓自源站 chat-blocks。(源站 variant=visual 的媒体卡渲染就绪,但需托管媒体故 agent 只发 single/multi。)
 - ❌ **get_editor_url / target_project** — 源 `复刻规格:23,66,68`。→ 低优先，等域15 外部 MCP，App 层加 `session.activeProjectId`。
 
 ### 域 2 · 编辑器核心 / 时间线
@@ -112,8 +112,8 @@
 - ❌ **manage_template（工程模板打包/应用）** — 源 `manage_template`（get/list_assets/apply）。→ `agent/template-tools.ts`，依赖域7 design-style 先落。
 
 ### 域 7 · 设计风格 / 品牌
-- ✅ **设计风格库 manage_design_style** — 源 `复刻规格 §9`（designSpec/applyToProject/presetId/patch）。已实现 list/get/apply/update/clear + 4 内置预设 + 注入 MG/字幕生成。designSpec 结构对齐源 `Ey=[primary,secondary,accent,background,text] / Ay=[heading,body]`，规整器对齐 `bM/yM/xM`(旧式对象→数组)。
-- 🟡 **品牌套件 brand kit** — 源与 design-style 合一;`styleGuide` 文本已含。**logo/product-images 资产上传** 留待(源 designSpec.logos/images，本地需资产上传链路)。
+- ✅ **设计风格库 manage_design_style** — 源 `复刻规格 §9` + **活体抓包核对**(`/api/design-styles/owned` + `/public-api/design-styles/catalog`)。已实现 list(catalog+owned)/get/apply/update/clear/**save/delete**;**全搬 24 个真实 catalog 预设**(curl 公开端点 verbatim);**owned「我的风格」本地库**(存/应用/删)。**role 是自由文本**(真值 "accent copper"/"text secondary"/"Chinese heading"——之前照 bundle 的 Ey/Ay 限死枚举会丢真数据,已改 role:string)。规整器对齐 `bM/yM/xM`(旧式对象→数组仍按常用键)。注入 MG/字幕生成(枚举全部自由角色)。
+- 🟡 **品牌套件 brand kit** — 源与 design-style 合一;`styleGuide`(真值是详细 spring/stagger 动效规格)已含。**logo/product-images 资产上传** 留待(源 designSpec.logos/images,本地需资产上传链路)。
 
 ### 域 8 · AI 生成
 - ❌ **着色器生成 submit_shader** — 源 `复刻规格 §8`（Gemini→GLSL/TS，type=effect\|transition）。→ `agent/shader-tools.ts` + `vite-plugin-shader.ts` LLM codegen，编译校验走 `gl/runtime.ts`，产物喂 `manage_effects`/transitions。
