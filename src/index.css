@@ -318,13 +318,48 @@ button, input, select { font: inherit; }
 .cc-ruler-head { position:sticky; left:0; z-index:6; flex-shrink:0; display:flex; align-items:center; justify-content:center; border-right:1px solid #363636; background:#181818; }
 .cc-ruler-head span { color:#9b9b9b; font-size:14px; letter-spacing:.03em; font-variant-numeric:tabular-nums; }
 .cc-track-row { display:flex; border-bottom:1px solid #363636; background:#181818; }
-.cc-track-head { position:sticky; left:0; z-index:5; flex-shrink:0; display:flex; flex-direction:column; justify-content:center; gap:3px; padding:6px 10px; border-right:1px solid #363636; background:#181818; }
-.cc-track-head-controls { display:flex; align-items:center; gap:2px; min-width:0; }
+.cc-track-head {
+  position:sticky; left:0; z-index:5; flex-shrink:0;
+  display:flex; flex-direction:column; justify-content:flex-start; gap:5px;
+  height:100%; box-sizing:border-box;
+  padding:6px 8px 8px; border-right:1px solid #363636; background:#181818;
+  overflow:hidden;
+}
+.cc-track-head-controls { display:flex; align-items:center; gap:2px; min-width:0; flex-shrink:0; }
 .cc-track-badge { min-width:29px; height:24px; display:grid; place-items:center; padding:0 6px; border-radius:4px; color:#f7f7f7; font-size:12px; font-weight:700; }
 .cc-track-head-spacer { flex:1; }
 .cc-track-fixed-action { width:22px; height:22px; display:grid; place-items:center; padding:0; border:0; background:transparent; color:#aaa; cursor:pointer; }
 .cc-track-fixed-action:disabled { color:#555; cursor:default; }
-.cc-track-name { padding-left:1px; color:#747474; font-size:11px; white-space:nowrap; }
+/* name + duck controls under the icon row */
+.cc-track-meta { display:flex; flex-direction:column; gap:5px; min-width:0; padding:0 2px; }
+.cc-track-name {
+  color:#8a8a8a; font-size:11px; line-height:1.25;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  max-width:100%;
+}
+.cc-track-duck { display:flex; flex-direction:column; gap:5px; min-width:0; }
+.cc-track-duck-select {
+  width:100%; max-width:100%; box-sizing:border-box;
+  height:24px; padding:0 6px;
+  font-size:11px; line-height:22px;
+  color:#e0e0e0; background:#121212;
+  border:1px solid #3a3a3a; border-radius:5px;
+  outline:none; cursor:pointer;
+}
+.cc-track-duck-select:hover { border-color:#555; }
+.cc-track-duck-select:focus { border-color:#6a9fd8; }
+.cc-track-duck-depth {
+  display:flex; align-items:center; gap:6px;
+  font-size:10px; color:#8a8a8a; min-width:0;
+}
+.cc-track-duck-depth span:first-child { flex-shrink:0; }
+.cc-track-duck-depth input[type="range"] {
+  flex:1; min-width:0; height:14px; margin:0; accent-color:#65a878;
+}
+.cc-track-duck-db {
+  flex-shrink:0; width:34px; text-align:right;
+  font-variant-numeric:tabular-nums; color:#b0b0b0;
+}
 .cc-caption-style-menu { z-index:80; width:286px; max-height:calc(100vh - 16px); display:flex; flex-direction:column; overflow:visible; border:1px solid #424242; background:#292929; box-shadow:0 12px 32px #000b; color:#e2e2e2; font-size:13px; }
 .cc-caption-style-title { padding:10px 14px 6px; color:#a8a8a8; font-size:11px; }
 .cc-caption-style-list { min-height:0; overflow-y:auto; padding:0 8px 5px; }
