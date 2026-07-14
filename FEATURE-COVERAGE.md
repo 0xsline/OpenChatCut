@@ -46,7 +46,7 @@
 | 增删改查片段（add/move/retime/duplicate/remove/split）| ✅ | `store.ts` reducer，1:1 映射 agent 工具 |
 | 撤销/重做 | ✅ | 快照式 history |
 | 拖拽移动 / 裁剪（trim 手柄）/ 跨轨约束 | ✅ | `Timeline.tsx` pointer 拖拽 |
-| 时间轴横向缩放 🔍 / 竖向轨道缩放 Alt+滚轮 | ✅ | zoom/trackScale 状态 |
+| 时间轴横向缩放 🔍 / 竖向轨道缩放 Alt+滚轮 | ✅ | zoom/trackScale 状态；Player 与 211 张模板卡已从逐帧根渲染中隔离，浏览器前后性能回归见 `design-qa.md` |
 | 时间线上下拖高 + 加权轨道高度 | ✅ | `cc.timelineH` + WEIGHT；按源站 Dockview 树改为只跨 Assets + Viewer，AI 列贯穿到底；使用源站式 sticky 轨道头、工具分组、片段配色、音频波形视觉与右下反馈入口 |
 | **多时间线/序列（每工程多条）** | ✅ | `ProjectDoc V2` 已包含 `timelines[] + activeTimelineId`；底部 Tab 支持切换、新建、复制、重命名、删除、隐藏和一键 9:16 竖屏副本，旧工程自动迁移；Agent 已接 `manage_timelines` |
 | **轨道管理（增删/改序/角色/锁/隐/静音/收紧）** | ✅ | 稳定轨道 id + 动态 V/A 别名；创建、空轨删除、排序、命名、anchor/follower 角色、锁定、折叠、隐藏、静音与 tighten 均已完成；旧工程自动迁移，Agent 已接源站式 `edit_track`。浏览器自建工程回归见 `qa-dynamic-tracks.png` |

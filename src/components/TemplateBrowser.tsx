@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { theme } from '../theme';
 import { usePersistedState } from '../hooks/usePersistedState';
 import type { Tpl } from '../types';
@@ -37,7 +37,7 @@ interface TemplateBrowserProps {
   onUseAI: (tpl: Tpl) => void;
 }
 
-export function TemplateBrowser({ templates, onAdd, onUseAI }: TemplateBrowserProps) {
+export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd, onUseAI }: TemplateBrowserProps) {
   const [favs, setFavs] = usePersistedState<string[]>('cc.favTemplates', []);
   const [chip, setChip] = useState<string>(POPULAR);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -125,7 +125,7 @@ export function TemplateBrowser({ templates, onAdd, onUseAI }: TemplateBrowserPr
       )}
     </>
   );
-}
+});
 
 const menuItem: React.CSSProperties = {
   display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none',
