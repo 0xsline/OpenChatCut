@@ -1,5 +1,7 @@
 # ChatCut 复刻 · 源码对标 TODO（重新审计版）
 
+> ⚠ **契约维度以 `TODO-SOURCE-CODE-PARITY.md`（grok，对真 MCP schema）为准**。本文是"功能覆盖"视角、按功能有无算，**已知 3 处 ✅ 偏乐观**：`ask_followup_questions`（只有 UI widget、**没注册工具**）、`edit_captions`（源站是 21-action 调度模型、本仓是扁平参数，**契约大债**）、`manage_transcript`（action 名 `translate/renameSpeaker` ≠ 源 `translation_create/ensure/list/read`+`retry`）。分工见那份 §0.5。
+
 > 快照 2026-07-14（合并 GPT generation-suite 之后）。本文取代那份已过时的
 > `chatcut-reverse/reports/live-editor-audit-2026-07-14/feature-gap-matrix.md`（旧记 42.8%）。
 > 由 5 个并行 agent 逐项对照 **当前 `src/` 真代码** vs **逆向源码规格** 重新核实。

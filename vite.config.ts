@@ -11,6 +11,7 @@ import { subtitleExportPlugin } from './vite-plugin-subtitles.ts';
 import { generationProgressPlugin } from './vite-generation-jobs.ts';
 import { stockSearchPlugin } from './vite-plugin-stock.ts';
 import { isolatePlugin } from './vite-plugin-isolate.ts';
+import { firecrawlPlugin } from './vite-plugin-firecrawl.ts';
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -43,6 +44,8 @@ export default defineConfig(({ mode }) => {
   const klingModel = env.KLING_VIDEO_MODEL || 'kling-v3-omni';
   const pexelsKey = env.PEXELS_API_KEY || '';
   const pixabayKey = env.PIXABAY_API_KEY || '';
+  // Firecrawl (source web_browser): .env.local or shell export (e.g. search-apis.env)
+  const firecrawlKey = env.FIRECRAWL_API_KEY || process.env.FIRECRAWL_API_KEY || '';
 
   return {
     plugins: [react(), exportPlugin(), uploadPlugin(), imageGenerationPlugin({
@@ -66,6 +69,7 @@ export default defineConfig(({ mode }) => {
     subtitleExportPlugin(),
     stockSearchPlugin({ pexelsApiKey: pexelsKey, pixabayApiKey: pixabayKey }),
     isolatePlugin(),
+    firecrawlPlugin({ apiKey: firecrawlKey }),
     ],
     server: {
       port: 5199,

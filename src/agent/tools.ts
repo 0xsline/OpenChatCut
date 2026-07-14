@@ -30,6 +30,7 @@ import { WATERMARK_TOOL_SCHEMAS, WATERMARK_TOOL_NAMES, execWatermarkTool } from 
 import { MARKERS_TOOL_SCHEMAS, MARKERS_TOOL_NAMES, execMarkersTool } from './markers-tools';
 import { MG_VIDEO_TOOL_SCHEMAS, MG_VIDEO_TOOL_NAMES, execMgVideoTool } from './mg-video-tools';
 import { EDIT_ASSET_TOOL_SCHEMAS, EDIT_ASSET_TOOL_NAMES, execEditAssetTool } from './edit-asset-tools';
+import { WEB_TOOL_SCHEMAS, WEB_TOOL_NAMES, execWebTool } from './web-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -218,6 +219,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...MG_VIDEO_TOOL_SCHEMAS,
   // 改/删库资产（源 edit_asset：update code/props/name 过沙箱 + delete confirmImpact）
   ...EDIT_ASSET_TOOL_SCHEMAS,
+  // 网页抓取（源 web_browser / Firecrawl：markdown/html/links/screenshot/branding/summary）
+  ...WEB_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -283,6 +286,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (MARKERS_TOOL_NAMES.has(name)) return execMarkersTool(name, args, ctx);
   if (MG_VIDEO_TOOL_NAMES.has(name)) return execMgVideoTool(name, args, ctx);
   if (EDIT_ASSET_TOOL_NAMES.has(name)) return execEditAssetTool(name, args, ctx);
+  if (WEB_TOOL_NAMES.has(name)) return execWebTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();
