@@ -24,6 +24,7 @@ const migrated = migrateProjectDoc({
 });
 assert.ok(migrated, 'legacy project migrates');
 assert.strictEqual(migrated.version, 2, 'migration stamps V2');
+assert.deepStrictEqual(migrated.mediaFolders, [], 'legacy project gets an empty folder list');
 assert.deepStrictEqual(migrated.assets.map((asset) => asset.id), ['asset_a', 'asset_b'], 'assets merge and dedupe by id');
 assert.strictEqual(migrated.activeTimelineId, 'tl_a', 'stale active id falls back to first timeline');
 assert.ok(migrated.timelines.every((item) => !Object.hasOwn(item, 'assets')), 'timeline copies are removed');
@@ -47,5 +48,13 @@ const switched = projectReduce(created, { type: 'tl.switch', id: 'tl_b' });
 assert.deepStrictEqual(switched.assets.map((asset) => asset.id), ['asset_a', 'asset_b', 'asset_c']);
 assert.deepStrictEqual(activeEditorState(switched).assets, switched.assets, 'every active timeline sees shared assets');
 assert.ok(switched.timelines.every((item) => !Object.hasOwn(item, 'assets')), 'shared assets never leak into timelines');
+
+// Media-pool organization is project-level and guarded against deleting non-empty bins.
+const folder = { id: 'bin_a', name: 'B-roll' };
+const organized = projectReduce(projectReduce(switched, { type: 'pool.createFolder', folder }), { type: 'pool.moveAssets', ids: ['asset_a'], folderId: folder.id });
+assert.strictEqual(organized.assets.find((asset) => asset.id === 'asset_a')?.folderId, folder.id);
+assert.strictEqual(projectReduce(organized, { type: 'pool.deleteFolder', id: folder.id }), organized, 'non-empty folder cannot be deleted');
+const favorited = projectReduce(organized, { type: 'pool.updateAsset', id: 'asset_a', patch: { favorite: true, name: 'Hero' } });
+assert.deepStrictEqual(favorited.assets.find((asset) => asset.id === 'asset_a'), { ...assetA, folderId: folder.id, favorite: true, name: 'Hero' });
 
 console.log('projectStore.check: ok');

@@ -3,7 +3,7 @@
 // `### <source>` regions + rows: `[sN] sentence` (transcript segment, kept text
 // only — NO word timing in the file), `[cN] Nf` (non-transcript clip),
 // `[gap Nf]`. Body order = playback order; apply re-derives all frames.
-import { TRACK_ORDER, type TimelineItem, type TimelineState, type TrackId } from '../editor/types';
+import { timelineTrackIds, trackAlias, type TimelineItem, type TimelineState, type TrackId } from '../editor/types';
 import { toSegments } from '../transcript/segment';
 
 export interface SegRow {
@@ -20,7 +20,7 @@ export interface GapRow { kind: 'gap'; frames: number }
 export type Row = SegRow | ClipRow | GapRow;
 
 export interface Region { source: string; rows: Row[] }
-export interface TrackModel { track: TrackId; regions: Region[] }
+export interface TrackModel { track: string; trackId: TrackId; regions: Region[] }
 
 // join word tokens: space-separated except between CJK characters (源站中文行无空格)
 const CJK = /[㐀-鿿豈-﫿]/;
@@ -36,8 +36,8 @@ export function joinWords(tokens: string[]): string {
 /** canonical row model of a timeline — shared by serialize (render) and apply (diff base) */
 export function buildModel(state: TimelineState): TrackModel[] {
   const tracks: TrackModel[] = [];
-  for (const track of TRACK_ORDER) {
-    const items = state.items.filter((it) => it.track === track).sort((a, b) => a.startFrame - b.startFrame);
+  for (const trackId of timelineTrackIds(state)) {
+    const items = state.items.filter((it) => it.track === trackId).sort((a, b) => a.startFrame - b.startFrame);
     if (!items.length) continue;
     const regions: Region[] = [];
     let cursor = 0;
@@ -71,7 +71,7 @@ export function buildModel(state: TimelineState): TrackModel[] {
       }
       cursor = it.startFrame + it.durationInFrames;
     }
-    tracks.push({ track, regions });
+    tracks.push({ track: trackAlias(state, trackId), trackId, regions });
   }
   return tracks;
 }

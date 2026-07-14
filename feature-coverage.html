@@ -156,7 +156,7 @@
       <div class="brand">
         <span class="eyebrow">对标源站 · 复刻进度</span>
         <h1>ChatCut 复刻 · 功能覆盖</h1>
-        <span class="sub">逆向 52 工具规格 + PRD 全量差集 · 每完成一项即勾选 · 已铺完：直接操作层（trim/blade/snap/轨道/音量/淡入淡出/变换/滤镜/文字）+ 转场 + 动画（zoom/ReframeCurve）+ propose→apply 提案契约（护城河①）+ 标记 markers + 多时间线/序列（长转短）+ manage_timelines 工具 + 12 转场全量(GLSL 底座)｜Claude 进行中：源站编辑器 UI 细节复刻(工具栏/轨道头/右键菜单/库分类,侦察中)｜之后：色度键/LUT · auto-reframe｜GPT 并行：AI 生成套件</span>
+        <span class="sub">逆向 52 工具规格 + PRD 全量差集 · 每完成一项即勾选 · 已铺完：直接操作层（trim/blade/snap/轨道/音量/淡入淡出/变换/滤镜/文字）+ 转场 + 动画（zoom/ReframeCurve）+ propose→apply 提案契约（护城河①）+ 标记 markers + 多时间线/序列（长转短）+ manage_timelines + 动态轨道/edit_track + 角色闪避 + 12 转场全量(GLSL 底座)｜源站编辑器 Dock 树已按源码纠正：AI 贯穿到底、时间线仅跨素材+预览，并完成素材面板、工具栏、轨道头、片段/波形与反馈入口截图 QA｜之后：Ripple/真实峰值/Viewer 直接操控</span>
       </div>
       <div class="score">
         <span class="pct mono" id="pct">0%</span>
@@ -206,7 +206,7 @@
       ["时间线上下拖高 + 加权轨道高度", "done", "cc.timelineH + WEIGHT（video 高于 audio）"],
       ["多时间线 / 序列（每工程多条）", "done", "ProjectDoc V2 包裹工程级 assets[]+timelines[]+activeId，projectReduce 路由到活动序列；底部 Tab 栏切换/新建/复制/重命名/删除/隐藏 + ⇋竖屏副本一键 9:16（长转短）；旧工程自动迁移。源站 manage_timelines", "P1"],
       ["manage_timelines agent 工具", "done", "单工具 action∈list/create/duplicate/switch/update/delete，ratio/宽高/fit/hidden/activate/批量，全走 propose→apply（草稿引擎升工程级，切换后片段自动路由）；真 agent e2e：复制+9:16 提案→应用→一次撤销原子回滚。源站 jR/YP 白名单", "P1", "claude"],
-      ["轨道管理（增删/序/角色/锁隐静/收紧）", "partial", "隐藏/静音已做（👁/🔊→tracks[TrackId]，预览+导出生效）；增删/排序/角色/锁定/收紧待补。源站 edit_track", "P1"],
+      ["轨道管理（增删/序/角色/锁隐静/收紧）", "done", "稳定轨道 id + 动态 V/A 别名；创建、空轨删除、排序、命名、anchor/follower 角色、锁定、折叠、隐藏、静音、tighten 已完成；旧工程自动迁移，Agent 已接源站式 <code>edit_track</code>。浏览器自建工程回归见 <code>qa-dynamic-tracks.png</code>", "P1"],
       ["刀片(B)/修剪(N)/吸附", "done", "刀片 ✂ / B 键在播放头切分（切口 srcInFrame 递进，无缝）；拖拽/裁剪吸附到 0/播放头/邻近片段边（7px + 蓝色吸附线）", "P1"],
       ["Ripple 编辑（插入/覆盖）", "partial", "reduce add/remove 加 ripple（纯状态可撤销，ripple.check 断言）：<b>波纹删除</b>（删片段后同轨其后片段左移合缝）→右键「波纹删除（合缝）」+⇧⌫；<b>插入模式</b>（新片段推后同轨腾位）→工具栏 insert 切换，加文字据此插入。<b>待补</b>：把插入模式接到库素材「添加到时间线」+拖拽落点+粘贴。源站 edit_item ripple", "P1", "claude"],
       ["片段变换（缩放/位置/旋转）", "done", "ClipTransform{scale,x,y,rotation}→CSS transform（ClipWrapper，translate%→rotate→scale）；属性面板缩放/水平/垂直/旋转滑块。导出验证 scale0.5+x25%。源站 缩放 tab", "P1"],
@@ -223,7 +223,7 @@
       ["音频片段 + 音量", "done", "<code>&lt;Audio/OffthreadVideo volume&gt;</code> + 属性面板音量滑块（音/视频片段 0–200%，setItemVolume）"],
       ["淡入淡出（fadeIn/Out 秒）", "done", "fadeInFrames/fadeOutFrames：视觉走 opacity（ClipWrapper），音频走 volume 函数；属性面板淡入/淡出滑块（秒）。导出验证 0→47%→100% 斜坡。源站 edit_item fade"],
       ["响度归一化（-14 LUFS）", "todo", "Web Audio 离线算增益或导出 ffmpeg loudnorm。源站 normalize/loudness"],
-      ["自动闪避 ducking", "todo", "voice 活动区间 → music 降音量关键帧。源站 track role ducking"],
+      ["自动闪避 ducking", "done", "anchor 轨活动区间驱动 follower 轨动态降音量；默认 -12 dB，支持 <code>audioRouting.duckDepthDb</code> 手动深度，独立 Audio 与视频内嵌音频均生效"],
       ["AI 降噪 / 人声隔离", "todo", "接 DeepFilterNet3（开源 Rust）产降噪 wav。源站 isolate_voice"],
       ["旁白录制（麦克风）", "partial", "工具栏 mic 键切换录音：<code>audio/recorder.ts</code>(getUserMedia+MediaRecorder)→上传→落 A1 轨(播放头处)；录音中红点脉冲、权限拒绝友好提示。<b>缺</b>：录后自动转写、Camera/Screen 录制模式、设备选择/倒计时"],
     ]],
@@ -240,12 +240,12 @@
       ["说话人重命名 / 合并", "todo", "面板改 speaker 名、合并两说话人"],
     ]],
     ["5 · 字幕", [
-      ["字幕 overlay（tiktok/netflix/plain）", "done", "CaptionsLayer"],
+      ["字幕 overlay（源站 21 个样式）", "done", "<code>CaptionsLayer</code> + <code>captions/styles.ts</code>；字体、字号、描边、阴影、逐词高亮背景及每页词数取自源站 bundle"],
       ["卡拉OK逐词高亮 + pacing 词/短语", "done", "activePage / currentWordIndex"],
       ["字幕随编辑重排（retime）", "done", "retimeWords（源站 dVe/fVe/dH 模型）"],
       ["双语字幕（译文第二行）", "done", "<code>captions/translate.ts</code>"],
       ["烧录进导出", "done", "合成内渲染"],
-      ["样式预设扩充（Persona/Bubble Pop/Submagic…）", "partial", "现 3 个。加更多命名预设。源站 caption_style_preset"],
+      ["样式预设扩充（Persona/Bubble Pop/Submagic…）", "done", "轨道头 CC 下拉按源站顺序接入 21 个预设和 8 种字幕翻译语言；选择后作用于预览/导出。证据 <code>qa-caption-style-menu.png</code>"],
       ["逐词覆盖（隐藏/遮罩/拆/并/改字）", "todo", "caption_word_override 渲染时套用。源站 edit_captions display_text"],
       ["字幕源路由（多轨合并生成）", "partial", "有单轨 sourceItemId。源站 sourceScope/trackOrder"],
     ]],
@@ -276,7 +276,7 @@
       ["音频素材库（3 音乐 + voice）", "done", "<code>audio/library.ts</code>"],
       ["MG 模板库（211）", "done", "内置 JSON"],
       ["通用媒体导入（上传视频/图/音）", "done", "上传端点 <code>vite-plugin-upload</code>→public/media/uploads（预览+导出同源）+ 客户端探时长/尺寸。源站 import_media", "P0"],
-      ["媒体池（文件夹/搜索/排序/收藏）", "partial", "「我的素材」面板 + <code>ProjectDoc V2.assets[]</code> 工程级共享素材池已做（导入/点击落轨）；旧版各序列 assets 会自动合并去重并迁移。浏览器验证：旧工程 10 个素材迁移后，新建序列仍可见/可落轨，刷新后序列、片段和素材数均保持。文件夹/搜索/排序/收藏待补。源站 manage_media_pool", "P0"],
+      ["媒体池（文件夹/搜索/排序/收藏）", "done", "<code>ProjectDoc V2</code> 工程级共享素材池 + 文件夹树已完成：上传/拖拽、全库搜索、类型筛选、名称/时长/导入顺序排序、收藏、网格/列表、多选批量移动/落轨、文件夹新建/重命名/空目录删除、素材重命名；旧工程自动迁移。Agent 已接源站同名 <code>manage_media_pool</code>（list/create_folder/rename_folder/delete_empty_folder/move_assets/rename_asset）。浏览器验证：10 素材工程完成搜索/筛选/排序/收藏、单个与批量移动、刷新持久化、重命名/删除并清理测试数据。", "P0"],
       ["手机上传 /m/:token", "todo", "扫码手机传素材。源站 phone-upload"],
       ["库素材浏览（转场/特效/LUT/缩放/音效）", "partial", "MG 动画库(chips+收藏+⋮)、音效/Audio 库已有；<b>转场(12,GLSL徽标)/特效(8)/缩放(4曲线) 三分类接入</b>(ResourceBrowser 卡片列表→点击应用到选中片段,走 addTransition/setItemEffects/setItemZoom;浏览器验证:点圆形遮罩→预览裁圆→撤销)。LUT 2 内置公式实现可点应用。<b>特效/LUT 卡片加实时 GL 预览缩略图</b>(共享 context 渲样张)。剩:转场/缩放卡缩略图、我的素材/媒体池深化。源站 browse_library", "P1", "claude"],
       ["LUT（Sony S-Log3 / Canon Log3）", "done", "<b>公式实现</b>（源站是真 .cube 存其 CDN，按约束不接后端→改用公开传递函数）：slog3-s709.frag（S-Log3 解码+S-Gamut3.Cine→709 矩阵+709 OETF）/canon-log3-709.frag（Canon Log3 ACES IDT+Cinema Gamut→709），intensity 混原图↔调色，走 per-clip GL 管线(ALL_FX)；库 LUT tab 可点应用+inspector 强度调。新进程渲 still 验证输出调色相异。<b>非源站精确 .cube</b>（注明自定）。源站 2 内置 log 转换"],
@@ -357,7 +357,7 @@
       ["i18n（/zh /en）", "todo", "UI 双语（默认中文）"],
       ["dockview 可拖拽面板布局", "partial", "有固定分隔条+localStorage，非完整 dockview"],
       ["反馈组件", "todo", "报告问题/评分"],
-      ["编辑器 UI 细节对标源站", "partial", "已复刻(侦察源站 bundle)：时间线工具栏源站线条图标+三段式布局，<b>全部图标皆有功能</b>(选择V/修剪T/刀片B/播放头切分C/磁性吸附S/录制旁白mic/文字/复制/删除/标记跳转)、缩放滑杆、适应宽度(⇧Z)、Ctrl+滚轮光标锚定缩放、轨道头 sticky 左固定、片段右键上下文菜单<b>项全部实现+去 PRO</b>(复制/切分/复制粘贴效果/变速子菜单 0.25–4×/导出 MG 动画=ProRes4444 alpha .mov 下载/转为视频=渲 h264 原位替换/删除/波纹删除；仅 AI 多机位同步 仍禁——需多选+音频对齐引擎)、MG 库子分类 chips+⭐收藏+⋮菜单(用 AI 生成)+缩略图预览。剩:转场/特效/缩放库卡片缩略图、轨道自定义名/锁定/角色ducking、canvas 渲染波形", "P1", "claude"],
+      ["编辑器 UI 细节对标源站", "partial", "已按反编译 Dockview 源码纠正主结构：<b>AI 列从顶栏下贯穿到底，时间线只跨 Assets + Viewer</b>；初始化匹配用户源站截图的 22.47% / 27.72% / 49.81% 三列和 38.18% 右侧时间线高度，并使用源码约束 AI≥320、Assets≥176、Viewer≥280、Timeline≥260。素材区、时间线控件、轨道头、绿/紫片段、波形视觉、播放头、CC/全屏、反馈入口与动态轨道 <code>edit_track</code> 已完成截图 QA。功能层剩余：Ripple 插入覆盖、真实峰值与淡入淡出/音量线/roll edit、Viewer 直接操控、完整 Dockview preset/JSON 恢复。证据见 <code>SOURCE-EDITOR-REVERSE.md</code> 与 <code>design-qa.md</code>", "P1", "gpt"],
     ]],
   ];
 

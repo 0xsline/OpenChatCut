@@ -10,7 +10,8 @@ export type IconName =
   | 'paperclip' | 'cornerDownLeft' | 'filePlay' | 'fileHeadphone' | 'clock'
   | 'undo' | 'redo' | 'history' | 'layoutPanel' | 'users'
   | 'download' | 'film' | 'clipboard'
-  | 'music' | 'video' | 'image' | 'swap' | 'star' | 'pencil' | 'x' | 'diamond';
+  | 'music' | 'video' | 'image' | 'swap' | 'star' | 'pencil' | 'x' | 'diamond'
+  | 'search' | 'upload' | 'folder' | 'folderPlus' | 'grid' | 'list' | 'sort' | 'filter' | 'more' | 'bug';
 
 // stroke path(s) per icon; a few are fill-based (play/pause/cursor/bookmark)
 const FILL = new Set<IconName>(['play', 'pause', 'cursor', 'bookmark']);
@@ -77,6 +78,16 @@ const P: Record<IconName, string> = {
   pencil: 'M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z',
   x: 'M18 6 6 18 M6 6l12 12',
   diamond: 'M12 2 22 12 12 22 2 12z',
+  search: 'M11 11m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0 M21 21l-4.3-4.3',
+  upload: 'M12 16V3 M7 8l5-5 5 5 M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5',
+  folder: 'M3 6h7l2 2h9v11H3z',
+  folderPlus: 'M3 6h7l2 2h9v11H3z M12 11v5 M9.5 13.5h5',
+  grid: 'M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z',
+  list: 'M8 6h12 M8 12h12 M8 18h12 M4 6h.01 M4 12h.01 M4 18h.01',
+  sort: 'M8 5v14 M5 8l3-3 3 3 M16 19V5 M13 16l3 3 3-3',
+  filter: 'M3 5h18l-7 8v6l-4 2v-8z',
+  more: 'M5 12h.01 M12 12h.01 M19 12h.01',
+  bug: 'M8 2l1.5 2h5L16 2 M9 9h6v7a3 3 0 0 1-6 0z M5 9h4 M15 9h4 M4 13h5 M15 13h5 M5 18h4 M15 18h4 M12 9v10',
 };
 
 interface IconProps {

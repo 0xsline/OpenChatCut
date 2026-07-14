@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
-import type { TimelineItem, TrackId } from '../editor/types';
+import { defaultTrackId, resolveTrackId, trackAlias, type TimelineItem, type TrackId } from '../editor/types';
 import type { TranscriptWord } from '../transcript/types';
 import { msToFrame } from '../transcript/types';
 import { transcribePath } from '../transcript/assemblyai';
@@ -13,18 +13,16 @@ import { buildTranslation } from '../captions/translate';
 // 复刻规格-Agent工具与后端.md): transcribe (import_media/manage_transcript),
 // find_transcript, clean_script, delete_text (apply_script), edit_captions.
 
-const TRACK_ENUM = ['A1', 'A2', 'V1', 'V2'];
-
 export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'transcribe_track',
     description: 'Transcribe the audio clip on a track (word-level + speaker labels, via AssemblyAI) and attach the transcript. Required before find_transcript / clean_script / delete_text / captions when the clip has no transcript yet.',
-    input_schema: { type: 'object', properties: { track: { type: 'string', enum: TRACK_ENUM, description: 'Track whose audio clip to transcribe (default A1).' } } },
+    input_schema: { type: 'object', properties: { track: { type: 'string', description: 'Track alias or stable id whose audio to transcribe (default A1).' } } },
   },
   {
     name: 'find_transcript',
     description: 'Find where a phrase is spoken in a track\'s transcript. Returns the matching words and their timeline frame range (fromFrame/toFrame). Use to locate a spot before inserting B-roll/MG or before delete_text.',
-    input_schema: { type: 'object', properties: { query: { type: 'string' }, track: { type: 'string', enum: TRACK_ENUM } }, required: ['query'] },
+    input_schema: { type: 'object', properties: { query: { type: 'string' }, track: { type: 'string' } }, required: ['query'] },
   },
   {
     name: 'clean_script',
@@ -32,7 +30,7 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        track: { type: 'string', enum: TRACK_ENUM },
+        track: { type: 'string' },
         maxPauseSeconds: { type: 'number', description: 'Compress pauses longer than this down to it (e.g. 0.5). Omit to leave pauses.' },
         removeFillers: { type: 'boolean', description: 'Strip filler words (default true).' },
       },
@@ -41,7 +39,7 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'delete_text',
     description: 'Delete a spoken phrase from a track — "delete text = delete video": the matching words\' audio and their time are cut and the clip re-times. If unsure of the exact wording, find_transcript first.',
-    input_schema: { type: 'object', properties: { track: { type: 'string', enum: TRACK_ENUM }, query: { type: 'string', description: 'The phrase to delete (matched against the transcript).' } }, required: ['query'] },
+    input_schema: { type: 'object', properties: { track: { type: 'string' }, query: { type: 'string', description: 'The phrase to delete (matched against the transcript).' } }, required: ['query'] },
   },
   {
     name: 'edit_captions',
@@ -52,7 +50,7 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
         enabled: { type: 'boolean' },
         template: { type: 'string', enum: ['plain', 'tiktok', 'netflix'] },
         pacing: { type: 'string', enum: ['word', 'phrase'] },
-        track: { type: 'string', enum: TRACK_ENUM, description: 'Source track whose transcript drives captions (default A1).' },
+        track: { type: 'string', description: 'Source track alias or stable id whose transcript drives captions (default A1).' },
         translateTo: { type: 'string', description: 'Also generate a translated 2nd caption line in this language (e.g. "中文", "English", "日本語").' },
       },
     },
@@ -90,16 +88,19 @@ function findPhrase(words: TranscriptWord[], query: string): { start: number; co
 // audio clip on a track, optionally requiring an attached transcript
 function trackClip(ctx: AgentContext, track: TrackId, needTranscript: boolean): TimelineItem | null {
   return ctx.getState().items.find((it) =>
-    it.kind === 'audio' && it.track === track && it.src && (!needTranscript || (it.transcript?.length ?? 0) > 0)) ?? null;
+    (it.kind === 'audio' || it.kind === 'video') && it.track === track && it.src && (!needTranscript || (it.transcript?.length ?? 0) > 0)) ?? null;
 }
 
 // Execute a transcript/caption tool. Returns undefined if `name` isn't one of ours.
 export async function execTranscriptTool(name: string, args: Args, ctx: AgentContext): Promise<unknown | undefined> {
-  const track = (args.track as TrackId) ?? 'A1';
+  const state = ctx.getState();
+  const track = resolveTrackId(state, args.track ?? 'A1') ?? defaultTrackId(state, 'audio');
+  if (!track) return { error: 'no track available; create one with edit_track first' };
+  const alias = trackAlias(state, track);
   switch (name) {
     case 'transcribe_track': {
       const it = trackClip(ctx, track, false);
-      if (!it) return { error: `no audio clip on ${track}` };
+      if (!it) return { error: `no audio clip on ${alias}` };
       if (it.transcript?.length) return { ok: true, itemId: it.id, words: it.transcript.length, note: 'already transcribed' };
       try {
         const r = await transcribePath(it.src!);
@@ -111,7 +112,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
     }
     case 'find_transcript': {
       const it = trackClip(ctx, track, true);
-      if (!it?.transcript) return { error: `no transcript on ${track}; call transcribe_track first` };
+      if (!it?.transcript) return { error: `no transcript on ${alias}; call transcribe_track first` };
       const m = findPhrase(it.transcript, String(args.query ?? ''));
       if (!m) return { found: false, query: args.query };
       const fps = ctx.getState().fps;
@@ -125,7 +126,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
     }
     case 'clean_script': {
       const it = trackClip(ctx, track, true);
-      if (!it?.transcript) return { error: `no transcript on ${track}; call transcribe_track first` };
+      if (!it?.transcript) return { error: `no transcript on ${alias}; call transcribe_track first` };
       const fps = ctx.getState().fps;
       const silenceFrames = typeof args.maxPauseSeconds === 'number' ? Math.max(1, Math.round(args.maxPauseSeconds * fps)) : undefined;
       const removeFillers = args.removeFillers !== false;
@@ -134,7 +135,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
     }
     case 'delete_text': {
       const it = trackClip(ctx, track, true);
-      if (!it?.transcript) return { error: `no transcript on ${track}; call transcribe_track first` };
+      if (!it?.transcript) return { error: `no transcript on ${alias}; call transcribe_track first` };
       const m = findPhrase(it.transcript, String(args.query ?? ''));
       if (!m) return { deleted: false, query: args.query, note: 'phrase not found' };
       const idxs = Array.from({ length: m.count }, (_, k) => m.start + k);
@@ -149,7 +150,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
         return { ok: true, enabled: false };
       }
       const it = trackClip(ctx, track, true);
-      if (!s.captions && !it?.transcript) return { error: `no transcript on ${track}; call transcribe_track first (captions need a transcript source)` };
+      if (!s.captions && !it?.transcript) return { error: `no transcript on ${alias}; call transcribe_track first (captions need a transcript source)` };
       const template = (args.template as CaptionTemplate) ?? s.captions?.template ?? 'tiktok';
       const pacing = (args.pacing as CaptionPacing) ?? s.captions?.pacing ?? 'phrase';
       const base: CaptionsData = { ...(s.captions ?? {}), enabled: true, template, pacing, ...(it ? { sourceItemId: it.id } : {}) };
@@ -167,7 +168,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       }
       if (s.captions) ctx.commands.updateCaptions(base);
       else ctx.commands.setCaptions(base);
-      return { ok: true, enabled: true, template, pacing, source: it?.track ?? null, translatedTo };
+      return { ok: true, enabled: true, template, pacing, source: it ? trackAlias(ctx.getState(), it.track) : null, sourceTrackId: it?.track ?? null, translatedTo };
     }
     default:
       return undefined;

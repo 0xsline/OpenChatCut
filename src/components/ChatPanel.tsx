@@ -79,7 +79,7 @@ export function ChatPanel({ ctx, collapsed, onToggleCollapse, onPreviewState, se
 
   if (collapsed) {
     return (
-      <aside style={{ gridColumn: 1, gridRow: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '10px 0', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>
+      <aside style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '10px 0', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>
         <button onClick={onToggleCollapse} title="展开 AI" style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14 }}><span style={{ transform: 'rotate(-90deg)', display: 'inline-flex' }}><Icon name="chevronDown" size={14} /></span></button>
         <div style={{ writingMode: 'vertical-rl', color: theme.textDim, fontSize: 12, letterSpacing: 2 }}>AI</div>
       </aside>
@@ -87,7 +87,7 @@ export function ChatPanel({ ctx, collapsed, onToggleCollapse, onPreviewState, se
   }
 
   return (
-    <aside style={{ gridColumn: 1, gridRow: 2, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${theme.border}`, background: theme.panel, minHeight: 0, minWidth: 0 }}>
+    <aside style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', borderRight: `1px solid ${theme.border}`, background: theme.panel, minHeight: 0, minWidth: 0 }}>
       {/* header: AI · collapse */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: `1px solid ${theme.border}` }}>
         <span style={{ flex: 1, fontSize: 13, color: theme.text, fontWeight: 600 }}>AI</span>

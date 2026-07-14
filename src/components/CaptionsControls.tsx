@@ -1,5 +1,6 @@
 import { theme } from '../theme';
-import type { CaptionsData, CaptionTemplate, CaptionPacing } from '../captions/types';
+import type { CaptionsData, CaptionPacing, CaptionTemplate } from '../captions/types';
+import { CAPTION_STYLES } from '../captions/styles';
 
 interface CaptionsControlsProps {
   captions: CaptionsData | null;
@@ -11,7 +12,6 @@ interface CaptionsControlsProps {
   translateError: string | null;
 }
 
-const TEMPLATES: CaptionTemplate[] = ['tiktok', 'netflix', 'plain'];
 const PACINGS: { v: CaptionPacing; label: string }[] = [{ v: 'phrase', label: '短语' }, { v: 'word', label: '逐词' }];
 const LANGS = ['中文', 'English', '日本語', 'Español', 'Français'];
 
@@ -33,7 +33,7 @@ export function CaptionsControls({ captions, hasTranscript, onGenerate, onUpdate
           </label>
           <div style={{ display: 'flex', gap: 8 }}>
             <select value={captions.template} onChange={(e) => onUpdate({ template: e.target.value as CaptionTemplate })} style={sel}>
-              {TEMPLATES.map((t) => <option key={t} value={t}>{t}</option>)}
+              {CAPTION_STYLES.map((style) => <option key={style.id} value={style.id}>{style.label}</option>)}
             </select>
             <select value={captions.pacing} onChange={(e) => onUpdate({ pacing: e.target.value as CaptionPacing })} style={sel}>
               {PACINGS.map((p) => <option key={p.v} value={p.v}>{p.label}</option>)}

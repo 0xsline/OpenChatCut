@@ -1,15 +1,17 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
-import { ASPECT_PRESETS, type AspectFit, type TrackId } from '../editor/types';
+import { ASPECT_PRESETS, defaultTrackId, resolveTrackId, timelineTrackIds, trackAlias, trackKind, type AspectFit } from '../editor/types';
 import type { Tpl } from '../types';
 import { compileTemplate } from '../template-host';
-import { anthropic, MODEL } from './client';
+import { createMessage, MODEL } from './client';
 import { TRANSCRIPT_TOOL_SCHEMAS, TRANSCRIPT_TOOL_NAMES, execTranscriptTool } from './transcript-tools';
 import { TIMELINE_TOOL_SCHEMAS, TIMELINE_TOOL_NAMES, execTimelineTool } from './timeline-tools';
 import { SCRIPT_TOOL_SCHEMAS, SCRIPT_TOOL_NAMES, execScriptTool } from './script-tools';
 import { FRAMES_TOOL_SCHEMAS, FRAMES_TOOL_NAMES, execFramesTool } from './frames-tool';
 import { GENERATE_TOOL_SCHEMAS, GENERATE_TOOL_NAMES, execGenerateTool } from './generate-tools';
 import { EFFECT_TOOL_SCHEMAS, EFFECT_TOOL_NAMES, execEffectTool } from './effect-tools';
+import { MEDIA_POOL_TOOL_SCHEMAS, MEDIA_POOL_TOOL_NAMES, execMediaPoolTool } from './media-pool-tools';
+import { TRACK_TOOL_SCHEMAS, TRACK_TOOL_NAMES, execTrackTool } from './track-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -37,7 +39,7 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
       type: 'object',
       properties: {
         templateName: { type: 'string', description: 'Template name (fuzzy match against list_templates).' },
-        track: { type: 'string', enum: ['V1', 'V2'], description: 'Video track (default V1).' },
+        track: { type: 'string', description: 'Current video-track alias or stable id (default V1).' },
         startFrame: { type: 'number', description: 'Optional exact start frame; omit to append.' },
       },
       required: ['templateName'],
@@ -62,7 +64,7 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
       type: 'object',
       properties: {
         itemId: { type: 'string' },
-        track: { type: 'string', enum: ['V1', 'V2', 'A1', 'A2'] },
+        track: { type: 'string', description: 'Current compatible track alias or stable id.' },
         startFrame: { type: 'number' },
       },
       required: ['itemId'],
@@ -104,7 +106,7 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
       type: 'object',
       properties: {
         audioName: { type: 'string', description: 'Audio asset name (fuzzy match against list_audio).' },
-        track: { type: 'string', enum: ['A1', 'A2'], description: 'Audio track (default A1).' },
+        track: { type: 'string', description: 'Current audio-track alias or stable id (default A1).' },
         startFrame: { type: 'number', description: 'Optional exact start frame; omit to append.' },
       },
       required: ['audioName'],
@@ -119,7 +121,7 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
         description: { type: 'string', description: 'What the motion graphic should show/animate.' },
         name: { type: 'string', description: 'Short display name.' },
         durationSeconds: { type: 'number', description: 'Duration in seconds (default 3).' },
-        track: { type: 'string', enum: ['V1', 'V2'] },
+        track: { type: 'string', description: 'Current video-track alias or stable id.' },
       },
       required: ['description', 'name'],
     },
@@ -145,6 +147,10 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...TRANSCRIPT_TOOL_SCHEMAS,
   // multi-timeline management (source manage_timelines: list/create/duplicate/switch/update/delete)
   ...TIMELINE_TOOL_SCHEMAS,
+  // dynamic track management + stable ids (source edit_track)
+  ...TRACK_TOOL_SCHEMAS,
+  // project media-pool organization (source manage_media_pool)
+  ...MEDIA_POOL_TOOL_SCHEMAS,
   // Script system (source read_script/apply_script — timeline.md 往返, 护城河③)
   ...SCRIPT_TOOL_SCHEMAS,
   // multimodal self-check (source view_timeline_frames — agent 渲帧自检)
@@ -167,7 +173,7 @@ Contract (MUST follow exactly):
 - Canvas is 1920x1080. Animate with useCurrentFrame()+interpolate()/spring({fps,frame,config}). Get { fps, durationInFrames } from useVideoConfig().
 - Pure, synchronous rendering only. FORBIDDEN: fetch, XMLHttpRequest, WebSocket, document, window, globalThis, eval, new Function, .constructor, localStorage, setTimeout, setInterval, while(true), for(;;), debugger.
 - Style inline. Make it clean and visually appealing (large readable text, tasteful colors, smooth fade/slide/scale animations).`;
-  const msg = await anthropic.messages.create({
+  const msg = await createMessage({
     model: MODEL,
     max_tokens: 64000, // don't truncate generated components
     system: sys,
@@ -194,6 +200,8 @@ function findItem(ctx: AgentContext, itemId: unknown) {
 export async function executeTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   if (TRANSCRIPT_TOOL_NAMES.has(name)) return execTranscriptTool(name, args, ctx);
   if (TIMELINE_TOOL_NAMES.has(name)) return execTimelineTool(name, args, ctx);
+  if (TRACK_TOOL_NAMES.has(name)) return execTrackTool(name, args, ctx);
+  if (MEDIA_POOL_TOOL_NAMES.has(name)) return execMediaPoolTool(name, args, ctx);
   if (SCRIPT_TOOL_NAMES.has(name)) return execScriptTool(name, args, ctx);
   if (FRAMES_TOOL_NAMES.has(name)) return execFramesTool(name, args, ctx);
   if (GENERATE_TOOL_NAMES.has(name)) return execGenerateTool(name, args, ctx);
@@ -203,8 +211,9 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
       const s = ctx.getState();
       return {
         fps: s.fps,
+        tracks: timelineTrackIds(s).map((id) => ({ id, alias: trackAlias(s, id), trackType: trackKind(s, id) })),
         items: s.items.map((it) => ({
-          id: it.id, track: it.track, name: it.name,
+          id: it.id, trackId: it.track, track: trackAlias(s, it.track), name: it.name,
           startFrame: it.startFrame, durationInFrames: it.durationInFrames, props: it.props,
         })),
       };
@@ -231,10 +240,12 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
       const matches = ctx.templates.filter((t) => t.name.toLowerCase().includes(q));
       if (matches.length === 0) return { error: `no template matching "${args.templateName}"`, available: ctx.templates.map((t) => t.name) };
       const tpl = matches[0];
-      const track = (args.track as TrackId) ?? 'V1';
+      const s = ctx.getState();
+      const track = resolveTrackId(s, args.track ?? 'V1', 'video') ?? defaultTrackId(s, 'video');
+      if (!track) return { error: 'no video track; create one with edit_track first' };
       const startFrame = typeof args.startFrame === 'number' ? args.startFrame : undefined;
       ctx.commands.addMotionGraphic(tpl, { track, startFrame });
-      return { ok: true, added: tpl.name, track };
+      return { ok: true, added: tpl.name, trackId: track, track: trackAlias(ctx.getState(), track) };
     }
     case 'update_item_props': {
       const it = findItem(ctx, args.itemId);
@@ -245,7 +256,10 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
     case 'move_item': {
       const it = findItem(ctx, args.itemId);
       if (!it) return { error: `no item ${args.itemId}` };
-      ctx.commands.moveItem(it.id, { track: args.track as TrackId, startFrame: args.startFrame as number });
+      const kind = it.kind === 'audio' ? 'audio' : 'video';
+      const track = args.track === undefined ? undefined : resolveTrackId(ctx.getState(), args.track, kind);
+      if (args.track !== undefined && !track) return { error: `no compatible track ${args.track}` };
+      ctx.commands.moveItem(it.id, { track: track ?? undefined, startFrame: args.startFrame as number });
       return { ok: true, itemId: it.id };
     }
     case 'set_item_timing': {
@@ -266,10 +280,12 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
       const q = String(args.audioName ?? '').toLowerCase();
       const asset = ctx.audio.find((a) => a.name.toLowerCase().includes(q));
       if (!asset) return { error: `no audio matching "${args.audioName}"`, available: ctx.audio.map((a) => a.name) };
-      const track = (args.track as TrackId) ?? 'A1';
+      const s = ctx.getState();
+      const track = resolveTrackId(s, args.track ?? 'A1', 'audio') ?? defaultTrackId(s, 'audio');
+      if (!track) return { error: 'no audio track; create one with edit_track first' };
       const startFrame = typeof args.startFrame === 'number' ? args.startFrame : undefined;
       ctx.commands.addAudio(asset, { track, startFrame });
-      return { ok: true, added: asset.name, track };
+      return { ok: true, added: asset.name, trackId: track, track: trackAlias(ctx.getState(), track) };
     }
     case 'create_motion_graphic': {
       const description = String(args.description ?? '').trim();
@@ -298,9 +314,11 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
         durationInFrames,
         props: {}, propSchema: [], thumb: null, code,
       };
-      const track = (args.track as TrackId) ?? 'V1';
+      const s = ctx.getState();
+      const track = resolveTrackId(s, args.track ?? 'V1', 'video') ?? defaultTrackId(s, 'video');
+      if (!track) return { error: 'no video track; create one with edit_track first' };
       ctx.commands.addMotionGraphic(tpl, { track });
-      return { ok: true, generated: tpl.name, track, durationInFrames };
+      return { ok: true, generated: tpl.name, trackId: track, track: trackAlias(ctx.getState(), track), durationInFrames };
     }
     case 'clear_timeline':
       ctx.commands.clearTimeline();

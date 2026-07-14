@@ -21,7 +21,7 @@ const clipB: TimelineItem = { id: 'it_b', track: 'V1', startFrame: 74, durationI
 const state: TimelineState = { fps: 30, width: 1920, height: 1080, items: [clipA, clipB, speech], selectedId: null };
 const doc = (s: TimelineState): ProjectDoc => {
   const tl: Timeline = { ...s, id: 'tl1', name: 'T', order: 0 };
-  return { version: 2, assets: [], timelines: [tl], activeTimelineId: 'tl1' };
+  return { version: 2, assets: [], mediaFolders: [], timelines: [tl], activeTimelineId: 'tl1' };
 };
 
 // ── 1. serialization shape + round-trip stability ──

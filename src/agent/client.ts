@@ -22,3 +22,16 @@ export const anthropic = new Anthropic({
   apiKey: 'proxy-injects-the-real-key',
   dangerouslyAllowBrowser: true,
 });
+
+// The relay labels non-streaming JSON as text/event-stream, which makes the SDK
+// return a stream object. Raw fetch parses the valid JSON body correctly.
+export async function createMessage(params: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> {
+  const response = await fetch('/llm/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': 'proxy-injects-the-real-key', 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ ...params, stream: false }),
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body?.error?.message ?? `LLM request failed (${response.status})`);
+  return body as Anthropic.Message;
+}

@@ -1,4 +1,4 @@
-import type { MediaAsset, ProjectDoc, Timeline, TimelineState } from '../editor/types';
+import { timelineTrackIds, trackKind, type MediaAsset, type MediaFolder, type ProjectDoc, type Timeline, type TimelineState } from '../editor/types';
 
 // IndexedDB-backed multi-project store (local-first stand-in for the source's
 // Rocicorp Zero + IndexedDB). One store holds a `projects` index (metadata for
@@ -62,6 +62,7 @@ function isTimelineState(v: unknown): v is TimelineState {
 type PersistedProjectShape = {
   version?: unknown;
   assets?: unknown;
+  mediaFolders?: unknown;
   timelines: Timeline[];
   activeTimelineId: string;
 };
@@ -92,9 +93,39 @@ function dedupeAssets(values: unknown[]): MediaAsset[] {
   return [...unique.values()];
 }
 
+function isMediaFolder(v: unknown): v is MediaFolder {
+  if (!v || typeof v !== 'object') return false;
+  const folder = v as Partial<MediaFolder>;
+  return typeof folder.id === 'string' && typeof folder.name === 'string'
+    && (folder.parentId === undefined || typeof folder.parentId === 'string');
+}
+
 function stripTimelineAssets(timeline: Timeline): Timeline {
   const { assets: _legacyAssets, ...rest } = timeline;
   return rest;
+}
+
+/** One-time legacy migration: aliases used to be item ids. Replace them with
+ * deterministic stable ids so V1/V2/A1/A2 may safely renumber after inserts. */
+function normalizeTimelineTracks(timeline: Timeline): Timeline {
+  const clean = stripTimelineAssets(timeline);
+  const ids = timelineTrackIds(clean);
+  const alreadyStable = !!clean.trackOrder?.length
+    && ids.every((id) => clean.tracks?.[id]?.kind === 'video' || clean.tracks?.[id]?.kind === 'audio');
+  if (alreadyStable) return clean;
+  const remap = new Map(ids.map((id, index) => [id, `track_${clean.id}_${index + 1}`]));
+  const trackOrder = ids.map((id) => remap.get(id)!);
+  const tracks = Object.fromEntries(ids.map((id) => {
+    const nextId = remap.get(id)!;
+    return [nextId, { ...clean.tracks?.[id], kind: trackKind(clean, id) }];
+  }));
+  return {
+    ...clean,
+    trackOrder,
+    tracks,
+    items: clean.items.map((item) => ({ ...item, track: remap.get(item.track) ?? item.track })),
+    transitions: clean.transitions?.map((transition) => ({ ...transition, trackId: remap.get(transition.trackId) ?? transition.trackId })),
+  };
 }
 
 const tlId = () => `tl_${newId()}`;
@@ -103,8 +134,8 @@ const tlId = () => `tl_${newId()}`;
 export function docFromTimeline(ts: TimelineState, name = '序列 1'): ProjectDoc {
   const id = tlId();
   const { assets = [], ...state } = ts;
-  const timeline: Timeline = { ...state, id, name, order: 0 };
-  return { version: 2, assets: dedupeAssets(assets), timelines: [timeline], activeTimelineId: id };
+  const timeline = normalizeTimelineTracks({ ...state, id, name, order: 0 });
+  return { version: 2, assets: dedupeAssets(assets), mediaFolders: [], timelines: [timeline], activeTimelineId: id };
 }
 
 /** Normalize every supported persisted shape into ProjectDoc V2. Legacy media
@@ -114,13 +145,22 @@ export function migrateProjectDoc(v: unknown): ProjectDoc | null {
   if (isProjectDocShape(v)) {
     const legacyAssets = v.timelines.flatMap((timeline) => timeline.assets ?? []);
     const projectAssets = Array.isArray(v.assets) ? v.assets : [];
-    const timelines = v.timelines.map(stripTimelineAssets);
+    const rawFolders = Array.isArray(v.mediaFolders) ? v.mediaFolders.filter(isMediaFolder) : [];
+    const folderIds = new Set(rawFolders.map((folder) => folder.id));
+    const mediaFolders = rawFolders.map((folder) => folder.parentId && (!folderIds.has(folder.parentId) || folder.parentId === folder.id)
+      ? { ...folder, parentId: undefined }
+      : folder);
+    const assets = dedupeAssets([...projectAssets, ...legacyAssets]).map((asset) => asset.folderId && !folderIds.has(asset.folderId)
+      ? { ...asset, folderId: undefined }
+      : asset);
+    const timelines = v.timelines.map(normalizeTimelineTracks);
     const activeTimelineId = timelines.some((timeline) => timeline.id === v.activeTimelineId)
       ? v.activeTimelineId
       : timelines[0].id;
     return {
       version: 2,
-      assets: dedupeAssets([...projectAssets, ...legacyAssets]),
+      assets,
+      mediaFolders,
       timelines,
       activeTimelineId,
     };

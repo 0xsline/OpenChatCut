@@ -2,7 +2,7 @@ import { useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import type { Tpl } from '../types';
-import type { MediaAsset, TimelineItem, TransitionType, ZoomShape } from '../editor/types';
+import type { MediaAsset, MediaFolder, TimelineItem, TransitionType, ZoomShape } from '../editor/types';
 import { GLSL_TRANSITION_TYPES, TRANSITION_LABELS, ZOOM_SHAPE_LABELS } from '../editor/types';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
@@ -41,8 +41,15 @@ interface LibraryPanelProps {
   onCleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
   onClearEdits: (id: string) => void;
   assets: MediaAsset[];
+  mediaFolders: MediaFolder[];
   onImportMedia: (file: File) => Promise<void>;
   onAddMediaItem: (asset: MediaAsset) => void;
+  onCreateMediaFolder: (name: string, parentId?: string) => string;
+  onRenameMediaFolder: (id: string, name: string) => void;
+  onDeleteMediaFolder: (id: string) => void;
+  onMoveMediaAssets: (ids: string[], folderId?: string) => void;
+  onRenameMediaAsset: (id: string, name: string) => void;
+  onSetMediaAssetFavorite: (id: string, favorite: boolean) => void;
   /** ⋮ menu「用 AI 生成」: seed the chat with this template as a reference */
   onUseTemplateAI: (tpl: Tpl) => void;
   /** currently-selected clip — resource-library tabs apply to it */
@@ -55,7 +62,7 @@ interface LibraryPanelProps {
 const MAIN_TABS = ['我的素材', '资源库', '文字稿'] as const;
 const SUB_TABS = ['MG 动画', '音效', '转场', '特效', '缩放', 'LUT', 'Audio'] as const;
 
-export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits, assets, onImportMedia, onAddMediaItem, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
+export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits, assets, mediaFolders, onImportMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('资源库');
@@ -66,11 +73,11 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
   const isMyAssets = mainTab === '我的素材';
 
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', borderRight: `1px solid ${theme.border}`, background: theme.panel, minHeight: 0, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', gap: 16, padding: '10px 16px 0', fontSize: 13 }}>
+    <section className="cc-library-panel">
+      <div className="cc-main-tabs">
         {MAIN_TABS.map((t) => (
           <button key={t} onClick={() => setMainTab(t)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', paddingBottom: 8, color: mainTab === t ? theme.text : theme.textDim, fontWeight: mainTab === t ? 600 : 400, borderBottom: `2px solid ${mainTab === t ? theme.text : 'transparent'}` }}>{t}</button>
+            className={`cc-main-tab${mainTab === t ? ' selected' : ''}`}>{t}</button>
         ))}
       </div>
       {isTranscript ? (
@@ -79,7 +86,9 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
         </div>
       ) : isMyAssets ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, borderTop: `1px solid ${theme.border}` }}>
-          <MediaPoolPanel assets={assets} fps={fps} onImport={onImportMedia} onAddAsset={onAddMediaItem} />
+          <MediaPoolPanel assets={assets} folders={mediaFolders} fps={fps} onImport={onImportMedia} onAddAsset={onAddMediaItem}
+            onCreateFolder={onCreateMediaFolder} onRenameFolder={onRenameMediaFolder} onDeleteFolder={onDeleteMediaFolder}
+            onMoveAssets={onMoveMediaAssets} onRenameAsset={onRenameMediaAsset} onSetFavorite={onSetMediaAssetFavorite} />
         </div>
       ) : (
       <>

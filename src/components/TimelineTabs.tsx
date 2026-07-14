@@ -24,6 +24,8 @@ export function TimelineTabs({ doc, commands }: TimelineTabsProps) {
     setRenaming(null);
   };
 
+  if (timelines.length <= 1) return null;
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderTop: `1px solid ${theme.border}`, background: theme.panel, overflowX: 'auto', flexShrink: 0 }}>
       {timelines.map((t) => {
