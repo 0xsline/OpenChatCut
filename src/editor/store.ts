@@ -34,6 +34,8 @@ export interface EditorCommands {
   setItemZoom: (id: string, patch: Partial<ZoomEffect> | null) => void;
   /** replace a clip's per-clip WebGL effect stack (source effects[]) */
   setItemEffects: (id: string, effects: ClipEffect[]) => void;
+  /** set playback speed (source 变速); retimes the clip to keep its source span */
+  setItemSpeed: (id: string, rate: number) => void;
   /** add a ruler/clip marker at a frame (source manage_markers create); returns its id */
   addMarker: (fromFrame: number, opts?: { note?: string; color?: Marker['color']; durationFrames?: number; scope?: Marker['scope']; itemId?: string }) => string;
   updateMarker: (id: string, patch: Partial<Marker>) => void;
@@ -204,6 +206,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       setItemFilters: (id, patch) => dispatch({ type: 'setFilters', id, patch }),
       setItemZoom: (id, patch) => dispatch({ type: 'setZoom', id, patch }),
       setItemEffects: (id, effects) => dispatch({ type: 'setEffects', id, effects }),
+      setItemSpeed: (id, rate) => dispatch({ type: 'setSpeed', id, rate }),
       addMarker: (fromFrame, opts) => {
         const marker: Marker = {
           id: uid('mk'),

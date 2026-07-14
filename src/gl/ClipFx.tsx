@@ -107,7 +107,7 @@ export function ClipFx({ item, fit, width, height }: ClipFxProps) {
       <AbsoluteFill style={{ opacity: 0, pointerEvents: 'none' }}>
         {item.kind === 'image'
           ? <Img ref={elRef as React.MutableRefObject<HTMLImageElement | null>} src={item.src!} />
-          : <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={item.srcInFrame ?? 0} muted />}
+          : <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1} muted />}
       </AbsoluteFill>
       <canvas ref={canvasRef} width={width} height={height} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
     </AbsoluteFill>

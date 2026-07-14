@@ -122,6 +122,9 @@ export interface TimelineItem {
   zoom?: ZoomEffect;
   /** per-clip WebGL effect stack (source effects[]: builtin:fx-* / lut) */
   effects?: ClipEffect[];
+  /** playback speed (source 变速/dH rate): 1 = normal, 2 = 2× faster. Retiming
+   * keeps the source span, so durationInFrames scales by 1/rate. video/audio only. */
+  playbackRate?: number;
   /** transcript-based editing: the clip's words + which are deleted (by index).
    * durationInFrames reflects the EDITED length (kept words only). */
   transcript?: TranscriptWord[];

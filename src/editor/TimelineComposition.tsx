@@ -112,7 +112,7 @@ function AudioClip({ item, fps, muted }: { item: TimelineItem; fps: number; mute
   }
   return (
     <Sequence from={item.startFrame} durationInFrames={item.durationInFrames} name={item.name}>
-      <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0}
+      <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
         volume={(f) => vol * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
     </Sequence>
   );
@@ -129,7 +129,7 @@ function MediaFill({ item, fit, muted, canvasW, canvasH }: { item: TimelineItem;
       <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
         <ClipFx item={item} fit={fit} width={canvasW} height={canvasH} />
         {item.kind !== 'image' && (
-          <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0}
+          <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
             volume={(f) => (muted ? 0 : item.volume ?? 1) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
         )}
       </AbsoluteFill>
@@ -139,7 +139,7 @@ function MediaFill({ item, fit, muted, canvasW, canvasH }: { item: TimelineItem;
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
       {item.kind === 'image'
         ? <Img src={item.src!} style={style} />
-        : <OffthreadVideo src={item.src!} trimBefore={item.srcInFrame ?? 0}
+        : <OffthreadVideo src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
             volume={(f) => (muted ? 0 : item.volume ?? 1) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} style={style} />}
     </AbsoluteFill>
   );

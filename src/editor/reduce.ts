@@ -19,6 +19,7 @@ export type Action =
   | { type: 'setFilters'; id: string; patch: ClipFilters }
   | { type: 'setZoom'; id: string; patch: Partial<ZoomEffect> | null }
   | { type: 'setEffects'; id: string; effects: ClipEffect[] }
+  | { type: 'setSpeed'; id: string; rate: number }
   | { type: 'addMarker'; marker: Marker }
   | { type: 'updateMarker'; id: string; patch: Partial<Marker> }
   | { type: 'removeMarker'; id: string }
@@ -65,7 +66,7 @@ export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void
 /** dispatch at the project level: per-timeline + project actions + undo/redo */
 export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' }) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState',
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc']);
 
@@ -158,6 +159,17 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       return {
         ...s,
         items: s.items.map((it) => (it.id === a.id ? { ...it, effects: a.effects.length ? a.effects : undefined } : it)),
+      };
+    case 'setSpeed':
+      return {
+        ...s,
+        items: s.items.map((it) => {
+          if (it.id !== a.id) return it;
+          const rate = Math.max(0.1, Math.min(8, a.rate));
+          // preserve the source span: newDuration = sourceSpan / rate
+          const sourceSpan = it.durationInFrames * (it.playbackRate ?? 1);
+          return { ...it, playbackRate: rate, durationInFrames: Math.max(1, Math.round(sourceSpan / rate)) };
+        }),
       };
     case 'reframeKeyframe':
       return {

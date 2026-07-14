@@ -1,7 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { theme } from '../theme';
 import type { EditorCommands } from '../editor/store';
 import type { TimelineItem } from '../editor/types';
+
+// speed presets for the 快速 submenu (source 变速/dH rate)
+const SPEED_PRESETS = [0.25, 0.5, 1, 1.5, 2, 4] as const;
 
 // Clip right-click menu (source Hyt @entry.js:195762). Item order + labels are
 // faithful to the source; PRO / not-yet-built actions render disabled like the
@@ -39,8 +42,11 @@ export function ClipContextMenu({ item, x, y, playhead, commands, fxClip, onCopy
     return () => { window.removeEventListener('pointerdown', onDown, true); window.removeEventListener('keydown', onKey); };
   }, [onClose]);
 
+  const [showSpeed, setShowSpeed] = useState(false);
   const inside = playhead > item.startFrame && playhead < item.startFrame + item.durationInFrames;
   const isVisual = item.kind !== 'audio';
+  const canSpeed = item.kind === 'video' || item.kind === 'audio'; // playbackRate only affects av
+  const rate = item.playbackRate ?? 1;
   const run = (fn: () => void) => () => { fn(); onClose(); };
 
   const copyFx = () => onCopyFx({ filters: item.filters, transform: item.transform, zoom: item.zoom, fadeInFrames: item.fadeInFrames, fadeOutFrames: item.fadeOutFrames });
@@ -68,7 +74,20 @@ export function ClipContextMenu({ item, x, y, playhead, commands, fxClip, onCopy
       <Sep />
       <Item label="复制效果" icon="✦" disabled={!isVisual} onClick={run(copyFx)} />
       <Item label="粘贴效果" icon="⧉" shortcut={PASTE_HINT} disabled={!isVisual || !fxClip} onClick={run(pasteFx)} />
-      <Item label="快速" icon="⏱" chevron disabled />
+      <Item label={`变速${rate !== 1 ? `（${rate}×）` : ''}`} icon="⏱" chevron disabled={!canSpeed}
+        onClick={canSpeed ? () => setShowSpeed((v) => !v) : undefined} />
+      {showSpeed && canSpeed && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '2px 9px 6px 35px' }}>
+          {SPEED_PRESETS.map((s) => (
+            <button key={s} onClick={run(() => commands.setItemSpeed(item.id, s))}
+              style={{
+                cursor: 'pointer', fontSize: 11, padding: '3px 8px', borderRadius: 5,
+                border: `1px solid ${s === rate ? theme.accent : theme.border}`,
+                background: s === rate ? theme.accent : 'none', color: s === rate ? '#fff' : theme.text,
+              }}>{s}×</button>
+          ))}
+        </div>
+      )}
       <Sep />
       <Item label="导出 MG 动画" icon="⭳" pro disabled />
       <Item label="转为视频" icon="▦" pro disabled />
