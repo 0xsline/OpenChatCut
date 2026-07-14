@@ -19,7 +19,7 @@ export const LOUDNESS_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'normalize_loudness',
     description:
-      'Normalize audio clip(s) to a target integrated loudness (LUFS) by analyzing each clip offline (WebAudio) and applying the computed gain as the clip volume. Defaults to -14 LUFS (streaming loudness standard). Omit itemId to normalize every audio clip on the active timeline.',
+      'Normalize audio clip(s) to a target integrated loudness (LUFS) by analyzing each clip offline (WebAudio) and applying the computed gain as the clip volume. Defaults to -14 LUFS (streaming loudness standard). To normalize MANY/all clips, call this ONCE with NO itemId — a single call processes every audio clip on the active timeline and returns per-clip results ({itemId, measuredLufs, gain}). Do NOT call it once per clip. Pass itemId ONLY to normalize a single specific clip.',
     input_schema: {
       type: 'object',
       properties: {
