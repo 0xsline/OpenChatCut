@@ -31,16 +31,12 @@ interface TimelineProps {
   shortcutApiRef?: RefObject<TimelineShortcutApi | null>;
 }
 
-const HEADER_W = 200;
+const HEADER_W = 192;
 const MIN_ROW = 34;
 const RULER_H = 28;
-/** equal-height video tracks; audio rows taller to fit duck controls */
+/** equal-height tracks (match source track chrome — no per-row duck UI) */
 const TRACK_ROW = 56;
 const MAX_ROW = 72;
-/** audio: badge + name + role select */
-const AUDIO_ROW = 88;
-/** audio follower: + depth slider */
-const AUDIO_FOLLOWER_ROW = 108;
 // clip fill by ITEM kind — source --tl-item-* oklch (video/image=blue, audio=green,
 // motion-graphic=pink, text=amber). Video/image also render a media thumbnail on top.
 const CLIP_COLOR: Record<TimelineItem['kind'], string> = {
@@ -421,14 +417,10 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Video tracks stay compact; audio tracks grow for duck role / depth UI.
-  // Alt+wheel still scales. Collapsed = thin strip.
+  // equal-height tracks; scale via Alt+wheel. Collapsed = thin strip.
+  // Duck role is set via agent edit_track / track menu — not permanent track-header widgets (source).
   const rowHeightOf = (id: TrackId) => {
     if (state.tracks?.[id]?.collapsed) return MIN_ROW;
-    if (trackKind(state, id) === 'audio') {
-      const base = state.tracks?.[id]?.role === 'follower' ? AUDIO_FOLLOWER_ROW : AUDIO_ROW;
-      return Math.max(MIN_ROW, Math.round(base * trackScale));
-    }
     return Math.max(MIN_ROW, Math.min(MAX_ROW * trackScale, TRACK_ROW * trackScale));
   };
   const tracksHeight = trackIds.reduce((sum, id) => sum + rowHeightOf(id), 0);
@@ -1246,45 +1238,14 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
                     <button className="cc-track-fixed-action" disabled={busy} title={busy ? '只能删除空轨道' : '删除轨道'} onClick={() => commands.deleteTracks([trackId])}><Icon name="trash" size={14} /></button>
                   </div>
                   {!collapsed && (
-                    <div className="cc-track-meta">
-                      <span className="cc-track-name" title={trackName}>{trackName}</span>
-                      {/* Audio ducking (source Anchor / Follower / Off) — short labels, full text in title */}
-                      {meta.kind === 'audio' && (
-                        <div className="cc-track-duck">
-                          <select
-                            className="cc-track-duck-select"
-                            aria-label={`${trackName} 闪避角色`}
-                            title={
-                              config.role === 'anchor' ? '主轨 — 其他轨在此之下闪避'
-                                : config.role === 'follower' ? '跟随 — 在语音下闪避'
-                                  : '关闭 — 不参与闪避'
-                            }
-                            value={config.role ?? 'off'}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              if (v === 'off') commands.updateTrack(trackId, { role: null, audioRouting: { duckDepthDb: null } });
-                              else if (v === 'anchor') commands.updateTrack(trackId, { role: 'anchor', audioRouting: { duckDepthDb: null } });
-                              else commands.updateTrack(trackId, { role: 'follower', audioRouting: { duckDepthDb: config.audioRouting?.duckDepthDb ?? -12 } });
-                            }}
-                          >
-                            <option value="off">闪避：关</option>
-                            <option value="anchor">闪避：主轨</option>
-                            <option value="follower">闪避：跟随</option>
-                          </select>
-                          {config.role === 'follower' && (
-                            <label className="cc-track-duck-depth" title="跟随轨在主轨有声时压低的分贝">
-                              <span>压低</span>
-                              <input
-                                type="range" min={-24} max={-1} step={1}
-                                value={config.audioRouting?.duckDepthDb ?? -12}
-                                onChange={(e) => commands.updateTrack(trackId, { audioRouting: { duckDepthDb: Number(e.target.value) } })}
-                              />
-                              <span className="cc-track-duck-db">{config.audioRouting?.duckDepthDb ?? -12}dB</span>
-                            </label>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <span className="cc-track-name" title={
+                      config.role === 'anchor' ? `${trackName} · 主轨（闪避）`
+                        : config.role === 'follower' ? `${trackName} · 跟随（闪避）`
+                          : trackName
+                    }>
+                      {trackName}
+                      {config.role === 'anchor' ? ' · 主轨' : config.role === 'follower' ? ' · 跟随' : ''}
+                    </span>
                   )}
                   {captionMenu?.id === trackId && (
                     <div className="cc-caption-style-menu" style={{ position: 'fixed', left: captionMenu.left, top: captionMenu.top }} onPointerDown={(e) => e.stopPropagation()}>
