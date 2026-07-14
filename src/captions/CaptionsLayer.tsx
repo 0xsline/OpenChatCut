@@ -3,7 +3,7 @@ import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { CaptionsData, CaptionTemplate } from './types';
 import { paginate, activePage, currentWordIndex, activeTranslation } from './types';
 import type { TimelineItem } from '../editor/types';
-import { resolveCaptionWords } from './resolve';
+import { resolveCaptionWords, resolveCaptionWordIndices, applyWordOverrides } from './resolve';
 import { CAPTION_STYLE_BY_ID } from './styles';
 
 // Per-template look. `active` marks the word currently being spoken.
@@ -38,8 +38,14 @@ export function CaptionsLayer({ captions, items }: { captions: CaptionsData; ite
   const ms = (frame / fps) * 1000; // absolute timeline ms (words already re-timed)
 
   const words = useMemo(() => resolveCaptionWords(captions, items, fps), [captions, items, fps]);
+  const indices = useMemo(() => resolveCaptionWordIndices(captions, items), [captions, items]);
   const preset = CAPTION_STYLE_BY_ID[captions.template];
-  const pages = useMemo(() => paginate(words, captions.pacing, preset.wordsPerPage), [words, captions.pacing, preset.wordsPerPage]);
+  // 逐词覆盖(隐藏/换文本/强制换页)在分页前生效,不改动 transcript/timing。
+  const { words: displayWords, breakBefore } = useMemo(
+    () => applyWordOverrides(words, indices, captions.wordOverrides),
+    [words, indices, captions.wordOverrides],
+  );
+  const pages = useMemo(() => paginate(displayWords, captions.pacing, preset.wordsPerPage, breakBefore), [displayWords, captions.pacing, preset.wordsPerPage, breakBefore]);
   const page = activePage(pages, ms);
   if (!page) return null;
   const curIdx = currentWordIndex(page, ms);

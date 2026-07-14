@@ -1,5 +1,5 @@
 import { activeTranslation, paginate } from '../captions/types';
-import { resolveCaptionWords } from '../captions/resolve';
+import { resolveCaptionWords, resolveCaptionWordIndices, applyWordOverrides } from '../captions/resolve';
 import type { TimelineState } from '../editor/types';
 
 export interface SubmitSubtitleExportArgs {
@@ -28,7 +28,11 @@ function readableText(words: Array<{ text: string }>): string {
 export async function submitSubtitleExport(args: SubmitSubtitleExportArgs, state: TimelineState): Promise<SubtitleResponse> {
   if (!state.captions) throw new Error('the timeline has no captions to export');
   const words = resolveCaptionWords(state.captions, state.items, state.fps);
-  const pages = paginate(words, state.captions.pacing);
+  // 逐词覆盖(隐藏/换文本/强制换页)同样作用于导出的 SRT/TXT——屏幕上看到什么,
+  // 导出就是什么(护城河③:文本一致)。无覆盖时 displayWords === words,行为不变。
+  const indices = resolveCaptionWordIndices(state.captions, state.items);
+  const { words: displayWords, breakBefore } = applyWordOverrides(words, indices, state.captions.wordOverrides);
+  const pages = paginate(displayWords, state.captions.pacing, undefined, breakBefore);
   const startMs = typeof args.startFrame === 'number' ? args.startFrame / state.fps * 1_000 : (args.startSeconds ?? 0) * 1_000;
   const endMs = typeof args.endFrameExclusive === 'number' ? args.endFrameExclusive / state.fps * 1_000 : typeof args.endSeconds === 'number' ? args.endSeconds * 1_000 : Number.POSITIVE_INFINITY;
   if (startMs < 0 || endMs <= startMs) throw new Error('invalid subtitle export range');

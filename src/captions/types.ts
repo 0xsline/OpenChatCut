@@ -34,6 +34,17 @@ export interface CaptionsData {
   translationLang?: string;
   /** translated phrase cues (timeline ms), aligned to the source phrases */
   translation?: TranslatedCue[];
+  /** per-word DISPLAY overrides for the captions overlay (hide / retext / force
+   * a page break), WITHOUT touching the transcript or its timing. Keyed by the
+   * word's index in the source track transcript (or in the standalone `words`
+   * fallback) — see `read_captions`/`edit_caption_words` in src/agent. */
+  wordOverrides?: Record<number, CaptionWordOverride>;
+}
+
+export interface CaptionWordOverride {
+  hidden?: boolean;
+  text?: string;
+  forceBreak?: boolean;
 }
 
 export interface CaptionPage {
@@ -48,8 +59,11 @@ const GAP_MS = 700;
 const LINGER_MS = 1500;
 
 // Group words into display pages: one word each (word pacing), or short phrases
-// broken on punctuation / length / a big pause (phrase pacing).
-export function paginate(words: TranscriptWord[], pacing: CaptionPacing, maxPhraseWords = MAX_PHRASE_WORDS): CaptionPage[] {
+// broken on punctuation / length / a big pause (phrase pacing). `breakBefore`
+// (positions into `words`) forces a page to start right there — used by
+// wordOverrides' forceBreak (src/captions/resolve.ts). Optional + defaults to
+// none, so existing callers (translate.ts, no-override render) stay unaffected.
+export function paginate(words: TranscriptWord[], pacing: CaptionPacing, maxPhraseWords = MAX_PHRASE_WORDS, breakBefore?: Set<number>): CaptionPage[] {
   if (pacing === 'word') return words.map((w) => ({ words: [w], start: w.start, end: w.end }));
   const pages: CaptionPage[] = [];
   let cur: TranscriptWord[] = [];
@@ -58,6 +72,7 @@ export function paginate(words: TranscriptWord[], pacing: CaptionPacing, maxPhra
     cur = [];
   };
   for (let i = 0; i < words.length; i++) {
+    if (breakBefore?.has(i) && cur.length) flush(); // forceBreak: 在该词前另起一页
     cur.push(words[i]);
     const next = words[i + 1];
     const bigGap = next ? next.start - words[i].end > GAP_MS : false;
