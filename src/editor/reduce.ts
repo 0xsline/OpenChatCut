@@ -48,6 +48,7 @@ export type Action =
   | { type: 'cleanScript'; id: string; silenceFrames?: number; removeFillers: boolean }
   | { type: 'clearEdits'; id: string }
   | { type: 'fixTranscriptWord'; id: string; wordIndex: number; text: string }
+  | { type: 'renameSpeaker'; id: string; from: string; to: string }
   | { type: 'select'; id: string | null }
   | { type: 'setFullState'; state: TimelineState };
 
@@ -79,7 +80,7 @@ export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void
 /** dispatch at the project level: per-timeline + project actions + undo/redo */
 export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' }) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'setItemTranscript', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'fixTranscriptWord', 'setFullState',
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'setItemTranscript', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
   'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset']);
@@ -400,6 +401,23 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         items: s.items.map((item) =>
           item.id === a.id
             ? { ...item, transcript: item.transcript!.map((w, i) => (i === a.wordIndex ? { ...w, text: a.text } : w)) }
+            : item,
+        ),
+      };
+    }
+    case 'renameSpeaker': {
+      // 说话人重命名/合并:把 speaker===from 的词全部改标 to。护城河③(词↔帧一致)——
+      // 只改 word.speaker,text/start/end、词数、clip 时长全不动;from→to 同机制覆盖
+      // 重命名('A'→'主持人')与合并('B'→'A',两位说话人塌成一位)。
+      // 注:TimelineItem 只存 transcript(词),没有 utterances/segment 字段可改。
+      const it = s.items.find((x) => x.id === a.id);
+      // 无 item / 无转写 / 没有词的 speaker===from → 真正 no-op(返回原 state,不进历史栈)
+      if (!it?.transcript?.some((w) => w.speaker === a.from)) return s;
+      return {
+        ...s,
+        items: s.items.map((item) =>
+          item.id === a.id
+            ? { ...item, transcript: item.transcript!.map((w) => (w.speaker === a.from ? { ...w, speaker: a.to } : w)) }
             : item,
         ),
       };

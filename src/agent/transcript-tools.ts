@@ -43,18 +43,20 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'manage_transcript',
-    description: '修正转写文本("改错字"):把某个被听错的词替换成正确文本,而不改动时间轴。定位要修的词二选一:传 wordIndex(词下标),或传 find(错词原文,精确匹配一个词)。只改 word.text——词的起止时间/帧位、词数、片段时长都不变(captions/删文本都依赖这条不变式)。',
+    description: '管理转写文本,不改动时间轴。action=fix("改错字"):把某个被听错的词替换成正确文本,定位要修的词二选一——传 wordIndex(词下标)或 find(错词原文,精确匹配一个词);只改 word.text。action=renameSpeaker(说话人重命名/合并):把 diarization 标签 from 的所有词改标为 to——同机制既可重命名("A"→"主持人")也可合并("B"→"A",两位说话人塌成一位);只改 word.speaker。两种 action 都保持词的起止时间/帧位、词数、片段时长不变(captions/删文本都依赖这条不变式)。',
     input_schema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['fix'], description: '目前仅 fix(改错字);预留扩展。' },
+        action: { type: 'string', enum: ['fix', 'renameSpeaker'], description: 'fix=改错字;renameSpeaker=说话人重命名/合并。' },
         itemId: { type: 'string', description: '目标转写所在 clip 的 item id;省略则取该 track 上第一个带转写的音/视频 clip。' },
         track: { type: 'string', description: 'itemId 省略时,用 track 别名/稳定 id 定位带转写的 clip(默认 A1)。' },
-        wordIndex: { type: 'number', description: '要修正的词下标(与 find 二选一)。' },
-        find: { type: 'string', description: '要修正的错词原文,精确匹配一个词(与 wordIndex 二选一)。' },
-        text: { type: 'string', description: '修正后的正确文本。' },
+        wordIndex: { type: 'number', description: 'fix:要修正的词下标(与 find 二选一)。' },
+        find: { type: 'string', description: 'fix:要修正的错词原文,精确匹配一个词(与 wordIndex 二选一)。' },
+        text: { type: 'string', description: 'fix:修正后的正确文本。' },
+        from: { type: 'string', description: 'renameSpeaker:要重命名的现有说话人标签(如 "A"/"B")。' },
+        to: { type: 'string', description: 'renameSpeaker:新的说话人显示名;传一个已存在的标签即合并两位说话人(如 "B"→"A")。' },
       },
-      required: ['action', 'text'],
+      required: ['action'],
     },
   },
   {
@@ -187,36 +189,53 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       return { ok: true, enabled: true, template, pacing, source: it ? trackAlias(ctx.getState(), it.track) : null, sourceTrackId: it?.track ?? null, translatedTo };
     }
     case 'manage_transcript': {
-      // 目前仅实现 fix(改错字);其余 action 预留,不静默吞。
-      if (args.action !== 'fix') return { error: `unsupported action: ${String(args.action)}; only "fix" is implemented` };
-      const text = args.text;
-      if (typeof text !== 'string' || !text.trim()) return { error: 'text is required (the corrected word)' };
-      // 定位 clip:优先 itemId,否则取该 track 上第一个带转写的 clip
+      const action = args.action;
+      // 定位 clip:优先 itemId,否则取该 track 上第一个带转写的 clip(fix/renameSpeaker 共用)
       const items = ctx.getState().items;
       const it = args.itemId ? items.find((x) => x.id === args.itemId) : trackClip(ctx, track, true);
       if (!it) return { error: args.itemId ? `no item ${String(args.itemId)}` : `no transcribed clip on ${alias}; call transcribe_track first` };
       if (!it.transcript?.length) return { error: `item ${it.id} has no transcript; call transcribe_track first` };
-      // 定位词:wordIndex 优先,否则 find 精确匹配(先原文,再归一化容错标点/大小写)
-      let wordIndex: number;
-      if (typeof args.wordIndex === 'number') {
-        wordIndex = args.wordIndex;
-      } else if (typeof args.find === 'string' && args.find.trim()) {
-        const findStr = args.find;
-        wordIndex = it.transcript.findIndex((w) => w.text === findStr);
-        if (wordIndex < 0) {
-          const target = normalize(findStr);
-          wordIndex = it.transcript.findIndex((w) => normalize(w.text) === target);
-        }
-        if (wordIndex < 0) return { error: `word not found: ${findStr}` };
-      } else {
-        return { error: 'provide wordIndex or find to locate the word' };
+
+      if (action === 'renameSpeaker') {
+        // 说话人重命名/合并:from→to。同机制覆盖重命名与合并(to 为已有标签即合并)。
+        const from = args.from;
+        const to = args.to;
+        if (typeof from !== 'string' || !from.trim()) return { error: 'from is required (the existing speaker label)' };
+        if (typeof to !== 'string' || !to.trim()) return { error: 'to is required (the new speaker name)' };
+        const wordsChanged = it.transcript.filter((w) => w.speaker === from).length;
+        if (wordsChanged === 0) return { error: `no word labeled speaker "${from}" in item ${it.id}` };
+        // 护城河③:命令只改 .speaker,text/timing/词数/时长不变
+        ctx.commands.renameSpeaker(it.id, from, to);
+        return { ok: true, itemId: it.id, from, to, wordsChanged };
       }
-      const word = it.transcript[wordIndex];
-      if (!word) return { error: `wordIndex ${wordIndex} out of range (0..${it.transcript.length - 1})` };
-      const from = word.text;
-      // 护城河③:命令只改 .text,timing/词数/时长不变
-      ctx.commands.fixTranscriptWord(it.id, wordIndex, text);
-      return { ok: true, itemId: it.id, wordIndex, from, to: text };
+
+      if (action === 'fix') {
+        const text = args.text;
+        if (typeof text !== 'string' || !text.trim()) return { error: 'text is required (the corrected word)' };
+        // 定位词:wordIndex 优先,否则 find 精确匹配(先原文,再归一化容错标点/大小写)
+        let wordIndex: number;
+        if (typeof args.wordIndex === 'number') {
+          wordIndex = args.wordIndex;
+        } else if (typeof args.find === 'string' && args.find.trim()) {
+          const findStr = args.find;
+          wordIndex = it.transcript.findIndex((w) => w.text === findStr);
+          if (wordIndex < 0) {
+            const target = normalize(findStr);
+            wordIndex = it.transcript.findIndex((w) => normalize(w.text) === target);
+          }
+          if (wordIndex < 0) return { error: `word not found: ${findStr}` };
+        } else {
+          return { error: 'provide wordIndex or find to locate the word' };
+        }
+        const word = it.transcript[wordIndex];
+        if (!word) return { error: `wordIndex ${wordIndex} out of range (0..${it.transcript.length - 1})` };
+        const from = word.text;
+        // 护城河③:命令只改 .text,timing/词数/时长不变
+        ctx.commands.fixTranscriptWord(it.id, wordIndex, text);
+        return { ok: true, itemId: it.id, wordIndex, from, to: text };
+      }
+
+      return { error: `unsupported action: ${String(action)}; use "fix" or "renameSpeaker"` };
     }
     default:
       return undefined;

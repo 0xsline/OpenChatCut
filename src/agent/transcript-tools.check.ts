@@ -61,4 +61,63 @@ assert.ok(eAction.error, 'unsupported action returns an error');
 // 错误路径未落任何改动
 assert.strictEqual(draft.getState().items[0].transcript![0].text, 'hello', 'no mutation on error paths');
 
+// ── manage_transcript action=renameSpeaker(说话人重命名/合并)────────────────
+// 两位说话人 A/B;durationInFrames 同样设成与词无关的 24 帧,证明重命名不重算时长。
+const spWords: TranscriptWord[] = [
+  { text: '大家好', start: 0, end: 300, speaker: 'A' },
+  { text: '你好', start: 300, end: 600, speaker: 'B' },
+  { text: '再见', start: 600, end: 900, speaker: 'A' },
+];
+const spState = (): TimelineState => ({
+  fps: 30, width: 1920, height: 1080, selectedId: null,
+  items: [{ id: 'clip', track: 'A1', startFrame: 0, durationInFrames: 24, name: 'vo', kind: 'audio', src: '/vo.mp3', transcript: spWords }],
+});
+const mkSpCtx = () => {
+  const d = makeDraft(docFromTimeline(spState()));
+  const c: AgentContext = { commands: d.commands, getState: d.getState, getDoc: d.getDoc, getCreativeMode: () => null, templates: [], audio: [] };
+  return { d, c };
+};
+
+// 4) 重命名:'A' → '主持人'(两个 A 词都改标,B 不动)
+{
+  const { d, c } = mkSpCtx();
+  const r = await execTranscriptTool('manage_transcript', { action: 'renameSpeaker', itemId: 'clip', from: 'A', to: '主持人' }, c) as { ok: boolean; from: string; to: string; wordsChanged: number };
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.from, 'A');
+  assert.strictEqual(r.to, '主持人');
+  assert.strictEqual(r.wordsChanged, 2, 'both A words changed');
+  const t = d.getState().items[0].transcript!;
+  assert.strictEqual(t[0].speaker, '主持人');
+  assert.strictEqual(t[2].speaker, '主持人');
+  assert.strictEqual(t[1].speaker, 'B', 'B speaker untouched');
+  // 护城河③:text/timing/词数/时长全不变
+  assert.strictEqual(t[0].text, '大家好', 'text untouched');
+  assert.strictEqual(t[0].start, 0, 'start untouched');
+  assert.strictEqual(t[2].end, 900, 'end untouched');
+  assert.strictEqual(t.length, 3, 'word count unchanged');
+  assert.strictEqual(d.getState().items[0].durationInFrames, 24, 'duration unchanged');
+}
+
+// 5) 合并:'B' → 'A'(B 塌进 A,全部同一说话人),同样只动 speaker
+{
+  const { d, c } = mkSpCtx();
+  const r = await execTranscriptTool('manage_transcript', { action: 'renameSpeaker', itemId: 'clip', from: 'B', to: 'A' }, c) as { ok: boolean; wordsChanged: number };
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.wordsChanged, 1, 'the one B word merged');
+  const t = d.getState().items[0].transcript!;
+  assert.ok(t.every((w) => w.speaker === 'A'), 'B collapsed into A → single speaker');
+  assert.deepStrictEqual(t.map((w) => w.text), ['大家好', '你好', '再见'], 'text untouched by merge');
+  assert.strictEqual(t.length, 3);
+  assert.strictEqual(d.getState().items[0].durationInFrames, 24);
+}
+
+// 6) 未知 from → error,不改动任何东西(no-op guard)
+{
+  const { d, c } = mkSpCtx();
+  const before = d.getState().items[0].transcript!.map((w) => w.speaker);
+  const e = await execTranscriptTool('manage_transcript', { action: 'renameSpeaker', itemId: 'clip', from: 'Z', to: 'x' }, c) as { error?: string };
+  assert.ok(e.error, 'unknown speaker returns an error');
+  assert.deepStrictEqual(d.getState().items[0].transcript!.map((w) => w.speaker), before, 'no mutation on unknown from');
+}
+
 console.log('transcript-tools.check: ok');
