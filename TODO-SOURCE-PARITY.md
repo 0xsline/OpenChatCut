@@ -5,10 +5,10 @@
 > 由 5 个并行 agent 逐项对照 **当前 `src/` 真代码** vs **逆向源码规格** 重新核实。
 >
 > **口径**：✅ 已完成 · 🟡 部分 · ❌ 未做。共 132 项。
-> **总覆盖**：约 **66 ✅ / 16 🟡 / 50 ❌**，加权 ≈ **56%**（旧 42.8%）。
-> （2026-07-14 更新：域 7 设计风格 `manage_design_style` 落地 → +1✅/+1🟡/−2❌）
+> **总覆盖**：约 **67 ✅ / 16 🟡 / 49 ❌**，加权 ≈ **57%**（旧 42.8%）。
+> （2026-07-14 更新：域 7 设计风格 `manage_design_style` + 域 11 对话历史持久化 落地）
 > 但只看**产品核心域（编辑器·Agent·媒体·字幕·生成，域 1–11+16，共 104 项）**，
-> 加权覆盖 ≈ **70%**（66✅/14🟡/24❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
+> 加权覆盖 ≈ **71%**（67✅/14🟡/23❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
 > "需真后端、单机克隆无对象可服务"的基建域（域 13/14/15 全 0%）。
 >
 > **开发纪律（本文存在的意义）**：做任何一项前，先读它在"源码依据"列指向的
@@ -31,7 +31,7 @@
 | 8 | AI 生成（花钱域） | 7 | 5 | 1 | 1 | 核心 | 5 生成工具已接，缺 submit_shader、积分门 |
 | 9 | 素材 / 媒体 | 12 | 7 | 1 | 4 | 核心 | 媒体池/库/LUT 已做，缺在线素材/URL 资产 |
 | 10 | 导出 / 交付 | 12 | 4 | 2 | 6 | 核心 | MP4/字幕已做，缺音频/XML/异步/水印 |
-| 11 | Agent / 对话平台 | 10 | 5 | 4 | 1 | 核心 | 缺对话持久化、thinking UI |
+| 11 | Agent / 对话平台 | 10 | 6 | 4 | 0 | 核心 | ✅ 对话持久化(chat_block);仅剩 thinking UI 等 🟡 |
 | 16 | 长转短（专项） | 4 | 1 | 1 | 2 | 核心 | auto-reframe 渲染链就绪缺检测；缺智能切片 |
 | 12 | 技能 Skills | 3 | 0 | 0 | 3 | 可搬 | **纯前端可做**，优先级高 |
 | 18 | 遥测 / 增长 | 7 | 0 | 2 | 5 | 混合 | 快捷键/i18n/dockview 可做；遥测需 SaaS |
@@ -45,7 +45,7 @@
 ## 二、优先级路线（纯前端可做，按价值/成本排序）
 
 ### P0 — 补齐产品核心的显眼缺口
-1. **对话历史持久化**（域11 ❌）—— 刷新即丢是硬伤。`messages`+`llmRef` 按工程存 IDB（复用 `persist/projectStore.ts`），加载恢复 + reset。源：`chat_block`。
+1. ✅ **对话历史持久化**（域11）—— 已落地：`persist/projectStore.ts` 加 `loadChat/saveChat/clearChat`(复用 kv store,存 `{messages, llm}`);`useAgent(ctx,projectId)` 挂载 hydrate + 回合边界持久化 + `clearHistory`;ChatPanel 头部「清空对话」。附带修 `migrateProjectDoc` 丢 `designStyle` 的回归。检查 `chat-persist.check.ts` + 浏览器整页刷新实测双双恢复。源：`chat_block`。
 2. ✅ **设计风格 `manage_design_style`**（域7）—— 已落地：`ProjectDoc.designStyle{colors[role,value],fonts[family,role],styleGuide}`(对齐源 `Ey/Ay/bM` 规范)+`editor/design-presets.ts`(4 内置预设=源 `/api/design-styles/owned` 类比)+`agent/design-tools.ts`(`manage_design_style` list/get/apply/update/clear，含旧式对象→数组规整)+注入(`systemPrompt.designStylePrompt` 进 agent loop、`designStyleHint` 进 MG 代码生成)+UI(`DesignStylePanel` 弹窗，TopBar 调色板入口，即时预览)。检查 `design-tools.check.ts` 绿。源：`复刻规格 §9 manage_design_style`。
 3. **导出音频 mp3/wav + 帧范围**（域10 ❌/🟡）—— `remotion/render.mjs` 加 `renderAudio`（codec mp3）+ `renderMedia frameRange` 透传；`submit_export` 放开 `format=audio`。源：`submit_export format=audio`。
 
@@ -137,7 +137,7 @@
 - 🟡 **字体兜底确认 confirmFontFallback** — → 渲染前扫 fontFamily 对白名单，缺 confirm 返清单。
 
 ### 域 11 · Agent / 对话平台
-- ❌ **对话历史持久化** — 源 `chat_block`。→ `messages`+`llmRef` 存 IDB 恢复。**P0**。
+- ✅ **对话历史持久化** — 源 `chat_block`。已按工程存 IDB(`loadChat/saveChat/clearChat`)+ 挂载恢复 + 清空。
 - ❌ **扩展思考 thinking block UI** — 源 thinking block。→ `client.ts` 传 `thinking`，`runtime.ts` `on('thinking')`，`ChatMessage` 折叠块。（换真 Claude 后生效，grok 无 thinking 通道）
 - 🟡 **多轮会话持久化（reset/max_turns）** — → 配 IDB 持久化 + reset。
 - 🟡 **@引用素材（结构化）** — 现只插 `@name` 纯文本。源 `chat_context_entry`。→ `insertRef` 带 `{id,kind}` 结构化条目上送。
