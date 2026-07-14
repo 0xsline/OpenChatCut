@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readFile, unlink, mkdir } from 'node:fs/promises';
+import { normalizeFrameRange } from './src/export/range.ts';
 // @ts-expect-error — plain .mjs render pipeline shared with scripts/export.mjs (no .d.ts)
 import { renderTimeline, renderTimelineStills, renderClip } from './remotion/render.mjs';
 
@@ -12,6 +13,41 @@ const CLIP_EXT: Record<string, string> = { prores: 'mov', vp8: 'webm', vp9: 'web
 const CLIP_MIME: Record<string, string> = { mov: 'video/quicktime', webm: 'video/webm', mp4: 'video/mp4' };
 
 const MAX_BODY_BYTES = 32 * 1024 * 1024; // 32MB — timelines carry inlined template code.
+
+type ExportRequest = {
+  state?: unknown;
+  format?: 'video' | 'audio';
+  codec?: 'h264' | 'vp8' | 'mp3' | 'wav';
+  name?: string;
+  startFrame?: number;
+  endFrameExclusive?: number;
+  startSeconds?: number;
+  endSeconds?: number;
+};
+
+type ExportTimeline = {
+  fps: number;
+  items: Array<{ startFrame: number; durationInFrames: number }>;
+};
+
+const EXPORT_MEDIA = {
+  h264: { codec: 'h264', ext: 'mp4', mime: 'video/mp4' },
+  vp8: { codec: 'vp8', ext: 'webm', mime: 'video/webm' },
+  mp3: { codec: 'mp3', ext: 'mp3', mime: 'audio/mpeg' },
+  wav: { codec: 'wav', ext: 'wav', mime: 'audio/wav' },
+} as const;
+
+function exportFilename(name: string | undefined, ext: string): string {
+  const base = (name ?? 'export').replace(/\.(?:mp4|webm|mp3|wav)$/i, '').replace(/[^\w.-]+/g, '_') || 'export';
+  return `${base}.${ext}`;
+}
+
+function exportDuration(state: ExportTimeline): number {
+  return Math.max(
+    state.fps,
+    state.items.reduce((end, item) => Math.max(end, item.startFrame + item.durationInFrames), 0),
+  );
+}
 
 function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -44,9 +80,9 @@ function sendError(res: ServerResponse, status: number, message: string): void {
 }
 
 /**
- * Dev-server plugin exposing `POST /export`: body `{ state }` → rendered MP4
- * streamed back as video/mp4. Mirrors the CLI export (scripts/export.mjs) and
- * ChatCut's server-side render — the timeline is rendered in headless Chrome.
+ * Dev-server plugin exposing `POST /export`: body `{ state, format?, ... }` →
+ * rendered MP4/WebM/MP3/WAV. Mirrors the CLI export and ChatCut's server-side
+ * render — the timeline is rendered in headless Chrome.
  */
 export function exportPlugin(): Plugin {
   return {
@@ -135,26 +171,64 @@ export function exportPlugin(): Plugin {
 
         let outputLocation: string | null = null;
         try {
-          const body = await readJsonBody(req);
-          const state = (body as { state?: unknown } | null)?.state;
+          const body = await readJsonBody(req) as ExportRequest | null;
+          const state = body?.state;
           if (!state || typeof state !== 'object' || !Array.isArray((state as { items?: unknown }).items)) {
             sendError(res, 400, 'body must be { state: TimelineState } with an items array');
             return;
           }
+          const fps = (state as ExportTimeline).fps;
+          if (!Number.isFinite(fps) || fps <= 0) {
+            sendError(res, 400, 'state.fps must be a positive number');
+            return;
+          }
+          if (body?.format !== undefined && body.format !== 'video' && body.format !== 'audio') {
+            sendError(res, 400, 'format must be video or audio');
+            return;
+          }
+          if (body?.codec !== undefined && !['h264', 'vp8', 'mp3', 'wav'].includes(body.codec)) {
+            sendError(res, 400, 'codec must be h264, vp8, mp3, or wav');
+            return;
+          }
+          if (body?.name !== undefined && typeof body.name !== 'string') {
+            sendError(res, 400, 'name must be a string');
+            return;
+          }
+          if ([body.startSeconds, body.endSeconds].some((value) => value !== undefined && (typeof value !== 'number' || !Number.isFinite(value)))) {
+            sendError(res, 400, 'startSeconds and endSeconds must be finite numbers');
+            return;
+          }
 
-          outputLocation = join(tmpdir(), `chatcut-export-${randomUUID()}.mp4`);
-          await renderTimeline({ state, outputLocation });
+          const format = body.format ?? 'video';
+          const codec = body.codec ?? (format === 'audio' ? 'mp3' : 'h264');
+          if ((format === 'audio') !== (codec === 'mp3' || codec === 'wav')) {
+            sendError(res, 400, `${format} export does not support codec=${codec}`);
+            return;
+          }
+          const media = EXPORT_MEDIA[codec];
+          const startFrame = body.startFrame ?? (body.startSeconds === undefined ? undefined : Math.floor(body.startSeconds * fps));
+          const endFrameExclusive = body.endFrameExclusive ?? (body.endSeconds === undefined ? undefined : Math.ceil(body.endSeconds * fps));
+          const frameRange = normalizeFrameRange(
+            exportDuration(state as ExportTimeline),
+            startFrame,
+            endFrameExclusive,
+          );
+          const filename = exportFilename(body.name, media.ext);
+
+          outputLocation = join(tmpdir(), `chatcut-export-${randomUUID()}.${media.ext}`);
+          await renderTimeline({ state, outputLocation, codec: media.codec, frameRange });
 
           const buf = await readFile(outputLocation);
           res.statusCode = 200;
-          res.setHeader('Content-Type', 'video/mp4');
+          res.setHeader('Content-Type', media.mime);
           res.setHeader('Content-Length', String(buf.length));
-          res.setHeader('Content-Disposition', 'attachment; filename="export.mp4"');
+          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
           res.end(buf);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          server.config.logger.error(`[export] ${message}`);
-          if (!res.headersSent) sendError(res, 500, message);
+          const status = err instanceof RangeError ? 400 : 500;
+          if (status === 500) server.config.logger.error(`[export] ${message}`);
+          if (!res.headersSent) sendError(res, status, message);
           else res.end();
         } finally {
           if (outputLocation) unlink(outputLocation).catch(() => {});

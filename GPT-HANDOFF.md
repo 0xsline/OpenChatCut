@@ -16,6 +16,7 @@
 | AI 音乐生成 | `submit_music` | Mureka / Suno / 开源 MusicGen | 同上 |
 | AI 音效生成 | `submit_sound` | ElevenLabs SFX（先查库再生成） | 同上 |
 | 导出字幕文件 | `format=subtitles` | SubRip/txt 序列化（纯前端，无外部 API） | 同上，caption cues → srt/txt |
+| 导出视频/音频范围 | `format=video|audio` | Remotion h264/vp8/mp3/wav 同步渲染 | 同上，`codec` + `startFrame`/`endFrameExclusive` |
 
 **SPEC 硬规则（全项目通用，见 `CLAUDE.md`）**：动手前先去 `~/Desktop/project/chatcut-reverse/` 找源站——`复刻规格-Agent工具与后端.md`（52 工具权威语义，取真名真参数）、`harness/mcp-tools-schema.md`（精确 input_schema）。**能用原名/原参数枚举就用，别自造。** 找不到依据就在提交说明注明「源站无据，自定」。
 

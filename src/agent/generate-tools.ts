@@ -7,6 +7,7 @@ import { submitMusic, type SubmitMusicArgs } from '../generate/music';
 import { submitVideo, type SubmitVideoArgs } from '../generate/video';
 import { trackGenerationProgress } from '../generate/progress';
 import { submitSubtitleExport, type SubmitSubtitleExportArgs } from '../generate/subtitles';
+import { submitMediaExport, type SubmitMediaExportArgs } from '../generate/media-export';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GPT 主攻文件 —— AI 生成套件（图 / 视频 / 配音 / 音乐 / 音效）
@@ -142,11 +143,12 @@ export const GENERATE_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'submit_export',
-    description: 'Export the active timeline captions synchronously as an SRT or plain-text download. This local implementation currently handles format=subtitles.',
+    description: 'Export the active timeline synchronously as MP4/WebM video, MP3/WAV audio, or SRT/TXT subtitles. Optional frame boundaries use a half-open [startFrame, endFrameExclusive) range.',
     input_schema: {
       type: 'object',
       properties: {
-        format: { type: 'string', enum: ['subtitles'], description: 'Must be subtitles.' },
+        format: { type: 'string', enum: ['video', 'audio', 'subtitles'] },
+        codec: { type: 'string', enum: ['h264', 'vp8', 'mp3', 'wav'], description: 'Video: h264 (default) or vp8. Audio: mp3 (source default) or local WAV extension.' },
         subtitleFormat: { type: 'string', enum: ['srt', 'txt'], description: 'Defaults to srt.' },
         name: { type: 'string', description: 'Download filename.' },
         startFrame: { type: 'integer', minimum: 0 },
@@ -154,7 +156,6 @@ export const GENERATE_TOOL_SCHEMAS: Anthropic.Tool[] = [
         startSeconds: { type: 'number', minimum: 0, description: 'Legacy; prefer startFrame.' },
         endSeconds: { type: 'number', minimum: 0, description: 'Legacy; prefer endFrameExclusive.' },
       },
-      required: ['format'],
     },
   },
 ];
@@ -294,16 +295,31 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
     }
     case 'submit_export': {
       try {
-        if (args.format !== 'subtitles') return { error: 'this local submit_export implementation currently supports format=subtitles only' };
-        const input: SubmitSubtitleExportArgs = {
-          subtitleFormat: args.subtitleFormat as SubmitSubtitleExportArgs['subtitleFormat'],
-          name: typeof args.name === 'string' ? args.name : undefined,
-          startFrame: typeof args.startFrame === 'number' ? args.startFrame : undefined,
-          endFrameExclusive: typeof args.endFrameExclusive === 'number' ? args.endFrameExclusive : undefined,
-          startSeconds: typeof args.startSeconds === 'number' ? args.startSeconds : undefined,
-          endSeconds: typeof args.endSeconds === 'number' ? args.endSeconds : undefined,
-        };
-        return { ok: true, ...await submitSubtitleExport(input, ctx.getState()) };
+        const format = args.format ?? 'video';
+        if (format === 'subtitles') {
+          const input: SubmitSubtitleExportArgs = {
+            subtitleFormat: args.subtitleFormat as SubmitSubtitleExportArgs['subtitleFormat'],
+            name: typeof args.name === 'string' ? args.name : undefined,
+            startFrame: typeof args.startFrame === 'number' ? args.startFrame : undefined,
+            endFrameExclusive: typeof args.endFrameExclusive === 'number' ? args.endFrameExclusive : undefined,
+            startSeconds: typeof args.startSeconds === 'number' ? args.startSeconds : undefined,
+            endSeconds: typeof args.endSeconds === 'number' ? args.endSeconds : undefined,
+          };
+          return { ok: true, ...await submitSubtitleExport(input, ctx.getState()) };
+        }
+        if (format === 'audio' || format === 'video') {
+          const input: SubmitMediaExportArgs = {
+            format,
+            codec: args.codec as SubmitMediaExportArgs['codec'],
+            name: typeof args.name === 'string' ? args.name : undefined,
+            startFrame: typeof args.startFrame === 'number' ? args.startFrame : undefined,
+            endFrameExclusive: typeof args.endFrameExclusive === 'number' ? args.endFrameExclusive : undefined,
+            startSeconds: typeof args.startSeconds === 'number' ? args.startSeconds : undefined,
+            endSeconds: typeof args.endSeconds === 'number' ? args.endSeconds : undefined,
+          };
+          return { ok: true, ...await submitMediaExport(input, ctx.getState()) };
+        }
+        return { error: 'format must be video, audio, or subtitles' };
       } catch (error) {
         return { error: error instanceof Error ? error.message : String(error) };
       }
@@ -350,7 +366,7 @@ export const GENERATE_WORKFLOW = `
 - Use track_progress only with target=generation for submit_music/submit_video job IDs. action=params reads submitted settings, status is non-blocking, and wait is explicitly bounded by timeoutSeconds.
 - Do not claim a generated asset exists until track_progress reports succeeded and addedAssets includes it. Retrying track_progress is idempotent and never duplicates an existing asset.
 
-## Subtitle export
-- Use submit_export with format=subtitles to download current captions. subtitleFormat defaults to srt; use txt only when explicitly requested.
-- Prefer frame boundaries for partial exports. Export is synchronous and does not change the timeline.
+## Export
+- Use submit_export with format=video for MP4/WebM, format=audio for MP3/WAV, or format=subtitles for SRT/TXT. codec defaults to h264 for video and mp3 for audio; subtitleFormat defaults to srt.
+- Prefer startFrame/endFrameExclusive for partial exports. The range is half-open, export is synchronous, and it does not change the timeline.
 `;

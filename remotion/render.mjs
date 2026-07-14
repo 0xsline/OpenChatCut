@@ -48,14 +48,16 @@ function getServeUrl() {
 }
 
 /**
- * Render a timeline state to an MP4 (h264) at outputLocation.
+ * Render a timeline state to video or audio at outputLocation.
  * @param {object} args
  * @param {import('../src/editor/types').TimelineState} args.state
- * @param {string} args.outputLocation  absolute path for the .mp4
+ * @param {string} args.outputLocation  absolute output path
+ * @param {'h264'|'vp8'|'mp3'|'wav'} [args.codec]
+ * @param {[number, number]} [args.frameRange] inclusive Remotion frame range
  * @param {(progress: number) => void} [args.onProgress]  0..1
  * @returns {Promise<string>} the outputLocation
  */
-export async function renderTimeline({ state, outputLocation, onProgress }) {
+export async function renderTimeline({ state, outputLocation, onProgress, codec = 'h264', frameRange }) {
   if (!state || typeof state !== 'object' || !Array.isArray(state.items)) {
     throw new Error('renderTimeline: a valid TimelineState (with items[]) is required');
   }
@@ -69,7 +71,8 @@ export async function renderTimeline({ state, outputLocation, onProgress }) {
   await renderMedia({
     serveUrl,
     composition,
-    codec: 'h264',
+    codec,
+    frameRange,
     inputProps,
     outputLocation,
     // GLSL transitions need WebGL2 in headless Chrome; 'angle' uses the native

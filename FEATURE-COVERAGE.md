@@ -19,7 +19,7 @@
 | 转写 / 文字稿编辑 | 🟡 核心在（删词=删视频/静音压缩）且 `timeline.md` / `read_script` / `apply_script` 已完成；仍缺 av_script、校正和完整变体体系 |
 | 字幕 | 🟡 源站 21 个样式预设、轨道头 CC 下拉、卡拉OK、跟随与双语翻译已完成；缺逐词覆盖/多轨源路由 |
 | AI 生成（视频/图/配音/音乐/音效/着色器）| 🟡 图/视频/配音/音乐/音效已接 provider 适配层并完成本地浏览器联调；音乐/视频已接统一异步 job + `track_progress`。生成文件和媒体池资产立即持久化，落轨操作继续进入可拒绝的提案，缺真实供应商凭据实测、着色器、持久队列/积分计量 |
-| 导出 | 🟡 MP4 服务端渲染 + srt/txt 同步导出已完成；缺 xml/audio/ProRes/WebCodecs/异步job |
+| 导出 | 🟡 MP4/MP3/WAV 服务端范围渲染 + srt/txt 同步导出已完成；缺 XML/ProRes/WebCodecs/异步 job |
 | 项目/持久化/多工程 | 🟡 IndexedDB 自动保存恢复、多工程和仪表盘已完成；版本历史/交互卡/工程绑定待补 |
 | 协作 / 分享 / 实时同步 | ❌ 全缺 |
 | 账号 / 计费 / 积分 | ❌ 全缺（TopBar 静态 18.5）|
@@ -156,15 +156,15 @@
 
 | 功能 | 状 | 怎么做 / 技术 / 源站 |
 |---|---|---|
-| 导出 MP4（服务端 @remotion/renderer, h264+aac）| ✅ | `vite-plugin-export.ts` + `remotion/render.mjs` |
+| 导出视频 MP4/WebM（服务端 @remotion/renderer）| ✅ | `submit_export format=video`，`codec=h264|vp8`；`vite-plugin-export.ts` + `remotion/render.mjs` |
 | 字幕烧录 + 字体保真 | ✅ | CaptionsLayer + Google Fonts |
 | 宽高比/fit（长转短基础）| ✅ | 见功能 ⑪ |
 | **导出字幕文件（srt/txt）** | ✅ | `submit_export format=subtitles`：从当前 caption words/phrase/双语 cue 生成 UTF-8 SRT 或 TXT，支持帧/秒范围、同步下载与安全文件名；已在浏览器用真实转写字幕端到端验证 |
-| **导出音频（mp3/wav）** | ❌ | renderMedia codec=mp3，或 ffmpeg 抽音轨。源站 audio tab |
+| **导出音频（mp3/wav）** | ✅ | `submit_export format=audio` 选择 MP3/WAV；复用 Remotion 合成音轨并同步下载，服务端校验格式、范围与安全文件名 |
 | **导出 XML → Premiere/DaVinci（fcpxml）** | ❌ | 时间线序列化成 FCPXML 方言 + MG 作 ProRes 引用。源站 `nleFormat` fcp_xml/fcp_xml_resolve —— 长转短交付口 |
 | **浏览器端 WebCodecs 快导** | ❌ | 轻量导出走 `VideoEncoder`+muxer（不经服务端 Chrome）。源站 in-browser 快路径 |
 | **异步渲染 job + 轮询（track_export）** | ❌ | 现同步阻塞。做：导出入队列返 renderId，前端轮询进度。源站 `track_export` + Remotion Lambda |
-| **部分导出（帧范围）** | 🟡 | 字幕导出已支持 `startFrame`/`endFrameExclusive`（及秒兼容）并归零时间码；MP4/audio 的 renderMedia frame range 仍待补 |
+| **部分导出（帧范围）** | ✅ | MP4/MP3/WAV/字幕统一支持半开 `[startFrame,endFrameExclusive)`；媒体导出转换并透传 Remotion inclusive `frameRange` |
 | **字体兜底确认（confirmFontFallback）** | 🟡 | 已加载常用字体；无「不支持字体清单→二次确认」门。源站 §10 |
 | **免费档水印** | ❌ | 合成加水印层（按 plan）。源站 `updateWatermark` |
 | **导出历史 + 渲染后评分** | ❌ | `export_history` 表 + 反馈。源站 |
