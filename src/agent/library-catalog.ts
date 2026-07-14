@@ -69,6 +69,9 @@ const ZOOM_DESC: Record<ZoomShape, string> = {
   'zoom-out': 'Start tight, pull back to 1×',
   'ease-in': 'Cubic ease-in push toward peak',
   bounce: 'Overshoot then settle (elastic)',
+  snap: 'Very fast snap-in to peak magnification',
+  pulse: 'Heartbeat pulse toward peak then ease back',
+  'whip-in': 'Aggressive front-loaded whip into zoom',
 };
 
 export function buildLibraryItems(templates: Tpl[]): LibraryItem[] {

@@ -31,6 +31,20 @@ import lookTealOrangeFrag from './look-teal-orange.frag?raw';
 import lookMonoFrag from './look-mono.frag?raw';
 import lookWarmFrag from './look-warm.frag?raw';
 import lookCoolFrag from './look-cool.frag?raw';
+import lookSunsetFrag from './look-sunset.frag?raw';
+import lookCyberFrag from './look-cyber.frag?raw';
+import lookBleachFrag from './look-bleach.frag?raw';
+import lookFujiChromeFrag from './look-fuji-chrome.frag?raw';
+import lookFujiPortraFrag from './look-fuji-portra.frag?raw';
+import lookFujiVelviaFrag from './look-fuji-velvia.frag?raw';
+import lookRicohGrFrag from './look-ricoh-gr.frag?raw';
+import lookKodakGoldFrag from './look-kodak-gold.frag?raw';
+import lookDisposableFrag from './look-disposable.frag?raw';
+import lookCinestillFrag from './look-cinestill.frag?raw';
+import sepiaFrag from './sepia.frag?raw';
+import invertFrag from './invert.frag?raw';
+import halftoneFrag from './halftone.frag?raw';
+import motionBlurFrag from './motion-blur.frag?raw';
 import type { FxDef } from './uniforms';
 import type { FxPass } from '../runtime';
 
@@ -339,6 +353,46 @@ export const FX_EFFECTS: Record<string, FxDef> = {
       { key: 'tint', label: '色调', kind: 'color', default: [1.0, 0.45, 0.2], uniform: 'u_tint' },
     ],
   },
+  'builtin:fx-sepia': {
+    id: 'builtin:fx-sepia',
+    name: '棕褐色',
+    desc: '经典 Sepia 复古染色。',
+    frag: sepiaFrag,
+    props: [
+      { key: 'intensity', label: '强度', default: 1, min: 0, max: 1, step: 0.01 },
+      { key: 'contrast', label: '对比', default: 1.1, min: 0.5, max: 2, step: 0.05 },
+    ],
+  },
+  'builtin:fx-invert': {
+    id: 'builtin:fx-invert',
+    name: '反色',
+    desc: 'RGB 反相，负片/故障风格。',
+    frag: invertFrag,
+    props: [
+      { key: 'intensity', label: '强度', default: 1, min: 0, max: 1, step: 0.01 },
+    ],
+  },
+  'builtin:fx-halftone': {
+    id: 'builtin:fx-halftone',
+    name: '半色调网点',
+    desc: '印刷网点/漫画圆点风格。',
+    frag: halftoneFrag,
+    props: [
+      { key: 'dotSize', label: '网点大小', default: 8, min: 2, max: 32, step: 1 },
+      { key: 'contrast', label: '对比', default: 1.3, min: 0.5, max: 2.5, step: 0.05 },
+      { key: 'intensity', label: '强度', default: 1, min: 0, max: 1, step: 0.01 },
+    ],
+  },
+  'builtin:fx-motion-blur': {
+    id: 'builtin:fx-motion-blur',
+    name: '运动模糊',
+    desc: '定向拖影，表现速度感。',
+    frag: motionBlurFrag,
+    props: [
+      { key: 'amount', label: '模糊量', default: 2.5, min: 0, max: 12, step: 0.1 },
+      { key: 'angle', label: '方向', default: 0, min: 0, max: 6.2832, step: 0.05 },
+    ],
+  },
 };
 
 /** source library order first, then extended effects */
@@ -367,6 +421,10 @@ export const FX_ORDER = [
   'builtin:fx-edge-glow',
   'builtin:fx-soft-blur',
   'builtin:fx-light-leak',
+  'builtin:fx-sepia',
+  'builtin:fx-invert',
+  'builtin:fx-halftone',
+  'builtin:fx-motion-blur',
 ] as const;
 
 export const FX_IDS = [
@@ -437,14 +495,139 @@ export const LUT_EFFECTS: Record<string, FxDef> = {
       { key: 'shadows', label: '阴影蓝', default: 0.55, min: 0, max: 1, step: 0.01 },
     ],
   },
+  'builtin:look-sunset': {
+    id: 'builtin:look-sunset',
+    name: '日落暖金',
+    desc: '高光偏金、阴影压暖的黄昏感。',
+    frag: lookSunsetFrag,
+    props: [
+      { key: 'intensity', label: '强度', default: 0.9, min: 0, max: 1, step: 0.01 },
+      { key: 'warmth', label: '暖度', default: 1, min: 0, max: 1.5, step: 0.02 },
+    ],
+  },
+  'builtin:look-cyber': {
+    id: 'builtin:look-cyber',
+    name: '赛博霓虹',
+    desc: '阴影青蓝、高光品红的霓虹科幻调。',
+    frag: lookCyberFrag,
+    props: [
+      { key: 'intensity', label: '强度', default: 0.85, min: 0, max: 1, step: 0.01 },
+      { key: 'contrast', label: '对比', default: 1.2, min: 0.6, max: 2, step: 0.02 },
+    ],
+  },
+  'builtin:look-bleach': {
+    id: 'builtin:look-bleach',
+    name: '漂白旁路',
+    desc: '低饱和 + 抬黑的漂白旁路电影感。',
+    frag: lookBleachFrag,
+    props: [
+      { key: 'intensity', label: '强度', default: 0.9, min: 0, max: 1, step: 0.01 },
+      { key: 'fade', label: '褪色', default: 0.45, min: 0, max: 1, step: 0.01 },
+    ],
+  },
+  // ── film / camera aesthetics (formula looks, not licensed cubes) ─────────
+  'builtin:look-fuji-chrome': {
+    id: 'builtin:look-fuji-chrome',
+    name: '富士 Classic Chrome',
+    desc: '低饱和、柔和对比、中灰偏冷——旅行/街拍纪录片感（灵感自富士胶片模拟，非官方 LUT）。',
+    frag: lookFujiChromeFrag,
+    props: [
+      { key: 'intensity', label: '强度', default: 0.92, min: 0, max: 1, step: 0.01 },
+      { key: 'fade', label: '褪色', default: 0.4, min: 0, max: 1, step: 0.01 },
+      { key: 'grain', label: '颗粒', default: 0.06, min: 0, max: 0.35, step: 0.01 },
+    ],
+  },
+  'builtin:look-fuji-portra': {
+    id: 'builtin:look-fuji-portra',
+    name: '富士人像 Pro Neg',
+    desc: '奶油肤色、粉柔高光、抬黑阴影——人像/生活感（灵感自 Portra / Pro Neg）。',
+    frag: lookFujiPortraFrag,
+    props: [
+      { key: 'intensity', label: '强度', default: 0.9, min: 0, max: 1, step: 0.01 },
+      { key: 'warmth', label: '暖度', default: 0.85, min: 0, max: 1.5, step: 0.02 },
+      { key: 'softness', label: '柔和', default: 0.7, min: 0, max: 1, step: 0.02 },
+      { key: 'grain', label: '颗粒', default: 0.05, min: 0, max: 0.3, step: 0.01 },
+    ],
+  },
+  'builtin:look-fuji-velvia': {
+    id: 'builtin:look-fuji-velvia',
+    name: '富士 Velvia 风光',
+    desc: '高饱和绿/蓝、通透对比——景区/自然风光（灵感自 Velvia 反转片）。',
+    frag: lookFujiVelviaFrag,
+    props: [
+      { key: 'intensity', label: '强度', default: 0.88, min: 0, max: 1, step: 0.01 },
+      { key: 'saturation', label: '饱和', default: 1.1, min: 0.4, max: 1.8, step: 0.02 },
+      { key: 'contrast', label: '对比', default: 1.15, min: 0.7, max: 1.8, step: 0.02 },
+      { key: 'grain', label: '颗粒', default: 0.04, min: 0, max: 0.25, step: 0.01 },
+    ],
+  },
+  'builtin:look-ricoh-gr': {
+    id: 'builtin:look-ricoh-gr',
+    name: '理光 GR 街拍',
+    desc: '硬一点对比、冷中性灰、城市纪实——GR 随手拍感（灵感自理光街拍审美）。',
+    frag: lookRicohGrFrag,
+    props: [
+      { key: 'intensity', label: '强度', default: 0.9, min: 0, max: 1, step: 0.01 },
+      { key: 'contrast', label: '对比', default: 1.22, min: 0.8, max: 1.8, step: 0.02 },
+      { key: 'cool', label: '冷调', default: 0.75, min: 0, max: 1.5, step: 0.02 },
+      { key: 'grain', label: '颗粒', default: 0.07, min: 0, max: 0.35, step: 0.01 },
+    ],
+  },
+  'builtin:look-kodak-gold': {
+    id: 'builtin:look-kodak-gold',
+    name: '柯达金 Gold',
+    desc: '暖黄绿怀旧、软对比——千禧年随手拍 / 家庭相册感（灵感自 Kodak Gold）。',
+    frag: lookKodakGoldFrag,
+    props: [
+      { key: 'intensity', label: '强度', default: 0.9, min: 0, max: 1, step: 0.01 },
+      { key: 'yellow', label: '金黄', default: 1, min: 0, max: 1.5, step: 0.02 },
+      { key: 'fade', label: '褪色', default: 0.4, min: 0, max: 1, step: 0.01 },
+      { key: 'grain', label: '颗粒', default: 0.08, min: 0, max: 0.4, step: 0.01 },
+    ],
+  },
+  'builtin:look-disposable': {
+    id: 'builtin:look-disposable',
+    name: '拍立得 / 一次性',
+    desc: '软糊、绿偏、粗颗粒、暗角——拍立得与一次性相机那味。',
+    frag: lookDisposableFrag,
+    props: [
+      { key: 'intensity', label: '强度', default: 0.92, min: 0, max: 1, step: 0.01 },
+      { key: 'cast', label: '偏色', default: 0.9, min: 0, max: 1.5, step: 0.02 },
+      { key: 'grain', label: '颗粒', default: 0.16, min: 0, max: 0.5, step: 0.01 },
+      { key: 'vignette', label: '暗角', default: 0.45, min: 0, max: 1, step: 0.01 },
+    ],
+  },
+  'builtin:look-cinestill': {
+    id: 'builtin:look-cinestill',
+    name: 'CineStill 夜景',
+    desc: '钨丝灯冷青、高光微溢——夜街/霓虹（灵感自 CineStill 800T）。',
+    frag: lookCinestillFrag,
+    props: [
+      { key: 'intensity', label: '强度', default: 0.88, min: 0, max: 1, step: 0.01 },
+      { key: 'cyan', label: '青冷', default: 0.95, min: 0, max: 1.5, step: 0.02 },
+      { key: 'contrast', label: '对比', default: 1.18, min: 0.7, max: 1.8, step: 0.02 },
+      { key: 'grain', label: '颗粒', default: 0.09, min: 0, max: 0.4, step: 0.01 },
+    ],
+  },
 };
 export const LUT_ORDER = [
   'builtin:slog3-s709',
   'builtin:canon-log3-709',
+  // film / camera aesthetics first for the library tab
+  'builtin:look-fuji-chrome',
+  'builtin:look-fuji-portra',
+  'builtin:look-fuji-velvia',
+  'builtin:look-ricoh-gr',
+  'builtin:look-kodak-gold',
+  'builtin:look-disposable',
+  'builtin:look-cinestill',
   'builtin:look-teal-orange',
   'builtin:look-mono',
   'builtin:look-warm',
   'builtin:look-cool',
+  'builtin:look-sunset',
+  'builtin:look-cyber',
+  'builtin:look-bleach',
 ] as const;
 export const LUT_IDS = [
   ...LUT_ORDER.filter((id) => id in LUT_EFFECTS),

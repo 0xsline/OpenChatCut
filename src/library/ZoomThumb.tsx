@@ -21,10 +21,14 @@ function drawZoom(ctx: CanvasRenderingContext2D, shape: ZoomShape, t: number, sa
   let env: number;
   if (shape === 'instant') {
     env = t < 0.12 ? 0 : t > 0.88 ? 0 : 1;
-  } else if (shape === 'punch' || shape === 'bounce') {
-    if (t < 0.35) env = shapeCurve(shape === 'bounce' ? 'bounce' : 'punch', t / 0.35);
+  } else if (shape === 'punch' || shape === 'bounce' || shape === 'snap' || shape === 'whip-in') {
+    const rise = shape === 'snap' ? 0.18 : shape === 'whip-in' ? 0.28 : 0.35;
+    if (t < rise) env = shapeCurve(shape === 'bounce' ? 'bounce' : shape === 'whip-in' ? 'whip-in' : 'punch', t / rise);
     else if (t < 0.7) env = 1;
     else env = 1 - shapeCurve('punch', (t - 0.7) / 0.3);
+  } else if (shape === 'pulse') {
+    env = shapeCurve('pulse', Math.min(1, t / 0.55));
+    if (t > 0.55) env = Math.max(0, 1 - (t - 0.55) / 0.45) * 0.65;
   } else if (shape === 'hold') {
     if (t < 0.35) env = shapeCurve('hold', t / 0.35);
     else if (t < 0.65) env = 1;

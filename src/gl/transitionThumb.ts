@@ -31,31 +31,69 @@ function ensureRuntime(): boolean {
   }
 }
 
+/** 2D fallback when GL compile/draw fails — still show a readable A/B mix. */
+function drawFallback(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  sampleA: CanvasImageSource,
+  sampleB: CanvasImageSource,
+  progress: number,
+  type: GlslTransitionType,
+): void {
+  ctx.fillStyle = '#141414';
+  ctx.fillRect(0, 0, w, h);
+  const p = Math.max(0, Math.min(1, progress));
+  ctx.globalAlpha = 1 - p;
+  ctx.drawImage(sampleA, 0, 0, w, h);
+  ctx.globalAlpha = p;
+  ctx.drawImage(sampleB, 0, 0, w, h);
+  ctx.globalAlpha = 1;
+  // tint for color-flash transitions so the card isn't a plain crossfade
+  if (type === 'dip-to-color') {
+    const mid = 1 - Math.abs(p * 2 - 1); // peak at 0.5
+    ctx.fillStyle = `rgba(242, 97, 36, ${0.55 * mid})`;
+    ctx.fillRect(0, 0, w, h);
+  }
+}
+
 export function drawTransitionFrame(
   dest: HTMLCanvasElement | CanvasRenderingContext2D,
   type: GlslTransitionType,
   progress: number,
 ): boolean {
+  const sampleA = getSampleFrame('out');
+  const sampleB = getSampleFrame('in');
+  const ctx = dest instanceof HTMLCanvasElement ? dest.getContext('2d') : dest;
+  if (!ctx || !sampleA || !sampleB) return false;
+  const w = dest instanceof HTMLCanvasElement ? dest.width : ctx.canvas.width;
+  const h = dest instanceof HTMLCanvasElement ? dest.height : ctx.canvas.height;
+
   try {
-    const sampleA = getSampleFrame('out');
-    const sampleB = getSampleFrame('in');
-    if (!sampleA || !sampleB || !ensureRuntime() || !glCanvas || !rt) return false;
+    if (!ensureRuntime() || !glCanvas || !rt) {
+      drawFallback(ctx, w, h, sampleA, sampleB, progress, type);
+      return true;
+    }
     const def = GLSL_TRANSITIONS[type];
-    if (!def) return false;
+    if (!def?.frag) {
+      drawFallback(ctx, w, h, sampleA, sampleB, progress, type);
+      return true;
+    }
     const aspect = THUMB_W / THUMB_H;
     const extra = def.uniforms({ time: progress * 2, aspect, direction: 'left' });
     rt.render(def.frag, sampleA, sampleB, progress, extra);
 
-    const ctx = dest instanceof HTMLCanvasElement ? dest.getContext('2d') : dest;
-    if (!ctx) return false;
-    const w = dest instanceof HTMLCanvasElement ? dest.width : ctx.canvas.width;
-    const h = dest instanceof HTMLCanvasElement ? dest.height : ctx.canvas.height;
     ctx.fillStyle = '#141414';
     ctx.fillRect(0, 0, w, h);
     ctx.drawImage(glCanvas, 0, 0, w, h);
     return true;
   } catch {
-    return false;
+    try {
+      drawFallback(ctx, w, h, sampleA, sampleB, progress, type);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

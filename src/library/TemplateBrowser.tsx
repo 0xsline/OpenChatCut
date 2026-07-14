@@ -1,4 +1,5 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { theme } from '../theme';
 import { usePersistedState } from '../hooks/usePersistedState';
 import type { Tpl } from '../types';
@@ -30,6 +31,8 @@ const catLabel = (id: string) => CAT_LABEL[id] ?? id.replace(/-/g, ' ');
 
 const FAV = '__fav__';
 const POPULAR = '__popular__';
+const MENU_W = 168;
+const MENU_H = 108;
 
 interface TemplateBrowserProps {
   templates: Tpl[];
@@ -42,9 +45,27 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
   const [chip, setChip] = useState<string>(POPULAR);
   const [hovered, setHovered] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const favSet = useMemo(() => new Set(favs), [favs]);
   const toggleFav = (id: string) =>
     setFavs((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
+
+  const closeMenu = () => {
+    setMenuFor(null);
+    setMenuPos(null);
+  };
+
+  // Close portal menu on scroll / resize so it doesn't float away from the card.
+  useEffect(() => {
+    if (!menuFor) return;
+    const onDismiss = () => closeMenu();
+    window.addEventListener('scroll', onDismiss, true);
+    window.addEventListener('resize', onDismiss);
+    return () => {
+      window.removeEventListener('scroll', onDismiss, true);
+      window.removeEventListener('resize', onDismiss);
+    };
+  }, [menuFor]);
 
   // chips: 收藏, 热门, then categories sorted by descending count
   const chips = useMemo(() => {
@@ -60,6 +81,8 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
     return templates.filter((t) => t.category === chip);
   }, [templates, chip, favSet]);
 
+  const menuTpl = menuFor ? shown.find((t) => t.id === menuFor) ?? templates.find((t) => t.id === menuFor) : null;
+
   const chipStyle = (active: boolean): React.CSSProperties => ({
     flexShrink: 0, cursor: 'pointer', fontSize: 12, padding: '4px 12px', borderRadius: 999,
     border: `1px solid ${active ? theme.text : theme.border}`,
@@ -67,12 +90,27 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
     color: active ? theme.bg : theme.textDim, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap',
   });
 
+  const openMenu = (tpId: string, anchor: HTMLElement) => {
+    if (menuFor === tpId) {
+      closeMenu();
+      return;
+    }
+    const r = anchor.getBoundingClientRect();
+    const left = Math.min(window.innerWidth - MENU_W - 8, Math.max(8, r.right - MENU_W));
+    const below = r.bottom + 6;
+    const top = below + MENU_H > window.innerHeight - 8
+      ? Math.max(8, r.top - MENU_H - 6)
+      : below;
+    setMenuFor(tpId);
+    setMenuPos({ top, left });
+  };
+
   return (
     <>
       {/* chip row (horizontally scrollable) */}
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 10, marginBottom: 4 }}>
         {chips.map((c) => (
-          <button key={c} onClick={() => setChip(c)} style={chipStyle(chip === c)}>
+          <button key={c} onClick={() => { setChip(c); closeMenu(); }} style={chipStyle(chip === c)}>
             {c === FAV ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="star" size={12} />收藏</span> : c === POPULAR ? '热门' : catLabel(c)}
           </button>
         ))}
@@ -86,42 +124,111 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
             const isFav = favSet.has(tp.id);
             const showActions = hovered === tp.id || menuFor === tp.id || isFav;
             return (
-              <div key={tp.id} onMouseEnter={() => setHovered(tp.id)} onMouseLeave={() => setHovered((h) => (h === tp.id ? null : h))}
-                style={{ position: 'relative', border: `1px solid ${theme.border}`, borderRadius: 8, background: theme.panelAlt, overflow: 'hidden' }}>
+              <div
+                key={tp.id}
+                onMouseEnter={() => setHovered(tp.id)}
+                onMouseLeave={() => setHovered((h) => (h === tp.id ? null : h))}
+                style={{
+                  position: 'relative',
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 8,
+                  background: theme.panelAlt,
+                  // Keep overflow hidden so thumb corners clip; menu is portaled to body.
+                  overflow: 'hidden',
+                  minWidth: 0,
+                }}
+              >
                 <button onClick={() => onAdd(tp)} title={`点击加到时间线：${tp.name}`}
                   style={{ cursor: 'pointer', textAlign: 'left', padding: 0, width: '100%', display: 'block', border: 'none', background: 'none', color: theme.text }}>
                   <div style={{ aspectRatio: '16 / 9', background: '#0c0c0c', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
                     {tp.thumb ? <img src={tp.thumb} alt={tp.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                       : <span style={{ fontSize: 20, color: theme.textDim }}>＋</span>}
                   </div>
-                  <div style={{ padding: '5px 7px', fontSize: 10.5, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tp.name}</div>
+                  <div style={{
+                    padding: '5px 7px', fontSize: 10.5, lineHeight: 1.3,
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    minWidth: 0, maxWidth: '100%', boxSizing: 'border-box',
+                  }}>{tp.name}</div>
                 </button>
 
                 {/* hover actions: ★ favorite (top-left) + ⋮ menu (top-right) */}
                 {showActions && (
                   <>
-                    <button onClick={() => toggleFav(tp.id)} title={isFav ? '取消收藏' : '收藏'}
-                      style={{ position: 'absolute', top: 5, left: 5, width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(0,0,0,0.55)', color: isFav ? '#f5c518' : '#fff', fontSize: 12, lineHeight: 1, display: 'grid', placeItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleFav(tp.id); }}
+                      title={isFav ? '取消收藏' : '收藏'}
+                      style={{ position: 'absolute', top: 5, left: 5, width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(0,0,0,0.55)', color: isFav ? '#f5c518' : '#fff', fontSize: 12, lineHeight: 1, display: 'grid', placeItems: 'center' }}
+                    >
                       <Icon name="star" size={12} filled={isFav} />
                     </button>
-                    <button onClick={() => setMenuFor((m) => (m === tp.id ? null : tp.id))} title="更多操作"
-                      style={{ position: 'absolute', top: 5, right: 5, width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 13, lineHeight: 1, display: 'grid', placeItems: 'center' }}>⋮</button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openMenu(tp.id, e.currentTarget);
+                      }}
+                      title="更多操作"
+                      aria-expanded={menuFor === tp.id}
+                      style={{ position: 'absolute', top: 5, right: 5, width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 13, lineHeight: 1, display: 'grid', placeItems: 'center' }}
+                    >⋮</button>
                   </>
-                )}
-
-                {/* ⋮ menu (source: name header + 添加到时间线 + 用 AI 生成) */}
-                {menuFor === tp.id && (
-                  <div style={{ position: 'absolute', top: 30, right: 5, zIndex: 30, minWidth: 150, background: theme.panelAlt, border: `1px solid ${theme.borderLight}`, borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.5)', padding: 4 }}
-                    onMouseLeave={() => setMenuFor(null)}>
-                    <div style={{ fontSize: 11, color: theme.textDim, padding: '5px 8px', borderBottom: `1px solid ${theme.border}`, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tp.name}</div>
-                    <button onClick={() => { onAdd(tp); setMenuFor(null); }} style={menuItem}>≡ 添加到时间线</button>
-                    <button onClick={() => { onUseAI(tp); setMenuFor(null); }} style={{ ...menuItem, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="sparkles" size={13} />用 AI 生成</button>
-                  </div>
                 )}
               </div>
             );
           })}
         </div>
+      )}
+
+      {/* Portal menu — avoids clip from card overflow:hidden + scrollable grid parent */}
+      {menuTpl && menuPos && createPortal(
+        <>
+          <div
+            className="cc-asset-menu-backdrop"
+            onClick={closeMenu}
+            onContextMenu={(e) => { e.preventDefault(); closeMenu(); }}
+          />
+          <div
+            role="menu"
+            className="cc-media-popover cc-asset-menu-portal"
+            style={{
+              top: menuPos.top,
+              left: menuPos.left,
+              width: MENU_W,
+              minWidth: MENU_W,
+              background: theme.panelAlt,
+              border: `1px solid ${theme.borderLight}`,
+              borderRadius: 8,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              padding: 4,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{
+              fontSize: 11, color: theme.textDim, padding: '5px 8px',
+              borderBottom: `1px solid ${theme.border}`,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              maxWidth: '100%',
+            }} title={menuTpl.name}>{menuTpl.name}</div>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { onAdd(menuTpl); closeMenu(); }}
+              style={menuItem}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#303030'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+            >≡ 添加到时间线</button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { onUseAI(menuTpl); closeMenu(); }}
+              style={{ ...menuItem, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#303030'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+            ><Icon name="sparkles" size={13} />用 AI 生成</button>
+          </div>
+        </>,
+        document.body,
       )}
     </>
   );
@@ -130,4 +237,5 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
 const menuItem: React.CSSProperties = {
   display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none',
   color: theme.text, cursor: 'pointer', fontSize: 12, padding: '7px 8px', borderRadius: 5,
+  boxSizing: 'border-box',
 };

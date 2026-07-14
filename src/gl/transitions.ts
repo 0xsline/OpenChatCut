@@ -16,6 +16,10 @@ import flash from './shaders/flash.frag?raw';
 import lumaBlend from './shaders/luma-blend.frag?raw';
 import softWipe from './shaders/soft-wipe.frag?raw';
 import whipPan from './shaders/whip-pan.frag?raw';
+import circleWipe from './shaders/circle-wipe.frag?raw';
+import radialBlur from './shaders/radial-blur.frag?raw';
+import glitchCut from './shaders/glitch-cut.frag?raw';
+import dipToColor from './shaders/dip-to-color.frag?raw';
 
 export interface GlslTransitionDef {
   frag: string;
@@ -99,6 +103,37 @@ export const GLSL_TRANSITIONS: Record<GlslTransitionType, GlslTransitionDef> = {
     uniforms: () => ({
       u_lineWidth: 0.006, // 细亮线宽，源站表未列，自定
       u_lineColor: [1, 1, 1], // 源站无据自定
+    }),
+  },
+  // ── extended library (generated; not from source bundle) ─────────────────
+  'circle-wipe': {
+    frag: circleWipe,
+    uniforms: () => ({
+      u_feather: 0.04,
+      u_center: [0.5, 0.5],
+    }),
+  },
+  'radial-blur': {
+    frag: radialBlur,
+    uniforms: () => ({
+      u_blurStrength: 0.22,
+      u_center: [0.5, 0.5],
+    }),
+  },
+  'glitch-cut': {
+    frag: glitchCut,
+    uniforms: ({ time }) => ({
+      u_intensity: 1,
+      u_time: time,
+    }),
+  },
+  'dip-to-color': {
+    frag: dipToColor,
+    uniforms: () => ({
+      // warm brand flash — bright enough to read on dark library cards
+      u_color: [0.95, 0.38, 0.14],
+      // short hold so PREVIEW_PROGRESS (~0.42) still shows outgoing + color blend
+      u_hold: 0.12,
     }),
   },
 };

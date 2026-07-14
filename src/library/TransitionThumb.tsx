@@ -67,9 +67,10 @@ export function TransitionThumb({ type, playing = false }: TransitionThumbProps)
       {staticUrl ? (
         <img className="cc-live-thumb-still" src={staticUrl} alt="" draggable={false} />
       ) : null}
+      {/* always-on when still missing so cards never look empty after a GL miss */}
       <canvas
         ref={canvasRef}
-        className="cc-live-thumb-canvas"
+        className={`cc-live-thumb-canvas${staticUrl ? '' : ' always-on'}`}
         width={THUMB_W}
         height={THUMB_H}
         aria-hidden

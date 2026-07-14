@@ -4,13 +4,17 @@
 > `chatcut-reverse/reports/live-editor-audit-2026-07-14/feature-gap-matrix.md`（旧记 42.8%）。
 > 由 5 个并行 agent 逐项对照 **当前 `src/` 真代码** vs **逆向源码规格** 重新核实。
 >
-> **口径**：✅ 已完成 · 🟡 部分 · ❌ 未做。共 132 项。
-> **总覆盖**：约 **80 ✅ / 12 🟡 / 40 ❌**，加权 ≈ **66%**（旧 42.8%）。
-> （2026-07-14 更新：域 7 设计风格、域 11 对话历史持久化、域 10 音频/范围导出；
-> 又一轮并行落地 域 4 说话人重命名/合并、域 5 逐词字幕覆盖、域 8 submit_shader）
-> 但只看**产品核心域（编辑器·Agent·媒体·字幕·生成，域 1–11+16，共 104 项）**，
-> 加权覆盖 ≈ **84%**（80✅/9🟡/15❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
-> "需真后端、单机克隆无对象可服务"的基建域（域 13/14/15 全 0%）。
+> **口径**：✅ 已完成 · 🟡 部分/桩 · ❌ 未做。共约 132 项。
+> **2026-07-15 三 agent 逐域重审「真代码」**（非照旧表抄，注册≠实现，桩记 🟡）。
+> 总覆盖 ≈ **88 ✅ / 12 🟡 / 33 ❌**，加权 ≈ **70%**。
+> 但**产品核心域**（编辑器·时间线·音频·转写·字幕·MG·设计·生成·导出·Agent·技能·长转短，域 1–12+16，约 107 项）
+> 覆盖 ≈ **86%**（约 87✅ / 10🟡 / 10❌）。
+> **本轮相对 7-14 升级为 ✅**：域3 人声隔离（DeepFilterNet3 真装 spawn `deep-filter`）、域1 版本历史（命名快照/回滚）、
+> 域12 `manage_skill` 自定义技能 CRUD、域4 多语言翻译变体（词级共享时间轴，护城河③）、域11 @引用结构化 + 导出历史/水印。
+> **生成域（域8）6 个 submit_\* 全真接后端**（OpenAI/Gemini/Seedance/Kling/ElevenLabs/Doubao/Mureka；`track_progress` 真轮询），
+> 非占位——唯**积分门 G4 缺**（TopBar `credits=18.5` 是硬编码装饰）。
+> 拖低总数的**几乎全是**域 I/13/14/15/17/18 的后端基建（协作/账号计费/多端同步/遥测，基本 0%）——
+> 单机克隆无对象可服务，**结构性 out-of-scope**。去掉这堆后剩余「纯前端可补」缺口很短（见 §二）。
 >
 > **开发纪律（本文存在的意义）**：做任何一项前，先读它在"源码依据"列指向的
 > `chatcut-reverse/复刻规格-Agent工具与后端.md`（52 工具权威语义）/ `PRD.md` /
@@ -25,24 +29,50 @@
 
 | # | 域 | 总 | ✅ | 🟡 | ❌ | 核心度 | 说明 |
 |---|---|---:|---:|---:|---:|---|---|
-| 1 | 项目 / 会话生命周期 | 6 | 4 | 0 | 2 | 核心 | ✅ 版本历史(命名快照/回滚);缺 followup 已另做、resume |
-| 2 | 编辑器核心 / 时间线 | 19 | 18 | 1 | 0 | 核心 | **几近完备**；✅ 色度键/绿幕(chroma-key fx);仅剩 gif/svg/solid 🟡 |
-| 3 | 音频处理 | 6 | 5 | 0 | 1 | 核心 | ducking + ✅ 响度归一(-14 LUFS,WebAudio 离线);缺 AI 降噪/人声隔离 |
-| 4 | 转写 / 文字稿 | 10 | 9 | 0 | 1 | 核心 | ✅ manage_transcript 改错字 + 说话人重命名/合并(均只改文本/label,词↔帧不变) |
-| 5 | 字幕 | 8 | 8 | 0 | 0 | 核心 | ✅ 21 样式 + 逐词覆盖 + 多源合并(多轨转写按时间归并);**全绿** |
-| 6 | Motion Graphics | 8 | 7 | 1 | 0 | 核心 | ✅ manage_template 工程模板(打包/套用 MG+设计风格);仅 MG→透明视频 🟡 |
-| 7 | 设计风格 / 品牌 | 2 | 1 | 1 | 0 | 核心 | ✅ manage_design_style:24 真 catalog 预设+owned 我的风格+自由 role+注入;brand-kit logo 🟡 |
-| 8 | AI 生成（花钱域） | 7 | 6 | 1 | 0 | 核心 | ✅ 5 生成工具 + submit_shader(LLM 写 GLSL→编译校验→注册特效);积分门 🟡 |
-| 9 | 素材 / 媒体 | 12 | 9 | 1 | 2 | 核心 | ✅ import_url_asset + search_stock_media(需key);缺工作区pull/presigned |
-| 10 | 导出 / 交付 | 12 | 8 | 1 | 3 | 核心 | MP4/字幕/音频/范围 + ✅ 异步渲染 job+track_export + ✅ fcpxml 导出;缺水印/导出历史 |
-| 11 | Agent / 对话平台 | 10 | 6 | 4 | 0 | 核心 | ✅ 对话持久化(chat_block);仅剩 thinking UI 等 🟡 |
-| 16 | 长转短（专项） | 4 | 3 | 0 | 1 | 核心 | ✅ 智能切片(LLM 打分成片) + auto-reframe 自动检测;仅剩 9:16 安全区 overlay(纯 UI) |
-| 12 | 技能 Skills | 3 | 1 | 1 | 1 | 可搬 | ✅ 创作模式(8 真 agent-skills,选中注入系统提示);skill_guard/编辑器 🟡 |
+| 1 | 项目 / 会话生命周期 | 6 | 4 | 0 | 2 | 核心 | ✅ 版本历史/followup 卡;会话/项目 CRUD 在 Dashboard+persist(非 agent 工具,忠实内嵌 agent 子集);缺 get_editor_url、restore(软删) |
+| 2 | 编辑器核心 / 时间线 | 19 | 18 | 1 | 0 | 核心 | **几近完备**；色度键✅;⚠ `manage_markers` 编辑层 100% 就绪但**无 agent 工具**(薄包装即补);gif/svg/solid 🟡 |
+| 3 | 音频处理 | 6 | 6 | 0 | 0 | 核心 | **全绿**：ducking + 响度归一(-14 LUFS) + ✅ 人声隔离(DeepFilterNet3 真装 spawn deep-filter) |
+| 4 | 转写 / 文字稿 | 10 | 10 | 0 | 0 | 核心 | **全绿**：改错字 + 说话人重命名/合并 + ✅ 多语言翻译变体(词级共享时间轴,护城河③) + ✅ `edit_gap` 词间气口(list/delete/cap/restore) |
+| 5 | 字幕 | 8 | 8 | 0 | 0 | 核心 | ✅ 21 样式 + 逐词覆盖 + 多源合并 + 双语/变体;⚠ `edit_captions` template enum 只 3/21(改一行解锁) |
+| 6 | Motion Graphics | 8 | 5 | 2 | 1 | 核心 | ✅ 211 模板/manage_template/browse_library/edit_item/沙箱(211过5拦);🟡 create_from_code 契约缩水;❌ MG→透明视频链(convert/register/prores) |
+| 7 | 设计风格 / 品牌 | 2 | 1 | 1 | 0 | 核心 | ✅ manage_design_style:24 真 catalog+owned+自由 role+注入;brand-kit logo 上传 🟡 |
+| 8 | AI 生成（花钱域） | 7 | 6 | 1 | 0 | 核心 | ✅ **6 submit_\* 全真接后端**(image/video/voice/music/sound/shader)+track_progress 真轮询;⚠ 积分门 G4 缺(credits 硬编码) |
+| 9 | 素材 / 媒体 | 12 | 7 | 2 | 3 | 核心 | ✅ manage_media_pool + import_url_asset + search_stock_media;🟡 download_media(只登记不落字节);❌ edit_asset、request_upload/presign、web_browser、手机上传 |
+| 10 | 导出 / 交付 | 12 | 9 | 1 | 2 | 核心 | ✅ mp4/webm/mp3/wav/srt/xml + 帧范围 + 异步 job + 导出历史 + 水印烧录;🟡 **字体只载4款/预设引用~30款静默回退**;❌ 评分、WebCodecs |
+| 11 | Agent / 对话平台 | 10 | 7 | 2 | 1 | 核心 | ✅ 持久化 + propose→apply + ✅@引用结构化 + Ask/Agent 模式 + creative-mode + stop/enhance;🟡 agent 设置;❌ thinking UI(受阻中转模型) |
+| 16 | 长转短（专项） | 4 | 3 | 0 | 1 | 核心 | ✅ 智能切片 + auto-reframe + 色度键;仅剩 9:16 安全区 overlay(纯 CSS) |
+| 12 | 技能 Skills | 3 | 2 | 1 | 0 | 可搬 | ✅ 创作模式(8 真 agent-skills)+ ✅ `manage_skill` 自定义技能 CRUD;skill_guard 🟡(propose→apply 已覆盖意图) |
 | 18 | 遥测 / 增长 | 7 | 0 | 2 | 5 | 混合 | 快捷键/i18n/dockview 可做；遥测需 SaaS |
 | 17 | 引导 / 场景 | 2 | 1 | 0 | 1 | 混合 | ✅ 创作模式/场景技能(域12);roadmap 需后端 |
 | 13 | 协作 / 分享 | 5 | 0 | 0 | 5 | 需后端 | 多人同步/分享/邀请 |
 | 14 | 账号 / 计费 / 积分 | 6 | 0 | 0 | 6 | 需后端 | 鉴权/Stripe/门控 |
 | 15 | 多端 / MCP / 集成 | 5 | 0 | 0 | 5 | 需后端 | 唯本地 stdio MCP 可做 |
+
+---
+
+## 一·B、剩余真缺口（2026-07-15 审计，去掉已完成）
+
+> 只列还没做的。分四类：① 近一行/极低成本 ② 纯前端正经活 ③ 受阻于中转模型 ④ 需真后端(out-of-scope)。
+
+**① 极低成本快赢（管道已铺，唯缺入口）**　🔨 本轮开工(1/2/3)
+- 🔨 `manage_markers` agent 工具（域2）—— 编辑层 Marker 类型+reducer+store 命令全有，只差 list/create/update/delete 的薄 schema+exec。
+- 🔨 `edit_captions` template enum 3→21（域5）—— 18 个样式已实现，`transcript-tools.ts` enum 写死 3 个 → 换成 `CAPTION_STYLES.map(id)` 一行解锁。
+- 🔨 9:16 垂直安全区 overlay（域16）—— `PreviewPanel.tsx` 加一层安全框(内联样式,避开脏 index.css)。
+
+**② 纯前端正经活（有价值、需真写）**　🔨 本轮开工(字体)
+- 🔨 **字体加载 + 导出侧对齐（域10）** —— 实测：预设引用 32 款 Google 字体但只载 4 款；且**导出渲染器 `render.mjs`/`Root.tsx` 零字体加载**（连那 4 款都没进导出）→ 预览与导出都静默回退。修法：`googleFonts.ts` 载全 32 款(7 款中文厂字非 Google，无解只能回退) + 渲染入口 `Root.tsx` 也调 `loadProjectFonts()` 使导出=预览。`search_fonts`/confirmFontFallback 留后续。
+- `edit_item` 暴露 `ripple`/`fade`（域C 护城河①）—— reducer 有 rippleDelete/add-ripple，agent 无从触发；`setItemFade` 同理无工具。补在 move/timing 上。
+- MG→透明视频链 `convert_motion_graphic_to_video`+`register_converted_video`（域6）—— webm vp8-alpha 渲染分支 + 两个工具；fcpxml 里 MG 现在只能留 gap 占位。
+- `view_asset_frames`（域B 唯一❌）+ `read_timeline` 加 view=assets/markers（域B）。
+- `edit_asset`（域9）改/删已生成 MG/effect 资产并重渲缩略图（与 create_from_code 真契约一对）。
+- i18n /zh /en · 自定义快捷键(keymap 存 localStorage) · dockview 可拖拽面板 · 导出历史评分 · agent 设置面板扩展 · brand-kit logo 上传（域7）。
+
+**③ 受阻于中转模型（前端就绪，换真 Claude 才生效）**
+- thinking block UI（域11）—— grok/中转无 thinking 通道。
+
+**④ 需真后端 / 结构性 out-of-scope（单机克隆无对象可服务）**
+- 积分门 G4（域8，无 plan/计费）· 免费档水印门控（域10）· 遥测 report_user_friction/PostHog/Axiom（域I）
+- 协作/分享/邀请/实时同步（域13）· 账号/Stripe/积分门控（域14）· 多端同步/公开 API（域15，**唯本地 stdio MCP 理论可做**）· 公开 roadmap 投票（域17）
 
 ---
 

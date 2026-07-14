@@ -6,6 +6,7 @@ import { msToFrame } from '../transcript/types';
 import { transcribePath } from '../transcript/assemblyai';
 import { fillerIndices } from '../transcript/edit';
 import type { CaptionTemplate, CaptionPacing, CaptionsData } from '../captions/types';
+import { CAPTION_STYLES } from '../captions/styles';
 import { buildTranslation, translateLines } from '../captions/translate';
 import { createVariant, findVariantByLang, upsertVariant } from '../transcript/variants';
 
@@ -102,12 +103,12 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'edit_captions',
-    description: 'Turn the captions overlay on/off and set its style. Captions are a single overlay that mirrors a track\'s transcript and follow edits automatically. Templates: plain, tiktok (big karaoke), netflix (bottom). Pacing: word or phrase. translateTo adds a bilingual translated 2nd line. variantLang switches the MAIN caption line to a transcript translation variant (create it first with manage_transcript translate) — the variant only swaps text, timing stays the source\'s.',
+    description: `Turn the captions overlay on/off and set its style. Captions are a single overlay that mirrors a track's transcript and follow edits automatically. Templates: one of the ${CAPTION_STYLES.length} caption styles (plain / netflix / tiktok / bili / story / …). Pacing: word or phrase. translateTo adds a bilingual translated 2nd line. variantLang switches the MAIN caption line to a transcript translation variant (create it first with manage_transcript translate) — the variant only swaps text, timing stays the source's.`,
     input_schema: {
       type: 'object',
       properties: {
         enabled: { type: 'boolean' },
-        template: { type: 'string', enum: ['plain', 'tiktok', 'netflix'] },
+        template: { type: 'string', enum: CAPTION_STYLES.map((s) => s.id), description: `Caption style id — any of the ${CAPTION_STYLES.length} styles.` },
         pacing: { type: 'string', enum: ['word', 'phrase'] },
         track: { type: 'string', description: 'Source track alias or stable id whose transcript drives captions (default A1).' },
         translateTo: { type: 'string', description: 'Also generate a translated 2nd caption line in this language (e.g. "中文", "English", "日本語").' },

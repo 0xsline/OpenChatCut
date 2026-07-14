@@ -4,19 +4,29 @@ html, body, #root { margin: 0; height: 100%; }
 html, body { overflow: hidden; }
 #root { overflow: hidden; }
 
-/* Hairline scrollbars — as thin as browsers allow */
-* {
-  scrollbar-width: thin; /* Firefox min practical width */
-  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
-}
-*::-webkit-scrollbar { width: 1px; height: 1px; }
+/*
+ * Hairline scrollbars.
+ * Important: do NOT set `scrollbar-width: thin` globally on Chromium —
+ * modern Chrome honors that (~8px) and ignores ::-webkit-scrollbar width.
+ * Use webkit pseudos for Blink/WebKit; Firefox-only for scrollbar-width.
+ */
+*::-webkit-scrollbar { width: 2px; height: 2px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
   border-radius: 999px;
+  border: none;
+  min-height: 20px;
 }
-*::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
+*::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.32); }
 *::-webkit-scrollbar-corner { background: transparent; }
+/* Firefox: thinnest visible option (no sub-thin width) */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  }
+}
 
 /* recording indicator pulse (timeline mic button) */
 @keyframes cc-rec-pulse {
@@ -105,7 +115,6 @@ button, input, select { font: inherit; }
 .cc-sound-search-clear:hover { background:#2a2a2a; color:#ddd; }
 .cc-sound-chips {
   display:flex; gap:6px; overflow-x:auto; padding-bottom:2px;
-  scrollbar-width:thin;
 }
 .cc-sound-chip {
   flex-shrink:0; cursor:pointer; font-size:11.5px; padding:4px 11px; border-radius:999px;
@@ -318,7 +327,7 @@ button, input, select { font: inherit; }
 .cc-track-name { padding-left:1px; color:#747474; font-size:11px; white-space:nowrap; }
 .cc-caption-style-menu { z-index:80; width:286px; max-height:calc(100vh - 16px); display:flex; flex-direction:column; overflow:visible; border:1px solid #424242; background:#292929; box-shadow:0 12px 32px #000b; color:#e2e2e2; font-size:13px; }
 .cc-caption-style-title { padding:10px 14px 6px; color:#a8a8a8; font-size:11px; }
-.cc-caption-style-list { min-height:0; overflow-y:auto; padding:0 8px 5px; scrollbar-width:thin; }
+.cc-caption-style-list { min-height:0; overflow-y:auto; padding:0 8px 5px; }
 .cc-caption-style-list button,.cc-caption-style-save,.cc-caption-translate,.cc-caption-language-menu button { width:100%; min-height:36px; display:flex; align-items:center; gap:10px; padding:4px 8px; border:0; border-radius:4px; background:transparent; color:#ededed; text-align:left; cursor:pointer; }
 .cc-caption-style-list button:hover,.cc-caption-style-list button.active,.cc-caption-style-save:hover,.cc-caption-translate:hover,.cc-caption-language-menu button:hover { background:#3a3a3a; }
 .cc-caption-style-swatch { width:28px; height:25px; flex:0 0 28px; display:grid; place-items:center; overflow:hidden; border:1px solid #555; border-radius:3px; font-size:13px; font-weight:800; line-height:1; }
@@ -402,7 +411,7 @@ button, input, select { font: inherit; }
 .cc-proposal-link:disabled { opacity:.35; cursor:default; }
 .cc-proposal-list {
   list-style:none; margin:0; padding:6px 8px 4px;
-  max-height:220px; overflow-y:auto; scrollbar-width:thin;
+  max-height:220px; overflow-y:auto;
 }
 .cc-proposal-op {
   margin:0 0 3px; border-radius:8px; transition:background .12s ease, opacity .12s ease;
@@ -748,10 +757,16 @@ button, input, select { font: inherit; }
 }
 .cc-tx-section.active { border-color:#4a4a4a; background:#1a1a1a; box-shadow:inset 0 0 0 1px #ffffff10; }
 .cc-tx-section-head {
-  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
   margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid #2a2a2a;
+  min-width:0;
 }
 .cc-tx-section-title { font-size:12px; font-weight:600; color:#ddd; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cc-tx-section-head > .cc-tx-muted {
+  flex-shrink:1; min-width:0; max-width:48%;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  text-align:right;
+}
 .cc-tx-section-grip {
   flex-shrink:0; width:16px; color:#555; font-size:11px; letter-spacing:-1px;
   cursor:default; user-select:none; line-height:1;
@@ -860,7 +875,7 @@ button, input, select { font: inherit; }
 .cc-cap-btn.ghost { background:transparent; color:#999; }
 .cc-cap-styles {
   display:grid; grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); gap:6px;
-  max-height:148px; overflow-y:auto; padding:2px; scrollbar-width:thin;
+  max-height:148px; overflow-y:auto; padding:2px;
 }
 .cc-cap-style {
   display:flex; flex-direction:column; align-items:center; gap:4px;

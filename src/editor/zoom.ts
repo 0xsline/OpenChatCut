@@ -5,12 +5,21 @@ import type { ZoomEffect, ZoomShape } from './types';
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
 // source shape curves (entry.js A2): punch = cubic ease-out, hold = cubic
-// ease-in-out, slow-push / instant = linear. Extended: zoom-out / ease-in / bounce.
+// ease-in-out, slow-push / instant = linear. Extended: zoom-out / ease-in / bounce / snap / pulse / whip-in.
 export function shapeCurve(shape: ZoomShape, t: number): number {
   const c = clamp01(t);
-  if (shape === 'punch') return 1 - Math.pow(1 - c, 3);
+  if (shape === 'punch' || shape === 'snap') return 1 - Math.pow(1 - c, 3);
   if (shape === 'hold') return c < 0.5 ? 4 * c * c * c : 1 - Math.pow(-2 * c + 2, 3) / 2;
   if (shape === 'ease-in') return c * c * c;
+  if (shape === 'whip-in') {
+    // very front-loaded: almost there by 35%
+    return 1 - Math.pow(1 - c, 5);
+  }
+  if (shape === 'pulse') {
+    // 0 → 1 → ~0.65 settle (heartbeat-ish envelope of the ease-in phase)
+    const w = Math.sin(c * Math.PI);
+    return clamp01(w * (1.15 - 0.15 * c));
+  }
   if (shape === 'bounce') {
     // overshoot then settle near 1
     const s = 1.70158 * 1.2;
@@ -30,6 +39,9 @@ export function easeFrames(z: ZoomEffect, dur: number): { easeIn: number; easeOu
     case 'instant': easeIn = 0; easeOut = 0; break;
     case 'slow-push': easeIn = dur; easeOut = 0; break;
     case 'punch': easeIn = Math.round(dur * 0.2) || 8; easeOut = 0; break;
+    case 'snap': easeIn = Math.round(dur * 0.1) || 4; easeOut = 0; break;
+    case 'whip-in': easeIn = Math.round(dur * 0.18) || 6; easeOut = 0; break;
+    case 'pulse': easeIn = Math.round(dur * 0.45) || 12; easeOut = Math.round(dur * 0.35) || 10; break;
     case 'zoom-out': easeIn = Math.round(dur * 0.35) || 10; easeOut = 0; break;
     case 'ease-in': easeIn = Math.round(dur * 0.55) || 12; easeOut = 0; break;
     case 'bounce': easeIn = Math.round(dur * 0.4) || 12; easeOut = Math.round(dur * 0.15) || 4; break;

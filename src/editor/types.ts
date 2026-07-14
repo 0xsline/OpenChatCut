@@ -63,7 +63,9 @@ export interface ReframeCurveV1 {
 }
 
 /** source builtin:zoom — parametric animated zoom (shape curve) or a reframe curve */
-export type ZoomShape = 'hold' | 'punch' | 'slow-push' | 'instant' | 'zoom-out' | 'ease-in' | 'bounce';
+export type ZoomShape =
+  | 'hold' | 'punch' | 'slow-push' | 'instant' | 'zoom-out' | 'ease-in' | 'bounce'
+  | 'snap' | 'pulse' | 'whip-in';
 // zh labels: source four + extended library curves
 export const ZOOM_SHAPE_LABELS: Record<ZoomShape, string> = {
   punch: '冲击',
@@ -73,10 +75,14 @@ export const ZOOM_SHAPE_LABELS: Record<ZoomShape, string> = {
   'zoom-out': '拉远',
   'ease-in': '缓入推近',
   bounce: '弹性推近',
+  snap: '快切推近',
+  pulse: '心跳脉冲',
+  'whip-in': '甩入推近',
 };
 /** library display order */
 export const ZOOM_SHAPE_ORDER: readonly ZoomShape[] = [
   'punch', 'hold', 'slow-push', 'instant', 'zoom-out', 'ease-in', 'bounce',
+  'snap', 'pulse', 'whip-in',
 ];
 export interface ZoomEffect {
   /** peak magnification (source 1..16, default 1.5) */
@@ -240,14 +246,19 @@ export type GlslTransitionType =
   | 'organic-dissolve'
   | 'impact-shake'
   | 'anticipation-zoom'
-  | 'clean-line-wipe';
+  | 'clean-line-wipe'
+  | 'circle-wipe'
+  | 'radial-blur'
+  | 'glitch-cut'
+  | 'dip-to-color';
 
-/** source transition builtin ids (the 12 video transitions) */
+/** source transition builtin ids + extended library transitions */
 export type TransitionType = GlslTransitionType;
 
 export const GLSL_TRANSITION_TYPES: ReadonlySet<TransitionType> = new Set<TransitionType>([
   'cross-dissolve', 'dip-to-black', 'soft-wipe', 'whip-pan', 'flash', 'luma-blend',
   'page-curl', 'rack-focus', 'organic-dissolve', 'impact-shake', 'anticipation-zoom', 'clean-line-wipe',
+  'circle-wipe', 'radial-blur', 'glitch-cut', 'dip-to-color',
 ]);
 
 export const CSS_TRANSITION_TYPES: ReadonlySet<TransitionType> = new Set<TransitionType>([
@@ -269,9 +280,13 @@ export const TRANSITION_LABELS: Record<TransitionType, string> = {
   'rack-focus': '焦点转场',
   'soft-wipe': '柔化擦除转场',
   'whip-pan': '甩镜转场',
+  'circle-wipe': '圆形擦除转场',
+  'radial-blur': '径向模糊转场',
+  'glitch-cut': '故障切换转场',
+  'dip-to-color': '闪色转场',
 };
 
-/** source catalog order (library-catalog/transitions_items.json, EN alpha). */
+/** source catalog order + extended transitions. */
 export const TRANSITION_ORDER: readonly TransitionType[] = [
   'anticipation-zoom',
   'clean-line-wipe',
@@ -285,6 +300,10 @@ export const TRANSITION_ORDER: readonly TransitionType[] = [
   'rack-focus',
   'soft-wipe',
   'whip-pan',
+  'circle-wipe',
+  'radial-blur',
+  'glitch-cut',
+  'dip-to-color',
 ];
 
 export type TransitionDirection = 'left' | 'right' | 'up' | 'down';

@@ -27,6 +27,7 @@ import { LOUDNESS_TOOL_SCHEMAS, LOUDNESS_TOOL_NAMES, execLoudnessTool } from './
 import { ISOLATE_TOOL_SCHEMAS, ISOLATE_TOOL_NAMES, execIsolateTool } from './isolate-tools';
 import { SKILL_TOOL_SCHEMAS, SKILL_TOOL_NAMES, execSkillTool } from './skill-tools';
 import { WATERMARK_TOOL_SCHEMAS, WATERMARK_TOOL_NAMES, execWatermarkTool } from './watermark-tools';
+import { MARKERS_TOOL_SCHEMAS, MARKERS_TOOL_NAMES, execMarkersTool } from './markers-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -201,6 +202,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...SKILL_TOOL_SCHEMAS,
   // 文本水印叠加（源 updateWatermark：enabled/text/position/opacity，渲染+烧录导出）
   ...WATERMARK_TOOL_SCHEMAS,
+  // 时间线批注/TODO 锚点（源 manage_markers：list/create/update/delete，点/段锚帧或锚 clip）
+  ...MARKERS_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -263,6 +266,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (ISOLATE_TOOL_NAMES.has(name)) return execIsolateTool(name, args, ctx);
   if (SKILL_TOOL_NAMES.has(name)) return execSkillTool(name, args, ctx);
   if (WATERMARK_TOOL_NAMES.has(name)) return execWatermarkTool(name, args, ctx);
+  if (MARKERS_TOOL_NAMES.has(name)) return execMarkersTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();

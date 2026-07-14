@@ -61,7 +61,7 @@ function ctxOf(draft: ReturnType<typeof makeDraft>): AgentContext {
 // ── 1. catalog sizes ───────────────────────────────────────────────────────
 assert.ok(FX_IDS.length >= 20, `fx catalog too small: ${FX_IDS.length}`);
 assert.ok(LUT_IDS.length >= 4, `lut catalog too small: ${LUT_IDS.length}`);
-assert.strictEqual(TRANSITION_ORDER.length, 12, '12 video transitions');
+assert.ok(TRANSITION_ORDER.length >= 12, `video transitions too few: ${TRANSITION_ORDER.length}`);
 assert.ok(ZOOM_SHAPE_ORDER.length >= 4, 'zoom shapes present');
 console.log(`catalog: fx=${FX_IDS.length} lut=${LUT_IDS.length} tr=${TRANSITION_ORDER.length} zoom=${ZOOM_SHAPE_ORDER.length} sfx=${SOUND_EFFECTS.length} mg=${TEMPLATES.length}`);
 
