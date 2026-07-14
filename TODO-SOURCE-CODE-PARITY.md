@@ -69,6 +69,7 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 - **`src/agent/tools.ts` 是唯一共享接线文件**：各自只**在末尾 append** 自己的 `import`+`...SCHEMAS`+`NAMES.has` 三件套,**别改别人已有的行**;冲突时后提交者重跑 `tsc -p tsconfig.app.json`+`-p tsconfig.node.json`。
 - **Claude 的旧 `TODO-SOURCE-PARITY.md` 有 3 处 ✅ 是错的**（ask_followup / edit_captions / manage_transcript——按"功能"算而非"契约"算）;**以本文（真 schema 契约）为准**,那份仅作产品覆盖视角参考。
 - 各自认领项做完在 §7 勾选并标 commit;新发现的 schema diff 直接补条目。
+- ⚠ **护城河③回归已修（082c065，Claude）**：`ede0597` 加 playOrder 时 `keptSegments` 丢了「遇删除词断段」边界→删词不再缩短 `durationInFrames`（`npm test` 在 `script.check.ts:50` 红）。已改为仅相邻源下标才并段。**动 `transcript/edit.ts` 的 keptSegments/retimeWords 或 playOrder 前先跑 `npm test`**,别再吞掉删除词的源span。
 
 ---
 

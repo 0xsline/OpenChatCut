@@ -143,6 +143,7 @@ export function ChatComposer(props: ChatComposerProps) {
       )}
       <textarea
         ref={taRef}
+        data-cc-chat-composer
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(); } }}

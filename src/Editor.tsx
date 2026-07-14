@@ -17,10 +17,14 @@ import type { ProjectDoc, TimelineState } from './editor/types';
 import { timelineTrackIds, trackAlias, trackKind } from './editor/types';
 import { TEMPLATES } from './editor/initial';
 import { saveProject, loadCreativeMode, saveCreativeMode, type ProjectMeta } from './persist/projectStore';
+import { saveVersion } from './persist/versionStore';
 import { importMedia } from './media/upload';
 import { AUDIO_ASSETS } from './audio/library';
 import type { Tpl } from './types';
 import type { AgentReference } from './agent/context';
+import { useShortcutDispatcher } from './shortcuts/useShortcutDispatcher';
+import type { TimelineShortcutApi } from './shortcuts/timelineApi';
+import { ShortcutsDialog } from './shortcuts/ShortcutsDialog';
 
 interface EditorProps {
   initial: ProjectDoc;
@@ -99,6 +103,10 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const [showDesign, setShowDesign] = useState(false);
   // 版本历史弹窗 (source /api/versions)
   const [showVersions, setShowVersions] = useState(false);
+  // 快捷键帮助 (source Mod+Alt+K)
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  /** Timeline fills this; Editor binds the global shortcut dispatcher to it. */
+  const shortcutApiRef = useRef<TimelineShortcutApi | null>(null);
 
   // Read the playhead only when an edit needs it. Continuous visual updates are
   // painted inside Timeline so playback does not re-render the whole editor.
@@ -169,22 +177,81 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     }
   }, [exporting]);
 
-  // keyboard: delete selected, undo/redo
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-      if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedId) {
-        e.preventDefault();
-        commands.removeItem(state.selectedId);
-      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        e.shiftKey ? commands.redo() : commands.undo();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [state.selectedId, commands]);
+  // Global shortcut bus (source live-shortcuts / shortcut-dispatcher — 54 actions)
+  const tl = () => shortcutApiRef.current;
+  useShortcutDispatcher({
+    'play-pause': () => tl()?.playPause(),
+    'seek-back': () => { const a = tl(); if (a) a.seekTo(a.getPlayhead() - 1); },
+    'seek-fwd': () => { const a = tl(); if (a) a.seekTo(a.getPlayhead() + 1); },
+    'seek-back-sec': () => { const a = tl(); if (a) a.seekTo(a.getPlayhead() - state.fps); },
+    'seek-fwd-sec': () => { const a = tl(); if (a) a.seekTo(a.getPlayhead() + state.fps); },
+    'shuttle-back': () => tl()?.shuttle(-1),
+    'shuttle-fwd': () => tl()?.shuttle(1),
+    'shuttle-pause': () => tl()?.shuttle(0),
+    'shuttle-jog-back': () => tl()?.shuttleJog(-1),
+    'shuttle-jog-fwd': () => tl()?.shuttleJog(1),
+
+    'undo': () => commands.undo(),
+    'redo': () => commands.redo(),
+    'copy': () => tl()?.copySelected(),
+    'cut': () => tl()?.cutSelected(),
+    'paste': () => tl()?.pasteClipboard(),
+    'paste-effects': () => tl()?.pasteEffects(),
+    'duplicate': () => tl()?.duplicateSelected(),
+    'delete': ({ shift }) => tl()?.deleteSelected(shift),
+    'split': () => tl()?.splitAtPlayhead(),
+    'interaction-mode-selection': () => tl()?.setEditMode('selection'),
+    'interaction-mode-trim': () => tl()?.setEditMode('trim'),
+    'interaction-mode-blade': () => tl()?.setEditMode('blade'),
+    'nudge-left': ({ shift }) => tl()?.nudgeSelected(-(shift ? 5 : 1)),
+    'nudge-right': ({ shift }) => tl()?.nudgeSelected(shift ? 5 : 1),
+    'trim-start': () => tl()?.trimSelectedToPlayhead('start'),
+    'trim-end': () => tl()?.trimSelectedToPlayhead('end'),
+    'select-all': () => {
+      // single-select model: pick earliest clip (full multi-select is later)
+      const first = [...state.items].sort((a, b) => a.startFrame - b.startFrame)[0];
+      if (first) commands.selectItem(first.id);
+    },
+    'select-after': () => tl()?.selectAfterPlayhead(),
+    'move-up': () => tl()?.moveSelectedTrack(-1),
+    'move-down': () => tl()?.moveSelectedTrack(1),
+    'move-left-boundary': () => tl()?.moveSelectedToBoundary('left'),
+    'move-right-boundary': () => tl()?.moveSelectedToBoundary('right'),
+    'save-version': () => {
+      const name = `版本 ${new Date().toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+      void saveVersion(project.id, name, docRef.current).then(() => setShowVersions(true));
+    },
+
+    'prev-edit': () => tl()?.gotoEdit(-1),
+    'next-edit': () => tl()?.gotoEdit(1),
+    'zone-in': () => tl()?.setZoneIn(),
+    'zone-out': () => tl()?.setZoneOut(),
+    'zone-clear': () => tl()?.clearZone(),
+    'zone-clip': () => tl()?.zoneFromClip(),
+    'zone-selection': () => tl()?.zoneFromSelection(),
+
+    'marker-add': () => tl()?.addMarker(false),
+    'marker-shortcut-add-and-open': () => tl()?.addMarker(true),
+    'marker-modify-at-playhead': () => tl()?.modifyMarkerAtPlayhead(),
+    'marker-delete-at-playhead': () => tl()?.deleteMarkerAtPlayhead(),
+    'marker-prev': () => tl()?.gotoMarker(-1),
+    'marker-next': () => tl()?.gotoMarker(1),
+
+    'snapping': () => tl()?.toggleSnap(),
+    'selection-mode': () => tl()?.setEditMode('selection'),
+    'zoom-in': () => tl()?.zoomBy(1.4),
+    'zoom-out': () => tl()?.zoomBy(1 / 1.4),
+    'zoom-fit': () => tl()?.fitToView(),
+    'fullscreen': () => tl()?.fullscreenTimeline(),
+    'keyboard-shortcuts': () => setShowShortcuts(true),
+
+    'ask-ai': () => {
+      setChatCollapsed(false);
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLTextAreaElement>('[data-cc-chat-composer]')?.focus();
+      });
+    },
+  });
 
   return (
     <div
@@ -224,6 +291,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           onRestore={(d) => { commands.applyDoc(d); setShowVersions(false); }}
           onClose={() => setShowVersions(false)} />
       )}
+
+      {showShortcuts && <ShortcutsDialog onClose={() => setShowShortcuts(false)} />}
 
       <ChatPanel ctx={agentCtx} projectId={project.id} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} seed={chatSeed} creativeMode={creativeMode} onCreativeModeChange={changeCreativeMode} />
 
@@ -289,6 +358,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       <div style={{ gridColumn: '3 / -1', gridRow: 4, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         <TimelineTabs doc={doc} commands={commands} />
         <Timeline state={state} commands={commands} playerRef={playerRef}
+          shortcutApiRef={shortcutApiRef}
           onRecordVoiceover={async (blob) => {
             const ext = blob.type.includes('ogg') ? 'ogg' : 'webm';
             const asset = await importMedia(new File([blob], `旁白.${ext}`, { type: blob.type }), state.fps);

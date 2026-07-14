@@ -19,6 +19,7 @@ import type { CaptionsData, CaptionTemplate } from '../captions/types';
 import { hasLibraryDrag, parseLibraryDrag, type LibraryDragPayload } from '../library/drag';
 import { ALL_FX, FX_EFFECTS, LUT_EFFECTS } from '../gl/fx/effects';
 import { TEMPLATES } from '../editor/initial';
+import type { TimelineShortcutApi, ItemClipboard } from '../shortcuts/timelineApi';
 
 interface TimelineProps {
   state: TimelineState;
@@ -26,6 +27,8 @@ interface TimelineProps {
   playerRef: RefObject<PlayerRef | null>;
   /** record a mic voiceover → upload the blob → drop it on an audio track */
   onRecordVoiceover?: (blob: Blob) => void;
+  /** Filled by Timeline so Editor can bind the global shortcut dispatcher. */
+  shortcutApiRef?: RefObject<TimelineShortcutApi | null>;
 }
 
 const HEADER_W = 192;
@@ -202,7 +205,7 @@ function waveformPath(seed: string, width: number): string {
   return bars.join(' ');
 }
 
-export function Timeline({ state, commands, playerRef, onRecordVoiceover }: TimelineProps) {
+export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortcutApiRef }: TimelineProps) {
   const empty = state.items.length === 0;
   const total = empty ? 0 : timelineDuration(state);
   const trackIds = timelineTrackIds(state);
@@ -529,38 +532,299 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
   // markers (source manage_markers): add at the playhead + open its note editor
   const [editMarker, setEditMarker] = useState<string | null>(null);
   const markers = state.markers ?? [];
-  const addMarkerAtPlayhead = () => setEditMarker(commands.addMarker(playheadRef.current));
   const gotoMarker = (dir: 1 | -1) => {
     const sorted = [...markers].filter((m) => m.scope === 'project').sort((a, b) => a.fromFrame - b.fromFrame);
     const next = dir === 1 ? sorted.find((m) => m.fromFrame > playheadRef.current) : [...sorted].reverse().find((m) => m.fromFrame < playheadRef.current);
     if (next) seekFrame(next.fromFrame);
   };
-  // keyboard shortcuts (ref so the listener attaches once but reads fresh state)
-  const rippleDeleteSelected = () => { if (state.selectedId) commands.rippleDeleteItem(state.selectedId); };
-  const kb = { bladeSelected, addMarkerAtPlayhead, gotoMarker, fitToView, toggleSnap: () => setSnapping((s) => !s), setEditMode, rippleDeleteSelected };
-  const kbRef = useRef(kb);
-  kbRef.current = kb;
+  // ── I/O marks + shuttle + clipboard (source shortcut-dispatcher) ─────────
+  const [zoneIn, setZoneIn] = useState<number | null>(null);
+  const [zoneOut, setZoneOut] = useState<number | null>(null);
+  const itemClipRef = useRef<ItemClipboard>(null);
+  const shuttleRateRef = useRef(0); // -4..+4 steps
+  const shuttleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopShuttle = () => {
+    shuttleRateRef.current = 0;
+    if (shuttleTimerRef.current) {
+      clearInterval(shuttleTimerRef.current);
+      shuttleTimerRef.current = null;
+    }
+  };
+  const runShuttle = () => {
+    if (shuttleTimerRef.current) clearInterval(shuttleTimerRef.current);
+    const rate = shuttleRateRef.current;
+    if (rate === 0) {
+      playerRef.current?.pause();
+      return;
+    }
+    playerRef.current?.pause();
+    // step frames proportional to |rate| (~15fps * rate)
+    const step = Math.sign(rate) * Math.max(1, Math.abs(rate));
+    const ms = Math.max(16, 80 / Math.max(1, Math.abs(rate)));
+    shuttleTimerRef.current = setInterval(() => {
+      const cur = playheadRef.current;
+      const next = Math.max(0, Math.min(total - 1, cur + step * 2));
+      playerRef.current?.seekTo(next);
+      paintPlayhead(next, true);
+      if (next <= 0 || next >= total - 1) stopShuttle();
+    }, ms);
+  };
+
+  // Expose shortcut API to Editor (single global dispatcher lives there)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement;
-      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return;
-      if (e.metaKey || e.ctrlKey) return; // leave undo/redo etc. to Editor
-      // ripple delete (source ⇧⌫): remove selected clip + close the gap
-      if ((e.key === 'Backspace' || e.key === 'Delete') && e.shiftKey) { e.preventDefault(); kbRef.current.rippleDeleteSelected(); return; }
-      const k = e.key.toLowerCase();
-      if (k === 'v') { e.preventDefault(); kbRef.current.setEditMode('selection'); }
-      else if (k === 'b') { e.preventDefault(); kbRef.current.setEditMode('blade'); }
-      else if (k === 'n') { e.preventDefault(); kbRef.current.setEditMode('trim'); }
-      else if (k === 'c') { e.preventDefault(); kbRef.current.bladeSelected(); }
-      else if (k === 'm') { e.preventDefault(); kbRef.current.addMarkerAtPlayhead(); }
-      else if (k === 's') { e.preventDefault(); kbRef.current.toggleSnap(); }
-      else if (k === 'z' && e.shiftKey) { e.preventDefault(); kbRef.current.fitToView(); }
-      else if (e.key === '[') { e.preventDefault(); kbRef.current.gotoMarker(-1); }
-      else if (e.key === ']') { e.preventDefault(); kbRef.current.gotoMarker(1); }
+    if (!shortcutApiRef) return;
+    const api: TimelineShortcutApi = {
+      getPlayhead: () => playheadRef.current,
+      seekTo: (frame) => seekFrame(frame),
+      playPause: () => {
+        stopShuttle();
+        playerRef.current?.toggle();
+      },
+      isPlaying: () => {
+        try { return !!playerRef.current?.isPlaying?.(); } catch { return false; }
+      },
+      setEditMode: (m) => setEditMode(m),
+      toggleSnap: () => setSnapping((s) => !s),
+      fitToView: () => fitToView(),
+      zoomBy: (f) => zoomBy(f),
+      splitAtPlayhead: () => bladeSelected(),
+      nudgeSelected: (delta) => {
+        const id = state.selectedId;
+        if (!id) return;
+        const it = state.items.find((x) => x.id === id);
+        if (!it) return;
+        commands.moveItem(id, { startFrame: Math.max(0, it.startFrame + delta) });
+      },
+      trimSelectedToPlayhead: (side) => {
+        const id = state.selectedId;
+        if (!id) return;
+        const it = state.items.find((x) => x.id === id);
+        if (!it) return;
+        const ph = playheadRef.current;
+        if (side === 'start') {
+          if (ph <= it.startFrame || ph >= it.startFrame + it.durationInFrames) return;
+          const delta = ph - it.startFrame;
+          const timing: { startFrame: number; durationInFrames: number; srcInFrame?: number } = {
+            startFrame: ph,
+            durationInFrames: it.durationInFrames - delta,
+          };
+          // Advance source in-point so the visible media stays aligned (split semantics).
+          if (it.kind === 'video' || it.kind === 'audio') {
+            timing.srcInFrame = (it.srcInFrame ?? 0) + delta;
+          }
+          commands.setItemTiming(id, timing);
+        } else {
+          if (ph <= it.startFrame || ph >= it.startFrame + it.durationInFrames) return;
+          commands.setItemTiming(id, { durationInFrames: Math.max(1, ph - it.startFrame) });
+        }
+      },
+      selectAfterPlayhead: () => {
+        const ph = playheadRef.current;
+        const next = [...state.items]
+          .filter((it) => it.startFrame >= ph)
+          .sort((a, b) => a.startFrame - b.startFrame)[0]
+          ?? [...state.items].filter((it) => it.startFrame + it.durationInFrames > ph).sort((a, b) => a.startFrame - b.startFrame)[0];
+        if (next) commands.selectItem(next.id);
+      },
+      selectUnderPlayhead: () => {
+        const ph = playheadRef.current;
+        const hit = state.items.find((it) => ph >= it.startFrame && ph < it.startFrame + it.durationInFrames);
+        commands.selectItem(hit?.id ?? state.items[0]?.id ?? null);
+      },
+      gotoEdit: (dir) => {
+        const ph = playheadRef.current;
+        const cuts = new Set<number>([0, total]);
+        for (const it of state.items) {
+          cuts.add(it.startFrame);
+          cuts.add(it.startFrame + it.durationInFrames);
+        }
+        const sorted = [...cuts].sort((a, b) => a - b);
+        if (dir === 1) {
+          const n = sorted.find((f) => f > ph + 0.5);
+          if (n != null) seekFrame(n);
+        } else {
+          const n = [...sorted].reverse().find((f) => f < ph - 0.5);
+          if (n != null) seekFrame(n);
+        }
+      },
+      gotoMarker: (dir) => gotoMarker(dir),
+      addMarker: (open) => {
+        const id = commands.addMarker(playheadRef.current);
+        if (open) setEditMarker(id);
+      },
+      modifyMarkerAtPlayhead: () => {
+        const ph = playheadRef.current;
+        const m = (state.markers ?? []).find((x) => x.scope === 'project' && Math.abs(x.fromFrame - ph) <= 1);
+        if (m) setEditMarker(m.id);
+        else {
+          const id = commands.addMarker(ph);
+          setEditMarker(id);
+        }
+      },
+      deleteMarkerAtPlayhead: () => {
+        const ph = playheadRef.current;
+        const m = (state.markers ?? []).find((x) => x.scope === 'project' && Math.abs(x.fromFrame - ph) <= 1);
+        if (m) commands.removeMarker(m.id);
+      },
+      setZoneIn: () => setZoneIn(playheadRef.current),
+      setZoneOut: () => setZoneOut(playheadRef.current),
+      clearZone: () => { setZoneIn(null); setZoneOut(null); },
+      zoneFromClip: () => {
+        const ph = playheadRef.current;
+        const hit = state.items.find((it) => ph >= it.startFrame && ph < it.startFrame + it.durationInFrames)
+          ?? state.items.find((it) => it.id === state.selectedId);
+        if (hit) {
+          setZoneIn(hit.startFrame);
+          setZoneOut(hit.startFrame + hit.durationInFrames);
+        }
+      },
+      zoneFromSelection: () => {
+        const it = state.items.find((x) => x.id === state.selectedId);
+        if (it) {
+          setZoneIn(it.startFrame);
+          setZoneOut(it.startFrame + it.durationInFrames);
+        }
+      },
+      getZone: () => ({ inFrame: zoneIn, outFrame: zoneOut }),
+      shuttle: (dir) => {
+        if (dir === 0) {
+          stopShuttle();
+          playerRef.current?.pause();
+          return;
+        }
+        // stack rate like JKL
+        const cur = shuttleRateRef.current;
+        let next = cur;
+        if (dir === 1) next = cur <= 0 ? 1 : Math.min(4, cur + 1);
+        else next = cur >= 0 ? -1 : Math.max(-4, cur - 1);
+        shuttleRateRef.current = next;
+        runShuttle();
+      },
+      shuttleJog: (dir) => {
+        stopShuttle();
+        seekFrame(playheadRef.current + dir);
+      },
+      moveSelectedTrack: (dir) => {
+        const id = state.selectedId;
+        if (!id) return;
+        const it = state.items.find((x) => x.id === id);
+        if (!it) return;
+        const ids = timelineTrackIds(state);
+        const idx = ids.indexOf(it.track);
+        if (idx < 0) return;
+        const ni = idx + dir;
+        if (ni < 0 || ni >= ids.length) return;
+        const dest = ids[ni]!;
+        if (trackKind(state, dest) !== trackKind(state, it.track)) return;
+        commands.moveItem(id, { track: dest, startFrame: it.startFrame });
+      },
+      moveSelectedToBoundary: (side) => {
+        const id = state.selectedId;
+        if (!id) return;
+        const it = state.items.find((x) => x.id === id);
+        if (!it) return;
+        const same = state.items.filter((x) => x.track === it.track && x.id !== id);
+        if (side === 'left') {
+          const left = same.filter((x) => x.startFrame + x.durationInFrames <= it.startFrame)
+            .sort((a, b) => (b.startFrame + b.durationInFrames) - (a.startFrame + a.durationInFrames))[0];
+          const target = left ? left.startFrame + left.durationInFrames : 0;
+          commands.moveItem(id, { startFrame: target });
+        } else {
+          const right = same.filter((x) => x.startFrame >= it.startFrame + it.durationInFrames)
+            .sort((a, b) => a.startFrame - b.startFrame)[0];
+          const target = right ? right.startFrame - it.durationInFrames : it.startFrame;
+          commands.moveItem(id, { startFrame: Math.max(0, target) });
+        }
+      },
+      copySelected: () => {
+        const it = state.items.find((x) => x.id === state.selectedId);
+        if (!it) return;
+        itemClipRef.current = {
+          kind: 'item',
+          item: {
+            ...it,
+            props: it.props ? { ...it.props } : it.props,
+            effects: it.effects?.map((e) => ({ ...e, overrides: e.overrides ? { ...e.overrides } : undefined })),
+          },
+        };
+      },
+      cutSelected: () => {
+        const it = state.items.find((x) => x.id === state.selectedId);
+        if (!it) return;
+        itemClipRef.current = {
+          kind: 'item',
+          item: {
+            ...it,
+            props: it.props ? { ...it.props } : it.props,
+            effects: it.effects?.map((e) => ({ ...e, overrides: e.overrides ? { ...e.overrides } : undefined })),
+          },
+        };
+        commands.removeItem(it.id);
+      },
+      pasteClipboard: () => {
+        const clip = itemClipRef.current;
+        if (!clip || clip.kind !== 'item') return;
+        const src = clip.item;
+        const newId = `item_${crypto.randomUUID()}`;
+        const newItem: TimelineItem = {
+          ...src,
+          id: newId,
+          startFrame: Math.max(0, playheadRef.current),
+          props: src.props ? { ...src.props } : src.props,
+          effects: src.effects?.map((e) => ({ ...e, overrides: e.overrides ? { ...e.overrides } : undefined })),
+        };
+        // applyState works for both copy (original still present) and cut (snapshot only).
+        commands.applyState({
+          ...state,
+          items: [...state.items, newItem],
+          selectedId: newId,
+        });
+      },
+      pasteEffects: () => {
+        const it = state.items.find((x) => x.id === state.selectedId);
+        if (!it || !fxClip || it.kind === 'audio') return;
+        if (fxClip.filters) commands.setItemFilters(it.id, fxClip.filters);
+        if (fxClip.transform) commands.setItemTransform(it.id, fxClip.transform);
+        commands.setItemZoom(it.id, fxClip.zoom ?? null);
+        commands.setItemFade(it.id, {
+          fadeInFrames: fxClip.fadeInFrames ?? 0,
+          fadeOutFrames: fxClip.fadeOutFrames ?? 0,
+        });
+      },
+      copyEffects: () => {
+        const it = state.items.find((x) => x.id === state.selectedId);
+        if (!it || it.kind === 'audio') return;
+        setFxClip({
+          filters: it.filters,
+          transform: it.transform,
+          zoom: it.zoom,
+          fadeInFrames: it.fadeInFrames,
+          fadeOutFrames: it.fadeOutFrames,
+        });
+      },
+      duplicateSelected: () => {
+        if (state.selectedId) commands.duplicateItem(state.selectedId);
+      },
+      deleteSelected: (ripple) => {
+        if (!state.selectedId) return;
+        if (ripple) commands.rippleDeleteItem(state.selectedId);
+        else commands.removeItem(state.selectedId);
+      },
+      fullscreenTimeline: () => {
+        if (document.fullscreenElement) void document.exitFullscreen();
+        else void scrollRef.current?.requestFullscreen();
+      },
+      getFxClip: () => fxClip,
+      setFxClip: (fx) => setFxClip(fx),
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+    shortcutApiRef.current = api;
+    return () => {
+      if (shortcutApiRef.current === api) shortcutApiRef.current = null;
+      stopShuttle();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keep API fresh each render
+  });
 
   const startDrag = (e: React.PointerEvent, id: string, mode: DragMode, baseStart: number, baseDur: number, baseTrack: TrackId, baseSrcIn = 0) => {
     if (state.tracks?.[baseTrack]?.locked) return;
@@ -791,6 +1055,39 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
                       </div>
                     );
                   })}
+              {/* I/O zone (source mark in/out) */}
+              {(zoneIn != null || zoneOut != null) && (
+                <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3 }}>
+                  {zoneIn != null && zoneOut != null && zoneOut > zoneIn && (
+                    <div
+                      title="入出点区间"
+                      style={{
+                        position: 'absolute', left: zoneIn * px, top: 0, bottom: 0,
+                        width: (zoneOut - zoneIn) * px,
+                        background: 'rgba(88, 166, 255, 0.18)',
+                        borderLeft: '2px solid #58a6ff',
+                        borderRight: '2px solid #58a6ff',
+                      }}
+                    />
+                  )}
+                  {zoneIn != null && (
+                    <div title="入点 (I)" style={{
+                      position: 'absolute', left: zoneIn * px, top: 2, transform: 'translateX(-50%)',
+                      width: 0, height: 0,
+                      borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
+                      borderTop: '8px solid #58a6ff',
+                    }} />
+                  )}
+                  {zoneOut != null && (
+                    <div title="出点 (O)" style={{
+                      position: 'absolute', left: zoneOut * px, top: 2, transform: 'translateX(-50%)',
+                      width: 0, height: 0,
+                      borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
+                      borderTop: '8px solid #f0883e',
+                    }} />
+                  )}
+                </div>
+              )}
               {/* marker layer (source: bookmark pins over the ruler; range bar to the right) */}
               {markers.filter((m) => m.scope === 'project').map((m) => (
                 <div key={m.id} style={{ position: 'absolute', left: m.fromFrame * px, top: 0, zIndex: 4, pointerEvents: 'none' }}>
