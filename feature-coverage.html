@@ -279,7 +279,7 @@
       ["媒体池（文件夹/搜索/排序/收藏）", "partial", "「我的素材」面板 + assets[] 已做（导入/点击落轨）；文件夹/搜索/排序/收藏待补。源站 manage_media_pool", "P0"],
       ["手机上传 /m/:token", "todo", "扫码手机传素材。源站 phone-upload"],
       ["库素材浏览（转场/特效/LUT/缩放/音效）", "partial", "MG 动画库(chips+收藏+⋮)、音效/Audio 库已有；<b>转场(12,GLSL徽标)/特效(8)/缩放(4曲线) 三分类接入</b>(ResourceBrowser 卡片列表→点击应用到选中片段,走 addTransition/setItemEffects/setItemZoom;浏览器验证:点圆形遮罩→预览裁圆→撤销)。LUT 列出 2 内置但置灰(数据受阻见下行)。剩:LUT 数据、我的素材/媒体池深化。源站 browse_library", "P1", "claude"],
-      ["LUT（Sony S-Log3 / Canon Log3）", "todo", "GL 底座就绪（可挂 3D LUT 采样通道）；<b>受阻</b>：源站是真 .cube 3D 查找表（Sony_Slog3_s709.cube / CinemaGamut_CanonLog3-to-Canon709.cube），资源在其 CDN /luts/&lt;id&gt;，按约束不碰源站后端→无 LUT 数据。可选：自带公开 .cube 或按 S-Log3/CLog3 传递函数公式解析实现（注明自定）。effect 契约 type:effect+intensity 已定。源站 2 个内置 log 转换"],
+      ["LUT（Sony S-Log3 / Canon Log3）", "done", "<b>公式实现</b>（源站是真 .cube 存其 CDN，按约束不接后端→改用公开传递函数）：slog3-s709.frag（S-Log3 解码+S-Gamut3.Cine→709 矩阵+709 OETF）/canon-log3-709.frag（Canon Log3 ACES IDT+Cinema Gamut→709），intensity 混原图↔调色，走 per-clip GL 管线(ALL_FX)；库 LUT tab 可点应用+inspector 强度调。新进程渲 still 验证输出调色相异。<b>非源站精确 .cube</b>（注明自定）。源站 2 内置 log 转换"],
       ["在线素材搜索（Pexels/Pixabay/…）", "todo", "search_stock_media 归一各家 API → import URL"],
       ["URL → 资产（push_asset/download_media）", "todo", "公网媒体 URL 注册/下载为工程资产"],
       ["网页抓取（web_browser）", "todo", "Firecrawl/Jina 抓网页作参考。源站 web_browser"],
