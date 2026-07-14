@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Proposal } from '../agent/proposal';
 import { Icon } from './icons';
+import { highCostOps } from '../agent/skillGuard';
 
 // Edit-proposal review card (source agent-chat proposal). Redesigned as a
 // compact dark review panel: header badge + impact, selectable op rows with
@@ -15,6 +16,7 @@ export function ProposalCard({ proposal, onApply, onReject, onPreview }: {
   const ops = proposal.options[0].operations;
   const [selected, setSelected] = useState<Set<number>>(() => new Set(ops.map((_, i) => i)));
   const [preview, setPreview] = useState(false);
+  const costly = highCostOps(proposal);
 
   const toggle = (i: number) =>
     setSelected((s) => {
@@ -48,7 +50,17 @@ export function ProposalCard({ proposal, onApply, onReject, onPreview }: {
             <div className="cc-proposal-title-row">
               <h3 className="cc-proposal-title">{proposal.title || '编辑提案'}</h3>
               <span className="cc-proposal-badge">待确认</span>
+              {costly.length > 0 && (
+                <span className="cc-proposal-badge" title={costly.join(', ')} style={{ background: 'rgba(240,136,62,0.2)', color: '#f0c9a0', borderColor: 'rgba(240,136,62,0.45)' }}>
+                  高成本
+                </span>
+              )}
             </div>
+            {costly.length > 0 && (
+              <p className="cc-proposal-summary" style={{ color: '#f0c9a0' }}>
+                Skill guard：包含生成/导出等高成本操作，请确认后再应用。
+              </p>
+            )}
             {proposal.summary ? (
               <p className="cc-proposal-summary">{proposal.summary}</p>
             ) : null}

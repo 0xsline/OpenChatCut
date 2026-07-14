@@ -40,7 +40,9 @@ const MAX_ROW = 72;
 // clip fill by ITEM kind — source --tl-item-* oklch (video/image=blue, audio=green,
 // motion-graphic=pink, text=amber). Video/image also render a media thumbnail on top.
 const CLIP_COLOR: Record<TimelineItem['kind'], string> = {
-  video: theme.clipVideo, image: theme.clipVideo, audio: theme.clipAudio,
+  video: theme.clipVideo, image: theme.clipVideo, gif: theme.clipVideo, svg: theme.clipVideo,
+  solid: '#4a5568',
+  audio: theme.clipAudio,
   'motion-graphic': theme.clipMg, text: theme.clipText,
 };
 /** default time scale — 1s ≈ 36px @30fps (shorter clips, less “巨型色块”) */
@@ -1137,7 +1139,48 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
                     <button className="cc-track-fixed-action" title={collapsed ? '展开轨道' : '折叠轨道'} onClick={() => commands.updateTrack(trackId, { collapsed: !collapsed })}>{collapsed ? '+' : '−'}</button>
                     <button className="cc-track-fixed-action" disabled={busy} title={busy ? '只能删除空轨道' : '删除轨道'} onClick={() => commands.deleteTracks([trackId])}><Icon name="trash" size={14} /></button>
                   </div>
-                  {!collapsed && <span className="cc-track-name">{trackName}{config.role ? ` · ${config.role}` : ''}</span>}
+                  {!collapsed && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '0 8px 6px', minWidth: 0 }}>
+                      <span className="cc-track-name">{trackName}{config.role === 'anchor' ? ' · 主轨' : config.role === 'follower' ? ' · 跟随' : ''}</span>
+                      {/* Audio ducking (source track role: Anchor / Follower / Off) */}
+                      {meta.kind === 'audio' && (
+                        <div title="音频闪避" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          <select
+                            aria-label={`${trackName} 闪避角色`}
+                            value={config.role ?? 'off'}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (v === 'off') commands.updateTrack(trackId, { role: null, audioRouting: { duckDepthDb: null } });
+                              else if (v === 'anchor') commands.updateTrack(trackId, { role: 'anchor', audioRouting: { duckDepthDb: null } });
+                              else commands.updateTrack(trackId, { role: 'follower', audioRouting: { duckDepthDb: config.audioRouting?.duckDepthDb ?? -12 } });
+                            }}
+                            style={{
+                              width: '100%', fontSize: 10, background: theme.bg, color: theme.text,
+                              border: `1px solid ${theme.border}`, borderRadius: 4, padding: '2px 4px',
+                            }}
+                          >
+                            <option value="off">关闭 — 不参与闪避</option>
+                            <option value="anchor">主轨 — 其他轨在此之下闪避</option>
+                            <option value="follower">跟随 — 在语音下闪避</option>
+                          </select>
+                          {config.role === 'follower' && (
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: theme.textDim }}>
+                              <span style={{ flexShrink: 0 }}>压低</span>
+                              <input
+                                type="range" min={-24} max={-1} step={1}
+                                value={config.audioRouting?.duckDepthDb ?? -12}
+                                onChange={(e) => commands.updateTrack(trackId, { audioRouting: { duckDepthDb: Number(e.target.value) } })}
+                                style={{ flex: 1, minWidth: 0 }}
+                              />
+                              <span style={{ width: 28, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                                {config.audioRouting?.duckDepthDb ?? -12}dB
+                              </span>
+                            </label>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {captionMenu?.id === trackId && (
                     <div className="cc-caption-style-menu" style={{ position: 'fixed', left: captionMenu.left, top: captionMenu.top }} onPointerDown={(e) => e.stopPropagation()}>
                       <div className="cc-caption-style-title">样式</div>

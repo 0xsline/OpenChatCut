@@ -5,7 +5,7 @@ import { GlTransition } from '../gl/GlTransition';
 import { ClipFx, firstGlEffect } from '../gl/ClipFx';
 import { keptSegments } from '../transcript/edit';
 import { zoomAt } from './zoom';
-import { CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, timelineTrackIds, trackKind } from './types';
+import { CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
 import type { AspectFit, CssTransitionType, GlslTransitionType, TimelineItem, TimelineState, TransitionDirection, Watermark } from './types';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
@@ -128,13 +128,14 @@ function AudioClip({ item, fps, muted, gainAt }: { item: TimelineItem; fps: numb
   );
 }
 
-// Imported image / video fills the canvas by the fit mode (objectFit).
+// Imported image / video / gif / svg fills the canvas by the fit mode (objectFit).
 function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt }: { item: TimelineItem; fit: AspectFit; muted: boolean; canvasW: number; canvasH: number; gainAt: (frame: number) => number }) {
   const objectFit = fit === 'cover' ? 'cover' : 'contain';
   const style: React.CSSProperties = { width: '100%', height: '100%', objectFit };
+  const still = item.kind === 'image' || item.kind === 'gif' || item.kind === 'svg';
   // clip carries a WebGL effect → render pixels through the GL pass; video keeps
   // its audio via a separate muted-visual <Audio> (the GL source video is muted).
-  if (firstGlEffect(item)) {
+  if (firstGlEffect(item) && (item.kind === 'video' || item.kind === 'image')) {
     return (
       <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
         <ClipFx item={item} fit={fit} width={canvasW} height={canvasH} />
@@ -152,7 +153,7 @@ function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt }: { item: Timel
   }
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
-      {item.kind === 'image'
+      {still
         ? <Img src={item.src!} style={style} />
         : item.denoisedSrc
           // visual from original video (muted) + isolated voice track
@@ -167,6 +168,12 @@ function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt }: { item: Timel
             volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} style={style} />}
     </AbsoluteFill>
   );
+}
+
+/** Solid color fill (source solid item). */
+function SolidLayer({ item }: { item: TimelineItem }) {
+  const color = String(item.props?.color ?? '#1a1a1a');
+  return <AbsoluteFill style={{ background: color }} />;
 }
 
 const GRID = 'repeating-conic-gradient(#242424 0% 25%, #1c1c1c 0% 50%) 50% / 40px 40px';
@@ -243,11 +250,10 @@ function ItemLayer({ item, canvasW, canvasH, fit }: { item: TimelineItem; canvas
 export function TimelineComposition({ state, transparent }: { state: TimelineState; transparent?: boolean }) {
   const isHidden = (t: TimelineItem['track']) => state.tracks?.[t]?.hidden ?? false;
   const isMuted = (t: TimelineItem['track']) => state.tracks?.[t]?.muted ?? false;
-  const isVisual = (k: TimelineItem['kind']) => k === 'motion-graphic' || k === 'image' || k === 'video' || k === 'text';
   const trackIds = timelineTrackIds(state);
   const visualTracks = trackIds.filter((id) => trackKind(state, id) === 'video');
   // hidden track = fully disabled (no picture, no sound)
-  const visual = state.items.filter((it) => isVisual(it.kind) && visualTracks.includes(it.track) && !isHidden(it.track));
+  const visual = state.items.filter((it) => isVisualItemKind(it.kind) && visualTracks.includes(it.track) && !isHidden(it.track));
   // Paint visual bottom-to-top. Timeline rows are stored top-to-bottom.
   const ordered = [...visual].sort((a, b) => a.track === b.track
     ? a.startFrame - b.startFrame
@@ -270,7 +276,7 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
   // (video/image); with a DOM clip involved (MG/text — no GL texture, same
   // limit as the source's DOM layers) they fall back to a CSS cross-dissolve.
   const byId = new Map(state.items.map((it) => [it.id, it]));
-  const texturable = (it?: TimelineItem) => it?.kind === 'video' || it?.kind === 'image';
+  const texturable = (it?: TimelineItem) => !!it && isRasterMediaKind(it.kind) && it.kind !== 'svg';
   const enabledTransitions = (state.transitions ?? []).filter((t) => t.enabled !== false);
   const entranceOf = new Map<string, { type: CssTransitionType; L: number; dir: TransitionDirection }>();
   const extendBefore = new Map<string, number>();
@@ -315,6 +321,8 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
               ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
               : item.kind === 'text'
               ? <TextLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
+              : item.kind === 'solid'
+              ? <SolidLayer item={item} />
               : <MediaFill item={item} fit={fit} muted={isMuted(item.track)} gainAt={(frame) => duckGain(item.track, frame)} canvasW={state.width} canvasH={state.height} />}
           </ClipWrapper>
         );

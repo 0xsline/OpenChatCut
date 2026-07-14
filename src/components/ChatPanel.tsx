@@ -4,6 +4,7 @@ import type { AgentContext } from '../agent/context';
 import type { TimelineState } from '../editor/types';
 import { useAgent } from '../agent/useAgent';
 import { thinkingPhrase } from '../agent/thinkingPhrases';
+import { shouldBlockAutoApply } from '../agent/skillGuard';
 import { ProposalCard } from './ProposalCard';
 import { ChatMessage } from './chat/ChatMessage';
 import { ChatComposer, type ChatMode, type RefItem } from './chat/ChatComposer';
@@ -73,12 +74,13 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   // clear any preview when the proposal is resolved (applied/rejected)
   useEffect(() => { if (!proposal) onPreviewState(null); }, [proposal, onPreviewState]);
 
-  // 设置·自动应用: when on, apply the proposal (all ops) as soon as it arrives
+  // 设置·自动应用: when on, apply the proposal (all ops) as soon as it arrives.
+  // skill_guard: high-cost tools still require the proposal card (source skill_guard).
   useEffect(() => {
-    if (proposal && autoApply) {
-      const all = new Set(proposal.options[0].operations.map((_, i) => i));
-      applyProposal(all);
-    }
+    if (!proposal || !autoApply) return;
+    if (shouldBlockAutoApply(proposal, autoApply)) return;
+    const all = new Set(proposal.options[0].operations.map((_, i) => i));
+    applyProposal(all);
   }, [proposal, autoApply, applyProposal]);
 
   const submit = () => {

@@ -79,7 +79,8 @@ export type ProjectAction =
   | { type: 'pool.renameFolder'; id: string; name: string }
   | { type: 'pool.deleteFolder'; id: string }
   | { type: 'pool.moveAssets'; ids: string[]; folderId?: string }
-  | { type: 'pool.updateAsset'; id: string; patch: Partial<Pick<MediaAsset, 'name' | 'favorite' | 'code' | 'props'>> }
+  | { type: 'pool.updateAsset'; id: string; patch: Partial<Pick<MediaAsset, 'name' | 'favorite' | 'code' | 'props' | 'src' | 'durationInFrames' | 'width' | 'height' | 'kind'>> }
+  | { type: 'pool.relinkAsset'; id: string; src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind'] }
   | { type: 'pool.removeAsset'; id: string }
   | { type: 'design.set'; style: DesignStyle | null }
   | { type: 'design.patch'; patch: Partial<DesignStyle> };
@@ -94,7 +95,7 @@ export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' 
 const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
-  'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset', 'pool.removeAsset']);
+  'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset', 'pool.relinkAsset', 'pool.removeAsset']);
 
 const EMPTY_CURVE = { version: 1, timebase: 'effect-frame', coordinateSpace: 'composition-normalized', keyframes: [] } as const;
 
@@ -671,6 +672,41 @@ export function projectReduce(p: ProjectDoc, a: Action | ProjectAction): Project
         const asset = p.assets.find((item) => item.id === a.id);
         if (!asset || Object.entries(a.patch).every(([key, value]) => asset[key as keyof MediaAsset] === value)) return p;
         return { ...p, assets: p.assets.map((item) => item.id === a.id ? { ...item, ...a.patch } : item) };
+      }
+      case 'pool.relinkAsset': {
+        // Source: Relink File / Relink Missing Media — update pool asset + every clip that used the old src.
+        const asset = p.assets.find((item) => item.id === a.id);
+        if (!asset) return p;
+        const oldSrc = asset.src;
+        const nextAsset: MediaAsset = {
+          ...asset,
+          src: a.src,
+          name: a.name ?? asset.name,
+          durationInFrames: a.durationInFrames ?? asset.durationInFrames,
+          width: a.width ?? asset.width,
+          height: a.height ?? asset.height,
+          kind: a.kind ?? asset.kind,
+        };
+        return {
+          ...p,
+          assets: p.assets.map((item) => (item.id === a.id ? nextAsset : item)),
+          timelines: p.timelines.map((tl) => ({
+            ...tl,
+            items: tl.items.map((it) => {
+              if (it.src !== oldSrc && !(it.kind === 'motion-graphic' && it.templateId === a.id)) return it;
+              if (it.kind === 'motion-graphic' && it.templateId === a.id) return it; // MG code assets don't use src relink
+              return {
+                ...it,
+                src: a.src,
+                name: a.name ?? it.name,
+                width: a.width ?? it.width,
+                height: a.height ?? it.height,
+                durationInFrames: a.durationInFrames ?? it.durationInFrames,
+                kind: (a.kind && a.kind !== 'motion-graphic' ? a.kind : it.kind) as typeof it.kind,
+              };
+            }),
+          })),
+        };
       }
       case 'pool.removeAsset':
         if (!p.assets.some((item) => item.id === a.id)) return p;

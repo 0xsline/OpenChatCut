@@ -1,26 +1,64 @@
-import type { MediaAsset } from '../editor/types';
+import type { MediaAsset, MediaAssetKind } from '../editor/types';
 
-export type MediaKind = 'video' | 'image' | 'audio';
-const IMAGE_SECONDS = 5; // stills get a default on-screen duration
+export type MediaKind = 'video' | 'image' | 'audio' | 'gif' | 'svg';
+const IMAGE_SECONDS = 5; // stills / svg get a default on-screen duration
+const GIF_SECONDS_FALLBACK = 5;
 
 export function kindOf(file: File): MediaKind | null {
-  if (file.type.startsWith('video/')) return 'video';
-  if (file.type.startsWith('image/')) return 'image';
-  if (file.type.startsWith('audio/')) return 'audio';
+  const name = file.name.toLowerCase();
+  const type = (file.type || '').toLowerCase();
+  if (type === 'image/gif' || name.endsWith('.gif')) return 'gif';
+  if (type === 'image/svg+xml' || name.endsWith('.svg')) return 'svg';
+  if (type.startsWith('video/')) return 'video';
+  if (type.startsWith('image/')) return 'image';
+  if (type.startsWith('audio/')) return 'audio';
   return null;
 }
 
 // Probe duration + native dimensions in the browser before uploading, so the
 // timeline item gets a correct length and aspect immediately.
 function probe(file: File, kind: MediaKind, fps: number): Promise<{ durationInFrames: number; width?: number; height?: number }> {
-  const fallback = { durationInFrames: Math.round(IMAGE_SECONDS * fps) };
-  if (kind === 'image') {
+  const stillFrames = Math.round(IMAGE_SECONDS * fps);
+  const fallback = { durationInFrames: stillFrames };
+  if (kind === 'image' || kind === 'svg') {
     return new Promise((resolve) => {
       const url = URL.createObjectURL(file);
       const img = new Image();
-      img.onload = () => { URL.revokeObjectURL(url); resolve({ durationInFrames: Math.round(IMAGE_SECONDS * fps), width: img.naturalWidth, height: img.naturalHeight }); };
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve({ durationInFrames: stillFrames, width: img.naturalWidth || undefined, height: img.naturalHeight || undefined });
+      };
       img.onerror = () => { URL.revokeObjectURL(url); resolve(fallback); };
       img.src = url;
+    });
+  }
+  if (kind === 'gif') {
+    // Prefer video element for duration; fall back to image size + default length.
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const vid = document.createElement('video');
+      vid.preload = 'metadata';
+      const done = (meta: { durationInFrames: number; width?: number; height?: number }) => {
+        URL.revokeObjectURL(url);
+        resolve(meta);
+      };
+      vid.onloadedmetadata = () => {
+        const dur = Number.isFinite(vid.duration) && vid.duration > 0
+          ? Math.max(1, Math.round(vid.duration * fps))
+          : Math.round(GIF_SECONDS_FALLBACK * fps);
+        done({ durationInFrames: dur, width: vid.videoWidth || undefined, height: vid.videoHeight || undefined });
+      };
+      vid.onerror = () => {
+        const img = new Image();
+        img.onload = () => done({
+          durationInFrames: Math.round(GIF_SECONDS_FALLBACK * fps),
+          width: img.naturalWidth || undefined,
+          height: img.naturalHeight || undefined,
+        });
+        img.onerror = () => done(fallback);
+        img.src = url;
+      };
+      vid.src = url;
     });
   }
   return new Promise((resolve) => {
@@ -55,8 +93,16 @@ const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypt
 /** Probe → upload a media file → return a MediaAsset for the pool. */
 export async function importMedia(file: File, fps: number): Promise<MediaAsset> {
   const kind = kindOf(file);
-  if (!kind) throw new Error('不支持的文件类型（仅视频 / 图片 / 音频）');
+  if (!kind) throw new Error('不支持的文件类型（视频 / 图片 / 音频 / GIF / SVG）');
   const meta = await probe(file, kind, fps);
   const src = await uploadFile(file);
-  return { id: newId(), name: file.name, kind, src, durationInFrames: meta.durationInFrames, width: meta.width, height: meta.height };
+  return {
+    id: newId(),
+    name: file.name,
+    kind: kind as MediaAssetKind,
+    src,
+    durationInFrames: meta.durationInFrames,
+    width: meta.width,
+    height: meta.height,
+  };
 }

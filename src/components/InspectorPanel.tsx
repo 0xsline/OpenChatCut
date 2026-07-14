@@ -1,11 +1,148 @@
 import { theme } from '../theme';
-import type { Tpl } from '../types';
+import type { PropSpec, Tpl } from '../types';
 import type { ClipEffect, ClipEffectValue, ClipFilters, ClipTransform, TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../editor/types';
 import { TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../editor/types';
 import { ALL_FX as FX_EFFECTS } from '../gl/fx/effects';
 const FX_IDS = Object.keys(FX_EFFECTS);
 import { usePersistedState } from '../hooks/usePersistedState';
 import { Icon } from './icons';
+import { FONT_CATALOG } from '../fonts/googleFonts';
+
+/** MG propSchema field — source types: text/number/color/boolean/font/select/image/asset. */
+function PropSchemaField({
+  spec, value, onChange,
+}: {
+  spec: PropSpec;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const label = spec.label ?? spec.key;
+  const fieldStyle: React.CSSProperties = {
+    width: '100%', background: theme.bg, color: theme.text,
+    border: `1px solid ${theme.borderLight}`, borderRadius: 5, padding: '4px 6px', fontSize: 12,
+  };
+  let opts = (spec.options ?? []).map((o) => (
+    typeof o === 'string' ? { label: o, value: o } : o
+  ));
+  // theme select without explicit options — common MG preset
+  if (spec.type === 'select' && !opts.length && spec.key === 'theme') {
+    opts = [{ label: 'light', value: 'light' }, { label: 'dark', value: 'dark' }];
+  }
+
+  let control: React.ReactNode;
+  switch (spec.type) {
+    case 'boolean':
+      control = (
+        <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} style={{ accentColor: theme.accent }} />
+      );
+      break;
+    case 'color':
+      control = (
+        <input type="color" value={String(value ?? '#000000')} onChange={(e) => onChange(e.target.value)} />
+      );
+      break;
+    case 'number':
+      control = (
+        <input
+          type="number"
+          min={spec.min}
+          max={spec.max}
+          step={spec.step ?? 1}
+          value={value === undefined || value === null ? '' : Number(value)}
+          onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))}
+          style={fieldStyle}
+        />
+      );
+      break;
+    case 'font':
+      control = (
+        <select
+          value={String(value ?? spec.defaultValue ?? 'Inter')}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ ...fieldStyle, fontFamily: String(value ?? 'Inter') }}
+        >
+          {FONT_CATALOG.map((f) => (
+            <option key={f.family} value={f.family} style={{ fontFamily: f.family }}>
+              {f.family}{f.aliases[0] ? ` · ${f.aliases[0]}` : ''}{f.loadable ? '' : ' (预览)'}
+            </option>
+          ))}
+          {/* keep custom values that aren't in catalog */}
+          {typeof value === 'string' && value && !FONT_CATALOG.some((f) => f.family === value) ? (
+            <option value={value}>{value}</option>
+          ) : null}
+        </select>
+      );
+      break;
+    case 'select':
+      control = (
+        <select value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} style={fieldStyle}>
+          {opts.length === 0 && <option value={String(value ?? '')}>{String(value ?? '—')}</option>}
+          {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      );
+      break;
+    case 'image':
+    case 'asset':
+      control = (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <input
+            type="text"
+            placeholder="图片 URL 或 /media/uploads/…"
+            value={String(value ?? '')}
+            onChange={(e) => onChange(e.target.value)}
+            style={fieldStyle}
+          />
+          <input
+            type="file"
+            accept="image/*,.svg,.gif"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              try {
+                const { importMedia } = await import('../media/upload');
+                const asset = await importMedia(file, 30);
+                onChange(asset.src);
+              } catch {
+                /* ignore */
+              }
+              e.target.value = '';
+            }}
+            style={{ fontSize: 11, color: theme.textDim }}
+          />
+          {typeof value === 'string' && value && (
+            <img src={value} alt="" style={{ maxWidth: '100%', maxHeight: 72, objectFit: 'contain', borderRadius: 4, background: '#111' }} />
+          )}
+        </div>
+      );
+      break;
+    case 'text':
+      control = (
+        <textarea
+          rows={2}
+          value={String(value ?? '')}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ ...fieldStyle, resize: 'vertical', fontFamily: 'inherit' }}
+        />
+      );
+      break;
+    default:
+      control = (
+        <input
+          type="text"
+          value={String(value ?? '')}
+          onChange={(e) => onChange(e.target.value)}
+          style={fieldStyle}
+        />
+      );
+  }
+
+  return (
+    <label className="cc-insp-mg-field">
+      <span title={spec.key}>{label}</span>
+      {control}
+    </label>
+  );
+}
 
 interface FadePatch {
   fadeInFrames?: number;
@@ -344,6 +481,12 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
       ? '视频片段。可在时间线上拖动位置、裁剪首尾（左裁剪推进源入点）。'
       : selectedItem.kind === 'image'
       ? '图片片段。'
+      : selectedItem.kind === 'gif'
+      ? 'GIF 片段。'
+      : selectedItem.kind === 'svg'
+      ? 'SVG 片段。'
+      : selectedItem.kind === 'solid'
+      ? '纯色片段。'
       : selectedItem.kind === 'text'
       ? '文字片段。'
       : null
@@ -374,31 +517,36 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
             {hasVolume && <><SectionLabel>音量</SectionLabel><VolumeControl item={selectedItem} onChange={onItemVolumeChange} /></>}
             {isVisual && <><SectionLabel>变换</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} /></>}
             {isVisual && <><SectionLabel>滤镜</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} /></>}
-            {(selectedItem.kind === 'video' || selectedItem.kind === 'image') && <><SectionLabel>特效</SectionLabel><EffectsControl item={selectedItem} onChange={onItemEffectsChange} /></>}
+            {(selectedItem.kind === 'video' || selectedItem.kind === 'image' || selectedItem.kind === 'gif') && <><SectionLabel>特效</SectionLabel><EffectsControl item={selectedItem} onChange={onItemEffectsChange} /></>}
             {isVisual && <><SectionLabel>缩放</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} getLocalFrame={() => Math.max(0, Math.min(selectedItem.durationInFrames - 1, getPlayhead() - selectedItem.startFrame))} fps={fps} onSetKeyframe={onSetReframeKeyframe} onRemoveKeyframe={onRemoveReframeKeyframe} /></>}
             {isVisual && <><SectionLabel>转场</SectionLabel><TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} /></>}
             <SectionLabel>淡入淡出</SectionLabel>
             <FadeControl item={selectedItem} fps={fps} onChange={onItemFadeChange} />
+            {selectedItem.kind === 'solid' && (
+              <>
+                <SectionLabel>纯色</SectionLabel>
+                <label className="cc-insp-mg-field">
+                  <span>填充颜色</span>
+                  <input
+                    type="color"
+                    value={String(selectedItem.props?.color ?? '#1a1a1a')}
+                    onChange={(e) => onItemPropChange('color', e.target.value)}
+                  />
+                </label>
+              </>
+            )}
             {selectedItem.kind === 'motion-graphic' && (
               schema.length === 0 ? (
                 <div className="cc-insp-muted">该模板无可编辑属性。</div>
               ) : (
                 <div className="cc-insp-mg-grid">
                   {schema.map((p) => (
-                    <label key={p.key} className="cc-insp-mg-field">
-                      <span>{p.key}</span>
-                      {p.type === 'boolean' ? (
-                        <input type="checkbox" checked={!!selectedItem.props?.[p.key]} onChange={(e) => onItemPropChange(p.key, e.target.checked)} />
-                      ) : p.type === 'color' ? (
-                        <input type="color" value={String(selectedItem.props?.[p.key] ?? '#000000')} onChange={(e) => onItemPropChange(p.key, e.target.value)} />
-                      ) : (
-                        <input
-                          type={p.type === 'number' ? 'number' : 'text'}
-                          value={String(selectedItem.props?.[p.key] ?? '')}
-                          onChange={(e) => onItemPropChange(p.key, p.type === 'number' ? Number(e.target.value) : e.target.value)}
-                        />
-                      )}
-                    </label>
+                    <PropSchemaField
+                      key={p.key}
+                      spec={p}
+                      value={selectedItem.props?.[p.key]}
+                      onChange={(v) => onItemPropChange(p.key, v)}
+                    />
                   ))}
                 </div>
               )

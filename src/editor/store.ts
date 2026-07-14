@@ -30,9 +30,16 @@ export interface EditorCommands {
   renameMediaAsset: (id: string, name: string) => void;
   setMediaAssetFavorite: (id: string, favorite: boolean) => void;
   /** edit a library asset in place (source edit_asset): rename / re-code (MG) / props / favorite */
-  editMediaAsset: (id: string, patch: Partial<Pick<MediaAsset, 'name' | 'code' | 'props' | 'favorite'>>) => void;
+  editMediaAsset: (id: string, patch: Partial<Pick<MediaAsset, 'name' | 'code' | 'props' | 'favorite' | 'src' | 'durationInFrames' | 'width' | 'height' | 'kind'>>) => void;
   /** remove a library asset from the media pool (source edit_asset delete) */
   removeMediaAsset: (id: string) => void;
+  /**
+   * Relink missing / offline media (source Relink File / Relink Missing Media).
+   * Updates the pool asset and every timeline clip that still points at the old src.
+   */
+  relinkMediaAsset: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind'] }) => void;
+  /** Solid color clip (source solid item) on a video track. */
+  addSolidItem: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number; color?: string; name?: string }) => void;
   addTextClip: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number; ripple?: boolean }) => void;
   updateItemProps: (id: string, patch: Record<string, unknown>) => void;
   moveItem: (id: string, to: { track?: TrackId; startFrame?: number }) => void;
@@ -194,6 +201,23 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       setMediaAssetFavorite: (id, favorite) => dispatch({ type: 'pool.updateAsset', id, patch: { favorite } }),
       editMediaAsset: (id, patch) => dispatch({ type: 'pool.updateAsset', id, patch }),
       removeMediaAsset: (id) => dispatch({ type: 'pool.removeAsset', id }),
+      relinkMediaAsset: (id, next) => dispatch({ type: 'pool.relinkAsset', id, ...next }),
+      addSolidItem: (at) => {
+        dispatch({
+          type: 'add',
+          startFrame: at?.startFrame,
+          item: {
+            id: uid('item'),
+            track: pickTrack(at?.track, 'video'),
+            durationInFrames: at?.durationInFrames ?? Math.round(5 * 30),
+            kind: 'solid',
+            name: at?.name ?? '纯色',
+            width: 1920,
+            height: 1080,
+            props: { color: at?.color ?? '#1a1a1a' },
+          },
+        });
+      },
       setDesignStyle: (style) => dispatch({ type: 'design.set', style }),
       patchDesignStyle: (patch) => dispatch({ type: 'design.patch', patch }),
       addMotionGraphic: (tpl, at) =>
@@ -264,7 +288,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
               id: uid('item'),
               track: pickTrack(at?.track, asset.kind === 'audio' ? 'audio' : 'video'),
               durationInFrames: asset.durationInFrames,
-              kind: asset.kind,
+              kind: asset.kind as Exclude<typeof asset.kind, 'motion-graphic'>,
               name: asset.name,
               src: asset.src,
               volume: asset.kind === 'audio' || asset.kind === 'video' ? 1 : undefined,

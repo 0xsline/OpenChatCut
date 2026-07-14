@@ -11,10 +11,12 @@ export type TrackRole = 'anchor' | 'follower';
 export const TRACK_ORDER: TrackId[] = ['V2', 'V1', 'A1', 'A2'];
 
 /** An imported media file in the project's media pool (source: S3 asset). */
+export type MediaAssetKind = 'video' | 'image' | 'audio' | 'motion-graphic' | 'gif' | 'svg';
+
 export interface MediaAsset {
   id: string;
   name: string;
-  kind: 'video' | 'image' | 'audio' | 'motion-graphic';
+  kind: MediaAssetKind;
   src: string; // same-origin path under /media/uploads
   durationInFrames: number;
   width?: number;
@@ -126,7 +128,7 @@ export interface TimelineItem {
   startFrame: number;
   durationInFrames: number;
   name: string;
-  kind: 'motion-graphic' | 'audio' | 'video' | 'image' | 'text';
+  kind: 'motion-graphic' | 'audio' | 'video' | 'image' | 'text' | 'gif' | 'svg' | 'solid';
   // motion-graphic fields:
   templateId?: string;
   code?: string;
@@ -134,7 +136,7 @@ export interface TimelineItem {
   /** natural box size the template designs against */
   width?: number;
   height?: number;
-  // audio / video / image source:
+  // audio / video / image / gif / svg source:
   src?: string;
   /** 0..1 playback volume (default 1) — audio + video */
   volume?: number;
@@ -487,6 +489,21 @@ export function resolveTrackId(s: TimelineState, ref: unknown, kind?: TrackKind)
 }
 
 /** Default placement lane: V1 (bottom video) or A1 (top audio). */
+/** Visual (picture) clip kinds — not pure audio. */
+export function isVisualItemKind(kind: TimelineItem['kind']): boolean {
+  return kind !== 'audio';
+}
+
+/** Kinds that draw from a media src (file-backed). */
+export function isFileMediaKind(kind: TimelineItem['kind'] | MediaAssetKind): boolean {
+  return kind === 'video' || kind === 'image' || kind === 'audio' || kind === 'gif' || kind === 'svg';
+}
+
+/** Kinds rendered via MediaFill (raster/video path). */
+export function isRasterMediaKind(kind: TimelineItem['kind']): boolean {
+  return kind === 'video' || kind === 'image' || kind === 'gif' || kind === 'svg';
+}
+
 export function defaultTrackId(s: TimelineState, kind: TrackKind): TrackId | null {
   return resolveTrackId(s, kind === 'video' ? 'V1' : 'A1', kind)
     ?? timelineTrackIds(s).find((id) => trackKind(s, id) === kind)

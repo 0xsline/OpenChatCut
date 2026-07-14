@@ -2,6 +2,14 @@ export interface PropSpec {
   key: string;
   type: string;
   defaultValue: unknown;
+  /** Optional display label (falls back to key). */
+  label?: string;
+  /** For type=select: option values or {label,value} rows. */
+  options?: Array<string | { label: string; value: string }>;
+  /** For type=number: soft range hints. */
+  min?: number;
+  max?: number;
+  step?: number;
 }
 
 export interface Tpl {

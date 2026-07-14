@@ -6,7 +6,7 @@ import type { AudioAsset } from '../audio/library';
 export interface AgentReference {
   id: string;
   name: string;
-  kind: 'video' | 'image' | 'audio' | 'motion-graphic' | 'template';
+  kind: 'video' | 'image' | 'audio' | 'motion-graphic' | 'gif' | 'svg' | 'template';
 }
 
 /** What the agent's tools operate on: the live editor. */

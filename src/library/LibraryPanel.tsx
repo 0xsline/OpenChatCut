@@ -58,6 +58,8 @@ interface LibraryPanelProps {
   onMoveMediaAssets: (ids: string[], folderId?: string) => void;
   onRenameMediaAsset: (id: string, name: string) => void;
   onSetMediaAssetFavorite: (id: string, favorite: boolean) => void;
+  onRelinkMediaAsset?: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind'] }) => void;
+  onAddSolid?: () => void;
   /** ⋮ menu「用 AI 生成」: seed the chat with this template as a reference */
   onUseTemplateAI: (tpl: Tpl) => void;
   /** currently-selected clip — resource-library tabs apply to it */
@@ -71,7 +73,7 @@ interface LibraryPanelProps {
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿'] as const;
 const SUB_TABS = ['MG 动画', '音效', '转场', '特效', '缩放', 'LUT', 'Audio'] as const;
-export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, onImportMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom, onApplyIsolate, onClearIsolate }: LibraryPanelProps) {
+export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, onImportMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom, onApplyIsolate, onClearIsolate }: LibraryPanelProps) {
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('我的素材');
@@ -98,7 +100,8 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, borderTop: `1px solid ${theme.border}` }}>
           <MediaPoolPanel assets={assets} folders={mediaFolders} fps={fps} onImport={onImportMedia} onAddAsset={onAddMediaItem}
             onCreateFolder={onCreateMediaFolder} onRenameFolder={onRenameMediaFolder} onDeleteFolder={onDeleteMediaFolder}
-            onMoveAssets={onMoveMediaAssets} onRenameAsset={onRenameMediaAsset} onSetFavorite={onSetMediaAssetFavorite} />
+            onMoveAssets={onMoveMediaAssets} onRenameAsset={onRenameMediaAsset} onSetFavorite={onSetMediaAssetFavorite}
+            onRelinkAsset={onRelinkMediaAsset} onAddSolid={onAddSolid} />
         </div>
       ) : (
       <>
