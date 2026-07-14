@@ -22,11 +22,6 @@ export interface MediaExportResult {
   endSeconds?: number;
 }
 
-function responseFilename(response: Response, fallback: string): string {
-  const disposition = response.headers.get('Content-Disposition') ?? '';
-  return disposition.match(/filename="([^"]+)"/i)?.[1] ?? fallback;
-}
-
 export async function submitMediaExport(args: SubmitMediaExportArgs, state: TimelineState): Promise<MediaExportResult> {
   const codec = args.codec ?? (args.format === 'video' ? 'h264' : 'mp3');
   const ext = codec === 'h264' ? 'mp4' : codec === 'vp8' ? 'webm' : codec;
@@ -40,7 +35,10 @@ export async function submitMediaExport(args: SubmitMediaExportArgs, state: Time
     throw new Error(result.error ?? `media export failed (${response.status})`);
   }
   const blob = await response.blob();
-  const name = responseFilename(response, `${args.name ?? 'export'}.${ext}`);
+  // 客户端本就有正确的 UTF-8 名字，直接用它做 anchor.download（anchor 走 JS 字符串，
+  // 中文安全）；不再回解析服务端的 Content-Disposition 头（headers.get 按 ISO-8859-1 会乱码）。
+  const base = (args.name ?? 'export').replace(/\.(?:mp4|webm|mp3|wav)$/i, '');
+  const name = `${base}.${ext}`;
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;

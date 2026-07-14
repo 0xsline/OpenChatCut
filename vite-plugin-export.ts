@@ -38,8 +38,16 @@ const EXPORT_MEDIA = {
 } as const;
 
 function exportFilename(name: string | undefined, ext: string): string {
-  const base = (name ?? 'export').replace(/\.(?:mp4|webm|mp3|wav)$/i, '').replace(/[^\w.-]+/g, '_') || 'export';
+  // 只滤真正非法的文件系统字符，保留中文等 Unicode（原来的 [^\w.-] 会把中文全砍成下划线）。
+  const base = (name ?? 'export').replace(/\.(?:mp4|webm|mp3|wav)$/i, '').replace(/[/\\:*?"<>|\x00-\x1f]+/g, '_').trim() || 'export';
   return `${base}.${ext}`;
+}
+
+// RFC 5987：filename= 是 latin-1 字段，中文 UTF-8 字节直接塞进去会被浏览器按 latin-1
+// 解码成乱码。给一个 ASCII 兜底 filename= + filename*=UTF-8'' 百分号编码（对标 vite-plugin-subtitles）。
+function contentDisposition(filename: string): string {
+  const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
 function exportDuration(state: ExportTimeline): number {
@@ -146,11 +154,11 @@ export function exportPlugin(): Plugin {
             tmpOut = join(tmpdir(), `chatcut-clip-${randomUUID()}.${ext}`);
             await renderClip({ state, outputLocation: tmpOut, codec, transparent });
             const buf = await readFile(tmpOut);
-            const safe = (body?.filename ?? 'clip').replace(/[^\w.\-]+/g, '_');
+            const safe = (body?.filename ?? 'clip').replace(/[/\\:*?"<>|\x00-\x1f]+/g, '_').trim() || 'clip';
             res.statusCode = 200;
             res.setHeader('Content-Type', CLIP_MIME[ext] ?? 'application/octet-stream');
             res.setHeader('Content-Length', String(buf.length));
-            res.setHeader('Content-Disposition', `attachment; filename="${safe}.${ext}"`);
+            res.setHeader('Content-Disposition', contentDisposition(`${safe}.${ext}`));
             res.end(buf);
           }
         } catch (err) {
@@ -222,7 +230,7 @@ export function exportPlugin(): Plugin {
           res.statusCode = 200;
           res.setHeader('Content-Type', media.mime);
           res.setHeader('Content-Length', String(buf.length));
-          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+          res.setHeader('Content-Disposition', contentDisposition(filename));
           res.end(buf);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);

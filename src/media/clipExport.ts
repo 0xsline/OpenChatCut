@@ -9,7 +9,8 @@ function clipState(state: TimelineState, item: TimelineItem): TimelineState {
   return { ...state, selectedId: null, transitions: [], markers: [], items: [{ ...item, startFrame: 0 }] };
 }
 
-const safeName = (s: string) => (s || 'clip').replace(/[^\w.\-]+/g, '_');
+// 只滤真正非法的文件系统字符（/ \ : * ? " < > | + 控制符），保留中文等 Unicode。
+const safeName = (s: string) => ((s || 'clip').replace(/[/\\:*?"<>|\x00-\x1f]+/g, '_').trim() || 'clip');
 
 async function fail(res: Response, verb: string): Promise<never> {
   const info = (await res.json().catch(() => null)) as { error?: string } | null;
