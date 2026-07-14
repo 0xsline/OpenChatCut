@@ -86,15 +86,14 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
   return (
     <div onClick={onClose} style={backdrop}>
       <div onClick={(e) => e.stopPropagation()} style={card}>
-        {/* header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '13px 16px', borderBottom: `1px solid ${theme.border}` }}>
-          <span style={{ color: primary, lineHeight: 0 }}><Icon name="palette" size={17} /></span>
-          <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>设计风格</span>
-          <span style={{ fontSize: 11.5, color: theme.textDim }}>工程品牌 · 驱动 MG/字幕配色字体</span>
+        {/* header（窄 popover：图标 + 标题 + 关闭，长副标题在 352 宽放不下，去掉） */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: `1px solid ${theme.border}` }}>
+          <span style={{ color: primary, lineHeight: 0 }}><Icon name="palette" size={16} /></span>
+          <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>设计风格</span>
           <button onClick={onClose} title="关闭" style={iconBtn}><Icon name="x" size={15} /></button>
         </div>
 
-        <div style={{ padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ padding: '12px 12px 14px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* 风格选择器（像素对标源站 21_design_style：紧凑「缩略图 64×36 + 名 12px」行、
               11px/500 暗色区块标题、选中橙点、顶部「无」卡） */}
           <section>
@@ -181,10 +180,10 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
           </section>
         </div>
 
-        {/* footer */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 16px', borderTop: `1px solid ${theme.border}` }}>
+        {/* footer（窄 popover：按钮换行、内边距收紧） */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', borderTop: `1px solid ${theme.border}` }}>
           {savingName !== null && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <input autoFocus value={savingName} placeholder="风格名称"
                 onChange={(e) => setSavingName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleSaveOwned(); if (e.key === 'Escape') setSavingName(null); }}
@@ -193,10 +192,10 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
               <button onClick={() => setSavingName(null)} style={ghostBtn}>取消</button>
             </div>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <button onClick={() => { onApply(null); onClose(); }} style={{ ...ghostBtn, color: theme.textDim }}>清除风格</button>
             <button onClick={() => setSavingName('')} style={ghostBtn}>保存为我的风格</button>
-            <div style={{ flex: 1 }} />
+            <div style={{ flex: 1, minWidth: 8 }} />
             <button onClick={onClose} style={ghostBtn}>取消</button>
             <button onClick={() => { onApply(draft); onClose(); }} style={primaryBtn}>应用到工程</button>
           </div>
@@ -260,14 +259,17 @@ const noneThumb: React.CSSProperties = {
 const rowName: React.CSSProperties = { fontSize: 12, color: theme.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
 const dot: React.CSSProperties = { width: 8, height: 8, borderRadius: '50%', background: theme.accent, flexShrink: 0 };
 
+// 结构对标源站 21_design_style：不是居中大 modal，而是 AI 面板左侧的锚定 popover。
+// backdrop 透明、仅作点击外部关闭；popover 左锚定、352 宽（源实测）。
 const backdrop: React.CSSProperties = {
-  position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 60,
-  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+  position: 'fixed', inset: 0, background: 'transparent', zIndex: 60,
 };
 const card: React.CSSProperties = {
-  width: 560, maxWidth: '100%', maxHeight: '90vh', display: 'flex', flexDirection: 'column',
-  background: theme.panel, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: 12,
-  boxShadow: '0 20px 60px rgba(0,0,0,.5)',
+  position: 'fixed', left: 6, top: 92, width: 352, maxWidth: 'calc(100vw - 12px)',
+  maxHeight: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column',
+  // 源实测：bg rgb(42,42,42)、radius 4、阴影 0 18px 48px rgba(0,0,0,.34) + 顶部内高光。
+  background: 'rgb(42,42,42)', color: theme.text, border: `1px solid ${theme.border}`, borderRadius: 4,
+  boxShadow: '0 18px 48px rgba(0,0,0,.34), 0 1px 0 rgba(255,255,255,.04) inset',
 };
 // 区块标题：源站 21_design_style 实测 11px / font-weight 500 / oklch(0.6) 暗灰 / pl 8。
 const sectionTitle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: theme.textDim, paddingLeft: 8, marginBottom: 6, letterSpacing: 0.2 };
