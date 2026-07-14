@@ -4,6 +4,7 @@ import type { DisplayMessage } from '../../agent/useAgent';
 import { Icon, type IconName } from '../icons';
 import { parseWidgets } from './widget-parse';
 import { WidgetCard } from './WidgetCard';
+import { Markdown } from './Markdown';
 
 const GREEN = '#3fae6a';
 
@@ -83,6 +84,7 @@ export function ChatMessage({ msg, streaming, feedback, onFeedback, onWidgetSubm
   }
 
   // assistant — 文本里可能嵌了 <widget> 表单块（source ask_followup_questions），拆段落分别渲染
+  // 纯文本段走轻量 Markdown（**粗体** / `code` / 列表 / 代码块），不再把 ** 原样吐给用户
   const segments = parseWidgets(msg.text);
   return (
     <div style={{ margin: '16px 0' }}>
@@ -90,7 +92,7 @@ export function ChatMessage({ msg, streaming, feedback, onFeedback, onWidgetSubm
         seg.type === 'widget' ? (
           <WidgetCard key={i} fields={seg.fields} onSubmit={(answer) => onWidgetSubmit?.(answer)} />
         ) : (
-          seg.text && <div key={i} style={{ color: theme.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.6 }}>{seg.text}</div>
+          seg.text ? <Markdown key={i} text={seg.text} /> : null
         ),
       )}
       {!streaming && msg.text.trim() && (

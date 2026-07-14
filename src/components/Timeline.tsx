@@ -22,20 +22,21 @@ interface TimelineProps {
 
 const HEADER_W = 192;
 const MIN_ROW = 34;
-const RULER_H = 32;
-/** cap so a lone track doesn't swallow the whole timeline pane (source-like denser rows) */
-const MAX_ROW: Record<'video' | 'audio', number> = { video: 88, audio: 52 };
+const RULER_H = 28;
+/** equal-height tracks (user request 等高); cap keeps few-track layouts compact */
+const TRACK_ROW = 56;
+const MAX_ROW = 72;
 // clip fill by ITEM kind — source --tl-item-* oklch (video/image=blue, audio=green,
 // motion-graphic=pink, text=amber). Video/image also render a media thumbnail on top.
 const CLIP_COLOR: Record<TimelineItem['kind'], string> = {
   video: theme.clipVideo, image: theme.clipVideo, audio: theme.clipAudio,
   'motion-graphic': theme.clipMg, text: theme.clipText,
 };
-// source weights tracks by type: video rows are taller than audio rows
-// (videoTrackHeight > audioTrackHeight), not an equal split.
-const WEIGHT: Record<'video' | 'audio', number> = { video: 1.4, audio: 1 };
-const PX_PER_FRAME = 3; // default time scale (1s ≈ 90px @30fps) — compact by default
+/** default time scale — 1s ≈ 36px @30fps (shorter clips, less “巨型色块”) */
+const PX_PER_FRAME = 1.2;
 const MIN_TIME_ZOOM = 0.02; // long timelines (3–8 min) must still fit in one viewport
+/** target min px between major ruler labels (avoids 00001000… overlap) */
+const RULER_LABEL_MIN_PX = 80;
 const toolBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14, padding: '2px 5px' };
 const CAPTION_LANGS = ['English', '简体中文', '西班牙语', '法语', '德语', '日语', '韩语', '葡萄牙语'];
 
@@ -74,6 +75,27 @@ function fmtClock(frames: number, fps: number): string {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
 }
 
+/** pick major tick step (seconds) so labels stay readable at current zoom */
+function rulerMajorSeconds(pxPerFrame: number, fps: number): number {
+  const options = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+  for (const s of options) {
+    if (s * fps * pxPerFrame >= RULER_LABEL_MIN_PX) return s;
+  }
+  return 600;
+}
+
+function fmtRuler(frames: number, fps: number): string {
+  const s = frames / fps;
+  if (s < 60) {
+    const ss = Math.floor(s);
+    const cs = Math.floor((s * 100) % 100);
+    return `${String(ss).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
+  }
+  const mm = Math.floor(s / 60);
+  const ss = Math.floor(s % 60);
+  return `${mm}:${String(ss).padStart(2, '0')}`;
+}
+
 type DragMode = 'move' | 'trim-left' | 'trim-right';
 interface Drag {
   id: string; mode: DragMode; baseStart: number; baseDur: number; baseTrack: TrackId;
@@ -110,16 +132,32 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
   };
   const [zoom, setZoom] = usePersistedState('cc.timelineZoom', 1);
   const px = PX_PER_FRAME * zoom; // pixels per frame at the current time-zoom
+  const pxRef = useRef(px);
+  pxRef.current = px;
   const playheadRef = useRef(0);
   const playheadLineRef = useRef<HTMLDivElement | null>(null);
   const toolbarTimecodeRef = useRef<HTMLSpanElement | null>(null);
   const rulerTimecodeRef = useRef<HTMLSpanElement | null>(null);
-  const paintPlayhead = (frame: number) => {
-    const current = Math.max(0, Math.round(frame));
+  const [playing, setPlaying] = useState(false);
+  // coalesce frameupdate → one paint per animation frame (smoother playhead)
+  const pendingFrameRef = useRef<number | null>(null);
+  const paintRafRef = useRef(0);
+  const lastTcPaintRef = useRef(0);
+  const paintPlayhead = (frame: number, forceTc = false) => {
+    const current = Math.max(0, frame);
     playheadRef.current = current;
-    if (playheadLineRef.current) playheadLineRef.current.style.transform = `translateX(${HEADER_W + current * px}px)`;
-    if (toolbarTimecodeRef.current) toolbarTimecodeRef.current.textContent = `${fmt(current, state.fps)} / ${fmt(total, state.fps)}`;
-    if (rulerTimecodeRef.current) rulerTimecodeRef.current.textContent = fmtClock(current, state.fps);
+    const x = HEADER_W + current * pxRef.current;
+    if (playheadLineRef.current) {
+      playheadLineRef.current.style.transform = `translate3d(${x}px,0,0)`;
+    }
+    // timecode text is expensive; refresh ~12fps while playing
+    const now = performance.now();
+    if (forceTc || now - lastTcPaintRef.current > 80) {
+      lastTcPaintRef.current = now;
+      const f = Math.round(current);
+      if (toolbarTimecodeRef.current) toolbarTimecodeRef.current.textContent = `${fmt(f, state.fps)} / ${fmt(total, state.fps)}`;
+      if (rulerTimecodeRef.current) rulerTimecodeRef.current.textContent = fmtClock(f, state.fps);
+    }
   };
   const paintPlayheadRef = useRef(paintPlayhead);
   paintPlayheadRef.current = paintPlayhead;
@@ -129,15 +167,38 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
     const attach = () => {
       const player = playerRef.current;
       if (!player) { raf = requestAnimationFrame(attach); return; }
-      const onFrame = (event: { detail: { frame: number } }) => paintPlayheadRef.current(event.detail.frame);
+      const flush = () => {
+        paintRafRef.current = 0;
+        if (pendingFrameRef.current != null) {
+          paintPlayheadRef.current(pendingFrameRef.current);
+          pendingFrameRef.current = null;
+        }
+      };
+      const onFrame = (event: { detail: { frame: number } }) => {
+        pendingFrameRef.current = event.detail.frame;
+        if (!paintRafRef.current) paintRafRef.current = requestAnimationFrame(flush);
+      };
+      const onPlay = () => setPlaying(true);
+      const onPause = () => { setPlaying(false); paintPlayheadRef.current(player.getCurrentFrame(), true); };
+      const onEnded = () => setPlaying(false);
       player.addEventListener('frameupdate', onFrame);
-      paintPlayheadRef.current(player.getCurrentFrame());
-      detach = () => player.removeEventListener('frameupdate', onFrame);
+      player.addEventListener('play', onPlay);
+      player.addEventListener('pause', onPause);
+      player.addEventListener('ended', onEnded);
+      try { setPlaying(!!player.isPlaying?.()); } catch { /* ignore */ }
+      paintPlayheadRef.current(player.getCurrentFrame(), true);
+      detach = () => {
+        player.removeEventListener('frameupdate', onFrame);
+        player.removeEventListener('play', onPlay);
+        player.removeEventListener('pause', onPause);
+        player.removeEventListener('ended', onEnded);
+        if (paintRafRef.current) cancelAnimationFrame(paintRafRef.current);
+      };
     };
     attach();
     return () => { if (raf) cancelAnimationFrame(raf); detach?.(); };
   }, [playerRef]);
-  useEffect(() => { paintPlayheadRef.current(playheadRef.current); }, [px, state.fps, total]);
+  useEffect(() => { paintPlayheadRef.current(playheadRef.current, true); }, [px, state.fps, total]);
   const zoomBy = (f: number) => setZoom((z) => Math.min(6, Math.max(MIN_TIME_ZOOM, z * f)));
   // editing mode (source: Selection V / Blade B / Trim N). selection = drag/move;
   // blade = click a clip to cut it there; trim = edge-trim ripples following clips.
@@ -221,24 +282,17 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
   };
   const innerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [availH, setAvailH] = useState(190);
   const [availW, setAvailW] = useState(0);
   // content is at least as wide as the panel, so track rows/ruler never stop
   // short of the right edge when the project is short or zoomed out.
   const innerW = Math.max(HEADER_W + total * px + 240, availW);
-  // vertical track-height zoom (source: trackHeightScale). 1 = weighted fill;
-  // >1 makes rows taller than the panel (scrolls); Alt+wheel over the timeline.
+  // vertical track-height zoom (Alt+wheel). Equal base row × scale, capped.
   const [trackScale, setTrackScale] = usePersistedState('cc.trackScale', 1);
 
-  // tracks fill the timeline's height, weighted by type (video taller than
-  // audio) — resizing the timeline grows every row while keeping the ratio.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const measure = () => {
-      setAvailH(el.clientHeight - RULER_H);
-      setAvailW(el.clientWidth);
-    };
+    const measure = () => setAvailW(el.clientWidth);
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -276,25 +330,17 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const expanded = trackIds.filter((id) => !state.tracks?.[id]?.collapsed);
-  const collapsedHeight = (trackIds.length - expanded.length) * MIN_ROW;
-  const totalWeight = expanded.reduce((sum, id) => sum + WEIGHT[metaOf(id).kind], 0);
-  // fill available height when many tracks, but never exceed MAX_ROW per kind —
-  // otherwise a single V1 fills the entire timeline (looks like a giant empty clip).
-  const unitFill = Math.max(0, availH - collapsedHeight) / Math.max(1, totalWeight);
-  const unitCap = Math.min(
-    MAX_ROW.video / WEIGHT.video,
-    MAX_ROW.audio / WEIGHT.audio,
-  );
-  const unit = Math.min(unitFill, unitCap);
+  // equal-height tracks (等高); scale via Alt+wheel, never stretch to fill the pane
   const rowHeightOf = (id: TrackId) => {
     if (state.tracks?.[id]?.collapsed) return MIN_ROW;
-    const kind = metaOf(id).kind;
-    const raw = unit * WEIGHT[kind] * trackScale;
-    const cap = MAX_ROW[kind] * Math.max(1, trackScale);
-    return Math.max(MIN_ROW, Math.min(cap, raw));
+    return Math.max(MIN_ROW, Math.min(MAX_ROW * trackScale, TRACK_ROW * trackScale));
   };
   const tracksHeight = trackIds.reduce((sum, id) => sum + rowHeightOf(id), 0);
+  const majorSec = rulerMajorSeconds(px, state.fps);
+  const majorFrames = Math.max(1, Math.round(majorSec * state.fps));
+  const minorFrames = Math.max(1, Math.round(majorFrames / 4));
+  const rulerSpanFrames = Math.max(total, Math.ceil((innerW - HEADER_W) / Math.max(px, 0.001)));
+  const majorCount = Math.ceil(rulerSpanFrames / majorFrames) + 1;
 
   const frameFromClientX = (clientX: number): number => {
     const r = innerRef.current?.getBoundingClientRect();
@@ -500,7 +546,12 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
           {recorder.recording && <span title="录音中" style={{ width: 8, height: 8, borderRadius: '50%', background: theme.accent, animation: 'cc-rec-pulse 1.2s ease-out infinite', flexShrink: 0 }} />}
         </div>
         <span style={{ flex: 1 }} />
-        <TB icon="play" title="播放 / 暂停 (空格)" onClick={() => playerRef.current?.toggle()} />
+        <TB
+          icon={playing ? 'pause' : 'play'}
+          title={playing ? '暂停 (空格)' : '播放 (空格)'}
+          active={playing}
+          onClick={() => playerRef.current?.toggle()}
+        />
         <span ref={toolbarTimecodeRef} className="cc-timeline-timecode">{fmt(playheadRef.current, state.fps)} / {fmt(total, state.fps)}</span>
         <span style={{ flex: 1 }} />
         <TB icon="zoomOut" title="缩小时间轴 (⌘−)" onClick={() => zoomBy(1 / 1.4)} />
@@ -532,21 +583,35 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
       <div ref={scrollRef} style={{ overflow: 'auto', flex: 1, minHeight: 0 }} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
         title="Ctrl/⌘+滚轮 缩放时间轴 · Alt+滚轮 缩放轨道高度">
         <div ref={innerRef} style={{ position: 'relative', width: innerW }}>
-          {/* ruler (click to seek) */}
+          {/* ruler (click to seek) — adaptive major labels so zoomed-out timelines stay readable */}
           <div
             onPointerDown={(e) => seekTo(e.clientX)}
-            style={{ display: 'flex', height: RULER_H, borderBottom: `1px solid ${theme.border}`, fontSize: 10, color: theme.textDim, cursor: 'text' }}
+            style={{ display: 'flex', height: RULER_H, borderBottom: `1px solid ${theme.border}`, fontSize: 10, color: theme.textDim, cursor: 'text', userSelect: 'none' }}
           >
             <div className="cc-ruler-head" style={{ width: HEADER_W }}><span ref={rulerTimecodeRef}>{fmtClock(playheadRef.current, state.fps)}</span></div>
-            <div style={{ position: 'relative', flex: 1 }}>
-              {/* ticks span the whole visible width, not just the content */}
+            <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
               {empty
                 ? Array.from({ length: 5 }).map((_, i) => (
-                    <span key={i} style={{ position: 'absolute', left: `${i * 25}%`, top: 5, transform: i === 4 ? 'translateX(-100%)' : undefined }}>{fmt(i * state.fps * 10, state.fps)}</span>
+                    <span key={i} style={{ position: 'absolute', left: `${i * 25}%`, top: 6, transform: i === 4 ? 'translateX(-100%)' : undefined }}>{fmtRuler(i * state.fps * 10, state.fps)}</span>
                   ))
-                : Array.from({ length: Math.ceil((innerW - HEADER_W) / px / (state.fps * 2)) + 1 }).map((_, i) => (
-                    <span key={i} style={{ position: 'absolute', left: i * state.fps * 2 * px, top: 5 }}>{fmt(i * state.fps * 2, state.fps)}</span>
-                  ))}
+                : Array.from({ length: majorCount }).map((_, i) => {
+                    const f = i * majorFrames;
+                    const left = f * px;
+                    return (
+                      <div key={i} style={{ position: 'absolute', left, top: 0, height: '100%', pointerEvents: 'none' }}>
+                        <div style={{ position: 'absolute', left: 0, bottom: 0, width: 1, height: 10, background: '#555' }} />
+                        <span style={{ position: 'absolute', left: 4, top: 5, whiteSpace: 'nowrap', color: '#9a9a9a', fontVariantNumeric: 'tabular-nums' }}>
+                          {fmtRuler(f, state.fps)}
+                        </span>
+                        {/* minor ticks between majors */}
+                        {Array.from({ length: 3 }).map((__, m) => {
+                          const mf = f + (m + 1) * minorFrames;
+                          if (mf >= f + majorFrames) return null;
+                          return <div key={m} style={{ position: 'absolute', left: (m + 1) * minorFrames * px, bottom: 0, width: 1, height: 5, background: '#3a3a3a' }} />;
+                        })}
+                      </div>
+                    );
+                  })}
               {/* marker layer (source: bookmark pins over the ruler; range bar to the right) */}
               {markers.filter((m) => m.scope === 'project').map((m) => (
                 <div key={m.id} style={{ position: 'absolute', left: m.fromFrame * px, top: 0, zIndex: 4, pointerEvents: 'none' }}>
@@ -691,8 +756,20 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
             <div style={{ position: 'absolute', top: 0, left: HEADER_W + drag.snapAt * px, width: 1, height: RULER_H + tracksHeight, background: '#4fd1ff', pointerEvents: 'none', boxShadow: '0 0 4px #4fd1ff' }} />
           )}
 
-          {/* playhead */}
-          <div ref={playheadLineRef} style={{ position: 'absolute', top: 0, left: 0, transform: `translateX(${HEADER_W + playheadRef.current * px}px)`, width: 1, height: RULER_H + tracksHeight, background: '#ececec', pointerEvents: 'none', boxShadow: '0 0 0 1px #0005' }}>
+          {/* playhead — GPU layer + rAF-coalesced updates for smoother scrub/play */}
+          <div
+            ref={playheadLineRef}
+            className="cc-playhead"
+            style={{
+              position: 'absolute', top: 0, left: 0,
+              transform: `translate3d(${HEADER_W + playheadRef.current * px}px,0,0)`,
+              width: 1, height: RULER_H + tracksHeight,
+              background: '#f2f2f2', pointerEvents: 'none',
+              boxShadow: '0 0 0 1px #0006',
+              willChange: 'transform',
+              zIndex: 6,
+            }}
+          >
             <div style={{ position: 'absolute', top: 0, left: -6, width: 13, height: 11, background: '#ececec', clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
           </div>
         </div>
