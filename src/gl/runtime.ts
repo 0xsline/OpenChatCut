@@ -38,6 +38,14 @@ export interface GlRuntime {
     input: TexImageSource,
     extra?: Record<string, UniformValue>,
   ) => void;
+  /** run a multi-pass effect: each pass reads the previous pass's output as
+   *  u_input (pass 0 reads `input`); the last pass draws to the canvas, the
+   *  rest to ping-pong framebuffers. Source multi-pass processors (tilt-shift,
+   *  ascii-rain) chain renderPass calls exactly this way. */
+  renderFxChain: (
+    passes: { frag: string; uniforms?: Record<string, UniformValue> }[],
+    input: TexImageSource,
+  ) => void;
   dispose: () => void;
 }
 
@@ -104,6 +112,26 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
   const texIn = makeTexture(gl);
   const texFx = makeTexture(gl);
   const programs = new Map<string, WebGLProgram>();
+
+  // ping-pong framebuffers for multi-pass effects (lazy — only tilt-shift /
+  // ascii-rain need them). Sized to the canvas (fixed per runtime).
+  let fbos: { fb: WebGLFramebuffer; tex: WebGLTexture }[] | null = null;
+  const ensureFbos = () => {
+    if (fbos) return fbos;
+    const make = () => {
+      const tex = makeTexture(gl);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      const fb = gl.createFramebuffer();
+      if (!fb) throw new Error('createFramebuffer failed');
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      return { fb, tex };
+    };
+    fbos = [make(), make()];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return fbos;
+  };
 
   const getProgram = (frag: string): WebGLProgram => {
     let prog = programs.get(frag);
@@ -195,6 +223,41 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     },
+    renderFxChain(passes, input) {
+      if (passes.length === 0) return;
+      const rt = ensureFbos();
+      // upload the source once (flip: DOM sources are top-down)
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texFx);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, input);
+      let inputTex: WebGLTexture = texFx;
+      for (let i = 0; i < passes.length; i++) {
+        const last = i === passes.length - 1;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, last ? null : rt[i % 2].fb);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        const prog = getProgram(passes[i].frag);
+        gl.useProgram(prog);
+        bindQuad(prog);
+        // intermediate FBO textures are already GL-oriented — bind without re-upload/flip
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, inputTex);
+        const locIn = gl.getUniformLocation(prog, 'u_input');
+        if (locIn) gl.uniform1i(locIn, 0);
+        setUniform(prog, 'u_width', canvas.width);
+        setUniform(prog, 'u_height', canvas.height);
+        setUniform(prog, 'u_canvas_width', canvas.width);
+        setUniform(prog, 'u_canvas_height', canvas.height);
+        setUniform(prog, 'u_resolution', [canvas.width, canvas.height]);
+        setUniform(prog, 'u_aspect', canvas.width / Math.max(1, canvas.height));
+        for (const [k, v] of Object.entries(passes[i].uniforms ?? {})) setUniform(prog, k, v);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        if (!last) inputTex = rt[i % 2].tex;
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null); // restore for later single-pass draws
+    },
     dispose() {
       for (const p of programs.values()) gl.deleteProgram(p);
       programs.clear();
@@ -202,6 +265,7 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
       gl.deleteTexture(texOut);
       gl.deleteTexture(texIn);
       gl.deleteTexture(texFx);
+      if (fbos) for (const { fb, tex } of fbos) { gl.deleteFramebuffer(fb); gl.deleteTexture(tex); }
     },
   };
 }

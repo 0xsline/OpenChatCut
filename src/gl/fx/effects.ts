@@ -5,6 +5,8 @@ import rectMaskFrag from './rect-mask.frag?raw';
 import circleMaskFrag from './circle-mask.frag?raw';
 import crtFrag from './crt.frag?raw';
 import cameraShakeFrag from './camera-shake.frag?raw';
+import tiltShiftPass1Frag from './tilt-shift-pass1.frag?raw';
+import tiltShiftPass2Frag from './tilt-shift-pass2.frag?raw';
 import type { FxDef } from './uniforms';
 
 // invert is a boolean in the source (helper oJ); modeled here as a 0/1 slider.
@@ -112,6 +114,22 @@ export const FX_EFFECTS: Record<string, FxDef> = {
       { key: 'zoom', label: '缩放', default: 1.15, min: 1, max: 2, step: 0.01 },
       { key: 'rotation', label: '旋转', default: 0.9, min: 0, max: 5, step: 0.1 },
       { key: 'breathe', label: '呼吸', default: 0.7, min: 0, max: 3, step: 0.1 },
+    ],
+  },
+  'builtin:fx-tilt-shift': {
+    id: 'builtin:fx-tilt-shift',
+    name: '移轴（微缩景观）',
+    desc: '模拟移轴镜头：一条焦点带清晰、上下渐糊 + 饱和度/暗角。两遍可分离高斯模糊。源站 builtin:fx-tilt-shift',
+    frag: tiltShiftPass1Frag,
+    passes: [tiltShiftPass1Frag, tiltShiftPass2Frag],
+    props: [
+      { key: 'focusY', label: '焦点位置', default: 0.5, min: 0, max: 1, step: 0.01 },
+      { key: 'focusWidth', label: '焦点带宽', default: 0.2, min: 0, max: 1, step: 0.01 },
+      { key: 'tiltAngle', label: '倾角', default: 0, min: -3.14159, max: 3.14159, step: 0.01 },
+      { key: 'blurStrength', label: '模糊强度', default: 12, min: 0, max: 40, step: 0.5 },
+      { key: 'blurSide', label: '模糊侧(0双/1上/2下)', default: 0, min: 0, max: 2, step: 1 },
+      { key: 'saturation', label: '饱和度', default: 1.3, min: 0, max: 3, step: 0.05 },
+      { key: 'vignette', label: '暗角', default: 0.2, min: 0, max: 1, step: 0.01 },
     ],
   },
 };

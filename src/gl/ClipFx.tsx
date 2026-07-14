@@ -78,7 +78,12 @@ export function ClipFx({ item, fit, width, height }: ClipFxProps) {
         drawFit(ctx, el, fit);
         // u_time (seconds, clip-local) drives animated fx (CRT wobble/noise,
         // camera shake); static fx ignore it.
-        runtimeRef.current.renderFx(active.def.frag, staging, { ...fxUniforms(active.def, active.fx.overrides), u_time: frame / fps });
+        const uniforms = { ...fxUniforms(active.def, active.fx.overrides), u_time: frame / fps };
+        if (active.def.passes && active.def.passes.length > 1) {
+          runtimeRef.current.renderFxChain(active.def.passes.map((frag) => ({ frag, uniforms })), staging);
+        } else {
+          runtimeRef.current.renderFx(active.def.frag, staging, uniforms);
+        }
       } catch (e) {
         // WebGL unavailable / compile failure → leave canvas empty; the source
         // clip still shows nothing worse than a transparent frame.

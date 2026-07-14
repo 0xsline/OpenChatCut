@@ -20,6 +20,10 @@ export interface FxDef {
   desc: string;  // source description (zh)
   frag: string;
   props: FxProperty[];
+  /** multi-pass effects (tilt-shift, ascii-rain): fragment shaders run in
+   * order, each reading the previous pass's output. When set, `frag` is the
+   * first pass (kept for single-pass callers/back-compat). */
+  passes?: string[];
 }
 
 // source gn(): clamp(properties[name] ?? default, min, max)
