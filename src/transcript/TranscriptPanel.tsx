@@ -3,7 +3,7 @@ import type { PlayerRef } from '@remotion/player';
 import type { TimelineItem, TrackId, TrackKind } from '../editor/types';
 import { useTranscript } from './useTranscript';
 import { msToFrame, type TranscriptWord } from './types';
-import { toParagraphs, toSegments, analyzeSilences, type IndexedWord } from './segment';
+import { toParagraphs, toSegments, analyzeSilences } from './segment';
 import { ParagraphView, SegmentView } from './TranscriptViews';
 import { CaptionsControls } from '../captions/CaptionsControls';
 import type { CaptionsData } from '../captions/types';
@@ -157,11 +157,13 @@ export function TranscriptPanel({
     if (!sources.length) return;
     onSetCaptions({
       enabled: true,
-      template: captions?.template ?? 'tiktok',
+      // 默认中文友好的清爽样式，而不是花哨英文 preset 名
+      template: captions?.template ?? 'bili',
       pacing: captions?.pacing ?? 'phrase',
       sourceItemId: sources[0] ?? focusItem?.id ?? null,
       sources: sources.length > 1 ? sources : undefined,
       sourceMode: sources.length > 1 ? 'item' : undefined,
+      bilingual: false,
     });
   };
 
@@ -390,6 +392,7 @@ export function TranscriptPanel({
         hasTranscript={trackHasWords}
         onGenerate={generateCaptions}
         onUpdate={onUpdateCaptions}
+        onRemove={() => onSetCaptions(null)}
         onTranslate={onTranslate}
         translating={translating}
         translateError={translateError}

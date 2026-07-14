@@ -2,6 +2,7 @@ import type { CaptionsData, CaptionWordOverride } from './types';
 import type { TimelineItem } from '../editor/types';
 import type { TranscriptWord } from '../transcript/types';
 import { retimeWords } from '../transcript/edit';
+import { resolveVariantText } from '../transcript/variants';
 
 // Items participating in a MULTI-source merge (`sourceMode:'timeline'` = every
 // transcribed item; `sources` = the listed item ids), or undefined when captions
@@ -48,7 +49,12 @@ export function resolveCaptionWords(captions: CaptionsData, items: TimelineItem[
   const item = captions.sourceItemId ? items.find((it) => it.id === captions.sourceItemId) : undefined;
   if (item?.transcript?.length) {
     const del = new Set(item.deletedWordIdx ?? []);
-    return retimeWords(item.transcript, del, fps, item.startFrame, { maxGapFrames: item.silenceFrames });
+    // Swap in the chosen variant's TEXT on the SOURCE words BEFORE retiming, so all
+    // timing comes from retimeWords (source frames) — the variant never touches a
+    // start/end (护城河③). No variant selected → source words unchanged (identical).
+    const variant = captions.captionVariantId ? item.variants?.find((v) => v.id === captions.captionVariantId) : undefined;
+    const src = variant ? resolveVariantText(item.transcript, variant) : item.transcript;
+    return retimeWords(src, del, fps, item.startFrame, { maxGapFrames: item.silenceFrames });
   }
   const offMs = ((captions.offsetFrames ?? 0) / fps) * 1000;
   return (captions.words ?? []).map((w) => ({ ...w, start: w.start + offMs, end: w.end + offMs }));

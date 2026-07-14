@@ -20,12 +20,16 @@ export async function buildTranslation(
   const pages = paginate(words, captions.pacing, CAPTION_STYLE_BY_ID[captions.template].wordsPerPage);
   const phrases = pages.map((p) => p.words.map((w) => w.text).join(' ').trim()).filter(Boolean);
   if (!phrases.length) return [];
-  const translated = await translatePhrases(phrases, lang);
+  const translated = await translateLines(phrases, lang);
   return pages.map((p, i) => ({ start: p.start, end: p.end, text: translated[i] ?? '' }));
 }
 
-// Translate an ordered list of phrases; returns the same count, same order.
-async function translatePhrases(phrases: string[], lang: string): Promise<string[]> {
+// Translate an ordered list of lines (phrases OR source words); returns the same
+// count in the same order. Exported so the transcript translation VARIANT builder
+// (src/agent/transcript-tools.ts) reuses the exact same LLM path — one line per
+// source word in, one target string per word out (word-aligned in full context).
+export async function translateLines(lines: string[], lang: string): Promise<string[]> {
+  const phrases = lines;
   const numbered = phrases.map((p, i) => `${i + 1}. ${p}`).join('\n');
   const msg = await createMessage({
     model: MODEL,

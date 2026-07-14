@@ -38,7 +38,8 @@ const MIN_TIME_ZOOM = 0.02; // long timelines (3–8 min) must still fit in one 
 /** target min px between major ruler labels — denser ticks (source-like cadence) */
 const RULER_LABEL_MIN_PX = 52;
 const toolBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14, padding: '2px 5px' };
-const CAPTION_LANGS = ['English', '简体中文', '西班牙语', '法语', '德语', '日语', '韩语', '葡萄牙语'];
+// 翻译目标语言（第二行）；口播已是中文时不要把「中文」当默认目标
+const CAPTION_LANGS = ['English', '日本語', '한국어', 'Español', 'Français', 'Deutsch', 'Português'];
 
 // vertical divider between toolbar tool groups (source-style grouping)
 function ToolSep() {
@@ -694,7 +695,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
                         {CAPTION_STYLES.map((style) => (
                           <button key={style.id} className={state.captions?.template === style.id ? 'active' : ''} onClick={() => applyCaptionStyle(trackId, style.id)}>
                             <span className="cc-caption-style-swatch" style={{ background: style.highlightBackground ?? '#292929', color: style.highlightBackground ? style.highlightColor : style.color, fontFamily: style.fontFamily, WebkitTextStroke: style.strokeWidth ? `${Math.min(1, style.strokeWidth)}px ${style.strokeColor}` : undefined }}>Aa</span>
-                            <span>{style.label}</span>
+                            <span>{style.labelZh}</span>
                           </button>
                         ))}
                       </div>

@@ -43,6 +43,12 @@ export interface CaptionsData {
   translationLang?: string;
   /** translated phrase cues (timeline ms), aligned to the source phrases */
   translation?: TranslatedCue[];
+  /** display a transcript VARIANT (translation / corrected pass) as the caption
+   * text instead of the source words. Keys `sourceItemId`'s `variants` by id; the
+   * variant only swaps each word's TEXT — timing stays the source's (护城河③). Only
+   * applies on the single-source path (`sourceItemId`); the multi-source merge
+   * ignores it (no single transcript to key a variant off). Unset = show source. */
+  captionVariantId?: string;
   /** per-word DISPLAY overrides for the captions overlay (hide / retext / force
    * a page break), WITHOUT touching the transcript or its timing. Keyed by the
    * word's index in the source track transcript (or in the standalone `words`
