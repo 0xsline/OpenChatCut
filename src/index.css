@@ -751,7 +751,18 @@ button, input, select { font: inherit; }
   display:flex; align-items:center; justify-content:space-between; gap:10px;
   margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid #2a2a2a;
 }
-.cc-tx-section-title { font-size:12px; font-weight:600; color:#ddd; }
+.cc-tx-section-title { font-size:12px; font-weight:600; color:#ddd; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cc-tx-section-grip {
+  flex-shrink:0; width:16px; color:#555; font-size:11px; letter-spacing:-1px;
+  cursor:default; user-select:none; line-height:1;
+}
+.cc-tx-section-grip.active { cursor:grab; color:#777; }
+.cc-tx-section-grip.active:active { cursor:grabbing; }
+.cc-tx-section.drag-over { border-color:#6a9fd8; box-shadow:inset 0 0 0 1px #6a9fd855; }
+.cc-tx-section[draggable="true"] { cursor:default; }
+.cc-tx-speech.drag-over { outline:1px dashed #6a9fd8; outline-offset:4px; border-radius:6px; }
+.cc-tx-grip.active { cursor:grab; color:#888; }
+.cc-tx-grip.active:active { cursor:grabbing; }
 
 /* Source-aligned script view: speaker blocks + Gap rows */
 .cc-tx-script { display:flex; flex-direction:column; gap:14px; }

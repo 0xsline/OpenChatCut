@@ -77,6 +77,10 @@ export interface EditorCommands {
   cleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
   /** Cap/delete one breath gap before word `afterWordIndex` (maxMs=null clears override). */
   setGapCap: (id: string, afterWordIndex: number, maxMs: number | null) => void;
+  /** Speech-block drag: playback order of source word indices (null = chronological). */
+  setTranscriptPlayOrder: (id: string, playOrder: number[] | null) => void;
+  /** Clip drag in 文字稿: pack items on track in this id order. */
+  reorderTrackItems: (track: string, orderedIds: string[]) => void;
   clearEdits: (id: string) => void;
   /** 改错字:只修正第 wordIndex 个转写词的 text,timing/词数/片段时长全不变(护城河③) */
   fixTranscriptWord: (id: string, wordIndex: number, text: string) => void;
@@ -324,6 +328,8 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       deleteWords: (id, idxs) => dispatch({ type: 'deleteWords', id, idxs }),
       cleanScript: (id, opts) => dispatch({ type: 'cleanScript', id, silenceFrames: opts.silenceFrames, removeFillers: opts.removeFillers }),
       setGapCap: (id, afterWordIndex, maxMs) => dispatch({ type: 'setGapCap', id, afterWordIndex, maxMs }),
+      setTranscriptPlayOrder: (id, playOrder) => dispatch({ type: 'setTranscriptPlayOrder', id, playOrder }),
+      reorderTrackItems: (track, orderedIds) => dispatch({ type: 'reorderTrackItems', track, orderedIds }),
       clearEdits: (id) => dispatch({ type: 'clearEdits', id }),
       fixTranscriptWord: (id, wordIndex, text) => dispatch({ type: 'fixTranscriptWord', id, wordIndex, text }),
       renameSpeaker: (id, from, to) => dispatch({ type: 'renameSpeaker', id, from, to }),

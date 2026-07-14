@@ -50,6 +50,10 @@ export type Action =
   | { type: 'cleanScript'; id: string; silenceFrames?: number; removeFillers: boolean }
   /** Per-gap silence cap (source Gap row). afterWordIndex = word AFTER the gap; maxMs=null clears override. */
   | { type: 'setGapCap'; id: string; afterWordIndex: number; maxMs: number | null }
+  /** Speech-block drag: playback order of source word indices (null clears → chronological). */
+  | { type: 'setTranscriptPlayOrder'; id: string; playOrder: number[] | null }
+  /** Pack items on a track in the given id order (clip drag in 文字稿). */
+  | { type: 'reorderTrackItems'; track: string; orderedIds: string[] }
   | { type: 'clearEdits'; id: string }
   | { type: 'fixTranscriptWord'; id: string; wordIndex: number; text: string }
   | { type: 'renameSpeaker'; id: string; from: string; to: string }
@@ -86,7 +90,7 @@ export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void
 /** dispatch at the project level: per-timeline + project actions + undo/redo */
 export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' }) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
   'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset']);
@@ -94,8 +98,8 @@ const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', '
 const EMPTY_CURVE = { version: 1, timebase: 'effect-frame', coordinateSpace: 'composition-normalized', keyframes: [] } as const;
 
 // recompute a transcript-edited clip's duration under its current edit state
-function editOptsOf(it: TimelineItem): { maxGapFrames?: number; gapCapsMs?: Record<string, number> } {
-  return { maxGapFrames: it.silenceFrames, gapCapsMs: it.gapCapsMs };
+function editOptsOf(it: TimelineItem): { maxGapFrames?: number; gapCapsMs?: Record<string, number>; playOrder?: number[] } {
+  return { maxGapFrames: it.silenceFrames, gapCapsMs: it.gapCapsMs, playOrder: it.transcriptPlayOrder };
 }
 
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
@@ -433,11 +437,59 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         }),
       };
     }
+    case 'setTranscriptPlayOrder': {
+      const it = s.items.find((x) => x.id === a.id);
+      if (!it?.transcript?.length) return s;
+      const playOrder = a.playOrder;
+      if (playOrder == null) {
+        if (!it.transcriptPlayOrder?.length) return s;
+        const next = { ...it, transcriptPlayOrder: undefined };
+        const del = new Set(it.deletedWordIdx ?? []);
+        return {
+          ...s,
+          items: s.items.map((item) =>
+            item.id === a.id ? { ...next, durationInFrames: editedDuration(next, del, s.fps) } : item,
+          ),
+        };
+      }
+      // validate: permutation of existing indices (allow subset of non-deleted)
+      const n = it.transcript.length;
+      const cleaned = playOrder.filter((i) => Number.isInteger(i) && i >= 0 && i < n);
+      if (!cleaned.length) return s;
+      const next = { ...it, transcriptPlayOrder: cleaned };
+      const del = new Set(it.deletedWordIdx ?? []);
+      return {
+        ...s,
+        items: s.items.map((item) =>
+          item.id === a.id ? { ...next, durationInFrames: editedDuration(next, del, s.fps) } : item,
+        ),
+      };
+    }
+    case 'reorderTrackItems': {
+      const onTrack = s.items.filter((it) => it.track === a.track);
+      if (onTrack.length < 2) return s;
+      const byId = new Map(onTrack.map((it) => [it.id, it]));
+      const ordered = a.orderedIds.map((id) => byId.get(id)).filter((x): x is TimelineItem => !!x);
+      if (ordered.length < 2) return s;
+      // Pack from the earliest of the reordered set so the block stays in place.
+      let t = Math.min(...ordered.map((it) => it.startFrame));
+      const starts = new Map<string, number>();
+      for (const it of ordered) {
+        starts.set(it.id, t);
+        t += Math.max(1, it.durationInFrames);
+      }
+      return {
+        ...s,
+        items: s.items.map((it) =>
+          starts.has(it.id) ? { ...it, startFrame: starts.get(it.id)! } : it,
+        ),
+      };
+    }
     case 'clearEdits':
       return {
         ...s,
         items: s.items.map((it) =>
-          it.id === a.id && it.transcript ? { ...it, deletedWordIdx: [], silenceFrames: undefined, gapCapsMs: undefined, durationInFrames: editedFrames(it.transcript, new Set(), s.fps) } : it,
+          it.id === a.id && it.transcript ? { ...it, deletedWordIdx: [], silenceFrames: undefined, gapCapsMs: undefined, transcriptPlayOrder: undefined, durationInFrames: editedFrames(it.transcript, new Set(), s.fps) } : it,
         ),
       };
     case 'fixTranscriptWord': {

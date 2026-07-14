@@ -126,9 +126,16 @@ export function buildScriptRows(
     fps: number;
     /** min raw gap to surface a Gap row (default 250ms) */
     minDisplayMs?: number;
+    /** playback / display order of source word indices (speech-block drag) */
+    playOrder?: number[];
   },
 ): ScriptRow[] {
-  const kept = index(words).filter((w) => !deleted.has(w.gi));
+  const all = index(words);
+  const kept = (
+    opts.playOrder?.length
+      ? opts.playOrder.map((i) => all[i]).filter((w): w is IndexedWord => !!w && !deleted.has(w.gi))
+      : all.filter((w) => !deleted.has(w.gi))
+  );
   if (!kept.length) return [];
   const minD = opts.minDisplayMs ?? 250;
   const globalMaxMs = opts.silenceFrames != null
@@ -147,11 +154,20 @@ export function buildScriptRows(
   for (let i = 1; i < kept.length; i++) {
     const prev = kept[i - 1]!;
     const cur = kept[i]!;
-    const rawGap = Math.max(0, cur.start - prev.end);
+    const rawGap = cur.start - prev.end; // may be negative after reorder jump
+    const speakerChange = (cur.speaker ?? '') !== speaker;
+
+    // Reorder jump (play later block first): break speech, no natural Gap row
+    if (rawGap < 0) {
+      flushSpeech();
+      speaker = cur.speaker ?? '';
+      speech = [cur];
+      continue;
+    }
+
     const applied = effectiveGapMs(rawGap, cur.gi, opts.gapCapsMs, globalMaxMs);
     const key = String(cur.gi);
     const removed = !!(opts.gapCapsMs && Object.prototype.hasOwnProperty.call(opts.gapCapsMs, key) && (opts.gapCapsMs[key] ?? 0) <= 30);
-    const speakerChange = (cur.speaker ?? '') !== speaker;
     const showGap = rawGap >= minD || (speakerChange && rawGap >= 120) || removed;
 
     if (showGap) {

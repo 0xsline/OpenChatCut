@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import type { TimelineItem, TrackId, TrackKind } from '../editor/types';
 import { useTranscript } from './useTranscript';
@@ -31,6 +31,8 @@ interface TranscriptPanelProps {
   onToggleWord: (id: string, idx: number) => void;
   onCleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
   onSetGapCap: (id: string, afterWordIndex: number, maxMs: number | null) => void;
+  onSetTranscriptPlayOrder: (id: string, playOrder: number[] | null) => void;
+  onReorderTrackItems: (track: TrackId, orderedIds: string[]) => void;
   onClearEdits: (id: string) => void;
 }
 
@@ -82,7 +84,7 @@ function pickDefaultTrack(options: TranscriptTrackOption[], items: TimelineItem[
 
 export function TranscriptPanel({
   playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions,
-  onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onClearEdits,
+  onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits,
 }: TranscriptPanelProps) {
   const { status, error, progressNote, runMany, reset } = useTranscript();
   const defaultId = useMemo(() => pickDefaultTrack(trackOptions, items), [trackOptions, items]);
@@ -101,6 +103,8 @@ export function TranscriptPanel({
   const [includeMusic, setIncludeMusic] = useState(false);
   /** many clips: default show only the focused section to keep the list usable */
   const [showAllSections, setShowAllSections] = useState(false);
+  const dragClipFrom = useRef<string | null>(null);
+  const [dragOverClipId, setDragOverClipId] = useState<string | null>(null);
 
   // Keep selection valid when project tracks change.
   useEffect(() => {
@@ -387,22 +391,65 @@ export function TranscriptPanel({
                 const cDel = new Set(c.deletedWordIdx ?? []);
                 const active = focusItem?.id === c.id;
                 const idx = clips.findIndex((x) => x.id === c.id);
-                // 段落：较大停顿才显示 Gap；片段：更细的气口也显示
                 const minDisplayMs = view === 'paragraph' ? 400 : 250;
+                const canDragClip = clips.length > 1 && !!track;
                 return (
                   <section
                     key={c.id}
                     id={`cc-tx-sec-${c.id}`}
-                    className={`cc-tx-section${active ? ' active' : ''}`}
+                    className={`cc-tx-section${active ? ' active' : ''}${dragOverClipId === c.id ? ' drag-over' : ''}`}
+                    draggable={canDragClip}
                     onClick={() => setFocusItemId(c.id)}
+                    onDragStart={(e) => {
+                      if (!canDragClip) return;
+                      dragClipFrom.current = c.id;
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', `clip:${c.id}`);
+                    }}
+                    onDragEnd={() => {
+                      dragClipFrom.current = null;
+                      setDragOverClipId(null);
+                    }}
+                    onDragOver={(e) => {
+                      if (!canDragClip || !dragClipFrom.current || dragClipFrom.current === c.id) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      setDragOverClipId(c.id);
+                    }}
+                    onDragLeave={() => setDragOverClipId((id) => (id === c.id ? null : id))}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const fromId = dragClipFrom.current;
+                      dragClipFrom.current = null;
+                      setDragOverClipId(null);
+                      if (!fromId || !track || fromId === c.id) return;
+                      const ids = clips.map((x) => x.id);
+                      const from = ids.indexOf(fromId);
+                      const to = ids.indexOf(c.id);
+                      if (from < 0 || to < 0) return;
+                      const next = [...ids];
+                      const [moved] = next.splice(from, 1);
+                      if (!moved) return;
+                      next.splice(to, 0, moved);
+                      onReorderTrackItems(track, next);
+                      setFocusItemId(fromId);
+                    }}
                   >
                     <header className="cc-tx-section-head">
+                      <span
+                        className={`cc-tx-section-grip${canDragClip ? ' active' : ''}`}
+                        title={canDragClip ? '拖动卡片以重排时间线该轨片段顺序' : undefined}
+                      >
+                        ⋮⋮
+                      </span>
                       <span className="cc-tx-section-title">
                         {clips.length > 1 ? `${idx + 1}. ` : ''}{clipLabel(c, 36)}
                       </span>
                       <span className="cc-tx-muted">
                         {(c.durationInFrames / fps).toFixed(1)}s
                         {cWords.length ? ` · ${cWords.length} 词` : ' · 未转写'}
+                        {c.transcriptPlayOrder?.length ? ' · 已重排语段' : ''}
                       </span>
                     </header>
                     {!cWords.length ? (
@@ -415,6 +462,7 @@ export function TranscriptPanel({
                         fps={fps}
                         gapCapsMs={c.gapCapsMs}
                         silenceFrames={c.silenceFrames}
+                        playOrder={c.transcriptPlayOrder}
                         minDisplayMs={minDisplayMs}
                         onWord={(w) => {
                           setFocusItemId(c.id);
@@ -428,6 +476,10 @@ export function TranscriptPanel({
                         onCapGap={(afterGi, maxMs) => {
                           setFocusItemId(c.id);
                           onSetGapCap(c.id, afterGi, maxMs);
+                        }}
+                        onReorderSpeech={(order) => {
+                          setFocusItemId(c.id);
+                          onSetTranscriptPlayOrder(c.id, order);
                         }}
                       />
                     )}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { theme } from '../theme';
 import {
   buildScriptRows,
@@ -7,10 +7,9 @@ import {
   speakerColor,
   speakerLabel,
   type IndexedWord,
-  type ScriptRow,
   type WordGroup,
 } from './segment';
-import { msToFrame } from './types';
+import { msToFrame, type TranscriptWord } from './types';
 import { Icon } from '../components/icons';
 
 interface WordRowProps {
@@ -52,7 +51,7 @@ interface ViewProps {
   onWord: (w: IndexedWord) => void;
 }
 
-/** Legacy paragraph groups (no gap rows) — kept for 段落视图. */
+/** Legacy paragraph groups (no gap rows) — kept for any external use. */
 export function ParagraphView({ groups, deleted, editMode, onWord }: ViewProps) {
   if (!groups.length) {
     return <div className="cc-tx-muted">这段还没有转写文本。</div>;
@@ -75,58 +74,116 @@ export function ParagraphView({ groups, deleted, editMode, onWord }: ViewProps) 
 }
 
 interface ScriptViewProps {
-  words: import('./types').TranscriptWord[];
+  words: TranscriptWord[];
   deleted: Set<number>;
   editMode: boolean;
   fps: number;
   gapCapsMs?: Record<string, number>;
   silenceFrames?: number;
-  /** min raw gap ms to show a Gap row (段落可略大，片段更细) */
+  playOrder?: number[];
   minDisplayMs?: number;
   onWord: (w: IndexedWord) => void;
-  /** delete/compress gap before word afterWordGi */
   onDeleteGap: (afterWordGi: number) => void;
-  /** set gap max ms (adjust); null = restore original */
   onCapGap: (afterWordGi: number, maxMs: number | null) => void;
+  /** Flattened source word indices after speech-block drag — syncs playback order. */
+  onReorderSpeech?: (playOrder: number[]) => void;
 }
 
-/** Source-aligned script: speaker blocks + Gap: m:ss rows with trash (段落/片段共用). */
+/** Source-aligned script: speaker blocks (draggable) + Gap rows. */
 export function ScriptView({
-  words, deleted, editMode, fps, gapCapsMs, silenceFrames, minDisplayMs, onWord, onDeleteGap, onCapGap,
+  words, deleted, editMode, fps, gapCapsMs, silenceFrames, playOrder, minDisplayMs,
+  onWord, onDeleteGap, onCapGap, onReorderSpeech,
 }: ScriptViewProps) {
-  const rows = buildScriptRows(words, deleted, { gapCapsMs, silenceFrames, fps, minDisplayMs });
+  const rows = buildScriptRows(words, deleted, {
+    gapCapsMs, silenceFrames, fps, minDisplayMs, playOrder,
+  });
   const [adjustGi, setAdjustGi] = useState<number | null>(null);
+  const dragSpeechFrom = useRef<number | null>(null);
+  const [dragOverSpeech, setDragOverSpeech] = useState<number | null>(null);
 
   if (!rows.length) {
     return <div className="cc-tx-muted">这段还没有转写文本。</div>;
   }
 
+  // Speech blocks only (for reorder) — indices into `rows`
+  const speechRowIdxs = rows
+    .map((r, i) => (r.kind === 'speech' ? i : -1))
+    .filter((i) => i >= 0);
+
+  const applySpeechReorder = (fromSpeech: number, toSpeech: number) => {
+    if (!onReorderSpeech || fromSpeech === toSpeech) return;
+    const speechBlocks = rows.filter((r) => r.kind === 'speech') as Extract<typeof rows[number], { kind: 'speech' }>[];
+    if (fromSpeech < 0 || toSpeech < 0 || fromSpeech >= speechBlocks.length || toSpeech >= speechBlocks.length) return;
+    const next = [...speechBlocks];
+    const [moved] = next.splice(fromSpeech, 1);
+    if (!moved) return;
+    next.splice(toSpeech, 0, moved);
+    const order = next.flatMap((b) => b.words.map((w) => w.gi));
+    onReorderSpeech(order);
+  };
+
+  let speechOrdinal = -1;
+
   return (
     <div className="cc-tx-script">
       {rows.map((row, i) => {
         if (row.kind === 'speech') {
+          speechOrdinal += 1;
+          const sOrd = speechOrdinal;
+          const canDrag = !!onReorderSpeech && speechRowIdxs.length > 1;
           return (
-            <div key={`s-${i}-${row.words[0]?.gi}`} className="cc-tx-speech">
+            <div
+              key={`s-${i}-${row.words[0]?.gi}`}
+              className={`cc-tx-speech${dragOverSpeech === sOrd ? ' drag-over' : ''}`}
+              draggable={canDrag}
+              onDragStart={(e) => {
+                if (!canDrag) return;
+                dragSpeechFrom.current = sOrd;
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', `speech:${sOrd}`);
+              }}
+              onDragEnd={() => {
+                dragSpeechFrom.current = null;
+                setDragOverSpeech(null);
+              }}
+              onDragOver={(e) => {
+                if (!canDrag || dragSpeechFrom.current == null) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                setDragOverSpeech(sOrd);
+              }}
+              onDragLeave={() => {
+                setDragOverSpeech((cur) => (cur === sOrd ? null : cur));
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const from = dragSpeechFrom.current;
+                dragSpeechFrom.current = null;
+                setDragOverSpeech(null);
+                if (from == null) return;
+                applySpeechReorder(from, sOrd);
+              }}
+            >
               <div className="cc-tx-speech-label" style={{ color: speakerColor(row.speaker) }}>
                 {speakerLabel(row.speaker)}
               </div>
               <div className="cc-tx-speech-body">
-                <span className="cc-tx-grip" aria-hidden title="拖动手柄（展示对齐源站）">⋮⋮</span>
+                <span
+                  className={`cc-tx-grip${canDrag ? ' active' : ''}`}
+                  title={canDrag ? '拖动以重排语段（同步播放顺序）' : '当前仅一段，无法重排'}
+                >
+                  ⋮⋮
+                </span>
                 <WordRow words={row.words} deleted={deleted} editMode={editMode} onWord={onWord} />
               </div>
             </div>
           );
         }
-        // gap row
         const displayMs = row.removed ? 0 : row.appliedMs;
         const open = adjustGi === row.afterWordGi;
         return (
           <div key={`g-${row.afterWordGi}`} className={`cc-tx-gap-wrap${row.removed ? ' removed' : ''}`}>
-            <div
-              className="cc-tx-gap"
-              role="group"
-              aria-label={`气口 ${formatGapClock(row.gapMs)}`}
-            >
+            <div className="cc-tx-gap" role="group" aria-label={`气口 ${formatGapClock(row.gapMs)}`}>
               <button
                 type="button"
                 className="cc-tx-gap-main"
@@ -178,7 +235,7 @@ export function ScriptView({
   );
 }
 
-/** @deprecated prefer ScriptView — kept for any external import */
+/** @deprecated prefer ScriptView */
 export function SegmentView({ groups, deleted, editMode, onWord, fps }: ViewProps & { fps: number }) {
   return (
     <div className="cc-tx-script">
@@ -199,6 +256,3 @@ export function SegmentView({ groups, deleted, editMode, onWord, fps }: ViewProp
     </div>
   );
 }
-
-// silence unused ScriptRow type export check
-export type { ScriptRow };

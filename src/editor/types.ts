@@ -168,6 +168,12 @@ export interface TimelineItem {
    */
   gapCapsMs?: Record<string, number>;
   /**
+   * Playback order of SOURCE word indices (drag-reorder speech blocks in 文字稿).
+   * undefined = chronological 0..n-1. Indices still refer to `transcript[]` slots
+   * (variants / gapCaps stay valid). Playback concatenates ranges in this order.
+   */
+  transcriptPlayOrder?: number[];
+  /**
    * AI Voice Isolation (source isolate_voice / DeepFilterNet3).
    * `src` stays the original media; playback uses denoisedSrc for audio when set.
    */

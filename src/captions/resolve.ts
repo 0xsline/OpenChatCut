@@ -32,7 +32,9 @@ function mergeWords(sourceItems: TimelineItem[], fps: number): TranscriptWord[] 
   const all: TranscriptWord[] = [];
   for (const it of sourceItems) {
     const del = new Set(it.deletedWordIdx ?? []);
-    all.push(...retimeWords(it.transcript ?? [], del, fps, it.startFrame, { maxGapFrames: it.silenceFrames, gapCapsMs: it.gapCapsMs }));
+    all.push(...retimeWords(it.transcript ?? [], del, fps, it.startFrame, {
+      maxGapFrames: it.silenceFrames, gapCapsMs: it.gapCapsMs, playOrder: it.transcriptPlayOrder,
+    }));
   }
   return all.sort((a, b) => a.start - b.start);
 }
@@ -54,7 +56,9 @@ export function resolveCaptionWords(captions: CaptionsData, items: TimelineItem[
     // start/end (护城河③). No variant selected → source words unchanged (identical).
     const variant = captions.captionVariantId ? item.variants?.find((v) => v.id === captions.captionVariantId) : undefined;
     const src = variant ? resolveVariantText(item.transcript, variant) : item.transcript;
-    return retimeWords(src, del, fps, item.startFrame, { maxGapFrames: item.silenceFrames, gapCapsMs: item.gapCapsMs });
+    return retimeWords(src, del, fps, item.startFrame, {
+      maxGapFrames: item.silenceFrames, gapCapsMs: item.gapCapsMs, playOrder: item.transcriptPlayOrder,
+    });
   }
   const offMs = ((captions.offsetFrames ?? 0) / fps) * 1000;
   return (captions.words ?? []).map((w) => ({ ...w, start: w.start + offMs, end: w.end + offMs }));

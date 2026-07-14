@@ -24,6 +24,8 @@ export interface EditOpts {
    * 0 ms = delete the gap (source Gap trash).
    */
   gapCapsMs?: Record<string, number>;
+  /** Source word indices in playback order (speech-block drag). */
+  playOrder?: number[];
 }
 
 /** Max frames allowed for the gap immediately before `nextWordIdx` (null = uncapped). */
@@ -44,30 +46,40 @@ export function keptSegments(
   offsetFrames: number,
   opts: EditOpts = {},
 ): KeptSegment[] {
+  // Play order: custom (speech-block drag) or chronological, skip deleted.
+  const seq = (
+    opts.playOrder?.length
+      ? opts.playOrder
+      : words.map((_, i) => i)
+  ).filter((i) => i >= 0 && i < words.length && !deleted.has(i));
+
   const segs: KeptSegment[] = [];
   let pos = offsetFrames;
-  let i = 0;
-  while (i < words.length) {
-    if (deleted.has(i)) { i++; continue; }
-    const srcStart = msToFrame(words[i].start, fps);
-    let srcEnd = msToFrame(words[i].end, fps);
-    // extend through consecutive kept words, cutting where a pause is too long
-    while (i + 1 < words.length && !deleted.has(i + 1)) {
-      const nextIdx = i + 1;
-      const nextStart = msToFrame(words[nextIdx].start, fps);
+  let si = 0;
+  while (si < seq.length) {
+    const wi = seq[si]!;
+    const srcStart = msToFrame(words[wi]!.start, fps);
+    let srcEnd = msToFrame(words[wi]!.end, fps);
+    let sj = si;
+    // Merge forward while source time advances (contiguous play); stop on reorder jumps.
+    while (sj + 1 < seq.length) {
+      const nextWi = seq[sj + 1]!;
+      const nextStart = msToFrame(words[nextWi]!.start, fps);
+      if (nextStart < srcStart) break; // playback jumps earlier in source → new segment
       const gap = nextStart - srcEnd;
-      const cap = gapCapFrames(opts, nextIdx, fps);
+      if (gap < 0) break; // overlap / reverse → new segment
+      const cap = gapCapFrames(opts, nextWi, fps);
       if (cap != null && gap > cap) {
-        srcEnd += cap; // keep only the allowed trailing silence
-        break; // the next kept word begins a fresh segment
+        srcEnd += cap;
+        break;
       }
-      i += 1;
-      srcEnd = msToFrame(words[i].end, fps);
+      srcEnd = msToFrame(words[nextWi]!.end, fps);
+      sj += 1;
     }
     const durFrames = Math.max(1, srcEnd - srcStart);
     segs.push({ srcStartFrame: srcStart, srcEndFrame: srcEnd, fromFrame: pos, durFrames });
     pos += durFrames;
-    i += 1;
+    si = sj + 1;
   }
   return segs;
 }
