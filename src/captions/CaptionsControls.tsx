@@ -1,10 +1,15 @@
 import { useMemo, useState } from 'react';
 import type { CaptionsData, CaptionPacing, CaptionTemplate } from './types';
+import type { TranscriptVariant } from '../transcript/types';
 import { CAPTION_STYLES, CAPTION_STYLE_BY_ID } from './styles';
+import { usePersistedState } from '../hooks/usePersistedState';
+import { Icon } from '../components/icons';
 
 interface CaptionsControlsProps {
   captions: CaptionsData | null;
   hasTranscript: boolean;
+  /** translation / correction variants of the caption's source transcript (main-line language picker) */
+  sourceVariants?: TranscriptVariant[];
   onGenerate: () => void;
   onUpdate: (patch: Partial<CaptionsData>) => void;
   /** 完全移除字幕（隐藏且清掉 overlay 状态） */
@@ -28,10 +33,12 @@ const TRANSLATE_TO: { id: string; label: string }[] = [
   { id: '한국어', label: '韩文' },
 ];
 
-// 字幕 = 预览画面底部叠字（跟文字稿走）。样式只改外观，不改时间轴。
+// 字幕 = 预览画面底部叠字（跟文字稿走）。整块面板可折叠，避免占满文字稿区。
 export function CaptionsControls({
-  captions, hasTranscript, onGenerate, onUpdate, onRemove, onTranslate, translating, translateError,
+  captions, hasTranscript, sourceVariants = [], onGenerate, onUpdate, onRemove, onTranslate, translating, translateError,
 }: CaptionsControlsProps) {
+  // 默认收起：用户明确说「这个面板」碍事；点标题条展开
+  const [panelOpen, setPanelOpen] = usePersistedState('cc.captionsPanelOpen', false);
   const [bilingualOpen, setBilingualOpen] = useState(!!captions?.bilingual || !!captions?.translation);
   const style = captions ? CAPTION_STYLE_BY_ID[captions.template] : null;
   const pacingMeta = PACINGS.find((p) => p.v === (captions?.pacing ?? 'phrase')) ?? PACINGS[0]!;
@@ -43,25 +50,43 @@ export function CaptionsControls({
     return 'English';
   }, [captions?.translationLang]);
 
-  return (
-    <div className="cc-cap-panel">
-      <div className="cc-cap-head">
-        <span className="cc-cap-title">字幕</span>
-        <span className="cc-cap-sub">叠在预览画面上，跟上方文字稿同步</span>
-      </div>
+  const statusLine = !captions
+    ? '未生成'
+    : captions.enabled
+      ? `显示中 · ${style?.labelZh ?? '字幕'}`
+      : `已隐藏 · ${style?.labelZh ?? '字幕'}`;
 
-      {!captions ? (
+  return (
+    <div className={`cc-cap-panel${panelOpen ? ' open' : ' collapsed'}`}>
+      <button
+        type="button"
+        className="cc-cap-head-btn"
+        onClick={() => setPanelOpen((v) => !v)}
+        aria-expanded={panelOpen}
+        title={panelOpen ? '收起字幕面板' : '展开字幕面板'}
+      >
+        <span className={`cc-cap-chevron${panelOpen ? '' : ' closed'}`}>
+          <Icon name="chevronDown" size={13} />
+        </span>
+        <span className="cc-cap-title">字幕</span>
+        <span className="cc-cap-status">{statusLine}</span>
+        <span className="cc-cap-head-action">{panelOpen ? '收起' : '展开'}</span>
+      </button>
+
+      {panelOpen && !captions && (
         <div className="cc-cap-empty">
           <button type="button" className="cc-cap-btn primary" onClick={onGenerate} disabled={!hasTranscript}>
             生成字幕
           </button>
           <p className="cc-cap-hint">
             {hasTranscript
-              ? '根据当前文字稿在预览底部显示字幕。样式可随时改；不想要就关掉显示或移除。'
+              ? '根据当前文字稿在预览底部显示字幕。不需要时可点上方「收起」藏起本面板。'
               : '先在上方完成「转写」，再生成字幕。'}
           </p>
         </div>
-      ) : (
+      )}
+
+      {panelOpen && captions && (
         <div className="cc-cap-body">
           {/* 显示 / 隐藏 — 最显眼 */}
           <div className="cc-cap-row main">
@@ -155,6 +180,25 @@ export function CaptionsControls({
           <button type="button" className="cc-cap-btn" onClick={onGenerate} disabled={!hasTranscript}>
             用当前文字稿刷新字幕
           </button>
+
+          {/* 字幕语言（文本变体）：把主字幕行换成某个翻译/校正变体，时间轴不变（护城河③）。
+              变体由 Agent 的 manage_transcript translate 生成，这里只选显示哪个。 */}
+          {sourceVariants.length > 0 && (
+            <div className="cc-cap-field">
+              <div className="cc-cap-label">字幕语言（文本变体）</div>
+              <select
+                value={captions.captionVariantId ?? ''}
+                onChange={(e) => onUpdate({ captionVariantId: e.target.value || undefined })}
+                className="cc-cap-select"
+              >
+                <option value="">原文（source）</option>
+                {sourceVariants.map((v) => (
+                  <option key={v.id} value={v.id}>{v.label}</option>
+                ))}
+              </select>
+              <p className="cc-cap-hint">切换主字幕行显示的语言。译文只换文本，词的时间/帧位仍取自源。</p>
+            </div>
+          )}
 
           {/* 双语：折叠，默认译成英文 */}
           <div className="cc-cap-bilingual">

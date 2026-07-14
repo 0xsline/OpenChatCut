@@ -736,16 +736,29 @@ button, input, select { font: inherit; }
 }
 .cc-tx-section-title { font-size:12px; font-weight:600; color:#ddd; }
 
-/* ── Captions controls (文字稿 bottom) ── */
+/* ── Captions controls (文字稿 bottom，可折叠) ── */
 .cc-cap-panel {
-  border-top:1px solid #363636; padding:12px 14px 14px;
-  display:flex; flex-direction:column; gap:10px; flex-shrink:0;
+  border-top:1px solid #363636; padding:0;
+  display:flex; flex-direction:column; gap:0; flex-shrink:0;
 }
-.cc-cap-head { display:flex; flex-direction:column; gap:2px; }
+.cc-cap-panel.open { padding-bottom:12px; }
+.cc-cap-head-btn {
+  width:100%; display:flex; align-items:center; gap:8px;
+  padding:10px 14px; background:none; border:0; cursor:pointer;
+  color:#ccc; text-align:left;
+}
+.cc-cap-head-btn:hover { background:#1c1c1c; color:#eee; }
+.cc-cap-chevron { display:inline-flex; transition:transform 0.12s; color:#888; }
+.cc-cap-chevron.closed { transform:rotate(-90deg); }
 .cc-cap-title { font-size:12px; font-weight:600; color:#e8e8e8; }
-.cc-cap-sub { font-size:10.5px; color:#777; line-height:1.35; }
-.cc-cap-body { display:flex; flex-direction:column; gap:12px; }
-.cc-cap-empty { display:flex; flex-direction:column; gap:8px; }
+.cc-cap-status { flex:1; min-width:0; font-size:11px; color:#777; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cc-cap-head-action { font-size:11px; color:#888; flex-shrink:0; }
+.cc-cap-panel.collapsed .cc-cap-head-btn { padding:9px 14px; }
+.cc-cap-empty, .cc-cap-body {
+  padding:4px 14px 4px; display:flex; flex-direction:column; gap:10px;
+}
+.cc-cap-body { gap:12px; }
+.cc-cap-empty { gap:8px; }
 .cc-cap-row.main {
   display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
 }
