@@ -143,7 +143,7 @@ export function MediaPoolPanel({
           <button className={`cc-media-icon${menu === 'filter' || type !== 'all' || favoritesOnly ? ' active' : ''}`} aria-label="筛选素材" title="筛选" onClick={() => setMenu((value) => value === 'filter' ? null : 'filter')}><Icon name="filter" size={19} /></button>
           {menu === 'filter' && <div className="cc-media-popover cc-media-filter-menu">
             {([['all', '全部'], ['video', '视频'], ['image', '图片'], ['audio', '音频']] as const).map(([value, label]) => <button key={value} className={type === value ? 'selected' : ''} onClick={() => setType(value)}>{label}</button>)}
-            <button className={favoritesOnly ? 'selected' : ''} onClick={() => setFavoritesOnly((value) => !value)}>★ 收藏</button>
+            <button className={favoritesOnly ? 'selected' : ''} onClick={() => setFavoritesOnly((value) => !value)}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="star" size={13} filled={favoritesOnly} /> 收藏</span></button>
           </div>}
         </div>
       </div>

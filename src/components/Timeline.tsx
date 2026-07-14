@@ -25,6 +25,12 @@ interface TimelineProps {
 const HEADER_W = 178;
 const MIN_ROW = 34;
 const RULER_H = 29;
+// clip fill by ITEM kind — source --tl-item-* oklch (video/image=blue, audio=green,
+// motion-graphic=pink, text=amber). Video/image also render a media thumbnail on top.
+const CLIP_COLOR: Record<TimelineItem['kind'], string> = {
+  video: theme.clipVideo, image: theme.clipVideo, audio: theme.clipAudio,
+  'motion-graphic': theme.clipMg, text: theme.clipText,
+};
 // source weights tracks by type: video rows are taller than audio rows
 // (videoTrackHeight > audioTrackHeight), not an equal split.
 const WEIGHT: Record<'video' | 'audio', number> = { video: 1.4, audio: 1 };
@@ -560,10 +566,10 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
                         onContextMenu={(e) => { e.preventDefault(); commands.selectItem(it.id); setCtxMenu({ id: it.id, x: e.clientX, y: e.clientY }); }}
                         style={{
                           position: 'absolute', left: Math.max(0, start) * px, top: 4, height: rowHeightOf(trackId) - 8, width: dur * px,
-                          background: it.kind === 'motion-graphic' ? '#513446' : meta.kind === 'video' ? '#55996a' : 'linear-gradient(180deg,#3b724c 0 52%,#61a272 52%)',
-                          backgroundImage: (it.kind === 'image' || it.kind === 'video') && it.src ? `linear-gradient(90deg, transparent 0%, rgba(30,65,38,.62) 70%), url(${it.src})` : undefined,
+                          background: CLIP_COLOR[it.kind] ?? theme.clipMg,
+                          backgroundImage: (it.kind === 'image' || it.kind === 'video') && it.src ? `linear-gradient(90deg, transparent 0%, rgba(0,0,0,.4) 78%), url(${it.src})` : undefined,
                           backgroundSize: 'auto 100%', backgroundRepeat: 'no-repeat',
-                          borderRadius: 3, color: '#101510', fontSize: 11,
+                          borderRadius: 3, color: '#fff', fontSize: 11,
                           display: 'flex', alignItems: 'flex-end', padding: '0 8px 5px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
                           border: selected ? '2px solid #f2f2f2' : '1px solid rgba(255,255,255,.08)',
                           cursor: locked ? 'not-allowed' : editMode === 'blade' ? 'crosshair' : 'grab', userSelect: 'none', touchAction: 'none',
@@ -577,7 +583,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
                         {/* trim handles (hidden in blade mode) */}
                         {editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
-                        <span style={{ position: 'relative', zIndex: 1, pointerEvents: 'none', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>{it.kind === 'motion-graphic' ? '✦ ' : ''}{it.name}</span>
+                        <span style={{ position: 'relative', zIndex: 1, pointerEvents: 'none', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, textShadow: '0 1px 2px rgba(0,0,0,.55)' }}>{it.name}</span>
                         {editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', right: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
                       </div>
@@ -591,7 +597,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
                       <div key={t.id} title={`转场:${t.type} · ${(t.durationInFrames / state.fps).toFixed(1)}s`}
                         onClick={() => commands.selectItem(t.incomingItemId)}
                         style={{ position: 'absolute', top: '50%', left: inItem.startFrame * px, transform: 'translate(-50%, -50%)', width: 15, height: 15, borderRadius: 3, background: '#3a3f52', border: '1px solid #6b7bb5', color: '#cfe3ff', fontSize: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', zIndex: 3 }}>
-                        ⧓
+                        <Icon name="swap" size={10} />
                       </div>
                     );
                   })}
@@ -641,7 +647,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
           border: `1px solid ${theme.borderLight}`, borderRadius: 8, padding: '9px 16px', fontSize: 12.5,
           boxShadow: '0 8px 28px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <span>{clipJob.msg}</span>
-          {clipJob.error && <button onClick={() => setClipJob(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 14 }}>✕</button>}
+          {clipJob.error && <button onClick={() => setClipJob(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0, lineHeight: 0, display: 'grid', placeItems: 'center' }}><Icon name="x" size={14} /></button>}
         </div>
       )}
     </section>
