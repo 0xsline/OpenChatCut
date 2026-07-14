@@ -7,6 +7,7 @@ import { GLSL_TRANSITION_TYPES, TRANSITION_LABELS, ZOOM_SHAPE_LABELS } from '../
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
 import { AUDIO_ASSETS, type AudioAsset } from '../audio/library';
+import { SOUND_EFFECTS, SOUND_GROUPS, soundEffectSrc } from '../audio/soundLibrary';
 import { ALL_FX, FX_EFFECTS, FX_IDS, LUT_EFFECTS, LUT_IDS } from '../gl/fx/effects';
 import { fxThumbUrl } from '../gl/fxThumb';
 import { TranscriptPanel } from './TranscriptPanel';
@@ -58,7 +59,8 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
   const isVisual = selKind != null && selKind !== 'audio';
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('资源库');
   const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('MG 动画');
-  const showAudio = mainTab === '资源库' && (subTab === 'Audio' || subTab === '音效');
+  const showAudio = mainTab === '资源库' && subTab === 'Audio';   // music
+  const showSfx = mainTab === '资源库' && subTab === '音效';       // sound effects
   const isTranscript = mainTab === '文字稿';
   const isMyAssets = mainTab === '我的素材';
 
@@ -103,6 +105,30 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
                 </button>
               ))}
             </div>
+          </>
+        ) : showSfx ? (
+          <>
+            <div style={{ fontSize: 11, color: theme.textDim, marginBottom: 8 }}>{SOUND_EFFECTS.length} 个音效（源站库）· 点击加到 A1 轨</div>
+            {SOUND_GROUPS.map((g) => {
+              const list = SOUND_EFFECTS.filter((s) => s.group === g.id);
+              if (!list.length) return null;
+              return (
+                <div key={g.id} style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 10.5, color: theme.textDim, letterSpacing: '0.06em', opacity: 0.7, margin: '2px 0 6px' }}>{g.name}（{list.length}）</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {list.map((s) => (
+                      <button key={s.id} title={s.desc}
+                        onClick={() => onAddAudio({ id: `sfx_${s.id}`, name: s.name, category: 'sfx', src: soundEffectSrc(s.id), durationInFrames: Math.max(1, Math.round(s.seconds * fps)) })}
+                        style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 11px', border: `1px solid ${theme.border}`, borderRadius: 8, background: theme.panelAlt, color: theme.text }}>
+                        <span style={{ fontSize: 15 }}>🔊</span>
+                        <span style={{ flex: 1, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}{s.popular && <span style={{ marginLeft: 6, fontSize: 9, color: theme.accent }}>热门</span>}</span>
+                        <span style={{ fontSize: 10.5, color: theme.textDim, fontVariantNumeric: 'tabular-nums' }}>{s.seconds.toFixed(1)}s</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </>
         ) : subTab === '转场' ? (
           <ResourceBrowser hint="点击应用为选中片段的入场转场（从前一个相邻同轨片段进入）" items={TRANSITION_ITEMS}
