@@ -18,6 +18,7 @@ import { saveProject, type ProjectMeta } from './persist/projectStore';
 import { importMedia } from './media/upload';
 import { AUDIO_ASSETS } from './audio/library';
 import type { Tpl } from './types';
+import type { AgentReference } from './agent/context';
 
 interface EditorProps {
   initial: ProjectDoc;
@@ -51,26 +52,13 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   // a pending proposal's draft result, previewed in the player (null = committed)
   const [previewState, setPreviewState] = useState<TimelineState | null>(null);
   // library「用 AI 生成」→ prefill the chat composer (nonce forces re-seed of the same text)
-  const [chatSeed, setChatSeed] = useState<{ text: string; nonce: number } | null>(null);
+  const [chatSeed, setChatSeed] = useState<{ text: string; nonce: number; reference?: AgentReference } | null>(null);
   // 设计风格(品牌)编辑器弹窗 (source manage_design_style)
   const [showDesign, setShowDesign] = useState(false);
 
-  // current playhead frame, synced from the Remotion Player (shared by the
-  // timeline's playhead line + the inspector's keyframe-at-playhead controls).
-  const [playhead, setPlayhead] = useState(0);
-  useEffect(() => {
-    let raf = 0;
-    let detach: (() => void) | null = null;
-    const attach = () => {
-      const p = playerRef.current;
-      if (!p) { raf = requestAnimationFrame(attach); return; }
-      const onFrame = (e: { detail: { frame: number } }) => setPlayhead(e.detail.frame);
-      p.addEventListener('frameupdate', onFrame);
-      detach = () => p.removeEventListener('frameupdate', onFrame);
-    };
-    attach();
-    return () => { if (raf) cancelAnimationFrame(raf); detach?.(); };
-  }, []);
+  // Read the playhead only when an edit needs it. Continuous visual updates are
+  // painted inside Timeline so playback does not re-render the whole editor.
+  const getPlayhead = useCallback(() => playerRef.current?.getCurrentFrame() ?? 0, []);
 
   // autosave this project (all timelines) to IndexedDB (debounced) so a reload restores it
   useEffect(() => {
@@ -78,10 +66,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     return () => clearTimeout(id);
   }, [doc, project.id]);
 
-  // switching timelines: reset the playhead to 0 (the new sequence has its own
-  // length/content) and seek the shared Player so it doesn't show a stale frame.
+  // Switching timelines: seek the shared Player so it doesn't show a stale frame.
   useEffect(() => {
-    setPlayhead(0);
     playerRef.current?.seekTo(0);
   }, [doc.activeTimelineId]);
 
@@ -96,7 +82,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const addTemplate = useCallback((tpl: Tpl) => commands.addMotionGraphic(tpl), [commands]);
   const useTemplateAI = useCallback((tpl: Tpl) => {
     setChatCollapsed(false);
-    setChatSeed({ text: `参考模板「${tpl.name}」，用 create_motion_graphic 生成一个类似风格的动画：`, nonce: Date.now() });
+    setChatSeed({ text: `参考模板「${tpl.name}」，用 create_motion_graphic 生成一个类似风格的动画： @${tpl.name} `, nonce: Date.now(), reference: { id: tpl.id, name: tpl.name, kind: 'template' } });
   }, [setChatCollapsed]);
   const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
@@ -210,7 +196,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
               onItemFiltersChange={(patch) => state.selectedId && commands.setItemFilters(state.selectedId, patch)}
               onItemZoomChange={(patch) => state.selectedId && commands.setItemZoom(state.selectedId, patch)}
               onItemEffectsChange={(effects) => state.selectedId && commands.setItemEffects(state.selectedId, effects)}
-              playhead={playhead}
+              getPlayhead={getPlayhead}
               onSetReframeKeyframe={(frame, fx, fy, mag) => state.selectedId && commands.setReframeKeyframe(state.selectedId, frame, fx, fy, mag)}
               onRemoveReframeKeyframe={(frame) => state.selectedId && commands.removeReframeKeyframe(state.selectedId, frame)}
               transition={state.transitions?.find((t) => t.incomingItemId === state.selectedId) ?? null}
@@ -230,12 +216,12 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       </div>
       <div style={{ gridColumn: '3 / -1', gridRow: 4, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         <TimelineTabs doc={doc} commands={commands} />
-        <Timeline state={state} commands={commands} playerRef={playerRef} playhead={playhead} setPlayhead={setPlayhead}
+        <Timeline state={state} commands={commands} playerRef={playerRef}
           onRecordVoiceover={async (blob) => {
             const ext = blob.type.includes('ogg') ? 'ogg' : 'webm';
             const asset = await importMedia(new File([blob], `旁白.${ext}`, { type: blob.type }), state.fps);
             commands.addAsset(asset);
-            commands.addMediaItem(asset, { track: 'A1', startFrame: playhead });
+            commands.addMediaItem(asset, { track: 'A1', startFrame: getPlayhead() });
           }} />
       </div>
     </div>

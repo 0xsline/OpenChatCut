@@ -1,18 +1,18 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { theme } from './theme';
-import Editor from './Editor';
 import { Dashboard } from './components/Dashboard';
-import { INITIAL } from './editor/initial';
 import {
   listProjects, loadProject, createProject, renameProject, duplicateProject, deleteProject,
   randomProjectName, docFromTimeline, type ProjectMeta,
 } from './persist/projectStore';
 import type { ProjectDoc, TimelineState } from './editor/types';
 
+const Editor = lazy(() => import('./Editor'));
+
 // A brand-new project starts empty; the first-run "示例工程" gets the seed clips.
-const emptyState = (): TimelineState => ({ ...INITIAL, items: [], selectedId: null });
+const emptyState = (): TimelineState => ({ fps: 30, width: 1920, height: 1080, items: [], selectedId: null });
 const emptyDoc = (): ProjectDoc => docFromTimeline(emptyState());
-const seedDoc = (): ProjectDoc => docFromTimeline(INITIAL);
+const seedDoc = async (): Promise<ProjectDoc> => docFromTimeline((await import('./editor/initial')).INITIAL);
 
 type Route = { name: 'dashboard' } | { name: 'editor'; id: string };
 function parseHash(): Route {
@@ -38,7 +38,7 @@ function EditorLoader({ meta, onHome, onRename }: { meta: ProjectMeta; onHome: (
     return () => { alive = false; };
   }, [meta.id]);
   if (!initial) return <Splash text="加载工程…" />;
-  return <Editor initial={initial} project={meta} onHome={onHome} onRename={onRename} />;
+  return <Suspense fallback={<Splash text="加载编辑器…" />}><Editor initial={initial} project={meta} onHome={onHome} onRename={onRename} /></Suspense>;
 }
 
 export default function App() {
@@ -56,7 +56,7 @@ export default function App() {
   useEffect(() => {
     (async () => {
       let list = await listProjects();
-      if (list.length === 0) list = [await createProject('示例工程', seedDoc())];
+      if (list.length === 0) list = [await createProject('示例工程', await seedDoc())];
       setProjects(list);
     })();
   }, []);

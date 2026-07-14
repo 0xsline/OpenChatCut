@@ -1,7 +1,7 @@
 // Runnable check for the per-clip effect uniform logic (mirrors source gn()):
 //   npx tsx src/gl/fx/fx.check.ts
 import assert from 'node:assert';
-import { fxUniform, fxUniforms, type FxDef } from './uniforms';
+import { fxPasses, fxUniform, fxUniforms, type FxDef } from './uniforms';
 
 const luma: FxDef = {
   id: 'builtin:fx-luma-key', name: '', desc: '', frag: '',
@@ -32,5 +32,29 @@ const rect: FxDef = {
   props: [{ key: 'width', label: '', default: 0.5, min: 0, max: 1, uniform: 'u_rect_width' }],
 };
 assert.deepStrictEqual(fxUniforms(rect, { width: 0.8 }), { u_rect_width: 0.8 }, 'uniform override wins over u_<key>');
+
+// vector color uniforms retain source defaults and clamp overrides to 0..1.
+const colored: FxDef = {
+  id: 'color', name: '', desc: '', frag: 'color',
+  props: [{ key: 'color', label: '', kind: 'color', default: [0, 0.75, 1], uniform: 'u_color' }],
+};
+assert.deepStrictEqual(fxUniforms(colored), { u_color: [0, 0.75, 1] }, 'color default');
+assert.deepStrictEqual(fxUniforms(colored, { color: [-1, 0.5, 2] }), { u_color: [0, 0.5, 1] }, 'color clamp');
+
+// A later effect's local graph references are rebased into the combined stack.
+const graph: FxDef = {
+  id: 'graph', name: '', desc: '', frag: 'a', props: [],
+  pipeline: (uniforms) => [
+    { frag: 'a', uniforms },
+    { frag: 'b' },
+    { frag: 'c', inputFrom: 0, samplers: { u_branch: 1 } },
+  ],
+};
+const passes = fxPasses([{ def: colored }, { def: graph }], 1.25);
+assert.strictEqual(passes.length, 4, 'one color pass + three graph passes');
+assert.strictEqual(passes[1].inputFrom, undefined, 'next effect consumes previous output by default');
+assert.strictEqual(passes[3].inputFrom, 1, 'local inputFrom rebased');
+assert.deepStrictEqual(passes[3].samplers, { u_branch: 2 }, 'local sampler rebased');
+assert.strictEqual(passes[1].uniforms?.u_time, 1.25, 'stack shares clip-local time');
 
 console.log('fx.check: OK');

@@ -18,7 +18,7 @@
 | MG 模板 | ✅ 基本完整（211+生成+沙箱），缺属性面板/设计风格 |
 | 转写 / 文字稿编辑 | 🟡 核心在（删词=删视频/静音压缩）且 `timeline.md` / `read_script` / `apply_script` 已完成；仍缺 av_script、校正和完整变体体系 |
 | 字幕 | 🟡 源站 21 个样式预设、轨道头 CC 下拉、卡拉OK、跟随与双语翻译已完成；缺逐词覆盖/多轨源路由 |
-| AI 生成（视频/图/配音/音乐/音效/着色器）| 🟡 图/视频/配音/音乐/音效已接 provider 适配层并完成本地浏览器联调；音乐/视频已接统一异步 job + `track_progress`，缺真实供应商凭据实测、着色器、持久队列/积分计量 |
+| AI 生成（视频/图/配音/音乐/音效/着色器）| 🟡 图/视频/配音/音乐/音效已接 provider 适配层并完成本地浏览器联调；音乐/视频已接统一异步 job + `track_progress`。生成文件和媒体池资产立即持久化，落轨操作继续进入可拒绝的提案，缺真实供应商凭据实测、着色器、持久队列/积分计量 |
 | 导出 | 🟡 MP4 服务端渲染 + srt/txt 同步导出已完成；缺 xml/audio/ProRes/WebCodecs/异步job |
 | 项目/持久化/多工程 | 🟡 IndexedDB 自动保存恢复、多工程和仪表盘已完成；版本历史/交互卡/工程绑定待补 |
 | 协作 / 分享 / 实时同步 | ❌ 全缺 |
@@ -44,20 +44,20 @@
 | 功能 | 状 | 怎么做 / 技术 / 源站 |
 |---|---|---|
 | 增删改查片段（add/move/retime/duplicate/remove/split）| ✅ | `store.ts` reducer，1:1 映射 agent 工具 |
-| 撤销/重做 | ✅ | 快照式 history |
+| 撤销/重做 | ✅ | 快照式 history，最多保留最近 100 个工程快照；挂载转写也进入 history，可一次撤销 |
 | 拖拽移动 / 裁剪（trim 手柄）/ 跨轨约束 | ✅ | `Timeline.tsx` pointer 拖拽 |
-| 时间轴横向缩放 🔍 / 竖向轨道缩放 Alt+滚轮 | ✅ | zoom/trackScale 状态；Player 与 211 张模板卡已从逐帧根渲染中隔离，浏览器前后性能回归见 `design-qa.md` |
+| 时间轴横向缩放 🔍 / 竖向轨道缩放 Alt+滚轮 | ✅ | zoom/trackScale 状态；播放头和时间码改为局部 DOM 绘制，根 `Editor`/Inspector/素材库不再随 `frameupdate` 逐帧重渲。浏览器 3 秒 MG 实测 p95 17.4ms、最大 17.6ms、长任务 0，见 `design-qa.md` |
 | 时间线上下拖高 + 加权轨道高度 | ✅ | `cc.timelineH` + WEIGHT；按源站 Dockview 树改为只跨 Assets + Viewer，AI 列贯穿到底；使用源站式 sticky 轨道头、工具分组、片段配色、音频波形视觉与右下反馈入口 |
 | **多时间线/序列（每工程多条）** | ✅ | `ProjectDoc V2` 已包含 `timelines[] + activeTimelineId`；底部 Tab 支持切换、新建、复制、重命名、删除、隐藏和一键 9:16 竖屏副本，旧工程自动迁移；Agent 已接 `manage_timelines` |
-| **轨道管理（增删/改序/角色/锁/隐/静音/收紧）** | ✅ | 稳定轨道 id + 动态 V/A 别名；创建、空轨删除、排序、命名、anchor/follower 角色、锁定、折叠、隐藏、静音与 tighten 均已完成；旧工程自动迁移，Agent 已接源站式 `edit_track`。浏览器自建工程回归见 `qa-dynamic-tracks.png` |
+| **轨道管理（增删/改序/角色/锁/隐/静音/收紧）** | ✅ | 稳定轨道 id + 动态 V/A 别名；创建、空轨删除、排序、命名、anchor/follower 角色、锁定、折叠、隐藏、静音与 tighten 均已完成；删除护栏保证至少各留 1 条视频/音频轨，显式空轨序列不再回退出幽灵 V/A 轨；旧工程自动迁移，Agent 已接源站式 `edit_track` |
 | **刀片工具(B)/修剪工具(N)/吸附** | ✅ | 刀片按钮/B 键在播放头切分，切口 `srcInFrame` 递进；拖拽/裁剪可吸附到 0、播放头和邻近片段边 |
 | **Ripple 编辑（插入/覆盖模式）** | 🟡 | 已有波纹删除（同轨后续片段左移合缝）和修剪模式下右边缘联动位移；仍缺把 insert/overwrite 统一接到素材落轨、拖拽、粘贴、move/add 和 Agent `edit_item` 参数 |
 | **片段变换（缩放/位置/旋转）** | ✅ | `ClipTransform {scale,x,y,rotation}` 通过 `ClipWrapper` 应用 CSS transform；属性面板提供缩放、位置、旋转滑块 |
 | **动画/关键帧（源真相：无通用 K 帧）** | ✅ | MG 使用 `interpolate`/`spring`/bezier；`builtin:zoom` 提供参数化缩放动画；`ReframeCurveV1` 提供焦点与倍率稀疏关键帧 |
 | **更多媒体类型：image / gif / svg / text / solid** | 🟡 | image、video、text 已完成；gif、svg、solid 待补。text 支持内容、字号、颜色、对齐和字重 |
 | **视频素材片段（video item）** | ✅ | 导入真视频并通过 `<OffthreadVideo>` 预览和导出 |
-| **特效（blur/zoom/mosaic/CRT/ASCII…）** | 🟡 | 亮度、对比度、饱和度、模糊已完成；mosaic、CRT、ASCII 等 WebGL 特效待补 |
-| **转场（cross-dissolve/dip/whip-pan/zoom/slide/luma…）** | 🟡 | 已完成溶解、黑场、柔化擦除、甩镜、闪白、亮度混合；page-curl、rack-focus 等复杂 GLSL 转场待补 |
+| **特效（blur/zoom/mosaic/CRT/ASCII…）** | ✅ | 9/9 个已定位源特效均已接入 WebGL：luma-key、local-mosaic、magnify、rect/circle-mask、CRT、shake、tilt-shift 与 **ASCII Rain**。ASCII Rain 使用源站 4-pass DAG；运行时可把多个特效的局部 pass graph 重编号后串成有序栈。Inspector 支持追加、移除、上下排序、逐项调参和 ASCII RGB 颜色；`manage_effects` 同步支持 effectId 定位的栈操作 |
+| **转场（cross-dissolve/dip/whip-pan/zoom/slide/luma…）** | ✅ | 12/12 均使用从线上 bundle 抽出的源 GLSL：交叉溶解、黑场、柔化擦除、甩镜、闪白、亮度混合、page-curl、rack-focus、organic-dissolve、impact-shake、charge-zoom、clean-swipe。图片/视频走 WebGL；DOM/MG/text 走 6 个可表达转场的 CSS fallback，其余安全回退溶解 |
 | **标记 markers（点/段批注）** | ✅ | 支持点/区间标记、批注、8 色、跳转和标记帧吸附；源站 `manage_markers` |
 | **色度键 / 绿幕（chroma key）** | ❌ | 对 video item 做颜色抠像。做：WebGL shader 抠指定色。源站 `chroma` |
 | **变速 / 重定时（variable speed）** | 🟡 | 有 set_item_timing 改时长，无保音调变速。做：item 加 `playbackRate`，`<Audio>/<Video>` 用 `playbackRate` + 时间线时长按 rate 换算（源站 caption 的 `dH` 已含 playbackRate 语义）|
@@ -123,7 +123,7 @@
 
 ## 8. AI 生成（花钱域）
 
-> 全部对标源站 §8 `submit_*`（异步 job + 积分门控）。当前已完成 5 个 provider 适配层、服务器密钥隔离、生成文件入库与 Agent 工具接线；音乐/视频已统一为提交即返 `jobId`，再由 `track_progress` 的 params/status/wait 幂等落入媒体池，并在浏览器自建工程用本地 provider mock 验证。真实供应商凭据、进程外持久队列、其余生成类型异步化与积分计量仍待补。
+> 全部对标源站 §8 `submit_*`（异步 job + 积分门控）。当前已完成 5 个 provider 适配层、服务器密钥隔离、生成文件入库与 Agent 工具接线；音乐/视频已统一为提交即返 `jobId`，再由 `track_progress` 的 params/status/wait 幂等落入媒体池。生成文件与 `addAsset` 作为不可回滚副作用立即写入媒体池，时间线落轨仍留在 proposal 中，拒绝提案不会遗失已生成素材。真实供应商凭据、进程外持久队列、其余生成类型异步化与积分计量仍待补。
 
 | 功能 | 状 | 怎么做 / 技术 / 源站 |
 |---|---|---|
@@ -176,9 +176,9 @@
 | Anthropic 原生 tool-use（可换真 Claude 一行）| ✅ | `agent/`，现跑 grok 中转 |
 | 流式输出（text/thinking）| ✅ | `messages.stream` |
 | ~19 个工具（读/加/改/转写/字幕/删词/比例）| ✅ | `tools.ts`+`transcript-tools.ts` |
-| **propose → review → apply（提案审阅再落地）** | ✅ | Agent 先在草稿态执行结构编辑并生成 proposal；`ProposalCard` 支持逐操作勾选、预览、应用和拒绝，批准后作为一次原子提交，可一次 undo |
+| **propose → review → apply（提案审阅再落地）** | ✅ | Agent 先在草稿态执行结构编辑并生成 proposal；`ProposalCard` 支持逐操作勾选、预览、应用和拒绝，批准后作为一次原子提交，可一次 undo；提案保存完整 `baseDoc`，待审期间工程一旦变化会拒绝 stale 回放并要求重试 |
 | **多轮会话持久化（session/reset/max_turns）** | 🟡 | 有循环，无会话存储。做：`chat_block` 有序存对话；reset/继续。源站 `sdk_session` |
-| **@ 引用素材进对话** | ❌ | 聊天里 @某片段/资产带上下文。源站 `chat_context_entry` |
+| **@ 引用素材进对话** | ✅ | 媒体池和模板库引用以稳定 `id + kind` 保存，发送时解析为结构化 `chat_context_entry`（素材含 src/尺寸/时长，模板含分类/尺寸/props）；显示名只负责 UI，不参与资源寻址，删除 @ 文本会同步移除引用 |
 | **对话历史持久化** | ❌ | 刷新即丢。源站 `chat_block`(project_seq) |
 | **扩展思考展示（thinking block UI）** | 🟡 | 中转透传 thinking，UI 未必渲染。做：渲染 thinking_start/delta/end 折叠块 |
 | **Agent 设置（模型/速度/思考/MG 质量/自动放行）** | ❌ | 设置面板。源站 agent settings |
@@ -263,7 +263,7 @@
 **P1 补齐 NLE 核心**
 4. ✅ 多时间线/序列、动态轨道 / `edit_track` 与角色闪避已完成
 5. 🟡 刀片/吸附、波纹删除和右修剪联动已完成；insert/overwrite 全链路仍待补
-6. 🟡 转场和特效已完成基础版本；标记已完成，复杂 GLSL 效果待补
+6. ✅ 12 个源转场 GLSL、9 个源 WebGL 特效（含 ASCII Rain 4-pass DAG）、有序特效栈与颜色参数、标记均已完成
 
 **P2 生成矩阵（护城河，接 API）**
 7. 统一 job 队列 + 积分计量骨架

@@ -18,7 +18,7 @@ interface ChatPanelProps {
   /** show a proposal's draft result in the player (null = show committed state) */
   onPreviewState: (state: TimelineState | null) => void;
   /** prefill the composer (library「用 AI 生成」); bump the number to re-seed */
-  seed?: { text: string; nonce: number } | null;
+  seed?: { text: string; nonce: number; reference?: RefItem } | null;
 }
 
 export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPreviewState, seed }: ChatPanelProps) {
@@ -27,6 +27,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   const [mode, setMode] = useState<ChatMode>('agent');
   const [autoApply, setAutoApply] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
+  const [selectedRefs, setSelectedRefs] = useState<RefItem[]>([]);
   const [feedback, setFeedback] = useState<Record<number, 'up' | 'down'>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -49,7 +50,11 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
 
   // library「用 AI 生成」seeds the composer (source: attach template as chat ref)
   useEffect(() => {
-    if (seed && !collapsed) { setInput(seed.text); taRef.current?.focus(); }
+    if (seed && !collapsed) {
+      setInput(seed.text);
+      setSelectedRefs(seed.reference ? [seed.reference] : []);
+      taRef.current?.focus();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed?.nonce]);
 
@@ -66,8 +71,9 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
 
   const submit = () => {
     if (!input.trim() || running) return;
-    send(input, { askOnly: mode === 'ask' });
+    send(input, { askOnly: mode === 'ask', references: selectedRefs });
     setInput('');
+    setSelectedRefs([]);
   };
   const runEnhance = async () => {
     if (!input.trim() || enhancing || running) return;
@@ -75,8 +81,9 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
     try { const improved = await enhance(input); setInput(improved); taRef.current?.focus(); }
     finally { setEnhancing(false); }
   };
-  const insertRef = (name: string) => {
-    setInput((v) => `${v}${v && !v.endsWith(' ') ? ' ' : ''}@${name} `);
+  const insertRef = (reference: RefItem) => {
+    setSelectedRefs((current) => current.some((item) => item.id === reference.id) ? current : [...current, reference]);
+    setInput((v) => `${v}${v && !v.endsWith(' ') ? ' ' : ''}@${reference.name} `);
   };
 
   if (collapsed) {
@@ -131,7 +138,10 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
       {/* composer */}
       <div style={{ padding: 12, borderTop: `1px solid ${theme.border}` }}>
         <ChatComposer
-          value={input} onChange={setInput} onSubmit={submit} onStop={stop}
+          value={input} onChange={(value) => {
+            setInput(value);
+            setSelectedRefs((current) => current.filter((reference) => value.includes(`@${reference.name}`)));
+          }} onSubmit={submit} onStop={stop}
           onEnhance={runEnhance} enhancing={enhancing} running={running}
           mode={mode} onModeChange={setMode}
           autoApply={autoApply} onAutoApplyChange={setAutoApply}

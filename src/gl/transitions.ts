@@ -2,7 +2,7 @@
 // TransitionType → fragment source + default uniforms. Defaults follow the
 // source's Ai(name, default, min, max) table (shaders/README.md); the vec3
 // color defaults aren't in that table — chosen by eye, marked 源站无据自定.
-import type { GlslTransitionType } from '../editor/types';
+import type { GlslTransitionType, TransitionDirection } from '../editor/types';
 import type { UniformValue } from './runtime';
 import pageCurl from './shaders/page-curl.frag?raw';
 import rackFocus from './shaders/rack-focus.frag?raw';
@@ -10,14 +10,48 @@ import organicDissolve from './shaders/organic-dissolve.frag?raw';
 import impactShake from './shaders/impact-shake.frag?raw';
 import anticipationZoom from './shaders/anticipation-zoom.frag?raw';
 import cleanLineWipe from './shaders/clean-line-wipe.frag?raw';
+import crossDissolve from './shaders/cross-dissolve.frag?raw';
+import dipToBlack from './shaders/dip-to-black.frag?raw';
+import flash from './shaders/flash.frag?raw';
+import lumaBlend from './shaders/luma-blend.frag?raw';
+import softWipe from './shaders/soft-wipe.frag?raw';
+import whipPan from './shaders/whip-pan.frag?raw';
 
 export interface GlslTransitionDef {
   frag: string;
   /** per-frame uniforms beyond u_progress/u_resolution/u_aspect */
-  uniforms: (ctx: { time: number; aspect: number }) => Record<string, UniformValue>;
+  uniforms: (ctx: { time: number; aspect: number; direction: TransitionDirection }) => Record<string, UniformValue>;
 }
 
 export const GLSL_TRANSITIONS: Record<GlslTransitionType, GlslTransitionDef> = {
+  'cross-dissolve': {
+    frag: crossDissolve,
+    uniforms: () => ({ u_easingAmount: 1 }),
+  },
+  'dip-to-black': {
+    frag: dipToBlack,
+    uniforms: () => ({ u_blackDuration: 0.2 }),
+  },
+  flash: {
+    frag: flash,
+    uniforms: () => ({ u_flashColor: [1, 1, 1], u_flashHold: 0.1, u_overexposure: 2 }),
+  },
+  'luma-blend': {
+    frag: lumaBlend,
+    uniforms: () => ({ u_intensity: 2, u_additiveAmount: 0.5, u_threshold: 0.3 }),
+  },
+  'soft-wipe': {
+    frag: softWipe,
+    uniforms: () => ({ u_feather: 0.4, u_parallax: 0.05 }),
+  },
+  'whip-pan': {
+    frag: whipPan,
+    uniforms: ({ direction }) => ({
+      u_dir: direction === 'right' ? [-1, 0] : direction === 'up' ? [0, -1] : direction === 'down' ? [0, 1] : [1, 0],
+      u_blurStrength: 0.15,
+      u_bounceback: 0.1,
+    }),
+  },
   'page-curl': {
     frag: pageCurl,
     uniforms: () => ({

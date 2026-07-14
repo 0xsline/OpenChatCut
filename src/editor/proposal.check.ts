@@ -2,7 +2,10 @@
 // `npx tsx src/editor/proposal.check.ts`.
 import assert from 'node:assert';
 import { makeDraft, replayActions, projectReduce } from './store';
+import { historyReduce } from './reduce';
 import { activeTimeline, type ProjectDoc, type Timeline } from './types';
+import { buildOperation, buildProposal, isProposalStale, partitionProposalActions } from '../agent/proposal';
+import { resolveAgentReferences, type AgentContext } from '../agent/context';
 
 const tl = (id: string, name: string, order: number): Timeline =>
   ({ fps: 30, width: 1920, height: 1080, items: [], selectedId: null, id, name, order });
@@ -30,6 +33,58 @@ assert.deepStrictEqual(
 // per-op deselect: replay only the first operation's actions
 const subset = replayActions(base, acts.slice(0, 1));
 assert.strictEqual(activeTimeline(subset).items.length, 1, 'subset apply commits only selected ops');
+
+// Generated assets survive proposal rejection, while timeline placement remains
+// reviewable. The two action classes must never be committed as one draft op.
+const generatedAsset = { id: 'asset_generated', name: 'Generated', kind: 'image' as const, src: '/generated.png', durationInFrames: 90 };
+const partitioned = partitionProposalActions([{ type: 'addAsset', asset: generatedAsset }, acts[0]]);
+assert.deepStrictEqual(partitioned.persistent.map((action) => action.type), ['addAsset']);
+assert.deepStrictEqual(partitioned.proposed.map((action) => action.type), ['add']);
+const assetCommitted = replayActions(base, partitioned.persistent);
+assert.strictEqual(assetCommitted.assets[0], generatedAsset, 'generated asset is committed independently');
+assert.strictEqual(activeTimeline(assetCommitted).items.length, 0, 'timeline stays unchanged until proposal apply');
+
+// @ references are resolved by stable id into compact structured context; the
+// display name alone is never trusted as the lookup key.
+const referenceCtx: AgentContext = {
+  commands: d.commands,
+  getState: () => activeTimeline(assetCommitted),
+  getDoc: () => assetCommitted,
+  templates: [{ id: 'tpl_1', name: 'Chart', category: 'data', width: 1920, height: 1080, fps: 30, durationInFrames: 90, props: {}, propSchema: [], thumb: null, code: '' }],
+  audio: [],
+};
+const contextEntries = resolveAgentReferences(referenceCtx, [
+  { id: generatedAsset.id, name: 'wrong display name', kind: 'image' },
+  { id: 'tpl_1', name: 'wrong display name', kind: 'template' },
+  { id: generatedAsset.id, name: generatedAsset.name, kind: 'image' },
+]);
+assert.deepStrictEqual(contextEntries.map((entry) => [entry.type, entry.id, entry.name]), [
+  ['asset', generatedAsset.id, generatedAsset.name],
+  ['template', 'tpl_1', 'Chart'],
+]);
+
+// proposals are valid only against the exact immutable project snapshot used
+// to build them; any manual edit while the proposal is pending makes it stale.
+const proposal = buildProposal([buildOperation('add_text', {}, acts)], 'add text', base, d.getState());
+assert.strictEqual(isProposalStale(proposal, base), false, 'original snapshot remains applicable');
+assert.strictEqual(isProposalStale(proposal, applied), true, 'a changed project invalidates the proposal');
+
+// attaching a transcript is an editing operation and therefore gets its own
+// undo snapshot (previously it silently bypassed history).
+const transcriptItemId = activeTimeline(applied).items[0].id;
+const withTranscript = historyReduce(
+  { past: [], present: applied, future: [] },
+  { type: 'setItemTranscript', id: transcriptItemId, words: [{ text: 'hello', start: 0, end: 500 }] },
+);
+assert.strictEqual(withTranscript.past.length, 1, 'transcript attachment creates an undo step');
+const transcriptUndone = historyReduce(withTranscript, { type: 'undo' });
+assert.strictEqual(activeTimeline(transcriptUndone.present).items[0].transcript, undefined, 'undo removes the attached transcript');
+
+// Snapshot history is intentionally bounded so long editing sessions do not
+// retain an unlimited number of whole ProjectDoc graphs.
+let boundedHistory = { past: [] as ProjectDoc[], present: base, future: [] as ProjectDoc[] };
+for (let i = 0; i < 110; i++) boundedHistory = historyReduce(boundedHistory, { type: 'tl.rename', id: 'tl_a', name: `序列 ${i}` });
+assert.strictEqual(boundedHistory.past.length, 100, 'history retains only the newest 100 snapshots');
 
 // ── manage_timelines through the draft: create → switch routing → replay ──
 const d2 = makeDraft(applied);

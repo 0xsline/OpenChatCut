@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "check:generation": "node --experimental-strip-types vite-generation-jobs.check.ts",
+    "test": "tsx src/script/script.check.ts && tsx src/agent/track-tools.check.ts && tsx src/agent/media-pool-tools.check.ts && tsx src/captions/styles.check.ts && tsx src/editor/proposal.check.ts && tsx src/editor/ripple.check.ts && tsx src/editor/zoom.check.ts && tsx src/gl/source-parity.check.ts && tsx src/gl/fx/fx.check.ts && tsx src/persist/projectStore.check.ts && npm run check:generation",
     "lint": "oxlint",
     "preview": "vite preview"
   },
@@ -28,6 +29,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.71.0",
+    "tsx": "^4.23.1",
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
   }

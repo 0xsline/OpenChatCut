@@ -186,7 +186,7 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
           ok: true,
           model: input.model ?? 'gpt-image-2',
           generated: assets.map((asset) => ({ assetId: asset.id, name: asset.name, src: asset.src, width: asset.width, height: asset.height })),
-          addedTo: 'media-pool-and-timeline',
+          addedTo: 'media-pool-and-proposed-timeline',
         };
       } catch (error) {
         return { error: error instanceof Error ? error.message : String(error) };

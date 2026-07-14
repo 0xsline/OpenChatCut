@@ -156,7 +156,7 @@
       <div class="brand">
         <span class="eyebrow">对标源站 · 复刻进度</span>
         <h1>ChatCut 复刻 · 功能覆盖</h1>
-        <span class="sub">逆向 52 工具规格 + PRD 全量差集 · 每完成一项即勾选 · 已铺完：直接操作层（trim/blade/snap/轨道/音量/淡入淡出/变换/滤镜/文字）+ 转场 + 动画（zoom/ReframeCurve）+ propose→apply 提案契约（护城河①）+ 标记 markers + 多时间线/序列（长转短）+ manage_timelines + 动态轨道/edit_track + 角色闪避 + 12 转场全量(GLSL 底座)｜源站编辑器 Dock 树已按源码纠正：AI 贯穿到底、时间线仅跨素材+预览，并完成素材面板、工具栏、轨道头、片段/波形与反馈入口截图 QA｜之后：Ripple/真实峰值/Viewer 直接操控</span>
+        <span class="sub">逆向 52 工具规格 + PRD 全量差集 · 每完成一项即勾选 · 已铺完：直接操作层（trim/blade/snap/轨道/音量/淡入淡出/变换/滤镜/文字）+ 动画（zoom/ReframeCurve）+ propose→apply 提案契约（护城河①）+ 标记 markers + 多时间线/序列（长转短）+ manage_timelines + 动态轨道/edit_track + 角色闪避 + 12 个源 GLSL 转场 + 9 个源 WebGL 特效（含 ASCII Rain 4-pass）｜源站编辑器 Dock 树已按源码纠正：AI 贯穿到底、时间线仅跨素材+预览，并完成素材面板、工具栏、轨道头、片段/波形与反馈入口截图 QA｜之后：Ripple/真实峰值/Viewer 直接操控</span>
       </div>
       <div class="score">
         <span class="pct mono" id="pct">0%</span>
@@ -200,21 +200,21 @@
     ]],
     ["2 · 编辑器核心 / 时间线", [
       ["增删改查片段", "done", "add/move/retime/duplicate/remove/split，1:1 映射 agent 工具"],
-      ["撤销 / 重做", "done", "快照式 history"],
+      ["撤销 / 重做", "done", "快照式 history，最多保留最近 100 个 ProjectDoc；挂载转写也进入 history，可一次撤销"],
       ["拖拽移动 / 裁剪 / 跨轨约束", "done", "<code>Timeline.tsx</code> pointer 拖拽 + trim 手柄；左裁剪推进源入点 <code>srcInFrame</code>（video/audio 真·源剪辑，导出验证 timecode）"],
-      ["横向缩放 🔍 / 竖向轨道缩放 Alt+滚轮", "done", "zoom / trackScale 状态"],
+      ["横向缩放 🔍 / 竖向轨道缩放 Alt+滚轮", "done", "zoom / trackScale 状态；播放头与时间码局部 DOM 绘制，根 Editor/Inspector/素材库不再随 frameupdate 逐帧重渲。浏览器 3 秒 MG 实测 p95 17.4ms、max 17.6ms、0 long tasks"],
       ["时间线上下拖高 + 加权轨道高度", "done", "cc.timelineH + WEIGHT（video 高于 audio）"],
       ["多时间线 / 序列（每工程多条）", "done", "ProjectDoc V2 包裹工程级 assets[]+timelines[]+activeId，projectReduce 路由到活动序列；底部 Tab 栏切换/新建/复制/重命名/删除/隐藏 + ⇋竖屏副本一键 9:16（长转短）；旧工程自动迁移。源站 manage_timelines", "P1"],
       ["manage_timelines agent 工具", "done", "单工具 action∈list/create/duplicate/switch/update/delete，ratio/宽高/fit/hidden/activate/批量，全走 propose→apply（草稿引擎升工程级，切换后片段自动路由）；真 agent e2e：复制+9:16 提案→应用→一次撤销原子回滚。源站 jR/YP 白名单", "P1", "claude"],
-      ["轨道管理（增删/序/角色/锁隐静/收紧）", "done", "稳定轨道 id + 动态 V/A 别名；创建、空轨删除、排序、命名、anchor/follower 角色、锁定、折叠、隐藏、静音、tighten 已完成；旧工程自动迁移，Agent 已接源站式 <code>edit_track</code>。浏览器自建工程回归见 <code>qa-dynamic-tracks.png</code>", "P1"],
+      ["轨道管理（增删/序/角色/锁隐静/收紧）", "done", "稳定轨道 id + 动态 V/A 别名；创建、空轨删除、排序、命名、anchor/follower 角色、锁定、折叠、隐藏、静音、tighten 已完成；删除护栏保证至少各留 1 条视频/音频轨，显式空序列不再回退幽灵 V/A 轨；旧工程自动迁移，Agent 已接源站式 <code>edit_track</code>", "P1"],
       ["刀片(B)/修剪(N)/吸附", "done", "刀片 ✂ / B 键在播放头切分（切口 srcInFrame 递进，无缝）；拖拽/裁剪吸附到 0/播放头/邻近片段边（7px + 蓝色吸附线）", "P1"],
       ["Ripple 编辑（插入/覆盖）", "partial", "reduce add/remove 加 ripple（纯状态可撤销，ripple.check 断言）：<b>波纹删除</b>（删片段后同轨其后片段左移合缝）→右键「波纹删除（合缝）」+⇧⌫；<b>插入模式</b>（新片段推后同轨腾位）→工具栏 insert 切换，加文字据此插入。<b>待补</b>：把插入模式接到库素材「添加到时间线」+拖拽落点+粘贴。源站 edit_item ripple", "P1", "claude"],
       ["片段变换（缩放/位置/旋转）", "done", "ClipTransform{scale,x,y,rotation}→CSS transform（ClipWrapper，translate%→rotate→scale）；属性面板缩放/水平/垂直/旋转滑块。导出验证 scale0.5+x25%。源站 缩放 tab", "P1"],
       ["动画/关键帧（源真相：无通用 K 帧）", "done", "侦察发现源站<b>没有</b>通用逐属性关键帧(item.keyframes/add_keyframe 都不存在,PRD 那句是未证实推测)。真动画=①MG 模板 interpolate/spring/Easing.bezier(已做)②<b>builtin:zoom</b> 参数化动画(shape 曲线 hold/punch/slow-push/instant + magnification + 焦点,zoom.ts 照抄源 A2/uPe 曲线数学 + zoom.check.ts 断言)③<b>ReframeCurveV1</b> 稀疏关键帧(唯一真 K 帧模型:{frame,focalPointX,focalPointY,magnification},◆在播放头打点)。属性面板缩放动画区。导出验证(slow-push 1→2×;reframe 曲线焦点 0.15→0.85 边推边缩 1.2→2.5×)。源站 builtin:zoom/ReframeCurveV1", "P1"],
       ["更多媒体类型 image/gif/svg/text/solid", "partial", "image + video + text 已做（<code>MediaFill</code>/<code>TextLayer</code>，text 含内容/字号/色/对齐/粗细 + T＋ 按钮）；gif/svg/solid 待补。源站按类型拆表"],
       ["视频素材片段（video item）", "done", "导入真视频 → <code>OffthreadVideo</code> 渲染（预览+导出）。源站 video_item", "P0"],
-      ["特效（blur/zoom/mosaic/CRT/ASCII…）", "partial", "两层：①基础调整（亮度/对比度/饱和度/模糊 ClipFilters→CSS filter）；②<b>每片段 WebGL 特效管线</b>（<code>src/gl/fx/</code>，复用转场 GL 底座，源 builtin:fx-* 单输入契约 u_input+gn uniforms+预乘 alpha，帧驱动供 u_time）：已铺 <b>8/9 源 fx</b>——luma-key(黑底叠加)/local-mosaic(局部打码)/magnify(放大镜)/rect-mask(矩形遮罩)/circle-mask(圆形遮罩)/crt(CRT 复古·动画)/shake(手持抖动·动画)/<b>tilt-shift(移轴·两遍可分离高斯)</b>，源着色器逐字复制，ClipFx 过 GL 通道渲染（含<b>多通道 FBO ping-pong</b> renderFxChain）；FX 注册表+属性面板「特效 FX」下拉+滑杆+effects[] 可撤销；<b>agent 工具 manage_effects</b>(list/add/update/remove，忠实源 edit_item type:effect，走 propose→apply)。预览+导出，新进程渲 still 逐个肉眼确认（圆/圆角矩形柔边裁切透网格、CRT 扫描线+桶形弯曲、移轴焦点带高饱和+暗角淡透、动画 fx 跨帧确变）。<b>仅剩</b>：ASCII Rain（源是 4 遍多输入 DAG——composite 同时读 ascii 与 bloom 两纹理，需通用 render-graph 运行时，非线性链）+ 特效栈>1。源站域 F", "P1", "claude"],
-      ["转场（12 种全量，含真 GLSL）", "done", "忠实源模型 transition_item 骑切点 + WebGL2 底座(src/gl/runtime.ts,源 vertex-texture-v1 契约)：6 个复杂转场跑源站原文 GLSL(翻页/焦点切换/有机溶解/冲击震动/蓄力推近/利落划线,视频/图片片段)，6 个简单转场 CSS 近似；DOM 片段回退溶解(同源站 DOM 层限制)。导出 chromiumOptions.gl+webpack frag loader，预览+导出抽帧双验证(纸卷绕面/燃边光晕)。源站 12", "P1", "claude"],
+      ["特效（blur/zoom/mosaic/CRT/ASCII…）", "done", "两层：①基础调整（亮度/对比度/饱和度/模糊 ClipFilters→CSS filter）；②<b>每片段 WebGL 特效管线</b>（<code>src/gl/fx/</code>，复用转场 GL 底座，源 builtin:fx-* 契约+预乘 alpha，帧驱动供 u_time）：已铺 <b>9/9 源 fx</b>——luma-key/local-mosaic/magnify/rect-mask/circle-mask/crt/shake/tilt-shift/<b>ASCII Rain</b>，源着色器逐字复制。ASCII Rain 按线上执行语义还原 4-pass DAG；<code>fxPasses</code> 会把每个特效的局部 pass graph 重编号后串成有序栈，跨特效仍可正确绑定前序纹理。Inspector 支持追加/移除/上下排序/逐项调参，并用 RGB 颜色控件驱动 ASCII <code>u_color</code>；<b>manage_effects</b> 同步支持 effectId 定位的 add/update/remove。Chrome 独立工程验证 CRT→ASCII 与 ASCII→CRT 两种顺序、粉色 RGB 覆盖均正常，无 shader/WebGL console error。", "P1", "claude"],
+      ["转场（12 种全量，含真 GLSL）", "done", "忠实源模型 transition_item 骑切点 + WebGL2 底座(<code>src/gl/runtime.ts</code>,源 vertex-texture-v1 契约)：<b>12/12 全部运行线上 bundle 原文 GLSL</b>——交叉溶解/黑场/柔化擦除/甩镜/闪白/亮度混合/翻页/焦点切换/有机溶解/冲击震动/蓄力推近/利落划线。图片/视频走 GL；DOM/MG/text 对 6 个可表达类型保留 CSS fallback，其余安全回退溶解。<code>source-parity.check.ts</code> 对 9 个本轮源文件做归一化 hash 校验；Chrome 实播甩镜穿越切点且无 shader/WebGL console error。", "P1", "claude"],
       ["标记 markers（点/段批注）", "done", "🔖/M 加标记，标尺书签图钉，点击弹编辑（批注+8色+时长→区间条），◃/▹ 或 [ ] 跳转，标记帧吸附。源站 manage_markers", "P1"],
       ["色度键 / 绿幕（合成键控）", "partial", "逆向发现源站合成键控真身=<b>luma-key</b>（builtin:fx-luma-key「黑底叠加/Screen」，非 RGB 绿幕抠色；PRD 的 chroma 多指 YUV 平面/色差，无独立绿幕着色器）——已按源着色器实现（<code>src/gl/fx/luma-key.frag</code>，过 ClipFx GL 通道，导出验证）。真 RGB 绿幕抠色源站无据，暂不臆造。", "P1", "claude"],
       ["变速 / 重定时", "done", "item.playbackRate（reduce setSpeed 保源区间重定时，clamp 0.1–8）；合成里 OffthreadVideo/Audio/ClipFx 全接 playbackRate；右键「变速」子菜单 0.25–4× 预设。验证:动态 testsrc rate2@f24==rate1@f48。源站 dH rate。无保音调（Web Audio pitch-preserve 待补）", "P1", "claude"],
@@ -304,9 +304,9 @@
       ["Anthropic 原生 tool-use（可换真 Claude 一行）", "done", "<code>agent/</code>，现跑 grok 中转"],
       ["流式输出（text/thinking）", "done", "messages.stream"],
       ["~19 个工具（读/加/改/转写/字幕/删词/比例）", "done", "tools.ts + transcript-tools.ts"],
-      ["propose → review → apply（提案审阅再落地）", "done", "护城河①落地:agent 结构编辑不直接改时间线,先跑在<b>草稿态</b>(见自己的待定编辑)产 proposal→审阅→原子提交。忠实源 edit-proposal 模型(Proposal{title,summary,totalImpact,options[]}→Option→Operation{tool,args,action,target,impact,rationale});每 op 带 store actions,批准即重放为一次原子提交(一次 undo)。ProposalCard:逐 op 勾选/取消、预览(player 显草稿 vs 时间线显已提交)、应用/拒绝。store 抽 buildCommands(dispatch)+makeDraft+replayActions+setFullState。proposal.check 断言 + 真 agent 全流程实测(提案卡→时间线不动→预览 0:06 vs 已提交 0:03→应用只加 1 片段→一次 undo 全撤)。修掉 StrictMode 双提交 bug。源站 edit-proposal(注:creditEstimate 属另一层 skill_guard)", "P0"],
+      ["propose → review → apply（提案审阅再落地）", "done", "护城河①落地:agent 结构编辑不直接改时间线,先跑在<b>草稿态</b>(见自己的待定编辑)产 proposal→审阅→原子提交。每 op 带 store actions，批准即重放为一次原子提交(一次 undo)。ProposalCard 支持逐 op 勾选/取消、预览、应用/拒绝；提案保存完整 <code>baseDoc</code>，待审期间工程发生任意变化时拒绝 stale 回放并要求重试。<code>proposal.check.ts</code> 已覆盖 stale 与转写 undo。源站 edit-proposal", "P0"],
       ["多轮会话持久化（session/reset/max_turns）", "partial", "有循环无存储。做：chat_block 有序存对话"],
-      ["@ 引用素材进对话", "todo", "聊天 @ 某片段带上下文。源站 chat_context_entry"],
+      ["@ 引用素材进对话", "done", "媒体池和模板库引用以稳定 id+kind 保存；发送时解析为结构化 chat_context_entry（素材含 src/尺寸/时长，模板含分类/尺寸/props），显示名不参与寻址，删除 @ 文本同步移除引用"],
       ["对话历史持久化", "todo", "刷新即丢。源站 chat_block"],
       ["扩展思考展示（thinking block UI）", "partial", "中转透传 thinking，UI 未渲染折叠块"],
       ["Agent 设置（模型/速度/思考/MG 质量）", "todo", "设置面板"],
@@ -357,7 +357,7 @@
       ["i18n（/zh /en）", "todo", "UI 双语（默认中文）"],
       ["dockview 可拖拽面板布局", "partial", "有固定分隔条+localStorage，非完整 dockview"],
       ["反馈组件", "todo", "报告问题/评分"],
-      ["编辑器 UI 细节对标源站", "partial", "已按反编译 Dockview 源码纠正主结构：<b>AI 列从顶栏下贯穿到底，时间线只跨 Assets + Viewer</b>；初始化匹配用户源站截图的 22.47% / 27.72% / 49.81% 三列和 38.18% 右侧时间线高度，并使用源码约束 AI≥320、Assets≥176、Viewer≥280、Timeline≥260。素材区、时间线控件、轨道头、绿/紫片段、波形视觉、播放头、CC/全屏、反馈入口与动态轨道 <code>edit_track</code> 已完成截图 QA；Player 与 211 张模板卡也已从逐帧根渲染中隔离，并完成前后性能回归。功能层剩余：Ripple 插入覆盖、真实峰值与淡入淡出/音量线/roll edit、Viewer 直接操控、完整 Dockview preset/JSON 恢复。证据见 <code>SOURCE-EDITOR-REVERSE.md</code> 与 <code>design-qa.md</code>", "P1", "gpt"],
+      ["编辑器 UI 细节对标源站", "partial", "已按反编译 Dockview 源码纠正主结构：<b>AI 列从顶栏下贯穿到底，时间线只跨 Assets + Viewer</b>；初始化匹配用户源站截图的 22.47% / 27.72% / 49.81% 三列和 38.18% 右侧时间线高度。素材区、时间线控件、轨道头、绿/紫片段、波形视觉、播放头、CC/全屏、反馈入口与动态轨道 <code>edit_track</code> 已完成截图 QA；播放头/时间码现为局部 DOM 绘制，浏览器回归为 p95 17.4ms、max 17.6ms、0 long tasks。功能层剩余：Ripple 插入覆盖、真实峰值与淡入淡出/音量线/roll edit、Viewer 直接操控、完整 Dockview preset/JSON 恢复。证据见 <code>SOURCE-EDITOR-REVERSE.md</code> 与 <code>design-qa.md</code>", "P1", "gpt"],
     ]],
   ];
 
@@ -408,7 +408,7 @@
   document.getElementById("nDone").textContent = counts.done;
   document.getElementById("nPartial").textContent = counts.partial;
   document.getElementById("nTodo").textContent = counts.todo;
-  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：view_timeline_frames 多模态自检（agent 渲帧亲眼看草稿态编辑，真 agent 准确描述画面 e2e）`;
+  document.getElementById("foot").textContent = `共 ${total} 项 · ${counts.done} 已实现 · ${counts.partial} 部分 · ${counts.todo} 未实现 · 进度以「部分」计半分 · 最近完成：结构化 @ 引用 + 生成副作用分层 + 路由/重型依赖分包`;
 
   requestAnimationFrame(() => {
     document.getElementById("barDone").style.width = counts.done / total * 100 + "%";

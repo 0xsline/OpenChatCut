@@ -1,7 +1,8 @@
 // Runnable source-contract check: `npx tsx src/agent/track-tools.check.ts`.
 import assert from 'node:assert';
 import { makeDraft } from '../editor/store';
-import type { TimelineState } from '../editor/types';
+import { reduce } from '../editor/reduce';
+import { timelineTrackIds, type TimelineState } from '../editor/types';
 import { docFromTimeline } from '../persist/projectStore';
 import type { AgentContext } from './context';
 import { execTrackTool } from './track-tools';
@@ -30,5 +31,14 @@ assert.deepStrictEqual(await execTrackTool('edit_track', { action: 'delete', tra
 });
 await execTrackTool('edit_track', { action: 'delete', trackId: made.created[0].id }, ctx);
 assert.ok(!(await execTrackTool('edit_track', { action: 'list' }, ctx) as { id: string }[]).some((track) => track.id === made.created[0].id));
+
+// A timeline must always keep at least one lane of each media kind. Deleting an
+// extra lane is valid; deleting the last remaining audio/video lane is not.
+const empty: TimelineState = { fps: 30, width: 1920, height: 1080, selectedId: null, items: [] };
+const oneAudioRemoved = reduce(empty, { type: 'track.delete', tracks: ['A2'] });
+assert.deepStrictEqual(timelineTrackIds(oneAudioRemoved), ['V2', 'V1', 'A1']);
+assert.strictEqual(reduce(oneAudioRemoved, { type: 'track.delete', tracks: ['A1'] }), oneAudioRemoved, 'last audio track is protected');
+const oneVideoRemoved = reduce(empty, { type: 'track.delete', tracks: ['V2'] });
+assert.strictEqual(reduce(oneVideoRemoved, { type: 'track.delete', tracks: ['V1'] }), oneVideoRemoved, 'last video track is protected');
 
 console.log('track-tools.check: ok');

@@ -1,9 +1,10 @@
 import { useState, type ReactNode, type RefObject } from 'react';
 import { theme } from '../../theme';
+import type { AgentReference } from '../../agent/context';
 import { Icon, type IconName } from '../icons';
 
 export type ChatMode = 'agent' | 'ask';
-export interface RefItem { id: string; name: string; kind: 'video' | 'image' | 'audio' | 'template' }
+export type RefItem = AgentReference;
 
 interface ChatComposerProps {
   value: string;
@@ -18,7 +19,7 @@ interface ChatComposerProps {
   autoApply: boolean;
   onAutoApplyChange: (v: boolean) => void;
   references: RefItem[];
-  onInsertRef: (name: string) => void;
+  onInsertRef: (reference: RefItem) => void;
   taRef: RefObject<HTMLTextAreaElement | null>;
 }
 
@@ -61,7 +62,7 @@ export function ChatComposer(props: ChatComposerProps) {
   const refList = (kind: 'asset' | 'template') =>
     references.filter((r) => (kind === 'template' ? r.kind === 'template' : r.kind !== 'template'));
 
-  const insert = (name: string) => { onInsertRef(name); setPop(null); taRef.current?.focus(); };
+  const insert = (reference: RefItem) => { onInsertRef(reference); setPop(null); taRef.current?.focus(); };
 
   const modeRow = (m: ChatMode, label: string, desc: string) => (
     <button onClick={() => { onModeChange(m); setPop(null); }}
@@ -78,7 +79,7 @@ export function ChatComposer(props: ChatComposerProps) {
         <div style={{ fontSize: 10.5, color: theme.textDim, padding: '4px 8px 6px', letterSpacing: 0.4 }}>{kind === 'template' ? '引用模板库' : '引用媒体池素材'}</div>
         {list.length === 0 && <div style={{ fontSize: 12, color: theme.textDim, padding: '6px 10px' }}>{empty}</div>}
         {list.map((r) => (
-          <button key={r.id} onClick={() => insert(r.name)}
+          <button key={r.id} onClick={() => insert(r)}
             style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', background: 'none', border: 'none', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', color: theme.text }}
             onMouseEnter={(e) => { e.currentTarget.style.background = theme.panel; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
