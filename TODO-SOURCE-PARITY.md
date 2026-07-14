@@ -31,7 +31,7 @@
 | # | 域 | 总 | ✅ | 🟡 | ❌ | 核心度 | 说明 |
 |---|---|---:|---:|---:|---:|---|---|
 | 1 | 项目 / 会话生命周期 | 6 | 4 | 0 | 2 | 核心 | ✅ 版本历史/followup 卡;会话/项目 CRUD 在 Dashboard+persist(非 agent 工具,忠实内嵌 agent 子集);缺 get_editor_url、restore(软删) |
-| 2 | 编辑器核心 / 时间线 | 19 | 19 | 0 | 0 | 核心 | **全绿**；色度键✅ + `manage_markers` + ✅ ripple 插入/删除 + fade(秒) 已暴露给 agent(护城河① 帧数学 check 绿);gif/svg/solid 类型待扩 |
+| 2 | 编辑器核心 / 时间线 | 19 | 19 | 0 | 0 | 核心 | **全绿**；色度键✅ + `manage_markers`(标记已画上标尺:pin/备注编辑/8色/跳转[]/吸附) + ✅ ripple 插入/删除 + fade(秒) 已暴露给 agent;时间线工具栏图标对齐源站(CC徽标/↔适配/画幅框/纯间距);gif/svg/solid 类型待扩 |
 | 3 | 音频处理 | 6 | 6 | 0 | 0 | 核心 | **全绿**：ducking + 响度归一(-14 LUFS) + ✅ 人声隔离(DeepFilterNet3 真装 spawn deep-filter) |
 | 4 | 转写 / 文字稿 | 10 | 10 | 0 | 0 | 核心 | **全绿**：改错字 + 说话人重命名/合并 + ✅ 多语言翻译变体(词级共享时间轴,护城河③) + ✅ `edit_gap` 词间气口(list/delete/cap/restore) |
 | 5 | 字幕 | 8 | 8 | 0 | 0 | 核心 | **全绿**：21 样式(agent enum 已全开) + 逐词覆盖 + 多源合并 + 双语/变体 |

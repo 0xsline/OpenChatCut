@@ -49,9 +49,9 @@ const toolBtn: React.CSSProperties = { background: 'none', border: 'none', color
 // 翻译目标语言（第二行）；口播已是中文时不要把「中文」当默认目标
 const CAPTION_LANGS = ['English', '日本語', '한국어', 'Español', 'Français', 'Deutsch', 'Português'];
 
-// vertical divider between toolbar tool groups (source-style grouping)
+// group spacing between toolbar tool clusters — source uses pure gaps, no visible rule
 function ToolSep() {
-  return <span style={{ width: 1, height: 16, background: theme.border, margin: '0 4px', flexShrink: 0 }} />;
+  return <span style={{ width: 0, margin: '0 6px', flexShrink: 0 }} />;
 }
 
 /** corner chips so applied fx / lut / zoom / denoise / transition are visible on the clip */
@@ -708,7 +708,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
         <input type="range" min={MIN_TIME_ZOOM} max={6} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))}
           title="缩放时间轴" className="cc-timeline-zoom" />
         <TB icon="zoomIn" title="放大时间轴 (⌘＋)" onClick={() => zoomBy(1.4)} />
-        <TB icon="fit" title="适应宽度 (⇧Z)" onClick={fitToView} />
+        <TB icon="fit" title="适配视图 (⇧Z)" onClick={fitToView} />
         <label className="cc-aspect-select" title="画幅比例">
           <Icon name="aspect" size={16} />
           <select aria-label="画幅比例" value={ASPECT_PRESETS.find((preset) => preset.width === state.width && preset.height === state.height)?.label ?? ''}
