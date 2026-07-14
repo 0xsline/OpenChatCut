@@ -384,7 +384,8 @@ export function TranscriptPanel({
               {sectionsToShow.map((c) => {
                 const cWords = c.transcript ?? [];
                 const cDel = new Set(c.deletedWordIdx ?? []);
-                const cGroups = view === 'paragraph' ? toParagraphs(cWords) : toSegments(cWords);
+                // 片段视图走 ScriptView（自建 rows）；段落视图才需要 toParagraphs
+                const cGroups = view === 'paragraph' ? toParagraphs(cWords) : [];
                 const active = focusItem?.id === c.id;
                 const idx = clips.findIndex((x) => x.id === c.id);
                 return (
