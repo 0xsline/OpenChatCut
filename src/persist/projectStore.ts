@@ -89,9 +89,10 @@ function isMediaAsset(v: unknown): v is MediaAsset {
   const asset = v as Partial<MediaAsset>;
   return typeof asset.id === 'string'
     && typeof asset.name === 'string'
-    && (asset.kind === 'video' || asset.kind === 'image' || asset.kind === 'audio')
+    && (asset.kind === 'video' || asset.kind === 'image' || asset.kind === 'audio' || asset.kind === 'motion-graphic')
     && typeof asset.src === 'string'
-    && typeof asset.durationInFrames === 'number';
+    && typeof asset.durationInFrames === 'number'
+    && (asset.kind !== 'motion-graphic' || typeof asset.code === 'string');
 }
 
 function dedupeAssets(values: unknown[]): MediaAsset[] {

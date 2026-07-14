@@ -176,10 +176,10 @@ export function MediaPoolPanel({
           <div className="cc-asset-thumb-wrap">
             <button className="cc-asset-thumb" title={`加到时间线：${asset.name}`} onClick={() => onAddAsset(asset)}>
               {view === 'list'
-                ? <Icon name={asset.kind === 'audio' ? 'music' : asset.kind} size={16} />
+                ? <Icon name={asset.kind === 'audio' ? 'music' : asset.kind === 'motion-graphic' ? 'sparkles' : asset.kind} size={16} />
                 : asset.kind === 'image' ? <img src={asset.src} alt={asset.name} />
                   : asset.kind === 'video' ? <video src={asset.src} muted preload="metadata" />
-                    : <Icon name="music" size={42} strokeWidth={2.2} />}
+                    : <Icon name={asset.kind === 'motion-graphic' ? 'sparkles' : 'music'} size={42} strokeWidth={2.2} />}
             </button>
             {asset.kind === 'audio' && <span className="cc-asset-audio-mark"><Icon name="volume" size={14} /></span>}
             <span className="cc-asset-duration">{durationLabel(asset.durationInFrames, fps)}</span>

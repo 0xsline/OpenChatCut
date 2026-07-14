@@ -226,22 +226,37 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
           },
         }),
       addAsset: (asset) => dispatch({ type: 'addAsset', asset }),
-      addMediaItem: (asset, at) =>
+      addMediaItem: (asset, at) => {
+        const item = asset.kind === 'motion-graphic'
+          ? {
+              id: uid('item'),
+              track: pickTrack(at?.track, 'video'),
+              durationInFrames: asset.durationInFrames,
+              kind: 'motion-graphic' as const,
+              templateId: asset.id,
+              name: asset.name,
+              code: asset.code,
+              props: { ...asset.props },
+              width: asset.width,
+              height: asset.height,
+            }
+          : {
+              id: uid('item'),
+              track: pickTrack(at?.track, asset.kind === 'audio' ? 'audio' : 'video'),
+              durationInFrames: asset.durationInFrames,
+              kind: asset.kind,
+              name: asset.name,
+              src: asset.src,
+              volume: asset.kind === 'audio' || asset.kind === 'video' ? 1 : undefined,
+              width: asset.width,
+              height: asset.height,
+            };
         dispatch({
           type: 'add',
           startFrame: at?.startFrame,
-          item: {
-            id: uid('item'),
-            track: pickTrack(at?.track, asset.kind === 'audio' ? 'audio' : 'video'),
-            durationInFrames: asset.durationInFrames,
-            kind: asset.kind,
-            name: asset.name,
-            src: asset.src,
-            volume: asset.kind === 'audio' || asset.kind === 'video' ? 1 : undefined,
-            width: asset.width,
-            height: asset.height,
-          },
-        }),
+          item,
+        });
+      },
       updateItemProps: (id, patch) => dispatch({ type: 'updateProps', id, patch }),
       moveItem: (id, to) => {
         const item = activeTimeline(getDoc()).items.find((candidate) => candidate.id === id);

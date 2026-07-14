@@ -2,6 +2,7 @@
 // `npx tsx src/persist/projectStore.check.ts`.
 import assert from 'node:assert';
 import { projectReduce } from '../editor/reduce';
+import { makeDraft } from '../editor/store';
 import { activeEditorState, type MediaAsset, type Timeline } from '../editor/types';
 import { docFromTimeline, migrateProjectDoc } from './projectStore';
 
@@ -10,6 +11,10 @@ const assetA: MediaAsset = {
 };
 const assetB: MediaAsset = {
   id: 'asset_b', name: 'b.png', kind: 'image', src: '/b.png', durationInFrames: 150,
+};
+const motionAsset: MediaAsset = {
+  id: 'asset_mg', name: 'Title', kind: 'motion-graphic', src: '', durationInFrames: 90,
+  code: 'const Title = () => null;', props: { title: 'Hello' }, width: 1920, height: 1080,
 };
 const timeline = (id: string, assets?: MediaAsset[]): Timeline => ({
   id, name: id, order: id === 'tl_a' ? 0 : 1,
@@ -35,6 +40,19 @@ const wrapped = docFromTimeline({
 });
 assert.deepStrictEqual(wrapped.assets, [assetA]);
 assert.ok(!Object.hasOwn(wrapped.timelines[0], 'assets'));
+assert.deepStrictEqual(docFromTimeline({
+  fps: 30, width: 1920, height: 1080, items: [], selectedId: null, assets: [motionAsset],
+}).assets, [motionAsset], 'motion graphics survive project migration');
+const motionDraft = makeDraft(docFromTimeline({
+  fps: 30, width: 1920, height: 1080, items: [], selectedId: null,
+}));
+motionDraft.commands.addMediaItem(motionAsset, { startFrame: 12 });
+const motionItem = motionDraft.getState().items[0];
+assert.strictEqual(motionItem.kind, 'motion-graphic');
+assert.strictEqual(motionItem.startFrame, 12);
+assert.strictEqual(motionItem.templateId, motionAsset.id);
+assert.strictEqual(motionItem.code, motionAsset.code);
+assert.deepStrictEqual(motionItem.props, motionAsset.props, 'media-pool insertion keeps executable template data');
 
 // New imports mutate the project, remain idempotent, and survive timeline ops.
 const withAsset = projectReduce(migrated, { type: 'addAsset', asset: assetB });

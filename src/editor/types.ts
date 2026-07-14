@@ -14,11 +14,13 @@ export const TRACK_ORDER: TrackId[] = ['V2', 'V1', 'A1', 'A2'];
 export interface MediaAsset {
   id: string;
   name: string;
-  kind: 'video' | 'image' | 'audio';
+  kind: 'video' | 'image' | 'audio' | 'motion-graphic';
   src: string; // same-origin path under /media/uploads
   durationInFrames: number;
   width?: number;
   height?: number;
+  code?: string;
+  props?: Record<string, unknown>;
   /** media-pool organization only; does not affect timeline clips */
   folderId?: string;
   favorite?: boolean;

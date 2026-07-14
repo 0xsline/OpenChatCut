@@ -57,7 +57,7 @@ function Popover({ children, onClose }: { children: ReactNode; onClose: () => vo
   );
 }
 
-const REF_ICON: Record<RefItem['kind'], IconName> = { video: 'filePlay', image: 'filePlay', audio: 'fileHeadphone', template: 'sparkles' };
+const REF_ICON: Record<RefItem['kind'], IconName> = { video: 'filePlay', image: 'filePlay', audio: 'fileHeadphone', 'motion-graphic': 'sparkles', template: 'sparkles' };
 
 export function ChatComposer(props: ChatComposerProps) {
   const { value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange, autoApply, onAutoApplyChange, creativeMode, onCreativeModeChange, references, onInsertRef, taRef, placeholder } = props;
