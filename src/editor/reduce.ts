@@ -47,6 +47,7 @@ export type Action =
   | { type: 'deleteWords'; id: string; idxs: number[] }
   | { type: 'cleanScript'; id: string; silenceFrames?: number; removeFillers: boolean }
   | { type: 'clearEdits'; id: string }
+  | { type: 'fixTranscriptWord'; id: string; wordIndex: number; text: string }
   | { type: 'select'; id: string | null }
   | { type: 'setFullState'; state: TimelineState };
 
@@ -78,7 +79,7 @@ export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void
 /** dispatch at the project level: per-timeline + project actions + undo/redo */
 export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' }) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'setItemTranscript', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState',
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'setItemTranscript', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'fixTranscriptWord', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
   'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset']);
@@ -387,6 +388,22 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
           it.id === a.id && it.transcript ? { ...it, deletedWordIdx: [], silenceFrames: undefined, durationInFrames: editedFrames(it.transcript, new Set(), s.fps) } : it,
         ),
       };
+    case 'fixTranscriptWord': {
+      // 改错字:只修正某个转写词的文本。护城河③(词↔帧双向一致)——只替换 .text,
+      // 词的 start/end(帧位)、speaker、词数、以及 clip 的 durationInFrames 全部不动。
+      const it = s.items.find((x) => x.id === a.id);
+      const word = it?.transcript?.[a.wordIndex];
+      // 越界 / 无转写 / 文本未变 → 真正 no-op(返回原 state,不进历史栈)
+      if (!word || word.text === a.text) return s;
+      return {
+        ...s,
+        items: s.items.map((item) =>
+          item.id === a.id
+            ? { ...item, transcript: item.transcript!.map((w, i) => (i === a.wordIndex ? { ...w, text: a.text } : w)) }
+            : item,
+        ),
+      };
+    }
     case 'remove': {
       const gone = s.items.find((it) => it.id === a.id);
       if (gone && s.tracks?.[gone.track]?.locked) return s;

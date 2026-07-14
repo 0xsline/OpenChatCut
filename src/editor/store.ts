@@ -72,6 +72,8 @@ export interface EditorCommands {
   deleteWords: (id: string, idxs: number[]) => void;
   cleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
   clearEdits: (id: string) => void;
+  /** 改错字:只修正第 wordIndex 个转写词的 text,timing/词数/片段时长全不变(护城河③) */
+  fixTranscriptWord: (id: string, wordIndex: number, text: string) => void;
   selectItem: (id: string | null) => void;
   /** atomically replace the whole timeline (proposal apply → one undo step) */
   applyState: (state: TimelineState) => void;
@@ -294,6 +296,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       deleteWords: (id, idxs) => dispatch({ type: 'deleteWords', id, idxs }),
       cleanScript: (id, opts) => dispatch({ type: 'cleanScript', id, silenceFrames: opts.silenceFrames, removeFillers: opts.removeFillers }),
       clearEdits: (id) => dispatch({ type: 'clearEdits', id }),
+      fixTranscriptWord: (id, wordIndex, text) => dispatch({ type: 'fixTranscriptWord', id, wordIndex, text }),
       selectItem: (id) => dispatch({ type: 'select', id }),
       applyState: (state) => dispatch({ type: 'setFullState', state }),
       undo: () => dispatch({ type: 'undo' }),

@@ -42,6 +42,22 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { track: { type: 'string' }, query: { type: 'string', description: 'The phrase to delete (matched against the transcript).' } }, required: ['query'] },
   },
   {
+    name: 'manage_transcript',
+    description: '修正转写文本("改错字"):把某个被听错的词替换成正确文本,而不改动时间轴。定位要修的词二选一:传 wordIndex(词下标),或传 find(错词原文,精确匹配一个词)。只改 word.text——词的起止时间/帧位、词数、片段时长都不变(captions/删文本都依赖这条不变式)。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['fix'], description: '目前仅 fix(改错字);预留扩展。' },
+        itemId: { type: 'string', description: '目标转写所在 clip 的 item id;省略则取该 track 上第一个带转写的音/视频 clip。' },
+        track: { type: 'string', description: 'itemId 省略时,用 track 别名/稳定 id 定位带转写的 clip(默认 A1)。' },
+        wordIndex: { type: 'number', description: '要修正的词下标(与 find 二选一)。' },
+        find: { type: 'string', description: '要修正的错词原文,精确匹配一个词(与 wordIndex 二选一)。' },
+        text: { type: 'string', description: '修正后的正确文本。' },
+      },
+      required: ['action', 'text'],
+    },
+  },
+  {
     name: 'edit_captions',
     description: 'Turn the captions overlay on/off and set its style. Captions are a single overlay that mirrors a track\'s transcript and follow edits automatically. Templates: plain, tiktok (big karaoke), netflix (bottom). Pacing: word or phrase. translateTo adds a bilingual translated 2nd line.',
     input_schema: {
@@ -169,6 +185,38 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       if (s.captions) ctx.commands.updateCaptions(base);
       else ctx.commands.setCaptions(base);
       return { ok: true, enabled: true, template, pacing, source: it ? trackAlias(ctx.getState(), it.track) : null, sourceTrackId: it?.track ?? null, translatedTo };
+    }
+    case 'manage_transcript': {
+      // 目前仅实现 fix(改错字);其余 action 预留,不静默吞。
+      if (args.action !== 'fix') return { error: `unsupported action: ${String(args.action)}; only "fix" is implemented` };
+      const text = args.text;
+      if (typeof text !== 'string' || !text.trim()) return { error: 'text is required (the corrected word)' };
+      // 定位 clip:优先 itemId,否则取该 track 上第一个带转写的 clip
+      const items = ctx.getState().items;
+      const it = args.itemId ? items.find((x) => x.id === args.itemId) : trackClip(ctx, track, true);
+      if (!it) return { error: args.itemId ? `no item ${String(args.itemId)}` : `no transcribed clip on ${alias}; call transcribe_track first` };
+      if (!it.transcript?.length) return { error: `item ${it.id} has no transcript; call transcribe_track first` };
+      // 定位词:wordIndex 优先,否则 find 精确匹配(先原文,再归一化容错标点/大小写)
+      let wordIndex: number;
+      if (typeof args.wordIndex === 'number') {
+        wordIndex = args.wordIndex;
+      } else if (typeof args.find === 'string' && args.find.trim()) {
+        const findStr = args.find;
+        wordIndex = it.transcript.findIndex((w) => w.text === findStr);
+        if (wordIndex < 0) {
+          const target = normalize(findStr);
+          wordIndex = it.transcript.findIndex((w) => normalize(w.text) === target);
+        }
+        if (wordIndex < 0) return { error: `word not found: ${findStr}` };
+      } else {
+        return { error: 'provide wordIndex or find to locate the word' };
+      }
+      const word = it.transcript[wordIndex];
+      if (!word) return { error: `wordIndex ${wordIndex} out of range (0..${it.transcript.length - 1})` };
+      const from = word.text;
+      // 护城河③:命令只改 .text,timing/词数/时长不变
+      ctx.commands.fixTranscriptWord(it.id, wordIndex, text);
+      return { ok: true, itemId: it.id, wordIndex, from, to: text };
     }
     default:
       return undefined;

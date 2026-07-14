@@ -17,8 +17,12 @@ export const MODEL = 'grok-4.5-latest';
 // requires an ABSOLUTE baseURL (unlike raw fetch), hence location.origin.
 // apiKey here is a placeholder the proxy overwrites; dangerouslyAllowBrowser is
 // safe because the real key is not present in the browser.
+// `window` is absent under node/tsx (the .check.ts runnable checks import tool
+// modules that transitively load this file); fall back to a placeholder origin
+// so importing never throws — the client is only actually CALLED in the browser.
+const ORIGIN = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
 export const anthropic = new Anthropic({
-  baseURL: `${window.location.origin}/llm`,
+  baseURL: `${ORIGIN}/llm`,
   apiKey: 'proxy-injects-the-real-key',
   dangerouslyAllowBrowser: true,
 });
