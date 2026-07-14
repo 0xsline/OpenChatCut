@@ -43,9 +43,40 @@ const Img: React.FC<Record<string, unknown>> = (props) =>
       } as React.ComponentProps<typeof RemotionImg>)
     : null;
 
+// MG codegen（含从源站导入的 MG）有时把纯 CSS 的驼峰属性当成 JSX 属性直接写在
+// host/SVG 元素上，例如 `<rect mixBlendMode="overlay" />`。React 19 会既报警告又
+// 直接丢弃它——混合模式静默失效。`mix-blend-mode` 是 CSS-only（从不是合法的 DOM/SVG
+// 属性），所以在 createElement 时把它挪进 style 永远是对的：既消警告又让混合真正生效。
+// 只挪这一个歧义为零的属性（filter/mask/clipPath 等是合法 SVG 属性，绝不能碰）。
+const CSS_ONLY_PROPS = ['mixBlendMode'] as const;
+
+const createElementSafe = ((type: unknown, props: unknown, ...children: unknown[]) => {
+  if (typeof type === 'string' && props && typeof props === 'object') {
+    const p = props as Record<string, unknown>;
+    let moved: Record<string, unknown> | null = null;
+    for (const key of CSS_ONLY_PROPS) {
+      if (key in p) (moved ??= {})[key] = p[key];
+    }
+    if (moved) {
+      const { style, ...rest } = p;
+      // 关键：把已挪走的属性从 rest 里删掉，否则它仍作为 DOM 属性残留 → React 照样报警告。
+      for (const key of CSS_ONLY_PROPS) delete (rest as Record<string, unknown>)[key];
+      // 显式 style 覆盖挪过来的值（作者若同时写了 style.mixBlendMode 以其为准）。
+      props = { ...rest, style: { ...moved, ...(style as object | undefined) } };
+    }
+  }
+  return React.createElement(type as never, props as never, ...(children as React.ReactNode[]));
+}) as typeof React.createElement;
+
+// 与真 React 完全一致，仅 createElement 加上上面的 host-属性→style 归位。
+// 用 Proxy 转发所有其它成员（Fragment/hooks/…），不受可枚举性影响。
+const HostReact = new Proxy(React, {
+  get: (target, prop, recv) => (prop === 'createElement' ? createElementSafe : Reflect.get(target, prop, recv)),
+});
+
 // The only globals a template legitimately needs (verified across all 211).
 const WHITELIST: Record<string, unknown> = {
-  React, useCurrentFrame, useVideoConfig, interpolate, interpolateColors,
+  React: HostReact, useCurrentFrame, useVideoConfig, interpolate, interpolateColors,
   spring, Easing, random, Img, Video, Audio, Sequence, AbsoluteFill, staticFile,
 };
 
