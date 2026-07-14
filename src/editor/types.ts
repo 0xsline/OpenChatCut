@@ -49,6 +49,13 @@ export interface ReframeCurveV1 {
 
 /** source builtin:zoom — parametric animated zoom (shape curve) or a reframe curve */
 export type ZoomShape = 'hold' | 'punch' | 'slow-push' | 'instant';
+// zh labels + order for the built-in zoom curves (shared by inspector + library)
+export const ZOOM_SHAPE_LABELS: Record<ZoomShape, string> = {
+  hold: '推入保持 (hold)',
+  punch: '猛推 (punch)',
+  'slow-push': '缓推 (slow-push)',
+  instant: '瞬时 (instant)',
+};
 export interface ZoomEffect {
   /** peak magnification (source 1..16, default 1.5) */
   magnification?: number;
@@ -175,6 +182,23 @@ export type TransitionType = CssTransitionType | GlslTransitionType;
 export const GLSL_TRANSITION_TYPES: ReadonlySet<TransitionType> = new Set<TransitionType>([
   'page-curl', 'rack-focus', 'organic-dissolve', 'impact-shake', 'anticipation-zoom', 'clean-line-wipe',
 ]);
+
+// zh labels + display order for the 12 transitions (CSS group first, then the
+// real-GLSL group). Shared by the inspector select + the resource-library tab.
+export const TRANSITION_LABELS: Record<TransitionType, string> = {
+  'cross-dissolve': '交叉溶解',
+  'dip-to-black': '黑场过渡',
+  'soft-wipe': '柔化擦除',
+  'whip-pan': '甩镜',
+  flash: '闪白',
+  'luma-blend': '亮度混合',
+  'clean-line-wipe': '利落划线',
+  'page-curl': '翻页',
+  'rack-focus': '焦点切换',
+  'organic-dissolve': '有机溶解',
+  'impact-shake': '冲击震动',
+  'anticipation-zoom': '蓄力推近',
+};
 
 export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
 

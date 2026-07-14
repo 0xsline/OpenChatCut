@@ -1,6 +1,7 @@
 import { theme } from '../theme';
 import type { Tpl } from '../types';
 import type { ClipEffect, ClipFilters, ClipTransform, TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../editor/types';
+import { TRANSITION_LABELS, ZOOM_SHAPE_LABELS } from '../editor/types';
 import { FX_EFFECTS, FX_IDS } from '../gl/fx/effects';
 import { usePersistedState } from '../hooks/usePersistedState';
 
@@ -117,12 +118,6 @@ function TextControl({ item, onPropChange }: { item: TimelineItem; onPropChange:
   );
 }
 
-const ZOOM_SHAPE_LABELS: Record<ZoomShape, string> = {
-  hold: '推入保持 (hold)',
-  punch: '猛推 (punch)',
-  'slow-push': '缓推 (slow-push)',
-  instant: '瞬时 (instant)',
-};
 
 // animated zoom (source builtin:zoom): shape curve + magnification + focal point,
 // plus ReframeCurveV1 sparse keyframes (drop focal+mag at the playhead).
@@ -186,21 +181,6 @@ function ZoomControl({ zoom, onChange, localFrame, fps, onSetKeyframe, onRemoveK
   );
 }
 
-const TRANSITION_LABELS: Record<TransitionType, string> = {
-  'cross-dissolve': '交叉溶解',
-  'dip-to-black': '黑场过渡',
-  'soft-wipe': '柔化擦除',
-  'whip-pan': '甩镜',
-  flash: '闪白',
-  'luma-blend': '亮度混合',
-  // GLSL 组（真着色器，作用于视频/图片片段；MG/文字回退交叉溶解）
-  'clean-line-wipe': '利落划线',
-  'page-curl': '翻页',
-  'rack-focus': '焦点切换',
-  'organic-dissolve': '有机溶解',
-  'impact-shake': '冲击震动',
-  'anticipation-zoom': '蓄力推近',
-};
 
 // transition INTO the selected clip from the previous adjacent same-track clip
 // (source transition_item). Picking a type creates it; 无 removes it.

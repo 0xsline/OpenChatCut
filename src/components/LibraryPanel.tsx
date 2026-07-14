@@ -2,13 +2,28 @@ import { useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import type { Tpl } from '../types';
-import type { MediaAsset, TimelineItem } from '../editor/types';
+import type { MediaAsset, TimelineItem, TransitionType, ZoomShape } from '../editor/types';
+import { GLSL_TRANSITION_TYPES, TRANSITION_LABELS, ZOOM_SHAPE_LABELS } from '../editor/types';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
 import { AUDIO_ASSETS, type AudioAsset } from '../audio/library';
+import { FX_EFFECTS, FX_IDS } from '../gl/fx/effects';
 import { TranscriptPanel } from './TranscriptPanel';
 import { MediaPoolPanel } from './MediaPoolPanel';
 import { TemplateBrowser } from './TemplateBrowser';
+import { ResourceBrowser, type ResourceItem } from './ResourceBrowser';
+
+// the 2 built-in LUTs (source luts_items.json) — blocked: real .cube 3D LUTs on
+// the source CDN, and we don't touch its backend, so no data to apply.
+const LUT_PRESETS: ResourceItem[] = [
+  { id: 'builtin:slog3-s709', name: 'Sony S-Log3 s709', desc: 'Sony S-Log3 / S-Gamut3.Cine → Rec.709' },
+  { id: 'builtin:canon-log3-709', name: 'Canon Log3 → Canon 709', desc: 'Canon Cinema Gamut / Canon Log 3 → Canon 709' },
+];
+const TRANSITION_ITEMS: ResourceItem[] = (Object.keys(TRANSITION_LABELS) as TransitionType[]).map((t) => ({
+  id: t, name: TRANSITION_LABELS[t], badge: GLSL_TRANSITION_TYPES.has(t) ? 'GLSL' : undefined,
+}));
+const FX_ITEMS: ResourceItem[] = FX_IDS.map((id) => ({ id, name: FX_EFFECTS[id].name, desc: FX_EFFECTS[id].desc }));
+const ZOOM_ITEMS: ResourceItem[] = (Object.keys(ZOOM_SHAPE_LABELS) as ZoomShape[]).map((s) => ({ id: s, name: ZOOM_SHAPE_LABELS[s] }));
 
 interface LibraryPanelProps {
   templates: Tpl[];
@@ -29,12 +44,19 @@ interface LibraryPanelProps {
   onAddMediaItem: (asset: MediaAsset) => void;
   /** ⋮ menu「用 AI 生成」: seed the chat with this template as a reference */
   onUseTemplateAI: (tpl: Tpl) => void;
+  /** currently-selected clip — resource-library tabs apply to it */
+  selectedItem: TimelineItem | null;
+  onApplyTransition: (type: TransitionType) => void;
+  onApplyFx: (assetId: string) => void;
+  onApplyZoom: (shape: ZoomShape) => void;
 }
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿'] as const;
 const SUB_TABS = ['MG 动画', '音效', '转场', '特效', '缩放', 'LUT', 'Audio'] as const;
 
-export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits, assets, onImportMedia, onAddMediaItem, onUseTemplateAI }: LibraryPanelProps) {
+export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits, assets, onImportMedia, onAddMediaItem, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
+  const selKind = selectedItem?.kind ?? null;
+  const isVisual = selKind != null && selKind !== 'audio';
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('资源库');
   const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('MG 动画');
   const showAudio = mainTab === '资源库' && (subTab === 'Audio' || subTab === '音效');
@@ -83,6 +105,18 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
               ))}
             </div>
           </>
+        ) : subTab === '转场' ? (
+          <ResourceBrowser hint="点击应用为选中片段的入场转场（从前一个相邻同轨片段进入）" items={TRANSITION_ITEMS}
+            applicable={selectedItem != null} onApply={(id) => onApplyTransition(id as TransitionType)} />
+        ) : subTab === '特效' ? (
+          <ResourceBrowser hint="点击把 WebGL 特效应用到选中的视频/图片片段" items={FX_ITEMS}
+            applicable={selKind === 'video' || selKind === 'image'} onApply={(id) => onApplyFx(id)} />
+        ) : subTab === '缩放' ? (
+          <ResourceBrowser hint="点击给选中片段加一个缩放动画（默认 1.5×，可在属性面板细调）" items={ZOOM_ITEMS}
+            applicable={isVisual} onApply={(id) => onApplyZoom(id as ZoomShape)} />
+        ) : subTab === 'LUT' ? (
+          <ResourceBrowser hint="" items={LUT_PRESETS} applicable={false} onApply={() => {}}
+            disabledNote="源站 LUT 是真 .cube 3D 查找表（存于其 CDN /luts/）。按项目约束不接源站后端，故暂无 LUT 数据可用——可后续自带公开 .cube 或按 S-Log3/CLog3 传递函数公式实现。" />
         ) : (
           <div style={{ color: theme.textDim, fontSize: 12, padding: 8 }}>「{mainTab} · {subTab}」内容待接入。</div>
         )}
