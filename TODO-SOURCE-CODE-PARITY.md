@@ -38,7 +38,8 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 - ✅ `manage_markers` + 标尺 pin/编辑 UI — Claude(工具) + 用户(UI)
 - ✅ `convert_motion_graphic_to_video` / `register_converted_video`（不透明 h264，见 §2.7）— Claude
 - ✅ ripple 插入/删除 + fade(秒) 暴露（`set_item_timing`/`remove_item`/`add_*`）— Claude
-- 🔨 `web_browser`（`agent/web-tools.ts` 已在，§1.7）— grok/用户 进行中
+- ✅ `web_browser` + Firecrawl 扩展（`agent/web-tools.ts`，§1.7）— grok
+- ✅ `download_media` / `push_asset` 同名（`agent/stock-tools.ts` + `/api/import-url`，§2.4）— grok
 
 ### 分工表
 
@@ -193,14 +194,14 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 
 ---
 
-### 2.4 🟡 `download_media` / `push_asset` 无同名工具
+### 2.4 ✅ `download_media` / `push_asset` 同名工具
 
 | | |
 |--|--|
 | **源站** | `download_media` required `url`（可数组≤4）；`push_asset` required `filePath`（公网 URL） |
-| **本仓** | `src/agent/stock-tools.ts`：`import_url_asset`、`search_stock_media` |
-| **本仓 UI** | 媒体池：`src/media/MediaPoolPanel.tsx`；stock 搜索若有 agent-only |
-| **怎么改** | 1. 在 `stock-tools.ts` **增加同名** schema（别只靠别名）。2. `download_media`：fetch URL → 写 uploads → `addAsset`（复用 import 路径）；支持 url 数组。3. `push_asset`：与 download 类似，type 覆盖含 motion-graphic 元数据。4. 保留 `import_url_asset` 作别名转发以免旧 prompt 挂。 |
+| **本仓** | `src/agent/stock-tools.ts`：同名 `download_media` / `push_asset` + 遗留 `import_url_asset` 别名 + `search_stock_media`。本地 `POST /api/import-url`（`vite-plugin-upload.ts`）拉字节进 `/media/uploads`；无代理时回退 remote `src`。返回 `{ failed, succeeded, results }`。 |
+| **本仓 UI** | 媒体池：`src/media/MediaPoolPanel.tsx` |
+| **状态** | ✅ 2026-07-15 [G] |
 
 ---
 
@@ -404,7 +405,7 @@ chatcut-clone/
 
 ### P1 资产/字体/导出
 
-- [ ] **[G]** `download_media` / `push_asset` 同名（§2.4）
+- [x] **[G]** `download_media` / `push_asset` 同名（§2.4）
 - [ ] **[G]** `search_fonts` + export `confirmFontFallback`（§1.4 §2.5）
 - [ ] **[C]** `edit_item` 批处理/ripple/validateOnly 文档化或对齐（§2.6）
 - [ ] **[C]** MG convert 透明策略写清或实现 alpha（§2.7）

@@ -191,7 +191,7 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...EFFECT_TOOL_SCHEMAS,
   // 设计风格 = 工程品牌（source manage_design_style：list/get/apply/update/clear）
   ...DESIGN_TOOL_SCHEMAS,
-  // 在线素材导入（source push_asset/download_media + search_stock_media）
+  // 在线素材导入（source 同名 download_media / push_asset + search_stock_media；import_url_asset 别名）
   ...STOCK_TOOL_SCHEMAS,
   // 逐词字幕覆盖（source edit_captions display_text：read_captions/edit_caption_words 隐藏/改词/强制换行）
   ...CAPTIONS_TOOL_SCHEMAS,

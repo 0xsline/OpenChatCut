@@ -2,29 +2,128 @@ import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import type { MediaAsset } from '../editor/types';
 
-// 在线素材导入（source push_asset/download_media + search_stock_media）：
-// import_url_asset 把任意公网 URL 登记为工程资产，无需 key；search_stock_media
-// 搜 Pexels/Pixabay，结果里的 importUrl 再喂给 import_url_asset。
+// Source-aligned stock / URL ingest tools:
+// - download_media  (source name) — url | url[] ≤4 → local uploads + media pool
+// - push_asset      (source name) — filePath | filePath[] ≤4 (public http URL)
+// - import_url_asset — legacy alias → push_asset
+// - search_stock_media — Pexels/Pixabay proxy
+//
+// Local-dev: POST /api/import-url fetches remote bytes into public/media/uploads
+// (stand-in for source S3 ingest). If the proxy is unavailable, falls back to
+// registering the remote URL as asset.src so offline checks still work.
 
 type Args = Record<string, unknown>;
 
+const MEDIA_TYPE_ENUM = ['audio', 'gif', 'image', 'svg', 'video'] as const;
+const PUSH_TYPE_ENUM = [
+  'audio', 'effect', 'gif', 'image', 'motion-graphic', 'svg', 'transition', 'video',
+] as const;
+
 export const STOCK_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
+    name: 'download_media',
+    description: [
+      'Download a media file from a public URL into the project media pool (source download_media).',
+      'Accepts a single url or array of urls (up to 4). Type inferred from extension / Content-Type; pass type to override.',
+      'Local-dev: server fetches bytes into /media/uploads (S3 stand-in). Returns { failed, succeeded, results } like push_asset.',
+    ].join(' '),
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: {
+          description: 'HTTP(S) URL or array of URLs (up to 4 total).',
+          // string | string[] — Anthropic tools accept loose schema
+        },
+        name: {
+          type: 'string',
+          description: 'Override display name. Ignored for batch (>1 url).',
+        },
+        type: {
+          type: 'string',
+          enum: [...MEDIA_TYPE_ENUM],
+          description: 'Asset type override; auto-detected from Content-Type / URL extension when omitted.',
+        },
+        projectId: {
+          type: 'string',
+          description: 'Ignored in local clone (single active project).',
+        },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'push_asset',
+    description: [
+      'Register a public http(s) media URL as a project asset (source push_asset).',
+      'filePath = public URL (string or array, up to 4). Local-dev downloads into /media/uploads when possible.',
+      'type may be motion-graphic (with duration / durationInFrames / properties). effect/transition types are not pool media here.',
+      'Do NOT pass local filesystem paths. Returns { failed, succeeded, results: [{ assetId, name, type, success } | { error, success:false }] }.',
+    ].join(' '),
+    input_schema: {
+      type: 'object',
+      properties: {
+        filePath: {
+          description: 'Public http(s) media URL or array of URLs (up to 4). Local paths are not accepted.',
+        },
+        name: {
+          type: 'string',
+          description: 'Override display name. Ignored for batch (>1 filePath).',
+        },
+        type: {
+          type: 'string',
+          enum: [...PUSH_TYPE_ENUM],
+          description: 'Asset type override; auto-detected from extension when omitted.',
+        },
+        duration: {
+          type: 'number',
+          description: 'Duration in seconds (motion-graphic if durationInFrames omitted; also media fallback).',
+        },
+        durationInFrames: {
+          type: 'number',
+          description: 'Duration in frames at timeline fps (motion-graphic alternative to duration).',
+        },
+        width: { type: 'number' },
+        height: { type: 'number' },
+        properties: {
+          type: 'array',
+          description: 'Motion-graphic editable properties (objects with key, label, type, defaultValue).',
+          items: {},
+        },
+        projectId: {
+          type: 'string',
+          description: 'Ignored in local clone (single active project).',
+        },
+      },
+      required: ['filePath'],
+    },
+  },
+  {
     name: 'import_url_asset',
-    description: 'Register a public http(s) media URL (video/image/audio) as a project media asset — works with no API key. Use for a URL the user pastes directly, or an importUrl chosen from search_stock_media results.',
+    description: [
+      'Legacy alias of push_asset: register a public http(s) media URL as a project asset.',
+      'Prefer download_media (fetch into library) or push_asset (source name). Same local behaviour.',
+    ].join(' '),
     input_schema: {
       type: 'object',
       properties: {
         url: { type: 'string', description: 'Public http(s) URL of the media file.' },
         name: { type: 'string', description: 'Display name; defaults to the URL filename.' },
-        kind: { type: 'string', enum: ['video', 'image', 'audio'], description: 'Override kind detection when the URL extension is ambiguous.' },
+        kind: {
+          type: 'string',
+          enum: ['video', 'image', 'audio'],
+          description: 'Override kind detection when the URL extension is ambiguous.',
+        },
       },
       required: ['url'],
     },
   },
   {
     name: 'search_stock_media',
-    description: 'Search stock media libraries (Pexels/Pixabay) by keyword and return a unified result list with direct import URLs. Requires a server-configured API key — if unavailable, returns an error hint to use import_url_asset directly instead. On success, pick a result and pass its importUrl to import_url_asset to add it to the project.',
+    description: [
+      'Search stock media libraries (Pexels/Pixabay) by keyword and return a unified result list with direct import URLs.',
+      'Requires a server-configured API key — if unavailable, returns an error hint to use download_media / push_asset with a URL instead.',
+      'On success, pick a result and pass its importUrl to download_media or push_asset.',
+    ].join(' '),
     input_schema: {
       type: 'object',
       properties: {
@@ -40,9 +139,10 @@ export const STOCK_TOOL_SCHEMAS: Anthropic.Tool[] = [
 
 export const STOCK_TOOL_NAMES = new Set(STOCK_TOOL_SCHEMAS.map((tool) => tool.name));
 
-const IMAGE_SECONDS = 3; // still image default on-screen duration fallback
-const CLIP_SECONDS = 5; // unknown-duration video/audio fallback
+const IMAGE_SECONDS = 3;
+const CLIP_SECONDS = 5;
 const PROBE_TIMEOUT_MS = 8000;
+const MAX_BATCH = 4;
 
 const EXT_KIND: Record<string, MediaAsset['kind']> = {
   mp4: 'video', mov: 'video', webm: 'video', m4v: 'video', avi: 'video',
@@ -50,7 +150,9 @@ const EXT_KIND: Record<string, MediaAsset['kind']> = {
   mp3: 'audio', wav: 'audio', m4a: 'audio', aac: 'audio', ogg: 'audio', flac: 'audio',
 };
 
-function sniffKind(url: string): MediaAsset['kind'] | null {
+type PoolKind = MediaAsset['kind'];
+
+function sniffKind(url: string): PoolKind | null {
   const clean = url.split('?')[0].split('#')[0];
   const base = clean.split('/').filter(Boolean).pop() ?? '';
   const ext = base.includes('.') ? base.split('.').pop()!.toLowerCase() : '';
@@ -77,7 +179,7 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-function fallbackDuration(kind: MediaAsset['kind'], fps: number): number {
+function fallbackDuration(kind: PoolKind, fps: number): number {
   return Math.round((kind === 'image' ? IMAGE_SECONDS : CLIP_SECONDS) * fps);
 }
 
@@ -87,9 +189,7 @@ interface ProbeResult {
   height?: number;
 }
 
-// 复用 src/media/upload.ts 的探测思路：起一个隐藏 <video>/<img>/<audio> 读时长
-// + 原始宽高；超时/失败/无 DOM（headless check 环境）一律回退默认值，不阻断导入。
-function probeUrl(url: string, kind: MediaAsset['kind'], fps: number): Promise<ProbeResult> {
+function probeUrl(url: string, kind: PoolKind, fps: number): Promise<ProbeResult> {
   const fallback: ProbeResult = { durationInFrames: fallbackDuration(kind, fps) };
   if (typeof document === 'undefined') return Promise.resolve(fallback);
 
@@ -99,12 +199,18 @@ function probeUrl(url: string, kind: MediaAsset['kind'], fps: number): Promise<P
       const finish = (result: ProbeResult) => { if (!done) { done = true; resolve(result); } };
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.onload = () => finish({ durationInFrames: fallbackDuration('image', fps), width: img.naturalWidth, height: img.naturalHeight });
+      img.onload = () => finish({
+        durationInFrames: fallbackDuration('image', fps),
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+      });
       img.onerror = () => finish(fallback);
       img.src = url;
       setTimeout(() => finish(fallback), PROBE_TIMEOUT_MS);
     });
   }
+
+  if (kind === 'motion-graphic') return Promise.resolve(fallback);
 
   return new Promise((resolve) => {
     let done = false;
@@ -114,7 +220,11 @@ function probeUrl(url: string, kind: MediaAsset['kind'], fps: number): Promise<P
     el.crossOrigin = 'anonymous';
     el.onloadedmetadata = () => {
       const durationInFrames = Math.max(1, Math.round((el.duration || CLIP_SECONDS) * fps));
-      finish({ durationInFrames, width: kind === 'video' ? el.videoWidth : undefined, height: kind === 'video' ? el.videoHeight : undefined });
+      finish({
+        durationInFrames,
+        width: kind === 'video' ? el.videoWidth : undefined,
+        height: kind === 'video' ? el.videoHeight : undefined,
+      });
     };
     el.onerror = () => finish(fallback);
     el.src = url;
@@ -122,40 +232,253 @@ function probeUrl(url: string, kind: MediaAsset['kind'], fps: number): Promise<P
   });
 }
 
-const newId = (): string => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `a_${Date.now()}`;
+const newId = (): string =>
+  (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `a_${Date.now()}`;
+
+/** Map source type strings onto MediaAsset.kind (gif/svg → image). */
+function mapTypeToKind(type: string | undefined, url: string): PoolKind | null {
+  if (!type) return sniffKind(url);
+  switch (type) {
+    case 'video':
+    case 'audio':
+    case 'image':
+    case 'motion-graphic':
+      return type;
+    case 'gif':
+    case 'svg':
+      return 'image';
+    case 'effect':
+    case 'transition':
+      return null; // not media-pool assets in this clone
+    default:
+      return sniffKind(url);
+  }
+}
+
+function normalizeUrlList(raw: unknown, max = MAX_BATCH): string[] {
+  const list = Array.isArray(raw) ? raw : [raw];
+  return list
+    .filter((u): u is string => typeof u === 'string')
+    .map((u) => u.trim())
+    .filter(Boolean)
+    .slice(0, max);
+}
+
+interface ImportUrlResponse {
+  ok?: boolean;
+  path?: string;
+  bytes?: number;
+  contentType?: string;
+  filename?: string;
+  error?: string;
+}
+
+/** Server-side fetch → /media/uploads; falls back to remote URL on any failure. */
+async function materializeUrl(
+  url: string,
+  nameHint?: string,
+): Promise<{ src: string; filename?: string; local: boolean; note?: string }> {
+  try {
+    const res = await fetch('/api/import-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, name: nameHint }),
+    });
+    const body = (await res.json().catch(() => ({}))) as ImportUrlResponse;
+    if (body.ok && typeof body.path === 'string' && body.path.startsWith('/media/')) {
+      return { src: body.path, filename: body.filename, local: true };
+    }
+    const err = body.error ?? `import-url status ${res.status}`;
+    return { src: url, local: false, note: `remote src (import-url: ${err})` };
+  } catch (e) {
+    return {
+      src: url,
+      local: false,
+      note: `remote src (${e instanceof Error ? e.message : 'no proxy'})`,
+    };
+  }
+}
+
+type BatchRow =
+  | { success: true; assetId: string; name: string; type: string; src: string; local: boolean; note?: string }
+  | { success: false; error: string; url?: string };
+
+function batchEnvelope(results: BatchRow[]) {
+  const succeeded = results.filter((r) => r.success).length;
+  const failed = results.length - succeeded;
+  return { failed, succeeded, results };
+}
+
+async function registerMediaUrl(
+  url: string,
+  opts: {
+    name?: string;
+    type?: string;
+    duration?: number;
+    durationInFrames?: number;
+    width?: number;
+    height?: number;
+    properties?: unknown;
+    forceRemote?: boolean;
+  },
+  ctx: AgentContext,
+): Promise<BatchRow> {
+  if (!isHttpUrl(url)) {
+    return { success: false, error: 'must be a public http(s) URL (local paths not accepted)', url };
+  }
+
+  const kind = mapTypeToKind(opts.type, url);
+  if (!kind) {
+    return {
+      success: false,
+      error: opts.type === 'effect' || opts.type === 'transition'
+        ? `type=${opts.type} is not a media-pool asset in local clone`
+        : '无法从 URL 识别媒体类型，请传 type: video|image|audio|gif|svg|motion-graphic',
+      url,
+    };
+  }
+
+  const fps = ctx.getState().fps;
+  let src = url;
+  let local = false;
+  let note: string | undefined;
+  let filename: string | undefined;
+
+  if (kind !== 'motion-graphic' && !opts.forceRemote) {
+    const mat = await materializeUrl(url, opts.name);
+    src = mat.src;
+    local = mat.local;
+    note = mat.note;
+    filename = mat.filename;
+  }
+
+  let durationInFrames: number;
+  if (typeof opts.durationInFrames === 'number' && opts.durationInFrames > 0) {
+    durationInFrames = Math.round(opts.durationInFrames);
+  } else if (typeof opts.duration === 'number' && opts.duration > 0) {
+    durationInFrames = Math.max(1, Math.round(opts.duration * fps));
+  } else if (kind === 'motion-graphic') {
+    durationInFrames = Math.round(5 * fps);
+  } else {
+    try {
+      const meta = await probeUrl(src, kind, fps);
+      durationInFrames = meta.durationInFrames;
+      if (opts.width == null && meta.width) opts.width = meta.width;
+      if (opts.height == null && meta.height) opts.height = meta.height;
+    } catch {
+      durationInFrames = fallbackDuration(kind, fps);
+    }
+  }
+
+  const displayName = (opts.name?.trim() || filename || nameFromUrl(url)).trim();
+
+  const asset: MediaAsset = {
+    id: newId(),
+    name: displayName,
+    kind,
+    src,
+    durationInFrames,
+    width: typeof opts.width === 'number' && opts.width > 0 ? opts.width : undefined,
+    height: typeof opts.height === 'number' && opts.height > 0 ? opts.height : undefined,
+  };
+
+  if (kind === 'motion-graphic' && Array.isArray(opts.properties)) {
+    const props: Record<string, unknown> = {};
+    for (const p of opts.properties) {
+      if (p && typeof p === 'object' && 'key' in p) {
+        const row = p as { key: string; defaultValue?: unknown };
+        if (typeof row.key === 'string') props[row.key] = row.defaultValue;
+      }
+    }
+    asset.props = props;
+  }
+
+  ctx.commands.addAsset(asset);
+  return {
+    success: true,
+    assetId: asset.id,
+    name: asset.name,
+    type: kind,
+    src: asset.src,
+    local,
+    note,
+  };
+}
+
+async function execDownloadMedia(args: Args, ctx: AgentContext): Promise<unknown> {
+  const urls = normalizeUrlList(args.url);
+  if (!urls.length) return { error: 'url is required (string or array, max 4)' };
+
+  const batchName = urls.length === 1 && typeof args.name === 'string' ? args.name : undefined;
+  const type = typeof args.type === 'string' ? args.type : undefined;
+
+  const results: BatchRow[] = [];
+  for (const url of urls) {
+    results.push(await registerMediaUrl(url, { name: batchName, type }, ctx));
+  }
+  return batchEnvelope(results);
+}
+
+async function execPushAsset(args: Args, ctx: AgentContext): Promise<unknown> {
+  const urls = normalizeUrlList(args.filePath);
+  if (!urls.length) return { error: 'filePath is required (public http(s) URL or array, max 4)' };
+
+  const batchName = urls.length === 1 && typeof args.name === 'string' ? args.name : undefined;
+  const type = typeof args.type === 'string' ? args.type : undefined;
+  const duration = typeof args.duration === 'number' ? args.duration : undefined;
+  const durationInFrames = typeof args.durationInFrames === 'number' ? args.durationInFrames : undefined;
+  const width = typeof args.width === 'number' ? args.width : undefined;
+  const height = typeof args.height === 'number' ? args.height : undefined;
+  const properties = Array.isArray(args.properties) ? args.properties : undefined;
+
+  const results: BatchRow[] = [];
+  for (const url of urls) {
+    results.push(await registerMediaUrl(url, {
+      name: batchName,
+      type,
+      duration,
+      durationInFrames,
+      width,
+      height,
+      properties,
+    }, ctx));
+  }
+  return batchEnvelope(results);
+}
+
+async function execImportUrlAsset(args: Args, ctx: AgentContext): Promise<unknown> {
+  // Legacy single-asset shape for old prompts / checks
+  const url = String(args.url ?? '').trim();
+  const kind = args.kind === 'video' || args.kind === 'image' || args.kind === 'audio'
+    ? args.kind
+    : undefined;
+  const name = typeof args.name === 'string' ? args.name : undefined;
+
+  const pushed = await execPushAsset({
+    filePath: url,
+    name,
+    type: kind,
+  }, ctx) as { failed: number; succeeded: number; results: BatchRow[] };
+
+  const first = pushed.results?.[0];
+  if (!first) return { error: 'import failed' };
+  if (first.success !== true) return { error: first.error ?? 'import failed' };
+
+  const asset = (ctx.getState().assets ?? []).find((a) => a.id === first.assetId);
+  return {
+    ok: true,
+    asset: asset
+      ? { id: asset.id, name: asset.name, kind: asset.kind, durationInFrames: asset.durationInFrames }
+      : { id: first.assetId, name: first.name, kind: first.type, durationInFrames: undefined },
+    note: 'import_url_asset is a legacy alias of push_asset; prefer download_media or push_asset.',
+  };
+}
 
 interface StockSearchResponse {
   configured?: boolean;
   results?: unknown[];
-}
-
-async function execImportUrlAsset(args: Args, ctx: AgentContext): Promise<unknown> {
-  const url = String(args.url ?? '').trim();
-  if (!isHttpUrl(url)) return { error: 'url must be a public http(s) URL' };
-
-  const kindArg = args.kind;
-  const kind = kindArg === 'video' || kindArg === 'image' || kindArg === 'audio' ? kindArg : sniffKind(url);
-  if (!kind) return { error: '无法从 URL 识别媒体类型，请传 kind: video|image|audio' };
-
-  const fps = ctx.getState().fps;
-  let meta: ProbeResult;
-  try {
-    meta = await probeUrl(url, kind, fps);
-  } catch {
-    meta = { durationInFrames: fallbackDuration(kind, fps) };
-  }
-
-  const asset: MediaAsset = {
-    id: newId(),
-    name: String(args.name ?? '').trim() || nameFromUrl(url),
-    kind,
-    src: url,
-    durationInFrames: meta.durationInFrames,
-    width: meta.width,
-    height: meta.height,
-  };
-  ctx.commands.addAsset(asset);
-  return { ok: true, asset: { id: asset.id, name: asset.name, kind: asset.kind, durationInFrames: asset.durationInFrames } };
 }
 
 async function execSearchStockMedia(args: Args): Promise<unknown> {
@@ -172,7 +495,10 @@ async function execSearchStockMedia(args: Args): Promise<unknown> {
     if (!res.ok) return { error: `素材库搜索失败 (${res.status})`, results: [] };
     const body = await res.json() as StockSearchResponse;
     if (!body.configured) {
-      return { error: '未配置素材库 API key（PEXELS_API_KEY / PIXABAY_API_KEY），可改用 import_url_asset 直接导入 URL', results: [] };
+      return {
+        error: '未配置素材库 API key（PEXELS_API_KEY / PIXABAY_API_KEY），可改用 download_media / push_asset 直接导入 URL',
+        results: [],
+      };
     }
     return { results: body.results ?? [] };
   } catch (error) {
@@ -181,6 +507,8 @@ async function execSearchStockMedia(args: Args): Promise<unknown> {
 }
 
 export async function execStockTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
+  if (name === 'download_media') return execDownloadMedia(args, ctx);
+  if (name === 'push_asset') return execPushAsset(args, ctx);
   if (name === 'import_url_asset') return execImportUrlAsset(args, ctx);
   if (name === 'search_stock_media') return execSearchStockMedia(args);
   return { error: `unknown tool ${name}` };
