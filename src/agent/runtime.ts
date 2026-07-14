@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import { TOOL_SCHEMAS, executeTool } from './tools';
-import { SYSTEM_PROMPT, designStylePrompt } from './systemPrompt';
+import { SYSTEM_PROMPT, designStylePrompt, creativeModePrompt } from './systemPrompt';
+import { findSkill } from './skills-catalog';
 import { anthropic, MODEL } from './client';
 
 // No artificial limits — the loop runs until the model itself stops requesting
@@ -35,8 +36,10 @@ export async function runAgent(
   const conv = [...messages];
   // 问答模式：不给工具 → 模型只答不改时间线（source: Ask vs Agent）
   const tools = opts?.askOnly ? [] : TOOL_SCHEMAS;
-  // 应用中的设计风格 = 工程品牌，注入到系统提示，让生成遵守品牌配色/字体（source manage_design_style）
-  const system = SYSTEM_PROMPT + designStylePrompt(ctx.getDoc().designStyle);
+  // 系统提示 = 基础 + 设计风格(品牌,source manage_design_style) + 创作模式(source agent_skill)
+  const system = SYSTEM_PROMPT
+    + designStylePrompt(ctx.getDoc().designStyle)
+    + creativeModePrompt(findSkill(ctx.getCreativeMode()));
 
   for (;;) {
     let resp: Anthropic.Message;

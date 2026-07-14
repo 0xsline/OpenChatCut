@@ -222,6 +222,28 @@ export async function clearChat(projectId: string): Promise<void> {
   }
 }
 
+// ── creative mode (source agent_skill): which skill is active for a project.
+// A UI/session preference, kept OUT of the undo-able ProjectDoc; one id per project. ──
+const creativeModeKey = (id: string) => `creative-mode:${id}`;
+
+export async function loadCreativeMode(projectId: string): Promise<string | null> {
+  try {
+    const raw = await idbGet<unknown>(creativeModeKey(projectId));
+    return typeof raw === 'string' && raw ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveCreativeMode(projectId: string, skillId: string | null): Promise<void> {
+  try {
+    if (skillId) await idbSet(creativeModeKey(projectId), skillId);
+    else await idbDel(creativeModeKey(projectId));
+  } catch {
+    /* ignore persist failures; the session still works in-memory */
+  }
+}
+
 // ── owned design styles (source /api/design-styles/owned): the user's OWN saved
 // styles — a single GLOBAL personal library (not scoped to a project), stored
 // under one key alongside the catalog presets in design-presets.ts. ──

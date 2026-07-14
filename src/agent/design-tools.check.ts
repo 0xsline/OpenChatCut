@@ -34,7 +34,7 @@ const { DESIGN_STYLE_PRESETS } = await import('../editor/design-presets');
 
 const state: TimelineState = { fps: 30, width: 1920, height: 1080, selectedId: null, items: [] };
 const draft = makeDraft(docFromTimeline(state));
-const ctx: AgentContext = { commands: draft.commands, getState: draft.getState, getDoc: draft.getDoc, templates: [], audio: [] };
+const ctx: AgentContext = { commands: draft.commands, getState: draft.getState, getDoc: draft.getDoc, getCreativeMode: () => null, templates: [], audio: [] };
 
 // list returns { catalog, owned } — catalog is the built-in preset library, owned starts empty
 const list0 = await execDesignTool('manage_design_style', { action: 'list' }, ctx) as { catalog: { presetId: string }[]; owned: unknown[] };

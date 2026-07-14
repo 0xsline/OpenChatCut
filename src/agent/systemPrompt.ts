@@ -2,6 +2,15 @@
 // We author our own, grounded in the reverse-engineered skills + tool model.
 import { GENERATE_WORKFLOW } from './generate-tools';
 import { type DesignStyle } from '../editor/types';
+import { type CreativeSkill } from './skills-catalog';
+
+// Source agent_skill: a selected creative mode injects that skill's instructions
+// (bodyMarkdown) into the system prompt so the agent plans/executes per the skill.
+// No skill selected → empty string (general agent).
+export function creativeModePrompt(skill: CreativeSkill | undefined): string {
+  if (!skill) return '';
+  return `\n\n# 创作模式：${skill.nameZh}（${skill.name}）\n用户为本工程选择了这个创作模式。按下面这套技能指引来规划与执行(它不改变可用工具,只指导你的思路与流程):\n\n${skill.body}`;
+}
 
 const isEmptyStyle = (s: DesignStyle) => s.colors.length === 0 && s.fonts.length === 0 && !s.styleGuide;
 

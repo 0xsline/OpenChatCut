@@ -9,7 +9,7 @@ import { execMediaPoolTool } from './media-pool-tools';
 const asset: MediaAsset = { id: 'asset_hero', name: 'hero.mp4', kind: 'video', src: '/hero.mp4', durationInFrames: 90 };
 const base = docFromTimeline({ fps: 30, width: 1920, height: 1080, items: [], selectedId: null, assets: [asset] });
 const draft = makeDraft(base);
-const ctx: AgentContext = { commands: draft.commands, getState: draft.getState, getDoc: draft.getDoc, templates: [], audio: [] };
+const ctx: AgentContext = { commands: draft.commands, getState: draft.getState, getDoc: draft.getDoc, getCreativeMode: () => null, templates: [], audio: [] };
 
 const created = await execMediaPoolTool('manage_media_pool', { action: 'create_folder', name: 'B-roll' }, ctx) as { folder: { id: string } };
 assert.ok(created.folder.id);

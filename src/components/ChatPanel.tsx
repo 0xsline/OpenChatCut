@@ -19,9 +19,12 @@ interface ChatPanelProps {
   onPreviewState: (state: TimelineState | null) => void;
   /** prefill the composer (library「用 AI 生成」); bump the number to re-seed */
   seed?: { text: string; nonce: number } | null;
+  /** active creative-mode skill id (source agent_skill), or null */
+  creativeMode: string | null;
+  onCreativeModeChange: (id: string | null) => void;
 }
 
-export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPreviewState, seed }: ChatPanelProps) {
+export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPreviewState, seed, creativeMode, onCreativeModeChange }: ChatPanelProps) {
   const { messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal, clearHistory } = useAgent(ctx, projectId);
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<ChatMode>('agent');
@@ -135,6 +138,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
           onEnhance={runEnhance} enhancing={enhancing} running={running}
           mode={mode} onModeChange={setMode}
           autoApply={autoApply} onAutoApplyChange={setAutoApply}
+          creativeMode={creativeMode} onCreativeModeChange={onCreativeModeChange}
           references={references} onInsertRef={insertRef} taRef={taRef} />
       </div>
     </aside>

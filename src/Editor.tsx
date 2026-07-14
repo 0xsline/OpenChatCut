@@ -14,7 +14,7 @@ import { usePersistedState } from './hooks/usePersistedState';
 import { useEditor } from './editor/store';
 import type { ProjectDoc, TimelineState } from './editor/types';
 import { TEMPLATES } from './editor/initial';
-import { saveProject, type ProjectMeta } from './persist/projectStore';
+import { saveProject, loadCreativeMode, saveCreativeMode, type ProjectMeta } from './persist/projectStore';
 import { importMedia } from './media/upload';
 import { AUDIO_ASSETS } from './audio/library';
 import type { Tpl } from './types';
@@ -42,9 +42,18 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   stateRef.current = state;
   const docRef = useRef(doc);
   docRef.current = doc;
+  // 创作模式(source agent_skill):选中的技能 id,注入系统提示;存 IDB(不进 undo 历史)
+  const [creativeMode, setCreativeMode] = useState<string | null>(null);
+  const creativeModeRef = useRef(creativeMode);
+  creativeModeRef.current = creativeMode;
+  useEffect(() => { loadCreativeMode(project.id).then(setCreativeMode); }, [project.id]);
+  const changeCreativeMode = useCallback((id: string | null) => {
+    setCreativeMode(id);
+    saveCreativeMode(project.id, id);
+  }, [project.id]);
   const playerRef = useRef<PlayerRef | null>(null);
   const agentCtx = useMemo(
-    () => ({ commands, getState: () => stateRef.current, getDoc: () => docRef.current, templates: TEMPLATES, audio: AUDIO_ASSETS }),
+    () => ({ commands, getState: () => stateRef.current, getDoc: () => docRef.current, getCreativeMode: () => creativeModeRef.current, templates: TEMPLATES, audio: AUDIO_ASSETS }),
     [commands],
   );
 
@@ -181,7 +190,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         <DesignStylePanel style={doc.designStyle} onApply={commands.setDesignStyle} onClose={() => setShowDesign(false)} />
       )}
 
-      <ChatPanel ctx={agentCtx} projectId={project.id} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} seed={chatSeed} />
+      <ChatPanel ctx={agentCtx} projectId={project.id} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} seed={chatSeed} creativeMode={creativeMode} onCreativeModeChange={changeCreativeMode} />
 
       <div style={{ gridColumn: 2, gridRow: '2 / 5' }}>
         {!chatCollapsed && <Divider onResize={(dx) => setChatW((w) => clamp(w + dx, CHAT_MIN_W, Math.max(CHAT_MIN_W, viewportW - libW - CANVAS_MIN_W - SPLITTER_TOTAL_W)))} />}

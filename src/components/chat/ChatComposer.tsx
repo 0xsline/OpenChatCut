@@ -1,6 +1,7 @@
 import { useState, type ReactNode, type RefObject } from 'react';
 import { theme } from '../../theme';
 import { Icon, type IconName } from '../icons';
+import { CREATIVE_SKILLS, findSkill } from '../../agent/skills-catalog';
 
 export type ChatMode = 'agent' | 'ask';
 export interface RefItem { id: string; name: string; kind: 'video' | 'image' | 'audio' | 'template' }
@@ -17,12 +18,15 @@ interface ChatComposerProps {
   onModeChange: (m: ChatMode) => void;
   autoApply: boolean;
   onAutoApplyChange: (v: boolean) => void;
+  /** active creative-mode skill id (source agent_skill), or null = 通用 */
+  creativeMode: string | null;
+  onCreativeModeChange: (id: string | null) => void;
   references: RefItem[];
   onInsertRef: (name: string) => void;
   taRef: RefObject<HTMLTextAreaElement | null>;
 }
 
-type Pop = 'mode' | 'settings' | 'assets' | 'templates' | null;
+type Pop = 'mode' | 'skill' | 'settings' | 'assets' | 'templates' | null;
 
 // one bottom-bar icon button (source: monochrome, hover-lit)
 function BarBtn({ icon, title, onClick, active, disabled, chevron }: {
@@ -54,7 +58,8 @@ function Popover({ children, onClose }: { children: ReactNode; onClose: () => vo
 const REF_ICON: Record<RefItem['kind'], IconName> = { video: 'filePlay', image: 'filePlay', audio: 'fileHeadphone', template: 'sparkles' };
 
 export function ChatComposer(props: ChatComposerProps) {
-  const { value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange, autoApply, onAutoApplyChange, references, onInsertRef, taRef } = props;
+  const { value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange, autoApply, onAutoApplyChange, creativeMode, onCreativeModeChange, references, onInsertRef, taRef } = props;
+  const activeSkill = findSkill(creativeMode);
   const [pop, setPop] = useState<Pop>(null);
   const toggle = (p: Pop) => setPop((cur) => (cur === p ? null : p));
   const canSend = !!value.trim() && !running;
@@ -109,6 +114,36 @@ export function ChatComposer(props: ChatComposerProps) {
             <Popover onClose={() => setPop(null)}>
               {modeRow('agent', '代理模式', '可编辑时间线（提出可撤销的改动提案）')}
               {modeRow('ask', '问答模式', '只回答不改动时间线')}
+            </Popover>
+          )}
+        </div>
+        {/* creative mode (source agent_skill) — a named skill guides the agent's workflow */}
+        <div style={{ position: 'relative' }}>
+          <button title="创作模式" onClick={() => toggle('skill')}
+            style={{ background: pop === 'skill' || activeSkill ? theme.panelAlt : 'none', border: 'none', cursor: 'pointer', padding: '5px 8px', borderRadius: 7, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 0, color: activeSkill ? theme.gold : theme.textDim, fontSize: 12 }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = activeSkill ? theme.gold : theme.text; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = activeSkill ? theme.gold : theme.textDim; }}>
+            <Icon name="film" size={15} />
+            <span style={{ whiteSpace: 'nowrap', maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis' }}>{activeSkill ? activeSkill.nameZh : '创作模式'}</span>
+            <Icon name="chevronDown" size={11} />
+          </button>
+          {pop === 'skill' && (
+            <Popover onClose={() => setPop(null)}>
+              <div style={{ fontSize: 10.5, color: theme.textDim, padding: '4px 8px 6px', letterSpacing: 0.4 }}>创作模式（引导 AI 的规划与流程）</div>
+              <button onClick={() => { onCreativeModeChange(null); setPop(null); }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', background: !creativeMode ? theme.panel : 'none', border: 'none', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text }}>
+                <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>通用{!creativeMode && <span style={{ color: theme.accent, fontSize: 11 }}>●</span>}</div>
+                <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>不套用特定技能,按通用剪辑助手工作。</div>
+              </button>
+              {CREATIVE_SKILLS.map((s) => (
+                <button key={s.id} onClick={() => { onCreativeModeChange(s.id); setPop(null); }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', background: creativeMode === s.id ? theme.panel : 'none', border: 'none', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text }}
+                  onMouseEnter={(e) => { if (creativeMode !== s.id) e.currentTarget.style.background = theme.panel; }}
+                  onMouseLeave={(e) => { if (creativeMode !== s.id) e.currentTarget.style.background = 'none'; }}>
+                  <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>{s.nameZh}{creativeMode === s.id && <span style={{ color: theme.accent, fontSize: 11 }}>●</span>}</div>
+                  <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>{s.summary}</div>
+                </button>
+              ))}
             </Popover>
           )}
         </div>

@@ -14,7 +14,7 @@ const state: TimelineState = {
   ],
 };
 const draft = makeDraft(docFromTimeline(state));
-const ctx: AgentContext = { commands: draft.commands, getState: draft.getState, getDoc: draft.getDoc, templates: [], audio: [] };
+const ctx: AgentContext = { commands: draft.commands, getState: draft.getState, getDoc: draft.getDoc, getCreativeMode: () => null, templates: [], audio: [] };
 
 const before = await execTrackTool('edit_track', { action: 'list' }, ctx) as { id: string; alias: string }[];
 const oldV2 = before.find((track) => track.alias === 'V2')!.id;

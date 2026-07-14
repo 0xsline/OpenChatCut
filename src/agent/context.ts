@@ -10,6 +10,8 @@ export interface AgentContext {
   getState: () => TimelineState;
   /** the whole project — all timelines + which is active (manage_timelines reads this) */
   getDoc: () => ProjectDoc;
+  /** the active creative-mode skill id, or null (source agent_skill); drives prompt injection */
+  getCreativeMode: () => string | null;
   templates: Tpl[];
   audio: AudioAsset[];
 }
