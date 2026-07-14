@@ -33,9 +33,9 @@
 | 10 | 导出 / 交付 | 12 | 4 | 2 | 6 | 核心 | MP4/字幕已做，缺音频/XML/异步/水印 |
 | 11 | Agent / 对话平台 | 10 | 6 | 4 | 0 | 核心 | ✅ 对话持久化(chat_block);仅剩 thinking UI 等 🟡 |
 | 16 | 长转短（专项） | 4 | 1 | 1 | 2 | 核心 | auto-reframe 渲染链就绪缺检测；缺智能切片 |
-| 12 | 技能 Skills | 3 | 0 | 0 | 3 | 可搬 | **纯前端可做**，优先级高 |
+| 12 | 技能 Skills | 3 | 1 | 1 | 1 | 可搬 | ✅ 创作模式(8 真 agent-skills,选中注入系统提示);skill_guard/编辑器 🟡 |
 | 18 | 遥测 / 增长 | 7 | 0 | 2 | 5 | 混合 | 快捷键/i18n/dockview 可做；遥测需 SaaS |
-| 17 | 引导 / 场景 | 2 | 0 | 0 | 2 | 混合 | 创作模式=域12，roadmap 需后端 |
+| 17 | 引导 / 场景 | 2 | 1 | 0 | 1 | 混合 | ✅ 创作模式/场景技能(域12);roadmap 需后端 |
 | 13 | 协作 / 分享 | 5 | 0 | 0 | 5 | 需后端 | 多人同步/分享/邀请 |
 | 14 | 账号 / 计费 / 积分 | 6 | 0 | 0 | 6 | 需后端 | 鉴权/Stripe/门控 |
 | 15 | 多端 / MCP / 集成 | 5 | 0 | 0 | 5 | 需后端 | 唯本地 stdio MCP 可做 |
@@ -50,7 +50,7 @@
 3. **导出音频 mp3/wav + 帧范围**（域10 ❌/🟡）—— `remotion/render.mjs` 加 `renderAudio`（codec mp3）+ `renderMedia frameRange` 透传；`submit_export` 放开 `format=audio`。源：`submit_export format=audio`。
 
 ### P1 — 高价值增量
-4. **创作模式技能预设 = 域12 + 域17 合并做**（纯前端）—— `Record<mode,{systemPrompt,allowedTools,defaultParams}>` + ChatPanel/新建流程下拉；选中拼进 `SYSTEM_PROMPT` 并在 `runtime.ts` 过滤工具。逆向 §17 已存 19 条预设文案可直接取。源：`agent_skill/scenario_preset`。
+4. ✅ **创作模式技能预设 = 域12 + 域17**（纯前端）—— 已落地:从公开端点 `/public-api/agent-skills/catalog` **全搬 8 个真实 agent-skills**(`agent/skills-catalog.ts`,名字/zh名/摘要/scenarios/bodyMarkdown verbatim);`ChatComposer` 底栏「创作模式」下拉;选中→`creativeModePrompt` 把技能 body 注入 `runtime.ts` 的 system;每工程存 IDB(`creative-mode:<pid>`)。源:`agent_skill`。(未做工具过滤:源站技能不改可用工具集,只导流程。)
 5. **在线素材搜索 + URL→资产**（域9 ❌，成套）—— `agent/stock-tools.ts`（`search_stock_media` 归一 Pexels/Pixabay）+ `push_asset`/`download_media`（vite fetch→uploads→asset）。用户可见价值高。源：`复刻规格 §6`。
 6. **submit_shader 着色器生成**（域8 ❌，护城河②沙箱现成）—— `agent/shader-tools.ts` + LLM codegen GLSL，编译校验走已有 `gl/runtime.ts`，产物喂 `manage_effects`/transitions。内置 6 effect+12 transition 即 few-shot 语料。源：`复刻规格 §8 submit_shader`。
 7. **异步渲染 job + `track_export`**（域10 ❌）—— `/export` 改入队复用 `vite-generation-jobs.ts` 返 renderId；新 `track_export`（status/wait）。解锁统一交付路径（XML/音频/水印共用）。源：`submit_export`+`track_export`。
@@ -150,7 +150,7 @@
 - ❌ **垂直安全区** — → `PreviewPanel` 加 9:16 安全框 overlay。纯 CSS。
 
 ### 域 12 · 技能 Skills（纯前端，优先做）
-- ❌ **内置技能预设（6 创作模式）** — 源 `agent_skill/scenario_preset`。→ 见 §二 P1-4（与域17 合并）。
+- ✅ **内置技能预设（创作模式）** — 全搬 8 个真实 agent-skills(源 `agent_skill`),选中注入系统提示。见 §二 P1-4。
 - ❌ **自定义技能 manage_skill** — → 技能对象存 IDB，CRUD 走现成 store 模式。
 - ❌ **skill_guard** — → 复用 propose→apply 审批 UI 插确认弹窗。
 
