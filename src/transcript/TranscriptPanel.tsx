@@ -3,8 +3,8 @@ import type { PlayerRef } from '@remotion/player';
 import type { TimelineItem, TrackId, TrackKind } from '../editor/types';
 import { useTranscript } from './useTranscript';
 import { msToFrame, type TranscriptWord } from './types';
-import { toParagraphs, toSegments, analyzeSilences } from './segment';
-import { ParagraphView, SegmentView } from './TranscriptViews';
+import { toParagraphs, analyzeSilences } from './segment';
+import { ParagraphView, ScriptView } from './TranscriptViews';
 import { CaptionsControls } from '../captions/CaptionsControls';
 import type { CaptionsData } from '../captions/types';
 import { buildTranslation } from '../captions/translate';
@@ -30,6 +30,7 @@ interface TranscriptPanelProps {
   onSetItemTranscript: (id: string, words: TranscriptWord[]) => void;
   onToggleWord: (id: string, idx: number) => void;
   onCleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
+  onSetGapCap: (id: string, afterWordIndex: number, maxMs: number | null) => void;
   onClearEdits: (id: string) => void;
 }
 
@@ -81,12 +82,13 @@ function pickDefaultTrack(options: TranscriptTrackOption[], items: TimelineItem[
 
 export function TranscriptPanel({
   playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions,
-  onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits,
+  onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onClearEdits,
 }: TranscriptPanelProps) {
   const { status, error, progressNote, runMany, reset } = useTranscript();
   const defaultId = useMemo(() => pickDefaultTrack(trackOptions, items), [trackOptions, items]);
   const [track, setTrack] = useState<TrackId | null>(defaultId);
-  const [view, setView] = useState<'paragraph' | 'segment'>('paragraph');
+  // 片段视图 shows Gap rows (source-aligned); 段落 is continuous reading
+  const [view, setView] = useState<'paragraph' | 'segment'>('segment');
   const [editMode, setEditMode] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(false);
   const [compressSec, setCompressSec] = useState(0.5);
@@ -415,15 +417,25 @@ export function TranscriptPanel({
                         }}
                       />
                     ) : (
-                      <SegmentView
-                        groups={cGroups}
+                      <ScriptView
+                        words={cWords}
                         deleted={cDel}
                         editMode={editMode && active}
                         fps={fps}
+                        gapCapsMs={c.gapCapsMs}
+                        silenceFrames={c.silenceFrames}
                         onWord={(w) => {
                           setFocusItemId(c.id);
                           if (editMode) onToggleWord(c.id, w.gi);
                           else playerRef.current?.seekTo(c.startFrame + msToFrame(w.start, fps));
+                        }}
+                        onDeleteGap={(afterGi) => {
+                          setFocusItemId(c.id);
+                          onSetGapCap(c.id, afterGi, 0);
+                        }}
+                        onCapGap={(afterGi, maxMs) => {
+                          setFocusItemId(c.id);
+                          onSetGapCap(c.id, afterGi, maxMs);
                         }}
                       />
                     )}

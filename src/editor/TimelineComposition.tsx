@@ -108,7 +108,7 @@ function AudioClip({ item, fps, muted, gainAt }: { item: TimelineItem; fps: numb
     const del = new Set(item.deletedWordIdx ?? []);
     return (
       <>
-        {keptSegments(item.transcript, del, fps, item.startFrame, { maxGapFrames: item.silenceFrames }).map((seg, k) => (
+        {keptSegments(item.transcript, del, fps, item.startFrame, { maxGapFrames: item.silenceFrames, gapCapsMs: item.gapCapsMs }).map((seg, k) => (
           <Sequence key={`${item.id}_${k}`} from={seg.fromFrame} durationInFrames={seg.durFrames} name={item.name}>
             <Audio src={src} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame} volume={(f) => vol * gainAt(seg.fromFrame + f)} />
           </Sequence>

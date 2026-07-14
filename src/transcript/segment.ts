@@ -75,3 +75,112 @@ export function analyzeSilences(words: TranscriptWord[], compressToMs: number): 
   }
   return { count, savedMs };
 }
+
+/** Source-style gap clock: `0:01` for ~1s (m:ss). */
+export function formatGapClock(ms: number): string {
+  const totalSec = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+export type ScriptRow =
+  | { kind: 'speech'; speaker: string; words: IndexedWord[] }
+  | {
+      kind: 'gap';
+      /** word index AFTER the gap (for gapCapsMs key) */
+      afterWordGi: number;
+      /** original recorded gap ms */
+      gapMs: number;
+      /** gap after per-gap / global caps */
+      appliedMs: number;
+      /** true when a per-gap cap of 0 (or near) has deleted this breath */
+      removed: boolean;
+    };
+
+function effectiveGapMs(
+  rawMs: number,
+  afterWordGi: number,
+  gapCapsMs?: Record<string, number>,
+  globalMaxMs?: number,
+): number {
+  const key = String(afterWordGi);
+  if (gapCapsMs && Object.prototype.hasOwnProperty.call(gapCapsMs, key)) {
+    return Math.min(rawMs, Math.max(0, gapCapsMs[key]!));
+  }
+  if (globalMaxMs != null) return Math.min(rawMs, globalMaxMs);
+  return rawMs;
+}
+
+/**
+ * Build source-like script rows: speaker speech blocks + Gap rows between pauses.
+ * Gaps use source word timings; `gapCapsMs` / global silence max shrink appliedMs.
+ */
+export function buildScriptRows(
+  words: TranscriptWord[],
+  deleted: Set<number>,
+  opts: {
+    gapCapsMs?: Record<string, number>;
+    /** global clean_script max gap (frames) */
+    silenceFrames?: number;
+    fps: number;
+    /** min raw gap to surface a Gap row (default 250ms) */
+    minDisplayMs?: number;
+  },
+): ScriptRow[] {
+  const kept = index(words).filter((w) => !deleted.has(w.gi));
+  if (!kept.length) return [];
+  const minD = opts.minDisplayMs ?? 250;
+  const globalMaxMs = opts.silenceFrames != null
+    ? (opts.silenceFrames / Math.max(1, opts.fps)) * 1000
+    : undefined;
+
+  const rows: ScriptRow[] = [];
+  let speech: IndexedWord[] = [kept[0]!];
+  let speaker = kept[0]!.speaker ?? '';
+
+  const flushSpeech = () => {
+    if (speech.length) rows.push({ kind: 'speech', speaker, words: speech });
+    speech = [];
+  };
+
+  for (let i = 1; i < kept.length; i++) {
+    const prev = kept[i - 1]!;
+    const cur = kept[i]!;
+    const rawGap = Math.max(0, cur.start - prev.end);
+    const applied = effectiveGapMs(rawGap, cur.gi, opts.gapCapsMs, globalMaxMs);
+    const key = String(cur.gi);
+    const removed = !!(opts.gapCapsMs && Object.prototype.hasOwnProperty.call(opts.gapCapsMs, key) && (opts.gapCapsMs[key] ?? 0) <= 30);
+    const speakerChange = (cur.speaker ?? '') !== speaker;
+    const showGap = rawGap >= minD || (speakerChange && rawGap >= 120) || removed;
+
+    if (showGap) {
+      flushSpeech();
+      rows.push({
+        kind: 'gap',
+        afterWordGi: cur.gi,
+        gapMs: rawGap,
+        appliedMs: applied,
+        removed,
+      });
+      speaker = cur.speaker ?? '';
+      speech = [cur];
+    } else if (speakerChange) {
+      flushSpeech();
+      speaker = cur.speaker ?? '';
+      speech = [cur];
+    } else {
+      speech.push(cur);
+    }
+  }
+  flushSpeech();
+  return rows;
+}
+
+/** Speaker accent colors (source-like: blue / green / …). */
+export function speakerColor(code: string | null | undefined): string {
+  if (!code) return '#5b9bff';
+  const n = Math.max(0, code.toUpperCase().charCodeAt(0) - 65);
+  const palette = ['#5b9bff', '#3ecf8e', '#f0a050', '#d080f0', '#f06080', '#50c8d0'];
+  return palette[n % palette.length]!;
+}

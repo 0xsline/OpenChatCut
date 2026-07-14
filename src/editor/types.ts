@@ -162,6 +162,12 @@ export interface TimelineItem {
    * (undefined = keep every pause at its recorded length). */
   silenceFrames?: number;
   /**
+   * Per-gap silence caps (source transcript Gap row / delete-gap).
+   * Key = word index AFTER the gap (string for JSON); value = max allowed gap ms
+   * (0 = delete that breath/gap). Overrides silenceFrames for that boundary only.
+   */
+  gapCapsMs?: Record<string, number>;
+  /**
    * AI Voice Isolation (source isolate_voice / DeepFilterNet3).
    * `src` stays the original media; playback uses denoisedSrc for audio when set.
    */

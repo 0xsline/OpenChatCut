@@ -753,6 +753,54 @@ button, input, select { font: inherit; }
 }
 .cc-tx-section-title { font-size:12px; font-weight:600; color:#ddd; }
 
+/* Source-aligned script view: speaker blocks + Gap rows */
+.cc-tx-script { display:flex; flex-direction:column; gap:14px; }
+.cc-tx-speech { display:flex; flex-direction:column; gap:6px; }
+.cc-tx-speech-label {
+  font-size:13px; font-weight:600; letter-spacing:0.01em;
+}
+.cc-tx-speech-body {
+  display:flex; align-items:flex-start; gap:8px;
+  font-size:13.5px; line-height:1.75; color:#e6e6e6;
+}
+.cc-tx-grip {
+  flex-shrink:0; width:14px; margin-top:2px;
+  color:#555; font-size:11px; letter-spacing:-1px; cursor:grab; user-select:none;
+  line-height:1.4;
+}
+.cc-tx-words { flex:1; min-width:0; }
+.cc-tx-word {
+  cursor:pointer; border-radius:3px; padding:0 1px;
+}
+.cc-tx-word.editable:hover { background:#7a2f2f88; }
+.cc-tx-word.del { text-decoration:line-through; opacity:0.38; }
+.cc-tx-gap-wrap { display:flex; flex-direction:column; align-items:center; gap:6px; padding:2px 0 4px; }
+.cc-tx-gap {
+  display:inline-flex; align-items:center; gap:2px;
+  min-width:min(100%, 280px); max-width:100%;
+  border:1px dashed #4a4a4a; border-radius:999px;
+  background:#1c1c1c; color:#9a9a9a;
+  overflow:hidden;
+}
+.cc-tx-gap-wrap.removed .cc-tx-gap { opacity:0.55; border-style:solid; border-color:#3a3a3a; }
+.cc-tx-gap-main {
+  flex:1; min-width:0; border:0; background:transparent; color:inherit;
+  font-size:12px; padding:8px 14px; cursor:pointer; text-align:center;
+  font-variant-numeric:tabular-nums;
+}
+.cc-tx-gap-main:hover { color:#ccc; }
+.cc-tx-gap-del {
+  flex-shrink:0; width:36px; height:34px; border:0; border-left:1px solid #333;
+  background:transparent; color:#777; cursor:pointer;
+  display:grid; place-items:center; font-size:11px;
+}
+.cc-tx-gap-del:hover { color:#e8a0a0; background:#2a1a1a; }
+.cc-tx-gap-adjust {
+  display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px;
+  padding:2px 4px 4px;
+}
+.cc-tx-btn.ghost { background:transparent; color:#888; }
+
 /* ── Captions controls (文字稿 bottom，可折叠) ── */
 .cc-cap-panel {
   border-top:1px solid #363636; padding:0;

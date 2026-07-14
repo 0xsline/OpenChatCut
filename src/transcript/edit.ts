@@ -18,6 +18,23 @@ export interface EditOpts {
   /** compress inter-word silences longer than this (frames) down to it;
    * undefined = keep every pause at its recorded length. */
   maxGapFrames?: number;
+  /**
+   * Per-boundary silence caps (ms). Key = word index AFTER the gap.
+   * When set for a boundary, overrides maxGapFrames for that boundary only.
+   * 0 ms = delete the gap (source Gap trash).
+   */
+  gapCapsMs?: Record<string, number>;
+}
+
+/** Max frames allowed for the gap immediately before `nextWordIdx` (null = uncapped). */
+export function gapCapFrames(opts: EditOpts, nextWordIdx: number, fps: number): number | null {
+  const key = String(nextWordIdx);
+  if (opts.gapCapsMs && Object.prototype.hasOwnProperty.call(opts.gapCapsMs, key)) {
+    const ms = opts.gapCapsMs[key]!;
+    return Math.max(0, Math.round((ms / 1000) * fps));
+  }
+  if (opts.maxGapFrames != null) return opts.maxGapFrames;
+  return null;
 }
 
 export function keptSegments(
@@ -27,7 +44,6 @@ export function keptSegments(
   offsetFrames: number,
   opts: EditOpts = {},
 ): KeptSegment[] {
-  const { maxGapFrames } = opts;
   const segs: KeptSegment[] = [];
   let pos = offsetFrames;
   let i = 0;
@@ -37,10 +53,12 @@ export function keptSegments(
     let srcEnd = msToFrame(words[i].end, fps);
     // extend through consecutive kept words, cutting where a pause is too long
     while (i + 1 < words.length && !deleted.has(i + 1)) {
-      const nextStart = msToFrame(words[i + 1].start, fps);
+      const nextIdx = i + 1;
+      const nextStart = msToFrame(words[nextIdx].start, fps);
       const gap = nextStart - srcEnd;
-      if (maxGapFrames != null && gap > maxGapFrames) {
-        srcEnd += maxGapFrames; // keep only the target amount of trailing silence
+      const cap = gapCapFrames(opts, nextIdx, fps);
+      if (cap != null && gap > cap) {
+        srcEnd += cap; // keep only the allowed trailing silence
         break; // the next kept word begins a fresh segment
       }
       i += 1;

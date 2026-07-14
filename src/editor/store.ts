@@ -75,6 +75,8 @@ export interface EditorCommands {
   toggleWord: (id: string, idx: number) => void;
   deleteWords: (id: string, idxs: number[]) => void;
   cleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
+  /** Cap/delete one breath gap before word `afterWordIndex` (maxMs=null clears override). */
+  setGapCap: (id: string, afterWordIndex: number, maxMs: number | null) => void;
   clearEdits: (id: string) => void;
   /** 改错字:只修正第 wordIndex 个转写词的 text,timing/词数/片段时长全不变(护城河③) */
   fixTranscriptWord: (id: string, wordIndex: number, text: string) => void;
@@ -321,6 +323,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       toggleWord: (id, idx) => dispatch({ type: 'toggleWord', id, idx }),
       deleteWords: (id, idxs) => dispatch({ type: 'deleteWords', id, idxs }),
       cleanScript: (id, opts) => dispatch({ type: 'cleanScript', id, silenceFrames: opts.silenceFrames, removeFillers: opts.removeFillers }),
+      setGapCap: (id, afterWordIndex, maxMs) => dispatch({ type: 'setGapCap', id, afterWordIndex, maxMs }),
       clearEdits: (id) => dispatch({ type: 'clearEdits', id }),
       fixTranscriptWord: (id, wordIndex, text) => dispatch({ type: 'fixTranscriptWord', id, wordIndex, text }),
       renameSpeaker: (id, from, to) => dispatch({ type: 'renameSpeaker', id, from, to }),

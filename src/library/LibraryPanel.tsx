@@ -44,6 +44,7 @@ interface LibraryPanelProps {
   onSetItemTranscript: (id: string, words: TranscriptWord[]) => void;
   onToggleWord: (id: string, idx: number) => void;
   onCleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
+  onSetGapCap: (id: string, afterWordIndex: number, maxMs: number | null) => void;
   onClearEdits: (id: string) => void;
   assets: MediaAsset[];
   mediaFolders: MediaFolder[];
@@ -71,7 +72,7 @@ const SUB_TABS = ['MG 动画', '音效', '转场', '特效', '缩放', 'LUT', 'A
 /** source 转场 tab: 画面转场 | 音频转场 pills */
 const TRANSITION_SUB = ['画面转场', '音频转场'] as const;
 
-export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits, assets, mediaFolders, onImportMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom, onApplyIsolate, onClearIsolate }: LibraryPanelProps) {
+export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onClearEdits, assets, mediaFolders, onImportMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom, onApplyIsolate, onClearIsolate }: LibraryPanelProps) {
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('我的素材');
@@ -92,7 +93,7 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
       </div>
       {isTranscript ? (
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, borderTop: `1px solid ${theme.border}` }}>
-          <TranscriptPanel playerRef={playerRef} fps={fps} items={items} trackOptions={trackOptions} captions={captions} onSetCaptions={onSetCaptions} onUpdateCaptions={onUpdateCaptions} onSetItemTranscript={onSetItemTranscript} onToggleWord={onToggleWord} onCleanScript={onCleanScript} onClearEdits={onClearEdits} />
+          <TranscriptPanel playerRef={playerRef} fps={fps} items={items} trackOptions={trackOptions} captions={captions} onSetCaptions={onSetCaptions} onUpdateCaptions={onUpdateCaptions} onSetItemTranscript={onSetItemTranscript} onToggleWord={onToggleWord} onCleanScript={onCleanScript} onSetGapCap={onSetGapCap} onClearEdits={onClearEdits} />
         </div>
       ) : isMyAssets ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, borderTop: `1px solid ${theme.border}` }}>

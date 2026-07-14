@@ -48,6 +48,8 @@ export type Action =
   | { type: 'toggleWord'; id: string; idx: number }
   | { type: 'deleteWords'; id: string; idxs: number[] }
   | { type: 'cleanScript'; id: string; silenceFrames?: number; removeFillers: boolean }
+  /** Per-gap silence cap (source Gap row). afterWordIndex = word AFTER the gap; maxMs=null clears override. */
+  | { type: 'setGapCap'; id: string; afterWordIndex: number; maxMs: number | null }
   | { type: 'clearEdits'; id: string }
   | { type: 'fixTranscriptWord'; id: string; wordIndex: number; text: string }
   | { type: 'renameSpeaker'; id: string; from: string; to: string }
@@ -84,7 +86,7 @@ export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void
 /** dispatch at the project level: per-timeline + project actions + undo/redo */
 export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' }) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
   'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset']);
@@ -92,8 +94,12 @@ const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', '
 const EMPTY_CURVE = { version: 1, timebase: 'effect-frame', coordinateSpace: 'composition-normalized', keyframes: [] } as const;
 
 // recompute a transcript-edited clip's duration under its current edit state
+function editOptsOf(it: TimelineItem): { maxGapFrames?: number; gapCapsMs?: Record<string, number> } {
+  return { maxGapFrames: it.silenceFrames, gapCapsMs: it.gapCapsMs };
+}
+
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
-  return editedFrames(it.transcript!, deleted, fps, { maxGapFrames: it.silenceFrames });
+  return editedFrames(it.transcript!, deleted, fps, editOptsOf(it));
 }
 
 export function reduce(s: TimelineState, a: Action): TimelineState {
@@ -363,7 +369,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         ...s,
         items: s.items.map((it) =>
           it.id === a.id
-            ? { ...it, transcript: a.words, deletedWordIdx: [], silenceFrames: undefined }
+            ? { ...it, transcript: a.words, deletedWordIdx: [], silenceFrames: undefined, gapCapsMs: undefined }
             : it,
         ),
       };
@@ -402,11 +408,36 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
           return { ...next, durationInFrames: editedDuration(next, del, s.fps) };
         }),
       };
+    case 'setGapCap': {
+      const it = s.items.find((x) => x.id === a.id);
+      if (!it?.transcript || a.afterWordIndex < 0 || a.afterWordIndex >= it.transcript.length) return s;
+      const key = String(a.afterWordIndex);
+      const prev = it.gapCapsMs ?? {};
+      let nextCaps: Record<string, number> | undefined;
+      if (a.maxMs == null) {
+        if (!(key in prev)) return s;
+        const { [key]: _, ...rest } = prev;
+        nextCaps = Object.keys(rest).length ? rest : undefined;
+      } else {
+        const ms = Math.max(0, Math.round(a.maxMs));
+        if (prev[key] === ms) return s;
+        nextCaps = { ...prev, [key]: ms };
+      }
+      return {
+        ...s,
+        items: s.items.map((item) => {
+          if (item.id !== a.id) return item;
+          const del = new Set(item.deletedWordIdx ?? []);
+          const next = { ...item, gapCapsMs: nextCaps };
+          return { ...next, durationInFrames: editedDuration(next, del, s.fps) };
+        }),
+      };
+    }
     case 'clearEdits':
       return {
         ...s,
         items: s.items.map((it) =>
-          it.id === a.id && it.transcript ? { ...it, deletedWordIdx: [], silenceFrames: undefined, durationInFrames: editedFrames(it.transcript, new Set(), s.fps) } : it,
+          it.id === a.id && it.transcript ? { ...it, deletedWordIdx: [], silenceFrames: undefined, gapCapsMs: undefined, durationInFrames: editedFrames(it.transcript, new Set(), s.fps) } : it,
         ),
       };
     case 'fixTranscriptWord': {
