@@ -279,12 +279,12 @@ button, input, select { font: inherit; }
 .cc-preview-empty { width:182px; height:146px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:48px; border:1px dashed #ffffff1f; border-radius:10px; background:transparent; color:#777; cursor:pointer; font-size:12px; white-space:nowrap; }
 .cc-preview-empty:hover { border-color:#ffffff36; color:#aaa; }
 .cc-preview-empty:disabled { cursor:wait; opacity:.7; }
-/* Letterbox the player — never stretch past the stage; keep room for the inspector dock. */
 .cc-preview-stage {
-  flex:1 1 auto; min-width:0; min-height:0; max-height:100%;
+  flex:1; min-width:0; min-height:0;
   display:flex; align-items:center; justify-content:center;
-  overflow:hidden; padding:10px 16px; background:#101010;
+  overflow:hidden; padding:12px 20px; background:#101010;
 }
+/* Remotion Player root — allow shrink, keep letterbox */
 .cc-preview-stage > div { flex:0 1 auto; max-width:100%; max-height:100%; }
 
 .cc-modal-backdrop { position:fixed; inset:0; z-index:1000; display:grid; place-items:center; background:#0009; }

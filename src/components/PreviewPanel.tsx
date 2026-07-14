@@ -46,10 +46,10 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
             compositionWidth={state.width}
             compositionHeight={state.height}
             style={{
-              // Contain inside stage — prefer max bounds + aspect, not height:100%
-              // (that filled the whole column when the inspector was gone).
+              // Remotion Player needs a real height to paint; height:auto collapses
+              // to 0 in this flex stage → black preview. Fill stage height, cap width.
               width: 'auto',
-              height: 'auto',
+              height: '100%',
               maxWidth: '100%',
               maxHeight: '100%',
               aspectRatio: `${state.width} / ${state.height}`,
