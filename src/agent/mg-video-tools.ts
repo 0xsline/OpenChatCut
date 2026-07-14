@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import type { MediaAsset, TimelineItem } from '../editor/types';
-import { bakeClipToVideo } from '../media/clipExport';
+import { bakeClipToVideo, exportClipMov } from '../media/clipExport';
 
 // convert_motion_graphic_to_video + register_converted_video (source 域G §9).
 // Source flow: convert 云渲 MG 原长 → renderId → track_export 等完成 →
@@ -40,6 +40,21 @@ export const MG_VIDEO_TOOL_SCHEMAS: Anthropic.Tool[] = [
         durationInFrames: { type: 'number', description: 'Duration in frames (defaults to the source MG length if omitted).' },
       },
       required: ['outputUrl'],
+    },
+  },
+  {
+    name: 'export_motion_graphic_prores',
+    description:
+      'Export motion-graphic clip(s) as transparent ProRes 4444 .mov file(s) (alpha preserved) — the NLE hand-off format, downloaded in the browser. Use before an XML export so the timeline can reference already-rendered MG media. Identify by itemId(s) (preferred) or assetId(s); batch exports each. Unlike convert_motion_graphic_to_video (opaque h264 into the pool), this keeps alpha and downloads a .mov.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string', description: 'MG timeline item id (prefix ok). Preferred.' },
+        itemIds: { type: 'array', items: { type: 'string' }, description: 'Batch: several MG item ids/prefixes.' },
+        assetId: { type: 'string', description: 'MG asset id/prefix — exports its first placed timeline instance.' },
+        assetIds: { type: 'array', items: { type: 'string' }, description: 'Batch: several MG asset ids/prefixes.' },
+        name: { type: 'string', description: 'Optional base filename (single export); ".mov" is appended.' },
+      },
     },
   },
 ];
@@ -107,8 +122,44 @@ function register(args: Args, ctx: AgentContext): unknown {
   return { ok: true, assetId: asset.id, name: asset.name, durationInFrames: dur };
 }
 
+const strs = (v: unknown): string[] =>
+  (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : typeof v === 'string' ? [v] : [])
+    .map((s) => s.trim()).filter(Boolean);
+
+/** resolve one or many MG clips from itemId/itemIds (preferred) or assetId/assetIds. */
+function resolveMgItems(ctx: AgentContext, args: Args): TimelineItem[] {
+  const items = ctx.getState().items;
+  const out: TimelineItem[] = [];
+  const seen = new Set<string>();
+  const push = (it: TimelineItem | undefined) => { if (it && !seen.has(it.id)) { seen.add(it.id); out.push(it); } };
+  for (const q of [...strs(args.itemId), ...strs(args.itemIds)]) push(items.find((it) => it.id === q || it.id.startsWith(q)));
+  for (const q of [...strs(args.assetId), ...strs(args.assetIds)]) push(items.find((it) => it.templateId === q || it.src === q));
+  return out;
+}
+
+/** export_motion_graphic_prores: transparent ProRes 4444 .mov per clip (browser download). */
+async function exportProres(args: Args, ctx: AgentContext): Promise<unknown> {
+  const items = resolveMgItems(ctx, args);
+  if (!items.length) return { error: 'no MG clip found; pass itemId(s) (preferred) or assetId(s)' };
+  const state = ctx.getState();
+  const rename = items.length === 1 && typeof args.name === 'string' && args.name.trim() ? args.name.trim() : null;
+  const exported: string[] = [];
+  const failed: { itemId: string; error: string }[] = [];
+  for (const it of items) {
+    if (it.kind === 'audio') { failed.push({ itemId: it.id, error: 'audio clip has no visual to export' }); continue; }
+    try {
+      await exportClipMov(state, rename ? { ...it, name: rename } : it); // transparent ProRes 4444 .mov download
+      exported.push(rename ?? it.name);
+    } catch (e) {
+      failed.push({ itemId: it.id, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { ok: exported.length > 0, exported, ...(failed.length ? { failed } : {}), format: 'prores4444_mov', transparent: true };
+}
+
 export async function execMgVideoTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   if (name === 'convert_motion_graphic_to_video') return convert(args, ctx);
   if (name === 'register_converted_video') return register(args, ctx);
+  if (name === 'export_motion_graphic_prores') return exportProres(args, ctx);
   return { error: `unknown tool ${name}` };
 }

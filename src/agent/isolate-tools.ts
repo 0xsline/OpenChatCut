@@ -11,13 +11,14 @@ export const ISOLATE_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'isolate_voice',
     description:
-      'Apply or clear AI voice isolation on a video/audio item with spoken human voice (source isolate_voice / DeepFilterNet3). Not generic denoise — speech-only enhancement. action=apply runs the editor pipeline (POST /api/isolate) and points the item at the derived wav via denoisedSrc. action=clear reverts to original audio. Prefer itemId of the selected clip; omit to use the selected item.',
+      'Apply, attach or clear AI voice isolation on a video/audio item with spoken human voice (source isolate_voice / DeepFilterNet3). Not generic denoise — speech-only enhancement. action=apply runs the editor pipeline (POST /api/isolate) and points the item at the derived wav via denoisedSrc. action=attach points the item at an ALREADY-isolated audio asset in the media pool (denoisedAssetId) without re-running the pipeline. action=clear reverts to original audio. Prefer itemId of the selected clip; omit to use the selected item.',
     input_schema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['apply', 'clear'], description: 'apply isolation or clear it.' },
+        action: { type: 'string', enum: ['apply', 'attach', 'clear'], description: 'apply = run isolation; attach = reuse a pooled isolated wav; clear = revert.' },
         itemId: { type: 'string', description: 'Target clip id (prefix ok). Default: selected item.' },
-        strength: { type: 'number', description: '0–100 atten strength (default 100).' },
+        denoisedAssetId: { type: 'string', description: 'attach only: media-pool AUDIO asset id (prefix ok) already holding the voice-isolated wav.' },
+        strength: { type: 'number', description: 'apply/attach: 0–100 atten strength (default 100).' },
       },
       required: ['action'],
     },
@@ -49,6 +50,17 @@ export async function execIsolateTool(name: string, args: Args, ctx: AgentContex
   if (action === 'clear') {
     ctx.commands.setItemDenoise(item.id, null);
     return { ok: true, action: 'clear', itemId: item.id };
+  }
+  if (action === 'attach') {
+    // reuse a pooled, already-isolated wav — no pipeline re-run (source attach)
+    const q = String(args.denoisedAssetId ?? '').trim();
+    if (!q) return { error: 'attach requires denoisedAssetId (a media-pool audio asset holding the isolated voice)' };
+    const asset = ctx.getDoc().assets.find((a) => a.id === q || a.id.startsWith(q));
+    if (!asset) return { error: `no asset ${q}` };
+    if (asset.kind !== 'audio') return { error: `asset "${asset.name}" is ${asset.kind}, not audio` };
+    const strength = typeof args.strength === 'number' ? args.strength : 100;
+    ctx.commands.setItemDenoise(item.id, asset.src, strength);
+    return { ok: true, action: 'attach', itemId: item.id, denoisedSrc: asset.src, denoisedAssetId: asset.id, strength };
   }
   if (action !== 'apply') return { error: `unknown action ${action}` };
   if (!item.src) return { error: 'item has no src' };
