@@ -5,10 +5,11 @@
 > 由 5 个并行 agent 逐项对照 **当前 `src/` 真代码** vs **逆向源码规格** 重新核实。
 >
 > **口径**：✅ 已完成 · 🟡 部分 · ❌ 未做。共 132 项。
-> **总覆盖**：约 **69 ✅ / 15 🟡 / 48 ❌**，加权 ≈ **58%**（旧 42.8%）。
-> （2026-07-14 更新：域 7 设计风格、域 11 对话历史持久化、域 10 音频/范围导出落地）
+> **总覆盖**：约 **72 ✅ / 13 🟡 / 47 ❌**，加权 ≈ **60%**（旧 42.8%）。
+> （2026-07-14 更新：域 7 设计风格、域 11 对话历史持久化、域 10 音频/范围导出；
+> 又一轮并行落地 域 4 说话人重命名/合并、域 5 逐词字幕覆盖、域 8 submit_shader）
 > 但只看**产品核心域（编辑器·Agent·媒体·字幕·生成，域 1–11+16，共 104 项）**，
-> 加权覆盖 ≈ **73%**（69✅/13🟡/22❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
+> 加权覆盖 ≈ **76%**（72✅/11🟡/21❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
 > "需真后端、单机克隆无对象可服务"的基建域（域 13/14/15 全 0%）。
 >
 > **开发纪律（本文存在的意义）**：做任何一项前，先读它在"源码依据"列指向的
@@ -24,11 +25,11 @@
 | 1 | 项目 / 会话生命周期 | 6 | 4 | 0 | 2 | 核心 | ✅ 版本历史(命名快照/回滚);缺 followup 已另做、resume |
 | 2 | 编辑器核心 / 时间线 | 19 | 17 | 1 | 1 | 核心 | **几近完备**，缺色度键、gif/svg/solid |
 | 3 | 音频处理 | 6 | 4 | 0 | 2 | 核心 | ducking 已做，缺降噪/响度归一 |
-| 4 | 转写 / 文字稿 | 10 | 8 | 1 | 1 | 核心 | ✅ manage_transcript 改错字(词↔帧不变);缺说话人重命名 |
-| 5 | 字幕 | 8 | 6 | 1 | 1 | 核心 | 21 样式已做，缺逐词覆盖、多源合并 |
+| 4 | 转写 / 文字稿 | 10 | 9 | 0 | 1 | 核心 | ✅ manage_transcript 改错字 + 说话人重命名/合并(均只改文本/label,词↔帧不变) |
+| 5 | 字幕 | 8 | 7 | 0 | 1 | 核心 | ✅ 21 样式 + 逐词覆盖(隐藏/改词/强制换行,预览·burn-in·SRT 三处同步);缺多源合并 |
 | 6 | Motion Graphics | 8 | 6 | 1 | 1 | 核心 | 缺 manage_template、MG→透明视频补 alpha |
 | 7 | 设计风格 / 品牌 | 2 | 1 | 1 | 0 | 核心 | ✅ manage_design_style:24 真 catalog 预设+owned 我的风格+自由 role+注入;brand-kit logo 🟡 |
-| 8 | AI 生成（花钱域） | 7 | 5 | 1 | 1 | 核心 | 5 生成工具已接，缺 submit_shader、积分门 |
+| 8 | AI 生成（花钱域） | 7 | 6 | 1 | 0 | 核心 | ✅ 5 生成工具 + submit_shader(LLM 写 GLSL→编译校验→注册特效);积分门 🟡 |
 | 9 | 素材 / 媒体 | 12 | 9 | 1 | 2 | 核心 | ✅ import_url_asset + search_stock_media(需key);缺工作区pull/presigned |
 | 10 | 导出 / 交付 | 12 | 6 | 1 | 5 | 核心 | MP4/字幕/音频/范围已做，缺 XML/异步/水印 |
 | 11 | Agent / 对话平台 | 10 | 6 | 4 | 0 | 核心 | ✅ 对话持久化(chat_block);仅剩 thinking UI 等 🟡 |
@@ -52,10 +53,10 @@
 ### P1 — 高价值增量
 4. ✅ **创作模式技能预设 = 域12 + 域17**（纯前端）—— 已落地:从公开端点 `/public-api/agent-skills/catalog` **全搬 8 个真实 agent-skills**(`agent/skills-catalog.ts`,名字/zh名/摘要/scenarios/bodyMarkdown verbatim);`ChatComposer` 底栏「创作模式」下拉;选中→`creativeModePrompt` 把技能 body 注入 `runtime.ts` 的 system;每工程存 IDB(`creative-mode:<pid>`)。源:`agent_skill`。(未做工具过滤:源站技能不改可用工具集,只导流程。)
 5. **在线素材搜索 + URL→资产**（域9 ❌，成套）—— `agent/stock-tools.ts`（`search_stock_media` 归一 Pexels/Pixabay）+ `push_asset`/`download_media`（vite fetch→uploads→asset）。用户可见价值高。源：`复刻规格 §6`。
-6. **submit_shader 着色器生成**（域8 ❌，护城河②沙箱现成）—— `agent/shader-tools.ts` + LLM codegen GLSL，编译校验走已有 `gl/runtime.ts`，产物喂 `manage_effects`/transitions。内置 6 effect+12 transition 即 few-shot 语料。源：`复刻规格 §8 submit_shader`。
+6. ✅ **submit_shader 着色器生成**（域8）—— 已落地：`agent/shader-tools.ts` 用 `createMessage` 让 LLM 按 `renderFx` 真 uniform 契约(`u_input`/`u_resolution`/`u_aspect`/`u_time`+每 property 一个 `u_<key>`,`#version 300 es`)写 GLSL;静态校验(拒空/超长/`#include`/缺 `u_input`/缺 `main`/缺颜色输出/多余 sampler)+浏览器内真编译(WebGL2 抛弃上下文)双门;过关经 `gl/fx/effects.ts` 新增的 `registerCustomFx()` 原地并入 `ALL_FX`,`manage_effects add assetId=<effectId>` 立即可查可用。只做源 `type=effect` 分支(暂略 transition/referenceAssetIds)。检查 `shader-tools.check.ts` 绿。源：`复刻规格 §8 submit_shader`。
 7. **异步渲染 job + `track_export`**（域10 ❌）—— `/export` 改入队复用 `vite-generation-jobs.ts` 返 renderId；新 `track_export`（status/wait）。解锁统一交付路径（XML/音频/水印共用）。源：`submit_export`+`track_export`。
-8. **manage_transcript（改错字 + 说话人重命名/合并 + 多语变体）**（域4 ❌/🟡）—— 三个缺口同一工具：`fix`（就地改 `item.transcript[gi].text` 不动帧位）+ `speakerNames/speakerMerge` 映射 + `variants` 数据模型。源：`manage_transcript`。
-9. **逐词字幕覆盖 `read_captions`+`edit_captions display_text`**（域5 ❌）—— `CaptionsData.wordOverrides{hidden,text,forceBreak,keepPrev}`；`paginate` 尊重；`CaptionsLayer` 套用。源：`edit_captions display_text`。
+8. ✅ **manage_transcript 说话人重命名/合并**（域4）—— 已落地：`manage_transcript action=renameSpeaker(from,to)`,reducer 新 `renameSpeaker` 动作只把 `transcript[].speaker===from` 改成 `to`(text/start/end/词数/时长零改动,含无操作守卫,并入 `MUTATING` 单步可撤销);rename('A'→'主持人')与 merge('B'→'A')同一机制。此前 `fix` 改错字已做。剩多语变体未做。源：`manage_transcript`。
+9. ✅ **逐词字幕覆盖 `read_captions`+`edit_caption_words`**（域5）—— 已落地：`CaptionsData.wordOverrides:Record<number,{hidden?,text?,forceBreak?}>`(按**源 transcript 词序号**键,删词不重排);`resolve.ts` 加 `resolveCaptionWordIndices`+`applyWordOverrides`(隐藏丢弃/换文保时/forceBreak 算 breakBefore),`paginate` 加可选 `breakBefore` 参(无覆盖字节等同);`CaptionsLayer`(预览+burn-in)与 `generate/subtitles.ts`(SRT/TXT 导出)同一管线,屏幕=导出。新 `agent/captions-tools.ts`:`read_captions`(回每页词+index+override)/`edit_caption_words`(经现成 `updateCaptions` 命令落 IDB,越界回 errors 不抛)。检查 `captions-tools.check.ts` 绿。源：`edit_captions display_text`。（🟡 双语 `translate.ts` 暂不套 override——译文是独立叠层,词级隐藏错配轻微,留待多源合并一并处理。）
 
 ### P2 — 锦上添花 / 收尾
 10. **auto-reframe 自动检测**（域16 🟡）—— 渲染链（`ReframeCurveV1`→`zoomAt` 裁切窗）已完整，只缺 `reframe/detect.ts`（MediaPipe/TF.js 采样人脸/主体→逐帧 `setReframeKeyframe`）。源：`reframe`（×71 高频）。

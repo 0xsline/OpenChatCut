@@ -188,3 +188,19 @@ export const LUT_IDS = Object.keys(LUT_EFFECTS);
 
 // every per-clip GL effect (fx + lut) — ClipFx / agent / inspector resolve here
 export const ALL_FX: Record<string, FxDef> = { ...FX_EFFECTS, ...LUT_EFFECTS };
+
+// ── 运行时自定义 fx（submit_shader 的 LLM 生成产物）注册表 ─────────────────────
+// effect-tools.ts 在模块加载时用「引用」捕获了 ALL_FX（`const FX_EFFECTS = ALL_FX`），
+// 所以只要往 ALL_FX 这个对象「原地」写入，manage_effects 的 `assetId in FX_EFFECTS`
+// 与 describe() 就能立刻查到自定义 fx——无需改动 effect-tools.ts。CUSTOM_FX 另存一份
+// 自定义条目，便于区分/枚举/测试。内置 fx 与 LUT 保持不变。
+// ponytail: 注册表本质是共享运行时状态，这里是唯一必须「原地改」的地方（唯一能让已
+// 捕获引用的 effect-tools 看到新 fx 的方式）；其余仍遵守不可变约定。
+export const CUSTOM_FX: Record<string, FxDef> = {};
+
+/** 注册一个运行时自定义 fx：写入 CUSTOM_FX，并原地并入 ALL_FX 供 effect-tools 查到。 */
+export function registerCustomFx(def: FxDef): FxDef {
+  CUSTOM_FX[def.id] = def;
+  ALL_FX[def.id] = def;
+  return def;
+}

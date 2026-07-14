@@ -15,6 +15,8 @@ import { MEDIA_POOL_TOOL_SCHEMAS, MEDIA_POOL_TOOL_NAMES, execMediaPoolTool } fro
 import { TRACK_TOOL_SCHEMAS, TRACK_TOOL_NAMES, execTrackTool } from './track-tools';
 import { DESIGN_TOOL_SCHEMAS, DESIGN_TOOL_NAMES, execDesignTool } from './design-tools';
 import { STOCK_TOOL_SCHEMAS, STOCK_TOOL_NAMES, execStockTool } from './stock-tools';
+import { CAPTIONS_TOOL_SCHEMAS, CAPTIONS_TOOL_NAMES, execCaptionsTool } from './captions-tools';
+import { SHADER_TOOL_SCHEMAS, SHADER_TOOL_NAMES, execShaderTool } from './shader-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -166,6 +168,10 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...DESIGN_TOOL_SCHEMAS,
   // 在线素材导入（source push_asset/download_media + search_stock_media）
   ...STOCK_TOOL_SCHEMAS,
+  // 逐词字幕覆盖（source edit_captions display_text：read_captions/edit_caption_words 隐藏/改词/强制换行）
+  ...CAPTIONS_TOOL_SCHEMAS,
+  // LLM 生成自定义 WebGL 特效（source submit_shader type:effect——生成→编译校验→注册，再由 manage_effects 应用）
+  ...SHADER_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -216,6 +222,8 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (EFFECT_TOOL_NAMES.has(name)) return execEffectTool(name, args, ctx);
   if (DESIGN_TOOL_NAMES.has(name)) return execDesignTool(name, args, ctx);
   if (STOCK_TOOL_NAMES.has(name)) return execStockTool(name, args, ctx);
+  if (CAPTIONS_TOOL_NAMES.has(name)) return execCaptionsTool(name, args, ctx);
+  if (SHADER_TOOL_NAMES.has(name)) return execShaderTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();
