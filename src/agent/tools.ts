@@ -19,6 +19,7 @@ import { CAPTIONS_TOOL_SCHEMAS, CAPTIONS_TOOL_NAMES, execCaptionsTool } from './
 import { SHADER_TOOL_SCHEMAS, SHADER_TOOL_NAMES, execShaderTool } from './shader-tools';
 import { HIGHLIGHT_TOOL_SCHEMAS, HIGHLIGHT_TOOL_NAMES, execHighlightTool } from './highlight-tool';
 import { REFRAME_TOOL_SCHEMAS, REFRAME_TOOL_NAMES, execReframeTool } from './reframe-tools';
+import { EXPORT_TOOL_SCHEMAS, EXPORT_TOOL_NAMES, execExportTool } from './export-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -178,6 +179,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...HIGHLIGHT_TOOL_SCHEMAS,
   // auto-reframe 自动检测：采样帧→主体焦点→setReframeKeyframe（复用现成 reframe 渲染链）
   ...REFRAME_TOOL_SCHEMAS,
+  // 异步渲染 job（source track_export）：submit_render_job 入队长渲染 + track_export 轮询进度/取结果
+  ...EXPORT_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -232,6 +235,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (SHADER_TOOL_NAMES.has(name)) return execShaderTool(name, args, ctx);
   if (HIGHLIGHT_TOOL_NAMES.has(name)) return execHighlightTool(name, args, ctx);
   if (REFRAME_TOOL_NAMES.has(name)) return execReframeTool(name, args, ctx);
+  if (EXPORT_TOOL_NAMES.has(name)) return execExportTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();
