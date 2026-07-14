@@ -134,7 +134,8 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
             {trSub === '画面转场' ? (
               <ResourceBrowser
                 layout="grid"
-                hint="悬停预览转场动画 · 点击应用到选中片段（入场，从前一个相邻同轨片段进入）"
+                dragKind="transition"
+                hint="悬停预览 · 点击应用到选中片段（入场，需前一个相邻同轨片段）"
                 items={TRANSITION_ITEMS}
                 applicable={selectedItem != null}
                 onApply={(id) => onApplyTransition(id as TransitionType)}
@@ -155,7 +156,8 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
         ) : subTab === '特效' ? (
           <ResourceBrowser
             layout="grid"
-            hint="悬停预览 · 点击应用到选中的视频/图片片段"
+            dragKind="fx"
+            hint="悬停预览 · 点击应用到选中视频/图片"
             items={FX_ITEMS}
             applicable={selKind === 'video' || selKind === 'image'}
             onApply={(id) => onApplyFx(id)}
@@ -164,7 +166,8 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
         ) : subTab === '缩放' ? (
           <ResourceBrowser
             layout="grid"
-            hint="悬停预览缩放曲线 · 点击应用到选中片段（默认 1.5×，属性面板可细调）"
+            dragKind="zoom"
+            hint="悬停预览 · 点击应用到选中片段（默认 1.5×，属性可细调）"
             items={ZOOM_ITEMS}
             applicable={isVisual}
             onApply={(id) => onApplyZoom(id as ZoomShape)}
@@ -173,7 +176,8 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
         ) : subTab === 'LUT' ? (
           <ResourceBrowser
             layout="grid"
-            hint="悬停预览 · 点击把相机 log→Rec.709 调色应用到选中视频/图片（强度可在属性面板细调）"
+            dragKind="lut"
+            hint="悬停预览 · 点击应用到选中视频/图片（强度可在属性细调）"
             items={LUT_ITEMS}
             applicable={selKind === 'video' || selKind === 'image'}
             onApply={(id) => onApplyFx(id)}

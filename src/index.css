@@ -343,6 +343,38 @@ button, input, select { font: inherit; }
 .cc-audio-waveform path { fill:none; stroke:#174b2c; stroke-width:1.05; vector-effect:non-scaling-stroke; }
 .cc-clip-label { position:relative; z-index:1; min-width:0; overflow:hidden; color:#f3e7ef; text-overflow:ellipsis; font-weight:600; text-shadow:0 1px 2px #0008; pointer-events:none; }
 .cc-clip-label.audio { color:#0d2717; text-shadow:none; }
+
+/* applied-effect markers on timeline clips */
+.cc-clip-badges {
+  position:absolute; top:3px; right:6px; z-index:2;
+  display:flex; flex-wrap:wrap; justify-content:flex-end; gap:3px;
+  max-width:calc(100% - 16px); pointer-events:none;
+}
+.cc-clip-badge {
+  font-size:9px; font-weight:700; line-height:1; letter-spacing:0.02em;
+  padding:2px 5px; border-radius:3px;
+  color:#fff; border:1px solid rgba(255,255,255,0.22);
+  background:rgba(0,0,0,0.55); text-shadow:none;
+  white-space:nowrap;
+}
+.cc-clip-badge.fx { background:#5b3d9aee; border-color:#9b7fd4; }
+.cc-clip-badge.lut { background:#8a4b1fee; border-color:#e0a06a; }
+.cc-clip-badge.zoom { background:#1f5f8bee; border-color:#6ab0e0; }
+.cc-clip-badge.iso { background:#1a6b4aee; border-color:#5dcaa0; }
+.cc-clip-badge.tr { background:#3a3f52ee; border-color:#8a9ad0; }
+
+/* transition diamond at cut points */
+.cc-transition-marker {
+  width:16px; height:16px; border-radius:4px;
+  background:#3a3f52; border:1px solid #8aa0e0; color:#d8e4ff;
+  display:grid; place-items:center; cursor:pointer;
+  box-shadow:0 1px 4px #0008;
+}
+.cc-transition-marker:hover { background:#4a5270; border-color:#b0c4ff; }
+
+.cc-resource-card.draggable { cursor:grab; }
+.cc-resource-card.draggable:active { cursor:grabbing; }
+.cc-sound-row[draggable="true"] { cursor:grab; }
 .cc-feedback-button { position:absolute; right:13px; bottom:13px; z-index:12; width:42px; height:42px; display:grid; place-items:center; padding:0; border:1px solid #696969; border-radius:50%; background:#222; color:#ddd; box-shadow:0 3px 12px #0007; cursor:pointer; }
 .cc-feedback-button:hover { background:#2b2b2b; color:#fff; }
 .cc-feedback-popover { position:absolute; right:13px; bottom:63px; z-index:13; width:230px; display:flex; flex-direction:column; gap:8px; padding:12px; border:1px solid #383838; border-radius:7px; background:#202020; color:#ddd; box-shadow:0 10px 30px #000a; font-size:12px; }

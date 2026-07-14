@@ -215,7 +215,17 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         <LibraryPanel templates={TEMPLATES} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} onImportMedia={importToPool} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onUseTemplateAI={useTemplateAI}
           selectedItem={selectedItem}
           onApplyTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}
-          onApplyFx={(assetId) => state.selectedId && commands.setItemEffects(state.selectedId, [{ id: `fx_${assetId}`, assetId, overrides: {} }])}
+          onApplyFx={(assetId) => {
+            if (!state.selectedId) return;
+            const it = state.items.find((x) => x.id === state.selectedId);
+            if (!it) return;
+            const prev = it.effects ?? [];
+            const next = [
+              ...prev.filter((e) => e.assetId !== assetId),
+              { id: `fx_${assetId}`, assetId, overrides: {} },
+            ];
+            commands.setItemEffects(state.selectedId, next);
+          }}
           onApplyZoom={(shape) => state.selectedId && commands.setItemZoom(state.selectedId, { shape, magnification: 1.5 })}
           onApplyIsolate={(id, src, strength) => commands.setItemDenoise(id, src, strength)}
           onClearIsolate={(id) => commands.setItemDenoise(id, null)} />

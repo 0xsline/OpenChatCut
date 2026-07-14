@@ -11,6 +11,7 @@ import {
   type SoundEffect,
 } from '../audio/soundLibrary';
 import { Icon } from '../components/icons';
+import { setLibraryDrag } from './drag';
 
 // Source library-view sound tab:
 //   search ("Search sounds") + chips [热门, …groups] + list rows:
@@ -179,7 +180,17 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
                 role="option"
                 aria-selected={isPlaying}
                 className={`cc-sound-row${isPlaying ? ' active' : ''}`}
-                title={s.desc}
+                title={`${s.desc} · 可拖到时间线音轨`}
+                draggable
+                onDragStart={(e) => {
+                  setLibraryDrag(e, {
+                    kind: 'sound',
+                    id: s.id,
+                    name: s.name,
+                    src: soundEffectSrc(s.id),
+                    seconds: s.seconds,
+                  });
+                }}
                 onClick={() => audition(s)}
                 onDoubleClick={() => onAdd(toAsset(s, fps))}
               >
@@ -230,7 +241,7 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
         </div>
       )}
 
-      <div className="cc-sound-hint">单击试听 · 双击或点 + 加到音轨 · 共 {SOUND_EFFECTS.length} 个源站音效</div>
+      <div className="cc-sound-hint">单击试听 · 双击/点 + 或拖到时间线音轨 · 共 {SOUND_EFFECTS.length} 个音效</div>
     </div>
   );
 });

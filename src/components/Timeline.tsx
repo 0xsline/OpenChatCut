@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
-import { ASPECT_PRESETS, MARKER_HEX, defaultTrackId, timelineDuration, timelineTrackIds, trackAlias, trackKind, type MarkerColor, type TimelineItem, type TimelineState, type TrackId } from '../editor/types';
+import {
+  ASPECT_PRESETS, MARKER_HEX, TRANSITION_LABELS, ZOOM_SHAPE_LABELS,
+  defaultTrackId, timelineDuration, timelineTrackIds, trackAlias, trackKind,
+  type MarkerColor, type TimelineItem, type TimelineState, type TrackId,
+  type TransitionType, type ZoomShape,
+} from '../editor/types';
 import type { EditorCommands } from '../editor/store';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { ClipContextMenu, type FxClip } from './ClipContextMenu';
@@ -11,6 +16,9 @@ import { exportClipMov, bakeClipToVideo } from '../media/clipExport';
 import { buildTranslation } from '../captions/translate';
 import { CAPTION_STYLES } from '../captions/styles';
 import type { CaptionsData, CaptionTemplate } from '../captions/types';
+import { hasLibraryDrag, parseLibraryDrag, type LibraryDragPayload } from '../library/drag';
+import { ALL_FX, FX_EFFECTS, LUT_EFFECTS } from '../gl/fx/effects';
+import { TEMPLATES } from '../editor/initial';
 
 interface TimelineProps {
   state: TimelineState;
@@ -44,6 +52,67 @@ const CAPTION_LANGS = ['English', '日本語', '한국어', 'Español', 'França
 // vertical divider between toolbar tool groups (source-style grouping)
 function ToolSep() {
   return <span style={{ width: 1, height: 16, background: theme.border, margin: '0 4px', flexShrink: 0 }} />;
+}
+
+/** corner chips so applied fx / lut / zoom / denoise / transition are visible on the clip */
+function ClipEffectBadges({
+  item,
+  hasInTransition,
+}: {
+  item: TimelineItem;
+  hasInTransition: boolean;
+}) {
+  const chips: { key: string; label: string; title: string; className: string }[] = [];
+  const effects = item.effects ?? [];
+  const fxNames = effects
+    .filter((e) => e.assetId in FX_EFFECTS)
+    .map((e) => FX_EFFECTS[e.assetId]?.name ?? e.assetId);
+  const lutNames = effects
+    .filter((e) => e.assetId in LUT_EFFECTS)
+    .map((e) => LUT_EFFECTS[e.assetId]?.name ?? e.assetId);
+  // custom / uncategorized shaders
+  const otherFx = effects.filter((e) => !(e.assetId in FX_EFFECTS) && !(e.assetId in LUT_EFFECTS));
+
+  if (fxNames.length || otherFx.length) {
+    const n = fxNames.length + otherFx.length;
+    chips.push({
+      key: 'fx',
+      label: n > 1 ? `特效×${n}` : '特效',
+      title: [...fxNames, ...otherFx.map((e) => ALL_FX[e.assetId]?.name ?? e.assetId)].join(' · '),
+      className: 'fx',
+    });
+  }
+  if (lutNames.length) {
+    chips.push({
+      key: 'lut',
+      label: lutNames.length > 1 ? `LUT×${lutNames.length}` : 'LUT',
+      title: lutNames.join(' · '),
+      className: 'lut',
+    });
+  }
+  if (item.zoom?.shape || (item.zoom?.reframeCurve?.keyframes.length ?? 0) > 0) {
+    const shape = item.zoom?.shape;
+    chips.push({
+      key: 'zoom',
+      label: '缩放',
+      title: shape ? (ZOOM_SHAPE_LABELS[shape] ?? shape) : '关键帧缩放',
+      className: 'zoom',
+    });
+  }
+  if (item.denoisedSrc) {
+    chips.push({ key: 'iso', label: '人声', title: '已应用人声隔离', className: 'iso' });
+  }
+  if (hasInTransition) {
+    chips.push({ key: 'tr', label: '转场', title: '入场转场已挂接', className: 'tr' });
+  }
+  if (!chips.length) return null;
+  return (
+    <div className="cc-clip-badges" aria-hidden>
+      {chips.map((c) => (
+        <span key={c.key} className={`cc-clip-badge ${c.className}`} title={c.title}>{c.label}</span>
+      ))}
+    </div>
+  );
 }
 
 // one icon toolbar button (source: monochrome line glyphs, active = accent)
@@ -369,6 +438,74 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
       if (y < 0) return t;
     }
     return trackIds[trackIds.length - 1] ?? '';
+  };
+
+  /** library resource dropped on a clip (fx/lut/zoom/transition) or track (sound/mg) */
+  const [libDropTarget, setLibDropTarget] = useState<string | null>(null);
+
+  const applyLibraryToClip = (payload: LibraryDragPayload, item: TimelineItem): boolean => {
+    const visual = item.kind === 'video' || item.kind === 'image' || item.kind === 'motion-graphic';
+    if (payload.kind === 'fx' || payload.kind === 'lut') {
+      if (item.kind !== 'video' && item.kind !== 'image') return false;
+      if (!(payload.id in ALL_FX)) return false;
+      const prev = item.effects ?? [];
+      const next = [
+        ...prev.filter((e) => e.assetId !== payload.id),
+        { id: `fx_${payload.id}`, assetId: payload.id, overrides: {} },
+      ];
+      commands.setItemEffects(item.id, next);
+      commands.selectItem(item.id);
+      return true;
+    }
+    if (payload.kind === 'zoom') {
+      if (!visual) return false;
+      commands.setItemZoom(item.id, { shape: payload.id as ZoomShape, magnification: 1.5 });
+      commands.selectItem(item.id);
+      return true;
+    }
+    if (payload.kind === 'transition') {
+      if (item.kind === 'audio') return false;
+      // incoming = this clip (needs prior adjacent visual on same track)
+      commands.addTransition(item.id, payload.id as TransitionType);
+      commands.selectItem(item.id);
+      return true;
+    }
+    return false;
+  };
+
+  const applyLibraryToTrack = (payload: LibraryDragPayload, trackId: TrackId, startFrame: number): boolean => {
+    if (payload.kind === 'sound') {
+      if (trackKind(state, trackId) !== 'audio') {
+        // auto-pick an audio track
+        const audioTrack = trackIds.find((t) => trackKind(state, t) === 'audio') ?? defaultTrackId(state, 'audio');
+        if (!audioTrack) return false;
+        trackId = audioTrack;
+      }
+      const dur = Math.max(1, Math.round((payload.seconds ?? 1) * state.fps));
+      commands.addAudio(
+        {
+          id: `sfx_${payload.id}`,
+          name: payload.name,
+          category: 'sfx',
+          src: payload.src ?? `/sound-effects/${payload.id}.mp3`,
+          durationInFrames: dur,
+        },
+        { track: trackId, startFrame },
+      );
+      return true;
+    }
+    if (payload.kind === 'template') {
+      const tpl = TEMPLATES.find((t) => t.id === payload.id);
+      if (!tpl) return false;
+      // prefer video track under cursor
+      let t = trackId;
+      if (trackKind(state, t) !== 'video') {
+        t = trackIds.find((id) => trackKind(state, id) === 'video') ?? defaultTrackId(state, 'video') ?? trackId;
+      }
+      commands.addMotionGraphic(tpl, { track: t, startFrame });
+      return true;
+    }
+    return false;
   };
 
   const seekTo = (clientX: number) => {
@@ -714,13 +851,43 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
                     </div>
                   )}
                 </div>
-                <div style={{ flex: 1, position: 'relative', background: theme.bg, opacity: hidden ? 0.4 : 1 }}>
+                <div
+                  style={{
+                    flex: 1, position: 'relative', background: theme.bg, opacity: hidden ? 0.4 : 1,
+                    outline: libDropTarget === `track:${trackId}` ? '1px dashed #6a9fd8' : undefined,
+                    outlineOffset: -2,
+                  }}
+                  onDragOver={(e) => {
+                    if (!hasLibraryDrag(e) || locked) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    setLibDropTarget(`track:${trackId}`);
+                  }}
+                  onDragLeave={() => setLibDropTarget((t) => (t === `track:${trackId}` ? null : t))}
+                  onDrop={(e) => {
+                    const payload = parseLibraryDrag(e);
+                    setLibDropTarget(null);
+                    if (!payload || locked) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Prefer clip under cursor if any (fx/lut/zoom/transition)
+                    const f = frameFromClientX(e.clientX);
+                    const hit = items.find((it) => f >= it.startFrame && f < it.startFrame + it.durationInFrames);
+                    if (hit && (payload.kind === 'fx' || payload.kind === 'lut' || payload.kind === 'zoom' || payload.kind === 'transition')) {
+                      applyLibraryToClip(payload, hit);
+                      return;
+                    }
+                    applyLibraryToTrack(payload, trackId, f);
+                  }}
+                >
                   {items.map((it) => {
                     const dragging = drag?.id === it.id;
                     const start = it.startFrame + (dragging && drag.mode !== 'trim-right' ? drag.deltaF : 0);
                     const durTrim = dragging && drag.mode === 'trim-left' ? -drag.deltaF : dragging && drag.mode === 'trim-right' ? drag.deltaF : 0;
                     const dur = Math.max(1, it.durationInFrames + durTrim);
                     const selected = state.selectedId === it.id;
+                    const isLibOver = libDropTarget === it.id;
+                    const hasInTr = (state.transitions ?? []).some((t) => t.incomingItemId === it.id);
                     return (
                       <div
                         key={it.id}
@@ -735,6 +902,28 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
                           startDrag(e, it.id, 'move', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0);
                         }}
                         onContextMenu={(e) => { e.preventDefault(); commands.selectItem(it.id); setCtxMenu({ id: it.id, x: e.clientX, y: e.clientY }); }}
+                        onDragOver={(e) => {
+                          if (!hasLibraryDrag(e) || locked) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.dataTransfer.dropEffect = 'copy';
+                          setLibDropTarget(it.id);
+                        }}
+                        onDragLeave={(e) => {
+                          e.stopPropagation();
+                          setLibDropTarget((t) => (t === it.id ? null : t));
+                        }}
+                        onDrop={(e) => {
+                          const payload = parseLibraryDrag(e);
+                          setLibDropTarget(null);
+                          if (!payload || locked) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!applyLibraryToClip(payload, it)) {
+                            // sound/template may land on clip → use clip start on same track
+                            applyLibraryToTrack(payload, it.track, it.startFrame);
+                          }
+                        }}
                         style={{
                           position: 'absolute', left: Math.max(0, start) * px, top: 4, height: rowHeightOf(trackId) - 8, width: dur * px,
                           background: CLIP_COLOR[it.kind] ?? theme.clipMg,
@@ -742,7 +931,10 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
                           backgroundSize: 'auto 100%', backgroundRepeat: 'no-repeat',
                           borderRadius: 3, color: '#fff', fontSize: 11,
                           display: 'flex', alignItems: 'flex-end', padding: '0 8px 5px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
-                          border: selected ? '2px solid #f2f2f2' : '1px solid rgba(255,255,255,.08)',
+                          border: isLibOver
+                            ? '2px solid #6a9fd8'
+                            : selected ? '2px solid #f2f2f2' : '1px solid rgba(255,255,255,.08)',
+                          boxShadow: isLibOver ? 'inset 0 0 0 1px #6a9fd855, 0 0 0 1px #6a9fd844' : undefined,
                           cursor: locked ? 'not-allowed' : editMode === 'blade' ? 'crosshair' : 'grab', userSelect: 'none', touchAction: 'none',
                         }}
                       >
@@ -751,6 +943,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
                             <path d={waveformPath(`${it.id}:${it.name}`, Math.max(1, dur * px - 6))} />
                           </svg>
                         )}
+                        <ClipEffectBadges item={it} hasInTransition={hasInTr} />
                         {/* trim handles (hidden in blade mode) */}
                         {editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
@@ -764,10 +957,12 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
                   {(state.transitions ?? []).filter((t) => t.trackId === trackId).map((t) => {
                     const inItem = state.items.find((it) => it.id === t.incomingItemId);
                     if (!inItem) return null;
+                    const label = TRANSITION_LABELS[t.type as TransitionType] ?? t.type;
                     return (
-                      <div key={t.id} title={`转场:${t.type} · ${(t.durationInFrames / state.fps).toFixed(1)}s`}
+                      <div key={t.id} title={`${label} · ${(t.durationInFrames / state.fps).toFixed(1)}s`}
                         onClick={() => commands.selectItem(t.incomingItemId)}
-                        style={{ position: 'absolute', top: '50%', left: inItem.startFrame * px, transform: 'translate(-50%, -50%)', width: 15, height: 15, borderRadius: 3, background: '#3a3f52', border: '1px solid #6b7bb5', color: '#cfe3ff', fontSize: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', zIndex: 3 }}>
+                        className="cc-transition-marker"
+                        style={{ position: 'absolute', top: '50%', left: inItem.startFrame * px, transform: 'translate(-50%, -50%)', zIndex: 3 }}>
                         <Icon name="swap" size={10} />
                       </div>
                     );

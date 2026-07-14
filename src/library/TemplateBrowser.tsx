@@ -4,6 +4,7 @@ import { theme } from '../theme';
 import { usePersistedState } from '../hooks/usePersistedState';
 import type { Tpl } from '../types';
 import { Icon } from '../components/icons';
+import { setLibraryDrag } from './drag';
 
 // MG 动画 browser (source library-view template tab): a horizontal chip row
 // [收藏, 热门, <categories by count>] filters the card grid; cards show a
@@ -126,6 +127,10 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
             return (
               <div
                 key={tp.id}
+                draggable
+                onDragStart={(e) => {
+                  setLibraryDrag(e, { kind: 'template', id: tp.id, name: tp.name });
+                }}
                 onMouseEnter={() => setHovered(tp.id)}
                 onMouseLeave={() => setHovered((h) => (h === tp.id ? null : h))}
                 style={{
@@ -136,12 +141,13 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
                   // Keep overflow hidden so thumb corners clip; menu is portaled to body.
                   overflow: 'hidden',
                   minWidth: 0,
+                  cursor: 'grab',
                 }}
               >
-                <button onClick={() => onAdd(tp)} title={`点击加到时间线：${tp.name}`}
-                  style={{ cursor: 'pointer', textAlign: 'left', padding: 0, width: '100%', display: 'block', border: 'none', background: 'none', color: theme.text }}>
+                <button onClick={() => onAdd(tp)} title={`点击或拖到时间线：${tp.name}`}
+                  style={{ cursor: 'inherit', textAlign: 'left', padding: 0, width: '100%', display: 'block', border: 'none', background: 'none', color: theme.text }}>
                   <div style={{ aspectRatio: '16 / 9', background: '#0c0c0c', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
-                    {tp.thumb ? <img src={tp.thumb} alt={tp.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    {tp.thumb ? <img src={tp.thumb} alt={tp.name} loading="lazy" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                       : <span style={{ fontSize: 20, color: theme.textDim }}>＋</span>}
                   </div>
                   <div style={{
