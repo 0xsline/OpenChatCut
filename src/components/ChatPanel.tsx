@@ -60,7 +60,7 @@ export function ChatPanel({ ctx, collapsed, onToggleCollapse, onPreviewState, se
 
   if (collapsed) {
     return (
-      <aside style={{ gridColumn: 1, gridRow: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '10px 0', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>
+      <aside style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '10px 0', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>
         <button onClick={onToggleCollapse} title="展开 AI" style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14 }}>▶</button>
         <div style={{ writingMode: 'vertical-rl', color: theme.textDim, fontSize: 12, letterSpacing: 2 }}>AI</div>
       </aside>
@@ -68,7 +68,7 @@ export function ChatPanel({ ctx, collapsed, onToggleCollapse, onPreviewState, se
   }
 
   return (
-    <aside style={{ gridColumn: 1, gridRow: 2, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${theme.border}`, background: theme.panel, minHeight: 0, minWidth: 0 }}>
+    <aside style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', borderRight: `1px solid ${theme.border}`, background: theme.panel, minHeight: 0, minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', fontSize: 12, color: theme.textDim, borderBottom: `1px solid ${theme.border}` }}>
         <span style={{ flex: 1 }}>AI</span>
         <button onClick={onToggleCollapse} title="收起 AI" style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 13 }}>◀</button>

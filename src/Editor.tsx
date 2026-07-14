@@ -24,6 +24,13 @@ interface EditorProps {
   onRename: (name: string) => void;
 }
 
+const HEADER_H = 44;
+const CHAT_MIN_W = 320;
+const ASSETS_MIN_W = 176;
+const CANVAS_MIN_W = 280;
+const TIMELINE_MIN_H = 260;
+const SPLITTER_TOTAL_W = 10;
+
 export default function Editor({ initial, project, onHome, onRename }: EditorProps) {
   const { state, doc, commands, canUndo, canRedo } = useEditor(initial);
   const selectedItem = state.items.find((it) => it.id === state.selectedId) ?? null;
@@ -74,10 +81,13 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     playerRef.current?.seekTo(0);
   }, [doc.activeTimelineId]);
 
-  // resizable / collapsible panels (persisted across refreshes)
-  const [chatW, setChatW] = usePersistedState('cc.chatW', 300);
-  const [libW, setLibW] = usePersistedState('cc.libW', 360);
-  const [timelineH, setTimelineH] = usePersistedState('cc.timelineH', 224);
+  // Source Dockview constraints, initialized to the supplied source screenshot's
+  // saved layout (22.47% / 27.72% / remainder; timeline 38.18% below the header).
+  const viewportW = typeof window === 'undefined' ? 1440 : window.innerWidth;
+  const viewportH = typeof window === 'undefined' ? 900 : window.innerHeight;
+  const [chatW, setChatW] = usePersistedState('cc.chatW.source-ui-v5', Math.max(CHAT_MIN_W, Math.floor(viewportW * 0.2247)));
+  const [libW, setLibW] = usePersistedState('cc.libW.source-ui-v5', Math.max(ASSETS_MIN_W, Math.floor(viewportW * 0.2772)));
+  const [timelineH, setTimelineH] = usePersistedState('cc.timelineH.source-ui-v5', Math.max(TIMELINE_MIN_H, Math.floor((viewportH - HEADER_H) * 0.3818)));
   const [chatCollapsed, setChatCollapsed] = usePersistedState('cc.chatCollapsed', false);
   const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
@@ -134,8 +144,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: `${chatCollapsed ? 46 : chatW}px 5px 1fr`,
-        gridTemplateRows: '48px minmax(0, 1fr)',
+        gridTemplateColumns: `${chatCollapsed ? 46 : chatW}px 5px ${libW}px 5px minmax(0, 1fr)`,
+        gridTemplateRows: `${HEADER_H}px minmax(0, 1fr) 5px ${timelineH}px`,
         height: '100vh',
         overflow: 'hidden',
         background: theme.bg,
@@ -158,28 +168,23 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
 
       <ChatPanel ctx={agentCtx} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} seed={chatSeed} />
 
-      <div style={{ gridColumn: 2, gridRow: 2 }}>
-        {!chatCollapsed && <Divider onResize={(dx) => setChatW((w) => clamp(w + dx, 220, 520))} />}
+      <div style={{ gridColumn: 2, gridRow: '2 / 5' }}>
+        {!chatCollapsed && <Divider onResize={(dx) => setChatW((w) => clamp(w + dx, CHAT_MIN_W, Math.max(CHAT_MIN_W, viewportW - libW - CANVAS_MIN_W - SPLITTER_TOTAL_W)))} />}
       </div>
 
-      <div
-        style={{
-          gridColumn: 3, gridRow: 2, display: 'grid',
-          gridTemplateRows: `minmax(0, 1fr) 5px ${timelineH}px`,
-          minHeight: 0, minWidth: 0, overflow: 'hidden',
-        }}
-      >
-        <div style={{ display: 'grid', gridTemplateColumns: `${libW}px 5px 1fr`, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-          <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onClearEdits={commands.clearEdits} assets={state.assets ?? []} onImportMedia={async (file) => { commands.addAsset(await importMedia(file, state.fps)); }} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onUseTemplateAI={(tpl) => { setChatCollapsed(false); setChatSeed({ text: `参考模板「${tpl.name}」，用 create_motion_graphic 生成一个类似风格的动画：`, nonce: Date.now() }); }}
-            selectedItem={selectedItem}
-            onApplyTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}
-            onApplyFx={(assetId) => state.selectedId && commands.setItemEffects(state.selectedId, [{ id: `fx_${assetId}`, assetId, overrides: {} }])}
-            onApplyZoom={(shape) => state.selectedId && commands.setItemZoom(state.selectedId, { shape, magnification: 1.5 })} />
-          <Divider onResize={(dx) => setLibW((w) => clamp(w + dx, 260, 640))} />
-          {/* right column: preview on top, inspector below */}
-          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-            <PreviewPanel state={previewState ?? state} playerRef={playerRef} onSetAspect={commands.setAspect} />
-            <InspectorPanel
+      <div style={{ gridColumn: 3, gridRow: 2, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+        <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} onImportMedia={async (file) => { commands.addAsset(await importMedia(file, state.fps)); }} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onUseTemplateAI={(tpl) => { setChatCollapsed(false); setChatSeed({ text: `参考模板「${tpl.name}」，用 create_motion_graphic 生成一个类似风格的动画：`, nonce: Date.now() }); }}
+          selectedItem={selectedItem}
+          onApplyTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}
+          onApplyFx={(assetId) => state.selectedId && commands.setItemEffects(state.selectedId, [{ id: `fx_${assetId}`, assetId, overrides: {} }])}
+          onApplyZoom={(shape) => state.selectedId && commands.setItemZoom(state.selectedId, { shape, magnification: 1.5 })} />
+      </div>
+      <div style={{ gridColumn: 4, gridRow: 2 }}>
+        <Divider onResize={(dx) => setLibW((w) => clamp(w + dx, ASSETS_MIN_W, Math.max(ASSETS_MIN_W, viewportW - (chatCollapsed ? 46 : chatW) - CANVAS_MIN_W - SPLITTER_TOTAL_W)))} />
+      </div>
+      <div style={{ gridColumn: 5, gridRow: 2, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+        <PreviewPanel state={previewState ?? state} playerRef={playerRef} onSetAspect={commands.setAspect} />
+        <InspectorPanel
               templates={TEMPLATES}
               selectedItem={selectedItem}
               fps={state.fps}
@@ -203,20 +208,20 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
                 const t = state.transitions?.find((x) => x.incomingItemId === state.selectedId);
                 if (t) commands.removeTransition(t.id);
               }}
-            />
-          </div>
-        </div>
-        <Divider orientation="horizontal" onResize={(dy) => setTimelineH((h) => clamp(h - dy, 120, 300))} />
-        <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-          <TimelineTabs doc={doc} commands={commands} />
-          <Timeline state={state} commands={commands} playerRef={playerRef} playhead={playhead} setPlayhead={setPlayhead}
-            onRecordVoiceover={async (blob) => {
-              const ext = blob.type.includes('ogg') ? 'ogg' : 'webm';
-              const asset = await importMedia(new File([blob], `旁白.${ext}`, { type: blob.type }), state.fps);
-              commands.addAsset(asset);
-              commands.addMediaItem(asset, { track: 'A1', startFrame: playhead });
-            }} />
-        </div>
+        />
+      </div>
+      <div style={{ gridColumn: '3 / -1', gridRow: 3 }}>
+        <Divider orientation="horizontal" onResize={(dy) => setTimelineH((h) => clamp(h - dy, TIMELINE_MIN_H, Math.max(TIMELINE_MIN_H, viewportH - HEADER_H - 300)))} />
+      </div>
+      <div style={{ gridColumn: '3 / -1', gridRow: 4, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+        <TimelineTabs doc={doc} commands={commands} />
+        <Timeline state={state} commands={commands} playerRef={playerRef} playhead={playhead} setPlayhead={setPlayhead}
+          onRecordVoiceover={async (blob) => {
+            const ext = blob.type.includes('ogg') ? 'ogg' : 'webm';
+            const asset = await importMedia(new File([blob], `旁白.${ext}`, { type: blob.type }), state.fps);
+            commands.addAsset(asset);
+            commands.addMediaItem(asset, { track: 'A1', startFrame: playhead });
+          }} />
       </div>
     </div>
   );

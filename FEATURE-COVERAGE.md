@@ -6,7 +6,7 @@
 >
 > 每个 🟡/❌ 项给：**怎么做 / 用什么技术 / 对应源站**。初始生成于 2026-07-13；状态于 2026-07-14 从 `feature-coverage.html` 同步。
 
-当前共 **132** 项：✅ 已实现 **44** · 🟡 部分实现 **23** · ❌ 未实现 **65**。按“已实现=1、部分实现=0.5”计算，路线图覆盖率为 **42.0%**。
+当前共 **133** 项：✅ 已实现 **51** · 🟡 部分实现 **23** · ❌ 未实现 **59**。按“已实现=1、部分实现=0.5”计算，路线图覆盖率为 **47.0%**。
 
 ---
 
@@ -14,10 +14,10 @@
 
 | 域 | 状态 |
 |---|---|
-| 编辑器核心 / 时间线 | 🟡 剪辑、变换、动画、标记已完成；特效/转场/轨道管理部分完成，多时间线/ripple 待补 |
+| 编辑器核心 / 时间线 | 🟡 源站 Dock 树（AI 贯穿、时间线仅跨素材+预览）、工具栏、轨道头、波形视觉、素材面板、动态轨道 / `edit_track` 与角色闪避已完成并经浏览器回归；Ripple、真实峰值与 Viewer 直接操控仍待补 |
 | MG 模板 | ✅ 基本完整（211+生成+沙箱），缺属性面板/设计风格 |
-| 转写 / 文字稿编辑 | 🟡 核心在（删词=删视频/静音压缩），缺 timeline.md/av_script/校正/变体 |
-| 字幕 | 🟡 3 模板+卡拉OK+跟随+双语，缺预设扩充/逐词覆盖 |
+| 转写 / 文字稿编辑 | 🟡 核心在（删词=删视频/静音压缩）且 `timeline.md` / `read_script` / `apply_script` 已完成；仍缺 av_script、校正和完整变体体系 |
+| 字幕 | 🟡 源站 21 个样式预设、轨道头 CC 下拉、卡拉OK、跟随与双语翻译已完成；缺逐词覆盖/多轨源路由 |
 | AI 生成（视频/图/配音/音乐/音效/着色器）| 🟡 图/视频/配音/音乐/音效已接 provider 适配层并完成本地浏览器联调；音乐/视频已接统一异步 job + `track_progress`，缺真实供应商凭据实测、着色器、持久队列/积分计量 |
 | 导出 | 🟡 MP4 服务端渲染 + srt/txt 同步导出已完成；缺 xml/audio/ProRes/WebCodecs/异步job |
 | 项目/持久化/多工程 | 🟡 IndexedDB 自动保存恢复、多工程和仪表盘已完成；版本历史/交互卡/工程绑定待补 |
@@ -47,11 +47,11 @@
 | 撤销/重做 | ✅ | 快照式 history |
 | 拖拽移动 / 裁剪（trim 手柄）/ 跨轨约束 | ✅ | `Timeline.tsx` pointer 拖拽 |
 | 时间轴横向缩放 🔍 / 竖向轨道缩放 Alt+滚轮 | ✅ | zoom/trackScale 状态 |
-| 时间线上下拖高 + 加权轨道高度 | ✅ | `cc.timelineH` + WEIGHT |
-| **多时间线/序列（每工程多条）** | ❌ | `TimelineState` 升成 `{timelines: Timeline[], activeId}`；tab 切换/新建/复制/删除/隐藏。源站 `manage_timelines`，`active_timeline` 表。**长转短的地基**（每比例一条序列）|
-| **轨道管理（增删/改序/角色/锁/隐/静音/收紧）** | 🟡 | 现固定 V2/V1/A1/A2、👁🔊 是死图标。做：轨道数组化 + 每轨 `{visible,muted,locked,collapsed,role}`；role 驱动自动闪避。源站 `edit_track`（list/create/update/delete/**tighten**）|
+| 时间线上下拖高 + 加权轨道高度 | ✅ | `cc.timelineH` + WEIGHT；按源站 Dockview 树改为只跨 Assets + Viewer，AI 列贯穿到底；使用源站式 sticky 轨道头、工具分组、片段配色、音频波形视觉与右下反馈入口 |
+| **多时间线/序列（每工程多条）** | ✅ | `ProjectDoc V2` 已包含 `timelines[] + activeTimelineId`；底部 Tab 支持切换、新建、复制、重命名、删除、隐藏和一键 9:16 竖屏副本，旧工程自动迁移；Agent 已接 `manage_timelines` |
+| **轨道管理（增删/改序/角色/锁/隐/静音/收紧）** | ✅ | 稳定轨道 id + 动态 V/A 别名；创建、空轨删除、排序、命名、anchor/follower 角色、锁定、折叠、隐藏、静音与 tighten 均已完成；旧工程自动迁移，Agent 已接源站式 `edit_track`。浏览器自建工程回归见 `qa-dynamic-tracks.png` |
 | **刀片工具(B)/修剪工具(N)/吸附** | ✅ | 刀片按钮/B 键在播放头切分，切口 `srcInFrame` 递进；拖拽/裁剪可吸附到 0、播放头和邻近片段边 |
-| **Ripple 编辑（插入/覆盖模式）** | ❌ | `edit_item` 的 `ripple` 语义：插入模式后续片段整体位移+合缝。做：reducer 加 ripple 参数，move/add 时顺延同轨后续 item。源站域 C 核心 |
+| **Ripple 编辑（插入/覆盖模式）** | 🟡 | 已有波纹删除（同轨后续片段左移合缝）和修剪模式下右边缘联动位移；仍缺把 insert/overwrite 统一接到素材落轨、拖拽、粘贴、move/add 和 Agent `edit_item` 参数 |
 | **片段变换（缩放/位置/旋转）** | ✅ | `ClipTransform {scale,x,y,rotation}` 通过 `ClipWrapper` 应用 CSS transform；属性面板提供缩放、位置、旋转滑块 |
 | **动画/关键帧（源真相：无通用 K 帧）** | ✅ | MG 使用 `interpolate`/`spring`/bezier；`builtin:zoom` 提供参数化缩放动画；`ReframeCurveV1` 提供焦点与倍率稀疏关键帧 |
 | **更多媒体类型：image / gif / svg / text / solid** | 🟡 | image、video、text 已完成；gif、svg、solid 待补。text 支持内容、字号、颜色、对齐和字重 |
@@ -69,9 +69,9 @@
 | 音频片段 + 音量 | ✅ | `<Audio volume>` |
 | **淡入淡出（fadeIn/Out 秒）** | ✅ | `fadeInFrames`/`fadeOutFrames`：视觉通过 `ClipWrapper` opacity，音频通过 volume 函数处理；属性面板按秒调节 |
 | **响度归一化（-14 LUFS）** | ❌ | 分析音频 RMS/LUFS → 增益。做：Web Audio `AnalyserNode` 离线算，或导出后 ffmpeg `loudnorm`。源站 `normalize`/`loudness` |
-| **自动闪避 ducking（music 遇 voice 降）** | ❌ | 检测 voice 轨活动区间 → music 轨该区间降音量关键帧。源站 track role 驱动 `ducking` |
+| **自动闪避 ducking（music 遇 voice 降）** | ✅ | anchor 轨活动区间驱动 follower 轨动态降音量；默认 -12 dB，支持 `audioRouting.duckDepthDb` 手动深度，独立 Audio 与视频内嵌音频均生效 |
 | **AI 降噪 / 人声隔离** | ❌ | `denoised_audio_asset`。做：接 **DeepFilterNet3**（开源 Rust，可本地跑 wasm/服务端）产一条降噪 wav，item 可切换源。源站 `isolate_voice` |
-| **旁白录制（麦克风）** | ❌ | `MediaRecorder` 录麦 → 落 A 轨 audio item → 自动转写。源站 record 模式 mic/screen/camera/voiceover |
+| **旁白录制（麦克风）** | 🟡 | 工具栏 mic 已接 `getUserMedia + MediaRecorder`，停止后导入媒体池并落到播放头处 A1；仍缺录后自动转写、设备/倒计时设置及 Camera/Screen 模式 |
 
 ## 4. 转写 / 文字稿编辑
 
@@ -82,7 +82,7 @@
 | 删词=删视频（keptSegments 重排）| ✅ | `transcript/edit.ts` |
 | 静音压缩 + 去填充词（clean_script）| ✅ | `maxGapFrames` + `fillerIndices` |
 | find_transcript 定位短语→帧位 | ✅ | agent 工具 |
-| **timeline.md / read_script / apply_script（改文本即改片）** | 🟡 | 有 delete_text，无「把时间线序列化成带时间码 Markdown 文稿→编辑→diff 回操作」。做：`serializeToScript(state)→md`，`applyScript(md)→ops`。源站最独特交互（域 C `apply_script`/`read_script`，`[sN]` 行映射可播放区间）|
+| **timeline.md / read_script / apply_script（改文本即改片）** | ✅ | `src/script/` 已实现 `[sN]/[cN]/[gap]` Markdown 序列化、删词/删行/移行 diff、行序重排、stale stamp 守卫和原子提案提交，并有 check 与 Agent E2E；v1 暂不支持素材内片段重放 |
 | **read_av_script（结构化音视频脚本）** | ❌ | agent 的结构化剪辑表示。做：把时间线导成 agent 可读的 AV 脚本文本。源站 `read_av_script` |
 | **转写校正（改文本）** | ❌ | 编辑器里改错字，词↔帧映射不变。源站 `manage_transcript` content/json |
 | **多语言转写变体（共享时间轴）** | 🟡 | 有双语字幕（短语级译文），无完整 transcript 变体体系。做：`transcript(source) 1—N variant(lang)`，字幕/双语选变体显示。源站 `transcription_sub_asset`(variant_group) |
@@ -92,12 +92,12 @@
 
 | 功能 | 状 | 怎么做 / 技术 / 源站 |
 |---|---|---|
-| 字幕 overlay（tiktok/netflix/plain）| ✅ | `CaptionsLayer` |
+| 字幕 overlay（源站 21 个样式）| ✅ | `CaptionsLayer` + `captions/styles.ts`；字体、字号、描边、阴影、逐词高亮背景及每页词数均取自源站 bundle |
 | 卡拉OK逐词高亮 + pacing 词/短语 | ✅ | activePage/currentWordIndex |
 | 字幕随编辑重排（retime）| ✅ | `retimeWords`（源站 dVe/fVe/dH 模型）|
 | 双语字幕（译文第二行）| ✅ | `captions/translate.ts` |
 | 烧录进导出 | ✅ | 合成内渲染 |
-| **样式预设扩充（Persona/Bubble Pop/Submagic/Noir…）** | 🟡 | 现 3 个。做：加更多命名预设（字体/描边/背景/动画）到 `caption_style_preset` 风格表。源站 `caption_style_preset`(owner) + 十来个预设名 |
+| **样式预设扩充（Persona/Bubble Pop/Submagic/Noir…）** | ✅ | 轨道头 CC 下拉已按源站顺序接入 21 个预设和 8 种字幕翻译语言；样式选择直接作用于预览/导出。证据 `qa-caption-style-menu.png` |
 | **逐词覆盖（隐藏/遮罩/拆/并/改字）** | ❌ | 对单个词做显示覆盖。做：`caption_word_override[{wordId, action, text}]`，渲染时套用。源站 `caption_word_override` 表，`edit_captions` display_text 动作（需先 read_captions）|
 | 字幕源路由（选哪些音轨生成）| 🟡 | 有 sourceItemId（单轨）。多轨合并生成可扩。源站 `sourceScope`/`trackOrder` |
 
@@ -142,7 +142,7 @@
 | 音频素材库（3 音乐+voice）| ✅ | `audio/library.ts` |
 | MG 模板库（211）| ✅ | 内置 JSON |
 | **通用媒体导入（上传视频/图/音）** | ✅ | 上传端点 `vite-plugin-upload` 写入 `public/media/uploads`，客户端探测时长/尺寸，预览与导出同源 |
-| **媒体池（文件夹/搜索/排序/收藏/网格）** | 🟡 | 「我的素材」面板与 `ProjectDoc V2.assets[]` 工程级共享素材池已完成，支持导入和点击落轨；旧版各序列 `assets` 会自动合并去重并迁移。浏览器已验证：旧工程 10 个素材在新序列仍可见/可落轨，刷新后序列、片段和素材数均保持；文件夹/搜索/排序/收藏待补 |
+| **媒体池（文件夹/搜索/排序/收藏/网格）** | ✅ | `ProjectDoc V2` 工程级共享素材池与文件夹树已完成：上传/拖拽、全库搜索、类型筛选、名称/时长/导入顺序排序、收藏、网格/列表、多选批量移动/落轨、文件夹新建/重命名/空目录删除、素材重命名；旧工程自动迁移。UI 已对标源站的 3 列卡片、单行搜索/上传/目录/视图/排序/筛选工具栏和滚动密度。Agent 已接源站同名 `manage_media_pool`；浏览器在 10 素材工程完成交互与视觉回归并清理测试数据 |
 | **手机上传 `/m/:token`** | ❌ | 扫码手机传素材。源站 phone-upload 模块 |
 | **库素材浏览（转场/特效/LUT/缩放/音效）** | 🟡 | 只有 MG 库。做：把转场/特效/LUT/zoom/sfx 也做成库分类。源站 `browse_library`（7 类）|
 | **LUT（Sony S-Log3/Canon Log3）** | ❌ | 对 video 应用 .cube LUT。做：WebGL 3D LUT 采样。源站 2 个内置相机 log 转换 |
@@ -258,11 +258,11 @@
 **P0 地基（不做后面都虚）**
 1. ✅ 工程持久化（IndexedDB）+ 多工程 + 仪表盘
 2. ✅ propose→apply 交互契约
-3. 🟡 通用媒体导入 + 视频 item 已完成；媒体池基础完成，管理能力待补
+3. ✅ 通用媒体导入 + 视频 item + 工程级媒体池管理已完成
 
 **P1 补齐 NLE 核心**
-4. 🟡 多时间线/序列待完成；轨道管理部分完成
-5. 🟡 刀片/吸附和现有动画模型已完成；ripple 待补
+4. ✅ 多时间线/序列、动态轨道 / `edit_track` 与角色闪避已完成
+5. 🟡 刀片/吸附、波纹删除和右修剪联动已完成；insert/overwrite 全链路仍待补
 6. 🟡 转场和特效已完成基础版本；标记已完成，复杂 GLSL 效果待补
 
 **P2 生成矩阵（护城河，接 API）**

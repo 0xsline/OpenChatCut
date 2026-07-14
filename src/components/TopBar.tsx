@@ -33,7 +33,7 @@ export function TopBar({ projectName, credits, canUndo, canRedo, onUndo, onRedo,
       style={{
         gridColumn: '1 / -1',
         gridRow: 1,
-        height: 48,
+        height: 44,
         display: 'flex',
         alignItems: 'center',
         padding: '0 14px',

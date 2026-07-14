@@ -4,7 +4,10 @@
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
 
-export type TrackId = 'V2' | 'V1' | 'A1' | 'A2';
+/** Stable track id. Human aliases (V1/A1/...) are derived from track order. */
+export type TrackId = string;
+export type TrackKind = 'video' | 'audio';
+export type TrackRole = 'anchor' | 'follower';
 export const TRACK_ORDER: TrackId[] = ['V2', 'V1', 'A1', 'A2'];
 
 /** An imported media file in the project's media pool (source: S3 asset). */
@@ -16,6 +19,16 @@ export interface MediaAsset {
   durationInFrames: number;
   width?: number;
   height?: number;
+  /** media-pool organization only; does not affect timeline clips */
+  folderId?: string;
+  favorite?: boolean;
+}
+
+/** user-created media-pool bin (source manage_media_pool). Root is implicit. */
+export interface MediaFolder {
+  id: string;
+  name: string;
+  parentId?: string;
 }
 
 /** per-clip color/blur adjustments (CSS filter) — source 特效(blur)/LUT(color) */
@@ -152,13 +165,27 @@ export const ASPECT_PRESETS: AspectPreset[] = [
   { label: '3:4', width: 1080, height: 1440 },
 ];
 
-/** per-track visibility/audio flags (source edit_track: visible / mute) */
+/** per-track state (source edit_track). The map key is the stable track id. */
 export interface TrackFlags {
+  kind?: TrackKind;
+  name?: string;
   /** hidden track is fully disabled — its items render neither picture nor sound */
   hidden?: boolean;
   /** muted track keeps its picture but produces no audio */
   muted?: boolean;
+  /** local editor controls: lock structural edits / collapse the lane */
+  locked?: boolean;
+  collapsed?: boolean;
+  /** anchor speech triggers ducking; follower music ducks under anchors */
+  role?: TrackRole;
+  audioRouting?: { duckDepthDb?: number };
 }
+
+export type TrackUpdate = Partial<Omit<TrackFlags, 'kind' | 'role' | 'audioRouting'>> & {
+  order?: number;
+  role?: TrackRole | null;
+  audioRouting?: { duckDepthDb?: number | null };
+};
 
 /** transitions we approximate in CSS (DOM clips can't be GL textures —
  * the source has the same split: MG/caption layers stay DOM). */
@@ -257,6 +284,7 @@ export interface ProjectDoc {
   version: 2;
   /** project-wide media pool, shared by every timeline */
   assets: MediaAsset[];
+  mediaFolders: MediaFolder[];
   timelines: Timeline[];
   activeTimelineId: string;
 }
@@ -287,7 +315,9 @@ export interface TimelineState {
   /** how items fit when the canvas ratio differs from their design box */
   fit?: AspectFit;
   items: TimelineItem[];
-  /** per-track hide/mute (keyed by TrackId; absent = both false) */
+  /** visual top-to-bottom order of stable track ids */
+  trackOrder?: TrackId[];
+  /** per-track metadata (keyed by stable TrackId; legacy states only have flags) */
   tracks?: Partial<Record<TrackId, TrackFlags>>;
   /** transitions between adjacent same-track clips (source transition_item) */
   transitions?: TransitionItem[];
@@ -298,6 +328,44 @@ export interface TimelineState {
   selectedId: string | null;
   /** captions overlay (字幕), rendered on top + burned into export */
   captions?: CaptionsData | null;
+}
+
+/** Track ids in visual top-to-bottom order. Legacy four-lane states still work. */
+export function timelineTrackIds(s: TimelineState): TrackId[] {
+  const ids = s.trackOrder?.length ? [...s.trackOrder] : [...TRACK_ORDER];
+  for (const id of Object.keys(s.tracks ?? {})) if (!ids.includes(id)) ids.push(id);
+  for (const item of s.items) if (!ids.includes(item.track)) ids.push(item.track);
+  return ids;
+}
+
+export function trackKind(s: TimelineState, id: TrackId): TrackKind {
+  return s.tracks?.[id]?.kind ?? (id.toUpperCase().startsWith('A') ? 'audio' : 'video');
+}
+
+/** Current human alias. Video aliases count bottom-up; audio aliases top-down. */
+export function trackAlias(s: TimelineState, id: TrackId): string {
+  const ids = timelineTrackIds(s);
+  const kind = trackKind(s, id);
+  const same = ids.filter((candidate) => trackKind(s, candidate) === kind);
+  const index = same.indexOf(id);
+  if (index < 0) return id;
+  return kind === 'video' ? `V${same.length - index}` : `A${index + 1}`;
+}
+
+/** Resolve either a stable id or current Vn/An alias. */
+export function resolveTrackId(s: TimelineState, ref: unknown, kind?: TrackKind): TrackId | null {
+  const value = String(ref ?? '').trim();
+  const ids = timelineTrackIds(s).filter((id) => !kind || trackKind(s, id) === kind);
+  if (ids.includes(value)) return value;
+  const upper = value.toUpperCase();
+  return ids.find((id) => trackAlias(s, id) === upper) ?? null;
+}
+
+/** Default placement lane: V1 (bottom video) or A1 (top audio). */
+export function defaultTrackId(s: TimelineState, kind: TrackKind): TrackId | null {
+  return resolveTrackId(s, kind === 'video' ? 'V1' : 'A1', kind)
+    ?? timelineTrackIds(s).find((id) => trackKind(s, id) === kind)
+    ?? null;
 }
 
 /** total timeline length = last item's end (min 1s). */

@@ -7,7 +7,7 @@ import { activeTimeline, type ProjectDoc, type Timeline } from './types';
 const tl = (id: string, name: string, order: number): Timeline =>
   ({ fps: 30, width: 1920, height: 1080, items: [], selectedId: null, id, name, order });
 
-const base: ProjectDoc = { version: 2, assets: [], timelines: [tl('tl_a', '序列 1', 0)], activeTimelineId: 'tl_a' };
+const base: ProjectDoc = { version: 2, assets: [], mediaFolders: [], timelines: [tl('tl_a', '序列 1', 0)], activeTimelineId: 'tl_a' };
 
 // the draft records actions + applies to a scratch copy WITHOUT touching base
 const d = makeDraft(base);

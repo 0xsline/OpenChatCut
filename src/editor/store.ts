@@ -1,6 +1,6 @@
 import { useMemo, useReducer, useRef } from 'react';
-import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackId, TransitionItem, TransitionType, ZoomEffect } from './types';
-import { activeEditorState, activeTimeline } from './types';
+import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, ZoomEffect } from './types';
+import { activeEditorState, activeTimeline, defaultTrackId, resolveTrackId } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
 import type { CaptionsData } from '../captions/types';
@@ -23,6 +23,12 @@ export interface EditorCommands {
   addAudio: (asset: AudioAsset, at?: { track?: TrackId; startFrame?: number }) => void;
   addAsset: (asset: MediaAsset) => void;
   addMediaItem: (asset: MediaAsset, at?: { track?: TrackId; startFrame?: number }) => void;
+  createMediaFolder: (name: string, parentId?: string) => string;
+  renameMediaFolder: (id: string, name: string) => void;
+  deleteMediaFolder: (id: string) => void;
+  moveMediaAssets: (ids: string[], folderId?: string) => void;
+  renameMediaAsset: (id: string, name: string) => void;
+  setMediaAssetFavorite: (id: string, favorite: boolean) => void;
   addTextClip: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number; ripple?: boolean }) => void;
   updateItemProps: (id: string, patch: Record<string, unknown>) => void;
   moveItem: (id: string, to: { track?: TrackId; startFrame?: number }) => void;
@@ -55,6 +61,10 @@ export interface EditorCommands {
   clearTimeline: () => void;
   setAspect: (width: number, height: number, fit?: AspectFit) => void;
   toggleTrackFlag: (track: TrackId, flag: 'hidden' | 'muted') => void;
+  createTrack: (kind: TrackKind, opts?: { name?: string; role?: TrackFlags['role']; order?: number; audioRouting?: TrackFlags['audioRouting'] }) => TrackId;
+  updateTrack: (track: TrackId, patch: TrackUpdate) => void;
+  deleteTracks: (tracks: TrackId[]) => void;
+  tightenTrack: (track: TrackId) => void;
   setCaptions: (captions: CaptionsData | null) => void;
   updateCaptions: (patch: Partial<CaptionsData>) => void;
   setItemTranscript: (id: string, words: TranscriptWord[]) => void;
@@ -108,16 +118,25 @@ export function useEditor(initial: ProjectDoc): {
 // (real dispatch → history) and by the proposal draft engine (draft dispatch
 // that records + applies to a scratch ProjectDoc without touching the real one).
 function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): EditorCommands {
+  const pickTrack = (ref: TrackId | undefined, kind: TrackKind): TrackId => {
+    const state = activeTimeline(getDoc());
+    return resolveTrackId(state, ref, kind) ?? defaultTrackId(state, kind) ?? (kind === 'video' ? 'V1' : 'A1');
+  };
   return {
       createTimeline: (opts) => {
         const d = getDoc();
         const base = activeTimeline(d);
+        const trackOrder = [uid('track'), uid('track'), uid('track'), uid('track')];
         const t: Timeline = {
           fps: base.fps,
           width: opts?.width ?? base.width,
           height: opts?.height ?? base.height,
           fit: opts?.fit ?? base.fit,
-          items: [], selectedId: null,
+          items: [], selectedId: null, trackOrder,
+          tracks: {
+            [trackOrder[0]]: { kind: 'video' }, [trackOrder[1]]: { kind: 'video' },
+            [trackOrder[2]]: { kind: 'audio' }, [trackOrder[3]]: { kind: 'audio' },
+          },
           id: uid('tl'), name: opts?.name ?? `序列 ${d.timelines.length + 1}`, order: maxOrder(d) + 1,
         };
         dispatch({ type: 'tl.create', timeline: t, activate: opts?.activate });
@@ -135,13 +154,25 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       retargetTimeline: (id, width, height, fit) => dispatch({ type: 'tl.retarget', id, width, height, fit }),
       setTimelineHidden: (id, hidden) => dispatch({ type: 'tl.setHidden', id, hidden }),
       applyDoc: (doc) => dispatch({ type: 'tl.setDoc', doc }),
+      createMediaFolder: (name, parentId) => {
+        const existing = getDoc().mediaFolders.find((folder) => folder.parentId === parentId && folder.name === name);
+        if (existing) return existing.id;
+        const id = uid('bin');
+        dispatch({ type: 'pool.createFolder', folder: { id, name, parentId } });
+        return id;
+      },
+      renameMediaFolder: (id, name) => dispatch({ type: 'pool.renameFolder', id, name }),
+      deleteMediaFolder: (id) => dispatch({ type: 'pool.deleteFolder', id }),
+      moveMediaAssets: (ids, folderId) => dispatch({ type: 'pool.moveAssets', ids, folderId }),
+      renameMediaAsset: (id, name) => dispatch({ type: 'pool.updateAsset', id, patch: { name } }),
+      setMediaAssetFavorite: (id, favorite) => dispatch({ type: 'pool.updateAsset', id, patch: { favorite } }),
       addMotionGraphic: (tpl, at) =>
         dispatch({
           type: 'add',
           startFrame: at?.startFrame,
           item: {
             id: uid('item'),
-            track: at?.track ?? 'V1',
+            track: pickTrack(at?.track, 'video'),
             durationInFrames: tpl.durationInFrames,
             kind: 'motion-graphic',
             templateId: tpl.id,
@@ -158,7 +189,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
           startFrame: at?.startFrame,
           item: {
             id: uid('item'),
-            track: at?.track ?? 'A1',
+            track: pickTrack(at?.track, 'audio'),
             durationInFrames: asset.durationInFrames,
             kind: 'audio',
             name: asset.name,
@@ -173,7 +204,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
           ripple: at?.ripple,
           item: {
             id: uid('item'),
-            track: at?.track ?? 'V2', // titles default to the top video track
+            track: pickTrack(at?.track ?? 'V2', 'video'), // titles default to the top video track
             durationInFrames: at?.durationInFrames ?? 90,
             kind: 'text',
             name: '文字',
@@ -189,7 +220,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
           startFrame: at?.startFrame,
           item: {
             id: uid('item'),
-            track: at?.track ?? (asset.kind === 'audio' ? 'A1' : 'V1'),
+            track: pickTrack(at?.track, asset.kind === 'audio' ? 'audio' : 'video'),
             durationInFrames: asset.durationInFrames,
             kind: asset.kind,
             name: asset.name,
@@ -200,7 +231,11 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
           },
         }),
       updateItemProps: (id, patch) => dispatch({ type: 'updateProps', id, patch }),
-      moveItem: (id, to) => dispatch({ type: 'move', id, ...to }),
+      moveItem: (id, to) => {
+        const item = activeTimeline(getDoc()).items.find((candidate) => candidate.id === id);
+        const track = to.track && item ? pickTrack(to.track, item.kind === 'audio' ? 'audio' : 'video') : to.track;
+        dispatch({ type: 'move', id, ...to, track });
+      },
       setItemTiming: (id, timing) => dispatch({ type: 'retime', id, ...timing }),
       setItemVolume: (id, volume) => dispatch({ type: 'setVolume', id, volume }),
       setItemFade: (id, fade) => dispatch({ type: 'setFade', id, ...fade }),
@@ -237,6 +272,14 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       clearTimeline: () => dispatch({ type: 'clear' }),
       setAspect: (width, height, fit) => dispatch({ type: 'setCanvas', width, height, fit }),
       toggleTrackFlag: (track, flag) => dispatch({ type: 'toggleTrack', track, flag }),
+      createTrack: (kind, opts) => {
+        const id = uid('track');
+        dispatch({ type: 'track.create', track: { id, kind, name: opts?.name, role: opts?.role, audioRouting: opts?.audioRouting }, order: opts?.order });
+        return id;
+      },
+      updateTrack: (track, patch) => dispatch({ type: 'track.update', track, patch }),
+      deleteTracks: (tracks) => dispatch({ type: 'track.delete', tracks }),
+      tightenTrack: (track) => dispatch({ type: 'track.tighten', track }),
       setCaptions: (captions) => dispatch({ type: 'setCaptions', captions }),
       updateCaptions: (patch) => dispatch({ type: 'updateCaptions', patch }),
       setItemTranscript: (id, words) => dispatch({ type: 'setItemTranscript', id, words }),

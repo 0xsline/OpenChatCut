@@ -1,8 +1,8 @@
 // Pure reducer layer: the per-timeline reducer (`reduce`) + the project reducer
 // (`projectReduce`, routing per-timeline actions to the active timeline) + the
 // undo/redo history wrapper. The command set + React hook live in store.ts.
-import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, Marker, MediaAsset, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackId, TransitionItem, TransitionType, ZoomEffect } from './types';
-import { activeTimeline, trackEnd } from './types';
+import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, Marker, MediaAsset, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, ZoomEffect } from './types';
+import { activeTimeline, timelineTrackIds, trackEnd, trackKind } from './types';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
 import { editedFrames, fillerIndices } from '../transcript/edit';
@@ -36,6 +36,10 @@ export type Action =
   | { type: 'addAsset'; asset: MediaAsset }
   | { type: 'setCanvas'; width: number; height: number; fit?: AspectFit }
   | { type: 'toggleTrack'; track: TrackId; flag: 'hidden' | 'muted' }
+  | { type: 'track.create'; track: { id: TrackId; kind: TrackKind; name?: string; role?: TrackFlags['role']; audioRouting?: TrackFlags['audioRouting'] }; order?: number }
+  | { type: 'track.update'; track: TrackId; patch: TrackUpdate }
+  | { type: 'track.delete'; tracks: TrackId[] }
+  | { type: 'track.tighten'; track: TrackId }
   | { type: 'setCaptions'; captions: CaptionsData | null }
   | { type: 'updateCaptions'; patch: Partial<CaptionsData> }
   | { type: 'setItemTranscript'; id: string; words: TranscriptWord[] }
@@ -58,7 +62,12 @@ export type ProjectAction =
   | { type: 'tl.rename'; id: string; name: string }
   | { type: 'tl.retarget'; id: string; width: number; height: number; fit?: AspectFit }
   | { type: 'tl.setHidden'; id: string; hidden: boolean }
-  | { type: 'tl.setDoc'; doc: ProjectDoc };
+  | { type: 'tl.setDoc'; doc: ProjectDoc }
+  | { type: 'pool.createFolder'; folder: MediaFolder }
+  | { type: 'pool.renameFolder'; id: string; name: string }
+  | { type: 'pool.deleteFolder'; id: string }
+  | { type: 'pool.moveAssets'; ids: string[]; folderId?: string }
+  | { type: 'pool.updateAsset'; id: string; patch: Partial<Pick<MediaAsset, 'name' | 'favorite'>> };
 
 /** any store action: per-timeline or project-level (what a draft records) */
 export type AnyAction = Action | ProjectAction;
@@ -67,9 +76,10 @@ export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void
 /** dispatch at the project level: per-timeline + project actions + undo/redo */
 export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' }) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState',
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
-  'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc']);
+  'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
+  'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset']);
 
 const EMPTY_CURVE = { version: 1, timebase: 'effect-frame', coordinateSpace: 'composition-normalized', keyframes: [] } as const;
 
@@ -81,6 +91,7 @@ function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): nu
 export function reduce(s: TimelineState, a: Action): TimelineState {
   switch (a.type) {
     case 'add': {
+      if (s.tracks?.[a.item.track]?.locked) return s;
       // compute placement from CURRENT state (correct for sequential adds)
       const startFrame = a.startFrame ?? trackEnd(s, a.item.track);
       const item: TimelineItem = { ...a.item, startFrame };
@@ -100,6 +111,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         ),
       };
     case 'move':
+      if (s.items.some((it) => it.id === a.id && (s.tracks?.[it.track]?.locked || (a.track && s.tracks?.[a.track]?.locked)))) return s;
       return {
         ...s,
         items: s.items.map((it) =>
@@ -109,6 +121,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         ),
       };
     case 'retime':
+      if (s.items.some((it) => it.id === a.id && s.tracks?.[it.track]?.locked)) return s;
       return {
         ...s,
         items: s.items.map((it) =>
@@ -250,7 +263,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       return { ...s, transitions: (s.transitions ?? []).filter((t) => t.id !== a.id) };
     case 'duplicate': {
       const it = s.items.find((x) => x.id === a.id);
-      if (!it) return s;
+      if (!it || s.tracks?.[it.track]?.locked) return s;
       const copy: TimelineItem = { ...it, id: a.newId, props: { ...it.props }, startFrame: trackEnd(s, it.track) };
       return { ...s, items: [...s.items, copy], selectedId: copy.id };
     }
@@ -261,6 +274,65 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
     case 'toggleTrack': {
       const cur = s.tracks?.[a.track] ?? {};
       return { ...s, tracks: { ...s.tracks, [a.track]: { ...cur, [a.flag]: !cur[a.flag] } } };
+    }
+    case 'track.create': {
+      const ids = timelineTrackIds(s);
+      const videos = ids.filter((id) => trackKind(s, id) === 'video');
+      const audio = ids.filter((id) => trackKind(s, id) === 'audio');
+      const lane = a.track.kind === 'video' ? videos : audio;
+      const sourceOrder = Math.max(0, Math.min(a.order ?? lane.length, lane.length));
+      const visualIndex = a.track.kind === 'video' ? lane.length - sourceOrder : sourceOrder;
+      lane.splice(visualIndex, 0, a.track.id);
+      return {
+        ...s,
+        trackOrder: [...videos, ...audio],
+        tracks: { ...s.tracks, [a.track.id]: { kind: a.track.kind, name: a.track.name, role: a.track.role, audioRouting: a.track.audioRouting } },
+      };
+    }
+    case 'track.update': {
+      if (!timelineTrackIds(s).includes(a.track)) return s;
+      const current = s.tracks?.[a.track] ?? { kind: trackKind(s, a.track) };
+      const { order, role, audioRouting, ...rest } = a.patch;
+      const next: TrackFlags = { ...current, ...rest };
+      if (role === null) delete next.role;
+      else if (role !== undefined) next.role = role;
+      if (audioRouting) {
+        if (audioRouting.duckDepthDb === null) delete next.audioRouting;
+        else next.audioRouting = { ...next.audioRouting, ...audioRouting } as TrackFlags['audioRouting'];
+      }
+      if (next.role !== 'follower') delete next.audioRouting;
+      let trackOrder = timelineTrackIds(s);
+      if (order !== undefined) {
+        const kind = trackKind(s, a.track);
+        const videos = trackOrder.filter((id) => id !== a.track && trackKind(s, id) === 'video');
+        const audio = trackOrder.filter((id) => id !== a.track && trackKind(s, id) === 'audio');
+        const lane = kind === 'video' ? videos : audio;
+        const sourceOrder = Math.max(0, Math.min(Math.round(order), lane.length));
+        const visualIndex = kind === 'video' ? lane.length - sourceOrder : sourceOrder;
+        lane.splice(visualIndex, 0, a.track);
+        trackOrder = [...videos, ...audio];
+      }
+      return { ...s, trackOrder, tracks: { ...s.tracks, [a.track]: next } };
+    }
+    case 'track.delete': {
+      const remove = new Set(a.tracks);
+      if (!remove.size || s.items.some((item) => remove.has(item.track)) || (s.transitions ?? []).some((transition) => remove.has(transition.trackId))) return s;
+      const ids = timelineTrackIds(s);
+      const tracks = { ...s.tracks };
+      for (const id of remove) delete tracks[id];
+      return { ...s, trackOrder: ids.filter((id) => !remove.has(id)), tracks };
+    }
+    case 'track.tighten': {
+      if (s.tracks?.[a.track]?.locked) return s;
+      const clips = s.items.filter((item) => item.track === a.track).sort((x, y) => x.startFrame - y.startFrame);
+      if (clips.length < 2) return s;
+      let cursor = clips[0].startFrame + clips[0].durationInFrames;
+      const starts = new Map<string, number>();
+      for (const clip of clips.slice(1)) {
+        starts.set(clip.id, cursor);
+        cursor += clip.durationInFrames;
+      }
+      return { ...s, items: s.items.map((item) => starts.has(item.id) ? { ...item, startFrame: starts.get(item.id)! } : item) };
     }
     case 'setCaptions':
       return { ...s, captions: a.captions };
@@ -313,6 +385,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       };
     case 'remove': {
       const gone = s.items.find((it) => it.id === a.id);
+      if (gone && s.tracks?.[gone.track]?.locked) return s;
       // ripple delete (source): close the gap — shift same-track clips that
       // start at/after the removed clip's OUT point left by its duration.
       const end = gone ? gone.startFrame + gone.durationInFrames : 0;
@@ -330,7 +403,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
     }
     case 'split': {
       const it = s.items.find((x) => x.id === a.id);
-      if (!it || a.atFrame <= it.startFrame || a.atFrame >= it.startFrame + it.durationInFrames) return s;
+      if (!it || s.tracks?.[it.track]?.locked || a.atFrame <= it.startFrame || a.atFrame >= it.startFrame + it.durationInFrames) return s;
       const cut = a.atFrame - it.startFrame; // frames of source consumed by the left half
       const left = { ...it, durationInFrames: cut };
       // the right half resumes the source where the left one ended (advances srcInFrame)
@@ -348,7 +421,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
 
 // ── project reducer (routes per-timeline actions to the active timeline) ───
 export const maxOrder = (p: ProjectDoc) => p.timelines.reduce((m, t) => Math.max(m, t.order), -1);
-const isProjectAction = (a: { type: string }): a is ProjectAction => a.type.startsWith('tl.');
+const isProjectAction = (a: { type: string }): a is ProjectAction => a.type.startsWith('tl.') || a.type.startsWith('pool.');
 
 // stamp a per-timeline reducer result back onto its identity (setFullState
 // returns a bare TimelineState, so id/name/order must be re-applied).
@@ -406,6 +479,30 @@ export function projectReduce(p: ProjectDoc, a: Action | ProjectAction): Project
       }
       case 'tl.setDoc':
         return a.doc; // atomic commit of a project-level proposal (one history step)
+      case 'pool.createFolder':
+        return p.mediaFolders.some((folder) => folder.parentId === a.folder.parentId && folder.name === a.folder.name)
+          ? p
+          : { ...p, mediaFolders: [...p.mediaFolders, a.folder] };
+      case 'pool.renameFolder': {
+        const folder = p.mediaFolders.find((item) => item.id === a.id);
+        if (!folder || folder.name === a.name || p.mediaFolders.some((item) => item.id !== a.id && item.parentId === folder.parentId && item.name === a.name)) return p;
+        return { ...p, mediaFolders: p.mediaFolders.map((item) => item.id === a.id ? { ...item, name: a.name } : item) };
+      }
+      case 'pool.deleteFolder':
+        if (!p.mediaFolders.some((folder) => folder.id === a.id)) return p;
+        if (p.assets.some((asset) => asset.folderId === a.id) || p.mediaFolders.some((folder) => folder.parentId === a.id)) return p;
+        return { ...p, mediaFolders: p.mediaFolders.filter((folder) => folder.id !== a.id) };
+      case 'pool.moveAssets': {
+        if (a.folderId && !p.mediaFolders.some((folder) => folder.id === a.folderId)) return p;
+        const ids = new Set(a.ids);
+        if (!p.assets.some((asset) => ids.has(asset.id) && asset.folderId !== a.folderId)) return p;
+        return { ...p, assets: p.assets.map((asset) => ids.has(asset.id) ? { ...asset, folderId: a.folderId } : asset) };
+      }
+      case 'pool.updateAsset': {
+        const asset = p.assets.find((item) => item.id === a.id);
+        if (!asset || Object.entries(a.patch).every(([key, value]) => asset[key as keyof MediaAsset] === value)) return p;
+        return { ...p, assets: p.assets.map((item) => item.id === a.id ? { ...item, ...a.patch } : item) };
+      }
       default:
         return p;
     }

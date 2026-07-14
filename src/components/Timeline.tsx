@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
-import { MARKER_HEX, TRACK_ORDER, timelineDuration, type MarkerColor, type TimelineItem, type TimelineState, type TrackId } from '../editor/types';
+import { MARKER_HEX, defaultTrackId, timelineDuration, timelineTrackIds, trackAlias, trackKind, type MarkerColor, type TimelineItem, type TimelineState, type TrackId } from '../editor/types';
 import type { EditorCommands } from '../editor/store';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { ClipContextMenu, type FxClip } from './ClipContextMenu';
 import { Icon, type IconName } from './icons';
 import { useRecorder } from '../audio/recorder';
 import { exportClipMov, bakeClipToVideo } from '../media/clipExport';
+import { buildTranslation } from '../captions/translate';
+import { CAPTION_STYLES } from '../captions/styles';
+import type { CaptionsData, CaptionTemplate } from '../captions/types';
 
 interface TimelineProps {
   state: TimelineState;
@@ -19,21 +22,15 @@ interface TimelineProps {
   onRecordVoiceover?: (blob: Blob) => void;
 }
 
-const TRACK_META: Record<TrackId, { color: string; kind: 'video' | 'audio' }> = {
-  V2: { color: theme.trackVideo, kind: 'video' },
-  V1: { color: theme.trackVideo, kind: 'video' },
-  A1: { color: theme.trackAudioA1, kind: 'audio' },
-  A2: { color: theme.trackAudioA2, kind: 'audio' },
-};
-
-const HEADER_W = 104;
-const MIN_ROW = 30;
-const RULER_H = 22;
+const HEADER_W = 178;
+const MIN_ROW = 34;
+const RULER_H = 29;
 // source weights tracks by type: video rows are taller than audio rows
 // (videoTrackHeight > audioTrackHeight), not an equal split.
 const WEIGHT: Record<'video' | 'audio', number> = { video: 1.4, audio: 1 };
 const PX_PER_FRAME = 3; // default time scale (1s ≈ 90px @30fps) — compact by default
 const toolBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14, padding: '2px 5px' };
+const CAPTION_LANGS = ['English', '简体中文', '西班牙语', '法语', '德语', '日语', '韩语', '葡萄牙语'];
 
 // vertical divider between toolbar tool groups (source-style grouping)
 function ToolSep() {
@@ -46,10 +43,10 @@ function TB({ icon, title, onClick, active, disabled }: {
 }) {
   return (
     <button title={title} onClick={onClick} disabled={disabled}
-      style={{ background: 'none', border: 'none', cursor: disabled ? 'default' : 'pointer', padding: '5px 6px', borderRadius: 5, display: 'grid', placeItems: 'center', lineHeight: 0, color: disabled ? theme.textDim : active ? theme.accent : theme.text, opacity: disabled ? 0.4 : 1 }}
+      style={{ width: 34, height: 34, background: 'none', border: 'none', cursor: disabled ? 'default' : 'pointer', padding: 0, borderRadius: 5, display: 'grid', placeItems: 'center', lineHeight: 0, color: disabled ? theme.textDim : active ? theme.accent : '#c8c8c8', opacity: disabled ? 0.4 : 1 }}
       onMouseEnter={(e) => { if (!disabled && !active) e.currentTarget.style.background = theme.panelAlt; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
-      <Icon name={icon} />
+      <Icon name={icon} size={18} />
     </button>
   );
 }
@@ -62,6 +59,14 @@ function fmt(frames: number, fps: number): string {
   return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 }
 
+function fmtClock(frames: number, fps: number): string {
+  const seconds = Math.floor(frames / fps);
+  const hh = Math.floor(seconds / 3600);
+  const mm = Math.floor((seconds % 3600) / 60);
+  const ss = seconds % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
 type DragMode = 'move' | 'trim-left' | 'trim-right';
 interface Drag {
   id: string; mode: DragMode; baseStart: number; baseDur: number; baseTrack: TrackId;
@@ -72,20 +77,71 @@ const SNAP_PX = 7;
 
 export function Timeline({ state, commands, playerRef, playhead, setPlayhead, onRecordVoiceover }: TimelineProps) {
   const total = timelineDuration(state);
+  const trackIds = timelineTrackIds(state);
+  const metaOf = (id: TrackId) => {
+    const kind = trackKind(state, id);
+    return { kind, color: kind === 'video' ? theme.trackVideo : trackAlias(state, id) === 'A1' ? theme.trackAudioA1 : theme.trackAudioA2 };
+  };
   const [zoom, setZoom] = usePersistedState('cc.timelineZoom', 1);
   const px = PX_PER_FRAME * zoom; // pixels per frame at the current time-zoom
   const zoomBy = (f: number) => setZoom((z) => Math.min(6, Math.max(0.5, z * f)));
-  // editing mode (source: Selection V / Blade B / Trim T). selection = drag/move;
+  // editing mode (source: Selection V / Blade B / Trim N). selection = drag/move;
   // blade = click a clip to cut it there; trim = edge-trim ripples following clips.
   const [editMode, setEditMode] = usePersistedState<'selection' | 'blade' | 'trim'>('cc.editMode', 'selection');
   // magnetic snapping (source: Snapping toggle, S). On = edges lock to guides.
   const [snapping, setSnapping] = usePersistedState('cc.snapping', true);
-  // insert vs overwrite (source insert/overwrite toggle). On = new clips ripple
-  // later same-track clips right to make room; off = place/overlap in place.
-  const [insertMode, setInsertMode] = usePersistedState('cc.insertMode', false);
+  const captionsVisible = !!state.captions?.enabled;
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [captionMenu, setCaptionMenu] = useState<{ id: TrackId; left: number; top: number; translateOpen?: boolean } | null>(null);
+  const [captionBusy, setCaptionBusy] = useState(false);
+  const [captionError, setCaptionError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!captionMenu) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.cc-caption-style-menu') && !target.closest('[data-caption-menu-trigger]')) setCaptionMenu(null);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [captionMenu]);
   // mic voiceover recording (source: 录制旁白). Toggle to start/stop; the blob
   // is uploaded + dropped on an audio track by the parent.
   const recorder = useRecorder(onRecordVoiceover ?? (() => {}));
+  const captionsForTrack = (trackId: TrackId): CaptionsData | null => {
+    if (state.captions) return state.captions;
+    const source = state.items.find((item) => item.track === trackId && item.transcript?.length);
+    return source ? { enabled: true, template: 'plain', pacing: 'phrase', sourceItemId: source.id } : null;
+  };
+  const applyCaptionStyle = (trackId: TrackId, template: CaptionTemplate) => {
+    const captions = captionsForTrack(trackId);
+    if (!captions) { setCaptionError('该轨道还没有可用文字稿'); return; }
+    if (state.captions) commands.updateCaptions({ enabled: true, template });
+    else commands.setCaptions({ ...captions, template });
+    setCaptionError(null);
+    setCaptionMenu(null);
+  };
+  const toggleCaptions = (trackId: TrackId) => {
+    if (state.captions) { commands.updateCaptions({ enabled: !state.captions.enabled }); return; }
+    const captions = captionsForTrack(trackId);
+    if (captions) commands.setCaptions(captions);
+    else setCaptionError('该轨道还没有可用文字稿');
+  };
+  const translateCaptions = async (lang: string) => {
+    if (captionBusy) return;
+    const captions = captionMenu ? captionsForTrack(captionMenu.id) : state.captions;
+    if (!captions) { setCaptionError('该轨道还没有可翻译的文字稿，请先完成转写'); return; }
+    setCaptionBusy(true);
+    setCaptionError(null);
+    try {
+      const translation = await buildTranslation(captions, state.items, state.fps, lang);
+      const patch = { enabled: true, bilingual: true, translationLang: lang, translation };
+      if (state.captions) commands.updateCaptions(patch);
+      else commands.setCaptions({ ...captions, ...patch });
+      setCaptionMenu(null);
+    } catch (error) {
+      setCaptionError(error instanceof Error ? error.message : '字幕翻译失败');
+    } finally { setCaptionBusy(false); }
+  };
   // fit whole timeline to the viewport width (source: Fit to view, ⇧Z)
   const fitToView = () => {
     const w = scrollRef.current?.clientWidth ?? 0;
@@ -166,10 +222,12 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const totalWeight = TRACK_ORDER.reduce((sum, t) => sum + WEIGHT[TRACK_META[t].kind], 0);
-  const unit = availH / totalWeight;
-  const rowHeightOf = (t: TrackId) => Math.max(MIN_ROW, unit * WEIGHT[TRACK_META[t].kind] * trackScale);
-  const tracksHeight = TRACK_ORDER.reduce((sum, t) => sum + rowHeightOf(t), 0);
+  const expanded = trackIds.filter((id) => !state.tracks?.[id]?.collapsed);
+  const collapsedHeight = (trackIds.length - expanded.length) * MIN_ROW;
+  const totalWeight = expanded.reduce((sum, id) => sum + WEIGHT[metaOf(id).kind], 0);
+  const unit = Math.max(0, availH - collapsedHeight) / Math.max(1, totalWeight);
+  const rowHeightOf = (id: TrackId) => state.tracks?.[id]?.collapsed ? MIN_ROW : Math.max(MIN_ROW, unit * WEIGHT[metaOf(id).kind] * trackScale);
+  const tracksHeight = trackIds.reduce((sum, id) => sum + rowHeightOf(id), 0);
 
   const frameFromClientX = (clientX: number): number => {
     const r = innerRef.current?.getBoundingClientRect();
@@ -178,13 +236,13 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
   };
   const trackFromClientY = (clientY: number): TrackId => {
     const r = innerRef.current?.getBoundingClientRect();
-    if (!r) return 'V1';
+    if (!r) return defaultTrackId(state, 'video') ?? defaultTrackId(state, 'audio') ?? '';
     let y = clientY - r.top - RULER_H;
-    for (const t of TRACK_ORDER) {
+    for (const t of trackIds) {
       y -= rowHeightOf(t);
       if (y < 0) return t;
     }
-    return TRACK_ORDER[TRACK_ORDER.length - 1];
+    return trackIds[trackIds.length - 1] ?? '';
   };
 
   const seekTo = (clientX: number) => {
@@ -226,7 +284,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
       const k = e.key.toLowerCase();
       if (k === 'v') { e.preventDefault(); kbRef.current.setEditMode('selection'); }
       else if (k === 'b') { e.preventDefault(); kbRef.current.setEditMode('blade'); }
-      else if (k === 't') { e.preventDefault(); kbRef.current.setEditMode('trim'); }
+      else if (k === 'n') { e.preventDefault(); kbRef.current.setEditMode('trim'); }
       else if (k === 'c') { e.preventDefault(); kbRef.current.bladeSelected(); }
       else if (k === 'm') { e.preventDefault(); kbRef.current.addMarkerAtPlayhead(); }
       else if (k === 's') { e.preventDefault(); kbRef.current.toggleSnap(); }
@@ -239,6 +297,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
   }, []);
 
   const startDrag = (e: React.PointerEvent, id: string, mode: DragMode, baseStart: number, baseDur: number, baseTrack: TrackId, baseSrcIn = 0) => {
+    if (state.tracks?.[baseTrack]?.locked) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     commands.selectItem(id);
@@ -293,7 +352,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
     if (mode === 'move') {
       // keep video clips on video tracks, audio clips on audio tracks
       const isAudio = state.items.find((it) => it.id === id)?.kind === 'audio';
-      const okTrack = TRACK_META[targetTrack].kind === (isAudio ? 'audio' : 'video');
+      const okTrack = !!targetTrack && trackKind(state, targetTrack) === (isAudio ? 'audio' : 'video') && !state.tracks?.[targetTrack]?.locked;
       const track = okTrack ? targetTrack : baseTrack;
       if (deltaF !== 0 || track !== baseTrack) commands.moveItem(id, { startFrame: Math.max(0, baseStart + deltaF), track });
     } else if (mode === 'trim-left') {
@@ -325,7 +384,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
   const editing = markers.find((m) => m.id === editMarker) ?? null;
 
   return (
-    <section style={{ flex: 1, borderTop: `1px solid ${theme.border}`, background: theme.panel, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+    <section className="cc-timeline" style={{ flex: 1, borderTop: `1px solid ${theme.border}`, background: '#121212', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
       {/* marker note editor (source: click a pin → note popup) */}
       {editing && (
         <div style={{ position: 'absolute', top: 40, left: 12, zIndex: 20, width: 260, background: theme.panelAlt, border: `1px solid ${theme.border}`, borderRadius: 10, padding: 12, boxShadow: '0 8px 28px rgba(0,0,0,0.45)' }}>
@@ -355,42 +414,35 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
           </div>
         </div>
       )}
-      {/* toolbar — source layout+icons (entry.js:178857-859): 左编辑·中传输·右视图.
-          Modes we don't have (选择/修剪/录音) render disabled like the source greys them. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '6px 10px', borderBottom: `1px solid ${theme.border}` }}>
-        {/* left: edit tools (source order: +/cursor/trim/blade/snap/mic) */}
-        <TB icon="plus" title="新建序列" onClick={() => commands.createTimeline()} />
-        <TB icon="cursor" title="选择模式 (V)：拖动移动 / 裁剪首尾" active={editMode === 'selection'} onClick={() => setEditMode('selection')} />
-        <TB icon="trim" title="修剪模式 (T)：裁剪片段边缘，后续片段自动跟随合缝（波纹）" active={editMode === 'trim'} onClick={() => setEditMode('trim')} />
-        <TB icon="blade" title="刀片模式 (B)：点击片段在该处切分" active={editMode === 'blade'} onClick={() => setEditMode('blade')} />
-        <TB icon="scissors" title="在播放头切分选中片段 (C)" onClick={bladeSelected} />
-        <TB icon="magnet" title={`磁性吸附：${snapping ? '开' : '关'} (S)`} active={snapping} onClick={() => setSnapping((s) => !s)} />
-        <TB icon="insert" title={`插入模式：${insertMode ? '开（新片段推后同轨片段腾位）' : '关（覆盖/重叠）'}`} active={insertMode} onClick={() => setInsertMode((v) => !v)} />
-        <TB icon="mic" active={recorder.recording}
-          title={recorder.recording ? '● 录音中，点击停止' : recorder.error ? `录音失败：${recorder.error}` : '录制旁白（麦克风 → 音频轨）'}
-          disabled={!onRecordVoiceover} onClick={recorder.toggle} />
-        {recorder.recording && <span title="录音中" style={{ width: 8, height: 8, borderRadius: '50%', background: theme.accent, boxShadow: `0 0 0 0 ${theme.accent}`, animation: 'cc-rec-pulse 1.2s ease-out infinite', flexShrink: 0 }} />}
-        {!recorder.recording && recorder.error && <span title={recorder.error} style={{ fontSize: 10.5, color: theme.accent, maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{recorder.error}</span>}
-        <ToolSep />
-        <TB icon="text" title={`加文字（在播放头，V2 轨）${insertMode ? ' · 插入模式：推后腾位' : ''}`} onClick={() => commands.addTextClip({ startFrame: playhead, ripple: insertMode })} />
-        <TB icon="copy" title="复制选中" onClick={() => state.selectedId && commands.duplicateItem(state.selectedId)} />
-        <TB icon="trash" title="删除选中" onClick={() => state.selectedId && commands.removeItem(state.selectedId)} />
-        <ToolSep />
-        <TB icon="prev" title="上一个标记 (【)" onClick={() => gotoMarker(-1)} />
-        <TB icon="bookmark" title="加标记（在播放头，M）" onClick={addMarkerAtPlayhead} />
-        <TB icon="next" title="下一个标记 (】)" onClick={() => gotoMarker(1)} />
+      <div className="cc-timeline-toolbar">
+        <div className="cc-timeline-tool-group">
+          <TB icon="plus" title="新建序列" onClick={() => commands.createTimeline()} />
+          <ToolSep />
+          <TB icon="cursor" title="选择模式 (V)：拖动移动 / 裁剪首尾" active={editMode === 'selection'} onClick={() => setEditMode('selection')} />
+          <TB icon="trim" title="修剪模式 (N)：裁剪片段边缘，后续片段自动跟随合缝（波纹）" active={editMode === 'trim'} onClick={() => setEditMode('trim')} />
+          <TB icon="blade" title="刀片模式 (B)：点击片段在该处切分" active={editMode === 'blade'} onClick={() => setEditMode('blade')} />
+          <TB icon="scissors" title="在播放头切分选中片段 (C)" onClick={bladeSelected} />
+          <TB icon="magnet" title={`磁性吸附：${snapping ? '开' : '关'} (S)`} active={snapping} onClick={() => setSnapping((s) => !s)} />
+          <ToolSep />
+          <span className="cc-mic-group">
+            <TB icon="mic" active={recorder.recording}
+              title={recorder.recording ? '● 录音中，点击停止' : recorder.error ? `录音失败：${recorder.error}` : '录制旁白（麦克风 → 音频轨）'}
+              disabled={!onRecordVoiceover} onClick={recorder.toggle} />
+            <Icon name="chevronDown" size={13} />
+          </span>
+          {recorder.recording && <span title="录音中" style={{ width: 8, height: 8, borderRadius: '50%', background: theme.accent, animation: 'cc-rec-pulse 1.2s ease-out infinite', flexShrink: 0 }} />}
+        </div>
         <span style={{ flex: 1 }} />
-        {/* center: transport + timecode */}
         <TB icon="play" title="播放 / 暂停 (空格)" onClick={() => playerRef.current?.toggle()} />
-        <span style={{ fontSize: 12.5, color: theme.text, fontVariantNumeric: 'tabular-nums', minWidth: 132, textAlign: 'center', letterSpacing: 0.2 }}>{fmt(playhead, state.fps)} / {fmt(total, state.fps)}</span>
+        <span className="cc-timeline-timecode">{fmt(playhead, state.fps)} / {fmt(total, state.fps)}</span>
         <span style={{ flex: 1 }} />
-        {/* right: view tools (zoom out · slider · zoom in · fit · reset) */}
         <TB icon="zoomOut" title="缩小时间轴 (⌘−)" onClick={() => zoomBy(1 / 1.4)} />
         <input type="range" min={0.5} max={6} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))}
-          title="缩放时间轴" style={{ width: 92, accentColor: theme.accent, cursor: 'pointer' }} />
+          title="缩放时间轴" className="cc-timeline-zoom" />
         <TB icon="zoomIn" title="放大时间轴 (⌘＋)" onClick={() => zoomBy(1.4)} />
         <TB icon="fit" title="适应宽度 (⇧Z)" onClick={fitToView} />
-        <button style={{ ...toolBtn, minWidth: 44, fontSize: 12, color: theme.textDim }} title="重置缩放 (100%)" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
+        <button className={`cc-caption-toggle${captionsVisible ? ' active' : ''}`} title="字幕显示" disabled={!state.captions} onClick={() => state.captions && commands.updateCaptions({ enabled: !captionsVisible })}><Icon name="captions" size={17} /><span>{captionsVisible ? '开启' : '关闭'}</span><Icon name="chevronDown" size={13} /></button>
+        <TB icon="fullscreen" title="全屏时间线" onClick={() => { if (document.fullscreenElement) void document.exitFullscreen(); else void scrollRef.current?.requestFullscreen(); }} />
       </div>
 
       {/* scrollable ruler + tracks (playhead spans both). Ctrl/⌘+wheel = time
@@ -403,7 +455,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
             onPointerDown={(e) => seekTo(e.clientX)}
             style={{ display: 'flex', height: RULER_H, borderBottom: `1px solid ${theme.border}`, fontSize: 10, color: theme.textDim, cursor: 'text' }}
           >
-            <div style={{ width: HEADER_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 6, background: theme.panel, borderRight: `1px solid ${theme.border}` }} />
+            <div className="cc-ruler-head" style={{ width: HEADER_W }}><span>{fmtClock(playhead, state.fps)}</span></div>
             <div style={{ position: 'relative', flex: 1 }}>
               {/* ticks span the whole visible width, not just the content */}
               {Array.from({ length: Math.ceil((innerW - HEADER_W) / px / (state.fps * 2)) + 1 }).map((_, i) => (
@@ -427,20 +479,63 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
           </div>
 
           {/* tracks */}
-          {TRACK_ORDER.map((trackId) => {
-            const meta = TRACK_META[trackId];
+          {trackIds.map((trackId) => {
+            const meta = metaOf(trackId);
+            const alias = trackAlias(state, trackId);
+            const config = state.tracks?.[trackId] ?? {};
             const items = state.items.filter((it) => it.track === trackId);
             const dragIsAudio = drag ? state.items.find((it) => it.id === drag.id)?.kind === 'audio' : false;
-            const isDropTarget = drag?.mode === 'move' && drag.targetTrack === trackId && meta.kind === (dragIsAudio ? 'audio' : 'video');
-            const hidden = state.tracks?.[trackId]?.hidden ?? false;
-            const muted = state.tracks?.[trackId]?.muted ?? false;
-            const flagBtn = (active: boolean): React.CSSProperties => ({ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, padding: 0, lineHeight: 1, color: theme.textDim, opacity: active ? 0.35 : 1 });
+            const isDropTarget = drag?.mode === 'move' && drag.targetTrack === trackId && meta.kind === (dragIsAudio ? 'audio' : 'video') && !state.tracks?.[trackId]?.locked;
+            const hidden = config.hidden ?? false;
+            const muted = config.muted ?? false;
+            const locked = config.locked ?? false;
+            const collapsed = config.collapsed ?? false;
+            const trackName = config.name || `${meta.kind === 'video' ? '视频' : '音频'} ${alias.slice(1)}`;
+            const busy = items.length > 0 || (state.transitions ?? []).some((transition) => transition.trackId === trackId);
+            const flagBtn = (active: boolean): React.CSSProperties => ({ width: 24, height: 24, display: 'grid', placeItems: 'center', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#c2c2c2', opacity: active ? 0.35 : 1 });
             return (
-              <div key={trackId} style={{ display: 'flex', height: rowHeightOf(trackId), borderBottom: `1px solid ${theme.border}`, background: isDropTarget ? '#1b2b1b' : undefined }}>
-                <div style={{ width: HEADER_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>
-                  <span style={{ background: meta.color, color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px' }}>{trackId}</span>
-                  <button style={flagBtn(hidden)} title={hidden ? '显示轨道' : '隐藏轨道'} onClick={() => commands.toggleTrackFlag(trackId, 'hidden')}>{hidden ? '🚫' : '👁'}</button>
-                  <button style={flagBtn(muted)} title={muted ? '取消静音' : '静音轨道'} onClick={() => commands.toggleTrackFlag(trackId, 'muted')}>{muted ? '🔇' : '🔊'}</button>
+              <div key={trackId} className="cc-track-row" style={{ height: rowHeightOf(trackId), background: isDropTarget ? '#1b2b1b' : undefined }}>
+                <div className="cc-track-head" style={{ width: HEADER_W, zIndex: captionMenu?.id === trackId ? 40 : 5 }}>
+                  <div className="cc-track-head-controls">
+                    <span className="cc-track-badge" title={trackId} style={{ background: meta.kind === 'video' ? '#5592c7' : '#65a878' }}>{alias}</span>
+                    <button style={flagBtn(hidden)} title={hidden ? '显示轨道' : '隐藏轨道'} onClick={() => commands.toggleTrackFlag(trackId, 'hidden')}><Icon name={hidden ? 'eyeOff' : 'eye'} size={15} /></button>
+                    <button style={flagBtn(muted)} title={muted ? '取消静音' : '静音轨道'} onClick={() => commands.toggleTrackFlag(trackId, 'muted')}><Icon name={muted ? 'volumeOff' : 'volume'} size={15} /></button>
+                    <button style={flagBtn(!captionsVisible)} title={captionsVisible ? '关闭字幕' : '开启字幕'} onClick={() => toggleCaptions(trackId)}><Icon name="captions" size={15} /></button>
+                    <button data-caption-menu-trigger style={flagBtn(false)} title="字幕样式与翻译" onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setCaptionError(null);
+                      setCaptionMenu((open) => open?.id === trackId ? null : { id: trackId, left: Math.min(rect.right + 5, window.innerWidth - 310), top: 8 });
+                    }}><Icon name="chevronDown" size={13} /></button>
+                    <span className="cc-track-head-spacer" />
+                    <button className="cc-track-fixed-action" title={collapsed ? '展开轨道' : '折叠轨道'} onClick={() => commands.updateTrack(trackId, { collapsed: !collapsed })}>{collapsed ? '+' : '−'}</button>
+                    <button className="cc-track-fixed-action" disabled={busy} title={busy ? '只能删除空轨道' : '删除轨道'} onClick={() => commands.deleteTracks([trackId])}><Icon name="trash" size={14} /></button>
+                  </div>
+                  {!collapsed && <span className="cc-track-name">{trackName}{config.role ? ` · ${config.role}` : ''}</span>}
+                  {captionMenu?.id === trackId && (
+                    <div className="cc-caption-style-menu" style={{ position: 'fixed', left: captionMenu.left, top: captionMenu.top }} onPointerDown={(e) => e.stopPropagation()}>
+                      <div className="cc-caption-style-title">样式</div>
+                      <div className="cc-caption-style-list">
+                        {CAPTION_STYLES.map((style) => (
+                          <button key={style.id} className={state.captions?.template === style.id ? 'active' : ''} onClick={() => applyCaptionStyle(trackId, style.id)}>
+                            <span className="cc-caption-style-swatch" style={{ background: style.highlightBackground ?? '#292929', color: style.highlightBackground ? style.highlightColor : style.color, fontFamily: style.fontFamily, WebkitTextStroke: style.strokeWidth ? `${Math.min(1, style.strokeWidth)}px ${style.strokeColor}` : undefined }}>Aa</span>
+                            <span>{style.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <button className="cc-caption-style-save" disabled title="自定义样式编辑器完成后启用">＋ 保存当前样式...</button>
+                      <div className="cc-caption-translate-wrap">
+                        <button className="cc-caption-translate" disabled={captionBusy} onClick={() => setCaptionMenu((menu) => menu ? { ...menu, translateOpen: !menu.translateOpen } : menu)}>
+                          <span>文A</span><span>{captionBusy ? '翻译中...' : '翻译字幕'}</span><span>›</span>
+                        </button>
+                        {captionMenu.translateOpen && (
+                          <div className="cc-caption-language-menu">
+                            {CAPTION_LANGS.map((lang) => <button key={lang} onClick={() => void translateCaptions(lang)}>{lang}</button>)}
+                          </div>
+                        )}
+                      </div>
+                      {captionError && <div className="cc-caption-style-error">{captionError}</div>}
+                    </div>
+                  )}
                 </div>
                 <div style={{ flex: 1, position: 'relative', background: theme.bg, opacity: hidden ? 0.4 : 1 }}>
                   {items.map((it) => {
@@ -465,17 +560,24 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
                         onContextMenu={(e) => { e.preventDefault(); commands.selectItem(it.id); setCtxMenu({ id: it.id, x: e.clientX, y: e.clientY }); }}
                         style={{
                           position: 'absolute', left: Math.max(0, start) * px, top: 4, height: rowHeightOf(trackId) - 8, width: dur * px,
-                          background: meta.kind === 'video' ? theme.clipVideo : theme.clipAudio,
-                          borderRadius: 5, color: '#fff', fontSize: 10.5,
-                          display: 'flex', alignItems: 'center', padding: '0 10px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
-                          border: selected ? '2px solid #fff' : '2px solid transparent',
-                          cursor: editMode === 'blade' ? 'crosshair' : 'grab', userSelect: 'none', touchAction: 'none',
+                          background: it.kind === 'motion-graphic' ? '#513446' : meta.kind === 'video' ? '#55996a' : 'linear-gradient(180deg,#3b724c 0 52%,#61a272 52%)',
+                          backgroundImage: (it.kind === 'image' || it.kind === 'video') && it.src ? `linear-gradient(90deg, transparent 0%, rgba(30,65,38,.62) 70%), url(${it.src})` : undefined,
+                          backgroundSize: 'auto 100%', backgroundRepeat: 'no-repeat',
+                          borderRadius: 3, color: '#101510', fontSize: 11,
+                          display: 'flex', alignItems: 'flex-end', padding: '0 8px 5px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
+                          border: selected ? '2px solid #f2f2f2' : '1px solid rgba(255,255,255,.08)',
+                          cursor: locked ? 'not-allowed' : editMode === 'blade' ? 'crosshair' : 'grab', userSelect: 'none', touchAction: 'none',
                         }}
                       >
+                        {it.kind === 'audio' && (
+                          <svg className="cc-audio-waveform" viewBox="0 0 120 24" preserveAspectRatio="none" aria-hidden>
+                            <path d="M0 12 2 9 4 15 6 6 8 17 10 10 12 14 14 4 16 19 18 8 20 16 22 11 24 13 26 7 28 17 30 5 32 20 34 9 36 15 38 12 40 6 42 18 44 10 46 14 48 8 50 17 52 4 54 19 56 11 58 13 60 7 62 16 64 9 66 15 68 5 70 18 72 10 74 14 76 8 78 17 80 6 82 19 84 11 86 13 88 7 90 16 92 9 94 15 96 4 98 18 100 10 102 14 104 8 106 17 108 6 110 19 112 11 114 14 116 8 118 16 120 12" />
+                          </svg>
+                        )}
                         {/* trim handles (hidden in blade mode) */}
                         {editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
-                        <span style={{ pointerEvents: 'none' }}>✦ {it.name}</span>
+                        <span style={{ position: 'relative', zIndex: 1, pointerEvents: 'none', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>{it.kind === 'motion-graphic' ? '✦ ' : ''}{it.name}</span>
                         {editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', right: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
                       </div>
@@ -504,8 +606,8 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
           )}
 
           {/* playhead */}
-          <div style={{ position: 'absolute', top: 0, left: HEADER_W + playhead * px, width: 2, height: RULER_H + tracksHeight, background: theme.accent, pointerEvents: 'none' }}>
-            <div style={{ position: 'absolute', top: 0, left: -4, width: 10, height: 10, background: theme.accent, clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
+          <div style={{ position: 'absolute', top: 0, left: HEADER_W + playhead * px, width: 1, height: RULER_H + tracksHeight, background: '#ececec', pointerEvents: 'none', boxShadow: '0 0 0 1px #0005' }}>
+            <div style={{ position: 'absolute', top: 0, left: -6, width: 13, height: 11, background: '#ececec', clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
           </div>
         </div>
       </div>
@@ -520,6 +622,17 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
             onExportMg={exportMg} onConvertToVideo={convertToVideo} />
         );
       })()}
+
+      {feedbackOpen && (
+        <div className="cc-feedback-popover" role="dialog" aria-label="问题反馈">
+          <strong>问题反馈</strong>
+          <span>请在聊天区描述问题，当前工程状态会一并保留。</span>
+          <button onClick={() => setFeedbackOpen(false)}>知道了</button>
+        </div>
+      )}
+      <button className="cc-feedback-button" title="问题反馈" aria-label="问题反馈" onClick={() => setFeedbackOpen((open) => !open)}>
+        <Icon name="bug" size={20} />
+      </button>
 
       {/* single-clip render status (导出 MG / 转为视频 take a few seconds) */}
       {clipJob && (

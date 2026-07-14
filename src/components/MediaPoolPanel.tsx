@@ -1,74 +1,210 @@
 import { useRef, useState } from 'react';
-import { theme } from '../theme';
-import type { MediaAsset } from '../editor/types';
+import { Icon } from './icons';
+import type { MediaAsset, MediaFolder } from '../editor/types';
 
 interface MediaPoolPanelProps {
   assets: MediaAsset[];
+  folders: MediaFolder[];
   fps: number;
   onImport: (file: File) => Promise<void>;
   onAddAsset: (asset: MediaAsset) => void;
+  onCreateFolder: (name: string, parentId?: string) => string;
+  onRenameFolder: (id: string, name: string) => void;
+  onDeleteFolder: (id: string) => void;
+  onMoveAssets: (ids: string[], folderId?: string) => void;
+  onRenameAsset: (id: string, name: string) => void;
+  onSetFavorite: (id: string, favorite: boolean) => void;
 }
 
-// 「我的素材」— import local video/image/audio, then click to place on the timeline.
-export function MediaPoolPanel({ assets, fps, onImport, onAddAsset }: MediaPoolPanelProps) {
+type SortKey = 'newest' | 'name' | 'duration';
+type TypeFilter = 'all' | MediaAsset['kind'];
+type PromptState = { title: string; initialValue: string; rejectSlash?: boolean; onSubmit: (value: string) => void };
+type DeleteState = { id: string; name: string; parentId?: string };
+
+function folderPath(folder: MediaFolder, folders: MediaFolder[]): string {
+  const parts = [folder.name];
+  const seen = new Set([folder.id]);
+  let parentId = folder.parentId;
+  while (parentId && !seen.has(parentId)) {
+    seen.add(parentId);
+    const parent = folders.find((item) => item.id === parentId);
+    if (!parent) break;
+    parts.unshift(parent.name);
+    parentId = parent.parentId;
+  }
+  return parts.join('/');
+}
+
+function durationLabel(frames: number, fps: number): string {
+  const seconds = Math.max(0, Math.round(frames / fps));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+export function MediaPoolPanel({
+  assets, folders, fps, onImport, onAddAsset, onCreateFolder, onRenameFolder,
+  onDeleteFolder, onMoveAssets, onRenameAsset, onSetFavorite,
+}: MediaPoolPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<SortKey>('newest');
+  const [type, setType] = useState<TypeFilter>('all');
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [view, setView] = useState<'grid' | 'list'>('grid');
+  const [menu, setMenu] = useState<'sort' | 'filter' | null>(null);
+  const [assetMenu, setAssetMenu] = useState<string | null>(null);
+  const [currentFolderId, setCurrentFolderId] = useState<string>();
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [promptState, setPromptState] = useState<PromptState | null>(null);
+  const [promptValue, setPromptValue] = useState('');
+  const [deleteState, setDeleteState] = useState<DeleteState | null>(null);
+
+  const currentFolder = folders.find((folder) => folder.id === currentFolderId);
+  const childFolders = folders.filter((folder) => folder.parentId === currentFolderId);
+  const order = new Map(assets.map((asset, index) => [asset.id, index]));
+  const q = query.trim().toLowerCase();
+  const visible = assets
+    .filter((asset) => (q ? asset.name.toLowerCase().includes(q) : asset.folderId === currentFolderId))
+    .filter((asset) => type === 'all' || asset.kind === type)
+    .filter((asset) => !favoritesOnly || asset.favorite)
+    .sort((a, b) => sort === 'name'
+      ? a.name.localeCompare(b.name, 'zh-CN')
+      : sort === 'duration'
+        ? b.durationInFrames - a.durationInFrames
+        : (order.get(b.id) ?? 0) - (order.get(a.id) ?? 0));
+  const selectedAssets = assets.filter((asset) => selected.has(asset.id));
 
   const onPick = async (files: FileList | null) => {
     if (!files?.length) return;
     setBusy(true);
     setError(null);
     try {
-      for (const f of Array.from(files)) await onImport(f);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      for (const file of Array.from(files)) await onImport(file);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = '';
     }
   };
+  const openPrompt = (next: PromptState) => { setPromptValue(next.initialValue); setPromptState(next); };
+  const submitPrompt = () => {
+    const value = promptValue.trim();
+    if (!promptState || !value) return;
+    if (promptState.rejectSlash && value.includes('/')) { setError('名称不能包含 /'); return; }
+    promptState.onSubmit(value);
+    setPromptState(null);
+  };
+  const createFolder = () => openPrompt({
+    title: '新文件夹名称', initialValue: '', rejectSlash: true,
+    onSubmit: (name) => setCurrentFolderId(onCreateFolder(name, currentFolderId)),
+  });
+  const renameFolder = () => currentFolder && openPrompt({
+    title: '重命名文件夹', initialValue: currentFolder.name, rejectSlash: true,
+    onSubmit: (name) => onRenameFolder(currentFolder.id, name),
+  });
+  const deleteFolder = () => {
+    if (currentFolder && !assets.some((asset) => asset.folderId === currentFolder.id)
+      && !folders.some((folder) => folder.parentId === currentFolder.id)) {
+      setDeleteState({ id: currentFolder.id, name: currentFolder.name, parentId: currentFolder.parentId });
+    }
+  };
+  const toggleSelected = (id: string) => setSelected((old) => {
+    const next = new Set(old);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleAll = () => setSelected((old) => {
+    const next = new Set(old);
+    const allSelected = visible.length > 0 && visible.every((asset) => next.has(asset.id));
+    for (const asset of visible) { if (allSelected) next.delete(asset.id); else next.add(asset.id); }
+    return next;
+  });
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: 12, gap: 10 }}>
-      <input ref={inputRef} type="file" accept="video/*,image/*,audio/*" multiple hidden onChange={(e) => onPick(e.target.files)} />
-      <button onClick={() => inputRef.current?.click()} disabled={busy}
-        style={{ border: `1px dashed ${theme.border}`, background: theme.panelAlt, color: theme.text, borderRadius: 8, padding: '12px', fontSize: 13, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>
-        {busy ? '导入中…' : '＋ 导入素材（视频 / 图片 / 音频）'}
-      </button>
-      {error && <div style={{ fontSize: 11, color: '#f88' }}>{error}</div>}
-
-      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        {assets.length === 0 ? (
-          <div style={{ color: theme.textDim, fontSize: 12, padding: '8px 2px', lineHeight: 1.6 }}>
-            还没有素材。点上方导入本地视频/图片/音频，再点缩略图加到时间线。
-          </div>
-        ) : (
-          <>
-            <div style={{ fontSize: 11, color: theme.textDim, marginBottom: 8 }}>{assets.length} 个素材 · 点击加到时间线</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
-              {assets.map((a) => (
-                <button key={a.id} onClick={() => onAddAsset(a)} title={`加到时间线：${a.name}`}
-                  style={{ cursor: 'pointer', textAlign: 'left', padding: 0, overflow: 'hidden', border: `1px solid ${theme.border}`, borderRadius: 8, background: theme.panelAlt, color: theme.text }}>
-                  <div style={{ aspectRatio: '16 / 9', background: '#0c0c0c', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
-                    {a.kind === 'image' ? (
-                      <img src={a.src} alt={a.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : a.kind === 'video' ? (
-                      <video src={a.src} muted preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <span style={{ fontSize: 24 }}>🎵</span>
-                    )}
-                  </div>
-                  <div style={{ padding: '5px 7px', display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' }}>
-                    <span style={{ fontSize: 10.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</span>
-                    <span style={{ fontSize: 10, color: theme.textDim, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{(a.durationInFrames / fps).toFixed(1)}s</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
+    <div className="cc-media-pool" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void onPick(event.dataTransfer.files); }}>
+      <input ref={inputRef} type="file" accept="video/*,image/*,audio/*" multiple hidden onChange={(event) => onPick(event.target.files)} />
+      <div className="cc-media-toolbar">
+        <label className="cc-media-search">
+          <Icon name="search" size={18} />
+          <input aria-label="搜索素材" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索" />
+        </label>
+        <button className="cc-media-icon" aria-label="上传素材" title="上传素材" disabled={busy} onClick={() => inputRef.current?.click()}><Icon name="upload" size={19} /></button>
+        <button className="cc-media-icon" aria-label="新建文件夹" title="新建文件夹" onClick={createFolder}><Icon name="folderPlus" size={20} /></button>
+        <button className="cc-media-icon" aria-label="切换网格列表" title="切换网格/列表" onClick={() => setView((value) => value === 'grid' ? 'list' : 'grid')}><Icon name={view === 'grid' ? 'list' : 'grid'} size={19} /></button>
+        <div className="cc-media-menu-anchor">
+          <button className={`cc-media-icon${menu === 'sort' ? ' active' : ''}`} aria-label="素材排序" title="排序" onClick={() => setMenu((value) => value === 'sort' ? null : 'sort')}><Icon name="sort" size={19} /></button>
+          {menu === 'sort' && <div className="cc-media-popover cc-media-sort-menu">
+            {([['newest', '最新导入'], ['name', '名称 A–Z'], ['duration', '时长']] as const).map(([value, label]) => <button key={value} className={sort === value ? 'selected' : ''} onClick={() => { setSort(value); setMenu(null); }}>{label}</button>)}
+          </div>}
+        </div>
+        <div className="cc-media-menu-anchor">
+          <button className={`cc-media-icon${menu === 'filter' || type !== 'all' || favoritesOnly ? ' active' : ''}`} aria-label="筛选素材" title="筛选" onClick={() => setMenu((value) => value === 'filter' ? null : 'filter')}><Icon name="filter" size={19} /></button>
+          {menu === 'filter' && <div className="cc-media-popover cc-media-filter-menu">
+            {([['all', '全部'], ['video', '视频'], ['image', '图片'], ['audio', '音频']] as const).map(([value, label]) => <button key={value} className={type === value ? 'selected' : ''} onClick={() => setType(value)}>{label}</button>)}
+            <button className={favoritesOnly ? 'selected' : ''} onClick={() => setFavoritesOnly((value) => !value)}>★ 收藏</button>
+          </div>}
+        </div>
       </div>
+
+      {(currentFolder || childFolders.length > 0) && <div className="cc-media-breadcrumb">
+        <button aria-label="返回上级文件夹" disabled={!currentFolder} onClick={() => setCurrentFolderId(currentFolder?.parentId)}>←</button>
+        <span>Master{currentFolder ? ` / ${folderPath(currentFolder, folders)}` : ''}</span>
+        {currentFolder && <button aria-label="重命名文件夹" onClick={renameFolder}>重命名</button>}
+        {currentFolder && <button aria-label="删除空文件夹" disabled={assets.some((asset) => asset.folderId === currentFolder.id) || folders.some((folder) => folder.parentId === currentFolder.id)} onClick={deleteFolder}>删除</button>}
+      </div>}
+      {error && <div className="cc-media-error">{error}</div>}
+      {busy && <div className="cc-media-status">正在导入素材…</div>}
+
+      {selectedAssets.length > 0 && <div className="cc-media-selection">
+        <button onClick={toggleAll}>{visible.every((asset) => selected.has(asset.id)) ? '清除选择' : '全选'}</button>
+        <span>已选 {selectedAssets.length}</span>
+        <button onClick={() => selectedAssets.forEach(onAddAsset)}>加到时间线</button>
+        <select aria-label="移动所选素材" defaultValue="" onChange={(event) => { onMoveAssets(selectedAssets.map((asset) => asset.id), event.target.value === '__root__' ? undefined : event.target.value); setSelected(new Set()); event.target.value = ''; }}>
+          <option value="" disabled>移动到…</option><option value="__root__">Master</option>
+          {folders.map((folder) => <option key={folder.id} value={folder.id}>{folderPath(folder, folders)}</option>)}
+        </select>
+      </div>}
+
+      <div className={`cc-media-grid ${view}`}>
+        {!q && childFolders.map((folder) => <button key={folder.id} className="cc-folder-card" onClick={() => setCurrentFolderId(folder.id)}>
+          <span><Icon name="folder" size={34} /></span><strong>{folder.name}</strong>
+        </button>)}
+        {visible.map((asset) => <div key={asset.id} className={`cc-asset-card${selected.has(asset.id) ? ' selected' : ''}`}>
+          <div className="cc-asset-thumb-wrap">
+            <button className="cc-asset-thumb" title={`加到时间线：${asset.name}`} onClick={() => onAddAsset(asset)}>
+              {asset.kind === 'image' ? <img src={asset.src} alt={asset.name} />
+                : asset.kind === 'video' ? <video src={asset.src} muted preload="metadata" />
+                  : <Icon name="music" size={42} strokeWidth={2.2} />}
+            </button>
+            {asset.kind === 'audio' && <span className="cc-asset-audio-mark"><Icon name="volume" size={14} /></span>}
+            <span className="cc-asset-duration">{durationLabel(asset.durationInFrames, fps)}</span>
+            <input className="cc-asset-check" aria-label={`选择 ${asset.name}`} type="checkbox" checked={selected.has(asset.id)} onChange={() => toggleSelected(asset.id)} />
+            <button className="cc-asset-more" aria-label={`管理 ${asset.name}`} onClick={() => setAssetMenu((value) => value === asset.id ? null : asset.id)}><Icon name="more" size={17} /></button>
+          </div>
+          <button className="cc-asset-name" title={asset.name} onClick={() => onAddAsset(asset)}>{asset.name}</button>
+          {assetMenu === asset.id && <div className="cc-media-popover cc-asset-menu">
+            <button onClick={() => { onSetFavorite(asset.id, !asset.favorite); setAssetMenu(null); }}>{asset.favorite ? '取消收藏' : '收藏'}</button>
+            <button onClick={() => { setAssetMenu(null); openPrompt({ title: '素材显示名称', initialValue: asset.name, onSubmit: (name) => onRenameAsset(asset.id, name) }); }}>重命名</button>
+            <select aria-label={`移动 ${asset.name}`} value={asset.folderId ?? ''} onChange={(event) => { onMoveAssets([asset.id], event.target.value || undefined); setAssetMenu(null); }}>
+              <option value="">Master</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folderPath(folder, folders)}</option>)}
+            </select>
+          </div>}
+        </div>)}
+      </div>
+      {visible.length === 0 && childFolders.length === 0 && <div className="cc-media-empty">{assets.length === 0 ? '拖入或上传视频、图片和音频' : '当前筛选下没有素材'}</div>}
+
+      {promptState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={promptState.title}>
+        <form className="cc-modal" onSubmit={(event) => { event.preventDefault(); submitPrompt(); }}>
+          <strong>{promptState.title}</strong>
+          <input autoFocus aria-label={promptState.title} value={promptValue} onChange={(event) => setPromptValue(event.target.value)} />
+          <div><button type="button" onClick={() => setPromptState(null)}>取消</button><button type="submit" className="primary">确定</button></div>
+        </form>
+      </div>}
+      {deleteState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label="删除空文件夹">
+        <div className="cc-modal"><strong>删除空文件夹「{deleteState.name}」？</strong><div><button onClick={() => setDeleteState(null)}>取消</button><button className="danger" onClick={() => { onDeleteFolder(deleteState.id); setCurrentFolderId(deleteState.parentId); setDeleteState(null); }}>删除</button></div></div>
+      </div>}
     </div>
   );
 }

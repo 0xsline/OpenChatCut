@@ -8,7 +8,7 @@ import type { TranscriptWord } from '../transcript/types';
 // edited (words deleted / silence compressed) the caption words are re-projected
 // onto the edited timeline (see retimeWords) — captions follow edits. If no item
 // is referenced, `words` + `offsetFrames` provide a standalone (sample) source.
-export type CaptionTemplate = 'plain' | 'tiktok' | 'netflix';
+export type CaptionTemplate = 'plain' | 'persona' | 'off-the-wall' | 'the-french-dispatch' | 'dogme' | 'boyz-n-the-hood' | 'bubble-pop' | 'submagic' | 'story' | 'bili' | 'luxe' | 'noir' | 'atelier' | 'product' | 'signal' | 'studio' | 'white-card' | 'bold-outline' | 'deyi-card' | 'tiktok' | 'netflix';
 export type CaptionPacing = 'word' | 'phrase';
 
 /** One translated caption phrase, timed on the (edited) timeline in ms. */
@@ -49,7 +49,7 @@ const LINGER_MS = 1500;
 
 // Group words into display pages: one word each (word pacing), or short phrases
 // broken on punctuation / length / a big pause (phrase pacing).
-export function paginate(words: TranscriptWord[], pacing: CaptionPacing): CaptionPage[] {
+export function paginate(words: TranscriptWord[], pacing: CaptionPacing, maxPhraseWords = MAX_PHRASE_WORDS): CaptionPage[] {
   if (pacing === 'word') return words.map((w) => ({ words: [w], start: w.start, end: w.end }));
   const pages: CaptionPage[] = [];
   let cur: TranscriptWord[] = [];
@@ -61,7 +61,7 @@ export function paginate(words: TranscriptWord[], pacing: CaptionPacing): Captio
     cur.push(words[i]);
     const next = words[i + 1];
     const bigGap = next ? next.start - words[i].end > GAP_MS : false;
-    if (cur.length >= MAX_PHRASE_WORDS || SENTENCE_END.test(words[i].text) || bigGap) flush();
+    if (cur.length >= maxPhraseWords || SENTENCE_END.test(words[i].text) || bigGap) flush();
   }
   flush();
   return pages;

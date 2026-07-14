@@ -5,7 +5,7 @@ import { GlTransition } from '../gl/GlTransition';
 import { ClipFx, firstGlEffect } from '../gl/ClipFx';
 import { keptSegments } from '../transcript/edit';
 import { zoomAt } from './zoom';
-import { GLSL_TRANSITION_TYPES } from './types';
+import { GLSL_TRANSITION_TYPES, timelineTrackIds, trackKind } from './types';
 import type { AspectFit, CssTransitionType, GlslTransitionType, TimelineItem, TimelineState, TransitionDirection } from './types';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
@@ -96,7 +96,7 @@ function TransitionIn({ type, L, dir, children }: { type: CssTransitionType; L: 
 // One audio clip. With a transcript attached it renders the KEPT segments
 // (deleted words' source ranges are skipped, remaining ranges play back-to-back);
 // otherwise it plays the whole source.
-function AudioClip({ item, fps, muted }: { item: TimelineItem; fps: number; muted: boolean }) {
+function AudioClip({ item, fps, muted, gainAt }: { item: TimelineItem; fps: number; muted: boolean; gainAt: (frame: number) => number }) {
   const vol = muted ? 0 : item.volume ?? 1;
   if (item.transcript && item.transcript.length) {
     const del = new Set(item.deletedWordIdx ?? []);
@@ -104,7 +104,7 @@ function AudioClip({ item, fps, muted }: { item: TimelineItem; fps: number; mute
       <>
         {keptSegments(item.transcript, del, fps, item.startFrame, { maxGapFrames: item.silenceFrames }).map((seg, k) => (
           <Sequence key={`${item.id}_${k}`} from={seg.fromFrame} durationInFrames={seg.durFrames} name={item.name}>
-            <Audio src={item.src!} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame} volume={vol} />
+            <Audio src={item.src!} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame} volume={(f) => vol * gainAt(seg.fromFrame + f)} />
           </Sequence>
         ))}
       </>
@@ -113,13 +113,13 @@ function AudioClip({ item, fps, muted }: { item: TimelineItem; fps: number; mute
   return (
     <Sequence from={item.startFrame} durationInFrames={item.durationInFrames} name={item.name}>
       <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-        volume={(f) => vol * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
+        volume={(f) => vol * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
     </Sequence>
   );
 }
 
 // Imported image / video fills the canvas by the fit mode (objectFit).
-function MediaFill({ item, fit, muted, canvasW, canvasH }: { item: TimelineItem; fit: AspectFit; muted: boolean; canvasW: number; canvasH: number }) {
+function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt }: { item: TimelineItem; fit: AspectFit; muted: boolean; canvasW: number; canvasH: number; gainAt: (frame: number) => number }) {
   const objectFit = fit === 'cover' ? 'cover' : 'contain';
   const style: React.CSSProperties = { width: '100%', height: '100%', objectFit };
   // clip carries a WebGL effect → render pixels through the GL pass; video keeps
@@ -130,7 +130,7 @@ function MediaFill({ item, fit, muted, canvasW, canvasH }: { item: TimelineItem;
         <ClipFx item={item} fit={fit} width={canvasW} height={canvasH} />
         {item.kind !== 'image' && (
           <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-            volume={(f) => (muted ? 0 : item.volume ?? 1) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
+            volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
         )}
       </AbsoluteFill>
     );
@@ -140,7 +140,7 @@ function MediaFill({ item, fit, muted, canvasW, canvasH }: { item: TimelineItem;
       {item.kind === 'image'
         ? <Img src={item.src!} style={style} />
         : <OffthreadVideo src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-            volume={(f) => (muted ? 0 : item.volume ?? 1) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} style={style} />}
+            volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} style={style} />}
     </AbsoluteFill>
   );
 }
@@ -201,12 +201,23 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
   const isHidden = (t: TimelineItem['track']) => state.tracks?.[t]?.hidden ?? false;
   const isMuted = (t: TimelineItem['track']) => state.tracks?.[t]?.muted ?? false;
   const isVisual = (k: TimelineItem['kind']) => k === 'motion-graphic' || k === 'image' || k === 'video' || k === 'text';
+  const trackIds = timelineTrackIds(state);
+  const visualTracks = trackIds.filter((id) => trackKind(state, id) === 'video');
   // hidden track = fully disabled (no picture, no sound)
-  const visual = state.items.filter((it) => isVisual(it.kind) && (it.track === 'V1' || it.track === 'V2') && !isHidden(it.track));
-  // paint V1 below V2; within a track paint earlier clips first so a transition's
-  // incoming clip (later startFrame) composites on top of the outgoing one.
-  const ordered = [...visual].sort((a, b) => (a.track === b.track ? a.startFrame - b.startFrame : a.track === 'V1' ? -1 : 1));
+  const visual = state.items.filter((it) => isVisual(it.kind) && visualTracks.includes(it.track) && !isHidden(it.track));
+  // Paint visual bottom-to-top. Timeline rows are stored top-to-bottom.
+  const ordered = [...visual].sort((a, b) => a.track === b.track
+    ? a.startFrame - b.startFrame
+    : visualTracks.indexOf(b.track) - visualTracks.indexOf(a.track));
   const audio = state.items.filter((it) => it.kind === 'audio' && it.src && !isHidden(it.track));
+  const anchorRanges = state.items.filter((item) => state.tracks?.[item.track]?.role === 'anchor'
+    && !isHidden(item.track) && !isMuted(item.track) && !!item.src)
+    .map((item) => [item.startFrame, item.startFrame + item.durationInFrames] as const);
+  const duckGain = (track: TimelineItem['track'], frame: number): number => {
+    const config = state.tracks?.[track];
+    if (config?.role !== 'follower' || !anchorRanges.some(([from, to]) => frame >= from && frame < to)) return 1;
+    return 10 ** ((config.audioRouting?.duckDepthDb ?? -12) / 20);
+  };
   const fit: AspectFit = state.fit ?? 'contain';
 
   // A transition straddles the cut (source: half retreats into outgoing, half
@@ -260,7 +271,7 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
               ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
               : item.kind === 'text'
               ? <TextLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
-              : <MediaFill item={item} fit={fit} muted={isMuted(item.track)} canvasW={state.width} canvasH={state.height} />}
+              : <MediaFill item={item} fit={fit} muted={isMuted(item.track)} gainAt={(frame) => duckGain(item.track, frame)} canvasW={state.width} canvasH={state.height} />}
           </ClipWrapper>
         );
         return (
@@ -282,7 +293,7 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
         </Sequence>
       ))}
       {audio.map((item) => (
-        <AudioClip key={item.id} item={item} fps={state.fps} muted={isMuted(item.track)} />
+        <AudioClip key={item.id} item={item} fps={state.fps} muted={isMuted(item.track)} gainAt={(frame) => duckGain(item.track, frame)} />
       ))}
       {state.captions?.enabled && <CaptionsLayer captions={state.captions} items={state.items} />}
     </AbsoluteFill>
