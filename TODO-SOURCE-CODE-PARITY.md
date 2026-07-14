@@ -43,6 +43,7 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 - ✅ `search_fonts` + `submit_export` confirmFontFallback / nleFormat（`agent/font-tools.ts` + `fonts/googleFonts.ts`，§1.4 §2.5）— grok
 - ✅ 工程七件套 + `get_editor_url`（`agent/project-tools.ts` + soft-delete，§1.2 §1.5）— grok
 - ✅ 本地 upload 三件套（`agent/upload-tools.ts` + `/upload?assetId=`，§1.6）— grok
+- ✅ P3：`report_user_friction` + 隐藏音频转场假入口 + 隐藏 credits + @引用芯片 + 插入/覆盖落轨（§1.7§4.2–4.6）— grok
 
 ### 分工表
 
@@ -135,14 +136,13 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 
 ---
 
-### 1.7 ✅ Firecrawl 联网工具 · ❌ `report_user_friction`
+### 1.7 ✅ Firecrawl 联网工具 · ✅ `report_user_friction`
 
 | | |
 |--|--|
-| **源站** | schema 仅 `web_browser`（scrape）。 |
-| **本仓** | ✅ `web_browser`（scrape，含官方 branding/summary format）+ **`web_search` / `web_map` / `web_crawl` / `web_batch_scrape`**。`src/agent/web-tools.ts` + `vite-plugin-firecrawl.ts`（`/api/web-browser`、`/api/firecrawl/{search,map,crawl,batch}`）。key=`FIRECRAWL_API_KEY`。 |
-| **未接** | Firecrawl interact / monitor / parse 等。 |
-| **反馈** | `report_user_friction` 仍未做。 |
+| **本仓** | Firecrawl 工具齐；`friction-tools.ts` 本地 localStorage 环上报（`localDev`）。 |
+| **未接** | Firecrawl interact / monitor / parse 等（可选）。 |
+| **状态** | ✅ 2026-07-15 [G] |
 
 ---
 
@@ -290,39 +290,37 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 | **代码** | `src/library/drag.ts`；`ResourceBrowser`/`SoundBrowser`/`TemplateBrowser`；`Timeline.tsx` `applyLibraryToClip`；CSS `.cc-clip-badge` |
 | **若回归** | 查 MIME `application/x-chatcut-library`；徽章读 `item.effects` / `zoom` / `denoisedSrc` / transitions |
 
-### 4.2 🟡 音频转场 UI 占位
+### 4.2 ✅ 音频转场 UI 占位
 
 | | |
 |--|--|
-| **UI** | `LibraryPanel.tsx` 转场子 tab「音频转场」空态文案 |
-| **源** | library-catalog 无独立音频转场列表（或未导出） |
-| **怎么改** | 有产品定义再接；否则隐藏子 tab，避免假入口 |
+| **本仓** | 已隐藏「音频转场」假子 tab；仅展示画面转场。 |
+| **状态** | ✅ 2026-07-15 [G] |
 
-### 4.3 🟡 Ripple 全模式（insert/overwrite）
-
-| | |
-|--|--|
-| **本仓** | `store.rippleDeleteItem`；add 可选 ripple；**无工具栏 insert/overwrite 模式** |
-| **UI** | `Timeline.tsx` 工具栏 |
-| **怎么改** | 工具栏模式 state + 落轨/粘贴/move 走统一策略；agent `edit_item.ripple` 共用 |
-
-### 4.4 ❌ 积分门（源 G4）
+### 4.3 ✅ 落轨 insert/overwrite
 
 | | |
 |--|--|
-| **本仓** | `src/Editor.tsx`：`credits={18.5}` 写死；`TopBar.tsx` 展示 |
-| **怎么改** | 无后端则：本地 mock 钱包 + 生成工具扣减；或隐藏 credits。真扣费需服务端。 |
+| **本仓** | Timeline 工具栏「插入 / 覆盖」；库素材/模板 drop 时 `ripple=insert`。修剪波纹仍走 trim 模式。 |
+| **状态** | ✅ 2026-07-15 [G] |
 
-### 4.5 🟡 Followup UI vs 工具
-
-见 §1.1：UI 已在 chat，差 tool 注册。
-
-### 4.6 🟡 `@` 引用结构化
+### 4.4 ✅ 积分门
 
 | | |
 |--|--|
-| **UI** | `ChatComposer.tsx` |
-| **怎么改** | 插入 `{type,id,name}` 上下文块，runtime 拼进 user message；对照源 `chat_context_entry`（若 reverse 有描述）。 |
+| **本仓** | `credits={null}` 隐藏 TopBar 额度（本地无计费）。 |
+| **状态** | ✅ 2026-07-15 [G] |
+
+### 4.5 ✅ Followup UI vs 工具
+
+见 §1.1：`ask_followup_questions` 已注册。
+
+### 4.6 ✅ `@` 引用结构化
+
+| | |
+|--|--|
+| **本仓** | `useAgent` 已拼 `chat_context_entry`；ChatComposer 展示 selectedRefs 芯片可移除。 |
+| **状态** | ✅ 2026-07-15 [G] |
 
 ---
 
@@ -405,10 +403,11 @@ chatcut-clone/
 ### P3 可选
 
 - [x] `web_browser` Firecrawl（§1.7）
-- [ ] `report_user_friction`（§1.7）
-- [ ] 隐藏音频转场假入口（§4.2）
-- [ ] Ripple 模式工具栏（§4.3）
-- [ ] credits 隐藏或 mock（§4.4）
+- [x] `report_user_friction`（§1.7）
+- [x] 隐藏音频转场假入口（§4.2）
+- [x] 落轨 insert/overwrite 工具栏（§4.3）
+- [x] credits 隐藏（§4.4）
+- [x] `@` 引用芯片 + chat_context_entry（§4.6）
 
 ---
 

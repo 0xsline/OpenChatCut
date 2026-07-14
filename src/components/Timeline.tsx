@@ -283,6 +283,8 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
   // editing mode (source: Selection V / Blade B / Trim N). selection = drag/move;
   // blade = click a clip to cut it there; trim = edge-trim ripples following clips.
   const [editMode, setEditMode] = usePersistedState<'selection' | 'blade' | 'trim'>('cc.editMode', 'selection');
+  // insert = push later clips when dropping library media; overwrite = place without shift (§4.3)
+  const [placeMode, setPlaceMode] = usePersistedState<'insert' | 'overwrite'>('cc.placeMode', 'overwrite');
   // magnetic snapping (source: Snapping toggle, S). On = edges lock to guides.
   const [snapping, setSnapping] = usePersistedState('cc.snapping', true);
   const captionsVisible = !!state.captions?.enabled;
@@ -474,6 +476,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
   };
 
   const applyLibraryToTrack = (payload: LibraryDragPayload, trackId: TrackId, startFrame: number): boolean => {
+    const ripple = placeMode === 'insert';
     if (payload.kind === 'sound') {
       if (trackKind(state, trackId) !== 'audio') {
         // auto-pick an audio track
@@ -490,7 +493,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
           src: payload.src ?? `/sound-effects/${payload.id}.mp3`,
           durationInFrames: dur,
         },
-        { track: trackId, startFrame },
+        { track: trackId, startFrame, ripple },
       );
       return true;
     }
@@ -502,7 +505,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
       if (trackKind(state, t) !== 'video') {
         t = trackIds.find((id) => trackKind(state, id) === 'video') ?? defaultTrackId(state, 'video') ?? trackId;
       }
-      commands.addMotionGraphic(tpl, { track: t, startFrame });
+      commands.addMotionGraphic(tpl, { track: t, startFrame, ripple });
       return true;
     }
     return false;
@@ -686,6 +689,19 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
           <TB icon="blade" title="刀片模式 (B)：点击片段在该处切分" active={editMode === 'blade'} onClick={() => setEditMode('blade')} />
           <TB icon="scissors" title="在播放头切分选中片段 (C)" onClick={bladeSelected} />
           <TB icon="magnet" title={`磁性吸附：${snapping ? '开' : '关'} (S)`} active={snapping} onClick={() => setSnapping((s) => !s)} />
+          <ToolSep />
+          <TB
+            icon="insert"
+            title="插入落轨：库素材/模板拖入时把后续片段后推（波纹插入）"
+            active={placeMode === 'insert'}
+            onClick={() => setPlaceMode('insert')}
+          />
+          <TB
+            icon="film"
+            title="覆盖落轨：库素材/模板按帧位叠放，不推后续片段（默认）"
+            active={placeMode === 'overwrite'}
+            onClick={() => setPlaceMode('overwrite')}
+          />
           <ToolSep />
           <span className="cc-mic-group">
             <TB icon="mic" active={recorder.recording}

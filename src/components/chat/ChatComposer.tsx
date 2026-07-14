@@ -25,6 +25,9 @@ interface ChatComposerProps {
   onCreativeModeChange: (id: string | null) => void;
   references: RefItem[];
   onInsertRef: (reference: RefItem) => void;
+  /** Structured @ refs attached to the next send (source chat_context_entry). */
+  selectedRefs?: RefItem[];
+  onRemoveRef?: (id: string) => void;
   taRef: RefObject<HTMLTextAreaElement | null>;
   placeholder?: string;
 }
@@ -61,7 +64,11 @@ function Popover({ children, onClose }: { children: ReactNode; onClose: () => vo
 const REF_ICON: Record<RefItem['kind'], IconName> = { video: 'filePlay', image: 'filePlay', audio: 'fileHeadphone', 'motion-graphic': 'sparkles', template: 'sparkles' };
 
 export function ChatComposer(props: ChatComposerProps) {
-  const { value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange, autoApply, onAutoApplyChange, creativeMode, onCreativeModeChange, references, onInsertRef, taRef, placeholder } = props;
+  const {
+    value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange,
+    autoApply, onAutoApplyChange, creativeMode, onCreativeModeChange, references, onInsertRef,
+    selectedRefs = [], onRemoveRef, taRef, placeholder,
+  } = props;
   // 水合自定义技能(source manage_skill):挂载时读 IDB → 内存注册表,bump 触发重渲染
   // 让 allCreativeSkills()/findSkill 反映自定义技能。真源是 IDB,manage_skill 工具也水合同一份。
   const [, bumpCustom] = useState(0);
@@ -106,7 +113,34 @@ export function ChatComposer(props: ChatComposerProps) {
   };
 
   return (
-    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: 80, boxSizing: 'border-box', background: theme.panelAlt, border: `1px solid ${theme.borderLight}`, borderRadius: 8, padding: '6px 8px 5px' }}>
+    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 80, boxSizing: 'border-box', background: theme.panelAlt, border: `1px solid ${theme.borderLight}`, borderRadius: 8, padding: '6px 8px 5px' }}>
+      {selectedRefs.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }} title="发送时以 chat_context_entry 结构化注入">
+          {selectedRefs.map((r) => (
+            <span
+              key={r.id}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%',
+                fontSize: 11, lineHeight: 1.2, padding: '2px 6px', borderRadius: 999,
+                background: theme.panel, border: `1px solid ${theme.borderLight}`, color: theme.text,
+              }}
+            >
+              <Icon name={REF_ICON[r.kind]} size={12} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{r.name}</span>
+              {onRemoveRef && (
+                <button
+                  type="button"
+                  title="移除引用"
+                  onClick={() => onRemoveRef(r.id)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.textDim, padding: 0, lineHeight: 0, display: 'grid' }}
+                >
+                  <Icon name="x" size={11} />
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
       <textarea
         ref={taRef}
         value={value}
@@ -114,7 +148,7 @@ export function ChatComposer(props: ChatComposerProps) {
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(); } }}
         placeholder={placeholder ?? '告诉 AI 要做哪些修改 - @ 引用素材'}
         rows={1}
-        style={{ flex: 1, width: '100%', minHeight: 0, resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: theme.text, fontSize: 13, fontFamily: 'inherit', lineHeight: 1.4 }}
+        style={{ flex: 1, width: '100%', minHeight: 28, resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: theme.text, fontSize: 13, fontFamily: 'inherit', lineHeight: 1.4 }}
       />
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 2 }}>
         {/* left: mode + settings */}

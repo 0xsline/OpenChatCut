@@ -71,15 +71,12 @@ interface LibraryPanelProps {
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿'] as const;
 const SUB_TABS = ['MG 动画', '音效', '转场', '特效', '缩放', 'LUT', 'Audio'] as const;
-/** source 转场 tab: 画面转场 | 音频转场 pills */
-const TRANSITION_SUB = ['画面转场', '音频转场'] as const;
-
 export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, onImportMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom, onApplyIsolate, onClearIsolate }: LibraryPanelProps) {
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('我的素材');
   const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('MG 动画');
-  const [trSub, setTrSub] = useState<(typeof TRANSITION_SUB)[number]>('画面转场');
+  // 音频转场：源 catalog 无独立条目，已隐藏假入口（§4.2）
   const showAudioFx = mainTab === '资源库' && subTab === 'Audio'; // source Audio FX (not BGM)
   const showSfx = mainTab === '资源库' && subTab === '音效';     // sound effects
   const isTranscript = mainTab === '文字稿';
@@ -125,33 +122,17 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
           <SoundBrowser fps={fps} onAdd={onAddAudio} />
         ) : subTab === '转场' ? (
           <div className="cc-transition-browser">
-            <div className="cc-transition-subtabs">
-              {TRANSITION_SUB.map((t) => (
-                <button key={t} type="button" onClick={() => setTrSub(t)}
-                  className={`cc-transition-subtab${trSub === t ? ' selected' : ''}`}>{t}</button>
-              ))}
-            </div>
-            {trSub === '画面转场' ? (
-              <ResourceBrowser
-                layout="grid"
-                dragKind="transition"
-                hint="悬停预览 · 点击应用到选中片段（入场，需前一个相邻同轨片段）"
-                items={TRANSITION_ITEMS}
-                applicable={selectedItem != null}
-                onApply={(id) => onApplyTransition(id as TransitionType)}
-                renderThumb={(id, hovered) => (
-                  <TransitionThumb type={id as GlslTransitionType} playing={hovered} />
-                )}
-              />
-            ) : (
-              <div className="cc-resource-empty">
-                <div style={{ fontSize: 12, color: theme.textDim, lineHeight: 1.5, textAlign: 'center', padding: '28px 12px' }}>
-                  音频转场暂未接入（源站独立分类）。
-                  <br />
-                  画面转场共 {TRANSITION_ITEMS.length} 个，已全部支持。
-                </div>
-              </div>
-            )}
+            <ResourceBrowser
+              layout="grid"
+              dragKind="transition"
+              hint="悬停预览 · 点击应用到选中片段（入场，需前一个相邻同轨片段）"
+              items={TRANSITION_ITEMS}
+              applicable={selectedItem != null}
+              onApply={(id) => onApplyTransition(id as TransitionType)}
+              renderThumb={(id, hovered) => (
+                <TransitionThumb type={id as GlslTransitionType} playing={hovered} />
+              )}
+            />
           </div>
         ) : subTab === '特效' ? (
           <ResourceBrowser

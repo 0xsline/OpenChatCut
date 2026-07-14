@@ -201,7 +201,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     >
       <TopBar
         projectName={project.name}
-        credits={18.5}
+        credits={null}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={commands.undo}

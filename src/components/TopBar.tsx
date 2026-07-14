@@ -5,7 +5,8 @@ import { ExportHistory } from './ExportHistory';
 
 interface TopBarProps {
   projectName: string;
-  credits: number;
+  /** null/undefined = hide credits chip (local clone has no billing). */
+  credits?: number | null;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
@@ -79,11 +80,13 @@ export function TopBar({ projectName, credits, canUndo, canRedo, onUndo, onRedo,
         style={{ width: 58, height: 26, background: theme.accent, color: '#fff', border: 'none', borderRadius: 2, padding: 0, fontSize: 12, fontWeight: 600, cursor: exporting || !onExport ? 'default' : 'pointer', opacity: exporting || !onExport ? 0.6 : 1, marginLeft: 4 }}>
         {exporting ? '导出中…' : '导出'}
       </button>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: theme.text, marginLeft: 4 }} title={`剩余额度 ${credits.toFixed(1)}`}>
-        <span style={{ color: theme.accent, lineHeight: 0 }}><Icon name="sparkles" size={15} /></span>
-        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{credits.toFixed(1)}</span>
-      </div>
-      <div title="账户" style={{ width: 20, height: 20, borderRadius: '50%', marginLeft: 2, background: 'conic-gradient(from 210deg, #6d6cff, #ff5f9e, #ffb35f, #6d6cff)', flexShrink: 0 }} />
+      {typeof credits === 'number' && Number.isFinite(credits) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: theme.text, marginLeft: 4 }} title={`剩余额度 ${credits.toFixed(1)}（本地 mock）`}>
+          <span style={{ color: theme.accent, lineHeight: 0 }}><Icon name="sparkles" size={15} /></span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{credits.toFixed(1)}</span>
+        </div>
+      )}
+      <div title="账户（本地克隆无登录）" style={{ width: 20, height: 20, borderRadius: '50%', marginLeft: 2, background: 'conic-gradient(from 210deg, #6d6cff, #ff5f9e, #ffb35f, #6d6cff)', flexShrink: 0 }} />
     </header>
   );
 }

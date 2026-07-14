@@ -97,6 +97,15 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
     setSelectedRefs((current) => current.some((item) => item.id === reference.id) ? current : [...current, reference]);
     setInput((v) => `${v}${v && !v.endsWith(' ') ? ' ' : ''}@${reference.name} `);
   };
+  const removeRef = (id: string) => {
+    setSelectedRefs((current) => {
+      const gone = current.find((r) => r.id === id);
+      if (gone) {
+        setInput((v) => v.replace(new RegExp(`@${gone.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s?`, 'g'), '').trimStart());
+      }
+      return current.filter((r) => r.id !== id);
+    });
+  };
 
   if (collapsed) {
     return (
@@ -170,7 +179,9 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
           mode={mode} onModeChange={setMode}
           autoApply={autoApply} onAutoApplyChange={setAutoApply}
           creativeMode={creativeMode} onCreativeModeChange={onCreativeModeChange}
-          references={references} onInsertRef={insertRef} taRef={taRef}
+          references={references} onInsertRef={insertRef}
+          selectedRefs={selectedRefs} onRemoveRef={removeRef}
+          taRef={taRef}
           placeholder={messages.length === 0 ? '描述你想要创建的内容...' : '告诉 AI 要做哪些修改 - @ 引用素材'} />
       </div>
     </aside>
