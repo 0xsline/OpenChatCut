@@ -9,7 +9,7 @@
 > 总覆盖 ≈ **88 ✅ / 12 🟡 / 33 ❌**，加权 ≈ **70%**。
 > 但**产品核心域**（编辑器·时间线·音频·转写·字幕·MG·设计·生成·导出·Agent·技能·长转短，域 1–12+16，约 107 项）
 > 覆盖 ≈ **89%**（约 91✅ / 8🟡 / 8❌）。
-> **7-15 补漏 6 项**（本轮）：域2 `manage_markers`、域5 字幕 enum 3→21、域16 9:16 安全框、域10 字体载全 32 款(修静默回退)、域C `ripple`/`fade` 暴露给 agent、域6 MG→视频 `convert`/`register`(烘焙入池)。
+> **7-15 补漏 7 项**（本轮）：域2 `manage_markers`、域5 字幕 enum 3→21、域16 9:16 安全框、域10 字体载全 32 款(修静默回退)、域C `ripple`/`fade` 暴露给 agent、域6 MG→视频 `convert`/`register`(烘焙入池)、域B `view_asset_frames`(agent 看源资产帧)。
 > **更早升级为 ✅**：域3 人声隔离（DeepFilterNet3 真装 spawn `deep-filter`）、域1 版本历史（命名快照/回滚）、
 > 域12 `manage_skill` 自定义技能 CRUD、域4 多语言翻译变体（词级共享时间轴，护城河③）、域11 @引用结构化 + 导出历史/水印 + `edit_gap` 气口。
 > **生成域（域8）6 个 submit_\* 全真接后端**（OpenAI/Gemini/Seedance/Kling/ElevenLabs/Doubao/Mureka；`track_progress` 真轮询），
@@ -64,7 +64,7 @@
 - ✅ **字体加载修复（域10）** —— 实测预设+字幕引用 **32 款 Google 字体但只载 4 款**→静默回退(最明显视觉 bug)。修法:`googleFonts.ts` 静态载全 32 款(7 款中文厂字非 Google,只能回退待自托管);`main.tsx`+`remotion/Root.tsx` 都已调 `loadProjectFonts()` 故预览+导出同步修好。浏览器 `document.fonts` 实测 Anton/Playfair/Montserrat/Noto Sans SC… 10/10 已注册。(`search_fonts`/confirmFontFallback 门留后续。)
 - ✅ `ripple`/`fade` 暴露给 agent（域C 护城河①）—— `set_item_timing` 加 `fadeInSeconds`/`fadeOutSeconds`(秒→帧,reducer 按 clip 长封顶);`remove_item` 加 `ripple`(→ rippleDeleteItem 合缝);`add_motion_graphic`/`add_audio` 加 `ripple`(插入挤位,store 命令透传)。reducer 帧数学有 `ripple-fade.check.ts` 绿。
 - ✅ MG→视频 `convert_motion_graphic_to_video`+`register_converted_video`（域6）—— 新 `agent/mg-video-tools.ts`:convert 经现成 `/render-clip`(bakeClipToVideo)烘焙 clip→`addAsset` 入媒体池(可 replace 就地);register 导入已渲产物 URL。已注册。⚠ 本环境 ffmpeg 不能编码 alpha webm/vp9(clipExport.ts 自陈),故时间线视频是**不透明 h264**;透明 alpha 只能走 ProRes .mov 导出(域H `export_motion_graphic_prores`,待做)。
-- `view_asset_frames`（域B 唯一❌）+ `read_timeline` 加 view=assets/markers（域B）。
+- ✅ `view_asset_frames`（域B 唯一❌ → 补齐）—— `frames-tool.ts` 加此工具:构造单资产时间线(MediaAsset→TimelineItem,MG 带 code、视频/图带 src,画布取资产尺寸)走现成 `/render-still`,把源资产帧作图像回给模型(B-roll/多机位选片)。FRAMES 模块已注册故零接线。实测 /render-still 渲单项构造态返 200+真 PNG。(`read_timeline` view=assets 与 manage_media_pool 重叠,略。)
 - `edit_asset`（域9）改/删已生成 MG/effect 资产并重渲缩略图（与 create_from_code 真契约一对）。
 - i18n /zh /en · 自定义快捷键(keymap 存 localStorage) · dockview 可拖拽面板 · 导出历史评分 · agent 设置面板扩展 · brand-kit logo 上传（域7）。
 
