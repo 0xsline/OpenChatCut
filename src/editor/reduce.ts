@@ -20,6 +20,7 @@ export type Action =
   | { type: 'setZoom'; id: string; patch: Partial<ZoomEffect> | null }
   | { type: 'setEffects'; id: string; effects: ClipEffect[] }
   | { type: 'setSpeed'; id: string; rate: number }
+  | { type: 'replaceMedia'; id: string; src: string }
   | { type: 'addMarker'; marker: Marker }
   | { type: 'updateMarker'; id: string; patch: Partial<Marker> }
   | { type: 'removeMarker'; id: string }
@@ -66,7 +67,7 @@ export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void
 /** dispatch at the project level: per-timeline + project actions + undo/redo */
 export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' }) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState',
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc']);
 
@@ -159,6 +160,17 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       return {
         ...s,
         items: s.items.map((it) => (it.id === a.id ? { ...it, effects: a.effects.length ? a.effects : undefined } : it)),
+      };
+    case 'replaceMedia':
+      // 转为视频: swap an MG/text clip for the baked video, keeping its slot
+      // (track/start/duration/name/volume). Effects/transform/etc. are already
+      // rendered into the video, so they're dropped.
+      return {
+        ...s,
+        items: s.items.map((it) => (it.id === a.id
+          ? { id: it.id, track: it.track, startFrame: it.startFrame, durationInFrames: it.durationInFrames,
+              kind: 'video', name: it.name, src: a.src, volume: it.volume ?? 1 }
+          : it)),
       };
     case 'setSpeed':
       return {

@@ -28,11 +28,15 @@ interface ClipContextMenuProps {
   fxClip: FxClip | null;
   onCopyFx: (fx: FxClip) => void;
   onClose: () => void;
+  /** 导出 MG 动画 → ProRes 4444 alpha .mov download */
+  onExportMg: (item: TimelineItem) => void;
+  /** 转为视频 → bake to a video clip in place */
+  onConvertToVideo: (item: TimelineItem) => void;
 }
 
 const PASTE_HINT = '⌘⌥V';
 
-export function ClipContextMenu({ item, x, y, playhead, commands, fxClip, onCopyFx, onClose }: ClipContextMenuProps) {
+export function ClipContextMenu({ item, x, y, playhead, commands, fxClip, onCopyFx, onClose, onExportMg, onConvertToVideo }: ClipContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onDown = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
@@ -45,6 +49,7 @@ export function ClipContextMenu({ item, x, y, playhead, commands, fxClip, onCopy
   const [showSpeed, setShowSpeed] = useState(false);
   const inside = playhead > item.startFrame && playhead < item.startFrame + item.durationInFrames;
   const isVisual = item.kind !== 'audio';
+  const isDom = item.kind === 'motion-graphic' || item.kind === 'text'; // DOM clips → alpha MG export
   const canSpeed = item.kind === 'video' || item.kind === 'audio'; // playbackRate only affects av
   const rate = item.playbackRate ?? 1;
   const run = (fn: () => void) => () => { fn(); onClose(); };
@@ -89,8 +94,8 @@ export function ClipContextMenu({ item, x, y, playhead, commands, fxClip, onCopy
         </div>
       )}
       <Sep />
-      <Item label="导出 MG 动画" icon="⭳" pro disabled />
-      <Item label="转为视频" icon="▦" pro disabled />
+      <Item label="导出 MG 动画" icon="⭳" disabled={!isDom} onClick={run(() => onExportMg(item))} />
+      <Item label="转为视频" icon="▦" disabled={item.kind === 'audio'} onClick={run(() => onConvertToVideo(item))} />
       <Sep />
       <Item label="删除" icon="🗑" danger shortcut="⌫" onClick={run(() => commands.removeItem(item.id))} />
       <Item label="波纹删除（合缝）" icon="⇥" danger shortcut="⇧⌫" onClick={run(() => commands.rippleDeleteItem(item.id))} />

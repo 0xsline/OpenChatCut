@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
-import { MARKER_HEX, TRACK_ORDER, timelineDuration, type MarkerColor, type TimelineState, type TrackId } from '../editor/types';
+import { MARKER_HEX, TRACK_ORDER, timelineDuration, type MarkerColor, type TimelineItem, type TimelineState, type TrackId } from '../editor/types';
 import type { EditorCommands } from '../editor/store';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { ClipContextMenu, type FxClip } from './ClipContextMenu';
 import { Icon, type IconName } from './icons';
 import { useRecorder } from '../audio/recorder';
+import { exportClipMov, bakeClipToVideo } from '../media/clipExport';
 
 interface TimelineProps {
   state: TimelineState;
@@ -96,6 +97,18 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
   // clip right-click menu + effect clipboard (source: 复制效果/粘贴效果)
   const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [fxClip, setFxClip] = useState<FxClip | null>(null);
+  // single-clip render (导出 MG 动画 / 转为视频) status toast
+  const [clipJob, setClipJob] = useState<{ msg: string; error?: boolean } | null>(null);
+  const exportMg = async (it: TimelineItem) => {
+    setClipJob({ msg: '导出 MG 动画中（ProRes 4444）…' });
+    try { await exportClipMov(state, it); setClipJob(null); }
+    catch (e) { setClipJob({ msg: e instanceof Error ? e.message : '导出失败', error: true }); }
+  };
+  const convertToVideo = async (it: TimelineItem) => {
+    setClipJob({ msg: '转为视频中…' });
+    try { const src = await bakeClipToVideo(state, it); commands.replaceItemMedia(it.id, src); setClipJob(null); }
+    catch (e) { setClipJob({ msg: e instanceof Error ? e.message : '转换失败', error: true }); }
+  };
   const innerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [availH, setAvailH] = useState(190);
@@ -503,9 +516,21 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
         if (!item) return null;
         return (
           <ClipContextMenu item={item} x={ctxMenu.x} y={ctxMenu.y} playhead={playhead} commands={commands}
-            fxClip={fxClip} onCopyFx={setFxClip} onClose={() => setCtxMenu(null)} />
+            fxClip={fxClip} onCopyFx={setFxClip} onClose={() => setCtxMenu(null)}
+            onExportMg={exportMg} onConvertToVideo={convertToVideo} />
         );
       })()}
+
+      {/* single-clip render status (导出 MG / 转为视频 take a few seconds) */}
+      {clipJob && (
+        <div style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 200,
+          background: clipJob.error ? theme.accent : theme.panelAlt, color: clipJob.error ? '#fff' : theme.text,
+          border: `1px solid ${theme.borderLight}`, borderRadius: 8, padding: '9px 16px', fontSize: 12.5,
+          boxShadow: '0 8px 28px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span>{clipJob.msg}</span>
+          {clipJob.error && <button onClick={() => setClipJob(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 14 }}>✕</button>}
+        </div>
+      )}
     </section>
   );
 }

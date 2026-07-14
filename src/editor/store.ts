@@ -36,6 +36,8 @@ export interface EditorCommands {
   setItemEffects: (id: string, effects: ClipEffect[]) => void;
   /** set playback speed (source 变速); retimes the clip to keep its source span */
   setItemSpeed: (id: string, rate: number) => void;
+  /** replace a clip (MG/text) with a baked video at src, keeping its slot (转为视频) */
+  replaceItemMedia: (id: string, src: string) => void;
   /** add a ruler/clip marker at a frame (source manage_markers create); returns its id */
   addMarker: (fromFrame: number, opts?: { note?: string; color?: Marker['color']; durationFrames?: number; scope?: Marker['scope']; itemId?: string }) => string;
   updateMarker: (id: string, patch: Partial<Marker>) => void;
@@ -207,6 +209,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       setItemZoom: (id, patch) => dispatch({ type: 'setZoom', id, patch }),
       setItemEffects: (id, effects) => dispatch({ type: 'setEffects', id, effects }),
       setItemSpeed: (id, rate) => dispatch({ type: 'setSpeed', id, rate }),
+      replaceItemMedia: (id, src) => dispatch({ type: 'replaceMedia', id, src }),
       addMarker: (fromFrame, opts) => {
         const marker: Marker = {
           id: uid('mk'),

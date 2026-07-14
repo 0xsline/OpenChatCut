@@ -24,7 +24,7 @@ export function Root() {
     <Composition
       id="timeline"
       component={TimelineComposition}
-      defaultProps={{ state: EMPTY_STATE }}
+      defaultProps={{ state: EMPTY_STATE, transparent: false }}
       // Metadata comes from the timeline itself — same source of truth as the
       // Player (see timelineDuration in src/editor/types.ts). Min 1 frame.
       calculateMetadata={({ props }) => {

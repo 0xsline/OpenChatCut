@@ -82,6 +82,42 @@ export async function renderTimeline({ state, outputLocation, onProgress }) {
 }
 
 /**
+ * Render a single-clip sub-timeline to a video, optionally with alpha over a
+ * transparent background (source 导出 MG 动画 = ProRes 4444 alpha; 转为视频 =
+ * bake to an alpha webm). `state` should be a one-item timeline (item at frame 0).
+ * @param {object} args
+ * @param {import('../src/editor/types').TimelineState} args.state
+ * @param {string} args.outputLocation
+ * @param {'prores'|'vp8'|'h264'} [args.codec]
+ * @param {boolean} [args.transparent]  render over transparency + carry alpha
+ */
+export async function renderClip({ state, outputLocation, codec = 'vp8', transparent = true }) {
+  if (!state || !Array.isArray(state.items) || !state.items.length) {
+    throw new Error('renderClip: a single-item TimelineState is required');
+  }
+  if (!outputLocation) throw new Error('renderClip: outputLocation is required');
+  const serveUrl = await getServeUrl();
+  const inputProps = { state, transparent };
+  const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps });
+  await renderMedia({
+    serveUrl,
+    composition,
+    codec,
+    inputProps,
+    outputLocation,
+    // alpha: png intermediate carries the alpha channel; ProRes 4444 needs the
+    // explicit yuva444 pixel format (without it, it falls back to opaque 422).
+    // (vp8/vp9 alpha webm doesn't work in this ffmpeg build, so 转为视频 uses
+    // opaque h264 — see clipExport.ts.)
+    ...(transparent && codec === 'prores'
+      ? { proResProfile: '4444', imageFormat: 'png', pixelFormat: 'yuva444p10le' }
+      : {}),
+    chromiumOptions: { gl: 'angle' },
+  });
+  return outputLocation;
+}
+
+/**
  * Render still frames of a timeline as small JPEGs (source view_timeline_frames
  * — the agent "sees" its own draft edits). Returns [{frame, base64}].
  * @param {object} args
