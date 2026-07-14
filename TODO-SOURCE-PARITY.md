@@ -5,11 +5,11 @@
 > 由 5 个并行 agent 逐项对照 **当前 `src/` 真代码** vs **逆向源码规格** 重新核实。
 >
 > **口径**：✅ 已完成 · 🟡 部分 · ❌ 未做。共 132 项。
-> **总覆盖**：约 **75 ✅ / 12 🟡 / 45 ❌**，加权 ≈ **62%**（旧 42.8%）。
+> **总覆盖**：约 **77 ✅ / 12 🟡 / 43 ❌**，加权 ≈ **64%**（旧 42.8%）。
 > （2026-07-14 更新：域 7 设计风格、域 11 对话历史持久化、域 10 音频/范围导出；
 > 又一轮并行落地 域 4 说话人重命名/合并、域 5 逐词字幕覆盖、域 8 submit_shader）
 > 但只看**产品核心域（编辑器·Agent·媒体·字幕·生成，域 1–11+16，共 104 项）**，
-> 加权覆盖 ≈ **79%**（75✅/9🟡/20❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
+> 加权覆盖 ≈ **81%**（77✅/9🟡/18❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
 > "需真后端、单机克隆无对象可服务"的基建域（域 13/14/15 全 0%）。
 >
 > **开发纪律（本文存在的意义）**：做任何一项前，先读它在"源码依据"列指向的
@@ -34,7 +34,7 @@
 | 7 | 设计风格 / 品牌 | 2 | 1 | 1 | 0 | 核心 | ✅ manage_design_style:24 真 catalog 预设+owned 我的风格+自由 role+注入;brand-kit logo 🟡 |
 | 8 | AI 生成（花钱域） | 7 | 6 | 1 | 0 | 核心 | ✅ 5 生成工具 + submit_shader(LLM 写 GLSL→编译校验→注册特效);积分门 🟡 |
 | 9 | 素材 / 媒体 | 12 | 9 | 1 | 2 | 核心 | ✅ import_url_asset + search_stock_media(需key);缺工作区pull/presigned |
-| 10 | 导出 / 交付 | 12 | 6 | 1 | 5 | 核心 | MP4/字幕/音频/范围已做，缺 XML/异步/水印 |
+| 10 | 导出 / 交付 | 12 | 8 | 1 | 3 | 核心 | MP4/字幕/音频/范围 + ✅ 异步渲染 job+track_export + ✅ fcpxml 导出;缺水印/导出历史 |
 | 11 | Agent / 对话平台 | 10 | 6 | 4 | 0 | 核心 | ✅ 对话持久化(chat_block);仅剩 thinking UI 等 🟡 |
 | 16 | 长转短（专项） | 4 | 3 | 0 | 1 | 核心 | ✅ 智能切片(LLM 打分成片) + auto-reframe 自动检测;仅剩 9:16 安全区 overlay(纯 UI) |
 | 12 | 技能 Skills | 3 | 1 | 1 | 1 | 可搬 | ✅ 创作模式(8 真 agent-skills,选中注入系统提示);skill_guard/编辑器 🟡 |
@@ -57,7 +57,7 @@
 4. ✅ **创作模式技能预设 = 域12 + 域17**（纯前端）—— 已落地:从公开端点 `/public-api/agent-skills/catalog` **全搬 8 个真实 agent-skills**(`agent/skills-catalog.ts`,名字/zh名/摘要/scenarios/bodyMarkdown verbatim);`ChatComposer` 底栏「创作模式」下拉;选中→`creativeModePrompt` 把技能 body 注入 `runtime.ts` 的 system;每工程存 IDB(`creative-mode:<pid>`)。源:`agent_skill`。(未做工具过滤:源站技能不改可用工具集,只导流程。)
 5. **在线素材搜索 + URL→资产**（域9 ❌，成套）—— `agent/stock-tools.ts`（`search_stock_media` 归一 Pexels/Pixabay）+ `push_asset`/`download_media`（vite fetch→uploads→asset）。用户可见价值高。源：`复刻规格 §6`。
 6. ✅ **submit_shader 着色器生成**（域8）—— 已落地：`agent/shader-tools.ts` 用 `createMessage` 让 LLM 按 `renderFx` 真 uniform 契约(`u_input`/`u_resolution`/`u_aspect`/`u_time`+每 property 一个 `u_<key>`,`#version 300 es`)写 GLSL;静态校验(拒空/超长/`#include`/缺 `u_input`/缺 `main`/缺颜色输出/多余 sampler)+浏览器内真编译(WebGL2 抛弃上下文)双门;过关经 `gl/fx/effects.ts` 新增的 `registerCustomFx()` 原地并入 `ALL_FX`,`manage_effects add assetId=<effectId>` 立即可查可用。只做源 `type=effect` 分支(暂略 transition/referenceAssetIds)。检查 `shader-tools.check.ts` 绿。源：`复刻规格 §8 submit_shader`。
-7. **异步渲染 job + `track_export`**（域10 ❌）—— `/export` 改入队复用 `vite-generation-jobs.ts` 返 renderId；新 `track_export`（status/wait）。解锁统一交付路径（XML/音频/水印共用）。源：`submit_export`+`track_export`。
+7. ✅ **异步渲染 job + `track_export`**（域10）+ **fcpxml 导出** —— 异步:`POST /export/job` 复用 `createGenerationJob` 返 renderId + `track_export`(status/wait);fcpxml:`src/export/fcpxml.ts` + `submit_export format=xml`。详见域10 明细。commit 待提交。
 8. ✅ **manage_transcript 说话人重命名/合并**（域4）—— 已落地：`manage_transcript action=renameSpeaker(from,to)`,reducer 新 `renameSpeaker` 动作只把 `transcript[].speaker===from` 改成 `to`(text/start/end/词数/时长零改动,含无操作守卫,并入 `MUTATING` 单步可撤销);rename('A'→'主持人')与 merge('B'→'A')同一机制。此前 `fix` 改错字已做。剩多语变体未做。源：`manage_transcript`。
 9. ✅ **逐词字幕覆盖 `read_captions`+`edit_caption_words`**（域5）—— 已落地：`CaptionsData.wordOverrides:Record<number,{hidden?,text?,forceBreak?}>`(按**源 transcript 词序号**键,删词不重排);`resolve.ts` 加 `resolveCaptionWordIndices`+`applyWordOverrides`(隐藏丢弃/换文保时/forceBreak 算 breakBefore),`paginate` 加可选 `breakBefore` 参(无覆盖字节等同);`CaptionsLayer`(预览+burn-in)与 `generate/subtitles.ts`(SRT/TXT 导出)同一管线,屏幕=导出。新 `agent/captions-tools.ts`:`read_captions`(回每页词+index+override)/`edit_caption_words`(经现成 `updateCaptions` 命令落 IDB,越界回 errors 不抛)。检查 `captions-tools.check.ts` 绿。源：`edit_captions display_text`。（🟡 双语 `translate.ts` 暂不套 override——译文是独立叠层,词级隐藏错配轻微,留待多源合并一并处理。）
 
@@ -132,8 +132,8 @@
 - 🟡 **字体搜索 search_fonts** — 现静态 4 字体。源 `复刻规格 §6`。→ `agent/font-tools.ts` 查 Google Fonts + 导出前 `confirmFontFallback` 门 + 按需 loadFont。
 
 ### 域 10 · 导出 / 交付
-- ❌ **异步渲染 job + track_export** — 现同步流式。→ `/export` 入队复用 `vite-generation-jobs.ts` 返 renderId + `track_export`（status/wait）。
-- ❌ **导出 XML（fcpxml）** — 源 `submit_export format=xml`（fcp_xml/resolve）。→ `src/export/fcpxml.ts`，MG 引用已渲 ProRes。
+- ✅ **异步渲染 job + track_export** — `POST /export/job` 复用现成 `createGenerationJob` 入队返 renderId + `GET /export/job/:id` 快照；`agent/export-tools.ts`:`submit_render_job`(入队) + `track_export`(status/wait 轮询进度→ downloadUrl)。同步 `/export` 原样保留。renderId + 单渲染是对源多-render 的简化。live 实测:入队→running→succeeded→/media/uploads 文件。commit 待提交。
+- ✅ **导出 XML（fcpxml）** — `src/export/fcpxml.ts` `timelineToFcpxml(state)` 纯序列化→FCPXML 1.10(resources/library/sequence/spine,帧→有理时间 `frames/fps s`,轨道→lane,MG 无媒体→命名 gap 占位);`submit_export format=xml` 客户端 blob 下载(秒出无需渲染)。Premiere/达芬奇/FCP 可导入。commit 待提交。
 - ✅ **导出音频 mp3/wav** — `renderTimeline` 透传 `codec=mp3|wav`；`submit_export format=audio` 同步下载并返回 codec/文件名/字节数。
 - ❌ **免费档水印** — 源 `updateWatermark`。→ `TimelineComposition` 加 plan 门控水印层。
 - ❌ **导出历史 + 评分** — 源 `export_history`。→ 成功后写 IDB + 弹评分。

@@ -8,6 +8,7 @@ import { submitVideo, type SubmitVideoArgs } from '../generate/video';
 import { trackGenerationProgress } from '../generate/progress';
 import { submitSubtitleExport, type SubmitSubtitleExportArgs } from '../generate/subtitles';
 import { submitMediaExport, type SubmitMediaExportArgs } from '../generate/media-export';
+import { timelineToFcpxml } from '../export/fcpxml';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GPT 主攻文件 —— AI 生成套件（图 / 视频 / 配音 / 音乐 / 音效）
@@ -143,11 +144,11 @@ export const GENERATE_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'submit_export',
-    description: 'Export the active timeline synchronously as MP4/WebM video, MP3/WAV audio, or SRT/TXT subtitles. Optional frame boundaries use a half-open [startFrame, endFrameExclusive) range.',
+    description: 'Export the active timeline synchronously as MP4/WebM video, MP3/WAV audio, SRT/TXT subtitles, or an FCPXML project (format=xml) for editing in Final Cut Pro / DaVinci Resolve / Premiere. Optional frame boundaries use a half-open [startFrame, endFrameExclusive) range.',
     input_schema: {
       type: 'object',
       properties: {
-        format: { type: 'string', enum: ['video', 'audio', 'subtitles'] },
+        format: { type: 'string', enum: ['video', 'audio', 'subtitles', 'xml'] },
         codec: { type: 'string', enum: ['h264', 'vp8', 'mp3', 'wav'], description: 'Video: h264 (default) or vp8. Audio: mp3 (source default) or local WAV extension.' },
         subtitleFormat: { type: 'string', enum: ['srt', 'txt'], description: 'Defaults to srt.' },
         name: { type: 'string', description: 'Download filename.' },
@@ -319,7 +320,23 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
           };
           return { ok: true, ...await submitMediaExport(input, ctx.getState()) };
         }
-        return { error: 'format must be video, audio, or subtitles' };
+        if (format === 'xml') {
+          // FCPXML：纯序列化（fcpxml.ts）+ 客户端 blob 下载（无需渲染，秒出）。
+          const xml = timelineToFcpxml(ctx.getState(), { title: typeof args.name === 'string' ? args.name : undefined });
+          const base = (typeof args.name === 'string' && args.name ? args.name : 'timeline').replace(/\.(?:fcpxml|xml)$/i, '');
+          const filename = `${base}.fcpxml`;
+          const blob = new Blob([xml], { type: 'application/xml' });
+          const url = URL.createObjectURL(blob);
+          const anchor = document.createElement('a');
+          anchor.href = url;
+          anchor.download = filename; // JS 字符串，中文安全
+          document.body.appendChild(anchor);
+          anchor.click();
+          anchor.remove();
+          URL.revokeObjectURL(url);
+          return { ok: true, format: 'xml', name: filename, sizeBytes: blob.size };
+        }
+        return { error: 'format must be video, audio, subtitles, or xml' };
       } catch (error) {
         return { error: error instanceof Error ? error.message : String(error) };
       }
