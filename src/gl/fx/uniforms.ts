@@ -3,12 +3,15 @@
 // the source's gn(name, default, min, max) = clamp(properties[name] ?? default).
 
 export interface FxProperty {
-  key: string;   // source property name → uniform u_<key>
+  key: string;   // source property name (properties[key])
   label: string; // zh UI label
   default: number;
   min: number;
   max: number;
   step?: number;
+  /** shader uniform name; defaults to `u_<key>`. Set when the source maps a
+   * property to a differently-named uniform (e.g. rect-mask width→u_rect_width). */
+  uniform?: string;
 }
 
 export interface FxDef {
@@ -29,6 +32,6 @@ export function fxUniform(p: FxProperty, overrides?: Record<string, number>): nu
 /** the uniform map for an effect instance (u_<key> → clamped value) */
 export function fxUniforms(def: FxDef, overrides?: Record<string, number>): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const p of def.props) out[`u_${p.key}`] = fxUniform(p, overrides);
+  for (const p of def.props) out[p.uniform ?? `u_${p.key}`] = fxUniform(p, overrides);
   return out;
 }

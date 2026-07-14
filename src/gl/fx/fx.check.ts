@@ -26,4 +26,11 @@ const u = fxUniforms(luma, { intensity: 2, threshold: 99 });
 assert.deepStrictEqual(u, { u_intensity: 2, u_threshold: 0.2 }, 'u_<key> map + clamp');
 assert.ok(!('intensity' in u), 'raw key not emitted, only u_-prefixed');
 
+// explicit uniform override (rect-mask width→u_rect_width)
+const rect: FxDef = {
+  id: 'builtin:fx-rect-mask', name: '', desc: '', frag: '',
+  props: [{ key: 'width', label: '', default: 0.5, min: 0, max: 1, uniform: 'u_rect_width' }],
+};
+assert.deepStrictEqual(fxUniforms(rect, { width: 0.8 }), { u_rect_width: 0.8 }, 'uniform override wins over u_<key>');
+
 console.log('fx.check: OK');

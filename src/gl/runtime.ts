@@ -185,6 +185,8 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
 
       setUniform(prog, 'u_width', canvas.width);
       setUniform(prog, 'u_height', canvas.height);
+      setUniform(prog, 'u_canvas_width', canvas.width);
+      setUniform(prog, 'u_canvas_height', canvas.height);
       setUniform(prog, 'u_resolution', [canvas.width, canvas.height]);
       setUniform(prog, 'u_aspect', canvas.width / Math.max(1, canvas.height));
       for (const [k, v] of Object.entries(extra ?? {})) setUniform(prog, k, v);
