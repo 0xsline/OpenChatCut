@@ -217,7 +217,7 @@
       ["转场（12 种全量，含真 GLSL）", "done", "忠实源模型 transition_item 骑切点 + WebGL2 底座(src/gl/runtime.ts,源 vertex-texture-v1 契约)：6 个复杂转场跑源站原文 GLSL(翻页/焦点切换/有机溶解/冲击震动/蓄力推近/利落划线,视频/图片片段)，6 个简单转场 CSS 近似；DOM 片段回退溶解(同源站 DOM 层限制)。导出 chromiumOptions.gl+webpack frag loader，预览+导出抽帧双验证(纸卷绕面/燃边光晕)。源站 12", "P1", "claude"],
       ["标记 markers（点/段批注）", "done", "🔖/M 加标记，标尺书签图钉，点击弹编辑（批注+8色+时长→区间条），◃/▹ 或 [ ] 跳转，标记帧吸附。源站 manage_markers", "P1"],
       ["色度键 / 绿幕（合成键控）", "partial", "逆向发现源站合成键控真身=<b>luma-key</b>（builtin:fx-luma-key「黑底叠加/Screen」，非 RGB 绿幕抠色；PRD 的 chroma 多指 YUV 平面/色差，无独立绿幕着色器）——已按源着色器实现（<code>src/gl/fx/luma-key.frag</code>，过 ClipFx GL 通道，导出验证）。真 RGB 绿幕抠色源站无据，暂不臆造。", "P1", "claude"],
-      ["变速 / 重定时", "partial", "有改时长，无保音调变速。做：item playbackRate。源站 dH 含 rate 语义"],
+      ["变速 / 重定时", "done", "item.playbackRate（reduce setSpeed 保源区间重定时，clamp 0.1–8）；合成里 OffthreadVideo/Audio/ClipFx 全接 playbackRate；右键「变速」子菜单 0.25–4× 预设。验证:动态 testsrc rate2@f24==rate1@f48。源站 dH rate。无保音调（Web Audio pitch-preserve 待补）", "P1", "claude"],
     ]],
     ["3 · 音频处理", [
       ["音频片段 + 音量", "done", "<code>&lt;Audio/OffthreadVideo volume&gt;</code> + 属性面板音量滑块（音/视频片段 0–200%，setItemVolume）"],
@@ -357,7 +357,7 @@
       ["i18n（/zh /en）", "todo", "UI 双语（默认中文）"],
       ["dockview 可拖拽面板布局", "partial", "有固定分隔条+localStorage，非完整 dockview"],
       ["反馈组件", "todo", "报告问题/评分"],
-      ["编辑器 UI 细节对标源站", "partial", "已复刻(侦察源站 bundle)：时间线工具栏源站线条图标+三段式布局，<b>全部图标皆有功能</b>(选择V/修剪T/刀片B/播放头切分C/磁性吸附S/录制旁白mic/文字/复制/删除/标记跳转)、缩放滑杆、适应宽度(⇧Z)、Ctrl+滚轮光标锚定缩放、轨道头 sticky 左固定、片段右键上下文菜单(源站 Hyt 项序+PRO/禁用)、MG 库子分类 chips+⭐收藏+⋮菜单(用 AI 生成)。剩:轨道自定义名/锁定/角色ducking、canvas 渲染波形+缩略图", "P1", "claude"],
+      ["编辑器 UI 细节对标源站", "partial", "已复刻(侦察源站 bundle)：时间线工具栏源站线条图标+三段式布局，<b>全部图标皆有功能</b>(选择V/修剪T/刀片B/播放头切分C/磁性吸附S/录制旁白mic/文字/复制/删除/标记跳转)、缩放滑杆、适应宽度(⇧Z)、Ctrl+滚轮光标锚定缩放、轨道头 sticky 左固定、片段右键上下文菜单<b>项全部实现+去 PRO</b>(复制/切分/复制粘贴效果/变速子菜单 0.25–4×/导出 MG 动画=ProRes4444 alpha .mov 下载/转为视频=渲 h264 原位替换/删除/波纹删除；仅 AI 多机位同步 仍禁——需多选+音频对齐引擎)、MG 库子分类 chips+⭐收藏+⋮菜单(用 AI 生成)+缩略图预览。剩:转场/特效/缩放库卡片缩略图、轨道自定义名/锁定/角色ducking、canvas 渲染波形", "P1", "claude"],
     ]],
   ];
 
