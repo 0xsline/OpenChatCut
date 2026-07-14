@@ -45,10 +45,20 @@ function isLikelyNonSpeech(it: TimelineItem): boolean {
   return /背景音乐|bgm|\bmusic\b|score|ambient|音效|whoosh|sfx|instrumental/.test(n);
 }
 
-function clipLabel(it: TimelineItem): string {
+function clipLabel(it: TimelineItem, max = 28): string {
   const n = it.name?.trim() || it.id;
-  return n.length > 32 ? `${n.slice(0, 30)}…` : n;
+  return n.length > max ? `${n.slice(0, max - 1)}…` : n;
 }
+
+/** short chip label for dense nav (many clips) */
+function clipChipLabel(it: TimelineItem, index: number, total: number): string {
+  const max = total > 12 ? 10 : total > 6 ? 14 : 22;
+  const n = it.name?.trim() || it.id;
+  const short = n.length > max ? `${n.slice(0, max - 1)}…` : n;
+  return total > 8 ? `${index + 1}. ${short}` : short;
+}
+
+const MANY_CLIPS = 10;
 
 function trackTitle(t: TranscriptTrackOption): string {
   const name = t.name?.trim();
@@ -94,6 +104,8 @@ export function TranscriptPanel({
   const [translateError, setTranslateError] = useState<string | null>(null);
   const [focusItemId, setFocusItemId] = useState<string | null>(null);
   const [includeMusic, setIncludeMusic] = useState(false);
+  /** many clips: default show only the focused section to keep the list usable */
+  const [showAllSections, setShowAllSections] = useState(false);
 
   // Keep selection valid when project tracks change.
   useEffect(() => {
@@ -128,6 +140,16 @@ export function TranscriptPanel({
     [trackOptions, items],
   );
 
+  const jumpToClip = (id: string) => {
+    setFocusItemId(id);
+    // when only showing current section, still try scroll after paint
+    requestAnimationFrame(() => {
+      document.getElementById(`cc-tx-sec-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  };
+
+  const focusIndex = focusItem ? clips.findIndex((c) => c.id === focusItem.id) : -1;
+
   const transcribeTrack = async () => {
     if (!clips.length) return;
     const jobs = clips.map((c) => ({ path: c.src!, itemId: c.id, label: clipLabel(c) }));
@@ -139,6 +161,13 @@ export function TranscriptPanel({
       });
     } catch { /* hook holds error */ }
   };
+
+  const sectionsToShow = useMemo(() => {
+    if (showAllSections || clips.length <= MANY_CLIPS) return clips;
+    // dense mode: only the focused clip (fallback first)
+    const cur = focusItem ?? clips[0];
+    return cur ? [cur] : clips;
+  }, [clips, showAllSections, focusItem]);
 
   const applyPause = () => {
     if (!focusItem?.transcript?.length) return;
@@ -300,37 +329,91 @@ export function TranscriptPanel({
         ) : (
           <>
             {clips.length > 1 && (
-              <div className="cc-tx-clip-tabs">
-                {clips.map((c) => {
-                  const n = c.transcript?.length ?? 0;
-                  const done = n > 0;
-                  return (
+              <div className="cc-tx-nav">
+                <div className="cc-tx-nav-bar">
+                  <select
+                    className="cc-tx-nav-select"
+                    value={focusItem?.id ?? clips[0]?.id ?? ''}
+                    onChange={(e) => jumpToClip(e.target.value)}
+                    title="跳转到片段"
+                    aria-label="跳转到片段"
+                  >
+                    {clips.map((c, i) => {
+                      const n = c.transcript?.length ?? 0;
+                      return (
+                        <option key={c.id} value={c.id}>
+                          {i + 1}/{clips.length} · {clipLabel(c, 40)}{n ? ` · ${n}词` : ' · 未转写'}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <div className="cc-tx-nav-step">
                     <button
-                      key={c.id}
                       type="button"
-                      className={`cc-tx-clip-tab${focusItem?.id === c.id ? ' selected' : ''}${done ? '' : ' pending'}`}
-                      onClick={() => {
-                        setFocusItemId(c.id);
-                        document.getElementById(`cc-tx-sec-${c.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                      }}
+                      className="cc-tx-btn sm"
+                      disabled={focusIndex <= 0}
+                      onClick={() => focusIndex > 0 && jumpToClip(clips[focusIndex - 1]!.id)}
+                      title="上一段"
                     >
-                      {clipLabel(c)}
-                      {done ? ` · ${n}词` : ' · 未转写'}
+                      ‹
                     </button>
-                  );
-                })}
-                <button type="button" className="cc-tx-btn sm" disabled={busy} onClick={() => void transcribeTrack()}>
-                  {busy ? '…' : '重新转写'}
-                </button>
+                    <span className="cc-tx-nav-count">
+                      {Math.max(1, focusIndex + 1)}/{clips.length}
+                    </span>
+                    <button
+                      type="button"
+                      className="cc-tx-btn sm"
+                      disabled={focusIndex < 0 || focusIndex >= clips.length - 1}
+                      onClick={() => focusIndex >= 0 && focusIndex < clips.length - 1 && jumpToClip(clips[focusIndex + 1]!.id)}
+                      title="下一段"
+                    >
+                      ›
+                    </button>
+                  </div>
+                  <button type="button" className="cc-tx-btn sm" disabled={busy} onClick={() => void transcribeTrack()}>
+                    {busy ? '…' : '重新转写'}
+                  </button>
+                </div>
+                {/* Horizontal scroll — never multi-line wrap when clips pile up */}
+                <div className="cc-tx-clip-tabs" role="tablist" aria-label="片段列表">
+                  {clips.map((c, i) => {
+                    const n = c.transcript?.length ?? 0;
+                    const done = n > 0;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={focusItem?.id === c.id}
+                        className={`cc-tx-clip-tab${focusItem?.id === c.id ? ' selected' : ''}${done ? '' : ' pending'}`}
+                        onClick={() => jumpToClip(c.id)}
+                        title={`${clipLabel(c, 80)}${done ? ` · ${n}词` : ' · 未转写'}`}
+                      >
+                        {clipChipLabel(c, i, clips.length)}
+                        {done ? <span className="cc-tx-chip-meta">{n}</span> : <span className="cc-tx-chip-meta miss">·</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                {clips.length > MANY_CLIPS && (
+                  <label className="cc-tx-nav-mode">
+                    <input
+                      type="checkbox"
+                      checked={showAllSections}
+                      onChange={(e) => setShowAllSections(e.target.checked)}
+                    />
+                    列出全部 {clips.length} 段正文（默认只看当前段，避免列表过长）
+                  </label>
+                )}
               </div>
             )}
-            {/* Full track: every clip as a section — not just the focused chip (was the "only one" illusion). */}
             <div className="cc-tx-sections">
-              {clips.map((c) => {
+              {sectionsToShow.map((c) => {
                 const cWords = c.transcript ?? [];
                 const cDel = new Set(c.deletedWordIdx ?? []);
                 const cGroups = view === 'paragraph' ? toParagraphs(cWords) : toSegments(cWords);
                 const active = focusItem?.id === c.id;
+                const idx = clips.findIndex((x) => x.id === c.id);
                 return (
                   <section
                     key={c.id}
@@ -339,7 +422,9 @@ export function TranscriptPanel({
                     onClick={() => setFocusItemId(c.id)}
                   >
                     <header className="cc-tx-section-head">
-                      <span className="cc-tx-section-title">{clipLabel(c)}</span>
+                      <span className="cc-tx-section-title">
+                        {clips.length > 1 ? `${idx + 1}. ` : ''}{clipLabel(c, 36)}
+                      </span>
                       <span className="cc-tx-muted">
                         {(c.durationInFrames / fps).toFixed(1)}s
                         {cWords.length ? ` · ${cWords.length} 词` : ' · 未转写'}
@@ -381,6 +466,7 @@ export function TranscriptPanel({
               <div className="cc-tx-muted" style={{ marginTop: 10 }}>
                 已转写 {transcribed.length}/{clips.length} 段
                 {transcribed.length < clips.length ? ' · 可点「重新转写」补全失败段' : ''}
+                {clips.length > MANY_CLIPS && !showAllSections ? ' · 正文仅显示当前段' : ''}
               </div>
             )}
           </>
@@ -390,6 +476,7 @@ export function TranscriptPanel({
       <CaptionsControls
         captions={captions}
         hasTranscript={trackHasWords}
+        sourceVariants={(captions?.sourceItemId ? items.find((it) => it.id === captions.sourceItemId)?.variants : undefined) ?? []}
         onGenerate={generateCaptions}
         onUpdate={onUpdateCaptions}
         onRemove={() => onSetCaptions(null)}
