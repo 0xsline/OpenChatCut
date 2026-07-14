@@ -224,32 +224,33 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         <Divider onResize={(dx) => setLibW((w) => clamp(w + dx, ASSETS_MIN_W, Math.max(ASSETS_MIN_W, viewportW - (chatCollapsed ? 46 : chatW) - CANVAS_MIN_W - SPLITTER_TOTAL_W)))} />
       </div>
       <div style={{ gridColumn: 5, gridRow: 2, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+        {/* Preview flexes; inspector is always mounted (source: properties dock under preview) so the canvas cannot swallow the whole column. */}
         <PreviewPanel state={previewState ?? state} playerRef={playerRef} onImport={importToCanvas} />
-        {selectedItem && <InspectorPanel
-              templates={TEMPLATES}
-              selectedItem={selectedItem}
-              fps={state.fps}
-              onItemPropChange={(key, value) => state.selectedId && commands.updateItemProps(state.selectedId, { [key]: value })}
-              onItemVolumeChange={(v) => state.selectedId && commands.setItemVolume(state.selectedId, v)}
-              onItemFadeChange={(fade) => state.selectedId && commands.setItemFade(state.selectedId, fade)}
-              onItemTransformChange={(patch) => state.selectedId && commands.setItemTransform(state.selectedId, patch)}
-              onItemFiltersChange={(patch) => state.selectedId && commands.setItemFilters(state.selectedId, patch)}
-              onItemZoomChange={(patch) => state.selectedId && commands.setItemZoom(state.selectedId, patch)}
-              onItemEffectsChange={(effects) => state.selectedId && commands.setItemEffects(state.selectedId, effects)}
-              getPlayhead={getPlayhead}
-              onSetReframeKeyframe={(frame, fx, fy, mag) => state.selectedId && commands.setReframeKeyframe(state.selectedId, frame, fx, fy, mag)}
-              onRemoveReframeKeyframe={(frame) => state.selectedId && commands.removeReframeKeyframe(state.selectedId, frame)}
-              transition={state.transitions?.find((t) => t.incomingItemId === state.selectedId) ?? null}
-              onAddTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}
-              onSetTransition={(patch) => {
-                const t = state.transitions?.find((x) => x.incomingItemId === state.selectedId);
-                if (t) commands.setTransition(t.id, patch);
-              }}
-              onRemoveTransition={() => {
-                const t = state.transitions?.find((x) => x.incomingItemId === state.selectedId);
-                if (t) commands.removeTransition(t.id);
-              }}
-        />}
+        <InspectorPanel
+          templates={TEMPLATES}
+          selectedItem={selectedItem}
+          fps={state.fps}
+          onItemPropChange={(key, value) => state.selectedId && commands.updateItemProps(state.selectedId, { [key]: value })}
+          onItemVolumeChange={(v) => state.selectedId && commands.setItemVolume(state.selectedId, v)}
+          onItemFadeChange={(fade) => state.selectedId && commands.setItemFade(state.selectedId, fade)}
+          onItemTransformChange={(patch) => state.selectedId && commands.setItemTransform(state.selectedId, patch)}
+          onItemFiltersChange={(patch) => state.selectedId && commands.setItemFilters(state.selectedId, patch)}
+          onItemZoomChange={(patch) => state.selectedId && commands.setItemZoom(state.selectedId, patch)}
+          onItemEffectsChange={(effects) => state.selectedId && commands.setItemEffects(state.selectedId, effects)}
+          getPlayhead={getPlayhead}
+          onSetReframeKeyframe={(frame, fx, fy, mag) => state.selectedId && commands.setReframeKeyframe(state.selectedId, frame, fx, fy, mag)}
+          onRemoveReframeKeyframe={(frame) => state.selectedId && commands.removeReframeKeyframe(state.selectedId, frame)}
+          transition={state.transitions?.find((t) => t.incomingItemId === state.selectedId) ?? null}
+          onAddTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}
+          onSetTransition={(patch) => {
+            const t = state.transitions?.find((x) => x.incomingItemId === state.selectedId);
+            if (t) commands.setTransition(t.id, patch);
+          }}
+          onRemoveTransition={() => {
+            const t = state.transitions?.find((x) => x.incomingItemId === state.selectedId);
+            if (t) commands.removeTransition(t.id);
+          }}
+        />
       </div>
       <div style={{ gridColumn: '3 / -1', gridRow: 3 }}>
         <Divider orientation="horizontal" onResize={(dy) => setTimelineH((h) => clamp(h - dy, TIMELINE_MIN_H, Math.max(TIMELINE_MIN_H, viewportH - HEADER_H - 300)))} />

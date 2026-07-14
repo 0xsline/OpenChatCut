@@ -279,8 +279,13 @@ button, input, select { font: inherit; }
 .cc-preview-empty { width:182px; height:146px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:48px; border:1px dashed #ffffff1f; border-radius:10px; background:transparent; color:#777; cursor:pointer; font-size:12px; white-space:nowrap; }
 .cc-preview-empty:hover { border-color:#ffffff36; color:#aaa; }
 .cc-preview-empty:disabled { cursor:wait; opacity:.7; }
-.cc-preview-stage { flex:1; min-width:0; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; padding:12px 20px; background:#101010; }
-.cc-preview-stage > div { flex:0 1 auto; }
+/* Letterbox the player — never stretch past the stage; keep room for the inspector dock. */
+.cc-preview-stage {
+  flex:1 1 auto; min-width:0; min-height:0; max-height:100%;
+  display:flex; align-items:center; justify-content:center;
+  overflow:hidden; padding:10px 16px; background:#101010;
+}
+.cc-preview-stage > div { flex:0 1 auto; max-width:100%; max-height:100%; }
 
 .cc-modal-backdrop { position:fixed; inset:0; z-index:1000; display:grid; place-items:center; background:#0009; }
 .cc-modal { width:300px; max-width:calc(100vw - 32px); display:flex; flex-direction:column; gap:12px; padding:16px; border:1px solid #353535; border-radius:8px; background:#1c1c1c; color:#eee; box-shadow:0 18px 50px #000b; font-size:13px; }
@@ -720,13 +725,16 @@ button, input, select { font: inherit; }
 .cc-tx-clip-tab.pending { opacity:0.65; }
 .cc-tx-error { font-size:11.5px; color:#f88; margin-top:8px; line-height:1.4; }
 
-/* ── Compact inspector ── */
+/* ── Compact inspector (always docked under preview; does not unmount) ── */
 .cc-inspector {
   border-top:1px solid #363636; background:#181818;
-  display:flex; flex-direction:column; min-height:0; flex:0 0 auto;
-  max-height:38%; overflow:hidden;
+  display:flex; flex-direction:column; min-height:0;
+  flex:0 0 auto; /* don't let preview steal this space */
+  max-height:min(280px, 36%);
+  overflow:hidden;
 }
-.cc-inspector.collapsed { max-height:none; }
+.cc-inspector.collapsed { max-height:34px; }
+.cc-inspector:not(.collapsed) .cc-insp-body { min-height:72px; }
 .cc-insp-header {
   display:flex; align-items:center; gap:6px; width:100%; text-align:left;
   padding:6px 12px; font-size:12px; color:#9a9a9a; background:none; border:none;

@@ -46,7 +46,12 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
             compositionWidth={state.width}
             compositionHeight={state.height}
             style={{
-              width: 'auto', height: '100%', maxWidth: '100%', maxHeight: '100%',
+              // Contain inside stage — prefer max bounds + aspect, not height:100%
+              // (that filled the whole column when the inspector was gone).
+              width: 'auto',
+              height: 'auto',
+              maxWidth: '100%',
+              maxHeight: '100%',
               aspectRatio: `${state.width} / ${state.height}`,
             }}
             controls={false}
