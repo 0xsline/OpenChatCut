@@ -16,6 +16,7 @@ import { TEMPLATES } from './editor/initial';
 import { saveProject, type ProjectMeta } from './persist/projectStore';
 import { importMedia } from './media/upload';
 import { AUDIO_ASSETS } from './audio/library';
+import type { Tpl } from './types';
 
 interface EditorProps {
   initial: ProjectDoc;
@@ -89,6 +90,11 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const [libW, setLibW] = usePersistedState('cc.libW.source-ui-v5', Math.max(ASSETS_MIN_W, Math.floor(viewportW * 0.2772)));
   const [timelineH, setTimelineH] = usePersistedState('cc.timelineH.source-ui-v5', Math.max(TIMELINE_MIN_H, Math.floor((viewportH - HEADER_H) * 0.3818)));
   const [chatCollapsed, setChatCollapsed] = usePersistedState('cc.chatCollapsed', false);
+  const addTemplate = useCallback((tpl: Tpl) => commands.addMotionGraphic(tpl), [commands]);
+  const useTemplateAI = useCallback((tpl: Tpl) => {
+    setChatCollapsed(false);
+    setChatSeed({ text: `参考模板「${tpl.name}」，用 create_motion_graphic 生成一个类似风格的动画：`, nonce: Date.now() });
+  }, [setChatCollapsed]);
   const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
   // Export: POST the current timeline to the dev-server /export endpoint (which
@@ -173,7 +179,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       </div>
 
       <div style={{ gridColumn: 3, gridRow: 2, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-        <LibraryPanel templates={TEMPLATES} onAddTemplate={(tpl) => commands.addMotionGraphic(tpl)} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} onImportMedia={async (file) => { commands.addAsset(await importMedia(file, state.fps)); }} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onUseTemplateAI={(tpl) => { setChatCollapsed(false); setChatSeed({ text: `参考模板「${tpl.name}」，用 create_motion_graphic 生成一个类似风格的动画：`, nonce: Date.now() }); }}
+        <LibraryPanel templates={TEMPLATES} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} onImportMedia={async (file) => { commands.addAsset(await importMedia(file, state.fps)); }} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onUseTemplateAI={useTemplateAI}
           selectedItem={selectedItem}
           onApplyTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}
           onApplyFx={(assetId) => state.selectedId && commands.setItemEffects(state.selectedId, [{ id: `fx_${assetId}`, assetId, overrides: {} }])}

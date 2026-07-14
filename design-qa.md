@@ -49,6 +49,7 @@
 - Dynamic-track model evidence: `track-tools.check.ts` passed.
 - Source correction: the chevron beside CC is the caption-style/translation menu, not track management. The invented menu was removed; all 21 source presets and the 8-language submenu are now wired. Evidence: `/Users/qinpx/Desktop/project/chatcut-clone-gpt/qa-caption-style-menu.png`; `styles.check.ts` passed.
 - Caption menu closes on outside pointer interaction; live `/llm/v1/messages` translation produced `源样式测试` from `SOURCE STYLE TEST` and rendered it as the bilingual second line.
+- Playback regression on the self-created 3-second Bar Chart project passed: isolating the Remotion Player and 211-card template gallery from root playhead renders reduced the 6-second foreground run from `p95 116.6ms / 3971ms long tasks / 63 distinct frames` to `p95 33.4ms / 530ms long tasks / 86 distinct frames`.
 - Page console errors: none.
 
 final result: passed

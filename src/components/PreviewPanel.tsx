@@ -1,4 +1,4 @@
-import type { RefObject } from 'react';
+import { memo, type RefObject } from 'react';
 import { Player, type PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import { TimelineComposition } from '../editor/TimelineComposition';
@@ -10,7 +10,7 @@ interface PreviewPanelProps {
   onSetAspect: (width: number, height: number, fit?: AspectFit) => void;
 }
 
-export function PreviewPanel({ state, playerRef, onSetAspect }: PreviewPanelProps) {
+export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onSetAspect }: PreviewPanelProps) {
   const duration = timelineDuration(state);
   const fit: AspectFit = state.fit ?? 'contain';
   return (
@@ -62,6 +62,6 @@ export function PreviewPanel({ state, playerRef, onSetAspect }: PreviewPanelProp
       </div>
     </section>
   );
-}
+});
 
 const ratioBtn: React.CSSProperties = { border: `1px solid ${theme.border}`, borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer', fontVariantNumeric: 'tabular-nums' };
