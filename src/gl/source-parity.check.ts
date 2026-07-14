@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, TRANSITION_LABELS } from '../editor/types';
+import { AUDIO_TRANSITION_TYPES, CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, TRANSITION_LABELS } from '../editor/types';
 
 const files: Record<string, string> = {
   'fx/ascii-rain-blur.frag': '5b95563707c5cf9459fa904b3db9d5db55b19105158a5e73ddca3b3175672cf6',
@@ -21,7 +21,12 @@ for (const [name, expected] of Object.entries(files)) {
   assert.strictEqual(createHash('sha256').update(source).digest('hex'), expected, `${name} drifted from captured source`);
 }
 
-assert.strictEqual(GLSL_TRANSITION_TYPES.size, Object.keys(TRANSITION_LABELS).length, 'all source transitions must use GLSL');
+// Every PICTURE transition must be GLSL; audio-only transitions (audio-cross-fade)
+// carry a label but no shader, so exclude them from the visual-parity count.
+const audio = AUDIO_TRANSITION_TYPES as ReadonlySet<string>;
+const visualLabels = Object.keys(TRANSITION_LABELS).filter((t) => !audio.has(t));
+assert.strictEqual(GLSL_TRANSITION_TYPES.size, visualLabels.length, 'every non-audio transition must use GLSL');
+for (const type of visualLabels) assert.ok(GLSL_TRANSITION_TYPES.has(type), `${type} needs a GLSL shader`);
 for (const type of CSS_TRANSITION_TYPES) assert.ok(GLSL_TRANSITION_TYPES.has(type), `${type} needs GLSL plus CSS fallback`);
 
 console.log('source-parity.check: OK');
