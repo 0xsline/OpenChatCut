@@ -1,0 +1,87 @@
+// 版本历史(source /api/versions):按工程存的具名快照列表,恢复时复用
+// migrateProjectDoc 校验。与 projectStore 的 kv store 同库(chatcut-clone/kv),
+// 但不改 projectStore.ts —— 这里自己开同一个库(idb helper 是模块私有的)。
+import { migrateProjectDoc } from './projectStore';
+import type { ProjectDoc } from '../editor/types';
+
+const DB_NAME = 'chatcut-clone';
+const STORE = 'kv';
+const versionsKey = (projectId: string) => `versions:${projectId}`;
+
+export interface ProjectVersion {
+  id: string;
+  name: string;
+  createdAt: number;
+  doc: ProjectDoc;
+}
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbGet<T>(key: string): Promise<T | undefined> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(key);
+    req.onsuccess = () => resolve(req.result as T | undefined);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbSet(key: string, val: unknown): Promise<void> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).put(val, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// 边界校验:持久化数据不可信,先校验再用(id/name/createdAt + doc 经 migrateProjectDoc 规整)。
+function toValidVersion(v: unknown): ProjectVersion | null {
+  if (!v || typeof v !== 'object') return null;
+  const raw = v as Partial<ProjectVersion>;
+  if (typeof raw.id !== 'string' || typeof raw.name !== 'string' || typeof raw.createdAt !== 'number') return null;
+  const doc = migrateProjectDoc(raw.doc);
+  if (!doc) return null;
+  return { id: raw.id, name: raw.name, createdAt: raw.createdAt, doc };
+}
+
+async function readAll(projectId: string): Promise<ProjectVersion[]> {
+  const raw = await idbGet<unknown>(versionsKey(projectId));
+  if (!Array.isArray(raw)) return [];
+  return raw.map(toValidVersion).filter((v): v is ProjectVersion => v !== null);
+}
+
+/** 该工程的全部快照,最新在前。任何失败均返回空数组(不信任持久化数据)。 */
+export async function listVersions(projectId: string): Promise<ProjectVersion[]> {
+  try {
+    return (await readAll(projectId)).sort((a, b) => b.createdAt - a.createdAt);
+  } catch {
+    return [];
+  }
+}
+
+const newId = () =>
+  (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `v_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
+
+/** 保存当前工程文档为一个具名快照(前插,最新在前)。 */
+export async function saveVersion(projectId: string, name: string, doc: ProjectDoc): Promise<ProjectVersion> {
+  const version: ProjectVersion = { id: newId(), name: name.trim() || '未命名版本', createdAt: Date.now(), doc };
+  const current = await readAll(projectId);
+  await idbSet(versionsKey(projectId), [version, ...current]);
+  return version;
+}
+
+export async function deleteVersion(projectId: string, id: string): Promise<void> {
+  const current = await readAll(projectId);
+  await idbSet(versionsKey(projectId), current.filter((v) => v.id !== id));
+}

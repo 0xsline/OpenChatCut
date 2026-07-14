@@ -10,6 +10,7 @@ import { Timeline } from './components/Timeline';
 import { TimelineTabs } from './components/TimelineTabs';
 import { Divider } from './components/Divider';
 import { DesignStylePanel } from './components/DesignStylePanel';
+import { VersionHistory } from './components/VersionHistory';
 import { usePersistedState } from './hooks/usePersistedState';
 import { useEditor } from './editor/store';
 import type { ProjectDoc, TimelineState } from './editor/types';
@@ -64,6 +65,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const [chatSeed, setChatSeed] = useState<{ text: string; nonce: number; reference?: AgentReference } | null>(null);
   // 设计风格(品牌)编辑器弹窗 (source manage_design_style)
   const [showDesign, setShowDesign] = useState(false);
+  // 版本历史弹窗 (source /api/versions)
+  const [showVersions, setShowVersions] = useState(false);
 
   // Read the playhead only when an edit needs it. Continuous visual updates are
   // painted inside Timeline so playback does not re-render the whole editor.
@@ -170,10 +173,17 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         onRename={onRename}
         onToggleLayout={() => setChatCollapsed((v) => !v)}
         onDesignStyle={() => setShowDesign(true)}
+        onHistory={() => setShowVersions(true)}
       />
 
       {showDesign && (
         <DesignStylePanel style={doc.designStyle} onApply={commands.setDesignStyle} onClose={() => setShowDesign(false)} />
+      )}
+
+      {showVersions && (
+        <VersionHistory projectId={project.id} currentDoc={doc}
+          onRestore={(d) => { commands.applyDoc(d); setShowVersions(false); }}
+          onClose={() => setShowVersions(false)} />
       )}
 
       <ChatPanel ctx={agentCtx} projectId={project.id} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} seed={chatSeed} creativeMode={creativeMode} onCreativeModeChange={changeCreativeMode} />
