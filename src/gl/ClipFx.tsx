@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { AbsoluteFill, Img, Video, continueRender, delayRender, useCurrentFrame, useVideoConfig } from 'remotion';
 import { createGlRuntime, type GlRuntime } from './runtime';
-import { FX_EFFECTS, fxUniforms } from './fx/effects';
+import { ALL_FX, fxUniforms } from './fx/effects';
 import type { AspectFit, TimelineItem } from '../editor/types';
 
 // One video/image clip rendered through a per-clip WebGL effect (source
@@ -41,8 +41,8 @@ function drawFit(ctx: CanvasRenderingContext2D, el: MediaEl, fit: AspectFit): vo
 
 /** the first stack entry whose assetId is a registered GL effect */
 export function firstGlEffect(item: TimelineItem) {
-  const e = item.effects?.find((fx) => fx.assetId in FX_EFFECTS);
-  return e ? { fx: e, def: FX_EFFECTS[e.assetId] } : null;
+  const e = item.effects?.find((fx) => fx.assetId in ALL_FX);
+  return e ? { fx: e, def: ALL_FX[e.assetId] } : null;
 }
 
 export function ClipFx({ item, fit, width, height }: ClipFxProps) {

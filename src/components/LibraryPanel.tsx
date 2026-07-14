@@ -7,18 +7,16 @@ import { GLSL_TRANSITION_TYPES, TRANSITION_LABELS, ZOOM_SHAPE_LABELS } from '../
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
 import { AUDIO_ASSETS, type AudioAsset } from '../audio/library';
-import { FX_EFFECTS, FX_IDS } from '../gl/fx/effects';
+import { FX_EFFECTS, FX_IDS, LUT_EFFECTS, LUT_IDS } from '../gl/fx/effects';
 import { TranscriptPanel } from './TranscriptPanel';
 import { MediaPoolPanel } from './MediaPoolPanel';
 import { TemplateBrowser } from './TemplateBrowser';
 import { ResourceBrowser, type ResourceItem } from './ResourceBrowser';
 
-// the 2 built-in LUTs (source luts_items.json) — blocked: real .cube 3D LUTs on
-// the source CDN, and we don't touch its backend, so no data to apply.
-const LUT_PRESETS: ResourceItem[] = [
-  { id: 'builtin:slog3-s709', name: 'Sony S-Log3 s709', desc: 'Sony S-Log3 / S-Gamut3.Cine → Rec.709' },
-  { id: 'builtin:canon-log3-709', name: 'Canon Log3 → Canon 709', desc: 'Canon Cinema Gamut / Canon Log 3 → Canon 709' },
-];
+// the 2 built-in LUTs (source luts_items.json) — implemented via published
+// camera-log transfer functions (source ships them as real .cube data on its
+// CDN; we don't fetch its backend). Apply like an fx effect.
+const LUT_ITEMS: ResourceItem[] = LUT_IDS.map((id) => ({ id, name: LUT_EFFECTS[id].name, desc: LUT_EFFECTS[id].desc }));
 const TRANSITION_ITEMS: ResourceItem[] = (Object.keys(TRANSITION_LABELS) as TransitionType[]).map((t) => ({
   id: t, name: TRANSITION_LABELS[t], badge: GLSL_TRANSITION_TYPES.has(t) ? 'GLSL' : undefined,
 }));
@@ -115,8 +113,8 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
           <ResourceBrowser hint="点击给选中片段加一个缩放动画（默认 1.5×，可在属性面板细调）" items={ZOOM_ITEMS}
             applicable={isVisual} onApply={(id) => onApplyZoom(id as ZoomShape)} />
         ) : subTab === 'LUT' ? (
-          <ResourceBrowser hint="" items={LUT_PRESETS} applicable={false} onApply={() => {}}
-            disabledNote="源站 LUT 是真 .cube 3D 查找表（存于其 CDN /luts/）。按项目约束不接源站后端，故暂无 LUT 数据可用——可后续自带公开 .cube 或按 S-Log3/CLog3 传递函数公式实现。" />
+          <ResourceBrowser hint="点击把相机 log→Rec.709 调色应用到选中的视频/图片（强度可在属性面板细调；公式实现）" items={LUT_ITEMS}
+            applicable={selKind === 'video' || selKind === 'image'} onApply={(id) => onApplyFx(id)} />
         ) : (
           <div style={{ color: theme.textDim, fontSize: 12, padding: 8 }}>「{mainTab} · {subTab}」内容待接入。</div>
         )}

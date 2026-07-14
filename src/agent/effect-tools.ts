@@ -1,7 +1,9 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import type { ClipEffect, TimelineItem } from '../editor/types';
-import { FX_EFFECTS, FX_IDS } from '../gl/fx/effects';
+import { ALL_FX } from '../gl/fx/effects';
+const FX_EFFECTS = ALL_FX;
+const FX_IDS = Object.keys(ALL_FX);
 
 // manage_effects — the per-clip WebGL effect operations of the source's
 // `edit_item` transaction ({adds/updates/removes} with type:"effect", assetId,

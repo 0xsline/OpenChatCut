@@ -7,6 +7,8 @@ import crtFrag from './crt.frag?raw';
 import cameraShakeFrag from './camera-shake.frag?raw';
 import tiltShiftPass1Frag from './tilt-shift-pass1.frag?raw';
 import tiltShiftPass2Frag from './tilt-shift-pass2.frag?raw';
+import slog3Frag from './slog3-s709.frag?raw';
+import canonLog3Frag from './canon-log3-709.frag?raw';
 import type { FxDef } from './uniforms';
 
 // invert is a boolean in the source (helper oJ); modeled here as a 0/1 slider.
@@ -135,3 +137,28 @@ export const FX_EFFECTS: Record<string, FxDef> = {
 };
 
 export const FX_IDS = Object.keys(FX_EFFECTS);
+
+// LUTs (source category "lut"): camera-log → Rec.709 color transforms. Kept
+// separate from FX so the library shows them under their own LUT tab, but they
+// render through the same per-clip GL pipeline. intensity mixes original↔graded
+// (source lut_detail.json: propertyOverrides.intensity).
+export const LUT_EFFECTS: Record<string, FxDef> = {
+  'builtin:slog3-s709': {
+    id: 'builtin:slog3-s709',
+    name: 'Sony S-Log3 s709',
+    desc: 'Sony S-Log3 / S-Gamut3.Cine → Rec.709（公式实现，非源站 .cube）',
+    frag: slog3Frag,
+    props: [{ key: 'intensity', label: '强度', default: 1, min: 0, max: 1, step: 0.01 }],
+  },
+  'builtin:canon-log3-709': {
+    id: 'builtin:canon-log3-709',
+    name: 'Canon Log3 → Canon 709',
+    desc: 'Canon Cinema Gamut / Canon Log 3 → Canon 709（公式实现，非源站 .cube）',
+    frag: canonLog3Frag,
+    props: [{ key: 'intensity', label: '强度', default: 1, min: 0, max: 1, step: 0.01 }],
+  },
+};
+export const LUT_IDS = Object.keys(LUT_EFFECTS);
+
+// every per-clip GL effect (fx + lut) — ClipFx / agent / inspector resolve here
+export const ALL_FX: Record<string, FxDef> = { ...FX_EFFECTS, ...LUT_EFFECTS };

@@ -2,7 +2,8 @@ import { theme } from '../theme';
 import type { Tpl } from '../types';
 import type { ClipEffect, ClipFilters, ClipTransform, TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../editor/types';
 import { TRANSITION_LABELS, ZOOM_SHAPE_LABELS } from '../editor/types';
-import { FX_EFFECTS, FX_IDS } from '../gl/fx/effects';
+import { ALL_FX as FX_EFFECTS } from '../gl/fx/effects';
+const FX_IDS = Object.keys(FX_EFFECTS);
 import { usePersistedState } from '../hooks/usePersistedState';
 
 interface FadePatch {
