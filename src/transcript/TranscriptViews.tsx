@@ -81,6 +81,8 @@ interface ScriptViewProps {
   fps: number;
   gapCapsMs?: Record<string, number>;
   silenceFrames?: number;
+  /** min raw gap ms to show a Gap row (段落可略大，片段更细) */
+  minDisplayMs?: number;
   onWord: (w: IndexedWord) => void;
   /** delete/compress gap before word afterWordGi */
   onDeleteGap: (afterWordGi: number) => void;
@@ -88,11 +90,11 @@ interface ScriptViewProps {
   onCapGap: (afterWordGi: number, maxMs: number | null) => void;
 }
 
-/** Source-aligned 片段视图: speaker blocks + Gap: m:ss rows with trash. */
+/** Source-aligned script: speaker blocks + Gap: m:ss rows with trash (段落/片段共用). */
 export function ScriptView({
-  words, deleted, editMode, fps, gapCapsMs, silenceFrames, onWord, onDeleteGap, onCapGap,
+  words, deleted, editMode, fps, gapCapsMs, silenceFrames, minDisplayMs, onWord, onDeleteGap, onCapGap,
 }: ScriptViewProps) {
-  const rows = buildScriptRows(words, deleted, { gapCapsMs, silenceFrames, fps });
+  const rows = buildScriptRows(words, deleted, { gapCapsMs, silenceFrames, fps, minDisplayMs });
   const [adjustGi, setAdjustGi] = useState<number | null>(null);
 
   if (!rows.length) {

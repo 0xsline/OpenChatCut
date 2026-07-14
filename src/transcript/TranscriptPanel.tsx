@@ -3,8 +3,8 @@ import type { PlayerRef } from '@remotion/player';
 import type { TimelineItem, TrackId, TrackKind } from '../editor/types';
 import { useTranscript } from './useTranscript';
 import { msToFrame, type TranscriptWord } from './types';
-import { toParagraphs, analyzeSilences } from './segment';
-import { ParagraphView, ScriptView } from './TranscriptViews';
+import { analyzeSilences } from './segment';
+import { ScriptView } from './TranscriptViews';
 import { CaptionsControls } from '../captions/CaptionsControls';
 import type { CaptionsData } from '../captions/types';
 import { buildTranslation } from '../captions/translate';
@@ -87,7 +87,8 @@ export function TranscriptPanel({
   const { status, error, progressNote, runMany, reset } = useTranscript();
   const defaultId = useMemo(() => pickDefaultTrack(trackOptions, items), [trackOptions, items]);
   const [track, setTrack] = useState<TrackId | null>(defaultId);
-  // 片段视图 shows Gap rows (source-aligned); 段落 is continuous reading
+  // Both views use ScriptView (speaker blocks + Gap rows). segment uses a lower
+  // gap display threshold so more breaths show; paragraph is slightly coarser.
   const [view, setView] = useState<'paragraph' | 'segment'>('segment');
   const [editMode, setEditMode] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(false);
@@ -384,10 +385,10 @@ export function TranscriptPanel({
               {sectionsToShow.map((c) => {
                 const cWords = c.transcript ?? [];
                 const cDel = new Set(c.deletedWordIdx ?? []);
-                // 片段视图走 ScriptView（自建 rows）；段落视图才需要 toParagraphs
-                const cGroups = view === 'paragraph' ? toParagraphs(cWords) : [];
                 const active = focusItem?.id === c.id;
                 const idx = clips.findIndex((x) => x.id === c.id);
+                // 段落：较大停顿才显示 Gap；片段：更细的气口也显示
+                const minDisplayMs = view === 'paragraph' ? 400 : 250;
                 return (
                   <section
                     key={c.id}
@@ -406,17 +407,6 @@ export function TranscriptPanel({
                     </header>
                     {!cWords.length ? (
                       <div className="cc-tx-muted" style={{ padding: '4px 0 8px' }}>尚未转写此段</div>
-                    ) : view === 'paragraph' ? (
-                      <ParagraphView
-                        groups={cGroups}
-                        deleted={cDel}
-                        editMode={editMode && active}
-                        onWord={(w) => {
-                          setFocusItemId(c.id);
-                          if (editMode) onToggleWord(c.id, w.gi);
-                          else playerRef.current?.seekTo(c.startFrame + msToFrame(w.start, fps));
-                        }}
-                      />
                     ) : (
                       <ScriptView
                         words={cWords}
@@ -425,6 +415,7 @@ export function TranscriptPanel({
                         fps={fps}
                         gapCapsMs={c.gapCapsMs}
                         silenceFrames={c.silenceFrames}
+                        minDisplayMs={minDisplayMs}
                         onWord={(w) => {
                           setFocusItemId(c.id);
                           if (editMode) onToggleWord(c.id, w.gi);
