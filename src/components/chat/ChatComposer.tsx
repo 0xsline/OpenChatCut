@@ -4,9 +4,7 @@ import type { AgentReference } from '../../agent/context';
 import { Icon, type IconName } from '../icons';
 import { CREATIVE_SKILLS, allCreativeSkills, findSkill, setCustomSkills } from '../../agent/skills-catalog';
 import { loadCustomSkills } from '../../persist/skillStore';
-import {
-  loadAgentSettings, saveAgentSettings, type AgentSettings, type AgentSpeed, type MgQuality,
-} from '../../agent/agentSettings';
+import { loadAgentSettings, saveAgentSettings, type AgentSettings } from '../../agent/agentSettings';
 
 export type ChatMode = 'agent' | 'ask';
 export type RefItem = AgentReference;
@@ -183,58 +181,6 @@ export function ChatComposer(props: ChatComposerProps) {
           <BarBtn icon="sliders" title="设置" active={pop === 'settings'} onClick={() => toggle('settings')} />
           {pop === 'settings' && (
             <Popover onClose={() => setPop(null)}>
-              <div style={{ fontSize: 10.5, color: theme.textDim, padding: '4px 10px 6px', letterSpacing: 0.4 }}>Agent settings</div>
-
-              {/* Speed: Balance / Fast (source) */}
-              <div style={{ padding: '4px 10px 8px' }}>
-                <div style={{ fontSize: 12, color: theme.text, marginBottom: 6 }}>Speed</div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {([
-                    { id: 'balance' as AgentSpeed, label: 'Balance', hint: '更完整' },
-                    { id: 'fast' as AgentSpeed, label: 'Fast', hint: '更快迭代' },
-                  ]).map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => patchAgent({ speed: opt.id })}
-                      style={{
-                        flex: 1, padding: '7px 6px', borderRadius: 8, cursor: 'pointer', fontSize: 12,
-                        border: `1px solid ${agentSettings.speed === opt.id ? theme.accent : theme.border}`,
-                        background: agentSettings.speed === opt.id ? theme.panel : 'transparent',
-                        color: theme.text,
-                      }}
-                    >
-                      <div style={{ fontWeight: 600 }}>{opt.label}</div>
-                      <div style={{ fontSize: 10, color: theme.textDim, marginTop: 2 }}>{opt.hint}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
-                <input type="checkbox" checked={agentSettings.thinkingMode} onChange={(e) => patchAgent({ thinkingMode: e.target.checked })} style={{ accentColor: theme.accent }} />
-                Thinking Mode
-              </label>
-              <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 8px' }}>开启后模型会先简述计划再调用工具。</div>
-
-              <div style={{ padding: '4px 10px 8px' }}>
-                <div style={{ fontSize: 12, color: theme.text, marginBottom: 6 }}>MG Quality</div>
-                <select
-                  value={agentSettings.mgQuality}
-                  onChange={(e) => patchAgent({ mgQuality: e.target.value as MgQuality })}
-                  style={{
-                    width: '100%', background: theme.bg, color: theme.text, border: `1px solid ${theme.border}`,
-                    borderRadius: 6, padding: '6px 8px', fontSize: 12,
-                  }}
-                >
-                  <option value="draft">Draft — 最快、更简单</option>
-                  <option value="standard">Standard — 平衡</option>
-                  <option value="high">High — 效果最好，最慢</option>
-                </select>
-              </div>
-
-              <div style={{ height: 1, background: theme.border, margin: '4px 10px 6px' }} />
-
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
                 <input type="checkbox" checked={autoApply} onChange={(e) => onAutoApplyChange(e.target.checked)} style={{ accentColor: theme.accent }} />
                 自动应用 AI 提案

@@ -4,7 +4,6 @@ import { TOOL_SCHEMAS, executeTool } from './tools';
 import { SYSTEM_PROMPT, designStylePrompt, creativeModePrompt } from './systemPrompt';
 import { findSkill } from './skills-catalog';
 import { anthropic, MODEL } from './client';
-import { agentSettingsPrompt, loadAgentSettings } from './agentSettings';
 
 // No artificial limits — the loop runs until the model itself stops requesting
 // tools (stop_reason !== 'tool_use'). max_tokens is a required per-request
@@ -37,11 +36,10 @@ export async function runAgent(
   const conv = [...messages];
   // 问答模式：不给工具 → 模型只答不改时间线（source: Ask vs Agent）
   const tools = opts?.askOnly ? [] : TOOL_SCHEMAS;
-  // 系统提示 = 基础 + 设计风格(品牌) + 创作模式(agent_skill) + Agent settings
+  // 系统提示 = 基础 + 设计风格(品牌) + 创作模式(agent_skill)
   const system = SYSTEM_PROMPT
     + designStylePrompt(ctx.getDoc().designStyle)
-    + creativeModePrompt(findSkill(ctx.getCreativeMode()))
-    + agentSettingsPrompt(loadAgentSettings());
+    + creativeModePrompt(findSkill(ctx.getCreativeMode()));
 
   for (;;) {
     let resp: Anthropic.Message;
