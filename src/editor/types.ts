@@ -74,6 +74,15 @@ export interface ClipTransform {
   rotation?: number;
 }
 
+/** one per-clip WebGL effect instance (source: effects[] entry with an assetId
+ * + property overrides). assetId keys the FX registry (src/gl/fx/effects.ts);
+ * overrides map property name → value (clamped to the effect's range at render). */
+export interface ClipEffect {
+  id: string;
+  assetId: string;
+  overrides?: Record<string, number>;
+}
+
 export interface TimelineItem {
   id: string;
   track: TrackId;
@@ -104,6 +113,8 @@ export interface TimelineItem {
   filters?: ClipFilters;
   /** animated zoom (source builtin:zoom) — shape curve or reframe keyframes */
   zoom?: ZoomEffect;
+  /** per-clip WebGL effect stack (source effects[]: builtin:fx-* / lut) */
+  effects?: ClipEffect[];
   /** transcript-based editing: the clip's words + which are deleted (by index).
    * durationInFrames reflects the EDITED length (kept words only). */
   transcript?: TranscriptWord[];

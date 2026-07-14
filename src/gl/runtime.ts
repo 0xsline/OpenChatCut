@@ -31,6 +31,13 @@ export interface GlRuntime {
     progress: number,
     extra?: Record<string, UniformValue>,
   ) => void;
+  /** run a single-input per-clip effect pass (source builtin:fx-* contract:
+   *  u_input + u_width/u_height/u_resolution + effect uniforms) */
+  renderFx: (
+    frag: string,
+    input: TexImageSource,
+    extra?: Record<string, UniformValue>,
+  ) => void;
   dispose: () => void;
 }
 
@@ -95,7 +102,24 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
 
   const texOut = makeTexture(gl);
   const texIn = makeTexture(gl);
+  const texFx = makeTexture(gl);
   const programs = new Map<string, WebGLProgram>();
+
+  const getProgram = (frag: string): WebGLProgram => {
+    let prog = programs.get(frag);
+    if (!prog) { prog = link(gl, frag); programs.set(frag, prog); }
+    return prog;
+  };
+
+  const bindQuad = (prog: WebGLProgram) => {
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    const aPos = gl.getAttribLocation(prog, 'a_position');
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
+    const aTex = gl.getAttribLocation(prog, 'a_texCoord');
+    gl.enableVertexAttribArray(aTex);
+    gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 16, 8);
+  };
 
   const upload = (tex: WebGLTexture, unit: number, src: TexImageSource) => {
     gl.activeTexture(gl.TEXTURE0 + unit);
@@ -149,12 +173,33 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     },
+    renderFx(frag, input, extra) {
+      const prog = getProgram(frag);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.useProgram(prog);
+      bindQuad(prog);
+
+      upload(texFx, 0, input);
+      const locIn = gl.getUniformLocation(prog, 'u_input');
+      if (locIn) gl.uniform1i(locIn, 0);
+
+      setUniform(prog, 'u_width', canvas.width);
+      setUniform(prog, 'u_height', canvas.height);
+      setUniform(prog, 'u_resolution', [canvas.width, canvas.height]);
+      setUniform(prog, 'u_aspect', canvas.width / Math.max(1, canvas.height));
+      for (const [k, v] of Object.entries(extra ?? {})) setUniform(prog, k, v);
+
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    },
     dispose() {
       for (const p of programs.values()) gl.deleteProgram(p);
       programs.clear();
       gl.deleteBuffer(buf);
       gl.deleteTexture(texOut);
       gl.deleteTexture(texIn);
+      gl.deleteTexture(texFx);
     },
   };
 }

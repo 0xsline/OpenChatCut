@@ -2,6 +2,7 @@ import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, useCurrentFrame } f
 import { compileTemplate } from '../template-host';
 import { CaptionsLayer } from '../captions/CaptionsLayer';
 import { GlTransition } from '../gl/GlTransition';
+import { ClipFx, firstGlEffect } from '../gl/ClipFx';
 import { keptSegments } from '../transcript/edit';
 import { zoomAt } from './zoom';
 import { GLSL_TRANSITION_TYPES } from './types';
@@ -118,9 +119,22 @@ function AudioClip({ item, fps, muted }: { item: TimelineItem; fps: number; mute
 }
 
 // Imported image / video fills the canvas by the fit mode (objectFit).
-function MediaFill({ item, fit, muted }: { item: TimelineItem; fit: AspectFit; muted: boolean }) {
+function MediaFill({ item, fit, muted, canvasW, canvasH }: { item: TimelineItem; fit: AspectFit; muted: boolean; canvasW: number; canvasH: number }) {
   const objectFit = fit === 'cover' ? 'cover' : 'contain';
   const style: React.CSSProperties = { width: '100%', height: '100%', objectFit };
+  // clip carries a WebGL effect → render pixels through the GL pass; video keeps
+  // its audio via a separate muted-visual <Audio> (the GL source video is muted).
+  if (firstGlEffect(item)) {
+    return (
+      <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+        <ClipFx item={item} fit={fit} width={canvasW} height={canvasH} />
+        {item.kind !== 'image' && (
+          <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0}
+            volume={(f) => (muted ? 0 : item.volume ?? 1) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
+        )}
+      </AbsoluteFill>
+    );
+  }
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
       {item.kind === 'image'
@@ -246,7 +260,7 @@ export function TimelineComposition({ state }: { state: TimelineState }) {
               ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
               : item.kind === 'text'
               ? <TextLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
-              : <MediaFill item={item} fit={fit} muted={isMuted(item.track)} />}
+              : <MediaFill item={item} fit={fit} muted={isMuted(item.track)} canvasW={state.width} canvasH={state.height} />}
           </ClipWrapper>
         );
         return (

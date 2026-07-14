@@ -1,6 +1,7 @@
 import { theme } from '../theme';
 import type { Tpl } from '../types';
-import type { ClipFilters, ClipTransform, TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../editor/types';
+import type { ClipEffect, ClipFilters, ClipTransform, TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../editor/types';
+import { FX_EFFECTS, FX_IDS } from '../gl/fx/effects';
 import { usePersistedState } from '../hooks/usePersistedState';
 
 interface FadePatch {
@@ -18,6 +19,7 @@ interface InspectorPanelProps {
   onItemTransformChange: (patch: ClipTransform) => void;
   onItemFiltersChange: (patch: ClipFilters) => void;
   onItemZoomChange: (patch: Partial<ZoomEffect> | null) => void;
+  onItemEffectsChange: (effects: ClipEffect[]) => void;
   playhead: number;
   onSetReframeKeyframe: (frame: number, focalPointX: number, focalPointY: number, magnification: number) => void;
   onRemoveReframeKeyframe: (frame: number) => void;
@@ -270,9 +272,41 @@ function FilterControl({ item, onChange }: { item: TimelineItem; onChange: (p: C
   );
 }
 
+// Per-clip WebGL effect (source 特效 / builtin:fx-*). v1 = one effect at a time;
+// the selector sets the effect, then its params drive the shader uniforms.
+function EffectsControl({ item, onChange }: { item: TimelineItem; onChange: (effects: ClipEffect[]) => void }) {
+  const active = item.effects?.find((fx) => fx.assetId in FX_EFFECTS) ?? null;
+  const def = active ? FX_EFFECTS[active.assetId] : null;
+  const setEffect = (assetId: string) => onChange(assetId ? [{ id: `fx_${assetId}`, assetId, overrides: {} }] : []);
+  const setParam = (key: string, value: number) => {
+    if (!active) return;
+    onChange([{ ...active, overrides: { ...active.overrides, [key]: value } }]);
+  };
+  const fmt = (step: number | undefined, v: number) => (step && step < 1 ? v.toFixed(2) : String(Math.round(v)));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <select value={active?.assetId ?? ''} onChange={(e) => setEffect(e.target.value)}
+        style={{ width: '100%', background: theme.panelAlt, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: 6, padding: '5px 7px', fontSize: 12 }}>
+        <option value="">无</option>
+        {FX_IDS.map((id) => <option key={id} value={id}>{FX_EFFECTS[id].name}</option>)}
+      </select>
+      {def && <div style={{ fontSize: 10.5, color: theme.textDim, opacity: 0.75, lineHeight: 1.4 }}>{def.desc}</div>}
+      {def?.props.map((p) => {
+        const v = active?.overrides?.[p.key] ?? p.default;
+        return (
+          <label key={p.key} style={{ display: 'block', fontSize: 11, color: theme.textDim }}>
+            <div style={{ marginBottom: 4 }}>{p.label} <span style={{ opacity: 0.7 }}>{fmt(p.step, v)}</span></div>
+            <input type="range" min={p.min} max={p.max} step={p.step ?? 0.01} value={v} onChange={(e) => setParam(p.key, Number(e.target.value))} style={{ width: '100%' }} />
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 // Property editor for the selected timeline item (sits under the preview).
 // Collapsible so it doesn't crowd the preview when you don't need it.
-export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, onItemZoomChange, playhead, onSetReframeKeyframe, onRemoveReframeKeyframe, transition, onAddTransition, onSetTransition, onRemoveTransition }: InspectorPanelProps) {
+export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, onItemZoomChange, onItemEffectsChange, playhead, onSetReframeKeyframe, onRemoveReframeKeyframe, transition, onAddTransition, onSetTransition, onRemoveTransition }: InspectorPanelProps) {
   const [collapsed, setCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const schema = selectedItem
     ? templates.find((t) => t.id === selectedItem.templateId)?.propSchema ?? []
@@ -313,6 +347,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
             {hasVolume && <><SectionLabel>音量</SectionLabel><VolumeControl item={selectedItem} onChange={onItemVolumeChange} /></>}
             {isVisual && <><SectionLabel>变换</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} /></>}
             {isVisual && <><SectionLabel>滤镜</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} /></>}
+            {(selectedItem.kind === 'video' || selectedItem.kind === 'image') && <><SectionLabel>特效 FX</SectionLabel><EffectsControl item={selectedItem} onChange={onItemEffectsChange} /></>}
             {isVisual && <><SectionLabel>缩放动画</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} localFrame={Math.max(0, Math.min(selectedItem.durationInFrames - 1, playhead - selectedItem.startFrame))} fps={fps} onSetKeyframe={onSetReframeKeyframe} onRemoveKeyframe={onRemoveReframeKeyframe} /></>}
             {isVisual && <><SectionLabel>转场</SectionLabel><TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} /></>}
             <SectionLabel>淡入淡出</SectionLabel>

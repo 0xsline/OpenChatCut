@@ -1,5 +1,5 @@
 import { useMemo, useReducer, useRef } from 'react';
-import type { AspectFit, ClipFilters, ClipTransform, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackId, TransitionItem, TransitionType, ZoomEffect } from './types';
+import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackId, TransitionItem, TransitionType, ZoomEffect } from './types';
 import { activeTimeline } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
@@ -32,6 +32,8 @@ export interface EditorCommands {
   setItemTransform: (id: string, patch: ClipTransform) => void;
   setItemFilters: (id: string, patch: ClipFilters) => void;
   setItemZoom: (id: string, patch: Partial<ZoomEffect> | null) => void;
+  /** replace a clip's per-clip WebGL effect stack (source effects[]) */
+  setItemEffects: (id: string, effects: ClipEffect[]) => void;
   /** add a ruler/clip marker at a frame (source manage_markers create); returns its id */
   addMarker: (fromFrame: number, opts?: { note?: string; color?: Marker['color']; durationFrames?: number; scope?: Marker['scope']; itemId?: string }) => string;
   updateMarker: (id: string, patch: Partial<Marker>) => void;
@@ -198,6 +200,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       setItemTransform: (id, patch) => dispatch({ type: 'setTransform', id, patch }),
       setItemFilters: (id, patch) => dispatch({ type: 'setFilters', id, patch }),
       setItemZoom: (id, patch) => dispatch({ type: 'setZoom', id, patch }),
+      setItemEffects: (id, effects) => dispatch({ type: 'setEffects', id, effects }),
       addMarker: (fromFrame, opts) => {
         const marker: Marker = {
           id: uid('mk'),

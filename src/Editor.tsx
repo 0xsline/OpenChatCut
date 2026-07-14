@@ -185,6 +185,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
               onItemTransformChange={(patch) => state.selectedId && commands.setItemTransform(state.selectedId, patch)}
               onItemFiltersChange={(patch) => state.selectedId && commands.setItemFilters(state.selectedId, patch)}
               onItemZoomChange={(patch) => state.selectedId && commands.setItemZoom(state.selectedId, patch)}
+              onItemEffectsChange={(effects) => state.selectedId && commands.setItemEffects(state.selectedId, effects)}
               playhead={playhead}
               onSetReframeKeyframe={(frame, fx, fy, mag) => state.selectedId && commands.setReframeKeyframe(state.selectedId, frame, fx, fy, mag)}
               onRemoveReframeKeyframe={(frame) => state.selectedId && commands.removeReframeKeyframe(state.selectedId, frame)}
