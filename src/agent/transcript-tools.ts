@@ -38,6 +38,44 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'edit_gap',
+    description:
+      'List or edit breath/silence GAPS between spoken words on a transcribed clip (source transcript Gap rows). Gaps are COMPUTED from word timestamps (next.start − prev.end), not separate assets. action=list returns visible gaps with afterWordIndex/gapSeconds/context. action=delete removes one gap (silence→0, later audio ripples earlier). action=cap compresses one gap to maxSeconds (e.g. 0.2). action=restore clears a per-gap override so the original pause returns. Prefer list first to get afterWordIndex. For batch whole-track pause cleanup use clean_script instead.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['list', 'delete', 'cap', 'restore'],
+          description: 'list=enumerate gaps; delete=remove one gap; cap=compress one gap; restore=undo per-gap override.',
+        },
+        track: { type: 'string', description: 'Track alias/id (default A1) when itemId omitted.' },
+        itemId: { type: 'string', description: 'Target clip id (prefix ok). Prefer when multiple clips share a track.' },
+        afterWordIndex: {
+          type: 'number',
+          description: 'Word index AFTER the gap (from list). Required for delete/cap/restore unless afterText is given.',
+        },
+        afterText: {
+          type: 'string',
+          description: 'Locate gap by the spoken phrase that STARTS after the gap (matched in transcript). Alternative to afterWordIndex.',
+        },
+        gapIndex: {
+          type: 'number',
+          description: '0-based index among listable gaps on the clip (from list). Alternative to afterWordIndex.',
+        },
+        maxSeconds: {
+          type: 'number',
+          description: 'cap only: max pause seconds to keep (e.g. 0.2 or 0.5). Required for cap.',
+        },
+        minGapSeconds: {
+          type: 'number',
+          description: 'list only: min raw gap to include (default 0.25s).',
+        },
+      },
+      required: ['action'],
+    },
+  },
+  {
     name: 'delete_text',
     description: 'Delete a spoken phrase from a track — "delete text = delete video": the matching words\' audio and their time are cut and the clip re-times. If unsure of the exact wording, find_transcript first.',
     input_schema: { type: 'object', properties: { track: { type: 'string' }, query: { type: 'string', description: 'The phrase to delete (matched against the transcript).' } }, required: ['query'] },
@@ -113,6 +151,83 @@ function trackClip(ctx: AgentContext, track: TrackId, needTranscript: boolean): 
     (it.kind === 'audio' || it.kind === 'video') && it.track === track && it.src && (!needTranscript || (it.transcript?.length ?? 0) > 0)) ?? null;
 }
 
+function resolveClip(ctx: AgentContext, track: TrackId, itemId: unknown, needTranscript: boolean): TimelineItem | null {
+  const items = ctx.getState().items;
+  if (typeof itemId === 'string' && itemId.trim()) {
+    const q = itemId.trim();
+    return items.find((x) => x.id === q || x.id.startsWith(q)) ?? null;
+  }
+  return trackClip(ctx, track, needTranscript);
+}
+
+interface ListedGap {
+  gapIndex: number;
+  afterWordIndex: number;
+  gapSeconds: number;
+  appliedSeconds: number;
+  removed: boolean;
+  beforeText: string;
+  afterText: string;
+}
+
+/** Gaps between consecutive kept words (same rules as UI Gap rows). */
+function listGapsOnClip(it: TimelineItem, minGapSeconds = 0.25): ListedGap[] {
+  const words = it.transcript ?? [];
+  if (words.length < 2) return [];
+  const del = new Set(it.deletedWordIdx ?? []);
+  const kept = words.map((w, i) => ({ w, i })).filter((x) => !del.has(x.i));
+  const minMs = Math.max(0, minGapSeconds * 1000);
+  const caps = it.gapCapsMs ?? {};
+  const out: ListedGap[] = [];
+  for (let k = 1; k < kept.length; k++) {
+    const prev = kept[k - 1]!;
+    const cur = kept[k]!;
+    const rawMs = Math.max(0, cur.w.start - prev.w.end);
+    const key = String(cur.i);
+    const hasCap = Object.prototype.hasOwnProperty.call(caps, key);
+    const appliedMs = hasCap ? Math.min(rawMs, Math.max(0, caps[key]!)) : rawMs;
+    const removed = hasCap && (caps[key] ?? 0) <= 30;
+    if (rawMs < minMs && !removed && !hasCap) continue;
+    out.push({
+      gapIndex: out.length,
+      afterWordIndex: cur.i,
+      gapSeconds: Math.round((rawMs / 1000) * 100) / 100,
+      appliedSeconds: Math.round((appliedMs / 1000) * 100) / 100,
+      removed,
+      beforeText: words.slice(Math.max(0, prev.i - 2), prev.i + 1).map((w) => w.text).join(''),
+      afterText: words.slice(cur.i, Math.min(words.length, cur.i + 3)).map((w) => w.text).join(''),
+    });
+  }
+  return out;
+}
+
+function resolveAfterWordIndex(
+  it: TimelineItem,
+  args: Args,
+  gaps: ListedGap[],
+): { afterWordIndex: number } | { error: string } {
+  if (typeof args.afterWordIndex === 'number' && Number.isFinite(args.afterWordIndex)) {
+    const i = Math.round(args.afterWordIndex);
+    if (i <= 0 || i >= (it.transcript?.length ?? 0)) {
+      return { error: `afterWordIndex ${i} out of range (1..${(it.transcript?.length ?? 1) - 1})` };
+    }
+    return { afterWordIndex: i };
+  }
+  if (typeof args.gapIndex === 'number' && Number.isFinite(args.gapIndex)) {
+    const g = gaps[Math.round(args.gapIndex)];
+    if (!g) return { error: `gapIndex ${args.gapIndex} out of range (0..${Math.max(0, gaps.length - 1)})` };
+    return { afterWordIndex: g.afterWordIndex };
+  }
+  if (typeof args.afterText === 'string' && args.afterText.trim()) {
+    const m = findPhrase(it.transcript!, args.afterText);
+    if (!m) return { error: `afterText not found: ${args.afterText}` };
+    // gap is immediately before the first word of the match
+    if (m.start <= 0) return { error: 'afterText matches the start of the transcript; no gap before it' };
+    return { afterWordIndex: m.start };
+  }
+  return { error: 'provide afterWordIndex, gapIndex, or afterText to locate the gap' };
+}
+
 // Execute a transcript/caption tool. Returns undefined if `name` isn't one of ours.
 export async function execTranscriptTool(name: string, args: Args, ctx: AgentContext): Promise<unknown | undefined> {
   const state = ctx.getState();
@@ -164,6 +279,77 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       const removeFillers = args.removeFillers !== false;
       ctx.commands.cleanScript(it.id, { silenceFrames, removeFillers });
       return { ok: true, itemId: it.id, maxPauseSeconds: (args.maxPauseSeconds as number) ?? null, fillersRemoved: removeFillers ? fillerIndices(it.transcript).length : 0 };
+    }
+    case 'edit_gap': {
+      const action = String(args.action ?? '');
+      const it = resolveClip(ctx, track, args.itemId, true);
+      if (!it?.transcript?.length) {
+        return { error: args.itemId ? `no transcribed item ${String(args.itemId)}` : `no transcript on ${alias}; call transcribe_track first` };
+      }
+      const minGap = typeof args.minGapSeconds === 'number' ? args.minGapSeconds : 0.25;
+      const gaps = listGapsOnClip(it, minGap);
+
+      if (action === 'list') {
+        return {
+          ok: true,
+          itemId: it.id,
+          track: trackAlias(ctx.getState(), it.track),
+          name: it.name,
+          gapCount: gaps.length,
+          gaps,
+          usage: 'Pass afterWordIndex (or gapIndex / afterText) to edit_gap delete|cap|restore. Batch whole-track: clean_script.',
+        };
+      }
+
+      const loc = resolveAfterWordIndex(it, args, gaps);
+      if ('error' in loc) return loc;
+      const afterWordIndex = loc.afterWordIndex;
+      const prevWord = it.transcript[afterWordIndex - 1];
+      const nextWord = it.transcript[afterWordIndex];
+      const rawSec = prevWord && nextWord
+        ? Math.max(0, (nextWord.start - prevWord.end) / 1000)
+        : null;
+
+      if (action === 'delete') {
+        ctx.commands.setGapCap(it.id, afterWordIndex, 0);
+        return {
+          ok: true,
+          action: 'delete',
+          itemId: it.id,
+          afterWordIndex,
+          gapSecondsBefore: rawSec,
+          appliedSeconds: 0,
+          note: 'Gap silence removed; clip re-timed via gapCapsMs.',
+        };
+      }
+      if (action === 'restore') {
+        ctx.commands.setGapCap(it.id, afterWordIndex, null);
+        return {
+          ok: true,
+          action: 'restore',
+          itemId: it.id,
+          afterWordIndex,
+          gapSeconds: rawSec,
+          note: 'Per-gap override cleared; original pause restored (unless clean_script global cap still applies).',
+        };
+      }
+      if (action === 'cap') {
+        if (typeof args.maxSeconds !== 'number' || !Number.isFinite(args.maxSeconds) || args.maxSeconds < 0) {
+          return { error: 'cap requires maxSeconds ≥ 0 (e.g. 0.2)' };
+        }
+        const maxMs = Math.round(args.maxSeconds * 1000);
+        ctx.commands.setGapCap(it.id, afterWordIndex, maxMs);
+        return {
+          ok: true,
+          action: 'cap',
+          itemId: it.id,
+          afterWordIndex,
+          gapSecondsBefore: rawSec,
+          appliedSeconds: Math.min(rawSec ?? args.maxSeconds, args.maxSeconds),
+          maxSeconds: args.maxSeconds,
+        };
+      }
+      return { error: `unknown edit_gap action "${action}" (use list|delete|cap|restore)` };
     }
     case 'delete_text': {
       const it = trackClip(ctx, track, true);

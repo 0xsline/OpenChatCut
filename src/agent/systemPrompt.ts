@@ -74,6 +74,7 @@ export const SYSTEM_PROMPT = `你是 ChatCut里的视频剪辑 AI。你通过调
 - find_transcript(query):定位某句话说在哪(返回帧位),用于在某句话处插入 B-roll/MG 或删除前定位。
 - delete_text(query):**删文字=删视频**——把匹配到的那几个词的音频和时长一起剪掉,片段自动重排。
 - clean_script(maxPauseSeconds/removeFillers):机械清洗口播——把长于阈值的停顿压到该长度、去掉填充词(嗯/呃/um…),纯规则不动语义。
+- edit_gap(action list|delete|cap|restore):文字稿 Gap 行气口——list 列出词间静音;delete 删一个气口;cap 压到 maxSeconds;restore 还原。定位用 afterWordIndex / gapIndex / afterText。整轨批量仍用 clean_script。
 - edit_captions(enabled/template/pacing/track):字幕总开关+样式。字幕是**单例 overlay**,镜像某轨文字稿,会**自动跟随删词/压停顿**重排。模板 plain/tiktok/netflix,节奏 word/phrase。
 
 # Script 系统(read_script / apply_script)——改稿即剪辑
