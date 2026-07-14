@@ -50,14 +50,6 @@ function clipLabel(it: TimelineItem, max = 28): string {
   return n.length > max ? `${n.slice(0, max - 1)}…` : n;
 }
 
-/** short chip label for dense nav (many clips) */
-function clipChipLabel(it: TimelineItem, index: number, total: number): string {
-  const max = total > 12 ? 10 : total > 6 ? 14 : 22;
-  const n = it.name?.trim() || it.id;
-  const short = n.length > max ? `${n.slice(0, max - 1)}…` : n;
-  return total > 8 ? `${index + 1}. ${short}` : short;
-}
-
 const MANY_CLIPS = 10;
 
 function trackTitle(t: TranscriptTrackOption): string {
@@ -373,27 +365,6 @@ export function TranscriptPanel({
                   <button type="button" className="cc-tx-btn sm" disabled={busy} onClick={() => void transcribeTrack()}>
                     {busy ? '…' : '重新转写'}
                   </button>
-                </div>
-                {/* Horizontal scroll — never multi-line wrap when clips pile up */}
-                <div className="cc-tx-clip-tabs" role="tablist" aria-label="片段列表">
-                  {clips.map((c, i) => {
-                    const n = c.transcript?.length ?? 0;
-                    const done = n > 0;
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={focusItem?.id === c.id}
-                        className={`cc-tx-clip-tab${focusItem?.id === c.id ? ' selected' : ''}${done ? '' : ' pending'}`}
-                        onClick={() => jumpToClip(c.id)}
-                        title={`${clipLabel(c, 80)}${done ? ` · ${n}词` : ' · 未转写'}`}
-                      >
-                        {clipChipLabel(c, i, clips.length)}
-                        {done ? <span className="cc-tx-chip-meta">{n}</span> : <span className="cc-tx-chip-meta miss">·</span>}
-                      </button>
-                    );
-                  })}
                 </div>
                 {clips.length > MANY_CLIPS && (
                   <label className="cc-tx-nav-mode">
