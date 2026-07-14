@@ -1,7 +1,6 @@
-// Audio asset library (music / SFX the user can drop onto A1/A2).
-// Files live in public/audio/ and are served at /audio/*.
-// Source: SoundHelix (www.soundhelix.com) — free to use with attribution;
-// trimmed to 20s clips for the demo. Swap in your own assets freely.
+// Demo / agent seed audio assets (BGM + sample VO) — NOT the Library "Audio" tab.
+// Source Library tab "Audio" = Audio FX (人声隔离…), see AudioFxBrowser.
+// SFX live in soundLibrary.ts (音效 tab). These files are in public/audio|media.
 
 export interface AudioAsset {
   id: string;

@@ -89,7 +89,8 @@ export async function execLibraryTool(name: string, args: Args, ctx: AgentContex
         category: cat,
         total: 0,
         groups: [],
-        note: 'audio-fx not shipped in this clone yet; use sound-effects or fx.',
+        message: 'Audio FX currently has no available Library entries.',
+        note: 'Source UI shows 人声隔离 (Voice Isolation) as a preset; isolate_voice is not wired in this clone yet. Use sound-effects for SFX, or import/generate BGM into the media pool.',
       };
     }
     return { category: cat, ...libraryOverview(scoped) };

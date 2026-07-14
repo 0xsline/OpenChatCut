@@ -120,13 +120,13 @@ export function buildLibraryItems(templates: Tpl[]): LibraryItem[] {
   }
 
   for (const s of SOUND_EFFECTS) {
-    const g = SOUND_GROUPS.find((x) => x.id === s.group);
+    // keep source group id (transition-emphasis …) for browse_library filters
     items.push({
       id: `library:sound:${s.id}`,
       name: s.name,
       category: 'sound-effects',
       description: s.desc,
-      group: g?.name ?? s.group,
+      group: s.group,
       usage: `edit_item adds:[{type:"audio",assetId:"library:sound:${s.id}",fromFrame:<anchor>}] (clone: add_audio with audioName)`,
     });
   }

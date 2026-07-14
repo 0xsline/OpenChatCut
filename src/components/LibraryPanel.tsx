@@ -6,8 +6,7 @@ import type { GlslTransitionType, MediaAsset, MediaFolder, TimelineItem, Transit
 import { TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../editor/types';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
-import { AUDIO_ASSETS, type AudioAsset } from '../audio/library';
-import { SOUND_EFFECTS, SOUND_GROUPS, soundEffectSrc } from '../audio/soundLibrary';
+import type { AudioAsset } from '../audio/library';
 import { FX_EFFECTS, FX_IDS, LUT_EFFECTS, LUT_IDS } from '../gl/fx/effects';
 import { TranscriptPanel } from './TranscriptPanel';
 import { MediaPoolPanel } from './MediaPoolPanel';
@@ -16,7 +15,8 @@ import { ResourceBrowser, type ResourceItem } from './ResourceBrowser';
 import { TransitionThumb } from './TransitionThumb';
 import { FxThumb } from './FxThumb';
 import { ZoomThumb } from './ZoomThumb';
-import { Icon } from './icons';
+import { SoundBrowser } from './SoundBrowser';
+import { AudioFxBrowser } from './AudioFxBrowser';
 
 // the 2 built-in LUTs (source luts_items.json) — implemented via published
 // camera-log transfer functions (source ships them as real .cube data on its
@@ -73,10 +73,11 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('我的素材');
   const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('MG 动画');
   const [trSub, setTrSub] = useState<(typeof TRANSITION_SUB)[number]>('画面转场');
-  const showAudio = mainTab === '资源库' && subTab === 'Audio';   // music
-  const showSfx = mainTab === '资源库' && subTab === '音效';       // sound effects
+  const showAudioFx = mainTab === '资源库' && subTab === 'Audio'; // source Audio FX (not BGM)
+  const showSfx = mainTab === '资源库' && subTab === '音效';     // sound effects
   const isTranscript = mainTab === '文字稿';
   const isMyAssets = mainTab === '我的素材';
+  const hasAudioTarget = selKind === 'audio' || selKind === 'video';
 
   return (
     <section className="cc-library-panel">
@@ -108,44 +109,10 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px 10px 14px', minHeight: 0 }}>
         {mainTab === '资源库' && subTab === 'MG 动画' ? (
           <TemplateBrowser templates={templates} onAdd={onAddTemplate} onUseAI={onUseTemplateAI} />
-        ) : showAudio ? (
-          <>
-            <div style={{ fontSize: 11, color: theme.textDim, marginBottom: 8 }}>{AUDIO_ASSETS.length} 个音频 · 点击加到 A1</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {AUDIO_ASSETS.map((a) => (
-                <button key={a.id} onClick={() => onAddAudio(a)} title={`点击加到 A1 轨:${a.name}`}
-                  style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', border: `1px solid ${theme.border}`, borderRadius: 8, background: theme.panelAlt, color: theme.text }}>
-                  <Icon name="music" size={16} />
-                  <span style={{ flex: 1, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</span>
-                  <span style={{ fontSize: 10.5, color: theme.textDim }}>{Math.round(a.durationInFrames / 30)}s</span>
-                </button>
-              ))}
-            </div>
-          </>
+        ) : showAudioFx ? (
+          <AudioFxBrowser hasAudioTarget={hasAudioTarget} />
         ) : showSfx ? (
-          <>
-            <div style={{ fontSize: 11, color: theme.textDim, marginBottom: 8 }}>{SOUND_EFFECTS.length} 个音效（源站库）· 点击加到 A1 轨</div>
-            {SOUND_GROUPS.map((g) => {
-              const list = SOUND_EFFECTS.filter((s) => s.group === g.id);
-              if (!list.length) return null;
-              return (
-                <div key={g.id} style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 10.5, color: theme.textDim, letterSpacing: '0.06em', opacity: 0.7, margin: '2px 0 6px' }}>{g.name}（{list.length}）</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {list.map((s) => (
-                      <button key={s.id} title={s.desc}
-                        onClick={() => onAddAudio({ id: `sfx_${s.id}`, name: s.name, category: 'sfx', src: soundEffectSrc(s.id), durationInFrames: Math.max(1, Math.round(s.seconds * fps)) })}
-                        style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 11px', border: `1px solid ${theme.border}`, borderRadius: 8, background: theme.panelAlt, color: theme.text }}>
-                        <Icon name="volume" size={15} />
-                        <span style={{ flex: 1, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}{s.popular && <span style={{ marginLeft: 6, fontSize: 9, color: theme.accent }}>热门</span>}</span>
-                        <span style={{ fontSize: 10.5, color: theme.textDim, fontVariantNumeric: 'tabular-nums' }}>{s.seconds.toFixed(1)}s</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </>
+          <SoundBrowser fps={fps} onAdd={onAddAudio} />
         ) : subTab === '转场' ? (
           <div className="cc-transition-browser">
             <div className="cc-transition-subtabs">
