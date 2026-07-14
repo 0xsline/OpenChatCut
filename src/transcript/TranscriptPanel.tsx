@@ -117,22 +117,16 @@ export function TranscriptPanel({
     || clips[0]
     || null;
 
-  const words = focusItem?.transcript ?? [];
-  const deleted = new Set(focusItem?.deletedWordIdx ?? []);
   const editable = !!focusItem?.transcript?.length;
-  const hasWords = words.length > 0;
+  /** any clip on the track already has words (not only the focused chip) */
+  const trackHasWords = transcribed.length > 0;
+  const focusDeleted = new Set(focusItem?.deletedWordIdx ?? []);
 
   // Tracks that actually have media (for selector)
   const selectable = useMemo(
     () => trackOptions.filter((t) => mediaOnTrack(items, t.id).length > 0),
     [trackOptions, items],
   );
-
-  const onWord = (w: IndexedWord) => {
-    if (!focusItem) return;
-    if (editMode && editable) onToggleWord(focusItem.id, w.gi);
-    else playerRef.current?.seekTo(focusItem.startFrame + msToFrame(w.start, fps));
-  };
 
   const transcribeTrack = async () => {
     if (!clips.length) return;
@@ -147,9 +141,10 @@ export function TranscriptPanel({
   };
 
   const applyPause = () => {
-    if (!hasWords || !focusItem) return;
-    const { count, savedMs } = analyzeSilences(words, compressSec * 1000);
-    const fillers = words.filter((w) => /^[\s]*([uU][hm]+|[eE]r+m?|嗯|呃|啊|唔|额)[\s.,]*$/.test(w.text)).length;
+    if (!focusItem?.transcript?.length) return;
+    const w = focusItem.transcript;
+    const { count, savedMs } = analyzeSilences(w, compressSec * 1000);
+    const fillers = w.filter((x) => /^[\s]*([uU][hm]+|[eE]r+m?|嗯|呃|啊|唔|额)[\s.,]*$/.test(x.text)).length;
     onCleanScript(focusItem.id, { silenceFrames: Math.round(compressSec * fps), removeFillers });
     setPauseResult(
       `已压缩 ${count} 处长停顿到 ${compressSec}s（约省 ${(savedMs / 1000).toFixed(1)}s）`
@@ -159,7 +154,7 @@ export function TranscriptPanel({
 
   const generateCaptions = () => {
     const sources = transcribed.map((c) => c.id);
-    if (!sources.length && !hasWords) return;
+    if (!sources.length) return;
     onSetCaptions({
       enabled: true,
       template: captions?.template ?? 'tiktok',
@@ -184,13 +179,12 @@ export function TranscriptPanel({
     }
   };
 
-  const groups = view === 'paragraph' ? toParagraphs(words) : toSegments(words);
   const aliasLabel = activeTrack ? trackTitle(activeTrack) : '—';
 
   return (
     <div className="cc-transcript-panel">
       <div className="cc-transcript-toolbar">
-        <button type="button" onClick={() => setPauseOpen((v) => !v)} className="cc-tx-btn" disabled={!hasWords}>
+        <button type="button" onClick={() => setPauseOpen((v) => !v)} className="cc-tx-btn" disabled={!editable}>
           <Icon name="clock" size={13} />停顿
         </button>
         <select value={view} onChange={(e) => setView(e.target.value as 'paragraph' | 'segment')} className="cc-tx-select">
@@ -254,8 +248,8 @@ export function TranscriptPanel({
 
       {editMode && editable && focusItem && (
         <div className="cc-tx-editbar">
-          <span>点词删除/恢复。已删 <b>{deleted.size}</b> 词</span>
-          {deleted.size > 0 && (
+          <span>点词删除/恢复（当前段）。已删 <b>{focusDeleted.size}</b> 词</span>
+          {focusDeleted.size > 0 && (
             <button type="button" onClick={() => onClearEdits(focusItem.id)} className="cc-tx-btn sm">还原全部</button>
           )}
         </div>
@@ -268,12 +262,12 @@ export function TranscriptPanel({
             <div className="cc-tx-empty-title">还没有可转写的轨道</div>
             <p className="cc-tx-muted">把口播/配音或带人声的视频加到时间线后，再打开文字稿。</p>
           </div>
-        ) : !hasWords ? (
+        ) : !trackHasWords ? (
           <div className="cc-tx-empty-card">
             <div className="cc-tx-empty-kicker">{aliasLabel}</div>
             <div className="cc-tx-empty-title">转写词级文字稿</div>
             <p className="cc-tx-muted">
-              自动语种检测 · 说话人分离 · 转写后可点词删减（删词=剪音频）。
+              中文词级转写 · 说话人分离 · 该轨共 {clips.length} 段会逐段上传。转写后可点词删减（删词=剪音频）。
             </p>
             {skippedMusic > 0 && (
               <label className="cc-tx-check music">
@@ -306,16 +300,20 @@ export function TranscriptPanel({
             {clips.length > 1 && (
               <div className="cc-tx-clip-tabs">
                 {clips.map((c) => {
-                  const done = (c.transcript?.length ?? 0) > 0;
+                  const n = c.transcript?.length ?? 0;
+                  const done = n > 0;
                   return (
                     <button
                       key={c.id}
                       type="button"
                       className={`cc-tx-clip-tab${focusItem?.id === c.id ? ' selected' : ''}${done ? '' : ' pending'}`}
-                      onClick={() => setFocusItemId(c.id)}
+                      onClick={() => {
+                        setFocusItemId(c.id);
+                        document.getElementById(`cc-tx-sec-${c.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                      }}
                     >
                       {clipLabel(c)}
-                      {!done && ' · 未转写'}
+                      {done ? ` · ${n}词` : ' · 未转写'}
                     </button>
                   );
                 })}
@@ -324,20 +322,72 @@ export function TranscriptPanel({
                 </button>
               </div>
             )}
-            {view === 'paragraph' ? (
-              <ParagraphView groups={groups} deleted={deleted} editMode={editMode && editable} onWord={onWord} />
-            ) : (
-              <SegmentView groups={groups} deleted={deleted} editMode={editMode && editable} onWord={onWord} fps={fps} />
-            )}
-            {status === 'error' && <div className="cc-tx-error">{error}</div>}
+            {/* Full track: every clip as a section — not just the focused chip (was the "only one" illusion). */}
+            <div className="cc-tx-sections">
+              {clips.map((c) => {
+                const cWords = c.transcript ?? [];
+                const cDel = new Set(c.deletedWordIdx ?? []);
+                const cGroups = view === 'paragraph' ? toParagraphs(cWords) : toSegments(cWords);
+                const active = focusItem?.id === c.id;
+                return (
+                  <section
+                    key={c.id}
+                    id={`cc-tx-sec-${c.id}`}
+                    className={`cc-tx-section${active ? ' active' : ''}`}
+                    onClick={() => setFocusItemId(c.id)}
+                  >
+                    <header className="cc-tx-section-head">
+                      <span className="cc-tx-section-title">{clipLabel(c)}</span>
+                      <span className="cc-tx-muted">
+                        {(c.durationInFrames / fps).toFixed(1)}s
+                        {cWords.length ? ` · ${cWords.length} 词` : ' · 未转写'}
+                      </span>
+                    </header>
+                    {!cWords.length ? (
+                      <div className="cc-tx-muted" style={{ padding: '4px 0 8px' }}>尚未转写此段</div>
+                    ) : view === 'paragraph' ? (
+                      <ParagraphView
+                        groups={cGroups}
+                        deleted={cDel}
+                        editMode={editMode && active}
+                        onWord={(w) => {
+                          setFocusItemId(c.id);
+                          if (editMode) onToggleWord(c.id, w.gi);
+                          else playerRef.current?.seekTo(c.startFrame + msToFrame(w.start, fps));
+                        }}
+                      />
+                    ) : (
+                      <SegmentView
+                        groups={cGroups}
+                        deleted={cDel}
+                        editMode={editMode && active}
+                        fps={fps}
+                        onWord={(w) => {
+                          setFocusItemId(c.id);
+                          if (editMode) onToggleWord(c.id, w.gi);
+                          else playerRef.current?.seekTo(c.startFrame + msToFrame(w.start, fps));
+                        }}
+                      />
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+            {(status === 'error' || error) && <div className="cc-tx-error">{error}</div>}
             {busy && progressNote && <div className="cc-tx-muted" style={{ marginTop: 8 }}>{progressNote}</div>}
+            {!busy && trackHasWords && (
+              <div className="cc-tx-muted" style={{ marginTop: 10 }}>
+                已转写 {transcribed.length}/{clips.length} 段
+                {transcribed.length < clips.length ? ' · 可点「重新转写」补全失败段' : ''}
+              </div>
+            )}
           </>
         )}
       </div>
 
       <CaptionsControls
         captions={captions}
-        hasTranscript={transcribed.length > 0 || hasWords}
+        hasTranscript={trackHasWords}
         onGenerate={generateCaptions}
         onUpdate={onUpdateCaptions}
         onTranslate={onTranslate}

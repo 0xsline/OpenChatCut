@@ -14,20 +14,27 @@ async function uploadBlob(blob: Blob): Promise<string> {
 }
 
 export interface TranscribeOptions {
-  /** ISO-639-1; when omitted, AssemblyAI language_detection is used (needed for 中文口播). */
-  languageCode?: string;
+  /**
+   * ISO-639-1. Default `zh` for this product (中文口播).
+   * Pass `auto` to use AssemblyAI language_detection instead.
+   */
+  languageCode?: string | 'auto';
 }
 
 async function createTranscript(audioUrl: string, opts: TranscribeOptions = {}): Promise<string> {
   const body: Record<string, unknown> = {
     audio_url: audioUrl,
     speaker_labels: true,
+    // Word-level timestamps (default true for universal model; be explicit)
+    punctuate: true,
+    format_text: true,
   };
-  if (opts.languageCode) {
-    body.language_code = opts.languageCode;
-  } else {
-    // Auto-detect: without this, non-English (e.g. 李白口播) is often forced to English garbage.
+  const lang = opts.languageCode ?? 'zh';
+  if (lang === 'auto') {
     body.language_detection = true;
+  } else {
+    // Explicit zh is far more reliable for 中文纪录片口播 than pure auto-detect.
+    body.language_code = lang;
   }
   const r = await fetch(`${BASE}/transcript`, {
     method: 'POST',
@@ -47,13 +54,26 @@ async function poll(id: string, onWait?: () => void): Promise<TranscriptResult> 
     if (!r.ok) throw new Error(`poll failed: HTTP ${r.status}`);
     const d = await r.json();
     if (d.status === 'completed') {
-      const mapW = (w: { text: string; start: number; end: number; speaker?: string | null }) => ({ text: w.text, start: w.start, end: w.end, speaker: w.speaker ?? null });
-      const words = (d.words ?? []).map(mapW);
+      const mapW = (w: { text: string; start: number; end: number; speaker?: string | null }) => ({
+        text: (w.text ?? '').trim(),
+        start: w.start,
+        end: w.end,
+        speaker: w.speaker ?? null,
+      });
+      let words = (d.words ?? []).map(mapW).filter((w: { text: string }) => w.text.length > 0);
       const utterances = (d.utterances ?? []).map((u: { speaker: string; text: string; start: number; end: number; words?: unknown[] }) => ({
         speaker: u.speaker, text: u.text, start: u.start, end: u.end,
         words: ((u.words ?? []) as { text: string; start: number; end: number; speaker?: string | null }[]).map(mapW),
       }));
-      return { text: d.text ?? '', words, utterances };
+      // Fallback: some locales return empty words[] but filled utterances
+      if (!words.length && utterances.length) {
+        words = utterances.flatMap((u: { words: ReturnType<typeof mapW>[]; speaker: string }) =>
+          (u.words?.length
+            ? u.words.map((w) => ({ ...w, speaker: w.speaker ?? u.speaker }))
+            : [{ text: u.text, start: (u as { start: number }).start, end: (u as { end: number }).end, speaker: u.speaker }]),
+        );
+      }
+      return { text: d.text ?? words.map((w: { text: string }) => w.text).join(''), words, utterances };
     }
     if (d.status === 'error') throw new Error(d.error ?? 'transcription error');
     onWait?.();

@@ -49,7 +49,10 @@ export function useTranscript() {
     }
   }, []);
 
-  /** Transcribe many clips sequentially; invokes onEach after each success. */
+  /**
+   * Transcribe many clips sequentially. Continues after per-clip failures so
+   * one bad segment does not drop the rest of the track (user saw “only one”).
+   */
   const runMany = useCallback(async (
     jobs: { path: string; itemId: string; label: string }[],
     onEach: (itemId: string, r: TranscriptResult) => void,
@@ -58,6 +61,8 @@ export function useTranscript() {
     setError(null);
     setResult(null);
     let last: TranscriptResult | null = null;
+    const failures: string[] = [];
+    let ok = 0;
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i]!;
       setActiveItemId(job.itemId);
@@ -75,16 +80,27 @@ export function useTranscript() {
         last = r;
         setResult(r);
         onEach(job.itemId, r);
+        ok += 1;
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-        setStatus('error');
-        setProgressNote(null);
-        throw e;
+        const msg = e instanceof Error ? e.message : String(e);
+        failures.push(`${job.label}: ${msg}`);
+        // keep going — partial track is better than abort
       }
     }
-    setStatus('done');
-    setProgressNote(null);
     setActiveItemId(null);
+    setProgressNote(null);
+    if (failures.length && !ok) {
+      setError(failures.join('；'));
+      setStatus('error');
+      throw new Error(failures[0]);
+    }
+    if (failures.length) {
+      setError(`已完成 ${ok}/${jobs.length} 段；失败：${failures.join('；')}`);
+      setStatus('done');
+    } else {
+      setStatus('done');
+      setError(null);
+    }
     return last;
   }, []);
 

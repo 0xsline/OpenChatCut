@@ -724,6 +724,17 @@ button, input, select { font: inherit; }
 .cc-tx-clip-tab.selected { background:#e2e2e2; border-color:#e2e2e2; color:#181818; font-weight:600; }
 .cc-tx-clip-tab.pending { opacity:0.65; }
 .cc-tx-error { font-size:11.5px; color:#f88; margin-top:8px; line-height:1.4; }
+.cc-tx-sections { display:flex; flex-direction:column; gap:14px; }
+.cc-tx-section {
+  padding:10px 10px 12px; border-radius:8px; border:1px solid #2a2a2a; background:#161616;
+  cursor:default;
+}
+.cc-tx-section.active { border-color:#4a4a4a; background:#1a1a1a; box-shadow:inset 0 0 0 1px #ffffff10; }
+.cc-tx-section-head {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid #2a2a2a;
+}
+.cc-tx-section-title { font-size:12px; font-weight:600; color:#ddd; }
 
 /* ── Compact inspector (always docked under preview; does not unmount) ── */
 .cc-inspector {

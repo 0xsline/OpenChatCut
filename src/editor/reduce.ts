@@ -347,10 +347,16 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
     case 'updateCaptions':
       return s.captions ? { ...s, captions: { ...s.captions, ...a.patch } } : s;
     case 'setItemTranscript':
+      // Attach words only — keep media duration. Rewriting duration to ASR span
+      // collapsed long VO clips when AssemblyAI returned a short word range
+      // (looked like "only one incomplete segment"). Duration shrinks only via
+      // deleteWords / cleanScript (delete-text = delete-video).
       return {
         ...s,
         items: s.items.map((it) =>
-          it.id === a.id ? { ...it, transcript: a.words, deletedWordIdx: [], silenceFrames: undefined, durationInFrames: editedFrames(a.words, new Set(), s.fps) } : it,
+          it.id === a.id
+            ? { ...it, transcript: a.words, deletedWordIdx: [], silenceFrames: undefined }
+            : it,
         ),
       };
     case 'toggleWord':

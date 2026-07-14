@@ -11,11 +11,28 @@ export interface WordGroup {
   words: IndexedWord[];
 }
 
-// 'A' → 'Speaker 1', 'B' → 'Speaker 2', … (AssemblyAI diarization codes).
+// 'A' → '说话人 1', 'B' → '说话人 2', … (AssemblyAI diarization codes).
 export function speakerLabel(code: string | null | undefined): string {
-  if (!code) return 'Speaker';
+  if (!code) return '说话人';
   const n = code.charCodeAt(0) - 65;
-  return Number.isFinite(n) && n >= 0 ? `Speaker ${n + 1}` : `Speaker ${code}`;
+  return Number.isFinite(n) && n >= 0 ? `说话人 ${n + 1}` : `说话人 ${code}`;
+}
+
+/** Whether a string is mostly CJK (no space between word chips). */
+export function isCjkText(s: string): boolean {
+  const letters = s.replace(/\s/g, '');
+  if (!letters) return false;
+  let cjk = 0;
+  for (const ch of letters) {
+    const c = ch.codePointAt(0) ?? 0;
+    if (
+      (c >= 0x4e00 && c <= 0x9fff)
+      || (c >= 0x3400 && c <= 0x4dbf)
+      || (c >= 0x3040 && c <= 0x30ff)
+      || (c >= 0xac00 && c <= 0xd7af)
+    ) cjk += 1;
+  }
+  return cjk / letters.length >= 0.4;
 }
 
 const index = (words: TranscriptWord[]): IndexedWord[] => words.map((w, gi) => ({ ...w, gi }));

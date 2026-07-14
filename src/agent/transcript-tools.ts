@@ -129,8 +129,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
             results.push({ itemId: it.id, words: it.transcript.length, text: '', skipped: true });
             continue;
           }
-          // language_detection via assemblyai default (no languageCode)
-          const r = await transcribePath(it.src!);
+          const r = await transcribePath(it.src!, undefined, { languageCode: 'zh' });
           ctx.commands.setItemTranscript(it.id, r.words);
           results.push({ itemId: it.id, words: r.words.length, text: r.text.slice(0, 200) });
         }
