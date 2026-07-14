@@ -323,7 +323,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       if (!remove.size || s.items.some((item) => remove.has(item.track)) || (s.transitions ?? []).some((transition) => remove.has(transition.trackId))) return s;
       const ids = timelineTrackIds(s);
       const remaining = ids.filter((id) => !remove.has(id));
-      if (!remaining.some((id) => trackKind(s, id) === 'video') || !remaining.some((id) => trackKind(s, id) === 'audio')) return s;
+      if (!remaining.some((id) => trackKind(s, id) === 'video')) return s;
       const tracks = { ...s.tracks };
       for (const id of remove) delete tracks[id];
       return { ...s, trackOrder: remaining, tracks };

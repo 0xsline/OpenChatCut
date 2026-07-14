@@ -32,12 +32,12 @@ assert.deepStrictEqual(await execTrackTool('edit_track', { action: 'delete', tra
 await execTrackTool('edit_track', { action: 'delete', trackId: made.created[0].id }, ctx);
 assert.ok(!(await execTrackTool('edit_track', { action: 'list' }, ctx) as { id: string }[]).some((track) => track.id === made.created[0].id));
 
-// A timeline must always keep at least one lane of each media kind. Deleting an
-// extra lane is valid; deleting the last remaining audio/video lane is not.
+// Source empty projects start with one video lane and no audio lane. Audio lanes
+// may all be removed; the final video lane remains protected.
 const empty: TimelineState = { fps: 30, width: 1920, height: 1080, selectedId: null, items: [] };
 const oneAudioRemoved = reduce(empty, { type: 'track.delete', tracks: ['A2'] });
 assert.deepStrictEqual(timelineTrackIds(oneAudioRemoved), ['V2', 'V1', 'A1']);
-assert.strictEqual(reduce(oneAudioRemoved, { type: 'track.delete', tracks: ['A1'] }), oneAudioRemoved, 'last audio track is protected');
+assert.deepStrictEqual(timelineTrackIds(reduce(oneAudioRemoved, { type: 'track.delete', tracks: ['A1'] })), ['V2', 'V1']);
 const oneVideoRemoved = reduce(empty, { type: 'track.delete', tracks: ['V2'] });
 assert.strictEqual(reduce(oneVideoRemoved, { type: 'track.delete', tracks: ['V1'] }), oneVideoRemoved, 'last video track is protected');
 

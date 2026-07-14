@@ -23,5 +23,5 @@ export const INITIAL: TimelineState = {
     seedItem('seed_1', SEED_A, 0),
     seedItem('seed_2', SEED_B, SEED_A.durationInFrames),
   ],
-  selectedId: 'seed_1',
+  selectedId: null,
 };

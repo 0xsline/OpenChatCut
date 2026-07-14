@@ -1,46 +1,41 @@
-import { memo, type RefObject } from 'react';
+import { memo, useRef, useState, type RefObject } from 'react';
 import { Player, type PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import { TimelineComposition } from '../editor/TimelineComposition';
-import { timelineDuration, ASPECT_PRESETS, type AspectFit, type TimelineState } from '../editor/types';
+import { timelineDuration, type TimelineState } from '../editor/types';
+import { Icon } from './icons';
 
 interface PreviewPanelProps {
   state: TimelineState;
   playerRef: RefObject<PlayerRef | null>;
-  onSetAspect: (width: number, height: number, fit?: AspectFit) => void;
+  onImport: (file: File) => Promise<void>;
 }
 
-export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onSetAspect }: PreviewPanelProps) {
+export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImport }: PreviewPanelProps) {
   const duration = timelineDuration(state);
-  const fit: AspectFit = state.fit ?? 'contain';
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const importFiles = async (files: FileList | File[]) => {
+    if (!files.length || busy) return;
+    setBusy(true);
+    try { for (const file of Array.from(files)) await onImport(file); }
+    finally { setBusy(false); }
+  };
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', background: theme.panel, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '7px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${theme.border}` }}>
-        <span style={{ fontSize: 12, color: theme.textDim }}>预览</span>
-        <span style={{ flex: 1 }} />
-        <div style={{ display: 'flex', gap: 3 }}>
-          {ASPECT_PRESETS.map((p) => {
-            const active = state.width === p.width && state.height === p.height;
-            return (
-              <button key={p.label} onClick={() => onSetAspect(p.width, p.height, fit)} title={`画布 ${p.label}`}
-                style={{ ...ratioBtn, background: active ? theme.accent : theme.panelAlt, color: active ? '#fff' : theme.textDim, borderColor: active ? theme.accent : theme.border }}>
-                {p.label}
-              </button>
-            );
-          })}
-        </div>
-        <select value={fit} onChange={(e) => onSetAspect(state.width, state.height, e.target.value as AspectFit)} title="内容适配方式"
-          style={{ background: theme.panelAlt, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: 5, padding: '3px 6px', fontSize: 11 }}>
-          <option value="contain">contain(留边)</option>
-          <option value="cover">cover(裁切)</option>
-        </select>
+    <section style={{ display: 'flex', flex: 1, flexDirection: 'column', background: theme.panel, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+      <div style={{ height: 30, padding: '0 12px', display: 'flex', alignItems: 'center', borderBottom: `1px solid ${theme.border}`, flexShrink: 0 }}>
+        <span style={{ fontSize: 12, color: theme.text }}>预览</span>
       </div>
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, minHeight: 0, minWidth: 0, overflow: 'hidden', background: theme.bg }}>
+      <div className="cc-preview-stage"
+        onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void importFiles(event.dataTransfer.files); }}>
         {state.items.length === 0 ? (
-          <div style={{ color: theme.textDim, fontSize: 13, textAlign: 'center' }}>
-            时间线为空<br />
-            <span style={{ fontSize: 12 }}>从左侧「资源库 · G 动画」点击模板即可加到轨道</span>
-          </div>
+          <>
+            <input ref={inputRef} type="file" accept="video/*,image/*,audio/*" multiple hidden onChange={(event) => { if (event.target.files) void importFiles(event.target.files); event.target.value = ''; }} />
+            <button className="cc-preview-empty" disabled={busy} onClick={() => inputRef.current?.click()}>
+              <Icon name="upload" size={24} />
+              <span>{busy ? '正在导入媒体…' : '拖拽媒体到这里'}</span>
+            </button>
+          </>
         ) : (
           <Player
             ref={playerRef}
@@ -51,11 +46,10 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onSet
             compositionWidth={state.width}
             compositionHeight={state.height}
             style={{
-              maxWidth: '100%', maxHeight: '100%',
+              width: 'auto', height: '100%', maxWidth: '100%', maxHeight: '100%',
               aspectRatio: `${state.width} / ${state.height}`,
-              border: `1px solid ${theme.border}`, borderRadius: 6,
             }}
-            controls
+            controls={false}
             loop
           />
         )}
@@ -63,5 +57,3 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onSet
     </section>
   );
 });
-
-const ratioBtn: React.CSSProperties = { border: `1px solid ${theme.border}`, borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer', fontVariantNumeric: 'tabular-nums' };

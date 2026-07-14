@@ -25,6 +25,7 @@ interface ChatComposerProps {
   references: RefItem[];
   onInsertRef: (reference: RefItem) => void;
   taRef: RefObject<HTMLTextAreaElement | null>;
+  placeholder?: string;
 }
 
 type Pop = 'mode' | 'skill' | 'settings' | 'assets' | 'templates' | null;
@@ -59,7 +60,7 @@ function Popover({ children, onClose }: { children: ReactNode; onClose: () => vo
 const REF_ICON: Record<RefItem['kind'], IconName> = { video: 'filePlay', image: 'filePlay', audio: 'fileHeadphone', template: 'sparkles' };
 
 export function ChatComposer(props: ChatComposerProps) {
-  const { value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange, autoApply, onAutoApplyChange, creativeMode, onCreativeModeChange, references, onInsertRef, taRef } = props;
+  const { value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange, autoApply, onAutoApplyChange, creativeMode, onCreativeModeChange, references, onInsertRef, taRef, placeholder } = props;
   const activeSkill = findSkill(creativeMode);
   const [pop, setPop] = useState<Pop>(null);
   const toggle = (p: Pop) => setPop((cur) => (cur === p ? null : p));
@@ -97,54 +98,27 @@ export function ChatComposer(props: ChatComposerProps) {
   };
 
   return (
-    <div style={{ position: 'relative', background: theme.panelAlt, border: `1px solid ${theme.borderLight}`, borderRadius: 16, padding: '10px 12px 8px' }}>
+    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: 80, boxSizing: 'border-box', background: theme.panelAlt, border: `1px solid ${theme.borderLight}`, borderRadius: 8, padding: '6px 8px 5px' }}>
       <textarea
         ref={taRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(); } }}
-        placeholder="告诉 AI 要做哪些修改 - @ 引用素材"
-        rows={2}
-        style={{ width: '100%', resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: theme.text, fontSize: 13.5, fontFamily: 'inherit', lineHeight: 1.5, minHeight: 40 }}
+        placeholder={placeholder ?? '告诉 AI 要做哪些修改 - @ 引用素材'}
+        rows={1}
+        style={{ flex: 1, width: '100%', minHeight: 0, resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: theme.text, fontSize: 13, fontFamily: 'inherit', lineHeight: 1.4 }}
       />
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 2 }}>
         {/* left: mode + settings */}
         <div style={{ position: 'relative' }}>
-          <BarBtn icon="sparkles" title="模式" chevron active={pop === 'mode'} onClick={() => toggle('mode')} />
+          <button title="模式" onClick={() => toggle('mode')}
+            style={{ height: 28, display: 'flex', alignItems: 'center', gap: 5, padding: '0 4px', border: 0, borderRadius: 6, background: pop === 'mode' ? theme.panelAlt : 'transparent', color: theme.text, cursor: 'pointer', fontSize: 12 }}>
+            <Icon name="sparkles" size={15} /><span>{mode === 'agent' ? 'Agent' : 'Ask'}</span><Icon name="chevronDown" size={11} />
+          </button>
           {pop === 'mode' && (
             <Popover onClose={() => setPop(null)}>
               {modeRow('agent', '代理模式', '可编辑时间线（提出可撤销的改动提案）')}
               {modeRow('ask', '问答模式', '只回答不改动时间线')}
-            </Popover>
-          )}
-        </div>
-        {/* creative mode (source agent_skill) — a named skill guides the agent's workflow */}
-        <div style={{ position: 'relative' }}>
-          <button title="创作模式" onClick={() => toggle('skill')}
-            style={{ background: pop === 'skill' || activeSkill ? theme.panelAlt : 'none', border: 'none', cursor: 'pointer', padding: '5px 8px', borderRadius: 7, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 0, color: activeSkill ? theme.gold : theme.textDim, fontSize: 12 }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = activeSkill ? theme.gold : theme.text; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = activeSkill ? theme.gold : theme.textDim; }}>
-            <Icon name="film" size={15} />
-            <span style={{ whiteSpace: 'nowrap', maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis' }}>{activeSkill ? activeSkill.nameZh : '创作模式'}</span>
-            <Icon name="chevronDown" size={11} />
-          </button>
-          {pop === 'skill' && (
-            <Popover onClose={() => setPop(null)}>
-              <div style={{ fontSize: 10.5, color: theme.textDim, padding: '4px 8px 6px', letterSpacing: 0.4 }}>创作模式（引导 AI 的规划与流程）</div>
-              <button onClick={() => { onCreativeModeChange(null); setPop(null); }}
-                style={{ display: 'block', width: '100%', textAlign: 'left', background: !creativeMode ? theme.panel : 'none', border: 'none', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text }}>
-                <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>通用{!creativeMode && <span style={{ color: theme.accent, fontSize: 11 }}>●</span>}</div>
-                <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>不套用特定技能,按通用剪辑助手工作。</div>
-              </button>
-              {CREATIVE_SKILLS.map((s) => (
-                <button key={s.id} onClick={() => { onCreativeModeChange(s.id); setPop(null); }}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', background: creativeMode === s.id ? theme.panel : 'none', border: 'none', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text }}
-                  onMouseEnter={(e) => { if (creativeMode !== s.id) e.currentTarget.style.background = theme.panel; }}
-                  onMouseLeave={(e) => { if (creativeMode !== s.id) e.currentTarget.style.background = 'none'; }}>
-                  <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>{s.nameZh}{creativeMode === s.id && <span style={{ color: theme.accent, fontSize: 11 }}>●</span>}</div>
-                  <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>{s.summary}</div>
-                </button>
-              ))}
             </Popover>
           )}
         </div>
@@ -165,8 +139,31 @@ export function ChatComposer(props: ChatComposerProps) {
 
         {/* right: attach / reference / enhance / send */}
         <div style={{ position: 'relative' }}>
-          <BarBtn icon="paperclip" title="引用媒体池素材" active={pop === 'assets'} onClick={() => toggle('assets')} />
+          <BarBtn icon="plus" title="引用媒体池素材" active={pop === 'assets'} onClick={() => toggle('assets')} />
           {pop === 'assets' && refPopover('asset', '媒体池暂无素材')}
+        </div>
+        {/* creative mode (source agent_skill) */}
+        <div style={{ position: 'relative' }}>
+          <BarBtn icon="palette" title={activeSkill ? `创作模式：${activeSkill.nameZh}` : '创作模式'} active={pop === 'skill' || !!activeSkill} onClick={() => toggle('skill')} />
+          {pop === 'skill' && (
+            <Popover onClose={() => setPop(null)}>
+              <div style={{ fontSize: 10.5, color: theme.textDim, padding: '4px 8px 6px', letterSpacing: 0.4 }}>创作模式（引导 AI 的规划与流程）</div>
+              <button onClick={() => { onCreativeModeChange(null); setPop(null); }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', background: !creativeMode ? theme.panel : 'none', border: 'none', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text }}>
+                <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>通用{!creativeMode && <span style={{ color: theme.accent, fontSize: 11 }}>●</span>}</div>
+                <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>不套用特定技能，按通用剪辑助手工作。</div>
+              </button>
+              {CREATIVE_SKILLS.map((s) => (
+                <button key={s.id} onClick={() => { onCreativeModeChange(s.id); setPop(null); }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', background: creativeMode === s.id ? theme.panel : 'none', border: 'none', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text }}
+                  onMouseEnter={(e) => { if (creativeMode !== s.id) e.currentTarget.style.background = theme.panel; }}
+                  onMouseLeave={(e) => { if (creativeMode !== s.id) e.currentTarget.style.background = 'none'; }}>
+                  <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>{s.nameZh}{creativeMode === s.id && <span style={{ color: theme.accent, fontSize: 11 }}>●</span>}</div>
+                  <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>{s.summary}</div>
+                </button>
+              ))}
+            </Popover>
+          )}
         </div>
         <div style={{ position: 'relative' }}>
           <BarBtn icon="bookOpen" title="引用模板库" active={pop === 'templates'} onClick={() => toggle('templates')} />

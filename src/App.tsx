@@ -10,7 +10,15 @@ import type { ProjectDoc, TimelineState } from './editor/types';
 const Editor = lazy(() => import('./Editor'));
 
 // A brand-new project starts empty; the first-run "示例工程" gets the seed clips.
-const emptyState = (): TimelineState => ({ fps: 30, width: 1920, height: 1080, items: [], selectedId: null });
+const emptyState = (): TimelineState => ({
+  fps: 30,
+  width: 1920,
+  height: 1080,
+  items: [],
+  selectedId: null,
+  trackOrder: ['track_v1'],
+  tracks: { track_v1: { kind: 'video' } },
+});
 const emptyDoc = (): ProjectDoc => docFromTimeline(emptyState());
 const seedDoc = async (): Promise<ProjectDoc> => docFromTimeline((await import('./editor/initial')).INITIAL);
 

@@ -28,12 +28,14 @@ interface EditorProps {
   onRename: (name: string) => void;
 }
 
-const HEADER_H = 44;
+const HEADER_H = 41;
 const CHAT_MIN_W = 320;
 const ASSETS_MIN_W = 176;
 const CANVAS_MIN_W = 280;
 const TIMELINE_MIN_H = 260;
-const SPLITTER_TOTAL_W = 10;
+const SPLITTER_TOTAL_W = 0;
+const SOURCE_VIEWPORT_W = 1463;
+const SOURCE_CONTENT_H = 761;
 
 export default function Editor({ initial, project, onHome, onRename }: EditorProps) {
   const { state, doc, commands, canUndo, canRedo } = useEditor(initial);
@@ -83,15 +85,22 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     playerRef.current?.seekTo(0);
   }, [doc.activeTimelineId]);
 
-  // Source Dockview constraints, initialized to the supplied source screenshot's
-  // saved layout (22.47% / 27.72% / remainder; timeline 38.18% below the header).
+  // Source Dockview geometry measured at 1463 x 802 CSS px.
   const viewportW = typeof window === 'undefined' ? 1440 : window.innerWidth;
   const viewportH = typeof window === 'undefined' ? 900 : window.innerHeight;
-  const [chatW, setChatW] = usePersistedState('cc.chatW.source-ui-v5', Math.max(CHAT_MIN_W, Math.floor(viewportW * 0.2247)));
-  const [libW, setLibW] = usePersistedState('cc.libW.source-ui-v5', Math.max(ASSETS_MIN_W, Math.floor(viewportW * 0.2772)));
-  const [timelineH, setTimelineH] = usePersistedState('cc.timelineH.source-ui-v5', Math.max(TIMELINE_MIN_H, Math.floor((viewportH - HEADER_H) * 0.3818)));
+  const [chatW, setChatW] = usePersistedState('cc.chatW.source-ui-v7', Math.max(CHAT_MIN_W, Math.round(viewportW * 356 / SOURCE_VIEWPORT_W)));
+  const [libW, setLibW] = usePersistedState('cc.libW.source-ui-v7', Math.max(ASSETS_MIN_W, Math.round(viewportW * 406 / SOURCE_VIEWPORT_W)));
+  const [timelineH, setTimelineH] = usePersistedState('cc.timelineH.source-ui-v7', Math.max(TIMELINE_MIN_H, Math.round((viewportH - HEADER_H) * 350 / SOURCE_CONTENT_H)));
   const [chatCollapsed, setChatCollapsed] = usePersistedState('cc.chatCollapsed', false);
   const addTemplate = useCallback((tpl: Tpl) => commands.addMotionGraphic(tpl), [commands]);
+  const importToPool = useCallback(async (file: File) => {
+    commands.addAsset(await importMedia(file, stateRef.current.fps));
+  }, [commands]);
+  const importToCanvas = useCallback(async (file: File) => {
+    const asset = await importMedia(file, stateRef.current.fps);
+    commands.addAsset(asset);
+    commands.addMediaItem(asset);
+  }, [commands]);
   const useTemplateAI = useCallback((tpl: Tpl) => {
     setChatCollapsed(false);
     setChatSeed({ text: `参考模板「${tpl.name}」，用 create_motion_graphic 生成一个类似风格的动画： @${tpl.name} `, nonce: Date.now(), reference: { id: tpl.id, name: tpl.name, kind: 'template' } });
@@ -151,8 +160,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: `${chatCollapsed ? 46 : chatW}px 5px ${libW}px 5px minmax(0, 1fr)`,
-        gridTemplateRows: `${HEADER_H}px minmax(0, 1fr) 5px ${timelineH}px`,
+        gridTemplateColumns: `${chatCollapsed ? 46 : chatW}px 0 ${libW}px 0 minmax(0, 1fr)`,
+        gridTemplateRows: `${HEADER_H}px minmax(0, 1fr) 0 ${timelineH}px`,
         height: '100vh',
         overflow: 'hidden',
         background: theme.bg,
@@ -193,7 +202,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       </div>
 
       <div style={{ gridColumn: 3, gridRow: 2, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-        <LibraryPanel templates={TEMPLATES} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} onImportMedia={async (file) => { commands.addAsset(await importMedia(file, state.fps)); }} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onUseTemplateAI={useTemplateAI}
+        <LibraryPanel templates={TEMPLATES} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} onImportMedia={importToPool} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onUseTemplateAI={useTemplateAI}
           selectedItem={selectedItem}
           onApplyTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}
           onApplyFx={(assetId) => state.selectedId && commands.setItemEffects(state.selectedId, [{ id: `fx_${assetId}`, assetId, overrides: {} }])}
@@ -203,8 +212,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         <Divider onResize={(dx) => setLibW((w) => clamp(w + dx, ASSETS_MIN_W, Math.max(ASSETS_MIN_W, viewportW - (chatCollapsed ? 46 : chatW) - CANVAS_MIN_W - SPLITTER_TOTAL_W)))} />
       </div>
       <div style={{ gridColumn: 5, gridRow: 2, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-        <PreviewPanel state={previewState ?? state} playerRef={playerRef} onSetAspect={commands.setAspect} />
-        <InspectorPanel
+        <PreviewPanel state={previewState ?? state} playerRef={playerRef} onImport={importToCanvas} />
+        {selectedItem && <InspectorPanel
               templates={TEMPLATES}
               selectedItem={selectedItem}
               fps={state.fps}
@@ -228,7 +237,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
                 const t = state.transitions?.find((x) => x.incomingItemId === state.selectedId);
                 if (t) commands.removeTransition(t.id);
               }}
-        />
+        />}
       </div>
       <div style={{ gridColumn: '3 / -1', gridRow: 3 }}>
         <Divider orientation="horizontal" onResize={(dy) => setTimelineH((h) => clamp(h - dy, TIMELINE_MIN_H, Math.max(TIMELINE_MIN_H, viewportH - HEADER_H - 300)))} />

@@ -9,6 +9,15 @@ import { ChatMessage } from './chat/ChatMessage';
 import { ChatComposer, type ChatMode, type RefItem } from './chat/ChatComposer';
 import { Icon } from './icons';
 
+const EMPTY_PROJECT_STARTERS = [
+  { label: '口播剪辑', prompt: '帮我剪辑一段口播视频', icon: 'scissors' as const },
+  { label: 'MG动画', prompt: '帮我制作一段 MG 动画', icon: 'film' as const },
+  { label: '长视频转短视频', prompt: '把一段长视频剪成适合发布的短视频', icon: 'video' as const },
+  { label: '产品 / App 宣传', prompt: '帮我制作一支产品或 App 宣传视频', icon: 'sparkles' as const },
+  { label: 'AI 短片', prompt: '帮我创作一支 AI 短片', icon: 'image' as const },
+  { label: '讲解视频', prompt: '帮我制作一段讲解视频', icon: 'play' as const },
+];
+
 interface ChatPanelProps {
   ctx: AgentContext;
   /** the current project's id — chat history is persisted per project (source chat_block) */
@@ -113,8 +122,20 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
       </div>
 
       {/* messages */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '4px 14px', fontSize: 13.5, color: theme.text, minHeight: 0 }}>
-        {messages.length === 0 && <div style={{ color: theme.text, margin: '18px 0' }}>有什么视频剪辑需要帮忙的吗？</div>}
+      <div ref={scrollRef} className={`cc-chat-messages${messages.length === 0 ? ' empty' : ''}`}>
+        {messages.length === 0 && (
+          <div className="cc-chat-onboarding">
+            <h2>今天想创作什么？</h2>
+            <div className="cc-chat-starter-grid">
+              {EMPTY_PROJECT_STARTERS.map((starter) => (
+                <button key={starter.label} onClick={() => { setInput(starter.prompt); requestAnimationFrame(() => taRef.current?.focus()); }}>
+                  <span><Icon name={starter.icon} size={17} /></span>
+                  {starter.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {messages.map((m, i) => (
           <ChatMessage key={i} msg={m}
             streaming={running && i === messages.length - 1 && m.role === 'assistant'}
@@ -139,7 +160,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
       </div>
 
       {/* composer */}
-      <div style={{ padding: 12, borderTop: `1px solid ${theme.border}` }}>
+      <div style={{ padding: '12px 15px 12px 16px', borderTop: `1px solid ${theme.border}` }}>
         <ChatComposer
           value={input} onChange={(value) => {
             setInput(value);
@@ -149,7 +170,8 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
           mode={mode} onModeChange={setMode}
           autoApply={autoApply} onAutoApplyChange={setAutoApply}
           creativeMode={creativeMode} onCreativeModeChange={onCreativeModeChange}
-          references={references} onInsertRef={insertRef} taRef={taRef} />
+          references={references} onInsertRef={insertRef} taRef={taRef}
+          placeholder={messages.length === 0 ? '描述你想要创建的内容...' : '告诉 AI 要做哪些修改 - @ 引用素材'} />
       </div>
     </aside>
   );

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
-import { MARKER_HEX, defaultTrackId, timelineDuration, timelineTrackIds, trackAlias, trackKind, type MarkerColor, type TimelineItem, type TimelineState, type TrackId } from '../editor/types';
+import { ASPECT_PRESETS, MARKER_HEX, defaultTrackId, timelineDuration, timelineTrackIds, trackAlias, trackKind, type MarkerColor, type TimelineItem, type TimelineState, type TrackId } from '../editor/types';
 import type { EditorCommands } from '../editor/store';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { ClipContextMenu, type FxClip } from './ClipContextMenu';
@@ -20,9 +20,9 @@ interface TimelineProps {
   onRecordVoiceover?: (blob: Blob) => void;
 }
 
-const HEADER_W = 178;
+const HEADER_W = 192;
 const MIN_ROW = 34;
-const RULER_H = 29;
+const RULER_H = 32;
 // clip fill by ITEM kind — source --tl-item-* oklch (video/image=blue, audio=green,
 // motion-graphic=pink, text=amber). Video/image also render a media thumbnail on top.
 const CLIP_COLOR: Record<TimelineItem['kind'], string> = {
@@ -33,6 +33,7 @@ const CLIP_COLOR: Record<TimelineItem['kind'], string> = {
 // (videoTrackHeight > audioTrackHeight), not an equal split.
 const WEIGHT: Record<'video' | 'audio', number> = { video: 1.4, audio: 1 };
 const PX_PER_FRAME = 3; // default time scale (1s ≈ 90px @30fps) — compact by default
+const MIN_TIME_ZOOM = 0.02; // long timelines (3–8 min) must still fit in one viewport
 const toolBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14, padding: '2px 5px' };
 const CAPTION_LANGS = ['English', '简体中文', '西班牙语', '法语', '德语', '日语', '韩语', '葡萄牙语'];
 
@@ -47,10 +48,10 @@ function TB({ icon, title, onClick, active, disabled }: {
 }) {
   return (
     <button title={title} onClick={onClick} disabled={disabled}
-      style={{ width: 34, height: 34, background: 'none', border: 'none', cursor: disabled ? 'default' : 'pointer', padding: 0, borderRadius: 5, display: 'grid', placeItems: 'center', lineHeight: 0, color: disabled ? theme.textDim : active ? theme.accent : '#c8c8c8', opacity: disabled ? 0.4 : 1 }}
+      style={{ width: 24, height: 24, background: 'none', border: 'none', cursor: disabled ? 'default' : 'pointer', padding: 0, borderRadius: 4, display: 'grid', placeItems: 'center', lineHeight: 0, color: disabled ? theme.textDim : active ? theme.accent : '#c8c8c8', opacity: disabled ? 0.4 : 1 }}
       onMouseEnter={(e) => { if (!disabled && !active) e.currentTarget.style.background = theme.panelAlt; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
-      <Icon name={icon} size={18} />
+      <Icon name={icon} size={16} />
     </button>
   );
 }
@@ -79,8 +80,27 @@ interface Drag {
 // how close (px) an edge must come to a snap target before it locks on
 const SNAP_PX = 7;
 
+// The source timeline paints dense, filled audio peaks instead of a repeated
+// decorative zig-zag. Generate a stable waveform from clip identity so the
+// same project keeps the same visual shape without decoding audio in React.
+function waveformPath(seed: string, width: number): string {
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619);
+  const count = Math.min(1200, Math.max(24, Math.ceil(width / 2)));
+  const bars: string[] = [];
+  for (let i = 0; i < count; i += 1) {
+    hash ^= hash << 13; hash ^= hash >>> 17; hash ^= hash << 5;
+    const envelope = 0.55 + 0.45 * Math.sin((i / (count - 1)) * Math.PI);
+    const amplitude = 2.5 + ((hash >>> 0) % 850) / 100 * envelope;
+    const x = (i / (count - 1)) * width;
+    bars.push(`M${x.toFixed(2)} ${(12 - amplitude).toFixed(2)}V${(12 + amplitude).toFixed(2)}`);
+  }
+  return bars.join(' ');
+}
+
 export function Timeline({ state, commands, playerRef, onRecordVoiceover }: TimelineProps) {
-  const total = timelineDuration(state);
+  const empty = state.items.length === 0;
+  const total = empty ? 0 : timelineDuration(state);
   const trackIds = timelineTrackIds(state);
   const metaOf = (id: TrackId) => {
     const kind = trackKind(state, id);
@@ -116,7 +136,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
     return () => { if (raf) cancelAnimationFrame(raf); detach?.(); };
   }, [playerRef]);
   useEffect(() => { paintPlayheadRef.current(playheadRef.current); }, [px, state.fps, total]);
-  const zoomBy = (f: number) => setZoom((z) => Math.min(6, Math.max(0.5, z * f)));
+  const zoomBy = (f: number) => setZoom((z) => Math.min(6, Math.max(MIN_TIME_ZOOM, z * f)));
   // editing mode (source: Selection V / Blade B / Trim N). selection = drag/move;
   // blade = click a clip to cut it there; trim = edge-trim ripples following clips.
   const [editMode, setEditMode] = usePersistedState<'selection' | 'blade' | 'trim'>('cc.editMode', 'selection');
@@ -178,7 +198,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
   const fitToView = () => {
     const w = scrollRef.current?.clientWidth ?? 0;
     if (w <= HEADER_W || total <= 0) return;
-    setZoom(Math.min(6, Math.max(0.5, (w - HEADER_W - 24) / (total * PX_PER_FRAME))));
+    setZoom(Math.min(6, Math.max(MIN_TIME_ZOOM, (w - HEADER_W - 24) / (total * PX_PER_FRAME))));
     if (scrollRef.current) scrollRef.current.scrollLeft = 0;
   };
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -236,7 +256,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const oldZoom = zoomRef.current;
-        const next = Math.min(6, Math.max(0.5, oldZoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+        const next = Math.min(6, Math.max(MIN_TIME_ZOOM, oldZoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
         if (next === oldZoom) return;
         const viewX = e.clientX - el.getBoundingClientRect().left;
         const frame = (viewX + el.scrollLeft - HEADER_W) / (PX_PER_FRAME * oldZoom);
@@ -278,7 +298,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
   };
 
   const seekTo = (clientX: number) => {
-    const f = Math.min(frameFromClientX(clientX), total - 1);
+    const f = Math.max(0, Math.min(frameFromClientX(clientX), total - 1));
     playerRef.current?.seekTo(f);
     paintPlayhead(f);
   };
@@ -416,7 +436,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
   const editing = markers.find((m) => m.id === editMarker) ?? null;
 
   return (
-    <section className="cc-timeline" style={{ flex: 1, borderTop: `1px solid ${theme.border}`, background: '#121212', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+    <section className="cc-timeline" style={{ flex: 1, borderLeft: `1px solid ${theme.border}`, background: '#101010', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
       {/* marker note editor (source: click a pin → note popup) */}
       {editing && (
         <div style={{ position: 'absolute', top: 40, left: 12, zIndex: 20, width: 260, background: theme.panelAlt, border: `1px solid ${theme.border}`, borderRadius: 10, padding: 12, boxShadow: '0 8px 28px rgba(0,0,0,0.45)' }}>
@@ -469,10 +489,25 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
         <span ref={toolbarTimecodeRef} className="cc-timeline-timecode">{fmt(playheadRef.current, state.fps)} / {fmt(total, state.fps)}</span>
         <span style={{ flex: 1 }} />
         <TB icon="zoomOut" title="缩小时间轴 (⌘−)" onClick={() => zoomBy(1 / 1.4)} />
-        <input type="range" min={0.5} max={6} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))}
+        <input type="range" min={MIN_TIME_ZOOM} max={6} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))}
           title="缩放时间轴" className="cc-timeline-zoom" />
         <TB icon="zoomIn" title="放大时间轴 (⌘＋)" onClick={() => zoomBy(1.4)} />
         <TB icon="fit" title="适应宽度 (⇧Z)" onClick={fitToView} />
+        <label className="cc-aspect-select" title="画幅比例">
+          <Icon name="aspect" size={16} />
+          <select aria-label="画幅比例" value={ASPECT_PRESETS.find((preset) => preset.width === state.width && preset.height === state.height)?.label ?? ''}
+            onChange={(event) => {
+              if (event.target.value === '__contain__' || event.target.value === '__cover__') {
+                commands.setAspect(state.width, state.height, event.target.value === '__cover__' ? 'cover' : 'contain');
+                return;
+              }
+              const preset = ASPECT_PRESETS.find((entry) => entry.label === event.target.value);
+              if (preset) commands.setAspect(preset.width, preset.height, state.fit);
+            }}>
+            <optgroup label="画幅比例">{ASPECT_PRESETS.map((preset) => <option key={preset.label} value={preset.label}>{preset.label}</option>)}</optgroup>
+            <optgroup label="内容适配"><option value="__contain__">留边</option><option value="__cover__">裁切</option></optgroup>
+          </select>
+        </label>
         <button className={`cc-caption-toggle${captionsVisible ? ' active' : ''}`} title="字幕显示" disabled={!state.captions} onClick={() => state.captions && commands.updateCaptions({ enabled: !captionsVisible })}><Icon name="captions" size={17} /><span>{captionsVisible ? '开启' : '关闭'}</span><Icon name="chevronDown" size={13} /></button>
         <TB icon="fullscreen" title="全屏时间线" onClick={() => { if (document.fullscreenElement) void document.exitFullscreen(); else void scrollRef.current?.requestFullscreen(); }} />
       </div>
@@ -490,9 +525,13 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
             <div className="cc-ruler-head" style={{ width: HEADER_W }}><span ref={rulerTimecodeRef}>{fmtClock(playheadRef.current, state.fps)}</span></div>
             <div style={{ position: 'relative', flex: 1 }}>
               {/* ticks span the whole visible width, not just the content */}
-              {Array.from({ length: Math.ceil((innerW - HEADER_W) / px / (state.fps * 2)) + 1 }).map((_, i) => (
-                <span key={i} style={{ position: 'absolute', left: i * state.fps * 2 * px, top: 5 }}>{fmt(i * state.fps * 2, state.fps)}</span>
-              ))}
+              {empty
+                ? Array.from({ length: 5 }).map((_, i) => (
+                    <span key={i} style={{ position: 'absolute', left: `${i * 25}%`, top: 5, transform: i === 4 ? 'translateX(-100%)' : undefined }}>{fmt(i * state.fps * 10, state.fps)}</span>
+                  ))
+                : Array.from({ length: Math.ceil((innerW - HEADER_W) / px / (state.fps * 2)) + 1 }).map((_, i) => (
+                    <span key={i} style={{ position: 'absolute', left: i * state.fps * 2 * px, top: 5 }}>{fmt(i * state.fps * 2, state.fps)}</span>
+                  ))}
               {/* marker layer (source: bookmark pins over the ruler; range bar to the right) */}
               {markers.filter((m) => m.scope === 'project').map((m) => (
                 <div key={m.id} style={{ position: 'absolute', left: m.fromFrame * px, top: 0, zIndex: 4, pointerEvents: 'none' }}>
@@ -602,14 +641,14 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
                         }}
                       >
                         {it.kind === 'audio' && (
-                          <svg className="cc-audio-waveform" viewBox="0 0 120 24" preserveAspectRatio="none" aria-hidden>
-                            <path d="M0 12 2 9 4 15 6 6 8 17 10 10 12 14 14 4 16 19 18 8 20 16 22 11 24 13 26 7 28 17 30 5 32 20 34 9 36 15 38 12 40 6 42 18 44 10 46 14 48 8 50 17 52 4 54 19 56 11 58 13 60 7 62 16 64 9 66 15 68 5 70 18 72 10 74 14 76 8 78 17 80 6 82 19 84 11 86 13 88 7 90 16 92 9 94 15 96 4 98 18 100 10 102 14 104 8 106 17 108 6 110 19 112 11 114 14 116 8 118 16 120 12" />
+                          <svg className="cc-audio-waveform" viewBox={`0 0 ${Math.max(1, dur * px - 6)} 24`} preserveAspectRatio="none" aria-hidden>
+                            <path d={waveformPath(`${it.id}:${it.name}`, Math.max(1, dur * px - 6))} />
                           </svg>
                         )}
                         {/* trim handles (hidden in blade mode) */}
                         {editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
-                        <span style={{ position: 'relative', zIndex: 1, pointerEvents: 'none', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, textShadow: '0 1px 2px rgba(0,0,0,.55)' }}>{it.name}</span>
+                        <span className={`cc-clip-label${it.kind === 'audio' ? ' audio' : ''}`}>{it.name}</span>
                         {editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', right: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
                       </div>

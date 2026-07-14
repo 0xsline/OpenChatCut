@@ -6,6 +6,7 @@ import { theme } from '../theme';
 export function Divider({ onResize, orientation = 'vertical' }: { onResize: (delta: number) => void; orientation?: 'vertical' | 'horizontal' }) {
   const last = useRef<number | null>(null);
   const [active, setActive] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const horiz = orientation === 'horizontal';
   const axis = (e: React.PointerEvent) => (horiz ? e.clientY : e.clientX);
 
@@ -30,12 +31,20 @@ export function Divider({ onResize, orientation = 'vertical' }: { onResize: (del
       }}
       title="拖动调整大小"
       style={{
-        width: '100%', height: '100%', cursor: horiz ? 'row-resize' : 'col-resize',
-        background: active ? theme.accent : theme.border,
-        transition: active ? 'none' : 'background 0.15s',
+        position: 'relative', zIndex: 20,
+        width: horiz ? '100%' : 5, height: horiz ? 5 : '100%',
+        left: horiz ? 0 : -2, top: horiz ? -2 : 0,
+        cursor: horiz ? 'row-resize' : 'col-resize',
       }}
-      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = theme.borderLight; }}
-      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = theme.border; }}
-    />
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <span style={{
+        position: 'absolute', pointerEvents: 'none',
+        left: horiz ? 0 : 2, top: horiz ? 2 : 0,
+        width: horiz ? '100%' : 1, height: horiz ? 1 : '100%',
+        background: active ? theme.accent : hovered ? theme.borderLight : theme.border,
+      }} />
+    </div>
   );
 }

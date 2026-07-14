@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Icon } from './icons';
 import type { MediaAsset, MediaFolder } from '../editor/types';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 interface MediaPoolPanelProps {
   assets: MediaAsset[];
@@ -51,7 +52,7 @@ export function MediaPoolPanel({
   const [sort, setSort] = useState<SortKey>('newest');
   const [type, setType] = useState<TypeFilter>('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [view, setView] = useState<'grid' | 'list'>('grid');
+  const [view, setView] = usePersistedState<'grid' | 'list'>('cc.mediaView', 'grid');
   const [menu, setMenu] = useState<'sort' | 'filter' | null>(null);
   const [assetMenu, setAssetMenu] = useState<string | null>(null);
   const [currentFolderId, setCurrentFolderId] = useState<string>();
@@ -127,7 +128,7 @@ export function MediaPoolPanel({
       <input ref={inputRef} type="file" accept="video/*,image/*,audio/*" multiple hidden onChange={(event) => onPick(event.target.files)} />
       <div className="cc-media-toolbar">
         <label className="cc-media-search">
-          <Icon name="search" size={18} />
+          <Icon name="search" size={16} />
           <input aria-label="搜索素材" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索" />
         </label>
         <button className="cc-media-icon" aria-label="上传素材" title="上传素材" disabled={busy} onClick={() => inputRef.current?.click()}><Icon name="upload" size={19} /></button>
@@ -174,9 +175,11 @@ export function MediaPoolPanel({
         {visible.map((asset) => <div key={asset.id} className={`cc-asset-card${selected.has(asset.id) ? ' selected' : ''}`}>
           <div className="cc-asset-thumb-wrap">
             <button className="cc-asset-thumb" title={`加到时间线：${asset.name}`} onClick={() => onAddAsset(asset)}>
-              {asset.kind === 'image' ? <img src={asset.src} alt={asset.name} />
-                : asset.kind === 'video' ? <video src={asset.src} muted preload="metadata" />
-                  : <Icon name="music" size={42} strokeWidth={2.2} />}
+              {view === 'list'
+                ? <Icon name={asset.kind === 'audio' ? 'music' : asset.kind} size={16} />
+                : asset.kind === 'image' ? <img src={asset.src} alt={asset.name} />
+                  : asset.kind === 'video' ? <video src={asset.src} muted preload="metadata" />
+                    : <Icon name="music" size={42} strokeWidth={2.2} />}
             </button>
             {asset.kind === 'audio' && <span className="cc-asset-audio-mark"><Icon name="volume" size={14} /></span>}
             <span className="cc-asset-duration">{durationLabel(asset.durationInFrames, fps)}</span>
@@ -192,8 +195,12 @@ export function MediaPoolPanel({
             </select>
           </div>}
         </div>)}
+        {visible.length === 0 && childFolders.length === 0 && (
+          <div className="cc-media-empty">
+            {assets.length === 0 ? <><Icon name="folder" size={28} /><strong>这个文件夹是空的</strong><span>导入媒体或把素材拖到这里。</span></> : <span>当前筛选下没有素材</span>}
+          </div>
+        )}
       </div>
-      {visible.length === 0 && childFolders.length === 0 && <div className="cc-media-empty">{assets.length === 0 ? '拖入或上传视频、图片和音频' : '当前筛选下没有素材'}</div>}
 
       {promptState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={promptState.title}>
         <form className="cc-modal" onSubmit={(event) => { event.preventDefault(); submitPrompt(); }}>

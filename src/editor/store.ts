@@ -129,23 +129,24 @@ export function useEditor(initial: ProjectDoc): {
 function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): EditorCommands {
   const pickTrack = (ref: TrackId | undefined, kind: TrackKind): TrackId => {
     const state = activeTimeline(getDoc());
-    return resolveTrackId(state, ref, kind) ?? defaultTrackId(state, kind) ?? (kind === 'video' ? 'V1' : 'A1');
+    const existing = resolveTrackId(state, ref, kind) ?? defaultTrackId(state, kind);
+    if (existing) return existing;
+    const id = uid('track');
+    dispatch({ type: 'track.create', track: { id, kind } });
+    return id;
   };
   return {
       createTimeline: (opts) => {
         const d = getDoc();
         const base = activeTimeline(d);
-        const trackOrder = [uid('track'), uid('track'), uid('track'), uid('track')];
+        const trackOrder = [uid('track')];
         const t: Timeline = {
           fps: base.fps,
           width: opts?.width ?? base.width,
           height: opts?.height ?? base.height,
           fit: opts?.fit ?? base.fit,
           items: [], selectedId: null, trackOrder,
-          tracks: {
-            [trackOrder[0]]: { kind: 'video' }, [trackOrder[1]]: { kind: 'video' },
-            [trackOrder[2]]: { kind: 'audio' }, [trackOrder[3]]: { kind: 'audio' },
-          },
+          tracks: { [trackOrder[0]]: { kind: 'video' } },
           id: uid('tl'), name: opts?.name ?? `序列 ${d.timelines.length + 1}`, order: maxOrder(d) + 1,
         };
         dispatch({ type: 'tl.create', timeline: t, activate: opts?.activate });
