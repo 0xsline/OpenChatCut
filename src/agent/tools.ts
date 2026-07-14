@@ -34,6 +34,7 @@ import { WEB_TOOL_SCHEMAS, WEB_TOOL_NAMES, execWebTool } from './web-tools';
 import { FONT_TOOL_SCHEMAS, FONT_TOOL_NAMES, execFontTool } from './font-tools';
 import { FOLLOWUP_TOOL_SCHEMAS, FOLLOWUP_TOOL_NAMES, execFollowupTool } from './followup-tools';
 import { PROJECT_TOOL_SCHEMAS, PROJECT_TOOL_NAMES, execProjectTool } from './project-tools';
+import { UPLOAD_TOOL_SCHEMAS, UPLOAD_TOOL_NAMES, execUploadTool } from './upload-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -230,6 +231,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...FOLLOWUP_TOOL_SCHEMAS,
   // 工程会话（源 create/list/delete/duplicate/edit/restore/target_project + get_editor_url）
   ...PROJECT_TOOL_SCHEMAS,
+  // 本地上传/下载链（源 request_asset_upload_url / finalize_uploaded_asset / request_asset_download）
+  ...UPLOAD_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -299,6 +302,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (FONT_TOOL_NAMES.has(name)) return execFontTool(name, args, ctx);
   if (FOLLOWUP_TOOL_NAMES.has(name)) return execFollowupTool(name, args, ctx);
   if (PROJECT_TOOL_NAMES.has(name)) return execProjectTool(name, args, ctx);
+  if (UPLOAD_TOOL_NAMES.has(name)) return execUploadTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();

@@ -87,18 +87,31 @@ export function uploadPlugin(): Plugin {
   return {
     name: 'chatcut-upload',
     configureServer(server) {
+      // POST /upload?name=…&assetId=…  raw body → public/media/uploads
+      // Optional assetId makes the path deterministic for request_asset_upload_url
+      // finalize (local stand-in for S3 presigned PUT). Also accepts PUT for source-shaped clients.
       server.middlewares.use('/upload', async (req, res) => {
-        if (req.method !== 'POST') { sendError(res, 405, 'method not allowed — use POST'); return; }
+        if (req.method !== 'POST' && req.method !== 'PUT') {
+          sendError(res, 405, 'method not allowed — use POST or PUT');
+          return;
+        }
         try {
           const url = new URL(req.url ?? '/', 'http://localhost');
           const name = url.searchParams.get('name') ?? 'file';
+          const assetIdRaw = url.searchParams.get('assetId') ?? '';
+          const assetId = assetIdRaw.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
           const ext = (extname(name).toLowerCase().replace(/[^.a-z0-9]/g, '') || '.bin');
           const buf = await readBody(req);
           if (buf.length === 0) { sendError(res, 400, 'empty body'); return; }
           await mkdir(UPLOAD_DIR, { recursive: true });
-          const fname = `${randomUUID()}${ext}`;
+          const fname = assetId ? `${assetId}${ext}` : `${randomUUID()}${ext}`;
           await writeFile(join(UPLOAD_DIR, fname), buf);
-          sendJson(res, 200, { path: `/media/uploads/${fname}`, bytes: buf.length });
+          sendJson(res, 200, {
+            path: `/media/uploads/${fname}`,
+            bytes: buf.length,
+            fileKey: `uploads/${fname}`,
+            assetId: assetId || undefined,
+          });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           server.config.logger.error(`[upload] ${message}`);

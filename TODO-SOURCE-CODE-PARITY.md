@@ -42,6 +42,7 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 - ✅ `download_media` / `push_asset` 同名（`agent/stock-tools.ts` + `/api/import-url`，§2.4）— grok
 - ✅ `search_fonts` + `submit_export` confirmFontFallback / nleFormat（`agent/font-tools.ts` + `fonts/googleFonts.ts`，§1.4 §2.5）— grok
 - ✅ 工程七件套 + `get_editor_url`（`agent/project-tools.ts` + soft-delete，§1.2 §1.5）— grok
+- ✅ 本地 upload 三件套（`agent/upload-tools.ts` + `/upload?assetId=`，§1.6）— grok
 
 ### 分工表
 
@@ -123,16 +124,14 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 
 ---
 
-### 1.6 ❌ 上传/下载预签名链（3）
+### 1.6 ✅ 上传/下载预签名链（3）本地等价
 
 `request_asset_upload_url` · `finalize_uploaded_asset` · `request_asset_download`
 
 | | |
 |--|--|
-| **缺口** | 源站云存储预签名；本仓本地 `vite-plugin-upload`。 |
-| **源站** | schema 三工具参数见 json。 |
-| **本仓 UI** | 媒体池上传：`src/media/MediaPoolPanel.tsx`；服务：`vite-plugin-upload.ts` → `public/media/uploads`。 |
-| **怎么改（本地等价）** | 1. `request_asset_upload_url` → 返回本地 `POST /upload` 说明或一次性 token。2. `finalize_uploaded_asset` → 调 `addAsset` 写媒体池（对齐 `manage_media_pool`）。3. `request_asset_download` → 返回 `/media/uploads/...` 公网相对路径。4. **不要假装 S3**；文档注明 local-dev 语义。 |
+| **本仓** | `src/agent/upload-tools.ts`；`POST|PUT /upload?name=&assetId=` 确定性落盘；`localDev:true` 标明非 S3。 |
+| **状态** | ✅ 2026-07-15 [G] |
 
 ---
 
@@ -401,7 +400,7 @@ chatcut-clone/
 
 - [x] **[G]** project 七件套 + `target_project`（§1.2）
 - [x] **[G]** `get_editor_url`（§1.5）
-- [ ] **[G]** 本地 upload 三件套等价（§1.6）
+- [x] **[G]** 本地 upload 三件套等价（§1.6）
 
 ### P3 可选
 

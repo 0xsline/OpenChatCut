@@ -119,6 +119,11 @@ export const SYSTEM_PROMPT = `你是 ChatCut里的视频剪辑 AI。你通过调
 - **delete_project** 软删(必传 projectId);**restore_project** 恢复;**duplicate_project** 全量复制。
 - **edit_project** action=update + json {name, description?} 改工程名。
 
+# 本地上传/下载(非真 S3)
+- **request_asset_upload_url** → 拿到 localDev uploadUrl,POST/PUT 字节 → **finalize_uploaded_asset** 入媒体池。
+- **request_asset_download**(assetId): 返回用户可打开的 downloadUrl/path。
+- 公网 URL 优先 **download_media** / **push_asset**,不必走预签名链。
+
 # 字体
 - **search_fonts**(query): 搜可加载字体(Google 预载 + 中文别名)。MG/字幕 fontFamily 用返回的 canonical family。
 - 导出(video/xml)若引用不可加载字体,submit_export 会先返回 unsupportedFonts;转告用户后仅在其同意时带 confirmFontFallback=true 重试。
