@@ -12,6 +12,7 @@ import asciiRainBlurFrag from './ascii-rain-blur.frag?raw';
 import asciiRainCompositeFrag from './ascii-rain-composite.frag?raw';
 import slog3Frag from './slog3-s709.frag?raw';
 import canonLog3Frag from './canon-log3-709.frag?raw';
+import chromaKeyFrag from './chroma-key.frag?raw';
 import type { FxDef } from './uniforms';
 import type { FxPass } from '../runtime';
 
@@ -158,6 +159,18 @@ export const FX_EFFECTS: Record<string, FxDef> = {
       { key: 'blurSide', label: '模糊侧(0双/1上/2下)', default: 0, min: 0, max: 2, step: 1 },
       { key: 'saturation', label: '饱和度', default: 1.3, min: 0, max: 3, step: 0.05 },
       { key: 'vignette', label: '暗角', default: 0.2, min: 0, max: 1, step: 0.01 },
+    ],
+  },
+  'builtin:fx-chroma-key': {
+    id: 'builtin:fx-chroma-key',
+    name: '色度键/绿幕',
+    desc: '按键色（默认绿幕）抠除背景，可调容差/羽化/溢色抑制。PRD 只提到功能名，未反编译出算法，自定实现。',
+    frag: chromaKeyFrag,
+    props: [
+      { key: 'keyColor', label: '键色', kind: 'color', default: [0, 1, 0], uniform: 'u_keyColor' },
+      { key: 'similarity', label: '容差', default: 0.18, min: 0, max: 0.6, step: 0.01 },
+      { key: 'smoothness', label: '羽化', default: 0.08, min: 0.001, max: 0.4, step: 0.005 },
+      { key: 'spill', label: '溢色抑制', default: 0.5, min: 0, max: 1, step: 0.01 },
     ],
   },
 };

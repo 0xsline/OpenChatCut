@@ -5,11 +5,11 @@
 > 由 5 个并行 agent 逐项对照 **当前 `src/` 真代码** vs **逆向源码规格** 重新核实。
 >
 > **口径**：✅ 已完成 · 🟡 部分 · ❌ 未做。共 132 项。
-> **总覆盖**：约 **72 ✅ / 13 🟡 / 47 ❌**，加权 ≈ **60%**（旧 42.8%）。
+> **总覆盖**：约 **75 ✅ / 12 🟡 / 45 ❌**，加权 ≈ **62%**（旧 42.8%）。
 > （2026-07-14 更新：域 7 设计风格、域 11 对话历史持久化、域 10 音频/范围导出；
 > 又一轮并行落地 域 4 说话人重命名/合并、域 5 逐词字幕覆盖、域 8 submit_shader）
 > 但只看**产品核心域（编辑器·Agent·媒体·字幕·生成，域 1–11+16，共 104 项）**，
-> 加权覆盖 ≈ **76%**（72✅/11🟡/21❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
+> 加权覆盖 ≈ **79%**（75✅/9🟡/20❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
 > "需真后端、单机克隆无对象可服务"的基建域（域 13/14/15 全 0%）。
 >
 > **开发纪律（本文存在的意义）**：做任何一项前，先读它在"源码依据"列指向的
@@ -26,7 +26,7 @@
 | # | 域 | 总 | ✅ | 🟡 | ❌ | 核心度 | 说明 |
 |---|---|---:|---:|---:|---:|---|---|
 | 1 | 项目 / 会话生命周期 | 6 | 4 | 0 | 2 | 核心 | ✅ 版本历史(命名快照/回滚);缺 followup 已另做、resume |
-| 2 | 编辑器核心 / 时间线 | 19 | 17 | 1 | 1 | 核心 | **几近完备**，缺色度键、gif/svg/solid |
+| 2 | 编辑器核心 / 时间线 | 19 | 18 | 1 | 0 | 核心 | **几近完备**；✅ 色度键/绿幕(chroma-key fx);仅剩 gif/svg/solid 🟡 |
 | 3 | 音频处理 | 6 | 4 | 0 | 2 | 核心 | ducking 已做，缺降噪/响度归一 |
 | 4 | 转写 / 文字稿 | 10 | 9 | 0 | 1 | 核心 | ✅ manage_transcript 改错字 + 说话人重命名/合并(均只改文本/label,词↔帧不变) |
 | 5 | 字幕 | 8 | 7 | 0 | 1 | 核心 | ✅ 21 样式 + 逐词覆盖(隐藏/改词/强制换行,预览·burn-in·SRT 三处同步);缺多源合并 |
@@ -36,7 +36,7 @@
 | 9 | 素材 / 媒体 | 12 | 9 | 1 | 2 | 核心 | ✅ import_url_asset + search_stock_media(需key);缺工作区pull/presigned |
 | 10 | 导出 / 交付 | 12 | 6 | 1 | 5 | 核心 | MP4/字幕/音频/范围已做，缺 XML/异步/水印 |
 | 11 | Agent / 对话平台 | 10 | 6 | 4 | 0 | 核心 | ✅ 对话持久化(chat_block);仅剩 thinking UI 等 🟡 |
-| 16 | 长转短（专项） | 4 | 1 | 1 | 2 | 核心 | auto-reframe 渲染链就绪缺检测；缺智能切片 |
+| 16 | 长转短（专项） | 4 | 3 | 0 | 1 | 核心 | ✅ 智能切片(LLM 打分成片) + auto-reframe 自动检测;仅剩 9:16 安全区 overlay(纯 UI) |
 | 12 | 技能 Skills | 3 | 1 | 1 | 1 | 可搬 | ✅ 创作模式(8 真 agent-skills,选中注入系统提示);skill_guard/编辑器 🟡 |
 | 18 | 遥测 / 增长 | 7 | 0 | 2 | 5 | 混合 | 快捷键/i18n/dockview 可做；遥测需 SaaS |
 | 17 | 引导 / 场景 | 2 | 1 | 0 | 1 | 混合 | ✅ 创作模式/场景技能(域12);roadmap 需后端 |
@@ -62,10 +62,10 @@
 9. ✅ **逐词字幕覆盖 `read_captions`+`edit_caption_words`**（域5）—— 已落地：`CaptionsData.wordOverrides:Record<number,{hidden?,text?,forceBreak?}>`(按**源 transcript 词序号**键,删词不重排);`resolve.ts` 加 `resolveCaptionWordIndices`+`applyWordOverrides`(隐藏丢弃/换文保时/forceBreak 算 breakBefore),`paginate` 加可选 `breakBefore` 参(无覆盖字节等同);`CaptionsLayer`(预览+burn-in)与 `generate/subtitles.ts`(SRT/TXT 导出)同一管线,屏幕=导出。新 `agent/captions-tools.ts`:`read_captions`(回每页词+index+override)/`edit_caption_words`(经现成 `updateCaptions` 命令落 IDB,越界回 errors 不抛)。检查 `captions-tools.check.ts` 绿。源：`edit_captions display_text`。（🟡 双语 `translate.ts` 暂不套 override——译文是独立叠层,词级隐藏错配轻微,留待多源合并一并处理。）
 
 ### P2 — 锦上添花 / 收尾
-10. **auto-reframe 自动检测**（域16 🟡）—— 渲染链（`ReframeCurveV1`→`zoomAt` 裁切窗）已完整，只缺 `reframe/detect.ts`（MediaPipe/TF.js 采样人脸/主体→逐帧 `setReframeKeyframe`）。源：`reframe`（×71 高频）。
-11. **智能切片**（域16 ❌）—— `agent/highlight-tool.ts` 喂词级 `transcript` 给 LLM 打分→`duplicateTimeline`+`retargetTimeline('9:16')`+裁段。长转短成片交付口。
+10. ✅ **auto-reframe 自动检测**（域16）—— `reframe/detect.ts` 轻量启发式(亮度方差网格→质心焦点,无重 ML)+ `agent/reframe-tools.ts` `auto_reframe` 逐帧 `setReframeKeyframe`,复用现成 `ReframeCurveV1` 渲染链。详见域16 明细。
+11. ✅ **智能切片**（域16）—— `agent/highlight-tool.ts` `find_highlights`:LLM 读词级 transcript 打分→`duplicateTimeline(9:16 cover)`→`deleteWords` 裁段(护城河③)。长转短成片交付口。详见域16 明细。
 12. **MG→透明视频补 alpha + 工具化**（域6 🟡）—— `render.mjs` 加 vp8/webm-alpha 分支保透明；`convert_motion_graphic_to_video`/`register_converted_video` agent 工具。
-13. **色度键绿幕**（域2 ❌）—— `gl/fx/chroma-key.frag` + `FX_EFFECTS` 补一格，走现成 `ClipFx` 管线。**成本最低**（fx 注册表补一条）。
+13. ✅ **色度键绿幕**（域2）—— `gl/fx/chroma-key.frag`(YCbCr 键控+spill) + `FX_EFFECTS` `builtin:fx-chroma-key`,走现成 `ClipFx`/`manage_effects` 自动可用。详见域2 明细。
 14. **dockview 可拖拽面板**（域18 🟡）—— 换 MIT dockview 依赖，三面板入 dock，布局序列化 localStorage。
 15. **i18n /zh /en**（域18 ❌）—— 抽字符串成字典 + toggle，逆向 `ui-strings.en.json` 有源站英文串。工作量偏大无需后端。
 16. **自定义快捷键**（域18 ❌）—— keymap 存 localStorage + 设置 UI。
@@ -95,7 +95,7 @@
 ### 域 2 · 编辑器核心 / 时间线
 - ✅ **空工程轨道模型对标源站** — 空工程仅 1 视频轨起步（原 2V+2A）；音频轨可全删、仅末条视频轨受保护（`reduce` track.delete 守卫改为只护 video）；`createTimeline` 单轨起步、`pickTrack` 按需 dispatch `track.create` 建轨。对齐 `60_empty_project`。commit c984d9e。
 - 🟡 **gif/svg/solid 媒体类型** — 源按类型拆表。→ `types.ts` `kind` 加三种；`TimelineComposition` `ItemLayer` 加渲染分支。
-- ❌ **色度键 / 绿幕** — 源 `chroma`（PRD:153）。→ `gl/fx/chroma-key.frag` + `FX_EFFECTS` 补一格，走现成 `ClipFx`/`manage_effects`。**成本最低**。
+- ✅ **色度键 / 绿幕** — `gl/fx/chroma-key.frag`(YCbCr 键控 + spill 抑制) + `FX_EFFECTS` 一格 `builtin:fx-chroma-key`(keyColor/similarity/smoothness/spill),走现成 `ClipFx`/`manage_effects` 自动可用、无需改 agent。源 `chroma`(PRD:153)只列能力名→算法自定。commit 待提交。
 
 ### 域 3 · 音频处理
 - ❌ **AI 降噪 / 人声隔离** — 源 `isolate_voice`（DeepFilterNet3，action apply/attach/clear，strength 0-100）。→ `src/audio/isolate-tools.ts` 注册工具 + `item.isolatedSrc`；纯前端先做 "attach 已传 wav"，apply 走后端占位。
@@ -150,9 +150,9 @@
 - 🟡 **Bash/Edit/Read/Write 宿主变体** — no-workspace 内联已做；SDK 沙箱宿主 v2。
 
 ### 域 16 · 长转短
-- 🟡 **自动重构图 auto-reframe** — 渲染链就绪（`zoom.ts reframeAt`），缺检测。源 `reframe`（×71）。→ `src/reframe/detect.ts` MediaPipe/TF.js→逐帧 `setReframeKeyframe`。
-- ❌ **智能切片（找高光→多条短视频）** — → `agent/highlight-tool.ts` LLM 读词级 transcript 打分→`duplicateTimeline`+`retargetTimeline('9:16')`+裁段。**长转短成片口，最高价值**。
-- ❌ **垂直安全区** — → `PreviewPanel` 加 9:16 安全框 overlay。纯 CSS。
+- ✅ **自动重构图 auto-reframe（检测）** — `src/reframe/detect.ts` 轻量启发式(亮度方差网格→能量质心焦点,可选 FaceDetector,无重 ML)；`agent/reframe-tools.ts` `auto_reframe` 逐帧 `setReframeKeyframe`(焦点 0..1、mag 0.05..16 对齐 `ReframeCurveV1`)。commit 待提交。源 `reframe` 无 detect 工具→自定。⚠ 两处 MVP 取舍:①mag 用满 contain→cover(片段已 cover 会二次放大);②重跑清全部 reframe 关键帧(无 auto/manual 标记)。
+- ✅ **智能切片（找高光→多条短视频）** — `agent/highlight-tool.ts` `find_highlights`:LLM 按源 `talking-head-guide` 选高光准则读词级转写打分→`duplicateTimeline({retarget:9:16 cover})`→用现成 `deleteWords`/`setItemTiming` 裁段(护城河③ 词↔帧不变,切点落词边界)。**长转短成片口,最高价值**。源无单一工具→自定。commit 待提交。
+- ❌ **垂直安全区** — → `PreviewPanel` 加 9:16 安全框 overlay。纯 CSS。（避开:PreviewPanel 属你在手调的 UI 文件，待你收尾或一行插入）
 
 ### 域 12 · 技能 Skills（纯前端，优先做）
 - ✅ **内置技能预设（创作模式）** — 全搬 8 个真实 agent-skills(源 `agent_skill`),选中注入系统提示。见 §二 P1-4。

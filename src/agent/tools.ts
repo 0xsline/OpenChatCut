@@ -17,6 +17,8 @@ import { DESIGN_TOOL_SCHEMAS, DESIGN_TOOL_NAMES, execDesignTool } from './design
 import { STOCK_TOOL_SCHEMAS, STOCK_TOOL_NAMES, execStockTool } from './stock-tools';
 import { CAPTIONS_TOOL_SCHEMAS, CAPTIONS_TOOL_NAMES, execCaptionsTool } from './captions-tools';
 import { SHADER_TOOL_SCHEMAS, SHADER_TOOL_NAMES, execShaderTool } from './shader-tools';
+import { HIGHLIGHT_TOOL_SCHEMAS, HIGHLIGHT_TOOL_NAMES, execHighlightTool } from './highlight-tool';
+import { REFRAME_TOOL_SCHEMAS, REFRAME_TOOL_NAMES, execReframeTool } from './reframe-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -172,6 +174,10 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...CAPTIONS_TOOL_SCHEMAS,
   // LLM 生成自定义 WebGL 特效（source submit_shader type:effect——生成→编译校验→注册，再由 manage_effects 应用）
   ...SHADER_TOOL_SCHEMAS,
+  // 智能切片：LLM 读词级转写找高光 → duplicateTimeline 9:16 → 裁段（长转短成片，护城河③ 词↔帧）
+  ...HIGHLIGHT_TOOL_SCHEMAS,
+  // auto-reframe 自动检测：采样帧→主体焦点→setReframeKeyframe（复用现成 reframe 渲染链）
+  ...REFRAME_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -224,6 +230,8 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (STOCK_TOOL_NAMES.has(name)) return execStockTool(name, args, ctx);
   if (CAPTIONS_TOOL_NAMES.has(name)) return execCaptionsTool(name, args, ctx);
   if (SHADER_TOOL_NAMES.has(name)) return execShaderTool(name, args, ctx);
+  if (HIGHLIGHT_TOOL_NAMES.has(name)) return execHighlightTool(name, args, ctx);
+  if (REFRAME_TOOL_NAMES.has(name)) return execReframeTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();
