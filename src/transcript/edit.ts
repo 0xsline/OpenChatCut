@@ -61,19 +61,24 @@ export function keptSegments(
     const srcStart = msToFrame(words[wi]!.start, fps);
     let srcEnd = msToFrame(words[wi]!.end, fps);
     let sj = si;
-    // Merge forward while source time advances (contiguous play); stop on reorder jumps.
+    let curWi = wi; // last source word merged into this run
+    // Merge forward ONLY through immediate chronological successors. A jump in
+    // source index — deleted words sitting between (删词=删视频) or a play-order
+    // reorder — ends the run, so the skipped source span is dropped instead of
+    // being played through (护城河③: word deletion must shorten the frames).
     while (sj + 1 < seq.length) {
       const nextWi = seq[sj + 1]!;
+      if (nextWi !== curWi + 1) break; // deleted-word gap or reorder jump → new segment
       const nextStart = msToFrame(words[nextWi]!.start, fps);
-      if (nextStart < srcStart) break; // playback jumps earlier in source → new segment
       const gap = nextStart - srcEnd;
       if (gap < 0) break; // overlap / reverse → new segment
       const cap = gapCapFrames(opts, nextWi, fps);
       if (cap != null && gap > cap) {
-        srcEnd += cap;
+        srcEnd += cap; // keep only the allowed trailing silence
         break;
       }
       srcEnd = msToFrame(words[nextWi]!.end, fps);
+      curWi = nextWi;
       sj += 1;
     }
     const durFrames = Math.max(1, srcEnd - srcStart);
