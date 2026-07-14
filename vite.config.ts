@@ -10,6 +10,7 @@ import { videoGenerationPlugin } from './vite-plugin-video.ts';
 import { subtitleExportPlugin } from './vite-plugin-subtitles.ts';
 import { generationProgressPlugin } from './vite-generation-jobs.ts';
 import { stockSearchPlugin } from './vite-plugin-stock.ts';
+import { isolatePlugin } from './vite-plugin-isolate.ts';
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -63,7 +64,9 @@ export default defineConfig(({ mode }) => {
     videoGenerationPlugin({ seedanceBaseUrl: seedanceBase, seedanceApiKey: seedanceKey, seedanceModel, klingBaseUrl: klingBase, klingApiKey: klingKey, klingModel }),
     generationProgressPlugin(),
     subtitleExportPlugin(),
-    stockSearchPlugin({ pexelsApiKey: pexelsKey, pixabayApiKey: pixabayKey })],
+    stockSearchPlugin({ pexelsApiKey: pexelsKey, pixabayApiKey: pixabayKey }),
+    isolatePlugin(),
+    ],
     server: {
       port: 5199,
       strictPort: true,

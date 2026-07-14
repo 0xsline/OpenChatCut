@@ -13,11 +13,26 @@ async function uploadBlob(blob: Blob): Promise<string> {
   return upload_url;
 }
 
-async function createTranscript(audioUrl: string): Promise<string> {
+export interface TranscribeOptions {
+  /** ISO-639-1; when omitted, AssemblyAI language_detection is used (needed for 中文口播). */
+  languageCode?: string;
+}
+
+async function createTranscript(audioUrl: string, opts: TranscribeOptions = {}): Promise<string> {
+  const body: Record<string, unknown> = {
+    audio_url: audioUrl,
+    speaker_labels: true,
+  };
+  if (opts.languageCode) {
+    body.language_code = opts.languageCode;
+  } else {
+    // Auto-detect: without this, non-English (e.g. 李白口播) is often forced to English garbage.
+    body.language_detection = true;
+  }
   const r = await fetch(`${BASE}/transcript`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ audio_url: audioUrl, speaker_labels: true }),
+    body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(`create failed: HTTP ${r.status}`);
   const { id, error } = await r.json();
@@ -47,15 +62,23 @@ async function poll(id: string, onWait?: () => void): Promise<TranscriptResult> 
 }
 
 /** Transcribe an audio Blob: upload → create → poll to completion. */
-export async function transcribeBlob(blob: Blob, onWait?: () => void): Promise<TranscriptResult> {
+export async function transcribeBlob(
+  blob: Blob,
+  onWait?: () => void,
+  opts: TranscribeOptions = {},
+): Promise<TranscriptResult> {
   const url = await uploadBlob(blob);
-  const id = await createTranscript(url);
+  const id = await createTranscript(url, opts);
   return poll(id, onWait);
 }
 
-/** Transcribe a same-origin audio file path (fetched, then uploaded). */
-export async function transcribePath(path: string, onWait?: () => void): Promise<TranscriptResult> {
+/** Transcribe a same-origin audio/video file path (fetched, then uploaded). */
+export async function transcribePath(
+  path: string,
+  onWait?: () => void,
+  opts: TranscribeOptions = {},
+): Promise<TranscriptResult> {
   const res = await fetch(path);
   if (!res.ok) throw new Error(`fetch ${path}: HTTP ${res.status}`);
-  return transcribeBlob(await res.blob(), onWait);
+  return transcribeBlob(await res.blob(), onWait, opts);
 }

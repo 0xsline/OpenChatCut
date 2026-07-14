@@ -60,6 +60,8 @@ interface LibraryPanelProps {
   onApplyTransition: (type: TransitionType) => void;
   onApplyFx: (assetId: string) => void;
   onApplyZoom: (shape: ZoomShape) => void;
+  onApplyIsolate?: (itemId: string, denoisedSrc: string, strength: number) => void;
+  onClearIsolate?: (itemId: string) => void;
 }
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿'] as const;
@@ -67,7 +69,7 @@ const SUB_TABS = ['MG 动画', '音效', '转场', '特效', '缩放', 'LUT', 'A
 /** source 转场 tab: 画面转场 | 音频转场 pills */
 const TRANSITION_SUB = ['画面转场', '音频转场'] as const;
 
-export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits, assets, mediaFolders, onImportMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
+export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits, assets, mediaFolders, onImportMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom, onApplyIsolate, onClearIsolate }: LibraryPanelProps) {
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('我的素材');
@@ -77,7 +79,6 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
   const showSfx = mainTab === '资源库' && subTab === '音效';     // sound effects
   const isTranscript = mainTab === '文字稿';
   const isMyAssets = mainTab === '我的素材';
-  const hasAudioTarget = selKind === 'audio' || selKind === 'video';
 
   return (
     <section className="cc-library-panel">
@@ -110,7 +111,11 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
         {mainTab === '资源库' && subTab === 'MG 动画' ? (
           <TemplateBrowser templates={templates} onAdd={onAddTemplate} onUseAI={onUseTemplateAI} />
         ) : showAudioFx ? (
-          <AudioFxBrowser hasAudioTarget={hasAudioTarget} />
+          <AudioFxBrowser
+            selectedItem={selectedItem}
+            onApply={(id, src, strength) => onApplyIsolate?.(id, src, strength)}
+            onClear={(id) => onClearIsolate?.(id)}
+          />
         ) : showSfx ? (
           <SoundBrowser fps={fps} onAdd={onAddAudio} />
         ) : subTab === '转场' ? (

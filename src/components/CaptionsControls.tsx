@@ -22,9 +22,16 @@ export function CaptionsControls({ captions, hasTranscript, onGenerate, onUpdate
     <div style={{ borderTop: `1px solid ${theme.border}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>字幕 overlay</div>
       {!captions ? (
-        <button onClick={onGenerate} disabled={!hasTranscript} style={{ ...btn, background: theme.accent, color: '#fff', opacity: hasTranscript ? 1 : 0.5 }}>
-          生成字幕
-        </button>
+        <>
+          <button onClick={onGenerate} disabled={!hasTranscript} style={{ ...btn, background: theme.accent, color: '#fff', opacity: hasTranscript ? 1 : 0.5 }}>
+            生成字幕
+          </button>
+          {!hasTranscript && (
+            <div style={{ fontSize: 11, color: theme.textDim, lineHeight: 1.45 }}>
+              先在上方「转写」该轨口播，再生成与时间线同步的字幕 overlay。
+            </div>
+          )}
+        </>
       ) : (
         <>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: theme.text }}>

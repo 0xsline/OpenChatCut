@@ -24,6 +24,7 @@ import { REFRAME_TOOL_SCHEMAS, REFRAME_TOOL_NAMES, execReframeTool } from './ref
 import { EXPORT_TOOL_SCHEMAS, EXPORT_TOOL_NAMES, execExportTool } from './export-tools';
 import { TEMPLATE_TOOL_SCHEMAS, TEMPLATE_TOOL_NAMES, execTemplateTool } from './template-tools';
 import { LOUDNESS_TOOL_SCHEMAS, LOUDNESS_TOOL_NAMES, execLoudnessTool } from './loudness-tools';
+import { ISOLATE_TOOL_SCHEMAS, ISOLATE_TOOL_NAMES, execIsolateTool } from './isolate-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -192,6 +193,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...TEMPLATE_TOOL_SCHEMAS,
   // 响度归一（自定 normalize_loudness）：WebAudio 离线分析→per-clip 增益，复用 setItemVolume
   ...LOUDNESS_TOOL_SCHEMAS,
+  // AI 人声隔离（源 isolate_voice / DeepFilterNet3）
+  ...ISOLATE_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -251,6 +254,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (EXPORT_TOOL_NAMES.has(name)) return execExportTool(name, args, ctx);
   if (TEMPLATE_TOOL_NAMES.has(name)) return execTemplateTool(name, args, ctx);
   if (LOUDNESS_TOOL_NAMES.has(name)) return execLoudnessTool(name, args, ctx);
+  if (ISOLATE_TOOL_NAMES.has(name)) return execIsolateTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();

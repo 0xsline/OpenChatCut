@@ -76,6 +76,8 @@ export interface EditorCommands {
   fixTranscriptWord: (id: string, wordIndex: number, text: string) => void;
   /** 说话人重命名/合并:把 speaker===from 的词全部改标 to;只改 .speaker(护城河③) */
   renameSpeaker: (id: string, from: string, to: string) => void;
+  /** AI 人声隔离:挂上/清除 denoisedSrc（源 isolate_voice apply/clear） */
+  setItemDenoise: (id: string, denoisedSrc: string | null, strength?: number | null) => void;
   selectItem: (id: string | null) => void;
   /** atomically replace the whole timeline (proposal apply → one undo step) */
   applyState: (state: TimelineState) => void;
@@ -316,6 +318,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       clearEdits: (id) => dispatch({ type: 'clearEdits', id }),
       fixTranscriptWord: (id, wordIndex, text) => dispatch({ type: 'fixTranscriptWord', id, wordIndex, text }),
       renameSpeaker: (id, from, to) => dispatch({ type: 'renameSpeaker', id, from, to }),
+      setItemDenoise: (id, denoisedSrc, strength) => dispatch({ type: 'setItemDenoise', id, denoisedSrc, strength }),
       selectItem: (id) => dispatch({ type: 'select', id }),
       applyState: (state) => dispatch({ type: 'setFullState', state }),
       undo: () => dispatch({ type: 'undo' }),

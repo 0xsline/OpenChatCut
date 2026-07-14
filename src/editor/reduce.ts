@@ -49,6 +49,8 @@ export type Action =
   | { type: 'clearEdits'; id: string }
   | { type: 'fixTranscriptWord'; id: string; wordIndex: number; text: string }
   | { type: 'renameSpeaker'; id: string; from: string; to: string }
+  /** AI Voice Isolation attach/clear (source isolate_voice → denoisedAudioAssetId) */
+  | { type: 'setItemDenoise'; id: string; denoisedSrc: string | null; strength?: number | null }
   | { type: 'select'; id: string | null }
   | { type: 'setFullState'; state: TimelineState };
 
@@ -80,7 +82,7 @@ export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void
 /** dispatch at the project level: per-timeline + project actions + undo/redo */
 export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' }) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'setItemTranscript', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setFullState',
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'setItemTranscript', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
   'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset']);
@@ -418,6 +420,32 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         items: s.items.map((item) =>
           item.id === a.id
             ? { ...item, transcript: item.transcript!.map((w) => (w.speaker === a.from ? { ...w, speaker: a.to } : w)) }
+            : item,
+        ),
+      };
+    }
+    case 'setItemDenoise': {
+      const it = s.items.find((x) => x.id === a.id);
+      if (!it || (it.kind !== 'audio' && it.kind !== 'video')) return s;
+      // clear
+      if (!a.denoisedSrc) {
+        if (!it.denoisedSrc) return s;
+        return {
+          ...s,
+          items: s.items.map((item) =>
+            item.id === a.id ? { ...item, denoisedSrc: null, denoiseStrength: null } : item,
+          ),
+        };
+      }
+      return {
+        ...s,
+        items: s.items.map((item) =>
+          item.id === a.id
+            ? {
+                ...item,
+                denoisedSrc: a.denoisedSrc,
+                denoiseStrength: a.strength ?? 100,
+              }
             : item,
         ),
       };

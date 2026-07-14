@@ -32,22 +32,35 @@ interface InspectorPanelProps {
   onRemoveTransition: () => void;
 }
 
+/** Compact one-line slider: label | track | value */
+function SliderRow({
+  label, val, min, max, step, fmt, onChange,
+}: {
+  label: string; val: number; min: number; max: number; step: number; fmt: string; onChange: (v: number) => void;
+}) {
+  return (
+    <label className="cc-insp-row">
+      <span className="cc-insp-label">{label}</span>
+      <input
+        className="cc-insp-range"
+        type="range" min={min} max={max} step={step} value={val}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+      <span className="cc-insp-val">{fmt}</span>
+    </label>
+  );
+}
+
 // scale / position / rotation for visual clips (source 缩放 tab).
 function TransformControl({ item, onChange }: { item: TimelineItem; onChange: (p: ClipTransform) => void }) {
   const t = item.transform ?? {};
-  const slider = (label: string, val: number, min: number, max: number, step: number, fmt: string, key: keyof ClipTransform) => (
-    <label style={{ display: 'block', fontSize: 11, color: theme.textDim }}>
-      <div style={{ marginBottom: 4 }}>{label} <span style={{ opacity: 0.7 }}>{fmt}</span></div>
-      <input type="range" min={min} max={max} step={step} value={val} onChange={(e) => onChange({ [key]: Number(e.target.value) })} style={{ width: '100%' }} />
-    </label>
-  );
   const scale = t.scale ?? 1;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {slider('缩放', scale, 0.1, 3, 0.05, `${Math.round(scale * 100)}%`, 'scale')}
-      {slider('水平位置', t.x ?? 0, -100, 100, 1, `${Math.round(t.x ?? 0)}%`, 'x')}
-      {slider('垂直位置', t.y ?? 0, -100, 100, 1, `${Math.round(t.y ?? 0)}%`, 'y')}
-      {slider('旋转', t.rotation ?? 0, -180, 180, 1, `${Math.round(t.rotation ?? 0)}°`, 'rotation')}
+    <div className="cc-insp-stack">
+      <SliderRow label="缩放" val={scale} min={0.1} max={3} step={0.05} fmt={`${Math.round(scale * 100)}%`} onChange={(v) => onChange({ scale: v })} />
+      <SliderRow label="水平" val={t.x ?? 0} min={-100} max={100} step={1} fmt={`${Math.round(t.x ?? 0)}%`} onChange={(v) => onChange({ x: v })} />
+      <SliderRow label="垂直" val={t.y ?? 0} min={-100} max={100} step={1} fmt={`${Math.round(t.y ?? 0)}%`} onChange={(v) => onChange({ y: v })} />
+      <SliderRow label="旋转" val={t.rotation ?? 0} min={-180} max={180} step={1} fmt={`${Math.round(t.rotation ?? 0)}°`} onChange={(v) => onChange({ rotation: v })} />
     </div>
   );
 }
@@ -56,10 +69,7 @@ function TransformControl({ item, onChange }: { item: TimelineItem; onChange: (p
 function VolumeControl({ item, onChange }: { item: TimelineItem; onChange: (v: number) => void }) {
   const vol = item.volume ?? 1;
   return (
-    <label style={{ display: 'block', fontSize: 11, color: theme.textDim }}>
-      <div style={{ marginBottom: 4 }}>音量 <span style={{ opacity: 0.7 }}>{Math.round(vol * 100)}%</span></div>
-      <input type="range" min={0} max={2} step={0.05} value={vol} onChange={(e) => onChange(Number(e.target.value))} style={{ width: '100%' }} />
-    </label>
+    <SliderRow label="音量" val={vol} min={0} max={2} step={0.05} fmt={`${Math.round(vol * 100)}%`} onChange={onChange} />
   );
 }
 
@@ -69,15 +79,20 @@ function FadeControl({ item, fps, onChange }: { item: TimelineItem; fps: number;
   const row = (label: string, frames: number | undefined, key: keyof FadePatch) => {
     const sec = (frames ?? 0) / fps;
     return (
-      <label style={{ display: 'block', fontSize: 11, color: theme.textDim }}>
-        <div style={{ marginBottom: 4 }}>{label} <span style={{ opacity: 0.7 }}>{sec.toFixed(1)}s</span></div>
-        <input type="range" min={0} max={maxSec} step={0.1} value={sec}
-          onChange={(e) => onChange({ [key]: Math.round(Number(e.target.value) * fps) })} style={{ width: '100%' }} />
-      </label>
+      <SliderRow
+        key={key}
+        label={label}
+        val={sec}
+        min={0}
+        max={maxSec}
+        step={0.1}
+        fmt={`${sec.toFixed(1)}s`}
+        onChange={(v) => onChange({ [key]: Math.round(v * fps) })}
+      />
     );
   };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div className="cc-insp-stack">
       {row('淡入', item.fadeInFrames, 'fadeInFrames')}
       {row('淡出', item.fadeOutFrames, 'fadeOutFrames')}
     </div>
@@ -132,18 +147,11 @@ function ZoomControl({ zoom, onChange, getLocalFrame, fps, onSetKeyframe, onRemo
   onRemoveKeyframe: (frame: number) => void;
 }) {
   const localFrame = getLocalFrame();
-  const selStyle: React.CSSProperties = { background: theme.bg, color: theme.text, border: `1px solid ${theme.borderLight}`, borderRadius: 4, padding: '3px 5px' };
-  const slider = (label: string, val: number, min: number, max: number, step: number, fmt: string, key: keyof ZoomEffect) => (
-    <label style={{ display: 'block', fontSize: 11, color: theme.textDim }}>
-      <div style={{ marginBottom: 4 }}>{label} <span style={{ opacity: 0.7 }}>{fmt}</span></div>
-      <input type="range" min={min} max={max} step={step} value={val} onChange={(e) => onChange({ [key]: Number(e.target.value) })} style={{ width: '100%' }} />
-    </label>
-  );
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 8 }}>
-        曲线
-        <select value={zoom?.shape ?? ''} style={selStyle} onChange={(e) => {
+    <div className="cc-insp-stack">
+      <label className="cc-insp-row">
+        <span className="cc-insp-label">曲线</span>
+        <select className="cc-insp-select" value={zoom?.shape ?? ''} onChange={(e) => {
           const v = e.target.value as ZoomShape | '';
           if (!v) onChange(null);
           else onChange({ shape: v });
@@ -154,17 +162,19 @@ function ZoomControl({ zoom, onChange, getLocalFrame, fps, onSetKeyframe, onRemo
       </label>
       {zoom && (
         <>
-          {slider('放大倍数', zoom.magnification ?? 1.5, 1, 4, 0.05, `${(zoom.magnification ?? 1.5).toFixed(2)}×`, 'magnification')}
-          {slider('焦点 X', zoom.focalPointX ?? 0.5, 0, 1, 0.01, `${Math.round((zoom.focalPointX ?? 0.5) * 100)}%`, 'focalPointX')}
-          {slider('焦点 Y', zoom.focalPointY ?? 0.5, 0, 1, 0.01, `${Math.round((zoom.focalPointY ?? 0.5) * 100)}%`, 'focalPointY')}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+          <SliderRow label="倍数" val={zoom.magnification ?? 1.5} min={1} max={4} step={0.05} fmt={`${(zoom.magnification ?? 1.5).toFixed(2)}×`} onChange={(v) => onChange({ magnification: v })} />
+          <SliderRow label="焦点X" val={zoom.focalPointX ?? 0.5} min={0} max={1} step={0.01} fmt={`${Math.round((zoom.focalPointX ?? 0.5) * 100)}%`} onChange={(v) => onChange({ focalPointX: v })} />
+          <SliderRow label="焦点Y" val={zoom.focalPointY ?? 0.5} min={0} max={1} step={0.01} fmt={`${Math.round((zoom.focalPointY ?? 0.5) * 100)}%`} onChange={(v) => onChange({ focalPointY: v })} />
+          <div className="cc-insp-actions">
             <button
+              type="button"
               onClick={() => onSetKeyframe(getLocalFrame(), zoom.focalPointX ?? 0.5, zoom.focalPointY ?? 0.5, zoom.magnification ?? 1.5)}
               title="在播放头记录焦点+倍数为关键帧"
-              style={{ background: theme.panelAlt, border: `1px solid ${theme.borderLight}`, borderRadius: 5, color: theme.text, cursor: 'pointer', fontSize: 11, padding: '4px 9px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Icon name="diamond" size={12} />在播放头打关键帧
+              className="cc-insp-btn"
+            >
+              <Icon name="diamond" size={12} />关键帧
             </button>
-            <span style={{ fontSize: 10.5, color: theme.textDim }}>@ {(localFrame / fps).toFixed(2)}s</span>
+            <span className="cc-insp-muted">@ {(localFrame / fps).toFixed(2)}s</span>
           </div>
           {(zoom.reframeCurve?.keyframes.length ?? 0) > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -233,24 +243,18 @@ function TransitionControl({ transition, fps, onAdd, onSet, onRemove }: {
 
 // small uppercase-ish divider label between control groups.
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontSize: 10.5, color: theme.textDim, letterSpacing: '0.08em', opacity: 0.7, marginTop: 2, borderTop: `1px solid ${theme.border}`, paddingTop: 8 }}>{children}</div>;
+  return <div className="cc-insp-section">{children}</div>;
 }
 
 // brightness / contrast / saturation / blur (CSS filter) — source 特效/LUT.
 function FilterControl({ item, onChange }: { item: TimelineItem; onChange: (p: ClipFilters) => void }) {
   const fl = item.filters ?? {};
-  const slider = (label: string, val: number, min: number, max: number, step: number, fmt: string, key: keyof ClipFilters) => (
-    <label style={{ display: 'block', fontSize: 11, color: theme.textDim }}>
-      <div style={{ marginBottom: 4 }}>{label} <span style={{ opacity: 0.7 }}>{fmt}</span></div>
-      <input type="range" min={min} max={max} step={step} value={val} onChange={(e) => onChange({ [key]: Number(e.target.value) })} style={{ width: '100%' }} />
-    </label>
-  );
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {slider('亮度', fl.brightness ?? 1, 0, 2, 0.05, `${Math.round((fl.brightness ?? 1) * 100)}%`, 'brightness')}
-      {slider('对比度', fl.contrast ?? 1, 0, 2, 0.05, `${Math.round((fl.contrast ?? 1) * 100)}%`, 'contrast')}
-      {slider('饱和度', fl.saturate ?? 1, 0, 2, 0.05, `${Math.round((fl.saturate ?? 1) * 100)}%`, 'saturate')}
-      {slider('模糊', fl.blur ?? 0, 0, 30, 1, `${Math.round(fl.blur ?? 0)}px`, 'blur')}
+    <div className="cc-insp-stack">
+      <SliderRow label="亮度" val={fl.brightness ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.brightness ?? 1) * 100)}%`} onChange={(v) => onChange({ brightness: v })} />
+      <SliderRow label="对比" val={fl.contrast ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.contrast ?? 1) * 100)}%`} onChange={(v) => onChange({ contrast: v })} />
+      <SliderRow label="饱和" val={fl.saturate ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.saturate ?? 1) * 100)}%`} onChange={(v) => onChange({ saturate: v })} />
+      <SliderRow label="模糊" val={fl.blur ?? 0} min={0} max={30} step={1} fmt={`${Math.round(fl.blur ?? 0)}px`} onChange={(v) => onChange({ blur: v })} />
     </div>
   );
 }
@@ -348,39 +352,41 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
   const isVisual = selectedItem != null && selectedItem.kind !== 'audio';
 
   return (
-    <section style={{ borderTop: `1px solid ${theme.border}`, background: theme.panel, display: 'flex', flexDirection: 'column', minHeight: 0, flex: '0 0 auto', maxHeight: collapsed ? undefined : '42%', overflow: 'hidden' }}>
+    <section className={`cc-inspector${collapsed ? ' collapsed' : ''}`}>
       <button
+        type="button"
         onClick={() => setCollapsed((v) => !v)}
         title={collapsed ? '展开属性' : '收起属性'}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left', padding: '8px 16px', fontSize: 12, color: theme.textDim, background: 'none', border: 'none', borderBottom: `1px solid ${theme.border}`, cursor: 'pointer', flexShrink: 0 }}
+        className="cc-insp-header"
       >
-        <span style={{ transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', display: 'inline-flex', alignItems: 'center' }}><Icon name="chevronDown" size={13} /></span>
-        属性{selectedItem ? ` · ${selectedItem.name}` : ''}
+        <span className={`cc-insp-chevron${collapsed ? ' closed' : ''}`}><Icon name="chevronDown" size={12} /></span>
+        <span className="cc-insp-title">属性{selectedItem ? ` · ${selectedItem.name}` : ''}</span>
+        {selectedItem?.denoisedSrc && <span className="cc-insp-pill">人声隔离</span>}
       </button>
       {!collapsed && (
-      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 16px', minHeight: 0 }}>
+      <div className="cc-insp-body">
         {!selectedItem ? (
-          <div style={{ fontSize: 12, color: theme.textDim }}>选中时间线上的片段以编辑属性。</div>
+          <div className="cc-insp-muted">选中时间线上的片段以编辑属性。</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {hint && <div style={{ fontSize: 12, color: theme.textDim }}>{hint}</div>}
+          <div className="cc-insp-groups">
+            {hint && <div className="cc-insp-hint">{hint}</div>}
             {selectedItem.kind === 'text' && <><SectionLabel>文字</SectionLabel><TextControl item={selectedItem} onPropChange={onItemPropChange} /></>}
             {hasVolume && <><SectionLabel>音量</SectionLabel><VolumeControl item={selectedItem} onChange={onItemVolumeChange} /></>}
             {isVisual && <><SectionLabel>变换</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} /></>}
             {isVisual && <><SectionLabel>滤镜</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} /></>}
-            {(selectedItem.kind === 'video' || selectedItem.kind === 'image') && <><SectionLabel>特效 FX</SectionLabel><EffectsControl item={selectedItem} onChange={onItemEffectsChange} /></>}
-            {isVisual && <><SectionLabel>缩放动画</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} getLocalFrame={() => Math.max(0, Math.min(selectedItem.durationInFrames - 1, getPlayhead() - selectedItem.startFrame))} fps={fps} onSetKeyframe={onSetReframeKeyframe} onRemoveKeyframe={onRemoveReframeKeyframe} /></>}
+            {(selectedItem.kind === 'video' || selectedItem.kind === 'image') && <><SectionLabel>特效</SectionLabel><EffectsControl item={selectedItem} onChange={onItemEffectsChange} /></>}
+            {isVisual && <><SectionLabel>缩放</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} getLocalFrame={() => Math.max(0, Math.min(selectedItem.durationInFrames - 1, getPlayhead() - selectedItem.startFrame))} fps={fps} onSetKeyframe={onSetReframeKeyframe} onRemoveKeyframe={onRemoveReframeKeyframe} /></>}
             {isVisual && <><SectionLabel>转场</SectionLabel><TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} /></>}
             <SectionLabel>淡入淡出</SectionLabel>
             <FadeControl item={selectedItem} fps={fps} onChange={onItemFadeChange} />
             {selectedItem.kind === 'motion-graphic' && (
               schema.length === 0 ? (
-                <div style={{ fontSize: 12, color: theme.textDim }}>该模板用内置默认值（无可编辑属性）。</div>
+                <div className="cc-insp-muted">该模板无可编辑属性。</div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+                <div className="cc-insp-mg-grid">
                   {schema.map((p) => (
-                    <label key={p.key} style={{ fontSize: 11, color: theme.textDim }}>
-                      <div style={{ marginBottom: 4 }}>{p.key} <em style={{ opacity: 0.5 }}>({p.type})</em></div>
+                    <label key={p.key} className="cc-insp-mg-field">
+                      <span>{p.key}</span>
                       {p.type === 'boolean' ? (
                         <input type="checkbox" checked={!!selectedItem.props?.[p.key]} onChange={(e) => onItemPropChange(p.key, e.target.checked)} />
                       ) : p.type === 'color' ? (
@@ -390,7 +396,6 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
                           type={p.type === 'number' ? 'number' : 'text'}
                           value={String(selectedItem.props?.[p.key] ?? '')}
                           onChange={(e) => onItemPropChange(p.key, p.type === 'number' ? Number(e.target.value) : e.target.value)}
-                          style={{ width: '100%', padding: '5px 7px', background: theme.bg, color: theme.text, border: `1px solid ${theme.borderLight}`, borderRadius: 5 }}
                         />
                       )}
                     </label>

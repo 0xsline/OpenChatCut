@@ -206,7 +206,9 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           selectedItem={selectedItem}
           onApplyTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}
           onApplyFx={(assetId) => state.selectedId && commands.setItemEffects(state.selectedId, [{ id: `fx_${assetId}`, assetId, overrides: {} }])}
-          onApplyZoom={(shape) => state.selectedId && commands.setItemZoom(state.selectedId, { shape, magnification: 1.5 })} />
+          onApplyZoom={(shape) => state.selectedId && commands.setItemZoom(state.selectedId, { shape, magnification: 1.5 })}
+          onApplyIsolate={(id, src, strength) => commands.setItemDenoise(id, src, strength)}
+          onClearIsolate={(id) => commands.setItemDenoise(id, null)} />
       </div>
       <div style={{ gridColumn: 4, gridRow: 2 }}>
         <Divider onResize={(dx) => setLibW((w) => clamp(w + dx, ASSETS_MIN_W, Math.max(ASSETS_MIN_W, viewportW - (chatCollapsed ? 46 : chatW) - CANVAS_MIN_W - SPLITTER_TOTAL_W)))} />

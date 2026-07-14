@@ -117,15 +117,26 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
   const alias = trackAlias(state, track);
   switch (name) {
     case 'transcribe_track': {
-      const it = trackClip(ctx, track, false);
-      if (!it) return { error: `no audio clip on ${alias}` };
-      if (it.transcript?.length) return { ok: true, itemId: it.id, words: it.transcript.length, note: 'already transcribed' };
+      // Transcribe ALL audio/video clips on the track (not just the first).
+      const clips = ctx.getState().items
+        .filter((it) => (it.kind === 'audio' || it.kind === 'video') && it.track === track && it.src)
+        .sort((a, b) => a.startFrame - b.startFrame);
+      if (!clips.length) return { error: `no audio/video clip on ${alias}` };
+      const results: { itemId: string; words: number; text: string; skipped?: boolean }[] = [];
       try {
-        const r = await transcribePath(it.src!);
-        ctx.commands.setItemTranscript(it.id, r.words);
-        return { ok: true, itemId: it.id, words: r.words.length, text: r.text.slice(0, 400) };
+        for (const it of clips) {
+          if (it.transcript?.length) {
+            results.push({ itemId: it.id, words: it.transcript.length, text: '', skipped: true });
+            continue;
+          }
+          // language_detection via assemblyai default (no languageCode)
+          const r = await transcribePath(it.src!);
+          ctx.commands.setItemTranscript(it.id, r.words);
+          results.push({ itemId: it.id, words: r.words.length, text: r.text.slice(0, 200) });
+        }
+        return { ok: true, track: alias, clips: results.length, results };
       } catch (e) {
-        return { error: `transcription failed: ${e instanceof Error ? e.message : String(e)}` };
+        return { error: `transcription failed: ${e instanceof Error ? e.message : String(e)}`, partial: results };
       }
     }
     case 'find_transcript': {

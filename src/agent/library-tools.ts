@@ -89,8 +89,9 @@ export async function execLibraryTool(name: string, args: Args, ctx: AgentContex
         category: cat,
         total: 0,
         groups: [],
-        message: 'Audio FX currently has no available Library entries.',
-        note: 'Source UI shows 人声隔离 (Voice Isolation) as a preset; isolate_voice is not wired in this clone yet. Use sound-effects for SFX, or import/generate BGM into the media pool.',
+        message: 'Audio FX library browse is empty; apply 人声隔离 from the Library Audio tab UI or isolate_voice tool.',
+        note: 'UI: 资源库 → Audio → 人声隔离 on selected audio/video. Pipeline: POST /api/isolate → item.denoisedSrc.',
+        items: [{ id: 'audio-fx-denoise', name: '人声隔离', description: 'DeepFilterNet3 speech isolation (ffmpeg fallback if binary missing)' }],
       };
     }
     return { category: cat, ...libraryOverview(scoped) };

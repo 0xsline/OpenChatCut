@@ -96,15 +96,21 @@ function TransitionIn({ type, L, dir, children }: { type: CssTransitionType; L: 
 // One audio clip. With a transcript attached it renders the KEPT segments
 // (deleted words' source ranges are skipped, remaining ranges play back-to-back);
 // otherwise it plays the whole source.
+/** Playback audio path: isolated voice when set (source denoisedAudioAssetId). */
+function audioSrc(item: TimelineItem): string {
+  return item.denoisedSrc || item.src!;
+}
+
 function AudioClip({ item, fps, muted, gainAt }: { item: TimelineItem; fps: number; muted: boolean; gainAt: (frame: number) => number }) {
   const vol = muted ? 0 : item.volume ?? 1;
+  const src = audioSrc(item);
   if (item.transcript && item.transcript.length) {
     const del = new Set(item.deletedWordIdx ?? []);
     return (
       <>
         {keptSegments(item.transcript, del, fps, item.startFrame, { maxGapFrames: item.silenceFrames }).map((seg, k) => (
           <Sequence key={`${item.id}_${k}`} from={seg.fromFrame} durationInFrames={seg.durFrames} name={item.name}>
-            <Audio src={item.src!} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame} volume={(f) => vol * gainAt(seg.fromFrame + f)} />
+            <Audio src={src} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame} volume={(f) => vol * gainAt(seg.fromFrame + f)} />
           </Sequence>
         ))}
       </>
@@ -112,7 +118,7 @@ function AudioClip({ item, fps, muted, gainAt }: { item: TimelineItem; fps: numb
   }
   return (
     <Sequence from={item.startFrame} durationInFrames={item.durationInFrames} name={item.name}>
-      <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
+      <Audio src={src} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
         volume={(f) => vol * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
     </Sequence>
   );
@@ -129,8 +135,13 @@ function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt }: { item: Timel
       <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
         <ClipFx item={item} fit={fit} width={canvasW} height={canvasH} />
         {item.kind !== 'image' && (
-          <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-            volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
+          item.denoisedSrc ? (
+            <Audio src={item.denoisedSrc} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
+              volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
+          ) : (
+            <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
+              volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
+          )
         )}
       </AbsoluteFill>
     );
@@ -139,7 +150,16 @@ function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt }: { item: Timel
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
       {item.kind === 'image'
         ? <Img src={item.src!} style={style} />
-        : <OffthreadVideo src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
+        : item.denoisedSrc
+          // visual from original video (muted) + isolated voice track
+          ? (
+            <>
+              <OffthreadVideo src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1} volume={0} style={style} />
+              <Audio src={item.denoisedSrc} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
+                volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
+            </>
+          )
+          : <OffthreadVideo src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
             volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} style={style} />}
     </AbsoluteFill>
   );

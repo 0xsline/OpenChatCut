@@ -156,6 +156,13 @@ export interface TimelineItem {
   /** clean_script silence compression: cap inter-word pauses to this many frames
    * (undefined = keep every pause at its recorded length). */
   silenceFrames?: number;
+  /**
+   * AI Voice Isolation (source isolate_voice / DeepFilterNet3).
+   * `src` stays the original media; playback uses denoisedSrc for audio when set.
+   */
+  denoisedSrc?: string | null;
+  /** isolation strength 0–100 (atten-lim-db), default 100 */
+  denoiseStrength?: number | null;
 }
 
 /** how 16:9-designed content adapts when the canvas ratio changes (source `fit`) */

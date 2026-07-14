@@ -35,8 +35,8 @@ const CLIP_COLOR: Record<TimelineItem['kind'], string> = {
 /** default time scale — 1s ≈ 36px @30fps (shorter clips, less “巨型色块”) */
 const PX_PER_FRAME = 1.2;
 const MIN_TIME_ZOOM = 0.02; // long timelines (3–8 min) must still fit in one viewport
-/** target min px between major ruler labels (avoids 00001000… overlap) */
-const RULER_LABEL_MIN_PX = 80;
+/** target min px between major ruler labels — denser ticks (source-like cadence) */
+const RULER_LABEL_MIN_PX = 52;
 const toolBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14, padding: '2px 5px' };
 const CAPTION_LANGS = ['English', '简体中文', '西班牙语', '法语', '德语', '日语', '韩语', '葡萄牙语'];
 
@@ -77,11 +77,21 @@ function fmtClock(frames: number, fps: number): string {
 
 /** pick major tick step (seconds) so labels stay readable at current zoom */
 function rulerMajorSeconds(pxPerFrame: number, fps: number): number {
-  const options = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+  // finer steps so zoomed-in timelines get sub-second / few-second marks
+  const options = [0.2, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
   for (const s of options) {
     if (s * fps * pxPerFrame >= RULER_LABEL_MIN_PX) return s;
   }
   return 600;
+}
+
+/** number of minor ticks between majors (more when majors are far apart) */
+function rulerMinorCount(majorSec: number): number {
+  if (majorSec <= 0.5) return 1;
+  if (majorSec <= 2) return 3;
+  if (majorSec <= 10) return 4;
+  if (majorSec <= 30) return 5;
+  return 9;
 }
 
 function fmtRuler(frames: number, fps: number): string {
@@ -338,7 +348,9 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
   const tracksHeight = trackIds.reduce((sum, id) => sum + rowHeightOf(id), 0);
   const majorSec = rulerMajorSeconds(px, state.fps);
   const majorFrames = Math.max(1, Math.round(majorSec * state.fps));
-  const minorFrames = Math.max(1, Math.round(majorFrames / 4));
+  const minorDivs = rulerMinorCount(majorSec) + 1; // subdivisions between majors
+  const minorFrames = Math.max(1, Math.round(majorFrames / minorDivs));
+  const minorTicksPerMajor = Math.max(1, Math.round(majorFrames / minorFrames) - 1);
   const rulerSpanFrames = Math.max(total, Math.ceil((innerW - HEADER_W) / Math.max(px, 0.001)));
   const majorCount = Math.ceil(rulerSpanFrames / majorFrames) + 1;
 
@@ -603,11 +615,24 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
                         <span style={{ position: 'absolute', left: 4, top: 5, whiteSpace: 'nowrap', color: '#9a9a9a', fontVariantNumeric: 'tabular-nums' }}>
                           {fmtRuler(f, state.fps)}
                         </span>
-                        {/* minor ticks between majors */}
-                        {Array.from({ length: 3 }).map((__, m) => {
+                        {/* minor ticks between majors (density scales with zoom) */}
+                        {Array.from({ length: minorTicksPerMajor }).map((__, m) => {
                           const mf = f + (m + 1) * minorFrames;
                           if (mf >= f + majorFrames) return null;
-                          return <div key={m} style={{ position: 'absolute', left: (m + 1) * minorFrames * px, bottom: 0, width: 1, height: 5, background: '#3a3a3a' }} />;
+                          const mid = m + 1 === Math.round(minorTicksPerMajor / 2);
+                          return (
+                            <div
+                              key={m}
+                              style={{
+                                position: 'absolute',
+                                left: (m + 1) * minorFrames * px,
+                                bottom: 0,
+                                width: 1,
+                                height: mid ? 7 : 4,
+                                background: mid ? '#4a4a4a' : '#333',
+                              }}
+                            />
+                          );
                         })}
                       </div>
                     );
