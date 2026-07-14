@@ -40,6 +40,7 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 - ✅ ripple 插入/删除 + fade(秒) 暴露（`set_item_timing`/`remove_item`/`add_*`）— Claude
 - ✅ `web_browser` + Firecrawl 扩展（`agent/web-tools.ts`，§1.7）— grok
 - ✅ `download_media` / `push_asset` 同名（`agent/stock-tools.ts` + `/api/import-url`，§2.4）— grok
+- ✅ `search_fonts` + `submit_export` confirmFontFallback / nleFormat（`agent/font-tools.ts` + `fonts/googleFonts.ts`，§1.4 §2.5）— grok
 
 ### 分工表
 
@@ -107,15 +108,13 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 
 ---
 
-### 1.4 ❌ `search_fonts`
+### 1.4 ✅ `search_fonts`
 
 | | |
 |--|--|
-| **缺口** | 源站按 query 搜字体；本仓静态预载，无搜索工具。 |
 | **源站** | schema：`search_fonts`，`required: ['query']`。 |
-| **本仓 UI** | 字幕/MG 字体选择：`src/captions/styles.ts`、`InspectorPanel`（若有 font 控件）、`src/fonts/googleFonts.ts`（`loadProjectFonts`，预载约 32 款）。 |
-| **本仓 agent** | 无。 |
-| **怎么改** | 1. `src/agent/font-tools.ts`：`search_fonts` 在本地字体表（从 `googleFonts.ts` 导出清单）做模糊匹配；可选再查 Google Fonts API。2. 导出前：`submit_export` 增加源站式 `confirmFontFallback` 扫描 MG/字幕 `fontFamily`（见 §2.5）。3. UI：设置/字幕样式里可挂同一搜索结果列表。 |
+| **本仓** | `src/agent/font-tools.ts` + `src/fonts/googleFonts.ts` `FONT_CATALOG` / `searchFontCatalog`。支持中文别名（得意黑/鸿蒙…）；`loadable` 标是否 export-safe。 |
+| **状态** | ✅ 2026-07-15 [G] |
 
 ---
 
@@ -205,16 +204,13 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 
 ---
 
-### 2.5 🟡 `submit_export` 与字体门
+### 2.5 ✅ `submit_export` 与字体门
 
 | | |
 |--|--|
-| **源站** | `confirmFontFallback`、`nleFormat: fcp_xml \| fcp_xml_resolve`、codec 枚举等 |
-| **源站位置** | schema `submit_export` |
-| **本仓 agent** | `src/agent/generate-tools.ts`（submit_export）+ `src/agent/export-tools.ts`（job/track） |
-| **本仓 UI** | TopBar 导出；`vite` export 插件；`src/export/fcpxml.ts` |
-| **本仓字体** | `src/fonts/googleFonts.ts` |
-| **怎么改** | 1. 导出前扫 timeline 字体；缺白名单则 require `confirmFontFallback: true` 否则返回清单（对齐源站）。2. `nleFormat` 两分支：现 fcpxml 为 Premiere；Resolve 差异补 tag。3. 对照 schema 补齐 format/codec 枚举文档。 |
+| **源站** | `confirmFontFallback`、`nleFormat: fcp_xml \| fcp_xml_resolve` |
+| **本仓** | `generate-tools.ts` submit_export：video/xml 前 `fontFallbackGate`；`nleFormat` → `timelineToFcpxml`（Resolve 加 colorSpace + event 名）。 |
+| **状态** | ✅ 2026-07-15 [G] |
 
 ---
 
@@ -406,7 +402,7 @@ chatcut-clone/
 ### P1 资产/字体/导出
 
 - [x] **[G]** `download_media` / `push_asset` 同名（§2.4）
-- [ ] **[G]** `search_fonts` + export `confirmFontFallback`（§1.4 §2.5）
+- [x] **[G]** `search_fonts` + export `confirmFontFallback`（§1.4 §2.5）
 - [ ] **[C]** `edit_item` 批处理/ripple/validateOnly 文档化或对齐（§2.6）
 - [ ] **[C]** MG convert 透明策略写清或实现 alpha（§2.7）
 

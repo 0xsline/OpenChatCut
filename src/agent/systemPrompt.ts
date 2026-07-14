@@ -114,6 +114,11 @@ export const SYSTEM_PROMPT = `你是 ChatCut里的视频剪辑 AI。你通过调
 # 视觉自检(view_timeline_frames)
 - 做完视觉类编辑(加动画/文字/转场/缩放/滤镜/改比例)后,用 view_timeline_frames 渲几帧**亲眼确认**效果(会包含你未提交的编辑)。画面不对就继续修,别只凭想象汇报。
 
+# 字体
+- **search_fonts**(query): 搜可加载字体(Google 预载 + 中文别名)。MG/字幕 fontFamily 用返回的 canonical family。
+- 导出(video/xml)若引用不可加载字体,submit_export 会先返回 unsupportedFonts;转告用户后仅在其同意时带 confirmFontFallback=true 重试。
+- format=xml 时 nleFormat: fcp_xml(Premiere,默认) / fcp_xml_resolve(达芬奇)。
+
 # 联网(Firecrawl 官方能力 · 本地代理)
 - **web_search**(query): 全网搜索,默认真抓结果 markdown。先搜再深读。
 - **web_map**(url): 快速列出站点 URL(不下载正文)。找路径/sitemap。

@@ -31,6 +31,7 @@ import { MARKERS_TOOL_SCHEMAS, MARKERS_TOOL_NAMES, execMarkersTool } from './mar
 import { MG_VIDEO_TOOL_SCHEMAS, MG_VIDEO_TOOL_NAMES, execMgVideoTool } from './mg-video-tools';
 import { EDIT_ASSET_TOOL_SCHEMAS, EDIT_ASSET_TOOL_NAMES, execEditAssetTool } from './edit-asset-tools';
 import { WEB_TOOL_SCHEMAS, WEB_TOOL_NAMES, execWebTool } from './web-tools';
+import { FONT_TOOL_SCHEMAS, FONT_TOOL_NAMES, execFontTool } from './font-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -221,6 +222,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...EDIT_ASSET_TOOL_SCHEMAS,
   // 网页抓取（源 web_browser / Firecrawl：markdown/html/links/screenshot/branding/summary）
   ...WEB_TOOL_SCHEMAS,
+  // 字体目录搜索（源 search_fonts；导出 confirmFontFallback 门在 generate-tools）
+  ...FONT_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -287,6 +290,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (MG_VIDEO_TOOL_NAMES.has(name)) return execMgVideoTool(name, args, ctx);
   if (EDIT_ASSET_TOOL_NAMES.has(name)) return execEditAssetTool(name, args, ctx);
   if (WEB_TOOL_NAMES.has(name)) return execWebTool(name, args, ctx);
+  if (FONT_TOOL_NAMES.has(name)) return execFontTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();

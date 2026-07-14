@@ -8,8 +8,9 @@ import { submitVideo, type SubmitVideoArgs } from '../generate/video';
 import { trackGenerationProgress } from '../generate/progress';
 import { submitSubtitleExport, type SubmitSubtitleExportArgs } from '../generate/subtitles';
 import { submitMediaExport, type SubmitMediaExportArgs } from '../generate/media-export';
-import { timelineToFcpxml } from '../export/fcpxml';
+import { timelineToFcpxml, type NleFormat } from '../export/fcpxml';
 import { recordExport } from '../persist/exportHistoryStore';
+import { fontFallbackGate } from './font-tools';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GPT 主攻文件 —— AI 生成套件（图 / 视频 / 配音 / 音乐 / 音效）
@@ -150,18 +151,34 @@ export const GENERATE_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'submit_export',
-    description: 'Export the active timeline synchronously as MP4/WebM video, MP3/WAV audio, SRT/TXT subtitles, or an FCPXML project (format=xml) for editing in Final Cut Pro / DaVinci Resolve / Premiere. Optional frame boundaries use a half-open [startFrame, endFrameExclusive) range.',
+    description: [
+      'Export the active timeline synchronously as MP4/WebM video, MP3/WAV audio, SRT/TXT subtitles,',
+      'or an FCPXML project (format=xml) for Premiere / Resolve / FCP.',
+      'When MG/captions reference fonts the renderer cannot load, the first call returns unsupportedFonts',
+      '— relay to the user and retry with confirmFontFallback=true only after they accept.',
+      'For XML, pass nleFormat=fcp_xml (default, Premiere) or fcp_xml_resolve (DaVinci Resolve).',
+      'Optional frame boundaries use a half-open [startFrame, endFrameExclusive) range.',
+    ].join(' '),
     input_schema: {
       type: 'object',
       properties: {
         format: { type: 'string', enum: ['video', 'audio', 'subtitles', 'xml'] },
         codec: { type: 'string', enum: ['h264', 'vp8', 'mp3', 'wav'], description: 'Video: h264 (default) or vp8. Audio: mp3 (source default) or local WAV extension.' },
         subtitleFormat: { type: 'string', enum: ['srt', 'txt'], description: 'Defaults to srt.' },
+        nleFormat: {
+          type: 'string',
+          enum: ['fcp_xml', 'fcp_xml_resolve'],
+          description: 'NLE XML format for format=xml. Defaults to fcp_xml (Premiere). Use fcp_xml_resolve for DaVinci Resolve.',
+        },
         name: { type: 'string', description: 'Download filename.' },
         startFrame: { type: 'integer', minimum: 0 },
         endFrameExclusive: { type: 'integer', minimum: 1 },
         startSeconds: { type: 'number', minimum: 0, description: 'Legacy; prefer startFrame.' },
         endSeconds: { type: 'number', minimum: 0, description: 'Legacy; prefer endFrameExclusive.' },
+        confirmFontFallback: {
+          type: 'boolean',
+          description: 'Required true when export would burn unsupported fonts. First call without it returns the unsupported list.',
+        },
       },
     },
   },
@@ -303,6 +320,14 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
     case 'submit_export': {
       try {
         const format = args.format ?? 'video';
+        const state = ctx.getState();
+        // Font gate for video burn-in and XML handoff (MG/caption families).
+        if (format === 'video' || format === 'xml') {
+          const gate = fontFallbackGate(state, args.confirmFontFallback, {
+            captions: state.captions ?? null,
+          });
+          if (gate) return gate;
+        }
         if (format === 'subtitles') {
           const input: SubmitSubtitleExportArgs = {
             subtitleFormat: args.subtitleFormat as SubmitSubtitleExportArgs['subtitleFormat'],
@@ -312,7 +337,7 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
             startSeconds: typeof args.startSeconds === 'number' ? args.startSeconds : undefined,
             endSeconds: typeof args.endSeconds === 'number' ? args.endSeconds : undefined,
           };
-          const result = await submitSubtitleExport(input, ctx.getState());
+          const result = await submitSubtitleExport(input, state);
           void recordExport({
             name: result.name ?? `subtitles.${input.subtitleFormat ?? 'srt'}`,
             format: 'subtitles',
@@ -331,7 +356,7 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
             startSeconds: typeof args.startSeconds === 'number' ? args.startSeconds : undefined,
             endSeconds: typeof args.endSeconds === 'number' ? args.endSeconds : undefined,
           };
-          const result = await submitMediaExport(input, ctx.getState());
+          const result = await submitMediaExport(input, state);
           void recordExport({
             name: result.name,
             format: result.format,
@@ -344,7 +369,11 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
         }
         if (format === 'xml') {
           // FCPXML：纯序列化（fcpxml.ts）+ 客户端 blob 下载（无需渲染，秒出）。
-          const xml = timelineToFcpxml(ctx.getState(), { title: typeof args.name === 'string' ? args.name : undefined });
+          const nleFormat: NleFormat = args.nleFormat === 'fcp_xml_resolve' ? 'fcp_xml_resolve' : 'fcp_xml';
+          const xml = timelineToFcpxml(state, {
+            title: typeof args.name === 'string' ? args.name : undefined,
+            nleFormat,
+          });
           const base = (typeof args.name === 'string' && args.name ? args.name : 'timeline').replace(/\.(?:fcpxml|xml)$/i, '');
           const filename = `${base}.fcpxml`;
           const blob = new Blob([xml], { type: 'application/xml' });
@@ -357,7 +386,7 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
           anchor.remove();
           URL.revokeObjectURL(url);
           void recordExport({ name: filename, format: 'xml', sizeBytes: blob.size, createdAt: Date.now() });
-          return { ok: true, format: 'xml', name: filename, sizeBytes: blob.size };
+          return { ok: true, format: 'xml', nleFormat, name: filename, sizeBytes: blob.size };
         }
         return { error: 'format must be video, audio, subtitles, or xml' };
       } catch (error) {
@@ -407,6 +436,7 @@ export const GENERATE_WORKFLOW = `
 - Do not claim a generated asset exists until track_progress reports succeeded and addedAssets includes it. Retrying track_progress is idempotent and never duplicates an existing asset.
 
 ## Export
-- Use submit_export with format=video for MP4/WebM, format=audio for MP3/WAV, or format=subtitles for SRT/TXT. codec defaults to h264 for video and mp3 for audio; subtitleFormat defaults to srt.
+- Use submit_export with format=video for MP4/WebM, format=audio for MP3/WAV, format=subtitles for SRT/TXT, or format=xml for FCPXML (nleFormat fcp_xml|fcp_xml_resolve). codec defaults to h264 for video and mp3 for audio; subtitleFormat defaults to srt.
 - Prefer startFrame/endFrameExclusive for partial exports. The range is half-open, export is synchronous, and it does not change the timeline.
+- If submit_export returns unsupportedFonts, use search_fonts for alternatives or ask the user, then retry with confirmFontFallback=true only after they accept fallback.
 `;

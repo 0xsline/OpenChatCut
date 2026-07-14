@@ -142,16 +142,26 @@ function itemToSpineElement(
  * ChatCut 时间线（每轨独立绝对帧位）到 FCPX 磁性时间线（连接片段带 lane）
  * 的直接映射方式；源站没有公开 XML 内部实现，此处按 FCPXML 规范自定。
  */
-export function timelineToFcpxml(state: TimelineState, opts: { title?: string } = {}): string {
+export type NleFormat = 'fcp_xml' | 'fcp_xml_resolve';
+
+export function timelineToFcpxml(
+  state: TimelineState,
+  opts: { title?: string; nleFormat?: NleFormat } = {},
+): string {
   validateState(state);
   const fps = state.fps;
   const total = timelineDuration(state);
   const title = escapeXml((opts.title ?? '').trim() || 'ChatCut Timeline');
+  const nle: NleFormat = opts.nleFormat === 'fcp_xml_resolve' ? 'fcp_xml_resolve' : 'fcp_xml';
   const laneOf = buildLaneOf(state);
   const assets = collectAssets(state);
 
   const formatId = 'fmt1';
-  const formatXml = `<format id="${formatId}" name="FFVideoFormatCustom${state.width}x${state.height}p${fps}" frameDuration="${rationalTime(1, fps)}" width="${state.width}" height="${state.height}"/>`;
+  // Resolve prefers an explicit colorSpace on <format>; Premiere path keeps the
+  // leaner attribute set (source nleFormat fcp_xml vs fcp_xml_resolve).
+  const formatXml = nle === 'fcp_xml_resolve'
+    ? `<format id="${formatId}" name="FFVideoFormatCustom${state.width}x${state.height}p${fps}" frameDuration="${rationalTime(1, fps)}" width="${state.width}" height="${state.height}" colorSpace="1-1-1 (Rec. 709)"/>`
+    : `<format id="${formatId}" name="FFVideoFormatCustom${state.width}x${state.height}p${fps}" frameDuration="${rationalTime(1, fps)}" width="${state.width}" height="${state.height}"/>`;
   const assetXmls = Array.from(assets.entries()).map(([src, info]) => assetResourceXml(src, info, fps, formatId));
   const resourcesXml = [formatXml, ...assetXmls].join('\n    ');
 
@@ -164,6 +174,7 @@ export function timelineToFcpxml(state: TimelineState, opts: { title?: string } 
     .join('\n        ');
 
   const backgroundGap = `<gap name="Background" offset="${rationalTime(0, fps)}" duration="${rationalTime(total, fps)}">\n        ${spineChildren}\n      </gap>`;
+  const eventName = nle === 'fcp_xml_resolve' ? 'ChatCut Export (Resolve)' : 'ChatCut Export';
 
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -173,7 +184,7 @@ export function timelineToFcpxml(state: TimelineState, opts: { title?: string } 
     `    ${resourcesXml}`,
     '  </resources>',
     '  <library>',
-    '    <event name="ChatCut Export">',
+    `    <event name="${eventName}">`,
     `      <project name="${title}">`,
     `        <sequence format="${formatId}" duration="${rationalTime(total, fps)}" tcStart="${rationalTime(0, fps)}" tcFormat="NDF">`,
     '          <spine>',
