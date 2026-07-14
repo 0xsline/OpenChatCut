@@ -17,7 +17,7 @@ const FORBIDDEN = [
 ];
 const rejects = (code) => FORBIDDEN.some(([re]) => re.test(strip(code)));
 
-const templates = JSON.parse(readFileSync(new URL('../src/chatcut-templates.json', import.meta.url), 'utf8'));
+const templates = JSON.parse(readFileSync(new URL('../src/assets/chatcut-templates.json', import.meta.url), 'utf8'));
 const bad = templates.filter((t) => rejects(t.code));
 assert.equal(bad.length, 0, `these real templates were wrongly rejected: ${bad.map((t) => t.name).join(', ')}`);
 

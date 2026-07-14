@@ -57,9 +57,17 @@ function run(cmd: string, args: string[], cwd?: string): Promise<{ code: number;
 }
 
 async function which(bin: string): Promise<string | null> {
-  const r = await run(process.platform === 'win32' ? 'where' : 'which', [bin]);
-  if (r.code !== 0) return null;
-  // which writes to stdout — re-run with spawn capture
+  // Prefer project venv (.venv-df) so DeepFilterNet3 install is local & reproducible.
+  const localCandidates = [
+    join(process.cwd(), '.venv-df', 'bin', bin),
+    join(process.cwd(), '.venv', 'bin', bin),
+  ];
+  for (const p of localCandidates) {
+    try {
+      await access(p, fsConstants.X_OK);
+      return p;
+    } catch { /* next */ }
+  }
   return new Promise((resolveP) => {
     const child = spawn(process.platform === 'win32' ? 'where' : 'which', [bin], { stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
@@ -87,7 +95,10 @@ async function extractWav(srcPath: string, wavPath: string): Promise<void> {
 async function tryDeepFilter(wavIn: string, wavOut: string, strength: number): Promise<boolean> {
   const atten = Math.max(0, Math.min(100, Math.round(strength)));
   // Official CLI: deep-filter -a <0-100> <input.wav>
-  const bin = (await which('deep-filter')) ?? (await which('deep-filter-py'));
+  const bin =
+    (await which('deep-filter'))
+    ?? (await which('deep-filter-py'))
+    ?? (await which('deepFilter'));
   if (!bin) return false;
   const outDir = dirname(wavOut);
   const r = await run(bin, ['-a', String(atten), '-o', outDir, wavIn]);

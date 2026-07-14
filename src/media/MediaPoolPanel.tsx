@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon } from './icons';
+import { Icon } from '../components/icons';
 import type { MediaAsset, MediaFolder } from '../editor/types';
 import { usePersistedState } from '../hooks/usePersistedState';
 

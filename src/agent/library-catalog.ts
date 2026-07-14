@@ -2,7 +2,7 @@
 // motion-graphics | luts | zoom | fx | sound-effects | transitions
 // (audio-fx reserved empty until we ship track audio FX).
 
-import { SOUND_EFFECTS, SOUND_GROUPS } from '../audio/soundLibrary';
+import { SOUND_EFFECTS } from '../audio/soundLibrary';
 import {
   TRANSITION_LABELS,
   TRANSITION_ORDER,

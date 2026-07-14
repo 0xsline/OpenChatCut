@@ -10,7 +10,7 @@ import {
   soundEffectSrc,
   type SoundEffect,
 } from '../audio/soundLibrary';
-import { Icon } from './icons';
+import { Icon } from '../components/icons';
 
 // Source library-view sound tab:
 //   search ("Search sounds") + chips [热门, …groups] + list rows:

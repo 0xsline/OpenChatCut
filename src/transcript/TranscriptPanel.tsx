@@ -1,20 +1,29 @@
-import { useMemo, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
-import { theme } from '../theme';
-import type { TimelineItem, TrackId } from '../editor/types';
-import { useTranscript } from '../transcript/useTranscript';
-import { msToFrame, type TranscriptWord } from '../transcript/types';
-import { toParagraphs, toSegments, analyzeSilences, type IndexedWord } from '../transcript/segment';
+import type { TimelineItem, TrackId, TrackKind } from '../editor/types';
+import { useTranscript } from './useTranscript';
+import { msToFrame, type TranscriptWord } from './types';
+import { toParagraphs, toSegments, analyzeSilences, type IndexedWord } from './segment';
 import { ParagraphView, SegmentView } from './TranscriptViews';
-import { CaptionsControls } from './CaptionsControls';
+import { CaptionsControls } from '../captions/CaptionsControls';
 import type { CaptionsData } from '../captions/types';
 import { buildTranslation } from '../captions/translate';
-import { Icon } from './icons';
+import { Icon } from '../components/icons';
+
+/** Track row for the transcript selector (alias + human name, never raw UUID alone). */
+export interface TranscriptTrackOption {
+  id: TrackId;
+  alias: string;
+  name?: string;
+  kind: TrackKind;
+}
 
 interface TranscriptPanelProps {
   playerRef: RefObject<PlayerRef | null>;
   fps: number;
   items: TimelineItem[];
+  /** ordered tracks with A1/V1 aliases from EditorCore */
+  trackOptions: TranscriptTrackOption[];
   captions: CaptionsData | null;
   onSetCaptions: (c: CaptionsData | null) => void;
   onUpdateCaptions: (patch: Partial<CaptionsData>) => void;
@@ -24,36 +33,57 @@ interface TranscriptPanelProps {
   onClearEdits: (id: string) => void;
 }
 
-/** Clips that can carry spoken audio (audio track or video with soundtrack). */
 function mediaOnTrack(items: TimelineItem[], track: TrackId): TimelineItem[] {
   return items
     .filter((it) => it.track === track && !!it.src && (it.kind === 'audio' || it.kind === 'video'))
     .sort((a, b) => a.startFrame - b.startFrame);
 }
 
-function clipLabel(it: TimelineItem): string {
-  const n = it.name?.trim() || it.id;
-  return n.length > 28 ? `${n.slice(0, 26)}…` : n;
+/** Background music / SFX — not for speech transcription by default. */
+function isLikelyNonSpeech(it: TimelineItem): boolean {
+  const n = (it.name ?? '').toLowerCase();
+  return /背景音乐|bgm|\bmusic\b|score|ambient|音效|whoosh|sfx|instrumental/.test(n);
 }
 
-// 文字稿: 轨选择 + 转写真实时间线音频(多片段) + 段落/片段视图 + 字幕.
-// 根因修复: 绝不静默回退到 /media/speech-sample.mp3 (英文 demo → 驴唇不对马嘴).
+function clipLabel(it: TimelineItem): string {
+  const n = it.name?.trim() || it.id;
+  return n.length > 32 ? `${n.slice(0, 30)}…` : n;
+}
+
+function trackTitle(t: TranscriptTrackOption): string {
+  const name = t.name?.trim();
+  if (name && name !== t.alias) return `${t.alias} · ${name}`;
+  return t.alias;
+}
+
+function pickDefaultTrack(options: TranscriptTrackOption[], items: TimelineItem[]): TrackId | null {
+  // Prefer audio tracks with speech-like clips (配音 / VO), skip pure BGM lanes.
+  const scored = options
+    .filter((t) => t.kind === 'audio')
+    .map((t) => {
+      const clips = mediaOnTrack(items, t.id);
+      const speech = clips.filter((c) => !isLikelyNonSpeech(c));
+      const name = `${t.name ?? ''} ${t.alias}`.toLowerCase();
+      let score = speech.length * 10 + clips.length;
+      if (/配音|voice|vo|旁白|口播|anchor/.test(name)) score += 50;
+      if (/背景|music|bgm|follower/.test(name)) score -= 40;
+      if (!clips.length) score -= 100;
+      return { id: t.id, score, speech: speech.length };
+    })
+    .sort((a, b) => b.score - a.score);
+  if (scored[0] && scored[0].score > -50) return scored[0].id;
+  // fallback: any track with media
+  const any = options.find((t) => mediaOnTrack(items, t.id).length > 0);
+  return any?.id ?? options[0]?.id ?? null;
+}
+
 export function TranscriptPanel({
-  playerRef, fps, items, captions, onSetCaptions, onUpdateCaptions,
+  playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions,
   onSetItemTranscript, onToggleWord, onCleanScript, onClearEdits,
 }: TranscriptPanelProps) {
   const { status, error, progressNote, runMany, reset } = useTranscript();
-  const tracks = useMemo(() => {
-    const ids = new Set<TrackId>();
-    for (const it of items) {
-      if (it.src && (it.kind === 'audio' || it.kind === 'video')) ids.add(it.track);
-    }
-    // Always offer common tracks so empty projects still show controls.
-    for (const t of ['A1', 'A2', 'V1', 'V2'] as TrackId[]) ids.add(t);
-    return [...ids];
-  }, [items]);
-
-  const [track, setTrack] = useState<TrackId>('A1');
+  const defaultId = useMemo(() => pickDefaultTrack(trackOptions, items), [trackOptions, items]);
+  const [track, setTrack] = useState<TrackId | null>(defaultId);
   const [view, setView] = useState<'paragraph' | 'segment'>('paragraph');
   const [editMode, setEditMode] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(false);
@@ -62,11 +92,24 @@ export function TranscriptPanel({
   const [pauseResult, setPauseResult] = useState<string | null>(null);
   const [translating, setTranslating] = useState(false);
   const [translateError, setTranslateError] = useState<string | null>(null);
-  /** which clip's transcript is focused when multiple exist on the track */
   const [focusItemId, setFocusItemId] = useState<string | null>(null);
+  const [includeMusic, setIncludeMusic] = useState(false);
 
+  // Keep selection valid when project tracks change.
+  useEffect(() => {
+    if (!track || !trackOptions.some((t) => t.id === track)) {
+      setTrack(defaultId);
+    }
+  }, [track, trackOptions, defaultId]);
+
+  const activeTrack = trackOptions.find((t) => t.id === track) ?? null;
   const busy = status === 'uploading' || status === 'processing';
-  const clips = useMemo(() => mediaOnTrack(items, track), [items, track]);
+
+  const allClips = useMemo(() => (track ? mediaOnTrack(items, track) : []), [items, track]);
+  const speechClips = useMemo(() => allClips.filter((c) => !isLikelyNonSpeech(c)), [allClips]);
+  const clips = includeMusic ? allClips : (speechClips.length ? speechClips : allClips);
+  const skippedMusic = includeMusic ? 0 : allClips.length - clips.length;
+
   const transcribed = clips.filter((c) => (c.transcript?.length ?? 0) > 0);
   const focusItem =
     (focusItemId && clips.find((c) => c.id === focusItemId))
@@ -79,33 +122,28 @@ export function TranscriptPanel({
   const editable = !!focusItem?.transcript?.length;
   const hasWords = words.length > 0;
 
+  // Tracks that actually have media (for selector)
+  const selectable = useMemo(
+    () => trackOptions.filter((t) => mediaOnTrack(items, t.id).length > 0),
+    [trackOptions, items],
+  );
+
   const onWord = (w: IndexedWord) => {
     if (!focusItem) return;
     if (editMode && editable) onToggleWord(focusItem.id, w.gi);
-    else {
-      // word times are source-relative ms; map to timeline frame via clip start
-      const local = msToFrame(w.start, fps);
-      playerRef.current?.seekTo(focusItem.startFrame + local);
-    }
+    else playerRef.current?.seekTo(focusItem.startFrame + msToFrame(w.start, fps));
   };
 
   const transcribeTrack = async () => {
     if (!clips.length) return;
-    // Re-transcribe all clips on track (needed after wrong sample attach).
-    const jobs = clips.map((c) => ({
-      path: c.src!,
-      itemId: c.id,
-      label: clipLabel(c),
-    }));
+    const jobs = clips.map((c) => ({ path: c.src!, itemId: c.id, label: clipLabel(c) }));
     reset();
     try {
       await runMany(jobs, (itemId, r) => {
         onSetItemTranscript(itemId, r.words);
         setFocusItemId(itemId);
       });
-    } catch {
-      /* error already in hook state */
-    }
+    } catch { /* hook holds error */ }
   };
 
   const applyPause = () => {
@@ -120,7 +158,6 @@ export function TranscriptPanel({
   };
 
   const generateCaptions = () => {
-    // Prefer all transcribed clips on this track as caption sources.
     const sources = transcribed.map((c) => c.id);
     if (!sources.length && !hasWords) return;
     onSetCaptions({
@@ -148,6 +185,7 @@ export function TranscriptPanel({
   };
 
   const groups = view === 'paragraph' ? toParagraphs(words) : toSegments(words);
+  const aliasLabel = activeTrack ? trackTitle(activeTrack) : '—';
 
   return (
     <div className="cc-transcript-panel">
@@ -155,11 +193,7 @@ export function TranscriptPanel({
         <button type="button" onClick={() => setPauseOpen((v) => !v)} className="cc-tx-btn" disabled={!hasWords}>
           <Icon name="clock" size={13} />停顿
         </button>
-        <select
-          value={view}
-          onChange={(e) => setView(e.target.value as 'paragraph' | 'segment')}
-          className="cc-tx-select"
-        >
+        <select value={view} onChange={(e) => setView(e.target.value as 'paragraph' | 'segment')} className="cc-tx-select">
           <option value="paragraph">段落视图</option>
           <option value="segment">片段视图</option>
         </select>
@@ -173,54 +207,54 @@ export function TranscriptPanel({
           <Icon name="pencil" size={13} />编辑
         </button>
         <span className="cc-tx-spacer" />
-        <select
-          value={track}
-          onChange={(e) => {
-            setTrack(e.target.value as TrackId);
-            setFocusItemId(null);
-            setPauseResult(null);
-          }}
-          className="cc-tx-select"
-          title="选择要转写/编辑的轨道"
-        >
-          {tracks.map((t) => {
-            const n = mediaOnTrack(items, t).length;
-            return (
-              <option key={t} value={t}>
-                {t}{n ? ` · ${n} 段` : ''}
-              </option>
-            );
-          })}
-        </select>
         {pauseOpen && (
           <div className="cc-tx-popover">
             <div className="cc-tx-muted" style={{ marginBottom: 6 }}>停顿时长</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input
-                type="range" min={0.1} max={2} step={0.05} value={compressSec}
-                onChange={(e) => setCompressSec(Number(e.target.value))}
-                style={{ flex: 1, accentColor: theme.accent }}
-              />
+              <input type="range" min={0.1} max={2} step={0.05} value={compressSec}
+                onChange={(e) => setCompressSec(Number(e.target.value))} style={{ flex: 1, accentColor: '#c45c26' }} />
               <span style={{ fontSize: 12, width: 42, textAlign: 'right' }}>{compressSec.toFixed(2)}s</span>
-            </div>
-            <div className="cc-tx-muted" style={{ margin: '6px 0 8px', lineHeight: 1.5 }}>
-              较长停顿压缩到该长度；较短停顿保留。
             </div>
             <label className="cc-tx-check">
               <input type="checkbox" checked={removeFillers} onChange={(e) => setRemoveFillers(e.target.checked)} />
-              去掉填充词（嗯 / 呃 / um / uh…）
+              去掉填充词（嗯 / 呃 / um…）
             </label>
-            {pauseResult && <div style={{ fontSize: 11, color: theme.text, marginBottom: 8 }}>{pauseResult}</div>}
-            <button type="button" onClick={applyPause} disabled={!hasWords} className="cc-tx-btn primary block">
-              应用（压缩静音）
-            </button>
+            {pauseResult && <div style={{ fontSize: 11, marginBottom: 8 }}>{pauseResult}</div>}
+            <button type="button" onClick={applyPause} disabled={!hasWords} className="cc-tx-btn primary block">应用</button>
           </div>
+        )}
+      </div>
+
+      {/* Track chips — alias · name, never bare UUID */}
+      <div className="cc-tx-tracks" role="tablist" aria-label="转写轨道">
+        {selectable.length === 0 ? (
+          <span className="cc-tx-muted">时间线上还没有可转写的音视频轨</span>
+        ) : (
+          selectable.map((t) => {
+            const n = mediaOnTrack(items, t.id).length;
+            const speechN = mediaOnTrack(items, t.id).filter((c) => !isLikelyNonSpeech(c)).length;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={track === t.id}
+                className={`cc-tx-track-chip${track === t.id ? ' selected' : ''}`}
+                onClick={() => { setTrack(t.id); setFocusItemId(null); setPauseResult(null); }}
+                title={t.id}
+              >
+                <span className="cc-tx-track-alias">{t.alias}</span>
+                {t.name ? <span className="cc-tx-track-name">{t.name}</span> : null}
+                <span className="cc-tx-track-count">{speechN || n}</span>
+              </button>
+            );
+          })
         )}
       </div>
 
       {editMode && editable && focusItem && (
         <div className="cc-tx-editbar">
-          <span>点词删除/恢复（删词 = 剪掉那段音视频）。已删 <b>{deleted.size}</b> 词</span>
+          <span>点词删除/恢复。已删 <b>{deleted.size}</b> 词</span>
           {deleted.size > 0 && (
             <button type="button" onClick={() => onClearEdits(focusItem.id)} className="cc-tx-btn sm">还原全部</button>
           )}
@@ -228,35 +262,43 @@ export function TranscriptPanel({
       )}
 
       <div className="cc-tx-body">
-        {clips.length === 0 ? (
-          <div className="cc-tx-empty">
-            <div className="cc-tx-empty-title">{track} 轨上没有可转写的音频/视频</div>
-            <p className="cc-tx-muted">
-              把口播、配音或带人声的视频加到时间线后，再点「转写」。
-              不会再静默使用示例英文语音。
-            </p>
+        {!track || selectable.length === 0 ? (
+          <div className="cc-tx-empty-card">
+            <div className="cc-tx-empty-icon" aria-hidden><Icon name="mic" size={22} /></div>
+            <div className="cc-tx-empty-title">还没有可转写的轨道</div>
+            <p className="cc-tx-muted">把口播/配音或带人声的视频加到时间线后，再打开文字稿。</p>
           </div>
         ) : !hasWords ? (
-          <div className="cc-tx-empty">
-            <button
-              type="button"
-              onClick={() => void transcribeTrack()}
-              disabled={busy}
-              className="cc-tx-btn primary"
-            >
-              {busy ? (progressNote ?? '转写中…') : `转写 ${track}（${clips.length} 段）`}
-            </button>
-            <p className="cc-tx-muted" style={{ marginTop: 10, lineHeight: 1.55 }}>
-              将依次转写该轨全部媒体片段（词级 + 说话人分离，自动语种检测）。
+          <div className="cc-tx-empty-card">
+            <div className="cc-tx-empty-kicker">{aliasLabel}</div>
+            <div className="cc-tx-empty-title">转写词级文字稿</div>
+            <p className="cc-tx-muted">
+              自动语种检测 · 说话人分离 · 转写后可点词删减（删词=剪音频）。
             </p>
+            {skippedMusic > 0 && (
+              <label className="cc-tx-check music">
+                <input type="checkbox" checked={includeMusic} onChange={(e) => setIncludeMusic(e.target.checked)} />
+                包含疑似背景音乐（已跳过 {skippedMusic} 段）
+              </label>
+            )}
             <ul className="cc-tx-cliplist">
               {clips.map((c) => (
                 <li key={c.id}>
+                  <Icon name={c.kind === 'video' ? 'video' : 'volume'} size={13} />
                   <span className="cc-tx-clipname">{clipLabel(c)}</span>
-                  <span className="cc-tx-muted">{(c.durationInFrames / fps).toFixed(1)}s</span>
+                  <span className="cc-tx-clipdur">{(c.durationInFrames / fps).toFixed(1)}s</span>
                 </li>
               ))}
             </ul>
+            {!clips.length ? (
+              <p className="cc-tx-muted">
+                该轨只有背景音乐类素材。打开「包含疑似背景音乐」或换到配音轨。
+              </p>
+            ) : (
+              <button type="button" onClick={() => void transcribeTrack()} disabled={busy} className="cc-tx-btn primary lg">
+                {busy ? (progressNote ?? '转写中…') : `转写 ${activeTrack?.alias ?? ''}（${clips.length} 段）`}
+              </button>
+            )}
             {status === 'error' && <div className="cc-tx-error">{error}</div>}
           </div>
         ) : (
@@ -271,20 +313,13 @@ export function TranscriptPanel({
                       type="button"
                       className={`cc-tx-clip-tab${focusItem?.id === c.id ? ' selected' : ''}${done ? '' : ' pending'}`}
                       onClick={() => setFocusItemId(c.id)}
-                      title={c.name}
                     >
                       {clipLabel(c)}
                       {!done && ' · 未转写'}
                     </button>
                   );
                 })}
-                <button
-                  type="button"
-                  className="cc-tx-btn sm"
-                  disabled={busy}
-                  onClick={() => void transcribeTrack()}
-                  title="重新转写该轨全部片段"
-                >
+                <button type="button" className="cc-tx-btn sm" disabled={busy} onClick={() => void transcribeTrack()}>
                   {busy ? '…' : '重新转写'}
                 </button>
               </div>

@@ -3,7 +3,7 @@ import type { PlayerRef } from '@remotion/player';
 import { theme } from './theme';
 import { TopBar } from './components/TopBar';
 import { ChatPanel } from './components/ChatPanel';
-import { LibraryPanel } from './components/LibraryPanel';
+import { LibraryPanel } from './library/LibraryPanel';
 import { PreviewPanel } from './components/PreviewPanel';
 import { InspectorPanel } from './components/InspectorPanel';
 import { Timeline } from './components/Timeline';
@@ -14,6 +14,7 @@ import { VersionHistory } from './components/VersionHistory';
 import { usePersistedState } from './hooks/usePersistedState';
 import { useEditor } from './editor/store';
 import type { ProjectDoc, TimelineState } from './editor/types';
+import { timelineTrackIds, trackAlias, trackKind } from './editor/types';
 import { TEMPLATES } from './editor/initial';
 import { saveProject, loadCreativeMode, saveCreativeMode, type ProjectMeta } from './persist/projectStore';
 import { importMedia } from './media/upload';
@@ -40,6 +41,15 @@ const SOURCE_CONTENT_H = 761;
 export default function Editor({ initial, project, onHome, onRename }: EditorProps) {
   const { state, doc, commands, canUndo, canRedo } = useEditor(initial);
   const selectedItem = state.items.find((it) => it.id === state.selectedId) ?? null;
+  const trackOptions = useMemo(
+    () => timelineTrackIds(state).map((id) => ({
+      id,
+      alias: trackAlias(state, id),
+      name: state.tracks?.[id]?.name,
+      kind: trackKind(state, id),
+    })),
+    [state],
+  );
 
   // keep live refs so agent tools always read the latest timeline/project
   const stateRef = useRef(state);
@@ -202,7 +212,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       </div>
 
       <div style={{ gridColumn: 3, gridRow: 2, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-        <LibraryPanel templates={TEMPLATES} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} onImportMedia={importToPool} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onUseTemplateAI={useTemplateAI}
+        <LibraryPanel templates={TEMPLATES} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} onImportMedia={importToPool} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onUseTemplateAI={useTemplateAI}
           selectedItem={selectedItem}
           onApplyTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}
           onApplyFx={(assetId) => state.selectedId && commands.setItemEffects(state.selectedId, [{ id: `fx_${assetId}`, assetId, overrides: {} }])}

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { renderTimeline } from '../remotion/render.mjs';
 
 const require = createRequire(import.meta.url);
-const templates = require('../src/chatcut-templates.json');
+const templates = require('../src/assets/chatcut-templates.json');
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 

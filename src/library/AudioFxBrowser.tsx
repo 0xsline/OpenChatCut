@@ -1,7 +1,7 @@
 import { memo, useState } from 'react';
 import type { TimelineItem } from '../editor/types';
 import { isolateVoice } from '../audio/isolate';
-import { Icon } from './icons';
+import { Icon } from '../components/icons';
 
 // Source Library "Audio" tab = Audio FX (人声隔离 / DeepFilterNet3).
 // Wired to POST /api/isolate → item.denoisedSrc (playback prefers isolated audio).

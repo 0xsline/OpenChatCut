@@ -1,11 +1,11 @@
 // Pull ALL ChatCut templates from chatcut-reverse/templates into the app:
-//  - src/chatcut-templates.json  (code + meta + prop schema)
+//  - src/assets/chatcut-templates.json  (code + meta + prop schema)
 //  - public/thumbnails/<id>.jpg  (library thumbnails)
 import { readFileSync, writeFileSync, readdirSync, copyFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SRC = '/Users/qinpx/Desktop/project/chatcut-reverse/templates';
-const OUT_JSON = new URL('../src/chatcut-templates.json', import.meta.url);
+const OUT_JSON = new URL('../src/assets/chatcut-templates.json', import.meta.url);
 const THUMB_DIR = new URL('../public/thumbnails/', import.meta.url).pathname;
 
 rmSync(THUMB_DIR, { recursive: true, force: true });

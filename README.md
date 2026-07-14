@@ -21,7 +21,7 @@ ChatCut 复刻的**起步骨架**。目的：**验证「ChatCut 的 211 个 Remo
 | `src/template-host.ts` | **drop-in seam 本体**：`compileTemplate(code)` 把模板代码串 → Babel 转译(classic runtime→`React.createElement`) → 在注入了 Remotion 全局(`useCurrentFrame/spring/interpolate/Easing/random/Img/AbsoluteFill/interpolateColors/Video/Audio/Sequence`)的作用域里 eval → 返回 React 组件。这套注入的全局集合已核对覆盖全部 211 模板实际用到的。 |
 | `src/MotionGraphic.tsx` | Remotion 合成：把编译出的模板包进 `<AbsoluteFill>`（= 一个 "motion-graphic" 时间线 item 渲染成的样子）。含编译错误兜底 + 透明格背景。 |
 | `src/App.tsx` | 三栏 UI：模板库 / `<Player>` / 属性检查器（props 实时编辑）。 |
-| `src/chatcut-templates.json` | 从 `chatcut-reverse/templates/` 抽取的 7 个真实模板（代码 + meta 属性 schema + 默认值）。 |
+| `src/assets/chatcut-templates.json` | 从 `chatcut-reverse/templates/` 抽取的 7 个真实模板（代码 + meta 属性 schema + 默认值）。 |
 | `scripts/gen-templates.mjs` | 生成上面的 json（可改 PICKS/scan 灌更多模板，直至 211 全量）。 |
 
 ## 跑起来

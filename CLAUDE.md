@@ -11,13 +11,42 @@
 
 ## 目录职责(单一真源)
 
+**按领域/功能分目录,不按技术类型堆。** 资源数据 → `assets/`；资源库 UI → `library/`；文字稿逻辑+UI → `transcript/`；字幕 → `captions/`；壳层 chrome → `components/`。新增文件必须落入对应领域,禁止把业务 UI 再往 `components/` 根目录堆。
+
 | 目录 | 职责 |
 |---|---|
-| `src/editor/` | 时间线状态与命令(EditorCore)。`store.ts`=useEditor(reducer+undo/redo);`types.ts`=领域类型;`TimelineComposition.tsx`=整条时间线→Remotion。**不含 UI、不含 LLM。** |
-| `src/agent/` | 对话 Agent。`client.ts`=Anthropic client+MODEL(唯一改模型处);`runtime.ts`=tool_use 循环;`tools.ts`=工具 schema+executeTool;`systemPrompt.ts`;`useAgent.ts`=React 绑定。**只经 EditorCore 命令改状态。** |
-| `src/components/` | 纯展示/交互组件。props 进、回调出,不直接持有业务逻辑。 |
+| `src/assets/` | **静态资源数据**(非运行时代码):`chatcut-templates.json`、占位图等。脚本读写路径也指向这里。 |
+| `src/library/` | **资源库** UI 与卡片:LibraryPanel、MG/音效/转场/特效/LUT/Audio FX 浏览器、GLSL 缩略图。 |
+| `src/transcript/` | 文字稿:AssemblyAI 客户端、词级编辑算法、TranscriptPanel/Views。 |
+| `src/captions/` | 字幕 overlay:类型、样式、resolve、CaptionsControls、CaptionsLayer。 |
+| `src/audio/` | 音频域:音效目录(soundLibrary)、人声隔离客户端、响度、录音。 |
+| `src/media/` | 用户媒体:上传、clip 导出、MediaPoolPanel(我的素材)。 |
+| `src/editor/` | 时间线状态与命令(EditorCore)。`store.ts`/`reduce.ts`/`types.ts`/`TimelineComposition.tsx`。**不含 UI、不含 LLM。** |
+| `src/agent/` | 对话 Agent。`client.ts`=MODEL 唯一入口;`runtime.ts`;`tools.ts`;`systemPrompt.ts`;`useAgent.ts`。**只经 EditorCore 命令改状态。** |
+| `src/components/` | **壳层 chrome only**:TopBar、Timeline、Preview、Chat、Inspector、Dashboard 等跨域布局。**不要**再塞领域浏览器(库/文字稿/素材池)。 |
+| `src/gl/` | WebGL 转场/特效 runtime 与 shaders。 |
+| `src/generate/` | AI 生成客户端(图/视频/语音/音乐/音效 job)。 |
+| `src/persist/` | 工程/聊天/版本 IDB 持久化。 |
+| `src/export/` | 导出(FCPXML 等)。 |
+| `src/reframe/` `src/script/` `src/hooks/` `src/fonts/` | 各自领域。 |
 | `src/template-host.ts` | 模板编译+沙箱(安全关键)。改这里必跑 `scripts/check-sandbox.mjs`。 |
 | `src/theme.ts` `src/types.ts` | 设计 token / 共享类型。 |
+| `public/` | 运行时静态文件:sound-effects、media、library-previews 等(URL 路径,非 TS 模块)。 |
+
+### 放哪?(速查)
+
+| 要加的东西 | 放这里 |
+|---|---|
+| 新资源库 tab / 卡片 / 缩略图 | `src/library/` |
+| 新音效元数据 / peaks | `src/audio/soundLibrary.ts`(+ `public/sound-effects/`) |
+| 转写/删词/说话人 | `src/transcript/` |
+| 字幕样式/翻译/overlay | `src/captions/` |
+| 时间线命令 / item 字段 | `src/editor/` |
+| Agent 工具 | `src/agent/*-tools.ts` 并在 `tools.ts` 注册 |
+| 纯布局 chrome | `src/components/` |
+| 大 JSON 模板数据 | `src/assets/` |
+
+移动文件后**同步改所有 import 与 scripts 路径**,再 `npx tsc --noEmit`。
 
 ## 代码约束
 

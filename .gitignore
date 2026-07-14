@@ -16,3 +16,7 @@ out.mp4
 
 # user-imported media (dev upload endpoint)
 public/media/uploads/
+
+# DeepFilterNet3 local venv
+.venv-df/
+.venv/

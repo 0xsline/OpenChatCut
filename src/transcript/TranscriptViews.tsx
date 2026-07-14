@@ -1,6 +1,6 @@
 import { theme } from '../theme';
-import { speakerLabel, type IndexedWord, type WordGroup } from '../transcript/segment';
-import { msToFrame } from '../transcript/types';
+import { speakerLabel, type IndexedWord, type WordGroup } from './segment';
+import { msToFrame } from './types';
 
 interface WordRowProps {
   words: IndexedWord[];

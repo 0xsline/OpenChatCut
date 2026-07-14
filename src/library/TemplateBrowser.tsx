@@ -2,7 +2,7 @@ import { memo, useMemo, useState } from 'react';
 import { theme } from '../theme';
 import { usePersistedState } from '../hooks/usePersistedState';
 import type { Tpl } from '../types';
-import { Icon } from './icons';
+import { Icon } from '../components/icons';
 
 // MG 动画 browser (source library-view template tab): a horizontal chip row
 // [收藏, 热门, <categories by count>] filters the card grid; cards show a

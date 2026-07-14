@@ -1,6 +1,6 @@
 import { theme } from '../theme';
-import type { CaptionsData, CaptionPacing, CaptionTemplate } from '../captions/types';
-import { CAPTION_STYLES } from '../captions/styles';
+import type { CaptionsData, CaptionPacing, CaptionTemplate } from './types';
+import { CAPTION_STYLES } from './styles';
 
 interface CaptionsControlsProps {
   captions: CaptionsData | null;

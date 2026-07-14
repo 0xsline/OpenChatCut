@@ -1,4 +1,4 @@
-import templatesJson from '../chatcut-templates.json';
+import templatesJson from '../assets/chatcut-templates.json';
 import type { Tpl } from '../types';
 import type { TimelineState } from './types';
 
