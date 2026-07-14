@@ -38,7 +38,7 @@
 | 6 | Motion Graphics | 8 | 6 | 2 | 0 | 核心 | ✅ 211 模板/manage_template/browse_library/edit_item/沙箱(211过5拦) + ✅ `convert_motion_graphic_to_video`/`register_converted_video`(烘焙入池,不透明 h264——alpha env-blocked,透明走 ProRes);🟡 create_from_code 契约缩水、propSchema 控件 |
 | 7 | 设计风格 / 品牌 | 2 | 1 | 1 | 0 | 核心 | ✅ manage_design_style:24 真 catalog+owned+自由 role+注入;brand-kit logo 上传 🟡 |
 | 8 | AI 生成（花钱域） | 7 | 6 | 1 | 0 | 核心 | ✅ **6 submit_\* 全真接后端**(image/video/voice/music/sound/shader)+track_progress 真轮询;⚠ 积分门 G4 缺(credits 硬编码) |
-| 9 | 素材 / 媒体 | 12 | 7 | 2 | 3 | 核心 | ✅ manage_media_pool + import_url_asset + search_stock_media;🟡 download_media(只登记不落字节);❌ edit_asset、request_upload/presign、web_browser、手机上传 |
+| 9 | 素材 / 媒体 | 12 | 8 | 2 | 2 | 核心 | ✅ manage_media_pool + import_url_asset + search_stock_media + ✅ `edit_asset`(改/删库资产,code 过沙箱、删有 confirmImpact);🟡 download_media(只登记不落字节);❌ request_upload/presign、web_browser、手机上传 |
 | 10 | 导出 / 交付 | 12 | 10 | 0 | 2 | 核心 | ✅ mp4/webm/mp3/wav/srt/xml + 帧范围 + 异步 job + 导出历史 + 水印烧录 + ✅ **字体载全 32 款(预览+导出同步)**;❌ 评分、WebCodecs(低优) |
 | 11 | Agent / 对话平台 | 10 | 7 | 2 | 1 | 核心 | ✅ 持久化 + propose→apply + ✅@引用结构化 + Ask/Agent 模式 + creative-mode + stop/enhance;🟡 agent 设置;❌ thinking UI(受阻中转模型) |
 | 16 | 长转短（专项） | 4 | 4 | 0 | 0 | 核心 | **全绿**：智能切片 + auto-reframe + 色度键 + ✅ 9:16 安全区 overlay(预览「安全框」双框+十字) |
@@ -65,7 +65,7 @@
 - ✅ `ripple`/`fade` 暴露给 agent（域C 护城河①）—— `set_item_timing` 加 `fadeInSeconds`/`fadeOutSeconds`(秒→帧,reducer 按 clip 长封顶);`remove_item` 加 `ripple`(→ rippleDeleteItem 合缝);`add_motion_graphic`/`add_audio` 加 `ripple`(插入挤位,store 命令透传)。reducer 帧数学有 `ripple-fade.check.ts` 绿。
 - ✅ MG→视频 `convert_motion_graphic_to_video`+`register_converted_video`（域6）—— 新 `agent/mg-video-tools.ts`:convert 经现成 `/render-clip`(bakeClipToVideo)烘焙 clip→`addAsset` 入媒体池(可 replace 就地);register 导入已渲产物 URL。已注册。⚠ 本环境 ffmpeg 不能编码 alpha webm/vp9(clipExport.ts 自陈),故时间线视频是**不透明 h264**;透明 alpha 只能走 ProRes .mov 导出(域H `export_motion_graphic_prores`,待做)。
 - ✅ `view_asset_frames`（域B 唯一❌ → 补齐）—— `frames-tool.ts` 加此工具:构造单资产时间线(MediaAsset→TimelineItem,MG 带 code、视频/图带 src,画布取资产尺寸)走现成 `/render-still`,把源资产帧作图像回给模型(B-roll/多机位选片)。FRAMES 模块已注册故零接线。实测 /render-still 渲单项构造态返 200+真 PNG。(`read_timeline` view=assets 与 manage_media_pool 重叠,略。)
-- `edit_asset`（域9）改/删已生成 MG/effect 资产并重渲缩略图（与 create_from_code 真契约一对）。
+- ✅ `edit_asset`（域9）—— `agent/edit-asset-tools.ts`:delete(confirmImpact——引用它的片段计数,需 confirm:true) + update(code 类过 MG 沙箱护城河②、props 合并/name/favorite);reducer 新 `pool.removeAsset` + `pool.updateAsset` 放开 code/props。check 绿。rename 仍在 manage_media_pool;MediaAsset 无存储缩略图(MG 预览按 code 现渲),无需失效。
 - i18n /zh /en · 自定义快捷键(keymap 存 localStorage) · dockview 可拖拽面板 · 导出历史评分 · agent 设置面板扩展 · brand-kit logo 上传（域7）。
 
 **③ 受阻于中转模型（前端就绪，换真 Claude 才生效）**

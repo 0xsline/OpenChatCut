@@ -29,6 +29,7 @@ import { SKILL_TOOL_SCHEMAS, SKILL_TOOL_NAMES, execSkillTool } from './skill-too
 import { WATERMARK_TOOL_SCHEMAS, WATERMARK_TOOL_NAMES, execWatermarkTool } from './watermark-tools';
 import { MARKERS_TOOL_SCHEMAS, MARKERS_TOOL_NAMES, execMarkersTool } from './markers-tools';
 import { MG_VIDEO_TOOL_SCHEMAS, MG_VIDEO_TOOL_NAMES, execMgVideoTool } from './mg-video-tools';
+import { EDIT_ASSET_TOOL_SCHEMAS, EDIT_ASSET_TOOL_NAMES, execEditAssetTool } from './edit-asset-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -215,6 +216,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...MARKERS_TOOL_SCHEMAS,
   // MG→视频（源 convert_motion_graphic_to_video / register_converted_video：烘焙 MG 为媒体池 video 资产）
   ...MG_VIDEO_TOOL_SCHEMAS,
+  // 改/删库资产（源 edit_asset：update code/props/name 过沙箱 + delete confirmImpact）
+  ...EDIT_ASSET_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -279,6 +282,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (WATERMARK_TOOL_NAMES.has(name)) return execWatermarkTool(name, args, ctx);
   if (MARKERS_TOOL_NAMES.has(name)) return execMarkersTool(name, args, ctx);
   if (MG_VIDEO_TOOL_NAMES.has(name)) return execMgVideoTool(name, args, ctx);
+  if (EDIT_ASSET_TOOL_NAMES.has(name)) return execEditAssetTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();

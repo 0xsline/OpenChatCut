@@ -29,6 +29,10 @@ export interface EditorCommands {
   moveMediaAssets: (ids: string[], folderId?: string) => void;
   renameMediaAsset: (id: string, name: string) => void;
   setMediaAssetFavorite: (id: string, favorite: boolean) => void;
+  /** edit a library asset in place (source edit_asset): rename / re-code (MG) / props / favorite */
+  editMediaAsset: (id: string, patch: Partial<Pick<MediaAsset, 'name' | 'code' | 'props' | 'favorite'>>) => void;
+  /** remove a library asset from the media pool (source edit_asset delete) */
+  removeMediaAsset: (id: string) => void;
   addTextClip: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number; ripple?: boolean }) => void;
   updateItemProps: (id: string, patch: Record<string, unknown>) => void;
   moveItem: (id: string, to: { track?: TrackId; startFrame?: number }) => void;
@@ -188,6 +192,8 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       moveMediaAssets: (ids, folderId) => dispatch({ type: 'pool.moveAssets', ids, folderId }),
       renameMediaAsset: (id, name) => dispatch({ type: 'pool.updateAsset', id, patch: { name } }),
       setMediaAssetFavorite: (id, favorite) => dispatch({ type: 'pool.updateAsset', id, patch: { favorite } }),
+      editMediaAsset: (id, patch) => dispatch({ type: 'pool.updateAsset', id, patch }),
+      removeMediaAsset: (id) => dispatch({ type: 'pool.removeAsset', id }),
       setDesignStyle: (style) => dispatch({ type: 'design.set', style }),
       patchDesignStyle: (patch) => dispatch({ type: 'design.patch', patch }),
       addMotionGraphic: (tpl, at) =>
