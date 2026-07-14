@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentContext } from './context';
 import { initialMessages, runAgent, type LLMMessage } from './runtime';
 import { anthropic, MODEL } from './client';
 import { makeDraft, replayActions } from '../editor/store';
 import { activeTimeline } from '../editor/types';
 import { buildOperation, buildProposal, type Operation, type Proposal } from './proposal';
+import { loadChat, saveChat, clearChat } from '../persist/projectStore';
 
 export interface DisplayMessage {
   role: 'user' | 'assistant' | 'tool' | 'error';
@@ -12,7 +13,7 @@ export interface DisplayMessage {
   tool?: { name: string; args: unknown; result: unknown };
 }
 
-export function useAgent(ctx: AgentContext) {
+export function useAgent(ctx: AgentContext, projectId: string) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [running, setRunning] = useState(false);
   // pending edit proposal awaiting the user's apply/reject (source: edit-proposal)
@@ -20,10 +21,34 @@ export function useAgent(ctx: AgentContext) {
   const llmRef = useRef<LLMMessage[]>(initialMessages());
   const ctxRef = useRef(ctx);
   ctxRef.current = ctx; // always use the latest editor context
+  // gate persistence until the project's saved chat has been hydrated, so the
+  // empty initial state can't clobber it (source chat_block: ordered per-project)
+  const hydratedRef = useRef(false);
   const proposalRef = useRef<Proposal | null>(null);
   proposalRef.current = proposal;
   // in-flight turn's abort controller (source: Stop button while running)
   const abortRef = useRef<AbortController | null>(null);
+
+  // hydrate this project's saved chat on mount / project switch (source chat_block)
+  useEffect(() => {
+    let alive = true;
+    hydratedRef.current = false;
+    setProposal(null);
+    loadChat(projectId).then((saved) => {
+      if (!alive) return;
+      setMessages(saved ? (saved.messages as DisplayMessage[]) : []);
+      llmRef.current = saved ? (saved.llm as LLMMessage[]) : initialMessages();
+      hydratedRef.current = true;
+    });
+    return () => { alive = false; };
+  }, [projectId]);
+
+  // persist on turn / proposal boundaries — never mid-stream (running) so IDB
+  // isn't hammered per token; `proposal` dep captures apply/reject (they push to llmRef).
+  useEffect(() => {
+    if (!hydratedRef.current || running) return;
+    void saveChat(projectId, { messages, llm: llmRef.current });
+  }, [messages, running, proposal, projectId]);
 
   const send = useCallback(
     async (text: string, opts?: { askOnly?: boolean }) => {
@@ -113,5 +138,15 @@ export function useAgent(ctx: AgentContext) {
     setProposal(null);
   }, []);
 
-  return { messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal };
+  // 清空对话 (source clearHistory): drop the rendered rows + the LLM history +
+  // the persisted copy, so a fresh conversation starts (does NOT touch the timeline).
+  const clearHistory = useCallback(() => {
+    if (running) return;
+    llmRef.current = initialMessages();
+    setProposal(null);
+    setMessages([]);
+    void clearChat(projectId);
+  }, [running, projectId]);
+
+  return { messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal, clearHistory };
 }

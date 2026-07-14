@@ -1,4 +1,4 @@
-import { timelineTrackIds, trackKind, type MediaAsset, type MediaFolder, type ProjectDoc, type Timeline, type TimelineState } from '../editor/types';
+import { timelineTrackIds, trackKind, type DesignStyle, type MediaAsset, type MediaFolder, type ProjectDoc, type Timeline, type TimelineState } from '../editor/types';
 
 // IndexedDB-backed multi-project store (local-first stand-in for the source's
 // Rocicorp Zero + IndexedDB). One store holds a `projects` index (metadata for
@@ -65,7 +65,16 @@ type PersistedProjectShape = {
   mediaFolders?: unknown;
   timelines: Timeline[];
   activeTimelineId: string;
+  designStyle?: unknown;
 };
+
+// design style is untrusted persisted data — accept only the array-of-roles shape
+// (source manage_design_style); anything else is dropped rather than trusted.
+function isDesignStyle(v: unknown): v is DesignStyle {
+  if (!v || typeof v !== 'object') return false;
+  const s = v as { colors?: unknown; fonts?: unknown };
+  return Array.isArray(s.colors) && Array.isArray(s.fonts);
+}
 
 function isProjectDocShape(v: unknown): v is PersistedProjectShape {
   return !!v && typeof v === 'object'
@@ -163,10 +172,54 @@ export function migrateProjectDoc(v: unknown): ProjectDoc | null {
       mediaFolders,
       timelines,
       activeTimelineId,
+      ...(isDesignStyle(v.designStyle) ? { designStyle: v.designStyle } : {}),
     };
   }
   if (isTimelineState(v)) return docFromTimeline(v);
   return null;
+}
+
+// ── chat history persistence (source chat_block: ordered per-project chat) ──
+// Stored decoupled from the doc so a chat write never rewrites the timeline (and
+// vice-versa). `messages` = the rendered rows; `llm` = the Anthropic history the
+// agent continues from. Kept as unknown[] here so this layer stays agnostic of
+// the agent types (the agent layer validates/casts on read).
+const chatKey = (id: string) => `chat:${id}`;
+
+export interface PersistedChat {
+  messages: unknown[];
+  llm: unknown[];
+}
+
+export function isPersistedChat(v: unknown): v is PersistedChat {
+  return !!v && typeof v === 'object'
+    && Array.isArray((v as { messages?: unknown }).messages)
+    && Array.isArray((v as { llm?: unknown }).llm);
+}
+
+export async function loadChat(projectId: string): Promise<PersistedChat | null> {
+  try {
+    const raw = await idbGet<unknown>(chatKey(projectId));
+    return isPersistedChat(raw) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveChat(projectId: string, chat: PersistedChat): Promise<void> {
+  try {
+    await idbSet(chatKey(projectId), chat);
+  } catch {
+    /* ignore persist failures; the session still works in-memory */
+  }
+}
+
+export async function clearChat(projectId: string): Promise<void> {
+  try {
+    await idbDel(chatKey(projectId));
+  } catch {
+    /* ignore */
+  }
 }
 
 async function readIndex(): Promise<ProjectMeta[]> {
@@ -226,6 +279,7 @@ export async function duplicateProject(id: string): Promise<ProjectMeta | null> 
 
 export async function deleteProject(id: string): Promise<void> {
   await idbDel(projectKey(id));
+  await idbDel(chatKey(id)); // drop the project's chat history too
   await idbSet(INDEX_KEY, (await readIndex()).filter((m) => m.id !== id));
 }
 

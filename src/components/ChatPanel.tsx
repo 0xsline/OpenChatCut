@@ -11,6 +11,8 @@ import { Icon } from './icons';
 
 interface ChatPanelProps {
   ctx: AgentContext;
+  /** the current project's id — chat history is persisted per project (source chat_block) */
+  projectId: string;
   collapsed: boolean;
   onToggleCollapse: () => void;
   /** show a proposal's draft result in the player (null = show committed state) */
@@ -19,8 +21,8 @@ interface ChatPanelProps {
   seed?: { text: string; nonce: number } | null;
 }
 
-export function ChatPanel({ ctx, collapsed, onToggleCollapse, onPreviewState, seed }: ChatPanelProps) {
-  const { messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal } = useAgent(ctx);
+export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPreviewState, seed }: ChatPanelProps) {
+  const { messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal, clearHistory } = useAgent(ctx, projectId);
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<ChatMode>('agent');
   const [autoApply, setAutoApply] = useState(false);
@@ -88,9 +90,15 @@ export function ChatPanel({ ctx, collapsed, onToggleCollapse, onPreviewState, se
 
   return (
     <aside style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', borderRight: `1px solid ${theme.border}`, background: theme.panel, minHeight: 0, minWidth: 0 }}>
-      {/* header: AI · collapse */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: `1px solid ${theme.border}` }}>
+      {/* header: AI · clear · collapse */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', borderBottom: `1px solid ${theme.border}` }}>
         <span style={{ flex: 1, fontSize: 13, color: theme.text, fontWeight: 600 }}>AI</span>
+        {messages.length > 0 && (
+          <button onClick={clearHistory} disabled={running} title="清空对话"
+            style={{ background: 'none', border: 'none', color: theme.textDim, cursor: running ? 'default' : 'pointer', opacity: running ? 0.4 : 1, padding: 2, lineHeight: 0 }}>
+            <Icon name="trash" size={14} />
+          </button>
+        )}
         <button onClick={onToggleCollapse} title="收起 AI" style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 13 }}><span style={{ transform: 'rotate(90deg)', display: 'inline-flex' }}><Icon name="chevronDown" size={14} /></span></button>
       </div>
 
