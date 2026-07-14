@@ -1,8 +1,9 @@
-import { useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useState, type ReactNode, type RefObject } from 'react';
 import { theme } from '../../theme';
 import type { AgentReference } from '../../agent/context';
 import { Icon, type IconName } from '../icons';
-import { CREATIVE_SKILLS, findSkill } from '../../agent/skills-catalog';
+import { CREATIVE_SKILLS, allCreativeSkills, findSkill, setCustomSkills } from '../../agent/skills-catalog';
+import { loadCustomSkills } from '../../persist/skillStore';
 
 export type ChatMode = 'agent' | 'ask';
 export type RefItem = AgentReference;
@@ -61,7 +62,14 @@ const REF_ICON: Record<RefItem['kind'], IconName> = { video: 'filePlay', image: 
 
 export function ChatComposer(props: ChatComposerProps) {
   const { value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange, autoApply, onAutoApplyChange, creativeMode, onCreativeModeChange, references, onInsertRef, taRef, placeholder } = props;
+  // 水合自定义技能(source manage_skill):挂载时读 IDB → 内存注册表,bump 触发重渲染
+  // 让 allCreativeSkills()/findSkill 反映自定义技能。真源是 IDB,manage_skill 工具也水合同一份。
+  const [, bumpCustom] = useState(0);
+  useEffect(() => {
+    loadCustomSkills().then((list) => { setCustomSkills(list); bumpCustom((n) => n + 1); });
+  }, []);
   const activeSkill = findSkill(creativeMode);
+  const builtinIds = new Set(CREATIVE_SKILLS.map((s) => s.id));
   const [pop, setPop] = useState<Pop>(null);
   const toggle = (p: Pop) => setPop((cur) => (cur === p ? null : p));
   const canSend = !!value.trim() && !running;
@@ -153,12 +161,16 @@ export function ChatComposer(props: ChatComposerProps) {
                 <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>通用{!creativeMode && <span style={{ color: theme.accent, fontSize: 11 }}>●</span>}</div>
                 <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>不套用特定技能，按通用剪辑助手工作。</div>
               </button>
-              {CREATIVE_SKILLS.map((s) => (
+              {allCreativeSkills().map((s) => (
                 <button key={s.id} onClick={() => { onCreativeModeChange(s.id); setPop(null); }}
                   style={{ display: 'block', width: '100%', textAlign: 'left', background: creativeMode === s.id ? theme.panel : 'none', border: 'none', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text }}
                   onMouseEnter={(e) => { if (creativeMode !== s.id) e.currentTarget.style.background = theme.panel; }}
                   onMouseLeave={(e) => { if (creativeMode !== s.id) e.currentTarget.style.background = 'none'; }}>
-                  <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>{s.nameZh}{creativeMode === s.id && <span style={{ color: theme.accent, fontSize: 11 }}>●</span>}</div>
+                  <div style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {s.nameZh}
+                    {!builtinIds.has(s.id) && <span style={{ fontSize: 9.5, color: theme.textDim, border: `1px solid ${theme.borderLight}`, borderRadius: 4, padding: '0 4px' }}>自定义</span>}
+                    {creativeMode === s.id && <span style={{ color: theme.accent, fontSize: 11 }}>●</span>}
+                  </div>
                   <div style={{ fontSize: 11, color: theme.textDim, marginTop: 2 }}>{s.summary}</div>
                 </button>
               ))}

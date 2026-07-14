@@ -6,7 +6,8 @@ import { msToFrame } from '../transcript/types';
 import { transcribePath } from '../transcript/assemblyai';
 import { fillerIndices } from '../transcript/edit';
 import type { CaptionTemplate, CaptionPacing, CaptionsData } from '../captions/types';
-import { buildTranslation } from '../captions/translate';
+import { buildTranslation, translateLines } from '../captions/translate';
+import { createVariant, findVariantByLang, upsertVariant } from '../transcript/variants';
 
 // Agent tools for the transcript / caption / "delete text = delete video" surface.
 // Names + semantics mirror ChatCut's real tools (see chatcut-reverse
@@ -43,11 +44,11 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'manage_transcript',
-    description: '管理转写文本,不改动时间轴。action=fix("改错字"):把某个被听错的词替换成正确文本,定位要修的词二选一——传 wordIndex(词下标)或 find(错词原文,精确匹配一个词);只改 word.text。action=renameSpeaker(说话人重命名/合并):把 diarization 标签 from 的所有词改标为 to——同机制既可重命名("A"→"主持人")也可合并("B"→"A",两位说话人塌成一位);只改 word.speaker。两种 action 都保持词的起止时间/帧位、词数、片段时长不变(captions/删文本都依赖这条不变式)。',
+    description: '管理转写文本与其多语言变体,不改动时间轴。action=fix("改错字"):把某个被听错的词替换成正确文本,定位要修的词二选一——传 wordIndex(词下标)或 find(错词原文,精确匹配一个词);只改 word.text。action=renameSpeaker(说话人重命名/合并):把 diarization 标签 from 的所有词改标为 to——同机制既可重命名("A"→"主持人")也可合并("B"→"A",两位说话人塌成一位);只改 word.speaker。action=translate(翻译变体):把该轨转写整段翻译成 lang 语言,生成一个"文本变体"(词级、共享同一时间轴)挂到该 clip;同 lang 已存在则复用(force=true 强制重译)。变体只承载译文,词的起止时间/帧位取自源词——用 edit_captions 的 variantLang 选它作为字幕显示语言。三种 action 都保持词的起止时间/帧位、词数、片段时长不变(captions/删文本都依赖这条不变式)。',
     input_schema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['fix', 'renameSpeaker'], description: 'fix=改错字;renameSpeaker=说话人重命名/合并。' },
+        action: { type: 'string', enum: ['fix', 'renameSpeaker', 'translate'], description: 'fix=改错字;renameSpeaker=说话人重命名/合并;translate=生成/复用翻译变体。' },
         itemId: { type: 'string', description: '目标转写所在 clip 的 item id;省略则取该 track 上第一个带转写的音/视频 clip。' },
         track: { type: 'string', description: 'itemId 省略时,用 track 别名/稳定 id 定位带转写的 clip(默认 A1)。' },
         wordIndex: { type: 'number', description: 'fix:要修正的词下标(与 find 二选一)。' },
@@ -55,13 +56,15 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
         text: { type: 'string', description: 'fix:修正后的正确文本。' },
         from: { type: 'string', description: 'renameSpeaker:要重命名的现有说话人标签(如 "A"/"B")。' },
         to: { type: 'string', description: 'renameSpeaker:新的说话人显示名;传一个已存在的标签即合并两位说话人(如 "B"→"A")。' },
+        lang: { type: 'string', description: 'translate:目标语言(如 "English"/"中文"/"日本語"),必填非空。' },
+        force: { type: 'boolean', description: 'translate:同 lang 变体已存在时是否强制重新翻译并覆盖(默认 false=复用已有)。' },
       },
       required: ['action'],
     },
   },
   {
     name: 'edit_captions',
-    description: 'Turn the captions overlay on/off and set its style. Captions are a single overlay that mirrors a track\'s transcript and follow edits automatically. Templates: plain, tiktok (big karaoke), netflix (bottom). Pacing: word or phrase. translateTo adds a bilingual translated 2nd line.',
+    description: 'Turn the captions overlay on/off and set its style. Captions are a single overlay that mirrors a track\'s transcript and follow edits automatically. Templates: plain, tiktok (big karaoke), netflix (bottom). Pacing: word or phrase. translateTo adds a bilingual translated 2nd line. variantLang switches the MAIN caption line to a transcript translation variant (create it first with manage_transcript translate) — the variant only swaps text, timing stays the source\'s.',
     input_schema: {
       type: 'object',
       properties: {
@@ -70,6 +73,7 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
         pacing: { type: 'string', enum: ['word', 'phrase'] },
         track: { type: 'string', description: 'Source track alias or stable id whose transcript drives captions (default A1).' },
         translateTo: { type: 'string', description: 'Also generate a translated 2nd caption line in this language (e.g. "中文", "English", "日本語").' },
+        variantLang: { type: 'string', description: 'Display this transcript variant\'s language as the MAIN caption text (must already exist via manage_transcript translate). Pass "" to clear and show the source words again.' },
       },
     },
   },
@@ -182,6 +186,20 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       const template = (args.template as CaptionTemplate) ?? s.captions?.template ?? 'tiktok';
       const pacing = (args.pacing as CaptionPacing) ?? s.captions?.pacing ?? 'phrase';
       const base: CaptionsData = { ...(s.captions ?? {}), enabled: true, template, pacing, ...(it ? { sourceItemId: it.id } : {}) };
+      // variantLang: pick a transcript translation VARIANT as the MAIN caption text
+      // (""/whitespace clears → show source). Only meaningful on the single-source path.
+      let variant: string | null = null;
+      if (typeof args.variantLang === 'string') {
+        const vl = args.variantLang.trim();
+        if (!vl) {
+          base.captionVariantId = undefined;
+        } else {
+          const v = it?.variants ? findVariantByLang(it.variants, vl) : undefined;
+          if (!v) return { error: `no transcript variant "${vl}" on ${alias}; run manage_transcript translate first` };
+          base.captionVariantId = v.id;
+          variant = v.lang;
+        }
+      }
       let translatedTo: string | null = null;
       if (args.translateTo) {
         try {
@@ -196,7 +214,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       }
       if (s.captions) ctx.commands.updateCaptions(base);
       else ctx.commands.setCaptions(base);
-      return { ok: true, enabled: true, template, pacing, source: it ? trackAlias(ctx.getState(), it.track) : null, sourceTrackId: it?.track ?? null, translatedTo };
+      return { ok: true, enabled: true, template, pacing, source: it ? trackAlias(ctx.getState(), it.track) : null, sourceTrackId: it?.track ?? null, translatedTo, variant };
     }
     case 'manage_transcript': {
       const action = args.action;
@@ -245,7 +263,31 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
         return { ok: true, itemId: it.id, wordIndex, from, to: text };
       }
 
-      return { error: `unsupported action: ${String(action)}; use "fix" or "renameSpeaker"` };
+      if (action === 'translate') {
+        // 翻译变体:整段转写翻成 lang,生成一个"文本变体"(词级,共享同一时间轴)。
+        // 护城河③:变体只承载译文;每个变体词按源词下标 i 键,timing 一律取自源词
+        // (见 resolveVariantText),翻译永远不重排或移动词的帧位。
+        const lang = args.lang;
+        if (typeof lang !== 'string' || !lang.trim()) return { error: 'lang is required (target language, e.g. "English")' };
+        const langTrim = lang.trim();
+        const force = args.force === true;
+        const existing = findVariantByLang(it.variants, langTrim, 'translation');
+        if (existing && !force) {
+          return { ok: true, itemId: it.id, variantId: existing.id, lang: existing.lang, words: existing.words.length, reused: true };
+        }
+        try {
+          const texts = await translateLines(it.transcript.map((w) => w.text), langTrim);
+          const words = texts.map((text, i) => ({ i, text }));
+          // force+existing → 复用同 id 覆盖;否则新建
+          const variant = createVariant({ lang: langTrim, kind: 'translation', words, id: existing?.id });
+          ctx.commands.setItemVariants(it.id, upsertVariant(it.variants, variant));
+          return { ok: true, itemId: it.id, variantId: variant.id, lang: variant.lang, words: variant.words.length, reused: false };
+        } catch (e) {
+          return { error: `translation failed: ${e instanceof Error ? e.message : String(e)}` };
+        }
+      }
+
+      return { error: `unsupported action: ${String(action)}; use "fix", "renameSpeaker" or "translate"` };
     }
     default:
       return undefined;

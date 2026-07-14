@@ -78,5 +78,20 @@ export const CREATIVE_SKILLS: CreativeSkill[] = [
   },
 ];
 
+// ponytail: 模块级可变缓存 = 自定义技能(source manage_skill)的会话内注册表。由两处水合:
+// 「创作模式」下拉挂载时 loadCustomSkills(),以及 manage_skill 工具 create/update/delete 后
+// setCustomSkills(await listCustomSkills())。IDB 才是真源,这份缓存只是让 findSkill 能在
+// runtime 拼系统提示时同步解析自定义技能 id(runtime 不 await)。两处都写同一真源,竞态无害。
+let customSkills: CreativeSkill[] = [];
+
+export function setCustomSkills(list: CreativeSkill[]): void {
+  customSkills = list;
+}
+
+/** 内置 + 自定义技能(给「创作模式」下拉列出)。内置在前,自定义在后。 */
+export function allCreativeSkills(): CreativeSkill[] {
+  return [...CREATIVE_SKILLS, ...customSkills];
+}
+
 export const findSkill = (id: string | null | undefined): CreativeSkill | undefined =>
-  id ? CREATIVE_SKILLS.find((s) => s.id === id) : undefined;
+  id ? (CREATIVE_SKILLS.find((s) => s.id === id) ?? customSkills.find((s) => s.id === id)) : undefined;

@@ -67,10 +67,10 @@ async function poll(id: string, onWait?: () => void): Promise<TranscriptResult> 
       }));
       // Fallback: some locales return empty words[] but filled utterances
       if (!words.length && utterances.length) {
-        words = utterances.flatMap((u: { words: ReturnType<typeof mapW>[]; speaker: string }) =>
+        words = utterances.flatMap((u: { words: ReturnType<typeof mapW>[]; speaker: string; text: string; start: number; end: number }) =>
           (u.words?.length
             ? u.words.map((w) => ({ ...w, speaker: w.speaker ?? u.speaker }))
-            : [{ text: u.text, start: (u as { start: number }).start, end: (u as { end: number }).end, speaker: u.speaker }]),
+            : [{ text: u.text, start: u.start, end: u.end, speaker: u.speaker }]),
         );
       }
       return { text: d.text ?? words.map((w: { text: string }) => w.text).join(''), words, utterances };

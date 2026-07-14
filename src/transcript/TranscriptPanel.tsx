@@ -245,7 +245,7 @@ export function TranscriptPanel({
               去掉填充词（嗯 / 呃 / um…）
             </label>
             {pauseResult && <div style={{ fontSize: 11, marginBottom: 8 }}>{pauseResult}</div>}
-            <button type="button" onClick={applyPause} disabled={!hasWords} className="cc-tx-btn primary block">应用</button>
+            <button type="button" onClick={applyPause} disabled={!editable} className="cc-tx-btn primary block">应用</button>
           </div>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { theme } from '../theme';
 import { Icon, type IconName } from './icons';
+import { ExportHistory } from './ExportHistory';
 
 interface TopBarProps {
   projectName: string;
@@ -71,6 +72,8 @@ export function TopBar({ projectName, credits, canUndo, canRedo, onUndo, onRedo,
       <TBtn icon="redo" title="重做" onClick={onRedo} disabled={!canRedo} />
       <TBtn icon="palette" title="设计风格(品牌)" onClick={onDesignStyle} />
       <TBtn icon="history" title="历史版本" onClick={onHistory} />
+      {/* self-contained: trigger + popover, global export history, zero props */}
+      <ExportHistory />
       <TBtn icon="layoutPanel" title="切换面板布局" onClick={onToggleLayout} />
       <button onClick={onExport} disabled={exporting || !onExport} title="导出 MP4"
         style={{ width: 58, height: 26, background: theme.accent, color: '#fff', border: 'none', borderRadius: 2, padding: 0, fontSize: 12, fontWeight: 600, cursor: exporting || !onExport ? 'default' : 'pointer', opacity: exporting || !onExport ? 0.6 : 1, marginLeft: 4 }}>

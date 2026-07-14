@@ -1,10 +1,10 @@
 import { useMemo, useReducer, useRef } from 'react';
-import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, ZoomEffect } from './types';
+import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeEditorState, activeTimeline, defaultTrackId, resolveTrackId } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
 import type { CaptionsData } from '../captions/types';
-import type { TranscriptWord } from '../transcript/types';
+import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
 import type { AnyAction, ProjectDispatch } from './reduce';
 import { historyReduce, maxOrder, projectReduce } from './reduce';
 
@@ -67,7 +67,11 @@ export interface EditorCommands {
   tightenTrack: (track: TrackId) => void;
   setCaptions: (captions: CaptionsData | null) => void;
   updateCaptions: (patch: Partial<CaptionsData>) => void;
+  /** toggle/configure the text watermark overlay (source updateWatermark); merges a partial + undoable */
+  updateWatermark: (patch: Partial<Watermark>) => void;
   setItemTranscript: (id: string, words: TranscriptWord[]) => void;
+  /** replace a clip's text-only transcript variants (translations / corrections) */
+  setItemVariants: (id: string, variants: TranscriptVariant[]) => void;
   toggleWord: (id: string, idx: number) => void;
   deleteWords: (id: string, idxs: number[]) => void;
   cleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
@@ -311,7 +315,9 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       tightenTrack: (track) => dispatch({ type: 'track.tighten', track }),
       setCaptions: (captions) => dispatch({ type: 'setCaptions', captions }),
       updateCaptions: (patch) => dispatch({ type: 'updateCaptions', patch }),
+      updateWatermark: (patch) => dispatch({ type: 'updateWatermark', patch }),
       setItemTranscript: (id, words) => dispatch({ type: 'setItemTranscript', id, words }),
+      setItemVariants: (id, variants) => dispatch({ type: 'setItemVariants', id, variants }),
       toggleWord: (id, idx) => dispatch({ type: 'toggleWord', id, idx }),
       deleteWords: (id, idxs) => dispatch({ type: 'deleteWords', id, idxs }),
       cleanScript: (id, opts) => dispatch({ type: 'cleanScript', id, silenceFrames: opts.silenceFrames, removeFillers: opts.removeFillers }),

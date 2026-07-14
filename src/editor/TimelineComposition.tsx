@@ -6,7 +6,7 @@ import { ClipFx, firstGlEffect } from '../gl/ClipFx';
 import { keptSegments } from '../transcript/edit';
 import { zoomAt } from './zoom';
 import { CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, timelineTrackIds, trackKind } from './types';
-import type { AspectFit, CssTransitionType, GlslTransitionType, TimelineItem, TimelineState, TransitionDirection } from './types';
+import type { AspectFit, CssTransitionType, GlslTransitionType, TimelineItem, TimelineState, TransitionDirection, Watermark } from './types';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
 // fadeIn, then 1→0 across fadeOut. Used for visual opacity + audio volume.
@@ -167,6 +167,25 @@ function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt }: { item: Timel
 
 const GRID = 'repeating-conic-gradient(#242424 0% 25%, #1c1c1c 0% 50%) 50% / 40px 40px';
 
+// Text watermark overlay (source updateWatermark): a single label pinned to one
+// corner, opacity 0..1. Sizes off canvas height so it scales with any ratio.
+function WatermarkLayer({ watermark, canvasH }: { watermark: Watermark; canvasH: number }) {
+  const style: React.CSSProperties = {
+    position: 'absolute',
+    color: '#ffffff',
+    opacity: Math.max(0, Math.min(1, watermark.opacity)),
+    fontSize: Math.round(canvasH * 0.035),
+    fontWeight: 700,
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    textShadow: '0 2px 8px rgba(0,0,0,0.6)',
+    whiteSpace: 'nowrap',
+  };
+  const pad = Math.round(canvasH * 0.04);
+  if (watermark.position[0] === 't') style.top = pad; else style.bottom = pad;
+  if (watermark.position[1] === 'l') style.left = pad; else style.right = pad;
+  return <AbsoluteFill style={{ pointerEvents: 'none' }}><div style={style}>{watermark.text}</div></AbsoluteFill>;
+}
+
 // Render a text clip in the 1920×1080 design box (so fontSize is resolution-
 // independent), scaled+aligned to the canvas. Props: text/fontSize/color/
 // fontWeight/align. Position/rotation come from the clip transform.
@@ -317,6 +336,8 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
         <AudioClip key={item.id} item={item} fps={state.fps} muted={isMuted(item.track)} gainAt={(frame) => duckGain(item.track, frame)} />
       ))}
       {state.captions?.enabled && <CaptionsLayer captions={state.captions} items={state.items} />}
+      {state.watermark?.enabled && state.watermark.text
+        && <WatermarkLayer watermark={state.watermark} canvasH={state.height} />}
     </AbsoluteFill>
   );
 }

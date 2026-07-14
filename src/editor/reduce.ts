@@ -1,10 +1,10 @@
 // Pure reducer layer: the per-timeline reducer (`reduce`) + the project reducer
 // (`projectReduce`, routing per-timeline actions to the active timeline) + the
 // undo/redo history wrapper. The command set + React hook live in store.ts.
-import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, Marker, MediaAsset, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, ZoomEffect } from './types';
-import { activeTimeline, timelineTrackIds, trackEnd, trackKind } from './types';
+import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, Marker, MediaAsset, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
+import { activeTimeline, DEFAULT_WATERMARK, timelineTrackIds, trackEnd, trackKind } from './types';
 import type { CaptionsData } from '../captions/types';
-import type { TranscriptWord } from '../transcript/types';
+import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
 import { editedFrames, fillerIndices } from '../transcript/edit';
 
 // ── command actions (these map 1:1 to the future agent tools) ─────────────
@@ -42,7 +42,9 @@ export type Action =
   | { type: 'track.tighten'; track: TrackId }
   | { type: 'setCaptions'; captions: CaptionsData | null }
   | { type: 'updateCaptions'; patch: Partial<CaptionsData> }
+  | { type: 'updateWatermark'; patch: Partial<Watermark> }
   | { type: 'setItemTranscript'; id: string; words: TranscriptWord[] }
+  | { type: 'setItemVariants'; id: string; variants: TranscriptVariant[] }
   | { type: 'toggleWord'; id: string; idx: number }
   | { type: 'deleteWords'; id: string; idxs: number[] }
   | { type: 'cleanScript'; id: string; silenceFrames?: number; removeFillers: boolean }
@@ -82,7 +84,7 @@ export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void
 /** dispatch at the project level: per-timeline + project actions + undo/redo */
 export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' }) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'setItemTranscript', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
   'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset']);
@@ -346,6 +348,12 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       return { ...s, captions: a.captions };
     case 'updateCaptions':
       return s.captions ? { ...s, captions: { ...s.captions, ...a.patch } } : s;
+    case 'updateWatermark': {
+      // patch-merge over the current watermark (or defaults on first use); clamp
+      // opacity at the boundary so a bad LLM value can't escape 0..1.
+      const next = { ...(s.watermark ?? DEFAULT_WATERMARK), ...a.patch };
+      return { ...s, watermark: { ...next, opacity: Math.max(0, Math.min(1, next.opacity)) } };
+    }
     case 'setItemTranscript':
       // Attach words only — keep media duration. Rewriting duration to ASR span
       // collapsed long VO clips when AssemblyAI returned a short word range
@@ -359,6 +367,10 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
             : it,
         ),
       };
+    case 'setItemVariants':
+      // Replace the item's text-only transcript variants. Purely additive metadata:
+      // touches neither transcript words, timings, nor durationInFrames (护城河③).
+      return { ...s, items: s.items.map((it) => (it.id === a.id ? { ...it, variants: a.variants } : it)) };
     case 'toggleWord':
       return {
         ...s,

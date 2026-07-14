@@ -25,6 +25,8 @@ import { EXPORT_TOOL_SCHEMAS, EXPORT_TOOL_NAMES, execExportTool } from './export
 import { TEMPLATE_TOOL_SCHEMAS, TEMPLATE_TOOL_NAMES, execTemplateTool } from './template-tools';
 import { LOUDNESS_TOOL_SCHEMAS, LOUDNESS_TOOL_NAMES, execLoudnessTool } from './loudness-tools';
 import { ISOLATE_TOOL_SCHEMAS, ISOLATE_TOOL_NAMES, execIsolateTool } from './isolate-tools';
+import { SKILL_TOOL_SCHEMAS, SKILL_TOOL_NAMES, execSkillTool } from './skill-tools';
+import { WATERMARK_TOOL_SCHEMAS, WATERMARK_TOOL_NAMES, execWatermarkTool } from './watermark-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -195,6 +197,10 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...LOUDNESS_TOOL_SCHEMAS,
   // AI 人声隔离（源 isolate_voice / DeepFilterNet3）
   ...ISOLATE_TOOL_SCHEMAS,
+  // 自定义创作技能 CRUD（源 manage_skill：list/get/create/update/delete，自定义技能与内置并列注入）
+  ...SKILL_TOOL_SCHEMAS,
+  // 文本水印叠加（源 updateWatermark：enabled/text/position/opacity，渲染+烧录导出）
+  ...WATERMARK_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -255,6 +261,8 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (TEMPLATE_TOOL_NAMES.has(name)) return execTemplateTool(name, args, ctx);
   if (LOUDNESS_TOOL_NAMES.has(name)) return execLoudnessTool(name, args, ctx);
   if (ISOLATE_TOOL_NAMES.has(name)) return execIsolateTool(name, args, ctx);
+  if (SKILL_TOOL_NAMES.has(name)) return execSkillTool(name, args, ctx);
+  if (WATERMARK_TOOL_NAMES.has(name)) return execWatermarkTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();

@@ -1,5 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
+import { recordExport, listExportHistory } from '../persist/exportHistoryStore';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 异步渲染 job 工具（对标源站 §10）
@@ -58,6 +59,17 @@ export const EXPORT_TOOL_SCHEMAS: Anthropic.Tool[] = [
       required: ['renderId', 'action'],
     },
   },
+  {
+    name: 'read_export_history',
+    description:
+      'List recent finished exports (most recent first): filename, format, codec, size, frame range, and time. Use to remind the user what they have already exported this session and earlier. Read-only; does not export anything.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'integer', minimum: 1, maximum: 100, description: 'Max records to return; defaults to 20.' },
+      },
+    },
+  },
 ];
 
 export const EXPORT_TOOL_NAMES = new Set(EXPORT_TOOL_SCHEMAS.map((t) => t.name));
@@ -81,6 +93,18 @@ type PollResult =
   | { error: string };
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+// A completed job would be re-seen on every poll; dedupe by renderId so repeated
+// status/wait calls record the export exactly once (per session).
+const recordedRenderIds = new Set<string>();
+
+/** Record a completed async render into the global export history (once per renderId). */
+function recordIfCompleted(result: PollResult): void {
+  if (!('ok' in result) || result.status !== 'completed' || !result.downloadUrl || recordedRenderIds.has(result.renderId)) return;
+  recordedRenderIds.add(result.renderId);
+  const format = result.codec === 'mp3' || result.codec === 'wav' ? 'audio' : 'video';
+  void recordExport({ name: result.name ?? result.renderId, format, codec: result.codec, sizeBytes: result.sizeBytes, createdAt: Date.now() });
+}
 
 /** GET /export/job/:id 一次，把快照映射成工具结果；传输/未知 renderId 都返回干净 error，绝不抛裸异常。 */
 async function pollOnce(renderId: string): Promise<PollResult> {
@@ -133,7 +157,11 @@ async function trackExport(args: Args): Promise<unknown> {
     if (!renderId) return { error: 'renderId is required' };
     const action = args.action === 'wait' ? 'wait' : 'status';
 
-    if (action === 'status') return await pollOnce(renderId);
+    if (action === 'status') {
+      const result = await pollOnce(renderId);
+      recordIfCompleted(result);
+      return result;
+    }
 
     const requested = typeof args.timeoutSeconds === 'number' && Number.isFinite(args.timeoutSeconds) ? args.timeoutSeconds : DEFAULT_WAIT_SECONDS;
     const timeoutSeconds = Math.min(Math.max(requested, 0), MAX_WAIT_SECONDS);
@@ -141,7 +169,10 @@ async function trackExport(args: Args): Promise<unknown> {
     for (;;) {
       const result = await pollOnce(renderId);
       if (!('ok' in result)) return result; // 传输错误/未知 renderId：立即返回
-      if (result.status === 'completed' || result.status === 'failed') return result;
+      if (result.status === 'completed' || result.status === 'failed') {
+        recordIfCompleted(result);
+        return result;
+      }
       if (Date.now() >= deadline) return result; // 超时：返回最近一次 queued/running 快照
       await sleep(POLL_INTERVAL_MS);
     }
@@ -157,6 +188,12 @@ export async function execExportTool(name: string, args: Args, ctx: AgentContext
       return submitRenderJob(args, ctx);
     case 'track_export':
       return trackExport(args);
+    case 'read_export_history': {
+      const requested = typeof args.limit === 'number' && Number.isFinite(args.limit) ? Math.floor(args.limit) : 20;
+      const limit = Math.min(Math.max(requested, 1), 100);
+      const history = await listExportHistory(limit);
+      return { ok: true, count: history.length, history };
+    }
     default:
       return { error: `export tool not implemented: ${name}` };
   }

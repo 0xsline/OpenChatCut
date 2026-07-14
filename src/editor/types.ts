@@ -2,7 +2,7 @@
 // agent tools operate on (items with frame positions on named tracks).
 
 import type { CaptionsData } from '../captions/types';
-import type { TranscriptWord } from '../transcript/types';
+import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
 
 /** Stable track id. Human aliases (V1/A1/...) are derived from track order. */
 export type TrackId = string;
@@ -153,6 +153,11 @@ export interface TimelineItem {
    * durationInFrames reflects the EDITED length (kept words only). */
   transcript?: TranscriptWord[];
   deletedWordIdx?: number[];
+  /** text-only translation / correction variants of `transcript`. Each keys words
+   * by their SOURCE index and carries only text — timing always comes from the
+   * source word, so a variant never re-times a clip (护城河③). Captions pick which
+   * to display via CaptionsData.captionVariantId. */
+  variants?: TranscriptVariant[];
   /** clean_script silence compression: cap inter-word pauses to this many frames
    * (undefined = keep every pause at its recorded length). */
   silenceFrames?: number;
@@ -382,6 +387,19 @@ export function ratioLabel(width: number, height: number): string {
   return `${width / d}:${height / d}`;
 }
 
+/** text watermark overlay (source updateWatermark — 网页版应用内行为, 无精确签名,
+ * 源站无据自定 shape). A generic brand overlay burned into preview + export;
+ * default disabled, NOT a paywall/free-tier gimmick. */
+export type WatermarkPosition = 'tl' | 'tr' | 'bl' | 'br';
+export interface Watermark {
+  enabled: boolean;
+  text: string;
+  position: WatermarkPosition;
+  /** 0..1 overlay opacity */
+  opacity: number;
+}
+export const DEFAULT_WATERMARK: Watermark = { enabled: false, text: '', position: 'br', opacity: 0.7 };
+
 export interface TimelineState {
   fps: number;
   width: number;
@@ -402,6 +420,8 @@ export interface TimelineState {
   selectedId: string | null;
   /** captions overlay (字幕), rendered on top + burned into export */
   captions?: CaptionsData | null;
+  /** text watermark overlay (source updateWatermark), rendered on top + burned into export */
+  watermark?: Watermark;
 }
 
 /** Track ids in visual top-to-bottom order. Legacy four-lane states still work. */

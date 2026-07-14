@@ -22,6 +22,29 @@ export interface TranscriptResult {
   utterances: TranscriptUtterance[];
 }
 
+/** One text-only entry of a transcript variant, keyed by the SOURCE word index. */
+export interface TranscriptVariantWord {
+  /** index into the source `TranscriptWord[]` this text replaces */
+  i: number;
+  text: string;
+}
+
+/**
+ * A text-only variant of a transcript — a translation into another language or a
+ * corrected pass. Words are keyed by their SOURCE word index `i` and carry ONLY
+ * text: start/end/speaker ALWAYS come from the source word, so a variant never
+ * moves a word on the timeline (护城河③ 词↔帧一致). A source-word index with no
+ * entry shows the source text (variants are sparse overlays, not full copies).
+ */
+export interface TranscriptVariant {
+  id: string;
+  /** display language / label of this variant, e.g. "English", "中文" */
+  lang: string;
+  kind: 'translation' | 'corrected';
+  label: string;
+  words: TranscriptVariantWord[];
+}
+
 export type TranscriptStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error';
 
 /** ms → frame at the given fps. */

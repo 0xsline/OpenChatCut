@@ -9,6 +9,7 @@ import { trackGenerationProgress } from '../generate/progress';
 import { submitSubtitleExport, type SubmitSubtitleExportArgs } from '../generate/subtitles';
 import { submitMediaExport, type SubmitMediaExportArgs } from '../generate/media-export';
 import { timelineToFcpxml } from '../export/fcpxml';
+import { recordExport } from '../persist/exportHistoryStore';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GPT 主攻文件 —— AI 生成套件（图 / 视频 / 配音 / 音乐 / 音效）
@@ -28,6 +29,11 @@ import { timelineToFcpxml } from '../export/fcpxml';
 // ═══════════════════════════════════════════════════════════════════════════
 
 type Args = Record<string, unknown>;
+
+/** half-open [start, end) frame range for the export history record (only when both known). */
+function frameRangeOf(start?: number, end?: number): { start: number; end: number } | undefined {
+  return typeof start === 'number' && typeof end === 'number' ? { start, end } : undefined;
+}
 
 /** 生成类工具的 Anthropic schema。往这个数组里 push 即可（自动进模型可见工具列表）。 */
 export const GENERATE_TOOL_SCHEMAS: Anthropic.Tool[] = [
@@ -306,7 +312,14 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
             startSeconds: typeof args.startSeconds === 'number' ? args.startSeconds : undefined,
             endSeconds: typeof args.endSeconds === 'number' ? args.endSeconds : undefined,
           };
-          return { ok: true, ...await submitSubtitleExport(input, ctx.getState()) };
+          const result = await submitSubtitleExport(input, ctx.getState());
+          void recordExport({
+            name: result.name ?? `subtitles.${input.subtitleFormat ?? 'srt'}`,
+            format: 'subtitles',
+            frameRange: frameRangeOf(input.startFrame, input.endFrameExclusive),
+            createdAt: Date.now(),
+          });
+          return { ok: true, ...result };
         }
         if (format === 'audio' || format === 'video') {
           const input: SubmitMediaExportArgs = {
@@ -318,7 +331,16 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
             startSeconds: typeof args.startSeconds === 'number' ? args.startSeconds : undefined,
             endSeconds: typeof args.endSeconds === 'number' ? args.endSeconds : undefined,
           };
-          return { ok: true, ...await submitMediaExport(input, ctx.getState()) };
+          const result = await submitMediaExport(input, ctx.getState());
+          void recordExport({
+            name: result.name,
+            format: result.format,
+            codec: result.codec,
+            sizeBytes: result.sizeBytes,
+            frameRange: frameRangeOf(result.startFrame, result.endFrameExclusive),
+            createdAt: Date.now(),
+          });
+          return { ok: true, ...result };
         }
         if (format === 'xml') {
           // FCPXML：纯序列化（fcpxml.ts）+ 客户端 blob 下载（无需渲染，秒出）。
@@ -334,6 +356,7 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
           anchor.click();
           anchor.remove();
           URL.revokeObjectURL(url);
+          void recordExport({ name: filename, format: 'xml', sizeBytes: blob.size, createdAt: Date.now() });
           return { ok: true, format: 'xml', name: filename, sizeBytes: blob.size };
         }
         return { error: 'format must be video, audio, subtitles, or xml' };
