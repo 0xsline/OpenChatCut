@@ -9,7 +9,7 @@ import { editedFrames, fillerIndices } from '../transcript/edit';
 
 // ── command actions (these map 1:1 to the future agent tools) ─────────────
 export type Action =
-  | { type: 'add'; item: Omit<TimelineItem, 'startFrame'>; startFrame?: number }
+  | { type: 'add'; item: Omit<TimelineItem, 'startFrame'>; startFrame?: number; ripple?: boolean }
   | { type: 'updateProps'; id: string; patch: Record<string, unknown> }
   | { type: 'move'; id: string; track?: TrackId; startFrame?: number }
   | { type: 'retime'; id: string; startFrame?: number; durationInFrames?: number; srcInFrame?: number }
@@ -28,7 +28,7 @@ export type Action =
   | { type: 'setTransition'; id: string; patch: Partial<TransitionItem> }
   | { type: 'removeTransition'; id: string }
   | { type: 'duplicate'; id: string; newId: string }
-  | { type: 'remove'; id: string }
+  | { type: 'remove'; id: string; ripple?: boolean }
   | { type: 'split'; id: string; atFrame: number; newId: string }
   | { type: 'clear' }
   | { type: 'addAsset'; asset: MediaAsset }
@@ -82,7 +82,13 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       // compute placement from CURRENT state (correct for sequential adds)
       const startFrame = a.startFrame ?? trackEnd(s, a.item.track);
       const item: TimelineItem = { ...a.item, startFrame };
-      return { ...s, items: [...s.items, item], selectedId: item.id };
+      // ripple insert (source insert edit): push same-track clips at/after the
+      // insertion point right by the new clip's duration to make room (no overwrite).
+      const base = a.ripple
+        ? s.items.map((it) => (it.track === item.track && it.startFrame >= startFrame
+            ? { ...it, startFrame: it.startFrame + item.durationInFrames } : it))
+        : s.items;
+      return { ...s, items: [...base, item], selectedId: item.id };
     }
     case 'updateProps':
       return {
@@ -283,14 +289,23 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
           it.id === a.id && it.transcript ? { ...it, deletedWordIdx: [], silenceFrames: undefined, durationInFrames: editedFrames(it.transcript, new Set(), s.fps) } : it,
         ),
       };
-    case 'remove':
+    case 'remove': {
+      const gone = s.items.find((it) => it.id === a.id);
+      // ripple delete (source): close the gap — shift same-track clips that
+      // start at/after the removed clip's OUT point left by its duration.
+      const end = gone ? gone.startFrame + gone.durationInFrames : 0;
+      const kept = s.items
+        .filter((it) => it.id !== a.id)
+        .map((it) => (a.ripple && gone && it.track === gone.track && it.startFrame >= end
+          ? { ...it, startFrame: Math.max(0, it.startFrame - gone.durationInFrames) } : it));
       return {
         ...s,
-        items: s.items.filter((it) => it.id !== a.id),
+        items: kept,
         // drop transitions that referenced the removed clip
         transitions: (s.transitions ?? []).filter((t) => t.incomingItemId !== a.id && t.outgoingItemId !== a.id),
         selectedId: s.selectedId === a.id ? null : s.selectedId,
       };
+    }
     case 'split': {
       const it = s.items.find((x) => x.id === a.id);
       if (!it || a.atFrame <= it.startFrame || a.atFrame >= it.startFrame + it.durationInFrames) return s;

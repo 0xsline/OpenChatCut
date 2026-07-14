@@ -23,7 +23,7 @@ export interface EditorCommands {
   addAudio: (asset: AudioAsset, at?: { track?: TrackId; startFrame?: number }) => void;
   addAsset: (asset: MediaAsset) => void;
   addMediaItem: (asset: MediaAsset, at?: { track?: TrackId; startFrame?: number }) => void;
-  addTextClip: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number }) => void;
+  addTextClip: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number; ripple?: boolean }) => void;
   updateItemProps: (id: string, patch: Record<string, unknown>) => void;
   moveItem: (id: string, to: { track?: TrackId; startFrame?: number }) => void;
   setItemTiming: (id: string, timing: { startFrame?: number; durationInFrames?: number; srcInFrame?: number }) => void;
@@ -45,6 +45,8 @@ export interface EditorCommands {
   removeTransition: (id: string) => void;
   duplicateItem: (id: string) => void;
   removeItem: (id: string) => void;
+  /** ripple delete: remove a clip AND close the gap (shift later same-track clips left) */
+  rippleDeleteItem: (id: string) => void;
   splitItem: (id: string, atFrame: number) => void;
   clearTimeline: () => void;
   setAspect: (width: number, height: number, fit?: AspectFit) => void;
@@ -164,6 +166,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
         dispatch({
           type: 'add',
           startFrame: at?.startFrame,
+          ripple: at?.ripple,
           item: {
             id: uid('item'),
             track: at?.track ?? 'V2', // titles default to the top video track
@@ -223,6 +226,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       removeTransition: (id) => dispatch({ type: 'removeTransition', id }),
       duplicateItem: (id) => dispatch({ type: 'duplicate', id, newId: uid('item') }),
       removeItem: (id) => dispatch({ type: 'remove', id }),
+      rippleDeleteItem: (id) => dispatch({ type: 'remove', id, ripple: true }),
       splitItem: (id, atFrame) => dispatch({ type: 'split', id, atFrame, newId: uid('item') }),
       clearTimeline: () => dispatch({ type: 'clear' }),
       setAspect: (width, height, fit) => dispatch({ type: 'setCanvas', width, height, fit }),

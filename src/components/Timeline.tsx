@@ -79,6 +79,9 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
   const [editMode, setEditMode] = usePersistedState<'selection' | 'blade' | 'trim'>('cc.editMode', 'selection');
   // magnetic snapping (source: Snapping toggle, S). On = edges lock to guides.
   const [snapping, setSnapping] = usePersistedState('cc.snapping', true);
+  // insert vs overwrite (source insert/overwrite toggle). On = new clips ripple
+  // later same-track clips right to make room; off = place/overlap in place.
+  const [insertMode, setInsertMode] = usePersistedState('cc.insertMode', false);
   // mic voiceover recording (source: 录制旁白). Toggle to start/stop; the blob
   // is uploaded + dropped on an audio track by the parent.
   const recorder = useRecorder(onRecordVoiceover ?? (() => {}));
@@ -196,7 +199,8 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
     if (next) seekFrame(next.fromFrame);
   };
   // keyboard shortcuts (ref so the listener attaches once but reads fresh state)
-  const kb = { bladeSelected, addMarkerAtPlayhead, gotoMarker, fitToView, toggleSnap: () => setSnapping((s) => !s), setEditMode };
+  const rippleDeleteSelected = () => { if (state.selectedId) commands.rippleDeleteItem(state.selectedId); };
+  const kb = { bladeSelected, addMarkerAtPlayhead, gotoMarker, fitToView, toggleSnap: () => setSnapping((s) => !s), setEditMode, rippleDeleteSelected };
   const kbRef = useRef(kb);
   kbRef.current = kb;
   useEffect(() => {
@@ -204,6 +208,8 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
       const el = e.target as HTMLElement;
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return;
       if (e.metaKey || e.ctrlKey) return; // leave undo/redo etc. to Editor
+      // ripple delete (source ⇧⌫): remove selected clip + close the gap
+      if ((e.key === 'Backspace' || e.key === 'Delete') && e.shiftKey) { e.preventDefault(); kbRef.current.rippleDeleteSelected(); return; }
       const k = e.key.toLowerCase();
       if (k === 'v') { e.preventDefault(); kbRef.current.setEditMode('selection'); }
       else if (k === 'b') { e.preventDefault(); kbRef.current.setEditMode('blade'); }
@@ -346,13 +352,14 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
         <TB icon="blade" title="刀片模式 (B)：点击片段在该处切分" active={editMode === 'blade'} onClick={() => setEditMode('blade')} />
         <TB icon="scissors" title="在播放头切分选中片段 (C)" onClick={bladeSelected} />
         <TB icon="magnet" title={`磁性吸附：${snapping ? '开' : '关'} (S)`} active={snapping} onClick={() => setSnapping((s) => !s)} />
+        <TB icon="insert" title={`插入模式：${insertMode ? '开（新片段推后同轨片段腾位）' : '关（覆盖/重叠）'}`} active={insertMode} onClick={() => setInsertMode((v) => !v)} />
         <TB icon="mic" active={recorder.recording}
           title={recorder.recording ? '● 录音中，点击停止' : recorder.error ? `录音失败：${recorder.error}` : '录制旁白（麦克风 → 音频轨）'}
           disabled={!onRecordVoiceover} onClick={recorder.toggle} />
         {recorder.recording && <span title="录音中" style={{ width: 8, height: 8, borderRadius: '50%', background: theme.accent, boxShadow: `0 0 0 0 ${theme.accent}`, animation: 'cc-rec-pulse 1.2s ease-out infinite', flexShrink: 0 }} />}
         {!recorder.recording && recorder.error && <span title={recorder.error} style={{ fontSize: 10.5, color: theme.accent, maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{recorder.error}</span>}
         <ToolSep />
-        <TB icon="text" title="加文字（在播放头，V2 轨）" onClick={() => commands.addTextClip({ startFrame: playhead })} />
+        <TB icon="text" title={`加文字（在播放头，V2 轨）${insertMode ? ' · 插入模式：推后腾位' : ''}`} onClick={() => commands.addTextClip({ startFrame: playhead, ripple: insertMode })} />
         <TB icon="copy" title="复制选中" onClick={() => state.selectedId && commands.duplicateItem(state.selectedId)} />
         <TB icon="trash" title="删除选中" onClick={() => state.selectedId && commands.removeItem(state.selectedId)} />
         <ToolSep />

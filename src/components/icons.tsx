@@ -2,7 +2,7 @@
 // toolbar/track-header glyphs — replaces emoji so the chrome reads like the source.
 
 export type IconName =
-  | 'plus' | 'cursor' | 'trim' | 'blade' | 'scissors' | 'magnet' | 'mic' | 'chevronDown'
+  | 'plus' | 'cursor' | 'trim' | 'blade' | 'scissors' | 'magnet' | 'mic' | 'chevronDown' | 'insert'
   | 'play' | 'pause' | 'text' | 'copy' | 'trash' | 'bookmark' | 'prev' | 'next'
   | 'zoomOut' | 'zoomIn' | 'fit' | 'aspect' | 'captions' | 'fullscreen'
   | 'eye' | 'eyeOff' | 'volume' | 'volumeOff' | 'lock' | 'unlock';
@@ -18,6 +18,7 @@ const P: Record<IconName, string> = {
   scissors: 'M6 6m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0 M6 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0 M8.1 8.1L20 20 M14 14l6-10',
   magnet: 'M6 15l-3-3a8 8 0 0 1 11-11l3 3-7 7-3-3 M6 15l3 3 M14 7l3 3',
   mic: 'M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z M5 10a7 7 0 0 0 14 0 M12 19v3',
+  insert: 'M5 5v14 M19 5v14 M12 8v8 M9 12h6',
   chevronDown: 'M6 9l6 6 6-6',
   play: 'M7 4l13 8-13 8z',
   pause: 'M7 4h4v16H7z M15 4h4v16h-4z',

@@ -74,6 +74,7 @@ export function ClipContextMenu({ item, x, y, playhead, commands, fxClip, onCopy
       <Item label="转为视频" icon="▦" pro disabled />
       <Sep />
       <Item label="删除" icon="🗑" danger shortcut="⌫" onClick={run(() => commands.removeItem(item.id))} />
+      <Item label="波纹删除（合缝）" icon="⇥" danger shortcut="⇧⌫" onClick={run(() => commands.rippleDeleteItem(item.id))} />
     </div>
   );
 }
