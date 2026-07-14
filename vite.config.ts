@@ -105,5 +105,20 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    build: {
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              { name: 'babel', test: /node_modules[\\/]@babel[\\/]standalone/, priority: 30 },
+              { name: 'templates', test: /chatcut-templates\.json/, priority: 25, includeDependenciesRecursively: false },
+              { name: 'remotion', test: /node_modules[\\/](?:@remotion|remotion)[\\/]/, priority: 20 },
+              { name: 'anthropic', test: /node_modules[\\/]@anthropic-ai[\\/]sdk/, priority: 15 },
+              { name: 'react', test: /node_modules[\\/](?:react|react-dom)[\\/]/, priority: 10 },
+            ],
+          },
+        },
+      },
+    },
   };
 });

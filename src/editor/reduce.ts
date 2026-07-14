@@ -78,7 +78,7 @@ export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void
 /** dispatch at the project level: per-timeline + project actions + undo/redo */
 export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' }) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState',
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'setItemTranscript', 'toggleWord', 'deleteWords', 'cleanScript', 'clearEdits', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
   'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset']);
@@ -320,9 +320,11 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       const remove = new Set(a.tracks);
       if (!remove.size || s.items.some((item) => remove.has(item.track)) || (s.transitions ?? []).some((transition) => remove.has(transition.trackId))) return s;
       const ids = timelineTrackIds(s);
+      const remaining = ids.filter((id) => !remove.has(id));
+      if (!remaining.some((id) => trackKind(s, id) === 'video') || !remaining.some((id) => trackKind(s, id) === 'audio')) return s;
       const tracks = { ...s.tracks };
       for (const id of remove) delete tracks[id];
-      return { ...s, trackOrder: ids.filter((id) => !remove.has(id)), tracks };
+      return { ...s, trackOrder: remaining, tracks };
     }
     case 'track.tighten': {
       if (s.tracks?.[a.track]?.locked) return s;
@@ -530,6 +532,9 @@ export interface History {
   future: ProjectDoc[];
 }
 
+const HISTORY_LIMIT = 100;
+const pushHistory = (past: ProjectDoc[], doc: ProjectDoc) => [...past, doc].slice(-HISTORY_LIMIT);
+
 export function historyReduce(h: History, a: Action | ProjectAction | { type: 'undo' } | { type: 'redo' }): History {
   if (a.type === 'undo') {
     if (!h.past.length) return h;
@@ -539,10 +544,10 @@ export function historyReduce(h: History, a: Action | ProjectAction | { type: 'u
   if (a.type === 'redo') {
     if (!h.future.length) return h;
     const next = h.future[0];
-    return { past: [...h.past, h.present], present: next, future: h.future.slice(1) };
+    return { past: pushHistory(h.past, h.present), present: next, future: h.future.slice(1) };
   }
   const next = projectReduce(h.present, a);
   if (next === h.present) return h;
-  if (MUTATING.has(a.type)) return { past: [...h.past, h.present], present: next, future: [] };
+  if (MUTATING.has(a.type)) return { past: pushHistory(h.past, h.present), present: next, future: [] };
   return { ...h, present: next }; // select / tl.switch: no history
 }

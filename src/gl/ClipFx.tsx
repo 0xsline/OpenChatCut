@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { AbsoluteFill, Img, Video, continueRender, delayRender, useCurrentFrame, useVideoConfig } from 'remotion';
 import { createGlRuntime, type GlRuntime } from './runtime';
-import { ALL_FX, fxUniforms } from './fx/effects';
+import { ALL_FX } from './fx/effects';
+import { fxPasses } from './fx/uniforms';
 import type { AspectFit, TimelineItem } from '../editor/types';
 
 // One video/image clip rendered through a per-clip WebGL effect (source
@@ -9,8 +10,8 @@ import type { AspectFit, TimelineItem } from '../editor/types';
 // element (Remotion keeps it accurate in preview AND headless render),
 // rasterizes it to a 2D staging canvas with the clip's contain/cover layout,
 // then runs the effect's fragment shader to the visible canvas (with alpha, so
-// luma-key etc. composite over lower tracks). v1 applies the FIRST registered
-// effect in the stack; multi-effect chaining is a follow-up.
+// luma-key etc. composite over lower tracks). Registered effects are flattened
+// into one ordered pass graph, preserving the clip's effects[] order.
 
 interface ClipFxProps {
   item: TimelineItem;
@@ -41,8 +42,13 @@ function drawFit(ctx: CanvasRenderingContext2D, el: MediaEl, fit: AspectFit): vo
 
 /** the first stack entry whose assetId is a registered GL effect */
 export function firstGlEffect(item: TimelineItem) {
-  const e = item.effects?.find((fx) => fx.assetId in ALL_FX);
-  return e ? { fx: e, def: ALL_FX[e.assetId] } : null;
+  return glEffects(item)[0] ?? null;
+}
+
+function glEffects(item: TimelineItem) {
+  return (item.effects ?? [])
+    .filter((fx) => fx.assetId in ALL_FX)
+    .map((fx) => ({ fx, def: ALL_FX[fx.assetId] }));
 }
 
 export function ClipFx({ item, fit, width, height }: ClipFxProps) {
@@ -59,12 +65,12 @@ export function ClipFx({ item, fit, width, height }: ClipFxProps) {
     return c;
   }, [width, height]);
 
-  const active = firstGlEffect(item);
+  const active = glEffects(item);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !active) return;
-    const handle = delayRender(`clip-fx ${active.def.id}`);
+    if (!canvas || active.length === 0) return;
+    const handle = delayRender(`clip-fx ${active.map(({ def }) => def.id).join(',')}`);
     let done = false;
     let raf = 0;
     const finish = () => { if (!done) { done = true; continueRender(handle); } };
@@ -78,12 +84,10 @@ export function ClipFx({ item, fit, width, height }: ClipFxProps) {
         drawFit(ctx, el, fit);
         // u_time (seconds, clip-local) drives animated fx (CRT wobble/noise,
         // camera shake); static fx ignore it.
-        const uniforms = { ...fxUniforms(active.def, active.fx.overrides), u_time: frame / fps };
-        if (active.def.passes && active.def.passes.length > 1) {
-          runtimeRef.current.renderFxChain(active.def.passes.map((frag) => ({ frag, uniforms })), staging);
-        } else {
-          runtimeRef.current.renderFx(active.def.frag, staging, uniforms);
-        }
+        runtimeRef.current.renderFxChain(
+          fxPasses(active.map(({ fx, def }) => ({ def, overrides: fx.overrides })), frame / fps),
+          staging,
+        );
       } catch (e) {
         // WebGL unavailable / compile failure → leave canvas empty; the source
         // clip still shows nothing worse than a transparent frame.
@@ -99,7 +103,7 @@ export function ClipFx({ item, fit, width, height }: ClipFxProps) {
 
   useEffect(() => () => { runtimeRef.current?.dispose(); runtimeRef.current = null; }, []);
 
-  if (!active) return null;
+  if (active.length === 0) return null;
   return (
     <AbsoluteFill>
       {/* hidden frame-synced source (opacity keeps decode/seek active; muted —

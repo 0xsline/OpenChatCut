@@ -49,7 +49,8 @@ export function fxThumbUrl(def: FxDef): string {
       sample = buildSample();
     }
     const u = { ...fxUniforms(def), u_time: 0.5 };
-    if (def.passes && def.passes.length > 1) rt!.renderFxChain(def.passes.map((frag) => ({ frag, uniforms: u })), sample!);
+    if (def.pipeline) rt!.renderFxChain(def.pipeline(u), sample!);
+    else if (def.passes && def.passes.length > 1) rt!.renderFxChain(def.passes.map((frag) => ({ frag, uniforms: u })), sample!);
     else rt!.renderFx(def.frag, sample!, u);
     // copy immediately (buffer not preserved); dark bg shows through masked areas
     const out = document.createElement('canvas');

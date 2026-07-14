@@ -6,7 +6,7 @@
 // Operation{tool,args,action,target,impact,risk,rationale}); we additionally
 // carry the store actions per operation so approve can replay them atomically.
 import type { AnyAction } from '../editor/store';
-import type { TimelineState } from '../editor/types';
+import type { ProjectDoc, TimelineState } from '../editor/types';
 
 export interface Operation {
   tool: string;
@@ -33,8 +33,8 @@ export interface Proposal {
   summary: string;
   totalImpact: string;
   options: ProposalOption[];
-  /** snapshot at propose time — apply is stale if the live timeline moved past it */
-  baseState: TimelineState;
+  /** project snapshot at propose time — apply is stale if anything changed */
+  baseDoc: ProjectDoc;
   /** draft result — used for the in-player preview */
   resultState: TimelineState;
 }
@@ -110,7 +110,7 @@ export function buildOperation(tool: string, args: Record<string, unknown>, acti
 
 // wrap collected operations into a single-option proposal (source auto-wraps
 // operations lacking explicit options into one recommended option).
-export function buildProposal(operations: Operation[], assistantText: string, baseState: TimelineState, resultState: TimelineState): Proposal {
+export function buildProposal(operations: Operation[], assistantText: string, baseDoc: ProjectDoc, resultState: TimelineState): Proposal {
   const totalImpact = impactOf(operations.flatMap((o) => o.actions));
   const summary = assistantText.trim() || `${operations.length} 项编辑`;
   return {
@@ -118,7 +118,20 @@ export function buildProposal(operations: Operation[], assistantText: string, ba
     summary,
     totalImpact,
     options: [{ id: 'opt-1', label: '应用全部', recommended: true, summary, totalImpact, operations }],
-    baseState,
+    baseDoc,
     resultState,
+  };
+}
+
+/** ProjectDoc updates are immutable, so reference equality is a complete stale check. */
+export function isProposalStale(proposal: Proposal, currentDoc: ProjectDoc): boolean {
+  return proposal.baseDoc !== currentDoc;
+}
+
+/** Generated files are durable side effects: save assets now, propose only timeline edits. */
+export function partitionProposalActions(actions: AnyAction[]): { persistent: AnyAction[]; proposed: AnyAction[] } {
+  return {
+    persistent: actions.filter((action) => action.type === 'addAsset'),
+    proposed: actions.filter((action) => action.type !== 'addAsset'),
   };
 }

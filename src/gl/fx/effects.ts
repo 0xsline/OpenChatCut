@@ -7,9 +7,13 @@ import crtFrag from './crt.frag?raw';
 import cameraShakeFrag from './camera-shake.frag?raw';
 import tiltShiftPass1Frag from './tilt-shift-pass1.frag?raw';
 import tiltShiftPass2Frag from './tilt-shift-pass2.frag?raw';
+import asciiRainFrag from './ascii-rain.frag?raw';
+import asciiRainBlurFrag from './ascii-rain-blur.frag?raw';
+import asciiRainCompositeFrag from './ascii-rain-composite.frag?raw';
 import slog3Frag from './slog3-s709.frag?raw';
 import canonLog3Frag from './canon-log3-709.frag?raw';
 import type { FxDef } from './uniforms';
+import type { FxPass } from '../runtime';
 
 // invert is a boolean in the source (helper oJ); modeled here as a 0/1 slider.
 const INVERT = { key: 'invert', label: '反转', default: 0, min: 0, max: 1, step: 1 };
@@ -103,6 +107,28 @@ export const FX_EFFECTS: Record<string, FxDef> = {
       { key: 'noiseAmount', label: '噪点', default: 0.05, min: 0, max: 1, step: 0.01 },
       { key: 'rgbShift', label: 'RGB 偏移', default: 0.002, min: 0, max: 0.05, step: 0.001 },
       { key: 'brightness', label: '亮度', default: 1.1, min: 0, max: 3, step: 0.05 },
+    ],
+  },
+  'builtin:fx-ascii-rain': {
+    id: 'builtin:fx-ascii-rain',
+    name: 'ASCII Rain',
+    desc: '在视频亮部生成蓝色发光 ASCII 字符雨。源站 builtin:fx-ascii-rain',
+    frag: asciiRainFrag,
+    pipeline: (uniforms) => {
+      const blurRadius = typeof uniforms.u_blurRadius === 'number' ? uniforms.u_blurRadius : 2;
+      const passes: FxPass[] = [
+        { frag: asciiRainFrag, uniforms },
+        { frag: asciiRainBlurFrag, uniforms: { u_direction: [blurRadius, 0] } },
+        { frag: asciiRainBlurFrag, uniforms: { u_direction: [0, blurRadius] } },
+        { frag: asciiRainCompositeFrag, inputFrom: 0, samplers: { u_bloom: 2 }, uniforms },
+      ];
+      return passes;
+    },
+    props: [
+      { key: 'gridSize', label: '字符大小', default: 8, min: 4, max: 32, step: 1 },
+      { key: 'glow', label: '发光强度', default: 1.5, min: 0, max: 4, step: 0.1 },
+      { key: 'blurRadius', label: '泛光范围', default: 2, min: 0, max: 8, step: 0.5 },
+      { key: 'color', label: '字符颜色', kind: 'color', default: [0, 0.7490196078431373, 1], uniform: 'u_color' },
     ],
   },
   'builtin:fx-shake': {

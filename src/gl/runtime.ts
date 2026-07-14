@@ -21,6 +21,15 @@ void main() { gl_Position = vec4(a_position, 0.0, 1.0); v_texCoord = a_texCoord;
 
 export type UniformValue = number | number[];
 
+export interface FxPass {
+  frag: string;
+  uniforms?: Record<string, UniformValue>;
+  /** read u_input from an earlier pass instead of the immediately previous one */
+  inputFrom?: number;
+  /** bind named sampler uniforms to earlier pass outputs */
+  samplers?: Record<string, number>;
+}
+
 export interface GlRuntime {
   canvas: HTMLCanvasElement;
   /** draw one transition frame: mix outgoing→incoming at progress (0..1) */
@@ -38,12 +47,10 @@ export interface GlRuntime {
     input: TexImageSource,
     extra?: Record<string, UniformValue>,
   ) => void;
-  /** run a multi-pass effect: each pass reads the previous pass's output as
-   *  u_input (pass 0 reads `input`); the last pass draws to the canvas, the
-   *  rest to ping-pong framebuffers. Source multi-pass processors (tilt-shift,
-   *  ascii-rain) chain renderPass calls exactly this way. */
+  /** run a multi-pass effect; pass 0 reads `input`, later passes default to the
+   * previous output and may also reference earlier outputs (ASCII bloom). */
   renderFxChain: (
-    passes: { frag: string; uniforms?: Record<string, UniformValue> }[],
+    passes: FxPass[],
     input: TexImageSource,
   ) => void;
   dispose: () => void;
@@ -113,11 +120,10 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
   const texFx = makeTexture(gl);
   const programs = new Map<string, WebGLProgram>();
 
-  // ping-pong framebuffers for multi-pass effects (lazy — only tilt-shift /
-  // ascii-rain need them). Sized to the canvas (fixed per runtime).
-  let fbos: { fb: WebGLFramebuffer; tex: WebGLTexture }[] | null = null;
-  const ensureFbos = () => {
-    if (fbos) return fbos;
+  // One retained output per intermediate pass. ASCII rain needs its sharp base
+  // and blurred branch at the same time, so two ping-pong textures are not enough.
+  const fbos: { fb: WebGLFramebuffer; tex: WebGLTexture }[] = [];
+  const ensureFbos = (count: number) => {
     const make = () => {
       const tex = makeTexture(gl);
       gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -128,7 +134,7 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
       return { fb, tex };
     };
-    fbos = [make(), make()];
+    while (fbos.length < count) fbos.push(make());
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     return fbos;
   };
@@ -225,25 +231,37 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
     },
     renderFxChain(passes, input) {
       if (passes.length === 0) return;
-      const rt = ensureFbos();
+      const rt = ensureFbos(Math.max(0, passes.length - 1));
       // upload the source once (flip: DOM sources are top-down)
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, texFx);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, input);
-      let inputTex: WebGLTexture = texFx;
       for (let i = 0; i < passes.length; i++) {
         const last = i === passes.length - 1;
-        gl.bindFramebuffer(gl.FRAMEBUFFER, last ? null : rt[i % 2].fb);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, last ? null : rt[i].fb);
         gl.viewport(0, 0, canvas.width, canvas.height);
         const prog = getProgram(passes[i].frag);
         gl.useProgram(prog);
         bindQuad(prog);
-        // intermediate FBO textures are already GL-oriented — bind without re-upload/flip
+        // Intermediate FBO textures are already GL-oriented — bind without re-upload/flip.
+        const inputFrom = passes[i].inputFrom ?? i - 1;
+        const inputTex = i === 0 ? texFx : rt[inputFrom]?.tex;
+        if (!inputTex) throw new Error(`invalid FX input pass ${inputFrom} at ${i}`);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, inputTex);
         const locIn = gl.getUniformLocation(prog, 'u_input');
         if (locIn) gl.uniform1i(locIn, 0);
+        let unit = 1;
+        for (const [name, passIndex] of Object.entries(passes[i].samplers ?? {})) {
+          const tex = rt[passIndex]?.tex;
+          if (!tex || passIndex >= i) throw new Error(`invalid FX sampler ${name}=${passIndex} at ${i}`);
+          gl.activeTexture(gl.TEXTURE0 + unit);
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          const loc = gl.getUniformLocation(prog, name);
+          if (loc) gl.uniform1i(loc, unit);
+          unit++;
+        }
         setUniform(prog, 'u_width', canvas.width);
         setUniform(prog, 'u_height', canvas.height);
         setUniform(prog, 'u_canvas_width', canvas.width);
@@ -254,7 +272,6 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-        if (!last) inputTex = rt[i % 2].tex;
       }
       gl.bindFramebuffer(gl.FRAMEBUFFER, null); // restore for later single-pass draws
     },
@@ -265,7 +282,7 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
       gl.deleteTexture(texOut);
       gl.deleteTexture(texIn);
       gl.deleteTexture(texFx);
-      if (fbos) for (const { fb, tex } of fbos) { gl.deleteFramebuffer(fb); gl.deleteTexture(tex); }
+      for (const { fb, tex } of fbos) { gl.deleteFramebuffer(fb); gl.deleteTexture(tex); }
     },
   };
 }

@@ -16,8 +16,6 @@ interface TimelineProps {
   state: TimelineState;
   commands: EditorCommands;
   playerRef: RefObject<PlayerRef | null>;
-  playhead: number;
-  setPlayhead: (frame: number) => void;
   /** record a mic voiceover → upload the blob → drop it on an audio track */
   onRecordVoiceover?: (blob: Blob) => void;
 }
@@ -81,7 +79,7 @@ interface Drag {
 // how close (px) an edge must come to a snap target before it locks on
 const SNAP_PX = 7;
 
-export function Timeline({ state, commands, playerRef, playhead, setPlayhead, onRecordVoiceover }: TimelineProps) {
+export function Timeline({ state, commands, playerRef, onRecordVoiceover }: TimelineProps) {
   const total = timelineDuration(state);
   const trackIds = timelineTrackIds(state);
   const metaOf = (id: TrackId) => {
@@ -90,6 +88,34 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
   };
   const [zoom, setZoom] = usePersistedState('cc.timelineZoom', 1);
   const px = PX_PER_FRAME * zoom; // pixels per frame at the current time-zoom
+  const playheadRef = useRef(0);
+  const playheadLineRef = useRef<HTMLDivElement | null>(null);
+  const toolbarTimecodeRef = useRef<HTMLSpanElement | null>(null);
+  const rulerTimecodeRef = useRef<HTMLSpanElement | null>(null);
+  const paintPlayhead = (frame: number) => {
+    const current = Math.max(0, Math.round(frame));
+    playheadRef.current = current;
+    if (playheadLineRef.current) playheadLineRef.current.style.transform = `translateX(${HEADER_W + current * px}px)`;
+    if (toolbarTimecodeRef.current) toolbarTimecodeRef.current.textContent = `${fmt(current, state.fps)} / ${fmt(total, state.fps)}`;
+    if (rulerTimecodeRef.current) rulerTimecodeRef.current.textContent = fmtClock(current, state.fps);
+  };
+  const paintPlayheadRef = useRef(paintPlayhead);
+  paintPlayheadRef.current = paintPlayhead;
+  useEffect(() => {
+    let raf = 0;
+    let detach: (() => void) | null = null;
+    const attach = () => {
+      const player = playerRef.current;
+      if (!player) { raf = requestAnimationFrame(attach); return; }
+      const onFrame = (event: { detail: { frame: number } }) => paintPlayheadRef.current(event.detail.frame);
+      player.addEventListener('frameupdate', onFrame);
+      paintPlayheadRef.current(player.getCurrentFrame());
+      detach = () => player.removeEventListener('frameupdate', onFrame);
+    };
+    attach();
+    return () => { if (raf) cancelAnimationFrame(raf); detach?.(); };
+  }, [playerRef]);
+  useEffect(() => { paintPlayheadRef.current(playheadRef.current); }, [px, state.fps, total]);
   const zoomBy = (f: number) => setZoom((z) => Math.min(6, Math.max(0.5, z * f)));
   // editing mode (source: Selection V / Blade B / Trim N). selection = drag/move;
   // blade = click a clip to cut it there; trim = edge-trim ripples following clips.
@@ -254,25 +280,25 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
   const seekTo = (clientX: number) => {
     const f = Math.min(frameFromClientX(clientX), total - 1);
     playerRef.current?.seekTo(f);
-    setPlayhead(f);
+    paintPlayhead(f);
   };
 
   const seekFrame = (f: number) => {
     const c = Math.max(0, Math.min(f, total - 1));
     playerRef.current?.seekTo(c);
-    setPlayhead(c);
+    paintPlayhead(c);
   };
 
   // blade (B): split the selected clip at the playhead. splitItem no-ops if the
   // playhead is outside the clip, so no guard needed here.
-  const bladeSelected = () => { if (state.selectedId) commands.splitItem(state.selectedId, playhead); };
+  const bladeSelected = () => { if (state.selectedId) commands.splitItem(state.selectedId, playheadRef.current); };
   // markers (source manage_markers): add at the playhead + open its note editor
   const [editMarker, setEditMarker] = useState<string | null>(null);
   const markers = state.markers ?? [];
-  const addMarkerAtPlayhead = () => setEditMarker(commands.addMarker(playhead));
+  const addMarkerAtPlayhead = () => setEditMarker(commands.addMarker(playheadRef.current));
   const gotoMarker = (dir: 1 | -1) => {
     const sorted = [...markers].filter((m) => m.scope === 'project').sort((a, b) => a.fromFrame - b.fromFrame);
-    const next = dir === 1 ? sorted.find((m) => m.fromFrame > playhead) : [...sorted].reverse().find((m) => m.fromFrame < playhead);
+    const next = dir === 1 ? sorted.find((m) => m.fromFrame > playheadRef.current) : [...sorted].reverse().find((m) => m.fromFrame < playheadRef.current);
     if (next) seekFrame(next.fromFrame);
   };
   // keyboard shortcuts (ref so the listener attaches once but reads fresh state)
@@ -314,7 +340,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
   const applySnap = (mode: DragMode, baseStart: number, baseDur: number, rawDelta: number): { deltaF: number; snapAt: number | null } => {
     if (!snapping) return { deltaF: rawDelta, snapAt: null };
     const thresh = SNAP_PX / px; // pixels → frames
-    const targets = [0, playhead];
+    const targets = [0, playheadRef.current];
     for (const it of state.items) {
       if (it.id === drag?.id) continue;
       targets.push(it.startFrame, it.startFrame + it.durationInFrames);
@@ -440,7 +466,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
         </div>
         <span style={{ flex: 1 }} />
         <TB icon="play" title="播放 / 暂停 (空格)" onClick={() => playerRef.current?.toggle()} />
-        <span className="cc-timeline-timecode">{fmt(playhead, state.fps)} / {fmt(total, state.fps)}</span>
+        <span ref={toolbarTimecodeRef} className="cc-timeline-timecode">{fmt(playheadRef.current, state.fps)} / {fmt(total, state.fps)}</span>
         <span style={{ flex: 1 }} />
         <TB icon="zoomOut" title="缩小时间轴 (⌘−)" onClick={() => zoomBy(1 / 1.4)} />
         <input type="range" min={0.5} max={6} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))}
@@ -461,7 +487,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
             onPointerDown={(e) => seekTo(e.clientX)}
             style={{ display: 'flex', height: RULER_H, borderBottom: `1px solid ${theme.border}`, fontSize: 10, color: theme.textDim, cursor: 'text' }}
           >
-            <div className="cc-ruler-head" style={{ width: HEADER_W }}><span>{fmtClock(playhead, state.fps)}</span></div>
+            <div className="cc-ruler-head" style={{ width: HEADER_W }}><span ref={rulerTimecodeRef}>{fmtClock(playheadRef.current, state.fps)}</span></div>
             <div style={{ position: 'relative', flex: 1 }}>
               {/* ticks span the whole visible width, not just the content */}
               {Array.from({ length: Math.ceil((innerW - HEADER_W) / px / (state.fps * 2)) + 1 }).map((_, i) => (
@@ -612,7 +638,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
           )}
 
           {/* playhead */}
-          <div style={{ position: 'absolute', top: 0, left: HEADER_W + playhead * px, width: 1, height: RULER_H + tracksHeight, background: '#ececec', pointerEvents: 'none', boxShadow: '0 0 0 1px #0005' }}>
+          <div ref={playheadLineRef} style={{ position: 'absolute', top: 0, left: 0, transform: `translateX(${HEADER_W + playheadRef.current * px}px)`, width: 1, height: RULER_H + tracksHeight, background: '#ececec', pointerEvents: 'none', boxShadow: '0 0 0 1px #0005' }}>
             <div style={{ position: 'absolute', top: 0, left: -6, width: 13, height: 11, background: '#ececec', clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
           </div>
         </div>
@@ -623,7 +649,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
         const item = state.items.find((it) => it.id === ctxMenu.id);
         if (!item) return null;
         return (
-          <ClipContextMenu item={item} x={ctxMenu.x} y={ctxMenu.y} playhead={playhead} commands={commands}
+          <ClipContextMenu item={item} x={ctxMenu.x} y={ctxMenu.y} playhead={playheadRef.current} commands={commands}
             fxClip={fxClip} onCopyFx={setFxClip} onClose={() => setCtxMenu(null)}
             onExportMg={exportMg} onConvertToVideo={convertToVideo} />
         );

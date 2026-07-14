@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { AbsoluteFill, Img, Video, continueRender, delayRender, useCurrentFrame, useVideoConfig } from 'remotion';
 import { createGlRuntime, type GlRuntime } from './runtime';
 import { GLSL_TRANSITIONS } from './transitions';
-import type { AspectFit, GlslTransitionType, TimelineItem } from '../editor/types';
+import type { AspectFit, GlslTransitionType, TimelineItem, TransitionDirection } from '../editor/types';
 
 // One GLSL transition window (source model: straddles the cut, R→R+L). Mounts
 // its own hidden, muted media elements for both clips (Remotion keeps them
@@ -15,6 +15,7 @@ import type { AspectFit, GlslTransitionType, TimelineItem } from '../editor/type
 
 interface GlTransitionProps {
   type: GlslTransitionType;
+  direction: TransitionDirection;
   /** transition length in frames */
   L: number;
   /** absolute timeline frame where the window starts (for u_time) */
@@ -57,7 +58,7 @@ function MediaSource({ item, trim, elRef }: { item: TimelineItem; trim: number; 
   return <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={trim} muted />;
 }
 
-export function GlTransition({ type, L, windowStart, outgoing, incoming, trimOut, trimIn, width, height, fit }: GlTransitionProps) {
+export function GlTransition({ type, direction, L, windowStart, outgoing, incoming, trimOut, trimIn, width, height, fit }: GlTransitionProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -105,7 +106,7 @@ export function GlTransition({ type, L, windowStart, outgoing, incoming, trimOut
         drawFit(ictx, i, fit);
         const progress = L > 0 ? frame / L : 1;
         const time = (windowStart + frame) / fps;
-        runtimeRef.current.render(def.frag, staging.out, staging.in, progress, def.uniforms({ time, aspect: width / Math.max(1, height) }));
+        runtimeRef.current.render(def.frag, staging.out, staging.in, progress, def.uniforms({ time, aspect: width / Math.max(1, height), direction }));
       } catch (e) {
         // WebGL unavailable / compile failure: leave the canvas empty — the
         // underlying clips still render beneath (hard cut instead of transition).
@@ -119,7 +120,7 @@ export function GlTransition({ type, L, windowStart, outgoing, incoming, trimOut
       cancelAnimationFrame(raf);
       finish();
     };
-  }, [frame, fps, L, windowStart, fit, type, def, staging, width, height]);
+  }, [frame, fps, L, windowStart, fit, type, direction, def, staging, width, height]);
 
   useEffect(() => () => {
     runtimeRef.current?.dispose();

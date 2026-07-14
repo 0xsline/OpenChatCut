@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AgentContext } from './context';
+import { resolveAgentReferences, type AgentContext, type AgentReference } from './context';
 import { initialMessages, runAgent, type LLMMessage } from './runtime';
 import { anthropic, MODEL } from './client';
 import { makeDraft, replayActions } from '../editor/store';
-import { activeTimeline } from '../editor/types';
-import { buildOperation, buildProposal, type Operation, type Proposal } from './proposal';
+import { buildOperation, buildProposal, isProposalStale, partitionProposalActions, type Operation, type Proposal } from './proposal';
 import { loadChat, saveChat, clearChat } from '../persist/projectStore';
 
 export interface DisplayMessage {
@@ -51,11 +50,15 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   }, [messages, running, proposal, projectId]);
 
   const send = useCallback(
-    async (text: string, opts?: { askOnly?: boolean }) => {
+    async (text: string, opts?: { askOnly?: boolean; references?: AgentReference[] }) => {
       const trimmed = text.trim();
       if (!trimmed || running || proposal) return; // resolve a pending proposal first
       setMessages((m) => [...m, { role: 'user', text: trimmed }]);
-      llmRef.current.push({ role: 'user', content: trimmed });
+      const contextEntries = resolveAgentReferences(ctxRef.current, opts?.references ?? []);
+      const content = contextEntries.length
+        ? `${trimmed}\n\n${JSON.stringify({ type: 'chat_context_entry', entries: contextEntries })}`
+        : trimmed;
+      llmRef.current.push({ role: 'user', content });
       setRunning(true);
       // Faithful propose→apply: run the agent's tools against a DRAFT copy of the
       // PROJECT (so it sees its own pending edits, incl. timeline switches)
@@ -64,6 +67,8 @@ export function useAgent(ctx: AgentContext, projectId: string) {
       const draft = makeDraft(baseDoc);
       const draftCtx: AgentContext = { commands: draft.commands, getState: draft.getState, getDoc: draft.getDoc, getCreativeMode: ctxRef.current.getCreativeMode, templates: ctxRef.current.templates, audio: ctxRef.current.audio };
       const ops: Operation[] = [];
+      let proposalBaseDoc = baseDoc;
+      let draftInvalidated = false;
       let assistantText = '';
       const ac = new AbortController();
       abortRef.current = ac;
@@ -81,12 +86,25 @@ export function useAgent(ctx: AgentContext, projectId: string) {
           } else if (ev.type === 'tool') {
             setMessages((m) => [...m, { role: 'tool', text: '', tool: { name: ev.name, args: ev.args, result: ev.result } }]);
             const actions = draft.takeActions(); // actions this tool produced (empty for read-only tools)
-            if (actions.length) ops.push(buildOperation(ev.name, (ev.args ?? {}) as Record<string, unknown>, actions));
+            const { persistent, proposed } = partitionProposalActions(actions);
+            if (persistent.length) {
+              const observed = ctxRef.current.getDoc();
+              if (observed !== baseDoc && observed !== proposalBaseDoc) {
+                draftInvalidated = true;
+                proposalBaseDoc = observed;
+              }
+              proposalBaseDoc = replayActions(proposalBaseDoc, persistent);
+              ctxRef.current.commands.applyDoc(proposalBaseDoc);
+            }
+            if (proposed.length) ops.push(buildOperation(ev.name, (ev.args ?? {}) as Record<string, unknown>, proposed));
           } else {
             setMessages((m) => [...m, { role: 'error', text: ev.message }]);
           }
         }, { askOnly: opts?.askOnly, signal: ac.signal });
-        if (!ac.signal.aborted && ops.length) setProposal(buildProposal(ops, assistantText, activeTimeline(baseDoc), draft.getState()));
+        if (!ac.signal.aborted && ops.length) {
+          if (draftInvalidated) setMessages((m) => [...m, { role: 'error', text: '生成期间工程发生了其他修改；素材已保存到媒体池，请重新发送落轨请求。' }]);
+          else setProposal(buildProposal(ops, assistantText, proposalBaseDoc, draft.getState()));
+        }
       } finally {
         abortRef.current = null;
         setRunning(false);
@@ -118,15 +136,21 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     }
   }, []);
 
-  // apply the selected operations atomically (one undo step), replaying on the
-  // CURRENT project so it composes with any manual edits made meanwhile. Side
-  // effects live OUTSIDE the state updater (a setState updater must be pure —
-  // React double-invokes it in dev, which would double-commit).
+  // Apply the selected operations atomically (one undo step). A proposal is
+  // rejected if the project changed after it was generated: replaying index- or
+  // timeline-sensitive actions onto a different snapshot can silently edit the
+  // wrong clip. Side effects stay outside React state updaters.
   const applyProposal = useCallback((selected: Set<number>) => {
     const p = proposalRef.current;
     if (!p) return;
+    const currentDoc = ctxRef.current.getDoc();
+    if (isProposalStale(p, currentDoc)) {
+      setMessages((m) => [...m, { role: 'error', text: '工程已在提案生成后发生变化，请重新发送请求。' }]);
+      setProposal(null);
+      return;
+    }
     const chosen = p.options[0].operations.filter((_, i) => selected.has(i));
-    const result = replayActions(ctxRef.current.getDoc(), chosen.flatMap((o) => o.actions));
+    const result = replayActions(currentDoc, chosen.flatMap((o) => o.actions));
     ctxRef.current.commands.applyDoc(result);
     llmRef.current.push({ role: 'user', content: `（已应用提案：${chosen.length}/${p.options[0].operations.length} 项操作。）` });
     setProposal(null);

@@ -5,7 +5,7 @@ import { GlTransition } from '../gl/GlTransition';
 import { ClipFx, firstGlEffect } from '../gl/ClipFx';
 import { keptSegments } from '../transcript/edit';
 import { zoomAt } from './zoom';
-import { GLSL_TRANSITION_TYPES, timelineTrackIds, trackKind } from './types';
+import { CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, timelineTrackIds, trackKind } from './types';
 import type { AspectFit, CssTransitionType, GlslTransitionType, TimelineItem, TimelineState, TransitionDirection } from './types';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
@@ -232,7 +232,7 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
   const entranceOf = new Map<string, { type: CssTransitionType; L: number; dir: TransitionDirection }>();
   const extendBefore = new Map<string, number>();
   const extendAfter = new Map<string, number>();
-  interface GlWindow { key: string; type: GlslTransitionType; from: number; L: number; outgoing: TimelineItem; incoming: TimelineItem; trimOut: number; trimIn: number }
+  interface GlWindow { key: string; type: GlslTransitionType; direction: TransitionDirection; from: number; L: number; outgoing: TimelineItem; incoming: TimelineItem; trimOut: number; trimIn: number }
   const glWindows: GlWindow[] = [];
   for (const t of enabledTransitions) {
     const half = Math.floor(t.durationInFrames / 2);
@@ -245,6 +245,7 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
       glWindows.push({
         key: t.id,
         type: t.type as GlslTransitionType,
+        direction: t.direction ?? 'left',
         from,
         L: t.durationInFrames,
         outgoing: out!,
@@ -254,7 +255,7 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
       });
     } else {
       // CSS entrance: native CSS type as-is; GLSL type over DOM clips → dissolve
-      const cssType = GLSL_TRANSITION_TYPES.has(t.type) ? 'cross-dissolve' : (t.type as CssTransitionType);
+      const cssType = CSS_TRANSITION_TYPES.has(t.type) ? t.type as CssTransitionType : 'cross-dissolve';
       entranceOf.set(t.incomingItemId, { type: cssType, L: t.durationInFrames, dir: t.direction ?? 'left' });
     }
   }
@@ -286,7 +287,7 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
       {glWindows.map((w) => (
         <Sequence key={w.key} from={w.from} durationInFrames={w.L} layout="none" name={`tr:${w.type}`}>
           <GlTransition
-            type={w.type} L={w.L} windowStart={w.from}
+            type={w.type} direction={w.direction} L={w.L} windowStart={w.from}
             outgoing={w.outgoing} incoming={w.incoming} trimOut={w.trimOut} trimIn={w.trimIn}
             width={state.width} height={state.height} fit={fit}
           />

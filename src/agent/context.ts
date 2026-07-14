@@ -3,6 +3,12 @@ import type { ProjectDoc, TimelineState } from '../editor/types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
 
+export interface AgentReference {
+  id: string;
+  name: string;
+  kind: 'video' | 'image' | 'audio' | 'template';
+}
+
 /** What the agent's tools operate on: the live editor. */
 export interface AgentContext {
   commands: EditorCommands;
@@ -14,4 +20,22 @@ export interface AgentContext {
   getCreativeMode: () => string | null;
   templates: Tpl[];
   audio: AudioAsset[];
+}
+
+/** Resolve UI mentions by stable id; names in the prompt are display-only. */
+export function resolveAgentReferences(ctx: AgentContext, references: AgentReference[]): Record<string, unknown>[] {
+  const entries: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  for (const reference of references) {
+    if (seen.has(reference.id)) continue;
+    seen.add(reference.id);
+    if (reference.kind === 'template') {
+      const template = ctx.templates.find((item) => item.id === reference.id);
+      if (template) entries.push({ type: 'template', id: template.id, name: template.name, category: template.category, width: template.width, height: template.height, durationInFrames: template.durationInFrames, propKeys: template.propSchema.map((prop) => prop.key) });
+    } else {
+      const asset = ctx.getDoc().assets.find((item) => item.id === reference.id);
+      if (asset) entries.push({ type: 'asset', id: asset.id, name: asset.name, kind: asset.kind, src: asset.src, durationInFrames: asset.durationInFrames, width: asset.width, height: asset.height });
+    }
+  }
+  return entries;
 }

@@ -97,10 +97,12 @@ export interface ClipTransform {
 /** one per-clip WebGL effect instance (source: effects[] entry with an assetId
  * + property overrides). assetId keys the FX registry (src/gl/fx/effects.ts);
  * overrides map property name → value (clamped to the effect's range at render). */
+export type ClipEffectValue = number | number[];
+
 export interface ClipEffect {
   id: string;
   assetId: string;
-  overrides?: Record<string, number>;
+  overrides?: Record<string, ClipEffectValue>;
 }
 
 export interface TimelineItem {
@@ -188,8 +190,7 @@ export type TrackUpdate = Partial<Omit<TrackFlags, 'kind' | 'role' | 'audioRouti
   audioRouting?: { duckDepthDb?: number | null };
 };
 
-/** transitions we approximate in CSS (DOM clips can't be GL textures —
- * the source has the same split: MG/caption layers stay DOM). */
+/** source transitions with a CSS fallback for non-texturable DOM clips. */
 export type CssTransitionType =
   | 'cross-dissolve'
   | 'dip-to-black'
@@ -198,8 +199,9 @@ export type CssTransitionType =
   | 'flash'
   | 'luma-blend';
 
-/** transitions that run the source's real GLSL (video/image clips only) */
+/** all source video transitions run their real GLSL for video/image clips. */
 export type GlslTransitionType =
+  | CssTransitionType
   | 'page-curl'
   | 'rack-focus'
   | 'organic-dissolve'
@@ -208,10 +210,15 @@ export type GlslTransitionType =
   | 'clean-line-wipe';
 
 /** source transition builtin ids (the 12 video transitions) */
-export type TransitionType = CssTransitionType | GlslTransitionType;
+export type TransitionType = GlslTransitionType;
 
 export const GLSL_TRANSITION_TYPES: ReadonlySet<TransitionType> = new Set<TransitionType>([
+  'cross-dissolve', 'dip-to-black', 'soft-wipe', 'whip-pan', 'flash', 'luma-blend',
   'page-curl', 'rack-focus', 'organic-dissolve', 'impact-shake', 'anticipation-zoom', 'clean-line-wipe',
+]);
+
+export const CSS_TRANSITION_TYPES: ReadonlySet<TransitionType> = new Set<TransitionType>([
+  'cross-dissolve', 'dip-to-black', 'soft-wipe', 'whip-pan', 'flash', 'luma-blend',
 ]);
 
 // zh labels + display order for the 12 transitions (CSS group first, then the
@@ -367,7 +374,7 @@ export interface TimelineState {
 
 /** Track ids in visual top-to-bottom order. Legacy four-lane states still work. */
 export function timelineTrackIds(s: TimelineState): TrackId[] {
-  const ids = s.trackOrder?.length ? [...s.trackOrder] : [...TRACK_ORDER];
+  const ids = s.trackOrder ? [...s.trackOrder] : [...TRACK_ORDER];
   for (const id of Object.keys(s.tracks ?? {})) if (!ids.includes(id)) ids.push(id);
   for (const item of s.items) if (!ids.includes(item.track)) ids.push(item.track);
   return ids;

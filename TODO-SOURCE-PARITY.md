@@ -5,10 +5,10 @@
 > 由 5 个并行 agent 逐项对照 **当前 `src/` 真代码** vs **逆向源码规格** 重新核实。
 >
 > **口径**：✅ 已完成 · 🟡 部分 · ❌ 未做。共 132 项。
-> **总覆盖**：约 **67 ✅ / 16 🟡 / 49 ❌**，加权 ≈ **57%**（旧 42.8%）。
-> （2026-07-14 更新：域 7 设计风格 `manage_design_style` + 域 11 对话历史持久化 落地）
+> **总覆盖**：约 **69 ✅ / 15 🟡 / 48 ❌**，加权 ≈ **58%**（旧 42.8%）。
+> （2026-07-14 更新：域 7 设计风格、域 11 对话历史持久化、域 10 音频/范围导出落地）
 > 但只看**产品核心域（编辑器·Agent·媒体·字幕·生成，域 1–11+16，共 104 项）**，
-> 加权覆盖 ≈ **71%**（67✅/14🟡/23❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
+> 加权覆盖 ≈ **73%**（69✅/13🟡/22❌）。拖低总数的是花钱域与协作/账号/多端/遥测等
 > "需真后端、单机克隆无对象可服务"的基建域（域 13/14/15 全 0%）。
 >
 > **开发纪律（本文存在的意义）**：做任何一项前，先读它在"源码依据"列指向的
@@ -30,7 +30,7 @@
 | 7 | 设计风格 / 品牌 | 2 | 1 | 1 | 0 | 核心 | ✅ manage_design_style:24 真 catalog 预设+owned 我的风格+自由 role+注入;brand-kit logo 🟡 |
 | 8 | AI 生成（花钱域） | 7 | 5 | 1 | 1 | 核心 | 5 生成工具已接，缺 submit_shader、积分门 |
 | 9 | 素材 / 媒体 | 12 | 7 | 1 | 4 | 核心 | 媒体池/库/LUT 已做，缺在线素材/URL 资产 |
-| 10 | 导出 / 交付 | 12 | 4 | 2 | 6 | 核心 | MP4/字幕已做，缺音频/XML/异步/水印 |
+| 10 | 导出 / 交付 | 12 | 6 | 1 | 5 | 核心 | MP4/字幕/音频/范围已做，缺 XML/异步/水印 |
 | 11 | Agent / 对话平台 | 10 | 6 | 4 | 0 | 核心 | ✅ 对话持久化(chat_block);仅剩 thinking UI 等 🟡 |
 | 16 | 长转短（专项） | 4 | 1 | 1 | 2 | 核心 | auto-reframe 渲染链就绪缺检测；缺智能切片 |
 | 12 | 技能 Skills | 3 | 1 | 1 | 1 | 可搬 | ✅ 创作模式(8 真 agent-skills,选中注入系统提示);skill_guard/编辑器 🟡 |
@@ -47,7 +47,7 @@
 ### P0 — 补齐产品核心的显眼缺口
 1. ✅ **对话历史持久化**（域11）—— 已落地：`persist/projectStore.ts` 加 `loadChat/saveChat/clearChat`(复用 kv store,存 `{messages, llm}`);`useAgent(ctx,projectId)` 挂载 hydrate + 回合边界持久化 + `clearHistory`;ChatPanel 头部「清空对话」。附带修 `migrateProjectDoc` 丢 `designStyle` 的回归。检查 `chat-persist.check.ts` + 浏览器整页刷新实测双双恢复。源：`chat_block`。
 2. ✅ **设计风格 `manage_design_style`**（域7）—— 已落地：`ProjectDoc.designStyle{colors[role,value],fonts[family,role],styleGuide}`(对齐源 `Ey/Ay/bM` 规范)+`editor/design-presets.ts`(4 内置预设=源 `/api/design-styles/owned` 类比)+`agent/design-tools.ts`(`manage_design_style` list/get/apply/update/clear，含旧式对象→数组规整)+注入(`systemPrompt.designStylePrompt` 进 agent loop、`designStyleHint` 进 MG 代码生成)+UI(`DesignStylePanel` 弹窗，TopBar 调色板入口，即时预览)。检查 `design-tools.check.ts` 绿。源：`复刻规格 §9 manage_design_style`。
-3. **导出音频 mp3/wav + 帧范围**（域10 ❌/🟡）—— `remotion/render.mjs` 加 `renderAudio`（codec mp3）+ `renderMedia frameRange` 透传；`submit_export` 放开 `format=audio`。源：`submit_export format=audio`。
+3. ✅ **导出音频 mp3/wav + 帧范围**（域10）—— `/export` 与 `submit_export` 已支持源站 `format+codec` 契约（音频 MP3 + 本地 WAV 扩展）；MP4/WebM/MP3/WAV 共用半开帧范围并转换为 Remotion inclusive `frameRange`。源：`submit_export format=audio`。
 
 ### P1 — 高价值增量
 4. ✅ **创作模式技能预设 = 域12 + 域17**（纯前端）—— 已落地:从公开端点 `/public-api/agent-skills/catalog` **全搬 8 个真实 agent-skills**(`agent/skills-catalog.ts`,名字/zh名/摘要/scenarios/bodyMarkdown verbatim);`ChatComposer` 底栏「创作模式」下拉;选中→`creativeModePrompt` 把技能 body 注入 `runtime.ts` 的 system;每工程存 IDB(`creative-mode:<pid>`)。源:`agent_skill`。(未做工具过滤:源站技能不改可用工具集,只导流程。)
@@ -129,11 +129,11 @@
 ### 域 10 · 导出 / 交付
 - ❌ **异步渲染 job + track_export** — 现同步流式。→ `/export` 入队复用 `vite-generation-jobs.ts` 返 renderId + `track_export`（status/wait）。
 - ❌ **导出 XML（fcpxml）** — 源 `submit_export format=xml`（fcp_xml/resolve）。→ `src/export/fcpxml.ts`，MG 引用已渲 ProRes。
-- ❌ **导出音频 mp3/wav** — 源 `submit_export format=audio`。→ `render.mjs` 加 `renderAudio`；放开 format。
+- ✅ **导出音频 mp3/wav** — `renderTimeline` 透传 `codec=mp3|wav`；`submit_export format=audio` 同步下载并返回 codec/文件名/字节数。
 - ❌ **免费档水印** — 源 `updateWatermark`。→ `TimelineComposition` 加 plan 门控水印层。
 - ❌ **导出历史 + 评分** — 源 `export_history`。→ 成功后写 IDB + 弹评分。
 - ❌ **浏览器端 WebCodecs 快导** — 低优（服务端已覆盖）。
-- 🟡 **部分导出（帧范围）** — 现仅字幕支持。→ `renderTimeline` 透传 `frameRange` 给 `renderMedia`。
+- ✅ **部分导出（帧范围）** — MP4/MP3/WAV/字幕均支持 `[startFrame,endFrameExclusive)`；媒体出口统一转为 Remotion inclusive `frameRange`。
 - 🟡 **字体兜底确认 confirmFontFallback** — → 渲染前扫 fontFamily 对白名单，缺 confirm 返清单。
 
 ### 域 11 · Agent / 对话平台

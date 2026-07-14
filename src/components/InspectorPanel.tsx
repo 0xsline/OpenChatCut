@@ -1,6 +1,6 @@
 import { theme } from '../theme';
 import type { Tpl } from '../types';
-import type { ClipEffect, ClipFilters, ClipTransform, TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../editor/types';
+import type { ClipEffect, ClipEffectValue, ClipFilters, ClipTransform, TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../editor/types';
 import { TRANSITION_LABELS, ZOOM_SHAPE_LABELS } from '../editor/types';
 import { ALL_FX as FX_EFFECTS } from '../gl/fx/effects';
 const FX_IDS = Object.keys(FX_EFFECTS);
@@ -23,7 +23,7 @@ interface InspectorPanelProps {
   onItemFiltersChange: (patch: ClipFilters) => void;
   onItemZoomChange: (patch: Partial<ZoomEffect> | null) => void;
   onItemEffectsChange: (effects: ClipEffect[]) => void;
-  playhead: number;
+  getPlayhead: () => number;
   onSetReframeKeyframe: (frame: number, focalPointX: number, focalPointY: number, magnification: number) => void;
   onRemoveReframeKeyframe: (frame: number) => void;
   transition: TransitionItem | null;
@@ -123,14 +123,15 @@ function TextControl({ item, onPropChange }: { item: TimelineItem; onPropChange:
 
 // animated zoom (source builtin:zoom): shape curve + magnification + focal point,
 // plus ReframeCurveV1 sparse keyframes (drop focal+mag at the playhead).
-function ZoomControl({ zoom, onChange, localFrame, fps, onSetKeyframe, onRemoveKeyframe }: {
+function ZoomControl({ zoom, onChange, getLocalFrame, fps, onSetKeyframe, onRemoveKeyframe }: {
   zoom: ZoomEffect | undefined;
   onChange: (patch: Partial<ZoomEffect> | null) => void;
-  localFrame: number;
+  getLocalFrame: () => number;
   fps: number;
   onSetKeyframe: (frame: number, fx: number, fy: number, mag: number) => void;
   onRemoveKeyframe: (frame: number) => void;
 }) {
+  const localFrame = getLocalFrame();
   const selStyle: React.CSSProperties = { background: theme.bg, color: theme.text, border: `1px solid ${theme.borderLight}`, borderRadius: 4, padding: '3px 5px' };
   const slider = (label: string, val: number, min: number, max: number, step: number, fmt: string, key: keyof ZoomEffect) => (
     <label style={{ display: 'block', fontSize: 11, color: theme.textDim }}>
@@ -158,7 +159,7 @@ function ZoomControl({ zoom, onChange, localFrame, fps, onSetKeyframe, onRemoveK
           {slider('焦点 Y', zoom.focalPointY ?? 0.5, 0, 1, 0.01, `${Math.round((zoom.focalPointY ?? 0.5) * 100)}%`, 'focalPointY')}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
             <button
-              onClick={() => onSetKeyframe(localFrame, zoom.focalPointX ?? 0.5, zoom.focalPointY ?? 0.5, zoom.magnification ?? 1.5)}
+              onClick={() => onSetKeyframe(getLocalFrame(), zoom.focalPointX ?? 0.5, zoom.focalPointY ?? 0.5, zoom.magnification ?? 1.5)}
               title="在播放头记录焦点+倍数为关键帧"
               style={{ background: theme.panelAlt, border: `1px solid ${theme.borderLight}`, borderRadius: 5, color: theme.text, cursor: 'pointer', fontSize: 11, padding: '4px 9px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <Icon name="diamond" size={12} />在播放头打关键帧
@@ -254,32 +255,70 @@ function FilterControl({ item, onChange }: { item: TimelineItem; onChange: (p: C
   );
 }
 
-// Per-clip WebGL effect (source 特效 / builtin:fx-*). v1 = one effect at a time;
-// the selector sets the effect, then its params drive the shader uniforms.
+const rgbToHex = (rgb: number[]) => `#${rgb.slice(0, 3).map((n) => Math.round(Math.min(1, Math.max(0, n)) * 255).toString(16).padStart(2, '0')).join('')}`;
+const hexToRgb = (hex: string) => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255);
+
+// Per-clip WebGL effect stack (source 特效 / builtin:fx-*). Order is render
+// order: each card consumes the previous card's output.
 function EffectsControl({ item, onChange }: { item: TimelineItem; onChange: (effects: ClipEffect[]) => void }) {
-  const active = item.effects?.find((fx) => fx.assetId in FX_EFFECTS) ?? null;
-  const def = active ? FX_EFFECTS[active.assetId] : null;
-  const setEffect = (assetId: string) => onChange(assetId ? [{ id: `fx_${assetId}`, assetId, overrides: {} }] : []);
-  const setParam = (key: string, value: number) => {
-    if (!active) return;
-    onChange([{ ...active, overrides: { ...active.overrides, [key]: value } }]);
+  const effects = item.effects ?? [];
+  const active = effects.filter((fx) => fx.assetId in FX_EFFECTS);
+  const addEffect = (assetId: string) => {
+    if (assetId) onChange([...effects, { id: `fx_${crypto.randomUUID()}`, assetId, overrides: {} }]);
+  };
+  const updateEffect = (id: string, patch: Partial<ClipEffect>) => onChange(effects.map((fx) => fx.id === id ? { ...fx, ...patch } : fx));
+  const setParam = (effect: ClipEffect, key: string, value: ClipEffectValue) => {
+    updateEffect(effect.id, { overrides: { ...effect.overrides, [key]: value } });
+  };
+  const moveEffect = (index: number, delta: number) => {
+    const other = active[index + delta];
+    if (!other) return;
+    const from = effects.findIndex((fx) => fx.id === active[index].id);
+    const to = effects.findIndex((fx) => fx.id === other.id);
+    const next = [...effects];
+    [next[from], next[to]] = [next[to], next[from]];
+    onChange(next);
   };
   const fmt = (step: number | undefined, v: number) => (step && step < 1 ? v.toFixed(2) : String(Math.round(v)));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <select value={active?.assetId ?? ''} onChange={(e) => setEffect(e.target.value)}
+      <select value="" onChange={(e) => addEffect(e.target.value)}
         style={{ width: '100%', background: theme.panelAlt, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: 6, padding: '5px 7px', fontSize: 12 }}>
-        <option value="">无</option>
+        <option value="">＋ 添加特效…</option>
         {FX_IDS.map((id) => <option key={id} value={id}>{FX_EFFECTS[id].name}</option>)}
       </select>
-      {def && <div style={{ fontSize: 10.5, color: theme.textDim, opacity: 0.75, lineHeight: 1.4 }}>{def.desc}</div>}
-      {def?.props.map((p) => {
-        const v = active?.overrides?.[p.key] ?? p.default;
+      {active.length === 0 && <div style={{ fontSize: 10.5, color: theme.textDim }}>尚未添加特效。</div>}
+      {active.map((effect, index) => {
+        const def = FX_EFFECTS[effect.assetId];
         return (
-          <label key={p.key} style={{ display: 'block', fontSize: 11, color: theme.textDim }}>
-            <div style={{ marginBottom: 4 }}>{p.label} <span style={{ opacity: 0.7 }}>{fmt(p.step, v)}</span></div>
-            <input type="range" min={p.min} max={p.max} step={p.step ?? 0.01} value={v} onChange={(e) => setParam(p.key, Number(e.target.value))} style={{ width: '100%' }} />
-          </label>
+          <div key={effect.id} style={{ display: 'flex', flexDirection: 'column', gap: 9, border: `1px solid ${theme.border}`, borderRadius: 7, padding: 9 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: theme.text }}>
+              <b style={{ flex: 1 }}>{index + 1}. {def.name}</b>
+              <button title="上移" disabled={index === 0} onClick={() => moveEffect(index, -1)}>↑</button>
+              <button title="下移" disabled={index === active.length - 1} onClick={() => moveEffect(index, 1)}>↓</button>
+              <button title="移除特效" onClick={() => onChange(effects.filter((fx) => fx.id !== effect.id))}>×</button>
+            </div>
+            <div style={{ fontSize: 10.5, color: theme.textDim, opacity: 0.75, lineHeight: 1.4 }}>{def.desc}</div>
+            {def.props.map((p) => {
+              const raw = effect.overrides?.[p.key] ?? p.default;
+              if (p.kind === 'color') {
+                const value = Array.isArray(raw) ? raw : p.default;
+                return (
+                  <label key={p.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, color: theme.textDim }}>
+                    {p.label}
+                    <input type="color" value={rgbToHex(value)} onInput={(e) => setParam(effect, p.key, hexToRgb(e.currentTarget.value))} />
+                  </label>
+                );
+              }
+              const value = typeof raw === 'number' ? raw : p.default;
+              return (
+                <label key={p.key} style={{ display: 'block', fontSize: 11, color: theme.textDim }}>
+                  <div style={{ marginBottom: 4 }}>{p.label} <span style={{ opacity: 0.7 }}>{fmt(p.step, value)}</span></div>
+                  <input type="range" min={p.min} max={p.max} step={p.step ?? 0.01} value={value} onChange={(e) => setParam(effect, p.key, Number(e.target.value))} style={{ width: '100%' }} />
+                </label>
+              );
+            })}
+          </div>
         );
       })}
     </div>
@@ -288,7 +327,7 @@ function EffectsControl({ item, onChange }: { item: TimelineItem; onChange: (eff
 
 // Property editor for the selected timeline item (sits under the preview).
 // Collapsible so it doesn't crowd the preview when you don't need it.
-export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, onItemZoomChange, onItemEffectsChange, playhead, onSetReframeKeyframe, onRemoveReframeKeyframe, transition, onAddTransition, onSetTransition, onRemoveTransition }: InspectorPanelProps) {
+export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, onItemZoomChange, onItemEffectsChange, getPlayhead, onSetReframeKeyframe, onRemoveReframeKeyframe, transition, onAddTransition, onSetTransition, onRemoveTransition }: InspectorPanelProps) {
   const [collapsed, setCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const schema = selectedItem
     ? templates.find((t) => t.id === selectedItem.templateId)?.propSchema ?? []
@@ -330,7 +369,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
             {isVisual && <><SectionLabel>变换</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} /></>}
             {isVisual && <><SectionLabel>滤镜</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} /></>}
             {(selectedItem.kind === 'video' || selectedItem.kind === 'image') && <><SectionLabel>特效 FX</SectionLabel><EffectsControl item={selectedItem} onChange={onItemEffectsChange} /></>}
-            {isVisual && <><SectionLabel>缩放动画</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} localFrame={Math.max(0, Math.min(selectedItem.durationInFrames - 1, playhead - selectedItem.startFrame))} fps={fps} onSetKeyframe={onSetReframeKeyframe} onRemoveKeyframe={onRemoveReframeKeyframe} /></>}
+            {isVisual && <><SectionLabel>缩放动画</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} getLocalFrame={() => Math.max(0, Math.min(selectedItem.durationInFrames - 1, getPlayhead() - selectedItem.startFrame))} fps={fps} onSetKeyframe={onSetReframeKeyframe} onRemoveKeyframe={onRemoveReframeKeyframe} /></>}
             {isVisual && <><SectionLabel>转场</SectionLabel><TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} /></>}
             <SectionLabel>淡入淡出</SectionLabel>
             <FadeControl item={selectedItem} fps={fps} onChange={onItemFadeChange} />
