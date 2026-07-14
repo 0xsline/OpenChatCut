@@ -1,14 +1,11 @@
 import { useState } from 'react';
-import { theme } from '../theme';
 import type { Proposal } from '../agent/proposal';
 import { Icon } from './icons';
 
-const ghostBtn: React.CSSProperties = { background: 'none', border: `1px solid ${theme.border}`, borderRadius: 6, color: theme.textDim, cursor: 'pointer', fontSize: 12, padding: '4px 10px' };
-const primaryBtn: React.CSSProperties = { background: theme.accent, border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, padding: '4px 12px', fontWeight: 600 };
+// Edit-proposal review card (source agent-chat proposal). Redesigned as a
+// compact dark review panel: header badge + impact, selectable op rows with
+// tool chips, then preview / reject / apply actions.
 
-// The edit-proposal review card (source: agent-chat proposal). Shows the agent's
-// proposed operations; the user can deselect ops, preview the result in the
-// player, then apply atomically or reject — the timeline isn't touched until apply.
 export function ProposalCard({ proposal, onApply, onReject, onPreview }: {
   proposal: Proposal;
   onApply: (selected: Set<number>) => void;
@@ -25,6 +22,8 @@ export function ProposalCard({ proposal, onApply, onReject, onPreview }: {
       n.has(i) ? n.delete(i) : n.add(i);
       return n;
     });
+  const selectAll = () => setSelected(new Set(ops.map((_, i) => i)));
+  const selectNone = () => setSelected(new Set());
   const togglePreview = () => {
     const on = !preview;
     setPreview(on);
@@ -33,37 +32,94 @@ export function ProposalCard({ proposal, onApply, onReject, onPreview }: {
   const apply = () => { onPreview(false); onApply(selected); };
   const reject = () => { onPreview(false); onReject(); };
 
+  const allOn = selected.size === ops.length;
+  const noneOn = selected.size === 0;
+
   return (
-    <div style={{ border: `1px solid ${theme.accent}`, borderRadius: 10, background: theme.panelAlt, padding: 12, margin: '12px 0' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: theme.text, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="sparkles" size={12} />{proposal.title}</span>
-        <span style={{ fontSize: 10, color: theme.accent, border: `1px solid ${theme.accent}`, borderRadius: 4, padding: '0 5px' }}>待确认</span>
-        <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 10.5, color: theme.textDim }}>{proposal.totalImpact}</span>
+    <div className="cc-proposal">
+      <div className="cc-proposal-glow" aria-hidden />
+
+      <header className="cc-proposal-head">
+        <div className="cc-proposal-head-left">
+          <span className="cc-proposal-icon" aria-hidden>
+            <Icon name="sparkles" size={14} />
+          </span>
+          <div className="cc-proposal-titles">
+            <div className="cc-proposal-title-row">
+              <h3 className="cc-proposal-title">{proposal.title || '编辑提案'}</h3>
+              <span className="cc-proposal-badge">待确认</span>
+            </div>
+            {proposal.summary ? (
+              <p className="cc-proposal-summary">{proposal.summary}</p>
+            ) : null}
+          </div>
+        </div>
+        {proposal.totalImpact ? (
+          <span className="cc-proposal-impact" title="影响范围">{proposal.totalImpact}</span>
+        ) : null}
+      </header>
+
+      <div className="cc-proposal-ops-bar">
+        <span className="cc-proposal-ops-label">
+          将执行 <strong>{selected.size}</strong> / {ops.length} 项
+        </span>
+        <div className="cc-proposal-ops-actions">
+          <button type="button" className="cc-proposal-link" onClick={selectAll} disabled={allOn}>全选</button>
+          <button type="button" className="cc-proposal-link" onClick={selectNone} disabled={noneOn}>清空</button>
+        </div>
       </div>
-      {proposal.summary && <div style={{ fontSize: 12, color: theme.textDim, marginBottom: 8, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{proposal.summary}</div>}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 10 }}>
+
+      <ul className="cc-proposal-list">
         {ops.map((op, i) => {
           const on = selected.has(i);
           return (
-            <label key={i} title={op.rationale ?? op.tool} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 11.5, cursor: 'pointer', opacity: on ? 1 : 0.5, textDecoration: on ? 'none' : 'line-through' }}>
-              <input type="checkbox" checked={on} onChange={() => toggle(i)} />
-              <span style={{ color: theme.text }}>{op.action}</span>
-              <span style={{ color: theme.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>{op.target}</span>
-              <span style={{ flex: 1 }} />
-              <span style={{ color: theme.textDim, fontVariantNumeric: 'tabular-nums' }}>{op.impact}</span>
-            </label>
+            <li key={i} className={`cc-proposal-op${on ? '' : ' off'}`}>
+              <label className="cc-proposal-op-label">
+                <input
+                  type="checkbox"
+                  className="cc-proposal-check"
+                  checked={on}
+                  onChange={() => toggle(i)}
+                />
+                <span className="cc-proposal-check-ui" aria-hidden />
+                <span className="cc-proposal-op-body">
+                  <span className="cc-proposal-op-main">
+                    <span className="cc-proposal-op-action">{op.action}</span>
+                    <span className="cc-proposal-op-target" title={op.target}>{op.target}</span>
+                  </span>
+                  <span className="cc-proposal-op-meta">
+                    <span className="cc-proposal-tool">{op.tool}</span>
+                    {op.impact ? <span className="cc-proposal-op-impact">{op.impact}</span> : null}
+                  </span>
+                </span>
+              </label>
+            </li>
           );
         })}
-      </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button onClick={togglePreview} style={{ ...ghostBtn, color: preview ? theme.accent : theme.textDim, borderColor: preview ? theme.accent : theme.border }}>
-          {preview ? '● 预览中' : '预览'}
+      </ul>
+
+      <footer className="cc-proposal-foot">
+        <button
+          type="button"
+          className={`cc-proposal-preview${preview ? ' on' : ''}`}
+          onClick={togglePreview}
+          title="在预览窗查看提案结果（不改正式时间线）"
+        >
+          <span className="cc-proposal-preview-dot" />
+          {preview ? '预览中' : '预览结果'}
         </button>
-        <span style={{ flex: 1 }} />
-        <button onClick={reject} style={ghostBtn}>拒绝</button>
-        <button onClick={apply} disabled={selected.size === 0} style={{ ...primaryBtn, opacity: selected.size ? 1 : 0.5, cursor: selected.size ? 'pointer' : 'default' }}>应用 {selected.size}/{ops.length}</button>
-      </div>
+        <div className="cc-proposal-foot-right">
+          <button type="button" className="cc-proposal-reject" onClick={reject}>拒绝</button>
+          <button
+            type="button"
+            className="cc-proposal-apply"
+            disabled={noneOn}
+            onClick={apply}
+          >
+            应用{noneOn ? '' : ` ${selected.size}`}
+          </button>
+        </div>
+      </footer>
     </div>
   );
 }
