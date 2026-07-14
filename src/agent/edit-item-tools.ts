@@ -21,7 +21,7 @@ export const EDIT_ITEM_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'edit_item',
     description:
-      'Source-faithful item-level ops. Prefer browse_library first. Supports adds/updates/deletes for type=effect (LUT + library:zoom:*), type=transition (builtin:tr-*), type=motion-graphic (library:motion-graphic:*), type=audio (library:sound:*). Batch is atomic — any validation error aborts the whole call with no mutations (or validateOnly:true to dry-run). Mutating ops go through propose→apply. For generic move/trim/delete use move_item / set_item_timing / remove_item.',
+      'Source-faithful item-level ops. Prefer browse_library first. Supports adds/updates/deletes for type=effect (LUT + library:zoom:*), type=transition (builtin:tr-*), type=motion-graphic (library:motion-graphic:*), type=audio (library:sound:*). Batch is atomic — any validation error aborts the whole call with no mutations (or validateOnly:true to dry-run). ripple=true pushes later same-track clips when inserting MG/audio. Mutating ops go through propose→apply. For generic move/trim/delete use move_item / set_item_timing / remove_item.',
     input_schema: {
       type: 'object',
       properties: {
@@ -43,10 +43,16 @@ export const EDIT_ITEM_TOOL_SCHEMAS: Anthropic.Tool[] = [
             'effect: {type:"effect",id|effectId,targetItemId?} or clear with targetItemId only. transition: {type:"transition",id}. zoom: {type:"effect",targetItemId,assetId:"builtin:zoom"}.',
           items: { type: 'object' },
         },
+        ripple: {
+          type: 'boolean',
+          description:
+            'When true, MG/audio adds push later same-track items (insert). Do not combine with validateOnly.',
+        },
         validateOnly: {
           type: 'boolean',
           description: 'If true, validate only — never mutate. Same validation runs before every real commit.',
         },
+        projectId: { type: 'string', description: 'Ignored in local clone.' },
       },
     },
   },
@@ -350,7 +356,7 @@ function validateUpdate(ctx: AgentContext, entry: Record<string, unknown>): OpRe
 
 // ── commit plans ───────────────────────────────────────────────────────────
 
-function commitPlan(ctx: AgentContext, plan: OpResult): OpResult {
+function commitPlan(ctx: AgentContext, plan: OpResult, ripple = false): OpResult {
   if (!plan.ok || plan.error) return plan;
   switch (plan.plan) {
     case 'setZoom':
@@ -417,17 +423,22 @@ function commitPlan(ctx: AgentContext, plan: OpResult): OpResult {
           src: String(plan.src),
           durationInFrames: Number(plan.durationInFrames),
         },
-        { track: plan.track as string | undefined, startFrame: plan.startFrame as number | undefined },
+        {
+          track: plan.track as string | undefined,
+          startFrame: plan.startFrame as number | undefined,
+          ripple,
+        },
       );
-      return { ok: true, kind: 'audio', soundId: plan.sfxId, name: plan.name, startFrame: plan.startFrame };
+      return { ok: true, kind: 'audio', soundId: plan.sfxId, name: plan.name, startFrame: plan.startFrame, ripple };
     case 'addMg': {
       const tpl = ctx.templates.find((t) => t.id === plan.templateId);
       if (!tpl) return { error: `template vanished: ${plan.templateId}` };
       ctx.commands.addMotionGraphic(tpl, {
         track: plan.track as string | undefined,
         startFrame: plan.startFrame as number | undefined,
+        ripple,
       });
-      return { ok: true, kind: 'motion-graphic', templateId: tpl.id, name: tpl.name, track: plan.track };
+      return { ok: true, kind: 'motion-graphic', templateId: tpl.id, name: tpl.name, track: plan.track, ripple };
     }
     default:
       return { error: `unknown plan ${String(plan.plan)}` };
@@ -437,6 +448,10 @@ function commitPlan(ctx: AgentContext, plan: OpResult): OpResult {
 export async function execEditItemTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   if (name !== 'edit_item') return { error: `unknown tool ${name}` };
   const validateOnly = args.validateOnly === true;
+  const ripple = args.ripple === true;
+  if (validateOnly && ripple) {
+    return { error: 'do not combine validateOnly with ripple (source contract)' };
+  }
   const adds = Array.isArray(args.adds) ? args.adds : [];
   const updates = Array.isArray(args.updates) ? args.updates : [];
   const deletes = Array.isArray(args.deletes) ? args.deletes : [];
@@ -488,12 +503,13 @@ export async function execEditItemTool(name: string, args: Args, ctx: AgentConte
 
   // Phase 2 — commit in order
   const results: OpResult[] = [];
-  for (const plan of plans) results.push(commitPlan(ctx, plan));
+  for (const plan of plans) results.push(commitPlan(ctx, plan, ripple));
   const commitFailed = results.filter((r) => r.error);
   return {
     ok: commitFailed.length === 0,
     atomic: true,
     validateOnly: false,
+    ripple,
     results,
     ...(commitFailed.length ? { failed: commitFailed.length } : {}),
   };

@@ -12,7 +12,7 @@ import {
 const names = UPLOAD_TOOL_SCHEMAS.map((t) => t.name).sort();
 assert.deepStrictEqual(
   names,
-  ['finalize_uploaded_asset', 'request_asset_download', 'request_asset_upload_url'].sort(),
+  ['finalize_uploaded_asset', 'import_media', 'request_asset_download', 'request_asset_upload_url'].sort(),
 );
 for (const n of names) assert.ok(UPLOAD_TOOL_NAMES.has(n));
 
@@ -27,6 +27,14 @@ const ctx: AgentContext = {
   templates: [],
   audio: [],
 };
+
+const session = await execUploadTool('import_media', { action: 'create_session' }, ctx) as {
+  ok: boolean; sessionId: string; directUpload: { url: string }; slots: unknown[];
+};
+assert.strictEqual(session.ok, true);
+assert.ok(session.sessionId);
+assert.strictEqual(session.directUpload.url, '/upload');
+assert.ok(session.slots.length >= 1);
 
 const req = await execUploadTool('request_asset_upload_url', {
   assetType: 'video',

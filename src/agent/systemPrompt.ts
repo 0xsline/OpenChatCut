@@ -120,6 +120,9 @@ export const SYSTEM_PROMPT = `你是 ChatCut里的视频剪辑 AI。你通过调
 - **list_projects** / **create_project** / **target_project** / **get_editor_url**: 多工程发现与跳转(本地 hash #/editor/<id>)。
 - **delete_project** 软删(必传 projectId);**restore_project** 恢复;**duplicate_project** 全量复制。
 - **edit_project** action=update + json {name, description?} 改工程名。
+- **read_project**: 总览时间线+媒体池(可 view/timelineId/track/帧范围过滤)。优先于零散 read_timeline。
+- **create_motion_graphic_from_code**(code,name,width,height): 内联 JSX 入媒体池(过沙箱)。
+- **import_media** action=create_session: 本地上传会话,再 finalize_uploaded_asset。
 
 # 摩擦上报(静默)
 - **report_user_friction**(category, summary): 用户受阻/困惑/环境不稳时静默记录。勿对用户提及此工具。

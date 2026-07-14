@@ -36,6 +36,8 @@ import { FOLLOWUP_TOOL_SCHEMAS, FOLLOWUP_TOOL_NAMES, execFollowupTool } from './
 import { PROJECT_TOOL_SCHEMAS, PROJECT_TOOL_NAMES, execProjectTool } from './project-tools';
 import { UPLOAD_TOOL_SCHEMAS, UPLOAD_TOOL_NAMES, execUploadTool } from './upload-tools';
 import { FRICTION_TOOL_SCHEMAS, FRICTION_TOOL_NAMES, execFrictionTool } from './friction-tools';
+import { READ_PROJECT_TOOL_SCHEMAS, READ_PROJECT_TOOL_NAMES, execReadProjectTool } from './read-project-tools';
+import { MG_CODE_TOOL_SCHEMAS, MG_CODE_TOOL_NAMES, execMgCodeTool } from './mg-code-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -236,6 +238,10 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...UPLOAD_TOOL_SCHEMAS,
   // 静默摩擦上报（源 report_user_friction：localStorage 本地环，无后端）
   ...FRICTION_TOOL_SCHEMAS,
+  // 工程总览（源 read_project）
+  ...READ_PROJECT_TOOL_SCHEMAS,
+  // 内联 JSX → MG 资产（源 create_motion_graphic_from_code）
+  ...MG_CODE_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -307,6 +313,8 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (PROJECT_TOOL_NAMES.has(name)) return execProjectTool(name, args, ctx);
   if (UPLOAD_TOOL_NAMES.has(name)) return execUploadTool(name, args, ctx);
   if (FRICTION_TOOL_NAMES.has(name)) return execFrictionTool(name, args, ctx);
+  if (READ_PROJECT_TOOL_NAMES.has(name)) return execReadProjectTool(name, args, ctx);
+  if (MG_CODE_TOOL_NAMES.has(name)) return execMgCodeTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();

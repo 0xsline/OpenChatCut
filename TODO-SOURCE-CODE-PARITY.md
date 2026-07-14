@@ -44,6 +44,7 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 - ✅ 工程七件套 + `get_editor_url`（`agent/project-tools.ts` + soft-delete，§1.2 §1.5）— grok
 - ✅ 本地 upload 三件套（`agent/upload-tools.ts` + `/upload?assetId=`，§1.6）— grok
 - ✅ P3：`report_user_friction` + 隐藏音频转场假入口 + 隐藏 credits + @引用芯片 + 插入/覆盖落轨（§1.7§4.2–4.6）— grok
+- ✅ 差集补齐：`read_project` / `create_motion_graphic_from_code` / `import_media` + `edit_item.ripple` + `submit_export` fps/resolution — grok
 
 ### 分工表
 
@@ -408,6 +409,8 @@ chatcut-clone/
 - [x] 落轨 insert/overwrite 工具栏（§4.3）
 - [x] credits 隐藏（§4.4）
 - [x] `@` 引用芯片 + chat_context_entry（§4.6）
+- [x] **[G]** `read_project` / `create_motion_graphic_from_code` / `import_media`（源同名差集）
+- [x] **[G]** `edit_item.ripple` + `submit_export` fps/resolution/timelineId
 
 ---
 

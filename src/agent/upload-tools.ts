@@ -14,6 +14,27 @@ type SourceAssetType = (typeof ASSET_TYPES)[number];
 
 export const UPLOAD_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
+    name: 'import_media',
+    description: [
+      'Create a short local import session for bytes held by the agent/host (source import_media).',
+      'Call action=create_session once, then POST/PUT each file to the returned directUpload.url',
+      '(local-dev: /upload?name=<filename>&assetId=<id>), then finalize_uploaded_asset with metadata.',
+      'Prefer download_media for public URLs. Not a real ChatCut cloud helper binary.',
+    ].join(' '),
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['create_session'],
+          description: 'Only create_session is supported.',
+        },
+        projectId: { type: 'string', description: 'Ignored in local clone.' },
+      },
+      required: ['action'],
+    },
+  },
+  {
     name: 'request_asset_upload_url',
     description: [
       'Get a one-time local upload target to push media bytes into the project (source request_asset_upload_url).',
@@ -141,10 +162,54 @@ function findAsset(ctx: AgentContext, q: string): MediaAsset | null {
 }
 
 export async function execUploadTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
+  if (name === 'import_media') return execImportMedia(args, ctx);
   if (name === 'request_asset_upload_url') return execRequestUpload(args);
   if (name === 'finalize_uploaded_asset') return execFinalize(args, ctx);
   if (name === 'request_asset_download') return execRequestDownload(args, ctx);
   return { error: `unknown tool ${name}` };
+}
+
+function execImportMedia(args: Args, ctx: AgentContext): unknown {
+  if (args.action !== 'create_session') {
+    return { error: 'import_media only supports action=create_session' };
+  }
+  const sessionId = newId().replace(/^a_/, 'sess_');
+  const token = `local_${sessionId}`;
+  // Pre-mint a few asset slots the host can use (optional); primary path is per-file upload URL
+  const slots = [0, 1, 2].map(() => {
+    const assetId = newId();
+    return {
+      assetId,
+      uploadUrl: `/upload?name=file.bin&assetId=${encodeURIComponent(assetId)}`,
+    };
+  });
+  return {
+    ok: true,
+    localDev: true,
+    action: 'create_session',
+    sessionId,
+    token,
+    projectId: ctx.getProjectId?.() ?? null,
+    directUpload: {
+      url: '/upload',
+      method: 'POST',
+      alsoAccepts: 'PUT',
+      auth: `Bearer ${token} (ignored locally)`,
+      query: {
+        name: '<original-filename>',
+        assetId: '<optional-deterministic-id from request_asset_upload_url or slots>',
+      },
+      contentType: 'raw body (not multipart required locally)',
+    },
+    slots,
+    next: [
+      '1. POST/PUT file bytes to /upload?name=clip.mp4&assetId=<id>',
+      '2. finalize_uploaded_asset with assetId, fileKey=uploads/<id>.ext, readUrl=/media/uploads/<id>.ext, size, type, duration…',
+      'Or call request_asset_upload_url for a single-file presign shape.',
+    ],
+    expiresInSeconds: 3600,
+    note: 'LOCAL-DEV import session — not ChatCut cloud helper. Token is not verified.',
+  };
 }
 
 function execRequestUpload(args: Args): unknown {

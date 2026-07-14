@@ -171,6 +171,19 @@ export const GENERATE_TOOL_SCHEMAS: Anthropic.Tool[] = [
           description: 'NLE XML format for format=xml. Defaults to fcp_xml (Premiere). Use fcp_xml_resolve for DaVinci Resolve.',
         },
         name: { type: 'string', description: 'Download filename.' },
+        fps: {
+          type: 'number',
+          description: 'Video output fps: 24|25|30|50|60. Omit to match timeline. Frame counts stay; real duration scales.',
+        },
+        resolution: {
+          type: 'string',
+          enum: ['480p', '720p', '1080p'],
+          description: 'Video max-height ladder (default timeline size). Scales width to keep aspect.',
+        },
+        timelineId: {
+          type: 'string',
+          description: 'Export a non-active timeline by id/prefix without switching (video/audio/xml).',
+        },
         startFrame: { type: 'integer', minimum: 0 },
         endFrameExclusive: { type: 'integer', minimum: 1 },
         startSeconds: { type: 'number', minimum: 0, description: 'Legacy; prefer startFrame.' },
@@ -320,7 +333,14 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
     case 'submit_export': {
       try {
         const format = args.format ?? 'video';
-        const state = ctx.getState();
+        let state = ctx.getState();
+        // Optional non-active timeline export
+        if (typeof args.timelineId === 'string' && args.timelineId.trim()) {
+          const q = args.timelineId.trim();
+          const tl = ctx.getDoc().timelines.find((t) => t.id === q || t.id.startsWith(q));
+          if (!tl) return { error: `timeline not found: ${args.timelineId}` };
+          state = tl;
+        }
         // Font gate for video burn-in and XML handoff (MG/caption families).
         if (format === 'video' || format === 'xml') {
           const gate = fontFallbackGate(state, args.confirmFontFallback, {
@@ -347,6 +367,13 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
           return { ok: true, ...result };
         }
         if (format === 'audio' || format === 'video') {
+          const fpsArg = typeof args.fps === 'number' ? args.fps : undefined;
+          if (fpsArg != null && ![24, 25, 30, 50, 60].includes(fpsArg)) {
+            return { error: 'fps must be one of 24, 25, 30, 50, 60' };
+          }
+          const resolution = args.resolution === '480p' || args.resolution === '720p' || args.resolution === '1080p'
+            ? args.resolution
+            : undefined;
           const input: SubmitMediaExportArgs = {
             format,
             codec: args.codec as SubmitMediaExportArgs['codec'],
@@ -355,6 +382,8 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
             endFrameExclusive: typeof args.endFrameExclusive === 'number' ? args.endFrameExclusive : undefined,
             startSeconds: typeof args.startSeconds === 'number' ? args.startSeconds : undefined,
             endSeconds: typeof args.endSeconds === 'number' ? args.endSeconds : undefined,
+            fps: fpsArg,
+            resolution,
           };
           const result = await submitMediaExport(input, state);
           void recordExport({
