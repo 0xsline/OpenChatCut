@@ -15,6 +15,9 @@
 > **开发纪律（本文存在的意义）**：做任何一项前，先读它在"源码依据"列指向的
 > `chatcut-reverse/复刻规格-Agent工具与后端.md`（52 工具权威语义）/ `PRD.md` /
 > 反编译 bundle，能用原命名/原算法/原数据就用，别凭空发明。
+> **UI/像素对齐**另有专库 `chatcut-pixel-clone/`（DOM/CSS/字体 + 控件级 rect/styles JSON +
+> 20k 截图）：任何布局/视觉/控件复刻先查它（入口 `INDEX.md`→`index/LABEL_INDEX.json`→
+> `supplement/elements-full/` + `tokens/theme.slim.css`）。详见本仓 `CLAUDE.md` 的 UI 像素对齐节。
 
 ---
 
@@ -90,6 +93,7 @@
 - ❌ **get_editor_url / target_project** — 源 `复刻规格:23,66,68`。→ 低优先，等域15 外部 MCP，App 层加 `session.activeProjectId`。
 
 ### 域 2 · 编辑器核心 / 时间线
+- ✅ **空工程轨道模型对标源站** — 空工程仅 1 视频轨起步（原 2V+2A）；音频轨可全删、仅末条视频轨受保护（`reduce` track.delete 守卫改为只护 video）；`createTimeline` 单轨起步、`pickTrack` 按需 dispatch `track.create` 建轨。对齐 `60_empty_project`。commit c984d9e。
 - 🟡 **gif/svg/solid 媒体类型** — 源按类型拆表。→ `types.ts` `kind` 加三种；`TimelineComposition` `ItemLayer` 加渲染分支。
 - ❌ **色度键 / 绿幕** — 源 `chroma`（PRD:153）。→ `gl/fx/chroma-key.frag` + `FX_EFFECTS` 补一格，走现成 `ClipFx`/`manage_effects`。**成本最低**。
 
@@ -99,13 +103,13 @@
 
 ### 域 4 · 转写 / 文字稿
 - 🟡 **多语言转写变体** — 源 `manage_transcript translation_ensure/create`（变体挂 source 共享时间轴）。→ `transcript/types.ts` 加 `variants`；字幕改"选变体显示"而非现场翻译。
-- ❌ **转写校正（改文本）** — 源 `manage_transcript action fix`（修 ASR 文本不剪音频）。→ 工具加 `fix` 分支 + reduce 就地改 `item.transcript[gi].text`；面板双击改词。
-- ❌ **说话人重命名 / 合并** — 源 `manage_transcript fix` + speaker_id skill。→ `TimelineState` 加 `speakerNames/speakerMerge` 映射；`speakerLabel` 读映射。
+- ✅ **转写校正（改文本）** — `manage_transcript action=fix`：reduce 就地改 `transcript[wordIndex].text`，不动帧位/时长（护城河③）。commit f2e7467。
+- ✅ **说话人重命名 / 合并** — `manage_transcript action=renameSpeaker(from,to)`：reduce 只改 `word.speaker`（rename 与 merge 同机制），text/timing 零改动、含无操作守卫、单步可撤销。commit 99a17c8。
 
 ### 域 5 · 字幕
 - 🟡 **字幕源路由（多轨合并）** — 源 `edit_captions source_set/source_add` + sourceScope（first-on-top 堆叠）。→ `CaptionsData.sources: CaptionSource[]` 取代单 sourceItemId；`resolve.ts` 合并多源；默认 `mode:'timeline'` 扫全部含转写音频。
 - 🟡 **（子）edit_captions template enum 仅 3/21** — → `transcript-tools.ts` enum 改 `CAPTION_STYLES.map(id)` 全量。
-- ❌ **逐词覆盖（隐藏/遮罩/拆/并/改字）** — 源 `edit_captions display_text`（hidden/text/forcePageBreak/keepWithPrevious）+ `read_captions {words:true}`。→ `CaptionsData.wordOverrides`；`paginate` 尊重；新 `read_captions` 工具。
+- ✅ **逐词覆盖（隐藏/改字/强制换行）** — `CaptionsData.wordOverrides`（按源词序号键）+ `read_captions`/`edit_caption_words`；预览·burn-in·SRT 三处同一 `applyWordOverrides` 管线。commit 772398b。（遮罩/拆/并留待多源合并一并处理）
 
 ### 域 6 · Motion Graphics
 - 🟡 **MG → 透明视频（convert_to_video）** — 现"转为视频"压平 alpha + 无 agent 工具。源 `convert_motion_graphic_to_video`+`register_converted_video`。→ `render.mjs` 加 vp8/webm-alpha；`generate-tools.ts` 加两工具入媒体池。
@@ -117,7 +121,7 @@
 - 🟡 **品牌套件 brand kit** — 源与 design-style 合一;`styleGuide`(真值是详细 spring/stagger 动效规格)已含。**logo/product-images 资产上传** 留待(源 designSpec.logos/images,本地需资产上传链路)。
 
 ### 域 8 · AI 生成
-- ❌ **着色器生成 submit_shader** — 源 `复刻规格 §8`（Gemini→GLSL/TS，type=effect\|transition）。→ `agent/shader-tools.ts` + `vite-plugin-shader.ts` LLM codegen，编译校验走 `gl/runtime.ts`，产物喂 `manage_effects`/transitions。
+- ✅ **着色器生成 submit_shader** — `agent/shader-tools.ts`：LLM 按 renderFx uniform 契约写 GLSL → 静态校验 + 浏览器内真编译 → `registerCustomFx` 并入 `ALL_FX` 喂 `manage_effects`。只做 `type=effect`（暂略 transition/referenceAssetIds）。commit c9b5264。
 - 🟡 **任务队列 + 积分计量** — image/voice/sound 仍同步未入队；积分=0。→ 统一走 `createGenerationJob`；持久化队列；credit 模型 + 服务端扣费门。
 
 ### 域 9 · 素材 / 媒体
