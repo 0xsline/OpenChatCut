@@ -3,7 +3,7 @@ import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import {
   ASPECT_PRESETS, MARKER_HEX, TRANSITION_LABELS, ZOOM_SHAPE_LABELS,
-  defaultTrackId, timelineDuration, timelineTrackIds, trackAlias, trackKind,
+  defaultTrackId, isItemSelected, selectedIdsOf, timelineDuration, timelineTrackIds, trackAlias, trackKind,
   type MarkerColor, type TimelineItem, type TimelineState, type TrackId,
   type TransitionType, type ZoomShape,
 } from '../editor/types';
@@ -592,11 +592,12 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
       zoomBy: (f) => zoomBy(f),
       splitAtPlayhead: () => bladeSelected(),
       nudgeSelected: (delta) => {
-        const id = state.selectedId;
-        if (!id) return;
-        const it = state.items.find((x) => x.id === id);
-        if (!it) return;
-        commands.moveItem(id, { startFrame: Math.max(0, it.startFrame + delta) });
+        const ids = selectedIdsOf(state);
+        for (const id of ids) {
+          const it = state.items.find((x) => x.id === id);
+          if (!it || state.tracks?.[it.track]?.locked) continue;
+          commands.moveItem(id, { startFrame: Math.max(0, it.startFrame + delta) });
+        }
       },
       trimSelectedToPlayhead: (side) => {
         const id = state.selectedId;
@@ -740,47 +741,67 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
         }
       },
       copySelected: () => {
-        const it = state.items.find((x) => x.id === state.selectedId);
-        if (!it) return;
+        const ids = selectedIdsOf(state);
+        const items = ids.map((id) => state.items.find((x) => x.id === id)).filter(Boolean) as TimelineItem[];
+        if (!items.length) return;
+        // store primary (last) for single paste; multi-paste pastes all relative to earliest
+        const snap = (it: TimelineItem): TimelineItem => ({
+          ...it,
+          props: it.props ? { ...it.props } : it.props,
+          effects: it.effects?.map((e) => ({ ...e, overrides: e.overrides ? { ...e.overrides } : undefined })),
+        });
         itemClipRef.current = {
           kind: 'item',
-          item: {
-            ...it,
-            props: it.props ? { ...it.props } : it.props,
-            effects: it.effects?.map((e) => ({ ...e, overrides: e.overrides ? { ...e.overrides } : undefined })),
-          },
+          item: snap(items[items.length - 1]!),
+          multi: items.length > 1 ? items.map(snap) : undefined,
         };
       },
       cutSelected: () => {
-        const it = state.items.find((x) => x.id === state.selectedId);
-        if (!it) return;
+        const ids = selectedIdsOf(state);
+        const items = ids.map((id) => state.items.find((x) => x.id === id)).filter(Boolean) as TimelineItem[];
+        if (!items.length) return;
+        const snap = (it: TimelineItem): TimelineItem => ({
+          ...it,
+          props: it.props ? { ...it.props } : it.props,
+          effects: it.effects?.map((e) => ({ ...e, overrides: e.overrides ? { ...e.overrides } : undefined })),
+        });
         itemClipRef.current = {
           kind: 'item',
-          item: {
-            ...it,
-            props: it.props ? { ...it.props } : it.props,
-            effects: it.effects?.map((e) => ({ ...e, overrides: e.overrides ? { ...e.overrides } : undefined })),
-          },
+          item: snap(items[items.length - 1]!),
+          multi: items.length > 1 ? items.map(snap) : undefined,
         };
-        commands.removeItem(it.id);
+        // remove all in one history step
+        const idSet = new Set(ids);
+        commands.applyState({
+          ...state,
+          items: state.items.filter((it) => !idSet.has(it.id)),
+          transitions: (state.transitions ?? []).filter((t) => !idSet.has(t.incomingItemId) && !idSet.has(t.outgoingItemId)),
+          selectedId: null,
+          selectedIds: [],
+        });
       },
       pasteClipboard: () => {
         const clip = itemClipRef.current;
         if (!clip || clip.kind !== 'item') return;
-        const src = clip.item;
-        const newId = `item_${crypto.randomUUID()}`;
-        const newItem: TimelineItem = {
-          ...src,
-          id: newId,
-          startFrame: Math.max(0, playheadRef.current),
-          props: src.props ? { ...src.props } : src.props,
-          effects: src.effects?.map((e) => ({ ...e, overrides: e.overrides ? { ...e.overrides } : undefined })),
-        };
-        // applyState works for both copy (original still present) and cut (snapshot only).
+        const batch = clip.multi?.length ? clip.multi : [clip.item];
+        const baseStart = Math.min(...batch.map((it) => it.startFrame));
+        const ph = Math.max(0, playheadRef.current);
+        const newItems: TimelineItem[] = batch.map((src) => {
+          const newId = `item_${crypto.randomUUID()}`;
+          return {
+            ...src,
+            id: newId,
+            startFrame: ph + (src.startFrame - baseStart),
+            props: src.props ? { ...src.props } : src.props,
+            effects: src.effects?.map((e) => ({ ...e, overrides: e.overrides ? { ...e.overrides } : undefined })),
+          };
+        });
+        const newIds = newItems.map((it) => it.id);
         commands.applyState({
           ...state,
-          items: [...state.items, newItem],
-          selectedId: newId,
+          items: [...state.items, ...newItems],
+          selectedIds: newIds,
+          selectedId: newIds[newIds.length - 1] ?? null,
         });
       },
       pasteEffects: () => {
@@ -806,12 +827,66 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
         });
       },
       duplicateSelected: () => {
-        if (state.selectedId) commands.duplicateItem(state.selectedId);
+        const ids = selectedIdsOf(state);
+        if (!ids.length) return;
+        if (ids.length === 1) {
+          commands.duplicateItem(ids[0]!);
+          return;
+        }
+        // multi-duplicate in one step at track ends is awkward; duplicate each with new ids after last
+        let next = { ...state, items: [...state.items] };
+        const newIds: string[] = [];
+        for (const id of ids) {
+          const it = next.items.find((x) => x.id === id);
+          if (!it) continue;
+          const newId = `item_${crypto.randomUUID()}`;
+          const copy: TimelineItem = {
+            ...it,
+            id: newId,
+            props: it.props ? { ...it.props } : it.props,
+            startFrame: Math.max(...next.items.filter((x) => x.track === it.track).map((x) => x.startFrame + x.durationInFrames), 0),
+          };
+          next = { ...next, items: [...next.items, copy] };
+          newIds.push(newId);
+        }
+        commands.applyState({
+          ...next,
+          selectedIds: newIds,
+          selectedId: newIds[newIds.length - 1] ?? null,
+        });
       },
       deleteSelected: (ripple) => {
-        if (!state.selectedId) return;
-        if (ripple) commands.rippleDeleteItem(state.selectedId);
-        else commands.removeItem(state.selectedId);
+        const ids = selectedIdsOf(state);
+        if (!ids.length) return;
+        if (ids.length === 1) {
+          if (ripple) commands.rippleDeleteItem(ids[0]!);
+          else commands.removeItem(ids[0]!);
+          return;
+        }
+        // multi-delete: one undo step (ripple applied per id in track order by start)
+        let items = [...state.items];
+        let transitions = [...(state.transitions ?? [])];
+        const sorted = [...ids]
+          .map((id) => items.find((x) => x.id === id))
+          .filter(Boolean)
+          .sort((a, b) => (b!.startFrame - a!.startFrame)) as TimelineItem[]; // reverse chrono so ripple indices stay valid
+        for (const gone of sorted) {
+          if (state.tracks?.[gone.track]?.locked) continue;
+          const end = gone.startFrame + gone.durationInFrames;
+          items = items
+            .filter((it) => it.id !== gone.id)
+            .map((it) => (ripple && it.track === gone.track && it.startFrame >= end
+              ? { ...it, startFrame: Math.max(0, it.startFrame - gone.durationInFrames) }
+              : it));
+          transitions = transitions.filter((t) => t.incomingItemId !== gone.id && t.outgoingItemId !== gone.id);
+        }
+        commands.applyState({
+          ...state,
+          items,
+          transitions,
+          selectedId: null,
+          selectedIds: [],
+        });
       },
       fullscreenTimeline: () => {
         if (document.fullscreenElement) void document.exitFullscreen();
@@ -832,7 +907,29 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
     if (state.tracks?.[baseTrack]?.locked) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
-    commands.selectItem(id);
+    // Multi-select: ⌘/Ctrl toggle, ⇧ range on same track; plain click replaces.
+    if (e.metaKey || e.ctrlKey) {
+      commands.selectItem(id, { mode: 'toggle' });
+    } else if (e.shiftKey && state.selectedId) {
+      const anchor = state.items.find((x) => x.id === state.selectedId);
+      const target = state.items.find((x) => x.id === id);
+      if (anchor && target && anchor.track === target.track) {
+        const lo = Math.min(anchor.startFrame, target.startFrame);
+        const hi = Math.max(anchor.startFrame, target.startFrame);
+        const range = state.items
+          .filter((x) => x.track === anchor.track && x.startFrame >= lo && x.startFrame <= hi)
+          .map((x) => x.id);
+        commands.selectItems(range);
+      } else {
+        commands.selectItem(id);
+      }
+    } else if (!isItemSelected(state, id)) {
+      commands.selectItem(id);
+    } else {
+      // already in multi-selection: keep set, set primary via re-add
+      commands.selectItem(id, { mode: 'add' });
+    }
+    // Only start move drag when not pure multi-toggle without drag intent — still allow drag
     setDrag({ id, mode, baseStart, baseDur, baseTrack, baseSrcIn, startX: e.clientX, deltaF: 0, targetTrack: baseTrack, snapAt: null });
   };
   // snap a dragged edge to the nearest guide (frame 0, playhead, any other
@@ -1241,7 +1338,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
                     const start = it.startFrame + (dragging && drag.mode !== 'trim-right' ? drag.deltaF : 0);
                     const durTrim = dragging && drag.mode === 'trim-left' ? -drag.deltaF : dragging && drag.mode === 'trim-right' ? drag.deltaF : 0;
                     const dur = Math.max(1, it.durationInFrames + durTrim);
-                    const selected = state.selectedId === it.id;
+                    const selected = isItemSelected(state, it.id);
                     const isLibOver = libDropTarget === it.id;
                     const hasInTr = (state.transitions ?? []).some((t) => t.incomingItemId === it.id);
                     return (

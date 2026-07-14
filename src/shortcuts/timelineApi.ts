@@ -45,5 +45,5 @@ export interface TimelineShortcutApi {
 }
 
 export type ItemClipboard =
-  | { kind: 'item'; item: TimelineItem }
+  | { kind: 'item'; item: TimelineItem; /** multi-copy payload (optional) */ multi?: TimelineItem[] }
   | null;

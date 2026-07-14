@@ -254,18 +254,33 @@ export type GlslTransitionType =
   | 'glitch-cut'
   | 'dip-to-color';
 
-/** source transition builtin ids + extended library transitions */
-export type TransitionType = GlslTransitionType;
+/** Audio-only transitions (source preset `trAudioCrossFade`) — no picture. */
+export type AudioTransitionType = 'audio-cross-fade';
 
-export const GLSL_TRANSITION_TYPES: ReadonlySet<TransitionType> = new Set<TransitionType>([
+/** source transition builtin ids + extended library transitions + audio */
+export type TransitionType = GlslTransitionType | AudioTransitionType;
+
+export const GLSL_TRANSITION_TYPES: ReadonlySet<string> = new Set<string>([
   'cross-dissolve', 'dip-to-black', 'soft-wipe', 'whip-pan', 'flash', 'luma-blend',
   'page-curl', 'rack-focus', 'organic-dissolve', 'impact-shake', 'anticipation-zoom', 'clean-line-wipe',
   'circle-wipe', 'radial-blur', 'glitch-cut', 'dip-to-color',
 ]);
 
-export const CSS_TRANSITION_TYPES: ReadonlySet<TransitionType> = new Set<TransitionType>([
+export const CSS_TRANSITION_TYPES: ReadonlySet<string> = new Set<string>([
   'cross-dissolve', 'dip-to-black', 'soft-wipe', 'whip-pan', 'flash', 'luma-blend',
 ]);
+
+export const AUDIO_TRANSITION_TYPES: ReadonlySet<AudioTransitionType> = new Set<AudioTransitionType>([
+  'audio-cross-fade',
+]);
+
+export function isAudioTransition(type: TransitionType): type is AudioTransitionType {
+  return AUDIO_TRANSITION_TYPES.has(type as AudioTransitionType);
+}
+
+export function isVisualTransition(type: TransitionType): type is GlslTransitionType {
+  return !isAudioTransition(type);
+}
 
 // zh labels matching source library cards (app.chatcut.io 资源库·转场·画面转场).
 // Shared by the inspector select + the resource-library grid.
@@ -286,10 +301,12 @@ export const TRANSITION_LABELS: Record<TransitionType, string> = {
   'radial-blur': '径向模糊转场',
   'glitch-cut': '故障切换转场',
   'dip-to-color': '闪色转场',
+  /** source preset.name.trAudioCrossFade */
+  'audio-cross-fade': '音频交叉淡化',
 };
 
-/** source catalog order + extended transitions. */
-export const TRANSITION_ORDER: readonly TransitionType[] = [
+/** source catalog order + extended visual transitions. */
+export const TRANSITION_ORDER: readonly GlslTransitionType[] = [
   'anticipation-zoom',
   'clean-line-wipe',
   'cross-dissolve',
@@ -306,6 +323,11 @@ export const TRANSITION_ORDER: readonly TransitionType[] = [
   'radial-blur',
   'glitch-cut',
   'dip-to-color',
+];
+
+/** Audio transition catalog (source trAudioCrossFade). */
+export const AUDIO_TRANSITION_ORDER: readonly AudioTransitionType[] = [
+  'audio-cross-fade',
 ];
 
 export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
@@ -450,7 +472,14 @@ export interface TimelineState {
   markers?: Marker[];
   /** derived compatibility view of ProjectDoc.assets; never persisted here */
   assets?: MediaAsset[];
+  /** Primary selection (last clicked) — inspector / single-item ops. */
   selectedId: string | null;
+  /**
+   * Multi-select set (source ⌘A / ⌘click / ⇧click).
+   * Always kept in sync with selectedId: primary is the last id in the list.
+   * Older docs may omit this; use `selectedIdsOf()`.
+   */
+  selectedIds?: string[];
   /** captions overlay (字幕), rendered on top + burned into export */
   captions?: CaptionsData | null;
   /** text watermark overlay (source updateWatermark), rendered on top + burned into export */
@@ -489,6 +518,16 @@ export function resolveTrackId(s: TimelineState, ref: unknown, kind?: TrackKind)
 }
 
 /** Default placement lane: V1 (bottom video) or A1 (top audio). */
+/** Selected clip ids (multi-select aware; falls back to selectedId). */
+export function selectedIdsOf(s: Pick<TimelineState, 'selectedId' | 'selectedIds'>): string[] {
+  if (s.selectedIds && s.selectedIds.length) return s.selectedIds;
+  return s.selectedId ? [s.selectedId] : [];
+}
+
+export function isItemSelected(s: Pick<TimelineState, 'selectedId' | 'selectedIds'>, id: string): boolean {
+  return selectedIdsOf(s).includes(id);
+}
+
 /** Visual (picture) clip kinds — not pure audio. */
 export function isVisualItemKind(kind: TimelineItem['kind']): boolean {
   return kind !== 'audio';

@@ -207,11 +207,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     'nudge-right': ({ shift }) => tl()?.nudgeSelected(shift ? 5 : 1),
     'trim-start': () => tl()?.trimSelectedToPlayhead('start'),
     'trim-end': () => tl()?.trimSelectedToPlayhead('end'),
-    'select-all': () => {
-      // single-select model: pick earliest clip (full multi-select is later)
-      const first = [...state.items].sort((a, b) => a.startFrame - b.startFrame)[0];
-      if (first) commands.selectItem(first.id);
-    },
+    'select-all': () => commands.selectAll(),
     'select-after': () => tl()?.selectAfterPlayhead(),
     'move-up': () => tl()?.moveSelectedTrack(-1),
     'move-down': () => tl()?.moveSelectedTrack(1),

@@ -1,7 +1,7 @@
 import { theme } from '../theme';
 import type { PropSpec, Tpl } from '../types';
 import type { ClipEffect, ClipEffectValue, ClipFilters, ClipTransform, TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../editor/types';
-import { TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../editor/types';
+import { AUDIO_TRANSITION_ORDER, TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../editor/types';
 import { ALL_FX as FX_EFFECTS } from '../gl/fx/effects';
 const FX_IDS = Object.keys(FX_EFFECTS);
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -334,40 +334,53 @@ function ZoomControl({ zoom, onChange, getLocalFrame, fps, onSetKeyframe, onRemo
 
 // transition INTO the selected clip from the previous adjacent same-track clip
 // (source transition_item). Picking a type creates it; 无 removes it.
-function TransitionControl({ transition, fps, onAdd, onSet, onRemove }: {
+function TransitionControl({ transition, fps, onAdd, onSet, onRemove, audioMode }: {
   transition: TransitionItem | null;
   fps: number;
   onAdd: (type: TransitionType) => void;
   onSet: (patch: Partial<TransitionItem>) => void;
   onRemove: () => void;
+  /** true = only audio-cross-fade (source trAudioCrossFade) */
+  audioMode?: boolean;
 }) {
   const selStyle: React.CSSProperties = { background: theme.bg, color: theme.text, border: `1px solid ${theme.borderLight}`, borderRadius: 4, padding: '3px 5px' };
   const needsDir = transition && (transition.type === 'soft-wipe' || transition.type === 'whip-pan');
+  const options = audioMode ? AUDIO_TRANSITION_ORDER : TRANSITION_ORDER;
+  // When audioMode, ignore a visual transition on this clip (shouldn't exist)
+  const shown = transition && (audioMode
+    ? transition.type === 'audio-cross-fade'
+    : transition.type !== 'audio-cross-fade')
+    ? transition
+    : null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ fontSize: 10.5, color: theme.textDim, opacity: 0.8 }}>从前一个相邻片段进入本片段</div>
+      <div style={{ fontSize: 10.5, color: theme.textDim, opacity: 0.8 }}>
+        {audioMode
+          ? '与前一段相邻音频交叉淡化（出点渐弱 / 入点渐强）'
+          : '从前一个相邻片段进入本片段'}
+      </div>
       <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 8 }}>
         类型
-        <select value={transition?.type ?? ''} style={selStyle} onChange={(e) => {
+        <select value={shown?.type ?? ''} style={selStyle} onChange={(e) => {
           const v = e.target.value as TransitionType | '';
-          if (!v) { if (transition) onRemove(); }
-          else if (transition) onSet({ type: v });
+          if (!v) { if (shown) onRemove(); }
+          else if (shown) onSet({ type: v });
           else onAdd(v);
         }}>
           <option value="">无</option>
-          {TRANSITION_ORDER.map((k) => <option key={k} value={k}>{TRANSITION_LABELS[k]}</option>)}
+          {options.map((k) => <option key={k} value={k}>{TRANSITION_LABELS[k]}</option>)}
         </select>
       </label>
-      {transition && (
+      {shown && (
         <>
           <label style={{ fontSize: 11, color: theme.textDim }}>
-            <div style={{ marginBottom: 4 }}>时长 <span style={{ opacity: 0.7 }}>{(transition.durationInFrames / fps).toFixed(1)}s</span></div>
-            <input type="range" min={2} max={Math.max(4, fps * 2)} step={1} value={transition.durationInFrames} onChange={(e) => onSet({ durationInFrames: Number(e.target.value) })} style={{ width: '100%' }} />
+            <div style={{ marginBottom: 4 }}>时长 <span style={{ opacity: 0.7 }}>{(shown.durationInFrames / fps).toFixed(1)}s</span></div>
+            <input type="range" min={2} max={Math.max(4, fps * 2)} step={1} value={shown.durationInFrames} onChange={(e) => onSet({ durationInFrames: Number(e.target.value) })} style={{ width: '100%' }} />
           </label>
-          {needsDir && (
+          {needsDir && !audioMode && (
             <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 8 }}>
               方向
-              <select value={transition.direction ?? 'left'} style={selStyle} onChange={(e) => onSet({ direction: e.target.value as TransitionItem['direction'] })}>
+              <select value={shown.direction ?? 'left'} style={selStyle} onChange={(e) => onSet({ direction: e.target.value as TransitionItem['direction'] })}>
                 <option value="left">左</option><option value="right">右</option><option value="up">上</option><option value="down">下</option>
               </select>
             </label>
@@ -519,7 +532,11 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
             {isVisual && <><SectionLabel>滤镜</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} /></>}
             {(selectedItem.kind === 'video' || selectedItem.kind === 'image' || selectedItem.kind === 'gif') && <><SectionLabel>特效</SectionLabel><EffectsControl item={selectedItem} onChange={onItemEffectsChange} /></>}
             {isVisual && <><SectionLabel>缩放</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} getLocalFrame={() => Math.max(0, Math.min(selectedItem.durationInFrames - 1, getPlayhead() - selectedItem.startFrame))} fps={fps} onSetKeyframe={onSetReframeKeyframe} onRemoveKeyframe={onRemoveReframeKeyframe} /></>}
-            {isVisual && <><SectionLabel>转场</SectionLabel><TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} /></>}
+            {isVisual && <><SectionLabel>转场</SectionLabel><TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} audioMode={false} /></>}
+            {selectedItem.kind === 'audio' && (
+              <><SectionLabel>音频转场</SectionLabel>
+              <TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} audioMode /></>
+            )}
             <SectionLabel>淡入淡出</SectionLabel>
             <FadeControl item={selectedItem} fps={fps} onChange={onItemFadeChange} />
             {selectedItem.kind === 'solid' && (

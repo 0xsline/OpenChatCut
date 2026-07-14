@@ -5,8 +5,8 @@ import { GlTransition } from '../gl/GlTransition';
 import { ClipFx, firstGlEffect } from '../gl/ClipFx';
 import { keptSegments } from '../transcript/edit';
 import { zoomAt } from './zoom';
-import { CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
-import type { AspectFit, CssTransitionType, GlslTransitionType, TimelineItem, TimelineState, TransitionDirection, Watermark } from './types';
+import { CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
+import type { AspectFit, CssTransitionType, GlslTransitionType, TimelineItem, TimelineState, TransitionDirection, TransitionItem, Watermark } from './types';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
 // fadeIn, then 1→0 across fadeOut. Used for visual opacity + audio volume.
@@ -101,7 +101,44 @@ function audioSrc(item: TimelineItem): string {
   return item.denoisedSrc || item.src!;
 }
 
-function AudioClip({ item, fps, muted, gainAt }: { item: TimelineItem; fps: number; muted: boolean; gainAt: (frame: number) => number }) {
+/**
+ * Audio cross-fade (source trAudioCrossFade): at the seam, outgoing ramps 1→0
+ * over the last L frames of its clip; incoming ramps 0→1 over the first L frames.
+ */
+function audioCrossfadeMul(
+  item: TimelineItem,
+  localFrame: number,
+  transitions: TransitionItem[] | undefined,
+): number {
+  if (!transitions?.length) return 1;
+  let m = 1;
+  for (const t of transitions) {
+    if (t.enabled === false || !isAudioTransition(t.type)) continue;
+    const L = Math.max(1, t.durationInFrames);
+    if (t.outgoingItemId === item.id) {
+      // last L frames of outgoing: 1 → 0
+      const from = item.durationInFrames - L;
+      if (localFrame >= from) {
+        const p = Math.min(1, Math.max(0, (localFrame - from) / L));
+        m *= 1 - p;
+      }
+    }
+    if (t.incomingItemId === item.id) {
+      // first L frames of incoming: 0 → 1
+      if (localFrame < L) {
+        const p = Math.min(1, Math.max(0, localFrame / L));
+        m *= p;
+      }
+    }
+  }
+  return m;
+}
+
+function AudioClip({ item, fps, muted, gainAt, transitions }: {
+  item: TimelineItem; fps: number; muted: boolean;
+  gainAt: (frame: number) => number;
+  transitions?: TransitionItem[];
+}) {
   const vol = muted ? 0 : item.volume ?? 1;
   const src = audioSrc(item);
   if (item.transcript && item.transcript.length) {
@@ -114,7 +151,8 @@ function AudioClip({ item, fps, muted, gainAt }: { item: TimelineItem; fps: numb
           playOrder: item.transcriptPlayOrder,
         }).map((seg, k) => (
           <Sequence key={`${item.id}_${k}`} from={seg.fromFrame} durationInFrames={seg.durFrames} name={item.name}>
-            <Audio src={src} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame} volume={(f) => vol * gainAt(seg.fromFrame + f)} />
+            <Audio src={src} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame}
+              volume={(f) => vol * gainAt(seg.fromFrame + f) * audioCrossfadeMul(item, seg.fromFrame - item.startFrame + f, transitions)} />
           </Sequence>
         ))}
       </>
@@ -123,7 +161,10 @@ function AudioClip({ item, fps, muted, gainAt }: { item: TimelineItem; fps: numb
   return (
     <Sequence from={item.startFrame} durationInFrames={item.durationInFrames} name={item.name}>
       <Audio src={src} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-        volume={(f) => vol * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
+        volume={(f) => vol
+          * gainAt(item.startFrame + f)
+          * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)
+          * audioCrossfadeMul(item, f, transitions)} />
     </Sequence>
   );
 }
@@ -278,12 +319,13 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
   const byId = new Map(state.items.map((it) => [it.id, it]));
   const texturable = (it?: TimelineItem) => !!it && isRasterMediaKind(it.kind) && it.kind !== 'svg';
   const enabledTransitions = (state.transitions ?? []).filter((t) => t.enabled !== false);
+  const visualTransitions = enabledTransitions.filter((t) => !isAudioTransition(t.type));
   const entranceOf = new Map<string, { type: CssTransitionType; L: number; dir: TransitionDirection }>();
   const extendBefore = new Map<string, number>();
   const extendAfter = new Map<string, number>();
   interface GlWindow { key: string; type: GlslTransitionType; direction: TransitionDirection; from: number; L: number; outgoing: TimelineItem; incoming: TimelineItem; trimOut: number; trimIn: number }
   const glWindows: GlWindow[] = [];
-  for (const t of enabledTransitions) {
+  for (const t of visualTransitions) {
     const half = Math.floor(t.durationInFrames / 2);
     extendBefore.set(t.incomingItemId, half);
     extendAfter.set(t.outgoingItemId, t.durationInFrames - half);
@@ -345,7 +387,14 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
         </Sequence>
       ))}
       {audio.map((item) => (
-        <AudioClip key={item.id} item={item} fps={state.fps} muted={isMuted(item.track)} gainAt={(frame) => duckGain(item.track, frame)} />
+        <AudioClip
+          key={item.id}
+          item={item}
+          fps={state.fps}
+          muted={isMuted(item.track)}
+          gainAt={(frame) => duckGain(item.track, frame)}
+          transitions={state.transitions}
+        />
       ))}
       {state.captions?.enabled && <CaptionsLayer captions={state.captions} items={state.items} />}
       {state.watermark?.enabled && state.watermark.text

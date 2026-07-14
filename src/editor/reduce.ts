@@ -2,7 +2,7 @@
 // (`projectReduce`, routing per-timeline actions to the active timeline) + the
 // undo/redo history wrapper. The command set + React hook live in store.ts.
 import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, Marker, MediaAsset, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
-import { activeTimeline, DEFAULT_WATERMARK, timelineTrackIds, trackEnd, trackKind } from './types';
+import { activeTimeline, DEFAULT_WATERMARK, isAudioTransition, selectedIdsOf, timelineTrackIds, trackEnd, trackKind } from './types';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
 import { editedFrames, fillerIndices } from '../transcript/edit';
@@ -59,7 +59,9 @@ export type Action =
   | { type: 'renameSpeaker'; id: string; from: string; to: string }
   /** AI Voice Isolation attach/clear (source isolate_voice → denoisedAudioAssetId) */
   | { type: 'setItemDenoise'; id: string; denoisedSrc: string | null; strength?: number | null }
-  | { type: 'select'; id: string | null }
+  | { type: 'select'; id: string | null; mode?: 'replace' | 'toggle' | 'add' }
+  | { type: 'selectMany'; ids: string[] }
+  | { type: 'selectAll' }
   | { type: 'setFullState'; state: TimelineState };
 
 // ── project-level actions (multi-timeline; source manage_timelines) ────────
@@ -121,7 +123,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         ? s.items.map((it) => (it.track === item.track && it.startFrame >= startFrame
             ? { ...it, startFrame: it.startFrame + item.durationInFrames } : it))
         : s.items;
-      return { ...s, items: [...base, item], selectedId: item.id };
+      return { ...s, items: [...base, item], selectedId: item.id, selectedIds: [item.id] };
     }
     case 'updateProps':
       return {
@@ -243,16 +245,27 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       };
     case 'addTransition': {
       const inItem = s.items.find((x) => x.id === a.incomingItemId);
-      if (!inItem || inItem.kind === 'audio') return s;
-      // outgoing = the same-track visual clip whose end sits at (adjacent to) the incoming's start
+      if (!inItem) return s;
+      const audioTr = isAudioTransition(a.transType);
+      // audio-cross-fade only on audio clips; visual transitions never on pure audio
+      if (audioTr) {
+        if (inItem.kind !== 'audio') return s;
+      } else if (inItem.kind === 'audio') {
+        return s;
+      }
+      // outgoing = same-track clip whose end sits adjacent to the incoming's start
       const prior = s.items.filter(
-        (x) => x.id !== inItem.id && x.track === inItem.track && x.kind !== 'audio' && x.startFrame + x.durationInFrames <= inItem.startFrame + 2,
+        (x) => x.id !== inItem.id
+          && x.track === inItem.track
+          && (audioTr ? x.kind === 'audio' : x.kind !== 'audio')
+          && x.startFrame + x.durationInFrames <= inItem.startFrame + 2,
       );
       if (!prior.length) return s;
       const out = prior.reduce((best, x) => (x.startFrame + x.durationInFrames > best.startFrame + best.durationInFrames ? x : best));
       if (inItem.startFrame - (out.startFrame + out.durationInFrames) > 2) return s; // must be adjacent
       const maxL = Math.max(2, Math.min(out.durationInFrames, inItem.durationInFrames));
-      const L = Math.max(2, Math.min(a.durationInFrames ?? Math.min(30, maxL), maxL));
+      const defaultL = audioTr ? Math.min(15, maxL) : Math.min(30, maxL);
+      const L = Math.max(2, Math.min(a.durationInFrames ?? defaultL, maxL));
       const t: TransitionItem = { id: a.id, type: a.transType, durationInFrames: L, outgoingItemId: out.id, incomingItemId: inItem.id, trackId: inItem.track, enabled: true };
       const others = (s.transitions ?? []).filter((x) => x.incomingItemId !== inItem.id); // one in-transition per clip
       return { ...s, transitions: [...others, t] };
@@ -285,10 +298,10 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       const it = s.items.find((x) => x.id === a.id);
       if (!it || s.tracks?.[it.track]?.locked) return s;
       const copy: TimelineItem = { ...it, id: a.newId, props: { ...it.props }, startFrame: trackEnd(s, it.track) };
-      return { ...s, items: [...s.items, copy], selectedId: copy.id };
+      return { ...s, items: [...s.items, copy], selectedId: copy.id, selectedIds: [copy.id] };
     }
     case 'clear':
-      return { ...s, items: [], selectedId: null };
+      return { ...s, items: [], selectedId: null, selectedIds: [] };
     case 'setCanvas':
       return { ...s, width: a.width, height: a.height, fit: a.fit ?? s.fit ?? 'contain' };
     case 'toggleTrack': {
@@ -563,12 +576,14 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         .filter((it) => it.id !== a.id)
         .map((it) => (a.ripple && gone && it.track === gone.track && it.startFrame >= end
           ? { ...it, startFrame: Math.max(0, it.startFrame - gone.durationInFrames) } : it));
+      const nextSel = selectedIdsOf(s).filter((id) => id !== a.id);
       return {
         ...s,
         items: kept,
         // drop transitions that referenced the removed clip
         transitions: (s.transitions ?? []).filter((t) => t.incomingItemId !== a.id && t.outgoingItemId !== a.id),
-        selectedId: s.selectedId === a.id ? null : s.selectedId,
+        selectedIds: nextSel,
+        selectedId: nextSel[nextSel.length - 1] ?? null,
       };
     }
     case 'split': {
@@ -580,8 +595,30 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       const right = { ...it, id: a.newId, startFrame: a.atFrame, durationInFrames: it.durationInFrames - cut, srcInFrame: (it.srcInFrame ?? 0) + cut };
       return { ...s, items: s.items.flatMap((x) => (x.id === a.id ? [left, right] : [x])) };
     }
-    case 'select':
-      return { ...s, selectedId: a.id };
+    case 'select': {
+      if (a.id === null) return { ...s, selectedId: null, selectedIds: [] };
+      const mode = a.mode ?? 'replace';
+      let ids = selectedIdsOf(s);
+      if (mode === 'replace') ids = [a.id];
+      else if (mode === 'toggle') {
+        ids = ids.includes(a.id) ? ids.filter((id) => id !== a.id) : [...ids, a.id];
+      } else if (mode === 'add') {
+        if (!ids.includes(a.id)) ids = [...ids, a.id];
+      }
+      // drop ids that no longer exist
+      const live = new Set(s.items.map((it) => it.id));
+      ids = ids.filter((id) => live.has(id));
+      return { ...s, selectedIds: ids, selectedId: ids[ids.length - 1] ?? null };
+    }
+    case 'selectMany': {
+      const live = new Set(s.items.map((it) => it.id));
+      const ids = a.ids.filter((id) => live.has(id));
+      return { ...s, selectedIds: ids, selectedId: ids[ids.length - 1] ?? null };
+    }
+    case 'selectAll': {
+      const ids = s.items.map((it) => it.id);
+      return { ...s, selectedIds: ids, selectedId: ids[ids.length - 1] ?? null };
+    }
     case 'setFullState':
       return a.state; // atomic commit of a proposal's result (one history step)
     default:

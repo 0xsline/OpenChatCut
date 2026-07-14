@@ -99,7 +99,12 @@ export interface EditorCommands {
   renameSpeaker: (id: string, from: string, to: string) => void;
   /** AI 人声隔离:挂上/清除 denoisedSrc（源 isolate_voice apply/clear） */
   setItemDenoise: (id: string, denoisedSrc: string | null, strength?: number | null) => void;
-  selectItem: (id: string | null) => void;
+  /** Select one clip. mode: replace (default) | toggle (⌘/Ctrl) | add. */
+  selectItem: (id: string | null, opts?: { mode?: 'replace' | 'toggle' | 'add' }) => void;
+  /** Replace multi-selection (e.g. shift-range). */
+  selectItems: (ids: string[]) => void;
+  /** Select every clip on the active timeline (⌘A). */
+  selectAll: () => void;
   /** atomically replace the whole timeline (proposal apply → one undo step) */
   applyState: (state: TimelineState) => void;
   /** atomically replace the whole project (project-level proposal apply → one undo step) */
@@ -366,7 +371,9 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       fixTranscriptWord: (id, wordIndex, text) => dispatch({ type: 'fixTranscriptWord', id, wordIndex, text }),
       renameSpeaker: (id, from, to) => dispatch({ type: 'renameSpeaker', id, from, to }),
       setItemDenoise: (id, denoisedSrc, strength) => dispatch({ type: 'setItemDenoise', id, denoisedSrc, strength }),
-      selectItem: (id) => dispatch({ type: 'select', id }),
+      selectItem: (id, opts) => dispatch({ type: 'select', id, mode: opts?.mode }),
+      selectItems: (ids) => dispatch({ type: 'selectMany', ids }),
+      selectAll: () => dispatch({ type: 'selectAll' }),
       applyState: (state) => dispatch({ type: 'setFullState', state }),
       undo: () => dispatch({ type: 'undo' }),
       redo: () => dispatch({ type: 'redo' }),

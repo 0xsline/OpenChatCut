@@ -3,7 +3,7 @@ import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import type { Tpl } from '../types';
 import type { GlslTransitionType, MediaAsset, MediaFolder, TimelineItem, TransitionType, ZoomShape } from '../editor/types';
-import { TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../editor/types';
+import { AUDIO_TRANSITION_ORDER, TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../editor/types';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
 import type { AudioAsset } from '../audio/library';
@@ -22,9 +22,14 @@ import { AudioFxBrowser } from './AudioFxBrowser';
 // camera-log transfer functions (source ships them as real .cube data on its
 // CDN; we don't fetch its backend). Apply like an fx effect.
 const LUT_ITEMS: ResourceItem[] = LUT_IDS.map((id) => ({ id, name: LUT_EFFECTS[id].name }));
-/** 画面转场 — 12 source video GLSL transitions in catalog order */
+/** 画面转场 — source video GLSL transitions in catalog order */
 const TRANSITION_ITEMS: ResourceItem[] = TRANSITION_ORDER.map((t) => ({
   id: t, name: TRANSITION_LABELS[t],
+}));
+/** 音频转场 — source trAudioCrossFade */
+const AUDIO_TRANSITION_ITEMS: ResourceItem[] = AUDIO_TRANSITION_ORDER.map((t) => ({
+  id: t, name: TRANSITION_LABELS[t],
+  badge: '音频',
 }));
 const FX_ITEMS: ResourceItem[] = FX_IDS.map((id) => ({ id, name: FX_EFFECTS[id].name }));
 const ZOOM_ITEMS: ResourceItem[] = ZOOM_SHAPE_ORDER.map((s) => ({ id: s, name: ZOOM_SHAPE_LABELS[s] }));
@@ -125,12 +130,38 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
           <SoundBrowser fps={fps} onAdd={onAddAudio} />
         ) : subTab === '转场' ? (
           <div className="cc-transition-browser">
+            {/* 音频交叉淡化 — source trAudioCrossFade；选中音频片段时高亮可用 */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, color: theme.textDim, margin: '0 4px 8px', letterSpacing: 0.3 }}>
+                音频转场 · Audio Cross Fade
+              </div>
+              <ResourceBrowser
+                layout="grid"
+                dragKind="transition"
+                hint="点击应用到选中音频（需同轨前一段相邻音频）。出点渐弱、入点渐强。"
+                items={AUDIO_TRANSITION_ITEMS}
+                applicable={selKind === 'audio'}
+                onApply={(id) => onApplyTransition(id as TransitionType)}
+                renderThumb={() => (
+                  <div style={{
+                    width: '100%', height: '100%', minHeight: 56, display: 'grid', placeItems: 'center',
+                    background: 'linear-gradient(90deg, #3a8f5c 0%, #2a2a2a 45%, #3a8f5c 100%)',
+                    borderRadius: 6, fontSize: 11, color: '#e8e8e8', fontWeight: 600,
+                  }}>
+                    交叉淡化
+                  </div>
+                )}
+              />
+            </div>
+            <div style={{ fontSize: 11, color: theme.textDim, margin: '0 4px 8px', letterSpacing: 0.3 }}>
+              画面转场 · Video
+            </div>
             <ResourceBrowser
               layout="grid"
               dragKind="transition"
-              hint="悬停预览 · 点击应用到选中片段（入场，需前一个相邻同轨片段）"
+              hint="悬停预览 · 点击应用到选中画面片段（入场，需前一个相邻同轨片段）"
               items={TRANSITION_ITEMS}
-              applicable={selectedItem != null}
+              applicable={selectedItem != null && selKind !== 'audio'}
               onApply={(id) => onApplyTransition(id as TransitionType)}
               renderThumb={(id, hovered) => (
                 <TransitionThumb type={id as GlslTransitionType} playing={hovered} />
