@@ -208,7 +208,7 @@
       ["manage_timelines agent 工具", "done", "单工具 action∈list/create/duplicate/switch/update/delete，ratio/宽高/fit/hidden/activate/批量，全走 propose→apply（草稿引擎升工程级，切换后片段自动路由）；真 agent e2e：复制+9:16 提案→应用→一次撤销原子回滚。源站 jR/YP 白名单", "P1", "claude"],
       ["轨道管理（增删/序/角色/锁隐静/收紧）", "partial", "隐藏/静音已做（👁/🔊→tracks[TrackId]，预览+导出生效）；增删/排序/角色/锁定/收紧待补。源站 edit_track", "P1"],
       ["刀片(B)/修剪(N)/吸附", "done", "刀片 ✂ / B 键在播放头切分（切口 srcInFrame 递进，无缝）；拖拽/裁剪吸附到 0/播放头/邻近片段边（7px + 蓝色吸附线）", "P1"],
-      ["Ripple 编辑（插入/覆盖）", "todo", "插入模式后续片段整体位移合缝。源站 edit_item ripple", "P1"],
+      ["Ripple 编辑（插入/覆盖）", "partial", "reduce add/remove 加 ripple（纯状态可撤销，ripple.check 断言）：<b>波纹删除</b>（删片段后同轨其后片段左移合缝）→右键「波纹删除（合缝）」+⇧⌫；<b>插入模式</b>（新片段推后同轨腾位）→工具栏 insert 切换，加文字据此插入。<b>待补</b>：把插入模式接到库素材「添加到时间线」+拖拽落点+粘贴。源站 edit_item ripple", "P1", "claude"],
       ["片段变换（缩放/位置/旋转）", "done", "ClipTransform{scale,x,y,rotation}→CSS transform（ClipWrapper，translate%→rotate→scale）；属性面板缩放/水平/垂直/旋转滑块。导出验证 scale0.5+x25%。源站 缩放 tab", "P1"],
       ["动画/关键帧（源真相：无通用 K 帧）", "done", "侦察发现源站<b>没有</b>通用逐属性关键帧(item.keyframes/add_keyframe 都不存在,PRD 那句是未证实推测)。真动画=①MG 模板 interpolate/spring/Easing.bezier(已做)②<b>builtin:zoom</b> 参数化动画(shape 曲线 hold/punch/slow-push/instant + magnification + 焦点,zoom.ts 照抄源 A2/uPe 曲线数学 + zoom.check.ts 断言)③<b>ReframeCurveV1</b> 稀疏关键帧(唯一真 K 帧模型:{frame,focalPointX,focalPointY,magnification},◆在播放头打点)。属性面板缩放动画区。导出验证(slow-push 1→2×;reframe 曲线焦点 0.15→0.85 边推边缩 1.2→2.5×)。源站 builtin:zoom/ReframeCurveV1", "P1"],
       ["更多媒体类型 image/gif/svg/text/solid", "partial", "image + video + text 已做（<code>MediaFill</code>/<code>TextLayer</code>，text 含内容/字号/色/对齐/粗细 + T＋ 按钮）；gif/svg/solid 待补。源站按类型拆表"],
