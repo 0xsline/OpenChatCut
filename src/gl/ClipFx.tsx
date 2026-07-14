@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { AbsoluteFill, Img, Video, continueRender, delayRender } from 'remotion';
+import { AbsoluteFill, Img, Video, continueRender, delayRender, useCurrentFrame, useVideoConfig } from 'remotion';
 import { createGlRuntime, type GlRuntime } from './runtime';
 import { FX_EFFECTS, fxUniforms } from './fx/effects';
 import type { AspectFit, TimelineItem } from '../editor/types';
@@ -46,6 +46,8 @@ export function firstGlEffect(item: TimelineItem) {
 }
 
 export function ClipFx({ item, fit, width, height }: ClipFxProps) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const runtimeRef = useRef<GlRuntime | null>(null);
   const elRef = useRef<MediaEl | null>(null);
@@ -74,7 +76,9 @@ export function ClipFx({ item, fit, width, height }: ClipFxProps) {
         const ctx = staging.getContext('2d');
         if (!ctx) throw new Error('2d context unavailable');
         drawFit(ctx, el, fit);
-        runtimeRef.current.renderFx(active.def.frag, staging, fxUniforms(active.def, active.fx.overrides));
+        // u_time (seconds, clip-local) drives animated fx (CRT wobble/noise,
+        // camera shake); static fx ignore it.
+        runtimeRef.current.renderFx(active.def.frag, staging, { ...fxUniforms(active.def, active.fx.overrides), u_time: frame / fps });
       } catch (e) {
         // WebGL unavailable / compile failure → leave canvas empty; the source
         // clip still shows nothing worse than a transparent frame.
@@ -85,8 +89,8 @@ export function ClipFx({ item, fit, width, height }: ClipFxProps) {
     };
     tick();
     return () => { cancelAnimationFrame(raf); finish(); };
-    // re-run whenever the effect params change; item identity covers overrides.
-  }, [active, fit, staging, item]);
+    // re-run each frame (animated fx need u_time) + when params/layout change.
+  }, [active, fit, staging, item, frame, fps]);
 
   useEffect(() => () => { runtimeRef.current?.dispose(); runtimeRef.current = null; }, []);
 

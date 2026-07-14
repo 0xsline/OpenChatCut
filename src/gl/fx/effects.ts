@@ -3,6 +3,8 @@ import localMosaicFrag from './local-mosaic.frag?raw';
 import magnifyFrag from './magnify.frag?raw';
 import rectMaskFrag from './rect-mask.frag?raw';
 import circleMaskFrag from './circle-mask.frag?raw';
+import crtFrag from './crt.frag?raw';
+import cameraShakeFrag from './camera-shake.frag?raw';
 import type { FxDef } from './uniforms';
 
 // invert is a boolean in the source (helper oJ); modeled here as a 0/1 slider.
@@ -84,6 +86,32 @@ export const FX_EFFECTS: Record<string, FxDef> = {
       { key: 'radius', label: '半径', default: 0.3, min: 0, max: 1, step: 0.01 },
       { key: 'feather', label: '羽化', default: 2, min: 0, max: 200, step: 1 },
       INVERT,
+    ],
+  },
+  'builtin:fx-crt': {
+    id: 'builtin:fx-crt',
+    name: 'CRT 复古',
+    desc: '模拟 CRT 显像管：扫描线/屏幕弯曲/RGB 偏移/噪点/暗角。动画。源站 builtin:fx-crt',
+    frag: crtFrag,
+    props: [
+      { key: 'scanlineIntensity', label: '扫描线', default: 0.4, min: 0, max: 1, step: 0.01 },
+      { key: 'curvature', label: '弯曲', default: 0.15, min: 0, max: 1, step: 0.01 },
+      { key: 'noiseAmount', label: '噪点', default: 0.05, min: 0, max: 1, step: 0.01 },
+      { key: 'rgbShift', label: 'RGB 偏移', default: 0.002, min: 0, max: 0.05, step: 0.001 },
+      { key: 'brightness', label: '亮度', default: 1.1, min: 0, max: 3, step: 0.05 },
+    ],
+  },
+  'builtin:fx-shake': {
+    id: 'builtin:fx-shake',
+    name: '手持镜头抖动',
+    desc: 'fbm 噪声抖动 + 旋转/缩放/呼吸，模拟手持相机运动。动画。源站 builtin:fx-shake',
+    frag: cameraShakeFrag,
+    props: [
+      { key: 'strength', label: '强度', default: 1.2, min: 0, max: 5, step: 0.1 },
+      { key: 'speed', label: '速度', default: 1.8, min: 0, max: 10, step: 0.1 },
+      { key: 'zoom', label: '缩放', default: 1.15, min: 1, max: 2, step: 0.01 },
+      { key: 'rotation', label: '旋转', default: 0.9, min: 0, max: 5, step: 0.1 },
+      { key: 'breathe', label: '呼吸', default: 0.7, min: 0, max: 3, step: 0.1 },
     ],
   },
 };
