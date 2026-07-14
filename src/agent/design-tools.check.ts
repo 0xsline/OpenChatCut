@@ -20,9 +20,12 @@ assert.strictEqual(list.length, DESIGN_STYLE_PRESETS.length);
 // get is empty before anything is applied
 assert.deepStrictEqual(await execDesignTool('manage_design_style', { action: 'get' }, ctx), { designStyle: null });
 
-// apply a preset → project brand is set
-await execDesignTool('manage_design_style', { action: 'apply', presetId: 'noir-gold' }, ctx);
-assert.strictEqual(draft.getDoc().designStyle?.colors.find((c) => c.role === 'background')?.value, '#070707');
+// apply a real catalog preset → project brand is set (uses source ids/values)
+await execDesignTool('manage_design_style', { action: 'apply', presetId: DESIGN_STYLE_PRESETS[0].id }, ctx);
+assert.strictEqual(
+  draft.getDoc().designStyle?.colors.find((c) => c.role === 'background')?.value,
+  DESIGN_STYLE_PRESETS[0].style.colors.find((c) => c.role === 'background')?.value,
+);
 
 // apply a custom designSpec in LEGACY object form → normalized to arrays (source bM/yM/xM)
 await execDesignTool('manage_design_style', {
@@ -47,11 +50,19 @@ await execDesignTool('manage_design_style', { action: 'update', patch: JSON.stri
 assert.strictEqual(draft.getDoc().designStyle?.styleGuide, 'updated');
 assert.strictEqual(draft.getDoc().designStyle?.colors.find((c) => c.role === 'primary')?.value, '#112233', 'update keeps other fields');
 
-// invalid role is dropped by the normalizer
+// FREE-FORM roles are KEPT (source catalog uses "accent copper", "Chinese heading", …).
+// Only blank role/value entries are dropped.
 await execDesignTool('manage_design_style', {
-  action: 'apply', designSpec: JSON.stringify({ colors: [{ role: 'bogus', value: '#000' }, { role: 'text', value: '#eee' }] }),
+  action: 'apply', designSpec: JSON.stringify({ colors: [
+    { role: 'accent copper', value: '#D4763A' },
+    { role: 'text secondary', value: 'rgba(255,255,255,0.7)' },
+    { role: '', value: '#000' }, // blank role → dropped
+  ], fonts: [{ role: 'Chinese heading', family: 'HarmonyOS Sans' }] }),
 }, ctx);
-assert.deepStrictEqual(draft.getDoc().designStyle?.colors.map((c) => c.role), ['text']);
+const free = draft.getDoc().designStyle!;
+assert.deepStrictEqual(free.colors.map((c) => c.role), ['accent copper', 'text secondary']);
+assert.strictEqual(free.colors.find((c) => c.role === 'text secondary')?.value, 'rgba(255,255,255,0.7)');
+assert.strictEqual(free.fonts[0]?.role, 'Chinese heading');
 
 // empty spec is rejected
 assert.ok('error' in (await execDesignTool('manage_design_style', { action: 'apply', designSpec: '{}' }, ctx) as object));

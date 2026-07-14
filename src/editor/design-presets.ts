@@ -1,8 +1,8 @@
 // Built-in design-style presets — the local analog of the source
-// `/api/design-styles/owned` library (manage_design_style, action="list").
-// Each preset is a full DesignStyle (source designSpec: colors[role,value] +
-// fonts[family,role] + styleGuide). Fonts are web-safe / caption-preset families
-// so they render without extra loading.
+// `router.chatcut.io/public-api/design-styles/catalog` (24 styles). These entries
+// are REAL source data captured from the live catalog (names, colors, fonts,
+// motion styleGuides verbatim), not invented — roles are free-form, exactly as the
+// source ships them ("accent copper", "text secondary", "Chinese heading", …).
 import type { DesignStyle } from './types';
 
 export interface DesignPreset {
@@ -13,75 +13,88 @@ export interface DesignPreset {
 
 export const DESIGN_STYLE_PRESETS: DesignPreset[] = [
   {
-    id: 'noir-gold',
-    name: '极简黑金',
+    id: '53417178-6788-5241-b0d6-8925371029e0',
+    name: 'Terracotta Editorial',
     style: {
       colors: [
-        { role: 'primary', value: '#E6AC42' },
-        { role: 'secondary', value: '#8F8F8F' },
-        { role: 'accent', value: '#F0562E' },
-        { role: 'background', value: '#070707' },
-        { role: 'text', value: '#F5EFE3' },
-      ],
-      fonts: [
-        { family: 'Playfair Display', role: 'heading' },
-        { family: 'Inter', role: 'body' },
-      ],
-      styleGuide: '高级、克制。大标题用衬线，正文干净无衬线;金色只做点睛,不铺满。',
-    },
-  },
-  {
-    id: 'vivid-pop',
-    name: '活力撞色',
-    style: {
-      colors: [
-        { role: 'primary', value: '#FF2D78' },
-        { role: 'secondary', value: '#00E83C' },
-        { role: 'accent', value: '#FFEC1A' },
-        { role: 'background', value: '#0A0A0A' },
+        { role: 'background', value: '#A03B15' },
+        { role: 'accent copper', value: '#D4763A' },
+        { role: 'accent amber', value: '#E8A54B' },
+        { role: 'accent tan', value: '#C9956B' },
         { role: 'text', value: '#FFFFFF' },
+        { role: 'text secondary', value: 'rgba(255,255,255,0.7)' },
       ],
       fonts: [
-        { family: 'Bowlby One', role: 'heading' },
-        { family: 'Mulish', role: 'body' },
+        { role: 'heading', family: 'Montserrat' },
+        { role: 'accent', family: 'Playfair Display' },
+        { role: 'Chinese', family: 'HarmonyOS Sans' },
       ],
-      styleGuide: '短视频/口播风。粗描边大字、饱和撞色、节奏快;适合 TikTok 竖屏。',
+      styleGuide:
+        '暖橘职场编辑风:陶土背景 + 铜/琥珀/棕褐点缀 + 白字,Montserrat 结构 + Playfair 斜体强调,双栏布局。' +
+        'MOTION: 入场 spring(damping:28, stiffness:60, mass:1.4) 沉稳落定;柱状 spring(damping:30, stiffness:50, mass:1.6) 每根错开 +12f;小元素 spring(damping:18, stiffness:140, mass:0.7)。整体克制、有重量。',
     },
   },
   {
-    id: 'soft-magazine',
-    name: '柔和杂志',
+    id: '1be3c6ae-bf35-58a4-b8d3-9d50d6dd49ac',
+    name: 'Retro Duotone Print',
     style: {
       colors: [
-        { role: 'primary', value: '#B64A3B' },
-        { role: 'secondary', value: '#24120A' },
-        { role: 'accent', value: '#F6C239' },
-        { role: 'background', value: '#FFF1DA' },
-        { role: 'text', value: '#24120A' },
+        { role: 'background', value: '#F2EDE4' },
+        { role: 'primary', value: '#1E3A6E' },
+        { role: 'accent', value: '#E05030' },
       ],
       fonts: [
-        { family: 'Fraunces', role: 'heading' },
-        { family: 'Newsreader', role: 'body' },
+        { role: 'heading', family: 'Anton' },
+        { role: 'body', family: 'Inter' },
+        { role: 'quote', family: 'Dancing Script' },
+        { role: 'Chinese heading', family: 'Pangmen Zhengdao Biaoti Ti' },
+        { role: 'Chinese body', family: 'OPPO Sans' },
+        { role: 'Chinese quote', family: 'Huxiaobo Nanshen Ti' },
       ],
-      styleGuide: '暖色纸感、编辑排版。留白多、字距舒展;像纸媒专题。',
+      styleGuide: '复古双色印刷风:暖奶油纸底、严格深蓝与红橙双色、Anton 展示字 + Inter 正文 + Dancing Script 引语。',
     },
   },
   {
-    id: 'tech-cool',
-    name: '科技冷调',
+    id: '270e88b2-7952-5755-bcb4-f13d29edfe8d',
+    name: 'Highlighter Notebook',
     style: {
       colors: [
-        { role: 'primary', value: '#4DFFDF' },
-        { role: 'secondary', value: '#6EE7F9' },
-        { role: 'accent', value: '#A3FF12' },
-        { role: 'background', value: '#061016' },
-        { role: 'text', value: '#EAFBFF' },
+        { role: 'background', value: '#B8D8D0' },
+        { role: 'paper', value: '#FFFFFF' },
+        { role: 'accent', value: '#FFD700' },
+        { role: 'text', value: '#2A2A2A' },
+        { role: 'grid', value: '#E5E7EB' },
+        { role: 'sticky', value: '#FEF08A' },
       ],
       fonts: [
-        { family: 'Unbounded', role: 'heading' },
-        { family: 'Sora', role: 'body' },
+        { role: 'heading', family: 'Caveat' },
+        { role: 'body', family: 'Inter' },
+        { role: 'Chinese heading', family: 'Douyin Meihao Ti' },
+        { role: 'Chinese body', family: 'OPPO Sans' },
       ],
-      styleGuide: '产品/科技发布风。深底、青绿霓虹、几何无衬线;发光点缀,信息密度高。',
+      styleGuide: '笔记学习风:淡青纸面、荧光笔黄强调、方格纸底 + 便利贴,手写体标题 Caveat。',
+    },
+  },
+  {
+    id: '15480d1f-0910-592a-a45a-3b4f4467d09f',
+    name: 'Soft Organic Gradient',
+    style: {
+      colors: [
+        { role: 'background', value: '#FFFDF7' },
+        { role: 'text', value: '#1A1A1A' },
+        { role: 'blob warm', value: '#FFB885' },
+        { role: 'blob green', value: '#C8D5B9' },
+        { role: 'chart accent 1', value: '#ffbca6' },
+        { role: 'chart accent 2', value: '#c2d5c4' },
+        { role: 'chart accent 3', value: '#f7e2a9' },
+      ],
+      fonts: [
+        { role: 'heading', family: 'Playfair Display' },
+        { role: 'body', family: 'Inter' },
+        { role: 'Chinese heading', family: 'LXGW WenKai' },
+        { role: 'Chinese body', family: 'Noto Sans SC' },
+      ],
+      styleGuide: '柔和有机渐变风:米白背景、暖橘/柔绿有机色块、Playfair 标题 + Inter 正文,气质温和舒展。',
     },
   },
 ];

@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { theme } from '../theme';
 import { Icon } from './icons';
 import {
-  COLOR_ROLES, FONT_ROLES, colorOf, fontOf,
-  type ColorRole, type DesignStyle, type FontRole,
+  COLOR_ROLES, FONT_ROLES, colorOf, fontOf, type DesignStyle,
 } from '../editor/types';
 import { DESIGN_STYLE_PRESETS } from '../editor/design-presets';
 
@@ -13,29 +12,48 @@ interface DesignStylePanelProps {
   onClose: () => void;
 }
 
-const COLOR_LABEL: Record<ColorRole, string> = {
+// zh labels for the canonical roles; any other (free-form) role shows its own name.
+const COLOR_LABEL: Record<string, string> = {
   primary: '主色', secondary: '辅色', accent: '强调色', background: '背景', text: '文字',
 };
-const FONT_LABEL: Record<FontRole, string> = { heading: '标题字体', body: '正文字体' };
+const FONT_LABEL: Record<string, string> = { heading: '标题字体', body: '正文字体' };
 
 const EMPTY: DesignStyle = { colors: [], fonts: [] };
+
+/** ordered unique union: everything in `first`, then items of `rest` not already present. */
+const union = (first: string[], rest: readonly string[]): string[] => {
+  const seen = new Set(first);
+  return [...first, ...rest.filter((r) => !seen.has(r))];
+};
+
+/** first defined color among the preferred roles. */
+const pick = (s: DesignStyle, roles: string[]): string | undefined => {
+  for (const r of roles) { const v = colorOf(s, r); if (v) return v; }
+  return undefined;
+};
 
 /** 设计风格编辑器（source manage_design_style / aM 弹窗）——预设库 + 配色/字体/品牌指引，
  * 本地草稿即时预览,「应用到工程」一次性提交(单条历史)。 */
 export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelProps) {
   const [draft, setDraft] = useState<DesignStyle>(style ?? EMPTY);
 
-  const setColor = (role: ColorRole, value: string) =>
+  const setColor = (role: string, value: string) =>
     setDraft((d) => ({ ...d, colors: upsert(d.colors, role, value, (v) => ({ role, value: v })) }));
-  const setFont = (role: FontRole, family: string) =>
+  const setFont = (role: string, family: string) =>
     setDraft((d) => ({ ...d, fonts: upsert(d.fonts, role, family, (f) => ({ family: f, role })) }));
 
-  const bg = colorOf(draft, 'background') ?? theme.panel;
+  // roles are free-form (source uses "accent copper", "Chinese heading", …) — show
+  // every role the style actually has, then the canonical ones it's missing.
+  const colorRoles = union(draft.colors.map((c) => c.role), COLOR_ROLES);
+  const fontRoles = union(draft.fonts.map((f) => f.role), FONT_ROLES);
+
+  // preview: fall back through likely roles so real presets (no "primary") still render
+  const bg = colorOf(draft, 'background') ?? draft.colors[0]?.value ?? theme.panel;
   const fg = colorOf(draft, 'text') ?? theme.text;
-  const primary = colorOf(draft, 'primary') ?? theme.gold;
-  const accent = colorOf(draft, 'accent') ?? theme.accent;
-  const heading = fontOf(draft, 'heading') ?? 'inherit';
-  const body = fontOf(draft, 'body') ?? 'inherit';
+  const primary = pick(draft, ['primary', 'accent']) ?? draft.colors[0]?.value ?? theme.gold;
+  const accent = pick(draft, ['accent', 'primary']) ?? draft.colors.find((c) => c.role.includes('accent'))?.value ?? theme.accent;
+  const heading = fontOf(draft, 'heading') ?? draft.fonts[0]?.family ?? 'inherit';
+  const body = fontOf(draft, 'body') ?? draft.fonts[1]?.family ?? 'inherit';
 
   return (
     <div onClick={onClose} style={backdrop}>
@@ -64,17 +82,17 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
             </div>
           </section>
 
-          {/* colors */}
+          {/* colors (roles are free-form; hex swatch only shows for #hex values) */}
           <section>
             <div style={sectionTitle}>配色</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
-              {COLOR_ROLES.map((role) => {
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
+              {colorRoles.map((role) => {
                 const value = colorOf(draft, role) ?? '';
                 return (
                   <label key={role} style={colorRow}>
-                    <input type="color" value={value || '#000000'} onChange={(e) => setColor(role, e.target.value)}
-                      style={{ width: 26, height: 26, padding: 0, border: 'none', background: 'none', cursor: 'pointer', flexShrink: 0 }} />
-                    <span style={{ fontSize: 11.5, color: theme.textDim, width: 42, flexShrink: 0 }}>{COLOR_LABEL[role]}</span>
+                    <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : '#000000'} onChange={(e) => setColor(role, e.target.value)}
+                      style={{ width: 24, height: 24, padding: 0, border: 'none', background: value || 'none', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }} />
+                    <span title={role} style={{ fontSize: 11, color: theme.textDim, minWidth: 40, flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{COLOR_LABEL[role] ?? role}</span>
                     <input value={value} placeholder="#—" onChange={(e) => setColor(role, e.target.value)} style={hexInput} />
                   </label>
                 );
@@ -82,13 +100,13 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
             </div>
           </section>
 
-          {/* fonts */}
+          {/* fonts (free-form roles) */}
           <section>
             <div style={sectionTitle}>字体</div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              {FONT_ROLES.map((role) => (
-                <label key={role} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <span style={{ fontSize: 11.5, color: theme.textDim }}>{FONT_LABEL[role]}</span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
+              {fontRoles.map((role) => (
+                <label key={role} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span title={role} style={{ fontSize: 11.5, color: theme.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{FONT_LABEL[role] ?? role}</span>
                   <input value={fontOf(draft, role) ?? ''} placeholder="如 Inter / Playfair Display"
                     onChange={(e) => setFont(role, e.target.value)} style={textInput} />
                 </label>

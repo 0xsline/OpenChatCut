@@ -1,8 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import {
-  COLOR_ROLES, FONT_ROLES, type ColorRole, type DesignColor, type DesignFont,
-  type DesignStyle, type FontRole,
+  COLOR_ROLES, FONT_ROLES, type DesignColor, type DesignFont, type DesignStyle,
 } from '../editor/types';
 import { DESIGN_STYLE_PRESETS, findPreset } from '../editor/design-presets';
 
@@ -18,7 +17,8 @@ export const DESIGN_TOOL_SCHEMAS: Anthropic.Tool[] = [{
     'apply=把某预设(presetId)或自定义 designSpec 套用到工程(applyToProject 默认 true);',
     'update=对当前风格做局部修改(patch,只补要改的字段); clear=清除风格。',
     'designSpec/patch 结构: {colors:[{role,value}], fonts:[{family,role}], styleGuide}。',
-    `color role 取值: ${COLOR_ROLES.join('/')}; font role 取值: ${FONT_ROLES.join('/')}。`,
+    `role 是自由文本(源站真实取值如 "accent copper"/"text secondary"/"Chinese heading"),常用 color role: ${COLOR_ROLES.join('/')}; font role: ${FONT_ROLES.join('/')},但不限于这些。`,
+    'styleGuide 可写详细的动效/spring/stagger 规格(源站就是这么用的)。',
     'colors/fonts 也可传旧式对象形(如 {colors:{primary:"#..."}, fonts:{heading:"Inter"}}),会自动规整为数组。',
   ].join(' '),
   input_schema: {
@@ -52,11 +52,14 @@ function parseSpec(value: unknown): Args | { error: string } {
 }
 
 // ── source normalizers (yM/xM/bM): accept array OR legacy role-keyed object ──
+// Roles are FREE-FORM (live catalog uses "accent copper", "text secondary",
+// "Chinese heading", …) — the array form keeps ANY non-empty role. Only the
+// legacy object form iterates the canonical role lists (that's what it keyed on).
 function normColors(raw: unknown): DesignColor[] {
   if (Array.isArray(raw)) {
     return raw
-      .map((c) => (c && typeof c === 'object' ? { role: String((c as Args).role) as ColorRole, value: String((c as Args).value ?? '') } : null))
-      .filter((c): c is DesignColor => !!c && COLOR_ROLES.includes(c.role) && c.value.trim() !== '');
+      .map((c) => (c && typeof c === 'object' ? { role: String((c as Args).role ?? '').trim(), value: String((c as Args).value ?? '').trim() } : null))
+      .filter((c): c is DesignColor => !!c && c.role !== '' && c.value !== '');
   }
   if (!raw || typeof raw !== 'object') return [];
   const obj = raw as Record<string, unknown>;
@@ -66,8 +69,8 @@ function normColors(raw: unknown): DesignColor[] {
 function normFonts(raw: unknown): DesignFont[] {
   if (Array.isArray(raw)) {
     return raw
-      .map((f) => (f && typeof f === 'object' ? { family: String((f as Args).family ?? ''), role: String((f as Args).role) as FontRole } : null))
-      .filter((f): f is DesignFont => !!f && FONT_ROLES.includes(f.role) && f.family.trim() !== '');
+      .map((f) => (f && typeof f === 'object' ? { family: String((f as Args).family ?? '').trim(), role: String((f as Args).role ?? '').trim() } : null))
+      .filter((f): f is DesignFont => !!f && f.role !== '' && f.family !== '');
   }
   if (!raw || typeof raw !== 'object') return [];
   const obj = raw as Record<string, unknown>;
