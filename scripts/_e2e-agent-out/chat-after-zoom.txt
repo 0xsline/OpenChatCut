@@ -7,6 +7,15 @@ browse_library
 · bloom
 **id:** `builtin:fx-bloom`  
 **name:** 光晕 Bloom
+请用 browse_library 确认 builtin:fx-bloom，然后用 edit_item 给时间线第一个 video 或 image 片段添加 effect assetId=builtin:fx-bloom。没有 video/image 就先 read_timeline 说明。简要中文回复。
+先确认 `builtin:fx-bloom`，并查看时间线上第一个 video/image 片段。
+browse_library
+read_timeline
+edit_item
+已确认 `builtin:fx-bloom`（光晕 Bloom），并给时间线第一个视频片段 `testsrc-tc.mp4` 加上了该特效。
+请用 edit_item 给第一个 video 片段添加缩放 assetId=library:zoom:punch（type=effect）。简要中文说明。
+edit_item
+已给第一个视频片段加上 `library:zoom:punch` 缩放（punch，放大约 1.5x）。现有 Bloom 特效仍保留。
 Agent
 我的素材
 资源库

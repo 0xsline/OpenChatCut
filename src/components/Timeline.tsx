@@ -23,6 +23,8 @@ interface TimelineProps {
 const HEADER_W = 192;
 const MIN_ROW = 34;
 const RULER_H = 32;
+/** cap so a lone track doesn't swallow the whole timeline pane (source-like denser rows) */
+const MAX_ROW: Record<'video' | 'audio', number> = { video: 88, audio: 52 };
 // clip fill by ITEM kind — source --tl-item-* oklch (video/image=blue, audio=green,
 // motion-graphic=pink, text=amber). Video/image also render a media thumbnail on top.
 const CLIP_COLOR: Record<TimelineItem['kind'], string> = {
@@ -277,8 +279,21 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover }: Time
   const expanded = trackIds.filter((id) => !state.tracks?.[id]?.collapsed);
   const collapsedHeight = (trackIds.length - expanded.length) * MIN_ROW;
   const totalWeight = expanded.reduce((sum, id) => sum + WEIGHT[metaOf(id).kind], 0);
-  const unit = Math.max(0, availH - collapsedHeight) / Math.max(1, totalWeight);
-  const rowHeightOf = (id: TrackId) => state.tracks?.[id]?.collapsed ? MIN_ROW : Math.max(MIN_ROW, unit * WEIGHT[metaOf(id).kind] * trackScale);
+  // fill available height when many tracks, but never exceed MAX_ROW per kind —
+  // otherwise a single V1 fills the entire timeline (looks like a giant empty clip).
+  const unitFill = Math.max(0, availH - collapsedHeight) / Math.max(1, totalWeight);
+  const unitCap = Math.min(
+    MAX_ROW.video / WEIGHT.video,
+    MAX_ROW.audio / WEIGHT.audio,
+  );
+  const unit = Math.min(unitFill, unitCap);
+  const rowHeightOf = (id: TrackId) => {
+    if (state.tracks?.[id]?.collapsed) return MIN_ROW;
+    const kind = metaOf(id).kind;
+    const raw = unit * WEIGHT[kind] * trackScale;
+    const cap = MAX_ROW[kind] * Math.max(1, trackScale);
+    return Math.max(MIN_ROW, Math.min(cap, raw));
+  };
   const tracksHeight = trackIds.reduce((sum, id) => sum + rowHeightOf(id), 0);
 
   const frameFromClientX = (clientX: number): number => {

@@ -1,5 +1,5 @@
 {
-  "llm_calls": 7,
+  "llm_calls": 10,
   "tool_calls_from_network": [],
   "browse_library_called": true,
   "edit_item_called": true,
@@ -7,5 +7,7 @@
   "read_timeline_called": true,
   "bloom_mentioned": true,
   "bloom_applied_in_inspector": true,
-  "url": "http://127.0.0.1:5200/#/editor/1a0b37ad-a4d3-41e5-a901-999e5921de4e"
+  "zoom_mentioned": true,
+  "transition_mentioned": true,
+  "url": "http://127.0.0.1:5200/#/editor/8956e7ed-cc92-41df-a57b-831ecda39189"
 }

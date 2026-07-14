@@ -89,22 +89,29 @@ def import_videos(page) -> None:
         page.wait_for_timeout(300)
 
     inp = page.locator('input[type="file"]').first
-    inp.set_input_files([str(VIDEO), str(VIDEO)])
-    page.wait_for_timeout(3500)
-    log("imported test video (x2 files)")
+    # two separate imports → two pool cards when possible
+    inp.set_input_files(str(VIDEO))
+    page.wait_for_timeout(2500)
+    inp.set_input_files(str(VIDEO))
+    page.wait_for_timeout(2500)
+    log("imported test video twice")
 
-    # click first asset to timeline twice for two clips
-    thumbs = page.locator("button.cc-asset-thumb, .cc-asset-card button")
-    if thumbs.count() == 0:
-        thumbs = page.locator(".cc-media-grid button")
+    # place onto timeline: click each thumb (or same thumb twice) for adjacent clips
+    thumbs = page.locator("button.cc-asset-thumb")
     n = thumbs.count()
-    log(f"asset buttons: {n}")
-    for i in range(min(2, max(n, 1))):
-        try:
-            thumbs.nth(min(i, n - 1)).click(force=True, timeout=5000)
-            page.wait_for_timeout(500)
-        except Exception as e:
-            log(f"place clip warn: {e}")
+    log(f"asset thumbs: {n}")
+    if n >= 2:
+        thumbs.nth(0).click(force=True, timeout=5000)
+        page.wait_for_timeout(400)
+        thumbs.nth(1).click(force=True, timeout=5000)
+        page.wait_for_timeout(400)
+    elif n == 1:
+        thumbs.first.click(force=True, timeout=5000)
+        page.wait_for_timeout(400)
+        thumbs.first.click(force=True, timeout=5000)
+        page.wait_for_timeout(400)
+    else:
+        log("place clip warn: no thumbs")
     dismiss_overlays(page)
 
 
@@ -232,19 +239,34 @@ def main() -> int:
         (OUT / "chat-after-edit.txt").write_text(body2, encoding="utf-8")
         page.screenshot(path=str(OUT / "04-after-edit.png"))
 
-        # Turn 3: transition
+        # Turn 3: zoom punch on first clip
+        send_chat(
+            page,
+            "请用 edit_item 给第一个 video 片段添加缩放 "
+            "assetId=library:zoom:punch（type=effect）。简要中文说明。",
+        )
+        try:
+            wait_agent_idle(page, 150_000)
+        except TimeoutError as e:
+            log(f"zoom timeout: {e}")
+        body_zoom = page.inner_text("body")
+        (OUT / "chat-after-zoom.txt").write_text(body_zoom, encoding="utf-8")
+        page.screenshot(path=str(OUT / "05-after-zoom.png"))
+
+        # Turn 4: transition if two clips
         send_chat(
             page,
             "请 read_timeline。若存在相邻 video 切点，用 edit_item 给后一镜加 "
-            "transition assetId=builtin:tr-cross-dissolve。没有则说明原因。",
+            "transition assetId=builtin:tr-cross-dissolve；若只有一镜，"
+            "先把媒体池里的素材再加到时间线一次形成两段相邻，再加转场。",
         )
         try:
-            wait_agent_idle(page, 180_000)
+            wait_agent_idle(page, 200_000)
         except TimeoutError as e:
             log(f"transition timeout: {e}")
         body3 = page.inner_text("body")
         (OUT / "chat-final.txt").write_text(body3, encoding="utf-8")
-        page.screenshot(path=str(OUT / "05-final.png"))
+        page.screenshot(path=str(OUT / "06-final.png"))
 
         # Stream responses often aren't parseable as JSON; trust chat UI tool chips + inspector text.
         names = [t.get("name") for t in tool_calls]
@@ -256,6 +278,8 @@ def main() -> int:
         bloom_ui = "光晕 Bloom" in final or "builtin:fx-bloom" in final
         # inspector shows applied effect as "1. 光晕 Bloom"
         bloom_applied = "1. 光晕 Bloom" in final or re.search(r"光晕 Bloom\s*\n", final) is not None
+        zoom_ui = "library:zoom:punch" in final or "冲击" in final or "punch" in final.lower()
+        tr_ui = "cross-dissolve" in final or "叠化" in final or "builtin:tr-cross-dissolve" in final
 
         summary = {
             "llm_calls": llm_calls,
@@ -266,6 +290,8 @@ def main() -> int:
             "read_timeline_called": ui_read or "read_timeline" in names,
             "bloom_mentioned": bloom_ui,
             "bloom_applied_in_inspector": bloom_applied,
+            "zoom_mentioned": zoom_ui,
+            "transition_mentioned": tr_ui,
             "url": page.url,
         }
         (OUT / "tool_calls.json").write_text(

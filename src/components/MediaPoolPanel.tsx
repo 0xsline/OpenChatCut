@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './icons';
 import type { MediaAsset, MediaFolder } from '../editor/types';
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -55,11 +56,27 @@ export function MediaPoolPanel({
   const [view, setView] = usePersistedState<'grid' | 'list'>('cc.mediaView', 'grid');
   const [menu, setMenu] = useState<'sort' | 'filter' | null>(null);
   const [assetMenu, setAssetMenu] = useState<string | null>(null);
+  /** fixed-position menu so overflow:auto grid doesn't clip 收藏/重命名/文件夹 */
+  const [assetMenuPos, setAssetMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [currentFolderId, setCurrentFolderId] = useState<string>();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [promptState, setPromptState] = useState<PromptState | null>(null);
   const [promptValue, setPromptValue] = useState('');
   const [deleteState, setDeleteState] = useState<DeleteState | null>(null);
+
+  useEffect(() => {
+    if (!assetMenu) return;
+    const close = () => { setAssetMenu(null); setAssetMenuPos(null); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [assetMenu]);
 
   const currentFolder = folders.find((folder) => folder.id === currentFolderId);
   const childFolders = folders.filter((folder) => folder.parentId === currentFolderId);
@@ -184,16 +201,29 @@ export function MediaPoolPanel({
             {asset.kind === 'audio' && <span className="cc-asset-audio-mark"><Icon name="volume" size={14} /></span>}
             <span className="cc-asset-duration">{durationLabel(asset.durationInFrames, fps)}</span>
             <input className="cc-asset-check" aria-label={`选择 ${asset.name}`} type="checkbox" checked={selected.has(asset.id)} onChange={() => toggleSelected(asset.id)} />
-            <button className="cc-asset-more" aria-label={`管理 ${asset.name}`} onClick={() => setAssetMenu((value) => value === asset.id ? null : asset.id)}><Icon name="more" size={17} /></button>
+            <button className="cc-asset-more" aria-label={`管理 ${asset.name}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (assetMenu === asset.id) {
+                  setAssetMenu(null);
+                  setAssetMenuPos(null);
+                  return;
+                }
+                const r = event.currentTarget.getBoundingClientRect();
+                const menuW = 160;
+                const menuH = 120;
+                const left = Math.min(window.innerWidth - menuW - 8, Math.max(8, r.right - menuW));
+                // prefer below the ⋮ button; flip above if near bottom of viewport
+                const below = r.bottom + 6;
+                const top = below + menuH > window.innerHeight - 8
+                  ? Math.max(8, r.top - menuH - 6)
+                  : below;
+                setAssetMenu(asset.id);
+                setAssetMenuPos({ top, left });
+              }}
+            ><Icon name="more" size={17} /></button>
           </div>
           <button className="cc-asset-name" title={asset.name} onClick={() => onAddAsset(asset)}>{asset.name}</button>
-          {assetMenu === asset.id && <div className="cc-media-popover cc-asset-menu">
-            <button onClick={() => { onSetFavorite(asset.id, !asset.favorite); setAssetMenu(null); }}>{asset.favorite ? '取消收藏' : '收藏'}</button>
-            <button onClick={() => { setAssetMenu(null); openPrompt({ title: '素材显示名称', initialValue: asset.name, onSubmit: (name) => onRenameAsset(asset.id, name) }); }}>重命名</button>
-            <select aria-label={`移动 ${asset.name}`} value={asset.folderId ?? ''} onChange={(event) => { onMoveAssets([asset.id], event.target.value || undefined); setAssetMenu(null); }}>
-              <option value="">Master</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folderPath(folder, folders)}</option>)}
-            </select>
-          </div>}
         </div>)}
         {visible.length === 0 && childFolders.length === 0 && (
           <div className="cc-media-empty">
@@ -201,6 +231,40 @@ export function MediaPoolPanel({
           </div>
         )}
       </div>
+
+      {assetMenu && assetMenuPos && (() => {
+        const asset = assets.find((a) => a.id === assetMenu);
+        if (!asset) return null;
+        return createPortal(
+          <>
+            <div className="cc-asset-menu-backdrop" onClick={() => { setAssetMenu(null); setAssetMenuPos(null); }} />
+            <div className="cc-media-popover cc-asset-menu-portal" style={{ top: assetMenuPos.top, left: assetMenuPos.left }}
+              onClick={(e) => e.stopPropagation()}>
+              <button type="button" onClick={() => { onSetFavorite(asset.id, !asset.favorite); setAssetMenu(null); setAssetMenuPos(null); }}>
+                {asset.favorite ? '取消收藏' : '收藏'}
+              </button>
+              <button type="button" onClick={() => {
+                setAssetMenu(null); setAssetMenuPos(null);
+                openPrompt({ title: '素材显示名称', initialValue: asset.name, onSubmit: (name) => onRenameAsset(asset.id, name) });
+              }}>重命名</button>
+              <label className="cc-asset-menu-move">
+                <span>移动到</span>
+                <select aria-label={`移动 ${asset.name}`} value={asset.folderId ?? ''}
+                  onChange={(event) => {
+                    onMoveAssets([asset.id], event.target.value || undefined);
+                    setAssetMenu(null); setAssetMenuPos(null);
+                  }}>
+                  <option value="">Master</option>
+                  {folders.map((folder) => (
+                    <option key={folder.id} value={folder.id}>{folderPath(folder, folders)}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </>,
+          document.body,
+        );
+      })()}
 
       {promptState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={promptState.title}>
         <form className="cc-modal" onSubmit={(event) => { event.preventDefault(); submitPrompt(); }}>

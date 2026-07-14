@@ -1,28 +1,24 @@
-斑斓序曲
+静默砂丘
 导出
 18.5
 AI
 请调用 browse_library，category 设为 fx，query 为 bloom。只返回找到的 id 和 name，不要改时间线。
 browse_library
 · bloom
-找到 1 个结果：
-
-- **id**: `builtin:fx-bloom`
-- **name**: 光晕 Bloom
+**id:** `builtin:fx-bloom`  
+**name:** 光晕 Bloom
 请用 browse_library 确认 builtin:fx-bloom，然后用 edit_item 给时间线第一个 video 或 image 片段添加 effect assetId=builtin:fx-bloom。没有 video/image 就先 read_timeline 说明。简要中文回复。
+先确认 `builtin:fx-bloom`，并查看时间线上第一个 video/image 片段。
 browse_library
 read_timeline
 edit_item
-已确认 `builtin:fx-bloom`（光晕 Bloom），并给第一个视频片段 `testsrc-tc.mp4` 加上了该特效。
+已确认 `builtin:fx-bloom`（光晕 Bloom），并给时间线第一个视频片段 `testsrc-tc.mp4` 加上了该特效。
 Agent
 我的素材
 资源库
 文字稿
 0:05
 testsrc-tc.mp4
-收藏
-重命名
-Master
 0:05
 testsrc-tc.mp4
 预览
@@ -72,14 +68,7 @@ Canon Log 3 → BT.709
 黑白胶片
 暖调复古
 冷调青蓝
-1. 光晕 Bloom
-↑
-↓
-×
-亮部溢光，电影高光感。
-阈值 0.55
-强度 0.85
-半径 2.50
+尚未添加特效。
 缩放动画
 曲线
 无
@@ -109,7 +98,7 @@ Canon Log 3 → BT.709
 淡入淡出
 淡入 0.0s
 淡出 0.0s
-00:00.00 / 00:05.00
+00:00.00 / 00:10.00
 16:9
 9:16
 1:1
@@ -125,7 +114,10 @@ Canon Log 3 → BT.709
 00:06.00
 00:08.00
 00:10.00
+00:12.00
+00:14.00
 V1
 −
 视频 1
+testsrc-tc.mp4
 testsrc-tc.mp4

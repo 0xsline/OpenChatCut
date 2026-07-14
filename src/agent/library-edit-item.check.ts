@@ -87,10 +87,7 @@ console.log(`catalog: fx=${FX_IDS.length} lut=${LUT_IDS.length} tr=${TRANSITION_
   assert.strictEqual(q.mode, 'list');
   assert.ok(q.results.some((r) => r.id.includes('bloom')), 'query finds bloom');
 
-  const zoomList = await execLibraryTool('browse_library', { category: 'zoom' }, ctx) as {
-    results?: { id: string }[]; total?: number; mode: string;
-  };
-  // category-only returns overview; use query empty list via group or id
+  // category-only returns overview; id mode returns usage guidance
   const zoomDetail = await execLibraryTool('browse_library', { id: 'library:zoom:punch' }, ctx) as {
     mode: string; item: { id: string; usage?: string };
   };
