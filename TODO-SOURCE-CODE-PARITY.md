@@ -41,6 +41,7 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 - ✅ `web_browser` + Firecrawl 扩展（`agent/web-tools.ts`，§1.7）— grok
 - ✅ `download_media` / `push_asset` 同名（`agent/stock-tools.ts` + `/api/import-url`，§2.4）— grok
 - ✅ `search_fonts` + `submit_export` confirmFontFallback / nleFormat（`agent/font-tools.ts` + `fonts/googleFonts.ts`，§1.4 §2.5）— grok
+- ✅ 工程七件套 + `get_editor_url`（`agent/project-tools.ts` + soft-delete，§1.2 §1.5）— grok
 
 ### 分工表
 
@@ -48,9 +49,9 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 |---|---|---|---|
 | §2.1 | **`edit_captions` 21-action 重写**（最大债） | `agent/transcript-tools.ts` + `captions-tools.ts` + `captions/*` | **[C]** |
 | §2.2 | `manage_transcript` translation_*/retry | `agent/transcript-tools.ts` + `transcript/variants.ts` | **[C]** |
-| §2.3 | `isolate_voice` attach | `agent/isolate-tools.ts`（`setItemDenoise` 已在） | **[C]** |
-| §1.3 | `export_motion_graphic_prores` | `agent/mg-video-tools.ts`（薄封装 `exportClipMov`） | **[C]** |
-| §1.1 | `ask_followup_questions` 注册工具 | 新 `agent/followup-tools.ts`（复用现成 `<widget>`） | **[C]** |
+| §2.3 | `isolate_voice` attach | `agent/isolate-tools.ts`（`setItemDenoise` 已在） | **[C] ✅** |
+| §1.3 | `export_motion_graphic_prores` | `agent/mg-video-tools.ts`（薄封装 `exportClipMov`） | **[C] ✅** |
+| §1.1 | `ask_followup_questions` 注册工具 | 新 `agent/followup-tools.ts`（复用现成 `<widget>`） | **[C] ✅** |
 | §2.6 | `edit_item` 批处理统一/`ripple`/`validateOnly` | `agent/edit-item-tools.ts`（我已在此做过 ripple/fade） | **[C]** |
 | §2.7 | convert alpha 说明（description 写清 opaque） | `agent/mg-video-tools.ts` | **[C]** |
 | §1.2 | 工程会话 7 工具（create/list/delete/duplicate/edit/restore/target_project） | 新 `agent/project-tools.ts` + `persist/projectStore.ts` + `context.ts` | **[G]** |
@@ -70,41 +71,36 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 
 ## 1. 源站 MCP 有、本仓 agent 完全没有（16）
 
-### 1.1 ❌ `ask_followup_questions` — 交互问答卡（工具层）
+### 1.1 ✅ `ask_followup_questions` — 交互问答卡（工具层）**[C 已完成]**
 
 | | |
 |--|--|
-| **缺口** | 源站是正式 tool：`required: ['fields']`。本仓只有 UI 解析 `<widget>`，**未注册 tool / 无 execute**。 |
+| **缺口（已补）** | 源站是正式 tool：`required: ['fields']`。本仓过去只有 UI 解析 `<widget>`，**未注册 tool**；现已注册 + execute。 |
 | **源站** | schema：`mcp-tools-schema.json` → tool `ask_followup_questions`；UI 参考：`chatcut-reverse` 里 `ui://chatcut/followup-questions-v31` / 资源 `misc/followup-questions-widget.html`（若在 reverse 仓）。 |
 | **本仓 UI** | `src/components/chat/WidgetCard.tsx`、`widget-parse.ts`、`ChatMessage.tsx`（渲染 widget）；`src/agent/systemPrompt.ts`（教模型发卡）。 |
-| **本仓 agent** | **无** `name: 'ask_followup_questions'`。 |
-| **怎么改** | 1. 新建 `src/agent/followup-tools.ts`：schema 对齐源站 `fields`（single/multi/text…）。2. `exec`：把 fields 序列化成现有 `<widget>…</widget>` 文本块写入 assistant 回复（或返回 structured 给 runtime 插入）。3. `tools.ts` 注册 `FOLLOWUP_TOOL_SCHEMAS` + `exec`。4. 确认 `WidgetCard` 的 `onSubmit` 仍回填用户消息。**不必重做 UI**。 |
+| **本仓 agent** | `src/agent/followup-tools.ts`（新建）：schema `fields[{id,label,type:single\|multi,options[{value,display}],required,allowOther}]` + `buildFollowupWidget()` 序列化成 `<widget>` 文本 + `execFollowupTool` 返回 `{__followup, note}`。 |
+| **落地** | 1. ✅ `followup-tools.ts`：`exec` 把 fields 序列化成现有 `<widget>` 文本，无选项字段降级为提问行。2. ✅ `runtime.ts` 特判 `__followup`：以 assistant text 发卡（复用 text-start/text-delta）+ **停 loop 等作答**（答案经现成 `onWidgetSubmit`→下条用户消息）。3. ✅ `tools.ts` 注册 `FOLLOWUP_TOOL_SCHEMAS`+`FOLLOWUP_TOOL_NAMES`+`exec`（末尾追加，不碰 grok 行）。4. ✅ UI 零改动，`WidgetCard.onSubmit` 原样回填。5. ✅ `followup-tools.check.ts` 往返自检（并入 `npm test`）。tsc app+node 双过。 |
 
 ---
 
-### 1.2 ❌ 工程会话域（7 工具）
+### 1.2 ✅ 工程会话域（7 工具）
 
-`create_project` · `list_projects` · `delete_project` · `duplicate_project` · `edit_project` · `restore_project` · `target_project` · （另 `get_editor_url` 见 1.5）
+`create_project` · `list_projects` · `delete_project` · `duplicate_project` · `edit_project` · `restore_project` · `target_project`
 
 | | |
 |--|--|
-| **缺口** | 源站 agent 可跨工程；本仓工程只在 Dashboard/App 层，**无 agent 工具面**。 |
-| **源站** | `mcp-tools-schema.json` 各 tool 的 `inputSchema`（均带可选 `projectId` 模式）。 |
-| **本仓 UI** | `src/Dashboard.tsx`（工程列表新建/打开/重命名/复制/删除）；`src/App.tsx` / `src/persist/projectStore.ts`（IDB 工程存储）；版本：`src/persist/versionStore.ts` + `src/components/VersionHistory.tsx`。 |
-| **本仓 agent** | 无上述工具名。 |
-| **怎么改** | 1. 新建 `src/agent/project-tools.ts`。2. `list/create/delete/duplicate/edit` 调 `projectStore` 已有 API（对照 Dashboard 调用）。3. `target_project`：在 `AgentContext` 增加 `activeProjectId` + 切换时 `applyDoc`/换 chat 持久化键。4. `restore_project`：若无软删，可先映射 `versionStore` 回滚或显式 no-op+说明。5. `tools.ts` 注册。**UI 可复用 Dashboard 逻辑，抽 shared `projectService`。** |
+| **本仓** | `src/agent/project-tools.ts`；`projectStore` 软删/`restoreProject`；`AgentContext.getProjectId` + `openProject`（Editor hash 导航）。 |
+| **状态** | ✅ 2026-07-15 [G] |
 
 ---
 
-### 1.3 ❌ `export_motion_graphic_prores` — agent 导出透明 ProRes
+### 1.3 ✅ `export_motion_graphic_prores` — agent 导出透明 ProRes **[C 已完成 · a521cf5]**
 
 | | |
 |--|--|
-| **缺口** | 源站 agent 可批量按 assetId/itemId 出 `.mov`；本仓仅右键 UI。 |
+| **缺口（已补）** | 源站 agent 可批量按 assetId/itemId 出 `.mov`；本仓过去仅右键 UI，现已加同名 agent 工具。 |
 | **源站** | schema：`export_motion_graphic_prores`（`itemId(s)` / `assetId(s)` / `filenameMode` / `preferTimelineInstance`…）。 |
-| **本仓 UI** | `src/components/Timeline.tsx`（导出 MG 调用）；`src/components/ClipContextMenu.tsx`；核心：`src/media/clipExport.ts` → `exportClipMov`（`codec: 'prores', transparent: true`）。 |
-| **本仓 agent** | 无同名工具；有 `convert_motion_graphic_to_video`（**不透明 h264 入池**）。 |
-| **怎么改** | 1. 在 `src/agent/mg-video-tools.ts`（或新文件）加 schema 名 **必须** `export_motion_graphic_prores`。2. `exec`：解析 itemId → `exportClipMov(state, item)` 或服务端 `/render-clip` 同参数；batch 则循环。3. 返回 download 路径/提示。4. 注册进 `tools.ts`。**渲染逻辑已有，薄封装。** |
+| **本仓 agent** | `src/agent/mg-video-tools.ts` → `export_motion_graphic_prores`：`resolveMgItems`（itemId(s)/assetId(s) 去重解析）→ 循环 `exportClipMov(state, item)`（`codec:'prores', transparent:true`）→ 返回 `{ok, exported, failed?, format:'prores4444_mov', transparent:true}`。渲染逻辑复用 `media/clipExport.ts`，薄封装。 |
 
 ---
 
@@ -118,14 +114,12 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 
 ---
 
-### 1.5 ❌ `get_editor_url`
+### 1.5 ✅ `get_editor_url`
 
 | | |
 |--|--|
-| **缺口** | 返回可打开编辑器的 URL（多工程/MCP 宿主用）。 |
-| **源站** | schema：`get_editor_url`。 |
-| **本仓 UI** | hash 路由工程打开（`App`/`Dashboard`）。 |
-| **怎么改** | 工具返回 `location.origin + location.hash`（或 `#/p/{projectId}`）。依赖 `target_project` 有意义；可极薄实现。 |
+| **本仓** | `project-tools.ts` → `buildEditorUrl`（`origin#/editor/<id>`）。 |
+| **状态** | ✅ 2026-07-15 [G] |
 
 ---
 
@@ -181,15 +175,12 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 
 ---
 
-### 2.3 🟡 `isolate_voice` 缺 `attach`
+### 2.3 ✅ `isolate_voice` `attach` **[C 已完成 · a521cf5]**
 
 | | |
 |--|--|
 | **源站** | action: `apply \| attach \| clear`；`attach` 要 `denoisedAssetId` |
-| **源站位置** | `mcp-tools-schema.json` → `isolate_voice` |
-| **本仓 agent** | `src/agent/isolate-tools.ts`（仅 apply/clear） |
-| **本仓 管线** | `src/audio/isolate.ts`、`vite-plugin-isolate.ts`、UI：`src/library/AudioFxBrowser.tsx`；状态：`item.denoisedSrc`（types + reduce `setItemDenoise`） |
-| **怎么改** | 1. schema 加 `attach` + `denoisedAssetId`。2. `attach`：校验媒体池音频 asset → `commands.setItemDenoise(itemId, asset.src, strength)`。3. UI：Audio FX 卡可增加「使用池内已有隔离文件」。 |
+| **本仓 agent** | `src/agent/isolate-tools.ts`：三 action 齐。`attach` 校验媒体池 audio asset（`ctx.getDoc().assets` 前缀匹配）→ `commands.setItemDenoise(item.id, asset.src, strength)`，复用池内已隔离 wav 不重跑管线。schema enum `['apply','attach','clear']` + `denoisedAssetId`。 |
 
 ---
 
@@ -395,9 +386,9 @@ chatcut-clone/
 
 - [ ] **[C]** `edit_captions` action 机对齐源 enum（§2.1）
 - [ ] **[C]** `manage_transcript` translation_* + retry（§2.2）
-- [ ] **[C]** `isolate_voice` attach（§2.3）
-- [ ] **[C]** `export_motion_graphic_prores` 注册（§1.3）
-- [ ] **[C]** `ask_followup_questions` 注册（§1.1）
+- [x] **[C]** `isolate_voice` attach（§2.3）
+- [x] **[C]** `export_motion_graphic_prores` 注册（§1.3）
+- [x] **[C]** `ask_followup_questions` 注册（§1.1）
 
 ### P1 资产/字体/导出
 
@@ -408,8 +399,8 @@ chatcut-clone/
 
 ### P2 工程 MCP
 
-- [ ] **[G]** project 七件套 + `target_project`（§1.2）
-- [ ] **[G]** `get_editor_url`（§1.5）
+- [x] **[G]** project 七件套 + `target_project`（§1.2）
+- [x] **[G]** `get_editor_url`（§1.5）
 - [ ] **[G]** 本地 upload 三件套等价（§1.6）
 
 ### P3 可选

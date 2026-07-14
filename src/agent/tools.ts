@@ -32,6 +32,8 @@ import { MG_VIDEO_TOOL_SCHEMAS, MG_VIDEO_TOOL_NAMES, execMgVideoTool } from './m
 import { EDIT_ASSET_TOOL_SCHEMAS, EDIT_ASSET_TOOL_NAMES, execEditAssetTool } from './edit-asset-tools';
 import { WEB_TOOL_SCHEMAS, WEB_TOOL_NAMES, execWebTool } from './web-tools';
 import { FONT_TOOL_SCHEMAS, FONT_TOOL_NAMES, execFontTool } from './font-tools';
+import { FOLLOWUP_TOOL_SCHEMAS, FOLLOWUP_TOOL_NAMES, execFollowupTool } from './followup-tools';
+import { PROJECT_TOOL_SCHEMAS, PROJECT_TOOL_NAMES, execProjectTool } from './project-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -224,6 +226,10 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...WEB_TOOL_SCHEMAS,
   // 字体目录搜索（源 search_fonts；导出 confirmFontFallback 门在 generate-tools）
   ...FONT_TOOL_SCHEMAS,
+  // 主动追问（源 ask_followup_questions：agent 缺关键信息时发交互表单卡, runtime __followup 特判渲染并暂停）
+  ...FOLLOWUP_TOOL_SCHEMAS,
+  // 工程会话（源 create/list/delete/duplicate/edit/restore/target_project + get_editor_url）
+  ...PROJECT_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -291,6 +297,8 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (EDIT_ASSET_TOOL_NAMES.has(name)) return execEditAssetTool(name, args, ctx);
   if (WEB_TOOL_NAMES.has(name)) return execWebTool(name, args, ctx);
   if (FONT_TOOL_NAMES.has(name)) return execFontTool(name, args, ctx);
+  if (FOLLOWUP_TOOL_NAMES.has(name)) return execFollowupTool(name, args, ctx);
+  if (PROJECT_TOOL_NAMES.has(name)) return execProjectTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();

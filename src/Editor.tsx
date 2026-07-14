@@ -67,8 +67,28 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   }, [project.id]);
   const playerRef = useRef<PlayerRef | null>(null);
   const agentCtx = useMemo(
-    () => ({ commands, getState: () => stateRef.current, getDoc: () => docRef.current, getCreativeMode: () => creativeModeRef.current, templates: TEMPLATES, audio: AUDIO_ASSETS }),
-    [commands],
+    () => ({
+      commands,
+      getState: () => stateRef.current,
+      getDoc: () => docRef.current,
+      getCreativeMode: () => creativeModeRef.current,
+      templates: TEMPLATES,
+      audio: AUDIO_ASSETS,
+      getProjectId: () => project.id,
+      openProject: async (projectId: string) => {
+        // Flush current doc before hash navigation remounts the editor.
+        try {
+          await saveProject(project.id, docRef.current);
+        } catch {
+          /* ignore */
+        }
+        if (projectId === project.id) return { ok: true };
+        window.location.hash = `#/editor/${projectId}`;
+        return { ok: true };
+      },
+      onProjectRenamed: onRename,
+    }),
+    [commands, project.id, onRename],
   );
 
   // a pending proposal's draft result, previewed in the player (null = committed)

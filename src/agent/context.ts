@@ -20,6 +20,12 @@ export interface AgentContext {
   getCreativeMode: () => string | null;
   templates: Tpl[];
   audio: AudioAsset[];
+  /** Open project id (hash route /#/editor/:id). Used by project tools. */
+  getProjectId?: () => string;
+  /** Navigate editor to another project (flush + hash change). */
+  openProject?: (projectId: string) => Promise<{ ok: boolean; error?: string } | void>;
+  /** Dashboard/title rename when edit_project updates the open project. */
+  onProjectRenamed?: (name: string) => void;
 }
 
 /** Resolve UI mentions by stable id; names in the prompt are display-only. */

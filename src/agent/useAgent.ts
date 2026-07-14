@@ -65,7 +65,17 @@ export function useAgent(ctx: AgentContext, projectId: string) {
       // without touching the real store; capture each mutating tool call as an operation.
       const baseDoc = ctxRef.current.getDoc();
       const draft = makeDraft(baseDoc);
-      const draftCtx: AgentContext = { commands: draft.commands, getState: draft.getState, getDoc: draft.getDoc, getCreativeMode: ctxRef.current.getCreativeMode, templates: ctxRef.current.templates, audio: ctxRef.current.audio };
+      const draftCtx: AgentContext = {
+        commands: draft.commands,
+        getState: draft.getState,
+        getDoc: draft.getDoc,
+        getCreativeMode: ctxRef.current.getCreativeMode,
+        templates: ctxRef.current.templates,
+        audio: ctxRef.current.audio,
+        getProjectId: ctxRef.current.getProjectId,
+        openProject: ctxRef.current.openProject,
+        onProjectRenamed: ctxRef.current.onProjectRenamed,
+      };
       const ops: Operation[] = [];
       let proposalBaseDoc = baseDoc;
       let draftInvalidated = false;

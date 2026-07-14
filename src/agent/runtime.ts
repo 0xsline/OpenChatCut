@@ -73,11 +73,23 @@ export async function runAgent(
 
     if (resp.stop_reason === 'tool_use') {
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      let askedFollowup = false; // ask_followup_questions: render the form + pause for the user's answer
       for (const block of resp.content) {
         if (block.type !== 'tool_use') continue;
         const args = (block.input ?? {}) as Record<string, unknown>;
         const result = await executeTool(block.name, args, ctx);
         onEvent({ type: 'tool', name: block.name, args, result });
+        // ask_followup_questions returns { __followup: <widget text>, note } — render the
+        // interactive form to the user (as assistant text → widget-parse → WidgetCard) and
+        // STOP the loop; the user's answer arrives as their next message (onWidgetSubmit).
+        const followup = (result as { __followup?: string; note?: string } | null)?.__followup;
+        if (typeof followup === 'string') {
+          onEvent({ type: 'text-start' });
+          onEvent({ type: 'text-delta', delta: followup });
+          askedFollowup = true;
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: (result as { note?: string }).note ?? 'Follow-up form shown to the user; awaiting their answer.' });
+          continue;
+        }
         // tools may return image blocks (view_timeline_frames: the model SEES
         // rendered frames) via { __images: [{frame, base64}], note } — build a
         // multimodal tool_result; everything else stays JSON text.
@@ -94,6 +106,7 @@ export async function runAgent(
         toolResults.push({ type: 'tool_result', tool_use_id: block.id, content });
       }
       conv.push({ role: 'user', content: toolResults });
+      if (askedFollowup) return conv; // wait for the user to answer the form before continuing
       continue; // let the model observe results and continue
     }
 

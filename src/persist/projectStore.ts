@@ -3,15 +3,23 @@ import { timelineTrackIds, trackKind, type DesignStyle, type MediaAsset, type Me
 // IndexedDB-backed multi-project store (local-first stand-in for the source's
 // Rocicorp Zero + IndexedDB). One store holds a `projects` index (metadata for
 // the dashboard) plus one `project:<id>` entry per timeline. No dependency.
+// When indexedDB is unavailable (Node checks / headless), falls back to an
+// in-memory Map so agent project tools stay testable.
 const DB_NAME = 'chatcut-clone';
 const STORE = 'kv';
 const INDEX_KEY = 'projects';
 const projectKey = (id: string) => `project:${id}`;
+const memoryStore = new Map<string, unknown>();
+const hasIdb = (): boolean => typeof indexedDB !== 'undefined';
 
 export interface ProjectMeta {
   id: string;
   name: string;
   updatedAt: number;
+  /** Soft-delete timestamp (source delete_project). Absent = active. */
+  deletedAt?: number;
+  /** Optional free-text description (source edit_project). */
+  description?: string;
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -24,6 +32,7 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 async function idbGet<T>(key: string): Promise<T | undefined> {
+  if (!hasIdb()) return memoryStore.get(key) as T | undefined;
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(key);
@@ -33,6 +42,10 @@ async function idbGet<T>(key: string): Promise<T | undefined> {
 }
 
 async function idbSet(key: string, val: unknown): Promise<void> {
+  if (!hasIdb()) {
+    memoryStore.set(key, val);
+    return;
+  }
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
@@ -43,6 +56,10 @@ async function idbSet(key: string, val: unknown): Promise<void> {
 }
 
 async function idbDel(key: string): Promise<void> {
+  if (!hasIdb()) {
+    memoryStore.delete(key);
+    return;
+  }
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
@@ -50,6 +67,11 @@ async function idbDel(key: string): Promise<void> {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+}
+
+/** Test helper: wipe in-memory fallback (no-op when IDB is real). */
+export function resetProjectStoreMemory(): void {
+  memoryStore.clear();
 }
 
 // Validate at the boundary — persisted data is untrusted (stale / corrupt / other tab).
@@ -301,10 +323,13 @@ async function readIndex(): Promise<ProjectMeta[]> {
   return Array.isArray(raw) ? (raw as ProjectMeta[]).filter((m) => m && typeof m.id === 'string') : [];
 }
 
-/** Projects for the dashboard, newest-edited first. */
-export async function listProjects(): Promise<ProjectMeta[]> {
+/** Projects for the dashboard / agent, newest-edited first.
+ * Soft-deleted projects are hidden unless `includeDeleted: true`. */
+export async function listProjects(opts?: { includeDeleted?: boolean }): Promise<ProjectMeta[]> {
   try {
-    return (await readIndex()).sort((a, b) => b.updatedAt - a.updatedAt);
+    const all = await readIndex();
+    const filtered = opts?.includeDeleted ? all : all.filter((m) => !m.deletedAt);
+    return filtered.sort((a, b) => b.updatedAt - a.updatedAt);
   } catch {
     return [];
   }
@@ -332,8 +357,13 @@ export async function saveProject(id: string, doc: ProjectDoc): Promise<void> {
   }
 }
 
-export async function createProject(name: string, doc: ProjectDoc): Promise<ProjectMeta> {
-  const meta: ProjectMeta = { id: newId(), name, updatedAt: now() };
+export async function createProject(name: string, doc: ProjectDoc, opts?: { description?: string }): Promise<ProjectMeta> {
+  const meta: ProjectMeta = {
+    id: newId(),
+    name,
+    updatedAt: now(),
+    ...(opts?.description ? { description: opts.description } : {}),
+  };
   await idbSet(projectKey(meta.id), doc);
   await idbSet(INDEX_KEY, [meta, ...(await readIndex())]);
   return meta;
@@ -344,16 +374,58 @@ export async function renameProject(id: string, name: string): Promise<void> {
   await idbSet(INDEX_KEY, index.map((m) => (m.id === id ? { ...m, name, updatedAt: now() } : m)));
 }
 
-export async function duplicateProject(id: string): Promise<ProjectMeta | null> {
-  const doc = await loadProject(id);
-  if (!doc) return null;
-  const src = (await readIndex()).find((m) => m.id === id);
-  return createProject(`${src?.name ?? '工程'} 副本`, doc);
+export async function updateProjectMeta(
+  id: string,
+  patch: { name?: string; description?: string | null },
+): Promise<ProjectMeta | null> {
+  const index = await readIndex();
+  const entry = index.find((m) => m.id === id);
+  if (!entry) return null;
+  const next: ProjectMeta = {
+    ...entry,
+    updatedAt: now(),
+    ...(typeof patch.name === 'string' && patch.name.trim() ? { name: patch.name.trim() } : {}),
+  };
+  if (patch.description === null) delete next.description;
+  else if (typeof patch.description === 'string') next.description = patch.description;
+  await idbSet(INDEX_KEY, index.map((m) => (m.id === id ? next : m)));
+  return next;
 }
 
+export async function duplicateProject(id: string, name?: string): Promise<ProjectMeta | null> {
+  const doc = await loadProject(id);
+  if (!doc) return null;
+  // Allow duplicating soft-deleted sources too (copy is active).
+  const src = (await readIndex()).find((m) => m.id === id);
+  const copyName = (name?.trim() || `[Copy] ${src?.name ?? '工程'}`);
+  return createProject(copyName, doc, src?.description ? { description: src.description } : undefined);
+}
+
+/** Soft-delete: hide from dashboard/list; data kept for restore_project. */
 export async function deleteProject(id: string): Promise<void> {
+  const index = await readIndex();
+  if (!index.some((m) => m.id === id)) return;
+  await idbSet(
+    INDEX_KEY,
+    index.map((m) => (m.id === id ? { ...m, deletedAt: now(), updatedAt: now() } : m)),
+  );
+}
+
+/** Undo soft-delete (source restore_project). */
+export async function restoreProject(id: string): Promise<ProjectMeta | null> {
+  const index = await readIndex();
+  const entry = index.find((m) => m.id === id);
+  if (!entry) return null;
+  const next: ProjectMeta = { ...entry, updatedAt: now() };
+  delete next.deletedAt;
+  await idbSet(INDEX_KEY, index.map((m) => (m.id === id ? next : m)));
+  return next;
+}
+
+/** Permanently remove project bytes (not exposed as agent tool; dashboard may keep soft-delete only). */
+export async function purgeProject(id: string): Promise<void> {
   await idbDel(projectKey(id));
-  await idbDel(chatKey(id)); // drop the project's chat history too
+  await idbDel(chatKey(id));
   await idbSet(INDEX_KEY, (await readIndex()).filter((m) => m.id !== id));
 }
 
