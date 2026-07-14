@@ -5,9 +5,7 @@ import type { TranscriptWord } from '../transcript/types';
 import { msToFrame } from '../transcript/types';
 import { transcribePath } from '../transcript/assemblyai';
 import { fillerIndices } from '../transcript/edit';
-import type { CaptionTemplate, CaptionPacing, CaptionsData } from '../captions/types';
-import { CAPTION_STYLES } from '../captions/styles';
-import { buildTranslation, translateLines } from '../captions/translate';
+import { translateLines } from '../captions/translate';
 import { createVariant, findVariantByLang, upsertVariant } from '../transcript/variants';
 
 // Agent tools for the transcript / caption / "delete text = delete video" surface.
@@ -99,21 +97,6 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
         force: { type: 'boolean', description: 'translate:同 lang 变体已存在时是否强制重新翻译并覆盖(默认 false=复用已有)。' },
       },
       required: ['action'],
-    },
-  },
-  {
-    name: 'edit_captions',
-    description: `Turn the captions overlay on/off and set its style. Captions are a single overlay that mirrors a track's transcript and follow edits automatically. Templates: one of the ${CAPTION_STYLES.length} caption styles (plain / netflix / tiktok / bili / story / …). Pacing: word or phrase. translateTo adds a bilingual translated 2nd line. variantLang switches the MAIN caption line to a transcript translation variant (create it first with manage_transcript translate) — the variant only swaps text, timing stays the source's.`,
-    input_schema: {
-      type: 'object',
-      properties: {
-        enabled: { type: 'boolean' },
-        template: { type: 'string', enum: CAPTION_STYLES.map((s) => s.id), description: `Caption style id — any of the ${CAPTION_STYLES.length} styles.` },
-        pacing: { type: 'string', enum: ['word', 'phrase'] },
-        track: { type: 'string', description: 'Source track alias or stable id whose transcript drives captions (default A1).' },
-        translateTo: { type: 'string', description: 'Also generate a translated 2nd caption line in this language (e.g. "中文", "English", "日本語").' },
-        variantLang: { type: 'string', description: 'Display this transcript variant\'s language as the MAIN caption text (must already exist via manage_transcript translate). Pass "" to clear and show the source words again.' },
-      },
     },
   },
 ];
@@ -361,47 +344,6 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       const text = it.transcript.slice(m.start, m.start + m.count).map((w) => w.text).join(' ');
       ctx.commands.deleteWords(it.id, idxs);
       return { ok: true, itemId: it.id, deletedWords: m.count, text };
-    }
-    case 'edit_captions': {
-      const s = ctx.getState();
-      if (args.enabled === false) {
-        if (s.captions) ctx.commands.updateCaptions({ enabled: false });
-        return { ok: true, enabled: false };
-      }
-      const it = trackClip(ctx, track, true);
-      if (!s.captions && !it?.transcript) return { error: `no transcript on ${alias}; call transcribe_track first (captions need a transcript source)` };
-      const template = (args.template as CaptionTemplate) ?? s.captions?.template ?? 'tiktok';
-      const pacing = (args.pacing as CaptionPacing) ?? s.captions?.pacing ?? 'phrase';
-      const base: CaptionsData = { ...(s.captions ?? {}), enabled: true, template, pacing, ...(it ? { sourceItemId: it.id } : {}) };
-      // variantLang: pick a transcript translation VARIANT as the MAIN caption text
-      // (""/whitespace clears → show source). Only meaningful on the single-source path.
-      let variant: string | null = null;
-      if (typeof args.variantLang === 'string') {
-        const vl = args.variantLang.trim();
-        if (!vl) {
-          base.captionVariantId = undefined;
-        } else {
-          const v = it?.variants ? findVariantByLang(it.variants, vl) : undefined;
-          if (!v) return { error: `no transcript variant "${vl}" on ${alias}; run manage_transcript translate first` };
-          base.captionVariantId = v.id;
-          variant = v.lang;
-        }
-      }
-      let translatedTo: string | null = null;
-      if (args.translateTo) {
-        try {
-          const cues = await buildTranslation(base, s.items, s.fps, String(args.translateTo));
-          base.translation = cues;
-          base.translationLang = String(args.translateTo);
-          base.bilingual = true;
-          translatedTo = String(args.translateTo);
-        } catch (e) {
-          return { error: `translation failed: ${e instanceof Error ? e.message : String(e)}` };
-        }
-      }
-      if (s.captions) ctx.commands.updateCaptions(base);
-      else ctx.commands.setCaptions(base);
-      return { ok: true, enabled: true, template, pacing, source: it ? trackAlias(ctx.getState(), it.track) : null, sourceTrackId: it?.track ?? null, translatedTo, variant };
     }
     case 'manage_transcript': {
       const action = args.action;

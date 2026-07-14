@@ -1,14 +1,20 @@
 import { useMemo } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
-import type { CaptionsData, CaptionTemplate } from './types';
+import type { CaptionsData, CaptionTemplate, CaptionLayout } from './types';
 import { paginate, activePage, currentWordIndex, activeTranslation } from './types';
 import type { TimelineItem } from '../editor/types';
 import { resolveCaptionWords, resolveCaptionWordIndices, applyWordOverrides } from './resolve';
-import { CAPTION_STYLE_BY_ID } from './styles';
+import { CAPTION_STYLE_BY_ID, type CaptionStyle } from './styles';
 
-// Per-template look. `active` marks the word currently being spoken.
-function wordStyle(template: CaptionTemplate, active: boolean): React.CSSProperties {
-  const preset = CAPTION_STYLE_BY_ID[template];
+// The effective look = template preset with the caption's custom styleOverride
+// (source action=style) layered on top; unset override fields inherit the preset.
+function effectivePreset(captions: CaptionsData): CaptionStyle {
+  const preset = CAPTION_STYLE_BY_ID[captions.template];
+  return captions.styleOverride ? { ...preset, ...captions.styleOverride } : preset;
+}
+
+// Per-word look from the (merged) preset. `active` marks the word being spoken.
+function wordStyle(preset: CaptionStyle, active: boolean): React.CSSProperties {
   return {
     color: active ? preset.highlightColor : preset.color,
     background: active && preset.highlightBackground ? preset.highlightBackground : 'transparent',
@@ -19,27 +25,48 @@ function wordStyle(template: CaptionTemplate, active: boolean): React.CSSPropert
   };
 }
 
-function containerStyle(template: CaptionTemplate, height: number): React.CSSProperties {
-  const preset = CAPTION_STYLE_BY_ID[template];
+/** Does the caption carry an explicit custom placement? */
+function hasLayout(l: CaptionLayout | undefined): l is CaptionLayout {
+  return !!l && (l.anchor !== undefined || l.offsetXRatio !== undefined || l.offsetYRatio !== undefined);
+}
+
+function containerStyle(preset: CaptionStyle, template: CaptionTemplate, width: number, height: number, layout: CaptionLayout | undefined): React.CSSProperties {
   const base: React.CSSProperties = {
     position: 'absolute', left: 0, right: 0, display: 'flex', flexDirection: 'column',
-    alignItems: 'center', gap: '0.1em', padding: '0 10%', textAlign: 'center',
-    fontFamily: `${preset.fontFamily}, system-ui, sans-serif`, fontWeight: preset.fontWeight, lineHeight: 1.25,
+    gap: '0.1em', padding: '0 10%', lineHeight: 1.25,
+    fontFamily: `${preset.fontFamily}, system-ui, sans-serif`, fontWeight: preset.fontWeight,
     fontSize: height * preset.fontSize, textTransform: preset.textTransform,
   };
-  return { ...base, bottom: template === 'netflix' ? '9%' : '8%' };
+  // Default (no custom layout): bottom-center, byte-identical to the prior behavior.
+  if (!hasLayout(layout)) {
+    return { ...base, alignItems: 'center', textAlign: 'center', bottom: template === 'netflix' ? '9%' : '8%' };
+  }
+  // Custom placement (source action=layout): 3×3 anchor + ratio offsets.
+  const anchor = layout.anchor ?? 'bottom-center';
+  const v = anchor.startsWith('top') ? 'top' : (anchor.startsWith('middle') || anchor === 'center') ? 'middle' : 'bottom';
+  const h = anchor.endsWith('left') ? 'left' : anchor.endsWith('right') ? 'right' : 'center';
+  const offX = (layout.offsetXRatio ?? 0) * width;
+  const offY = (layout.offsetYRatio ?? 0) * height; // +ve = down
+  const placed: React.CSSProperties = {
+    ...base,
+    alignItems: h === 'left' ? 'flex-start' : h === 'right' ? 'flex-end' : 'center',
+    textAlign: h,
+  };
+  if (v === 'middle') return { ...placed, top: '50%', transform: `translateY(-50%) translate(${offX}px, ${offY}px)` };
+  if (v === 'top') return { ...placed, top: height * 0.08, transform: `translate(${offX}px, ${offY}px)` };
+  return { ...placed, bottom: height * 0.08, transform: `translate(${offX}px, ${-offY}px)` };
 }
 
 // Renders the active caption page for the current frame. Lives inside the
 // Remotion composition, so it shows in the Player preview AND burns into export.
 export function CaptionsLayer({ captions, items }: { captions: CaptionsData; items: TimelineItem[] }) {
   const frame = useCurrentFrame();
-  const { fps, height } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
   const ms = (frame / fps) * 1000; // absolute timeline ms (words already re-timed)
 
   const words = useMemo(() => resolveCaptionWords(captions, items, fps), [captions, items, fps]);
   const indices = useMemo(() => resolveCaptionWordIndices(captions, items), [captions, items]);
-  const preset = CAPTION_STYLE_BY_ID[captions.template];
+  const preset = useMemo(() => effectivePreset(captions), [captions]);
   // 逐词覆盖(隐藏/换文本/强制换页)在分页前生效,不改动 transcript/timing。
   const { words: displayWords, breakBefore } = useMemo(
     () => applyWordOverrides(words, indices, captions.wordOverrides),
@@ -53,10 +80,10 @@ export function CaptionsLayer({ captions, items }: { captions: CaptionsData; ite
 
   return (
     <AbsoluteFill style={{ pointerEvents: 'none' }}>
-      <div style={containerStyle(captions.template, height)}>
+      <div style={containerStyle(preset, captions.template, width, height, captions.layout)}>
         <div style={{ display: 'flex', flexDirection: preset.displayMode === 'stacked' ? 'column' : 'row', flexWrap: 'wrap', justifyContent: 'center', gap: '0.2em' }}>
           {page.words.map((w, i) => (
-            <span key={i} style={{ position: 'relative', ...wordStyle(captions.template, i === curIdx) }}>{w.text}</span>
+            <span key={i} style={{ position: 'relative', ...wordStyle(preset, i === curIdx) }}>{w.text}</span>
           ))}
         </div>
         {translated?.text && <div style={translationStyle(captions.template)}>{translated.text}</div>}

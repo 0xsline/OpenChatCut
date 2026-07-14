@@ -49,3 +49,8 @@ export const CAPTION_STYLES: CaptionStyle[] = [
 ];
 
 export const CAPTION_STYLE_BY_ID = Object.fromEntries(CAPTION_STYLES.map((style) => [style.id, style])) as Record<CaptionTemplate, CaptionStyle>;
+
+// Custom per-caption style patch layered OVER the chosen template preset (source
+// edit_captions action=style). Only the visual fields — id/label/hint stay the
+// preset's. Rendered by CaptionsLayer as { ...preset, ...styleOverride }.
+export type CaptionStyleOverride = Partial<Omit<CaptionStyle, 'id' | 'label' | 'labelZh' | 'hint'>>;

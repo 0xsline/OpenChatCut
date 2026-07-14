@@ -1,0 +1,164 @@
+import type { AgentContext } from './context';
+import type { CaptionsData, CaptionTemplate, CaptionPacing, CaptionAnchor, CaptionLayout, CaptionWordOverride } from '../captions/types';
+import { CAPTION_STYLES, CAPTION_STYLE_BY_ID } from '../captions/styles';
+import { mapCaptionStyle } from '../captions/styleMap';
+import { sourceList, sourceSet, sourceAdd, sourceRemove, languageMode, bilingual, firstTranscribedOnTrack } from './captions-sources';
+
+// edit_captions — one tool, source's 21-action dispatch model. Most action data
+// arrives as a JSON string in `json`. Backed by the clone's captions overlay
+// (enable/template/style/layout/display overrides/multi-source/translation).
+// Actions with no representable target here (layout_policy, positions, per-source
+// user presets) return a structured `unsupported` note rather than pretending.
+
+type Args = Record<string, unknown>;
+type Result = Record<string, unknown>;
+
+const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+
+/** action data comes as a JSON STRING in `json` (source); also accept a raw object. */
+function parseJson(args: Args): Record<string, unknown> {
+  const j = args.json;
+  if (j && typeof j === 'object') return j as Record<string, unknown>;
+  if (typeof j === 'string' && j.trim()) {
+    try { const o = JSON.parse(j); return o && typeof o === 'object' ? o : {}; } catch { return {}; }
+  }
+  return {};
+}
+
+const isTemplate = (id: string): id is CaptionTemplate => id in CAPTION_STYLE_BY_ID;
+
+const ANCHORS = new Set<CaptionAnchor>(['top', 'center', 'bottom', 'top-left', 'top-center', 'top-right', 'middle-left', 'middle-center', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right']);
+
+/** action=layout json → CaptionLayout (anchor preset + ratio offsets; px top/left → ratio). */
+function toLayout(json: Record<string, unknown>, width: number, height: number): CaptionLayout | null {
+  const l: CaptionLayout = {};
+  const preset = str(json.preset) || str(json.anchor);
+  if (preset) { if (!ANCHORS.has(preset as CaptionAnchor)) return null; l.anchor = preset as CaptionAnchor; }
+  const oxr = num(json.offsetXRatio); if (oxr !== undefined) l.offsetXRatio = oxr;
+  const oyr = num(json.offsetYRatio); if (oyr !== undefined) l.offsetYRatio = oyr;
+  // pixel top/left → approximate anchor + offset from the top-left
+  const top = num(json.top); if (top !== undefined && height > 0) { l.anchor = l.anchor ?? 'top-center'; l.offsetYRatio = top / height; }
+  const left = num(json.left); if (left !== undefined && width > 0) { l.offsetXRatio = (left - width / 2) / width; }
+  return Object.keys(l).length ? l : null;
+}
+
+/** display_text: per-word overrides (hide / retext / force break) + clearOverrides. */
+function displayText(json: Record<string, unknown>, c: CaptionsData, ctx: AgentContext, s: { items: { id: string; transcript?: unknown[] }[] }): Result {
+  if (json.clearOverrides === true || json.clear_overrides === true) {
+    ctx.commands.updateCaptions({ wordOverrides: {} });
+    return { ok: true, cleared: true };
+  }
+  const raw = json.overrides;
+  if (!Array.isArray(raw) || raw.length === 0) return { error: 'display_text needs {overrides:[{wordIndex,...}]} or {clearOverrides:true}' };
+  const item = c.sourceItemId ? s.items.find((it) => it.id === c.sourceItemId) : undefined;
+  const total = item?.transcript?.length ?? c.words?.length ?? 0;
+  const next: Record<number, CaptionWordOverride> = { ...(c.wordOverrides ?? {}) };
+  const ignored: string[] = [];
+  const errors: string[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') { errors.push('non-object entry'); continue; }
+    const e = entry as Record<string, unknown>;
+    if (e.key !== undefined && e.wordIndex === undefined) { ignored.push('key (this build keys word overrides by wordIndex from read_captions)'); continue; }
+    if ('keepWithPrevious' in e) ignored.push('keepWithPrevious');
+    const wi = e.wordIndex;
+    if (typeof wi !== 'number' || !Number.isInteger(wi) || wi < 0) { errors.push(`invalid wordIndex ${JSON.stringify(wi)}`); continue; }
+    if (total > 0 && wi >= total) { errors.push(`wordIndex ${wi} out of range (0..${total - 1})`); continue; }
+    if (e.clear === true) { delete next[wi]; continue; }
+    const patch: CaptionWordOverride = {};
+    if (typeof e.hidden === 'boolean') patch.hidden = e.hidden;
+    if (typeof e.text === 'string') patch.text = e.text;
+    if (e.text === null) delete next[wi].text;
+    if (typeof e.forcePageBreak === 'boolean') patch.forceBreak = e.forcePageBreak;
+    else if (typeof e.forceBreak === 'boolean') patch.forceBreak = e.forceBreak;
+    if (Object.keys(patch).length) next[wi] = { ...next[wi], ...patch };
+  }
+  ctx.commands.updateCaptions({ wordOverrides: next });
+  return { ok: true, overrides: Object.keys(next).length, ...(ignored.length ? { ignored } : {}), ...(errors.length ? { errors } : {}) };
+}
+
+const UNSUPPORTED: Record<string, string> = {
+  layout_policy: 'this build merges sources into ONE stacked stream; multi-source layout policy (single-lane / auto-stack / manual-slots) is not modeled.',
+  positions: 'per-source on-screen positions are not modeled (single stacked stream). Use action=layout to move the whole block.',
+  preset_save: 'user-saved style presets are not stored in this build. Use action=style for custom looks, action=template for the 21 built-ins.',
+  preset_apply: 'user-saved style presets are not stored in this build.',
+  preset_rename: 'user-saved style presets are not stored in this build.',
+  preset_delete: 'user-saved style presets are not stored in this build.',
+  preset_list: 'user-saved style presets are not stored in this build.',
+};
+
+export async function editCaptions(args: Args, ctx: AgentContext): Promise<Result> {
+  const action = str(args.action);
+  if (!action) return { error: 'edit_captions needs an action' };
+  const s = ctx.getState();
+  const c = s.captions;
+  const json = parseJson(args);
+
+  // ── template: list built-ins (no arg) or apply one — works with captions off ──
+  if (action === 'template') {
+    const pick = str(args.templatePreset) || str(args.preset);
+    if (!pick) return { ok: true, presets: CAPTION_STYLES.map((p) => ({ id: p.id, name: p.label, nameZh: p.labelZh, styleProfile: p.hint })) };
+    if (!isTemplate(pick)) return { error: `unknown caption preset "${pick}"`, presets: CAPTION_STYLES.map((p) => p.id) };
+    if (!c) return { error: 'captions are off; action=enable first' };
+    ctx.commands.updateCaptions({ template: pick }); // size/position preserved (styleOverride/layout untouched)
+    return { ok: true, template: pick };
+  }
+
+  // ── lifecycle ──
+  if (action === 'enable') {
+    const transcribed = s.items.filter((it) => (it.transcript?.length ?? 0) > 0);
+    if (!c && !transcribed.length) return { error: 'no transcript to caption; run transcribe_track first' };
+    const presetArg = str(args.preset);
+    const template: CaptionTemplate = presetArg && presetArg !== 'auto' && isTemplate(presetArg) ? presetArg : (c?.template ?? 'plain');
+    const pacing: CaptionPacing = c?.pacing ?? 'phrase';
+    const base: CaptionsData = { ...(c ?? {}), enabled: true, template, pacing };
+    if (!c?.sourceItemId && !c?.sources && transcribed[0]) base.sourceItemId = transcribed[0].id;
+    if (c) ctx.commands.updateCaptions(base); else ctx.commands.setCaptions(base);
+    return { ok: true, enabled: true, template, pacing, note: 'captions read the anchored source; for ALL audible tracks use action=source_set {mode:"timeline"}.' };
+  }
+  if (action === 'disable') {
+    if (c) ctx.commands.updateCaptions({ enabled: false });
+    return { ok: true, enabled: false };
+  }
+
+  if (!c) return { error: `captions are off; action=enable first (then ${action})` };
+
+  // ── style / layout / display / track ──
+  if (action === 'style') {
+    const { styleOverride, pacing, ignored } = mapCaptionStyle(json, s.height);
+    const patch: Partial<CaptionsData> = { styleOverride: { ...(c.styleOverride ?? {}), ...styleOverride } };
+    if (pacing) patch.pacing = pacing;
+    if (!Object.keys(styleOverride).length && !pacing) return { error: 'style needs at least one recognized field in json', ...(ignored.length ? { ignored } : {}) };
+    ctx.commands.updateCaptions(patch);
+    return { ok: true, applied: Object.keys(styleOverride), ...(pacing ? { pacing } : {}), ...(ignored.length ? { ignored } : {}) };
+  }
+  if (action === 'layout') {
+    const layout = toLayout(json, s.width, s.height);
+    if (!layout) return { error: 'layout needs {preset:"<anchor>"} (bottom/top/center or 3×3 like top-center) and/or offsetXRatio/offsetYRatio' };
+    ctx.commands.updateCaptions({ layout });
+    return { ok: true, layout };
+  }
+  if (action === 'display_text') return displayText(json, c, ctx, s);
+  if (action === 'track') {
+    if (args.list === true) return { ok: true, tracks: sourceList(c, s).availableTracks };
+    const t = str(args.trackId);
+    if (!t) return { error: 'track needs trackId (or list:true). To choose visible caption text, prefer source_set.' };
+    const it = firstTranscribedOnTrack(s, t);
+    if (!it) return { error: `no transcribed clip on track ${t}` };
+    ctx.commands.updateCaptions({ sourceItemId: it.id, sources: undefined, sourceMode: 'item' });
+    return { ok: true, trackId: t, sourceItemId: it.id };
+  }
+
+  // ── multi-source + language (delegated) ──
+  if (action === 'source_list') return sourceList(c, s);
+  if (action === 'source_set') return sourceSet(json, c, ctx, s);
+  if (action === 'source_add') return sourceAdd(json, c, ctx, s);
+  if (action === 'source_remove') return sourceRemove(json, c, ctx, s);
+  if (action === 'language_mode') return languageMode(json, c, ctx, s);
+  if (action === 'bilingual') return bilingual(json, c, ctx, s);
+
+  // ── honestly unsupported in this build ──
+  if (action in UNSUPPORTED) return { unsupported: true, action, note: UNSUPPORTED[action] };
+
+  return { error: `unknown action "${action}"` };
+}

@@ -1,4 +1,20 @@
 import type { TranscriptWord } from '../transcript/types';
+import type { CaptionStyleOverride } from './styles';
+
+/** 3×3 title-safe anchors + shorthands (source edit_captions action=layout preset). */
+export type CaptionAnchor =
+  | 'top' | 'center' | 'bottom'
+  | 'top-left' | 'top-center' | 'top-right'
+  | 'middle-left' | 'middle-center' | 'middle-right'
+  | 'bottom-left' | 'bottom-center' | 'bottom-right';
+
+/** Whole-caption-block placement (source edit_captions action=layout). Anchor picks
+ * the title-safe grid cell; offset*Ratio nudges it as a fraction of canvas w/h. */
+export interface CaptionLayout {
+  anchor?: CaptionAnchor;
+  offsetXRatio?: number;
+  offsetYRatio?: number;
+}
 
 // Captions (字幕) = a styled singleton overlay burned onto the video, separate
 // from the 文字稿 editing surface. Words are paginated into "pages" and shown in
@@ -57,6 +73,12 @@ export interface CaptionsData {
    * space instead keys off the word's POSITION in the merged output (0..N-1) —
    * see resolveCaptionWordIndices in resolve.ts. */
   wordOverrides?: Record<number, CaptionWordOverride>;
+  /** custom style fields layered OVER the template preset (source edit_captions
+   * action=style). Only what the user set; unset fields inherit the preset. */
+  styleOverride?: CaptionStyleOverride;
+  /** whole-block placement (source edit_captions action=layout). Unset = the
+   * template's default bottom-center. */
+  layout?: CaptionLayout;
 }
 
 export interface CaptionWordOverride {
