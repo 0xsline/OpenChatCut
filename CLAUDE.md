@@ -48,3 +48,17 @@
 3. **算法对齐**:功能行为对标源站语义。例:静音压缩=源站 `clean_script`(词级时间戳规则处理,非 LLM;`silence`/`longSilence` 阈值;"较长停顿压到阈值,较短的从原录音恢复");字幕=单例 overlay,样式为命名预设。
 4. **三条护城河不变式**(源站 §11,复刻必守):① NL→确定性可撤销的时间线变更(propose→apply);② MG/shader eval 安全沙箱;③ **词↔帧双向一致**(转写词、帧、item source 映射永远对齐——删词/压静音/切割必须同时更新文本与帧位)。
 5. 找不到源站依据时,在提交说明里注明"源站无据,自定",便于日后对齐。
+
+## UI 像素对齐(所有布局/视觉/控件复刻,优先看这里)⭐
+
+**新扒的像素级素材在 `~/Desktop/project/chatcut-pixel-clone/`(1GB:全站 HTML/DOM/CSS/字体 + 20k 截图 + 控件级 JSON)。做任何 UI 对齐(header/面板/控件/间距/主题色/字体)先查这里,别照记忆或截图猜。** 逆向那份(`chatcut-reverse/`)管**功能/Agent 语义**,这份管**像素/视觉**,分工不同。
+
+**检索顺序(照素材库自带索引 `INDEX.md` / `AGENTS.md`):**
+1. 入口先读 `INDEX.md` + `index/CATALOG.json`;按中文/英文标签找控件 → `index/LABEL_INDEX.json`(285 键);任务配方 → `index/QUERY_RECIPES.json`。
+2. **主题令牌(起步)**:`supplement/tokens/theme.slim.css`(239 营销 + 400 编辑器 CSS vars);字体在 `supplement/fonts/`(Inter / Stack Sans Notch / JetBrains Mono)。
+3. **编辑器控件级(首选)**:`supplement/elements-full/`——56 状态 × 全量控件,每控件 JSON `{id,tag,role,label,text,rect{x,y,w,h},region,styles{},path,html}`,`region∈{topbar|ai_panel|media_panel|preview|timeline}`;裁剪图 `elements-full/crops/{state}/`,整窗 `elements-full/states/{state}.png`。
+4. **编辑器整窗对照**:`supplement/editor-states/CURATED/`(~90 去重精选)。
+5. **营销页像素复刻**:`pages/perfect-web-clone/{slug}/`(DOM+样式+全页图)+ `preview-shots/` + `supplement/components/`。
+6. 高置信状态优先:`00_baseline` `01_export_default` `20_agent_settings` `21_design_style`(413 控件) `22_skills` `60_empty_project` `50_preview_*`。**勿优先翻** `editor-states/full`、`elements/crops`、`_trash_nonpages`(噪声)。
+
+> 只读参考,不改它;拿到 rect/styles 后回本仓 `src/components|Editor.tsx|theme.ts` 落地。像素改动照常跑 `tsc` + 浏览器端到端。
