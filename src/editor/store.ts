@@ -19,8 +19,8 @@ export { reduce, projectReduce } from './reduce';
 const uid = (p: string) => `${p}_${crypto.randomUUID()}`;
 
 export interface EditorCommands {
-  addMotionGraphic: (tpl: Tpl, at?: { track?: TrackId; startFrame?: number }) => void;
-  addAudio: (asset: AudioAsset, at?: { track?: TrackId; startFrame?: number }) => void;
+  addMotionGraphic: (tpl: Tpl, at?: { track?: TrackId; startFrame?: number; ripple?: boolean }) => void;
+  addAudio: (asset: AudioAsset, at?: { track?: TrackId; startFrame?: number; ripple?: boolean }) => void;
   addAsset: (asset: MediaAsset) => void;
   addMediaItem: (asset: MediaAsset, at?: { track?: TrackId; startFrame?: number }) => void;
   createMediaFolder: (name: string, parentId?: string) => string;
@@ -194,6 +194,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
         dispatch({
           type: 'add',
           startFrame: at?.startFrame,
+          ripple: at?.ripple,
           item: {
             id: uid('item'),
             track: pickTrack(at?.track, 'video'),
@@ -211,6 +212,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
         dispatch({
           type: 'add',
           startFrame: at?.startFrame,
+          ripple: at?.ripple,
           item: {
             id: uid('item'),
             track: pickTrack(at?.track, 'audio'),

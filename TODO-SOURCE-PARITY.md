@@ -8,8 +8,8 @@
 > **2026-07-15 三 agent 逐域重审「真代码」**（非照旧表抄，注册≠实现，桩记 🟡）。
 > 总覆盖 ≈ **88 ✅ / 12 🟡 / 33 ❌**，加权 ≈ **70%**。
 > 但**产品核心域**（编辑器·时间线·音频·转写·字幕·MG·设计·生成·导出·Agent·技能·长转短，域 1–12+16，约 107 项）
-> 覆盖 ≈ **88%**（约 90✅ / 8🟡 / 9❌）。
-> **7-15 补漏 4 项**（本轮）：域2 `manage_markers` agent 工具、域5 字幕 enum 3→21、域16 9:16 安全框、域10 字体载全 32 款(修静默回退,预览+导出同步)。
+> 覆盖 ≈ **89%**（约 91✅ / 8🟡 / 8❌）。
+> **7-15 补漏 6 项**（本轮）：域2 `manage_markers`、域5 字幕 enum 3→21、域16 9:16 安全框、域10 字体载全 32 款(修静默回退)、域C `ripple`/`fade` 暴露给 agent、域6 MG→视频 `convert`/`register`(烘焙入池)。
 > **更早升级为 ✅**：域3 人声隔离（DeepFilterNet3 真装 spawn `deep-filter`）、域1 版本历史（命名快照/回滚）、
 > 域12 `manage_skill` 自定义技能 CRUD、域4 多语言翻译变体（词级共享时间轴，护城河③）、域11 @引用结构化 + 导出历史/水印 + `edit_gap` 气口。
 > **生成域（域8）6 个 submit_\* 全真接后端**（OpenAI/Gemini/Seedance/Kling/ElevenLabs/Doubao/Mureka；`track_progress` 真轮询），
@@ -31,11 +31,11 @@
 | # | 域 | 总 | ✅ | 🟡 | ❌ | 核心度 | 说明 |
 |---|---|---:|---:|---:|---:|---|---|
 | 1 | 项目 / 会话生命周期 | 6 | 4 | 0 | 2 | 核心 | ✅ 版本历史/followup 卡;会话/项目 CRUD 在 Dashboard+persist(非 agent 工具,忠实内嵌 agent 子集);缺 get_editor_url、restore(软删) |
-| 2 | 编辑器核心 / 时间线 | 19 | 19 | 0 | 0 | 核心 | **全绿**；色度键✅ + ✅ `manage_markers` agent 工具(list/create/update/delete,点/段锚帧或锚 clip);gif/svg/solid 类型待扩 |
+| 2 | 编辑器核心 / 时间线 | 19 | 19 | 0 | 0 | 核心 | **全绿**；色度键✅ + `manage_markers` + ✅ ripple 插入/删除 + fade(秒) 已暴露给 agent(护城河① 帧数学 check 绿);gif/svg/solid 类型待扩 |
 | 3 | 音频处理 | 6 | 6 | 0 | 0 | 核心 | **全绿**：ducking + 响度归一(-14 LUFS) + ✅ 人声隔离(DeepFilterNet3 真装 spawn deep-filter) |
 | 4 | 转写 / 文字稿 | 10 | 10 | 0 | 0 | 核心 | **全绿**：改错字 + 说话人重命名/合并 + ✅ 多语言翻译变体(词级共享时间轴,护城河③) + ✅ `edit_gap` 词间气口(list/delete/cap/restore) |
 | 5 | 字幕 | 8 | 8 | 0 | 0 | 核心 | **全绿**：21 样式(agent enum 已全开) + 逐词覆盖 + 多源合并 + 双语/变体 |
-| 6 | Motion Graphics | 8 | 5 | 2 | 1 | 核心 | ✅ 211 模板/manage_template/browse_library/edit_item/沙箱(211过5拦);🟡 create_from_code 契约缩水;❌ MG→透明视频链(convert/register/prores) |
+| 6 | Motion Graphics | 8 | 6 | 2 | 0 | 核心 | ✅ 211 模板/manage_template/browse_library/edit_item/沙箱(211过5拦) + ✅ `convert_motion_graphic_to_video`/`register_converted_video`(烘焙入池,不透明 h264——alpha env-blocked,透明走 ProRes);🟡 create_from_code 契约缩水、propSchema 控件 |
 | 7 | 设计风格 / 品牌 | 2 | 1 | 1 | 0 | 核心 | ✅ manage_design_style:24 真 catalog+owned+自由 role+注入;brand-kit logo 上传 🟡 |
 | 8 | AI 生成（花钱域） | 7 | 6 | 1 | 0 | 核心 | ✅ **6 submit_\* 全真接后端**(image/video/voice/music/sound/shader)+track_progress 真轮询;⚠ 积分门 G4 缺(credits 硬编码) |
 | 9 | 素材 / 媒体 | 12 | 7 | 2 | 3 | 核心 | ✅ manage_media_pool + import_url_asset + search_stock_media;🟡 download_media(只登记不落字节);❌ edit_asset、request_upload/presign、web_browser、手机上传 |
@@ -62,8 +62,8 @@
 
 **② 纯前端正经活（有价值、需真写）**
 - ✅ **字体加载修复（域10）** —— 实测预设+字幕引用 **32 款 Google 字体但只载 4 款**→静默回退(最明显视觉 bug)。修法:`googleFonts.ts` 静态载全 32 款(7 款中文厂字非 Google,只能回退待自托管);`main.tsx`+`remotion/Root.tsx` 都已调 `loadProjectFonts()` 故预览+导出同步修好。浏览器 `document.fonts` 实测 Anton/Playfair/Montserrat/Noto Sans SC… 10/10 已注册。(`search_fonts`/confirmFontFallback 门留后续。)
-- `edit_item` 暴露 `ripple`/`fade`（域C 护城河①）—— reducer 有 rippleDelete/add-ripple，agent 无从触发；`setItemFade` 同理无工具。补在 move/timing 上。
-- MG→透明视频链 `convert_motion_graphic_to_video`+`register_converted_video`（域6）—— webm vp8-alpha 渲染分支 + 两个工具；fcpxml 里 MG 现在只能留 gap 占位。
+- ✅ `ripple`/`fade` 暴露给 agent（域C 护城河①）—— `set_item_timing` 加 `fadeInSeconds`/`fadeOutSeconds`(秒→帧,reducer 按 clip 长封顶);`remove_item` 加 `ripple`(→ rippleDeleteItem 合缝);`add_motion_graphic`/`add_audio` 加 `ripple`(插入挤位,store 命令透传)。reducer 帧数学有 `ripple-fade.check.ts` 绿。
+- ✅ MG→视频 `convert_motion_graphic_to_video`+`register_converted_video`（域6）—— 新 `agent/mg-video-tools.ts`:convert 经现成 `/render-clip`(bakeClipToVideo)烘焙 clip→`addAsset` 入媒体池(可 replace 就地);register 导入已渲产物 URL。已注册。⚠ 本环境 ffmpeg 不能编码 alpha webm/vp9(clipExport.ts 自陈),故时间线视频是**不透明 h264**;透明 alpha 只能走 ProRes .mov 导出(域H `export_motion_graphic_prores`,待做)。
 - `view_asset_frames`（域B 唯一❌）+ `read_timeline` 加 view=assets/markers（域B）。
 - `edit_asset`（域9）改/删已生成 MG/effect 资产并重渲缩略图（与 create_from_code 真契约一对）。
 - i18n /zh /en · 自定义快捷键(keymap 存 localStorage) · dockview 可拖拽面板 · 导出历史评分 · agent 设置面板扩展 · brand-kit logo 上传（域7）。

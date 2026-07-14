@@ -28,6 +28,7 @@ import { ISOLATE_TOOL_SCHEMAS, ISOLATE_TOOL_NAMES, execIsolateTool } from './iso
 import { SKILL_TOOL_SCHEMAS, SKILL_TOOL_NAMES, execSkillTool } from './skill-tools';
 import { WATERMARK_TOOL_SCHEMAS, WATERMARK_TOOL_NAMES, execWatermarkTool } from './watermark-tools';
 import { MARKERS_TOOL_SCHEMAS, MARKERS_TOOL_NAMES, execMarkersTool } from './markers-tools';
+import { MG_VIDEO_TOOL_SCHEMAS, MG_VIDEO_TOOL_NAMES, execMgVideoTool } from './mg-video-tools';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -50,13 +51,14 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'add_motion_graphic',
-    description: 'Add a motion-graphic template as a new clip. Placed at the end of the track unless startFrame is given.',
+    description: 'Add a motion-graphic template as a new clip. Placed at the end of the track unless startFrame is given. ripple:true makes room — same-track clips at/after startFrame shift right by the new clip\'s length instead of overlapping (source insert edit).',
     input_schema: {
       type: 'object',
       properties: {
         templateName: { type: 'string', description: 'Template name (fuzzy match against list_templates).' },
         track: { type: 'string', description: 'Current video-track alias or stable id (default V1).' },
         startFrame: { type: 'number', description: 'Optional exact start frame; omit to append.' },
+        ripple: { type: 'boolean', description: 'Insert-edit: push same-track clips at/after startFrame right to make room.' },
       },
       required: ['templateName'],
     },
@@ -88,10 +90,16 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'set_item_timing',
-    description: 'Retime a clip: change its start frame and/or its duration (in frames). Use this to trim or lengthen a clip.',
+    description: 'Retime a clip: change its start frame and/or its duration (in frames), and/or set a fade-in / fade-out. Use this to trim or lengthen a clip, or to fade it in/out. Fades are in SECONDS (source edit_item fadeIn/fadeOut) — video clips fade opacity, audio clips fade volume; 0 clears a fade.',
     input_schema: {
       type: 'object',
-      properties: { itemId: { type: 'string' }, startFrame: { type: 'number' }, durationInFrames: { type: 'number' } },
+      properties: {
+        itemId: { type: 'string' },
+        startFrame: { type: 'number' },
+        durationInFrames: { type: 'number' },
+        fadeInSeconds: { type: 'number', description: 'Fade-in length in seconds (0 clears).' },
+        fadeOutSeconds: { type: 'number', description: 'Fade-out length in seconds (0 clears).' },
+      },
       required: ['itemId'],
     },
   },
@@ -102,8 +110,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'remove_item',
-    description: 'Delete a clip from the timeline.',
-    input_schema: { type: 'object', properties: { itemId: { type: 'string' } }, required: ['itemId'] },
+    description: 'Delete a clip from the timeline. ripple:true also closes the gap — later clips on the same track shift left by the removed clip\'s length (source ripple delete); default leaves a gap.',
+    input_schema: { type: 'object', properties: { itemId: { type: 'string' }, ripple: { type: 'boolean' } }, required: ['itemId'] },
   },
   {
     name: 'split_item',
@@ -124,6 +132,7 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
         audioName: { type: 'string', description: 'Audio asset name (fuzzy match against list_audio).' },
         track: { type: 'string', description: 'Current audio-track alias or stable id (default A1).' },
         startFrame: { type: 'number', description: 'Optional exact start frame; omit to append.' },
+        ripple: { type: 'boolean', description: 'Insert-edit: push same-track clips at/after startFrame right to make room.' },
       },
       required: ['audioName'],
     },
@@ -204,6 +213,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...WATERMARK_TOOL_SCHEMAS,
   // 时间线批注/TODO 锚点（源 manage_markers：list/create/update/delete，点/段锚帧或锚 clip）
   ...MARKERS_TOOL_SCHEMAS,
+  // MG→视频（源 convert_motion_graphic_to_video / register_converted_video：烘焙 MG 为媒体池 video 资产）
+  ...MG_VIDEO_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -267,6 +278,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (SKILL_TOOL_NAMES.has(name)) return execSkillTool(name, args, ctx);
   if (WATERMARK_TOOL_NAMES.has(name)) return execWatermarkTool(name, args, ctx);
   if (MARKERS_TOOL_NAMES.has(name)) return execMarkersTool(name, args, ctx);
+  if (MG_VIDEO_TOOL_NAMES.has(name)) return execMgVideoTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();
@@ -313,7 +325,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
       const track = resolveTrackId(s, args.track ?? 'V1', 'video') ?? defaultTrackId(s, 'video');
       if (!track) return { error: 'no video track; create one with edit_track first' };
       const startFrame = typeof args.startFrame === 'number' ? args.startFrame : undefined;
-      ctx.commands.addMotionGraphic(tpl, { track, startFrame });
+      ctx.commands.addMotionGraphic(tpl, { track, startFrame, ripple: args.ripple === true });
       return { ok: true, added: tpl.name, trackId: track, track: trackAlias(ctx.getState(), track) };
     }
     case 'update_item_props': {
@@ -334,8 +346,18 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
     case 'set_item_timing': {
       const it = findItem(ctx, args.itemId);
       if (!it) return { error: `no item ${args.itemId}` };
-      ctx.commands.setItemTiming(it.id, { startFrame: args.startFrame as number, durationInFrames: args.durationInFrames as number });
-      return { ok: true, itemId: it.id };
+      if (args.startFrame !== undefined || args.durationInFrames !== undefined) {
+        ctx.commands.setItemTiming(it.id, { startFrame: args.startFrame as number, durationInFrames: args.durationInFrames as number });
+      }
+      // fade in SECONDS (source edit_item fadeIn/fadeOut) → frames; reducer clamps to clip length
+      const fps = ctx.getState().fps;
+      const toFrames = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.round(v * fps)) : undefined);
+      const fadeInFrames = toFrames(args.fadeInSeconds);
+      const fadeOutFrames = toFrames(args.fadeOutSeconds);
+      if (fadeInFrames !== undefined || fadeOutFrames !== undefined) {
+        ctx.commands.setItemFade(it.id, { fadeInFrames, fadeOutFrames });
+      }
+      return { ok: true, itemId: it.id, ...(fadeInFrames !== undefined ? { fadeInFrames } : {}), ...(fadeOutFrames !== undefined ? { fadeOutFrames } : {}) };
     }
     case 'duplicate_item': {
       const it = findItem(ctx, args.itemId);
@@ -353,7 +375,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
       const track = resolveTrackId(s, args.track ?? 'A1', 'audio') ?? defaultTrackId(s, 'audio');
       if (!track) return { error: 'no audio track; create one with edit_track first' };
       const startFrame = typeof args.startFrame === 'number' ? args.startFrame : undefined;
-      ctx.commands.addAudio(asset, { track, startFrame });
+      ctx.commands.addAudio(asset, { track, startFrame, ripple: args.ripple === true });
       return { ok: true, added: asset.name, trackId: track, track: trackAlias(ctx.getState(), track) };
     }
     case 'create_motion_graphic': {
@@ -402,8 +424,9 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
     case 'remove_item': {
       const it = findItem(ctx, args.itemId);
       if (!it) return { error: `no item ${args.itemId}` };
-      ctx.commands.removeItem(it.id);
-      return { ok: true, removed: it.name };
+      if (args.ripple === true) ctx.commands.rippleDeleteItem(it.id); // close the gap
+      else ctx.commands.removeItem(it.id);
+      return { ok: true, removed: it.name, ripple: args.ripple === true };
     }
     case 'split_item': {
       const it = findItem(ctx, args.itemId);
