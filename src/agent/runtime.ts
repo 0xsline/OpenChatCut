@@ -30,8 +30,11 @@ export async function runAgent(
   messages: LLMMessage[],
   ctx: AgentContext,
   onEvent: (e: AgentEvent) => void,
+  opts?: { askOnly?: boolean; signal?: AbortSignal },
 ): Promise<LLMMessage[]> {
   const conv = [...messages];
+  // 问答模式：不给工具 → 模型只答不改时间线（source: Ask vs Agent）
+  const tools = opts?.askOnly ? [] : TOOL_SCHEMAS;
 
   for (;;) {
     let resp: Anthropic.Message;
@@ -41,8 +44,8 @@ export async function runAgent(
         max_tokens: MAX_TOKENS,
         system: SYSTEM_PROMPT,
         messages: conv,
-        tools: TOOL_SCHEMAS,
-      });
+        tools,
+      }, { signal: opts?.signal });
       let textStarted = false;
       stream.on('text', (delta) => {
         if (!delta) return;
@@ -54,6 +57,8 @@ export async function runAgent(
       });
       resp = await stream.finalMessage();
     } catch (e) {
+      // user hit Stop (source onStop): end the turn quietly, no error surfaced
+      if (opts?.signal?.aborted || e instanceof Anthropic.APIUserAbortError) return conv;
       const msg = e instanceof Anthropic.APIError ? `${e.status ?? ''} ${e.message}` : e instanceof Error ? e.message : String(e);
       onEvent({ type: 'error', message: msg.trim() });
       return conv;

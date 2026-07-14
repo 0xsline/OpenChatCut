@@ -25,9 +25,20 @@ const TRACK_META: Record<TrackId, { color: string; kind: 'video' | 'audio' }> = 
   A1: { color: theme.trackAudioA1, kind: 'audio' },
   A2: { color: theme.trackAudioA2, kind: 'audio' },
 };
+// default track names shown under the chip (source: 视频 2 / 视频 1 / 旁白 / Lo-fi 配乐)
+const TRACK_NAME: Record<TrackId, string> = {
+  V2: '视频 2', V1: '视频 1', A1: '旁白', A2: 'Lo-fi 配乐',
+};
+// clip fill by ITEM kind — source colors clips by kind, not by track
+// (video/image=blue, audio=green, motion-graphic=pink, text=amber).
+const CLIP_COLOR: Record<TimelineItem['kind'], string> = {
+  video: theme.clipVideo, image: theme.clipVideo, audio: theme.clipAudio,
+  'motion-graphic': theme.clipMg, text: theme.clipText,
+};
 
-const HEADER_W = 104;
+const HEADER_W = 148;
 const MIN_ROW = 30;
+const COLLAPSED_ROW = 24; // thin strip height for a collapsed track
 const RULER_H = 22;
 // source weights tracks by type: video rows are taller than audio rows
 // (videoTrackHeight > audioTrackHeight), not an equal split.
@@ -166,9 +177,14 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const totalWeight = TRACK_ORDER.reduce((sum, t) => sum + WEIGHT[TRACK_META[t].kind], 0);
-  const unit = availH / totalWeight;
-  const rowHeightOf = (t: TrackId) => Math.max(MIN_ROW, unit * WEIGHT[TRACK_META[t].kind] * trackScale);
+  // collapsed tracks take a fixed thin strip; the rest split the remaining
+  // height, weighted by type (video taller than audio).
+  const isCollapsed = (t: TrackId) => state.tracks?.[t]?.collapsed ?? false;
+  const expandedWeight = TRACK_ORDER.reduce((sum, t) => sum + (isCollapsed(t) ? 0 : WEIGHT[TRACK_META[t].kind]), 0) || 1;
+  const collapsedH = TRACK_ORDER.filter(isCollapsed).length * COLLAPSED_ROW;
+  const unit = Math.max(0, availH - collapsedH) / expandedWeight;
+  const rowHeightOf = (t: TrackId) =>
+    isCollapsed(t) ? COLLAPSED_ROW : Math.max(MIN_ROW, unit * WEIGHT[TRACK_META[t].kind] * trackScale);
   const tracksHeight = TRACK_ORDER.reduce((sum, t) => sum + rowHeightOf(t), 0);
 
   const frameFromClientX = (clientX: number): number => {
@@ -403,7 +419,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
             onPointerDown={(e) => seekTo(e.clientX)}
             style={{ display: 'flex', height: RULER_H, borderBottom: `1px solid ${theme.border}`, fontSize: 10, color: theme.textDim, cursor: 'text' }}
           >
-            <div style={{ width: HEADER_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 6, background: theme.panel, borderRight: `1px solid ${theme.border}` }} />
+            <div style={{ width: HEADER_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 6, background: theme.tlSidePanel, borderRight: `1px solid ${theme.border}` }} />
             <div style={{ position: 'relative', flex: 1 }}>
               {/* ticks span the whole visible width, not just the content */}
               {Array.from({ length: Math.ceil((innerW - HEADER_W) / px / (state.fps * 2)) + 1 }).map((_, i) => (
@@ -434,15 +450,32 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
             const isDropTarget = drag?.mode === 'move' && drag.targetTrack === trackId && meta.kind === (dragIsAudio ? 'audio' : 'video');
             const hidden = state.tracks?.[trackId]?.hidden ?? false;
             const muted = state.tracks?.[trackId]?.muted ?? false;
-            const flagBtn = (active: boolean): React.CSSProperties => ({ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, padding: 0, lineHeight: 1, color: theme.textDim, opacity: active ? 0.35 : 1 });
+            const collapsed = isCollapsed(trackId);
+            // the name goes on its own line under the icons; only show it when the
+            // row is tall enough (short rows would clip it), like the source.
+            const showName = !collapsed && rowHeightOf(trackId) >= 42;
+            // one monochrome line-icon header control (dim when the feature is off/toggled)
+            const hdrBtn = (icon: IconName, title: string, onClick: () => void, dim = false, rotate = false) => (
+              <button title={title} onClick={onClick}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, lineHeight: 0, display: 'grid', placeItems: 'center', color: dim ? theme.textDim : theme.text, opacity: dim ? 0.55 : 0.9, transform: rotate ? 'rotate(-90deg)' : undefined, transition: 'transform .12s ease, color .12s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = dim ? theme.text : theme.accent; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = dim ? theme.textDim : theme.text; }}>
+                <Icon name={icon} size={14} />
+              </button>
+            );
             return (
               <div key={trackId} style={{ display: 'flex', height: rowHeightOf(trackId), borderBottom: `1px solid ${theme.border}`, background: isDropTarget ? '#1b2b1b' : undefined }}>
-                <div style={{ width: HEADER_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', borderRight: `1px solid ${theme.border}`, background: theme.panel }}>
-                  <span style={{ background: meta.color, color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 5px' }}>{trackId}</span>
-                  <button style={flagBtn(hidden)} title={hidden ? '显示轨道' : '隐藏轨道'} onClick={() => commands.toggleTrackFlag(trackId, 'hidden')}>{hidden ? '🚫' : '👁'}</button>
-                  <button style={flagBtn(muted)} title={muted ? '取消静音' : '静音轨道'} onClick={() => commands.toggleTrackFlag(trackId, 'muted')}>{muted ? '🔇' : '🔊'}</button>
+                <div style={{ width: HEADER_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 5, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: showName ? 3 : 0, padding: '0 10px', borderRight: `1px solid ${theme.border}`, background: theme.tlSidePanel }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 3 }} title={showName ? undefined : TRACK_NAME[trackId]}>
+                    <span style={{ background: meta.color, color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '1px 6px', marginRight: 3, flexShrink: 0 }}>{trackId}</span>
+                    {meta.kind === 'video' && hdrBtn(hidden ? 'eyeOff' : 'eye', hidden ? '显示轨道' : '隐藏轨道', () => commands.toggleTrackFlag(trackId, 'hidden'), hidden)}
+                    {hdrBtn(muted ? 'volumeOff' : 'volume', muted ? '取消静音' : '静音轨道', () => commands.toggleTrackFlag(trackId, 'muted'), muted)}
+                    <span style={{ flex: 1 }} />
+                    {hdrBtn('chevronDown', collapsed ? '展开轨道' : '折叠轨道', () => commands.toggleTrackFlag(trackId, 'collapsed'), false, collapsed)}
+                  </div>
+                  {showName && <span style={{ fontSize: 11, color: theme.textDim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{TRACK_NAME[trackId]}</span>}
                 </div>
-                <div style={{ flex: 1, position: 'relative', background: theme.bg, opacity: hidden ? 0.4 : 1 }}>
+                <div style={{ flex: 1, position: 'relative', background: theme.tlTrack, opacity: hidden ? 0.4 : 1 }}>
                   {items.map((it) => {
                     const dragging = drag?.id === it.id;
                     const start = it.startFrame + (dragging && drag.mode !== 'trim-right' ? drag.deltaF : 0);
@@ -465,7 +498,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
                         onContextMenu={(e) => { e.preventDefault(); commands.selectItem(it.id); setCtxMenu({ id: it.id, x: e.clientX, y: e.clientY }); }}
                         style={{
                           position: 'absolute', left: Math.max(0, start) * px, top: 4, height: rowHeightOf(trackId) - 8, width: dur * px,
-                          background: meta.kind === 'video' ? theme.clipVideo : theme.clipAudio,
+                          background: CLIP_COLOR[it.kind] ?? theme.clipMg,
                           borderRadius: 5, color: '#fff', fontSize: 10.5,
                           display: 'flex', alignItems: 'center', padding: '0 10px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
                           border: selected ? '2px solid #fff' : '2px solid transparent',
@@ -475,7 +508,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
                         {/* trim handles (hidden in blade mode) */}
                         {editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
-                        <span style={{ pointerEvents: 'none' }}>✦ {it.name}</span>
+                        <span style={{ pointerEvents: 'none' }}>{it.name}</span>
                         {editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', right: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
                       </div>
@@ -489,7 +522,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
                       <div key={t.id} title={`转场:${t.type} · ${(t.durationInFrames / state.fps).toFixed(1)}s`}
                         onClick={() => commands.selectItem(t.incomingItemId)}
                         style={{ position: 'absolute', top: '50%', left: inItem.startFrame * px, transform: 'translate(-50%, -50%)', width: 15, height: 15, borderRadius: 3, background: '#3a3f52', border: '1px solid #6b7bb5', color: '#cfe3ff', fontSize: 10, display: 'grid', placeItems: 'center', cursor: 'pointer', zIndex: 3 }}>
-                        ⧓
+                        <Icon name="swap" size={10} />
                       </div>
                     );
                   })}
@@ -528,7 +561,7 @@ export function Timeline({ state, commands, playerRef, playhead, setPlayhead, on
           border: `1px solid ${theme.borderLight}`, borderRadius: 8, padding: '9px 16px', fontSize: 12.5,
           boxShadow: '0 8px 28px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <span>{clipJob.msg}</span>
-          {clipJob.error && <button onClick={() => setClipJob(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 14 }}>✕</button>}
+          {clipJob.error && <button onClick={() => setClipJob(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 14, display: 'inline-flex', alignItems: 'center' }}><Icon name="x" size={14} /></button>}
         </div>
       )}
     </section>

@@ -5,7 +5,12 @@ export type IconName =
   | 'plus' | 'cursor' | 'trim' | 'blade' | 'scissors' | 'magnet' | 'mic' | 'chevronDown' | 'insert'
   | 'play' | 'pause' | 'text' | 'copy' | 'trash' | 'bookmark' | 'prev' | 'next'
   | 'zoomOut' | 'zoomIn' | 'fit' | 'aspect' | 'captions' | 'fullscreen'
-  | 'eye' | 'eyeOff' | 'volume' | 'volumeOff' | 'lock' | 'unlock';
+  | 'eye' | 'eyeOff' | 'volume' | 'volumeOff' | 'lock' | 'unlock'
+  | 'home' | 'sparkles' | 'sliders' | 'bookOpen' | 'thumbUp' | 'thumbDown' | 'arrowUp'
+  | 'paperclip' | 'cornerDownLeft' | 'filePlay' | 'fileHeadphone' | 'clock'
+  | 'undo' | 'redo' | 'history' | 'layoutPanel' | 'users'
+  | 'download' | 'film' | 'clipboard'
+  | 'music' | 'video' | 'image' | 'swap' | 'star' | 'pencil' | 'x' | 'diamond';
 
 // stroke path(s) per icon; a few are fill-based (play/pause/cursor/bookmark)
 const FILL = new Set<IconName>(['play', 'pause', 'cursor', 'bookmark']);
@@ -40,6 +45,38 @@ const P: Record<IconName, string> = {
   volumeOff: 'M11 5L6 9H2v6h4l5 4z M22 9l-6 6 M16 9l6 6',
   lock: 'M5 11h14v10H5z M8 11V7a4 4 0 0 1 8 0v4',
   unlock: 'M5 11h14v10H5z M8 11V7a4 4 0 0 1 7.9-1',
+  home: 'M3 10.5L12 3l9 7.5 M5 9.5V21h5v-6h4v6h5V9.5',
+  // composer/message glyphs — verbatim lucide paths lifted from ChatCut's own
+  // agent-chat bundle (so they render pixel-identical to the source).
+  sparkles: 'M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z',
+  sliders: 'M10 5H3 M12 19H3 M14 3v4 M16 17v4 M21 12h-9 M21 19h-5 M21 5h-7 M8 10v4 M8 12H3',
+  bookOpen: 'M12 7v14 M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z',
+  thumbUp: 'M7 10v12 M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z',
+  thumbDown: 'M17 14V2 M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z',
+  arrowUp: 'm5 12 7-7 7 7 M12 19V5',
+  paperclip: 'm16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551',
+  cornerDownLeft: 'M20 4v7a4 4 0 0 1-4 4H4 m9 10-5 5 5 5',
+  filePlay: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z M14 2v5a1 1 0 0 0 1 1h5 M15.033 13.44a.647.647 0 0 1 0 1.12l-4.065 2.352a.645.645 0 0 1-.968-.56v-4.704a.645.645 0 0 1 .967-.56z',
+  fileHeadphone: 'M4 6.835V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-.343 M14 2v5a1 1 0 0 0 1 1h5 M2 19a2 2 0 0 1 4 0v1a2 2 0 0 1-4 0v-4a6 6 0 0 1 12 0v4a2 2 0 0 1-4 0v-1a2 2 0 0 1 4 0',
+  clock: 'M12 12m-10 0a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M12 6v6l4 2',
+  // top-bar glyphs — lucide (undo-2/redo-2/history/panel-right/users from source)
+  undo: 'M9 14 4 9l5-5 M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11',
+  redo: 'm15 14 5-5-5-5 M20 9H9.5a5.5 5.5 0 0 0 0 11H13',
+  history: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M12 7v5l4 2',
+  layoutPanel: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M15 3v18',
+  // source `users` — circle(9,7,4) rewritten as a path so the single-<path> Icon renders it
+  users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M16 3.128a4 4 0 0 1 0 7.744 M22 21v-2a4 4 0 0 0-3-3.87 M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
+  download: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3',
+  film: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M7 3v18 M17 3v18 M3 8h4 M3 16h4 M17 8h4 M17 16h4 M3 12h18',
+  clipboard: 'M9 2h6a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2',
+  music: 'M9 18V5l12-2v13 M9 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0 M21 16m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0',
+  video: 'm16 10 4.4-2.65A1 1 0 0 1 22 8.2v7.6a1 1 0 0 1-1.6.85L16 14 M14 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z',
+  image: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M8.5 8.5m-1.5 0a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0 M21 15l-5-5L5 21',
+  swap: 'M8 3 4 7l4 4 M4 7h16 M16 21l4-4-4-4 M20 17H4',
+  star: 'M11.5 2.6a.5.5 0 0 1 1 0l2.5 5.1 5.6.8a.5.5 0 0 1 .3.85l-4 3.9 1 5.6a.5.5 0 0 1-.75.53L12 16.7l-5 2.63a.5.5 0 0 1-.73-.53l1-5.6-4.1-3.9a.5.5 0 0 1 .3-.85l5.6-.8z',
+  pencil: 'M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z',
+  x: 'M18 6 6 18 M6 6l12 12',
+  diamond: 'M12 2 22 12 12 22 2 12z',
 };
 
 interface IconProps {
@@ -47,10 +84,12 @@ interface IconProps {
   size?: number;
   color?: string;
   strokeWidth?: number;
+  /** render solid (e.g. a favorited star) instead of stroked */
+  filled?: boolean;
 }
 
-export function Icon({ name, size = 16, color = 'currentColor', strokeWidth = 1.8 }: IconProps) {
-  const fill = FILL.has(name);
+export function Icon({ name, size = 16, color = 'currentColor', strokeWidth = 1.8, filled }: IconProps) {
+  const fill = filled || FILL.has(name);
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={fill ? color : 'none'}
       stroke={fill ? 'none' : color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { theme } from '../theme';
 import type { EditorCommands } from '../editor/store';
 import type { TimelineItem } from '../editor/types';
+import { Icon, type IconName } from './icons';
 
 // speed presets for the 快速 submenu (source 变速/dH rate)
 const SPEED_PRESETS = [0.25, 0.5, 1, 1.5, 2, 4] as const;
@@ -72,14 +73,14 @@ export function ClipContextMenu({ item, x, y, playhead, commands, fxClip, onCopy
 
   return (
     <div ref={ref} style={style}>
-      <Item label="AI 多机位同步" icon="⧉" disabled />
+      <Item label="AI 多机位同步" icon="users" disabled />
       <Sep />
-      <Item label="复制" icon="⧉" shortcut="⌘C" onClick={run(() => commands.duplicateItem(item.id))} />
-      <Item label="切分" icon="✂" shortcut="C" disabled={!inside} onClick={run(() => commands.splitItem(item.id, playhead))} />
+      <Item label="复制" icon="copy" shortcut="⌘C" onClick={run(() => commands.duplicateItem(item.id))} />
+      <Item label="切分" icon="scissors" shortcut="C" disabled={!inside} onClick={run(() => commands.splitItem(item.id, playhead))} />
       <Sep />
-      <Item label="复制效果" icon="✦" disabled={!isVisual} onClick={run(copyFx)} />
-      <Item label="粘贴效果" icon="⧉" shortcut={PASTE_HINT} disabled={!isVisual || !fxClip} onClick={run(pasteFx)} />
-      <Item label={`变速${rate !== 1 ? `（${rate}×）` : ''}`} icon="⏱" chevron disabled={!canSpeed}
+      <Item label="复制效果" icon="sparkles" disabled={!isVisual} onClick={run(copyFx)} />
+      <Item label="粘贴效果" icon="clipboard" shortcut={PASTE_HINT} disabled={!isVisual || !fxClip} onClick={run(pasteFx)} />
+      <Item label={`变速${rate !== 1 ? `（${rate}×）` : ''}`} icon="clock" chevron disabled={!canSpeed}
         onClick={canSpeed ? () => setShowSpeed((v) => !v) : undefined} />
       {showSpeed && canSpeed && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '2px 9px 6px 35px' }}>
@@ -94,11 +95,11 @@ export function ClipContextMenu({ item, x, y, playhead, commands, fxClip, onCopy
         </div>
       )}
       <Sep />
-      <Item label="导出 MG 动画" icon="⭳" disabled={!isDom} onClick={run(() => onExportMg(item))} />
-      <Item label="转为视频" icon="▦" disabled={item.kind === 'audio'} onClick={run(() => onConvertToVideo(item))} />
+      <Item label="导出 MG 动画" icon="download" disabled={!isDom} onClick={run(() => onExportMg(item))} />
+      <Item label="转为视频" icon="film" disabled={item.kind === 'audio'} onClick={run(() => onConvertToVideo(item))} />
       <Sep />
-      <Item label="删除" icon="🗑" danger shortcut="⌫" onClick={run(() => commands.removeItem(item.id))} />
-      <Item label="波纹删除（合缝）" icon="⇥" danger shortcut="⇧⌫" onClick={run(() => commands.rippleDeleteItem(item.id))} />
+      <Item label="删除" icon="trash" danger shortcut="⌫" onClick={run(() => commands.removeItem(item.id))} />
+      <Item label="波纹删除（合缝）" icon="trash" danger shortcut="⇧⌫" onClick={run(() => commands.rippleDeleteItem(item.id))} />
     </div>
   );
 }
@@ -108,7 +109,7 @@ function Sep() {
 }
 
 function Item({ label, icon, shortcut, disabled, danger, pro, chevron, onClick }: {
-  label: string; icon: string; shortcut?: string; disabled?: boolean; danger?: boolean; pro?: boolean; chevron?: boolean; onClick?: () => void;
+  label: string; icon: IconName; shortcut?: string; disabled?: boolean; danger?: boolean; pro?: boolean; chevron?: boolean; onClick?: () => void;
 }) {
   return (
     <button disabled={disabled} onClick={onClick}
@@ -119,7 +120,7 @@ function Item({ label, icon, shortcut, disabled, danger, pro, chevron, onClick }
       }}
       onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = theme.bg; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
-      <span style={{ width: 16, textAlign: 'center', fontSize: 12 }}>{icon}</span>
+      <span style={{ width: 16, display: 'grid', placeItems: 'center', lineHeight: 0, color: danger ? theme.accent : theme.textDim }}><Icon name={icon} size={15} /></span>
       <span style={{ flex: 1 }}>{label}</span>
       {pro && <span style={{ fontSize: 9, fontWeight: 700, color: theme.accent, border: `1px solid ${theme.accent}`, borderRadius: 3, padding: '0 3px' }}>PRO</span>}
       {chevron && <span style={{ color: theme.textDim }}>›</span>}

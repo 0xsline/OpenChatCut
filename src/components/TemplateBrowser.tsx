@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { theme } from '../theme';
 import { usePersistedState } from '../hooks/usePersistedState';
 import type { Tpl } from '../types';
+import { Icon } from './icons';
 
 // MG 动画 browser (source library-view template tab): a horizontal chip row
 // [收藏, 热门, <categories by count>] filters the card grid; cards show a
@@ -72,7 +73,7 @@ export function TemplateBrowser({ templates, onAdd, onUseAI }: TemplateBrowserPr
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 10, marginBottom: 4 }}>
         {chips.map((c) => (
           <button key={c} onClick={() => setChip(c)} style={chipStyle(chip === c)}>
-            {c === FAV ? '★ 收藏' : c === POPULAR ? '热门' : catLabel(c)}
+            {c === FAV ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="star" size={12} />收藏</span> : c === POPULAR ? '热门' : catLabel(c)}
           </button>
         ))}
       </div>
@@ -101,7 +102,7 @@ export function TemplateBrowser({ templates, onAdd, onUseAI }: TemplateBrowserPr
                   <>
                     <button onClick={() => toggleFav(tp.id)} title={isFav ? '取消收藏' : '收藏'}
                       style={{ position: 'absolute', top: 5, left: 5, width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(0,0,0,0.55)', color: isFav ? '#f5c518' : '#fff', fontSize: 12, lineHeight: 1, display: 'grid', placeItems: 'center' }}>
-                      {isFav ? '★' : '☆'}
+                      <Icon name="star" size={12} filled={isFav} />
                     </button>
                     <button onClick={() => setMenuFor((m) => (m === tp.id ? null : tp.id))} title="更多操作"
                       style={{ position: 'absolute', top: 5, right: 5, width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 13, lineHeight: 1, display: 'grid', placeItems: 'center' }}>⋮</button>
@@ -114,7 +115,7 @@ export function TemplateBrowser({ templates, onAdd, onUseAI }: TemplateBrowserPr
                     onMouseLeave={() => setMenuFor(null)}>
                     <div style={{ fontSize: 11, color: theme.textDim, padding: '5px 8px', borderBottom: `1px solid ${theme.border}`, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tp.name}</div>
                     <button onClick={() => { onAdd(tp); setMenuFor(null); }} style={menuItem}>≡ 添加到时间线</button>
-                    <button onClick={() => { onUseAI(tp); setMenuFor(null); }} style={menuItem}>✦ 用 AI 生成</button>
+                    <button onClick={() => { onUseAI(tp); setMenuFor(null); }} style={{ ...menuItem, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="sparkles" size={13} />用 AI 生成</button>
                   </div>
                 )}
               </div>

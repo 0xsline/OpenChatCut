@@ -158,6 +158,8 @@ export interface TrackFlags {
   hidden?: boolean;
   /** muted track keeps its picture but produces no audio */
   muted?: boolean;
+  /** collapsed track shows a thin strip (source: track-header collapse chevron) */
+  collapsed?: boolean;
 }
 
 /** transitions we approximate in CSS (DOM clips can't be GL textures —

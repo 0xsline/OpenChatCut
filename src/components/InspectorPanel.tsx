@@ -5,6 +5,7 @@ import { TRANSITION_LABELS, ZOOM_SHAPE_LABELS } from '../editor/types';
 import { ALL_FX as FX_EFFECTS } from '../gl/fx/effects';
 const FX_IDS = Object.keys(FX_EFFECTS);
 import { usePersistedState } from '../hooks/usePersistedState';
+import { Icon } from './icons';
 
 interface FadePatch {
   fadeInFrames?: number;
@@ -159,8 +160,8 @@ function ZoomControl({ zoom, onChange, localFrame, fps, onSetKeyframe, onRemoveK
             <button
               onClick={() => onSetKeyframe(localFrame, zoom.focalPointX ?? 0.5, zoom.focalPointY ?? 0.5, zoom.magnification ?? 1.5)}
               title="在播放头记录焦点+倍数为关键帧"
-              style={{ background: theme.panelAlt, border: `1px solid ${theme.borderLight}`, borderRadius: 5, color: theme.text, cursor: 'pointer', fontSize: 11, padding: '4px 9px' }}>
-              ◆ 在播放头打关键帧
+              style={{ background: theme.panelAlt, border: `1px solid ${theme.borderLight}`, borderRadius: 5, color: theme.text, cursor: 'pointer', fontSize: 11, padding: '4px 9px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Icon name="diamond" size={12} />在播放头打关键帧
             </button>
             <span style={{ fontSize: 10.5, color: theme.textDim }}>@ {(localFrame / fps).toFixed(2)}s</span>
           </div>
@@ -169,9 +170,9 @@ function ZoomControl({ zoom, onChange, localFrame, fps, onSetKeyframe, onRemoveK
               <div style={{ fontSize: 10.5, color: theme.textDim, opacity: 0.8 }}>关键帧（覆盖曲线，逐帧插值）</div>
               {zoom.reframeCurve!.keyframes.map((k) => (
                 <div key={k.frame} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: theme.textDim }}>
-                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>◆ {(k.frame / fps).toFixed(2)}s</span>
+                  <span style={{ fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="diamond" size={11} />{(k.frame / fps).toFixed(2)}s</span>
                   <span style={{ opacity: 0.8 }}>{k.magnification.toFixed(2)}× · ({Math.round(k.focalPointX * 100)},{Math.round(k.focalPointY * 100)})</span>
-                  <button onClick={() => onRemoveKeyframe(k.frame)} title="删除关键帧" style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 12, marginLeft: 'auto' }}>✕</button>
+                  <button onClick={() => onRemoveKeyframe(k.frame)} title="删除关键帧" style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 12, marginLeft: 'auto', display: 'inline-flex', alignItems: 'center' }}><Icon name="x" size={12} /></button>
                 </div>
               ))}
             </div>
@@ -295,13 +296,13 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
 
   const hint = selectedItem
     ? selectedItem.kind === 'audio'
-      ? '🎵 音频片段。可在时间线上拖动位置、裁剪首尾。'
+      ? '音频片段。可在时间线上拖动位置、裁剪首尾。'
       : selectedItem.kind === 'video'
-      ? '🎬 视频片段。可在时间线上拖动位置、裁剪首尾（左裁剪推进源入点）。'
+      ? '视频片段。可在时间线上拖动位置、裁剪首尾（左裁剪推进源入点）。'
       : selectedItem.kind === 'image'
-      ? '🖼 图片片段。'
+      ? '图片片段。'
       : selectedItem.kind === 'text'
-      ? '📝 文字片段。'
+      ? '文字片段。'
       : null
     : null;
   const hasVolume = selectedItem?.kind === 'audio' || selectedItem?.kind === 'video';
@@ -314,7 +315,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
         title={collapsed ? '展开属性' : '收起属性'}
         style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left', padding: '8px 16px', fontSize: 12, color: theme.textDim, background: 'none', border: 'none', borderBottom: `1px solid ${theme.border}`, cursor: 'pointer', flexShrink: 0 }}
       >
-        <span style={{ transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', display: 'inline-block' }}>▾</span>
+        <span style={{ transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', display: 'inline-flex', alignItems: 'center' }}><Icon name="chevronDown" size={13} /></span>
         属性{selectedItem ? ` · ${selectedItem.name}` : ''}
       </button>
       {!collapsed && (

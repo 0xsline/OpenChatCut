@@ -54,7 +54,7 @@ export interface EditorCommands {
   splitItem: (id: string, atFrame: number) => void;
   clearTimeline: () => void;
   setAspect: (width: number, height: number, fit?: AspectFit) => void;
-  toggleTrackFlag: (track: TrackId, flag: 'hidden' | 'muted') => void;
+  toggleTrackFlag: (track: TrackId, flag: 'hidden' | 'muted' | 'collapsed') => void;
   setCaptions: (captions: CaptionsData | null) => void;
   updateCaptions: (patch: Partial<CaptionsData>) => void;
   setItemTranscript: (id: string, words: TranscriptWord[]) => void;

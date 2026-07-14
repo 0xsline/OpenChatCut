@@ -40,7 +40,9 @@ export async function submitImage(args: SubmitImageArgs, state: TimelineState): 
   const result = await response.json().catch(() => ({})) as ImageResponse;
   if (!response.ok) throw new Error(result.error ?? `image generation failed (${response.status})`);
   if (!result.paths?.length) throw new Error('image generation returned no assets');
-  const durationInFrames = Math.round(state.fps * 5);
+  // a still defaults to 3s (CapCut-style photo default) — 5s felt too long on
+  // a fresh timeline; trim/extend per clip as needed.
+  const durationInFrames = Math.round(state.fps * 3);
   return result.paths.map((src, index) => ({
     id: newId(),
     name: result.paths!.length === 1 ? name : `${name} ${index + 1}`,

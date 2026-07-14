@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { theme } from '../theme';
 import { ratioLabel, type ProjectDoc } from '../editor/types';
 import type { EditorCommands } from '../editor/store';
+import { Icon } from './icons';
 
 interface TimelineTabsProps {
   doc: ProjectDoc;
@@ -67,12 +68,12 @@ export function TimelineTabs({ doc, commands }: TimelineTabsProps) {
       })}
       <span style={{ width: 6 }} />
       <button onClick={() => commands.createTimeline()} title="新建序列" style={tabBtn}>＋序列</button>
-      <button onClick={() => commands.duplicateTimeline(doc.activeTimelineId)} title="复制当前序列" style={tabBtn}>⧉ 复制</button>
+      <button onClick={() => commands.duplicateTimeline(doc.activeTimelineId)} title="复制当前序列" style={{ ...tabBtn, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="copy" size={13} />复制</button>
       <button
         onClick={() => commands.duplicateTimeline(doc.activeTimelineId, { retarget: { width: 1080, height: 1920, fit: 'cover' }, name: '竖屏' })}
         title="把当前序列复制为 9:16 竖屏（长转短）"
-        style={tabBtn}
-      >⇋ 竖屏副本</button>
+        style={{ ...tabBtn, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+      ><Icon name="swap" size={13} />竖屏副本</button>
     </div>
   );
 }

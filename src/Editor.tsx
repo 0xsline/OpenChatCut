@@ -154,6 +154,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         exporting={exporting}
         onHome={onHome}
         onRename={onRename}
+        onToggleLayout={() => setChatCollapsed((v) => !v)}
       />
 
       <ChatPanel ctx={agentCtx} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} seed={chatSeed} />

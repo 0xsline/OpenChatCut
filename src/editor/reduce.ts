@@ -35,7 +35,7 @@ export type Action =
   | { type: 'clear' }
   | { type: 'addAsset'; asset: MediaAsset }
   | { type: 'setCanvas'; width: number; height: number; fit?: AspectFit }
-  | { type: 'toggleTrack'; track: TrackId; flag: 'hidden' | 'muted' }
+  | { type: 'toggleTrack'; track: TrackId; flag: 'hidden' | 'muted' | 'collapsed' }
   | { type: 'setCaptions'; captions: CaptionsData | null }
   | { type: 'updateCaptions'; patch: Partial<CaptionsData> }
   | { type: 'setItemTranscript'; id: string; words: TranscriptWord[] }

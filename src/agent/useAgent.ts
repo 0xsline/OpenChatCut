@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { AgentContext } from './context';
 import { initialMessages, runAgent, type LLMMessage } from './runtime';
+import { anthropic, MODEL } from './client';
 import { makeDraft, replayActions } from '../editor/store';
 import { activeTimeline } from '../editor/types';
 import { buildOperation, buildProposal, type Operation, type Proposal } from './proposal';
@@ -21,9 +22,11 @@ export function useAgent(ctx: AgentContext) {
   ctxRef.current = ctx; // always use the latest editor context
   const proposalRef = useRef<Proposal | null>(null);
   proposalRef.current = proposal;
+  // in-flight turn's abort controller (source: Stop button while running)
+  const abortRef = useRef<AbortController | null>(null);
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, opts?: { askOnly?: boolean }) => {
       const trimmed = text.trim();
       if (!trimmed || running || proposal) return; // resolve a pending proposal first
       setMessages((m) => [...m, { role: 'user', text: trimmed }]);
@@ -37,6 +40,8 @@ export function useAgent(ctx: AgentContext) {
       const draftCtx: AgentContext = { commands: draft.commands, getState: draft.getState, getDoc: draft.getDoc, templates: ctxRef.current.templates, audio: ctxRef.current.audio };
       const ops: Operation[] = [];
       let assistantText = '';
+      const ac = new AbortController();
+      abortRef.current = ac;
       try {
         llmRef.current = await runAgent(llmRef.current, draftCtx, (ev) => {
           if (ev.type === 'text-start') {
@@ -55,14 +60,38 @@ export function useAgent(ctx: AgentContext) {
           } else {
             setMessages((m) => [...m, { role: 'error', text: ev.message }]);
           }
-        });
-        if (ops.length) setProposal(buildProposal(ops, assistantText, activeTimeline(baseDoc), draft.getState()));
+        }, { askOnly: opts?.askOnly, signal: ac.signal });
+        if (!ac.signal.aborted && ops.length) setProposal(buildProposal(ops, assistantText, activeTimeline(baseDoc), draft.getState()));
       } finally {
+        abortRef.current = null;
         setRunning(false);
       }
     },
     [running, proposal],
   );
+
+  // Stop the in-flight turn (source: send button ↔ stop while running)
+  const stop = useCallback(() => { abortRef.current?.abort(); }, []);
+
+  // 增强提示词(source ✨ wand): one-shot LLM rewrite of the composer draft into a
+  // clearer, executable editing instruction. No tools, no state change; returns
+  // the improved text (or the original on any failure).
+  const enhance = useCallback(async (draft: string): Promise<string> => {
+    const t = draft.trim();
+    if (!t) return draft;
+    try {
+      const res = await anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 400,
+        system: '你是视频剪辑助手的提示词增强器。把用户潦草或口语化的剪辑意图，改写成一句清晰、具体、可直接执行的中文剪辑指令。只输出改写后的指令本身，不要解释、不要加引号、不要换行。',
+        messages: [{ role: 'user', content: t }],
+      });
+      const out = res.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('').trim();
+      return out || draft;
+    } catch {
+      return draft;
+    }
+  }, []);
 
   // apply the selected operations atomically (one undo step), replaying on the
   // CURRENT project so it composes with any manual edits made meanwhile. Side
@@ -84,5 +113,5 @@ export function useAgent(ctx: AgentContext) {
     setProposal(null);
   }, []);
 
-  return { messages, running, send, proposal, applyProposal, rejectProposal };
+  return { messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal };
 }

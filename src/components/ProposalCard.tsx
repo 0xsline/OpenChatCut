@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { theme } from '../theme';
 import type { Proposal } from '../agent/proposal';
+import { Icon } from './icons';
 
 const ghostBtn: React.CSSProperties = { background: 'none', border: `1px solid ${theme.border}`, borderRadius: 6, color: theme.textDim, cursor: 'pointer', fontSize: 12, padding: '4px 10px' };
 const primaryBtn: React.CSSProperties = { background: theme.accent, border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, padding: '4px 12px', fontWeight: 600 };
@@ -35,7 +36,7 @@ export function ProposalCard({ proposal, onApply, onReject, onPreview }: {
   return (
     <div style={{ border: `1px solid ${theme.accent}`, borderRadius: 10, background: theme.panelAlt, padding: 12, margin: '12px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: theme.text }}>◆ {proposal.title}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: theme.text, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="sparkles" size={12} />{proposal.title}</span>
         <span style={{ fontSize: 10, color: theme.accent, border: `1px solid ${theme.accent}`, borderRadius: 4, padding: '0 5px' }}>待确认</span>
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: 10.5, color: theme.textDim }}>{proposal.totalImpact}</span>

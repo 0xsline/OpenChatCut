@@ -14,6 +14,7 @@ import { TranscriptPanel } from './TranscriptPanel';
 import { MediaPoolPanel } from './MediaPoolPanel';
 import { TemplateBrowser } from './TemplateBrowser';
 import { ResourceBrowser, type ResourceItem } from './ResourceBrowser';
+import { Icon } from './icons';
 
 // the 2 built-in LUTs (source luts_items.json) — implemented via published
 // camera-log transfer functions (source ships them as real .cube data on its
@@ -99,7 +100,7 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
               {AUDIO_ASSETS.map((a) => (
                 <button key={a.id} onClick={() => onAddAudio(a)} title={`点击加到 A1 轨:${a.name}`}
                   style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', border: `1px solid ${theme.border}`, borderRadius: 8, background: theme.panelAlt, color: theme.text }}>
-                  <span style={{ fontSize: 16 }}>🎵</span>
+                  <Icon name="music" size={16} />
                   <span style={{ flex: 1, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</span>
                   <span style={{ fontSize: 10.5, color: theme.textDim }}>{Math.round(a.durationInFrames / 30)}s</span>
                 </button>
@@ -120,7 +121,7 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
                       <button key={s.id} title={s.desc}
                         onClick={() => onAddAudio({ id: `sfx_${s.id}`, name: s.name, category: 'sfx', src: soundEffectSrc(s.id), durationInFrames: Math.max(1, Math.round(s.seconds * fps)) })}
                         style={{ cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 11px', border: `1px solid ${theme.border}`, borderRadius: 8, background: theme.panelAlt, color: theme.text }}>
-                        <span style={{ fontSize: 15 }}>🔊</span>
+                        <Icon name="volume" size={15} />
                         <span style={{ flex: 1, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}{s.popular && <span style={{ marginLeft: 6, fontSize: 9, color: theme.accent }}>热门</span>}</span>
                         <span style={{ fontSize: 10.5, color: theme.textDim, fontVariantNumeric: 'tabular-nums' }}>{s.seconds.toFixed(1)}s</span>
                       </button>

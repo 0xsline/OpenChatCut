@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { theme } from '../theme';
 import type { MediaAsset } from '../editor/types';
+import { Icon } from './icons';
 
 interface MediaPoolPanelProps {
   assets: MediaAsset[];
@@ -56,7 +57,7 @@ export function MediaPoolPanel({ assets, fps, onImport, onAddAsset }: MediaPoolP
                     ) : a.kind === 'video' ? (
                       <video src={a.src} muted preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
-                      <span style={{ fontSize: 24 }}>🎵</span>
+                      <Icon name="music" size={24} />
                     )}
                   </div>
                   <div style={{ padding: '5px 7px', display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' }}>

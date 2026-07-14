@@ -9,6 +9,7 @@ import { ParagraphView, SegmentView } from './TranscriptViews';
 import { CaptionsControls } from './CaptionsControls';
 import type { CaptionsData } from '../captions/types';
 import { buildTranslation } from '../captions/translate';
+import { Icon } from './icons';
 
 interface TranscriptPanelProps {
   playerRef: RefObject<PlayerRef | null>;
@@ -104,13 +105,13 @@ export function TranscriptPanel({ playerRef, fps, items, captions, onSetCaptions
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
       {/* toolbar */}
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: `1px solid ${theme.border}`, fontSize: 12, flexWrap: 'wrap' }}>
-        <button onClick={() => setPauseOpen((v) => !v)} style={toolBtn}>⏱ 停顿</button>
+        <button onClick={() => setPauseOpen((v) => !v)} style={toolBtn}><Icon name="clock" size={13} />停顿</button>
         <select value={view} onChange={(e) => setView(e.target.value as 'paragraph' | 'segment')} style={selectStyle}>
           <option value="paragraph">段落视图</option>
           <option value="segment">片段视图</option>
         </select>
         <button onClick={() => setEditMode((v) => !v)} disabled={!editable} title={editable ? '' : '先转写该轨音频'}
-          style={{ ...toolBtn, background: editMode ? theme.accent : theme.panelAlt, color: editMode ? '#fff' : theme.text, opacity: editable ? 1 : 0.45 }}>✏️ 编辑</button>
+          style={{ ...toolBtn, background: editMode ? theme.accent : theme.panelAlt, color: editMode ? '#fff' : theme.text, opacity: editable ? 1 : 0.45 }}><Icon name="pencil" size={13} />编辑</button>
         <span style={{ flex: 1 }} />
         <select value={track} onChange={(e) => setTrack(e.target.value as TrackId)} style={selectStyle}>
           {TRACKS.map((t) => <option key={t} value={t}>{t}</option>)}
