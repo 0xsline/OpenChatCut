@@ -1,0 +1,11 @@
+{
+  "llm_calls": 7,
+  "tool_calls_from_network": [],
+  "browse_library_called": true,
+  "edit_item_called": true,
+  "manage_effects_called": false,
+  "read_timeline_called": true,
+  "bloom_mentioned": true,
+  "bloom_applied_in_inspector": true,
+  "url": "http://127.0.0.1:5200/#/editor/1a0b37ad-a4d3-41e5-a901-999e5921de4e"
+}
