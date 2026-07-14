@@ -256,8 +256,6 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
     }
     case 'clear':
       return { ...s, items: [], selectedId: null };
-    case 'addAsset':
-      return { ...s, assets: [...(s.assets ?? []), a.asset] };
     case 'setCanvas':
       return { ...s, width: a.width, height: a.height, fit: a.fit ?? s.fit ?? 'contain' };
     case 'toggleTrack': {
@@ -354,14 +352,21 @@ const isProjectAction = (a: { type: string }): a is ProjectAction => a.type.star
 
 // stamp a per-timeline reducer result back onto its identity (setFullState
 // returns a bare TimelineState, so id/name/order must be re-applied).
-const stamp = (next: TimelineState, id: string, name: string, order: number): Timeline => ({ ...next, id, name, order });
+const stamp = (next: TimelineState, id: string, name: string, order: number): Timeline => {
+  const { assets: _derivedAssets, ...persisted } = next;
+  return { ...persisted, id, name, order };
+};
 
 export function projectReduce(p: ProjectDoc, a: Action | ProjectAction): ProjectDoc {
+  if (a.type === 'addAsset') {
+    if (p.assets.some((asset) => asset.id === a.asset.id)) return p;
+    return { ...p, assets: [...p.assets, a.asset] };
+  }
   if (isProjectAction(a)) {
     switch (a.type) {
       case 'tl.create': {
         const activeTimelineId = a.activate === false ? p.activeTimelineId : a.timeline.id;
-        return { timelines: [...p.timelines, a.timeline], activeTimelineId };
+        return { ...p, timelines: [...p.timelines, a.timeline], activeTimelineId };
       }
       case 'tl.switch':
         return p.timelines.some((t) => t.id === a.id) ? { ...p, activeTimelineId: a.id } : p;
@@ -374,14 +379,14 @@ export function projectReduce(p: ProjectDoc, a: Action | ProjectAction): Project
           ...src, id: a.newId, name: a.name, order: maxOrder(p) + 1, selectedId: null, hidden: false,
           ...(a.retarget ? { width: a.retarget.width, height: a.retarget.height, fit: a.retarget.fit ?? src.fit ?? 'contain' } : {}),
         };
-        return { timelines: [...p.timelines, copy], activeTimelineId: a.activate === false ? p.activeTimelineId : copy.id };
+        return { ...p, timelines: [...p.timelines, copy], activeTimelineId: a.activate === false ? p.activeTimelineId : copy.id };
       }
       case 'tl.delete': {
         if (p.timelines.length <= 1) return p; // keep at least one timeline
         const rest = p.timelines.filter((t) => t.id !== a.id);
         const fallback = rest.find((t) => !t.hidden) ?? rest[0];
         const activeTimelineId = p.activeTimelineId === a.id ? fallback.id : p.activeTimelineId;
-        return { timelines: rest, activeTimelineId };
+        return { ...p, timelines: rest, activeTimelineId };
       }
       case 'tl.rename':
         return { ...p, timelines: p.timelines.map((t) => (t.id === a.id ? { ...t, name: a.name } : t)) };
@@ -397,7 +402,7 @@ export function projectReduce(p: ProjectDoc, a: Action | ProjectAction): Project
           a.hidden && p.activeTimelineId === a.id
             ? (timelines.find((t) => !t.hidden)?.id ?? p.activeTimelineId)
             : p.activeTimelineId;
-        return { timelines, activeTimelineId };
+        return { ...p, timelines, activeTimelineId };
       }
       case 'tl.setDoc':
         return a.doc; // atomic commit of a project-level proposal (one history step)

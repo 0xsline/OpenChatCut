@@ -1,4 +1,4 @@
-import type { ProjectDoc, Timeline, TimelineState } from '../editor/types';
+import type { MediaAsset, ProjectDoc, Timeline, TimelineState } from '../editor/types';
 
 // IndexedDB-backed multi-project store (local-first stand-in for the source's
 // Rocicorp Zero + IndexedDB). One store holds a `projects` index (metadata for
@@ -59,10 +59,42 @@ function isTimelineState(v: unknown): v is TimelineState {
     && typeof (v as { fps?: unknown }).fps === 'number';
 }
 
-function isProjectDoc(v: unknown): v is ProjectDoc {
+type PersistedProjectShape = {
+  version?: unknown;
+  assets?: unknown;
+  timelines: Timeline[];
+  activeTimelineId: string;
+};
+
+function isProjectDocShape(v: unknown): v is PersistedProjectShape {
   return !!v && typeof v === 'object'
     && Array.isArray((v as { timelines?: unknown }).timelines)
+    && (v as { timelines: unknown[] }).timelines.length > 0
+    && (v as { timelines: unknown[] }).timelines.every(isTimelineState)
     && typeof (v as { activeTimelineId?: unknown }).activeTimelineId === 'string';
+}
+
+function isMediaAsset(v: unknown): v is MediaAsset {
+  if (!v || typeof v !== 'object') return false;
+  const asset = v as Partial<MediaAsset>;
+  return typeof asset.id === 'string'
+    && typeof asset.name === 'string'
+    && (asset.kind === 'video' || asset.kind === 'image' || asset.kind === 'audio')
+    && typeof asset.src === 'string'
+    && typeof asset.durationInFrames === 'number';
+}
+
+function dedupeAssets(values: unknown[]): MediaAsset[] {
+  const unique = new Map<string, MediaAsset>();
+  for (const value of values) {
+    if (isMediaAsset(value) && !unique.has(value.id)) unique.set(value.id, value);
+  }
+  return [...unique.values()];
+}
+
+function stripTimelineAssets(timeline: Timeline): Timeline {
+  const { assets: _legacyAssets, ...rest } = timeline;
+  return rest;
 }
 
 const tlId = () => `tl_${newId()}`;
@@ -70,14 +102,29 @@ const tlId = () => `tl_${newId()}`;
 /** wrap a single timeline into a one-sequence project (new projects + migration). */
 export function docFromTimeline(ts: TimelineState, name = '序列 1'): ProjectDoc {
   const id = tlId();
-  const timeline: Timeline = { ...ts, id, name, order: 0 };
-  return { timelines: [timeline], activeTimelineId: id };
+  const { assets = [], ...state } = ts;
+  const timeline: Timeline = { ...state, id, name, order: 0 };
+  return { version: 2, assets: dedupeAssets(assets), timelines: [timeline], activeTimelineId: id };
 }
 
-/** migrate a persisted value to a ProjectDoc: already a doc → as-is; an old
- * single-timeline state → wrapped; anything else → null. */
-function toDoc(v: unknown): ProjectDoc | null {
-  if (isProjectDoc(v)) return v;
+/** Normalize every supported persisted shape into ProjectDoc V2. Legacy media
+ * pools lived inside timelines, so migration merges/dedupes them at project
+ * level and removes the timeline copies. */
+export function migrateProjectDoc(v: unknown): ProjectDoc | null {
+  if (isProjectDocShape(v)) {
+    const legacyAssets = v.timelines.flatMap((timeline) => timeline.assets ?? []);
+    const projectAssets = Array.isArray(v.assets) ? v.assets : [];
+    const timelines = v.timelines.map(stripTimelineAssets);
+    const activeTimelineId = timelines.some((timeline) => timeline.id === v.activeTimelineId)
+      ? v.activeTimelineId
+      : timelines[0].id;
+    return {
+      version: 2,
+      assets: dedupeAssets([...projectAssets, ...legacyAssets]),
+      timelines,
+      activeTimelineId,
+    };
+  }
   if (isTimelineState(v)) return docFromTimeline(v);
   return null;
 }
@@ -98,7 +145,7 @@ export async function listProjects(): Promise<ProjectMeta[]> {
 
 export async function loadProject(id: string): Promise<ProjectDoc | null> {
   try {
-    return toDoc(await idbGet<unknown>(projectKey(id)));
+    return migrateProjectDoc(await idbGet<unknown>(projectKey(id)));
   } catch {
     return null;
   }

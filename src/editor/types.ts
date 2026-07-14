@@ -251,10 +251,12 @@ export interface Timeline extends TimelineState {
   hidden?: boolean;
 }
 
-/** a project = an ordered set of timelines + which one is active (source
- * manage_timelines). Persisted per project; the active timeline is what the
- * editor/composition/export operate on. */
+/** a project = shared media + ordered timelines + which one is active (source
+ * manage_timelines). `version` makes persisted-document migrations explicit. */
 export interface ProjectDoc {
+  version: 2;
+  /** project-wide media pool, shared by every timeline */
+  assets: MediaAsset[];
   timelines: Timeline[];
   activeTimelineId: string;
 }
@@ -262,6 +264,13 @@ export interface ProjectDoc {
 /** the active timeline of a project (falls back to the first if the id is stale). */
 export function activeTimeline(doc: ProjectDoc): Timeline {
   return doc.timelines.find((t) => t.id === doc.activeTimelineId) ?? doc.timelines[0];
+}
+
+/** active editor view with the project's shared assets attached for existing
+ * timeline consumers. The returned `assets` field is derived, never persisted
+ * inside a timeline. */
+export function activeEditorState(doc: ProjectDoc): Timeline {
+  return { ...activeTimeline(doc), assets: doc.assets };
 }
 
 /** short ratio badge for a canvas size, e.g. 1920×1080 → "16:9". */
@@ -284,7 +293,7 @@ export interface TimelineState {
   transitions?: TransitionItem[];
   /** timeline annotations / TODO anchors (source manage_markers) */
   markers?: Marker[];
-  /** imported media pool ("我的素材") */
+  /** derived compatibility view of ProjectDoc.assets; never persisted here */
   assets?: MediaAsset[];
   selectedId: string | null;
   /** captions overlay (字幕), rendered on top + burned into export */

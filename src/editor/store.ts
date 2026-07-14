@@ -1,6 +1,6 @@
 import { useMemo, useReducer, useRef } from 'react';
 import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackId, TransitionItem, TransitionType, ZoomEffect } from './types';
-import { activeTimeline } from './types';
+import { activeEditorState, activeTimeline } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
 import type { CaptionsData } from '../captions/types';
@@ -101,7 +101,7 @@ export function useEditor(initial: ProjectDoc): {
 
   const commands = useMemo<EditorCommands>(() => buildCommands(dispatch, () => docRef.current), []);
 
-  return { state: activeTimeline(doc), doc, commands, canUndo: h.past.length > 0, canRedo: h.future.length > 0 };
+  return { state: activeEditorState(doc), doc, commands, canUndo: h.past.length > 0, canRedo: h.future.length > 0 };
 }
 
 // The editor command set over a project dispatch fn — reused by the live store
@@ -279,7 +279,7 @@ export function makeDraft(base: ProjectDoc): DraftEngine {
   };
   return {
     commands: buildCommands(dispatch, () => doc),
-    getState: () => activeTimeline(doc),
+    getState: () => activeEditorState(doc),
     getDoc: () => doc,
     takeActions: () => {
       const out = pending;
