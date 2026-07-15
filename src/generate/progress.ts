@@ -1,4 +1,5 @@
 import type { MediaAsset, TimelineState } from '../editor/types';
+import { isComplete, type JobReportBase } from '../agent/job-model';
 
 export interface TrackGenerationProgressArgs {
   action: 'params' | 'status' | 'wait';
@@ -16,13 +17,10 @@ interface GenerationJobResult {
   height?: number;
 }
 
-export interface GenerationJobReport {
+export interface GenerationJobReport extends JobReportBase<'queued' | 'running' | 'succeeded' | 'failed' | 'not_found'> {
   jobId: string;
-  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'not_found';
-  progress?: number;
   params?: Record<string, unknown>;
   result?: GenerationJobResult;
-  error?: string;
 }
 
 interface ProgressResponse {
@@ -47,7 +45,7 @@ export async function trackGenerationProgress(
 
   for (const report of reports) {
     const result = report.result;
-    if (args.action === 'params' || report.status !== 'succeeded' || !result || existing.has(String(result.assetId))) continue;
+    if (args.action === 'params' || !isComplete(report.status) || !result || existing.has(String(result.assetId))) continue;
     if (!result.assetId || !result.name || !result.path || !result.kind || !result.durationSeconds) continue;
     const asset: MediaAsset = {
       id: result.assetId,

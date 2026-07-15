@@ -8,6 +8,7 @@
 import type { AgentContext } from './context';
 import type { MediaAsset } from '../editor/types';
 import { getTranscribeJob, waitForTranscribeJobs, transcriptionReport } from '../transcript/transcribe-jobs';
+import { isComplete } from './job-model';
 
 const DEFAULT_WAIT_SECONDS = 90;
 const MAX_WAIT_SECONDS = 3600;
@@ -72,7 +73,7 @@ export async function execTranscriptionProgress(args: Args, ctx: AgentContext): 
     }
   }
 
-  const ready = reports.filter((r) => r.status === 'succeeded').map((r) => r.assetId);
+  const ready = reports.filter((r) => isComplete(r.status)).map((r) => r.assetId);
   return {
     ok: true,
     target: 'transcription',

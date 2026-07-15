@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import { recordExport, listExportHistory } from '../persist/exportHistoryStore';
+import { isTerminal, isComplete, isFailed, type JobReportBase } from './job-model';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 异步渲染 job 工具（对标源站 §10）
@@ -74,18 +75,18 @@ export const EXPORT_TOOL_SCHEMAS: Anthropic.Tool[] = [
 
 export const EXPORT_TOOL_NAMES = new Set(EXPORT_TOOL_SCHEMAS.map((t) => t.name));
 
-/** 源站 job 状态 → 工具面向词汇：succeeded 读作 completed（与同步导出 status:'completed' 对齐）。 */
+// 导出族 agent 面向词汇:server 的 succeeded 读作 completed（与同步导出 submit_export
+// 的 status:'completed' 对齐——那是导出家族的终态 wire）。终态"判定"本身走共享 job-model
+// 的 isComplete/isFailed/isTerminal(见下),此函数只负责家族 wire 的呈现。
 function mapStatus(status: string): string {
   return status === 'succeeded' ? 'completed' : status;
 }
 
 /** 后端 /export/job/:id 快照里工具关心的字段（其余忽略）。 */
-interface JobSnapshot {
+interface JobSnapshot extends JobReportBase<'queued' | 'running' | 'succeeded' | 'failed'> {
   id: string;
-  status: 'queued' | 'running' | 'succeeded' | 'failed';
   progress: number;
   result?: { path?: string; name?: string; sizeBytes?: number; codec?: string };
-  error?: string;
 }
 
 type PollResult =
@@ -100,7 +101,7 @@ const recordedRenderIds = new Set<string>();
 
 /** Record a completed async render into the global export history (once per renderId). */
 function recordIfCompleted(result: PollResult): void {
-  if (!('ok' in result) || result.status !== 'completed' || !result.downloadUrl || recordedRenderIds.has(result.renderId)) return;
+  if (!('ok' in result) || !isComplete(result.status) || !result.downloadUrl || recordedRenderIds.has(result.renderId)) return;
   recordedRenderIds.add(result.renderId);
   const format = result.codec === 'mp3' || result.codec === 'wav' ? 'audio' : 'video';
   void recordExport({ name: result.name ?? result.renderId, format, codec: result.codec, sizeBytes: result.sizeBytes, createdAt: Date.now() });
@@ -115,7 +116,7 @@ async function pollOnce(renderId: string): Promise<PollResult> {
     const message = snapshot && 'error' in snapshot ? snapshot.error : undefined;
     return { error: message ?? `track_export failed (${response.status})` };
   }
-  const completed = snapshot.status === 'succeeded';
+  const completed = isComplete(snapshot.status);
   const result = snapshot.result;
   return {
     ok: true,
@@ -123,7 +124,7 @@ async function pollOnce(renderId: string): Promise<PollResult> {
     status: mapStatus(snapshot.status),
     progress: snapshot.progress,
     ...(completed && result?.path ? { downloadUrl: result.path, name: result.name, sizeBytes: result.sizeBytes, codec: result.codec } : {}),
-    ...(snapshot.status === 'failed' && snapshot.error ? { error: snapshot.error } : {}),
+    ...(isFailed(snapshot.status) && snapshot.error ? { error: snapshot.error } : {}),
   };
 }
 
@@ -169,7 +170,7 @@ async function trackExport(args: Args): Promise<unknown> {
     for (;;) {
       const result = await pollOnce(renderId);
       if (!('ok' in result)) return result; // 传输错误/未知 renderId：立即返回
-      if (result.status === 'completed' || result.status === 'failed') {
+      if (isTerminal(result.status)) {
         recordIfCompleted(result);
         return result;
       }

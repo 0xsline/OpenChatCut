@@ -9,6 +9,7 @@
 import type { MediaAsset } from '../editor/types';
 import type { TranscriptWord } from './types';
 import { transcribePath } from './assemblyai';
+import { isTerminal, type JobReportBase } from '../agent/job-model';
 
 export type TranscribeJobStatus = 'running' | 'done' | 'failed';
 
@@ -21,7 +22,6 @@ export interface TranscribeJob {
 
 const jobs = new Map<string, TranscribeJob>();
 
-const SETTLED: readonly TranscribeJobStatus[] = ['done', 'failed'];
 const POLL_MS = 1000;
 const DEFAULT_LANG = 'zh';
 
@@ -76,7 +76,7 @@ export async function waitForTranscribeJobs(assetIds: string[], timeoutMs: numbe
   for (;;) {
     const pending = assetIds.some((id) => {
       const job = jobs.get(id);
-      return job !== undefined && !SETTLED.includes(job.status);
+      return job !== undefined && !isTerminal(job.status);
     });
     if (!pending || Date.now() >= deadline) return;
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
@@ -93,11 +93,9 @@ export function __resetTranscribeJobs(): void {
  *  non-empty transcript (job may have been cleared on reload). */
 export type TranscriptionReportStatus = 'running' | 'succeeded' | 'failed' | 'not_found';
 
-export interface TranscriptionReport {
+export interface TranscriptionReport extends JobReportBase<TranscriptionReportStatus> {
   assetId: string;
-  status: TranscriptionReportStatus;
   wordCount?: number;
-  error?: string;
 }
 
 export function transcriptionReport(
