@@ -50,4 +50,41 @@ assert.ok(!xml.includes('Title & <Intro>'), 'raw unescaped name must not leak in
 assert.ok(!/undefined/.test(xml), 'output must not contain "undefined"');
 assert.ok(!/NaN/.test(xml), 'output must not contain "NaN"');
 
-console.log('fcpxml.check: ok');
+// 7. 全文 golden — 锁定整份 FCPXML 字节输出。源站未导出真 .fcpxml 供比对,但属性词汇
+//    (frameDuration / hasVideo / hasAudio / colorSpace / fcp_xml_resolve) 已对照反编译
+//    bundle 确认一致;此 golden 防我方序列化器格式回归(任何漂移都在此炸并显示 diff)。
+const GOLDEN_DEFAULT = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.10">
+  <resources>
+    <format id="fmt1" name="FFVideoFormatCustom1920x1080p30" frameDuration="1/30s" width="1920" height="1080"/>
+    <asset id="id-vo-1" name="vo.mp3" src="file:///media/uploads/vo.mp3" start="0s" duration="150/30s" hasVideo="0" hasAudio="1"/>
+  </resources>
+  <library>
+    <event name="ChatCut Export">
+      <project name="Check Project">
+        <sequence format="fmt1" duration="150/30s" tcStart="0/30s" tcFormat="NDF">
+          <spine>
+            <gap name="Background" offset="0/30s" duration="150/30s">
+        <gap name="MG: Title &amp; &lt;Intro&gt;" lane="1" offset="0/30s" duration="60/30s"><!-- motion graphic placeholder, render before NLE import: Title &amp; &lt;Intro&gt; --></gap>
+        <gap name="MG: Outro Card" lane="1" offset="60/30s" duration="90/30s"><!-- motion graphic placeholder, render before NLE import: Outro Card --></gap>
+        <asset-clip ref="id-vo-1" lane="-1" offset="0/30s" duration="150/30s" start="0/30s" name="Voiceover"/>
+      </gap>
+          </spine>
+        </sequence>
+      </project>
+    </event>
+  </library>
+</fcpxml>`;
+assert.strictEqual(xml.trim(), GOLDEN_DEFAULT.trim(), 'FCPXML output drifted from the golden (fcp_xml / Premiere)');
+
+// 8. Resolve 变体 (fcp_xml_resolve) 只应在 format colorSpace + event name 两处不同
+const resolveXml = timelineToFcpxml(state, { title: 'Check Project', nleFormat: 'fcp_xml_resolve' });
+assert.ok(resolveXml.includes('colorSpace="1-1-1 (Rec. 709)"'), 'resolve format carries Rec.709 colorSpace');
+assert.ok(resolveXml.includes('<event name="ChatCut Export (Resolve)">'), 'resolve event is named for Resolve');
+assert.ok(!xml.includes('colorSpace'), 'default (Premiere) format omits colorSpace');
+const dLines = xml.split('\n');
+const diff = resolveXml.split('\n').filter((ln, i) => ln !== dLines[i]);
+assert.strictEqual(diff.length, 2, `resolve should differ from default in exactly 2 lines (format+event), got ${diff.length}`);
+
+console.log('fcpxml.check: ok (+ golden 全文锁定 + resolve 变体)');
