@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { SHORTCUT_CATALOG } from './catalog';
 import { matchShortcut, normalizeKey, isTypingTarget } from './match';
+import { effectiveCatalog } from './keymap';
 
 export type ShortcutHandler = (ctx: { shift: boolean; alt: boolean; mod: boolean }) => void;
 
@@ -25,7 +25,7 @@ export function useShortcutDispatcher(
       if (!['shift', 'control', 'alt', 'meta'].includes(nk)) held.add(nk);
 
       // Shift+Backspace is ripple-delete — special case: still match delete with shift
-      const id = matchShortcut(e, SHORTCUT_CATALOG, { held });
+      const id = matchShortcut(e, effectiveCatalog(), { held });
       if (!id) return;
       const fn = handlersRef.current[id];
       if (!fn) return;
