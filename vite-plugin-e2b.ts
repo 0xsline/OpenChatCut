@@ -4,14 +4,16 @@
 // running skill-shipped scripts (ffmpeg / node / python) — the portable stand-in for the
 // native Agent Skills code-execution container, which our relay can't reach. The sandbox
 // cannot touch the editor; results come back and the agent applies them via local tools.
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { Sandbox } from '@e2b/code-interpreter';
 
 const PUBLIC_DIR = resolve(process.cwd(), 'public');
+const UPLOAD_DIR = join(PUBLIC_DIR, 'media', 'uploads');
 const MAX_FETCH = 200_000_000; // cap bytes pulled into the sandbox
+let alphaSeq = 0; // filename disambiguator for transcoded outputs
 
 // Resolve a file's bytes to write into the sandbox: inline `content`, a local dev asset
 // (`url` like /media/uploads/x.mp4 → read from public/, path-traversal guarded), or a
@@ -85,6 +87,14 @@ function asCommandResult(error: unknown): { stdout: string; stderr: string; exit
   throw error;
 }
 
+function createSandbox(options: E2bOptions, timeoutMs: number): Promise<Sandbox> {
+  const createOpts = { apiKey: options.apiKey, timeoutMs: Math.min(timeoutMs, MAX_TIMEOUT) };
+  return options.template ? Sandbox.create(options.template, createOpts) : Sandbox.create(createOpts);
+}
+
+// Body of POST /e2b/transcode-alpha: { source } is a /media/... path or public URL.
+interface TranscodeRequest { source?: string; timeoutMs?: number }
+
 export function e2bPlugin(options: E2bOptions): Plugin {
   return {
     name: 'chatcut-e2b',
@@ -98,10 +108,7 @@ export function e2bPlugin(options: E2bOptions): Plugin {
           const command = String(input.command ?? '').trim();
           if (!command) throw new Error('command is required');
 
-          const createOpts = { apiKey: options.apiKey, timeoutMs: Math.min(input.timeoutMs ?? 120_000, MAX_TIMEOUT) };
-          sandbox = options.template
-            ? await Sandbox.create(options.template, createOpts)
-            : await Sandbox.create(createOpts);
+          sandbox = await createSandbox(options, input.timeoutMs ?? 120_000);
           for (const file of input.files ?? []) {
             await sandbox.files.write(file.path, await resolveBytes(file));
           }
@@ -123,6 +130,49 @@ export function e2bPlugin(options: E2bOptions): Plugin {
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           server.config.logger.error(`[e2b] ${message}`);
+          sendJson(res, 400, { error: message });
+        } finally {
+          if (sandbox) { try { await sandbox.kill(); } catch { /* sandbox already gone */ } }
+        }
+      });
+
+      // POST /e2b/transcode-alpha { source } — transcode a rendered clip (a transparent
+      // ProRes .mov under /media, or a public URL) to a VP9 alpha WebM using the sandbox's
+      // ffmpeg (this env's local ffmpeg can't encode alpha webm — see clipExport.ts). The
+      // webm is read back as BYTES (binary-safe) and written to media/uploads; returns its
+      // path. This is the source's "转为视频 = bake to an alpha webm" that local ffmpeg blocked.
+      server.middlewares.use('/e2b/transcode-alpha', async (req, res) => {
+        if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
+        let sandbox: Sandbox | undefined;
+        try {
+          if (!options.apiKey) throw new Error('e2b sandbox is not configured. Set E2B_API_KEY in .env.local.');
+          const input = (await readJson(req)) as unknown as TranscodeRequest;
+          const source = String(input.source ?? '').trim();
+          if (!source) throw new Error('source is required');
+          const bytes = await resolveBytes({ path: 'in.media', url: source });
+          if (typeof bytes === 'string') throw new Error('source must be a media file (path or url), not inline text');
+
+          sandbox = await createSandbox(options, input.timeoutMs ?? 240_000);
+          await sandbox.files.write('in.media', bytes);
+          // -auto-alt-ref 0 is required for VP9 alpha (alt-ref frames drop the alpha plane);
+          // -metadata alpha_mode=1 tags the WebM so players read the separate alpha stream
+          // (VP9 alpha rides a side stream — the main pix_fmt stays yuv420p, which is normal).
+          const cmd = 'ffmpeg -y -i in.media -an -c:v libvpx-vp9 -pix_fmt yuva420p -metadata:s:v:0 alpha_mode=1 -auto-alt-ref 0 -b:v 3M -deadline good -cpu-used 4 -row-mt 1 out.webm';
+          try {
+            await sandbox.commands.run(cmd, { timeoutMs: Math.min(input.timeoutMs ?? 240_000, MAX_TIMEOUT) });
+          } catch (error) {
+            const r = asCommandResult(error); // non-zero exit → surface ffmpeg's stderr
+            throw new Error(`ffmpeg vp9-alpha failed (exit ${r.exitCode}): ${r.stderr.slice(-400)}`);
+          }
+          const webm = await sandbox.files.read('out.webm', { format: 'bytes' });
+          if (!webm || webm.byteLength === 0) throw new Error('transcode produced an empty file');
+
+          const fname = `mgalpha_${Date.now().toString(36)}_${alphaSeq++}.webm`;
+          await writeFile(join(UPLOAD_DIR, fname), Buffer.from(webm));
+          sendJson(res, 200, { ok: true, path: `/media/uploads/${fname}`, bytes: webm.byteLength, transparent: true });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          server.config.logger.error(`[e2b transcode-alpha] ${message}`);
           sendJson(res, 400, { error: message });
         } finally {
           if (sandbox) { try { await sandbox.kill(); } catch { /* sandbox already gone */ } }

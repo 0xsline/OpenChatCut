@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import type { MediaAsset, TimelineItem } from '../editor/types';
-import { bakeClipToVideo, exportClipMov } from '../media/clipExport';
+import { bakeClipToVideo, bakeClipToAlphaWebm, exportClipMov } from '../media/clipExport';
 
 // convert_motion_graphic_to_video + register_converted_video (source 域G §9).
 // Source flow: convert 云渲 MG 原长 → renderId → track_export 等完成 →
@@ -9,22 +9,27 @@ import { bakeClipToVideo, exportClipMov } from '../media/clipExport';
 //
 // 本地实现:/render-clip 端点(renderClip)与 clipExport.bakeClipToVideo 已在,渲染是
 // 同步的,故 convert 一步渲染+注册(返回 assetId);register 单独暴露,供导入外部已渲产物。
-// ⚠ 环境限制:本机 ffmpeg 不能编码 alpha webm/vp9(clipExport.ts 自陈),故转出的时间线
-// 视频是不透明 h264;透明 alpha 只能走 ProRes .mov 导出(域H export_motion_graphic_prores)。
+// 透明:MG/text/svg 这类带 alpha 的片段,先本地渲透明 ProRes,再进 e2b 沙箱转 VP9 alpha
+// webm 入池(源站真「转为视频 = alpha webm」);沙箱不可用/失败则优雅回退不透明 h264。
+// 不透明 raster(video/image/gif)本就无 alpha,直接 h264。
 
 type Args = Record<string, unknown>;
+
+// Clip kinds that carry transparency worth preserving when baked (MG/vector/text).
+const ALPHA_CAPABLE = new Set(['motion-graphic', 'text', 'svg']);
 
 export const MG_VIDEO_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'convert_motion_graphic_to_video',
     description:
-      'Bake a motion-graphic (or any non-audio clip) on the timeline into a real video asset in the media pool, so it can be reused/exported like footage. Renders the clip full-length via the headless renderer. NOTE: this env cannot encode alpha webm — the baked video is opaque h264; for a transparent MG use the ProRes .mov export path instead. Pass replace:true to also swap the source clip in place. Identify the clip by itemId (preferred) or assetId.',
+      'Bake a motion-graphic (or any non-audio clip) on the timeline into a real video asset in the media pool, so it can be reused/exported like footage. Renders the clip full-length via the headless renderer. Transparent MG/text/svg clips bake to a VP9 alpha WebM (transparency preserved, via the sandbox) so they composite over other clips; if the sandbox is unavailable it falls back to opaque h264. Raster clips (video/image/gif) bake to opaque h264. Pass opaque:true to force flatten, replace:true to also swap the source clip in place. Identify the clip by itemId (preferred) or assetId.',
     input_schema: {
       type: 'object',
       properties: {
         itemId: { type: 'string', description: 'Timeline clip id (prefix ok) to convert. Preferred.' },
         assetId: { type: 'string', description: 'Fallback: convert the first placed clip that references this asset/template id.' },
         replace: { type: 'boolean', description: 'Also replace the source clip in place with the baked video (default false = only add to media pool).' },
+        opaque: { type: 'boolean', description: 'Force an opaque h264 bake even for MG/text/svg (skip the transparent VP9 webm path).' },
       },
     },
   },
@@ -79,9 +84,25 @@ async function convert(args: Args, ctx: AgentContext): Promise<unknown> {
   if (item.kind === 'audio') return { error: 'audio clips have no video to bake; convert applies to motion-graphic/video/image clips' };
 
   const state = ctx.getState();
+  const wantAlpha = ALPHA_CAPABLE.has(item.kind) && args.opaque !== true;
+
   let src: string;
+  let transparent = false;
+  let fallbackNote: string | undefined;
   try {
-    src = await bakeClipToVideo(state, item); // POST /render-clip (opaque h264 under /media/uploads)
+    if (wantAlpha) {
+      // Transparent path: local ProRes render → e2b VP9-alpha transcode. Fall back to
+      // opaque h264 if the sandbox is unavailable/fails, so convert never regresses.
+      try {
+        src = await bakeClipToAlphaWebm(state, item);
+        transparent = true;
+      } catch (alphaError) {
+        src = await bakeClipToVideo(state, item);
+        fallbackNote = `Transparent VP9-alpha bake unavailable (${alphaError instanceof Error ? alphaError.message : String(alphaError)}); baked OPAQUE h264 instead. Use export_motion_graphic_prores for a transparent .mov.`;
+      }
+    } else {
+      src = await bakeClipToVideo(state, item);
+    }
   } catch (e) {
     return { error: `render failed: ${e instanceof Error ? e.message : String(e)}` };
   }
@@ -102,8 +123,11 @@ async function convert(args: Args, ctx: AgentContext): Promise<unknown> {
 
   return {
     ok: true, assetId: asset.id, src, name: asset.name, durationInFrames: asset.durationInFrames, replaced: replace,
-    opaque: true, // this env's ffmpeg can't encode alpha webm/vp9 — the pooled video is opaque h264
-    note: 'Baked as OPAQUE h264 (no transparency). If you need the MG with alpha over other clips, use export_motion_graphic_prores instead (transparent ProRes .mov).',
+    transparent,
+    codec: transparent ? 'vp9-alpha-webm' : 'h264',
+    note: transparent
+      ? 'Baked as TRANSPARENT VP9 alpha WebM (composites over other clips).'
+      : (fallbackNote ?? 'Baked as OPAQUE h264. For a transparent MG over other clips, pass an MG/text/svg clip (auto VP9-alpha) or use export_motion_graphic_prores (.mov).'),
   };
 }
 

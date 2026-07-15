@@ -45,3 +45,29 @@ export async function bakeClipToVideo(state: TimelineState, item: TimelineItem):
   if (!res.ok) await fail(res, '转换');
   return (await res.json() as { path: string }).path;
 }
+
+/** Bake a clip to a transparent ProRes 4444 .mov under uploads; returns its path. The
+ *  local renderer CAN encode ProRes alpha (unlike alpha webm), so this is the intermediate
+ *  the e2b transcode reads. */
+async function bakeClipToProres(state: TimelineState, item: TimelineItem): Promise<string> {
+  const res = await fetch('/render-clip', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: clipState(state, item), codec: 'prores', transparent: true, mode: 'bake' }),
+  });
+  if (!res.ok) await fail(res, '转换');
+  return (await res.json() as { path: string }).path;
+}
+
+/** 转为视频（透明）→ VP9 alpha WebM under uploads; returns its path. Renders a transparent
+ *  ProRes .mov locally, then transcodes it to alpha webm in the e2b sandbox (whose ffmpeg
+ *  can do vp9-alpha, which the local build cannot). This is the source's true "转为视频 =
+ *  alpha webm". Throws if the sandbox is unavailable — the caller falls back to opaque h264. */
+export async function bakeClipToAlphaWebm(state: TimelineState, item: TimelineItem): Promise<string> {
+  const source = await bakeClipToProres(state, item);
+  const res = await fetch('/e2b/transcode-alpha', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source }),
+  });
+  if (!res.ok) await fail(res, '透明编码');
+  return (await res.json() as { path: string }).path;
+}
