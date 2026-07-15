@@ -50,7 +50,7 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 
 | # | 项 | 主要文件 | 认领 |
 |---|---|---|---|
-| §2.1 | **`edit_captions` 21-action 重写**（最大债） | `agent/transcript-tools.ts` + `captions-tools.ts` + `captions/*` | **[C]** |
+| §2.1 | **`edit_captions` 21-action 重写**（最大债） | `agent/transcript-tools.ts` + `captions-tools.ts` + `captions/*` | **[C] ✅** |
 | §2.2 | `manage_transcript` translation_*/retry | `agent/transcript-tools.ts` + `transcript/variants.ts` | **[C]** |
 | §2.3 | `isolate_voice` attach | `agent/isolate-tools.ts`（`setItemDenoise` 已在） | **[C] ✅** |
 | §1.3 | `export_motion_graphic_prores` | `agent/mg-video-tools.ts`（薄封装 `exportClipMov`） | **[C] ✅** |
@@ -150,16 +150,17 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 
 ## 2. 有工具，但与源站 schema 严重不对齐
 
-### 2.1 🟡 `edit_captions` — **最大契约债**
+### 2.1 ✅ `edit_captions` — 21-action 派发 **[C 已完成 · d91a98f]**
 
 | | |
 |--|--|
 | **源站 action**（schema 原文 enum） | `enable, disable, display_text, template, style, layout, layout_policy, positions, preset_apply, preset_delete, preset_list, preset_rename, preset_save, bilingual, language_mode, source_add, source_list, source_remove, source_set, source_update, track` |
-| **源站位置** | `mcp-tools-schema.json` → `edit_captions`；参数 `captionsItemId/json/preset/templatePreset/trackId…` |
-| **本仓 agent** | `src/agent/transcript-tools.ts`（`edit_captions`：扁平 `enabled/template/pacing/track/translateTo/variantLang`） |
-| **本仓 词级覆盖** | `src/agent/captions-tools.ts`（`read_captions` / `edit_caption_words` / `set_caption_sources`） |
-| **本仓 UI** | 轨道头字幕：`src/components/Timeline.tsx`（CC 菜单）；样式：`src/captions/styles.ts`（21）；渲染：`src/captions/` + `CaptionsLayer`；库侧文字稿底栏字幕控件（若有 `CaptionsControls`）。 |
-| **怎么改** | 1. **以源站 enum 为 action 机** 重写 `edit_captions` schema（保留内部实现可调现有 store）。2. 映射表：`enable/disable`→现 enabled；`template`→template id；`display_text`→接到 `wordOverrides`/`edit_caption_words`；`source_*`→`set_caption_sources`；`bilingual/language_mode`→translate/variant。3. 暂未实现的 action（layout/positions/preset_*）返回明确 `not_implemented` 列表，避免 silent no-op。4. check：`transcript-tools.check.ts` / 新 `edit-captions-parity.check.ts` 对照源 enum。 |
+| **本仓 agent（已重写）** | 单工具 `edit_captions {action, json, templatePreset, preset, trackId, list, captionsItemId}`。派发：`src/agent/captions-actions.ts`（生命周期/display_text/style/layout/template/track + unsupported）+ `captions-sources.ts`（source_*/language_mode/bilingual）。`read_captions` 仍独立；旧扁平 edit_captions 与 clone 专有 edit_caption_words/set_caption_sources 已删/折叠。 |
+| **回填的 action（13）** | enable/disable、template(列21/应用)、display_text(逐词覆盖+clearOverrides)、style(自定义样式→`CaptionsData.styleOverride`)、layout(锚点→`CaptionsData.layout`)、source_set/add/remove/list、language_mode、bilingual、track。 |
+| **新补渲染** | `CaptionsData.styleOverride`(叠模板上) + `layout`(3×3 锚点+ratio 偏移)；`CaptionsLayer` 合并 `{...preset,...styleOverride}` 并按 layout 摆放（默认路径字节不变）；`captions/styleMap.ts` 把源站 style json 字段映射到本仓字段、未映射进 `ignored`。 |
+| **诚实 unsupported** | `layout_policy` / `positions`（本仓多源合并成单流、无逐源定位）、`preset_save/apply/rename/delete/list`（无用户预设库）→ 返回 `{unsupported, note}`。 |
+| **验证** | `captions-tools.check.ts` 重写覆盖全部 action（并入 `npm test`）；tsc app+node 双过；浏览器 E2E：agent 真调 `enable→source_set→style→layout`，并用 `view_timeline_frames` 自检确认 styleOverride/layout 已渲染。 |
+| **`source_update` 未做** | 源站 per-source 表现更新依赖逐源定位模型，本仓单流合并无对应面，归入 unsupported 族（同 positions）。 |
 
 ---
 
@@ -383,7 +384,7 @@ chatcut-clone/
 
 ### P0 契约
 
-- [ ] **[C]** `edit_captions` action 机对齐源 enum（§2.1）
+- [x] **[C]** `edit_captions` action 机对齐源 enum（§2.1）
 - [ ] **[C]** `manage_transcript` translation_* + retry（§2.2）
 - [x] **[C]** `isolate_voice` attach（§2.3）
 - [x] **[C]** `export_motion_graphic_prores` 注册（§1.3）

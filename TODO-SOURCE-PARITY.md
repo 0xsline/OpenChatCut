@@ -1,6 +1,6 @@
 # ChatCut 复刻 · 源码对标 TODO（重新审计版）
 
-> ⚠ **契约维度以 `TODO-SOURCE-CODE-PARITY.md`（grok，对真 MCP schema）为准**。本文是"功能覆盖"视角、按功能有无算。曾知 3 处 ✅ 偏乐观：`ask_followup_questions`（✅ **已补注册工具** `agent/followup-tools.ts` + runtime `__followup` 特判，2026-07 由 [C] 完成）、`edit_captions`（源站是 21-action 调度模型、本仓是扁平参数，**契约大债，[C] 待做**）、`manage_transcript`（action 名 `translate/renameSpeaker` ≠ 源 `translation_create/ensure/list/read`+`retry`，**[C] 待做**）。分工见那份 §0.5。
+> ⚠ **契约维度以 `TODO-SOURCE-CODE-PARITY.md`（grok，对真 MCP schema）为准**。本文是"功能覆盖"视角、按功能有无算。曾知 3 处 ✅ 偏乐观：`ask_followup_questions`（✅ **已补注册工具** `agent/followup-tools.ts` + runtime `__followup` 特判，2026-07 由 [C] 完成）、`edit_captions`（✅ **已重写为源站同款 21-action 派发** + style/layout 渲染回填，d91a98f 由 [C] 完成）、`manage_transcript`（action 名 `translate/renameSpeaker` ≠ 源 `translation_create/ensure/list/read`+`retry`，**[C] 待做**）。分工见那份 §0.5。
 
 > 快照 2026-07-14（合并 GPT generation-suite 之后）。本文取代那份已过时的
 > `chatcut-reverse/reports/live-editor-audit-2026-07-14/feature-gap-matrix.md`（旧记 42.8%）。
