@@ -7,6 +7,8 @@ import { thinkingPhrase } from '../agent/thinkingPhrases';
 import { shouldBlockAutoApply } from '../agent/skillGuard';
 import { ProposalCard } from './ProposalCard';
 import { ChatMessage } from './chat/ChatMessage';
+import { ToolGroupRow } from './chat/ToolGroupRow';
+import { groupMessages } from './chat/message-groups';
 import { ChatComposer, type ChatMode, type RefItem } from './chat/ChatComposer';
 import { Icon } from './icons';
 
@@ -147,17 +149,21 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
             </div>
           </div>
         )}
-        {messages.map((m, i) => (
-          <ChatMessage key={i} msg={m}
-            streaming={running && i === messages.length - 1 && m.role === 'assistant'}
-            feedback={feedback[i] ?? null}
-            onFeedback={(v) => setFeedback((f) => {
-              const next = { ...f };
-              if (next[i] === v) delete next[i]; else next[i] = v;
-              return next;
-            })}
-            onWidgetSubmit={(answer) => { if (!running) send(answer, { askOnly: mode === 'ask' }); }} />
-        ))}
+        {groupMessages(messages).map((item) =>
+          item.kind === 'toolgroup' ? (
+            <ToolGroupRow key={item.index} name={item.name} items={item.items} />
+          ) : (
+            <ChatMessage key={item.index} msg={item.msg}
+              streaming={running && item.index === messages.length - 1 && item.msg.role === 'assistant'}
+              feedback={feedback[item.index] ?? null}
+              onFeedback={(v) => setFeedback((f) => {
+                const next = { ...f };
+                if (next[item.index] === v) delete next[item.index]; else next[item.index] = v;
+                return next;
+              })}
+              onWidgetSubmit={(answer) => { if (!running) send(answer, { askOnly: mode === 'ask' }); }} />
+          ),
+        )}
         {running && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: theme.textDim, fontSize: 12.5, margin: '10px 0' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: theme.accent, animation: 'cc-rec-pulse 1.2s ease-out infinite', flexShrink: 0 }} />
