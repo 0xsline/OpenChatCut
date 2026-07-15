@@ -71,7 +71,7 @@ export interface EditorCommands {
   splitItem: (id: string, atFrame: number) => void;
   clearTimeline: () => void;
   setAspect: (width: number, height: number, fit?: AspectFit) => void;
-  toggleTrackFlag: (track: TrackId, flag: 'hidden' | 'muted' | 'collapsed') => void;
+  toggleTrackFlag: (track: TrackId, flag: 'hidden' | 'muted' | 'collapsed' | 'locked') => void;
   createTrack: (kind: TrackKind, opts?: { name?: string; role?: TrackFlags['role']; order?: number; audioRouting?: TrackFlags['audioRouting'] }) => TrackId;
   updateTrack: (track: TrackId, patch: TrackUpdate) => void;
   deleteTracks: (tracks: TrackId[]) => void;

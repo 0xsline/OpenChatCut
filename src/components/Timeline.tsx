@@ -1240,6 +1240,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
                     <span className="cc-track-badge" title={trackId} style={{ background: meta.kind === 'video' ? '#5592c7' : '#65a878' }}>{alias}</span>
                     <button style={flagBtn(hidden)} title={hidden ? '显示轨道' : '隐藏轨道'} onClick={() => commands.toggleTrackFlag(trackId, 'hidden')}><Icon name={hidden ? 'eyeOff' : 'eye'} size={15} /></button>
                     <button style={flagBtn(muted)} title={muted ? '取消静音' : '静音轨道'} onClick={() => commands.toggleTrackFlag(trackId, 'muted')}><Icon name={muted ? 'volumeOff' : 'volume'} size={15} /></button>
+                    <button style={{ ...flagBtn(false), color: locked ? '#e0a24e' : '#c2c2c2' }} title={locked ? '解锁轨道' : '锁定轨道（禁止移动 / 裁剪 / 删除 / 落轨）'} onClick={() => commands.toggleTrackFlag(trackId, 'locked')}><Icon name={locked ? 'lock' : 'unlock'} size={15} /></button>
                     <button style={flagBtn(!captionsVisible)} title={captionsVisible ? '关闭字幕' : '开启字幕'} onClick={() => toggleCaptions(trackId)}><Icon name="captions" size={15} /></button>
                     <button data-caption-menu-trigger style={flagBtn(false)} title="字幕样式与翻译" onClick={(e) => {
                       const rect = e.currentTarget.getBoundingClientRect();

@@ -35,7 +35,7 @@ export type Action =
   | { type: 'clear' }
   | { type: 'addAsset'; asset: MediaAsset }
   | { type: 'setCanvas'; width: number; height: number; fit?: AspectFit }
-  | { type: 'toggleTrack'; track: TrackId; flag: 'hidden' | 'muted' | 'collapsed' }
+  | { type: 'toggleTrack'; track: TrackId; flag: 'hidden' | 'muted' | 'collapsed' | 'locked' }
   | { type: 'track.create'; track: { id: TrackId; kind: TrackKind; name?: string; role?: TrackFlags['role']; audioRouting?: TrackFlags['audioRouting'] }; order?: number }
   | { type: 'track.update'; track: TrackId; patch: TrackUpdate }
   | { type: 'track.delete'; tracks: TrackId[] }
