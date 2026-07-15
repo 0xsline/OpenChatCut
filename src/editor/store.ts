@@ -61,7 +61,7 @@ export interface EditorCommands {
   removeMarker: (id: string) => void;
   setReframeKeyframe: (id: string, frame: number, focalPointX: number, focalPointY: number, magnification: number) => void;
   removeReframeKeyframe: (id: string, frame: number) => void;
-  addTransition: (incomingItemId: string, type: TransitionType, durationInFrames?: number) => void;
+  addTransition: (incomingItemId: string, type: TransitionType, durationInFrames?: number, custom?: { frag: string; uniforms: Record<string, number>; label: string }) => void;
   setTransition: (id: string, patch: Partial<TransitionItem>) => void;
   removeTransition: (id: string) => void;
   duplicateItem: (id: string) => void;
@@ -344,7 +344,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       removeMarker: (id) => dispatch({ type: 'removeMarker', id }),
       setReframeKeyframe: (id, frame, focalPointX, focalPointY, magnification) => dispatch({ type: 'reframeKeyframe', id, frame, focalPointX, focalPointY, magnification }),
       removeReframeKeyframe: (id, frame) => dispatch({ type: 'removeReframeKeyframe', id, frame }),
-      addTransition: (incomingItemId, type, durationInFrames) => dispatch({ type: 'addTransition', id: uid('tr'), incomingItemId, transType: type, durationInFrames }),
+      addTransition: (incomingItemId, type, durationInFrames, custom) => dispatch({ type: 'addTransition', id: uid('tr'), incomingItemId, transType: type, durationInFrames, custom }),
       setTransition: (id, patch) => dispatch({ type: 'setTransition', id, patch }),
       removeTransition: (id) => dispatch({ type: 'removeTransition', id }),
       duplicateItem: (id) => dispatch({ type: 'duplicate', id, newId: uid('item') }),

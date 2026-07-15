@@ -10,6 +10,7 @@ import {
 } from './library-catalog';
 import { SOUND_EFFECTS, soundEffectSrc } from '../audio/soundLibrary';
 import { GENERIC_ITEM_KINDS, GENERIC_ADD_KINDS, validateGenericAdd, validateGenericUpdate, validateGenericDelete, applyGeneric } from './edit-item-generic';
+import { getCustomTransition, customTransitionUniforms } from '../gl/customTransitions';
 
 // Source edit_item — library placement for effect / transition / zoom / MG / SFX.
 // Batch is atomic: every op is validated first; on any failure nothing mutates
@@ -156,13 +157,24 @@ function validateEffectAdd(ctx: AgentContext, entry: Record<string, unknown>): O
 
 function validateTransitionAdd(ctx: AgentContext, entry: Record<string, unknown>): OpResult {
   const assetId = String(entry.assetId ?? '');
-  const type = parseTransitionAssetId(assetId);
-  if (!type) {
-    return {
-      error: `unknown transition assetId ${assetId}`,
-      hint: 'Use builtin:tr-<type> from browse_library category=transitions',
-      examples: ['builtin:tr-cross-dissolve', 'builtin:tr-page-curl'],
-    };
+  // custom:tr-* = a submit_shader-generated transition; resolve its GLSL from the registry so
+  // the plan carries the frag onto the TransitionItem (persists + renders without the registry).
+  let type: TransitionType | null;
+  let custom: { frag: string; uniforms: Record<string, number>; label: string } | undefined;
+  if (assetId.startsWith('custom:tr-')) {
+    const cdef = getCustomTransition(assetId);
+    if (!cdef) return { error: `unknown custom transition ${assetId}`, hint: 'submit_shader type=transition returns a fresh custom:tr-* id; generate it first, then add it this session' };
+    type = 'custom-shader';
+    custom = { frag: cdef.frag, uniforms: customTransitionUniforms(cdef), label: cdef.label };
+  } else {
+    type = parseTransitionAssetId(assetId);
+    if (!type) {
+      return {
+        error: `unknown transition assetId ${assetId}`,
+        hint: 'Use builtin:tr-<type> from browse_library category=transitions, or custom:tr-* from submit_shader type=transition',
+        examples: ['builtin:tr-cross-dissolve', 'builtin:tr-page-curl'],
+      };
+    }
   }
   const state = ctx.getState();
   let incoming = findItem(state.items, entry.incomingItemId);
@@ -202,6 +214,7 @@ function validateTransitionAdd(ctx: AgentContext, entry: Record<string, unknown>
     outgoingItemId: adj.id,
     type,
     durationInFrames: dur,
+    ...(custom ? { custom } : {}),
   };
 }
 
@@ -397,6 +410,7 @@ function commitPlan(ctx: AgentContext, plan: OpResult, ripple = false): OpResult
         String(plan.incomingItemId),
         plan.type as TransitionType,
         plan.durationInFrames as number | undefined,
+        plan.custom as { frag: string; uniforms: Record<string, number>; label: string } | undefined,
       );
       const tr = ctx.getState().transitions?.find((t) => t.incomingItemId === plan.incomingItemId);
       return {

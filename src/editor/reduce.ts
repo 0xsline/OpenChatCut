@@ -26,7 +26,7 @@ export type Action =
   | { type: 'removeMarker'; id: string }
   | { type: 'reframeKeyframe'; id: string; frame: number; focalPointX: number; focalPointY: number; magnification: number }
   | { type: 'removeReframeKeyframe'; id: string; frame: number }
-  | { type: 'addTransition'; id: string; incomingItemId: string; transType: TransitionType; durationInFrames?: number }
+  | { type: 'addTransition'; id: string; incomingItemId: string; transType: TransitionType; durationInFrames?: number; custom?: { frag: string; uniforms: Record<string, number>; label: string } }
   | { type: 'setTransition'; id: string; patch: Partial<TransitionItem> }
   | { type: 'removeTransition'; id: string }
   | { type: 'duplicate'; id: string; newId: string }
@@ -267,7 +267,11 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       const maxL = Math.max(2, Math.min(out.durationInFrames, inItem.durationInFrames));
       const defaultL = audioTr ? Math.min(15, maxL) : Math.min(30, maxL);
       const L = Math.max(2, Math.min(a.durationInFrames ?? defaultL, maxL));
-      const t: TransitionItem = { id: a.id, type: a.transType, durationInFrames: L, outgoingItemId: out.id, incomingItemId: inItem.id, trackId: inItem.track, enabled: true };
+      const t: TransitionItem = {
+        id: a.id, type: a.transType, durationInFrames: L, outgoingItemId: out.id, incomingItemId: inItem.id, trackId: inItem.track, enabled: true,
+        // custom-shader: carry the generated GLSL onto the item so it persists + renders after reload
+        ...(a.custom ? { customFrag: a.custom.frag, customUniforms: a.custom.uniforms, customLabel: a.custom.label } : {}),
+      };
       const others = (s.transitions ?? []).filter((x) => x.incomingItemId !== inItem.id); // one in-transition per clip
       return { ...s, transitions: [...others, t] };
     }

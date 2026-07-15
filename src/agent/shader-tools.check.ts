@@ -5,7 +5,7 @@
 //   npx tsx src/agent/shader-tools.check.ts
 import assert from 'node:assert';
 import { fxUniforms } from '../gl/fx/uniforms';
-import { validateShaderSource, stripCodeFences, buildProps, buildCustomFxDef, compileCheck } from './shader-tools';
+import { validateShaderSource, stripCodeFences, buildProps, buildCustomFxDef, compileCheck, validateTransitionShaderSource, buildCustomTransitionDef } from './shader-tools';
 
 const VALID = `#version 300 es
 precision highp float;
@@ -79,5 +79,44 @@ const registry: Record<string, typeof def> = {};
 registry[def.id] = def;
 assert.ok(def.id in registry, 'registered effect discoverable by id (manage_effects `assetId in FX_EFFECTS`)');
 assert.strictEqual(registry[def.id].name, 'My Cool Glow', 'lookup returns the registered def');
+
+// ── type=transition: two-input validator (u_outgoing / u_incoming / u_progress) ──
+const VALID_TR = `#version 300 es
+precision highp float;
+uniform sampler2D u_outgoing;
+uniform sampler2D u_incoming;
+uniform float u_progress;
+uniform float u_swirl;
+in vec2 v_texCoord;
+out vec4 fragColor;
+void main() {
+  vec4 a = texture(u_outgoing, v_texCoord);
+  vec4 b = texture(u_incoming, v_texCoord);
+  fragColor = mix(a, b, clamp(u_progress * u_swirl, 0.0, 1.0));
+}`;
+assert.strictEqual(validateTransitionShaderSource(VALID_TR), null, 'minimal valid two-input transition accepted');
+assert.ok(validateTransitionShaderSource(''), 'empty transition rejected');
+// genuinely missing an input (token absent everywhere, not just the declaration line)
+const NO_OUT = '#version 300 es\nprecision highp float;\nuniform sampler2D u_incoming;\nuniform float u_progress;\nin vec2 v_texCoord; out vec4 fragColor;\nvoid main(){ fragColor = texture(u_incoming, v_texCoord) * u_progress; }';
+const NO_IN = '#version 300 es\nprecision highp float;\nuniform sampler2D u_outgoing;\nuniform float u_progress;\nin vec2 v_texCoord; out vec4 fragColor;\nvoid main(){ fragColor = texture(u_outgoing, v_texCoord) * (1.0 - u_progress); }';
+assert.ok(validateTransitionShaderSource(NO_OUT), 'missing u_outgoing rejected');
+assert.ok(validateTransitionShaderSource(NO_IN), 'missing u_incoming rejected');
+assert.ok(validateTransitionShaderSource(VALID_TR.replace(/u_progress/g, 'u_t')), 'missing u_progress rejected');
+assert.ok(validateTransitionShaderSource(VALID_TR + '\nuniform sampler2D u_extra;'), 'extra sampler rejected (only u_outgoing/u_incoming bound)');
+assert.ok(validateTransitionShaderSource(VALID_TR + '\n#include "x"'), '#include rejected');
+// a single-input EFFECT shader must fail the transition validator (wrong contract)
+assert.ok(validateTransitionShaderSource(VALID), 'effect (u_input) shader rejected by transition validator');
+// the transition shader must fail the EFFECT validator too (u_outgoing/u_incoming are unknown samplers there)
+assert.ok(validateShaderSource(VALID_TR), 'transition shader rejected by effect validator (unknown samplers)');
+
+// ── buildCustomTransitionDef: custom:tr-* id, verbatim frag, props ──
+const tdef = buildCustomTransitionDef('Swirl Wipe', VALID_TR, [{ key: 'swirl', label: '强度', default: 0.7, min: 0, max: 1 }]);
+assert.ok(tdef.id.startsWith('custom:tr-'), 'custom transition id namespace');
+assert.ok(tdef.id.includes('swirl-wipe'), 'id carries a slug of the name');
+assert.strictEqual(tdef.frag, VALID_TR, 'frag embedded verbatim');
+assert.strictEqual(tdef.label, 'Swirl Wipe', 'label kept');
+assert.strictEqual(tdef.props[0]!.key, 'swirl', 'prop built');
+assert.strictEqual(tdef.props[0]!.default, 0.7, 'prop default in range');
+assert.notStrictEqual(buildCustomTransitionDef('x', VALID_TR).id, buildCustomTransitionDef('x', VALID_TR).id, 'transition ids unique');
 
 console.log('shader-tools.check: ok');

@@ -269,13 +269,16 @@ export type GlslTransitionType =
 /** Audio-only transitions (source preset `trAudioCrossFade`) — no picture. */
 export type AudioTransitionType = 'audio-cross-fade';
 
-/** source transition builtin ids + extended library transitions + audio */
-export type TransitionType = GlslTransitionType | AudioTransitionType;
+/** source transition builtin ids + extended library transitions + audio + custom shader.
+ *  'custom-shader' = a submit_shader-generated transition; its two-input GLSL lives on the
+ *  TransitionItem (customFrag), NOT in the exhaustive GLSL_TRANSITIONS record. */
+export type TransitionType = GlslTransitionType | AudioTransitionType | 'custom-shader';
 
 export const GLSL_TRANSITION_TYPES: ReadonlySet<string> = new Set<string>([
   'cross-dissolve', 'dip-to-black', 'soft-wipe', 'whip-pan', 'flash', 'luma-blend',
   'page-curl', 'rack-focus', 'organic-dissolve', 'impact-shake', 'anticipation-zoom', 'clean-line-wipe',
   'circle-wipe', 'radial-blur', 'glitch-cut', 'dip-to-color',
+  'custom-shader', // takes the GL render path; frag comes from the item, not GLSL_TRANSITIONS
 ]);
 
 export const CSS_TRANSITION_TYPES: ReadonlySet<string> = new Set<string>([
@@ -315,6 +318,8 @@ export const TRANSITION_LABELS: Record<TransitionType, string> = {
   'dip-to-color': '闪色转场',
   /** source preset.name.trAudioCrossFade */
   'audio-cross-fade': '音频交叉淡化',
+  /** submit_shader-generated custom transition (per-item label in customLabel) */
+  'custom-shader': '自定义着色器转场',
 };
 
 /** source catalog order + extended visual transitions. */
@@ -357,6 +362,12 @@ export interface TransitionItem {
   enabled?: boolean;
   /** direction for wipe/whip transitions (default 'left') */
   direction?: TransitionDirection;
+  /** type='custom-shader' only: the submit_shader-generated two-input transition GLSL,
+   *  stored here (not in a registry) so it persists with the project and renders after
+   *  reload. customUniforms = {u_<key>: value}; customLabel = display name. */
+  customFrag?: string;
+  customUniforms?: Record<string, number>;
+  customLabel?: string;
 }
 
 /** source marker palette (8 named colors → tailwind-500 hex) */

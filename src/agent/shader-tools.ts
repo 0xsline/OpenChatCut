@@ -2,6 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import type { FxDef, FxProperty } from '../gl/fx/uniforms';
 import { createMessage, MODEL } from './client';
+import { registerCustomTransition, type CustomTransitionDef } from '../gl/customTransitions';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // submit_shader —— 用自然语言描述 → LLM 写一段 GLSL 片元着色器 → 静态校验（+浏览器
@@ -117,6 +118,38 @@ export function buildCustomFxDef(name: string, frag: string, rawProps?: RawProp[
   };
 }
 
+// ── type=transition：双输入转场变体（对齐源站 §8 submit_shader type=transition）──────
+// 转场着色器契约与 per-clip fx 不同:两个输入 u_outgoing / u_incoming + 进度 u_progress。
+
+/** 静态校验转场着色器(双输入契约)。通过返回 null,否则返回中文原因。 */
+export function validateTransitionShaderSource(glsl: string): string | null {
+  const src = glsl.trim();
+  if (!src) return '生成的着色器为空';
+  if (src.length > MAX_GLSL_LEN) return `着色器过长（${src.length} > ${MAX_GLSL_LEN}）`;
+  for (const tok of FORBIDDEN) if (src.includes(tok)) return `禁止的指令：${tok}`;
+  if (!src.includes('u_outgoing')) return '转场着色器必须采样前一段 u_outgoing';
+  if (!src.includes('u_incoming')) return '转场着色器必须采样后一段 u_incoming';
+  if (!src.includes('u_progress')) return '转场着色器必须用进度 u_progress（0→1）驱动混合';
+  if (!/\bmain\b/.test(src)) return '着色器缺少 main() 入口';
+  if (!/fragColor|gl_FragColor/.test(src)) return '着色器必须写出颜色（fragColor / gl_FragColor）';
+  // 运行时只绑定 u_outgoing / u_incoming 两个 sampler；其它 sampler2D 会采样未绑定单元 → 拒绝
+  const samplers = [...src.matchAll(/\buniform\s+sampler2D\s+(\w+)/g)].map((m) => m[1]);
+  const unknown = samplers.filter((n) => n !== 'u_outgoing' && n !== 'u_incoming');
+  if (unknown.length) return `未知的采样器（运行时只提供 u_outgoing / u_incoming）：${unknown.join(', ')}`;
+  return null;
+}
+
+/** 组装一个自定义转场 def(唯一 custom:tr-* id、内嵌 frag、属性 schema)。纯函数、可测。 */
+export function buildCustomTransitionDef(name: string, frag: string, rawProps?: RawProp[]): CustomTransitionDef {
+  const display = name.trim() || '自定义转场';
+  return {
+    id: `custom:tr-${slugify(display)}-${shortId()}`,
+    label: display,
+    frag,
+    props: buildProps(rawProps),
+  };
+}
+
 /** 浏览器端真实编译校验（片元着色器）：通过返回 null，编译失败返回 GL 日志；无 WebGL2
  *  环境（node/tsx）返回 null 跳过——静态校验已兜底。
  *  ponytail: 只编译片元着色器，足以拦住会让 GL 崩溃的语法/GLSL 错误；若日后需要抓
@@ -168,16 +201,47 @@ Rules (MUST follow exactly):
 - Pure fragment-shader math only. Make the effect match the description and look clean.`;
 }
 
+/** 给模型的系统提示（转场变体）：双输入 u_outgoing/u_incoming + u_progress 契约。 */
+function transitionShaderSystemPrompt(props: NumberProp[]): string {
+  const propLines = props.length
+    ? props.map((p) => `  uniform float u_${p.key}; // ${p.label}（默认 ${p.default}，范围 ${p.min}..${p.max}）`).join('\n')
+    : '  (no extra adjustable uniforms)';
+  return `You write ONE WebGL2 GLSL ES 3.00 fragment shader for a clip-to-clip video TRANSITION. Output ONLY the GLSL source — no markdown fences, no prose.
+
+The runtime runs your fragment shader over a fullscreen quad and provides EXACTLY these inputs. Declare and use ONLY these; declaring any other sampler is forbidden:
+  #version 300 es
+  precision highp float;
+  uniform sampler2D u_outgoing;  // the clip LEAVING (frame A), RGBA premultiplied alpha
+  uniform sampler2D u_incoming;  // the clip ENTERING (frame B), RGBA premultiplied alpha
+  uniform float u_progress;      // transition progress 0.0 (fully outgoing) -> 1.0 (fully incoming)
+  uniform vec2  u_resolution;    // (width, height) in pixels
+  uniform float u_aspect;        // width / height
+  uniform float u_time;          // seconds since timeline start (optional, for animation)
+${propLines}
+  in vec2 v_texCoord;            // UV in [0,1]
+  out vec4 fragColor;            // write the final color here
+
+Rules (MUST follow exactly):
+- Begin with "#version 300 es" then "precision highp float;".
+- Sample BOTH clips: texture(u_outgoing, v_texCoord) and texture(u_incoming, v_texCoord), and blend them driven by u_progress.
+- Boundary conditions are REQUIRED: at u_progress=0.0 the output must equal the outgoing frame; at u_progress=1.0 it must equal the incoming frame.
+- You MUST reference u_outgoing, u_incoming, u_progress and write fragColor.
+- Preserve alpha from the sampled frames (premultiplied-alpha pipeline).
+- Use ONLY the uniforms listed above. NO extra samplers, NO #include / #import, no external textures.
+- Pure fragment-shader math only. Make the transition match the description and look clean.`;
+}
+
 export const SHADER_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'submit_shader',
     description:
-      'Generate a custom per-clip WebGL fragment-shader effect from a natural-language description. An LLM writes GLSL conforming to the runtime effect contract; it is statically validated and compile-checked, then registered as a runtime effect. Returns effectId — this only REGISTERS the effect (source submit_shader). Apply separately with edit_item adds:[{type:"effect",targetItemId,assetId:<effectId>}] (or manage_effects action=add). Use for one-off custom looks not in browse_library.',
+      'Generate a custom WebGL fragment shader from a natural-language description. type=effect (default): a per-clip effect (single input u_input) → returns effectId; apply with edit_item adds:[{type:"effect",targetItemId,assetId:<effectId>}]. type=transition: a clip-to-clip transition (two inputs u_outgoing/u_incoming + u_progress) → returns a transitionId (custom:tr-*); apply with edit_item adds:[{type:"transition",assetId:<transitionId>,incomingItemId:<later clip at the cut>}]. Either way the GLSL is statically validated + compile-checked, then registered; this only REGISTERS (source submit_shader) — apply separately. Use for one-off custom looks/transitions not in browse_library.',
     input_schema: {
       type: 'object',
       properties: {
-        description: { type: 'string', description: 'What the effect should do visually, in one or two sentences.' },
-        name: { type: 'string', description: 'Short display name for the effect (also used to derive the effect id).' },
+        type: { type: 'string', enum: ['effect', 'transition'], description: 'effect = per-clip look (default); transition = clip-to-clip transition shader.' },
+        description: { type: 'string', description: 'What the effect/transition should do visually, in one or two sentences.' },
+        name: { type: 'string', description: 'Short display name (also used to derive the id).' },
         properties: {
           type: 'array',
           description: 'Optional adjustable numeric uniforms exposed as sliders; each becomes a u_<key> float uniform in the shader. Omit for a fixed effect.',
@@ -210,6 +274,7 @@ export async function execShaderTool(name: string, args: Args, _ctx: AgentContex
   if (!description) return { error: 'description is required' };
   if (!displayName) return { error: 'name is required' };
   const rawProps = Array.isArray(args.properties) ? (args.properties as RawProp[]) : undefined;
+  const kind: 'effect' | 'transition' = args.type === 'transition' ? 'transition' : 'effect';
 
   // 先归一属性，据此告诉模型确切的 u_<key> uniform 名字，保证生成的着色器名对得上。
   const props = buildProps(rawProps);
@@ -219,7 +284,7 @@ export async function execShaderTool(name: string, args: Args, _ctx: AgentContex
     const msg = await createMessage({
       model: MODEL,
       max_tokens: 8000,
-      system: shaderSystemPrompt(props),
+      system: kind === 'transition' ? transitionShaderSystemPrompt(props) : shaderSystemPrompt(props),
       messages: [{ role: 'user', content: description }],
     });
     text = msg.content
@@ -231,11 +296,29 @@ export async function execShaderTool(name: string, args: Args, _ctx: AgentContex
   }
 
   const glsl = stripCodeFences(text);
-  const staticErr = validateShaderSource(glsl);
+  const staticErr = kind === 'transition' ? validateTransitionShaderSource(glsl) : validateShaderSource(glsl);
   if (staticErr) return { error: `generated shader rejected: ${staticErr}`, glsl };
 
   const compileErr = compileCheck(glsl); // 浏览器端真实编译；node/无 WebGL2 时返回 null 跳过
   if (compileErr) return { error: `shader compile failed: ${compileErr}`, glsl };
+
+  if (kind === 'transition') {
+    // 转场注册表是纯模块(无 .frag)→ 静态 import 即可,tsx 亦安全。
+    const tdef = buildCustomTransitionDef(displayName, glsl, rawProps);
+    try {
+      registerCustomTransition(tdef);
+    } catch (e) {
+      return { error: `transition registration failed: ${e instanceof Error ? e.message : String(e)}`, glsl };
+    }
+    return {
+      ok: true,
+      transitionId: tdef.id,
+      assetId: tdef.id,
+      name: tdef.label,
+      properties: tdef.props.map((p) => ({ key: p.key, default: p.default, min: p.min, max: p.max })),
+      next: `Apply with edit_item adds:[{type:"transition",assetId:"${tdef.id}",incomingItemId:"<the later clip at the cut>"}].`,
+    };
+  }
 
   const def: FxDef = { ...buildCustomFxDef(displayName, glsl, rawProps), desc: description.slice(0, 200) };
   try {

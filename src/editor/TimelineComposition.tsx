@@ -323,7 +323,7 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
   const entranceOf = new Map<string, { type: CssTransitionType; L: number; dir: TransitionDirection }>();
   const extendBefore = new Map<string, number>();
   const extendAfter = new Map<string, number>();
-  interface GlWindow { key: string; type: GlslTransitionType; direction: TransitionDirection; from: number; L: number; outgoing: TimelineItem; incoming: TimelineItem; trimOut: number; trimIn: number }
+  interface GlWindow { key: string; type: GlslTransitionType | 'custom-shader'; direction: TransitionDirection; from: number; L: number; outgoing: TimelineItem; incoming: TimelineItem; trimOut: number; trimIn: number; customFrag?: string; customUniforms?: Record<string, number> }
   const glWindows: GlWindow[] = [];
   for (const t of visualTransitions) {
     const half = Math.floor(t.durationInFrames / 2);
@@ -335,7 +335,7 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
       const from = inc!.startFrame - half; // R = incoming.from - floor(L/2)
       glWindows.push({
         key: t.id,
-        type: t.type as GlslTransitionType,
+        type: t.type as GlslTransitionType | 'custom-shader',
         direction: t.direction ?? 'left',
         from,
         L: t.durationInFrames,
@@ -343,6 +343,8 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
         incoming: inc!,
         trimOut: Math.max(0, (out!.srcInFrame ?? 0) + (from - out!.startFrame)),
         trimIn: Math.max(0, (inc!.srcInFrame ?? 0) + (from - inc!.startFrame)),
+        // custom-shader carries its GLSL + uniforms from the item to GlTransition
+        ...(t.type === 'custom-shader' ? { customFrag: t.customFrag, customUniforms: t.customUniforms } : {}),
       });
     } else {
       // CSS entrance: native CSS type as-is; GLSL type over DOM clips → dissolve
@@ -383,6 +385,7 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
             type={w.type} direction={w.direction} L={w.L} windowStart={w.from}
             outgoing={w.outgoing} incoming={w.incoming} trimOut={w.trimOut} trimIn={w.trimIn}
             width={state.width} height={state.height} fit={fit}
+            customFrag={w.customFrag} customUniforms={w.customUniforms}
           />
         </Sequence>
       ))}

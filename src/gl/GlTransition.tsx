@@ -14,8 +14,12 @@ import type { AspectFit, GlslTransitionType, TimelineItem, TransitionDirection }
 // exactly like the source keeps MG layers outside its GL pipeline.
 
 interface GlTransitionProps {
-  type: GlslTransitionType;
+  type: GlslTransitionType | 'custom-shader';
   direction: TransitionDirection;
+  /** type='custom-shader': the submit_shader-generated two-input GLSL (from the item) + its
+   *  uniform values. When present, rendered instead of a GLSL_TRANSITIONS built-in. */
+  customFrag?: string;
+  customUniforms?: Record<string, number>;
   /** transition length in frames */
   L: number;
   /** absolute timeline frame where the window starts (for u_time) */
@@ -58,7 +62,7 @@ function MediaSource({ item, trim, elRef }: { item: TimelineItem; trim: number; 
   return <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={trim} muted />;
 }
 
-export function GlTransition({ type, direction, L, windowStart, outgoing, incoming, trimOut, trimIn, width, height, fit }: GlTransitionProps) {
+export function GlTransition({ type, direction, L, windowStart, outgoing, incoming, trimOut, trimIn, width, height, fit, customFrag, customUniforms }: GlTransitionProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -77,7 +81,14 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
     return { out: make(), in: make() };
   }, [width, height]);
 
-  const def = GLSL_TRANSITIONS[type];
+  // custom-shader: build the def from the item's stored GLSL; built-ins come from the registry.
+  // Memoized so the def keeps a stable identity across the per-frame renders below.
+  const def = useMemo(
+    () => (type === 'custom-shader'
+      ? (customFrag ? { frag: customFrag, uniforms: () => customUniforms ?? {} } : undefined)
+      : GLSL_TRANSITIONS[type]),
+    [type, customFrag, customUniforms],
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;
