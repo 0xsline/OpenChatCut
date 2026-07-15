@@ -306,6 +306,19 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
     document.addEventListener('pointerdown', close);
     return () => document.removeEventListener('pointerdown', close);
   }, [captionMenu]);
+  // Duck (自动闪避) role menu — source edit_track role is a track-head menu item, not a
+  // permanent widget. Sets the per-track role (anchor speech / follower music) + duck depth;
+  // the engine (TimelineComposition duckGain) already reacts to it.
+  const [duckMenu, setDuckMenu] = useState<{ id: TrackId; left: number; top: number } | null>(null);
+  useEffect(() => {
+    if (!duckMenu) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.cc-duck-menu') && !target.closest('[data-duck-menu-trigger]')) setDuckMenu(null);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [duckMenu]);
   // mic voiceover recording (source: 录制旁白). Toggle to start/stop; the blob
   // is uploaded + dropped on an audio track by the parent.
   const recorder = useRecorder(onRecordVoiceover ?? (() => {}));
@@ -1233,6 +1246,10 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
                       setCaptionError(null);
                       setCaptionMenu((open) => open?.id === trackId ? null : { id: trackId, left: Math.min(rect.right + 5, window.innerWidth - 310), top: 8 });
                     }}><Icon name="chevronDown" size={13} /></button>
+                    <button data-duck-menu-trigger style={{ ...flagBtn(false), color: config.role === 'anchor' || config.role === 'follower' ? '#e0a24e' : '#c2c2c2' }} title="自动闪避（混音角色：主轨说话 / 跟随背景乐）" onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setDuckMenu((open) => open?.id === trackId ? null : { id: trackId, left: Math.min(rect.right + 5, window.innerWidth - 226), top: 8 });
+                    }}><Icon name="sliders" size={14} /></button>
                     <span className="cc-track-head-spacer" />
                     <button className="cc-track-fixed-action" title={collapsed ? '展开轨道' : '折叠轨道'} onClick={() => commands.updateTrack(trackId, { collapsed: !collapsed })}>{collapsed ? '+' : '−'}</button>
                     <button className="cc-track-fixed-action" disabled={busy} title={busy ? '只能删除空轨道' : '删除轨道'} onClick={() => commands.deleteTracks([trackId])}><Icon name="trash" size={14} /></button>
@@ -1270,6 +1287,43 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
                         )}
                       </div>
                       {captionError && <div className="cc-caption-style-error">{captionError}</div>}
+                    </div>
+                  )}
+                  {duckMenu?.id === trackId && (
+                    <div className="cc-caption-style-menu cc-duck-menu" style={{ position: 'fixed', left: duckMenu.left, top: duckMenu.top, width: 212 }} onPointerDown={(e) => e.stopPropagation()}>
+                      <div className="cc-caption-style-title">自动闪避 · 混音角色</div>
+                      <div className="cc-caption-style-list">
+                        {([
+                          { role: null, label: '关闭', hint: '不参与自动闪避' },
+                          { role: 'anchor', label: '主轨 · 说话', hint: '说话时触发其它轨闪避' },
+                          { role: 'follower', label: '跟随 · 背景音乐', hint: '主轨说话时自动压低' },
+                        ] as const).map((opt) => (
+                          <button key={opt.label} className={(config.role ?? null) === opt.role ? 'active' : ''}
+                            onClick={() => { commands.updateTrack(trackId, { role: opt.role }); if (opt.role !== 'follower') setDuckMenu(null); }}>
+                            <span style={{ display: 'flex', flexDirection: 'column', gap: 1, lineHeight: 1.25 }}>
+                              <span>{opt.label}</span>
+                              <span style={{ fontSize: 11, color: '#9a9a9a' }}>{opt.hint}</span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      {config.role === 'follower' && (
+                        <div style={{ borderTop: '1px solid #3a3a3a', padding: '7px 10px 9px' }}>
+                          <div style={{ fontSize: 11, color: '#9a9a9a', marginBottom: 5 }}>闪避强度（dB）</div>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {[-6, -12, -18, -24].map((db) => {
+                              const cur = config.audioRouting?.duckDepthDb ?? -12;
+                              return (
+                                <button key={db} onClick={() => commands.updateTrack(trackId, { audioRouting: { duckDepthDb: db } })}
+                                  style={{ flex: 1, padding: '4px 0', borderRadius: 4, border: '1px solid #454545', cursor: 'pointer',
+                                    background: cur === db ? '#3a4a5a' : 'transparent', color: cur === db ? '#fff' : '#c8c8c8', fontSize: 11 }}>
+                                  {db}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
