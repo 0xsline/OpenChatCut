@@ -50,5 +50,6 @@ export const PLUGIN_SKILLS_INDEX: string = [
   '',
   '# 技能库（load_skill 按需加载 · 源 agent-plugin 的 15 个 SKILL.md，逐字搬运）',
   '下面每条是一个技能的适用场景。当任务命中某技能时，先 load_skill(name=…) 取回它的完整指导流程（SKILL.md 全文）再动手；需要深料时可带 file=（如 "references/voices.md"）。只在相关时加载，别全部加载。',
+  '技能里若要跑脚本 / ffmpeg / node / python（如 asset-import 的媒体探测），用 run_code 工具在隔离沙箱执行（可先 files 写入、再 command 运行、outputs 读回产物）；沙箱碰不到时间线，产物要落编辑器仍走本地工具。',
   ...PLUGIN_SKILLS.map((s) => `- **${s.slug}** — ${s.description}`),
 ].join('\n');

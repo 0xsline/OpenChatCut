@@ -7,6 +7,7 @@ import { voiceGenerationPlugin } from './vite-plugin-voice.ts';
 import { soundGenerationPlugin } from './vite-plugin-sound.ts';
 import { musicGenerationPlugin } from './vite-plugin-music.ts';
 import { videoGenerationPlugin } from './vite-plugin-video.ts';
+import { e2bPlugin } from './vite-plugin-e2b.ts';
 import { subtitleExportPlugin } from './vite-plugin-subtitles.ts';
 import { generationProgressPlugin } from './vite-generation-jobs.ts';
 import { stockSearchPlugin } from './vite-plugin-stock.ts';
@@ -46,6 +47,7 @@ export default defineConfig(({ mode }) => {
   const pixabayKey = env.PIXABAY_API_KEY || '';
   // Firecrawl (source web_browser): .env.local or shell export (e.g. search-apis.env)
   const firecrawlKey = env.FIRECRAWL_API_KEY || process.env.FIRECRAWL_API_KEY || '';
+  const e2bKey = env.E2B_API_KEY || process.env.E2B_API_KEY || '';
 
   return {
     plugins: [react(), exportPlugin(), uploadPlugin(), imageGenerationPlugin({
@@ -70,6 +72,7 @@ export default defineConfig(({ mode }) => {
     stockSearchPlugin({ pexelsApiKey: pexelsKey, pixabayApiKey: pixabayKey }),
     isolatePlugin(),
     firecrawlPlugin({ apiKey: firecrawlKey }),
+    e2bPlugin({ apiKey: e2bKey }),
     ],
     server: {
       port: 5199,
