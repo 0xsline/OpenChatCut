@@ -40,6 +40,7 @@ import { READ_PROJECT_TOOL_SCHEMAS, READ_PROJECT_TOOL_NAMES, execReadProjectTool
 import { MG_CODE_TOOL_SCHEMAS, MG_CODE_TOOL_NAMES, execMgCodeTool } from './mg-code-tools';
 import { PLUGIN_SKILL_TOOL_SCHEMAS, PLUGIN_SKILL_TOOL_NAMES, execPluginSkillTool } from './plugin-skill-tools';
 import { RUN_CODE_TOOL_SCHEMAS, RUN_CODE_TOOL_NAMES, execRunCodeTool } from './run-code-tools';
+import { PROBE_TOOL_SCHEMAS, PROBE_TOOL_NAMES, execProbeTool } from './probe-tools';
 import { execTranscriptionProgress } from './transcription-progress';
 
 // track_progress is a shared source tool. generate-tools.ts (grok's lane) owns
@@ -274,6 +275,8 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...PLUGIN_SKILL_TOOL_SCHEMAS,
   // 在自有 e2b 沙箱里跑 skill 自带脚本 / ffmpeg / node / python（run_code）
   ...RUN_CODE_TOOL_SCHEMAS,
+  // 导入探测（源 upload-media.mjs 的 ffprobe 步）：probe_media 精确取 hasAudioTrack/fps/时长
+  ...PROBE_TOOL_SCHEMAS,
 ];
 
 let genCounter = 0;
@@ -352,6 +355,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (MG_CODE_TOOL_NAMES.has(name)) return execMgCodeTool(name, args, ctx);
   if (PLUGIN_SKILL_TOOL_NAMES.has(name)) return execPluginSkillTool(name, args);
   if (RUN_CODE_TOOL_NAMES.has(name)) return execRunCodeTool(name, args);
+  if (PROBE_TOOL_NAMES.has(name)) return execProbeTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
       const s = ctx.getState();

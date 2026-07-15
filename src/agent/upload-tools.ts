@@ -205,7 +205,9 @@ function execImportMedia(args: Args, ctx: AgentContext): unknown {
     slots,
     next: [
       '1. POST/PUT file bytes to /upload?name=clip.mp4&assetId=<id>',
-      '2. finalize_uploaded_asset with assetId, fileKey=uploads/<id>.ext, readUrl=/media/uploads/<id>.ext, size, type, duration…',
+      '2. probe_media(source=/media/uploads/<id>.ext) — accurate ffprobe (source upload-media.mjs step): hasAudioTrack / fps / duration.',
+      '3. finalize_uploaded_asset with assetId, fileKey=uploads/<id>.ext, readUrl=/media/uploads/<id>.ext, size, type, duration, and the probed hasAudioTrack/fps.',
+      '4. If hasAudioTrack: track_progress action=wait target=transcription assetIds=<id> (上传即转写).',
       'Or call request_asset_upload_url for a single-file presign shape.',
     ],
     expiresInSeconds: 3600,
