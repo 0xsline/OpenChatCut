@@ -1,4 +1,4 @@
-import { msToFrame, type TranscriptWord } from './types';
+import { msToFrame, type TranscriptWord, type TranscriptVariant } from './types';
 
 // Transcript-based editing: deleting a word removes its audible source range.
 // The kept audio = maximal runs of NON-deleted words, each run playing the
@@ -126,6 +126,86 @@ export function retimeWords(
     if (out[n].end <= out[n].start) out[n] = { ...out[n], end: out[n].start + 1 };
   }
   return out;
+}
+
+// ── split_item transcript partition (护城河③) ────────────────────────────────
+// A clip's `transcript` is exactly the words for its own source window — resolve.ts
+// renders retimeWords(item.transcript, …, item.startFrame) with NO srcIn windowing, so a
+// split half that kept the whole word list would render the OTHER half's words. split must
+// therefore partition the words (and deletedWordIdx / variants / gapCaps, all keyed by
+// source word index) at the cut. transcriptPlayOrder is intentionally dropped on split — a
+// reordered clip has no well-defined source-position cut; it resets to chronological.
+
+/** A clip's transcript-edit state that split_item must partition per half. */
+export interface ClipTranscriptState {
+  transcript?: TranscriptWord[];
+  deletedWordIdx?: number[];
+  variants?: TranscriptVariant[];
+  gapCapsMs?: Record<string, number>;
+  silenceFrames?: number;
+}
+
+/** Source-word boundary index k for an edited-timeline cut (frames into the clip): words
+ *  [0,k) → left half, [k,n) → right. Uses chronological kept segments so the cut maps to
+ *  the correct source frame even when words were deleted or pauses compressed. */
+function sourceSplitIndex(words: TranscriptWord[], deleted: Set<number>, fps: number, cutFrames: number, opts: EditOpts): number {
+  const segs = keptSegments(words, deleted, fps, 0, opts);
+  if (!segs.length) return 0;
+  const seg = segs.find((s) => cutFrames >= s.fromFrame && cutFrames < s.fromFrame + s.durFrames);
+  const boundarySrc = seg
+    ? seg.srcStartFrame + (cutFrames - seg.fromFrame)
+    : (cutFrames < segs[0]!.fromFrame ? segs[0]!.srcStartFrame : segs[segs.length - 1]!.srcEndFrame);
+  for (let i = 0; i < words.length; i++) {
+    if (msToFrame(words[i]!.start, fps) >= boundarySrc) return i;
+  }
+  return words.length;
+}
+
+/** Partition a clip's transcript-edit state at a cut into left/right halves so each half's
+ *  words match its own source window. Returns null when there's no transcript to split. */
+export function splitClipTranscript(
+  clip: ClipTranscriptState,
+  fps: number,
+  cutFrames: number,
+): { k: number; left: ClipTranscriptState; right: ClipTranscriptState } | null {
+  const words = clip.transcript;
+  if (!words?.length) return null;
+  const deleted = new Set(clip.deletedWordIdx ?? []);
+  const k = sourceSplitIndex(words, deleted, fps, cutFrames, { maxGapFrames: clip.silenceFrames, gapCapsMs: clip.gapCapsMs });
+
+  const del = clip.deletedWordIdx ?? [];
+  const leftCaps: Record<string, number> = {};
+  const rightCaps: Record<string, number> = {};
+  for (const [key, ms] of Object.entries(clip.gapCapsMs ?? {})) {
+    const j = Number(key);
+    if (!Number.isFinite(j)) continue;
+    if (j < k) leftCaps[key] = ms; // cap the gap before a left word
+    else if (j > k) rightCaps[String(j - k)] = ms; // j===k is the boundary gap → dropped
+  }
+  const pickVariants = (keep: (i: number) => boolean, rebase: (i: number) => number) =>
+    (clip.variants ?? [])
+      .map((v) => ({ ...v, words: v.words.filter((w) => keep(w.i)).map((w) => ({ ...w, i: rebase(w.i) })) }))
+      .filter((v) => v.words.length > 0);
+  const undefIfEmptyRec = (o: Record<string, number>) => (Object.keys(o).length ? o : undefined);
+  const undefIfEmptyArr = <T,>(a: T[]) => (a.length ? a : undefined);
+
+  return {
+    k,
+    left: {
+      transcript: words.slice(0, k),
+      deletedWordIdx: del.filter((i) => i < k),
+      variants: undefIfEmptyArr(pickVariants((i) => i < k, (i) => i)),
+      gapCapsMs: undefIfEmptyRec(leftCaps),
+      silenceFrames: clip.silenceFrames,
+    },
+    right: {
+      transcript: words.slice(k),
+      deletedWordIdx: del.filter((i) => i >= k).map((i) => i - k),
+      variants: undefIfEmptyArr(pickVariants((i) => i >= k, (i) => i - k)),
+      gapCapsMs: undefIfEmptyRec(rightCaps),
+      silenceFrames: clip.silenceFrames,
+    },
+  };
 }
 
 // Fixed filler tokens ChatCut's clean_script strips ("mechanical clean" — no LLM).

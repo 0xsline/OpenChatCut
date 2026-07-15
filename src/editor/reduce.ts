@@ -5,7 +5,7 @@ import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, Ma
 import { activeTimeline, DEFAULT_WATERMARK, isAudioTransition, selectedIdsOf, timelineTrackIds, trackEnd, trackKind } from './types';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
-import { editedFrames, fillerIndices } from '../transcript/edit';
+import { editedFrames, fillerIndices, splitClipTranscript } from '../transcript/edit';
 
 // ── command actions (these map 1:1 to the future agent tools) ─────────────
 export type Action =
@@ -591,9 +591,27 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       const it = s.items.find((x) => x.id === a.id);
       if (!it || s.tracks?.[it.track]?.locked || a.atFrame <= it.startFrame || a.atFrame >= it.startFrame + it.durationInFrames) return s;
       const cut = a.atFrame - it.startFrame; // frames of source consumed by the left half
-      const left = { ...it, durationInFrames: cut };
+      // Partition transcript/deleted/variants/gapCaps per half (护城河③): each half's words
+      // must match its own source window, else the display (retimeWords, no srcIn windowing)
+      // renders the other half's words. Fades belong to the outer edges only: the left half's
+      // OUT and the right half's IN are now the mid-clip cut, so drop fadeOut-left / fadeIn-right.
+      const tp = it.transcript?.length ? splitClipTranscript(it, s.fps, cut) : null;
+      const left = {
+        ...it,
+        durationInFrames: cut,
+        fadeOutFrames: undefined,
+        ...(tp ? { transcript: tp.left.transcript, deletedWordIdx: tp.left.deletedWordIdx, variants: tp.left.variants, gapCapsMs: tp.left.gapCapsMs, transcriptPlayOrder: undefined } : {}),
+      };
       // the right half resumes the source where the left one ended (advances srcInFrame)
-      const right = { ...it, id: a.newId, startFrame: a.atFrame, durationInFrames: it.durationInFrames - cut, srcInFrame: (it.srcInFrame ?? 0) + cut };
+      const right = {
+        ...it,
+        id: a.newId,
+        startFrame: a.atFrame,
+        durationInFrames: it.durationInFrames - cut,
+        srcInFrame: (it.srcInFrame ?? 0) + cut,
+        fadeInFrames: undefined,
+        ...(tp ? { transcript: tp.right.transcript, deletedWordIdx: tp.right.deletedWordIdx, variants: tp.right.variants, gapCapsMs: tp.right.gapCapsMs, transcriptPlayOrder: undefined } : {}),
+      };
       return { ...s, items: s.items.flatMap((x) => (x.id === a.id ? [left, right] : [x])) };
     }
     case 'select': {
