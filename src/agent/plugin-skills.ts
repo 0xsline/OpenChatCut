@@ -50,7 +50,8 @@ export const PLUGIN_SKILLS_INDEX: string = [
   '',
   '# 技能库（load_skill 按需加载 · 源 agent-plugin 的 15 个 SKILL.md，逐字搬运）',
   '下面每条是一个技能的适用场景。当任务命中某技能时，先 load_skill(name=…) 取回它的完整指导流程（SKILL.md 全文）再动手；需要深料时可带 file=（如 "references/voices.md"）。只在相关时加载，别全部加载。',
-  '技能里若要跑脚本 / ffmpeg / node / python（如 asset-import 的媒体探测），用 run_code 工具在隔离沙箱执行（可先 files 写入、再 command 运行、outputs 读回产物）；沙箱碰不到时间线，产物要落编辑器仍走本地工具。',
-  '沙箱基础镜像有 node/python，但没自带 ffmpeg——命令里要用 ffmpeg/ffprobe 时先自装：`which ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)` 再跑。',
+  '任何技能要跑脚本 / ffmpeg / node / python，都用 run_code 工具在隔离沙箱执行（files 写入 → command 运行 → outputs 读回产物；沙箱碰不到时间线，产物要落编辑器仍走本地工具）。真实媒体：files 项给 url（本地 /media/… 或公网 https://）即可拉进沙箱 ffprobe/ffmpeg（公网 URL 也可直接喂 ffprobe）。',
+  '要跑某技能“自带的脚本”（如 asset-import 的 scripts/upload-media.mjs）：先 load_skill(name, file="scripts/…") 取脚本原文，再 run_code(files:[{path, content:脚本}], command:"node …")。',
+  '沙箱默认已装 ffmpeg（自定义模板）；若某环境没有，命令里先自装：`which ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)`。',
   ...PLUGIN_SKILLS.map((s) => `- **${s.slug}** — ${s.description}`),
 ].join('\n');
