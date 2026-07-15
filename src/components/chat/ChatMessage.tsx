@@ -69,12 +69,16 @@ export function ChatMessage({ msg, streaming, feedback, onFeedback, onWidgetSubm
     // 之前只印工具名，看着像重复；补上区分性参数(query/itemId/category…)一眼可辨。
     const summary = toolArgSummary(t.args);
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9, margin: '9px 0', color: theme.textDim, fontSize: 12.5 }}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9, margin: '9px 0', color: theme.textDim, fontSize: 12.5 }}
         title={typeof t.args === 'object' ? JSON.stringify(t.args) : String(t.args)}>
-        <span style={{ width: 7, height: 7, borderRadius: '50%', background: ok ? GREEN : theme.accent, flexShrink: 0 }} />
-        <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: 0.2, flexShrink: 0 }}>{t.name}</span>
-        {summary && <span style={{ color: theme.textDim, opacity: 0.8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>· {summary}</span>}
-        {!ok && <span style={{ color: theme.accent, flexShrink: 0 }}>— {String(r!.error)}</span>}
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: ok ? GREEN : theme.accent, flexShrink: 0, marginTop: 5 }} />
+        {/* 工具名 + 摘要 + 错误同处一个可换行块:minWidth:0 让它能在 flex 父内收缩，
+            overflowWrap:anywhere 断长 token —— 长错误/摘要在面板内 wrap，不再单行溢出被裁。 */}
+        <span style={{ minWidth: 0, overflowWrap: 'anywhere', lineHeight: 1.45 }}>
+          <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: 0.2 }}>{t.name}</span>
+          {summary && <span style={{ opacity: 0.8 }}> · {summary}</span>}
+          {!ok && <span style={{ color: theme.accent }}> — {String(r!.error)}</span>}
+        </span>
       </div>
     );
   }
