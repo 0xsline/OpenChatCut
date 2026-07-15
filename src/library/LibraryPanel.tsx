@@ -55,7 +55,7 @@ interface LibraryPanelProps {
   onClearEdits: (id: string) => void;
   assets: MediaAsset[];
   mediaFolders: MediaFolder[];
-  onImportMedia: (file: File) => Promise<void>;
+  onImportMedia: (file: File) => Promise<MediaAsset>;
   onAddMediaItem: (asset: MediaAsset) => void;
   onCreateMediaFolder: (name: string, parentId?: string) => string;
   onRenameMediaFolder: (id: string, name: string) => void;

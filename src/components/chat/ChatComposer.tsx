@@ -29,6 +29,13 @@ interface ChatComposerProps {
   /** Structured @ refs attached to the next send (source chat_context_entry). */
   selectedRefs?: RefItem[];
   onRemoveRef?: (id: string) => void;
+  /** Paste supported files (video/image/audio/gif/svg) straight into the chat. */
+  onPasteFiles?: (files: File[]) => void;
+  /** true while a pasted file is importing into the pool */
+  pasting?: boolean;
+  /** last paste import error, or null */
+  pasteError?: string | null;
+  onDismissPasteError?: () => void;
   taRef: RefObject<HTMLTextAreaElement | null>;
   placeholder?: string;
 }
@@ -71,7 +78,8 @@ export function ChatComposer(props: ChatComposerProps) {
   const {
     value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange,
     autoApply, onAutoApplyChange, creativeMode, onCreativeModeChange, references, onInsertRef,
-    selectedRefs = [], onRemoveRef, taRef, placeholder,
+    selectedRefs = [], onRemoveRef, onPasteFiles, pasting, pasteError, onDismissPasteError,
+    taRef, placeholder,
   } = props;
   // 水合自定义技能(source manage_skill):挂载时读 IDB → 内存注册表,bump 触发重渲染
   // 让 allCreativeSkills()/findSkill 反映自定义技能。真源是 IDB,manage_skill 工具也水合同一份。
@@ -153,12 +161,36 @@ export function ChatComposer(props: ChatComposerProps) {
           ))}
         </div>
       )}
+      {(pasting || pasteError) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, fontSize: 11.5 }}>
+          {pasting && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: theme.accent }}>
+              <Icon name="sparkles" size={12} /> 导入素材中…
+            </span>
+          )}
+          {pasteError && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#e5866a', minWidth: 0 }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pasteError}</span>
+              {onDismissPasteError && (
+                <button type="button" title="关闭" onClick={onDismissPasteError}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e5866a', padding: 0, lineHeight: 0, display: 'grid', flexShrink: 0 }}>
+                  <Icon name="x" size={11} />
+                </button>
+              )}
+            </span>
+          )}
+        </div>
+      )}
       <textarea
         ref={taRef}
         data-cc-chat-composer
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(); } }}
+        onPaste={(e) => {
+          const files = Array.from(e.clipboardData?.files ?? []);
+          if (files.length > 0 && onPasteFiles) { e.preventDefault(); onPasteFiles(files); }
+        }}
         placeholder={placeholder ?? '告诉 AI 要做哪些修改 - @ 引用素材'}
         rows={1}
         style={{ flex: 1, width: '100%', minHeight: 28, resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: theme.text, fontSize: 13, fontFamily: 'inherit', lineHeight: 1.4 }}

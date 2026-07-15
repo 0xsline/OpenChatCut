@@ -9,7 +9,7 @@ interface MediaPoolPanelProps {
   assets: MediaAsset[];
   folders: MediaFolder[];
   fps: number;
-  onImport: (file: File) => Promise<void>;
+  onImport: (file: File) => Promise<MediaAsset>;
   onAddAsset: (asset: MediaAsset) => void;
   onCreateFolder: (name: string, parentId?: string) => string;
   onRenameFolder: (id: string, name: string) => void;

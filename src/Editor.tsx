@@ -154,7 +154,9 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     });
   }, [commands]);
   const importToPool = useCallback(async (file: File) => {
-    ingestToPool(await importMedia(file, stateRef.current.fps));
+    const asset = await importMedia(file, stateRef.current.fps);
+    ingestToPool(asset);
+    return asset;
   }, [ingestToPool]);
   const importToCanvas = useCallback(async (file: File) => {
     const asset = await importMedia(file, stateRef.current.fps);
@@ -312,7 +314,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
 
       {showShortcuts && <ShortcutsDialog onClose={() => setShowShortcuts(false)} />}
 
-      <ChatPanel ctx={agentCtx} projectId={project.id} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} seed={chatSeed} creativeMode={creativeMode} onCreativeModeChange={changeCreativeMode} />
+      <ChatPanel ctx={agentCtx} projectId={project.id} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} seed={chatSeed} creativeMode={creativeMode} onCreativeModeChange={changeCreativeMode} onImportMedia={importToPool} />
 
       <div style={{ gridColumn: 2, gridRow: '2 / 5' }}>
         {!chatCollapsed && <Divider onResize={(dx) => setChatW((w) => clamp(w + dx, CHAT_MIN_W, Math.max(CHAT_MIN_W, viewportW - libW - CANVAS_MIN_W - SPLITTER_TOTAL_W)))} />}

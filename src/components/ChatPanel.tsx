@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { theme } from '../theme';
 import type { AgentContext } from '../agent/context';
-import type { TimelineState } from '../editor/types';
+import type { MediaAsset, TimelineState } from '../editor/types';
+import { kindOf } from '../media/upload';
 import { useAgent } from '../agent/useAgent';
 import { thinkingPhrase } from '../agent/thinkingPhrases';
 import { shouldBlockAutoApply } from '../agent/skillGuard';
@@ -34,15 +35,19 @@ interface ChatPanelProps {
   /** active creative-mode skill id (source agent_skill), or null */
   creativeMode: string | null;
   onCreativeModeChange: (id: string | null) => void;
+  /** Import a pasted/attached file into the media pool (same pipeline as 我的素材 upload). */
+  onImportMedia: (file: File) => Promise<MediaAsset>;
 }
 
-export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPreviewState, seed, creativeMode, onCreativeModeChange }: ChatPanelProps) {
+export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPreviewState, seed, creativeMode, onCreativeModeChange, onImportMedia }: ChatPanelProps) {
   const { messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal, clearHistory } = useAgent(ctx, projectId);
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<ChatMode>('agent');
   const [autoApply, setAutoApply] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
   const [selectedRefs, setSelectedRefs] = useState<RefItem[]>([]);
+  const [pasting, setPasting] = useState(0);
+  const [pasteError, setPasteError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Record<number, 'up' | 'down'>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -109,6 +114,24 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
       }
       return current.filter((r) => r.id !== id);
     });
+  };
+  // Paste files straight into the composer: import each supported file into the
+  // media pool (same pipeline as 我的素材 upload — probe + upload + auto-ASR) and
+  // attach it as an @ reference so the agent can place it (source: chat_context_entry).
+  const importPastedFiles = async (files: File[]) => {
+    const supported = files.filter((f) => kindOf(f) !== null);
+    setPasteError(supported.length < files.length ? '已忽略不支持的文件（仅支持 视频 / 图片 / 音频 / GIF / SVG）' : null);
+    for (const file of supported) {
+      setPasting((n) => n + 1);
+      try {
+        const asset = await onImportMedia(file);
+        insertRef({ id: asset.id, name: asset.name, kind: asset.kind });
+      } catch (reason) {
+        setPasteError(reason instanceof Error ? reason.message : '导入失败');
+      } finally {
+        setPasting((n) => n - 1);
+      }
+    }
   };
 
   if (collapsed) {
@@ -189,6 +212,8 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
           creativeMode={creativeMode} onCreativeModeChange={onCreativeModeChange}
           references={references} onInsertRef={insertRef}
           selectedRefs={selectedRefs} onRemoveRef={removeRef}
+          onPasteFiles={importPastedFiles} pasting={pasting > 0}
+          pasteError={pasteError} onDismissPasteError={() => setPasteError(null)}
           taRef={taRef}
           placeholder={messages.length === 0 ? '描述你想要创建的内容...' : '告诉 AI 要做哪些修改 - @ 引用素材'} />
       </div>
