@@ -48,6 +48,7 @@ export default defineConfig(({ mode }) => {
   // Firecrawl (source web_browser): .env.local or shell export (e.g. search-apis.env)
   const firecrawlKey = env.FIRECRAWL_API_KEY || process.env.FIRECRAWL_API_KEY || '';
   const e2bKey = env.E2B_API_KEY || process.env.E2B_API_KEY || '';
+  const e2bTemplate = env.E2B_TEMPLATE || process.env.E2B_TEMPLATE || '';
 
   return {
     plugins: [react(), exportPlugin(), uploadPlugin(), imageGenerationPlugin({
@@ -72,7 +73,7 @@ export default defineConfig(({ mode }) => {
     stockSearchPlugin({ pexelsApiKey: pexelsKey, pixabayApiKey: pixabayKey }),
     isolatePlugin(),
     firecrawlPlugin({ apiKey: firecrawlKey }),
-    e2bPlugin({ apiKey: e2bKey }),
+    e2bPlugin({ apiKey: e2bKey, template: e2bTemplate || undefined }),
     ],
     server: {
       port: 5199,

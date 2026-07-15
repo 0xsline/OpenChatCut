@@ -10,6 +10,9 @@ import { Sandbox } from '@e2b/code-interpreter';
 
 interface E2bOptions {
   apiKey: string;
+  /** e2b template id/name; omit → SDK default (code-interpreter, no ffmpeg). Set to a
+   *  custom template (e.g. one with ffmpeg baked in) via E2B_TEMPLATE in .env.local. */
+  template?: string;
 }
 
 interface E2bFile {
@@ -67,7 +70,10 @@ export function e2bPlugin(options: E2bOptions): Plugin {
           const command = String(input.command ?? '').trim();
           if (!command) throw new Error('command is required');
 
-          sandbox = await Sandbox.create({ apiKey: options.apiKey, timeoutMs: Math.min(input.timeoutMs ?? 120_000, MAX_TIMEOUT) });
+          const createOpts = { apiKey: options.apiKey, timeoutMs: Math.min(input.timeoutMs ?? 120_000, MAX_TIMEOUT) };
+          sandbox = options.template
+            ? await Sandbox.create(options.template, createOpts)
+            : await Sandbox.create(createOpts);
           for (const file of input.files ?? []) {
             await sandbox.files.write(file.path, file.content);
           }
