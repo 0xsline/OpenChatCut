@@ -3,6 +3,7 @@ import type { AgentContext } from './context';
 import { TOOL_SCHEMAS, executeTool } from './tools';
 import { SYSTEM_PROMPT, designStylePrompt, creativeModePrompt } from './systemPrompt';
 import { findSkill } from './skills-catalog';
+import { PLUGIN_SKILLS_INDEX } from './plugin-skills';
 import { anthropic, MODEL } from './client';
 
 // No artificial limits — the loop runs until the model itself stops requesting
@@ -39,7 +40,8 @@ export async function runAgent(
   // 系统提示 = 基础 + 设计风格(品牌) + 创作模式(agent_skill)
   const system = SYSTEM_PROMPT
     + designStylePrompt(ctx.getDoc().designStyle)
-    + creativeModePrompt(findSkill(ctx.getCreativeMode()));
+    + creativeModePrompt(findSkill(ctx.getCreativeMode()))
+    + PLUGIN_SKILLS_INDEX;
 
   for (;;) {
     let resp: Anthropic.Message;
