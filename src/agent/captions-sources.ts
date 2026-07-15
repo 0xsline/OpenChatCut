@@ -114,7 +114,7 @@ export async function languageMode(json: Record<string, unknown>, c: CaptionsDat
     if (!lang) return { error: 'translation mode needs languageCode (the target language)' };
     const it = c.sourceItemId ? s.items.find((x) => x.id === c.sourceItemId) : firstTranscribedOnTrack(s, 'A1');
     const v = it?.variants ? findVariantByLang(it.variants, lang, 'translation') : undefined;
-    if (!v) return { error: `no "${lang}" transcript variant on the caption source; run manage_transcript translate first` };
+    if (!v) return { error: `no "${lang}" transcript variant on the caption source; run manage_transcript translation_ensure first` };
     ctx.commands.updateCaptions({ captionVariantId: v.id, bilingual: false, translation: undefined });
     return { ok: true, mode: 'translation', languageCode: v.lang, note: 'main caption line now shows the translation variant (source timing preserved).' };
   }

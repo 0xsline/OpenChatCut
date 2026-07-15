@@ -81,20 +81,27 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'manage_transcript',
-    description: '管理转写文本与其多语言变体,不改动时间轴。action=fix("改错字"):把某个被听错的词替换成正确文本,定位要修的词二选一——传 wordIndex(词下标)或 find(错词原文,精确匹配一个词);只改 word.text。action=renameSpeaker(说话人重命名/合并):把 diarization 标签 from 的所有词改标为 to——同机制既可重命名("A"→"主持人")也可合并("B"→"A",两位说话人塌成一位);只改 word.speaker。action=translate(翻译变体):把该轨转写整段翻译成 lang 语言,生成一个"文本变体"(词级、共享同一时间轴)挂到该 clip;同 lang 已存在则复用(force=true 强制重译)。变体只承载译文,词的起止时间/帧位取自源词——用 edit_captions 的 variantLang 选它作为字幕显示语言。三种 action 都保持词的起止时间/帧位、词数、片段时长不变(captions/删文本都依赖这条不变式)。',
+    description: '管理源转写的修正与翻译变体,不改时间轴(护城河③:词的起止/帧位/词数/片段时长恒不变)。action(源站同款 6 个):\n'
+      + '- fix：修正源转写。改错字→传 wordIndex 或 find(错词原文)+ text(正确文本),只改 word.text;改/合并说话人→传 from(现有标签,如 "A")+ to(新显示名,传已有标签即合并两位),只改 word.speaker。\n'
+      + '- retry_transcription：对该 clip 强制重跑 ASR(转写卡住/失败/想重转时),覆盖现有转写。\n'
+      + '- translation_create：把该转写整段翻成 lang,新建/覆盖一个译文变体(词级,共享源时间轴)。\n'
+      + '- translation_ensure：幂等——同 lang 变体已存在则复用,否则翻译新建。日常「翻译一下」优先用它。\n'
+      + '- translation_list：列出该 clip 的原文 + 所有译文变体(id/lang/词数)。\n'
+      + '- translation_read：读某个译文变体的词(传 lang / targetLanguage 选语言)。\n'
+      + '译文变体只承载译文;要在字幕里显示某语言,用 edit_captions 的 language_mode。',
     input_schema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['fix', 'renameSpeaker', 'translate'], description: 'fix=改错字;renameSpeaker=说话人重命名/合并;translate=生成/复用翻译变体。' },
-        itemId: { type: 'string', description: '目标转写所在 clip 的 item id;省略则取该 track 上第一个带转写的音/视频 clip。' },
-        track: { type: 'string', description: 'itemId 省略时,用 track 别名/稳定 id 定位带转写的 clip(默认 A1)。' },
-        wordIndex: { type: 'number', description: 'fix:要修正的词下标(与 find 二选一)。' },
-        find: { type: 'string', description: 'fix:要修正的错词原文,精确匹配一个词(与 wordIndex 二选一)。' },
-        text: { type: 'string', description: 'fix:修正后的正确文本。' },
-        from: { type: 'string', description: 'renameSpeaker:要重命名的现有说话人标签(如 "A"/"B")。' },
-        to: { type: 'string', description: 'renameSpeaker:新的说话人显示名;传一个已存在的标签即合并两位说话人(如 "B"→"A")。' },
-        lang: { type: 'string', description: 'translate:目标语言(如 "English"/"中文"/"日本語"),必填非空。' },
-        force: { type: 'boolean', description: 'translate:同 lang 变体已存在时是否强制重新翻译并覆盖(默认 false=复用已有)。' },
+        action: { type: 'string', enum: ['fix', 'retry_transcription', 'translation_create', 'translation_ensure', 'translation_list', 'translation_read'], description: '见描述:改错字/说话人、重转、建/保证/列/读译文变体。' },
+        itemId: { type: 'string', description: '目标 clip 的 item id;省略则取该 track 上第一个带转写的音/视频 clip。' },
+        track: { type: 'string', description: 'itemId 省略时,用 track 别名/稳定 id 定位(默认 A1)。' },
+        wordIndex: { type: 'number', description: 'fix 改错字:要修正的词下标(与 find 二选一)。' },
+        find: { type: 'string', description: 'fix 改错字:错词原文,精确匹配一个词(与 wordIndex 二选一)。' },
+        text: { type: 'string', description: 'fix 改错字:修正后的正确文本。' },
+        from: { type: 'string', description: 'fix 改说话人:要重命名的现有说话人标签(如 "A"/"B")。' },
+        to: { type: 'string', description: 'fix 改说话人:新显示名;传一个已存在的标签即合并两位说话人(如 "B"→"A")。' },
+        lang: { type: 'string', description: 'translation_create/ensure:目标语言(如 "English"/"中文"/"日本語");translation_read:要读的变体语言。' },
+        targetLanguage: { type: 'string', description: 'translation_read:要读的译文语言(lang 的别名)。' },
       },
       required: ['action'],
     },
@@ -210,6 +217,91 @@ function resolveAfterWordIndex(
     return { afterWordIndex: m.start };
   }
   return { error: 'provide afterWordIndex, gapIndex, or afterText to locate the gap' };
+}
+
+// manage_transcript — source's 6-action model (fix / retry_transcription /
+// translation_create / translation_ensure / translation_list / translation_read).
+// All actions preserve word timing/frame position/count/clip length (护城河③);
+// only word .text / .speaker or a translation VARIANT change.
+async function manageTranscript(args: Args, ctx: AgentContext, track: TrackId, alias: string): Promise<unknown> {
+  const action = String(args.action ?? '');
+  const it = args.itemId ? ctx.getState().items.find((x) => x.id === args.itemId) : trackClip(ctx, track, true);
+  if (!it) return { error: args.itemId ? `no item ${String(args.itemId)}` : `no transcribed clip on ${alias}; call transcribe_track first` };
+
+  // retry_transcription: force a fresh ASR run (the only action that doesn't need an existing transcript).
+  if (action === 'retry_transcription') {
+    if (!it.src) return { error: `item ${it.id} has no media to transcribe` };
+    try {
+      const r = await transcribePath(it.src, undefined, { languageCode: 'zh' });
+      ctx.commands.setItemTranscript(it.id, r.words);
+      return { ok: true, action, itemId: it.id, words: r.words.length, text: r.text.slice(0, 200), retried: true };
+    } catch (e) {
+      return { error: `transcription failed: ${e instanceof Error ? e.message : String(e)}` };
+    }
+  }
+
+  if (!it.transcript?.length) return { error: `item ${it.id} has no transcript; call transcribe_track first` };
+
+  if (action === 'fix') {
+    // source fix = ASR word correction OR speaker rename/merge. Route by which fields are present.
+    if (typeof args.from === 'string' || typeof args.to === 'string') {
+      const from = args.from, to = args.to;
+      if (typeof from !== 'string' || !from.trim()) return { error: 'speaker fix needs from (the existing speaker label)' };
+      if (typeof to !== 'string' || !to.trim()) return { error: 'speaker fix needs to (the new speaker name; an existing label merges the two)' };
+      const wordsChanged = it.transcript.filter((w) => w.speaker === from).length;
+      if (wordsChanged === 0) return { error: `no word labeled speaker "${from}" in item ${it.id}` };
+      ctx.commands.renameSpeaker(it.id, from, to); // 护城河③: only .speaker changes
+      return { ok: true, action, kind: 'speaker', itemId: it.id, from, to, wordsChanged };
+    }
+    const text = args.text;
+    if (typeof text !== 'string' || !text.trim()) return { error: 'word fix needs text (the corrected word); or pass from/to for a speaker fix' };
+    let wordIndex: number;
+    if (typeof args.wordIndex === 'number') wordIndex = args.wordIndex;
+    else if (typeof args.find === 'string' && args.find.trim()) {
+      const findStr = args.find;
+      wordIndex = it.transcript.findIndex((w) => w.text === findStr);
+      if (wordIndex < 0) { const target = normalize(findStr); wordIndex = it.transcript.findIndex((w) => normalize(w.text) === target); }
+      if (wordIndex < 0) return { error: `word not found: ${findStr}` };
+    } else return { error: 'provide wordIndex or find to locate the word' };
+    const word = it.transcript[wordIndex];
+    if (!word) return { error: `wordIndex ${wordIndex} out of range (0..${it.transcript.length - 1})` };
+    ctx.commands.fixTranscriptWord(it.id, wordIndex, text); // 护城河③: only .text changes
+    return { ok: true, action, kind: 'word', itemId: it.id, wordIndex, from: word.text, to: text };
+  }
+
+  if (action === 'translation_list') {
+    const variants = it.variants ?? [];
+    return { ok: true, action, itemId: it.id, original: { words: it.transcript.length }, variants: variants.map((v) => ({ id: v.id, lang: v.lang, kind: v.kind, words: v.words.length })) };
+  }
+  if (action === 'translation_read') {
+    const lang = String(args.lang ?? args.targetLanguage ?? '').trim();
+    if (!lang) return { error: 'translation_read needs lang / targetLanguage (which variant to read)' };
+    const v = it.variants ? findVariantByLang(it.variants, lang, 'translation') : undefined;
+    if (!v) return { error: `no "${lang}" translation variant on item ${it.id}; create it with translation_create / translation_ensure first` };
+    return { ok: true, action, itemId: it.id, lang: v.lang, variantId: v.id, words: v.words.length, text: v.words.map((w) => w.text).join(' ').slice(0, 400) };
+  }
+
+  // translation_create (always (re)translate + overwrite) / translation_ensure (idempotent: reuse if present).
+  if (action === 'translation_create' || action === 'translation_ensure') {
+    const lang = String(args.lang ?? '').trim();
+    if (!lang) return { error: `${action} needs lang (target language, e.g. "English")` };
+    const existing = findVariantByLang(it.variants, lang, 'translation');
+    if (existing && action === 'translation_ensure') {
+      return { ok: true, action, itemId: it.id, variantId: existing.id, lang: existing.lang, words: existing.words.length, reused: true };
+    }
+    try {
+      // 护城河③: each variant word is keyed by source index i; timing always comes from the source word (resolveVariantText).
+      const texts = await translateLines(it.transcript.map((w) => w.text), lang);
+      const words = texts.map((text, i) => ({ i, text }));
+      const variant = createVariant({ lang, kind: 'translation', words, id: existing?.id }); // reuse id → overwrite
+      ctx.commands.setItemVariants(it.id, upsertVariant(it.variants, variant));
+      return { ok: true, action, itemId: it.id, variantId: variant.id, lang: variant.lang, words: variant.words.length, reused: false };
+    } catch (e) {
+      return { error: `translation failed: ${e instanceof Error ? e.message : String(e)}` };
+    }
+  }
+
+  return { error: `unsupported action "${action}"; use fix / retry_transcription / translation_create / translation_ensure / translation_list / translation_read` };
 }
 
 // Execute a transcript/caption tool. Returns undefined if `name` isn't one of ours.
@@ -345,79 +437,8 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       ctx.commands.deleteWords(it.id, idxs);
       return { ok: true, itemId: it.id, deletedWords: m.count, text };
     }
-    case 'manage_transcript': {
-      const action = args.action;
-      // 定位 clip:优先 itemId,否则取该 track 上第一个带转写的 clip(fix/renameSpeaker 共用)
-      const items = ctx.getState().items;
-      const it = args.itemId ? items.find((x) => x.id === args.itemId) : trackClip(ctx, track, true);
-      if (!it) return { error: args.itemId ? `no item ${String(args.itemId)}` : `no transcribed clip on ${alias}; call transcribe_track first` };
-      if (!it.transcript?.length) return { error: `item ${it.id} has no transcript; call transcribe_track first` };
-
-      if (action === 'renameSpeaker') {
-        // 说话人重命名/合并:from→to。同机制覆盖重命名与合并(to 为已有标签即合并)。
-        const from = args.from;
-        const to = args.to;
-        if (typeof from !== 'string' || !from.trim()) return { error: 'from is required (the existing speaker label)' };
-        if (typeof to !== 'string' || !to.trim()) return { error: 'to is required (the new speaker name)' };
-        const wordsChanged = it.transcript.filter((w) => w.speaker === from).length;
-        if (wordsChanged === 0) return { error: `no word labeled speaker "${from}" in item ${it.id}` };
-        // 护城河③:命令只改 .speaker,text/timing/词数/时长不变
-        ctx.commands.renameSpeaker(it.id, from, to);
-        return { ok: true, itemId: it.id, from, to, wordsChanged };
-      }
-
-      if (action === 'fix') {
-        const text = args.text;
-        if (typeof text !== 'string' || !text.trim()) return { error: 'text is required (the corrected word)' };
-        // 定位词:wordIndex 优先,否则 find 精确匹配(先原文,再归一化容错标点/大小写)
-        let wordIndex: number;
-        if (typeof args.wordIndex === 'number') {
-          wordIndex = args.wordIndex;
-        } else if (typeof args.find === 'string' && args.find.trim()) {
-          const findStr = args.find;
-          wordIndex = it.transcript.findIndex((w) => w.text === findStr);
-          if (wordIndex < 0) {
-            const target = normalize(findStr);
-            wordIndex = it.transcript.findIndex((w) => normalize(w.text) === target);
-          }
-          if (wordIndex < 0) return { error: `word not found: ${findStr}` };
-        } else {
-          return { error: 'provide wordIndex or find to locate the word' };
-        }
-        const word = it.transcript[wordIndex];
-        if (!word) return { error: `wordIndex ${wordIndex} out of range (0..${it.transcript.length - 1})` };
-        const from = word.text;
-        // 护城河③:命令只改 .text,timing/词数/时长不变
-        ctx.commands.fixTranscriptWord(it.id, wordIndex, text);
-        return { ok: true, itemId: it.id, wordIndex, from, to: text };
-      }
-
-      if (action === 'translate') {
-        // 翻译变体:整段转写翻成 lang,生成一个"文本变体"(词级,共享同一时间轴)。
-        // 护城河③:变体只承载译文;每个变体词按源词下标 i 键,timing 一律取自源词
-        // (见 resolveVariantText),翻译永远不重排或移动词的帧位。
-        const lang = args.lang;
-        if (typeof lang !== 'string' || !lang.trim()) return { error: 'lang is required (target language, e.g. "English")' };
-        const langTrim = lang.trim();
-        const force = args.force === true;
-        const existing = findVariantByLang(it.variants, langTrim, 'translation');
-        if (existing && !force) {
-          return { ok: true, itemId: it.id, variantId: existing.id, lang: existing.lang, words: existing.words.length, reused: true };
-        }
-        try {
-          const texts = await translateLines(it.transcript.map((w) => w.text), langTrim);
-          const words = texts.map((text, i) => ({ i, text }));
-          // force+existing → 复用同 id 覆盖;否则新建
-          const variant = createVariant({ lang: langTrim, kind: 'translation', words, id: existing?.id });
-          ctx.commands.setItemVariants(it.id, upsertVariant(it.variants, variant));
-          return { ok: true, itemId: it.id, variantId: variant.id, lang: variant.lang, words: variant.words.length, reused: false };
-        } catch (e) {
-          return { error: `translation failed: ${e instanceof Error ? e.message : String(e)}` };
-        }
-      }
-
-      return { error: `unsupported action: ${String(action)}; use "fix", "renameSpeaker" or "translate"` };
-    }
+    case 'manage_transcript':
+      return manageTranscript(args, ctx, track, alias);
     default:
       return undefined;
   }

@@ -82,7 +82,7 @@ export const SYSTEM_PROMPT = `你是 ChatCut里的视频剪辑 AI。你通过调
   · style 自定义样式(json:{sizePx,color,weight,strokeColor,strokeWidth,highlightColor,highlightBackground,shadow/shadowStrength,textTransform,displayMode,wordsPerPage,pacing},叠加在模板上,未识别字段进 ignored);
   · layout 整块定位(json:{preset:"bottom-center/top-center/center/…3×3",offsetXRatio,offsetYRatio});
   · display_text 逐词显示覆盖(先 read_captions 拿 wordIndex,json:{overrides:[{wordIndex,text,hidden,forcePageBreak}],clearOverrides});不动文字稿。
-  · source_set/source_add/source_remove/source_list 选字幕读哪条/哪几条轨(json {mode:"timeline"} 或 {sources:[{trackId}]});language_mode/bilingual 切语言(json {mode,languageCode},翻译需先 manage_transcript translate)。
+  · source_set/source_add/source_remove/source_list 选字幕读哪条/哪几条轨(json {mode:"timeline"} 或 {sources:[{trackId}]});language_mode/bilingual 切语言(json {mode,languageCode},翻译需先 manage_transcript translation_ensure)。
   · layout_policy/positions/preset_*(用户预设)本仓未建模,会返回 unsupported 说明。
 
 # Script 系统(read_script / apply_script)——改稿即剪辑
