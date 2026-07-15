@@ -1023,3 +1023,28 @@ button, input, select { font: inherit; }
 .cc-audiofx-badge.on { color:#7ec8a3; border-color:#3a5a48; background:#1a2820; }
 .cc-audiofx-note.ok { color:#8bc4a0; }
 .cc-audiofx-note.err { color:#f88; }
+
+/* Assistant chat markdown (react-markdown + remark-gfm output) */
+.cc-md > :first-child { margin-top: 0; }
+.cc-md > :last-child { margin-bottom: 0; }
+.cc-md p { margin: 0 0 10px; }
+.cc-md h1, .cc-md h2, .cc-md h3, .cc-md h4 { margin: 12px 0 8px; font-weight: 600; color: #eee; line-height: 1.35; }
+.cc-md h1 { font-size: 16px; }
+.cc-md h2 { font-size: 15px; }
+.cc-md h3 { font-size: 14px; }
+.cc-md h4 { font-size: 13px; }
+.cc-md ul, .cc-md ol { margin: 0 0 10px; padding-left: 22px; }
+.cc-md li { margin-bottom: 4px; }
+.cc-md li > p { margin: 0; }
+.cc-md a { color: #dc7036; text-decoration: underline; }
+.cc-md strong { font-weight: 600; color: #eee; }
+.cc-md em { font-style: italic; color: #ddd; }
+.cc-md hr { border: 0; border-top: 1px solid #333; margin: 12px 0; }
+.cc-md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; background: #2a2a2a; color: #e8c07d; padding: 1px 5px; border-radius: 4px; border: 1px solid #3a3a3a; }
+.cc-md pre { margin: 0 0 10px; padding: 10px 12px; border-radius: 8px; background: #1a1a1a; border: 1px solid #333; overflow-x: auto; }
+.cc-md pre code { background: none; border: 0; padding: 0; color: #d8d8d8; font-size: 12px; line-height: 1.45; }
+/* GFM tables — scroll horizontally inside the bubble, never widen it */
+.cc-md table { border-collapse: collapse; font-size: 12.5px; line-height: 1.45; margin: 0 0 10px; display: block; max-width: 100%; overflow-x: auto; }
+.cc-md th, .cc-md td { padding: 5px 10px; border-bottom: 1px solid #2a2a2a; text-align: left; vertical-align: top; }
+.cc-md th { color: #eee; font-weight: 600; border-bottom: 1px solid #444; white-space: nowrap; }
+.cc-md blockquote { margin: 0 0 10px; padding-left: 12px; border-left: 3px solid #444; color: #bbb; }
