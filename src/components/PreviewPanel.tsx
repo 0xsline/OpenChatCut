@@ -39,6 +39,9 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
         )}
       </div>
       <div className="cc-preview-stage"
+        // Suppress the browser's native <video> context menu (download / picture-in-picture
+        // / loop) — the source viewer is a canvas, not an exposed HTML5 video element.
+        onContextMenu={(event) => event.preventDefault()}
         onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void importFiles(event.dataTransfer.files); }}>
         {state.items.length === 0 ? (
           <>
@@ -66,6 +69,13 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
               compositionHeight={state.height}
               style={{ width: '100%', height: '100%' }}
               controls={false}
+              // Source-faithful viewer: playback runs ONLY through the timeline transport
+              // (play/pause button + Space shortcut), not the player itself. clickToPlay
+              // off = clicking the frame doesn't toggle; spaceKeyToPlayOrPause off = the app
+              // shortcut is the single Space handler (the Player's own handler would
+              // double-toggle it to a no-op).
+              clickToPlay={false}
+              spaceKeyToPlayOrPause={false}
               loop
             />
             {showSafe && <SafeZoneOverlay />}
