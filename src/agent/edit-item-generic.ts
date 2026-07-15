@@ -4,14 +4,18 @@
 // `.frag` chain that edit-item-tools.ts drags in. Validation is pure; commit delegates to
 // the same editor commands the dedicated move_item / set_item_timing / remove_item tools
 // use — no logic duplication, just atomic-batch semantics.
-import type { TimelineItem, TimelineState } from '../editor/types';
-import { resolveTrackId } from '../editor/types';
+import type { MediaAsset, TimelineItem, TimelineState } from '../editor/types';
+import { defaultTrackId, resolveTrackId } from '../editor/types';
 
 type OpResult = Record<string, unknown>;
 
 export const GENERIC_ITEM_KINDS: ReadonlySet<string> = new Set([
   'video', 'image', 'audio', 'gif', 'svg', 'motion-graphic', 'text', 'solid',
 ]);
+
+/** Pool-asset kinds that edit_item.adds can place as a clip. MG has its own library
+ *  path (validateMgAdd); text/solid are authored, not pool media — so they're excluded. */
+export const GENERIC_ADD_KINDS: ReadonlySet<string> = new Set(['video', 'image', 'gif', 'svg', 'audio']);
 
 const finiteNum = (v: unknown): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) ? v : undefined;
@@ -68,6 +72,51 @@ export function validateGenericDelete(state: TimelineState, entry: Record<string
   const it = findItem(state.items, entry.itemId);
   if (!it) return { error: `item not found: ${String(entry.itemId ?? '')}` };
   return { ok: true, kind: it.kind, plan: 'genericDelete', itemId: it.id, ripple: entry.ripple === true };
+}
+
+// Place an existing POOL asset (video/image/gif/svg/audio) onto a track as a clip.
+// Source: submit_*/import only registers the asset; it's placed onto the timeline by a
+// separate edit_item (复刻规格 line 173/190/200). The library adds (effect/transition/mg/
+// sfx) never covered pool media, so the agent previously had NO way to place B-roll — this
+// closes that. Pure: resolves asset (id/prefix, G2) + track + position; the committer calls
+// addMediaItem. Optional durationInFrames trims stills/clips at placement (applied as an
+// asset copy so the committer needs no post-placement item lookup).
+export function validateGenericAdd(
+  state: TimelineState,
+  assets: readonly MediaAsset[],
+  entry: Record<string, unknown>,
+): OpResult {
+  const type = String(entry.type ?? '');
+  if (!GENERIC_ADD_KINDS.has(type)) {
+    return { error: `add type not supported: ${type}`, supported: [...GENERIC_ADD_KINDS] };
+  }
+  const q = String(entry.assetId ?? '').trim();
+  if (!q) return { error: `${type} add needs assetId (a pool asset id/prefix; see manage_media_pool action=list)` };
+  const exact = assets.find((a) => a.id === q);
+  const hits = exact ? [exact] : assets.filter((a) => a.id.startsWith(q));
+  if (hits.length === 0) return { error: `no pool asset matching "${q}"`, hint: 'manage_media_pool action=list shows asset ids/names' };
+  if (hits.length > 1) {
+    return { error: `ambiguous asset prefix "${q}"`, candidates: hits.slice(0, 6).map((a) => ({ id: a.id, name: a.name, kind: a.kind })) };
+  }
+  const asset = hits[0]!;
+  if (asset.kind !== type) return { error: `asset ${asset.id} is kind=${asset.kind}, not ${type} — pass type:"${asset.kind}"` };
+
+  const family = type === 'audio' ? 'audio' : 'video';
+  const track = resolveTrackId(state, entry.track ?? entry.trackId ?? (family === 'audio' ? 'A1' : 'V1'), family)
+    ?? defaultTrackId(state, family);
+  if (!track) return { error: `no ${family} track for placement — create one with edit_track first` };
+
+  const startFrame = finiteNum(entry.startFrame) ?? finiteNum(entry.fromFrame);
+  const durationInFrames = finiteNum(entry.durationInFrames);
+  return {
+    ok: true,
+    kind: type,
+    plan: 'addMedia',
+    assetId: asset.id,
+    track,
+    ...(startFrame !== undefined ? { startFrame: Math.max(0, Math.round(startFrame)) } : {}),
+    ...(durationInFrames !== undefined && durationInFrames > 0 ? { durationInFrames: Math.round(durationInFrames) } : {}),
+  };
 }
 
 /** Commit a generic plan. Returns the op result; unknown plans return null so the caller

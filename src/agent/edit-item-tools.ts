@@ -9,7 +9,7 @@ import {
   transitionAssetId,
 } from './library-catalog';
 import { SOUND_EFFECTS, soundEffectSrc } from '../audio/soundLibrary';
-import { GENERIC_ITEM_KINDS, validateGenericUpdate, validateGenericDelete, applyGeneric } from './edit-item-generic';
+import { GENERIC_ITEM_KINDS, GENERIC_ADD_KINDS, validateGenericAdd, validateGenericUpdate, validateGenericDelete, applyGeneric } from './edit-item-generic';
 
 // Source edit_item — library placement for effect / transition / zoom / MG / SFX.
 // Batch is atomic: every op is validated first; on any failure nothing mutates
@@ -22,14 +22,14 @@ export const EDIT_ITEM_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'edit_item',
     description:
-      'Source-faithful unified item-level ops across types: video, image, audio, gif, svg, motion-graphic, effect, transition. adds place library items (type=effect LUT+library:zoom:*, transition builtin:tr-*, motion-graphic library:motion-graphic:*, audio library:sound:*). updates/deletes work on ANY item by itemId: update {type:"video"|"image"|"audio"|…, itemId, track?, startFrame?, durationInFrames?, srcInFrame?, props?, volume?, fadeInSeconds?, fadeOutSeconds?} to move/trim/retime; delete {type:<kind>, itemId, ripple?} removes any clip (effect/transition deletes still by id/targetItemId). Batch is atomic — any validation error aborts the whole call with no mutations (or validateOnly:true to dry-run). Mutating ops go through propose→apply. split_item cuts clips; the single-op move_item / set_item_timing / remove_item shortcuts still work.',
+      'Source-faithful unified item-level ops across types: video, image, audio, gif, svg, motion-graphic, effect, transition. adds place either library items (type=effect LUT+library:zoom:*, transition builtin:tr-*, motion-graphic library:motion-graphic:*, audio library:sound:*) OR a POOL asset as a clip (type=video|image|gif|svg|audio, assetId=<pool asset id/prefix from manage_media_pool>, track?, startFrame?, durationInFrames?) — this is how you place uploaded/generated/stock B-roll on the timeline. updates/deletes work on ANY item by itemId: update {type:"video"|"image"|"audio"|…, itemId, track?, startFrame?, durationInFrames?, srcInFrame?, props?, volume?, fadeInSeconds?, fadeOutSeconds?} to move/trim/retime; delete {type:<kind>, itemId, ripple?} removes any clip (effect/transition deletes still by id/targetItemId). Batch is atomic — any validation error aborts the whole call with no mutations (or validateOnly:true to dry-run). Mutating ops go through propose→apply. split_item cuts clips; the single-op move_item / set_item_timing / remove_item shortcuts still work.',
     input_schema: {
       type: 'object',
       properties: {
         adds: {
           type: 'array',
           description:
-            'effect: {type,targetItemId,assetId,propertyOverrides?}. transition: {type,assetId,incomingItemId,outgoingItemId?,durationInFrames?}. motion-graphic: {type,assetId:library:motion-graphic:*,track?,startFrame?}. audio: {type,assetId:library:sound:*,fromFrame?}.',
+            'effect: {type,targetItemId,assetId,propertyOverrides?}. transition: {type,assetId,incomingItemId,outgoingItemId?,durationInFrames?}. motion-graphic: {type,assetId:library:motion-graphic:*,track?,startFrame?}. audio SFX: {type:"audio",assetId:library:sound:*,fromFrame?}. POOL media B-roll (video/image/gif/svg/audio): {type,assetId:<pool asset id/prefix>,track?,startFrame?,durationInFrames?} — startFrame omitted appends; durationInFrames trims a still/clip at placement.',
           items: { type: 'object' },
         },
         updates: {
@@ -344,9 +344,12 @@ function validateAdd(ctx: AgentContext, entry: Record<string, unknown>): OpResul
   const t = String(entry.type ?? '');
   if (t === 'effect') return validateEffectAdd(ctx, entry);
   if (t === 'transition') return validateTransitionAdd(ctx, entry);
-  if (t === 'audio') return validateAudioAdd(ctx, entry);
   if (t === 'motion-graphic') return validateMgAdd(ctx, entry);
-  return { error: `add type not supported: ${t}`, supported: ['effect', 'transition', 'audio', 'motion-graphic'] };
+  // audio: a library SFX (library:sound:*) vs an uploaded/generated pool audio asset.
+  if (t === 'audio' && /^library:sound:/.test(String(entry.assetId ?? ''))) return validateAudioAdd(ctx, entry);
+  // video/image/gif/svg/audio pool-asset placement (B-roll) — the source's edit_item路径.
+  if (GENERIC_ADD_KINDS.has(t)) return validateGenericAdd(ctx.getState(), ctx.getDoc().assets ?? [], entry);
+  return { error: `add type not supported: ${t}`, supported: ['video', 'image', 'gif', 'svg', 'audio', 'effect', 'transition', 'motion-graphic'] };
 }
 
 function validateUpdate(ctx: AgentContext, entry: Record<string, unknown>): OpResult {
@@ -442,6 +445,29 @@ function commitPlan(ctx: AgentContext, plan: OpResult, ripple = false): OpResult
         ripple,
       });
       return { ok: true, kind: 'motion-graphic', templateId: tpl.id, name: tpl.name, track: plan.track, ripple };
+    }
+    case 'addMedia': {
+      // Place a pool asset (video/image/gif/svg/audio) as a clip. durationInFrames (if the
+      // plan carries it) is applied via an asset copy so addMediaItem stamps it directly —
+      // no need to find the freshly-created item id afterward.
+      const asset = (ctx.getDoc().assets ?? []).find((a) => a.id === plan.assetId);
+      if (!asset) return { error: `pool asset vanished: ${String(plan.assetId)}` };
+      const placed = typeof plan.durationInFrames === 'number'
+        ? { ...asset, durationInFrames: Number(plan.durationInFrames) }
+        : asset;
+      ctx.commands.addMediaItem(placed, { track: plan.track as string, startFrame: plan.startFrame as number | undefined });
+      return {
+        ok: true,
+        kind: plan.kind,
+        placed: {
+          assetId: asset.id,
+          name: asset.name,
+          kind: asset.kind,
+          track: plan.track,
+          startFrame: plan.startFrame ?? 'appended',
+          durationInFrames: placed.durationInFrames,
+        },
+      };
     }
     case 'genericUpdate':
     case 'genericDelete': {

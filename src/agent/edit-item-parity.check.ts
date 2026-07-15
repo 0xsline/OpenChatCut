@@ -3,9 +3,9 @@
 // + that commit delegates to the right editor commands, and the atomic-abort contract via
 // the same validators execEditItemTool batches. Run: tsx src/agent/edit-item-parity.check.ts
 import assert from 'node:assert';
-import type { TimelineState } from '../editor/types';
+import type { MediaAsset, TimelineState } from '../editor/types';
 import {
-  GENERIC_ITEM_KINDS, validateGenericUpdate, validateGenericDelete, applyGeneric, type GenericCommands,
+  GENERIC_ITEM_KINDS, GENERIC_ADD_KINDS, validateGenericAdd, validateGenericUpdate, validateGenericDelete, applyGeneric, type GenericCommands,
 } from './edit-item-generic';
 
 // GENERIC_ITEM_KINDS covers the source edit_item item types (minus effect/transition adds)
@@ -73,5 +73,48 @@ assert.ok(validateGenericDelete(state, { type: 'video', itemId: 'gone' }).error,
 
 // ── applyGeneric returns null for a non-generic plan (caller falls through) ──
 assert.equal(applyGeneric({ plan: 'addTransition' }, recorder().commands), null, 'non-generic plan → null');
+
+// ── B-roll placement: validateGenericAdd (place a pool asset as a clip) ──────────────────
+const pool = [
+  { id: 'aud_music01', kind: 'audio', name: 'bgm', src: '/media/bgm.mp3', durationInFrames: 300 },
+  { id: 'vid_broll01', kind: 'video', name: 'broll', src: '/media/broll.mp4', durationInFrames: 150 },
+  { id: 'vid_broll02', kind: 'video', name: 'broll2', src: '/media/broll2.mp4', durationInFrames: 120 },
+  { id: 'img_logo01', kind: 'image', name: 'logo', src: '/media/logo.png', durationInFrames: 90 },
+] as unknown as MediaAsset[];
+
+// GENERIC_ADD_KINDS = the pool-placeable kinds (MG/text/solid excluded)
+for (const k of ['video', 'image', 'gif', 'svg', 'audio']) assert.ok(GENERIC_ADD_KINDS.has(k), `GENERIC_ADD_KINDS missing ${k}`);
+assert.ok(!GENERIC_ADD_KINDS.has('motion-graphic') && !GENERIC_ADD_KINDS.has('text'), 'MG/text are not pool adds');
+
+// exact-id placement → addMedia plan on the right track/position
+{
+  const p = validateGenericAdd(state, pool, { type: 'video', assetId: 'vid_broll01', track: 'V1', startFrame: 60 });
+  assert.equal(p.error, undefined, 'video add validates');
+  assert.equal(p.plan, 'addMedia'); assert.equal(p.assetId, 'vid_broll01');
+  assert.equal(p.track, 'V1'); assert.equal(p.startFrame, 60); assert.equal(p.kind, 'video');
+}
+// no track hint: video defaults to V1, audio to A1
+assert.equal(validateGenericAdd(state, pool, { type: 'video', assetId: 'vid_broll01' }).track, 'V1', 'video default track V1');
+assert.equal(validateGenericAdd(state, pool, { type: 'audio', assetId: 'aud_music01' }).track, 'A1', 'audio default track A1');
+// startFrame omitted → not in plan (appends)
+assert.equal('startFrame' in validateGenericAdd(state, pool, { type: 'video', assetId: 'vid_broll01' }), false, 'no startFrame → append');
+
+// ambiguous prefix → error with candidates (G2)
+{
+  const p = validateGenericAdd(state, pool, { type: 'video', assetId: 'vid_broll0' });
+  assert.ok(p.error, 'ambiguous prefix errors');
+  assert.equal((p.candidates as unknown[]).length, 2, 'lists both candidates');
+}
+// unknown asset → error
+assert.ok(validateGenericAdd(state, pool, { type: 'video', assetId: 'zzz' }).error, 'unknown asset errors');
+// kind mismatch (asset is image, asked video) → error
+assert.ok(validateGenericAdd(state, pool, { type: 'video', assetId: 'img_logo01' }).error, 'kind mismatch errors');
+// duration override (trim a still at placement); ≤0 ignored
+assert.equal(validateGenericAdd(state, pool, { type: 'image', assetId: 'img_logo01', track: 'V1', durationInFrames: 120 }).durationInFrames, 120, 'duration override carried');
+assert.equal('durationInFrames' in validateGenericAdd(state, pool, { type: 'image', assetId: 'img_logo01', track: 'V1', durationInFrames: 0 }), false, 'non-positive duration ignored');
+// unsupported add type (text is authored, not a pool asset)
+assert.ok(validateGenericAdd(state, pool, { type: 'text', assetId: 'x' }).error, 'text add unsupported');
+// missing assetId → error
+assert.ok(validateGenericAdd(state, pool, { type: 'video' }).error, 'missing assetId errors');
 
 console.log('edit-item-parity.check.ts OK');
