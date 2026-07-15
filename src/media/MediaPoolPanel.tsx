@@ -72,6 +72,9 @@ export function MediaPoolPanel({
   /** asset ids whose media failed to load (source "Click to relink") */
   const [missing, setMissing] = useState<Set<string>>(() => new Set());
   const [relinkTarget, setRelinkTarget] = useState<string | null>(null);
+  const dirInputRef = useRef<HTMLInputElement>(null);
+  const [dirBusy, setDirBusy] = useState(false);
+  const [relinkMsg, setRelinkMsg] = useState<string | null>(null);
   const [showRelinkAll, setShowRelinkAll] = useState(false);
 
   useEffect(() => {
@@ -145,6 +148,41 @@ export function MediaPoolPanel({
       setBusy(false);
     }
   };
+
+  // Batch relink: pick a folder, match each missing asset by filename, re-upload + relink
+  // (source Relink Missing Media "search a folder"). Assets with no same-name file are left
+  // missing. Runs sequentially so each upload/relink commits cleanly.
+  const relinkFromFolder = async (files: FileList | null) => {
+    if (!files?.length || !onRelinkAsset) return;
+    setDirBusy(true);
+    setError(null);
+    setRelinkMsg(null);
+    try {
+      const byName = new Map<string, File>();
+      for (const f of Array.from(files)) if (!byName.has(f.name)) byName.set(f.name, f);
+      let relinked = 0;
+      for (const asset of missingList) {
+        const f = byName.get(asset.name);
+        if (!f) continue;
+        const next = await importMedia(f, fps);
+        onRelinkAsset(asset.id, { src: next.src, name: next.name, durationInFrames: next.durationInFrames, width: next.width, height: next.height, kind: next.kind });
+        clearMissing(asset.id);
+        relinked++;
+      }
+      setRelinkMsg(relinked ? `已从文件夹按文件名重链 ${relinked} 个素材` : '文件夹中没有与丢失素材同名的文件');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setDirBusy(false);
+      if (dirInputRef.current) dirInputRef.current.value = '';
+    }
+  };
+
+  // <input webkitdirectory> is not in React's typed props — set it on the DOM node.
+  useEffect(() => {
+    const el = dirInputRef.current;
+    if (el) { el.setAttribute('webkitdirectory', ''); el.setAttribute('directory', ''); }
+  }, []);
 
   const missingList = assets.filter((a) => missing.has(a.id));
 
@@ -406,8 +444,14 @@ export function MediaPoolPanel({
           <div className="cc-modal" style={{ width: 'min(420px, 92vw)', maxHeight: '70vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
             <strong>重新链接离线素材</strong>
             <p style={{ margin: '8px 0 12px', fontSize: 12, color: '#a0a0a0', lineHeight: 1.45 }}>
-              工程中的文件已移动或重命名。从下方行直接重新链接缺失文件。
+              工程中的文件已移动或重命名。选一个文件夹按文件名批量重链，或从下方逐个重新链接。
             </p>
+            <input ref={dirInputRef} type="file" multiple hidden onChange={(e) => relinkFromFolder(e.target.files)} />
+            <button type="button" className="primary" disabled={dirBusy} onClick={() => dirInputRef.current?.click()}
+              style={{ width: '100%', marginBottom: 10 }}>
+              {dirBusy ? '正在按文件名匹配…' : '选择文件夹批量重链（按文件名匹配）'}
+            </button>
+            {relinkMsg && <div style={{ fontSize: 12, color: '#8fce8f', margin: '0 0 10px' }}>{relinkMsg}</div>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {missingList.map((asset) => (
                 <div key={asset.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: '#1e1e1e' }}>
