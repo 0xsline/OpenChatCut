@@ -9,6 +9,7 @@ import {
   transitionAssetId,
 } from './library-catalog';
 import { SOUND_EFFECTS, soundEffectSrc } from '../audio/soundLibrary';
+import { GENERIC_ITEM_KINDS, validateGenericUpdate, validateGenericDelete, applyGeneric } from './edit-item-generic';
 
 // Source edit_item — library placement for effect / transition / zoom / MG / SFX.
 // Batch is atomic: every op is validated first; on any failure nothing mutates
@@ -21,7 +22,7 @@ export const EDIT_ITEM_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'edit_item',
     description:
-      'Source-faithful item-level ops. Prefer browse_library first. Supports adds/updates/deletes for type=effect (LUT + library:zoom:*), type=transition (builtin:tr-*), type=motion-graphic (library:motion-graphic:*), type=audio (library:sound:*). Batch is atomic — any validation error aborts the whole call with no mutations (or validateOnly:true to dry-run). ripple=true pushes later same-track clips when inserting MG/audio. Mutating ops go through propose→apply. For generic move/trim/delete use move_item / set_item_timing / remove_item.',
+      'Source-faithful unified item-level ops across types: video, image, audio, gif, svg, motion-graphic, effect, transition. adds place library items (type=effect LUT+library:zoom:*, transition builtin:tr-*, motion-graphic library:motion-graphic:*, audio library:sound:*). updates/deletes work on ANY item by itemId: update {type:"video"|"image"|"audio"|…, itemId, track?, startFrame?, durationInFrames?, srcInFrame?, props?, volume?, fadeInSeconds?, fadeOutSeconds?} to move/trim/retime; delete {type:<kind>, itemId, ripple?} removes any clip (effect/transition deletes still by id/targetItemId). Batch is atomic — any validation error aborts the whole call with no mutations (or validateOnly:true to dry-run). Mutating ops go through propose→apply. split_item cuts clips; the single-op move_item / set_item_timing / remove_item shortcuts still work.',
     input_schema: {
       type: 'object',
       properties: {
@@ -34,13 +35,13 @@ export const EDIT_ITEM_TOOL_SCHEMAS: Anthropic.Tool[] = [
         updates: {
           type: 'array',
           description:
-            'effect: {type:"effect",id|effectId,targetItemId?,propertyOverrides,assetId?}. transition: {type:"transition",id,durationInFrames?,assetId?}. zoom via effect + propertyOverrides.',
+            'Per item. Generic clip: {type:"video"|"image"|"audio"|"gif"|"svg"|"motion-graphic"|"text",itemId,track?,startFrame?,durationInFrames?,srcInFrame?,props?,volume?,fadeInSeconds?,fadeOutSeconds?}. effect: {type:"effect",id|effectId,targetItemId?,propertyOverrides,assetId?}. transition: {type:"transition",id,durationInFrames?,assetId?}. zoom via effect + propertyOverrides.',
           items: { type: 'object' },
         },
         deletes: {
           type: 'array',
           description:
-            'effect: {type:"effect",id|effectId,targetItemId?} or clear with targetItemId only. transition: {type:"transition",id}. zoom: {type:"effect",targetItemId,assetId:"builtin:zoom"}.',
+            'Generic clip (any kind): {type:"video"|"image"|"audio"|…,itemId,ripple?} (ripple closes the gap). effect: {type:"effect",id|effectId,targetItemId?} or clear with targetItemId only. transition: {type:"transition",id}. zoom: {type:"effect",targetItemId,assetId:"builtin:zoom"}.',
           items: { type: 'object' },
         },
         ripple: {
@@ -316,6 +317,7 @@ function validateDelete(ctx: AgentContext, entry: Record<string, unknown>): OpRe
     if (!tr) return { error: `transition not found: ${id}` };
     return { ok: true, kind: 'transition', plan: 'removeTransition', id: tr.id };
   }
+  if (GENERIC_ITEM_KINDS.has(type)) return validateGenericDelete(ctx.getState(), entry);
   if (type === 'effect' || !type) {
     const assetId = String(entry.assetId ?? '');
     if (assetId === 'builtin:zoom' || parseZoomLibraryId(assetId)) {
@@ -349,8 +351,9 @@ function validateAdd(ctx: AgentContext, entry: Record<string, unknown>): OpResul
 
 function validateUpdate(ctx: AgentContext, entry: Record<string, unknown>): OpResult {
   const t = String(entry.type ?? 'effect');
-  if (t === 'effect') return validateEffectUpdate(ctx, entry);
   if (t === 'transition') return validateTransitionUpdate(ctx, entry);
+  if (GENERIC_ITEM_KINDS.has(t)) return validateGenericUpdate(ctx.getState(), entry);
+  if (t === 'effect') return validateEffectUpdate(ctx, entry);
   return { error: `update type not supported: ${t}` };
 }
 
@@ -439,6 +442,11 @@ function commitPlan(ctx: AgentContext, plan: OpResult, ripple = false): OpResult
         ripple,
       });
       return { ok: true, kind: 'motion-graphic', templateId: tpl.id, name: tpl.name, track: plan.track, ripple };
+    }
+    case 'genericUpdate':
+    case 'genericDelete': {
+      const applied = applyGeneric(plan, ctx.commands);
+      return applied ?? { error: `unknown plan ${String(plan.plan)}` };
     }
     default:
       return { error: `unknown plan ${String(plan.plan)}` };

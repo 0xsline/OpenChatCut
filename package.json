@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "check:generation": "node --experimental-strip-types vite-generation-jobs.check.ts",
-    "test": "tsx src/script/script.check.ts && tsx src/agent/track-tools.check.ts && tsx src/agent/media-pool-tools.check.ts && tsx src/captions/styles.check.ts && tsx src/editor/proposal.check.ts && tsx src/editor/ripple.check.ts && tsx src/editor/zoom.check.ts && tsx src/export/range.check.ts && tsx src/gl/source-parity.check.ts && tsx src/gl/fx/fx.check.ts && tsx src/persist/projectStore.check.ts && tsx src/agent/followup-tools.check.ts && tsx src/agent/captions-tools.check.ts && tsx src/agent/transcript-tools.check.ts && tsx src/transcript/transcribe-jobs.check.ts && tsx src/agent/probe-tools.check.ts && tsx src/components/chat/message-groups.check.ts && tsx src/agent/plugin-skills.check.ts && npm run check:generation",
+    "test": "tsx src/script/script.check.ts && tsx src/agent/track-tools.check.ts && tsx src/agent/media-pool-tools.check.ts && tsx src/captions/styles.check.ts && tsx src/editor/proposal.check.ts && tsx src/editor/ripple.check.ts && tsx src/editor/zoom.check.ts && tsx src/export/range.check.ts && tsx src/gl/source-parity.check.ts && tsx src/gl/fx/fx.check.ts && tsx src/persist/projectStore.check.ts && tsx src/agent/followup-tools.check.ts && tsx src/agent/captions-tools.check.ts && tsx src/agent/transcript-tools.check.ts && tsx src/transcript/transcribe-jobs.check.ts && tsx src/agent/probe-tools.check.ts && tsx src/agent/edit-item-parity.check.ts && tsx src/components/chat/message-groups.check.ts && tsx src/agent/plugin-skills.check.ts && npm run check:generation",
     "lint": "oxlint",
     "preview": "vite preview"
   },
