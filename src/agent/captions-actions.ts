@@ -3,6 +3,7 @@ import type { CaptionsData, CaptionTemplate, CaptionPacing, CaptionAnchor, Capti
 import { CAPTION_STYLES, CAPTION_STYLE_BY_ID } from '../captions/styles';
 import { mapCaptionStyle } from '../captions/styleMap';
 import { sourceList, sourceSet, sourceAdd, sourceRemove, languageMode, bilingual, firstTranscribedOnTrack } from './captions-sources';
+import { listCaptionPresets, saveCaptionPreset, deleteCaptionPreset, resolveCaptionPreset, type CaptionPreset } from '../captions/presetStore';
 
 // edit_captions — one tool, source's 21-action dispatch model. Most action data
 // arrives as a JSON string in `json`. Backed by the clone's captions overlay
@@ -80,12 +81,13 @@ function displayText(json: Record<string, unknown>, c: CaptionsData, ctx: AgentC
 const UNSUPPORTED: Record<string, string> = {
   layout_policy: 'this build merges sources into ONE stacked stream; multi-source layout policy (single-lane / auto-stack / manual-slots) is not modeled.',
   positions: 'per-source on-screen positions are not modeled (single stacked stream). Use action=layout to move the whole block.',
-  preset_save: 'user-saved style presets are not stored in this build. Use action=style for custom looks, action=template for the 21 built-ins.',
-  preset_apply: 'user-saved style presets are not stored in this build.',
-  preset_rename: 'user-saved style presets are not stored in this build.',
-  preset_delete: 'user-saved style presets are not stored in this build.',
-  preset_list: 'user-saved style presets are not stored in this build.',
 };
+
+/** preset_apply/rename/delete resolve a saved preset by presetId (or presetName). */
+async function findPreset(args: Args, json: Record<string, unknown>): Promise<CaptionPreset | undefined> {
+  const q = str(args.presetId) || str(json.presetId) || str(json.id) || str(args.presetName) || str(json.presetName) || str(json.name);
+  return q ? resolveCaptionPreset(q) : undefined;
+}
 
 export async function editCaptions(args: Args, ctx: AgentContext): Promise<Result> {
   const action = str(args.action);
@@ -156,6 +158,50 @@ export async function editCaptions(args: Args, ctx: AgentContext): Promise<Resul
   if (action === 'source_remove') return sourceRemove(json, c, ctx, s);
   if (action === 'language_mode') return languageMode(json, c, ctx, s);
   if (action === 'bilingual') return bilingual(json, c, ctx, s);
+
+  // ── user style presets (source preset_save/apply/list/rename/delete), IDB-backed ──
+  if (action === 'preset_save') {
+    const name = str(args.presetName) || str(json.name) || str(json.presetName);
+    if (!name) return { error: 'preset_save needs presetName (or json.name)' };
+    const preset: CaptionPreset = {
+      id: `cp_${crypto.randomUUID()}`,
+      name,
+      template: c.template,
+      styleOverride: c.styleOverride,
+      pacing: c.pacing,
+      createdAt: Date.now(),
+    };
+    await saveCaptionPreset(preset);
+    return { ok: true, presetId: preset.id, name, captured: { template: c.template, styleFields: Object.keys(c.styleOverride ?? {}) } };
+  }
+  if (action === 'preset_list') {
+    const presets = await listCaptionPresets();
+    return { ok: true, presets: presets.map((p) => ({ id: p.id, name: p.name, template: p.template })) };
+  }
+  if (action === 'preset_apply') {
+    const preset = await findPreset(args, json);
+    if (!preset) return { error: 'preset_apply needs presetId or presetName of a saved preset (see preset_list)' };
+    ctx.commands.updateCaptions({
+      template: preset.template ?? c.template,
+      styleOverride: preset.styleOverride ?? {},
+      ...(preset.pacing ? { pacing: preset.pacing } : {}),
+    });
+    return { ok: true, applied: preset.name, presetId: preset.id, template: preset.template };
+  }
+  if (action === 'preset_rename') {
+    const preset = await findPreset(args, json);
+    if (!preset) return { error: 'preset_rename needs presetId (see preset_list)' };
+    const name = str(args.newName) || str(json.newName) || str(json.name);
+    if (!name) return { error: 'preset_rename needs a new name (newName / json.name)' };
+    await saveCaptionPreset({ ...preset, name });
+    return { ok: true, presetId: preset.id, name };
+  }
+  if (action === 'preset_delete') {
+    const preset = await findPreset(args, json);
+    if (!preset) return { error: 'preset_delete needs presetId (see preset_list)' };
+    await deleteCaptionPreset(preset.id);
+    return { ok: true, deleted: preset.name, presetId: preset.id };
+  }
 
   // ── honestly unsupported in this build ──
   if (action in UNSUPPORTED) return { unsupported: true, action, note: UNSUPPORTED[action] };

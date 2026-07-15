@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { paginate } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
 import { applyWordOverrides, resolveCaptionWords, resolveCaptionWordIndices } from '../captions/resolve';
+import { __resetCaptionPresetMemory } from '../captions/presetStore';
 import { makeDraft } from '../editor/store';
 import type { TimelineState } from '../editor/types';
 import { docFromTimeline } from '../persist/projectStore';
@@ -281,8 +282,22 @@ assert.ok(noVar.error?.includes('variant'), 'translation without a variant asks 
 const unsup = await execCaptionsTool('edit_captions', { action: 'positions', json: {} }, ctx3) as { unsupported?: boolean; note?: string };
 assert.equal(unsup.unsupported, true);
 assert.ok(unsup.note, 'unsupported action carries an explanatory note');
-const preset = await execCaptionsTool('edit_captions', { action: 'preset_save', json: {} }, ctx3) as { unsupported?: boolean };
-assert.equal(preset.unsupported, true);
+// user style presets (preset_save/list/apply/rename/delete) — IDB memory-fallback here
+__resetCaptionPresetMemory();
+const psave = await execCaptionsTool('edit_captions', { action: 'preset_save', presetName: '我的风格' }, ctx3) as { ok?: boolean; presetId?: string };
+assert.equal(psave.ok, true, 'preset_save succeeds with a name');
+assert.ok(psave.presetId, 'preset_save returns an id');
+const pnoName = await execCaptionsTool('edit_captions', { action: 'preset_save', json: {} }, ctx3) as { error?: string };
+assert.ok(pnoName.error, 'preset_save without a name errors (not a silent save)');
+const plist = await execCaptionsTool('edit_captions', { action: 'preset_list' }, ctx3) as { presets: { id: string; name: string }[] };
+assert.ok(plist.presets.some((p) => p.id === psave.presetId && p.name === '我的风格'), 'preset_list shows the saved preset');
+const papply = await execCaptionsTool('edit_captions', { action: 'preset_apply', presetId: psave.presetId }, ctx3) as { ok?: boolean; applied?: string };
+assert.equal(papply.ok, true, 'preset_apply by id succeeds');
+const pdel = await execCaptionsTool('edit_captions', { action: 'preset_delete', presetId: psave.presetId }, ctx3) as { ok?: boolean };
+assert.equal(pdel.ok, true, 'preset_delete succeeds');
+const plist2 = await execCaptionsTool('edit_captions', { action: 'preset_list' }, ctx3) as { presets: unknown[] };
+assert.equal(plist2.presets.length, 0, 'preset gone after delete');
+__resetCaptionPresetMemory();
 
 // disable
 const dis = await execCaptionsTool('edit_captions', { action: 'disable' }, ctx3) as { enabled: boolean };
