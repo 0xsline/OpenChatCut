@@ -26,11 +26,12 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'clean_script',
-    description: 'Mechanically clean a track\'s voiceover: compress long pauses to a target length and/or strip filler words (um/uh/嗯/呃). Rule-based on word timings (not the LLM); the clip shortens accordingly. Run before semantic editing.',
+    description: 'Mechanically clean a track\'s voiceover: compress long pauses to a target length and/or strip filler words (um/uh/嗯/呃). Rule-based on word timings (not the LLM); each clip shortens accordingly. Runs on EVERY transcribed clip on the track (whole-track batch) unless itemId narrows it to one. Run before semantic editing.',
     input_schema: {
       type: 'object',
       properties: {
-        track: { type: 'string' },
+        track: { type: 'string', description: 'Track alias/id whose voiceover clips to clean (default A1). Cleans every transcribed clip on it.' },
+        itemId: { type: 'string', description: 'Optional: clean only this one clip instead of the whole track.' },
         maxPauseSeconds: { type: 'number', description: 'Compress pauses longer than this down to it (e.g. 0.5). Omit to leave pauses.' },
         removeFillers: { type: 'boolean', description: 'Strip filler words (default true).' },
       },
@@ -348,13 +349,22 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       };
     }
     case 'clean_script': {
-      const it = trackClip(ctx, track, true);
-      if (!it?.transcript) return { error: `no transcript on ${alias}; call transcribe_track first` };
-      const fps = ctx.getState().fps;
+      // Whole-track batch (source semantics + this tool's own description): clean EVERY
+      // transcribed clip on the track, not just the first. itemId narrows to one clip.
+      const targetId = typeof args.itemId === 'string' ? args.itemId : '';
+      const clips = targetId
+        ? state.items.filter((x) => (x.id === targetId || x.id.startsWith(targetId)) && (x.transcript?.length ?? 0) > 0)
+        : state.items.filter((x) => x.track === track && (x.transcript?.length ?? 0) > 0);
+      if (!clips.length) return { error: targetId ? `no transcribed item ${targetId}` : `no transcript on ${alias}; call transcribe_track first` };
+      const fps = state.fps;
       const silenceFrames = typeof args.maxPauseSeconds === 'number' ? Math.max(1, Math.round(args.maxPauseSeconds * fps)) : undefined;
       const removeFillers = args.removeFillers !== false;
-      ctx.commands.cleanScript(it.id, { silenceFrames, removeFillers });
-      return { ok: true, itemId: it.id, maxPauseSeconds: (args.maxPauseSeconds as number) ?? null, fillersRemoved: removeFillers ? fillerIndices(it.transcript).length : 0 };
+      let fillersRemoved = 0;
+      for (const it of clips) {
+        if (removeFillers) fillersRemoved += fillerIndices(it.transcript!).length;
+        ctx.commands.cleanScript(it.id, { silenceFrames, removeFillers }); // reducer re-derives each clip's duration (护城河③)
+      }
+      return { ok: true, track: alias, clips: clips.length, itemIds: clips.map((c) => c.id), maxPauseSeconds: (args.maxPauseSeconds as number) ?? null, fillersRemoved };
     }
     case 'edit_gap': {
       const action = String(args.action ?? '');

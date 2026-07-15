@@ -161,6 +161,27 @@ const varState: TimelineState = {
   assert.ok(noVar.error, 'reading a missing variant errors');
 }
 
+// clean_script 是「整轨批处理」——必须清该轨上每个带转写的 clip,不能只清第一个(E2E 实测的 bug)
+{
+  const w = (t: string): TranscriptWord[] => [{ text: t, start: 0, end: 200, speaker: 'A' }, { text: t + '2', start: 1400, end: 1600, speaker: 'A' }];
+  const twoClips: TimelineState = {
+    fps: 30, width: 1920, height: 1080, selectedId: null,
+    items: [
+      { id: 'a', track: 'A1', startFrame: 0, durationInFrames: 60, name: 'vo-a', kind: 'audio', src: '/a.mp3', transcript: w('x') },
+      { id: 'b', track: 'A1', startFrame: 60, durationInFrames: 60, name: 'vo-b', kind: 'audio', src: '/b.mp3', transcript: w('y') },
+      { id: 'notr', track: 'A1', startFrame: 120, durationInFrames: 30, name: 'silent', kind: 'audio', src: '/c.mp3' },
+    ],
+  };
+  const d = makeDraft(docFromTimeline(twoClips));
+  const c: AgentContext = { commands: d.commands, getState: d.getState, getDoc: d.getDoc, getCreativeMode: () => null, templates: [], audio: [] };
+  const whole = await execTranscriptTool('clean_script', { track: 'A1', maxPauseSeconds: 0.5 }, c) as { ok: boolean; clips: number; itemIds: string[] };
+  assert.strictEqual(whole.clips, 2, 'clean_script cleans BOTH transcribed clips on the track (not just the first)');
+  assert.deepStrictEqual([...whole.itemIds].sort(), ['a', 'b'], 'untranscribed clip skipped');
+  const one = await execTranscriptTool('clean_script', { itemId: 'b', maxPauseSeconds: 0.5 }, c) as { clips: number; itemIds: string[] };
+  assert.strictEqual(one.clips, 1, 'itemId narrows to a single clip');
+  assert.deepStrictEqual(one.itemIds, ['b']);
+}
+
 // retry_transcription 无 media src → 明确 error(不跑网络)
 {
   const noSrc: TimelineState = {
