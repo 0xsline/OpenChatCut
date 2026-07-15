@@ -98,8 +98,9 @@ export const PROJECT_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'edit_project',
     description: [
-      'Update project-level settings. action=update: change name/description via json payload',
-      '{"name"?: string, "description"?: string|null}. Speaker actions are not implemented locally.',
+      'Update project-level settings or speakers. action=update: change name/description via json {"name"?, "description"?}.',
+      'action=speaker-update: project-wide rename/merge a speaker — {from:"A", to:"新名字"} relabels every word of that speaker across all transcribed clips in the open project.',
+      'speaker-create/speaker-delete are unsupported here (no speaker roster — speakers are per-word diarization labels); use speaker-update to relabel, or manage_transcript fix per clip.',
     ].join(' '),
     input_schema: {
       type: 'object',
@@ -108,9 +109,10 @@ export const PROJECT_TOOL_SCHEMAS: Anthropic.Tool[] = [
           type: 'string',
           enum: ['update', 'speaker-create', 'speaker-update', 'speaker-delete'],
         },
-        id: { type: 'string', description: 'Speaker id (speaker ops — not implemented).' },
-        json: { type: 'string', description: 'JSON payload for update: {name?, description?}.' },
-        projectId: { type: 'string', description: 'Defaults to current project.' },
+        from: { type: 'string', description: 'speaker-update: existing speaker label to rename (e.g. "A").' },
+        to: { type: 'string', description: 'speaker-update: new speaker name.' },
+        json: { type: 'string', description: 'update: {name?, description?}. speaker-update also accepts {from,to} here.' },
+        projectId: { type: 'string', description: 'Defaults to current project (speaker-update needs the open project).' },
       },
       required: ['action'],
     },
@@ -333,16 +335,45 @@ async function execDuplicate(args: Args, ctx: AgentContext): Promise<unknown> {
   };
 }
 
+/** speaker-update: project-wide speaker rename/merge. This build has no speaker ROSTER —
+ *  speakers are per-word diarization labels (A/B/…) — so "update the speaker list" = relabel
+ *  every word speaker===from → to across ALL transcribed clips in the open project (护城河③:
+ *  only word.speaker changes; timings/durations/word count untouched). Drafted like any edit. */
+function execSpeakerUpdate(args: Args, ctx: AgentContext): unknown {
+  const projectId = String(args.projectId ?? '').trim();
+  const open = currentProjectId(ctx);
+  if (projectId && open && projectId !== open) {
+    return { error: "speaker-update relabels the OPEN project's transcripts; call target_project first (or omit projectId)." };
+  }
+  let json: Record<string, unknown> = {};
+  if (typeof args.json === 'string' && args.json.trim()) {
+    try { const o = JSON.parse(args.json); if (o && typeof o === 'object') json = o as Record<string, unknown>; } catch { /* ignore, fall back to top-level args */ }
+  } else if (args.json && typeof args.json === 'object') json = args.json as Record<string, unknown>;
+
+  const from = String(args.from ?? json.from ?? json.speaker ?? json.id ?? '').trim();
+  const to = String(args.to ?? json.to ?? json.name ?? json.newName ?? '').trim();
+  if (!from || !to) return { error: 'speaker-update needs {from:"A", to:"新名字"} — from = existing speaker label, to = new name' };
+  const items = ctx.getState().items.filter((it) => it.transcript?.some((w) => w.speaker === from));
+  if (!items.length) return { error: `no word labeled speaker "${from}" in this project`, hint: 'read_captions {words:true} / read_script show speaker labels' };
+  let wordsChanged = 0;
+  for (const it of items) {
+    wordsChanged += it.transcript!.filter((w) => w.speaker === from).length;
+    ctx.commands.renameSpeaker(it.id, from, to);
+  }
+  return { ok: true, action: 'speaker-update', from, to, itemsChanged: items.length, wordsChanged, note: 'project-wide relabel (护城河③: only word.speaker changed).' };
+}
+
 async function execEdit(args: Args, ctx: AgentContext): Promise<unknown> {
   const action = String(args.action ?? '');
-  if (action.startsWith('speaker-')) {
+  if (action === 'speaker-update') return execSpeakerUpdate(args, ctx);
+  if (action === 'speaker-create' || action === 'speaker-delete') {
     return {
-      ok: false,
-      error: 'not_implemented',
+      unsupported: true,
       action,
-      note: 'Speaker roster management is not implemented in the local clone; rename speakers via manage_transcript renameSpeaker.',
+      note: 'this build has no project speaker roster — speakers are per-word diarization labels (A/B/…), not a managed list. A speaker with no words cannot be created, and delete would be an ambiguous destructive relabel. Use speaker-update {from,to} to rename/merge a speaker across the whole project, or manage_transcript action=fix {from,to} for one clip.',
     };
   }
+  if (action.startsWith('speaker-')) return { error: `unknown speaker action ${action}`, supported: ['speaker-update'] };
   if (action !== 'update') return { error: `unknown action ${action}` };
 
   const projectId = String(args.projectId ?? currentProjectId(ctx) ?? '').trim();

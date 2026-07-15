@@ -135,10 +135,31 @@ assert.strictEqual(restored.ok, true);
 const afterRestore = await execProjectTool('list_projects', {}, ctx) as { count: number };
 assert.strictEqual(afterRestore.count, 2);
 
-// speaker action not implemented
-const sp = await execProjectTool('edit_project', { action: 'speaker-create' }, ctx) as {
-  error?: string;
-};
-assert.strictEqual(sp.error, 'not_implemented');
+// speaker-create/delete → graceful unsupported (no speaker roster in this build)
+const spc = await execProjectTool('edit_project', { action: 'speaker-create' }, ctx) as { unsupported?: boolean; note?: string; error?: string };
+assert.strictEqual(spc.unsupported, true, 'speaker-create is gracefully unsupported');
+assert.strictEqual(spc.error, undefined, 'speaker-create no longer hard-errors not_implemented');
+assert.ok(spc.note);
+
+// speaker-update → project-wide relabel across all transcribed clips
+const spDraft = makeDraft(docFromTimeline({
+  fps: 30, width: 1920, height: 1080, selectedId: null, assets: [],
+  items: [
+    { id: 'c1', track: 'V1', startFrame: 0, durationInFrames: 60, kind: 'video', name: 'a', src: '/a.mp4',
+      transcript: [{ text: 'hi', start: 0, end: 500, speaker: 'A' }, { text: 'yo', start: 500, end: 1000, speaker: 'B' }] },
+    { id: 'c2', track: 'V1', startFrame: 60, durationInFrames: 60, kind: 'video', name: 'b', src: '/b.mp4',
+      transcript: [{ text: 'ok', start: 0, end: 500, speaker: 'A' }] },
+  ],
+}));
+const spCtx: AgentContext = { ...ctx, commands: spDraft.commands, getState: spDraft.getState, getDoc: spDraft.getDoc, getProjectId: () => 'p1' };
+const su = await execProjectTool('edit_project', { action: 'speaker-update', from: 'A', to: '主持人' }, spCtx) as { ok?: boolean; itemsChanged?: number; wordsChanged?: number };
+assert.strictEqual(su.ok, true, 'speaker-update succeeds');
+assert.strictEqual(su.itemsChanged, 2, 'relabels speaker A in both clips');
+assert.strictEqual(su.wordsChanged, 2, 'two words were speaker A');
+const st = spDraft.getState();
+assert.strictEqual(st.items.find((i) => i.id === 'c1')!.transcript!.find((w) => w.text === 'hi')!.speaker, '主持人', 'A→主持人 applied');
+assert.strictEqual(st.items.find((i) => i.id === 'c1')!.transcript!.find((w) => w.text === 'yo')!.speaker, 'B', 'B untouched (护城河③: only from-speaker words change)');
+assert.ok((await execProjectTool('edit_project', { action: 'speaker-update', from: 'Z', to: 'x' }, spCtx) as { error?: string }).error, 'unknown speaker errors');
+assert.ok((await execProjectTool('edit_project', { action: 'speaker-update', from: 'A' }, spCtx) as { error?: string }).error, 'missing to errors');
 
 console.log('project-tools.check: ok');
