@@ -8,8 +8,9 @@ import { listCaptionPresets, saveCaptionPreset, deleteCaptionPreset, resolveCapt
 // edit_captions — one tool, source's 21-action dispatch model. Most action data
 // arrives as a JSON string in `json`. Backed by the clone's captions overlay
 // (enable/template/style/layout/display overrides/multi-source/translation).
-// Actions with no representable target here (layout_policy, positions, per-source
-// user presets) return a structured `unsupported` note rather than pretending.
+// Actions with no representable target here (layout_policy, positions, source_update —
+// all per-source presentation the single-stacked-stream model can't express) return a
+// structured `unsupported` note rather than pretending or crashing to "unknown action".
 
 type Args = Record<string, unknown>;
 type Result = Record<string, unknown>;
@@ -81,6 +82,7 @@ function displayText(json: Record<string, unknown>, c: CaptionsData, ctx: AgentC
 const UNSUPPORTED: Record<string, string> = {
   layout_policy: 'this build merges sources into ONE stacked stream; multi-source layout policy (single-lane / auto-stack / manual-slots) is not modeled.',
   positions: 'per-source on-screen positions are not modeled (single stacked stream). Use action=layout to move the whole block.',
+  source_update: 'per-source presentation (anchor / offset / visible / style PER source) is not modeled — this build merges every source into ONE stacked stream. Use source_set / source_add / source_remove to choose WHICH sources show, style / layout to restyle or move the whole block, and language_mode / bilingual for languages.',
 };
 
 /** preset_apply/rename/delete resolve a saved preset by presetId (or presetName). */

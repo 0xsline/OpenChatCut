@@ -282,6 +282,11 @@ assert.ok(noVar.error?.includes('variant'), 'translation without a variant asks 
 const unsup = await execCaptionsTool('edit_captions', { action: 'positions', json: {} }, ctx3) as { unsupported?: boolean; note?: string };
 assert.equal(unsup.unsupported, true);
 assert.ok(unsup.note, 'unsupported action carries an explanatory note');
+// source_update (per-source presentation) → graceful unsupported, NOT a crash to "unknown action"
+const supd = await execCaptionsTool('edit_captions', { action: 'source_update', json: { updates: [{ trackId: 'V1', anchor: 'bottom-center' }] } }, ctx3) as { unsupported?: boolean; error?: string; note?: string };
+assert.equal(supd.unsupported, true, 'source_update is gracefully unsupported');
+assert.equal(supd.error, undefined, 'source_update does not fall through to unknown-action error');
+assert.ok(supd.note, 'source_update carries an explanatory note');
 // user style presets (preset_save/list/apply/rename/delete) — IDB memory-fallback here
 __resetCaptionPresetMemory();
 const psave = await execCaptionsTool('edit_captions', { action: 'preset_save', presetName: '我的风格' }, ctx3) as { ok?: boolean; presetId?: string };
