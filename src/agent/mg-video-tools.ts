@@ -100,7 +100,11 @@ async function convert(args: Args, ctx: AgentContext): Promise<unknown> {
   const replace = args.replace === true;
   if (replace) ctx.commands.replaceItemMedia(item.id, src); // swap the MG clip → baked video in place
 
-  return { ok: true, assetId: asset.id, src, name: asset.name, durationInFrames: asset.durationInFrames, replaced: replace, opaque: true };
+  return {
+    ok: true, assetId: asset.id, src, name: asset.name, durationInFrames: asset.durationInFrames, replaced: replace,
+    opaque: true, // this env's ffmpeg can't encode alpha webm/vp9 — the pooled video is opaque h264
+    note: 'Baked as OPAQUE h264 (no transparency). If you need the MG with alpha over other clips, use export_motion_graphic_prores instead (transparent ProRes .mov).',
+  };
 }
 
 function register(args: Args, ctx: AgentContext): unknown {
