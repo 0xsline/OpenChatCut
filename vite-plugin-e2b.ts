@@ -4,9 +4,36 @@
 // running skill-shipped scripts (ffmpeg / node / python) — the portable stand-in for the
 // native Agent Skills code-execution container, which our relay can't reach. The sandbox
 // cannot touch the editor; results come back and the agent applies them via local tools.
+import { readFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { Sandbox } from '@e2b/code-interpreter';
+
+const PUBLIC_DIR = resolve(process.cwd(), 'public');
+const MAX_FETCH = 200_000_000; // cap bytes pulled into the sandbox
+
+// Resolve a file's bytes to write into the sandbox: inline `content`, a local dev asset
+// (`url` like /media/uploads/x.mp4 → read from public/, path-traversal guarded), or a
+// public http(s) URL (server-fetched). This is how real media reaches the sandbox for
+// ffprobe/ffmpeg without exposing the dev host to the browser.
+async function resolveBytes(file: E2bFile): Promise<string | ArrayBuffer> {
+  if (file.content !== undefined) return file.content;
+  const url = file.url;
+  if (!url) throw new Error(`file ${file.path} needs content or url`);
+  if (url.startsWith('/')) {
+    const abs = join(PUBLIC_DIR, url.replace(/^\/+/, ''));
+    if (abs !== PUBLIC_DIR && !abs.startsWith(PUBLIC_DIR + '/')) throw new Error(`illegal local path ${url}`);
+    const data = await readFile(abs);
+    return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  }
+  if (!/^https?:\/\//.test(url)) throw new Error(`unsupported url ${url}`);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`fetch ${url} failed (${response.status})`);
+  const buf = await response.arrayBuffer();
+  if (buf.byteLength > MAX_FETCH) throw new Error(`fetched file too large (${buf.byteLength} bytes)`);
+  return buf;
+}
 
 interface E2bOptions {
   apiKey: string;
@@ -17,7 +44,8 @@ interface E2bOptions {
 
 interface E2bFile {
   path: string;
-  content: string;
+  content?: string; // inline text content
+  url?: string; // OR fetch bytes: /media/... (local public dir) or http(s)://
 }
 
 interface E2bRequest {
@@ -75,7 +103,7 @@ export function e2bPlugin(options: E2bOptions): Plugin {
             ? await Sandbox.create(options.template, createOpts)
             : await Sandbox.create(createOpts);
           for (const file of input.files ?? []) {
-            await sandbox.files.write(file.path, file.content);
+            await sandbox.files.write(file.path, await resolveBytes(file));
           }
 
           let result: { stdout: string; stderr: string; exitCode: number };

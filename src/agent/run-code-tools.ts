@@ -17,8 +17,8 @@ export const RUN_CODE_TOOL_SCHEMAS: Anthropic.Tool[] = [
         command: { type: 'string', description: 'Shell command to run, e.g. "ffmpeg -version" or "node upload-media.mjs in.mp4".' },
         files: {
           type: 'array',
-          description: 'Input files to write into the sandbox before running.',
-          items: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'] },
+          description: 'Input files to write into the sandbox before running. Each item gives a target path plus either inline content OR a url to fetch: a local media-pool/asset url like "/media/uploads/x.mp4" (served from the app) or a public "https://…" url. Use this to bring real media in for ffprobe/ffmpeg. (A public URL can also be probed directly by passing it to ffprobe without files.)',
+          items: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' }, url: { type: 'string' } }, required: ['path'] },
         },
         outputs: { type: 'array', description: 'Paths of files to read back after running.', items: { type: 'string' } },
       },
