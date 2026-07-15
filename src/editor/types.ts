@@ -13,6 +13,10 @@ export const TRACK_ORDER: TrackId[] = ['V2', 'V1', 'A1', 'A2'];
 /** An imported media file in the project's media pool (source: S3 asset). */
 export type MediaAssetKind = 'video' | 'image' | 'audio' | 'motion-graphic' | 'gif' | 'svg';
 
+/** ingest-time ASR state on a pool asset (source "上传即转写": ingest 落库后自动触发转写,
+ * asset 标"转写完成/失败"). Drives the media-pool badge + track_progress readiness. */
+export type AssetTranscribeStatus = 'running' | 'done' | 'failed';
+
 export interface MediaAsset {
   id: string;
   name: string;
@@ -26,6 +30,14 @@ export interface MediaAsset {
   /** media-pool organization only; does not affect timeline clips */
   folderId?: string;
   favorite?: boolean;
+  /** ingest ASR (source "上传即转写"): the asset's word-level source transcript.
+   * A clip created from this asset inherits a COPY into item.transcript (护城河③:
+   * per-clip edits stay isolated from the asset master). audio/video only. */
+  transcript?: TranscriptWord[];
+  /** ingest ASR state; undefined = never transcribed (image/no-audio or pre-ingest). */
+  transcribeStatus?: AssetTranscribeStatus;
+  /** last ASR failure reason (transcribeStatus='failed'), for the pool badge tooltip. */
+  transcribeError?: string;
 }
 
 /** user-created media-pool bin (source manage_media_pool). Root is implicit. */

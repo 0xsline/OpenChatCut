@@ -82,6 +82,7 @@ export type ProjectAction =
   | { type: 'pool.deleteFolder'; id: string }
   | { type: 'pool.moveAssets'; ids: string[]; folderId?: string }
   | { type: 'pool.updateAsset'; id: string; patch: Partial<Pick<MediaAsset, 'name' | 'favorite' | 'code' | 'props' | 'src' | 'durationInFrames' | 'width' | 'height' | 'kind'>> }
+  | { type: 'pool.setTranscription'; id: string; patch: Partial<Pick<MediaAsset, 'transcript' | 'transcribeStatus' | 'transcribeError'>> }
   | { type: 'pool.relinkAsset'; id: string; src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind'] }
   | { type: 'pool.removeAsset'; id: string }
   | { type: 'design.set'; style: DesignStyle | null }
@@ -97,7 +98,7 @@ export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' 
 const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
-  'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset', 'pool.relinkAsset', 'pool.removeAsset']);
+  'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset', 'pool.setTranscription', 'pool.relinkAsset', 'pool.removeAsset']);
 
 const EMPTY_CURVE = { version: 1, timebase: 'effect-frame', coordinateSpace: 'composition-normalized', keyframes: [] } as const;
 
@@ -708,6 +709,12 @@ export function projectReduce(p: ProjectDoc, a: Action | ProjectAction): Project
       case 'pool.updateAsset': {
         const asset = p.assets.find((item) => item.id === a.id);
         if (!asset || Object.entries(a.patch).every(([key, value]) => asset[key as keyof MediaAsset] === value)) return p;
+        return { ...p, assets: p.assets.map((item) => item.id === a.id ? { ...item, ...a.patch } : item) };
+      }
+      case 'pool.setTranscription': {
+        // ingest ASR result → pool asset (source 上传即转写). Objects (words[]) always
+        // differ by identity, so unlike updateAsset we don't early-out on equality.
+        if (!p.assets.some((item) => item.id === a.id)) return p;
         return { ...p, assets: p.assets.map((item) => item.id === a.id ? { ...item, ...a.patch } : item) };
       }
       case 'pool.relinkAsset': {

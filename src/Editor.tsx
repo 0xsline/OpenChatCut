@@ -19,6 +19,8 @@ import { TEMPLATES } from './editor/initial';
 import { saveProject, loadCreativeMode, saveCreativeMode, type ProjectMeta } from './persist/projectStore';
 import { saveVersion } from './persist/versionStore';
 import { importMedia } from './media/upload';
+import { enqueueTranscription, shouldTranscribe } from './transcript/transcribe-jobs';
+import type { MediaAsset } from './editor/types';
 import { AUDIO_ASSETS } from './audio/library';
 import type { Tpl } from './types';
 import type { AgentReference } from './agent/context';
@@ -131,14 +133,34 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const [timelineH, setTimelineH] = usePersistedState('cc.timelineH.source-ui-v7', Math.max(TIMELINE_MIN_H, Math.round((viewportH - HEADER_H) * 350 / SOURCE_CONTENT_H)));
   const [chatCollapsed, setChatCollapsed] = usePersistedState('cc.chatCollapsed', false);
   const addTemplate = useCallback((tpl: Tpl) => commands.addMotionGraphic(tpl), [commands]);
-  const importToPool = useCallback(async (file: File) => {
-    commands.addAsset(await importMedia(file, stateRef.current.fps));
+  // Add an asset to the pool AND kick off "上传即转写" ASR for audio-bearing media.
+  // On completion the transcript is written onto the asset (so later placements inherit
+  // it) and backfilled onto any clip already placed from this asset (drag-to-canvas /
+  // voiceover), so the口播 is editable as soon as ASR lands.
+  const ingestToPool = useCallback((asset: MediaAsset) => {
+    commands.addAsset(shouldTranscribe(asset.kind) ? { ...asset, transcribeStatus: 'running' } : asset);
+    if (!shouldTranscribe(asset.kind)) return;
+    enqueueTranscription(asset, {
+      onComplete: (job) => {
+        if (job.status === 'done' && job.words?.length) {
+          commands.setAssetTranscription(asset.id, { transcript: job.words, transcribeStatus: 'done', transcribeError: undefined });
+          for (const it of stateRef.current.items) {
+            if (it.src === asset.src && !(it.transcript?.length)) commands.setItemTranscript(it.id, job.words);
+          }
+        } else if (job.status === 'failed') {
+          commands.setAssetTranscription(asset.id, { transcribeStatus: 'failed', transcribeError: job.error });
+        }
+      },
+    });
   }, [commands]);
+  const importToPool = useCallback(async (file: File) => {
+    ingestToPool(await importMedia(file, stateRef.current.fps));
+  }, [ingestToPool]);
   const importToCanvas = useCallback(async (file: File) => {
     const asset = await importMedia(file, stateRef.current.fps);
-    commands.addAsset(asset);
+    ingestToPool(asset);
     commands.addMediaItem(asset);
-  }, [commands]);
+  }, [commands, ingestToPool]);
   const useTemplateAI = useCallback((tpl: Tpl) => {
     setChatCollapsed(false);
     setChatSeed({ text: `参考模板「${tpl.name}」，用 create_motion_graphic 生成一个类似风格的动画： @${tpl.name} `, nonce: Date.now(), reference: { id: tpl.id, name: tpl.name, kind: 'template' } });
@@ -361,7 +383,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           onRecordVoiceover={async (blob) => {
             const ext = blob.type.includes('ogg') ? 'ogg' : 'webm';
             const asset = await importMedia(new File([blob], `旁白.${ext}`, { type: blob.type }), state.fps);
-            commands.addAsset(asset);
+            ingestToPool(asset); // 旁白 auto-transcribes; the placed A1 clip backfills on completion
             commands.addMediaItem(asset, { track: 'A1', startFrame: getPlayhead() });
           }} />
       </div>

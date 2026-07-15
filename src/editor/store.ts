@@ -81,6 +81,9 @@ export interface EditorCommands {
   /** toggle/configure the text watermark overlay (source updateWatermark); merges a partial + undoable */
   updateWatermark: (patch: Partial<Watermark>) => void;
   setItemTranscript: (id: string, words: TranscriptWord[]) => void;
+  /** ingest ASR result → pool asset (source 上传即转写). Clips created from the asset
+   * inherit its transcript at placement; status/error drive the media-pool badge. */
+  setAssetTranscription: (id: string, patch: Partial<Pick<MediaAsset, 'transcript' | 'transcribeStatus' | 'transcribeError'>>) => void;
   /** replace a clip's text-only transcript variants (translations / corrections) */
   setItemVariants: (id: string, variants: TranscriptVariant[]) => void;
   toggleWord: (id: string, idx: number) => void;
@@ -299,6 +302,9 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
               volume: asset.kind === 'audio' || asset.kind === 'video' ? 1 : undefined,
               width: asset.width,
               height: asset.height,
+              // source 上传即转写: a clip inherits the asset's ingest transcript (a copy,
+              // so per-clip word edits never mutate the asset master — 护城河③).
+              transcript: asset.transcript?.length ? [...asset.transcript] : undefined,
             };
         dispatch({
           type: 'add',
@@ -360,6 +366,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       updateCaptions: (patch) => dispatch({ type: 'updateCaptions', patch }),
       updateWatermark: (patch) => dispatch({ type: 'updateWatermark', patch }),
       setItemTranscript: (id, words) => dispatch({ type: 'setItemTranscript', id, words }),
+      setAssetTranscription: (id, patch) => dispatch({ type: 'pool.setTranscription', id, patch }),
       setItemVariants: (id, variants) => dispatch({ type: 'setItemVariants', id, variants }),
       toggleWord: (id, idx) => dispatch({ type: 'toggleWord', id, idx }),
       deleteWords: (id, idxs) => dispatch({ type: 'deleteWords', id, idxs }),

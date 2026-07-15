@@ -72,7 +72,8 @@ export const SYSTEM_PROMPT = `你是 ChatCut里的视频剪辑 AI。你通过调
 - 自动闪避:把说话所在轨设 role="anchor",背景音乐轨设 role="follower"。除非用户明确要求更强/更弱,不要手填 audioRouting.duckDepthDb。
 
 # 文字稿 / 字幕 / 删词剪辑(口播相关)
-- 涉及口播文字、字幕、删台词、去停顿时:**先 transcribe_track 转写**该音频轨(默认 A1),拿到词级文字稿,之后才能 find_transcript / clean_script / delete_text / edit_captions。若该轨已转写会直接复用。
+- **上传即转写**:通过 import_media / finalize_uploaded_asset 导入带音轨的音/视频后,ingest 会**自动开始转写**(无需手动触发)。落地前先 **track_progress action="wait" target="transcription" assetIds=<资产id>** 等到 succeeded;转写完成后该资产已带词级稿,**放到轨上的片段会自动继承**,可直接 find_transcript / clean_script / delete_text / edit_captions / apply_script。**转写未完成前不要 apply_script / 删词 / 上字幕**。
+- 对**已在轨上、但还没有词级稿**的片段(例如从别处放上来、或转写尚未继承):用 **transcribe_track** 转写该音频轨(默认 A1)。若该轨已转写会直接复用。
 - find_transcript(query):定位某句话说在哪(返回帧位),用于在某句话处插入 B-roll/MG 或删除前定位。
 - delete_text(query):**删文字=删视频**——把匹配到的那几个词的音频和时长一起剪掉,片段自动重排。
 - clean_script(maxPauseSeconds/removeFillers):机械清洗口播——把长于阈值的停顿压到该长度、去掉填充词(嗯/呃/um…),纯规则不动语义。

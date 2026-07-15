@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import type { MediaAsset } from '../editor/types';
+import { enqueueTranscription, shouldTranscribe } from '../transcript/transcribe-jobs';
 
 // Local-dev stand-in for source S3 presign chain:
 //   request_asset_upload_url → finalize_uploaded_asset → request_asset_download
@@ -310,6 +311,9 @@ function execFinalize(args: Args, ctx: AgentContext): unknown {
     // width/height preferred for visual media; soft-require
   }
 
+  // source "上传即转写": ingest 落库后自动触发 ASR. Gated on the source-provided
+  // hasAudioTrack signal; audio always, video unless explicitly told there's no audio.
+  const hasAudio = shouldTranscribe(kind, typeof args.hasAudioTrack === 'boolean' ? args.hasAudioTrack : undefined);
   const asset: MediaAsset = {
     id: assetId,
     name: filename,
@@ -318,8 +322,14 @@ function execFinalize(args: Args, ctx: AgentContext): unknown {
     durationInFrames,
     width: typeof args.width === 'number' && args.width > 0 ? args.width : undefined,
     height: typeof args.height === 'number' && args.height > 0 ? args.height : undefined,
+    transcribeStatus: hasAudio ? 'running' : undefined,
   };
   ctx.commands.addAsset(asset);
+
+  // Fire ASR now as a real background side-effect keyed by the stable assetId (like
+  // submit_voice generates immediately); the agent reads readiness via track_progress,
+  // which writes the words onto the asset.
+  if (hasAudio) enqueueTranscription(asset);
 
   return {
     ok: true,
@@ -334,6 +344,10 @@ function execFinalize(args: Args, ctx: AgentContext): unknown {
     durationInFrames: asset.durationInFrames,
     width: asset.width,
     height: asset.height,
+    transcription: hasAudio ? 'started' : undefined,
+    next: hasAudio
+      ? `ASR started (上传即转写). Call track_progress action=wait target=transcription assetIds=${asset.id} before find_transcript / clean_script / delete_text / edit_captions / apply_script.`
+      : undefined,
     note: 'Asset registered in media pool (local-dev finalize).',
   };
 }
