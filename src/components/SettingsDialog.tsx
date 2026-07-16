@@ -1,23 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 import { theme } from '../theme';
 import { Icon } from './icons';
+import { VendorIcon } from './vendorIcons';
 import { applyLiveCaps } from '../agent/capabilities';
 import {
-  SETTINGS_CATEGORIES, categoryConfiguredCount, fieldPlaceholder, groupConfigured,
+  SETTINGS_CATEGORIES, categoryConfiguredCount, fieldPlaceholder, findGroup, groupConfigured,
+  vendorConfigured,
   type KeyStatusResponse, type SettingsCategory, type SettingsField, type SettingsGroup,
+  type SettingsVendor,
 } from './settingsSchema';
 
-// 全局设置模态:左侧一级分类,右侧该分类下的能力组卡片。密钥值只经 POST /api/keys
+// 全局设置模态:左侧「分类 → 能力组」两级可折叠树,右侧当前能力组的厂商卡列表
+// (卡头 = 厂商图标 + 名称 + 配置状态,卡体 = 各自字段)。密钥值只经 POST /api/keys
 // 流向 dev server(存内存 + .env.local,已 gitignore),服务端注入;GET 只回布尔,
 // 因此本对话框永不回填任何服务端值。Clone-specific addition(源站无据,自定 —
 // ChatCut 是托管 SaaS 后端持钥,无用户密钥面板)。
 // values 语义:字段名出现在 values 里 = 有暂存改动;'' = 显式暂存清除(保存时发送,
-// 后端把空串视为删除该键并从 .env.local 删行)。
+// 后端把空串视为删除该键并从 .env.local 删行)。values 按字段名全局共享且切换树
+// 节点不清空;跨组复用的字段(MINIMAX_*)在任一卡编辑,其余组的卡即时同步。
 
 const ON = '#4caf7d';   // 状态绿(沿用原面板)
 const WARN = '#f77';    // 错误 / 清除警示(沿用原面板错误色)
 const CLOSE_CONFIRM_MS = 2000;
-const SIDEBAR_WIDTH = 176;
+const SIDEBAR_WIDTH = 190;
 
 type Values = Record<string, string>;
 
@@ -118,7 +123,7 @@ function useEscape(handler: () => void): void {
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { status, setStatus, loadError } = useKeyStatus();
   const [values, setValues] = useState<Values>({});
-  const [activeCat, setActiveCat] = useState<string>(SETTINGS_CATEGORIES[0].key);
+  const [activeGroup, setActiveGroup] = useState<string>(SETTINGS_CATEGORIES[0].groups[0].key);
   const [reveal, setReveal] = useState(false);
   const { save, saving, msg, error } = useSaveKeys(values, (next) => {
     setStatus(next);
@@ -134,7 +139,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const toggleClear = (name: string): void =>
     setValues((prev) => (prev[name] === '' ? omitKey(prev, name) : { ...prev, [name]: '' }));
 
-  const active = SETTINGS_CATEGORIES.find((c) => c.key === activeCat) ?? SETTINGS_CATEGORIES[0];
   const shownError = error ?? loadError;
   const message = shownError ? { text: shownError, color: WARN }
     : warn ? { text: warn, color: theme.gold }
@@ -151,8 +155,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} title="关闭" style={iconBtn}><Icon name="x" size={15} /></button>
         </header>
         <div style={bodyRow}>
-          <CategoryNav status={status} activeKey={activeCat} onSelect={setActiveCat} />
-          <CategoryPane category={active} status={status} values={values} reveal={reveal}
+          <SidebarTree status={status} activeGroup={activeGroup} onSelect={setActiveGroup} />
+          <GroupPane group={findGroup(activeGroup)} status={status} values={values} reveal={reveal}
             onStage={stage} onToggleClear={toggleClear} />
         </div>
         <FooterBar reveal={reveal} onReveal={setReveal} message={message}
@@ -162,32 +166,29 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ── 子组件 ────────────────────────────────────────────────────────────────
+// ── 侧栏树(一级分类可折叠,二级能力组可选中) ──────────────────────────────
 
-interface CategoryNavProps {
+interface SidebarTreeProps {
   status: KeyStatusResponse | null;
-  activeKey: string;
+  activeGroup: string;
   onSelect: (key: string) => void;
 }
 
-function CategoryNav({ status, activeKey, onSelect }: CategoryNavProps) {
-  const [hovered, setHovered] = useState<string | null>(null);
+function SidebarTree({ status, activeGroup, onSelect }: SidebarTreeProps) {
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (key: string): void =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
   return (
     <nav style={sidebar}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '10px 8px' }}>
-        {SETTINGS_CATEGORIES.map((cat) => {
-          const done = categoryConfiguredCount(status, cat);
-          const total = cat.groups.length;
-          return (
-            <button key={cat.key} type="button" onClick={() => onSelect(cat.key)}
-              onMouseEnter={() => setHovered(cat.key)} onMouseLeave={() => setHovered(null)}
-              style={navItemStyle(cat.key === activeKey, hovered === cat.key)}>
-              <Icon name={cat.icon} size={14} />
-              <span style={navLabel}>{cat.title}</span>
-              <span style={{ fontSize: 10, color: done === total && total > 0 ? ON : theme.textDim }}>{done}/{total}</span>
-            </button>
-          );
-        })}
+      <div style={treeScroll}>
+        {SETTINGS_CATEGORIES.map((cat) => (
+          <TreeCategory key={cat.key} category={cat} status={status} open={!collapsed.has(cat.key)}
+            activeGroup={activeGroup} onToggle={() => toggle(cat.key)} onSelect={onSelect} />
+        ))}
       </div>
       <p style={sidebarNote}>
         密钥仅存本机 <code style={code}>.env.local</code>（已 gitignore），经服务端注入，<b>不进浏览器</b>。
@@ -196,31 +197,60 @@ function CategoryNav({ status, activeKey, onSelect }: CategoryNavProps) {
   );
 }
 
-interface CategoryPaneProps {
+interface TreeCategoryProps {
   category: SettingsCategory;
   status: KeyStatusResponse | null;
-  values: Values;
-  reveal: boolean;
-  onStage: (name: string, raw: string) => void;
-  onToggleClear: (name: string) => void;
+  open: boolean;
+  activeGroup: string;
+  onToggle: () => void;
+  onSelect: (key: string) => void;
 }
 
-function CategoryPane({ category, status, values, reveal, onStage, onToggleClear }: CategoryPaneProps) {
+function TreeCategory({ category, status, open, activeGroup, onToggle, onSelect }: TreeCategoryProps) {
+  const done = categoryConfiguredCount(status, category);
+  const total = category.groups.length;
   return (
-    <div style={pane}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-        <span style={{ color: theme.accent, display: 'inline-flex' }}><Icon name={category.icon} size={14} /></span>
-        <b style={{ fontSize: 13 }}>{category.title}</b>
-      </div>
-      {category.groups.map((g) => (
-        <GroupCard key={g.key} group={g} status={status} values={values} reveal={reveal}
-          onStage={onStage} onToggleClear={onToggleClear} />
+    <div>
+      <button type="button" onClick={onToggle} title={open ? '收起' : '展开'} style={catRow}>
+        <span style={{ ...chevronBox, transform: open ? 'none' : 'rotate(-90deg)' }}>
+          <Icon name="chevronDown" size={12} />
+        </span>
+        <Icon name={category.icon} size={13} />
+        <span style={navLabel}>{category.title}</span>
+        <span style={{ fontSize: 10, fontWeight: 400, color: done === total && total > 0 ? ON : theme.textDim }}>
+          {done}/{total}
+        </span>
+      </button>
+      {open && category.groups.map((g) => (
+        <GroupRow key={g.key} title={g.title} on={groupConfigured(status, g)}
+          active={g.key === activeGroup} onSelect={() => onSelect(g.key)} />
       ))}
     </div>
   );
 }
 
-interface GroupCardProps {
+interface GroupRowProps {
+  title: string;
+  on: boolean;
+  active: boolean;
+  onSelect: () => void;
+}
+
+function GroupRow({ title, on, active, onSelect }: GroupRowProps) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button type="button" onClick={onSelect}
+      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+      style={groupRowStyle(active, hovered)}>
+      <span style={dot(on)} />
+      <span style={navLabel}>{title}</span>
+    </button>
+  );
+}
+
+// ── 右栏(能力组标题 + 厂商卡列表) ────────────────────────────────────────
+
+interface GroupPaneProps {
   group: SettingsGroup;
   status: KeyStatusResponse | null;
   values: Values;
@@ -229,18 +259,47 @@ interface GroupCardProps {
   onToggleClear: (name: string) => void;
 }
 
-function GroupCard({ group, status, values, reveal, onStage, onToggleClear }: GroupCardProps) {
+function GroupPane({ group, status, values, reveal, onStage, onToggleClear }: GroupPaneProps) {
   const on = groupConfigured(status, group);
   return (
-    <section style={groupCard}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-        <span style={{ width: 7, height: 7, borderRadius: '50%', background: on ? ON : theme.borderLight, flex: '0 0 auto' }} />
-        <span style={{ fontSize: 13, fontWeight: 600 }}>{group.title}</span>
+    <div style={pane}>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={dot(on)} />
+          <b style={{ fontSize: 13 }}>{group.title}</b>
+          <span style={{ fontSize: 11, color: on ? ON : theme.textDim }}>{on ? '已配置' : '未配置'}</span>
+        </div>
+        <div style={{ fontSize: 11.5, color: theme.textDim, marginTop: 3, paddingLeft: 15 }}>{group.hint}</div>
+      </div>
+      {group.vendors.map((v) => (
+        <VendorCard key={v.vendor} vendor={v} status={status} values={values} reveal={reveal}
+          onStage={onStage} onToggleClear={onToggleClear} />
+      ))}
+    </div>
+  );
+}
+
+interface VendorCardProps {
+  vendor: SettingsVendor;
+  status: KeyStatusResponse | null;
+  values: Values;
+  reveal: boolean;
+  onStage: (name: string, raw: string) => void;
+  onToggleClear: (name: string) => void;
+}
+
+function VendorCard({ vendor, status, values, reveal, onStage, onToggleClear }: VendorCardProps) {
+  const on = vendorConfigured(status, vendor);
+  return (
+    <section style={vendorCardBox}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <VendorIcon vendor={vendor.vendor} size={18} />
+        <span style={{ fontSize: 12.5, fontWeight: 600 }}>{vendor.title}</span>
         <span style={{ fontSize: 11, color: on ? ON : theme.textDim }}>{on ? '已配置' : '未配置'}</span>
       </div>
-      <div style={{ fontSize: 11.5, color: theme.textDim, marginBottom: 8, paddingLeft: 15 }}>{group.hint}</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, paddingLeft: 15 }}>
-        {group.fields.map((f) => {
+      {vendor.note && <div style={vendorNote}>{vendor.note}</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 9 }}>
+        {vendor.fields.map((f) => {
           const st = status?.keys[f.name];
           return (
             <FieldRow key={f.name} field={f} configured={Boolean(st?.configured)} source={st?.source ?? 'none'}
@@ -322,14 +381,18 @@ function FooterBar({ reveal, onReveal, message, dirty, saving, onClose, onSave }
 
 // ── 样式 ─────────────────────────────────────────────────────────────────
 
-function navItemStyle(active: boolean, hovered: boolean): React.CSSProperties {
+function groupRowStyle(active: boolean, hovered: boolean): React.CSSProperties {
   return {
-    font: 'inherit', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 8,
-    width: '100%', padding: '7px 9px', borderRadius: 6, cursor: 'pointer',
+    font: 'inherit', fontSize: 12, display: 'flex', alignItems: 'center', gap: 7,
+    width: '100%', padding: '6px 9px 6px 19px', borderRadius: 6, cursor: 'pointer', textAlign: 'left',
     border: 'none', borderLeft: `2px solid ${active ? theme.accent : 'transparent'}`,
     background: active || hovered ? theme.panelAlt : 'transparent',
     color: active ? theme.text : theme.textDim,
   };
+}
+
+function dot(on: boolean): React.CSSProperties {
+  return { width: 7, height: 7, borderRadius: '50%', background: on ? ON : theme.borderLight, flex: '0 0 auto' };
 }
 
 const overlay: React.CSSProperties = {
@@ -348,7 +411,19 @@ const head: React.CSSProperties = {
 const bodyRow: React.CSSProperties = { display: 'flex', flex: 1, minHeight: 0 };
 const sidebar: React.CSSProperties = {
   width: SIDEBAR_WIDTH, flex: '0 0 auto', display: 'flex', flexDirection: 'column',
-  justifyContent: 'space-between', borderRight: `1px solid ${theme.border}`, overflow: 'hidden',
+  borderRight: `1px solid ${theme.border}`, overflow: 'hidden',
+};
+const treeScroll: React.CSSProperties = {
+  flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column',
+  gap: 2, padding: '10px 8px',
+};
+const catRow: React.CSSProperties = {
+  font: 'inherit', fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6,
+  width: '100%', padding: '7px 9px 7px 7px', borderRadius: 6, cursor: 'pointer',
+  border: 'none', background: 'transparent', color: theme.text,
+};
+const chevronBox: React.CSSProperties = {
+  display: 'inline-flex', color: theme.textDim, transition: 'transform 0.15s', flex: '0 0 auto',
 };
 const navLabel: React.CSSProperties = {
   flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -361,7 +436,8 @@ const pane: React.CSSProperties = {
   flex: 1, minWidth: 0, overflowY: 'auto', padding: '14px 20px 16px',
   display: 'flex', flexDirection: 'column', gap: 12,
 };
-const groupCard: React.CSSProperties = { background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: 9, padding: '11px 13px' };
+const vendorCardBox: React.CSSProperties = { background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: 9, padding: '11px 13px' };
+const vendorNote: React.CSSProperties = { fontSize: 10.5, color: theme.textDim, margin: '4px 0 0 26px' };
 const fieldHead: React.CSSProperties = {
   fontSize: 11.5, color: theme.text, display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'space-between',
 };
