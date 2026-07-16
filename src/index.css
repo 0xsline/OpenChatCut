@@ -37,6 +37,10 @@ html, body { overflow: hidden; }
 
 button, input, select { font: inherit; }
 
+/* header icon button (settings) — dim at rest, brighten on hover */
+.cc-header-btn { transition: color 0.12s, background 0.12s; }
+.cc-header-btn:hover { color: #e2e2e2 !important; background: rgba(255, 255, 255, 0.06); }
+
 .cc-chat-messages { flex:1; min-height:0; overflow-y:auto; padding:4px 14px; color:#ddd; font-size:13.5px; }
 .cc-chat-messages.empty { display:flex; align-items:center; justify-content:center; overflow:hidden; }
 .cc-chat-onboarding { width:100%; max-width:322px; transform:translateY(-8px); }

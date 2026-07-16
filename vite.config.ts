@@ -13,11 +13,18 @@ import { generationProgressPlugin } from './vite-generation-jobs.ts';
 import { stockSearchPlugin } from './vite-plugin-stock.ts';
 import { isolatePlugin } from './vite-plugin-isolate.ts';
 import { firecrawlPlugin } from './vite-plugin-firecrawl.ts';
+import { settingsPlugin } from './vite-plugin-settings.ts';
+import { seedKeystore, getKey } from './vite-keystore.ts';
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // load ALL env (incl. non-VITE_ prefixed) from .env.local — server-side only
   const env = loadEnv(mode, process.cwd(), '');
+  // Seed the runtime keystore so the settings UI (POST /api/keys) can override any key
+  // live. Plugin key fields below are GETTERS reading the keystore, so a saved key takes
+  // effect on the next request with no restart. The `const`s below are only the startup
+  // snapshot for the `define` (initial agent capability manifest).
+  seedKeystore(env);
   const base = env.LLM_BASE_URL || 'https://api.aijws.com';
   const key = env.LLM_API_KEY || '';
   const aaiKey = env.ASSEMBLYAI_API_KEY || '';
@@ -48,7 +55,7 @@ export default defineConfig(({ mode }) => {
   // Firecrawl (source web_browser): .env.local or shell export (e.g. search-apis.env)
   const firecrawlKey = env.FIRECRAWL_API_KEY || process.env.FIRECRAWL_API_KEY || '';
   const e2bKey = env.E2B_API_KEY || process.env.E2B_API_KEY || '';
-  const e2bTemplate = env.E2B_TEMPLATE || process.env.E2B_TEMPLATE || '';
+  // E2B_TEMPLATE (+ its process.env fallback) is now read live via the keystore getter below.
 
   return {
     // Server-computed manifest of which key-gated capabilities are configured,
@@ -67,29 +74,29 @@ export default defineConfig(({ mode }) => {
         web: Boolean(firecrawlKey),
       }),
     },
-    plugins: [react(), exportPlugin(), uploadPlugin(), imageGenerationPlugin({
+    plugins: [react(), settingsPlugin(), exportPlugin(), uploadPlugin(), imageGenerationPlugin({
       baseUrl: imageBase,
-      apiKey: imageKey,
+      get apiKey() { return getKey('IMAGE_API_KEY') || getKey('OPENAI_API_KEY'); },
       geminiBaseUrl: geminiBase,
-      geminiApiKey: geminiKey,
+      get geminiApiKey() { return getKey('GEMINI_API_KEY'); },
       geminiModel,
     }), voiceGenerationPlugin({
       elevenBaseUrl: elevenBase,
-      elevenApiKey: elevenKey,
+      get elevenApiKey() { return getKey('ELEVENLABS_API_KEY'); },
       elevenModel,
       doubaoBaseUrl: doubaoBase,
-      doubaoAppId,
-      doubaoAccessKey,
+      get doubaoAppId() { return getKey('DOUBAO_TTS_APP_ID'); },
+      get doubaoAccessKey() { return getKey('DOUBAO_TTS_ACCESS_KEY'); },
       doubaoResourceId,
-    }), soundGenerationPlugin({ baseUrl: elevenBase, apiKey: elevenKey, model: soundModel }),
-    musicGenerationPlugin({ baseUrl: murekaBase, apiKey: murekaKey, model: murekaModel }),
-    videoGenerationPlugin({ seedanceBaseUrl: seedanceBase, seedanceApiKey: seedanceKey, seedanceModel, klingBaseUrl: klingBase, klingApiKey: klingKey, klingModel }),
+    }), soundGenerationPlugin({ baseUrl: elevenBase, get apiKey() { return getKey('ELEVENLABS_API_KEY'); }, model: soundModel }),
+    musicGenerationPlugin({ baseUrl: murekaBase, get apiKey() { return getKey('MUREKA_API_KEY'); }, model: murekaModel }),
+    videoGenerationPlugin({ seedanceBaseUrl: seedanceBase, get seedanceApiKey() { return getKey('SEEDANCE_API_KEY'); }, seedanceModel, klingBaseUrl: klingBase, get klingApiKey() { return getKey('KLING_API_KEY'); }, klingModel }),
     generationProgressPlugin(),
     subtitleExportPlugin(),
-    stockSearchPlugin({ pexelsApiKey: pexelsKey, pixabayApiKey: pixabayKey }),
+    stockSearchPlugin({ get pexelsApiKey() { return getKey('PEXELS_API_KEY'); }, get pixabayApiKey() { return getKey('PIXABAY_API_KEY'); } }),
     isolatePlugin(),
-    firecrawlPlugin({ apiKey: firecrawlKey }),
-    e2bPlugin({ apiKey: e2bKey, template: e2bTemplate || undefined }),
+    firecrawlPlugin({ get apiKey() { return getKey('FIRECRAWL_API_KEY'); } }),
+    e2bPlugin({ get apiKey() { return getKey('E2B_API_KEY'); }, get template() { return getKey('E2B_TEMPLATE') || undefined; } }),
     ],
     server: {
       port: 5199,
@@ -105,10 +112,11 @@ export default defineConfig(({ mode }) => {
           rewrite: (p) => p.replace(/^\/llm/, ''),
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
-              if (key) {
-                proxyReq.setHeader('x-api-key', key);
+              const k = getKey('LLM_API_KEY') || key;  // live: settings UI can override .env.local
+              if (k) {
+                proxyReq.setHeader('x-api-key', k);
                 proxyReq.setHeader('anthropic-version', '2023-06-01');
-                proxyReq.setHeader('Authorization', `Bearer ${key}`); // relay also accepts Bearer
+                proxyReq.setHeader('Authorization', `Bearer ${k}`); // relay also accepts Bearer
               }
             });
             // The relay returns non-streaming bodies as valid Anthropic JSON
@@ -130,7 +138,8 @@ export default defineConfig(({ mode }) => {
           rewrite: (p) => p.replace(/^\/assemblyai/, ''),
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
-              if (aaiKey) proxyReq.setHeader('authorization', aaiKey);
+              const ak = getKey('ASSEMBLYAI_API_KEY') || aaiKey;  // live override
+              if (ak) proxyReq.setHeader('authorization', ak);
             });
           },
         },

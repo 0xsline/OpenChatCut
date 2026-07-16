@@ -19,6 +19,18 @@ const ALL_OFF: Record<CapabilityKey, boolean> = {
 export const CONFIGURED_CAPS: Record<CapabilityKey, boolean> =
   typeof __CONFIGURED_CAPS__ !== 'undefined' ? (__CONFIGURED_CAPS__ as Record<CapabilityKey, boolean>) : ALL_OFF;
 
+// Live capability snapshot from the server (GET /api/keys → caps), applied at app load and
+// after the settings UI saves a key — so the agent perceives a runtime key change on its next
+// message, without a dev-server restart (__CONFIGURED_CAPS__ is only the startup snapshot).
+// Wins over the define once set.
+let liveCaps: Record<CapabilityKey, boolean> | null = null;
+export function applyLiveCaps(caps: Partial<Record<CapabilityKey, boolean>>): void {
+  liveCaps = { ...ALL_OFF, ...caps };
+}
+export function currentCaps(): Record<CapabilityKey, boolean> {
+  return liveCaps ?? CONFIGURED_CAPS;
+}
+
 // label + the primary tool + a fallback hint when the capability is off.
 const CAP_ROWS: { key: CapabilityKey; label: string; tool: string; fallback: string }[] = [
   { key: 'image', label: '生图', tool: 'submit_image', fallback: '改用 push_asset/import_url_asset 导入公网图片，或让用户上传/粘贴' },
@@ -34,7 +46,7 @@ const CAP_ROWS: { key: CapabilityKey; label: string; tool: string; fallback: str
 
 /** System-prompt section listing which key-gated tools are on/off (local editing —
  * templates/effects/transitions/zoom/etc. — never needs a key and is always on). */
-export function capabilitiesPrompt(caps: Record<CapabilityKey, boolean> = CONFIGURED_CAPS): string {
+export function capabilitiesPrompt(caps: Record<CapabilityKey, boolean> = currentCaps()): string {
   const on: string[] = [];
   const off: string[] = [];
   for (const r of CAP_ROWS) {

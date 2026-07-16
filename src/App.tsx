@@ -6,6 +6,7 @@ import {
   randomProjectName, docFromTimeline, type ProjectMeta,
 } from './persist/projectStore';
 import type { ProjectDoc, TimelineState } from './editor/types';
+import { applyLiveCaps } from './agent/capabilities';
 
 const Editor = lazy(() => import('./Editor'));
 
@@ -57,6 +58,15 @@ export default function App() {
     const onHash = () => setRoute(parseHash());
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  // Sync the agent's capability manifest with the server's live key state (corrects the
+  // build-time __CONFIGURED_CAPS__ snapshot after any key edited in a prior session).
+  useEffect(() => {
+    fetch('/api/keys')
+      .then((r) => r.json() as Promise<{ caps?: Record<string, boolean> }>)
+      .then((d) => { if (d?.caps) applyLiveCaps(d.caps); })
+      .catch(() => { /* dev endpoint absent (e.g. preview build) — keep the define snapshot */ });
   }, []);
 
   const refresh = useCallback(async () => { setProjects(await listProjects()); }, []);

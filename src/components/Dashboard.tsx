@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { theme } from '../theme';
 import type { ProjectMeta } from '../persist/projectStore';
 import { Icon } from './icons';
+import { SettingsDialog } from './SettingsDialog';
 
 interface DashboardProps {
   projects: ProjectMeta[];
@@ -24,6 +25,7 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const startRename = (m: ProjectMeta) => { setEditingId(m.id); setDraft(m.name); setConfirmId(null); };
   const commitRename = () => {
@@ -37,6 +39,9 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
         <span style={{ color: theme.accent, display: 'inline-flex' }}><Icon name="sparkles" size={16} /></span>
         <b style={{ fontSize: 14 }}>ChatCut</b>
         <span style={{ color: theme.textDim, fontSize: 13 }}>· 我的工程</span>
+        <button onClick={() => setSettingsOpen(true)} title="设置 · API 密钥" className="cc-header-btn" style={settingsBtn}>
+          <Icon name="sliders" size={16} />
+        </button>
       </header>
 
       <main style={{ maxWidth: 1120, margin: '0 auto', padding: '28px 24px 80px' }}>
@@ -87,6 +92,8 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
           ))}
         </div>
       </main>
+
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }
@@ -102,3 +109,4 @@ const thumb: React.CSSProperties = {
 };
 const nameInput: React.CSSProperties = { font: 'inherit', fontSize: 13, fontWeight: 550, background: theme.panelAlt, color: theme.text, border: `1px solid ${theme.accent}`, borderRadius: 5, padding: '2px 6px', width: '100%' };
 const miniBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 12, padding: '2px 4px', borderRadius: 4, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };
+const settingsBtn: React.CSSProperties = { marginLeft: 'auto', background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', padding: 6, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };
