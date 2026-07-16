@@ -17,11 +17,12 @@ export const FONT_TOOL_SCHEMAS: Anthropic.Tool[] = [
     name: 'search_fonts',
     description: [
       'Search the font catalog the local/headless renderer can load (Google Fonts bundled in-app',
-      '+ project design-preset aliases). Use when export reports unsupported fonts or when picking',
-      'fontFamily for motion-graphic items / captions. Returns canonical family names to use verbatim.',
-      'Substring-matches family AND native-name aliases (case/punctuation-insensitive) — e.g. "inter",',
-      '"playfair", "noto sc", "得意黑", "鸿蒙". loadable=false means catalogued but not yet export-safe',
-      '(Chinese foundry faces); prefer a loadable alternative or confirmFontFallback on export.',
+      '+ locally bundled Chinese foundry faces, source:"bundled"). Use when export reports unsupported',
+      'fonts or when picking fontFamily for motion-graphic items / captions. Returns canonical family',
+      'names to use verbatim. Substring-matches family AND native-name aliases',
+      '(case/punctuation-insensitive) — e.g. "inter", "playfair", "noto sc", "得意黑", "鸿蒙",',
+      '"抖音美好体". loadable=false means catalogued only; prefer a loadable alternative or',
+      'confirmFontFallback on export.',
     ].join(' '),
     input_schema: {
       type: 'object',
@@ -59,6 +60,7 @@ function execSearchFonts(args: Args): unknown {
       family: r.family,
       aliases: r.aliases,
       loadable: r.loadable,
+      source: r.source,
     })),
     note: results.some((r) => !r.loadable)
       ? 'Some hits are catalog aliases only (loadable=false) — export may require confirmFontFallback=true.'

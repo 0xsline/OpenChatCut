@@ -6,12 +6,12 @@
 // glyph download lazy) + a delayRender the headless renderer waits on.
 //
 // Source-faithful: ChatCut loads Google Fonts + gates export on confirmFontFallback
-// (search_fonts returns canonical family names). Presets also reference Chinese
-// foundry faces (得意黑/OPPO Sans/鸿蒙/…) that aren't on Google Fonts — catalogued
-// as non-loadable so the export gate can surface them.
+// (search_fonts returns canonical family names). Chinese foundry faces
+// (得意黑/OPPO Sans/鸿蒙/…) aren't on Google Fonts — they ship as bundled woff2
+// under public/fonts and register via localFonts.ts (source:'bundled', loadable).
 //
 // ponytail: eager-load the whole referenced set (~32) once. Simple + correct;
-// unicode-range makes browser downloads on-demand so cost is mostly the CSS.
+// unicode-range (google) / unloaded FontFace (bundled) keep downloads on-demand.
 import { loadFont as loadAnton } from '@remotion/google-fonts/Anton';
 import { loadFont as loadArchivoBlack } from '@remotion/google-fonts/ArchivoBlack';
 import { loadFont as loadBangers } from '@remotion/google-fonts/Bangers';
@@ -44,14 +44,19 @@ import { loadFont as loadSpecialElite } from '@remotion/google-fonts/SpecialElit
 import { loadFont as loadUnbounded } from '@remotion/google-fonts/Unbounded';
 import { loadFont as loadVT323 } from '@remotion/google-fonts/VT323';
 import { loadFont as loadZCOOLQingKeHuangYou } from '@remotion/google-fonts/ZCOOLQingKeHuangYou';
+import { LOCAL_CJK_FONTS, normalizeFontKey, registerLocalFonts } from './localFonts';
+
+export { ensureLocalFont, LOCAL_CJK_FONTS, normalizeFontKey } from './localFonts';
 
 /** One catalog row — family is the canonical string for MG/caption fontFamily. */
 export interface FontCatalogEntry {
   family: string;
   /** Native / alternate names (e.g. Chinese display names). */
   aliases: string[];
-  /** true when a Remotion Google Font loader is registered (export-safe). */
+  /** true when the renderer can load it (google-fonts loader or bundled woff2). */
   loadable: boolean;
+  /** google = @remotion/google-fonts; bundled = local woff2 in public/fonts. */
+  source: 'google' | 'bundled';
 }
 
 // CSS family names for every remotion google-fonts package we ship.
@@ -90,39 +95,25 @@ const GOOGLE_LOADABLE: ReadonlyArray<{ family: string; aliases?: string[]; load:
   { family: 'ZCOOL QingKe HuangYou', aliases: ['站酷庆科黄油体'], load: loadZCOOLQingKeHuangYou },
 ];
 
-// Design-preset Chinese foundry faces — searchable, but not export-loadable yet.
-const BUNDLED_PENDING: ReadonlyArray<{ family: string; aliases: string[] }> = [
-  { family: 'Smiley Sans', aliases: ['得意黑', 'SmileySans', 'Deyi Hei'] },
-  { family: 'OPPO Sans', aliases: ['OPPOSans'] },
-  { family: 'HarmonyOS Sans', aliases: ['HarmonyOS', '鸿蒙', '鸿蒙黑体'] },
-  { family: 'Douyin Meihao Ti', aliases: ['抖音美好体', 'Douyin Beautiful'] },
-  { family: 'Pangmen Zhengdao Biaoti Ti', aliases: ['庞门正道标题体', 'PangMenZhengDao'] },
-  { family: 'Huxiaobo Nanshen Ti', aliases: ['胡晓波男神体', 'HuXiaobo'] },
-];
-
-/** Full search catalog for search_fonts + export font gate. */
+/** Full search catalog for search_fonts + export font gate + Inspector font picker.
+ * Bundled CJK rows derive from localFonts.LOCAL_CJK_FONTS (12 faces, 全部中文
+ * alias 可搜) and are loadable: loadProjectFonts() registers their FontFaces. */
 export const FONT_CATALOG: readonly FontCatalogEntry[] = [
   ...GOOGLE_LOADABLE.map((f) => ({
     family: f.family,
     aliases: f.aliases ?? [],
     loadable: true as const,
+    source: 'google' as const,
   })),
-  ...BUNDLED_PENDING.map((f) => ({
+  ...LOCAL_CJK_FONTS.map((f) => ({
     family: f.family,
-    aliases: f.aliases,
-    loadable: false as const,
+    aliases: [...f.aliasZh, f.importName],
+    loadable: true as const,
+    source: 'bundled' as const,
   })),
 ];
 
 const FONT_LOADERS: ReadonlyArray<() => unknown> = GOOGLE_LOADABLE.map((f) => f.load);
-
-/** Normalize for substring match (case + punctuation insensitive). */
-export function normalizeFontKey(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize('NFKC')
-    .replace(/[\s_\-·.,'"`]+/g, '');
-}
 
 const GENERIC_FAMILIES = new Set(
   [
@@ -164,6 +155,7 @@ export interface FontSearchHit {
   family: string;
   aliases: string[];
   loadable: boolean;
+  source: 'google' | 'bundled';
 }
 
 /** Substring search on family + aliases (source search_fonts). */
@@ -174,7 +166,12 @@ export function searchFontCatalog(query: string, limit = 25): FontSearchHit[] {
   for (const entry of FONT_CATALOG) {
     const hay = [entry.family, ...entry.aliases].map(normalizeFontKey).join(' ');
     if (hay.includes(q) || normalizeFontKey(entry.family).includes(q)) {
-      hits.push({ family: entry.family, aliases: entry.aliases, loadable: entry.loadable });
+      hits.push({
+        family: entry.family,
+        aliases: entry.aliases,
+        loadable: entry.loadable,
+        source: entry.source,
+      });
       if (hits.length >= limit) break;
     }
   }
@@ -185,8 +182,9 @@ export function searchFontCatalog(query: string, limit = 25): FontSearchHit[] {
 
 let loaded = false;
 
-/** Register every referenced Google font (idempotent). Called from main.tsx
- * (preview) and remotion/Root.tsx (headless export) so both match. */
+/** Register every referenced Google font + bundled CJK FontFaces (idempotent).
+ * Called from main.tsx (preview) and remotion/Root.tsx (headless export) so
+ * both match. Bundled faces register unloaded — bytes fetch on first use. */
 export function loadProjectFonts(): void {
   if (loaded) return;
   loaded = true;
@@ -196,5 +194,10 @@ export function loadProjectFonts(): void {
     } catch {
       // one font failing to register must not block the rest (or the render)
     }
+  }
+  try {
+    registerLocalFonts();
+  } catch {
+    // bundled CJK registration failing must not block Google fonts / render
   }
 }

@@ -1,5 +1,8 @@
 // Runnable: `npx tsx src/agent/font-tools.check.ts`
 import assert from 'node:assert';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { makeDraft } from '../editor/store';
 import { docFromTimeline } from '../persist/projectStore';
 import type { AgentContext } from './context';
@@ -12,6 +15,7 @@ import {
   findUnsupportedFonts,
 } from './font-tools';
 import { searchFontCatalog, isLoadableFontFamily } from '../fonts/googleFonts';
+import { LOCAL_CJK_FONTS, ensureLocalFont, findLocalFont } from '../fonts/localFonts';
 import { timelineToFcpxml } from '../export/fcpxml';
 import type { TimelineState } from '../editor/types';
 
@@ -37,13 +41,48 @@ const inter = await execFontTool('search_fonts', { query: 'inter' }, ctx) as {
 assert.strictEqual(inter.ok, true);
 assert.ok(inter.results.some((r) => r.family === 'Inter' && r.loadable));
 
-// Chinese alias → catalog family (non-loadable foundry)
+// Chinese alias → bundled local font (loadable, source:'bundled')
 const deyi = searchFontCatalog('得意黑');
-assert.ok(deyi.some((r) => r.family === 'Smiley Sans' && r.loadable === false));
+assert.ok(deyi.some((r) => r.family === 'Smiley Sans' && r.loadable && r.source === 'bundled'));
 
-// loadable check
+// every bundled family + its Chinese aliases hit the search catalog
+for (const font of LOCAL_CJK_FONTS) {
+  for (const query of [font.family, ...font.aliasZh]) {
+    assert.ok(
+      searchFontCatalog(query).some((r) => r.family === font.family && r.source === 'bundled'),
+      `search miss: ${query} → ${font.family}`,
+    );
+  }
+}
+
+// search_fonts tool surfaces bundled fonts with source marker
+const douyin = await execFontTool('search_fonts', { query: '抖音美好体' }, ctx) as {
+  ok: boolean; results: Array<{ family: string; loadable: boolean; source: string }>;
+};
+assert.ok(douyin.results.some((r) => r.family === 'Douyin Meihao Ti' && r.loadable && r.source === 'bundled'));
+
+// every mapped URL points at a real woff2 under public/
+const publicDir = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', 'public');
+for (const font of LOCAL_CJK_FONTS) {
+  for (const url of Object.values(font.files)) {
+    assert.ok(url.startsWith('/fonts/'), `bad url shape: ${url}`);
+    assert.ok(existsSync(join(publicDir, url)), `missing woff2: public${url}`);
+  }
+}
+
+// alias resolution + ensureLocalFont promise cache (node path: no FontFace, still cached)
+assert.strictEqual(findLocalFont('新青年')?.family, 'Xinqingnian Ti');
+assert.strictEqual(findLocalFont('鸿蒙')?.family, 'HarmonyOS Sans');
+assert.strictEqual(findLocalFont('Comic Sans MS'), undefined);
+assert.strictEqual(ensureLocalFont('得意黑'), ensureLocalFont('Smiley Sans'));
+await ensureLocalFont('得意黑');
+await ensureLocalFont('not-a-local-font'); // non-local resolves, never throws
+
+// loadable check — bundled CJK now export-safe
 assert.strictEqual(isLoadableFontFamily('Inter'), true);
-assert.strictEqual(isLoadableFontFamily('Smiley Sans'), false);
+assert.strictEqual(isLoadableFontFamily('Smiley Sans'), true);
+assert.strictEqual(isLoadableFontFamily('抖音美好体'), true);
+assert.strictEqual(isLoadableFontFamily('Comic Sans MS'), false);
 assert.strictEqual(isLoadableFontFamily('system-ui, sans-serif'), true);
 
 // Gate: clean timeline passes
@@ -60,18 +99,18 @@ const blockedState: TimelineState = {
     durationInFrames: 90,
     name: 'Title',
     kind: 'motion-graphic',
-    props: { fontFamily: 'Smiley Sans', title: '你好' },
+    props: { fontFamily: 'Comic Sans MS', title: '你好' },
   }],
 };
 const refs = collectReferencedFonts(blockedState);
-assert.ok(refs.includes('Smiley Sans'));
+assert.ok(refs.includes('Comic Sans MS'));
 const bad = findUnsupportedFonts(blockedState);
-assert.deepStrictEqual(bad.unsupported, ['Smiley Sans']);
+assert.deepStrictEqual(bad.unsupported, ['Comic Sans MS']);
 
 const gate = fontFallbackGate(blockedState, false);
 assert.ok(gate);
 assert.strictEqual(gate!.error, 'unsupported_fonts');
-assert.ok((gate!.unsupportedFonts as string[]).includes('Smiley Sans'));
+assert.ok((gate!.unsupportedFonts as string[]).includes('Comic Sans MS'));
 
 // confirm bypasses
 assert.strictEqual(fontFallbackGate(blockedState, true), null);
