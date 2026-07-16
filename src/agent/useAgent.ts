@@ -9,6 +9,8 @@ import { loadChat, saveChat, clearChat } from '../persist/projectStore';
 export interface DisplayMessage {
   role: 'user' | 'assistant' | 'tool' | 'error';
   text: string;
+  /** 推理流(原生 thinking_delta 或内联 <thinking> 抽取),渲染为折叠的「思考过程」块 */
+  thinking?: string;
   tool?: { name: string; args: unknown; result: unknown };
 }
 
@@ -90,7 +92,18 @@ export function useAgent(ctx: AgentContext, projectId: string) {
       try {
         llmRef.current = await runAgent(llmRef.current, draftCtx, (ev) => {
           if (ev.type === 'text-start') {
-            setMessages((m) => [...m, { role: 'assistant', text: '' }]);
+            setMessages((m) => {
+              const last = m[m.length - 1];
+              // thinking 增量可能已开了本轮的助手气泡(只有思考没正文)→ 复用,不再另起一条
+              if (last?.role === 'assistant' && last.text === '' && last.thinking) return m;
+              return [...m, { role: 'assistant', text: '' }];
+            });
+          } else if (ev.type === 'thinking-delta') {
+            setMessages((m) => {
+              const last = m[m.length - 1];
+              if (last?.role === 'assistant') return [...m.slice(0, -1), { ...last, thinking: (last.thinking ?? '') + ev.delta }];
+              return [...m, { role: 'assistant', text: '', thinking: ev.delta }];
+            });
           } else if (ev.type === 'text-delta') {
             assistantText += ev.delta;
             setMessages((m) => {

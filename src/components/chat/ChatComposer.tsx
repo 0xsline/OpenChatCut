@@ -5,7 +5,7 @@ import { isSelectionRefKind } from '../../agent/selection-refs';
 import { Icon, type IconName } from '../icons';
 import { CREATIVE_SKILLS, allCreativeSkills, findSkill, setCustomSkills } from '../../agent/skills-catalog';
 import { loadCustomSkills } from '../../persist/skillStore';
-import { loadAgentSettings, saveAgentSettings, type AgentSettings } from '../../agent/agentSettings';
+import { loadAgentSettings, saveAgentSettings, MG_TIERS, type AgentSettings, type MgTier } from '../../agent/agentSettings';
 
 export type ChatMode = 'agent' | 'ask';
 export type RefItem = AgentReference;
@@ -75,6 +75,9 @@ function Popover({ children, onClose }: { children: ReactNode; onClose: () => vo
     </>
   );
 }
+
+// MG 质量三档标签 (source: motion graphic quality speed|balance|quality)
+const TIER_LABELS: Record<MgTier, string> = { speed: '速度', balance: '均衡', quality: '质量' };
 
 const REF_ICON: Record<RefItem['kind'], IconName> = {
   video: 'filePlay', image: 'filePlay', gif: 'image', svg: 'image',
@@ -234,8 +237,40 @@ export function ChatComposer(props: ChatComposerProps) {
                 <input type="checkbox" checked={agentSettings.skillGuard} onChange={(e) => patchAgent({ skillGuard: e.target.checked })} style={{ accentColor: theme.accent }} />
                 Skill guard · 高成本确认
               </label>
-              <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 10px' }}>
+              <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
                 生成/导出等昂贵工具即使开启自动应用，仍走提案卡二次确认。
+              </div>
+
+              {/* 思考模式 (source: chatcut-thinking-enabled-v3 → thinking:'adaptive'+effort:'medium') */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
+                <input type="checkbox" checked={agentSettings.thinkingEnabled} onChange={(e) => patchAgent({ thinkingEnabled: e.target.checked })} style={{ accentColor: theme.accent }} />
+                思考模式
+              </label>
+              <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
+                回答前先展开思考过程；中转不支持时本轮自动关闭。
+              </div>
+
+              {/* MG 质量三档 (source: chatcut-agent-motion-graphic-tier) */}
+              <div style={{ padding: '8px 10px 4px', color: theme.text, fontSize: 12.5 }}>MG 质量</div>
+              <div style={{ display: 'flex', gap: 4, padding: '0 10px' }}>
+                {MG_TIERS.map((t) => (
+                  <button key={t} onClick={() => patchAgent({ mgTier: t })}
+                    style={{ flex: 1, padding: '4px 0', fontSize: 11.5, borderRadius: 6, cursor: 'pointer', border: `1px solid ${agentSettings.mgTier === t ? theme.accent : theme.borderLight}`, background: agentSettings.mgTier === t ? theme.panel : 'none', color: agentSettings.mgTier === t ? theme.text : theme.textDim }}>
+                    {TIER_LABELS[t]}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: theme.textDim, padding: '4px 10px 6px' }}>
+                速度=最快出活 / 均衡 / 质量=打磨动效细节。
+              </div>
+
+              {/* 计划模式 (source: Agent Settings planMode 开关) */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
+                <input type="checkbox" checked={agentSettings.planMode} onChange={(e) => patchAgent({ planMode: e.target.checked })} style={{ accentColor: theme.accent }} />
+                计划模式
+              </label>
+              <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 10px' }}>
+                先出编号计划，确认后再动手。
               </div>
             </Popover>
           )}

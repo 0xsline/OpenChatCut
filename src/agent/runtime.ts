@@ -6,6 +6,7 @@ import { capabilitiesPrompt } from './capabilities';
 import { findSkill } from './skills-catalog';
 import { PLUGIN_SKILLS_INDEX } from './plugin-skills';
 import { anthropic, MODEL } from './client';
+import { agentSettingsPrompt, createInlineThinkingExtractor, loadAgentSettings } from './agentSettings';
 
 // No artificial limits — the loop runs until the model itself stops requesting
 // tools (stop_reason !== 'tool_use'). max_tokens is a required per-request
@@ -19,6 +20,7 @@ export type LLMMessage = Anthropic.MessageParam;
 export type AgentEvent =
   | { type: 'text-start' } // a new assistant text block begins
   | { type: 'text-delta'; delta: string } // streamed token(s) to append
+  | { type: 'thinking-delta'; delta: string } // 推理流(原生 thinking_delta 或内联 <thinking> 抽取)
   | { type: 'tool'; name: string; args: unknown; result: unknown }
   | { type: 'error'; message: string };
 
@@ -38,15 +40,35 @@ export async function runAgent(
   const conv = [...messages];
   // 问答模式：不给工具 → 模型只答不改时间线（source: Ask vs Agent）
   const tools = opts?.askOnly ? [] : TOOL_SCHEMAS;
+  const settings = loadAgentSettings();
   // 系统提示 = 基础 + 可用能力清单(按 key 配置) + 设计风格(品牌) + 创作模式(agent_skill)
+  // + <agent_settings>(MG 质量档/planMode;源站 Hy@24231 注入每条消息,本仓等价拼进 system)
   const system = SYSTEM_PROMPT
     + capabilitiesPrompt()
     + designStylePrompt(ctx.getDoc().designStyle)
     + creativeModePrompt(findSkill(ctx.getCreativeMode()))
-    + PLUGIN_SKILLS_INDEX;
+    + PLUGIN_SKILLS_INDEX
+    + agentSettingsPrompt(settings);
+
+  // 思考模式 (source: `chatcut-thinking-enabled-v3` 开 → thinking:'adaptive' + effort:'medium')。
+  // 容错红线:中转(grok /v1/messages 翻译层)可能拒该参数 —— 首个流事件前报错且
+  // message 像参数错时,去参重试一次;thinkingFellBack 保证整次 runAgent 只触发一次。
+  let thinkingFellBack = false;
 
   for (;;) {
     let resp: Anthropic.Message;
+    const withThinking = settings.thinkingEnabled && !thinkingFellBack;
+    // 内联 <thinking>…</thinking> 抽取:标签内的文本走 thinking 通道不进正文(source 20100-20150)
+    const extract = createInlineThinkingExtractor();
+    let sawStreamEvent = false;
+    let textStarted = false;
+    const emitText = (delta: string) => {
+      if (!textStarted) {
+        onEvent({ type: 'text-start' });
+        textStarted = true;
+      }
+      onEvent({ type: 'text-delta', delta });
+    };
     try {
       const stream = anthropic.messages.stream({
         model: MODEL,
@@ -54,21 +76,34 @@ export async function runAgent(
         system,
         messages: conv,
         tools,
+        ...(withThinking ? { thinking: { type: 'adaptive' as const }, output_config: { effort: 'medium' as const } } : {}),
       }, { signal: opts?.signal });
-      let textStarted = false;
+      stream.on('streamEvent', () => { sawStreamEvent = true; });
       stream.on('text', (delta) => {
         if (!delta) return;
-        if (!textStarted) {
-          onEvent({ type: 'text-start' });
-          textStarted = true;
-        }
-        onEvent({ type: 'text-delta', delta });
+        const part = extract.push(delta);
+        if (part.thinking) onEvent({ type: 'thinking-delta', delta: part.thinking });
+        if (part.text) emitText(part.text);
+      });
+      // 原生推理流(relay 若透传 thinking_delta,SDK 聚合为该事件)
+      stream.on('thinking', (delta) => {
+        if (delta) onEvent({ type: 'thinking-delta', delta });
       });
       resp = await stream.finalMessage();
+      // 流结束:结算内联抽取状态机(未闭合 → 余量全归 thinking;半截开标签只是正文)
+      const tail = extract.flush();
+      if (tail.thinking) onEvent({ type: 'thinking-delta', delta: tail.thinking });
+      if (tail.text) emitText(tail.text);
     } catch (e) {
       // user hit Stop (source onStop): end the turn quietly, no error surfaced
       if (opts?.signal?.aborted || e instanceof Anthropic.APIUserAbortError) return conv;
       const msg = e instanceof Anthropic.APIError ? `${e.status ?? ''} ${e.message}` : e instanceof Error ? e.message : String(e);
+      // 中转拒 thinking 参数(首个流事件前 + param 类字样)→ 去参重试一次,并插系统提示
+      if (withThinking && !sawStreamEvent && /thinking|param|invalid|unsupported|不支持/i.test(msg)) {
+        thinkingFellBack = true;
+        onEvent({ type: 'error', message: '当前中转不支持思考模式，已自动关闭本轮' });
+        continue;
+      }
       onEvent({ type: 'error', message: msg.trim() });
       return conv;
     }

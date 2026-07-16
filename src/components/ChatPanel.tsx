@@ -60,6 +60,10 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   const runSeedRef = useRef(0);
   if (running && runSeedRef.current === 0) runSeedRef.current = messages.length + 1;
   if (!running) runSeedRef.current = 0;
+  // 正在收 thinking(本轮助手气泡只有思考、还没正文)→ 底部指示换成微光「思考中…」;
+  // 无 thinking 数据时保留原随机片场短语。
+  const lastMsg = messages[messages.length - 1];
+  const streamingThinking = running && lastMsg?.role === 'assistant' && !!lastMsg.thinking && !lastMsg.text;
 
   // @-referenceable things: media-pool assets + template library
   const references: RefItem[] = useMemo(() => {
@@ -220,7 +224,14 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
         {running && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: theme.textDim, fontSize: 12.5, margin: '10px 0' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: theme.accent, animation: 'cc-rec-pulse 1.2s ease-out infinite', flexShrink: 0 }} />
-            {thinkingPhrase(runSeedRef.current)}…
+            {streamingThinking ? (
+              <>
+                <style>{'@keyframes cc-think-glow{0%,100%{opacity:.4}50%{opacity:1}}'}</style>
+                <span style={{ animation: 'cc-think-glow 1.4s ease-in-out infinite' }}>思考中…</span>
+              </>
+            ) : (
+              <>{thinkingPhrase(runSeedRef.current)}…</>
+            )}
           </div>
         )}
         {proposal && !autoApply && (

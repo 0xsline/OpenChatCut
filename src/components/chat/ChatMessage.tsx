@@ -25,6 +25,26 @@ function toolArgSummary(args: unknown): string {
   return '';
 }
 
+// 折叠的「思考过程」块 — 原生 thinking 流与内联 <thinking> 抽取都归到这里
+// (source 20100-20150:两者统一折成 thinking 块,默认折叠)。
+function ThinkingBlock({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <button onClick={() => setOpen((v) => !v)} title={open ? '收起思考过程' : '展开思考过程'}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.textDim, fontSize: 11.5, padding: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ display: 'inline-flex', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▸</span>
+        思考过程
+      </button>
+      {open && (
+        <div style={{ marginTop: 4, maxHeight: 180, overflowY: 'auto', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontStyle: 'italic', fontSize: 11.5, lineHeight: 1.55, color: theme.textDim, whiteSpace: 'pre-wrap', wordBreak: 'break-word', borderLeft: `2px solid ${theme.borderLight}`, paddingLeft: 8 }}>
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // one AI-message action button (copy / 👍 / 👎) — muted line icon, source style
 function ActBtn({ icon, title, active, onClick }: { icon: IconName; title: string; active?: boolean; onClick: () => void }) {
   return (
@@ -92,6 +112,7 @@ export function ChatMessage({ msg, streaming, feedback, onFeedback, onWidgetSubm
   const segments = parseWidgets(msg.text);
   return (
     <div style={{ margin: '16px 0' }}>
+      {!!msg.thinking?.trim() && <ThinkingBlock text={msg.thinking} />}
       {segments.map((seg, i) =>
         seg.type === 'widget' ? (
           <WidgetCard key={i} fields={seg.fields} onSubmit={(answer) => onWidgetSubmit?.(answer)} />
