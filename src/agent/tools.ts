@@ -43,29 +43,9 @@ import { RUN_CODE_TOOL_SCHEMAS, RUN_CODE_TOOL_NAMES, execRunCodeTool } from './r
 import { PROBE_TOOL_SCHEMAS, PROBE_TOOL_NAMES, execProbeTool } from './probe-tools';
 import { execTranscriptionProgress } from './transcription-progress';
 
-// track_progress is a shared source tool. generate-tools.ts (grok's lane) owns
-// target=generation; we extend its schema here — immutably, without editing that file —
-// so the model can also call target=transcription (readiness of 上传即转写 ASR jobs,
-// polled by assetIds). The matching dispatch intercept is in executeTool.
-function withTranscriptionTarget(schemas: Anthropic.Tool[]): Anthropic.Tool[] {
-  return schemas.map((tool) => {
-    if (tool.name !== 'track_progress') return tool;
-    const properties = (tool.input_schema.properties ?? {}) as Record<string, unknown>;
-    return {
-      ...tool,
-      description: `${tool.description} For target=transcription, poll ingest ASR readiness (上传即转写) by assetIds instead of jobIds; a succeeded asset then carries a word-level transcript that clips inherit.`,
-      input_schema: {
-        ...tool.input_schema,
-        properties: {
-          ...properties,
-          target: { type: 'string', enum: ['generation', 'transcription'] },
-          assetIds: { type: 'string', description: 'For target=transcription: comma-separated asset IDs/prefixes to check ASR readiness for.' },
-        },
-        required: ['action', 'target'],
-      },
-    };
-  });
-}
+// track_progress source-parity (schema extender + upload/visual-analysis handlers)
+// lives in track-progress-parity.ts; transcription in transcription-progress.ts.
+import { withSourceTargets, execUploadProgress, execVisualAnalysisProgress } from './track-progress-parity';
 
 // Anthropic native tool definitions (name / description / input_schema). Each
 // one executes against the EditorCore command layer (tool == command). This is
@@ -219,7 +199,7 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   ...FRAMES_TOOL_SCHEMAS,
   // AI 生成套件（GPT 主攻，定义在 generate-tools.ts：submit_image/video/voice/music/sound）
   // track_progress schema extended to also accept target=transcription (上传即转写 readiness).
-  ...withTranscriptionTarget(GENERATE_TOOL_SCHEMAS),
+  ...withSourceTargets(GENERATE_TOOL_SCHEMAS),
   // 源站 browse_library → edit_item（fx/lut/zoom/transition/sound 统一发现与落地）
   ...LIBRARY_TOOL_SCHEMAS,
   ...EDIT_ITEM_TOOL_SCHEMAS,
@@ -324,8 +304,13 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (SCRIPT_TOOL_NAMES.has(name)) return execScriptTool(name, args, ctx);
   if (FRAMES_TOOL_NAMES.has(name)) return execFramesTool(name, args, ctx);
   // track_progress target=transcription → Claude-owned handler (readiness of 上传即转写
-  // ASR); target=generation falls through to grok's execGenerateTool below.
+  // ASR); upload/visual-analysis → source-parity structured answers (local uploads are
+  // synchronous; visual-analysis jobs are not modeled); target omitted/generation falls
+  // through to grok's execGenerateTool below.
   if (name === 'track_progress' && args.target === 'transcription') return execTranscriptionProgress(args, ctx);
+  if (name === 'track_progress' && args.target === 'upload') return execUploadProgress(args, ctx);
+  if (name === 'track_progress' && args.target === 'visual-analysis') return execVisualAnalysisProgress();
+  if (name === 'track_progress' && args.target === undefined) return execGenerateTool(name, { ...args, target: 'generation' }, ctx);
   if (GENERATE_TOOL_NAMES.has(name)) return execGenerateTool(name, args, ctx);
   if (LIBRARY_TOOL_NAMES.has(name)) return execLibraryTool(name, args, ctx);
   if (EDIT_ITEM_TOOL_NAMES.has(name)) return execEditItemTool(name, args, ctx);

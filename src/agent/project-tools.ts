@@ -109,6 +109,7 @@ export const PROJECT_TOOL_SCHEMAS: Anthropic.Tool[] = [
           type: 'string',
           enum: ['update', 'speaker-create', 'speaker-update', 'speaker-delete'],
         },
+        id: { type: 'string', description: 'Speaker ID (for speaker ops) — the existing diarization label to target (alias of from / json.id).' },
         from: { type: 'string', description: 'speaker-update: existing speaker label to rename (e.g. "A").' },
         to: { type: 'string', description: 'speaker-update: new speaker name.' },
         json: { type: 'string', description: 'update: {name?, description?}. speaker-update also accepts {from,to} here.' },
@@ -350,7 +351,8 @@ function execSpeakerUpdate(args: Args, ctx: AgentContext): unknown {
     try { const o = JSON.parse(args.json); if (o && typeof o === 'object') json = o as Record<string, unknown>; } catch { /* ignore, fall back to top-level args */ }
   } else if (args.json && typeof args.json === 'object') json = args.json as Record<string, unknown>;
 
-  const from = String(args.from ?? json.from ?? json.speaker ?? json.id ?? '').trim();
+  // source schema top-level `id` = "Speaker ID (for speaker ops)" — same speaker locator as json.id
+  const from = String(args.from ?? args.id ?? json.from ?? json.speaker ?? json.id ?? '').trim();
   const to = String(args.to ?? json.to ?? json.name ?? json.newName ?? '').trim();
   if (!from || !to) return { error: 'speaker-update needs {from:"A", to:"新名字"} — from = existing speaker label, to = new name' };
   const items = ctx.getState().items.filter((it) => it.transcript?.some((w) => w.speaker === from));

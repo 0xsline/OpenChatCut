@@ -1,8 +1,9 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import type { FxDef, FxProperty } from '../gl/fx/uniforms';
+import type { MediaAsset } from '../editor/types';
 import { createMessage, MODEL } from './client';
-import { registerCustomTransition, type CustomTransitionDef } from '../gl/customTransitions';
+import { getCustomTransition, registerCustomTransition, type CustomTransitionDef } from '../gl/customTransitions';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // submit_shader —— 用自然语言描述 → LLM 写一段 GLSL 片元着色器 → 静态校验（+浏览器
@@ -235,13 +236,18 @@ export const SHADER_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'submit_shader',
     description:
-      'Generate a custom WebGL fragment shader from a natural-language description. type=effect (default): a per-clip effect (single input u_input) → returns effectId; apply with edit_item adds:[{type:"effect",targetItemId,assetId:<effectId>}]. type=transition: a clip-to-clip transition (two inputs u_outgoing/u_incoming + u_progress) → returns a transitionId (custom:tr-*); apply with edit_item adds:[{type:"transition",assetId:<transitionId>,incomingItemId:<later clip at the cut>}]. Either way the GLSL is statically validated + compile-checked, then registered; this only REGISTERS (source submit_shader) — apply separately. Use for one-off custom looks/transitions not in browse_library.',
+      'Generate a custom WebGL fragment shader from a natural-language prompt. type=effect: a per-clip effect (single input u_input) → returns effectId; apply with edit_item adds:[{type:"effect",targetItemId,assetId:<effectId>}]. type=transition: a clip-to-clip transition (two inputs u_outgoing/u_incoming + u_progress) → returns a transitionId (custom:tr-*); apply with edit_item adds:[{type:"transition",assetId:<transitionId>,incomingItemId:<later clip at the cut>}]. Either way the GLSL is statically validated + compile-checked, then registered; this only SUBMITS/registers (source submit_shader) — applying is a separate call the agent makes after the user explicitly asks. referenceAssetIds lets the generator learn from project assets: image assets are looked at as visual inspiration; ONE effect/transition asset (kind matching type) contributes its shader code as a style reference. Use for one-off custom looks/transitions not in browse_library.',
     input_schema: {
       type: 'object',
       properties: {
-        type: { type: 'string', enum: ['effect', 'transition'], description: 'effect = per-clip look (default); transition = clip-to-clip transition shader.' },
-        description: { type: 'string', description: 'What the effect/transition should do visually, in one or two sentences.' },
-        name: { type: 'string', description: 'Short display name (also used to derive the id).' },
+        type: { type: 'string', enum: ['effect', 'transition'], description: 'Whether the shader is a per-clip effect (color, blur, mask, LUT-style grade, distortion) or a between-clip transition (crossfade, wipe, slide, 3D cube).' },
+        prompt: { type: 'string', minLength: 1, description: 'Natural-language description of the shader. Restate the user\'s intent in one concrete sentence — e.g. "Chromatic aberration with RGB split", "Cinematic teal-orange color grade", "Smooth crossfade with soft edge".' },
+        name: { type: 'string', description: 'Asset name shown in the library. Defaults to a name derived from the prompt.' },
+        referenceAssetIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Project asset ids the generator should learn from. Image asset id → model LOOKS AT it as visual inspiration (e.g. a still to match for a LUT, a screenshot to mimic for a glitch effect). Effect or transition asset id → its shader code is reused as a style reference. At most one effect/transition reference per submit, and its kind must match `type`. Pass full ids or short id prefixes.',
+        },
         properties: {
           type: 'array',
           description: 'Optional adjustable numeric uniforms exposed as sliders; each becomes a u_<key> float uniform in the shader. Omit for a fixed effect.',
@@ -259,22 +265,141 @@ export const SHADER_TOOL_SCHEMAS: Anthropic.Tool[] = [
           },
         },
       },
-      required: ['description', 'name'],
+      required: ['type', 'prompt'], // source schema; `description` still accepted at runtime as a legacy alias of prompt
     },
   },
 ];
 
 export const SHADER_TOOL_NAMES = new Set(SHADER_TOOL_SCHEMAS.map((t) => t.name));
 
-/** 执行 submit_shader。ctx 未使用（注册是全局的，产物按 effectId 由 manage_effects 应用）。 */
-export async function execShaderTool(name: string, args: Args, _ctx: AgentContext): Promise<unknown> {
+// ── 源站参数面:required=['type','prompt'];name 缺省从 prompt 派生;description 兼容别名 ──
+
+/** name 省略时从 prompt 派生一个短显示名（源站 "Defaults to a name derived from the prompt"）。 */
+export function deriveShaderName(prompt: string): string {
+  const flat = prompt.replace(/\s+/g, ' ').trim();
+  return (flat.length > 48 ? flat.slice(0, 48).trimEnd() : flat) || '自定义着色器';
+}
+
+/** 校验并归一 submit_shader 的核心参数。纯函数、可测；错误信息面向 agent。 */
+export function normalizeShaderArgs(args: Args): { kind: 'effect' | 'transition'; prompt: string; name: string } | { error: string } {
+  if (args.type !== 'effect' && args.type !== 'transition') {
+    return { error: 'type is required: "effect" (per-clip look) or "transition" (clip-to-clip)' };
+  }
+  const prompt = String(args.prompt ?? args.description ?? '').trim(); // description = legacy alias of prompt
+  if (!prompt) return { error: 'prompt is required — one concrete sentence describing the shader' };
+  const name = String(args.name ?? '').trim() || deriveShaderName(prompt);
+  return { kind: args.type, prompt, name };
+}
+
+// ── referenceAssetIds(源站):图片资产 → 看图作视觉参考;effect/transition → 代码风格参考 ──
+
+export interface ShaderCodeRef { id: string; kind: 'effect' | 'transition'; label: string; frag: string }
+export interface ShaderRefs { imageAssets: MediaAsset[]; codeRef: ShaderCodeRef | null }
+
+/** effects.ts 拉 .frag?raw（仅 Vite/浏览器可解析）→ 动态 import，node/tsx 下静默不可用。 */
+async function lookupFxRef(id: string): Promise<ShaderCodeRef | null> {
+  if (typeof document === 'undefined') return null;
+  try {
+    const m = await import('../gl/fx/effects');
+    const def = m.ALL_FX[id] ?? m.CUSTOM_FX[id];
+    return def ? { id: def.id, kind: 'effect', label: def.name, frag: def.frag } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 解析 referenceAssetIds → 图片资产 + 至多 1 个代码参考。全部校验在 LLM 调用之前：
+ *  资产必须存在、≤1 个 effect/transition 引用、其 kind 必须与 type 一致。 */
+export async function resolveShaderRefs(
+  rawIds: unknown,
+  type: 'effect' | 'transition',
+  ctx: AgentContext,
+): Promise<ShaderRefs | { error: string }> {
+  const ids = Array.isArray(rawIds)
+    ? rawIds.filter((x): x is string => typeof x === 'string' && !!x.trim()).map((s) => s.trim())
+    : [];
+  const refs: ShaderRefs = { imageAssets: [], codeRef: null };
+  if (!ids.length) return refs;
+
+  const assets = ctx.getDoc().assets ?? ctx.getState().assets ?? [];
+  const codeRefs: ShaderCodeRef[] = [];
+  for (const id of ids) {
+    const asset = assets.find((a) => a.id === id) ?? assets.find((a) => a.id.startsWith(id));
+    if (asset) {
+      if (asset.kind === 'image' || asset.kind === 'gif') { refs.imageAssets.push(asset); continue; }
+      return { error: `reference asset "${asset.name}" is ${asset.kind} — only IMAGE assets (visual inspiration) or effect/transition ids (code style reference) can be referenced` };
+    }
+    const tr = getCustomTransition(id);
+    if (tr) { codeRefs.push({ id: tr.id, kind: 'transition', label: tr.label, frag: tr.frag }); continue; }
+    const fx = await lookupFxRef(id);
+    if (fx) { codeRefs.push(fx); continue; }
+    return { error: `reference asset not found: "${id}" — pass a project asset id/short prefix, or an effect/transition id` };
+  }
+  if (codeRefs.length > 1) {
+    return { error: `at most ONE effect/transition reference per submit (got ${codeRefs.length}: ${codeRefs.map((c) => c.id).join(', ')})` };
+  }
+  const code = codeRefs[0];
+  if (code) {
+    if (code.kind !== type) {
+      return { error: `reference kind mismatch: "${code.id}" is a ${code.kind} but type=${type} — the code reference's kind must match type` };
+    }
+    refs.codeRef = code;
+  }
+  return refs;
+}
+
+const IMAGE_MEDIA_TYPES: Record<string, 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
+};
+
+/** 把图片参考资产读成 base64 image block（浏览器 fetch 资产字节；node 下给明确错误）。 */
+async function imageBlocksOf(assets: MediaAsset[]): Promise<Anthropic.ImageBlockParam[] | { error: string }> {
+  if (!assets.length) return [];
+  if (typeof document === 'undefined') return { error: 'image references need the browser runtime (asset bytes are fetched from the dev server)' };
+  const blocks: Anthropic.ImageBlockParam[] = [];
+  for (const asset of assets) {
+    try {
+      const res = await fetch(asset.src);
+      if (!res.ok) return { error: `failed to read reference image "${asset.name}" (${res.status})` };
+      const fromHeader = res.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
+      const ext = asset.src.split('?')[0]!.split('#')[0]!.split('.').pop()?.toLowerCase() ?? '';
+      const mediaType = (Object.values(IMAGE_MEDIA_TYPES) as string[]).includes(fromHeader ?? '')
+        ? (fromHeader as Anthropic.Base64ImageSource['media_type'])
+        : IMAGE_MEDIA_TYPES[ext];
+      if (!mediaType) return { error: `reference image "${asset.name}" has an unsupported format (need jpeg/png/gif/webp)` };
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      let bin = '';
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+      blocks.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: btoa(bin) } });
+    } catch (e) {
+      return { error: `failed to read reference image "${asset.name}": ${e instanceof Error ? e.message : String(e)}` };
+    }
+  }
+  return blocks;
+}
+
+/** 执行 submit_shader（注册是全局的，产物按 effectId/transitionId 由后续 edit 应用）。 */
+export async function execShaderTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   if (name !== 'submit_shader') return { error: `unknown tool ${name}` };
-  const description = String(args.description ?? '').trim();
-  const displayName = String(args.name ?? '').trim();
-  if (!description) return { error: 'description is required' };
-  if (!displayName) return { error: 'name is required' };
+  const normalized = normalizeShaderArgs(args);
+  if ('error' in normalized) return normalized;
+  const { kind, prompt, name: displayName } = normalized;
   const rawProps = Array.isArray(args.properties) ? (args.properties as RawProp[]) : undefined;
-  const kind: 'effect' | 'transition' = args.type === 'transition' ? 'transition' : 'effect';
+
+  // referenceAssetIds：存在性 / ≤1 代码参考 / kind 匹配，全部在 LLM 调用之前校验。
+  const refs = await resolveShaderRefs(args.referenceAssetIds, kind, ctx);
+  if ('error' in refs) return refs;
+  const imageBlocks = await imageBlocksOf(refs.imageAssets);
+  if ('error' in imageBlocks) return imageBlocks;
+
+  let userText = prompt;
+  if (refs.codeRef) {
+    userText += `\n\nStyle reference — an existing ${refs.codeRef.kind} shader "${refs.codeRef.label}". Reuse its visual techniques/style where they serve the description:\n\`\`\`glsl\n${refs.codeRef.frag}\n\`\`\``;
+  }
+  if (imageBlocks.length) {
+    userText += '\n\nUse the attached image(s) as visual inspiration — match their palette, texture, and artifacts where relevant.';
+  }
 
   // 先归一属性，据此告诉模型确切的 u_<key> uniform 名字，保证生成的着色器名对得上。
   const props = buildProps(rawProps);
@@ -285,7 +410,7 @@ export async function execShaderTool(name: string, args: Args, _ctx: AgentContex
       model: MODEL,
       max_tokens: 8000,
       system: kind === 'transition' ? transitionShaderSystemPrompt(props) : shaderSystemPrompt(props),
-      messages: [{ role: 'user', content: description }],
+      messages: [{ role: 'user', content: imageBlocks.length ? [...imageBlocks, { type: 'text', text: userText }] : userText }],
     });
     text = msg.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -320,7 +445,7 @@ export async function execShaderTool(name: string, args: Args, _ctx: AgentContex
     };
   }
 
-  const def: FxDef = { ...buildCustomFxDef(displayName, glsl, rawProps), desc: description.slice(0, 200) };
+  const def: FxDef = { ...buildCustomFxDef(displayName, glsl, rawProps), desc: prompt.slice(0, 200) };
   try {
     // effects.ts 含 .frag?raw 导入（仅 Vite/浏览器可解析）；动态 import 让本模块在
     // node/tsx 下（.check.ts）不被污染，注册仅发生在浏览器执行工具时。

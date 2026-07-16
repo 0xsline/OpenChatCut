@@ -162,4 +162,14 @@ assert.strictEqual(st.items.find((i) => i.id === 'c1')!.transcript!.find((w) => 
 assert.ok((await execProjectTool('edit_project', { action: 'speaker-update', from: 'Z', to: 'x' }, spCtx) as { error?: string }).error, 'unknown speaker errors');
 assert.ok((await execProjectTool('edit_project', { action: 'speaker-update', from: 'A' }, spCtx) as { error?: string }).error, 'missing to errors');
 
+// source schema top-level `id` = Speaker ID for speaker ops → alias of from/json.id
+const suById = await execProjectTool('edit_project', { action: 'speaker-update', id: 'B', to: '嘉宾' }, spCtx) as { ok?: boolean; from?: string; wordsChanged?: number };
+assert.strictEqual(suById.ok, true, 'speaker-update accepts top-level id as the speaker locator');
+assert.strictEqual(suById.from, 'B', 'id resolved as the from-speaker');
+assert.strictEqual(suById.wordsChanged, 1, 'the one B word relabeled');
+assert.strictEqual(spDraft.getState().items.find((i) => i.id === 'c1')!.transcript!.find((w) => w.text === 'yo')!.speaker, '嘉宾', 'B→嘉宾 via id');
+// edit_project schema exposes the source `id` field
+const epSchema = PROJECT_TOOL_SCHEMAS.find((t) => t.name === 'edit_project')!;
+assert.ok('id' in (epSchema.input_schema as { properties: Record<string, unknown> }).properties, 'edit_project schema has top-level id');
+
 console.log('project-tools.check: ok');

@@ -1,12 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import { defaultTrackId, resolveTrackId, trackAlias, type TimelineItem, type TrackId } from '../editor/types';
-import type { TranscriptWord } from '../transcript/types';
-import { msToFrame } from '../transcript/types';
 import { transcribePath } from '../transcript/assemblyai';
 import { fillerIndices } from '../transcript/edit';
 import { translateLines } from '../captions/translate';
 import { createVariant, findVariantByLang, upsertVariant } from '../transcript/variants';
+import { execFindTranscript, findPhrase, normalize } from './transcript-find';
 
 // Agent tools for the transcript / caption / "delete text = delete video" surface.
 // Names + semantics mirror ChatCut's real tools (see chatcut-reverse
@@ -21,8 +20,19 @@ export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'find_transcript',
-    description: 'Find where a phrase is spoken in a track\'s transcript. Returns the matching words and their timeline frame range (fromFrame/toFrame). Use to locate a spot before inserting B-roll/MG or before delete_text.',
-    input_schema: { type: 'object', properties: { query: { type: 'string' }, track: { type: 'string' } }, required: ['query'] },
+    description: 'Find WHEN a phrase is spoken — a time-coordinate lookup, not a transcript reader or editing tool. Returns matches with their timeline frame range (fromFrame/toFrame) so you can anchor B-roll, motion graphics, markers, or overlays at that moment (or locate a spot before delete_text). Default: contiguous case/punctuation/whitespace-insensitive match over every transcribed clip on the timeline; edits are respected (deleted words won\'t match). asset = search ONE asset\'s raw transcript regardless of timeline use (library lookup, ignores edits). track = restrict to that track. fuzzy = token-order match with window tolerance (use when ASR may have fillers like "uh," between query tokens). includeWordTimestamps = add a Words block under each match with each word\'s start → end time — use when syncing animation beats to which word is being said; skip for plain phrase anchoring (extra output). limit = max results (default 10).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Text to search for.' },
+        asset: { type: 'string', description: 'Asset ID or prefix ID. Omit to search across the whole project.' },
+        track: { type: 'string', description: 'Track alias (V1/A1/...) or track id. Restricts the search to that track.' },
+        fuzzy: { type: 'boolean', description: 'Token-window match (tolerates fillers between tokens).' },
+        includeWordTimestamps: { type: 'boolean', description: 'Include per-word timestamps inside each match (default false). Adds a Words block under each match with each word\'s start -> end time. Use when syncing animation beats to speech cadence (e.g., MG internal rhythm matched to which word is being said).' },
+        limit: { type: 'integer', description: 'Max results returned (default 10).' },
+      },
+      required: ['query'],
+    },
   },
   {
     name: 'clean_script',
@@ -113,29 +123,8 @@ export const TRANSCRIPT_TOOL_NAMES = new Set(TRANSCRIPT_TOOL_SCHEMAS.map((t) => 
 
 type Args = Record<string, unknown>;
 
-function normalize(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9一-鿿]+/g, ' ').trim();
-}
-
-// Locate a phrase in the word list; returns the covering [start, start+count) run.
-function findPhrase(words: TranscriptWord[], query: string): { start: number; count: number } | null {
-  const q = normalize(query);
-  if (!q) return null;
-  let joined = '';
-  const charWord: number[] = [];
-  words.forEach((w, i) => {
-    const t = normalize(w.text);
-    if (!t) return;
-    if (joined) { joined += ' '; charWord.push(-1); }
-    for (const ch of t) { joined += ch; charWord.push(i); }
-  });
-  const pos = joined.indexOf(q);
-  if (pos < 0) return null;
-  const s = charWord[pos];
-  const e = charWord[pos + q.length - 1];
-  if (s < 0 || e < 0) return null;
-  return { start: s, count: e - s + 1 };
-}
+// normalize / findPhrase live in transcript-find.ts (shared with the find_transcript
+// executor and manage_markers' transcriptSegments anchoring).
 
 // audio clip on a track, optionally requiring an attached transcript
 function trackClip(ctx: AgentContext, track: TrackId, needTranscript: boolean): TimelineItem | null {
@@ -334,20 +323,9 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
         return { error: `transcription failed: ${e instanceof Error ? e.message : String(e)}`, partial: results };
       }
     }
-    case 'find_transcript': {
-      const it = trackClip(ctx, track, true);
-      if (!it?.transcript) return { error: `no transcript on ${alias}; call transcribe_track first` };
-      const m = findPhrase(it.transcript, String(args.query ?? ''));
-      if (!m) return { found: false, query: args.query };
-      const fps = ctx.getState().fps;
-      const slice = it.transcript.slice(m.start, m.start + m.count);
-      return {
-        found: true, itemId: it.id, wordStart: m.start, wordCount: m.count,
-        text: slice.map((w) => w.text).join(' '),
-        fromFrame: it.startFrame + msToFrame(slice[0].start, fps),
-        toFrame: it.startFrame + msToFrame(slice[slice.length - 1].end, fps),
-      };
-    }
+    case 'find_transcript':
+      // 源站参数面(asset/fuzzy/includeWordTimestamps/limit)+ 全工程搜索:transcript-find.ts。
+      return execFindTranscript(args, ctx);
     case 'clean_script': {
       // Whole-track batch (source semantics + this tool's own description): clean EVERY
       // transcribed clip on the track, not just the first. itemId narrows to one clip.

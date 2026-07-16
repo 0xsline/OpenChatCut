@@ -81,6 +81,50 @@ assert.ok(dl.results.every((r) => r.success));
 assert.strictEqual(dl.results[0]!.type, 'video');
 assert.strictEqual(dl.results[1]!.type, 'image');
 
+// download_media — url accepts a plain string too (source anyOf string | string[])
+const dlSingle = await execStockTool(
+  'download_media',
+  { url: 'https://cdn.example.com/solo.mp4', name: 'Solo Clip' },
+  ctx,
+) as { succeeded: number; results: Array<{ success: boolean; name?: string }> };
+assert.strictEqual(dlSingle.succeeded, 1, 'single string url works');
+assert.strictEqual(dlSingle.results[0]!.name, 'Solo Clip', 'name honored for single url');
+
+// download_media — >4 urls ERRORS (never silently truncates; source "up to 4 total")
+const tooMany = await execStockTool(
+  'download_media',
+  { url: [1, 2, 3, 4, 5].map((n) => `https://cdn.example.com/${n}.mp4`) },
+  ctx,
+) as { error?: string; results?: unknown[] };
+assert.ok(tooMany.error, '5 urls should error');
+assert.ok(tooMany.error!.includes('4'), 'error names the 4-url cap');
+assert.strictEqual(tooMany.results, undefined, 'nothing downloaded on over-limit batch');
+
+// download_media — name is IGNORED for batch (>1 url): display names come from the URL basename
+const dlNamed = await execStockTool(
+  'download_media',
+  { url: ['https://cdn.example.com/first.mp4', 'https://cdn.example.com/second.png'], name: 'Should Be Ignored' },
+  ctx,
+) as { succeeded: number; results: Array<{ success: boolean; name?: string }> };
+assert.strictEqual(dlNamed.succeeded, 2);
+assert.deepStrictEqual(dlNamed.results.map((r) => r.name), ['first.mp4', 'second.png'], 'batch ignores name override');
+
+// download_media schema — url declared as anyOf string | string[] (source field shape)
+{
+  const dlSchema = STOCK_TOOL_SCHEMAS.find((t) => t.name === 'download_media')!;
+  const urlProp = (dlSchema.input_schema as { properties: Record<string, { anyOf?: unknown[] }> }).properties.url;
+  assert.ok(Array.isArray(urlProp.anyOf) && urlProp.anyOf.length === 2, 'url schema is anyOf [string, string[]]');
+  assert.deepStrictEqual((dlSchema.input_schema as { required?: string[] }).required, ['url']);
+}
+
+// push_asset — same ≤4 batch cap
+const pushMany = await execStockTool(
+  'push_asset',
+  { filePath: [1, 2, 3, 4, 5].map((n) => `https://cdn.example.com/${n}.mp4`) },
+  ctx,
+) as { error?: string };
+assert.ok(pushMany.error, 'push_asset also errors on >4');
+
 // push_asset — single filePath + name override
 const push = await execStockTool(
   'push_asset',

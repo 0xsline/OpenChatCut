@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import type { MediaAsset } from '../editor/types';
+import { fallbackDuration, isHttpUrl, nameFromUrl, probeUrl, sniffKind, type PoolKind } from './stock-url-utils';
 
 // Source-aligned stock / URL ingest tools:
 // - download_media  (source name) — url | url[] ≤4 → local uploads + media pool
@@ -31,8 +32,12 @@ export const STOCK_TOOL_SCHEMAS: Anthropic.Tool[] = [
       type: 'object',
       properties: {
         url: {
+          // source schema: anyOf string(uri) | string(uri)[] — up to 4 total
+          anyOf: [
+            { type: 'string', format: 'uri' },
+            { type: 'array', items: { type: 'string', format: 'uri' } },
+          ],
           description: 'HTTP(S) URL or array of URLs (up to 4 total).',
-          // string | string[] — Anthropic tools accept loose schema
         },
         name: {
           type: 'string',
@@ -139,98 +144,9 @@ export const STOCK_TOOL_SCHEMAS: Anthropic.Tool[] = [
 
 export const STOCK_TOOL_NAMES = new Set(STOCK_TOOL_SCHEMAS.map((tool) => tool.name));
 
-const IMAGE_SECONDS = 3;
-const CLIP_SECONDS = 5;
-const PROBE_TIMEOUT_MS = 8000;
 const MAX_BATCH = 4;
 
-const EXT_KIND: Record<string, MediaAsset['kind']> = {
-  mp4: 'video', mov: 'video', webm: 'video', m4v: 'video', avi: 'video',
-  jpg: 'image', jpeg: 'image', png: 'image', gif: 'image', webp: 'image', svg: 'image', avif: 'image',
-  mp3: 'audio', wav: 'audio', m4a: 'audio', aac: 'audio', ogg: 'audio', flac: 'audio',
-};
-
-type PoolKind = MediaAsset['kind'];
-
-function sniffKind(url: string): PoolKind | null {
-  const clean = url.split('?')[0].split('#')[0];
-  const base = clean.split('/').filter(Boolean).pop() ?? '';
-  const ext = base.includes('.') ? base.split('.').pop()!.toLowerCase() : '';
-  return ext ? (EXT_KIND[ext] ?? null) : null;
-}
-
-function nameFromUrl(url: string): string {
-  const clean = url.split('?')[0].split('#')[0];
-  const base = clean.split('/').filter(Boolean).pop();
-  if (!base) return url;
-  try {
-    return decodeURIComponent(base);
-  } catch {
-    return base;
-  }
-}
-
-function isHttpUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
-function fallbackDuration(kind: PoolKind, fps: number): number {
-  return Math.round((kind === 'image' ? IMAGE_SECONDS : CLIP_SECONDS) * fps);
-}
-
-interface ProbeResult {
-  durationInFrames: number;
-  width?: number;
-  height?: number;
-}
-
-function probeUrl(url: string, kind: PoolKind, fps: number): Promise<ProbeResult> {
-  const fallback: ProbeResult = { durationInFrames: fallbackDuration(kind, fps) };
-  if (typeof document === 'undefined') return Promise.resolve(fallback);
-
-  if (kind === 'image') {
-    return new Promise((resolve) => {
-      let done = false;
-      const finish = (result: ProbeResult) => { if (!done) { done = true; resolve(result); } };
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => finish({
-        durationInFrames: fallbackDuration('image', fps),
-        width: img.naturalWidth,
-        height: img.naturalHeight,
-      });
-      img.onerror = () => finish(fallback);
-      img.src = url;
-      setTimeout(() => finish(fallback), PROBE_TIMEOUT_MS);
-    });
-  }
-
-  if (kind === 'motion-graphic') return Promise.resolve(fallback);
-
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (result: ProbeResult) => { if (!done) { done = true; resolve(result); } };
-    const el = document.createElement(kind === 'video' ? 'video' : 'audio') as HTMLVideoElement;
-    el.preload = 'metadata';
-    el.crossOrigin = 'anonymous';
-    el.onloadedmetadata = () => {
-      const durationInFrames = Math.max(1, Math.round((el.duration || CLIP_SECONDS) * fps));
-      finish({
-        durationInFrames,
-        width: kind === 'video' ? el.videoWidth : undefined,
-        height: kind === 'video' ? el.videoHeight : undefined,
-      });
-    };
-    el.onerror = () => finish(fallback);
-    el.src = url;
-    setTimeout(() => finish(fallback), PROBE_TIMEOUT_MS);
-  });
-}
+// URL 嗅探/命名/时长兜底/metadata 探测:见 ./stock-url-utils.ts(纯函数,拆文件守 500 行上限)
 
 const newId = (): string =>
   (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -257,13 +173,15 @@ function mapTypeToKind(type: string | undefined, url: string): PoolKind | null {
   }
 }
 
-function normalizeUrlList(raw: unknown, max = MAX_BATCH): string[] {
+/** string | string[] → trimmed url list. Junk entries are dropped (back-compat);
+ * the ≤4 batch cap is enforced by the callers so over-limit input ERRORS instead
+ * of being silently truncated (source: "up to 4 total"). */
+function normalizeUrlList(raw: unknown): string[] {
   const list = Array.isArray(raw) ? raw : [raw];
   return list
     .filter((u): u is string => typeof u === 'string')
     .map((u) => u.trim())
-    .filter(Boolean)
-    .slice(0, max);
+    .filter(Boolean);
 }
 
 interface ImportUrlResponse {
@@ -410,6 +328,7 @@ async function registerMediaUrl(
 async function execDownloadMedia(args: Args, ctx: AgentContext): Promise<unknown> {
   const urls = normalizeUrlList(args.url);
   if (!urls.length) return { error: 'url is required (string or array, max 4)' };
+  if (urls.length > MAX_BATCH) return { error: `url accepts at most ${MAX_BATCH} URLs per call (got ${urls.length}); split into batches` };
 
   const batchName = urls.length === 1 && typeof args.name === 'string' ? args.name : undefined;
   const type = typeof args.type === 'string' ? args.type : undefined;
@@ -424,6 +343,7 @@ async function execDownloadMedia(args: Args, ctx: AgentContext): Promise<unknown
 async function execPushAsset(args: Args, ctx: AgentContext): Promise<unknown> {
   const urls = normalizeUrlList(args.filePath);
   if (!urls.length) return { error: 'filePath is required (public http(s) URL or array, max 4)' };
+  if (urls.length > MAX_BATCH) return { error: `filePath accepts at most ${MAX_BATCH} URLs per call (got ${urls.length}); split into batches` };
 
   const batchName = urls.length === 1 && typeof args.name === 'string' ? args.name : undefined;
   const type = typeof args.type === 'string' ? args.type : undefined;

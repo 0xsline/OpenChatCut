@@ -2,6 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import type { MediaAsset, TimelineItem } from '../editor/types';
 import { bakeClipToVideo, bakeClipToAlphaWebm, exportClipMov } from '../media/clipExport';
+import { fetchRenderJob } from './export-tools';
 
 // convert_motion_graphic_to_video + register_converted_video (source 域G §9).
 // Source flow: convert 云渲 MG 原长 → renderId → track_export 等完成 →
@@ -36,15 +37,17 @@ export const MG_VIDEO_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'register_converted_video',
     description:
-      'Register an already-rendered video output (a same-origin /media/uploads path or public URL) as a media-pool video asset — the import half of convert_motion_graphic_to_video, or for videos rendered elsewhere.',
+      'Import a finished MG→video render as a video asset in the media pool — step 2 of the MG→video convert flow. After track_export reports the render complete, call this with the renderId (preferred) to promote the render output into the media pool as a real video asset; the local backend resolves the output itself, no download URL needed. outputUrl is only a fallback when a renderId is unavailable. Returns the video asset id (re-running dedupes to the same asset). Afterwards place the video with edit_item (add a video item referencing the returned videoAssetId).',
     input_schema: {
       type: 'object',
       properties: {
-        outputUrl: { type: 'string', description: 'Rendered video path/URL to import (e.g. the src returned by convert_motion_graphic_to_video).' },
-        name: { type: 'string', description: 'Display name for the media-pool asset.' },
+        mgAssetId: { type: 'string', description: 'Source motion-graphic asset id (the mgAssetId of the converted clip).' },
+        renderId: { type: 'string', description: 'The convert render id (preferred; pass it once track_export reports the render complete).' },
+        outputUrl: { type: 'string', description: 'Raw render output URL — only as a fallback when a renderId is unavailable.' },
+        name: { type: 'string', description: 'Display name for the media-pool asset (defaults to "<MG name> (video)").' },
         durationInFrames: { type: 'number', description: 'Duration in frames (defaults to the source MG length if omitted).' },
       },
-      required: ['outputUrl'],
+      required: ['mgAssetId'],
     },
   },
   {
@@ -131,23 +134,64 @@ async function convert(args: Args, ctx: AgentContext): Promise<unknown> {
   };
 }
 
-function register(args: Args, ctx: AgentContext): unknown {
-  const outputUrl = typeof args.outputUrl === 'string' ? args.outputUrl.trim() : '';
-  if (!outputUrl) return { error: 'register_converted_video requires outputUrl' };
-  if (!/^(https?:\/\/|\/)/.test(outputUrl)) return { error: 'outputUrl must be a same-origin path (/media/…) or http(s) URL' };
+/** resolve the SOURCE motion-graphic behind mgAssetId: pool asset, template, or placed clip. */
+function resolveMgSource(ctx: AgentContext, q: string): { id: string; name: string; durationInFrames?: number } | null {
+  const state = ctx.getState();
+  // doc.assets is the authoritative pool; state.assets is only a derived view
+  const assets = ctx.getDoc().assets ?? state.assets ?? [];
+  const asset = assets.find((a) => a.id === q) ?? assets.find((a) => a.id.startsWith(q));
+  if (asset) return { id: asset.id, name: asset.name, durationInFrames: asset.durationInFrames };
+  const tpl = ctx.templates.find((t) => t.id === q) ?? ctx.templates.find((t) => t.id.startsWith(q));
+  if (tpl) return { id: tpl.id, name: tpl.name, durationInFrames: tpl.durationInFrames };
+  const item = state.items.find((it) => it.templateId === q || it.id === q)
+    ?? state.items.find((it) => it.id.startsWith(q));
+  if (item) return { id: item.templateId ?? item.id, name: item.name, durationInFrames: item.durationInFrames };
+  return null;
+}
+
+// register_converted_video — source schema: required=['mgAssetId']; renderId preferred
+// (resolved against the local render-job records once track_export reports complete);
+// outputUrl only as a fallback when no renderId is available.
+async function register(args: Args, ctx: AgentContext): Promise<unknown> {
+  const mgQuery = typeof args.mgAssetId === 'string' ? args.mgAssetId.trim() : '';
+  if (!mgQuery) return { error: 'mgAssetId is required (the source motion-graphic asset id)' };
+  const mg = resolveMgSource(ctx, mgQuery);
+  if (!mg) return { error: `no motion-graphic asset/template/clip matching "${mgQuery}"` };
+
+  // renderId (preferred) → resolve the finished render's output from the local job records.
+  let outputUrl = '';
+  const renderId = typeof args.renderId === 'string' ? args.renderId.trim() : '';
+  if (renderId) {
+    const job = await fetchRenderJob(renderId);
+    if (!('ok' in job)) return { error: job.error };
+    if (!job.downloadUrl) {
+      return { error: `render ${renderId} is not complete yet (status: ${job.status}); wait with track_export action=wait first, or pass outputUrl as a fallback` };
+    }
+    outputUrl = job.downloadUrl;
+  } else {
+    outputUrl = typeof args.outputUrl === 'string' ? args.outputUrl.trim() : '';
+    if (!outputUrl) return { error: 'pass renderId (preferred, once track_export reports the render complete) or outputUrl as a fallback' };
+    if (!/^(https?:\/\/|\/)/.test(outputUrl)) return { error: 'outputUrl must be a same-origin path (/media/…) or http(s) URL' };
+  }
+
+  // deterministic: re-running dedupes to the same video asset (matched by output src).
+  const existing = (ctx.getDoc().assets ?? ctx.getState().assets ?? []).find((a) => a.kind === 'video' && a.src === outputUrl);
+  if (existing) {
+    return { ok: true, assetId: existing.id, videoAssetId: existing.id, mgAssetId: mg.id, name: existing.name, durationInFrames: existing.durationInFrames, deduped: true };
+  }
 
   const dur = typeof args.durationInFrames === 'number' && Number.isFinite(args.durationInFrames) && args.durationInFrames > 0
     ? Math.round(args.durationInFrames)
-    : ctx.getState().fps * 3; // no length given → 3s placeholder
+    : mg.durationInFrames ?? ctx.getState().fps * 3; // MG length → else 3s placeholder
   const asset: MediaAsset = {
     id: uid(),
-    name: (typeof args.name === 'string' && args.name.trim()) || 'Converted video',
+    name: (typeof args.name === 'string' && args.name.trim()) || `${mg.name} (video)`,
     kind: 'video',
     src: outputUrl,
     durationInFrames: dur,
   };
   ctx.commands.addAsset(asset);
-  return { ok: true, assetId: asset.id, name: asset.name, durationInFrames: dur };
+  return { ok: true, assetId: asset.id, videoAssetId: asset.id, mgAssetId: mg.id, name: asset.name, durationInFrames: dur, next: `Place it with edit_item adds:[{type:"video",assetId:"${asset.id}"}], or delete the MG item and add the video in the same edit_item call to replace it.` };
 }
 
 const strs = (v: unknown): string[] =>

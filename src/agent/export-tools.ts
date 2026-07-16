@@ -9,8 +9,9 @@ import { isTerminal, isComplete, isFailed, type JobReportBase } from './job-mode
 // 源站真名：异步导出在源站是 submit_export(format=video/audio → 返回 renderId)。
 // 但 `submit_export` 已被同步版工具占用(generate-tools.ts)，为避免同名冲突，异步
 // 渲染提交器取名 submit_render_job（源站无据，自定）。轮询用源站真名 track_export。
-// track_export 源站参数含 action(含 wait)/renderIds/latest/onlyActive/timeoutSeconds；
-// 克隆简化为单 renderId + action(status|wait) + timeoutSeconds（一次一个渲染任务）。
+// track_export 参数面对齐源站 schema：required=['action']；renderIds(逗号分隔 id/前缀)、
+// latest(renderIds 省略时默认 true)、onlyActive、timelineId、timeoutSeconds(默认 90，0=无界)。
+// 旧单数 renderId 仍作兼容别名。latest/前缀解析基于本会话的提交记录(见 sessionJobs)。
 //
 // Agent 跑在浏览器里，工具用 fetch 打 dev-server 的 /export/job 端点：
 //   POST /export/job     → { renderId }
@@ -24,8 +25,8 @@ import { isTerminal, isComplete, isFailed, type JobReportBase } from './job-mode
 
 type Args = Record<string, unknown>;
 
-const DEFAULT_WAIT_SECONDS = 300;
-const MAX_WAIT_SECONDS = 1800;
+const DEFAULT_WAIT_SECONDS = 90; // 源站 schema: "Defaults to 90. Use 0 for unbounded wait."
+const MAX_WAIT_SECONDS = 3600;
 const POLL_INTERVAL_MS = 500;
 
 export const EXPORT_TOOL_SCHEMAS: Anthropic.Tool[] = [
@@ -49,15 +50,18 @@ export const EXPORT_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'track_export',
     description:
-      'Inspect or wait for an asynchronous render job started by submit_render_job. action=status checks once and returns immediately; action=wait polls until the render is completed or failed, or until timeoutSeconds elapses. Returns status, progress, and — when completed — a downloadUrl the browser can fetch.',
+      'Inspect render/export jobs started by submit_render_job. action=status: return current status. action=wait: poll until the selected jobs are terminal or timeoutSeconds elapses. Pass renderIds when available. If renderIds is omitted, latest defaults to true and returns the most recent matching render job. Set latest=false to list recent render jobs so you can tell which exports are complete, still rendering, or failed. onlyActive=true narrows the latest lookup to currently rendering jobs. Returns status, progress, and — when completed — a downloadUrl the browser can fetch.',
     input_schema: {
       type: 'object',
       properties: {
-        renderId: { type: 'string', minLength: 1, description: 'The renderId returned by submit_render_job.' },
-        action: { type: 'string', enum: ['status', 'wait'], description: 'status checks immediately; wait polls until terminal or timeout.' },
-        timeoutSeconds: { type: 'number', minimum: 0, maximum: MAX_WAIT_SECONDS, description: 'wait timeout; defaults to 300 seconds.' },
+        action: { type: 'string', enum: ['status', 'wait'], description: 'status or wait' },
+        renderIds: { type: 'string', description: 'Comma-separated render job IDs or prefixes returned by submit_render_job.' },
+        latest: { type: 'boolean', description: 'When true, read the newest matching render job. Defaults to true when renderIds is omitted.' },
+        onlyActive: { type: 'boolean', description: 'When latest=true, return only currently rendering jobs. Use false/omit to include recently completed or failed renders.' },
+        timelineId: { type: 'string', description: 'Optional timeline ID or prefix to narrow latest lookup.' },
+        timeoutSeconds: { type: 'number', minimum: 0, maximum: MAX_WAIT_SECONDS, description: 'For action=wait, maximum seconds before returning the current non-terminal status. Defaults to 90. Use 0 for unbounded wait.' },
       },
-      required: ['renderId', 'action'],
+      required: ['action'],
     },
   },
   {
@@ -89,11 +93,26 @@ interface JobSnapshot extends JobReportBase<'queued' | 'running' | 'succeeded' |
   result?: { path?: string; name?: string; sizeBytes?: number; codec?: string };
 }
 
-type PollResult =
+export type PollResult =
   | { ok: true; renderId: string; status: string; progress: number; downloadUrl?: string; name?: string; sizeBytes?: number; codec?: string; error?: string }
   | { error: string };
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+/** Render jobs submitted THIS session — the lookup base for renderIds prefix
+ * resolution and the latest/onlyActive/timelineId selectors (source reads durable
+ * job rows; the local dev-server has no list endpoint, so the session registry
+ * stands in). Full ids not in the registry still pass straight through to the
+ * server. ponytail: session-scoped; add a /export/jobs list endpoint if
+ * cross-reload latest ever matters. */
+interface SessionJob { renderId: string; timelineId?: string }
+// push order = submission order → newest is the LAST entry (no clock needed).
+const sessionJobs: SessionJob[] = [];
+
+/** Test seam: reset the session job registry. */
+export function __resetExportSessionJobs(): void {
+  sessionJobs.length = 0;
+}
 
 // A completed job would be re-seen on every poll; dedupe by renderId so repeated
 // status/wait calls record the export exactly once (per session).
@@ -107,7 +126,12 @@ function recordIfCompleted(result: PollResult): void {
   void recordExport({ name: result.name ?? result.renderId, format, codec: result.codec, sizeBytes: result.sizeBytes, createdAt: Date.now() });
 }
 
-/** GET /export/job/:id 一次，把快照映射成工具结果；传输/未知 renderId 都返回干净 error，绝不抛裸异常。 */
+/** GET /export/job/:id 一次，把快照映射成工具结果；传输/未知 renderId 都返回干净 error，绝不抛裸异常。
+ *  Exported for register_converted_video (mg-video-tools): resolve a finished render's downloadUrl by renderId. */
+export async function fetchRenderJob(renderId: string): Promise<PollResult> {
+  return pollOnce(renderId);
+}
+
 async function pollOnce(renderId: string): Promise<PollResult> {
   const response = await fetch(`/export/job/${encodeURIComponent(renderId)}`, { method: 'GET' });
   if (response.status === 404) return { error: `render job ${renderId} not found` };
@@ -146,35 +170,99 @@ async function submitRenderJob(args: Args, ctx: AgentContext): Promise<unknown> 
     });
     const data = (await response.json().catch(() => ({}))) as { renderId?: string; error?: string };
     if (!response.ok || !data.renderId) return { error: data.error ?? `render job submit failed (${response.status})` };
-    return { ok: true, renderId: data.renderId, format, next: `Call track_export with renderId=${data.renderId} and action=status or action=wait.` };
+    let timelineId: string | undefined;
+    try { timelineId = ctx.getDoc().activeTimelineId; } catch { timelineId = undefined; }
+    sessionJobs.push({ renderId: data.renderId, timelineId });
+    return { ok: true, renderId: data.renderId, format, next: `Call track_export with renderIds=${data.renderId} and action=status or action=wait.` };
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   }
 }
 
+/** 逗号分隔的 id/前缀 → 完整 renderId 列表。前缀对本会话提交记录解析；不认识的
+ *  token 原样透传给服务器（可能是别处拿到的完整 id）。歧义前缀报清晰错误。 */
+function resolveRenderIds(raw: string): { ids: string[] } | { error: string } {
+  const tokens = raw.split(',').map((t) => t.trim()).filter(Boolean);
+  if (!tokens.length) return { error: 'renderIds is empty — pass comma-separated render job IDs or prefixes' };
+  const ids: string[] = [];
+  for (const token of tokens) {
+    if (sessionJobs.some((j) => j.renderId === token)) { ids.push(token); continue; }
+    const matches = sessionJobs.filter((j) => j.renderId.startsWith(token));
+    if (matches.length > 1) return { error: `renderIds prefix "${token}" is ambiguous (${matches.map((m) => m.renderId).join(', ')})` };
+    ids.push(matches.length === 1 ? matches[0]!.renderId : token);
+  }
+  return { ids: [...new Set(ids)] };
+}
+
+/** renderIds 省略时的 latest 语义（源站）：newest matching job；onlyActive 只留进行中；
+ *  latest=false 列出全部近期 job。基于本会话提交记录 + 实时轮询状态。 */
+async function selectLatestJobs(args: Args): Promise<{ ids: string[]; note?: string } | { error: string }> {
+  const timelineQ = typeof args.timelineId === 'string' ? args.timelineId.trim() : '';
+  const candidates = sessionJobs
+    .filter((j) => !timelineQ || (j.timelineId ?? '').startsWith(timelineQ))
+    .reverse(); // newest (last submitted) first — filter() copies, reverse is safe
+  if (!candidates.length) {
+    return { error: timelineQ
+      ? `no render jobs recorded this session for timeline "${timelineQ}"`
+      : 'no render jobs recorded this session — pass renderIds from submit_render_job' };
+  }
+  if (args.latest === false) return { ids: candidates.map((j) => j.renderId), note: 'latest=false: all recent render jobs this session, newest first' };
+  if (args.onlyActive === true) {
+    for (const j of candidates) {
+      const r = await pollOnce(j.renderId);
+      if ('ok' in r && !isTerminal(r.status)) return { ids: [j.renderId] };
+    }
+    return { ids: [], note: 'no currently rendering job (onlyActive=true); use onlyActive=false to include completed/failed renders' };
+  }
+  return { ids: [candidates[0]!.renderId] };
+}
+
+/** 一组 job 各 poll 一次。 */
+async function pollAll(ids: string[]): Promise<PollResult[]> {
+  const results = await Promise.all(ids.map((id) => pollOnce(id)));
+  for (const r of results) recordIfCompleted(r);
+  return results;
+}
+
+/** 单 job 保持旧扁平返回；多 job 返回 { ok, count, jobs } 聚合。 */
+function presentJobs(results: PollResult[], note?: string): unknown {
+  if (results.length === 1 && !note) return results[0];
+  return { ok: true, count: results.length, jobs: results, ...(note ? { note } : {}) };
+}
+
 async function trackExport(args: Args): Promise<unknown> {
   try {
-    const renderId = String(args.renderId ?? '').trim();
-    if (!renderId) return { error: 'renderId is required' };
-    const action = args.action === 'wait' ? 'wait' : 'status';
+    const action = args.action === 'wait' ? 'wait' : args.action === 'status' ? 'status' : null;
+    if (!action) return { error: 'action is required: "status" or "wait"' };
 
-    if (action === 'status') {
-      const result = await pollOnce(renderId);
-      recordIfCompleted(result);
-      return result;
+    // renderIds（源站，逗号分隔）优先；旧单数 renderId 仍兼容；都缺 → latest 语义。
+    const rawIds = typeof args.renderIds === 'string' && args.renderIds.trim()
+      ? args.renderIds
+      : typeof args.renderId === 'string' && args.renderId.trim() ? args.renderId : '';
+    let ids: string[];
+    let note: string | undefined;
+    if (rawIds) {
+      const resolved = resolveRenderIds(rawIds);
+      if ('error' in resolved) return resolved;
+      ids = resolved.ids;
+    } else {
+      const selected = await selectLatestJobs(args);
+      if ('error' in selected) return selected;
+      ids = selected.ids;
+      note = selected.note;
+      if (!ids.length) return { ok: true, count: 0, jobs: [], ...(note ? { note } : {}) };
     }
 
+    if (action === 'status') return presentJobs(await pollAll(ids), note);
+
+    // action=wait：轮询直到所选 job 全部终态，或 timeoutSeconds 到期（默认 90，0=无界）。
     const requested = typeof args.timeoutSeconds === 'number' && Number.isFinite(args.timeoutSeconds) ? args.timeoutSeconds : DEFAULT_WAIT_SECONDS;
-    const timeoutSeconds = Math.min(Math.max(requested, 0), MAX_WAIT_SECONDS);
-    const deadline = Date.now() + timeoutSeconds * 1000;
+    const bounded = Math.min(Math.max(requested, 0), MAX_WAIT_SECONDS);
+    const deadline = bounded === 0 ? Infinity : Date.now() + bounded * 1000;
     for (;;) {
-      const result = await pollOnce(renderId);
-      if (!('ok' in result)) return result; // 传输错误/未知 renderId：立即返回
-      if (isTerminal(result.status)) {
-        recordIfCompleted(result);
-        return result;
-      }
-      if (Date.now() >= deadline) return result; // 超时：返回最近一次 queued/running 快照
+      const results = await pollAll(ids);
+      const allSettled = results.every((r) => !('ok' in r) || isTerminal(r.status));
+      if (allSettled || Date.now() >= deadline) return presentJobs(results, note);
       await sleep(POLL_INTERVAL_MS);
     }
   } catch (error) {

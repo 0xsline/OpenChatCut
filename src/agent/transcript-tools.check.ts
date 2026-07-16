@@ -182,6 +182,100 @@ const varState: TimelineState = {
   assert.deepStrictEqual(one.itemIds, ['b']);
 }
 
+// ── find_transcript 源站参数面:fuzzy / includeWordTimestamps / limit / asset ──
+{
+  // "we use davinci um resolve daily" @30fps — 'um' 是 query token 之间的填充词
+  const w = (text: string, s: number, e: number): TranscriptWord => ({ text, start: s, end: e, speaker: 'A' });
+  const ftWords = [w('we', 0, 200), w('use', 200, 400), w('davinci', 400, 800), w('um', 800, 900), w('resolve', 900, 1300), w('daily', 1300, 1600)];
+  const ftState: TimelineState = {
+    fps: 30, width: 1920, height: 1080, selectedId: null,
+    items: [{ id: 'ft', track: 'A1', startFrame: 60, durationInFrames: 48, name: 'vo', kind: 'audio', src: '/vo.mp3', transcript: ftWords }],
+  };
+  const d = makeDraft(docFromTimeline(ftState));
+  const c: AgentContext = { commands: d.commands, getState: d.getState, getDoc: d.getDoc, getCreativeMode: () => null, templates: [], audio: [] };
+
+  // 连续匹配命中 + 旧字段向后兼容(itemId/wordStart/wordCount/text/fromFrame/toFrame 仍平铺在顶层)
+  const exact = await execTranscriptTool('find_transcript', { query: 'DaVinci' }, c) as {
+    found: boolean; itemId: string; wordStart: number; wordCount: number; fromFrame: number; toFrame: number; matchCount: number;
+    matches: Array<{ itemId: string; fromFrame: number }>;
+  };
+  assert.strictEqual(exact.found, true);
+  assert.strictEqual(exact.itemId, 'ft', 'legacy top-level itemId kept');
+  assert.strictEqual(exact.wordStart, 2);
+  assert.strictEqual(exact.wordCount, 1);
+  // 词→帧与播放层同源:clip 从 startFrame 起播首个 kept 词,davinci 起于 400ms → 60 + 12
+  assert.strictEqual(exact.fromFrame, 72, 'word frame = startFrame + source-offset frames');
+  assert.strictEqual(exact.matchCount, 1);
+  assert.strictEqual(exact.matches.length, 1, 'matches[] array present');
+
+  // 默认(非 fuzzy):token 间有填充词 → 不命中
+  const strict = await execTranscriptTool('find_transcript', { query: 'davinci resolve' }, c) as { found: boolean };
+  assert.strictEqual(strict.found, false, 'contiguous match does not jump over "um"');
+
+  // fuzzy:token 滑窗跨过填充词命中,span 覆盖 davinci..resolve
+  const fuzzy = await execTranscriptTool('find_transcript', { query: 'davinci resolve', fuzzy: true }, c) as {
+    found: boolean; text: string; wordStart: number; wordCount: number; fromFrame: number; toFrame: number;
+  };
+  assert.strictEqual(fuzzy.found, true, 'fuzzy tolerates fillers between tokens');
+  assert.strictEqual(fuzzy.wordStart, 2);
+  assert.strictEqual(fuzzy.wordCount, 3, 'covering span includes the filler');
+  assert.ok(fuzzy.text.includes('davinci') && fuzzy.text.includes('resolve'));
+  assert.strictEqual(fuzzy.fromFrame, 72);
+  assert.strictEqual(fuzzy.toFrame, 60 + Math.round((1300 / 1000) * 30), 'span end = resolve\'s end');
+
+  // includeWordTimestamps:match 下逐词 Words 块(帧 + 秒)
+  const withWords = await execTranscriptTool('find_transcript', { query: 'davinci resolve', fuzzy: true, includeWordTimestamps: true }, c) as {
+    matches: Array<{ words: Array<{ text: string; fromFrame: number; toFrame: number; startSeconds: number; endSeconds: number }> }>;
+  };
+  const words = withWords.matches[0]!.words;
+  assert.strictEqual(words.length, 3, 'per-word timestamps for every word in the span');
+  assert.deepStrictEqual(words.map((x) => x.text), ['davinci', 'um', 'resolve']);
+  assert.strictEqual(words[0]!.fromFrame, 72);
+  assert.strictEqual(words[0]!.startSeconds, 2.4, 'seconds derived from timeline frames');
+  assert.ok(words[2]!.fromFrame > words[0]!.fromFrame, 'word times ascend');
+  const noWords = await execTranscriptTool('find_transcript', { query: 'davinci' }, c) as { matches: Array<Record<string, unknown>> };
+  assert.ok(!('words' in noWords.matches[0]!), 'Words block only when includeWordTimestamps=true');
+
+  // limit 截断多命中
+  const many = await execTranscriptTool('find_transcript', { query: 'e' }, c) as { matchCount: number };
+  assert.ok(many.matchCount >= 2, 'multiple hits found without limit');
+  const limited = await execTranscriptTool('find_transcript', { query: 'e', limit: 1 }, c) as { matchCount: number; matches: unknown[] };
+  assert.strictEqual(limited.matchCount, 1, 'limit truncates results');
+
+  // timeline 模式尊重剪辑:删掉 resolve 后 fuzzy 也不再命中
+  d.commands.deleteWords('ft', [4]);
+  const afterDelete = await execTranscriptTool('find_transcript', { query: 'davinci resolve', fuzzy: true }, c) as { found: boolean };
+  assert.strictEqual(afterDelete.found, false, 'edited-out words no longer match (timeline mode)');
+}
+
+// find_transcript asset 模式:查资产 RAW 转写(无视剪辑),秒坐标 + 摆放位置
+{
+  const aw: TranscriptWord[] = [
+    { text: 'brand', start: 0, end: 300, speaker: 'A' },
+    { text: 'intro', start: 300, end: 700, speaker: 'A' },
+  ];
+  const st: TimelineState = {
+    fps: 30, width: 1920, height: 1080, selectedId: null,
+    items: [{ id: 'placed', track: 'A1', startFrame: 0, durationInFrames: 21, name: 'vo', kind: 'audio', src: '/media/uploads/vo.mp3', transcript: aw }],
+    assets: [{ id: 'asset_vo_1', name: 'vo.mp3', kind: 'audio', src: '/media/uploads/vo.mp3', durationInFrames: 21, transcript: aw }],
+  };
+  const d = makeDraft(docFromTimeline(st));
+  const c: AgentContext = { commands: d.commands, getState: d.getState, getDoc: d.getDoc, getCreativeMode: () => null, templates: [], audio: [] };
+
+  const byAsset = await execTranscriptTool('find_transcript', { query: 'intro', asset: 'asset_vo' }, c) as {
+    found: boolean; mode: string; asset: { id: string }; matches: Array<{ startSeconds: number; endSeconds: number }>; placements: Array<{ itemId: string }>;
+  };
+  assert.strictEqual(byAsset.found, true, 'asset prefix search hits');
+  assert.strictEqual(byAsset.mode, 'asset');
+  assert.strictEqual(byAsset.asset.id, 'asset_vo_1');
+  assert.strictEqual(byAsset.matches[0]!.startSeconds, 0.3, 'asset mode reports RAW source seconds');
+  assert.strictEqual(byAsset.matches[0]!.endSeconds, 0.7);
+  assert.deepStrictEqual(byAsset.placements, [{ itemId: 'placed', track: 'A1' }], 'timeline placements listed');
+
+  const noAsset = await execTranscriptTool('find_transcript', { query: 'intro', asset: 'ghost' }, c) as { error?: string };
+  assert.ok(noAsset.error, 'unknown asset errors');
+}
+
 // retry_transcription 无 media src → 明确 error(不跑网络)
 {
   const noSrc: TimelineState = {

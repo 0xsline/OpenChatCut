@@ -5,7 +5,16 @@
 //   npx tsx src/agent/shader-tools.check.ts
 import assert from 'node:assert';
 import { fxUniforms } from '../gl/fx/uniforms';
-import { validateShaderSource, stripCodeFences, buildProps, buildCustomFxDef, compileCheck, validateTransitionShaderSource, buildCustomTransitionDef } from './shader-tools';
+import { makeDraft } from '../editor/store';
+import { docFromTimeline } from '../persist/projectStore';
+import { registerCustomTransition, __resetCustomTransitions } from '../gl/customTransitions';
+import type { AgentContext } from './context';
+import {
+  validateShaderSource, stripCodeFences, buildProps, buildCustomFxDef, compileCheck,
+  validateTransitionShaderSource, buildCustomTransitionDef,
+  normalizeShaderArgs, deriveShaderName, resolveShaderRefs, execShaderTool,
+  SHADER_TOOL_SCHEMAS,
+} from './shader-tools';
 
 const VALID = `#version 300 es
 precision highp float;
@@ -118,5 +127,89 @@ assert.strictEqual(tdef.label, 'Swirl Wipe', 'label kept');
 assert.strictEqual(tdef.props[0]!.key, 'swirl', 'prop built');
 assert.strictEqual(tdef.props[0]!.default, 0.7, 'prop default in range');
 assert.notStrictEqual(buildCustomTransitionDef('x', VALID_TR).id, buildCustomTransitionDef('x', VALID_TR).id, 'transition ids unique');
+
+// ── source schema parity: required=['type','prompt']; name optional; referenceAssetIds present ──
+{
+  const schema = SHADER_TOOL_SCHEMAS.find((t) => t.name === 'submit_shader')!;
+  const s = schema.input_schema as { required?: string[]; properties: Record<string, unknown> };
+  assert.deepStrictEqual(s.required, ['type', 'prompt'], 'required is [type, prompt] (name no longer required)');
+  assert.ok('referenceAssetIds' in s.properties, 'schema has referenceAssetIds');
+  assert.ok('name' in s.properties, 'name stays as an optional field');
+}
+
+// ── normalizeShaderArgs: prompt 别名 + name 派生 + type 必填 ──
+{
+  // description is a legacy alias of prompt
+  const viaAlias = normalizeShaderArgs({ type: 'effect', description: 'Cinematic teal-orange grade' });
+  assert.ok(!('error' in viaAlias), 'description alias accepted as prompt');
+  if (!('error' in viaAlias)) {
+    assert.strictEqual(viaAlias.prompt, 'Cinematic teal-orange grade');
+    assert.strictEqual(viaAlias.name, 'Cinematic teal-orange grade', 'name derived from prompt when omitted');
+  }
+  // explicit prompt wins over description; explicit name wins over derivation
+  const explicit = normalizeShaderArgs({ type: 'transition', prompt: 'Soft crossfade', description: 'ignored', name: 'My Fade' });
+  assert.ok(!('error' in explicit) && explicit.kind === 'transition' && explicit.prompt === 'Soft crossfade' && explicit.name === 'My Fade');
+  // long prompt → derived name truncated
+  const long = 'a'.repeat(200);
+  assert.ok(deriveShaderName(long).length <= 48, 'derived name capped');
+  assert.strictEqual(deriveShaderName('  RGB   split\n glitch  '), 'RGB split glitch', 'whitespace collapsed');
+  // type required (source), prompt required
+  assert.ok('error' in normalizeShaderArgs({ prompt: 'x' }), 'missing type errors');
+  assert.ok('error' in normalizeShaderArgs({ type: 'blur', prompt: 'x' }), 'bad type errors');
+  assert.ok((normalizeShaderArgs({ type: 'effect' }) as { error: string }).error.includes('prompt'), 'missing prompt errors');
+}
+
+// ── referenceAssetIds 校验（全部发生在 LLM 调用之前;node 下无网络）──
+{
+  __resetCustomTransitions();
+  const draft = makeDraft(docFromTimeline({
+    fps: 30, width: 1920, height: 1080, selectedId: null, items: [],
+    assets: [
+      { id: 'img_ref_1', name: 'LUT still', kind: 'image', src: '/media/uploads/ref.png', durationInFrames: 90 },
+      { id: 'vid_1', name: 'clip', kind: 'video', src: '/media/uploads/v.mp4', durationInFrames: 90 },
+    ],
+  }));
+  const ctx: AgentContext = { commands: draft.commands, getState: draft.getState, getDoc: draft.getDoc, getCreativeMode: () => null, templates: [], audio: [] };
+  const trA = registerCustomTransition({ id: 'custom:tr-a', label: 'Wipe A', frag: VALID_TR, props: [] });
+  registerCustomTransition({ id: 'custom:tr-b', label: 'Wipe B', frag: VALID_TR, props: [] });
+
+  // image asset (by prefix) resolves as a visual reference
+  const imgRefs = await resolveShaderRefs(['img_ref'], 'effect', ctx);
+  assert.ok(!('error' in imgRefs), 'image asset prefix resolves');
+  if (!('error' in imgRefs)) {
+    assert.strictEqual(imgRefs.imageAssets.length, 1);
+    assert.strictEqual(imgRefs.imageAssets[0]!.id, 'img_ref_1');
+    assert.strictEqual(imgRefs.codeRef, null);
+  }
+
+  // transition asset as code reference, kind matches type=transition
+  const codeRefs = await resolveShaderRefs(['custom:tr-a'], 'transition', ctx);
+  assert.ok(!('error' in codeRefs) && codeRefs.codeRef?.frag === trA.frag, 'transition ref carries its frag source');
+
+  // kind mismatch: transition ref with type=effect → clear error
+  const mismatch = await resolveShaderRefs(['custom:tr-a'], 'effect', ctx) as { error?: string };
+  assert.ok(mismatch.error?.includes('kind'), 'kind mismatch rejected');
+
+  // >1 code reference → clear error
+  const twoCode = await resolveShaderRefs(['custom:tr-a', 'custom:tr-b'], 'transition', ctx) as { error?: string };
+  assert.ok(twoCode.error?.includes('ONE'), 'two code references rejected');
+
+  // video pool asset is neither image nor shader → clear error
+  const wrongKind = await resolveShaderRefs(['vid_1'], 'effect', ctx) as { error?: string };
+  assert.ok(wrongKind.error?.includes('video'), 'non-image pool asset rejected');
+
+  // unknown id → clear error
+  const missingRef = await resolveShaderRefs(['ghost'], 'effect', ctx) as { error?: string };
+  assert.ok(missingRef.error?.includes('not found'), 'unknown reference id rejected');
+
+  // execShaderTool short-circuits on ref violations BEFORE any LLM call (no network under node)
+  const execErr = await execShaderTool('submit_shader', { type: 'effect', prompt: 'glow', referenceAssetIds: ['custom:tr-a'] }, ctx) as { error?: string };
+  assert.ok(execErr.error?.includes('kind'), 'exec validates references before generation');
+  const execMissing = await execShaderTool('submit_shader', { type: 'effect', prompt: 'glow', referenceAssetIds: ['ghost'] }, ctx) as { error?: string };
+  assert.ok(execMissing.error?.includes('not found'), 'exec rejects unknown reference before generation');
+  const execNoType = await execShaderTool('submit_shader', { prompt: 'glow' }, ctx) as { error?: string };
+  assert.ok(execNoType.error?.includes('type'), 'exec enforces required type');
+  __resetCustomTransitions();
+}
 
 console.log('shader-tools.check: ok');
