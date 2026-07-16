@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ENTRY_POINT = path.join(REPO_ROOT, 'remotion', 'index.ts');
 const PUBLIC_DIR = path.join(REPO_ROOT, 'public');
+const UPLOAD_DIR = path.join(PUBLIC_DIR, 'media', 'uploads');
 const COMPOSITION_ID = 'timeline';
 
 // Bundling is expensive (webpack over the whole app + @babel/standalone), so we
@@ -40,11 +41,23 @@ async function buildServeUrl() {
   return serveUrl;
 }
 
-function getServeUrl() {
+// Return the cached serve bundle, re-syncing runtime-uploaded media on every call.
+// The webpack bundle is built once (expensive), but push_asset / upload / paste write
+// new files to public/media/uploads/ at runtime — AFTER that one-time snapshot — so
+// without this the headless renderer 404s them: stills/exports come out blank and a
+// <video> decodes the 404 page as MEDIA_ELEMENT_ERROR (format error). Copying only the
+// uploads dir is cheap and keeps every render (view_timeline_frames + /export) current.
+async function getServeUrl() {
   if (!bundlePromise) {
     bundlePromise = buildServeUrl();
   }
-  return bundlePromise;
+  const serveUrl = await bundlePromise;
+  try {
+    await cp(UPLOAD_DIR, path.join(serveUrl, 'media', 'uploads'), { recursive: true });
+  } catch (err) {
+    if (err?.code !== 'ENOENT') throw err; // no uploads dir yet = nothing to sync
+  }
+  return serveUrl;
 }
 
 /**
