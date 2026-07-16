@@ -8,16 +8,16 @@ export type CapabilityKey =
   | 'image' | 'voice' | 'video' | 'music' | 'sound'
   | 'stock' | 'transcription' | 'sandbox' | 'web';
 
-// Injected by Vite `define`. Undefined outside Vite (tsx checks) → all-false fallback.
-declare const __CONFIGURED_CAPS__: Record<CapabilityKey, boolean> | undefined;
-
 const ALL_OFF: Record<CapabilityKey, boolean> = {
   image: false, voice: false, video: false, music: false, sound: false,
   stock: false, transcription: false, sandbox: false, web: false,
 };
 
+// __CONFIGURED_CAPS__ is a Vite-`define` global (declared in src/globals.d.ts);
+// undefined under tsx → all-false fallback. The typeof guard keeps the undefined
+// case safe (a bare reference would ReferenceError outside Vite).
 export const CONFIGURED_CAPS: Record<CapabilityKey, boolean> =
-  typeof __CONFIGURED_CAPS__ !== 'undefined' ? __CONFIGURED_CAPS__ : ALL_OFF;
+  typeof __CONFIGURED_CAPS__ !== 'undefined' ? (__CONFIGURED_CAPS__ as Record<CapabilityKey, boolean>) : ALL_OFF;
 
 // label + the primary tool + a fallback hint when the capability is off.
 const CAP_ROWS: { key: CapabilityKey; label: string; tool: string; fallback: string }[] = [
