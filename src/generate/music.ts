@@ -1,6 +1,8 @@
 export interface SubmitMusicArgs {
   prompt: string;
   name?: string;
+  provider?: 'mureka' | 'minimax';
+  lyrics?: string;
 }
 
 interface MusicResponse {
@@ -20,7 +22,7 @@ export async function submitMusic(args: SubmitMusicArgs): Promise<GenerationSubm
   const response = await fetch('/generate/music', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, name: args.name }),
+    body: JSON.stringify({ prompt, name: args.name, provider: args.provider, lyrics: args.lyrics }),
   });
   const result = await response.json().catch(() => ({})) as MusicResponse;
   if (!response.ok) throw new Error(result.error ?? `music generation failed (${response.status})`);

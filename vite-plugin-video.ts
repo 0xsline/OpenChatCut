@@ -16,6 +16,9 @@ interface VideoOptions {
   klingBaseUrl: string;
   klingApiKey: string;
   klingModel: string;
+  minimaxBaseUrl: string;
+  minimaxApiKey: string;
+  minimaxModel: string;
 }
 
 interface MultiPrompt {
@@ -25,7 +28,7 @@ interface MultiPrompt {
 }
 
 interface VideoRequest {
-  model?: 'seedance2' | 'kling';
+  model?: 'seedance2' | 'kling' | 'hailuo';
   prompt?: string;
   name?: string;
   durationSeconds?: number | string;
@@ -42,7 +45,7 @@ interface VideoRequest {
 }
 
 interface ValidVideoRequest extends Omit<VideoRequest, 'model' | 'prompt' | 'durationSeconds' | 'ratio' | 'refImagePaths' | 'refVideoPaths' | 'refAudioPaths'> {
-  model: 'seedance2' | 'kling';
+  model: 'seedance2' | 'kling' | 'hailuo';
   prompt: string;
   durationSeconds: number;
   ratio: string;
@@ -86,14 +89,24 @@ function seconds(value: number | string | undefined, fallback: number): number {
 }
 
 function validate(input: VideoRequest): ValidVideoRequest {
-  if (input.model !== 'seedance2' && input.model !== 'kling') throw new Error('model must be seedance2 or kling');
+  if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo') throw new Error('model must be seedance2, kling, or hailuo');
   const model = input.model;
   const prompt = String(input.prompt ?? '').trim();
-  const durationSeconds = seconds(input.durationSeconds, 5);
+  const durationSeconds = seconds(input.durationSeconds, model === 'hailuo' ? 6 : 5);
   const ratio = String(input.ratio ?? '16:9');
   const refImagePaths = input.refImagePaths ?? [];
   const refVideoPaths = input.refVideoPaths ?? [];
   const refAudioPaths = input.refAudioPaths ?? [];
+  if (model === 'hailuo') {
+    // MiniMax Hailuo: prompt ≤ 2000, 6s/10s clips, optional first-frame image only —
+    // no last frame, references, or multi-shot; framing follows resolution/first frame (no ratio param).
+    if (!prompt) throw new Error('prompt is required');
+    if (prompt.length > 2000) throw new Error('hailuo prompt must be at most 2000 characters');
+    if (durationSeconds !== 6 && durationSeconds !== 10) throw new Error('hailuo durationSeconds must be 6 or 10');
+    if (input.lastFramePath || refImagePaths.length || refVideoPaths.length || refAudioPaths.length) throw new Error('hailuo supports an optional firstFrame image only; other references are not supported');
+    if (input.mode || input.shotType || input.multiPrompts?.length) throw new Error('mode and multi-shot parameters are supported by kling only');
+    return { ...input, model, prompt, durationSeconds, ratio, refImagePaths, refVideoPaths, refAudioPaths };
+  }
   const minDuration = model === 'seedance2' ? 4 : 3;
   const ratios = model === 'seedance2' ? ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'] : ['16:9', '9:16', '1:1'];
   if (durationSeconds < minDuration || durationSeconds > 15) throw new Error(`${model} durationSeconds must be between ${minDuration} and 15`);
@@ -245,6 +258,64 @@ async function generateKling(input: ValidVideoRequest, options: VideoOptions): P
   throw new Error('kling generation timed out');
 }
 
+interface MinimaxBaseResp { status_code?: number; status_msg?: string }
+
+/** MiniMax request: HTTP errors AND in-band base_resp errors both throw; the raw body
+ * text is kept alongside the parsed JSON so int64 fields can be re-read as strings. */
+async function minimaxJson(url: string, init: RequestInit): Promise<{ raw: string; data: Record<string, unknown> }> {
+  const response = await fetch(url, init);
+  if (!response.ok) throw new Error(await providerError(response));
+  const raw = await response.text();
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    throw new Error(`hailuo returned invalid JSON: ${raw.slice(0, 200)}`);
+  }
+  const base = data.base_resp as MinimaxBaseResp | undefined;
+  if (base && base.status_code !== 0) throw new Error(base.status_msg || `hailuo provider failed (${base.status_code})`);
+  return { raw, data };
+}
+
+/** file_id is an int64 — read it from the raw response TEXT as a string; JSON.parse
+ * would round it through a JS double and corrupt the id. */
+function hailuoFileId(raw: string): string {
+  const match = /"file_id"\s*:\s*"?(\d+)"?/.exec(raw);
+  if (!match) throw new Error('hailuo succeeded without a file_id');
+  return match[1];
+}
+
+async function generateHailuo(input: ValidVideoRequest, options: VideoOptions): Promise<string> {
+  if (!options.minimaxApiKey) throw new Error('MiniMax is not configured. Set MINIMAX_API_KEY in .env.local or 设置面板.');
+  const baseUrl = options.minimaxBaseUrl.replace(/\/$/, '');
+  const headers = { Authorization: `Bearer ${options.minimaxApiKey}`, 'Content-Type': 'application/json' };
+  const body: Record<string, unknown> = {
+    model: options.minimaxModel,
+    prompt: input.prompt,
+    duration: input.durationSeconds,
+    resolution: input.resolution === '1080p' ? '1080P' : '720P',
+    prompt_optimizer: true,
+  };
+  if (input.firstFramePath) body.first_frame_image = await mediaDataUrl(input.firstFramePath);
+  const submit = await minimaxJson(`${baseUrl}/v1/video_generation`, { method: 'POST', headers, body: JSON.stringify(body) });
+  const taskId = String(submit.data.task_id ?? '');
+  if (!taskId) throw new Error('hailuo did not return a task id');
+  const deadline = Date.now() + 10 * 60_000;
+  while (Date.now() < deadline) {
+    await wait(10_000);  // documented MiniMax polling interval
+    const poll = await minimaxJson(`${baseUrl}/v1/query/video_generation?task_id=${encodeURIComponent(taskId)}`, { headers });
+    const status = String(poll.data.status ?? '');
+    if (status === 'Success') {
+      const retrieve = await minimaxJson(`${baseUrl}/v1/files/retrieve?file_id=${encodeURIComponent(hailuoFileId(poll.raw))}`, { headers });
+      const file = retrieve.data.file as { download_url?: string } | undefined;
+      if (!file?.download_url) throw new Error('hailuo succeeded without a download URL');
+      return file.download_url;
+    }
+    if (status === 'Fail') throw new Error('hailuo generation failed');
+  }
+  throw new Error('hailuo generation timed out');
+}
+
 async function probeVideo(file: string): Promise<{ durationSeconds: number; width?: number; height?: number }> {
   return new Promise((resolvePromise, reject) => {
     const child = spawn('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:format=duration', '-of', 'json', file]);
@@ -289,7 +360,9 @@ export function videoGenerationPlugin(options: VideoOptions): Plugin {
             kind: 'video', model: input.model, name, prompt: input.prompt,
             durationSeconds: input.durationSeconds, ratio: input.ratio,
           }, async (jobId): Promise<GenerationResult> => {
-            const url = input.model === 'seedance2' ? await generateSeedance(input, options) : await generateKling(input, options);
+            const url = input.model === 'seedance2' ? await generateSeedance(input, options)
+              : input.model === 'kling' ? await generateKling(input, options)
+              : await generateHailuo(input, options);
             const saved = await saveVideo(url);
             return { assetId: jobId, kind: 'video', name, ...saved };
           });

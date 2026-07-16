@@ -13,11 +13,16 @@ interface MusicOptions {
   baseUrl: string;
   apiKey: string;
   model: string;
+  minimaxBaseUrl: string;
+  minimaxApiKey: string;
+  minimaxModel: string;
 }
 
 interface MusicRequest {
   prompt?: string;
   name?: string;
+  provider?: string;
+  lyrics?: string;
 }
 
 interface MurekaTask {
@@ -112,6 +117,33 @@ export function pickMurekaAudioUrl(task: MurekaTask): string | undefined {
   return choice?.audio_url ?? choice?.url ?? choice?.wav_url ?? choice?.flac_url;
 }
 
+interface MinimaxMusicResponse {
+  data?: { audio?: string };
+  base_resp?: { status_code?: number; status_msg?: string };
+}
+
+/** MiniMax music_generation is synchronous — returns the generated track's URL. */
+async function minimaxMusicUrl(options: MusicOptions, prompt: string, lyrics: string | undefined): Promise<string> {
+  const response = await fetch(`${options.minimaxBaseUrl.replace(/\/$/, '')}/v1/music_generation`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${options.minimaxApiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: options.minimaxModel,
+      prompt,
+      ...(lyrics ? { lyrics } : { is_instrumental: true }),
+      output_format: 'url',
+      audio_setting: { sample_rate: 44_100, bitrate: 256_000, format: 'mp3' },
+    }),
+  });
+  if (!response.ok) throw new Error(await providerError(response));
+  const result = await response.json() as MinimaxMusicResponse;
+  if (result.base_resp && result.base_resp.status_code !== 0) {
+    throw new Error(result.base_resp.status_msg || `MiniMax music failed (${result.base_resp.status_code})`);
+  }
+  if (!result.data?.audio) throw new Error('MiniMax returned no audio');
+  return result.data.audio;
+}
+
 export function musicGenerationPlugin(options: MusicOptions): Plugin {
   return {
     name: 'chatcut-music-generation',
@@ -119,12 +151,27 @@ export function musicGenerationPlugin(options: MusicOptions): Plugin {
       server.middlewares.use('/generate/music', async (req, res) => {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         try {
-          if (!options.apiKey) throw new Error('Music generation is not configured. Set MUREKA_API_KEY in .env.local.');
           const request = await readJson(req);
+          const provider = String(request.provider ?? 'mureka');
+          if (provider !== 'mureka' && provider !== 'minimax') throw new Error('provider must be mureka or minimax');
           const prompt = String(request.prompt ?? '').trim();
           if (!prompt) throw new Error('prompt is required');
           if (prompt.length > 1024) throw new Error('prompt must be at most 1024 characters');
+          const lyrics = String(request.lyrics ?? '').trim() || undefined;
+          if (lyrics && provider !== 'minimax') throw new Error('lyrics are only supported by the minimax provider');
+          if (lyrics && lyrics.length > 3500) throw new Error('lyrics must be at most 3500 characters');
           const name = String(request.name ?? '').trim() || `Music · ${prompt.slice(0, 36)}`;
+          if (provider === 'minimax') {
+            if (!options.minimaxApiKey) throw new Error('MiniMax is not configured. Set MINIMAX_API_KEY in .env.local or 设置面板.');
+            // Synchronous provider wrapped in the shared job queue — completes on first poll.
+            const submission = createGenerationJob({ kind: 'music', provider, prompt, name, model: options.minimaxModel }, async (jobId): Promise<GenerationResult> => {
+              const saved = await saveAudio(await fetch(await minimaxMusicUrl(options, prompt, lyrics)));
+              return { assetId: jobId, kind: 'audio', name, ...saved };
+            });
+            sendJson(res, 202, submission);
+            return;
+          }
+          if (!options.apiKey) throw new Error('Music generation is not configured. Set MUREKA_API_KEY in .env.local.');
           const baseUrl = options.baseUrl.replace(/\/$/, '');
           const submission = createGenerationJob({ kind: 'music', prompt, name, model: options.model }, async (jobId): Promise<GenerationResult> => {
             const response = await fetch(`${baseUrl}/v1/instrumental/generate`, {

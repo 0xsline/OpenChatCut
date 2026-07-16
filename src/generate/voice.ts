@@ -1,7 +1,7 @@
 import type { MediaAsset, TimelineState } from '../editor/types';
 
 export interface SubmitVoiceArgs {
-  provider: 'elevenlabs' | 'doubao';
+  provider: 'elevenlabs' | 'doubao' | 'minimax';
   text: string;
   voiceId: string;
   modelId?: string;

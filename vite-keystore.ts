@@ -17,6 +17,7 @@ export const KEY_NAMES = [
   'DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY', 'DOUBAO_TTS_BASE_URL',
   'SEEDANCE_API_KEY', 'SEEDANCE_BASE_URL', 'KLING_API_KEY', 'KLING_BASE_URL',
   'MUREKA_API_KEY', 'MUREKA_BASE_URL',
+  'MINIMAX_API_KEY', 'MINIMAX_BASE_URL',
   'PEXELS_API_KEY', 'PIXABAY_API_KEY',
   'ASSEMBLYAI_API_KEY',
   'E2B_API_KEY', 'E2B_TEMPLATE',
@@ -50,10 +51,10 @@ export interface Caps {
 export function computeCaps(): Caps {
   const has = (n: KeyName): boolean => getKey(n).length > 0;
   return {
-    image: has('IMAGE_API_KEY') || has('OPENAI_API_KEY') || has('GEMINI_API_KEY'),
-    voice: (has('DOUBAO_TTS_APP_ID') && has('DOUBAO_TTS_ACCESS_KEY')) || has('ELEVENLABS_API_KEY'),
-    video: has('SEEDANCE_API_KEY') || has('KLING_API_KEY'),
-    music: has('MUREKA_API_KEY'),
+    image: has('IMAGE_API_KEY') || has('OPENAI_API_KEY') || has('GEMINI_API_KEY') || has('MINIMAX_API_KEY'),
+    voice: (has('DOUBAO_TTS_APP_ID') && has('DOUBAO_TTS_ACCESS_KEY')) || has('ELEVENLABS_API_KEY') || has('MINIMAX_API_KEY'),
+    video: has('SEEDANCE_API_KEY') || has('KLING_API_KEY') || has('MINIMAX_API_KEY'),
+    music: has('MUREKA_API_KEY') || has('MINIMAX_API_KEY'),
     sound: has('ELEVENLABS_API_KEY'),
     stock: has('PEXELS_API_KEY') || has('PIXABAY_API_KEY'),
     transcription: has('ASSEMBLYAI_API_KEY'),

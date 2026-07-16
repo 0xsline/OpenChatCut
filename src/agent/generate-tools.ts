@@ -40,11 +40,11 @@ function frameRangeOf(start?: number, end?: number): { start: number; end: numbe
 export const GENERATE_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'submit_image',
-    description: 'Generate one or more AI images, save them to the project media pool, and add them to the active timeline. This spends generation credits; call only when the user explicitly requested the generation.',
+    description: 'Generate one or more AI images (gpt-image-2, nano-banana, or MiniMax image-01), save them to the project media pool, and add them to the active timeline. This spends generation credits; call only when the user explicitly requested the generation.', // minimax: mention image-01
     input_schema: {
       type: 'object',
       properties: {
-        model: { type: 'string', enum: ['gpt-image-2', 'nano-banana'], description: 'gpt-image-2 is the default; nano-banana is best for reference-heavy work.' },
+        model: { type: 'string', enum: ['gpt-image-2', 'nano-banana', 'image-01'], description: 'gpt-image-2 is the default; nano-banana is best for reference-heavy work; image-01 is MiniMax (no reference images, at most 9 per call).' }, // minimax: image-01 enum + note
         prompt: { type: 'string', description: 'Detailed description of the image to generate.' },
         name: { type: 'string', description: 'Short descriptive asset name shown in the media pool.' },
         aspectRatio: { type: 'string', enum: ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '4:5', '5:4', '21:9'], description: 'Defaults to 16:9.' },
@@ -58,18 +58,18 @@ export const GENERATE_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'submit_voice',
-    description: 'Generate one TTS audio asset. This spends generation credits and creates an asset only; it does not place or replace timeline items. Call only after the user has confirmed a concrete provider and voiceId.',
+    description: 'Generate one TTS audio asset with ElevenLabs, Doubao, or MiniMax. This spends generation credits and creates an asset only; it does not place or replace timeline items. Call only after the user has confirmed a concrete provider and voiceId.', // minimax: mention provider
     input_schema: {
       type: 'object',
       properties: {
-        provider: { type: 'string', enum: ['elevenlabs', 'doubao'], description: 'elevenlabs for multilingual/non-Chinese; doubao for Chinese-optimized speech.' },
+        provider: { type: 'string', enum: ['elevenlabs', 'doubao', 'minimax'], description: 'elevenlabs for multilingual/non-Chinese; doubao for Chinese-optimized speech; minimax for MiniMax Chinese TTS.' }, // minimax: provider enum
         text: { type: 'string', minLength: 1, description: 'Text to synthesize.' },
-        voiceId: { type: 'string', minLength: 1, description: 'Provider-specific curated preset ID or raw provider voice ID.' },
+        voiceId: { type: 'string', minLength: 1, description: 'Provider-specific curated preset ID or raw provider voice ID. MiniMax system voices: male-qn-qingse, male-qn-jingying, female-shaonv, female-yujie (default), female-chengshu, female-tianmei.' }, // minimax: system voice list
         modelId: { type: 'string', description: 'ElevenLabs only. Defaults to the configured current model.' },
         stability: { type: 'number', minimum: 0, maximum: 1, description: 'ElevenLabs only. Defaults to 0.5.' },
-        speed: { type: 'number', minimum: 0.7, maximum: 1.2, description: 'ElevenLabs only. Defaults to 1.' },
+        speed: { type: 'number', minimum: 0.5, maximum: 2, description: 'ElevenLabs (0.7–1.2) or MiniMax (0.5–2). Defaults to 1.' }, // minimax: widened range, server enforces per provider
         speedRatio: { type: 'number', minimum: 0.5, maximum: 2, description: 'Doubao only. Defaults to 1.' },
-        emotion: { type: 'string', description: 'Doubao only. Provider emotion label for a voice that supports it.' },
+        emotion: { type: 'string', description: 'Doubao or MiniMax emotion label. MiniMax accepts: happy, sad, angry, fearful, disgusted, surprised, calm, fluent, whisper.' }, // minimax: shared with doubao
         emotionScale: { type: 'number', minimum: 1, maximum: 5, description: 'Doubao only. Requires emotion.' },
         loudnessRatio: { type: 'number', minimum: 0.5, maximum: 2, description: 'Doubao only. Defaults to 1.' },
         pitch: { type: 'number', minimum: -12, maximum: 12, description: 'Doubao only. Post-process pitch shift in semitones.' },
@@ -96,11 +96,13 @@ export const GENERATE_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'submit_music',
-    description: 'Submit an instrumental music generation job and create one audio asset in the project media pool. This spends generation credits and does not place or replace timeline items.',
+    description: 'Submit a music generation job (Mureka by default, or MiniMax with optional lyrics) and create one audio asset in the project media pool. This spends generation credits and does not place or replace timeline items.', // minimax: mention provider
     input_schema: {
       type: 'object',
       properties: {
         prompt: { type: 'string', minLength: 1, maxLength: 1024, description: 'Style description, for example "Upbeat electronic for a tech intro".' },
+        provider: { type: 'string', enum: ['mureka', 'minimax'], description: 'Defaults to mureka (instrumental only). minimax also supports vocals via lyrics.' }, // minimax: optional provider
+        lyrics: { type: 'string', maxLength: 3500, description: 'minimax only. Lyrics with \\n line breaks; [Verse]/[Chorus] section tags supported. Omit for instrumental.' }, // minimax: optional lyrics
         name: { type: 'string', description: 'Optional media-pool asset name.' },
       },
       required: ['prompt'],
@@ -108,14 +110,14 @@ export const GENERATE_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: 'submit_video',
-    description: 'Submit a Seedance 2.0 or Kling video generation job and create one video asset in the project media pool. This spends generation credits and does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.',
+    description: 'Submit a Seedance 2.0, Kling, or MiniMax Hailuo video generation job and create one video asset in the project media pool. This spends generation credits and does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.', // minimax: mention hailuo
     input_schema: {
       type: 'object',
       properties: {
-        model: { type: 'string', enum: ['seedance2', 'kling'] },
+        model: { type: 'string', enum: ['seedance2', 'kling', 'hailuo'], description: 'hailuo is MiniMax: 6 or 10 seconds, optional firstFrame image only, no other references or multi-shot.' }, // minimax: hailuo enum
         prompt: { type: 'string', description: 'Required for normal generation and Kling intelligence; omit for Kling customize.' },
         name: { type: 'string' },
-        durationSeconds: { anyOf: [{ type: 'number' }, { type: 'string' }], description: 'Integer seconds, 4–15 for Seedance and 3–15 for Kling.' },
+        durationSeconds: { anyOf: [{ type: 'number' }, { type: 'string' }], description: 'Integer seconds, 4–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo.' }, // minimax: hailuo durations
         ratio: { type: 'string', description: 'Seedance: 16:9, 4:3, 1:1, 3:4, 9:16, 21:9, adaptive. Kling: 16:9, 9:16, 1:1.' },
         resolution: { type: 'string', enum: ['720p', '1080p'] },
         mode: { type: 'string', enum: ['std', 'pro'], description: 'Kling only; std=720p, pro=1080p.' },
@@ -275,6 +277,8 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
         const input: SubmitMusicArgs = {
           prompt: String(args.prompt ?? ''),
           name: typeof args.name === 'string' ? args.name : undefined,
+          provider: args.provider === 'mureka' || args.provider === 'minimax' ? args.provider : undefined, // minimax: optional provider
+          lyrics: typeof args.lyrics === 'string' ? args.lyrics : undefined, // minimax: optional lyrics
         };
         const submission = await submitMusic(input);
         return { ok: true, ...submission, next: `Call track_progress with target=generation and jobIds=${submission.jobId}.` };

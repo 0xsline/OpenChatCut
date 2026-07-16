@@ -15,6 +15,9 @@ interface ImagePluginOptions {
   geminiBaseUrl: string;
   geminiApiKey: string;
   geminiModel: string;
+  minimaxBaseUrl: string;
+  minimaxApiKey: string;
+  minimaxModel: string;
 }
 
 interface ImageRequest {
@@ -141,18 +144,55 @@ async function callGeminiProvider(baseUrl: string, apiKey: string, model: string
   }));
 }
 
+interface MinimaxImageResponse {
+  data?: { image_urls?: string[]; image_base64?: string[] };
+  base_resp?: { status_code?: number; status_msg?: string };
+}
+
+async function callMinimaxProvider(baseUrl: string, apiKey: string, model: string, body: { prompt: string; count: number; aspectRatio: string }): Promise<ProviderImage[]> {
+  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/image_generation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model,
+      prompt: body.prompt,
+      aspect_ratio: body.aspectRatio,
+      n: body.count,
+      response_format: 'url',
+      prompt_optimizer: true,
+    }),
+  });
+  if (!response.ok) throw new Error(await providerError(response));
+  const result = await response.json() as MinimaxImageResponse;
+  if (result.base_resp && result.base_resp.status_code !== 0) {
+    throw new Error(result.base_resp.status_msg || `MiniMax image failed (${result.base_resp.status_code})`);
+  }
+  const images: ProviderImage[] = [
+    ...(result.data?.image_urls ?? []).map((url) => ({ url })),
+    ...(result.data?.image_base64 ?? []).map((b64) => ({ b64_json: b64 })),
+  ];
+  if (!images.length) throw new Error('MiniMax returned no images');
+  return images;
+}
+
+const SAVED_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp']);
+
 async function saveImage(image: ProviderImage): Promise<string> {
   let bytes: Buffer;
+  let ext = 'png';
   if (image.b64_json) bytes = Buffer.from(image.b64_json, 'base64');
   else if (image.url) {
     const response = await fetch(image.url);
     if (!response.ok) throw new Error(`generated image download failed (${response.status})`);
     bytes = Buffer.from(await response.arrayBuffer());
+    // URL downloads (e.g. MiniMax) are often jpeg — keep the real extension.
+    const urlExt = extname(new URL(image.url).pathname).slice(1).toLowerCase();
+    if (SAVED_IMAGE_EXTS.has(urlExt)) ext = urlExt;
   } else throw new Error('image provider returned neither bytes nor URL');
 
   if (!bytes.length) throw new Error('image provider returned an empty image');
   await mkdir(UPLOAD_DIR, { recursive: true });
-  const filename = `${randomUUID()}.png`;
+  const filename = `${randomUUID()}.${ext}`;
   await writeFile(join(UPLOAD_DIR, filename), bytes);
   return `/media/uploads/${filename}`;
 }
@@ -166,7 +206,7 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
         try {
           const input = await readJson(req);
           const model = String(input.model ?? 'gpt-image-2');
-          if (model !== 'gpt-image-2' && model !== 'nano-banana') throw new Error(`unsupported model ${model}`);
+          if (model !== 'gpt-image-2' && model !== 'nano-banana' && model !== 'image-01') throw new Error(`unsupported model ${model}`);
           const prompt = String(input.prompt ?? '').trim();
           if (!prompt) throw new Error('prompt is required');
           const aspectRatio = String(input.aspectRatio ?? '16:9');
@@ -185,6 +225,13 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
             images = await callGeminiProvider(options.geminiBaseUrl, options.geminiApiKey, options.geminiModel, {
               prompt, count, aspectRatio, imageSize, referencePaths,
             });
+          } else if (model === 'image-01') {
+            if (!options.minimaxApiKey) throw new Error('MiniMax is not configured. Set MINIMAX_API_KEY in .env.local or 设置面板.');
+            if (prompt.length > 1500) throw new Error('image-01 prompt must be at most 1500 characters');
+            if (count > 9) throw new Error('image-01 supports at most 9 images per call');
+            if (referencePaths.length) throw new Error('image-01 does not support reference images');
+            // aspect_ratio is passed straight through; imageSize/quality do not apply to MiniMax.
+            images = await callMinimaxProvider(options.minimaxBaseUrl, options.minimaxApiKey, options.minimaxModel, { prompt, count, aspectRatio });
           } else {
             if (!options.apiKey) throw new Error('Image generation is not configured. Set IMAGE_API_KEY or OPENAI_API_KEY in .env.local.');
             images = await callProvider(options.baseUrl, options.apiKey, {

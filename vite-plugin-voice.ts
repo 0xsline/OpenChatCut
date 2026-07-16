@@ -20,6 +20,10 @@ const DOUBAO_VOICES: Record<string, string> = {
   shuanglangshaonian: 'saturn_zh_male_shuanglangshaonian_tob', tangseng: 'zh_male_tangseng_uranus_bigtts',
 };
 
+// MiniMax t2a_v2 emotion enum (voice_id is pass-through — system presets like
+// female-yujie and cloned voice IDs are both valid; the provider validates them).
+const MINIMAX_EMOTIONS = new Set(['happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised', 'calm', 'fluent', 'whisper']);
+
 interface VoiceOptions {
   elevenBaseUrl: string;
   elevenApiKey: string;
@@ -28,6 +32,9 @@ interface VoiceOptions {
   doubaoAppId: string;
   doubaoAccessKey: string;
   doubaoResourceId: string;
+  minimaxBaseUrl: string;
+  minimaxApiKey: string;
+  minimaxModel: string;
 }
 
 interface VoiceRequest {
@@ -140,6 +147,38 @@ async function doubao(options: VoiceOptions, input: VoiceRequest & { text: strin
   return doubaoAudio(await response.text());
 }
 
+interface MinimaxTtsResponse {
+  data?: { audio?: string };
+  base_resp?: { status_code?: number; status_msg?: string };
+}
+
+async function minimax(options: VoiceOptions, input: VoiceRequest & { text: string; voiceId: string }): Promise<Buffer> {
+  if (!options.minimaxApiKey) throw new Error('MiniMax is not configured. Set MINIMAX_API_KEY in .env.local or 设置面板.');
+  const voiceSetting: Record<string, number | string> = {
+    voice_id: input.voiceId, speed: input.speed ?? 1, vol: 1, pitch: 0,
+  };
+  if (input.emotion) voiceSetting.emotion = input.emotion;
+  const response = await fetch(`${options.minimaxBaseUrl.replace(/\/$/, '')}/v1/t2a_v2`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${options.minimaxApiKey}` },
+    body: JSON.stringify({
+      model: options.minimaxModel,
+      text: input.text,
+      stream: false,
+      output_format: 'hex',
+      voice_setting: voiceSetting,
+      audio_setting: { sample_rate: 32_000, bitrate: 128_000, format: 'mp3', channel: 1 },
+    }),
+  });
+  if (!response.ok) throw new Error(await providerError(response));
+  const result = await response.json() as MinimaxTtsResponse;
+  if (result.base_resp && result.base_resp.status_code !== 0) {
+    throw new Error(result.base_resp.status_msg || `MiniMax TTS failed (${result.base_resp.status_code})`);
+  }
+  if (!result.data?.audio) throw new Error('MiniMax returned no audio');
+  return Buffer.from(result.data.audio, 'hex');
+}
+
 async function pitchShift(file: string, semitones: number): Promise<void> {
   if (!semitones) return;
   const factor = 2 ** (semitones / 12);
@@ -181,14 +220,16 @@ async function saveAudio(bytes: Buffer, pitch: number): Promise<{ path: string; 
   return { path: `/media/uploads/${filename}`, durationSeconds: await probeDuration(file) };
 }
 
-function validate(input: VoiceRequest): VoiceRequest & { provider: 'elevenlabs' | 'doubao'; text: string; voiceId: string } {
-  if (input.provider !== 'elevenlabs' && input.provider !== 'doubao') throw new Error('provider must be elevenlabs or doubao');
+function validate(input: VoiceRequest): VoiceRequest & { provider: 'elevenlabs' | 'doubao' | 'minimax'; text: string; voiceId: string } {
+  if (input.provider !== 'elevenlabs' && input.provider !== 'doubao' && input.provider !== 'minimax') throw new Error('provider must be elevenlabs, doubao, or minimax');
   const text = String(input.text ?? '').trim();
-  const voiceId = String(input.voiceId ?? '').trim();
+  // MiniMax voiceId defaults to the female-yujie system voice.
+  const voiceId = String(input.voiceId ?? '').trim() || (input.provider === 'minimax' ? 'female-yujie' : '');
   if (!text) throw new Error('text is required');
   if (!voiceId) throw new Error('voiceId is required');
+  const [speedMin, speedMax] = input.provider === 'minimax' ? [0.5, 2] : [0.7, 1.2];
   const ranges: Array<[number | undefined, number, number, string]> = [
-    [input.stability, 0, 1, 'stability'], [input.speed, 0.7, 1.2, 'speed'],
+    [input.stability, 0, 1, 'stability'], [input.speed, speedMin, speedMax, 'speed'],
     [input.speedRatio, 0.5, 2, 'speedRatio'], [input.emotionScale, 1, 5, 'emotionScale'],
     [input.loudnessRatio, 0.5, 2, 'loudnessRatio'], [input.pitch, -12, 12, 'pitch'],
   ];
@@ -201,9 +242,14 @@ function validate(input: VoiceRequest): VoiceRequest & { provider: 'elevenlabs' 
   if (input.provider === 'elevenlabs') {
     const doubaoFields = [input.speedRatio, input.emotion, input.emotionScale, input.loudnessRatio, input.pitch, input.performancePrompt, input.explicitDialect];
     if (doubaoFields.some((value) => value != null)) throw new Error('ElevenLabs does not accept Doubao-only voice parameters');
-  } else {
+  } else if (input.provider === 'doubao') {
     const elevenFields = [input.modelId, input.stability, input.speed];
     if (elevenFields.some((value) => value != null)) throw new Error('Doubao does not accept ElevenLabs-only voice parameters');
+  } else {
+    const foreignFields = [input.modelId, input.stability, input.speedRatio, input.emotionScale, input.loudnessRatio, input.pitch, input.performancePrompt, input.explicitDialect];
+    if (foreignFields.some((value) => value != null)) throw new Error('MiniMax accepts only voiceId, speed, and emotion voice parameters');
+    if (input.emotion && !MINIMAX_EMOTIONS.has(input.emotion)) throw new Error(`MiniMax emotion must be one of: ${[...MINIMAX_EMOTIONS].join(', ')}`);
+    if (text.length > 10_000) throw new Error('MiniMax text must be at most 10000 characters');
   }
   return { ...input, provider: input.provider, text, voiceId };
 }
@@ -216,7 +262,9 @@ export function voiceGenerationPlugin(options: VoiceOptions): Plugin {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         try {
           const input = validate(await readJson(req));
-          const bytes = input.provider === 'elevenlabs' ? await elevenLabs(options, input) : await doubao(options, input);
+          const bytes = input.provider === 'elevenlabs' ? await elevenLabs(options, input)
+            : input.provider === 'doubao' ? await doubao(options, input)
+            : await minimax(options, input);
           sendJson(res, 200, await saveAudio(bytes, input.provider === 'doubao' ? input.pitch ?? 0 : 0));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);

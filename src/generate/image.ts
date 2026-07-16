@@ -1,7 +1,7 @@
 import type { MediaAsset, TimelineState } from '../editor/types';
 
 export interface SubmitImageArgs {
-  model?: 'gpt-image-2' | 'nano-banana';
+  model?: 'gpt-image-2' | 'nano-banana' | 'image-01';
   prompt: string;
   name: string;
   aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3' | '4:5' | '5:4' | '21:9';

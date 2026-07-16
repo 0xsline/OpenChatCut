@@ -1,7 +1,7 @@
 import type { MediaAsset, TimelineState } from '../editor/types';
 
 export interface SubmitVideoArgs {
-  model: 'seedance2' | 'kling';
+  model: 'seedance2' | 'kling' | 'hailuo';
   prompt?: string;
   name?: string;
   durationSeconds?: number | string;
