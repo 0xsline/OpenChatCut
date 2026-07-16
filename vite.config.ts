@@ -51,6 +51,22 @@ export default defineConfig(({ mode }) => {
   const e2bTemplate = env.E2B_TEMPLATE || process.env.E2B_TEMPLATE || '';
 
   return {
+    // Server-computed manifest of which key-gated capabilities are configured,
+    // injected for the agent's system prompt (src/agent/capabilities.ts). BOOLEANS
+    // ONLY — no key value is ever exposed to the browser.
+    define: {
+      __CONFIGURED_CAPS__: JSON.stringify({
+        image: Boolean(imageKey || geminiKey),
+        voice: Boolean((doubaoAppId && doubaoAccessKey) || elevenKey),
+        video: Boolean(seedanceKey || klingKey),
+        music: Boolean(murekaKey),
+        sound: Boolean(elevenKey),
+        stock: Boolean(pexelsKey || pixabayKey),
+        transcription: Boolean(aaiKey),
+        sandbox: Boolean(e2bKey),
+        web: Boolean(firecrawlKey),
+      }),
+    },
     plugins: [react(), exportPlugin(), uploadPlugin(), imageGenerationPlugin({
       baseUrl: imageBase,
       apiKey: imageKey,

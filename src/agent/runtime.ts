@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import { TOOL_SCHEMAS, executeTool } from './tools';
 import { SYSTEM_PROMPT, designStylePrompt, creativeModePrompt } from './systemPrompt';
+import { capabilitiesPrompt } from './capabilities';
 import { findSkill } from './skills-catalog';
 import { PLUGIN_SKILLS_INDEX } from './plugin-skills';
 import { anthropic, MODEL } from './client';
@@ -37,8 +38,9 @@ export async function runAgent(
   const conv = [...messages];
   // 问答模式：不给工具 → 模型只答不改时间线（source: Ask vs Agent）
   const tools = opts?.askOnly ? [] : TOOL_SCHEMAS;
-  // 系统提示 = 基础 + 设计风格(品牌) + 创作模式(agent_skill)
+  // 系统提示 = 基础 + 可用能力清单(按 key 配置) + 设计风格(品牌) + 创作模式(agent_skill)
   const system = SYSTEM_PROMPT
+    + capabilitiesPrompt()
     + designStylePrompt(ctx.getDoc().designStyle)
     + creativeModePrompt(findSkill(ctx.getCreativeMode()))
     + PLUGIN_SKILLS_INDEX;
