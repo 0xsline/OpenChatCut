@@ -1,40 +1,52 @@
-// 厂商图标:圆角方块 + 品牌底色 + 居中 monogram,完全自包含,不引任何外部资源。
-// 品牌色近似,本地复刻用(非官方精确色值)。
+// 厂商官方图标,vendored 自 @lobehub/icons-static-svg v1.93(MIT)与 simple-icons(CC0,
+// 仅 Pexels/Pixabay 两个非 AI 厂牌)。SVG 是本仓静态资产(非用户输入),inline 渲染以便
+// 尺寸/mono 着色继承;color 版 path 自带官方品牌色。Mureka/E2B 无官方收录 → monogram 兜底。
 import type { CSSProperties } from 'react';
+import claudeSvg from './vendor-icons/claude-color.svg?raw';
+import openaiSvg from './vendor-icons/openai.svg?raw';
+import geminiSvg from './vendor-icons/gemini-color.svg?raw';
+import minimaxSvg from './vendor-icons/minimax-color.svg?raw';
+import hailuoSvg from './vendor-icons/hailuo-color.svg?raw';
+import elevenlabsSvg from './vendor-icons/elevenlabs.svg?raw';
+import doubaoSvg from './vendor-icons/doubao-color.svg?raw';
+import volcengineSvg from './vendor-icons/volcengine-color.svg?raw';
+import klingSvg from './vendor-icons/kling-color.svg?raw';
+import assemblyaiSvg from './vendor-icons/assemblyai-color.svg?raw';
+import firecrawlSvg from './vendor-icons/firecrawl-color.svg?raw';
+import pexelsSvg from './vendor-icons/pexels.svg?raw';
+import pixabaySvg from './vendor-icons/pixabay.svg?raw';
 
 export type VendorId =
-  | 'anthropic' | 'openai' | 'gemini' | 'minimax' | 'elevenlabs' | 'doubao'
+  | 'anthropic' | 'openai' | 'gemini' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'pexels' | 'pixabay'
   | 'assemblyai' | 'e2b' | 'firecrawl';
 
-interface VendorBrand {
-  /** 品牌底色 */
-  readonly bg: string;
-  /** 居中 monogram(1-2 字符) */
-  readonly mono: string;
-  /** 文字色:亮底用深字保证对比度,缺省白字 */
-  readonly fg?: string;
-  /** 底色与面板近同色时的描边(如 ElevenLabs 黑底) */
-  readonly border?: string;
+interface SvgIcon {
+  readonly svg: string;
+  /** mono 官方标(currentColor / 无 fill)着这个色;color 版留空用自带品牌色 */
+  readonly tint?: string;
 }
 
-const WHITE = '#fff';
+const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
+  anthropic: { svg: claudeSvg },                    // Agent 大脑用 Claude 星芒(官方橙)
+  openai: { svg: openaiSvg, tint: '#e8e8e8' },      // 官方结环即单色,暗底走白
+  gemini: { svg: geminiSvg },
+  minimax: { svg: minimaxSvg },
+  hailuo: { svg: hailuoSvg },                       // MiniMax 海螺视频专属标
+  elevenlabs: { svg: elevenlabsSvg, tint: '#e8e8e8' },
+  doubao: { svg: doubaoSvg },
+  seedance: { svg: volcengineSvg },                 // Seedance = 火山引擎旗下,用火山官方标
+  kling: { svg: klingSvg },
+  assemblyai: { svg: assemblyaiSvg },
+  firecrawl: { svg: firecrawlSvg },
+  pexels: { svg: pexelsSvg, tint: '#05A081' },      // simple-icons 单色 + 官方绿
+  pixabay: { svg: pixabaySvg, tint: '#48A947' },
+};
 
-const BRANDS: Record<VendorId, VendorBrand> = {
-  anthropic: { bg: '#D97757', mono: 'A' },
-  openai: { bg: '#10A37F', mono: 'O' },
-  gemini: { bg: '#4E86F7', mono: 'G' },
-  minimax: { bg: '#E4593B', mono: 'M' },
-  elevenlabs: { bg: '#1A1A1A', mono: '11', border: '#444' },
-  doubao: { bg: '#325AB4', mono: '豆' },
-  seedance: { bg: '#1664FF', mono: 'S' },
-  kling: { bg: '#0ACF83', mono: 'K', fg: '#093a24' },
+// 官方无收录的两家兜底 monogram(品牌色近似)
+const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: string }>> = {
   mureka: { bg: '#7C5CFF', mono: 'μ' },
-  pexels: { bg: '#05A081', mono: 'P' },
-  pixabay: { bg: '#48A947', mono: 'Px' },
-  assemblyai: { bg: '#5A50E6', mono: 'Aa' },
   e2b: { bg: '#FF8800', mono: 'E2', fg: '#40230a' },
-  firecrawl: { bg: '#FF6633', mono: 'F' },
 };
 
 interface VendorIconProps {
@@ -43,11 +55,20 @@ interface VendorIconProps {
 }
 
 export function VendorIcon({ vendor, size = 18 }: VendorIconProps) {
-  const brand = BRANDS[vendor];
+  const icon = SVG_ICONS[vendor];
+  if (icon) {
+    const style: CSSProperties = {
+      // lobe SVG 是 1em×1em → fontSize 即尺寸;simple-icons 由 .cc-vendor-icon CSS 归一
+      fontSize: size, width: size, height: size, color: icon.tint,
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto',
+    };
+    // 静态本仓资产,非用户输入 —— inline 以继承尺寸与 currentColor
+    return <span aria-hidden className="cc-vendor-icon" style={style} dangerouslySetInnerHTML={{ __html: icon.svg }} />;
+  }
+  const brand = MONOGRAMS[vendor] ?? { bg: '#555', mono: '?' };
   const style: CSSProperties = {
     width: size, height: size, borderRadius: Math.round(size * 0.28),
-    background: brand.bg, color: brand.fg ?? WHITE,
-    border: brand.border ? `1px solid ${brand.border}` : 'none', boxSizing: 'border-box',
+    background: brand.bg, color: brand.fg ?? '#fff',
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto',
     fontSize: Math.round(size * (brand.mono.length > 1 ? 0.44 : 0.58)),
     fontWeight: 700, lineHeight: 1, userSelect: 'none',

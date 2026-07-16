@@ -55,8 +55,8 @@ const MINIMAX_FIELDS: readonly SettingsField[] = [
   secret('MINIMAX_API_KEY', 'API Key'),
   text('MINIMAX_BASE_URL', 'Base URL', '默认 https://api.minimaxi.com'),
 ];
-const minimax = (title: string): SettingsVendor =>
-  ({ vendor: 'minimax', title, note: MINIMAX_NOTE, fields: MINIMAX_FIELDS });
+const minimax = (title: string, vendor: VendorId = 'minimax'): SettingsVendor =>
+  ({ vendor, title, note: MINIMAX_NOTE, fields: MINIMAX_FIELDS });
 
 export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   {
@@ -107,7 +107,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           secret('KLING_API_KEY', 'API Key'),
           text('KLING_BASE_URL', 'Base URL', '默认 https://api-singapore.klingai.com'),
         ] },
-        minimax('MiniMax 海螺'),
+        minimax('MiniMax 海螺', 'hailuo'),
       ] },
       { key: 'music', title: '生音乐', hint: 'submit_music · 文字生成配乐，任一厂商即可。', vendors: [
         { vendor: 'mureka', title: 'Mureka', fields: [

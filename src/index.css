@@ -41,6 +41,10 @@ button, input, select { font: inherit; }
 .cc-header-btn { transition: color 0.12s, background 0.12s; }
 .cc-header-btn:hover { color: #e2e2e2 !important; background: rgba(255, 255, 255, 0.06); }
 
+/* vendored official brand SVGs (lobe-icons / simple-icons)。simple-icons 无宽高与 fill,
+   归一为 1em + currentColor;lobe color 版 path 自带品牌 fill 不受影响 */
+.cc-vendor-icon svg { width: 1em; height: 1em; fill: currentColor; }
+
 .cc-chat-messages { flex:1; min-height:0; overflow-y:auto; padding:4px 14px; color:#ddd; font-size:13.5px; }
 .cc-chat-messages.empty { display:flex; align-items:center; justify-content:center; overflow:hidden; }
 .cc-chat-onboarding { width:100%; max-width:322px; transform:translateY(-8px); }
