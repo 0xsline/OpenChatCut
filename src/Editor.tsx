@@ -363,6 +363,9 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             getPlayhead={getPlayhead}
             onSetReframeKeyframe={(frame, fx, fy, mag) => state.selectedId && commands.setReframeKeyframe(state.selectedId, frame, fx, fy, mag)}
             onRemoveReframeKeyframe={(frame) => state.selectedId && commands.removeReframeKeyframe(state.selectedId, frame)}
+            onSetItemKeyframe={(prop, frame, value, easing) => state.selectedId && commands.setItemKeyframe(state.selectedId, prop, frame, value, easing)}
+            onRemoveItemKeyframe={(prop, frame) => state.selectedId && commands.removeItemKeyframe(state.selectedId, prop, frame)}
+            onSeek={(frame) => shortcutApiRef.current?.seekTo(frame)}
             transition={state.transitions?.find((t) => t.incomingItemId === state.selectedId) ?? null}
             onAddTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}
             onSetTransition={(patch) => {

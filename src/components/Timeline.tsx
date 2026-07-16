@@ -4,9 +4,10 @@ import { theme } from '../theme';
 import {
   ASPECT_PRESETS, MARKER_HEX, TRANSITION_LABELS, ZOOM_SHAPE_LABELS,
   defaultTrackId, isItemSelected, selectedIdsOf, timelineDuration, timelineTrackIds, trackAlias, trackKind,
-  type MarkerColor, type TimelineItem, type TimelineState, type TrackId,
+  type KeyframeEasing, type MarkerColor, type TimelineItem, type TimelineState, type TrackId,
   type TransitionType, type ZoomShape,
 } from '../editor/types';
+import { upsertKeyframe } from '../editor/keyframes';
 import type { EditorCommands } from '../editor/store';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { ClipContextMenu, type FxClip } from './ClipContextMenu';
@@ -286,9 +287,10 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
   }, [playerRef]);
   useEffect(() => { paintPlayheadRef.current(playheadRef.current, true); }, [px, state.fps, total]);
   const zoomBy = (f: number) => setZoom((z) => Math.min(6, Math.max(MIN_TIME_ZOOM, z * f)));
-  // editing mode (source: Selection V / Blade B / Trim N). selection = drag/move;
-  // blade = click a clip to cut it there; trim = edge-trim ripples following clips.
-  const [editMode, setEditMode] = usePersistedState<'selection' | 'blade' | 'trim'>('cc.editMode', 'selection');
+  // editing mode (source: Selection V / Blade B / Trim N / Pen P). selection =
+  // drag/move; blade = click a clip to cut it there; trim = edge-trim ripples
+  // following clips; pen = draw opacity keyframes on the selected clip (PRD §4.5).
+  const [editMode, setEditMode] = usePersistedState<'selection' | 'blade' | 'trim' | 'pen'>('cc.editMode', 'selection');
   // insert = push later clips when dropping library media; overwrite = place without shift (§4.3)
   const [placeMode, setPlaceMode] = usePersistedState<'insert' | 'overwrite'>('cc.placeMode', 'overwrite');
   // magnetic snapping (source: Snapping toggle, S). On = edges lock to guides.
@@ -320,6 +322,19 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
     document.addEventListener('pointerdown', close);
     return () => document.removeEventListener('pointerdown', close);
   }, [duckMenu]);
+  // P = pen mode. V/N/B route through the global shortcut dispatcher whose API
+  // union predates 'pen'; a local listener keeps the new mode self-contained.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return;
+      if (e.key === 'p' || e.key === 'P') setEditMode('pen');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setEditMode is a stable setState
+  }, []);
   // mic voiceover recording (source: 录制旁白). Toggle to start/stop; the blob
   // is uploaded + dropped on an audio track by the parent.
   const recorder = useRecorder(onRecordVoiceover ?? (() => {}));
@@ -366,6 +381,11 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
     if (scrollRef.current) scrollRef.current.scrollLeft = 0;
   };
   const [drag, setDrag] = useState<Drag | null>(null);
+  // pen mode: one opacity keyframe dot being dragged (live preview, atomic commit on release)
+  const [penDrag, setPenDrag] = useState<{
+    itemId: string; fromFrame: number; frame: number; value: number; easing?: KeyframeEasing;
+    laneTop: number; laneHeight: number;
+  } | null>(null);
   // 选择模式 (source selection mode): clicks/drags pick REFERENCES for the chat
   // instead of editing — clip click → item ref, ruler click → timepoint, drag
   // over ruler/lanes → timerange. Editing gestures are untouched when off.
@@ -1002,6 +1022,15 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
       setPickDrag((d) => (d ? { ...d, endFrame: f } : d));
       return;
     }
+    if (penDrag) {
+      const it = state.items.find((x) => x.id === penDrag.itemId);
+      if (it) {
+        const frame = Math.max(0, Math.min(it.durationInFrames - 1, frameFromClientX(e.clientX) - it.startFrame));
+        const value = Math.max(0, Math.min(1, 1 - (e.clientY - penDrag.laneTop) / Math.max(1, penDrag.laneHeight)));
+        setPenDrag((d) => (d ? { ...d, frame, value: Math.round(value * 100) / 100 } : d));
+      }
+      return;
+    }
     if (!drag) return;
     const rawDelta = Math.round((e.clientX - drag.startX) / px);
     const { deltaF, snapAt } = applySnap(drag.mode, drag.baseStart, drag.baseDur, rawDelta);
@@ -1014,6 +1043,23 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
       const ref = resolveTimelinePick(pickDrag, Math.max(1, Math.round(4 / px)), state);
       if (ref) emitSelectionRef(ref);
       setPickDrag(null);
+      return;
+    }
+    if (penDrag) {
+      const it = state.items.find((x) => x.id === penDrag.itemId);
+      const orig = it?.keyframes?.opacity?.find((k) => k.frame === penDrag.fromFrame);
+      if (it && orig && (orig.frame !== penDrag.frame || orig.value !== penDrag.value)) {
+        // move = delete old point + set new one, committed as ONE undo step
+        const moved = upsertKeyframe(
+          (it.keyframes?.opacity ?? []).filter((k) => k.frame !== penDrag.fromFrame),
+          penDrag.frame, penDrag.value, penDrag.easing,
+        );
+        commands.applyState({
+          ...state,
+          items: state.items.map((x) => (x.id === it.id ? { ...x, keyframes: { ...x.keyframes, opacity: moved } } : x)),
+        });
+      }
+      setPenDrag(null);
       return;
     }
     if (!drag) { return; }
@@ -1090,6 +1136,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
           <TB icon="cursor" title="选择模式 (V)：拖动移动 / 裁剪首尾" active={editMode === 'selection'} onClick={() => setEditMode('selection')} />
           <TB icon="trim" title="修剪模式 (N)：裁剪片段边缘，后续片段自动跟随合缝（波纹）" active={editMode === 'trim'} onClick={() => setEditMode('trim')} />
           <TB icon="blade" title="刀片模式 (B)：点击片段在该处切分" active={editMode === 'blade'} onClick={() => setEditMode('blade')} />
+          <TB icon="pencil" title="钢笔模式 (P)：在选中片段上点击绘制透明度关键帧（纵向=不透明度，拖点改帧/值，右键删点）" active={editMode === 'pen'} onClick={() => setEditMode('pen')} />
           <TB icon="scissors" title="在播放头切分选中片段 (C)" onClick={bladeSelected} />
           <TB icon="magnet" title={`磁性吸附：${snapping ? '开' : '关'} (S)`} active={snapping} onClick={() => setSnapping((s) => !s)} />
           <ToolSep />
@@ -1364,7 +1411,8 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
                 </div>
                 <div
                   style={{
-                    flex: 1, position: 'relative', background: theme.bg, opacity: hidden ? 0.4 : 1,
+                    // locked lane: slightly dimmed (锁定轨底色微暗;锁图标同时高亮)
+                    flex: 1, position: 'relative', background: locked ? '#0b0b0b' : theme.bg, opacity: hidden ? 0.4 : locked ? 0.75 : 1,
                     outline: libDropTarget === `track:${trackId}` ? '1px dashed #6a9fd8' : undefined,
                     outlineOffset: -2,
                     cursor: pickMode ? 'crosshair' : undefined,
@@ -1417,6 +1465,17 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
                             if (f > it.startFrame && f < it.startFrame + it.durationInFrames) commands.splitItem(it.id, f);
                             return;
                           }
+                          if (editMode === 'pen') { // pen: 1st click selects, next clicks punch opacity kf (纵向=值)
+                            e.stopPropagation();
+                            if (e.button !== 0) return;
+                            if (!isItemSelected(state, it.id)) { commands.selectItem(it.id); return; }
+                            if (it.kind === 'audio' || locked) return;
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const f = Math.max(0, Math.min(it.durationInFrames - 1, Math.round(frameFromClientX(e.clientX)) - it.startFrame));
+                            const v = Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / Math.max(1, rect.height)));
+                            commands.setItemKeyframe(it.id, 'opacity', f, Math.round(v * 100) / 100);
+                            return;
+                          }
                           startDrag(e, it.id, 'move', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0);
                         }}
                         onContextMenu={(e) => { e.preventDefault(); commands.selectItem(it.id); setCtxMenu({ id: it.id, x: e.clientX, y: e.clientY }); }}
@@ -1453,7 +1512,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
                             ? '2px solid #6a9fd8'
                             : selected ? '2px solid #f2f2f2' : '1px solid rgba(255,255,255,.08)',
                           boxShadow: isLibOver ? 'inset 0 0 0 1px #6a9fd855, 0 0 0 1px #6a9fd844' : undefined,
-                          cursor: pickMode ? 'copy' : locked ? 'not-allowed' : editMode === 'blade' ? 'crosshair' : 'grab', userSelect: 'none', touchAction: 'none',
+                          cursor: pickMode ? 'copy' : locked ? 'not-allowed' : editMode === 'blade' || editMode === 'pen' ? 'crosshair' : 'grab', userSelect: 'none', touchAction: 'none',
                         }}
                       >
                         {it.kind === 'audio' && (
@@ -1462,11 +1521,55 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
                           </svg>
                         )}
                         <ClipEffectBadges item={it} hasInTransition={hasInTr} />
-                        {/* trim handles (hidden in blade + selection-pick modes) */}
-                        {!pickMode && editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
+                        {/* pen mode: opacity keyframe rubber band on the selected clip (纵向 = 值 0..1) */}
+                        {editMode === 'pen' && selected && it.kind !== 'audio' && (() => {
+                          const raw = it.keyframes?.opacity ?? [];
+                          const kfs = penDrag?.itemId === it.id
+                            ? upsertKeyframe(raw.filter((k) => k.frame !== penDrag.fromFrame), penDrag.frame, penDrag.value, penDrag.easing)
+                            : raw;
+                          if (!kfs.length) return null;
+                          const h = rowHeightOf(trackId) - 8;
+                          const w = Math.max(1, dur * px);
+                          const yOf = (v: number) => 3 + (1 - Math.max(0, Math.min(1, v))) * (h - 6);
+                          const pts = kfs.map((k) => `${(k.frame * px).toFixed(1)},${yOf(k.value).toFixed(1)}`).join(' ');
+                          const band = `0,${yOf(kfs[0].value).toFixed(1)} ${pts} ${w.toFixed(1)},${yOf(kfs[kfs.length - 1].value).toFixed(1)}`;
+                          return (
+                            <>
+                              {/* ponytail: segments draw as straight lines even when eased — the dots are the editing surface */}
+                              <svg width={w} height={h} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }} aria-hidden>
+                                <polyline points={band} fill="none" stroke="#ffd866" strokeWidth={1.2} opacity={0.9} />
+                              </svg>
+                              {kfs.map((k) => (
+                                <div
+                                  key={k.frame}
+                                  title={`透明度 ${Math.round(k.value * 100)}% @ ${(k.frame / state.fps).toFixed(2)}s — 拖动改帧/值 · 右键删除`}
+                                  onPointerDown={(e) => {
+                                    e.stopPropagation();
+                                    if (e.button !== 0 || locked) return;
+                                    // capture on the scroll container: the dot itself remounts as its
+                                    // frame (= React key) changes mid-drag, which would drop capture
+                                    scrollRef.current?.setPointerCapture?.(e.pointerId);
+                                    const lane = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+                                    setPenDrag({ itemId: it.id, fromFrame: k.frame, frame: k.frame, value: k.value, easing: k.easing, laneTop: lane.top, laneHeight: lane.height });
+                                  }}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (!locked) commands.removeItemKeyframe(it.id, 'opacity', k.frame);
+                                  }}
+                                  style={{ position: 'absolute', left: k.frame * px - 4, top: yOf(k.value) - 4, width: 8, height: 8,
+                                    background: '#ffd866', border: '1px solid rgba(0,0,0,0.85)', transform: 'rotate(45deg)',
+                                    cursor: 'grab', zIndex: 3, touchAction: 'none' }}
+                                />
+                              ))}
+                            </>
+                          );
+                        })()}
+                        {/* trim handles (hidden in blade / pen / selection-pick modes) */}
+                        {!pickMode && editMode !== 'blade' && editMode !== 'pen' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
                         <span className={`cc-clip-label${it.kind === 'audio' ? ' audio' : ''}`}>{it.name}</span>
-                        {!pickMode && editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
+                        {!pickMode && editMode !== 'blade' && editMode !== 'pen' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', right: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
                       </div>
                     );

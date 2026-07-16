@@ -24,7 +24,8 @@ function recorder() {
   const rec = (name: string) => (...a: unknown[]) => { calls.push([name, ...a]); };
   const commands: GenericCommands = {
     moveItem: rec('moveItem'), setItemTiming: rec('setItemTiming'), updateItemProps: rec('updateItemProps'),
-    setItemVolume: rec('setItemVolume'), setItemFade: rec('setItemFade'), removeItem: rec('removeItem'), rippleDeleteItem: rec('rippleDeleteItem'),
+    setItemVolume: rec('setItemVolume'), setItemFade: rec('setItemFade'), setItemKeyframe: rec('setItemKeyframe'),
+    removeItem: rec('removeItem'), rippleDeleteItem: rec('rippleDeleteItem'),
   };
   return { calls, commands };
 }
@@ -48,6 +49,22 @@ function recorder() {
   assert.equal(plan.volume, 2, 'volume clamps to 2');
   assert.equal(plan.durationInFrames, 1, 'duration floors to 1');
 }
+
+// ── generic transform keyframes (PRD §4.5): validated + batched to setItemKeyframe ──
+{
+  const plan = validateGenericUpdate(state, {
+    type: 'video', itemId: 'v1_abc',
+    keyframes: { opacity: [{ frame: 0, value: 1 }, { frame: 30, value: 0, easing: 'easeOut' }], scale: [{ frame: 0, value: 1.2 }] },
+  });
+  assert.equal(plan.error, undefined, 'keyframes update validates');
+  const { calls, commands } = recorder();
+  applyGeneric(plan, commands);
+  assert.deepEqual(calls.map((c) => c[0]), ['setItemKeyframe', 'setItemKeyframe', 'setItemKeyframe'], 'one setItemKeyframe per point');
+  assert.deepEqual(calls[1], ['setItemKeyframe', 'v1_abc', 'opacity', 30, 0, 'easeOut'], 'frame/value/easing pass through');
+}
+assert.ok(validateGenericUpdate(state, { type: 'video', itemId: 'v1_abc', keyframes: { opacity: [{ frame: 0, value: 2 }] } }).error, 'out-of-range keyframe value errors');
+assert.ok(validateGenericUpdate(state, { type: 'video', itemId: 'v1_abc', keyframes: { blur: [{ frame: 0, value: 1 }] } }).error, 'unknown keyframe prop errors');
+assert.ok(validateGenericUpdate(state, { type: 'video', itemId: 'v1_abc', keyframes: { opacity: [{ frame: 0, value: 1, easing: 'zigzag' }] } }).error, 'bad easing errors');
 
 // ── no fields → error ──
 assert.ok(validateGenericUpdate(state, { type: 'video', itemId: 'v1_abc' }).error, 'empty update errors');

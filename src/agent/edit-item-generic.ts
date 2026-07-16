@@ -4,8 +4,9 @@
 // `.frag` chain that edit-item-tools.ts drags in. Validation is pure; commit delegates to
 // the same editor commands the dedicated move_item / set_item_timing / remove_item tools
 // use — no logic duplication, just atomic-batch semantics.
-import type { MediaAsset, TimelineItem, TimelineState } from '../editor/types';
-import { defaultTrackId, resolveTrackId } from '../editor/types';
+import type { ItemKeyframes, Keyframe, KeyframeProp, MediaAsset, TimelineItem, TimelineState } from '../editor/types';
+import { KEYFRAME_PROPS, defaultTrackId, resolveTrackId } from '../editor/types';
+import { KEYFRAME_RANGE, isValidEasing } from '../editor/keyframes';
 
 type OpResult = Record<string, unknown>;
 
@@ -33,8 +34,42 @@ export interface GenericCommands {
   updateItemProps: (id: string, patch: Record<string, unknown>) => void;
   setItemVolume: (id: string, volume: number) => void;
   setItemFade: (id: string, fade: { fadeInFrames?: number; fadeOutFrames?: number }) => void;
+  setItemKeyframe: (id: string, prop: KeyframeProp, frame: number, value: number, easing?: Keyframe['easing']) => void;
   removeItem: (id: string) => void;
   rippleDeleteItem: (id: string) => void;
+}
+
+// keyframes arg: {x|y|scale|rotation|opacity: [{frame,value,easing?}…]} — boundary
+// validation for LLM output (prop whitelist, finite frame ≥0, value in range, easing shape).
+function parseKeyframesArg(raw: unknown): { keyframes?: ItemKeyframes; error?: string } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { error: 'keyframes must be an object mapping prop → [{frame,value,easing?}]' };
+  }
+  const out: ItemKeyframes = {};
+  for (const [prop, list] of Object.entries(raw as Record<string, unknown>)) {
+    if (!KEYFRAME_PROPS.includes(prop as KeyframeProp)) {
+      return { error: `keyframes prop must be one of ${KEYFRAME_PROPS.join('/')}, got "${prop}"` };
+    }
+    if (!Array.isArray(list)) return { error: `keyframes.${prop} must be an array` };
+    const [lo, hi] = KEYFRAME_RANGE[prop as KeyframeProp];
+    const kfs: Keyframe[] = [];
+    for (const entry of list) {
+      const k = (entry ?? {}) as Record<string, unknown>;
+      const frame = finiteNum(k.frame);
+      const value = finiteNum(k.value);
+      if (frame === undefined || frame < 0) return { error: `keyframes.${prop}: frame must be a finite number ≥ 0` };
+      if (value === undefined || value < lo || value > hi) {
+        return { error: `keyframes.${prop}: value must be a finite number in ${lo}..${hi}` };
+      }
+      if (k.easing !== undefined && !isValidEasing(k.easing)) {
+        return { error: `keyframes.${prop}: easing must be linear/easeIn/easeOut/easeInOut or [x1,y1,x2,y2]` };
+      }
+      kfs.push({ frame: Math.round(frame), value, ...(k.easing !== undefined ? { easing: k.easing as Keyframe['easing'] } : {}) });
+    }
+    if (kfs.length) out[prop as KeyframeProp] = kfs;
+  }
+  if (!Object.keys(out).length) return { error: 'keyframes has no keyframe entries' };
+  return { keyframes: out };
 }
 
 // Move (track/startFrame), trim (duration/srcIn), props, volume, fades (seconds→frames).
@@ -59,10 +94,17 @@ export function validateGenericUpdate(state: TimelineState, entry: Record<string
     finiteNum(v) !== undefined ? Math.max(0, Math.round(finiteNum(v)! * fps)) : undefined;
   if (toFrames(entry.fadeInSeconds) !== undefined) plan.fadeInFrames = toFrames(entry.fadeInSeconds);
   if (toFrames(entry.fadeOutSeconds) !== undefined) plan.fadeOutFrames = toFrames(entry.fadeOutSeconds);
+  if (entry.keyframes !== undefined) {
+    // generic transform keyframes (PRD §4.5) — visual clips only, item-local frames
+    if (it.kind === 'audio') return { error: 'keyframes apply to visual clips only (audio has no x/y/scale/rotation/opacity)' };
+    const parsed = parseKeyframesArg(entry.keyframes);
+    if (parsed.error) return { error: parsed.error };
+    plan.keyframes = parsed.keyframes;
+  }
 
-  const FIELDS = ['track', 'startFrame', 'durationInFrames', 'srcInFrame', 'props', 'volume', 'fadeInFrames', 'fadeOutFrames'];
+  const FIELDS = ['track', 'startFrame', 'durationInFrames', 'srcInFrame', 'props', 'volume', 'fadeInFrames', 'fadeOutFrames', 'keyframes'];
   if (!FIELDS.some((k) => k in plan)) {
-    return { error: 'update needs at least one of: track, startFrame, durationInFrames, srcInFrame, props, volume, fadeInSeconds, fadeOutSeconds' };
+    return { error: 'update needs at least one of: track, startFrame, durationInFrames, srcInFrame, props, volume, fadeInSeconds, fadeOutSeconds, keyframes' };
   }
   return plan;
 }
@@ -135,6 +177,12 @@ export function applyGeneric(plan: OpResult, commands: GenericCommands): OpResul
     if (plan.volume !== undefined) commands.setItemVolume(id, plan.volume as number);
     if (plan.fadeInFrames !== undefined || plan.fadeOutFrames !== undefined) {
       commands.setItemFade(id, { fadeInFrames: plan.fadeInFrames as number | undefined, fadeOutFrames: plan.fadeOutFrames as number | undefined });
+    }
+    if (plan.keyframes !== undefined) {
+      // batch: one setKeyframe per point (same-frame overwrites in the reducer)
+      for (const [prop, kfs] of Object.entries(plan.keyframes as ItemKeyframes)) {
+        for (const k of kfs ?? []) commands.setItemKeyframe(id, prop as KeyframeProp, k.frame, k.value, k.easing);
+      }
     }
     return { ok: true, kind: plan.kind, plan: 'genericUpdate', itemId: id };
   }

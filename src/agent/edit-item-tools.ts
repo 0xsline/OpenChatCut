@@ -36,7 +36,7 @@ export const EDIT_ITEM_TOOL_SCHEMAS: Anthropic.Tool[] = [
         updates: {
           type: 'array',
           description:
-            'Per item. Generic clip: {type:"video"|"image"|"audio"|"gif"|"svg"|"motion-graphic"|"text",itemId,track?,startFrame?,durationInFrames?,srcInFrame?,props?,volume?,fadeInSeconds?,fadeOutSeconds?}. effect: {type:"effect",id|effectId,targetItemId?,propertyOverrides,assetId?}. transition: {type:"transition",id,durationInFrames?,assetId?}. zoom via effect + propertyOverrides.',
+            'Per item. Generic clip: {type:"video"|"image"|"audio"|"gif"|"svg"|"motion-graphic"|"text",itemId,track?,startFrame?,durationInFrames?,srcInFrame?,props?,volume?,fadeInSeconds?,fadeOutSeconds?,keyframes?}. keyframes animates a visual clip\'s transform: {x|y|scale|rotation|opacity: [{frame,value,easing?}]} with frame ITEM-LOCAL (0=clip start), easing linear/easeIn/easeOut/easeInOut or a cubic-bezier [x1,y1,x2,y2]; same-frame values overwrite. effect: {type:"effect",id|effectId,targetItemId?,propertyOverrides,assetId?}. transition: {type:"transition",id,durationInFrames?,assetId?}. zoom via effect + propertyOverrides.',
           items: { type: 'object' },
         },
         deletes: {

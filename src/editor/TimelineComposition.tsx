@@ -5,8 +5,9 @@ import { GlTransition } from '../gl/GlTransition';
 import { ClipFx, firstGlEffect } from '../gl/ClipFx';
 import { keptSegments } from '../transcript/edit';
 import { zoomAt } from './zoom';
+import { sampleKeyframes } from './keyframes';
 import { CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
-import type { AspectFit, CssTransitionType, GlslTransitionType, TimelineItem, TimelineState, TransitionDirection, TransitionItem, Watermark } from './types';
+import type { AspectFit, CssTransitionType, GlslTransitionType, KeyframeProp, TimelineItem, TimelineState, TransitionDirection, TransitionItem, Watermark } from './types';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
 // fadeIn, then 1→0 across fadeOut. Used for visual opacity + audio volume.
@@ -20,13 +21,27 @@ function fadeFactor(frame: number, dur: number, fadeIn = 0, fadeOut = 0): number
 // Wraps a visual clip: ramps opacity for fade in/out and applies its static
 // transform (scale / position / rotation). x/y are percent of canvas, so
 // translate(x%,y%) offsets by that fraction of the full-frame layer.
+// Generic keyframes (PRD §4.5): a keyframed prop overrides its static transform
+// value at the current local frame; keyframed opacity multiplies onto the fades.
+// Items WITHOUT keyframes take the exact pre-keyframe code path (回归红线).
 function ClipWrapper({ item, children }: { item: TimelineItem; children: React.ReactNode }) {
   const frame = useCurrentFrame();
   const o = fadeFactor(frame, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames);
+  const kf = item.keyframes;
+  const kv = (prop: KeyframeProp): number | undefined => {
+    const list = kf?.[prop];
+    return list?.length ? sampleKeyframes(list, frame) : undefined;
+  };
+  const kx = kv('x');
+  const ky = kv('y');
+  const kr = kv('rotation');
+  const ks = kv('scale');
+  const ko = kv('opacity');
   const t = item.transform;
-  const transform = t
-    ? `translate(${t.x ?? 0}%, ${t.y ?? 0}%) rotate(${t.rotation ?? 0}deg) scale(${t.scale ?? 1})`
+  const transform = (t || kx !== undefined || ky !== undefined || kr !== undefined || ks !== undefined)
+    ? `translate(${kx ?? t?.x ?? 0}%, ${ky ?? t?.y ?? 0}%) rotate(${kr ?? t?.rotation ?? 0}deg) scale(${ks ?? t?.scale ?? 1})`
     : undefined;
+  const opacity = ko === undefined ? o : o * Math.max(0, Math.min(1, ko));
   const fl = item.filters;
   const filter = fl
     ? `brightness(${fl.brightness ?? 1}) contrast(${fl.contrast ?? 1}) saturate(${fl.saturate ?? 1}) blur(${fl.blur ?? 0}px)`
@@ -41,7 +56,7 @@ function ClipWrapper({ item, children }: { item: TimelineItem; children: React.R
       </AbsoluteFill>
     );
   }
-  return <AbsoluteFill style={{ opacity: o, transform, filter }}>{inner}</AbsoluteFill>;
+  return <AbsoluteFill style={{ opacity, transform, filter }}>{inner}</AbsoluteFill>;
 }
 
 // ── transitions (source transition_item, CSS approximation of the GLSL set) ──

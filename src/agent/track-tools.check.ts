@@ -32,6 +32,24 @@ assert.deepStrictEqual(await execTrackTool('edit_track', { action: 'delete', tra
 await execTrackTool('edit_track', { action: 'delete', trackId: made.created[0].id }, ctx);
 assert.ok(!(await execTrackTool('edit_track', { action: 'list' }, ctx) as { id: string }[]).some((track) => track.id === made.created[0].id));
 
+// ── lock (source edit_track locked): update lands, list reports it, edits freeze ──
+const lockRes = await execTrackTool('edit_track', { action: 'update', trackId: 'A1', json: '{"locked":true}' }, ctx) as { ok?: boolean; track: { locked: boolean } };
+assert.strictEqual(lockRes.track.locked, true, 'update locked:true lands');
+const lockedState = draft.getState();
+assert.strictEqual(reduce(lockedState, { type: 'move', id: 'a', startFrame: 99 }), lockedState, 'move on locked track no-ops');
+assert.strictEqual(reduce(lockedState, { type: 'retime', id: 'a', durationInFrames: 5 }), lockedState, 'retime on locked track no-ops');
+assert.strictEqual(reduce(lockedState, { type: 'remove', id: 'a' }), lockedState, 'delete on locked track no-ops');
+assert.strictEqual(reduce(lockedState, { type: 'split', id: 'a', atFrame: 15, newId: 'a2' }), lockedState, 'split on locked track no-ops');
+assert.strictEqual(reduce(lockedState, { type: 'setVolume', id: 'a', volume: 0 }), lockedState, 'prop edit on locked track no-ops');
+assert.strictEqual(
+  reduce(lockedState, { type: 'add', item: { id: 'n', track: lockedState.items[0].track, durationInFrames: 5, name: 'n', kind: 'audio', src: '/n.mp3' } }),
+  lockedState, 'nothing new lands on a locked track',
+);
+assert.deepStrictEqual(await execTrackTool('edit_track', { action: 'tighten', trackId: 'A1' }, ctx), { error: 'track is locked' });
+await execTrackTool('edit_track', { action: 'update', trackId: 'A1', json: '{"locked":false}' }, ctx);
+const unlockedList = await execTrackTool('edit_track', { action: 'list' }, ctx) as { alias: string; locked: boolean }[];
+assert.strictEqual(unlockedList.find((track) => track.alias === 'A1')!.locked, false, 'unlock lands + list carries locked');
+
 // Source empty projects start with one video lane and no audio lane. Audio lanes
 // may all be removed; the final video lane remains protected.
 const empty: TimelineState = { fps: 30, width: 1920, height: 1080, selectedId: null, items: [] };

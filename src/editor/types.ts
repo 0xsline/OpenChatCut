@@ -111,6 +111,25 @@ export interface ZoomEffect {
   reframeCurve?: ReframeCurveV1;
 }
 
+/** easing of a generic keyframe SEGMENT (this keyframe → the next): named CSS
+ * curves or a cubic-bezier control tuple [x1,y1,x2,y2]. Default linear.
+ * (PRD §4.5 "bezier 缓动";存储格式源站无据,自定。) */
+export type KeyframeEasing = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | [number, number, number, number];
+
+/** one generic transform keyframe. `frame` is the item-LOCAL edited frame
+ * (0 = clip start), so keyframes travel with the clip when it moves. */
+export interface Keyframe {
+  frame: number;
+  value: number;
+  easing?: KeyframeEasing;
+}
+
+/** the five keyframable properties (PRD §4.5: 位置/缩放/透明度/旋转可 K 帧) */
+export type KeyframeProp = 'x' | 'y' | 'scale' | 'rotation' | 'opacity';
+export const KEYFRAME_PROPS: readonly KeyframeProp[] = ['x', 'y', 'scale', 'rotation', 'opacity'];
+/** per-prop sparse keyframe curves on an item (sorted by frame — reducer invariant) */
+export type ItemKeyframes = Partial<Record<KeyframeProp, Keyframe[]>>;
+
 /** per-clip visual transform (scale/position/rotation) — source 缩放 tab */
 export interface ClipTransform {
   /** 1 = 100% */
@@ -160,6 +179,10 @@ export interface TimelineItem {
   fadeOutFrames?: number;
   /** static transform for visual clips (source 缩放/transform: scale, position, rotate) */
   transform?: ClipTransform;
+  /** generic transform keyframes (PRD §4.5 钢笔工具): per-prop curves in item-local
+   * edit frames. A keyframed prop overrides its static transform value; opacity
+   * multiplies onto fades. Visual clips only. */
+  keyframes?: ItemKeyframes;
   /** color/blur adjustments for visual clips (source 特效/LUT) */
   filters?: ClipFilters;
   /** animated zoom (source builtin:zoom) — shape curve or reframe keyframes */

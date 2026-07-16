@@ -1,5 +1,5 @@
 import { useMemo, useReducer, useRef } from 'react';
-import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
+import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeEditorState, activeTimeline, defaultTrackId, resolveTrackId } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
@@ -61,6 +61,11 @@ export interface EditorCommands {
   removeMarker: (id: string) => void;
   setReframeKeyframe: (id: string, frame: number, focalPointX: number, focalPointY: number, magnification: number) => void;
   removeReframeKeyframe: (id: string, frame: number) => void;
+  /** set/update one generic transform keyframe at an item-local frame (PRD §4.5 钢笔工具) */
+  setItemKeyframe: (id: string, prop: KeyframeProp, frame: number, value: number, easing?: KeyframeEasing) => void;
+  removeItemKeyframe: (id: string, prop: KeyframeProp, frame: number) => void;
+  /** clear one prop's generic keyframes, or all of them when prop omitted */
+  clearItemKeyframes: (id: string, prop?: KeyframeProp) => void;
   addTransition: (incomingItemId: string, type: TransitionType, durationInFrames?: number, custom?: { frag: string; uniforms: Record<string, number>; label: string }) => void;
   setTransition: (id: string, patch: Partial<TransitionItem>) => void;
   removeTransition: (id: string) => void;
@@ -344,6 +349,9 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       removeMarker: (id) => dispatch({ type: 'removeMarker', id }),
       setReframeKeyframe: (id, frame, focalPointX, focalPointY, magnification) => dispatch({ type: 'reframeKeyframe', id, frame, focalPointX, focalPointY, magnification }),
       removeReframeKeyframe: (id, frame) => dispatch({ type: 'removeReframeKeyframe', id, frame }),
+      setItemKeyframe: (id, prop, frame, value, easing) => dispatch({ type: 'setKeyframe', id, prop, frame, value, easing }),
+      removeItemKeyframe: (id, prop, frame) => dispatch({ type: 'removeKeyframe', id, prop, frame }),
+      clearItemKeyframes: (id, prop) => dispatch({ type: 'clearKeyframes', id, prop }),
       addTransition: (incomingItemId, type, durationInFrames, custom) => dispatch({ type: 'addTransition', id: uid('tr'), incomingItemId, transType: type, durationInFrames, custom }),
       setTransition: (id, patch) => dispatch({ type: 'setTransition', id, patch }),
       removeTransition: (id) => dispatch({ type: 'removeTransition', id }),

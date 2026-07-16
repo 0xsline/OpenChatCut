@@ -4,7 +4,7 @@ import { resolveTrackId, timelineTrackIds, trackAlias, trackKind, type TimelineS
 
 export const TRACK_TOOL_SCHEMAS: Anthropic.Tool[] = [{
   name: 'edit_track',
-  description: 'Manage tracks. Actions: list | create | update | delete | tighten. Tracks have stable ids plus V1/A1 aliases that may renumber after insertion. create accepts json with trackType video/audio, optional count/order/name/role/audioRouting. update changes order/hidden/muted/name/role/audioRouting. delete removes empty tracks only. tighten closes gaps between clips.',
+  description: 'Manage tracks. Actions: list | create | update | delete | tighten. Tracks have stable ids plus V1/A1 aliases that may renumber after insertion. create accepts json with trackType video/audio, optional count/order/name/role/audioRouting. update changes order/hidden/muted/locked/name/role/audioRouting — locked freezes the lane: clips on a locked track cannot be moved/trimmed/split/deleted/edited and nothing new lands on it. delete removes empty tracks only. tighten closes gaps between clips.',
   input_schema: {
     type: 'object',
     properties: {
@@ -44,6 +44,7 @@ function describe(state: TimelineState, id: TrackId) {
     name: config.name ?? null,
     hidden: config.hidden ?? false,
     muted: config.muted ?? false,
+    locked: config.locked ?? false,
     role: config.role ?? null,
     audioRouting: config.audioRouting ?? null,
     clips: state.items.filter((item) => item.track === id).length,
@@ -90,13 +91,14 @@ export async function execTrackTool(name: string, args: Args, ctx: AgentContext)
       if (typeof data.order === 'number') patch.order = Math.round(data.order);
       if (typeof data.hidden === 'boolean') patch.hidden = data.hidden;
       if (typeof data.muted === 'boolean') patch.muted = data.muted;
+      if (typeof data.locked === 'boolean') patch.locked = data.locked;
       if (typeof data.name === 'string') patch.name = data.name.trim();
       if (data.role === null || data.role === 'anchor' || data.role === 'follower') patch.role = data.role as TrackRole | null;
       const routing = data.audioRouting as Args | undefined;
       if (routing && (routing.duckDepthDb === null || typeof routing.duckDepthDb === 'number')) {
         patch.audioRouting = { duckDepthDb: routing.duckDepthDb === null ? null : Math.max(-60, Math.min(0, Number(routing.duckDepthDb))) };
       }
-      if (!Object.keys(patch).length) return { error: 'update json must include order, hidden, muted, name, role, or audioRouting' };
+      if (!Object.keys(patch).length) return { error: 'update json must include order, hidden, muted, locked, name, role, or audioRouting' };
       ctx.commands.updateTrack(id, patch);
       const after = ctx.getState();
       return { ok: true, track: describe(after, id), tracks: list(after) };

@@ -1,7 +1,8 @@
 import { theme } from '../theme';
 import type { PropSpec, Tpl } from '../types';
-import type { ClipEffect, ClipEffectValue, ClipFilters, ClipTransform, TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../editor/types';
+import type { ClipEffect, ClipEffectValue, ClipFilters, ClipTransform, Keyframe, KeyframeEasing, KeyframeProp, TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../editor/types';
 import { AUDIO_TRANSITION_ORDER, TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../editor/types';
+import { sampleKeyframes } from '../editor/keyframes';
 import { ALL_FX as FX_EFFECTS } from '../gl/fx/effects';
 const FX_IDS = Object.keys(FX_EFFECTS);
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -178,6 +179,11 @@ interface InspectorPanelProps {
   getPlayhead: () => number;
   onSetReframeKeyframe: (frame: number, focalPointX: number, focalPointY: number, magnification: number) => void;
   onRemoveReframeKeyframe: (frame: number) => void;
+  /** generic transform keyframes (PRD §4.5) on the selected item — item-local frames */
+  onSetItemKeyframe: (prop: KeyframeProp, frame: number, value: number, easing?: KeyframeEasing) => void;
+  onRemoveItemKeyframe: (prop: KeyframeProp, frame: number) => void;
+  /** seek the preview to an ABSOLUTE timeline frame (‹/› keyframe jumps) */
+  onSeek: (frame: number) => void;
   transition: TransitionItem | null;
   onAddTransition: (type: TransitionType) => void;
   onSetTransition: (patch: Partial<TransitionItem>) => void;
@@ -203,16 +209,105 @@ function SliderRow({
   );
 }
 
-// scale / position / rotation for visual clips (source 缩放 tab).
-function TransformControl({ item, onChange }: { item: TimelineItem; onChange: (p: ClipTransform) => void }) {
+/** per-property keyframe API handed down by InspectorPanel (playhead in item-local frames) */
+interface KfApi {
+  localFrame: number;
+  set: (prop: KeyframeProp, frame: number, value: number, easing?: KeyframeEasing) => void;
+  remove: (prop: KeyframeProp, frame: number) => void;
+  seekLocal: (frame: number) => void;
+}
+
+const EASING_OPTIONS: { value: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut'; label: string }[] = [
+  { value: 'linear', label: '线性' }, { value: 'easeIn', label: '缓入' },
+  { value: 'easeOut', label: '缓出' }, { value: 'easeInOut', label: '缓入出' },
+];
+
+// end-of-row keyframe rail (PRD §4.5;UI 仿 reframe 关键帧模式,布局自定):
+// ◆ punches/updates at the playhead (filled when one sits there), ‹ › jump
+// between keyframes, × deletes the one under the playhead, plus segment easing.
+function KfCell({ kfs, localFrame, punchValue, onSet, onRemove, onSeekLocal }: {
+  kfs: Keyframe[] | undefined;
+  localFrame: number;
+  punchValue: number;
+  onSet: (frame: number, value: number, easing?: KeyframeEasing) => void;
+  onRemove: (frame: number) => void;
+  onSeekLocal: (frame: number) => void;
+}) {
+  const at = kfs?.find((k) => k.frame === localFrame);
+  const prev = kfs ? [...kfs].reverse().find((k) => k.frame < localFrame) : undefined;
+  const next = kfs?.find((k) => k.frame > localFrame);
+  const btn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, width: 13, height: 16, display: 'grid', placeItems: 'center', fontSize: 10, color: theme.textDim, lineHeight: 1 };
+  const off: React.CSSProperties = { ...btn, opacity: 0.3, cursor: 'default' };
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+      <button type="button" style={prev ? btn : off} disabled={!prev} title="上一关键帧" onClick={() => prev && onSeekLocal(prev.frame)}>‹</button>
+      <button
+        type="button"
+        style={{ ...btn, fontSize: 11, color: at ? theme.accent : kfs?.length ? '#c8c8c8' : theme.textDim }}
+        title={at ? '更新播放头处的关键帧' : '在播放头打关键帧'}
+        onClick={() => onSet(localFrame, punchValue, at?.easing)}
+      >{at ? '◆' : '◇'}</button>
+      <button type="button" style={next ? btn : off} disabled={!next} title="下一关键帧" onClick={() => next && onSeekLocal(next.frame)}>›</button>
+      <button type="button" style={at ? btn : off} disabled={!at} title="删除播放头处的关键帧" onClick={() => at && onRemove(localFrame)}>×</button>
+      {at && (
+        <select
+          value={Array.isArray(at.easing) ? 'bezier' : at.easing ?? 'linear'}
+          title="缓动（此关键帧到下一帧的曲线）"
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === 'bezier') return; // custom tuples are agent-authored; keep as-is
+            onSet(localFrame, at.value, v === 'linear' ? undefined : (v as KeyframeEasing));
+          }}
+          style={{ background: theme.bg, color: theme.textDim, border: `1px solid ${theme.borderLight}`, borderRadius: 3, fontSize: 9, padding: '0 1px', maxWidth: 50 }}
+        >
+          {EASING_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {Array.isArray(at.easing) && <option value="bezier">贝塞尔</option>}
+        </select>
+      )}
+    </span>
+  );
+}
+
+// scale / position / rotation for visual clips (source 缩放 tab) + per-property
+// keyframe rails and an opacity curve row (PRD §4.5). A keyframed prop shows the
+// value sampled at the playhead; dragging it then punches a keyframe there.
+function TransformControl({ item, onChange, kf }: { item: TimelineItem; onChange: (p: ClipTransform) => void; kf: KfApi }) {
   const t = item.transform ?? {};
-  const scale = t.scale ?? 1;
+  const rows: { prop: KeyframeProp; label: string; min: number; max: number; step: number; base: number; fmt: (v: number) => string; patch: (v: number) => ClipTransform }[] = [
+    { prop: 'scale', label: '缩放', min: 0.1, max: 3, step: 0.05, base: t.scale ?? 1, fmt: (v) => `${Math.round(v * 100)}%`, patch: (v) => ({ scale: v }) },
+    { prop: 'x', label: '水平', min: -100, max: 100, step: 1, base: t.x ?? 0, fmt: (v) => `${Math.round(v)}%`, patch: (v) => ({ x: v }) },
+    { prop: 'y', label: '垂直', min: -100, max: 100, step: 1, base: t.y ?? 0, fmt: (v) => `${Math.round(v)}%`, patch: (v) => ({ y: v }) },
+    { prop: 'rotation', label: '旋转', min: -180, max: 180, step: 1, base: t.rotation ?? 0, fmt: (v) => `${Math.round(v)}°`, patch: (v) => ({ rotation: v }) },
+  ];
+  // 透明度自身即关键帧曲线(无静态透明度字段;无关键帧时恒 1)——源站无据,自定
+  const opacityKfs = item.keyframes?.opacity;
+  const opacityVal = opacityKfs?.length ? sampleKeyframes(opacityKfs, kf.localFrame) : 1;
   return (
     <div className="cc-insp-stack">
-      <SliderRow label="缩放" val={scale} min={0.1} max={3} step={0.05} fmt={`${Math.round(scale * 100)}%`} onChange={(v) => onChange({ scale: v })} />
-      <SliderRow label="水平" val={t.x ?? 0} min={-100} max={100} step={1} fmt={`${Math.round(t.x ?? 0)}%`} onChange={(v) => onChange({ x: v })} />
-      <SliderRow label="垂直" val={t.y ?? 0} min={-100} max={100} step={1} fmt={`${Math.round(t.y ?? 0)}%`} onChange={(v) => onChange({ y: v })} />
-      <SliderRow label="旋转" val={t.rotation ?? 0} min={-180} max={180} step={1} fmt={`${Math.round(t.rotation ?? 0)}°`} onChange={(v) => onChange({ rotation: v })} />
+      {rows.map((r) => {
+        const kfs = item.keyframes?.[r.prop];
+        const val = kfs?.length ? sampleKeyframes(kfs, kf.localFrame) : r.base;
+        return (
+          <div key={r.prop} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <SliderRow label={r.label} val={val} min={r.min} max={r.max} step={r.step} fmt={r.fmt(val)}
+                onChange={(v) => (kfs?.length ? kf.set(r.prop, kf.localFrame, v) : onChange(r.patch(v)))} />
+            </div>
+            <KfCell kfs={kfs} localFrame={kf.localFrame} punchValue={val}
+              onSet={(frame, value, easing) => kf.set(r.prop, frame, value, easing)}
+              onRemove={(frame) => kf.remove(r.prop, frame)} onSeekLocal={kf.seekLocal} />
+          </div>
+        );
+      })}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <SliderRow label="透明" val={opacityVal} min={0} max={1} step={0.01} fmt={`${Math.round(opacityVal * 100)}%`}
+            onChange={(v) => kf.set('opacity', kf.localFrame, v)} />
+        </div>
+        <KfCell kfs={opacityKfs} localFrame={kf.localFrame} punchValue={opacityVal}
+          onSet={(frame, value, easing) => kf.set('opacity', frame, value, easing)}
+          onRemove={(frame) => kf.remove('opacity', frame)} onSeekLocal={kf.seekLocal} />
+      </div>
     </div>
   );
 }
@@ -496,7 +591,7 @@ function EffectsControl({ item, onChange }: { item: TimelineItem; onChange: (eff
 
 // Property editor for the selected timeline item (sits under the preview).
 // Collapsible so it doesn't crowd the preview when you don't need it.
-export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, onItemZoomChange, onItemEffectsChange, getPlayhead, onSetReframeKeyframe, onRemoveReframeKeyframe, transition, onAddTransition, onSetTransition, onRemoveTransition }: InspectorPanelProps) {
+export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, onItemZoomChange, onItemEffectsChange, getPlayhead, onSetReframeKeyframe, onRemoveReframeKeyframe, onSetItemKeyframe, onRemoveItemKeyframe, onSeek, transition, onAddTransition, onSetTransition, onRemoveTransition }: InspectorPanelProps) {
   const [collapsed, setCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const schema = selectedItem
     ? templates.find((t) => t.id === selectedItem.templateId)?.propSchema ?? []
@@ -543,7 +638,12 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
             {hint && <div className="cc-insp-hint">{hint}</div>}
             {selectedItem.kind === 'text' && <><SectionLabel>文字</SectionLabel><TextControl item={selectedItem} onPropChange={onItemPropChange} /></>}
             {hasVolume && <><SectionLabel>音量</SectionLabel><VolumeControl item={selectedItem} onChange={onItemVolumeChange} /></>}
-            {isVisual && <><SectionLabel>变换</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} /></>}
+            {isVisual && <><SectionLabel>变换</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} kf={{
+              localFrame: Math.max(0, Math.min(selectedItem.durationInFrames - 1, Math.round(getPlayhead()) - selectedItem.startFrame)),
+              set: onSetItemKeyframe,
+              remove: onRemoveItemKeyframe,
+              seekLocal: (frame) => onSeek(selectedItem.startFrame + frame),
+            }} /></>}
             {isVisual && <><SectionLabel>滤镜</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} /></>}
             {(selectedItem.kind === 'video' || selectedItem.kind === 'image' || selectedItem.kind === 'gif') && <><SectionLabel>特效</SectionLabel><EffectsControl item={selectedItem} onChange={onItemEffectsChange} /></>}
             {isVisual && <><SectionLabel>缩放</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} getLocalFrame={() => Math.max(0, Math.min(selectedItem.durationInFrames - 1, getPlayhead() - selectedItem.startFrame))} fps={fps} onSetKeyframe={onSetReframeKeyframe} onRemoveKeyframe={onRemoveReframeKeyframe} /></>}

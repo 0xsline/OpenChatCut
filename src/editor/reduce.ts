@@ -1,8 +1,9 @@
 // Pure reducer layer: the per-timeline reducer (`reduce`) + the project reducer
 // (`projectReduce`, routing per-timeline actions to the active timeline) + the
 // undo/redo history wrapper. The command set + React hook live in store.ts.
-import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, Marker, MediaAsset, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
+import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeTimeline, DEFAULT_WATERMARK, isAudioTransition, selectedIdsOf, timelineTrackIds, trackEnd, trackKind } from './types';
+import { KEYFRAME_RANGE, scaleItemKeyframes, splitItemKeyframes, upsertKeyframe } from './keyframes';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
 import { editedFrames, fillerIndices, splitClipTranscript } from '../transcript/edit';
@@ -26,6 +27,10 @@ export type Action =
   | { type: 'removeMarker'; id: string }
   | { type: 'reframeKeyframe'; id: string; frame: number; focalPointX: number; focalPointY: number; magnification: number }
   | { type: 'removeReframeKeyframe'; id: string; frame: number }
+  // generic transform keyframes (PRD §4.5 钢笔工具): frame = item-local edit frame
+  | { type: 'setKeyframe'; id: string; prop: KeyframeProp; frame: number; value: number; easing?: KeyframeEasing }
+  | { type: 'removeKeyframe'; id: string; prop: KeyframeProp; frame: number }
+  | { type: 'clearKeyframes'; id: string; prop?: KeyframeProp }
   | { type: 'addTransition'; id: string; incomingItemId: string; transType: TransitionType; durationInFrames?: number; custom?: { frag: string; uniforms: Record<string, number>; label: string } }
   | { type: 'setTransition'; id: string; patch: Partial<TransitionItem> }
   | { type: 'removeTransition'; id: string }
@@ -95,12 +100,16 @@ export type Dispatch = (a: Action | { type: 'undo' } | { type: 'redo' }) => void
 /** dispatch at the project level: per-timeline + project actions + undo/redo */
 export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' }) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'setKeyframe', 'removeKeyframe', 'clearKeyframes', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
   'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset', 'pool.setTranscription', 'pool.relinkAsset', 'pool.removeAsset']);
 
 const EMPTY_CURVE = { version: 1, timebase: 'effect-frame', coordinateSpace: 'composition-normalized', keyframes: [] } as const;
+
+/** true when the item sits on a locked track — modifications must no-op (source lock 语义). */
+const lockedItem = (s: TimelineState, id: string): boolean =>
+  s.items.some((it) => it.id === id && s.tracks?.[it.track]?.locked);
 
 // recompute a transcript-edited clip's duration under its current edit state
 function editOptsOf(it: TimelineItem): { maxGapFrames?: number; gapCapsMs?: Record<string, number>; playOrder?: number[] } {
@@ -127,6 +136,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       return { ...s, items: [...base, item], selectedId: item.id, selectedIds: [item.id] };
     }
     case 'updateProps':
+      if (lockedItem(s, a.id)) return s;
       return {
         ...s,
         items: s.items.map((it) =>
@@ -159,11 +169,13 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         ),
       };
     case 'setVolume':
+      if (lockedItem(s, a.id)) return s;
       return {
         ...s,
         items: s.items.map((it) => (it.id === a.id ? { ...it, volume: Math.max(0, Math.min(2, a.volume)) } : it)),
       };
     case 'setFade':
+      if (lockedItem(s, a.id)) return s;
       return {
         ...s,
         items: s.items.map((it) => {
@@ -178,26 +190,31 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         }),
       };
     case 'setTransform':
+      if (lockedItem(s, a.id)) return s;
       return {
         ...s,
         items: s.items.map((it) => (it.id === a.id ? { ...it, transform: { ...it.transform, ...a.patch } } : it)),
       };
     case 'setFilters':
+      if (lockedItem(s, a.id)) return s;
       return {
         ...s,
         items: s.items.map((it) => (it.id === a.id ? { ...it, filters: { ...it.filters, ...a.patch } } : it)),
       };
     case 'setZoom':
+      if (lockedItem(s, a.id)) return s;
       return {
         ...s,
         items: s.items.map((it) => (it.id === a.id ? { ...it, zoom: a.patch === null ? undefined : { ...it.zoom, ...a.patch } } : it)),
       };
     case 'setEffects':
+      if (lockedItem(s, a.id)) return s;
       return {
         ...s,
         items: s.items.map((it) => (it.id === a.id ? { ...it, effects: a.effects.length ? a.effects : undefined } : it)),
       };
     case 'replaceMedia':
+      if (lockedItem(s, a.id)) return s;
       // 转为视频: swap an MG/text clip for the baked video, keeping its slot
       // (track/start/duration/name/volume). Effects/transform/etc. are already
       // rendered into the video, so they're dropped.
@@ -209,6 +226,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
           : it)),
       };
     case 'setSpeed':
+      if (lockedItem(s, a.id)) return s;
       return {
         ...s,
         items: s.items.map((it) => {
@@ -216,10 +234,18 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
           const rate = Math.max(0.1, Math.min(8, a.rate));
           // preserve the source span: newDuration = sourceSpan / rate
           const sourceSpan = it.durationInFrames * (it.playbackRate ?? 1);
-          return { ...it, playbackRate: rate, durationInFrames: Math.max(1, Math.round(sourceSpan / rate)) };
+          const durationInFrames = Math.max(1, Math.round(sourceSpan / rate));
+          return {
+            ...it,
+            playbackRate: rate,
+            durationInFrames,
+            // retiming stretches the clip → its keyframe curves stretch with it
+            ...(it.keyframes ? { keyframes: scaleItemKeyframes(it.keyframes, durationInFrames / it.durationInFrames) } : {}),
+          };
         }),
       };
     case 'reframeKeyframe':
+      if (lockedItem(s, a.id)) return s;
       return {
         ...s,
         items: s.items.map((it) => {
@@ -235,6 +261,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         }),
       };
     case 'removeReframeKeyframe':
+      if (lockedItem(s, a.id)) return s;
       return {
         ...s,
         items: s.items.map((it) => {
@@ -244,6 +271,48 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
           return { ...it, zoom: { ...it.zoom, reframeCurve } };
         }),
       };
+    case 'setKeyframe': {
+      // generic transform keyframe (PRD §4.5): same-frame overwrites, kept sorted.
+      const target = s.items.find((x) => x.id === a.id);
+      if (!target || target.kind === 'audio' || lockedItem(s, a.id)
+        || !Number.isFinite(a.frame) || !Number.isFinite(a.value)) return s;
+      const frame = Math.max(0, Math.round(a.frame));
+      const [lo, hi] = KEYFRAME_RANGE[a.prop];
+      const value = Math.max(lo, Math.min(hi, a.value));
+      return {
+        ...s,
+        items: s.items.map((it) => (it.id === a.id
+          ? { ...it, keyframes: { ...it.keyframes, [a.prop]: upsertKeyframe(it.keyframes?.[a.prop], frame, value, a.easing) } }
+          : it)),
+      };
+    }
+    case 'removeKeyframe': {
+      const target = s.items.find((x) => x.id === a.id);
+      if (lockedItem(s, a.id) || !target?.keyframes?.[a.prop]?.some((k) => k.frame === a.frame)) return s;
+      return {
+        ...s,
+        items: s.items.map((it) => {
+          if (it.id !== a.id) return it;
+          const rest = it.keyframes![a.prop]!.filter((k) => k.frame !== a.frame);
+          const { [a.prop]: _gone, ...others } = it.keyframes!;
+          const keyframes = rest.length ? { ...others, [a.prop]: rest } : others;
+          return { ...it, keyframes: Object.keys(keyframes).length ? keyframes : undefined };
+        }),
+      };
+    }
+    case 'clearKeyframes': {
+      const target = s.items.find((x) => x.id === a.id);
+      if (lockedItem(s, a.id) || !target?.keyframes || (a.prop && !target.keyframes[a.prop])) return s;
+      return {
+        ...s,
+        items: s.items.map((it) => {
+          if (it.id !== a.id || !it.keyframes) return it;
+          if (!a.prop) return { ...it, keyframes: undefined };
+          const { [a.prop]: _gone, ...rest } = it.keyframes;
+          return { ...it, keyframes: Object.keys(rest).length ? rest : undefined };
+        }),
+      };
+    }
     case 'addTransition': {
       const inItem = s.items.find((x) => x.id === a.incomingItemId);
       if (!inItem) return s;
@@ -600,11 +669,14 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       // renders the other half's words. Fades belong to the outer edges only: the left half's
       // OUT and the right half's IN are now the mid-clip cut, so drop fadeOut-left / fadeIn-right.
       const tp = it.transcript?.length ? splitClipTranscript(it, s.fps, cut) : null;
+      // generic keyframes partition at the same cut (boundary anchors keep每帧采样一致)
+      const kp = it.keyframes ? splitItemKeyframes(it.keyframes, cut) : null;
       const left = {
         ...it,
         durationInFrames: cut,
         fadeOutFrames: undefined,
         ...(tp ? { transcript: tp.left.transcript, deletedWordIdx: tp.left.deletedWordIdx, variants: tp.left.variants, gapCapsMs: tp.left.gapCapsMs, transcriptPlayOrder: undefined } : {}),
+        ...(kp ? { keyframes: kp[0] } : {}),
       };
       // the right half resumes the source where the left one ended (advances srcInFrame)
       const right = {
@@ -615,6 +687,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         srcInFrame: (it.srcInFrame ?? 0) + cut,
         fadeInFrames: undefined,
         ...(tp ? { transcript: tp.right.transcript, deletedWordIdx: tp.right.deletedWordIdx, variants: tp.right.variants, gapCapsMs: tp.right.gapCapsMs, transcriptPlayOrder: undefined } : {}),
+        ...(kp ? { keyframes: kp[1] } : {}),
       };
       return { ...s, items: s.items.flatMap((x) => (x.id === a.id ? [left, right] : [x])) };
     }
