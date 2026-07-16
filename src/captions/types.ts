@@ -1,5 +1,6 @@
 import type { TranscriptWord } from '../transcript/types';
 import type { CaptionStyleOverride } from './styles';
+import { segmentWords } from './segmenter';
 
 /** 3×3 title-safe anchors + shorthands (source edit_captions action=layout preset). */
 export type CaptionAnchor =
@@ -103,8 +104,11 @@ const LINGER_MS = 1500;
 // (positions into `words`) forces a page to start right there — used by
 // wordOverrides' forceBreak (src/captions/resolve.ts). Optional + defaults to
 // none, so existing callers (translate.ts, no-override render) stay unaffected.
-export function paginate(words: TranscriptWord[], pacing: CaptionPacing, maxPhraseWords = MAX_PHRASE_WORDS, breakBefore?: Set<number>): CaptionPage[] {
+// `maxCharsPerLine` (optional) switches phrase pacing to the content-aware
+// segmenter (segmenter.ts, 源站断点打分语义); unset → 旧逻辑逐字节不变。
+export function paginate(words: TranscriptWord[], pacing: CaptionPacing, maxPhraseWords = MAX_PHRASE_WORDS, breakBefore?: Set<number>, maxCharsPerLine?: number): CaptionPage[] {
   if (pacing === 'word') return words.map((w) => ({ words: [w], start: w.start, end: w.end }));
+  if (maxCharsPerLine !== undefined) return paginateContentAware(words, maxPhraseWords, breakBefore, maxCharsPerLine);
   const pages: CaptionPage[] = [];
   let cur: TranscriptWord[] = [];
   const flush = () => {
@@ -119,6 +123,25 @@ export function paginate(words: TranscriptWord[], pacing: CaptionPacing, maxPhra
     if (cur.length >= maxPhraseWords || SENTENCE_END.test(words[i].text) || bigGap) flush();
   }
   flush();
+  return pages;
+}
+
+// 内容感知分页(P1-#3):forceBreak 仍最高优先——先按 breakBefore 切成硬块,再在
+// 每块内跑源站语义的 segmentWords(标点/句末/CJK 助词/孤词打分回退断行)。仅当
+// 调用方显式给 maxCharsPerLine 才走这里;21 个预设默认不传,行为不变(逐预设启用留后续)。
+function paginateContentAware(words: TranscriptWord[], maxPhraseWords: number, breakBefore: Set<number> | undefined, maxCharsPerLine: number): CaptionPage[] {
+  const pages: CaptionPage[] = [];
+  const cuts = [...(breakBefore ?? [])].filter((i) => i > 0 && i < words.length).sort((a, b) => a - b);
+  let chunkStart = 0;
+  for (const boundary of [...cuts, words.length]) {
+    const chunk = words.slice(chunkStart, boundary);
+    const starts = segmentWords(chunk, { maxCharsPerLine, wordsPerPage: maxPhraseWords });
+    for (let s = 0; s < starts.length; s++) {
+      const ws = chunk.slice(starts[s], starts[s + 1] ?? chunk.length);
+      if (ws.length) pages.push({ words: ws, start: ws[0].start, end: ws[ws.length - 1].end });
+    }
+    chunkStart = boundary;
+  }
   return pages;
 }
 
