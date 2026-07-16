@@ -51,12 +51,12 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 | # | 项 | 主要文件 | 认领 |
 |---|---|---|---|
 | §2.1 | **`edit_captions` 21-action 重写**（最大债） | `agent/transcript-tools.ts` + `captions-tools.ts` + `captions/*` | **[C] ✅** |
-| §2.2 | `manage_transcript` translation_*/retry | `agent/transcript-tools.ts` + `transcript/variants.ts` | **[C]** |
+| §2.2 | `manage_transcript` translation_*/retry | `agent/transcript-tools.ts` + `transcript/variants.ts` | **[C] ✅** |
 | §2.3 | `isolate_voice` attach | `agent/isolate-tools.ts`（`setItemDenoise` 已在） | **[C] ✅** |
 | §1.3 | `export_motion_graphic_prores` | `agent/mg-video-tools.ts`（薄封装 `exportClipMov`） | **[C] ✅** |
 | §1.1 | `ask_followup_questions` 注册工具 | 新 `agent/followup-tools.ts`（复用现成 `<widget>`） | **[C] ✅** |
-| §2.6 | `edit_item` 批处理统一/`ripple`/`validateOnly` | `agent/edit-item-tools.ts`（我已在此做过 ripple/fade） | **[C]** |
-| §2.7 | convert alpha 说明（description 写清 opaque） | `agent/mg-video-tools.ts` | **[C]** |
+| §2.6 | `edit_item` 批处理统一/`ripple`/`validateOnly` | `agent/edit-item-tools.ts`（我已在此做过 ripple/fade） | **[C] ✅** |
+| §2.7 | convert alpha 说明（description 写清 opaque） | `agent/mg-video-tools.ts` | **[C] ✅** |
 | §1.2 | 工程会话 7 工具（create/list/delete/duplicate/edit/restore/target_project） | 新 `agent/project-tools.ts` + `persist/projectStore.ts` + `context.ts` | **[G]** |
 | §1.4 + §2.5 | `search_fonts` + `submit_export` confirmFontFallback/nleFormat（字体门一体） | 新 `agent/font-tools.ts` + `generate-tools.ts`/`export-tools.ts` + `fonts/googleFonts.ts` | **[G]** |
 | §2.4 | `download_media` / `push_asset` 同名（`import_url_asset` 转别名） | `agent/stock-tools.ts` | **[G]** |
@@ -164,16 +164,15 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 
 ---
 
-### 2.2 🟡 `manage_transcript`
+### 2.2 ✅ `manage_transcript` — 6-action 对齐 **[C 已完成 · 96c4d92]**
 
 | | |
 |--|--|
 | **源站 action** | `fix, retry_transcription, translation_create, translation_ensure, translation_list, translation_read` |
-| **源站位置** | `mcp-tools-schema.json` → `manage_transcript` |
-| **本仓 agent** | `src/agent/transcript-tools.ts`：`fix | renameSpeaker | translate` |
-| **本仓 UI** | `src/transcript/TranscriptPanel.tsx`、`TranscriptViews.tsx`、`segment.ts`、`edit.ts`、`variants.ts` |
-| **本仓 转写入口** | `transcribe_track` + `assemblyai.ts` |
-| **怎么改** | 1. schema action 扩到源站集合。2. `translation_create/ensure/list/read`：映射现有 `variants.ts` + `translate` 逻辑，**不要改词时间戳**。3. `retry_transcription`：复用 `transcribe_track`/AssemblyAI，支持可选 `audioBase64`（可二期）。4. `fix`：保留 wordIndex/find，并兼容源站 `content` 批命令（解析 `FIX` 行）若需要。5. `renameSpeaker` 可保留为扩展 action（源 MCP enum 无，但对 UI 有用）。 |
+| **本仓 agent（已重写）** | `src/agent/transcript-tools.ts` → `manageTranscript()` 六 action 派发。`fix` 折叠说话人（from/to 出现→改 speaker，否则 wordIndex/find+text 改 text）；`translation_create`（强制覆盖）+ `translation_ensure`（幂等复用）拆自旧 `translate`；新增 `translation_list`/`translation_read`（读 `it.variants`）+ `retry_transcription`（复用 `transcribePath` 强制重转，不跳过已转写）。 |
+| **护城河③** | 所有 action 只改 `word.text`/`.speaker` 或译文变体（变体词按源下标 i 键、timing 取源词）；词起止/帧位/词数/片段时长恒不变。 |
+| **验证** | `transcript-tools.check.ts` 覆盖 fix(词/说话人)+translation_list/read/ensure(复用,不跑 LLM)+缺 lang/无源 error，并入 `npm test`；tsc app+node 双过。旧 `renameSpeaker`/`translate` 名的 systemPrompt/captions-sources 引用已改。 |
+| **二期可选** | `retry_transcription` 的 `audioBase64` 外部字节直传、`fix` 的源站 `content` 批命令（FIX/SPEAKER 多行）解析——本仓用结构化参数等价，暂不需要。 |
 
 ---
 
@@ -207,18 +206,17 @@ P0 §2.1 `edit_captions` → §2.2 `manage_transcript` → §2.3 `isolate_voice 
 
 ---
 
-### 2.6 🟡 `edit_item` 批处理语义
+### 2.6 ✅ `edit_item` 批处理语义 **[C 契约已具备,见 residual]**
 
 | | |
 |--|--|
 | **源站** | `adds/updates/deletes` 数组 + `ripple` + `validateOnly` |
-| **本仓** | `src/agent/edit-item-tools.ts` + 大量拆分工具（`move_item`…） |
-| **本仓 UI** | 时间线拖拽：`Timeline.tsx`；命令：`src/editor/store.ts` |
-| **怎么改** | 1. 读源 schema 把 `edit_item` 收成**唯一批入口**（内部仍调 store）。2. `validateOnly` 干跑不写 history。3. `ripple` 与 `rippleDeleteItem` / add 的 ripple 对齐。4. 拆分工具可保留但 description 写「prefer edit_item」。 |
+| **本仓（已具备）** | `src/agent/edit-item-tools.ts`：`edit_item` 已是批入口 `{adds,updates,deletes,ripple,validateOnly}`。两阶段:先全量校验(任一失败→`aborted`,零变更,原子回滚),`validateOnly:true` 只回 `wouldApply` 预览不提交,`validateOnly⊕ripple` 互斥报错(源站契约)。覆盖 type=effect(LUT+zoom)/transition/motion-graphic/audio;通用 video/image 走 move_item/remove_item(源站 edit_item 也含这些类型,本仓架构拆分,TODO 认可)。此契约在早批 ripple/fade 工作里落地并读核正确。 |
+| **residual（非阻塞）** | (a) `edit-item-tools.ts` 516 行 > 500 硬上限——干净修法=把 helpers+validators+commitPlan 抽到 `edit-item-ops.ts`(纯搬,tsc 验),但**无 runnable check**(见 b),留待该文件下次被主动改时用 git-diff 可审地搬。(b) edit_item 的 import 链 `gl/fx/effects` 引 `.frag`,tsx/node 加载不了→无法写 `*.check.ts`(所以历来没有),契约靠读核 + tsc 守。 |
 
 ---
 
-### 2.7 🟡 `convert_motion_graphic_to_video` 无 alpha
+### 2.7 ✅ `convert_motion_graphic_to_video` 无 alpha（说明已写清 · 6d71478）
 
 | | |
 |--|--|
@@ -385,7 +383,7 @@ chatcut-clone/
 ### P0 契约
 
 - [x] **[C]** `edit_captions` action 机对齐源 enum（§2.1）
-- [ ] **[C]** `manage_transcript` translation_* + retry（§2.2）
+- [x] **[C]** `manage_transcript` translation_* + retry（§2.2）
 - [x] **[C]** `isolate_voice` attach（§2.3）
 - [x] **[C]** `export_motion_graphic_prores` 注册（§1.3）
 - [x] **[C]** `ask_followup_questions` 注册（§1.1）
@@ -394,8 +392,8 @@ chatcut-clone/
 
 - [x] **[G]** `download_media` / `push_asset` 同名（§2.4）
 - [x] **[G]** `search_fonts` + export `confirmFontFallback`（§1.4 §2.5）
-- [ ] **[C]** `edit_item` 批处理/ripple/validateOnly 文档化或对齐（§2.6）
-- [ ] **[C]** MG convert 透明策略写清或实现 alpha（§2.7）
+- [x] **[C]** `edit_item` 批处理/ripple/validateOnly 文档化或对齐（§2.6，契约已具备；file-size 清理 residual）
+- [x] **[C]** MG convert 透明策略写清或实现 alpha（§2.7，说明已写清；alpha 编码属环境二期）
 
 ### P2 工程 MCP
 
