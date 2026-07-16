@@ -83,7 +83,9 @@ export async function setKeys(patch: Record<string, unknown>): Promise<void> {
     if (!SETTABLE.has(name)) continue;  // whitelist
     const v = String(raw ?? '');
     if (/[\r\n]/.test(v)) throw new Error(`invalid value for ${name}: no newlines allowed`);
-    clean.set(name, v.trim());
+    const t = v.trim();
+    if (t.includes('"') && t.includes("'")) throw new Error(`invalid value for ${name}: cannot contain both quote types`);
+    clean.set(name, t);
   }
   if (clean.size === 0) return;
   for (const [name, v] of clean) {
@@ -95,6 +97,18 @@ export async function setKeys(patch: Record<string, unknown>): Promise<void> {
     throw err;
   });
   await writeFile(ENV_PATH, mergeEnvText(existing, clean), 'utf8');
+}
+
+/** One .env line. dotenv treats an unquoted `#` as an inline comment and strips a fully
+ * quote-wrapped value's quotes on read — so values containing `#` or fully wrapped in
+ * quotes must be re-quoted (with whichever quote char the value doesn't contain; both at
+ * once is rejected in setKeys) or they'd silently degrade across a dev-server restart. */
+function envLine(name: string, v: string): string {
+  const needsQuote = v.includes('#')
+    || (v.length >= 2 && ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))));
+  if (!needsQuote) return `${name}=${v}`;
+  const q = v.includes('"') ? "'" : '"';
+  return `${name}=${q}${v}${q}`;
 }
 
 /** Merge `patch` into a .env file's text: update lines whose key matches, drop lines whose
@@ -110,13 +124,13 @@ export function mergeEnvText(existing: string, patch: Map<string, string>): stri
     if (m && patch.has(m[1])) {
       seen.add(m[1]);
       const v = patch.get(m[1])!;
-      if (v) out.push(`${m[1]}=${v}`);  // empty → drop the line (cleared)
+      if (v) out.push(envLine(m[1], v));  // empty → drop the line (cleared)
     } else {
       out.push(line);
     }
   }
   for (const [name, v] of patch) {
-    if (!seen.has(name) && v) out.push(`${name}=${v}`);
+    if (!seen.has(name) && v) out.push(envLine(name, v));
   }
   return out.join('\n') + '\n';
 }

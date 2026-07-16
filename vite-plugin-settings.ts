@@ -15,7 +15,14 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
     chunks.push(buf);
   }
   if (chunks.length === 0) return {};
-  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    // Generic message on purpose: V8's SyntaxError can echo the raw body (which may
+    // contain a key value) and our catch-all logs error messages.
+    throw new Error('invalid JSON body');
+  }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('body must be a JSON object');
   return parsed as Record<string, unknown>;
 }

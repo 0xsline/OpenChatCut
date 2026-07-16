@@ -22,8 +22,9 @@ export interface CaptionStyle {
   wordsPerPage?: number;
 }
 
-// Source preset order and rendering values from the captured editor bundle.
-// labelZh/hint are clone UX; colors match source presets for the live overlay.
+// The 9 source-named presets follow PRD §4.17 (bundle only evidences "Bubble Pop" —
+// preset values are server-side); the other 12 presets are 源站无据,自定 extensions.
+// labelZh/hint are clone UX.
 export const CAPTION_STYLES: CaptionStyle[] = [
   { id: 'plain', label: 'Plain', labelZh: '简洁白字', hint: '白字无底，适合口播', fontFamily: 'Inter', fontSize: .042, fontWeight: 400, color: '#fff', highlightColor: '#fff', strokeColor: '#000', strokeWidth: 0, textShadow: 'none' },
   { id: 'netflix', label: 'Netflix', labelZh: '影院白字', hint: '轻阴影，像正片字幕', fontFamily: 'Roboto', fontSize: .039, fontWeight: 400, color: '#fff', highlightColor: '#fff', strokeColor: '#000', strokeWidth: 0, textShadow: '2px 2px 3px #000b' },

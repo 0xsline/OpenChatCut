@@ -141,6 +141,10 @@ assert.equal(w3.ok, true);
 assert.equal(w3.overrides, 2, 'out-of-range entry ignored, count unchanged');
 assert.ok(w3.errors?.some((e) => e.includes('out of range')));
 
+// 回归(审计 B1):text:null 清一个从未 override 过的词 = no-op,不许抛 TypeError
+const wNull = await execCaptionsTool('edit_captions', { action: 'display_text', json: { overrides: [{ wordIndex: 3, text: null }] } }, ctx) as { ok: boolean };
+assert.equal(wNull.ok, true, 'text:null on a never-overridden word is a safe no-op');
+
 // clearOverrides:一次清空所有逐词覆盖
 const wClr = await execCaptionsTool('edit_captions', { action: 'display_text', json: { clearOverrides: true } }, ctx) as { ok: boolean; cleared: boolean };
 assert.equal(wClr.cleared, true);

@@ -1,6 +1,6 @@
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -105,7 +105,11 @@ export function uploadPlugin(): Plugin {
           if (buf.length === 0) { sendError(res, 400, 'empty body'); return; }
           await mkdir(UPLOAD_DIR, { recursive: true });
           const fname = assetId ? `${assetId}${ext}` : `${randomUUID()}${ext}`;
-          await writeFile(join(UPLOAD_DIR, fname), buf);
+          // Atomic publish: write to a hidden .part then rename, so a concurrent render
+          // (whose bundle symlinks this dir) can never read a half-written file.
+          const partPath = join(UPLOAD_DIR, `.${fname}.part`);
+          await writeFile(partPath, buf);
+          await rename(partPath, join(UPLOAD_DIR, fname));
           sendJson(res, 200, {
             path: `/media/uploads/${fname}`,
             bytes: buf.length,

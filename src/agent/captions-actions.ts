@@ -70,7 +70,7 @@ function displayText(json: Record<string, unknown>, c: CaptionsData, ctx: AgentC
     const patch: CaptionWordOverride = {};
     if (typeof e.hidden === 'boolean') patch.hidden = e.hidden;
     if (typeof e.text === 'string') patch.text = e.text;
-    if (e.text === null) delete next[wi].text;
+    if (e.text === null && next[wi]) delete next[wi].text; // clearing a never-overridden word is a no-op, not a crash
     if (typeof e.forcePageBreak === 'boolean') patch.forceBreak = e.forcePageBreak;
     else if (typeof e.forceBreak === 'boolean') patch.forceBreak = e.forceBreak;
     if (Object.keys(patch).length) next[wi] = { ...next[wi], ...patch };

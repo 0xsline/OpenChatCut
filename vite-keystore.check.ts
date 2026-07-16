@@ -26,6 +26,16 @@ for (const name of BASE_URL_NAMES) {
   assert.ok(out3.includes(`${name}=https://relay.example/${name.toLowerCase()}`), `${name} written to .env text`);
 }
 
+// ── envLine quoting: values dotenv would mangle (inline # / fully quote-wrapped) get re-quoted ──
+const out4 = mergeEnvText('', new Map([
+  ['LLM_API_KEY', 'ab#cd'],           // unquoted # would be read back as inline comment
+  ['E2B_TEMPLATE', '"wrapped"'],      // unquoted would have its quotes stripped on read
+  ['PEXELS_API_KEY', 'plain-key'],    // stays unquoted
+]));
+assert.ok(out4.includes('LLM_API_KEY="ab#cd"'), 'value with # gets double-quoted');
+assert.ok(out4.includes('E2B_TEMPLATE=\'"wrapped"\''), 'quote-wrapped value re-quoted with the other quote char');
+assert.ok(out4.includes('PEXELS_API_KEY=plain-key'), 'plain value stays unquoted');
+
 // ── seed + status: booleans + source only, and the derived caps — NEVER a key value ──
 seedKeystore({ LLM_API_KEY: 'secret-abc', PEXELS_API_KEY: 'px-1' } as Record<string, string>);
 const st = keyStatus();

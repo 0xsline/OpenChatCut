@@ -6,7 +6,7 @@
 import { bundle } from '@remotion/bundler';
 import { selectComposition, renderMedia, renderStill } from '@remotion/renderer';
 import path from 'node:path';
-import { cp } from 'node:fs/promises';
+import { cp, mkdir, rm, symlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -38,24 +38,37 @@ async function buildServeUrl() {
   // paths — e.g. <Audio src="/audio/track-1.mp3"> in TimelineComposition — so
   // overlay public/ onto the bundle root to serve those paths identically.
   await cp(PUBLIC_DIR, serveUrl, { recursive: true });
+  // Live-link runtime uploads: push_asset / upload / paste / image-gen write files
+  // AFTER this one-time snapshot, and a stale snapshot makes the headless renderer
+  // 404 them (stills come out blank; <video> decodes the 404 page as
+  // MEDIA_ELEMENT_ERROR). Replace the snapshot dir with a symlink to the real
+  // uploads dir so every render sees the live files — no per-render copying.
+  await mkdir(UPLOAD_DIR, { recursive: true });
+  const linkPath = path.join(serveUrl, 'media', 'uploads');
+  try {
+    await rm(linkPath, { recursive: true, force: true });
+    await symlink(UPLOAD_DIR, linkPath, 'dir');
+    uploadsLive = true;
+  } catch {
+    uploadsLive = false; // symlink unavailable → getServeUrl falls back to per-call copy
+  }
   return serveUrl;
 }
 
-// Return the cached serve bundle, re-syncing runtime-uploaded media on every call.
-// The webpack bundle is built once (expensive), but push_asset / upload / paste write
-// new files to public/media/uploads/ at runtime — AFTER that one-time snapshot — so
-// without this the headless renderer 404s them: stills/exports come out blank and a
-// <video> decodes the 404 page as MEDIA_ELEMENT_ERROR (format error). Copying only the
-// uploads dir is cheap and keeps every render (view_timeline_frames + /export) current.
+// True when <serveUrl>/media/uploads is a symlink to the live uploads dir.
+let uploadsLive = false;
+
+// Return the cached serve bundle. Normal path: uploads are symlinked (live), nothing to
+// sync. Fallback (no symlink support): re-copy the uploads dir on each call so runtime
+// uploads still render, at the old per-render copy cost.
 async function getServeUrl() {
   if (!bundlePromise) {
     bundlePromise = buildServeUrl();
   }
   const serveUrl = await bundlePromise;
-  try {
+  if (!uploadsLive) {
+    await mkdir(UPLOAD_DIR, { recursive: true }); // ensure exists: cp must never ENOENT-race
     await cp(UPLOAD_DIR, path.join(serveUrl, 'media', 'uploads'), { recursive: true });
-  } catch (err) {
-    if (err?.code !== 'ENOENT') throw err; // no uploads dir yet = nothing to sync
   }
   return serveUrl;
 }

@@ -29,7 +29,9 @@ interface ChatComposerProps {
   /** Structured @ refs attached to the next send (source chat_context_entry). */
   selectedRefs?: RefItem[];
   onRemoveRef?: (id: string) => void;
-  /** Paste supported files (video/image/audio/gif/svg) straight into the chat. */
+  /** Paste supported files (video/image/audio/gif/svg) straight into the chat.
+   * 源站无据,自定:源站的 clipboard 粘贴把文件插到时间线 playhead,聊天 @ref 走
+   * picker;「粘到聊天框→入池+@ref」是这两个源站能力的本仓自定组合。 */
   onPasteFiles?: (files: File[]) => void;
   /** true while a pasted file is importing into the pool */
   pasting?: boolean;
