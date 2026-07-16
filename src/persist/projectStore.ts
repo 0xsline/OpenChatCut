@@ -20,6 +20,16 @@ export interface ProjectMeta {
   deletedAt?: number;
   /** Optional free-text description (source edit_project). */
   description?: string;
+  /**
+   * 创建工程时选中的场景预设 id(创作起步画廊,见 src/generate/scenarioPresets.ts)。
+   *
+   * 接线缝(seam,主线后续在编辑器侧接):Editor 加载工程时若此字段存在且该
+   * 工程聊天为空,应调用 `presetInitialMessage(scenarioPresetId)` 把预设 prompt
+   * (占位符已转「(请补充: …)」)预填/发送为首条 agent 消息,并可把对应
+   * `agentGuidance` 注入 agent 上下文。本层只负责持久化。
+   * 旧 IDB 数据无此字段 → undefined,天然兼容。
+   */
+  scenarioPresetId?: string;
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -357,12 +367,17 @@ export async function saveProject(id: string, doc: ProjectDoc): Promise<void> {
   }
 }
 
-export async function createProject(name: string, doc: ProjectDoc, opts?: { description?: string }): Promise<ProjectMeta> {
+export async function createProject(
+  name: string,
+  doc: ProjectDoc,
+  opts?: { description?: string; scenarioPresetId?: string },
+): Promise<ProjectMeta> {
   const meta: ProjectMeta = {
     id: newId(),
     name,
     updatedAt: now(),
     ...(opts?.description ? { description: opts.description } : {}),
+    ...(opts?.scenarioPresetId ? { scenarioPresetId: opts.scenarioPresetId } : {}),
   };
   await idbSet(projectKey(meta.id), doc);
   await idbSet(INDEX_KEY, [meta, ...(await readIndex())]);

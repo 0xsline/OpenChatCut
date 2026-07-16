@@ -3,6 +3,7 @@ import type { PlayerRef } from '@remotion/player';
 import { theme } from './theme';
 import { TopBar } from './components/TopBar';
 import { ChatPanel } from './components/ChatPanel';
+import { presetInitialMessage } from './generate/scenarioPresets';
 import { LibraryPanel } from './library/LibraryPanel';
 import { PreviewPanel } from './components/PreviewPanel';
 import { InspectorPanel } from './components/InspectorPanel';
@@ -314,7 +315,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
 
       {showShortcuts && <ShortcutsDialog onClose={() => setShowShortcuts(false)} />}
 
-      <ChatPanel ctx={agentCtx} projectId={project.id} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} seed={chatSeed} creativeMode={creativeMode} onCreativeModeChange={changeCreativeMode} onImportMedia={importToPool} />
+      <ChatPanel ctx={agentCtx} projectId={project.id} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} seed={chatSeed} creativeMode={creativeMode} onCreativeModeChange={changeCreativeMode} onImportMedia={importToPool} presetText={project.scenarioPresetId ? presetInitialMessage(project.scenarioPresetId) : undefined} />
 
       <div style={{ gridColumn: 2, gridRow: '2 / 5' }}>
         {!chatCollapsed && <Divider onResize={(dx) => setChatW((w) => clamp(w + dx, CHAT_MIN_W, Math.max(CHAT_MIN_W, viewportW - libW - CANVAS_MIN_W - SPLITTER_TOTAL_W)))} />}

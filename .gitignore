@@ -17,6 +17,10 @@ out.mp4
 # user-imported media (dev upload endpoint)
 public/media/uploads/
 
+# scenario-preset hover previews (96MB of mp4) stay local-only — covers are committed;
+# re-copy from chatcut-reverse/resources/scenario-presets/assets/ if missing
+public/scenario-presets/*-preview.mp4
+
 # DeepFilterNet3 local venv
 .venv-df/
 .venv/

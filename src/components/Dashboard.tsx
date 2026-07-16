@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { theme } from '../theme';
 import type { ProjectMeta } from '../persist/projectStore';
+import type { ScenarioPreset } from '../generate/scenarioPresets';
 import { Icon } from './icons';
+import { ScenarioGallery } from './ScenarioGallery';
 import { SettingsDialog } from './SettingsDialog';
 
 interface DashboardProps {
   projects: ProjectMeta[];
   onOpen: (id: string) => void;
   onNew: () => void;
+  onPickPreset: (preset: ScenarioPreset) => void;
   onRename: (id: string, name: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
@@ -21,7 +24,7 @@ function relTime(ms: number): string {
   return `${Math.floor(s / 86400)} 天前`;
 }
 
-export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDelete }: DashboardProps) {
+export function Dashboard({ projects, onOpen, onNew, onPickPreset, onRename, onDuplicate, onDelete }: DashboardProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -91,6 +94,8 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
             </div>
           ))}
         </div>
+
+        <ScenarioGallery onPick={onPickPreset} />
       </main>
 
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}

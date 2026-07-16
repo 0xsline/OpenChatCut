@@ -6,7 +6,8 @@ import {
   randomProjectName, docFromTimeline, type ProjectMeta,
 } from './persist/projectStore';
 import type { ProjectDoc, TimelineState } from './editor/types';
-import { applyLiveCaps, applyLiveKeyStatus } from './agent/capabilities';
+import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from './agent/capabilities';
+import { setLlmModel } from './agent/client';
 
 const Editor = lazy(() => import('./Editor'));
 
@@ -65,10 +66,14 @@ export default function App() {
   // keys (booleans only) refine the manifest to vendor granularity.
   useEffect(() => {
     fetch('/api/keys')
-      .then((r) => r.json() as Promise<{ caps?: Record<string, boolean>; keys?: Record<string, { configured: boolean }> }>)
+      .then((r) => r.json() as Promise<{ caps?: Record<string, boolean>; keys?: Record<string, { configured: boolean }>; models?: Record<string, string> }>)
       .then((d) => {
         if (d?.caps) applyLiveCaps(d.caps);
         if (d?.keys) applyLiveKeyStatus(d.keys);
+        if (d?.models) {
+          applyLiveModels(d.models);              // per-vendor models + PREFERRED_* routing
+          if (d.models.LLM_MODEL) setLlmModel(d.models.LLM_MODEL);
+        }
       })
       .catch(() => { /* dev endpoint absent (e.g. preview build) — keep the define snapshot */ });
   }, []);
@@ -103,6 +108,12 @@ export default function App() {
       projects={projects}
       onOpen={(id) => go(`#/editor/${id}`)}
       onNew={async () => { const m = await createProject(randomProjectName(), emptyDoc()); await refresh(); go(`#/editor/${m.id}`); }}
+      onPickPreset={async (preset) => {
+        // 场景起步:空工程 + meta 记下预设 id(编辑器读它注入首条消息,见 projectStore 缝说明)。
+        const m = await createProject(preset.nameZh, emptyDoc(), { scenarioPresetId: preset.id });
+        await refresh();
+        go(`#/editor/${m.id}`);
+      }}
       onRename={async (id, name) => { await renameProject(id, name); refresh(); }}
       onDuplicate={async (id) => { await duplicateProject(id); refresh(); }}
       onDelete={async (id) => { await deleteProject(id); refresh(); }}
