@@ -15,6 +15,9 @@ export interface DisplayMessage {
 export function useAgent(ctx: AgentContext, projectId: string) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [running, setRunning] = useState(false);
+  // true once this project's saved chat has been loaded — consumers that want to act
+  // "only on a genuinely empty chat" (e.g. scenario-preset composer seeding) gate on it
+  const [hydrated, setHydrated] = useState(false);
   // pending edit proposal awaiting the user's apply/reject (source: edit-proposal)
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const llmRef = useRef<LLMMessage[]>(initialMessages());
@@ -32,12 +35,14 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   useEffect(() => {
     let alive = true;
     hydratedRef.current = false;
+    setHydrated(false);
     setProposal(null);
     loadChat(projectId).then((saved) => {
       if (!alive) return;
       setMessages(saved ? (saved.messages as DisplayMessage[]) : []);
       llmRef.current = saved ? (saved.llm as LLMMessage[]) : initialMessages();
       hydratedRef.current = true;
+      setHydrated(true);
     });
     return () => { alive = false; };
   }, [projectId]);
@@ -182,5 +187,5 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     void clearChat(projectId);
   }, [running, projectId]);
 
-  return { messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal, clearHistory };
+  return { messages, running, hydrated, send, stop, enhance, proposal, applyProposal, rejectProposal, clearHistory };
 }

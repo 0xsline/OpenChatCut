@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import type { TimelineItem, TrackId, TrackKind } from '../editor/types';
+import { emitSelectionRef, transcriptRefFromDomSelection, useSelectionRefMode } from '../agent/selection-refs';
 import { useTranscript } from './useTranscript';
 import { msToFrame, type TranscriptWord } from './types';
 import { analyzeSilences } from './segment';
@@ -8,6 +9,7 @@ import { ScriptView } from './TranscriptViews';
 import { CaptionsControls } from '../captions/CaptionsControls';
 import type { CaptionsData } from '../captions/types';
 import { buildTranslation } from '../captions/translate';
+import { theme } from '../theme';
 import { Icon } from '../components/icons';
 
 /** Track row for the transcript selector (alias + human name, never raw UUID alone). */
@@ -105,6 +107,9 @@ export function TranscriptPanel({
   const [showAllSections, setShowAllSections] = useState(false);
   const dragClipFrom = useRef<string | null>(null);
   const [dragOverClipId, setDragOverClipId] = useState<string | null>(null);
+  // 选择模式 (source transcript-selected): drag-select words → structured reference
+  const pickMode = useSelectionRefMode();
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   // Keep selection valid when project tracks change.
   useEffect(() => {
@@ -148,6 +153,14 @@ export function TranscriptPanel({
   };
 
   const focusIndex = focusItem ? clips.findIndex((c) => c.id === focusItem.id) : -1;
+
+  // Selection mode: a native text selection over the word spans becomes a
+  // transcript-selection reference (词 id / 文本 / 源媒体 ms + keptSegments 帧映射).
+  const pickFromDomSelection = () => {
+    if (!pickMode || !bodyRef.current) return;
+    const reference = transcriptRefFromDomSelection(bodyRef.current, clips, fps);
+    if (reference) emitSelectionRef(reference);
+  };
 
   const transcribeTrack = async () => {
     if (!clips.length) return;
@@ -285,7 +298,12 @@ export function TranscriptPanel({
         </div>
       )}
 
-      <div className="cc-tx-body">
+      {pickMode && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 12px', fontSize: 11, color: theme.accent, flexShrink: 0 }}>
+          选择模式：拖选一段词句作为引用（松开即添加到聊天）
+        </div>
+      )}
+      <div className="cc-tx-body" ref={bodyRef} onMouseUp={pickFromDomSelection} style={pickMode ? { cursor: 'text' } : undefined}>
         {!track || selectable.length === 0 ? (
           <div className="cc-tx-empty-card">
             <div className="cc-tx-empty-icon" aria-hidden><Icon name="mic" size={22} /></div>
@@ -465,6 +483,7 @@ export function TranscriptPanel({
                         playOrder={c.transcriptPlayOrder}
                         minDisplayMs={minDisplayMs}
                         onWord={(w) => {
+                          if (pickMode) return; // selection mode: words are for drag-select, not seek/delete
                           setFocusItemId(c.id);
                           if (editMode) onToggleWord(c.id, w.gi);
                           else playerRef.current?.seekTo(c.startFrame + msToFrame(w.start, fps));

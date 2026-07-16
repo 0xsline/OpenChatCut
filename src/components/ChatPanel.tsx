@@ -5,6 +5,7 @@ import type { MediaAsset, TimelineState } from '../editor/types';
 import { kindOf } from '../media/upload';
 import { useAgent } from '../agent/useAgent';
 import { thinkingPhrase } from '../agent/thinkingPhrases';
+import { onSelectionRef, refPromptToken, setSelectionRefMode } from '../agent/selection-refs';
 import { shouldBlockAutoApply } from '../agent/skillGuard';
 import { ProposalCard } from './ProposalCard';
 import { ChatMessage } from './chat/ChatMessage';
@@ -37,15 +38,19 @@ interface ChatPanelProps {
   onCreativeModeChange: (id: string | null) => void;
   /** Import a pasted/attached file into the media pool (same pipeline as 我的素材 upload). */
   onImportMedia: (file: File) => Promise<MediaAsset>;
+  /** 场景预设首条消息:仅当该工程聊天历史为空(已水合)时预填 composer,由用户补占位符后发送。 */
+  presetText?: string;
 }
 
-export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPreviewState, seed, creativeMode, onCreativeModeChange, onImportMedia }: ChatPanelProps) {
-  const { messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal, clearHistory } = useAgent(ctx, projectId);
+export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPreviewState, seed, creativeMode, onCreativeModeChange, onImportMedia, presetText }: ChatPanelProps) {
+  const { messages, running, hydrated, send, stop, enhance, proposal, applyProposal, rejectProposal, clearHistory } = useAgent(ctx, projectId);
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<ChatMode>('agent');
   const [autoApply, setAutoApply] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
   const [selectedRefs, setSelectedRefs] = useState<RefItem[]>([]);
+  // 选择模式 (source isSelectionMode): panels pick clips/regions/words as refs
+  const [selecting, setSelecting] = useState(false);
   const [pasting, setPasting] = useState(0);
   const [pasteError, setPasteError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Record<number, 'up' | 'down'>>({});
@@ -67,6 +72,15 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, running, proposal]);
+
+  // 场景预设起步:聊天水合完成且确为空时,把预设 prompt(含「(请补充: …)」占位)预填进
+  // composer——只填一次,用户补完发送;有历史的工程永不触发(hydrated 后 messages 为真值)。
+  const presetSeeded = useRef(false);
+  useEffect(() => {
+    if (!presetText || presetSeeded.current || !hydrated || messages.length > 0) return;
+    presetSeeded.current = true;
+    setInput((cur) => cur || presetText);
+  }, [presetText, hydrated, messages.length]);
 
   // library「用 AI 生成」seeds the composer (source: attach template as chat ref)
   useEffect(() => {
@@ -102,19 +116,35 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
     try { const improved = await enhance(input); setInput(improved); taRef.current?.focus(); }
     finally { setEnhancing(false); }
   };
+  // Mention chips mirror into the text as their prompt token (source XM):
+  // pool assets stay `@name`; selection picks use `@t[…]`/`@r[…]`/`@q[…]`/`@[…]`.
   const insertRef = (reference: RefItem) => {
     setSelectedRefs((current) => current.some((item) => item.id === reference.id) ? current : [...current, reference]);
-    setInput((v) => `${v}${v && !v.endsWith(' ') ? ' ' : ''}@${reference.name} `);
+    const token = refPromptToken(reference);
+    setInput((v) => v.includes(token) ? v : `${v}${v && !v.endsWith(' ') ? ' ' : ''}${token} `);
   };
   const removeRef = (id: string) => {
     setSelectedRefs((current) => {
       const gone = current.find((r) => r.id === id);
       if (gone) {
-        setInput((v) => v.replace(new RegExp(`@${gone.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s?`, 'g'), '').trimStart());
+        const escaped = refPromptToken(gone).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        setInput((v) => v.replace(new RegExp(`${escaped}\\s?`, 'g'), '').trimStart());
       }
       return current.filter((r) => r.id !== id);
     });
   };
+  // Keep the cross-panel pick mode in sync with the toggle; force it off when
+  // the panel collapses/unmounts so no orphaned crosshair lingers (source keeps
+  // selection mode active across picks for连续拾取).
+  useEffect(() => {
+    setSelectionRefMode(selecting && !collapsed);
+    return () => setSelectionRefMode(false);
+  }, [selecting, collapsed]);
+  useEffect(() => { if (collapsed) setSelecting(false); }, [collapsed]);
+  // Picks from Timeline / Preview / 文字稿 land as chips in the composer.
+  const insertRefRef = useRef(insertRef);
+  insertRefRef.current = insertRef;
+  useEffect(() => onSelectionRef((reference) => insertRefRef.current(reference)), []);
   // Paste files straight into the composer: import each supported file into the
   // media pool (same pipeline as 我的素材 upload — probe + upload + auto-ASR) and
   // attach it as an @ reference so the agent can place it (source: chat_context_entry).
@@ -204,11 +234,12 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
         <ChatComposer
           value={input} onChange={(value) => {
             setInput(value);
-            setSelectedRefs((current) => current.filter((reference) => value.includes(`@${reference.name}`)));
+            setSelectedRefs((current) => current.filter((reference) => value.includes(refPromptToken(reference))));
           }} onSubmit={submit} onStop={stop}
           onEnhance={runEnhance} enhancing={enhancing} running={running}
           mode={mode} onModeChange={setMode}
           autoApply={autoApply} onAutoApplyChange={setAutoApply}
+          selecting={selecting} onToggleSelecting={() => setSelecting((v) => !v)}
           creativeMode={creativeMode} onCreativeModeChange={onCreativeModeChange}
           references={references} onInsertRef={insertRef}
           selectedRefs={selectedRefs} onRemoveRef={removeRef}

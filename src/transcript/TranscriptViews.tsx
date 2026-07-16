@@ -32,6 +32,7 @@ function WordRow({ words, deleted, editMode, onWord }: WordRowProps) {
             {needSpace ? ' ' : null}
             <span
               className={`cc-tx-word${isDel ? ' del' : ''}${editMode ? ' editable' : ''}`}
+              data-gi={w.gi}
               onClick={() => onWord(w)}
               title={editMode ? (isDel ? '恢复此词' : '删除此词') : `${(w.start / 1000).toFixed(2)}s`}
             >

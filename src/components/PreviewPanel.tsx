@@ -3,6 +3,7 @@ import { Player, type PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import { TimelineComposition } from '../editor/TimelineComposition';
 import { timelineDuration, type TimelineState } from '../editor/types';
+import { canvasRegionRef, emitSelectionRef, regionFromDrag, useSelectionRefMode } from '../agent/selection-refs';
 import { Icon } from './icons';
 
 interface PreviewPanelProps {
@@ -16,6 +17,8 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [showSafe, setShowSafe] = useState(false);
+  // 选择模式 (source canvas-region-marked): drag a marquee → region reference
+  const pickMode = useSelectionRefMode();
   const importFiles = async (files: FileList | File[]) => {
     if (!files.length || busy) return;
     setBusy(true);
@@ -26,6 +29,12 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
     <section style={{ display: 'flex', flex: 1, flexDirection: 'column', background: theme.panel, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
       <div style={{ height: 30, padding: '0 12px', display: 'flex', alignItems: 'center', borderBottom: `1px solid ${theme.border}`, flexShrink: 0 }}>
         <span style={{ fontSize: 12, color: theme.text }}>预览</span>
+        {pickMode && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 10, fontSize: 11, color: theme.accent }}>
+            <Icon name="cursor" size={11} />
+            选择模式：在画面上拖框选区作为引用
+          </span>
+        )}
         {state.items.length > 0 && (
           <button type="button" onClick={() => setShowSafe((v) => !v)}
             title="切换标题/动作安全区参考框（竖屏成片构图辅助）"
@@ -79,12 +88,71 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
               loop
             />
             {showSafe && <SafeZoneOverlay />}
+            {pickMode && <RegionPickOverlay state={state} playerRef={playerRef} />}
           </div>
         )}
       </div>
     </section>
   );
 });
+
+// Selection-mode marquee over the video rect: drag a rectangle → canvas-region
+// reference in COMPOSITION coordinates, with the visual clips it covers at the
+// current frame (source chatcut:canvas-region-marked).
+function RegionPickOverlay({ state, playerRef }: { state: TimelineState; playerRef: RefObject<PlayerRef | null> }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const pos = (event: React.PointerEvent) => {
+    const rect = boxRef.current!.getBoundingClientRect();
+    return {
+      x: Math.min(Math.max(event.clientX - rect.left, 0), rect.width),
+      y: Math.min(Math.max(event.clientY - rect.top, 0), rect.height),
+    };
+  };
+  return (
+    <div
+      ref={boxRef}
+      title="拖拽框选画面区域作为引用"
+      onPointerDown={(event) => {
+        if (event.button !== 0) return; // left button only
+        event.currentTarget.setPointerCapture(event.pointerId);
+        const p = pos(event);
+        setDrag({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
+      }}
+      onPointerMove={(event) => {
+        if (!drag) return;
+        const p = pos(event);
+        setDrag((d) => (d ? { ...d, x1: p.x, y1: p.y } : d));
+      }}
+      onPointerUp={() => {
+        if (!drag || !boxRef.current) return;
+        const rect = boxRef.current.getBoundingClientRect();
+        const region = regionFromDrag(
+          { x: drag.x0, y: drag.y0 }, { x: drag.x1, y: drag.y1 },
+          rect.width, rect.height, state.width, state.height,
+        );
+        if (region) {
+          emitSelectionRef(canvasRegionRef(region, Math.round(playerRef.current?.getCurrentFrame() ?? 0), state));
+        }
+        setDrag(null);
+      }}
+      style={{ position: 'absolute', inset: 0, zIndex: 5, cursor: 'crosshair', touchAction: 'none' }}
+    >
+      {drag && (
+        <div style={{
+          position: 'absolute',
+          left: Math.min(drag.x0, drag.x1),
+          top: Math.min(drag.y0, drag.y1),
+          width: Math.abs(drag.x1 - drag.x0),
+          height: Math.abs(drag.y1 - drag.y0),
+          border: `1px solid ${theme.accent}`,
+          background: 'rgba(220,112,54,0.14)', // theme.accent @ 14%
+          pointerEvents: 'none',
+        }} />
+      )}
+    </div>
+  );
+}
 
 // Broadcast-style safe areas over the video rect: action-safe (~5% inset) +
 // title-safe (~10% inset) + center guides. A pure composition aid for framing

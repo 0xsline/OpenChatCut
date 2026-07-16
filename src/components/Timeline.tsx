@@ -19,6 +19,7 @@ import type { CaptionsData, CaptionTemplate } from '../captions/types';
 import { hasLibraryDrag, parseLibraryDrag, type LibraryDragPayload } from '../library/drag';
 import { ALL_FX, FX_EFFECTS, LUT_EFFECTS } from '../gl/fx/effects';
 import { TEMPLATES } from '../editor/initial';
+import { emitSelectionRef, resolveTimelinePick, useSelectionRefMode, type TimelinePickDrag } from '../agent/selection-refs';
 import type { TimelineShortcutApi, ItemClipboard } from '../shortcuts/timelineApi';
 
 interface TimelineProps {
@@ -365,6 +366,19 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
     if (scrollRef.current) scrollRef.current.scrollLeft = 0;
   };
   const [drag, setDrag] = useState<Drag | null>(null);
+  // 选择模式 (source selection mode): clicks/drags pick REFERENCES for the chat
+  // instead of editing — clip click → item ref, ruler click → timepoint, drag
+  // over ruler/lanes → timerange. Editing gestures are untouched when off.
+  const pickMode = useSelectionRefMode();
+  const [pickDrag, setPickDrag] = useState<TimelinePickDrag | null>(null);
+  const startPick = (e: React.PointerEvent, origin: TimelinePickDrag['origin'], item?: TimelineItem) => {
+    e.stopPropagation();
+    if (e.button !== 0) return; // left button only; right-click keeps the context menu
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    const f = frameFromClientX(e.clientX);
+    const trackId = origin === 'clip' ? item?.track : origin === 'lane' ? trackFromClientY(e.clientY) : undefined;
+    setPickDrag({ origin, startFrame: f, endFrame: f, trackId, item });
+  };
   // clip right-click menu + effect clipboard (source: 复制效果/粘贴效果)
   const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [fxClip, setFxClip] = useState<FxClip | null>(null);
@@ -983,6 +997,11 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
     return { deltaF: rawDelta, snapAt: null };
   };
   const onPointerMove = (e: React.PointerEvent) => {
+    if (pickDrag) {
+      const f = frameFromClientX(e.clientX);
+      setPickDrag((d) => (d ? { ...d, endFrame: f } : d));
+      return;
+    }
     if (!drag) return;
     const rawDelta = Math.round((e.clientX - drag.startX) / px);
     const { deltaF, snapAt } = applySnap(drag.mode, drag.baseStart, drag.baseDur, rawDelta);
@@ -990,6 +1009,13 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
     setDrag((d) => (d ? { ...d, deltaF, targetTrack, snapAt } : d));
   };
   const onPointerUp = () => {
+    if (pickDrag) {
+      // click vs drag threshold: ~4px of pointer travel in frames at this zoom
+      const ref = resolveTimelinePick(pickDrag, Math.max(1, Math.round(4 / px)), state);
+      if (ref) emitSelectionRef(ref);
+      setPickDrag(null);
+      return;
+    }
     if (!drag) { return; }
     const { id, mode, baseStart, baseDur, baseSrcIn, deltaF, targetTrack, baseTrack } = drag;
     if (mode === 'move') {
@@ -1121,15 +1147,23 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
         <TB icon="fullscreen" title="全屏时间线" onClick={() => { if (document.fullscreenElement) void document.exitFullscreen(); else void scrollRef.current?.requestFullscreen(); }} />
       </div>
 
+      {/* selection-mode hint strip (source: subtle banner while picking refs) */}
+      {pickMode && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 12px', fontSize: 11, color: theme.accent, borderBottom: `1px solid ${theme.border}`, background: theme.panelAlt, flexShrink: 0 }}>
+          <Icon name="cursor" size={12} />
+          选择模式：点片段引用 · 拖过标尺/空白选时间段 · 单击标尺打时间点 — 引用会加进聊天输入框
+        </div>
+      )}
+
       {/* scrollable ruler + tracks (playhead spans both). Ctrl/⌘+wheel = time
           zoom at cursor, Alt+wheel = track-height zoom (native listener above). */}
       <div ref={scrollRef} style={{ overflow: 'auto', flex: 1, minHeight: 0 }} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
         title="Ctrl/⌘+滚轮 缩放时间轴 · Alt+滚轮 缩放轨道高度">
         <div ref={innerRef} style={{ position: 'relative', width: innerW }}>
-          {/* ruler (click to seek) — adaptive major labels so zoomed-out timelines stay readable */}
+          {/* ruler (click to seek; selection mode: click = timepoint, drag = timerange) */}
           <div
-            onPointerDown={(e) => seekTo(e.clientX)}
-            style={{ display: 'flex', height: RULER_H, borderBottom: `1px solid ${theme.border}`, fontSize: 10, color: theme.textDim, cursor: 'text', userSelect: 'none' }}
+            onPointerDown={(e) => { if (pickMode) { startPick(e, 'ruler'); return; } seekTo(e.clientX); }}
+            style={{ display: 'flex', height: RULER_H, borderBottom: `1px solid ${theme.border}`, fontSize: 10, color: theme.textDim, cursor: pickMode ? 'crosshair' : 'text', userSelect: 'none' }}
           >
             <div className="cc-ruler-head" style={{ width: HEADER_W }}><span ref={rulerTimecodeRef}>{fmtClock(playheadRef.current, state.fps)}</span></div>
             <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
@@ -1333,7 +1367,9 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
                     flex: 1, position: 'relative', background: theme.bg, opacity: hidden ? 0.4 : 1,
                     outline: libDropTarget === `track:${trackId}` ? '1px dashed #6a9fd8' : undefined,
                     outlineOffset: -2,
+                    cursor: pickMode ? 'crosshair' : undefined,
                   }}
+                  onPointerDown={(e) => { if (pickMode) startPick(e, 'lane'); }}
                   onDragOver={(e) => {
                     if (!hasLibraryDrag(e) || locked) return;
                     e.preventDefault();
@@ -1370,6 +1406,11 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
                         key={it.id}
                         title={it.name}
                         onPointerDown={(e) => {
+                          if (pickMode) { // selection mode: click → item ref, drag → timerange (no editing)
+                            commands.selectItem(it.id);
+                            startPick(e, 'clip', it);
+                            return;
+                          }
                           if (editMode === 'blade') { // blade mode: click cuts the clip here
                             e.stopPropagation();
                             const f = Math.round(frameFromClientX(e.clientX));
@@ -1412,7 +1453,7 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
                             ? '2px solid #6a9fd8'
                             : selected ? '2px solid #f2f2f2' : '1px solid rgba(255,255,255,.08)',
                           boxShadow: isLibOver ? 'inset 0 0 0 1px #6a9fd855, 0 0 0 1px #6a9fd844' : undefined,
-                          cursor: locked ? 'not-allowed' : editMode === 'blade' ? 'crosshair' : 'grab', userSelect: 'none', touchAction: 'none',
+                          cursor: pickMode ? 'copy' : locked ? 'not-allowed' : editMode === 'blade' ? 'crosshair' : 'grab', userSelect: 'none', touchAction: 'none',
                         }}
                       >
                         {it.kind === 'audio' && (
@@ -1421,11 +1462,11 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
                           </svg>
                         )}
                         <ClipEffectBadges item={it} hasInTransition={hasInTr} />
-                        {/* trim handles (hidden in blade mode) */}
-                        {editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
+                        {/* trim handles (hidden in blade + selection-pick modes) */}
+                        {!pickMode && editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
                         <span className={`cc-clip-label${it.kind === 'audio' ? ' audio' : ''}`}>{it.name}</span>
-                        {editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
+                        {!pickMode && editMode !== 'blade' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
                           style={{ position: 'absolute', right: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : 'rgba(0,0,0,0.25)' }} />}
                       </div>
                     );
@@ -1452,6 +1493,18 @@ export function Timeline({ state, commands, playerRef, onRecordVoiceover, shortc
           {/* snap guide — appears while a drag edge is locked onto a target */}
           {drag && drag.snapAt !== null && (
             <div style={{ position: 'absolute', top: 0, left: HEADER_W + drag.snapAt * px, width: 1, height: RULER_H + tracksHeight, background: '#4fd1ff', pointerEvents: 'none', boxShadow: '0 0 4px #4fd1ff' }} />
+          )}
+
+          {/* selection-mode timerange marquee (source: time-marked drag) */}
+          {pickDrag && Math.abs(pickDrag.endFrame - pickDrag.startFrame) > 0 && (
+            <div style={{
+              position: 'absolute', top: 0,
+              left: HEADER_W + Math.min(pickDrag.startFrame, pickDrag.endFrame) * px,
+              width: Math.abs(pickDrag.endFrame - pickDrag.startFrame) * px,
+              height: RULER_H + tracksHeight,
+              background: 'rgba(88,166,255,0.14)', borderLeft: '1px solid #58a6ff', borderRight: '1px solid #58a6ff',
+              pointerEvents: 'none', zIndex: 5,
+            }} />
           )}
 
           {/* playhead — GPU layer + rAF-coalesced updates for smoother scrub/play */}

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode, type RefObject } from 'react';
 import { theme } from '../../theme';
 import type { AgentReference } from '../../agent/context';
+import { isSelectionRefKind } from '../../agent/selection-refs';
 import { Icon, type IconName } from '../icons';
 import { CREATIVE_SKILLS, allCreativeSkills, findSkill, setCustomSkills } from '../../agent/skills-catalog';
 import { loadCustomSkills } from '../../persist/skillStore';
@@ -21,6 +22,10 @@ interface ChatComposerProps {
   onModeChange: (m: ChatMode) => void;
   autoApply: boolean;
   onAutoApplyChange: (v: boolean) => void;
+  /** 选择模式 (source isSelectionMode): pick clips / canvas regions / transcript
+   * spans / ruler times as structured references for the next message. */
+  selecting: boolean;
+  onToggleSelecting: () => void;
   /** active creative-mode skill id (source agent_skill), or null = 通用 */
   creativeMode: string | null;
   onCreativeModeChange: (id: string | null) => void;
@@ -74,12 +79,16 @@ function Popover({ children, onClose }: { children: ReactNode; onClose: () => vo
 const REF_ICON: Record<RefItem['kind'], IconName> = {
   video: 'filePlay', image: 'filePlay', gif: 'image', svg: 'image',
   audio: 'fileHeadphone', 'motion-graphic': 'sparkles', template: 'sparkles',
+  // selection-mode picks (source: item / time / region / transcript references)
+  item: 'film', timepoint: 'clock', timerange: 'clock',
+  'canvas-region': 'aspect', 'transcript-selection': 'text',
 };
 
 export function ChatComposer(props: ChatComposerProps) {
   const {
     value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange,
-    autoApply, onAutoApplyChange, creativeMode, onCreativeModeChange, references, onInsertRef,
+    autoApply, onAutoApplyChange, selecting, onToggleSelecting,
+    creativeMode, onCreativeModeChange, references, onInsertRef,
     selectedRefs = [], onRemoveRef, onPasteFiles, pasting, pasteError, onDismissPasteError,
     taRef, placeholder,
   } = props;
@@ -148,7 +157,7 @@ export function ChatComposer(props: ChatComposerProps) {
               }}
             >
               <Icon name={REF_ICON[r.kind]} size={12} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{r.name}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{isSelectionRefKind(r.kind) ? r.name : `@${r.name}`}</span>
               {onRemoveRef && (
                 <button
                   type="button"
@@ -231,6 +240,8 @@ export function ChatComposer(props: ChatComposerProps) {
             </Popover>
           )}
         </div>
+        {/* 选择模式 (source selection mode): pick on timeline / canvas / transcript → structured refs */}
+        <BarBtn icon="cursor" title="选择模式：点片段 / 拖画布 / 选文字稿作为引用" active={selecting} onClick={onToggleSelecting} />
 
         <span style={{ flex: 1 }} />
 
