@@ -21,33 +21,28 @@ export default defineConfig(({ mode }) => {
   // load ALL env (incl. non-VITE_ prefixed) from .env.local — server-side only
   const env = loadEnv(mode, process.cwd(), '');
   // Seed the runtime keystore so the settings UI (POST /api/keys) can override any key
-  // live. Plugin key fields below are GETTERS reading the keystore, so a saved key takes
-  // effect on the next request with no restart. The `const`s below are only the startup
-  // snapshot for the `define` (initial agent capability manifest).
+  // live. Plugin key/baseUrl fields below are GETTERS reading the keystore (with the
+  // official default as fallback for base URLs), so a saved value takes effect on the
+  // next request with no restart. The `const`s below are only the startup snapshot for
+  // the `define` (initial agent capability manifest) — except `base`, the LLM proxy
+  // target, which is fixed at server startup (the settings UI marks it restart-required).
   seedKeystore(env);
   const base = env.LLM_BASE_URL || 'https://api.aijws.com';
   const key = env.LLM_API_KEY || '';
   const aaiKey = env.ASSEMBLYAI_API_KEY || '';
-  const imageBase = env.IMAGE_BASE_URL || 'https://api.openai.com';
   const imageKey = env.IMAGE_API_KEY || env.OPENAI_API_KEY || '';
-  const geminiBase = env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
   const geminiKey = env.GEMINI_API_KEY || '';
   const geminiModel = env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image';
-  const elevenBase = env.ELEVENLABS_BASE_URL || 'https://api.elevenlabs.io';
   const elevenKey = env.ELEVENLABS_API_KEY || '';
   const elevenModel = env.ELEVENLABS_TTS_MODEL || 'eleven_multilingual_v2';
-  const doubaoBase = env.DOUBAO_TTS_BASE_URL || 'https://openspeech.bytedance.com';
   const doubaoAppId = env.DOUBAO_TTS_APP_ID || '';
   const doubaoAccessKey = env.DOUBAO_TTS_ACCESS_KEY || '';
   const doubaoResourceId = env.DOUBAO_TTS_RESOURCE_ID || 'seed-tts-2.0';
   const soundModel = env.ELEVENLABS_SOUND_MODEL || 'eleven_text_to_sound_v2';
-  const murekaBase = env.MUREKA_BASE_URL || 'https://api.mureka.ai';
   const murekaKey = env.MUREKA_API_KEY || '';
   const murekaModel = env.MUREKA_MUSIC_MODEL || 'auto';
-  const seedanceBase = env.SEEDANCE_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
   const seedanceKey = env.SEEDANCE_API_KEY || '';
   const seedanceModel = env.SEEDANCE_VIDEO_MODEL || 'doubao-seedance-2-0-260128';
-  const klingBase = env.KLING_BASE_URL || 'https://api-singapore.klingai.com';
   const klingKey = env.KLING_API_KEY || '';
   const klingModel = env.KLING_VIDEO_MODEL || 'kling-v3-omni';
   const pexelsKey = env.PEXELS_API_KEY || '';
@@ -75,22 +70,22 @@ export default defineConfig(({ mode }) => {
       }),
     },
     plugins: [react(), settingsPlugin(), exportPlugin(), uploadPlugin(), imageGenerationPlugin({
-      baseUrl: imageBase,
+      get baseUrl() { return getKey('IMAGE_BASE_URL') || 'https://api.openai.com'; },
       get apiKey() { return getKey('IMAGE_API_KEY') || getKey('OPENAI_API_KEY'); },
-      geminiBaseUrl: geminiBase,
+      get geminiBaseUrl() { return getKey('GEMINI_BASE_URL') || 'https://generativelanguage.googleapis.com'; },
       get geminiApiKey() { return getKey('GEMINI_API_KEY'); },
       geminiModel,
     }), voiceGenerationPlugin({
-      elevenBaseUrl: elevenBase,
+      get elevenBaseUrl() { return getKey('ELEVENLABS_BASE_URL') || 'https://api.elevenlabs.io'; },
       get elevenApiKey() { return getKey('ELEVENLABS_API_KEY'); },
       elevenModel,
-      doubaoBaseUrl: doubaoBase,
+      get doubaoBaseUrl() { return getKey('DOUBAO_TTS_BASE_URL') || 'https://openspeech.bytedance.com'; },
       get doubaoAppId() { return getKey('DOUBAO_TTS_APP_ID'); },
       get doubaoAccessKey() { return getKey('DOUBAO_TTS_ACCESS_KEY'); },
       doubaoResourceId,
-    }), soundGenerationPlugin({ baseUrl: elevenBase, get apiKey() { return getKey('ELEVENLABS_API_KEY'); }, model: soundModel }),
-    musicGenerationPlugin({ baseUrl: murekaBase, get apiKey() { return getKey('MUREKA_API_KEY'); }, model: murekaModel }),
-    videoGenerationPlugin({ seedanceBaseUrl: seedanceBase, get seedanceApiKey() { return getKey('SEEDANCE_API_KEY'); }, seedanceModel, klingBaseUrl: klingBase, get klingApiKey() { return getKey('KLING_API_KEY'); }, klingModel }),
+    }), soundGenerationPlugin({ get baseUrl() { return getKey('ELEVENLABS_BASE_URL') || 'https://api.elevenlabs.io'; }, get apiKey() { return getKey('ELEVENLABS_API_KEY'); }, model: soundModel }),
+    musicGenerationPlugin({ get baseUrl() { return getKey('MUREKA_BASE_URL') || 'https://api.mureka.ai'; }, get apiKey() { return getKey('MUREKA_API_KEY'); }, model: murekaModel }),
+    videoGenerationPlugin({ get seedanceBaseUrl() { return getKey('SEEDANCE_BASE_URL') || 'https://ark.cn-beijing.volces.com/api/v3'; }, get seedanceApiKey() { return getKey('SEEDANCE_API_KEY'); }, seedanceModel, get klingBaseUrl() { return getKey('KLING_BASE_URL') || 'https://api-singapore.klingai.com'; }, get klingApiKey() { return getKey('KLING_API_KEY'); }, klingModel }),
     generationProgressPlugin(),
     subtitleExportPlugin(),
     stockSearchPlugin({ get pexelsApiKey() { return getKey('PEXELS_API_KEY'); }, get pixabayApiKey() { return getKey('PIXABAY_API_KEY'); } }),

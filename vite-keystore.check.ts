@@ -2,7 +2,7 @@
 // booleans-only status contract of the settings keystore.
 //   npx tsx vite-keystore.check.ts
 import assert from 'node:assert/strict';
-import { mergeEnvText, seedKeystore, keyStatus, getKey } from './vite-keystore.ts';
+import { KEY_NAMES, mergeEnvText, seedKeystore, keyStatus, getKey } from './vite-keystore.ts';
 
 // ── mergeEnvText: update in place, preserve comment/blank/unrelated, append new ──
 const out1 = mergeEnvText('# c\nLLM_API_KEY=old\n\nOTHER=keep\n', new Map([['LLM_API_KEY', 'new'], ['PEXELS_API_KEY', 'px']]));
@@ -15,6 +15,16 @@ assert.ok(out1.includes('PEXELS_API_KEY=px'), 'appends a genuinely-new key');
 const out2 = mergeEnvText('LLM_API_KEY=x\nE2B_API_KEY=y\n', new Map([['E2B_API_KEY', '']]));
 assert.ok(!out2.includes('E2B_API_KEY') && out2.includes('LLM_API_KEY=x'), 'clears on empty value, keeps others');
 assert.ok(out2.endsWith('\n') && !out2.endsWith('\n\n'), 'exactly one trailing newline');
+
+// ── generation-service BASE_URLs are whitelisted and writable via the merge path ──
+const BASE_URL_NAMES = ['ELEVENLABS_BASE_URL', 'DOUBAO_TTS_BASE_URL', 'MUREKA_BASE_URL', 'SEEDANCE_BASE_URL', 'KLING_BASE_URL'] as const;
+for (const name of BASE_URL_NAMES) {
+  assert.ok((KEY_NAMES as readonly string[]).includes(name), `${name} is whitelisted (settable via POST /api/keys)`);
+}
+const out3 = mergeEnvText('', new Map(BASE_URL_NAMES.map((n) => [n, `https://relay.example/${n.toLowerCase()}`])));
+for (const name of BASE_URL_NAMES) {
+  assert.ok(out3.includes(`${name}=https://relay.example/${name.toLowerCase()}`), `${name} written to .env text`);
+}
 
 // ── seed + status: booleans + source only, and the derived caps — NEVER a key value ──
 seedKeystore({ LLM_API_KEY: 'secret-abc', PEXELS_API_KEY: 'px-1' } as Record<string, string>);
