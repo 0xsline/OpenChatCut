@@ -73,7 +73,7 @@ console.log(`catalog: fx=${FX_IDS.length} lut=${LUT_IDS.length} tr=${TRANSITION_
   const root = await execLibraryTool('browse_library', {}, ctx) as { mode: string; categories: Record<string, number> };
   assert.strictEqual(root.mode, 'root');
   assert.ok(root.categories.fx >= 20, 'browse root lists fx');
-  assert.ok(root.categories.transitions === 12, 'browse root transitions=12');
+  assert.ok(root.categories.transitions >= 12, `browse root transitions ≥12 builtin (got ${root.categories.transitions}; clone 扩展超集)`);
   assert.ok(root.categories.zoom >= 4, 'browse root zoom');
   assert.ok(root.categories.luts >= 4, 'browse root luts');
 
