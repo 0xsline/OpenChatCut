@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { theme } from '../theme';
 import { Icon } from './icons';
 import { VendorIcon } from './vendorIcons';
-import { applyLiveCaps } from '../agent/capabilities';
+import { applyLiveCaps, applyLiveKeyStatus } from '../agent/capabilities';
 import {
   SETTINGS_CATEGORIES, categoryConfiguredCount, fieldPlaceholder, findGroup, groupConfigured,
   vendorConfigured,
@@ -128,6 +128,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { save, saving, msg, error } = useSaveKeys(values, (next) => {
     setStatus(next);
     applyLiveCaps(next.caps);
+    applyLiveKeyStatus(next.keys);  // vendor-granular manifest refresh
     setValues({});
   });
   const dirty = Object.keys(values).length > 0;

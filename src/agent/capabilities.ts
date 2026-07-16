@@ -31,6 +31,52 @@ export function currentCaps(): Record<CapabilityKey, boolean> {
   return liveCaps ?? CONFIGURED_CAPS;
 }
 
+// Per-KEY live status (GET /api/keys → keys, booleans only) — refines the manifest to
+// VENDOR granularity: with it the agent knows e.g. "video is on via model=kling", instead
+// of guessing an enum value, calling an unconfigured provider, and burning a round on the
+// "not configured" error. Absent (startup define only) → capability-level manifest.
+let liveKeys: Record<string, { configured: boolean }> | null = null;
+export function applyLiveKeyStatus(keys: Record<string, { configured: boolean }>): void {
+  liveKeys = keys;
+}
+
+// Which vendors light up a capability, and the EXACT tool arg to select each one.
+// `need` = OR of AND-groups of key names (mirrors keystore computeCaps).
+const CAP_PROVIDERS: Partial<Record<CapabilityKey, { label: string; need: string[][] }[]>> = {
+  image: [
+    { label: 'gpt-image(model=gpt-image-2)', need: [['IMAGE_API_KEY'], ['OPENAI_API_KEY']] },
+    { label: 'Nano Banana(model=nano-banana)', need: [['GEMINI_API_KEY']] },
+    { label: 'MiniMax(model=image-01)', need: [['MINIMAX_API_KEY']] },
+  ],
+  voice: [
+    { label: 'ElevenLabs(provider=elevenlabs)', need: [['ELEVENLABS_API_KEY']] },
+    { label: '豆包(provider=doubao)', need: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']] },
+    { label: 'MiniMax(provider=minimax)', need: [['MINIMAX_API_KEY']] },
+  ],
+  video: [
+    { label: 'Seedance(model=seedance2)', need: [['SEEDANCE_API_KEY']] },
+    { label: '可灵(model=kling)', need: [['KLING_API_KEY']] },
+    { label: '海螺(model=hailuo)', need: [['MINIMAX_API_KEY']] },
+  ],
+  music: [
+    { label: 'Mureka(provider=mureka)', need: [['MUREKA_API_KEY']] },
+    { label: 'MiniMax(provider=minimax)', need: [['MINIMAX_API_KEY']] },
+  ],
+  stock: [
+    { label: 'Pexels', need: [['PEXELS_API_KEY']] },
+    { label: 'Pixabay', need: [['PIXABAY_API_KEY']] },
+  ],
+};
+
+/** '·可用: A、B' suffix for an ON capability — '' when key detail is unknown. */
+function providerSuffix(cap: CapabilityKey): string {
+  const rows = CAP_PROVIDERS[cap];
+  if (!rows || !liveKeys) return '';
+  const has = (n: string): boolean => Boolean(liveKeys?.[n]?.configured);
+  const on = rows.filter((r) => r.need.some((group) => group.every(has))).map((r) => r.label);
+  return on.length ? `·可用: ${on.join('、')}` : '';
+}
+
 // label + the primary tool + a fallback hint when the capability is off.
 const CAP_ROWS: { key: CapabilityKey; label: string; tool: string; fallback: string }[] = [
   { key: 'image', label: '生图', tool: 'submit_image', fallback: '改用 push_asset/import_url_asset 导入公网图片，或让用户上传/粘贴' },
@@ -50,7 +96,7 @@ export function capabilitiesPrompt(caps: Record<CapabilityKey, boolean> = curren
   const on: string[] = [];
   const off: string[] = [];
   for (const r of CAP_ROWS) {
-    if (caps[r.key]) on.push(`${r.label}(${r.tool})`);
+    if (caps[r.key]) on.push(`${r.label}(${r.tool}${providerSuffix(r.key)})`);
     else off.push(`${r.label}(${r.tool})——${r.fallback}`);
   }
   return `\n\n# 当前可用能力（按已配置的 API key，local 剪辑不吃 key 恒可用）\n`

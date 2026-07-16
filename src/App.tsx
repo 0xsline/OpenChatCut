@@ -6,7 +6,7 @@ import {
   randomProjectName, docFromTimeline, type ProjectMeta,
 } from './persist/projectStore';
 import type { ProjectDoc, TimelineState } from './editor/types';
-import { applyLiveCaps } from './agent/capabilities';
+import { applyLiveCaps, applyLiveKeyStatus } from './agent/capabilities';
 
 const Editor = lazy(() => import('./Editor'));
 
@@ -62,10 +62,14 @@ export default function App() {
 
   // Sync the agent's capability manifest with the server's live key state (corrects the
   // build-time __CONFIGURED_CAPS__ snapshot after any key edited in a prior session).
+  // keys (booleans only) refine the manifest to vendor granularity.
   useEffect(() => {
     fetch('/api/keys')
-      .then((r) => r.json() as Promise<{ caps?: Record<string, boolean> }>)
-      .then((d) => { if (d?.caps) applyLiveCaps(d.caps); })
+      .then((r) => r.json() as Promise<{ caps?: Record<string, boolean>; keys?: Record<string, { configured: boolean }> }>)
+      .then((d) => {
+        if (d?.caps) applyLiveCaps(d.caps);
+        if (d?.keys) applyLiveKeyStatus(d.keys);
+      })
       .catch(() => { /* dev endpoint absent (e.g. preview build) — keep the define snapshot */ });
   }, []);
 
