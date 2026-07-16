@@ -2,7 +2,7 @@
 // booleans-only status contract of the settings keystore.
 //   npx tsx vite-keystore.check.ts
 import assert from 'node:assert/strict';
-import { KEY_NAMES, mergeEnvText, seedKeystore, keyStatus, getKey } from './vite-keystore.ts';
+import { KEY_NAMES, NON_SECRET_NAMES, mergeEnvText, seedKeystore, keyStatus, getKey } from './vite-keystore.ts';
 
 // ── mergeEnvText: update in place, preserve comment/blank/unrelated, append new ──
 const out1 = mergeEnvText('# c\nLLM_API_KEY=old\n\nOTHER=keep\n', new Map([['LLM_API_KEY', 'new'], ['PEXELS_API_KEY', 'px']]));
@@ -48,5 +48,28 @@ assert.equal(st.caps.music, false, 'no mureka key → music capability off');
 const serialized = JSON.stringify(st);
 assert.ok(!serialized.includes('secret-abc') && !serialized.includes('px-1'), 'status leaks NO key value to the browser');
 assert.equal(getKey('LLM_API_KEY'), 'secret-abc', 'getKey returns the live value server-side');
+
+// ── non-secret model/routing channel: 16 names whitelisted, values echoed via
+// keyStatus().models — while SECRET values still never appear in any response ──
+const MODEL_ROUTING_NAMES = [
+  'LLM_MODEL', 'GEMINI_IMAGE_MODEL', 'ELEVENLABS_TTS_MODEL', 'ELEVENLABS_SOUND_MODEL',
+  'DOUBAO_TTS_RESOURCE_ID', 'SEEDANCE_VIDEO_MODEL', 'KLING_VIDEO_MODEL', 'MUREKA_MUSIC_MODEL',
+  'MINIMAX_TTS_MODEL', 'MINIMAX_VIDEO_MODEL', 'MINIMAX_MUSIC_MODEL', 'MINIMAX_IMAGE_MODEL',
+  'PREFERRED_IMAGE_VENDOR', 'PREFERRED_VOICE_VENDOR', 'PREFERRED_VIDEO_VENDOR', 'PREFERRED_MUSIC_VENDOR',
+] as const;
+for (const name of MODEL_ROUTING_NAMES) {
+  assert.ok((KEY_NAMES as readonly string[]).includes(name), `${name} is whitelisted (settable via POST /api/keys)`);
+  assert.ok(NON_SECRET_NAMES.has(name), `${name} is marked non-secret`);
+}
+assert.equal(NON_SECRET_NAMES.size, MODEL_ROUTING_NAMES.length, 'NON_SECRET_NAMES is exactly the 16 model/routing names');
+
+// seed one SECRET + one non-secret on top of the state above (seeds accumulate in-process)
+seedKeystore({ LLM_API_KEY: 'sec-x', MINIMAX_TTS_MODEL: 'speech-2.8-hd' } as Record<string, string>);
+const st2 = keyStatus();
+assert.equal(st2.models['MINIMAX_TTS_MODEL'], 'speech-2.8-hd', 'non-secret model value echoed in models');
+assert.equal(st2.models['KLING_VIDEO_MODEL'], '', 'unset non-secret name echoes empty string');
+assert.ok(!('LLM_API_KEY' in st2.models), 'SECRET key has no field in models at all');
+assert.equal(st2.keys.LLM_API_KEY.configured, true, 'SECRET key still reported as configured boolean');
+assert.ok(!JSON.stringify(st2).includes('sec-x'), 'SECRET value appears NOWHERE in the serialized status');
 
 console.log('vite-keystore.check: ok');

@@ -21,10 +21,10 @@ export default defineConfig(({ mode }) => {
   // load ALL env (incl. non-VITE_ prefixed) from .env.local — server-side only
   const env = loadEnv(mode, process.cwd(), '');
   // Seed the runtime keystore so the settings UI (POST /api/keys) can override any key
-  // live. Plugin key/baseUrl fields below are GETTERS reading the keystore (with the
-  // official default as fallback for base URLs), so a saved value takes effect on the
-  // next request with no restart. The `const`s below are only the startup snapshot for
-  // the `define` (initial agent capability manifest) — except `base`, the LLM proxy
+  // live. Plugin key/baseUrl/model fields below are GETTERS reading the keystore (with
+  // the official default as fallback), so a saved value takes effect on the next
+  // request with no restart. The `const`s below are only the startup snapshot for the
+  // `define` (initial agent capability manifest) — except `base`, the LLM proxy
   // target, which is fixed at server startup (the settings UI marks it restart-required).
   seedKeystore(env);
   const base = env.LLM_BASE_URL || 'https://api.aijws.com';
@@ -32,25 +32,14 @@ export default defineConfig(({ mode }) => {
   const aaiKey = env.ASSEMBLYAI_API_KEY || '';
   const imageKey = env.IMAGE_API_KEY || env.OPENAI_API_KEY || '';
   const geminiKey = env.GEMINI_API_KEY || '';
-  const geminiModel = env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image';
   const elevenKey = env.ELEVENLABS_API_KEY || '';
-  const elevenModel = env.ELEVENLABS_TTS_MODEL || 'eleven_multilingual_v2';
   const doubaoAppId = env.DOUBAO_TTS_APP_ID || '';
   const doubaoAccessKey = env.DOUBAO_TTS_ACCESS_KEY || '';
-  const doubaoResourceId = env.DOUBAO_TTS_RESOURCE_ID || 'seed-tts-2.0';
-  const soundModel = env.ELEVENLABS_SOUND_MODEL || 'eleven_text_to_sound_v2';
   const murekaKey = env.MUREKA_API_KEY || '';
-  const murekaModel = env.MUREKA_MUSIC_MODEL || 'auto';
   // MiniMax 国内开放平台 — one key gates TTS / Hailuo video / music / image.
   const minimaxKey = env.MINIMAX_API_KEY || '';
-  const minimaxTtsModel = env.MINIMAX_TTS_MODEL || 'speech-2.6-hd';
-  const minimaxVideoModel = env.MINIMAX_VIDEO_MODEL || 'MiniMax-Hailuo-02';
-  const minimaxMusicModel = env.MINIMAX_MUSIC_MODEL || 'music-2.6';
-  const minimaxImageModel = env.MINIMAX_IMAGE_MODEL || 'image-01';
   const seedanceKey = env.SEEDANCE_API_KEY || '';
-  const seedanceModel = env.SEEDANCE_VIDEO_MODEL || 'doubao-seedance-2-0-260128';
   const klingKey = env.KLING_API_KEY || '';
-  const klingModel = env.KLING_VIDEO_MODEL || 'kling-v3-omni';
   const pexelsKey = env.PEXELS_API_KEY || '';
   const pixabayKey = env.PIXABAY_API_KEY || '';
   // Firecrawl (source web_browser): .env.local or shell export (e.g. search-apis.env)
@@ -80,34 +69,34 @@ export default defineConfig(({ mode }) => {
       get apiKey() { return getKey('IMAGE_API_KEY') || getKey('OPENAI_API_KEY'); },
       get geminiBaseUrl() { return getKey('GEMINI_BASE_URL') || 'https://generativelanguage.googleapis.com'; },
       get geminiApiKey() { return getKey('GEMINI_API_KEY'); },
-      geminiModel,
+      get geminiModel() { return getKey('GEMINI_IMAGE_MODEL') || 'gemini-3.1-flash-image'; },
       get minimaxBaseUrl() { return getKey('MINIMAX_BASE_URL') || 'https://api.minimaxi.com'; },
       get minimaxApiKey() { return getKey('MINIMAX_API_KEY'); },
-      minimaxModel: minimaxImageModel,
+      get minimaxModel() { return getKey('MINIMAX_IMAGE_MODEL') || 'image-01'; },
     }), voiceGenerationPlugin({
       get elevenBaseUrl() { return getKey('ELEVENLABS_BASE_URL') || 'https://api.elevenlabs.io'; },
       get elevenApiKey() { return getKey('ELEVENLABS_API_KEY'); },
-      elevenModel,
+      get elevenModel() { return getKey('ELEVENLABS_TTS_MODEL') || 'eleven_multilingual_v2'; },
       get doubaoBaseUrl() { return getKey('DOUBAO_TTS_BASE_URL') || 'https://openspeech.bytedance.com'; },
       get doubaoAppId() { return getKey('DOUBAO_TTS_APP_ID'); },
       get doubaoAccessKey() { return getKey('DOUBAO_TTS_ACCESS_KEY'); },
-      doubaoResourceId,
+      get doubaoResourceId() { return getKey('DOUBAO_TTS_RESOURCE_ID') || 'seed-tts-2.0'; },
       get minimaxBaseUrl() { return getKey('MINIMAX_BASE_URL') || 'https://api.minimaxi.com'; },
       get minimaxApiKey() { return getKey('MINIMAX_API_KEY'); },
-      minimaxModel: minimaxTtsModel,
-    }), soundGenerationPlugin({ get baseUrl() { return getKey('ELEVENLABS_BASE_URL') || 'https://api.elevenlabs.io'; }, get apiKey() { return getKey('ELEVENLABS_API_KEY'); }, model: soundModel }),
+      get minimaxModel() { return getKey('MINIMAX_TTS_MODEL') || 'speech-2.6-hd'; },
+    }), soundGenerationPlugin({ get baseUrl() { return getKey('ELEVENLABS_BASE_URL') || 'https://api.elevenlabs.io'; }, get apiKey() { return getKey('ELEVENLABS_API_KEY'); }, get model() { return getKey('ELEVENLABS_SOUND_MODEL') || 'eleven_text_to_sound_v2'; } }),
     musicGenerationPlugin({
-      get baseUrl() { return getKey('MUREKA_BASE_URL') || 'https://api.mureka.ai'; }, get apiKey() { return getKey('MUREKA_API_KEY'); }, model: murekaModel,
+      get baseUrl() { return getKey('MUREKA_BASE_URL') || 'https://api.mureka.ai'; }, get apiKey() { return getKey('MUREKA_API_KEY'); }, get model() { return getKey('MUREKA_MUSIC_MODEL') || 'auto'; },
       get minimaxBaseUrl() { return getKey('MINIMAX_BASE_URL') || 'https://api.minimaxi.com'; },
       get minimaxApiKey() { return getKey('MINIMAX_API_KEY'); },
-      minimaxModel: minimaxMusicModel,
+      get minimaxModel() { return getKey('MINIMAX_MUSIC_MODEL') || 'music-2.6'; },
     }),
     videoGenerationPlugin({
-      get seedanceBaseUrl() { return getKey('SEEDANCE_BASE_URL') || 'https://ark.cn-beijing.volces.com/api/v3'; }, get seedanceApiKey() { return getKey('SEEDANCE_API_KEY'); }, seedanceModel,
-      get klingBaseUrl() { return getKey('KLING_BASE_URL') || 'https://api-singapore.klingai.com'; }, get klingApiKey() { return getKey('KLING_API_KEY'); }, klingModel,
+      get seedanceBaseUrl() { return getKey('SEEDANCE_BASE_URL') || 'https://ark.cn-beijing.volces.com/api/v3'; }, get seedanceApiKey() { return getKey('SEEDANCE_API_KEY'); }, get seedanceModel() { return getKey('SEEDANCE_VIDEO_MODEL') || 'doubao-seedance-2-0-260128'; },
+      get klingBaseUrl() { return getKey('KLING_BASE_URL') || 'https://api-singapore.klingai.com'; }, get klingApiKey() { return getKey('KLING_API_KEY'); }, get klingModel() { return getKey('KLING_VIDEO_MODEL') || 'kling-v3-omni'; },
       get minimaxBaseUrl() { return getKey('MINIMAX_BASE_URL') || 'https://api.minimaxi.com'; },
       get minimaxApiKey() { return getKey('MINIMAX_API_KEY'); },
-      minimaxModel: minimaxVideoModel,
+      get minimaxModel() { return getKey('MINIMAX_VIDEO_MODEL') || 'MiniMax-Hailuo-02'; },
     }),
     generationProgressPlugin(),
     subtitleExportPlugin(),

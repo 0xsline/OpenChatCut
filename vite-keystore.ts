@@ -1,7 +1,11 @@
 // Server-side in-memory API-key store backing the settings UI. Seeded from .env.local
 // at Vite startup, live-updated by POST /api/keys, and persisted back to .env.local so
-// runtime edits survive a restart. Key VALUES live ONLY here (server-side) and in
-// .env.local (gitignored) — the browser only ever receives booleans (keyStatus / caps).
+// runtime edits survive a restart. SECRET key VALUES (any name NOT in NON_SECRET_NAMES)
+// live ONLY here (server-side) and in .env.local (gitignored) — they NEVER appear in
+// any response; the browser sees booleans only (keyStatus / caps). Model ids and vendor
+// routing are configuration, not credentials: the explicit NON_SECRET_NAMES whitelist
+// lets keyStatus() echo their raw values (keyStatus().models) so the settings UI can
+// show and edit them.
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -22,9 +26,29 @@ export const KEY_NAMES = [
   'ASSEMBLYAI_API_KEY',
   'E2B_API_KEY', 'E2B_TEMPLATE',
   'FIRECRAWL_API_KEY',
+  // ── model ids (non-secret config; raw values echoed via keyStatus().models) ──
+  'LLM_MODEL',
+  'GEMINI_IMAGE_MODEL', 'MINIMAX_IMAGE_MODEL',
+  'ELEVENLABS_TTS_MODEL', 'DOUBAO_TTS_RESOURCE_ID', 'MINIMAX_TTS_MODEL',
+  'ELEVENLABS_SOUND_MODEL',
+  'SEEDANCE_VIDEO_MODEL', 'KLING_VIDEO_MODEL', 'MINIMAX_VIDEO_MODEL',
+  'MUREKA_MUSIC_MODEL', 'MINIMAX_MUSIC_MODEL',
+  // ── vendor routing (non-secret config) ──
+  'PREFERRED_IMAGE_VENDOR', 'PREFERRED_VOICE_VENDOR',
+  'PREFERRED_VIDEO_VENDOR', 'PREFERRED_MUSIC_VENDOR',
 ] as const;
 export type KeyName = (typeof KEY_NAMES)[number];
 const SETTABLE = new Set<string>(KEY_NAMES);
+
+// Names whose VALUES may be sent to the browser (model ids / vendor routing — config,
+// not credentials). Deliberately a separate explicit list rather than derived from
+// KEY_NAMES: adding a key to the whitelist must never accidentally make it non-secret.
+export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
+  'LLM_MODEL', 'GEMINI_IMAGE_MODEL', 'ELEVENLABS_TTS_MODEL', 'ELEVENLABS_SOUND_MODEL',
+  'DOUBAO_TTS_RESOURCE_ID', 'SEEDANCE_VIDEO_MODEL', 'KLING_VIDEO_MODEL', 'MUREKA_MUSIC_MODEL',
+  'MINIMAX_TTS_MODEL', 'MINIMAX_VIDEO_MODEL', 'MINIMAX_MUSIC_MODEL', 'MINIMAX_IMAGE_MODEL',
+  'PREFERRED_IMAGE_VENDOR', 'PREFERRED_VOICE_VENDOR', 'PREFERRED_VIDEO_VENDOR', 'PREFERRED_MUSIC_VENDOR',
+]);
 
 const store = new Map<string, string>();  // current value per key (seed + runtime overrides)
 const envSeeded = new Set<string>();       // which keys came from .env.local / process.env at startup
@@ -64,16 +88,21 @@ export function computeCaps(): Caps {
 }
 
 export interface KeyState { configured: boolean; source: 'env' | 'runtime' | 'none'; }
-export interface KeyStatus { keys: Record<string, KeyState>; caps: Caps; }
+export interface KeyStatus { keys: Record<string, KeyState>; caps: Caps; models: Record<string, string>; }
 
-/** Browser-facing status — BOOLEANS + source only, NEVER any key value. */
+/** Browser-facing status. SECURITY INVARIANT: a SECRET key's value (any name not in
+ * NON_SECRET_NAMES) NEVER appears in this (or any) response — secrets surface as
+ * booleans + source only. Non-secret model/routing values are echoed raw in `models`
+ * ('' when unset); the `keys` boolean map still covers every whitelisted name. */
 export function keyStatus(): KeyStatus {
   const keys: Record<string, KeyState> = {};
+  const models: Record<string, string> = {};
   for (const name of KEY_NAMES) {
     const set = getKey(name).length > 0;
     keys[name] = { configured: set, source: set ? (envSeeded.has(name) ? 'env' : 'runtime') : 'none' };
+    if (NON_SECRET_NAMES.has(name)) models[name] = getKey(name);
   }
-  return { keys, caps: computeCaps() };
+  return { keys, caps: computeCaps(), models };
 }
 
 /** Apply key edits from the settings UI: validate, update memory, persist to .env.local.

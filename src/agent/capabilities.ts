@@ -40,41 +40,67 @@ export function applyLiveKeyStatus(keys: Record<string, { configured: boolean }>
   liveKeys = keys;
 }
 
-// Which vendors light up a capability, and the EXACT tool arg to select each one.
-// `need` = OR of AND-groups of key names (mirrors keystore computeCaps).
-const CAP_PROVIDERS: Partial<Record<CapabilityKey, { label: string; need: string[][] }[]>> = {
+// Non-secret model/routing values from the server (GET /api/keys → models): the
+// per-vendor model picks plus PREFERRED_*_VENDOR — the user's default vendor per
+// capability ('' = not chosen → agent must ASK in chat before first use).
+let liveModels: Record<string, string> | null = null;
+export function applyLiveModels(models: Record<string, string>): void {
+  liveModels = models;
+}
+
+// Which vendors light up a capability: `arg` is the EXACT tool-arg value that selects
+// the vendor (and what PREFERRED_*_VENDOR stores); `need` = OR of AND-groups of key
+// names (mirrors keystore computeCaps).
+interface ProviderRow { label: string; arg: string; argKey: 'model' | 'provider'; need: string[][] }
+const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
   image: [
-    { label: 'gpt-image(model=gpt-image-2)', need: [['IMAGE_API_KEY'], ['OPENAI_API_KEY']] },
-    { label: 'Nano Banana(model=nano-banana)', need: [['GEMINI_API_KEY']] },
-    { label: 'MiniMax(model=image-01)', need: [['MINIMAX_API_KEY']] },
+    { label: 'gpt-image', arg: 'gpt-image-2', argKey: 'model', need: [['IMAGE_API_KEY'], ['OPENAI_API_KEY']] },
+    { label: 'Nano Banana', arg: 'nano-banana', argKey: 'model', need: [['GEMINI_API_KEY']] },
+    { label: 'MiniMax', arg: 'image-01', argKey: 'model', need: [['MINIMAX_API_KEY']] },
   ],
   voice: [
-    { label: 'ElevenLabs(provider=elevenlabs)', need: [['ELEVENLABS_API_KEY']] },
-    { label: '豆包(provider=doubao)', need: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']] },
-    { label: 'MiniMax(provider=minimax)', need: [['MINIMAX_API_KEY']] },
+    { label: 'ElevenLabs', arg: 'elevenlabs', argKey: 'provider', need: [['ELEVENLABS_API_KEY']] },
+    { label: '豆包', arg: 'doubao', argKey: 'provider', need: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']] },
+    { label: 'MiniMax', arg: 'minimax', argKey: 'provider', need: [['MINIMAX_API_KEY']] },
   ],
   video: [
-    { label: 'Seedance(model=seedance2)', need: [['SEEDANCE_API_KEY']] },
-    { label: '可灵(model=kling)', need: [['KLING_API_KEY']] },
-    { label: '海螺(model=hailuo)', need: [['MINIMAX_API_KEY']] },
+    { label: 'Seedance', arg: 'seedance2', argKey: 'model', need: [['SEEDANCE_API_KEY']] },
+    { label: '可灵', arg: 'kling', argKey: 'model', need: [['KLING_API_KEY']] },
+    { label: '海螺', arg: 'hailuo', argKey: 'model', need: [['MINIMAX_API_KEY']] },
   ],
   music: [
-    { label: 'Mureka(provider=mureka)', need: [['MUREKA_API_KEY']] },
-    { label: 'MiniMax(provider=minimax)', need: [['MINIMAX_API_KEY']] },
+    { label: 'Mureka', arg: 'mureka', argKey: 'provider', need: [['MUREKA_API_KEY']] },
+    { label: 'MiniMax', arg: 'minimax', argKey: 'provider', need: [['MINIMAX_API_KEY']] },
   ],
   stock: [
-    { label: 'Pexels', need: [['PEXELS_API_KEY']] },
-    { label: 'Pixabay', need: [['PIXABAY_API_KEY']] },
+    { label: 'Pexels', arg: 'pexels', argKey: 'provider', need: [['PEXELS_API_KEY']] },
+    { label: 'Pixabay', arg: 'pixabay', argKey: 'provider', need: [['PIXABAY_API_KEY']] },
   ],
 };
 
-/** '·可用: A、B' suffix for an ON capability — '' when key detail is unknown. */
+const PREFERRED_KEY: Partial<Record<CapabilityKey, string>> = {
+  image: 'PREFERRED_IMAGE_VENDOR', voice: 'PREFERRED_VOICE_VENDOR',
+  video: 'PREFERRED_VIDEO_VENDOR', music: 'PREFERRED_MUSIC_VENDOR',
+};
+
+const rowTag = (r: ProviderRow): string => `${r.label}(${r.argKey}=${r.arg})`;
+
+/** Routing suffix for an ON capability: user default → use it; single vendor → use it;
+ * several & no default → agent must ask the user (once) before first use. */
 function providerSuffix(cap: CapabilityKey): string {
   const rows = CAP_PROVIDERS[cap];
   if (!rows || !liveKeys) return '';
   const has = (n: string): boolean => Boolean(liveKeys?.[n]?.configured);
-  const on = rows.filter((r) => r.need.some((group) => group.every(has))).map((r) => r.label);
-  return on.length ? `·可用: ${on.join('、')}` : '';
+  const on = rows.filter((r) => r.need.some((group) => group.every(has)));
+  if (on.length === 0) return '';
+  const prefKey = PREFERRED_KEY[cap];
+  const pref = prefKey ? (liveModels?.[prefKey] ?? '').trim() : '';
+  const chosen = pref ? on.find((r) => r.arg === pref) : undefined;
+  if (chosen) return `·用户默认: ${rowTag(chosen)}——直接用它,勿再询问`;
+  if (on.length === 1) return `·可用: ${rowTag(on[0])}——直接用`;
+  const names = on.map(rowTag).join('、');
+  if (!prefKey) return `·可用: ${names}`;
+  return `·可用: ${names}——用户未设默认:本会话首次用该能力前,先用 ask_followup_questions 单选一家,之后沿用所选`;
 }
 
 // label + the primary tool + a fallback hint when the capability is off.

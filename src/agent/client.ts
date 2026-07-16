@@ -10,7 +10,15 @@ import Anthropic from '@anthropic-ai/sdk';
 // /v1/messages translation layer (verified: tool_use round-trips correctly).
 // The day a Claude channel exists, change ONLY this model string to e.g.
 // 'claude-sonnet-4-5' — the entire agent is already native Claude tool-use.
-export const MODEL = 'grok-4.5-latest';
+export const DEFAULT_LLM_MODEL = 'grok-4.5-latest';
+
+// Runtime-selectable LLM model (settings panel → LLM_MODEL, non-secret). ESM live
+// binding: importers (runtime/shader/highlight/tools) always read the current value.
+// eslint-disable-next-line prefer-const — mutated by setLlmModel
+export let MODEL = DEFAULT_LLM_MODEL;
+export function setLlmModel(model: string): void {
+  MODEL = model.trim() || DEFAULT_LLM_MODEL;
+}
 
 // baseURL → same-origin '/llm' path → Vite dev proxy → relay, with x-api-key
 // injected server-side so the key never reaches the browser. The Anthropic SDK
