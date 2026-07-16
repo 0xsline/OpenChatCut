@@ -21,13 +21,11 @@ function PropSchemaField({
     width: '100%', background: theme.bg, color: theme.text,
     border: `1px solid ${theme.borderLight}`, borderRadius: 5, padding: '4px 6px', fontSize: 12,
   };
-  let opts = (spec.options ?? []).map((o) => (
+  // options come from the source propSchema; select without options falls back
+  // to a single current-value entry below.
+  const opts = (spec.options ?? []).map((o) => (
     typeof o === 'string' ? { label: o, value: o } : o
   ));
-  // theme select without explicit options — common MG preset
-  if (spec.type === 'select' && !opts.length && spec.key === 'theme') {
-    opts = [{ label: 'light', value: 'light' }, { label: 'dark', value: 'dark' }];
-  }
 
   let control: React.ReactNode;
   switch (spec.type) {
@@ -41,8 +39,10 @@ function PropSchemaField({
         <input type="color" value={String(value ?? '#000000')} onChange={(e) => onChange(e.target.value)} />
       );
       break;
-    case 'number':
-      control = (
+    case 'number': {
+      // schema min+max → bounded slider next to the number box
+      const bounded = typeof spec.min === 'number' && typeof spec.max === 'number';
+      const numberInput = (
         <input
           type="number"
           min={spec.min}
@@ -50,10 +50,25 @@ function PropSchemaField({
           step={spec.step ?? 1}
           value={value === undefined || value === null ? '' : Number(value)}
           onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))}
-          style={fieldStyle}
+          style={bounded ? { ...fieldStyle, width: 72, flex: 'none' } : fieldStyle}
         />
       );
+      control = bounded ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input
+            type="range"
+            min={spec.min}
+            max={spec.max}
+            step={spec.step ?? 1}
+            value={Number(value ?? spec.defaultValue ?? spec.min)}
+            onChange={(e) => onChange(Number(e.target.value))}
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          {numberInput}
+        </div>
+      ) : numberInput;
       break;
+    }
     case 'font':
       control = (
         <select
@@ -557,9 +572,10 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
                 <div className="cc-insp-muted">该模板无可编辑属性。</div>
               ) : (
                 <div className="cc-insp-mg-grid">
-                  {schema.map((p) => (
+                  {/* index in key: multi-asset templates may repeat a prop key */}
+                  {schema.map((p, i) => (
                     <PropSchemaField
-                      key={p.key}
+                      key={`${i}:${p.key}`}
                       spec={p}
                       value={selectedItem.props?.[p.key]}
                       onChange={(v) => onItemPropChange(p.key, v)}

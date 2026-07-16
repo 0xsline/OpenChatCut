@@ -1,6 +1,10 @@
 // Pull ALL ChatCut templates from chatcut-reverse/templates into the app:
-//  - src/assets/chatcut-templates.json  (code + meta + prop schema)
+//  - src/assets/chatcut-templates.json  (code + meta + full prop schema)
 //  - public/thumbnails/<id>.jpg  (library thumbnails)
+// Source of truth: per-template meta.json (identical to _catalog.json entries
+// except previewAsset). Prop schema keeps the FULL source fields
+// {key,type,defaultValue,label?,min?,max?,step?,options?}; template level
+// carries description?/tags? when present.
 import { readFileSync, writeFileSync, readdirSync, copyFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -12,6 +16,42 @@ rmSync(THUMB_DIR, { recursive: true, force: true });
 mkdirSync(THUMB_DIR, { recursive: true });
 
 const sanitize = (s) => s.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+// Source prop → full PropSpec. Some source props use {name,default} instead of
+// {key,defaultValue}; normalize so every entry has key/type/defaultValue.
+function toPropSpec(p) {
+  const spec = {
+    key: p.key ?? p.name,
+    type: p.type,
+    defaultValue: p.defaultValue ?? p.default ?? null,
+  };
+  if (p.label != null) spec.label = p.label;
+  if (typeof p.min === 'number') spec.min = p.min;
+  if (typeof p.max === 'number') spec.max = p.max;
+  if (typeof p.step === 'number') spec.step = p.step;
+  if (Array.isArray(p.options) && p.options.length) spec.options = p.options;
+  return spec;
+}
+
+// Merge properties across ALL motionGraphicAssets. Dedup by (assetIndex,key):
+// only true repeats within one asset are dropped; the same key appearing in a
+// later asset is kept (e.g. AI video script builder asset[1] adds
+// transparentBackground that asset[0] lacks — 19 source props stay 19).
+function collectPropSpecs(assets) {
+  const specs = [];
+  const seen = new Set();
+  assets.forEach((asset, assetIndex) => {
+    for (const p of asset.properties || []) {
+      const spec = toPropSpec(p);
+      if (spec.key == null) continue;
+      const dedupKey = `${assetIndex}:${spec.key}`;
+      if (seen.has(dedupKey)) continue;
+      seen.add(dedupKey);
+      specs.push(spec);
+    }
+  });
+  return specs;
+}
 
 // every category/<template> dir
 const dirs = [];
@@ -37,10 +77,12 @@ for (const dir of dirs) {
   if (code.trim().length < 40 || !/const\s+\w+\s*=\s*\(\s*\{?\s*item/.test(code)) { skipped++; continue; }
 
   const meta = JSON.parse(readFileSync(join(dir, metaFile), 'utf8'));
-  const mga = (meta.motionGraphicAssets || [{}])[0] || {};
+  const assets = meta.motionGraphicAssets || [];
+  const mga = assets[0] || {};
   const id = sanitize(String(meta.id || dir));
+  const propSchema = collectPropSpecs(assets);
   const props = {};
-  for (const p of mga.properties || []) props[p.key] = p.defaultValue;
+  for (const s of propSchema) props[s.key] = s.defaultValue;
 
   let thumb = null;
   if (thumbFile) {
@@ -53,12 +95,14 @@ for (const dir of dirs) {
     id,
     name: meta.name || jsxFile.replace('.jsx', ''),
     category: meta.category || 'uncategorized',
+    ...(meta.description ? { description: meta.description } : {}),
+    ...(Array.isArray(meta.tags) && meta.tags.length ? { tags: meta.tags } : {}),
     width: meta.compositionWidth || 1920,
     height: meta.compositionHeight || 1080,
     fps: meta.fps || 30,
     durationInFrames: mga.durationInFrames || meta.durationInFrames || 90,
     props,
-    propSchema: (mga.properties || []).map((p) => ({ key: p.key, type: p.type, defaultValue: p.defaultValue })),
+    propSchema,
     thumb,
     code,
   });
@@ -68,7 +112,18 @@ for (const dir of dirs) {
 templates.sort((a, b) => (a.category === b.category ? a.name.localeCompare(b.name) : a.category.localeCompare(b.category)));
 writeFileSync(OUT_JSON, JSON.stringify(templates, null, 2));
 
+// ── run log: counts + field coverage ──
 const byCat = {};
-for (const t of templates) byCat[t.category] = (byCat[t.category] || 0) + 1;
+const fieldCov = { label: 0, min: 0, max: 0, step: 0, options: 0 };
+let nProps = 0;
+for (const t of templates) {
+  byCat[t.category] = (byCat[t.category] || 0) + 1;
+  for (const s of t.propSchema) {
+    nProps++;
+    for (const f of Object.keys(fieldCov)) if (f in s) fieldCov[f]++;
+  }
+}
 console.log(`wrote ${templates.length} templates (skipped ${skipped}), thumbnails: ${templates.filter((t) => t.thumb).length}`);
+console.log(`propSchema entries: ${nProps}, field coverage:`, JSON.stringify(fieldCov));
+console.log(`with description: ${templates.filter((t) => t.description).length}, with tags: ${templates.filter((t) => t.tags).length}`);
 console.log('by category:', JSON.stringify(byCat));

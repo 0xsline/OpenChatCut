@@ -16,6 +16,10 @@ export interface Tpl {
   id: string;
   name: string;
   category: string;
+  /** Template-level description from the source catalog (200/211 have one). */
+  description?: string;
+  /** Source catalog tags (only ~20 templates carry any). */
+  tags?: string[];
   width: number;
   height: number;
   fps: number;
