@@ -1,12 +1,12 @@
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readFile, unlink, mkdir, stat } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { normalizeFrameRange } from '../../src/export/range.ts';
-import { createGenerationJob, getGenerationJobSnapshot } from './generation-jobs.ts';
+import { createGenerationJob, deleteGenerationJob, getGenerationJobSnapshot } from './generation-jobs.ts';
 // @ts-expect-error — plain .mjs render pipeline has no .d.ts
 import { renderTimeline, renderTimelineStills, renderClip, setUploadsDirProvider } from '../../remotion/render.mjs';
 
@@ -159,6 +159,7 @@ interface ExportPlan {
   format: 'video' | 'audio';
   media: (typeof EXPORT_MEDIA)[keyof typeof EXPORT_MEDIA];
   frameRange: [number, number] | undefined;
+  totalFrames: number;
   filename: string;
   durationSeconds: number;
   scale: number;
@@ -199,7 +200,7 @@ function planExport(body: ExportRequest | null): ExportPlan {
   const frames = frameRange ? frameRange[1] - frameRange[0] + 1 : totalFrames;
   const scale = exportScale(state as { width?: unknown; height?: unknown }, body?.resolution);
   const retimeFpsTarget = format === 'video' && body?.fps !== undefined && body.fps !== fps ? body.fps : undefined;
-  return { state, format, media, frameRange, filename: exportFilename(body?.name, media.ext), durationSeconds: frames / fps, scale, retimeFps: retimeFpsTarget };
+  return { state, format, media, frameRange, totalFrames: frames, filename: exportFilename(body?.name, media.ext), durationSeconds: frames / fps, scale, retimeFps: retimeFpsTarget };
 }
 
 /**
@@ -330,6 +331,21 @@ export function exportPlugin(): Plugin {
         const path = (req.url ?? '/').split('?')[0];
         const id = path.replace(/^\/+|\/+$/g, '');
 
+        if (req.method === 'DELETE') {
+          if (!id) { sendError(res, 400, 'render id is required'); return; }
+          const snapshot = getGenerationJobSnapshot(id);
+          if (!snapshot) { sendError(res, 404, `render job ${id} not found`); return; }
+          if (snapshot.status === 'queued' || snapshot.status === 'running') {
+            sendError(res, 409, 'render job is still running'); return;
+          }
+          if (snapshot.result?.path) {
+            await unlink(join(uploadDir(), basename(snapshot.result.path))).catch(() => {});
+          }
+          deleteGenerationJob(id);
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
         if (req.method === 'GET') {
           if (!id) { sendError(res, 400, 'render id is required'); return; }
           const snapshot = getGenerationJobSnapshot(id);
@@ -337,7 +353,7 @@ export function exportPlugin(): Plugin {
           sendJson(res, 200, snapshot);
           return;
         }
-        if (req.method !== 'POST') { sendError(res, 405, 'method not allowed — POST to enqueue, GET to inspect'); return; }
+        if (req.method !== 'POST') { sendError(res, 405, 'method not allowed — POST to enqueue, GET to inspect, DELETE to clean up'); return; }
         if (id) { sendError(res, 404, 'unknown export job route'); return; }
 
         try {
@@ -348,17 +364,44 @@ export function exportPlugin(): Plugin {
           const filepath = join(outDir, `${uuid}.${plan.media.ext}`);
           const publicPath = `/media/uploads/${uuid}.${plan.media.ext}`;
           const { jobId } = createGenerationJob(
-            { kind: 'export', format: plan.format, codec: plan.media.codec, name: plan.filename, frameRange: plan.frameRange ?? null },
-            async () => {
+            {
+              kind: 'export',
+              format: plan.format,
+              codec: plan.media.codec,
+              name: plan.filename,
+              frameRange: plan.frameRange ?? null,
+              totalFrames: plan.totalFrames,
+            },
+            async (_jobId, update) => {
+              update({ phase: 'preparing', progress: 4, processedFrames: 0, totalFrames: plan.totalFrames });
               await mkdir(outDir, { recursive: true });
-              await renderTimeline({ state: plan.state, outputLocation: filepath, codec: plan.media.codec, frameRange: plan.frameRange, scale: plan.scale });
+              update({ phase: 'rendering', progress: 8 });
+              const renderSpan = plan.retimeFps ? 84 : 90;
+              await renderTimeline({
+                state: plan.state,
+                outputLocation: filepath,
+                codec: plan.media.codec,
+                frameRange: plan.frameRange,
+                scale: plan.scale,
+                onProgress: (value: number) => {
+                  const normalized = Math.min(1, Math.max(0, Number(value) || 0));
+                  update({
+                    phase: 'rendering',
+                    progress: 8 + normalized * renderSpan,
+                    processedFrames: Math.min(plan.totalFrames, Math.floor(normalized * plan.totalFrames)),
+                    totalFrames: plan.totalFrames,
+                  });
+                },
+              });
               if (plan.retimeFps) {
+                update({ phase: 'finalizing', progress: 93, processedFrames: plan.totalFrames });
                 const retimed = `${filepath}.retimed.${plan.media.ext}`;
                 await retimeFps(filepath, retimed, plan.retimeFps, plan.media.codec as 'h264' | 'vp8');
                 await unlink(filepath).catch(() => {});
                 const { rename } = await import('node:fs/promises');
                 await rename(retimed, filepath);
               }
+              update({ phase: 'finalizing', progress: 99, processedFrames: plan.totalFrames });
               const { size } = await stat(filepath);
               return { assetId: uuid, kind: plan.format, name: plan.filename, path: publicPath, durationSeconds: plan.durationSeconds, sizeBytes: size, codec: plan.media.codec };
             },

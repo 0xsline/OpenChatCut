@@ -69,3 +69,7 @@ docs/
 
 # 本地开发/验证脚本
 /scripts/
+
+# 本地营销素材与草稿
+/marketing/
+.pi-*

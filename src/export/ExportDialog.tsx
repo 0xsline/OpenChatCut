@@ -5,7 +5,7 @@
 //   字幕  srt / txt(需先开启字幕)
 //   XML   fcp_xml(Premiere)/ fcp_xml_resolve(达芬奇)± 随包渲出 MG .mov
 // 「创建分享链接」(云端公开页)需要分享后端——本地无,不摆假开关。
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useT } from '../i18n/locale';
 import { Icon, type IconName } from '../components/icons';
 import type { TimelineState } from '../editor/types';
@@ -33,6 +33,48 @@ const TABS: Array<{ key: ExportTab; label: string; summary: string; icon: IconNa
 
 const FPS_OPTIONS = [24, 25, 30, 50, 60];
 const RESOLUTIONS = ['480p', '720p', '1080p'] as const;
+
+type ExportPhase = 'queued' | 'preparing' | 'rendering' | 'finalizing' | 'downloading' | 'completed' | 'failed';
+
+interface ExportProgress {
+  phase: ExportPhase;
+  percent: number;
+  startedAt: number;
+  finishedAt?: number;
+  processedFrames?: number;
+  totalFrames?: number;
+  detail?: string;
+  outputSize?: number;
+}
+
+interface ExportJobSnapshot {
+  id: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed';
+  progress: number;
+  phase?: string;
+  processedFrames?: number;
+  totalFrames?: number;
+  result?: { path?: string; name?: string; sizeBytes?: number; codec?: string };
+  error?: string;
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
+}
+
+function formatDuration(milliseconds: number): string {
+  const seconds = Math.max(0, Math.round(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
 
 function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
@@ -64,6 +106,14 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
   const [includeMg, setIncludeMg] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ExportProgress | null>(null);
+  const [clock, setClock] = useState(Date.now());
+
+  useEffect(() => {
+    if (!busy) return undefined;
+    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [busy]);
 
   const mgItems = useMemo(() => state.items.filter((it) => it.kind === 'motion-graphic'), [state.items]);
   const base = sanitizeFileName(projectName, 'export');
@@ -82,7 +132,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     xml: '生成剪辑工程',
   };
 
-  /** 视频/音频:POST /export(服务端无头渲染)→ 下载。 */
+  /** 视频/音频:异步 render job 回传真实 Remotion 进度，完成后再下载。 */
   const exportMedia = async (format: 'video' | 'audio') => {
     const useCodec = format === 'audio' ? 'mp3' : codec;
     const body: Record<string, unknown> = { state, format, codec: useCodec, name: base };
@@ -90,21 +140,76 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
       body.resolution = resolution;
       if (fps !== state.fps) body.fps = fps;
     }
-    const res = await fetch('/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!res.ok) {
-      const info = (await res.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(info?.error ?? t('导出失败 ({status})', { status: res.status }));
+    const submission = await fetch('/export/job', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const submitted = (await submission.json().catch(() => null)) as { renderId?: string; error?: string } | null;
+    if (!submission.ok || !submitted?.renderId) {
+      throw new Error(submitted?.error ?? t('导出失败 ({status})', { status: submission.status }));
     }
-    const blob = await res.blob();
+
+    let completed: ExportJobSnapshot['result'];
+    while (!completed) {
+      const response = await fetch(`/export/job/${encodeURIComponent(submitted.renderId)}`);
+      const snapshot = (await response.json().catch(() => null)) as ExportJobSnapshot | { error?: string } | null;
+      if (!response.ok || !snapshot || !('status' in snapshot)) {
+        const message = snapshot && 'error' in snapshot ? snapshot.error : undefined;
+        throw new Error(message ?? t('无法读取导出进度 ({status})', { status: response.status }));
+      }
+      if (snapshot.status === 'failed') throw new Error(snapshot.error ?? t('导出失败'));
+      if (snapshot.status === 'succeeded') {
+        if (!snapshot.result?.path) throw new Error(t('导出完成，但没有可下载的文件'));
+        setProgress((current) => current ? {
+          ...current,
+          phase: 'finalizing',
+          percent: 99,
+          processedFrames: snapshot.processedFrames,
+          totalFrames: snapshot.totalFrames,
+        } : current);
+        completed = snapshot.result;
+        break;
+      }
+      const phase: ExportPhase = snapshot.phase === 'queued'
+        ? 'queued'
+        : snapshot.phase === 'finalizing' ? 'finalizing'
+          : snapshot.phase === 'rendering' ? 'rendering' : 'preparing';
+      setProgress((current) => current ? {
+        ...current,
+        phase,
+        percent: Math.min(99, Math.max(current.percent, Math.round(snapshot.progress))),
+        processedFrames: snapshot.processedFrames,
+        totalFrames: snapshot.totalFrames,
+      } : current);
+      await wait(300);
+    }
+
+    setBusy(t('正在下载…'));
+    setProgress((current) => current ? { ...current, phase: 'downloading', percent: 99 } : current);
+    const file = await fetch(completed.path!);
+    if (!file.ok) throw new Error(t('下载导出文件失败 ({status})', { status: file.status }));
+    const blob = await file.blob();
     const ext = format === 'audio' ? 'mp3' : useCodec === 'vp8' ? 'webm' : 'mp4';
-    downloadBlob(blob, `${base}.${ext}`);
-    void recordExport({ name: `${base}.${ext}`, format, codec: useCodec, sizeBytes: blob.size, createdAt: Date.now() });
+    const filename = completed.name ?? `${base}.${ext}`;
+    downloadBlob(blob, filename);
+    // UI exports are one-shot downloads. Remove the temporary async-job file so it
+    // does not appear as a new library asset or accumulate in the media directory.
+    void fetch(`/export/job/${encodeURIComponent(submitted.renderId)}`, { method: 'DELETE' }).catch(() => {});
+    setProgress((current) => current ? { ...current, outputSize: completed.sizeBytes ?? blob.size } : current);
+    void recordExport({ name: filename, format, codec: useCodec, sizeBytes: completed.sizeBytes ?? blob.size, createdAt: Date.now() });
   };
 
   /** MG动画:逐个渲 ProRes 4444 alpha .mov(复用单片段导出管线)。 */
   const exportMgBatch = async () => {
     for (let i = 0; i < mgItems.length; i++) {
       setBusy(t('渲染 MG {i}/{n} · {name}', { i: i + 1, n: mgItems.length, name: mgItems[i].name }));
+      setProgress((current) => current ? {
+        ...current,
+        phase: 'rendering',
+        percent: Math.round((i / mgItems.length) * 95),
+        detail: t('正在渲染第 {i}/{n} 个动态图层', { i: i + 1, n: mgItems.length }),
+      } : current);
       await exportClipMov(state, mgItems[i]);
     }
     void recordExport({ name: `${mgItems.length} 个 MG · ProRes 4444`, format: 'video', codec: 'prores', createdAt: Date.now() });
@@ -124,6 +229,12 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     if (includeMg) {
       for (let i = 0; i < mgItems.length; i++) {
         setBusy(t('渲染 MG {i}/{n} · {name}', { i: i + 1, n: mgItems.length, name: mgItems[i].name }));
+        setProgress((current) => current ? {
+          ...current,
+          phase: 'rendering',
+          percent: Math.round((i / mgItems.length) * 90),
+          detail: t('正在渲染第 {i}/{n} 个动态图层', { i: i + 1, n: mgItems.length }),
+        } : current);
         await exportClipMov(state, mgItems[i]);
       }
     }
@@ -135,17 +246,25 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
 
   const run = async () => {
     if (busy) return;
+    if (progress?.phase === 'completed') { onClose(); return; }
     setError(null);
-    setBusy(t('导出中…'));
+    const startedAt = Date.now();
+    setClock(startedAt);
+    setProgress({ phase: 'preparing', percent: 0, startedAt });
+    setBusy(t('准备导出…'));
     try {
       if (tab === 'video') await exportMedia('video');
       else if (tab === 'audio') await exportMedia('audio');
       else if (tab === 'mg') await exportMgBatch();
       else if (tab === 'subtitles') exportSubtitles();
       else await exportXml();
-      onClose();
+      const finishedAt = Date.now();
+      setClock(finishedAt);
+      setProgress((current) => current ? { ...current, phase: 'completed', percent: 100, finishedAt } : current);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('导出失败'));
+      const message = err instanceof Error ? err.message : t('导出失败');
+      setError(message);
+      setProgress((current) => current ? { ...current, phase: 'failed', finishedAt: Date.now() } : current);
     } finally {
       setBusy(null);
     }
@@ -154,6 +273,20 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
   const disabled = !!busy
     || (tab === 'subtitles' && !state.captions)
     || (tab === 'mg' && mgItems.length === 0);
+
+  const phaseLabel = progress ? ({
+    queued: t('等待渲染'),
+    preparing: t('准备素材'),
+    rendering: t('正在渲染'),
+    finalizing: t('正在封装'),
+    downloading: t('正在下载'),
+    completed: t('导出完成'),
+    failed: t('导出失败'),
+  } as Record<ExportPhase, string>)[progress.phase] : '';
+  const elapsedMs = progress ? (progress.finishedAt ?? clock) - progress.startedAt : 0;
+  const etaMs = progress && progress.phase === 'rendering' && progress.percent >= 3 && progress.percent < 99
+    ? elapsedMs * (100 - progress.percent) / progress.percent
+    : null;
 
   return (
     <div className="cc-export-overlay" onClick={busy ? undefined : onClose}>
@@ -187,7 +320,8 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
                   id={`cc-export-tab-${entry.key}`}
                   key={entry.key}
                   className={`cc-export-tab${tab === entry.key ? ' active' : ''}`}
-                  onClick={() => { setTab(entry.key); setError(null); }}
+                  onClick={() => { setTab(entry.key); setError(null); setProgress(null); }}
+                  disabled={!!busy}
                 >
                   <span className="cc-export-tab-icon"><Icon name={entry.icon} size={15} /></span>
                   <span>
@@ -283,9 +417,38 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
               {error && <p className="cc-export-error">{error}</p>}
             </div>
 
-            <footer className="cc-export-footer">
+            <footer className={`cc-export-footer${progress ? ' has-progress' : ''}`}>
+              {progress && (
+                <div
+                  className={`cc-export-progress ${progress.phase}`}
+                  role="progressbar"
+                  aria-label={phaseLabel}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progress.percent}
+                >
+                  <div className="cc-export-progress-head">
+                    <strong>{phaseLabel}</strong>
+                    <span>{progress.percent}%</span>
+                  </div>
+                  <div className="cc-export-progress-track" aria-hidden="true">
+                    <i style={{ width: `${progress.percent}%` }} />
+                  </div>
+                  <div className="cc-export-progress-meta">
+                    {progress.processedFrames !== undefined && progress.totalFrames !== undefined && (
+                      <span>{t('已渲染 {done}/{total} 帧', { done: progress.processedFrames, total: progress.totalFrames })}</span>
+                    )}
+                    {progress.detail && <span>{progress.detail}</span>}
+                    <span>{t('已用 {time}', { time: formatDuration(elapsedMs) })}</span>
+                    {etaMs !== null && etaMs < 24 * 60 * 60_000 && (
+                      <span>{t('预计剩余 {time}', { time: formatDuration(etaMs) })}</span>
+                    )}
+                    {progress.outputSize !== undefined && <span>{t('文件大小 {size}', { size: formatBytes(progress.outputSize) })}</span>}
+                  </div>
+                </div>
+              )}
               <div className="cc-export-output">
-                <span>{t('即将生成')}</span>
+                <span>{progress?.phase === 'completed' ? t('已生成') : t('即将生成')}</span>
                 <strong title={outputName}>{outputName}</strong>
               </div>
               <button
@@ -294,8 +457,9 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
                 onClick={() => void run()}
                 disabled={disabled}
               >
-                {!busy && <Icon name="download" size={17} />}
-                {busy ?? t(actionLabel[tab])}
+                {!busy && <Icon name={progress?.phase === 'completed' ? 'check' : 'download'} size={17} />}
+                {busy ? `${progress?.percent ?? 0}%` : progress?.phase === 'completed' ? t('完成')
+                  : progress?.phase === 'failed' ? t('重试') : t(actionLabel[tab])}
               </button>
             </footer>
           </main>

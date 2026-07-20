@@ -21,6 +21,9 @@ interface GenerationJob {
   id: string;
   status: GenerationJobStatus;
   progress: number;
+  phase?: string;
+  processedFrames?: number;
+  totalFrames?: number;
   params: Record<string, unknown>;
   createdAt: number;
   updatedAt: number;
@@ -32,10 +35,24 @@ export interface GenerationJobSnapshot {
   id: string;
   status: GenerationJobStatus;
   progress: number;
+  phase?: string;
+  processedFrames?: number;
+  totalFrames?: number;
   params: Record<string, unknown>;
+  createdAt: number;
+  updatedAt: number;
   result?: GenerationResult;
   error?: string;
 }
+
+export interface GenerationJobProgress {
+  progress?: number;
+  phase?: string;
+  processedFrames?: number;
+  totalFrames?: number;
+}
+
+export type UpdateGenerationJob = (progress: GenerationJobProgress) => void;
 
 const jobs = new Map<string, GenerationJob>();
 const TERMINAL = new Set<GenerationJobStatus>(['succeeded', 'failed']);
@@ -50,26 +67,46 @@ function cleanOldJobs() {
 
 export function createGenerationJob(
   params: Record<string, unknown>,
-  task: (jobId: string) => Promise<GenerationResult>,
+  task: (jobId: string, update: UpdateGenerationJob) => Promise<GenerationResult>,
 ): { jobId: string; status: 'queued' } {
   cleanOldJobs();
   const id = randomUUID();
   const now = Date.now();
-  const job: GenerationJob = { id, status: 'queued', progress: 0, params, createdAt: now, updatedAt: now };
+  const job: GenerationJob = { id, status: 'queued', progress: 0, phase: 'queued', params, createdAt: now, updatedAt: now };
   jobs.set(id, job);
 
   void Promise.resolve().then(async () => {
     job.status = 'running';
     job.progress = 10;
+    job.phase = 'starting';
     job.updatedAt = Date.now();
+    const update: UpdateGenerationJob = (next) => {
+      if (TERMINAL.has(job.status)) return;
+      if (next.progress !== undefined && Number.isFinite(next.progress)) {
+        // Running jobs never report 100%; that value is reserved for a terminal snapshot.
+        job.progress = Math.max(job.progress, Math.min(99, Math.max(0, next.progress)));
+      }
+      if (next.phase !== undefined) job.phase = next.phase;
+      if (next.totalFrames !== undefined && Number.isFinite(next.totalFrames)) {
+        job.totalFrames = Math.max(0, Math.floor(next.totalFrames));
+      }
+      if (next.processedFrames !== undefined && Number.isFinite(next.processedFrames)) {
+        const processed = Math.max(0, Math.floor(next.processedFrames));
+        job.processedFrames = job.totalFrames === undefined ? processed : Math.min(job.totalFrames, processed);
+      }
+      job.updatedAt = Date.now();
+    };
     try {
-      job.result = await task(id);
+      job.result = await task(id, update);
       job.status = 'succeeded';
       job.progress = 100;
+      job.phase = 'completed';
+      if (job.totalFrames !== undefined) job.processedFrames = job.totalFrames;
     } catch (error) {
       job.status = 'failed';
       job.error = error instanceof Error ? error.message : String(error);
       job.progress = 100;
+      job.phase = 'failed';
     }
     job.updatedAt = Date.now();
   });
@@ -80,7 +117,26 @@ export function createGenerationJob(
 export function getGenerationJobSnapshot(jobId: string): GenerationJobSnapshot | undefined {
   const job = jobs.get(jobId);
   if (!job) return undefined;
-  return { id: job.id, status: job.status, progress: job.progress, params: job.params, result: job.result, error: job.error };
+  return {
+    id: job.id,
+    status: job.status,
+    progress: job.progress,
+    phase: job.phase,
+    processedFrames: job.processedFrames,
+    totalFrames: job.totalFrames,
+    params: job.params,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    result: job.result,
+    error: job.error,
+  };
+}
+
+/** Remove a finished job after a one-shot consumer has downloaded its result. */
+export function deleteGenerationJob(jobId: string): boolean {
+  const job = jobs.get(jobId);
+  if (!job || !TERMINAL.has(job.status)) return false;
+  return jobs.delete(jobId);
 }
 
 interface ProgressRequest {
@@ -118,6 +174,11 @@ function report(job: GenerationJob, action: ProgressRequest['action']) {
     jobId: job.id,
     status: job.status,
     progress: job.progress,
+    phase: job.phase,
+    processedFrames: job.processedFrames,
+    totalFrames: job.totalFrames,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
     ...(action === 'params' ? { params: job.params } : {}),
     ...(job.result ? { result: job.result } : {}),
     ...(job.error ? { error: job.error } : {}),

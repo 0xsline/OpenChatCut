@@ -168,6 +168,12 @@ Describe the goal → Agent reads the project → Produces verifiable edits → 
 
 ## Quick Start
 
+### Desktop installers
+
+Download the latest macOS and Windows builds from [GitHub Releases](https://github.com/0xsline/OpenChatCut/releases/latest). The release currently includes DMG installers for Apple Silicon and Intel Macs, plus an x64 Windows installer.
+
+These are early builds. The macOS packages are not yet signed or notarized, so the operating system may require manual approval on first launch.
+
 ### Run from source
 
 Requires Node.js 24.x and npm. The supported Node.js range is enforced by `package.json`, and `.nvmrc` selects the matching major version for Node version managers.
@@ -200,7 +206,7 @@ The desktop app uses an Electron shell with the same embedded services. The web 
 
 ## Project Status
 
-OpenChatCut is under active development. The editor, project format, and agent tools will continue to evolve. The web development build and macOS and Windows packaging pipelines are available; running from source is recommended until official installers are released.
+OpenChatCut is under active development. The editor, project format, and agent tools will continue to evolve. Prebuilt macOS and Windows installers are published on [GitHub Releases](https://github.com/0xsline/OpenChatCut/releases); running from source remains the most transparent option for development and troubleshooting.
 
 The core timeline, local projects, built-in media, and manual editing do not depend on cloud services. Connected features such as AI models, online media, generation, and transcription are enabled only after you configure the corresponding services.
 
