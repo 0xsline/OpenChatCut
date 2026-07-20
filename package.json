@@ -29,7 +29,6 @@
     "@ai-sdk/anthropic": "^4.0.16",
     "@ai-sdk/openai": "^4.0.16",
     "@ai-sdk/openai-compatible": "^3.0.12",
-    "@anthropic-ai/sdk": "^0.111.0",
     "@aws-sdk/client-s3": "^3.1089.0",
     "@aws-sdk/s3-request-presigner": "^3.1090.0",
     "@babel/standalone": "^8.0.4",

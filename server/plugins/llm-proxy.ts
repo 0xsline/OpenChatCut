@@ -1,23 +1,33 @@
+import type { IncomingMessage } from 'node:http';
 import type { Plugin } from 'vite';
-import { getKey } from '../keystore.ts';
-import { protocolForProvider } from '../../shared/llm-providers.ts';
-import { resolveLlmBaseUrl } from '../llm-config.ts';
+import { getKey, type KeyName } from '../keystore.ts';
+import {
+  normalizeLlmProvider,
+  protocolForProvider,
+  type LlmProvider,
+} from '../../shared/llm-providers.ts';
+import { resolveLlmProviderConfig } from '../llm-config.ts';
 import { proxyMiddleware } from '../proxy.ts';
 
-export function llmTarget(): string {
-  return resolveLlmBaseUrl(
-    getKey('LLM_PROVIDER'),
-    getKey('LLM_BASE_URL'),
-    getKey('LLM_BASE_URL_FORMAT'),
-  );
+function keyReader(name: string): string {
+  return getKey(name as KeyName);
 }
 
-export function llmHeaders(): Record<string, string> {
-  const key = getKey('LLM_API_KEY');
-  if (!key) return {};
-  return protocolForProvider(getKey('LLM_PROVIDER')) === 'anthropic'
-    ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
-    : { authorization: `Bearer ${key}` };
+export function llmProviderForRequest(req?: IncomingMessage): LlmProvider {
+  const requested = req?.headers['x-openchatcut-provider'];
+  return normalizeLlmProvider(typeof requested === 'string' ? requested : getKey('LLM_PROVIDER'));
+}
+
+export function llmTarget(req?: IncomingMessage): string {
+  return resolveLlmProviderConfig(llmProviderForRequest(req), keyReader).baseUrl;
+}
+
+export function llmHeaders(req?: IncomingMessage): Record<string, string> {
+  const config = resolveLlmProviderConfig(llmProviderForRequest(req), keyReader);
+  if (!config.apiKey) return {};
+  return protocolForProvider(config.provider) === 'anthropic'
+    ? { 'x-api-key': config.apiKey, 'anthropic-version': '2023-06-01' }
+    : { authorization: `Bearer ${config.apiKey}` };
 }
 
 /** One dynamic proxy implementation shared by Vite dev and Electron production. */

@@ -1,10 +1,10 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { MediaAsset, MediaFolder, ProjectDoc } from '../../editor/types';
 
 type Args = Record<string, unknown>;
 
-export const MEDIA_POOL_TOOL_SCHEMAS: Anthropic.Tool[] = [{
+export const MEDIA_POOL_TOOL_SCHEMAS: AgentToolSchema[] = [{
   name: 'manage_media_pool',
   description: 'Organize the project media pool without changing timeline clips or source files: list, create/rename/delete empty folders, move assets, or rename an asset display name.',
   input_schema: {

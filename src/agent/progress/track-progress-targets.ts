@@ -1,7 +1,7 @@
 // track_progress target extension. generate-tools.ts owns target=generation;
 // this module adds upload and visual-analysis while transcription remains in
 // transcription-progress.ts. Missing targets default to generation.
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { isMediaSrcReachable } from '../../persist/mediaBlobStore';
 import {
@@ -15,7 +15,7 @@ import {
 type Args = Record<string, unknown>;
 
 /** Immutably extend the track_progress schema with every supported target. */
-export function withProgressTargets(schemas: Anthropic.Tool[]): Anthropic.Tool[] {
+export function withProgressTargets(schemas: AgentToolSchema[]): AgentToolSchema[] {
   return schemas.map((tool) => {
     if (tool.name !== 'track_progress') return tool;
     const properties = (tool.input_schema.properties ?? {}) as Record<string, unknown>;

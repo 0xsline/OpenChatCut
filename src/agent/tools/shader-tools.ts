@@ -1,8 +1,8 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { FxDef, FxProperty } from '../../gl/fx/uniforms';
 import type { MediaAsset } from '../../editor/types';
-import { createMessage, MODEL } from '../client';
+import { generateAgentText } from '../client';
 import { getCustomTransition, registerCustomTransition, type CustomTransitionDef } from '../../gl/customTransitions';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -232,7 +232,7 @@ Rules (MUST follow exactly):
 - Pure fragment-shader math only. Make the transition match the description and look clean.`;
 }
 
-export const SHADER_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const SHADER_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'submit_shader',
     description:
@@ -353,10 +353,16 @@ const IMAGE_MEDIA_TYPES: Record<string, 'image/jpeg' | 'image/png' | 'image/gif'
 };
 
 /** 把图片参考资产读成 base64 image block（浏览器 fetch 资产字节；node 下给明确错误）。 */
-async function imageBlocksOf(assets: MediaAsset[]): Promise<Anthropic.ImageBlockParam[] | { error: string }> {
+interface AgentImagePart {
+  type: 'file';
+  data: { type: 'data'; data: string };
+  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+}
+
+async function imageBlocksOf(assets: MediaAsset[]): Promise<AgentImagePart[] | { error: string }> {
   if (!assets.length) return [];
   if (typeof document === 'undefined') return { error: 'image references need the browser runtime (asset bytes are fetched from the dev server)' };
-  const blocks: Anthropic.ImageBlockParam[] = [];
+  const blocks: AgentImagePart[] = [];
   for (const asset of assets) {
     try {
       const res = await fetch(asset.src);
@@ -364,14 +370,14 @@ async function imageBlocksOf(assets: MediaAsset[]): Promise<Anthropic.ImageBlock
       const fromHeader = res.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
       const ext = asset.src.split('?')[0]!.split('#')[0]!.split('.').pop()?.toLowerCase() ?? '';
       const mediaType = (Object.values(IMAGE_MEDIA_TYPES) as string[]).includes(fromHeader ?? '')
-        ? (fromHeader as Anthropic.Base64ImageSource['media_type'])
+        ? (fromHeader as AgentImagePart['mediaType'])
         : IMAGE_MEDIA_TYPES[ext];
       if (!mediaType) return { error: `reference image "${asset.name}" has an unsupported format (need jpeg/png/gif/webp)` };
       const bytes = new Uint8Array(await res.arrayBuffer());
       let bin = '';
       const CHUNK = 0x8000;
       for (let i = 0; i < bytes.length; i += CHUNK) bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-      blocks.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: btoa(bin) } });
+      blocks.push({ type: 'file', data: { type: 'data', data: btoa(bin) }, mediaType });
     } catch (e) {
       return { error: `failed to read reference image "${asset.name}": ${e instanceof Error ? e.message : String(e)}` };
     }
@@ -406,16 +412,11 @@ export async function execShaderTool(name: string, args: Args, ctx: AgentContext
 
   let text: string;
   try {
-    const msg = await createMessage({
-      model: MODEL,
-      max_tokens: 8000,
+    text = await generateAgentText({
+      maxOutputTokens: 8000,
       system: kind === 'transition' ? transitionShaderSystemPrompt(props) : shaderSystemPrompt(props),
       messages: [{ role: 'user', content: imageBlocks.length ? [...imageBlocks, { type: 'text', text: userText }] : userText }],
     });
-    text = msg.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('');
   } catch (e) {
     return { error: `shader generation failed: ${e instanceof Error ? e.message : String(e)}` };
   }

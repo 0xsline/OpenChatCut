@@ -1,8 +1,8 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from './tool-schema';
 import type { AgentContext } from './context';
 import { ASPECT_PRESETS, defaultTrackId, resolveTrackId, timelineTrackIds, trackAlias, trackKind, type AspectFit, type MediaAsset } from '../editor/types';
 import { compileTemplate } from '../template-host';
-import { createMessage, MODEL } from './client';
+import { generateAgentText } from './client';
 import { designStyleHint } from './systemPrompt';
 import { TRANSCRIPT_TOOL_SCHEMAS, TRANSCRIPT_TOOL_NAMES, execTranscriptTool } from './tools/transcript-tools';
 import { TIMELINE_TOOL_SCHEMAS, TIMELINE_TOOL_NAMES, execTimelineTool } from './tools/timeline-tools';
@@ -51,7 +51,7 @@ import { withProgressTargets, execUploadProgress, execVisualAnalysisProgress } f
 // Canonical tool definitions (name / description / JSON input_schema). Each one
 // executes against the EditorCore command layer (tool == command). Vercel AI SDK
 // adapts this existing JSON-schema catalog to the selected model provider.
-export const TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'read_timeline',
     description: 'Read the current timeline: fps and every clip (id, track, name, startFrame, durationInFrames, props). Call this first to see current state before editing.',
@@ -322,17 +322,11 @@ Contract (MUST follow exactly):
 - interpolate()'s inputRange MUST be strictly increasing (e.g. [0, 15, 30]). When breakpoints are computed (per-item offsets, durationInFrames fractions), clamp with Math.max(prev + 1, next) so a later value can never be <= an earlier one — a non-monotonic inputRange throws at render time.
 - Pure, synchronous rendering only. FORBIDDEN: fetch, XMLHttpRequest, WebSocket, document, window, globalThis, eval, new Function, .constructor, localStorage, setTimeout, setInterval, while(true), for(;;), debugger.
 - Style inline. Make it clean and visually appealing (large readable text, tasteful colors, smooth fade/slide/scale animations).${brandHint}`;
-  const msg = await createMessage({
-    model: MODEL,
-    max_tokens: 64000, // don't truncate generated components
+  let code = (await generateAgentText({
+    maxOutputTokens: 64000, // don't truncate generated components
     system: sys,
-    messages: [{ role: 'user', content: description }],
-  });
-  let code = msg.content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map((b) => b.text)
-    .join('')
-    .trim();
+    prompt: description,
+  })).trim();
   code = code.replace(/^\s*```[a-zA-Z]*\s*\n?/, '').replace(/\n?```\s*$/, '').trim(); // strip fences
   return code;
 }

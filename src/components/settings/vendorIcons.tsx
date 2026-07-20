@@ -1,4 +1,4 @@
-// 厂商官方图标,vendored 自 @lobehub/icons-static-svg v1.93(MIT)、simple-icons(CC0:
+// 厂商官方图标,vendored 自 @lobehub/icons-static-svg v1.93.0(MIT)、simple-icons(CC0:
 // Pexels/Pixabay/Unsplash/Cloudflare)与 Freesound 站点 safari-pinned-tab 品牌标。
 // SVG 是本仓静态资产(非用户输入),inline 渲染以便尺寸/mono 着色继承;color 版 path
 // 自带官方品牌色。Mureka/E2B/本地磁盘仍 monogram 兜底。
@@ -7,6 +7,12 @@ import { theme } from '../../theme';
 import claudeSvg from '../../../assets/vendor-icons/claude-color.svg?raw';
 import openaiSvg from '../../../assets/vendor-icons/openai.svg?raw';
 import geminiSvg from '../../../assets/vendor-icons/gemini-color.svg?raw';
+import kimiSvg from '../../../assets/vendor-icons/kimi-color.svg?raw';
+import qwenSvg from '../../../assets/vendor-icons/qwen-color.svg?raw';
+import zhipuSvg from '../../../assets/vendor-icons/zhipu-color.svg?raw';
+import deepseekSvg from '../../../assets/vendor-icons/deepseek-color.svg?raw';
+import mistralSvg from '../../../assets/vendor-icons/mistral-color.svg?raw';
+import openaiCompatibleSvg from '../../../assets/vendor-icons/openai-compatible.svg?raw';
 import minimaxSvg from '../../../assets/vendor-icons/minimax-color.svg?raw';
 import hailuoSvg from '../../../assets/vendor-icons/hailuo-color.svg?raw';
 import elevenlabsSvg from '../../../assets/vendor-icons/elevenlabs.svg?raw';
@@ -22,7 +28,8 @@ import freesoundSvg from '../../../assets/vendor-icons/freesound.svg?raw';
 import cloudflareSvg from '../../../assets/vendor-icons/cloudflare.svg?raw';
 
 export type VendorId =
-  | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
+  | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral'
+  | 'openai-compatible' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
   | 'assemblyai' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk';
 
@@ -36,6 +43,12 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
   anthropic: { svg: claudeSvg },                    // Agent 大脑用 Claude 星芒(官方橙)
   openai: { svg: openaiSvg, tint: theme.text },     // 官方结环即单色,随皮肤墨色(深肤近白/浅肤近黑)
   gemini: { svg: geminiSvg },
+  kimi: { svg: kimiSvg },
+  qwen: { svg: qwenSvg },
+  glm: { svg: zhipuSvg },
+  deepseek: { svg: deepseekSvg },
+  mistral: { svg: mistralSvg },
+  'openai-compatible': { svg: openaiCompatibleSvg, tint: theme.text },
   minimax: { svg: minimaxSvg },
   hailuo: { svg: hailuoSvg },                       // MiniMax 海螺视频专属标
   elevenlabs: { svg: elevenlabsSvg, tint: theme.text },

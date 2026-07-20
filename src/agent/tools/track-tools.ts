@@ -1,8 +1,8 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { resolveTrackId, timelineTrackIds, trackAlias, trackKind, type TimelineState, type TrackId, type TrackRole, type TrackUpdate } from '../../editor/types';
 
-export const TRACK_TOOL_SCHEMAS: Anthropic.Tool[] = [{
+export const TRACK_TOOL_SCHEMAS: AgentToolSchema[] = [{
   name: 'edit_track',
   description: 'Manage tracks. Actions: list | create | update | delete | tighten. Tracks have stable ids plus V1/A1 aliases that may renumber after insertion. create accepts json with trackType video/audio, optional count/order/name/role/audioRouting. update changes order/hidden/muted/locked/name/role/audioRouting — locked freezes the lane: clips on a locked track cannot be moved/trimmed/split/deleted/edited and nothing new lands on it. delete removes empty tracks only. tighten closes gaps between clips.',
   input_schema: {

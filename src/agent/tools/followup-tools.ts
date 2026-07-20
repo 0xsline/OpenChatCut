@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 
 // ask_followup_questions (MCP tool, required: ['fields']): agent 主动向用户发一张
@@ -11,7 +11,7 @@ import type { AgentContext } from '../context';
 
 type Args = Record<string, unknown>;
 
-export const FOLLOWUP_TOOL_SCHEMAS: Anthropic.Tool[] = [{
+export const FOLLOWUP_TOOL_SCHEMAS: AgentToolSchema[] = [{
   name: 'ask_followup_questions',
   description:
     'Ask the user follow-up questions as an interactive form card in chat, then WAIT for their answer (it arrives as their next message). Use when key info is missing before you can act. fields: array (≤12) of { id, label, type:"single"|"multi", options:[{value,display}], required?, allowOther? }. single = pick one, multi = pick several, allowOther lets them type a custom value. Free-text-only questions render as a prompt line (this editor has no free-text field). Do NOT keep acting until the user answers.',

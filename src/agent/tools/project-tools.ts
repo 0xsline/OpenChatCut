@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { ProjectDoc, TimelineState } from '../../editor/types';
 import {
@@ -19,7 +19,7 @@ import {
 
 type Args = Record<string, unknown>;
 
-export const PROJECT_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const PROJECT_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'list_projects',
     description: [

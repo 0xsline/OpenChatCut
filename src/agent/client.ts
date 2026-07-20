@@ -1,4 +1,3 @@
-import type Anthropic from '@anthropic-ai/sdk';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
@@ -17,6 +16,7 @@ export {
   DEFAULT_LLM_PROVIDER,
   defaultModelForProvider,
   normalizeLlmProvider,
+  protocolForProvider,
   providerApiPath,
 };
 export type { LlmProvider };
@@ -47,19 +47,34 @@ const ORIGIN = typeof window !== 'undefined' ? window.location.origin : 'http://
 const PROXY_API_BASE = `${ORIGIN}/llm`;
 const PROXY_KEY = 'proxy-injects-the-real-key';
 
+const proxyHeaders = (provider: LlmProvider): Record<string, string> => ({
+  'x-openchatcut-provider': provider,
+});
+
 const anthropicProvider = createAnthropic({
   baseURL: PROXY_API_BASE,
   apiKey: PROXY_KEY,
+  headers: proxyHeaders('anthropic'),
 });
 const openaiProvider = createOpenAI({
   baseURL: PROXY_API_BASE,
   apiKey: PROXY_KEY,
+  headers: proxyHeaders('openai'),
 });
-const compatibleProvider = createOpenAICompatible({
-  name: 'openai-compatible',
-  baseURL: PROXY_API_BASE,
-  apiKey: PROXY_KEY,
-});
+const compatibleProviders = new Map<LlmProvider, ReturnType<typeof createOpenAICompatible>>();
+
+function compatibleProvider(provider: LlmProvider): ReturnType<typeof createOpenAICompatible> {
+  const existing = compatibleProviders.get(provider);
+  if (existing) return existing;
+  const created = createOpenAICompatible({
+    name: provider,
+    baseURL: PROXY_API_BASE,
+    apiKey: PROXY_KEY,
+    headers: proxyHeaders(provider),
+  });
+  compatibleProviders.set(provider, created);
+  return created;
+}
 
 export function getLanguageModel(
   provider: LlmProvider = PROVIDER,
@@ -68,49 +83,36 @@ export function getLanguageModel(
   const protocol = protocolForProvider(provider);
   if (protocol === 'anthropic') return anthropicProvider(model);
   if (protocol === 'openai') return openaiProvider.responses(model);
-  return compatibleProvider(model);
+  return compatibleProvider(provider)(model);
+}
+
+export function getLanguageModelProviderOptions(
+  provider: LlmProvider = PROVIDER,
+) {
+  return protocolForProvider(provider) === 'openai'
+    ? { openai: { store: false } }
+    : undefined;
 }
 
 export async function generateAgentText(options: {
   system?: string;
-  prompt: string;
+  prompt?: string;
+  messages?: readonly unknown[];
   maxOutputTokens: number;
 }): Promise<string> {
-  const result = await generateText({
+  const base = {
     model: getLanguageModel(),
     system: options.system,
-    prompt: options.prompt,
     maxOutputTokens: options.maxOutputTokens,
-  });
+  };
+  const result = options.messages
+    ? await generateText({
+        ...base,
+        messages: normalizeLlmMessages(options.messages),
+      })
+    : await generateText({
+        ...base,
+        prompt: options.prompt ?? '',
+      });
   return result.text;
-}
-
-// Compatibility wrapper for focused generation helpers that still use the
-// Anthropic MessageCreateParams shape internally. Transport and model execution
-// are handled by the provider-neutral Vercel AI SDK.
-export async function createMessage(
-  params: Anthropic.MessageCreateParamsNonStreaming,
-): Promise<Anthropic.Message> {
-  const result = await generateText({
-    model: getLanguageModel(PROVIDER, params.model),
-    system: typeof params.system === 'string'
-      ? params.system
-      : params.system?.map((part) => part.text).join('\n'),
-    messages: normalizeLlmMessages(params.messages),
-    maxOutputTokens: params.max_tokens,
-  });
-  return {
-    id: result.response.id,
-    type: 'message',
-    role: 'assistant',
-    content: [{ type: 'text', text: result.text, citations: null }],
-    model: params.model,
-    stop_reason: 'end_turn',
-    stop_sequence: null,
-    usage: {
-      input_tokens: result.usage.inputTokens ?? 0,
-      output_tokens: result.usage.outputTokens ?? 0,
-    },
-    container: null,
-  } as unknown as Anthropic.Message;
 }

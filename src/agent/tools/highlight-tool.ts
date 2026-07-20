@@ -1,8 +1,8 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { ASPECT_PRESETS, type AspectPreset, type TimelineItem } from '../../editor/types';
 import { msToFrame, type TranscriptWord } from '../../transcript/types';
-import { createMessage, MODEL } from '../client';
+import { generateAgentText } from '../client';
 
 // find_highlights —— 智能切片 / 长转短成片口。
 //
@@ -40,7 +40,7 @@ interface SelectOpts {
   instruction?: string;
 }
 
-export const HIGHLIGHT_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const HIGHLIGHT_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'find_highlights',
     description:
@@ -83,17 +83,11 @@ async function llmSelectHighlights(words: WordRef[], opts: SelectOpts): Promise<
     opts.instruction ? `额外偏好:${opts.instruction}` : '',
   ].join('');
   const user = `逐词转写(共 ${words.length} 词,格式 序号:词):\n${list}\n\n挑出最多 ${opts.count} 段高光。${bias}`;
-  const msg = await createMessage({
-    model: MODEL,
-    max_tokens: 8192,
+  const text = (await generateAgentText({
+    maxOutputTokens: 8192,
     system: SELECT_SYSTEM,
-    messages: [{ role: 'user', content: user }],
-  });
-  const text = msg.content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map((b) => b.text)
-    .join('')
-    .trim();
+    prompt: user,
+  })).trim();
   return parseJsonArray(text);
 }
 

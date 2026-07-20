@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { theme } from '../../theme';
 import { getLocale, useT } from '../../i18n/locale';
 import type { AgentReference } from '../../agent/context';
@@ -8,6 +8,11 @@ import { CREATIVE_SKILLS, allCreativeSkills, findSkill, setCustomSkills } from '
 import { loadCustomSkills } from '../../persist/skillStore';
 import { loadAgentSettings, saveAgentSettings, MG_TIERS, type AgentSettings, type MgTier } from '../../agent/settings/agentSettings';
 import { usePersistedState } from '../../hooks/usePersistedState';
+import {
+  getAgentModelSnapshot,
+  selectAgentModel,
+  subscribeAgentModels,
+} from '../../agent/model-selection';
 
 /** composer shell height (includes textarea + toolbar); drag the top handle to resize */
 const COMPOSER_H_MIN = 88;
@@ -53,7 +58,7 @@ interface ChatComposerProps {
   placeholder?: string;
 }
 
-type Pop = 'mode' | 'skill' | 'settings' | 'assets' | 'templates' | null;
+type Pop = 'mode' | 'model' | 'skill' | 'settings' | 'assets' | 'templates' | null;
 
 // one bottom-bar icon button (monochrome, hover-lit)
 function BarBtn({ icon, title, onClick, active, disabled, chevron }: {
@@ -141,6 +146,12 @@ export function ChatComposer(props: ChatComposerProps) {
     loadCustomSkills().then((list) => { setCustomSkills(list); bumpCustom((n) => n + 1); });
   }, []);
   const activeSkill = findSkill(creativeMode);
+  const modelState = useSyncExternalStore(
+    subscribeAgentModels,
+    getAgentModelSnapshot,
+    getAgentModelSnapshot,
+  );
+  const activeModel = modelState.choices.find((choice) => choice.id === modelState.activeId);
   const builtinIds = new Set(CREATIVE_SKILLS.map((s) => s.id));
   const [pop, setPop] = useState<Pop>(null);
   const [popAnchor, setPopAnchor] = useState<HTMLElement | null>(null);
@@ -320,6 +331,35 @@ export function ChatComposer(props: ChatComposerProps) {
             style={{ height: 28, display: 'flex', alignItems: 'center', gap: 3, padding: '0 3px', border: 0, borderRadius: 6, background: pop === 'mode' ? theme.panelAlt : 'transparent', color: theme.text, cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>
             <Icon name="sparkles" size={15} /><span className="cc-chat-mode-label">{mode === 'agent' ? 'Agent' : 'Ask'}</span><Icon name="chevronDown" size={11} />
           </button>
+          <button
+            type="button"
+            title={activeModel
+              ? t('当前模型：{name}', { name: `${activeModel.providerLabel} · ${activeModel.model}` })
+              : t('选择模型')}
+            onClick={(event) => toggle('model', event.currentTarget)}
+            style={{
+              height: 28,
+              minWidth: 0,
+              maxWidth: 132,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '0 6px',
+              border: 0,
+              borderRadius: 4,
+              background: pop === 'model' ? theme.panel : 'transparent',
+              color: activeModel ? theme.textDim : theme.textDim,
+              cursor: 'pointer',
+              fontSize: 11,
+              flexShrink: 1,
+            }}
+          >
+            <Icon name="cloud" size={13} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {activeModel?.model ?? t('模型')}
+            </span>
+            <Icon name="chevronDown" size={10} />
+          </button>
           <BarBtn icon="sliders" title={t('设置')} active={pop === 'settings'} onClick={(e) => toggle('settings', e.currentTarget)} />
           <BarBtn icon="cursor" title={t('选择模式：点片段 / 拖画布 / 选文字稿作为引用')} active={selecting} onClick={onToggleSelecting} />
           <BarBtn icon="plus" title={t('引用媒体池素材')} active={pop === 'assets'} onClick={(e) => toggle('assets', e.currentTarget)} />
@@ -345,6 +385,51 @@ export function ChatComposer(props: ChatComposerProps) {
         <Popover w={172} anchor={popAnchor} onClose={closePop}>
           {modeRow('agent', t('代理模式'), t('可编辑时间线，改动可撤销'))}
           {modeRow('ask', t('问答模式'), t('只回答，不动时间线'))}
+        </Popover>
+      )}
+      {pop === 'model' && (
+        <Popover w={278} anchor={popAnchor} onClose={closePop}>
+          <div style={{ fontSize: 10.5, color: theme.textDim, padding: '4px 8px 6px' }}>
+            {t('本条对话使用的模型')}
+          </div>
+          {modelState.choices.length === 0 && (
+            <div style={{ padding: '7px 9px 9px', color: theme.textDim, fontSize: 11.5, lineHeight: 1.5 }}>
+              {modelState.loaded ? t('请先在设置中配置一个模型厂商。') : t('正在读取模型配置…')}
+            </div>
+          )}
+          {modelState.choices.map((choice) => {
+            const active = choice.id === modelState.activeId;
+            return (
+              <button
+                type="button"
+                key={choice.id}
+                onClick={() => { selectAgentModel(choice.id); closePop(); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 9,
+                  width: '100%',
+                  padding: '7px 9px',
+                  border: 0,
+                  borderRadius: 3,
+                  background: active ? theme.panel : 'transparent',
+                  color: theme.text,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <strong style={{ display: 'block', fontSize: 11.5, fontWeight: 600 }}>
+                    {choice.providerLabel}
+                  </strong>
+                  <small style={{ display: 'block', color: theme.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {choice.model}
+                  </small>
+                </span>
+                {active && <span style={{ color: theme.accent, lineHeight: 0 }}><Icon name="check" size={13} /></span>}
+              </button>
+            );
+          })}
         </Popover>
       )}
       {pop === 'settings' && (

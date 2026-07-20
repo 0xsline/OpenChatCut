@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { ClipEffect, ClipEffectValue, TimelineItem } from '../../editor/types';
 import { ALL_FX, serializableDefsFor } from '../../gl/fx/effects';
@@ -21,7 +21,7 @@ const catalog = () => FX_IDS.map((id) => {
     : { key: p.key, type: 'number', default: p.default, min: p.min, max: p.max }) };
 });
 
-export const EFFECT_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const EFFECT_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'manage_effects',
     description:

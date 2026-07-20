@@ -4,7 +4,7 @@ import { t, useT } from '../../i18n/locale';
 import { Icon } from '../icons';
 import { VendorIcon } from './vendorIcons';
 import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from '../../agent/capabilities';
-import { normalizeLlmProvider, setLlmConfig } from '../../agent/client';
+import { applyAgentModelStatus } from '../../agent/model-selection';
 import { FieldRow, ON, VendorPane, WARN, type FieldCtx } from './settingsVendorPane';
 import {
   SETTINGS_CATEGORIES, buildPatch, categoryGroupStats, findGroup, groupConfigured,
@@ -130,13 +130,14 @@ function applySavedToAgent(next: KeyStatusResponse): void {
   applyLiveCaps(next.caps);
   applyLiveKeyStatus(next.keys);
   if (next.models) applyLiveModels(next.models);
-  if (next.models) setLlmConfig(next.models.LLM_PROVIDER, next.models.LLM_MODEL);
+  if (next.models) applyAgentModelStatus(next.keys, next.models);
 }
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
   const { status, setStatus, loadError } = useKeyStatus();
   const [values, setValues] = useState<Values>({});
+  const [modelOptions, setModelOptions] = useState<Record<string, readonly string[]>>({});
   const { group, page, selectGroup, selectVendor } = useTreeSelection();
   const [reveal, setReveal] = useState(false);
   const { save, saving, msg, error } = useSaveKeys(values, (next) => {
@@ -151,28 +152,21 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   // 暂存:相对基线(模型字段 = 服务端当前值,其余 = '')无变化即撤销暂存。
   const stage = (field: SettingsField, raw: string): void => {
     const baseline = isModelField(field) ? modelValue(status, field.name) : '';
-    setValues((prev) => {
-      let next = raw === baseline ? omitKey(prev, field.name) : { ...prev, [field.name]: raw };
-      if (field.name !== 'LLM_PROVIDER') return next;
-      const baselineProvider = normalizeLlmProvider(modelValue(status, 'LLM_PROVIDER'));
-      const previousProvider = normalizeLlmProvider(prev.LLM_PROVIDER ?? modelValue(status, 'LLM_PROVIDER'));
-      const nextProvider = normalizeLlmProvider(raw);
-      if (previousProvider === nextProvider) return next;
-      if (nextProvider !== baselineProvider) {
-        // Model ids and API prefixes are provider-specific. Reset both in the
-        // same pending edit; intentional custom values can then be entered.
-        return { ...next, LLM_MODEL: '', LLM_BASE_URL: '' };
-      }
-      // Returning to the saved provider discards staged values that belonged
-      // to the temporary provider rather than clearing the saved configuration.
-      next = omitKey(next, 'LLM_MODEL');
-      next = omitKey(next, 'LLM_BASE_URL');
-      return next;
-    });
+    setValues((prev) => raw === baseline ? omitKey(prev, field.name) : { ...prev, [field.name]: raw });
   };
   const toggleClear = (name: string): void =>
     setValues((prev) => (prev[name] === '' ? omitKey(prev, name) : { ...prev, [name]: '' }));
-  const ctx: FieldCtx = { status, values, reveal, onStage: stage, onToggleClear: toggleClear };
+  const ctx: FieldCtx = {
+    status,
+    values,
+    reveal,
+    onStage: stage,
+    onToggleClear: toggleClear,
+    modelOptions,
+    onModelsDiscovered: (name, models) => {
+      setModelOptions((previous) => ({ ...previous, [name]: [...new Set(models)] }));
+    },
+  };
 
   const shownError = error ?? loadError;
   const message = shownError ? { text: shownError, color: WARN }

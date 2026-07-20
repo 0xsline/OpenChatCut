@@ -56,13 +56,16 @@ const explicit = expandLlmProviderPatch(new Map([
 assert.equal(explicit.get('LLM_MODEL'), 'gpt-custom');
 assert.equal(explicit.get('LLM_BASE_URL'), 'https://relay.test/v2');
 
-const seen: Array<{ url: string; authorization?: string; body: string }> = [];
+const seen: Array<{ url: string; authorization?: string; provider?: string; body: string }> = [];
 const upstream = createServer(async (req, res) => {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(Buffer.from(chunk));
   seen.push({
     url: req.url ?? '',
     authorization: typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined,
+    provider: typeof req.headers['x-openchatcut-provider'] === 'string'
+      ? req.headers['x-openchatcut-provider']
+      : undefined,
     body: Buffer.concat(chunks).toString('utf8'),
   });
   res.writeHead(200, { 'content-type': 'text/plain' });
@@ -83,7 +86,7 @@ const proxyPort = await listen(proxy);
 try {
   const first = await fetch(`http://127.0.0.1:${proxyPort}/llm/chat/completions?stream=true`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-openchatcut-provider': 'kimi' },
     body: '{"model":"compatible"}',
   });
   assert.equal(first.status, 200);
@@ -100,11 +103,13 @@ try {
     {
       url: '/v1beta/openai/chat/completions?api-version=preview&stream=true',
       authorization: 'Bearer server-secret',
+      provider: undefined,
       body: '{"model":"compatible"}',
     },
     {
       url: '/v1/responses',
       authorization: 'Bearer server-secret',
+      provider: undefined,
       body: '{"model":"openai"}',
     },
   ]);

@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { ClipEffect, ClipEffectValue, TimelineItem, TransitionType, ZoomEffect, ZoomShape } from '../../editor/types';
 import { defaultTrackId, resolveTrackId } from '../../editor/types';
@@ -20,7 +20,7 @@ import { getCustomZoom, zoomFromCustomDef } from '../../editor/customZooms';
 type Args = Record<string, unknown>;
 type OpResult = Record<string, unknown>;
 
-export const EDIT_ITEM_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const EDIT_ITEM_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'edit_item',
     description:

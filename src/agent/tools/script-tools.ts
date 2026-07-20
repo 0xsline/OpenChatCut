@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { serializeTimeline } from '../../script/serialize';
 import { applyScript } from '../../script/apply';
@@ -13,7 +13,7 @@ import { makeDraft } from '../../editor/store';
 
 type Args = Record<string, unknown>;
 
-export const SCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const SCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'read_script',
     description:

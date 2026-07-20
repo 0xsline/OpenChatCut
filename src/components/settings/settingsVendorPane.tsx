@@ -21,6 +21,8 @@ export interface FieldCtx {
   reveal: boolean;
   onStage: (field: SettingsField, raw: string) => void;
   onToggleClear: (name: string) => void;
+  modelOptions: Record<string, readonly string[]>;
+  onModelsDiscovered: (name: string, models: readonly string[]) => void;
 }
 
 // ── 厂商配置页 ────────────────────────────────────────────────────────────
@@ -53,7 +55,7 @@ export function VendorPane({ page, hint, ctx }: {
 
 // ── 测试连接 ─────────────────────────────────────────────────────────────
 
-interface ProbeResponse { ok: boolean; message: string; latencyMs?: number; }
+interface ProbeResponse { ok: boolean; message: string; latencyMs?: number; models?: string[]; }
 interface ProbeShown { page: string; ok: boolean; message: string; }
 
 /** 本页字段里未保存的暂存值→探测 overrides；空串代表本次测试按默认值。 */
@@ -85,6 +87,10 @@ function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: Field
       if (!body || typeof body.message !== 'string') throw new Error(t('测试请求失败 ({n})', { n: res.status }));
       const suffix = staged && body.ok ? t('（按当前输入测试，记得保存）') : '';
       setResult({ page: page.key, ok: body.ok, message: body.message + suffix });
+      const modelField = page.fields.find((field) => field.discoverableModel);
+      if (body.ok && modelField && Array.isArray(body.models)) {
+        ctx.onModelsDiscovered(modelField.name, body.models);
+      }
     } catch (err) {
       setResult({ page: page.key, ok: false, message: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -96,14 +102,20 @@ function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: Field
     <div style={testRow}>
       <button type="button" onClick={() => { void test(); }} disabled={busy}
         style={{ ...testBtn, opacity: busy ? 0.6 : 1, cursor: busy ? 'default' : 'pointer' }}>
-        {busy ? t('测试中…') : t('测试连接')}
+        {busy ? t('测试中…') : page.key.startsWith('llm/') ? t('测试并读取模型') : t('测试连接')}
       </button>
       {shown && (
         <span style={{ ...testMsg, color: shown.ok ? ON : WARN }} title={shown.message}>
           {shown.ok ? '✓ ' : '✗ '}{shown.message}
         </span>
       )}
-      {!shown && !busy && <span style={{ ...testMsg, color: theme.textDim }}>{t('发一条最小请求验证 Key 与地址可用')}</span>}
+      {!shown && !busy && (
+        <span style={{ ...testMsg, color: theme.textDim }}>
+          {page.key.startsWith('llm/')
+            ? t('验证地址与密钥，并读取该接口可用的模型')
+            : t('发一条最小请求验证 Key 与地址可用')}
+        </span>
+      )}
     </div>
   );
 }
@@ -122,6 +134,7 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
   const shown = value ?? (isModelField(field) ? modelValue(status, field.name) : '');
   // select 用「默认」选项即清除;toggle 的关/开本身就是设/清。
   const clearable = configured && field.kind !== 'select' && field.kind !== 'toggle';
+  const discovered = field.discoverableModel ? ctx.modelOptions[field.name] ?? [] : [];
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <span style={fieldHead}>
@@ -138,7 +151,10 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
       </span>
       {field.kind === 'toggle'
         ? <ToggleSwitch field={field} shown={shown} onStage={onStage} />
-        : field.kind === 'select'
+        : field.discoverableModel && discovered.length > 0
+          ? <ModelInput field={field} shown={shown} models={discovered} reveal={reveal}
+              configured={configured} stagedClear={stagedClear} onStage={onStage} />
+          : field.kind === 'select'
           ? <SelectInput field={field} status={status} shown={shown} onStage={onStage} />
           : field.kind === 'directory'
             ? <DirectoryInput field={field} shown={shown} stagedClear={stagedClear} onStage={onStage} />
@@ -146,6 +162,38 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
                 stagedClear={stagedClear} onStage={onStage} />}
       {field.note && <span style={{ fontSize: 10.5, color: theme.textDim }}>{t(field.note)}</span>}
     </label>
+  );
+}
+
+function ModelInput({ field, shown, models, reveal, configured, stagedClear, onStage }: {
+  field: SettingsField;
+  shown: string;
+  models: readonly string[];
+  reveal: boolean;
+  configured: boolean;
+  stagedClear: boolean;
+  onStage: (field: SettingsField, raw: string) => void;
+}) {
+  const t = useT();
+  return (
+    <div style={{ display: 'flex', alignItems: 'stretch', gap: 7 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <TextInput field={field} shown={shown} reveal={reveal} configured={configured}
+          stagedClear={stagedClear} onStage={onStage} />
+      </div>
+      <select
+        value=""
+        aria-label={t('选择模型')}
+        title={t('选择模型')}
+        onChange={(event) => {
+          if (event.target.value) onStage(field, event.target.value);
+        }}
+        style={{ ...select, width: 118, flex: '0 0 118px' }}
+      >
+        <option value="">{t('选择模型')}</option>
+        {[...new Set(models)].map((model) => <option key={model} value={model}>{model}</option>)}
+      </select>
+    </div>
   );
 }
 

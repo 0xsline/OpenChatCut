@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { Watermark, WatermarkPosition } from '../../editor/types';
 
@@ -18,7 +18,7 @@ type Args = Record<string, unknown>;
 
 const POSITIONS: readonly WatermarkPosition[] = ['tl', 'tr', 'bl', 'br'];
 
-export const WATERMARK_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const WATERMARK_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'update_watermark',
     description:

@@ -85,6 +85,12 @@ export type LlmProvider = (typeof LLM_PROVIDER_PRESETS)[number]['id'];
 
 export const DEFAULT_LLM_PROVIDER: LlmProvider = 'anthropic';
 
+export interface LlmProviderConfigNames {
+  readonly apiKey: string;
+  readonly baseUrl: string;
+  readonly model: string;
+}
+
 const PRESETS = new Map<string, (typeof LLM_PROVIDER_PRESETS)[number]>(
   LLM_PROVIDER_PRESETS.map((preset) => [preset.id, preset] as const),
 );
@@ -96,6 +102,16 @@ export function normalizeLlmProvider(value: unknown): LlmProvider {
 
 export function llmProviderPreset(provider: unknown): (typeof LLM_PROVIDER_PRESETS)[number] {
   return PRESETS.get(normalizeLlmProvider(provider)) ?? LLM_PROVIDER_PRESETS[0];
+}
+
+/** Stable per-vendor setting names. Secrets stay server-side; URL/model are non-secret config. */
+export function llmProviderConfigNames(provider: unknown): LlmProviderConfigNames {
+  const token = normalizeLlmProvider(provider).replace(/-/g, '_').toUpperCase();
+  return {
+    apiKey: `LLM_${token}_API_KEY`,
+    baseUrl: `LLM_${token}_BASE_URL`,
+    model: `LLM_${token}_MODEL`,
+  };
 }
 
 export function defaultModelForProvider(provider: unknown): string {

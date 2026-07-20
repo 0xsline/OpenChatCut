@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
 import { enqueueTranscription, shouldTranscribe } from '../../transcript/transcribe-jobs';
@@ -14,7 +14,7 @@ type Args = Record<string, unknown>;
 const ASSET_TYPES = ['audio', 'gif', 'image', 'svg', 'video'] as const;
 type SourceAssetType = (typeof ASSET_TYPES)[number];
 
-export const UPLOAD_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const UPLOAD_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'import_media',
     description: [

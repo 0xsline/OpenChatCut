@@ -167,13 +167,9 @@ function withoutProviderOptions<T extends object>(value: T): T {
   return portable as T;
 }
 
-export function prepareMessagesForProvider(
+export function makeMessagesPortable(
   messages: readonly ModelMessage[],
-  sourceProvider: LlmProvider,
-  targetProvider: LlmProvider,
 ): ModelMessage[] {
-  if (sourceProvider === targetProvider) return [...messages];
-
   return messages.flatMap((message): ModelMessage[] => {
     if (message.role === 'system') return [{ role: 'system', content: message.content }];
     if (message.role === 'user') {
@@ -209,4 +205,13 @@ export function prepareMessagesForProvider(
       }),
     }];
   });
+}
+
+export function prepareMessagesForProvider(
+  messages: readonly ModelMessage[],
+  sourceProvider: LlmProvider,
+  targetProvider: LlmProvider,
+): ModelMessage[] {
+  if (sourceProvider === targetProvider) return [...messages];
+  return makeMessagesPortable(messages);
 }

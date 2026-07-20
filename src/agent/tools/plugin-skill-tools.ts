@@ -3,7 +3,7 @@
 // task matches, the agent calls load_skill to pull that skill's full SKILL.md body (or a
 // support file under it) unchanged. This is our portable stand-in for the native Agent
 // Skills container feature, which our relay + local-tool architecture can't run.
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import { PLUGIN_SKILLS, readPluginSkillFile } from '../skills/plugin-skills';
 import { allCreativeSkills } from '../skills/skills-catalog';
 
@@ -14,7 +14,7 @@ function creativeSlug(body: string): string | undefined {
   return /^---[\s\S]*?\bname:\s*([\w-]+)/.exec(body)?.[1];
 }
 
-export const PLUGIN_SKILL_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const PLUGIN_SKILL_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'load_skill',
     description:

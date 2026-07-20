@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { TimelineItem, TimelineState } from '../../editor/types';
 import { detectFocalPoints, magnificationForAspect } from '../../reframe/detect';
@@ -12,7 +12,7 @@ import { detectFocalPoints, magnificationForAspect } from '../../reframe/detect'
 
 type Args = Record<string, unknown>;
 
-export const REFRAME_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const REFRAME_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'auto_reframe',
     description:

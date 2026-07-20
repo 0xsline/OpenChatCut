@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { MediaAsset, TimelineItem, TimelineState, TrackId } from '../../editor/types';
 import { defaultTrackId, timelineDuration } from '../../editor/types';
@@ -21,7 +21,7 @@ const MAX_FRAMES = 16;
 const DEFAULT_ASSET_SCAN = 12;
 const DEFAULT_TIMELINE_SCAN = 4;
 
-export const FRAMES_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const FRAMES_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'view_timeline_frames',
     description: [

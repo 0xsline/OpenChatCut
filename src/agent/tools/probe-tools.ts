@@ -3,13 +3,13 @@
 // and codec information. The agent probes before
 // finalize_uploaded_asset so it can pass an accurate hasAudioTrack — silent / no-audio
 // media then skips 上传即转写 ASR, and fps/duration are exact.
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
 
 type Args = Record<string, unknown>;
 
-export const PROBE_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const PROBE_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'probe_media',
     description:

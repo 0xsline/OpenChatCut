@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { trackAlias } from '../../editor/types';
 import type { CaptionWordOverride } from '../../captions/types';
@@ -15,7 +15,7 @@ import { editCaptions } from './captions-actions';
 
 const CAPTION_ACTIONS = ['enable', 'disable', 'display_text', 'template', 'style', 'layout', 'layout_policy', 'positions', 'preset_apply', 'preset_delete', 'preset_list', 'preset_rename', 'preset_save', 'bilingual', 'language_mode', 'source_add', 'source_list', 'source_remove', 'source_set', 'source_update', 'track'];
 
-export const CAPTIONS_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const CAPTIONS_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'read_captions',
     description: "Read the captions overlay's current state (enabled/template/pacing/source track) and its resolved pages — each word's index in the source transcript, its currently DISPLAYED text (after any override), and the active override on it (if any). Use before edit_captions action=display_text to pick wordIndex values.",

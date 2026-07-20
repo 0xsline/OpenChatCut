@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { CREATIVE_SKILLS, findSkill, setCustomSkills, type CreativeSkill } from '../skills/skills-catalog';
 import { listCustomSkills, saveCustomSkill, deleteCustomSkill, type CustomSkill } from '../../persist/skillStore';
@@ -13,7 +13,7 @@ import { listCustomSkills, saveCustomSkill, deleteCustomSkill, type CustomSkill 
 
 type Args = Record<string, unknown>;
 
-export const SKILL_TOOL_SCHEMAS: Anthropic.Tool[] = [{
+export const SKILL_TOOL_SCHEMAS: AgentToolSchema[] = [{
   name: 'manage_skill',
   description: [
     '自定义创作技能 = 一段可复用的创作模式指引(bodyMarkdown),与内置技能并列出现在「创作模式」下拉里,选中后注入系统提示,指导 AI 的规划与流程(不改变可用工具)。',

@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { DesignStyle, ProjectDoc, Timeline, TimelineItem } from '../../editor/types';
 import { activeTimeline } from '../../editor/types';
@@ -14,7 +14,7 @@ import { listTemplates, getTemplate, saveTemplate, type ProjectTemplate } from '
 type Args = Record<string, unknown>;
 type Placement = 'append' | 'replace';
 
-export const TEMPLATE_TOOL_SCHEMAS: Anthropic.Tool[] = [{
+export const TEMPLATE_TOOL_SCHEMAS: AgentToolSchema[] = [{
   name: 'manage_template',
   description: [
     '工程模板 = 一组 MG(动态图形)+ 设计风格的打包,可跨工程复用。',

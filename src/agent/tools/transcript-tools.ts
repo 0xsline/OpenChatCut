@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { defaultTrackId, resolveTrackId, trackAlias, type TimelineItem, type TrackId } from '../../editor/types';
 import { transcribePath } from '../../transcript/assemblyai';
@@ -11,7 +11,7 @@ import { execFindTranscript, findPhrase, normalize } from './transcript-find';
 // Names + semantics: transcribe (import_media/manage_transcript),
 // find_transcript, clean_script, delete_text (apply_script), edit_captions.
 
-export const TRANSCRIPT_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'transcribe_track',
     description: 'Transcribe the audio clip on a track (word-level + speaker labels, via AssemblyAI) and attach the transcript. Required before find_transcript / clean_script / delete_text / captions when the clip has no transcript yet.',

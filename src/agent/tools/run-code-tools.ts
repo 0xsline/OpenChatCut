@@ -4,9 +4,9 @@
 // is isolated from the editor — results come back here and the agent applies them with the
 // editor tools. This is the portable execution substrate that stands in for the native
 // Agent Skills container our relay can't reach.
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 
-export const RUN_CODE_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const RUN_CODE_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'run_code',
     description:

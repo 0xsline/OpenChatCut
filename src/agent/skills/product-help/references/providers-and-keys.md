@@ -20,7 +20,11 @@ If a capability is off, say so and offer alternatives (upload, library, another 
 | Transcription | `transcribe_track` | `ASSEMBLYAI_API_KEY` |
 | Web | `web_browser` | `FIRECRAWL_API_KEY` |
 | Sandbox / ffmpeg helpers | `run_code` | `E2B_API_KEY` (if used) |
-| LLM agent | chat | `LLM_API_KEY` + `LLM_PROVIDER` (`anthropic`, `openai`, `gemini`, `kimi`, `qwen`, `glm`, `deepseek`, `minimax`, `mistral`, or `openai-compatible`); Base URL and model are optional overrides |
+| LLM agent | chat | Configure one or more independent provider triplets: `LLM_<PROVIDER>_BASE_URL`, `LLM_<PROVIDER>_API_KEY`, and `LLM_<PROVIDER>_MODEL`. Supported provider tokens are `ANTHROPIC`, `OPENAI`, `GEMINI`, `KIMI`, `QWEN`, `GLM`, `DEEPSEEK`, `MINIMAX`, `MISTRAL`, and `OPENAI_COMPATIBLE`. `LLM_PROVIDER` controls the initially selected chat provider. |
+
+The Settings panel can test each LLM endpoint, read its model catalog, and save a
+selected model. AI Chat only offers providers with a configured key; switching
+the chat model does not overwrite another provider's URL, key, or model.
 
 Exact availability is reflected in the live **capabilities** block injected into the agent system prompt (which vendors are on).
 

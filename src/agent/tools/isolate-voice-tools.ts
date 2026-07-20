@@ -1,14 +1,14 @@
 // isolate_voice — AI Voice Isolation open-box path.
 // Voice isolation uses POST /api/isolate-voice locally (ffmpeg afftdn /
 // speech-band chain) → setItemDenoise(denoisedSrc). action=clear detaches isolation.
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { TimelineItem } from '../../editor/types';
 import { isolateVoiceOnSrc } from '../../audio/isolateVoice';
 
 type Args = Record<string, unknown>;
 
-export const ISOLATE_VOICE_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const ISOLATE_VOICE_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'isolate_voice',
     description:

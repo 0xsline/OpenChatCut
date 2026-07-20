@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
 import { fallbackDuration, isHttpUrl, nameFromUrl, probeUrl, sniffKind, type PoolKind } from './stock-url-utils';
@@ -20,7 +20,7 @@ const PUSH_TYPE_ENUM = [
   'audio', 'effect', 'gif', 'image', 'motion-graphic', 'svg', 'transition', 'video',
 ] as const;
 
-export const STOCK_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const STOCK_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'download_media',
     description: [

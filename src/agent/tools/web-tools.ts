@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
 
@@ -18,7 +18,7 @@ const FORMAT_ENUM = [
   'branding', 'summary', 'screenshot', 'videos',
 ] as const;
 
-export const WEB_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const WEB_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'web_browser',
     description: [

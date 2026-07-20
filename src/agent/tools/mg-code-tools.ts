@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
 import { compileTemplate } from '../../template-host';
@@ -7,7 +7,7 @@ import { compileTemplate } from '../../template-host';
 
 type Args = Record<string, unknown>;
 
-export const MG_CODE_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const MG_CODE_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'create_motion_graphic_from_code',
     description: [

@@ -1,12 +1,14 @@
 // 设置面板的信息架构(一级分类 → 二级能力组 → 三级厂商页 → 字段)与纯展示逻辑。
-// 三栏:左树 = 分类 → 能力(v3 能力树);中列 = 该能力下的厂商列表(生成四能力顶部
-// 带「默认厂商」路由 select);右列 = 选中厂商的配置页。MiniMax 按能力切成 4 页,
-// 共享同一 MINIMAX_API_KEY / MINIMAX_BASE_URL 字段(暂存按字段名全局共享,任一页
-// 编辑其余页即时同步)。布局/交互在 SettingsDialog.tsx,厂商图标在 vendorIcons.tsx。
+// 三栏:左树 = 分类 → 能力;中列 = 该能力下的厂商列表;右列 = 选中厂商的配置页。
+// Agent LLM 为每个厂商保存独立的 API URL、API Key 和模型;生成类能力可额外提供
+// 默认厂商路由。布局/交互在 SettingsDialog.tsx,厂商图标在 vendorIcons.tsx。
 // 安全不变式:secret 字段只有布尔状态,值永不回填;模型/路由字段是非密配置,
 // 当前值经 GET /api/keys 的 models 通道回显(服务端 NON_SECRET_NAMES 白名单)。
 import { t } from '../../i18n/locale';
-import { LLM_PROVIDER_PRESETS } from '../../../shared/llm-providers';
+import {
+  LLM_PROVIDER_PRESETS,
+  llmProviderConfigNames,
+} from '../../../shared/llm-providers';
 import type { IconName } from '../icons';
 import type { VendorId } from './vendorIcons';
 
@@ -28,6 +30,8 @@ export interface SettingsField {
   /** 非密模型字段的默认值名:select 首项渲染「默认（xxx）」,text 渲染「默认 xxx」
    * placeholder。text 字段带它即走 models 值通道(select 恒走);清除 = 回默认('')。 */
   readonly defaultLabel?: string;
+  /** Agent LLM field populated from the provider's /models response after a connection test. */
+  readonly discoverableModel?: boolean;
 }
 
 export interface SettingsVendorPage {
@@ -58,7 +62,7 @@ export interface SettingsCategory {
 }
 
 // GET/POST /api/keys 的响应形状 — secret 只回布尔与来源;models 是非密值通道
-// (12 个模型 + 4 个路由,未设 = ''),永远不含任何密钥值。
+// (模型、URL 与路由,未设 = ''),永远不含任何密钥值。
 export interface KeyState { configured: boolean; source: 'env' | 'runtime' | 'none'; }
 export interface KeyStatusResponse {
   keys: Record<string, KeyState>;
@@ -85,17 +89,35 @@ const routeSelect = (name: string, options: readonly SelectOption[]): SettingsFi
   options: [{ value: '', label: '每次询问（默认）' }, ...options],
 });
 
-const LLM_PROVIDER_FIELD: SettingsField = {
-  name: 'LLM_PROVIDER', label: '模型厂商', kind: 'select', defaultLabel: 'Anthropic · Claude',
-  note: '选择厂商后会自动使用官方 API 地址、接口格式和推荐模型，也可以在下方覆盖。',
-  options: LLM_PROVIDER_PRESETS.map(({ id, label }) => ({ value: id, label })),
-};
-
-const LLM_MODEL_FIELD: SettingsField = {
-  name: 'LLM_MODEL', label: '模型', kind: 'text', defaultLabel: '按厂商自动选择',
-  note: '留空时使用所选厂商的推荐模型；也可以填写该厂商或自定义接口支持的模型 ID。',
-  options: [...new Set(LLM_PROVIDER_PRESETS.map(({ defaultModel }) => defaultModel))]
-    .map((value) => ({ value, label: value })),
+const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorPage => {
+  const names = llmProviderConfigNames(preset.id);
+  return {
+    key: `llm/${preset.id}`,
+    vendor: preset.id as VendorId,
+    title: preset.label,
+    note: preset.id === 'openai-compatible'
+      ? '兼容 OpenAI 接口规范的自建服务或中转。先测试连接，成功后可从接口返回的模型中选择。'
+      : '每个厂商独立保存地址、密钥与模型。先测试连接，成功后可从接口返回的模型中选择。',
+    fields: [
+      {
+        name: names.baseUrl,
+        label: 'API URL',
+        kind: 'text',
+        defaultLabel: preset.baseUrl,
+        note: '填写完整 API 前缀；可使用官方地址、自建网关或兼容中转。',
+      },
+      secret(names.apiKey, 'API Key'),
+      {
+        name: names.model,
+        label: '模型',
+        kind: 'text',
+        defaultLabel: preset.defaultModel,
+        discoverableModel: true,
+        note: '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。',
+        options: [{ value: preset.defaultModel, label: preset.defaultModel }],
+      },
+    ],
+  };
 };
 
 // MiniMax 同一对 Key/Base URL 服务 4 个能力,页按能力只挂该能力的模型字段。
@@ -115,17 +137,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     groups: [
       { key: 'llm', title: 'Agent 大脑',
         hint: '对话与工具调用的核心，未配置无法对话。',
-        vendors: [
-          { key: 'llm/anthropic', vendor: 'llm', title: '模型供应商',
-            note: '由 Vercel AI SDK 统一接入主流模型厂商，并保留自定义 OpenAI-compatible 接口。',
-            fields: [
-            secret('LLM_API_KEY', 'API Key'),
-            LLM_PROVIDER_FIELD,
-            text('LLM_BASE_URL', 'API Base URL', '按厂商使用官方默认地址',
-              '填写完整 API 前缀（可含 /v1、/v1beta/openai 等路径）；切换厂商会重置地址与模型，并立即生效。'),
-            LLM_MODEL_FIELD,
-          ] },
-        ] },
+        vendors: LLM_PROVIDER_PRESETS.map(llmPage) },
     ],
   },
   {
@@ -318,10 +330,10 @@ export function vendorConfigured(status: KeyStatusResponse | null, page: Setting
   return secrets.every((f) => Boolean(status.keys[f.name]?.configured));
 }
 
-/** 能力组「已配置」判定:llm 看 LLM_API_KEY 本身,其余看服务端能力布尔(caps)。 */
+/** 能力组「已配置」判定:llm 看任一厂商页是否完整配置,其余看服务端能力布尔(caps)。 */
 export function groupConfigured(status: KeyStatusResponse | null, group: SettingsGroup): boolean {
   if (!status) return false;
-  if (group.key === 'llm') return Boolean(status.keys.LLM_API_KEY?.configured);
+  if (group.key === 'llm') return group.vendors.some((page) => vendorConfigured(status, page));
   return Boolean(status.caps[group.key]);
 }
 

@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { MediaAsset, TimelineItem } from '../../editor/types';
 import { bakeClipToVideo, bakeClipToAlphaWebm, exportClipMov } from '../../media/clipExport';
@@ -19,7 +19,7 @@ type Args = Record<string, unknown>;
 // Clip kinds that carry transparency worth preserving when baked (MG/vector/text).
 const ALPHA_CAPABLE = new Set(['motion-graphic', 'text', 'svg']);
 
-export const MG_VIDEO_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const MG_VIDEO_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'convert_motion_graphic_to_video',
     description:

@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import {
   COLOR_ROLES, FONT_ROLES, type DesignColor, type DesignFont, type DesignStyle,
@@ -9,7 +9,7 @@ import { loadOwnedStyles, saveOwnedStyle, deleteOwnedStyle } from '../../persist
 // manage_design_style controls the project's reusable brand identity and drives
 // the colors and fonts the agent selects for motion graphics and captions.
 // Styles come from the public catalog or the user's global personal library.
-export const DESIGN_TOOL_SCHEMAS: Anthropic.Tool[] = [{
+export const DESIGN_TOOL_SCHEMAS: AgentToolSchema[] = [{
   name: 'manage_design_style',
   description: [
     '管理工程的设计风格(品牌)。应用中的设计风格就是本工程的品牌,驱动你生成 MG/字幕时用的配色与字体。',

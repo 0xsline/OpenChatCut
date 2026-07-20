@@ -12,8 +12,13 @@ import { SYSTEM_PROMPT, designStylePrompt, creativeModePrompt, editorStatePrompt
 import { capabilitiesPrompt } from './capabilities';
 import { findSkill } from './skills/skills-catalog';
 import { PLUGIN_SKILLS_INDEX } from './skills/plugin-skills';
-import { getLanguageModel } from './client';
-import { normalizeLlmMessages } from './messages';
+import {
+  getLanguageModel,
+  getLanguageModelProviderOptions,
+  protocolForProvider,
+  PROVIDER,
+} from './client';
+import { makeMessagesPortable, normalizeLlmMessages } from './messages';
 import {
   agentSettingsPrompt,
   createInlineThinkingExtractor,
@@ -185,14 +190,22 @@ export async function runAgent(
         );
 
     try {
+      // Responses relays do not consistently persist `rs_*` item IDs. Keep
+      // OpenAI turns stateless by replaying portable local history and asking
+      // the provider not to store the response.
+      const requestMessages = protocolForProvider(PROVIDER) === 'openai'
+        ? makeMessagesPortable(conv)
+        : conv;
+      const providerOptions = getLanguageModelProviderOptions();
       const result = streamText({
         model: getLanguageModel(),
         system,
-        messages: conv,
+        messages: requestMessages,
         tools,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
         maxRetries: 0,
         abortSignal: opts?.signal,
+        ...(providerOptions ? { providerOptions } : {}),
         ...(withReasoning ? { reasoning: 'medium' as const } : {}),
       });
 

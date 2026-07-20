@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { ASPECT_PRESETS, ratioLabel, timelineDuration, type AspectFit, type ProjectDoc, type Timeline } from '../../editor/types';
 
@@ -10,7 +10,7 @@ import { ASPECT_PRESETS, ratioLabel, timelineDuration, type AspectFit, type Proj
 
 type Args = Record<string, unknown>;
 
-export const TIMELINE_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const TIMELINE_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'manage_timelines',
     description:

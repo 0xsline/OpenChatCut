@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { recordExport, listExportHistory } from '../../persist/exportHistoryStore';
 import { isTerminal, isComplete, isFailed, type JobReportBase } from '../progress/job-model';
@@ -29,7 +29,7 @@ const DEFAULT_WAIT_SECONDS = 90; // schema: "Defaults to 90. Use 0 for unbounded
 const MAX_WAIT_SECONDS = 3600;
 const POLL_INTERVAL_MS = 500;
 
-export const EXPORT_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const EXPORT_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'submit_render_job',
     description:

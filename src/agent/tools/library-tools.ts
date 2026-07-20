@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import {
   buildLibraryItems,
@@ -14,7 +14,7 @@ import {
 
 type Args = Record<string, unknown>;
 
-export const LIBRARY_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const LIBRARY_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'browse_library',
     description:

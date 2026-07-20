@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { analyzeClipLoudness, gainForTarget } from '../../audio/loudness';
 
@@ -12,7 +12,7 @@ type Args = Record<string, unknown>;
 
 const DEFAULT_TARGET_LUFS = -14;
 
-export const LOUDNESS_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const LOUDNESS_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'normalize_loudness',
     description:

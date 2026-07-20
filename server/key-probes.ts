@@ -9,13 +9,13 @@ import { r2Probe } from './r2.ts';
 import { mediaDirProbe, mediaDirPostCheck, mediaDirOkText } from './media-dir.ts';
 import {
   AI_SDK_BASE_URL_FORMAT,
-  llmOperationPath,
-  normalizeServerLlmProvider,
   resolveLlmBaseUrl,
 } from './llm-config.ts';
 import {
-  defaultModelForProvider,
+  LLM_PROVIDER_PRESETS,
+  llmProviderConfigNames,
   protocolForProvider,
+  type LlmProvider,
 } from '../shared/llm-providers.ts';
 
 export interface ProbeResult {
@@ -23,6 +23,7 @@ export interface ProbeResult {
   message: string;
   status?: number;
   latencyMs?: number;
+  models?: string[];
 }
 
 type Get = (name: KeyName) => string;
@@ -35,52 +36,48 @@ interface ProbeDef {
   readonly postCheck?: (bodyText: string) => string | null;
   /** 成功时的自定义结论(本地磁盘探针等非网络检查);null/缺省 = 通用「连接成功」 */
   readonly okText?: (bodyText: string) => string | null;
+  /** Parse a successful model-catalog response. Only LLM provider pages use this. */
+  readonly models?: (bodyText: string) => string[];
 }
 
 const TIMEOUT_MS = 12_000;
 const t = (): AbortSignal => AbortSignal.timeout(TIMEOUT_MS);
 const base = (get: Get, name: KeyName, def: string): string => (get(name) || def).replace(/\/+$/, '');
 const bearer = (key: string): Record<string, string> => ({ Authorization: `Bearer ${key}` });
-function probeLlm(get: Get): Promise<Response> {
-  const provider = normalizeServerLlmProvider(get('LLM_PROVIDER'));
+function llmProbe(provider: LlmProvider): ProbeDef {
+  const names = llmProviderConfigNames(provider);
   const protocol = protocolForProvider(provider);
-  const root = resolveLlmBaseUrl(provider, get('LLM_BASE_URL'), get('LLM_BASE_URL_FORMAT'));
-  const endpoint = `${root}${llmOperationPath(provider)}`;
-  const key = get('LLM_API_KEY');
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...bearer(key),
+  const apiKeyName = names.apiKey as KeyName;
+  const baseUrlName = names.baseUrl as KeyName;
+  return {
+    needs: [[apiKeyName]],
+    run: (get) => {
+      const key = get(apiKeyName);
+      const headers = protocol === 'anthropic'
+        ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
+        : bearer(key);
+      const root = resolveLlmBaseUrl(provider, get(baseUrlName), AI_SDK_BASE_URL_FORMAT);
+      return fetch(`${root}/models`, { signal: t(), headers });
+    },
+    models: parseModelCatalog,
   };
-  if (protocol === 'anthropic') {
-    headers['x-api-key'] = key;
-    headers['anthropic-version'] = '2023-06-01';
-    return fetch(endpoint, {
-      method: 'POST', signal: t(), headers,
-      body: JSON.stringify({
-        model: get('LLM_MODEL') || defaultModelForProvider(provider),
-        max_tokens: 1,
-        messages: [{ role: 'user', content: 'ping' }],
-      }),
-    });
+}
+
+export function parseModelCatalog(bodyText: string): string[] {
+  try {
+    const body = JSON.parse(bodyText) as {
+      data?: Array<{ id?: unknown; name?: unknown }>;
+      models?: Array<{ id?: unknown; name?: unknown }>;
+    };
+    const rows = Array.isArray(body.data) ? body.data : Array.isArray(body.models) ? body.models : [];
+    return [...new Set(rows
+      .map((row) => typeof row.id === 'string' ? row.id : typeof row.name === 'string' ? row.name : '')
+      .map((id) => id.trim())
+      .filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
   }
-  if (protocol === 'openai') {
-    return fetch(endpoint, {
-      method: 'POST', signal: t(), headers,
-      body: JSON.stringify({
-        model: get('LLM_MODEL') || defaultModelForProvider(provider),
-        max_output_tokens: 16,
-        input: 'ping',
-      }),
-    });
-  }
-  return fetch(endpoint, {
-    method: 'POST', signal: t(), headers,
-    body: JSON.stringify({
-      model: get('LLM_MODEL') || defaultModelForProvider(provider),
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'ping' }],
-    }),
-  });
 }
 
 /** 厂商报错文案进结果前压平:去换行、截断。绝不拼接任何密钥值。 */
@@ -116,11 +113,10 @@ const minimaxProbe: ProbeDef = {
 
 /** page key(与 settingsSchema 的厂商页 key 同名)→ 探测定义。 */
 export const PROBES: Record<string, ProbeDef> = {
-  // 按当前接口格式发真实最小生成请求；/v1/models 不能证明所选模型可用。
-  'llm/anthropic': {
-    needs: [['LLM_API_KEY']],
-    run: probeLlm,
-  },
+  ...Object.fromEntries(LLM_PROVIDER_PRESETS.map((preset) => [
+    `llm/${preset.id}`,
+    llmProbe(preset.id),
+  ])),
   'image/openai': {
     needs: [['IMAGE_API_KEY'], ['OPENAI_API_KEY']],
     run: (get) => fetch(`${base(get, 'IMAGE_BASE_URL', 'https://api.openai.com')}/v1/models`, {
@@ -298,8 +294,18 @@ export async function runProbe(page: string, overrides: Record<string, unknown>)
     if (response.ok) {
       const vendorError = probe.postCheck?.(bodyText) ?? null;
       if (vendorError) return { ok: false, status: response.status, latencyMs, message: vendorError };
+      const models = probe.models?.(bodyText);
+      const modelText = models
+        ? models.length > 0 ? ` · 已读取 ${models.length} 个模型` : ' · 接口未返回模型列表'
+        : '';
       const okText = probe.okText?.(bodyText) ?? '连接成功 · 鉴权通过';
-      return { ok: true, status: response.status, latencyMs, message: `${okText} · ${latencyMs}ms` };
+      return {
+        ok: true,
+        status: response.status,
+        latencyMs,
+        message: `${okText}${modelText} · ${latencyMs}ms`,
+        ...(models ? { models } : {}),
+      };
     }
     return { ...classifyStatus(response.status, bodyText), latencyMs };
   } catch (error) {

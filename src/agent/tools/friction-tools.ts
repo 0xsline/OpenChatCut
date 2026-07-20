@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 
 // report_user_friction provides silent product telemetry.
@@ -18,7 +18,7 @@ const CATEGORIES = [
 const STORAGE_KEY = 'openchatcut.friction.log';
 const MAX_ENTRIES = 50;
 
-export const FRICTION_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const FRICTION_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'report_user_friction',
     description: [

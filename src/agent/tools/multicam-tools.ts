@@ -1,11 +1,11 @@
 // multicam_sync provides audio-based multicam alignment in the
 // editor (no backend path). Repositions follower angles so picture matches the
 // reference angle's audio.
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { canMulticamItem, runMulticamSync } from '../../multicam/sync';
 
-export const MULTICAM_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const MULTICAM_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'multicam_sync',
     description: [

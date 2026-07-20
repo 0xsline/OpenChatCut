@@ -3,11 +3,13 @@ import { generateText } from 'ai';
 import {
   defaultModelForProvider,
   getLanguageModel,
+  getLanguageModelProviderOptions,
   normalizeLlmProvider,
   providerApiPath,
 } from './client';
 import { LLM_PROVIDER_PRESETS } from '../../shared/llm-providers';
 import {
+  makeMessagesPortable,
   normalizeLlmMessages,
   prepareMessagesForProvider,
 } from './messages';
@@ -28,8 +30,10 @@ assert.equal(providerApiPath('kimi'), '/chat/completions');
 assert.equal(providerApiPath('openai-compatible'), '/chat/completions');
 assert.equal(getLanguageModel('anthropic', 'test-model').provider, 'anthropic.messages');
 assert.equal(getLanguageModel('openai', 'test-model').provider, 'openai.responses');
-assert.equal(getLanguageModel('kimi', 'test-model').provider, 'openai-compatible.chat');
+assert.equal(getLanguageModel('kimi', 'test-model').provider, 'kimi.chat');
 assert.equal(getLanguageModel('openai-compatible', 'test-model').provider, 'openai-compatible.chat');
+assert.deepEqual(getLanguageModelProviderOptions('openai'), { openai: { store: false } });
+assert.equal(getLanguageModelProviderOptions('openai-compatible'), undefined);
 assert.equal(
   new Set(LLM_PROVIDER_PRESETS.map(({ id }) => id)).size,
   LLM_PROVIDER_PRESETS.length,
@@ -44,19 +48,21 @@ for (const preset of LLM_PROVIDER_PRESETS) {
       ? 'anthropic.messages'
       : preset.protocol === 'openai'
         ? 'openai.responses'
-        : 'openai-compatible.chat',
+        : `${preset.id}.chat`,
   );
 }
 
 // Exercise the real AI SDK provider serializers without making a network call.
 // A controlled 400 is sufficient to capture each protocol's URL and request body.
 const originalFetch = globalThis.fetch;
-const serialized: Array<{ url: string; body: Record<string, unknown> }> = [];
+const serialized: Array<{ url: string; body: Record<string, unknown>; provider: string | null }> = [];
 globalThis.fetch = async (input, init) => {
   const url = input instanceof Request ? input.url : String(input);
+  const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
   serialized.push({
     url,
     body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
+    provider: headers.get('x-openchatcut-provider'),
   });
   return new Response(JSON.stringify({
     type: 'error',
@@ -82,14 +88,15 @@ try {
 } finally {
   globalThis.fetch = originalFetch;
 }
-assert.deepEqual(serialized.map(({ url, body }) => ({
+assert.deepEqual(serialized.map(({ url, body, provider }) => ({
   path: new URL(url).pathname,
   model: body.model,
+  provider,
 })), [
-  { path: '/llm/messages', model: 'claude-test' },
-  { path: '/llm/responses', model: 'gpt-test' },
-  { path: '/llm/chat/completions', model: 'kimi-test' },
-  { path: '/llm/chat/completions', model: 'compatible-test' },
+  { path: '/llm/messages', model: 'claude-test', provider: 'anthropic' },
+  { path: '/llm/responses', model: 'gpt-test', provider: 'openai' },
+  { path: '/llm/chat/completions', model: 'kimi-test', provider: 'kimi' },
+  { path: '/llm/chat/completions', model: 'compatible-test', provider: 'openai-compatible' },
 ]);
 
 const legacy = normalizeLlmMessages([
@@ -144,6 +151,17 @@ const portable = prepareMessagesForProvider([
 ], 'anthropic', 'openai');
 
 assert.deepEqual(portable, [
+  { role: 'assistant', content: [{ type: 'text', text: 'visible' }] },
+]);
+assert.deepEqual(makeMessagesPortable([
+  {
+    role: 'assistant',
+    content: [
+      { type: 'reasoning', text: 'hidden', providerOptions: { openai: { itemId: 'rs_1' } } },
+      { type: 'text', text: 'visible', providerOptions: { openai: { itemId: 'msg_1' } } },
+    ],
+  },
+]), [
   { role: 'assistant', content: [{ type: 'text', text: 'visible' }] },
 ]);
 

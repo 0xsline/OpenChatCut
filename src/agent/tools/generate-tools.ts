@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { submitImage, type SubmitImageArgs } from '../../generate/image';
 import { submitVoice, type SubmitVoiceArgs } from '../../generate/voice';
@@ -42,7 +42,7 @@ function frameRangeOf(start?: number, end?: number): { start: number; end: numbe
 }
 
 /** 生成类工具的 Anthropic schema。往这个数组里 push 即可（自动进模型可见工具列表）。 */
-export const GENERATE_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'submit_image',
     description: 'Generate one or more AI images (gpt-image-2, nano-banana, or MiniMax image-01), save them to the project media pool, and add them to the active timeline. Call only when the user explicitly requested the generation.',

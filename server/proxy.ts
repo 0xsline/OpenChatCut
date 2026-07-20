@@ -10,9 +10,9 @@ const HOP_BY_HOP = new Set(['host', 'connection', 'keep-alive', 'proxy-authoriza
 
 export interface ProxyRoute {
   /** Target API prefix, evaluated per request. */
-  target: () => string;
+  target: (req: IncomingMessage) => string;
   /** Outbound headers, evaluated per request. */
-  headers: () => Record<string, string>;
+  headers: (req: IncomingMessage) => Record<string, string>;
   /** Normalize generic relay responses so provider SDKs can parse JSON. */
   forceJsonContentType?: boolean;
 }
@@ -21,7 +21,7 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
   return (req, res) => {
     let target: URL;
     try {
-      target = new URL(route.target());
+      target = new URL(route.target(req));
       if (target.protocol !== 'http:' && target.protocol !== 'https:') {
         throw new Error('unsupported proxy protocol');
       }
@@ -32,10 +32,12 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
     }
     const headers: Record<string, string | string[]> = {};
     for (const [k, v] of Object.entries(req.headers)) {
-      if (!HOP_BY_HOP.has(k.toLowerCase()) && v !== undefined) headers[k] = v;
+      if (!HOP_BY_HOP.has(k.toLowerCase()) && k.toLowerCase() !== 'x-openchatcut-provider' && v !== undefined) {
+        headers[k] = v;
+      }
     }
     headers.host = target.host;
-    for (const [k, v] of Object.entries(route.headers())) if (v) headers[k] = v;
+    for (const [k, v] of Object.entries(route.headers(req))) if (v) headers[k] = v;
 
     const basePath = target.pathname.replace(/\/$/, '');
     const rawUrl = req.url ?? '/';

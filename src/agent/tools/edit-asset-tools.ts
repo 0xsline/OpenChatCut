@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { MediaAsset, TimelineItem } from '../../editor/types';
 import { compileTemplate } from '../../template-host';
@@ -12,7 +12,7 @@ import { compileTemplate } from '../../template-host';
 
 type Args = Record<string, unknown>;
 
-export const EDIT_ASSET_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const EDIT_ASSET_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'edit_asset',
     description: [

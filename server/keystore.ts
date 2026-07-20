@@ -8,7 +8,12 @@
 // show and edit them.
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { AI_SDK_BASE_URL_FORMAT, expandLlmProviderPatch } from './llm-config.ts';
+import { AI_SDK_BASE_URL_FORMAT, resolveLlmBaseUrl } from './llm-config.ts';
+import {
+  LLM_PROVIDER_PRESETS,
+  llmProviderConfigNames,
+  normalizeLlmProvider,
+} from '../shared/llm-providers.ts';
 
 const ENV_PATH = resolve(process.cwd(), '.env.local');
 
@@ -16,6 +21,16 @@ const ENV_PATH = resolve(process.cwd(), '.env.local');
 // rejects anything outside this set so the endpoint can never write arbitrary env.
 export const KEY_NAMES = [
   'LLM_API_KEY', 'LLM_BASE_URL', 'LLM_BASE_URL_FORMAT',
+  'LLM_ANTHROPIC_API_KEY', 'LLM_ANTHROPIC_BASE_URL', 'LLM_ANTHROPIC_MODEL',
+  'LLM_OPENAI_API_KEY', 'LLM_OPENAI_BASE_URL', 'LLM_OPENAI_MODEL',
+  'LLM_GEMINI_API_KEY', 'LLM_GEMINI_BASE_URL', 'LLM_GEMINI_MODEL',
+  'LLM_KIMI_API_KEY', 'LLM_KIMI_BASE_URL', 'LLM_KIMI_MODEL',
+  'LLM_QWEN_API_KEY', 'LLM_QWEN_BASE_URL', 'LLM_QWEN_MODEL',
+  'LLM_GLM_API_KEY', 'LLM_GLM_BASE_URL', 'LLM_GLM_MODEL',
+  'LLM_DEEPSEEK_API_KEY', 'LLM_DEEPSEEK_BASE_URL', 'LLM_DEEPSEEK_MODEL',
+  'LLM_MINIMAX_API_KEY', 'LLM_MINIMAX_BASE_URL', 'LLM_MINIMAX_MODEL',
+  'LLM_MISTRAL_API_KEY', 'LLM_MISTRAL_BASE_URL', 'LLM_MISTRAL_MODEL',
+  'LLM_OPENAI_COMPATIBLE_API_KEY', 'LLM_OPENAI_COMPATIBLE_BASE_URL', 'LLM_OPENAI_COMPATIBLE_MODEL',
   'IMAGE_API_KEY', 'OPENAI_API_KEY', 'IMAGE_BASE_URL',
   'GEMINI_API_KEY', 'GEMINI_BASE_URL',
   'ELEVENLABS_API_KEY', 'ELEVENLABS_BASE_URL',
@@ -54,6 +69,10 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   'R2_ENABLED', // 云同步开关('' 缺省=启用,'0'=停用)——配置不是凭据
   'R2_PRESIGN', // 浏览器预签名直传('' 缺省=启用,'0'=仅服务端写穿)
   'MEDIA_DIR',  // 素材保存目录(本机路径,''=默认 public/media/uploads)——配置不是凭据
+  ...LLM_PROVIDER_PRESETS.flatMap((preset) => {
+    const names = llmProviderConfigNames(preset.id);
+    return [names.baseUrl, names.model];
+  }),
 ]);
 
 const store = new Map<string, string>();  // current value per key (seed + runtime overrides)
@@ -65,6 +84,24 @@ export function seedKeystore(env: Record<string, string>): void {
     const v = (env[name] ?? process.env[name] ?? '').trim();
     if (v) { store.set(name, v); envSeeded.add(name); }
   }
+  // One-time in-memory compatibility migration. Old installs had a single LLM
+  // tuple; attach it to the provider that was active when those values were saved.
+  const legacyProvider = normalizeLlmProvider(store.get('LLM_PROVIDER'));
+  const names = llmProviderConfigNames(legacyProvider);
+  const migrate = (target: string, value: string): void => {
+    if (!store.has(target) && value) {
+      store.set(target, value);
+      envSeeded.add(target);
+    }
+  };
+  migrate(names.apiKey, store.get('LLM_API_KEY') ?? '');
+  migrate(
+    names.baseUrl,
+    store.has('LLM_BASE_URL')
+      ? resolveLlmBaseUrl(legacyProvider, store.get('LLM_BASE_URL'), store.get('LLM_BASE_URL_FORMAT'))
+      : '',
+  );
+  migrate(names.model, store.get('LLM_MODEL') ?? '');
 }
 
 /** Live value for a key (runtime override wins over the .env.local seed). '' if unset. */
@@ -127,7 +164,6 @@ export async function setKeys(patch: Record<string, unknown>): Promise<void> {
     clean.set(name, t);
   }
   if (clean.size === 0) return;
-  clean = expandLlmProviderPatch(clean, getKey('LLM_PROVIDER'));
   if (clean.has('LLM_BASE_URL') && !clean.has('LLM_BASE_URL_FORMAT')) {
     clean.set('LLM_BASE_URL_FORMAT', clean.get('LLM_BASE_URL') ? AI_SDK_BASE_URL_FORMAT : '');
   }

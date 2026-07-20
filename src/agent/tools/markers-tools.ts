@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { MARKER_HEX, type Marker, type MarkerColor, type TimelineState } from '../../editor/types';
 import { buildModel, type SegRow } from '../../script/serialize';
@@ -17,7 +17,7 @@ type Args = Record<string, unknown>;
 
 const COLORS = Object.keys(MARKER_HEX) as MarkerColor[];
 
-export const MARKERS_TOOL_SCHEMAS: Anthropic.Tool[] = [
+export const MARKERS_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'manage_markers',
     description: [

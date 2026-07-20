@@ -1,4 +1,6 @@
 import {
+  defaultModelForProvider,
+  llmProviderConfigNames,
   llmProviderPreset,
   normalizeLlmProvider,
   providerApiPath,
@@ -14,6 +16,13 @@ export const normalizeServerLlmProvider = normalizeLlmProvider;
  * including any provider-specific version path.
  */
 export const AI_SDK_BASE_URL_FORMAT = 'ai-sdk-prefix';
+
+export interface ResolvedLlmProviderConfig {
+  readonly provider: LlmProvider;
+  readonly apiKey: string;
+  readonly baseUrl: string;
+  readonly model: string;
+}
 
 export function resolveLlmBaseUrl(
   providerValue: unknown,
@@ -36,6 +45,21 @@ export function resolveLlmBaseUrl(
 
 export function llmOperationPath(providerValue: unknown): string {
   return providerApiPath(providerValue);
+}
+
+/** Resolve one independently saved vendor configuration without exposing it to the browser. */
+export function resolveLlmProviderConfig(
+  providerValue: unknown,
+  get: (name: string) => string,
+): ResolvedLlmProviderConfig {
+  const provider = normalizeServerLlmProvider(providerValue);
+  const names = llmProviderConfigNames(provider);
+  return {
+    provider,
+    apiKey: get(names.apiKey),
+    baseUrl: resolveLlmBaseUrl(provider, get(names.baseUrl), AI_SDK_BASE_URL_FORMAT),
+    model: get(names.model) || defaultModelForProvider(provider),
+  };
 }
 
 /** Switching vendors must not carry a provider-specific model or Base URL. */
