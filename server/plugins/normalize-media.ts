@@ -10,6 +10,7 @@ import { existsSync } from 'node:fs';
 import { rename, stat, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
+import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 import { putUploadFile, r2Config } from '../r2.ts';
 
 const MAX_JSON = 8 * 1024;
@@ -87,7 +88,7 @@ function run(cmd: string, args: string[], timeoutMs: number): Promise<{ stdout: 
   });
 }
 
-interface ProbeMeta {
+export interface ProbeMeta {
   width: number;
   height: number;
   duration: number;
@@ -96,14 +97,61 @@ interface ProbeMeta {
   hasAudio: boolean;
   sourceBitrate: number;
   size: number;
+  avgFrameRate?: number;
+  nominalFrameRate?: number;
+  frameCount?: number;
+  variableFrameRate: boolean;
+}
+
+export function parseFrameRate(value: unknown): number | undefined {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  }
+  const raw = String(value ?? '').trim();
+  if (!raw || raw === 'N/A') return undefined;
+  const [numeratorRaw, denominatorRaw] = raw.split('/');
+  const numerator = Number(numeratorRaw);
+  const denominator = denominatorRaw === undefined ? 1 : Number(denominatorRaw);
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return undefined;
+  const rate = numerator / denominator;
+  return Number.isFinite(rate) && rate > 0 ? rate : undefined;
+}
+
+export function isVariableFrameRate(avgFrameRate?: number, nominalFrameRate?: number): boolean {
+  if (!avgFrameRate || !nominalFrameRate) return false;
+  const reference = Math.max(avgFrameRate, nominalFrameRate);
+  // A 0.05% relative tolerance ignores rational rounding noise while still
+  // catching the common 30-tbr / drifting-average pattern from phone and
+  // screen recordings.
+  return Math.abs(avgFrameRate - nominalFrameRate) > Math.max(0.005, reference * 0.0005);
+}
+
+export function resolveTargetFps(
+  requested: unknown,
+  avgFrameRate?: number,
+  nominalFrameRate?: number,
+): number {
+  const explicit = Number(requested);
+  if (Number.isFinite(explicit) && explicit >= 1 && explicit <= 120) return explicit;
+  const detected = avgFrameRate ?? nominalFrameRate;
+  if (detected && Number.isFinite(detected)) return Math.max(1, Math.min(120, Math.round(detected)));
+  return 30;
+}
+
+export function playableDurationSeconds(meta: Pick<ProbeMeta, 'duration' | 'frameCount' | 'avgFrameRate' | 'nominalFrameRate'>): number {
+  const fps = meta.avgFrameRate ?? meta.nominalFrameRate;
+  if (meta.frameCount && fps && Number.isFinite(fps) && fps > 0) {
+    return meta.frameCount / fps;
+  }
+  return meta.duration;
 }
 
 async function probeVideo(path: string): Promise<ProbeMeta> {
   const { stdout } = await run(
-    'ffprobe',
+    ffprobeBin(),
     [
       '-v', 'error',
-      '-show_entries', 'format=duration,bit_rate,size:stream=index,codec_type,codec_name,width,height,bit_rate,avg_frame_rate,r_frame_rate',
+      '-show_entries', 'format=duration,bit_rate,size:stream=index,codec_type,codec_name,width,height,bit_rate,avg_frame_rate,r_frame_rate,nb_frames',
       '-of', 'json',
       path,
     ],
@@ -119,10 +167,15 @@ async function probeVideo(path: string): Promise<ProbeMeta> {
   if (!video) throw new Error('no video stream');
   const width = Number(video.width) || 0;
   const height = Number(video.height) || 0;
+  if (width <= 0 || height <= 0) throw new Error('video stream has invalid dimensions');
   const duration = Number(data.format?.duration) || 0;
   const size = Number(data.format?.size) || (await stat(path)).size;
   let sourceBitrate = Number(video.bit_rate) || Number(data.format?.bit_rate) || 0;
   if (!sourceBitrate && duration > 0) sourceBitrate = Math.floor((size * 8) / duration);
+  const avgFrameRate = parseFrameRate(video.avg_frame_rate);
+  const nominalFrameRate = parseFrameRate(video.r_frame_rate);
+  const parsedFrameCount = Number(video.nb_frames);
+  const frameCount = Number.isInteger(parsedFrameCount) && parsedFrameCount > 0 ? parsedFrameCount : undefined;
   return {
     width,
     height,
@@ -132,6 +185,10 @@ async function probeVideo(path: string): Promise<ProbeMeta> {
     hasAudio: Boolean(audio?.codec_name),
     sourceBitrate,
     size,
+    avgFrameRate,
+    nominalFrameRate,
+    frameCount,
+    variableFrameRate: isVariableFrameRate(avgFrameRate, nominalFrameRate),
   };
 }
 
@@ -164,7 +221,12 @@ function recommendedBitrate(width: number, height: number): number {
   return Math.ceil(clamped / 1000) * 1000;
 }
 
-function normalizeReason(meta: ProbeMeta, targetBitrate: number): string | null {
+function normalizeReason(meta: ProbeMeta, targetBitrate: number, forceCfr: boolean): string | null {
+  if (forceCfr || meta.variableFrameRate) {
+    const avg = meta.avgFrameRate?.toFixed(3) ?? 'unknown';
+    const nominal = meta.nominalFrameRate?.toFixed(3) ?? 'unknown';
+    return `variable frame rate detected (avg ${avg}, nominal ${nominal})`;
+  }
   if (!compatibleVideoCodec(meta.videoCodec)) {
     return `video codec ${meta.videoCodec || 'unknown'} is not browser-aligned`;
   }
@@ -190,14 +252,20 @@ async function encodeNormalized(
   targetW: number,
   targetH: number,
   targetBitrate: number,
+  targetFps: number,
+  convertToCfr: boolean,
 ): Promise<void> {
-  const vf = `scale=${targetW}:${targetH}:flags=lanczos`;
+  const filters = [`scale=${targetW}:${targetH}:flags=lanczos`];
+  if (convertToCfr) {
+    const fps = String(Math.round(targetFps * 1000) / 1000);
+    filters.push(`fps=fps=${fps}:start_time=0:round=near`);
+  }
   const args = [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
     '-i', inputPath,
     '-map', '0:v:0',
     ...(meta.hasAudio ? ['-map', '0:a:0?'] : ['-an']),
-    '-vf', vf,
+    '-vf', filters.join(','),
     '-c:v', 'libx264',
     '-preset', 'veryfast',
     '-profile:v', 'high',
@@ -205,11 +273,13 @@ async function encodeNormalized(
     '-b:v', String(targetBitrate),
     '-maxrate', String(targetBitrate),
     '-bufsize', String(targetBitrate * 2),
+    ...(convertToCfr ? ['-fps_mode', 'cfr'] : []),
+    '-avoid_negative_ts', 'make_zero',
     '-movflags', '+faststart',
   ];
   if (meta.hasAudio) args.push('-c:a', 'aac', '-b:a', VIDEO_AUDIO_BITRATE);
   args.push(outputPath);
-  await run('ffmpeg', args, FFMPEG_TIMEOUT_MS);
+  await run(ffmpegBin(), args, FFMPEG_TIMEOUT_MS);
 }
 
 export function normalizeMediaPlugin(): Plugin {
@@ -222,7 +292,12 @@ export function normalizeMediaPlugin(): Plugin {
           return;
         }
         try {
-          const body = (await readJson(req)) as { src?: string; force?: boolean };
+          const body = (await readJson(req)) as {
+            src?: string;
+            force?: boolean;
+            forceCfr?: boolean;
+            targetFps?: number;
+          };
           const src = String(body.src ?? '').trim();
           const name = uploadNameFromSrc(src);
           if (!name) {
@@ -254,14 +329,17 @@ export function normalizeMediaPlugin(): Plugin {
             meta = await probeVideo(inputPath);
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            // Not a video / no stream — soft skip so import still works
-            sendJson(res, 200, { ok: true, path: src, normalized: false, reason: `probe skipped: ${message}` });
+            // A known video that cannot be inspected is unsafe to pass through:
+            // Remotion may only surface the problem much later during preview/export.
+            sendJson(res, 422, { error: `video compatibility check failed: ${message}`, code: 'MEDIA_PROBE_FAILED' });
             return;
           }
 
           const { w: targetW, h: targetH } = targetDimension(meta.width, meta.height);
           const targetBitrate = recommendedBitrate(targetW, targetH);
-          const reason = body.force ? 'force' : normalizeReason(meta, targetBitrate);
+          const forceCfr = Boolean(body.forceCfr);
+          const targetFps = resolveTargetFps(body.targetFps, meta.avgFrameRate, meta.nominalFrameRate);
+          const reason = body.force ? 'force' : normalizeReason(meta, targetBitrate, forceCfr);
           if (!reason) {
             sendJson(res, 200, {
               ok: true,
@@ -271,7 +349,10 @@ export function normalizeMediaPlugin(): Plugin {
               bytes: meta.size,
               width: meta.width,
               height: meta.height,
-              durationSeconds: meta.duration || undefined,
+              durationSeconds: playableDurationSeconds(meta) || undefined,
+              videoFrameCount: meta.frameCount,
+              fps: meta.avgFrameRate ?? meta.nominalFrameRate,
+              variableFrameRate: meta.variableFrameRate,
             });
             return;
           }
@@ -285,7 +366,8 @@ export function normalizeMediaPlugin(): Plugin {
           await unlink(tmpPath).catch(() => {});
 
           server.config.logger.info(`[normalize-media] ${name}: ${reason}`);
-          await encodeNormalized(inputPath, tmpPath, meta, targetW, targetH, targetBitrate);
+          const convertToCfr = forceCfr || meta.variableFrameRate;
+          await encodeNormalized(inputPath, tmpPath, meta, targetW, targetH, targetBitrate, targetFps, convertToCfr);
 
           // Publish: if same path, atomic replace; if new .mp4 name, swap and drop old
           if (outPath === inputPath || basename(outPath) === name) {
@@ -311,6 +393,7 @@ export function normalizeMediaPlugin(): Plugin {
           const finalName = basename(finalPath);
           const finalSrc = `/media/uploads/${finalName}`;
           const bytes = (await stat(finalPath)).size;
+          const finalMeta = await probeVideo(finalPath);
 
           // Refresh R2 object if cloud write-through is on
           if (r2Config()) {
@@ -334,14 +417,17 @@ export function normalizeMediaPlugin(): Plugin {
             reason,
             bytes,
             bytesBefore: meta.size,
-            width: targetW,
-            height: targetH,
-            durationSeconds: meta.duration || undefined,
+            width: finalMeta.width,
+            height: finalMeta.height,
+            durationSeconds: playableDurationSeconds(finalMeta) || playableDurationSeconds(meta) || undefined,
+            videoFrameCount: finalMeta.frameCount,
+            fps: finalMeta.avgFrameRate ?? targetFps,
+            variableFrameRate: finalMeta.variableFrameRate,
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           server.config.logger.error(`[normalize-media] ${message}`);
-          const status = /ENOENT|spawn ffmpeg|spawn ffprobe/i.test(message) ? 503 : 500;
+          const status = /ENOENT|spawn .*ffmpeg|spawn .*ffprobe/i.test(message) ? 503 : 500;
           sendJson(res, status, { error: message });
         }
       });

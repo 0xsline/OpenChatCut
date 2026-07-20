@@ -9,6 +9,9 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ffmpegBin } from './media-binaries.ts';
+
+export { ffmpegBin } from './media-binaries.ts';
 
 export interface GridCell {
   /** JPEG bytes */
@@ -24,13 +27,6 @@ export interface TileOptions {
   cols?: number;
   /** JPEG quality 2-31 (ffmpeg -q:v, lower=better). Default 5. */
   quality?: number;
-}
-
-/** Prefer OPENCHATCUT_FFMPEG / FFMPEG_PATH (e.g. brew ffmpeg-full), else PATH. */
-export function ffmpegBin(): string {
-  return process.env.OPENCHATCUT_FFMPEG
-    ?? process.env.FFMPEG_PATH
-    ?? 'ffmpeg';
 }
 
 function run(cmd: string, args: string[], timeoutMs = 120_000): Promise<void> {

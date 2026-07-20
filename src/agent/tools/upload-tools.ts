@@ -186,23 +186,34 @@ export async function execUploadTool(name: string, args: Args, ctx: AgentContext
   return { error: `unknown tool ${name}` };
 }
 
-/** Best-effort server-side video compress (same as UI importMedia). */
-async function normalizeVideoSrc(src: string): Promise<{ src: string; width?: number; height?: number; bytes?: number; normalized?: boolean }> {
+/** Server-side video compatibility normalization (same as UI importMedia). */
+async function normalizeVideoSrc(src: string, targetFps: number): Promise<{
+  src: string;
+  width?: number;
+  height?: number;
+  bytes?: number;
+  normalized?: boolean;
+  durationSeconds?: number;
+  fps?: number;
+}> {
   if (!src.startsWith('/media/uploads/')) return { src };
   try {
     const res = await fetch('/api/normalize-media', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ src }),
+      body: JSON.stringify({ src, targetFps }),
     });
-    if (!res.ok) return { src };
     const data = (await res.json()) as {
       path?: string;
       width?: number;
       height?: number;
       bytes?: number;
       normalized?: boolean;
+      durationSeconds?: number;
+      fps?: number;
+      error?: string;
     };
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     if (data.path?.startsWith('/media/uploads/')) {
       return {
         src: data.path,
@@ -210,10 +221,15 @@ async function normalizeVideoSrc(src: string): Promise<{ src: string; width?: nu
         height: typeof data.height === 'number' ? data.height : undefined,
         bytes: typeof data.bytes === 'number' ? data.bytes : undefined,
         normalized: data.normalized,
+        durationSeconds: typeof data.durationSeconds === 'number' ? data.durationSeconds : undefined,
+        fps: typeof data.fps === 'number' ? data.fps : undefined,
       };
     }
-  } catch { /* keep original */ }
-  return { src };
+    throw new Error('server returned no media path');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Video compatibility processing failed: ${message}`);
+  }
 }
 
 function execImportMedia(args: Args, ctx: AgentContext): unknown {
@@ -436,11 +452,14 @@ async function execFinalize(args: Args, ctx: AgentContext): Promise<unknown> {
   let finalSize = size;
   let normalized = false;
   if (kind === 'video' && readUrl.startsWith('/media/uploads/')) {
-    const norm = await normalizeVideoSrc(readUrl);
+    const norm = await normalizeVideoSrc(readUrl, fps);
     src = norm.src;
     if (norm.width) width = norm.width;
     if (norm.height) height = norm.height;
     if (norm.bytes) finalSize = norm.bytes;
+    if (norm.durationSeconds && norm.durationSeconds > 0) {
+      durationInFrames = Math.max(1, Math.round(norm.durationSeconds * fps));
+    }
     normalized = Boolean(norm.normalized);
   }
 

@@ -338,31 +338,38 @@ const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypt
 /** Post-upload conditional compress (server ffmpeg). No-op for already-efficient sources. */
 async function normalizeUploadedVideo(
   src: string,
-): Promise<{ src: string; width?: number; height?: number }> {
+  targetFps: number,
+): Promise<{ src: string; width?: number; height?: number; durationSeconds?: number; fps?: number }> {
   try {
     const res = await fetch('/api/normalize-media', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ src }),
+      body: JSON.stringify({ src, targetFps }),
     });
-    if (!res.ok) return { src };
     const data = (await res.json()) as {
       path?: string;
       width?: number;
       height?: number;
+      durationSeconds?: number;
+      fps?: number;
       normalized?: boolean;
+      error?: string;
     };
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     if (data.path?.startsWith('/media/uploads/')) {
       return {
         src: data.path,
         width: typeof data.width === 'number' ? data.width : undefined,
         height: typeof data.height === 'number' ? data.height : undefined,
+        durationSeconds: typeof data.durationSeconds === 'number' ? data.durationSeconds : undefined,
+        fps: typeof data.fps === 'number' ? data.fps : undefined,
       };
     }
-  } catch {
-    /* keep original — normalize is best-effort */
+    throw new Error('server returned no media path');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(t('视频兼容性处理失败：{error}', { error: message }));
   }
-  return { src };
 }
 
 /**
@@ -419,11 +426,15 @@ export async function importMedia(
     let src = srcRaw;
     let width = meta.width;
     let height = meta.height;
+    let durationInFrames = meta.durationInFrames;
     if (kind === 'video') {
-      const norm = await normalizeUploadedVideo(srcRaw);
+      const norm = await normalizeUploadedVideo(srcRaw, fps);
       src = norm.src;
       if (norm.width) width = norm.width;
       if (norm.height) height = norm.height;
+      if (norm.durationSeconds && norm.durationSeconds > 0) {
+        durationInFrames = Math.max(1, Math.round(norm.durationSeconds * fps));
+      }
     }
     hooks.onProgress?.(1);
 
@@ -436,7 +447,7 @@ export async function importMedia(
       name: file.name,
       kind: kind as MediaAssetKind,
       src,
-      durationInFrames: meta.durationInFrames,
+      durationInFrames,
       width,
       height,
     };

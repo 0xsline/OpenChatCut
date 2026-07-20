@@ -65,6 +65,7 @@ export default {
   '名称不能包含 /': 'Name cannot contain /',
   // upload.ts
   '上传失败 ({status})': 'Upload failed ({status})',
+  '视频兼容性处理失败：{error}': 'Video compatibility processing failed: {error}',
   '不支持的文件类型（视频 / 图片 / 音频 / GIF / SVG）': 'Unsupported file type (video / image / audio / GIF / SVG)',
   // clipExport.ts
   '{verb}失败（{status}）': '{verb} failed ({status})',
