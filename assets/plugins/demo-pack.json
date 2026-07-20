@@ -1,0 +1,141 @@
+{
+  "format": "openchatcut-plugin@1",
+  "id": "houye-kit",
+  "name": "官方示例包",
+  "version": "1.0.2",
+  "author": "openchatcut",
+  "description": "官方示例插件包：夜窗雨痕、漏光闪切、青瓷暖调、心跳推近、后夜人名条。示范 openchatcut-plugin@1 的五类内容（FX / 转场 / LUT / 缩放 / MG）。",
+  "items": [
+    {
+      "type": "fx",
+      "id": "night-rain-window",
+      "name": "夜窗雨痕",
+      "desc": "玻璃上的雨丝与窗雾，带一点冷暖色偏。适合夜戏、独白、回忆段落。",
+      "frag": "#version 300 es\nprecision highp float;\nuniform sampler2D u_input;\nuniform float u_intensity;\nuniform float u_speed;\nuniform float u_tint;\nuniform float u_time;\nin vec2 v_texCoord;\nout vec4 fragColor;\nfloat hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }\nvoid main(){\n  vec2 uv = v_texCoord;\n  float amt = clamp(u_intensity, 0.0, 1.0);\n  float t = u_time * (0.35 + u_speed * 1.8);\n  // rain streaks\n  float streak = 0.0;\n  for (int i = 0; i < 3; i++) {\n    float fi = float(i);\n    vec2 g = vec2(uv.x * (18.0 + fi * 9.0), uv.y * (6.0 + fi * 2.0) - t * (1.2 + fi * 0.4));\n    vec2 id = floor(g);\n    vec2 f = fract(g);\n    float n = hash(id + fi * 17.0);\n    float drop = smoothstep(0.12, 0.0, abs(f.x - 0.5 - (n - 0.5) * 0.25))\n               * smoothstep(0.0, 0.15, f.y) * smoothstep(1.0, 0.55, f.y);\n    streak += drop * (0.35 + 0.65 * n);\n  }\n  streak = clamp(streak, 0.0, 1.0) * amt;\n  // slight UV warp like wet glass\n  vec2 warp = vec2(streak * 0.008, 0.0);\n  vec4 c = texture(u_input, uv + warp);\n  // cool night tint\n  vec3 cool = vec3(0.88, 0.94, 1.08);\n  vec3 warm = vec3(1.05, 0.98, 0.92);\n  vec3 grade = mix(vec3(1.0), mix(cool, warm, clamp(u_tint, 0.0, 1.0)), amt * 0.55);\n  // fog at edges\n  vec2 d = uv - 0.5;\n  float fog = smoothstep(0.15, 0.75, length(d)) * amt * 0.22;\n  vec3 col = c.rgb * grade;\n  col = mix(col, col * 0.75 + vec3(0.12, 0.14, 0.18), fog);\n  col += streak * 0.18;\n  fragColor = vec4(col, c.a);\n}",
+      "props": [
+        {
+          "key": "intensity",
+          "label": "雨势",
+          "default": 0.7,
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "key": "speed",
+          "label": "下落",
+          "default": 0.55,
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "key": "tint",
+          "label": "冷暖",
+          "default": 0.25,
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "type": "transition",
+      "id": "light-leak-flash",
+      "name": "漏光闪切",
+      "desc": "暖色胶片漏光吞没再吐出下一镜（light-leak），不是圆形擦除。中段过曝+色散，夜戏/情绪剪辑更贴。",
+      "frag": "#version 300 es\nprecision highp float;\nuniform sampler2D u_outgoing;\nuniform sampler2D u_incoming;\nuniform float u_progress;\nuniform float u_intensity;\nuniform float u_warmth;\nuniform float u_spread;\nin vec2 v_texCoord;\nout vec4 fragColor;\n\nfloat hash(vec2 p) {\n  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);\n}\nfloat noise(vec2 p) {\n  vec2 i = floor(p);\n  vec2 f = fract(p);\n  float a = hash(i);\n  float b = hash(i + vec2(1.0, 0.0));\n  float c = hash(i + vec2(0.0, 1.0));\n  float d = hash(i + vec2(1.0, 1.0));\n  vec2 u = f * f * (3.0 - 2.0 * f);\n  return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;\n}\nfloat fbm(vec2 p) {\n  float v = 0.0;\n  float a = 0.5;\n  for (int i = 0; i < 4; i++) {\n    v += a * noise(p);\n    p *= 2.05;\n    a *= 0.5;\n  }\n  return v;\n}\nfloat ease(float t) {\n  return t * t * (3.0 - 2.0 * t);\n}\n\nvoid main() {\n  float p = clamp(u_progress, 0.0, 1.0);\n  vec2 uv = v_texCoord;\n  vec4 colA = texture(u_outgoing, uv);\n  vec4 colB = texture(u_incoming, uv);\n\n  // 双光心: 对角扫过,像镜头漏光\n  float spread = 0.35 + clamp(u_spread, 0.0, 1.0) * 1.1;\n  vec2 c1 = vec2(-0.15 + p * 1.35, 0.15 + p * 0.55);\n  vec2 c2 = vec2(1.15 - p * 1.2, 0.9 - p * 0.4);\n  float n = fbm(uv * (2.2 + spread) + vec2(p * 1.7, p * -0.9));\n  float d1 = length((uv - c1) * vec2(1.35, 1.0));\n  float d2 = length((uv - c2) * vec2(1.1, 1.25));\n  float blob = exp(-d1 * d1 * (3.2 / spread)) + exp(-d2 * d2 * (2.6 / spread));\n  blob = clamp(blob + (n - 0.5) * 0.55, 0.0, 2.5);\n\n  // 0→0.5 漏光盖住 A 并过曝; 0.5→1 露出 B 且漏光退\n  float cover = ease(smoothstep(0.0, 0.52, p));\n  float reveal = ease(smoothstep(0.38, 1.0, p));\n  float mixAB = reveal;\n  vec3 base = mix(colA.rgb, colB.rgb, mixAB);\n\n  float warm = clamp(u_warmth, 0.0, 1.0);\n  vec3 leakColor = mix(vec3(1.0, 0.55, 0.22), vec3(1.0, 0.28, 0.55), warm);\n  leakColor = mix(leakColor, vec3(1.0, 0.92, 0.65), 0.25);\n\n  float inten = 0.55 + clamp(u_intensity, 0.0, 1.0) * 1.35;\n  // 中段最强\n  float peak = sin(p * 3.14159265);\n  float leakAmt = blob * peak * inten * (0.45 + cover * 0.9);\n\n  vec3 blown = base * (1.0 + leakAmt * 0.85) + leakColor * leakAmt;\n  // 轻微色散\n  float ca = leakAmt * 0.012;\n  vec3 split = vec3(\n    texture(u_outgoing, uv + vec2(ca, 0.0)).r * (1.0 - mixAB) + texture(u_incoming, uv + vec2(ca, 0.0)).r * mixAB,\n    base.g,\n    texture(u_outgoing, uv - vec2(ca, 0.0)).b * (1.0 - mixAB) + texture(u_incoming, uv - vec2(ca, 0.0)).b * mixAB\n  );\n  vec3 col = mix(blown, split + leakColor * leakAmt * 0.35, 0.35);\n  col = clamp(col, 0.0, 1.0);\n  fragColor = vec4(col, 1.0);\n}",
+      "defaultDurationFrames": 26,
+      "props": [
+        {
+          "key": "intensity",
+          "label": "漏光强度",
+          "default": 0.75,
+          "min": 0.15,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "key": "warmth",
+          "label": "冷暖",
+          "default": 0.35,
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "key": "spread",
+          "label": "光斑扩散",
+          "default": 0.55,
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "type": "lut",
+      "id": "celadon-warm",
+      "name": "青瓷暖调",
+      "desc": "阴影偏青瓷、高光偏琥珀的夜戏 LUT。压一点蓝，留一点灯火。",
+      "cube": "TITLE \"Celadon Night Warm\"\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\nLUT_3D_SIZE 5\n0.04080 0.04960 0.07360\n0.32155 0.04846 0.06616\n0.57942 0.04741 0.05933\n0.82932 0.04639 0.05271\n1.00000 0.04539 0.04622\n0.03498 0.30392 0.04959\n0.31573 0.30278 0.04215\n0.57361 0.30173 0.03532\n0.82350 0.30071 0.02870\n1.00000 0.29971 0.02221\n0.02941 0.54777 0.02657\n0.31016 0.54663 0.01913\n0.56803 0.54558 0.01230\n0.81793 0.54456 0.00568\n1.00000 0.54356 0.00000\n0.02392 0.78782 0.00391\n0.30467 0.78668 0.00000\n0.56254 0.78563 0.00000\n0.81244 0.78461 0.00000\n1.00000 0.78361 0.00000\n0.01849 1.00000 0.00000\n0.29923 1.00000 0.00000\n0.55711 1.00000 0.00000\n0.80700 1.00000 0.00000\n1.00000 1.00000 0.00000\n0.04027 0.04927 0.28603\n0.32102 0.04812 0.27859\n0.57890 0.04707 0.27176\n0.82879 0.04605 0.26513\n1.00000 0.04506 0.25865\n0.03446 0.30359 0.26202\n0.31521 0.30244 0.25458\n0.57308 0.30139 0.24775\n0.82298 0.30037 0.24113\n1.00000 0.29938 0.23464\n0.02888 0.54744 0.23900\n0.30963 0.54629 0.23156\n0.56751 0.54524 0.22473\n0.81740 0.54423 0.21811\n1.00000 0.54323 0.21162\n0.02339 0.78749 0.21634\n0.30414 0.78635 0.20890\n0.56202 0.78530 0.20207\n0.81191 0.78428 0.19545\n1.00000 0.78328 0.18896\n0.01796 1.00000 0.19391\n0.29871 1.00000 0.18647\n0.55659 1.00000 0.17964\n0.80648 1.00000 0.17302\n1.00000 1.00000 0.16653\n0.03971 0.04891 0.51344\n0.32046 0.04777 0.50600\n0.57834 0.04672 0.49917\n0.82823 0.04570 0.49254\n1.00000 0.04470 0.48606\n0.03390 0.30323 0.48943\n0.31465 0.30209 0.48199\n0.57252 0.30104 0.47516\n0.82242 0.30002 0.46854\n1.00000 0.29902 0.46205\n0.02832 0.54708 0.46641\n0.30907 0.54594 0.45897\n0.56695 0.54489 0.45214\n0.81684 0.54387 0.44552\n1.00000 0.54287 0.43903\n0.02283 0.78713 0.44375\n0.30358 0.78599 0.43631\n0.56146 0.78494 0.42948\n0.81135 0.78392 0.42286\n1.00000 0.78292 0.41637\n0.01740 1.00000 0.42132\n0.29815 1.00000 0.41388\n0.55602 1.00000 0.40705\n0.80592 1.00000 0.40043\n1.00000 1.00000 0.39394\n0.03913 0.04854 0.74687\n0.31988 0.04740 0.73943\n0.57776 0.04635 0.73260\n0.82765 0.04533 0.72598\n1.00000 0.04433 0.71949\n0.03332 0.30286 0.72286\n0.31407 0.30172 0.71542\n0.57194 0.30067 0.70859\n0.82184 0.29965 0.70197\n1.00000 0.29865 0.69548\n0.02774 0.54671 0.69984\n0.30849 0.54557 0.69240\n0.56637 0.54452 0.68557\n0.81626 0.54350 0.67895\n1.00000 0.54251 0.67246\n0.02225 0.78677 0.67718\n0.30300 0.78562 0.66974\n0.56088 0.78457 0.66291\n0.81077 0.78355 0.65629\n1.00000 0.78256 0.64980\n0.01682 1.00000 0.65475\n0.29757 1.00000 0.64731\n0.55545 1.00000 0.64048\n0.80534 1.00000 0.63386\n1.00000 1.00000 0.62737\n0.03855 0.04817 0.98430\n0.31930 0.04703 0.97686\n0.57717 0.04598 0.97003\n0.82707 0.04496 0.96341\n1.00000 0.04396 0.95692\n0.03273 0.30249 0.96029\n0.31348 0.30135 0.95285\n0.57136 0.30030 0.94602\n0.82125 0.29928 0.93940\n1.00000 0.29828 0.93291\n0.02716 0.54634 0.93727\n0.30790 0.54520 0.92983\n0.56578 0.54415 0.92300\n0.81567 0.54313 0.91638\n1.00000 0.54213 0.90989\n0.02167 0.78639 0.91461\n0.30242 0.78525 0.90717\n0.56029 0.78420 0.90034\n0.81019 0.78318 0.89372\n1.00000 0.78218 0.88723\n0.01623 1.00000 0.89218\n0.29698 1.00000 0.88474\n0.55486 1.00000 0.87791\n0.80475 1.00000 0.87129\n1.00000 1.00000 0.86480"
+    },
+    {
+      "type": "zoom",
+      "id": "heartbeat-push",
+      "name": "心跳推近",
+      "desc": "短促冲刺 → 过冲 → 回落停住，像心跳一下。适合卡点强调。",
+      "envelope": [
+        0,
+        0.15,
+        0.85,
+        1.18,
+        0.92,
+        1
+      ],
+      "magnification": 1.72
+    },
+    {
+      "type": "mg-template",
+      "id": "houye-namecard",
+      "name": "后夜人名条",
+      "desc": "左下角夜戏人名条：霓虹竖条 + 角色小标 + 大号姓名 + 一句旁白。",
+      "code": "const HouyeNamecard = ({ item }) => {\n  const frame = useCurrentFrame();\n  const { fps, width, height } = useVideoConfig();\n  const p = item.props || {};\n  const name = String(p.name ?? \"后夜来客\");\n  const role = String(p.role ?? \"GUEST\");\n  const line = String(p.line ?? \"说点什么\");\n  const accent = String(p.accent ?? \"#6cf0c2\");\n  const s = height / 1080;\n  const left = Math.round(width * 0.055);\n  const bottom = Math.round(height * 0.12);\n  const inA = spring({ frame, fps, config: { damping: 18, stiffness: 140, mass: 0.85 } });\n  const inB = spring({ frame: frame - 5, fps, config: { damping: 200 } });\n  const inC = spring({ frame: frame - 10, fps, config: { damping: 200 } });\n  const hold = Math.round(fps * 4.2);\n  const out = frame < hold ? 1 : Math.max(0, 1 - (frame - hold) / (fps * 0.45));\n  const op = inA * out;\n  const slide = (1 - inA) * 48 * s;\n  return (\n    <AbsoluteFill style={{ pointerEvents: \"none\", fontFamily: \"system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif\" }}>\n      <div style={{\n        position: \"absolute\", left, bottom,\n        transform: `translateX(${-slide}px)`,\n        opacity: op,\n        display: \"flex\",\n        alignItems: \"stretch\",\n        gap: 0,\n      }}>\n        <div style={{\n          width: 5 * s,\n          background: accent,\n          borderRadius: 3 * s,\n          boxShadow: `0 0 18px ${accent}88`,\n          transform: `scaleY(${inB})`,\n          transformOrigin: \"center bottom\",\n        }} />\n        <div style={{ paddingLeft: 18 * s, paddingTop: 4 * s, paddingBottom: 4 * s }}>\n          <div style={{\n            fontSize: 13 * s,\n            fontWeight: 700,\n            letterSpacing: 3 * s,\n            color: accent,\n            opacity: 0.95,\n            textTransform: \"uppercase\",\n          }}>{role}</div>\n          <div style={{\n            marginTop: 6 * s,\n            fontSize: 46 * s,\n            fontWeight: 800,\n            color: \"#f2ebe0\",\n            letterSpacing: 1 * s,\n            lineHeight: 1.1,\n            textShadow: \"0 4px 28px rgba(0,0,0,0.55)\",\n          }}>{name}</div>\n          <div style={{\n            marginTop: 10 * s,\n            fontSize: 16 * s,\n            fontWeight: 500,\n            color: \"rgba(242,235,224,0.72)\",\n            maxWidth: 520 * s,\n          }}>{line}</div>\n          <div style={{\n            marginTop: 14 * s,\n            height: 2 * s,\n            width: 160 * s * inC,\n            background: accent,\n            borderRadius: 2 * s,\n            boxShadow: `0 0 12px ${accent}`,\n          }} />\n        </div>\n      </div>\n    </AbsoluteFill>\n  );\n};",
+      "width": 1920,
+      "height": 1080,
+      "props": {
+        "name": "后夜来客",
+        "role": "GUEST",
+        "line": "灯还亮着的时候",
+        "accent": "#6cf0c2"
+      },
+      "thumb": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22320%22%20height%3D%22180%22%20viewBox%3D%220%200%20320%20180%22%3E%20%3Crect%20width%3D%22320%22%20height%3D%22180%22%20fill%3D%22%230a0c12%22%2F%3E%20%3Crect%20x%3D%2224%22%20y%3D%2288%22%20width%3D%224%22%20height%3D%2256%22%20fill%3D%22%236cf0c2%22%2F%3E%20%3Ctext%20x%3D%2240%22%20y%3D%22112%22%20fill%3D%22%236cf0c2%22%20font-family%3D%22ui-sans-serif%2Csystem-ui%22%20font-size%3D%2211%22%20font-weight%3D%22600%22%20letter-spacing%3D%222%22%3EGUEST%3C%2Ftext%3E%20%3Ctext%20x%3D%2240%22%20y%3D%22142%22%20fill%3D%22%23f2ebe0%22%20font-family%3D%22ui-sans-serif%2Csystem-ui%22%20font-size%3D%2226%22%20font-weight%3D%22800%22%3E%E5%90%8E%E5%A4%9C%E4%BA%BA%E5%90%8D%3C%2Ftext%3E%20%3Ctext%20x%3D%2218%22%20y%3D%2228%22%20fill%3D%22%238b97a8%22%20font-family%3D%22ui-sans-serif%2Csystem-ui%22%20font-size%3D%2210%22%3EMG%20%C2%B7%20%E5%90%8E%E5%A4%9C%3C%2Ftext%3E%20%3C%2Fsvg%3E",
+      "propSchema": [
+        {
+          "key": "name",
+          "type": "text",
+          "label": "姓名",
+          "defaultValue": "后夜来客"
+        },
+        {
+          "key": "role",
+          "type": "text",
+          "label": "角色标签",
+          "defaultValue": "GUEST"
+        },
+        {
+          "key": "line",
+          "type": "text",
+          "label": "旁白",
+          "defaultValue": "灯还亮着的时候"
+        },
+        {
+          "key": "accent",
+          "type": "color",
+          "label": "强调色",
+          "defaultValue": "#6cf0c2"
+        }
+      ]
+    }
+  ]
+}

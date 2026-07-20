@@ -1,0 +1,71 @@
+# dependencies / build output
+node_modules/
+dist/
+desktop-dist/
+release/
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+.vite/
+*.tsbuildinfo
+
+# OS / editor / temporary files
+*.log
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+/.cache/
+/.tmp/
+/tmp/
+/temp/
+
+# export output
+/out.*
+/exports/
+/*.ccproj.json
+/*.fcpxml
+
+# secrets
+.env
+.env.*
+!.env.example
+
+# user-imported / AI-generated media (dev upload endpoint) — product static lives in assets/
+public/media/uploads/*
+!public/media/uploads/.gitkeep
+
+# DeepFilterNet3 local venv
+.venv-df/
+.venv/
+
+# wrangler CLI 本地缓存(R2 建桶用)
+.wrangler/
+
+# ── 私人工作区(2026-07-18 起全部不入库)──────────────
+# AI 助手工程规范/会话配置/技能与钩子
+CLAUDE.md
+AGENTS.md
+.codex/
+.agents/
+.claude/
+# 设计钩子(impeccable)状态与配置
+.impeccable/
+# 私人工作文档(TODO/设计笔记;要公开的文档另立目录)
+docs/
+
+# 本地/测试用 check 脚本(*.check.ts 与 npm test 配套,不入库)
+*.check.ts
+# 外部 MCP 桥接协议回归随实现入库
+!server/external-agent/broker.check.ts
+
+# 本地开发/验证脚本
+/scripts/

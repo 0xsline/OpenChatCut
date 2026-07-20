@@ -1,0 +1,61 @@
+{
+  "name": "openchatcut",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local-first, conversational AI video editor.",
+  "license": "AGPL-3.0-or-later",
+  "author": "OpenChatCut Contributors",
+  "type": "module",
+  "main": "desktop-dist/main.mjs",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "test": "tsx server/external-agent/broker.check.ts && tsx server/plugins/project-store.verify.ts && tsx server/plugins/extension-store.verify.ts && tsx src/persist/projectStore.verify.ts",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "desktop:build:main": "esbuild desktop/main.ts --bundle --platform=node --format=esm --packages=external --outfile=desktop-dist/main.mjs && esbuild desktop/preload.ts --bundle --platform=node --format=cjs --packages=external --outfile=desktop-dist/preload.cjs",
+    "desktop:dev": "npm run desktop:build:main && electron desktop-dist/main.mjs",
+    "desktop:smoke": "npm run desktop:build:main && CC_SMOKE=1 electron desktop-dist/main.mjs",
+    "desktop:prebundle": "tsx desktop/prebuild-remotion.mts",
+    "desktop:dist": "npm run build && npm run desktop:build:main && npm run desktop:prebundle && tsx desktop/prepare-target.mts darwin-arm64 && CC_EB_TARGET=darwin-arm64 electron-builder --config electron-builder.config.mjs --mac dmg --arm64 --publish never",
+    "desktop:prepare": "tsx desktop/prepare-target.mts",
+    "desktop:dist:mac-x64": "npm run build && npm run desktop:build:main && npm run desktop:prebundle && tsx desktop/prepare-target.mts darwin-x64 && CC_EB_TARGET=darwin-x64 electron-builder --config electron-builder.config.mjs --mac dmg --x64 --publish never",
+    "desktop:dist:win": "npm run build && npm run desktop:build:main && npm run desktop:prebundle && tsx desktop/prepare-target.mts win32-x64 && electron-builder --config electron-builder.config.mjs --win nsis --x64 --publish never"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
+    "@aws-sdk/client-s3": "^3.1089.0",
+    "@aws-sdk/s3-request-presigner": "^3.1090.0",
+    "@babel/standalone": "^8.0.4",
+    "@e2b/code-interpreter": "^2.6.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@remotion/bundler": "4.0.489",
+    "@remotion/google-fonts": "^4.0.489",
+    "@remotion/player": "^4.0.489",
+    "@remotion/renderer": "4.0.489",
+    "@smithy/node-http-handler": "^4.9.7",
+    "https-proxy-agent": "^9.1.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "remotion": "^4.0.489"
+  },
+  "devDependencies": {
+    "@types/babel__standalone": "^7.1.9",
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1",
+    "oxlint": "^1.71.0",
+    "tsx": "^4.23.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1"
+  }
+}

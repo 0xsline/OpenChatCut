@@ -1,0 +1,157 @@
+import type { CaptionsData, CaptionSourceEntry, CaptionWordOverride } from './types';
+import type { TimelineItem } from '../editor/types';
+import type { TranscriptWord } from '../transcript/types';
+import { itemWindow, keptWordIndices, mediaWindowKeptIndices, mediaWindowWords, retimeWords } from '../transcript/edit';
+import { findVariantByLang, resolveVariantText } from '../transcript/variants';
+
+// 词 → 时间线投影按 kind 分流，并与播放层保持一致:
+// audio = 编辑后词流(keptSegments 重排,删词/压静音/trim 窗口全生效);
+// video = 连续播放媒体 [srcIn, srcIn+dur×rate),窗口内可闻即显——transcript
+// 删词不隐藏、时序永不重排(TimelineComposition 对 video 恒 OffthreadVideo
+// trimBefore,词编辑不改画面;字幕层要藏词走 wordOverrides)。
+function projectItemWords(item: TimelineItem, src: TranscriptWord[], del: Set<number>, fps: number): TranscriptWord[] {
+  if (item.kind !== 'audio') return mediaWindowWords(src, fps, item);
+  return retimeWords(src, del, fps, item.startFrame, {
+    maxGapFrames: item.silenceFrames, gapCapsMs: item.gapCapsMs, playOrder: item.transcriptPlayOrder,
+    window: itemWindow(item),
+  });
+}
+
+function projectItemIndices(item: TimelineItem, del: Set<number>, fps: number): number[] {
+  if (item.kind !== 'audio') return mediaWindowKeptIndices(item.transcript ?? [], fps, item);
+  return keptWordIndices(item.transcript ?? [], del, fps, {
+    maxGapFrames: item.silenceFrames, gapCapsMs: item.gapCapsMs, playOrder: item.transcriptPlayOrder,
+    window: itemWindow(item),
+  });
+}
+
+// Items participating in a MULTI-source merge (`sourceMode:'timeline'` = every
+// transcribed item; `sources` = the listed item ids), or undefined when captions
+// use the single-source `sourceItemId`/standalone path — kept as a SEPARATE
+// branch in resolveCaptionWords/resolveCaptionWordIndices below so that
+// pre-existing single-source behavior stays byte-identical (no merge = same
+// code path as before this feature).
+function mergedSourceItems(captions: CaptionsData, items: TimelineItem[]): TimelineItem[] | undefined {
+  // 多车道 scope(sourceEntries):合并视图 = 可见车道的源 item 去重(read_captions/
+  // 翻译器仍拿到一条时间序词流;渲染层则走 lanes.ts 的分车道路径)。
+  if (captions.sourceEntries?.length) {
+    const seen = new Set<string>();
+    const found: TimelineItem[] = [];
+    for (const e of captions.sourceEntries) {
+      if (e.visible === false || seen.has(e.itemId)) continue;
+      const it = items.find((x) => x.id === e.itemId);
+      if (it?.transcript?.length) { seen.add(e.itemId); found.push(it); }
+    }
+    return found.length ? found : undefined;
+  }
+  if (captions.sourceMode === 'timeline') {
+    const all = items.filter((it) => (it.transcript?.length ?? 0) > 0);
+    return all.length ? [...all].sort((a, b) => a.startFrame - b.startFrame || a.id.localeCompare(b.id)) : undefined;
+  }
+  if (captions.sources?.length) {
+    const found = captions.sources
+      .map((id) => items.find((it) => it.id === id))
+      .filter((it): it is TimelineItem => !!it?.transcript?.length);
+    return found.length ? found : undefined;
+  }
+  return undefined;
+}
+
+/** One lane's words (TIMELINE ms): the entry's item transcript, variant text
+ * swapped in BEFORE retiming (翻译只换文本，时序永远来自源词),
+ * deletions/silence/trim window all honored (same math as the play layer). */
+export function resolveEntryWords(entry: CaptionSourceEntry, items: TimelineItem[], fps: number): TranscriptWord[] {
+  const item = items.find((it) => it.id === entry.itemId);
+  if (!item?.transcript?.length) return [];
+  const del = new Set(item.deletedWordIdx ?? []);
+  const variant = entry.variant
+    ? findVariantByLang(item.variants ?? [], entry.variant.languageCode, entry.variant.variantKind)
+    : undefined;
+  const src = variant ? resolveVariantText(item.transcript, variant) : item.transcript;
+  return projectItemWords(item, src, del, fps);
+}
+
+// Re-project + merge every participating item's transcript onto the timeline,
+// then sort by absolute start (the merge itself — no cross-item de-overlap, so
+// each word keeps its own text/start/end exactly as retimeWords produced it
+// for its own item, preserving word/frame alignment per source).
+function mergeWords(sourceItems: TimelineItem[], fps: number): TranscriptWord[] {
+  const all: TranscriptWord[] = [];
+  for (const it of sourceItems) {
+    const del = new Set(it.deletedWordIdx ?? []);
+    all.push(...projectItemWords(it, it.transcript ?? [], del, fps)); // 字幕跟随实际播放(按 kind 分流)
+  }
+  return all.sort((a, b) => a.start - b.start);
+}
+
+// Resolve caption words as TIMELINE-ms words. Multi-source merge (sources[] /
+// sourceMode:'timeline') takes priority when set; else prefer the referenced
+// audio item's transcript re-projected onto the edited timeline (captions
+// follow deletions + silence compression); else shift the standalone words by
+// the offset. Shared by the render layer, the translation generator, and the
+// agent tool so all three agree on what text/timing the captions currently show.
+export function resolveCaptionWords(captions: CaptionsData, items: TimelineItem[], fps: number): TranscriptWord[] {
+  const merged = mergedSourceItems(captions, items);
+  if (merged) return mergeWords(merged, fps);
+  const item = captions.sourceItemId ? items.find((it) => it.id === captions.sourceItemId) : undefined;
+  if (item?.transcript?.length) {
+    const del = new Set(item.deletedWordIdx ?? []);
+    // Swap in the chosen variant's TEXT on the SOURCE words BEFORE retiming, so all
+    // timing comes from the projection (source frames) — the variant never touches a
+    // start/end. No variant selected → source words remain unchanged.
+    const variant = captions.captionVariantId ? item.variants?.find((v) => v.id === captions.captionVariantId) : undefined;
+    const src = variant ? resolveVariantText(item.transcript, variant) : item.transcript;
+    return projectItemWords(item, src, del, fps);
+  }
+  const offMs = ((captions.offsetFrames ?? 0) / fps) * 1000;
+  return (captions.words ?? []).map((w) => ({ ...w, start: w.start + offMs, end: w.end + offMs }));
+}
+
+// The index each word `resolveCaptionWords` returns should be keyed by for
+// `wordOverrides`. Single-source (unchanged): the ORIGINAL track-transcript
+// index (same order + length — deleted words are dropped from both the same
+// way, kept words stay in source order). Multi-source merge: there is no
+// single source transcript to index into, so overrides key off the word's
+// POSITION in the merged output instead (0..N-1) — simplest mapping that
+// stays well-defined regardless of how many items were merged (see
+// CaptionsData.wordOverrides doc in types.ts).
+export function resolveCaptionWordIndices(captions: CaptionsData, items: TimelineItem[], fps: number): number[] {
+  const merged = mergedSourceItems(captions, items);
+  if (merged) {
+    const count = merged.reduce((n, it) => {
+      const del = new Set(it.deletedWordIdx ?? []);
+      return n + projectItemIndices(it, del, fps).length;
+    }, 0);
+    return Array.from({ length: count }, (_, i) => i);
+  }
+  const item = captions.sourceItemId ? items.find((it) => it.id === captions.sourceItemId) : undefined;
+  if (item?.transcript?.length) {
+    const del = new Set(item.deletedWordIdx ?? []);
+    // 与 resolveCaptionWords 同一套存活规则(按 kind 分流),否则 wordOverrides 错位
+    return projectItemIndices(item, del, fps);
+  }
+  return (captions.words ?? []).map((_, i) => i);
+}
+
+// Apply per-word display overrides ahead of pagination: a hidden word is
+// dropped, a text override replaces the shown word (timing untouched), a
+// forceBreak word marks where a new page should start. Returns the words to
+// paginate + the positions (in the RETURNED array) to break before. No
+// overrides (or an empty map) is a no-op — same words reference, empty
+// breakBefore — so paginate's output stays byte-identical to today.
+export function applyWordOverrides(
+  words: TranscriptWord[],
+  indices: number[],
+  overrides: Record<number, CaptionWordOverride> | undefined,
+): { words: TranscriptWord[]; breakBefore: Set<number> } {
+  if (!overrides || Object.keys(overrides).length === 0) return { words, breakBefore: new Set() };
+  const out: TranscriptWord[] = [];
+  const breakBefore = new Set<number>();
+  for (let j = 0; j < words.length; j++) {
+    const ov = overrides[indices[j]];
+    if (ov?.hidden) continue;
+    if (ov?.forceBreak && out.length > 0) breakBefore.add(out.length);
+    out.push(ov?.text ? { ...words[j], text: ov.text } : words[j]);
+  }
+  return { words: out, breakBefore };
+}

@@ -1,0 +1,115 @@
+// timeline.md serialization for read_script.
+// Format: `# Timeline` + script-stamp comment + `## <track>` sections +
+// `### <source>` regions + rows: `[sN] sentence` (transcript segment, kept text
+// only — NO word timing in the file), `[cN] Nf` (non-transcript clip),
+// `[gap Nf]`. Body order = playback order; apply re-derives all frames.
+import { timelineTrackIds, trackAlias, type TimelineItem, type TimelineState, type TrackId } from '../editor/types';
+import { toSegments } from '../transcript/segment';
+
+export interface SegRow {
+  kind: 'seg';
+  sn: number; // source-local segment id (1-based over the item's full transcript)
+  itemId: string;
+  /** global word indices of this segment (into item.transcript) */
+  wordGis: number[];
+  /** currently-kept words' text (what the row displays) */
+  keptText: string;
+}
+export interface ClipRow { kind: 'clip'; cn: number; itemId: string; frames: number }
+export interface GapRow { kind: 'gap'; frames: number }
+export type Row = SegRow | ClipRow | GapRow;
+
+export interface Region { source: string; rows: Row[] }
+export interface TrackModel { track: string; trackId: TrackId; regions: Region[] }
+
+// join word tokens: space-separated except between CJK characters (中文行无空格)
+const CJK = /[㐀-鿿豈-﫿]/;
+export function joinWords(tokens: string[]): string {
+  let out = '';
+  for (const t of tokens) {
+    if (out && !(CJK.test(out[out.length - 1]) && CJK.test(t[0]))) out += ' ';
+    out += t;
+  }
+  return out;
+}
+
+/** canonical row model of a timeline — shared by serialize (render) and apply (diff base) */
+export function buildModel(state: TimelineState): TrackModel[] {
+  const tracks: TrackModel[] = [];
+  for (const trackId of timelineTrackIds(state)) {
+    const items = state.items.filter((it) => it.track === trackId).sort((a, b) => a.startFrame - b.startFrame);
+    if (!items.length) continue;
+    const regions: Region[] = [];
+    let cursor = 0;
+    // per-source [cN] counters (numbering is per source across the track)
+    const cCount = new Map<string, number>();
+    const push = (source: string, row: Row, freshRegion: boolean) => {
+      const last = regions[regions.length - 1];
+      if (!freshRegion && last && last.source === source) last.rows.push(row);
+      else regions.push({ source, rows: [row] });
+    };
+    for (const it of items) {
+      if (it.startFrame > cursor) {
+        const gap: GapRow = { kind: 'gap', frames: it.startFrame - cursor };
+        if (regions.length) regions[regions.length - 1].rows.push(gap);
+        else regions.push({ source: it.name, rows: [gap] });
+      }
+      if (it.transcript?.length) {
+        // a transcript item is always its own region → [sN] unambiguous per region
+        const deleted = new Set(it.deletedWordIdx ?? []);
+        const rows: Row[] = [];
+        toSegments(it.transcript).forEach((seg, i) => {
+          const kept = seg.words.filter((w) => !deleted.has(w.gi));
+          if (!kept.length) return; // Fully deleted segments are omitted.
+          rows.push({ kind: 'seg', sn: i + 1, itemId: it.id, wordGis: seg.words.map((w) => w.gi), keptText: joinWords(kept.map((w) => w.text)) });
+        });
+        regions.push({ source: it.name, rows });
+      } else {
+        const cn = (cCount.get(it.name) ?? 0) + 1;
+        cCount.set(it.name, cn);
+        push(it.name, { kind: 'clip', cn, itemId: it.id, frames: it.durationInFrames }, false);
+      }
+      cursor = it.startFrame + it.durationInFrames;
+    }
+    tracks.push({ track: trackAlias(state, trackId), trackId, regions });
+  }
+  return tracks;
+}
+
+function renderBody(model: TrackModel[]): string {
+  const lines: string[] = [];
+  for (const t of model) {
+    lines.push(`## ${t.track}`);
+    for (const r of t.regions) {
+      lines.push(`### ${r.source}`);
+      for (const row of r.rows) {
+        if (row.kind === 'seg') lines.push(`[s${row.sn}] ${row.keptText}`);
+        else if (row.kind === 'clip') lines.push(`[c${row.cn}] ${row.frames}f`);
+        else lines.push(`[gap ${row.frames}f]`);
+      }
+    }
+    lines.push('');
+  }
+  return lines.join('\n').trimEnd() + '\n';
+}
+
+// djb2 — stamp binds a script to the exact state it was materialized from
+export function stampOf(body: string): string {
+  let h = 5381;
+  for (let i = 0; i < body.length; i++) h = ((h << 5) + h + body.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+/** state → timeline.md (read_script). Also returns the model + stamp. */
+export function serializeTimeline(state: TimelineState): { md: string; model: TrackModel[]; stamp: string } {
+  const model = buildModel(state);
+  const body = renderBody(model);
+  const stamp = stampOf(body);
+  const md = `# Timeline\n<!-- script-stamp:${stamp} -->\n<!-- script:body -->\n\n${body}`;
+  return { md, model, stamp };
+}
+
+/** items indexed by id (helper for apply) */
+export function itemById(state: TimelineState): Map<string, TimelineItem> {
+  return new Map(state.items.map((it) => [it.id, it]));
+}

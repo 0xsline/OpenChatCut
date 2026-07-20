@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "OpenChatCut 运行时架构",
+    "subtitle": "Agent、真实时间线、本地数据与渲染导出的统一工作流",
+    "output": "openchatcut-runtime.html"
+  },
+  "components": [
+    {
+      "id": "external-agents",
+      "type": "external",
+      "label": "外部 Agent",
+      "sublabel": "Codex · Claude Code",
+      "pos": [30, 330],
+      "size": [180, 72]
+    },
+    {
+      "id": "mcp-broker",
+      "type": "backend",
+      "label": "External MCP Broker",
+      "sublabel": "Streamable HTTP",
+      "pos": [250, 330],
+      "size": [180, 72],
+      "tag": "本机默认"
+    },
+    {
+      "id": "builtin-agent",
+      "type": "frontend",
+      "label": "内置 Agent",
+      "sublabel": "Anthropic tool-use",
+      "pos": [480, 130],
+      "size": [180, 72]
+    },
+    {
+      "id": "editor-ui",
+      "type": "frontend",
+      "label": "编辑器 UI",
+      "sublabel": "素材 · 文字稿 · 时间线",
+      "pos": [710, 130],
+      "size": [180, 72]
+    },
+    {
+      "id": "agent-tools",
+      "type": "messagebus",
+      "label": "Agent Skills & Tools",
+      "sublabel": "统一工具注册表",
+      "pos": [480, 330],
+      "size": [180, 72]
+    },
+    {
+      "id": "editor-core",
+      "type": "backend",
+      "label": "EditorCore",
+      "sublabel": "命令 · 不可变时间线",
+      "pos": [710, 330],
+      "size": [180, 72],
+      "tag": "单一编辑入口"
+    },
+    {
+      "id": "preview",
+      "type": "frontend",
+      "label": "实时预览",
+      "sublabel": "Remotion Player · WebGL",
+      "pos": [950, 220],
+      "size": [180, 72]
+    },
+    {
+      "id": "render-export",
+      "type": "backend",
+      "label": "渲染与导出",
+      "sublabel": "Remotion · FFmpeg",
+      "pos": [950, 440],
+      "size": [180, 72]
+    },
+    {
+      "id": "outputs",
+      "type": "external",
+      "label": "可交付文件",
+      "sublabel": "MP4 · SRT · FCPXML",
+      "pos": [1180, 440],
+      "size": [180, 72]
+    },
+    {
+      "id": "server-plugins",
+      "type": "backend",
+      "label": "Server Plugins",
+      "sublabel": "生成 · 转写 · 素材",
+      "pos": [480, 600],
+      "size": [180, 72]
+    },
+    {
+      "id": "local-store",
+      "type": "database",
+      "label": "本机共享工程库",
+      "sublabel": "~/.openchatcut · IndexedDB 缓存",
+      "pos": [710, 600],
+      "size": [180, 72],
+      "tag": "跨浏览器与端口共享"
+    },
+    {
+      "id": "providers",
+      "type": "cloud",
+      "label": "外部服务",
+      "sublabel": "模型 · ASR · 生成 · R2",
+      "pos": [30, 600],
+      "size": [180, 72],
+      "tag": "按配置启用"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "OpenChatCut 本机运行时",
+      "wraps": [
+        "mcp-broker",
+        "builtin-agent",
+        "editor-ui",
+        "agent-tools",
+        "editor-core",
+        "preview",
+        "render-export",
+        "server-plugins",
+        "local-store"
+      ],
+      "pad": 30
+    },
+    {
+      "kind": "security-group",
+      "label": "浏览器 / Electron Renderer",
+      "wraps": [
+        "builtin-agent",
+        "editor-ui",
+        "agent-tools",
+        "editor-core",
+        "preview"
+      ],
+      "pad": 18
+    },
+    {
+      "kind": "security-group",
+      "label": "本地数据边界",
+      "wraps": ["local-store"],
+      "pad": 18
+    }
+  ],
+  "connections": [
+    {
+      "from": "external-agents",
+      "to": "mcp-broker",
+      "label": "MCP",
+      "variant": "emphasis"
+    },
+    {
+      "from": "mcp-broker",
+      "to": "agent-tools",
+      "label": "工具调用",
+      "variant": "emphasis"
+    },
+    {
+      "from": "builtin-agent",
+      "to": "agent-tools",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v",
+      "variant": "emphasis"
+    },
+    {
+      "from": "editor-ui",
+      "to": "editor-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v"
+    },
+    {
+      "from": "agent-tools",
+      "to": "editor-core",
+      "label": "命令",
+      "variant": "emphasis"
+    },
+    {
+      "from": "editor-core",
+      "to": "preview",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h"
+    },
+    {
+      "from": "editor-core",
+      "to": "render-export",
+      "label": "时间线状态",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h",
+      "variant": "emphasis"
+    },
+    {
+      "from": "render-export",
+      "to": "outputs",
+      "variant": "emphasis"
+    },
+    {
+      "from": "editor-core",
+      "to": "local-store",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v",
+      "variant": "dashed"
+    },
+    {
+      "from": "agent-tools",
+      "to": "server-plugins",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v",
+      "variant": "dashed"
+    },
+    {
+      "from": "providers",
+      "to": "server-plugins",
+      "label": "按需联网",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "统一编辑主链路",
+      "items": [
+        "自然语言 → 工具调用 → EditorCore 命令",
+        "同一时间线状态驱动预览、撤销与导出"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Local-first",
+      "items": [
+        "工程、聊天、版本和用户媒体优先保存在本机",
+        "基础时间线编辑不依赖外部服务"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "信任边界",
+      "items": [
+        "供应商密钥只由本地服务端读取",
+        "公网 MCP 入口可使用 Bearer Token 保护"
+      ]
+    }
+  ]
+}

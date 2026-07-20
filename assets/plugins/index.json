@@ -1,0 +1,13 @@
+[
+  {
+    "id": "houye-kit",
+    "name": "官方示例包",
+    "description": "夜窗雨痕 · 漏光闪切 · 青瓷暖调 · 心跳推近 · 后夜人名条",
+    "author": "OpenChatCut",
+    "version": "1.0.2",
+    "url": "/plugins/demo-pack.json",
+    "sha256": "3e204cf35f4d3b21fc5f93a2f3076a3d77939ce0ff3d4cf610ebe1cdf869ae84",
+    "categories": ["MG", "转场", "特效", "LUT", "缩放"],
+    "itemCount": 5
+  }
+]

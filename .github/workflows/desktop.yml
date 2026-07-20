@@ -1,0 +1,177 @@
+# 桌面端发布流水线：
+# - 手动触发：构建并上传 Actions artifacts，不创建 Release。
+# - 推送 v* tag：完成校验后构建 macOS arm64/x64 与 Windows x64，
+#   统一创建 GitHub Release 并附加安装包和 SHA-256 校验文件。
+# GitHub 会为每个 Release 自动提供 Source code (zip / tar.gz)。
+name: desktop
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --loglevel=error
+      - name: Verify release version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_REF_NAME" != "$expected" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $expected" >&2
+            exit 1
+          fi
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  package:
+    name: Package ${{ matrix.name }}
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS-arm64
+            os: macos-latest
+            script: desktop:dist
+            artifact: release/*.dmg
+          - name: macOS-x64
+            os: macos-15-intel
+            script: desktop:dist:mac-x64
+            artifact: release/*.dmg
+          - name: Windows-x64
+            os: windows-latest
+            script: desktop:dist:win
+            artifact: release/*.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --loglevel=error
+
+      # 先写入 Remotion 对应的浏览器版本，再由 desktop:dist 的
+      # prepare-target 步骤把目标平台浏览器和 compositor 放进安装包。
+      - name: Ensure Remotion browser
+        run: node -e "import('@remotion/renderer').then(m => m.ensureBrowser()).then(() => console.log('browser ready'))"
+
+      - name: Package
+        run: npm run ${{ matrix.script }}
+
+      - name: Smoke test macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CC_SMOKE: '1'
+          CC_SMOKE_RENDER: '1'
+        run: |
+          app="$(find release -type d -name OpenChatCut.app | head -n 1)"
+          test -n "$app"
+          "$app/Contents/MacOS/OpenChatCut"
+
+      - name: Smoke test Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CC_SMOKE: '1'
+          CC_SMOKE_RENDER: '1'
+        run: '& "release/win-unpacked/OpenChatCut.exe" | Out-Host'
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.name }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+  release:
+    name: Publish Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..8}; do
+            rm -rf release-assets release-files
+            mkdir -p release-assets release-files
+            if gh run download "$GITHUB_RUN_ID" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern 'desktop-*' \
+              --dir release-assets; then
+              break
+            fi
+            if [[ "$attempt" == 8 ]]; then
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
+
+          find release-assets -type f \( -name '*.dmg' -o -name '*.exe' \) \
+            -exec cp {} release-files/ \;
+          test "$(find release-files -type f | wc -l | tr -d ' ')" = 3
+
+      - name: Generate checksums
+        working-directory: release-files
+        run: sha256sum ./*.dmg ./*.exe > SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..8}; do
+            if gh release view "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              break
+            fi
+            if gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --generate-notes; then
+              break
+            fi
+            if [[ "$attempt" == 8 ]]; then
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
+
+          for attempt in {1..8}; do
+            if gh release upload "$GITHUB_REF_NAME" \
+              release-files/*.dmg \
+              release-files/*.exe \
+              release-files/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber; then
+              exit 0
+            fi
+            if [[ "$attempt" == 8 ]]; then
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done

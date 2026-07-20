@@ -1,0 +1,193 @@
+// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
+// 覆盖分区:App.tsx / Editor.tsx / components 根目录壳件 / reframe。
+export default {
+  // ---- App.tsx(启动/工程导入导出提示) ----
+  '加载工程…': 'Loading project…',
+  '加载编辑器…': 'Loading editor…',
+  '加载中…': 'Loading…',
+  '工程不存在，返回…': 'Project not found, going back…',
+  '已导出「{name}」;{n} 个素材两端都取不到,未随包': 'Exported "{name}"; {n} asset(s) unavailable on both ends, not bundled',
+  '已导出「{name}」(含 {n} 个素材)': 'Exported "{name}" ({n} assets included)',
+  '导入失败:{error}': 'Import failed: {error}',
+  '已导入「{name}」;缺 {n} 个素材({list})': 'Imported "{name}"; {n} asset(s) missing ({list})',
+  '已导入「{name}」(素材 {a}/{b})': 'Imported "{name}" (assets {a}/{b})',
+
+  // ---- Editor.tsx(「用 AI 生成」聊天预填) ----
+  '参考模板「{name}」，用 create_motion_graphic 生成一个类似风格的动画： @{name} ':
+    'Using template "{name}" as a style reference, generate a similar animation with create_motion_graphic: @{name} ',
+
+  // ---- 相对时间(Dashboard / ExportHistory / VersionHistory 共用) ----
+  '刚刚': 'Just now',
+  '{n} 分钟前': '{n} min ago',
+  '{n} 小时前': '{n} hr ago',
+  '{n} 天前': '{n} d ago',
+
+  // ---- Dashboard ----
+  '· 我的工程': '· My Projects',
+  '设置 · API 密钥': 'Settings · API Keys',
+  '处理中…': 'Processing…',
+  '失败:{error}': 'Failed: {error}',
+  '工程': 'Projects',
+  '清理所有工程都不引用的上传素材(测试/已删工程残留)': 'Clean up uploaded assets no project references (leftovers from tests/deleted projects)',
+  '清理素材': 'Clean Up Media',
+  '导入 .ccproj.json 工程文件(含素材;可来自浏览器版/其它机器)': 'Import a .ccproj.json project file (with assets; from the browser version or another machine)',
+  '导入工程': 'Import Project',
+  '{n} 个': '{n} total',
+  '新建工程': 'New Project',
+  '打开 {name}': 'Open {name}',
+  '双击重命名': 'Double-click to rename',
+  '彻底删除工程,并清掉只有它引用的素材文件': 'Permanently delete this project and purge assets only it references',
+  '确认删除': 'Confirm Delete',
+  '已永久删除「{name}」': 'Permanently deleted “{name}”',
+  '重命名': 'Rename',
+  '复制': 'Duplicate',
+  '导出为 .ccproj.json(含素材,可在桌面版/其它机器导入)': 'Export as .ccproj.json (with assets; importable in the desktop version or on another machine)',
+  '删除': 'Delete',
+
+  // ---- ExportHistory ----
+  '导出历史': 'Export History',
+  '关闭': 'Close',
+  '还没有导出记录': 'No exports yet',
+  '清空历史': 'Clear History',
+
+  // ---- VersionHistory ----
+  '历史版本': 'Version History',
+  '还没有保存过版本': 'No versions saved yet',
+  '恢复': 'Restore',
+  '删除此版本': 'Delete this version',
+  '版本名称': 'Version name',
+  '确定': 'OK',
+  '取消': 'Cancel',
+  '保存当前版本': 'Save Current Version',
+
+  // ---- PreviewPanel ----
+  '预览': 'Preview',
+  '选择模式：在画面上拖框选区作为引用': 'Select mode: drag a box on the frame to use the region as a reference',
+  '切换标题/动作安全区参考框（竖屏成片构图辅助）': 'Toggle title/action safe-area guides (framing aid for vertical deliverables)',
+  '安全框': 'Safe Area',
+  '正在导入媒体…': 'Importing media…',
+  '拖拽媒体到这里': 'Drop media here',
+  '拖拽框选画面区域作为引用': 'Drag to select a frame region as a reference',
+
+  // ---- Divider ----
+  '拖动调整大小': 'Drag to resize',
+
+  // ---- InspectorPanel:MG propSchema 字段 ----
+  '(预览)': '(preview)',
+  '视频 URL 或 /media/uploads/…': 'Video URL or /media/uploads/…',
+  '图片 URL 或 /media/uploads/…': 'Image URL or /media/uploads/…',
+
+  // ---- InspectorPanel:关键帧轨(KfCell) ----
+  '上一关键帧': 'Previous keyframe',
+  '下一关键帧': 'Next keyframe',
+  '更新播放头处的关键帧': 'Update the keyframe at the playhead',
+  '在播放头打关键帧': 'Add a keyframe at the playhead',
+  '删除播放头处的关键帧': 'Delete the keyframe at the playhead',
+  '缓动（此关键帧到下一帧的曲线）': 'Easing (curve from this keyframe to the next)',
+  '线性': 'Linear',
+  '缓入': 'Ease In',
+  '缓出': 'Ease Out',
+  '缓入出': 'Ease In-Out',
+  '贝塞尔': 'Bezier',
+
+  // ---- InspectorPanel:变换/音量/淡入淡出/文字 ----
+  '缩放比例': 'Scale',
+  '水平': 'Horizontal',
+  '垂直': 'Vertical',
+  '旋转': 'Rotation',
+  '透明': 'Opacity',
+  '音量': 'Volume',
+  '淡入': 'Fade In',
+  '淡出': 'Fade Out',
+  '文字内容': 'Text content',
+  '字号': 'Font Size',
+  '颜色': 'Color',
+  '对齐': 'Align',
+  '左': 'Left',
+  '中': 'Center',
+  '右': 'Right',
+  '粗细': 'Weight',
+  '常规': 'Regular',
+  '粗体': 'Bold',
+  '特粗': 'Black',
+
+  // ---- InspectorPanel:缩放(zoom)控件 ----
+  '曲线': 'Curve',
+  '无': 'None',
+  '倍数': 'Magnification',
+  '焦点X': 'Focal X',
+  '焦点Y': 'Focal Y',
+  '在播放头记录焦点+倍数为关键帧': 'Record focal point + magnification as a keyframe at the playhead',
+  '关键帧': 'Keyframes',
+  '关键帧（覆盖曲线，逐帧插值）': 'Keyframes (override the curve; interpolated per frame)',
+  '删除关键帧': 'Delete keyframe',
+
+  // ---- InspectorPanel:转场控件 ----
+  '与前一段相邻音频交叉淡化（出点渐弱 / 入点渐强）': 'Cross-fades with the previous adjacent audio (fade out at the cut / fade in after)',
+  '从前一个相邻片段进入本片段': 'Transitions into this clip from the previous adjacent clip',
+  '类型': 'Type',
+  '时长': 'Duration',
+  '方向': 'Direction',
+  '上': 'Up',
+  '下': 'Down',
+
+  // ---- InspectorPanel:滤镜/特效 ----
+  '亮度': 'Brightness',
+  '对比': 'Contrast',
+  '饱和': 'Saturation',
+  '模糊': 'Blur',
+  '＋ 添加特效…': '＋ Add effect…',
+  '尚未添加特效。': 'No effects added yet.',
+  '上移': 'Move up',
+  '下移': 'Move down',
+  '移除特效': 'Remove effect',
+
+  // ---- InspectorPanel:主面板 ----
+  '展开属性': 'Expand properties',
+  '收起属性': 'Collapse properties',
+  '属性': 'Properties',
+  '人声隔离': 'Voice Isolation',
+  '隔离强度': 'Isolation strength',
+  '应用人声隔离': 'Apply voice isolation',
+  '重新隔离': 'Re-isolate',
+  '清除': 'Clear',
+  '需先上传到媒体池（/media/uploads）': 'Upload to the media pool first (/media/uploads)',
+  '用本机 ffmpeg 频谱降噪，保留原轨': 'Local ffmpeg spectral denoise; original track kept',
+  '已应用 · 播放用隔离音轨 · master 不变': 'Applied · playback uses isolated audio · master unchanged',
+  '开箱 ffmpeg 降噪（非 DeepFilterNet3）': 'Open-box ffmpeg denoise (not DeepFilterNet3)',
+  '选中时间线上的片段以编辑属性。': 'Select a clip on the timeline to edit its properties.',
+  '音频片段。可在时间线上拖动位置、裁剪首尾。': 'Audio clip. Drag to move or trim either end on the timeline.',
+  '视频片段。可在时间线上拖动位置、裁剪首尾（左裁剪推进源入点）。': 'Video clip. Drag to move or trim either end on the timeline (trimming the left edge advances the source in-point).',
+  '图片片段。': 'Image clip.',
+  'GIF 片段。': 'GIF clip.',
+  'SVG 片段。': 'SVG clip.',
+  '纯色片段。': 'Solid-color clip.',
+  '文字片段。': 'Text clip.',
+  '文字': 'Text',
+  '变换': 'Transform',
+  '滤镜': 'Filters',
+  '特效': 'Effects',
+  '转场': 'Transitions',
+  '音频转场': 'Audio Transition',
+  '淡入淡出': 'Fade',
+  '纯色': 'Solid',
+  '填充颜色': 'Fill Color',
+  '该模板无可编辑属性。': 'This template has no editable properties.',
+
+  // ---- 共享常量标签:editor/types.ts TRANSITION_LABELS(使用处在本分区包 t) ----
+  '闪白转场': 'Flash',
+  '径向模糊转场': 'Radial Blur',
+  '故障切换转场': 'Glitch Cut',
+  '闪色转场': 'Dip to Color',
+  '音频交叉淡化': 'Audio Cross-Fade',
+  '自定义着色器转场': 'Custom Shader',
+
+  // ---- 共享常量标签:editor/types.ts ZOOM_SHAPE_LABELS(使用处在本分区包 t) ----
+  '冲击': 'Punch',
+  '瞬时': 'Instant',
+  '心跳脉冲': 'Pulse',
+  '保调变速（预览/导出）· 时长随速率伸缩并波纹合缝': 'Pitch-preserving speed (preview/export) · duration scales with rate, ripples later clips',
+  '分析中…': 'Analyzing…',
+  '分析并归一到 -14 LUFS': 'Analyze & normalize to -14 LUFS',
+  '响度归一 (-14 LUFS)': 'Normalize Loudness (-14 LUFS)',
+} as Record<string, string>;

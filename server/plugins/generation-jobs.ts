@@ -1,0 +1,166 @@
+import { randomUUID } from 'node:crypto';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { Plugin } from 'vite';
+
+export type GenerationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+export interface GenerationResult {
+  assetId: string;
+  kind: 'audio' | 'video';
+  name: string;
+  path: string;
+  durationSeconds: number;
+  width?: number;
+  height?: number;
+  // 导出/渲染 job 复用同一队列：可选字段，让渲染产物自描述大小与编码（生成类 job 不填）。
+  sizeBytes?: number;
+  codec?: string;
+}
+
+interface GenerationJob {
+  id: string;
+  status: GenerationJobStatus;
+  progress: number;
+  params: Record<string, unknown>;
+  createdAt: number;
+  updatedAt: number;
+  result?: GenerationResult;
+  error?: string;
+}
+
+export interface GenerationJobSnapshot {
+  id: string;
+  status: GenerationJobStatus;
+  progress: number;
+  params: Record<string, unknown>;
+  result?: GenerationResult;
+  error?: string;
+}
+
+const jobs = new Map<string, GenerationJob>();
+const TERMINAL = new Set<GenerationJobStatus>(['succeeded', 'failed']);
+const MAX_JOB_AGE_MS = 60 * 60_000;
+
+function cleanOldJobs() {
+  const cutoff = Date.now() - MAX_JOB_AGE_MS;
+  for (const [id, job] of jobs) {
+    if (job.updatedAt < cutoff) jobs.delete(id);
+  }
+}
+
+export function createGenerationJob(
+  params: Record<string, unknown>,
+  task: (jobId: string) => Promise<GenerationResult>,
+): { jobId: string; status: 'queued' } {
+  cleanOldJobs();
+  const id = randomUUID();
+  const now = Date.now();
+  const job: GenerationJob = { id, status: 'queued', progress: 0, params, createdAt: now, updatedAt: now };
+  jobs.set(id, job);
+
+  void Promise.resolve().then(async () => {
+    job.status = 'running';
+    job.progress = 10;
+    job.updatedAt = Date.now();
+    try {
+      job.result = await task(id);
+      job.status = 'succeeded';
+      job.progress = 100;
+    } catch (error) {
+      job.status = 'failed';
+      job.error = error instanceof Error ? error.message : String(error);
+      job.progress = 100;
+    }
+    job.updatedAt = Date.now();
+  });
+
+  return { jobId: id, status: 'queued' };
+}
+
+export function getGenerationJobSnapshot(jobId: string): GenerationJobSnapshot | undefined {
+  const job = jobs.get(jobId);
+  if (!job) return undefined;
+  return { id: job.id, status: job.status, progress: job.progress, params: job.params, result: job.result, error: job.error };
+}
+
+interface ProgressRequest {
+  action?: 'params' | 'status' | 'wait';
+  target?: string;
+  jobIds?: string[] | string;
+  timeoutSeconds?: number;
+}
+
+async function readJson(req: IncomingMessage): Promise<ProgressRequest> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of req) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += bytes.length;
+    if (total > 100_000) throw new Error('request body too large');
+    chunks.push(bytes);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as ProgressRequest;
+}
+
+function sendJson(res: ServerResponse, status: number, body: unknown) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(body));
+}
+
+function parseJobIds(value: ProgressRequest['jobIds']): string[] {
+  const ids = Array.isArray(value) ? value : String(value ?? '').split(',');
+  return [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+}
+
+function report(job: GenerationJob, action: ProgressRequest['action']) {
+  return {
+    jobId: job.id,
+    status: job.status,
+    progress: job.progress,
+    ...(action === 'params' ? { params: job.params } : {}),
+    ...(job.result ? { result: job.result } : {}),
+    ...(job.error ? { error: job.error } : {}),
+  };
+}
+
+const wait = (milliseconds: number) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
+
+export function generationProgressPlugin(): Plugin {
+  return {
+    name: 'openchatcut-generation-progress',
+    configureServer(server) {
+      server.middlewares.use('/generate/progress', async (req, res) => {
+        if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
+        try {
+          const input = await readJson(req);
+          if (input.target !== 'generation') throw new Error('target must be generation');
+          if (!input.action || !['params', 'status', 'wait'].includes(input.action)) throw new Error('action must be params, status, or wait');
+          const jobIds = parseJobIds(input.jobIds);
+          if (!jobIds.length) throw new Error('jobIds is required');
+          const timeoutSeconds = input.timeoutSeconds ?? 90;
+          if (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 0 || timeoutSeconds > 3600) throw new Error('timeoutSeconds must be between 0 and 3600');
+
+          if (input.action === 'wait') {
+            const deadline = Date.now() + timeoutSeconds * 1000;
+            while (Date.now() < deadline) {
+              const known = jobIds.map((id) => jobs.get(id));
+              if (known.every((job) => !job || TERMINAL.has(job.status))) break;
+              await wait(250);
+            }
+          }
+
+          const reports = jobIds.map((id) => {
+            const job = jobs.get(id);
+            return job ? report(job, input.action) : { jobId: id, status: 'not_found', error: 'generation job not found' };
+          });
+          sendJson(res, 200, { target: 'generation', action: input.action, reports });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          server.config.logger.error(`[generate:progress] ${message}`);
+          sendJson(res, 400, { error: message });
+        }
+      });
+    },
+  };
+}

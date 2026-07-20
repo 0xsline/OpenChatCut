@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "OpenChatCut Runtime Architecture",
+    "subtitle": "A unified workflow for agents, the real timeline, local data, rendering, and export",
+    "output": "openchatcut-runtime.en.html"
+  },
+  "components": [
+    {
+      "id": "external-agents",
+      "type": "external",
+      "label": "External Agents",
+      "sublabel": "Codex · Claude Code",
+      "pos": [30, 330],
+      "size": [180, 72]
+    },
+    {
+      "id": "mcp-broker",
+      "type": "backend",
+      "label": "External MCP Broker",
+      "sublabel": "Streamable HTTP",
+      "pos": [250, 330],
+      "size": [180, 72],
+      "tag": "Local by default"
+    },
+    {
+      "id": "builtin-agent",
+      "type": "frontend",
+      "label": "Built-in Agent",
+      "sublabel": "Anthropic tool-use",
+      "pos": [480, 130],
+      "size": [180, 72]
+    },
+    {
+      "id": "editor-ui",
+      "type": "frontend",
+      "label": "Editor UI",
+      "sublabel": "Media · Transcript · Timeline",
+      "pos": [710, 130],
+      "size": [180, 72]
+    },
+    {
+      "id": "agent-tools",
+      "type": "messagebus",
+      "label": "Agent Skills & Tools",
+      "sublabel": "Unified tool registry",
+      "pos": [480, 330],
+      "size": [180, 72]
+    },
+    {
+      "id": "editor-core",
+      "type": "backend",
+      "label": "EditorCore",
+      "sublabel": "Commands · Immutable timeline",
+      "pos": [710, 330],
+      "size": [180, 72],
+      "tag": "Single edit entry point"
+    },
+    {
+      "id": "preview",
+      "type": "frontend",
+      "label": "Live Preview",
+      "sublabel": "Remotion Player · WebGL",
+      "pos": [950, 220],
+      "size": [180, 72]
+    },
+    {
+      "id": "render-export",
+      "type": "backend",
+      "label": "Render & Export",
+      "sublabel": "Remotion · FFmpeg",
+      "pos": [950, 440],
+      "size": [180, 72]
+    },
+    {
+      "id": "outputs",
+      "type": "external",
+      "label": "Deliverables",
+      "sublabel": "MP4 · SRT · FCPXML",
+      "pos": [1180, 440],
+      "size": [180, 72]
+    },
+    {
+      "id": "server-plugins",
+      "type": "backend",
+      "label": "Server Plugins",
+      "sublabel": "Generation · Transcription · Media",
+      "pos": [480, 600],
+      "size": [180, 72]
+    },
+    {
+      "id": "local-store",
+      "type": "database",
+      "label": "Shared Local Store",
+      "sublabel": "~/.openchatcut · IndexedDB cache",
+      "pos": [710, 600],
+      "size": [180, 72],
+      "tag": "shared across browsers and ports"
+    },
+    {
+      "id": "providers",
+      "type": "cloud",
+      "label": "External Services",
+      "sublabel": "Models · ASR · Generation · R2",
+      "pos": [30, 600],
+      "size": [180, 72],
+      "tag": "Enabled when configured"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "OpenChatCut Local Runtime",
+      "wraps": [
+        "mcp-broker",
+        "builtin-agent",
+        "editor-ui",
+        "agent-tools",
+        "editor-core",
+        "preview",
+        "render-export",
+        "server-plugins",
+        "local-store"
+      ],
+      "pad": 30
+    },
+    {
+      "kind": "security-group",
+      "label": "Browser / Electron Renderer",
+      "wraps": [
+        "builtin-agent",
+        "editor-ui",
+        "agent-tools",
+        "editor-core",
+        "preview"
+      ],
+      "pad": 18
+    },
+    {
+      "kind": "security-group",
+      "label": "Local Data Boundary",
+      "wraps": ["local-store"],
+      "pad": 18
+    }
+  ],
+  "connections": [
+    {
+      "from": "external-agents",
+      "to": "mcp-broker",
+      "label": "MCP",
+      "variant": "emphasis"
+    },
+    {
+      "from": "mcp-broker",
+      "to": "agent-tools",
+      "label": "Tool calls",
+      "variant": "emphasis"
+    },
+    {
+      "from": "builtin-agent",
+      "to": "agent-tools",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v",
+      "variant": "emphasis"
+    },
+    {
+      "from": "editor-ui",
+      "to": "editor-core",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v"
+    },
+    {
+      "from": "agent-tools",
+      "to": "editor-core",
+      "label": "Commands",
+      "variant": "emphasis"
+    },
+    {
+      "from": "editor-core",
+      "to": "preview",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h"
+    },
+    {
+      "from": "editor-core",
+      "to": "render-export",
+      "label": "Timeline state",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h",
+      "variant": "emphasis"
+    },
+    {
+      "from": "render-export",
+      "to": "outputs",
+      "variant": "emphasis"
+    },
+    {
+      "from": "editor-core",
+      "to": "local-store",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v",
+      "variant": "dashed"
+    },
+    {
+      "from": "agent-tools",
+      "to": "server-plugins",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v",
+      "variant": "dashed"
+    },
+    {
+      "from": "providers",
+      "to": "server-plugins",
+      "label": "On-demand network",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Unified editing path",
+      "items": [
+        "Natural language → tool calls → EditorCore commands",
+        "One timeline state drives preview, undo, and export"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Local-first",
+      "items": [
+        "Projects, chats, versions, and user media stay local by default",
+        "Core timeline editing does not depend on external services"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Trust boundaries",
+      "items": [
+        "Provider keys are read only by the local server",
+        "Public MCP endpoints can be protected with a Bearer Token"
+      ]
+    }
+  ]
+}

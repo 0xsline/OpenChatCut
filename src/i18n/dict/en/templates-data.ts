@@ -1,0 +1,28 @@
+// EN 数据词典:中文键**数据**(自制模板名等)的英文显示名。tData() 在 en 态查这里。
+// 与 UI 分片(index.ts 装配的 16 片)无关——数据名不是 UI 文案,单独成表。
+export default {
+  '竖屏·重点词弹出': 'Vertical · Keyword Pop',
+  '竖屏·大字幕条': 'Vertical · Big Caption',
+  '竖屏·金句卡片': 'Vertical · Quote Card',
+  '竖屏·姓名条': 'Vertical · Name Bar',
+  '竖屏·关注引导': 'Vertical · Follow CTA',
+  '竖屏·步骤条': 'Vertical · Step List',
+  '竖屏·数字大字报': 'Vertical · Big Number',
+  '竖屏·章节进度': 'Vertical · Chapter Progress',
+  '竖屏·价格标签': 'Vertical · Price Tag',
+  '竖屏·封面大字': 'Vertical · Cover Title',
+  '竖屏·清单勾选': 'Vertical · Checklist',
+  '竖屏·前后对比条': 'Vertical · Before / After',
+  '竖屏·便签贴纸': 'Vertical · Sticky Note',
+  '竖屏·互动提示': 'Vertical · Engagement Prompt',
+  '竖屏·期数角标': 'Vertical · Episode Badge',
+  '口播·米色格纹（横）': 'Talking Head · Beige Grid Paper (16:9)',
+  '口播·奶咖横线（横）': 'Talking Head · Latte Ruled Paper (16:9)',
+  '口播·黑板报（横）': 'Talking Head · Chalkboard (16:9)',
+  '口播·侧栏拼贴（横）': 'Talking Head · Collage Split (16:9)',
+  '口播·便签五五分（竖）': 'Talking Head · Sticky Note Split (9:16)',
+  '口播·点阵五五分（竖）': 'Talking Head · Dot Grid Split (9:16)',
+  '口播·牛皮纸圆窗（竖）': 'Talking Head · Kraft Corner (9:16)',
+  '口播·羊皮纸（横）': 'Talking Head · Parchment (16:9)',
+  '口播·奶油拍立得（竖）': 'Talking Head · Cream Polaroid (9:16)',
+} as Record<string, string>;

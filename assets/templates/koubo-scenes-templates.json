@@ -1,0 +1,579 @@
+[
+  {
+    "id": "kb-beige-grid",
+    "name": "口播·米色格纹（横）",
+    "description": "米色方格纸手账底+贴纸感小圆窗(默认右下,可换四角),荧光笔标题+胶带+手绘星星。人物视频放本模板下方轨道,脸对准圆窗;圆窗半径/荧光笔色/底色可调。",
+    "category": "koubo-scenes",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationInFrames": 240,
+    "thumb": "/thumbnails/kb-beige-grid.jpg",
+    "props": {
+      "title": "一起把这事聊明白",
+      "subtitle": "每周三晚 8 点更新",
+      "handle": "@纸上谈",
+      "position": "bottom-right",
+      "size": 160,
+      "accentColor": "#ffd66e",
+      "bgColor": "#f6f1e6"
+    },
+    "propSchema": [
+      {
+        "key": "title",
+        "type": "text",
+        "defaultValue": "一起把这事聊明白",
+        "label": "标题"
+      },
+      {
+        "key": "subtitle",
+        "type": "text",
+        "defaultValue": "每周三晚 8 点更新",
+        "label": "副标题"
+      },
+      {
+        "key": "handle",
+        "type": "text",
+        "defaultValue": "@纸上谈",
+        "label": "名牌"
+      },
+      {
+        "key": "position",
+        "type": "select",
+        "defaultValue": "bottom-right",
+        "label": "人物位置",
+        "options": [
+          {
+            "label": "右下",
+            "value": "bottom-right"
+          },
+          {
+            "label": "左下",
+            "value": "bottom-left"
+          },
+          {
+            "label": "右上",
+            "value": "top-right"
+          },
+          {
+            "label": "左上",
+            "value": "top-left"
+          }
+        ]
+      },
+      {
+        "key": "size",
+        "type": "number",
+        "defaultValue": 160,
+        "label": "圆窗半径",
+        "min": 110,
+        "max": 300
+      },
+      {
+        "key": "accentColor",
+        "type": "color",
+        "defaultValue": "#ffd66e",
+        "label": "荧光笔色"
+      },
+      {
+        "key": "bgColor",
+        "type": "color",
+        "defaultValue": "#f6f1e6",
+        "label": "纸底色"
+      }
+    ],
+    "code": "const KbBeigeGrid = ({ item }) => {\n  const frame = useCurrentFrame();\n  const { fps, durationInFrames } = useVideoConfig();\n  const p = item.props || {};\n  const W = 1920, H = 1080, M = 96;\n  const ink = '#292421';\n  const accent = p.accentColor || '#ffd66e';\n  const paper = p.bgColor || '#f6f1e6';\n  const pos = String(p.position || 'bottom-right');\n  const R = Math.min(300, Math.max(110, Number(p.size) || 160));\n  const left = pos.indexOf('left') >= 0;\n  const top = pos.indexOf('top') >= 0;\n  const cx = left ? M + R : W - M - R;\n  const cy = top ? M + R : H - M - R;\n  const title = p.title == null ? '' : String(p.title);\n  const subtitle = p.subtitle == null ? '' : String(p.subtitle);\n  const handle = p.handle == null ? '' : String(p.handle);\n  const enter = spring({ frame, fps, config: { damping: 13, stiffness: 130 } });\n  const popIn = spring({ frame: frame - 5, fps, config: { damping: 11, stiffness: 150 } });\n  const exit = interpolate(frame, [durationInFrames - 12, durationInFrames], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const sway = Math.sin((frame / 130) * Math.PI * 2);\n  const hole = 'radial-gradient(circle ' + R + 'px at ' + cx + 'px ' + cy + 'px, transparent ' + (R - 1) + 'px, #000 ' + R + 'px)';\n  const titleX = left ? cx + R + 110 : 120;\n  return (\n    <AbsoluteFill style={{ opacity: exit }}>\n      <AbsoluteFill style={{ backgroundColor: paper, WebkitMaskImage: hole, maskImage: hole, opacity: enter }}>\n        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(90deg, #d3c5a3a6 2px, transparent 2px), linear-gradient(180deg, #d3c5a3a6 2px, transparent 2px)', backgroundSize: '76px 76px', backgroundPosition: '38px 26px' }} />\n        <div style={{ position: 'absolute', inset: 34, border: '2.5px solid ' + ink + 'd9', borderRadius: 26 }} />\n      </AbsoluteFill>\n      {title ? (\n        <div style={{ position: 'absolute', left: titleX, top: 128 + (1 - enter) * 30, opacity: enter, maxWidth: 1040, transform: 'rotate(' + (-0.6 + (1 - enter) * -2) + 'deg)' }}>\n          <span style={{ display: 'inline-block', fontSize: 86, fontWeight: 800, color: ink, lineHeight: 1.3, letterSpacing: 2, background: 'linear-gradient(0deg, ' + accent + ' 0 46%, transparent 46%)', padding: '0 18px 6px' }}>{title}</span>\n          {subtitle ? (\n            <div style={{ marginTop: 26, marginLeft: 20, display: 'inline-block', fontSize: 33, fontWeight: 700, color: ink + 'cc', letterSpacing: 3, borderBottom: '3.5px dashed #e8582e', paddingBottom: 12 }}>{subtitle}</div>\n          ) : null}\n        </div>\n      ) : null}\n      <div style={{ position: 'absolute', left: (left ? cx + R + 76 : titleX) - 6, top: 96, width: 168, height: 46, background: accent + '8c', transform: 'rotate(-7deg)', boxShadow: '0 3px 10px #29242118', opacity: enter }} />\n      <svg viewBox=\"0 0 100 100\" style={{ position: 'absolute', width: 96, height: 96, left: left ? W - 300 : Math.round(0.62 * W), top: 210 + sway * 5, transform: 'rotate(' + (12 + sway * 6) + 'deg)', opacity: popIn }}>\n        <path d=\"M50 6 L60 38 L94 38 L66 57 L76 90 L50 70 L24 90 L34 57 L6 38 L40 38 Z\" fill={accent} stroke={ink} strokeWidth=\"4\" strokeLinejoin=\"round\" />\n      </svg>\n      <svg viewBox=\"0 0 120 60\" style={{ position: 'absolute', width: 150, height: 75, left: cx + (left ? R + 26 : -R - 176), top: cy - R - 66 + sway * 4, transform: left ? 'scaleX(-1) rotate(8deg)' : 'rotate(8deg)', opacity: popIn }}>\n        <path d=\"M8 12 C 40 2, 78 6, 102 34\" fill=\"none\" stroke={ink} strokeWidth=\"5\" strokeLinecap=\"round\" strokeDasharray=\"3 9\" />\n        <path d=\"M92 26 L104 36 L88 40 Z\" fill={ink} />\n      </svg>\n      <div style={{ position: 'absolute', left: cx - R, top: cy - R, width: R * 2, height: R * 2, transform: 'scale(' + (0.72 + popIn * 0.28) + ')' }}>\n        <div style={{ position: 'absolute', inset: -12, borderRadius: '50%', border: '11px solid #fffdf8', boxShadow: '0 0 0 3px ' + ink + ', 10px 12px 0 ' + ink + '21' }} />\n      </div>\n      {handle ? (\n        <div style={{ position: 'absolute', left: cx, top: cy + R - 4, transform: 'translateX(-50%) rotate(3deg)', opacity: popIn, background: '#fffdf8', border: '2.5px solid ' + ink, borderRadius: 999, padding: '8px 24px', fontSize: 27, fontWeight: 800, color: ink, whiteSpace: 'nowrap', boxShadow: '4px 5px 0 ' + ink + '2b' }}>{handle}</div>\n      ) : null}\n    </AbsoluteFill>\n  );\n};"
+  },
+  {
+    "id": "kb-latte-lines",
+    "name": "口播·奶咖横线（横）",
+    "description": "奶咖色横线笔记纸(带红色页边线+装订孔)+贴纸感小圆窗,划重点标题+回形针涂鸦。人物视频放本模板下方轨道,脸对准圆窗;四角/半径/划重点色可调。",
+    "category": "koubo-scenes",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationInFrames": 240,
+    "thumb": "/thumbnails/kb-latte-lines.jpg",
+    "props": {
+      "title": "把复杂的讲简单",
+      "subtitle": "第 12 期 · 通勤路上听",
+      "handle": "@奶咖笔记",
+      "position": "bottom-right",
+      "size": 155,
+      "accentColor": "#f4b268"
+    },
+    "propSchema": [
+      {
+        "key": "title",
+        "type": "text",
+        "defaultValue": "把复杂的讲简单",
+        "label": "标题"
+      },
+      {
+        "key": "subtitle",
+        "type": "text",
+        "defaultValue": "第 12 期 · 通勤路上听",
+        "label": "副标题"
+      },
+      {
+        "key": "handle",
+        "type": "text",
+        "defaultValue": "@奶咖笔记",
+        "label": "名牌"
+      },
+      {
+        "key": "position",
+        "type": "select",
+        "defaultValue": "bottom-right",
+        "label": "人物位置",
+        "options": [
+          {
+            "label": "右下",
+            "value": "bottom-right"
+          },
+          {
+            "label": "左下",
+            "value": "bottom-left"
+          },
+          {
+            "label": "右上",
+            "value": "top-right"
+          },
+          {
+            "label": "左上",
+            "value": "top-left"
+          }
+        ]
+      },
+      {
+        "key": "size",
+        "type": "number",
+        "defaultValue": 155,
+        "label": "圆窗半径",
+        "min": 110,
+        "max": 300
+      },
+      {
+        "key": "accentColor",
+        "type": "color",
+        "defaultValue": "#f4b268",
+        "label": "划重点色"
+      }
+    ],
+    "code": "const KbLatteLines = ({ item }) => {\n  const frame = useCurrentFrame();\n  const { fps, durationInFrames } = useVideoConfig();\n  const p = item.props || {};\n  const W = 1920, H = 1080, M = 96;\n  const ink = '#33291f';\n  const red = '#d9553f';\n  const accent = p.accentColor || '#f4b268';\n  const pos = String(p.position || 'bottom-right');\n  const R = Math.min(300, Math.max(110, Number(p.size) || 155));\n  const left = pos.indexOf('left') >= 0;\n  const top = pos.indexOf('top') >= 0;\n  const cx = left ? M + R : W - M - R;\n  const cy = top ? M + R : H - M - R;\n  const title = p.title == null ? '' : String(p.title);\n  const subtitle = p.subtitle == null ? '' : String(p.subtitle);\n  const handle = p.handle == null ? '' : String(p.handle);\n  const enter = spring({ frame, fps, config: { damping: 13, stiffness: 130 } });\n  const popIn = spring({ frame: frame - 5, fps, config: { damping: 11, stiffness: 150 } });\n  const exit = interpolate(frame, [durationInFrames - 12, durationInFrames], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const sway = Math.sin((frame / 140) * Math.PI * 2);\n  const hole = 'radial-gradient(circle ' + R + 'px at ' + cx + 'px ' + cy + 'px, transparent ' + (R - 1) + 'px, #000 ' + R + 'px)';\n  const titleX = left ? cx + R + 110 : 250;\n  return (\n    <AbsoluteFill style={{ opacity: exit }}>\n      <AbsoluteFill style={{ backgroundColor: '#efe5d3', WebkitMaskImage: hole, maskImage: hole, opacity: enter }}>\n        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(180deg, transparent 0 86px, #c9b795b3 86px 88.5px)', backgroundPosition: '0 30px' }} />\n        <div style={{ position: 'absolute', left: 196, top: 0, width: 3, height: H, background: red + '73' }} />\n        <div style={{ position: 'absolute', left: 210, top: 0, width: 1.5, height: H, background: red + '40' }} />\n        <div style={{ position: 'absolute', left: 74, top: 150, width: 20, height: 20, borderRadius: '50%', border: '3px solid #b8a684' }} />\n        <div style={{ position: 'absolute', left: 74, top: 520, width: 20, height: 20, borderRadius: '50%', border: '3px solid #b8a684' }} />\n        <div style={{ position: 'absolute', left: 74, top: 890, width: 20, height: 20, borderRadius: '50%', border: '3px solid #b8a684' }} />\n      </AbsoluteFill>\n      {title ? (\n        <div style={{ position: 'absolute', left: titleX, top: 118 + (1 - enter) * 30, opacity: enter, maxWidth: 1000 }}>\n          <span style={{ display: 'inline-block', fontSize: 88, fontWeight: 800, color: ink, lineHeight: 1.3, letterSpacing: 2, background: 'linear-gradient(0deg, ' + accent + 'b3 0 42%, transparent 42%)', padding: '0 16px 4px', transform: 'rotate(-0.5deg)' }}>{title}</span>\n          {subtitle ? (\n            <div style={{ marginTop: 24, marginLeft: 18, display: 'inline-block', fontSize: 32, fontWeight: 700, color: ink + 'b8', letterSpacing: 3 }}>{subtitle}\n              <svg viewBox=\"0 0 300 16\" style={{ display: 'block', width: 300, height: 16, marginTop: 8 }}>\n                <path d=\"M4 10 Q 30 2, 56 9 T 108 9 T 160 9 T 212 9 T 264 9\" fill=\"none\" stroke={red} strokeWidth=\"4\" strokeLinecap=\"round\" />\n              </svg>\n            </div>\n          ) : null}\n        </div>\n      ) : null}\n      <svg viewBox=\"0 0 60 120\" style={{ position: 'absolute', width: 62, height: 124, left: left ? W - 250 : Math.round(0.60 * W), top: 84 + sway * 4, transform: 'rotate(' + (24 + sway * 3) + 'deg)', opacity: popIn }}>\n        <path d=\"M30 8 C 44 8, 50 18, 50 32 L 50 88 C 50 102, 40 110, 30 110 C 20 110, 12 102, 12 90 L 12 40 C 12 30, 18 24, 26 24 C 34 24, 40 30, 40 40 L 40 84\" fill=\"none\" stroke={ink} strokeWidth=\"5\" strokeLinecap=\"round\" />\n      </svg>\n      <div style={{ position: 'absolute', left: cx - R, top: cy - R, width: R * 2, height: R * 2, transform: 'scale(' + (0.72 + popIn * 0.28) + ')' }}>\n        <div style={{ position: 'absolute', inset: -12, borderRadius: '50%', border: '11px solid #fbf6ec', boxShadow: '0 0 0 3px ' + ink + ', 10px 12px 0 ' + ink + '1f' }} />\n      </div>\n      {handle ? (\n        <div style={{ position: 'absolute', left: cx, top: cy + R - 4, transform: 'translateX(-50%) rotate(-2.5deg)', opacity: popIn, background: '#fbf6ec', border: '2.5px solid ' + ink, borderRadius: 999, padding: '8px 24px', fontSize: 27, fontWeight: 800, color: ink, whiteSpace: 'nowrap', boxShadow: '4px 5px 0 ' + ink + '29' }}>{handle}</div>\n      ) : null}\n    </AbsoluteFill>\n  );\n};"
+  },
+  {
+    "id": "kb-chalkboard",
+    "name": "口播·黑板报（横）",
+    "description": "墨绿黑板+粉笔手写感:粉笔虚线边框、黄粉双色粉笔涂鸦、粉笔圈出的人物圆窗、下沿粉笔槽。人物视频放本模板下方轨道,脸对准圆窗;四角/半径可调。",
+    "category": "koubo-scenes",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationInFrames": 240,
+    "thumb": "/thumbnails/kb-chalkboard.jpg",
+    "props": {
+      "title": "今晚的三道思考题",
+      "subtitle": "慢慢想 · 不着急",
+      "handle": "@晚自习",
+      "position": "bottom-right",
+      "size": 160
+    },
+    "propSchema": [
+      {
+        "key": "title",
+        "type": "text",
+        "defaultValue": "今晚的三道思考题",
+        "label": "标题"
+      },
+      {
+        "key": "subtitle",
+        "type": "text",
+        "defaultValue": "慢慢想 · 不着急",
+        "label": "副标题"
+      },
+      {
+        "key": "handle",
+        "type": "text",
+        "defaultValue": "@晚自习",
+        "label": "名牌"
+      },
+      {
+        "key": "position",
+        "type": "select",
+        "defaultValue": "bottom-right",
+        "label": "人物位置",
+        "options": [
+          {
+            "label": "右下",
+            "value": "bottom-right"
+          },
+          {
+            "label": "左下",
+            "value": "bottom-left"
+          },
+          {
+            "label": "右上",
+            "value": "top-right"
+          },
+          {
+            "label": "左上",
+            "value": "top-left"
+          }
+        ]
+      },
+      {
+        "key": "size",
+        "type": "number",
+        "defaultValue": 160,
+        "label": "圆窗半径",
+        "min": 110,
+        "max": 300
+      }
+    ],
+    "code": "const KbChalkboard = ({ item }) => {\n  const frame = useCurrentFrame();\n  const { fps, durationInFrames } = useVideoConfig();\n  const p = item.props || {};\n  const W = 1920, H = 1080, M = 100;\n  const chalk = '#f3efe4';\n  const yellow = '#f5d76e';\n  const pink = '#f2a3b3';\n  const pos = String(p.position || 'bottom-right');\n  const R = Math.min(300, Math.max(110, Number(p.size) || 160));\n  const left = pos.indexOf('left') >= 0;\n  const top = pos.indexOf('top') >= 0;\n  const cx = left ? M + R : W - M - R;\n  const cy = top ? M + R : H - M - R;\n  const title = p.title == null ? '' : String(p.title);\n  const subtitle = p.subtitle == null ? '' : String(p.subtitle);\n  const handle = p.handle == null ? '' : String(p.handle);\n  const enter = spring({ frame, fps, config: { damping: 14, stiffness: 120 } });\n  const popIn = spring({ frame: frame - 6, fps, config: { damping: 12, stiffness: 140 } });\n  const exit = interpolate(frame, [durationInFrames - 12, durationInFrames], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const drawLen = interpolate(frame, [6, 34], [330, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const sway = Math.sin((frame / 150) * Math.PI * 2);\n  const hole = 'radial-gradient(circle ' + R + 'px at ' + cx + 'px ' + cy + 'px, transparent ' + (R - 1) + 'px, #000 ' + R + 'px)';\n  const titleX = left ? cx + R + 100 : 140;\n  return (\n    <AbsoluteFill style={{ opacity: exit }}>\n      <AbsoluteFill style={{ backgroundColor: '#2e3a33', WebkitMaskImage: hole, maskImage: hole, opacity: enter }}>\n        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 50% 45%, transparent 60%, #1f2a2466 100%)' }} />\n        <div style={{ position: 'absolute', left: 300, top: 620, width: 260, height: 90, background: '#f3efe408', transform: 'rotate(-6deg)' }} />\n        <div style={{ position: 'absolute', left: 1100, top: 300, width: 200, height: 70, background: '#f3efe406', transform: 'rotate(4deg)' }} />\n        <div style={{ position: 'absolute', inset: 40, border: '3px dashed ' + chalk + 'a6', borderRadius: 18 }} />\n        <div style={{ position: 'absolute', left: 0, bottom: 0, width: '100%', height: 7, background: '#c9a06273' }} />\n      </AbsoluteFill>\n      {title ? (\n        <div style={{ position: 'absolute', left: titleX, top: 130 + (1 - enter) * 26, opacity: enter, maxWidth: 1000 }}>\n          <div style={{ fontSize: 90, fontWeight: 800, color: chalk, lineHeight: 1.28, letterSpacing: 4, textShadow: '1.5px 1.5px 0 #1f2a24' }}>{title}</div>\n          <svg viewBox=\"0 0 340 18\" style={{ width: 340, height: 18, marginTop: 14 }}>\n            <path d=\"M6 11 Q 40 3, 76 10 T 148 10 T 220 10 T 292 10 T 332 9\" fill=\"none\" stroke={yellow} strokeWidth=\"5\" strokeLinecap=\"round\" strokeDasharray=\"330\" strokeDashoffset={drawLen} />\n          </svg>\n          {subtitle ? (\n            <div style={{ marginTop: 18, fontSize: 33, fontWeight: 700, color: chalk + 'c9', letterSpacing: 6 }}>{subtitle}</div>\n          ) : null}\n        </div>\n      ) : null}\n      <svg viewBox=\"0 0 100 100\" style={{ position: 'absolute', width: 84, height: 84, left: left ? W - 280 : Math.round(0.63 * W), top: 200 + sway * 5, transform: 'rotate(' + (10 + sway * 6) + 'deg)', opacity: popIn }}>\n        <path d=\"M50 8 L59 38 L90 38 L64 56 L74 88 L50 68 L26 88 L36 56 L10 38 L41 38 Z\" fill=\"none\" stroke={yellow} strokeWidth=\"5\" strokeLinejoin=\"round\" />\n      </svg>\n      <svg viewBox=\"0 0 90 90\" style={{ position: 'absolute', width: 60, height: 60, left: left ? W - 380 : Math.round(0.58 * W), top: 320 - sway * 4, transform: 'rotate(-8deg)', opacity: popIn }}>\n        <path d=\"M45 10 L51 34 L76 34 L55 48 L63 74 L45 58 L27 74 L35 48 L14 34 L39 34 Z\" fill=\"none\" stroke={pink} strokeWidth=\"5\" strokeLinejoin=\"round\" />\n      </svg>\n      <svg viewBox=\"0 0 120 60\" style={{ position: 'absolute', width: 140, height: 70, left: cx + (left ? R + 24 : -R - 166), top: cy - R - 60 + sway * 4, transform: left ? 'scaleX(-1) rotate(9deg)' : 'rotate(9deg)', opacity: popIn }}>\n        <path d=\"M8 12 C 40 2, 78 6, 102 34\" fill=\"none\" stroke={pink} strokeWidth=\"5\" strokeLinecap=\"round\" strokeDasharray=\"4 8\" />\n        <path d=\"M92 26 L104 36 L88 40 Z\" fill={pink} />\n      </svg>\n      <div style={{ position: 'absolute', left: cx - R, top: cy - R, width: R * 2, height: R * 2, transform: 'scale(' + (0.74 + popIn * 0.26) + ') rotate(' + sway * 1.2 + 'deg)' }}>\n        <div style={{ position: 'absolute', inset: -6, borderRadius: '50%', border: '5px solid ' + chalk }} />\n        <div style={{ position: 'absolute', inset: -20, borderRadius: '50%', border: '3px dashed ' + yellow + 'b3', transform: 'rotate(' + (frame * 0.14) + 'deg)' }} />\n      </div>\n      {handle ? (\n        <div style={{ position: 'absolute', left: cx, top: top ? cy + R + 26 : cy - R - 70, transform: 'translateX(-50%) rotate(-2deg)', opacity: popIn, border: '3px solid ' + chalk, borderRadius: 10, padding: '7px 22px', fontSize: 27, fontWeight: 800, color: chalk, whiteSpace: 'nowrap', background: '#2e3a33e6' }}>{handle}</div>\n      ) : null}\n    </AbsoluteFill>\n  );\n};"
+  },
+  {
+    "id": "kb-collage-split",
+    "name": "口播·侧栏拼贴（横）",
+    "description": "奶白点阵纸+撕纸边侧栏分屏:左内容右人物(可换边),锯齿撕边+色块贴纸+划重点标题。人物视频放本模板下方轨道对准人物侧;占比/换边/贴纸色可调。",
+    "category": "koubo-scenes",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationInFrames": 240,
+    "thumb": "/thumbnails/kb-collage-split.jpg",
+    "props": {
+      "title": "这周的\n灵感清单",
+      "subtitle": "剪贴板 · 每周五见",
+      "personSide": "right",
+      "contentRatio": 0.6,
+      "accentColor": "#f7a8b8"
+    },
+    "propSchema": [
+      {
+        "key": "title",
+        "type": "text",
+        "defaultValue": "这周的\n灵感清单",
+        "label": "标题(\\n 换行)"
+      },
+      {
+        "key": "subtitle",
+        "type": "text",
+        "defaultValue": "剪贴板 · 每周五见",
+        "label": "副标题"
+      },
+      {
+        "key": "personSide",
+        "type": "select",
+        "defaultValue": "right",
+        "label": "人物在哪边",
+        "options": [
+          {
+            "label": "右",
+            "value": "right"
+          },
+          {
+            "label": "左",
+            "value": "left"
+          }
+        ]
+      },
+      {
+        "key": "contentRatio",
+        "type": "number",
+        "defaultValue": 0.6,
+        "label": "内容占比",
+        "min": 0.45,
+        "max": 0.72
+      },
+      {
+        "key": "accentColor",
+        "type": "color",
+        "defaultValue": "#f7a8b8",
+        "label": "贴纸色"
+      }
+    ],
+    "code": "const KbCollageSplit = ({ item }) => {\n  const frame = useCurrentFrame();\n  const { fps, durationInFrames } = useVideoConfig();\n  const p = item.props || {};\n  const W = 1920, H = 1080;\n  const ink = '#2c2620';\n  const accent = p.accentColor || '#f7a8b8';\n  const butter = '#ffd66e';\n  const personRight = String(p.personSide || 'right') !== 'left';\n  const ratio = Math.min(0.72, Math.max(0.45, Number(p.contentRatio) || 0.6));\n  const splitX = Math.round(W * ratio);\n  const edgeX = personRight ? splitX : W - splitX;\n  const title = String(p.title == null ? '' : p.title);\n  const subtitle = p.subtitle == null ? '' : String(p.subtitle);\n  const enter = spring({ frame, fps, config: { damping: 13, stiffness: 125 } });\n  const popIn = spring({ frame: frame - 5, fps, config: { damping: 11, stiffness: 150 } });\n  const exit = interpolate(frame, [durationInFrames - 12, durationInFrames], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const sway = Math.sin((frame / 140) * Math.PI * 2);\n  const mask = personRight\n    ? 'linear-gradient(90deg, #000 0 ' + splitX + 'px, transparent ' + splitX + 'px)'\n    : 'linear-gradient(90deg, transparent 0 ' + (W - splitX) + 'px, #000 ' + (W - splitX) + 'px)';\n  const teeth = 30;\n  const seg = H / teeth;\n  let zig = '';\n  for (let i = 0; i < teeth; i += 1) {\n    zig += (personRight ? '100% ' : '0 ') + ((i + 0.5) * seg) + 'px, ' + (personRight ? '30% ' : '70% ') + ((i + 1) * seg) + 'px, ';\n  }\n  const clip = personRight\n    ? 'polygon(0 0, 30% 0, ' + zig + '0 100%)'\n    : 'polygon(100% 0, 70% 0, ' + zig + '100% 100%)';\n  const contentX = personRight ? 130 : (W - splitX) + 130;\n  const lines = title.split('\\n');\n  return (\n    <AbsoluteFill style={{ opacity: exit }}>\n      <AbsoluteFill style={{ backgroundColor: '#faf5eb', WebkitMaskImage: mask, maskImage: mask, opacity: enter }}>\n        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle 2.5px, #ddd2bd 2.5px, transparent 3px)', backgroundSize: '64px 64px', backgroundPosition: '32px 32px' }} />\n        <div style={{ position: 'absolute', left: personRight ? splitX - 300 : W - splitX - 40, top: -60, width: 340, height: 220, background: accent + '80', transform: 'rotate(-9deg)', borderRadius: 8 }} />\n        <div style={{ position: 'absolute', left: personRight ? splitX - 180 : W - splitX - 160, bottom: -70, width: 280, height: 200, background: butter + '8c', transform: 'rotate(7deg)', borderRadius: 8 }} />\n      </AbsoluteFill>\n      <div style={{ position: 'absolute', left: personRight ? edgeX - 40 : edgeX - 60, top: 0, width: 100, height: H, background: '#faf5eb', clipPath: clip, WebkitClipPath: clip, filter: 'drop-shadow(' + (personRight ? '5px' : '-5px') + ' 0 0 #2c262024)' }} />\n      <div style={{ position: 'absolute', left: contentX, top: 190 + (1 - enter) * 30, opacity: enter, maxWidth: splitX - 280 }}>\n        <div style={{ display: 'inline-block', background: '#fffdf6', border: '2.5px solid ' + ink, borderRadius: 999, padding: '9px 26px', fontSize: 26, fontWeight: 800, color: ink, letterSpacing: 3, marginBottom: 40, transform: 'rotate(-2deg)', boxShadow: '4px 5px 0 ' + ink + '26' }}>口播拼贴</div>\n        {lines.map((ln, i) => (\n          <div key={i} style={{ fontSize: 100, fontWeight: 800, color: ink, lineHeight: 1.22, letterSpacing: 2 }}>\n            <span style={{ background: i === lines.length - 1 ? 'linear-gradient(0deg, ' + accent + '99 0 40%, transparent 40%)' : 'none', padding: '0 8px 4px' }}>{ln}</span>\n          </div>\n        ))}\n        {subtitle ? (\n          <div style={{ marginTop: 30, fontSize: 33, fontWeight: 700, color: ink + 'ba', letterSpacing: 4, borderBottom: '3.5px dashed ' + ink + '66', display: 'inline-block', paddingBottom: 12 }}>{subtitle}</div>\n        ) : null}\n      </div>\n      <svg viewBox=\"0 0 100 100\" style={{ position: 'absolute', width: 88, height: 88, left: personRight ? splitX - 240 : W - splitX + 150, top: 150 + sway * 5, transform: 'rotate(' + (14 + sway * 5) + 'deg)', opacity: popIn }}>\n        <path d=\"M50 6 L60 38 L94 38 L66 57 L76 90 L50 70 L24 90 L34 57 L6 38 L40 38 Z\" fill={butter} stroke={ink} strokeWidth=\"4\" strokeLinejoin=\"round\" />\n      </svg>\n      <div style={{ position: 'absolute', left: personRight ? splitX + 60 : 60, top: 54, width: 170, height: 46, background: accent + 'a6', transform: 'rotate(-6deg)', boxShadow: '0 3px 10px #2c262018', opacity: popIn }} />\n      <div style={{ position: 'absolute', right: personRight ? 60 : undefined, left: personRight ? undefined : W - splitX + 40, bottom: 52, width: 150, height: 42, background: butter + 'a6', transform: 'rotate(5deg)', boxShadow: '0 3px 10px #2c262018', opacity: popIn }} />\n    </AbsoluteFill>\n  );\n};"
+  },
+  {
+    "id": "kb-parchment",
+    "name": "口播·羊皮纸（横）",
+    "description": "横屏羊皮纸卷:真实羊皮纸质感(斑驳陈化+烘边)+宋体书卷标题+双线框+红印章,文化/读书/说书感。人物视频放本模板下方轨道,脸对准圆窗;四角/半径/印章字可调。",
+    "category": "koubo-scenes",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "durationInFrames": 240,
+    "thumb": "/thumbnails/kb-parchment.jpg",
+    "props": {
+      "title": "今天讲一段旧闻",
+      "subtitle": "卷二 · 市井篇",
+      "sealText": "说书",
+      "position": "bottom-right",
+      "size": 165
+    },
+    "propSchema": [
+      {
+        "key": "title",
+        "type": "text",
+        "defaultValue": "今天讲一段旧闻",
+        "label": "标题"
+      },
+      {
+        "key": "subtitle",
+        "type": "text",
+        "defaultValue": "卷二 · 市井篇",
+        "label": "副标题"
+      },
+      {
+        "key": "sealText",
+        "type": "text",
+        "defaultValue": "说书",
+        "label": "印章字(2-4字)"
+      },
+      {
+        "key": "position",
+        "type": "select",
+        "defaultValue": "bottom-right",
+        "label": "人物位置",
+        "options": [
+          {
+            "label": "右下",
+            "value": "bottom-right"
+          },
+          {
+            "label": "左下",
+            "value": "bottom-left"
+          },
+          {
+            "label": "右上",
+            "value": "top-right"
+          },
+          {
+            "label": "左上",
+            "value": "top-left"
+          }
+        ]
+      },
+      {
+        "key": "size",
+        "type": "number",
+        "defaultValue": 165,
+        "label": "圆窗半径",
+        "min": 110,
+        "max": 300
+      }
+    ],
+    "code": "const KbParchment = ({ item }) => {\n  const frame = useCurrentFrame();\n  const { fps, durationInFrames } = useVideoConfig();\n  const p = item.props || {};\n  const W = 1920, H = 1080, M = 110;\n  const ink = '#4d3a1f';\n  const seal = '#a63a28';\n  const serif = 'Georgia, \"Songti SC\", \"STSong\", \"SimSun\", serif';\n  const pos = String(p.position || 'bottom-right');\n  const R = Math.min(300, Math.max(110, Number(p.size) || 165));\n  const left = pos.indexOf('left') >= 0;\n  const top = pos.indexOf('top') >= 0;\n  const cx = left ? M + R : W - M - R;\n  const cy = top ? M + R : H - M - R;\n  const title = p.title == null ? '' : String(p.title);\n  const subtitle = p.subtitle == null ? '' : String(p.subtitle);\n  const sealText = p.sealText == null ? '' : String(p.sealText).slice(0, 4);\n  const enter = spring({ frame, fps, config: { damping: 15, stiffness: 115 } });\n  const popIn = spring({ frame: frame - 7, fps, config: { damping: 12, stiffness: 135 } });\n  const exit = interpolate(frame, [durationInFrames - 12, durationInFrames], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const hole = 'radial-gradient(circle ' + R + 'px at ' + cx + 'px ' + cy + 'px, transparent ' + (R - 1) + 'px, #000 ' + R + 'px)';\n  const titleX = left ? cx + R + 110 : 170;\n  return (\n    <AbsoluteFill style={{ opacity: exit }}>\n      <AbsoluteFill style={{ WebkitMaskImage: hole, maskImage: hole, opacity: enter }}>\n        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 48% 40%, #eddfb8 0%, #e4d2a2 55%, #d3ba7f 100%)' }} />\n        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', mixBlendMode: 'multiply', opacity: 0.5 }} preserveAspectRatio=\"none\">\n          <filter id=\"kbParchBlotch\"><feTurbulence type=\"fractalNoise\" baseFrequency=\"0.004 0.007\" numOctaves=\"5\" seed=\"17\" stitchTiles=\"stitch\" /><feColorMatrix type=\"matrix\" values=\"0 0 0 0 0.45 0 0 0 0 0.35 0 0 0 0 0.18 0.65 0.65 0.65 0 0\" /></filter>\n          <rect width=\"100%\" height=\"100%\" filter=\"url(#kbParchBlotch)\" />\n        </svg>\n        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', mixBlendMode: 'multiply', opacity: 0.30 }} preserveAspectRatio=\"none\">\n          <filter id=\"kbParchAge\"><feTurbulence type=\"fractalNoise\" baseFrequency=\"0.018 0.03\" numOctaves=\"4\" seed=\"9\" stitchTiles=\"stitch\" /><feColorMatrix type=\"matrix\" values=\"0 0 0 0 0.5 0 0 0 0 0.38 0 0 0 0 0.2 0.5 0.5 0.5 0 0\" /></filter>\n          <rect width=\"100%\" height=\"100%\" filter=\"url(#kbParchAge)\" />\n        </svg>\n        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', mixBlendMode: 'multiply', opacity: 0.35 }} preserveAspectRatio=\"none\">\n          <filter id=\"kbParchGrain\"><feTurbulence type=\"fractalNoise\" baseFrequency=\"0.55 0.55\" numOctaves=\"2\" seed=\"27\" stitchTiles=\"stitch\" /><feColorMatrix type=\"matrix\" values=\"0 0 0 0 0.42 0 0 0 0 0.33 0 0 0 0 0.18 0.4 0.4 0.4 0 0\" /></filter>\n          <rect width=\"100%\" height=\"100%\" filter=\"url(#kbParchGrain)\" />\n        </svg>\n        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', mixBlendMode: 'screen', opacity: 0.14 }} preserveAspectRatio=\"none\">\n          <filter id=\"kbParchLight\"><feTurbulence type=\"fractalNoise\" baseFrequency=\"0.01 0.016\" numOctaves=\"3\" seed=\"41\" stitchTiles=\"stitch\" /><feColorMatrix type=\"matrix\" values=\"0 0 0 0 1 0 0 0 0 0.96 0 0 0 0 0.85 0.5 0.5 0.5 0 0\" /></filter>\n          <rect width=\"100%\" height=\"100%\" filter=\"url(#kbParchLight)\" />\n        </svg>\n        <div style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 0 260px #8a672f66, inset 0 0 80px #8a672f3d' }} />\n        <div style={{ position: 'absolute', inset: 44, border: '2.5px solid ' + ink + 'b8' }} />\n        <div style={{ position: 'absolute', inset: 56, border: '1px solid ' + ink + '80' }} />\n      </AbsoluteFill>\n      {title ? (\n        <div style={{ position: 'absolute', left: titleX, top: 140 + (1 - enter) * 24, opacity: enter, maxWidth: 1000 }}>\n          <div style={{ fontFamily: serif, fontSize: 92, fontWeight: 700, color: ink, lineHeight: 1.3, letterSpacing: 10 }}>{title}</div>\n          <div style={{ marginTop: 22, width: 132, height: 3.5, background: ink + 'c9' }} />\n          <div style={{ marginTop: 8, width: 132, height: 1.5, background: ink + '8c' }} />\n          {subtitle ? (\n            <div style={{ marginTop: 26, fontFamily: serif, fontSize: 34, fontWeight: 600, color: ink + 'd9', letterSpacing: 8 }}>{subtitle}</div>\n          ) : null}\n        </div>\n      ) : null}\n      {sealText ? (\n        <div style={{ position: 'absolute', left: left ? W - 320 : Math.round(0.66 * W), top: 150, width: 118, height: 118, transform: 'rotate(' + (3 + (1 - popIn) * 20) + 'deg) scale(' + (0.7 + popIn * 0.3) + ')', opacity: popIn * 0.92, background: seal, borderRadius: 10, display: 'grid', placeItems: 'center', boxShadow: 'inset 0 0 18px #7c2313, 3px 4px 10px #4d3a1f40', mixBlendMode: 'multiply' }}>\n          <div style={{ fontFamily: serif, fontSize: sealText.length > 2 ? 40 : 52, fontWeight: 800, color: '#f6e8d4', letterSpacing: sealText.length > 2 ? 2 : 8, lineHeight: 1.15, textAlign: 'center', padding: '0 8px' }}>{sealText}</div>\n        </div>\n      ) : null}\n      <div style={{ position: 'absolute', left: cx - R, top: cy - R, width: R * 2, height: R * 2, transform: 'scale(' + (0.76 + popIn * 0.24) + ')' }}>\n        <div style={{ position: 'absolute', inset: -8, borderRadius: '50%', border: '4px solid ' + ink, boxShadow: '0 0 0 1px ' + ink + '66, 8px 10px 0 ' + ink + '2b' }} />\n        <div style={{ position: 'absolute', inset: -20, borderRadius: '50%', border: '1.5px solid ' + ink + '99' }} />\n      </div>\n    </AbsoluteFill>\n  );\n};"
+  },
+  {
+    "id": "kb-split-note",
+    "name": "口播·便签五五分（竖）",
+    "description": "竖屏上下分屏:上半淡黄便利贴(横线+顶部胶带),下半人物,撕纸分界+名牌贴纸。人物视频放本模板下方轨道对准下半区;占比可调,上半区留给 agent 叠内容。",
+    "category": "koubo-scenes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "durationInFrames": 240,
+    "thumb": "/thumbnails/kb-split-note.jpg",
+    "props": {
+      "title": "记住这一页",
+      "subtitle": "10 分钟讲完 · 建议收藏",
+      "handle": "@便签君",
+      "splitRatio": 0.5
+    },
+    "propSchema": [
+      {
+        "key": "title",
+        "type": "text",
+        "defaultValue": "记住这一页",
+        "label": "标题"
+      },
+      {
+        "key": "subtitle",
+        "type": "text",
+        "defaultValue": "10 分钟讲完 · 建议收藏",
+        "label": "副标题"
+      },
+      {
+        "key": "handle",
+        "type": "text",
+        "defaultValue": "@便签君",
+        "label": "名牌"
+      },
+      {
+        "key": "splitRatio",
+        "type": "number",
+        "defaultValue": 0.5,
+        "label": "内容区占比",
+        "min": 0.32,
+        "max": 0.62
+      }
+    ],
+    "code": "const KbSplitNote = ({ item }) => {\n  const frame = useCurrentFrame();\n  const { fps, durationInFrames } = useVideoConfig();\n  const p = item.props || {};\n  const W = 1080, H = 1920;\n  const ink = '#38301f';\n  const red = '#d9553f';\n  const ratio = Math.min(0.62, Math.max(0.32, Number(p.splitRatio) || 0.5));\n  const splitY = Math.round(H * ratio);\n  const title = p.title == null ? '' : String(p.title);\n  const subtitle = p.subtitle == null ? '' : String(p.subtitle);\n  const handle = p.handle == null ? '' : String(p.handle);\n  const enter = spring({ frame, fps, config: { damping: 13, stiffness: 125 } });\n  const popIn = spring({ frame: frame - 5, fps, config: { damping: 11, stiffness: 150 } });\n  const exit = interpolate(frame, [durationInFrames - 12, durationInFrames], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const sway = Math.sin((frame / 140) * Math.PI * 2);\n  const mask = 'linear-gradient(180deg, #000 0 ' + splitY + 'px, transparent ' + splitY + 'px)';\n  const teeth = 22;\n  const seg = W / teeth;\n  let zig = '';\n  for (let i = 0; i < teeth; i += 1) {\n    zig += ((i + 0.5) * seg) + 'px 100%, ' + ((i + 1) * seg) + 'px 30%, ';\n  }\n  const clip = 'polygon(0 0, 100% 0, 100% 30%, ' + zig + '0 30%)';\n  return (\n    <AbsoluteFill style={{ opacity: exit }}>\n      <AbsoluteFill style={{ backgroundColor: '#fdf0b8', WebkitMaskImage: mask, maskImage: mask, opacity: enter }}>\n        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(180deg, transparent 0 88px, #dcc98a99 88px 90.5px)', backgroundPosition: '0 40px' }} />\n        <div style={{ position: 'absolute', left: 60, top: 0, width: 2.5, height: splitY, background: red + '4d' }} />\n      </AbsoluteFill>\n      <div style={{ position: 'absolute', left: W / 2 - 110, top: -14 + (1 - enter) * -30, width: 220, height: 58, background: '#f7a8b8b3', transform: 'rotate(-2deg)', boxShadow: '0 4px 12px #38301f1c', opacity: enter }} />\n      <div style={{ position: 'absolute', left: 0, right: 0, top: Math.round(splitY * 0.40) + (1 - enter) * 30, opacity: enter, textAlign: 'center', padding: '0 90px', transform: 'translateY(-50%)' }}>\n        <div style={{ display: 'inline-block', fontSize: 96, fontWeight: 800, color: ink, lineHeight: 1.24, letterSpacing: 3, background: 'linear-gradient(0deg, #ffffffa6 0 40%, transparent 40%)', padding: '0 20px 6px', transform: 'rotate(-0.8deg)' }}>{title}</div>\n        {subtitle ? (\n          <div style={{ marginTop: 30, display: 'inline-block', fontSize: 35, fontWeight: 700, color: ink + 'c4', letterSpacing: 3, borderBottom: '3.5px dashed ' + red + 'a6', paddingBottom: 12 }}>{subtitle}</div>\n        ) : null}\n      </div>\n      <svg viewBox=\"0 0 100 100\" style={{ position: 'absolute', width: 84, height: 84, left: 96, top: Math.round(splitY * 0.16) + sway * 5, transform: 'rotate(' + (-12 + sway * 5) + 'deg)', opacity: popIn }}>\n        <path d=\"M50 6 L60 38 L94 38 L66 57 L76 90 L50 70 L24 90 L34 57 L6 38 L40 38 Z\" fill=\"#ffd66e\" stroke={ink} strokeWidth=\"4\" strokeLinejoin=\"round\" />\n      </svg>\n      <div style={{ position: 'absolute', left: 0, top: splitY - 34, width: W, height: 44, background: '#fdf0b8', clipPath: clip, WebkitClipPath: clip, filter: 'drop-shadow(0 6px 0 #38301f1f)' }} />\n      {handle ? (\n        <div style={{ position: 'absolute', left: '50%', top: splitY + 44, transform: 'translateX(-50%) rotate(2deg)', opacity: popIn, background: '#fffdf6', border: '2.5px solid ' + ink, borderRadius: 999, padding: '10px 30px', fontSize: 30, fontWeight: 800, color: ink, whiteSpace: 'nowrap', boxShadow: '4px 5px 0 ' + ink + '2b' }}>{handle}</div>\n      ) : null}\n    </AbsoluteFill>\n  );\n};"
+  },
+  {
+    "id": "kb-split-dots",
+    "name": "口播·点阵五五分（竖）",
+    "description": "竖屏上下分屏:上半奶白点阵纸(子弹笔记风)+橙红圈重点标题,下半人物,墨色分界+名牌。人物视频放本模板下方轨道对准下半区;占比/圈重点色可调。",
+    "category": "koubo-scenes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "durationInFrames": 240,
+    "thumb": "/thumbnails/kb-split-dots.jpg",
+    "props": {
+      "title": "把目标拆成点",
+      "subtitle": "第 03 期 · 拆解合集",
+      "handle": "@点阵手帐",
+      "splitRatio": 0.5,
+      "accentColor": "#e8582e"
+    },
+    "propSchema": [
+      {
+        "key": "title",
+        "type": "text",
+        "defaultValue": "把目标拆成点",
+        "label": "标题"
+      },
+      {
+        "key": "subtitle",
+        "type": "text",
+        "defaultValue": "第 03 期 · 拆解合集",
+        "label": "副标题"
+      },
+      {
+        "key": "handle",
+        "type": "text",
+        "defaultValue": "@点阵手帐",
+        "label": "名牌"
+      },
+      {
+        "key": "splitRatio",
+        "type": "number",
+        "defaultValue": 0.5,
+        "label": "内容区占比",
+        "min": 0.32,
+        "max": 0.62
+      },
+      {
+        "key": "accentColor",
+        "type": "color",
+        "defaultValue": "#e8582e",
+        "label": "圈重点色"
+      }
+    ],
+    "code": "const KbSplitDots = ({ item }) => {\n  const frame = useCurrentFrame();\n  const { fps, durationInFrames } = useVideoConfig();\n  const p = item.props || {};\n  const W = 1080, H = 1920;\n  const ink = '#2c2620';\n  const accent = p.accentColor || '#e8582e';\n  const ratio = Math.min(0.62, Math.max(0.32, Number(p.splitRatio) || 0.5));\n  const splitY = Math.round(H * ratio);\n  const title = p.title == null ? '' : String(p.title);\n  const subtitle = p.subtitle == null ? '' : String(p.subtitle);\n  const handle = p.handle == null ? '' : String(p.handle);\n  const enter = spring({ frame, fps, config: { damping: 13, stiffness: 125 } });\n  const popIn = spring({ frame: frame - 5, fps, config: { damping: 11, stiffness: 150 } });\n  const exit = interpolate(frame, [durationInFrames - 12, durationInFrames], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const drawLen = interpolate(frame, [8, 40], [860, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const sway = Math.sin((frame / 150) * Math.PI * 2);\n  const mask = 'linear-gradient(180deg, #000 0 ' + splitY + 'px, transparent ' + splitY + 'px)';\n  return (\n    <AbsoluteFill style={{ opacity: exit }}>\n      <AbsoluteFill style={{ backgroundColor: '#faf6ee', WebkitMaskImage: mask, maskImage: mask, opacity: enter }}>\n        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle 2.5px, #d5c8ae 2.5px, transparent 3px)', backgroundSize: '58px 58px', backgroundPosition: '29px 29px' }} />\n        <div style={{ position: 'absolute', left: 30, right: 30, top: 30, height: splitY - 80, border: '2.5px solid ' + ink + 'cc', borderRadius: 22 }} />\n      </AbsoluteFill>\n      <div style={{ position: 'absolute', left: 0, right: 0, top: Math.round(splitY * 0.40) + (1 - enter) * 30, opacity: enter, textAlign: 'center', padding: '0 80px', transform: 'translateY(-50%)' }}>\n        <div style={{ position: 'relative', display: 'inline-block', padding: '14px 34px' }}>\n          <div style={{ fontSize: 94, fontWeight: 800, color: ink, lineHeight: 1.24, letterSpacing: 3 }}>{title}</div>\n          <svg viewBox=\"0 0 400 160\" preserveAspectRatio=\"none\" style={{ position: 'absolute', inset: -12, width: 'calc(100% + 24px)', height: 'calc(100% + 24px)' }}>\n            <path d=\"M 30 24 C 130 2, 330 6, 372 52 C 396 92, 330 142, 196 148 C 80 152, 10 128, 16 84 C 20 52, 60 30, 120 24\" fill=\"none\" stroke={accent} strokeWidth=\"7\" strokeLinecap=\"round\" strokeDasharray=\"860\" strokeDashoffset={drawLen} />\n          </svg>\n        </div>\n        {subtitle ? (\n          <div style={{ marginTop: 34, display: 'inline-block', fontSize: 34, fontWeight: 700, color: ink + 'bf', letterSpacing: 4, background: 'linear-gradient(0deg, #ffd66e99 0 38%, transparent 38%)', padding: '0 14px 4px' }}>{subtitle}</div>\n        ) : null}\n      </div>\n      <svg viewBox=\"0 0 100 100\" style={{ position: 'absolute', width: 78, height: 78, right: 90, top: Math.round(splitY * 0.14) + sway * 5, transform: 'rotate(' + (16 + sway * 5) + 'deg)', opacity: popIn }}>\n        <path d=\"M50 6 L60 38 L94 38 L66 57 L76 90 L50 70 L24 90 L34 57 L6 38 L40 38 Z\" fill=\"#ffd66e\" stroke={ink} strokeWidth=\"4\" strokeLinejoin=\"round\" />\n      </svg>\n      <div style={{ position: 'absolute', left: 76, top: Math.round(splitY * 0.13), width: 22, height: 22, borderRadius: '50%', border: '4px solid ' + accent, opacity: popIn }} />\n      <div style={{ position: 'absolute', left: 0, top: splitY - 10, width: W, height: 18, background: ink, boxShadow: '0 5px 0 ' + ink + '26' }} />\n      {handle ? (\n        <div style={{ position: 'absolute', left: '50%', top: splitY, transform: 'translate(-50%, -50%) rotate(-2deg)', opacity: popIn, background: '#fffdf6', border: '2.5px solid ' + ink, borderRadius: 999, padding: '10px 30px', fontSize: 30, fontWeight: 800, color: ink, whiteSpace: 'nowrap', boxShadow: '4px 5px 0 ' + ink + '2b' }}>{handle}</div>\n      ) : null}\n    </AbsoluteFill>\n  );\n};"
+  },
+  {
+    "id": "kb-kraft-corner",
+    "name": "口播·牛皮纸圆窗（竖）",
+    "description": "竖屏解说位:真实牛皮纸质感(纤维颗粒+斑驳+烘边)+奶白手绘涂鸦+贴纸感小圆窗。人物视频放本模板下方轨道,脸对准圆窗;中间整片留给素材,四角/半径可调。",
+    "category": "koubo-scenes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "durationInFrames": 240,
+    "thumb": "/thumbnails/kb-kraft-corner.jpg",
+    "props": {
+      "title": "旧物新说",
+      "handle": "@牛皮纸研究所",
+      "position": "bottom-right",
+      "size": 150
+    },
+    "propSchema": [
+      {
+        "key": "title",
+        "type": "text",
+        "defaultValue": "旧物新说",
+        "label": "标题"
+      },
+      {
+        "key": "handle",
+        "type": "text",
+        "defaultValue": "@牛皮纸研究所",
+        "label": "名牌"
+      },
+      {
+        "key": "position",
+        "type": "select",
+        "defaultValue": "bottom-right",
+        "label": "人物位置",
+        "options": [
+          {
+            "label": "右下",
+            "value": "bottom-right"
+          },
+          {
+            "label": "左下",
+            "value": "bottom-left"
+          },
+          {
+            "label": "右上",
+            "value": "top-right"
+          },
+          {
+            "label": "左上",
+            "value": "top-left"
+          }
+        ]
+      },
+      {
+        "key": "size",
+        "type": "number",
+        "defaultValue": 150,
+        "label": "圆窗半径",
+        "min": 110,
+        "max": 280
+      }
+    ],
+    "code": "const KbKraftCorner = ({ item }) => {\n  const frame = useCurrentFrame();\n  const { fps, durationInFrames } = useVideoConfig();\n  const p = item.props || {};\n  const W = 1080, H = 1920, M = 76;\n  const cream = '#fbf3e4';\n  const brown = '#46341e';\n  const pos = String(p.position || 'bottom-right');\n  const R = Math.min(280, Math.max(110, Number(p.size) || 150));\n  const left = pos.indexOf('left') >= 0;\n  const top = pos.indexOf('top') >= 0;\n  const cx = left ? M + R : W - M - R;\n  const cy = top ? 300 + R : H - M - R;\n  const title = p.title == null ? '' : String(p.title);\n  const handle = p.handle == null ? '' : String(p.handle);\n  const enter = spring({ frame, fps, config: { damping: 13, stiffness: 125 } });\n  const popIn = spring({ frame: frame - 5, fps, config: { damping: 11, stiffness: 150 } });\n  const exit = interpolate(frame, [durationInFrames - 12, durationInFrames], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const sway = Math.sin((frame / 140) * Math.PI * 2);\n  const hole = 'radial-gradient(circle ' + R + 'px at ' + cx + 'px ' + cy + 'px, transparent ' + (R - 1) + 'px, #000 ' + R + 'px)';\n  return (\n    <AbsoluteFill style={{ opacity: exit }}>\n      <AbsoluteFill style={{ WebkitMaskImage: hole, maskImage: hole, opacity: enter }}>\n        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(115deg, #cda96e 0%, #c39a5e 42%, #b98f52 100%)' }} />\n        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', mixBlendMode: 'multiply', opacity: 0.5 }} preserveAspectRatio=\"none\">\n          <filter id=\"kbKraftFiber\"><feTurbulence type=\"fractalNoise\" baseFrequency=\"0.9 0.9\" numOctaves=\"3\" seed=\"11\" stitchTiles=\"stitch\" /><feColorMatrix type=\"matrix\" values=\"0 0 0 0 0.32 0 0 0 0 0.24 0 0 0 0 0.13 0.55 0.55 0.55 0 0\" /></filter>\n          <rect width=\"100%\" height=\"100%\" filter=\"url(#kbKraftFiber)\" />\n        </svg>\n        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', mixBlendMode: 'multiply', opacity: 0.24 }} preserveAspectRatio=\"none\">\n          <filter id=\"kbKraftStreak\"><feTurbulence type=\"fractalNoise\" baseFrequency=\"0.0055 0.075\" numOctaves=\"4\" seed=\"4\" stitchTiles=\"stitch\" /><feColorMatrix type=\"matrix\" values=\"0 0 0 0 0.30 0 0 0 0 0.22 0 0 0 0 0.11 0.42 0.42 0.42 0 0\" /></filter>\n          <rect width=\"100%\" height=\"100%\" filter=\"url(#kbKraftStreak)\" />\n        </svg>\n        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', mixBlendMode: 'multiply', opacity: 0.34 }} preserveAspectRatio=\"none\">\n          <filter id=\"kbKraftBlotch\"><feTurbulence type=\"fractalNoise\" baseFrequency=\"0.006 0.011\" numOctaves=\"4\" seed=\"23\" stitchTiles=\"stitch\" /><feColorMatrix type=\"matrix\" values=\"0 0 0 0 0.36 0 0 0 0 0.27 0 0 0 0 0.15 0.6 0.6 0.6 0 0\" /></filter>\n          <rect width=\"100%\" height=\"100%\" filter=\"url(#kbKraftBlotch)\" />\n        </svg>\n        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', mixBlendMode: 'screen', opacity: 0.16 }} preserveAspectRatio=\"none\">\n          <filter id=\"kbKraftLight\"><feTurbulence type=\"fractalNoise\" baseFrequency=\"0.7 0.7\" numOctaves=\"2\" seed=\"31\" stitchTiles=\"stitch\" /><feColorMatrix type=\"matrix\" values=\"0 0 0 0 1 0 0 0 0 0.95 0 0 0 0 0.82 0.4 0.4 0.4 0 0\" /></filter>\n          <rect width=\"100%\" height=\"100%\" filter=\"url(#kbKraftLight)\" />\n        </svg>\n        <div style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 0 220px #6b4d2455, inset 0 0 60px #6b4d2433' }} />\n        <div style={{ position: 'absolute', inset: 40, border: '3px dashed ' + cream + 'd9', borderRadius: 24 }} />\n      </AbsoluteFill>\n      {title ? (\n        <div style={{ position: 'absolute', left: 0, right: 0, top: 108 + (1 - enter) * 26, opacity: enter, textAlign: 'center' }}>\n          <div style={{ display: 'inline-block', fontSize: 78, fontWeight: 800, color: brown, letterSpacing: 6, background: cream, border: '3px solid ' + brown, borderRadius: 16, padding: '14px 44px', boxShadow: '7px 8px 0 ' + brown + '3d', transform: 'rotate(-1.2deg)' }}>{title}</div>\n        </div>\n      ) : null}\n      <svg viewBox=\"0 0 100 100\" style={{ position: 'absolute', width: 88, height: 88, left: 90, top: 300 + sway * 5, transform: 'rotate(' + (-14 + sway * 6) + 'deg)', opacity: popIn }}>\n        <path d=\"M50 8 L59 38 L90 38 L64 56 L74 88 L50 68 L26 88 L36 56 L10 38 L41 38 Z\" fill=\"none\" stroke={cream} strokeWidth=\"5\" strokeLinejoin=\"round\" />\n      </svg>\n      <svg viewBox=\"0 0 90 90\" style={{ position: 'absolute', width: 58, height: 58, right: 110, top: 340 - sway * 4, transform: 'rotate(10deg)', opacity: popIn }}>\n        <path d=\"M45 10 L51 34 L76 34 L55 48 L63 74 L45 58 L27 74 L35 48 L14 34 L39 34 Z\" fill={cream} stroke={brown} strokeWidth=\"4\" strokeLinejoin=\"round\" />\n      </svg>\n      <svg viewBox=\"0 0 120 60\" style={{ position: 'absolute', width: 140, height: 70, left: cx + (left ? R + 22 : -R - 162), top: cy - R - 58 + sway * 4, transform: left ? 'scaleX(-1) rotate(9deg)' : 'rotate(9deg)', opacity: popIn }}>\n        <path d=\"M8 12 C 40 2, 78 6, 102 34\" fill=\"none\" stroke={cream} strokeWidth=\"5\" strokeLinecap=\"round\" strokeDasharray=\"4 8\" />\n        <path d=\"M92 26 L104 36 L88 40 Z\" fill={cream} />\n      </svg>\n      <div style={{ position: 'absolute', left: cx - R, top: cy - R, width: R * 2, height: R * 2, transform: 'scale(' + (0.72 + popIn * 0.28) + ')' }}>\n        <div style={{ position: 'absolute', inset: -12, borderRadius: '50%', border: '11px solid ' + cream, boxShadow: '0 0 0 3px ' + brown + ', 10px 12px 0 ' + brown + '30' }} />\n      </div>\n      {handle ? (\n        <div style={{ position: 'absolute', left: cx, top: cy + R - 2, transform: 'translateX(-50%) rotate(2.5deg)', opacity: popIn, background: cream, border: '2.5px solid ' + brown, borderRadius: 999, padding: '8px 24px', fontSize: 26, fontWeight: 800, color: brown, whiteSpace: 'nowrap', boxShadow: '4px 5px 0 ' + brown + '33' }}>{handle}</div>\n      ) : null}\n    </AbsoluteFill>\n  );\n};"
+  },
+  {
+    "id": "kb-cream-window",
+    "name": "口播·奶油拍立得（竖）",
+    "description": "竖屏居中大窗做成拍立得相片:奶油点阵纸底+白厚相框(下边加宽)+两条胶带+手写名牌。人物视频放本模板下方轨道对准相窗;窗宽/胶带色可调。",
+    "category": "koubo-scenes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "durationInFrames": 240,
+    "thumb": "/thumbnails/kb-cream-window.jpg",
+    "props": {
+      "title": "本周面对面",
+      "handle": "@奶油相册",
+      "windowWidth": 820,
+      "accentColor": "#f7a8b8"
+    },
+    "propSchema": [
+      {
+        "key": "title",
+        "type": "text",
+        "defaultValue": "本周面对面",
+        "label": "标题"
+      },
+      {
+        "key": "handle",
+        "type": "text",
+        "defaultValue": "@奶油相册",
+        "label": "手写名牌"
+      },
+      {
+        "key": "windowWidth",
+        "type": "number",
+        "defaultValue": 820,
+        "label": "窗宽",
+        "min": 620,
+        "max": 960
+      },
+      {
+        "key": "accentColor",
+        "type": "color",
+        "defaultValue": "#f7a8b8",
+        "label": "胶带色"
+      }
+    ],
+    "code": "const KbCreamWindow = ({ item }) => {\n  const frame = useCurrentFrame();\n  const { fps, durationInFrames } = useVideoConfig();\n  const p = item.props || {};\n  const W = 1080, H = 1920;\n  const ink = '#2c2620';\n  const accent = p.accentColor || '#f7a8b8';\n  const winW = Math.min(960, Math.max(620, Number(p.windowWidth) || 820));\n  const winH = Math.round(winW * 4 / 3);\n  const r = 18;\n  const x = Math.round((W - winW) / 2);\n  const y = Math.round((H - winH) / 2) - 10;\n  const title = p.title == null ? '' : String(p.title);\n  const handle = p.handle == null ? '' : String(p.handle);\n  const enter = spring({ frame, fps, config: { damping: 13, stiffness: 120 } });\n  const popIn = spring({ frame: frame - 6, fps, config: { damping: 12, stiffness: 140 } });\n  const exit = interpolate(frame, [durationInFrames - 12, durationInFrames], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const sway = Math.sin((frame / 150) * Math.PI * 2);\n  const d = 'M0 0H' + W + 'V' + H + 'H0Z'\n    + 'M' + (x + r) + ' ' + y\n    + 'H' + (x + winW - r) + 'A' + r + ' ' + r + ' 0 0 1 ' + (x + winW) + ' ' + (y + r)\n    + 'V' + (y + winH - r) + 'A' + r + ' ' + r + ' 0 0 1 ' + (x + winW - r) + ' ' + (y + winH)\n    + 'H' + (x + r) + 'A' + r + ' ' + r + ' 0 0 1 ' + x + ' ' + (y + winH - r)\n    + 'V' + (y + r) + 'A' + r + ' ' + r + ' 0 0 1 ' + (x + r) + ' ' + y + 'Z';\n  const svg = '<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 ' + W + ' ' + H + '\"><path fill-rule=\"evenodd\" d=\"' + d + '\"/></svg>';\n  const mask = 'url(\"data:image/svg+xml,' + encodeURIComponent(svg) + '\")';\n  return (\n    <AbsoluteFill style={{ opacity: exit }}>\n      <AbsoluteFill style={{ backgroundColor: '#f8f1e3', WebkitMaskImage: mask, maskImage: mask, WebkitMaskSize: '100% 100%', maskSize: '100% 100%', opacity: enter }}>\n        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle 2.5px, #e2d4bb 2.5px, transparent 3px)', backgroundSize: '66px 66px', backgroundPosition: '33px 33px' }} />\n      </AbsoluteFill>\n      {title ? (\n        <div style={{ position: 'absolute', left: 0, right: 0, top: Math.max(70, y - 210) + (1 - enter) * 24, opacity: enter, textAlign: 'center' }}>\n          <span style={{ display: 'inline-block', fontSize: 80, fontWeight: 800, color: ink, letterSpacing: 4, background: 'linear-gradient(0deg, #ffd66e99 0 40%, transparent 40%)', padding: '0 20px 6px', transform: 'rotate(-0.8deg)' }}>{title}</span>\n        </div>\n      ) : null}\n      <div style={{ position: 'absolute', left: x, top: y, width: winW, height: winH, transform: 'scale(' + (0.86 + popIn * 0.14) + ') rotate(' + ((1 - popIn) * -2) + 'deg)', transformOrigin: '50% 40%' }}>\n        <div style={{ position: 'absolute', left: -19, top: -19, width: 'calc(100% + 38px)', height: 19, background: '#fffdf8' }} />\n        <div style={{ position: 'absolute', left: -19, bottom: -117, width: 'calc(100% + 38px)', height: 117, background: '#fffdf8' }} />\n        <div style={{ position: 'absolute', left: -19, top: 0, width: 19, height: '100%', background: '#fffdf8' }} />\n        <div style={{ position: 'absolute', right: -19, top: 0, width: 19, height: '100%', background: '#fffdf8' }} />\n        <div style={{ position: 'absolute', left: -22, top: -22, right: -22, bottom: -120, borderRadius: 14, border: '3px solid ' + ink, boxShadow: '12px 14px 0 ' + ink + '24' }} />\n        <div style={{ position: 'absolute', inset: 0, borderRadius: r, boxShadow: 'inset 0 0 0 2px ' + ink + '26' }} />\n        {handle ? (\n          <div style={{ position: 'absolute', left: 0, right: 0, bottom: -108, textAlign: 'center', fontSize: 42, fontWeight: 700, color: ink, letterSpacing: 4, fontStyle: 'italic' }}>{handle}</div>\n        ) : null}\n        <div style={{ position: 'absolute', left: -60, top: -50, width: 190, height: 52, background: accent + 'b3', transform: 'rotate(-12deg)', boxShadow: '0 4px 12px #2c26201f' }} />\n        <div style={{ position: 'absolute', right: -60, top: -50, width: 190, height: 52, background: accent + 'b3', transform: 'rotate(11deg)', boxShadow: '0 4px 12px #2c26201f' }} />\n      </div>\n      <svg viewBox=\"0 0 100 100\" style={{ position: 'absolute', width: 80, height: 80, left: 74, top: y + winH * 0.72 + sway * 5, transform: 'rotate(' + (-12 + sway * 6) + 'deg)', opacity: popIn }}>\n        <path d=\"M50 6 L60 38 L94 38 L66 57 L76 90 L50 70 L24 90 L34 57 L6 38 L40 38 Z\" fill=\"#ffd66e\" stroke={ink} strokeWidth=\"4\" strokeLinejoin=\"round\" />\n      </svg>\n    </AbsoluteFill>\n  );\n};"
+  }
+]
