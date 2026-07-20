@@ -142,7 +142,7 @@ Describe the goal → Agent reads the project → Produces verifiable edits → 
 | Motion Graphics | Built-in templates, a secure sandbox, custom templates, and video rendering |
 | AI generation | Image, video, speech, music, and sound-effect jobs with progress tracking |
 | Media | Uploads, folders, online image/video/audio search, and Firecrawl visual-media fallback |
-| Export | MP4, audio, captions, FCPXML, project import/export, and export history |
+| Export | MP4, audio, captions, FCPXML, project import/export, export history, hardware-aware H.264 acceleration, and resource-aware export queueing |
 | Agent | Built-in conversational agent, skills, proposal-based edits, and external Streamable HTTP MCP |
 
 ---
@@ -193,6 +193,8 @@ http://localhost:5199
 ```
 
 Only add the model or media-service credentials you actually use to `.env.local`. Features without configured third-party credentials report the missing key explicitly; local timeline editing, built-in media, and other configured capabilities continue to work.
+
+Local H.264 exports automatically prefer VideoToolbox on macOS and NVENC on compatible Windows systems, then fall back to software encoding. Tune render concurrency and the heavy-export limit with `OPENCHATCUT_RENDER_CONCURRENCY` and `OPENCHATCUT_MAX_ACTIVE_EXPORTS`, disable hardware encoding with `OPENCHATCUT_DISABLE_HARDWARE_ENCODING`, or override FFmpeg-side encoder selection with `OPENCHATCUT_H264_ENCODER`; see [`.env.example`](.env.example).
 
 ### Desktop development
 
@@ -327,7 +329,7 @@ Clients must send `Authorization: Bearer <token>`. The current bridge is designe
 # Type checking and production build
 npm run build
 
-# Full regression checks
+# Core regression checks
 npm test
 
 # Static analysis
