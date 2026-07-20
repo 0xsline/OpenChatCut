@@ -1,4 +1,6 @@
 export type LlmProtocol = 'anthropic' | 'openai' | 'openai-compatible';
+export type OpenAiApiMode = 'responses' | 'chat';
+export const DEFAULT_OPENAI_API_MODE: OpenAiApiMode = 'responses';
 
 interface LlmProviderPreset {
   readonly id: string;
@@ -72,13 +74,6 @@ export const LLM_PROVIDER_PRESETS = [
     baseUrl: 'https://api.mistral.ai/v1',
     defaultModel: 'mistral-large-latest',
   },
-  {
-    id: 'openai-compatible',
-    label: 'Custom OpenAI-compatible API',
-    protocol: 'openai-compatible',
-    baseUrl: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-4o-mini',
-  },
 ] as const satisfies readonly LlmProviderPreset[];
 
 export type LlmProvider = (typeof LLM_PROVIDER_PRESETS)[number]['id'];
@@ -122,8 +117,20 @@ export function protocolForProvider(provider: unknown): LlmProtocol {
   return llmProviderPreset(provider).protocol;
 }
 
-export function providerApiPath(provider: unknown): string {
+export function normalizeOpenAiApiMode(value: unknown): OpenAiApiMode {
+  return value === 'chat' ? 'chat' : DEFAULT_OPENAI_API_MODE;
+}
+
+export function providerApiPath(
+  provider: unknown,
+  openAiApiMode: unknown = DEFAULT_OPENAI_API_MODE,
+): string {
   const protocol = protocolForProvider(provider);
   if (protocol === 'anthropic') return '/messages';
-  return protocol === 'openai' ? '/responses' : '/chat/completions';
+  if (protocol === 'openai') {
+    return normalizeOpenAiApiMode(openAiApiMode) === 'chat'
+      ? '/chat/completions'
+      : '/responses';
+  }
+  return '/chat/completions';
 }

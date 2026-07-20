@@ -95,9 +95,7 @@ const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorP
     key: `llm/${preset.id}`,
     vendor: preset.id as VendorId,
     title: preset.label,
-    note: preset.id === 'openai-compatible'
-      ? '兼容 OpenAI 接口规范的自建服务或中转。先测试连接，成功后可从接口返回的模型中选择。'
-      : '每个厂商独立保存地址、密钥与模型。先测试连接，成功后可从接口返回的模型中选择。',
+    note: '每个厂商独立保存地址、密钥与模型。先测试连接，成功后可从接口返回的模型中选择。',
     fields: [
       {
         name: names.baseUrl,
@@ -107,6 +105,14 @@ const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorP
         note: '填写完整 API 前缀；可使用官方地址、自建网关或兼容中转。',
       },
       secret(names.apiKey, 'API Key'),
+      ...(preset.id === 'openai' ? [{
+        name: 'LLM_OPENAI_API_MODE',
+        label: '接口格式',
+        kind: 'select' as const,
+        defaultLabel: 'Responses API（推荐）',
+        note: '选择服务实际支持的协议；OpenAI 使用 Responses API，兼容服务使用 Chat Completions API。',
+        options: [{ value: 'chat', label: 'Chat Completions API' }],
+      }] : []),
       {
         name: names.model,
         label: '模型',

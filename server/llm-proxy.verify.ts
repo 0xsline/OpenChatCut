@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import { createMiniConnect } from '../desktop/mini-connect.ts';
 import {
-  AI_SDK_BASE_URL_FORMAT,
   expandLlmProviderPatch,
   llmOperationPath,
   resolveLlmBaseUrl,
@@ -31,15 +30,6 @@ assert.equal(resolveLlmBaseUrl('deepseek', ''), 'https://api.deepseek.com');
 assert.equal(resolveLlmBaseUrl('minimax', ''), 'https://api.minimaxi.com/v1');
 assert.equal(resolveLlmBaseUrl('openai', 'https://api.openai.com', ''), 'https://api.openai.com/v1');
 assert.equal(resolveLlmBaseUrl('anthropic', 'https://relay.test/api', ''), 'https://relay.test/api/v1');
-assert.equal(
-  resolveLlmBaseUrl(
-    'openai-compatible',
-    'https://example.test/v1beta/openai/',
-    AI_SDK_BASE_URL_FORMAT,
-  ),
-  'https://example.test/v1beta/openai',
-);
-assert.equal(llmOperationPath('openai-compatible'), '/chat/completions');
 assert.equal(llmOperationPath('kimi'), '/chat/completions');
 
 const switched = expandLlmProviderPatch(new Map([['LLM_PROVIDER', 'openai']]), 'anthropic');

@@ -4,32 +4,43 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, type LanguageModel } from 'ai';
 import {
   DEFAULT_LLM_PROVIDER,
+  DEFAULT_OPENAI_API_MODE,
   defaultModelForProvider,
   normalizeLlmProvider,
+  normalizeOpenAiApiMode,
   protocolForProvider,
   providerApiPath,
   type LlmProvider,
+  type OpenAiApiMode,
 } from '../../shared/llm-providers';
 import { normalizeLlmMessages } from './messages';
 
 export {
   DEFAULT_LLM_PROVIDER,
+  DEFAULT_OPENAI_API_MODE,
   defaultModelForProvider,
   normalizeLlmProvider,
+  normalizeOpenAiApiMode,
   protocolForProvider,
   providerApiPath,
 };
-export type { LlmProvider };
+export type { LlmProvider, OpenAiApiMode };
 export type ConfiguredLanguageModel = Exclude<LanguageModel, string>;
 
 export let PROVIDER: LlmProvider = DEFAULT_LLM_PROVIDER;
 export let MODEL = defaultModelForProvider(PROVIDER);
+export let OPENAI_API_MODE: OpenAiApiMode = DEFAULT_OPENAI_API_MODE;
 
-export function setLlmConfig(provider: unknown, model: unknown): void {
+export function setLlmConfig(
+  provider: unknown,
+  model: unknown,
+  openAiApiMode: unknown = OPENAI_API_MODE,
+): void {
   PROVIDER = normalizeLlmProvider(provider);
   MODEL = typeof model === 'string' && model.trim()
     ? model.trim()
     : defaultModelForProvider(PROVIDER);
+  OPENAI_API_MODE = normalizeOpenAiApiMode(openAiApiMode);
 }
 
 export function setLlmModel(model: string): void {
@@ -79,17 +90,23 @@ function compatibleProvider(provider: LlmProvider): ReturnType<typeof createOpen
 export function getLanguageModel(
   provider: LlmProvider = PROVIDER,
   model: string = MODEL,
+  openAiApiMode: OpenAiApiMode = OPENAI_API_MODE,
 ): ConfiguredLanguageModel {
   const protocol = protocolForProvider(provider);
   if (protocol === 'anthropic') return anthropicProvider(model);
-  if (protocol === 'openai') return openaiProvider.responses(model);
+  if (protocol === 'openai') {
+    return openAiApiMode === 'chat'
+      ? openaiProvider.chat(model)
+      : openaiProvider.responses(model);
+  }
   return compatibleProvider(provider)(model);
 }
 
 export function getLanguageModelProviderOptions(
   provider: LlmProvider = PROVIDER,
+  openAiApiMode: OpenAiApiMode = OPENAI_API_MODE,
 ) {
-  return protocolForProvider(provider) === 'openai'
+  return protocolForProvider(provider) === 'openai' && openAiApiMode === 'responses'
     ? { openai: { store: false } }
     : undefined;
 }

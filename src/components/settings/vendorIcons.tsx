@@ -12,7 +12,6 @@ import qwenSvg from '../../../assets/vendor-icons/qwen-color.svg?raw';
 import zhipuSvg from '../../../assets/vendor-icons/zhipu-color.svg?raw';
 import deepseekSvg from '../../../assets/vendor-icons/deepseek-color.svg?raw';
 import mistralSvg from '../../../assets/vendor-icons/mistral-color.svg?raw';
-import openaiCompatibleSvg from '../../../assets/vendor-icons/openai-compatible.svg?raw';
 import minimaxSvg from '../../../assets/vendor-icons/minimax-color.svg?raw';
 import hailuoSvg from '../../../assets/vendor-icons/hailuo-color.svg?raw';
 import elevenlabsSvg from '../../../assets/vendor-icons/elevenlabs.svg?raw';
@@ -29,7 +28,7 @@ import cloudflareSvg from '../../../assets/vendor-icons/cloudflare.svg?raw';
 
 export type VendorId =
   | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral'
-  | 'openai-compatible' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
+  | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
   | 'assemblyai' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk';
 
@@ -48,7 +47,6 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
   glm: { svg: zhipuSvg },
   deepseek: { svg: deepseekSvg },
   mistral: { svg: mistralSvg },
-  'openai-compatible': { svg: openaiCompatibleSvg, tint: theme.text },
   minimax: { svg: minimaxSvg },
   hailuo: { svg: hailuoSvg },                       // MiniMax 海螺视频专属标
   elevenlabs: { svg: elevenlabsSvg, tint: theme.text },
