@@ -87,7 +87,7 @@ rect.c-bg-rect { fill: var(--bg); }
         <path d="M 1130 476 L 1180 476" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path d="M 800 402 L 800 501 L 800 501 L 800 600" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         <path d="M 570 402 L 570 501 L 570 501 L 570 600" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path d="M 210 636 L 480 636" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 480 636 L 210 636" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
 
         <!-- Components -->
         <rect x="30" y="330" width="180" height="72" rx="6" class="c-mask"/>
@@ -104,7 +104,7 @@ rect.c-bg-rect { fill: var(--bg); }
         <rect x="480" y="130" width="180" height="72" rx="6" class="c-mask"/>
         <rect x="480" y="130" width="180" height="72" rx="6" class="c-frontend" stroke-width="1.5"/>
         <text x="570" y="164" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Built-in Agent</text>
-        <text x="570" y="180" class="t-muted" font-size="9" text-anchor="middle">Anthropic tool-use</text>
+        <text x="570" y="180" class="t-muted" font-size="9" text-anchor="middle">Vercel AI SDK · Multi-provider</text>
 
         <rect x="710" y="130" width="180" height="72" rx="6" class="c-mask"/>
         <rect x="710" y="130" width="180" height="72" rx="6" class="c-frontend" stroke-width="1.5"/>
@@ -114,7 +114,7 @@ rect.c-bg-rect { fill: var(--bg); }
         <rect x="480" y="330" width="180" height="72" rx="6" class="c-mask"/>
         <rect x="480" y="330" width="180" height="72" rx="6" class="c-messagebus" stroke-width="1.5"/>
         <text x="570" y="364" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Agent Skills &amp; Tools</text>
-        <text x="570" y="380" class="t-muted" font-size="9" text-anchor="middle">Unified tool registry</text>
+        <text x="570" y="380" class="t-muted" font-size="9" text-anchor="middle">Runtime · Skills · Tool registry</text>
 
         <rect x="710" y="330" width="180" height="72" rx="6" class="c-mask"/>
         <rect x="710" y="330" width="180" height="72" rx="6" class="c-backend" stroke-width="1.5"/>
@@ -140,7 +140,7 @@ rect.c-bg-rect { fill: var(--bg); }
         <rect x="480" y="600" width="180" height="72" rx="6" class="c-mask"/>
         <rect x="480" y="600" width="180" height="72" rx="6" class="c-backend" stroke-width="1.5"/>
         <text x="570" y="634" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Server Plugins</text>
-        <text x="570" y="650" class="t-muted" font-size="9" text-anchor="middle">Generation · Transcription · Media</text>
+        <text x="570" y="650" class="t-muted" font-size="9" text-anchor="middle">LLM Proxy · AI Jobs · Media</text>
 
         <rect x="710" y="600" width="180" height="72" rx="6" class="c-mask"/>
         <rect x="710" y="600" width="180" height="72" rx="6" class="c-database" stroke-width="1.5"/>
@@ -157,8 +157,8 @@ rect.c-bg-rect { fill: var(--bg); }
         <!-- Connection labels -->
         <rect x="215" y="346" width="30" height="14" rx="3" class="c-mask"/>
         <text x="230" y="356" class="t-backend" font-size="8" text-anchor="middle">MCP</text>
-        <rect x="430.8" y="346" width="48.4" height="14" rx="3" class="c-mask"/>
-        <text x="455" y="356" class="t-backend" font-size="8" text-anchor="middle">Tool calls</text>
+        <rect x="430.8" y="316" width="48.4" height="14" rx="3" class="c-mask"/>
+        <text x="455" y="326" class="t-backend" font-size="8" text-anchor="middle">Tool calls</text>
 
 
         <rect x="670" y="346" width="30" height="14" rx="3" class="c-mask"/>
@@ -169,8 +169,8 @@ rect.c-bg-rect { fill: var(--bg); }
 
 
 
-        <rect x="320.8" y="616" width="48.4" height="14" rx="3" class="c-mask"/>
-        <text x="345" y="626" class="t-messagebus" font-size="8" text-anchor="middle">On-demand network</text>
+        <rect x="310" y="616" width="70" height="14" rx="3" class="c-mask"/>
+        <text x="345" y="626" class="t-messagebus" font-size="8" text-anchor="middle">Provider APIs</text>
 
         <!-- Legend -->
         <text x="40" y="731" class="t-primary" font-size="9" font-weight="600">Legend</text>

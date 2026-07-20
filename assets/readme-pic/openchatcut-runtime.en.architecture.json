@@ -28,7 +28,7 @@
       "id": "builtin-agent",
       "type": "frontend",
       "label": "Built-in Agent",
-      "sublabel": "Anthropic tool-use",
+      "sublabel": "Vercel AI SDK · Multi-provider",
       "pos": [480, 130],
       "size": [180, 72]
     },
@@ -44,7 +44,7 @@
       "id": "agent-tools",
       "type": "messagebus",
       "label": "Agent Skills & Tools",
-      "sublabel": "Unified tool registry",
+      "sublabel": "Runtime · Skills · Tool registry",
       "pos": [480, 330],
       "size": [180, 72]
     },
@@ -85,7 +85,7 @@
       "id": "server-plugins",
       "type": "backend",
       "label": "Server Plugins",
-      "sublabel": "Generation · Transcription · Media",
+      "sublabel": "LLM Proxy · AI Jobs · Media",
       "pos": [480, 600],
       "size": [180, 72]
     },
@@ -155,6 +155,7 @@
       "from": "mcp-broker",
       "to": "agent-tools",
       "label": "Tool calls",
+      "labelAt": [455, 326],
       "variant": "emphasis"
     },
     {
@@ -216,9 +217,9 @@
       "variant": "dashed"
     },
     {
-      "from": "providers",
-      "to": "server-plugins",
-      "label": "On-demand network",
+      "from": "server-plugins",
+      "to": "providers",
+      "label": "Provider APIs",
       "variant": "dashed"
     }
   ],
@@ -227,7 +228,7 @@
       "dot": "cyan",
       "title": "Unified editing path",
       "items": [
-        "Natural language → tool calls → EditorCore commands",
+        "Natural language → model stream → tool calls → EditorCore commands",
         "One timeline state drives preview, undo, and export"
       ]
     },

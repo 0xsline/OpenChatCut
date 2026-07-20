@@ -28,7 +28,7 @@
       "id": "builtin-agent",
       "type": "frontend",
       "label": "内置 Agent",
-      "sublabel": "Anthropic tool-use",
+      "sublabel": "Vercel AI SDK · 多厂商",
       "pos": [480, 130],
       "size": [180, 72]
     },
@@ -44,7 +44,7 @@
       "id": "agent-tools",
       "type": "messagebus",
       "label": "Agent Skills & Tools",
-      "sublabel": "统一工具注册表",
+      "sublabel": "Runtime · Skills · 工具注册表",
       "pos": [480, 330],
       "size": [180, 72]
     },
@@ -85,7 +85,7 @@
       "id": "server-plugins",
       "type": "backend",
       "label": "Server Plugins",
-      "sublabel": "生成 · 转写 · 素材",
+      "sublabel": "LLM 中转 · AI 任务 · 素材",
       "pos": [480, 600],
       "size": [180, 72]
     },
@@ -216,9 +216,9 @@
       "variant": "dashed"
     },
     {
-      "from": "providers",
-      "to": "server-plugins",
-      "label": "按需联网",
+      "from": "server-plugins",
+      "to": "providers",
+      "label": "厂商 API",
       "variant": "dashed"
     }
   ],
@@ -227,7 +227,7 @@
       "dot": "cyan",
       "title": "统一编辑主链路",
       "items": [
-        "自然语言 → 工具调用 → EditorCore 命令",
+        "自然语言 → 模型流 → 工具调用 → EditorCore 命令",
         "同一时间线状态驱动预览、撤销与导出"
       ]
     },
