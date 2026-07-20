@@ -10,6 +10,12 @@ import { existsSync } from 'node:fs';
 import { rename, stat, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
+import {
+  h264EncoderAttempts,
+  h264EncodingArgs,
+  isHardwareH264Encoder,
+  resolveH264Encoder,
+} from '../media-acceleration.ts';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 import { putUploadFile, r2Config } from '../r2.ts';
 
@@ -64,9 +70,17 @@ function run(cmd: string, args: string[], timeoutMs: number): Promise<{ stdout: 
     const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    let timeoutError: Error | undefined;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error); else resolve({ stdout, stderr });
+    };
     const timer = setTimeout(() => {
+      timeoutError = new Error(`${cmd} timed out after ${Math.round(timeoutMs / 1000)}s`);
       child.kill('SIGKILL');
-      reject(new Error(`${cmd} timed out after ${Math.round(timeoutMs / 1000)}s`));
     }, timeoutMs);
     child.stdout?.on('data', (c: Buffer) => {
       stdout += String(c);
@@ -76,15 +90,10 @@ function run(cmd: string, args: string[], timeoutMs: number): Promise<{ stdout: 
       stderr += String(c);
       if (stderr.length > 16_000) stderr = stderr.slice(-8000);
     });
-    child.on('error', (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve({ stdout, stderr });
-      else reject(new Error(`${cmd} exit ${code}: ${stderr.slice(-600)}`));
-    });
+    child.once('error', (error) => finish(error));
+    child.once('close', (code) => finish(timeoutError ?? (code === 0
+      ? undefined
+      : new Error(`${cmd} exit ${code}: ${stderr.slice(-600)}`))));
   });
 }
 
@@ -260,26 +269,41 @@ async function encodeNormalized(
     const fps = String(Math.round(targetFps * 1000) / 1000);
     filters.push(`fps=fps=${fps}:start_time=0:round=near`);
   }
-  const args = [
-    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-    '-i', inputPath,
-    '-map', '0:v:0',
-    ...(meta.hasAudio ? ['-map', '0:a:0?'] : ['-an']),
-    '-vf', filters.join(','),
-    '-c:v', 'libx264',
-    '-preset', 'veryfast',
-    '-profile:v', 'high',
-    '-pix_fmt', 'yuv420p',
-    '-b:v', String(targetBitrate),
-    '-maxrate', String(targetBitrate),
-    '-bufsize', String(targetBitrate * 2),
-    ...(convertToCfr ? ['-fps_mode', 'cfr'] : []),
-    '-avoid_negative_ts', 'make_zero',
-    '-movflags', '+faststart',
-  ];
-  if (meta.hasAudio) args.push('-c:a', 'aac', '-b:a', VIDEO_AUDIO_BITRATE);
-  args.push(outputPath);
-  await run(ffmpegBin(), args, FFMPEG_TIMEOUT_MS);
+  const ffmpeg = ffmpegBin();
+  const preferred = await resolveH264Encoder(ffmpeg);
+  let lastError: unknown;
+  for (const encoder of h264EncoderAttempts(preferred)) {
+    const args = [
+      '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+      '-i', inputPath,
+      '-map', '0:v:0',
+      ...(meta.hasAudio ? ['-map', '0:a:0?'] : ['-an']),
+      '-vf', filters.join(','),
+      ...h264EncodingArgs({
+        encoder,
+        targetBitrate,
+        maxBitrate: targetBitrate,
+        bufferSize: targetBitrate * 2,
+        softwarePreset: 'veryfast',
+      }),
+      '-profile:v', 'high',
+      ...(convertToCfr ? ['-fps_mode', 'cfr'] : []),
+      '-avoid_negative_ts', 'make_zero',
+      '-movflags', '+faststart',
+    ];
+    if (meta.hasAudio) args.push('-c:a', 'aac', '-b:a', VIDEO_AUDIO_BITRATE);
+    args.push(outputPath);
+    try {
+      await run(ffmpeg, args, FFMPEG_TIMEOUT_MS);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isHardwareH264Encoder(encoder)) throw error;
+      console.warn(`[normalize-media] ${encoder} failed; falling back to libx264`);
+      await unlink(outputPath).catch(() => {});
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('media normalization failed');
 }
 
 export function normalizeMediaPlugin(): Plugin {
@@ -291,6 +315,7 @@ export function normalizeMediaPlugin(): Plugin {
           sendJson(res, 405, { error: 'method not allowed — use POST' });
           return;
         }
+        let tempOutput: string | null = null;
         try {
           const body = (await readJson(req)) as {
             src?: string;
@@ -363,6 +388,7 @@ export function normalizeMediaPlugin(): Plugin {
           const outName = `${stem}.mp4`;
           const outPath = join(dir === uploadDir() ? uploadDir() : dir, outName);
           const tmpPath = join(dirname(outPath), `${stem}.norm.tmp.mp4`);
+          tempOutput = tmpPath;
           await unlink(tmpPath).catch(() => {});
 
           server.config.logger.info(`[normalize-media] ${name}: ${reason}`);
@@ -429,6 +455,8 @@ export function normalizeMediaPlugin(): Plugin {
           server.config.logger.error(`[normalize-media] ${message}`);
           const status = /ENOENT|spawn .*ffmpeg|spawn .*ffprobe/i.test(message) ? 503 : 500;
           sendJson(res, status, { error: message });
+        } finally {
+          if (tempOutput) await unlink(tempOutput).catch(() => {});
         }
       });
     },

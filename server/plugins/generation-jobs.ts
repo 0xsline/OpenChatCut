@@ -54,6 +54,11 @@ export interface GenerationJobProgress {
 
 export type UpdateGenerationJob = (progress: GenerationJobProgress) => void;
 
+export interface GenerationJobOptions {
+  /** Keep the job queued until a permit for expensive local work is available. */
+  acquire?: () => Promise<() => void>;
+}
+
 const jobs = new Map<string, GenerationJob>();
 const TERMINAL = new Set<GenerationJobStatus>(['succeeded', 'failed']);
 const MAX_JOB_AGE_MS = 60 * 60_000;
@@ -61,56 +66,65 @@ const MAX_JOB_AGE_MS = 60 * 60_000;
 function cleanOldJobs() {
   const cutoff = Date.now() - MAX_JOB_AGE_MS;
   for (const [id, job] of jobs) {
-    if (job.updatedAt < cutoff) jobs.delete(id);
+    if (TERMINAL.has(job.status) && job.updatedAt < cutoff) jobs.delete(id);
+  }
+}
+
+function applyProgress(job: GenerationJob, next: GenerationJobProgress): void {
+  if (TERMINAL.has(job.status)) return;
+  if (next.progress !== undefined && Number.isFinite(next.progress)) {
+    job.progress = Math.max(job.progress, Math.min(99, Math.max(0, next.progress)));
+  }
+  if (next.phase !== undefined) job.phase = next.phase;
+  if (next.totalFrames !== undefined && Number.isFinite(next.totalFrames)) {
+    job.totalFrames = Math.max(0, Math.floor(next.totalFrames));
+  }
+  if (next.processedFrames !== undefined && Number.isFinite(next.processedFrames)) {
+    const processed = Math.max(0, Math.floor(next.processedFrames));
+    job.processedFrames = job.totalFrames === undefined ? processed : Math.min(job.totalFrames, processed);
+  }
+  job.updatedAt = Date.now();
+}
+
+async function runGenerationJob(
+  job: GenerationJob,
+  task: (jobId: string, update: UpdateGenerationJob) => Promise<GenerationResult>,
+  options: GenerationJobOptions,
+): Promise<void> {
+  let release: (() => void) | undefined;
+  try {
+    release = await options.acquire?.();
+    job.status = 'running';
+    job.progress = 10;
+    job.phase = 'starting';
+    job.updatedAt = Date.now();
+    job.result = await task(job.id, (next) => applyProgress(job, next));
+    job.status = 'succeeded';
+    job.progress = 100;
+    job.phase = 'completed';
+    if (job.totalFrames !== undefined) job.processedFrames = job.totalFrames;
+  } catch (error) {
+    job.status = 'failed';
+    job.error = error instanceof Error ? error.message : String(error);
+    job.progress = 100;
+    job.phase = 'failed';
+  } finally {
+    job.updatedAt = Date.now();
+    release?.();
   }
 }
 
 export function createGenerationJob(
   params: Record<string, unknown>,
   task: (jobId: string, update: UpdateGenerationJob) => Promise<GenerationResult>,
+  options: GenerationJobOptions = {},
 ): { jobId: string; status: 'queued' } {
   cleanOldJobs();
   const id = randomUUID();
   const now = Date.now();
   const job: GenerationJob = { id, status: 'queued', progress: 0, phase: 'queued', params, createdAt: now, updatedAt: now };
   jobs.set(id, job);
-
-  void Promise.resolve().then(async () => {
-    job.status = 'running';
-    job.progress = 10;
-    job.phase = 'starting';
-    job.updatedAt = Date.now();
-    const update: UpdateGenerationJob = (next) => {
-      if (TERMINAL.has(job.status)) return;
-      if (next.progress !== undefined && Number.isFinite(next.progress)) {
-        // Running jobs never report 100%; that value is reserved for a terminal snapshot.
-        job.progress = Math.max(job.progress, Math.min(99, Math.max(0, next.progress)));
-      }
-      if (next.phase !== undefined) job.phase = next.phase;
-      if (next.totalFrames !== undefined && Number.isFinite(next.totalFrames)) {
-        job.totalFrames = Math.max(0, Math.floor(next.totalFrames));
-      }
-      if (next.processedFrames !== undefined && Number.isFinite(next.processedFrames)) {
-        const processed = Math.max(0, Math.floor(next.processedFrames));
-        job.processedFrames = job.totalFrames === undefined ? processed : Math.min(job.totalFrames, processed);
-      }
-      job.updatedAt = Date.now();
-    };
-    try {
-      job.result = await task(id, update);
-      job.status = 'succeeded';
-      job.progress = 100;
-      job.phase = 'completed';
-      if (job.totalFrames !== undefined) job.processedFrames = job.totalFrames;
-    } catch (error) {
-      job.status = 'failed';
-      job.error = error instanceof Error ? error.message : String(error);
-      job.progress = 100;
-      job.phase = 'failed';
-    }
-    job.updatedAt = Date.now();
-  });
-
+  void runGenerationJob(job, task, options);
   return { jobId: id, status: 'queued' };
 }
 

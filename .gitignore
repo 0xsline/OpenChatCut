@@ -62,11 +62,6 @@ AGENTS.md
 # 私人工作文档(TODO/设计笔记;要公开的文档另立目录)
 docs/
 
-# 本地/测试用 check 脚本(*.check.ts 与 npm test 配套,不入库)
-*.check.ts
-# 外部 MCP 桥接协议回归随实现入库
-!server/external-agent/broker.check.ts
-
 # 本地开发/验证脚本
 /scripts/
 

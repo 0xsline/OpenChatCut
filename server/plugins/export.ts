@@ -1,118 +1,53 @@
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { readFile, unlink, mkdir, stat } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
+import { readFile, unlink, mkdir, rename, stat } from 'node:fs/promises';
 import { normalizeFrameRange } from '../../src/export/range.ts';
-import { createGenerationJob, deleteGenerationJob, getGenerationJobSnapshot } from './generation-jobs.ts';
+import { resolveH264TargetBitrate } from '../media-acceleration.ts';
+import {
+  EXPORT_MEDIA,
+  exportDuration,
+  exportFilename,
+  exportScale,
+  planExport,
+  validateVideoParams,
+  type ExportPlan,
+  type ExportRequest,
+  type ExportTimeline,
+} from './export-plan.ts';
+import {
+  acquireExportPermit,
+  exportOutputSize,
+  retimeFps,
+  withExportPermit,
+} from './export-runtime.ts';
+import {
+  createGenerationJob,
+  deleteGenerationJob,
+  getGenerationJobSnapshot,
+  type UpdateGenerationJob,
+} from './generation-jobs.ts';
 // @ts-expect-error — plain .mjs render pipeline has no .d.ts
 import { renderTimeline, renderTimelineStills, renderClip, setUploadsDirProvider } from '../../remotion/render.mjs';
 
 import { uploadDir } from '../media-dir.ts';
 import { sanitizeFileName } from '../file-name.ts';
 import { formatFrameLabel, tileContactSheet } from '../frame-grid.ts';
+
+export { EXPORT_FPS_OPTIONS, EXPORT_RESOLUTIONS, exportScale, validateVideoParams } from './export-plan.ts';
+export type { ExportResolution } from './export-plan.ts';
 const CLIP_EXT: Record<string, string> = { prores: 'mov', vp8: 'webm', vp9: 'webm', h264: 'mp4' };
 const CLIP_MIME: Record<string, string> = { mov: 'video/quicktime', webm: 'video/webm', mp4: 'video/mp4' };
 
 const MAX_BODY_BYTES = 32 * 1024 * 1024; // 32MB — timelines carry inlined template code.
-
-type ExportRequest = {
-  state?: unknown;
-  format?: 'video' | 'audio';
-  codec?: 'h264' | 'vp8' | 'mp3' | 'wav';
-  name?: string;
-  startFrame?: number;
-  endFrameExclusive?: number;
-  startSeconds?: number;
-  endSeconds?: number;
-  /** 视频专用:导出分辨率档(按短边缩放渲染;省略=时间线原尺寸)。 */
-  resolution?: ExportResolution;
-  /** 视频专用:目标帧率(省略=跟时间线)。与时间线不同时用 ffmpeg fps 滤镜重采样。 */
-  fps?: number;
-};
-
-type ExportTimeline = {
-  fps: number;
-  items: Array<{ startFrame: number; durationInFrames: number }>;
-};
-
-export const EXPORT_RESOLUTIONS = { '480p': 480, '720p': 720, '1080p': 1080 } as const;
-export type ExportResolution = keyof typeof EXPORT_RESOLUTIONS;
-export const EXPORT_FPS_OPTIONS = [24, 25, 30, 50, 60] as const;
-
-/** 分辨率档 → Remotion scale(短边对齐;夹在 [0.1,4],1=不缩放)。导出纯函数,供 check。 */
-export function exportScale(
-  state: { width?: unknown; height?: unknown },
-  resolution?: ExportResolution,
-): number {
-  if (!resolution) return 1;
-  const width = Number(state.width) || 1920;
-  const height = Number(state.height) || 1080;
-  const minSide = Math.max(1, Math.min(width, height));
-  return Math.min(4, Math.max(0.1, EXPORT_RESOLUTIONS[resolution] / minSide));
-}
-
-/** 视频专用参数(resolution/fps)的共享校验;audio 传了直接拒。导出纯函数,供 check。 */
-export function validateVideoParams(body: { resolution?: unknown; fps?: unknown } | null, format: 'video' | 'audio'): void {
-  if (body?.resolution !== undefined) {
-    if (format !== 'video') throw new ExportRequestError('resolution applies to video exports only');
-    if (typeof body.resolution !== 'string' || !(body.resolution in EXPORT_RESOLUTIONS)) {
-      throw new ExportRequestError('resolution must be 480p, 720p, or 1080p');
-    }
-  }
-  if (body?.fps !== undefined) {
-    if (format !== 'video') throw new ExportRequestError('fps applies to video exports only');
-    if (typeof body.fps !== 'number' || !(EXPORT_FPS_OPTIONS as readonly number[]).includes(body.fps)) {
-      throw new ExportRequestError('fps must be 24, 25, 30, 50, or 60');
-    }
-  }
-}
-
-/** 帧率重采样:渲染完照原 fps,ffmpeg fps 滤镜复制/抽帧到目标(帧内容不插值——
- * ponytail: 真·时域重采样要合成层按 renderFps 重投影,需求出现再上)。 */
-async function retimeFps(input: string, output: string, targetFps: number, codec: 'h264' | 'vp8'): Promise<void> {
-  const videoArgs = codec === 'h264'
-    ? ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'medium']
-    : ['-c:v', 'libvpx', '-b:v', '4M'];
-  await new Promise<void>((resolvePromise, reject) => {
-    const child = spawn('ffmpeg', ['-y', '-i', input, '-vf', `fps=${targetFps}`, ...videoArgs, '-c:a', 'copy', output]);
-    let stderr = '';
-    child.stderr.on('data', (chunk) => { stderr += String(chunk); });
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0) resolvePromise();
-      else reject(new Error(`ffmpeg fps retime failed (${code}): ${stderr.slice(-300)}`));
-    });
-  });
-}
-
-const EXPORT_MEDIA = {
-  h264: { codec: 'h264', ext: 'mp4', mime: 'video/mp4' },
-  vp8: { codec: 'vp8', ext: 'webm', mime: 'video/webm' },
-  mp3: { codec: 'mp3', ext: 'mp3', mime: 'audio/mpeg' },
-  wav: { codec: 'wav', ext: 'wav', mime: 'audio/wav' },
-} as const;
-
-function exportFilename(name: string | undefined, ext: string): string {
-  // 只滤真正非法的文件系统字符，保留中文等 Unicode（原来的 [^\w.-] 会把中文全砍成下划线）。
-  const base = sanitizeFileName((name ?? 'export').replace(/\.(?:mp4|webm|mp3|wav)$/i, ''), 'export');
-  return `${base}.${ext}`;
-}
 
 // RFC 5987：filename= 是 latin-1 字段，中文 UTF-8 字节直接塞进去会被浏览器按 latin-1
 // 解码成乱码。给一个 ASCII 兜底 filename= + filename*=UTF-8'' 百分号编码（同 server/plugins/subtitles）。
 function contentDisposition(filename: string): string {
   const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
-}
-
-function exportDuration(state: ExportTimeline): number {
-  return Math.max(
-    state.fps,
-    state.items.reduce((end, item) => Math.max(end, item.startFrame + item.durationInFrames), 0),
-  );
 }
 
 function readJsonBody(req: IncomingMessage): Promise<unknown> {
@@ -151,56 +86,46 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-/** 请求体校验失败（→ 400）。渲染本身的失败发生在 job 里，不走这条。 */
-class ExportRequestError extends Error {}
-
-interface ExportPlan {
-  state: unknown;
-  format: 'video' | 'audio';
-  media: (typeof EXPORT_MEDIA)[keyof typeof EXPORT_MEDIA];
-  frameRange: [number, number] | undefined;
-  totalFrames: number;
-  filename: string;
-  durationSeconds: number;
-  scale: number;
-  /** 目标帧率与时间线不同时非空 → 渲染后 ffmpeg 重采样 */
-  retimeFps: number | undefined;
-}
-
-// 与同步 /export 完全相同的入参校验 + 帧范围推导，抽成纯函数供异步 /export/job 复用。
-// （刻意不改同步 /export 的内联逻辑——保持它 100% 不变，代价是这段校验有少量重复。）
-function planExport(body: ExportRequest | null): ExportPlan {
-  const state = body?.state;
-  if (!state || typeof state !== 'object' || !Array.isArray((state as { items?: unknown }).items)) {
-    throw new ExportRequestError('body must be { state: TimelineState } with an items array');
+async function renderExportPlan(
+  plan: ExportPlan,
+  filepath: string,
+  update: UpdateGenerationJob,
+): Promise<void> {
+  const retimed = plan.retimeFps ? `${filepath}.retimed.${plan.media.ext}` : null;
+  try {
+    update({ phase: 'preparing', progress: 4, processedFrames: 0, totalFrames: plan.totalFrames });
+    await mkdir(dirname(filepath), { recursive: true });
+    update({ phase: 'rendering', progress: 8 });
+    const renderSpan = plan.retimeFps ? 84 : 90;
+    await renderTimeline({
+      state: plan.state,
+      outputLocation: filepath,
+      codec: plan.media.codec,
+      frameRange: plan.frameRange,
+      scale: plan.scale,
+      onProgress: (value: number) => {
+        const normalized = Math.min(1, Math.max(0, Number(value) || 0));
+        update({
+          phase: 'rendering',
+          progress: 8 + normalized * renderSpan,
+          processedFrames: Math.min(plan.totalFrames, Math.floor(normalized * plan.totalFrames)),
+          totalFrames: plan.totalFrames,
+        });
+      },
+    });
+    if (retimed && plan.retimeFps) {
+      update({ phase: 'finalizing', progress: 93, processedFrames: plan.totalFrames });
+      const outputSize = exportOutputSize(plan.state, plan.scale);
+      await retimeFps(filepath, retimed, plan.retimeFps, plan.media.codec as 'h264' | 'vp8',
+        resolveH264TargetBitrate({ ...outputSize, fps: plan.retimeFps }));
+      await unlink(filepath).catch(() => {});
+      await rename(retimed, filepath);
+    }
+    update({ phase: 'finalizing', progress: 99, processedFrames: plan.totalFrames });
+  } catch (error) {
+    await Promise.all([unlink(filepath).catch(() => {}), retimed ? unlink(retimed).catch(() => {}) : Promise.resolve()]);
+    throw error;
   }
-  const fps = (state as ExportTimeline).fps;
-  if (!Number.isFinite(fps) || fps <= 0) throw new ExportRequestError('state.fps must be a positive number');
-  if (body?.format !== undefined && body.format !== 'video' && body.format !== 'audio') {
-    throw new ExportRequestError('format must be video or audio');
-  }
-  if (body?.codec !== undefined && !['h264', 'vp8', 'mp3', 'wav'].includes(body.codec)) {
-    throw new ExportRequestError('codec must be h264, vp8, mp3, or wav');
-  }
-  if (body?.name !== undefined && typeof body.name !== 'string') throw new ExportRequestError('name must be a string');
-  if ([body?.startSeconds, body?.endSeconds].some((value) => value !== undefined && (typeof value !== 'number' || !Number.isFinite(value)))) {
-    throw new ExportRequestError('startSeconds and endSeconds must be finite numbers');
-  }
-  const format = body?.format ?? 'video';
-  const codec = body?.codec ?? (format === 'audio' ? 'mp3' : 'h264');
-  if ((format === 'audio') !== (codec === 'mp3' || codec === 'wav')) {
-    throw new ExportRequestError(`${format} export does not support codec=${codec}`);
-  }
-  const media = EXPORT_MEDIA[codec];
-  const startFrame = body?.startFrame ?? (body?.startSeconds === undefined ? undefined : Math.floor(body.startSeconds * fps));
-  const endFrameExclusive = body?.endFrameExclusive ?? (body?.endSeconds === undefined ? undefined : Math.ceil(body.endSeconds * fps));
-  validateVideoParams(body, format);
-  const totalFrames = exportDuration(state as ExportTimeline);
-  const frameRange = normalizeFrameRange(totalFrames, startFrame, endFrameExclusive);
-  const frames = frameRange ? frameRange[1] - frameRange[0] + 1 : totalFrames;
-  const scale = exportScale(state as { width?: unknown; height?: unknown }, body?.resolution);
-  const retimeFpsTarget = format === 'video' && body?.fps !== undefined && body.fps !== fps ? body.fps : undefined;
-  return { state, format, media, frameRange, totalFrames: frames, filename: exportFilename(body?.name, media.ext), durationSeconds: frames / fps, scale, retimeFps: retimeFpsTarget };
 }
 
 /**
@@ -283,6 +208,7 @@ export function exportPlugin(): Plugin {
       server.middlewares.use('/render-clip', async (req, res) => {
         if (req.method !== 'POST') { sendError(res, 405, 'method not allowed — use POST'); return; }
         let tmpOut: string | null = null;
+        let bakeOut: string | null = null;
         try {
           const body = (await readJsonBody(req)) as { state?: unknown; codec?: string; transparent?: boolean; mode?: string; filename?: string } | null;
           const state = body?.state;
@@ -297,13 +223,15 @@ export function exportPlugin(): Plugin {
             const dir = uploadDir();
             await mkdir(dir, { recursive: true });
             const fname = `${randomUUID()}.${ext}`;
-            await renderClip({ state, outputLocation: join(dir, fname), codec, transparent });
+            bakeOut = join(dir, fname);
+            await withExportPermit(() => renderClip({ state, outputLocation: bakeOut, codec, transparent }));
+            bakeOut = null;
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ path: `/media/uploads/${fname}` }));
           } else {
             tmpOut = join(tmpdir(), `openchatcut-clip-${randomUUID()}.${ext}`);
-            await renderClip({ state, outputLocation: tmpOut, codec, transparent });
+            await withExportPermit(() => renderClip({ state, outputLocation: tmpOut, codec, transparent }));
             const buf = await readFile(tmpOut);
             const safe = sanitizeFileName(body?.filename ?? 'clip', 'clip');
             res.statusCode = 200;
@@ -318,7 +246,8 @@ export function exportPlugin(): Plugin {
           if (!res.headersSent) sendError(res, 500, message);
           else res.end();
         } finally {
-          if (tmpOut) unlink(tmpOut).catch(() => {});
+          if (tmpOut) await unlink(tmpOut).catch(() => {});
+          if (bakeOut) await unlink(bakeOut).catch(() => {});
         }
       });
 
@@ -373,38 +302,16 @@ export function exportPlugin(): Plugin {
               totalFrames: plan.totalFrames,
             },
             async (_jobId, update) => {
-              update({ phase: 'preparing', progress: 4, processedFrames: 0, totalFrames: plan.totalFrames });
-              await mkdir(outDir, { recursive: true });
-              update({ phase: 'rendering', progress: 8 });
-              const renderSpan = plan.retimeFps ? 84 : 90;
-              await renderTimeline({
-                state: plan.state,
-                outputLocation: filepath,
-                codec: plan.media.codec,
-                frameRange: plan.frameRange,
-                scale: plan.scale,
-                onProgress: (value: number) => {
-                  const normalized = Math.min(1, Math.max(0, Number(value) || 0));
-                  update({
-                    phase: 'rendering',
-                    progress: 8 + normalized * renderSpan,
-                    processedFrames: Math.min(plan.totalFrames, Math.floor(normalized * plan.totalFrames)),
-                    totalFrames: plan.totalFrames,
-                  });
-                },
-              });
-              if (plan.retimeFps) {
-                update({ phase: 'finalizing', progress: 93, processedFrames: plan.totalFrames });
-                const retimed = `${filepath}.retimed.${plan.media.ext}`;
-                await retimeFps(filepath, retimed, plan.retimeFps, plan.media.codec as 'h264' | 'vp8');
+              try {
+                await renderExportPlan(plan, filepath, update);
+                const { size } = await stat(filepath);
+                return { assetId: uuid, kind: plan.format, name: plan.filename, path: publicPath, durationSeconds: plan.durationSeconds, sizeBytes: size, codec: plan.media.codec };
+              } catch (error) {
                 await unlink(filepath).catch(() => {});
-                const { rename } = await import('node:fs/promises');
-                await rename(retimed, filepath);
+                throw error;
               }
-              update({ phase: 'finalizing', progress: 99, processedFrames: plan.totalFrames });
-              const { size } = await stat(filepath);
-              return { assetId: uuid, kind: plan.format, name: plan.filename, path: publicPath, durationSeconds: plan.durationSeconds, sizeBytes: size, codec: plan.media.codec };
             },
+            { acquire: acquireExportPermit },
           );
           sendJson(res, 200, { renderId: jobId });
         } catch (err) {
@@ -420,6 +327,7 @@ export function exportPlugin(): Plugin {
         }
 
         let outputLocation: string | null = null;
+        let retimedOutput: string | null = null;
         try {
           const body = await readJsonBody(req) as ExportRequest | null;
           const state = body?.state;
@@ -471,18 +379,23 @@ export function exportPlugin(): Plugin {
           );
           const filename = exportFilename(body.name, media.ext);
 
-          outputLocation = join(tmpdir(), `openchatcut-export-${randomUUID()}.${media.ext}`);
+          const finalOutput = join(tmpdir(), `openchatcut-export-${randomUUID()}.${media.ext}`);
+          outputLocation = finalOutput;
           const scale = exportScale(state as { width?: unknown; height?: unknown }, body.resolution);
-          await renderTimeline({ state, outputLocation, codec: media.codec, frameRange, scale });
-          if (format === 'video' && body.fps !== undefined && body.fps !== fps) {
-            const retimed = `${outputLocation}.retimed.${media.ext}`;
-            await retimeFps(outputLocation, retimed, body.fps, media.codec as 'h264' | 'vp8');
-            await unlink(outputLocation).catch(() => {});
-            const { rename } = await import('node:fs/promises');
-            await rename(retimed, outputLocation);
-          }
+          await withExportPermit(async () => {
+            await renderTimeline({ state, outputLocation: finalOutput, codec: media.codec, frameRange, scale });
+            if (format === 'video' && body.fps !== undefined && body.fps !== fps) {
+              retimedOutput = `${finalOutput}.retimed.${media.ext}`;
+              const outputSize = exportOutputSize(state, scale);
+              await retimeFps(finalOutput, retimedOutput, body.fps, media.codec as 'h264' | 'vp8',
+                resolveH264TargetBitrate({ ...outputSize, fps: body.fps }));
+              await unlink(finalOutput).catch(() => {});
+              await rename(retimedOutput, finalOutput);
+              retimedOutput = null;
+            }
+          });
 
-          const buf = await readFile(outputLocation);
+          const buf = await readFile(finalOutput);
           res.statusCode = 200;
           res.setHeader('Content-Type', media.mime);
           res.setHeader('Content-Length', String(buf.length));
@@ -495,7 +408,8 @@ export function exportPlugin(): Plugin {
           if (!res.headersSent) sendError(res, status, message);
           else res.end();
         } finally {
-          if (outputLocation) unlink(outputLocation).catch(() => {});
+          if (outputLocation) await unlink(outputLocation).catch(() => {});
+          if (retimedOutput) await unlink(retimedOutput).catch(() => {});
         }
       });
     },

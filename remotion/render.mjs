@@ -8,6 +8,13 @@ import { selectComposition, renderMedia, renderStill } from '@remotion/renderer'
 import path from 'node:path';
 import { cp, mkdir, rm, symlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import {
+  remotionHardwareAcceleration,
+  resolveH264VideoBitrate,
+  resolveOffthreadVideoThreads,
+  resolveRenderConcurrency,
+  withHardwareEncoderFallback,
+} from './performance.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ENTRY_POINT = path.join(REPO_ROOT, 'remotion', 'index.ts');
@@ -27,6 +34,49 @@ let bundlePromise;
 // 无头浏览器同理经 CC_BROWSER_EXECUTABLE 指向随包分发的 chrome-headless-shell
 // (默认 undefined = Remotion 自寻/自下载,dev 行为不变)。
 const browserExecutable = () => process.env.CC_BROWSER_EXECUTABLE || undefined;
+
+const renderConcurrency = () => resolveRenderConcurrency();
+const offthreadVideoThreads = () => resolveOffthreadVideoThreads();
+
+/**
+ * Prefer the platform encoder, but retry with software when the encoder exists
+ * in FFmpeg yet the actual GPU/driver is unavailable (common on Windows VMs and
+ * systems without an NVIDIA device). Remotion's own probe only checks whether
+ * the encoder is listed in the bundled FFmpeg build.
+ */
+async function renderMediaOptimized(options) {
+  const hardwareAcceleration = remotionHardwareAcceleration(options.codec);
+  const automaticHardwareBitrate = hardwareAcceleration !== 'disable' && !options.videoBitrate
+    ? resolveH264VideoBitrate({
+      width: options.composition.width,
+      height: options.composition.height,
+      fps: options.composition.fps,
+      scale: options.scale ?? 1,
+    })
+    : null;
+  const optimized = {
+    ...options,
+    concurrency: renderConcurrency(),
+    offthreadVideoThreads: offthreadVideoThreads(),
+    hardwareAcceleration,
+    ...(automaticHardwareBitrate ? { videoBitrate: automaticHardwareBitrate } : {}),
+  };
+  return withHardwareEncoderFallback({
+    render: renderMedia,
+    hardwareOptions: optimized,
+    softwareOptions: {
+      ...optimized,
+      hardwareAcceleration: 'disable',
+      ...(automaticHardwareBitrate ? { videoBitrate: null } : {}),
+    },
+    cleanup: async () => {
+      if (options.outputLocation) await rm(options.outputLocation, { force: true }).catch(() => {});
+    },
+    onFallback: () => {
+      console.warn(`[render] hardware encoder unavailable; retrying ${options.codec} with software encoding`);
+    },
+  });
+}
 
 // 素材目录默认 public/media/uploads;dev server 侧可被 MEDIA_DIR 自定义——
 // server/plugins/export 注入 provider(读 keystore)。standalone 脚本保持默认。
@@ -140,7 +190,7 @@ export async function renderTimeline({ state, outputLocation, onProgress, codec 
 
   const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps, browserExecutable: browserExecutable() });
 
-  await renderMedia({
+  await renderMediaOptimized({
     serveUrl,
     composition,
     codec,
@@ -177,7 +227,7 @@ export async function renderClip({ state, outputLocation, codec = 'vp8', transpa
   const serveUrl = await getServeUrl();
   const inputProps = { state, transparent };
   const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps, browserExecutable: browserExecutable() });
-  await renderMedia({
+  await renderMediaOptimized({
     serveUrl,
     composition,
     codec,
@@ -238,6 +288,7 @@ export async function renderTimelineStills({ state, frames, puppeteerInstance })
         scale: (list.length > 6 ? 480 : 640) / composition.width,
         chromiumOptions: { gl: 'angle' },
         browserExecutable: browserExecutable(),
+        offthreadVideoThreads: offthreadVideoThreads(),
         output: null,
         puppeteerInstance: browser,
       });
