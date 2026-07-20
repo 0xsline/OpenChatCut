@@ -1,15 +1,11 @@
-# 桌面端发布流水线：
-# - 手动触发：构建并上传 Actions artifacts，不创建 Release。
-# - 推送 v* tag：完成校验后构建 macOS arm64/x64 与 Windows x64，
-#   统一创建 GitHub Release 并附加安装包和 SHA-256 校验文件。
-# GitHub 会为每个 Release 自动提供 Source code (zip / tar.gz)。
+# Desktop release workflow. It only runs when manually dispatched.
+# Run it against a branch to build Actions artifacts, or against a v* tag to
+# publish a GitHub Release with installers and SHA-256 checksums.
+# GitHub automatically adds source archives to every release.
 name: desktop
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
 
 permissions:
   actions: read
