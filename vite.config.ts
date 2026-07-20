@@ -1,33 +1,19 @@
-import { createLogger, defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { serverPlugins } from './server/plugins/index.ts';
 import { seedKeystore, getKey } from './server/keystore.ts';
 import { productAssetsPlugin } from './server/product-assets.ts';
-
-const viteLogger = createLogger();
-const warn = viteLogger.warn.bind(viteLogger);
-viteLogger.warn = (message, options) => {
-  const isKnownAnthropicBrowserShim =
-    message.includes('has been externalized for browser compatibility')
-    && message.includes('@anthropic-ai/sdk')
-    && /node:(?:fs|path)/.test(message);
-  if (!isKnownAnthropicBrowserShim) warn(message, options);
-};
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // load ALL env (incl. non-VITE_ prefixed) from .env.local — server-side only
   const env = loadEnv(mode, process.cwd(), '');
   // Seed the runtime keystore so the settings UI (POST /api/keys) can override any key
-  // live. Server plugins (assembled in server/plugin-registry.ts, shared with the
+  // live. Server plugins (assembled in server/plugins/index.ts, shared with the
   // Electron embedded server) read the keystore through GETTERS, so a saved value
   // takes effect on the next request with no restart. The `const`s below are only the
-  // startup snapshot for the `define` (initial agent capability manifest) — except
-  // `base`, the LLM proxy target, which is fixed at server startup (the settings UI
-  // marks it restart-required).
+  // startup snapshot for the `define` (initial agent capability manifest).
   seedKeystore(env);
-  const base = env.LLM_BASE_URL || 'https://api.anthropic.com';
-  const key = env.LLM_API_KEY || '';
   const aaiKey = env.ASSEMBLYAI_API_KEY || '';
   const imageKey = env.IMAGE_API_KEY || env.OPENAI_API_KEY || '';
   const geminiKey = env.GEMINI_API_KEY || '';
@@ -72,36 +58,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5199,
       strictPort: true,
-      // Proxy /llm → Anthropic or a compatible API, injecting the key server-side so it never
-      // reaches the browser (agent keys are handled server-side).
-      // The agent uses Anthropic's native Messages API (/v1/messages), which
-      // authenticates with x-api-key + anthropic-version.
       proxy: {
-        '/llm': {
-          target: base,
-          changeOrigin: true,
-          rewrite: (p) => p.replace(/^\/llm/, ''),
-          configure: (proxy) => {
-            proxy.on('proxyReq', (proxyReq) => {
-              const k = getKey('LLM_API_KEY') || key;  // live: settings UI can override .env.local
-              if (k) {
-                proxyReq.setHeader('x-api-key', k);
-                proxyReq.setHeader('anthropic-version', '2023-06-01');
-                proxyReq.setHeader('Authorization', `Bearer ${k}`); // compatible relays may require Bearer
-              }
-            });
-            // Some compatible relays return non-streaming bodies as valid Anthropic JSON
-            // but with a wrong Content-Type; the @anthropic-ai/sdk only parses
-            // bodies typed as application/json, so force it. MUST leave SSE
-            // (text/event-stream) untouched or streaming breaks.
-            proxy.on('proxyRes', (proxyRes) => {
-              const ct = proxyRes.headers['content-type'] || '';
-              if (!ct.includes('application/json') && !ct.includes('text/event-stream')) {
-                proxyRes.headers['content-type'] = 'application/json';
-              }
-            });
-          },
-        },
         // AssemblyAI transcription — key injected server-side (never in browser).
         '/assemblyai': {
           target: 'https://api.assemblyai.com',
@@ -140,6 +97,5 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    customLogger: viteLogger,
   };
 });

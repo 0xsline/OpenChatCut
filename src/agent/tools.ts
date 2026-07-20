@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from './context';
 import { ASPECT_PRESETS, defaultTrackId, resolveTrackId, timelineTrackIds, trackAlias, trackKind, type AspectFit, type MediaAsset } from '../editor/types';
 import { compileTemplate } from '../template-host';
@@ -48,9 +48,9 @@ import { execTranscriptionProgress } from './progress/transcription-progress';
 // live in track-progress-targets.ts; transcription in transcription-progress.ts.
 import { withProgressTargets, execUploadProgress, execVisualAnalysisProgress } from './progress/track-progress-targets';
 
-// Anthropic native tool definitions (name / description / input_schema). Each
-// one executes against the EditorCore command layer (tool == command). The
-// shape is Claude's Messages API tool-use, `strict`-exact.
+// Canonical tool definitions (name / description / JSON input_schema). Each one
+// executes against the EditorCore command layer (tool == command). Vercel AI SDK
+// adapts this existing JSON-schema catalog to the selected model provider.
 export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: 'read_timeline',
@@ -311,7 +311,7 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
 
 
 // Ask the model to write a fresh Remotion MG component following the template
-// contract. Uses the same native Anthropic client as the agent loop. `brandHint`
+// contract. Uses the same provider-neutral AI SDK transport as the agent loop. `brandHint`
 // injects the project's applied design style so generated MGs match the brand.
 async function generateMgCode(description: string, brandHint = ''): Promise<string> {
   const sys = `You write ONE Remotion motion-graphic React component. Output ONLY the code — no markdown fences, no prose.

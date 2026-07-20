@@ -4,7 +4,7 @@ import { t, useT } from '../../i18n/locale';
 import { Icon } from '../icons';
 import { VendorIcon } from './vendorIcons';
 import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from '../../agent/capabilities';
-import { setLlmModel } from '../../agent/client';
+import { normalizeLlmProvider, setLlmConfig } from '../../agent/client';
 import { FieldRow, ON, VendorPane, WARN, type FieldCtx } from './settingsVendorPane';
 import {
   SETTINGS_CATEGORIES, buildPatch, categoryGroupStats, findGroup, groupConfigured,
@@ -65,7 +65,7 @@ function useSaveKeys(values: Values, onSaved: (next: KeyStatusResponse) => void)
       const body = await res.json().catch(() => ({})) as Partial<KeyStatusResponse> & { error?: string };
       if (!res.ok) throw new Error(body.error || t('保存失败 ({n})', { n: res.status }));
       onSaved(body as KeyStatusResponse);
-      setMsg(savedMessage(patch));
+      setMsg(savedMessage());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -125,12 +125,12 @@ function useTreeSelection(): {
 
 // ── 主组件 ────────────────────────────────────────────────────────────────
 
-/** 保存成功后让 agent 侧即时感知:caps / key 布尔(厂商粒度 manifest)/ 模型路由 / LLM 模型。 */
+/** 保存成功后让 agent 侧即时感知:caps / key 布尔 / 模型路由 / LLM 接口与模型。 */
 function applySavedToAgent(next: KeyStatusResponse): void {
   applyLiveCaps(next.caps);
   applyLiveKeyStatus(next.keys);
   if (next.models) applyLiveModels(next.models);
-  if (next.models?.LLM_MODEL !== undefined) setLlmModel(next.models.LLM_MODEL);  // '' = 回默认
+  if (next.models) setLlmConfig(next.models.LLM_PROVIDER, next.models.LLM_MODEL);
 }
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
@@ -151,7 +151,24 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   // 暂存:相对基线(模型字段 = 服务端当前值,其余 = '')无变化即撤销暂存。
   const stage = (field: SettingsField, raw: string): void => {
     const baseline = isModelField(field) ? modelValue(status, field.name) : '';
-    setValues((prev) => (raw === baseline ? omitKey(prev, field.name) : { ...prev, [field.name]: raw }));
+    setValues((prev) => {
+      let next = raw === baseline ? omitKey(prev, field.name) : { ...prev, [field.name]: raw };
+      if (field.name !== 'LLM_PROVIDER') return next;
+      const baselineProvider = normalizeLlmProvider(modelValue(status, 'LLM_PROVIDER'));
+      const previousProvider = normalizeLlmProvider(prev.LLM_PROVIDER ?? modelValue(status, 'LLM_PROVIDER'));
+      const nextProvider = normalizeLlmProvider(raw);
+      if (previousProvider === nextProvider) return next;
+      if (nextProvider !== baselineProvider) {
+        // Model ids and API prefixes are provider-specific. Reset both in the
+        // same pending edit; intentional custom values can then be entered.
+        return { ...next, LLM_MODEL: '', LLM_BASE_URL: '' };
+      }
+      // Returning to the saved provider discards staged values that belonged
+      // to the temporary provider rather than clearing the saved configuration.
+      next = omitKey(next, 'LLM_MODEL');
+      next = omitKey(next, 'LLM_BASE_URL');
+      return next;
+    });
   };
   const toggleClear = (name: string): void =>
     setValues((prev) => (prev[name] === '' ? omitKey(prev, name) : { ...prev, [name]: '' }));

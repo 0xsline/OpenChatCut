@@ -1,4 +1,5 @@
 import { timelineTrackIds, trackKind, type DesignStyle, type MediaAsset, type MediaFolder, type ProjectDoc, type Timeline, type TimelineState } from '../editor/types';
+import type { LlmProvider } from '../../shared/llm-providers';
 import {
   kvDel as idbDel,
   kvGet as idbGet,
@@ -158,14 +159,17 @@ export function migrateProjectDoc(v: unknown): ProjectDoc | null {
 
 // ── Ordered per-project chat-history persistence ──────────────────────────
 // Stored decoupled from the doc so a chat write never rewrites the timeline (and
-// vice-versa). `messages` = the rendered rows; `llm` = the Anthropic history the
-// agent continues from. Kept as unknown[] here so this layer stays agnostic of
-// the agent types (the agent layer validates/casts on read).
+// vice-versa). `messages` = the rendered rows; `llm` = provider-neutral AI SDK
+// model history. Kept as unknown[] here so this layer stays agnostic of the
+// agent types; optional metadata lets the agent migrate older Anthropic history
+// and safely remove provider-specific reasoning when the user switches vendors.
 const chatKey = (id: string) => `chat:${id}`;
 
 export interface PersistedChat {
   messages: unknown[];
   llm: unknown[];
+  llmFormat?: 'ai-sdk-v1';
+  llmProvider?: LlmProvider;
 }
 
 export function isPersistedChat(v: unknown): v is PersistedChat {

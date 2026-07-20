@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { resolveAgentReferences, type AgentContext, type AgentReference } from './context';
 import { initialMessages, runAgent, type LLMMessage } from './runtime';
-import { anthropic, MODEL } from './client';
+import {
+  generateAgentText,
+  normalizeLlmProvider,
+  PROVIDER,
+  type LlmProvider,
+} from './client';
+import { normalizeLlmMessages, prepareMessagesForProvider } from './messages';
 import { makeDraft, replayActions } from '../editor/store';
 import { buildOperation, buildProposal, isProposalStale, partitionProposalActions, type Operation, type Proposal } from './proposal';
 import { isSkillAllowed, rememberSkillAllowed, type GuardDecision } from './skills/skillGuard';
@@ -47,6 +53,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   const pendingGuardRef = useRef<PendingGuard | null>(null);
   pendingGuardRef.current = pendingGuard;
   const llmRef = useRef<LLMMessage[]>(initialMessages());
+  const llmProviderRef = useRef<LlmProvider>(PROVIDER);
   const ctxRef = useRef(ctx);
   ctxRef.current = ctx; // always use the latest editor context
   // gate persistence until the project's saved chat has been hydrated, so the
@@ -68,7 +75,17 @@ export function useAgent(ctx: AgentContext, projectId: string) {
       const [saved, pending] = await Promise.all([loadChat(projectId), loadProposal(projectId)]);
       if (!alive) return;
       setMessages(saved ? (saved.messages as DisplayMessage[]) : []);
-      llmRef.current = saved ? (saved.llm as LLMMessage[]) : initialMessages();
+      if (saved) {
+        const sourceProvider = normalizeLlmProvider(saved.llmProvider ?? 'anthropic');
+        llmRef.current = prepareMessagesForProvider(
+          normalizeLlmMessages(saved.llm),
+          sourceProvider,
+          PROVIDER,
+        );
+      } else {
+        llmRef.current = initialMessages();
+      }
+      llmProviderRef.current = PROVIDER;
       // Drop stale proposals (user edited the project after the snapshot, or
       // corrupt/partial IDB). Clear disk so we don't re-offer a dead card.
       if (pending && !isProposalStale(pending, ctxRef.current.getDoc())) {
@@ -86,7 +103,12 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   // isn't hammered per token; `proposal` dep captures apply/reject (they push to llmRef).
   useEffect(() => {
     if (!hydratedRef.current || running) return;
-    void saveChat(projectId, { messages, llm: llmRef.current });
+    void saveChat(projectId, {
+      messages,
+      llm: llmRef.current,
+      llmFormat: 'ai-sdk-v1',
+      llmProvider: llmProviderRef.current,
+    });
     if (proposal) void saveProposal(projectId, proposal);
     else void clearProposal(projectId);
   }, [messages, running, proposal, projectId]);
@@ -100,6 +122,14 @@ export function useAgent(ctx: AgentContext, projectId: string) {
       const content = contextEntries.length
         ? `${trimmed}\n\n${JSON.stringify({ type: 'chat_context_entry', entries: contextEntries })}`
         : trimmed;
+      if (llmProviderRef.current !== PROVIDER) {
+        llmRef.current = prepareMessagesForProvider(
+          llmRef.current,
+          llmProviderRef.current,
+          PROVIDER,
+        );
+        llmProviderRef.current = PROVIDER;
+      }
       llmRef.current.push({ role: 'user', content });
       setRunning(true);
       // Faithful propose→apply: run the agent's tools against a DRAFT copy of the
@@ -190,6 +220,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
             });
           },
         });
+        llmProviderRef.current = PROVIDER;
         if (!ac.signal.aborted && ops.length) {
           if (draftInvalidated) setMessages((m) => [...m, { role: 'error', text: '生成期间工程发生了其他修改；素材已保存到媒体池，请重新发送落轨请求。' }]);
           else {
@@ -220,13 +251,11 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     const t = draft.trim();
     if (!t) return draft;
     try {
-      const res = await anthropic.messages.create({
-        model: MODEL,
-        max_tokens: 400,
+      const out = (await generateAgentText({
+        maxOutputTokens: 400,
         system: '你是视频剪辑助手的提示词增强器。把用户潦草或口语化的剪辑意图，改写成一句清晰、具体、可直接执行的中文剪辑指令。只输出改写后的指令本身，不要解释、不要加引号、不要换行。',
-        messages: [{ role: 'user', content: t }],
-      });
-      const out = res.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('').trim();
+        prompt: t,
+      })).trim();
       return out || draft;
     } catch {
       return draft;
@@ -292,6 +321,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   const clearHistory = useCallback(() => {
     if (running) return;
     llmRef.current = initialMessages();
+    llmProviderRef.current = PROVIDER;
     setProposal(null);
     setMessages([]);
     void clearChat(projectId);

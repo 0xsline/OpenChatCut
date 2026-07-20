@@ -6,6 +6,7 @@
 // 安全不变式:secret 字段只有布尔状态,值永不回填;模型/路由字段是非密配置,
 // 当前值经 GET /api/keys 的 models 通道回显(服务端 NON_SECRET_NAMES 白名单)。
 import { t } from '../../i18n/locale';
+import { LLM_PROVIDER_PRESETS } from '../../../shared/llm-providers';
 import type { IconName } from '../icons';
 import type { VendorId } from './vendorIcons';
 
@@ -84,11 +85,17 @@ const routeSelect = (name: string, options: readonly SelectOption[]): SettingsFi
   options: [{ value: '', label: '每次询问（默认）' }, ...options],
 });
 
+const LLM_PROVIDER_FIELD: SettingsField = {
+  name: 'LLM_PROVIDER', label: '模型厂商', kind: 'select', defaultLabel: 'Anthropic · Claude',
+  note: '选择厂商后会自动使用官方 API 地址、接口格式和推荐模型，也可以在下方覆盖。',
+  options: LLM_PROVIDER_PRESETS.map(({ id, label }) => ({ value: id, label })),
+};
+
 const LLM_MODEL_FIELD: SettingsField = {
-  name: 'LLM_MODEL', label: '模型', kind: 'text', defaultLabel: 'claude-fable-5',
-  note: '默认使用 Claude Fable 5；自定义兼容地址时，也可填写该服务支持的模型 ID。',
-  options: ['claude-fable-5', 'claude-sonnet-5', 'claude-opus-4-8', 'grok-4.5-latest', 'MiniMax-M2.5', 'MiniMax-M3']
-    .map((v) => ({ value: v, label: v })),
+  name: 'LLM_MODEL', label: '模型', kind: 'text', defaultLabel: '按厂商自动选择',
+  note: '留空时使用所选厂商的推荐模型；也可以填写该厂商或自定义接口支持的模型 ID。',
+  options: [...new Set(LLM_PROVIDER_PRESETS.map(({ defaultModel }) => defaultModel))]
+    .map((value) => ({ value, label: value })),
 };
 
 // MiniMax 同一对 Key/Base URL 服务 4 个能力,页按能力只挂该能力的模型字段。
@@ -109,11 +116,13 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       { key: 'llm', title: 'Agent 大脑',
         hint: '对话与工具调用的核心，未配置无法对话。',
         vendors: [
-          { key: 'llm/anthropic', vendor: 'anthropic', title: 'Anthropic / 兼容 API',
-            note: '可直接使用 Anthropic 官方 API Key；如使用兼容服务，再修改 Base URL 和模型。',
+          { key: 'llm/anthropic', vendor: 'llm', title: '模型供应商',
+            note: '由 Vercel AI SDK 统一接入主流模型厂商，并保留自定义 OpenAI-compatible 接口。',
             fields: [
             secret('LLM_API_KEY', 'API Key'),
-            text('LLM_BASE_URL', 'API Base URL', '默认 https://api.anthropic.com', '改动需重启 dev server 生效'),
+            LLM_PROVIDER_FIELD,
+            text('LLM_BASE_URL', 'API Base URL', '按厂商使用官方默认地址',
+              '填写完整 API 前缀（可含 /v1、/v1beta/openai 等路径）；切换厂商会重置地址与模型，并立即生效。'),
             LLM_MODEL_FIELD,
           ] },
         ] },
@@ -286,10 +295,8 @@ export function buildPatch(values: StagedValues): Record<string, string> {
   return patch;
 }
 
-export function savedMessage(patch: Record<string, string>): string {
-  return 'LLM_BASE_URL' in patch
-    ? t('已保存 · 工具即时生效，Agent 下一条消息即可感知（API 地址需重启 dev server）')
-    : t('已保存 · 工具即时生效，Agent 下一条消息即可感知');
+export function savedMessage(): string {
+  return t('已保存 · 工具即时生效，Agent 下一条消息即可感知');
 }
 
 /** 字段是否走非密 models 值通道(当前值回显;暂存基线 = 服务端当前值;清除 = 回默认)。 */
@@ -338,7 +345,7 @@ export function findGroup(key: string): SettingsGroup {
 export function selectOptions(field: SettingsField): readonly SelectOption[] {
   const base = field.options ?? [];
   if (field.defaultLabel === undefined) return base;
-  return [{ value: '', label: t('默认（{name}）', { name: field.defaultLabel }) }, ...base];
+  return [{ value: '', label: t('默认（{name}）', { name: t(field.defaultLabel) }) }, ...base];
 }
 
 // 路由选项 value → 判「已配置」所需 key(OR 的 AND 组;镜像服务端 computeCaps 与
@@ -372,7 +379,7 @@ export function selectOptionLabel(
 export function fieldPlaceholder(field: SettingsField, configured: boolean, stagedClear: boolean): string {
   if (isModelField(field)) {
     if (stagedClear) return t('恢复默认 · 保存后生效');
-    return field.defaultLabel ? t('默认 {name}', { name: field.defaultLabel }) : t('默认');
+    return field.defaultLabel ? t('默认 {name}', { name: t(field.defaultLabel) }) : t('默认');
   }
   if (stagedClear) return t('将清除 · 保存后生效');
   if (configured) return field.placeholder ? t('已自定义 · 留空保持不变') : t('已配置 · 留空保持不变');

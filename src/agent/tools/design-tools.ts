@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from '../context';
 import {
   COLOR_ROLES, FONT_ROLES, type DesignColor, type DesignFont, type DesignStyle,

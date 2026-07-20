@@ -7,6 +7,16 @@
 import { getKey, KEY_NAMES, type KeyName } from './keystore.ts';
 import { r2Probe } from './r2.ts';
 import { mediaDirProbe, mediaDirPostCheck, mediaDirOkText } from './media-dir.ts';
+import {
+  AI_SDK_BASE_URL_FORMAT,
+  llmOperationPath,
+  normalizeServerLlmProvider,
+  resolveLlmBaseUrl,
+} from './llm-config.ts';
+import {
+  defaultModelForProvider,
+  protocolForProvider,
+} from '../shared/llm-providers.ts';
 
 export interface ProbeResult {
   ok: boolean;
@@ -31,6 +41,47 @@ const TIMEOUT_MS = 12_000;
 const t = (): AbortSignal => AbortSignal.timeout(TIMEOUT_MS);
 const base = (get: Get, name: KeyName, def: string): string => (get(name) || def).replace(/\/+$/, '');
 const bearer = (key: string): Record<string, string> => ({ Authorization: `Bearer ${key}` });
+function probeLlm(get: Get): Promise<Response> {
+  const provider = normalizeServerLlmProvider(get('LLM_PROVIDER'));
+  const protocol = protocolForProvider(provider);
+  const root = resolveLlmBaseUrl(provider, get('LLM_BASE_URL'), get('LLM_BASE_URL_FORMAT'));
+  const endpoint = `${root}${llmOperationPath(provider)}`;
+  const key = get('LLM_API_KEY');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...bearer(key),
+  };
+  if (protocol === 'anthropic') {
+    headers['x-api-key'] = key;
+    headers['anthropic-version'] = '2023-06-01';
+    return fetch(endpoint, {
+      method: 'POST', signal: t(), headers,
+      body: JSON.stringify({
+        model: get('LLM_MODEL') || defaultModelForProvider(provider),
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'ping' }],
+      }),
+    });
+  }
+  if (protocol === 'openai') {
+    return fetch(endpoint, {
+      method: 'POST', signal: t(), headers,
+      body: JSON.stringify({
+        model: get('LLM_MODEL') || defaultModelForProvider(provider),
+        max_output_tokens: 16,
+        input: 'ping',
+      }),
+    });
+  }
+  return fetch(endpoint, {
+    method: 'POST', signal: t(), headers,
+    body: JSON.stringify({
+      model: get('LLM_MODEL') || defaultModelForProvider(provider),
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'ping' }],
+    }),
+  });
+}
 
 /** 厂商报错文案进结果前压平:去换行、截断。绝不拼接任何密钥值。 */
 export function sanitize(text: string): string {
@@ -65,24 +116,10 @@ const minimaxProbe: ProbeDef = {
 
 /** page key(与 settingsSchema 的厂商页 key 同名)→ 探测定义。 */
 export const PROBES: Record<string, ProbeDef> = {
-  // 真实最小 messages 调用(max_tokens:1):/v1/models 在部分兼容服务上恒 200,
-  // 只有真打一发才能验证「这个 Key + 这个模型」可用。双鉴权头兼容两种鉴权风格。
+  // 按当前接口格式发真实最小生成请求；/v1/models 不能证明所选模型可用。
   'llm/anthropic': {
     needs: [['LLM_API_KEY']],
-    run: (get) => fetch(`${base(get, 'LLM_BASE_URL', 'https://api.anthropic.com')}/v1/messages`, {
-      method: 'POST', signal: t(),
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': get('LLM_API_KEY'),
-        ...bearer(get('LLM_API_KEY')),
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: get('LLM_MODEL') || 'claude-fable-5',
-        max_tokens: 1,
-        messages: [{ role: 'user', content: 'ping' }],
-      }),
-    }),
+    run: probeLlm,
   },
   'image/openai': {
     needs: [['IMAGE_API_KEY'], ['OPENAI_API_KEY']],
@@ -233,15 +270,17 @@ export function networkMessage(error: unknown): string {
   return `网络不可达 · ${sanitize(raw)} · 本机连不上该服务（可能需代理），不代表 Key 错误`;
 }
 
-/** 暂存 overrides(白名单内、非空)覆盖已存值;其余读 keystore。纯函数便于自测。 */
+/** 暂存 overrides(白名单内，空串代表本次测试清除)覆盖已存值。 */
 export function makeGetter(overrides: Record<string, unknown>): Get {
   const clean = new Map<string, string>();
   for (const [name, raw] of Object.entries(overrides)) {
     if (!(KEY_NAMES as readonly string[]).includes(name)) continue; // 白名单外丢弃
-    const v = String(raw ?? '').trim();
-    if (v) clean.set(name, v);
+    clean.set(name, String(raw ?? '').trim());
   }
-  return (name) => clean.get(name) ?? getKey(name);
+  if (clean.has('LLM_BASE_URL') && !clean.has('LLM_BASE_URL_FORMAT')) {
+    clean.set('LLM_BASE_URL_FORMAT', clean.get('LLM_BASE_URL') ? AI_SDK_BASE_URL_FORMAT : '');
+  }
+  return (name) => clean.has(name) ? clean.get(name)! : getKey(name);
 }
 
 /** 跑一个厂商页的连通性探测。未配置 / 未知页在发请求前就返回,不打网络。 */

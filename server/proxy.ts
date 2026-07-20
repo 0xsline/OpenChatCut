@@ -1,19 +1,19 @@
-// 内嵌 server 的密钥注入代理:沿用 vite.config.ts 里 /llm 与 /assemblyai 两条
-// server.proxy 的语义(changeOrigin + 服务端注入密钥 + 非 JSON/SSE 的 Content-Type
-// 强改)。密钥只在这一侧进出站头,永不回落响应体。node http(s).request 不吃环境代理
-// 变量,与 dev 下 http-proxy 的直连行为一致(Clash 环境不受影响)。
-import { request as httpRequest } from 'node:http';
+// Shared streaming proxy for Vite dev and the Electron embedded server.
+// `target()` and `headers()` are evaluated for every request, so settings saved
+// through the keystore take effect immediately without exposing keys to browser JS.
+import { request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import type { Middleware } from './mini-connect.ts';
+
+type Middleware = (req: IncomingMessage, res: ServerResponse, next: () => void) => unknown;
 
 const HOP_BY_HOP = new Set(['host', 'connection', 'keep-alive', 'proxy-authorization', 'proxy-connection', 'transfer-encoding', 'upgrade', 'te', 'trailer']);
 
 export interface ProxyRoute {
-  /** 每请求取目标 base URL(keystore 即时值)。 */
+  /** Target API prefix, evaluated per request. */
   target: () => string;
-  /** 每请求注入的出站头(密钥在此)。 */
+  /** Outbound headers, evaluated per request. */
   headers: () => Record<string, string>;
-  /** 中转站兼容:非 application/json 且非 SSE 的响应强改为 JSON(SDK 才解析)。 */
+  /** Normalize generic relay responses so provider SDKs can parse JSON. */
   forceJsonContentType?: boolean;
 }
 
@@ -22,6 +22,9 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
     let target: URL;
     try {
       target = new URL(route.target());
+      if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+        throw new Error('unsupported proxy protocol');
+      }
     } catch {
       res.writeHead(502, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'proxy target is not a valid URL' }));
@@ -31,16 +34,26 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
     for (const [k, v] of Object.entries(req.headers)) {
       if (!HOP_BY_HOP.has(k.toLowerCase()) && v !== undefined) headers[k] = v;
     }
-    headers.host = target.host;  // changeOrigin
+    headers.host = target.host;
     for (const [k, v] of Object.entries(route.headers())) if (v) headers[k] = v;
 
     const basePath = target.pathname.replace(/\/$/, '');
+    const rawUrl = req.url ?? '/';
+    const queryAt = rawUrl.indexOf('?');
+    const requestPath = queryAt === -1 ? rawUrl : rawUrl.slice(0, queryAt);
+    const search = new URLSearchParams(target.search);
+    if (queryAt !== -1) {
+      for (const [name, value] of new URLSearchParams(rawUrl.slice(queryAt + 1))) {
+        search.append(name, value);
+      }
+    }
+    const query = search.size > 0 ? `?${search.toString()}` : '';
     const doRequest = target.protocol === 'http:' ? httpRequest : httpsRequest;
     const upstream = doRequest({
       host: target.hostname,
       port: target.port || (target.protocol === 'http:' ? 80 : 443),
       method: req.method,
-      path: basePath + (req.url ?? '/'),
+      path: basePath + requestPath + query,
       headers,
     }, (upRes) => {
       const outHeaders: Record<string, string | string[]> = {};
@@ -65,7 +78,7 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
         res.end();
       }
     });
-    res.on('close', () => upstream.destroy());  // 客户端断开(中止流式回答)→ 断上游
+    res.on('close', () => upstream.destroy());
     req.pipe(upstream);
   };
 }

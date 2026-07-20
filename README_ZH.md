@@ -266,7 +266,7 @@ OPENCHATCUT_EDITOR_URL=https://your-editor.example.com
 |---|---|
 | 前端 | React 19、TypeScript 6、Vite 8 |
 | 编辑核心 | 不可变时间线状态、命令层、提案式应用 |
-| Agent | Anthropic 原生 tool-use、Agent Skills、MCP SDK |
+| Agent | Vercel AI SDK 7（Anthropic、OpenAI、Gemini、Kimi、Qwen、GLM、DeepSeek、MiniMax、Mistral 与兼容接口）、Agent Skills、MCP SDK |
 | 预览与视觉 | Remotion Player、WebGL / GLSL |
 | 服务端 | Vite / Electron 双宿主插件、服务端密钥仓 |
 | 持久化 | `~/.openchatcut` 下的本机共享工程库、IndexedDB 缓存、可配置本地素材目录、可选 Cloudflare R2 |
@@ -345,7 +345,7 @@ OpenChatCut 基于以下核心项目与规范构建：
 | [ChatCut-Inc/agent-plugin](https://github.com/ChatCut-Inc/agent-plugin) | Agent Skills 的改造基础。OpenChatCut 基于该插件的技能结构与工作流，针对本地编辑器、存储、MCP 和工具架构进行了适配。详见 [Agent Skills 来源说明](src/agent/skills/NOTICE.md)。 |
 | [Remotion](https://www.remotion.dev/) | React 视频预览、合成与服务端渲染的核心基础。 |
 | [Model Context Protocol](https://modelcontextprotocol.io/) | Codex、Claude Code 等外部 Agent 访问工程与时间线工具的协议基础。 |
-| [Anthropic Tool Use](https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview) | 内置 Agent 的原生工具调用机制。 |
+| [Vercel AI SDK](https://ai-sdk.dev/) | 内置 Agent 的多厂商模型流式响应与工具调用基础。 |
 | [tt-a1i/archify](https://github.com/tt-a1i/archify) | README 运行时架构图的定义、校验与 SVG 生成工具。 |
 
 这里列出的是项目的主要技术基础，不替代各依赖、字体和内置二进制随附的许可证。完整 JavaScript 依赖版本见 `package-lock.json`，字体授权见 [`assets/fonts/LICENSES.md`](assets/fonts/LICENSES.md)。

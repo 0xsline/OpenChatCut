@@ -20,7 +20,7 @@ If a capability is off, say so and offer alternatives (upload, library, another 
 | Transcription | `transcribe_track` | `ASSEMBLYAI_API_KEY` |
 | Web | `web_browser` | `FIRECRAWL_API_KEY` |
 | Sandbox / ffmpeg helpers | `run_code` | `E2B_API_KEY` (if used) |
-| LLM agent | chat | `LLM_API_KEY` (official Anthropic by default; compatible Base URL optional) |
+| LLM agent | chat | `LLM_API_KEY` + `LLM_PROVIDER` (`anthropic`, `openai`, `gemini`, `kimi`, `qwen`, `glm`, `deepseek`, `minimax`, `mistral`, or `openai-compatible`); Base URL and model are optional overrides |
 
 Exact availability is reflected in the live **capabilities** block injected into the agent system prompt (which vendors are on).
 

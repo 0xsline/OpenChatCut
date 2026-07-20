@@ -22,7 +22,7 @@ import freesoundSvg from '../../../assets/vendor-icons/freesound.svg?raw';
 import cloudflareSvg from '../../../assets/vendor-icons/cloudflare.svg?raw';
 
 export type VendorId =
-  | 'anthropic' | 'openai' | 'gemini' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
+  | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
   | 'assemblyai' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk';
 
@@ -53,6 +53,7 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
 
 // 官方 SVG 未收录 / 非厂商品牌 → monogram 兜底
 const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: string }>> = {
+  llm: { bg: '#34363c', mono: 'AI', fg: '#f7f7f8' },
   mureka: { bg: '#7C5CFF', mono: 'μ' },
   e2b: { bg: '#FF8800', mono: 'E2', fg: '#40230a' },
   localdisk: { bg: '#5f6b7a', mono: 'HD', fg: '#eef2f7' }, // 本地磁盘(非厂商,中性灰)

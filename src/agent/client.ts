@@ -1,45 +1,116 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createOpenAI } from '@ai-sdk/openai';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { generateText, type LanguageModel } from 'ai';
+import {
+  DEFAULT_LLM_PROVIDER,
+  defaultModelForProvider,
+  normalizeLlmProvider,
+  protocolForProvider,
+  providerApiPath,
+  type LlmProvider,
+} from '../../shared/llm-providers';
+import { normalizeLlmMessages } from './messages';
 
-// The agent talks to
-// Anthropic's native Messages API (tool_use / tool_result), NOT a framework.
-//
-// The default endpoint is Anthropic's official API. Compatible relays remain
-// supported by setting LLM_BASE_URL because they expose the same /v1/messages
-// tool-use protocol.
-export const DEFAULT_LLM_MODEL = 'claude-fable-5';
+export {
+  DEFAULT_LLM_PROVIDER,
+  defaultModelForProvider,
+  normalizeLlmProvider,
+  providerApiPath,
+};
+export type { LlmProvider };
+export type ConfiguredLanguageModel = Exclude<LanguageModel, string>;
 
-// Runtime-selectable LLM model (settings panel → LLM_MODEL, non-secret). ESM live
-// binding: importers (runtime/shader/highlight/tools) always read the current value.
-// eslint-disable-next-line prefer-const — mutated by setLlmModel
-export let MODEL = DEFAULT_LLM_MODEL;
-export function setLlmModel(model: string): void {
-  MODEL = model.trim() || DEFAULT_LLM_MODEL;
+export let PROVIDER: LlmProvider = DEFAULT_LLM_PROVIDER;
+export let MODEL = defaultModelForProvider(PROVIDER);
+
+export function setLlmConfig(provider: unknown, model: unknown): void {
+  PROVIDER = normalizeLlmProvider(provider);
+  MODEL = typeof model === 'string' && model.trim()
+    ? model.trim()
+    : defaultModelForProvider(PROVIDER);
 }
 
-// baseURL → same-origin '/llm' path → server proxy → provider, with x-api-key
-// injected server-side so the key never reaches the browser. The Anthropic SDK
-// requires an ABSOLUTE baseURL (unlike raw fetch), hence location.origin.
-// apiKey here is a placeholder the proxy overwrites; dangerouslyAllowBrowser is
-// safe because the real key is not present in the browser.
-// `window` is absent under node/tsx (the .check.ts runnable checks import tool
-// modules that transitively load this file); fall back to a placeholder origin
-// so importing never throws — the client is only actually CALLED in the browser.
+export function setLlmModel(model: string): void {
+  setLlmConfig(PROVIDER, model);
+}
+
+export function setLlmProvider(provider: unknown): void {
+  setLlmConfig(provider, '');
+}
+
 const ORIGIN = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
-export const anthropic = new Anthropic({
-  baseURL: `${ORIGIN}/llm`,
-  apiKey: 'proxy-injects-the-real-key',
-  dangerouslyAllowBrowser: true,
+// The server proxy target owns the provider/version prefix. AI SDK appends the
+// native operation path, which also supports compatible APIs such as
+// `/v1beta/openai/chat/completions`.
+const PROXY_API_BASE = `${ORIGIN}/llm`;
+const PROXY_KEY = 'proxy-injects-the-real-key';
+
+const anthropicProvider = createAnthropic({
+  baseURL: PROXY_API_BASE,
+  apiKey: PROXY_KEY,
+});
+const openaiProvider = createOpenAI({
+  baseURL: PROXY_API_BASE,
+  apiKey: PROXY_KEY,
+});
+const compatibleProvider = createOpenAICompatible({
+  name: 'openai-compatible',
+  baseURL: PROXY_API_BASE,
+  apiKey: PROXY_KEY,
 });
 
-// Some compatible relays label non-streaming JSON as text/event-stream, which
-// makes the SDK return a stream object. Raw fetch parses the JSON body reliably.
-export async function createMessage(params: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> {
-  const response = await fetch('/llm/v1/messages', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': 'proxy-injects-the-real-key', 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ ...params, stream: false }),
+export function getLanguageModel(
+  provider: LlmProvider = PROVIDER,
+  model: string = MODEL,
+): ConfiguredLanguageModel {
+  const protocol = protocolForProvider(provider);
+  if (protocol === 'anthropic') return anthropicProvider(model);
+  if (protocol === 'openai') return openaiProvider.responses(model);
+  return compatibleProvider(model);
+}
+
+export async function generateAgentText(options: {
+  system?: string;
+  prompt: string;
+  maxOutputTokens: number;
+}): Promise<string> {
+  const result = await generateText({
+    model: getLanguageModel(),
+    system: options.system,
+    prompt: options.prompt,
+    maxOutputTokens: options.maxOutputTokens,
   });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body?.error?.message ?? `LLM request failed (${response.status})`);
-  return body as Anthropic.Message;
+  return result.text;
+}
+
+// Compatibility wrapper for focused generation helpers that still use the
+// Anthropic MessageCreateParams shape internally. Transport and model execution
+// are handled by the provider-neutral Vercel AI SDK.
+export async function createMessage(
+  params: Anthropic.MessageCreateParamsNonStreaming,
+): Promise<Anthropic.Message> {
+  const result = await generateText({
+    model: getLanguageModel(PROVIDER, params.model),
+    system: typeof params.system === 'string'
+      ? params.system
+      : params.system?.map((part) => part.text).join('\n'),
+    messages: normalizeLlmMessages(params.messages),
+    maxOutputTokens: params.max_tokens,
+  });
+  return {
+    id: result.response.id,
+    type: 'message',
+    role: 'assistant',
+    content: [{ type: 'text', text: result.text, citations: null }],
+    model: params.model,
+    stop_reason: 'end_turn',
+    stop_sequence: null,
+    usage: {
+      input_tokens: result.usage.inputTokens ?? 0,
+      output_tokens: result.usage.outputTokens ?? 0,
+    },
+    container: null,
+  } as unknown as Anthropic.Message;
 }

@@ -34,6 +34,8 @@ export default {
   '沙箱执行': 'Sandbox Execution',
   '网页抓取': 'Web Scraping',
   'Anthropic / 兼容 API': 'Anthropic / Compatible API',
+  'Anthropic / OpenAI': 'Anthropic / OpenAI',
+  '模型供应商': 'Model providers',
   '豆包 TTS · 火山': 'Doubao TTS · Volcano',
   'Seedance · 火山': 'Seedance · Volcano',
   '可灵 Kling': 'Kling',
@@ -54,6 +56,8 @@ export default {
 
   // ── 字段标签 ──
   '默认厂商': 'Default vendor',
+  '接口格式': 'API format',
+  '模型厂商': 'Model provider',
   '模型': 'Model',
   'API Base URL': 'API Base URL',
   'API Key（gpt-image）': 'API Key (gpt-image)',
@@ -79,9 +83,16 @@ export default {
   // ── 页注 / 字段注 ──
   'MiniMax 同一个 Key，配置一次全能力（生图 / 配音 / 视频 / 音乐）通用。': 'One MiniMax key covers every capability (image / voice / video / music) — configure once.',
   'Key 同时用于音效生成（submit_sound）。': 'The key is also used for sound-effect generation (submit_sound).',
-  '改动需重启 dev server 生效': 'Restart the dev server for changes to take effect',
   '可直接使用 Anthropic 官方 API Key；如使用兼容服务，再修改 Base URL 和模型。': 'Use an official Anthropic API key directly, or change the Base URL and model for a compatible service.',
   '默认使用 Claude Fable 5；自定义兼容地址时，也可填写该服务支持的模型 ID。': 'Claude Fable 5 is the default. With a compatible endpoint, enter any model ID supported by that service.',
+  '由 Vercel AI SDK 统一接入 Anthropic、OpenAI 与 OpenAI-compatible 服务。': 'Vercel AI SDK provides one integration for Anthropic, OpenAI, and OpenAI-compatible services.',
+  '由 Vercel AI SDK 统一接入主流模型厂商，并保留自定义 OpenAI-compatible 接口。': 'Vercel AI SDK connects mainstream model providers while keeping a custom OpenAI-compatible option.',
+  '选择服务实际支持的协议；OpenAI 使用 Responses API，兼容服务使用 Chat Completions API。': 'Choose the protocol your service actually supports. OpenAI uses the Responses API; compatible services use Chat Completions.',
+  '选择厂商后会自动使用官方 API 地址、接口格式和推荐模型，也可以在下方覆盖。': 'Choose a provider to use its official endpoint, protocol, and recommended model automatically, or override them below.',
+  '留空时 Anthropic 使用 claude-fable-5，OpenAI 使用 gpt-5，兼容接口使用 gpt-4o-mini；也可填写服务支持的模型 ID。': 'Leave blank to use claude-fable-5 for Anthropic, gpt-5 for OpenAI, or gpt-4o-mini for compatible APIs. You can also enter any model ID the service supports.',
+  '留空时使用所选厂商的推荐模型；也可以填写该厂商或自定义接口支持的模型 ID。': 'Leave blank to use the selected provider’s recommended model, or enter any model ID supported by that provider or custom endpoint.',
+  '填写完整 API 前缀（可含 /v1、/v1beta/openai 等路径）；切换接口会重置地址与模型，并立即生效。': 'Enter the full API prefix, including paths such as /v1 or /v1beta/openai. Switching protocol resets the Base URL and model and takes effect immediately.',
+  '填写完整 API 前缀（可含 /v1、/v1beta/openai 等路径）；切换厂商会重置地址与模型，并立即生效。': 'Enter the full API prefix, including paths such as /v1 or /v1beta/openai. Switching providers resets the Base URL and model and takes effect immediately.',
   '桌面端默认把素材存入系统应用数据目录，浏览器开发版默认使用 public/media/uploads/。可选择任意本机目录或外置硬盘；保存后旧目录中的素材会复制到新目录（原文件保留），工程里的素材地址不变，预览与渲染导出都会跟随新目录。':
     'The desktop app stores media in its system application-data directory by default; browser development uses public/media/uploads/. Choose any local folder or external drive. Saving copies media from the old directory to the new one (originals kept); project URLs stay unchanged, and preview, render, and export follow the new directory.',
   '桌面端点击“选择目录”；浏览器中也可手动输入绝对路径。清除后回到当前运行环境的默认目录。':
@@ -107,7 +118,6 @@ export default {
   '已启用': 'Enabled',
   '已停用': 'Disabled',
   '已保存 · 工具即时生效，Agent 下一条消息即可感知': 'Saved · Tools take effect immediately; the Agent sees it from the next message',
-  '已保存 · 工具即时生效，Agent 下一条消息即可感知（API 地址需重启 dev server）': 'Saved · Tools take effect immediately; the Agent sees it from the next message (API Base URL needs a dev-server restart)',
   '默认（{name}）': 'Default ({name})',
   '恢复默认 · 保存后生效': 'Restore default · Takes effect after save',
   '默认 {name}': 'Default {name}',
@@ -125,6 +135,10 @@ export default {
   '目录选择器仅桌面端可用，浏览器中请手动输入绝对路径。':
     'The folder picker is available in the desktop app only. Enter an absolute path manually in the browser.',
   '默认 https://api.anthropic.com': 'Default https://api.anthropic.com',
+  '按接口使用官方默认地址': 'Use the official default for the selected API format',
+  '按接口自动选择': 'Auto by API format',
+  '按厂商使用官方默认地址': 'Use the selected provider’s official endpoint',
+  '按厂商自动选择': 'Auto by provider',
   '默认 https://api.openai.com': 'Default https://api.openai.com',
   '默认 https://generativelanguage.googleapis.com': 'Default https://generativelanguage.googleapis.com',
   '默认 https://api.elevenlabs.io': 'Default https://api.elevenlabs.io',

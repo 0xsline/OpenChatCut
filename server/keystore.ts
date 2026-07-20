@@ -8,13 +8,14 @@
 // show and edit them.
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { AI_SDK_BASE_URL_FORMAT, expandLlmProviderPatch } from './llm-config.ts';
 
 const ENV_PATH = resolve(process.cwd(), '.env.local');
 
 // Whitelist of settable env vars — mirrors what vite.config.ts reads. POST /api/keys
 // rejects anything outside this set so the endpoint can never write arbitrary env.
 export const KEY_NAMES = [
-  'LLM_API_KEY', 'LLM_BASE_URL',
+  'LLM_API_KEY', 'LLM_BASE_URL', 'LLM_BASE_URL_FORMAT',
   'IMAGE_API_KEY', 'OPENAI_API_KEY', 'IMAGE_BASE_URL',
   'GEMINI_API_KEY', 'GEMINI_BASE_URL',
   'ELEVENLABS_API_KEY', 'ELEVENLABS_BASE_URL',
@@ -29,7 +30,7 @@ export const KEY_NAMES = [
   'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET', 'R2_ENABLED', 'R2_PRESIGN',
   'MEDIA_DIR',
   // ── model ids (non-secret config; raw values echoed via keyStatus().models) ──
-  'LLM_MODEL',
+  'LLM_PROVIDER', 'LLM_MODEL',
   'GEMINI_IMAGE_MODEL', 'MINIMAX_IMAGE_MODEL',
   'ELEVENLABS_TTS_MODEL', 'DOUBAO_TTS_RESOURCE_ID', 'MINIMAX_TTS_MODEL',
   'ELEVENLABS_SOUND_MODEL',
@@ -46,7 +47,7 @@ const SETTABLE = new Set<string>(KEY_NAMES);
 // not credentials). Deliberately a separate explicit list rather than derived from
 // KEY_NAMES: adding a key to the whitelist must never accidentally make it non-secret.
 export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
-  'LLM_MODEL', 'GEMINI_IMAGE_MODEL', 'ELEVENLABS_TTS_MODEL', 'ELEVENLABS_SOUND_MODEL',
+  'LLM_PROVIDER', 'LLM_MODEL', 'GEMINI_IMAGE_MODEL', 'ELEVENLABS_TTS_MODEL', 'ELEVENLABS_SOUND_MODEL',
   'DOUBAO_TTS_RESOURCE_ID', 'SEEDANCE_VIDEO_MODEL', 'KLING_VIDEO_MODEL', 'MUREKA_MUSIC_MODEL',
   'MINIMAX_TTS_MODEL', 'MINIMAX_VIDEO_MODEL', 'MINIMAX_MUSIC_MODEL', 'MINIMAX_IMAGE_MODEL',
   'PREFERRED_IMAGE_VENDOR', 'PREFERRED_VOICE_VENDOR', 'PREFERRED_VIDEO_VENDOR', 'PREFERRED_MUSIC_VENDOR',
@@ -116,7 +117,7 @@ export function keyStatus(): KeyStatus {
 /** Apply key edits from the settings UI: validate, update memory, persist to .env.local.
  * Empty value clears a key. Values containing newlines are rejected. Unknown names ignored. */
 export async function setKeys(patch: Record<string, unknown>): Promise<void> {
-  const clean = new Map<string, string>();
+  let clean = new Map<string, string>();
   for (const [name, raw] of Object.entries(patch)) {
     if (!SETTABLE.has(name)) continue;  // whitelist
     const v = String(raw ?? '');
@@ -126,6 +127,10 @@ export async function setKeys(patch: Record<string, unknown>): Promise<void> {
     clean.set(name, t);
   }
   if (clean.size === 0) return;
+  clean = expandLlmProviderPatch(clean, getKey('LLM_PROVIDER'));
+  if (clean.has('LLM_BASE_URL') && !clean.has('LLM_BASE_URL_FORMAT')) {
+    clean.set('LLM_BASE_URL_FORMAT', clean.get('LLM_BASE_URL') ? AI_SDK_BASE_URL_FORMAT : '');
+  }
   for (const [name, v] of clean) {
     if (v) { store.set(name, v); envSeeded.delete(name); }  // now a runtime value
     else store.delete(name);

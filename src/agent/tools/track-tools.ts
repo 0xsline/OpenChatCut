@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentContext } from '../context';
 import { resolveTrackId, timelineTrackIds, trackAlias, trackKind, type TimelineState, type TrackId, type TrackRole, type TrackUpdate } from '../../editor/types';
 

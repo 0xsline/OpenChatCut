@@ -267,7 +267,7 @@ Clients must send `Authorization: Bearer <token>`. The current bridge is designe
 |---|---|
 | Frontend | React 19, TypeScript 6, Vite 8 |
 | Editing core | Immutable timeline state, command layer, and proposal-based application |
-| Agent | Anthropic native tool use, Agent Skills, MCP SDK |
+| Agent | Vercel AI SDK 7 (Anthropic, OpenAI, Gemini, Kimi, Qwen, GLM, DeepSeek, MiniMax, Mistral, and compatible APIs), Agent Skills, MCP SDK |
 | Preview and visuals | Remotion Player, WebGL / GLSL |
 | Server | Dual-host Vite / Electron plugins and a server-side keystore |
 | Persistence | Shared local project store under `~/.openchatcut`, IndexedDB cache, configurable local media directory, optional Cloudflare R2 |
@@ -346,7 +346,7 @@ OpenChatCut is built with the following core projects and specifications:
 | [ChatCut-Inc/agent-plugin](https://github.com/ChatCut-Inc/agent-plugin) | Agent Skills foundation. OpenChatCut adapts the plugin's skill structure and workflows for its local editor, storage, MCP, and tool architecture. See the [Agent Skills attribution notice](src/agent/skills/NOTICE.md). |
 | [Remotion](https://www.remotion.dev/) | Core foundation for React-based video preview, composition, and server-side rendering. |
 | [Model Context Protocol](https://modelcontextprotocol.io/) | Protocol foundation that enables Codex, Claude Code, and other external agents to access projects and timeline tools. |
-| [Anthropic Tool Use](https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview) | Native tool-calling mechanism used by the built-in agent. |
+| [Vercel AI SDK](https://ai-sdk.dev/) | Provider-neutral model streaming and tool calling for the built-in Agent. |
 | [tt-a1i/archify](https://github.com/tt-a1i/archify) | Tool used to define, validate, and generate the README's runtime architecture diagram. |
 
 This list covers the project's major technical foundations. It does not replace the licenses bundled with individual dependencies, fonts, or binaries. See `package-lock.json` for JavaScript dependency versions and [`assets/fonts/LICENSES.md`](assets/fonts/LICENSES.md) for font licenses.

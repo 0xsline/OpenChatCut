@@ -26,10 +26,11 @@ import { stockSearchPlugin } from './stock.ts';
 import { firecrawlPlugin } from './firecrawl.ts';
 import { settingsPlugin } from './settings.ts';
 import { externalAgentPlugin } from './external-agent.ts';
+import { llmProxyPlugin } from './llm-proxy.ts';
 import { getKey } from '../keystore.ts';
 
 export function serverPlugins(): Plugin[] {
-  return [projectStorePlugin(), extensionStorePlugin(), externalAgentPlugin(), settingsPlugin(), exportPlugin(), uploadMultipartPlugin(), uploadPlugin(), extractAudioPlugin(), extractFramesPlugin(), mediaPreviewPlugin(), isolateVoicePlugin(), normalizeMediaPlugin(), imageGenerationPlugin({
+  return [llmProxyPlugin(), projectStorePlugin(), extensionStorePlugin(), externalAgentPlugin(), settingsPlugin(), exportPlugin(), uploadMultipartPlugin(), uploadPlugin(), extractAudioPlugin(), extractFramesPlugin(), mediaPreviewPlugin(), isolateVoicePlugin(), normalizeMediaPlugin(), imageGenerationPlugin({
     get baseUrl() { return getKey('IMAGE_BASE_URL') || 'https://api.openai.com'; },
     get apiKey() { return getKey('IMAGE_API_KEY') || getKey('OPENAI_API_KEY'); },
     get geminiBaseUrl() { return getKey('GEMINI_BASE_URL') || 'https://generativelanguage.googleapis.com'; },

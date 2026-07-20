@@ -56,12 +56,12 @@ export function VendorPane({ page, hint, ctx }: {
 interface ProbeResponse { ok: boolean; message: string; latencyMs?: number; }
 interface ProbeShown { page: string; ok: boolean; message: string; }
 
-/** 本页字段里未保存的暂存值(非空)→ 探测 overrides;是否带了暂存一并返回给文案用。 */
+/** 本页字段里未保存的暂存值→探测 overrides；空串代表本次测试按默认值。 */
 function stagedOverrides(page: SettingsVendorPage, values: Values): Record<string, string> {
   const overrides: Record<string, string> = {};
   for (const f of page.fields) {
     const v = values[f.name];
-    if (v !== undefined && v.trim() !== '') overrides[f.name] = v.trim();
+    if (v !== undefined) overrides[f.name] = v.trim();
   }
   return overrides;
 }

@@ -1,0 +1,150 @@
+import assert from 'node:assert/strict';
+import { generateText } from 'ai';
+import {
+  defaultModelForProvider,
+  getLanguageModel,
+  normalizeLlmProvider,
+  providerApiPath,
+} from './client';
+import { LLM_PROVIDER_PRESETS } from '../../shared/llm-providers';
+import {
+  normalizeLlmMessages,
+  prepareMessagesForProvider,
+} from './messages';
+
+assert.equal(normalizeLlmProvider('openai'), 'openai');
+assert.equal(normalizeLlmProvider('KIMI'), 'kimi');
+assert.equal(normalizeLlmProvider('qwen'), 'qwen');
+assert.equal(normalizeLlmProvider('glm'), 'glm');
+assert.equal(normalizeLlmProvider('OPENAI-COMPATIBLE'), 'openai-compatible');
+assert.equal(normalizeLlmProvider('unexpected'), 'anthropic');
+assert.equal(defaultModelForProvider('anthropic'), 'claude-fable-5');
+assert.equal(defaultModelForProvider('openai'), 'gpt-5');
+assert.equal(defaultModelForProvider('kimi'), 'kimi-k3');
+assert.equal(defaultModelForProvider('qwen'), 'qwen-plus');
+assert.equal(defaultModelForProvider('glm'), 'glm-5.2');
+assert.equal(providerApiPath('anthropic'), '/messages');
+assert.equal(providerApiPath('kimi'), '/chat/completions');
+assert.equal(providerApiPath('openai-compatible'), '/chat/completions');
+assert.equal(getLanguageModel('anthropic', 'test-model').provider, 'anthropic.messages');
+assert.equal(getLanguageModel('openai', 'test-model').provider, 'openai.responses');
+assert.equal(getLanguageModel('kimi', 'test-model').provider, 'openai-compatible.chat');
+assert.equal(getLanguageModel('openai-compatible', 'test-model').provider, 'openai-compatible.chat');
+assert.equal(
+  new Set(LLM_PROVIDER_PRESETS.map(({ id }) => id)).size,
+  LLM_PROVIDER_PRESETS.length,
+);
+for (const preset of LLM_PROVIDER_PRESETS) {
+  assert.equal(normalizeLlmProvider(preset.id), preset.id);
+  assert.equal(defaultModelForProvider(preset.id), preset.defaultModel);
+  assert.doesNotThrow(() => new URL(preset.baseUrl));
+  assert.equal(
+    getLanguageModel(preset.id, 'test-model').provider,
+    preset.protocol === 'anthropic'
+      ? 'anthropic.messages'
+      : preset.protocol === 'openai'
+        ? 'openai.responses'
+        : 'openai-compatible.chat',
+  );
+}
+
+// Exercise the real AI SDK provider serializers without making a network call.
+// A controlled 400 is sufficient to capture each protocol's URL and request body.
+const originalFetch = globalThis.fetch;
+const serialized: Array<{ url: string; body: Record<string, unknown> }> = [];
+globalThis.fetch = async (input, init) => {
+  const url = input instanceof Request ? input.url : String(input);
+  serialized.push({
+    url,
+    body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
+  });
+  return new Response(JSON.stringify({
+    type: 'error',
+    error: { type: 'invalid_request_error', message: 'intentional test response' },
+  }), {
+    status: 400,
+    headers: { 'content-type': 'application/json' },
+  });
+};
+try {
+  for (const [provider, model] of [
+    ['anthropic', 'claude-test'],
+    ['openai', 'gpt-test'],
+    ['kimi', 'kimi-test'],
+    ['openai-compatible', 'compatible-test'],
+  ] as const) {
+    await assert.rejects(generateText({
+      model: getLanguageModel(provider, model),
+      prompt: 'ping',
+      maxRetries: 0,
+    }));
+  }
+} finally {
+  globalThis.fetch = originalFetch;
+}
+assert.deepEqual(serialized.map(({ url, body }) => ({
+  path: new URL(url).pathname,
+  model: body.model,
+})), [
+  { path: '/llm/messages', model: 'claude-test' },
+  { path: '/llm/responses', model: 'gpt-test' },
+  { path: '/llm/chat/completions', model: 'kimi-test' },
+  { path: '/llm/chat/completions', model: 'compatible-test' },
+]);
+
+const legacy = normalizeLlmMessages([
+  { role: 'user', content: '把第一段放到时间线' },
+  {
+    role: 'assistant',
+    content: [
+      { type: 'thinking', thinking: 'private reasoning', signature: 'sig' },
+      { type: 'text', text: '开始处理。' },
+      { type: 'tool_use', id: 'tool_1', name: 'edit_item', input: { itemId: 'a' } },
+    ],
+  },
+  {
+    role: 'user',
+    content: [
+      { type: 'tool_result', tool_use_id: 'tool_1', content: '{"ok":true}' },
+    ],
+  },
+]);
+
+assert.deepEqual(legacy, [
+  { role: 'user', content: '把第一段放到时间线' },
+  {
+    role: 'assistant',
+    content: [
+      { type: 'text', text: '开始处理。' },
+      { type: 'tool-call', toolCallId: 'tool_1', toolName: 'edit_item', input: { itemId: 'a' } },
+    ],
+  },
+  {
+    role: 'tool',
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId: 'tool_1',
+        toolName: 'edit_item',
+        output: { type: 'text', value: '{"ok":true}' },
+      },
+    ],
+  },
+]);
+
+const portable = prepareMessagesForProvider([
+  {
+    role: 'assistant',
+    providerOptions: { anthropic: { container: 'abc' } },
+    content: [
+      { type: 'reasoning', text: 'hidden', providerOptions: { anthropic: { signature: 'sig' } } },
+      { type: 'text', text: 'visible', providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } } },
+    ],
+  },
+], 'anthropic', 'openai');
+
+assert.deepEqual(portable, [
+  { role: 'assistant', content: [{ type: 'text', text: 'visible' }] },
+]);
+
+console.log('ai-sdk checks passed');
