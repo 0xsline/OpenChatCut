@@ -21,6 +21,8 @@
   <a href="#产品导览">产品导览</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#在-codex--claude-code-中使用">Agent / MCP</a> ·
+  <a href="#更新日志">更新日志</a> ·
+  <a href="#star-趋势">Star 趋势</a> ·
   <a href="#贡献">参与贡献</a>
 </p>
 
@@ -352,9 +354,30 @@ OpenChatCut 基于以下核心项目与规范构建：
 
 ---
 
+## 更新日志
+
+重要变更见中英双语的 [`CHANGELOG.md`](CHANGELOG.md)，所有已发布安装包与源码包见 [GitHub Releases](https://github.com/0xsline/OpenChatCut/releases)。
+
+---
+
+## Star 趋势
+
+<p align="center">
+  <a href="https://www.star-history.com/?type=date&repos=0xsline%2FOpenChatCut">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=0xsline/OpenChatCut&type=date&theme=dark&legend=top-left&sealed_token=KKfeYtGGCjyG1QN9_Ev6Tvyyrcp5LW6bzOT8ZKED1EE0qNRqM3KrThzzbXWdcP6K-sr3vKbmoFZYDviSMtf8SI5UqAPYQf9v8qXCpM04S2C4LQTAKPbexT66SI3Q8pcHJJoMT7VCZnGp93LqIXZchAyYfTMmKy_y_LFOJ-_ruEq8GP1kVESXshaFzJfC" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=0xsline/OpenChatCut&type=date&legend=top-left&sealed_token=KKfeYtGGCjyG1QN9_Ev6Tvyyrcp5LW6bzOT8ZKED1EE0qNRqM3KrThzzbXWdcP6K-sr3vKbmoFZYDviSMtf8SI5UqAPYQf9v8qXCpM04S2C4LQTAKPbexT66SI3Q8pcHJJoMT7VCZnGp93LqIXZchAyYfTMmKy_y_LFOJ-_ruEq8GP1kVESXshaFzJfC" />
+      <img alt="OpenChatCut Star 增长趋势图" src="https://api.star-history.com/chart?repos=0xsline/OpenChatCut&type=date&legend=top-left&sealed_token=KKfeYtGGCjyG1QN9_Ev6Tvyyrcp5LW6bzOT8ZKED1EE0qNRqM3KrThzzbXWdcP6K-sr3vKbmoFZYDviSMtf8SI5UqAPYQf9v8qXCpM04S2C4LQTAKPbexT66SI3Q8pcHJJoMT7VCZnGp93LqIXZchAyYfTMmKy_y_LFOJ-_ruEq8GP1kVESXshaFzJfC" />
+    </picture>
+  </a>
+</p>
+
+---
+
 ## 许可证
 
-本仓库目前尚未授予覆盖整个项目的许可证。请勿默认拥有对 OpenChatCut 整体进行复用、修改或再分发的权利。第三方组件与资产仍分别受其自身条款约束。
+OpenChatCut 采用 [GNU Affero General Public License v3.0 或更高版本](LICENSE)。
+第三方组件与资产仍分别受其自身许可证约束。
 
 ---
 
