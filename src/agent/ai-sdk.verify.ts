@@ -5,6 +5,7 @@ import {
   getLanguageModel,
   getLanguageModelProviderOptions,
   normalizeLlmProvider,
+  normalizeOpenAiApiMode,
   providerApiPath,
 } from './client';
 import { LLM_PROVIDER_PRESETS } from '../../shared/llm-providers';
@@ -18,7 +19,6 @@ assert.equal(normalizeLlmProvider('openai'), 'openai');
 assert.equal(normalizeLlmProvider('KIMI'), 'kimi');
 assert.equal(normalizeLlmProvider('qwen'), 'qwen');
 assert.equal(normalizeLlmProvider('glm'), 'glm');
-assert.equal(normalizeLlmProvider('OPENAI-COMPATIBLE'), 'openai-compatible');
 assert.equal(normalizeLlmProvider('unexpected'), 'anthropic');
 assert.equal(defaultModelForProvider('anthropic'), 'claude-fable-5');
 assert.equal(defaultModelForProvider('openai'), 'gpt-5');
@@ -26,14 +26,17 @@ assert.equal(defaultModelForProvider('kimi'), 'kimi-k3');
 assert.equal(defaultModelForProvider('qwen'), 'qwen-plus');
 assert.equal(defaultModelForProvider('glm'), 'glm-5.2');
 assert.equal(providerApiPath('anthropic'), '/messages');
+assert.equal(providerApiPath('openai'), '/responses');
+assert.equal(providerApiPath('openai', 'chat'), '/chat/completions');
 assert.equal(providerApiPath('kimi'), '/chat/completions');
-assert.equal(providerApiPath('openai-compatible'), '/chat/completions');
+assert.equal(normalizeOpenAiApiMode('chat'), 'chat');
+assert.equal(normalizeOpenAiApiMode('unexpected'), 'responses');
 assert.equal(getLanguageModel('anthropic', 'test-model').provider, 'anthropic.messages');
 assert.equal(getLanguageModel('openai', 'test-model').provider, 'openai.responses');
+assert.equal(getLanguageModel('openai', 'test-model', 'chat').provider, 'openai.chat');
 assert.equal(getLanguageModel('kimi', 'test-model').provider, 'kimi.chat');
-assert.equal(getLanguageModel('openai-compatible', 'test-model').provider, 'openai-compatible.chat');
 assert.deepEqual(getLanguageModelProviderOptions('openai'), { openai: { store: false } });
-assert.equal(getLanguageModelProviderOptions('openai-compatible'), undefined);
+assert.equal(getLanguageModelProviderOptions('openai', 'chat'), undefined);
 assert.equal(
   new Set(LLM_PROVIDER_PRESETS.map(({ id }) => id)).size,
   LLM_PROVIDER_PRESETS.length,
@@ -73,14 +76,14 @@ globalThis.fetch = async (input, init) => {
   });
 };
 try {
-  for (const [provider, model] of [
-    ['anthropic', 'claude-test'],
-    ['openai', 'gpt-test'],
-    ['kimi', 'kimi-test'],
-    ['openai-compatible', 'compatible-test'],
+  for (const [provider, model, openAiApiMode] of [
+    ['anthropic', 'claude-test', undefined],
+    ['openai', 'gpt-test', undefined],
+    ['openai', 'gpt-chat-test', 'chat'],
+    ['kimi', 'kimi-test', undefined],
   ] as const) {
     await assert.rejects(generateText({
-      model: getLanguageModel(provider, model),
+      model: getLanguageModel(provider, model, openAiApiMode),
       prompt: 'ping',
       maxRetries: 0,
     }));
@@ -95,8 +98,8 @@ assert.deepEqual(serialized.map(({ url, body, provider }) => ({
 })), [
   { path: '/llm/messages', model: 'claude-test', provider: 'anthropic' },
   { path: '/llm/responses', model: 'gpt-test', provider: 'openai' },
+  { path: '/llm/chat/completions', model: 'gpt-chat-test', provider: 'openai' },
   { path: '/llm/chat/completions', model: 'kimi-test', provider: 'kimi' },
-  { path: '/llm/chat/completions', model: 'compatible-test', provider: 'openai-compatible' },
 ]);
 
 const legacy = normalizeLlmMessages([

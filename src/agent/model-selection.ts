@@ -59,7 +59,7 @@ export function applyAgentModelStatus(
   });
   const savedProvider = normalizeLlmProvider(models.LLM_PROVIDER);
   const active = choices.find((choice) => choice.provider === savedProvider) ?? choices[0];
-  if (active) setLlmConfig(active.provider, active.model);
+  if (active) setLlmConfig(active.provider, active.model, models.LLM_OPENAI_API_MODE);
   emit({ activeId: active?.id ?? '', choices, loaded: true });
 }
 
