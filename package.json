@@ -1,7 +1,7 @@
 {
   "name": "openchatcut",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local-first, conversational AI video editor.",
   "license": "AGPL-3.0-or-later",
   "author": "OpenChatCut Contributors",
