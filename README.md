@@ -9,11 +9,12 @@
 </p>
 
 <p align="center">
-  <strong>An agent-native, local-first AI video editor</strong>
+  <strong>Open-source ChatCut alternative · agent-native · local-first AI video editor</strong>
 </p>
 
 <p align="center">
   Let Codex, Claude Code, and the built-in agent read, edit, and export real video projects that remain fully editable.
+  Website: <a href="https://openchatcut.com">openchatcut.com</a>
 </p>
 
 <p align="center">
@@ -50,13 +51,17 @@
 
 ## What is OpenChatCut?
 
-OpenChatCut is a video editor that brings **conversational agents** and **professional timeline editing** into the same workspace.
+OpenChatCut is an **open-source ChatCut alternative**: a video editor that brings **conversational agents** and **professional timeline editing** into the same workspace. It is independent open source (AGPL), not affiliated with the commercial ChatCut product.
 
 **OpenChatCut = local video projects + multitrack timeline + AI agents + MCP + production-ready exports.**
 
 It does not merely generate a video that can no longer be changed. Every edit is written to real tracks, clips, transitions, captions, effects, and media inside the project. You can continue editing manually, undo or redo changes, save versions, or hand the project to another agent.
 
 OpenChatCut is built for creators and developers who want AI to participate in the actual editing workflow without giving up professional control, rather than starting over from an empty chat box or an immutable generated result.
+
+- Website: [https://openchatcut.com](https://openchatcut.com)
+- Open-source ChatCut alternative guide: [https://openchatcut.com/blog/open-source-chatcut-alternative](https://openchatcut.com/blog/open-source-chatcut-alternative)
+- ChatCut vs OpenChatCut: [https://openchatcut.com/blog/chatcut-vs-openchatcut](https://openchatcut.com/blog/chatcut-vs-openchatcut)
 
 - 🤖 **Agent-native**: the built-in agent and external MCP agents share the same editing tools.
 - 🎞️ **Real timeline**: multiple video and audio tracks, transitions, effects, LUTs, zooms, and keyframes.

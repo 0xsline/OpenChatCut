@@ -2,7 +2,7 @@
   "name": "openchatcut",
   "private": true,
   "version": "0.1.1",
-  "description": "Local-first, conversational AI video editor.",
+  "description": "Open-source ChatCut alternative: local-first, agent-native AI video editor with MCP.",
   "license": "AGPL-3.0-or-later",
   "author": "OpenChatCut Contributors",
   "type": "module",

@@ -9,11 +9,12 @@
 </p>
 
 <p align="center">
-  <strong>Agent-native、local-first 的 AI 视频编辑器</strong>
+  <strong>开源 ChatCut 替代 · Agent-native · local-first AI 视频编辑器</strong>
 </p>
 
 <p align="center">
   让 Codex、Claude Code 和内置 Agent 直接读取、剪辑并导出可继续编辑的真实视频工程。
+  官网：<a href="https://openchatcut.com">openchatcut.com</a>
 </p>
 
 <p align="center">
@@ -50,13 +51,17 @@
 
 ## OpenChatCut 是什么
 
-OpenChatCut 是一个把 **对话式 Agent** 和 **专业时间线编辑** 放在同一工作区的视频编辑器。
+OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **专业时间线编辑** 放在同一工作区的 AI 视频编辑器。独立开源（AGPL），与商业版 ChatCut 无隶属关系。
 
 **OpenChatCut = 本地视频工程 + 多轨时间线 + AI Agent + MCP + 可交付导出。**
 
 它不是只生成一段不可修改的视频。每次编辑都会落到真实工程中的轨道、片段、转场、字幕、特效和素材上；你可以继续手动调整，也可以撤销、重做、保存版本或交给另一个 Agent 接着完成。
 
 它适合希望让 AI 真正参与剪辑流程、同时保留专业编辑控制权的创作者和开发者，而不是每次都从一个空白聊天框或不可修改的生成结果重新开始。
+
+- 官网：[https://openchatcut.com](https://openchatcut.com)
+- 开源 ChatCut 替代说明：[https://openchatcut.com/zh/blog/open-source-chatcut-alternative](https://openchatcut.com/zh/blog/open-source-chatcut-alternative)
+- ChatCut 与 OpenChatCut 对比：[https://openchatcut.com/zh/blog/chatcut-vs-openchatcut](https://openchatcut.com/zh/blog/chatcut-vs-openchatcut)
 
 - 🤖 **Agent-native**：内置 Agent 与外部 MCP Agent 共用同一套编辑工具。
 - 🎞️ **真实时间线**：多视频轨、多音频轨、转场、特效、LUT、缩放和关键帧。
