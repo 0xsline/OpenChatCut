@@ -6,7 +6,9 @@ release/
 coverage/
 .nyc_output/
 playwright-report/
+.playwright-cli/
 test-results/
+/output/
 .vite/
 *.tsbuildinfo
 

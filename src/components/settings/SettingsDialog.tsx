@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { theme } from '../../theme';
+import { theme, themeAlpha } from '../../theme';
 import { t, useT } from '../../i18n/locale';
 import { Icon } from '../icons';
 import { VendorIcon } from './vendorIcons';
@@ -337,13 +337,13 @@ function dot(on: boolean): React.CSSProperties {
 }
 
 const overlay: React.CSSProperties = {
-  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.62)', display: 'grid', placeItems: 'center',
+  position: 'fixed', inset: 0, background: themeAlpha.shadow(0.62), display: 'grid', placeItems: 'center',
   zIndex: 200, padding: 24, fontFamily: 'system-ui, -apple-system, sans-serif',
 };
 const panel: React.CSSProperties = {
   width: 'min(940px, 100%)', height: 'min(640px, 86vh)', display: 'flex', flexDirection: 'column',
     background: theme.panel, color: theme.text, border: `0.5px solid ${theme.border}`, borderRadius: 6,
-  boxShadow: '0 24px 64px rgba(0,0,0,0.5)', overflow: 'hidden',
+  boxShadow: `0 24px 64px ${themeAlpha.shadow(0.5)}`, overflow: 'hidden',
 };
 const head: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 16px 13px 20px', borderBottom: `0.5px solid ${theme.border}`,

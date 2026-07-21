@@ -1,5 +1,6 @@
-import { timelineTrackIds, trackKind, type DesignStyle, type MediaAsset, type MediaFolder, type ProjectDoc, type Timeline, type TimelineState } from '../editor/types';
+import type { DesignStyle, ProjectDoc, TimelineState } from '../editor/types';
 import type { LlmProvider } from '../../shared/llm-providers';
+import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 import {
   kvDel as idbDel,
   kvGet as idbGet,
@@ -8,6 +9,12 @@ import {
   resetSharedKvMemory,
 } from './sharedKv';
 import { clearProjectSessionPrefs } from './sessionPrefs';
+import { dedupeAssets, isDesignStyle, normalizeTimelineTracks } from './migrations/normalize';
+import {
+  runProjectMigrations,
+  type ProjectMigrationOptions,
+  type ProjectMigrationProgress,
+} from './migrations';
 
 // Server-backed multi-project store with an IndexedDB cache. The server store is
 // shared by every local browser and dev port; Node checks use a memory fallback.
@@ -29,92 +36,6 @@ export function resetProjectStoreMemory(): void {
   resetSharedKvMemory();
 }
 
-// Validate at the boundary — persisted data is untrusted (stale / corrupt / other tab).
-function isTimelineState(v: unknown): v is TimelineState {
-  return !!v && typeof v === 'object'
-    && Array.isArray((v as { items?: unknown }).items)
-    && typeof (v as { fps?: unknown }).fps === 'number';
-}
-
-type PersistedProjectShape = {
-  version?: unknown;
-  assets?: unknown;
-  mediaFolders?: unknown;
-  timelines: Timeline[];
-  activeTimelineId: string;
-  designStyle?: unknown;
-};
-
-// design style is untrusted persisted data — accept only the array-of-roles shape
-// Anything else is dropped rather than trusted.
-function isDesignStyle(v: unknown): v is DesignStyle {
-  if (!v || typeof v !== 'object') return false;
-  const s = v as { colors?: unknown; fonts?: unknown };
-  return Array.isArray(s.colors) && Array.isArray(s.fonts);
-}
-
-function isProjectDocShape(v: unknown): v is PersistedProjectShape {
-  return !!v && typeof v === 'object'
-    && Array.isArray((v as { timelines?: unknown }).timelines)
-    && (v as { timelines: unknown[] }).timelines.length > 0
-    && (v as { timelines: unknown[] }).timelines.every(isTimelineState)
-    && typeof (v as { activeTimelineId?: unknown }).activeTimelineId === 'string';
-}
-
-function isMediaAsset(v: unknown): v is MediaAsset {
-  if (!v || typeof v !== 'object') return false;
-  const asset = v as Partial<MediaAsset>;
-  return typeof asset.id === 'string'
-    && typeof asset.name === 'string'
-    && (asset.kind === 'video' || asset.kind === 'image' || asset.kind === 'audio' || asset.kind === 'motion-graphic')
-    && typeof asset.src === 'string'
-    && typeof asset.durationInFrames === 'number'
-    && (asset.kind !== 'motion-graphic' || typeof asset.code === 'string');
-}
-
-function dedupeAssets(values: unknown[]): MediaAsset[] {
-  const unique = new Map<string, MediaAsset>();
-  for (const value of values) {
-    if (isMediaAsset(value) && !unique.has(value.id)) unique.set(value.id, value);
-  }
-  return [...unique.values()];
-}
-
-function isMediaFolder(v: unknown): v is MediaFolder {
-  if (!v || typeof v !== 'object') return false;
-  const folder = v as Partial<MediaFolder>;
-  return typeof folder.id === 'string' && typeof folder.name === 'string'
-    && (folder.parentId === undefined || typeof folder.parentId === 'string');
-}
-
-function stripTimelineAssets(timeline: Timeline): Timeline {
-  const { assets: _legacyAssets, ...rest } = timeline;
-  return rest;
-}
-
-/** One-time legacy migration: aliases used to be item ids. Replace them with
- * deterministic stable ids so V1/V2/A1/A2 may safely renumber after inserts. */
-function normalizeTimelineTracks(timeline: Timeline): Timeline {
-  const clean = stripTimelineAssets(timeline);
-  const ids = timelineTrackIds(clean);
-  const alreadyStable = !!clean.trackOrder?.length
-    && ids.every((id) => clean.tracks?.[id]?.kind === 'video' || clean.tracks?.[id]?.kind === 'audio');
-  if (alreadyStable) return clean;
-  const remap = new Map(ids.map((id, index) => [id, `track_${clean.id}_${index + 1}`]));
-  const trackOrder = ids.map((id) => remap.get(id)!);
-  const tracks = Object.fromEntries(ids.map((id) => {
-    const nextId = remap.get(id)!;
-    return [nextId, { ...clean.tracks?.[id], kind: trackKind(clean, id) }];
-  }));
-  return {
-    ...clean,
-    trackOrder,
-    tracks,
-    items: clean.items.map((item) => ({ ...item, track: remap.get(item.track) ?? item.track })),
-    transitions: clean.transitions?.map((transition) => ({ ...transition, trackId: remap.get(transition.trackId) ?? transition.trackId })),
-  };
-}
-
 const tlId = () => `tl_${newId()}`;
 
 /** wrap a single timeline into a one-sequence project (new projects + migration). */
@@ -122,40 +43,21 @@ export function docFromTimeline(ts: TimelineState, name = '序列 1'): ProjectDo
   const id = tlId();
   const { assets = [], ...state } = ts;
   const timeline = normalizeTimelineTracks({ ...state, id, name, order: 0 });
-  return { version: 2, assets: dedupeAssets(assets), mediaFolders: [], timelines: [timeline], activeTimelineId: id };
+  return {
+    version: CURRENT_PROJECT_VERSION,
+    assets: dedupeAssets(assets),
+    mediaFolders: [],
+    timelines: [timeline],
+    activeTimelineId: id,
+  };
 }
 
-/** Normalize every supported persisted shape into ProjectDoc V2. Legacy media
- * pools lived inside timelines, so migration merges/dedupes them at project
- * level and removes the timeline copies. */
-export function migrateProjectDoc(v: unknown): ProjectDoc | null {
-  if (isProjectDocShape(v)) {
-    const legacyAssets = v.timelines.flatMap((timeline) => timeline.assets ?? []);
-    const projectAssets = Array.isArray(v.assets) ? v.assets : [];
-    const rawFolders = Array.isArray(v.mediaFolders) ? v.mediaFolders.filter(isMediaFolder) : [];
-    const folderIds = new Set(rawFolders.map((folder) => folder.id));
-    const mediaFolders = rawFolders.map((folder) => folder.parentId && (!folderIds.has(folder.parentId) || folder.parentId === folder.id)
-      ? { ...folder, parentId: undefined }
-      : folder);
-    const assets = dedupeAssets([...projectAssets, ...legacyAssets]).map((asset) => asset.folderId && !folderIds.has(asset.folderId)
-      ? { ...asset, folderId: undefined }
-      : asset);
-    const timelines = v.timelines.map(normalizeTimelineTracks);
-    const activeTimelineId = timelines.some((timeline) => timeline.id === v.activeTimelineId)
-      ? v.activeTimelineId
-      : timelines[0].id;
-    return {
-      version: 2,
-      assets,
-      mediaFolders,
-      timelines,
-      activeTimelineId,
-      ...(isDesignStyle(v.designStyle) ? { designStyle: v.designStyle } : {}),
-    };
-  }
-  if (isTimelineState(v)) return docFromTimeline(v);
-  return null;
+/** The sole public boundary for persisted documents, imports, templates and snapshots. */
+export function migrateProjectDoc(v: unknown, options?: ProjectMigrationOptions): ProjectDoc | null {
+  return runProjectMigrations(v, options)?.doc ?? null;
 }
+
+export type { ProjectMigrationOptions, ProjectMigrationProgress };
 
 // ── Ordered per-project chat-history persistence ──────────────────────────
 // Stored decoupled from the doc so a chat write never rewrites the timeline (and
@@ -380,9 +282,28 @@ export async function hasProjectHistory(): Promise<boolean> {
   }
 }
 
-export async function loadProject(id: string): Promise<ProjectDoc | null> {
+export async function loadProject(id: string, options?: ProjectMigrationOptions): Promise<ProjectDoc | null> {
   try {
-    return migrateProjectDoc(await idbGet<unknown>(projectKey(id)));
+    const raw = await idbGet<unknown>(projectKey(id));
+    let upgraded = false;
+    const doc = migrateProjectDoc(raw, {
+      onProgress: (progress) => {
+        upgraded = true;
+        options?.onProgress?.(progress);
+      },
+    });
+    if (!doc) return null;
+    // Persist only after the complete chain succeeds. A broken migration leaves
+    // the original bytes untouched and can be retried by a future build.
+    if (upgraded) {
+      try {
+        await idbSet(projectKey(id), doc);
+      } catch {
+        // The migrated in-memory document is still safe to open. Persistence can
+        // retry on the next load without ever writing an intermediate version.
+      }
+    }
+    return doc;
   } catch {
     return null;
   }

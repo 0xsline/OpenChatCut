@@ -3,7 +3,7 @@
 // 「测试连接」走 POST /api/keys/test:把本页未保存的暂存值作为 overrides 一并
 // 送去服务端探测(仅本次生效,不落盘),密钥值永远不会出现在响应里。
 import { useState } from 'react';
-import { theme } from '../../theme';
+import { theme, themeAlpha } from '../../theme';
 import { useT } from '../../i18n/locale';
 import { VendorIcon } from './vendorIcons';
 import {
@@ -222,7 +222,7 @@ function ToggleSwitch({ field, shown, onStage }: {
         <span style={{
           position: 'absolute', top: 2, left: on ? 15 : 2, width: 13, height: 13,
           borderRadius: '50%', background: theme.textStrong, transition: 'left .18s ease',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+          boxShadow: `0 1px 3px ${themeAlpha.shadow(0.4)}`,
         }} />
       </span>
       {on ? t('已启用') : t('已停用')}

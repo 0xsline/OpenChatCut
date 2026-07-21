@@ -4,6 +4,7 @@ import { theme } from '../theme';
 import { useT } from '../i18n/locale';
 import type { Tpl } from '../types';
 import type { MediaAsset, MediaFolder, TimelineItem, TransitionItem, TransitionType, ZoomShape } from '../editor/types';
+import type { MobileUploadRecord } from '../media/mobileUploadApi';
 import { AUDIO_TRANSITION_ORDER, TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../editor/types';
 import type { CaptionsData } from '../captions/types';
 import type { TranscriptWord } from '../transcript/types';
@@ -78,6 +79,7 @@ const AUDIO_FX_ITEMS: ResourceItem[] = [
 ];
 
 interface LibraryPanelProps {
+  semanticScopeId: string;
   templates: Tpl[];
   onAddTemplate: (tpl: Tpl) => void;
   onAddAudio: (asset: AudioAsset) => void;
@@ -99,6 +101,7 @@ interface LibraryPanelProps {
   assets: MediaAsset[];
   mediaFolders: MediaFolder[];
   onImportMedia: (file: File, onProgress?: (ratio: number) => void) => Promise<MediaAsset>;
+  onImportMobileMedia: (record: MobileUploadRecord) => Promise<void>;
   onAddMediaItem: (asset: MediaAsset) => void;
   onCreateMediaFolder: (name: string, parentId?: string) => string;
   onRenameMediaFolder: (id: string, name: string) => void;
@@ -127,7 +130,7 @@ interface LibraryPanelProps {
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿'] as const;
 const SUB_TABS = ['MG 动画', '音效', '音频效果', '转场', '特效', '缩放', 'LUT'] as const;
-export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, onImportMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onRemoveMediaAsset, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, transitions, fxDefs, selectedItem, onApplyTransition, onApplyFx, onApplyZoom, onApplyAudioFx }: LibraryPanelProps) {
+export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, onImportMedia, onImportMobileMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onRemoveMediaAsset, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, transitions, fxDefs, selectedItem, onApplyTransition, onApplyFx, onApplyZoom, onApplyAudioFx }: LibraryPanelProps) {
   const t = useT();
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
@@ -171,7 +174,7 @@ export function LibraryPanel({ templates, onAddTemplate, onAddAudio, playerRef, 
         </div>
       ) : isMyAssets ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, borderTop: `0.5px solid ${theme.border}` }}>
-          <MediaPoolPanel assets={assets} folders={mediaFolders} fps={fps} onImport={onImportMedia} onAddAsset={onAddMediaItem}
+          <MediaPoolPanel semanticScopeId={semanticScopeId} assets={assets} folders={mediaFolders} fps={fps} onImport={onImportMedia} onImportMobile={onImportMobileMedia} onAddAsset={onAddMediaItem}
             onCreateFolder={onCreateMediaFolder} onRenameFolder={onRenameMediaFolder} onDeleteFolder={onDeleteMediaFolder}
             onMoveAssets={onMoveMediaAssets} onRenameAsset={onRenameMediaAsset} onSetFavorite={onSetMediaAssetFavorite} onRemoveAsset={onRemoveMediaAsset}
             onRelinkAsset={onRelinkMediaAsset} onAddSolid={onAddSolid} />

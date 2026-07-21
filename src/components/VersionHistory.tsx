@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { theme } from '../theme';
+import { theme, themeAlpha } from '../theme';
 import { Icon } from './icons';
 import type { ProjectDoc } from '../editor/types';
 import { listVersions, saveVersion, deleteVersion, type ProjectVersion } from '../persist/versionStore';
@@ -105,13 +105,13 @@ export function VersionHistory({ projectId, currentDoc, onRestore, onClose }: Ve
 }
 
 const backdrop: React.CSSProperties = {
-  position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 60,
+  position: 'fixed', inset: 0, background: themeAlpha.shadow(0.55), zIndex: 60,
   display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
 };
 const card: React.CSSProperties = {
   width: 420, maxWidth: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column',
     background: theme.panel, color: theme.text, border: `0.5px solid ${theme.border}`, borderRadius: 6,
-  boxShadow: '0 20px 60px rgba(0,0,0,.5)',
+  boxShadow: `0 20px 60px ${themeAlpha.shadow(0.5)}`,
 };
 const row: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 9, background: theme.panelAlt,

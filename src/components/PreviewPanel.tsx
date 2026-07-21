@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { Player, type CallbackListener, type PlayerRef } from '@remotion/player';
-import { theme } from '../theme';
+import { theme, themeAlpha } from '../theme';
 import { TimelineComposition } from '../editor/TimelineComposition';
 import { timelineDuration, type TimelineState } from '../editor/types';
 import { canvasRegionRef, emitSelectionRef, regionFromDrag, useSelectionRefMode } from '../agent/selection-refs';
@@ -174,7 +174,7 @@ function RegionPickOverlay({ state, playerRef }: { state: TimelineState; playerR
           width: Math.abs(drag.x1 - drag.x0),
           height: Math.abs(drag.y1 - drag.y0),
           border: `0.5px solid ${theme.accent}`,
-          background: 'rgba(220,112,54,0.14)', // theme.accent @ 14%
+          background: themeAlpha.accent(0.14), // theme.accent @ 14%
           pointerEvents: 'none',
         }} />
       )}

@@ -31,7 +31,7 @@ const ranged = buildSilenceGapCaps(words, { mode: 'range', minMs: 300, maxMs: 80
 assert.deepEqual(ranged, { '2': 800 });
 
 const initial: ProjectDoc = {
-  version: 2,
+  version: 3,
   assets: [],
   mediaFolders: [],
   activeTimelineId: 'timeline_main',

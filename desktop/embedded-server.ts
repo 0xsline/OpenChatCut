@@ -37,6 +37,7 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
   const app = createMiniConnect((err) => {
     console.error('[embedded-server]', err instanceof Error ? err.message : err);
   });
+  const server = createServer((req, res) => app.handle(req, res));
 
   // 代理在前(路径不与插件冲突,靠前少走几次匹配)
   app.use('/assemblyai', proxyMiddleware({
@@ -47,6 +48,7 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
   // vite server 桩:插件依赖面全集 = middlewares.use + config.logger(已逐插件核实)
   const fake = {
     middlewares: { use: app.use.bind(app) },
+    httpServer: server,
     config: {
       logger: {
         info: (msg: string) => console.log(msg),
@@ -65,7 +67,6 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
   app.use('/media/uploads', uploadsMiddleware());
   app.use(distStaticMiddleware(distDir));
 
-  const server = createServer((req, res) => app.handle(req, res));
   const port = await new Promise<number>((resolvePort, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', () => {

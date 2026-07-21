@@ -22,6 +22,7 @@ import { SHADER_TOOL_SCHEMAS, SHADER_TOOL_NAMES, execShaderTool } from './tools/
 import { HIGHLIGHT_TOOL_SCHEMAS, HIGHLIGHT_TOOL_NAMES, execHighlightTool } from './tools/highlight-tool';
 import { REFRAME_TOOL_SCHEMAS, REFRAME_TOOL_NAMES, execReframeTool } from './tools/reframe-tools';
 import { EXPORT_TOOL_SCHEMAS, EXPORT_TOOL_NAMES, execExportTool } from './tools/export-tools';
+import { EXPORT_QA_TOOL_SCHEMAS, EXPORT_QA_TOOL_NAMES, execExportQaTool } from './tools/export-qa-tools';
 import { TEMPLATE_TOOL_SCHEMAS, TEMPLATE_TOOL_NAMES, execTemplateTool } from './tools/template-tools';
 import { LOUDNESS_TOOL_SCHEMAS, LOUDNESS_TOOL_NAMES, execLoudnessTool } from './tools/loudness-tools';
 import { ISOLATE_VOICE_TOOL_SCHEMAS, ISOLATE_VOICE_TOOL_NAMES, execIsolateVoiceTool } from './tools/isolate-voice-tools';
@@ -253,6 +254,8 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...REFRAME_TOOL_SCHEMAS,
   // 异步渲染 job：submit_render_job 入队长渲染 + track_export 轮询进度/取结果
   ...EXPORT_TOOL_SCHEMAS,
+  // 成片自动验收：流/时长/黑帧/静帧/静音/峰值 + 剪辑点前后证据图
+  ...EXPORT_QA_TOOL_SCHEMAS,
   // 工程模板（manage_template）：get/list_assets/apply 打包套用一组 MG+设计风格
   ...TEMPLATE_TOOL_SCHEMAS,
   // 响度归一（自定 normalize_loudness）：WebAudio 离线分析→per-clip 增益，复用 setItemVolume
@@ -401,6 +404,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (HIGHLIGHT_TOOL_NAMES.has(name)) return execHighlightTool(name, args, ctx);
   if (REFRAME_TOOL_NAMES.has(name)) return execReframeTool(name, args, ctx);
   if (EXPORT_TOOL_NAMES.has(name)) return execExportTool(name, args, ctx);
+  if (EXPORT_QA_TOOL_NAMES.has(name)) return execExportQaTool(name, args, ctx);
   if (TEMPLATE_TOOL_NAMES.has(name)) return execTemplateTool(name, args, ctx);
   if (LOUDNESS_TOOL_NAMES.has(name)) return execLoudnessTool(name, args, ctx);
   if (ISOLATE_VOICE_TOOL_NAMES.has(name)) return execIsolateVoiceTool(name, args, ctx);

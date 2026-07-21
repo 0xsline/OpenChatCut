@@ -14,11 +14,13 @@ import { DesignStylePanel } from './components/settings/DesignStylePanel';
 import { VersionHistory } from './components/VersionHistory';
 import { usePersistedState } from './hooks/usePersistedState';
 import { useEditor } from './editor/store';
-import type { ProjectDoc, TimelineState } from './editor/types';
-import { timelineTrackIds, trackAlias, trackKind } from './editor/types';
+import type { ProjectDoc, TimelineItem, TimelineState } from './editor/types';
+import { selectedIdsOf, timelineTrackIds, trackAlias, trackKind } from './editor/types';
 import { TEMPLATES } from './editor/initial';
 import { saveProject, loadCreativeMode, saveCreativeMode, type ProjectMeta } from './persist/projectStore';
 import { importMedia } from './media/upload';
+import { importUploadedMedia } from './media/mobileImport';
+import type { MobileUploadRecord } from './media/mobileUploadApi';
 import { ensureMediaSrcs } from './persist/mediaBlobStore';
 import { resumeOpenGenerationJobs } from './persist/jobRegistryStore';
 import { enqueueTranscription, shouldTranscribe } from './transcript/transcribe-jobs';
@@ -38,6 +40,7 @@ import { showAppToast } from './ui/appToast';
 import { useExternalAgentBridge } from './agent/useExternalAgentBridge';
 import { isolateVoiceOnSrc, strengthFromAudioFxId } from './audio/isolateVoice';
 import { analyzeClipLoudness, gainForTarget } from './audio/loudness';
+import { analyzeAutoGrade, type AutoGradeResponse } from './color/autoGrade';
 
 interface EditorProps {
   initial: ProjectDoc;
@@ -54,6 +57,23 @@ const TIMELINE_MIN_H = 260;
 const SPLITTER_TOTAL_W = 0;
 const BASELINE_VIEWPORT_W = 1463;
 const BASELINE_CONTENT_H = 761;
+
+interface AutoGradeRecommendation {
+  itemId: string;
+  itemName: string;
+  analysis: AutoGradeResponse;
+}
+
+interface AutoGradeSession {
+  recommendations: AutoGradeRecommendation[];
+  failedCount: number;
+}
+
+function isAutoGradeTarget(item: TimelineItem, state: TimelineState): boolean {
+  if (item.kind !== 'video' && item.kind !== 'image' && item.kind !== 'gif') return false;
+  if (state.tracks?.[item.track]?.locked) return false;
+  return /^\/media\/uploads\/[^/]+(?:\?.*)?$/.test(item.src ?? '');
+}
 
 export default function Editor({ initial, project, onHome, onRename }: EditorProps) {
   const t = useT();
@@ -121,6 +141,100 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
 
   // a pending proposal's draft result, previewed in the player (null = committed)
   const [previewState, setPreviewState] = useState<TimelineState | null>(null);
+  // Automatic color correction always previews first. Applying the complete
+  // session uses one reducer batch, so multi-clip correction is one undo step.
+  const [autoGradeBusy, setAutoGradeBusy] = useState(false);
+  const [autoGradeSession, setAutoGradeSession] = useState<AutoGradeSession | null>(null);
+  const autoGradeRequestRef = useRef(0);
+  const autoGradeSelectionKey = selectedIdsOf(state).join('\u0000');
+  const autoGradeTargets = useMemo(() => {
+    const selected = new Set(selectedIdsOf(state));
+    return state.items.filter((item) => selected.has(item.id) && isAutoGradeTarget(item, state));
+  }, [state]);
+  useEffect(() => {
+    autoGradeRequestRef.current += 1;
+    setAutoGradeBusy(false);
+    setAutoGradeSession(null);
+  }, [autoGradeSelectionKey, project.id]);
+
+  const cancelAutoGrade = useCallback(() => {
+    autoGradeRequestRef.current += 1;
+    setAutoGradeBusy(false);
+    setAutoGradeSession(null);
+  }, []);
+
+  const analyzeSelectedColor = useCallback(async () => {
+    const snapshot = stateRef.current;
+    const selected = new Set(selectedIdsOf(snapshot));
+    const targets = snapshot.items.filter((item) => selected.has(item.id) && isAutoGradeTarget(item, snapshot));
+    if (!targets.length) {
+      showAppToast(t('请选择已导入媒体池的视频、图片或 GIF 片段'), { error: true });
+      return;
+    }
+    const requestId = ++autoGradeRequestRef.current;
+    setPreviewState(null);
+    setAutoGradeSession(null);
+    setAutoGradeBusy(true);
+    const recommendations: AutoGradeRecommendation[] = [];
+    const cache = new Map<string, Promise<AutoGradeResponse>>();
+    let firstError: unknown = null;
+    for (const item of targets) {
+      if (autoGradeRequestRef.current !== requestId) return;
+      const startSeconds = Math.max(0, item.srcInFrame ?? 0) / snapshot.fps;
+      const durationSeconds = Math.max(1 / snapshot.fps, item.durationInFrames * (item.playbackRate ?? 1) / snapshot.fps);
+      const cacheKey = `${item.src}\u0000${startSeconds.toFixed(3)}\u0000${durationSeconds.toFixed(3)}`;
+      try {
+        let pending = cache.get(cacheKey);
+        if (!pending) {
+          pending = analyzeAutoGrade({ src: item.src!, startSeconds, durationSeconds });
+          cache.set(cacheKey, pending);
+        }
+        recommendations.push({ itemId: item.id, itemName: item.name, analysis: await pending });
+      } catch (error) {
+        firstError ??= error;
+      }
+    }
+    if (autoGradeRequestRef.current !== requestId) return;
+    try {
+      if (!recommendations.length) throw firstError ?? new Error(t('未获得可用的校色结果'));
+      const failedCount = targets.length - recommendations.length;
+      setAutoGradeSession({ recommendations, failedCount });
+      showAppToast(failedCount
+        ? t('已预览 {n} 个片段，{failed} 个分析失败', { n: recommendations.length, failed: failedCount })
+        : t('自动校色预览已生成，可确认应用或取消'));
+    } catch (error) {
+      showAppToast(t('自动校色分析失败：{error}', {
+        error: error instanceof Error ? error.message : String(error),
+      }), { error: true });
+    } finally {
+      if (autoGradeRequestRef.current === requestId) setAutoGradeBusy(false);
+    }
+  }, [t]);
+
+  const applyAutoGrade = useCallback(() => {
+    if (!autoGradeSession?.recommendations.length) return;
+    commands.batch(autoGradeSession.recommendations.map((recommendation) => ({
+      type: 'setFilters' as const,
+      id: recommendation.itemId,
+      patch: recommendation.analysis.filters,
+    })), 'Apply automatic color correction');
+    const applied = autoGradeSession.recommendations.length;
+    setAutoGradeSession(null);
+    showAppToast(t('已将自动校色应用到 {n} 个片段', { n: applied }));
+  }, [autoGradeSession, commands, t]);
+
+  const autoGradePreviewState = useMemo<TimelineState | null>(() => {
+    if (!autoGradeSession) return null;
+    const filters = new Map(autoGradeSession.recommendations.map((entry) => [entry.itemId, entry.analysis.filters]));
+    return {
+      ...state,
+      items: state.items.map((item) => {
+        const patch = filters.get(item.id);
+        return patch ? { ...item, filters: { ...item.filters, ...patch } } : item;
+      }),
+    };
+  }, [autoGradeSession, state]);
+  const selectedAutoGrade = autoGradeSession?.recommendations.find((entry) => entry.itemId === state.selectedId) ?? null;
   // library「用 AI 生成」→ prefill the chat composer (nonce forces re-seed of the same text)
   const [chatSeed, setChatSeed] = useState<{ text: string; nonce: number; reference?: AgentReference } | null>(null);
   // 设计风格(品牌)编辑器弹窗。
@@ -219,6 +333,10 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     startAssetTranscription(asset);
     if (asset.kind !== 'audio') enqueueVisualAnalysis(asset);
   }, [commands, startAssetTranscription]);
+
+  const importMobileUpload = useCallback(async (record: MobileUploadRecord) => {
+    ingestToPool(await importUploadedMedia(record, stateRef.current.fps));
+  }, [ingestToPool]);
 
   // Progressive import: blob placeholder → upload → (ASR extract || normalize race) → relink.
   const importToPool = useCallback(async (file: File, onProgress?: (ratio: number) => void) => {
@@ -374,7 +492,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       </div>
 
       <div style={{ gridColumn: 3, gridRow: 2, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-        <LibraryPanel templates={allTemplates} transitions={state.transitions ?? []} fxDefs={state.fxDefs ?? {}} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} onImportMedia={importToPool} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onRemoveMediaAsset={commands.removeMediaAsset}
+        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} transitions={state.transitions ?? []} fxDefs={state.fxDefs ?? {}} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captions={state.captions ?? null} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onRemoveMediaAsset={commands.removeMediaAsset}
           onRelinkMediaAsset={(id, next) => commands.relinkMediaAsset(id, next)}
           onAddSolid={() => commands.addSolidItem({ startFrame: getPlayhead() })}
           onUseTemplateAI={useTemplateAI}
@@ -415,8 +533,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         <Divider onResize={(dx) => setLibW((w) => clamp(w + dx, ASSETS_MIN_W, Math.max(ASSETS_MIN_W, viewportW - (chatCollapsed ? 46 : chatW) - CANVAS_MIN_W - SPLITTER_TOTAL_W)))} />
       </div>
       <div style={{ gridColumn: 5, gridRow: 2, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-        <PreviewPanel state={previewState ?? state} playerRef={playerRef} onImport={importToCanvas}
-          onUpdateCaptions={previewState ? undefined : commands.updateCaptions}
+        <PreviewPanel state={autoGradePreviewState ?? previewState ?? state} playerRef={playerRef} onImport={importToCanvas}
+          onUpdateCaptions={previewState || autoGradePreviewState ? undefined : commands.updateCaptions}
           onSeedChat={(text) => setChatSeed({ text, nonce: Date.now() })} />
         {selectedItem && (
           <InspectorPanel
@@ -427,7 +545,24 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             onItemVolumeChange={(v) => state.selectedId && commands.setItemVolume(state.selectedId, v)}
             onItemFadeChange={(fade) => state.selectedId && commands.setItemFade(state.selectedId, fade)}
             onItemTransformChange={(patch) => state.selectedId && commands.setItemTransform(state.selectedId, patch)}
-            onItemFiltersChange={(patch) => state.selectedId && commands.setItemFilters(state.selectedId, patch)}
+            onItemFiltersChange={(patch) => {
+              if (autoGradeBusy || autoGradeSession) cancelAutoGrade();
+              if (state.selectedId) commands.setItemFilters(state.selectedId, patch);
+            }}
+            autoGrade={{
+              busy: autoGradeBusy,
+              targetCount: autoGradeTargets.length,
+              previewCount: autoGradeSession?.recommendations.length ?? 0,
+              failedCount: autoGradeSession?.failedCount ?? 0,
+              selectedPreview: selectedAutoGrade ? {
+                filters: selectedAutoGrade.analysis.filters,
+                bitDepth: selectedAutoGrade.analysis.profile.bitDepth,
+                hdr: selectedAutoGrade.analysis.profile.hdr,
+              } : null,
+              onAnalyze: analyzeSelectedColor,
+              onApply: applyAutoGrade,
+              onCancel: cancelAutoGrade,
+            }}
             onItemZoomChange={(patch) => state.selectedId && commands.setItemZoom(state.selectedId, patch)}
             onItemEffectsChange={(effects) => state.selectedId && commands.setItemEffects(state.selectedId, effects)}
             onItemSpeedChange={(rate) => state.selectedId && commands.setItemSpeed(state.selectedId, rate)}

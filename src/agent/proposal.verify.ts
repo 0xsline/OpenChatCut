@@ -42,7 +42,7 @@ assert.equal(separated.length, 3);
 
 const timeline = { id: 'tl-1', name: 'Timeline', order: 0 } as Timeline;
 const doc: ProjectDoc = {
-  version: 2,
+  version: 3,
   assets: [],
   mediaFolders: [],
   timelines: [timeline],

@@ -61,7 +61,7 @@ const timeline: Timeline = {
   captions,
 };
 const doc: ProjectDoc = {
-  version: 2,
+  version: 3,
   assets: [],
   mediaFolders: [],
   timelines: [timeline],

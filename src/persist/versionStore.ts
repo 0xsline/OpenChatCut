@@ -14,19 +14,30 @@ export interface ProjectVersion {
 }
 
 // 边界校验:持久化数据不可信,先校验再用(id/name/createdAt + doc 经 migrateProjectDoc 规整)。
-function toValidVersion(v: unknown): ProjectVersion | null {
+function toValidVersion(v: unknown): { version: ProjectVersion; migrated: boolean } | null {
   if (!v || typeof v !== 'object') return null;
   const raw = v as Partial<ProjectVersion>;
   if (typeof raw.id !== 'string' || typeof raw.name !== 'string' || typeof raw.createdAt !== 'number') return null;
-  const doc = migrateProjectDoc(raw.doc);
+  let migrated = false;
+  const doc = migrateProjectDoc(raw.doc, { onProgress: () => { migrated = true; } });
   if (!doc) return null;
-  return { id: raw.id, name: raw.name, createdAt: raw.createdAt, doc };
+  return { version: { id: raw.id, name: raw.name, createdAt: raw.createdAt, doc }, migrated };
 }
 
 async function readAll(projectId: string): Promise<ProjectVersion[]> {
   const raw = await idbGet<unknown>(versionsKey(projectId));
   if (!Array.isArray(raw)) return [];
-  return raw.map(toValidVersion).filter((v): v is ProjectVersion => v !== null);
+  const parsed = raw.map(toValidVersion);
+  const valid = parsed.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  const versions = valid.map((entry) => entry.version);
+  if (valid.length === raw.length && valid.some((entry) => entry.migrated)) {
+    try {
+      await idbSet(versionsKey(projectId), versions);
+    } catch {
+      // Retry persistence the next time snapshots are read.
+    }
+  }
+  return versions;
 }
 
 /** 该工程的全部快照,最新在前。任何失败均返回空数组(不信任持久化数据)。 */

@@ -1,7 +1,7 @@
 // 时间线顶部工具栏(逐字搬自 Timeline.tsx):编辑模式簇 / 落轨模式 / 旁白录音 /
 // 播放+时间码 / 缩放簇 / 画幅比例 / 字幕显示 / 全屏。时间码 span 由播放头绘制器经
 // timecodeRef 直写(rAF 合帧),这里只渲初值。
-import { type RefObject } from 'react';
+import { useState, type RefObject } from 'react';
 import { theme } from '../../theme';
 import { Icon, type IconName } from '../icons';
 import { ASPECT_PRESETS, type TimelineState } from '../../editor/types';
@@ -10,6 +10,8 @@ import { useT } from '../../i18n/locale';
 import { invokeAction } from '../../shortcuts/actionRegistry';
 import { MIN_TIME_ZOOM, fmt } from './timelineUtil';
 import { TimelineSpeedControl } from './TimelineSpeedControl';
+import { SceneDetectionDialog } from '../../scene-detection/SceneDetectionDialog';
+import { MotionTrackingDialog } from '../../tracking/MotionTrackingDialog';
 
 // Group spacing between toolbar clusters uses gaps without a visible divider.
 function ToolSep() {
@@ -61,8 +63,19 @@ export function TimelineToolbar({
   const speedItem = state.items.find((item) => (
     item.id === state.selectedId && (item.kind === 'video' || item.kind === 'audio')
   )) ?? null;
+  const sceneItem = state.items.find((item) => (
+    item.id === state.selectedId && (item.kind === 'video' || item.kind === 'gif')
+  )) ?? null;
+  const trackingItem = state.items.find((item) => (
+    item.id === state.selectedId
+    && item.kind === 'video'
+    && /^\/media\/uploads\//.test(item.src ?? '')
+  )) ?? null;
+  const [sceneDetectionOpen, setSceneDetectionOpen] = useState(false);
+  const [motionTrackingOpen, setMotionTrackingOpen] = useState(false);
   return (
-    <div className="cc-timeline-toolbar">
+    <>
+      <div className="cc-timeline-toolbar">
       <div className="cc-timeline-tool-group">
         <TB icon="plus" title={t('新建序列')} onClick={() => commands.createTimeline()} />
         <ToolSep />
@@ -71,6 +84,22 @@ export function TimelineToolbar({
         <TB icon="blade" title={t('刀片模式 (B)：点击片段在该处切分')} active={editMode === 'blade'} onClick={() => invokeAction('interaction-mode-blade', undefined, 'toolbar')} />
         <TB icon="pencil" title={t('钢笔模式 (P)：在选中片段上点击绘制透明度关键帧（纵向=不透明度，拖点改帧/值，右键删点）')} active={editMode === 'pen'} onClick={() => invokeAction('interaction-mode-pen', undefined, 'toolbar')} />
         <TB icon="scissors" title={t('在播放头切分选中片段 (C)')} onClick={() => invokeAction('split', undefined, 'toolbar')} />
+        <TB
+          icon="sparkles"
+          title={sceneItem
+            ? t('检测选中片段的场景切点')
+            : t('选择一个视频片段后进行场景检测')}
+          disabled={!sceneItem}
+          onClick={() => setSceneDetectionOpen(true)}
+        />
+        <TB
+          icon="tracking"
+          title={trackingItem
+            ? t('跟踪选中视频中的目标（实验功能）')
+            : t('选择一个本机视频片段后进行运动跟踪')}
+          disabled={!trackingItem}
+          onClick={() => setMotionTrackingOpen(true)}
+        />
         <TB icon="magnet" title={snapping ? t('磁性吸附：开 (S)') : t('磁性吸附：关 (S)')} active={snapping} onClick={() => invokeAction('snapping', undefined, 'toolbar')} />
         <ToolSep />
         <TB
@@ -129,6 +158,23 @@ export function TimelineToolbar({
       </label>
       <button className={`cc-caption-toggle cc-tip cc-tip-r${captionsVisible ? ' active' : ''}`} data-tip={state.captions ? t('字幕显示') : t('字幕显示（当前还没有字幕，先转写或让 Agent 生成）')} aria-label={t('字幕显示')} disabled={!state.captions} onClick={() => state.captions && commands.updateCaptions({ enabled: !captionsVisible })}><Icon name="captions" size={17} /><span>{captionsVisible ? t('开启') : t('未开启')}</span><Icon name="chevronDown" size={13} /></button>
       <TB icon="fullscreen" title={t('全屏预览')} tipRight onClick={() => invokeAction('fullscreen', undefined, 'toolbar')} />
-    </div>
+      </div>
+      {sceneDetectionOpen && sceneItem && (
+        <SceneDetectionDialog
+          state={state}
+          commands={commands}
+          item={sceneItem}
+          onClose={() => setSceneDetectionOpen(false)}
+        />
+      )}
+      {motionTrackingOpen && trackingItem && (
+        <MotionTrackingDialog
+          state={state}
+          commands={commands}
+          item={trackingItem}
+          onClose={() => setMotionTrackingOpen(false)}
+        />
+      )}
+    </>
   );
 }

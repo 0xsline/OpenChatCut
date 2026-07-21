@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../components/icons';
 import { theme } from '../theme';
@@ -9,12 +9,18 @@ import { importMedia } from './upload';
 import { isMediaSrcReachable } from '../persist/mediaBlobStore';
 import { MgThumb } from './MgThumb';
 import { durationLabel, folderPath } from './mediaPoolFormat';
-
+import { SemanticSearchControls } from './semantic-search/SemanticSearchControls';
+import type { SemanticMatch } from './semantic-search/types';
+import { filterMediaAssets, type MediaSortKey, type MediaTypeFilter } from './mediaPoolFilter';
+import { MobileUploadDialog } from './MobileUploadDialog';
+import type { MobileUploadRecord } from './mobileUploadApi';
 interface MediaPoolPanelProps {
+  semanticScopeId: string;
   assets: MediaAsset[];
   folders: MediaFolder[];
   fps: number;
   onImport: (file: File, onProgress?: (ratio: number) => void) => Promise<MediaAsset>;
+  onImportMobile: (record: MobileUploadRecord) => Promise<void>;
   onAddAsset: (asset: MediaAsset) => void;
   onCreateFolder: (name: string, parentId?: string) => string;
   onRenameFolder: (id: string, name: string) => void;
@@ -30,13 +36,10 @@ interface MediaPoolPanelProps {
   onAddSolid?: () => void;
 }
 
-type SortKey = 'newest' | 'name' | 'duration';
-type TypeFilter = 'all' | MediaAsset['kind'];
 type PromptState = { title: string; initialValue: string; rejectSlash?: boolean; onSubmit: (value: string) => void };
 type DeleteState = { id: string; name: string; parentId?: string };
-
 export function MediaPoolPanel({
-  assets, folders, fps, onImport, onAddAsset, onCreateFolder, onRenameFolder,
+  semanticScopeId, assets, folders, fps, onImport, onImportMobile, onAddAsset, onCreateFolder, onRenameFolder,
   onDeleteFolder, onMoveAssets, onRenameAsset, onSetFavorite, onRemoveAsset, onRelinkAsset, onAddSolid,
 }: MediaPoolPanelProps) {
   const t = useT();
@@ -47,8 +50,8 @@ export function MediaPoolPanel({
   const [uploadRatio, setUploadRatio] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<SortKey>('newest');
-  const [type, setType] = useState<TypeFilter>('all');
+  const [sort, setSort] = useState<MediaSortKey>('newest');
+  const [type, setType] = useState<MediaTypeFilter>('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [view, setView] = usePersistedState<'grid' | 'list'>('cc.mediaView', 'grid');
   const [menu, setMenu] = useState<'sort' | 'filter' | null>(null);
@@ -69,7 +72,9 @@ export function MediaPoolPanel({
   const [dirBusy, setDirBusy] = useState(false);
   const [relinkMsg, setRelinkMsg] = useState<string | null>(null);
   const [showRelinkAll, setShowRelinkAll] = useState(false);
-
+  const [semanticResults, setSemanticResults] = useState<SemanticMatch[] | null>(null);
+  const [mobileUploadOpen, setMobileUploadOpen] = useState(false);
+  const onSemanticResults = useCallback((matches: SemanticMatch[] | null) => setSemanticResults(matches), []);
   useEffect(() => {
     if (!assetMenu) return;
     const close = () => { setAssetMenu(null); setAssetMenuPos(null); };
@@ -178,17 +183,9 @@ export function MediaPoolPanel({
 
   const currentFolder = folders.find((folder) => folder.id === currentFolderId);
   const childFolders = folders.filter((folder) => folder.parentId === currentFolderId);
-  const order = new Map(assets.map((asset, index) => [asset.id, index]));
-  const q = query.trim().toLowerCase();
-  const visible = assets
-    .filter((asset) => (q ? asset.name.toLowerCase().includes(q) : asset.folderId === currentFolderId))
-    .filter((asset) => type === 'all' || asset.kind === type)
-    .filter((asset) => !favoritesOnly || asset.favorite)
-    .sort((a, b) => sort === 'name'
-      ? a.name.localeCompare(b.name, 'zh-CN')
-      : sort === 'duration'
-        ? b.durationInFrames - a.durationInFrames
-        : (order.get(b.id) ?? 0) - (order.get(a.id) ?? 0));
+  const { query: q, visible } = filterMediaAssets({
+    assets, query, semanticResults, currentFolderId, type, favoritesOnly, sort,
+  });
   const selectedAssets = assets.filter((asset) => selected.has(asset.id));
 
   const onPick = async (files: FileList | null) => {
@@ -257,7 +254,9 @@ export function MediaPoolPanel({
           <Icon name="search" size={16} />
           <input aria-label={t('搜索素材')} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('搜索')} />
         </label>
+        <SemanticSearchControls scopeId={semanticScopeId} assets={assets} onResultsChange={onSemanticResults} />
         <button className="cc-media-icon" aria-label={t('上传素材')} title={t('上传素材')} disabled={busy} onClick={() => inputRef.current?.click()}><Icon name="upload" size={19} /></button>
+        <button className="cc-media-icon" aria-label={t('手机传素材')} title={t('手机传素材')} onClick={() => setMobileUploadOpen(true)}><Icon name="qrCode" size={19} /></button>
         {busy && uploadRatio != null && (
           <span className="cc-media-upload-pct" title={t('上传中')} style={{ fontSize: 11, opacity: 0.75, minWidth: 36, fontVariantNumeric: 'tabular-nums' }}>
             {Math.round(uploadRatio * 100)}%
@@ -326,7 +325,7 @@ export function MediaPoolPanel({
       </div>}
 
       <div className={`cc-media-grid ${view}`}>
-        {!q && childFolders.map((folder) => <button key={folder.id} className="cc-folder-card" onClick={() => setCurrentFolderId(folder.id)}>
+        {!q && !semanticResults && childFolders.map((folder) => <button key={folder.id} className="cc-folder-card" onClick={() => setCurrentFolderId(folder.id)}>
           <span><Icon name="folder" size={34} /></span><strong>{folder.name}</strong>
         </button>)}
         {visible.map((asset) => <div key={asset.id} className={`cc-asset-card${selected.has(asset.id) ? ' selected' : ''}${missing.has(asset.id) ? ' missing' : ''}`}>
@@ -489,6 +488,7 @@ export function MediaPoolPanel({
           </div>
         </div>
       )}
+      {mobileUploadOpen && <MobileUploadDialog onClose={() => setMobileUploadOpen(false)} onImport={onImportMobile} />}
     </div>
   );
 }

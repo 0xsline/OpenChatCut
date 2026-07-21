@@ -22,20 +22,33 @@ export interface ProjectTemplate {
 
 // 边界校验:持久化数据不可信,先校验再用。doc 经 migrateProjectDoc 规整(不可信文档
 // 会被拒/清洗),assetIds 只留字符串。
-function toValidTemplate(v: unknown): ProjectTemplate | null {
+function toValidTemplate(v: unknown): { template: ProjectTemplate; migrated: boolean } | null {
   if (!v || typeof v !== 'object') return null;
   const raw = v as Partial<ProjectTemplate>;
   if (typeof raw.id !== 'string' || typeof raw.name !== 'string' || typeof raw.createdAt !== 'number') return null;
-  const doc = migrateProjectDoc(raw.doc);
+  let migrated = false;
+  const doc = migrateProjectDoc(raw.doc, { onProgress: () => { migrated = true; } });
   if (!doc) return null;
   const assetIds = Array.isArray(raw.assetIds) ? raw.assetIds.filter((x): x is string => typeof x === 'string') : [];
-  return { id: raw.id, name: raw.name, createdAt: raw.createdAt, doc, assetIds };
+  return { template: { id: raw.id, name: raw.name, createdAt: raw.createdAt, doc, assetIds }, migrated };
 }
 
 async function readAll(): Promise<ProjectTemplate[]> {
   const raw = await idbGet<unknown>(TEMPLATES_KEY);
   if (!Array.isArray(raw)) return [];
-  return raw.map(toValidTemplate).filter((t): t is ProjectTemplate => t !== null);
+  const parsed = raw.map(toValidTemplate);
+  const valid = parsed.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  const templates = valid.map((entry) => entry.template);
+  // Upgrade the shared library only when every entry migrated successfully.
+  // A corrupt sibling therefore never causes destructive partial persistence.
+  if (valid.length === raw.length && valid.some((entry) => entry.migrated)) {
+    try {
+      await idbSet(TEMPLATES_KEY, templates);
+    } catch {
+      // The normalized in-memory templates are still usable; retry next read.
+    }
+  }
+  return templates;
 }
 
 /** 全部已存模板(插入顺序,同名替换在原位)。失败一律返回空数组(不信任持久化数据)。 */

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import type { ProjectDoc } from '../editor/types';
+import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 import {
   createProject,
   hasProjectHistory,
@@ -9,7 +10,7 @@ import {
 } from './projectStore';
 
 const emptyDoc: ProjectDoc = {
-  version: 2,
+  version: CURRENT_PROJECT_VERSION,
   assets: [],
   mediaFolders: [],
   timelines: [],

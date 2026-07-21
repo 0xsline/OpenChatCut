@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readStore, setStoredEntry } from '../plugins/project-store.ts';
+import { CURRENT_PROJECT_VERSION } from '../../shared/project-version.ts';
 
 interface ProjectMeta {
   id: string;
@@ -41,7 +42,7 @@ function emptyProject(args: Record<string, unknown>): unknown {
     tracks: { track_v1: { kind: 'video' } },
   };
   return {
-    version: 2,
+    version: CURRENT_PROJECT_VERSION,
     assets: [],
     mediaFolders: [],
     timelines: [timeline],

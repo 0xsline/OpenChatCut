@@ -320,7 +320,19 @@ export function exportPlugin(): Plugin {
               try {
                 await renderExportPlan(plan, filepath, update);
                 const { size } = await stat(filepath);
-                return { assetId: uuid, kind: plan.format, name: plan.filename, path: publicPath, durationSeconds: plan.durationSeconds, sizeBytes: size, codec: plan.media.codec };
+                const sourceFps = Number((plan.state as { fps?: unknown }).fps);
+                const outputSize = plan.format === 'video' ? exportOutputSize(plan.state, plan.scale) : undefined;
+                return {
+                  assetId: uuid,
+                  kind: plan.format,
+                  name: plan.filename,
+                  path: publicPath,
+                  durationSeconds: plan.durationSeconds,
+                  sizeBytes: size,
+                  codec: plan.media.codec,
+                  ...(outputSize ? { ...outputSize, fps: plan.retimeFps ?? sourceFps } : {}),
+                  sourceStartSeconds: (plan.frameRange?.[0] ?? 0) / sourceFps,
+                };
               } catch (error) {
                 await unlink(filepath).catch(() => {});
                 throw error;

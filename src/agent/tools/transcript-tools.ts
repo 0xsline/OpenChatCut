@@ -8,12 +8,28 @@ import { createVariant, findVariantByLang, upsertVariant } from '../../transcrip
 import { buildSilenceGapCaps, parseCleanOnly, parseSilenceRule, type SilenceRule } from '../../transcript/clean';
 import type { Action } from '../../editor/reduce';
 import { execFindTranscript, findPhrase, normalize } from './transcript-find';
+import { execReadTranscript } from './transcript-read';
 
 // Agent tools for the transcript / caption / "delete text = delete video" surface.
 // Names + semantics: transcribe (import_media/manage_transcript),
 // find_transcript, clean_script, delete_text (apply_script), edit_captions.
 
 export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
+  {
+    name: 'read_transcript',
+    description: 'Read the current timeline transcript as a compact phrase view for planning and semantic editing. This is the default transcript reading surface for long videos and multiple takes: words are grouped by speaker changes, pauses, and a bounded phrase size while retaining source item, source timestamps, timeline frames, and original word-index ranges. Deleted/trimmed words are omitted, but the word-level transcript remains unchanged for precise edits. Use find_transcript when locating a specific quote instead.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string', description: 'Optional clip id or unique prefix. Omit to read all transcribed clips.' },
+        track: { type: 'string', description: 'Optional track alias/id. Ignored when itemId is set.' },
+        silenceThresholdSeconds: { type: 'number', minimum: 0, maximum: 10, description: 'Start a new phrase after this pause; defaults to 0.5 seconds.' },
+        maxWordsPerPhrase: { type: 'integer', minimum: 1, maximum: 100, description: 'Hard cap for uninterrupted speech; defaults to 40 words.' },
+        offset: { type: 'integer', minimum: 0, description: 'Phrase offset for pagination; defaults to 0.' },
+        limit: { type: 'integer', minimum: 1, maximum: 200, description: 'Maximum phrases to return; defaults to 80.' },
+      },
+    },
+  },
   {
     name: 'transcribe_track',
     description: 'Transcribe the audio clip on a track (word-level + speaker labels, via AssemblyAI) and attach the transcript. Required before find_transcript / clean_script / delete_text / captions when the clip has no transcript yet.',
@@ -300,6 +316,7 @@ async function manageTranscript(args: Args, ctx: AgentContext, track: TrackId, a
 
 // Execute a transcript/caption tool. Returns undefined if `name` isn't one of ours.
 export async function execTranscriptTool(name: string, args: Args, ctx: AgentContext): Promise<unknown | undefined> {
+  if (name === 'read_transcript') return execReadTranscript(args, ctx);
   const state = ctx.getState();
   const track = resolveTrackId(state, args.track ?? 'A1') ?? defaultTrackId(state, 'audio');
   if (!track) return { error: 'no track available; create one with edit_track first' };

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { theme } from '../theme';
+import { theme, themeAlpha } from '../theme';
 import { getLocale, useT } from '../i18n/locale';
 import { SHORTCUT_GROUPS, type ShortcutAction } from './catalog';
 import { Icon } from '../components/icons';
@@ -61,7 +61,7 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
     <div
       role="dialog"
       aria-label={t('键盘快捷键')}
-      style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.55)', display: 'grid', placeItems: 'center', padding: 24 }}
+      style={{ position: 'fixed', inset: 0, zIndex: 200, background: themeAlpha.shadow(0.55), display: 'grid', placeItems: 'center', padding: 24 }}
       onClick={onClose}
     >
       <div
@@ -69,7 +69,7 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
         style={{
           width: 'min(720px, 100%)', maxHeight: 'min(80vh, 640px)', overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
-      background: theme.panel, border: `0.5px solid ${theme.borderLight}`, borderRadius: 6, boxShadow: '0 18px 48px rgba(0,0,0,0.55)',
+      background: theme.panel, border: `0.5px solid ${theme.borderLight}`, borderRadius: 6, boxShadow: `0 18px 48px ${themeAlpha.shadow(0.55)}`,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: `0.5px solid ${theme.border}` }}>
@@ -120,7 +120,7 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
                           {capturing ? t('按下按键… (Esc)') : showKeys(a.keys)}
                         </button>
                         {conflicting && pending && (
-      <div style={{ position: 'absolute', right: 24, marginTop: 40, zIndex: 1, background: theme.panel, border: `0.5px solid ${theme.accent}`, borderRadius: 4, padding: 10, boxShadow: '0 8px 24px #000a', maxWidth: 300 }}>
+      <div style={{ position: 'absolute', right: 24, marginTop: 40, zIndex: 1, background: theme.panel, border: `0.5px solid ${theme.accent}`, borderRadius: 4, padding: 10, boxShadow: `0 8px 24px ${themeAlpha.shadow(0.67)}`, maxWidth: 300 }}>
                             <div style={{ fontSize: 11.5, marginBottom: 6 }}>
                               <b>{showKeys(pending.keys)}</b> {t('已被占用：')}{pending.conflicts.map(actionLabel).join(en ? ', ' : '、')}
                             </div>

@@ -1,7 +1,7 @@
 import { type FocusEvent, useState } from 'react';
 import type { TimelineItem } from '../../editor/types';
 import { useT } from '../../i18n/locale';
-import { theme } from '../../theme';
+import { theme, themeAlpha } from '../../theme';
 import { Icon } from '../icons';
 
 const SPEED_PRESETS = [0.25, 0.5, 1, 2, 4] as const;
@@ -12,7 +12,7 @@ function SpeedMenu({ rate, onChange }: { rate: number; onChange: (rate: number) 
     <div data-testid="timeline-speed-menu" style={{
       position: 'absolute', top: 30, left: 0, zIndex: 30, width: 224,
       padding: 10, background: theme.panelAlt, border: `0.5px solid ${theme.borderLight}`,
-      borderRadius: 6, boxShadow: '0 10px 28px rgba(0,0,0,.32)',
+      borderRadius: 6, boxShadow: `0 10px 28px ${themeAlpha.shadow(0.32)}`,
     }}>
       <div style={{ color: theme.text, fontSize: 12, fontWeight: 650, marginBottom: 8 }}>{t('变速')}</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4 }}>

@@ -80,7 +80,7 @@ assert.throws(
 );
 
 const currentDoc: ProjectDoc = {
-  version: 2,
+  version: 3,
   assets: [{ id: 'current_asset', name: 'Current', kind: 'image', src: '/media/current.png', durationInFrames: 1 }],
   mediaFolders: [],
   timelines: [active],
@@ -91,7 +91,7 @@ const template: ProjectTemplate = {
   name: 'Template',
   createdAt: 1,
   doc: {
-    version: 2,
+    version: 3,
     assets: [{ id: 'template_asset', name: 'Backdrop', kind: 'image', src: '/media/backdrop.png', durationInFrames: 1 }],
     mediaFolders: [],
     timelines: [templateTimeline],

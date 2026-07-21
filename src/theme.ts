@@ -35,3 +35,13 @@ export const theme = {
   clipMg: 'var(--cc-clip-mg)', // --tl-item-motion-graph
   clipText: 'var(--cc-clip-text)', // --tl-item-text
 } as const;
+
+const alpha = (channel: string, opacity: number): string =>
+  `rgba(var(--cc-${channel}-rgb), ${opacity})`;
+
+/** UI 半透明色。ink 随深浅皮肤反转，shadow 始终表达悬浮层级。 */
+export const themeAlpha = {
+  ink: (opacity: number): string => alpha('ink', opacity),
+  accent: (opacity: number): string => alpha('accent', opacity),
+  shadow: (opacity: number): string => alpha('shadow', opacity),
+} as const;

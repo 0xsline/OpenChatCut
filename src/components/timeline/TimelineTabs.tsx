@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { theme } from '../../theme';
+import { theme, themeAlpha } from '../../theme';
 import { ratioLabel, type ProjectDoc } from '../../editor/types';
 import type { EditorCommands } from '../../editor/store';
 import { useT } from '../../i18n/locale';
@@ -40,7 +40,7 @@ export function TimelineTabs({ doc, commands }: TimelineTabsProps) {
             title={t('单击切换 · 双击重命名')}
             style={{
       display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 4, cursor: 'pointer', flexShrink: 0,
-              background: active ? 'rgba(240,86,46,0.14)' : 'transparent',
+              background: active ? themeAlpha.accent(0.14) : 'transparent',
               border: `0.5px solid ${active ? theme.accent : theme.border}`,
               color: active ? theme.text : theme.textDim,
             }}

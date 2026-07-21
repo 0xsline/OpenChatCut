@@ -2,7 +2,7 @@
 // 预览 + 名称 + 选中对勾。切换即时生效(applySkin 改 <html data-cc-skin>),
 // localStorage 持久;TopBar 与 Dashboard 头部共用。
 import { useState } from 'react';
-import { theme } from '../../theme';
+import { theme, themeAlpha } from '../../theme';
 import { useT } from '../../i18n/locale';
 import { SKINS, applySkin, getSkin } from '../../skins';
 import { Icon } from '../icons';
@@ -55,7 +55,7 @@ const trigger: React.CSSProperties = {
 const pop: React.CSSProperties = {
   position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 121, minWidth: 168,
     background: theme.panelAlt, border: `0.5px solid ${theme.borderLight}`, borderRadius: 4,
-  boxShadow: '0 12px 36px rgba(0,0,0,0.45)', padding: 4, display: 'flex', flexDirection: 'column', gap: 1,
+  boxShadow: `0 12px 36px ${themeAlpha.shadow(0.45)}`, padding: 4, display: 'flex', flexDirection: 'column', gap: 1,
 };
 const head: React.CSSProperties = { fontSize: 10.5, color: theme.textDim, padding: '4px 8px 5px', letterSpacing: 0.4 };
 const row: React.CSSProperties = {
@@ -63,5 +63,5 @@ const row: React.CSSProperties = {
     width: '100%', padding: '6px 8px', border: 'none', borderRadius: 3, cursor: 'pointer', color: theme.text,
 };
 function dot(color: string): React.CSSProperties {
-  return { width: 10, height: 10, borderRadius: '50%', background: color, border: '0.5px solid rgba(127,127,127,0.45)' };
+  return { width: 10, height: 10, borderRadius: '50%', background: color, border: `0.5px solid ${themeAlpha.ink(0.45)}` };
 }

@@ -1,7 +1,7 @@
 // 「清理素材」面板:打开即扫——先清孤儿工程文档(冒烟/旧测试残留),
 // 再列出全部工程都不引用的上传文件,勾选确认后批删(磁盘 + IDB 缓存)。
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { theme } from '../theme';
+import { theme, themeAlpha } from '../theme';
 import { useT } from '../i18n/locale';
 import { Icon } from '../components/icons';
 import { scanUnreferenced, deleteUploadFile, type UploadFileInfo } from '../persist/mediaCleanup';
@@ -109,14 +109,14 @@ export function MediaCleanupDialog({ onClose }: MediaCleanupDialogProps) {
 }
 
 const overlay: React.CSSProperties = {
-  position: 'fixed', inset: 0, zIndex: 120, background: 'rgba(0,0,0,0.55)',
+  position: 'fixed', inset: 0, zIndex: 120, background: themeAlpha.shadow(0.55),
   display: 'grid', placeItems: 'center',
 };
 const panel: React.CSSProperties = {
   width: 560, maxWidth: 'calc(100vw - 48px)', maxHeight: 'calc(100vh - 96px)',
   display: 'flex', flexDirection: 'column',
     background: theme.panel, border: `0.5px solid ${theme.borderLight}`, borderRadius: 6,
-  boxShadow: '0 24px 64px rgba(0,0,0,0.5)', color: theme.text,
+  boxShadow: `0 24px 64px ${themeAlpha.shadow(0.5)}`, color: theme.text,
 };
 const hint: React.CSSProperties = { padding: '28px 12px', textAlign: 'center', color: theme.textDim, fontSize: 12.5 };
 const row: React.CSSProperties = {

@@ -26,6 +26,7 @@ export interface SkinTokens {
    * 白字对比只有 ~2:1,必须用深字(≥4.5:1,已逐肤断言)。 */
   onAccent: string;
   inkRgb: string;      // "R,G,B" 半透明墨水基色(深肤 255,255,255)
+  shadowRgb: string;   // "R,G,B" 悬浮层阴影/遮罩基色
   colorScheme: 'dark' | 'light';
   gold: string;
   select: string;
@@ -54,7 +55,7 @@ const GRAPHITE: SkinTokens = {
   border: '#363636', borderLight: '#4a4a4a',
   text: '#e2e2e2', textMuted: '#b0b0b0', textDim: '#808080', textStrong: '#ffffff',
   accent: '#dc7036', accentDeep: '#c45c26', accentRgb: '220,112,54', onAccent: '#ffffff',
-  inkRgb: '255,255,255', colorScheme: 'dark',
+  inkRgb: '255,255,255', shadowRgb: '0,0,0', colorScheme: 'dark',
   gold: '#e6ac42', select: '#3b82f6', success: '#3fae6a', danger: '#e06c60',
   tlTrack: '#25262b', tlSidePanel: '#202126',
   trackVideo: '#3b4bd8', trackAudioA1: '#e8993f', trackAudioA2: '#3fae6a',
