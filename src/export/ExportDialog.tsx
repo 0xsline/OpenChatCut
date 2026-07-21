@@ -11,7 +11,7 @@ import { Icon, type IconName } from '../components/icons';
 import { timelineDuration, type TimelineState } from '../editor/types';
 import { timelineToFcpxml } from './fcpxml';
 import { captionsToSrt, captionsToTxt } from '../captions/exportCaptions';
-import { exportClipMov } from '../media/clipExport';
+import { exportClipMov, renderClipMovBlob } from '../media/clipExport';
 import { sanitizeFileName } from '../media/fileName';
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
 import { recordExport } from '../persist/exportHistoryStore';
@@ -89,6 +89,27 @@ function downloadBlob(blob: Blob, filename: string): void {
   a.click();
   a.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+interface ExportDirectoryHandle {
+  getFileHandle(name: string, options: { create: true }): Promise<{
+    createWritable(): Promise<{ write(data: Blob | string): Promise<void>; close(): Promise<void> }>;
+  }>;
+}
+
+async function selectExportDirectory(): Promise<ExportDirectoryHandle | null> {
+  const picker = (window as Window & {
+    showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<ExportDirectoryHandle>;
+  }).showDirectoryPicker;
+  if (!picker) return null;
+  return picker.call(window, { mode: 'readwrite' });
+}
+
+async function writeExportFile(directory: ExportDirectoryHandle, name: string, data: Blob | string): Promise<void> {
+  const handle = await directory.getFileHandle(name, { create: true });
+  const writable = await handle.createWritable();
+  await writable.write(data);
+  await writable.close();
 }
 
 export function ExportDialog({ state, projectName, onClose }: ExportDialogProps) {
@@ -301,6 +322,10 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
   };
 
   const exportXml = async () => {
+    // Pick the destination while the Export click still has user activation.
+    // Exact filenames matter because the FCPXML references the rendered MOVs
+    // relatively. Browsers without the directory API retain the download fallback.
+    const directory = includeMg ? await selectExportDirectory() : null;
     const successfulRenderKeys: string[] = [];
     const failedRenderNames: string[] = [];
     if (includeMg) {
@@ -317,7 +342,9 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
           detail: t('正在渲染第 {i}/{n} 个动态图层', { i: i + 1, n: uniqueMgItems.length }),
         } : current);
         try {
-          await exportClipMov(state, item, { filename: motionGraphicRenderFilename(renderKey) });
+          const rendered = await renderClipMovBlob(state, item, { filename: motionGraphicRenderFilename(renderKey) });
+          if (directory) await writeExportFile(directory, rendered.filename, rendered.blob);
+          else downloadBlob(rendered.blob, rendered.filename);
           successfulRenderKeys.push(renderKey);
         } catch {
           failedRenderNames.push(item.name);
@@ -330,7 +357,10 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
       motionGraphicRenderKeys: successfulRenderKeys,
     });
     const suffix = nleFormat === 'fcp_xml_resolve' ? 'resolve' : 'premiere';
-    downloadBlob(new Blob([xml], { type: 'application/xml;charset=utf-8' }), `${base}-${suffix}.fcpxml`);
+    const xmlFilename = `${base}-${suffix}.fcpxml`;
+    const xmlBlob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
+    if (directory) await writeExportFile(directory, xmlFilename, xmlBlob);
+    else downloadBlob(xmlBlob, xmlFilename);
     void recordExport({ name: `${base}-${suffix}.fcpxml`, format: 'xml', createdAt: Date.now() });
     if (failedRenderNames.length) {
       setProgress((current) => current ? {

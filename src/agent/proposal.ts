@@ -114,12 +114,24 @@ export function buildOperation(tool: string, args: Record<string, unknown>, acti
   };
 }
 
-/** Group consecutive calls for the same tool/target without changing replay order. */
+function stableArgs(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'undefined';
+  if (Array.isArray(value)) return `[${value.map(stableArgs).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableArgs(record[key])}`).join(',')}}`;
+}
+
+/** Group only exact duplicate consecutive calls without changing replay order. */
 export function compactOperations(operations: Operation[]): Operation[] {
   const compacted: Operation[] = [];
   for (const operation of operations) {
     const previous = compacted.at(-1);
-    if (!previous || previous.tool !== operation.tool || previous.target !== operation.target) {
+    if (
+      !previous
+      || previous.tool !== operation.tool
+      || previous.target !== operation.target
+      || stableArgs(previous.args) !== stableArgs(operation.args)
+    ) {
       compacted.push(operation);
       continue;
     }

@@ -21,6 +21,18 @@ assert.equal(compacted[0].actions.length, 4);
 assert.equal(compacted[0].action, '人声隔离');
 assert.equal(compacted[0].impact, '4 处改动');
 
+const distinctArguments = compactOperations([
+  buildOperation('edit_captions', { itemId: 'clip-1', text: 'First' }, [{ type: 'setItemDenoise', id: 'clip-1', denoisedSrc: '/first.m4a', strength: 10 }]),
+  buildOperation('edit_captions', { text: 'Second', itemId: 'clip-1' }, [{ type: 'setItemDenoise', id: 'clip-1', denoisedSrc: '/second.m4a', strength: 10 }]),
+]);
+assert.equal(distinctArguments.length, 2, 'different edits to one target must remain separately reviewable');
+
+const reorderedArguments = compactOperations([
+  buildOperation('edit_captions', { itemId: 'clip-1', text: 'Same' }, [{ type: 'setItemDenoise', id: 'clip-1', denoisedSrc: '/first.m4a', strength: 10 }]),
+  buildOperation('edit_captions', { text: 'Same', itemId: 'clip-1' }, [{ type: 'setItemDenoise', id: 'clip-1', denoisedSrc: '/second.m4a', strength: 10 }]),
+]);
+assert.equal(reorderedArguments.length, 1, 'argument key order must not prevent duplicate compaction');
+
 const separated = compactOperations([
   denoise('/voice-a.m4a'),
   buildOperation('move_item', { itemId: 'clip-1' }, [{ type: 'move', id: 'clip-1', startFrame: 10 }]),

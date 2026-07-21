@@ -17,11 +17,12 @@ function hashRenderIdentity(value: string): string {
   return (hash >>> 0).toString(36);
 }
 
-/** A render key identifies an MG asset plus its effective property values. */
+/** A render key identifies an MG asset plus its effective property values and duration. */
 export function motionGraphicRenderKey(item: TimelineItem): string {
   const assetId = item.templateId ?? item.id;
   const properties = stableJson(item.props);
-  return hashRenderIdentity(`${assetId}\0${properties}`);
+  const duration = Math.max(1, Math.round(item.durationInFrames));
+  return hashRenderIdentity(`${assetId}\0${properties}\0${duration}`);
 }
 
 export function motionGraphicRenderFilename(itemOrKey: TimelineItem | string): string {

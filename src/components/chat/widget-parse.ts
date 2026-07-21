@@ -57,6 +57,33 @@ export interface WidgetSegment {
 export type MessageSegment = { type: 'text'; text: string } | WidgetSegment;
 export type WidgetValues = Record<string, string | string[]>;
 
+const SAFE_WIDGET_DATA_URL = /^data:(?:image\/(?:png|jpe?g|webp|gif)|audio\/(?:mpeg|mp3|wav|ogg|mp4|aac));base64,/i;
+
+/**
+ * Widgets are parsed from untrusted model output. Only load media from this app,
+ * an already-created blob URL, or a narrowly-scoped inline image/audio payload.
+ * This prevents a widget from probing localhost/LAN services or loading trackers.
+ */
+export function safeWidgetMediaUrl(raw: string | undefined, baseUrl?: string): string | null {
+  const value = raw?.trim();
+  if (!value || [...value].some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 0x1f || code === 0x7f;
+  })) return null;
+  if (value.startsWith('blob:')) return value;
+  if (SAFE_WIDGET_DATA_URL.test(value)) return value;
+  if (value.startsWith('data:')) return null;
+  try {
+    const base = baseUrl ?? (typeof window !== 'undefined' ? window.location.href : 'http://openchatcut.local/');
+    const resolved = new URL(value, base);
+    const allowedOrigin = new URL(base).origin;
+    if (!['http:', 'https:', 'file:'].includes(resolved.protocol)) return null;
+    return resolved.origin === allowedOrigin ? resolved.href : null;
+  } catch {
+    return null;
+  }
+}
+
 const WIDGET_RE = /<widget\b([^>]*)>([\s\S]*?)<\/widget>/g;
 const FIELD_TAG_RE = /<form-(single|multi|text|visual|voice|scenario)\b([^>]*?)(\/?)>/g;
 const ATTR_RE = /([\w-]+)\s*=\s*"([^"]*)"|([\w-]+)\s*=\s*'([^']*)'/g;

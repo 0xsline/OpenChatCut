@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useT } from '../../i18n/locale';
-import { formatWidgetAnswer, type WidgetField, type WidgetValues } from './widget-parse';
+import { formatWidgetAnswer, safeWidgetMediaUrl, type WidgetField, type WidgetValues } from './widget-parse';
 
 function isAudioUrl(url: string): boolean {
   return /\.(mp3|wav|ogg|m4a|aac)(\?|$)/i.test(url);
@@ -11,14 +11,15 @@ function isImageUrl(url: string): boolean {
 
 function MediaPreview({ media, aspectRatio, forceAudio = false, label }: { media?: string; aspectRatio?: string; forceAudio?: boolean; label: string }) {
   const [broken, setBroken] = useState(false);
-  if (!media || broken) return null;
-  if (forceAudio || isAudioUrl(media)) {
-    return <audio controls src={media} aria-label={label} onError={() => setBroken(true)} className="cc-widget-media-audio" />;
+  const safeMedia = safeWidgetMediaUrl(media);
+  if (!safeMedia || broken) return null;
+  if (forceAudio || isAudioUrl(safeMedia)) {
+    return <audio controls src={safeMedia} aria-label={label} onError={() => setBroken(true)} className="cc-widget-media-audio" />;
   }
-  if (isImageUrl(media)) {
+  if (isImageUrl(safeMedia)) {
     return (
       <img
-        src={media}
+        src={safeMedia}
         alt=""
         onError={() => setBroken(true)}
         className="cc-widget-media-img"

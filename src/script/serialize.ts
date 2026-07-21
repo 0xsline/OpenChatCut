@@ -82,10 +82,9 @@ export function buildModel(state: TimelineState, options: SerializeTimelineOptio
         toSegments(it.transcript).forEach((seg, i) => {
           const kept = seg.words.filter((w) => !deleted.has(w.gi));
           if (!kept.length) return; // Fully deleted segments are omitted.
-          rows.push({ kind: 'seg', sn: i + 1, itemId: it.id, wordGis: seg.words.map((w) => w.gi), keptText: joinWords(kept.map((w) => w.text)) });
           // Silence markers are standalone rows in timeline.md. A sentence may
-          // contain more than one pause; append them in source order after the
-          // sentence while retaining a stable word-boundary identity in-model.
+          // contain more than one pause. `afterWordGi` identifies the first word
+          // after the pause, so emit the marker before the segment containing it.
           const wordIds = new Set(seg.words.map((word) => word.gi));
           for (const silence of silences) {
             if (!wordIds.has(silence.afterWordGi)) continue;
@@ -97,6 +96,7 @@ export function buildModel(state: TimelineState, options: SerializeTimelineOptio
               appliedMs: silence.appliedMs,
             });
           }
+          rows.push({ kind: 'seg', sn: i + 1, itemId: it.id, wordGis: seg.words.map((w) => w.gi), keptText: joinWords(kept.map((w) => w.text)) });
         });
         regions.push({ source: it.name, rows });
       } else {

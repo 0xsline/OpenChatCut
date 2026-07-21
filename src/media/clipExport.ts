@@ -21,12 +21,17 @@ export interface ClipMovExportOptions {
   filename?: string;
 }
 
-/** 导出 MG 动画 → ProRes 4444 alpha .mov, downloaded in the browser */
-export async function exportClipMov(
+export interface RenderedClipMov {
+  blob: Blob;
+  filename: string;
+}
+
+/** Render an MG animation to a ProRes 4444 alpha .mov without deciding where it is saved. */
+export async function renderClipMovBlob(
   state: TimelineState,
   item: TimelineItem,
   options: ClipMovExportOptions = {},
-): Promise<void> {
+): Promise<RenderedClipMov> {
   const requestedName = options.filename?.replace(/\.mov$/i, '') ?? item.name;
   const filename = sanitizeFileName(requestedName, 'clip');
   const res = await fetch('/render-clip', {
@@ -41,10 +46,20 @@ export async function exportClipMov(
   });
   if (!res.ok) await fail(res, '导出');
   const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
+  return { blob, filename: `${filename}.mov` };
+}
+
+/** 导出 MG 动画 → ProRes 4444 alpha .mov, downloaded in the browser */
+export async function exportClipMov(
+  state: TimelineState,
+  item: TimelineItem,
+  options: ClipMovExportOptions = {},
+): Promise<void> {
+  const rendered = await renderClipMovBlob(state, item, options);
+  const url = URL.createObjectURL(rendered.blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${filename}.mov`;
+  a.download = rendered.filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
