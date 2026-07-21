@@ -18,7 +18,7 @@ assert.equal(resolveRenderConcurrency({ cores: 10, override: '100%' }), 10);
 assert.equal(resolveRenderConcurrency({ cores: 10, override: '70%' }), 7);
 assert.equal(resolveRenderConcurrency({ cores: 10, override: '6' }), 6);
 assert.equal(resolveRenderConcurrency({ cores: 10, override: '99' }), 10);
-assert.equal(resolveRenderConcurrency({ cores: 10, override: 'invalid' }), 8);
+assert.equal(resolveRenderConcurrency({ cores: 10, memoryBytes: abundantMemory, override: 'invalid' }), 8);
 
 assert.equal(resolveOffthreadVideoThreads({ cores: 2 }), 1);
 assert.equal(resolveOffthreadVideoThreads({ cores: 4 }), 2);
