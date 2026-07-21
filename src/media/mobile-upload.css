@@ -1,0 +1,25 @@
+.cc-mobile-upload-dialog { width:min(680px,calc(100vw - 32px)); overflow:hidden; border:0.5px solid var(--cc-border); border-radius:10px; background:var(--cc-panel-alt); color:var(--cc-text); box-shadow:0 24px 80px rgba(var(--cc-shadow-rgb),0.72); }
+.cc-mobile-upload-dialog header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 18px; border-bottom:0.5px solid var(--cc-border); }
+.cc-mobile-upload-dialog header div { display:flex; min-width:0; flex-direction:column; gap:3px; }
+.cc-mobile-upload-dialog header strong { font-size:15px; }
+.cc-mobile-upload-dialog header span,.cc-mobile-upload-dialog footer span { color:var(--cc-text-dim); font-size:11px; }
+.cc-mobile-upload-dialog button { border:0.5px solid var(--cc-border); border-radius:5px; background:var(--cc-hover); color:var(--cc-text); cursor:pointer; }
+.cc-mobile-upload-dialog header button { display:grid; width:30px; height:30px; flex:0 0 30px; place-items:center; padding:0; }
+.cc-mobile-upload-body { display:grid; grid-template-columns:250px minmax(0,1fr); gap:22px; padding:22px; }
+.cc-mobile-upload-qr { display:grid; width:240px; height:240px; place-items:center; overflow:hidden; border-radius:8px; background:#fff; color:#333; font-size:12px; }
+.cc-mobile-upload-qr img { display:block; width:240px; height:240px; }
+.cc-mobile-upload-instructions { display:flex; min-width:0; flex-direction:column; gap:12px; }
+.cc-mobile-upload-instructions ol { display:grid; gap:8px; margin:0; padding-left:20px; color:var(--cc-text-muted); font-size:12px; line-height:1.45; }
+.cc-mobile-upload-instructions label { display:flex; align-items:center; gap:8px; color:var(--cc-text-muted); font-size:11px; }
+.cc-mobile-upload-instructions select { min-width:0; flex:1; border:0.5px solid var(--cc-border); border-radius:4px; background:var(--cc-inset); color:var(--cc-text); padding:5px; }
+.cc-mobile-upload-link { display:flex; min-width:0; align-items:stretch; }
+.cc-mobile-upload-link code { min-width:0; flex:1; overflow:hidden; border:0.5px solid var(--cc-border); border-right:0; border-radius:5px 0 0 5px; background:var(--cc-inset); color:var(--cc-text-muted); padding:8px; text-overflow:ellipsis; white-space:nowrap; }
+.cc-mobile-upload-link button { border-radius:0 5px 5px 0; padding:0 12px; }
+.cc-mobile-upload-instructions p { margin:0; color:var(--cc-text-dim); font-size:11px; }
+.cc-mobile-upload-count { display:flex; align-items:center; gap:7px; margin-top:auto; color:var(--cc-text); font-size:12px; }
+.cc-mobile-upload-live { width:7px; height:7px; border-radius:50%; background:var(--cc-success); box-shadow:0 0 0 3px rgba(var(--cc-ink-rgb),0.08); }
+.cc-mobile-upload-loading,.cc-mobile-upload-error { min-height:220px; display:grid; place-items:center; padding:24px; color:var(--cc-text-muted); font-size:12px; text-align:center; }
+.cc-mobile-upload-error { color:var(--cc-danger); }
+.cc-mobile-upload-dialog footer { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:13px 18px; border-top:0.5px solid var(--cc-border); }
+.cc-mobile-upload-dialog footer button { flex:0 0 auto; padding:6px 14px; background:var(--cc-accent); color:var(--cc-on-accent); }
+@media (max-width:620px) { .cc-mobile-upload-body { grid-template-columns:1fr; } .cc-mobile-upload-qr { justify-self:center; } .cc-mobile-upload-dialog footer { align-items:flex-end; } }

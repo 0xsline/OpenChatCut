@@ -12,12 +12,15 @@ import { durationLabel, folderPath } from './mediaPoolFormat';
 import { SemanticSearchControls } from './semantic-search/SemanticSearchControls';
 import type { SemanticMatch } from './semantic-search/types';
 import { filterMediaAssets, type MediaSortKey, type MediaTypeFilter } from './mediaPoolFilter';
+import { MobileUploadDialog } from './MobileUploadDialog';
+import type { MobileUploadRecord } from './mobileUploadApi';
 interface MediaPoolPanelProps {
   semanticScopeId: string;
   assets: MediaAsset[];
   folders: MediaFolder[];
   fps: number;
   onImport: (file: File, onProgress?: (ratio: number) => void) => Promise<MediaAsset>;
+  onImportMobile: (record: MobileUploadRecord) => Promise<void>;
   onAddAsset: (asset: MediaAsset) => void;
   onCreateFolder: (name: string, parentId?: string) => string;
   onRenameFolder: (id: string, name: string) => void;
@@ -36,7 +39,7 @@ interface MediaPoolPanelProps {
 type PromptState = { title: string; initialValue: string; rejectSlash?: boolean; onSubmit: (value: string) => void };
 type DeleteState = { id: string; name: string; parentId?: string };
 export function MediaPoolPanel({
-  semanticScopeId, assets, folders, fps, onImport, onAddAsset, onCreateFolder, onRenameFolder,
+  semanticScopeId, assets, folders, fps, onImport, onImportMobile, onAddAsset, onCreateFolder, onRenameFolder,
   onDeleteFolder, onMoveAssets, onRenameAsset, onSetFavorite, onRemoveAsset, onRelinkAsset, onAddSolid,
 }: MediaPoolPanelProps) {
   const t = useT();
@@ -70,6 +73,7 @@ export function MediaPoolPanel({
   const [relinkMsg, setRelinkMsg] = useState<string | null>(null);
   const [showRelinkAll, setShowRelinkAll] = useState(false);
   const [semanticResults, setSemanticResults] = useState<SemanticMatch[] | null>(null);
+  const [mobileUploadOpen, setMobileUploadOpen] = useState(false);
   const onSemanticResults = useCallback((matches: SemanticMatch[] | null) => setSemanticResults(matches), []);
   useEffect(() => {
     if (!assetMenu) return;
@@ -252,6 +256,7 @@ export function MediaPoolPanel({
         </label>
         <SemanticSearchControls scopeId={semanticScopeId} assets={assets} onResultsChange={onSemanticResults} />
         <button className="cc-media-icon" aria-label={t('上传素材')} title={t('上传素材')} disabled={busy} onClick={() => inputRef.current?.click()}><Icon name="upload" size={19} /></button>
+        <button className="cc-media-icon" aria-label={t('手机传素材')} title={t('手机传素材')} onClick={() => setMobileUploadOpen(true)}><Icon name="qrCode" size={19} /></button>
         {busy && uploadRatio != null && (
           <span className="cc-media-upload-pct" title={t('上传中')} style={{ fontSize: 11, opacity: 0.75, minWidth: 36, fontVariantNumeric: 'tabular-nums' }}>
             {Math.round(uploadRatio * 100)}%
@@ -483,6 +488,7 @@ export function MediaPoolPanel({
           </div>
         </div>
       )}
+      {mobileUploadOpen && <MobileUploadDialog onClose={() => setMobileUploadOpen(false)} onImport={onImportMobile} />}
     </div>
   );
 }

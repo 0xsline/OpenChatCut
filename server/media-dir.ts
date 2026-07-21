@@ -58,7 +58,7 @@ const MIME: Record<string, string> = {
   mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', aac: 'audio/aac',
   ogg: 'audio/ogg', opus: 'audio/opus', flac: 'audio/flac',
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
-  webp: 'image/webp', svg: 'image/svg+xml', avif: 'image/avif',
+  webp: 'image/webp', svg: 'image/svg+xml', avif: 'image/avif', heic: 'image/heic', heif: 'image/heif',
   srt: 'application/x-subrip', vtt: 'text/vtt', txt: 'text/plain', json: 'application/json',
 };
 

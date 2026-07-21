@@ -12,7 +12,7 @@ export type IconName =
   | 'download' | 'film' | 'clipboard'
   | 'music' | 'video' | 'image' | 'swap' | 'star' | 'pencil' | 'x' | 'diamond'
   | 'search' | 'upload' | 'folder' | 'folderPlus' | 'grid' | 'list' | 'sort' | 'filter' | 'more' | 'bug'
-  | 'palette' | 'wand' | 'tracking';
+  | 'palette' | 'wand' | 'tracking' | 'qrCode';
 
 // stroke path(s) per icon; a few are fill-based (play/pause/cursor/bookmark)
 const FILL = new Set<IconName>(['play', 'pause', 'cursor', 'bookmark']);
@@ -90,6 +90,7 @@ const P: Record<IconName, string> = {
   diamond: 'M12 2 22 12 12 22 2 12z',
   search: 'M11 11m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0 M21 21l-4.3-4.3',
   upload: 'M12 16V3 M7 8l5-5 5 5 M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5',
+  qrCode: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h3v3h-3z M18 14h3 M21 17v4h-4 M14 21h3 M6 6h1 M17 6h1 M6 17h1',
   folder: 'M3 6h7l2 2h9v11H3z',
   folderPlus: 'M3 6h7l2 2h9v11H3z M12 11v5 M9.5 13.5h5',
   grid: 'M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z',
