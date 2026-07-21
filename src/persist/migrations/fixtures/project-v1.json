@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "id": "asset_video",
+      "name": "interview.mp4",
+      "kind": "video",
+      "src": "/media/uploads/interview.mp4",
+      "durationInFrames": 300,
+      "folderId": "folder_missing"
+    }
+  ],
+  "mediaFolders": [
+    { "id": "folder_root", "name": "Footage" },
+    { "id": "folder_child", "name": "Interviews", "parentId": "folder_root" },
+    { "id": "folder_orphan", "name": "Recovered", "parentId": "gone" }
+  ],
+  "timelines": [
+    {
+      "id": "tl_fixture",
+      "name": "Legacy sequence",
+      "order": 0,
+      "fps": 30,
+      "width": 1920,
+      "height": 1080,
+      "selectedId": null,
+      "items": [
+        {
+          "id": "clip_video",
+          "track": "V1",
+          "startFrame": 0,
+          "durationInFrames": 300,
+          "name": "Interview",
+          "kind": "video",
+          "src": "/media/uploads/interview.mp4"
+        },
+        {
+          "id": "clip_audio",
+          "track": "A1",
+          "startFrame": 0,
+          "durationInFrames": 300,
+          "name": "Music",
+          "kind": "audio",
+          "src": "/media/uploads/music.mp3"
+        }
+      ],
+      "assets": [
+        {
+          "id": "asset_video",
+          "name": "duplicate.mp4",
+          "kind": "video",
+          "src": "/media/uploads/duplicate.mp4",
+          "durationInFrames": 300
+        },
+        {
+          "id": "asset_audio",
+          "name": "music.mp3",
+          "kind": "audio",
+          "src": "/media/uploads/music.mp3",
+          "durationInFrames": 300,
+          "folderId": "folder_child"
+        }
+      ]
+    }
+  ],
+  "activeTimelineId": "missing_timeline"
+}

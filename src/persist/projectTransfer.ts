@@ -7,7 +7,7 @@ import type { ProjectDoc } from '../editor/types';
 import {
   createProject, isPersistedChat, loadChat, loadCreativeMode, loadProject,
   migrateProjectDoc, saveChat, saveCreativeMode,
-  type PersistedChat, type ProjectMeta,
+  type PersistedChat, type ProjectMeta, type ProjectMigrationOptions,
 } from './projectStore';
 import {
   getMediaBlob, isMediaSrcReachable, putMediaBlob, reuploadMediaBlob,
@@ -68,7 +68,10 @@ function isMediaEntry(v: unknown): v is ProjectMediaEntry {
 }
 
 /** 边界校验:导入文件是不可信输入。doc 走 migrateProjectDoc(与 IDB 读同一道闸)。 */
-export function parseProjectEnvelope(text: string): { envelope: ProjectEnvelope } | { error: string } {
+export function parseProjectEnvelope(
+  text: string,
+  migrationOptions?: ProjectMigrationOptions,
+): { envelope: ProjectEnvelope } | { error: string } {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -81,7 +84,7 @@ export function parseProjectEnvelope(text: string): { envelope: ProjectEnvelope 
     return { error: `格式不识别(需要 ${PROJECT_EXPORT_FORMAT})` };
   }
   if (typeof r.name !== 'string' || !r.name.trim()) return { error: '缺工程名' };
-  const doc = migrateProjectDoc(r.doc);
+  const doc = migrateProjectDoc(r.doc, migrationOptions);
   if (!doc) return { error: '工程数据(doc)校验不通过' };
   const media = Array.isArray(r.media) ? r.media.filter(isMediaEntry) : [];
   const chat = isPersistedChat(r.chat) ? r.chat : undefined;

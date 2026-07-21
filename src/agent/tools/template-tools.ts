@@ -4,6 +4,7 @@ import type { DesignStyle, ProjectDoc, Timeline, TimelineItem } from '../../edit
 import { activeTimeline } from '../../editor/types';
 import { migrateProjectDoc } from '../../persist/projectStore';
 import { listTemplates, getTemplate, saveTemplate, type ProjectTemplate } from '../../persist/templateStore';
+import { CURRENT_PROJECT_VERSION } from '../../../shared/project-version';
 
 // manage_template — 工程模板。模板 = 一组 MG + 设计风格的打包。
 // action: get / list_assets / apply(参数 templateId / placement / omitAssetIds)。
@@ -124,7 +125,7 @@ function mergeTemplate(current: ProjectDoc, tpl: ProjectTemplate, placement: Pla
   const designStyle = tplDoc.designStyle ?? current.designStyle; // 模板携带设计风格,套用它
 
   return {
-    version: 2,
+    version: CURRENT_PROJECT_VERSION,
     // current 在前:同 id 资产以当前工程为准(dedupeAssets 保留首个)
     assets: [...current.assets, ...carriedAssets],
     mediaFolders: current.mediaFolders,

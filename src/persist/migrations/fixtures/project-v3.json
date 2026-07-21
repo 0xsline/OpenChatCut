@@ -1,0 +1,22 @@
+{
+  "version": 3,
+  "assets": [],
+  "mediaFolders": [],
+  "timelines": [
+    {
+      "id": "tl_fixture",
+      "name": "Current sequence",
+      "order": 0,
+      "fps": 30,
+      "width": 1920,
+      "height": 1080,
+      "selectedId": null,
+      "trackOrder": ["track_tl_fixture_1"],
+      "tracks": {
+        "track_tl_fixture_1": { "kind": "video" }
+      },
+      "items": []
+    }
+  ],
+  "activeTimelineId": "tl_fixture"
+}

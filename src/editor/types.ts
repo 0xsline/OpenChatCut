@@ -4,6 +4,7 @@
 import type { CaptionsData } from '../captions/types';
 import type { SerializableFxDef } from '../gl/fx/uniforms';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
+import type { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 
 /** Stable track id. Human aliases (V1/A1/...) are derived from track order. */
 export type TrackId = string;
@@ -464,7 +465,7 @@ export const fontOf = (s: DesignStyle | undefined, role: string): string | undef
 /** a project = shared media + ordered timelines + which one is active
  * (manage_timelines). `version` makes persisted-document migrations explicit. */
 export interface ProjectDoc {
-  version: 2;
+  version: typeof CURRENT_PROJECT_VERSION;
   /** project-wide media pool, shared by every timeline */
   assets: MediaAsset[];
   mediaFolders: MediaFolder[];
