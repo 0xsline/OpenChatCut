@@ -17,6 +17,8 @@ export interface Operation {
   action: string; // human verb
   target: string; // what it affects
   impact: string; // per-op impact
+  /** Consecutive calls collapsed into this review row. */
+  callCount?: number;
   rationale?: string;
 }
 
@@ -60,6 +62,7 @@ const VERB: Record<string, string> = {
   manage_timelines: '管理序列',
   edit_track: '管理轨道',
   manage_media_pool: '整理素材池',
+  isolate_voice: '人声隔离',
   apply_script: '改稿应用',
   manage_effects: '特效',
   edit_item: '编辑片段',
@@ -111,16 +114,37 @@ export function buildOperation(tool: string, args: Record<string, unknown>, acti
   };
 }
 
+/** Group consecutive calls for the same tool/target without changing replay order. */
+export function compactOperations(operations: Operation[]): Operation[] {
+  const compacted: Operation[] = [];
+  for (const operation of operations) {
+    const previous = compacted.at(-1);
+    if (!previous || previous.tool !== operation.tool || previous.target !== operation.target) {
+      compacted.push(operation);
+      continue;
+    }
+    const actions = [...previous.actions, ...operation.actions];
+    compacted[compacted.length - 1] = {
+      ...operation,
+      actions,
+      impact: impactOf(actions),
+      callCount: (previous.callCount ?? 1) + (operation.callCount ?? 1),
+    };
+  }
+  return compacted;
+}
+
 // wrap collected operations into a single-option proposal (operations lacking
 // explicit options are auto-wrapped into one recommended option).
 export function buildProposal(operations: Operation[], assistantText: string, baseDoc: ProjectDoc, resultState: TimelineState): Proposal {
-  const totalImpact = impactOf(operations.flatMap((o) => o.actions));
-  const summary = assistantText.trim() || `${operations.length} 项编辑`;
+  const compacted = compactOperations(operations);
+  const totalImpact = impactOf(compacted.flatMap((o) => o.actions));
+  const summary = assistantText.trim() || `${compacted.length} 项编辑`;
   return {
     title: 'Agent 编辑提案',
     summary,
     totalImpact,
-    options: [{ id: 'opt-1', label: '应用全部', recommended: true, summary, totalImpact, operations }],
+    options: [{ id: 'opt-1', label: '应用全部', recommended: true, summary, totalImpact, operations: compacted }],
     baseDoc,
     resultState,
   };

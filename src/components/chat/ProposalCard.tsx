@@ -97,7 +97,9 @@ export function ProposalCard({ proposal, onApply, onReject, onPreview, stale, on
                 <span className="cc-proposal-check-ui" aria-hidden />
                 <span className="cc-proposal-op-body">
                   <span className="cc-proposal-op-main">
-                    <span className="cc-proposal-op-action">{op.action}</span>
+                    <span className="cc-proposal-op-action">
+                      {op.action}{(op.callCount ?? 1) > 1 ? ` ×${op.callCount}` : ''}
+                    </span>
                     <span className="cc-proposal-op-target" title={op.target}>{op.target}</span>
                   </span>
                   <span className="cc-proposal-op-meta">

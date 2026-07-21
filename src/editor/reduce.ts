@@ -810,7 +810,9 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
         return { ...p, timelines: [...p.timelines, a.timeline], activeTimelineId };
       }
       case 'tl.switch':
-        return p.timelines.some((t) => t.id === a.id) ? { ...p, activeTimelineId: a.id } : p;
+        return p.activeTimelineId !== a.id && p.timelines.some((t) => t.id === a.id)
+          ? { ...p, activeTimelineId: a.id }
+          : p;
       case 'tl.duplicate': {
         const src = p.timelines.find((t) => t.id === a.id);
         if (!src) return p;
