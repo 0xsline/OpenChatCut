@@ -7,6 +7,7 @@ import type { Plugin } from 'vite';
 import { projectStorePlugin } from './project-store.ts';
 import { extensionStorePlugin } from './extension-store.ts';
 import { exportPlugin } from './export.ts';
+import { exportQaPlugin } from './export-qa.ts';
 import { uploadPlugin } from './upload.ts';
 import { uploadMultipartPlugin } from './upload-multipart.ts';
 import { extractAudioPlugin } from './extract-audio.ts';
@@ -31,7 +32,7 @@ import { llmProxyPlugin } from './llm-proxy.ts';
 import { getKey } from '../keystore.ts';
 
 export function serverPlugins(): Plugin[] {
-  return [llmProxyPlugin(), projectStorePlugin(), extensionStorePlugin(), externalAgentPlugin(), settingsPlugin(), exportPlugin(), uploadMultipartPlugin(), uploadPlugin(), extractAudioPlugin(), extractFramesPlugin(), sceneDetectionPlugin(), mediaPreviewPlugin(), isolateVoicePlugin(), normalizeMediaPlugin(), imageGenerationPlugin({
+  return [llmProxyPlugin(), projectStorePlugin(), extensionStorePlugin(), externalAgentPlugin(), settingsPlugin(), exportPlugin(), exportQaPlugin(), uploadMultipartPlugin(), uploadPlugin(), extractAudioPlugin(), extractFramesPlugin(), sceneDetectionPlugin(), mediaPreviewPlugin(), isolateVoicePlugin(), normalizeMediaPlugin(), imageGenerationPlugin({
     get baseUrl() { return getKey('IMAGE_BASE_URL') || 'https://api.openai.com'; },
     get apiKey() { return getKey('IMAGE_API_KEY') || getKey('OPENAI_API_KEY'); },
     get geminiBaseUrl() { return getKey('GEMINI_BASE_URL') || 'https://generativelanguage.googleapis.com'; },

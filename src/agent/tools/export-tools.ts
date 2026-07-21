@@ -92,11 +92,36 @@ function mapStatus(status: string): string {
 interface JobSnapshot extends JobReportBase<'queued' | 'running' | 'succeeded' | 'failed'> {
   id: string;
   progress: number;
-  result?: { path?: string; name?: string; sizeBytes?: number; codec?: string };
+  result?: {
+    path?: string;
+    name?: string;
+    sizeBytes?: number;
+    codec?: string;
+    durationSeconds?: number;
+    width?: number;
+    height?: number;
+    fps?: number;
+    sourceStartSeconds?: number;
+  };
 }
 
 export type PollResult =
-  | { ok: true; renderId: string; status: string; progress: number; downloadUrl?: string; name?: string; sizeBytes?: number; codec?: string; error?: string }
+  | {
+    ok: true;
+    renderId: string;
+    status: string;
+    progress: number;
+    downloadUrl?: string;
+    name?: string;
+    sizeBytes?: number;
+    codec?: string;
+    durationSeconds?: number;
+    width?: number;
+    height?: number;
+    fps?: number;
+    sourceStartSeconds?: number;
+    error?: string;
+  }
   | { error: string };
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -149,7 +174,17 @@ async function pollOnce(renderId: string): Promise<PollResult> {
     renderId: snapshot.id,
     status: mapStatus(snapshot.status),
     progress: snapshot.progress,
-    ...(completed && result?.path ? { downloadUrl: result.path, name: result.name, sizeBytes: result.sizeBytes, codec: result.codec } : {}),
+    ...(completed && result?.path ? {
+      downloadUrl: result.path,
+      name: result.name,
+      sizeBytes: result.sizeBytes,
+      codec: result.codec,
+      durationSeconds: result.durationSeconds,
+      width: result.width,
+      height: result.height,
+      fps: result.fps,
+      sourceStartSeconds: result.sourceStartSeconds,
+    } : {}),
     ...(isFailed(snapshot.status) && snapshot.error ? { error: snapshot.error } : {}),
   };
 }
