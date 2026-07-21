@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { TaskLimiter } from '../task-limiter.ts';
-import { createGenerationJob, getGenerationJobSnapshot } from './generation-jobs.ts';
+import { createGenerationJob, deleteGenerationJob, getGenerationJobSnapshot } from './generation-jobs.ts';
 import { pickMurekaAudioUrl } from './music.ts';
 
 const success = createGenerationJob({ kind: 'music' }, async (jobId, update) => {
@@ -28,6 +28,31 @@ assert.equal(completed?.phase, 'completed');
 assert.equal(completed?.progress, 100);
 assert.equal(completed?.processedFrames, 100);
 assert.equal(completed?.result?.assetId, success.jobId);
+
+const cleanedPaths: string[] = [];
+const cleanupResult = (id: string) => ({
+  assetId: id,
+  kind: 'video' as const,
+  name: id,
+  path: `/media/uploads/${id}.mp4`,
+  durationSeconds: 1,
+});
+const removable = createGenerationJob({ kind: 'export' }, async (id) => cleanupResult(id), {
+  cleanupResult: async (generated) => { cleanedPaths.push(generated.path); },
+});
+await new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
+assert.equal(await deleteGenerationJob(removable.jobId), true);
+assert.equal(getGenerationJobSnapshot(removable.jobId), undefined);
+assert.deepEqual(cleanedPaths, [`/media/uploads/${removable.jobId}.mp4`]);
+assert.equal(await deleteGenerationJob(removable.jobId), false, 'job cleanup must be idempotent');
+
+const expiring = createGenerationJob({ kind: 'export' }, async (id) => cleanupResult(id), {
+  cleanupResult: async (generated) => { cleanedPaths.push(`expired:${generated.path}`); },
+  retentionMs: 10,
+});
+await new Promise((resolvePromise) => setTimeout(resolvePromise, 30));
+assert.equal(getGenerationJobSnapshot(expiring.jobId), undefined, 'expired jobs must be evicted automatically');
+assert.ok(cleanedPaths.includes(`expired:/media/uploads/${expiring.jobId}.mp4`), 'expiry must dispose the result file');
 
 const failure = createGenerationJob({ kind: 'video' }, async () => { throw new Error('expected failure'); });
 await new Promise((resolvePromise) => setTimeout(resolvePromise, 0));

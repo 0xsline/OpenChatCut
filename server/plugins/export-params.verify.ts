@@ -1,5 +1,5 @@
 // 导出分辨率/帧率参数检查:短边缩放、夹取、视频专用校验。
-// 跑法:node --experimental-strip-types server/plugins/export-params.check.ts(check:generation 链)。
+// 跑法:npx tsx server/plugins/export-params.verify.ts（已接入 npm test）。
 import assert from 'node:assert/strict';
 import { exportScale, validateVideoParams } from './export.ts';
 
@@ -19,4 +19,4 @@ assert.throws(() => validateVideoParams({ fps: 60 }, 'audio'), /video exports on
 assert.throws(() => validateVideoParams({ resolution: '4k' }, 'video'), /480p, 720p, or 1080p/);
 assert.throws(() => validateVideoParams({ fps: 29.97 }, 'video'), /24, 25, 30, 50, or 60/);
 
-console.log('export-params.check: ok (short-side scale + video-only gates)');
+console.log('export params verification passed');

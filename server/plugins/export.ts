@@ -1,7 +1,7 @@
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readFile, unlink, mkdir, rename, stat } from 'node:fs/promises';
 import { normalizeFrameRange } from '../../src/export/range.ts';
@@ -267,10 +267,7 @@ export function exportPlugin(): Plugin {
           if (snapshot.status === 'queued' || snapshot.status === 'running') {
             sendError(res, 409, 'render job is still running'); return;
           }
-          if (snapshot.result?.path) {
-            await unlink(join(uploadDir(), basename(snapshot.result.path))).catch(() => {});
-          }
-          deleteGenerationJob(id);
+          await deleteGenerationJob(id);
           res.statusCode = 204;
           res.end();
           return;
@@ -311,7 +308,10 @@ export function exportPlugin(): Plugin {
                 throw error;
               }
             },
-            { acquire: acquireExportPermit },
+            {
+              acquire: acquireExportPermit,
+              cleanupResult: async () => { await unlink(filepath).catch(() => {}); },
+            },
           );
           sendJson(res, 200, { renderId: jobId });
         } catch (err) {

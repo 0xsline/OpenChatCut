@@ -62,6 +62,12 @@ AGENTS.md
 # 私人工作文档(TODO/设计笔记;要公开的文档另立目录)
 docs/
 
+# 本地/临时 check 脚本不进入开源仓库；稳定回归请使用 *.verify.* 并接入 npm test。
+*.check.ts
+*.check.mjs
+# 外部 MCP 桥接协议回归随实现入库（历史命名保留）。
+!server/external-agent/broker.check.ts
+
 # 本地开发/验证脚本
 /scripts/
 

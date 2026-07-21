@@ -29,6 +29,9 @@ interface GenerationJob {
   updatedAt: number;
   result?: GenerationResult;
   error?: string;
+  cleanupResult?: (result: GenerationResult) => Promise<void> | void;
+  retentionMs: number;
+  expiryTimer?: NodeJS.Timeout;
 }
 
 export interface GenerationJobSnapshot {
@@ -57,6 +60,10 @@ export type UpdateGenerationJob = (progress: GenerationJobProgress) => void;
 export interface GenerationJobOptions {
   /** Keep the job queued until a permit for expensive local work is available. */
   acquire?: () => Promise<() => void>;
+  /** Dispose temporary output when a terminal job is deleted or expires. */
+  cleanupResult?: (result: GenerationResult) => Promise<void> | void;
+  /** Terminal-job retention window. Override only for focused tests. */
+  retentionMs?: number;
 }
 
 const jobs = new Map<string, GenerationJob>();
@@ -66,8 +73,34 @@ const MAX_JOB_AGE_MS = 60 * 60_000;
 function cleanOldJobs() {
   const cutoff = Date.now() - MAX_JOB_AGE_MS;
   for (const [id, job] of jobs) {
-    if (TERMINAL.has(job.status) && job.updatedAt < cutoff) jobs.delete(id);
+    if (TERMINAL.has(job.status) && job.updatedAt < cutoff) void evictTerminalJob(id);
   }
+}
+
+function normalizeRetentionMs(value: number | undefined): number {
+  return Number.isFinite(value) && Number(value) >= 0 ? Number(value) : MAX_JOB_AGE_MS;
+}
+
+function scheduleExpiry(job: GenerationJob): void {
+  if (!TERMINAL.has(job.status)) return;
+  if (job.expiryTimer) clearTimeout(job.expiryTimer);
+  job.expiryTimer = setTimeout(() => { void evictTerminalJob(job.id); }, job.retentionMs);
+  job.expiryTimer.unref?.();
+}
+
+async function evictTerminalJob(jobId: string): Promise<boolean> {
+  const job = jobs.get(jobId);
+  if (!job || !TERMINAL.has(job.status)) return false;
+  jobs.delete(jobId);
+  if (job.expiryTimer) clearTimeout(job.expiryTimer);
+  if (job.result && job.cleanupResult) {
+    try {
+      await job.cleanupResult(job.result);
+    } catch (error) {
+      console.warn(`[generation-job] failed to clean result for ${jobId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return true;
 }
 
 function applyProgress(job: GenerationJob, next: GenerationJobProgress): void {
@@ -111,6 +144,7 @@ async function runGenerationJob(
   } finally {
     job.updatedAt = Date.now();
     release?.();
+    scheduleExpiry(job);
   }
 }
 
@@ -122,7 +156,17 @@ export function createGenerationJob(
   cleanOldJobs();
   const id = randomUUID();
   const now = Date.now();
-  const job: GenerationJob = { id, status: 'queued', progress: 0, phase: 'queued', params, createdAt: now, updatedAt: now };
+  const job: GenerationJob = {
+    id,
+    status: 'queued',
+    progress: 0,
+    phase: 'queued',
+    params,
+    createdAt: now,
+    updatedAt: now,
+    cleanupResult: options.cleanupResult,
+    retentionMs: normalizeRetentionMs(options.retentionMs),
+  };
   jobs.set(id, job);
   void runGenerationJob(job, task, options);
   return { jobId: id, status: 'queued' };
@@ -147,10 +191,8 @@ export function getGenerationJobSnapshot(jobId: string): GenerationJobSnapshot |
 }
 
 /** Remove a finished job after a one-shot consumer has downloaded its result. */
-export function deleteGenerationJob(jobId: string): boolean {
-  const job = jobs.get(jobId);
-  if (!job || !TERMINAL.has(job.status)) return false;
-  return jobs.delete(jobId);
+export function deleteGenerationJob(jobId: string): Promise<boolean> {
+  return evictTerminalJob(jobId);
 }
 
 interface ProgressRequest {
