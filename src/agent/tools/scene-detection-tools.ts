@@ -1,8 +1,12 @@
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
-import type { AtomicAction } from '../../editor/reduce';
 import type { MediaAsset, TimelineItem } from '../../editor/types';
 import type { SceneChange } from '../../scene-detection/detect';
+import {
+  mapScenesToItem,
+  sceneMarkerActions,
+  sceneSplitActions,
+} from '../../scene-detection/apply';
 
 type Args = Record<string, unknown>;
 type ApplyMode = 'report' | 'markers' | 'split';
@@ -52,51 +56,6 @@ function sourceFor(ctx: AgentContext, args: Args): { asset: MediaAsset | null; i
   return { asset, item, src };
 }
 
-interface MappedScene extends SceneChange {
-  timelineFrame: number;
-  itemLocalFrame: number;
-}
-
-function mapScenesToItem(scenes: readonly SceneChange[], item: TimelineItem, fps: number): MappedScene[] {
-  const sourceIn = item.srcInFrame ?? 0;
-  const rate = Math.max(0.01, item.playbackRate ?? 1);
-  const mapped = scenes.flatMap((scene): MappedScene[] => {
-    const sourceFrame = (scene.timeMs / 1000) * fps;
-    const itemLocalFrame = Math.round((sourceFrame - sourceIn) / rate);
-    if (itemLocalFrame <= 0 || itemLocalFrame >= item.durationInFrames) return [];
-    return [{ ...scene, itemLocalFrame, timelineFrame: item.startFrame + itemLocalFrame }];
-  });
-  const unique = new Map(mapped.map((scene) => [scene.timelineFrame, scene]));
-  return [...unique.values()].sort((a, b) => a.timelineFrame - b.timelineFrame);
-}
-
-function markerActions(item: TimelineItem, scenes: readonly MappedScene[]): AtomicAction[] {
-  return scenes.map((scene, index) => ({
-    type: 'addMarker',
-    marker: {
-      id: `marker_${crypto.randomUUID()}`,
-      scope: 'item',
-      itemId: item.id,
-      fromFrame: scene.timelineFrame,
-      durationFrames: 0,
-      note: `Scene ${index + 1} · ${scene.kind} · score ${scene.score.toFixed(3)}`,
-      color: scene.kind === 'cut' ? 'yellow' : 'purple',
-    },
-  }));
-}
-
-function splitActions(item: TimelineItem, scenes: readonly MappedScene[]): AtomicAction[] {
-  let currentId = item.id;
-  return scenes.map((scene) => {
-    const nextId = `item_${crypto.randomUUID()}`;
-    const action: AtomicAction = {
-      type: 'split', id: currentId, atFrame: scene.timelineFrame, newId: nextId,
-    };
-    currentId = nextId;
-    return action;
-  });
-}
-
 export async function execSceneDetectionTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   if (name !== 'detect_scenes') return { error: `unknown tool ${name}` };
   const target = sourceFor(ctx, args);
@@ -132,8 +91,8 @@ export async function execSceneDetectionTool(name: string, args: Args, ctx: Agen
 
   if (target.item && apply !== 'report' && mapped.length) {
     const actions = apply === 'markers'
-      ? markerActions(target.item, mapped)
-      : splitActions(target.item, mapped);
+      ? sceneMarkerActions(target.item, mapped)
+      : sceneSplitActions(target.item, mapped);
     ctx.commands.batch(actions, apply === 'markers' ? 'Add scene markers' : 'Split clip at scene changes');
   }
 

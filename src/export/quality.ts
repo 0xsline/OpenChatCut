@@ -11,7 +11,29 @@ interface TimelineQaState {
     volume?: number;
   }>;
   tracks?: Record<string, { kind?: 'video' | 'audio'; hidden?: boolean; muted?: boolean } | undefined>;
+  captions?: {
+    enabled: boolean;
+    layout?: CaptionQaLayout;
+    sourceEntries?: CaptionQaSource[];
+    layoutPolicy?: CaptionQaLayoutPolicy | null;
+  } | null;
 }
+
+interface CaptionQaLayout {
+  anchor?: string;
+  offsetXRatio?: number;
+  offsetYRatio?: number;
+}
+
+interface CaptionQaSource extends CaptionQaLayout {
+  id: string;
+  visible?: boolean;
+  slotId?: string;
+}
+
+type CaptionQaLayoutPolicy =
+  | { mode: 'single-lane' | 'auto-stack'; maxVisibleSources?: number }
+  | { mode: 'manual-slots'; slots: Array<CaptionQaLayout & { id: string }> };
 
 function qaTrackKind(state: TimelineQaState, track: string): 'video' | 'audio' {
   return state.tracks?.[track]?.kind ?? (track.toUpperCase().startsWith('A') ? 'audio' : 'video');
@@ -70,6 +92,95 @@ export interface ExportQaReport extends ExportQaAnalysis {
     errors: number;
     warnings: number;
   };
+}
+
+/** Merge deterministic timeline findings into the media analysis report. */
+export function mergeExportQaIssues(
+  report: ExportQaReport,
+  additionalIssues: ExportQaIssue[],
+): ExportQaReport {
+  const keys = new Set(report.issues.map((issue) => [
+    issue.code,
+    issue.startSeconds ?? '',
+    issue.endSeconds ?? '',
+    issue.message,
+  ].join('|')));
+  const issues = [...report.issues];
+  for (const issue of additionalIssues) {
+    const key = [issue.code, issue.startSeconds ?? '', issue.endSeconds ?? '', issue.message].join('|');
+    if (!keys.has(key)) {
+      keys.add(key);
+      issues.push(issue);
+    }
+  }
+  const errors = issues.filter((issue) => issue.severity === 'error').length;
+  return {
+    ...report,
+    ok: errors === 0,
+    issues,
+    summary: { errors, warnings: issues.length - errors },
+  };
+}
+
+function captionPlacements(state: TimelineQaState): CaptionQaLayout[] {
+  const captions = state.captions;
+  if (!captions?.enabled) return [];
+  const sources = (captions.sourceEntries ?? []).filter((source) => source.visible !== false);
+  const placements: CaptionQaLayout[] = [];
+  if (!sources.length) placements.push(captions.layout ?? {});
+  for (const source of sources) {
+    const slot = captions.layoutPolicy?.mode === 'manual-slots' && source.slotId
+      ? captions.layoutPolicy.slots.find((candidate) => candidate.id === source.slotId)
+      : undefined;
+    if (slot) placements.push(slot);
+    else if (source.anchor || source.offsetXRatio !== undefined || source.offsetYRatio !== undefined) placements.push(source);
+    else placements.push(captions.layout ?? {});
+  }
+  const unique = new Map<string, CaptionQaLayout>();
+  for (const placement of placements) {
+    const key = `${placement.anchor ?? 'bottom-center'}|${placement.offsetXRatio ?? 0}|${placement.offsetYRatio ?? 0}`;
+    unique.set(key, placement);
+  }
+  return [...unique.values()];
+}
+
+/**
+ * Check caption placement against the same 5% action-safe frame shown by the
+ * preview overlay. Only definite geometry violations are reported so custom
+ * layouts near the normal 8–10% title-safe area are not false positives.
+ */
+export function captionLayoutQaIssues(state: TimelineQaState): ExportQaIssue[] {
+  const issues: ExportQaIssue[] = [];
+  for (const placement of captionPlacements(state)) {
+    const anchor = placement.anchor ?? 'bottom-center';
+    const x = Number(placement.offsetXRatio ?? 0);
+    const y = Number(placement.offsetYRatio ?? 0);
+    const horizontal = anchor.endsWith('left') ? 'left' : anchor.endsWith('right') ? 'right' : 'center';
+    const vertical = anchor.startsWith('top')
+      ? 'top'
+      : (anchor.startsWith('middle') || anchor === 'center') ? 'middle' : 'bottom';
+
+    const horizontalGap = horizontal === 'left' ? 0.1 + x
+      : horizontal === 'right' ? 0.1 - x
+        : 0.5 - Math.abs(x);
+    if (!Number.isFinite(x) || horizontalGap < 0.05) {
+      issues.push({
+        code: 'caption_safe_area_horizontal',
+        severity: 'warning',
+        message: `Caption placement ${anchor} crosses the 5% horizontal action-safe boundary.`,
+      });
+    }
+
+    const verticalGap = vertical === 'middle' ? 0.5 - Math.abs(y) : 0.08 + y;
+    if (!Number.isFinite(y) || verticalGap < 0.05 || verticalGap > 0.95) {
+      issues.push({
+        code: 'caption_safe_area_vertical',
+        severity: 'warning',
+        message: `Caption placement ${anchor} crosses the 5% vertical action-safe boundary.`,
+      });
+    }
+  }
+  return issues;
 }
 
 const rounded = (value: number, digits = 3): number => Number(value.toFixed(digits));

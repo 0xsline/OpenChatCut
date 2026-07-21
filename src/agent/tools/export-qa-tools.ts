@@ -1,7 +1,9 @@
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import {
+  captionLayoutQaIssues,
   exportQaExpectations,
+  mergeExportQaIssues,
   timelineCutTimesSeconds,
   type ExportQaExpectations,
   type ExportQaReport,
@@ -105,18 +107,19 @@ async function verifyExport(args: Args, ctx: AgentContext): Promise<unknown> {
       return { error: result?.error ?? `export QA failed (${response.status})` };
     }
 
+    const report = mergeExportQaIssues(result.report, captionLayoutQaIssues(state));
     const evidence = result.evidence;
     return {
-      ok: result.report.ok,
+      ok: report.ok,
       src: resolved.src,
-      report: result.report,
+      report,
       cutCount: cutTimesSeconds.length,
       evidenceSamples: evidence?.samples ?? [],
       ...(evidence?.base64 ? { __images: [{ frame: 0, base64: evidence.base64 }] } : {}),
       note: evidence?.base64
         ? 'Cut evidence is a two-column sheet: each row shows the frame immediately before and after one edit boundary.'
         : 'No adjacent edit boundaries were available for visual evidence; stream-level QA still completed.',
-      next: result.report.ok && result.report.summary.warnings === 0
+      next: report.ok && report.summary.warnings === 0
         ? 'Export passed automated QA.'
         : 'Inspect every issue and evidence row. Fix confirmed problems, export again, and rerun verify_export. Stop after three attempts and report any remaining issue to the user.',
     };

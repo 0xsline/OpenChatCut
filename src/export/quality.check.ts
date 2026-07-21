@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import {
   assessExportQuality,
+  captionLayoutQaIssues,
   exportQaExpectations,
+  mergeExportQaIssues,
   parseExportQaLog,
   timelineCutTimesSeconds,
 } from './quality';
@@ -49,6 +51,19 @@ assert.deepEqual(exportQaExpectations(state), {
   expectsAudio: true,
 });
 
+assert.deepEqual(captionLayoutQaIssues({
+  ...state,
+  captions: { enabled: true, layout: { anchor: 'bottom-center', offsetYRatio: 0 } },
+}), [], '默认字幕位置处于安全区');
+const captionIssues = captionLayoutQaIssues({
+  ...state,
+  captions: { enabled: true, layout: { anchor: 'bottom-right', offsetXRatio: 0.08, offsetYRatio: -0.05 } },
+});
+assert.deepEqual(captionIssues.map((issue) => issue.code), [
+  'caption_safe_area_horizontal',
+  'caption_safe_area_vertical',
+]);
+
 const report = assessExportQuality({
   durationSeconds: 7.6,
   width: 1280,
@@ -66,5 +81,8 @@ assert.ok(report.issues.some((issue) => issue.code === 'black_frames'));
 assert.ok(report.issues.some((issue) => issue.code === 'frozen_frames'));
 assert.ok(report.issues.some((issue) => issue.code === 'long_silence'));
 assert.ok(report.issues.some((issue) => issue.code === 'audio_peak'));
+const merged = mergeExportQaIssues(report, [...captionIssues, captionIssues[0]]);
+assert.equal(merged.issues.filter((issue) => issue.code === 'caption_safe_area_horizontal').length, 1, '附加问题去重');
+assert.equal(merged.summary.warnings, report.summary.warnings + 2);
 
 console.log('export quality checks passed');

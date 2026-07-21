@@ -14,6 +14,19 @@ import { captionsToSrt, captionsToTxt } from '../captions/exportCaptions';
 import { exportClipMov } from '../media/clipExport';
 import { sanitizeFileName } from '../media/fileName';
 import { recordExport } from '../persist/exportHistoryStore';
+import {
+  captionLayoutQaIssues,
+  exportQaExpectations,
+  mergeExportQaIssues,
+  timelineCutTimesSeconds,
+  type ExportQaIssue,
+  type ExportQaReport,
+} from './quality';
+import {
+  loadExportAutoQaPreference,
+  runExportQa,
+  saveExportAutoQaPreference,
+} from './autoQa';
 
 type ExportTab = 'video' | 'audio' | 'mg' | 'subtitles' | 'xml';
 
@@ -34,7 +47,7 @@ const TABS: Array<{ key: ExportTab; label: string; summary: string; icon: IconNa
 const FPS_OPTIONS = [24, 25, 30, 50, 60];
 const RESOLUTIONS = ['480p', '720p', '1080p'] as const;
 
-type ExportPhase = 'queued' | 'preparing' | 'rendering' | 'finalizing' | 'downloading' | 'completed' | 'failed';
+type ExportPhase = 'queued' | 'preparing' | 'rendering' | 'finalizing' | 'verifying' | 'downloading' | 'completed' | 'failed';
 
 interface ExportProgress {
   phase: ExportPhase;
@@ -54,8 +67,26 @@ interface ExportJobSnapshot {
   phase?: string;
   processedFrames?: number;
   totalFrames?: number;
-  result?: { path?: string; name?: string; sizeBytes?: number; codec?: string };
+  result?: {
+    path?: string;
+    name?: string;
+    sizeBytes?: number;
+    codec?: string;
+    durationSeconds?: number;
+    width?: number;
+    height?: number;
+    fps?: number;
+    sourceStartSeconds?: number;
+  };
   error?: string;
+}
+
+interface ExportQaUiState {
+  status: 'running' | 'passed' | 'issues' | 'error';
+  attempts: number;
+  report?: ExportQaReport;
+  evidenceUrl?: string;
+  message?: string;
 }
 
 function wait(milliseconds: number): Promise<void> {
@@ -108,6 +139,8 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [clock, setClock] = useState(Date.now());
+  const [autoQaEnabled, setAutoQaEnabled] = useState(() => loadExportAutoQaPreference().enabled);
+  const [qa, setQa] = useState<ExportQaUiState | null>(null);
 
   useEffect(() => {
     if (!busy) return undefined;
@@ -130,6 +163,60 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     mg: '导出动态图层',
     subtitles: '下载字幕',
     xml: '生成剪辑工程',
+  };
+
+  const toggleAutoQa = (enabled: boolean) => {
+    setAutoQaEnabled(enabled);
+    saveExportAutoQaPreference({ enabled });
+    if (!enabled) setQa(null);
+  };
+
+  const verifyCompletedExport = async (completed: NonNullable<ExportJobSnapshot['result']>) => {
+    if (!completed.path) return;
+    setBusy(t('正在检查导出质量…'));
+    setQa({ status: 'running', attempts: 0 });
+    setProgress((current) => current ? {
+      ...current,
+      phase: 'verifying',
+      percent: 99,
+      detail: t('检查画面、声音、剪辑点和字幕安全区，失败时最多自动复检 3 轮'),
+    } : current);
+    const baseline = exportQaExpectations(state);
+    const expected = {
+      ...baseline,
+      durationSeconds: completed.durationSeconds ?? baseline.durationSeconds,
+      width: completed.width ?? baseline.width,
+      height: completed.height ?? baseline.height,
+      fps: completed.fps ?? fps,
+    };
+    const sourceStart = completed.sourceStartSeconds ?? 0;
+    const cutTimesSeconds = timelineCutTimesSeconds(state, 24)
+      .map((seconds) => Number((seconds - sourceStart).toFixed(4)))
+      .filter((seconds) => seconds > 0 && seconds < expected.durationSeconds)
+      .slice(0, 8);
+    try {
+      const result = await runExportQa({
+        src: completed.path,
+        ...expected,
+        cutTimesSeconds,
+        maxEvidenceCuts: 8,
+      });
+      const report = mergeExportQaIssues(result.response.report, captionLayoutQaIssues(state));
+      const mediaType = result.response.evidence?.mediaType ?? 'image/jpeg';
+      const base64 = result.response.evidence?.base64;
+      setQa({
+        status: report.issues.length ? 'issues' : 'passed',
+        attempts: result.attempts,
+        report,
+        ...(base64 ? { evidenceUrl: `data:${mediaType};base64,${base64}` } : {}),
+      });
+    } catch (reason) {
+      setQa({
+        status: 'error',
+        attempts: 0,
+        message: reason instanceof Error ? reason.message : String(reason),
+      });
+    }
   };
 
   /** 视频/音频:异步 render job 回传真实 Remotion 进度，完成后再下载。 */
@@ -184,6 +271,8 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
       } : current);
       await wait(300);
     }
+
+    if (format === 'video' && autoQaEnabled) await verifyCompletedExport(completed);
 
     setBusy(t('正在下载…'));
     setProgress((current) => current ? { ...current, phase: 'downloading', percent: 99 } : current);
@@ -248,6 +337,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     if (busy) return;
     if (progress?.phase === 'completed') { onClose(); return; }
     setError(null);
+    setQa(null);
     const startedAt = Date.now();
     setClock(startedAt);
     setProgress({ phase: 'preparing', percent: 0, startedAt });
@@ -279,6 +369,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     preparing: t('准备素材'),
     rendering: t('正在渲染'),
     finalizing: t('正在封装'),
+    verifying: t('正在质量检查'),
     downloading: t('正在下载'),
     completed: t('导出完成'),
     failed: t('导出失败'),
@@ -320,7 +411,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
                   id={`cc-export-tab-${entry.key}`}
                   key={entry.key}
                   className={`cc-export-tab${tab === entry.key ? ' active' : ''}`}
-                  onClick={() => { setTab(entry.key); setError(null); setProgress(null); }}
+                  onClick={() => { setTab(entry.key); setError(null); setProgress(null); setQa(null); }}
                   disabled={!!busy}
                 >
                   <span className="cc-export-tab-icon"><Icon name={entry.icon} size={15} /></span>
@@ -362,6 +453,19 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
                   <Row label={t('帧率')}>
                     <Segmented options={FPS_OPTIONS.map((value) => ({ value, label: `${value} fps` }))} value={fps} onChange={setFps} />
                   </Row>
+                  <label className="cc-export-toggle cc-export-qa-toggle">
+                    <span>
+                      <strong>{t('导出后自动质量检查')}</strong>
+                      <small>{t('检查画面、声音、剪辑点和字幕安全区；临时失败最多自动复检 3 轮。')}</small>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={autoQaEnabled}
+                      onChange={(event) => toggleAutoQa(event.target.checked)}
+                      disabled={!!busy}
+                    />
+                  </label>
+                  {qa && <ExportQaCard qa={qa} />}
                 </>
               )}
 
@@ -486,6 +590,70 @@ function InfoCard({ icon, title, text }: { icon: IconName; title: string; text: 
         <strong>{title}</strong>
         <p>{text}</p>
       </div>
+    </div>
+  );
+}
+
+const QA_ISSUE_LABELS: Record<string, string> = {
+  missing_video: '成片缺少视频轨',
+  duration_mismatch: '成片时长与时间线不一致',
+  resolution_mismatch: '成片分辨率与导出设置不一致',
+  fps_mismatch: '成片帧率与导出设置不一致',
+  missing_audio: '成片缺少应有的音频轨',
+  black_frames: '检测到异常黑帧',
+  frozen_frames: '检测到较长静帧',
+  long_silence: '检测到较长静音',
+  audio_peak: '音频峰值接近削波',
+  caption_safe_area_horizontal: '字幕越出横向安全区',
+  caption_safe_area_vertical: '字幕越出纵向安全区',
+};
+
+function qaIssueLabel(issue: ExportQaIssue, translate: ReturnType<typeof useT>): string {
+  const label = translate(QA_ISSUE_LABELS[issue.code] ?? issue.message);
+  if (issue.startSeconds === undefined) return label;
+  const end = issue.endSeconds ?? issue.startSeconds;
+  return `${label} · ${issue.startSeconds.toFixed(2)}–${end.toFixed(2)}s`;
+}
+
+function ExportQaCard({ qa }: { qa: ExportQaUiState }) {
+  const t = useT();
+  if (qa.status === 'running') {
+    return <div className="cc-export-qa-card running"><strong>{t('正在自动检查成片…')}</strong></div>;
+  }
+  if (qa.status === 'error') {
+    return (
+      <div className="cc-export-qa-card error">
+        <strong>{t('自动质量检查未完成')}</strong>
+        <p>{t('成片仍会正常下载；你可以稍后重新导出复检。')} {qa.message}</p>
+      </div>
+    );
+  }
+  const report = qa.report!;
+  return (
+    <div className={`cc-export-qa-card ${qa.status}`}>
+      <div className="cc-export-qa-summary">
+        <strong>{qa.status === 'passed' ? t('自动质量检查通过') : t('自动质量检查发现问题')}</strong>
+        <span>{t('{errors} 个错误 · {warnings} 个警告', {
+          errors: report.summary.errors,
+          warnings: report.summary.warnings,
+        })}</span>
+      </div>
+      {qa.attempts > 1 && <p>{t('第 {n} 轮检查完成', { n: qa.attempts })}</p>}
+      {report.issues.length > 0 && (
+        <ul>
+          {report.issues.map((issue, index) => (
+            <li key={`${issue.code}-${issue.startSeconds ?? index}`} className={issue.severity}>
+              {qaIssueLabel(issue, t)}
+            </li>
+          ))}
+        </ul>
+      )}
+      {qa.evidenceUrl && (
+        <details>
+          <summary>{t('查看剪辑点前后对照图')}</summary>
+          <img src={qa.evidenceUrl} alt={t('剪辑点前后画面对照')} />
+        </details>
+      )}
     </div>
   );
 }
