@@ -23,4 +23,3 @@ export interface ProjectMigrationStep {
   toVersion: number;
   migrate: (value: unknown) => unknown;
 }
-

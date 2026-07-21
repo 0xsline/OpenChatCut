@@ -14,4 +14,3 @@ export const v2ToV3: ProjectMigrationStep = {
     };
   },
 };
-
