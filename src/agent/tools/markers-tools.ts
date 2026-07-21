@@ -1,8 +1,10 @@
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
-import { MARKER_HEX, type Marker, type MarkerColor, type TimelineState } from '../../editor/types';
+import { MARKER_HEX, type Marker, type MarkerColor, type Timeline, type TimelineState } from '../../editor/types';
+import { makeDraft } from '../../editor/store';
 import { buildModel, type SegRow } from '../../script/serialize';
 import { makeWordFrameMapper } from './transcript-find';
+import { resolveTimeline } from './timeline-target';
 
 // manage_markers — 时间线批注(点/段),锚在帧上或某 clip 上，契约为 marker-note-v2。
 // 参数包含 action + fromFrame/durationFrames/note/itemId +
@@ -32,6 +34,7 @@ export const MARKERS_TOOL_SCHEMAS: AgentToolSchema[] = [
       type: 'object',
       properties: {
         action: { type: 'string', enum: ['list', 'create', 'update', 'delete'] },
+        timelineId: { type: 'string', description: '目标时间线 id 或前缀；省略时使用当前时间线，不会切换当前时间线。' },
         fromFrame: { type: 'number', description: 'Integer timeline frame to anchor the marker at (required for create unless transcriptSegments is used).' },
         durationFrames: { type: 'number', description: '段长;0 或省略 = 点标记(用 transcriptSegments 时默认覆盖所选段)。' },
         note: { type: 'string', description: 'Marker note text (required for create unless transcriptSegments is used).' },
@@ -160,21 +163,37 @@ const summarize = (m: Marker) => ({ id: m.id, scope: m.scope, itemId: m.itemId ?
 
 export function execMarkersTool(name: string, args: Args, ctx: AgentContext): unknown {
   if (name !== 'manage_markers') return { error: `unknown tool ${name}` };
-  const markers = ctx.getState().markers ?? [];
+  let target: Timeline;
+  try {
+    target = resolveTimeline(ctx, str(args.timelineId));
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+
+  // Marker commands operate on the active timeline. Point a draft project at
+  // the requested target, then merge it back atomically while preserving the
+  // timeline the user currently has open.
+  const sourceDoc = ctx.getDoc();
+  const draft = makeDraft({ ...sourceDoc, activeTimelineId: target.id });
+  const state = draft.getState();
+  const markers = state.markers ?? [];
+  const timeline = { id: target.id, name: target.name };
+  const commit = () => ctx.commands.applyDoc({ ...draft.getDoc(), activeTimelineId: sourceDoc.activeTimelineId });
 
   switch (String(args.action ?? '')) {
     case 'list':
-      return { markers: markers.map(summarize) };
+      return { timeline, markers: markers.map(summarize) };
 
     case 'create': {
       const batch = Array.isArray(args.markers) ? (args.markers as Args[]) : [args];
       const ids: string[] = [];
       for (const raw of batch) {
-        const built = createOpts(raw, ctx.getState());
+        const built = createOpts(raw, state);
         if ('error' in built) return { error: built.error };
-        ids.push(ctx.commands.addMarker(built.fromFrame, built.opts));
+        ids.push(draft.commands.addMarker(built.fromFrame, built.opts));
       }
-      return { ok: true, created: ids };
+      commit();
+      return { ok: true, timeline, created: ids };
     }
 
     case 'update': {
@@ -184,18 +203,20 @@ export function execMarkersTool(name: string, args: Args, ctx: AgentContext): un
         const id = str(raw.markerId) ?? str(raw.id);
         if (!id) return { error: 'update requires markerId' };
         if (!markers.some((m) => m.id === id)) return { error: `no marker ${id}` };
-        ctx.commands.updateMarker(id, updatePatch(raw));
+        draft.commands.updateMarker(id, updatePatch(raw));
         updated.push(id);
       }
-      return { ok: true, updated };
+      commit();
+      return { ok: true, timeline, updated };
     }
 
     case 'delete': {
       const id = str(args.markerId);
       if (!id) return { error: 'delete requires markerId' };
       if (!markers.some((m) => m.id === id)) return { error: `no marker ${id}` };
-      ctx.commands.removeMarker(id);
-      return { ok: true, deleted: id };
+      draft.commands.removeMarker(id);
+      commit();
+      return { ok: true, timeline, deleted: id };
     }
 
     default:

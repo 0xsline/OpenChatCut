@@ -8,6 +8,7 @@ import type { CaptionAnchor, CaptionLayoutPolicy, CaptionPage, CaptionsData, Cap
 import { activePage, currentWordIndex, paginate } from './types';
 import type { TimelineItem } from '../editor/types';
 import { resolveEntryWords } from './resolve';
+import { orderedCaptionSourceEntries } from './sourceOrder';
 
 export interface LanePage {
   entry: CaptionSourceEntry;
@@ -40,7 +41,7 @@ function placementOf(entry: CaptionSourceEntry, policy: CaptionLayoutPolicy): { 
 
 /** 当前帧(ms)的车道渲染模型。没有 sourceEntries → null(调用方走单流旧路径)。 */
 export function buildLaneGroups(captions: CaptionsData, items: TimelineItem[], fps: number, ms: number, wordsPerPage: number | undefined): LaneGroup[] | null {
-  const entries = captions.sourceEntries;
+  const entries = captions.sourceEntries ? orderedCaptionSourceEntries(captions.sourceEntries) : undefined;
   if (!entries?.length) return null;
   const policy = policyOf(captions);
 

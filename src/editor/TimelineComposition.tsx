@@ -1,4 +1,5 @@
-import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, getRemotionEnvironment, useCurrentFrame } from 'remotion';
+import { Audio as BrowserAudio, Video as BrowserVideo, type AudioProps as BrowserAudioProps, type VideoProps as BrowserVideoProps } from '@remotion/media';
+import { AbsoluteFill, Audio as ServerAudio, Img, OffthreadVideo, Sequence, getRemotionEnvironment, useCurrentFrame } from 'remotion';
 import { compileTemplate } from '../template-host';
 import { CaptionsLayer } from '../captions/CaptionsLayer';
 import { GlTransition } from '../gl/GlTransition';
@@ -152,11 +153,28 @@ function audioCrossfadeMul(
   return m;
 }
 
-function AudioClip({ item, fps, muted, gainAt, transitions, premountFor }: {
+function RuntimeAudio({ browserRenderer, ...props }: BrowserAudioProps & { browserRenderer: boolean }) {
+  return browserRenderer
+    ? <BrowserAudio {...props} />
+    : <ServerAudio {...props} preservePitch />;
+}
+
+type RuntimeVideoProps = Pick<BrowserVideoProps, 'src' | 'trimBefore' | 'trimAfter' | 'playbackRate' | 'volume' | 'style' | 'muted'> & {
+  browserRenderer: boolean;
+};
+
+function RuntimeVideo({ browserRenderer, ...props }: RuntimeVideoProps) {
+  return browserRenderer
+    ? <BrowserVideo {...props} />
+    : <OffthreadVideo {...props} preservePitch />;
+}
+
+function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, browserRenderer }: {
   item: TimelineItem; fps: number; muted: boolean;
   gainAt: (frame: number) => number;
   transitions?: TransitionItem[];
   premountFor: number;
+  browserRenderer: boolean;
 }) {
   const vol = muted ? 0 : item.volume ?? 1;
   const src = audioSrc(item);
@@ -171,7 +189,7 @@ function AudioClip({ item, fps, muted, gainAt, transitions, premountFor }: {
           window: itemWindow(item), // trim 手柄的 [srcIn, srcIn+dur) 切片(词↔帧一致)
         }).map((seg, k) => (
           <Sequence key={`${item.id}_${k}`} from={seg.fromFrame} durationInFrames={seg.durFrames} premountFor={premountFor} name={item.name}>
-            <Audio src={src} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame}
+            <RuntimeAudio browserRenderer={browserRenderer} src={src} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame}
               volume={(f) => vol * gainAt(seg.fromFrame + f) * audioCrossfadeMul(item, seg.fromFrame - item.startFrame + f, transitions)} />
           </Sequence>
         ))}
@@ -180,8 +198,7 @@ function AudioClip({ item, fps, muted, gainAt, transitions, premountFor }: {
   }
   return (
     <Sequence from={item.startFrame} durationInFrames={item.durationInFrames} premountFor={premountFor} name={item.name}>
-      <Audio src={src} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-        preservePitch
+      <RuntimeAudio browserRenderer={browserRenderer} src={src} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
         volume={(f) => vol
           * gainAt(item.startFrame + f)
           * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)
@@ -191,7 +208,7 @@ function AudioClip({ item, fps, muted, gainAt, transitions, premountFor }: {
 }
 
 // Imported image / video / gif / svg fills the canvas by the fit mode (objectFit).
-function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt }: { item: TimelineItem; fit: AspectFit; muted: boolean; canvasW: number; canvasH: number; gainAt: (frame: number) => number }) {
+function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt, browserRenderer }: { item: TimelineItem; fit: AspectFit; muted: boolean; canvasW: number; canvasH: number; gainAt: (frame: number) => number; browserRenderer: boolean }) {
   const objectFit = fit === 'cover' ? 'cover' : 'contain';
   const style: React.CSSProperties = { width: '100%', height: '100%', objectFit };
   const still = item.kind === 'image' || item.kind === 'gif' || item.kind === 'svg';
@@ -203,12 +220,10 @@ function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt }: { item: Timel
         <ClipFx item={item} fit={fit} width={canvasW} height={canvasH} />
         {item.kind !== 'image' && (
           item.denoisedSrc ? (
-            <Audio src={item.denoisedSrc} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-              preservePitch
+            <RuntimeAudio browserRenderer={browserRenderer} src={item.denoisedSrc} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
               volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
           ) : (
-            <Audio src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-              preservePitch
+            <RuntimeAudio browserRenderer={browserRenderer} src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
               volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
           )
         )}
@@ -223,14 +238,12 @@ function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt }: { item: Timel
           // visual from original video (muted) + isolated voice track
           ? (
             <>
-              <OffthreadVideo src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1} preservePitch volume={0} style={style} />
-              <Audio src={item.denoisedSrc} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-                preservePitch
+              <RuntimeVideo browserRenderer={browserRenderer} src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1} volume={0} style={style} />
+              <RuntimeAudio browserRenderer={browserRenderer} src={item.denoisedSrc} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
                 volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
             </>
           )
-          : <OffthreadVideo src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-            preservePitch
+          : <RuntimeVideo browserRenderer={browserRenderer} src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
             volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} style={style} />}
     </AbsoluteFill>
   );
@@ -313,7 +326,14 @@ function ItemLayer({ item, canvasW, canvasH, fit }: { item: TimelineItem; canvas
 
 // Renders the ENTIRE timeline. Visual tracks composite bottom-up: V1 then V2 on
 // top. Audio items (A1/A2) play via <Audio> and produce no picture.
-export function TimelineComposition({ state, transparent }: { state: TimelineState; transparent?: boolean }) {
+export type TimelineCompositionProps = Record<string, unknown> & {
+  state: TimelineState;
+  transparent?: boolean;
+  /** Use @remotion/media so @remotion/web-renderer can decode media via WebCodecs. */
+  browserRenderer?: boolean;
+};
+
+export function TimelineComposition({ state, transparent, browserRenderer = false }: TimelineCompositionProps) {
   loadTimelineFonts(state);
   // 非内置 fx(插件/submit_shader)def 随 state 自包含:渲染前同步注册进 ALL_FX,
   // 子组件(MediaFill 的 firstGlEffect 路由)首帧就解析得到——无头导出的新鲜浏览器
@@ -404,7 +424,7 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
               ? <TextLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
               : item.kind === 'solid'
               ? <SolidLayer item={item} />
-              : <MediaFill item={item} fit={fit} muted={isMuted(item.track)} gainAt={(frame) => duckGain(item.track, frame)} canvasW={state.width} canvasH={state.height} />}
+              : <MediaFill item={item} fit={fit} muted={isMuted(item.track)} gainAt={(frame) => duckGain(item.track, frame)} canvasW={state.width} canvasH={state.height} browserRenderer={browserRenderer} />}
           </ClipWrapper>
         );
         return (
@@ -435,6 +455,7 @@ export function TimelineComposition({ state, transparent }: { state: TimelineSta
           gainAt={(frame) => duckGain(item.track, frame)}
           transitions={state.transitions}
           premountFor={premountFrames}
+          browserRenderer={browserRenderer}
         />
       ))}
       {state.captions?.enabled && <CaptionsLayer captions={state.captions} items={state.items} />}

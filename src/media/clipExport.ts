@@ -16,8 +16,19 @@ async function fail(res: Response, verb: string): Promise<never> {
   throw new Error(info?.error ?? t('{verb}失败（{status}）', { verb: t(verb), status: res.status }));
 }
 
+export interface ClipMovExportOptions {
+  /** Download filename or basename. A trailing .mov is normalized automatically. */
+  filename?: string;
+}
+
 /** 导出 MG 动画 → ProRes 4444 alpha .mov, downloaded in the browser */
-export async function exportClipMov(state: TimelineState, item: TimelineItem): Promise<void> {
+export async function exportClipMov(
+  state: TimelineState,
+  item: TimelineItem,
+  options: ClipMovExportOptions = {},
+): Promise<void> {
+  const requestedName = options.filename?.replace(/\.mov$/i, '') ?? item.name;
+  const filename = sanitizeFileName(requestedName, 'clip');
   const res = await fetch('/render-clip', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -25,7 +36,7 @@ export async function exportClipMov(state: TimelineState, item: TimelineItem): P
       codec: 'prores',
       transparent: true,
       mode: 'download',
-      filename: sanitizeFileName(item.name, 'clip'),
+      filename,
     }),
   });
   if (!res.ok) await fail(res, '导出');
@@ -33,7 +44,7 @@ export async function exportClipMov(state: TimelineState, item: TimelineItem): P
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${sanitizeFileName(item.name, 'clip')}.mov`;
+  a.download = `${filename}.mov`;
   document.body.appendChild(a);
   a.click();
   a.remove();

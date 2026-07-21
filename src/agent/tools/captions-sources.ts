@@ -5,6 +5,7 @@ import { ensureEntries, matchEntries } from './captions-lanes';
 import { buildTranslation } from '../../captions/translate';
 import { findVariantByLang } from '../../transcript/variants';
 import { resolveTrackId, trackAlias, type TimelineItem, type TimelineState } from '../../editor/types';
+import { moveCaptionSourceEntry, normalizeCaptionSourceEntries, orderedCaptionSourceEntries } from '../../captions/sourceOrder';
 
 // edit_captions multi-source + language cluster (actions: source_list /
 // source_set / source_add / source_remove / language_mode / bilingual). The
@@ -56,6 +57,7 @@ function selectorToEntry(sel: Record<string, unknown>, s: TimelineState): Captio
   }
   if (str(sel.label)) entry.label = str(sel.label);
   if (typeof sel.priority === 'number' && Number.isFinite(sel.priority)) entry.priority = sel.priority;
+  if (typeof sel.trackOrder === 'number' && Number.isFinite(sel.trackOrder)) entry.trackOrder = Math.max(0, Math.floor(sel.trackOrder));
   if (str(sel.slotId)) entry.slotId = str(sel.slotId);
   return entry;
 }
@@ -66,7 +68,7 @@ const newLaneId = (): string => `src_${(++laneSeq).toString(36)}_${Math.random()
 const entryRow = (e: CaptionSourceEntry, i: number, s: TimelineState) => {
   const it = s.items.find((x) => x.id === e.itemId);
   return {
-    index: i, sourceId: e.id, itemId: e.itemId,
+    index: i, trackOrder: e.trackOrder ?? i, sourceId: e.id, itemId: e.itemId,
     track: it ? trackAlias(s, it.track) : null,
     ...(e.variant ? { variant: e.variant } : {}), ...(e.label ? { label: e.label } : {}),
     ...(e.anchor ? { anchor: e.anchor } : {}), ...(e.slotId ? { slotId: e.slotId } : {}),
@@ -76,10 +78,11 @@ const entryRow = (e: CaptionSourceEntry, i: number, s: TimelineState) => {
 
 /** source_list — current scope + layout policy + visual order + what's available. */
 export function sourceList(c: CaptionsData, s: TimelineState): Result {
+  const ordered = c.sourceEntries ? orderedCaptionSourceEntries(c.sourceEntries) : undefined;
   return {
     ok: true,
     sourceMode: c.sourceEntries?.length ? 'sources' : (c.sourceMode ?? 'item'),
-    sources: c.sourceEntries?.map((e, i) => entryRow(e, i, s)) ?? c.sources ?? null,
+    sources: ordered?.map((e, i) => entryRow(e, i, s)) ?? c.sources ?? null,
     sourceItemId: c.sourceItemId ?? null,
     layoutPolicy: c.layoutPolicy ?? { mode: 'auto-stack' },
     ...(c.perSource && Object.keys(c.perSource).length ? { perSource: c.perSource } : {}),
@@ -110,10 +113,11 @@ export function sourceSet(json: Record<string, unknown>, c: CaptionsData, ctx: A
     if ('error' in e) return e;
     entries.push(e);
   }
-  const patch: Partial<CaptionsData> = { sourceEntries: entries, sources: undefined, sourceMode: 'item' };
+  const normalized = normalizeCaptionSourceEntries(entries);
+  const patch: Partial<CaptionsData> = { sourceEntries: normalized, sources: undefined, sourceMode: 'item' };
   ctx.commands.updateCaptions(patch);
   return {
-    ok: true, sources: entries.map((e, i) => entryRow(e, i, s)),
+    ok: true, sources: normalized.map((e, i) => entryRow(e, i, s)),
     wordCount: resolveCaptionWords({ ...c, ...patch }, s.items, s.fps).length,
     note: 'auto-stack:列表第一个渲染在最上。',
   };
@@ -129,7 +133,8 @@ export function sourceAdd(json: Record<string, unknown>, c: CaptionsData, ctx: A
   if (cur.some((x) => x.itemId === e.itemId && (x.variant?.languageCode ?? '') === (e.variant?.languageCode ?? ''))) {
     return { ok: true, sources: cur.map((x, i) => entryRow(x, i, s)), note: 'already in scope (idempotent)' };
   }
-  const next = [...cur, e];
+  let next = normalizeCaptionSourceEntries([...cur, e]);
+  if (e.trackOrder !== undefined) next = moveCaptionSourceEntry(next, e.id, e.trackOrder);
   ctx.commands.updateCaptions({ sourceEntries: next, sources: undefined, sourceMode: 'item' });
   return { ok: true, sources: next.map((x, i) => entryRow(x, i, s)) };
 }
@@ -141,7 +146,7 @@ export function sourceRemove(json: Record<string, unknown>, c: CaptionsData, ctx
   const m = matchEntries(cur, json, s);
   if ('error' in (m as object)) return m as Result;
   const drop = new Set(m as number[]);
-  const next = cur.filter((_, i) => !drop.has(i));
+  const next = normalizeCaptionSourceEntries(cur.filter((_, i) => !drop.has(i)));
   // 删到最后一个时回落到单源模式。
   ctx.commands.updateCaptions({ sourceEntries: next.length ? next : undefined, sources: undefined, sourceMode: 'item' });
   return { ok: true, sources: next.length ? next.map((x, i) => entryRow(x, i, s)) : null };

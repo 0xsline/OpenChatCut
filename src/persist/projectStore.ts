@@ -234,13 +234,46 @@ export interface OwnedStyle {
   id: string;
   name: string;
   style: DesignStyle;
+  /** UI-only cover for style pickers. It is not a generation reference. */
+  thumbnailUrl?: string;
+  /** Free-form use cases such as "product", "podcast", or "education". */
+  scenarios?: string[];
 }
 
 function isOwnedStyle(v: unknown): v is OwnedStyle {
   if (!v || typeof v !== 'object') return false;
   const o = v as Partial<OwnedStyle>;
-  return typeof o.id === 'string' && typeof o.name === 'string' && isDesignStyle(o.style);
+  return typeof o.id === 'string'
+    && typeof o.name === 'string'
+    && isDesignStyle(o.style)
+    && (o.thumbnailUrl === undefined || typeof o.thumbnailUrl === 'string')
+    && (o.scenarios === undefined || (Array.isArray(o.scenarios) && o.scenarios.every((s) => typeof s === 'string')));
 }
+
+export interface OwnedStyleMetadata {
+  thumbnailUrl?: string | null;
+  scenarios?: string[];
+}
+
+export interface OwnedStyleUpdate extends OwnedStyleMetadata {
+  name?: string;
+  style?: DesignStyle;
+}
+
+const normalizeScenarios = (values: string[] | undefined): string[] | undefined => {
+  if (values === undefined) return undefined;
+  const normalized = [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+  return normalized.length > 0 ? normalized : undefined;
+};
+
+const uniqueOwnedStyleName = (requested: string, styles: OwnedStyle[], exceptId?: string): string => {
+  const base = requested.trim() || '未命名风格';
+  const names = new Set(styles.filter((style) => style.id !== exceptId).map((style) => style.name));
+  if (!names.has(base)) return base;
+  let suffix = 2;
+  while (names.has(`${base} (${suffix})`)) suffix += 1;
+  return `${base} (${suffix})`;
+};
 
 /** The user's saved style library. Corrupt/partial persisted data is dropped, not trusted. */
 export async function loadOwnedStyles(): Promise<OwnedStyle[]> {
@@ -253,11 +286,27 @@ export async function loadOwnedStyles(): Promise<OwnedStyle[]> {
 }
 
 /** Save a style under `name` (replacing any existing entry with the same name). */
-export async function saveOwnedStyle(name: string, style: DesignStyle): Promise<OwnedStyle> {
+export async function saveOwnedStyle(
+  name: string,
+  style: DesignStyle,
+  metadata: OwnedStyleMetadata = {},
+): Promise<OwnedStyle> {
   const trimmed = name.trim() || '未命名风格';
   const current = await loadOwnedStyles();
   const existing = current.find((s) => s.name === trimmed);
-  const entry: OwnedStyle = { id: existing?.id ?? newId(), name: trimmed, style };
+  const thumbnailUrl = metadata.thumbnailUrl === undefined
+    ? existing?.thumbnailUrl
+    : metadata.thumbnailUrl?.trim() || undefined;
+  const scenarios = metadata.scenarios === undefined
+    ? existing?.scenarios
+    : normalizeScenarios(metadata.scenarios);
+  const entry: OwnedStyle = {
+    id: existing?.id ?? newId(),
+    name: trimmed,
+    style,
+    ...(thumbnailUrl ? { thumbnailUrl } : {}),
+    ...(scenarios ? { scenarios } : {}),
+  };
   const next = existing ? current.map((s) => (s.id === entry.id ? entry : s)) : [...current, entry];
   try {
     await idbSet(OWNED_STYLES_KEY, next);
@@ -265,6 +314,35 @@ export async function saveOwnedStyle(name: string, style: DesignStyle): Promise<
     /* ignore persist failures; caller still gets the entry back for in-session use */
   }
   return entry;
+}
+
+/** Update library metadata or content without replacing/deleting the style entry. */
+export async function updateOwnedStyle(id: string, update: OwnedStyleUpdate): Promise<OwnedStyle | undefined> {
+  const current = await loadOwnedStyles();
+  const existing = current.find((style) => style.id === id);
+  if (!existing) return undefined;
+  const name = update.name === undefined
+    ? existing.name
+    : uniqueOwnedStyleName(update.name, current, existing.id);
+  const thumbnailUrl = update.thumbnailUrl === undefined
+    ? existing.thumbnailUrl
+    : update.thumbnailUrl?.trim() || undefined;
+  const scenarios = update.scenarios === undefined
+    ? existing.scenarios
+    : normalizeScenarios(update.scenarios);
+  const next: OwnedStyle = {
+    id: existing.id,
+    name,
+    style: update.style ?? existing.style,
+    ...(thumbnailUrl ? { thumbnailUrl } : {}),
+    ...(scenarios ? { scenarios } : {}),
+  };
+  try {
+    await idbSet(OWNED_STYLES_KEY, current.map((style) => (style.id === id ? next : style)));
+  } catch {
+    /* ignore persist failures; caller still gets the updated in-session value */
+  }
+  return next;
 }
 
 export async function deleteOwnedStyle(id: string): Promise<void> {

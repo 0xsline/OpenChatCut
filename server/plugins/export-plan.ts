@@ -1,5 +1,14 @@
 import { normalizeFrameRange } from '../../src/export/range.ts';
+import {
+  EXPORT_FPS_OPTIONS,
+  EXPORT_RESOLUTIONS,
+  exportScale,
+  type ExportResolution,
+} from '../../src/export/mediaSettings.ts';
 import { sanitizeFileName } from '../file-name.ts';
+
+export { EXPORT_FPS_OPTIONS, EXPORT_RESOLUTIONS, exportScale } from '../../src/export/mediaSettings.ts';
+export type { ExportResolution } from '../../src/export/mediaSettings.ts';
 
 export type ExportRequest = {
   state?: unknown;
@@ -18,10 +27,6 @@ export type ExportTimeline = {
   fps: number;
   items: Array<{ startFrame: number; durationInFrames: number }>;
 };
-
-export const EXPORT_RESOLUTIONS = { '480p': 480, '720p': 720, '1080p': 1080 } as const;
-export type ExportResolution = keyof typeof EXPORT_RESOLUTIONS;
-export const EXPORT_FPS_OPTIONS = [24, 25, 30, 50, 60] as const;
 
 export const EXPORT_MEDIA = {
   h264: { codec: 'h264', ext: 'mp4', mime: 'video/mp4' },
@@ -43,18 +48,6 @@ export interface ExportPlan {
 }
 
 class ExportRequestError extends Error {}
-
-/** Resolution preset → Remotion scale, based on the shorter canvas side. */
-export function exportScale(
-  state: { width?: unknown; height?: unknown },
-  resolution?: ExportResolution,
-): number {
-  if (!resolution) return 1;
-  const width = Number(state.width) || 1920;
-  const height = Number(state.height) || 1080;
-  const minSide = Math.max(1, Math.min(width, height));
-  return Math.min(4, Math.max(0.1, EXPORT_RESOLUTIONS[resolution] / minSide));
-}
 
 export function validateVideoParams(
   body: { resolution?: unknown; fps?: unknown } | null,

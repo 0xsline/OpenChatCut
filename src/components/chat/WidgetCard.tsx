@@ -9,11 +9,11 @@ function isImageUrl(url: string): boolean {
   return /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(url);
 }
 
-function MediaPreview({ media, aspectRatio }: { media?: string; aspectRatio?: string }) {
+function MediaPreview({ media, aspectRatio, forceAudio = false, label }: { media?: string; aspectRatio?: string; forceAudio?: boolean; label: string }) {
   const [broken, setBroken] = useState(false);
   if (!media || broken) return null;
-  if (isAudioUrl(media)) {
-    return <audio controls src={media} onError={() => setBroken(true)} className="cc-widget-media-audio" />;
+  if (forceAudio || isAudioUrl(media)) {
+    return <audio controls src={media} aria-label={label} onError={() => setBroken(true)} className="cc-widget-media-audio" />;
   }
   if (isImageUrl(media)) {
     return (
@@ -31,15 +31,20 @@ function MediaPreview({ media, aspectRatio }: { media?: string; aspectRatio?: st
 
 interface WidgetCardProps {
   fields: WidgetField[];
+  title?: string;
+  submitLabel?: string;
+  messagePrefix?: string;
   onSubmit: (answer: string) => void;
 }
 
 function isFilled(f: WidgetField, v: string | string[] | undefined): boolean {
-  if (f.kind === 'multi') return Array.isArray(v) && v.length > 0;
+  if (f.kind === 'multi' || ((f.kind === 'visual' || f.kind === 'voice' || f.kind === 'scenario') && f.multiple)) {
+    return Array.isArray(v) && v.length > 0;
+  }
   return typeof v === 'string' && v.trim().length > 0;
 }
 
-export function WidgetCard({ fields, onSubmit }: WidgetCardProps) {
+export function WidgetCard({ fields, title, submitLabel, messagePrefix, onSubmit }: WidgetCardProps) {
   const t = useT();
   const [values, setValues] = useState<WidgetValues>({});
   const [otherFields, setOtherFields] = useState<Record<string, boolean>>({});
@@ -61,18 +66,25 @@ export function WidgetCard({ fields, onSubmit }: WidgetCardProps) {
       return { ...v, [id]: next };
     });
   };
-  const selectVisual = (id: string, value: string) => setValues((v) => ({ ...v, [id]: value }));
+  const selectRich = (field: WidgetField, value: string) => {
+    if ((field.kind === 'visual' || field.kind === 'voice' || field.kind === 'scenario') && field.multiple) {
+      toggleMulti(field.id, value);
+      return;
+    }
+    setValues((current) => ({ ...current, [field.id]: value }));
+  };
 
   const canSubmit = !submitted && fields.every((f) => !f.required || isFilled(f, values[f.id]));
   const handleSubmit = () => {
     if (!canSubmit) return;
-    const answer = formatWidgetAnswer(fields, values);
+    const answer = formatWidgetAnswer(fields, values, messagePrefix);
     setSubmitted(true);
     onSubmit(answer);
   };
 
   return (
     <div className={`cc-widget${submitted ? ' submitted' : ''}`}>
+      {title ? <h3 className="cc-widget-title">{title}</h3> : null}
       <div className="cc-widget-body">
         {fields.map((f, fi) => (
           <section key={f.id} className={`cc-widget-field${fi === 0 ? ' first' : ''}`}>
@@ -80,6 +92,7 @@ export function WidgetCard({ fields, onSubmit }: WidgetCardProps) {
               <h4 className="cc-widget-label">{f.label}</h4>
               {f.required ? <span className="cc-widget-req">{t('必选')}</span> : <span className="cc-widget-opt">{t('可选')}</span>}
             </header>
+            {f.description ? <p className="cc-widget-description">{f.description}</p> : null}
 
             {f.kind === 'single' && (
               <div className="cc-widget-options" role="radiogroup" aria-label={f.label}>
@@ -119,7 +132,7 @@ export function WidgetCard({ fields, onSubmit }: WidgetCardProps) {
                         value={typeof values[f.id] === 'string' ? (values[f.id] as string) : ''}
                         onChange={(e) => setOtherText(f.id, e.target.value)}
                         onClick={(e) => e.stopPropagation()}
-                        placeholder={t('请输入')}
+                        placeholder={f.otherPlaceholder || t('请输入')}
                       />
                     )}
                   </label>
@@ -147,25 +160,39 @@ export function WidgetCard({ fields, onSubmit }: WidgetCardProps) {
               </div>
             )}
 
-            {f.kind === 'visual' && (
-              <div className="cc-widget-visuals" role="radiogroup" aria-label={f.label}>
+            {f.kind === 'text' && (
+              <textarea
+                className="cc-widget-text-input"
+                aria-label={f.label}
+                disabled={submitted}
+                value={typeof values[f.id] === 'string' ? values[f.id] as string : ''}
+                onChange={(event) => setOtherText(f.id, event.target.value)}
+                placeholder={f.placeholder || t('请输入')}
+                rows={3}
+              />
+            )}
+
+            {(f.kind === 'visual' || f.kind === 'voice' || f.kind === 'scenario') && (
+              <div className="cc-widget-visuals" role={f.multiple ? 'group' : 'radiogroup'} aria-label={f.label}>
                 {f.options.map((o) => {
-                  const on = values[f.id] === o.value;
+                  const on = f.multiple
+                    ? Array.isArray(values[f.id]) && (values[f.id] as string[]).includes(o.value)
+                    : values[f.id] === o.value;
                   return (
                     <button
                       key={o.value}
                       type="button"
-                      role="radio"
+                      role={f.multiple ? 'checkbox' : 'radio'}
                       aria-checked={on}
                       disabled={submitted}
-                      className={`cc-widget-visual${on ? ' on' : ''}`}
-                      onClick={() => selectVisual(f.id, o.value)}
+                      className={`cc-widget-visual cc-widget-${f.kind}${on ? ' on' : ''}`}
+                      onClick={() => selectRich(f, o.value)}
                     >
                       <span className="cc-widget-radio" aria-hidden />
                       <span className="cc-widget-visual-body">
                         <span className="cc-widget-visual-name">{o.name}</span>
-                        {o.summary ? <span className="cc-widget-visual-summary">{o.summary}</span> : null}
-                        <MediaPreview media={o.media} aspectRatio={o.aspectRatio} />
+                        {o.description ? <span className="cc-widget-visual-summary">{o.description}</span> : null}
+                        <MediaPreview media={o.media} aspectRatio={o.aspectRatio} forceAudio={f.kind === 'voice'} label={o.name} />
                       </span>
                     </button>
                   );
@@ -191,7 +218,7 @@ export function WidgetCard({ fields, onSubmit }: WidgetCardProps) {
           onClick={handleSubmit}
           disabled={!canSubmit}
         >
-          {submitted ? t('已提交') : t('提交')}
+          {submitted ? t('已提交') : (submitLabel || t('提交'))}
         </button>
       </footer>
     </div>

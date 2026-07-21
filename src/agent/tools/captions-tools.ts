@@ -6,6 +6,7 @@ import { paginate } from '../../captions/types';
 import { resolveCaptionWords, resolveCaptionWordIndices, applyWordOverrides } from '../../captions/resolve';
 import { CAPTION_STYLE_BY_ID } from '../../captions/styles';
 import { editCaptions } from './captions-actions';
+import { sourceList } from './captions-sources';
 
 // Captions tools: `read_captions` (read-only) + `edit_captions`
 // (ONE tool, 21-action dispatch — see captions-actions.ts). Word overrides
@@ -31,9 +32,10 @@ export const CAPTIONS_TOOL_SCHEMAS: AgentToolSchema[] = [
       "- layout: place the whole block via `json` {preset:\"bottom-center|top-center|center|…3×3\", offsetXRatio, offsetYRatio}.\n" +
       "- display_text: per-word DISPLAY overrides via `json` {overrides:[{wordIndex, text, hidden, forcePageBreak}], clearOverrides} — get wordIndex from read_captions; doesn't touch the transcript.\n" +
       "- source_set / source_add / source_remove / source_list: choose which transcribed track(s)/item(s) the captions read (json {mode:\"timeline\"} for all audible, or {sources:[{trackId|itemId}]}).\n" +
+      "  Multi-source entries accept a 0-based trackOrder. source_update can move an existing source with {sourceId|index, trackOrder}; source_list returns the normalized visual order.\n" +
       "- language_mode / bilingual: switch caption language — json {mode:\"original|translation|bilingual\", languageCode} (create the translation first with manage_transcript translate).\n" +
-      "- track: legacy single-source trackId (prefer source_set).\n" +
-      "layout_policy, positions, and preset_* (user-saved presets) are not modeled in this build and return an `unsupported` note.",
+      "- track: legacy single-source trackId or internal 0-based trackOrder (prefer source_set for visible text sources).\n" +
+      "- layout_policy / positions / source_update: arrange, style, hide, and reorder individual source lanes. preset_* manages user-saved caption styles.",
     input_schema: {
       type: 'object',
       properties: {
@@ -42,6 +44,7 @@ export const CAPTIONS_TOOL_SCHEMAS: AgentToolSchema[] = [
         templatePreset: { type: 'string', description: 'For action=template: built-in preset id/name to apply (omit to list).' },
         preset: { type: 'string', description: 'For action=enable: optional built-in preset name ("auto"/omit = Plain default). For action=template: legacy alias for templatePreset.' },
         trackId: { type: 'string', description: 'For action=track only: source track alias (V1/A1) or id. To choose visible caption text prefer source_set.' },
+        trackOrder: { anyOf: [{ type: 'number' }, { type: 'string' }], description: 'Internal 0-based timeline track order for action=track only. Call action=track with list=true to inspect the exact order.' },
         list: { type: 'boolean', description: 'For action=track: list available source tracks instead of changing the source.' },
         captionsItemId: { type: 'string', description: 'Optional captions layer id — this build has a single overlay, so it is accepted but not required.' },
       },
@@ -88,6 +91,7 @@ export async function execCaptionsTool(name: string, args: Args, ctx: AgentConte
         template: c.template,
         pacing: c.pacing,
         track: item ? trackAlias(s, item.track) : null,
+        ...(c.sourceEntries?.length ? { sources: sourceList(c, s).sources } : {}),
         pageCount: pagesOut.length,
         pages: pagesOut,
       };

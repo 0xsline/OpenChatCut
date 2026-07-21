@@ -1,8 +1,9 @@
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
-import type { MediaAsset, TimelineItem, TimelineState, TrackId } from '../../editor/types';
+import type { MediaAsset, Timeline, TimelineItem, TimelineState, TrackId } from '../../editor/types';
 import { defaultTrackId, timelineDuration } from '../../editor/types';
 import { extractBlobContactSheet, extractBlobImagePreview, isBlobishSrc } from './blob-frames';
+import { resolveTimeline } from './timeline-target';
 
 // view_timeline_frames + view_asset_frames provide visual inspection tools.
 //
@@ -38,6 +39,7 @@ export const FRAMES_TOOL_SCHEMAS: AgentToolSchema[] = [
         count: { type: 'number', description: 'Even midpoints across the full timeline (default 4, max 16).' },
         fromSeconds: { type: 'number', description: 'Optional range start (with toSeconds) for focused sampling.' },
         toSeconds: { type: 'number', description: 'Optional range end (exclusive-ish; with fromSeconds).' },
+        timelineId: { type: 'string', description: 'Override the active timeline by id or prefix without switching timelines.' },
       },
     },
   },
@@ -276,13 +278,18 @@ function assetPreviewState(base: TimelineState, asset: MediaAsset, track: TrackI
 }
 
 async function viewTimelineFrames(args: Args, ctx: AgentContext): Promise<unknown> {
-  const state = ctx.getState();
+  let state: Timeline;
+  try {
+    state = resolveTimeline(ctx, typeof args.timelineId === 'string' ? args.timelineId : undefined);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
   const total = Math.max(1, timelineDuration(state));
   if (total <= 0 || !state.items.length) {
     return { error: 'timeline is empty — nothing to render' };
   }
   const frames = pickFrames(args, total, state.fps, DEFAULT_TIMELINE_SCAN);
-  const note = `时间线 ${frames.length} 帧（f${frames.join(', f')}，共 ${total} @${state.fps}fps）——当前草稿合成画面（含未提交编辑）`;
+  const note = `时间线「${state.name}」${frames.length} 帧（f${frames.join(', f')}，共 ${total} @${state.fps}fps）——目标时间线草稿合成画面（含未提交编辑）`;
   return renderStills(state, frames, note);
 }
 

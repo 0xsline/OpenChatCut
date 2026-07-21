@@ -6,7 +6,9 @@ import {
   COLOR_ROLES, FONT_ROLES, colorOf, fontOf, type DesignStyle,
 } from '../../editor/types';
 import { DESIGN_STYLE_PRESETS } from '../../editor/design-presets';
-import { loadOwnedStyles, saveOwnedStyle, deleteOwnedStyle, type OwnedStyle } from '../../persist/projectStore';
+import {
+  loadOwnedStyles, saveOwnedStyle, updateOwnedStyle, deleteOwnedStyle, type OwnedStyle,
+} from '../../persist/projectStore';
 import { FONT_CATALOG, searchFontCatalog } from '../../fonts/googleFonts';
 
 interface DesignStylePanelProps {
@@ -45,6 +47,11 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
   // library, not scoped to this project).
   const [owned, setOwned] = useState<OwnedStyle[]>([]);
   const [savingName, setSavingName] = useState<string | null>(null); // null = input hidden
+  const [selectedOwnedId, setSelectedOwnedId] = useState<string | null>(null);
+  const [sceneFilter, setSceneFilter] = useState('');
+  const [metadataName, setMetadataName] = useState('');
+  const [metadataScenarios, setMetadataScenarios] = useState('');
+  const [metadataThumbnail, setMetadataThumbnail] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -52,11 +59,24 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
     return () => { cancelled = true; };
   }, []);
 
-  const refreshOwned = () => { loadOwnedStyles().then(setOwned); };
+  const refreshOwned = async () => {
+    const list = await loadOwnedStyles();
+    setOwned(list);
+    return list;
+  };
+
+  const selectOwned = (style: OwnedStyle) => {
+    setSelectedOwnedId(style.id);
+    setMetadataName(style.name);
+    setMetadataScenarios((style.scenarios ?? []).join(', '));
+    setMetadataThumbnail(style.thumbnailUrl ?? '');
+    setDraft(style.style);
+  };
 
   const handleDeleteOwned = async (id: string) => {
     await deleteOwnedStyle(id);
-    refreshOwned();
+    if (selectedOwnedId === id) setSelectedOwnedId(null);
+    await refreshOwned();
   };
 
   const handleSaveOwned = async () => {
@@ -65,7 +85,29 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
     if (draft.colors.length === 0 && draft.fonts.length === 0 && !draft.styleGuide) return;
     await saveOwnedStyle(name, draft);
     setSavingName(null);
-    refreshOwned();
+    await refreshOwned();
+  };
+
+  const handleSaveMetadata = async () => {
+    if (!selectedOwnedId || !metadataName.trim()) return;
+    const updated = await updateOwnedStyle(selectedOwnedId, {
+      name: metadataName,
+      scenarios: metadataScenarios.split(',').map((value) => value.trim()).filter(Boolean),
+      thumbnailUrl: metadataThumbnail,
+    });
+    if (!updated) return;
+    setMetadataName(updated.name);
+    setMetadataScenarios((updated.scenarios ?? []).join(', '));
+    setMetadataThumbnail(updated.thumbnailUrl ?? '');
+    await refreshOwned();
+  };
+
+  const handleClearThumbnail = async () => {
+    if (!selectedOwnedId) return;
+    const updated = await updateOwnedStyle(selectedOwnedId, { thumbnailUrl: null });
+    if (!updated) return;
+    setMetadataThumbnail('');
+    await refreshOwned();
   };
 
   const setColor = (role: string, value: string) =>
@@ -86,6 +128,10 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
   const accent = pick(draft, ['accent', 'primary']) ?? draft.colors.find((c) => c.role.includes('accent'))?.value ?? theme.accent;
   const heading = fontOf(draft, 'heading') ?? draft.fonts[0]?.family ?? 'inherit';
   const body = fontOf(draft, 'body') ?? draft.fonts[1]?.family ?? 'inherit';
+  const sceneOptions = [...new Set(owned.flatMap((item) => item.scenarios ?? []))].sort();
+  const visibleOwned = sceneFilter
+    ? owned.filter((item) => item.scenarios?.includes(sceneFilter))
+    : owned;
 
   return (
     <div onClick={onClose} style={backdrop}>
@@ -103,7 +149,7 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
           <section>
             <div style={sectionTitle}>{t('选择 MG 动画的视觉风格')}</div>
             <div style={styleList}>
-              <StyleRow name={t('无')} selected={isEmpty(draft)} onClick={() => setDraft(EMPTY)} />
+              <StyleRow name={t('无')} selected={isEmpty(draft)} onClick={() => { setDraft(EMPTY); setSelectedOwnedId(null); }} />
             </div>
 
             <div style={{ ...sectionTitle, marginTop: 12 }}>{t('预设')}</div>
@@ -111,24 +157,53 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
               {DESIGN_STYLE_PRESETS.map((p) => (
                 <StyleRow key={p.id} name={p.name} title={p.style.styleGuide}
                   colors={p.style.colors.map((c) => c.value)}
-                  selected={sameStyle(draft, p.style)} onClick={() => setDraft(p.style)} />
+                  thumbnailUrl={p.thumbnailUrl}
+                  selected={sameStyle(draft, p.style)} onClick={() => { setDraft(p.style); setSelectedOwnedId(null); }} />
               ))}
             </div>
 
             {owned.length > 0 && (
               <>
-                <div style={{ ...sectionTitle, marginTop: 12 }}>{t('我的风格')}</div>
+                <div style={{ ...sectionTitle, marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>{t('我的风格')}</span>
+                  {sceneOptions.length > 0 && (
+                    <select value={sceneFilter} onChange={(event) => setSceneFilter(event.target.value)}
+                      style={{ ...textInput, marginLeft: 'auto', width: 128, padding: '4px 6px' }}>
+                      <option value="">{t('全部场景')}</option>
+                      {sceneOptions.map((scenario) => <option key={scenario} value={scenario}>{scenario}</option>)}
+                    </select>
+                  )}
+                </div>
                 <div style={styleList}>
-                  {owned.map((o) => (
+                  {visibleOwned.map((o) => (
                     <StyleRow key={o.id} name={o.name} title={o.style.styleGuide}
                       colors={o.style.colors.map((c) => c.value)}
-                      selected={sameStyle(draft, o.style)} onClick={() => setDraft(o.style)}
+                      thumbnailUrl={o.thumbnailUrl}
+                      selected={selectedOwnedId === o.id || sameStyle(draft, o.style)} onClick={() => selectOwned(o)}
                       onDelete={() => handleDeleteOwned(o.id)} />
                   ))}
                 </div>
               </>
             )}
           </section>
+
+          {selectedOwnedId && (
+            <section>
+              <div style={sectionTitle}>{t('风格资料')}</div>
+              <div style={{ display: 'grid', gap: 7 }}>
+                <input value={metadataName} onChange={(event) => setMetadataName(event.target.value)}
+                  placeholder={t('风格名称')} style={textInput} />
+                <input value={metadataScenarios} onChange={(event) => setMetadataScenarios(event.target.value)}
+                  placeholder={t('适用场景，用逗号分隔')} style={textInput} />
+                <input value={metadataThumbnail} onChange={(event) => setMetadataThumbnail(event.target.value)}
+                  placeholder={t('缩略图 URL（仅用于风格选择器）')} style={textInput} />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={handleSaveMetadata} style={primaryBtn}>{t('保存资料')}</button>
+                  {metadataThumbnail && <button onClick={handleClearThumbnail} style={ghostBtn}>{t('清除缩略图')}</button>}
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* colors (roles are free-form; hex swatch only shows for #hex values) */}
           <section>
@@ -221,8 +296,8 @@ const sameStyle = (a: DesignStyle, b: DesignStyle): boolean => JSON.stringify(a)
 
 /** 一行风格选项（64×36 缩略图 + 12px 名 + 选中橙点，行 hover 白@3.5%）。
  *  无 colors → 画一条对角线占位（「无」卡）。 */
-function StyleRow({ colors, name, title, selected, onClick, onDelete }: {
-  colors?: string[]; name: string; title?: string; selected: boolean; onClick: () => void; onDelete?: () => void;
+function StyleRow({ colors, thumbnailUrl, name, title, selected, onClick, onDelete }: {
+  colors?: string[]; thumbnailUrl?: string; name: string; title?: string; selected: boolean; onClick: () => void; onDelete?: () => void;
 }) {
   const t = useT();
   return (
@@ -230,8 +305,10 @@ function StyleRow({ colors, name, title, selected, onClick, onDelete }: {
       <button onClick={onClick} title={title} style={{ ...styleRowBtn, background: selected ? 'rgba(255,255,255,0.06)' : 'transparent', paddingRight: onDelete ? 28 : 12 }}
         onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'rgba(255,255,255,0.035)'; }}
         onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = selected ? 'rgba(255,255,255,0.06)' : 'transparent'; }}>
-        <div style={colors && colors.length ? thumb : noneThumb}>
-          {colors?.map((c, i) => <span key={i} style={{ flex: 1, background: c }} />)}
+        <div style={thumbnailUrl || (colors && colors.length) ? thumb : noneThumb}>
+          {thumbnailUrl
+            ? <img src={thumbnailUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : colors?.map((c, i) => <span key={i} style={{ flex: 1, background: c }} />)}
         </div>
         <span style={rowName}>{name}</span>
         <div style={{ flex: 1 }} />

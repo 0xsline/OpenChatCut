@@ -1,8 +1,18 @@
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
-import type { MediaAsset, TimelineItem } from '../../editor/types';
+import {
+  timelineTrackIds,
+  trackKind,
+  type MediaAsset,
+  type Timeline,
+  type TimelineItem,
+} from '../../editor/types';
+import type { Tpl } from '../../types';
 import { bakeClipToVideo, bakeClipToAlphaWebm, exportClipMov } from '../../media/clipExport';
+import { sanitizeFileName } from '../../media/fileName';
+import { motionGraphicRenderFilename, motionGraphicRenderKey } from '../../export/motionGraphicRefs';
 import { fetchRenderJob } from './export-tools';
+import { resolveTimeline } from './timeline-target';
 
 // convert_motion_graphic_to_video + register_converted_video.
 // Flow: convert 云渲 MG 原长 → renderId → track_export 等完成 →
@@ -61,7 +71,17 @@ export const MG_VIDEO_TOOL_SCHEMAS: AgentToolSchema[] = [
         itemIds: { type: 'array', items: { type: 'string' }, description: 'Batch: several MG item ids/prefixes.' },
         assetId: { type: 'string', description: 'MG asset id/prefix — exports its first placed timeline instance.' },
         assetIds: { type: 'array', items: { type: 'string' }, description: 'Batch: several MG asset ids/prefixes.' },
+        filenameMode: {
+          type: 'string',
+          enum: ['asset', 'xml'],
+          description: 'asset = user-friendly asset-name .mov; xml = mg-<renderKey>.mov for submit_export XML compatibility. Defaults to asset.',
+        },
         name: { type: 'string', description: 'Optional base filename (single export); ".mov" is appended.' },
+        preferTimelineInstance: {
+          type: 'boolean',
+          description: 'When assetId is used, export the first timeline instance and its edited properties when present. Defaults to true. Set false to render the media-pool/template defaults.',
+        },
+        timelineId: { type: 'string', description: 'Optional timeline id/prefix used to resolve item or asset instances without switching timelines.' },
       },
     },
   },
@@ -199,34 +219,213 @@ const strs = (v: unknown): string[] =>
     .map((s) => s.trim()).filter(Boolean);
 
 /** resolve one or many MG clips from itemId/itemIds (preferred) or assetId/assetIds. */
-function resolveMgItems(ctx: AgentContext, args: Args): TimelineItem[] {
-  const items = ctx.getState().items;
+export function resolveMgItems(items: TimelineItem[], args: Args): TimelineItem[] {
   const out: TimelineItem[] = [];
   const seen = new Set<string>();
   const push = (it: TimelineItem | undefined) => { if (it && !seen.has(it.id)) { seen.add(it.id); out.push(it); } };
   for (const q of [...strs(args.itemId), ...strs(args.itemIds)]) push(items.find((it) => it.id === q || it.id.startsWith(q)));
-  for (const q of [...strs(args.assetId), ...strs(args.assetIds)]) push(items.find((it) => it.templateId === q || it.src === q));
+  for (const q of [...strs(args.assetId), ...strs(args.assetIds)]) {
+    push(items.find((it) => it.templateId === q || it.templateId?.startsWith(q) || it.src === q || it.src?.startsWith(q)));
+  }
   return out;
+}
+
+export interface MotionGraphicExportTarget {
+  item: TimelineItem;
+  assetId: string;
+  assetName: string;
+  usesTimelineInstance: boolean;
+}
+
+export interface MotionGraphicExportPlanEntry extends MotionGraphicExportTarget {
+  renderKey: string;
+  filename: string;
+}
+
+function findByIdPrefix<T extends { id: string }>(items: T[], query: string): T | undefined {
+  return items.find((item) => item.id === query) ?? items.find((item) => item.id.startsWith(query));
+}
+
+function videoTrackOf(state: Timeline): string {
+  return timelineTrackIds(state).find((track) => trackKind(state, track) === 'video') ?? 'V1';
+}
+
+function assetDefaultItem(state: Timeline, asset: MediaAsset): TimelineItem {
+  return {
+    id: `asset-default-${asset.id}`,
+    track: videoTrackOf(state),
+    startFrame: 0,
+    durationInFrames: Math.max(1, asset.durationInFrames),
+    name: asset.name,
+    kind: 'motion-graphic',
+    templateId: asset.id,
+    code: asset.code,
+    props: { ...(asset.props ?? {}) },
+    width: asset.width ?? state.width,
+    height: asset.height ?? state.height,
+  };
+}
+
+function templateDefaultItem(state: Timeline, template: Tpl): TimelineItem {
+  return {
+    id: `template-default-${template.id}`,
+    track: videoTrackOf(state),
+    startFrame: 0,
+    durationInFrames: Math.max(1, template.durationInFrames),
+    name: template.name,
+    kind: 'motion-graphic',
+    templateId: template.id,
+    code: template.code,
+    props: { ...template.props },
+    width: template.width,
+    height: template.height,
+  };
+}
+
+/** Resolve edited timeline instances or pristine asset/template defaults for ProRes export. */
+export function resolveMotionGraphicExportTargets(
+  state: Timeline,
+  args: Args,
+  assets: MediaAsset[],
+  templates: Tpl[],
+): MotionGraphicExportTarget[] {
+  const targets: MotionGraphicExportTarget[] = [];
+  const seen = new Set<string>();
+  const push = (target: MotionGraphicExportTarget | null) => {
+    if (!target) return;
+    const identity = target.usesTimelineInstance ? `item:${target.item.id}` : `asset:${target.assetId}`;
+    if (seen.has(identity)) return;
+    seen.add(identity);
+    targets.push(target);
+  };
+
+  for (const query of [...strs(args.itemId), ...strs(args.itemIds)]) {
+    const item = state.items.find((candidate) => candidate.id === query)
+      ?? state.items.find((candidate) => candidate.id.startsWith(query));
+    if (!item) continue;
+    const source = item.templateId
+      ? findByIdPrefix(assets.filter((entry) => entry.kind === 'motion-graphic'), item.templateId)
+        ?? findByIdPrefix(templates, item.templateId)
+      : undefined;
+    push({
+      item,
+      assetId: item.templateId ?? item.id,
+      assetName: source?.name ?? item.name,
+      usesTimelineInstance: true,
+    });
+  }
+
+  const preferTimelineInstance = args.preferTimelineInstance !== false;
+  for (const query of [...strs(args.assetId), ...strs(args.assetIds)]) {
+    const asset = findByIdPrefix(assets.filter((entry) => entry.kind === 'motion-graphic'), query);
+    const template = asset ? undefined : findByIdPrefix(templates, query);
+    const canonicalId = asset?.id ?? template?.id ?? query;
+    const instance = state.items.find((item) => item.kind === 'motion-graphic' && item.templateId === canonicalId)
+      ?? state.items.find((item) => item.kind === 'motion-graphic' && (item.templateId === query || item.templateId?.startsWith(query)));
+
+    if (preferTimelineInstance && instance) {
+      push({
+        item: instance,
+        assetId: canonicalId,
+        assetName: asset?.name ?? template?.name ?? instance.name,
+        usesTimelineInstance: true,
+      });
+    } else if (asset) {
+      push({ item: assetDefaultItem(state, asset), assetId: asset.id, assetName: asset.name, usesTimelineInstance: false });
+    } else if (template) {
+      push({ item: templateDefaultItem(state, template), assetId: template.id, assetName: template.name, usesTimelineInstance: false });
+    } else if (instance) {
+      push({ item: instance, assetId: instance.templateId ?? instance.id, assetName: instance.name, usesTimelineInstance: true });
+    }
+  }
+  return targets;
+}
+
+export function buildMotionGraphicExportPlan(
+  targets: MotionGraphicExportTarget[],
+  args: Args,
+): MotionGraphicExportPlanEntry[] {
+  const filenameMode = args.filenameMode === 'xml' ? 'xml' : 'asset';
+  const customName = targets.length === 1 && typeof args.name === 'string' && args.name.trim()
+    ? args.name.trim()
+    : null;
+  const seenXmlKeys = new Set<string>();
+  const plan: MotionGraphicExportPlanEntry[] = [];
+  for (const target of targets) {
+    const renderKey = motionGraphicRenderKey(target.item);
+    if (filenameMode === 'xml' && seenXmlKeys.has(renderKey)) continue;
+    seenXmlKeys.add(renderKey);
+    const filename = filenameMode === 'xml'
+      ? motionGraphicRenderFilename(renderKey)
+      : `${sanitizeFileName(customName ?? target.assetName, 'motion-graphic')}.mov`;
+    plan.push({ ...target, renderKey, filename });
+  }
+  return plan;
+}
+
+export async function runMotionGraphicExportPlan(
+  state: Timeline,
+  plan: MotionGraphicExportPlanEntry[],
+  render: (timeline: Timeline, item: TimelineItem, filename: string) => Promise<void> =
+    (timeline, item, filename) => exportClipMov(timeline, item, { filename }),
+): Promise<{
+  exported: MotionGraphicExportPlanEntry[];
+  failed: Array<{ itemId: string; renderKey: string; filename: string; error: string }>;
+}> {
+  const exported: MotionGraphicExportPlanEntry[] = [];
+  const failed: Array<{ itemId: string; renderKey: string; filename: string; error: string }> = [];
+  for (const entry of plan) {
+    if (entry.item.kind !== 'motion-graphic') {
+      failed.push({
+        itemId: entry.item.id,
+        renderKey: entry.renderKey,
+        filename: entry.filename,
+        error: 'item is not a motion graphic',
+      });
+      continue;
+    }
+    try {
+      await render(state, entry.item, entry.filename);
+      exported.push(entry);
+    } catch (error) {
+      failed.push({
+        itemId: entry.item.id,
+        renderKey: entry.renderKey,
+        filename: entry.filename,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return { exported, failed };
 }
 
 /** export_motion_graphic_prores: transparent ProRes 4444 .mov per clip (browser download). */
 async function exportProres(args: Args, ctx: AgentContext): Promise<unknown> {
-  const items = resolveMgItems(ctx, args);
-  if (!items.length) return { error: 'no MG clip found; pass itemId(s) (preferred) or assetId(s)' };
-  const state = ctx.getState();
-  const rename = items.length === 1 && typeof args.name === 'string' && args.name.trim() ? args.name.trim() : null;
-  const exported: string[] = [];
-  const failed: { itemId: string; error: string }[] = [];
-  for (const it of items) {
-    if (it.kind === 'audio') { failed.push({ itemId: it.id, error: 'audio clip has no visual to export' }); continue; }
-    try {
-      await exportClipMov(state, rename ? { ...it, name: rename } : it); // transparent ProRes 4444 .mov download
-      exported.push(rename ?? it.name);
-    } catch (e) {
-      failed.push({ itemId: it.id, error: e instanceof Error ? e.message : String(e) });
-    }
+  let state: Timeline;
+  try {
+    state = resolveTimeline(ctx, typeof args.timelineId === 'string' ? args.timelineId : undefined);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
   }
-  return { ok: exported.length > 0, exported, ...(failed.length ? { failed } : {}), format: 'prores4444_mov', transparent: true };
+  const targets = resolveMotionGraphicExportTargets(state, args, ctx.getDoc().assets ?? [], ctx.templates);
+  if (!targets.length) return { error: 'no MG clip or asset found; pass itemId(s) (preferred) or assetId(s)' };
+  const plan = buildMotionGraphicExportPlan(targets, args);
+  const { exported, failed } = await runMotionGraphicExportPlan(state, plan);
+  return {
+    ok: exported.length > 0,
+    timeline: { id: state.id, name: state.name },
+    exported: exported.map((entry) => entry.filename.replace(/\.mov$/i, '')),
+    renders: exported.map((entry) => ({
+      itemId: entry.item.id,
+      assetId: entry.assetId,
+      renderKey: entry.renderKey,
+      filename: entry.filename,
+      usedTimelineInstance: entry.usesTimelineInstance,
+    })),
+    ...(failed.length ? { failed } : {}),
+    format: 'prores4444_mov',
+    transparent: true,
+  };
 }
 
 export async function execMgVideoTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {

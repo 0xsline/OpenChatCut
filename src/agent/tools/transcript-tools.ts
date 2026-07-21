@@ -5,6 +5,8 @@ import { transcribePath } from '../../transcript/assemblyai';
 import { fillerIndices } from '../../transcript/edit';
 import { translateLines } from '../../captions/translate';
 import { createVariant, findVariantByLang, upsertVariant } from '../../transcript/variants';
+import { buildSilenceGapCaps, parseCleanOnly, parseSilenceRule, type SilenceRule } from '../../transcript/clean';
+import type { Action } from '../../editor/reduce';
 import { execFindTranscript, findPhrase, normalize } from './transcript-find';
 
 // Agent tools for the transcript / caption / "delete text = delete video" surface.
@@ -35,12 +37,15 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'clean_script',
-    description: 'Mechanically clean a track\'s voiceover: compress long pauses to a target length and/or strip filler words (um/uh/嗯/呃). Rule-based on word timings (not the LLM); each clip shortens accordingly. Runs on EVERY transcribed clip on the track (whole-track batch) unless itemId narrows it to one. Run before semantic editing. ⚠ Only AUDIO clips re-time; a VIDEO clip plays continuously and its captions always mirror the audible speech — word edits change neither its picture nor its captions.',
+    description: 'Mechanically clean transcribed clips with fixed filler removal and typed pause rules. only may be "fillers", "silence", or "fillers,silence". silence accepts compress:400, restore:500, normalize:500, range:300-800, plus legacy max:400, min:500, 500, and min:300,max:800. Rules that lengthen a pause never exceed the silence present in the recording. Existing maxPauseSeconds/removeFillers calls remain supported. The whole operation is one undo step.',
     input_schema: {
       type: 'object',
       properties: {
         track: { type: 'string', description: 'Track alias/id whose voiceover clips to clean (default A1). Cleans every transcribed clip on it.' },
         itemId: { type: 'string', description: 'Optional: clean only this one clip instead of the whole track.' },
+        only: { type: 'string', description: 'Run fillers, silence, or both as fillers,silence. Omit for existing default behavior.' },
+        silence: { type: 'string', description: 'Pause rule: compress:400, restore:500, normalize:500, range:300-800, or legacy syntax.' },
+        longSilence: { type: 'number', description: 'Long-pause threshold in ms for the default silence rule (pauses at/above it compress to 200ms). Default 3000 when only includes silence and no silence rule is supplied.' },
         maxPauseSeconds: { type: 'number', description: 'Compress pauses longer than this down to it (e.g. 0.5). Omit to leave pauses.' },
         removeFillers: { type: 'boolean', description: 'Strip filler words (default true).' },
       },
@@ -334,14 +339,59 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
         : state.items.filter((x) => x.track === track && (x.transcript?.length ?? 0) > 0);
       if (!clips.length) return { error: targetId ? `no transcribed item ${targetId}` : `no transcript on ${alias}; call transcribe_track first` };
       const fps = state.fps;
-      const silenceFrames = typeof args.maxPauseSeconds === 'number' ? Math.max(1, Math.round(args.maxPauseSeconds * fps)) : undefined;
-      const removeFillers = args.removeFillers !== false;
-      let fillersRemoved = 0;
-      for (const it of clips) {
-        if (removeFillers) fillersRemoved += fillerIndices(it.transcript!).length;
-        ctx.commands.cleanScript(it.id, { silenceFrames, removeFillers }); // Reducer re-derives each clip's duration.
+      const usesTypedArgs = args.only != null || args.silence != null || args.longSilence != null;
+      let selection: { fillers: boolean; silence: boolean };
+      let silenceRule: SilenceRule | undefined;
+      try {
+        selection = usesTypedArgs ? parseCleanOnly(args.only) : { fillers: args.removeFillers !== false, silence: typeof args.maxPauseSeconds === 'number' };
+        silenceRule = parseSilenceRule(args.silence);
+        if (selection.silence && !silenceRule && usesTypedArgs) {
+          const thresholdMs = typeof args.longSilence === 'number' && Number.isFinite(args.longSilence)
+            ? Math.max(0, Math.round(args.longSilence))
+            : 3000;
+          silenceRule = { mode: 'long', thresholdMs, targetMs: 200 };
+        }
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error) };
       }
-      return { ok: true, track: alias, clips: clips.length, itemIds: clips.map((c) => c.id), maxPauseSeconds: (args.maxPauseSeconds as number) ?? null, fillersRemoved };
+      const silenceFrames = typeof args.maxPauseSeconds === 'number'
+        ? Math.max(1, Math.round(args.maxPauseSeconds * fps))
+        : undefined;
+      const removeFillers = selection.fillers;
+      let fillersRemoved = 0;
+      const actions: Action[] = [];
+      for (const it of clips) {
+        const fillers = removeFillers ? fillerIndices(it.transcript!) : [];
+        fillersRemoved += fillers.filter((index) => !(it.deletedWordIdx ?? []).includes(index)).length;
+        if (selection.silence && silenceRule) {
+          actions.push({
+            type: 'cleanScript',
+            id: it.id,
+            removeFillers,
+            gapCapsMs: buildSilenceGapCaps(it.transcript!, silenceRule, {
+              silenceFrames: it.silenceFrames,
+              gapCapsMs: it.gapCapsMs,
+              fps,
+            }),
+            replaceGapCaps: true,
+          });
+        } else if (!usesTypedArgs) {
+          actions.push({ type: 'cleanScript', id: it.id, silenceFrames, removeFillers });
+        } else if (fillers.length) {
+          actions.push({ type: 'deleteWords', id: it.id, idxs: fillers });
+        }
+      }
+      ctx.commands.batch(actions, 'Clean script');
+      return {
+        ok: true,
+        track: alias,
+        clips: clips.length,
+        itemIds: clips.map((clip) => clip.id),
+        only: usesTypedArgs ? Object.entries(selection).filter(([, enabled]) => enabled).map(([key]) => key).join(',') : null,
+        silenceRule: silenceRule ?? null,
+        maxPauseSeconds: (args.maxPauseSeconds as number) ?? null,
+        fillersRemoved,
+      };
     }
     case 'edit_gap': {
       const action = String(args.action ?? '');

@@ -1,15 +1,16 @@
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import {
-  activeTimeline,
   resolveTrackId,
   timelineTrackIds,
   trackAlias,
   trackKind,
   type Timeline,
   type TimelineItem,
+  type MediaAsset,
   type TimelineState,
 } from '../../editor/types';
+import { resolveTimeline } from './timeline-target';
 
 // read_project returns one overview of project state, including timeline and assets.
 // Aggregates existing store/doc fields; no separate backend.
@@ -52,26 +53,11 @@ function splitIds(raw: unknown): string[] {
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-function resolveTimeline(ctx: AgentContext, timelineId?: string): Timeline {
-  const doc = ctx.getDoc();
-  if (!timelineId) {
-    // Prefer live active state (includes in-memory edits)
-    const live = ctx.getState();
-    const active = activeTimeline(doc);
-    return {
-      ...live,
-      id: active.id,
-      name: active.name,
-      order: active.order,
-    };
-  }
-  const q = timelineId.trim();
-  const hit = doc.timelines.find((t) => t.id === q || t.id.startsWith(q));
-  if (!hit) throw new Error(`timeline not found: ${timelineId}`);
-  return hit;
-}
-
-function slimItem(it: TimelineItem, state: TimelineState) {
+function slimItem(it: TimelineItem, state: TimelineState, assets: readonly MediaAsset[]) {
+  const sourceAssetId = it.src ? assets.find((asset) => asset.src === it.src)?.id ?? null : null;
+  const denoisedAssetId = it.denoisedSrc
+    ? assets.find((asset) => asset.src === it.denoisedSrc && asset.kind === 'audio')?.id ?? null
+    : null;
   return {
     id: it.id,
     trackId: it.track,
@@ -91,6 +77,10 @@ function slimItem(it: TimelineItem, state: TimelineState) {
     })),
     props: it.props ?? null,
     hasTranscript: Array.isArray(it.transcript) && it.transcript.length > 0,
+    sourceAssetId,
+    voiceIsolation: it.denoisedSrc
+      ? { denoisedAssetId, strength: it.denoiseStrength ?? null }
+      : null,
   };
 }
 
@@ -180,7 +170,7 @@ export async function execReadProjectTool(
         locked: state.tracks?.[id]?.locked ?? false,
         hidden: state.tracks?.[id]?.hidden ?? false,
       })),
-      items: items.map((it) => slimItem(it, state)),
+      items: items.map((it) => slimItem(it, state, doc.assets)),
       transitions: (state.transitions ?? []).map((t) => ({
         id: t.id,
         type: t.type,

@@ -210,6 +210,11 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
           type: 'boolean',
           description: 'Required true when export would burn unsupported fonts. First call without it returns the unsupported list.',
         },
+        motionGraphicRenderKeys: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Advanced XML export: render keys returned by export_motion_graphic_prores with filenameMode=xml. Matching MG clips become media references; other MG clips stay placeholders.',
+        },
       },
     },
   },
@@ -476,9 +481,16 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
         if (format === 'xml') {
           // FCPXML：纯序列化（fcpxml.ts）+ 客户端 blob 下载（无需渲染，秒出）。
           const nleFormat: NleFormat = args.nleFormat === 'fcp_xml_resolve' ? 'fcp_xml_resolve' : 'fcp_xml';
+          const motionGraphicRenderKeys = Array.isArray(args.motionGraphicRenderKeys)
+            ? args.motionGraphicRenderKeys
+              .filter((value): value is string => typeof value === 'string')
+              .map((value) => value.trim())
+              .filter(Boolean)
+            : [];
           const xml = timelineToFcpxml(state, {
             title: typeof args.name === 'string' ? args.name : undefined,
             nleFormat,
+            motionGraphicRenderKeys,
           });
           const base = (typeof args.name === 'string' && args.name ? args.name : 'timeline').replace(/\.(?:fcpxml|xml)$/i, '');
           const filename = `${base}.fcpxml`;
@@ -492,7 +504,14 @@ export async function execGenerateTool(name: string, args: Args, ctx: AgentConte
           anchor.remove();
           URL.revokeObjectURL(url);
           void recordExport({ name: filename, format: 'xml', sizeBytes: blob.size, createdAt: Date.now() });
-          return { ok: true, format: 'xml', nleFormat, name: filename, sizeBytes: blob.size };
+          return {
+            ok: true,
+            format: 'xml',
+            nleFormat,
+            name: filename,
+            sizeBytes: blob.size,
+            motionGraphicRenderKeys,
+          };
         }
         return { error: 'format must be video, audio, subtitles, or xml' };
       } catch (error) {
@@ -547,6 +566,7 @@ export const GENERATE_WORKFLOW = `
 
 ## Export
 - Use submit_export with format=video for MP4/WebM, format=audio for MP3/WAV, format=subtitles for SRT/TXT, or format=xml for FCPXML (nleFormat fcp_xml|fcp_xml_resolve). codec defaults to h264 for video and mp3 for audio; subtitleFormat defaults to srt.
+- To hand off rendered motion graphics with XML, call export_motion_graphic_prores with filenameMode=xml, then pass the successful renders[].renderKey values to submit_export.motionGraphicRenderKeys. Missing or failed keys remain explicit XML placeholders.
 - Prefer startFrame/endFrameExclusive for partial exports. The range is half-open, export is synchronous, and it does not change the timeline.
 - If submit_export returns unsupportedFonts, use search_fonts for alternatives or ask the user, then retry with confirmFontFallback=true only after they accept fallback.
 `;

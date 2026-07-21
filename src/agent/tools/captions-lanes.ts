@@ -5,6 +5,7 @@ import { CAPTION_STYLE_BY_ID } from '../../captions/styles';
 import type { CaptionTemplate } from '../../captions/types';
 import { findVariantByLang } from '../../transcript/variants';
 import { resolveTrackId, type TimelineState } from '../../editor/types';
+import { moveCaptionSourceEntry, normalizeCaptionSourceEntries } from '../../captions/sourceOrder';
 
 // edit_captions 多车道工具组：
 // - positions      一次调用把多个 source 各就各位(同锚点=同块堆叠)
@@ -31,7 +32,7 @@ const laneId = (): string => `src_${(++seq).toString(36)}_${Math.random().toStri
 
 /** 现 scope 提升为 sourceEntries(已有则拷贝;旧 sources[]/sourceItemId/timeline 一次性升级)。 */
 export function ensureEntries(c: CaptionsData, s: TimelineState): CaptionSourceEntry[] {
-  if (c.sourceEntries?.length) return c.sourceEntries.map((e) => ({ ...e }));
+  if (c.sourceEntries?.length) return normalizeCaptionSourceEntries(c.sourceEntries);
   const transcribed = (id: string) => s.items.some((it) => it.id === id && (it.transcript?.length ?? 0) > 0);
   if (c.sources?.length) return c.sources.filter(transcribed).map((itemId) => ({ id: laneId(), itemId }));
   if (c.sourceMode === 'timeline') {
@@ -95,7 +96,7 @@ export function matchEntries(entries: CaptionSourceEntry[], sel: Json, s: Timeli
 }
 
 const entrySummary = (e: CaptionSourceEntry, i: number) => ({
-  index: i, sourceId: e.id, itemId: e.itemId,
+  index: i, trackOrder: e.trackOrder ?? i, sourceId: e.id, itemId: e.itemId,
   ...(e.variant ? { variant: e.variant } : {}), ...(e.label ? { label: e.label } : {}),
   ...(e.anchor ? { anchor: e.anchor, offsetXRatio: e.offsetXRatio, offsetYRatio: e.offsetYRatio } : {}),
   ...(e.slotId ? { slotId: e.slotId } : {}), ...(e.visible === false ? { visible: false } : {}),
@@ -168,7 +169,7 @@ export function execPositions(json: Json, c: CaptionsData, ctx: AgentContext, s:
 export function execSourceUpdate(json: Json, c: CaptionsData, ctx: AgentContext, s: TimelineState): Result {
   const raw = Array.isArray(json.updates) ? json.updates : (json.update ? [json.update] : null);
   if (!raw?.length) return { error: 'source_update 参数例(可直接照抄改数):{"updates":[{"index":0,"anchor":"bottom-center","offsetYRatio":-0.08},{"trackId":"A2","visible":false},{"index":1,"style":{"sizePx":54,"color":"#fff"}}]}——每条 = 选择器 + 要改的字段(visible/anchor/offsetXRatio/offsetYRatio/slotId/style/preset/variant);sourceId 用 source_list 查' };
-  const entries = ensureEntries(c, s);
+  let entries = ensureEntries(c, s);
   if (!entries.length) return { error: '当前没有字幕 source:先 edit_captions action=enable 开字幕(或 source_set 指定 sources)' };
   const updated: Result[] = [];
   const notes: string[] = [];
@@ -176,7 +177,11 @@ export function execSourceUpdate(json: Json, c: CaptionsData, ctx: AgentContext,
     const o = (u ?? {}) as Json;
     const m = matchEntries(entries, o, s);
     if ('error' in (m as object)) return m as Result;
-    for (const i of m as number[]) {
+    const matchedIds = (m as number[]).map((i) => entries[i]?.id).filter((id): id is string => !!id);
+    const requestedOrder = num(o.trackOrder);
+    for (const sourceId of matchedIds) {
+      const i = entries.findIndex((entry) => entry.id === sourceId);
+      if (i < 0) continue;
       let e = { ...entries[i] };
       if (typeof o.visible === 'boolean') e.visible = o.visible;
       if (str(o.label)) e.label = str(o.label);
@@ -221,7 +226,13 @@ export function execSourceUpdate(json: Json, c: CaptionsData, ctx: AgentContext,
       entries[i] = e;
       updated.push(entrySummary(e, i));
     }
+    if (requestedOrder !== undefined) {
+      matchedIds.forEach((sourceId, offset) => {
+        entries = moveCaptionSourceEntry(entries, sourceId, requestedOrder + offset);
+      });
+    }
   }
+  entries = normalizeCaptionSourceEntries(entries);
   ctx.commands.updateCaptions({ sourceEntries: entries, sources: undefined, sourceMode: 'item' });
-  return { ok: true, updated, ...(notes.length ? { notes } : {}) };
+  return { ok: true, updated: entries.map(entrySummary), ...(notes.length ? { notes } : {}) };
 }

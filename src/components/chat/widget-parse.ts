@@ -1,56 +1,64 @@
-// 纯解析器（无 React/DOM 依赖）：把助手消息文本中的 <widget> 表单块解析成结构化数据。
-// widget XML 是不可信的 LLM 输出——全程用正则/字符串处理，不用 innerHTML、不用 eval，
-// 解析失败一律退化为纯文本，绝不抛错（见 parseWidgets 尾部注释）。
-
 export interface WidgetOption {
   value: string;
   display: string;
 }
 
-export interface FormSingle {
+interface FieldBase {
+  id: string;
+  label: string;
+  description?: string;
+  required: boolean;
+}
+
+export interface FormSingle extends FieldBase {
   kind: 'single';
-  id: string;
-  label: string;
-  required: boolean;
   allowOther: boolean;
+  otherPlaceholder?: string;
   options: WidgetOption[];
 }
 
-export interface FormMulti {
+export interface FormMulti extends FieldBase {
   kind: 'multi';
-  id: string;
-  label: string;
-  required: boolean;
   allowOther: boolean;
+  otherPlaceholder?: string;
   options: WidgetOption[];
 }
 
-export interface VisualOption {
+export interface FormText extends FieldBase {
+  kind: 'text';
+  placeholder?: string;
+}
+
+export interface RichOption {
   value: string;
   name: string;
   media?: string;
-  summary?: string;
+  description?: string;
   aspectRatio?: string;
+  submitPrompt?: string;
 }
 
-export interface FormVisual {
-  kind: 'visual';
-  id: string;
-  label: string;
-  required: boolean;
-  options: VisualOption[];
+export interface FormRichChoice extends FieldBase {
+  kind: 'visual' | 'voice' | 'scenario';
+  multiple: boolean;
+  options: RichOption[];
 }
 
-export type WidgetField = FormSingle | FormMulti | FormVisual;
+export type WidgetField = FormSingle | FormMulti | FormText | FormRichChoice;
 
-export type MessageSegment = { type: 'text'; text: string } | { type: 'widget'; fields: WidgetField[] };
+export interface WidgetSegment {
+  type: 'widget';
+  fields: WidgetField[];
+  title?: string;
+  submitLabel?: string;
+  messagePrefix?: string;
+}
 
-/** 提交时的选中值：single/visual 是选中项的 value（或 allow_other 时用户输入的自由文本），multi 是 value 数组 */
+export type MessageSegment = { type: 'text'; text: string } | WidgetSegment;
 export type WidgetValues = Record<string, string | string[]>;
 
-const WIDGET_RE = /<widget>([\s\S]*?)<\/widget>/g;
-const FIELD_TAG_RE = /<form-(single|multi|visual)\b([^>]*?)(\/)?>/g;
-const VISUAL_OPTION_RE = /<visual-option\b([^>]*?)\/?>/g;
+const WIDGET_RE = /<widget\b([^>]*)>([\s\S]*?)<\/widget>/g;
+const FIELD_TAG_RE = /<form-(single|multi|text|visual|voice|scenario)\b([^>]*?)(\/?)>/g;
 const ATTR_RE = /([\w-]+)\s*=\s*"([^"]*)"|([\w-]+)\s*=\s*'([^']*)'/g;
 
 function decodeEntities(s: string): string {
@@ -60,95 +68,122 @@ function decodeEntities(s: string): string {
 function parseAttrs(raw: string): Record<string, string> {
   const attrs: Record<string, string> = {};
   ATTR_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = ATTR_RE.exec(raw))) {
-    const key = m[1] ?? m[3];
-    const val = decodeEntities(m[2] ?? m[4] ?? '');
-    attrs[key] = val;
+  let match: RegExpExecArray | null;
+  while ((match = ATTR_RE.exec(raw))) {
+    attrs[match[1] ?? match[3]] = decodeEntities(match[2] ?? match[4] ?? '');
   }
   return attrs;
 }
 
-// options="60s|约1分钟,180s|约3分钟" → [{value:'60s',display:'约1分钟'}, ...]；没有 "|" 时 value=display
 function parseOptions(raw: string | undefined): WidgetOption[] {
   if (!raw) return [];
-  return raw
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((item) => {
-      const i = item.indexOf('|');
-      return i === -1 ? { value: item, display: item } : { value: item.slice(0, i).trim(), display: item.slice(i + 1).trim() };
-    });
+  return raw.split(',').map((entry) => entry.trim()).filter(Boolean).map((entry) => {
+    const separator = entry.indexOf('|');
+    return separator < 0
+      ? { value: entry, display: entry }
+      : { value: entry.slice(0, separator).trim(), display: entry.slice(separator + 1).trim() };
+  }).filter((option) => option.value && option.display);
 }
 
-function parseVisualOptions(inner: string): VisualOption[] {
-  const options: VisualOption[] = [];
-  VISUAL_OPTION_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = VISUAL_OPTION_RE.exec(inner))) {
-    const a = parseAttrs(m[1]);
-    if (!a.value || !a.name) continue; // 缺关键字段的选项丢弃
-    options.push({ value: a.value, name: a.name, media: a.media || undefined, summary: a.summary || undefined, aspectRatio: a['aspect-ratio'] || undefined });
+function parseRichOptions(kind: FormRichChoice['kind'], inner: string): RichOption[] {
+  const optionRe = new RegExp(`<${kind}-option\\b([^>]*?)\\/?>`, 'g');
+  const options: RichOption[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = optionRe.exec(inner))) {
+    const attrs = parseAttrs(match[1]);
+    if (!attrs.value || !attrs.name) continue;
+    options.push({
+      value: attrs.value,
+      name: attrs.name,
+      media: attrs.media || undefined,
+      description: attrs.description || attrs.summary || undefined,
+      aspectRatio: attrs['aspect-ratio'] || undefined,
+      submitPrompt: attrs['submit-prompt'] || undefined,
+    });
   }
   return options;
+}
+
+function fieldBase(attrs: Record<string, string>): FieldBase {
+  return {
+    id: attrs.id,
+    label: attrs.label,
+    description: attrs.description || undefined,
+    required: attrs.required === 'true',
+  };
 }
 
 function parseWidgetFields(content: string): WidgetField[] {
   const fields: WidgetField[] = [];
   FIELD_TAG_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = FIELD_TAG_RE.exec(content))) {
-    const kind = m[1] as 'single' | 'multi' | 'visual';
-    const attrs = parseAttrs(m[2]);
-    const selfClosed = !!m[3];
+  let match: RegExpExecArray | null;
+  while ((match = FIELD_TAG_RE.exec(content))) {
+    const kind = match[1] as WidgetField['kind'];
+    const attrs = parseAttrs(match[2]);
+    const selfClosed = match[3] === '/';
+    if (!attrs.id || !attrs.label) continue;
 
-    if (kind === 'visual') {
-      if (selfClosed) continue; // 没有 visual-option 子元素的字段没有意义，丢弃
-      const closeTag = '</form-visual>';
-      const closeIdx = content.indexOf(closeTag, FIELD_TAG_RE.lastIndex);
-      const inner = closeIdx === -1 ? content.slice(FIELD_TAG_RE.lastIndex) : content.slice(FIELD_TAG_RE.lastIndex, closeIdx);
-      if (closeIdx !== -1) FIELD_TAG_RE.lastIndex = closeIdx + closeTag.length;
-      const options = parseVisualOptions(inner);
-      if (attrs.id && attrs.label && options.length) {
-        fields.push({ kind: 'visual', id: attrs.id, label: attrs.label, required: attrs.required === 'true', options });
+    if (kind === 'text') {
+      fields.push({ ...fieldBase(attrs), kind, placeholder: attrs.placeholder || undefined });
+      continue;
+    }
+
+    if (kind === 'single' || kind === 'multi') {
+      const options = parseOptions(attrs.options);
+      if (options.length) {
+        fields.push({
+          ...fieldBase(attrs),
+          kind,
+          allowOther: attrs.allow_other === 'true',
+          otherPlaceholder: attrs.other_placeholder || undefined,
+          options,
+        });
       }
       continue;
     }
 
-    if (!selfClosed) {
-      // single/multi 按规范是自闭合标签；容错跳过误写的闭合标签，避免吞掉后续字段
-      const closeTag = `</form-${kind}>`;
-      const closeIdx = content.indexOf(closeTag, FIELD_TAG_RE.lastIndex);
-      if (closeIdx !== -1) FIELD_TAG_RE.lastIndex = closeIdx + closeTag.length;
-    }
-    const options = parseOptions(attrs.options);
-    if (attrs.id && attrs.label && options.length) {
-      fields.push({ kind, id: attrs.id, label: attrs.label, required: attrs.required === 'true', allowOther: attrs.allow_other === 'true', options });
+    if (selfClosed) continue;
+    const closeTag = `</form-${kind}>`;
+    const closeIndex = content.indexOf(closeTag, FIELD_TAG_RE.lastIndex);
+    const inner = closeIndex < 0
+      ? content.slice(FIELD_TAG_RE.lastIndex)
+      : content.slice(FIELD_TAG_RE.lastIndex, closeIndex);
+    if (closeIndex >= 0) FIELD_TAG_RE.lastIndex = closeIndex + closeTag.length;
+    const options = parseRichOptions(kind, inner);
+    if (options.length) {
+      fields.push({ ...fieldBase(attrs), kind, multiple: attrs.multiple === 'true', options });
     }
   }
   return fields;
 }
 
-/**
- * 把消息文本按 <widget> 块拆成有序的 {text} / {widget} 段落。
- * 容错策略：单个 widget 解析异常或解出 0 个字段时，把该块原样当纯文本输出；整个函数永不抛错。
- */
+/** Parse untrusted model output without injecting HTML or executing code. */
 export function parseWidgets(text: string): MessageSegment[] {
   const segments: MessageSegment[] = [];
   WIDGET_RE.lastIndex = 0;
   let lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = WIDGET_RE.exec(text))) {
-    const before = text.slice(lastIndex, m.index);
+  let match: RegExpExecArray | null;
+  while ((match = WIDGET_RE.exec(text))) {
+    const before = text.slice(lastIndex, match.index);
     if (before) segments.push({ type: 'text', text: before });
     let fields: WidgetField[] = [];
     try {
-      fields = parseWidgetFields(m[1]);
+      fields = parseWidgetFields(match[2]);
     } catch {
       fields = [];
     }
-    segments.push(fields.length ? { type: 'widget', fields } : { type: 'text', text: m[0] });
+    if (fields.length) {
+      const attrs = parseAttrs(match[1]);
+      segments.push({
+        type: 'widget',
+        fields,
+        title: attrs.title || undefined,
+        submitLabel: attrs.submit_label || undefined,
+        messagePrefix: attrs.message_prefix || undefined,
+      });
+    } else {
+      segments.push({ type: 'text', text: match[0] });
+    }
     lastIndex = WIDGET_RE.lastIndex;
   }
   const rest = text.slice(lastIndex);
@@ -156,25 +191,33 @@ export function parseWidgets(text: string): MessageSegment[] {
   return segments;
 }
 
-// 拼答案格式：一行一个字段 `- {label}：{已选展示文本}`，multi 用「、」拼接，未作答的字段跳过。
-export function formatWidgetAnswer(fields: WidgetField[], values: WidgetValues): string {
+function richDisplay(field: FormRichChoice, value: string): string {
+  const option = field.options.find((candidate) => candidate.value === value);
+  return option?.submitPrompt || option?.name || value;
+}
+
+export function formatWidgetAnswer(fields: WidgetField[], values: WidgetValues, messagePrefix?: string): string {
   const lines: string[] = [];
-  for (const f of fields) {
-    const v = values[f.id];
-    if (v === undefined) continue;
-    if (f.kind === 'multi') {
-      const arr = Array.isArray(v) ? v : [v];
-      const displays = arr.map((val) => f.options.find((o) => o.value === val)?.display ?? val).filter(Boolean);
-      if (displays.length) lines.push(`- ${f.label}：${displays.join('、')}`);
-    } else if (f.kind === 'visual') {
-      const name = f.options.find((o) => o.value === v)?.name;
-      if (name) lines.push(`- ${f.label}：${name}`);
+  for (const field of fields) {
+    const value = values[field.id];
+    if (value === undefined) continue;
+    if (field.kind === 'multi') {
+      const selected = Array.isArray(value) ? value : [value];
+      const displays = selected.map((entry) => field.options.find((option) => option.value === entry)?.display ?? entry).filter(Boolean);
+      if (displays.length) lines.push(`- ${field.label}：${displays.join('、')}`);
+    } else if (field.kind === 'visual' || field.kind === 'voice' || field.kind === 'scenario') {
+      const selected = Array.isArray(value) ? value : [value];
+      const displays = selected.map((entry) => richDisplay(field, entry)).filter(Boolean);
+      if (displays.length) lines.push(`- ${field.label}：${displays.join('、')}`);
+    } else if (field.kind === 'text') {
+      const text = typeof value === 'string' ? value.trim() : '';
+      if (text) lines.push(`- ${field.label}：${text}`);
     } else {
-      const value = typeof v === 'string' ? v : '';
-      // 匹配不到固定选项时说明是 allow_other 的自由文本，直接用输入值本身作展示
-      const display = f.options.find((o) => o.value === value)?.display ?? value;
-      if (display) lines.push(`- ${f.label}：${display}`);
+      const selected = typeof value === 'string' ? value : '';
+      const single = field as FormSingle;
+      const display = single.options.find((option) => option.value === selected)?.display ?? selected;
+      if (display) lines.push(`- ${field.label}：${display}`);
     }
   }
-  return lines.join('\n');
+  return [messagePrefix?.trim(), ...lines].filter(Boolean).join('\n');
 }

@@ -6,6 +6,9 @@ export interface DesignPreset {
   id: string;
   name: string;
   style: DesignStyle;
+  /** Optional picker-only metadata; older presets remain valid without it. */
+  thumbnailUrl?: string;
+  scenarios?: string[];
 }
 
 export const DESIGN_STYLE_PRESETS: DesignPreset[] = [

@@ -5,15 +5,18 @@
 //   字幕  srt / txt(需先开启字幕)
 //   XML   fcp_xml(Premiere)/ fcp_xml_resolve(达芬奇)± 随包渲出 MG .mov
 // 「创建分享链接」(云端公开页)需要分享后端——本地无,不摆假开关。
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../i18n/locale';
 import { Icon, type IconName } from '../components/icons';
-import type { TimelineState } from '../editor/types';
+import { timelineDuration, type TimelineState } from '../editor/types';
 import { timelineToFcpxml } from './fcpxml';
 import { captionsToSrt, captionsToTxt } from '../captions/exportCaptions';
 import { exportClipMov } from '../media/clipExport';
 import { sanitizeFileName } from '../media/fileName';
+import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
 import { recordExport } from '../persist/exportHistoryStore';
+import { exportVideoWithFallback, isAbortError, renderTimelineInBrowser } from './browserExport';
+import { EXPORT_FPS_OPTIONS, EXPORT_RESOLUTIONS, type ExportResolution } from './mediaSettings';
 
 type ExportTab = 'video' | 'audio' | 'mg' | 'subtitles' | 'xml';
 
@@ -31,10 +34,11 @@ const TABS: Array<{ key: ExportTab; label: string; summary: string; icon: IconNa
   { key: 'xml', label: '剪辑工程', summary: 'FCPXML', icon: 'clipboard' },
 ];
 
-const FPS_OPTIONS = [24, 25, 30, 50, 60];
-const RESOLUTIONS = ['480p', '720p', '1080p'] as const;
+const FPS_OPTIONS = [...EXPORT_FPS_OPTIONS];
+const RESOLUTIONS = Object.keys(EXPORT_RESOLUTIONS) as ExportResolution[];
 
-type ExportPhase = 'queued' | 'preparing' | 'rendering' | 'finalizing' | 'downloading' | 'completed' | 'failed';
+type ExportPhase = 'queued' | 'preparing' | 'rendering' | 'finalizing' | 'downloading' | 'completed' | 'failed' | 'cancelled';
+type RenderEngine = 'idle' | 'checking' | 'browser' | 'server';
 
 interface ExportProgress {
   phase: ExportPhase;
@@ -84,7 +88,7 @@ function downloadBlob(blob: Blob, filename: string): void {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function ExportDialog({ state, projectName, onClose }: ExportDialogProps) {
@@ -98,9 +102,9 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     if (minSide <= 720) return '720p';
     return '1080p';
   }, [state.width, state.height]);
-  const [resolution, setResolution] = useState<(typeof RESOLUTIONS)[number]>(defaultRes);
+  const [resolution, setResolution] = useState<ExportResolution>(defaultRes);
   // 帧率默认 = 时间线 fps 落进档位(不在档位则取 30)
-  const [fps, setFps] = useState<number>(FPS_OPTIONS.includes(state.fps) ? state.fps : 30);
+  const [fps, setFps] = useState<number>(FPS_OPTIONS.some((candidate) => candidate === state.fps) ? state.fps : 30);
   const [subtitleFormat, setSubtitleFormat] = useState<'srt' | 'txt'>('srt');
   const [nleFormat, setNleFormat] = useState<'fcp_xml' | 'fcp_xml_resolve'>('fcp_xml');
   const [includeMg, setIncludeMg] = useState(false);
@@ -108,6 +112,8 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [clock, setClock] = useState(Date.now());
+  const [renderEngine, setRenderEngine] = useState<RenderEngine>('idle');
+  const browserAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!busy) return undefined;
@@ -132,8 +138,9 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     xml: '生成剪辑工程',
   };
 
-  /** 视频/音频:异步 render job 回传真实 Remotion 进度，完成后再下载。 */
+  /** 服务端兼容路径:异步 render job 回传真实 Remotion 进度，完成后再下载。 */
   const exportMedia = async (format: 'video' | 'audio') => {
+    if (format === 'video') setRenderEngine('server');
     const useCodec = format === 'audio' ? 'mp3' : codec;
     const body: Record<string, unknown> = { state, format, codec: useCodec, name: base };
     if (format === 'video') {
@@ -200,6 +207,74 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     void recordExport({ name: filename, format, codec: useCodec, sizeBytes: completed.sizeBytes ?? blob.size, createdAt: Date.now() });
   };
 
+  /** 视频优先在浏览器中通过 WebCodecs 渲染，不支持的时间线无缝回退服务端。 */
+  const exportVideo = async () => {
+    const controller = new AbortController();
+    browserAbortRef.current = controller;
+    setRenderEngine('checking');
+    try {
+      const result = await exportVideoWithFallback({
+        browser: async () => {
+          const attempt = await renderTimelineInBrowser({
+            state,
+            codec,
+            resolution,
+            fps,
+            signal: controller.signal,
+            onProgress: (snapshot) => {
+              setRenderEngine('browser');
+              const percent = Math.min(98, Math.max(1, Math.round(snapshot.progress * 98)));
+              setBusy(t('浏览器渲染中…'));
+              setProgress((current) => current ? {
+                ...current,
+                phase: 'rendering',
+                percent: Math.max(current.percent, percent),
+                processedFrames: snapshot.encodedFrames,
+                totalFrames: Math.max(1, timelineDuration(state)),
+                detail: t('WebCodecs 浏览器加速'),
+              } : current);
+            },
+          });
+          if (attempt.status === 'rendered') setRenderEngine('browser');
+          return attempt;
+        },
+        server: () => exportMedia('video'),
+        onFallback: (reason) => {
+          setRenderEngine('server');
+          setBusy(t('切换兼容渲染…'));
+          setProgress((current) => current ? {
+            ...current,
+            phase: 'preparing',
+            percent: 0,
+            processedFrames: undefined,
+            totalFrames: undefined,
+            detail: t('浏览器快导不可用：{reason}，已切换兼容渲染', { reason }),
+          } : current);
+        },
+      });
+      if (result.engine === 'server') return;
+
+      setBusy(t('正在下载…'));
+      setProgress((current) => current ? {
+        ...current,
+        phase: 'downloading',
+        percent: 99,
+        outputSize: result.attempt.blob.size,
+      } : current);
+      const filename = `${base}.${codec === 'vp8' ? 'webm' : 'mp4'}`;
+      downloadBlob(result.attempt.blob, filename);
+      void recordExport({
+        name: filename,
+        format: 'video',
+        codec,
+        sizeBytes: result.attempt.blob.size,
+        createdAt: Date.now(),
+      });
+    } finally {
+      if (browserAbortRef.current === controller) browserAbortRef.current = null;
+    }
+  };
+
   /** MG动画:逐个渲 ProRes 4444 alpha .mov(复用单片段导出管线)。 */
   const exportMgBatch = async () => {
     for (let i = 0; i < mgItems.length; i++) {
@@ -226,22 +301,43 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
   };
 
   const exportXml = async () => {
+    const successfulRenderKeys: string[] = [];
+    const failedRenderNames: string[] = [];
     if (includeMg) {
-      for (let i = 0; i < mgItems.length; i++) {
-        setBusy(t('渲染 MG {i}/{n} · {name}', { i: i + 1, n: mgItems.length, name: mgItems[i].name }));
+      const uniqueMgItems = Array.from(new Map(
+        mgItems.map((item) => [motionGraphicRenderKey(item), item] as const),
+      ).entries());
+      for (let i = 0; i < uniqueMgItems.length; i++) {
+        const [renderKey, item] = uniqueMgItems[i];
+        setBusy(t('渲染 MG {i}/{n} · {name}', { i: i + 1, n: uniqueMgItems.length, name: item.name }));
         setProgress((current) => current ? {
           ...current,
           phase: 'rendering',
-          percent: Math.round((i / mgItems.length) * 90),
-          detail: t('正在渲染第 {i}/{n} 个动态图层', { i: i + 1, n: mgItems.length }),
+          percent: Math.round((i / uniqueMgItems.length) * 90),
+          detail: t('正在渲染第 {i}/{n} 个动态图层', { i: i + 1, n: uniqueMgItems.length }),
         } : current);
-        await exportClipMov(state, mgItems[i]);
+        try {
+          await exportClipMov(state, item, { filename: motionGraphicRenderFilename(renderKey) });
+          successfulRenderKeys.push(renderKey);
+        } catch {
+          failedRenderNames.push(item.name);
+        }
       }
     }
-    const xml = timelineToFcpxml(state, { title: projectName, nleFormat });
+    const xml = timelineToFcpxml(state, {
+      title: projectName,
+      nleFormat,
+      motionGraphicRenderKeys: successfulRenderKeys,
+    });
     const suffix = nleFormat === 'fcp_xml_resolve' ? 'resolve' : 'premiere';
     downloadBlob(new Blob([xml], { type: 'application/xml;charset=utf-8' }), `${base}-${suffix}.fcpxml`);
     void recordExport({ name: `${base}-${suffix}.fcpxml`, format: 'xml', createdAt: Date.now() });
+    if (failedRenderNames.length) {
+      setProgress((current) => current ? {
+        ...current,
+        detail: t('{n} 个动态图层渲染失败，XML 已保留占位', { n: failedRenderNames.length }),
+      } : current);
+    }
   };
 
   const run = async () => {
@@ -253,7 +349,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     setProgress({ phase: 'preparing', percent: 0, startedAt });
     setBusy(t('准备导出…'));
     try {
-      if (tab === 'video') await exportMedia('video');
+      if (tab === 'video') await exportVideo();
       else if (tab === 'audio') await exportMedia('audio');
       else if (tab === 'mg') await exportMgBatch();
       else if (tab === 'subtitles') exportSubtitles();
@@ -262,6 +358,15 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
       setClock(finishedAt);
       setProgress((current) => current ? { ...current, phase: 'completed', percent: 100, finishedAt } : current);
     } catch (err) {
+      if (isAbortError(err)) {
+        setProgress((current) => current ? {
+          ...current,
+          phase: 'cancelled',
+          finishedAt: Date.now(),
+          detail: t('已取消浏览器渲染'),
+        } : current);
+        return;
+      }
       const message = err instanceof Error ? err.message : t('导出失败');
       setError(message);
       setProgress((current) => current ? { ...current, phase: 'failed', finishedAt: Date.now() } : current);
@@ -282,6 +387,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     downloading: t('正在下载'),
     completed: t('导出完成'),
     failed: t('导出失败'),
+    cancelled: t('已取消'),
   } as Record<ExportPhase, string>)[progress.phase] : '';
   const elapsedMs = progress ? (progress.finishedAt ?? clock) - progress.startedAt : 0;
   const etaMs = progress && progress.phase === 'rendering' && progress.percent >= 3 && progress.percent < 99
@@ -339,7 +445,10 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
                 <h3>{t(activeTab.label)}</h3>
                 <p>{activeTab.summary}</p>
               </div>
-              <span className="cc-export-local-badge"><i />{t('本机渲染')}</span>
+              <span className="cc-export-local-badge"><i />{tab !== 'video' ? t('本机渲染')
+                : renderEngine === 'server' ? t('兼容渲染')
+                  : renderEngine === 'browser' ? t('浏览器加速')
+                    : renderEngine === 'checking' ? t('检测浏览器') : t('浏览器优先')}</span>
             </div>
 
             <div
@@ -451,6 +560,15 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
                 <span>{progress?.phase === 'completed' ? t('已生成') : t('即将生成')}</span>
                 <strong title={outputName}>{outputName}</strong>
               </div>
+              {busy && (renderEngine === 'checking' || renderEngine === 'browser') && (
+                <button
+                  type="button"
+                  className="cc-export-cancel"
+                  onClick={() => browserAbortRef.current?.abort()}
+                >
+                  {t('取消')}
+                </button>
+              )}
               <button
                 type="button"
                 className="cc-export-cta"

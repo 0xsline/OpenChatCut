@@ -6,12 +6,14 @@
 // authored in the file — the track is repacked from body order (apply
 // re-derives all frames). Any error aborts before any command is dispatched
 // (plan first, dispatch after = atomic).
-import type { TimelineItem, TimelineState } from '../editor/types';
+import type { TimelineItem, TimelineState, TrackId } from '../editor/types';
 import type { EditorCommands } from '../editor/store';
-import { itemById, serializeTimeline, type Row, type SegRow } from './serialize';
-import { parseScript, type ParsedRun, type ParsedSegRow } from './parse';
+import { itemById, serializeTimeline, type Row, type SegRow, type SilenceRow } from './serialize';
+import { parseScript, type ParsedRun, type ParsedSegRow, type ParsedSilenceRow } from './parse';
 
-type Cmds = Pick<EditorCommands, 'deleteWords' | 'toggleWord' | 'removeItem' | 'moveItem'>;
+type Cmds = Pick<EditorCommands, 'deleteWords' | 'toggleWord' | 'removeItem' | 'moveItem' | 'setGapCap'>;
+
+export interface ApplyScriptOptions { trackId?: TrackId }
 
 export interface ApplyResult {
   ok: true;
@@ -94,10 +96,14 @@ function planSegRows(item: TimelineItem, canonRows: SegRow[], parsedRows: Parsed
 
 /** diff an edited timeline.md against the live state and commit via commands.
  * Plans everything first; only dispatches when the whole script is valid. */
-export function applyScript(getState: () => TimelineState, commands: Cmds, md: string): ApplyResult {
+export function applyScript(getState: () => TimelineState, commands: Cmds, md: string, options: ApplyScriptOptions = {}): ApplyResult {
   const base = getState();
-  const { model, stamp } = serializeTimeline(base);
   const parsed = parseScript(md);
+  if (options.trackId && parsed.trackId && options.trackId !== parsed.trackId) {
+    throw new Error('timeline.md 的轨道作用域与 apply_script 指定轨道不一致');
+  }
+  const trackId = options.trackId ?? parsed.trackId ?? undefined;
+  const { model, stamp } = serializeTimeline(base, { trackId, showSilence: parsed.showSilence });
   if (!parsed.stamp) throw new Error('缺少 script-stamp 注释——请保留 read_script 输出顶部的注释行');
   if (parsed.stamp !== stamp) throw new Error('时间线已被外部修改（stale）——请重新 read_script 后再改');
 
@@ -105,6 +111,7 @@ export function applyScript(getState: () => TimelineState, commands: Cmds, md: s
   const removed: string[] = [];
   const changes: string[] = [];
   const wordPlans: WordPlan[] = [];
+  const silencePlans: { row: SilenceRow; maxMs: number | null }[] = [];
   const removeIds: string[] = [];
   // per track: ordered tokens for the repack pass
   type Token = { kind: 'gap'; frames: number } | { kind: 'item'; id: string };
@@ -117,6 +124,7 @@ export function applyScript(getState: () => TimelineState, commands: Cmds, md: s
     // canonical lookups for this track
     const canonSegByItem = new Map<string, SegRow[]>();
     const clipByKey = new Map<string, Row & { kind: 'clip' }>();
+    const silenceBySource = new Map<string, SilenceRow[]>();
     for (const region of canonTrack.regions) {
       for (const row of region.rows) {
         if (row.kind === 'seg') {
@@ -125,6 +133,10 @@ export function applyScript(getState: () => TimelineState, commands: Cmds, md: s
           canonSegByItem.set(row.itemId, list);
         } else if (row.kind === 'clip') {
           clipByKey.set(`${region.source}#c${row.cn}`, row);
+        } else if (row.kind === 'silence') {
+          const list = silenceBySource.get(region.source) ?? [];
+          list.push(row);
+          silenceBySource.set(region.source, list);
         }
       }
     }
@@ -141,6 +153,25 @@ export function applyScript(getState: () => TimelineState, commands: Cmds, md: s
     const seenItems = new Set<string>();
     const parsedSegByItem = new Map<string, ParsedSegRow[]>();
     for (const region of parsedTrack.regions) {
+      if (parsed.showSilence) {
+        const canonical = silenceBySource.get(region.source) ?? [];
+        const edited = region.rows.filter((row): row is ParsedSilenceRow => row.kind === 'silence');
+        if (edited.length !== canonical.length) {
+          throw new Error(`「${region.source}」: silence 标记数量已改变——请保留标记并用 ~~...~~ 删除或用 → 压缩`);
+        }
+        edited.forEach((row, index) => {
+          const canon = canonical[index]!;
+          if (Math.abs(row.originalMs - canon.originalMs) > 1) {
+            throw new Error(`timeline.md 第 ${row.line} 行: silence 原始时长与源口播不一致`);
+          }
+          const desired = row.struck ? 0 : row.targetMs;
+          if (desired === undefined) {
+            if (canon.appliedMs !== canon.originalMs) silencePlans.push({ row: canon, maxMs: null });
+          } else if (Math.abs(desired - canon.appliedMs) > 1) {
+            silencePlans.push({ row: canon, maxMs: Math.min(canon.originalMs, Math.max(0, desired)) });
+          }
+        });
+      }
       for (const row of region.rows) {
         if (row.kind === 'gap') {
           if (!row.struck) tokens.push({ kind: 'gap', frames: row.frames });
@@ -155,7 +186,7 @@ export function applyScript(getState: () => TimelineState, commands: Cmds, md: s
             seenItems.add(canon.itemId);
             tokens.push({ kind: 'item', id: canon.itemId });
           }
-        } else {
+        } else if (row.kind === 'seg') {
           const itemId = transcriptItemBySource.get(region.source);
           if (!itemId) throw new Error(`timeline.md 第 ${row.line} 行: 「${region.source}」不是本轨的口播素材`);
           const list = parsedSegByItem.get(itemId) ?? [];
@@ -195,6 +226,10 @@ export function applyScript(getState: () => TimelineState, commands: Cmds, md: s
   for (const plan of wordPlans) {
     if (plan.toDelete.length) commands.deleteWords(plan.item.id, plan.toDelete);
     for (const gi of plan.toRestore) commands.toggleWord(plan.item.id, gi);
+  }
+  for (const plan of silencePlans) {
+    commands.setGapCap(plan.row.itemId, plan.row.afterWordIndex, plan.maxMs);
+    changes.push(`${items.get(plan.row.itemId)?.name ?? plan.row.itemId}: 调整停顿`);
   }
   for (const id of removeIds) commands.removeItem(id);
   // repack: body order = playback order; frames re-derived from live durations

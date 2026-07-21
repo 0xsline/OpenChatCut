@@ -94,7 +94,7 @@ export interface EditorCommands {
   setItemVariants: (id: string, variants: TranscriptVariant[]) => void;
   toggleWord: (id: string, idx: number) => void;
   deleteWords: (id: string, idxs: number[]) => void;
-  cleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
+  cleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean; gapCapsMs?: Record<string, number>; replaceGapCaps?: boolean }) => void;
   /** Cap/delete one breath gap before word `afterWordIndex` (maxMs=null clears override). */
   setGapCap: (id: string, afterWordIndex: number, maxMs: number | null) => void;
   /** Speech-block drag: playback order of source word indices (null = chronological). */
@@ -390,7 +390,14 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       setItemVariants: (id, variants) => dispatch({ type: 'setItemVariants', id, variants }),
       toggleWord: (id, idx) => dispatch({ type: 'toggleWord', id, idx }),
       deleteWords: (id, idxs) => dispatch({ type: 'deleteWords', id, idxs }),
-      cleanScript: (id, opts) => dispatch({ type: 'cleanScript', id, silenceFrames: opts.silenceFrames, removeFillers: opts.removeFillers }),
+      cleanScript: (id, opts) => dispatch({
+        type: 'cleanScript',
+        id,
+        silenceFrames: opts.silenceFrames,
+        removeFillers: opts.removeFillers,
+        gapCapsMs: opts.gapCapsMs,
+        replaceGapCaps: opts.replaceGapCaps,
+      }),
       setGapCap: (id, afterWordIndex, maxMs) => dispatch({ type: 'setGapCap', id, afterWordIndex, maxMs }),
       setTranscriptPlayOrder: (id, playOrder) => dispatch({ type: 'setTranscriptPlayOrder', id, playOrder }),
       reorderTrackItems: (track, orderedIds) => dispatch({ type: 'reorderTrackItems', track, orderedIds }),

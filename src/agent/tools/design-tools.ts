@@ -4,7 +4,9 @@ import {
   COLOR_ROLES, FONT_ROLES, type DesignColor, type DesignFont, type DesignStyle,
 } from '../../editor/types';
 import { DESIGN_STYLE_PRESETS, findPreset } from '../../editor/design-presets';
-import { loadOwnedStyles, saveOwnedStyle, deleteOwnedStyle } from '../../persist/projectStore';
+import {
+  loadOwnedStyles, saveOwnedStyle, updateOwnedStyle, deleteOwnedStyle,
+} from '../../persist/projectStore';
 
 // manage_design_style controls the project's reusable brand identity and drives
 // the colors and fonts the agent selects for motion graphics and captions.
@@ -16,8 +18,8 @@ export const DESIGN_TOOL_SCHEMAS: AgentToolSchema[] = [{
     'action: list | get | apply | update | clear | save | delete.',
     'list=列出风格库,返回 {catalog(内置预设), owned(用户"我的风格"收藏)}; get=查看当前工程已应用的风格;',
     'apply=把某风格(presetId,内置或用户收藏均可)或自定义 designSpec 套用到工程(applyToProject 默认 true);',
-    'update=对当前风格做局部修改(patch,只补要改的字段); clear=清除风格;',
-    'save=把 designSpec(或未传时用当前工程已应用的风格)存入用户的"我的风格"收藏,需 name; delete=从"我的风格"收藏中删除(presetId 为收藏项 id;内置预设不可删除)。',
+    'update=对当前工程风格做局部修改;传 presetId 时可修改收藏风格的内容、名称、场景标签或缩略图; clear=清除工程风格;',
+    'save=把 designSpec(或未传时用当前工程已应用的风格)存入用户的"我的风格"收藏,需 name,可附带 scenarios/thumbnailUrl; delete=从收藏中删除(presetId 为收藏项 id;内置预设不可删除)。',
     'designSpec/patch 结构: {colors:[{role,value}], fonts:[{family,role}], styleGuide}。',
     `role 是自由文本(取值如 "accent copper"/"text secondary"/"Chinese heading"),常用 color role: ${COLOR_ROLES.join('/')}; font role: ${FONT_ROLES.join('/')},但不限于这些。`,
     'styleGuide 可写详细的动效/spring/stagger 规格。',
@@ -32,6 +34,11 @@ export const DESIGN_TOOL_SCHEMAS: AgentToolSchema[] = [{
       patch: { type: 'string', description: 'update: 局部修改的 JSON(只写要改的字段)。' },
       applyToProject: { type: 'boolean', description: 'apply: 是否立即套到当前工程(默认 true)。' },
       name: { type: 'string', description: 'save: 收藏名称(必填;同名会覆盖已有收藏)。' },
+      rename: { type: 'string', description: 'update + presetId: 新的收藏名称;重名时自动添加数字后缀。' },
+      scenarios: { type: 'array', items: { type: 'string' }, description: 'save/update: 适用场景标签;空数组清除。' },
+      scenario: { type: 'string', description: 'list: 只返回包含此场景标签的风格。' },
+      thumbnailUrl: { type: 'string', description: 'save/update: 风格选择器封面 URL;不参与生成。' },
+      clearThumbnail: { type: 'boolean', description: 'update + presetId: 清除封面,不会删除风格。' },
     },
     required: ['action'],
   },
@@ -90,6 +97,16 @@ function normStyle(spec: Args): DesignStyle {
 const summarize = (s: DesignStyle | undefined) =>
   s ? { colors: s.colors, fonts: s.fonts, styleGuide: s.styleGuide ?? null } : null;
 
+const normalizeScenarioArgs = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  return value.map(String).map((item) => item.trim()).filter(Boolean);
+};
+
+const hasOwn = (value: object, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key);
+
+const matchesScenario = (scenarios: string[] | undefined, requested: string): boolean =>
+  !requested || !!scenarios?.some((scenario) => scenario.localeCompare(requested, undefined, { sensitivity: 'accent' }) === 0);
+
 export async function execDesignTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   if (name !== 'manage_design_style') return { error: `unknown tool ${name}` };
   const action = String(args.action ?? '');
@@ -97,14 +114,50 @@ export async function execDesignTool(name: string, args: Args, ctx: AgentContext
   switch (action) {
     case 'list': {
       const owned = await loadOwnedStyles();
+      const scenario = String(args.scenario ?? '').trim();
       return {
-        catalog: DESIGN_STYLE_PRESETS.map((p) => ({ presetId: p.id, name: p.name, style: summarize(p.style) })),
-        owned: owned.map((s) => ({ presetId: s.id, name: s.name, style: summarize(s.style) })),
+        catalog: DESIGN_STYLE_PRESETS
+          .filter((preset) => matchesScenario(preset.scenarios, scenario))
+          .map((preset) => ({
+            presetId: preset.id,
+            name: preset.name,
+            thumbnailUrl: preset.thumbnailUrl ?? null,
+            scenarios: preset.scenarios ?? [],
+            style: summarize(preset.style),
+          })),
+        owned: owned
+          .filter((style) => matchesScenario(style.scenarios, scenario))
+          .map((style) => ({
+            presetId: style.id,
+            name: style.name,
+            thumbnailUrl: style.thumbnailUrl ?? null,
+            scenarios: style.scenarios ?? [],
+            style: summarize(style.style),
+          })),
       };
     }
 
-    case 'get':
-      return { designStyle: summarize(ctx.getDoc().designStyle) };
+    case 'get': {
+      const id = String(args.presetId ?? '').trim();
+      if (!id) return { designStyle: summarize(ctx.getDoc().designStyle) };
+      const preset = findPreset(id);
+      if (preset) return {
+        presetId: preset.id,
+        name: preset.name,
+        thumbnailUrl: preset.thumbnailUrl ?? null,
+        scenarios: preset.scenarios ?? [],
+        designStyle: summarize(preset.style),
+      };
+      const owned = (await loadOwnedStyles()).find((style) => style.id === id);
+      if (!owned) return { error: `no style "${id}"` };
+      return {
+        presetId: owned.id,
+        name: owned.name,
+        thumbnailUrl: owned.thumbnailUrl ?? null,
+        scenarios: owned.scenarios ?? [],
+        designStyle: summarize(owned.style),
+      };
+    }
 
     case 'apply': {
       let style: DesignStyle | null = null;
@@ -132,6 +185,30 @@ export async function execDesignTool(name: string, args: Args, ctx: AgentContext
     }
 
     case 'update': {
+      const id = String(args.presetId ?? '').trim();
+      if (id) {
+        if (findPreset(id)) return { error: "catalog styles can't be updated" };
+        const owned = (await loadOwnedStyles()).find((style) => style.id === id);
+        if (!owned) return { error: `no owned style "${id}"` };
+        const spec = parseSpec(args.patch ?? args.designSpec);
+        if ('error' in spec) return spec;
+        const nextStyle: DesignStyle = {
+          colors: 'colors' in spec ? normColors(spec.colors) : owned.style.colors,
+          fonts: 'fonts' in spec ? normFonts(spec.fonts) : owned.style.fonts,
+          ...(typeof spec.styleGuide === 'string'
+            ? (spec.styleGuide.trim() ? { styleGuide: spec.styleGuide.trim() } : {})
+            : (owned.style.styleGuide ? { styleGuide: owned.style.styleGuide } : {})),
+        };
+        const updated = await updateOwnedStyle(id, {
+          ...(typeof args.rename === 'string' ? { name: args.rename } : {}),
+          ...(args.patch !== undefined || args.designSpec !== undefined ? { style: nextStyle } : {}),
+          ...(hasOwn(args, 'scenarios') ? { scenarios: normalizeScenarioArgs(args.scenarios) ?? [] } : {}),
+          ...(args.clearThumbnail === true
+            ? { thumbnailUrl: null }
+            : (hasOwn(args, 'thumbnailUrl') ? { thumbnailUrl: String(args.thumbnailUrl ?? '') } : {})),
+        });
+        return { ok: true, updated };
+      }
       const current = ctx.getDoc().designStyle;
       if (!current) return { error: 'no design style applied yet; use action="apply" first' };
       const spec = parseSpec(args.patch ?? args.designSpec);
@@ -167,7 +244,10 @@ export async function execDesignTool(name: string, args: Args, ctx: AgentContext
         if (!current) return { error: 'no designSpec given and no style applied to the project yet' };
         style = current;
       }
-      const saved = await saveOwnedStyle(styleName, style);
+      const saved = await saveOwnedStyle(styleName, style, {
+        ...(hasOwn(args, 'scenarios') ? { scenarios: normalizeScenarioArgs(args.scenarios) ?? [] } : {}),
+        ...(hasOwn(args, 'thumbnailUrl') ? { thumbnailUrl: String(args.thumbnailUrl ?? '') } : {}),
+      });
       return { ok: true, saved };
     }
 

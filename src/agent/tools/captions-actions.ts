@@ -5,6 +5,7 @@ import { mapCaptionStyle } from '../../captions/styleMap';
 import { sourceList, sourceSet, sourceAdd, sourceRemove, languageMode, bilingual, firstTranscribedOnTrack } from './captions-sources';
 import { execLayoutPolicy, execPositions, execSourceUpdate } from './captions-lanes';
 import { listCaptionPresets, saveCaptionPreset, deleteCaptionPreset, resolveCaptionPreset, type CaptionPreset } from '../../captions/presetStore';
+import { resolveTrackId, timelineTrackIds, trackAlias } from '../../editor/types';
 
 // edit_captions uses one tool with a 21-action dispatcher. Most action data
 // arrives as a JSON string in `json`. Backed by OpenChatCut's captions overlay
@@ -17,6 +18,11 @@ type Result = Record<string, unknown>;
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+const orderNum = (v: unknown): number | undefined => {
+  if (typeof v === 'number' && Number.isInteger(v) && v >= 0) return v;
+  if (typeof v === 'string' && /^\d+$/.test(v.trim())) return Number(v.trim());
+  return undefined;
+};
 
 /** Action data usually arrives as a JSON string in `json`; raw objects are also accepted. */
 function parseJson(args: Args): Record<string, unknown> {
@@ -138,13 +144,33 @@ export async function editCaptions(args: Args, ctx: AgentContext): Promise<Resul
   }
   if (action === 'display_text') return displayText(json, c, ctx, s);
   if (action === 'track') {
-    if (args.list === true) return { ok: true, tracks: sourceList(c, s).availableTracks };
-    const t = str(args.trackId);
-    if (!t) return { error: 'track needs trackId (or list:true). To choose visible caption text, prefer source_set.' };
-    const it = firstTranscribedOnTrack(s, t);
-    if (!it) return { error: `no transcribed clip on track ${t}` };
+    const trackIds = timelineTrackIds(s);
+    if (args.list === true) {
+      return {
+        ok: true,
+        tracks: trackIds.map((id, trackOrder) => ({
+          trackOrder,
+          trackId: trackAlias(s, id),
+          id,
+          hasTranscript: s.items.some((item) => item.track === id && (item.transcript?.length ?? 0) > 0),
+        })),
+      };
+    }
+    const requestedOrder = args.trackOrder === undefined ? undefined : orderNum(args.trackOrder);
+    if (args.trackOrder !== undefined && requestedOrder === undefined) return { error: 'trackOrder must be a non-negative 0-based integer' };
+    const requestedTrack = str(args.trackId);
+    const stableTrackId = requestedTrack
+      ? resolveTrackId(s, requestedTrack)
+      : requestedOrder === undefined ? null : trackIds[requestedOrder] ?? null;
+    if (!stableTrackId) {
+      return { error: requestedOrder === undefined
+        ? 'track needs trackId or trackOrder (or list:true). To choose visible caption text, prefer source_set.'
+        : `trackOrder ${requestedOrder} out of range (0..${Math.max(0, trackIds.length - 1)})` };
+    }
+    const it = firstTranscribedOnTrack(s, stableTrackId);
+    if (!it) return { error: `no transcribed clip on track ${trackAlias(s, stableTrackId)}` };
     ctx.commands.updateCaptions({ sourceItemId: it.id, sources: undefined, sourceMode: 'item' });
-    return { ok: true, trackId: t, sourceItemId: it.id };
+    return { ok: true, trackId: trackAlias(s, stableTrackId), trackOrder: trackIds.indexOf(stableTrackId), sourceItemId: it.id };
   }
 
   // ── multi-source + language (delegated) ──

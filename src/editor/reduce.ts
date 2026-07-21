@@ -54,7 +54,7 @@ export type Action =
   | { type: 'setItemVariants'; id: string; variants: TranscriptVariant[] }
   | { type: 'toggleWord'; id: string; idx: number }
   | { type: 'deleteWords'; id: string; idxs: number[] }
-  | { type: 'cleanScript'; id: string; silenceFrames?: number; removeFillers: boolean }
+  | { type: 'cleanScript'; id: string; silenceFrames?: number; removeFillers: boolean; gapCapsMs?: Record<string, number>; replaceGapCaps?: boolean }
   /** Per-gap silence cap. afterWordIndex = word after the gap; maxMs=null clears the override. */
   | { type: 'setGapCap'; id: string; afterWordIndex: number; maxMs: number | null }
   /** Speech-block drag: playback order of source word indices (null clears → chronological). */
@@ -546,7 +546,12 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
           if (it.id !== a.id || !it.transcript) return it;
           const del = new Set(it.deletedWordIdx ?? []);
           if (a.removeFillers) for (const idx of fillerIndices(it.transcript)) del.add(idx);
-          const next = { ...it, deletedWordIdx: [...del], silenceFrames: a.silenceFrames };
+          const next = {
+            ...it,
+            deletedWordIdx: [...del],
+            silenceFrames: a.replaceGapCaps ? undefined : a.silenceFrames,
+            gapCapsMs: a.replaceGapCaps ? a.gapCapsMs : it.gapCapsMs,
+          };
           return { ...next, durationInFrames: editedDuration(next, del, s.fps) };
         }),
       };
@@ -676,6 +681,8 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
           ),
         };
       }
+      const nextStrength = a.strength ?? 100;
+      if (it.denoisedSrc === a.denoisedSrc && (it.denoiseStrength ?? 100) === nextStrength) return s;
       return {
         ...s,
         items: s.items.map((item) =>
@@ -683,7 +690,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
             ? {
                 ...item,
                 denoisedSrc: a.denoisedSrc,
-                denoiseStrength: a.strength ?? 100,
+                denoiseStrength: nextStrength,
               }
             : item,
         ),

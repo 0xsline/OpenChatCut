@@ -104,6 +104,8 @@ export interface CaptionSourceEntry {
   id: string;
   /** transcribed timeline item feeding this lane */
   itemId: string;
+  /** stable 0-based visual order; legacy entries without it keep array order */
+  trackOrder?: number;
   /** show this item's translation variant instead of the original words */
   variant?: { variantKind: 'translation'; languageCode: string };
   label?: string;

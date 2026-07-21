@@ -124,7 +124,14 @@ export function ChatMessage({ msg, streaming, onWidgetSubmit, onContinue }: Chat
       {!!msg.thinking?.trim() && <ThinkingBlock text={msg.thinking} />}
       {segments.map((seg, i) =>
         seg.type === 'widget' ? (
-          <WidgetCard key={i} fields={seg.fields} onSubmit={(answer) => onWidgetSubmit?.(answer)} />
+          <WidgetCard
+            key={i}
+            fields={seg.fields}
+            title={seg.title}
+            submitLabel={seg.submitLabel}
+            messagePrefix={seg.messagePrefix}
+            onSubmit={(answer) => onWidgetSubmit?.(answer)}
+          />
         ) : (
           seg.text ? <Markdown key={i} text={seg.text} /> : null
         ),

@@ -125,19 +125,41 @@ export const STOCK_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'search_stock_media',
     description: [
-      'Search stock media (Pexels, Pixabay, Unsplash, Freesound) by keyword; returns unified results with importUrl.',
-      'kind=image|video|audio (default video). Unsplash is image-only; Freesound is audio-only.',
-      'Official provider keys are used when configured; image/video also fall back to FIRECRAWL_API_KEY.',
-      'Audio search requires FREESOUND_API_KEY; use browse_library category=sound-effects for built-in SFX.',
+      'Search curated stock platforms for B-roll, photos, sounds, or music; returns unified results with importUrl.',
+      'kind=any|video|audio|music|image (default video). platforms is an optional comma-separated provider list.',
+      'Use category to narrow intent and horizontal|square|vertical for orientation; legacy orientation names remain accepted.',
+      'Unsupported provider/type combinations are skipped with warnings. Official keys are preferred; eligible visual searches can use Firecrawl fallback.',
       'On success, pass a result importUrl to download_media or push_asset.',
     ].join(' '),
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string' },
-        kind: { type: 'string', enum: ['image', 'video', 'audio'], description: 'Default video.' },
-        orientation: { type: 'string', enum: ['landscape', 'portrait', 'square', 'squarish'] },
-        limitPerPlatform: { type: 'number', description: 'Max results per platform (default 5).' },
+        query: { type: 'string', minLength: 1 },
+        category: {
+          type: 'string',
+          description: 'Optional category, such as business, nature, technology, whoosh, piano, or ambient.',
+        },
+        kind: {
+          type: 'string',
+          enum: ['any', 'video', 'audio', 'music', 'image'],
+          description: 'Default video. music searches Freesound and returns importable audio results.',
+        },
+        orientation: {
+          type: 'string',
+          enum: ['horizontal', 'square', 'vertical', 'landscape', 'portrait', 'squarish'],
+          description: 'Preferred horizontal|square|vertical; legacy landscape|portrait|squarish values are accepted.',
+        },
+        platforms: {
+          type: 'string',
+          description: 'Optional comma-separated list: pexels,pixabay,unsplash,freesound.',
+        },
+        limitPerPlatform: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 6,
+          default: 3,
+          description: 'Max results per platform and media type.',
+        },
       },
       required: ['query'],
     },
@@ -401,15 +423,23 @@ async function execImportUrlAsset(args: Args, ctx: AgentContext): Promise<unknow
 interface StockSearchResponse {
   configured?: boolean;
   results?: unknown[];
+  warnings?: string[];
+  searchedPlatforms?: string[];
 }
 
 async function execSearchStockMedia(args: Args): Promise<unknown> {
   const query = String(args.query ?? '').trim();
   if (!query) return { error: 'query is required', results: [] };
-  const kind = args.kind === 'image' || args.kind === 'audio' ? args.kind : 'video';
+  const kind = args.kind === 'any' || args.kind === 'image' || args.kind === 'audio' || args.kind === 'music'
+    ? args.kind
+    : 'video';
 
   const params = new URLSearchParams({ query, kind });
   if (args.orientation) params.set('orientation', String(args.orientation));
+  if (args.category) params.set('category', String(args.category));
+  if (args.platforms) {
+    params.set('platforms', Array.isArray(args.platforms) ? args.platforms.join(',') : String(args.platforms));
+  }
   if (args.limitPerPlatform) params.set('limitPerPlatform', String(args.limitPerPlatform));
 
   try {
@@ -418,13 +448,18 @@ async function execSearchStockMedia(args: Args): Promise<unknown> {
     const body = await res.json() as StockSearchResponse;
     if (!body.configured) {
       return {
-        error: kind === 'audio'
+        error: kind === 'audio' || kind === 'music'
           ? '未配置音频素材库 API key（FREESOUND_API_KEY），可改用内置音效库或 download_media / push_asset 直接导入 URL'
           : '未配置素材搜索凭据（PEXELS_API_KEY / PIXABAY_API_KEY / UNSPLASH_ACCESS_KEY / FIRECRAWL_API_KEY），可改用 download_media / push_asset 直接导入 URL',
         results: [],
+        warnings: body.warnings ?? [],
       };
     }
-    return { results: body.results ?? [] };
+    return {
+      results: body.results ?? [],
+      warnings: body.warnings ?? [],
+      searchedPlatforms: body.searchedPlatforms ?? [],
+    };
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'stock search request failed', results: [] };
   }

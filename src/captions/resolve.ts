@@ -3,6 +3,7 @@ import type { TimelineItem } from '../editor/types';
 import type { TranscriptWord } from '../transcript/types';
 import { itemWindow, keptWordIndices, mediaWindowKeptIndices, mediaWindowWords, retimeWords } from '../transcript/edit';
 import { findVariantByLang, resolveVariantText } from '../transcript/variants';
+import { orderedCaptionSourceEntries } from './sourceOrder';
 
 // 词 → 时间线投影按 kind 分流，并与播放层保持一致:
 // audio = 编辑后词流(keptSegments 重排,删词/压静音/trim 窗口全生效);
@@ -37,7 +38,7 @@ function mergedSourceItems(captions: CaptionsData, items: TimelineItem[]): Timel
   if (captions.sourceEntries?.length) {
     const seen = new Set<string>();
     const found: TimelineItem[] = [];
-    for (const e of captions.sourceEntries) {
+    for (const e of orderedCaptionSourceEntries(captions.sourceEntries)) {
       if (e.visible === false || seen.has(e.itemId)) continue;
       const it = items.find((x) => x.id === e.itemId);
       if (it?.transcript?.length) { seen.add(e.itemId); found.push(it); }

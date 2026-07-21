@@ -8,11 +8,23 @@ export interface ParsedRun { text: string; struck: boolean }
 export interface ParsedSegRow { kind: 'seg'; sn: number; occurrence?: number; struck: boolean; runs: ParsedRun[]; line: number }
 export interface ParsedClipRow { kind: 'clip'; cn: number; frames: number; struck: boolean; line: number }
 export interface ParsedGapRow { kind: 'gap'; frames: number; struck: boolean; line: number }
-export type ParsedRow = ParsedSegRow | ParsedClipRow | ParsedGapRow;
+export interface ParsedSilenceRow {
+  kind: 'silence';
+  originalMs: number;
+  targetMs?: number;
+  struck: boolean;
+  line: number;
+}
+export type ParsedRow = ParsedSegRow | ParsedClipRow | ParsedGapRow | ParsedSilenceRow;
 
 export interface ParsedRegion { source: string; rows: ParsedRow[] }
 export interface ParsedTrack { track: string; regions: ParsedRegion[] }
-export interface ParsedScript { stamp: string | null; tracks: ParsedTrack[] }
+export interface ParsedScript {
+  stamp: string | null;
+  trackId: string | null;
+  showSilence: boolean;
+  tracks: ParsedTrack[];
+}
 
 const err = (line: number, msg: string): never => {
   throw new Error(`timeline.md 第 ${line} 行: ${msg}`);
@@ -40,6 +52,8 @@ export function splitRuns(body: string, line: number): ParsedRun[] {
 export function parseScript(md: string): ParsedScript {
   const tracks: ParsedTrack[] = [];
   let stamp: string | null = null;
+  let trackId: string | null = null;
+  let showSilence = false;
   let curTrack: ParsedTrack | null = null;
   let curRegion: ParsedRegion | null = null;
 
@@ -51,6 +65,9 @@ export function parseScript(md: string): ParsedScript {
     if (cm) {
       const m = cm[1].match(/script-stamp:([a-z0-9]+)/);
       if (m) stamp = m[1];
+      const track = cm[1].match(/script-track:(\S+)/);
+      if (track) trackId = track[1];
+      if (/script-silence:true/.test(cm[1])) showSilence = true;
       return;
     }
     if (s.startsWith('@')) return; // speaker boundary — render-only
@@ -78,9 +95,8 @@ export function parseScript(md: string): ParsedScript {
     const seg = s.match(/^\[s(\d+)(?:@(\d+))?\]\s*(.*)$/);
     const clip = s.match(/^\[c(\d+)\]\s*(\d+)f$/);
     const gap = s.match(/^\[gap\s+(\d+)f\]$/);
-    const silence = s.match(/^\[silence=/);
-    if (silence) return; // we don't emit these; tolerate + ignore on input
-    if (!seg && !clip && !gap) err(line, `无法识别的行: "${raw.trim().slice(0, 40)}"`);
+    const silence = s.match(/^\[silence=(\d+(?:\.\d+)?)s(?:\s*(?:→|->)\s*(\d+(?:\.\d+)?)s)?\]$/);
+    if (!seg && !clip && !gap && !silence) err(line, `无法识别的行: "${raw.trim().slice(0, 40)}"`);
     if (!curRegion) err(line, '内容行出现在任何 ### 素材区之前');
     if (seg) {
       curRegion!.rows.push({
@@ -92,7 +108,15 @@ export function parseScript(md: string): ParsedScript {
       curRegion!.rows.push({ kind: 'clip', cn: Number(clip[1]), frames: Number(clip[2]), struck, line });
     } else if (gap) {
       curRegion!.rows.push({ kind: 'gap', frames: Number(gap[1]), struck, line });
+    } else if (silence) {
+      curRegion!.rows.push({
+        kind: 'silence',
+        originalMs: Math.round(Number(silence[1]) * 1000),
+        targetMs: silence[2] === undefined ? undefined : Math.round(Number(silence[2]) * 1000),
+        struck,
+        line,
+      });
     }
   });
-  return { stamp, tracks };
+  return { stamp, trackId, showSilence, tracks };
 }
