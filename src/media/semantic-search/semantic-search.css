@@ -1,0 +1,35 @@
+.cc-semantic-anchor { position:relative; display:flex; }
+.cc-semantic-trigger.active { color:var(--cc-accent); background:var(--cc-hover); }
+.cc-semantic-panel { position:absolute; z-index:40; top:30px; left:-245px; width:340px; max-height:min(560px, 70vh); overflow:auto; border:0.5px solid var(--cc-border); border-radius:7px; background:var(--cc-panel); color:var(--cc-text); box-shadow:0 16px 40px rgba(var(--cc-ink-rgb),.55); }
+.cc-semantic-panel > header { display:flex; align-items:center; justify-content:space-between; padding:11px 12px; border-bottom:0.5px solid var(--cc-border); }
+.cc-semantic-panel > header div { display:flex; flex-direction:column; gap:2px; }
+.cc-semantic-panel > header strong { font-size:13px; }
+.cc-semantic-panel > header span { color:var(--cc-text-dim); font-size:10px; }
+.cc-semantic-panel button { border:0.5px solid var(--cc-border); border-radius:4px; background:var(--cc-hover); color:var(--cc-text); cursor:pointer; }
+.cc-semantic-panel button:disabled { cursor:not-allowed; opacity:.45; }
+.cc-semantic-panel button.primary { background:var(--cc-accent); color:var(--cc-on-accent); border-color:transparent; }
+.cc-semantic-panel > header button { display:grid; place-items:center; width:24px; height:24px; padding:0; border:0; background:transparent; }
+.cc-semantic-empty, .cc-semantic-loading { display:flex; flex-direction:column; align-items:center; gap:9px; padding:22px 18px; text-align:center; }
+.cc-semantic-empty > svg { color:var(--cc-accent); }
+.cc-semantic-empty p { margin:0; color:var(--cc-text-muted); font-size:11px; line-height:1.5; }
+.cc-semantic-empty button, .cc-semantic-loading button { padding:6px 12px; }
+.cc-semantic-error { max-width:100%; color:var(--cc-danger); font-size:11px; overflow-wrap:anywhere; }
+.cc-semantic-loading progress { width:100%; height:5px; accent-color:var(--cc-accent); }
+.cc-semantic-loading span { color:var(--cc-text-muted); font-size:11px; }
+.cc-semantic-ready { display:flex; flex-direction:column; gap:10px; padding:10px; }
+.cc-semantic-ready form { display:flex; align-items:center; gap:6px; height:30px; padding-left:8px; border:0.5px solid var(--cc-border); border-radius:5px; background:var(--cc-bg); }
+.cc-semantic-ready form input { min-width:0; flex:1; border:0; outline:0; background:transparent; color:var(--cc-text); font-size:11px; }
+.cc-semantic-ready form button { height:24px; padding:0 8px; }
+.cc-semantic-ready form button:not(.primary) { display:grid; place-items:center; width:20px; padding:0; border:0; background:transparent; }
+.cc-semantic-index-status { display:grid; grid-template-columns:1fr auto; gap:5px 8px; padding:9px; border-radius:5px; background:var(--cc-panel-alt); }
+.cc-semantic-index-status > div:first-child { display:flex; flex-direction:column; gap:2px; }
+.cc-semantic-index-status strong { font-size:11px; }
+.cc-semantic-index-status span, .cc-semantic-index-status small { color:var(--cc-text-dim); font-size:10px; }
+.cc-semantic-index-status > div:last-of-type { display:flex; align-items:center; gap:4px; }
+.cc-semantic-index-status button { padding:4px 7px; font-size:10px; }
+.cc-semantic-index-status small { grid-column:1 / -1; color:var(--cc-gold); }
+.cc-semantic-results { display:flex; flex-direction:column; gap:2px; }
+.cc-semantic-results > strong { padding:2px 1px 4px; font-size:11px; }
+.cc-semantic-results > span { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 7px; border-radius:4px; background:var(--cc-panel-alt); font-size:10px; }
+.cc-semantic-results b { min-width:0; overflow:hidden; color:var(--cc-text-muted); font-weight:500; text-overflow:ellipsis; white-space:nowrap; }
+.cc-semantic-results em { flex:none; color:var(--cc-text-dim); font-style:normal; font-variant-numeric:tabular-nums; }
