@@ -11,6 +11,7 @@ import { invokeAction } from '../../shortcuts/actionRegistry';
 import { MIN_TIME_ZOOM, fmt } from './timelineUtil';
 import { TimelineSpeedControl } from './TimelineSpeedControl';
 import { SceneDetectionDialog } from '../../scene-detection/SceneDetectionDialog';
+import { MotionTrackingDialog } from '../../tracking/MotionTrackingDialog';
 
 // Group spacing between toolbar clusters uses gaps without a visible divider.
 function ToolSep() {
@@ -65,7 +66,13 @@ export function TimelineToolbar({
   const sceneItem = state.items.find((item) => (
     item.id === state.selectedId && (item.kind === 'video' || item.kind === 'gif')
   )) ?? null;
+  const trackingItem = state.items.find((item) => (
+    item.id === state.selectedId
+    && item.kind === 'video'
+    && /^\/media\/uploads\//.test(item.src ?? '')
+  )) ?? null;
   const [sceneDetectionOpen, setSceneDetectionOpen] = useState(false);
+  const [motionTrackingOpen, setMotionTrackingOpen] = useState(false);
   return (
     <>
       <div className="cc-timeline-toolbar">
@@ -84,6 +91,14 @@ export function TimelineToolbar({
             : t('选择一个视频片段后进行场景检测')}
           disabled={!sceneItem}
           onClick={() => setSceneDetectionOpen(true)}
+        />
+        <TB
+          icon="tracking"
+          title={trackingItem
+            ? t('跟踪选中视频中的目标（实验功能）')
+            : t('选择一个本机视频片段后进行运动跟踪')}
+          disabled={!trackingItem}
+          onClick={() => setMotionTrackingOpen(true)}
         />
         <TB icon="magnet" title={snapping ? t('磁性吸附：开 (S)') : t('磁性吸附：关 (S)')} active={snapping} onClick={() => invokeAction('snapping', undefined, 'toolbar')} />
         <ToolSep />
@@ -150,6 +165,14 @@ export function TimelineToolbar({
           commands={commands}
           item={sceneItem}
           onClose={() => setSceneDetectionOpen(false)}
+        />
+      )}
+      {motionTrackingOpen && trackingItem && (
+        <MotionTrackingDialog
+          state={state}
+          commands={commands}
+          item={trackingItem}
+          onClose={() => setMotionTrackingOpen(false)}
         />
       )}
     </>
