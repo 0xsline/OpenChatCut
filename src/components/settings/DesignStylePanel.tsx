@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { theme } from '../../theme';
+import { theme, themeAlpha } from '../../theme';
 import { useT } from '../../i18n/locale';
 import { Icon } from '../icons';
 import {
@@ -227,9 +227,9 @@ function StyleRow({ colors, name, title, selected, onClick, onDelete }: {
   const t = useT();
   return (
     <div style={{ position: 'relative' }}>
-      <button onClick={onClick} title={title} style={{ ...styleRowBtn, background: selected ? 'rgba(255,255,255,0.06)' : 'transparent', paddingRight: onDelete ? 28 : 12 }}
-        onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'rgba(255,255,255,0.035)'; }}
-        onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = selected ? 'rgba(255,255,255,0.06)' : 'transparent'; }}>
+      <button onClick={onClick} title={title} style={{ ...styleRowBtn, background: selected ? themeAlpha.ink(0.06) : 'transparent', paddingRight: onDelete ? 28 : 12 }}
+        onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = themeAlpha.ink(0.035); }}
+        onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = selected ? themeAlpha.ink(0.06) : 'transparent'; }}>
         <div style={colors && colors.length ? thumb : noneThumb}>
           {colors?.map((c, i) => <span key={i} style={{ flex: 1, background: c }} />)}
         </div>
@@ -338,7 +338,7 @@ const caretBtn: React.CSSProperties = {
 const fontMenu: React.CSSProperties = {
   position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 5,
   maxHeight: 224, overflowY: 'auto', background: theme.panelAlt, border: `0.5px solid ${theme.border}`,
-    borderRadius: 4, boxShadow: '0 12px 32px rgba(0,0,0,.4)', padding: '2px 0 6px',
+    borderRadius: 4, boxShadow: `0 12px 32px ${themeAlpha.shadow(0.4)}`, padding: '2px 0 6px',
 };
 const fontOption: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, width: '100%',
@@ -355,7 +355,7 @@ const card: React.CSSProperties = {
   position: 'fixed', left: 6, top: 92, width: 352, maxWidth: 'calc(100vw - 12px)',
   maxHeight: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column',
   background: theme.panelAlt, color: theme.text, border: `0.5px solid ${theme.border}`, borderRadius: 4,
-  boxShadow: '0 18px 48px rgba(0,0,0,.34), 0 1px 0 rgba(255,255,255,.04) inset',
+  boxShadow: `0 18px 48px ${themeAlpha.shadow(0.34)}, 0 1px 0 ${themeAlpha.ink(0.04)} inset`,
 };
 // 区块标题：11px / font-weight 500 / oklch(0.6) 暗灰 / pl 8。
 const sectionTitle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: theme.textDim, paddingLeft: 8, marginBottom: 6, letterSpacing: 0.2 };

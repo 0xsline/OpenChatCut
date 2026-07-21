@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { theme } from '../../theme';
+import { theme, themeAlpha } from '../../theme';
 import type { EditorCommands } from '../../editor/store';
 import { removeItemsFromState } from '../../editor/multiSelect';
 import { canMulticamItem, runMulticamSync } from '../../multicam/sync';
@@ -161,7 +161,7 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
     position: 'fixed', left: pos.left, top: pos.top,
     zIndex: 100, minWidth: 200, maxHeight: 'calc(100vh - 16px)', overflowY: 'auto',
     background: theme.panelAlt, border: `0.5px solid ${theme.borderLight}`,
-    borderRadius: 5, boxShadow: '0 12px 36px rgba(0,0,0,0.55)', padding: 5, fontSize: 12.5, color: theme.text,
+    borderRadius: 5, boxShadow: `0 12px 36px ${themeAlpha.shadow(0.55)}`, padding: 5, fontSize: 12.5, color: theme.text,
   };
 
   return (

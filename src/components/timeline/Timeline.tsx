@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
-import { theme } from '../../theme';
+import { theme, themeAlpha } from '../../theme';
 import {
   defaultTrackId, selectedIdsOf, timelineDuration, timelineTrackIds, trackAlias, trackKind,
   type TimelineItem, type TimelineState, type TrackId,
@@ -407,7 +407,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
         <div style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 200,
           background: clipJob.error ? theme.accent : theme.panelAlt, color: clipJob.error ? theme.onAccent : theme.text,
           border: `0.5px solid ${theme.borderLight}`, borderRadius: 4, padding: '9px 16px', fontSize: 12.5,
-          boxShadow: '0 8px 28px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          boxShadow: `0 8px 28px ${themeAlpha.shadow(0.5)}`, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span>{clipJob.msg}</span>
           {clipJob.error && <button onClick={() => setClipJob(null)} style={{ background: 'none', border: 'none', color: theme.onAccent, cursor: 'pointer', padding: 0, lineHeight: 0, display: 'grid', placeItems: 'center' }}><Icon name="x" size={14} /></button>}
         </div>

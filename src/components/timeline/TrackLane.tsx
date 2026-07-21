@@ -3,7 +3,7 @@
 // 叠层、库素材拖放(fx/lut/zoom/transition 落片段,sound/template 落轨道)、转场缝标。
 // 指针机(drag/penDrag 等)由 useTimelinePointer 供给,经 pointer prop 整只传入。
 import { type Dispatch, type RefObject, type SetStateAction } from 'react';
-import { theme } from '../../theme';
+import { theme, themeAlpha } from '../../theme';
 import { Icon } from '../icons';
 import {
   TRANSITION_LABELS, isItemSelected,
@@ -117,7 +117,7 @@ export function TrackLane({
     <div
       style={{
         // locked lane: slightly dimmed (锁定轨底色微暗;锁图标同时高亮)
-        flex: 1, position: 'relative', background: locked ? `color-mix(in srgb, ${theme.bg} 70%, #000)` : theme.bg, opacity: hidden ? 0.4 : locked ? 0.75 : 1,
+        flex: 1, position: 'relative', background: locked ? `color-mix(in srgb, ${theme.bg} 70%, ${themeAlpha.shadow(1)})` : theme.bg, opacity: hidden ? 0.4 : locked ? 0.75 : 1,
         outline: libDropTarget === `track:${trackId}` ? '0.5px dashed #6a9fd8' : undefined,
         outlineOffset: -2,
         cursor: pickMode ? 'crosshair' : undefined,
@@ -288,10 +288,10 @@ export function TrackLane({
             })()}
             {/* trim handles (hidden in blade / pen / selection-pick modes) */}
             {!pickMode && editMode !== 'blade' && editMode !== 'pen' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
-              style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : selected ? 'rgba(0,0,0,0.25)' : 'transparent' }} />}
+              style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? themeAlpha.accent(0.5) : selected ? themeAlpha.shadow(0.25) : 'transparent' }} />}
             <span className={`cc-clip-label${it.kind === 'audio' ? ' audio' : ''}`}>{it.name}</span>
             {!pickMode && editMode !== 'blade' && editMode !== 'pen' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
-              style={{ position: 'absolute', right: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? 'rgba(240,86,46,0.5)' : selected ? 'rgba(0,0,0,0.25)' : 'transparent' }} />}
+              style={{ position: 'absolute', right: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? themeAlpha.accent(0.5) : selected ? themeAlpha.shadow(0.25) : 'transparent' }} />}
           </div>
         );
       })}

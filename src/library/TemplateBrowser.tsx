@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { theme } from '../theme';
+import { theme, themeAlpha } from '../theme';
 import { tData, useT } from '../i18n/locale';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { ratioLabel } from '../editor/types';
@@ -182,7 +182,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
                   overflow: 'hidden',
                   minWidth: 0,
                   cursor: 'grab',
-                  boxShadow: isHover ? '0 8px 24px rgba(0,0,0,0.35)' : 'none',
+                  boxShadow: isHover ? `0 8px 24px ${themeAlpha.shadow(0.35)}` : 'none',
                   transition: 'border-color .18s ease, box-shadow .18s ease',
                 }}
               >
@@ -263,7 +263,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
               background: theme.panelAlt,
               border: `0.5px solid ${theme.borderLight}`,
       borderRadius: 4,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              boxShadow: `0 8px 24px ${themeAlpha.shadow(0.5)}`,
               padding: 4,
             }}
             onClick={(e) => e.stopPropagation()}

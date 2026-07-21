@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { theme } from '../theme';
+import { theme, themeAlpha } from '../theme';
 import { Icon } from '../components/icons';
 import { clearAppToast, subscribeAppToast, type AppToast } from './appToast';
 
@@ -40,7 +40,7 @@ export function AppToastHost() {
         borderRadius: 4,
         fontSize: 12.5,
         lineHeight: 1.35,
-        boxShadow: '0 8px 28px rgba(0,0,0,0.35)',
+        boxShadow: `0 8px 28px ${themeAlpha.shadow(0.35)}`,
         background: toast.error ? theme.accent : theme.panelAlt,
         color: toast.error ? theme.onAccent : theme.text,
         border: `0.5px solid ${theme.border}`,

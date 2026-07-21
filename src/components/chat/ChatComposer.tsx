@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
-import { theme } from '../../theme';
+import { theme, themeAlpha } from '../../theme';
 import { getLocale, useT } from '../../i18n/locale';
 import type { AgentReference } from '../../agent/context';
 import { isSelectionRefKind } from '../../agent/selection-refs';
@@ -108,7 +108,7 @@ function Popover({ children, onClose, w, anchor }: {
         position: 'fixed', left: box.left, bottom: box.bottom, zIndex: 81,
         minWidth: w ?? 220, maxWidth: 300, maxHeight: Math.min(280, window.innerHeight - box.bottom - 16),
         overflowY: 'auto', background: theme.panelAlt, border: `0.5px solid ${theme.borderLight}`,
-    borderRadius: 6, boxShadow: '0 12px 40px rgba(0,0,0,0.5)', padding: 6,
+    borderRadius: 6, boxShadow: `0 12px 40px ${themeAlpha.shadow(0.5)}`, padding: 6,
       }}>
         {children}
       </div>
