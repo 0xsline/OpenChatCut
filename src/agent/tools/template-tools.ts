@@ -91,12 +91,39 @@ function reIdItems(items: TimelineItem[], offsetFrames: number): { items: Timeli
   return { items: out, map };
 }
 
+interface TransitionRemapOptions {
+  scale?: number;
+  track?: (id: TrackId) => TrackId;
+  items?: TimelineItem[];
+}
+
 /** 按新片段 id 重连过渡;引用了被丢弃片段的过渡直接丢掉(不留悬空引用)。 */
-function remapTransitions(source: Timeline['transitions'], map: Map<string, string>): NonNullable<Timeline['transitions']> {
+function remapTransitions(
+  source: Timeline['transitions'],
+  map: Map<string, string>,
+  options: TransitionRemapOptions = {},
+): NonNullable<Timeline['transitions']> {
+  const items = new Map((options.items ?? []).map((item) => [item.id, item]));
+  const scale = options.scale ?? 1;
   return (source ?? []).flatMap((tr) => {
     const outgoing = map.get(tr.outgoingItemId);
     const incoming = map.get(tr.incomingItemId);
-    return outgoing && incoming ? [{ ...tr, id: uid('tr'), outgoingItemId: outgoing, incomingItemId: incoming }] : [];
+    if (!outgoing || !incoming) return [];
+    const outgoingDuration = items.get(outgoing)?.durationInFrames ?? Number.MAX_SAFE_INTEGER;
+    const incomingDuration = items.get(incoming)?.durationInFrames ?? Number.MAX_SAFE_INTEGER;
+    const durationInFrames = Math.max(1, Math.min(
+      Math.round(tr.durationInFrames * scale),
+      outgoingDuration,
+      incomingDuration,
+    ));
+    return [{
+      ...tr,
+      id: uid('tr'),
+      durationInFrames,
+      outgoingItemId: outgoing,
+      incomingItemId: incoming,
+      trackId: options.track?.(tr.trackId) ?? tr.trackId,
+    }];
   });
 }
 
@@ -113,8 +140,8 @@ function exactItems(
   sourceTrack: TrackId | undefined,
   targetTrack: TrackId | undefined,
   defaultStart: number,
-): { items: TimelineItem[]; map: Map<string, string> } {
-  if (!items.length) return { items: [], map: new Map() };
+): { items: TimelineItem[]; map: Map<string, string>; scale: number } {
+  if (!items.length) return { items: [], map: new Map(), scale: 1 };
   const sourceStart = items.reduce((min, item) => Math.min(min, item.startFrame), Infinity);
   const sourceEnd = items.reduce((max, item) => Math.max(max, item.startFrame + item.durationInFrames), sourceStart + 1);
   const sourceDuration = Math.max(1, sourceEnd - sourceStart);
@@ -126,15 +153,47 @@ function exactItems(
     const start = startFrame + Math.round((item.startFrame - sourceStart) * scale);
     const end = startFrame + Math.round((item.startFrame + item.durationInFrames - sourceStart) * scale);
     map.set(item.id, id);
+    const durationInFrames = Math.max(1, end - start);
+    const maxLocalFrame = Math.max(0, durationInFrames - 1);
+    const scaleFrame = (frame: number) => Math.min(maxLocalFrame, Math.max(0, Math.round(frame * scale)));
+    const keyframes = item.keyframes
+      ? Object.fromEntries(Object.entries(item.keyframes).map(([prop, frames]) => [
+          prop,
+          frames?.map((keyframe) => ({ ...keyframe, frame: scaleFrame(keyframe.frame) })),
+        ])) as TimelineItem['keyframes']
+      : undefined;
+    const zoom = item.zoom
+      ? {
+          ...item.zoom,
+          easeInFrames: item.zoom.easeInFrames == null ? undefined : scaleFrame(item.zoom.easeInFrames),
+          easeOutFrames: item.zoom.easeOutFrames == null ? undefined : scaleFrame(item.zoom.easeOutFrames),
+          reframeCurve: item.zoom.reframeCurve
+            ? {
+                ...item.zoom.reframeCurve,
+                keyframes: item.zoom.reframeCurve.keyframes.map((keyframe) => ({
+                  ...keyframe,
+                  frame: scaleFrame(keyframe.frame),
+                })),
+              }
+            : undefined,
+        }
+      : undefined;
     return {
       ...item,
       id,
       track: sourceTrack && targetTrack && item.track === sourceTrack ? targetTrack : item.track,
       startFrame: start,
-      durationInFrames: Math.max(1, end - start),
+      durationInFrames,
+      ...(item.kind === 'video' || item.kind === 'audio'
+        ? { playbackRate: (item.playbackRate ?? 1) / scale }
+        : {}),
+      ...(item.fadeInFrames == null ? {} : { fadeInFrames: Math.min(durationInFrames, Math.max(0, Math.round(item.fadeInFrames * scale))) }),
+      ...(item.fadeOutFrames == null ? {} : { fadeOutFrames: Math.min(durationInFrames, Math.max(0, Math.round(item.fadeOutFrames * scale))) }),
+      ...(keyframes ? { keyframes } : {}),
+      ...(zoom ? { zoom } : {}),
     };
   });
-  return { items: placed, map };
+  return { items: placed, map, scale };
 }
 
 export function applyPlacement(active: Timeline, tplActive: Timeline, keptItems: TimelineItem[], placement: TemplatePlacement): Timeline {
@@ -161,7 +220,7 @@ export function applyPlacement(active: Timeline, tplActive: Timeline, keptItems:
     if (placement.targetTrackId && !targetTrack) {
       throw new Error(`target track "${placement.targetTrackId}" not found or has the wrong kind`);
     }
-    const { items, map } = exactItems(keptItems, placement, sourceTrack, targetTrack ?? undefined, end);
+    const { items, map, scale } = exactItems(keptItems, placement, sourceTrack, targetTrack ?? undefined, end);
     const remapTrack = (id: TrackId): TrackId => sourceTrack && targetTrack && id === sourceTrack ? targetTrack : id;
     const tracks = { ...(active.tracks ?? {}) };
     for (const [id, flags] of Object.entries(tplActive.tracks ?? {})) {
@@ -178,7 +237,10 @@ export function applyPlacement(active: Timeline, tplActive: Timeline, keptItems:
       items: [...active.items, ...items],
       tracks,
       trackOrder: order,
-      transitions: [...(active.transitions ?? []), ...remapTransitions(tplActive.transitions ?? [], map)],
+      transitions: [
+        ...(active.transitions ?? []),
+        ...remapTransitions(tplActive.transitions ?? [], map, { scale, track: remapTrack, items }),
+      ],
     };
   }
   const { items, map } = reIdItems(keptItems, end);
