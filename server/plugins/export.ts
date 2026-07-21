@@ -19,8 +19,12 @@ import {
 } from './export-plan.ts';
 import {
   acquireExportPermit,
+  cleanupStaleExportFiles,
+  EXPORT_JOB_RETENTION_MS,
+  exportJobFilename,
   exportOutputSize,
   retimeFps,
+  unlinkWithRetry,
   withExportPermit,
 } from './export-runtime.ts';
 import {
@@ -139,6 +143,19 @@ export function exportPlugin(): Plugin {
     configureServer(server) {
       // 渲染 bundle 的 /media/uploads symlink 跟随 MEDIA_DIR(自定义素材目录也能渲染)
       setUploadsDirProvider(uploadDir);
+      const cleanStaleExports = () => cleanupStaleExportFiles(uploadDir(), {
+          onError: (path, error) => server.config.logger.warn(
+            `[export] failed to clean stale artifact ${path}: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        }).then((removed) => {
+          if (removed > 0) server.config.logger.info(`[export] removed ${removed} stale export artifact(s)`);
+        }).catch((error) => {
+          server.config.logger.warn(`[export] stale artifact scan failed: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      void cleanStaleExports();
+      const cleanupTimer = setInterval(() => { void cleanStaleExports(); }, EXPORT_JOB_RETENTION_MS);
+      cleanupTimer.unref?.();
+      server.httpServer?.once('close', () => clearInterval(cleanupTimer));
 
       // POST /render-still { state, frames:[n], grid?, fps? }
       //   → { frames: [{frame, base64}], gridBase64?, renderedBy: 'remotion' }
@@ -255,7 +272,7 @@ export function exportPlugin(): Plugin {
       //   POST /export/job     → 入队渲染，立即返回 { renderId }（真正的渲染在后台队列跑）。
       //   GET  /export/job/:id → 返回 job 快照（status/progress/result/error），未知 → 404。
       // 必须注册在 /export 之前：connect 前缀匹配下 '/export' 也会命中 '/export/job'，先注册先执行。
-      // 渲染产物落 uploadDir()/<uuid>.<ext>（默认 public/media/uploads），浏览器完成后按 result.path 直接取。
+      // 渲染产物使用专用前缀落入 uploadDir()，浏览器完成后按 result.path 直接取。
       server.middlewares.use('/export/job', async (req, res) => {
         const path = (req.url ?? '/').split('?')[0];
         const id = path.replace(/^\/+|\/+$/g, '');
@@ -287,8 +304,9 @@ export function exportPlugin(): Plugin {
           const plan = planExport(body);
           const uuid = randomUUID();
           const outDir = uploadDir();
-          const filepath = join(outDir, `${uuid}.${plan.media.ext}`);
-          const publicPath = `/media/uploads/${uuid}.${plan.media.ext}`;
+          const filename = exportJobFilename(uuid, plan.media.ext);
+          const filepath = join(outDir, filename);
+          const publicPath = `/media/uploads/${filename}`;
           const { jobId } = createGenerationJob(
             {
               kind: 'export',
@@ -310,7 +328,7 @@ export function exportPlugin(): Plugin {
             },
             {
               acquire: acquireExportPermit,
-              cleanupResult: async () => { await unlink(filepath).catch(() => {}); },
+              cleanupResult: async () => { await unlinkWithRetry(filepath); },
             },
           );
           sendJson(res, 200, { renderId: jobId });

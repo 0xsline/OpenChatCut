@@ -16,7 +16,7 @@ import { isTerminal, isComplete, isFailed, type JobReportBase } from '../progres
 // Agent 跑在浏览器里，工具用 fetch 打 dev-server 的 /export/job 端点：
 //   POST /export/job     → { renderId }
 //   GET  /export/job/:id → { id, status, progress, result?, error? }
-// 完成后 result.path = /media/uploads/<uuid>.<ext>，即工具返回的 downloadUrl。
+// 完成后 result.path 指向 /media/uploads/ 下的临时导出文件，即工具返回的 downloadUrl。
 //
 // 接线（集成方在 tools.ts 做，本文件不碰 tools.ts）：
 //   import { EXPORT_TOOL_SCHEMAS, EXPORT_TOOL_NAMES, execExportTool } from './export-tools';

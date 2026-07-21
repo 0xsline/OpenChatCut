@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { unlink } from 'node:fs/promises';
+import { readdir, stat, unlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import { ffmpegBin } from '../media-binaries.ts';
 import {
   h264EncoderAttempts,
@@ -12,6 +13,81 @@ import { TaskLimiter, type ReleaseTaskPermit } from '../task-limiter.ts';
 const DEFAULT_MAX_ACTIVE_EXPORTS = 1;
 const MAX_ACTIVE_EXPORTS = 4;
 const FFMPEG_TIMEOUT_MS = 60 * 60_000;
+export const EXPORT_JOB_RETENTION_MS = 60 * 60_000;
+const EXPORT_JOB_FILE_PREFIX = 'openchatcut-export-job-';
+const EXPORT_JOB_EXTENSIONS = new Set(['mp4', 'webm', 'mp3', 'wav']);
+
+interface CleanupStaleExportOptions {
+  now?: number;
+  retentionMs?: number;
+  onError?: (path: string, error: unknown) => void;
+}
+
+function errorCode(error: unknown): string | undefined {
+  return error && typeof error === 'object' && 'code' in error
+    ? String((error as { code?: unknown }).code)
+    : undefined;
+}
+
+function isTemporaryExportFilename(filename: string): boolean {
+  if (!filename.startsWith(EXPORT_JOB_FILE_PREFIX)) return false;
+  const extension = filename.slice(filename.lastIndexOf('.') + 1).toLowerCase();
+  return EXPORT_JOB_EXTENSIONS.has(extension);
+}
+
+export function exportJobFilename(id: string, extension: string): string {
+  if (!/^[a-zA-Z0-9-]+$/.test(id) || !EXPORT_JOB_EXTENSIONS.has(extension)) {
+    throw new Error('invalid export job filename');
+  }
+  return `${EXPORT_JOB_FILE_PREFIX}${id}.${extension}`;
+}
+
+export async function unlinkWithRetry(path: string, attempts = 3, delayMs = 100): Promise<void> {
+  for (let attempt = 1; attempt <= Math.max(1, attempts); attempt += 1) {
+    try {
+      await unlink(path);
+      return;
+    } catch (error) {
+      const code = errorCode(error);
+      if (code === 'ENOENT') return;
+      const retryable = code === 'EBUSY' || code === 'EPERM' || code === 'EACCES';
+      if (!retryable || attempt >= attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+    }
+  }
+}
+
+/** Remove only expired async-export artifacts; ordinary user media is never matched. */
+export async function cleanupStaleExportFiles(
+  directory: string,
+  options: CleanupStaleExportOptions = {},
+): Promise<number> {
+  const now = options.now ?? Date.now();
+  const retentionMs = Math.max(0, options.retentionMs ?? EXPORT_JOB_RETENTION_MS);
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return 0;
+    throw error;
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.isFile() || !isTemporaryExportFilename(entry.name)) continue;
+    const path = join(directory, entry.name);
+    try {
+      const info = await stat(path);
+      if (now - info.mtimeMs < retentionMs) continue;
+      await unlinkWithRetry(path);
+      removed += 1;
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT') continue;
+      options.onError?.(path, error);
+    }
+  }
+  return removed;
+}
 
 export function resolveMaxActiveExports(value = process.env.OPENCHATCUT_MAX_ACTIVE_EXPORTS): number {
   if (typeof value !== 'string' || !/^\d+$/.test(value.trim())) return DEFAULT_MAX_ACTIVE_EXPORTS;

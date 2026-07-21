@@ -1,6 +1,6 @@
 // 内容插件(openchatcut-plugin@1)领域类型与上限。设计:docs/plugin-system-design.md。
 // 社区 DIY 内容(MG/转场/特效/LUT/缩放)的打包分发格式。
-// 纯类型+常量,tsx 可跑(validate.check.ts 依赖)。
+// 纯类型和常量，保持 Node 验证脚本可直接执行。
 //
 // format 兼容策略:仅认 PLUGIN_FORMAT 精确字符串;未知 format 一律拒装
 // (见 validatePack)。未来 @2 需同步改 PLUGIN_FORMAT + 迁移说明,不静默兼容。

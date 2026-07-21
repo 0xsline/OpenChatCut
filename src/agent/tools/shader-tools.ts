@@ -449,7 +449,7 @@ export async function execShaderTool(name: string, args: Args, ctx: AgentContext
   const def: FxDef = { ...buildCustomFxDef(displayName, glsl, rawProps), desc: prompt.slice(0, 200) };
   try {
     // effects.ts 含 .frag?raw 导入（仅 Vite/浏览器可解析）；动态 import 让本模块在
-    // node/tsx 下（.check.ts）不被污染，注册仅发生在浏览器执行工具时。
+    // Node/tsx 验证环境不被污染，注册仅发生在浏览器执行工具时。
     const { registerCustomFx } = await import('../../gl/fx/effects');
     registerCustomFx(def);
   } catch (e) {
