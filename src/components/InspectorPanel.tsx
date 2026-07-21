@@ -177,6 +177,21 @@ interface FadePatch {
   fadeOutFrames?: number;
 }
 
+interface AutoGradeControlProps {
+  busy: boolean;
+  targetCount: number;
+  previewCount: number;
+  failedCount: number;
+  selectedPreview: {
+    filters: Required<Pick<ClipFilters, 'brightness' | 'contrast' | 'saturate'>>;
+    bitDepth: number;
+    hdr: boolean;
+  } | null;
+  onAnalyze: () => void | Promise<void>;
+  onApply: () => void;
+  onCancel: () => void;
+}
+
 interface InspectorPanelProps {
   templates: Tpl[];
   selectedItem: TimelineItem | null;
@@ -186,6 +201,7 @@ interface InspectorPanelProps {
   onItemFadeChange: (fade: FadePatch) => void;
   onItemTransformChange: (patch: ClipTransform) => void;
   onItemFiltersChange: (patch: ClipFilters) => void;
+  autoGrade?: AutoGradeControlProps;
   onItemZoomChange: (patch: Partial<ZoomEffect> | null) => void;
   onItemEffectsChange: (effects: ClipEffect[]) => void;
   /** 变速 (0.1–8×); 预览/导出 preservePitch */
@@ -666,11 +682,56 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 // brightness / contrast / saturation / blur implemented with CSS filters.
-function FilterControl({ item, onChange }: { item: TimelineItem; onChange: (p: ClipFilters) => void }) {
+function FilterControl({ item, onChange, autoGrade }: {
+  item: TimelineItem;
+  onChange: (p: ClipFilters) => void;
+  autoGrade?: AutoGradeControlProps;
+}) {
   const t = useT();
-  const fl = item.filters ?? {};
+  const fl: ClipFilters = { ...item.filters, ...(autoGrade?.selectedPreview?.filters ?? {}) };
   return (
     <div className="cc-insp-stack">
+      {autoGrade && (
+        <div className={`cc-auto-grade${autoGrade.previewCount ? ' previewing' : ''}`}>
+          <div className="cc-auto-grade-head">
+            <div>
+              <strong>{t('自动校色')}</strong>
+              <span>{t('保守型技术修正')}</span>
+            </div>
+            <button
+              type="button"
+              className="cc-insp-btn"
+              disabled={autoGrade.busy || autoGrade.targetCount === 0}
+              onClick={() => void autoGrade.onAnalyze()}
+            >
+              {autoGrade.busy ? t('分析中…') : t('分析选中片段')}
+            </button>
+          </div>
+          <div className="cc-auto-grade-note">
+            {autoGrade.targetCount === 0
+              ? t('请选择已导入媒体池的视频、图片或 GIF 片段')
+              : t('本机抽样分析，仅做小幅亮度、对比和饱和度修正，不添加创意 LUT。')}
+          </div>
+          {autoGrade.previewCount > 0 && (
+            <div className="cc-auto-grade-result">
+              <div>
+                <b>{t('预览中 · {n} 个片段', { n: autoGrade.previewCount })}</b>
+                {autoGrade.failedCount > 0 && <span>{t(' · {n} 个失败', { n: autoGrade.failedCount })}</span>}
+                {autoGrade.selectedPreview && (
+                  <span>
+                    {` · ${autoGrade.selectedPreview.bitDepth}-bit${autoGrade.selectedPreview.hdr ? ' HDR' : ' SDR'}`}
+                    {` · ${Math.round(autoGrade.selectedPreview.filters.brightness * 100)}% / ${Math.round(autoGrade.selectedPreview.filters.contrast * 100)}% / ${Math.round(autoGrade.selectedPreview.filters.saturate * 100)}%`}
+                  </span>
+                )}
+              </div>
+              <div className="cc-insp-actions">
+                <button type="button" className="cc-insp-btn primary" onClick={autoGrade.onApply}>{t('应用校色')}</button>
+                <button type="button" className="cc-insp-btn" onClick={autoGrade.onCancel}>{t('取消预览')}</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       <SliderRow label={t('亮度')} val={fl.brightness ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.brightness ?? 1) * 100)}%`} onChange={(v) => onChange({ brightness: v })} />
       <SliderRow label={t('对比')} val={fl.contrast ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.contrast ?? 1) * 100)}%`} onChange={(v) => onChange({ contrast: v })} />
       <SliderRow label={t('饱和')} val={fl.saturate ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.saturate ?? 1) * 100)}%`} onChange={(v) => onChange({ saturate: v })} />
@@ -754,7 +815,7 @@ function EffectsControl({ item, onChange }: { item: TimelineItem; onChange: (eff
 
 // Property editor for the selected timeline item (sits under the preview).
 // Collapsible so it doesn't crowd the preview when you don't need it.
-export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, onItemZoomChange, onItemEffectsChange, onItemSpeedChange, onNormalizeLoudness, onIsolateVoice, getPlayhead, onSetReframeKeyframe, onRemoveReframeKeyframe, onSetItemKeyframe, onRemoveItemKeyframe, onSeek, transition, onAddTransition, onSetTransition, onRemoveTransition }: InspectorPanelProps) {
+export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, autoGrade, onItemZoomChange, onItemEffectsChange, onItemSpeedChange, onNormalizeLoudness, onIsolateVoice, getPlayhead, onSetReframeKeyframe, onRemoveReframeKeyframe, onSetItemKeyframe, onRemoveItemKeyframe, onSeek, transition, onAddTransition, onSetTransition, onRemoveTransition }: InspectorPanelProps) {
   const t = useT();
   const [collapsed, setCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const schema = selectedItem
@@ -819,7 +880,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
               remove: onRemoveItemKeyframe,
               seekLocal: (frame) => onSeek(selectedItem.startFrame + frame),
             }} /></>}
-            {isVisual && <><SectionLabel>{t('滤镜')}</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} /></>}
+            {isVisual && <><SectionLabel>{t('滤镜')}</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} autoGrade={autoGrade} /></>}
             {/* GIF 不进 GL 管线(渲染端只纹理化 video/image),不提供特效入口;历史遗留可在片段右键移除 */}
             {(selectedItem.kind === 'video' || selectedItem.kind === 'image') && <><SectionLabel>{t('特效')}</SectionLabel><EffectsControl item={selectedItem} onChange={onItemEffectsChange} /></>}
             {isVisual && <><SectionLabel>{t('缩放')}</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} getLocalFrame={() => Math.max(0, Math.min(selectedItem.durationInFrames - 1, getPlayhead() - selectedItem.startFrame))} fps={fps} onSetKeyframe={onSetReframeKeyframe} onRemoveKeyframe={onRemoveReframeKeyframe} /></>}
