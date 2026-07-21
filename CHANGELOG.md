@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / [未发布]
 
+## [0.1.2] - 2026-07-21
+
 ### Added / 新增
 
 - Added WebCodecs-accelerated browser video export with live progress, cancellation, and automatic fallback to the compatible server renderer.
@@ -80,6 +82,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Added Electron desktop packaging for macOS, Windows, and Linux.  
   提供 macOS、Windows 与 Linux 的 Electron 桌面端打包能力。
 
-[Unreleased]: https://github.com/0xsline/OpenChatCut/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/0xsline/OpenChatCut/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/0xsline/OpenChatCut/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/0xsline/OpenChatCut/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/0xsline/OpenChatCut/releases/tag/v0.1.0
