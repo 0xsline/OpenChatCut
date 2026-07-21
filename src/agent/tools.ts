@@ -8,6 +8,7 @@ import { TRANSCRIPT_TOOL_SCHEMAS, TRANSCRIPT_TOOL_NAMES, execTranscriptTool } fr
 import { TIMELINE_TOOL_SCHEMAS, TIMELINE_TOOL_NAMES, execTimelineTool } from './tools/timeline-tools';
 import { SCRIPT_TOOL_SCHEMAS, SCRIPT_TOOL_NAMES, execScriptTool } from './tools/script-tools';
 import { FRAMES_TOOL_SCHEMAS, FRAMES_TOOL_NAMES, execFramesTool } from './tools/frames-tool';
+import { SCENE_DETECTION_TOOL_SCHEMAS, SCENE_DETECTION_TOOL_NAMES, execSceneDetectionTool } from './tools/scene-detection-tools';
 import { GENERATE_TOOL_SCHEMAS, GENERATE_TOOL_NAMES, execGenerateTool } from './tools/generate-tools';
 import { EFFECT_TOOL_SCHEMAS, EFFECT_TOOL_NAMES, execEffectTool } from './tools/effect-tools';
 import { LIBRARY_TOOL_SCHEMAS, LIBRARY_TOOL_NAMES, execLibraryTool } from './tools/library-tools';
@@ -228,6 +229,8 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...SCRIPT_TOOL_SCHEMAS,
   // multimodal self-check (view_timeline_frames — agent 渲帧自检)
   ...FRAMES_TOOL_SCHEMAS,
+  // 本地 FFmpeg 场景检测：报告切点，或原子生成 markers / 批量切片。
+  ...SCENE_DETECTION_TOOL_SCHEMAS,
   // AI 生成套件（GPT 主攻，定义在 generate-tools.ts：submit_image/video/voice/music/sound）
   // track_progress schema extended to also accept target=transcription (上传即转写 readiness).
   ...withProgressTargets(GENERATE_TOOL_SCHEMAS),
@@ -379,6 +382,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (MEDIA_POOL_TOOL_NAMES.has(name)) return execMediaPoolTool(name, args, ctx);
   if (SCRIPT_TOOL_NAMES.has(name)) return execScriptTool(name, args, ctx);
   if (FRAMES_TOOL_NAMES.has(name)) return execFramesTool(name, args, ctx);
+  if (SCENE_DETECTION_TOOL_NAMES.has(name)) return execSceneDetectionTool(name, args, ctx);
   // track_progress target=transcription → Claude-owned handler (readiness of 上传即转写
   // ASR); upload → file reachability; visual-analysis → contact-sheet warm jobs;
   // target omitted/generation falls through to grok's execGenerateTool below.

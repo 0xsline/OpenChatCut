@@ -13,7 +13,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "node remotion/performance.verify.mjs && tsx server/media-acceleration.verify.ts && tsx server/plugins/generation-jobs.verify.ts && tsx server/plugins/export-runtime.verify.ts && tsx server/plugins/export-params.verify.ts && tsx src/agent/ai-sdk.verify.ts && tsx server/llm-proxy.verify.ts && tsx server/external-agent/broker.check.ts && tsx server/plugins/project-store.verify.ts && tsx server/plugins/extension-store.verify.ts && tsx server/plugins/normalize-media.verify.ts && tsx src/persist/projectStore.verify.ts",
+    "test": "node remotion/performance.verify.mjs && tsx server/media-acceleration.verify.ts && tsx server/plugins/scene-detection.verify.ts && tsx src/agent/tools/scene-detection-tools.check.ts && tsx server/plugins/generation-jobs.verify.ts && tsx server/plugins/export-runtime.verify.ts && tsx server/plugins/export-params.verify.ts && tsx src/agent/ai-sdk.verify.ts && tsx server/llm-proxy.verify.ts && tsx server/external-agent/broker.check.ts && tsx server/plugins/project-store.verify.ts && tsx server/plugins/extension-store.verify.ts && tsx server/plugins/normalize-media.verify.ts && tsx src/persist/projectStore.verify.ts",
     "lint": "oxlint",
     "preview": "vite preview",
     "desktop:build:main": "esbuild desktop/main.ts --bundle --platform=node --format=esm --packages=external --outfile=desktop-dist/main.mjs && esbuild desktop/preload.ts --bundle --platform=node --format=cjs --packages=external --outfile=desktop-dist/preload.cjs",
