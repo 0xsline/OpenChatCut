@@ -310,16 +310,24 @@ export async function loadProject(id: string, options?: ProjectMigrationOptions)
 }
 
 /** Save a project's document (all timelines) and bump its index entry's updatedAt. */
-export async function saveProject(id: string, doc: ProjectDoc): Promise<void> {
+export async function saveProject(
+  id: string,
+  doc: ProjectDoc,
+): Promise<{ saved: boolean; indexUpdated: boolean }> {
   try {
     await idbSet(projectKey(id), doc);
+  } catch {
+    return { saved: false, indexUpdated: false };
+  }
+  try {
     const index = await readIndex();
     const entry = index.find((m) => m.id === id);
     if (entry) {
       await idbSet(INDEX_KEY, index.map((m) => (m.id === id ? { ...m, updatedAt: now() } : m)));
     }
+    return { saved: true, indexUpdated: true };
   } catch {
-    /* ignore persist failures; the session still works in-memory */
+    return { saved: true, indexUpdated: false };
   }
 }
 

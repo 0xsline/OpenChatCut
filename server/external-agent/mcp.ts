@@ -27,6 +27,7 @@ const CONTROL_TOOLS: Tool[] = [
     name: 'openchatcut_status',
     description: 'Show connected OpenChatCut editors and the current MCP capability status.',
     inputSchema: { type: 'object', properties: {} },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'list_projects',
@@ -38,6 +39,7 @@ const CONTROL_TOOLS: Tool[] = [
         editorBaseUrl: { type: 'string' },
       },
     },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'create_project',
@@ -53,6 +55,7 @@ const CONTROL_TOOLS: Tool[] = [
         editorBaseUrl: { type: 'string' },
       },
     },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
     name: 'target_project',
@@ -62,6 +65,7 @@ const CONTROL_TOOLS: Tool[] = [
       properties: { projectId: { type: 'string' }, editorBaseUrl: { type: 'string' } },
       required: ['projectId'],
     },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'get_editor_url',
@@ -70,6 +74,7 @@ const CONTROL_TOOLS: Tool[] = [
       type: 'object',
       properties: { projectId: { type: 'string' }, editorBaseUrl: { type: 'string' } },
     },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
 ];
 
@@ -85,6 +90,7 @@ export function mcpTools(): Tool[] {
     .map((tool): Tool => ({
       name: tool.name,
       description: tool.description,
+      annotations: tool.annotations,
       inputSchema: {
         ...tool.input_schema,
         properties: {
@@ -147,7 +153,15 @@ async function callTool(name: string, rawArgs: unknown, baseUrl: string): Promis
 function makeServer(baseUrl: string): Server {
   const server = new Server(
     { name: 'openchatcut', version: '1.0.0' },
-    { capabilities: { tools: {} } },
+    {
+      capabilities: { tools: {} },
+      instructions: [
+        'OpenChatCut project edits are session-scoped.',
+        'Call begin_edit_session first, then pass its editSessionId to every editor tool.',
+        'Call review_edit_session when the draft is ready.',
+        'The user approves or rejects inside the OpenChatCut project UI; poll get_edit_session and do not claim success until status is applied.',
+      ].join(' '),
+    },
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: mcpTools() }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {

@@ -233,6 +233,16 @@ http://localhost:5199/api/external-mcp/mcp
 
 The repository's root `.mcp.json` already contains the local connection. Before using timeline tools, run OpenChatCut and open the target project. Project listing, creation, and navigation tools do not require the editor to remain open.
 
+Codex app/CLI and Claude Code use the same session workflow:
+
+1. Call `begin_edit_session` and keep the returned `editSessionId`.
+2. Pass that id to every project read/edit tool. Changes are applied only to an isolated draft.
+3. Call `review_edit_session` when the draft is ready.
+4. Review, preview, select, and approve or reject the proposal inside the open OpenChatCut project. The client can poll `get_edit_session` for `applied`, `rejected`, or `discarded` status.
+
+Approval in Codex or Claude controls whether the client may call a tool; approval in OpenChatCut controls whether the staged timeline edit is committed. An approved proposal is committed atomically as one undo step.
+Only draft-safe project read/edit tools are exposed in these sessions. Generation, export, project deletion, and other immediate side-effect tools stay unavailable because a rejected proposal could not roll them back.
+
 ### Codex
 
 Add the following to your Codex configuration:
@@ -252,12 +262,13 @@ claude mcp add --transport http openchatcut \
 You can then describe an editing task directly to the agent:
 
 ```text
-Read the current project. Add a scratch sound effect at 8 seconds on the
-second audio track, add a glitch transition between the adjacent video clips,
-inspect the frames at 1, 6, and 11 seconds, then export a vertical MP4.
+Start an OpenChatCut edit session. Read the draft, add a scratch sound effect
+at 8 seconds on the second audio track, and add a glitch transition between
+the adjacent video clips. Submit the draft for review and wait for the user to
+approve it in OpenChatCut before reporting that the edit was applied.
 ```
 
-External agents invoke the same internal editing tools and `EditorCore` commands as the editor itself. There are no separate project formats that can drift apart.
+External agents invoke the same internal editing tools and `EditorCore` commands as the editor itself. There are no separate project formats that can drift apart, and the live timeline is not changed while an external draft is being prepared.
 
 ### Protecting MCP access
 

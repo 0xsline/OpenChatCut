@@ -3,6 +3,12 @@ import { randomUUID } from 'node:crypto';
 export interface ExternalToolSchema {
   name: string;
   description?: string;
+  annotations?: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    openWorldHint?: boolean;
+  };
   input_schema: {
     type: 'object';
     properties?: Record<string, unknown>;

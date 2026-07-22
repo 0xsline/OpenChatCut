@@ -178,4 +178,5 @@ export default {
   '工程已在提案生成后发生变化：直接应用可能落错位置。': 'The project changed after this proposal was generated — applying as-is may land edits in the wrong place.',
   '仍然应用': 'Apply anyway',
   '重新提案': 'Re-propose',
+  '外部 Agent：{message}': 'External agent: {message}',
 } as Record<string, string>;

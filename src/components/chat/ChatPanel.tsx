@@ -5,6 +5,8 @@ import type { AgentContext } from '../../agent/context';
 import type { MediaAsset, TimelineState } from '../../editor/types';
 import { kindOf } from '../../media/upload';
 import { useAgent } from '../../agent/useAgent';
+import { useExternalAgentBridge } from '../../agent/useExternalAgentBridge';
+import { ExternalProposalCard } from './ExternalProposalCard';
 import { thinkingPhrase } from './thinkingPhrases';
 import { onSelectionRef, refPromptToken, setSelectionRefMode } from '../../agent/selection-refs';
 import { shouldBlockAutoApply } from '../../agent/skills/skillGuard';
@@ -77,6 +79,7 @@ const GUARD_SKILL_LABELS = {
 export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPreviewState, seed, creativeMode, onCreativeModeChange, onImportMedia }: ChatPanelProps) {
   const t = useT();
   const { messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal, clearHistory, proposalStale, forceApplyProposal, reProposeStale, pendingGuard, liveTool } = useAgent(ctx, projectId);
+  const externalProposal = useExternalAgentBridge(ctx, projectId);
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<ChatMode>('agent');
   const [autoApply, setAutoApply] = useState(false);
@@ -297,6 +300,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
             stale={proposalStale} onForceApply={forceApplyProposal} onRePropose={reProposeStale}
             onPreview={(on) => onPreviewState(on ? proposal.resultState : null)} />
         )}
+        <ExternalProposalCard external={externalProposal} onPreviewState={onPreviewState} />
         {pendingGuard && (
           <div style={{ margin: '10px 0', padding: '10px 12px', border: `0.5px solid ${theme.border}`, borderRadius: 4, background: theme.panelAlt }}>
             <div style={{ fontSize: 12.5, color: theme.text, marginBottom: 8, lineHeight: 1.5 }}>

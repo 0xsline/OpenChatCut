@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentContext } from './context';
-import { executeTool, TOOL_SCHEMAS } from './tools';
-import { saveProject } from '../persist/projectStore';
+import { ExternalBridgeRuntime, type ExternalProposalSnapshot } from './external-bridge-runtime';
+import { externalToolSchemas } from './external-tool-schemas';
+import type { Proposal } from './proposal';
+import { loadExternalProposal } from '../persist/externalProposalStore';
 
 interface ExternalCall {
   id: string;
@@ -9,8 +11,17 @@ interface ExternalCall {
   arguments: Record<string, unknown>;
 }
 
-const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+export interface ExternalProposalController {
+  proposal: Proposal | null;
+  proposalStale: boolean;
+  error: string | null;
+  applyProposal: (selected: Set<number>) => void;
+  forceApplyProposal: (selected: Set<number>) => void;
+  rejectProposal: () => void;
+}
+
 const retryDelay = () => new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
 
 async function sendResult(id: string, ok: boolean, value: unknown): Promise<void> {
   await fetch('/api/external-agent/result', {
@@ -20,56 +31,99 @@ async function sendResult(id: string, ok: boolean, value: unknown): Promise<void
   });
 }
 
-async function executeExternalCall(
-  call: ExternalCall,
-  ctx: AgentContext,
-  projectId: string,
-): Promise<void> {
-  if (!TOOL_SCHEMAS.some((tool) => tool.name === call.name)) {
-    await sendResult(call.id, false, `unknown OpenChatCut tool ${call.name}`);
-    return;
-  }
+async function executeCall(call: ExternalCall, runtime: ExternalBridgeRuntime): Promise<void> {
   try {
-    const result = await executeTool(call.name, call.arguments, ctx);
-    await nextPaint();
-    await saveProject(projectId, ctx.getDoc());
-    await sendResult(call.id, true, result);
+    await sendResult(call.id, true, await runtime.execute(call.name, call.arguments));
   } catch (error) {
     await sendResult(call.id, false, error instanceof Error ? error.message : String(error));
   }
 }
 
-export function useExternalAgentBridge(ctx: AgentContext, projectId: string): void {
-  const ctxRef = useRef(ctx);
-  ctxRef.current = ctx;
-  useEffect(() => {
-    const controller = new AbortController();
-    const editorId = crypto.randomUUID();
-    const run = async () => {
-      while (!controller.signal.aborted) {
-        try {
-          const registered = await fetch('/api/external-agent/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectId, editorId, tools: TOOL_SCHEMAS }),
-            signal: controller.signal,
-          });
-          if (!registered.ok) throw new Error(`registration failed: HTTP ${registered.status}`);
-          while (!controller.signal.aborted) {
-            const response = await fetch(
-              `/api/external-agent/poll?projectId=${encodeURIComponent(projectId)}&editorId=${encodeURIComponent(editorId)}`,
-              { signal: controller.signal },
-            );
-            if (response.status === 204) continue;
-            if (!response.ok) throw new Error(`poll failed: HTTP ${response.status}`);
-            await executeExternalCall(await response.json() as ExternalCall, ctxRef.current, projectId);
-          }
-        } catch {
-          if (!controller.signal.aborted) await retryDelay();
-        }
+async function pollEditor(
+  projectId: string,
+  editorId: string,
+  runtime: ExternalBridgeRuntime,
+  signal: AbortSignal,
+): Promise<void> {
+  while (!signal.aborted) {
+    const response = await fetch(
+      `/api/external-agent/poll?projectId=${encodeURIComponent(projectId)}&editorId=${encodeURIComponent(editorId)}`,
+      { signal },
+    );
+    if (response.status === 204) continue;
+    if (!response.ok) throw new Error(`poll failed: HTTP ${response.status}`);
+    await executeCall(await response.json() as ExternalCall, runtime);
+  }
+}
+
+async function runBridge(
+  projectId: string,
+  runtime: ExternalBridgeRuntime,
+  signal: AbortSignal,
+  onError: (message: string | null) => void,
+): Promise<void> {
+  const editorId = crypto.randomUUID();
+  while (!signal.aborted) {
+    try {
+      const response = await fetch('/api/external-agent/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, editorId, tools: externalToolSchemas() }),
+        signal,
+      });
+      if (!response.ok) throw new Error(`registration failed: HTTP ${response.status}`);
+      onError(null);
+      await pollEditor(projectId, editorId, runtime, signal);
+    } catch (error) {
+      if (!signal.aborted) {
+        onError(errorMessage(error));
+        await retryDelay();
       }
-    };
-    void run();
-    return () => controller.abort();
+    }
+  }
+}
+
+export function useExternalAgentBridge(ctx: AgentContext, projectId: string): ExternalProposalController {
+  const [snapshot, setSnapshot] = useState<ExternalProposalSnapshot>({ proposal: null, stale: false });
+  const [error, setError] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const ctxRef = useRef(ctx);
+  const runtimeRef = useRef<ExternalBridgeRuntime | null>(null);
+  ctxRef.current = ctx;
+
+  useEffect(() => {
+    let alive = true;
+    setHydrated(false);
+    const runtime = new ExternalBridgeRuntime(projectId, () => ctxRef.current, setSnapshot);
+    runtimeRef.current = runtime;
+    void loadExternalProposal(projectId).then((pending) => {
+      if (!alive) return;
+      runtime.hydrate(pending);
+      setHydrated(true);
+    }).catch((loadError) => {
+      if (!alive) return;
+      runtime.hydrate(null);
+      setError(errorMessage(loadError));
+      setHydrated(true);
+    });
+    return () => { alive = false; runtimeRef.current = null; };
   }, [projectId]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!hydrated || !runtime) return undefined;
+    const controller = new AbortController();
+    void runBridge(projectId, runtime, controller.signal, setError);
+    return () => controller.abort();
+  }, [hydrated, projectId]);
+
+  const runAction = useCallback((action: Promise<void> | undefined) => {
+    if (!action) return;
+    setError(null);
+    void action.catch((actionError) => setError(errorMessage(actionError)));
+  }, []);
+  const applyProposal = useCallback((selected: Set<number>) => runAction(runtimeRef.current?.apply(selected)), [runAction]);
+  const forceApplyProposal = useCallback((selected: Set<number>) => runAction(runtimeRef.current?.apply(selected, true)), [runAction]);
+  const rejectProposal = useCallback(() => runAction(runtimeRef.current?.reject()), [runAction]);
+  return { proposal: snapshot.proposal, proposalStale: snapshot.stale, error, applyProposal, forceApplyProposal, rejectProposal };
 }

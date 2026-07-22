@@ -233,6 +233,16 @@ http://localhost:5199/api/external-mcp/mcp
 
 仓库根目录的 `.mcp.json` 已包含本地连接。使用时间线工具前，先运行 OpenChatCut 并打开目标工程；工程列表、创建和定位工具不要求编辑器保持打开。
 
+Codex App/CLI 与 Claude Code 使用同一套会话流程：
+
+1. 调用 `begin_edit_session`，保存返回的 `editSessionId`。
+2. 后续每个工程读取/编辑工具都传入该 id；所有修改只进入隔离草稿。
+3. 草稿完成后调用 `review_edit_session`。
+4. 在已打开的 OpenChatCut 工程内审阅、预览、勾选并应用或拒绝提案；客户端可轮询 `get_edit_session` 获取 `applied`、`rejected` 或 `discarded` 状态。
+
+Codex 或 Claude 内的授权决定客户端能否调用工具；OpenChatCut 工程内的审批决定草稿能否写入正式时间线。应用后整份提案只产生一个撤销节点。
+会话只暴露可安全进入草稿的工程读取/编辑工具。生成、导出、删除工程及其他会立即产生副作用的工具不在会话中开放，因为拒绝提案时无法回滚这些副作用。
+
 ### Codex
 
 在 Codex 配置中加入：
@@ -252,11 +262,12 @@ claude mcp add --transport http openchatcut \
 然后可以直接对 Agent 描述编辑任务：
 
 ```text
-读取当前工程，在第二条音频轨的 8 秒处添加划盘音效，
-给相邻视频添加故障转场，检查 1、6、11 秒三帧后导出竖屏 MP4。
+启动一个 OpenChatCut 编辑会话，读取草稿，在第二条音频轨的 8 秒处添加划盘音效，
+并给相邻视频添加故障转场。提交草稿供审阅，等待我在 OpenChatCut 内应用后，
+再报告修改已经生效。
 ```
 
-外部 Agent 调用的仍是编辑器内部同一套工具和 `EditorCore` 命令，不存在两套互相漂移的工程格式。
+外部 Agent 调用的仍是编辑器内部同一套工具和 `EditorCore` 命令，不存在两套互相漂移的工程格式；外部草稿准备期间不会修改正式时间线。
 
 ### MCP 访问保护
 

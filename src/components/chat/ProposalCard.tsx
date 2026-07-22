@@ -132,7 +132,9 @@ export function ProposalCard({ proposal, onApply, onReject, onPreview, stale, on
           <button type="button" className="cc-proposal-reject" onClick={reject}>{stale ? t('取消') : t('拒绝')}</button>
           {stale ? (
             <>
-              <button type="button" className="cc-proposal-reject" onClick={() => { onPreview(false); onRePropose?.(); }}>{t('重新提案')}</button>
+              {onRePropose && (
+                <button type="button" className="cc-proposal-reject" onClick={() => { onPreview(false); onRePropose(); }}>{t('重新提案')}</button>
+              )}
               <button type="button" className="cc-proposal-apply" disabled={noneOn}
                 onClick={() => { onPreview(false); onForceApply?.(selected); }}>
                 {t('仍然应用')}

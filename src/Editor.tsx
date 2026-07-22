@@ -37,7 +37,6 @@ import type { TimelineShortcutApi } from './shortcuts/timelineApi';
 import { ShortcutsDialog } from './shortcuts/ShortcutsDialog';
 import { AppToastHost } from './ui/AppToastHost';
 import { showAppToast } from './ui/appToast';
-import { useExternalAgentBridge } from './agent/useExternalAgentBridge';
 import { isolateVoiceOnSrc, strengthFromAudioFxId } from './audio/isolateVoice';
 import { analyzeClipLoudness, gainForTarget } from './audio/loudness';
 import { analyzeAutoGrade, type AutoGradeResponse } from './color/autoGrade';
@@ -140,8 +139,6 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     }),
     [commands, project.id, onRename, changeCreativeMode],
   );
-  useExternalAgentBridge(agentCtx, project.id);
-
   // a pending proposal's draft result, previewed in the player (null = committed)
   const [previewState, setPreviewState] = useState<TimelineState | null>(null);
   // Automatic color correction always previews first. Applying the complete
