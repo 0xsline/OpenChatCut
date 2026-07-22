@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { TimelineItem } from '../editor/types';
 import type { TrackingPoint, TrackingRegion } from './types';
+import { INITIAL_TRACKING_ZOOM, nextTrackingZoom } from './zoom';
 
 interface TrackingRegionPickerProps {
   item: TimelineItem;
@@ -14,18 +15,10 @@ interface TrackingRegionPickerProps {
 interface DragOrigin { x: number; y: number }
 
 const FIRST_RENDERABLE_TIME = 0.001;
-const MIN_PREVIEW_ZOOM = 1;
-const MAX_PREVIEW_ZOOM = 4;
-const PREVIEW_ZOOM_STEP = 1.12;
-
-export function nextTrackingZoom(current: number, deltaY: number): number {
-  const factor = deltaY < 0 ? PREVIEW_ZOOM_STEP : 1 / PREVIEW_ZOOM_STEP;
-  return Math.min(MAX_PREVIEW_ZOOM, Math.max(MIN_PREVIEW_ZOOM, current * factor));
-}
 
 function useTrackingZoom() {
   const pickerRef = useRef<HTMLDivElement | null>(null);
-  const [zoom, setZoom] = useState(MIN_PREVIEW_ZOOM);
+  const [zoom, setZoom] = useState(INITIAL_TRACKING_ZOOM);
   const [origin, setOrigin] = useState<DragOrigin>({ x: 0.5, y: 0.5 });
   useEffect(() => {
     const picker = pickerRef.current;

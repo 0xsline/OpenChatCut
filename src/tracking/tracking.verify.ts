@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { buildTrackingKeyframeActions } from './keyframeActions';
 import { createGrayTemplate, findBestMatch } from './templateMatch';
-import { nextTrackingZoom } from './TrackingRegionPicker';
+import { nextTrackingZoom } from './zoom';
 import type { TimelineItem, TimelineState } from '../editor/types';
 import type { TrackingResult } from './types';
 
