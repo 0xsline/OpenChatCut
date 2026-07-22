@@ -1,6 +1,6 @@
 import { CAPTION_STYLES } from '../captions/styles';
 import type { CaptionsData } from '../captions/types';
-import type { TimelineItem, TimelineState } from '../editor/types';
+import { captionTrackEntries, type TimelineItem, type TimelineState } from '../editor/types';
 import { ensureFont } from './googleFonts';
 
 const FONT_PROP_KEYS = new Set([
@@ -53,7 +53,12 @@ export function collectReferencedFonts(
 ): string[] {
   const families = new Set<string>();
   for (const item of state.items) fontsFromItem(item, families);
-  fontsFromCaptions(opts?.captions ?? state.captions, families);
+  if (opts && 'captions' in opts) fontsFromCaptions(opts.captions, families);
+  else {
+    const tracks = captionTrackEntries(state);
+    if (tracks.length) tracks.forEach((entry) => fontsFromCaptions(entry.captions, families));
+    else fontsFromCaptions(state.captions, families);
+  }
   return [...families].sort((a, b) => a.localeCompare(b));
 }
 

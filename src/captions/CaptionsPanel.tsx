@@ -14,30 +14,51 @@ interface Props {
   fps: number;
   items: TimelineItem[];
   trackOptions: TranscriptTrackOption[];
-  captions: CaptionsData | null;
-  onSetCaptions: (captions: CaptionsData | null) => void;
-  onUpdateCaptions: (patch: Partial<CaptionsData>) => void;
+  captionTracks: Array<TranscriptTrackOption & { captions: CaptionsData | null }>;
+  onSetCaptions: (captions: CaptionsData | null, track?: TrackId) => void;
+  onUpdateCaptions: (patch: Partial<CaptionsData>, track?: TrackId) => void;
 }
 
 export function CaptionsPanel(props: Props) {
-  const { playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions } = props;
+  const { playerRef, fps, items, trackOptions, captionTracks, onSetCaptions, onUpdateCaptions } = props;
+  const [captionTrack, setCaptionTrack] = useState<TrackId | null>(captionTracks[0]?.id ?? null);
+  const captions = captionTracks.find((option) => option.id === captionTrack)?.captions ?? null;
   const defaultTrack = useMemo(() => pickDefaultTrack(trackOptions, items), [trackOptions, items]);
   const [track, setTrack] = useState<TrackId | null>(defaultTrack);
   const selectable = useMemo(() => trackOptions.filter((option) => mediaOnTrack(items, option.id).length), [trackOptions, items]);
   useEffect(() => {
     if (!track || !selectable.some((option) => option.id === track)) setTrack(defaultTrack);
   }, [defaultTrack, selectable, track]);
+  useEffect(() => {
+    if (!captionTrack || !captionTracks.some((option) => option.id === captionTrack)) setCaptionTrack(captionTracks[0]?.id ?? null);
+  }, [captionTrack, captionTracks]);
   const transcribed = useMemo(() => captionClips(items, track).filter((item) => item.transcript?.length), [items, track]);
-  const translation = useCaptionTranslation(captions, items, fps, onUpdateCaptions);
+  const update = (patch: Partial<CaptionsData>) => onUpdateCaptions(patch, captionTrack ?? undefined);
+  const set = (next: CaptionsData | null) => onSetCaptions(next, captionTrack ?? undefined);
+  const translation = useCaptionTranslation(captions, items, fps, update);
   const generate = () => {
     if (!transcribed.length) return;
     const sources = transcribed.map((item) => item.id);
-    onSetCaptions({ enabled: true, template: captions?.template ?? 'black-bar', pacing: captions?.pacing ?? 'phrase', sourceItemId: sources[0]!, sources: sources.length > 1 ? sources : undefined, sourceMode: sources.length > 1 ? 'item' : undefined, bilingual: false });
+    set({ enabled: true, template: captions?.template ?? 'black-bar', pacing: captions?.pacing ?? 'phrase', sourceItemId: sources[0]!, sources: sources.length > 1 ? sources : undefined, sourceMode: sources.length > 1 ? 'item' : undefined, bilingual: false });
   };
   return (
     <div className="cc-captions-workspace">
+      <CaptionTrackBar options={captionTracks} track={captionTrack} onChange={setCaptionTrack} />
       <CaptionSourceBar options={selectable} track={track} count={transcribed.length} onChange={setTrack} />
-      <CaptionsControls standalone captions={captions} hasTranscript={transcribed.length > 0} sourceVariants={(captions?.sourceItemId ? items.find((item) => item.id === captions.sourceItemId)?.variants : undefined) ?? []} items={items} fps={fps} onSeekMs={(ms) => playerRef.current?.seekTo(msToFrame(ms, fps))} onGenerate={generate} onCreateManual={() => onSetCaptions(newManualCaptions())} getPlayheadMs={() => ((playerRef.current?.getCurrentFrame() ?? 0) / fps) * 1000} onUpdate={onUpdateCaptions} onRemove={() => onSetCaptions(null)} onTranslate={translation.run} translating={translation.running} translateError={translation.error} />
+      <CaptionsControls standalone captions={captions} hasTranscript={transcribed.length > 0} sourceVariants={(captions?.sourceItemId ? items.find((item) => item.id === captions.sourceItemId)?.variants : undefined) ?? []} items={items} fps={fps} onSeekMs={(ms) => playerRef.current?.seekTo(msToFrame(ms, fps))} onGenerate={generate} onCreateManual={() => set(newManualCaptions())} getPlayheadMs={() => ((playerRef.current?.getCurrentFrame() ?? 0) / fps) * 1000} onUpdate={update} onRemove={() => set(null)} onTranslate={translation.run} translating={translation.running} translateError={translation.error} />
+    </div>
+  );
+}
+
+function CaptionTrackBar({ options, track, onChange }: { options: Props['captionTracks']; track: TrackId | null; onChange: (track: TrackId) => void }) {
+  const t = useT();
+  return (
+    <div className="cc-captions-sourcebar">
+      <label htmlFor="cc-caption-track">{t('字幕轨道')}</label>
+      <select id="cc-caption-track" className="cc-cap-select" value={track ?? ''} disabled={!options.length} onChange={(event) => onChange(event.target.value)}>
+        {!options.length && <option value="">{t('请先新建字幕轨道')}</option>}
+        {options.map((option) => <option key={option.id} value={option.id}>{trackTitle(option)}</option>)}
+      </select>
     </div>
   );
 }

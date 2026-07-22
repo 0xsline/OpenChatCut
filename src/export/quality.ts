@@ -10,7 +10,7 @@ interface TimelineQaState {
     kind: string;
     volume?: number;
   }>;
-  tracks?: Record<string, { kind?: 'video' | 'audio' | 'caption'; hidden?: boolean; muted?: boolean } | undefined>;
+  tracks?: Record<string, { kind?: 'video' | 'audio' | 'caption'; hidden?: boolean; muted?: boolean; captions?: TimelineQaState['captions'] } | undefined>;
   captions?: {
     enabled: boolean;
     layout?: CaptionQaLayout;
@@ -124,18 +124,22 @@ export function mergeExportQaIssues(
 }
 
 function captionPlacements(state: TimelineQaState): CaptionQaLayout[] {
-  const captions = state.captions;
-  if (!captions?.enabled) return [];
-  const sources = (captions.sourceEntries ?? []).filter((source) => source.visible !== false);
   const placements: CaptionQaLayout[] = [];
-  if (!sources.length) placements.push(captions.layout ?? {});
-  for (const source of sources) {
-    const slot = captions.layoutPolicy?.mode === 'manual-slots' && source.slotId
-      ? captions.layoutPolicy.slots.find((candidate) => candidate.id === source.slotId)
-      : undefined;
-    if (slot) placements.push(slot);
-    else if (source.anchor || source.offsetXRatio !== undefined || source.offsetYRatio !== undefined) placements.push(source);
-    else placements.push(captions.layout ?? {});
+  const trackCaptions = Object.values(state.tracks ?? {})
+    .filter((track) => track?.kind === 'caption' && track.captions)
+    .map((track) => track!.captions!);
+  const captionsList = trackCaptions.length ? trackCaptions : state.captions ? [state.captions] : [];
+  for (const captions of captionsList.filter((entry) => entry.enabled)) {
+    const sources = (captions.sourceEntries ?? []).filter((source) => source.visible !== false);
+    if (!sources.length) placements.push(captions.layout ?? {});
+    for (const source of sources) {
+      const slot = captions.layoutPolicy?.mode === 'manual-slots' && source.slotId
+        ? captions.layoutPolicy.slots.find((candidate) => candidate.id === source.slotId)
+        : undefined;
+      if (slot) placements.push(slot);
+      else if (source.anchor || source.offsetXRatio !== undefined || source.offsetYRatio !== undefined) placements.push(source);
+      else placements.push(captions.layout ?? {});
+    }
   }
   const unique = new Map<string, CaptionQaLayout>();
   for (const placement of placements) {

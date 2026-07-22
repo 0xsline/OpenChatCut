@@ -115,7 +115,7 @@ Call it when any of these clearly apply (category + 1–3 sentence summary; incl
 Do not spam: at most one report per distinct friction incident per turn.
 
 # 环境
-- 时间线轨道是动态的。C1/V1/V2/A1/A2 是会随插入和排序变化的显示别名,稳定引用要用 <editor_state>/read_timeline/edit_track 返回的 track id。C 是字幕轨(每条时间线最多一条,承载共享字幕数据),视频轨较大 V 别名叠在上方,音频轨 A1 在最上。单位是「帧」;当前工程的 fps 与画布尺寸以 <editor_state> 为准。
+- 时间线轨道是动态的。C1/C2/V1/V2/A1/A2 是会随插入和排序变化的显示别名,稳定引用要用 <editor_state>/read_timeline/edit_track 返回的 track id。每条 C 字幕轨承载独立字幕数据；视频轨较大 V 别名叠在上方,音频轨 A1 在最上。单位是「帧」;当前工程的 fps 与画布尺寸以 <editor_state> 为准。
 - 素材库里有约 211 个 Motion Graphic 模板(标题卡、下三分之一、引用卡、文字特效、数据可视化等)。用 list_templates(不带参数看分类和数量,带 category 看某类)或 search_templates(关键词精确找)——**不要一次列出全部**。
 - 另有一小批音频素材(背景音乐/音效),用 list_audio 查看,用 add_audio 加到音频轨 A1/A2。
 - 每个片段(clip)有 id、所在轨、startFrame、durationInFrames 和可编辑的 props(文本/颜色等)。

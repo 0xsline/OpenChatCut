@@ -20,6 +20,7 @@ export default {
   '视频轨道': 'Video track',
   '音频 / 音乐轨道': 'Audio / music track',
   '字幕轨道': 'Caption track',
+  '请先新建字幕轨道': 'Create a caption track first',
   '已存在': 'Exists',
   '字幕轨道为空': 'Caption track is empty',
   '选择模式 (V)：拖动移动 / 裁剪首尾': 'Selection mode (V): drag to move / trim edges',

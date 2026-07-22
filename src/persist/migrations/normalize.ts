@@ -80,8 +80,13 @@ function withCaptionTrack(timeline: Timeline): Timeline {
   const existingId = timelineTrackIds(timeline).find((id) => trackKind(timeline, id) === 'caption');
   if (existingId) {
     const config = timeline.tracks?.[existingId];
-    if (config?.name !== '字幕') return timeline;
-    const { name: _legacyDefaultName, ...nextConfig } = config;
+    const { name, ...rest } = config ?? {};
+    const nextConfig = {
+      ...rest,
+      ...(name && name !== '字幕' ? { name } : {}),
+      ...(config?.captions === undefined && timeline.captions ? { captions: timeline.captions } : {}),
+    };
+    if (config?.name !== '字幕' && config?.captions !== undefined) return timeline;
     return { ...timeline, tracks: { ...timeline.tracks, [existingId]: nextConfig } };
   }
   if (!timeline.captions) return timeline;
@@ -90,7 +95,7 @@ function withCaptionTrack(timeline: Timeline): Timeline {
   return {
     ...timeline,
     trackOrder: [id, ...timelineTrackIds(timeline)],
-    tracks: { ...timeline.tracks, [id]: { kind: 'caption' } },
+    tracks: { ...timeline.tracks, [id]: { kind: 'caption', captions: timeline.captions } },
   };
 }
 

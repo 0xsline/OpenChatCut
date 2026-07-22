@@ -1,6 +1,6 @@
 import { activeTranslation, paginate } from '../captions/types';
 import { resolveCaptionWords, resolveCaptionWordIndices, applyWordOverrides } from '../captions/resolve';
-import type { TimelineState } from '../editor/types';
+import { captionsOnTrack, defaultTrackId, resolveTrackId, type TimelineState } from '../editor/types';
 
 export interface SubmitSubtitleExportArgs {
   subtitleFormat?: 'srt' | 'txt';
@@ -9,6 +9,7 @@ export interface SubmitSubtitleExportArgs {
   endFrameExclusive?: number;
   startSeconds?: number;
   endSeconds?: number;
+  captionTrackId?: string;
 }
 
 interface SubtitleResponse {
@@ -26,13 +27,18 @@ function readableText(words: Array<{ text: string }>): string {
 }
 
 export async function submitSubtitleExport(args: SubmitSubtitleExportArgs, state: TimelineState): Promise<SubtitleResponse> {
-  if (!state.captions) throw new Error('the timeline has no captions to export');
-  const words = resolveCaptionWords(state.captions, state.items, state.fps);
+  const target = args.captionTrackId
+    ? resolveTrackId(state, args.captionTrackId, 'caption')
+    : defaultTrackId(state, 'caption');
+  if (args.captionTrackId && !target) throw new Error(`caption track not found: ${args.captionTrackId}`);
+  const captions = target ? captionsOnTrack(state, target) : null;
+  if (!captions) throw new Error('the caption track has no captions to export');
+  const words = resolveCaptionWords(captions, state.items, state.fps);
   // 逐词覆盖(隐藏/换文本/强制换页)同样作用于导出的 SRT/TXT——屏幕上看到什么,
   // 导出就是什么，以保持文本一致。无覆盖时 displayWords === words，行为不变。
-  const indices = resolveCaptionWordIndices(state.captions, state.items, state.fps);
-  const { words: displayWords, breakBefore } = applyWordOverrides(words, indices, state.captions.wordOverrides);
-  const pages = paginate(displayWords, state.captions.pacing, undefined, breakBefore);
+  const indices = resolveCaptionWordIndices(captions, state.items, state.fps);
+  const { words: displayWords, breakBefore } = applyWordOverrides(words, indices, captions.wordOverrides);
+  const pages = paginate(displayWords, captions.pacing, undefined, breakBefore);
   const startMs = typeof args.startFrame === 'number' ? args.startFrame / state.fps * 1_000 : (args.startSeconds ?? 0) * 1_000;
   const endMs = typeof args.endFrameExclusive === 'number' ? args.endFrameExclusive / state.fps * 1_000 : typeof args.endSeconds === 'number' ? args.endSeconds * 1_000 : Number.POSITIVE_INFINITY;
   if (startMs < 0 || endMs <= startMs) throw new Error('invalid subtitle export range');
@@ -41,8 +47,8 @@ export async function submitSubtitleExport(args: SubmitSubtitleExportArgs, state
     const end = Math.min(page.end, endMs);
     if (end <= start) return [];
     let text = readableText(page.words);
-    if (state.captions?.bilingual && state.captions.translation) {
-      const translated = activeTranslation(state.captions.translation, (start + end) / 2);
+    if (captions.bilingual && captions.translation) {
+      const translated = activeTranslation(captions.translation, (start + end) / 2);
       if (translated?.text) text += `\n${translated.text}`;
     }
     return [{ start: start - startMs, end: end - startMs, text }];

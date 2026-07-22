@@ -2,7 +2,7 @@
 // (`projectReduce`, routing per-timeline actions to the active timeline) + the
 // undo/redo history wrapper. The command set + React hook live in store.ts.
 import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
-import { activeTimeline, DEFAULT_WATERMARK, isAudioTransition, selectedIdsOf, timelineTrackIds, trackEnd, trackKind } from './types';
+import { activeTimeline, captionsOnTrack, DEFAULT_WATERMARK, defaultTrackId, isAudioTransition, selectedIdsOf, timelineTrackIds, trackEnd, trackKind } from './types';
 import { scaleItemKeyframes, splitItemKeyframes, upsertKeyframe } from './keyframes';
 import { coerceKeyframeValue, supportsKeyframeProperty } from './keyframeRegistry';
 import type { CaptionsData } from '../captions/types';
@@ -21,6 +21,14 @@ function placeTrack(s: TimelineState, track: TrackId, kind: TrackKind, order?: n
   const sourceOrder = Math.max(0, Math.min(order ?? lane.length, lane.length));
   lane.splice(kind === 'video' ? lane.length - sourceOrder : sourceOrder, 0, track);
   return TRACK_KIND_ORDER.flatMap((entry) => groups[entry]);
+}
+
+function withTrackCaptions(s: TimelineState, captions: CaptionsData | null, track?: TrackId): TimelineState {
+  const target = track ?? defaultTrackId(s, 'caption');
+  if (!target) return { ...s, captions };
+  const current = s.tracks?.[target] ?? { kind: 'caption' as const };
+  const next = { ...s, tracks: { ...s.tracks, [target]: { ...current, captions } } };
+  return target === defaultTrackId(s, 'caption') ? { ...next, captions } : next;
 }
 
 // ── command actions (these map 1:1 to the future agent tools) ─────────────
@@ -60,8 +68,8 @@ export type Action =
   | { type: 'track.update'; track: TrackId; patch: TrackUpdate }
   | { type: 'track.delete'; tracks: TrackId[] }
   | { type: 'track.tighten'; track: TrackId }
-  | { type: 'setCaptions'; captions: CaptionsData | null }
-  | { type: 'updateCaptions'; patch: Partial<CaptionsData> }
+  | { type: 'setCaptions'; captions: CaptionsData | null; track?: TrackId }
+  | { type: 'updateCaptions'; patch: Partial<CaptionsData>; track?: TrackId }
   | { type: 'updateWatermark'; patch: Partial<Watermark> }
   | { type: 'setItemTranscript'; id: string; words: TranscriptWord[] }
   | { type: 'setItemVariants'; id: string; variants: TranscriptVariant[] }
@@ -440,8 +448,9 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
     case 'setCanvas':
       return { ...s, width: a.width, height: a.height, fit: a.fit ?? s.fit ?? 'contain' };
     case 'toggleTrack': {
-      if (a.flag === 'hidden' && trackKind(s, a.track) === 'caption' && s.captions) {
-        return { ...s, captions: { ...s.captions, enabled: !s.captions.enabled } };
+      const trackCaptions = captionsOnTrack(s, a.track);
+      if (a.flag === 'hidden' && trackKind(s, a.track) === 'caption' && trackCaptions) {
+        return withTrackCaptions(s, { ...trackCaptions, enabled: !trackCaptions.enabled }, a.track);
       }
       const cur = s.tracks?.[a.track] ?? {};
       return { ...s, tracks: { ...s.tracks, [a.track]: { ...cur, [a.flag]: !cur[a.flag] } } };
@@ -453,11 +462,15 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       return {
         ...s,
         trackOrder: placeTrack(s, a.track.id, a.track.kind, a.order),
-        tracks: { ...s.tracks, [a.track.id]: { kind: a.track.kind, name: a.track.name, ...audioConfig } },
+        tracks: { ...s.tracks, [a.track.id]: { kind: a.track.kind, name: a.track.name, ...(a.track.kind === 'caption' ? { captions: null } : {}), ...audioConfig } },
       };
     }
     case 'track.update': {
       if (!timelineTrackIds(s).includes(a.track)) return s;
+      const primaryCaption = defaultTrackId(s, 'caption');
+      if (a.patch.order !== undefined && primaryCaption && s.tracks?.[primaryCaption]?.captions === undefined && s.captions) {
+        return reduce(withTrackCaptions(s, s.captions, primaryCaption), a);
+      }
       const current = s.tracks?.[a.track] ?? { kind: trackKind(s, a.track) };
       const { order, role, audioRouting, ...rest } = a.patch;
       const next: TrackFlags = { ...current, ...rest };
@@ -481,21 +494,28 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         const kind = trackKind(s, a.track);
         trackOrder = placeTrack(s, a.track, kind, Math.round(order));
       }
-      const captions = captionHidden === undefined || !s.captions
-        ? s.captions : { ...s.captions, enabled: !captionHidden };
-      const nextState = { ...s, trackOrder, tracks: { ...s.tracks, [a.track]: next } };
-      return captions === s.captions ? nextState : { ...nextState, captions };
+      let nextState = { ...s, trackOrder, tracks: { ...s.tracks, [a.track]: next } };
+      if (order !== undefined && isCaption) {
+        const primary = defaultTrackId(nextState, 'caption');
+        nextState = { ...nextState, captions: primary ? captionsOnTrack(nextState, primary) : null };
+      }
+      const trackCaptions = captionsOnTrack(s, a.track);
+      return captionHidden === undefined || !trackCaptions
+        ? nextState
+        : withTrackCaptions(nextState, { ...trackCaptions, enabled: !captionHidden }, a.track);
     }
     case 'track.delete': {
       const remove = new Set(a.tracks);
-      const ownsCaptions = !!s.captions && [...remove].some((id) => trackKind(s, id) === 'caption');
+      const ownsCaptions = [...remove].some((id) => !!captionsOnTrack(s, id));
       if (!remove.size || ownsCaptions || s.items.some((item) => remove.has(item.track)) || (s.transitions ?? []).some((transition) => remove.has(transition.trackId))) return s;
       const ids = timelineTrackIds(s);
       const remaining = ids.filter((id) => !remove.has(id));
       if (!remaining.some((id) => trackKind(s, id) === 'video')) return s;
       const tracks = { ...s.tracks };
       for (const id of remove) delete tracks[id];
-      return { ...s, trackOrder: remaining, tracks };
+      const next = { ...s, trackOrder: remaining, tracks };
+      const primary = defaultTrackId(next, 'caption');
+      return { ...next, captions: primary ? captionsOnTrack(next, primary) : null };
     }
     case 'track.tighten': {
       if (s.tracks?.[a.track]?.locked) return s;
@@ -510,9 +530,12 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       return { ...s, items: s.items.map((item) => starts.has(item.id) ? { ...item, startFrame: starts.get(item.id)! } : item) };
     }
     case 'setCaptions':
-      return { ...s, captions: a.captions };
-    case 'updateCaptions':
-      return s.captions ? { ...s, captions: { ...s.captions, ...a.patch } } : s;
+      return withTrackCaptions(s, a.captions, a.track);
+    case 'updateCaptions': {
+      const target = a.track ?? defaultTrackId(s, 'caption') ?? undefined;
+      const captions = target ? captionsOnTrack(s, target) : s.captions;
+      return captions ? withTrackCaptions(s, { ...captions, ...a.patch }, target) : s;
+    }
     case 'updateWatermark': {
       // patch-merge over the current watermark (or defaults on first use); clamp
       // opacity at the boundary so a bad LLM value can't escape 0..1.

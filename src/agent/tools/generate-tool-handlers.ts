@@ -127,6 +127,7 @@ function exportState(args: GenerateArgs, ctx: AgentContext): TimelineState {
 async function exportSubtitles(args: GenerateArgs, state: TimelineState): Promise<unknown> {
   const input: SubmitSubtitleExportArgs = {
     subtitleFormat: args.subtitleFormat as SubmitSubtitleExportArgs['subtitleFormat'], name: typeof args.name === 'string' ? args.name : undefined,
+    captionTrackId: typeof args.captionTrackId === 'string' ? args.captionTrackId : undefined,
     startFrame: typeof args.startFrame === 'number' ? args.startFrame : undefined,
     endFrameExclusive: typeof args.endFrameExclusive === 'number' ? args.endFrameExclusive : undefined,
     startSeconds: typeof args.startSeconds === 'number' ? args.startSeconds : undefined,
@@ -178,7 +179,7 @@ async function submitExportHandler(args: GenerateArgs, ctx: AgentContext): Promi
   const format = args.format ?? 'video';
   const state = exportState(args, ctx);
   if (format === 'video' || format === 'xml') {
-    const gate = fontFallbackGate(state, args.confirmFontFallback, { captions: state.captions ?? null });
+    const gate = fontFallbackGate(state, args.confirmFontFallback);
     if (gate) return gate;
   }
   if (format === 'subtitles') return exportSubtitles(args, state);

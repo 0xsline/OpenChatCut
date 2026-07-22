@@ -82,8 +82,8 @@ export interface EditorCommands {
   updateTrack: (track: TrackId, patch: TrackUpdate) => void;
   deleteTracks: (tracks: TrackId[]) => void;
   tightenTrack: (track: TrackId) => void;
-  setCaptions: (captions: CaptionsData | null) => void;
-  updateCaptions: (patch: Partial<CaptionsData>) => void;
+  setCaptions: (captions: CaptionsData | null, track?: TrackId) => void;
+  updateCaptions: (patch: Partial<CaptionsData>, track?: TrackId) => void;
   /** Toggle/configure the text watermark overlay with a partial, undoable update. */
   updateWatermark: (patch: Partial<Watermark>) => void;
   setItemTranscript: (id: string, words: TranscriptWord[]) => void;
@@ -375,10 +375,6 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       setAspect: (width, height, fit) => dispatch({ type: 'setCanvas', width, height, fit }),
       toggleTrackFlag: (track, flag) => dispatch({ type: 'toggleTrack', track, flag }),
       createTrack: (kind, opts) => {
-        if (kind === 'caption') {
-          const existing = defaultTrackId(activeTimeline(getDoc()), 'caption');
-          if (existing) return existing;
-        }
         const id = uid('track');
         dispatch({ type: 'track.create', track: { id, kind, name: opts?.name, role: opts?.role, audioRouting: opts?.audioRouting }, order: opts?.order });
         return id;
@@ -386,10 +382,11 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       updateTrack: (track, patch) => dispatch({ type: 'track.update', track, patch }),
       deleteTracks: (tracks) => dispatch({ type: 'track.delete', tracks }),
       tightenTrack: (track) => dispatch({ type: 'track.tighten', track }),
-      setCaptions: (captions) => {
+      setCaptions: (captions, track) => {
         const state = activeTimeline(getDoc());
-        if (!captions || defaultTrackId(state, 'caption')) {
-          dispatch({ type: 'setCaptions', captions });
+        const target = track ?? defaultTrackId(state, 'caption') ?? undefined;
+        if (!captions || target) {
+          dispatch({ type: 'setCaptions', captions, track: target });
           return;
         }
         const id = uid('track');
@@ -398,11 +395,11 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
           label: 'Create caption track',
           actions: [
             { type: 'track.create', track: { id, kind: 'caption' } },
-            { type: 'setCaptions', captions },
+            { type: 'setCaptions', captions, track: id },
           ],
         });
       },
-      updateCaptions: (patch) => dispatch({ type: 'updateCaptions', patch }),
+      updateCaptions: (patch, track) => dispatch({ type: 'updateCaptions', patch, track }),
       updateWatermark: (patch) => dispatch({ type: 'updateWatermark', patch }),
       setItemTranscript: (id, words) => dispatch({ type: 'setItemTranscript', id, words }),
       setAssetTranscription: (id, patch) => dispatch({ type: 'pool.setTranscription', id, patch }),

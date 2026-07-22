@@ -5,7 +5,7 @@ import { mapCaptionStyle } from '../../captions/styleMap';
 import { sourceList, sourceSet, sourceAdd, sourceRemove, languageMode, bilingual, firstTranscribedOnTrack } from './captions-sources';
 import { execLayoutPolicy, execPositions, execSourceUpdate } from './captions-lanes';
 import { listCaptionPresets, saveCaptionPreset, deleteCaptionPreset, resolveCaptionPreset, type CaptionPreset } from '../../captions/presetStore';
-import { resolveTrackId, timelineTrackIds, trackAlias } from '../../editor/types';
+import { captionsOnTrack, defaultTrackId, resolveTrackId, timelineTrackIds, trackAlias } from '../../editor/types';
 
 // edit_captions uses one tool with a 21-action dispatcher. Most action data
 // arrives as a JSON string in `json`. Backed by OpenChatCut's captions overlay
@@ -95,7 +95,21 @@ export async function editCaptions(args: Args, ctx: AgentContext): Promise<Resul
   const action = str(args.action);
   if (!action) return { error: 'edit_captions needs an action' };
   const s = ctx.getState();
-  const c = s.captions;
+  const requested = str(args.captionTrackId) || str(args.captionsItemId);
+  const target = requested ? resolveTrackId(s, requested, 'caption') : defaultTrackId(s, 'caption');
+  if (requested && !target) return { error: `no caption track ${requested}` };
+  const c = target ? captionsOnTrack(s, target) : s.captions ?? null;
+  if (target) {
+    const commands = ctx.commands;
+    ctx = {
+      ...ctx,
+      commands: {
+        ...commands,
+        setCaptions: (captions) => commands.setCaptions(captions, target),
+        updateCaptions: (patch) => commands.updateCaptions(patch, target),
+      },
+    };
+  }
   const json = parseJson(args);
 
   // ── template: list built-ins (no arg) or apply one — works with captions off ──

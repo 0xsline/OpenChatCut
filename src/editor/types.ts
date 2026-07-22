@@ -253,6 +253,8 @@ export const ASPECT_PRESETS: AspectPreset[] = [
 export interface TrackFlags {
   kind?: TrackKind;
   name?: string;
+  /** Caption payload owned by this caption track. */
+  captions?: CaptionsData | null;
   /** hidden track is fully disabled — its items render neither picture nor sound */
   hidden?: boolean;
   /** muted track keeps its picture but produces no audio */
@@ -266,7 +268,7 @@ export interface TrackFlags {
   audioRouting?: { duckDepthDb?: number };
 }
 
-export type TrackUpdate = Partial<Omit<TrackFlags, 'kind' | 'role' | 'audioRouting'>> & {
+export type TrackUpdate = Partial<Omit<TrackFlags, 'kind' | 'role' | 'audioRouting' | 'captions'>> & {
   order?: number;
   role?: TrackRole | null;
   audioRouting?: { duckDepthDb?: number | null };
@@ -605,6 +607,19 @@ export function defaultTrackId(s: TimelineState, kind: TrackKind): TrackId | nul
   return resolveTrackId(s, alias, kind)
     ?? timelineTrackIds(s).find((id) => trackKind(s, id) === kind)
     ?? null;
+}
+
+/** Caption data for one lane. The first caption lane falls back to legacy projects. */
+export function captionsOnTrack(s: TimelineState, id: TrackId): CaptionsData | null {
+  const own = s.tracks?.[id]?.captions;
+  if (own !== undefined) return own;
+  return id === defaultTrackId(s, 'caption') ? s.captions ?? null : null;
+}
+
+export function captionTrackEntries(s: TimelineState): Array<{ id: TrackId; captions: CaptionsData | null }> {
+  return timelineTrackIds(s)
+    .filter((id) => trackKind(s, id) === 'caption')
+    .map((id) => ({ id, captions: captionsOnTrack(s, id) }));
 }
 
 /** total timeline length = last item's end (min 1s). */

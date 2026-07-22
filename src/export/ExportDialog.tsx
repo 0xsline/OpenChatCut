@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../i18n/locale';
 import { Icon, type IconName } from '../components/icons';
-import { timelineDuration, type TimelineState } from '../editor/types';
+import { captionTrackEntries, timelineDuration, trackAlias, type TimelineState } from '../editor/types';
 import { timelineToFcpxml } from './fcpxml';
 import { captionsToSrt, captionsToTxt } from '../captions/exportCaptions';
 import { exportClipMov, renderClipMovBlob } from '../media/clipExport';
@@ -162,6 +162,9 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
   // 帧率默认 = 时间线 fps 落进档位(不在档位则取 30)
   const [fps, setFps] = useState<number>(FPS_OPTIONS.some((candidate) => candidate === state.fps) ? state.fps : 30);
   const [subtitleFormat, setSubtitleFormat] = useState<'srt' | 'txt'>('srt');
+  const captionTracks = useMemo(() => captionTrackEntries(state).filter((entry) => entry.captions), [state]);
+  const [subtitleTrack, setSubtitleTrack] = useState(captionTracks[0]?.id ?? '');
+  const subtitleCaptions = captionTracks.find((entry) => entry.id === subtitleTrack)?.captions ?? null;
   const [nleFormat, setNleFormat] = useState<'fcp_xml' | 'fcp_xml_resolve'>('fcp_xml');
   const [includeMg, setIncludeMg] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -173,6 +176,10 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
   const browserAbortRef = useRef<AbortController | null>(null);
   const [autoQaEnabled, setAutoQaEnabled] = useState(() => loadExportAutoQaPreference().enabled);
   const [qa, setQa] = useState<ExportQaUiState | null>(null);
+
+  useEffect(() => {
+    if (!captionTracks.some((entry) => entry.id === subtitleTrack)) setSubtitleTrack(captionTracks[0]?.id ?? '');
+  }, [captionTracks, subtitleTrack]);
 
 
   useEffect(() => {
@@ -417,10 +424,10 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
   };
 
   const exportSubtitles = () => {
-    if (!state.captions) throw new Error(t('请先开启字幕'));
+    if (!subtitleCaptions) throw new Error(t('请先开启字幕'));
     const text = subtitleFormat === 'srt'
-      ? captionsToSrt(state.captions, state.items, state.fps)
-      : captionsToTxt(state.captions, state.items, state.fps);
+      ? captionsToSrt(subtitleCaptions, state.items, state.fps)
+      : captionsToTxt(subtitleCaptions, state.items, state.fps);
     if (!text) throw new Error(t('当前字幕轨没有可导出的内容'));
     downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), `${base}.${subtitleFormat}`);
     void recordExport({ name: `${base}.${subtitleFormat}`, format: 'subtitles', createdAt: Date.now() });
@@ -512,7 +519,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
   };
 
   const disabled = !!busy
-    || (tab === 'subtitles' && !state.captions)
+    || (tab === 'subtitles' && !subtitleCaptions)
     || (tab === 'mg' && mgItems.length === 0);
 
   const phaseLabel = progress ? ({
@@ -640,9 +647,15 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
 
               {tab === 'subtitles' && (
                 <>
-                  {!state.captions && (
+                  {!captionTracks.length && (
                     <InfoCard icon="captions" title={t('字幕轨尚未开启')} text={t('开启字幕并确认内容后，即可下载字幕稿。')} />
                   )}
+                  <Row label={t('字幕轨道')}>
+                    <select className="cc-export-select" value={subtitleTrack} disabled={!captionTracks.length} onChange={(event) => setSubtitleTrack(event.target.value)}>
+                      {!captionTracks.length && <option value="">—</option>}
+                      {captionTracks.map((entry) => <option key={entry.id} value={entry.id}>{trackAlias(state, entry.id)}</option>)}
+                    </select>
+                  </Row>
                   <Row label={t('格式')}>
                     <Segmented
                       options={[{ value: 'srt', label: 'SubRip (.srt)' }, { value: 'txt', label: '纯文本 (.txt)' }] as const}

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme, themeAlpha } from '../../theme';
 import {
-  defaultTrackId, selectedIdsOf, timelineDuration, timelineTrackIds, trackAlias, trackKind,
+  captionTrackEntries, captionsOnTrack, defaultTrackId, selectedIdsOf, timelineDuration, timelineTrackIds, trackAlias, trackKind,
   type TimelineItem, type TimelineState, type TrackId,
 } from '../../editor/types';
 import type { EditorCommands } from '../../editor/store';
@@ -74,7 +74,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   const [placeMode, setPlaceMode] = usePersistedState<'insert' | 'overwrite'>('cc.placeMode', 'overwrite');
   // magnetic snapping (Snapping toggle, S). On = edges lock to guides.
   const [snapping, setSnapping] = usePersistedState('cc.snapping', true);
-  const captionsVisible = !!state.captions?.enabled;
+  const captionsVisible = captionTrackEntries(state).some((entry) => entry.captions?.enabled);
   const [captionMenu, setCaptionMenu] = useState<{ id: TrackId; left: number; top: number } | null>(null);
   // 错误行归 Timeline:菜单外的「开启字幕」按钮也会写它(该轨无文字稿),菜单内展示
   const [captionError, setCaptionError] = useState<string | null>(null);
@@ -104,10 +104,10 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   // is uploaded + dropped on an audio track by the parent.
   const recorder = useRecorder(onRecordVoiceover ?? (() => {}));
   const toggleCaptions = (trackId: TrackId) => {
-    if (state.captions) { commands.updateCaptions({ enabled: !state.captions.enabled }); return; }
+    const current = captionsOnTrack(state, trackId);
+    if (current) { commands.updateCaptions({ enabled: !current.enabled }, trackId); return; }
     const captions = captionsForTrack(state, trackId);
-    if (captions) commands.setCaptions(captions);
-    else commands.setCaptions(newManualCaptions());
+    commands.setCaptions(captions ?? newManualCaptions(), trackId);
   };
   // 选择模式 (selection mode): clicks/drags pick REFERENCES for the chat
   // instead of editing — clip click → item ref, ruler click → timepoint, drag
@@ -290,15 +290,16 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
             const meta = metaOf(trackId);
             const alias = trackAlias(state, trackId);
             const config = state.tracks?.[trackId] ?? {};
+            const trackCaptions = meta.kind === 'caption' ? captionsOnTrack(state, trackId) : null;
             const items = state.items.filter((it) => it.track === trackId);
             const dragIsAudio = drag ? state.items.find((it) => it.id === drag.id)?.kind === 'audio' : false;
             const isDropTarget = drag?.mode === 'move' && drag.targetTrack === trackId && meta.kind === (dragIsAudio ? 'audio' : 'video') && !state.tracks?.[trackId]?.locked;
-            const hidden = meta.kind === 'caption' ? !captionsVisible : config.hidden ?? false;
+            const hidden = meta.kind === 'caption' ? !trackCaptions?.enabled : config.hidden ?? false;
             const headConfig = meta.kind === 'caption' ? { ...config, hidden } : config;
             const locked = config.locked ?? false;
             const kindLabel = meta.kind === 'video' ? '视频' : meta.kind === 'audio' ? '音频' : '字幕';
             const trackName = config.name || `${t(kindLabel)} ${alias.slice(1)}`;
-            const busy = items.length > 0 || (meta.kind === 'caption' && !!state.captions)
+            const busy = items.length > 0 || !!trackCaptions
               || (state.transitions ?? []).some((transition) => transition.trackId === trackId);
             return (
               <div key={trackId} className="cc-track-row" style={{ height: rowHeightOf(trackId), background: isDropTarget ? `color-mix(in srgb, ${theme.success} 15%, ${theme.bg})` : undefined }}>
@@ -324,7 +325,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
                     />
                   )}
                 </TrackHead>
-                {meta.kind === 'caption' ? <CaptionTrackLane state={state} px={px} locked={locked} hidden={hidden} /> : <TrackLane
+                {meta.kind === 'caption' ? <CaptionTrackLane state={state} captions={trackCaptions} px={px} locked={locked} hidden={hidden} /> : <TrackLane
                   trackId={trackId} items={items} state={state} commands={commands} pointer={pointer}
                   editMode={editMode} pickMode={pickMode} locked={locked} hidden={hidden}
                   px={px} rowHeight={rowHeightOf(trackId)}

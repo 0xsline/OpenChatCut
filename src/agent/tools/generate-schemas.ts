@@ -209,6 +209,7 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
         format: { type: 'string', enum: ['video', 'audio', 'subtitles', 'xml'] },
         codec: { type: 'string', enum: ['h264', 'vp8', 'mp3', 'wav'], description: 'Video: h264 (default) or vp8. Audio: mp3 (default) or wav.' },
         subtitleFormat: { type: 'string', enum: ['srt', 'txt'], description: 'Defaults to srt.' },
+        captionTrackId: { type: 'string', description: 'For subtitle export: C1/C2 alias or stable caption track id. Defaults to C1.' },
         nleFormat: {
           type: 'string',
           enum: ['fcp_xml', 'fcp_xml_resolve'],

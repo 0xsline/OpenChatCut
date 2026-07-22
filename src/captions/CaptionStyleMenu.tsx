@@ -7,7 +7,7 @@ import { CAPTION_STYLES } from './styles';
 import { buildTranslation } from './translate';
 import type { CaptionsData, CaptionTemplate } from './types';
 import { deleteCaptionPreset, listCaptionPresets, saveCaptionPreset, type CaptionPreset } from './presetStore';
-import type { TimelineState, TrackId } from '../editor/types';
+import { captionsOnTrack, type TimelineState, type TrackId } from '../editor/types';
 import type { EditorCommands } from '../editor/store';
 import { useT } from '../i18n/locale';
 import { ensureFont } from '../fonts/googleFonts';
@@ -32,20 +32,21 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
+  const current = captionsOnTrack(state, trackId);
   useEffect(() => {
     void listCaptionPresets().then(setPresets).catch(() => {});
   }, []);
 
   const applyStyle = (template: CaptionTemplate) => {
     const captions = captionsForTrack(state, trackId) ?? newManualCaptions();
-    if (state.captions) commands.updateCaptions({ enabled: true, template });
-    else commands.setCaptions({ ...captions, template });
+    if (current) commands.updateCaptions({ enabled: true, template }, trackId);
+    else commands.setCaptions({ ...captions, template }, trackId);
     onError(null);
     onClose();
   };
   /** Save current captions look as a user preset (edit_captions preset_save). */
   const confirmSave = async (name: string) => {
-    const captions = state.captions;
+    const captions = current;
     if (!captions) { onError(t('请先启用字幕并选择样式')); return; }
     if (!name.trim()) return;
     try {
@@ -81,8 +82,8 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
       ...(preset.pacing ? { pacing: preset.pacing } : {}),
       ...(preset.styleOverride ? { styleOverride: preset.styleOverride } : {}),
     };
-    if (state.captions) commands.updateCaptions(patch);
-    else commands.setCaptions({ ...captions, ...patch });
+    if (current) commands.updateCaptions(patch, trackId);
+    else commands.setCaptions({ ...captions, ...patch }, trackId);
     onError(null);
     onClose();
   };
@@ -95,8 +96,8 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
     try {
       const translation = await buildTranslation(captions, state.items, state.fps, lang);
       const patch = { enabled: true, bilingual: true, translationLang: lang, translation };
-      if (state.captions) commands.updateCaptions(patch);
-      else commands.setCaptions({ ...captions, ...patch });
+      if (current) commands.updateCaptions(patch, trackId);
+      else commands.setCaptions({ ...captions, ...patch }, trackId);
       onClose();
     } catch (err) {
       onError(err instanceof Error ? err.message : t('字幕翻译失败'));
@@ -110,7 +111,7 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
         {CAPTION_STYLES.map((style) => {
           ensureFont(style.fontFamily);
           return (
-            <button key={style.id} className={state.captions?.template === style.id ? 'active' : ''} onClick={() => applyStyle(style.id)}>
+            <button key={style.id} className={current?.template === style.id ? 'active' : ''} onClick={() => applyStyle(style.id)}>
               <span className="cc-caption-style-swatch" style={{ background: style.highlightBackground ?? '#292929', color: style.highlightBackground ? style.highlightColor : style.color, fontFamily: style.fontFamily, WebkitTextStroke: style.strokeWidth ? `${Math.min(1, style.strokeWidth)}px ${style.strokeColor}` : undefined }}>Aa</span>
               <span>{t(style.labelZh)}</span>
             </button>
@@ -153,8 +154,8 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
         <button
           type="button"
           className="cc-caption-style-save"
-          disabled={!state.captions}
-          title={state.captions ? t('把当前模板/覆盖样式保存为用户预设') : t('请先启用字幕')}
+          disabled={!current}
+          title={current ? t('把当前模板/覆盖样式保存为用户预设') : t('请先启用字幕')}
           onClick={() => setNameDraft(`我的样式 ${new Date().toLocaleDateString()}`)}
         >
           {t('＋ 保存当前样式...')}

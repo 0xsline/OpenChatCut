@@ -4,7 +4,7 @@
 import { useState, type RefObject } from 'react';
 import { theme } from '../../theme';
 import { Icon, type IconName } from '../icons';
-import { ASPECT_PRESETS, type TimelineState } from '../../editor/types';
+import { ASPECT_PRESETS, captionTrackEntries, type TimelineState } from '../../editor/types';
 import type { EditorCommands } from '../../editor/store';
 import { useT } from '../../i18n/locale';
 import { invokeAction } from '../../shortcuts/actionRegistry';
@@ -74,11 +74,12 @@ export function TimelineToolbar({
   )) ?? null;
   const [sceneDetectionOpen, setSceneDetectionOpen] = useState(false);
   const [motionTrackingOpen, setMotionTrackingOpen] = useState(false);
+  const captionTracks = captionTrackEntries(state).filter((entry) => entry.captions);
   return (
     <>
       <div className="cc-timeline-toolbar">
       <div className="cc-timeline-tool-group">
-        <TrackCreateControl state={state} commands={commands} />
+        <TrackCreateControl commands={commands} />
         <ToolSep />
         <TB icon="cursor" title={t('选择模式 (V)：拖动移动 / 裁剪首尾')} active={editMode === 'selection'} onClick={() => invokeAction('interaction-mode-selection', undefined, 'toolbar')} />
         <TB icon="trim" title={t('修剪模式 (N)：裁剪片段边缘，后续片段自动跟随合缝（波纹）')} active={editMode === 'trim'} onClick={() => invokeAction('interaction-mode-trim', undefined, 'toolbar')} />
@@ -157,7 +158,7 @@ export function TimelineToolbar({
           <optgroup label={t('内容适配')}><option value="__contain__">{t('留边')}</option><option value="__cover__">{t('裁切')}</option></optgroup>
         </select>
       </label>
-      <button className={`cc-caption-toggle cc-tip cc-tip-r${captionsVisible ? ' active' : ''}`} data-tip={state.captions ? t('字幕显示') : t('字幕显示（当前还没有字幕，先转写或让 Agent 生成）')} aria-label={t('字幕显示')} disabled={!state.captions} onClick={() => state.captions && commands.updateCaptions({ enabled: !captionsVisible })}><Icon name="captions" size={17} /><span>{captionsVisible ? t('开启') : t('未开启')}</span><Icon name="chevronDown" size={13} /></button>
+      <button className={`cc-caption-toggle cc-tip cc-tip-r${captionsVisible ? ' active' : ''}`} data-tip={captionTracks.length ? t('字幕显示') : t('字幕显示（当前还没有字幕，先转写或让 Agent 生成）')} aria-label={t('字幕显示')} disabled={!captionTracks.length} onClick={() => commands.batch(captionTracks.map((entry) => ({ type: 'updateCaptions', track: entry.id, patch: { enabled: !captionsVisible } })), 'Toggle captions')}><Icon name="captions" size={17} /><span>{captionsVisible ? t('开启') : t('未开启')}</span><Icon name="chevronDown" size={13} /></button>
       <TB icon="fullscreen" title={t('全屏预览')} tipRight onClick={() => invokeAction('fullscreen', undefined, 'toolbar')} />
       </div>
       {sceneDetectionOpen && sceneItem && (

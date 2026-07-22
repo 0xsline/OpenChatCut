@@ -10,7 +10,7 @@ import { itemWindow, keptSegments } from '../transcript/edit';
 import { zoomAt } from './zoom';
 import { sampleKeyframes } from './keyframes';
 import { loadTimelineFonts } from '../fonts/projectFonts';
-import { CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
+import { captionTrackEntries, CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
 import type { AspectFit, CssTransitionType, GlslTransitionType, KeyframeProp, TimelineItem, TimelineState, TransitionDirection, TransitionItem, Watermark } from './types';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
@@ -458,7 +458,9 @@ export function TimelineComposition({ state, transparent, browserRenderer = fals
           browserRenderer={browserRenderer}
         />
       ))}
-      {state.captions?.enabled && <CaptionsLayer captions={state.captions} items={state.items} />}
+      {captionTrackEntries(state).map(({ id, captions }) => captions?.enabled
+        ? <CaptionsLayer key={id} captions={captions} items={state.items} />
+        : null)}
       {state.watermark?.enabled && state.watermark.text
         && <WatermarkLayer watermark={state.watermark} canvasH={state.height} />}
     </AbsoluteFill>

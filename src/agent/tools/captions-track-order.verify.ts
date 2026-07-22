@@ -5,7 +5,7 @@ import type { CaptionSourceEntry, CaptionsData } from '../../captions/types';
 import { buildLaneGroups } from '../../captions/lanes';
 import { normalizeCaptionSourceEntries, orderedCaptionSourceEntries } from '../../captions/sourceOrder';
 import { migrateProjectDoc } from '../../persist/projectStore';
-import { timelineTrackIds, trackAlias, trackKind, type ProjectDoc, type Timeline, type TimelineItem } from '../../editor/types';
+import { captionsOnTrack, timelineTrackIds, trackAlias, trackKind, type ProjectDoc, type Timeline, type TimelineItem } from '../../editor/types';
 import { CAPTIONS_TOOL_SCHEMAS, execCaptionsTool } from './captions-tools';
 
 const word = (text: string) => [{ text, start: 0, end: 800 }];
@@ -103,6 +103,9 @@ const reopened = migrateProjectDoc(JSON.parse(JSON.stringify(draft.getDoc())));
 const reopenedCaptionTrack = timelineTrackIds(reopened!.timelines[0])
   .find((id) => trackKind(reopened!.timelines[0], id) === 'caption');
 assert.equal(reopenedCaptionTrack && trackAlias(reopened!.timelines[0], reopenedCaptionTrack), 'C1');
+assert.deepEqual(reopenedCaptionTrack && captionsOnTrack(reopened!.timelines[0], reopenedCaptionTrack)?.sourceEntries?.map((entry) => [entry.id, entry.trackOrder]), [
+  ['source_c', 0], ['source_a', 1], ['source_b', 2],
+]);
 assert.deepEqual(reopened?.timelines[0].captions?.sourceEntries?.map((entry) => [entry.id, entry.trackOrder]), [
   ['source_c', 0], ['source_a', 1], ['source_b', 2],
 ]);
@@ -146,5 +149,16 @@ assert.match(String((await execCaptionsTool('edit_captions', { action: 'track', 
 
 const schema = CAPTIONS_TOOL_SCHEMAS.find((tool) => tool.name === 'edit_captions')!;
 assert('trackOrder' in (schema.input_schema.properties ?? {}));
+
+const firstCaptionTrack = draft.commands.createTrack('caption');
+draft.commands.setCaptions(draft.getState().captions!, firstCaptionTrack);
+const c2 = draft.commands.createTrack('caption');
+draft.commands.setCaptions({ enabled: true, template: 'netflix', pacing: 'word', words: [] }, c2);
+await execCaptionsTool('edit_captions', { action: 'disable', captionTrackId: 'C2' }, ctx);
+const c1 = timelineTrackIds(draft.getState()).find((id) => trackAlias(draft.getState(), id) === 'C1')!;
+assert.equal(captionsOnTrack(draft.getState(), c1)?.enabled, true, 'editing C2 does not change C1');
+assert.equal(captionsOnTrack(draft.getState(), c2)?.enabled, false, 'agent targets C2 independently');
+const captionList = await execCaptionsTool('read_captions', { list: true }, ctx) as { tracks: Array<{ alias: string }> };
+assert.deepEqual(captionList.tracks.map((track) => track.alias), ['C1', 'C2']);
 
 console.log('caption track order check passed');

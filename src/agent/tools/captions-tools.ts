@@ -1,6 +1,6 @@
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
-import { trackAlias } from '../../editor/types';
+import { captionTrackEntries, captionsOnTrack, defaultTrackId, resolveTrackId, trackAlias } from '../../editor/types';
 import type { CaptionWordOverride } from '../../captions/types';
 import { paginate } from '../../captions/types';
 import { resolveCaptionWords, resolveCaptionWordIndices, applyWordOverrides } from '../../captions/resolve';
@@ -19,8 +19,11 @@ const CAPTION_ACTIONS = ['enable', 'disable', 'display_text', 'template', 'style
 export const CAPTIONS_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'read_captions',
-    description: "Read the captions overlay's current state (enabled/template/pacing/source track) and its resolved pages — each word's index in the source transcript, its currently DISPLAYED text (after any override), and the active override on it (if any). Use before edit_captions action=display_text to pick wordIndex values.",
-    input_schema: { type: 'object', properties: {} },
+    description: "Read one caption track's state and resolved pages. Pass captionTrackId as C1/C2 or a stable id; omit it for C1. Use list=true to discover every caption track.",
+    input_schema: { type: 'object', properties: {
+      captionTrackId: { type: 'string', description: 'Caption track alias (C1/C2) or stable id. Defaults to C1.' },
+      list: { type: 'boolean', description: 'List caption tracks instead of reading resolved pages.' },
+    } },
   },
   {
     name: 'edit_captions',
@@ -46,7 +49,8 @@ export const CAPTIONS_TOOL_SCHEMAS: AgentToolSchema[] = [
         trackId: { type: 'string', description: 'For action=track only: source track alias (V1/A1) or id. To choose visible caption text prefer source_set.' },
         trackOrder: { anyOf: [{ type: 'number' }, { type: 'string' }], description: 'Internal 0-based timeline track order for action=track only. Call action=track with list=true to inspect the exact order.' },
         list: { type: 'boolean', description: 'For action=track: list available source tracks instead of changing the source.' },
-        captionsItemId: { type: 'string', description: 'Optional captions layer id — this build has a single overlay, so it is accepted but not required.' },
+        captionTrackId: { type: 'string', description: 'Target caption track alias (C1/C2) or stable id. Defaults to C1.' },
+        captionsItemId: { type: 'string', description: 'Legacy alias for captionTrackId.' },
       },
       required: ['action'],
     },
@@ -59,10 +63,22 @@ type Args = Record<string, unknown>;
 
 export async function execCaptionsTool(name: string, args: Args, ctx: AgentContext): Promise<unknown | undefined> {
   const s = ctx.getState();
-  const c = s.captions;
+  const requested = String(args.captionTrackId ?? args.captionsItemId ?? '').trim();
+  const target = requested ? resolveTrackId(s, requested, 'caption') : defaultTrackId(s, 'caption');
+  const c = target ? captionsOnTrack(s, target) : s.captions ?? null;
 
   switch (name) {
     case 'read_captions': {
+      if (args.list === true) return {
+        tracks: captionTrackEntries(s).map((entry) => ({
+          id: entry.id,
+          alias: trackAlias(s, entry.id),
+          name: s.tracks?.[entry.id]?.name ?? null,
+          enabled: entry.captions?.enabled ?? false,
+          hasCaptions: !!entry.captions,
+        })),
+      };
+      if (requested && !target) return { error: `no caption track ${requested}` };
       if (!c || !c.enabled) return { enabled: false, note: 'captions are off; call edit_captions to turn them on first' };
       const words = resolveCaptionWords(c, s.items, s.fps);
       if (!words.length) return { enabled: true, template: c.template, pacing: c.pacing, note: 'source track has no transcript words' };
@@ -88,6 +104,8 @@ export async function execCaptionsTool(name: string, args: Args, ctx: AgentConte
       }));
       return {
         enabled: true,
+        captionTrackId: target,
+        captionTrackAlias: target ? trackAlias(s, target) : null,
         template: c.template,
         pacing: c.pacing,
         track: item ? trackAlias(s, item.track) : null,

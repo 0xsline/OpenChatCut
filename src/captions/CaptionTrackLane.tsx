@@ -1,5 +1,6 @@
 import { captionPages } from './exportCaptions';
 import type { TimelineState } from '../editor/types';
+import type { CaptionsData } from './types';
 import { theme, themeAlpha } from '../theme';
 import { useT } from '../i18n/locale';
 
@@ -7,14 +8,15 @@ function cueText(words: Array<{ text: string }>): string {
   return words.map((word) => word.text.trim()).filter(Boolean).join(' ');
 }
 
-export function CaptionTrackLane({ state, px, hidden, locked }: {
+export function CaptionTrackLane({ state, captions, px, hidden, locked }: {
   state: TimelineState;
+  captions: CaptionsData | null;
   px: number;
   hidden: boolean;
   locked: boolean;
 }) {
   const t = useT();
-  const pages = state.captions ? captionPages(state.captions, state.items, state.fps) : [];
+  const pages = captions ? captionPages(captions, state.items, state.fps) : [];
   return (
     <div className="cc-caption-track-lane" style={{
       background: locked ? `color-mix(in srgb, ${theme.bg} 70%, ${themeAlpha.shadow(1)})` : theme.bg,

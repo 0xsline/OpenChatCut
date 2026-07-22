@@ -1,6 +1,8 @@
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import {
+  captionTrackEntries,
+  captionsOnTrack,
   resolveTrackId,
   timelineTrackIds,
   trackAlias,
@@ -144,7 +146,8 @@ export async function execReadProjectTool(
   };
 
   if (view === 'full' || view === 'timeline') {
-    const captionTrack = timelineTrackIds(state).find((id) => trackKind(state, id) === 'caption') ?? null;
+    const captionTracks = captionTrackEntries(state);
+    const captionTrack = captionTracks[0]?.id ?? null;
     let items = state.items.slice();
     if (trackIdFilter) items = items.filter((it) => it.track === trackIdFilter);
     if (fromFrame != null || toFrame != null) {
@@ -169,7 +172,7 @@ export async function execReadProjectTool(
         trackType: trackKind(state, id),
         name: state.tracks?.[id]?.name,
         locked: state.tracks?.[id]?.locked ?? false,
-        hidden: trackKind(state, id) === 'caption' ? !state.captions?.enabled : state.tracks?.[id]?.hidden ?? false,
+        hidden: trackKind(state, id) === 'caption' ? !captionsOnTrack(state, id)?.enabled : state.tracks?.[id]?.hidden ?? false,
       })),
       items: items.map((it) => slimItem(it, state, doc.assets)),
       transitions: (state.transitions ?? []).map((t) => ({
@@ -200,6 +203,15 @@ export async function execReadProjectTool(
             bilingual: state.captions.bilingual ?? false,
           }
         : null,
+      captionTracks: captionTracks.map((entry) => ({
+        id: entry.id,
+        alias: trackAlias(state, entry.id),
+        name: state.tracks?.[entry.id]?.name ?? null,
+        enabled: entry.captions?.enabled ?? false,
+        template: entry.captions?.template ?? null,
+        sourceItemId: entry.captions?.sourceItemId ?? null,
+        bilingual: entry.captions?.bilingual ?? false,
+      })),
     };
   }
 

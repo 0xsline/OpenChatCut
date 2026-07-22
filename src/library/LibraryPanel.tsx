@@ -3,7 +3,7 @@ import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import { useT } from '../i18n/locale';
 import type { Tpl } from '../types';
-import type { MediaAsset, MediaFolder, TimelineItem, TransitionItem, TransitionType, ZoomShape } from '../editor/types';
+import type { MediaAsset, MediaFolder, TimelineItem, TrackId, TransitionItem, TransitionType, ZoomShape } from '../editor/types';
 import type { MobileUploadRecord } from '../media/mobileUploadApi';
 import { AUDIO_TRANSITION_ORDER, TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../editor/types';
 import type { CaptionsData } from '../captions/types';
@@ -89,9 +89,9 @@ interface LibraryPanelProps {
   items: TimelineItem[];
   /** A1/V1 aliases + names for 文字稿 track picker */
   trackOptions: TranscriptTrackOption[];
-  captions: CaptionsData | null;
-  onSetCaptions: (c: CaptionsData | null) => void;
-  onUpdateCaptions: (patch: Partial<CaptionsData>) => void;
+  captionTracks: Array<TranscriptTrackOption & { captions: CaptionsData | null }>;
+  onSetCaptions: (c: CaptionsData | null, track?: TrackId) => void;
+  onUpdateCaptions: (patch: Partial<CaptionsData>, track?: TrackId) => void;
   onSetItemTranscript: (id: string, words: TranscriptWord[]) => void;
   onToggleWord: (id: string, idx: number) => void;
   onCleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
@@ -131,7 +131,7 @@ interface LibraryPanelProps {
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿', '字幕'] as const;
 const SUB_TABS = ['MG 动画', '音效', '音频效果', '转场', '特效', '缩放', 'LUT'] as const;
-export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, onImportMedia, onImportMobileMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onRemoveMediaAsset, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, transitions, fxDefs, selectedItem, onApplyTransition, onApplyFx, onApplyZoom, onApplyAudioFx }: LibraryPanelProps) {
+export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captionTracks, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, onImportMedia, onImportMobileMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onRemoveMediaAsset, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, transitions, fxDefs, selectedItem, onApplyTransition, onApplyFx, onApplyZoom, onApplyAudioFx }: LibraryPanelProps) {
   const t = useT();
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
@@ -171,7 +171,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
       {extensionOpen ? (
         <ExtensionCenter items={items} transitions={transitions} fxDefs={fxDefs} onClose={() => setExtensionOpen(false)} />
       ) : isCaptions ? (
-        <CaptionsPanel playerRef={playerRef} fps={fps} items={items} trackOptions={trackOptions} captions={captions} onSetCaptions={onSetCaptions} onUpdateCaptions={onUpdateCaptions} />
+        <CaptionsPanel playerRef={playerRef} fps={fps} items={items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={onSetCaptions} onUpdateCaptions={onUpdateCaptions} />
       ) : isTranscript ? (
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, borderTop: `0.5px solid ${theme.border}` }}>
           <TranscriptPanel playerRef={playerRef} fps={fps} items={items} trackOptions={trackOptions} onSetItemTranscript={onSetItemTranscript} onToggleWord={onToggleWord} onCleanScript={onCleanScript} onSetGapCap={onSetGapCap} onSetTranscriptPlayOrder={onSetTranscriptPlayOrder} onReorderTrackItems={onReorderTrackItems} onClearEdits={onClearEdits} />
