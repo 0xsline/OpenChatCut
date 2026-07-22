@@ -39,9 +39,7 @@ function ThinkingBlock({ text }: { text: string }) {
         {t('思考过程')}
       </button>
       {open && (
-        <div style={{ marginTop: 4, maxHeight: 180, overflowY: 'auto', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontStyle: 'italic', fontSize: 11.5, lineHeight: 1.55, color: theme.textDim, whiteSpace: 'pre-wrap', wordBreak: 'break-word', borderLeft: `2px solid ${theme.borderLight}`, paddingLeft: 8 }}>
-          {text}
-        </div>
+        <Markdown text={text} style={{ marginTop: 4, maxHeight: 180, overflowY: 'auto', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontStyle: 'italic', fontSize: 11.5, lineHeight: 1.55, color: theme.textDim, whiteSpace: 'pre-wrap', borderLeft: `2px solid ${theme.borderLight}`, paddingLeft: 8 }} />
       )}
     </div>
   );
