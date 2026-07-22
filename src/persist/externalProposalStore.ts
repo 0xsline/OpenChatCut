@@ -1,6 +1,7 @@
 // Pending proposal created by an external MCP client. The draft is kept in the
 // editor session; once review starts, this record survives refresh/browser changes.
 
+import type { ExternalApprovalMode } from '../agent/external-edit-session';
 import type { Proposal } from '../agent/proposal';
 import { parseProposal } from './proposalStore';
 import { kvGet, kvSet } from './sharedKv';
@@ -8,6 +9,7 @@ import { kvGet, kvSet } from './sharedKv';
 export interface StoredExternalProposal {
   sessionId: string;
   clientName: string;
+  approvalMode: ExternalApprovalMode;
   status: 'awaiting_review' | 'applied' | 'rejected' | 'discarded';
   baseRevision: string;
   createdAt: number;
@@ -42,6 +44,7 @@ function parseStoredExternalProposal(raw: unknown): StoredExternalProposal | nul
   return {
     sessionId: value.sessionId,
     clientName: value.clientName,
+    approvalMode: value.approvalMode === 'auto' ? 'auto' : 'manual',
     status,
     baseRevision: value.baseRevision,
     createdAt: value.createdAt,

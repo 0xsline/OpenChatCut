@@ -235,12 +235,13 @@ The repository's root `.mcp.json` already contains the local connection. Before 
 
 Codex app/CLI and Claude Code use the same session workflow:
 
-1. Call `begin_edit_session` and keep the returned `editSessionId`.
+1. Call `begin_edit_session` and keep the returned `editSessionId`. Set `approvalMode` to `manual` (the default) or `auto`.
 2. Pass that id to every project read/edit tool. Changes are applied only to an isolated draft.
 3. Call `review_edit_session` when the draft is ready.
-4. Review, preview, select, and approve or reject the proposal inside the open OpenChatCut project. The client can poll `get_edit_session` for `applied`, `rejected`, or `discarded` status.
+4. In `manual` mode, review, preview, select, and approve or reject the proposal inside the open OpenChatCut project. In `auto` mode, `review_edit_session` applies the complete draft immediately. The client can poll `get_edit_session` for `applied`, `rejected`, or `discarded` status.
 
-Approval in Codex or Claude controls whether the client may call a tool; approval in OpenChatCut controls whether the staged timeline edit is committed. An approved proposal is committed atomically as one undo step.
+Approval in Codex or Claude controls whether the client may call a tool. OpenChatCut project approval is required only for `manual` sessions; `auto` sessions explicitly bypass that review. Either mode commits the applied operations atomically as one undo step.
+If an `auto` session becomes stale, it returns an error instead of falling back to manual approval; discard it and start a new session.
 Only draft-safe project read/edit tools are exposed in these sessions. Generation, export, project deletion, and other immediate side-effect tools stay unavailable because a rejected proposal could not roll them back.
 
 ### Codex

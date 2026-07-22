@@ -21,18 +21,23 @@ const SESSION_ID_PROPERTY = {
 const SESSION_TOOLS: ExternalRegisteredTool[] = [
   {
     name: 'begin_edit_session',
-    description: 'Start an isolated OpenChatCut edit draft. The live project is not changed until the user approves it in OpenChatCut.',
+    description: 'Start an isolated OpenChatCut edit draft. Manual mode waits for project approval; auto mode applies all staged edits when review_edit_session is called.',
     input_schema: {
       type: 'object',
       properties: {
         clientName: { type: 'string', description: 'Display name shown on the review card, such as Codex or Claude.' },
+        approvalMode: {
+          type: 'string',
+          enum: ['manual', 'auto'],
+          description: 'manual (default) requires approval in OpenChatCut; auto applies the full draft without human approval.',
+        },
       },
     },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   },
   {
     name: 'get_edit_session',
-    description: 'Read draft/review/apply status. Poll this after review_edit_session until the user approves or rejects in OpenChatCut.',
+    description: 'Read draft/review/apply status. Manual sessions wait for approval; auto sessions apply during review_edit_session.',
     input_schema: {
       type: 'object',
       properties: { editSessionId: SESSION_ID_PROPERTY },
@@ -42,7 +47,7 @@ const SESSION_TOOLS: ExternalRegisteredTool[] = [
   },
   {
     name: 'review_edit_session',
-    description: 'Finish drafting and show one review card inside OpenChatCut. This does not apply edits; the user decides in the project UI.',
+    description: 'Finish drafting. Manual sessions show a review card; auto sessions immediately apply all staged edits.',
     input_schema: {
       type: 'object',
       properties: {
@@ -51,7 +56,7 @@ const SESSION_TOOLS: ExternalRegisteredTool[] = [
       },
       required: ['editSessionId'],
     },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   },
   {
     name: 'discard_edit_session',

@@ -83,6 +83,29 @@ async function runBridge(
   }
 }
 
+async function hydrateBridge(
+  projectId: string,
+  runtime: ExternalBridgeRuntime,
+  isAlive: () => boolean,
+  onError: (message: string) => void,
+  onHydrated: () => void,
+): Promise<void> {
+  try {
+    const pending = await loadExternalProposal(projectId);
+    if (!isAlive()) return;
+    try {
+      await runtime.hydrate(pending);
+    } catch (hydrateError) {
+      if (isAlive()) onError(errorMessage(hydrateError));
+    }
+  } catch (loadError) {
+    if (!isAlive()) return;
+    await runtime.hydrate(null);
+    onError(errorMessage(loadError));
+  }
+  if (isAlive()) onHydrated();
+}
+
 export function useExternalAgentBridge(ctx: AgentContext, projectId: string): ExternalProposalController {
   const [snapshot, setSnapshot] = useState<ExternalProposalSnapshot>({ proposal: null, stale: false });
   const [error, setError] = useState<string | null>(null);
@@ -94,18 +117,13 @@ export function useExternalAgentBridge(ctx: AgentContext, projectId: string): Ex
   useEffect(() => {
     let alive = true;
     setHydrated(false);
-    const runtime = new ExternalBridgeRuntime(projectId, () => ctxRef.current, setSnapshot);
+    const runtime = new ExternalBridgeRuntime(
+      projectId,
+      () => ctxRef.current,
+      (next) => { if (alive) setSnapshot(next); },
+    );
     runtimeRef.current = runtime;
-    void loadExternalProposal(projectId).then((pending) => {
-      if (!alive) return;
-      runtime.hydrate(pending);
-      setHydrated(true);
-    }).catch((loadError) => {
-      if (!alive) return;
-      runtime.hydrate(null);
-      setError(errorMessage(loadError));
-      setHydrated(true);
-    });
+    void hydrateBridge(projectId, runtime, () => alive, setError, () => setHydrated(true));
     return () => { alive = false; runtimeRef.current = null; };
   }, [projectId]);
 

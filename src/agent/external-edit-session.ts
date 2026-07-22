@@ -10,9 +10,12 @@ export type ExternalEditSessionStatus =
   | 'rejected'
   | 'discarded';
 
+export type ExternalApprovalMode = 'manual' | 'auto';
+
 export interface ExternalEditSession {
   id: string;
   clientName: string;
+  approvalMode: ExternalApprovalMode;
   status: ExternalEditSessionStatus;
   baseRevision: string;
   baseDoc: ProjectDoc;
@@ -41,15 +44,26 @@ function normalizedClientName(value: unknown): string {
   return name || 'External Agent';
 }
 
+function normalizedApprovalMode(value: unknown): ExternalApprovalMode {
+  if (value === undefined || value === 'manual') return 'manual';
+  if (value === 'auto') return 'auto';
+  throw new Error('approvalMode must be "manual" or "auto".');
+}
+
 export function isExternalEditSessionStale(session: ExternalEditSession, liveDoc: ProjectDoc): boolean {
   return session.baseRevision !== revisionOf(liveDoc);
 }
 
-export function createExternalEditSession(baseDoc: ProjectDoc, clientName?: unknown): ExternalEditSession {
+export function createExternalEditSession(
+  baseDoc: ProjectDoc,
+  clientName?: unknown,
+  approvalMode?: unknown,
+): ExternalEditSession {
   const now = Date.now();
   return {
     id: crypto.randomUUID(),
     clientName: normalizedClientName(clientName),
+    approvalMode: normalizedApprovalMode(approvalMode),
     status: 'drafting',
     baseRevision: revisionOf(baseDoc),
     baseDoc,
@@ -120,6 +134,7 @@ export function reviewExternalEditSession(
 export function restoreExternalEditSession(input: {
   sessionId: string;
   clientName: string;
+  approvalMode?: ExternalApprovalMode;
   status?: Extract<ExternalEditSessionStatus, 'awaiting_review' | 'applied' | 'rejected' | 'discarded'>;
   baseRevision: string;
   createdAt: number;
@@ -131,6 +146,7 @@ export function restoreExternalEditSession(input: {
   return {
     id: input.sessionId,
     clientName: input.clientName,
+    approvalMode: normalizedApprovalMode(input.approvalMode),
     status,
     baseRevision: input.baseRevision,
     baseDoc: input.proposal?.baseDoc ?? fallbackDoc,

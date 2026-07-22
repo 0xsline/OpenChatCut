@@ -235,12 +235,13 @@ http://localhost:5199/api/external-mcp/mcp
 
 Codex App/CLI 与 Claude Code 使用同一套会话流程：
 
-1. 调用 `begin_edit_session`，保存返回的 `editSessionId`。
+1. 调用 `begin_edit_session`，保存返回的 `editSessionId`，并将 `approvalMode` 设为 `manual`（默认）或 `auto`。
 2. 后续每个工程读取/编辑工具都传入该 id；所有修改只进入隔离草稿。
 3. 草稿完成后调用 `review_edit_session`。
-4. 在已打开的 OpenChatCut 工程内审阅、预览、勾选并应用或拒绝提案；客户端可轮询 `get_edit_session` 获取 `applied`、`rejected` 或 `discarded` 状态。
+4. `manual` 模式下，在已打开的 OpenChatCut 工程内审阅、预览、勾选并应用或拒绝提案；`auto` 模式下，`review_edit_session` 会立即应用完整草稿。客户端可轮询 `get_edit_session` 获取 `applied`、`rejected` 或 `discarded` 状态。
 
-Codex 或 Claude 内的授权决定客户端能否调用工具；OpenChatCut 工程内的审批决定草稿能否写入正式时间线。应用后整份提案只产生一个撤销节点。
+Codex 或 Claude 内的授权决定客户端能否调用工具。只有 `manual` 会话需要 OpenChatCut 工程内审批；`auto` 会话会明确跳过该审批。两种模式应用的操作都会原子提交为一个撤销节点。
+如果 `auto` 会话已过期，它会直接返回错误而不会降级为人工审批；请丢弃后重新创建会话。
 会话只暴露可安全进入草稿的工程读取/编辑工具。生成、导出、删除工程及其他会立即产生副作用的工具不在会话中开放，因为拒绝提案时无法回滚这些副作用。
 
 ### Codex

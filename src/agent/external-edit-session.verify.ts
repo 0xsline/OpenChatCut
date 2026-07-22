@@ -16,8 +16,13 @@ import { isExternalDraftTool, isExternalReadTool } from './external-tool-policy'
 const base = docFromTimeline({ ...INITIAL, items: [] });
 const session = createExternalEditSession(base, 'Codex');
 assert.equal(session.status, 'drafting');
+assert.equal(session.approvalMode, 'manual');
 assert.match(session.baseRevision, /^v\d+-[0-9a-f]{8}$/);
 assert.equal(isExternalEditSessionStale(session, base), false);
+
+const autoSession = createExternalEditSession(base, 'Codex', 'auto');
+assert.equal(autoSession.approvalMode, 'auto');
+assert.throws(() => createExternalEditSession(base, 'Codex', 'invalid'), /approvalMode/);
 
 const isolatedCall = forkExternalEditSession(session);
 isolatedCall.draft!.commands.setAspect(1080, 1920, 'contain');
@@ -45,6 +50,7 @@ assert.equal(isExternalEditSessionStale(session, applied), true);
 const restored = restoreExternalEditSession({
   sessionId: reviewed.id,
   clientName: reviewed.clientName,
+  approvalMode: 'auto',
   status: 'rejected',
   baseRevision: reviewed.baseRevision,
   createdAt: reviewed.createdAt,
@@ -52,6 +58,7 @@ const restored = restoreExternalEditSession({
   proposal: reviewed.proposal!,
 }, base);
 assert.equal(restored.status, 'rejected');
+assert.equal(restored.approvalMode, 'auto');
 assert.equal(restored.proposal, null);
 const restoredDiscard = restoreExternalEditSession({
   sessionId: session.id,
@@ -64,6 +71,7 @@ const restoredDiscard = restoreExternalEditSession({
 }, base);
 assert.equal(restoredDiscard.status, 'discarded');
 assert.equal(restoredDiscard.operationCount, 1);
+assert.equal(restoredDiscard.approvalMode, 'manual');
 
 assert(isExternalDraftTool('set_aspect_ratio'));
 assert(isExternalReadTool('read_project'));

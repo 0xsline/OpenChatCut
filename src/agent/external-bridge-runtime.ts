@@ -46,6 +46,7 @@ function storedSession(
   return {
     sessionId: session.id,
     clientName: session.clientName,
+    approvalMode: session.approvalMode,
     status,
     baseRevision: session.baseRevision,
     createdAt: session.createdAt,
@@ -72,7 +73,7 @@ export class ExternalBridgeRuntime {
     this.publish = publish;
   }
 
-  hydrate(pending: StoredExternalProposal | null): void {
+  async hydrate(pending: StoredExternalProposal | null): Promise<void> {
     this.sessions = new Map();
     this.proposalSessionId = null;
     if (!pending) {
@@ -83,6 +84,11 @@ export class ExternalBridgeRuntime {
     this.sessions.set(session.id, session);
     if (session.status === 'awaiting_review') {
       this.proposalSessionId = session.id;
+      if (session.approvalMode === 'auto') {
+        const count = session.proposal?.options[0].operations.length ?? 0;
+        await this.apply(new Set(Array.from({ length: count }, (_, index) => index)), false, false);
+        return;
+      }
       const stale = Boolean(session.proposal && isProposalStale(session.proposal, this.getContext().getDoc()));
       this.publish({ proposal: session.proposal, stale });
     } else {
@@ -92,7 +98,7 @@ export class ExternalBridgeRuntime {
 
   async execute(name: string, rawArgs: Record<string, unknown>): Promise<unknown> {
     const args = { ...rawArgs };
-    if (name === 'begin_edit_session') return this.begin(args.clientName);
+    if (name === 'begin_edit_session') return this.begin(args.clientName, args.approvalMode);
     const session = this.requireSession(requiredSessionId(args));
     delete args.editSessionId;
     if (name === 'get_edit_session') return this.info(session);
@@ -101,15 +107,18 @@ export class ExternalBridgeRuntime {
     return this.runEditorTool(session, name, args);
   }
 
-  async apply(selected: Set<number>, force = false): Promise<void> {
+  async apply(selected: Set<number>, force = false, exposeProposal = true): Promise<void> {
     const session = this.currentProposalSession();
     const proposal = session?.proposal;
     if (!session || !proposal) return;
     const context = this.getContext();
     const currentDoc = context.getDoc();
     if (!force && isProposalStale(proposal, currentDoc)) {
-      this.publish({ proposal, stale: true });
-      return;
+      if (exposeProposal) {
+        this.publish({ proposal, stale: true });
+        return;
+      }
+      throw new Error(`Edit session ${session.id} is stale; discard it and begin a new session.`);
     }
     const chosen = proposal.options[0].operations.filter((_, index) => selected.has(index));
     const result = replayActions(currentDoc, chosen.flatMap((operation) => operation.actions));
@@ -120,7 +129,7 @@ export class ExternalBridgeRuntime {
     const latestDoc = context.getDoc();
     if (revisionOf(latestDoc) !== revisionOf(currentDoc)) {
       const restored = await saveProject(this.projectId, latestDoc);
-      this.publish({ proposal, stale: true });
+      if (exposeProposal) this.publish({ proposal, stale: true });
       if (!restored.saved) {
         throw new Error('The project changed while applying and its saved copy could not be restored. Reload before continuing.');
       }
@@ -131,7 +140,7 @@ export class ExternalBridgeRuntime {
     if (revisionOf(commitDoc) !== revisionOf(currentDoc)) {
       await saveExternalProposal(this.projectId, storedSession(session));
       const restored = await saveProject(this.projectId, commitDoc);
-      this.publish({ proposal, stale: true });
+      if (exposeProposal) this.publish({ proposal, stale: true });
       if (!restored.saved) {
         throw new Error('The project changed while applying and its saved copy could not be restored. Reload before continuing.');
       }
@@ -149,11 +158,11 @@ export class ExternalBridgeRuntime {
     if (session) await this.complete(session, 'rejected');
   }
 
-  private begin(clientName: unknown): unknown {
+  private begin(clientName: unknown, approvalMode: unknown): unknown {
     const active = findActiveSession(this.sessions);
     if (active) throw new Error(`Resolve or discard active edit session ${active.id} first.`);
     const context = this.getContext();
-    const session = createExternalEditSession(context.getDoc(), clientName);
+    const session = createExternalEditSession(context.getDoc(), clientName, approvalMode);
     this.sessions.set(session.id, session);
     return this.info(session);
   }
@@ -163,6 +172,11 @@ export class ExternalBridgeRuntime {
     await saveExternalProposal(this.projectId, storedSession(reviewed));
     this.sessions.set(session.id, reviewed);
     this.proposalSessionId = reviewed.id;
+    if (reviewed.approvalMode === 'auto') {
+      const count = reviewed.proposal?.options[0].operations.length ?? 0;
+      await this.apply(new Set(Array.from({ length: count }, (_, index) => index)), false, false);
+      return this.info(this.requireSession(reviewed.id));
+    }
     const stale = Boolean(reviewed.proposal && isProposalStale(reviewed.proposal, this.getContext().getDoc()));
     this.publish({ proposal: reviewed.proposal, stale });
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -234,12 +248,15 @@ export class ExternalBridgeRuntime {
       editSessionId: session.id,
       status: session.status,
       clientName: session.clientName,
+      approvalMode: session.approvalMode,
       baseRevision: session.baseRevision,
       operationCount: session.operationCount,
       appliedOperationCount: session.appliedOperationCount,
       stale: ACTIVE_STATUSES.has(session.status) ? isExternalEditSessionStale(session, currentDoc) : undefined,
       editorUrl: typeof window === 'undefined' ? undefined : window.location.href,
-      approvalLocation: session.status === 'awaiting_review' ? 'OpenChatCut project UI' : undefined,
+      approvalLocation: session.status === 'awaiting_review' && session.approvalMode === 'manual'
+        ? 'OpenChatCut project UI'
+        : undefined,
       updatedAt: new Date(session.updatedAt).toISOString(),
     };
   }

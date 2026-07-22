@@ -157,9 +157,10 @@ function makeServer(baseUrl: string): Server {
       capabilities: { tools: {} },
       instructions: [
         'OpenChatCut project edits are session-scoped.',
-        'Call begin_edit_session first, then pass its editSessionId to every editor tool.',
+        'Call begin_edit_session first with approvalMode manual (default) or auto, then pass its editSessionId to every editor tool.',
         'Call review_edit_session when the draft is ready.',
-        'The user approves or rejects inside the OpenChatCut project UI; poll get_edit_session and do not claim success until status is applied.',
+        'Manual sessions wait for approval in OpenChatCut; auto sessions apply the complete draft during review_edit_session. Do not claim success until status is applied.',
+        'If an auto session becomes stale, discard it and begin a new session.',
       ].join(' '),
     },
   );
