@@ -9,10 +9,11 @@ import {
 } from '../../editor/types';
 import { groupMoveIds, moveItemsByDelta } from '../../editor/multiSelect';
 import { upsertKeyframe } from '../../editor/keyframes';
+import { rateStretchItem } from '../../editor/rateStretch';
 import { collectTimelineSnapPoints, snapDraggedEdges } from '../../editor/snap';
 import type { EditorCommands } from '../../editor/store';
 import { emitSelectionRef, resolveTimelinePick, type TimelinePickDrag } from '../../agent/selection-refs';
-import { SNAP_PX, type Drag, type DragMode } from './timelineUtil';
+import { SNAP_PX, type Drag, type DragMode, type EditMode } from './timelineUtil';
 
 export interface PenDrag {
   itemId: string; fromFrame: number; frame: number; value: number; easing?: KeyframeEasing;
@@ -23,7 +24,7 @@ export interface Marquee { x0: number; y0: number; x1: number; y1: number; addit
 interface PointerDeps {
   state: TimelineState;
   commands: EditorCommands;
-  editMode: 'selection' | 'blade' | 'trim' | 'pen';
+  editMode: EditMode;
   snapping: boolean;
   pickMode: boolean;
   px: number;
@@ -207,10 +208,22 @@ export function useTimelinePointer(deps: PointerDeps) {
         }
       }
     } else if (mode === 'trim-left') {
+      if (editMode === 'rate-stretch') {
+        const next = rateStretchItem(state, id, 'left', deltaF);
+        if (next !== state) commands.applyState(next);
+        setDrag(null);
+        return;
+      }
       // clamp so the source in-point can't go negative (limits how far left media extends)
       const d = Math.max(Math.min(deltaF, baseDur - 1), -baseSrcIn);
       if (d !== 0) commands.setItemTiming(id, { startFrame: Math.max(0, baseStart + d), durationInFrames: baseDur - d, srcInFrame: baseSrcIn + d });
     } else if (mode === 'trim-right') {
+      if (editMode === 'rate-stretch') {
+        const next = rateStretchItem(state, id, 'right', deltaF);
+        if (next !== state) commands.applyState(next);
+        setDrag(null);
+        return;
+      }
       const newDur = Math.max(1, baseDur + deltaF);
       const actual = newDur - baseDur;
       if (actual !== 0) {

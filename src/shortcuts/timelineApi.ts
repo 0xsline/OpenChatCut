@@ -1,5 +1,6 @@
 import type { TimelineItem } from '../editor/types';
 import type { FxClip } from '../components/timeline/ClipContextMenu';
+import type { EditMode } from '../components/timeline/timelineUtil';
 
 /** Methods Timeline exposes so Editor can bind the global shortcut dispatcher. */
 export interface TimelineShortcutApi {
@@ -7,7 +8,7 @@ export interface TimelineShortcutApi {
   seekTo: (frame: number) => void;
   playPause: () => void;
   isPlaying: () => boolean;
-  setEditMode: (m: 'selection' | 'blade' | 'trim' | 'pen') => void;
+  setEditMode: (m: EditMode) => void;
   toggleSnap: () => void;
   fitToView: () => void;
   zoomBy: (factor: number) => void;

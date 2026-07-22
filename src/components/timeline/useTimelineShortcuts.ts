@@ -13,6 +13,7 @@ import type { EditorCommands } from '../../editor/store';
 import type { AtomicAction } from '../../editor/store';
 import type { FxClip } from './ClipContextMenu';
 import type { TimelineShortcutApi, ItemClipboard } from '../../shortcuts/timelineApi';
+import type { EditMode } from './timelineUtil';
 
 interface ShortcutDeps {
   shortcutApiRef: RefObject<TimelineShortcutApi | null> | undefined;
@@ -23,7 +24,7 @@ interface ShortcutDeps {
   total: number;
   seekFrame: (frame: number) => void;
   paintPlayhead: (frame: number, forceTc?: boolean) => void;
-  setEditMode: (m: 'selection' | 'blade' | 'trim' | 'pen') => void;
+  setEditMode: (m: EditMode) => void;
   setSnapping: (updater: (s: boolean) => boolean) => void;
   fitToView: () => void;
   zoomBy: (factor: number) => void;

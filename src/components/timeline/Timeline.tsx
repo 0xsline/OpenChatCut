@@ -27,7 +27,7 @@ import { useTimelineZoomController } from './useTimelineZoomController';
 import { applyLibraryToClip as applyToClip, applyLibraryToTrack as applyToTrack } from './libraryDropActions';
 import {
   HEADER_W, MAX_ROW, MIN_ROW, RULER_H, TRACK_ROW,
-  rulerMajorSeconds, rulerMinorCount,
+  rulerMajorSeconds, rulerMinorCount, type EditMode,
 } from './timelineUtil';
 import type { LibraryDragPayload } from '../../library/drag';
 import { useSelectionRefMode } from '../../agent/selection-refs';
@@ -69,7 +69,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   // editing mode (Selection V / Blade B / Trim N / Pen P). selection =
   // drag/move; blade = click a clip to cut it there; trim = edge-trim ripples
   // following clips; pen = draw opacity keyframes on the selected clip.
-  const [editMode, setEditMode] = usePersistedState<'selection' | 'blade' | 'trim' | 'pen'>('cc.editMode', 'selection');
+  const [editMode, setEditMode] = usePersistedState<EditMode>('cc.editMode', 'selection');
   // insert = push later clips when dropping library media; overwrite = place without shift
   const [placeMode, setPlaceMode] = usePersistedState<'insert' | 'overwrite'>('cc.placeMode', 'overwrite');
   // magnetic snapping (Snapping toggle, S). On = edges lock to guides.

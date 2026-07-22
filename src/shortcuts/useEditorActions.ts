@@ -53,6 +53,7 @@ function editingActions(deps: EditorActionDeps): ActionBindings {
     split: () => tl()?.splitAtPlayhead(),
     'interaction-mode-selection': () => tl()?.setEditMode('selection'),
     'interaction-mode-trim': () => tl()?.setEditMode('trim'),
+    'interaction-mode-rate-stretch': () => tl()?.setEditMode('rate-stretch'),
     'interaction-mode-blade': () => tl()?.setEditMode('blade'),
     'interaction-mode-pen': () => tl()?.setEditMode('pen'),
     'nudge-left': ({ shift }) => tl()?.nudgeSelected(-(shift ? 5 : 1)),

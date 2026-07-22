@@ -10,12 +10,13 @@ import {
   type TimelineItem, type TimelineState, type TrackId, type TransitionItem, type TransitionType,
 } from '../../editor/types';
 import { upsertKeyframe } from '../../editor/keyframes';
+import { rateStretchGeometry } from '../../editor/rateStretch';
 import type { EditorCommands } from '../../editor/store';
 import { hasLibraryDrag, parseLibraryDrag, type LibraryDragPayload } from '../../library/drag';
 import { ALL_FX, FX_EFFECTS, LUT_EFFECTS } from '../../gl/fx/effects';
 import { ZOOM_SHAPE_LABELS } from '../../editor/types';
 import { useT } from '../../i18n/locale';
-import { CLIP_COLOR, waveformPath } from './timelineUtil';
+import { CLIP_COLOR, waveformPath, type EditMode } from './timelineUtil';
 import { ClipMediaLayers } from './ClipMediaLayers';
 import { isPreviewable } from '../../media/clipPreview';
 import type { useTimelinePointer } from './useTimelinePointer';
@@ -91,7 +92,7 @@ interface TrackLaneProps {
   state: TimelineState;
   commands: EditorCommands;
   pointer: ReturnType<typeof useTimelinePointer>;
-  editMode: 'selection' | 'blade' | 'trim' | 'pen';
+  editMode: EditMode;
   pickMode: boolean;
   locked: boolean;
   hidden: boolean;
@@ -155,10 +156,16 @@ export function TrackLane({
         // Group-move preview: every selected clip rides the same delta as the grab handle
         const groupMove = !!drag && drag.mode === 'move' && isItemSelected(state, drag.id) && selected;
         const dragging = drag?.id === it.id || groupMove;
-        const start = it.startFrame + (dragging && drag && drag.mode !== 'trim-right' ? drag.deltaF : 0);
+        const stretchEdge = drag?.mode === 'trim-left' ? 'left' : drag?.mode === 'trim-right' ? 'right' : null;
+        const stretch = editMode === 'rate-stretch' && drag?.id === it.id && stretchEdge
+          ? rateStretchGeometry(it, stretchEdge, drag.deltaF) : null;
+        const start = stretch?.startFrame ?? (it.startFrame + (dragging && drag && drag.mode !== 'trim-right' ? drag.deltaF : 0));
         const durTrim = drag?.id === it.id && drag.mode === 'trim-left' ? -drag.deltaF
           : drag?.id === it.id && drag.mode === 'trim-right' ? drag.deltaF : 0;
-        const dur = Math.max(1, it.durationInFrames + durTrim);
+        const dur = stretch?.durationInFrames ?? Math.max(1, it.durationInFrames + durTrim);
+        const canRateStretch = it.kind === 'video' || it.kind === 'audio';
+        const showHandles = !pickMode && editMode !== 'blade' && editMode !== 'pen'
+          && (editMode !== 'rate-stretch' || canRateStretch);
         const isLibOver = libDropTarget === it.id;
         return (
           <div
@@ -287,11 +294,11 @@ export function TrackLane({
               );
             })()}
             {/* trim handles (hidden in blade / pen / selection-pick modes) */}
-            {!pickMode && editMode !== 'blade' && editMode !== 'pen' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
-              style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? themeAlpha.accent(0.5) : selected ? themeAlpha.shadow(0.25) : 'transparent' }} />}
+            {showHandles && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-left', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
+              style={{ position: 'absolute', left: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' || editMode === 'rate-stretch' ? themeAlpha.accent(0.5) : selected ? themeAlpha.shadow(0.25) : 'transparent' }} />}
             <span className={`cc-clip-label${it.kind === 'audio' ? ' audio' : ''}`}>{it.name}</span>
-            {!pickMode && editMode !== 'blade' && editMode !== 'pen' && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
-              style={{ position: 'absolute', right: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' ? themeAlpha.accent(0.5) : selected ? themeAlpha.shadow(0.25) : 'transparent' }} />}
+            {showHandles && <div onPointerDown={(e) => startDrag(e, it.id, 'trim-right', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0)}
+              style={{ position: 'absolute', right: 0, top: 0, width: 8, height: '100%', cursor: 'ew-resize', background: editMode === 'trim' || editMode === 'rate-stretch' ? themeAlpha.accent(0.5) : selected ? themeAlpha.shadow(0.25) : 'transparent' }} />}
           </div>
         );
       })}

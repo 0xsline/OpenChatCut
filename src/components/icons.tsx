@@ -2,7 +2,7 @@
 // toolbar/track-header glyphs — replaces emoji for a consistent editor chrome.
 
 export type IconName =
-  | 'plus' | 'cursor' | 'trim' | 'blade' | 'scissors' | 'magnet' | 'mic' | 'chevronDown' | 'check' | 'brush' | 'cloud' | 'insert'
+  | 'plus' | 'cursor' | 'trim' | 'rateStretch' | 'blade' | 'scissors' | 'magnet' | 'mic' | 'chevronDown' | 'check' | 'brush' | 'cloud' | 'insert'
   | 'play' | 'pause' | 'text' | 'copy' | 'trash' | 'bookmark' | 'prev' | 'next'
   | 'zoomOut' | 'zoomIn' | 'fit' | 'aspect' | 'captions' | 'fullscreen'
   | 'eye' | 'eyeOff' | 'volume' | 'volumeOff' | 'lock' | 'unlock'
@@ -23,6 +23,7 @@ const P: Record<IconName, string> = {
   wand: 'M15 4V2 M15 16v-2 M8 9h2 M20 9h2 M17.8 11.8L19 13 M17.8 6.2L19 5 M12.2 6.2L11 5 M3 21l9-9',
   cursor: 'M5 3l6 15 2-6 6-2z',
   trim: 'M8 4v16M4 8h4M4 16h4 M16 4v16M16 8h4M16 16h4',
+  rateStretch: 'M4 5v14 M20 5v14 M8 12h8 M11 9l-3 3 3 3 M13 9l3 3-3 3',
   blade: 'M14 4L6 20 M9 9l7 3',
   scissors: 'M6 6m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0 M6 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0 M8.1 8.1L20 20 M14 14l6-10',
   magnet: 'M6 15l-3-3a8 8 0 0 1 11-11l3 3-7 7-3-3 M6 15l3 3 M14 7l3 3',

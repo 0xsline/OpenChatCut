@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { buildTrackingKeyframeActions } from './keyframeActions';
 import { createGrayTemplate, findBestMatch } from './templateMatch';
+import { nextTrackingZoom } from './TrackingRegionPicker';
 import type { TimelineItem, TimelineState } from '../editor/types';
 import type { TrackingResult } from './types';
 
@@ -20,6 +21,9 @@ const match = findBestMatch(patternedFrame(width, height, 27, 24), width, height
 assert.equal(match.x, 27);
 assert.equal(match.y, 24);
 assert.ok(match.confidence > 0.99);
+assert.equal(nextTrackingZoom(1, -1), 1.12);
+assert.equal(nextTrackingZoom(4, -1), 4);
+assert.equal(nextTrackingZoom(1, 1), 1);
 
 const source: TimelineItem = { id: 'source', track: 'V1', startFrame: 10, durationInFrames: 60, name: 'video', kind: 'video', width: 1920, height: 1080 };
 const target: TimelineItem = { id: 'target', track: 'V2', startFrame: 10, durationInFrames: 60, name: 'title', kind: 'text', transform: { x: 5, y: -2 } };

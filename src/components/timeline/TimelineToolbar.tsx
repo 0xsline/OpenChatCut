@@ -8,7 +8,7 @@ import { ASPECT_PRESETS, captionTrackEntries, type TimelineState } from '../../e
 import type { EditorCommands } from '../../editor/store';
 import { useT } from '../../i18n/locale';
 import { invokeAction } from '../../shortcuts/actionRegistry';
-import { MIN_TIME_ZOOM, fmt } from './timelineUtil';
+import { MIN_TIME_ZOOM, fmt, type EditMode } from './timelineUtil';
 import { TimelineSpeedControl } from './TimelineSpeedControl';
 import { SceneDetectionDialog } from '../../scene-detection/SceneDetectionDialog';
 import { MotionTrackingDialog } from '../../tracking/MotionTrackingDialog';
@@ -33,8 +33,6 @@ function TB({ icon, title, onClick, active, disabled, tipRight }: {
     </button>
   );
 }
-
-export type EditMode = 'selection' | 'blade' | 'trim' | 'pen';
 
 interface TimelineToolbarProps {
   state: TimelineState;
@@ -83,6 +81,7 @@ export function TimelineToolbar({
         <ToolSep />
         <TB icon="cursor" title={t('选择模式 (V)：拖动移动 / 裁剪首尾')} active={editMode === 'selection'} onClick={() => invokeAction('interaction-mode-selection', undefined, 'toolbar')} />
         <TB icon="trim" title={t('修剪模式 (N)：裁剪片段边缘，后续片段自动跟随合缝（波纹）')} active={editMode === 'trim'} onClick={() => invokeAction('interaction-mode-trim', undefined, 'toolbar')} />
+        <TB icon="rateStretch" title={t('比率拉伸：拖动片段首尾，保持源区间并改变播放速度')} active={editMode === 'rate-stretch'} onClick={() => invokeAction('interaction-mode-rate-stretch', undefined, 'toolbar')} />
         <TB icon="blade" title={t('刀片模式 (B)：点击片段在该处切分')} active={editMode === 'blade'} onClick={() => invokeAction('interaction-mode-blade', undefined, 'toolbar')} />
         <TB icon="pencil" title={t('钢笔模式 (P)：在选中片段上点击绘制透明度关键帧（纵向=不透明度，拖点改帧/值，右键删点）')} active={editMode === 'pen'} onClick={() => invokeAction('interaction-mode-pen', undefined, 'toolbar')} />
         <TB icon="scissors" title={t('在播放头切分选中片段 (C)')} onClick={() => invokeAction('split', undefined, 'toolbar')} />

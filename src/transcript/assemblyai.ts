@@ -6,6 +6,7 @@
 // extract a 64kbps mono ASR track (POST /api/extract-audio) so a 1GB clip does
 // not get re-fetched + re-uploaded whole. Falls back to the original path.
 import type { TranscriptResult } from './types';
+import { getMediaBlob } from '../persist/mediaBlobStore';
 
 const BASE = '/assemblyai/v2';
 
@@ -15,8 +16,32 @@ const AUDIO_EXT = /\.(mp3|wav|m4a|aac|ogg|flac|opus)$/i;
 /** Pure audio above this still gets re-encoded smaller for ASR. */
 const LARGE_AUDIO_BYTES = 40 * 1024 * 1024;
 
+export class TranscriptionError extends Error {
+  readonly code: 'source-unavailable' | 'service-unavailable';
+  readonly detail?: string;
+
+  constructor(
+    code: 'source-unavailable' | 'service-unavailable',
+    detail?: string,
+  ) {
+    super(`${code}${detail ? `: ${detail}` : ''}`);
+    this.name = 'TranscriptionError';
+    this.code = code;
+    this.detail = detail;
+  }
+}
+
+async function serviceFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new TranscriptionError('service-unavailable', detail);
+  }
+}
+
 async function uploadBlob(blob: Blob): Promise<string> {
-  const r = await fetch(`${BASE}/upload`, { method: 'POST', body: blob });
+  const r = await serviceFetch(`${BASE}/upload`, { method: 'POST', body: blob });
   if (!r.ok) throw new Error(`upload failed: HTTP ${r.status}`);
   const { upload_url } = await r.json();
   if (!upload_url) throw new Error('upload: no upload_url returned');
@@ -51,7 +76,7 @@ async function createTranscript(audioUrl: string, opts: TranscribeOptions = {}):
     // Explicit zh is far more reliable for 中文纪录片口播 than pure auto-detect.
     body.language_code = lang;
   }
-  const r = await fetch(`${BASE}/transcript`, {
+  const r = await serviceFetch(`${BASE}/transcript`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -65,7 +90,7 @@ async function createTranscript(audioUrl: string, opts: TranscribeOptions = {}):
 
 async function poll(id: string, onWait?: () => void): Promise<TranscriptResult> {
   for (;;) {
-    const r = await fetch(`${BASE}/transcript/${id}`);
+    const r = await serviceFetch(`${BASE}/transcript/${id}`);
     if (!r.ok) throw new Error(`poll failed: HTTP ${r.status}`);
     const d = await r.json();
     if (d.status === 'completed') {
@@ -105,6 +130,22 @@ export async function transcribeBlob(
   const url = await uploadBlob(blob);
   const id = await createTranscript(url, opts);
   return poll(id, onWait);
+}
+
+/** Read a media source, falling back to the local-first IndexedDB copy. */
+export async function loadTranscriptionSource(path: string): Promise<Blob> {
+  let responseError: Error | null = null;
+  try {
+    const res = await fetch(path);
+    const isHtml = (res.headers.get('content-type') ?? '').includes('text/html');
+    if (res.ok && !isHtml) return res.blob();
+    responseError = new Error(`HTTP ${res.status}`);
+  } catch (error) {
+    responseError = error instanceof Error ? error : new Error(String(error));
+  }
+  const cached = await getMediaBlob(path);
+  if (cached?.blob.size) return cached.blob;
+  throw new TranscriptionError('source-unavailable', responseError?.message);
 }
 
 /**
@@ -163,7 +204,14 @@ export async function transcribePath(
     const extracted = await extractAudioForAsr(path);
     if (extracted) source = extracted;
   }
-  const res = await fetch(source);
-  if (!res.ok) throw new Error(`fetch ${source}: HTTP ${res.status}`);
-  return transcribeBlob(await res.blob(), onWait, { languageCode: opts.languageCode });
+  let blob: Blob;
+  try {
+    blob = await loadTranscriptionSource(source);
+  } catch (error) {
+    // A raced-ahead ASR extract can disappear independently of the original.
+    // Fall back to the original media (or its IndexedDB copy) before failing.
+    if (source === path) throw error;
+    blob = await loadTranscriptionSource(path);
+  }
+  return transcribeBlob(blob, onWait, { languageCode: opts.languageCode });
 }

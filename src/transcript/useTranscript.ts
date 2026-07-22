@@ -1,7 +1,16 @@
 import { useCallback, useState } from 'react';
-import { transcribePath, type TranscribeOptions } from './assemblyai';
+import { TranscriptionError, transcribePath, type TranscribeOptions } from './assemblyai';
 import type { TranscriptResult, TranscriptStatus } from './types';
 import { t } from '../i18n/locale';
+
+function transcriptErrorMessage(error: unknown): string {
+  if (error instanceof TranscriptionError) {
+    return error.code === 'source-unavailable'
+      ? t('素材文件不可用，请在“我的素材”中重新链接后再转写')
+      : t('无法连接转写服务，请检查网络和 AssemblyAI 配置后重试');
+  }
+  return error instanceof Error ? error.message : String(error);
+}
 
 // Drives transcription against a same-origin media path.
 // Never falls back to a demo sample — caller must pass a real clip src.
@@ -43,7 +52,7 @@ export function useTranscript() {
       setProgressNote(null);
       return r;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(transcriptErrorMessage(e));
       setStatus('error');
       setProgressNote(null);
       throw e;
@@ -83,7 +92,7 @@ export function useTranscript() {
         onEach(job.itemId, r);
         ok += 1;
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
+        const msg = transcriptErrorMessage(e);
         failures.push(`${job.label}: ${msg}`);
         // keep going — partial track is better than abort
       }

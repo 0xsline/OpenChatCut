@@ -25,6 +25,7 @@ export default {
   '字幕轨道为空': 'Caption track is empty',
   '选择模式 (V)：拖动移动 / 裁剪首尾': 'Selection mode (V): drag to move / trim edges',
   '修剪模式 (N)：裁剪片段边缘，后续片段自动跟随合缝（波纹）': 'Trim mode (N): trim clip edges; later clips follow to close the gap (ripple)',
+  '比率拉伸：拖动片段首尾，保持源区间并改变播放速度': 'Rate Stretch: drag either clip edge to preserve the source range and change playback speed',
   '刀片模式 (B)：点击片段在该处切分': 'Blade mode (B): click a clip to split it there',
   '钢笔模式 (P)：在选中片段上点击绘制透明度关键帧（纵向=不透明度，拖点改帧/值，右键删点）':
     'Pen mode (P): click the selected clip to draw opacity keyframes (vertical = opacity; drag a point to change frame/value, right-click to delete)',
@@ -99,7 +100,7 @@ export default {
   // ── MotionTrackingDialog.tsx ──
   '运动跟踪': 'Motion tracking',
   '实验功能': 'Experimental',
-  '在起始画面拖拽框选纹理清晰的目标；分析后轨迹会显示在画面上。': 'Drag around a clearly textured target in the first frame. Its path appears after analysis.',
+  '在起始画面拖拽框选纹理清晰的目标；按住 Ctrl/⌘ 滚轮可缩放预览。分析后轨迹会显示在画面上。': 'Drag around a clearly textured target in the first frame. Hold Ctrl/⌘ and scroll to zoom the preview. Its path appears after analysis.',
   '应用方式': 'Apply mode',
   '稳定所选视频画面': 'Stabilize the selected video',
   '让「{name}」跟随目标': 'Make “{name}” follow the target',

@@ -131,7 +131,7 @@ export function MotionTrackingDialog({ state, commands, item, onClose }: MotionT
       <TrackingHeader item={item} close={close} />
       <div className="cc-tracking-body"><main>
         <TrackingRegionPicker item={item} fps={state.fps} region={region} points={analysis.result?.points ?? []} disabled={analysis.running} onChange={changeRegion} />
-        <p>{t('在起始画面拖拽框选纹理清晰的目标；分析后轨迹会显示在画面上。')}</p>
+        <p>{t('在起始画面拖拽框选纹理清晰的目标；按住 Ctrl/⌘ 滚轮可缩放预览。分析后轨迹会显示在画面上。')}</p>
       </main><TrackingSettings targets={targets} targetId={targetId} running={analysis.running} minConfidence={minConfidence} percent={percent} result={analysis.result} locked={locked} error={analysis.error} onTarget={changeTarget} onConfidence={changeConfidence} /></div>
       <TrackingFooter analysis={analysis} applied={applied} canApply={!!analysis.result && analysis.result.points.length >= 2 && !!target && !locked} apply={apply} />
     </section>
