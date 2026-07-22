@@ -8,6 +8,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / [未发布]
 
+## [0.1.3] - 2026-07-23
+
+### Added / 新增
+
+- Added independent caption tracks, multiple caption tracks per sequence, manual caption creation, and track-type selection when creating a track.
+  新增独立字幕轨道、单序列多字幕轨、新建手动字幕，以及新建轨道时选择轨道类型。
+- Added direct caption editing in the preview and timeline, including dragging a caption style onto the preview, moving captions, and trimming both edges.
+  新增在预览与时间线中直接编辑字幕，支持将字幕样式拖入预览、移动字幕及拖动两端调整时长。
+- Added a PR-style Rate Stretch tool that preserves the source range while changing clip duration and playback speed.
+  新增 PR 风格的比率拉伸工具，在保持源区间的同时改变片段时长与播放速度。
+- Added model-aware Agent parameters and provider validation for image, video, music, sound, and voice generation, including expanded MiniMax and Mureka support.
+  新增面向图片、视频、音乐、音效与语音生成的模型级 Agent 参数及供应商校验，并扩展 MiniMax 与 Mureka 支持。
+- Added OpenRouter as a built-in OpenAI-compatible Agent provider.
+  新增 OpenRouter 内置 OpenAI-compatible Agent 供应商。
+
+### Changed / 变更
+
+- Moved standalone caption styling and manual editing into the dedicated Captions workspace, with a direct “Caption styles” entry from Transcript.
+  将独立字幕样式与手动编辑集中到“字幕”工作区，并在“文字稿”中新增“字幕样式”快捷入口。
+- Improved local transcription source recovery by falling back to IndexedDB media and the original clip when extracted audio is unavailable.
+  改进本地转写素材恢复：提取音频不可用时会回退到 IndexedDB 素材及原始片段。
+- Added Ctrl/Command + mouse-wheel zoom to the motion-tracking target picker.
+  为运动跟踪目标选择器新增 Ctrl/Command + 鼠标滚轮缩放。
+
+### Fixed / 修复
+
+- Fixed `promptOptimizer` being sent to non-MiniMax image models; it is now emitted only for MiniMax `image-01`.
+  修复向非 MiniMax 图片模型发送 `promptOptimizer` 的问题；该参数现在仅用于 MiniMax `image-01`。
+- Fixed Agent thinking content rendering raw Markdown instead of formatted, collapsible content.
+  修复 Agent 思考过程直接显示 Markdown 原文而未格式化、折叠的问题。
+- Fixed motion-tracking previews opening on a black first frame for affected videos.
+  修复部分视频打开运动跟踪时预览停在黑色首帧的问题。
+- Fixed imprecise floating-point playback-speed labels and clarified exiting Rate Stretch mode.
+  修复播放速度显示浮点精度异常的问题，并明确比率拉伸模式的退出方式。
+
 ## [0.1.2] - 2026-07-21
 
 ### Added / 新增
@@ -82,7 +117,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Added Electron desktop packaging for macOS, Windows, and Linux.  
   提供 macOS、Windows 与 Linux 的 Electron 桌面端打包能力。
 
-[Unreleased]: https://github.com/0xsline/OpenChatCut/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/0xsline/OpenChatCut/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/0xsline/OpenChatCut/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/0xsline/OpenChatCut/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/0xsline/OpenChatCut/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/0xsline/OpenChatCut/releases/tag/v0.1.0
