@@ -28,6 +28,7 @@ Read the relevant file on demand — do NOT read all files at once.
 | Product UI, layout, panels, buttons, features | `references/ui-and-features.md` |
 | API keys, providers, which features need a key | `references/providers-and-keys.md` |
 | What generation models/tools are wired | `references/generation-capabilities.md` |
+| Official generation API documentation | `references/generation-official-docs.md` |
 
 ## Guidelines
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
-import type { TimelineItem, TrackId, TrackKind } from '../editor/types';
+import type { TimelineItem, TrackId } from '../editor/types';
 import { emitSelectionRef, transcriptRefFromDomSelection, useSelectionRefMode } from '../agent/selection-refs';
 import { useTranscript } from './useTranscript';
 import { msToFrame, type TranscriptWord } from './types';
@@ -9,17 +9,13 @@ import { ScriptView } from './TranscriptViews';
 import { CaptionsControls } from '../captions/CaptionsControls';
 import type { CaptionsData } from '../captions/types';
 import { buildTranslation } from '../captions/translate';
+import { newManualCaptions } from '../captions/manualCaptions';
 import { theme } from '../theme';
 import { Icon } from '../components/icons';
 import { useT } from '../i18n/locale';
+import { clipLabel, isLikelyNonSpeech, mediaOnTrack, pickDefaultTrack, trackTitle, type TranscriptTrackOption } from './trackOptions';
 
-/** Track row for the transcript selector (alias + human name, never raw UUID alone). */
-export interface TranscriptTrackOption {
-  id: TrackId;
-  alias: string;
-  name?: string;
-  kind: TrackKind;
-}
+export type { TranscriptTrackOption } from './trackOptions';
 
 interface TranscriptPanelProps {
   playerRef: RefObject<PlayerRef | null>;
@@ -39,51 +35,7 @@ interface TranscriptPanelProps {
   onClearEdits: (id: string) => void;
 }
 
-function mediaOnTrack(items: TimelineItem[], track: TrackId): TimelineItem[] {
-  return items
-    .filter((it) => it.track === track && !!it.src && (it.kind === 'audio' || it.kind === 'video'))
-    .sort((a, b) => a.startFrame - b.startFrame);
-}
-
-/** Background music / SFX — not for speech transcription by default. */
-function isLikelyNonSpeech(it: TimelineItem): boolean {
-  const n = (it.name ?? '').toLowerCase();
-  return /背景音乐|bgm|\bmusic\b|score|ambient|音效|whoosh|sfx|instrumental/.test(n);
-}
-
-function clipLabel(it: TimelineItem, max = 28): string {
-  const n = it.name?.trim() || it.id;
-  return n.length > max ? `${n.slice(0, max - 1)}…` : n;
-}
-
 const MANY_CLIPS = 10;
-
-function trackTitle(t: TranscriptTrackOption): string {
-  const name = t.name?.trim();
-  if (name && name !== t.alias) return `${t.alias} · ${name}`;
-  return t.alias;
-}
-
-function pickDefaultTrack(options: TranscriptTrackOption[], items: TimelineItem[]): TrackId | null {
-  // Prefer audio tracks with speech-like clips (配音 / VO), skip pure BGM lanes.
-  const scored = options
-    .filter((t) => t.kind === 'audio')
-    .map((t) => {
-      const clips = mediaOnTrack(items, t.id);
-      const speech = clips.filter((c) => !isLikelyNonSpeech(c));
-      const name = `${t.name ?? ''} ${t.alias}`.toLowerCase();
-      let score = speech.length * 10 + clips.length;
-      if (/配音|voice|vo|旁白|口播|anchor/.test(name)) score += 50;
-      if (/背景|music|bgm|follower/.test(name)) score -= 40;
-      if (!clips.length) score -= 100;
-      return { id: t.id, score, speech: speech.length };
-    })
-    .sort((a, b) => b.score - a.score);
-  if (scored[0] && scored[0].score > -50) return scored[0].id;
-  // fallback: any track with media
-  const any = options.find((t) => mediaOnTrack(items, t.id).length > 0);
-  return any?.id ?? options[0]?.id ?? null;
-}
 
 export function TranscriptPanel({
   playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions,
@@ -529,6 +481,8 @@ export function TranscriptPanel({
         fps={fps}
         onSeekMs={(ms) => playerRef.current?.seekTo(msToFrame(ms, fps))}
         onGenerate={generateCaptions}
+        onCreateManual={() => onSetCaptions(newManualCaptions())}
+        getPlayheadMs={() => ((playerRef.current?.getCurrentFrame() ?? 0) / fps) * 1000}
         onUpdate={onUpdateCaptions}
         onRemove={() => onSetCaptions(null)}
         onTranslate={onTranslate}

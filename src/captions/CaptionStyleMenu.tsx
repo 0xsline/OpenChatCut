@@ -12,6 +12,7 @@ import type { EditorCommands } from '../editor/store';
 import { useT } from '../i18n/locale';
 import { ensureFont } from '../fonts/googleFonts';
 import { captionsForTrack } from './captionTrack';
+import { newManualCaptions } from './manualCaptions';
 
 const CAPTION_LANGS = ['English', '日本語', '한국어', 'Español', 'Français', 'Deutsch', 'Português'];
 
@@ -36,8 +37,7 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
   }, []);
 
   const applyStyle = (template: CaptionTemplate) => {
-    const captions = captionsForTrack(state, trackId);
-    if (!captions) { onError(t('该轨道还没有可用文字稿')); return; }
+    const captions = captionsForTrack(state, trackId) ?? newManualCaptions();
     if (state.captions) commands.updateCaptions({ enabled: true, template });
     else commands.setCaptions({ ...captions, template });
     onError(null);
@@ -74,8 +74,7 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
     }
   };
   const applyPreset = (preset: CaptionPreset) => {
-    const captions = captionsForTrack(state, trackId);
-    if (!captions) { onError(t('该轨道还没有可用文字稿')); return; }
+    const captions = captionsForTrack(state, trackId) ?? newManualCaptions();
     const patch: Partial<CaptionsData> = {
       enabled: true,
       ...(preset.template ? { template: preset.template } : {}),

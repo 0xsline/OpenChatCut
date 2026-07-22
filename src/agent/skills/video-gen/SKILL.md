@@ -17,9 +17,9 @@ Any time the user wants to generate a video clip — text-to-video, image-to-vid
 
 | Model | Reference | Strengths |
 | --- | --- | --- |
-| `seedance2` | [references/seedance2.md](references/seedance2.md) | Default when configured. Multimodal refs (image/video/audio), first/last frame, prompt multi-shot, edit/extend/bridge, 4–15s, 480p/720p/1080p/4k. |
+| `seedance2` | [references/seedance2.md](references/seedance2.md) | Default when configured. Multimodal refs, first/last, edit/extend/bridge, 2–15s, 480p/720p/1080p/4k, audio/seed/camera/watermark/last-frame/task controls. |
 | `kling` | [references/kling.md](references/kling.md) | Technical camera/performance; Omni multi-shot; images ≤7 (≤4 with one feature `refVideos`); std/pro; 3–15s. |
-| `hailuo` | [references/hailuo.md](references/hailuo.md) | MiniMax 海螺. T2V / I2V / first+last; **6s or 10s** (1080p → 6 only); 720p→API 768P; optional `[camera]` commands; no multi-ref / multi-shot. |
+| `hailuo` | [references/hailuo.md](references/hailuo.md) | MiniMax 海螺. T2V / I2V / first+last; **6s or 10s**; 512P (Hailuo-02), 720p→768P, 1080P (6s); no multi-ref / multi-shot. |
 
 **IMPORTANT:** Before generating, READ the chosen model's reference for capabilities, input channels, modes, prompt structure, and model-specific behavior. Never invent params the reference forbids.
 
@@ -47,9 +47,11 @@ Briefly tell the user what you will generate before submitting.
 | `model` | `seedance2`, `kling`, `hailuo` | seedance2 when available |
 | `durationSeconds` | model-specific | seedance/kling ~5; **hailuo 6 or 10** (1080p → 6 only) |
 | `ratio` | see model docs | 16:9 (seedance/kling); **ignored on hailuo** |
-| `resolution` | `480p`, `720p`, `1080p`, `4k` | default 720p (seedance); hailuo 720p/1080p only |
+| `resolution` | `480p`, `512p`, `720p`, `1080p`, `4k` | provider-specific; hailuo adds 512p for Hailuo-02 |
 | `refVideoMode` | `feature`, `base` | kling only, with `refVideos` |
 | `promptOptimizer` / `fastPretreatment` | boolean | hailuo only |
+| `generateAudio`, `seed`, `cameraFixed`, `watermark` | controls | seedance only |
+| `returnLastFrame`, `executionExpiresAfter`, `priority` | controls | seedance only; requested last frame becomes another image asset |
 | `name` | descriptive asset name | required for good pool UX |
 | `firstFrame` | project image asset ref | optional |
 | `lastFrame` | project image asset ref | seedance / kling / hailuo (requires firstFrame; not with multi-ref on seedance) |

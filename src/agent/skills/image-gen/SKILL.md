@@ -13,9 +13,9 @@ Generate AI images via `submit_image` (configured provider keys only). Prefer on
 
 | Model | Reference | Strengths | Max refs |
 | --- | --- | --- | --- |
-| `gpt-image-2` | [references/gpt-image-2.md](references/gpt-image-2.md) | Best text rendering, strongest prompt adherence | 10 |
+| `gpt-image-2` | [references/gpt-image-2.md](references/gpt-image-2.md) | Best text rendering, strongest prompt adherence | 16 |
 | `nano-banana` | [references/nano-banana.md](references/nano-banana.md) | Strongest reference-image fidelity | 14 |
-| `image-01` | [references/image-01.md](references/image-01.md) | MiniMax stills; no reference images on this path | 0 |
+| `image-01` | [references/image-01.md](references/image-01.md) | MiniMax stills / live style; one subject reference via R2 | 1 |
 
 - Default: `gpt-image-2` when that key is on.
 - Reference-heavy → `nano-banana`.
@@ -29,12 +29,16 @@ Generate AI images via `submit_image` (configured provider keys only). Prefer on
 | Param               | Values                                                                  | Default |
 | ------------------- | ----------------------------------------------------------------------- | ------- |
 | `aspectRatio`       | `1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3`, `4:5`, `5:4`, `21:9` | `16:9`  |
-| `imageSize`         | `1K`, `2K`, `4K`                                                        | `1K`    |
+| `imageSize`         | `512px`, `1K`, `2K`, `4K` (model-specific)                              | `1K`    |
+| `width` / `height`  | GPT Image: 512–3840, /16; MiniMax: 512–2048, /8                         | —       |
 | `quality`           | `low`, `medium`, `high`, `auto` (gpt-image-2 only)                      | `high`  |
 | `referenceAssetIds` | Array of project asset ids — backend resolves bytes server-side         | —       |
 | `name`              | Short descriptive asset name shown in the library                       | —       |
 | `count`             | Number of images to generate (1–10; image-01 max 9)                     | `1`     |
-| `promptOptimizer`   | MiniMax `image-01` only — `prompt_optimizer` (default true)             | `true`  |
+| `promptOptimizer`   | MiniMax `image-01` only — `prompt_optimizer`                            | `false` |
+| `seed`              | MiniMax `image-01` only                                                  | —       |
+| `maskAssetId`, `background`, `moderation`, `inputFidelity` | GPT Image edit/output controls | — |
+| `outputFormat`, `outputCompression` | GPT Image PNG/JPEG/WebP controls                         | PNG     |
 
 ## Defaults
 
@@ -96,11 +100,12 @@ submit_image({
   name: "Product",
 });
 
-// MiniMax (no reference images)
+// MiniMax (optional single subject reference; R2 must be configured for refs)
 submit_image({
   model: "image-01",
   prompt: "matte product bottle on marble, soft studio light",
   name: "Bottle still",
+  promptOptimizer: false,
 });
 ```
 

@@ -13,6 +13,7 @@ import { useRecorder } from '../../audio/recorder';
 import { exportClipMov, bakeClipToVideo } from '../../media/clipExport';
 import { CaptionStyleMenu } from '../../captions/CaptionStyleMenu';
 import { captionsForTrack } from '../../captions/captionTrack';
+import { newManualCaptions } from '../../captions/manualCaptions';
 import { TrackHead } from './TrackHead';
 import { TrackLane } from './TrackLane';
 import { TimelineToolbar } from './TimelineToolbar';
@@ -102,7 +103,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     if (state.captions) { commands.updateCaptions({ enabled: !state.captions.enabled }); return; }
     const captions = captionsForTrack(state, trackId);
     if (captions) commands.setCaptions(captions);
-    else setCaptionError(t('该轨道还没有可用文字稿'));
+    else commands.setCaptions(newManualCaptions());
   };
   // 选择模式 (selection mode): clicks/drags pick REFERENCES for the chat
   // instead of editing — clip click → item ref, ruler click → timepoint, drag

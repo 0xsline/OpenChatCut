@@ -28,6 +28,15 @@ assert.equal(completed?.phase, 'completed');
 assert.equal(completed?.progress, 100);
 assert.equal(completed?.processedFrames, 100);
 assert.equal(completed?.result?.assetId, success.jobId);
+assert.deepEqual(completed?.results?.map((item) => item.assetId), [success.jobId]);
+
+const multiple = createGenerationJob({ kind: 'music' }, async (id) => [
+  { assetId: `${id}:1`, kind: 'audio', name: 'one', path: '/one.mp3', durationSeconds: 1 },
+  { assetId: `${id}:2`, kind: 'audio', name: 'two', path: '/two.mp3', durationSeconds: 1 },
+]);
+await new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
+assert.equal(getGenerationJobSnapshot(multiple.jobId)?.result?.assetId, `${multiple.jobId}:1`);
+assert.equal(getGenerationJobSnapshot(multiple.jobId)?.results?.length, 2);
 
 const cleanedPaths: string[] = [];
 const cleanupResult = (id: string) => ({

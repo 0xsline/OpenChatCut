@@ -43,7 +43,8 @@ Use `submit_voice` to create a TTS audio asset. The current MCP tool contract is
 - `provider` is required: `doubao` (Chinese-optimized), `elevenlabs` (English /
   multilingual), or `minimax` (MiniMax TTS — see
   [references/minimax-tts.md](references/minimax-tts.md)).
-- `voiceId` is required and provider-specific. Do not mix catalogs.
+- `voiceId` is required and provider-specific. The only exception is MiniMax
+  `timbreWeights` mixing, where `voiceId` must be empty. Do not mix catalogs.
 - `submit_voice` creates an audio asset only. Timeline placement, replacement,
   trimming, and alignment happen later with timeline tools.
 - For long narration, multiple `submit_voice` calls can be useful: split at
@@ -55,8 +56,9 @@ Use `submit_voice` to create a TTS audio asset. The current MCP tool contract is
   knobs, but not every Doubao voice supports every expressive control. Check
   the `voiceId` guide or [references/voices.md](references/voices.md) before
   using them.
-- For ElevenLabs, `modelId`, `speed`, and `stability` are the supported voice
-  knobs. For `eleven_v3`, inline audio tags are available for expressive
+- For ElevenLabs, the tool supports the official voice settings, language,
+  seed, output formats, normalization, pronunciation dictionaries, continuity
+  text/request IDs, and logging/latency query controls. For `eleven_v3`, inline audio tags are available for expressive
   delivery such as emotion, tone, nonverbal cues, accent hints, pauses, or
   local pacing.
 
@@ -77,8 +79,8 @@ ElevenLabs control support for current curated voices:
 
 - `amelia`, `brittney`, `hope`, `jessica`, `arabella`, `jane`, `maria`,
   `mark`, `frederick`, `peter`, `james`, `jon`, `sully`, `david`, and `alex`
-  all support the same request-level controls: `modelId`, `speed`, and
-  `stability`.
+  all support the same request-level controls; model-specific support is still
+  validated by ElevenLabs.
 - These controls are not per-voice guarantees of a specific acting style.
   Use the preset tags/samples to pick a naturally suitable voice, then use the
   controls for moderate delivery changes.
@@ -146,6 +148,8 @@ submit_voice({
   voiceId: "peter",
   speed: 0.95,
   stability: 0.4,
+  similarityBoost: 0.8,
+  outputFormat: "wav_44100",
 });
 
 // MiniMax TTS (when configured) — see references/minimax-tts.md

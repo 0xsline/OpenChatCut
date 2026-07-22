@@ -11,10 +11,11 @@ multimodal `@` refs, edit/extend/bridge) are adapted here to our tool shape.
 
 | Dimension | Value |
 | --- | --- |
-| Duration | **4–15** seconds integer (default **5**) |
+| Duration | **2–15** seconds integer (default **5**) |
 | Resolution | **`480p`** / **`720p`** (default) / **`1080p`** / **`4k`** — API `resolution` (4k needs full Seedance 2.0; Fast/Mini may reject) |
 | Aspect ratio | `16:9`, `4:3`, `1:1`, `3:4`, `9:16`, `21:9`, `adaptive` |
-| Audio out | Always on (`generate_audio: true`); no mute toggle |
+| Audio out | `generateAudio` → `generate_audio` (official default true) |
+| Provider controls | `seed`, `cameraFixed`, `watermark`, `returnLastFrame`, `executionExpiresAfter` (3600–259200), `priority` (0–9) |
 | Prompt | Required; keep focused (CN ≈ ≤500 chars, EN ≈ ≤1000 words useful bound) |
 | Multi-shot API | **None** — multi-shot is **prompt structure only** (not Kling `shotType` / `multiPrompts`) |
 
@@ -31,7 +32,7 @@ When `firstFrame` or `lastFrame` is set, the server **forces `ratio: "adaptive"`
 | `refVideos[]` | `reference_video` | `@Video1`… | ≤ **3** |
 | `refAudios[]` | `reference_audio` | `@Audio1`… | ≤ **3**; needs ≥1 visual (frame or image/video ref) |
 
-All slots are **project asset refs** (UUID / short prefix / `asset://…` / same-origin asset path). External URLs rejected — import first (`download_media` / `submit_image`).
+All slots are **project asset refs**. External URLs are rejected. Reference videos are uploaded to configured R2 and sent as temporary HTTPS URLs because the official API does not accept video data URLs.
 
 **Ordinal rule:** images are numbered in **payload order**: `firstFrame` → `lastFrame` → `refImages[0]`… Videos and audios number only within their own arrays. Always name the role in prose after the token: `@Image1 (the red coat woman)`, not bare `@Image1 walks…` (number segmentation errors).
 
@@ -250,7 +251,7 @@ Multi-character: one anchor image per character; every prompt names the **active
 | `seedance2 reference limit exceeded` | ≤9 images, ≤3 videos, ≤3 audios |
 | `seedance2 audio references require a visual reference` | Add firstFrame or ref image/video |
 | `lastFrame requires firstFrame` | Supply both |
-| `durationSeconds must be between 4 and 15` | Clamp duration |
+| `durationSeconds must be between 2 and 15` | Clamp duration |
 | `does not support ratio …` | Use allowed ratio list |
 | content-review / policy failure | New refs; do not retry same IP face |
 | timeout / provider failed | Report; adjust prompt or simplify refs; avoid thrice-identical payload |
@@ -261,7 +262,7 @@ Multi-character: one anchor image per character; every prompt names the **active
 2. `name` is descriptive for the media pool.
 3. Param combo matches the intended mode (see exclusion rules).
 4. Every media slot is a project asset id; prompt `@` ordinals match payload order.
-5. `durationSeconds` integer 4–15; multi-shot timestamps sum to it.
+5. `durationSeconds` integer 2–15; multi-shot timestamps sum to it.
 6. `resolution` is `480p` (draft), `720p` (default), `1080p`, or `4k` (final delivery; heavier).
 7. No Kling-only fields.
 8. Briefly tell the user model + duration + mode before calling.

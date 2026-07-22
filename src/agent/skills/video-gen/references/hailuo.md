@@ -5,9 +5,9 @@ Read this before `submit_video({ model: "hailuo", … })`.
 Grounded in OpenChatCut’s video adapter (`server/plugins/video.ts` → MiniMax
 `POST /v1/video_generation`, poll `query/video_generation`, download via
 `files/retrieve`). Official MiniMax video guide lists four product modes
-(T2V / I2V / first–last / subject-reference). **This path implements T2V,
-single-image I2V, and first+last frames.** Subject-reference and multi-ref
-are not wired.
+(T2V / I2V / first–last / subject-reference). This path implements all four;
+the configured MiniMax model determines which mode matrix is valid. Multi-ref
+is not a Hailuo API mode and is rejected.
 
 Default settings model is `MiniMax-Hailuo-02` (Settings may switch to
 `MiniMax-Hailuo-2.3` / `MiniMax-Hailuo-2.3-Fast`). Call it **海螺 / Hailuo /
@@ -19,7 +19,7 @@ MiniMax video** for the user.
 | --- | --- |
 | Endpoint | `POST {MINIMAX_BASE_URL}/v1/video_generation` |
 | Duration | **Exactly `6` or `10`** seconds (default **6**) |
-| Resolution tool args | `720p` (default) → API **`768P`** · `1080p` → API **`1080P`** |
+| Resolution tool args | `512p` → **`512P`** (Hailuo-02 only) · `720p` (default) → **`768P`** · `1080p` → **`1080P`** |
 | Aspect ratio | **No `ratio` field** — not sent. Framing follows first-frame image when present |
 | Prompt | **Required**, ≤ **2000** characters |
 | Prompt optimizer | Default **`true`**; tool `promptOptimizer: false` for more literal prompts |
@@ -32,6 +32,7 @@ MiniMax video** for the user.
 
 | Tool `resolution` | API value | Allowed `durationSeconds` |
 | --- | --- | --- |
+| `512p` | `512P` | **6** or **10**, I2V with `MiniMax-Hailuo-02` only |
 | `720p` (default) | `768P` | **6** or **10** |
 | `1080p` | `1080P` | **6 only** (10s rejected by our validator) |
 
@@ -56,8 +57,14 @@ If you need 10s, use `720p` (or omit resolution).
 | `prompt` only | Text-to-video |
 | `prompt` + `firstFrame` | Image-to-video |
 | `prompt` + `firstFrame` + `lastFrame` | First→last frame transition |
+| `prompt` + `firstFrame`, configured `S2V-01` | Subject-reference video |
 
-Not available: multi-shot storyboard, multi-ref, subject-reference face lock.
+`MiniMax-Hailuo-2.3-Fast` is I2V-only. First+last is `MiniMax-Hailuo-02` only,
+does not accept 512P, and does not expose `fast_pretreatment`. `S2V-01` accepts
+prompt, prompt optimizer, and subject reference only — no duration, resolution,
+last frame, or fast pretreatment.
+
+Not available: multi-shot storyboard or multi-ref. Subject-reference is wired when Settings selects `S2V-01`.
 For those → `seedance2` / `kling` when configured.
 
 ## When to choose Hailuo
@@ -170,7 +177,6 @@ submit_video({
 
 | Feature | Status |
 | --- | --- |
-| Tool enums `512P` / explicit `768P` | Tool uses `720p`/`1080p` only; 720p→API 768P |
 | Callback webhooks | We poll |
 | Multi-shot API | Use Kling |
 

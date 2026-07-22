@@ -4,9 +4,11 @@ import type { CaptionLayout, CaptionsData, CaptionTemplate } from './types';
 import type { CaptionStyle } from './styles';
 import { paginate, activePage, currentWordIndex, activeTranslation, joinCaptionWords } from './types';
 import type { TimelineItem } from '../editor/types';
-import { buildLaneGroups } from './lanes';
+import { buildLaneGroups, type LanePage } from './lanes';
 import { resolveCaptionWords, resolveCaptionWordIndices, applyWordOverrides } from './resolve';
 import { containerStyle, effectivePreset, wordStyle } from './renderStyles';
+
+const CAPTION_OVERLAY_STYLE = { pointerEvents: 'none', zIndex: 1 } as const;
 
 // Renders the active caption page for the current frame. Lives inside the
 // Remotion composition, so it shows in the Player preview AND burns into export.
@@ -36,7 +38,7 @@ function SingleStreamCaptions({ captions, items, ms, width, height, fps }: { cap
   const translated = captions.bilingual && captions.translation ? activeTranslation(captions.translation, ms) : null;
 
   return (
-    <AbsoluteFill style={{ pointerEvents: 'none' }}>
+    <AbsoluteFill style={CAPTION_OVERLAY_STYLE}>
       <div style={containerStyle(preset, captions.template, width, height, captions.layout)}>
         {preset.wholeLine ? (
           // 整句连续:一页一条文本(无词间隙、无逐词高亮),背景包住整行(经典黑底字幕)。
@@ -76,27 +78,43 @@ function MultiLaneCaptions({ captions, items, ms, width, height }: { captions: C
   );
   if (!groups?.length) return null;
   return (
-    <AbsoluteFill style={{ pointerEvents: 'none' }}>
+    <AbsoluteFill style={CAPTION_OVERLAY_STYLE}>
       {groups.map((g, gi) => {
         const layout: CaptionLayout | undefined = g.anchor
           ? { anchor: g.anchor, offsetXRatio: g.offsetXRatio, offsetYRatio: g.offsetYRatio }
           : captions.layout;
         return (
           <div key={gi} style={containerStyle(basePreset, captions.template, width, height, layout)}>
-            {g.lanes.map((lane, li) => {
-              const preset: CaptionStyle = lane.entry.style ? { ...basePreset, ...lane.entry.style } : basePreset;
-              return (
-                <div key={lane.entry.id || li}
-                  style={{ display: 'flex', flexDirection: preset.displayMode === 'stacked' ? 'column' : 'row', flexWrap: 'wrap', justifyContent: 'center', gap: '0.2em', fontSize: height * preset.fontSize, fontFamily: `${preset.fontFamily}, system-ui, sans-serif`, fontWeight: preset.fontWeight, textTransform: preset.textTransform }}>
-                  {lane.page.words.map((w, i) => (
-                    <span key={i} style={{ position: 'relative', ...wordStyle(preset, i === lane.curIdx) }}>{w.text}</span>
-                  ))}
-                </div>
-              );
-            })}
+            {g.lanes.map((lane, li) => (
+              <LaneCaption key={lane.entry.id || li} lane={lane} basePreset={basePreset} height={height} />
+            ))}
           </div>
         );
       })}
     </AbsoluteFill>
+  );
+}
+
+function LaneCaption({ lane, basePreset, height }: { lane: LanePage; basePreset: CaptionStyle; height: number }) {
+  const preset: CaptionStyle = lane.entry.style ? { ...basePreset, ...lane.entry.style } : basePreset;
+  const typography = {
+    fontSize: height * preset.fontSize,
+    fontFamily: `${preset.fontFamily}, system-ui, sans-serif`,
+    fontWeight: preset.fontWeight,
+    textTransform: preset.textTransform,
+  } as const;
+  if (preset.wholeLine) {
+    return (
+      <div style={{ ...typography, ...wordStyle(preset, false), background: preset.background ?? 'transparent', borderRadius: 6, padding: preset.background ? '0.1em 0.42em' : 0, whiteSpace: 'pre-wrap' }}>
+        {joinCaptionWords(lane.page.words)}
+      </div>
+    );
+  }
+  return (
+    <div style={{ ...typography, display: 'flex', flexDirection: preset.displayMode === 'stacked' ? 'column' : 'row', flexWrap: 'wrap', justifyContent: 'center', gap: '0.2em' }}>
+      {lane.page.words.map((word, index) => (
+        <span key={index} style={{ position: 'relative', ...wordStyle(preset, index === lane.curIdx) }}>{word.text}</span>
+      ))}
+    </div>
   );
 }

@@ -10,22 +10,24 @@ Grounded in OpenChatCut’s image adapter (`server/plugins/image.ts` → MiniMax
 | --- | --- |
 | Model arg | `image-01` |
 | Prompt | Required, **≤ 1500 characters** |
-| Reference images | **Not supported** (server rejects any refs) |
+| Reference images | **0–1 subject image** via `subject_reference`; requires configured R2 temporary HTTPS URL |
 | Count | **1–9** per call (default 1) |
-| Aspect ratio | Passed through when set (same enum as other models; default `16:9`) |
-| `imageSize` / `quality` | **Ignored** on this path (gpt-image-2 only for quality/size tiers) |
-| `promptOptimizer` | Default **true** → API `prompt_optimizer`; set **false** for more literal prompts |
+| Aspect ratio | `1:1`, `16:9`, `4:3`, `3:2`, `2:3`, `3:4`, `9:16`, `21:9` |
+| Custom dimensions | `width` + `height`, each 512–2048 and divisible by 8; omit aspect ratio |
+| `imageSize` / `quality` | Not sent on this path |
+| `seed` | Optional safe integer |
+| `promptOptimizer` | Official default **false**; sent only when explicitly supplied |
 | Server MiniMax model | From Settings `MINIMAX_IMAGE_MODEL` (`image-01` / `image-01-live`) |
 
 ## When to use
 
-- MiniMax is configured and the user wants a fast single-shot still without reference images.
+- MiniMax is configured and the user wants a still or a single subject-reference generation.
 - User explicitly asked for MiniMax image generation.
 - Only MiniMax image key is on (capabilities).
 
 ## When not to use
 
-- Need reference-image fidelity → `nano-banana` or `gpt-image-2`
+- Need multiple reference images → `nano-banana` or `gpt-image-2`
 - Need best-in-class text-in-image → prefer `gpt-image-2`
 - MiniMax key missing → say so; do not invent the model
 
@@ -38,6 +40,7 @@ submit_image({
   name: "Descriptive still",
   aspectRatio: "16:9",
   count: 1,                    // max 9
+  seed: 42,
 });
 
 // Literal brand packshot (less auto-rewrite)
@@ -49,7 +52,7 @@ submit_image({
 });
 ```
 
-Do **not** pass `referenceAssetIds` for `image-01`.
+Pass at most one image in `referenceAssetIds`; R2 must be configured so MiniMax can fetch a temporary signed URL.
 
 ## Prompt tips
 

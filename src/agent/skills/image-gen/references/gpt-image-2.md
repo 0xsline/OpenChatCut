@@ -6,7 +6,7 @@ Read this document before generating images with `--model gpt-image-2`.
 
 - Best text rendering among all image models — legible headlines, labels, packaging, UI mockups
 - Strongest prompt adherence — follows complex layout and composition instructions precisely
-- Max 10 reference images
+- Max 16 reference images
 - Supports `--quality` param: `auto | low | medium | high` (default: `high`)
 
 ## Params
@@ -16,7 +16,7 @@ Read this document before generating images with `--model gpt-image-2`.
 | `--quality` | `auto`, `low`, `medium`, `high` | `high`  | Only model with quality control     |
 | `--size`    | `1K`, `2K`, `4K`                | `1K`    | 2K/4K are EXPERIMENTAL, slower/heavier |
 | `--aspect`  | 10 ratios (see SKILL.md)        | `16:9`  | Computed to exact pixel dimensions  |
-| `--input`   | file path or `asset://<id>`     | —       | Up to 10 references                 |
+| `--input`   | file path or `asset://<id>`     | —       | Up to 16 references                 |
 
 ## When to Use
 
@@ -28,7 +28,7 @@ Read this document before generating images with `--model gpt-image-2`.
 ## When NOT to Use
 
 - When reference-image fidelity is critical (use `nano-banana` instead)
-- When >10 reference images are needed (use `nano-banana`)
+- When the reference set is larger than the current task needs; prefer fewer, clearer anchors
 - When speed matters and quality is secondary (nano-banana is faster for simple prompts)
 
 ## Prompt Tips

@@ -5,6 +5,7 @@ import { paginate, type CaptionPage } from './types';
 import { resolveCaptionWords } from './resolve';
 import type { CaptionsData } from './types';
 import type { TimelineItem } from '../editor/types';
+import { isManualCaptionEntry } from './manualCaptions';
 
 /** ms → SRT 时间码 `HH:MM:SS,mmm`。 */
 export function srtTimestamp(ms: number): string {
@@ -32,6 +33,18 @@ function pageText(page: CaptionPage): string {
 
 /** 字幕 cue 列表(SRT 与 TXT 的共同中间态)。空词表 → []。 */
 export function captionPages(captions: CaptionsData, items: TimelineItem[], fps: number): CaptionPage[] {
+  if (captions.sourceEntries?.some(isManualCaptionEntry)) {
+    const manual = captions.sourceEntries
+      .filter((entry) => isManualCaptionEntry(entry) && entry.visible !== false)
+      .flatMap((entry) => entry.words ?? [])
+      .map((word) => ({ words: [word], start: word.start, end: word.end }));
+    const automaticEntries = captions.sourceEntries.filter((entry) => !isManualCaptionEntry(entry));
+    const automaticWords = automaticEntries.length
+      ? resolveCaptionWords({ ...captions, sourceEntries: automaticEntries }, items, fps)
+      : [];
+    return [...paginate(automaticWords, captions.pacing ?? 'phrase'), ...manual]
+      .sort((a, b) => a.start - b.start || a.end - b.end);
+  }
   const words = resolveCaptionWords(captions, items, fps);
   if (!words.length) return [];
   return paginate(words, captions.pacing ?? 'phrase');

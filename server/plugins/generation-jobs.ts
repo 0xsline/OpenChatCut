@@ -6,7 +6,7 @@ export type GenerationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
 export interface GenerationResult {
   assetId: string;
-  kind: 'audio' | 'video';
+  kind: 'audio' | 'video' | 'image';
   name: string;
   path: string;
   durationSeconds: number;
@@ -31,6 +31,7 @@ interface GenerationJob {
   createdAt: number;
   updatedAt: number;
   result?: GenerationResult;
+  results?: GenerationResult[];
   error?: string;
   cleanupResult?: (result: GenerationResult) => Promise<void> | void;
   retentionMs: number;
@@ -48,6 +49,7 @@ export interface GenerationJobSnapshot {
   createdAt: number;
   updatedAt: number;
   result?: GenerationResult;
+  results?: GenerationResult[];
   error?: string;
 }
 
@@ -96,9 +98,9 @@ async function evictTerminalJob(jobId: string): Promise<boolean> {
   if (!job || !TERMINAL.has(job.status)) return false;
   jobs.delete(jobId);
   if (job.expiryTimer) clearTimeout(job.expiryTimer);
-  if (job.result && job.cleanupResult) {
+  if (job.results?.length && job.cleanupResult) {
     try {
-      await job.cleanupResult(job.result);
+      await Promise.all(job.results.map((result) => job.cleanupResult!(result)));
     } catch (error) {
       console.warn(`[generation-job] failed to clean result for ${jobId}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -124,7 +126,7 @@ function applyProgress(job: GenerationJob, next: GenerationJobProgress): void {
 
 async function runGenerationJob(
   job: GenerationJob,
-  task: (jobId: string, update: UpdateGenerationJob) => Promise<GenerationResult>,
+  task: (jobId: string, update: UpdateGenerationJob) => Promise<GenerationResult | GenerationResult[]>,
   options: GenerationJobOptions,
 ): Promise<void> {
   let release: (() => void) | undefined;
@@ -134,7 +136,9 @@ async function runGenerationJob(
     job.progress = 10;
     job.phase = 'starting';
     job.updatedAt = Date.now();
-    job.result = await task(job.id, (next) => applyProgress(job, next));
+    const returned = await task(job.id, (next) => applyProgress(job, next));
+    job.results = Array.isArray(returned) ? returned : [returned];
+    job.result = job.results[0];
     job.status = 'succeeded';
     job.progress = 100;
     job.phase = 'completed';
@@ -153,7 +157,7 @@ async function runGenerationJob(
 
 export function createGenerationJob(
   params: Record<string, unknown>,
-  task: (jobId: string, update: UpdateGenerationJob) => Promise<GenerationResult>,
+  task: (jobId: string, update: UpdateGenerationJob) => Promise<GenerationResult | GenerationResult[]>,
   options: GenerationJobOptions = {},
 ): { jobId: string; status: 'queued' } {
   cleanOldJobs();
@@ -189,6 +193,7 @@ export function getGenerationJobSnapshot(jobId: string): GenerationJobSnapshot |
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
     result: job.result,
+    results: job.results,
     error: job.error,
   };
 }
@@ -240,6 +245,7 @@ function report(job: GenerationJob, action: ProgressRequest['action']) {
     updatedAt: job.updatedAt,
     ...(action === 'params' ? { params: job.params } : {}),
     ...(job.result ? { result: job.result } : {}),
+    ...(job.results && job.results.length > 1 ? { results: job.results } : {}),
     ...(job.error ? { error: job.error } : {}),
   };
 }

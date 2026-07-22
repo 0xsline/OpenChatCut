@@ -74,6 +74,13 @@ export const LLM_PROVIDER_PRESETS = [
     baseUrl: 'https://api.mistral.ai/v1',
     defaultModel: 'mistral-large-latest',
   },
+  {
+    id: 'openrouter',
+    label: 'OpenRouter',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    defaultModel: 'openrouter/auto',
+  },
 ] as const satisfies readonly LlmProviderPreset[];
 
 export type LlmProvider = (typeof LLM_PROVIDER_PRESETS)[number]['id'];

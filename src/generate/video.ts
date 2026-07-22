@@ -6,7 +6,7 @@ export interface SubmitVideoArgs {
   name?: string;
   durationSeconds?: number | string;
   ratio?: string;
-  resolution?: '480p' | '720p' | '1080p' | '4k';
+  resolution?: '480p' | '512p' | '720p' | '1080p' | '4k';
   mode?: 'std' | 'pro';
   firstFrame?: string;
   lastFrame?: string;
@@ -19,6 +19,14 @@ export interface SubmitVideoArgs {
   promptOptimizer?: boolean;
   /** Hailuo only: faster pretreatment when optimizer is on. */
   fastPretreatment?: boolean;
+  /** Seedance-only provider controls. */
+  generateAudio?: boolean;
+  seed?: number;
+  cameraFixed?: boolean;
+  watermark?: boolean;
+  returnLastFrame?: boolean;
+  executionExpiresAfter?: number;
+  priority?: number;
   multiPrompts?: Array<{ prompt: string; duration: number | string; index: number }>;
   shotType?: 'customize' | 'intelligence';
 }

@@ -102,8 +102,10 @@ export interface CaptionWordOverride {
 export interface CaptionSourceEntry {
   /** stable sourceId — selector target + perSource key (source_list exposes it) */
   id: string;
-  /** transcribed timeline item feeding this lane */
+  /** transcribed timeline item feeding this lane; manual lanes use a manual:* sentinel */
   itemId: string;
+  /** Manual lane cues in absolute timeline milliseconds. One word is one cue. */
+  words?: TranscriptWord[];
   /** stable 0-based visual order; legacy entries without it keep array order */
   trackOrder?: number;
   /** show this item's translation variant instead of the original words */

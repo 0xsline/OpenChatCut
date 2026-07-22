@@ -8,6 +8,7 @@ import { usePersistedState } from '../hooks/usePersistedState';
 import { Icon } from '../components/icons';
 import { theme } from '../theme';
 import { useT } from '../i18n/locale';
+import { ManualCaptionEditor } from './ManualCaptionEditor';
 
 interface CaptionsControlsProps {
   captions: CaptionsData | null;
@@ -20,6 +21,8 @@ interface CaptionsControlsProps {
   /** 逐句编辑:点句跳预览(时间线 ms) */
   onSeekMs?: (ms: number) => void;
   onGenerate: () => void;
+  onCreateManual: () => void;
+  getPlayheadMs?: () => number;
   onUpdate: (patch: Partial<CaptionsData>) => void;
   /** 完全移除字幕（隐藏且清掉 overlay 状态） */
   onRemove?: () => void;
@@ -44,7 +47,7 @@ const TRANSLATE_TO: { id: string; label: string }[] = [
 
 // 字幕 = 预览画面底部叠字（跟文字稿走）。整块面板可折叠，避免占满文字稿区。
 export function CaptionsControls({
-  captions, hasTranscript, sourceVariants = [], items, fps, onSeekMs, onGenerate, onUpdate, onRemove, onTranslate, translating, translateError,
+  captions, hasTranscript, sourceVariants = [], items, fps, onSeekMs, onGenerate, onCreateManual, getPlayheadMs, onUpdate, onRemove, onTranslate, translating, translateError,
 }: CaptionsControlsProps) {
   const t = useT();
   // 默认收起：用户明确说「这个面板」碍事；点标题条展开
@@ -89,10 +92,11 @@ export function CaptionsControls({
           <button type="button" className="cc-cap-btn primary" onClick={onGenerate} disabled={!hasTranscript}>
             {t('生成字幕')}
           </button>
+          <button type="button" className="cc-cap-btn" onClick={onCreateManual}>{t('手动添加字幕')}</button>
           <p className="cc-cap-hint">
             {hasTranscript
               ? t('根据当前文字稿在预览底部显示字幕。不需要时可点上方「收起」藏起本面板。')
-              : t('先在上方完成「转写」，再生成字幕。')}
+              : t('没有文字稿也可手动添加字幕；需要自动生成时先完成转写。')}
           </p>
         </div>
       )}
@@ -191,6 +195,8 @@ export function CaptionsControls({
           <button type="button" className="cc-cap-btn" onClick={onGenerate} disabled={!hasTranscript}>
             {t('用当前文字稿刷新字幕')}
           </button>
+
+          <ManualCaptionEditor captions={captions} items={items} onUpdate={onUpdate} getPlayheadMs={getPlayheadMs} onSeekMs={onSeekMs} />
 
           {/* 字幕语言（文本变体）：把主字幕行换成某个翻译/校正变体，时间轴不变。
               变体由 Agent 的 manage_transcript translate 生成，这里只选显示哪个。 */}

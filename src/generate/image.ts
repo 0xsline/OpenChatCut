@@ -5,11 +5,28 @@ export interface SubmitImageArgs {
   prompt: string;
   name: string;
   aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3' | '4:5' | '5:4' | '21:9';
-  imageSize?: '1K' | '2K' | '4K';
+  imageSize?: '512px' | '1K' | '2K' | '4K';
+  /** GPT Image 2 or MiniMax image-01 custom dimensions. Must be provided together. */
+  width?: number;
+  height?: number;
   quality?: 'low' | 'medium' | 'high' | 'auto';
   referenceAssetIds?: string[];
+  /** GPT Image edit mask; transparent pixels are replaced. */
+  maskAssetId?: string;
   count?: number;
-  /** MiniMax image-01 only: prompt_optimizer (default true). */
+  /** GPT Image only. */
+  background?: 'transparent' | 'opaque' | 'auto';
+  /** GPT Image only. */
+  moderation?: 'low' | 'auto';
+  /** GPT Image edits only. */
+  inputFidelity?: 'low' | 'high';
+  /** GPT Image output encoding. */
+  outputFormat?: 'png' | 'jpeg' | 'webp';
+  /** GPT Image JPEG/WebP compression, 0–100. */
+  outputCompression?: number;
+  /** MiniMax image-01 only. */
+  seed?: number;
+  /** MiniMax image-01 only: prompt_optimizer (official default false). */
   promptOptimizer?: boolean;
 }
 
@@ -33,11 +50,19 @@ export async function submitImage(args: SubmitImageArgs, state: TimelineState): 
     if (asset.kind !== 'image') throw new Error(`reference asset is not an image: ${id}`);
     return asset.src;
   });
+  const maskPath = args.maskAssetId
+    ? (() => {
+      const asset = (state.assets ?? []).find((candidate) => candidate.id === args.maskAssetId);
+      if (!asset) throw new Error(`mask asset not found: ${args.maskAssetId}`);
+      if (asset.kind !== 'image') throw new Error(`mask asset is not an image: ${args.maskAssetId}`);
+      return asset.src;
+    })()
+    : undefined;
 
   const response = await fetch('/generate/image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...args, prompt, name, referencePaths }),
+    body: JSON.stringify({ ...args, prompt, name, referencePaths, maskPath }),
   });
   const result = await response.json().catch(() => ({})) as ImageResponse;
   if (!response.ok) throw new Error(result.error ?? `image generation failed (${response.status})`);

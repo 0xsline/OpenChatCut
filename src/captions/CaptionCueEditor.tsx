@@ -49,7 +49,7 @@ export function CaptionCueEditor({ captions, items, fps, onUpdate, onSeekMs }: C
         <span className="cc-cap-hint">{open ? t('收起') : t('展开')}</span>
       </button>
       {open && multiLane && (
-        <p className="cc-cap-hint">{t('多说话人/多车道字幕暂不支持逐句手改，请在对话里让 AI 修改。')}</p>
+        <p className="cc-cap-hint">{t('转写字幕车道请在对话里修改；手动车道可在上方「手动字幕」中直接编辑。')}</p>
       )}
       {open && !multiLane && rows.length === 0 && (
         <p className="cc-cap-hint">{t('还没有可编辑的字幕句（先转写并生成字幕）。')}</p>

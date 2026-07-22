@@ -4,6 +4,8 @@ export interface SubmitSoundArgs {
   prompt: string;
   durationSeconds?: number;
   promptInfluence?: number;
+  loop?: boolean;
+  outputFormat?: string;
   name?: string;
 }
 

@@ -9,7 +9,7 @@ export interface TrackGenerationProgressArgs {
 
 interface GenerationJobResult {
   assetId?: string;
-  kind?: 'audio' | 'video';
+  kind?: 'audio' | 'video' | 'image';
   name?: string;
   path?: string;
   durationSeconds?: number;
@@ -21,6 +21,7 @@ export interface GenerationJobReport extends JobReportBase<'queued' | 'running' 
   jobId: string;
   params?: Record<string, unknown>;
   result?: GenerationJobResult;
+  results?: GenerationJobResult[];
 }
 
 interface ProgressResponse {
@@ -44,20 +45,23 @@ export async function trackGenerationProgress(
   const completedAssets: MediaAsset[] = [];
 
   for (const report of reports) {
-    const result = report.result;
-    if (args.action === 'params' || !isComplete(report.status) || !result || existing.has(String(result.assetId))) continue;
-    if (!result.assetId || !result.name || !result.path || !result.kind || !result.durationSeconds) continue;
-    const asset: MediaAsset = {
-      id: result.assetId,
-      name: result.name,
-      kind: result.kind,
-      src: result.path,
-      durationInFrames: Math.max(1, Math.round(result.durationSeconds * state.fps)),
-      width: result.width,
-      height: result.height,
-    };
-    completedAssets.push(asset);
-    existing.add(asset.id);
+    const results = report.results?.length ? report.results : report.result ? [report.result] : [];
+    if (args.action === 'params' || !isComplete(report.status)) continue;
+    for (const result of results) {
+      if (existing.has(String(result.assetId))) continue;
+      if (!result.assetId || !result.name || !result.path || !result.kind || !result.durationSeconds) continue;
+      const asset: MediaAsset = {
+        id: result.assetId,
+        name: result.name,
+        kind: result.kind,
+        src: result.path,
+        durationInFrames: Math.max(1, Math.round(result.durationSeconds * state.fps)),
+        width: result.width,
+        height: result.height,
+      };
+      completedAssets.push(asset);
+      existing.add(asset.id);
+    }
   }
 
   return { reports, completedAssets };

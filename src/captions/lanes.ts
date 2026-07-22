@@ -9,6 +9,7 @@ import { activePage, currentWordIndex, paginate } from './types';
 import type { TimelineItem } from '../editor/types';
 import { resolveEntryWords } from './resolve';
 import { orderedCaptionSourceEntries } from './sourceOrder';
+import { isManualCaptionEntry } from './manualCaptions';
 
 export interface LanePage {
   entry: CaptionSourceEntry;
@@ -53,8 +54,13 @@ export function buildLaneGroups(captions: CaptionsData, items: TimelineItem[], f
     if (!words.length) return;
     const maxLines = captions.perSource?.[entry.id]?.maxLines;
     const per = maxLines ? Math.max(1, (wordsPerPage ?? 6) * maxLines) : wordsPerPage;
-    const pages = paginate(words, captions.pacing, per);
-    const page = activePage(pages, ms);
+    const manual = isManualCaptionEntry(entry);
+    const pages = manual
+      ? words.map((word) => ({ words: [word], start: word.start, end: word.end }))
+      : paginate(words, captions.pacing, per);
+    const page = manual
+      ? [...pages].reverse().find((candidate) => ms >= candidate.start && ms < candidate.end) ?? null
+      : activePage(pages, ms);
     if (!page) return;
     active.push({ entry, lane: { entry, page, curIdx: currentWordIndex(page, ms) }, order });
   });

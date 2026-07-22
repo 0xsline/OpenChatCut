@@ -33,18 +33,6 @@ function projectItemIndices(item: TimelineItem, del: Set<number>, fps: number): 
 // pre-existing single-source behavior stays byte-identical (no merge = same
 // code path as before this feature).
 function mergedSourceItems(captions: CaptionsData, items: TimelineItem[]): TimelineItem[] | undefined {
-  // 多车道 scope(sourceEntries):合并视图 = 可见车道的源 item 去重(read_captions/
-  // 翻译器仍拿到一条时间序词流;渲染层则走 lanes.ts 的分车道路径)。
-  if (captions.sourceEntries?.length) {
-    const seen = new Set<string>();
-    const found: TimelineItem[] = [];
-    for (const e of orderedCaptionSourceEntries(captions.sourceEntries)) {
-      if (e.visible === false || seen.has(e.itemId)) continue;
-      const it = items.find((x) => x.id === e.itemId);
-      if (it?.transcript?.length) { seen.add(e.itemId); found.push(it); }
-    }
-    return found.length ? found : undefined;
-  }
   if (captions.sourceMode === 'timeline') {
     const all = items.filter((it) => (it.transcript?.length ?? 0) > 0);
     return all.length ? [...all].sort((a, b) => a.startFrame - b.startFrame || a.id.localeCompare(b.id)) : undefined;
@@ -62,6 +50,7 @@ function mergedSourceItems(captions: CaptionsData, items: TimelineItem[]): Timel
  * swapped in BEFORE retiming (翻译只换文本，时序永远来自源词),
  * deletions/silence/trim window all honored (same math as the play layer). */
 export function resolveEntryWords(entry: CaptionSourceEntry, items: TimelineItem[], fps: number): TranscriptWord[] {
+  if (entry.words) return entry.words.map((word) => ({ ...word }));
   const item = items.find((it) => it.id === entry.itemId);
   if (!item?.transcript?.length) return [];
   const del = new Set(item.deletedWordIdx ?? []);
@@ -92,6 +81,12 @@ function mergeWords(sourceItems: TimelineItem[], fps: number): TranscriptWord[] 
 // the offset. Shared by the render layer, the translation generator, and the
 // agent tool so all three agree on what text/timing the captions currently show.
 export function resolveCaptionWords(captions: CaptionsData, items: TimelineItem[], fps: number): TranscriptWord[] {
+  if (captions.sourceEntries?.length) {
+    return orderedCaptionSourceEntries(captions.sourceEntries)
+      .filter((entry) => entry.visible !== false)
+      .flatMap((entry) => resolveEntryWords(entry, items, fps))
+      .sort((a, b) => a.start - b.start || a.end - b.end);
+  }
   const merged = mergedSourceItems(captions, items);
   if (merged) return mergeWords(merged, fps);
   const item = captions.sourceItemId ? items.find((it) => it.id === captions.sourceItemId) : undefined;
@@ -117,6 +112,12 @@ export function resolveCaptionWords(captions: CaptionsData, items: TimelineItem[
 // stays well-defined regardless of how many items were merged (see
 // CaptionsData.wordOverrides doc in types.ts).
 export function resolveCaptionWordIndices(captions: CaptionsData, items: TimelineItem[], fps: number): number[] {
+  if (captions.sourceEntries?.length) {
+    const count = captions.sourceEntries
+      .filter((entry) => entry.visible !== false)
+      .reduce((total, entry) => total + resolveEntryWords(entry, items, fps).length, 0);
+    return Array.from({ length: count }, (_, i) => i);
+  }
   const merged = mergedSourceItems(captions, items);
   if (merged) {
     const count = merged.reduce((n, it) => {

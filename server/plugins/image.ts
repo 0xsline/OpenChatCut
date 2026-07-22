@@ -5,9 +5,14 @@ import { extname, join } from 'node:path';
 import type { Plugin } from 'vite';
 
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
+import { presignGetUpload, putUploadFile } from '../r2.ts';
 const ASPECTS = new Set(['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '4:5', '5:4', '21:9']);
-const SIZES = new Set(['1K', '2K', '4K']);
+const SIZES = new Set(['512px', '1K', '2K', '4K']);
 const QUALITIES = new Set(['low', 'medium', 'high', 'auto']);
+const OUTPUT_FORMATS = new Set(['png', 'jpeg', 'webp']);
+const BACKGROUNDS = new Set(['transparent', 'opaque', 'auto']);
+const MODERATIONS = new Set(['low', 'auto']);
+const INPUT_FIDELITIES = new Set(['low', 'high']);
 
 interface ImagePluginOptions {
   baseUrl: string;
@@ -25,22 +30,84 @@ interface ImageRequest {
   prompt?: string;
   aspectRatio?: string;
   imageSize?: string;
+  width?: number;
+  height?: number;
   quality?: string;
   count?: number;
   referencePaths?: string[];
-  /** MiniMax image-01 only: prompt_optimizer (default true). */
+  maskPath?: string;
+  background?: string;
+  moderation?: string;
+  inputFidelity?: string;
+  outputFormat?: string;
+  outputCompression?: number;
+  seed?: number;
+  /** MiniMax image-01 only: prompt_optimizer (official default false). */
   promptOptimizer?: boolean;
 }
 
 export interface ValidImageRequest {
   model: 'gpt-image-2' | 'nano-banana' | 'image-01';
   prompt: string;
-  aspectRatio: string;
+  aspectRatio?: string;
   imageSize: string;
+  width?: number;
+  height?: number;
   quality: string;
   count: number;
   referencePaths: string[];
+  maskPath?: string;
+  background?: 'transparent' | 'opaque' | 'auto';
+  moderation?: 'low' | 'auto';
+  inputFidelity?: 'low' | 'high';
+  outputFormat: 'png' | 'jpeg' | 'webp';
+  outputCompression?: number;
+  seed?: number;
   promptOptimizer?: boolean;
+}
+
+function customDimensions(input: ImageRequest, model: ValidImageRequest['model']) {
+  const width = input.width;
+  const height = input.height;
+  if ((width == null) !== (height == null)) throw new Error('width and height must be provided together');
+  if (width == null || height == null) return {};
+  if (input.aspectRatio != null) throw new Error('custom width/height cannot be combined with aspectRatio');
+  if (model === 'nano-banana') throw new Error('custom width/height are not supported by nano-banana');
+  if (!Number.isInteger(width) || !Number.isInteger(height)) throw new Error('width and height must be integers');
+  const [minimum, maximum, divisor] = model === 'image-01' ? [512, 2048, 8] : [512, 3840, 16];
+  if (width < minimum || width > maximum || height < minimum || height > maximum) {
+    throw new Error(`${model} width and height must be between ${minimum} and ${maximum}`);
+  }
+  if (width % divisor || height % divisor) throw new Error(`${model} width and height must be divisible by ${divisor}`);
+  const aspect = width / height;
+  if (model === 'gpt-image-2' && (aspect < 1 / 3 || aspect > 3)) throw new Error('gpt-image-2 custom aspect ratio must be between 1:3 and 3:1');
+  return { width, height };
+}
+
+function validateGptOptions(input: ImageRequest, hasReferences: boolean) {
+  if (input.background != null && !BACKGROUNDS.has(input.background)) throw new Error('background must be transparent, opaque, or auto');
+  if (input.moderation != null && !MODERATIONS.has(input.moderation)) throw new Error('moderation must be low or auto');
+  if (input.inputFidelity != null && !INPUT_FIDELITIES.has(input.inputFidelity)) throw new Error('inputFidelity must be low or high');
+  if (input.inputFidelity != null && !hasReferences) throw new Error('inputFidelity requires reference images');
+  if (input.maskPath != null && !hasReferences) throw new Error('maskPath requires reference images');
+  if (input.outputFormat != null && !OUTPUT_FORMATS.has(input.outputFormat)) throw new Error('outputFormat must be png, jpeg, or webp');
+  if (input.outputCompression != null && (!Number.isInteger(input.outputCompression) || input.outputCompression < 0 || input.outputCompression > 100)) {
+    throw new Error('outputCompression must be an integer between 0 and 100');
+  }
+  if (input.outputCompression != null && (input.outputFormat ?? 'png') === 'png') {
+    throw new Error('outputCompression requires outputFormat jpeg or webp');
+  }
+}
+
+function rejectForeignImageOptions(input: ImageRequest, model: ValidImageRequest['model']) {
+  if (model !== 'gpt-image-2') {
+    const gptOnly = [input.maskPath, input.background, input.moderation, input.inputFidelity, input.outputFormat, input.outputCompression, input.quality];
+    if (gptOnly.some((value) => value != null)) throw new Error(`GPT Image options are not supported by ${model}`);
+  }
+  if (model !== 'image-01' && input.promptOptimizer != null) {
+    throw new Error('promptOptimizer is supported by image-01 (MiniMax) only');
+  }
+  if (model !== 'image-01' && input.seed != null) throw new Error('seed is supported by image-01 (MiniMax) only');
 }
 
 /** Pure request validation — exported for unit checks. */
@@ -51,35 +118,50 @@ export function validateImageRequest(input: ImageRequest): ValidImageRequest {
   }
   const prompt = String(input.prompt ?? '').trim();
   if (!prompt) throw new Error('prompt is required');
-  const aspectRatio = String(input.aspectRatio ?? '16:9');
+  const dimensions = customDimensions(input, model);
+  const aspectRatio = dimensions.width ? undefined : String(input.aspectRatio ?? '16:9');
   const imageSize = String(input.imageSize ?? '1K');
   const quality = String(input.quality ?? 'high');
-  const count = Math.min(10, Math.max(1, Math.floor(Number(input.count) || 1)));
-  if (!ASPECTS.has(aspectRatio)) throw new Error(`unsupported aspect ratio ${aspectRatio}`);
+  const count = input.count ?? 1;
+  if (!Number.isInteger(count) || count < 1 || count > 10) throw new Error('count must be an integer between 1 and 10');
+  if (aspectRatio && !ASPECTS.has(aspectRatio)) throw new Error(`unsupported aspect ratio ${aspectRatio}`);
   if (!SIZES.has(imageSize)) throw new Error(`unsupported image size ${imageSize}`);
   if (!QUALITIES.has(quality)) throw new Error(`unsupported quality ${quality}`);
   const referencePaths = input.referencePaths ?? [];
-  if (referencePaths.length > (model === 'nano-banana' ? 14 : 10)) {
+  const referenceLimit = model === 'nano-banana' ? 14 : model === 'gpt-image-2' ? 16 : 1;
+  if (referencePaths.length > referenceLimit) {
     throw new Error(`too many reference images for ${model}`);
   }
+  rejectForeignImageOptions(input, model);
   if (model === 'image-01') {
     if (prompt.length > 1500) throw new Error('image-01 prompt must be at most 1500 characters');
     if (count > 9) throw new Error('image-01 supports at most 9 images per call');
-    if (referencePaths.length) throw new Error('image-01 does not support reference images');
+    if (aspectRatio === '4:5' || aspectRatio === '5:4') throw new Error(`image-01 does not support aspect ratio ${aspectRatio}`);
     if (input.promptOptimizer !== undefined && typeof input.promptOptimizer !== 'boolean') {
       throw new Error('promptOptimizer must be a boolean');
     }
-  } else if (input.promptOptimizer !== undefined) {
-    throw new Error('promptOptimizer is supported by image-01 (MiniMax) only');
+    if (input.seed != null && !Number.isSafeInteger(input.seed)) throw new Error('seed must be a safe integer');
+  } else if (model === 'gpt-image-2') {
+    if (prompt.length > 32_000) throw new Error('gpt-image-2 prompt must be at most 32000 characters');
+    if (imageSize === '512px') throw new Error('gpt-image-2 imageSize must be 1K, 2K, or 4K');
+    validateGptOptions(input, referencePaths.length > 0);
   }
   return {
     model,
     prompt,
     aspectRatio,
     imageSize,
+    ...dimensions,
     quality,
     count,
     referencePaths,
+    maskPath: input.maskPath,
+    background: input.background as ValidImageRequest['background'],
+    moderation: input.moderation as ValidImageRequest['moderation'],
+    inputFidelity: input.inputFidelity as ValidImageRequest['inputFidelity'],
+    outputFormat: (input.outputFormat ?? 'png') as ValidImageRequest['outputFormat'],
+    outputCompression: input.outputCompression,
+    seed: input.seed,
     promptOptimizer: input.promptOptimizer,
   };
 }
@@ -109,7 +191,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
 
 function dimensions(aspectRatio: string, imageSize: string): [number, number] {
   const [rw, rh] = aspectRatio.split(':').map(Number);
-  const longEdge = imageSize === '4K' ? 3840 : imageSize === '2K' ? 2048 : 1536;
+  const longEdge = imageSize === '4K' ? 3840 : imageSize === '2K' ? 2048 : imageSize === '512px' ? 512 : 1536;
   const landscape = rw >= rh;
   const width = landscape ? longEdge : Math.round(longEdge * rw / rh / 16) * 16;
   const height = landscape ? Math.round(longEdge * rh / rw / 16) * 16 : longEdge;
@@ -130,7 +212,42 @@ async function providerError(response: Response): Promise<string> {
   return body?.error?.message ?? `image provider failed (${response.status})`;
 }
 
-async function callProvider(baseUrl: string, apiKey: string, body: Required<Pick<ImageRequest, 'model' | 'prompt' | 'quality' | 'count'>> & { size: string; referencePaths: string[] }): Promise<ProviderImage[]> {
+interface GptImageInput {
+  model: string;
+  prompt: string;
+  quality: string;
+  count: number;
+  size: string;
+  referencePaths: string[];
+  maskPath?: string;
+  background?: string;
+  moderation?: string;
+  inputFidelity?: string;
+  outputFormat: string;
+  outputCompression?: number;
+}
+
+function appendGptOptions(target: FormData | Record<string, unknown>, body: GptImageInput) {
+  const set = (key: string, value: unknown) => {
+    if (value == null) return;
+    if (target instanceof FormData) target.set(key, String(value));
+    else target[key] = value;
+  };
+  set('background', body.background);
+  set('moderation', body.moderation);
+  set('input_fidelity', body.inputFidelity);
+  set('output_format', body.outputFormat);
+  set('output_compression', body.outputCompression);
+}
+
+async function appendImageFile(form: FormData, field: string, path: string, filename: string) {
+  const file = localAssetPath(path);
+  const bytes = await readFile(file);
+  const ext = extname(file).slice(1).toLowerCase() || 'png';
+  form.append(field, new Blob([bytes], { type: imageMimeType(file) }), `${filename}.${ext}`);
+}
+
+async function callProvider(baseUrl: string, apiKey: string, body: GptImageInput): Promise<ProviderImage[]> {
   const endpoint = body.referencePaths.length ? '/v1/images/edits' : '/v1/images/generations';
   let requestBody: string | FormData;
   let headers: Record<string, string> = { Authorization: `Bearer ${apiKey}` };
@@ -142,17 +259,17 @@ async function callProvider(baseUrl: string, apiKey: string, body: Required<Pick
     form.set('quality', body.quality);
     form.set('size', body.size);
     form.set('n', String(body.count));
-    form.set('output_format', 'png');
+    appendGptOptions(form, body);
     for (const path of body.referencePaths) {
-      const file = localAssetPath(path);
-      const bytes = await readFile(file);
-      const ext = extname(file).slice(1).toLowerCase() || 'png';
-      form.append('image[]', new Blob([bytes], { type: `image/${ext === 'jpg' ? 'jpeg' : ext}` }), `reference.${ext}`);
+      await appendImageFile(form, 'image[]', path, 'reference');
     }
+    if (body.maskPath) await appendImageFile(form, 'mask', body.maskPath, 'mask');
     requestBody = form;
   } else {
     headers = { ...headers, 'Content-Type': 'application/json' };
-    requestBody = JSON.stringify({ model: body.model, prompt: body.prompt, quality: body.quality, size: body.size, n: body.count, output_format: 'png' });
+    const json: Record<string, unknown> = { model: body.model, prompt: body.prompt, quality: body.quality, size: body.size, n: body.count };
+    appendGptOptions(json, body);
+    requestBody = JSON.stringify(json);
   }
 
   const response = await fetch(`${baseUrl.replace(/\/$/, '')}${endpoint}`, { method: 'POST', headers, body: requestBody });
@@ -208,21 +325,36 @@ interface MinimaxImageResponse {
 async function callMinimaxProvider(baseUrl: string, apiKey: string, model: string, body: {
   prompt: string;
   count: number;
-  aspectRatio: string;
+  aspectRatio?: string;
+  width?: number;
+  height?: number;
+  seed?: number;
+  referencePaths: string[];
   promptOptimizer?: boolean;
 }): Promise<ProviderImage[]> {
+  const requestBody: Record<string, unknown> = {
+    model,
+    prompt: body.prompt,
+    n: body.count,
+    response_format: 'url',
+  };
+  if (body.aspectRatio) requestBody.aspect_ratio = body.aspectRatio;
+  if (body.width != null && body.height != null) {
+    requestBody.width = body.width;
+    requestBody.height = body.height;
+  }
+  if (body.seed != null) requestBody.seed = body.seed;
+  if (body.promptOptimizer != null) requestBody.prompt_optimizer = body.promptOptimizer;
+  if (body.referencePaths.length) {
+    requestBody.subject_reference = await Promise.all(body.referencePaths.map(async (path) => ({
+      type: 'character',
+      image_file: await minimaxSubjectUrl(path),
+    })));
+  }
   const response = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/image_generation`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model,
-      prompt: body.prompt,
-      aspect_ratio: body.aspectRatio,
-      n: body.count,
-      response_format: 'url',
-      // Official default true; false keeps the prompt more literal.
-      prompt_optimizer: body.promptOptimizer !== false,
-    }),
+    body: JSON.stringify(requestBody),
   });
   if (!response.ok) throw new Error(await providerError(response));
   const result = await response.json() as MinimaxImageResponse;
@@ -237,11 +369,22 @@ async function callMinimaxProvider(baseUrl: string, apiKey: string, model: strin
   return images;
 }
 
+async function minimaxSubjectUrl(path: string): Promise<string> {
+  const file = localAssetPath(path);
+  const name = path.slice('/media/uploads/'.length).split(/[?#]/, 1)[0];
+  await putUploadFile(name, file, imageMimeType(file));
+  const signed = await presignGetUpload(name, 3600);
+  if (!signed) {
+    throw new Error('MiniMax reference images require configured R2 storage so the provider can fetch a temporary HTTPS URL');
+  }
+  return signed.downloadUrl;
+}
+
 const SAVED_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp']);
 
-async function saveImage(image: ProviderImage): Promise<string> {
+async function saveImage(image: ProviderImage, fallbackExt: string): Promise<string> {
   let bytes: Buffer;
-  let ext = 'png';
+  let ext = fallbackExt === 'jpeg' ? 'jpg' : fallbackExt;
   if (image.b64_json) bytes = Buffer.from(image.b64_json, 'base64');
   else if (image.url) {
     const response = await fetch(image.url);
@@ -268,11 +411,18 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         try {
           const input = validateImageRequest(await readJson(req));
-          const { model, prompt, aspectRatio, imageSize, quality, count, referencePaths, promptOptimizer } = input;
-          const [width, height] = dimensions(aspectRatio, imageSize);
+          const {
+            model, prompt, aspectRatio, imageSize, quality, count, referencePaths, maskPath,
+            background, moderation, inputFidelity, outputFormat, outputCompression,
+            seed, promptOptimizer,
+          } = input;
+          const [width, height] = input.width != null && input.height != null
+            ? [input.width, input.height]
+            : dimensions(aspectRatio!, imageSize);
           let images: ProviderImage[];
           if (model === 'nano-banana') {
             if (!options.geminiApiKey) throw new Error('Nano Banana is not configured. Set GEMINI_API_KEY in .env.local.');
+            if (!aspectRatio) throw new Error('Nano Banana requires aspectRatio');
             images = await callGeminiProvider(options.geminiBaseUrl, options.geminiApiKey, options.geminiModel, {
               prompt, count, aspectRatio, imageSize, referencePaths,
             });
@@ -281,16 +431,19 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
             // aspect_ratio is passed straight through; imageSize/quality do not apply to MiniMax.
             // Actual MiniMax model id comes from settings (image-01 / image-01-live).
             images = await callMinimaxProvider(options.minimaxBaseUrl, options.minimaxApiKey, options.minimaxModel, {
-              prompt, count, aspectRatio, promptOptimizer,
+              prompt, count, aspectRatio, width: input.width, height: input.height,
+              seed, referencePaths, promptOptimizer,
             });
           } else {
             if (!options.apiKey) throw new Error('Image generation is not configured. Set IMAGE_API_KEY or OPENAI_API_KEY in .env.local.');
             images = await callProvider(options.baseUrl, options.apiKey, {
-              model, prompt, quality, count, size: `${width}x${height}`, referencePaths,
+              model, prompt, quality, count, size: `${width}x${height}`, referencePaths, maskPath,
+              background, moderation, inputFidelity, outputFormat, outputCompression,
             });
           }
-          const paths = await Promise.all(images.map(saveImage));
-          sendJson(res, 200, { paths, width, height });
+          const paths = await Promise.all(images.map((image) => saveImage(image, model === 'gpt-image-2' ? outputFormat : 'png')));
+          const reportDimensions = model !== 'image-01' || input.width != null;
+          sendJson(res, 200, { paths, ...(reportDimensions ? { width, height } : {}) });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           server.config.logger.error(`[generate:image] ${message}`);
