@@ -11,6 +11,7 @@ import type { TranscriptWord } from '../transcript/types';
 import type { AudioAsset } from '../audio/library';
 import { FX_EFFECTS, FX_IDS, LUT_EFFECTS, LUT_IDS } from '../gl/fx/effects';
 import { TranscriptPanel, type TranscriptTrackOption } from '../transcript/TranscriptPanel';
+import { CaptionsPanel } from '../captions/CaptionsPanel';
 import { MediaPoolPanel } from '../media/MediaPoolPanel';
 import { TemplateBrowser } from './TemplateBrowser';
 import { ResourceBrowser, type ResourceItem } from './ResourceBrowser';
@@ -128,7 +129,7 @@ interface LibraryPanelProps {
   onApplyAudioFx?: (audioFxId: string) => void | Promise<void>;
 }
 
-const MAIN_TABS = ['我的素材', '资源库', '文字稿'] as const;
+const MAIN_TABS = ['我的素材', '资源库', '文字稿', '字幕'] as const;
 const SUB_TABS = ['MG 动画', '音效', '音频效果', '转场', '特效', '缩放', 'LUT'] as const;
 export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, onImportMedia, onImportMobileMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onRemoveMediaAsset, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, transitions, fxDefs, selectedItem, onApplyTransition, onApplyFx, onApplyZoom, onApplyAudioFx }: LibraryPanelProps) {
   const t = useT();
@@ -156,6 +157,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
   // 音频转场：源 catalog 无独立条目，已隐藏假入口（§4.2）
   const showSfx = mainTab === '资源库' && subTab === '音效';     // sound effects
   const isTranscript = mainTab === '文字稿';
+  const isCaptions = mainTab === '字幕';
   const isMyAssets = mainTab === '我的素材';
 
   return (
@@ -168,9 +170,11 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
       </div>
       {extensionOpen ? (
         <ExtensionCenter items={items} transitions={transitions} fxDefs={fxDefs} onClose={() => setExtensionOpen(false)} />
+      ) : isCaptions ? (
+        <CaptionsPanel playerRef={playerRef} fps={fps} items={items} trackOptions={trackOptions} captions={captions} onSetCaptions={onSetCaptions} onUpdateCaptions={onUpdateCaptions} />
       ) : isTranscript ? (
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, borderTop: `0.5px solid ${theme.border}` }}>
-          <TranscriptPanel playerRef={playerRef} fps={fps} items={items} trackOptions={trackOptions} captions={captions} onSetCaptions={onSetCaptions} onUpdateCaptions={onUpdateCaptions} onSetItemTranscript={onSetItemTranscript} onToggleWord={onToggleWord} onCleanScript={onCleanScript} onSetGapCap={onSetGapCap} onSetTranscriptPlayOrder={onSetTranscriptPlayOrder} onReorderTrackItems={onReorderTrackItems} onClearEdits={onClearEdits} />
+          <TranscriptPanel playerRef={playerRef} fps={fps} items={items} trackOptions={trackOptions} onSetItemTranscript={onSetItemTranscript} onToggleWord={onToggleWord} onCleanScript={onCleanScript} onSetGapCap={onSetGapCap} onSetTranscriptPlayOrder={onSetTranscriptPlayOrder} onReorderTrackItems={onReorderTrackItems} onClearEdits={onClearEdits} />
         </div>
       ) : isMyAssets ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, borderTop: `0.5px solid ${theme.border}` }}>

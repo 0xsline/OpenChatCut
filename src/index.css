@@ -409,6 +409,17 @@ button, input, select { font: inherit; }
 /* Timeline chrome. */
 .cc-timeline-toolbar { min-height:36px; display:flex; align-items:center; gap:3px; padding:3px 8px; border-top:0.5px solid var(--cc-border); border-bottom:0.5px solid var(--cc-border); background:var(--cc-bg); }
 .cc-timeline-tool-group { display:flex; align-items:center; gap:3px; }
+.cc-track-create { position:relative; width:24px; height:24px; flex:0 0 24px; }
+.cc-track-create > summary { width:24px; height:24px; display:grid; place-items:center; border-radius:4px; color:var(--cc-text-muted); cursor:pointer; list-style:none; }
+.cc-track-create > summary::-webkit-details-marker { display:none; }
+.cc-track-create > summary:hover,.cc-track-create[open] > summary { background:var(--cc-hover); color:var(--cc-text); }
+.cc-track-create-menu { position:absolute; top:30px; left:0; z-index:95; width:184px; padding:5px; border:0.5px solid var(--cc-border); border-radius:6px; background:var(--cc-panel-alt); box-shadow:0 8px 24px rgba(var(--cc-shadow-rgb), 0.67); }
+.cc-track-create-title { padding:3px 7px 6px; color:var(--cc-text-dim); font-size:10px; }
+.cc-track-create-menu button { width:100%; min-height:30px; display:flex; align-items:center; gap:8px; padding:4px 7px; border:0; border-radius:4px; background:transparent; color:var(--cc-text); font-size:12px; text-align:left; cursor:pointer; }
+.cc-track-create-menu button:hover:not(:disabled) { background:var(--cc-hover); }
+.cc-track-create-menu button:disabled { color:var(--cc-text-dim); cursor:default; }
+.cc-track-create-menu button small { margin-left:auto; color:var(--cc-text-dim); font-size:10px; }
+.cc-track-create-separator { height:0.5px; margin:4px 3px; background:var(--cc-border); }
 .cc-mic-group { height:28px; display:flex; align-items:center; padding-right:3px; border:0.5px solid var(--cc-border); border-radius:4px; color:var(--cc-text-muted); }
 .cc-timeline-timecode { min-width:174px; color:rgba(var(--cc-ink-rgb), 0.78); text-align:center; font-size:14px; letter-spacing:.02em; font-variant-numeric:tabular-nums; }
 .cc-timeline-zoom { width:92px; height:3px; margin:0 3px; accent-color:var(--cc-text); cursor:pointer; }
@@ -434,6 +445,9 @@ button, input, select { font: inherit; }
 .cc-track-fixed-action:hover:not(:disabled) { background:var(--cc-hover); color:var(--cc-text); }
 .cc-track-fixed-action:disabled { color:var(--cc-border-light); cursor:default; }
 .cc-track-name { min-width:0; padding-left:1px; color:var(--cc-text-dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.cc-caption-track-lane { flex:1; position:relative; overflow:hidden; }
+.cc-caption-track-cue { position:absolute; top:8px; bottom:8px; box-sizing:border-box; overflow:hidden; padding:5px 7px; border:0.5px solid color-mix(in srgb, var(--cc-track-caption) 78%, white); border-radius:4px; background:color-mix(in srgb, var(--cc-track-caption) 76%, var(--cc-panel)); color:var(--cc-text-strong); font-size:11px; line-height:1.35; white-space:nowrap; text-overflow:ellipsis; }
+.cc-caption-track-empty { position:absolute; top:50%; left:12px; transform:translateY(-50%); color:var(--cc-text-dim); font-size:11px; }
 /* 字幕样式 / 翻译菜单：紧凑精致，避免盖住半个预览区 */
 .cc-caption-style-menu { z-index:80; width:212px; max-height:min(420px, calc(100vh - 24px)); display:flex; flex-direction:column; overflow:visible; border:0.5px solid var(--cc-border); border-radius:5px; background:var(--cc-hover); box-shadow:0 8px 24px rgba(var(--cc-shadow-rgb), 0.67); color:var(--cc-text); font-size:12px; }
 .cc-caption-style-title { flex:0 0 auto; padding:8px 10px 4px; color:var(--cc-text-muted); font-size:10px; letter-spacing:0.02em; font-weight:500; }
@@ -1058,6 +1072,11 @@ button, input, select { font: inherit; }
   display:flex; flex-direction:column; gap:0; flex-shrink:0;
 }
 .cc-cap-panel.open { padding-bottom:12px; }
+.cc-captions-workspace { display:flex; flex:1; flex-direction:column; min-height:0; border-top:0.5px solid var(--cc-border); }
+.cc-captions-sourcebar { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:0.5px solid var(--cc-border); color:var(--cc-text-dim); font-size:11px; }
+.cc-captions-sourcebar .cc-cap-select { max-width:190px; }
+.cc-captions-sourcebar > span { margin-left:auto; white-space:nowrap; }
+.cc-cap-panel.standalone { flex:1; min-height:0; overflow-y:auto; border-top:0; }
 .cc-cap-head-btn {
   width:100%; display:flex; align-items:center; gap:8px;
   padding:10px 14px; background:none; border:0; cursor:pointer;

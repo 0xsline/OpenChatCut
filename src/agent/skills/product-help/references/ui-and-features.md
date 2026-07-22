@@ -90,8 +90,9 @@ From left to right:
 
 A project can hold multiple timelines (sequences) — for example a long cut and a short promo. The active timeline is selected from a dropdown above the timeline ruler; switching the dropdown swaps the visible tracks and clips while the asset library stays shared.
 
-The timeline shows all tracks and clips for the active timeline. Video tracks (V1, V2, ...) are on top; audio tracks (A1, A2, ...) are below. Users can:
+The timeline shows all tracks and clips for the active timeline. The caption track (C1) is above video tracks (V1, V2, ...), and audio tracks (A1, A2, ...) are below. Caption cues are shown as timed blocks on C1. A timeline has at most one caption track because it surfaces that timeline's shared caption data. Users can:
 
+- Use the **+** menu to create a video, audio/music, or caption track. New sequences remain available from the sequence tabs.
 - Drag clips to reposition them.
 - Drag edges to trim clips.
 - Use the playhead (yellow marker) to scrub through the video.

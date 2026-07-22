@@ -37,6 +37,7 @@ export interface SkinTokens {
   trackVideo: string;
   trackAudioA1: string;
   trackAudioA2: string;
+  trackCaption: string;
   clipVideo: string;
   clipAudio: string;
   clipMg: string;
@@ -58,7 +59,7 @@ const GRAPHITE: SkinTokens = {
   inkRgb: '255,255,255', shadowRgb: '0,0,0', colorScheme: 'dark',
   gold: '#e6ac42', select: '#3b82f6', success: '#3fae6a', danger: '#e06c60',
   tlTrack: '#25262b', tlSidePanel: '#202126',
-  trackVideo: '#3b4bd8', trackAudioA1: '#e8993f', trackAudioA2: '#3fae6a',
+  trackVideo: '#3b4bd8', trackAudioA1: '#e8993f', trackAudioA2: '#3fae6a', trackCaption: '#b05bd3',
   clipVideo: '#2d7fb5', clipAudio: '#2f9e5a', clipMg: '#c14d86', clipText: '#c8912f',
 };
 

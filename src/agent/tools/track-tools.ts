@@ -1,16 +1,16 @@
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
-import { resolveTrackId, timelineTrackIds, trackAlias, trackKind, type TimelineState, type TrackId, type TrackRole, type TrackUpdate } from '../../editor/types';
+import { defaultTrackId, resolveTrackId, timelineTrackIds, trackAlias, trackKind, type TimelineState, type TrackId, type TrackKind, type TrackRole, type TrackUpdate } from '../../editor/types';
 
 export const TRACK_TOOL_SCHEMAS: AgentToolSchema[] = [{
   name: 'edit_track',
-  description: 'Manage tracks. Actions: list | create | update | delete | tighten. Tracks have stable ids plus V1/A1 aliases that may renumber after insertion. create accepts json with trackType video/audio, optional count/order/name/role/audioRouting. update changes order/hidden/muted/locked/name/role/audioRouting — locked freezes the lane: clips on a locked track cannot be moved/trimmed/split/deleted/edited and nothing new lands on it. delete removes empty tracks only. tighten closes gaps between clips.',
+  description: 'Manage tracks. Actions: list | create | update | delete | tighten. Tracks have stable ids plus C1/V1/A1 aliases that may renumber after insertion. create accepts json with trackType video/audio/caption, optional count/order/name/role/audioRouting. A timeline has at most one caption track; it surfaces the shared caption data. update changes order/hidden/muted/locked/name/role/audioRouting — locked freezes the lane: clips on a locked track cannot be moved/trimmed/split/deleted/edited and nothing new lands on it. delete removes empty tracks only. tighten closes gaps between media clips.',
   input_schema: {
     type: 'object',
     properties: {
       action: { type: 'string', enum: ['list', 'create', 'update', 'delete', 'tighten'] },
       json: { type: 'string', description: 'JSON payload for create/update, e.g. {"trackType":"audio","role":"follower"} or {"hidden":true}.' },
-      trackId: { type: 'string', description: 'Current Vn/An alias or stable track id (update/delete/tighten).' },
+      trackId: { type: 'string', description: 'Current Cn/Vn/An alias or stable track id (update/delete/tighten).' },
       trackIds: { type: 'array', items: { type: 'string' }, description: 'delete: remove several empty tracks atomically.' },
     },
     required: ['action'],
@@ -36,13 +36,14 @@ function payload(value: unknown): Args | { error: string } {
 function describe(state: TimelineState, id: TrackId) {
   const alias = trackAlias(state, id);
   const config = state.tracks?.[id] ?? {};
+  const kind = trackKind(state, id);
   return {
     id,
     alias,
-    trackType: trackKind(state, id),
+    trackType: kind,
     order: Math.max(0, Number(alias.slice(1)) - 1),
     name: config.name ?? null,
-    hidden: config.hidden ?? false,
+    hidden: kind === 'caption' ? !state.captions?.enabled : config.hidden ?? false,
     muted: config.muted ?? false,
     locked: config.locked ?? false,
     role: config.role ?? null,
@@ -76,9 +77,11 @@ export async function execTrackTool(name: string, args: Args, ctx: AgentContext)
     case 'create': {
       const data = payload(args.json);
       if ('error' in data) return data;
-      const kind = data.trackType;
-      if (kind !== 'video' && kind !== 'audio') return { error: 'create requires json.trackType = video or audio' };
-      const count = Math.max(1, Math.min(32, Math.round(Number(data.count) || 1)));
+      const kind = data.trackType as TrackKind;
+      if (kind !== 'video' && kind !== 'audio' && kind !== 'caption') return { error: 'create requires json.trackType = video, audio, or caption' };
+      const existingCaption = kind === 'caption' ? defaultTrackId(state, 'caption') : null;
+      if (existingCaption) return { error: 'caption track already exists', track: describe(state, existingCaption), tracks: list(state) };
+      const count = kind === 'caption' ? 1 : Math.max(1, Math.min(32, Math.round(Number(data.count) || 1)));
       const role = data.role === 'anchor' || data.role === 'follower' ? data.role as TrackRole : undefined;
       const duckDepthDb = typeof (data.audioRouting as Args | undefined)?.duckDepthDb === 'number'
         ? Math.max(-60, Math.min(0, Number((data.audioRouting as Args).duckDepthDb))) : undefined;
@@ -123,7 +126,8 @@ export async function execTrackTool(name: string, args: Args, ctx: AgentContext)
       if (ids.some((id) => !id)) return { error: 'one or more tracks do not exist', tracks: list(state) };
       const unique = [...new Set(ids as TrackId[])];
       const busy = unique.filter((id) => state.items.some((item) => item.track === id)
-        || (state.transitions ?? []).some((transition) => transition.trackId === id));
+        || (state.transitions ?? []).some((transition) => transition.trackId === id)
+        || (!!state.captions && trackKind(state, id) === 'caption'));
       if (busy.length) return { error: 'track is not empty', tracks: busy.map((id) => describe(state, id)) };
       ctx.commands.deleteTracks(unique);
       return { ok: true, deleted: unique, tracks: list(ctx.getState()) };
@@ -132,6 +136,7 @@ export async function execTrackTool(name: string, args: Args, ctx: AgentContext)
     case 'tighten': {
       const id = resolveTrackId(state, args.trackId);
       if (!id) return { error: `no track ${args.trackId}`, tracks: list(state) };
+      if (trackKind(state, id) === 'caption') return { error: 'caption tracks do not contain media clips' };
       if (state.tracks?.[id]?.locked) return { error: 'track is locked' };
       ctx.commands.tightenTrack(id);
       return { ok: true, track: describe(ctx.getState(), id) };

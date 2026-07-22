@@ -34,7 +34,7 @@ export const READ_PROJECT_TOOL_SCHEMAS: AgentToolSchema[] = [
           description: "'timeline' tracks+items+markers; 'assets' library only. Omit for full overview.",
         },
         timelineId: { type: 'string', description: 'Inspect a non-active timeline by id/prefix without switching.' },
-        track: { type: 'string', description: 'Filter by track alias (e.g. V1, A1).' },
+        track: { type: 'string', description: 'Filter by track alias (e.g. C1, V1, A1).' },
         fromFrame: { type: 'number', description: 'Items overlapping this frame or later (half-open with toFrame).' },
         toFrame: { type: 'number', description: 'Exclusive upper frame bound.' },
         itemId: { type: 'string', description: 'Item id(s) or prefixes, comma-separated.' },
@@ -144,6 +144,7 @@ export async function execReadProjectTool(
   };
 
   if (view === 'full' || view === 'timeline') {
+    const captionTrack = timelineTrackIds(state).find((id) => trackKind(state, id) === 'caption') ?? null;
     let items = state.items.slice();
     if (trackIdFilter) items = items.filter((it) => it.track === trackIdFilter);
     if (fromFrame != null || toFrame != null) {
@@ -168,7 +169,7 @@ export async function execReadProjectTool(
         trackType: trackKind(state, id),
         name: state.tracks?.[id]?.name,
         locked: state.tracks?.[id]?.locked ?? false,
-        hidden: state.tracks?.[id]?.hidden ?? false,
+        hidden: trackKind(state, id) === 'caption' ? !state.captions?.enabled : state.tracks?.[id]?.hidden ?? false,
       })),
       items: items.map((it) => slimItem(it, state, doc.assets)),
       transitions: (state.transitions ?? []).map((t) => ({
@@ -193,6 +194,8 @@ export async function execReadProjectTool(
         ? {
             enabled: state.captions.enabled,
             template: state.captions.template,
+            trackId: captionTrack,
+            trackAlias: captionTrack ? trackAlias(state, captionTrack) : null,
             sourceItemId: state.captions.sourceItemId ?? null,
             bilingual: state.captions.bilingual ?? false,
           }

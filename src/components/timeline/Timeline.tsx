@@ -12,6 +12,7 @@ import { Icon } from '../icons';
 import { useRecorder } from '../../audio/recorder';
 import { exportClipMov, bakeClipToVideo } from '../../media/clipExport';
 import { CaptionStyleMenu } from '../../captions/CaptionStyleMenu';
+import { CaptionTrackLane } from '../../captions/CaptionTrackLane';
 import { captionsForTrack } from '../../captions/captionTrack';
 import { newManualCaptions } from '../../captions/manualCaptions';
 import { TrackHead } from './TrackHead';
@@ -57,7 +58,10 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     useTimelineZoomController({ scrollRef, totalFrames: total, fps: state.fps, timelineId });
   const metaOf = (id: TrackId) => {
     const kind = trackKind(state, id);
-    return { kind, color: kind === 'video' ? theme.trackVideo : trackAlias(state, id) === 'A1' ? theme.trackAudioA1 : theme.trackAudioA2 };
+    const color = kind === 'caption' ? theme.trackCaption
+      : kind === 'video' ? theme.trackVideo
+        : trackAlias(state, id) === 'A1' ? theme.trackAudioA1 : theme.trackAudioA2;
+    return { kind, color };
   };
   // 播放头绘制机:rAF 合帧直绘 + Player 看门狗 + 断点续播(usePlayheadPaint)
   const { playheadRef, playheadLineRef, toolbarTimecodeRef, rulerTimecodeRef, paintPlayhead, playing } =
@@ -289,15 +293,18 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
             const items = state.items.filter((it) => it.track === trackId);
             const dragIsAudio = drag ? state.items.find((it) => it.id === drag.id)?.kind === 'audio' : false;
             const isDropTarget = drag?.mode === 'move' && drag.targetTrack === trackId && meta.kind === (dragIsAudio ? 'audio' : 'video') && !state.tracks?.[trackId]?.locked;
-            const hidden = config.hidden ?? false;
+            const hidden = meta.kind === 'caption' ? !captionsVisible : config.hidden ?? false;
+            const headConfig = meta.kind === 'caption' ? { ...config, hidden } : config;
             const locked = config.locked ?? false;
-            const trackName = config.name || `${t(meta.kind === 'video' ? '视频' : '音频')} ${alias.slice(1)}`;
-            const busy = items.length > 0 || (state.transitions ?? []).some((transition) => transition.trackId === trackId);
+            const kindLabel = meta.kind === 'video' ? '视频' : meta.kind === 'audio' ? '音频' : '字幕';
+            const trackName = config.name || `${t(kindLabel)} ${alias.slice(1)}`;
+            const busy = items.length > 0 || (meta.kind === 'caption' && !!state.captions)
+              || (state.transitions ?? []).some((transition) => transition.trackId === trackId);
             return (
               <div key={trackId} className="cc-track-row" style={{ height: rowHeightOf(trackId), background: isDropTarget ? `color-mix(in srgb, ${theme.success} 15%, ${theme.bg})` : undefined }}>
                 <TrackHead
-                  trackId={trackId} kind={meta.kind} alias={alias} trackName={trackName} config={config}
-                  busy={busy} captionsVisible={captionsVisible} menuElevated={captionMenu?.id === trackId || duckMenu?.id === trackId}
+                  trackId={trackId} kind={meta.kind} alias={alias} trackName={trackName} config={headConfig}
+                  busy={busy} menuElevated={captionMenu?.id === trackId || duckMenu?.id === trackId}
                   width={HEADER_W} commands={commands}
                   onToggleCaptions={() => toggleCaptions(trackId)}
                   // 两个菜单都贴触发按钮弹,top 夹取余量=菜单最大高+边距(字幕 420、闪避≈300);
@@ -317,14 +324,14 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
                     />
                   )}
                 </TrackHead>
-                <TrackLane
+                {meta.kind === 'caption' ? <CaptionTrackLane state={state} px={px} locked={locked} hidden={hidden} /> : <TrackLane
                   trackId={trackId} items={items} state={state} commands={commands} pointer={pointer}
                   editMode={editMode} pickMode={pickMode} locked={locked} hidden={hidden}
                   px={px} rowHeight={rowHeightOf(trackId)}
                   libDropTarget={libDropTarget} setLibDropTarget={setLibDropTarget}
                   applyLibraryToClip={applyLibraryToClip} applyLibraryToTrack={applyLibraryToTrack}
                   frameFromClientX={frameFromClientX} onContextMenu={setCtxMenu} scrollRef={scrollRef}
-                />
+                />}
               </div>
             );
           })}

@@ -29,6 +29,7 @@ interface CaptionsControlsProps {
   onTranslate: (lang: string) => void;
   translating: boolean;
   translateError: string | null;
+  standalone?: boolean;
 }
 
 const PACINGS: { v: CaptionPacing; label: string; hint: string }[] = [
@@ -47,12 +48,13 @@ const TRANSLATE_TO: { id: string; label: string }[] = [
 
 // 字幕 = 预览画面底部叠字（跟文字稿走）。整块面板可折叠，避免占满文字稿区。
 export function CaptionsControls({
-  captions, hasTranscript, sourceVariants = [], items, fps, onSeekMs, onGenerate, onCreateManual, getPlayheadMs, onUpdate, onRemove, onTranslate, translating, translateError,
+  captions, hasTranscript, sourceVariants = [], items, fps, onSeekMs, onGenerate, onCreateManual, getPlayheadMs, onUpdate, onRemove, onTranslate, translating, translateError, standalone = false,
 }: CaptionsControlsProps) {
   const t = useT();
   // 默认收起：用户明确说「这个面板」碍事；点标题条展开
   const [panelOpen, setPanelOpen] = usePersistedState('cc.captionsPanelOpen', false);
   const [bilingualOpen, setBilingualOpen] = useState(!!captions?.bilingual || !!captions?.translation);
+  const expanded = standalone || panelOpen;
   const style = captions ? CAPTION_STYLE_BY_ID[captions.template] : null;
   const pacingMeta = PACINGS.find((p) => p.v === (captions?.pacing ?? 'phrase')) ?? PACINGS[0]!;
 
@@ -71,23 +73,23 @@ export function CaptionsControls({
       : t('已隐藏 · {style}', { style: styleName });
 
   return (
-    <div className={`cc-cap-panel${panelOpen ? ' open' : ' collapsed'}`}>
-      <button
+    <div className={`cc-cap-panel${expanded ? ' open' : ' collapsed'}${standalone ? ' standalone' : ''}`}>
+      {!standalone && <button
         type="button"
         className="cc-cap-head-btn"
         onClick={() => setPanelOpen((v) => !v)}
-        aria-expanded={panelOpen}
-        title={panelOpen ? t('收起字幕面板') : t('展开字幕面板')}
+        aria-expanded={expanded}
+        title={expanded ? t('收起字幕面板') : t('展开字幕面板')}
       >
-        <span className={`cc-cap-chevron${panelOpen ? '' : ' closed'}`}>
+        <span className={`cc-cap-chevron${expanded ? '' : ' closed'}`}>
           <Icon name="chevronDown" size={13} />
         </span>
         <span className="cc-cap-title">{t('字幕')}</span>
         <span className="cc-cap-status">{statusLine}</span>
-        <span className="cc-cap-head-action">{panelOpen ? t('收起') : t('展开')}</span>
-      </button>
+        <span className="cc-cap-head-action">{expanded ? t('收起') : t('展开')}</span>
+      </button>}
 
-      {panelOpen && !captions && (
+      {expanded && !captions && (
         <div className="cc-cap-empty">
           <button type="button" className="cc-cap-btn primary" onClick={onGenerate} disabled={!hasTranscript}>
             {t('生成字幕')}
@@ -101,7 +103,7 @@ export function CaptionsControls({
         </div>
       )}
 
-      {panelOpen && captions && (
+      {expanded && captions && (
         <div className="cc-cap-body">
           {/* 显示 / 隐藏 — 最显眼 */}
           <div className="cc-cap-row main">

@@ -76,21 +76,39 @@ export function stripTimelineAssets(timeline: Timeline): Timeline {
   return rest;
 }
 
+function withCaptionTrack(timeline: Timeline): Timeline {
+  const existingId = timelineTrackIds(timeline).find((id) => trackKind(timeline, id) === 'caption');
+  if (existingId) {
+    const config = timeline.tracks?.[existingId];
+    if (config?.name !== '字幕') return timeline;
+    const { name: _legacyDefaultName, ...nextConfig } = config;
+    return { ...timeline, tracks: { ...timeline.tracks, [existingId]: nextConfig } };
+  }
+  if (!timeline.captions) return timeline;
+  const baseId = `track_${timeline.id}_captions`;
+  const id = timelineTrackIds(timeline).includes(baseId) ? `${baseId}_1` : baseId;
+  return {
+    ...timeline,
+    trackOrder: [id, ...timelineTrackIds(timeline)],
+    tracks: { ...timeline.tracks, [id]: { kind: 'caption' } },
+  };
+}
+
 /** V3 uses stable track ids instead of display aliases such as V1/A1. */
 export function normalizeTimelineTracks(timeline: Timeline): Timeline {
   const clean = stripTimelineAssets(timeline);
   const ids = timelineTrackIds(clean);
   const alreadyStable = !!clean.trackOrder?.length
-    && !ids.some((id) => /^[VA]\d+$/i.test(id))
-    && ids.every((id) => clean.tracks?.[id]?.kind === 'video' || clean.tracks?.[id]?.kind === 'audio');
-  if (alreadyStable) return clean;
+    && !ids.some((id) => /^[CVA]\d+$/i.test(id))
+    && ids.every((id) => ['video', 'audio', 'caption'].includes(clean.tracks?.[id]?.kind ?? ''));
+  if (alreadyStable) return withCaptionTrack(clean);
   const remap = new Map(ids.map((id, index) => [id, `track_${clean.id}_${index + 1}`]));
   const trackOrder = ids.map((id) => remap.get(id)!);
   const tracks = Object.fromEntries(ids.map((id) => {
     const nextId = remap.get(id)!;
     return [nextId, { ...clean.tracks?.[id], kind: trackKind(clean, id) }];
   }));
-  return {
+  return withCaptionTrack({
     ...clean,
     trackOrder,
     tracks,
@@ -99,7 +117,7 @@ export function normalizeTimelineTracks(timeline: Timeline): Timeline {
       ...transition,
       trackId: remap.get(transition.trackId) ?? transition.trackId,
     })),
-  };
+  });
 }
 
 /** Pre-versioned single timelines become deterministic V1 project documents. */

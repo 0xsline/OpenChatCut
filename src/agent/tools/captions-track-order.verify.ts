@@ -5,7 +5,7 @@ import type { CaptionSourceEntry, CaptionsData } from '../../captions/types';
 import { buildLaneGroups } from '../../captions/lanes';
 import { normalizeCaptionSourceEntries, orderedCaptionSourceEntries } from '../../captions/sourceOrder';
 import { migrateProjectDoc } from '../../persist/projectStore';
-import { trackAlias, type ProjectDoc, type Timeline, type TimelineItem } from '../../editor/types';
+import { timelineTrackIds, trackAlias, trackKind, type ProjectDoc, type Timeline, type TimelineItem } from '../../editor/types';
 import { CAPTIONS_TOOL_SCHEMAS, execCaptionsTool } from './captions-tools';
 
 const word = (text: string) => [{ text, start: 0, end: 800 }];
@@ -100,6 +100,9 @@ const groups = buildLaneGroups(draft.getState().captions!, draft.getState().item
 assert.deepEqual(groups?.[0]?.lanes.map((lane) => lane.entry.id), ['source_c', 'source_a', 'source_b']);
 
 const reopened = migrateProjectDoc(JSON.parse(JSON.stringify(draft.getDoc())));
+const reopenedCaptionTrack = timelineTrackIds(reopened!.timelines[0])
+  .find((id) => trackKind(reopened!.timelines[0], id) === 'caption');
+assert.equal(reopenedCaptionTrack && trackAlias(reopened!.timelines[0], reopenedCaptionTrack), 'C1');
 assert.deepEqual(reopened?.timelines[0].captions?.sourceEntries?.map((entry) => [entry.id, entry.trackOrder]), [
   ['source_c', 0], ['source_a', 1], ['source_b', 2],
 ]);

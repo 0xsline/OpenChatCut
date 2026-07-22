@@ -6,9 +6,9 @@ import type { SerializableFxDef } from '../gl/fx/uniforms';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
 import type { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 
-/** Stable track id. Human aliases (V1/A1/...) are derived from track order. */
+/** Stable track id. Human aliases (C1/V1/A1/...) are derived from track order. */
 export type TrackId = string;
-export type TrackKind = 'video' | 'audio';
+export type TrackKind = 'video' | 'audio' | 'caption';
 export type TrackRole = 'anchor' | 'follower';
 export const TRACK_ORDER: TrackId[] = ['V2', 'V1', 'A1', 'A2'];
 
@@ -550,20 +550,22 @@ export function timelineTrackIds(s: TimelineState): TrackId[] {
 }
 
 export function trackKind(s: TimelineState, id: TrackId): TrackKind {
-  return s.tracks?.[id]?.kind ?? (id.toUpperCase().startsWith('A') ? 'audio' : 'video');
+  const prefix = id.toUpperCase()[0];
+  return s.tracks?.[id]?.kind ?? (prefix === 'A' ? 'audio' : prefix === 'C' ? 'caption' : 'video');
 }
 
-/** Current human alias. Video aliases count bottom-up; audio aliases top-down. */
+/** Current human alias. Video aliases count bottom-up; audio/caption aliases top-down. */
 export function trackAlias(s: TimelineState, id: TrackId): string {
   const ids = timelineTrackIds(s);
   const kind = trackKind(s, id);
   const same = ids.filter((candidate) => trackKind(s, candidate) === kind);
   const index = same.indexOf(id);
   if (index < 0) return id;
-  return kind === 'video' ? `V${same.length - index}` : `A${index + 1}`;
+  if (kind === 'video') return `V${same.length - index}`;
+  return `${kind === 'caption' ? 'C' : 'A'}${index + 1}`;
 }
 
-/** Resolve either a stable id or current Vn/An alias. */
+/** Resolve either a stable id or current Cn/Vn/An alias. */
 export function resolveTrackId(s: TimelineState, ref: unknown, kind?: TrackKind): TrackId | null {
   const value = String(ref ?? '').trim();
   const ids = timelineTrackIds(s).filter((id) => !kind || trackKind(s, id) === kind);
@@ -599,7 +601,8 @@ export function isRasterMediaKind(kind: TimelineItem['kind']): boolean {
 }
 
 export function defaultTrackId(s: TimelineState, kind: TrackKind): TrackId | null {
-  return resolveTrackId(s, kind === 'video' ? 'V1' : 'A1', kind)
+  const alias = kind === 'video' ? 'V1' : kind === 'caption' ? 'C1' : 'A1';
+  return resolveTrackId(s, alias, kind)
     ?? timelineTrackIds(s).find((id) => trackKind(s, id) === kind)
     ?? null;
 }

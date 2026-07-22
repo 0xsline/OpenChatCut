@@ -375,6 +375,10 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       setAspect: (width, height, fit) => dispatch({ type: 'setCanvas', width, height, fit }),
       toggleTrackFlag: (track, flag) => dispatch({ type: 'toggleTrack', track, flag }),
       createTrack: (kind, opts) => {
+        if (kind === 'caption') {
+          const existing = defaultTrackId(activeTimeline(getDoc()), 'caption');
+          if (existing) return existing;
+        }
         const id = uid('track');
         dispatch({ type: 'track.create', track: { id, kind, name: opts?.name, role: opts?.role, audioRouting: opts?.audioRouting }, order: opts?.order });
         return id;
@@ -382,7 +386,22 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       updateTrack: (track, patch) => dispatch({ type: 'track.update', track, patch }),
       deleteTracks: (tracks) => dispatch({ type: 'track.delete', tracks }),
       tightenTrack: (track) => dispatch({ type: 'track.tighten', track }),
-      setCaptions: (captions) => dispatch({ type: 'setCaptions', captions }),
+      setCaptions: (captions) => {
+        const state = activeTimeline(getDoc());
+        if (!captions || defaultTrackId(state, 'caption')) {
+          dispatch({ type: 'setCaptions', captions });
+          return;
+        }
+        const id = uid('track');
+        dispatch({
+          type: 'batch',
+          label: 'Create caption track',
+          actions: [
+            { type: 'track.create', track: { id, kind: 'caption' } },
+            { type: 'setCaptions', captions },
+          ],
+        });
+      },
       updateCaptions: (patch) => dispatch({ type: 'updateCaptions', patch }),
       updateWatermark: (patch) => dispatch({ type: 'updateWatermark', patch }),
       setItemTranscript: (id, words) => dispatch({ type: 'setItemTranscript', id, words }),

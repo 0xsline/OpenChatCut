@@ -6,10 +6,6 @@ import { useTranscript } from './useTranscript';
 import { msToFrame, type TranscriptWord } from './types';
 import { analyzeSilences } from './segment';
 import { ScriptView } from './TranscriptViews';
-import { CaptionsControls } from '../captions/CaptionsControls';
-import type { CaptionsData } from '../captions/types';
-import { buildTranslation } from '../captions/translate';
-import { newManualCaptions } from '../captions/manualCaptions';
 import { theme } from '../theme';
 import { Icon } from '../components/icons';
 import { useT } from '../i18n/locale';
@@ -23,9 +19,6 @@ interface TranscriptPanelProps {
   items: TimelineItem[];
   /** ordered tracks with A1/V1 aliases from EditorCore */
   trackOptions: TranscriptTrackOption[];
-  captions: CaptionsData | null;
-  onSetCaptions: (c: CaptionsData | null) => void;
-  onUpdateCaptions: (patch: Partial<CaptionsData>) => void;
   onSetItemTranscript: (id: string, words: TranscriptWord[]) => void;
   onToggleWord: (id: string, idx: number) => void;
   onCleanScript: (id: string, opts: { silenceFrames?: number; removeFillers: boolean }) => void;
@@ -38,7 +31,7 @@ interface TranscriptPanelProps {
 const MANY_CLIPS = 10;
 
 export function TranscriptPanel({
-  playerRef, fps, items, trackOptions, captions, onSetCaptions, onUpdateCaptions,
+  playerRef, fps, items, trackOptions,
   onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits,
 }: TranscriptPanelProps) {
   const t = useT();
@@ -53,8 +46,6 @@ export function TranscriptPanel({
   const [compressSec, setCompressSec] = useState(0.5);
   const [removeFillers, setRemoveFillers] = useState(true);
   const [pauseResult, setPauseResult] = useState<string | null>(null);
-  const [translating, setTranslating] = useState(false);
-  const [translateError, setTranslateError] = useState<string | null>(null);
   const [focusItemId, setFocusItemId] = useState<string | null>(null);
   const [includeMusic, setIncludeMusic] = useState(false);
   /** many clips: default show only the focused section to keep the list usable */
@@ -145,35 +136,6 @@ export function TranscriptPanel({
       t('已压缩 {count} 处长停顿到 {sec}s（约省 {saved}s）', { count, sec: compressSec, saved: (savedMs / 1000).toFixed(1) })
       + (removeFillers ? t(' · 去填充词 {n}', { n: fillers }) : ''),
     );
-  };
-
-  const generateCaptions = () => {
-    const sources = transcribed.map((c) => c.id);
-    if (!sources.length) return;
-    onSetCaptions({
-      enabled: true,
-      // 默认经典黑底白字整条(无词间隙/无逐词高亮);已有字幕保持原样式
-      template: captions?.template ?? 'black-bar',
-      pacing: captions?.pacing ?? 'phrase',
-      sourceItemId: sources[0] ?? focusItem?.id ?? null,
-      sources: sources.length > 1 ? sources : undefined,
-      sourceMode: sources.length > 1 ? 'item' : undefined,
-      bilingual: false,
-    });
-  };
-
-  const onTranslate = async (lang: string) => {
-    if (!captions || translating) return;
-    setTranslating(true);
-    setTranslateError(null);
-    try {
-      const cues = await buildTranslation(captions, items, fps, lang);
-      onUpdateCaptions({ bilingual: true, translationLang: lang, translation: cues });
-    } catch (e) {
-      setTranslateError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setTranslating(false);
-    }
   };
 
   const aliasLabel = activeTrack ? trackTitle(activeTrack) : '—';
@@ -472,23 +434,6 @@ export function TranscriptPanel({
           </>
         )}
       </div>
-
-      <CaptionsControls
-        captions={captions}
-        hasTranscript={trackHasWords}
-        sourceVariants={(captions?.sourceItemId ? items.find((it) => it.id === captions.sourceItemId)?.variants : undefined) ?? []}
-        items={items}
-        fps={fps}
-        onSeekMs={(ms) => playerRef.current?.seekTo(msToFrame(ms, fps))}
-        onGenerate={generateCaptions}
-        onCreateManual={() => onSetCaptions(newManualCaptions())}
-        getPlayheadMs={() => ((playerRef.current?.getCurrentFrame() ?? 0) / fps) * 1000}
-        onUpdate={onUpdateCaptions}
-        onRemove={() => onSetCaptions(null)}
-        onTranslate={onTranslate}
-        translating={translating}
-        translateError={translateError}
-      />
     </div>
   );
 }

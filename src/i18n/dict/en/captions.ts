@@ -50,6 +50,10 @@ export default {
   '中文展示字体': 'Chinese display typeface',
   // CaptionsControls — 面板头/状态
   '字幕': 'Captions',
+  '字幕来源': 'Caption source',
+  '无可用轨道': 'No available tracks',
+  '已转写 {n} 段': '{n} transcribed clips',
+  '当前轨道未转写': 'Current track is not transcribed',
   '未生成': 'Not generated',
   '显示中 · {style}': 'Showing · {style}',
   '已隐藏 · {style}': 'Hidden · {style}',

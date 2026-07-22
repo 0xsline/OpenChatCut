@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 import { theme } from '../../theme';
 import { Icon } from '../icons';
 import type { EditorCommands } from '../../editor/store';
-import type { TrackFlags, TrackId } from '../../editor/types';
+import type { TrackFlags, TrackId, TrackKind } from '../../editor/types';
 import { useT } from '../../i18n/locale';
 
 const flagBtn = (active: boolean): React.CSSProperties => ({
@@ -17,14 +17,13 @@ const flagBtn = (active: boolean): React.CSSProperties => ({
 
 interface TrackHeadProps {
   trackId: TrackId;
-  kind: 'video' | 'audio';
-  /** stable alias like "V1"/"A2" (badge shows 视1/音2) */
+  kind: TrackKind;
+  /** stable alias like "C1"/"V1"/"A2" */
   alias: string;
   trackName: string;
   config: TrackFlags;
   /** non-empty track (or has transitions) — delete disabled */
   busy: boolean;
-  captionsVisible: boolean;
   /** caption menu open on this track → raise head above neighbors */
   menuElevated: boolean;
   width: number;
@@ -39,26 +38,28 @@ interface TrackHeadProps {
 }
 
 export function TrackHead({
-  trackId, kind, alias, trackName, config, busy, captionsVisible, menuElevated, width,
+  trackId, kind, alias, trackName, config, busy, menuElevated, width,
   commands, onToggleCaptions, onToggleCaptionMenu, onToggleDuckMenu, duckMenuPos, onCloseDuckMenu, children,
 }: TrackHeadProps) {
   const t = useT();
   const hidden = config.hidden ?? false;
   const muted = config.muted ?? false;
   const locked = config.locked ?? false;
+  const isCaption = kind === 'caption';
+  const badgeLabel = kind === 'video' ? '视' : kind === 'audio' ? '音' : '字';
+  const badgeColor = kind === 'video' ? theme.trackVideo : kind === 'audio' ? theme.trackAudioA1 : theme.trackCaption;
   const nameTitle = config.role === 'anchor' ? `${trackName} · ${t('主轨（闪避）')}`
     : config.role === 'follower' ? `${trackName} · ${t('跟随（闪避）')}`
       : trackName;
   return (
     <div className="cc-track-head" style={{ width, ...(menuElevated ? { zIndex: 40 } : {}) }}>
       <div className="cc-track-head-controls">
-        <span className="cc-track-badge" title={t('{name}（{id}）', { name: trackName, id: trackId })} style={{ background: kind === 'video' ? '#5592c7' : '#65a878' }}>{`${t(kind === 'video' ? '视' : '音')}${alias.slice(1)}`}</span>
-        <button style={flagBtn(hidden)} title={hidden ? t('显示轨道') : t('隐藏轨道')} onClick={() => commands.toggleTrackFlag(trackId, 'hidden')}><Icon name={hidden ? 'eyeOff' : 'eye'} size={14} /></button>
-        <button style={flagBtn(muted)} title={muted ? t('取消静音') : t('静音轨道')} onClick={() => commands.toggleTrackFlag(trackId, 'muted')}><Icon name={muted ? 'volumeOff' : 'volume'} size={14} /></button>
+        <span className="cc-track-badge" title={t('{name}（{id}）', { name: trackName, id: trackId })} style={{ background: badgeColor }}>{`${t(badgeLabel)}${alias.slice(1)}`}</span>
+        <button style={flagBtn(hidden)} title={hidden ? t('显示轨道') : t('隐藏轨道')} onClick={isCaption ? onToggleCaptions : () => commands.toggleTrackFlag(trackId, 'hidden')}><Icon name={hidden ? 'eyeOff' : 'eye'} size={14} /></button>
+        {!isCaption && <button style={flagBtn(muted)} title={muted ? t('取消静音') : t('静音轨道')} onClick={() => commands.toggleTrackFlag(trackId, 'muted')}><Icon name={muted ? 'volumeOff' : 'volume'} size={14} /></button>}
         <button style={{ ...flagBtn(false), color: locked ? theme.gold : theme.textMuted }} title={locked ? t('解锁轨道') : t('锁定轨道（禁止移动 / 裁剪 / 删除 / 落轨）')} onClick={() => commands.toggleTrackFlag(trackId, 'locked')}><Icon name={locked ? 'lock' : 'unlock'} size={14} /></button>
-        <button style={flagBtn(!captionsVisible)} title={captionsVisible ? t('关闭字幕') : t('开启字幕')} onClick={onToggleCaptions}><Icon name="captions" size={14} /></button>
-        <button data-caption-menu-trigger style={flagBtn(false)} title={t('字幕样式与翻译')} onClick={(e) => onToggleCaptionMenu(e.currentTarget.getBoundingClientRect())}><Icon name="chevronDown" size={12} /></button>
-        <button data-duck-menu-trigger style={{ ...flagBtn(false), color: config.role === 'anchor' || config.role === 'follower' ? theme.gold : theme.textMuted }} title={t('自动闪避（混音角色：主轨说话 / 跟随背景乐）')} onClick={(e) => onToggleDuckMenu(e.currentTarget.getBoundingClientRect())}><Icon name="sliders" size={13} /></button>
+        {isCaption && <button data-caption-menu-trigger style={flagBtn(false)} title={t('字幕样式与翻译')} onClick={(e) => onToggleCaptionMenu(e.currentTarget.getBoundingClientRect())}><Icon name="chevronDown" size={12} /></button>}
+        {!isCaption && <button data-duck-menu-trigger style={{ ...flagBtn(false), color: config.role === 'anchor' || config.role === 'follower' ? theme.gold : theme.textMuted }} title={t('自动闪避（混音角色：主轨说话 / 跟随背景乐）')} onClick={(e) => onToggleDuckMenu(e.currentTarget.getBoundingClientRect())}><Icon name="sliders" size={13} /></button>}
         <button
           type="button"
           className="cc-track-fixed-action"

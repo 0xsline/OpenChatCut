@@ -29,6 +29,7 @@ export const theme = {
   trackVideo: 'var(--cc-track-video)', // V-track chip
   trackAudioA1: 'var(--cc-track-audio-a1)',
   trackAudioA2: 'var(--cc-track-audio-a2)',
+  trackCaption: 'var(--cc-track-caption)',
   // Clip fills by kind: video=blue, audio=green, MG=pink, text=amber.
   clipVideo: 'var(--cc-clip-video)', // --tl-item-video
   clipAudio: 'var(--cc-clip-audio)', // --tl-item-audio

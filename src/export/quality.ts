@@ -10,7 +10,7 @@ interface TimelineQaState {
     kind: string;
     volume?: number;
   }>;
-  tracks?: Record<string, { kind?: 'video' | 'audio'; hidden?: boolean; muted?: boolean } | undefined>;
+  tracks?: Record<string, { kind?: 'video' | 'audio' | 'caption'; hidden?: boolean; muted?: boolean } | undefined>;
   captions?: {
     enabled: boolean;
     layout?: CaptionQaLayout;
@@ -35,8 +35,9 @@ type CaptionQaLayoutPolicy =
   | { mode: 'single-lane' | 'auto-stack'; maxVisibleSources?: number }
   | { mode: 'manual-slots'; slots: Array<CaptionQaLayout & { id: string }> };
 
-function qaTrackKind(state: TimelineQaState, track: string): 'video' | 'audio' {
-  return state.tracks?.[track]?.kind ?? (track.toUpperCase().startsWith('A') ? 'audio' : 'video');
+function qaTrackKind(state: TimelineQaState, track: string): 'video' | 'audio' | 'caption' {
+  const prefix = track.toUpperCase()[0];
+  return state.tracks?.[track]?.kind ?? (prefix === 'A' ? 'audio' : prefix === 'C' ? 'caption' : 'video');
 }
 
 function qaTimelineDuration(state: TimelineQaState): number {

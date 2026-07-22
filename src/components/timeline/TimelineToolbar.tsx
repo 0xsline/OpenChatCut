@@ -12,6 +12,7 @@ import { MIN_TIME_ZOOM, fmt } from './timelineUtil';
 import { TimelineSpeedControl } from './TimelineSpeedControl';
 import { SceneDetectionDialog } from '../../scene-detection/SceneDetectionDialog';
 import { MotionTrackingDialog } from '../../tracking/MotionTrackingDialog';
+import { TrackCreateControl } from './TrackCreateControl';
 
 // Group spacing between toolbar clusters uses gaps without a visible divider.
 function ToolSep() {
@@ -77,7 +78,7 @@ export function TimelineToolbar({
     <>
       <div className="cc-timeline-toolbar">
       <div className="cc-timeline-tool-group">
-        <TB icon="plus" title={t('新建序列')} onClick={() => commands.createTimeline()} />
+        <TrackCreateControl state={state} commands={commands} />
         <ToolSep />
         <TB icon="cursor" title={t('选择模式 (V)：拖动移动 / 裁剪首尾')} active={editMode === 'selection'} onClick={() => invokeAction('interaction-mode-selection', undefined, 'toolbar')} />
         <TB icon="trim" title={t('修剪模式 (N)：裁剪片段边缘，后续片段自动跟随合缝（波纹）')} active={editMode === 'trim'} onClick={() => invokeAction('interaction-mode-trim', undefined, 'toolbar')} />

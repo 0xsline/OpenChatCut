@@ -10,6 +10,19 @@ import type { SerializableFxDef } from '../gl/fx/uniforms';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
 import { editedFrames, fillerIndices, splitClipTranscript } from '../transcript/edit';
 
+const TRACK_KIND_ORDER: readonly TrackKind[] = ['caption', 'video', 'audio'];
+
+function placeTrack(s: TimelineState, track: TrackId, kind: TrackKind, order?: number): TrackId[] {
+  const groups = Object.fromEntries(TRACK_KIND_ORDER.map((entry) => [
+    entry,
+    timelineTrackIds(s).filter((id) => id !== track && trackKind(s, id) === entry),
+  ])) as Record<TrackKind, TrackId[]>;
+  const lane = groups[kind];
+  const sourceOrder = Math.max(0, Math.min(order ?? lane.length, lane.length));
+  lane.splice(kind === 'video' ? lane.length - sourceOrder : sourceOrder, 0, track);
+  return TRACK_KIND_ORDER.flatMap((entry) => groups[entry]);
+}
+
 // ── command actions (these map 1:1 to the future agent tools) ─────────────
 export type Action =
   | { type: 'add'; item: Omit<TimelineItem, 'startFrame'>; startFrame?: number; ripple?: boolean }
@@ -427,21 +440,20 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
     case 'setCanvas':
       return { ...s, width: a.width, height: a.height, fit: a.fit ?? s.fit ?? 'contain' };
     case 'toggleTrack': {
+      if (a.flag === 'hidden' && trackKind(s, a.track) === 'caption' && s.captions) {
+        return { ...s, captions: { ...s.captions, enabled: !s.captions.enabled } };
+      }
       const cur = s.tracks?.[a.track] ?? {};
       return { ...s, tracks: { ...s.tracks, [a.track]: { ...cur, [a.flag]: !cur[a.flag] } } };
     }
     case 'track.create': {
-      const ids = timelineTrackIds(s);
-      const videos = ids.filter((id) => trackKind(s, id) === 'video');
-      const audio = ids.filter((id) => trackKind(s, id) === 'audio');
-      const lane = a.track.kind === 'video' ? videos : audio;
-      const sourceOrder = Math.max(0, Math.min(a.order ?? lane.length, lane.length));
-      const visualIndex = a.track.kind === 'video' ? lane.length - sourceOrder : sourceOrder;
-      lane.splice(visualIndex, 0, a.track.id);
+      const audioConfig = a.track.kind === 'caption'
+        ? { role: undefined, audioRouting: undefined }
+        : { role: a.track.role, audioRouting: a.track.audioRouting };
       return {
         ...s,
-        trackOrder: [...videos, ...audio],
-        tracks: { ...s.tracks, [a.track.id]: { kind: a.track.kind, name: a.track.name, role: a.track.role, audioRouting: a.track.audioRouting } },
+        trackOrder: placeTrack(s, a.track.id, a.track.kind, a.order),
+        tracks: { ...s.tracks, [a.track.id]: { kind: a.track.kind, name: a.track.name, ...audioConfig } },
       };
     }
     case 'track.update': {
@@ -449,6 +461,8 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       const current = s.tracks?.[a.track] ?? { kind: trackKind(s, a.track) };
       const { order, role, audioRouting, ...rest } = a.patch;
       const next: TrackFlags = { ...current, ...rest };
+      const isCaption = trackKind(s, a.track) === 'caption';
+      const captionHidden = isCaption && typeof rest.hidden === 'boolean' ? rest.hidden : undefined;
       if (role === null) delete next.role;
       else if (role !== undefined) next.role = role;
       if (audioRouting) {
@@ -456,22 +470,26 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         else next.audioRouting = { ...next.audioRouting, ...audioRouting } as TrackFlags['audioRouting'];
       }
       if (next.role !== 'follower') delete next.audioRouting;
+      if (isCaption) {
+        delete next.hidden;
+        delete next.muted;
+        delete next.role;
+        delete next.audioRouting;
+      }
       let trackOrder = timelineTrackIds(s);
       if (order !== undefined) {
         const kind = trackKind(s, a.track);
-        const videos = trackOrder.filter((id) => id !== a.track && trackKind(s, id) === 'video');
-        const audio = trackOrder.filter((id) => id !== a.track && trackKind(s, id) === 'audio');
-        const lane = kind === 'video' ? videos : audio;
-        const sourceOrder = Math.max(0, Math.min(Math.round(order), lane.length));
-        const visualIndex = kind === 'video' ? lane.length - sourceOrder : sourceOrder;
-        lane.splice(visualIndex, 0, a.track);
-        trackOrder = [...videos, ...audio];
+        trackOrder = placeTrack(s, a.track, kind, Math.round(order));
       }
-      return { ...s, trackOrder, tracks: { ...s.tracks, [a.track]: next } };
+      const captions = captionHidden === undefined || !s.captions
+        ? s.captions : { ...s.captions, enabled: !captionHidden };
+      const nextState = { ...s, trackOrder, tracks: { ...s.tracks, [a.track]: next } };
+      return captions === s.captions ? nextState : { ...nextState, captions };
     }
     case 'track.delete': {
       const remove = new Set(a.tracks);
-      if (!remove.size || s.items.some((item) => remove.has(item.track)) || (s.transitions ?? []).some((transition) => remove.has(transition.trackId))) return s;
+      const ownsCaptions = !!s.captions && [...remove].some((id) => trackKind(s, id) === 'caption');
+      if (!remove.size || ownsCaptions || s.items.some((item) => remove.has(item.track)) || (s.transitions ?? []).some((transition) => remove.has(transition.trackId))) return s;
       const ids = timelineTrackIds(s);
       const remaining = ids.filter((id) => !remove.has(id));
       if (!remaining.some((id) => trackKind(s, id) === 'video')) return s;
