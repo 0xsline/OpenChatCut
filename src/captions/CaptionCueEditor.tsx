@@ -36,15 +36,9 @@ export function CaptionCueEditor({ captions, items, fps, onUpdate, onSeekMs }: C
     setEditIdx(null);
   };
 
-  const rowBtn: React.CSSProperties = {
-    display: 'flex', gap: 8, alignItems: 'baseline', width: '100%', textAlign: 'left',
-    background: 'none', border: 'none', padding: '5px 6px', borderRadius: 6, cursor: 'pointer',
-    color: 'var(--cc-text)', font: 'inherit', fontSize: 12.5, lineHeight: 1.45,
-  };
-
   return (
     <div className="cc-cap-bilingual">
-      <button type="button" className="cc-cap-bilingual-toggle" onClick={() => setOpen((v) => !v)}>
+      <button type="button" className="cc-cap-bilingual-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span>{t('逐句编辑')}{rows.length > 0 ? t('（{n} 句）', { n: rows.length }) : ''}</span>
         <span className="cc-cap-hint">{open ? t('收起') : t('展开')}</span>
       </button>
@@ -55,21 +49,21 @@ export function CaptionCueEditor({ captions, items, fps, onUpdate, onSeekMs }: C
         <p className="cc-cap-hint">{t('还没有可编辑的字幕句（先转写并生成字幕）。')}</p>
       )}
       {open && !multiLane && rows.length > 0 && (
-        <div>
+        <div className="cc-cap-cues">
           <p className="cc-cap-hint">{t('点时间码跳到对应画面；点句子文字直接改，清空文字＝删掉这句。改动可撤销（⌘Z）。')}</p>
-          <div style={{ maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div className="cc-cap-cue-list">
             {rows.map((cue, k) => (
-              <div key={`${cue.start}_${k}`} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+              <div key={`${cue.start}_${k}`} className="cc-cap-cue-row">
                 <button
                   type="button"
                   onClick={() => onSeekMs?.(cue.start)}
                   title={t('跳到这句')}
-                  style={{ ...rowBtn, width: 'auto', flex: '0 0 auto', color: 'var(--cc-text-dim)', fontVariantNumeric: 'tabular-nums', padding: '5px 2px' }}
+                  className="cc-cap-cue-time"
                 >
                   {fmtCueMs(cue.start)}
                 </button>
                 {editIdx === k ? (
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <div className="cc-cap-cue-edit">
                     <textarea
                       value={draft}
                       autoFocus
@@ -79,13 +73,9 @@ export function CaptionCueEditor({ captions, items, fps, onUpdate, onSeekMs }: C
                         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(k, draft); }
                         if (e.key === 'Escape') setEditIdx(null);
                       }}
-                      style={{
-                        width: '100%', resize: 'vertical', borderRadius: 6, padding: '5px 7px',
-                        background: 'var(--cc-bg)', color: 'var(--cc-text)', fontSize: 12.5, lineHeight: 1.45,
-                        border: '1px solid var(--cc-accent)', outline: 'none', font: 'inherit',
-                      }}
+                      className="cc-cap-input cc-cap-textarea active"
                     />
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <div className="cc-cap-cue-actions">
                       <button type="button" className="cc-cap-btn primary sm" onClick={() => save(k, draft)}>{t('保存')}</button>
                       <button type="button" className="cc-cap-btn sm" onClick={() => setEditIdx(null)}>{t('取消')}</button>
                       <button
@@ -101,7 +91,7 @@ export function CaptionCueEditor({ captions, items, fps, onUpdate, onSeekMs }: C
                 ) : (
                   <button
                     type="button"
-                    style={{ ...rowBtn, flex: 1 }}
+                    className="cc-cap-cue-text"
                     title={t('点击编辑这句字幕')}
                     onClick={() => { setEditIdx(k); setDraft(cue.text); }}
                   >

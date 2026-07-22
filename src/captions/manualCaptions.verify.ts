@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { captionPages, captionsToSrt } from './exportCaptions';
 import { buildLaneGroups } from './lanes';
 import {
-  appendManualCue, appendManualLane, isManualCaptionEntry,
-  newManualCaptions, removeManualCue, updateManualCue,
+  appendDroppedManualCaption, appendManualCue, appendManualLane, isManualCaptionEntry,
+  newManualCaptions, removeManualCue, resizeManualCue, updateManualCue,
 } from './manualCaptions';
 
 let captions = newManualCaptions();
@@ -22,10 +22,27 @@ captions = { ...captions, ...updated };
 assert.equal(captionPages(captions, [], 30)[0]?.words[0]?.text, '改过的字幕');
 assert.match(captionsToSrt(captions, [], 30), /00:00:01,200 --> 00:00:02,400\n改过的字幕/);
 
+captions = { ...captions, ...appendManualCue(captions, laneId, '下一句', 3_000, 4_000) };
+captions = { ...captions, ...resizeManualCue(captions, laneId, 0, 'start', -500) };
+assert.equal(captions.sourceEntries![0]!.words![0]!.start, 700, 'left edge extends earlier');
+captions = { ...captions, ...resizeManualCue(captions, laneId, 0, 'end', 2_000) };
+assert.equal(captions.sourceEntries![0]!.words![0]!.end, 3_000, 'right edge stops at the next cue');
+
 const secondLane = appendManualLane(captions, []);
 captions = { ...captions, ...secondLane };
 assert.equal(captions.sourceEntries!.filter(isManualCaptionEntry).length, 2, 'multiple manual lanes persist');
 
+const dropped = appendDroppedManualCaption(captions, [], 'tiktok', '拖入字幕', 5_000, {
+  anchor: 'middle-center', offsetXRatio: 0.2, offsetYRatio: -0.15,
+});
+assert.ok(dropped);
+captions = { ...captions, ...dropped.patch };
+const droppedEntry = captions.sourceEntries!.find((entry) => entry.id === dropped.laneId)!;
+assert.equal(droppedEntry.words?.[0]?.text, '拖入字幕');
+assert.equal(droppedEntry.offsetXRatio, 0.2);
+assert.equal(droppedEntry.style?.highlightBackground, '#FF2E63');
+
+captions = { ...captions, ...removeManualCue(captions, laneId, 0) };
 captions = { ...captions, ...removeManualCue(captions, laneId, 0) };
 assert.equal(captions.sourceEntries!.find((entry) => entry.id === laneId)?.words?.length, 0);
 

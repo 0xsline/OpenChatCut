@@ -23,9 +23,12 @@ export default {
   '请先新建字幕轨道': 'Create a caption track first',
   '已存在': 'Exists',
   '字幕轨道为空': 'Caption track is empty',
+  '拖动调整字幕开始时间': 'Drag to adjust caption start',
+  '拖动调整字幕结束时间': 'Drag to adjust caption end',
   '选择模式 (V)：拖动移动 / 裁剪首尾': 'Selection mode (V): drag to move / trim edges',
   '修剪模式 (N)：裁剪片段边缘，后续片段自动跟随合缝（波纹）': 'Trim mode (N): trim clip edges; later clips follow to close the gap (ripple)',
   '比率拉伸：拖动片段首尾，保持源区间并改变播放速度': 'Rate Stretch: drag either clip edge to preserve the source range and change playback speed',
+  '退出比率拉伸，返回选择模式': 'Exit Rate Stretch and return to Selection mode',
   '刀片模式 (B)：点击片段在该处切分': 'Blade mode (B): click a clip to split it there',
   '钢笔模式 (P)：在选中片段上点击绘制透明度关键帧（纵向=不透明度，拖点改帧/值，右键删点）':
     'Pen mode (P): click the selected clip to draw opacity keyframes (vertical = opacity; drag a point to change frame/value, right-click to delete)',

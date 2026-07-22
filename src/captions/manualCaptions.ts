@@ -1,9 +1,18 @@
 import type { TimelineItem } from '../editor/types';
 import type { TranscriptWord } from '../transcript/types';
 import { normalizeCaptionSourceEntries } from './sourceOrder';
-import type { CaptionsData, CaptionSourceEntry } from './types';
+import { CAPTION_STYLE_BY_ID } from './styles';
+import type { CaptionLayout, CaptionsData, CaptionSourceEntry, CaptionTemplate } from './types';
 
 const DEFAULT_CUE_MS = 3_000;
+const MIN_CUE_MS = 1;
+
+export type ManualCueEdge = 'start' | 'end';
+
+export interface DroppedManualCaption {
+  laneId: string;
+  patch: Partial<CaptionsData>;
+}
 
 const id = (): string => `lane_${crypto.randomUUID()}`;
 
@@ -53,6 +62,30 @@ export function appendManualLane(captions: CaptionsData, items: TimelineItem[]):
   return entryPatch([...entries, newManualEntry(count + 1)]);
 }
 
+export function appendDroppedManualCaption(
+  captions: CaptionsData,
+  items: TimelineItem[],
+  template: CaptionTemplate,
+  text: string,
+  startMs: number,
+  layout: CaptionLayout,
+): DroppedManualCaption | null {
+  const cue = manualCue(text, startMs, startMs + DEFAULT_CUE_MS);
+  if (!cue) return null;
+  const entries = promoteCaptionEntries(captions, items);
+  const manualCount = entries.filter(isManualCaptionEntry).length;
+  const entry = newManualEntry(manualCount + 1);
+  const { id: _id, label: _label, labelZh: _labelZh, hint: _hint, ...style } = CAPTION_STYLE_BY_ID[template];
+  return {
+    laneId: entry.id,
+    patch: {
+      enabled: true,
+      ...entryPatch([...entries, { ...entry, ...layout, style, words: [cue] }]),
+      ...(captions.layoutPolicy?.mode === 'single-lane' ? { layoutPolicy: { mode: 'auto-stack' as const } } : {}),
+    },
+  };
+}
+
 export function removeManualLane(captions: CaptionsData, laneId: string): Partial<CaptionsData> {
   return entryPatch((captions.sourceEntries ?? []).filter((entry) => entry.id !== laneId));
 }
@@ -82,6 +115,36 @@ export function updateManualCue(
   return mapManualLane(captions, laneId, (words) =>
     words.map((word, i) => i === index ? cue : word).sort((a, b) => a.start - b.start),
   );
+}
+
+export function resizedManualCueTiming(
+  words: readonly TranscriptWord[],
+  index: number,
+  edge: ManualCueEdge,
+  deltaMs: number,
+): Pick<TranscriptWord, 'start' | 'end'> | null {
+  const cue = words[index];
+  if (!cue || !Number.isFinite(deltaMs)) return null;
+  const delta = Math.round(deltaMs);
+  if (edge === 'start') {
+    const lower = words[index - 1]?.end ?? 0;
+    return { start: Math.min(cue.end - MIN_CUE_MS, Math.max(lower, cue.start + delta)), end: cue.end };
+  }
+  const upper = words[index + 1]?.start ?? Number.POSITIVE_INFINITY;
+  return { start: cue.start, end: Math.max(cue.start + MIN_CUE_MS, Math.min(upper, cue.end + delta)) };
+}
+
+export function resizeManualCue(
+  captions: CaptionsData,
+  laneId: string,
+  index: number,
+  edge: ManualCueEdge,
+  deltaMs: number,
+): Partial<CaptionsData> | null {
+  const words = captions.sourceEntries?.find((entry) => entry.id === laneId && isManualCaptionEntry(entry))?.words;
+  const cue = words?.[index];
+  const timing = words ? resizedManualCueTiming(words, index, edge, deltaMs) : null;
+  return cue && timing ? updateManualCue(captions, laneId, index, cue.text, timing.start, timing.end) : null;
 }
 
 export function removeManualCue(captions: CaptionsData, laneId: string, index: number): Partial<CaptionsData> {

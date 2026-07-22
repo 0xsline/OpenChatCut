@@ -4,25 +4,32 @@ import type { PlayerRef } from '@remotion/player';
 import type { TimelineState } from '../editor/types';
 import type { CaptionsData } from './types';
 import { CAPTION_STYLES } from './styles';
-import { containerStyle, effectivePreset, wordStyle } from './renderStyles';
-import { buildCues, cueTextPatch, fmtCueMs } from './captionCues';
+import { containerStyle, wordStyle } from './renderStyles';
+import { buildCues, fmtCueMs } from './captionCues';
+import {
+  captionPreviewLayoutPatch,
+  captionPreviewStylePatch,
+  captionPreviewTextPatch,
+  findCaptionPreviewTarget,
+} from './captionPreviewTarget';
 import { Icon } from '../components/icons';
 import { useT } from '../i18n/locale';
 
 // 预览画布上的字幕直编层:点画面字幕→选中框+浮动工具条(AI 编辑/样式/字号)。
 // 编辑器侧 overlay,不进合成:几何靠对 containerStyle 传"显示区 px 尺寸"复算,
-// 命中盒是同字体的透明文本副本(与真渲染同版式)。文本改动走 cueTextPatch
-// (= agent display_text 同通道),样式/字号/颜色/位置走 updateCaptions,均可撤销。
+// 命中盒是同字体的透明文本副本(与真渲染同版式)。单流文本改动走
+// cueTextPatch,手动车道直接改对应 cue;样式/字号/颜色/位置均走 updateCaptions,可撤销。
 // 拖拽:按住字幕移动 → 松手一次性提交 layout 偏移(一步 undo);拖动中显示实体
 // 幽灵跟手,松手后合成层落到同一位置。样式全走 cc-capedit-* 类(令牌,随皮肤)。
 
-const LINGER_MS = 1500; // activePage 停留时长
-
 interface CaptionPreviewEditorProps {
   state: TimelineState;
+  captions: CaptionsData;
   playerRef: RefObject<PlayerRef | null>;
   onUpdateCaptions: (patch: Partial<CaptionsData>) => void;
   onSeedChat?: (text: string) => void;
+  autoEditLaneId?: string;
+  onAutoEditHandled?: () => void;
 }
 
 const FONT_STEP = 1.12;
@@ -38,9 +45,8 @@ interface DragRef {
   moved: boolean;
 }
 
-export function CaptionPreviewEditor({ state, playerRef, onUpdateCaptions, onSeedChat }: CaptionPreviewEditorProps) {
+export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCaptions, onSeedChat, autoEditLaneId, onAutoEditHandled }: CaptionPreviewEditorProps) {
   const t = useT();
-  const captions = state.captions;
   const rootRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<{ w: number; h: number } | null>(null);
   const [frame, setFrame] = useState(0);
@@ -71,28 +77,27 @@ export function CaptionPreviewEditor({ state, playerRef, onUpdateCaptions, onSee
     return () => player.removeEventListener('frameupdate', onFrame);
   }, [playerRef]);
 
-  const multiLane = !!captions?.sourceEntries?.length;
   const rows = useMemo(
-    () => (captions && captions.enabled && !multiLane ? buildCues(captions, state.items, state.fps) : []),
-    [captions, multiLane, state.items, state.fps],
+    () => (captions.enabled && !captions.sourceEntries?.length ? buildCues(captions, state.items, state.fps) : []),
+    [captions, state.items, state.fps],
   );
   const ms = (frame / state.fps) * 1000;
-  // 当前句判定必须与渲染层 activePage 逐字一致:一句一直"持"到下一句开始
-  // (仅末句用 结束+LINGER)。此前多加了 min(结束+1.5s, …) 收窄 → 短时间窗的句
-  // (如 agent 粘的单词载体句)在后段"字幕看得见但点不中"。
-  const k = useMemo(() => {
-    for (let i = rows.length - 1; i >= 0; i--) {
-      if (ms >= rows[i]!.start) {
-        const until = rows[i + 1]?.start ?? rows[i]!.end + LINGER_MS;
-        return ms < until ? i : -1;
-      }
-    }
-    return -1;
-  }, [rows, ms]);
-  const cue = k >= 0 ? rows[k] : undefined;
+  const target = useMemo(
+    () => findCaptionPreviewTarget(captions, state.items, state.fps, ms, rows),
+    [captions, state.items, state.fps, ms, rows],
+  );
+  const cue = target?.cue;
 
   // 换句即退出选中;点 overlay 外部也退出
-  useEffect(() => { setSelected(false); setEditing(false); setPop(null); }, [k]);
+  useEffect(() => { setSelected(false); setEditing(false); setPop(null); }, [target?.key]);
+  useEffect(() => {
+    if (!autoEditLaneId || target?.kind !== 'manual' || target.laneId !== autoEditLaneId || !cue) return;
+    playerRef.current?.pause();
+    setSelected(true);
+    setEditing(true);
+    setDraft(cue.text);
+    onAutoEditHandled?.();
+  }, [autoEditLaneId, cue, onAutoEditHandled, playerRef, target]);
   useEffect(() => {
     if (!selected) return;
     const onDown = (e: PointerEvent) => {
@@ -104,12 +109,12 @@ export function CaptionPreviewEditor({ state, playerRef, onUpdateCaptions, onSee
     return () => window.removeEventListener('pointerdown', onDown, true);
   }, [selected]);
 
-  if (!captions?.enabled || multiLane || !cue || !box) {
+  if (!target || !cue || !box) {
     return <div ref={rootRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />;
   }
 
-  const preset = effectivePreset(captions);
-  const block = containerStyle(preset, captions.template, box.w, box.h, captions.layout);
+  const preset = target.preset;
+  const block = containerStyle(preset, captions.template, box.w, box.h, target.layout);
   const textCss = {
     ...wordStyle(preset, false),
     background: preset.wholeLine && preset.background ? preset.background : 'transparent',
@@ -119,30 +124,35 @@ export function CaptionPreviewEditor({ state, playerRef, onUpdateCaptions, onSee
   };
 
   const saveText = (text: string) => {
-    const patch = cueTextPatch(captions, rows, k, text);
+    const patch = captionPreviewTextPatch(captions, target, text);
     if (patch) onUpdateCaptions(patch);
     setEditing(false);
   };
   const bumpFont = (dir: 1 | -1) => {
     const next = clampFont(dir > 0 ? preset.fontSize * FONT_STEP : preset.fontSize / FONT_STEP);
-    onUpdateCaptions({ styleOverride: { ...captions.styleOverride, fontSize: next } });
+    onUpdateCaptions(captionPreviewStylePatch(captions, target, { fontSize: next }));
   };
   const setColor = (hex: string) => {
-    onUpdateCaptions({ styleOverride: { ...captions.styleOverride, color: hex } });
+    onUpdateCaptions(captionPreviewStylePatch(captions, target, { color: hex }));
   };
   // ── 拖拽移动(bottom 锚 offsetYRatio 正向朝上,containerStyle 里取负号) ──
   const anchorV = (() => {
-    const a = captions.layout?.anchor ?? 'bottom-center';
+    const a = target.layout?.anchor ?? 'bottom-center';
     return a.startsWith('top') ? 'top' : (a.startsWith('middle') || a === 'center') ? 'middle' : 'bottom';
   })();
   const onHitPointerDown = (e: React.PointerEvent) => {
     if (editing) return;
     e.stopPropagation();
+    e.preventDefault();
+    // Freeze and select on press. A human click can span multiple playback
+    // frames; waiting for pointerup allowed the active cue to change first.
+    setSelected(true);
+    playerRef.current?.pause();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     dragRef.current = {
       startX: e.clientX, startY: e.clientY,
-      baseX: captions.layout?.offsetXRatio ?? 0,
-      baseY: captions.layout?.offsetYRatio ?? 0,
+      baseX: target.layout?.offsetXRatio ?? 0,
+      baseY: target.layout?.offsetYRatio ?? 0,
       ySign: anchorV === 'bottom' ? -1 : 1,
       moved: false,
     };
@@ -165,13 +175,11 @@ export function CaptionPreviewEditor({ state, playerRef, onUpdateCaptions, onSee
     if (d.moved && box) {
       const dx = e.clientX - d.startX;
       const dy = e.clientY - d.startY;
-      onUpdateCaptions({
-        layout: {
-          anchor: captions.layout?.anchor ?? 'bottom-center',
+      onUpdateCaptions(captionPreviewLayoutPatch(captions, target, {
+          anchor: target.layout?.anchor ?? 'bottom-center',
           offsetXRatio: d.baseX + dx / box.w,
           offsetYRatio: d.baseY + d.ySign * (dy / box.h),
-        },
-      });
+      }));
       setSelected(true);
     } else {
       // 未达拖拽阈值 = 点击选中
@@ -184,7 +192,7 @@ export function CaptionPreviewEditor({ state, playerRef, onUpdateCaptions, onSee
   const curColor = preset.color;
 
   return (
-    <div ref={rootRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'visible' }}>
+    <div ref={rootRef} style={{ position: 'absolute', inset: 0, zIndex: 4, pointerEvents: 'none', overflow: 'visible' }}>
       <div style={{ ...block, pointerEvents: 'none' }}>
         <div style={{ position: 'relative', pointerEvents: 'auto', maxWidth: '100%', transform: drag ? `translate(${drag.dx}px, ${drag.dy}px)` : undefined }}>
           {editing ? (
@@ -206,6 +214,7 @@ export function CaptionPreviewEditor({ state, playerRef, onUpdateCaptions, onSee
           ) : (
             // 命中盒:同版式文本副本。平时透明(真字幕在合成层),拖动中显形当幽灵跟手
             <div
+              className="cc-capedit-hit"
               role="button"
               title={t('点击选中字幕；拖动移动位置；双击直接改文字')}
               onPointerDown={onHitPointerDown}

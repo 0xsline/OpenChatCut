@@ -2,6 +2,9 @@
 // 来源:src/captions/* 面板 chrome(CaptionsControls / CaptionStyleMenu)+
 // styles.ts 的 labelZh/hint(数据不动,展示处 t() 查这里)。
 export default {
+  '拖到预览画面任意位置新建字幕': 'Drag onto the preview to create a caption anywhere',
+  '可拖到预览画面任意位置新建并编辑字幕': 'Drag onto the preview to create and edit a caption anywhere',
+  '双击编辑字幕': 'Double-click to edit caption',
   '文A': 'Aa',
   '字': 'A',
   // 字幕样式名(styles.ts labelZh,21 条)
@@ -50,28 +53,18 @@ export default {
   '中文展示字体': 'Chinese display typeface',
   // CaptionsControls — 面板头/状态
   '字幕': 'Captions',
-  '字幕来源': 'Caption source',
-  '无可用轨道': 'No available tracks',
-  '已转写 {n} 段': '{n} transcribed clips',
-  '当前轨道未转写': 'Current track is not transcribed',
-  '未生成': 'Not generated',
-  '显示中 · {style}': 'Showing · {style}',
-  '已隐藏 · {style}': 'Hidden · {style}',
-  '收起字幕面板': 'Collapse captions panel',
-  '展开字幕面板': 'Expand captions panel',
   '收起': 'Collapse',
   '展开': 'Expand',
-  // CaptionsControls — 生成/显示开关
+  // CaptionsControls — 创建/显示开关
   '生成字幕': 'Generate captions',
   '手动添加字幕': 'Add captions manually',
-  '根据当前文字稿在预览底部显示字幕。不需要时可点上方「收起」藏起本面板。': 'Shows captions over the bottom of the preview from the current transcript. Click "Collapse" above to tuck this panel away when unneeded.',
+  '从文字稿打开「字幕样式」，或在这里手动添加独立字幕。': 'Open "Caption styles" from Transcript, or add independent captions manually here.',
   '先在上方完成「转写」，再生成字幕。': 'Finish "Transcribe" above first, then generate captions.',
-  '没有文字稿也可手动添加字幕；需要自动生成时先完成转写。': 'You can add captions manually without a transcript. Transcribe first only when you want automatic captions.',
   '预览中显示字幕': 'Captions showing in preview',
   '字幕已隐藏': 'Captions hidden',
   '显示': 'Show',
   '隐藏': 'Hide',
-  '从工程里去掉字幕（可再点生成字幕）': 'Remove captions from the project (you can generate them again)',
+  '从工程里移除字幕': 'Remove captions from the project',
   '移除': 'Remove',
   '字幕已关闭，预览/导出都不会烧录。再点「显示」或勾选即可恢复。': 'Captions are off — neither preview nor export will burn them in. Click "Show" or tick the box to bring them back.',
   // CaptionsControls — 样式/节奏
@@ -82,7 +75,6 @@ export default {
   '一次显示一句话，适合纪录片口播': 'One sentence at a time — suits documentary voiceover',
   '逐词高亮': 'Word-by-word highlight',
   '当前说到的词会变色，像卡拉 OK': 'The word being spoken lights up, karaoke-style',
-  '用当前文字稿刷新字幕': 'Refresh captions from the current transcript',
   // ManualCaptionEditor
   '手动字幕': 'Manual captions',
   '（{n} 车道）': ' ({n} lanes)',

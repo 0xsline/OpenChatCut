@@ -26,6 +26,7 @@ interface TranscriptPanelProps {
   onSetTranscriptPlayOrder: (id: string, playOrder: number[] | null) => void;
   onReorderTrackItems: (track: TrackId, orderedIds: string[]) => void;
   onClearEdits: (id: string) => void;
+  onOpenCaptionStyles?: (sourceItemIds: string[]) => void;
 }
 
 const MANY_CLIPS = 10;
@@ -33,6 +34,7 @@ const MANY_CLIPS = 10;
 export function TranscriptPanel({
   playerRef, fps, items, trackOptions,
   onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits,
+  onOpenCaptionStyles,
 }: TranscriptPanelProps) {
   const t = useT();
   const { status, error, progressNote, runMany, reset } = useTranscript();
@@ -158,6 +160,15 @@ export function TranscriptPanel({
           className={`cc-tx-btn${editMode ? ' active' : ''}`}
         >
           <Icon name="pencil" size={13} />{t('编辑')}
+        </button>
+        <button
+          type="button"
+          className="cc-tx-btn"
+          disabled={!onOpenCaptionStyles}
+          title={onOpenCaptionStyles ? t('字幕样式') : t('请先新建字幕轨道')}
+          onClick={() => onOpenCaptionStyles?.(transcribed.map((item) => item.id))}
+        >
+          <Icon name="captions" size={13} />{t('字幕样式')}
         </button>
         <span className="cc-tx-spacer" />
         {pauseOpen && (

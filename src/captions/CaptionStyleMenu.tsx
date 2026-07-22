@@ -111,7 +111,7 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
         {CAPTION_STYLES.map((style) => {
           ensureFont(style.fontFamily);
           return (
-            <button key={style.id} className={current?.template === style.id ? 'active' : ''} onClick={() => applyStyle(style.id)}>
+            <button type="button" key={style.id} className={current?.template === style.id ? 'active' : ''} onClick={() => applyStyle(style.id)}>
               <span className="cc-caption-style-swatch" style={{ background: style.highlightBackground ?? '#292929', color: style.highlightBackground ? style.highlightColor : style.color, fontFamily: style.fontFamily, WebkitTextStroke: style.strokeWidth ? `${Math.min(1, style.strokeWidth)}px ${style.strokeColor}` : undefined }}>Aa</span>
               <span>{t(style.labelZh)}</span>
             </button>
@@ -162,12 +162,12 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
         </button>
       )}
       <div className="cc-caption-translate-wrap">
-        <button className="cc-caption-translate" disabled={busy} onClick={() => setTranslateOpen((open) => !open)}>
+        <button type="button" className="cc-caption-translate" disabled={busy} onClick={() => setTranslateOpen((open) => !open)} aria-expanded={translateOpen}>
           <span>{t('文A')}</span><span>{busy ? t('翻译中...') : t('翻译字幕')}</span><span>›</span>
         </button>
         {translateOpen && (
           <div className="cc-caption-language-menu">
-            {CAPTION_LANGS.map((lang) => <button key={lang} onClick={() => void translate(lang)}>{lang}</button>)}
+            {CAPTION_LANGS.map((lang) => <button type="button" key={lang} onClick={() => void translate(lang)}>{lang}</button>)}
           </div>
         )}
       </div>

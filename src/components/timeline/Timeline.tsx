@@ -325,7 +325,8 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
                     />
                   )}
                 </TrackHead>
-                {meta.kind === 'caption' ? <CaptionTrackLane state={state} captions={trackCaptions} px={px} locked={locked} hidden={hidden} /> : <TrackLane
+                {meta.kind === 'caption' ? <CaptionTrackLane state={state} captions={trackCaptions} px={px} locked={locked} hidden={hidden}
+                  onUpdate={(patch) => commands.updateCaptions(patch, trackId)} /> : <TrackLane
                   trackId={trackId} items={items} state={state} commands={commands} pointer={pointer}
                   editMode={editMode} pickMode={pickMode} locked={locked} hidden={hidden}
                   px={px} rowHeight={rowHeightOf(trackId)}

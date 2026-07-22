@@ -69,7 +69,7 @@ export function TimelineSpeedControl({
           fontSize: 11, fontVariantNumeric: 'tabular-nums',
         }}>
         <Icon name="clock" size={14} />
-        <span>{rate}×</span>
+        <span>{Number(rate.toFixed(3))}×</span>
         <Icon name="chevronDown" size={11} />
       </button>
       {open && item && <SpeedMenu rate={rate} onChange={applyRate} />}

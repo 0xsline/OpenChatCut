@@ -16,11 +16,6 @@ interface Props {
   onSeekMs?: (ms: number) => void;
 }
 
-const fieldStyle: React.CSSProperties = {
-  background: 'var(--cc-bg)', color: 'var(--cc-text)', border: '1px solid var(--cc-border)',
-  borderRadius: 6, padding: '5px 7px', font: 'inherit', fontSize: 12,
-};
-
 export function ManualCaptionEditor({ captions, items, onUpdate, getPlayheadMs, onSeekMs }: Props) {
   const t = useT();
   const lanes = useMemo(() => captions.sourceEntries?.filter(isManualCaptionEntry) ?? [], [captions.sourceEntries]);
@@ -39,7 +34,7 @@ export function ManualCaptionEditor({ captions, items, onUpdate, getPlayheadMs, 
   const lane = lanes.find((candidate) => candidate.id === laneId) ?? lanes[0];
   return (
     <div className="cc-cap-bilingual">
-      <button type="button" className="cc-cap-bilingual-toggle" onClick={() => setOpen((value) => !value)}>
+      <button type="button" className="cc-cap-bilingual-toggle" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
         <span>{t('手动字幕')}{lanes.length ? t('（{n} 车道）', { n: lanes.length }) : ''}</span>
         <span className="cc-cap-hint">{open ? t('收起') : t('展开')}</span>
       </button>
@@ -61,7 +56,7 @@ function ManualLanePanel(props: LanePanelProps) {
   const t = useT();
   return (
     <div className="cc-cap-bilingual-body">
-      <div style={{ display: 'flex', gap: 6 }}>
+      <div className="cc-cap-manual-toolbar">
         {lanes.length > 0 && <select className="cc-cap-select" value={laneId} onChange={(event) => setLaneId(event.target.value)}>
           {lanes.map((entry) => <option key={entry.id} value={entry.id}>{entry.label ?? t('手动字幕车道')}</option>)}
         </select>}
@@ -88,15 +83,17 @@ function ManualCueList({ captions, lane, onUpdate, getPlayheadMs, onSeekMs }: Om
   };
   const syncPlayhead = () => setStart(((getPlayheadMs?.() ?? 0) / 1000).toFixed(1));
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-      <textarea rows={2} value={text} onChange={(event) => setText(event.target.value)} placeholder={t('输入字幕文字')} style={{ ...fieldStyle, resize: 'vertical' }} />
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <label className="cc-cap-hint">{t('开始')} <input type="number" min="0" step="0.1" value={start} onChange={(event) => setStart(event.target.value)} style={{ ...fieldStyle, width: 68 }} />s</label>
-        <label className="cc-cap-hint">{t('时长')} <input type="number" min="0.1" step="0.1" value={duration} onChange={(event) => setDuration(event.target.value)} style={{ ...fieldStyle, width: 62 }} />s</label>
+    <div className="cc-cap-manual-compose">
+      <textarea className="cc-cap-input cc-cap-textarea" rows={2} value={text} onChange={(event) => setText(event.target.value)} placeholder={t('输入字幕文字')} />
+      <div className="cc-cap-manual-controls">
+        <label className="cc-cap-time-field"><span>{t('开始')}</span><input className="cc-cap-input" type="number" min="0" step="0.1" value={start} onChange={(event) => setStart(event.target.value)} /><span>s</span></label>
+        <label className="cc-cap-time-field"><span>{t('时长')}</span><input className="cc-cap-input" type="number" min="0.1" step="0.1" value={duration} onChange={(event) => setDuration(event.target.value)} /><span>s</span></label>
         <button type="button" className="cc-cap-btn sm" onClick={syncPlayhead}>{t('取播放头')}</button>
         <button type="button" className="cc-cap-btn primary sm" disabled={!text.trim()} onClick={add}>{t('添加字幕')}</button>
       </div>
-      {(lane.words ?? []).map((cue, index) => <ManualCueRow key={`${lane.id}_${cue.start}_${cue.end}_${index}`} {...{ captions, lane, cue, index, onUpdate, onSeekMs }} />)}
+      <div className="cc-cap-manual-list">
+        {(lane.words ?? []).map((cue, index) => <ManualCueRow key={`${lane.id}_${cue.start}_${cue.end}_${index}`} {...{ captions, lane, cue, index, onUpdate, onSeekMs }} />)}
+      </div>
     </div>
   );
 }
@@ -111,11 +108,11 @@ function ManualCueRow({ captions, lane, cue, index, onUpdate, onSeekMs }: Omit<P
     if (patch) onUpdate(patch);
   };
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '68px 68px 1fr auto', gap: 5, alignItems: 'center' }}>
-      <input aria-label={t('开始秒数')} type="number" min="0" step="0.1" value={start} onChange={(event) => setStart(event.target.value)} onClick={() => onSeekMs?.(cue.start)} style={fieldStyle} />
-      <input aria-label={t('结束秒数')} type="number" min="0.1" step="0.1" value={end} onChange={(event) => setEnd(event.target.value)} style={fieldStyle} />
-      <input aria-label={t('字幕文字')} value={text} onChange={(event) => setText(event.target.value)} style={fieldStyle} />
-      <div style={{ display: 'flex', gap: 4 }}>
+    <div className="cc-cap-manual-row">
+      <input className="cc-cap-input" aria-label={t('开始秒数')} type="number" min="0" step="0.1" value={start} onChange={(event) => setStart(event.target.value)} onClick={() => onSeekMs?.(cue.start)} />
+      <input className="cc-cap-input" aria-label={t('结束秒数')} type="number" min="0.1" step="0.1" value={end} onChange={(event) => setEnd(event.target.value)} />
+      <input className="cc-cap-input cc-cap-manual-text" aria-label={t('字幕文字')} value={text} onChange={(event) => setText(event.target.value)} />
+      <div className="cc-cap-manual-actions">
         <button type="button" className="cc-cap-btn sm" onClick={save}>{t('保存')}</button>
         <button type="button" className="cc-cap-btn sm ghost" onClick={() => onUpdate(removeManualCue(captions, lane.id, index))}>{t('删除')}</button>
       </div>

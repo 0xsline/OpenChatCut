@@ -2,10 +2,15 @@ import { memo, useEffect, useRef, useState, type CSSProperties, type RefObject }
 import { Player, type CallbackListener, type PlayerRef } from '@remotion/player';
 import { theme, themeAlpha } from '../theme';
 import { TimelineComposition } from '../editor/TimelineComposition';
-import { timelineDuration, type TimelineState } from '../editor/types';
+import { captionTrackEntries, timelineDuration, type TimelineState, type TrackId } from '../editor/types';
 import { canvasRegionRef, emitSelectionRef, regionFromDrag, useSelectionRefMode } from '../agent/selection-refs';
 import { CaptionPreviewEditor } from '../captions/CaptionPreviewEditor';
 import type { CaptionsData } from '../captions/types';
+import {
+  onCaptionStylePointerDrop,
+  type CaptionStyleDragPayload,
+} from '../captions/captionStyleDrag';
+import { appendDroppedManualCaption } from '../captions/manualCaptions';
 import { Icon } from './icons';
 import { useT } from '../i18n/locale';
 
@@ -16,7 +21,7 @@ interface PreviewPanelProps {
   playerRef: RefObject<PlayerRef | null>;
   onImport: (file: File) => Promise<void>;
   /** 画布字幕直编(选中框+浮动工具条)。未传(如提案预览态)则只读。 */
-  onUpdateCaptions?: (patch: Partial<CaptionsData>) => void;
+  onUpdateCaptions?: (patch: Partial<CaptionsData>, track?: TrackId) => void;
   onSeedChat?: (text: string) => void;
 }
 
@@ -24,8 +29,10 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
   const t = useT();
   const duration = timelineDuration(state);
   const inputRef = useRef<HTMLInputElement>(null);
+  const videoBoxRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [showSafe, setShowSafe] = useState(false);
+  const [autoEditCaption, setAutoEditCaption] = useState<{ trackId: TrackId; laneId: string } | null>(null);
   // 全屏预览(` 快捷键/时间线工具栏按钮把 Player 全屏)时露出 Player
   // 自带控制条;编辑态仍走时间线 transport,不显示双套控制。
   // 必须听 Remotion 自己的 fullscreenchange:它在 Chrome 走 webkit 遗留 API,
@@ -47,6 +54,28 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
     try { for (const file of Array.from(files)) await onImport(file); }
     finally { setBusy(false); }
   };
+  const dropCaptionStyle = (payload: CaptionStyleDragPayload | null, clientX: number, clientY: number): boolean => {
+    const box = videoBoxRef.current;
+    const entry = captionTrackEntries(state).find(({ id }) => id === payload?.trackId);
+    if (!payload || !box || !entry?.captions || !onUpdateCaptions) return false;
+    const rect = box.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return false;
+    const x = (clientX - rect.left) / rect.width;
+    const y = (clientY - rect.top) / rect.height;
+    const startMs = ((playerRef.current?.getCurrentFrame() ?? 0) / state.fps) * 1000;
+    const dropped = appendDroppedManualCaption(entry.captions, state.items, payload.template, t('双击编辑字幕'), startMs, {
+      anchor: 'middle-center', offsetXRatio: x - 0.5, offsetYRatio: y - 0.5,
+    });
+    if (!dropped) return false;
+    playerRef.current?.pause();
+    onUpdateCaptions(dropped.patch, payload.trackId);
+    setAutoEditCaption({ trackId: payload.trackId, laneId: dropped.laneId });
+    return true;
+  };
+  useEffect(() => onCaptionStylePointerDrop(({ payload, clientX, clientY }) => {
+    dropCaptionStyle(payload, clientX, clientY);
+  }));
   return (
     <section style={{ display: 'flex', flex: 1, flexDirection: 'column', background: theme.panel, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
       <div style={{ height: 30, padding: '0 12px', display: 'flex', alignItems: 'center', borderBottom: `0.5px solid ${theme.border}`, flexShrink: 0 }}>
@@ -73,7 +102,8 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
         // Suppress the browser's native <video> context menu (download / picture-in-picture
         // / loop) because the preview is a canvas, not an exposed HTML5 video element.
         onContextMenu={(event) => event.preventDefault()}
-        onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void importFiles(event.dataTransfer.files); }}>
+        onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; }}
+        onDrop={(event) => { event.preventDefault(); void importFiles(event.dataTransfer.files); }}>
         {state.items.length === 0 ? (
           <>
             <input ref={inputRef} type="file" accept="video/*,image/*,audio/*" multiple hidden onChange={(event) => { if (event.target.files) void importFiles(event.target.files); event.target.value = ''; }} />
@@ -85,7 +115,7 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
         ) : (
           // Wrapper carries the sizing so the safe-zone overlay lines up exactly
           // on the video rect (Player fills the wrapper).
-          <div style={{
+          <div ref={videoBoxRef} style={{
             position: 'relative', width: 'auto', height: '100%',
             maxWidth: '100%', maxHeight: '100%',
             aspectRatio: `${state.width} / ${state.height}`,
@@ -113,9 +143,18 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
             />
             {showSafe && <SafeZoneOverlay />}
             {pickMode && <RegionPickOverlay state={state} playerRef={playerRef} />}
-            {!pickMode && !fullscreen && onUpdateCaptions && (
-              <CaptionPreviewEditor state={state} playerRef={playerRef} onUpdateCaptions={onUpdateCaptions} onSeedChat={onSeedChat} />
-            )}
+            {!pickMode && !fullscreen && onUpdateCaptions && captionTrackEntries(state).map(({ id, captions }) => captions?.enabled ? (
+              <CaptionPreviewEditor
+                key={id}
+                state={state}
+                captions={captions}
+                playerRef={playerRef}
+                onUpdateCaptions={(patch) => onUpdateCaptions(patch, id)}
+                onSeedChat={onSeedChat}
+                autoEditLaneId={autoEditCaption?.trackId === id ? autoEditCaption.laneId : undefined}
+                onAutoEditHandled={() => setAutoEditCaption(null)}
+              />
+            ) : null)}
           </div>
         )}
       </div>
