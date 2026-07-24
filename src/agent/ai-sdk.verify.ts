@@ -41,6 +41,9 @@ assert.equal(getLanguageModel('kimi', 'test-model').provider, 'kimi.chat');
 assert.equal(getLanguageModel('openrouter', 'openrouter/auto').provider, 'openrouter.chat');
 assert.deepEqual(getLanguageModelProviderOptions('openai'), { openai: { store: false } });
 assert.equal(getLanguageModelProviderOptions('openai', 'chat'), undefined);
+assert.deepEqual(getLanguageModelProviderOptions('minimax'), {
+  minimax: { reasoning_split: true },
+});
 assert.equal(
   new Set(LLM_PROVIDER_PRESETS.map(({ id }) => id)).size,
   LLM_PROVIDER_PRESETS.length,

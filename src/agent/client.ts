@@ -105,7 +105,10 @@ export function getLanguageModel(
 export function getLanguageModelProviderOptions(
   provider: LlmProvider = PROVIDER,
   openAiApiMode: OpenAiApiMode = OPENAI_API_MODE,
-) {
+): Record<string, Record<string, boolean>> | undefined {
+  if (provider === 'minimax') {
+    return { minimax: { reasoning_split: true } };
+  }
   return protocolForProvider(provider) === 'openai' && openAiApiMode === 'responses'
     ? { openai: { store: false } }
     : undefined;
@@ -117,10 +120,12 @@ export async function generateAgentText(options: {
   messages?: readonly unknown[];
   maxOutputTokens: number;
 }): Promise<string> {
+  const providerOptions = getLanguageModelProviderOptions();
   const base = {
     model: getLanguageModel(),
     system: options.system,
     maxOutputTokens: options.maxOutputTokens,
+    ...(providerOptions ? { providerOptions } : {}),
   };
   const result = options.messages
     ? await generateText({
