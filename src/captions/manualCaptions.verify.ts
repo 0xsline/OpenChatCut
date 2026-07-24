@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { captionPages, captionsToSrt } from './exportCaptions';
 import { buildLaneGroups } from './lanes';
 import {
-  appendDroppedManualCaption, appendManualCue, appendManualLane, isManualCaptionEntry,
+  appendDroppedManualCaption, appendManualCue, appendManualCueToFirstLane, appendManualLane, isManualCaptionEntry,
   newManualCaptions, removeManualCue, resizeManualCue, updateManualCue,
 } from './manualCaptions';
 
@@ -31,6 +31,11 @@ assert.equal(captions.sourceEntries![0]!.words![0]!.end, 3_000, 'right edge stop
 const secondLane = appendManualLane(captions, []);
 captions = { ...captions, ...secondLane };
 assert.equal(captions.sourceEntries!.filter(isManualCaptionEntry).length, 2, 'multiple manual lanes persist');
+
+let destination = newManualCaptions();
+destination = { ...destination, ...appendManualCueToFirstLane(destination, [], '跨轨字幕', 1_000, 3_000) };
+destination = { ...destination, ...appendManualCueToFirstLane(destination, [], '允许重叠', 2_000, 4_000) };
+assert.deepEqual(destination.sourceEntries![0]!.words?.map((word) => word.text), ['跨轨字幕', '允许重叠']);
 
 const dropped = appendDroppedManualCaption(captions, [], 'tiktok', '拖入字幕', 5_000, {
   anchor: 'middle-center', offsetXRatio: 0.2, offsetYRatio: -0.15,

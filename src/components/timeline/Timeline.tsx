@@ -12,9 +12,11 @@ import { Icon } from '../icons';
 import { useRecorder } from '../../audio/recorder';
 import { exportClipMov, bakeClipToVideo } from '../../media/clipExport';
 import { CaptionStyleMenu } from '../../captions/CaptionStyleMenu';
-import { CaptionTrackLane } from '../../captions/CaptionTrackLane';
+import { CaptionTrackLane, type CaptionCueMove } from '../../captions/CaptionTrackLane';
 import { captionsForTrack } from '../../captions/captionTrack';
-import { newManualCaptions } from '../../captions/manualCaptions';
+import {
+  appendManualCueToFirstLane, newManualCaptions, removeManualCue, updateManualCue,
+} from '../../captions/manualCaptions';
 import { TrackHead } from './TrackHead';
 import { TrackLane } from './TrackLane';
 import { TimelineToolbar } from './TimelineToolbar';
@@ -78,6 +80,26 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   const [captionMenu, setCaptionMenu] = useState<{ id: TrackId; left: number; top: number } | null>(null);
   // 错误行归 Timeline:菜单外的「开启字幕」按钮也会写它(该轨无文字稿),菜单内展示
   const [captionError, setCaptionError] = useState<string | null>(null);
+  const moveCaptionCue = (sourceTrackId: TrackId, move: CaptionCueMove) => {
+    const source = captionsOnTrack(state, sourceTrackId);
+    if (!source) return;
+    const targetTrackId = trackKind(state, move.targetTrackId) === 'caption'
+      && !state.tracks?.[move.targetTrackId]?.locked ? move.targetTrackId : sourceTrackId;
+    const sourceCue = source.sourceEntries?.find((entry) => entry.id === move.laneId)?.words?.[move.index];
+    if (targetTrackId === sourceTrackId) {
+      if (sourceCue?.start === Math.round(move.startMs) && sourceCue.end === Math.round(move.endMs)) return;
+      const patch = updateManualCue(source, move.laneId, move.index, move.text, move.startMs, move.endMs);
+      if (patch) commands.updateCaptions(patch, sourceTrackId);
+      return;
+    }
+    const target = captionsOnTrack(state, targetTrackId) ?? newManualCaptions();
+    const targetPatch = appendManualCueToFirstLane(target, state.items, move.text, move.startMs, move.endMs);
+    if (!targetPatch) return;
+    commands.batch([
+      { type: 'updateCaptions', patch: removeManualCue(source, move.laneId, move.index), track: sourceTrackId },
+      { type: 'setCaptions', captions: { ...target, ...targetPatch }, track: targetTrackId },
+    ]);
+  };
   useEffect(() => {
     if (!captionMenu) return;
     const close = (event: PointerEvent) => {
@@ -325,8 +347,11 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
                     />
                   )}
                 </TrackHead>
-                {meta.kind === 'caption' ? <CaptionTrackLane state={state} captions={trackCaptions} px={px} locked={locked} hidden={hidden}
-                  onUpdate={(patch) => commands.updateCaptions(patch, trackId)} /> : <TrackLane
+                {meta.kind === 'caption' ? <CaptionTrackLane state={state} captions={trackCaptions} trackId={trackId}
+                  playheadFrame={playheadRef.current} px={px} locked={locked} hidden={hidden} snapping={snapping}
+                  trackFromClientY={trackFromClientY} onUpdate={(patch) => commands.updateCaptions(patch, trackId)}
+                  onMove={(move) => moveCaptionCue(trackId, move)}
+                  onDelete={(laneId, index) => trackCaptions && commands.updateCaptions(removeManualCue(trackCaptions, laneId, index), trackId)} /> : <TrackLane
                   trackId={trackId} items={items} state={state} commands={commands} pointer={pointer}
                   editMode={editMode} pickMode={pickMode} locked={locked} hidden={hidden}
                   px={px} rowHeight={rowHeightOf(trackId)}

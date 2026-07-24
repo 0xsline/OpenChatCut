@@ -102,6 +102,19 @@ export function appendManualCue(
   return mapManualLane(captions, laneId, (words) => [...words, cue].sort((a, b) => a.start - b.start));
 }
 
+export function appendManualCueToFirstLane(
+  captions: CaptionsData,
+  items: TimelineItem[],
+  text: string,
+  startMs: number,
+  endMs: number,
+): Partial<CaptionsData> | null {
+  const entries = promoteCaptionEntries(captions, items);
+  const lane = entries.find(isManualCaptionEntry) ?? newManualEntry(1);
+  const next = entries.some((entry) => entry.id === lane.id) ? captions : { ...captions, ...entryPatch([...entries, lane]) };
+  return appendManualCue(next, lane.id, text, startMs, endMs);
+}
+
 export function updateManualCue(
   captions: CaptionsData,
   laneId: string,

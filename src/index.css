@@ -446,13 +446,19 @@ button, input, select { font: inherit; }
 .cc-track-fixed-action:disabled { color:var(--cc-border-light); cursor:default; }
 .cc-track-name { min-width:0; padding-left:1px; color:var(--cc-text-dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .cc-caption-track-lane { flex:1; position:relative; overflow:hidden; }
-.cc-caption-track-cue { position:absolute; top:8px; bottom:8px; box-sizing:border-box; overflow:hidden; padding:5px 7px; border:0.5px solid color-mix(in srgb, var(--cc-track-caption) 78%, white); border-radius:4px; background:color-mix(in srgb, var(--cc-track-caption) 76%, var(--cc-panel)); color:var(--cc-text-strong); font-size:11px; line-height:1.35; white-space:nowrap; text-overflow:ellipsis; touch-action:none; }
+.cc-caption-track-cue { position:absolute; top:8px; bottom:8px; box-sizing:border-box; overflow:hidden; padding:5px 7px; border:0.5px solid color-mix(in srgb, var(--cc-track-caption) 78%, white); border-radius:4px; background:color-mix(in srgb, var(--cc-track-caption) 76%, var(--cc-panel)); color:var(--cc-text-strong); font-size:11px; line-height:1.35; white-space:nowrap; text-overflow:ellipsis; touch-action:none; cursor:grab; }
+.cc-caption-track-cue:active { cursor:grabbing; }
+.cc-caption-track-cue.selected { outline:2px solid var(--cc-accent); outline-offset:-2px; }
+.cc-caption-track-cue:focus-visible { outline:2px solid var(--cc-accent); outline-offset:-2px; }
 .cc-caption-track-trim { position:absolute; top:0; bottom:0; width:8px; z-index:2; cursor:ew-resize; opacity:0; background:color-mix(in srgb, var(--cc-text-strong) 55%, transparent); transition:opacity .1s; }
 .cc-caption-track-cue:hover .cc-caption-track-trim { opacity:.72; }
 .cc-caption-track-trim:focus-visible { opacity:1; outline:1px solid var(--cc-text-strong); outline-offset:-2px; }
 .cc-caption-track-trim.left { left:0; }
 .cc-caption-track-trim.right { right:0; }
 .cc-caption-track-empty { position:absolute; top:50%; left:12px; transform:translateY(-50%); color:var(--cc-text-dim); font-size:11px; }
+.cc-caption-cue-menu { position:fixed; z-index:90; min-width:112px; padding:4px; border:0.5px solid var(--cc-border-light); border-radius:5px; background:var(--cc-panel-alt); box-shadow:0 8px 24px rgba(var(--cc-shadow-rgb), 0.67); }
+.cc-caption-cue-menu button { width:100%; min-height:28px; padding:4px 8px; border:0; border-radius:4px; background:transparent; color:var(--cc-text); font-size:12px; text-align:left; cursor:pointer; }
+.cc-caption-cue-menu button:hover,.cc-caption-cue-menu button:focus-visible { background:var(--cc-hover); outline:none; }
 /* 字幕样式 / 翻译菜单：紧凑精致，避免盖住半个预览区 */
 .cc-caption-style-menu { z-index:80; width:212px; max-height:min(420px, calc(100vh - 24px)); display:flex; flex-direction:column; overflow:visible; border:0.5px solid var(--cc-border); border-radius:5px; background:var(--cc-panel-alt); box-shadow:0 8px 24px rgba(var(--cc-shadow-rgb), 0.67); color:var(--cc-text); font-size:12px; }
 .cc-caption-style-title { flex:0 0 auto; padding:7px 10px 4px; color:var(--cc-text-dim); font-size:10px; letter-spacing:0.04em; font-weight:600; }

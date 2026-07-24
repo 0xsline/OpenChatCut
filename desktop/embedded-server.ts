@@ -69,7 +69,7 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
 
   const port = await new Promise<number>((resolvePort, reject) => {
     server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(5199, '127.0.0.1', () => {
       const addr = server.address();
       if (addr && typeof addr === 'object') resolvePort(addr.port);
       else reject(new Error('embedded server failed to bind'));

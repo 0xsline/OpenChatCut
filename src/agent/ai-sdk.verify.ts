@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { generateText } from 'ai';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import {
   defaultModelForProvider,
   getLanguageModel,
@@ -174,5 +175,51 @@ assert.deepEqual(makeMessagesPortable([
 ]), [
   { role: 'assistant', content: [{ type: 'text', text: 'visible' }] },
 ]);
+
+let geminiRequest: Record<string, unknown> | undefined;
+const gemini = createOpenAICompatible({
+  name: 'gemini',
+  baseURL: 'https://example.invalid/v1beta/openai',
+  apiKey: 'test-key',
+  fetch: async (_input, init) => {
+    geminiRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(JSON.stringify({ error: { message: 'intentional test response' } }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+    });
+  },
+});
+await assert.rejects(generateText({
+  model: gemini('gemini-test'),
+  messages: prepareMessagesForProvider([
+    {
+      role: 'assistant',
+      content: [{
+        type: 'tool-call',
+        toolCallId: 'gemini_tool_1',
+        toolName: 'edit_item',
+        input: { itemId: 'a' },
+        providerOptions: { google: { thoughtSignature: 'gemini-signature' } },
+      }],
+    },
+    {
+      role: 'tool',
+      content: [{
+        type: 'tool-result',
+        toolCallId: 'gemini_tool_1',
+        toolName: 'edit_item',
+        output: { type: 'text', value: '{"ok":true}' },
+      }],
+    },
+  ], 'gemini', 'gemini'),
+  maxRetries: 0,
+}));
+const geminiToolCall = ((geminiRequest?.messages as Array<Record<string, unknown>>)[0]
+  .tool_calls as Array<Record<string, unknown>>)[0];
+assert.equal(
+  (geminiToolCall.extra_content as { google: { thought_signature: string } })
+    .google.thought_signature,
+  'gemini-signature',
+);
 
 console.log('ai-sdk checks passed');

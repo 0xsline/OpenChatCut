@@ -41,6 +41,20 @@ async function smokeProbe(origin: string, win: BrowserWindow): Promise<void> {
   if (!res.ok) throw new Error(`/api/keys → HTTP ${res.status}`);
   const body = (await res.json()) as Record<string, unknown>;
   if (typeof body !== 'object' || body === null) throw new Error('/api/keys returned non-object');
+  const mcp = await fetch(`${origin}/api/external-mcp/mcp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'desktop-smoke', version: '1' } },
+    }),
+  });
+  if (!mcp.ok || !(await mcp.text()).includes('"name":"openchatcut"')) {
+    throw new Error(`/api/external-mcp/mcp → HTTP ${mcp.status}`);
+  }
+  console.log('[smoke] external MCP endpoint ok');
   const pickerType = await win.webContents.executeJavaScript(
     'typeof window.openChatCutDesktop?.selectDirectory',
   ) as unknown;

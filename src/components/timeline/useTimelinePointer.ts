@@ -188,9 +188,9 @@ export function useTimelinePointer(deps: PointerDeps) {
     if (!drag) { return; }
     const { id, mode, baseStart, baseDur, baseSrcIn, deltaF, targetTrack, baseTrack } = drag;
     if (mode === 'move') {
-      // keep video clips on video tracks, audio clips on audio tracks
-      const isAudio = state.items.find((it) => it.id === id)?.kind === 'audio';
-      const okTrack = !!targetTrack && trackKind(state, targetTrack) === (isAudio ? 'audio' : 'video') && !state.tracks?.[targetTrack]?.locked;
+      // Keep clips on the same track kind (video / audio / caption).
+      const okTrack = !!targetTrack && trackKind(state, targetTrack) === trackKind(state, baseTrack)
+        && !state.tracks?.[targetTrack]?.locked;
       const track = okTrack ? targetTrack : baseTrack;
       const ids = groupMoveIds(state, id);
       if (deltaF !== 0 || track !== baseTrack) {
