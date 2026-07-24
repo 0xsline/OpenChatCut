@@ -21,7 +21,7 @@
   <a href="#what-is-openchatcut">Introduction</a> ·
   <a href="#product-tour">Product Tour</a> ·
   <a href="#quick-start">Quick Start</a> ·
-  <a href="#using-openchatcut-with-codex--claude-code">Agent / MCP</a> ·
+  <a href="#using-openchatcut-with-external-agents--mcp-opencode-cli-antigravity-ide-claude-code-codex">Agent / MCP</a> ·
   <a href="#changelog">Changelog</a> ·
   <a href="#star-growth">Star Growth</a> ·
   <a href="#contributing">Contributing</a>
@@ -126,7 +126,7 @@ Traditional editors excel at precise control. One-shot AI video generators excel
 | Modify a project with natural language | ❌ | ✅ | **✅** |
 | Inspectable and undoable changes | ✅ | Usually unavailable | **✅** |
 | Linked transcript and visuals | Partial | ❌ | **✅** |
-| Direct control from Codex / Claude Code | ❌ | ❌ | **✅ MCP** |
+| Direct control from OpenCode CLI / Antigravity IDE / Claude Code / Codex | ❌ | ❌ | **✅ MCP** |
 | Built-in and external agent collaboration | ❌ | ❌ | **✅ Shared tools** |
 | Local projects and BYOK | Product-dependent | Usually cloud-based | **✅** |
 
@@ -223,7 +223,7 @@ The core timeline, local projects, built-in media, and manual editing do not dep
 
 ---
 
-## Using OpenChatCut with Codex / Claude Code
+## Using OpenChatCut with External Agents & MCP (OpenCode CLI, Antigravity IDE, Claude Code, Codex)
 
 OpenChatCut exposes a Streamable HTTP MCP endpoint:
 
@@ -231,18 +231,55 @@ OpenChatCut exposes a Streamable HTTP MCP endpoint:
 http://localhost:5199/api/external-mcp/mcp
 ```
 
-The repository's root `.mcp.json` already contains the local connection. Before using timeline tools, run OpenChatCut and open the target project. Project listing, creation, and navigation tools do not require the editor to remain open.
+The repository's root `.mcp.json` already contains the local connection compatible with OpenCode CLI, Antigravity IDE, Claude Code, and Codex. Before using timeline tools, run OpenChatCut and open the target project. Project listing, creation, and navigation tools do not require the editor to remain open.
 
-Codex app/CLI and Claude Code use the same session workflow:
+OpenCode CLI, Antigravity IDE, Claude Code, and Codex use the same session workflow:
 
 1. Call `begin_edit_session` and keep the returned `editSessionId`. Set `approvalMode` to `manual` (the default) or `auto`.
 2. Pass that id to every project read/edit tool. Changes are applied only to an isolated draft.
 3. Call `review_edit_session` when the draft is ready.
 4. In `manual` mode, review, preview, select, and approve or reject the proposal inside the open OpenChatCut project. In `auto` mode, `review_edit_session` applies the complete draft immediately. The client can poll `get_edit_session` for `applied`, `rejected`, or `discarded` status.
 
-Approval in Codex or Claude controls whether the client may call a tool. OpenChatCut project approval is required only for `manual` sessions; `auto` sessions explicitly bypass that review. Either mode commits the applied operations atomically as one undo step.
+Approval in your external AI environment controls whether the client may call a tool. OpenChatCut project approval is required only for `manual` sessions; `auto` sessions explicitly bypass that review. Either mode commits the applied operations atomically as one undo step.
 If an `auto` session becomes stale, it returns an error instead of falling back to manual approval; discard it and start a new session.
 Only draft-safe project read/edit tools are exposed in these sessions. Generation, export, project deletion, and other immediate side-effect tools stay unavailable because a rejected proposal could not roll them back.
+
+### OpenCode CLI
+
+Add OpenChatCut to OpenCode CLI via command line:
+
+```bash
+opencode mcp add --transport http openchatcut \
+  http://localhost:5199/api/external-mcp/mcp
+```
+
+Or configure it in `opencode.json`:
+
+```json
+{
+  "mcp": {
+    "openchatcut": {
+      "type": "http",
+      "url": "http://localhost:5199/api/external-mcp/mcp"
+    }
+  }
+}
+```
+
+### Antigravity IDE
+
+Antigravity IDE automatically detects `.mcp.json` at the root of your workspace. You can also configure it globally in `mcp_settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "openchatcut": {
+      "type": "http",
+      "url": "http://localhost:5199/api/external-mcp/mcp"
+    }
+  }
+}
+```
 
 ### Codex
 
