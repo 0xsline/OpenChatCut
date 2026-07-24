@@ -1,6 +1,4 @@
-// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
-// 来源:src/audio/*(recorder 错误提示 + soundLibrary 分组标签)。
-// 分组英文名沿用 soundLibrary.SOUND_GROUPS 自带的 nameEn;使用处(library 分区)包 t(group.name)。
+// EN dictionary (domain-split, key=original text).
 export default {
   // recorder.ts
   '此浏览器不支持录音': 'Recording is not supported in this browser',

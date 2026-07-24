@@ -1,5 +1,4 @@
-// EN 词典装配(单一真源):按领域分文件,键=中文原文,值=英文。
-// 每个领域文件由对应扫换工作线独占填写,互不触碰,避免合并冲突。
+// EN dictionary assembly: split by domain files, key=original text, value=translation.
 import audio from './audio';
 import captions from './captions';
 import chat from './chat';
