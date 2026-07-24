@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / [未发布]
 
+### Added / 新增
+
+- Added client-agnostic MCP configuration (`.mcp.json`) and documentation for OpenCode CLI and Antigravity IDE support.
+- Converted internal comments to English and removed Chinese locale files (`README_ZH.md`, `src/i18n/dict/zh/*`).
+
 ## [0.1.3] - 2026-07-23
 
 ### Added / 新增
