@@ -90,14 +90,14 @@ const wrongType = await execIsolateVoiceTool('isolate_voice', {
   action: 'attach', itemId: 'item_interview', sourceAssetId: 'asset_source_voice',
   denoisedAssetId: 'asset_not_audio_005',
 }, ctx) as Record<string, unknown>;
-assert.match(String(wrongType.error), /必须是 audio/);
+assert.match(String(wrongType.error), /must be audio/);
 assert.equal(history.past.length, 1);
 
 const wrongSource = await execIsolateVoiceTool('isolate_voice', {
   action: 'attach', itemId: 'item_interview', sourceAssetId: 'asset_source_other_002',
   denoisedAssetId: 'asset_isolated_voice_004',
 }, ctx) as Record<string, unknown>;
-assert.match(String(wrongSource.error), /来源不匹配/);
+assert.match(String(wrongSource.error), /Source does not match/);
 assert.equal(history.past.length, 1);
 
 const replacement = await execIsolateVoiceTool('isolate_voice', {
@@ -128,7 +128,7 @@ const clearAgain = await execIsolateVoiceTool('isolate_voice', {
   action: 'clear', itemId: 'item_interview',
 }, ctx) as Record<string, unknown>;
 assert.equal(clearAgain.ok, true);
-assert.match(String(clearAgain.note), /本来就没有/);
+assert.match(String(clearAgain.note), /There never was/);
 assert.equal(history.past.length, 3);
 
 console.log('isolate voice attach checks passed');

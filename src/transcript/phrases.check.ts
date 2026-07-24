@@ -3,8 +3,8 @@ import { joinTranscriptWords, packTranscriptPhrases } from './phrases';
 import type { TranscriptWord } from './types';
 
 assert.equal(
-  joinTranscriptWords([{ text: '你好' }, { text: '，' }, { text: '世界' }, { text: '！' }]),
-  '你好，世界！',
+  joinTranscriptWords([{ text: 'hello' }, { text: '，' }, { text: 'world' }, { text: '！' }]),
+  'Hello world!',
 );
 assert.equal(
   joinTranscriptWords([{ text: 'Hello' }, { text: ',' }, { text: 'world' }, { text: '!' }]),

@@ -1,7 +1,7 @@
-// 轨道片段带(逐字搬自 Timeline.tsx):一条轨道的可编辑区——片段盒(拖动/裁剪/
-// 刀片/钢笔/引用拾取按 editMode 分派)、音频波形、效果角标、钢笔透明度关键帧
-// 叠层、库素材拖放(fx/lut/zoom/transition 落片段,sound/template 落轨道)、转场缝标。
-// 指针机(drag/penDrag 等)由 useTimelinePointer 供给,经 pointer prop 整只传入。
+// Track clip strip (translated verbatim from Timeline.tsx): the editable area of a track - the clip box (drag/crop/
+// Blade/pen/ref pick dispatched by editMode), audio waveforms, effect markers, pen transparency keyframes
+// Overlay, drag and drop library materials (fx/lut/zoom/transition to drop clips, sound/template to drop tracks), transition seam marks.
+// The pointer machine (drag/penDrag, etc.) is provided by useTimelinePointer and is passed in through the pointer prop.
 import { type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { theme, themeAlpha } from '../../theme';
 import { Icon } from '../icons';
@@ -45,7 +45,7 @@ function ClipEffectBadges({
     const n = fxNames.length + otherFx.length;
     chips.push({
       key: 'fx',
-      label: n > 1 ? t('特效×{n}', { n }) : (fxNames[0] ?? t(ALL_FX[otherFx[0]?.assetId]?.name ?? '特效')),
+      label: n > 1 ? t('special effects×{n}', { n }) : (fxNames[0] ?? t(ALL_FX[otherFx[0]?.assetId]?.name ?? 'special effects')),
       title: [...fxNames, ...otherFx.map((e) => t(ALL_FX[e.assetId]?.name ?? e.assetId))].join(' · '),
       className: 'fx',
     });
@@ -60,21 +60,21 @@ function ClipEffectBadges({
   }
   if (item.zoom?.shape || item.zoom?.envelope || (item.zoom?.reframeCurve?.keyframes.length ?? 0) > 0) {
     const shape = item.zoom?.shape;
-    // 插件包络曲线无 shape,用自带 label(插件数据,不进词典)
+    // The plug-in envelope curve has no shape, use the built-in label (plug-in data, not entered into the dictionary)
     const name = shape ? t(ZOOM_SHAPE_LABELS[shape] ?? shape) : item.zoom?.label;
     chips.push({
       key: 'zoom',
-      label: name ?? t('缩放'),
-      title: name ? t('缩放 · {name}', { name }) : t('关键帧缩放'),
+      label: name ?? t('Zoom'),
+      title: name ? t('Zoom · {name}', { name }) : t('Keyframe scaling'),
       className: 'zoom',
     });
   }
   if (item.denoisedSrc) {
-    chips.push({ key: 'iso', label: t('人声'), title: t('已应用人声隔离'), className: 'iso' });
+    chips.push({ key: 'iso', label: t('human voice'), title: t('Vocal isolation applied'), className: 'iso' });
   }
   if (inTransition) {
     const trName = t(TRANSITION_LABELS[inTransition.type] ?? inTransition.type);
-    chips.push({ key: 'tr', label: trName, title: t('入场转场 · {name}', { name: trName }), className: 'tr' });
+    chips.push({ key: 'tr', label: trName, title: t('Entrance transition · {name}', { name: trName }), className: 'tr' });
   }
   if (!chips.length) return null;
   return (
@@ -117,7 +117,7 @@ export function TrackLane({
   return (
     <div
       style={{
-        // locked lane: slightly dimmed (锁定轨底色微暗;锁图标同时高亮)
+        // locked lane: slightly dimmed (the background color of the locked lane is dimmed; the lock icon is highlighted at the same time)
         flex: 1, position: 'relative', background: locked ? `color-mix(in srgb, ${theme.bg} 70%, ${themeAlpha.shadow(1)})` : theme.bg, opacity: hidden ? 0.4 : locked ? 0.75 : 1,
         outline: libDropTarget === `track:${trackId}` ? '0.5px dashed #6a9fd8' : undefined,
         outlineOffset: -2,
@@ -183,7 +183,7 @@ export function TrackLane({
                 if (f > it.startFrame && f < it.startFrame + it.durationInFrames) commands.splitItem(it.id, f);
                 return;
               }
-              if (editMode === 'pen') { // pen: 1st click selects, next clicks punch opacity kf (纵向=值)
+              if (editMode === 'pen') { // pen: 1st click selects, next clicks punch opacity kf (vertical=value)
                 e.stopPropagation();
                 if (e.button !== 0) return;
                 if (!isItemSelected(state, it.id)) { commands.selectItem(it.id); return; }
@@ -228,7 +228,7 @@ export function TrackLane({
             style={{
               position: 'absolute', left: Math.max(0, start) * px, top: 4, height: rowHeight - 8, width: dur * px,
               background: CLIP_COLOR[it.kind] ?? theme.clipMg,
-              // 视频缩略帧条由 ClipMediaLayers 画(CSS 背景加载不了 mp4);图片仍用自身作底
+              // The video thumbnail frame bar is drawn by ClipMediaLayers (CSS background cannot load mp4); the image still uses itself as the background
               backgroundImage: it.kind === 'image' && it.src ? `linear-gradient(90deg, transparent 0%, rgba(0,0,0,.4) 78%), url(${it.src})` : undefined,
               backgroundSize: 'auto 100%', backgroundRepeat: 'no-repeat',
               borderRadius: 3, color: '#fff', fontSize: 11,
@@ -249,7 +249,7 @@ export function TrackLane({
               </svg>
             )}
             <ClipEffectBadges item={it} inTransition={(state.transitions ?? []).find((t) => t.incomingItemId === it.id) ?? null} />
-            {/* pen mode: opacity keyframe rubber band on the selected clip (纵向 = 值 0..1) */}
+            {/* pen mode: opacity keyframe rubber band on the selected clip (portrait = value 0..1) */}
             {editMode === 'pen' && selected && it.kind !== 'audio' && (() => {
               const raw = it.keyframes?.opacity ?? [];
               const kfs = penDrag?.itemId === it.id
@@ -270,7 +270,7 @@ export function TrackLane({
                   {kfs.map((k) => (
                     <div
                       key={k.frame}
-                      title={t('透明度 {pct}% @ {sec}s — 拖动改帧/值 · 右键删除', { pct: Math.round(k.value * 100), sec: (k.frame / state.fps).toFixed(2) })}
+                      title={t('Transparency {pct}% @ {sec}s — Drag to change frame/value · Right click to delete', { pct: Math.round(k.value * 100), sec: (k.frame / state.fps).toFixed(2) })}
                       onPointerDown={(e) => {
                         e.stopPropagation();
                         if (e.button !== 0 || locked) return;

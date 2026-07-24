@@ -3,12 +3,12 @@ import type { AgentContext } from '../context';
 import type { Watermark, WatermarkPosition } from '../../editor/types';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 文字水印工具（updateWatermark）
+// Text watermark tool (updateWatermark)
 // ---------------------------------------------------------------------------
-// updateWatermark 是应用内行为，不是 MCP 工具。水印是通用叠加（品牌/免费档皆可用），
-// 默认关，不写死任何假计费逻辑。
+// updateWatermark is an in-app behavior, not an MCP tool. The watermark is a universal overlay (available for both branded and free files),
+// Off by default, no fake billing logic is programmed.
 //
-// 标准三件套。接线（集成方在 tools.ts 做）：
+// Standard three-piece set. Wiring (the integrator does it in tools.ts):
 //   import { WATERMARK_TOOL_SCHEMAS, WATERMARK_TOOL_NAMES, execWatermarkTool } from './watermark-tools';
 //   ...WATERMARK_TOOL_SCHEMAS
 //   if (WATERMARK_TOOL_NAMES.has(name)) return execWatermarkTool(name, args, ctx);

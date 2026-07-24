@@ -177,10 +177,10 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
     else if (v.length === 4) gl.uniform4f(loc, v[0], v[1], v[2], v[3]);
   };
 
-  // ── 3D LUT 纹理(源 $Ne/uJ):有 OES_texture_float_linear 用 RGB32F+FLOAT,
-  // 否则退 RGB8(float→u8);UNPACK_ALIGNMENT=1(33 行 RGB 不是 4 对齐),LINEAR,
-  // 三轴 CLAMP_TO_EDGE。按 data 身份缓存;无数据时绑 1³ 黑 dummy,保证声明了
-  // sampler3D 的程序永远有独立单元可指(intensity=0 时 mix 不取黑值)。
+  // ── 3D LUT texture (source $$Ne/uJ): with OES_texture_float_linear using RGB32F+FLOAT,
+  // Otherwise, return to RGB8(float→u8);UNPACK_ALIGNMENT=1(33 lines of RGB are not 4 aligned),LINEAR,
+  // Three-axis CLAMP_TO_EDGE. Cache according to data identity; bind 1³ black dummy when there is no data, guaranteed to be declared
+  // The program of sampler3D always has independent units to point to (when intensity=0, mix does not take the black value).
   const floatLinear = !!gl.getExtension('OES_texture_float_linear');
   const lutTextures = new Map<Float32Array, WebGLTexture>();
   let dummyLut: WebGLTexture | null = null;
@@ -190,8 +190,8 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
     if (!tex) throw new Error('createTexture failed');
     gl.bindTexture(gl.TEXTURE_3D, tex);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    // FLIP_Y/PREMULTIPLY 是粘性全局态(2D 源上传会置 true),而 WebGL2 对
-    // texImage3D 带 FLIP_Y 直接 INVALID_OPERATION → 上传静默失败、采样恒黑。
+    // FLIP_Y/PREMULTIPLY is a sticky global state (set to true for 2D source upload), and WebGL2 is
+    // texImage3D with FLIP_Y directly INVALID_OPERATION → the upload fails silently and the sampling is always black.
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
     if (floatLinear) {
@@ -223,7 +223,7 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
     return tex;
   };
 
-  /** 若程序声明了 u_lut,绑到 `unit` 并返回 unit+1;否则原样返回。 */
+  /** If the program declares u_lut,tied to `unit` and return unit+1;Otherwise, return unchanged. */
   const bindLutIfUsed = (prog: WebGLProgram, unit: number, lut?: CubeLut): number => {
     const loc = gl.getUniformLocation(prog, 'u_lut');
     if (!loc) return unit;

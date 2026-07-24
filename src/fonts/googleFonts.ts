@@ -5,7 +5,7 @@
 //
 // Google Fonts loading; export gated on confirmFontFallback
 // (search_fonts returns canonical family names). Chinese foundry faces
-// (得意黑/鸿蒙/…) aren't on Google Fonts — they ship as bundled woff2
+// (Deyihei/Hongmeng/…) aren't on Google Fonts — they ship as bundled woff2
 // under assets/fonts and register via localFonts.ts (source:'bundled', loadable).
 //
 import { loadFont as loadAnton } from '@remotion/google-fonts/Anton';
@@ -70,7 +70,7 @@ const GOOGLE_LOADABLE: ReadonlyArray<{ family: string; aliases?: string[]; load:
   { family: 'Fredoka', load: loadFredoka },
   { family: 'Inter', load: loadInter },
   { family: 'Inter Tight', load: loadInterTight },
-  { family: 'LXGW WenKai TC', aliases: ['LXGW WenKai', '霞鹜文楷'], load: loadLXGWWenKaiTC },
+  { family: 'LXGW WenKai TC', aliases: ['LXGW WenKai', 'Xiayu Wenkai'], load: loadLXGWWenKaiTC },
   { family: 'Libre Baskerville', load: loadLibreBaskerville },
   { family: 'Montserrat', load: loadMontserrat },
   { family: 'Mulish', load: loadMulish },
@@ -91,12 +91,12 @@ const GOOGLE_LOADABLE: ReadonlyArray<{ family: string; aliases?: string[]; load:
   { family: 'Special Elite', load: loadSpecialElite },
   { family: 'Unbounded', load: loadUnbounded },
   { family: 'VT323', load: loadVT323 },
-  { family: 'ZCOOL QingKe HuangYou', aliases: ['站酷庆科黄油体'], load: loadZCOOLQingKeHuangYou },
+  { family: 'ZCOOL QingKe HuangYou', aliases: ['Zhanku Qingke Butter Body'], load: loadZCOOLQingKeHuangYou },
 ];
 
 /** Full search catalog for search_fonts + export font gate + Inspector font picker.
- * Bundled CJK rows derive from localFonts.LOCAL_CJK_FONTS (全部中文
- * alias 可搜) and are loadable: loadProjectFonts() registers their FontFaces. */
+ * Bundled CJK rows derive from localFonts.LOCAL_CJK_FONTS (All in Chinese
+ * alias Searchable) and are loadable: loadProjectFonts() registers their FontFaces. */
 export const FONT_CATALOG: readonly FontCatalogEntry[] = [
   ...GOOGLE_LOADABLE.map((f) => ({
     family: f.family,

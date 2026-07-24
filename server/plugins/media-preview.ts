@@ -1,8 +1,8 @@
-// 时间线片段预览数据(轨道上的音波 + 视频缩略帧条):
+// Timeline clip preview data (sound wave on track + video thumbnail frame bar):
 //   GET /api/waveform?src=/media/uploads/x.mp4   → { peaks:number[], peaksPerSecond, durationMs }
-//   GET /api/filmstrip?src=/media/uploads/x.mp4  → image/jpeg(1×N 帧横条)
-// 服务端使用 ffmpeg 生成并缓存结果。峰值密度为 100/s；帧条对完整媒体时长
-// 等距采样，客户端根据 trim、缩放和播放速率完成时间映射。
+//   GET /api/filmstrip?src=/media/uploads/x.mp4 → image/jpeg(1×N frame strip)
+// The server uses ffmpeg to generate and cache the results. Peak density is 100/s; frame bars vs. full media duration
+// Equispaced sampling, client completes time mapping based on trim, scaling and playback rate.
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { spawn } from 'node:child_process';
@@ -13,9 +13,9 @@ import { join } from 'node:path';
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import { ffmpegBin } from '../frame-grid.ts';
 
-const PEAKS_PER_SECOND = 100; // 源 samplesPerPeak = sampleRate/100
-const MAX_PEAK_BINS = 12_000; // 超长素材降密度(远超任何屏幕像素宽,观感无损)
-const PCM_RATE = 8000; // 峰值包络够用,解码快
+const PEAKS_PER_SECOND = 100; // source samplesPerPeak = sampleRate/100
+const MAX_PEAK_BINS = 12_000; // Reduce the density of ultra-long materials (far wider than any screen pixel width, without loss of look and feel)
+const PCM_RATE = 8000; // The peak envelope is sufficient and decoding is fast
 const STRIP_HEIGHT = 44;
 const MIN_STRIP_FRAMES = 8;
 const MAX_STRIP_FRAMES = 32;
@@ -29,7 +29,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-/** /media/uploads/<name> → 安全文件名(其余一律拒绝) */
+/** /media/uploads/<name> → safe file name(All others are rejected) */
 function uploadNameFromSrc(src: string): string | null {
   const clean = decodeURIComponent((src.split('?')[0] ?? '').trim());
   const m = clean.match(/^\/media\/uploads\/([^/]+)$/);
@@ -41,7 +41,7 @@ function previewDir(): string {
   return join(uploadDir(), '.preview');
 }
 
-/** 缓存名带上文件大小:同名文件被替换(normalize/重传)时自然失效。 */
+/** Cache name with file size:Files with the same name are replaced(normalize/retransmit)It will naturally fail. */
 function cacheKey(name: string, size: number, kind: string, ext: string): string {
   return join(previewDir(), `${name.replace(/[^a-zA-Z0-9_.-]/g, '_')}.${size}.${kind}.${ext}`);
 }
@@ -101,7 +101,7 @@ async function probe(file: string): Promise<Probe> {
   };
 }
 
-/** 解一路 8k 单声道 PCM,按 bin 取绝对值峰值(0..1 包络)。流式处理,不留整段缓冲。 */
+/** Solution 8k mono PCM,press bin Get the absolute peak value(0..1 envelope). streaming,Do not leave the entire buffer. */
 function computePeaks(file: string, durationMs: number): Promise<number[]> {
   const seconds = Math.max(0.001, durationMs / 1000);
   const bins = Math.max(1, Math.min(MAX_PEAK_BINS, Math.round(seconds * PEAKS_PER_SECOND)));
@@ -114,7 +114,7 @@ function computePeaks(file: string, durationMs: number): Promise<number[]> {
     const peaks: number[] = [];
     let binMax = 0;
     let inBin = 0;
-    let carry: Buffer | null = null; // 奇数字节跨 chunk 的半个样本
+    let carry: Buffer | null = null; // Odd bytes span half a sample of the chunk
     let stderr = '';
     const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('ffmpeg peaks timed out')); }, FFMPEG_TIMEOUT_MS);
 
@@ -144,7 +144,7 @@ function computePeaks(file: string, durationMs: number): Promise<number[]> {
   });
 }
 
-/** 等距抽 N 帧(-ss 前置快速定位)→ tile 成 1×N 横条。 */
+/** Isometric pumping N frame(-ss Front-end quick positioning)→ tile into 1×N horizontal bars. */
 async function buildFilmstrip(file: string, p: Probe, out: string): Promise<void> {
   const seconds = Math.max(0.001, p.durationMs / 1000);
   const n = Math.max(MIN_STRIP_FRAMES, Math.min(MAX_STRIP_FRAMES, Math.round(seconds / SECONDS_PER_STRIP_FRAME)));
@@ -158,7 +158,7 @@ async function buildFilmstrip(file: string, p: Probe, out: string): Promise<void
       await Promise.all(cells.slice(i, i + FRAME_CONCURRENCY).map((c) => run(ffmpegBin(), [
         '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
         '-ss', String(c.t), '-i', file, '-frames:v', '1',
-        // 居中裁切填满格子:竖屏/异形素材也不会被拉扁
+        // Center crop to fill the grid: vertical screen/special-shaped materials will not be flattened
         '-vf', `scale=${cellW}:${STRIP_HEIGHT}:force_original_aspect_ratio=increase,crop=${cellW}:${STRIP_HEIGHT}`,
         '-q:v', '5', c.path,
       ])));
@@ -175,7 +175,7 @@ async function buildFilmstrip(file: string, p: Probe, out: string): Promise<void
   }
 }
 
-/** 同一素材的并发请求合流,避免同时跑多份 ffmpeg。 */
+/** Concurrent requests for the same material are merged,Avoid running multiple jobs at the same time ffmpeg。 */
 const inFlight = new Map<string, Promise<void>>();
 function once(key: string, work: () => Promise<void>): Promise<void> {
   const running = inFlight.get(key);
@@ -216,7 +216,7 @@ export function mediaPreviewPlugin(): Plugin {
               await mkdir(previewDir(), { recursive: true });
               const tmp = `${cache}.tmp`;
               await writeFile(tmp, JSON.stringify({ peaks, peaksPerSecond: PEAKS_PER_SECOND, durationMs: p.durationMs }));
-              await rename(tmp, cache); // 原子替换:半截 JSON 不会被读到
+              await rename(tmp, cache); // Atomic replacement: half of JSON will not be read
             });
           }
           res.statusCode = 200;

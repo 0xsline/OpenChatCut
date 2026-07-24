@@ -107,14 +107,14 @@ All rendering is local: `submit_export` / `submit_render_job` drive the local re
 
 If a render fails because an asset's bytes are missing (placeholder never relinked, file deleted from disk):
 
-1. Ask the user to re-link the asset in 我的素材 (离线素材横幅) or re-import the file.
+1. Ask the user to re-link the asset in my material (Offline material banner) or re-import the file.
 2. For URL-sourced media, re-run `download_media` to restore bytes, then resubmit.
 
 Do not tell the user they need to understand HTML-in-Canvas, Remotion, or storage internals unless debugging. Explain at product level:
 
-- "本地快速导出"
-- "素材还在上传，稍等再导"
-- "需要先重新链接本地素材"
+- "Quick local export"
+- "The material is still being uploaded, please wait a moment and try again."
+- "Need to relink local materials first"
 
 ## Result Trace
 

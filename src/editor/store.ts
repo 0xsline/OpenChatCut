@@ -54,7 +54,7 @@ export interface EditorCommands {
   setItemEffects: (id: string, effects: ClipEffect[], defs?: SerializableFxDef[]) => void;
   /** Set playback speed and retime the clip while preserving its media span. */
   setItemSpeed: (id: string, rate: number) => void;
-  /** replace a clip (MG/text) with a baked video at src, keeping its slot (转为视频) */
+  /** replace a clip (MG/text) with a baked video at src, keeping its slot (Convert to video) */
   replaceItemMedia: (id: string, src: string) => void;
   /** Add a ruler/clip marker at a frame and return its id. */
   addMarker: (fromFrame: number, opts?: { note?: string; color?: Marker['color']; durationFrames?: number; scope?: Marker['scope']; itemId?: string }) => string;
@@ -62,7 +62,7 @@ export interface EditorCommands {
   removeMarker: (id: string) => void;
   setReframeKeyframe: (id: string, frame: number, focalPointX: number, focalPointY: number, magnification: number) => void;
   removeReframeKeyframe: (id: string, frame: number) => void;
-  /** set/update one generic transform keyframe at an item-local frame (PRD §4.5 钢笔工具) */
+  /** set/update one generic transform keyframe at an item-local frame (PRD §4.5 pen tool) */
   setItemKeyframe: (id: string, prop: KeyframeProp, frame: number, value: number, easing?: KeyframeEasing) => void;
   removeItemKeyframe: (id: string, prop: KeyframeProp, frame: number) => void;
   /** clear one prop's generic keyframes, or all of them when prop omitted */
@@ -99,14 +99,14 @@ export interface EditorCommands {
   setGapCap: (id: string, afterWordIndex: number, maxMs: number | null) => void;
   /** Speech-block drag: playback order of source word indices (null = chronological). */
   setTranscriptPlayOrder: (id: string, playOrder: number[] | null) => void;
-  /** Clip drag in 文字稿: pack items on track in this id order. */
+  /** Clip drag in Transcript: pack items on track in this id order. */
   reorderTrackItems: (track: string, orderedIds: string[]) => void;
   clearEdits: (id: string) => void;
-  /** 改错字:只修正第 wordIndex 个转写词的 text,timing/词数/片段时长全不变。 */
+  /** Correct typo:Only correct the wordIndex a transliterated word text,timing/Number of words/The duration of the clip remains unchanged. */
   fixTranscriptWord: (id: string, wordIndex: number, text: string) => void;
-  /** 说话人重命名/合并:把 speaker===from 的词全部改标 to;只改 .speaker。 */
+  /** speaker rename/merge:put speaker===from All words of have been re-tagged to;Only change .speaker。 */
   renameSpeaker: (id: string, from: string, to: string) => void;
-  /** AI 人声隔离：挂上/清除 denoisedSrc。 */
+  /** AI Vocal Isolation: Hang up/Clear denoisedSrc。 */
   setItemDenoise: (id: string, denoisedSrc: string | null, strength?: number | null) => void;
   /** Select one clip. mode: replace (default) | toggle (⌘/Ctrl) | add. */
   selectItem: (id: string | null, opts?: { mode?: 'replace' | 'toggle' | 'add' }) => void;
@@ -186,7 +186,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
           fit: opts?.fit ?? base.fit,
           items: [], selectedId: null, trackOrder,
           tracks: { [trackOrder[0]]: { kind: 'video' } },
-          id: uid('tl'), name: opts?.name ?? `序列 ${d.timelines.length + 1}`, order: maxOrder(d) + 1,
+          id: uid('tl'), name: opts?.name ?? `sequence ${d.timelines.length + 1}`, order: maxOrder(d) + 1,
         };
         dispatch({ type: 'tl.create', timeline: t, activate: opts?.activate });
         return t.id;
@@ -195,7 +195,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       duplicateTimeline: (id, opts) => {
         const src = getDoc().timelines.find((t) => t.id === id);
         const newId = uid('tl');
-        dispatch({ type: 'tl.duplicate', id, newId, name: opts?.name ?? `${src?.name ?? '序列'} 副本`, retarget: opts?.retarget, activate: opts?.activate });
+        dispatch({ type: 'tl.duplicate', id, newId, name: opts?.name ?? `${src?.name ?? 'sequence'} copy`, retarget: opts?.retarget, activate: opts?.activate });
         return newId;
       },
       deleteTimeline: (id) => dispatch({ type: 'tl.delete', id }),
@@ -230,7 +230,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
             track: pickTrack(at?.track, 'video'),
             durationInFrames: at?.durationInFrames ?? Math.round(5 * 30),
             kind: 'solid',
-            name: at?.name ?? '纯色',
+            name: at?.name ?? 'solid color',
             width: 1920,
             height: 1080,
             props: { color: at?.color ?? '#1a1a1a' },
@@ -282,10 +282,10 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
             track: pickTrack(at?.track ?? 'V2', 'video'), // titles default to the top video track
             durationInFrames: at?.durationInFrames ?? 90,
             kind: 'text',
-            name: '文字',
+            name: 'text',
             width: 1920,
             height: 1080,
-            props: { text: '双击编辑文字', fontSize: 96, color: '#ffffff', fontWeight: 700, align: 'center' },
+            props: { text: 'Double click to edit text', fontSize: 96, color: '#ffffff', fontWeight: 700, align: 'center' },
           },
         }),
       addAsset: (asset) => dispatch({ type: 'addAsset', asset }),

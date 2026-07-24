@@ -27,7 +27,7 @@ const state: TimelineState = {
     {
       id: 'clip-video', track: 'video-main', startFrame: 150, durationInFrames: 30,
       name: 'take two', kind: 'video', src: '/media/uploads/b.mp4',
-      transcript: [{ text: '第二段', start: 0, end: 500, speaker: 'B' }],
+      transcript: [{ text: 'Second paragraph', start: 0, end: 500, speaker: 'B' }],
     },
   ],
 };

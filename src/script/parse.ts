@@ -27,7 +27,7 @@ export interface ParsedScript {
 }
 
 const err = (line: number, msg: string): never => {
-  throw new Error(`timeline.md 第 ${line} 行: ${msg}`);
+  throw new Error(`timeline.md No. ${line} OK: ${msg}`);
 };
 
 /** split a row body into kept/struck runs by ~~...~~ markers */
@@ -42,7 +42,7 @@ export function splitRuns(body: string, line: number): ParsedRun[] {
     }
     if (open > 0) runs.push({ text: rest.slice(0, open), struck: false });
     const close = rest.indexOf('~~', open + 2);
-    if (close === -1) err(line, '未闭合的 ~~ 删除标记');
+    if (close === -1) err(line, 'unclosed ~~ delete mark');
     runs.push({ text: rest.slice(open + 2, close), struck: true });
     rest = rest.slice(close + 2);
   }
@@ -80,7 +80,7 @@ export function parseScript(md: string): ParsedScript {
     }
     const h3 = s.match(/^###\s+(.+)$/);
     if (h3) {
-      if (!curTrack) err(line, '### 出现在任何 ## 轨道之前');
+      if (!curTrack) err(line, '### appear in any ## before orbit');
       curRegion = { source: h3[1].trim(), rows: [] };
       curTrack!.regions.push(curRegion);
       return;
@@ -96,8 +96,8 @@ export function parseScript(md: string): ParsedScript {
     const clip = s.match(/^\[c(\d+)\]\s*(\d+)f$/);
     const gap = s.match(/^\[gap\s+(\d+)f\]$/);
     const silence = s.match(/^\[silence=(\d+(?:\.\d+)?)s(?:\s*(?:→|->)\s*(\d+(?:\.\d+)?)s)?\]$/);
-    if (!seg && !clip && !gap && !silence) err(line, `无法识别的行: "${raw.trim().slice(0, 40)}"`);
-    if (!curRegion) err(line, '内容行出现在任何 ### 素材区之前');
+    if (!seg && !clip && !gap && !silence) err(line, `Unrecognized row: "${raw.trim().slice(0, 40)}"`);
+    if (!curRegion) err(line, 'The content line appears in any ### Before material area');
     if (seg) {
       curRegion!.rows.push({
         kind: 'seg', sn: Number(seg[1]),

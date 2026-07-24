@@ -114,11 +114,11 @@ async function generateSeedance(input: ValidVideoRequest, options: VideoOptions)
   throw new Error('seedance2 generation timed out');
 }
 
-/** Map agent @ImageN / @VideoN (and 图片/视频) to Kling Omni <<<image_n>>> / <<<video_n>>> tokens. */
+/** Map agent @ImageN / @VideoN (and picture/video) to Kling Omni <<<image_n>>> / <<<video_n>>> tokens. */
 export function klingPrompt(prompt: string): string {
   return prompt
-    .replace(/@(Image|图片)(\d+)/gi, '<<<image_$2>>>')
-    .replace(/@(Video|视频)(\d+)/gi, '<<<video_$2>>>');
+    .replace(/@(Image|picture)(\d+)/gi, '<<<image_$2>>>')
+    .replace(/@(Video|video)(\d+)/gi, '<<<video_$2>>>');
 }
 
 async function generateKling(input: ValidVideoRequest, options: VideoOptions): Promise<string> {
@@ -264,7 +264,7 @@ export function hailuoRequestBody(
 }
 
 async function generateHailuo(input: ValidVideoRequest, options: VideoOptions): Promise<string> {
-  if (!options.minimaxApiKey) throw new Error('MiniMax is not configured. Set MINIMAX_API_KEY in .env.local or 设置面板.');
+  if (!options.minimaxApiKey) throw new Error('MiniMax is not configured. Set MINIMAX_API_KEY in .env.local or settings panel.');
   const baseUrl = options.minimaxBaseUrl.replace(/\/$/, '');
   const headers = { Authorization: `Bearer ${options.minimaxApiKey}`, 'Content-Type': 'application/json' };
   const firstFrame = input.firstFramePath ? await mediaDataUrl(input.firstFramePath) : undefined;

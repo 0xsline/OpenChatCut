@@ -11,11 +11,11 @@ export interface WordGroup {
   words: IndexedWord[];
 }
 
-// 'A' → '说话人 1', 'B' → '说话人 2', … (AssemblyAI diarization codes).
+// 'A' → 'Speaker 1', 'B' → 'Speaker 2', … (AssemblyAI diarization codes).
 export function speakerLabel(code: string | null | undefined): string {
-  if (!code) return '说话人';
+  if (!code) return 'speaker';
   const n = code.charCodeAt(0) - 65;
-  return Number.isFinite(n) && n >= 0 ? `说话人 ${n + 1}` : `说话人 ${code}`;
+  return Number.isFinite(n) && n >= 0 ? `speaker ${n + 1}` : `speaker ${code}`;
 }
 
 /** Whether a string is mostly CJK (no space between word chips). */
@@ -37,7 +37,7 @@ export function isCjkText(s: string): boolean {
 
 const index = (words: TranscriptWord[]): IndexedWord[] => words.map((w, gi) => ({ ...w, gi }));
 
-// 段落视图: merge CONSECUTIVE same-speaker words into reading paragraphs.
+// Paragraph view: merge CONSECUTIVE same-speaker words into reading paragraphs.
 export function toParagraphs(words: TranscriptWord[]): WordGroup[] {
   const out: WordGroup[] = [];
   for (const w of index(words)) {
@@ -51,7 +51,7 @@ export function toParagraphs(words: TranscriptWord[]): WordGroup[] {
 
 const SENTENCE_END = /[.!?。！?…]$/;
 
-// 片段视图: split into sentence-level segments (the granular editing grain).
+// Fragment view: split into sentence-level segments (the granular editing grain).
 export function toSegments(words: TranscriptWord[]): WordGroup[] {
   const out: WordGroup[] = [];
   let cur: IndexedWord[] = [];
@@ -64,7 +64,7 @@ export function toSegments(words: TranscriptWord[]): WordGroup[] {
   return out;
 }
 
-// 停顿 analysis: count gaps between consecutive words longer than compressToMs
+// Pause analysis: count gaps between consecutive words longer than compressToMs
 // and how much total time compressing each down to compressToMs would save.
 export function analyzeSilences(words: TranscriptWord[], compressToMs: number): { count: number; savedMs: number } {
   let count = 0;

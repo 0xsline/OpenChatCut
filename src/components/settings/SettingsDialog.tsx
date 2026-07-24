@@ -13,17 +13,17 @@ import {
   type SettingsVendorPage, type StagedValues as Values,
 } from './settingsSchema';
 
-// 全局设置模态,三栏:左 =「分类 → 能力」两级可折叠树(能力行 = 状态点 + 名);
-// 中 = 当前能力下的厂商列表(生成四能力顶部带「默认厂商」路由 select);
-// 右 = 选中厂商的配置页(头 = 图标 + 名称 + 配置状态,体 = 字段)。
-// 密钥值只经 POST /api/keys 流向 dev server(存内存 + .env.local,已 gitignore),
-// 服务端注入;GET 对 secret 只回布尔,永不回填。模型 / 路由字段是非密配置,当前值
-// 经 GET 的 models 通道回显。
-// values 语义:字段名出现在 values 里 = 有暂存改动;'' = 显式暂存清除(保存时发送,
-// 后端把空串视为删除该键并从 .env.local 删行,对模型字段即「回到默认」)。暂存基线:
-// 模型字段 = 服务端当前值,其余 = ''(回显值不算暂存,只有真实改动进 values);
-// values 按字段名全局共享且切换树节点不清空(MINIMAX_* 跨能力页即时同步)。
-// 右栏(厂商配置页 + 字段渲染 + 测试连接)在 settingsVendorPane.tsx。
+// Global settings modal, three columns: left = "Classification → Ability" two-level collapsible tree (ability row = status point + name);
+// Medium = list of manufacturers under the current capability (generating four capabilities with a "Default Vendor" route select at the top);
+// Right = Select the manufacturer's configuration page (header = icon + name + configuration status, body = fields).
+// The key value only flows to the dev server via POST /api/keys (stored in memory + .env.local, already gitignore),
+// Server-side injection; GET only returns Boolean for secret and never backfills. The model/routing field is a non-secret configuration and the current value is
+// Echoed via GET's models channel.
+// values semantics: field name appearing in values = temporary changes; '' = explicit temporary clearing (sent when saving,
+// The backend treats the empty string as deleting the key and deleting the row from .env.local, which means "returning to default" for the model field). Temporary baseline:
+// Model field = current value of the server, the rest = '' (the echoed value is not temporarily stored, only the actual changes are entered into the values);
+// values are shared globally by field name and the switching tree nodes are not cleared (MINIMAX_* instant synchronization across capability pages).
+// The right column (vendor configuration page + field rendering + test connection) is in settingsVendorPane.tsx.
 const CLOSE_CONFIRM_MS = 2000;
 const TREE_WIDTH = 200;
 const VENDOR_COL_WIDTH = 185;
@@ -42,7 +42,7 @@ function useKeyStatus(): {
     fetch('/api/keys')
       .then((r) => r.json() as Promise<KeyStatusResponse>)
       .then((d) => { if (alive) setStatus(d); })
-      .catch(() => { if (alive) setLoadError(t('无法读取配置（dev 服务未就绪？）')); });
+      .catch(() => { if (alive) setLoadError(t('Unable to read configuration (dev Service not ready? )')); });
     return () => { alive = false; };
   }, []);
   return { status, setStatus, loadError };
@@ -56,14 +56,14 @@ function useSaveKeys(values: Values, onSaved: (next: KeyStatusResponse) => void)
   const [error, setError] = useState<string | null>(null);
   const save = async (): Promise<void> => {
     const patch = buildPatch(values);
-    if (Object.keys(patch).length === 0) { setMsg(t('没有改动')); return; }
+    if (Object.keys(patch).length === 0) { setMsg(t('no changes')); return; }
     setSaving(true); setError(null); setMsg(null);
     try {
       const res = await fetch('/api/keys', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
       });
       const body = await res.json().catch(() => ({})) as Partial<KeyStatusResponse> & { error?: string };
-      if (!res.ok) throw new Error(body.error || t('保存失败 ({n})', { n: res.status }));
+      if (!res.ok) throw new Error(body.error || t('Save failed ({n})', { n: res.status }));
       onSaved(body as KeyStatusResponse);
       setMsg(savedMessage());
     } catch (err) {
@@ -75,7 +75,7 @@ function useSaveKeys(values: Values, onSaved: (next: KeyStatusResponse) => void)
   return { save, saving, msg, error };
 }
 
-/** 防误关:有未保存改动时,遮罩 / Esc 第一次只警示,2 秒内再次触发才真正关闭。 */
+/** Prevent accidental shutdown:When there are unsaved changes,Mask / Esc First time only warning,2 Triggered again within seconds before it is truly closed. */
 function useCloseGuard(dirty: boolean, onClose: () => void): { requestClose: () => void; warn: string | null } {
   const [warn, setWarn] = useState<string | null>(null);
   const armedAt = useRef(0);
@@ -84,7 +84,7 @@ function useCloseGuard(dirty: boolean, onClose: () => void): { requestClose: () 
   const requestClose = (): void => {
     if (!dirty || Date.now() - armedAt.current < CLOSE_CONFIRM_MS) { onClose(); return; }
     armedAt.current = Date.now();
-    setWarn(t('有未保存改动，再按一次关闭将丢弃'));
+    setWarn(t('If there are any unsaved changes, pressing Close again will discard them.'));
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => { setWarn(null); armedAt.current = 0; }, CLOSE_CONFIRM_MS);
   };
@@ -106,7 +106,7 @@ function useHover(): [boolean, { onMouseEnter: () => void; onMouseLeave: () => v
   return [hovered, { onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) }];
 }
 
-/** 左树能力选中 + 中列厂商选中;切能力时中列重置为该能力第一家。 */
+/** Left tree ability selected + Listed manufacturers selected;When changing abilities, the middle column is reset to the first one with the ability. */
 function useTreeSelection(): {
   group: SettingsGroup; page: SettingsVendorPage;
   selectGroup: (key: string) => void; selectVendor: (key: string) => void;
@@ -123,9 +123,9 @@ function useTreeSelection(): {
   return { group, page, selectGroup, selectVendor: setVendorKey };
 }
 
-// ── 主组件 ────────────────────────────────────────────────────────────────
+// ── Main component ───────────────────────────────────────────────────────────
 
-/** 保存成功后让 agent 侧即时感知:caps / key 布尔 / 模型路由 / LLM 接口与模型。 */
+/** After saving successfully, let agent side instant perception:caps / key Boolean / model routing / LLM Interfaces and models. */
 function applySavedToAgent(next: KeyStatusResponse): void {
   applyLiveCaps(next.caps);
   applyLiveKeyStatus(next.keys);
@@ -149,7 +149,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { requestClose, warn } = useCloseGuard(dirty, onClose);
   useEscape(requestClose);
 
-  // 暂存:相对基线(模型字段 = 服务端当前值,其余 = '')无变化即撤销暂存。
+  // Temporary storage: If there is no change relative to the baseline (model field = current value of the server, the rest = ''), the temporary storage will be cancelled.
   const stage = (field: SettingsField, raw: string): void => {
     const baseline = isModelField(field) ? modelValue(status, field.name) : '';
     setValues((prev) => raw === baseline ? omitKey(prev, field.name) : { ...prev, [field.name]: raw });
@@ -179,9 +179,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         <header style={head}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ color: theme.accent, display: 'inline-flex' }}><Icon name="sliders" size={15} /></span>
-            <b style={{ fontSize: 14 }}>{t('设置 · API 密钥')}</b>
+            <b style={{ fontSize: 14 }}>{t('settings · API key')}</b>
           </div>
-          <button onClick={onClose} title={t('关闭')} style={iconBtn}><Icon name="x" size={15} /></button>
+          <button onClick={onClose} title={t('close')} style={iconBtn}><Icon name="x" size={15} /></button>
         </header>
         <div style={bodyRow}>
           <CapabilityTree status={status} activeGroup={group.key} onSelect={selectGroup} />
@@ -195,7 +195,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ── 左栏(分类可折叠 → 能力可选中) ───────────────────────────────────────
+// ── Left column (categories can be folded → abilities can be selected) ─────────────────────────────────────
 
 function CapabilityTree({ status, activeGroup, onSelect }: {
   status: KeyStatusResponse | null; activeGroup: string; onSelect: (key: string) => void;
@@ -217,7 +217,7 @@ function CapabilityTree({ status, activeGroup, onSelect }: {
         ))}
       </div>
       <p style={sidebarNote}>
-        {t('密钥仅存本机')} <code style={code}>.env.local</code>{t('（已 gitignore），经服务端注入，')}<b>{t('不进浏览器。')}</b>
+        {t('The key is only saved on this machine')} <code style={code}>.env.local</code>{t('(Already gitignore), injected by the server,')}<b>{t('Not entering the browser.')}</b>
       </p>
     </nav>
   );
@@ -233,7 +233,7 @@ function TreeCategory({ category, status, open, activeGroup, onToggle, onSelect 
   const { done, total } = categoryGroupStats(status, category);
   return (
     <div>
-      <button type="button" onClick={onToggle} title={open ? t('收起') : t('展开')} style={catRow}>
+      <button type="button" onClick={onToggle} title={open ? t('close') : t('Expand')} style={catRow}>
         <span style={{ ...chevronBox, transform: open ? 'none' : 'rotate(-90deg)' }}>
           <Icon name="chevronDown" size={12} />
         </span>
@@ -265,7 +265,7 @@ function GroupRow({ title, on, active, onSelect }: {
   );
 }
 
-// ── 中栏(路由 select + 厂商列表) ─────────────────────────────────────────
+// ── Middle column (routing select + manufacturer list) ───────────────────────────────────────
 
 function VendorList({ group, activeVendor, onSelectVendor, ctx }: {
   group: SettingsGroup; activeVendor: string; onSelectVendor: (key: string) => void; ctx: FieldCtx;
@@ -307,21 +307,21 @@ function FooterBar({ reveal, onReveal, message, dirty, saving, onClose, onSave }
     <footer style={foot}>
       <label style={revealLabel}>
         <input type="checkbox" checked={reveal} onChange={(e) => onReveal(e.target.checked)} />
-        {t('显示明文')}
+        {t('Show clear text')}
       </label>
       <div style={{ ...footMsg, color: message?.color ?? ON }}>{message?.text ?? ''}</div>
-      <button onClick={onClose} style={btnGhost}>{t('关闭')}</button>
+      <button onClick={onClose} style={btnGhost}>{t('close')}</button>
       <button onClick={onSave} disabled={disabled}
         style={{ ...btnPrimary, opacity: disabled ? 0.5 : 1, cursor: disabled ? 'default' : 'pointer' }}>
-        {saving ? t('保存中…') : t('保存')}
+        {saving ? t('Saving…') : t('save')}
       </button>
     </footer>
   );
 }
 
-// ── 样式 ─────────────────────────────────────────────────────────────────
+// ── Style ───────────────────────────────────────────────────────────
 
-/** 左树能力行 / 中列厂商行共用:选中态 accent 左条 + panelAlt 底。 */
+/** Zuoshu ability line / Shared by all manufacturers in the list:Selected state accent Zuotiao + panelAlt bottom. */
 function navRowStyle(active: boolean, hovered: boolean): React.CSSProperties {
   return {
     font: 'inherit', fontSize: 12, display: 'flex', alignItems: 'center', gap: 7,

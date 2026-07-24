@@ -44,7 +44,7 @@ export const PROJECT_TOOL_SCHEMAS: AgentToolSchema[] = [
     input_schema: {
       type: 'object',
       properties: {
-        name: { type: 'string', description: 'Display name (default: random or "新工程").' },
+        name: { type: 'string', description: 'Display name (default: random or "new project").' },
         description: { type: 'string' },
         compositionWidth: { type: 'number', description: 'Default 1920.' },
         compositionHeight: { type: 'number', description: 'Default 1080.' },
@@ -99,7 +99,7 @@ export const PROJECT_TOOL_SCHEMAS: AgentToolSchema[] = [
     name: 'edit_project',
     description: [
       'Update project-level settings or speakers. action=update: change name/description via json {"name"?, "description"?}.',
-      'action=speaker-update: project-wide rename/merge a speaker — {from:"A", to:"新名字"} relabels every word of that speaker across all transcribed clips in the open project.',
+      'action=speaker-update: project-wide rename/merge a speaker — {from:"A", to:"new name"} relabels every word of that speaker across all transcribed clips in the open project.',
       'speaker-create/speaker-delete are unsupported here (no speaker roster — speakers are per-word diarization labels); use speaker-update to relabel, or manage_transcript fix per clip.',
     ].join(' '),
     input_schema: {
@@ -252,7 +252,7 @@ async function execList(args: Args): Promise<unknown> {
 async function execCreate(args: Args): Promise<unknown> {
   const name = typeof args.name === 'string' && args.name.trim()
     ? args.name.trim()
-    : '新工程';
+    : 'new project';
   const description = typeof args.description === 'string' ? args.description : undefined;
   const doc = emptyProjectDoc({
     width: typeof args.compositionWidth === 'number' ? args.compositionWidth : undefined,
@@ -354,7 +354,7 @@ function execSpeakerUpdate(args: Args, ctx: AgentContext): unknown {
   // Top-level `id` is the speaker locator, equivalent to json.id.
   const from = String(args.from ?? args.id ?? json.from ?? json.speaker ?? json.id ?? '').trim();
   const to = String(args.to ?? json.to ?? json.name ?? json.newName ?? '').trim();
-  if (!from || !to) return { error: 'speaker-update needs {from:"A", to:"新名字"} — from = existing speaker label, to = new name' };
+  if (!from || !to) return { error: 'speaker-update needs {from:"A", to:"new name"} — from = existing speaker label, to = new name' };
   const items = ctx.getState().items.filter((it) => it.transcript?.some((w) => w.speaker === from));
   if (!items.length) return { error: `no word labeled speaker "${from}" in this project`, hint: 'read_captions {words:true} / read_script show speaker labels' };
   let wordsChanged = 0;

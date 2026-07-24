@@ -43,17 +43,17 @@ function RegistryCard({ entry, installed, busyId, onInstall }: {
         <ExtensionGlyph label={entry.name} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ color: theme.textStrong, fontSize: 12.5, fontWeight: 700 }}>{entry.name}</div>
-          <div style={{ color: theme.textDim, fontSize: 10, marginTop: 2 }}>{entry.author ?? t('社区作者')}{entry.version ? ` · v${entry.version}` : ''}</div>
+          <div style={{ color: theme.textDim, fontSize: 10, marginTop: 2 }}>{entry.author ?? t('community author')}{entry.version ? ` · v${entry.version}` : ''}</div>
         </div>
-        {entry.sha256 && <ExtensionTag verified>{t('完整性已校验')}</ExtensionTag>}
+        {entry.sha256 && <ExtensionTag verified>{t('Integrity checked')}</ExtensionTag>}
       </div>
-      <div style={{ color: theme.textDim, fontSize: 10.5, lineHeight: 1.5, flex: 1 }}>{entry.description ?? t('创意资源扩展包')}</div>
+      <div style={{ color: theme.textDim, fontSize: 10.5, lineHeight: 1.5, flex: 1 }}>{entry.description ?? t('Creative resource expansion pack')}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         {entry.categories.map((item) => <ExtensionTag key={item}>{t(item)}</ExtensionTag>)}
-        {entry.itemCount !== undefined && <ExtensionTag>{t('{n} 个项目', { n: entry.itemCount })}</ExtensionTag>}
+        {entry.itemCount !== undefined && <ExtensionTag>{t('{n} items', { n: entry.itemCount })}</ExtensionTag>}
         <span style={{ flex: 1 }} />
         <button type="button" disabled={disabled} onClick={install} style={{ ...secondaryButton(disabled), borderColor: !installed || hasUpdate ? theme.accent : theme.border, color: !installed || hasUpdate ? theme.textStrong : theme.textDim }}>
-          {busyId === entry.id ? t('安装中…') : hasUpdate ? t('更新') : installed ? t('已安装') : t('安装')}
+          {busyId === entry.id ? t('Installing…') : hasUpdate ? t('update') : installed ? t('Installed') : t('Installation')}
         </button>
       </div>
     </article>
@@ -69,7 +69,7 @@ function DiscoverToolbar({ query, category, onQuery, onCategory }: Pick<Discover
         <input
           value={query}
           onChange={(event) => onQuery(event.target.value)}
-          placeholder={t('搜索扩展…')}
+          placeholder={t('Search extensions…')}
           style={{ width: '100%', boxSizing: 'border-box', border: `0.5px solid ${theme.border}`, borderRadius: 4, background: theme.panelAlt, color: theme.text, padding: '6px 8px 6px 25px', fontSize: 11.5 }}
         />
       </div>
@@ -95,7 +95,7 @@ export function ExtensionDiscover(props: DiscoverProps) {
           <RegistryCard key={entry.id} entry={entry} installed={props.packs.find((pack) => pack.id === entry.id)} busyId={props.busyId} onInstall={props.onInstall} />
         ))}
       </div>
-      {!props.entries.length && <div style={{ padding: 36, textAlign: 'center', color: theme.textDim, fontSize: 11.5 }}>{t('没有匹配的扩展')}</div>}
+      {!props.entries.length && <div style={{ padding: 36, textAlign: 'center', color: theme.textDim, fontSize: 11.5 }}>{t('No matching extension')}</div>}
     </div>
   );
 }

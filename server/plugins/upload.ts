@@ -18,12 +18,12 @@ import {
 // overridable) so the SAME URL path resolves in the Player preview AND the headless
 // export (render.mjs symlinks the live dir into the bundle root). This is the local
 // stand-in for S3 ingest.
-// 配置 R2 后升级为「写穿 + 回源」:磁盘变缓存,R2 是真源;src 路径不变。
+// After configuring R2, upgrade to "write-through + back-to-origin": the disk becomes cache, R2 is the real source; the src path remains unchanged.
 //
-// 大文件(本地优先):
-// - 默认上限 10GB(可用 UPLOAD_MAX_BYTES 覆盖);Content-Length 超限直接 413
-// - POST /upload 流式写 .part 再 rename,避免整文件进 Node 堆
-// - R2 写穿/回源同样走文件流
+// Large files (local first):
+// - The default upper limit is 10GB (can be overridden with UPLOAD_MAX_BYTES); Content-Length exceeds the limit directly to 413
+// - POST /upload stream writes .part and then renames it to prevent the entire file from entering the Node heap
+// - R2 write-through/back-to-source also uses file flow
 
 /** Default 10GiB — local NLE; override with UPLOAD_MAX_BYTES (integer bytes). */
 export function maxUploadBytes(): number {
@@ -156,7 +156,7 @@ function extFromUrlOrType(url: string, contentType: string | null, nameHint?: st
 
 /**
  * Dev-server plugin:
- * - POST /upload?name=…  raw body → uploadDir()（默认 public/media/uploads）
+ * - POST /upload?name=…  raw body → uploadDir()(Default public/media/uploads）
  * - POST /api/import-url  JSON {url, name?} → server-side fetch remote media → uploads
  *   (local adapter for download_media / push_asset ingestion)
  */
@@ -164,18 +164,18 @@ export function uploadPlugin(): Plugin {
   return {
     name: 'openchatcut-upload',
     configureServer(server) {
-      // 自定义目录启用时,把默认目录的老素材单向拷过去(幂等),渲染 symlink 单目录可见全部。
+      // When the custom directory is enabled, the old materials in the default directory are copied in one direction (idempotent), and the single directory of the rendered symlink can see all.
       void syncLegacyUploads((msg) => server.config.logger.info(msg));
 
-      // GET/HEAD /media/uploads/<name> 读取链:
-      //   磁盘命中(自定义目录 ∪ 默认 public/media/uploads) → serveDiskFile(Range)
-      //   都缺 + R2 → 回源落盘再服务
-      //   否则显式 404(禁止落 Vite SPA 假 200 —— 刚写入的 .voice.m4a 若交给 Vite
-      //   静态会有短暂缓存 miss → HTML 682B,isolate 后立即播放/探测会失败)。
+      // GET/HEAD /media/uploads/<name> Reading chain:
+      //   Disk hit (custom directory ∪ default public/media/uploads) → serveDiskFile(Range)
+      //   Both are missing + R2 → Return to source and place the order before serving.
+      //   Otherwise, explicit 404 (Vite SPA is prohibited). False 200 - If the .voice.m4a just written is handed over to Vite
+      //   Static will have a short cache miss → HTML 682B, playback/detection will fail immediately after isolating).
       server.middlewares.use('/media/uploads', (req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') { next(); return; }
-        // URL 先解码(中文等名字是百分号编码),再做单段安全名判定;
-        // 解码失败或不安全的交回默认管线(杜绝目录穿越)。
+        // The URL is decoded first (Chinese and other names are percent encoded), and then the single-segment safe name is determined;
+        // Decoding failure or unsafe return to the default pipeline (to prevent directory traversal).
         let raw = '';
         try {
           raw = decodeURIComponent((req.url ?? '/').split('?')[0].replace(/^\/+/, ''));
@@ -209,19 +209,19 @@ export function uploadPlugin(): Plugin {
               return;
             }
             await rename(partPath, finalPath);
-            server.config.logger.info(`[R2 回源] ${raw} (${obj.bytes} bytes)`);
+            server.config.logger.info(`[R2 Return to the source] ${raw} (${obj.bytes} bytes)`);
             await serveDiskFile(req, res, finalPath);
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            server.config.logger.error(`[R2 回源] ${raw}: ${message}`);
+            server.config.logger.error(`[R2 Return to the source] ${raw}: ${message}`);
             if (!res.headersSent) sendError(res, 502, `R2 read failed: ${message}`);
             else res.end();
           }
         })();
       });
 
-      // GET /upload/list → 上传目录盘面清单(自定义目录 ∪ 旧默认目录,按名去重)。
-      // 「清理素材」面板用它与全工程引用集做差。必须注册在 /upload 之前(connect 前缀匹配)。
+      // GET /upload/list → Upload directory disk list (custom directory ∪ old default directory, deduplication by name).
+      // The "Clean Materials" panel uses it to compare with the full project reference set. Must be registered before /upload (connect prefix matches).
       server.middlewares.use('/upload/list', async (req, res) => {
         if (req.method !== 'GET') { sendError(res, 405, 'method not allowed — use GET'); return; }
         try {
@@ -234,7 +234,7 @@ export function uploadPlugin(): Plugin {
               try {
                 const info = await stat(join(dir, name));
                 if (info.isFile()) seen.set(name, { name, bytes: info.size, mtimeMs: info.mtimeMs });
-              } catch { /* 竞态删除等,跳过 */ }
+              } catch { /* Race to delete, etc.,skip */ }
             }
           }
           res.statusCode = 200;
@@ -392,8 +392,8 @@ export function uploadPlugin(): Plugin {
       // POST /upload?name=…&assetId=…  raw body → uploadDir()
       // Optional assetId makes the path deterministic for request_asset_upload_url
       // Finalize the local upload. PUT is accepted alongside POST.
-      // DELETE /upload?name=… → 删一个上传文件(两个目录都清;单段安全名)——
-      // 级联删工程/清理无主素材用。R2 云端对象刻意不动(仍可回源找回,本地删=可逆)。
+      // DELETE /upload?name=… → Delete an uploaded file (clear both directories; single segment security name)——
+      // Used for cascading project deletion/cleaning up unowned materials. R2 Cloud objects are intentionally not moved (can still be retrieved from the source, local deletion = reversible).
       server.middlewares.use('/upload', async (req, res) => {
         if (req.method === 'DELETE') {
           try {
@@ -402,7 +402,7 @@ export function uploadPlugin(): Plugin {
             if (!isSafeUploadName(name)) { sendError(res, 400, 'unsafe or missing name'); return; }
             let removed = 0;
             for (const dir of [uploadDir(), DEFAULT_UPLOAD_DIR]) {
-              try { await unlink(join(dir, name)); removed += 1; } catch { /* ENOENT 等 */ }
+              try { await unlink(join(dir, name)); removed += 1; } catch { /* ENOENT Wait */ }
             }
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
@@ -451,7 +451,7 @@ export function uploadPlugin(): Plugin {
           }
           await rename(partPath, finalPath);
 
-          // 写穿 R2(本地已落盘,云失败不挡上传——记日志、回响应标记)。流式读盘,不重载内存。
+          // Write through R2 (local disk has been downloaded, the cloud will not block the upload if it fails - log and respond to the response mark). Streaming disk reading without reloading memory.
           let cloud: 'ok' | 'off' | 'failed' = 'off';
           if (r2Config()) {
             try {

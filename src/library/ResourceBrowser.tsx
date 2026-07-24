@@ -3,7 +3,7 @@ import { theme } from '../theme';
 import { useT } from '../i18n/locale';
 import { setLibraryDrag, type LibraryDragKind } from './drag';
 
-// Generic resource-library category browser (转场/特效/缩放/LUT).
+// Generic resource-library category browser (Transition/Special Effects/Scale/LUT).
 // `layout="grid"` uses cards with a thumbnail and label;
 // `layout="list"` is the denser list used by some categories.
 //
@@ -17,14 +17,14 @@ export interface ResourceItem {
   name: string;
   desc?: string;
   badge?: string;
-  /** 插件条目:随拖拽 payload 带走的应用数据(见 drag.ts LibraryDragPayload.data) */
+  /** Plugin entry:Drag and drop payload Application data taken away(see drag.ts LibraryDragPayload.data) */
   data?: unknown;
-  /** 插件条目预览图(data:image/* 或 URL);有则卡片直接用 */
+  /** Plugin entry preview(data:image/* or URL);If there are cards, use them directly */
   thumb?: string;
 }
 
 interface ResourceBrowserProps {
-  /** what this category applies to, e.g. "点击应用到选中片段" */
+  /** what this category applies to, e.g. "Click Apply to Selected Clips" */
   hint: string;
   items: ResourceItem[];
   onApply: (id: string) => void;
@@ -55,8 +55,8 @@ export function ResourceBrowser({
   const hintText = disabledNote
     ? t(disabledNote)
     : applicable
-      ? `${t(hint)}${canDrag ? t(' · 也可拖到时间线片段上') : ''}`
-      : `${t(hint)}${t('（先在时间线选中，或直接拖到片段上）')}`;
+      ? `${t(hint)}${canDrag ? t(' · You can also drag it onto a timeline clip') : ''}`
+      : `${t(hint)}${t('(Select it on the timeline first, or drag it directly to the clip)')}`;
 
   const onCardDragStart = (e: React.DragEvent, it: ResourceItem) => {
     if (!canDrag || !dragKind) return;
@@ -87,10 +87,10 @@ export function ResourceBrowser({
                 onClick={() => { if (clickable) onApply(it.id); }}
                 title={
                   clickable
-                    ? t('点击应用 / 拖到时间线：{name}', { name: it.name })
+                    ? t('Click Apply / Drag to timeline:{name}', { name: it.name })
                     : canDrag
-                      ? t('拖到时间线片段：{name}', { name: it.name })
-                      : t('预览：{name}（选中片段后可应用）', { name: it.name })
+                      ? t('Drag clip to timeline:{name}', { name: it.name })
+                      : t('Preview:{name}(Available after selecting the clip)', { name: it.name })
                 }
                 className={`cc-resource-card${clickable ? '' : ' disabled'}${hovered ? ' hovered' : ''}${canDrag ? ' draggable' : ''}`}
                 onPointerEnter={() => setHoveredId(it.id)}
@@ -126,7 +126,7 @@ export function ResourceBrowser({
           draggable={canDrag}
           onDragStart={(e) => onCardDragStart(e, it)}
           onClick={() => { if (clickable) onApply(it.id); }}
-          title={clickable ? t('应用到选中片段：{name}', { name: it.name }) : canDrag ? t('拖到时间线：{name}', { name: it.name }) : undefined}
+          title={clickable ? t('Apply to selected clips:{name}', { name: it.name }) : canDrag ? t('Drag to timeline:{name}', { name: it.name }) : undefined}
           style={{
             cursor: canDrag || clickable ? 'grab' : 'default', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 3,
     padding: '9px 11px', border: `0.5px solid ${theme.border}`, borderRadius: 4, background: theme.panelAlt,

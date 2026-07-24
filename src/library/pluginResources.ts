@@ -5,7 +5,7 @@ import { pluginAssetId } from '../plugins/types';
 import type { PropSpec, Tpl } from '../types';
 import type { ResourceItem } from './ResourceBrowser';
 
-/** 已装扩展实时列表(安装/卸载自动刷新) */
+/** Live list of installed extensions(Installation/Uninstall automatic refresh) */
 export function usePluginPacks(): InstalledPack[] {
   const [packs, setPacks] = useState<InstalledPack[]>([]);
   useEffect(() => {
@@ -21,7 +21,7 @@ export function usePluginPacks(): InstalledPack[] {
   return packs;
 }
 
-/** 某类扩展条目 → 资源卡列表(转场/特效/LUT/缩放 tab 合并用) */
+/** extended items → Resource card list(Transition/special effects/LUT/Zoom tab For merging) */
 export function pluginResourceItems(
   packs: InstalledPack[],
   type: 'fx' | 'lut' | 'transition' | 'zoom',
@@ -34,7 +34,7 @@ export function pluginResourceItems(
       out.push({
         id: pluginAssetId(pack.id, item.id),
         name: item.name,
-        badge: '扩展',
+        badge: 'Expand',
         ...(item.thumb ? { thumb: item.thumb } : {}),
         ...(item.type === 'zoom'
           ? { data: { envelope: item.envelope, magnification: item.magnification ?? 1.5, label: item.name } }
@@ -45,7 +45,7 @@ export function pluginResourceItems(
   return out;
 }
 
-/** 从 props 默认值推断检查器 schema(无 propSchema 时的回落) */
+/** from props Default value inference checker schema(None propSchema fall back in time) */
 function inferPropSchema(props: Record<string, unknown>): PropSpec[] {
   const out: PropSpec[] = [];
   for (const [key, val] of Object.entries(props)) {
@@ -87,7 +87,7 @@ function schemaFromMgItem(item: {
   }));
 }
 
-/** 扩展 MG 模板 → Tpl(合并进模板浏览器;code 走既有沙箱编译/快照机制) */
+/** Expand MG Template → Tpl(Merge into template browser;code Compile using existing sandbox/snapshot mechanism) */
 export function pluginTemplates(packs: InstalledPack[]): Tpl[] {
   const out: Tpl[] = [];
   for (const pack of packs) {
@@ -98,8 +98,8 @@ export function pluginTemplates(packs: InstalledPack[]): Tpl[] {
       out.push({
         id: pluginAssetId(pack.id, item.id),
         name: item.name,
-        category: '扩展',
-        description: item.desc ?? `${pack.name} 扩展模板`,
+        category: 'Expand',
+        description: item.desc ?? `${pack.name} extended template`,
         width: item.width ?? 1920,
         height: item.height ?? 1080,
         fps: 30,
@@ -114,7 +114,7 @@ export function pluginTemplates(packs: InstalledPack[]): Tpl[] {
   return out;
 }
 
-/** 模板拖拽 data 的形状校验(拖拽 JSON 不可信)→ 可直接 addMotionGraphic 的 Tpl */
+/** Template drag and drop data shape check(drag JSON Not trustworthy)→ Can be directly addMotionGraphic of Tpl */
 export function asPluginTpl(data: unknown): Tpl | null {
   if (!data || typeof data !== 'object') return null;
   const template = data as Partial<Tpl>;
@@ -137,7 +137,7 @@ export function asPluginTpl(data: unknown): Tpl | null {
   return {
     id: template.id,
     name: template.name,
-    category: '扩展',
+    category: 'Expand',
     description: typeof template.description === 'string' ? template.description : undefined,
     width: num(template.width, 1920),
     height: num(template.height, 1080),
@@ -150,7 +150,7 @@ export function asPluginTpl(data: unknown): Tpl | null {
   };
 }
 
-/** 缩放卡片 data 的形状校验(拖拽 JSON 不可信) */
+/** Zoom card data shape check(drag JSON Not trustworthy) */
 export function asPluginZoom(data: unknown): ZoomEffect | null {
   if (!data || typeof data !== 'object') return null;
   const zoom = data as { envelope?: unknown; magnification?: unknown; label?: unknown };

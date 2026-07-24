@@ -6,8 +6,8 @@ import { t } from '../i18n/locale';
 function transcriptErrorMessage(error: unknown): string {
   if (error instanceof TranscriptionError) {
     return error.code === 'source-unavailable'
-      ? t('素材文件不可用，请在“我的素材”中重新链接后再转写')
-      : t('无法连接转写服务，请检查网络和 AssemblyAI 配置后重试');
+      ? t('The material file is unavailable, please relink it in "My Materials" and then transcribe it.')
+      : t('Unable to connect to the transcription service, please check the network and AssemblyAI Try again after configuring');
   }
   return error instanceof Error ? error.message : String(error);
 }
@@ -37,13 +37,13 @@ export function useTranscript() {
     setError(null);
     setResult(null);
     setActiveItemId(opts?.itemId ?? null);
-    setProgressNote(opts?.label ? t('上传 {label}…', { label: opts.label }) : t('上传音频…'));
+    setProgressNote(opts?.label ? t('upload {label}…', { label: opts.label }) : t('Upload audio…'));
     try {
       const r = await transcribePath(
         path,
         () => {
           setStatus('processing');
-          setProgressNote(opts?.label ? t('转写 {label}…', { label: opts.label }) : t('转写中…'));
+          setProgressNote(opts?.label ? t('Transcribe {label}…', { label: opts.label }) : t('Transcribing…'));
         },
         { languageCode: opts?.languageCode },
       );
@@ -77,13 +77,13 @@ export function useTranscript() {
       const job = jobs[i]!;
       setActiveItemId(job.itemId);
       setStatus('uploading');
-      setProgressNote(t('({i}/{total}) 上传 {label}…', { i: i + 1, total: jobs.length, label: job.label }));
+      setProgressNote(t('({i}/{total}) upload {label}…', { i: i + 1, total: jobs.length, label: job.label }));
       try {
         const r = await transcribePath(
           job.path,
           () => {
             setStatus('processing');
-            setProgressNote(t('({i}/{total}) 转写 {label}…', { i: i + 1, total: jobs.length, label: job.label }));
+            setProgressNote(t('({i}/{total}) Transcribe {label}…', { i: i + 1, total: jobs.length, label: job.label }));
           },
           opts,
         );
@@ -105,7 +105,7 @@ export function useTranscript() {
       throw new Error(failures[0]);
     }
     if (failures.length) {
-      setError(t('已完成 {ok}/{total} 段；失败：{fails}', { ok, total: jobs.length, fails: failures.join('；') }));
+      setError(t('Completed {ok}/{total} segment; failure:{fails}', { ok, total: jobs.length, fails: failures.join('；') }));
       setStatus('done');
     } else {
       setStatus('done');

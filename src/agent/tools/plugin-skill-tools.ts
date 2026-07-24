@@ -7,9 +7,9 @@ import type { AgentToolSchema } from '../tool-schema';
 import { PLUGIN_SKILLS, readPluginSkillFile } from '../skills/plugin-skills';
 import { allCreativeSkills } from '../skills/skills-catalog';
 
-// 创作模式技能也可按其 frontmatter name(如 "long-video-to-shorts")load —
-// 模式正文常驻注入是主路径,但 agent 在对话中途想复读工作流时会按 body 里的
-// name 调 load_skill(长转短 e2e 实测两次吃了 no such skill),这里兜住。
+// Creative mode skills can also be loaded by their frontmatter name (such as "long-video-to-shorts") —
+// The mode body resident injection is the main path, but when the agent wants to repeat the workflow in the middle of the conversation, it will press in the body
+// Name adjusts load_skill (change from long to short e2e, measured twice, no such skill), stop here.
 function creativeSlug(body: string): string | undefined {
   return /^---[\s\S]*?\bname:\s*([\w-]+)/.exec(body)?.[1];
 }
@@ -42,7 +42,7 @@ export function execPluginSkillTool(name: string, args: Record<string, unknown>)
     if (creative) {
       return {
         skill: slug, file: 'SKILL.md', files: [],
-        note: '创作模式技能(选中该创作模式时同一内容会常驻注入系统提示)。',
+        note: 'Creative mode skills(When this creative mode is selected, the same content will be permanently injected into the system prompts)。',
         content: creative.body,
       };
     }

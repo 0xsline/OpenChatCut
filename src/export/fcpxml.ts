@@ -1,7 +1,7 @@
-// FCPXML 序列化器（submit_export format=xml, nleFormat fcp_xml/fcp_xml_resolve）。
-// 纯函数：读 TimelineState → 吐 FCPXML 1.10 字符串。无 DOM/fetch/fs，不含
-// Date.now()/Math.random()，同一输入永远同一输出，方便 headless 测试和
-// server/client 两端复用。集成方负责把它接到 submit_export 的 xml 分支。
+// FCPXML serializer (submit_export format=xml, nleFormat fcp_xml/fcp_xml_resolve).
+// Pure function: read TimelineState → spit FCPXML 1.10 string. No DOM/fetch/fs, excluding
+// Date.now()/Math.random(), the same input always has the same output, which is convenient for headless testing and
+// Server/client is reused at both ends. The integrator is responsible for connecting it to the xml branch of submit_export.
 import {
   timelineDuration,
   timelineTrackIds,
@@ -12,7 +12,7 @@ import {
 } from '../editor/types';
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
 
-/** XML 属性/文本转义（5 个保留字符）。 */
+/** XML Properties/text escape(5 reserved characters). */
 function escapeXml(raw: string): string {
   return raw
     .replace(/&/g, '&amp;')
@@ -22,21 +22,21 @@ function escapeXml(raw: string): string {
     .replace(/'/g, '&apos;');
 }
 
-/** XML 注释不能含 "--"；占位说明是给人看的，直接把连字符替换掉最省事。 */
+/** XML Comments cannot contain "--"; The placeholder description is for human eyes, so it is easiest to replace the hyphen directly. */
 function xmlComment(text: string): string {
   return `<!-- ${text.replace(/-/g, '_')} -->`;
 }
 
-/** FCPXML 资源/元素 id 必须是合法 NCName：非法字符替换 + 固定前缀保证不以数字开头。 */
+/** FCPXML Resources/element id must be legal NCName:Illegal character replacement + Fixed prefixes are guaranteed not to start with a number. */
 function sanitizeId(raw: string): string {
   return `id-${raw.replace(/[^A-Za-z0-9_.-]/g, '_')}`;
 }
 
 /**
- * 帧 → FCPXML 有理数时间 "N/Ds"。整数帧率直接用 frames/fps；非整数帧率
- * （如 29.97）放大到整数分母再取整，保证与 frames/fps 秒数精确等价——
- * 此处是最简单能保证精确往返换算的写法，不追求 NTSC 1001/30000
- * 的行业惯例分母。
+ * frame → FCPXML rational number time "N/Ds". Integer frame rate is used directly frames/fps;Non-integer frame rate
+ * (such as 29.97) is enlarged to the denominator of an integer and then rounded to ensure the same frames/fps The exact equivalent of seconds——
+ * Here is the simplest way of writing that can ensure accurate round-trip conversion. We do not pursue NTSC 1001/30000
+ * industry practice denominator.
  */
 function rationalTime(frames: number, fps: number): string {
   if (Number.isInteger(fps)) return `${frames}/${fps}s`;
@@ -46,26 +46,26 @@ function rationalTime(frames: number, fps: number): string {
 
 function validateState(state: TimelineState): void {
   if (!state || !Array.isArray(state.items)) {
-    throw new Error('timelineToFcpxml: state.items 必须是数组');
+    throw new Error('timelineToFcpxml: state.items Must be an array');
   }
   if (!Number.isFinite(state.fps) || state.fps <= 0) {
-    throw new Error('timelineToFcpxml: state.fps 必须是正数');
+    throw new Error('timelineToFcpxml: state.fps Must be a positive number');
   }
   if (!Number.isInteger(state.width) || state.width <= 0 || !Number.isInteger(state.height) || state.height <= 0) {
-    throw new Error('timelineToFcpxml: state.width/height 必须是正整数');
+    throw new Error('timelineToFcpxml: state.width/height Must be a positive integer');
   }
   for (const item of state.items) {
     if (!Number.isInteger(item.startFrame) || item.startFrame < 0) {
-      throw new Error(`timelineToFcpxml: item ${item.id} 的 startFrame 非法`);
+      throw new Error(`timelineToFcpxml: item ${item.id} of startFrame illegal`);
     }
     if (!Number.isInteger(item.durationInFrames) || item.durationInFrames <= 0) {
-      throw new Error(`timelineToFcpxml: item ${item.id} 的 durationInFrames 非法`);
+      throw new Error(`timelineToFcpxml: item ${item.id} of durationInFrames illegal`);
     }
   }
 }
 
-/** 轨道 → FCPXML lane：底部视频轨(V1)=lane 1，往上每条轨 +1；A1=lane -1，
- * 往下每条轨 -1（负数惯例：音频挂在主线下方）。未知轨兜底成视频 lane 1。 */
+/** Orbit → FCPXML lane: Bottom video track(V1)=lane 1, each track up +1；A1=lane -1，
+ * down each rail -1(Negative convention: audio hangs below the main line). Unknown track pocket video lane 1。 */
 function buildLaneOf(state: TimelineState): (track: TrackId) => number {
   const ids = timelineTrackIds(state);
   const videoTracks = ids.filter((id) => trackKind(state, id) === 'video');
@@ -92,7 +92,7 @@ interface RenderedMotionGraphicInfo {
   durationFrames: number;
 }
 
-/** 按 src 去重收集 asset 资源：同一素材在时间线上多次使用只登记一条 asset。 */
+/** press src Deduplication collection asset Resources: If the same material is used multiple times on the timeline, only one will be registered. asset。 */
 function collectAssets(state: TimelineState): Map<string, AssetInfo> {
   const bySrc = new Map<string, AssetInfo>();
   for (const item of state.items) {
@@ -152,9 +152,9 @@ function motionGraphicResourceXml(
   return `<asset id="${info.id}" name="${escapeXml(info.filename)}" src="file:./${escapeXml(info.filename)}" start="0s" duration="${rationalTime(info.durationFrames, fps)}" hasVideo="1" hasAudio="0" format="${formatId}"/>`;
 }
 
-/** 有 src 的条目（video/audio/image/gif）→ asset-clip；没有 src 的条目
- * （motion-graphic/text，MG 没有真实媒体文件）→ 带名字+注释的占位 gap，
- * 集成方可用 export_motion_graphic_prores 渲出透明视频后替换这段 gap。 */
+/** Yes src entries (video/audio/image/gif）→ asset-clip;no src entry
+ * （motion-graphic/text，MG No real media files)→ with name+Placeholder for comments gap，
+ * Available for integration export_motion_graphic_prores Replace this segment after rendering the transparent video gap。 */
 function itemToSpineElement(
   item: TimelineItem,
   fps: number,
@@ -180,16 +180,16 @@ function itemToSpineElement(
 }
 
 /**
- * 把当前时间线序列化成 FCPXML 1.10 文档（Final Cut Pro / DaVinci Resolve /
- * 经 Resolve 转一手的 Premiere 都能读）。
+ * Serialize the current timeline into FCPXML 1.10 Document(Final Cut Pro / DaVinci Resolve /
+ * by Resolve changing hands Premiere can all read).
  *
- * 结构：<fcpxml> → <resources>(一条 <format> + 每个去重 src 一条 <asset>)
- * → <library><event><project><sequence><spine>。spine 用一条铺满全长的
- * 背景 <gap> 当主线（lane 0），每个 item 都作为它的 lane 子节点，offset 用
- * 时间线绝对帧位换算——因为背景 gap 本身从 0 开始铺满全长，lane 子节点的
- * "相对锚点偏移"数值上就等于绝对偏移，不用另算相对坐标。这是简化多轨
- * OpenChatCut 时间线（每轨独立绝对帧位）到 FCPX 磁性时间线（连接片段带 lane）
- * 的直接映射方式；按 FCPXML 规范实现。
+ * Structure:<fcpxml> → <resources>(one piece <format> + Deduplicate each src one piece <asset>)
+ * → <library><event><project><sequence><spine>。spine Use one to cover the entire length
+ * background <gap> When the main line (lane 0), each item all as its lane child node,offset use
+ * Timeline absolute frame conversion - because of the background gap itself from 0 Begin to cover the entire length,lane of child nodes
+ * "Relative anchor point offset"The numerical value is equal to the absolute offset, and there is no need to calculate the relative coordinates. This is a simplified multitrack
+ * OpenChatCut Timeline (independent absolute frame bits for each track) to FCPX Magnetic Timeline (connect clip strips lane）
+ * direct mapping mode; press FCPXML Standard implementation.
  */
 export type NleFormat = 'fcp_xml' | 'fcp_xml_resolve';
 

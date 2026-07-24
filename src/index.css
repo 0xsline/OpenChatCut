@@ -5,16 +5,16 @@ html, body { overflow: hidden; }
 #root { overflow: hidden; }
 
 /*
- * 全局键盘焦点环(impeccable polish · product register):
- * 此前仅 5 处零散 focus 样式,其余控件裸奔/浏览器默认蓝框与品牌不符。
- * :focus-visible 只对键盘导航出环,鼠标点击不受影响;色用 theme.accent。
+ * Global keyboard focus ring(impeccable polish · product register):
+ * Previously only 5 Scattered everywhere focus style,The rest of the controls run naked/The default blue box of the browser does not match the brand.
+ * :focus-visible Keyboard navigation only,Mouse clicks are not affected;Color use theme.accent。
  */
 :focus-visible {
   outline: 2px solid var(--cc-accent);
   outline-offset: 1px;
 }
 
-/* 动效降级(a11y 硬要求):UI 过渡/动画近似瞬时;Remotion 合成走 JS 帧驱动不受影响 */
+/* Animation downgrade(a11y hard requirement):UI Transition/Animation is nearly instantaneous;Remotion Synthetic walk JS Frame drivers are not affected */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -61,8 +61,8 @@ button, input, select { font: inherit; }
 .cc-header-btn { transition: color 0.12s, background 0.12s; }
 .cc-header-btn:hover { color: var(--cc-text) !important; background: rgba(var(--cc-ink-rgb), 0.06); }
 
-/* vendored official brand SVGs (lobe-icons / simple-icons)。simple-icons 无宽高与 fill,
-   归一为 1em + currentColor;lobe color 版 path 自带品牌 fill 不受影响 */
+/* vendored official brand SVGs (lobe-icons / simple-icons)。simple-icons No width and height fill,
+   unified into 1em + currentColor;lobe color version path Own brand fill not affected */
 .cc-vendor-icon svg { width: 1em; height: 1em; fill: currentColor; }
 
 .cc-chat-messages { flex:1; min-height:0; overflow-y:auto; padding:4px 14px; color:var(--cc-text); font-size:13.5px; }
@@ -285,7 +285,7 @@ button, input, select { font: inherit; }
   font-size:10px; color:var(--cc-text-muted); background:var(--cc-panel-alt); padding:1px 4px; border-radius:3px;
 }
 
-/* Shared live thumb (转场 / 特效 / 缩放 / LUT) — still + hover canvas */
+/* Shared live thumb (Transition / special effects / Zoom / LUT) — still + hover canvas */
 .cc-live-thumb { position:relative; width:100%; height:100%; }
 .cc-live-thumb-still,
 .cc-live-thumb-canvas {
@@ -396,9 +396,9 @@ button, input, select { font: inherit; }
 .cc-modal button.primary { border-color:var(--cc-accent); background:var(--cc-accent); color:var(--cc-on-accent); }
 .cc-modal button.danger { border-color:#a63d38; background:#a63d38; color:#fff; }
 
-/* 即时 tooltip(工具栏):原生 title 有 ~1s 浏览器固有延迟,这里悬停立即出现。
-   data-tip 携带文案,朝下弹(工具栏在时间线面板顶部);近右缘的用 -r 右对齐防溢出。
-   input/select 等替换元素不支持 ::after,那几个仍留原生 title。 */
+/* Instant tooltip(Toolbar):Native title Yes ~1s Browser inherent latency,Hover here appears immediately.
+   data-tip carry copy,flick down(Toolbar at the top of the timeline panel);Used near the right edge -r Right aligned to prevent overflow.
+   input/select Replacement elements are not supported ::after,Those few are still native title。 */
 .cc-tip { position:relative; }
 .cc-tip::after { content:attr(data-tip); position:absolute; top:calc(100% + 7px); left:0; z-index:90; width:max-content; max-width:300px; padding:4px 8px; border:0.5px solid var(--cc-border); border-radius:6px; background:var(--cc-hover); box-shadow:0 8px 24px rgba(var(--cc-shadow-rgb), 0.67); color:var(--cc-text); font-size:11px; font-weight:400; line-height:1.5; white-space:normal; text-align:left; pointer-events:none; opacity:0; visibility:hidden; transition:opacity 70ms ease-out; }
 .cc-tip-r::after { left:auto; right:0; }
@@ -428,16 +428,16 @@ button, input, select { font: inherit; }
 .cc-aspect-select select { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
 .cc-caption-toggle { height:28px; display:flex; align-items:center; gap:6px; padding:0 8px; border:0.5px solid var(--cc-border); border-radius:4px; background:var(--cc-panel); color:var(--cc-text-muted); cursor:pointer; font-size:11px; }
 .cc-caption-toggle.active { color:var(--cc-text); }
-/* 标尺固定在纵向滚动区顶部；轨道头只固定在横向左侧。播放头 z13 保持在标尺上层。
-   sticky 头必须盖住滚动内容里的绝对定位物(选区 z5 / 吸附线):
-   否则横向滚动后播放头会画到轨道头上面(实测:缩放后指针跑进左侧头部区域)。 */
+/* The ruler is fixed at the top of the vertical scroll zone; the track head is only fixed on the left side horizontally. playhead z13 Stay on top of the ruler.
+   sticky The header must cover the absolute positioner in the scrolling content(constituency z5 / adsorption line):
+   Otherwise, the playhead will be drawn above the track header after horizontal scrolling.(Actual measurement:After zooming, the pointer runs into the left head area)。 */
 .cc-timeline-ruler { position:sticky; top:0; z-index:12; background:var(--cc-bg); }
 .cc-ruler-head { position:sticky; left:0; z-index:11; flex-shrink:0; display:flex; align-items:center; justify-content:center; border-right:0.5px solid var(--cc-border); background:var(--cc-panel); }
 .cc-ruler-head span { color:rgba(var(--cc-ink-rgb), 0.61); font-size:14px; letter-spacing:.03em; font-variant-numeric:tabular-nums; }
 .cc-playhead-handle { position:sticky; top:0; }
 .cc-track-row { display:flex; border-bottom:0.5px solid var(--cc-border); background:var(--cc-panel); }
 .cc-track-head { position:sticky; left:0; z-index:10; flex-shrink:0; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; gap:2px; padding:5px 8px; border-right:0.5px solid var(--cc-border); background:var(--cc-panel); overflow:hidden; }
-/* 同一行统一 gap：徽章 + 开关 + 删除 等距排列 */
+/* Unify in the same line gap: badge + switch + Delete Equally spaced */
 .cc-track-head-controls { display:flex; align-items:center; gap:4px; width:100%; min-width:0; box-sizing:border-box; }
 .cc-track-badge { min-width:26px; height:20px; display:inline-flex; align-items:center; justify-content:center; padding:0 4px; border-radius:4px; color:#f7f7f7; font-size:11px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; flex-shrink:0; }
 .cc-track-head-controls > button { flex-shrink:0; }
@@ -453,7 +453,7 @@ button, input, select { font: inherit; }
 .cc-caption-track-trim.left { left:0; }
 .cc-caption-track-trim.right { right:0; }
 .cc-caption-track-empty { position:absolute; top:50%; left:12px; transform:translateY(-50%); color:var(--cc-text-dim); font-size:11px; }
-/* 字幕样式 / 翻译菜单：紧凑精致，避免盖住半个预览区 */
+/* subtitle style / Translation menu: compact and exquisite, avoiding covering half of the preview area */
 .cc-caption-style-menu { z-index:80; width:212px; max-height:min(420px, calc(100vh - 24px)); display:flex; flex-direction:column; overflow:visible; border:0.5px solid var(--cc-border); border-radius:5px; background:var(--cc-panel-alt); box-shadow:0 8px 24px rgba(var(--cc-shadow-rgb), 0.67); color:var(--cc-text); font-size:12px; }
 .cc-caption-style-title { flex:0 0 auto; padding:7px 10px 4px; color:var(--cc-text-dim); font-size:10px; letter-spacing:0.04em; font-weight:600; }
 .cc-caption-style-list { min-height:0; flex:1 1 auto; max-height:min(320px, calc(100vh - 160px)); overflow-y:auto; padding:0 4px 4px; }
@@ -469,7 +469,7 @@ button, input, select { font: inherit; }
 .cc-caption-preset-name-row input { flex:1; min-width:0; height:28px; padding:0 8px; border:0.5px solid var(--cc-border-light); border-radius:4px; background:var(--cc-inset); color:var(--cc-text); font-size:11.5px; }
 .cc-caption-preset-name-row button { flex:0 0 auto; height:28px; padding:0 9px; border:0; border-radius:4px; background:var(--cc-hover); color:var(--cc-text); cursor:pointer; font-size:11.5px; }
 .cc-caption-preset-name-row button:first-of-type { background:var(--cc-accent); color:var(--cc-on-accent); }
-/* OpenChatCut 发布工作台:左侧输出导航 + 右侧交付参数。 */
+/* OpenChatCut publish workbench:Left output navigation + Delivery parameters on the right. */
 .cc-export-overlay { position:fixed; inset:0; z-index:140; display:grid; place-items:center; padding:16px; background:rgba(var(--cc-shadow-rgb), 0.67); }
 .cc-export-panel { width:min(700px, calc(100vw - 32px)); max-height:calc(100vh - 32px); overflow:hidden; border:0.5px solid var(--cc-border-light); border-radius:6px; background:var(--cc-panel); color:var(--cc-text); box-shadow:0 16px 48px rgba(var(--cc-shadow-rgb), 0.6); }
 .cc-export-header { min-height:62px; display:flex; align-items:center; gap:12px; padding:11px 16px; border-bottom:0.5px solid var(--cc-border); }
@@ -580,9 +580,9 @@ button, input, select { font: inherit; }
 .cc-caption-style-error { padding:6px 10px; border-top:0.5px solid var(--cc-border); color:#e98d82; font-size:10px; line-height:1.35; }
 .cc-audio-waveform { position:absolute; z-index:0; top:2px; left:3px; width:calc(100% - 6px); height:calc(100% - 20px); overflow:visible; pointer-events:none; opacity:.9; }
 .cc-audio-waveform path { fill:none; stroke:#174b2c; stroke-width:1.05; vector-effect:non-scaling-stroke; }
-/* 片段媒体预览层(ClipMediaLayers):视频缩略帧条 + 真峰值音波。
-   音波色沿用音频片段的深绿描边;视频片段的音波带垫一层音频色。
-   皮肤色走 var(--cc-clip-audio)。 */
+/* Clip media preview layer(ClipMediaLayers):Video thumbnail frame bar + True peak sonic.
+   The sonic color follows the dark green stroke of the audio clip;The video clip's sonic band is overlaid with an audio color.
+   Skin color goes var(--cc-clip-audio)。 */
 .cc-clip-wave { opacity:.9; }
 .cc-clip-wave path { fill:none; stroke:#174b2c; stroke-width:1.05; vector-effect:non-scaling-stroke; }
 .cc-clip-wave.on-video { background:var(--cc-clip-audio); opacity:.95; }
@@ -939,7 +939,7 @@ button, input, select { font: inherit; }
   display:flex; flex-direction:column; gap:8px; max-width:380px;
   padding:8px 2px; border:0; background:transparent;
 }
-/* 无轨道空态:无框居中,小圆点图标(拒绝大图标砖) */
+/* Orbitless empty state:Frameless centering,small dot icon(Reject big icon brick) */
 .cc-tx-empty-card.blank {
   border:none; background:none; padding:0; max-width:230px; margin:56px auto 0;
   align-items:center; text-align:center; gap:4px;
@@ -1074,7 +1074,7 @@ button, input, select { font: inherit; }
 }
 .cc-tx-btn.ghost { background:transparent; color:var(--cc-text-dim); }
 
-/* ── Captions controls (文字稿 bottom，可折叠) ── */
+/* ── Captions controls (Transcript bottom, foldable) ── */
 .cc-cap-panel {
   border-top:0.5px solid var(--cc-border); padding:0;
   display:flex; flex-direction:column; gap:0; flex-shrink:0;
@@ -1328,10 +1328,10 @@ button, input, select { font: inherit; }
 .cc-md th { color: var(--cc-text); font-weight: 600; border-bottom: 0.5px solid var(--cc-border); white-space: nowrap; }
 .cc-md blockquote { margin: 0 0 10px; padding-left: 12px; border-left: 2px solid var(--cc-border); color: var(--cc-text-muted); }
 
-/* ── 画布字幕直编(CaptionPreviewEditor):选中框 + 浮动工具条 ─────────────
-   全部走令牌,随皮肤;黑底元素仅限"视频画面语境"(编辑态 textarea 底)留在组件内。 */
+/* ── Canvas subtitle direct editing (CaptionPreviewEditor):Check box + floating toolbar ─────────────
+   All take tokens,Follow the skin;Black background elements only"Video picture context"(Editing state textarea Bottom)Remain within the component. */
 .cc-capedit-hit { position:relative; }
-/* 字幕通常只有几十像素宽；扩大透明命中区，避免必须正好点中某个字形。 */
+/* Subtitles are typically only a few dozen pixels wide; expand the transparent hit zone to avoid having to hit a glyph exactly. */
 .cc-capedit-hit::before {
   content:""; position:absolute; inset:-8px -12px; border-radius:6px;
 }
@@ -1343,7 +1343,7 @@ button, input, select { font: inherit; }
 }
 .cc-capedit-bar {
   position:absolute; bottom:calc(100% + 12px); left:50%; transform:translateX(-50%);
-  /* 工具条挂在字幕块内,必须显式回到应用 UI 字体——否则继承字幕 preset 的字体/字重(如黑底白字 700)全员加粗 */
+  /* The toolbar is hung in the subtitle block,Must explicitly return to the application UI font - otherwise inherit subtitles preset font/Font weight(Like white characters on a black background 700)Bold for all members */
   font-family:system-ui, -apple-system, sans-serif; font-weight:400; letter-spacing:normal; text-transform:none;
   display:flex; align-items:center; gap:1px; padding:3px;
   border-radius:4px; background:var(--cc-panel); border:0.5px solid var(--cc-border);

@@ -30,7 +30,7 @@ Server MiniMax model comes from Settings `MINIMAX_MUSIC_MODEL`
 | BGM / instrumental | `mode:"t2m"`, `isInstrumental:true` | music-2.6 / 3.0 / free |
 | Song with lyrics | `mode:"t2m"`, `lyrics: "…"` | music-2.6 / 3.0 / free |
 | Auto lyrics | `mode:"t2m"`, `lyricsOptimizer: true` | music-2.6 / 3.0 / free |
-| **Cover / 翻唱** | `mode:"cover"` + source/feature id + style prompt | **music-cover** or **music-cover-free** |
+| **Cover / cover** | `mode:"cover"` + source/feature id + style prompt | **music-cover** or **music-cover-free** |
 
 ## Tool shape
 

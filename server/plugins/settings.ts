@@ -48,8 +48,8 @@ export function settingsPlugin(): Plugin {
       server.middlewares.use('/api/keys', async (req, res) => {
         try {
           if (req.method === 'GET') { sendJson(res, 200, keyStatus()); return; }
-          // POST /api/keys/test:「测试连接」探测。overrides = 面板未保存的暂存值,
-          // 仅本次探测生效,不落 keystore / .env.local;结果永不含密钥值。
+          // POST /api/keys/test: "Test connection" detection. overrides = unsaved temporary values of the panel,
+          // Only this detection takes effect and does not fall into keystore / .env.local; the result never contains the key value.
           if (req.method === 'POST' && req.url === '/test') {
             const body = await readBody(req);
             const page = typeof body.page === 'string' ? body.page : '';

@@ -108,6 +108,6 @@ export async function execEffectTool(name: string, args: Args, ctx: AgentContext
       return { ok: true, ...describe({ ...it, effects: next }) };
     }
     default:
-      return { error: `unknown action ${args.action}（可选 list/add/update/remove）` };
+      return { error: `unknown action ${args.action}(optional list/add/update/remove）` };
   }
 }

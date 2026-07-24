@@ -63,7 +63,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
         : trackAlias(state, id) === 'A1' ? theme.trackAudioA1 : theme.trackAudioA2;
     return { kind, color };
   };
-  // 播放头绘制机:rAF 合帧直绘 + Player 看门狗 + 断点续播(usePlayheadPaint)
+  // Playhead painting machine: rAF frame direct drawing + Player watchdog + breakpoint resume (usePlayheadPaint)
   const { playheadRef, playheadLineRef, toolbarTimecodeRef, rulerTimecodeRef, paintPlayhead, playing } =
     usePlayheadPaint({ playerRef, projectId, fps: state.fps, total, px });
   // editing mode (Selection V / Blade B / Trim N / Pen P). selection =
@@ -76,7 +76,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   const [snapping, setSnapping] = usePersistedState('cc.snapping', true);
   const captionsVisible = captionTrackEntries(state).some((entry) => entry.captions?.enabled);
   const [captionMenu, setCaptionMenu] = useState<{ id: TrackId; left: number; top: number } | null>(null);
-  // 错误行归 Timeline:菜单外的「开启字幕」按钮也会写它(该轨无文字稿),菜单内展示
+  // The error line is attributed to Timeline: The "Turn on subtitles" button outside the menu will also write it (there is no text script for this track), and it will be displayed in the menu
   const [captionError, setCaptionError] = useState<string | null>(null);
   useEffect(() => {
     if (!captionMenu) return;
@@ -87,7 +87,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     document.addEventListener('pointerdown', close);
     return () => document.removeEventListener('pointerdown', close);
   }, [captionMenu]);
-  // Duck (自动闪避) role menu is a track-head menu item, not a
+  // Duck (auto-dodge) role menu is a track-head menu item, not a
   // permanent widget. Sets the per-track role (anchor speech / follower music) + duck depth;
   // the engine (TimelineComposition duckGain) already reacts to it.
   const [duckMenu, setDuckMenu] = useState<{ id: TrackId; left: number; top: number } | null>(null);
@@ -100,7 +100,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     document.addEventListener('pointerdown', close);
     return () => document.removeEventListener('pointerdown', close);
   }, [duckMenu]);
-  // mic voiceover recording (录制旁白). Toggle to start/stop; the blob
+  // mic voiceover recording (recording narration). Toggle to start/stop; the blob
   // is uploaded + dropped on an audio track by the parent.
   const recorder = useRecorder(onRecordVoiceover ?? (() => {}));
   const toggleCaptions = (trackId: TrackId) => {
@@ -109,7 +109,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     const captions = captionsForTrack(state, trackId);
     commands.setCaptions(captions ?? newManualCaptions(), trackId);
   };
-  // 选择模式 (selection mode): clicks/drags pick REFERENCES for the chat
+  // selection mode: clicks/drags pick REFERENCES for the chat
   // instead of editing — clip click → item ref, ruler click → timepoint, drag
   // over ruler/lanes → timerange. Editing gestures are untouched when off.
   const pickMode = useSelectionRefMode();
@@ -137,20 +137,20 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
       })
       .map((it) => it.id);
   };
-  // clip right-click menu + effect clipboard (复制效果/粘贴效果)
+  // clip right-click menu + effect clipboard (copy effect/paste effect)
   const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [fxClip, setFxClip] = useState<FxClip | null>(null);
-  // single-clip render (导出 MG 动画 / 转为视频) status toast
+  // single-clip render (export MG animation / convert to video) status toast
   const [clipJob, setClipJob] = useState<{ msg: string; error?: boolean } | null>(null);
   const exportMg = async (it: TimelineItem) => {
-    setClipJob({ msg: t('导出 MG 动画中（ProRes 4444）…') });
+    setClipJob({ msg: t('Export MG Animation (ProRes 4444）…') });
     try { await exportClipMov(state, it); setClipJob(null); }
-    catch (e) { setClipJob({ msg: e instanceof Error ? e.message : t('导出失败'), error: true }); }
+    catch (e) { setClipJob({ msg: e instanceof Error ? e.message : t('Export failed'), error: true }); }
   };
   const convertToVideo = async (it: TimelineItem) => {
-    setClipJob({ msg: t('转为视频中…') });
+    setClipJob({ msg: t('Moving to video…') });
     try { const src = await bakeClipToVideo(state, it); commands.replaceItemMedia(it.id, src); setClipJob(null); }
-    catch (e) { setClipJob({ msg: e instanceof Error ? e.message : t('转换失败'), error: true }); }
+    catch (e) { setClipJob({ msg: e instanceof Error ? e.message : t('Conversion failed'), error: true }); }
   };
   const [availW, setAvailW] = useState(0);
   // content is at least as wide as the panel, so track rows/ruler never stop
@@ -197,7 +197,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     return trackIds[trackIds.length - 1] ?? '';
   };
 
-  // 指针状态机:片段拖动/裁剪、空白框选、钢笔点拖、引用拾取(useTimelinePointer)
+  // Pointer state machine: fragment dragging/cropping, blank frame selection, pen point dragging, reference picking (useTimelinePointer)
   const pointer = useTimelinePointer({
     state, commands, editMode, snapping, pickMode, px,
     playheadRef, scrollRef, frameFromClientX, trackFromClientY, itemsInMarquee,
@@ -207,7 +207,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   /** library resource dropped on a clip (fx/lut/zoom/transition) or track (sound/mg) */
   const [libDropTarget, setLibDropTarget] = useState<string | null>(null);
 
-  // 拖放被拒必须给原因——此前静默 return false,用户只看到「拖了没反应」
+  // If drag and drop is rejected, a reason must be given - previously it silently returned false, and the user only saw "No response after dragging"
   const dropNotice = (msg: string) => {
     setClipJob({ msg });
     window.setTimeout(() => setClipJob((cur) => (cur && cur.msg === msg && !cur.error ? null : cur)), 3000);
@@ -237,7 +237,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   // markers (manage_markers): add at the playhead + open its note editor
   const [editMarker, setEditMarker] = useState<string | null>(null);
   const markers = state.markers ?? [];
-  // 快捷键 API 装配 + I/O 区间/JKL 穿梭/片段剪贴板(整机在 useTimelineShortcuts)
+  // Shortcut API assembly + I/O interval/JKL shuttle/fragment clipboard (the whole machine is in useTimelineShortcuts)
   const { zoneIn, zoneOut } = useTimelineShortcuts({
     shortcutApiRef, state, commands, playerRef, playheadRef, total,
     seekFrame, paintPlayhead, setEditMode, setSnapping, fitToView, zoomBy,
@@ -266,17 +266,17 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
       {pickMode && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 12px', fontSize: 11, color: theme.accent, borderBottom: `0.5px solid ${theme.border}`, background: theme.panelAlt, flexShrink: 0 }}>
           <Icon name="cursor" size={12} />
-          {t('选择模式：点片段引用 · 拖过标尺/空白选时间段 · 单击标尺打时间点 — 引用会加进聊天输入框')}
+          {t('Selection mode: point fragment reference · Drag over ruler/Blank time period · Click the ruler to mark a time point — the quote will be added to the chat input box')}
         </div>
       )}
 
       {/* scrollable ruler + tracks (playhead spans both). Ctrl/⌘+wheel = time
           zoom at cursor, Alt+wheel = track-height zoom (native listener above). */}
       <div ref={scrollRef} style={{ overflow: 'auto', flex: 1, minHeight: 0 }} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-        title={t('Ctrl/⌘+滚轮 缩放时间轴 · Alt+滚轮 缩放轨道高度')}>
+        title={t('Ctrl/⌘+Scroll wheel zoom timeline · Alt+Scroll wheel Zoom track height')}>
         <div ref={innerRef} style={{ position: 'relative', width: innerW }}>
           {/* ruler (click to seek, hold to scrub; selection mode: click = timepoint, drag = timerange).
-              播放头线/三角是 pointerEvents:none,点它即点标尺——scrub 同一路径生效。 */}
+              Play the headlines/The triangle is pointerEvents:none,Click it to click the ruler——scrub The same path takes effect. */}
           <TimelineRuler
             state={state} empty={empty} px={px}
             majorCount={majorCount} majorFrames={majorFrames} minorFrames={minorFrames} minorTicksPerMajor={minorTicksPerMajor}
@@ -297,7 +297,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
             const hidden = meta.kind === 'caption' ? !trackCaptions?.enabled : config.hidden ?? false;
             const headConfig = meta.kind === 'caption' ? { ...config, hidden } : config;
             const locked = config.locked ?? false;
-            const kindLabel = meta.kind === 'video' ? '视频' : meta.kind === 'audio' ? '音频' : '字幕';
+            const kindLabel = meta.kind === 'video' ? 'video' : meta.kind === 'audio' ? 'Audio' : 'subtitles';
             const trackName = config.name || `${t(kindLabel)} ${alias.slice(1)}`;
             const busy = items.length > 0 || !!trackCaptions
               || (state.transitions ?? []).some((transition) => transition.trackId === trackId);
@@ -308,8 +308,8 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
                   busy={busy} menuElevated={captionMenu?.id === trackId || duckMenu?.id === trackId}
                   width={HEADER_W} commands={commands}
                   onToggleCaptions={() => toggleCaptions(trackId)}
-                  // 两个菜单都贴触发按钮弹,top 夹取余量=菜单最大高+边距(字幕 420、闪避≈300);
-                  // 字幕菜单左夹取还要给右弹的翻译子菜单留位(212+4+128)
+                  // Both menus are attached with trigger buttons, top clamping margin = maximum menu height + margin (subtitles 420, dodge ≈ 300);
+                  // When the subtitle menu is clipped to the left, space should be reserved for the translation submenu that pops to the right (212+4+128)
                   onToggleCaptionMenu={(rect) => {
                     setCaptionError(null);
                     setCaptionMenu((open) => open?.id === trackId ? null : { id: trackId, left: Math.min(rect.right + 5, window.innerWidth - 350), top: Math.max(8, Math.min(rect.top, window.innerHeight - 430)) });
@@ -412,7 +412,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
         );
       })()}
 
-      {/* single-clip render status (导出 MG / 转为视频 take a few seconds) */}
+      {/* single-clip render status (Export MG / Convert to video take a few seconds) */}
       {clipJob && (
         <div style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 200,
           background: clipJob.error ? theme.accent : theme.panelAlt, color: clipJob.error ? theme.onAccent : theme.text,

@@ -1,4 +1,4 @@
-// Generic transform keyframe engine (PRD §4.5 通用变换关键帧 + 钢笔工具). Pure
+// Generic transform keyframe engine (PRD §4.5 Generic transform keyframe + pen tool). Pure
 // functions only: sampling, boundary-exact split, retime scaling. The split
 // contract preserves frame consistency: for every rendered frame,
 // pre-split and post-split sampling agree exactly (straddled bezier segments are
@@ -166,7 +166,7 @@ export function splitItemKeyframes(ik: ItemKeyframes, cutFrame: number): [ItemKe
   return [Object.keys(l).length ? l : undefined, Object.keys(r).length ? r : undefined];
 }
 
-/** rescale keyframe frames by `factor` (变速): rounds, adjacent collisions collapse (later wins). */
+/** rescale keyframe frames by `factor` (variable speed): rounds, adjacent collisions collapse (later wins). */
 export function scaleKeyframes(kfs: readonly Keyframe[], factor: number): Keyframe[] {
   if (!Number.isFinite(factor) || factor <= 0) return kfs.map((k) => ({ ...k }));
   const out: Keyframe[] = [];

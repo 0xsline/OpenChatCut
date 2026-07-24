@@ -13,7 +13,7 @@ export function isMinimaxCoverModel(modelName: string): boolean {
 export async function minimaxMusicUrl(options: MusicOptions, input: ValidMusicRequest): Promise<string> {
   if (input.coverMode !== isMinimaxCoverModel(options.minimaxModel)) {
     throw new Error(input.coverMode
-      ? 'music-cover requires a music-cover model in Settings → 生音乐'
+      ? 'music-cover requires a music-cover model in Settings → live music'
       : 'music-cover model requires mode=cover and referenceAssetId or coverFeatureId');
   }
   const body: Record<string, unknown> = {

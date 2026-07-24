@@ -1,11 +1,11 @@
-// skill_guard helpers — 前置执行守卫(canUseTool:生成类工具执行前中断确认,
-// localStorage 记住授权,motion-graphic-gen 记全工程、image/video 记单工程)
-// + 提案层 auto-apply 拦截(高成本工具不自动应用)。无计费概念,不做积分估算。
+// skill_guard helpers — pre-execution guard (canUseTool: interrupt confirmation before execution of generated tool,
+// localStorage remembers authorization, motion-graphic-gen remembers the whole project, image/video remembers the single project)
+// + Proposal layer auto-apply interception (high-cost tools are not automatically applied). There is no concept of billing and no point estimation.
 
 import { isHighCostTool, loadAgentSettings, type GenerationGuardSkill } from '../settings/agentSettings';
 import type { Proposal } from '../proposal';
 
-/** 守卫卡上的用户决定。allow-scope = 记住授权(作用域按技能定,见 rememberSkillAllowed)。 */
+/** User decisions on guard cards.allow-scope = Remember to authorize(Scope is determined by skill,see rememberSkillAllowed)。 */
 export type GuardDecision = 'allow-once' | 'allow-scope' | 'deny';
 
 const ALLOW_KEY = 'cc.skillGuardAllow.v1';
@@ -22,14 +22,14 @@ function loadAllowStore(): AllowStore {
   }
 }
 
-/** 该生成技能在此工程是否已被记住授权(执行前守卫直接放行)。 */
+/** Whether the generation skill has been remembered and authorized in this project(The guard will let you go directly before execution.)。 */
 export function isSkillAllowed(skill: GenerationGuardSkill, projectId: string): boolean {
   const entry = loadAllowStore()[skill];
   if (!entry) return false;
   return entry.all === true || (entry.projects ?? []).includes(projectId);
 }
 
-/** 记住授权。作用域:motion-graphic-gen=所有工程,image-gen/video-gen=单工程。 */
+/** Remember to delegate. Scope:motion-graphic-gen=All projects,image-gen/video-gen=Single project. */
 export function rememberSkillAllowed(skill: GenerationGuardSkill, projectId: string): void {
   const store = loadAllowStore();
   const entry = store[skill] ?? {};
@@ -38,7 +38,7 @@ export function rememberSkillAllowed(skill: GenerationGuardSkill, projectId: str
   store[skill] = entry;
   try {
     localStorage.setItem(ALLOW_KEY, JSON.stringify(store));
-  } catch { /* quota:本次会话内仍生效于内存判定之外,忽略 */ }
+  } catch { /* quota:This session still takes effect outside of the memory judgment.,ignore */ }
 }
 
 /** True when auto-apply should be blocked so the proposal card can confirm. */

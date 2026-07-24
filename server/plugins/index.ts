@@ -1,8 +1,8 @@
-// 服务端插件装配(单一真源):本机共享存储 + key-gated connect 中间件及各自的 keystore
-// getter 配置,从 vite.config.ts 原样抽出。两种宿主共用同一份装配,保证 API 面一致:
-//   - vite.config.ts        → dev server(vite 挂载)
-//   - desktop/embedded-server.ts → Electron 生产壳(桩子挂载)
-// getter 即时读 keystore——设置面板保存后下一请求生效,无需重启。
+// Server-side plug-in assembly (single source of truth): native shared storage + key-gated connect middleware and respective keystores
+// Getter configuration, extracted from vite.config.ts as is. The two hosts share the same assembly and ensure the same API:
+//   - vite.config.ts → dev server(vite mount)
+//   - desktop/embedded-server.ts → Electron production shell (stub mounting)
+// Getter reads keystore instantly - the next request will take effect after the setting panel is saved, no need to restart.
 import type { Plugin } from 'vite';
 import { projectStorePlugin } from './project-store.ts';
 import { extensionStorePlugin } from './extension-store.ts';

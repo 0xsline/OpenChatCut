@@ -27,7 +27,7 @@ function fadeFactor(frame: number, dur: number, fadeIn = 0, fadeOut = 0): number
 // translate(x%,y%) offsets by that fraction of the full-frame layer.
 // Generic keyframes (PRD §4.5): a keyframed prop overrides its static transform
 // value at the current local frame; keyframed opacity multiplies onto the fades.
-// Items WITHOUT keyframes take the exact pre-keyframe code path (回归红线).
+// Items WITHOUT keyframes take the exact pre-keyframe code path (regression red line).
 function ClipWrapper({ item, children }: { item: TimelineItem; children: React.ReactNode }) {
   const frame = useCurrentFrame();
   const o = fadeFactor(frame, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames);
@@ -186,7 +186,7 @@ function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, browser
           maxGapFrames: item.silenceFrames,
           gapCapsMs: item.gapCapsMs,
           playOrder: item.transcriptPlayOrder,
-          window: itemWindow(item), // trim 手柄的 [srcIn, srcIn+dur) 切片(词↔帧一致)
+          window: itemWindow(item), // trim handle's [srcIn, srcIn+dur) slice (word ↔ frame consistent)
         }).map((seg, k) => (
           <Sequence key={`${item.id}_${k}`} from={seg.fromFrame} durationInFrames={seg.durFrames} premountFor={premountFor} name={item.name}>
             <RuntimeAudio browserRenderer={browserRenderer} src={src} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame}
@@ -284,7 +284,7 @@ function TextLayer({ item, canvasW, canvasH, fit }: { item: TimelineItem; canvas
   const dh = item.height ?? 1080;
   const scale = fit === 'cover' ? Math.max(canvasW / dw, canvasH / dh) : Math.min(canvasW / dw, canvasH / dh);
   const p = item.props ?? {};
-  const text = String(p.text ?? '文字');
+  const text = String(p.text ?? 'text');
   const fontSize = Number(p.fontSize ?? 96);
   const color = String(p.color ?? '#ffffff');
   const fontWeight = Number(p.fontWeight ?? 700);
@@ -335,9 +335,9 @@ export type TimelineCompositionProps = Record<string, unknown> & {
 
 export function TimelineComposition({ state, transparent, browserRenderer = false }: TimelineCompositionProps) {
   loadTimelineFonts(state);
-  // 非内置 fx(插件/submit_shader)def 随 state 自包含:渲染前同步注册进 ALL_FX,
-  // 子组件(MediaFill 的 firstGlEffect 路由)首帧就解析得到——无头导出的新鲜浏览器
-  // 没有内存注册表,全靠这里。幂等有守卫;渲染期改外部注册表是此处唯一的刻意例外。
+  // Non-built-in fx (plug-in/submit_shader)def is self-contained with state: synchronously registered into ALL_FX before rendering,
+  // The first frame of the subcomponent (MediaFill's firstGlEffect route) is parsed - a fresh browser with headless export
+  // There is no memory registry, it all depends on this. Idempotism is guarded; rendering external registries is the only deliberate exception here.
   if (state.fxDefs) {
     for (const def of Object.values(state.fxDefs)) if (!(def.id in ALL_FX)) registerCustomFx(def);
   }
@@ -361,9 +361,9 @@ export function TimelineComposition({ state, transparent, browserRenderer = fals
     return 10 ** ((config.audioRouting?.duckDepthDb ?? -12) / 20);
   };
   const fit: AspectFit = state.fit ?? 'contain';
-  // 预览提前 2s 挂载各 clip(冻结首帧+透明):视频元素提前 seek/解码,GL 提前编译,
-  // 消掉切点/转场窗口起点三个媒体元素同帧冷启动导致的"尾帧卡一下"。
-  // 无头导出逐帧确定性渲染,预热只会拖慢导出,置 0。
+  // Preview mounts each clip 2s in advance (freezes first frame + transparency): video elements seek/decode in advance, GL compiles in advance,
+  // Eliminate the "last frame stuck" caused by cold start of three media elements at the starting point of the cut point/transition window in the same frame.
+  // Headless export renders deterministically frame by frame, preheating will only slow down the export, set to 0.
   const premountFrames = getRemotionEnvironment().isRendering ? 0 : Math.round(state.fps * 2);
 
   // A transition straddles the cut: half retreats into outgoing, half
@@ -373,7 +373,7 @@ export function TimelineComposition({ state, transparent, browserRenderer = fals
   // (video/image); with a DOM clip involved (MG/text — no GL texture, same
   // limit as any DOM layer) they fall back to a CSS cross-dissolve.
   const byId = new Map(state.items.map((it) => [it.id, it]));
-  // gif 也排除:GlTransition 用 <Video> 挂源,gif 无法解码 → delayRender 卡死导出;走 CSS 回退
+  // Gif is also excluded: GlTransition uses <Video> to hang the source, gif cannot be decoded → delayRender freezes the export; use CSS fallback
   const texturable = (it?: TimelineItem) => !!it && isRasterMediaKind(it.kind) && it.kind !== 'svg' && it.kind !== 'gif';
   const enabledTransitions = (state.transitions ?? []).filter((t) => t.enabled !== false);
   const visualTransitions = enabledTransitions.filter((t) => !isAudioTransition(t.type));

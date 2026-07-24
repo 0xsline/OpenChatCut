@@ -10,8 +10,8 @@ import { captionsOnTrack, defaultTrackId, resolveTrackId, timelineTrackIds, trac
 // edit_captions uses one tool with a 21-action dispatcher. Most action data
 // arrives as a JSON string in `json`. Backed by OpenChatCut's captions overlay
 // (enable/template/style/layout/display overrides/multi-source/translation).
-// 多车道三兄弟(layout_policy / positions / source_update)在 captions-lanes.ts,
-// 数据模型 = CaptionsData.sourceEntries(每 source 一条渲染车道)。
+// The three brothers of multi-lane (layout_policy / positions / source_update) are in captions-lanes.ts,
+// Data Model = CaptionsData.sourceEntries(one rendering lane per source).
 
 type Args = Record<string, unknown>;
 type Result = Record<string, unknown>;
@@ -152,7 +152,7 @@ export async function editCaptions(args: Args, ctx: AgentContext): Promise<Resul
   }
   if (action === 'layout') {
     const layout = toLayout(json, s.width, s.height);
-    if (!layout) return { error: 'layout 移动整块字幕,参数例:{"preset":"bottom-center"}(3×3 锚点/top/bottom/center)或 {"offsetXRatio":0.1,"offsetYRatio":-0.05} 微调;要把多条字幕分开摆(如英文上/中文下)用 action=positions,不是 layout' };
+    if (!layout) return { error: 'layout Move entire subtitles,Parameter example:{"preset":"bottom-center"}(3×3 anchor point/top/bottom/center)or {"offsetXRatio":0.1,"offsetYRatio":-0.05} fine-tuning;Separate multiple subtitles(As in English/Chinese)use action=positions,No layout' };
     ctx.commands.updateCaptions({ layout });
     return { ok: true, layout };
   }

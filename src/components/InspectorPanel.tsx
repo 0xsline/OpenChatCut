@@ -85,7 +85,7 @@ function PropSchemaField({
         >
           {FONT_CATALOG.map((f) => (
             <option key={f.family} value={f.family} style={{ fontFamily: f.family }}>
-              {f.family}{f.aliases[0] ? ` · ${f.aliases[0]}` : ''}{f.loadable ? '' : ` ${t('(预览)')}`}
+              {f.family}{f.aliases[0] ? ` · ${f.aliases[0]}` : ''}{f.loadable ? '' : ` ${t('(Preview)')}`}
             </option>
           ))}
           {/* keep custom values that aren't in catalog */}
@@ -111,7 +111,7 @@ function PropSchemaField({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <input
             type="text"
-            placeholder={spec.type === 'video' ? t('视频 URL 或 /media/uploads/…') : t('图片 URL 或 /media/uploads/…')}
+            placeholder={spec.type === 'video' ? t('video URL or /media/uploads/…') : t('picture URL or /media/uploads/…')}
             value={String(value ?? '')}
             onChange={(e) => onChange(e.target.value)}
             style={fieldStyle}
@@ -134,7 +134,7 @@ function PropSchemaField({
           />
           {typeof value === 'string' && value && (
             isVideo
-              // preload=metadata 不解码画面(黑块),seek 一下才逼浏览器绘帧;顺带避开第 0 帧黑场
+              // preload=metadata does not decode the picture (black block), seek for a while to force the browser to draw the frame; incidentally avoid the black field of frame 0
               ? <video src={value} muted playsInline preload="metadata" style={{ maxWidth: '100%', maxHeight: 72, objectFit: 'contain', borderRadius: 4, background: theme.bg }}
                   onLoadedMetadata={(e) => { const v = e.currentTarget; if (Number.isFinite(v.duration) && v.duration > 0) v.currentTime = Math.min(1, v.duration / 2); }} />
               : <img src={value} alt="" style={{ maxWidth: '100%', maxHeight: 72, objectFit: 'contain', borderRadius: 4, background: theme.bg }} />
@@ -204,13 +204,13 @@ interface InspectorPanelProps {
   autoGrade?: AutoGradeControlProps;
   onItemZoomChange: (patch: Partial<ZoomEffect> | null) => void;
   onItemEffectsChange: (effects: ClipEffect[]) => void;
-  /** 变速 (0.1–8×); 预览/导出 preservePitch */
+  /** variable speed (0.1–8×); Preview/Export preservePitch */
   onItemSpeedChange?: (rate: number) => void;
-  /** 响度归一到 -14 LUFS（分析后 set volume） */
+  /** Loudness normalized to -14 LUFS(After analysis set volume） */
   onNormalizeLoudness?: () => void | Promise<void>;
   /**
-   * 人声隔离（开箱 ffmpeg）：apply 挂 denoisedSrc，clear 清除。
-   * strength 0..100；返回后由 store setItemDenoise。
+   * Vocal isolation (unboxing ffmpeg）：apply hang denoisedSrc，clear Clear.
+   * strength 0..100;Return by store setItemDenoise。
    */
   onIsolateVoice?: (action: 'apply' | 'clear', strength?: number) => void | Promise<void>;
   getPlayhead: () => number;
@@ -255,11 +255,11 @@ interface KfApi {
 }
 
 const EASING_OPTIONS: { value: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut'; label: string }[] = [
-  { value: 'linear', label: '线性' }, { value: 'easeIn', label: '缓入' },
-  { value: 'easeOut', label: '缓出' }, { value: 'easeInOut', label: '缓入出' },
+  { value: 'linear', label: 'Linear' }, { value: 'easeIn', label: 'Ease in' },
+  { value: 'easeOut', label: 'Ease out' }, { value: 'easeInOut', label: 'Ease in and out' },
 ];
 
-// end-of-row keyframe rail (PRD §4.5;UI 仿 reframe 关键帧模式,布局自定):
+// end-of-row keyframe rail (PRD §4.5; UI imitates reframe keyframe mode, layout is customized):
 // ◆ punches/updates at the playhead (filled when one sits there), ‹ › jump
 // between keyframes, × deletes the one under the playhead, plus segment easing.
 function KfCell({ kfs, localFrame, punchValue, onSet, onRemove, onSeekLocal }: {
@@ -278,19 +278,19 @@ function KfCell({ kfs, localFrame, punchValue, onSet, onRemove, onSeekLocal }: {
   const off: React.CSSProperties = { ...btn, opacity: 0.3, cursor: 'default' };
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-      <button type="button" style={prev ? btn : off} disabled={!prev} title={t('上一关键帧')} onClick={() => prev && onSeekLocal(prev.frame)}>‹</button>
+      <button type="button" style={prev ? btn : off} disabled={!prev} title={t('Previous keyframe')} onClick={() => prev && onSeekLocal(prev.frame)}>‹</button>
       <button
         type="button"
         style={{ ...btn, fontSize: 11, color: at ? theme.accent : kfs?.length ? theme.textMuted : theme.textDim }}
-        title={at ? t('更新播放头处的关键帧') : t('在播放头打关键帧')}
+        title={at ? t('Update keyframes at playhead') : t('Keyframe the playhead')}
         onClick={() => onSet(localFrame, punchValue, at?.easing)}
       >{at ? '◆' : '◇'}</button>
-      <button type="button" style={next ? btn : off} disabled={!next} title={t('下一关键帧')} onClick={() => next && onSeekLocal(next.frame)}>›</button>
-      <button type="button" style={at ? btn : off} disabled={!at} title={t('删除播放头处的关键帧')} onClick={() => at && onRemove(localFrame)}>×</button>
+      <button type="button" style={next ? btn : off} disabled={!next} title={t('next keyframe')} onClick={() => next && onSeekLocal(next.frame)}>›</button>
+      <button type="button" style={at ? btn : off} disabled={!at} title={t('Delete keyframes at playhead')} onClick={() => at && onRemove(localFrame)}>×</button>
       {at && (
         <select
           value={Array.isArray(at.easing) ? 'bezier' : at.easing ?? 'linear'}
-          title={t('缓动（此关键帧到下一帧的曲线）')}
+          title={t('Easing (the curve from this keyframe to the next frame)')}
           onChange={(e) => {
             const v = e.target.value;
             if (v === 'bezier') return; // custom tuples are agent-authored; keep as-is
@@ -299,14 +299,14 @@ function KfCell({ kfs, localFrame, punchValue, onSet, onRemove, onSeekLocal }: {
           style={{ background: theme.bg, color: theme.textDim, border: `0.5px solid ${theme.borderLight}`, borderRadius: 3, fontSize: 9, padding: '0 1px', maxWidth: 50 }}
         >
           {EASING_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
-          {Array.isArray(at.easing) && <option value="bezier">{t('贝塞尔')}</option>}
+          {Array.isArray(at.easing) && <option value="bezier">{t('bessel')}</option>}
         </select>
       )}
     </span>
   );
 }
 
-// scale / position / rotation for visual clips (缩放 tab) + per-property
+// scale / position / rotation for visual clips (zoom tab) + per-property
 // keyframe rails and an opacity curve row. A keyframed prop shows the
 // value sampled at the playhead; dragging it then punches a keyframe there.
 function TransformControl({ item, onChange, kf }: { item: TimelineItem; onChange: (p: ClipTransform) => void; kf: KfApi }) {
@@ -353,20 +353,20 @@ function VolumeControl({
   const [busy, setBusy] = useState(false);
   return (
     <div>
-      <SliderRow label={t('音量')} val={vol} min={0} max={2} step={0.05} fmt={`${Math.round(vol * 100)}%`} onChange={onChange} />
+      <SliderRow label={t('Volume')} val={vol} min={0} max={2} step={0.05} fmt={`${Math.round(vol * 100)}%`} onChange={onChange} />
       {item.kind === 'audio' && onNormalize && (
         <button
           type="button"
           className="cc-insp-btn"
           disabled={busy || !item.src}
-          title={t('分析并归一到 -14 LUFS')}
+          title={t('Analyze and normalize to -14 LUFS')}
           style={{ marginTop: 6, width: '100%', fontSize: 11 }}
           onClick={() => {
             setBusy(true);
             void Promise.resolve(onNormalize()).finally(() => setBusy(false));
           }}
         >
-          {busy ? t('分析中…') : t('响度归一 (-14 LUFS)')}
+          {busy ? t('Analyzing…') : t('Loudness normalization (-14 LUFS)')}
         </button>
       )}
     </div>
@@ -392,11 +392,11 @@ function IsolateVoiceControl({
   const run = (action: 'apply' | 'clear', nextStrength?: number) => {
     setBusy(true);
     setErr(null);
-    if (action === 'apply') showAppToast(t('人声隔离处理中…'), { ms: 60_000 });
+    if (action === 'apply') showAppToast(t('Vocal isolation is being processed...'), { ms: 60_000 });
     void Promise.resolve(onIsolate(action, nextStrength))
       .then(() => {
-        if (action === 'clear') showAppToast(t('已清除人声隔离'));
-        else showAppToast(t('人声隔离已应用'));
+        if (action === 'clear') showAppToast(t('Vocal isolation cleared'));
+        else showAppToast(t('Vocal isolation applied'));
       })
       .catch((e: unknown) => {
         const msg = e instanceof Error ? e.message : String(e);
@@ -409,7 +409,7 @@ function IsolateVoiceControl({
   return (
     <div>
       <SliderRow
-        label={t('隔离强度')}
+        label={t('isolation strength')}
         val={strength}
         min={0}
         max={100}
@@ -422,11 +422,11 @@ function IsolateVoiceControl({
           type="button"
           className="cc-insp-btn"
           disabled={busy || !canApply}
-          title={!canApply ? t('需先上传到媒体池（/media/uploads）') : t('用本机 ffmpeg 频谱降噪，保留原轨')}
+          title={!canApply ? t('Need to be uploaded to the media pool first (/media/uploads）') : t('Use this machine ffmpeg Spectral noise reduction, retain original track')}
           style={{ flex: 1, fontSize: 11 }}
           onClick={() => run('apply', strength)}
         >
-          {busy ? t('处理中…') : active ? t('重新隔离') : t('应用人声隔离')}
+          {busy ? t('Processing…') : active ? t('re-isolate') : t('Apply vocal isolation')}
         </button>
         {active && (
           <button
@@ -436,14 +436,14 @@ function IsolateVoiceControl({
             style={{ fontSize: 11 }}
             onClick={() => run('clear')}
           >
-            {t('清除')}
+            {t('Clear')}
           </button>
         )}
       </div>
       <div className="cc-insp-muted" style={{ fontSize: 10, marginTop: 4 }}>
         {active
-          ? t('已应用 · 播放用隔离音轨 · master 不变')
-          : t('开箱 ffmpeg 降噪（非 DeepFilterNet3）')}
+          ? t('Applied · Playback with isolated audio tracks · master unchanged')
+          : t('Unboxing ffmpeg Noise reduction (not DeepFilterNet3）')}
       </div>
       {err && (
         <div style={{ fontSize: 10, color: 'var(--cc-danger, #f66)', marginTop: 4 }}>{err}</div>
@@ -458,7 +458,7 @@ function SpeedControl({ item, onChange }: { item: TimelineItem; onChange: (rate:
   return (
     <div>
       <SliderRow
-        label={t('变速')}
+        label={t('variable speed')}
         val={rate}
         min={0.25}
         max={4}
@@ -485,7 +485,7 @@ function SpeedControl({ item, onChange }: { item: TimelineItem; onChange: (rate:
         ))}
       </div>
       <div className="cc-insp-muted" style={{ fontSize: 10, marginTop: 4 }}>
-        {t('保调变速（预览/导出）· 时长随速率伸缩并波纹合缝')}
+        {t('Pitch-maintaining speed change (preview/export)· Duration expands and contracts with speed and ripples together')}
       </div>
     </div>
   );
@@ -512,8 +512,8 @@ function FadeControl({ item, fps, onChange }: { item: TimelineItem; fps: number;
   };
   return (
     <div className="cc-insp-stack">
-      {row(t('淡入'), item.fadeInFrames, 'fadeInFrames')}
-      {row(t('淡出'), item.fadeOutFrames, 'fadeOutFrames')}
+      {row(t('fade in'), item.fadeInFrames, 'fadeInFrames')}
+      {row(t('fade out'), item.fadeOutFrames, 'fadeOutFrames')}
     </div>
   );
 }
@@ -526,28 +526,28 @@ function TextControl({ item, onPropChange }: { item: TimelineItem; onPropChange:
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <label style={{ fontSize: 11, color: theme.textDim }}>
-        <div style={{ marginBottom: 4 }}>{t('文字内容')}</div>
+        <div style={{ marginBottom: 4 }}>{t('Text content')}</div>
         <textarea value={String(p.text ?? '')} onChange={(e) => onPropChange('text', e.target.value)} rows={2}
           style={{ width: '100%', padding: '6px 8px', background: theme.bg, color: theme.text, border: `0.5px solid ${theme.borderLight}`, borderRadius: 5, resize: 'vertical', fontFamily: 'inherit', fontSize: 12 }} />
       </label>
       <label style={{ fontSize: 11, color: theme.textDim }}>
-        <div style={{ marginBottom: 4 }}>{t('字号')} <span style={{ opacity: 0.7 }}>{Number(p.fontSize ?? 96)}</span></div>
+        <div style={{ marginBottom: 4 }}>{t('Font size')} <span style={{ opacity: 0.7 }}>{Number(p.fontSize ?? 96)}</span></div>
         <input type="range" min={24} max={300} step={2} value={Number(p.fontSize ?? 96)} onChange={(e) => onPropChange('fontSize', Number(e.target.value))} style={{ width: '100%' }} />
       </label>
       <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
-          {t('颜色')} <input type="color" value={String(p.color ?? '#ffffff')} onChange={(e) => onPropChange('color', e.target.value)} />
+          {t('color')} <input type="color" value={String(p.color ?? '#ffffff')} onChange={(e) => onPropChange('color', e.target.value)} />
         </label>
         <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
-          {t('对齐')}
+          {t('Align')}
           <select value={String(p.align ?? 'center')} onChange={(e) => onPropChange('align', e.target.value)} style={selStyle}>
-            <option value="left">{t('左')}</option><option value="center">{t('中')}</option><option value="right">{t('右')}</option>
+            <option value="left">{t('left')}</option><option value="center">{t('in')}</option><option value="right">{t('right')}</option>
           </select>
         </label>
         <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
-          {t('粗细')}
+          {t('Thickness')}
           <select value={String(p.fontWeight ?? 700)} onChange={(e) => onPropChange('fontWeight', Number(e.target.value))} style={selStyle}>
-            <option value="400">{t('常规')}</option><option value="700">{t('粗体')}</option><option value="900">{t('特粗')}</option>
+            <option value="400">{t('regular')}</option><option value="700">{t('Bold')}</option><option value="900">{t('Extra thick')}</option>
           </select>
         </label>
       </div>
@@ -571,40 +571,40 @@ function ZoomControl({ zoom, onChange, getLocalFrame, fps, onSetKeyframe, onRemo
   return (
     <div className="cc-insp-stack">
       <label className="cc-insp-row">
-        <span className="cc-insp-label">{t('曲线')}</span>
+        <span className="cc-insp-label">{t('Curve')}</span>
         <select className="cc-insp-select" value={zoom?.shape ?? ''} onChange={(e) => {
           const v = e.target.value as ZoomShape | '';
           if (!v) onChange(null);
           else onChange({ shape: v });
         }}>
-          <option value="">{t('无')}</option>
+          <option value="">{t('None')}</option>
           {ZOOM_SHAPE_ORDER.map((k) => <option key={k} value={k}>{t(ZOOM_SHAPE_LABELS[k])}</option>)}
         </select>
       </label>
       {zoom && (
         <>
-          <SliderRow label={t('倍数')} val={zoom.magnification ?? 1.5} min={1} max={4} step={0.05} fmt={`${(zoom.magnification ?? 1.5).toFixed(2)}×`} onChange={(v) => onChange({ magnification: v })} />
-          <SliderRow label={t('焦点X')} val={zoom.focalPointX ?? 0.5} min={0} max={1} step={0.01} fmt={`${Math.round((zoom.focalPointX ?? 0.5) * 100)}%`} onChange={(v) => onChange({ focalPointX: v })} />
-          <SliderRow label={t('焦点Y')} val={zoom.focalPointY ?? 0.5} min={0} max={1} step={0.01} fmt={`${Math.round((zoom.focalPointY ?? 0.5) * 100)}%`} onChange={(v) => onChange({ focalPointY: v })} />
+          <SliderRow label={t('multiple')} val={zoom.magnification ?? 1.5} min={1} max={4} step={0.05} fmt={`${(zoom.magnification ?? 1.5).toFixed(2)}×`} onChange={(v) => onChange({ magnification: v })} />
+          <SliderRow label={t('focusX')} val={zoom.focalPointX ?? 0.5} min={0} max={1} step={0.01} fmt={`${Math.round((zoom.focalPointX ?? 0.5) * 100)}%`} onChange={(v) => onChange({ focalPointX: v })} />
+          <SliderRow label={t('focusY')} val={zoom.focalPointY ?? 0.5} min={0} max={1} step={0.01} fmt={`${Math.round((zoom.focalPointY ?? 0.5) * 100)}%`} onChange={(v) => onChange({ focalPointY: v })} />
           <div className="cc-insp-actions">
             <button
               type="button"
               onClick={() => onSetKeyframe(getLocalFrame(), zoom.focalPointX ?? 0.5, zoom.focalPointY ?? 0.5, zoom.magnification ?? 1.5)}
-              title={t('在播放头记录焦点+倍数为关键帧')}
+              title={t('Record focus on playhead+Multiples are keyframes')}
               className="cc-insp-btn"
             >
-              <Icon name="diamond" size={12} />{t('关键帧')}
+              <Icon name="diamond" size={12} />{t('keyframe')}
             </button>
             <span className="cc-insp-muted">@ {(localFrame / fps).toFixed(2)}s</span>
           </div>
           {(zoom.reframeCurve?.keyframes.length ?? 0) > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ fontSize: 10.5, color: theme.textDim, opacity: 0.8 }}>{t('关键帧（覆盖曲线，逐帧插值）')}</div>
+              <div style={{ fontSize: 10.5, color: theme.textDim, opacity: 0.8 }}>{t('Keyframes (overlay curves, frame-by-frame interpolation)')}</div>
               {zoom.reframeCurve!.keyframes.map((k) => (
                 <div key={k.frame} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: theme.textDim }}>
                   <span style={{ fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="diamond" size={11} />{(k.frame / fps).toFixed(2)}s</span>
                   <span style={{ opacity: 0.8 }}>{k.magnification.toFixed(2)}× · ({Math.round(k.focalPointX * 100)},{Math.round(k.focalPointY * 100)})</span>
-                  <button onClick={() => onRemoveKeyframe(k.frame)} title={t('删除关键帧')} style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 12, marginLeft: 'auto', display: 'inline-flex', alignItems: 'center' }}><Icon name="x" size={12} /></button>
+                  <button onClick={() => onRemoveKeyframe(k.frame)} title={t('Delete keyframes')} style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 12, marginLeft: 'auto', display: 'inline-flex', alignItems: 'center' }}><Icon name="x" size={12} /></button>
                 </div>
               ))}
             </div>
@@ -617,7 +617,7 @@ function ZoomControl({ zoom, onChange, getLocalFrame, fps, onSetKeyframe, onRemo
 
 
 // transition INTO the selected clip from the previous adjacent same-track clip.
-// Picking a type creates it; 无 removes it.
+// Picking a type creates it; None removes it.
 function TransitionControl({ transition, fps, onAdd, onSet, onRemove, audioMode }: {
   transition: TransitionItem | null;
   fps: number;
@@ -641,32 +641,32 @@ function TransitionControl({ transition, fps, onAdd, onSet, onRemove, audioMode 
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ fontSize: 10.5, color: theme.textDim, opacity: 0.8 }}>
         {audioMode
-          ? t('与前一段相邻音频交叉淡化（出点渐弱 / 入点渐强）')
-          : t('从前一个相邻片段进入本片段')}
+          ? t('Crossfade with the adjacent audio of the previous segment (fade out point / entry point crescendo)')
+          : t('Enter this segment from the previous adjacent segment')}
       </div>
       <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 8 }}>
-        {t('类型')}
+        {t('Type')}
         <select value={shown?.type ?? ''} style={selStyle} onChange={(e) => {
           const v = e.target.value as TransitionType | '';
           if (!v) { if (shown) onRemove(); }
           else if (shown) onSet({ type: v });
           else onAdd(v);
         }}>
-          <option value="">{t('无')}</option>
+          <option value="">{t('None')}</option>
           {options.map((k) => <option key={k} value={k}>{t(TRANSITION_LABELS[k])}</option>)}
         </select>
       </label>
       {shown && (
         <>
           <label style={{ fontSize: 11, color: theme.textDim }}>
-            <div style={{ marginBottom: 4 }}>{t('时长')} <span style={{ opacity: 0.7 }}>{(shown.durationInFrames / fps).toFixed(1)}s</span></div>
+            <div style={{ marginBottom: 4 }}>{t('duration')} <span style={{ opacity: 0.7 }}>{(shown.durationInFrames / fps).toFixed(1)}s</span></div>
             <input type="range" min={2} max={Math.max(4, fps * 2)} step={1} value={shown.durationInFrames} onChange={(e) => onSet({ durationInFrames: Number(e.target.value) })} style={{ width: '100%' }} />
           </label>
           {needsDir && !audioMode && (
             <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 8 }}>
-              {t('方向')}
+              {t('direction')}
               <select value={shown.direction ?? 'left'} style={selStyle} onChange={(e) => onSet({ direction: e.target.value as TransitionItem['direction'] })}>
-                <option value="left">{t('左')}</option><option value="right">{t('右')}</option><option value="up">{t('上')}</option><option value="down">{t('下')}</option>
+                <option value="left">{t('left')}</option><option value="right">{t('right')}</option><option value="up">{t('on')}</option><option value="down">{t('down')}</option>
               </select>
             </label>
           )}
@@ -695,8 +695,8 @@ function FilterControl({ item, onChange, autoGrade }: {
         <div className={`cc-auto-grade${autoGrade.previewCount ? ' previewing' : ''}`}>
           <div className="cc-auto-grade-head">
             <div>
-              <strong>{t('自动校色')}</strong>
-              <span>{t('保守型技术修正')}</span>
+              <strong>{t('Automatic color correction')}</strong>
+              <span>{t('conservative technical correction')}</span>
             </div>
             <button
               type="button"
@@ -704,19 +704,19 @@ function FilterControl({ item, onChange, autoGrade }: {
               disabled={autoGrade.busy || autoGrade.targetCount === 0}
               onClick={() => void autoGrade.onAnalyze()}
             >
-              {autoGrade.busy ? t('分析中…') : t('分析选中片段')}
+              {autoGrade.busy ? t('Analyzing…') : t('Analyze selected clip')}
             </button>
           </div>
           <div className="cc-auto-grade-note">
             {autoGrade.targetCount === 0
-              ? t('请选择已导入媒体池的视频、图片或 GIF 片段')
-              : t('本机抽样分析，仅做小幅亮度、对比和饱和度修正，不添加创意 LUT。')}
+              ? t('Please select a video, picture, or GIF fragment')
+              : t('Native sampling analysis, only small brightness, contrast and saturation corrections, no creativity added LUT。')}
           </div>
           {autoGrade.previewCount > 0 && (
             <div className="cc-auto-grade-result">
               <div>
-                <b>{t('预览中 · {n} 个片段', { n: autoGrade.previewCount })}</b>
-                {autoGrade.failedCount > 0 && <span>{t(' · {n} 个失败', { n: autoGrade.failedCount })}</span>}
+                <b>{t('Previewing · {n} fragments', { n: autoGrade.previewCount })}</b>
+                {autoGrade.failedCount > 0 && <span>{t(' · {n} a failure', { n: autoGrade.failedCount })}</span>}
                 {autoGrade.selectedPreview && (
                   <span>
                     {` · ${autoGrade.selectedPreview.bitDepth}-bit${autoGrade.selectedPreview.hdr ? ' HDR' : ' SDR'}`}
@@ -725,17 +725,17 @@ function FilterControl({ item, onChange, autoGrade }: {
                 )}
               </div>
               <div className="cc-insp-actions">
-                <button type="button" className="cc-insp-btn primary" onClick={autoGrade.onApply}>{t('应用校色')}</button>
-                <button type="button" className="cc-insp-btn" onClick={autoGrade.onCancel}>{t('取消预览')}</button>
+                <button type="button" className="cc-insp-btn primary" onClick={autoGrade.onApply}>{t('Apply color correction')}</button>
+                <button type="button" className="cc-insp-btn" onClick={autoGrade.onCancel}>{t('Cancel preview')}</button>
               </div>
             </div>
           )}
         </div>
       )}
-      <SliderRow label={t('亮度')} val={fl.brightness ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.brightness ?? 1) * 100)}%`} onChange={(v) => onChange({ brightness: v })} />
-      <SliderRow label={t('对比')} val={fl.contrast ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.contrast ?? 1) * 100)}%`} onChange={(v) => onChange({ contrast: v })} />
-      <SliderRow label={t('饱和')} val={fl.saturate ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.saturate ?? 1) * 100)}%`} onChange={(v) => onChange({ saturate: v })} />
-      <SliderRow label={t('模糊')} val={fl.blur ?? 0} min={0} max={30} step={1} fmt={`${Math.round(fl.blur ?? 0)}px`} onChange={(v) => onChange({ blur: v })} />
+      <SliderRow label={t('brightness')} val={fl.brightness ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.brightness ?? 1) * 100)}%`} onChange={(v) => onChange({ brightness: v })} />
+      <SliderRow label={t('Contrast')} val={fl.contrast ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.contrast ?? 1) * 100)}%`} onChange={(v) => onChange({ contrast: v })} />
+      <SliderRow label={t('saturated')} val={fl.saturate ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.saturate ?? 1) * 100)}%`} onChange={(v) => onChange({ saturate: v })} />
+      <SliderRow label={t('blurry')} val={fl.blur ?? 0} min={0} max={30} step={1} fmt={`${Math.round(fl.blur ?? 0)}px`} onChange={(v) => onChange({ blur: v })} />
     </div>
   );
 }
@@ -743,7 +743,7 @@ function FilterControl({ item, onChange, autoGrade }: {
 const rgbToHex = (rgb: number[]) => `#${rgb.slice(0, 3).map((n) => Math.round(Math.min(1, Math.max(0, n)) * 255).toString(16).padStart(2, '0')).join('')}`;
 const hexToRgb = (hex: string) => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255);
 
-// Per-clip WebGL effect stack (特效 / builtin:fx-*). Order is render
+// Per-clip WebGL effect stack (special effects / builtin:fx-*). Order is render
 // order: each card consumes the previous card's output.
 function EffectsControl({ item, onChange }: { item: TimelineItem; onChange: (effects: ClipEffect[]) => void }) {
   const t = useT();
@@ -770,10 +770,10 @@ function EffectsControl({ item, onChange }: { item: TimelineItem; onChange: (eff
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <select value="" onChange={(e) => addEffect(e.target.value)}
         style={{ width: '100%', background: theme.panelAlt, color: theme.text, border: `0.5px solid ${theme.border}`, borderRadius: 6, padding: '5px 7px', fontSize: 12 }}>
-        <option value="">{t('＋ 添加特效…')}</option>
+        <option value="">{t('+ Add special effects…')}</option>
         {FX_IDS.map((id) => <option key={id} value={id}>{t(FX_EFFECTS[id].name)}</option>)}
       </select>
-      {active.length === 0 && <div style={{ fontSize: 10.5, color: theme.textDim }}>{t('尚未添加特效。')}</div>}
+      {active.length === 0 && <div style={{ fontSize: 10.5, color: theme.textDim }}>{t('No special effects have been added yet.')}</div>}
       {active.map((effect, index) => {
         const def = FX_EFFECTS[effect.assetId];
         return (
@@ -782,9 +782,9 @@ function EffectsControl({ item, onChange }: { item: TimelineItem; onChange: (eff
               <b style={{ flex: 1 }}>{index + 1}. {t(def.name)}
                 {effect.assetId in LUT_EFFECTS && <span style={{ fontSize: 9, fontWeight: 700, color: theme.textDim, border: `0.5px solid ${theme.border}`, borderRadius: 3, padding: '0 3px', marginLeft: 5, verticalAlign: 'middle' }}>LUT</span>}
               </b>
-              <button title={t('上移')} disabled={index === 0} onClick={() => moveEffect(index, -1)}>↑</button>
-              <button title={t('下移')} disabled={index === active.length - 1} onClick={() => moveEffect(index, 1)}>↓</button>
-              <button title={t('移除特效')} onClick={() => onChange(effects.filter((fx) => fx.id !== effect.id))}>×</button>
+              <button title={t('move up')} disabled={index === 0} onClick={() => moveEffect(index, -1)}>↑</button>
+              <button title={t('move down')} disabled={index === active.length - 1} onClick={() => moveEffect(index, 1)}>↓</button>
+              <button title={t('Remove effects')} onClick={() => onChange(effects.filter((fx) => fx.id !== effect.id))}>×</button>
             </div>
             <div style={{ fontSize: 10.5, color: theme.textDim, opacity: 0.75, lineHeight: 1.4 }}>{t(def.desc)}</div>
             {def.props.map((p) => {
@@ -824,19 +824,19 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
 
   const hint = selectedItem
     ? selectedItem.kind === 'audio'
-      ? t('音频片段。可在时间线上拖动位置、裁剪首尾。')
+      ? t('Audio clip. You can drag the position on the timeline and crop the beginning and end.')
       : selectedItem.kind === 'video'
-      ? t('视频片段。可在时间线上拖动位置、裁剪首尾（左裁剪推进源入点）。')
+      ? t('Video clips. You can drag the position on the timeline and crop the beginning and end (left cropping advances the source entry point).')
       : selectedItem.kind === 'image'
-      ? t('图片片段。')
+      ? t('Picture fragment.')
       : selectedItem.kind === 'gif'
-      ? t('GIF 片段。')
+      ? t('GIF fragment.')
       : selectedItem.kind === 'svg'
-      ? t('SVG 片段。')
+      ? t('SVG fragment.')
       : selectedItem.kind === 'solid'
-      ? t('纯色片段。')
+      ? t('Solid color clip.')
       : selectedItem.kind === 'text'
-      ? t('文字片段。')
+      ? t('Text snippet.')
       : null
     : null;
   const hasVolume = selectedItem?.kind === 'audio' || selectedItem?.kind === 'video';
@@ -847,55 +847,55 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
       <button
         type="button"
         onClick={() => setCollapsed((v) => !v)}
-        title={collapsed ? t('展开属性') : t('收起属性')}
+        title={collapsed ? t('Expand properties') : t('Collapse properties')}
         className="cc-insp-header"
       >
         <span className={`cc-insp-chevron${collapsed ? ' closed' : ''}`}><Icon name="chevronDown" size={12} /></span>
-        <span className="cc-insp-title">{t('属性')}{selectedItem ? ` · ${selectedItem.name}` : ''}</span>
-        {selectedItem?.denoisedSrc && <span className="cc-insp-pill">{t('人声隔离')}</span>}
+        <span className="cc-insp-title">{t('Properties')}{selectedItem ? ` · ${selectedItem.name}` : ''}</span>
+        {selectedItem?.denoisedSrc && <span className="cc-insp-pill">{t('Vocal isolation')}</span>}
       </button>
       {!collapsed && (
       <div className="cc-insp-body">
         {!selectedItem ? (
-          <div className="cc-insp-muted">{t('选中时间线上的片段以编辑属性。')}</div>
+          <div className="cc-insp-muted">{t('Select a clip on the timeline to edit properties.')}</div>
         ) : (
           <div className="cc-insp-groups">
             {hint && <div className="cc-insp-hint">{hint}</div>}
-            {selectedItem.kind === 'text' && <><SectionLabel>{t('文字')}</SectionLabel><TextControl item={selectedItem} onPropChange={onItemPropChange} /></>}
+            {selectedItem.kind === 'text' && <><SectionLabel>{t('text')}</SectionLabel><TextControl item={selectedItem} onPropChange={onItemPropChange} /></>}
             {hasVolume && (
               <>
-                <SectionLabel>{t('音量')}</SectionLabel>
+                <SectionLabel>{t('Volume')}</SectionLabel>
                 <VolumeControl item={selectedItem} onChange={onItemVolumeChange} onNormalize={onNormalizeLoudness} />
               </>
             )}
             {(selectedItem.kind === 'video' || selectedItem.kind === 'audio') && onIsolateVoice && (
-              <><SectionLabel>{t('人声隔离')}</SectionLabel><IsolateVoiceControl item={selectedItem} onIsolate={onIsolateVoice} /></>
+              <><SectionLabel>{t('Vocal isolation')}</SectionLabel><IsolateVoiceControl item={selectedItem} onIsolate={onIsolateVoice} /></>
             )}
             {(selectedItem.kind === 'video' || selectedItem.kind === 'audio') && onItemSpeedChange && (
-              <><SectionLabel>{t('变速')}</SectionLabel><SpeedControl item={selectedItem} onChange={onItemSpeedChange} /></>
+              <><SectionLabel>{t('variable speed')}</SectionLabel><SpeedControl item={selectedItem} onChange={onItemSpeedChange} /></>
             )}
-            {isVisual && <><SectionLabel>{t('变换')}</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} kf={{
+            {isVisual && <><SectionLabel>{t('transform')}</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} kf={{
               localFrame: Math.max(0, Math.min(selectedItem.durationInFrames - 1, Math.round(getPlayhead()) - selectedItem.startFrame)),
               set: onSetItemKeyframe,
               remove: onRemoveItemKeyframe,
               seekLocal: (frame) => onSeek(selectedItem.startFrame + frame),
             }} /></>}
-            {isVisual && <><SectionLabel>{t('滤镜')}</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} autoGrade={autoGrade} /></>}
-            {/* GIF 不进 GL 管线(渲染端只纹理化 video/image),不提供特效入口;历史遗留可在片段右键移除 */}
-            {(selectedItem.kind === 'video' || selectedItem.kind === 'image') && <><SectionLabel>{t('特效')}</SectionLabel><EffectsControl item={selectedItem} onChange={onItemEffectsChange} /></>}
-            {isVisual && <><SectionLabel>{t('缩放')}</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} getLocalFrame={() => Math.max(0, Math.min(selectedItem.durationInFrames - 1, getPlayhead() - selectedItem.startFrame))} fps={fps} onSetKeyframe={onSetReframeKeyframe} onRemoveKeyframe={onRemoveReframeKeyframe} /></>}
-            {isVisual && <><SectionLabel>{t('转场')}</SectionLabel><TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} audioMode={false} /></>}
+            {isVisual && <><SectionLabel>{t('filter')}</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} autoGrade={autoGrade} /></>}
+            {/* GIF Not entering GL pipeline(Rendering side only texturing video/image),No special effects entrance is provided;Historical legacy can be removed by right-clicking on the clip */}
+            {(selectedItem.kind === 'video' || selectedItem.kind === 'image') && <><SectionLabel>{t('special effects')}</SectionLabel><EffectsControl item={selectedItem} onChange={onItemEffectsChange} /></>}
+            {isVisual && <><SectionLabel>{t('Zoom')}</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} getLocalFrame={() => Math.max(0, Math.min(selectedItem.durationInFrames - 1, getPlayhead() - selectedItem.startFrame))} fps={fps} onSetKeyframe={onSetReframeKeyframe} onRemoveKeyframe={onRemoveReframeKeyframe} /></>}
+            {isVisual && <><SectionLabel>{t('Transition')}</SectionLabel><TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} audioMode={false} /></>}
             {selectedItem.kind === 'audio' && (
-              <><SectionLabel>{t('音频转场')}</SectionLabel>
+              <><SectionLabel>{t('audio transition')}</SectionLabel>
               <TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} audioMode /></>
             )}
-            <SectionLabel>{t('淡入淡出')}</SectionLabel>
+            <SectionLabel>{t('Fade in and out')}</SectionLabel>
             <FadeControl item={selectedItem} fps={fps} onChange={onItemFadeChange} />
             {selectedItem.kind === 'solid' && (
               <>
-                <SectionLabel>{t('纯色')}</SectionLabel>
+                <SectionLabel>{t('solid color')}</SectionLabel>
                 <label className="cc-insp-mg-field">
-                  <span>{t('填充颜色')}</span>
+                  <span>{t('fill color')}</span>
                   <input
                     type="color"
                     value={String(selectedItem.props?.color ?? '#1a1a1a')}
@@ -906,7 +906,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
             )}
             {selectedItem.kind === 'motion-graphic' && (
               schema.length === 0 ? (
-                <div className="cc-insp-muted">{t('该模板无可编辑属性。')}</div>
+                <div className="cc-insp-muted">{t('This template has no editable properties.')}</div>
               ) : (
                 <div className="cc-insp-mg-grid">
                   {/* index in key: multi-asset templates may repeat a prop key */}

@@ -18,12 +18,12 @@ export function ExternalProposalCard({ external, onPreviewState }: {
     <>
       {external.error && (
         <div role="alert" style={{ margin: '10px 0', color: theme.danger, fontSize: 12 }}>
-          {t('外部 Agent：{message}', { message: external.error })}
+          {t('external Agent：{message}', { message: external.error })}
         </div>
       )}
       {external.proposal && (
         <ProposalCard
-          proposal={{ ...external.proposal, title: `${external.proposal.title} ${t('编辑提案')}` }}
+          proposal={{ ...external.proposal, title: `${external.proposal.title} ${t('Edit proposal')}` }}
           onApply={external.applyProposal}
           onReject={external.rejectProposal}
           stale={external.proposalStale}

@@ -15,7 +15,7 @@ export interface GenerationResult {
   fps?: number;
   /** Offset of a ranged export within the source timeline. */
   sourceStartSeconds?: number;
-  // 导出/渲染 job 复用同一队列：可选字段，让渲染产物自描述大小与编码（生成类 job 不填）。
+  // Export/rendering job reuses the same queue: Optional field, allowing the rendering product to self-describe the size and encoding (left blank for generated jobs).
   sizeBytes?: number;
   codec?: string;
 }

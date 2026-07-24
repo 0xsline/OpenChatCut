@@ -72,8 +72,8 @@ When the batch direction is textual or custom rather than a visual preset or act
 
 The only times to skip the style picker:
 
-- The user has already named a visual style, material, reference, or visual language ("做 editorial 杂志风的", "做个 80s 复古印刷", "magazine style 那种") — use it verbatim as the direction. For multiple MGs, this still enters the representative-MG branch until the user confirms the example.
-- The user has explicitly waved off alignment ("直接做" / "don't ask, just do it"): make your best guess, name it in chat, then continue with the normal authoring, frame-inspection, and consistency workflow.
+- The user has already named a visual style, material, reference, or visual language ("do editorial magazine style", "make one 80s Vintage printing", "magazine style That kind") — use it verbatim as the direction. For multiple MGs, this still enters the representative-MG branch until the user confirms the example.
+- The user has explicitly waved off alignment ("do it directly" / "don't ask, just do it"): make your best guess, name it in chat, then continue with the normal authoring, frame-inspection, and consistency workflow.
 
 ## Project Visual Language
 

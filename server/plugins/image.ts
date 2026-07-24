@@ -202,7 +202,7 @@ function localAssetPath(path: string): string {
   if (!path.startsWith('/media/uploads/')) throw new Error('reference asset must be under /media/uploads/');
   const name = path.slice('/media/uploads/'.length);
   if (!isSafeUploadName(name)) throw new Error('invalid reference asset path');
-  const file = resolveUploadFile(name);  // 自定义目录优先,旧默认目录兜底
+  const file = resolveUploadFile(name);  // Customized directories take priority, and the old default directories are ignored.
   if (!file) throw new Error(`reference asset not found: ${name}`);
   return file;
 }
@@ -427,7 +427,7 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
               prompt, count, aspectRatio, imageSize, referencePaths,
             });
           } else if (model === 'image-01') {
-            if (!options.minimaxApiKey) throw new Error('MiniMax is not configured. Set MINIMAX_API_KEY in .env.local or 设置面板.');
+            if (!options.minimaxApiKey) throw new Error('MiniMax is not configured. Set MINIMAX_API_KEY in .env.local or settings panel.');
             // aspect_ratio is passed straight through; imageSize/quality do not apply to MiniMax.
             // Actual MiniMax model id comes from settings (image-01 / image-01-live).
             images = await callMinimaxProvider(options.minimaxBaseUrl, options.minimaxApiKey, options.minimaxModel, {

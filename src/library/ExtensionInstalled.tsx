@@ -40,11 +40,11 @@ function PackDetails({ pack, confirming, busy, onConfirm, onRemove }: {
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 9 }}>
         {confirming ? (
           <>
-            <button type="button" disabled={busy} onClick={onRemove} style={{ ...secondaryButton(busy), color: theme.danger }}>{t('确认卸载')}</button>
-            <button type="button" onClick={onConfirm} style={secondaryButton()}>{t('取消')}</button>
+            <button type="button" disabled={busy} onClick={onRemove} style={{ ...secondaryButton(busy), color: theme.danger }}>{t('Confirm uninstall')}</button>
+            <button type="button" onClick={onConfirm} style={secondaryButton()}>{t('Cancel')}</button>
           </>
         ) : (
-          <button type="button" onClick={onConfirm} style={{ ...secondaryButton(), color: theme.danger }}>{t('卸载')}</button>
+          <button type="button" onClick={onConfirm} style={{ ...secondaryButton(), color: theme.danger }}>{t('Uninstall')}</button>
         )}
       </div>
     </div>
@@ -63,13 +63,13 @@ function InstalledCard({ pack, props }: { pack: InstalledPack; props: InstalledP
             <span style={{ color: theme.textStrong, fontSize: 12.5, fontWeight: 700 }}>{pack.name}</span>
             <span style={{ color: theme.textDim, fontSize: 10 }}>v{pack.version}</span>
           </div>
-          <div style={{ color: theme.textDim, fontSize: 10, marginTop: 3 }}>{pack.author || t('未知作者')} · <SourceLabel pack={pack} /> · {new Date(pack.installedAt).toLocaleDateString()}</div>
+          <div style={{ color: theme.textDim, fontSize: 10, marginTop: 3 }}>{pack.author || t('unknown author')} · <SourceLabel pack={pack} /> · {new Date(pack.installedAt).toLocaleDateString()}</div>
         </div>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 180 }}>
           {packCounts(pack).map(([label, count]) => <ExtensionTag key={label}>{t(label)} ×{count}</ExtensionTag>)}
         </div>
         <ExtensionToggle checked={pack.enabled} disabled={props.busyId !== null} onChange={() => props.onToggle(pack)} />
-        <button type="button" onClick={() => props.onExpand(expanded ? null : pack.id)} style={secondaryButton()}>{expanded ? t('收起') : t('查看内容')}</button>
+        <button type="button" onClick={() => props.onExpand(expanded ? null : pack.id)} style={secondaryButton()}>{expanded ? t('close') : t('View content')}</button>
       </div>
       {expanded && (
         <PackDetails
@@ -89,8 +89,8 @@ export function ExtensionInstalled(props: InstalledProps) {
   if (!props.packs.length) {
     return (
       <div style={{ padding: 40, textAlign: 'center' }}>
-        <div style={{ color: theme.text, fontSize: 12, fontWeight: 650 }}>{t('还没有安装扩展')}</div>
-        <div style={{ color: theme.textDim, fontSize: 10.5, marginTop: 5 }}>{t('去“发现”安装扩展，内容会自动进入对应资源分类。')}</div>
+        <div style={{ color: theme.text, fontSize: 12, fontWeight: 650 }}>{t('No extension installed yet')}</div>
+        <div style={{ color: theme.textDim, fontSize: 10.5, marginTop: 5 }}>{t('Go to "Discover" to install the extension, and the content will automatically enter the corresponding resource category.')}</div>
       </div>
     );
   }

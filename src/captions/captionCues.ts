@@ -8,7 +8,7 @@ export interface CueRow {
   start: number;
   end: number;
   text: string;
-  /** 本句可见词在 wordOverrides 索引空间里的键 */
+  /** The visible words in this sentence are in wordOverrides keys in index space */
   srcIdxs: number[];
 }
 
@@ -18,7 +18,7 @@ export function fmtCueMs(ms: number): string {
   return `${String(minutes).padStart(2, '0')}:${(seconds - minutes * 60).toFixed(1).padStart(4, '0')}`;
 }
 
-/** 渲染层 SingleStreamCaptions 的分页复算,但保留每个可见词的 override 键。 */
+/** render layer SingleStreamCaptions paging calculation,but retain the value of each visible word override key. */
 export function buildCues(captions: CaptionsData, items: TimelineItem[], fps: number): CueRow[] {
   const words = resolveCaptionWords(captions, items, fps);
   const indices = resolveCaptionWordIndices(captions, items, fps);
@@ -51,7 +51,7 @@ export function buildCues(captions: CaptionsData, items: TimelineItem[], fps: nu
   return rows;
 }
 
-/** 把第 k 句的文本改动翻译成 wordOverrides 补丁。 */
+/** Number one k The text changes of the sentence are translated into wordOverrides Patch. */
 export function cueTextPatch(
   captions: CaptionsData,
   rows: CueRow[],

@@ -30,7 +30,7 @@ export async function isolateVoiceOnSrc(
   opts?: { force?: boolean },
 ): Promise<IsolateVoiceResult> {
   if (!src.startsWith('/media/uploads/')) {
-    throw new Error('需先上传到媒体池（/media/uploads）');
+    throw new Error('Need to be uploaded to the media pool first (/media/uploads）');
   }
   const s = Math.max(0, Math.min(100, strength));
   const res = await fetch('/api/isolate-voice', {

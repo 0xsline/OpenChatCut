@@ -66,7 +66,7 @@ export function SceneDetectionDialog({ state, commands, item, onClose }: SceneDe
 
   const start = async () => {
     if (!item.src?.startsWith('/media/uploads/')) {
-      setError(t('场景检测只支持已经保存到本机素材库的视频'));
+      setError(t('Scene detection only supports videos that have been saved to the local material library.'));
       return;
     }
     setError(null);
@@ -99,7 +99,7 @@ export function SceneDetectionDialog({ state, commands, item, onClose }: SceneDe
 
   const apply = (mode: 'markers' | 'split') => {
     if (locked) {
-      setError(t('当前轨道已锁定，无法应用场景检测结果'));
+      setError(t('The current track is locked and scene detection results cannot be applied'));
       return;
     }
     if (!mapped.length || applied) return;
@@ -111,24 +111,24 @@ export function SceneDetectionDialog({ state, commands, item, onClose }: SceneDe
   };
 
   const phase = job ? ({
-    queued: t('等待检测'),
-    probing: t('分析素材信息'),
-    detecting: t('检测场景变化'),
-    finalizing: t('整理检测结果'),
-    completed: t('检测完成'),
-    failed: t('检测失败'),
-    cancelled: t('已取消'),
-  } as const)[job.status] : t('尚未开始');
+    queued: t('Waiting for detection'),
+    probing: t('Analyze material information'),
+    detecting: t('Detect scene changes'),
+    finalizing: t('Organize test results'),
+    completed: t('Test completed'),
+    failed: t('Detection failed'),
+    cancelled: t('Canceled'),
+  } as const)[job.status] : t('Not started yet');
 
   return createPortal(
     <div className="cc-scene-overlay" role="dialog" aria-modal="true" aria-labelledby="cc-scene-title" onClick={running ? undefined : close}>
       <section className="cc-scene-dialog" onClick={(event) => event.stopPropagation()}>
         <header className="cc-scene-header">
           <div>
-            <h2 id="cc-scene-title">{t('场景检测')}</h2>
-            <p>{item.name} · {t('本机分析，不上传素材')}</p>
+            <h2 id="cc-scene-title">{t('scene detection')}</h2>
+            <p>{item.name} · {t('Native analysis, no material uploaded')}</p>
           </div>
-          <button type="button" className="cc-scene-icon-button" onClick={close} aria-label={t('关闭')}>
+          <button type="button" className="cc-scene-icon-button" onClick={close} aria-label={t('close')}>
             <Icon name="x" size={17} />
           </button>
         </header>
@@ -136,20 +136,20 @@ export function SceneDetectionDialog({ state, commands, item, onClose }: SceneDe
         <div className="cc-scene-body">
           <aside className="cc-scene-options">
             <label>
-              <span>{t('检测灵敏度')}</span>
+              <span>{t('Detection sensitivity')}</span>
               <strong>{threshold.toFixed(2)}</strong>
               <input type="range" min={0.05} max={0.95} step={0.01} value={threshold} disabled={running}
                 onChange={(event) => setThreshold(Number(event.target.value))} />
-              <small>{t('数值越低，检测到的切点越多')}</small>
+              <small>{t('The lower the value, the more cut points are detected')}</small>
             </label>
             <label>
-              <span>{t('最短场景间隔')}</span>
+              <span>{t('Minimum scene interval')}</span>
               <strong>{minSceneSeconds.toFixed(2)}s</strong>
               <input type="range" min={0.1} max={10} step={0.05} value={minSceneSeconds} disabled={running}
                 onChange={(event) => setMinSceneSeconds(Number(event.target.value))} />
             </label>
             <label>
-              <span>{t('最多切点')}</span>
+              <span>{t('Most cut points')}</span>
               <input className="cc-scene-number" type="number" min={1} max={500} value={maxScenes} disabled={running}
                 onChange={(event) => setMaxScenes(Math.max(1, Math.min(500, Number(event.target.value) || 1)))} />
             </label>
@@ -158,14 +158,14 @@ export function SceneDetectionDialog({ state, commands, item, onClose }: SceneDe
               <div><span>{phase}</span><strong>{Math.round((job?.progress ?? 0) * 100)}%</strong></div>
               <div className="cc-scene-progress-track"><i style={{ width: `${Math.round((job?.progress ?? 0) * 100)}%` }} /></div>
               {job?.status === 'detecting' && job.result === null && (
-                <small>{t('已分析到 {time}', { time: formatTime(job.processedMs) })}</small>
+                <small>{t('has been analyzed {time}', { time: formatTime(job.processedMs) })}</small>
               )}
             </div>
 
             {running ? (
-              <button type="button" className="cc-scene-button secondary" onClick={() => void cancel()}>{t('取消检测')}</button>
+              <button type="button" className="cc-scene-button secondary" onClick={() => void cancel()}>{t('Cancel detection')}</button>
             ) : (
-              <button type="button" className="cc-scene-button primary" onClick={() => void start()}>{job ? t('重新检测') : t('开始检测')}</button>
+              <button type="button" className="cc-scene-button primary" onClick={() => void start()}>{job ? t('Retest') : t('Start testing')}</button>
             )}
             {error && <p className="cc-scene-error">{error}</p>}
           </aside>
@@ -173,20 +173,20 @@ export function SceneDetectionDialog({ state, commands, item, onClose }: SceneDe
           <main className="cc-scene-results">
             <div className="cc-scene-results-header">
               <div>
-                <h3>{t('切点证据')}</h3>
+                <h3>{t('cut point evidence')}</h3>
                 <p>{job?.status === 'completed'
-                  ? t('检测到 {all} 个切点，当前片段可应用 {mapped} 个', { all: evidence.length, mapped: mapped.length })
-                  : t('检测完成后会显示切点前后的画面对比')}</p>
+                  ? t('detected {all} cut point, the current fragment can be applied {mapped} a', { all: evidence.length, mapped: mapped.length })
+                  : t('After the detection is completed, the screen comparison before and after the cut point will be displayed.')}</p>
               </div>
               {job?.result && <span>{job.result.sampleFps.toFixed(1)} fps</span>}
             </div>
 
             <div className="cc-scene-list">
               {job?.status !== 'completed' && (
-                <div className="cc-scene-empty"><Icon name="film" size={28} /><span>{running ? t('正在读取画面变化…') : t('调整参数后开始检测')}</span></div>
+                <div className="cc-scene-empty"><Icon name="film" size={28} /><span>{running ? t('Loading screen changes...') : t('Start testing after adjusting parameters')}</span></div>
               )}
               {job?.status === 'completed' && evidence.length === 0 && (
-                <div className="cc-scene-empty"><Icon name="check" size={28} /><span>{t('没有发现满足条件的场景切点')}</span></div>
+                <div className="cc-scene-empty"><Icon name="check" size={28} /><span>{t('No scene cutpoint that meets the conditions was found.')}</span></div>
               )}
               {evidence.map((scene, index) => {
                 const applicable = mappedTimes.has(scene.timeMs);
@@ -195,15 +195,15 @@ export function SceneDetectionDialog({ state, commands, item, onClose }: SceneDe
                     <div className="cc-scene-row-meta">
                       <strong>#{index + 1}</strong>
                       <span>{formatTime(scene.timeMs)}</span>
-                      <em>{scene.kind === 'cut' ? t('硬切') : t('渐变')}</em>
+                      <em>{scene.kind === 'cut' ? t('hard cut') : t('Gradient')}</em>
                       <small>{scene.score.toFixed(3)}</small>
                     </div>
                     <div className="cc-scene-evidence">
-                      <figure><img src={scene.beforeThumbnailUrl} alt={t('切点前画面')} loading="lazy" /><figcaption>{t('之前')}</figcaption></figure>
+                      <figure><img src={scene.beforeThumbnailUrl} alt={t('Screen before cut point')} loading="lazy" /><figcaption>{t('before')}</figcaption></figure>
                       <i><Icon name="next" size={16} /></i>
-                      <figure><img src={scene.afterThumbnailUrl} alt={t('切点后画面')} loading="lazy" /><figcaption>{t('之后')}</figcaption></figure>
+                      <figure><img src={scene.afterThumbnailUrl} alt={t('Picture after cut point')} loading="lazy" /><figcaption>{t('after')}</figcaption></figure>
                     </div>
-                    {!applicable && <span className="cc-scene-outside">{t('不在当前裁切范围')}</span>}
+                    {!applicable && <span className="cc-scene-outside">{t('Not within the current cropping range')}</span>}
                   </article>
                 );
               })}
@@ -212,10 +212,10 @@ export function SceneDetectionDialog({ state, commands, item, onClose }: SceneDe
         </div>
 
         <footer className="cc-scene-footer">
-          <span>{applied === 'markers' ? t('已添加场景标记') : applied === 'split' ? t('已按场景切分片段') : locked ? t('轨道已锁定') : ''}</span>
+          <span>{applied === 'markers' ? t('Scene markers added') : applied === 'split' ? t('Clips split into scenes') : locked ? t('track locked') : ''}</span>
           <div>
-            <button type="button" className="cc-scene-button secondary" disabled={!mapped.length || !!applied || locked} onClick={() => apply('markers')}>{t('添加场景标记')}</button>
-            <button type="button" className="cc-scene-button primary" disabled={!mapped.length || !!applied || locked} onClick={() => apply('split')}>{t('按场景切分')}</button>
+            <button type="button" className="cc-scene-button secondary" disabled={!mapped.length || !!applied || locked} onClick={() => apply('markers')}>{t('Add scene markers')}</button>
+            <button type="button" className="cc-scene-button primary" disabled={!mapped.length || !!applied || locked} onClick={() => apply('split')}>{t('Split by scene')}</button>
           </div>
         </footer>
       </section>

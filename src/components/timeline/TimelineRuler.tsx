@@ -1,6 +1,6 @@
-// 时间标尺(逐字搬自 Timeline.tsx):点击/按住拖动 seek;选择模式下点=时间点、
-// 拖=时间段(startPick)。刻度密度随缩放取「好看的」主刻度;上面叠 I/O 入出点旗
-// 与项目级标记图钉(点图钉开批注编辑器)。时码 span 由播放头绘制器直写初值以外的帧。
+// Time ruler (moved verbatim from Timeline.tsx): click/hold drag seek; point in selection mode = time point,
+// drag=timeperiod(startPick). The scale density changes with scaling to "good-looking" main scales; the I/O input and output flags are stacked on top.
+// Mark the project-level pin with it (click the pin to open the comment editor). The timecode span is written directly by the playhead painter to frames other than the initial value.
 import { type RefObject } from 'react';
 import { theme } from '../../theme';
 import { MARKER_HEX, type Marker, type TimelineState } from '../../editor/types';
@@ -38,7 +38,7 @@ export function TimelineRuler({
       onPointerDown={(e) => {
         if (pickMode) { startPick(e, 'ruler'); return; }
         if (e.button !== 0) return;
-        e.currentTarget.setPointerCapture(e.pointerId); // 按住拖动=连续 seek;抬手自动释放
+        e.currentTarget.setPointerCapture(e.pointerId); // Press and drag = continuous seek; raise your hand to release automatically
         e.currentTarget.style.cursor = 'grabbing';
         seekTo(e.clientX);
       }}
@@ -88,7 +88,7 @@ export function TimelineRuler({
           <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3 }}>
             {zoneIn != null && zoneOut != null && zoneOut > zoneIn && (
               <div
-                title={t('入出点区间')}
+                title={t('Entry and exit point range')}
                 style={{
                   position: 'absolute', left: zoneIn * px, top: 0, bottom: 0,
                   width: (zoneOut - zoneIn) * px,
@@ -99,19 +99,19 @@ export function TimelineRuler({
               />
             )}
             {zoneIn != null && (
-              <div title={t('入点 (I)')} style={{
+              <div title={t('entry point (I)')} style={{
                 position: 'absolute', left: zoneIn * px, top: 2, transform: 'translateX(-50%)',
                 width: 0, height: 0,
-                // impeccable-disable-next-line side-tab -- CSS 三角形小旗(入点标记),非卡片彩边
+                // impeccable-disable-next-line side-tab -- CSS triangular flag (entry mark), non-card colored edge
                 borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
                 borderTop: '8px solid #58a6ff',
               }} />
             )}
             {zoneOut != null && (
-              <div title={t('出点 (O)')} style={{
+              <div title={t('Make a point (O)')} style={{
                 position: 'absolute', left: zoneOut * px, top: 2, transform: 'translateX(-50%)',
                 width: 0, height: 0,
-                // impeccable-disable-next-line side-tab -- CSS 三角形小旗(出点标记),非卡片彩边
+                // impeccable-disable-next-line side-tab -- CSS triangular flag (out point mark), non-card colored edge
                 borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
                 borderTop: '8px solid #f0883e',
               }} />
@@ -124,7 +124,7 @@ export function TimelineRuler({
             {m.durationFrames > 0 && (
               <div style={{ position: 'absolute', left: 0, top: 12, height: 4, width: Math.max(4, m.durationFrames * px), background: MARKER_HEX[m.color], borderRadius: 2, opacity: 0.85 }} />
             )}
-            <button onPointerDown={(e) => e.stopPropagation()} onClick={() => onEditMarker(m.id)} title={m.note || t('标记')}
+            <button onPointerDown={(e) => e.stopPropagation()} onClick={() => onEditMarker(m.id)} title={m.note || t('mark')}
               style={{ pointerEvents: 'auto', position: 'absolute', left: 0, top: -1, transform: 'translateX(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 0 }}>
               <svg width="13" height="15" viewBox="0 0 24 24" fill={MARKER_HEX[m.color]} stroke="rgba(0,0,0,0.9)" strokeWidth="1.6" style={{ display: 'block' }}>
                 <path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />

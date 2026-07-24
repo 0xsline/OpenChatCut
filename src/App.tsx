@@ -14,7 +14,7 @@ import { useT } from './i18n/locale';
 
 const Editor = lazy(() => import('./Editor'));
 
-// A brand-new project starts empty; the first-run "示例工程" gets the seed clips.
+// A brand-new project starts empty; the first-run "Sample Project" gets the seed clips.
 const emptyState = (): TimelineState => ({
   fps: 30,
   width: 1920,
@@ -51,8 +51,8 @@ function EditorLoader({ meta, onHome, onRename }: { meta: ProjectMeta; onHome: (
     loadProject(meta.id).then((d) => { if (alive) setInitial(d ?? emptyDoc()); });
     return () => { alive = false; };
   }, [meta.id]);
-  if (!initial) return <Splash text={t('加载工程…')} />;
-  return <Suspense fallback={<Splash text={t('加载编辑器…')} />}><Editor initial={initial} project={meta} onHome={onHome} onRename={onRename} /></Suspense>;
+  if (!initial) return <Splash text={t('Load project…')} />;
+  return <Suspense fallback={<Splash text={t('Loading editor…')} />}><Editor initial={initial} project={meta} onHome={onHome} onRename={onRename} /></Suspense>;
 }
 
 export default function App() {
@@ -89,17 +89,17 @@ export default function App() {
     (async () => {
       let list = await listProjects();
       if (list.length === 0 && !(await hasProjectHistory())) {
-        list = [await createProject('示例工程', await seedDoc())];
+        list = [await createProject('Sample project', await seedDoc())];
       }
       setProjects(list);
     })();
   }, []);
 
-  if (!projects) return <Splash text={t('加载中…')} />;
+  if (!projects) return <Splash text={t('Loading…')} />;
 
   if (route.name === 'editor') {
     const meta = projects.find((p) => p.id === route.id);
-    if (!meta) { go('#/'); return <Splash text={t('工程不存在，返回…')} />; }
+    if (!meta) { go('#/'); return <Splash text={t('The project does not exist, return...')} />; }
     return (
       <EditorLoader
         key={meta.id}
@@ -117,28 +117,28 @@ export default function App() {
       onNew={async () => { const m = await createProject(randomProjectName(), emptyDoc()); await refresh(); go(`#/editor/${m.id}`); }}
       onRename={async (id, name) => { await renameProject(id, name); refresh(); }}
       onDuplicate={async (id) => { await duplicateProject(id); refresh(); }}
-      onDelete={async (id) => { await purgeProjectCascade(id); refresh(); }}  // 级联:删工程 + 清其独占素材
+      onDelete={async (id) => { await purgeProjectCascade(id); refresh(); }}  // Cascade: delete the project + clear its exclusive materials
       onExport={async (id, name) => {
         const r = await buildProjectExport(id, name);
         downloadBlob(r.blob, r.filename);
         return r.mediaMissing.length
-          ? t('已导出「{name}」;{n} 个素材两端都取不到,未随包', { name, n: r.mediaMissing.length })
-          : t('已导出「{name}」(含 {n} 个素材)', { name, n: r.mediaTotal });
+          ? t('Exported "{name}」;{n} Both ends of the material cannot be obtained,Not included in the package', { name, n: r.mediaMissing.length })
+          : t('Exported "{name}」(Contains {n} materials)', { name, n: r.mediaTotal });
       }}
       onImport={async (file) => {
         const parsed = parseProjectEnvelope(await file.text());
-        if ('error' in parsed) return t('导入失败:{error}', { error: parsed.error });
+        if ('error' in parsed) return t('Import failed:{error}', { error: parsed.error });
         const r = await applyProjectImport(parsed.envelope);
         await refresh();
         return r.mediaMissing.length
-          ? t('已导入「{name}」;缺 {n} 个素材({list})', { name: r.meta.name, n: r.mediaMissing.length, list: r.mediaMissing.map((s: string) => s.split('/').pop()).join('、') })
-          : t('已导入「{name}」(素材 {a}/{b})', { name: r.meta.name, a: r.mediaRestored, b: r.mediaTotal });
+          ? t('Imported "{name}」;missing {n} materials({list})', { name: r.meta.name, n: r.mediaMissing.length, list: r.mediaMissing.map((s: string) => s.split('/').pop()).join('、') })
+          : t('Imported "{name}」(Material {a}/{b})', { name: r.meta.name, a: r.mediaRestored, b: r.mediaTotal });
       }}
     />
   );
 }
 
-// Blob 下载:同步 revoke 会掐掉 Chrome 的下载(插件导出踩过),必须挂 DOM + 延时回收。
+// Blob download: Synchronous revoke will interrupt the Chrome download (plug-in export is ignored), and DOM + delayed recycling must be installed.
 function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

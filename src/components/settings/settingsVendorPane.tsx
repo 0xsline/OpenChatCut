@@ -1,7 +1,7 @@
-// 设置面板右栏:选中厂商的配置页(头 + 字段卡 + 测试连接行)与字段渲染件。
-// 从 SettingsDialog.tsx 拆出(500 行上限);布局壳与左/中栏仍在那边。
-// 「测试连接」走 POST /api/keys/test:把本页未保存的暂存值作为 overrides 一并
-// 送去服务端探测(仅本次生效,不落盘),密钥值永远不会出现在响应里。
+// Right column of the settings panel: Select the manufacturer's configuration page (header + field card + test connection row) and field rendering.
+// Detached from SettingsDialog.tsx (500 line limit); the layout shell and left/center columns are still there.
+// "Test connection" goes POST /api/keys/test: the unsaved temporary values ​​of this page are included as overrides.
+// Sent to the server for detection (only effective this time, not dropped to disk), the key value will never appear in the response.
 import { useState } from 'react';
 import { theme, themeAlpha } from '../../theme';
 import { useT } from '../../i18n/locale';
@@ -11,10 +11,10 @@ import {
   type KeyStatusResponse, type SettingsField, type SettingsVendorPage, type StagedValues as Values,
 } from './settingsSchema';
 
-export const ON = theme.success; // 状态绿 → 语义令牌(石墨值≈原 #4caf7d,浅肤自动换深绿)
-export const WARN = '#f77';    // 错误 / 清除警示(沿用原面板错误色)
+export const ON = theme.success; // Status green → semantic token (graphite value ≈ original #4caf7d, light skin automatically changes to dark green)
+export const WARN = '#f77';    // Error / clear alert (retain original panel error color)
 
-/** 字段渲染共享上下文:服务端状态 + 暂存 + 明文开关 + 暂存/清除回调。 */
+/** Field rendering shared context:Server status + temporary storage + plaintext switch + temporary storage/Clear callback. */
 export interface FieldCtx {
   status: KeyStatusResponse | null;
   values: Values;
@@ -25,7 +25,7 @@ export interface FieldCtx {
   onModelsDiscovered: (name: string, models: readonly string[]) => void;
 }
 
-// ── 厂商配置页 ────────────────────────────────────────────────────────────
+// ──Manufacturer configuration page ───────────────────────────────────────────────────────
 
 export function VendorPane({ page, hint, ctx }: {
   page: SettingsVendorPage; hint: string; ctx: FieldCtx;
@@ -38,7 +38,7 @@ export function VendorPane({ page, hint, ctx }: {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <VendorIcon vendor={page.vendor} size={18} />
           <b style={{ fontSize: 13 }}>{t(page.title)}</b>
-          <span style={{ fontSize: 11, color: on ? ON : theme.textDim }}>{on ? t('已配置') : t('未配置')}</span>
+          <span style={{ fontSize: 11, color: on ? ON : theme.textDim }}>{on ? t('configured') : t('Not configured')}</span>
         </div>
         <div style={{ fontSize: 11.5, color: theme.textDim, marginTop: 3, paddingLeft: 26 }}>{t(hint)}</div>
       </div>
@@ -53,12 +53,12 @@ export function VendorPane({ page, hint, ctx }: {
   );
 }
 
-// ── 测试连接 ─────────────────────────────────────────────────────────────
+// ──Test the connection──────────────────────────────────────────────────────
 
 interface ProbeResponse { ok: boolean; message: string; latencyMs?: number; models?: string[]; }
 interface ProbeShown { page: string; ok: boolean; message: string; }
 
-/** 本页字段里未保存的暂存值→探测 overrides；空串代表本次测试按默认值。 */
+/** Unsaved temporary values in fields on this page→detection overrides;The empty string represents the default value for this test. */
 function stagedOverrides(page: SettingsVendorPage, values: Values): Record<string, string> {
   const overrides: Record<string, string> = {};
   for (const f of page.fields) {
@@ -84,8 +84,8 @@ function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: Field
         body: JSON.stringify({ page: page.key, overrides }),
       });
       const body = await res.json().catch(() => null) as ProbeResponse | null;
-      if (!body || typeof body.message !== 'string') throw new Error(t('测试请求失败 ({n})', { n: res.status }));
-      const suffix = staged && body.ok ? t('（按当前输入测试，记得保存）') : '';
+      if (!body || typeof body.message !== 'string') throw new Error(t('Test request failed ({n})', { n: res.status }));
+      const suffix = staged && body.ok ? t('(Test according to current input, remember to save)') : '';
       setResult({ page: page.key, ok: body.ok, message: body.message + suffix });
       const modelField = page.fields.find((field) => field.discoverableModel);
       if (body.ok && modelField && Array.isArray(body.models)) {
@@ -102,7 +102,7 @@ function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: Field
     <div style={testRow}>
       <button type="button" onClick={() => { void test(); }} disabled={busy}
         style={{ ...testBtn, opacity: busy ? 0.6 : 1, cursor: busy ? 'default' : 'pointer' }}>
-        {busy ? t('测试中…') : page.key.startsWith('llm/') ? t('测试并读取模型') : t('测试连接')}
+        {busy ? t('Testing…') : page.key.startsWith('llm/') ? t('Test and read the model') : t('test connection')}
       </button>
       {shown && (
         <span style={{ ...testMsg, color: shown.ok ? ON : WARN }} title={shown.message}>
@@ -112,27 +112,27 @@ function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: Field
       {!shown && !busy && (
         <span style={{ ...testMsg, color: theme.textDim }}>
           {page.key.startsWith('llm/')
-            ? t('验证地址与密钥，并读取该接口可用的模型')
-            : t('发一条最小请求验证 Key 与地址可用')}
+            ? t('Verify the address and key, and read the models available for this interface')
+            : t('Send a minimum request for verification Key Available with address')}
         </span>
       )}
     </div>
   );
 }
 
-// ── 字段渲染 ─────────────────────────────────────────────────────────────
+// ──Field rendering ────────────────────────────────────────────────────────
 
 export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }) {
   const t = useT();
   const { status, reveal, onStage, onToggleClear } = ctx;
-  // value: undefined = 无暂存改动;'' = 暂存清除 / 回默认;其余 = 暂存新值。
+  // value: undefined = no temporary changes; '' = temporary cache clear / return to default; the rest = temporary new values.
   const value = ctx.values[field.name];
   const st = status?.keys[field.name];
   const configured = Boolean(st?.configured);
   const stagedClear = value === '' && field.kind !== 'toggle';
-  // 模型 / 路由字段回显服务端当前值;secret / base url 永不回填。
+  // The model/routing field echoes the current value of the server; the secret/base url is never backfilled.
   const shown = value ?? (isModelField(field) ? modelValue(status, field.name) : '');
-  // select 用「默认」选项即清除;toggle 的关/开本身就是设/清。
+  // Select uses the "default" option to clear; toggle's off/on itself is set/clear.
   const clearable = configured && field.kind !== 'select' && field.kind !== 'toggle';
   const discovered = field.discoverableModel ? ctx.modelOptions[field.name] ?? [] : [];
   return (
@@ -140,12 +140,12 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
       <span style={fieldHead}>
         <span style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
           {t(field.label)}
-          {configured && <span style={sourceTag}>{st?.source === 'env' ? '.env.local' : t('本次设置')}</span>}
+          {configured && <span style={sourceTag}>{st?.source === 'env' ? '.env.local' : t('This setting')}</span>}
         </span>
         {clearable && (
           <button type="button" onClick={(e) => { e.preventDefault(); onToggleClear(field.name); }}
             style={{ ...clearBtn, color: stagedClear ? WARN : theme.textDim }}>
-            {stagedClear ? t('取消清除') : t('清除')}
+            {stagedClear ? t('Cancel clear') : t('Clear')}
           </button>
         )}
       </span>
@@ -183,22 +183,22 @@ function ModelInput({ field, shown, models, reveal, configured, stagedClear, onS
       </div>
       <select
         value=""
-        aria-label={t('选择模型')}
-        title={t('选择模型')}
+        aria-label={t('Select model')}
+        title={t('Select model')}
         onChange={(event) => {
           if (event.target.value) onStage(field, event.target.value);
         }}
         style={{ ...select, width: 118, flex: '0 0 118px' }}
       >
-        <option value="">{t('选择模型')}</option>
+        <option value="">{t('Select model')}</option>
         {[...new Set(models)].map((model) => <option key={model} value={model}>{model}</option>)}
       </select>
     </div>
   );
 }
 
-/** 开关字段:'' / 任意非 '0' = 启用(默认),'0' = 停用。开 = 暂存 ''(清键回默认),
- * 关 = 暂存 '0'——与 buildPatch 的「'' 显式清除」语义天然一致,保存即生效。 */
+/** switch field:'' / Any non '0' = enable(Default),'0' = Deactivate. open = temporary storage ''(Clear keys and return to default),
+ * close = temporary storage '0'——with buildPatch of "'' "Explicit Clear" semantics are naturally consistent,It will take effect after saving. */
 function ToggleSwitch({ field, shown, onStage }: {
   field: SettingsField; shown: string;
   onStage: (field: SettingsField, raw: string) => void;
@@ -225,7 +225,7 @@ function ToggleSwitch({ field, shown, onStage }: {
           boxShadow: `0 1px 3px ${themeAlpha.shadow(0.4)}`,
         }} />
       </span>
-      {on ? t('已启用') : t('已停用')}
+      {on ? t('Enabled') : t('Deactivated')}
     </button>
   );
 }
@@ -271,7 +271,7 @@ function DirectoryInput({ field, shown, stagedClear, onStage }: {
       const selected = await picker(shown || undefined);
       if (selected) onStage(field, selected);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('无法打开目录选择器'));
+      setError(reason instanceof Error ? reason.message : t('Unable to open directory selector'));
     } finally {
       setBusy(false);
     }
@@ -284,12 +284,12 @@ function DirectoryInput({ field, shown, stagedClear, onStage }: {
           placeholder={fieldPlaceholder(field, false, stagedClear)}
           style={{ ...(stagedClear ? { ...input, border: `0.5px solid ${WARN}` } : input), minWidth: 0 }} />
         <button type="button" onClick={(e) => { e.preventDefault(); void pick(); }}
-          disabled={!picker || busy} title={!picker ? t('目录选择器仅桌面端可用') : t('选择素材保存目录')}
+          disabled={!picker || busy} title={!picker ? t('Directory selector only available on desktop') : t('Select material saving directory')}
           style={{ ...browseBtn, opacity: !picker || busy ? 0.55 : 1 }}>
-          {busy ? t('选择中…') : t('选择目录')}
+          {busy ? t('Selecting…') : t('Select directory')}
         </button>
       </div>
-      {!picker && <span style={fieldHint}>{t('目录选择器仅桌面端可用，浏览器中请手动输入绝对路径。')}</span>}
+      {!picker && <span style={fieldHint}>{t('The directory selector is only available on the desktop. Please enter the absolute path manually in the browser.')}</span>}
       {error && <span style={{ ...fieldHint, color: WARN }}>{error}</span>}
     </>
   );
@@ -300,7 +300,7 @@ function SelectInput({ field, status, shown, onStage }: {
   onStage: (field: SettingsField, raw: string) => void;
 }) {
   const opts = selectOptions(field);
-  const unknown = shown !== '' && !opts.some((o) => o.value === shown);  // 手改 .env.local 的值也如实显示
+  const unknown = shown !== '' && !opts.some((o) => o.value === shown);  // Manually changing the value of .env.local is also displayed faithfully
   return (
     <select value={shown} onChange={(e) => onStage(field, e.target.value)} style={select}>
       {unknown && <option value={shown}>{shown}</option>}
@@ -311,7 +311,7 @@ function SelectInput({ field, status, shown, onStage }: {
   );
 }
 
-// ── 样式 ─────────────────────────────────────────────────────────────────
+// ── Style ───────────────────────────────────────────────────────────
 
 const pane: React.CSSProperties = {
   flex: 1, minWidth: 0, overflowY: 'auto', padding: '14px 20px 16px', display: 'flex', flexDirection: 'column', gap: 12,

@@ -19,7 +19,7 @@ Any time the user wants to generate a video clip — text-to-video, image-to-vid
 | --- | --- | --- |
 | `seedance2` | [references/seedance2.md](references/seedance2.md) | Default when configured. Multimodal refs, first/last, edit/extend/bridge, 2–15s, 480p/720p/1080p/4k, audio/seed/camera/watermark/last-frame/task controls. |
 | `kling` | [references/kling.md](references/kling.md) | Technical camera/performance; Omni multi-shot; images ≤7 (≤4 with one feature `refVideos`); std/pro; 3–15s. |
-| `hailuo` | [references/hailuo.md](references/hailuo.md) | MiniMax 海螺. T2V / I2V / first+last; **6s or 10s**; 512P (Hailuo-02), 720p→768P, 1080P (6s); no multi-ref / multi-shot. |
+| `hailuo` | [references/hailuo.md](references/hailuo.md) | MiniMax conch. T2V / I2V / first+last; **6s or 10s**; 512P (Hailuo-02), 720p→768P, 1080P (6s); no multi-ref / multi-shot. |
 
 **IMPORTANT:** Before generating, READ the chosen model's reference for capabilities, input channels, modes, prompt structure, and model-specific behavior. Never invent params the reference forbids.
 
@@ -27,7 +27,7 @@ Any time the user wants to generate a video clip — text-to-video, image-to-vid
 
 Respect **configured vendors** from the capabilities prompt (only call a model whose key is on).
 
-1. **User named a vendor** ("用海螺", "MiniMax", "Kling", "Seedance") → that `model`, if configured.
+1. **User named a vendor** ("Use conch", "MiniMax", "Kling", "Seedance") → that `model`, if configured.
 2. Else **default `seedance2`** when Seedance is configured.
 3. Else if only Kling is on → `kling`. Else if only MiniMax is on → `hailuo`.
 4. Switch away from default when:
@@ -76,7 +76,7 @@ Before writing any prompt, align on three dimensions:
 
 1. **Duration & segments** — total length, how many shots, and whether they live in one clip or several.
 
-   If the user has already stated a direction ("做一段", "in one video", "分别生成", "split into N shots", etc.), follow it — don't second-guess.
+   If the user has already stated a direction ("make a section", "in one video", "Generate separately", "split into N shots", etc.), follow it — don't second-guess.
 
    Otherwise, surface the two paths and let the user pick:
    - **Multi-shot within one clip** (see model ref) — single inference, subject / lighting / style physically consistent across sub-shots; fits a coherent narrative within the per-clip duration cap.
@@ -109,9 +109,9 @@ For each dimension, check the user's words:
 
 #### Hard overrides (user's explicit word wins)
 
-- "one clip / single clip / 一条 / 一个镜头 / in 1 clip" → never split, even if the description is objectively long.
-- "N shots / N 段 / N 个镜头" → generate exactly N.
-- "use this image / 用这张图" → use as reference, don't substitute.
+- "one clip / single clip / one piece / a shot / in 1 clip" → never split, even if the description is objectively long.
+- "N shots / N segment / N shot" → generate exactly N.
+- "use this image / Use this picture" → use as reference, don't substitute.
 
 ### Step 2 — Write the prompt
 
@@ -154,7 +154,7 @@ An **anchor** is a reference image or video pinned across every shot that shares
 Have reference awareness. When the user's request involves a recurring character / object / scene, think about what anchor to use **before** writing prompts:
 
 - **Check the project first.** What has the user already provided or approved? Uploaded images, previously generated and approved shots, or earlier project assets can all serve as anchors.
-- **Match the user's intent.** If the user pointed to a specific asset ("use this photo", "像上一段那样"), use that. If they described a character only in words, no anchor exists yet and one must be established.
+- **Match the user's intent.** If the user pointed to a specific asset ("use this photo", "like the previous paragraph"), use that. If they described a character only in words, no anchor exists yet and one must be established.
 - **When in doubt, ask the user.** Don't guess which asset to pin, and don't silently generate a new anchor when the user may already have one in mind.
 
 ### Establishing a new anchor (with user consent)

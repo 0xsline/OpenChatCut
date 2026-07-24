@@ -6,9 +6,9 @@ import type { TimelineState } from './types';
 
 // The template library + the first-run seed project. Shared by the loader shell
 // (fallback when nothing is persisted) and the editor (agent context / library).
-// 211 条(openchatcut-templates.json) + 竖屏自媒体 social-shorts（9:16）
-// + 口播场景 koubo-scenes(背景+人物透窗,横竖双向)。
-// 旧口播双画面(koubo-dual)预览太糙已下架,勿再合并——koubo-scenes 是替代品。
+// 211 items (openchatcut-templates.json) + vertical screen self-media social-shorts (9:16)
+// + Koubo-scenes (background + characters through the window, both horizontal and vertical directions).
+// The old koubo-dual preview was too rough and has been removed from the shelves. Please do not merge it again - koubo-scenes is a replacement.
 export const TEMPLATES = [
   ...(templatesJson as Tpl[]),
   ...(socialShortsJson as Tpl[]),

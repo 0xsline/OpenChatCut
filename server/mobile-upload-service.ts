@@ -159,10 +159,10 @@ function mobilePage(locale: MobilePageLocale): string {
     choose: 'Choose media', multiple: 'Multiple files supported. Keep this page open until all uploads finish.',
     waiting: 'Waiting to upload', sent: 'Sent', failed: 'Upload failed', interrupted: 'Network interrupted',
   } : {
-    pageTitle: '手机传素材', title: '发送素材到 OpenChatCut',
-    hint: '选择手机里的视频、图片或音频。电脑和手机需连接同一局域网。',
-    choose: '选择素材', multiple: '支持多选，页面保持打开直到全部完成',
-    waiting: '等待上传', sent: '已发送', failed: '上传失败', interrupted: '网络中断',
+    pageTitle: 'Transfer material via mobile phone', title: 'Send material to OpenChatCut',
+    hint: 'Select videos, pictures or audios from your phone. The computer and mobile phone need to be connected to the same local area network.',
+    choose: 'Select material', multiple: 'Supports multiple selections, the page remains open until all are completed',
+    waiting: 'Waiting for upload', sent: 'Sent', failed: 'Upload failed', interrupted: 'Network outage',
   };
   const scriptCopy = JSON.stringify({ waiting: copy.waiting, sent: copy.sent, failed: copy.failed, interrupted: copy.interrupted });
   return `<!doctype html>

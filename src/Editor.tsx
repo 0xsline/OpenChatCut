@@ -96,7 +96,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   stateRef.current = state;
   const docRef = useRef(doc);
   docRef.current = doc;
-// 创作模式:选中的技能 id 注入系统提示，并存入 IDB(不进 undo 历史)。
+// Creative mode: The selected skill id is injected into the system prompt and stored in the IDB (without entering the undo history).
   const [creativeMode, setCreativeMode] = useState<string | null>(null);
   const creativeModeRef = useRef(creativeMode);
   creativeModeRef.current = creativeMode;
@@ -106,7 +106,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     saveCreativeMode(project.id, id);
   }, [project.id]);
   const playerRef = useRef<PlayerRef | null>(null);
-  // 内置 + 已装插件的 MG 模板:agent(browse_library/加 MG)与资源库共用同一份
+  // Built-in + plug-in MG template: agent (browse_library/plus MG) shares the same copy with the resource library
   const pluginPacks = usePluginPacks();
   const allTemplates = useMemo(
     () => (pluginPacks.length ? [...TEMPLATES, ...pluginTemplates(pluginPacks)] : TEMPLATES),
@@ -168,7 +168,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     const selected = new Set(selectedIdsOf(snapshot));
     const targets = snapshot.items.filter((item) => selected.has(item.id) && isAutoGradeTarget(item, snapshot));
     if (!targets.length) {
-      showAppToast(t('请选择已导入媒体池的视频、图片或 GIF 片段'), { error: true });
+      showAppToast(t('Please select a video, picture, or GIF fragment'), { error: true });
       return;
     }
     const requestId = ++autoGradeRequestRef.current;
@@ -196,14 +196,14 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     }
     if (autoGradeRequestRef.current !== requestId) return;
     try {
-      if (!recommendations.length) throw firstError ?? new Error(t('未获得可用的校色结果'));
+      if (!recommendations.length) throw firstError ?? new Error(t('No usable color correction results obtained'));
       const failedCount = targets.length - recommendations.length;
       setAutoGradeSession({ recommendations, failedCount });
       showAppToast(failedCount
-        ? t('已预览 {n} 个片段，{failed} 个分析失败', { n: recommendations.length, failed: failedCount })
-        : t('自动校色预览已生成，可确认应用或取消'));
+        ? t('Previewed {n} fragments,{failed} analysis failed', { n: recommendations.length, failed: failedCount })
+        : t('The automatic color correction preview has been generated. You can confirm the application or cancel it.'));
     } catch (error) {
-      showAppToast(t('自动校色分析失败：{error}', {
+      showAppToast(t('Automatic color calibration analysis failed:{error}', {
         error: error instanceof Error ? error.message : String(error),
       }), { error: true });
     } finally {
@@ -220,7 +220,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     })), 'Apply automatic color correction');
     const applied = autoGradeSession.recommendations.length;
     setAutoGradeSession(null);
-    showAppToast(t('已将自动校色应用到 {n} 个片段', { n: applied }));
+    showAppToast(t('Automatic color correction has been applied to {n} fragments', { n: applied }));
   }, [autoGradeSession, commands, t]);
 
   const autoGradePreviewState = useMemo<TimelineState | null>(() => {
@@ -235,13 +235,13 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     };
   }, [autoGradeSession, state]);
   const selectedAutoGrade = autoGradeSession?.recommendations.find((entry) => entry.itemId === state.selectedId) ?? null;
-  // library「用 AI 生成」→ prefill the chat composer (nonce forces re-seed of the same text)
+  // library「Generated with AI」→ prefill the chat composer (nonce forces re-seed of the same text)
   const [chatSeed, setChatSeed] = useState<{ text: string; nonce: number; reference?: AgentReference } | null>(null);
-  // 设计风格(品牌)编辑器弹窗。
+  // Design style (brand) editor pop-up window.
   const [showDesign, setShowDesign] = useState(false);
-  // 版本历史弹窗。
+  // Version history pop-up window.
   const [showVersions, setShowVersions] = useState(false);
-  // 快捷键帮助。
+  // Shortcut key help.
   const [showShortcuts, setShowShortcuts] = useState(false);
   /** Timeline fills this; Editor binds the global shortcut dispatcher to it. */
   const shortcutApiRef = useRef<TimelineShortcutApi | null>(null);
@@ -283,8 +283,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   }, [project.id, commands]); // only on open / project switch
 
   // Switching timelines: seek the shared Player so it doesn't show a stale frame.
-  // 跳过挂载首跑——否则会把 Timeline 侧刚从 sessionPrefs 恢复的播放头顶回 0
-  //(父 effect 晚于子 effect,恢复必被覆盖)。
+  // Skip mounting the first run - otherwise the playback head just restored from sessionPrefs on the Timeline side will be reset to 0
+  //(The parent effect is later than the child effect, and recovery will be overwritten).
   const firstTimelineRef = useRef(true);
   useEffect(() => {
     if (firstTimelineRef.current) { firstTimelineRef.current = false; return; }
@@ -299,10 +299,10 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const [timelineH, setTimelineH] = usePersistedState('openchatcut.timelineH.ui-v1', Math.max(TIMELINE_MIN_H, Math.round((viewportH - HEADER_H) * 350 / BASELINE_CONTENT_H)));
   const [chatCollapsed, setChatCollapsed] = usePersistedState('cc.chatCollapsed', false);
   const addTemplate = useCallback((tpl: Tpl) => commands.addMotionGraphic(tpl), [commands]);
-  // Add an asset to the pool AND kick off "上传即转写" ASR for audio-bearing media.
+  // Add an asset to the pool AND kick off "upload-and-transcribe" ASR for audio-bearing media.
   // On completion the transcript is written onto the asset (so later placements inherit
   // it) and backfilled onto any clip already placed from this asset (drag-to-canvas /
-  // voiceover), so the口播 is editable as soon as ASR lands.
+  // voiceover), so the voiceover is editable as soon as ASR lands.
   // Kick ASR. Prefer race-ahead asrPath (extract started right after master upload).
   const startAssetTranscription = useCallback((
     asset: Pick<MediaAsset, 'id' | 'src' | 'kind'> & { name?: string },
@@ -420,14 +420,14 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   }, [commands, startAssetTranscription]);
   const useTemplateAI = useCallback((tpl: Tpl) => {
     setChatCollapsed(false);
-    setChatSeed({ text: t('参考模板「{name}」，用 create_motion_graphic 生成一个类似风格的动画： @{name} ', { name: tpl.name }), nonce: Date.now(), reference: { id: tpl.id, name: tpl.name, kind: 'template' } });
+    setChatSeed({ text: t('Reference template "{name}", use create_motion_graphic Generate a similar style animation: @{name} ', { name: tpl.name }), nonce: Date.now(), reference: { id: tpl.id, name: tpl.name, kind: 'template' } });
   }, [setChatCollapsed, t]);
   const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
   // Export: POST the current timeline to the dev-server /export endpoint (which
   // renders it in headless Chrome via @remotion/renderer) and download the MP4.
   const [exportOpen, setExportOpen] = useState(false);
-  // 导出走设置对话框，共 5 个 tab:视频/音频/MG动画/字幕/XML。
+  // Export the settings dialog box, with a total of 5 tabs: video/audio/MG animation/subtitles/XML.
   const onExport = useCallback(() => setExportOpen(true), []);
   useEditorActions({
     commands,
@@ -514,17 +514,17 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             const id = state.selectedId;
             const item = id ? state.items.find((it) => it.id === id) : null;
             if (!item || (item.kind !== 'video' && item.kind !== 'audio')) {
-              showAppToast(t('人声隔离只能用在视频 / 音频片段上'), { error: true });
+              showAppToast(t('Vocal isolation can only be used in videos / on audio clip'), { error: true });
               return;
             }
-            showAppToast(t('人声隔离处理中…'), { ms: 60_000 });
+            showAppToast(t('Vocal isolation is being processed...'), { ms: 60_000 });
             try {
               const strength = strengthFromAudioFxId(audioFxId);
               const r = await isolateVoiceOnSrc(item.src ?? '', strength, { force: true });
               commands.setItemDenoise(item.id, r.path, r.strength);
-              showAppToast(t('人声隔离已应用'));
+              showAppToast(t('Vocal isolation applied'));
             } catch (err) {
-              showAppToast(err instanceof Error ? err.message : t('人声隔离失败'), { error: true });
+              showAppToast(err instanceof Error ? err.message : t('Vocal isolation failed'), { error: true });
             }
           }}
  />
@@ -617,8 +617,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           shortcutApiRef={shortcutApiRef}
           onRecordVoiceover={async (blob) => {
             const ext = blob.type.includes('ogg') ? 'ogg' : 'webm';
-            const asset = await importMedia(new File([blob], `旁白.${ext}`, { type: blob.type }), state.fps);
-            ingestToPool(asset); // 旁白 auto-transcribes; the placed A1 clip backfills on completion
+            const asset = await importMedia(new File([blob], `narration.${ext}`, { type: blob.type }), state.fps);
+            ingestToPool(asset); // Narration auto-transcribes; the placed A1 clip backfills on completion
             commands.addMediaItem(asset, { track: 'A1', startFrame: getPlayhead() });
           }} />
       </div>

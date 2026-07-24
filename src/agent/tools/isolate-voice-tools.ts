@@ -57,13 +57,13 @@ function findAsset(
   id: unknown,
 ): { asset?: (typeof assets)[number]; error?: string; candidates?: Array<{ id: string; name: string; kind: string }> } {
   const query = String(id ?? '').trim();
-  if (!query) return { error: '缺少素材 id' };
+  if (!query) return { error: 'missing material id' };
   const exact = assets.find((asset) => asset.id === query);
   const matches = exact ? [exact] : assets.filter((asset) => asset.id.startsWith(query));
-  if (!matches.length) return { error: `找不到素材 ${query}` };
+  if (!matches.length) return { error: `Material not found ${query}` };
   if (matches.length > 1) {
     return {
-      error: `素材前缀 ${query} 不唯一`,
+      error: `Material prefix ${query} Not unique`,
       candidates: matches.slice(0, 6).map((asset) => ({ id: asset.id, name: asset.name, kind: asset.kind })),
     };
   }
@@ -81,20 +81,20 @@ export async function execIsolateVoiceTool(
   const item = findItem(state.items, args.itemId);
   if (!item) {
     return {
-      error: `找不到 clip ${args.itemId ?? '(缺 itemId)'}`,
+      error: `not found clip ${args.itemId ?? '(missing itemId)'}`,
       available: state.items
         .filter((it) => it.kind === 'video' || it.kind === 'audio')
         .map((it) => ({ itemId: it.id, name: it.name, kind: it.kind })),
     };
   }
   if (item.kind !== 'video' && item.kind !== 'audio') {
-    return { error: `isolate_voice 只适用于 video/audio，当前 kind=${item.kind}` };
+    return { error: `isolate_voice only applies to video/audio, currently kind=${item.kind}` };
   }
 
   const action = String(args.action ?? 'apply').toLowerCase();
   if (action === 'clear') {
     if (!item.denoisedSrc) {
-      return { ok: true, itemId: item.id, action: 'clear', note: '本来就没有人声隔离' };
+      return { ok: true, itemId: item.id, action: 'clear', note: 'There is no vocal isolation' };
     }
     ctx.commands.setItemDenoise(item.id, null);
     return { ok: true, itemId: item.id, action: 'clear', denoisedSrc: null };
@@ -110,11 +110,11 @@ export async function execIsolateVoiceTool(
     if (!sourceMatch.asset) return { error: `sourceAssetId: ${sourceMatch.error}`, candidates: sourceMatch.candidates };
     const sourceAsset = sourceMatch.asset;
     if (sourceAsset.kind !== 'audio' && sourceAsset.kind !== 'video') {
-      return { error: `sourceAssetId 必须是 video/audio，当前 kind=${sourceAsset.kind}` };
+      return { error: `sourceAssetId must be video/audio, currently kind=${sourceAsset.kind}` };
     }
     if (!item.src || item.src !== sourceAsset.src) {
       return {
-        error: 'sourceAssetId 与目标片段来源不匹配',
+        error: 'sourceAssetId Does not match target fragment source',
         itemSrc: item.src ?? null,
         sourceAssetId: sourceAsset.id,
         sourceSrc: sourceAsset.src,
@@ -125,10 +125,10 @@ export async function execIsolateVoiceTool(
     if (!denoisedMatch.asset) return { error: `denoisedAssetId: ${denoisedMatch.error}`, candidates: denoisedMatch.candidates };
     const denoisedAsset = denoisedMatch.asset;
     if (denoisedAsset.kind !== 'audio') {
-      return { error: `denoisedAssetId 必须是 audio，当前 kind=${denoisedAsset.kind}` };
+      return { error: `denoisedAssetId must be audio, currently kind=${denoisedAsset.kind}` };
     }
     if (denoisedAsset.id === sourceAsset.id || denoisedAsset.src === sourceAsset.src) {
-      return { error: 'denoisedAssetId 不能与源素材相同' };
+      return { error: 'denoisedAssetId Cannot be the same as the source material' };
     }
 
     const unchanged = item.denoisedSrc === denoisedAsset.src
@@ -143,24 +143,24 @@ export async function execIsolateVoiceTool(
       denoisedSrc: denoisedAsset.src,
       strength,
       unchanged,
-      note: '已挂载媒体池中的分离音频；源素材与共享素材均未修改。',
+      note: 'Detached audio from the media pool is mounted; neither the source material nor the shared material has been modified.',
     };
   }
 
   if (action !== 'apply') {
-    return { error: `unknown action ${action}（用 apply、attach 或 clear）` };
+    return { error: `unknown action ${action}(Use apply、attach or clear）` };
   }
 
   if (args.sourceAssetId) {
     const sourceMatch = findAsset(ctx.getDoc().assets ?? [], args.sourceAssetId);
     if (!sourceMatch.asset) return { error: `sourceAssetId: ${sourceMatch.error}`, candidates: sourceMatch.candidates };
-    if (sourceMatch.asset.src !== item.src) return { error: 'sourceAssetId 与目标片段来源不匹配' };
+    if (sourceMatch.asset.src !== item.src) return { error: 'sourceAssetId Does not match target fragment source' };
   }
 
   const src = item.src ?? '';
   if (!src.startsWith('/media/uploads/')) {
     return {
-      error: 'isolate_voice 需要 /media/uploads 源文件（请先 finalize/上传到媒体池）。blob: 占位预览尚不可隔离。',
+      error: 'isolate_voice need /media/uploads Source file (please first finalize/uploaded to the media pool).blob: Placeholder previews are not yet available for isolation.',
       src: src || null,
     };
   }
@@ -179,12 +179,12 @@ export async function execIsolateVoiceTool(
       note: 'Open-box ffmpeg denoise attached; original src unchanged. action=clear to remove.',
     };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'isolate_voice 请求失败';
+    const msg = err instanceof Error ? err.message : 'isolate_voice Request failed';
     return {
       error: msg,
       hint: /503|ffmpeg|spawn/i.test(msg)
-        ? '本机 ffmpeg 不可用；可外部降噪后重新导入，或安装 ffmpeg。'
-        : '确认 dev server 已挂载 /api/isolate-voice，且源文件在 /media/uploads。',
+        ? 'local machine ffmpeg Not available; can be re-imported after external noise reduction, or installed ffmpeg。'
+        : 'Confirm dev server Mounted /api/isolate-voice, and the source file is in /media/uploads。',
     };
   }
 }

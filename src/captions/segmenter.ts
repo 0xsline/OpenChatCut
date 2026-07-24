@@ -1,13 +1,13 @@
-// 内容感知字幕分段引擎——按语义断行/分页(词表/权重见 segmenterData.ts,勿改动)。
-// 贪心断行路径:收集断点候选 → 预算(词数/字符)触顶 → 选分数最高候选回退断行
-// → 后处理(行首助词回拉)。
+// Content-aware subtitle segmentation engine - line breaking/pagination based on semantics (see segmenterData.ts for word list/weights, do not change).
+// Greedy line break path: collect breakpoint candidates → budget (number of words/characters) reaches the top → select the candidate with the highest score to fallback to line break
+// → Post-processing (pulling back the particle at the beginning of the line).
 //
-// 两点设计取舍(均为任务规格指定):
-// 1. 不用 px 宽 + 原始字符数双预算(因子表
-//    CJK:LATIN = 1:0.55);本引擎折成单一「字符单位」预算:CJK 字符=2、其余=1。
-// 2. 非 CJK + wordsPerPage 不走纯计数分页(
-//    不打分);本引擎按任务规格对词数预算触顶同样走打分回退。
-// 未实现:纯英文单行 DP 优化器(代价表)与行均衡后处理——预设逐个启用时再补。
+// Two design trade-offs (both specified by task specifications):
+// 1. No px width + original number of characters double budget (factor table
+//    CJK:LATIN = 1:0.55); This engine converts it into a single "character unit" budget: CJK characters = 2, the rest = 1.
+// 2. Non-CJK + wordsPerPage does not use pure count paging (
+//    No scoring); this engine will also perform scoring rollback when the word budget reaches the top according to the task specifications.
+// Not implemented: Pure English single-row DP optimizer (cost table) and row balancing post-processing - will be added when enabled one by one by default.
 import {
   CJK_PARTICLES, CJK_PUNCT, CJK_WORD_SUFFIXES, LATIN_BREAK_PATTERNS, LATIN_FUNCTION_WORDS,
   LATIN_PENALTY_PATTERNS, LATIN_QUANTIFIERS, MODAL_PARTICLES, NO_LINE_START, ORPHAN_PICK_DEMOTION,
@@ -15,7 +15,7 @@ import {
   QUESTION_TAIL_EXCLUDE, SHORT_FUNCTION_WORD, pauseBreakPriority,
 } from './segmenterData';
 
-/** 输入词(TranscriptWord 结构兼容;无时间戳时停顿断点不参与)。 */
+/** Enter word(TranscriptWord Architecturally compatible;The pause breakpoint does not participate when there is no timestamp.)。 */
 export interface SegmentWord {
   text: string;
   start?: number; // ms
@@ -23,26 +23,26 @@ export interface SegmentWord {
 }
 
 export interface SegmentOpts {
-  /** 字符单位预算(CJK=2/其余=1,见文件头注释)。不给则只按词数分页。 */
+  /** Character unit budget(CJK=2/The rest=1,See file header comments). If not, it will only be paged by the number of words. */
   maxCharsPerLine?: number;
-  /** 每页词数预算(标点词不计)。CJK 主导文本且给了 maxCharsPerLine 时忽略。 */
+  /** word budget per page(Punctuation words are not counted)。CJK Leading text and given maxCharsPerLine Ignored. */
   wordsPerPage: number;
 }
 
 interface BreakPoint {
-  wordIndex: number; // 断点在该词之后
+  wordIndex: number; // The breakpoint is after the word
   priority: number;
   orphanRisk: boolean;
 }
 
-const CJK_START = /[㐀-鿿぀-ヿ가-힯]/u;
+const CJK_START = /[㐀-Yi぀-ヿ가-힯]/u;
 const PUNCT_ONLY = /^[\p{P}]+$/u;
 const CJK_PUNCT_CHARS = /[，。！？；：、“”‘’（）【】《》「」『』〈〉〔〕｛｝〖〗…—～·]|[｡､]/;
 const LATIN_PUNCT_CHARS = /[.,!?;:'"()[\]{}/\\@#$%^&*\-+=<>|~`]/;
 
 type WordScript = 'punctuation' | 'number' | 'cjk' | 'latin' | 'mixed';
 
-/** 字符分类:0=CJK 1=小写拉丁 2=大写拉丁 3=数字 4=标点 5=空格 6=其他。 */
+/** Character classification:0=CJK 1=lowercase Latin 2=Uppercase Latin 3=numbers 4=punctuation 5=space 6=Others. */
 function charClass(ch: string): number {
   if (!ch) return 6;
   const c = ch.charCodeAt(0);
@@ -56,7 +56,7 @@ function charClass(ch: string): number {
   if ((c >= 48 && c <= 57) || (c >= 65296 && c <= 65305)) return 3;
   if (ch === ' ' || ch === '\u00A0' || ch === '\u3000') return 5;
   if (CJK_PUNCT_CHARS.test(ch) || LATIN_PUNCT_CHARS.test(ch)) return 4;
-  return 6; // ponytail: 代理对不再细分,一律按其他计
+  return 6; // ponytail: Agent pairs will no longer be subdivided and will be calculated according to other
 }
 
 function hasCjkChar(text: string): boolean {
@@ -69,7 +69,7 @@ function isPunctOnly(text: string): boolean {
   return t.length > 0 && PUNCT_ONLY.test(t);
 }
 
-/** 词的文种分类。 */
+/** Literary classification of words. */
 function wordScript(text: string): WordScript {
   let cjk = 0, latin = 0, num = 0, punct = 0;
   for (const ch of text) {
@@ -92,7 +92,7 @@ function wordScript(text: string): WordScript {
   return 'mixed';
 }
 
-/** 两词之间的接缝文本。 */
+/** Seam text between two words. */
 function joinerBetween(left: SegmentWord, right: SegmentWord, ls: WordScript, rs: WordScript): string {
   if (/\s$/u.test(left.text) || /^\s/u.test(right.text)) return '';
   if (!ls || (ls === 'cjk' && rs === 'cjk')) return '';
@@ -105,7 +105,7 @@ function joinerBetween(left: SegmentWord, right: SegmentWord, ls: WordScript, rs
   return ' ';
 }
 
-/** CJK 占比 ≥0.3 判为 CJK 主导。 */
+/** CJK Proportion ≥0.3 judged as CJK Dominate. */
 export function isCjkDominant(text: string): boolean {
   let cjk = 0, letters = 0;
   for (const ch of text) {
@@ -117,8 +117,8 @@ export function isCjkDominant(text: string): boolean {
 
 interface LatinBreak { isOrphanRisk: boolean; position: number; score: number }
 
-/** 英文断点打分器:遍历相邻词对,基础 20 分,
- * LATIN_BREAK_PATTERNS 命中改分、LATIN_PENALTY_PATTERNS 首个命中扣罚、句末 /[.!?]$/ +30、SHORT_FUNCTION_WORD 孤词且剩词 ≤2 时 −40。 */
+/** English breakpoint scorer:Traverse adjacent word pairs,Basics 20 points,
+ * LATIN_BREAK_PATTERNS Hit change points,LATIN_PENALTY_PATTERNS First hit penalty, end of sentence /[.!?]$/ +30、SHORT_FUNCTION_WORD Lone words and remaining words ≤2 time −40。 */
 export function scoreLatinBreaks(text: string): LatinBreak[] {
   const words = text.split(' ');
   const out: LatinBreak[] = [];
@@ -139,7 +139,7 @@ export function scoreLatinBreaks(text: string): LatinBreak[] {
   return out.sort((a, b) => b.score - a.score);
 }
 
-/** CJK 标点断点优先级:句末 100 / 逗顿 80 / 引号收 70。 */
+/** CJK Punctuation breakpoint priority:end of sentence 100 / Tease 80 / enclosed in quotation marks 70。 */
 function cjkPunctPriority(text: string): number | null {
   const last = text[text.length - 1];
   if ((CJK_PUNCT.sentenceEnd as readonly string[]).includes(last)) return 100;
@@ -148,7 +148,7 @@ function cjkPunctPriority(text: string): number | null {
   return null;
 }
 
-/** 语气词后断:左词末字 ∈ MODAL_PARTICLES 且右词以 CJK 开头。 */
+/** modal participle:The last character of left word ∈ MODAL_PARTICLES And the right word is with CJK Beginning. */
 function isModalBreak(left: string, right: string): boolean {
   const tail = left.trim().at(-1);
   const head = right.trim().at(0);
@@ -156,7 +156,7 @@ function isModalBreak(left: string, right: string): boolean {
   return (MODAL_PARTICLES as readonly string[]).includes(tail) && CJK_START.test(head);
 }
 
-/** CJK 孤词避断:左词末字或右词首字 ∈ CJK_PARTICLES → orphanRisk。 */
+/** CJK Solitary word avoidance:The last character of the left word or the first character of the right word ∈ CJK_PARTICLES → orphanRisk。 */
 function isCjkOrphanPair(left: string, right: string): boolean {
   return (CJK_PARTICLES as readonly string[]).includes(left[left.length - 1])
     || (CJK_PARTICLES as readonly string[]).includes(right[0]);
@@ -166,22 +166,22 @@ function normalizeLatin(text: string): string {
   return text.trim().toLocaleLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
 }
 
-/** 英文孤词风险种类。 */
+/** English orphan word risk categories. */
 function hasLatinOrphanRisk(left: string, right: string): boolean {
   if (normalizeLatin(right) === 'of'
     && (LATIN_QUANTIFIERS as readonly string[]).includes(normalizeLatin(left))) return true; // LATIN_QUANTIFIERS
   return (LATIN_FUNCTION_WORDS as readonly string[]).includes(normalizeLatin(left));
 }
 
-/** 连接词带逗号时 150–400ms 小停顿不算断点。 */
+/** When the conjunction contains a comma 150–400ms Small pauses do not count as breakpoints. */
 function isPauseSuppressedPair(left: string, right: string): boolean {
   if (!(PAUSE_SUPPRESSED_CONNECTORS as readonly string[]).includes(normalizeLatin(left))
     || !/[,;:][\s"'”’）)\]}》」』】]*$/u.test(left.trim())) return false;
   return normalizeLatin(right).length > 0;
 }
 
-/** CJK 疑问句式断点:
- * 「…有什么/是不是谁…」后接人称/时序词 → 优先级 58。 */
+/** CJK interrogative breakpoint:
+ * "...what's there/Is it who..." followed by the person/temporal words → priority 58。 */
 function isQuestionBreak(words: SegmentWord[], idx: number): boolean {
   const cjkOnly = (from: number, to: number): string =>
     Array.from(words.slice(from, to).map((w) => w.text).join('')).filter((ch) => charClass(ch) === 0).join('');
@@ -191,8 +191,8 @@ function isQuestionBreak(words: SegmentWord[], idx: number): boolean {
   return QUESTION_HEAD.test(head);
 }
 
-/** 「idx−1 与 idx 之间不可拆」:
- * 无接缝且 Intl.Segmenter 判定落在同一 CJK 词内(或命中 CJK_WORD_SUFFIXES 词缀)。整段文本只分词一次。 */
+/** 「idx−1 with idx cannot be separated":
+ * Seamless and Intl.Segmenter Judgment falls in the same CJK within the word(or hit CJK_WORD_SUFFIXES affix). The entire text is segmented only once. */
 function makeCannotSplit(words: SegmentWord[], scripts: WordScript[]): (idx: number) => boolean {
   let text = '';
   const wordStart: number[] = [];
@@ -228,8 +228,8 @@ function makeCannotSplit(words: SegmentWord[], scripts: WordScript[]): (idx: num
   };
 }
 
-/** 英文相邻词对断点:±2 词窗口跑 scoreLatinBreaks,取离断点最近
- * (<10 字符)的打分;否则兜底 40 分 safe。 */
+/** English adjacent word pair breakpoints:±2 word window run scoreLatinBreaks,Get closest to breakpoint
+ * (<10 character)of scoring;Otherwise, keep it secret 40 points safe。 */
 function latinPairBreak(words: SegmentWord[], idx: number): BreakPoint {
   const from = Math.max(0, idx - 2);
   const windowText = words.slice(from, Math.min(words.length, idx + 3)).map((w) => w.text).join(' ');
@@ -244,13 +244,13 @@ function latinPairBreak(words: SegmentWord[], idx: number): BreakPoint {
   return { wordIndex: idx, priority: 40, orphanRisk: hasLatinOrphanRisk(words[idx].text, words[idx + 1].text) };
 }
 
-/** 断点候选收集。 */
+/** Breakpoint candidate collection. */
 function collectBreakPoints(words: SegmentWord[], scripts: WordScript[], cannotSplit: (i: number) => boolean): BreakPoint[] {
   const bps: BreakPoint[] = [];
   for (let r = 0; r < words.length - 1; r++) {
     const left = words[r];
     const right = words[r + 1];
-    if (isPunctOnly(right.text)) continue; // 标点词永不开行
+    if (isPunctOnly(right.text)) continue; // Punctuation words never start running
     const blocked = cannotSplit(r + 1);
     const punct = cjkPunctPriority(left.text);
     if (punct !== null) {
@@ -278,8 +278,8 @@ function collectBreakPoints(words: SegmentWord[], scripts: WordScript[], cannotS
   return bps;
 }
 
-/** 选最优断点:有效分 = priority − 孤词降权 30,
- * 同分取靠后;不可拆处剔除。 */
+/** Choose the best breakpoint:Valid points = priority − Solitary words reduced in power 30,
+ * Those with the same score take the last place;Remove the parts that cannot be removed. */
 function pickBreak(bps: BreakPoint[], from: number, to: number, cannotSplit: (i: number) => boolean): BreakPoint | null {
   const cands = bps.filter((b) => b.wordIndex >= from && b.wordIndex <= to && !cannotSplit(b.wordIndex + 1));
   if (cands.length === 0) return null;
@@ -291,7 +291,7 @@ function pickBreak(bps: BreakPoint[], from: number, to: number, cannotSplit: (i:
   return sorted[0];
 }
 
-/** 字符单位:CJK=2,其余每字符 1(见文件头偏差说明 1)。 */
+/** character unit:CJK=2,each remaining character 1(See file header deviation description 1)。 */
 function unitsOf(text: string): number {
   let units = 0;
   for (const ch of text) units += charClass(ch) === 0 ? 2 : 1;
@@ -308,8 +308,8 @@ function measure(words: SegmentWord[], scripts: WordScript[], from: number, to: 
   return { units, count };
 }
 
-/** 行首助词回拉:某页首词以 NO_LINE_START
- * 助词开头时,从上一页尾部找可拆位把词拉入本页(两页都得仍在预算内)。 */
+/** Pull back the initial particle of line:The first word of a certain page starts with NO_LINE_START
+ * At the beginning of the particle,Find the detachable word from the end of the previous page and pull it into this page.(Both pages must still be within budget)。 */
 function pullParticleForward(
   words: SegmentWord[], scripts: WordScript[], starts: number[],
   cannotSplit: (i: number) => boolean, maxUnits: number | undefined, wordsPerPage: number,
@@ -334,16 +334,16 @@ function pullParticleForward(
   return out;
 }
 
-/** 内容感知分段:返回每页起始词下标(首页恒为 0)。
- * 预算触顶(词数或字符单位)时在当前页窗口内选分数最高的断点回退断行;
- * 标点词永不开页;粘着 CJK 词(Intl.Segmenter 同词)不硬拆。 */
+/** content-aware segmentation:Return the starting word subscript of each page(Home pageHengwei 0)。
+ * Budget hits ceiling(Number of words or character units)When selecting the breakpoint with the highest score in the current page window, go back and break the line.;
+ * Punctuation words never open the page;sticky CJK word(Intl.Segmenter Same word)No forced dismantling. */
 export function segmentWords(words: SegmentWord[], opts: SegmentOpts): number[] {
   if (words.length === 0) return [];
   const scripts = words.map((w) => wordScript(w.text));
   const cannotSplit = makeCannotSplit(words, scripts);
   const bps = collectBreakPoints(words, scripts, cannotSplit);
   const maxUnits = opts.maxCharsPerLine;
-  // CJK 主导且 wordsPerPage>1 时词数预算置空
+  // When CJK dominates and wordsPerPage>1, the word count budget is left blank.
   const cjkText = isCjkDominant(words.map((w) => w.text).join(''));
   const wordsPerPage = maxUnits !== undefined && cjkText && opts.wordsPerPage > 1
     ? Infinity : Math.max(1, opts.wordsPerPage);
@@ -367,7 +367,7 @@ export function segmentWords(words: SegmentWord[], opts: SegmentOpts): number[] 
         units = unitsOf(words[i].text);
         count = 1;
       } else {
-        units = nextUnits; // 粘着词无法拆,容忍超预算
+        units = nextUnits; // Sticky words cannot be removed and budget overruns are tolerated
         count = nextCount;
       }
     } else {

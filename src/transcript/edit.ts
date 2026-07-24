@@ -31,7 +31,7 @@ export interface EditOpts {
    * the trim handles' [srcInFrame, srcInFrame+durationInFrames) slice. Segments
    * outside are dropped, boundary segments clipped, survivors re-packed from
    * offsetFrames. Undefined = whole stream (pre-window behavior, byte-identical).
-   * 修「trim 转写 clip 改帧不改词」软点:渲染/字幕/find 全走这一个闸门。
+   * repairtrim Transcribe clip "Change the frame but not the words" soft point:rendering/subtitles/find All go through this gate.
    */
   window?: { startFrame: number; durFrames: number };
 }
@@ -80,7 +80,7 @@ export function keptSegments(
     let sj = si;
     let curWi = wi; // last source word merged into this run
     // Merge forward ONLY through immediate chronological successors. A jump in
-    // source index — deleted words sitting between (删词=删视频) or a play-order
+    // source index — deleted words sitting between (delete words = delete video) or a play-order
     // reorder — ends the run, so the skipped source span is dropped instead of
     // being played through; deleting words must shorten the corresponding frames.
     while (sj + 1 < seq.length) {
@@ -160,7 +160,7 @@ export function keptWordIndices(words: TranscriptWord[], deleted: Set<number>, f
   return out;
 }
 
-// Re-project surviving words onto the EDITED timeline (`fVe` 算法):
+// Re-project surviving words onto the EDITED timeline (`fVe` algorithm):
 // clamp each word to its covering kept segment, map source-frame → timeline-frame,
 // then de-overlap so timings stay monotonic. Returns words with TIMELINE ms.
 // Words that fall in a deleted / compressed-out region are dropped.
@@ -274,10 +274,10 @@ export function splitClipTranscript(
 }
 
 // Fixed filler tokens clean_script strips ("mechanical clean" — no LLM).
-const FILLER = new Set(['um', 'umm', 'uh', 'uhh', 'uhm', 'er', 'erm', 'ah', 'hmm', 'mmm', '嗯', '呃', '啊', '唔', '额']);
+const FILLER = new Set(['um', 'umm', 'uh', 'uhh', 'uhm', 'er', 'erm', 'ah', 'hmm', 'mmm', 'Yeah', 'Uh', 'Ah', 'Hmm', 'Um']);
 
 export function isFiller(text: string): boolean {
-  const t = text.toLowerCase().replace(/[^a-z一-鿿]/g, '');
+  const t = text.toLowerCase().replace(/[^a-zone-Yi]/g, '');
   return t.length > 0 && FILLER.has(t);
 }
 
@@ -288,15 +288,15 @@ export function fillerIndices(words: TranscriptWord[]): number[] {
   return idxs;
 }
 
-// ── video 件的字幕投影:媒体帧窗口直投(2026-07-17,长转短 e2e 抓获)─────────
-// audio 与 video 的 srcInFrame 语义不同:audio 的窗口切在"编辑后词流"上
-// (播放层渲 keptSegments,删词=剪音频);video 则**永远连续播放**媒体
-// [srcIn, srcIn+dur×rate)(TimelineComposition 的 OffthreadVideo trimBefore,
-// 词级删除不改视频画面)。字幕必须忠实于实际播放:video 件按媒体帧窗口把
-// 词直投到时间线,时序绝不重排;且**删词也不隐藏**——窗口内的语音都可闻,
-// 藏掉它的字幕就是"开头几秒有人说话没字幕"事故(agent 的 delete_text 选区
-// 常比它切的 srcIn 窗口窄)。要在字幕里隐藏个别词走 wordOverrides(
-// edit_captions display_text {hidden}),那才是字幕层的显示决定。
+// ── Subtitle projection of video files: media frame window direct projection (2026-07-17, long to short e2e capture)─────────
+// The srcInFrame semantics of audio and video are different: the window of audio is cut on the "edited word flow"
+// (Playback layer rendering keptSegments, word deletion=cut audio); video means **continuous playback** media forever
+// [srcIn, srcIn+dur×rate)(TimelineComposition of OffthreadVideo trimBefore,
+// Word-level deletion does not change the video screen). Subtitles must be faithful to actual playback: video files are placed in media frame windows
+// Words are directly thrown into the timeline, and the timing is never rearranged; and **deleted words are not hidden**—the voices in the window can be heard,
+// Hiding its subtitles is an accident of "someone speaks without subtitles in the first few seconds" (agent's delete_text selection
+// is often narrower than the srcIn window it cuts). To hide individual words in subtitles, use wordOverrides(
+// edit_captions display_text {hidden}), that is the display decision of the subtitle layer.
 interface MediaWindowItem {
   startFrame: number;
   durationInFrames: number;
@@ -304,7 +304,7 @@ interface MediaWindowItem {
   playbackRate?: number;
 }
 
-/** video 件:窗口内全部词(时间线 ms)——可闻即显,transcript 删词不参与。 */
+/** video pieces:All words in the window(timeline ms)——Audible and visible,transcript Deleting words and not participating. */
 export function mediaWindowWords(
   words: TranscriptWord[],
   fps: number,
@@ -317,7 +317,7 @@ export function mediaWindowWords(
   for (let i = 0; i < words.length; i++) {
     const wS = msToFrame(words[i].start, fps);
     const wE = msToFrame(words[i].end, fps);
-    if (wE <= srcIn || wS >= winEnd) continue; // 窗口外
+    if (wE <= srcIn || wS >= winEnd) continue; // outside the window
     const fromF = item.startFrame + (Math.max(wS, srcIn) - srcIn) / rate;
     const toF = item.startFrame + (Math.min(wE, winEnd) - srcIn) / rate;
     const start = (fromF / fps) * 1000;
@@ -326,7 +326,7 @@ export function mediaWindowWords(
   return out;
 }
 
-/** 与 mediaWindowWords 同一套存活规则的源词索引(wordOverrides 键)。 */
+/** with mediaWindowWords Source word index for the same set of survival rules(wordOverrides key)。 */
 export function mediaWindowKeptIndices(
   words: TranscriptWord[],
   fps: number,

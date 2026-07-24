@@ -109,7 +109,7 @@ assert.deepEqual(allResponse.searchedPlatforms, ['pexels', 'pixabay', 'unsplash'
 assert.equal(allResponse.results.length, 5, 'cross-provider duplicate URLs should be removed');
 assert(allResponse.results.some((result) => result.kind === 'video'));
 assert(allResponse.results.some((result) => result.kind === 'audio'));
-assert(allResponse.warnings.some((warning) => warning.includes('Pixabay') && warning.includes('方形')));
+assert(allResponse.warnings.some((warning) => warning.includes('Pixabay') && warning.includes('Square')));
 assert(allCalls.every((call) => call.url.searchParams.get('query') === 'tokyo night' || call.url.searchParams.get('q') === 'tokyo night'));
 assert.equal(allCalls.find((call) => call.url.hostname === 'api.pexels.com')?.url.searchParams.get('orientation'), 'square');
 assert.equal(allCalls.find((call) => call.url.hostname === 'pixabay.com')?.url.searchParams.get('orientation'), null);
@@ -142,7 +142,7 @@ const unsupportedResponse = await searchStockMedia(allKeys, {
 }, createProviderFetch([]));
 assert.equal(unsupportedResponse.configured, false);
 assert.deepEqual(unsupportedResponse.results, []);
-assert(unsupportedResponse.warnings.some((warning) => warning.includes('不支持 video')));
+assert(unsupportedResponse.warnings.some((warning) => warning.includes('Not supported video')));
 
 const noKeysResponse = await searchStockMedia({ pexelsApiKey: '', pixabayApiKey: '' }, {
   query: 'waves', kind: 'any',

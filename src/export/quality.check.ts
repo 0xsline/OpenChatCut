@@ -54,7 +54,7 @@ assert.deepEqual(exportQaExpectations(state), {
 assert.deepEqual(captionLayoutQaIssues({
   ...state,
   captions: { enabled: true, layout: { anchor: 'bottom-center', offsetYRatio: 0 } },
-}), [], '默认字幕位置处于安全区');
+}), [], 'The default subtitle position is in the safe area');
 const captionIssues = captionLayoutQaIssues({
   ...state,
   captions: { enabled: true, layout: { anchor: 'bottom-right', offsetXRatio: 0.08, offsetYRatio: -0.05 } },
@@ -82,7 +82,7 @@ assert.ok(report.issues.some((issue) => issue.code === 'frozen_frames'));
 assert.ok(report.issues.some((issue) => issue.code === 'long_silence'));
 assert.ok(report.issues.some((issue) => issue.code === 'audio_peak'));
 const merged = mergeExportQaIssues(report, [...captionIssues, captionIssues[0]]);
-assert.equal(merged.issues.filter((issue) => issue.code === 'caption_safe_area_horizontal').length, 1, '附加问题去重');
+assert.equal(merged.issues.filter((issue) => issue.code === 'caption_safe_area_horizontal').length, 1, 'Additional questions to remove duplicates');
 assert.equal(merged.summary.warnings, report.summary.warnings + 2);
 
 console.log('export quality checks passed');

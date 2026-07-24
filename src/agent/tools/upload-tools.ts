@@ -436,7 +436,7 @@ async function execFinalize(args: Args, ctx: AgentContext): Promise<unknown> {
     return { error: 'durationInSeconds is required for audio/video/gif' };
   }
 
-  // 上传即转写:ingest 落库后自动触发 ASR，并根据调用方提供的
+  // Upload and transcribe: ASR is automatically triggered after ingest is dropped into the database, and the
   // hasAudioTrack signal; audio always, video unless explicitly told there's no audio.
   const hasAudio = shouldTranscribe(kind, typeof args.hasAudioTrack === 'boolean' ? args.hasAudioTrack : undefined);
 
@@ -540,7 +540,7 @@ async function execFinalize(args: Args, ctx: AgentContext): Promise<unknown> {
     height: asset.height,
     transcription: hasAudio ? 'started' : undefined,
     next: hasAudio
-      ? `ASR started (上传即转写). Call track_progress action=wait target=transcription assetIds=${asset.id} before find_transcript / clean_script / delete_text / edit_captions / apply_script.`
+      ? `ASR started (Upload and transcribe). Call track_progress action=wait target=transcription assetIds=${asset.id} before find_transcript / clean_script / delete_text / edit_captions / apply_script.`
       : undefined,
     note: 'Asset registered in media pool (local-dev finalize).',
   };

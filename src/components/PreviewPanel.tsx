@@ -20,7 +20,7 @@ interface PreviewPanelProps {
   state: TimelineState;
   playerRef: RefObject<PlayerRef | null>;
   onImport: (file: File) => Promise<void>;
-  /** 画布字幕直编(选中框+浮动工具条)。未传(如提案预览态)则只读。 */
+  /** Canvas subtitle direct editing(Check box+floating toolbar). Not passed on(Such as proposal preview status)then read-only. */
   onUpdateCaptions?: (patch: Partial<CaptionsData>, track?: TrackId) => void;
   onSeedChat?: (text: string) => void;
 }
@@ -33,10 +33,10 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
   const [busy, setBusy] = useState(false);
   const [showSafe, setShowSafe] = useState(false);
   const [autoEditCaption, setAutoEditCaption] = useState<{ trackId: TrackId; laneId: string } | null>(null);
-  // 全屏预览(` 快捷键/时间线工具栏按钮把 Player 全屏)时露出 Player
-  // 自带控制条;编辑态仍走时间线 transport,不显示双套控制。
-  // 必须听 Remotion 自己的 fullscreenchange:它在 Chrome 走 webkit 遗留 API,
-  // document 标准事件不保证跟着响,SDK emitter 才是真源。
+  // Expose Player during full screen preview (` shortcut key/timeline toolbar button to make Player full screen)
+  // Comes with a control bar; the editing state still uses the timeline transport, and does not display dual sets of controls.
+  // Must listen to Remotion's own fullscreenchange: it walks the webkit legacy API in Chrome,
+  // The document standard event is not guaranteed to follow, the SDK emitter is the real source.
   const [fullscreen, setFullscreen] = useState(false);
   const hasItems = state.items.length > 0;
   useEffect(() => {
@@ -46,7 +46,7 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
     player.addEventListener('fullscreenchange', onChange);
     return () => player.removeEventListener('fullscreenchange', onChange);
   }, [playerRef, hasItems]);
-  // 选择模式 (canvas-region-marked): drag a marquee → region reference
+  // Selection mode (canvas-region-marked): drag a marquee → region reference
   const pickMode = useSelectionRefMode();
   const importFiles = async (files: FileList | File[]) => {
     if (!files.length || busy) return;
@@ -64,7 +64,7 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
     const x = (clientX - rect.left) / rect.width;
     const y = (clientY - rect.top) / rect.height;
     const startMs = ((playerRef.current?.getCurrentFrame() ?? 0) / state.fps) * 1000;
-    const dropped = appendDroppedManualCaption(entry.captions, state.items, payload.template, t('双击编辑字幕'), startMs, {
+    const dropped = appendDroppedManualCaption(entry.captions, state.items, payload.template, t('Double click to edit subtitles'), startMs, {
       anchor: 'middle-center', offsetXRatio: x - 0.5, offsetYRatio: y - 0.5,
     });
     if (!dropped) return false;
@@ -79,22 +79,22 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
   return (
     <section style={{ display: 'flex', flex: 1, flexDirection: 'column', background: theme.panel, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
       <div style={{ height: 30, padding: '0 12px', display: 'flex', alignItems: 'center', borderBottom: `0.5px solid ${theme.border}`, flexShrink: 0 }}>
-        <span style={{ fontSize: 12, color: theme.text }}>{t('预览')}</span>
+        <span style={{ fontSize: 12, color: theme.text }}>{t('Preview')}</span>
         {pickMode && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 10, fontSize: 11, color: theme.accent }}>
             <Icon name="cursor" size={11} />
-            {t('选择模式：在画面上拖框选区作为引用')}
+            {t('Selection mode: drag the selection frame on the screen as a reference')}
           </span>
         )}
         {state.items.length > 0 && (
           <button type="button" onClick={() => setShowSafe((v) => !v)}
-            title={t('切换标题/动作安全区参考框（竖屏成片构图辅助）')}
+            title={t('Switch title/Action safe zone reference frame (vertical screen composition assistance)')}
             style={{
               marginLeft: 'auto', fontSize: 11, lineHeight: 1, padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
               border: `0.5px solid ${theme.border}`, background: showSafe ? theme.panelAlt : 'transparent',
               color: showSafe ? theme.text : theme.textDim,
             }}>
-            {t('安全框')}
+            {t('safe box')}
           </button>
         )}
       </div>
@@ -109,7 +109,7 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
             <input ref={inputRef} type="file" accept="video/*,image/*,audio/*" multiple hidden onChange={(event) => { if (event.target.files) void importFiles(event.target.files); event.target.value = ''; }} />
             <button className="cc-preview-empty" disabled={busy} onClick={() => inputRef.current?.click()}>
               <Icon name="upload" size={24} />
-              <span>{busy ? t('正在导入媒体…') : t('拖拽媒体到这里')}</span>
+              <span>{busy ? t('Importing media...') : t('Drag media here')}</span>
             </button>
           </>
         ) : (
@@ -129,7 +129,7 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
               compositionWidth={state.width}
               compositionHeight={state.height}
               numberOfSharedAudioTags={SHARED_AUDIO_TAGS}
-              // 全屏铺黑:webkit 遗留全屏对 div 不自动垫黑底,两侧会透出页面棋盘格
+              // Full screen black: Webkit legacy full screen div does not automatically blacken the background, and the page checkerboard will be revealed on both sides.
               style={{ width: '100%', height: '100%', backgroundColor: fullscreen ? '#000' : undefined }}
               controls={fullscreen}
               // Playback runs only through the timeline transport
@@ -179,7 +179,7 @@ function RegionPickOverlay({ state, playerRef }: { state: TimelineState; playerR
   return (
     <div
       ref={boxRef}
-      title={t('拖拽框选画面区域作为引用')}
+      title={t('Drag and drop to select the screen area as a reference')}
       onPointerDown={(event) => {
         if (event.button !== 0) return; // left button only
         event.currentTarget.setPointerCapture(event.pointerId);

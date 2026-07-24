@@ -15,7 +15,7 @@ import { useT } from '../i18n/locale';
 import { setLibraryDrag } from './drag';
 
 // Sound-library tab:
-//   search ("Search sounds") + chips [热门, …groups] + list rows:
+//   search ("Search sounds") + chips [popular, …groups] + list rows:
 //   [group-color glyph / play] [name] [waveform] [duration] [+ add]
 
 const POPULAR = '__popular__';
@@ -129,20 +129,20 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
         <input
           id="cc-sound-library-search"
           type="search"
-          placeholder={t('搜索音效')}
+          placeholder={t('Search for sound effects')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           autoComplete="off"
           spellCheck={false}
         />
         {query ? (
-          <button type="button" className="cc-sound-search-clear" onClick={() => setQuery('')} aria-label={t('清除')}>
+          <button type="button" className="cc-sound-search-clear" onClick={() => setQuery('')} aria-label={t('Clear')}>
             <Icon name="x" size={12} />
           </button>
         ) : null}
       </label>
 
-      <div className="cc-sound-chips" role="tablist" aria-label={t('音效分组')}>
+      <div className="cc-sound-chips" role="tablist" aria-label={t('Sound effects grouping')}>
         <button
           type="button"
           role="tab"
@@ -150,7 +150,7 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
           className={`cc-sound-chip${chip === POPULAR ? ' selected' : ''}`}
           onClick={() => setChip(POPULAR)}
         >
-          {t('热门')}
+          {t('Popular')}
         </button>
         {SOUND_GROUPS.map((g) => (
           <button
@@ -167,9 +167,9 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
       </div>
 
       {list.length === 0 ? (
-        <div className="cc-sound-empty">{t('此分类下暂无音效')}{query ? t('（与「{query}」不匹配）', { query }) : ''}</div>
+        <div className="cc-sound-empty">{t('There are currently no sound effects in this category')}{query ? t('(with "{query}” does not match)', { query }) : ''}</div>
       ) : (
-        <div className="cc-sound-list" role="listbox" aria-label={t('音效列表')}>
+        <div className="cc-sound-list" role="listbox" aria-label={t('Sound effects list')}>
           {list.map((s) => {
             const tone = SOUND_GROUP_TONE[s.group] ?? SOUND_GROUP_TONE['ui-motion-feedback']!;
             const isPlaying = playingId === s.id;
@@ -182,7 +182,7 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
                 role="option"
                 aria-selected={isPlaying}
                 className={`cc-sound-row${isPlaying ? ' active' : ''}`}
-                title={t('{desc} · 可拖到时间线音轨', { desc: s.desc })}
+                title={t('{desc} · Can be dragged to the timeline audio track', { desc: s.desc })}
                 draggable
                 onDragStart={(e) => {
                   setLibraryDrag(e, {
@@ -204,7 +204,7 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
                     e.stopPropagation();
                     audition(s);
                   }}
-                  aria-label={isPlaying ? t('暂停 {name}', { name: s.name }) : t('试听 {name}', { name: s.name })}
+                  aria-label={isPlaying ? t('pause {name}', { name: s.name }) : t('audition {name}', { name: s.name })}
                 >
                   <Icon name={isPlaying ? 'pause' : 'play'} size={12} />
                 </button>
@@ -228,8 +228,8 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
                 <button
                   type="button"
                   className="cc-sound-add"
-                  title={t('添加到时间线：{name}', { name: s.name })}
-                  aria-label={t('添加 {name}', { name: s.name })}
+                  title={t('Add to timeline:{name}', { name: s.name })}
+                  aria-label={t('add {name}', { name: s.name })}
                   onClick={(e) => {
                     e.stopPropagation();
                     onAdd(toAsset(s, fps));
@@ -243,7 +243,7 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
         </div>
       )}
 
-      <div className="cc-sound-hint">{t('单击试听 · 双击/点 + 或拖到时间线音轨 · 共 {n} 个音效', { n: SOUND_EFFECTS.length })}</div>
+      <div className="cc-sound-hint">{t('Click to listen · Double click/point + Or drag to the timeline audio track · total {n} sound effects', { n: SOUND_EFFECTS.length })}</div>
     </div>
   );
 });

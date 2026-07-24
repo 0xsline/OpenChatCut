@@ -8,10 +8,10 @@ import { ALL_FX, LUT_EFFECTS } from '../../gl/fx/effects';
 import { Icon, type IconName } from '../icons';
 import { useT } from '../../i18n/locale';
 
-// speed presets for the 变速 submenu
+// speed presets for the variable speed submenu
 const SPEED_PRESETS = [0.25, 0.5, 1, 1.5, 2, 4] as const;
 
-// Clip right-click menu. AI 多机位同步:客户端音频对齐(src/multicam)。
+// Clip right-click menu. AI multi-cam synchronization: client audio alignment (src/multicam).
 
 /** effects copied from a clip (the clip's effects[] stack) */
 export interface FxClip {
@@ -24,7 +24,7 @@ export interface FxClip {
 
 interface ClipContextMenuProps {
   item: TimelineItem;
-  /** 与本片段相关的转场(入/出),供「已应用效果」列出与移除 */
+  /** Transitions related to this clip(enter/out),For "Applied Effects" to list and remove */
   transitions: TransitionItem[];
   x: number;
   y: number;
@@ -37,9 +37,9 @@ interface ClipContextMenuProps {
   fxClip: FxClip | null;
   onCopyFx: (fx: FxClip) => void;
   onClose: () => void;
-  /** 导出 MG 动画 → ProRes 4444 alpha .mov download */
+  /** Export MG animation → ProRes 4444 alpha .mov download */
   onExportMg: (item: TimelineItem) => void;
-  /** 转为视频 → bake to a video clip in place */
+  /** Convert to video → bake to a video clip in place */
   onConvertToVideo: (item: TimelineItem) => void;
 }
 
@@ -61,15 +61,15 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
   // If only one selected but right-clicked a media clip, still require multi-select
   const multicamReady = multicamIds.length >= 2;
   const multicamHint = multicamReady
-    ? t('对 {n} 个片段做音频对齐', { n: multicamIds.length })
+    ? t('Yes {n} Audio alignment of clips', { n: multicamIds.length })
     : batchN < 2 && selectedIds.length < 2
-      ? t('先框选 2 个及以上视频/音频片段')
-      : t('多机位同步只支持带媒体的视频/音频片段');
+      ? t('Frame selection first 2 videos and above/audio clip')
+      : t('Multi-camera synchronization only supports videos with media/audio clip');
 
   const runMulticam = async () => {
     if (!multicamReady || syncBusy) return;
     setSyncBusy(true);
-    setSyncMsg(t('正在做音频对齐…'));
+    setSyncMsg(t('Doing audio alignment...'));
     try {
       // Prefer right-clicked item as reference when it's in the set
       const refId = multicamIds.includes(item.id) ? item.id : undefined;
@@ -81,17 +81,17 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
       if (result.changed && result.nextState) commands.applyState(result.nextState);
       setSyncMsg(result.changed
         ? (result.skippedItemIds.length
-          ? t('已同步 {n} 个片段，跳过 {m} 个', { n: result.syncedItemIds.length, m: result.skippedItemIds.length })
-          : t('已同步 {n} 个片段', { n: result.syncedItemIds.length }))
+          ? t('Synced {n} segments, skip {m} a', { n: result.syncedItemIds.length, m: result.skippedItemIds.length })
+          : t('Synced {n} fragments', { n: result.syncedItemIds.length }))
         : result.status === 'already_synced'
-          ? t('已经对齐（偏移小于 1 帧）')
-          : t('无法对齐所选片段（置信度过低或解码失败）'));
+          ? t('Already aligned (offset less than 1 frame)')
+          : t('Unable to align selected fragments (confidence too low or decoding failed)'));
       if (result.changed) {
         // brief toast then close
         window.setTimeout(() => onClose(), 900);
       }
     } catch (e) {
-      setSyncMsg(e instanceof Error ? e.message : t('多机位同步失败'));
+      setSyncMsg(e instanceof Error ? e.message : t('Multi-camera synchronization failed'));
     } finally {
       setSyncBusy(false);
     }
@@ -106,7 +106,7 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
 
   const [showSpeed, setShowSpeed] = useState(false);
   const [showApplied, setShowApplied] = useState(false);
-  // 初值用保守夹取,量到真实尺寸后精确收拢(展开子区/换 anchor 时重量)
+  // Use conservative clamping for the initial value, and accurately shrink it after measuring the actual size (weight when expanding sub-areas/changing anchors)
   const [pos, setPos] = useState(() => ({ left: Math.min(x, window.innerWidth - 210), top: Math.min(y, window.innerHeight - 380) }));
   useLayoutEffect(() => {
     const el = ref.current;
@@ -118,24 +118,24 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
     });
   }, [x, y, showApplied, showSpeed]);
 
-  // 已应用效果清单:特效/LUT/缩放/转场,点击即移除
+  // Applied performance list:special effects/LUT/Zoom/Transition,Click to remove
   const effects = item.effects ?? [];
   const applied: { key: string; label: string; remove: () => void }[] = [
     ...effects.map((fx) => ({
       key: fx.id,
-      label: `${fx.assetId in LUT_EFFECTS ? 'LUT' : t('特效')} · ${t(ALL_FX[fx.assetId]?.name ?? fx.assetId)}`,
+      label: `${fx.assetId in LUT_EFFECTS ? 'LUT' : t('special effects')} · ${t(ALL_FX[fx.assetId]?.name ?? fx.assetId)}`,
       remove: () => commands.setItemEffects(item.id, effects.filter((e) => e.id !== fx.id)),
     })),
     ...(item.zoom?.shape || (item.zoom?.reframeCurve?.keyframes.length ?? 0) > 0
       ? [{
           key: 'zoom',
-          label: t('缩放 · {name}', { name: item.zoom?.shape ? t(ZOOM_SHAPE_LABELS[item.zoom.shape] ?? item.zoom.shape) : item.zoom?.label ?? t('关键帧') }),
+          label: t('Zoom · {name}', { name: item.zoom?.shape ? t(ZOOM_SHAPE_LABELS[item.zoom.shape] ?? item.zoom.shape) : item.zoom?.label ?? t('keyframe') }),
           remove: () => commands.setItemZoom(item.id, null),
         }]
       : []),
     ...transitions.map((tr) => ({
       key: tr.id,
-      label: t(tr.incomingItemId === item.id ? '转场 · {name}（入）' : '转场 · {name}（出）', { name: t(TRANSITION_LABELS[tr.type] ?? tr.type) }),
+      label: t(tr.incomingItemId === item.id ? 'Transition · {name}(enter)' : 'Transition · {name}(out)', { name: t(TRANSITION_LABELS[tr.type] ?? tr.type) }),
       remove: () => commands.removeTransition(tr.id),
     })),
   ];
@@ -155,8 +155,8 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
     commands.setItemFade(item.id, { fadeInFrames: fxClip.fadeInFrames ?? 0, fadeOutFrames: fxClip.fadeOutFrames ?? 0 });
   };
 
-  // keep the menu on-screen:菜单高度随条目/展开态变化,写死估高会在底部溢出——
-  // 挂载与展开态变化后量真实尺寸再夹取(useLayoutEffect 在绘制前跑,不闪)。
+  // keep the menu on-screen:Menu height varies with items/unfolded state changes,If you write a high estimate, it will overflow at the bottom——
+  // mountwithunfolded state changesafter量true实SizeAgain夹take(useLayoutEffect run before drawing,No flash)。
   const style: React.CSSProperties = {
     position: 'fixed', left: pos.left, top: pos.top,
     zIndex: 100, minWidth: 200, maxHeight: 'calc(100vh - 16px)', overflowY: 'auto',
@@ -167,7 +167,7 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
   return (
     <div ref={ref} style={style}>
       <Item
-        label={syncBusy ? t('多机位同步中…') : t('AI 多机位同步')}
+        label={syncBusy ? t('Multi-camera synchronization...') : t('AI Multi-camera synchronization')}
         icon="users"
         disabled={!multicamReady || syncBusy}
         onClick={() => { void runMulticam(); }}
@@ -183,15 +183,15 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
         </div>
       )}
       <Sep />
-      <Item label={t('复制')} icon="copy" shortcut="⌘C" onClick={run(() => commands.duplicateItem(item.id))} />
-      <Item label={t('切分')} icon="scissors" shortcut="C" disabled={!inside} onClick={run(() => commands.splitItem(item.id, playhead))} />
+      <Item label={t('Copy')} icon="copy" shortcut="⌘C" onClick={run(() => commands.duplicateItem(item.id))} />
+      <Item label={t('cut')} icon="scissors" shortcut="C" disabled={!inside} onClick={run(() => commands.splitItem(item.id, playhead))} />
       <Sep />
-      <Item label={applied.length ? t('已应用效果（{n}）', { n: applied.length }) : t('已应用效果')} icon="filter" chevron disabled={applied.length === 0}
+      <Item label={applied.length ? t('Effect applied ({n}）', { n: applied.length }) : t('Effect applied')} icon="filter" chevron disabled={applied.length === 0}
         onClick={applied.length ? () => setShowApplied((v) => !v) : undefined} />
       {showApplied && applied.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 6px 6px 35px' }}>
           {applied.map((a) => (
-            <button key={a.key} title={t('点击移除')} onClick={run(a.remove)} style={appliedRow}
+            <button key={a.key} title={t('Click to remove')} onClick={run(a.remove)} style={appliedRow}
               onMouseEnter={(e) => { e.currentTarget.style.background = theme.bg; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{a.label}</span>
@@ -200,9 +200,9 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
           ))}
         </div>
       )}
-      <Item label={t('复制效果')} icon="sparkles" disabled={!isVisual} onClick={run(copyFx)} />
-      <Item label={t('粘贴效果')} icon="clipboard" shortcut={PASTE_HINT} disabled={!isVisual || !fxClip} onClick={run(pasteFx)} />
-      <Item label={rate !== 1 ? t('变速（{rate}×）', { rate }) : t('变速')} icon="clock" chevron disabled={!canSpeed}
+      <Item label={t('copy effect')} icon="sparkles" disabled={!isVisual} onClick={run(copyFx)} />
+      <Item label={t('Paste effect')} icon="clipboard" shortcut={PASTE_HINT} disabled={!isVisual || !fxClip} onClick={run(pasteFx)} />
+      <Item label={rate !== 1 ? t('variable speed ({rate}×）', { rate }) : t('variable speed')} icon="clock" chevron disabled={!canSpeed}
         onClick={canSpeed ? () => setShowSpeed((v) => !v) : undefined} />
       {showSpeed && canSpeed && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '2px 9px 6px 35px' }}>
@@ -217,11 +217,11 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
         </div>
       )}
       <Sep />
-      <Item label={t('导出 MG 动画')} icon="download" disabled={!isDom} onClick={run(() => onExportMg(item))} />
-      <Item label={t('转为视频')} icon="film" disabled={item.kind === 'audio'} onClick={run(() => onConvertToVideo(item))} />
+      <Item label={t('Export MG animation')} icon="download" disabled={!isDom} onClick={run(() => onExportMg(item))} />
+      <Item label={t('Convert to video')} icon="film" disabled={item.kind === 'audio'} onClick={run(() => onConvertToVideo(item))} />
       <Sep />
       <Item
-        label={batchN > 1 ? t('删除（{n}）', { n: batchN }) : t('删除')}
+        label={batchN > 1 ? t('Delete ({n}）', { n: batchN }) : t('Delete')}
         icon="trash"
         danger
         shortcut="⌫"
@@ -231,7 +231,7 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
         })}
       />
       <Item
-        label={batchN > 1 ? t('波纹删除（{n}）', { n: batchN }) : t('波纹删除（合缝）')}
+        label={batchN > 1 ? t('ripple delete ({n}）', { n: batchN }) : t('Ripple removal (joint seam)')}
         icon="trash"
         danger
         shortcut="⇧⌫"

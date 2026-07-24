@@ -37,7 +37,7 @@ export function TimelineTabs({ doc, commands }: TimelineTabsProps) {
             key={tl.id}
             onClick={() => !active && commands.switchTimeline(tl.id)}
             onDoubleClick={() => { setRenaming(tl.id); setDraft(tl.name); }}
-            title={t('单击切换 · 双击重命名')}
+            title={t('Click to toggle · Double click to rename')}
             style={{
       display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 4, cursor: 'pointer', flexShrink: 0,
               background: active ? themeAlpha.accent(0.14) : 'transparent',
@@ -63,7 +63,7 @@ export function TimelineTabs({ doc, commands }: TimelineTabsProps) {
             {timelines.length > 1 && (
               <button
                 onClick={(e) => { e.stopPropagation(); commands.deleteTimeline(tl.id); }}
-                title={t('删除该序列')}
+                title={t('Delete the sequence')}
                 style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}
               >×</button>
             )}
@@ -71,13 +71,13 @@ export function TimelineTabs({ doc, commands }: TimelineTabsProps) {
         );
       })}
       <span style={{ width: 6 }} />
-      <button onClick={() => commands.createTimeline()} title={t('新建序列')} style={tabBtn}>{t('＋序列')}</button>
-      <button onClick={() => commands.duplicateTimeline(doc.activeTimelineId)} title={t('复制当前序列')} style={{ ...tabBtn, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="copy" size={13} />{t('复制')}</button>
+      <button onClick={() => commands.createTimeline()} title={t('New sequence')} style={tabBtn}>{t('+ sequence')}</button>
+      <button onClick={() => commands.duplicateTimeline(doc.activeTimelineId)} title={t('copy current sequence')} style={{ ...tabBtn, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="copy" size={13} />{t('Copy')}</button>
       <button
-        onClick={() => commands.duplicateTimeline(doc.activeTimelineId, { retarget: { width: 1080, height: 1920, fit: 'cover' }, name: '竖屏' })}
-        title={t('把当前序列复制为 9:16 竖屏（长转短）')}
+        onClick={() => commands.duplicateTimeline(doc.activeTimelineId, { retarget: { width: 1080, height: 1920, fit: 'cover' }, name: 'Vertical screen' })}
+        title={t('Copy the current sequence as 9:16 Portrait screen (long to short)')}
         style={{ ...tabBtn, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-      ><Icon name="swap" size={13} />{t('竖屏副本')}</button>
+      ><Icon name="swap" size={13} />{t('Vertical copy')}</button>
     </div>
   );
 }

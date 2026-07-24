@@ -54,7 +54,7 @@ throws `kling mode and resolution conflict`. Prefer setting only one.
 
 - `lastFrame` **requires** `firstFrame`.
 - All slots are **project asset refs** (UUID / prefix / `asset://…`). External URLs rejected — import first.
-- In the **prompt**, use `@Image1` / `@图片1` and `@Video1` / `@视频1`. Our server rewrites to `<<<image_N>>>` / `<<<video_N>>>`. Image ordinals: firstFrame → lastFrame → refImages[0]…. Video ordinals start at 1 for `refVideos[0]`.
+- In the **prompt**, use `@Image1` / `@picture1` and `@Video1` / `@video1`. Our server rewrites to `<<<image_N>>>` / `<<<video_N>>>`. Image ordinals: firstFrame → lastFrame → refImages[0]…. Video ordinals start at 1 for `refVideos[0]`.
 - With a feature video: keep **≤4** stills total; describe what to take from the video (camera, motion, rhythm) in the prompt.
 
 Always attach a noun after the token: `@Image1 character walks…`, not bare `@Image1 walks…`.

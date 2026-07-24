@@ -14,7 +14,7 @@ function SpeedMenu({ rate, onChange }: { rate: number; onChange: (rate: number) 
       padding: 10, background: theme.panelAlt, border: `0.5px solid ${theme.borderLight}`,
       borderRadius: 6, boxShadow: `0 10px 28px ${themeAlpha.shadow(0.32)}`,
     }}>
-      <div style={{ color: theme.text, fontSize: 12, fontWeight: 650, marginBottom: 8 }}>{t('变速')}</div>
+      <div style={{ color: theme.text, fontSize: 12, fontWeight: 650, marginBottom: 8 }}>{t('variable speed')}</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4 }}>
         {SPEED_PRESETS.map((preset) => {
           const active = Math.abs(rate - preset) < 0.01;
@@ -32,7 +32,7 @@ function SpeedMenu({ rate, onChange }: { rate: number; onChange: (rate: number) 
         })}
       </div>
       <div style={{ color: theme.textDim, fontSize: 10, lineHeight: 1.45, marginTop: 8 }}>
-        {t('保调变速（预览/导出）· 时长随速率伸缩并波纹合缝')}
+        {t('Pitch-maintaining speed change (preview/export)· Duration expands and contracts with speed and ripples together')}
       </div>
     </div>
   );
@@ -58,8 +58,8 @@ export function TimelineSpeedControl({
 
   return (
     <div data-testid="timeline-speed-control" onBlur={handleBlur} style={{ position: 'relative', flexShrink: 0 }}>
-      <button type="button" disabled={!item} aria-expanded={open} aria-label={t('变速')}
-        className="cc-tip" data-tip={t('变速')} onClick={() => setOpen((value) => !value)}
+      <button type="button" disabled={!item} aria-expanded={open} aria-label={t('variable speed')}
+        className="cc-tip" data-tip={t('variable speed')} onClick={() => setOpen((value) => !value)}
         style={{
           height: 24, minWidth: 45, padding: '0 6px',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,

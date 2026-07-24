@@ -1,8 +1,8 @@
-// 已安装扩展包的本机共享持久化 + 启动水合(注册进运行时注册表)。
-// 主存储为 ~/.openchatcut/plugins；旧 IndexedDB 数据只用于一次迁移和无浏览器服务的检查回落。
-// 读取一律重跑 validatePack(持久化数据不可信),坏包静默丢弃。
-// 时间线渲染不依赖这里 —— 应用过的内容已快照进 state(fxDefs/customFrag/code),
-// 水合只服务资源库列表与 agent 工具可见性。
+// Native shared persistence of installed extensions + startup hydration (registered into the runtime registry).
+// Main storage is ~/.openchatcut/plugins; old IndexedDB data is only used for one migration and checkback without browser service.
+// Always rerun validatePack when reading (persistent data is not trustworthy), and bad packets are silently discarded.
+// Timeline rendering does not depend on this - the applied content has been snapshotted into state(fxDefs/customFrag/code),
+// Hydration only serves the repository with agent tool visibility.
 import { validatePack } from './validate';
 import { pluginAssetId, type PluginFxItem, type PluginLutItem, type PluginPack, type PluginTransitionItem } from './types';
 import type { SerializableFxDef } from '../gl/fx/uniforms';
@@ -64,11 +64,11 @@ async function idbDelete(key: string): Promise<void> {
 
 const canUseServer = () => typeof window !== 'undefined' && typeof fetch === 'function';
 
-/** 安装产物:包 + 安装期生成的资产(LUT cube 上传后的 URL,按条目 id 记) */
+/** Install product:package + Assets generated during installation(LUT cube After uploading URL,by item id remember) */
 export interface InstalledPack extends PluginPack {
   installedAt: number;
   enabled: boolean;
-  /** lut 条目 id → 已上传 .cube 的 /media/uploads URL */
+  /** lut entry id → Uploaded .cube of /media/uploads URL */
   cubeUrls?: Record<string, string>;
   source?: {
     kind: 'registry' | 'url' | 'file';
@@ -102,7 +102,7 @@ function toValidInstalled(v: unknown): InstalledPack | null {
   };
 }
 
-// 安装/卸载后的 UI 刷新订阅(扩展中心/资源库分类用)
+// UI refresh subscription after installation/uninstallation (for extension center/resource library classification)
 const listeners = new Set<() => void>();
 const notify = () => { for (const fn of listeners) fn(); };
 export function subscribePlugins(fn: () => void): () => void {
@@ -131,7 +131,7 @@ async function requestServer(path = '', init?: RequestInit): Promise<Response> {
   const response = await fetch(`${API_PATH}${path}`, init);
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { error?: string } | null;
-    throw new Error(body?.error ?? `扩展存储请求失败 (${response.status})`);
+    throw new Error(body?.error ?? `Extended storage request failed (${response.status})`);
   }
   return response;
 }
@@ -184,14 +184,14 @@ export async function listPacks(): Promise<InstalledPack[]> {
   }
 }
 
-/** 按 id upsert(重装=切换到新版本,旧版本文件保留供后续回滚)。 */
+/** press id upsert(Reinstall=Switch to new version,Old version files are retained for subsequent rollback)。 */
 export async function savePack(pack: InstalledPack): Promise<void> {
   if (canUseServer()) await saveServerPack(pack);
   else await saveLegacyPack(pack);
   notify();
 }
 
-/** 从运行时注册表摘掉一包(fx/lut/转场/缩放);不碰持久层。已应用内容靠 state 快照仍可渲。 */
+/** Remove a package from the runtime registry(fx/lut/Transition/Zoom);Don't touch the persistence layer. The content has been applied state Snapshots can still be rendered. */
 export async function unregisterPack(pack: InstalledPack): Promise<void> {
   const [fx, tr] = await Promise.all([
     import('../gl/fx/effects'),
@@ -209,7 +209,7 @@ export async function removePack(id: string): Promise<void> {
   const packs = await listPacks();
   const pack = packs.find((p) => p.id === id);
   if (pack) {
-    try { await unregisterPack(pack); } catch { /* 反注册失败仍删持久层，避免卡死卸载 */ }
+    try { await unregisterPack(pack); } catch { /* If de-registration fails, the persistence layer will still be deleted to avoid stuck uninstallation. */ }
   }
   if (canUseServer()) {
     await requestServer(`/${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -243,27 +243,27 @@ export async function setPackEnabled(id: string, enabled: boolean): Promise<void
   notify();
 }
 
-// ── def 映射(纯函数,check 可测) ────────────────────────────────────────────
+// ── def mapping (pure function, check measurable) ──────────────────────────────────────────
 
 export function fxDefOf(pack: PluginPack, item: PluginFxItem): SerializableFxDef {
   return {
     id: pluginAssetId(pack.id, item.id),
     name: item.name,
-    desc: item.desc ?? `${pack.name} 插件特效`,
+    desc: item.desc ?? `${pack.name} Plug-in effects`,
     frag: item.frag,
     props: item.props ?? [],
     ...(item.passes ? { passes: item.passes } : {}),
   };
 }
 
-/** LUT def:frag 用通用 lut.frag(调用方注入,effects.ts 才有 ?raw 导入) */
+/** LUT def:frag Use general lut.frag(caller injection,effects.ts only have ?raw import) */
 export function lutDefOf(pack: PluginPack, item: PluginLutItem, cubeUrl: string, lutFrag: string): SerializableFxDef {
   return {
     id: pluginAssetId(pack.id, item.id),
     name: item.name,
-    desc: item.desc ?? `${pack.name} 插件 LUT`,
+    desc: item.desc ?? `${pack.name} plug-in LUT`,
     frag: lutFrag,
-    props: [{ key: 'intensity', label: '强度', default: 1, min: 0, max: 1, step: 0.01 }],
+    props: [{ key: 'intensity', label: 'intensity', default: 1, min: 0, max: 1, step: 0.01 }],
     cube: cubeUrl,
   };
 }
@@ -277,8 +277,8 @@ export function transitionDefOf(pack: PluginPack, item: PluginTransitionItem): C
   };
 }
 
-/** 单包注册进运行时注册表(fx/lut → ALL_FX,转场 → custom 注册表)。
- * effects.ts 含 .frag?raw 导入,只能动态 import(浏览器侧)。 */
+/** Register a single package into the runtime registry(fx/lut → ALL_FX,Transition → custom Registry)。
+ * effects.ts Contains .frag?raw import,Only dynamic import(Browser side)。 */
 export async function registerPack(pack: InstalledPack): Promise<void> {
   if (!pack.enabled) return;
   const [fx, tr] = await Promise.all([
@@ -300,17 +300,17 @@ export async function registerPack(pack: InstalledPack): Promise<void> {
         ...(item.magnification !== undefined ? { magnification: item.magnification } : {}),
       });
     }
-    // mg-template 无注册表:资源库列表直接读 listPacks()
+    // mg-template has no registry: the resource library list is read directly with listPacks()
   }
 }
 
-/** App 启动水合:注册全部已装包;失败静默——渲染不依赖(state 快照自包含)。 */
+/** App Start hydration:Register all packages;Silent on failure - rendering independent(state Snapshots are self-contained)。 */
 export async function hydratePlugins(): Promise<void> {
   const packs = (await listPacks()).filter((pack) => pack.enabled);
   if (!packs.length) return;
   try {
     for (const pack of packs) await registerPack(pack);
   } catch {
-    // 注册表水合失败不致命:已应用内容靠 state 快照照常渲染
+    // Registry hydration failure is not fatal: applied content relies on state snapshots to render as usual
   }
 }

@@ -1,36 +1,36 @@
-// 统一异步 Job 模型(计划 A3)。
+// Unified asynchronous Job model (Plan A3).
 // ---------------------------------------------------------------------------
-// 后端是一张 job 表(generation_job/analysis_job),字段 status/result 一套状态机,
-// 通过两个"同构"轮询工具暴露给 agent:track_progress(generation/transcription/upload/
-// visual-analysis)与 track_export(render)。
+// The backend is a job table (generation_job/analysis_job), the field status/result is a set of state machines,
+// Exposed to agent:track_progress(generation/transcription/upload/ via two "isomorphic" polling tools
+// visual-analysis) and track_export(render).
 //
-// 本仓把这套 job 拆成三个"家族",落在不同的执行地(locality),各自的 wire 状态词汇:
-//   generation 家族 wire:  queued | running | succeeded | failed | not_found   (server 库, jobId)
-//   export     家族 wire:  queued | running | completed | failed               (server 库, renderId)
-//   transcription store:   running | done    | failed                          (浏览器内 Map, assetId)
-// 这些 wire 字符串是各任务家族的固定协议值，保持原样不改:
-//   · 同步 submit_export(generate-tools.ts,grok 冻结)返 status:'completed' → 导出族终态词就是 completed;
-//   · 生成族终态词是 succeeded;两个家族本就是 track_progress vs track_export 两条线,词汇可不同。
+// This warehouse split this set of jobs into three "families", which fall into different execution localities (locality) and have their own wire status vocabulary:
+//   generation family wire: queued | running | succeeded | failed | not_found (server library, jobId)
+//   export family wire: queued | running | completed | failed (server library, renderId)
+//   transcription store: running | done | failed (in-browser Map, assetId)
+// These wire strings are fixed protocol values for each task family and remain unchanged:
+//   · Synchronous submit_export(generate-tools.ts, grok frozen) returns status:'completed' → The final state word of the export family is completed;
+//   · The final word of the generated family is succeeded; the two families are originally track_progress vs track_export, and the vocabulary can be different.
 //
-// 本模块是它们**之下**的共享语义层:一套 canonical 生命周期 + 一个 terminal 权威,
-// 让没有任何一处轮询循环再用手写字符串比较去判断"这个 job 完了没"(那是漏 not_found
-// 之类的 bug 温床)。纯模块(无 DOM/网络),app / tsx check 都能安全 import。
+// This module is the shared semantic layer underneath them: a set of canonical life cycles + a terminal authority,
+// Let there be no polling loop anywhere and then use handwritten string comparison to determine "whether this job is finished" (that is missing not_found
+// such a hotbed of bugs). Pure modules (no DOM/network), app / tsx check can be safely imported.
 //
-// upload / visual-analysis 有独立 client 表(track-progress-targets + visual-analysis-jobs),
-// 不并入本模块的 JobKind 枚举(wire 字段与 generation 不同),但 normalizeStatus 仍复用。
+// upload/visual-analysis has an independent client table (track-progress-targets + visual-analysis-jobs),
+// The JobKind enumeration is not incorporated into this module (the wire field is different from generation), but normalizeStatus is still reused.
 
-/** Canonical、与家族无关的 job 生命周期。**刻意**区别于任何家族的 wire 字符串
- *  (queued/succeeded/completed/done)—— 通过 normalizeStatus 归一化后才到这一层。 */
+/** Canonical, not related to the family job life cycle.**Deliberately**Different from any family wire string
+ *  (queued/succeeded/completed/done)—— Passed normalizeStatus This level is reached only after normalization. */
 export type JobStatus = 'pending' | 'running' | 'complete' | 'failed' | 'not_found';
 
-/** 已实现的 job 家族(track_progress target 的子集 + 渲染族)。 */
+/** realized job family(track_progress target subset of + render family)。 */
 export type JobKind = 'generation' | 'transcription' | 'export' | 'upload' | 'visual-analysis';
 
-/** 轮询必须停下的状态(job 不会再变)。not_found 是终态:查不到的 job 永远不会出现,
- *  继续等毫无意义。 */
+/** Polling must stop the status(job won't change again)。not_found It's the final state:Unable to find job will never appear,
+ *  There's no point in waiting. */
 export const TERMINAL_STATUSES: ReadonlySet<JobStatus> = new Set<JobStatus>(['complete', 'failed', 'not_found']);
 
-/** 各家族 wire 词汇 → canonical 的映射表(大小写/空白不敏感,见 normalizeStatus)。 */
+/** families wire Vocabulary → canonical mapping table(Case/white space insensitive,see normalizeStatus)。 */
 const WIRE_TO_CANONICAL: Readonly<Record<string, JobStatus>> = {
   pending: 'pending',
   queued: 'pending',
@@ -47,30 +47,30 @@ const WIRE_TO_CANONICAL: Readonly<Record<string, JobStatus>> = {
   missing: 'not_found',
 };
 
-/** 把任意家族 wire 状态归一到 canonical 生命周期。未知字符串按 'running'(非终态)处理,
- *  这样一个不认识的值会继续轮询,而不是误判为终态提前结束。 */
+/** put any family wire status normalized to canonical life cycle. Unknown string press 'running'(non-final state)Process,
+ *  Such an unknown value will continue to poll,Instead of misjudging the final state to end early. */
 export function normalizeStatus(raw: string): JobStatus {
   return WIRE_TO_CANONICAL[raw.trim().toLowerCase()] ?? 'running';
 }
 
-/** job 是否已到不再变化的终态(complete/failed/not_found)。 */
+/** job Has it reached the final state of no longer changing?(complete/failed/not_found)。 */
 export function isTerminal(raw: string): boolean {
   return TERMINAL_STATUSES.has(normalizeStatus(raw));
 }
 
-/** 仅"成功完成"为真(failed/not_found 均为假)。 */
+/** only"Completed successfully"is true(failed/not_found All are false)。 */
 export function isComplete(raw: string): boolean {
   return normalizeStatus(raw) === 'complete';
 }
 
-/** 仅"失败"为真。 */
+/** only"failed"is true. */
 export function isFailed(raw: string): boolean {
   return normalizeStatus(raw) === 'failed';
 }
 
-/** 每个家族的工具面向 job 报告都满足的共享骨架。job 句柄字段名按
- *  track_progress schema 是家族特定的(生成 jobId、导出 renderId、转写 assetId),
- *  故句柄**不**进基类,只共享生命周期字段。S = 该家族的 wire 状态联合类型。 */
+/** Tools for each family job Reports are all satisfied by a shared skeleton.job Handle field name
+ *  track_progress schema is family specific(generate jobId, export renderId, transliteration assetId),
+ *  So handle**No**Enter base class,Only lifecycle fields are shared.S = of the family wire State union type. */
 export interface JobReportBase<S extends string = string> {
   status: S;
   progress?: number;

@@ -113,7 +113,7 @@ export function useEditorActions(deps: EditorActionDeps): void {
     ...navigationActions(deps),
     ...viewActions(deps),
     'save-version': () => {
-      const name = `版本 ${new Date().toLocaleString('zh-CN', {
+      const name = `version ${new Date().toLocaleString('zh-CN', {
         month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
       })}`;
       void saveVersion(deps.projectId, name, deps.docRef.current).then(deps.openHistory);

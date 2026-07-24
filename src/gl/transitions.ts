@@ -61,7 +61,7 @@ export const GLSL_TRANSITIONS: Record<GlslTransitionType, GlslTransitionDef> = {
     uniforms: () => ({
       u_radius: 0.12, // Ai default [0.02, 0.5]
       u_glossiness: 0.6, // Ai default [0, 1]
-      u_paperTint: [0.97, 0.95, 0.9], // 纸背色（自定）
+      u_paperTint: [0.97, 0.95, 0.9], // Paper back color (customized)
     }),
   },
   'rack-focus': {
@@ -79,7 +79,7 @@ export const GLSL_TRANSITIONS: Record<GlslTransitionType, GlslTransitionDef> = {
       u_time: time,
       u_glowWidth: 0.05, // Ai default [0, 0.5]
       u_depth: 1.8, // Ai default [0.1, 4]
-      u_glowColor: [1.0, 0.55, 0.18], // 燃边橙（自定）
+      u_glowColor: [1.0, 0.55, 0.18], // Burning edge orange (customized)
     }),
   },
   'impact-shake': {
@@ -101,8 +101,8 @@ export const GLSL_TRANSITIONS: Record<GlslTransitionType, GlslTransitionDef> = {
   'clean-line-wipe': {
     frag: cleanLineWipe,
     uniforms: () => ({
-      u_lineWidth: 0.006, // 细亮线宽（自定）
-      u_lineColor: [1, 1, 1], // 自定
+      u_lineWidth: 0.006, // Thin and bright line width (customized)
+      u_lineColor: [1, 1, 1], // Customized
     }),
   },
   // ── Extended generated library ──────────────────────────────────────────

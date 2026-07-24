@@ -136,7 +136,7 @@ export function buildLibraryItems(templates: Tpl[]): LibraryItem[] {
     category: 'audio-fx',
     description: 'Open-box speech denoise (ffmpeg spectral NR). Attaches denoisedSrc; master clip src unchanged.',
     group: 'voice',
-    usage: 'isolate_voice itemId=<clip> action=apply strength?=70 — not edit_item (per-clip denoise, not a library place). action=clear removes. Library UI: 资源库 → 音频效果.',
+    usage: 'isolate_voice itemId=<clip> action=apply strength?=70 — not edit_item (per-clip denoise, not a library place). action=clear removes. Library UI: Resource library → audio effects.',
   });
   items.push({
     id: AUDIO_FX_ISOLATE_LIGHT,
@@ -179,7 +179,7 @@ export function buildLibraryItems(templates: Tpl[]): LibraryItem[] {
     });
   }
 
-  // 运行时注册的自定义/插件内容(submit_shader 产物 + 已装插件),agent 才看得见摸得着
+  // Only the custom/plug-in content registered at runtime (submit_shader product + installed plug-in) can be seen and touched by the agent.
   for (const d of Object.values(CUSTOM_FX)) {
     items.push({
       id: d.id,
@@ -204,7 +204,7 @@ export function buildLibraryItems(templates: Tpl[]): LibraryItem[] {
       id: z.id,
       name: z.label,
       category: 'zoom',
-      description: '插件缩放曲线(envelope 包络)',
+      description: 'Plug-in scaling curve(envelope envelope)',
       usage: `edit_item adds:[{type:"effect",targetItemId:"<clip>",assetId:"${z.id}"}]`,
     });
   }

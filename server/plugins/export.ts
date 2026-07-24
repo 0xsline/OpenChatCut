@@ -47,8 +47,8 @@ const CLIP_MIME: Record<string, string> = { mov: 'video/quicktime', webm: 'video
 
 const MAX_BODY_BYTES = 32 * 1024 * 1024; // 32MB — timelines carry inlined template code.
 
-// RFC 5987：filename= 是 latin-1 字段，中文 UTF-8 字节直接塞进去会被浏览器按 latin-1
-// 解码成乱码。给一个 ASCII 兜底 filename= + filename*=UTF-8'' 百分号编码（同 server/plugins/subtitles）。
+// RFC 5987: filename= is a latin-1 field. If Chinese UTF-8 bytes are inserted directly, the browser will press latin-1
+// Decoded into gibberish. Give an ASCII backend filename= + filename*=UTF-8'' percent encoding (same as server/plugins/subtitles).
 function contentDisposition(filename: string): string {
   const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
@@ -141,7 +141,7 @@ export function exportPlugin(): Plugin {
   return {
     name: 'openchatcut-export',
     configureServer(server) {
-      // 渲染 bundle 的 /media/uploads symlink 跟随 MEDIA_DIR(自定义素材目录也能渲染)
+      // The /media/uploads symlink of the rendering bundle follows MEDIA_DIR (customized material directories can also be rendered)
       setUploadsDirProvider(uploadDir);
       const cleanStaleExports = () => cleanupStaleExportFiles(uploadDir(), {
           onError: (path, error) => server.config.logger.warn(
@@ -220,8 +220,8 @@ export function exportPlugin(): Plugin {
         }
       });
       // POST /render-clip { state (single-clip), codec, transparent, mode } →
-      //   mode 'download' streams the rendered file (导出 MG 动画: ProRes 4444 alpha);
-      //   mode 'bake' saves it under uploads and returns { path } (转为视频).
+      //   mode 'download' streams the rendered file (Export MG animation: ProRes 4444 alpha);
+      //   mode 'bake' saves it under uploads and returns { path } (to video).
       server.middlewares.use('/render-clip', async (req, res) => {
         if (req.method !== 'POST') { sendError(res, 405, 'method not allowed — use POST'); return; }
         let tmpOut: string | null = null;
@@ -268,11 +268,11 @@ export function exportPlugin(): Plugin {
         }
       });
 
-      // 异步渲染 job（submit_export 视频/音频异步语义 + track_export 轮询）：
-      //   POST /export/job     → 入队渲染，立即返回 { renderId }（真正的渲染在后台队列跑）。
-      //   GET  /export/job/:id → 返回 job 快照（status/progress/result/error），未知 → 404。
-      // 必须注册在 /export 之前：connect 前缀匹配下 '/export' 也会命中 '/export/job'，先注册先执行。
-      // 渲染产物使用专用前缀落入 uploadDir()，浏览器完成后按 result.path 直接取。
+      // Asynchronous rendering job (submit_export video/audio asynchronous semantics + track_export polling):
+      //   POST /export/job → Enqueue rendering and return { renderId } immediately (the real rendering is run in the background queue).
+      //   GET /export/job/:id → Return job snapshot (status/progress/result/error), unknown → 404.
+      // It must be registered before /export: if '/export' matches the connect prefix, it will also hit '/export/job'. Register first and execute first.
+      // The rendering product falls into uploadDir() using a special prefix, and is retrieved directly by pressing result.path after the browser is finished.
       server.middlewares.use('/export/job', async (req, res) => {
         const path = (req.url ?? '/').split('?')[0];
         const id = path.replace(/^\/+|\/+$/g, '');
@@ -345,7 +345,7 @@ export function exportPlugin(): Plugin {
           );
           sendJson(res, 200, { renderId: jobId });
         } catch (err) {
-          // 仅同步的入参/JSON 校验会落这里（渲染失败在 job 内部记录）。
+          // Only synchronous input parameters/JSON verification will fall here (rendering failures are recorded internally in the job).
           sendError(res, 400, err instanceof Error ? err.message : String(err));
         }
       });

@@ -1,7 +1,7 @@
-// 内嵌 server 的静态托管:vite build 产物(dist/)+ 运行时上传素材(/media/uploads,
-// 与 dist 的 build 期拷贝解耦——上传发生在运行时,必须直读 uploadDir())。
-// 媒体扩展名走 server/media-dir 的 serveDiskFile(Range/206,视频 seek 必需);
-// 其余(js/css/html/字体等)补齐 MIME 简单流出——ES module 加载有严格 MIME 检查。
+// Static hosting with built-in server: vite build product (dist/) + upload materials at runtime (/media/uploads,
+// Decoupled from the build-time copy of dist - uploading occurs at runtime and must be read directly from uploadDir()).
+// The media extension goes to serveDiskFile of server/media-dir (Range/206, required for video seek);
+// The rest (js/css/html/fonts, etc.) complete MIME simple outflow - ES module is loaded with strict MIME check.
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -30,7 +30,7 @@ async function sendFile(req: IncomingMessage, res: ServerResponse, file: string)
   } catch {
     return false;
   }
-  // 媒体类扩展名交给 serveDiskFile(其 MIME 表已覆盖,并带 Range 支持)
+  // The media class extension is given to serveDiskFile (whose MIME table is overridden, with Range support)
   if (mimeFor(file) !== 'application/octet-stream') {
     await serveDiskFile(req, res, file);
     return true;
@@ -41,7 +41,7 @@ async function sendFile(req: IncomingMessage, res: ServerResponse, file: string)
   return true;
 }
 
-/** /media/uploads/<name> → uploadDir() 直读(找不到 next(),落回 dist 的 build 期拷贝)。 */
+/** /media/uploads/<name> → uploadDir() Direct reading(not found next(),fall back dist of build issue copy)。 */
 export function uploadsMiddleware(): Middleware {
   return async (req, res, next) => {
     const name = decodeURIComponent((req.url ?? '/').split('?')[0].replace(/^\/+/, ''));
@@ -51,7 +51,7 @@ export function uploadsMiddleware(): Middleware {
   };
 }
 
-/** dist/ 静态兜底:路径穿越拒绝;未命中且像页面路径 → index.html(hash 路由)。 */
+/** dist/ static cover:Path crossing denied;Missed and like page path → index.html(hash routing)。 */
 export function distStaticMiddleware(distDir: string): Middleware {
   const root = normalize(distDir);
   return async (req, res, next) => {
@@ -59,9 +59,9 @@ export function distStaticMiddleware(distDir: string): Middleware {
     const rawPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
     const rel = rawPath === '/' ? 'index.html' : rawPath.replace(/^\/+/, '');
     const file = normalize(join(root, rel));
-    if (file !== root && !file.startsWith(root + sep)) { next(); return; }  // 穿越
+    if (file !== root && !file.startsWith(root + sep)) { next(); return; }  // time travel
     if (await sendFile(req, res, file)) return;
-    // SPA 兜底:无扩展名的路径回 index.html;其余交给 404
+    // SPA backs up: the path without extension returns to index.html; the rest is handed over to 404
     if (!/\.[a-z0-9]+$/i.test(rel) && await sendFile(req, res, join(root, 'index.html'))) return;
     next();
   };

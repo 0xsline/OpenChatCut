@@ -121,9 +121,9 @@ export async function deleteMediaBlob(src: string): Promise<void> {
   }
 }
 
-/** Vite dev 的 history 回退会给任何缺失路径返回 200 + index.html——对媒体路径,
- * text/html 的"成功"响应等于文件不存在(2026-07-17 e2e 删盘实测抓获:假 200
- * 骗过探测,自愈永不触发)。 */
+/** Vite dev of history Fallback will return any missing paths 200 + index.html——To the media path,
+ * text/html of"success"Response equals file does not exist(2026-07-17 e2e Actual measurement and capture of disk deletion:false 200
+ * cheat detection,Self-healing never triggers)。 */
 const isSpaFallback = (res: Response): boolean =>
   (res.headers.get('content-type') ?? '').includes('text/html');
 
@@ -131,8 +131,8 @@ const isSpaFallback = (res: Response): boolean =>
 export async function isMediaSrcReachable(src: string): Promise<boolean> {
   if (!src || src.startsWith('data:')) return true;
   if (src.startsWith('blob:')) {
-    // blob: 规范禁 HEAD,只能 GET 验活。活 blob(本会话上传中的占位)=可达;
-    // 持久化后重开页面的 blob 必死(刷新即失效)→fetch 抛错=真丢失。
+    // blob: HEAD is prohibited by the specification and can only be verified through GET. Live blob (placeholder in this session's upload) = reachable;
+    // The blob that is reopened after being persisted will die (it will become invalid upon refreshing) → fetch throws an error = it is really lost.
     try {
       const res = await fetch(src);
       void res.body?.cancel();

@@ -5,15 +5,15 @@ import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from 'ele
 import { startEmbeddedServer } from './embedded-server.ts';
 import { preparePackagedRuntime } from './packaged-runtime.ts';
 
-// Electron 主进程入口。dev 形态:esbuild 打到 desktop-dist/main.mjs,dist/ 在仓库根;
-// 打包形态:dist/、remotion-bundle、chrome-headless-shell 走 extraResources。
+// Electron main process entry. dev mode: esbuild hits desktop-dist/main.mjs,dist/ in the warehouse root;
+// Packaging form: dist/,remotion-bundle,chrome-headless-shell uses extraResources.
 const DIST_DIR = app.isPackaged
   ? join(process.resourcesPath, 'dist')
   : join(fileURLToPath(new URL('..', import.meta.url)), 'dist');
 const PRELOAD_PATH = join(dirname(fileURLToPath(import.meta.url)), 'preload.cjs');
 
-// CC_SMOKE=1:无窗冒烟——起内嵌 server、加载页面、探 /api/keys,按结果退码 0/1。
-// CC_SMOKE_RENDER=1 追加真渲染探针(打包版验收:预打 bundle + 随包浏览器全链)。
+// CC_SMOKE=1: No window smoke - start the embedded server, load the page, explore /api/keys, and return the code 0/1 according to the result.
+// CC_SMOKE_RENDER=1 adds a true rendering probe (packaged version acceptance: pre-bundled + full browser link included in the package).
 const SMOKE = process.env.CC_SMOKE === '1';
 const SMOKE_RENDER = process.env.CC_SMOKE_RENDER === '1';
 const SMOKE_TIMEOUT_MS = SMOKE_RENDER ? 240_000 : 90_000;
@@ -25,7 +25,7 @@ function registerDesktopHandlers(): void {
       ? requestedPath
       : app.getPath('videos');
     const options: OpenDialogOptions = {
-      title: '选择素材保存目录',
+      title: 'Select material saving directory',
       defaultPath: requested,
       properties: ['openDirectory', 'createDirectory'],
     };

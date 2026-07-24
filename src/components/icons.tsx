@@ -19,7 +19,7 @@ const FILL = new Set<IconName>(['play', 'pause', 'cursor', 'bookmark']);
 
 const P: Record<IconName, string> = {
   plus: 'M12 5v14M5 12h14',
-  // lucide wand-sparkles 简化(创作模式)
+  // lucide wand-sparkles simplified (creative mode)
   wand: 'M15 4V2 M15 16v-2 M8 9h2 M20 9h2 M17.8 11.8L19 13 M17.8 6.2L19 5 M12.2 6.2L11 5 M3 21l9-9',
   cursor: 'M5 3l6 15 2-6 6-2z',
   trim: 'M8 4v16M4 8h4M4 16h4 M16 4v16M16 8h4M16 16h4',
@@ -44,11 +44,11 @@ const P: Record<IconName, string> = {
   next: 'M9 5l7 7-7 7M16 5v14',
   zoomOut: 'M11 11m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0 M21 21l-4.3-4.3 M8 11h6',
   zoomIn: 'M11 11m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0 M21 21l-4.3-4.3 M11 8v6M8 11h6',
-  // 适配视图：横向双箭头 ↔（不是四角 maximize）
+  // Adapt view: horizontal double arrow ↔ (not four corners maximize)
   fit: 'M3 12h18 M7 8l-4 4 4 4 M17 8l4 4-4 4',
-  // 画幅比例：「proportions」样式——外框内嵌小框
+  // Aspect ratio: "proportions" style - small frame embedded in outer frame
   aspect: 'M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z M7 9h6v4H7z',
-  // 字幕：圆角 CC 徽标（两个开口朝右的 C）
+  // Subtitles: Rounded CC logo (two open Cs facing right)
   captions: 'M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M11 10a2.4 2.4 0 1 0 0 4 M18 10a2.4 2.4 0 1 0 0 4',
   fullscreen: 'M8 3H5a2 2 0 0 0-2 2v3 M21 8V5a2 2 0 0 0-2-2h-3 M3 16v3a2 2 0 0 0 2 2h3 M16 21h3a2 2 0 0 0 2-2v-3',
   eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0',
@@ -124,15 +124,15 @@ export function Icon({ name, size = 16, color = 'currentColor', strokeWidth = 1.
   );
 }
 
-/** 品牌标:对话气泡 + 播放键(对话式剪视频)。气泡=强调色,播放键=onAccent
- *  (皮肤纪律保证 ≥4.5 对比)。凡替代 wordmark 前的 sparkles 用这个。 */
+/** Brand logo:speech bubble + play button(Conversational video cutting). Bubbles=accent color,play button=onAccent
+ *  (Skin discipline guaranteed ≥4.5 Contrast). Where to substitute wordmark former sparkles Use this. */
 export function BrandMark({ size = 16 }: { size?: number }) {
   return (
     <img src="/openchatcut-icon.png" alt="" aria-hidden width={size} height={size} style={{ display: 'block' }} />
   );
 }
 
-/** OpenChatCut 文字标：OPEN 反白徽章 + Chat Cut 实心字标。 */
+/** OpenChatCut Text mark:OPEN reverse white badge + Chat Cut Solid wordmark. */
 export function OpenChatCutWordmark({ width = 126 }: { width?: number }) {
   return (
     <svg

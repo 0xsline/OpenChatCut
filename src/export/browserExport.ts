@@ -41,7 +41,7 @@ export function isAbortError(error: unknown): boolean {
  */
 export function browserTimelineBlocker(state: TimelineState): string | null {
   if (state.items.some((item) => (item.effects?.length ?? 0) > 0)) {
-    return '包含 WebGL 片段特效';
+    return 'contains WebGL clip effects';
   }
 
   const items = new Map(state.items.map((item) => [item.id, item]));
@@ -55,7 +55,7 @@ export function browserTimelineBlocker(state: TimelineState): string | null {
       && item.kind !== 'gif';
     return texturable(outgoing) && texturable(incoming);
   });
-  return hasGlTransition ? '包含 WebGL 转场' : null;
+  return hasGlTransition ? 'contains WebGL Transition' : null;
 }
 
 /**
@@ -108,7 +108,7 @@ export async function renderTimelineInBrowser(options: BrowserExportOptions): Pr
   if (fps !== state.fps) {
     return {
       status: 'unsupported',
-      reason: '浏览器快导暂不转换时间线帧率',
+      reason: 'Browser Quick Guide does not currently convert timeline frame rate',
       issues: [`timeline=${state.fps}fps, requested=${fps}fps`],
     };
   }
@@ -134,7 +134,7 @@ export async function renderTimelineInBrowser(options: BrowserExportOptions): Pr
   if (!capability.canRender) {
     return {
       status: 'unsupported',
-      reason: issues[0] ?? '当前浏览器不支持此编码配置',
+      reason: issues[0] ?? 'The current browser does not support this encoding configuration',
       issues,
     };
   }
@@ -194,7 +194,7 @@ export async function exportVideoWithFallback<T>({
     return { engine: 'server', value: await server(), reason: attempt.reason };
   } catch (error) {
     if (isAbortError(error)) throw error;
-    const reason = error instanceof Error ? error.message : '浏览器快导失败';
+    const reason = error instanceof Error ? error.message : 'Browser quick guide failed';
     onFallback?.(reason);
     return { engine: 'server', value: await server(), reason };
   }

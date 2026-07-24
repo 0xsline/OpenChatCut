@@ -100,7 +100,7 @@ export function parseStockPlatforms(
   const platforms: StockPlatform[] = [];
   for (const token of tokens) {
     if (!ALL_PLATFORMS.includes(token as StockPlatform)) {
-      warnings.push(`不支持的素材平台“${token}”，已忽略`);
+      warnings.push(`Unsupported material platform"${token}”, ignored`);
       continue;
     }
     const platform = token as StockPlatform;
@@ -133,7 +133,7 @@ export function buildStockSearchTargets(
       targets.push({ platform, kind: requestedKind });
       added = true;
     }
-    if (!added) warnings.push(`${platform} 不支持 ${kind} 素材，已跳过`);
+    if (!added) warnings.push(`${platform} Not supported ${kind} Material, skipped`);
   }
   return { targets, warnings };
 }
@@ -410,8 +410,8 @@ async function searchFirecrawl(
 
 function addUnavailableWarning(warnings: string[], target: SearchTarget): void {
   const message = target.platform === 'freesound'
-    ? 'Freesound 未配置，无法搜索音频或音乐'
-    : `${target.platform} 未配置，已跳过 ${target.kind} 搜索`;
+    ? 'Freesound Not configured, unable to search for audio or music'
+    : `${target.platform} Not configured, skipped ${target.kind} Search`;
   if (!warnings.includes(message)) warnings.push(message);
 }
 
@@ -425,7 +425,7 @@ export async function searchStockMedia(
   const parsedPlatforms = parseStockPlatforms(request.platforms, kind);
   const planned = buildStockSearchTargets(kind, parsedPlatforms.platforms);
   const warnings = [...parsedPlatforms.warnings, ...planned.warnings];
-  if (request.orientation && !orientation) warnings.push(`不支持的方向“${request.orientation}”，已忽略方向筛选`);
+  if (request.orientation && !orientation) warnings.push(`Unsupported direction"${request.orientation}”, direction filtering has been ignored`);
   const query = buildStockQuery(request.query, request.category);
   const limit = Math.min(MAX_LIMIT, Math.max(1, Number(request.limitPerPlatform) || DEFAULT_LIMIT));
   const jobs: SearchJob[] = [];
@@ -440,7 +440,7 @@ export async function searchStockMedia(
       });
     } else if (target.platform === 'pixabay' && options.pixabayApiKey) {
       if (orientation === 'square') {
-        const warning = 'Pixabay 官方接口不支持方形方向筛选，已保留其他筛选条件';
+        const warning = 'Pixabay The official interface does not support square direction filtering, and other filtering conditions have been reserved.';
         if (!warnings.includes(warning)) warnings.push(warning);
       }
       jobs.push({
@@ -486,7 +486,7 @@ export async function searchStockMedia(
   const results: StockResult[] = [];
   settled.forEach((result, index) => {
     if (result.status === 'fulfilled') results.push(...result.value);
-    else warnings.push(`${jobs[index]!.label} 搜索失败：${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+    else warnings.push(`${jobs[index]!.label} Search failed:${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
   });
   const searchedPlatforms = [...new Set(jobs.flatMap((job) => job.platforms))];
   return {
@@ -529,7 +529,7 @@ export function stockSearchPlugin(options: StockPluginOptions): Plugin {
           sendJson(res, 200, {
             configured: true,
             results: [],
-            warnings: [`素材搜索暂时不可用：${message}`],
+            warnings: [`Material search is temporarily unavailable:${message}`],
             searchedPlatforms: [],
           } satisfies StockSearchResponse);
         }

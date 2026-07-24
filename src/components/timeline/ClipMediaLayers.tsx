@@ -1,17 +1,17 @@
 import type { TimelineItem } from '../../editor/types';
 import { filmstripBackground, peaksPath, useClipPreview } from '../../media/clipPreview';
 
-// 片段内的媒体预览层:视频轨显示缩略帧条与片段自身音轨的音波。
-// 数据来自 /api/waveform、/api/filmstrip(见 src/media/clipPreview.ts);几何按
-// srcIn/playbackRate/px 映射,所以裁剪、变速、时间线缩放后帧与波都对得上位置。
-// 层在标签之下(z-index 0),不拦指针,拖拽/裁剪手感不变。
+// Media preview layer within clip:video轨show缩略frame stripwithfragmentsince身audio trackofsound wave。
+// Data comes from /api/waveform、/api/filmstrip(see src/media/clipPreview.ts);Geometry button
+// srcIn/playbackRate/px mapping,SoCrop、variable speed、timelineZoomafterframewith波allYesGotonlocation。
+// Layer below label(z-index 0),Don't block the pointer,drag/The cutting feel remains unchanged.
 
-const STRIP_RATIO = 0.62; // 有声视频:上 62% 帧条,下 38% 音波
+const STRIP_RATIO = 0.62; // Video with sound: upper 62% frame bar, lower 38% sound wave
 
 export function ClipMediaLayers({ item, px, fps, height }: {
   item: TimelineItem;
   px: number;
-  /** 片段内容区高度(px),音波路径按它算振幅 */
+  /** Fragment content area height(px),The amplitude of the sound wave path is calculated according to it */
   height: number;
   fps: number;
 }) {

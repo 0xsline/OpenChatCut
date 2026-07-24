@@ -102,8 +102,8 @@ function zoomFromOverrides(shape: ZoomShape, ov: Record<string, ClipEffectValue>
   };
 }
 
-// envelope/shape 走 RAW propertyOverrides(cleanOverrides 只留数字与 ≤4 位数组,
-// 会吞掉 2..120 位包络和字符串 shape)。
+// envelope/shape takes RAW propertyOverrides(cleanOverrides and leaves only numbers with ≤4 digit arrays,
+// would eat up 2..120 bit envelope and string shape).
 const ZOOM_ENVELOPE_MAX_POINTS = 120;
 function envelopeFrom(raw: unknown): number[] | undefined {
   const env = raw && typeof raw === 'object' ? (raw as Record<string, unknown>).envelope : undefined;
@@ -156,7 +156,7 @@ function validateEffectAdd(ctx: AgentContext, entry: Record<string, unknown>): O
   const ov = cleanOverrides(entry.propertyOverrides);
   const zoomShape = parseZoomLibraryId(assetId);
   const customZoom = assetId.startsWith('plugin:') ? getCustomZoom(assetId) : undefined;
-  // 缩放对所有画面片段有效，不受下方 fx 的 video/image 门限制
+  // Scaling is effective for all frame clips and is not limited by the video/image gate of fx below
   if (zoomShape || assetId === 'builtin:zoom' || customZoom) {
     const zTarget = findItem(ctx.getState().items, entry.targetItemId);
     if (!zTarget || zTarget.kind === 'audio') {
@@ -168,10 +168,10 @@ function validateEffectAdd(ctx: AgentContext, entry: Record<string, unknown>): O
     }
     const shape = shapeFrom(entry.propertyOverrides) ?? zoomShape ?? 'hold';
     const zoom = zoomFromOverrides(shape, ov);
-    // envelope 入参:agent 可直接作曲线(整段 clip 0..1 线性采样,优先于 shape)
+    // Envelope input parameter: agent can directly draw a curve (the entire clip 0..1 linear sampling, taking precedence over shape)
     const rawEnvelope = envelopeFrom(entry.propertyOverrides);
     if (rawEnvelope) {
-      // reducer setZoom 是合并语义:摘字段必须显式 undefined
+      // reducer setZoom has merge semantics: the extracted field must be explicitly undefined
       return { ok: true, kind: 'zoom', plan: 'setZoom', targetItemId: zTarget.id, zoom: { ...zoom, shape: undefined, envelope: rawEnvelope } };
     }
     return { ok: true, kind: 'zoom', plan: 'setZoom', targetItemId: zTarget.id, zoom };
@@ -194,15 +194,15 @@ function validateEffectAdd(ctx: AgentContext, entry: Record<string, unknown>): O
 
 function validateTransitionAdd(ctx: AgentContext, entry: Record<string, unknown>): OpResult {
   const assetId = String(entry.assetId ?? '');
-  // custom:tr-*(submit_shader 产物)与 plugin:<pack>/<item>(已装插件转场)都在
-  // custom 注册表里;解析出 GLSL 让 plan 把 frag 快照上 TransitionItem(离开注册表也能渲染)。
+  // custom:tr-* (submit_shader product) and plugin:<pack>/<item> (installed plug-in transition) are both there
+  // In the custom registry; parse out GLSL and let plan snapshot the frag into TransitionItem (it can also be rendered outside the registry).
   let type: TransitionType | null;
   let custom: { frag: string; uniforms: Record<string, number>; label: string } | undefined;
   if (assetId.startsWith('custom:tr-') || assetId.startsWith('plugin:')) {
     const cdef = getCustomTransition(assetId);
     if (!cdef) {
       return assetId.startsWith('plugin:')
-        ? { error: `unknown plugin transition ${assetId}`, hint: '该插件未安装或该 id 不是转场条目;用 browse_library category=transitions 查可用清单' }
+        ? { error: `unknown plugin transition ${assetId}`, hint: 'The plug-in is not installed or the id Not a transition entry;use browse_library category=transitions Check available list' }
         : { error: `unknown custom transition ${assetId}`, hint: 'submit_shader type=transition returns a fresh custom:tr-* id; generate it first, then add it this session' };
     }
     type = 'custom-shader';
@@ -339,7 +339,7 @@ function validateEffectUpdate(ctx: AgentContext, entry: Record<string, unknown>)
     const shape = shapeOv ?? it.zoom?.shape ?? 'hold';
     const zoom = zoomFromOverrides(shape, { ...(it.zoom as object), ...ov } as Record<string, ClipEffectValue>);
     const merged = { ...it.zoom, ...zoom };
-    // 显式 envelope → 曲线赢(丢 shape);显式 shape → 曲线让位(丢 envelope)
+    // Explicit envelope → curve wins (loses shape); explicit shape → curve gives way (loses envelope)
     if (rawEnvelope) {
       return { ok: true, kind: 'zoom', plan: 'setZoom', targetItemId: it.id, zoom: { ...merged, shape: undefined, envelope: rawEnvelope } };
     }
@@ -359,7 +359,7 @@ function validateEffectUpdate(ctx: AgentContext, entry: Record<string, unknown>)
       if (i >= 0) { it = cand; index = i; break; }
     }
   }
-  // 实况教训:模型常对"还没有特效的片段"发 effect update → 回喂现有特效清单/加法指引
+  // Live lessons: Models often send effect update to "clips that don't have special effects yet" → Feed back the existing special effects list/addition guide
   if (!it || index < 0) {
     return {
       error: 'effect update: effect not found',

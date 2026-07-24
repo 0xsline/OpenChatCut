@@ -8,7 +8,7 @@ import {
   type AssetRefKind, type SelectionReference,
 } from './selection-refs';
 
-/** A media-pool asset or template mention (the pre-existing @ 引用). */
+/** A media-pool asset or template mention (the pre-existing @ Quote). */
 export interface AssetReference {
   id: string;
   name: string;

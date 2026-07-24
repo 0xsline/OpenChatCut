@@ -15,12 +15,12 @@ import {
 import { Icon } from '../components/icons';
 import { useT } from '../i18n/locale';
 
-// 预览画布上的字幕直编层:点画面字幕→选中框+浮动工具条(AI 编辑/样式/字号)。
-// 编辑器侧 overlay,不进合成:几何靠对 containerStyle 传"显示区 px 尺寸"复算,
-// 命中盒是同字体的透明文本副本(与真渲染同版式)。单流文本改动走
-// cueTextPatch,手动车道直接改对应 cue;样式/字号/颜色/位置均走 updateCaptions,可撤销。
-// 拖拽:按住字幕移动 → 松手一次性提交 layout 偏移(一步 undo);拖动中显示实体
-// 幽灵跟手,松手后合成层落到同一位置。样式全走 cc-capedit-* 类(令牌,随皮肤)。
+// Preview the subtitle direct editing layer on the canvas: click on the screen subtitle → check box + floating toolbar (AI Edit/Style/Font Size).
+// Editor side overlay, no synthesis: geometry is recalculated by passing "display area px size" to containerStyle.
+// The hitbox is a transparent copy of the text in the same font (same layout as true rendering). Single stream text changes
+// cueTextPatch, the manual lane is directly changed to correspond to the cue; the style/font size/color/position are all updated via updateCaptions, which can be revoked.
+// Drag and drop: press and hold the subtitle to move → release to submit the layout offset at once (one step undo); display the entity during dragging
+// The ghost follows the hand, and after letting go, the synthetic layer falls to the same position. All styles use cc-capedit-* classes (tokens, with skins).
 
 interface CaptionPreviewEditorProps {
   state: TimelineState;
@@ -35,7 +35,7 @@ interface CaptionPreviewEditorProps {
 const FONT_STEP = 1.12;
 const clampFont = (v: number): number => Math.min(0.14, Math.max(0.02, v));
 const DRAG_THRESHOLD = 4;
-/** 文字颜色快捷色板(白/黑 + 常用强调色) */
+/** Text Color Quick Swatches(white/black + Commonly used accent colors) */
 const COLOR_SWATCHES = ['#ffffff', '#0a0a0a', '#FFD84A', '#FF5A5A', '#6EE7F9', '#7CFF9B', '#FF8FD1', '#FFA94D'];
 
 interface DragRef {
@@ -57,7 +57,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
   const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
   const dragRef = useRef<DragRef | null>(null);
 
-  // 显示区尺寸(外层 wrapper 已按画布比例定形,inset-0 即视频区 1:1)
+  // Display area size (the outer wrapper has been shaped according to the canvas ratio, inset-0 is the video area 1:1)
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
@@ -67,7 +67,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
     return () => ro.disconnect();
   }, []);
 
-  // 跟播放头(Player frameupdate)
+  // Follow the playhead (Player frameupdate)
   useEffect(() => {
     const player = playerRef.current;
     if (!player) return;
@@ -88,7 +88,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
   );
   const cue = target?.cue;
 
-  // 换句即退出选中;点 overlay 外部也退出
+  // In other words, exit the selection; click overlay outside to exit as well.
   useEffect(() => { setSelected(false); setEditing(false); setPop(null); }, [target?.key]);
   useEffect(() => {
     if (!autoEditLaneId || target?.kind !== 'manual' || target.laneId !== autoEditLaneId || !cue) return;
@@ -135,7 +135,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
   const setColor = (hex: string) => {
     onUpdateCaptions(captionPreviewStylePatch(captions, target, { color: hex }));
   };
-  // ── 拖拽移动(bottom 锚 offsetYRatio 正向朝上,containerStyle 里取负号) ──
+  // ── Drag and move (bottom anchor offsetYRatio positive upward, containerStyle takes the negative sign) ──
   const anchorV = (() => {
     const a = target.layout?.anchor ?? 'bottom-center';
     return a.startsWith('top') ? 'top' : (a.startsWith('middle') || a === 'center') ? 'middle' : 'bottom';
@@ -182,7 +182,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
       }));
       setSelected(true);
     } else {
-      // 未达拖拽阈值 = 点击选中
+      // Drag threshold not reached = click to select
       setSelected(true);
       playerRef.current?.pause();
     }
@@ -212,11 +212,11 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
               }}
             />
           ) : (
-            // 命中盒:同版式文本副本。平时透明(真字幕在合成层),拖动中显形当幽灵跟手
+            // Hitbox: A copy of the same layout text. Normally transparent (the real subtitles are on the composite layer), they will appear during dragging when the ghost follows your hand.
             <div
               className="cc-capedit-hit"
               role="button"
-              title={t('点击选中字幕；拖动移动位置；双击直接改文字')}
+              title={t('Click to select the subtitle; drag to move the position; double-click to directly change the text')}
               onPointerDown={onHitPointerDown}
               onPointerMove={onHitPointerMove}
               onPointerUp={onHitPointerUp}
@@ -232,30 +232,30 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
             <div className="cc-capedit-frame" aria-hidden />
           )}
 
-          {/* 浮动工具条(AI 编辑 | 文字/样式/颜色 | 字号 | 删) */}
+          {/* floating toolbar(AI Edit | text/style/color | Font size | delete) */}
           {selected && !drag && (
             <div className="cc-capedit-bar" onPointerDown={(e) => e.stopPropagation()}>
               {onSeedChat && (
                 <>
-                  <button type="button" className="cc-capedit-btn ai" title={t('让 AI 改写这句')}
-                    onClick={() => onSeedChat(t('优化这句字幕（{time} 处，保持时间不变）：「{text}」', { time: fmtCueMs(cue.start), text: cue.text }))}>
-                    <Icon name="sparkles" size={12} />{t('AI 编辑')}
+                  <button type="button" className="cc-capedit-btn ai" title={t('let AI Rewrite this sentence')}
+                    onClick={() => onSeedChat(t('Optimize this subtitle ({time} , keeping the time unchanged): "{text}」', { time: fmtCueMs(cue.start), text: cue.text }))}>
+                    <Icon name="sparkles" size={12} />{t('AI Edit')}
                   </button>
                   <span className="cc-capedit-divider" aria-hidden />
                 </>
               )}
-              <button type="button" className="cc-capedit-btn" title={t('编辑文字')} onClick={() => { setEditing(true); setDraft(cue.text); }}>
-                <Icon name="pencil" size={12} />{t('文字')}
+              <button type="button" className="cc-capedit-btn" title={t('Edit text')} onClick={() => { setEditing(true); setDraft(cue.text); }}>
+                <Icon name="pencil" size={12} />{t('text')}
               </button>
-              <button type="button" className={`cc-capedit-btn${pop === 'styles' ? ' on' : ''}`} title={t('字幕样式')} onClick={() => setPop(pop === 'styles' ? null : 'styles')}>Aa</button>
-              <button type="button" className={`cc-capedit-btn${pop === 'color' ? ' on' : ''}`} title={t('文字颜色')} onClick={() => setPop(pop === 'color' ? null : 'color')}>
+              <button type="button" className={`cc-capedit-btn${pop === 'styles' ? ' on' : ''}`} title={t('subtitle style')} onClick={() => setPop(pop === 'styles' ? null : 'styles')}>Aa</button>
+              <button type="button" className={`cc-capedit-btn${pop === 'color' ? ' on' : ''}`} title={t('text color')} onClick={() => setPop(pop === 'color' ? null : 'color')}>
                 <span className="cc-capedit-colordot" style={{ background: curColor }} />
               </button>
               <span className="cc-capedit-divider" aria-hidden />
-              <button type="button" className="cc-capedit-btn" title={t('缩小字号')} onClick={() => bumpFont(-1)}>A−</button>
-              <button type="button" className="cc-capedit-btn" title={t('放大字号')} onClick={() => bumpFont(1)}>A+</button>
+              <button type="button" className="cc-capedit-btn" title={t('Reduce font size')} onClick={() => bumpFont(-1)}>A−</button>
+              <button type="button" className="cc-capedit-btn" title={t('Enlarge font size')} onClick={() => bumpFont(1)}>A+</button>
               <span className="cc-capedit-divider" aria-hidden />
-              <button type="button" className="cc-capedit-btn danger" title={t('删除这句')} onClick={() => saveText('')}>
+              <button type="button" className="cc-capedit-btn danger" title={t('Delete this sentence')} onClick={() => saveText('')}>
                 <Icon name="trash" size={12} />
               </button>
 
@@ -279,13 +279,13 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
                       title={hex}
                       onClick={() => { setColor(hex); setPop(null); }} />
                   ))}
-                  <label className="cc-capedit-custom" title={t('自定义颜色')}>
+                  <label className="cc-capedit-custom" title={t('Custom color')}>
                     <input
                       type="color"
                       defaultValue={/^#[0-9a-fA-F]{6}$/.test(curColor) ? curColor : '#ffffff'}
                       onBlur={(e) => { setColor(e.target.value); setPop(null); }}
                     />
-                    <span>{t('自定义')}</span>
+                    <span>{t('Customize')}</span>
                   </label>
                 </div>
               )}

@@ -15,14 +15,14 @@ import { fetchRenderJob } from './export-tools';
 import { resolveTimeline } from './timeline-target';
 
 // convert_motion_graphic_to_video + register_converted_video.
-// Flow: convert 云渲 MG 原长 → renderId → track_export 等完成 →
-// register_converted_video 把产物注册为媒体池 video 资产;同 MG 去重到同一 asset。
+// Flow: convert cloud rendering MG original length → renderId → track_export etc. completed →
+// register_converted_video registers the product as a video asset in the media pool; it is the same asset as MG to remove duplicates.
 //
-// 本地实现:/render-clip 端点(renderClip)与 clipExport.bakeClipToVideo 已在,渲染是
-// 同步的,故 convert 一步渲染+注册(返回 assetId);register 单独暴露,供导入外部已渲产物。
-// 透明:MG/text/svg 这类带 alpha 的片段,先本地渲透明 ProRes,再进 e2b 沙箱转 VP9 alpha
-// webm 入池(「转为视频 = alpha webm」);沙箱不可用/失败则优雅回退不透明 h264。
-// 不透明 raster(video/image/gif)本就无 alpha,直接 h264。
+// Local implementation: /render-clip endpoint (renderClip) and clipExport.bakeClipToVideo are already there, rendering is
+// Synchronous, so convert renders in one step + registers (returns assetId); register is exposed separately for importing external rendered products.
+// Transparency: For fragments with alpha such as MG/text/svg, first render transparent ProRes locally, and then enter the e2b sandbox to convert to VP9 alpha
+// Webm is pooled ("convert to video = alpha webm"); if the sandbox is unavailable/fails, gracefully fallback to opaque h264.
+// Opaque raster (video/image/gif) has no alpha and is directly h264.
 
 type Args = Record<string, unknown>;
 

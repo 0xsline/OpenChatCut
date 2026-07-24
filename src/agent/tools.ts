@@ -228,73 +228,73 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...MEDIA_POOL_TOOL_SCHEMAS,
   // Script system (read_script/apply_script with deterministic timeline.md round trips).
   ...SCRIPT_TOOL_SCHEMAS,
-  // multimodal self-check (view_timeline_frames — agent 渲帧自检)
+  // multimodal self-check (view_timeline_frames — agent rendering frame self-check)
   ...FRAMES_TOOL_SCHEMAS,
-  // 本地 FFmpeg 场景检测：报告切点，或原子生成 markers / 批量切片。
+  // Native FFmpeg scene detection: report cut points, or atomically generate markers/batch slicing.
   ...SCENE_DETECTION_TOOL_SCHEMAS,
-  // AI 生成套件（GPT 主攻，定义在 generate-tools.ts：submit_image/video/voice/music/sound）
-  // track_progress schema extended to also accept target=transcription (上传即转写 readiness).
+  // AI generation kit (GPT main focus, defined in generate-tools.ts: submit_image/video/voice/music/sound)
+  // track_progress schema extended to also accept target=transcription (upload is transcribed readiness).
   ...withProgressTargets(GENERATE_TOOL_SCHEMAS),
-  // browse_library → edit_item（fx/lut/zoom/transition/sound 统一发现与落地）
+  // browse_library → edit_item (fx/lut/zoom/transition/sound unified discovery and implementation)
   ...LIBRARY_TOOL_SCHEMAS,
   ...EDIT_ITEM_TOOL_SCHEMAS,
-  // 兼容捷径：manage_effects（等价 edit_item type=effect 的 list/add/update/remove）
+  // Compatible shortcut: manage_effects (equivalent to list/add/update/remove of edit_item type=effect)
   ...EFFECT_TOOL_SCHEMAS,
-  // 设计风格 = 工程品牌（manage_design_style：list/get/apply/update/clear）
+  // Design style = engineering brand (manage_design_style: list/get/apply/update/clear)
   ...DESIGN_TOOL_SCHEMAS,
-  // 在线素材导入（download_media / push_asset + search_stock_media；import_url_asset 别名）
+  // Online material import (download_media / push_asset + search_stock_media; import_url_asset alias)
   ...STOCK_TOOL_SCHEMAS,
-  // 逐词字幕覆盖（edit_captions display_text：read_captions/edit_caption_words 隐藏/改词/强制换行）
+  // Word-by-word subtitle coverage (edit_captions display_text: read_captions/edit_caption_words hide/change words/force wrap)
   ...CAPTIONS_TOOL_SCHEMAS,
-  // LLM 生成自定义 WebGL 特效（submit_shader type:effect——生成→编译校验→注册，再由 manage_effects 应用）
+  // LLM generates custom WebGL special effects (submit_shader type:effect - generate → compile and verify → register, and then applied by manage_effects)
   ...SHADER_TOOL_SCHEMAS,
-  // 智能切片：LLM 读词级转写找高光 → duplicateTimeline 9:16 → 裁段，并保持词帧一致。
+  // Intelligent slicing: LLM reads word-level transcription to find highlights → duplicateTimeline 9:16 → cuts segments and keeps word frames consistent.
   ...HIGHLIGHT_TOOL_SCHEMAS,
-  // auto-reframe 自动检测：采样帧→主体焦点→setReframeKeyframe（复用现成 reframe 渲染链）
+  // auto-reframe automatically detects: sampling frame → subject focus → setReframeKeyframe (reuse the ready-made reframe rendering chain)
   ...REFRAME_TOOL_SCHEMAS,
-  // 异步渲染 job：submit_render_job 入队长渲染 + track_export 轮询进度/取结果
+  // Asynchronous rendering job: submit_render_job into the captain rendering + track_export polling progress/retrieval of results
   ...EXPORT_TOOL_SCHEMAS,
-  // 成片自动验收：流/时长/黑帧/静帧/静音/峰值 + 剪辑点前后证据图
+  // Automatic acceptance of finished film: flow/duration/black frame/still frame/mute/peak + evidence pictures before and after the editing point
   ...EXPORT_QA_TOOL_SCHEMAS,
-  // 工程模板（manage_template）：get/list_assets/apply 打包套用一组 MG+设计风格
+  // Project template (manage_template): get/list_assets/apply package and apply a set of MG+ design styles
   ...TEMPLATE_TOOL_SCHEMAS,
-  // 响度归一（自定 normalize_loudness）：WebAudio 离线分析→per-clip 增益，复用 setItemVolume
+  // Loudness normalization (customized normalize_loudness): WebAudio offline analysis → per-clip gain, reuse setItemVolume
   ...LOUDNESS_TOOL_SCHEMAS,
-  // 人声隔离：ffmpeg 频谱降噪 → setItemDenoise(denoisedSrc)
+  // Vocal isolation: ffmpeg spectrum noise reduction → setItemDenoise(denoisedSrc)
   ...ISOLATE_VOICE_TOOL_SCHEMAS,
-  // 自定义创作技能 CRUD：list/get/create/update/delete，自定义技能与内置技能并列注入
+  // Custom creation skills CRUD: list/get/create/update/delete, custom skills and built-in skills are injected side by side
   ...SKILL_TOOL_SCHEMAS,
-  // 文本水印叠加：enabled/text/position/opacity，渲染 + 烧录导出
+  // Text watermark overlay: enabled/text/position/opacity, rendering + burning export
   ...WATERMARK_TOOL_SCHEMAS,
-  // 时间线批注/TODO 锚点：list/create/update/delete，点/段锚帧或锚 clip
+  // Timeline annotation/TODO anchor point: list/create/update/delete, point/segment anchor frame or anchor clip
   ...MARKERS_TOOL_SCHEMAS,
-  // MG → 视频：烘焙 MG 为媒体池 video 资产
+  // MG → Video: Bake MG into the media pool video asset
   ...MG_VIDEO_TOOL_SCHEMAS,
-  // 改/删库资产：update code/props/name 过沙箱 + delete confirmImpact
+  // Modify/delete library assets: update code/props/name through sandbox + delete confirmImpact
   ...EDIT_ASSET_TOOL_SCHEMAS,
-  // 网页抓取：markdown/html/links/screenshot/branding/summary
+  // Web scraping: markdown/html/links/screenshot/branding/summary
   ...WEB_TOOL_SCHEMAS,
-  // 字体目录搜索；导出 confirmFontFallback 门在 generate-tools
+  // Font directory search; export confirmFontFallback in generate-tools
   ...FONT_TOOL_SCHEMAS,
-  // 主动追问：agent 缺关键信息时发交互表单卡，runtime __followup 特判渲染并暂停
+  // Active follow-up: When the agent lacks key information, an interactive form card is sent, and the runtime __followup is specially rendered and paused.
   ...FOLLOWUP_TOOL_SCHEMAS,
-  // 工程会话：create/list/delete/duplicate/edit/restore/target_project + get_editor_url
+  // Project session: create/list/delete/duplicate/edit/restore/target_project + get_editor_url
   ...PROJECT_TOOL_SCHEMAS,
-  // 本地上传/下载链：request_asset_upload_url/finalize_uploaded_asset/request_asset_download
+  // Local upload/download chain: request_asset_upload_url/finalize_uploaded_asset/request_asset_download
   ...UPLOAD_TOOL_SCHEMAS,
-  // 静默摩擦上报：localStorage 本地环，无后端
+  // Silent friction reporting: localStorage local ring, no backend
   ...FRICTION_TOOL_SCHEMAS,
-  // 工程总览
+  // Project Overview
   ...READ_PROJECT_TOOL_SCHEMAS,
-  // 内联 JSX → MG 资产
+  // Inline JSX → MG assets
   ...MG_CODE_TOOL_SCHEMAS,
-  // 按需加载 15 个内置 SKILL.md（load_skill · 渐进式披露）
+  // Load 15 built-in SKILL.md on demand (load_skill · Progressive Disclosure)
   ...PLUGIN_SKILL_TOOL_SCHEMAS,
-  // 在自有 e2b 沙箱里跑 skill 自带脚本 / ffmpeg / node / python（run_code）
+  // Run the skill's built-in script / ffmpeg / node / python (run_code) in your own e2b sandbox
   ...RUN_CODE_TOOL_SCHEMAS,
-  // 导入探测：probe_media 通过 ffprobe 精确读取 hasAudioTrack/fps/时长
+  // Import probe: probe_media accurately reads hasAudioTrack/fps/duration through ffprobe
   ...PROBE_TOOL_SCHEMAS,
-  // 多机位音频对齐（multicam_sync：客户端交叉相关挪 startFrame）
+  // Multi-camera audio alignment (multicam_sync: client cross-correlation move startFrame)
   ...MULTICAM_TOOL_SCHEMAS,
   // ToolSearch — keyword discovery over this catalog
   {
@@ -386,7 +386,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (SCRIPT_TOOL_NAMES.has(name)) return execScriptTool(name, args, ctx);
   if (FRAMES_TOOL_NAMES.has(name)) return execFramesTool(name, args, ctx);
   if (SCENE_DETECTION_TOOL_NAMES.has(name)) return execSceneDetectionTool(name, args, ctx);
-  // track_progress target=transcription → Claude-owned handler (readiness of 上传即转写
+  // track_progress target=transcription → Claude-owned handler (readiness of upload is transcribed
   // ASR); upload → file reachability; visual-analysis → contact-sheet warm jobs;
   // target omitted/generation falls through to grok's execGenerateTool below.
   if (name === 'track_progress' && args.target === 'transcription') return execTranscriptionProgress(args, ctx);
@@ -451,7 +451,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
       if (!cat) {
         const counts: Record<string, number> = {};
         for (const t of ctx.templates) counts[t.category] = (counts[t.category] ?? 0) + 1;
-        return { categories: counts, total: ctx.templates.length, hint: '传 category 或用 search_templates 精确找' };
+        return { categories: counts, total: ctx.templates.length, hint: 'pass category Or use search_templates Find exactly' };
       }
       return ctx.templates.filter((t) => t.category.toLowerCase() === cat).map((t) => t.name);
     }

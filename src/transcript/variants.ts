@@ -1,8 +1,8 @@
 // Pure helpers for multi-language transcript variants (translations / corrections).
 //
-// 词帧一致性约束:一个变体只承载 TEXT。词的 start/end/speaker(帧位)
-// 永远取自 source。`resolveVariantText` 是唯一把变体套回源词的入口,它只替换 .text,
-// 绝不动 timing——所以翻译永远不会重排或移动某个词。未设变体 = 原样返回源词(字节等同)。
+// Word frame consistency constraint: A variant only carries TEXT. Word start/end/speaker (frame bit)
+// Always taken from source. `resolveVariantText` is the only entry to put the variant back into the source word, it only replaces .text,
+// Never move timing - so the translation never rearranges or moves a word. No variant set = return the source word unchanged (byte equivalent).
 
 import type { TranscriptWord, TranscriptVariant, TranscriptVariantWord } from './types';
 
@@ -18,14 +18,14 @@ export function resolveVariantText(sourceWords: TranscriptWord[], variant: Trans
   if (!byIndex.size) return sourceWords;
   return sourceWords.map((w, i) => {
     const text = byIndex.get(i);
-    // 只换 text，start/end/speaker 原样；缺项则原样返回该源词(引用不变)。
+    // Only replace text, and leave start/end/speaker as they are; if there are missing items, the source word will be returned as is (the reference remains unchanged).
     return text === undefined ? w : { ...w, text };
   });
 }
 
 /** Default display label for a variant when none is supplied. */
 function defaultLabel(lang: string, kind: TranscriptVariant['kind']): string {
-  return kind === 'translation' ? lang : `${lang}(校正)`;
+  return kind === 'translation' ? lang : `${lang}(Correction)`;
 }
 
 /** Build a variant. Validates at the boundary (LLM/user text is untrusted): lang

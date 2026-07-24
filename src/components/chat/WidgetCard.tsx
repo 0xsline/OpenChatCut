@@ -91,7 +91,7 @@ export function WidgetCard({ fields, title, submitLabel, messagePrefix, onSubmit
           <section key={f.id} className={`cc-widget-field${fi === 0 ? ' first' : ''}`}>
             <header className="cc-widget-field-head">
               <h4 className="cc-widget-label">{f.label}</h4>
-              {f.required ? <span className="cc-widget-req">{t('必选')}</span> : <span className="cc-widget-opt">{t('可选')}</span>}
+              {f.required ? <span className="cc-widget-req">{t('Required')}</span> : <span className="cc-widget-opt">{t('Optional')}</span>}
             </header>
             {f.description ? <p className="cc-widget-description">{f.description}</p> : null}
 
@@ -123,7 +123,7 @@ export function WidgetCard({ fields, title, submitLabel, messagePrefix, onSubmit
                       onChange={() => selectOther(f.id)}
                     />
                     <span className="cc-widget-radio" aria-hidden />
-                    <span className="cc-widget-option-text">{t('其他…')}</span>
+                    <span className="cc-widget-option-text">{t('Others…')}</span>
                     {otherFields[f.id] && (
                       <input
                         type="text"
@@ -133,7 +133,7 @@ export function WidgetCard({ fields, title, submitLabel, messagePrefix, onSubmit
                         value={typeof values[f.id] === 'string' ? (values[f.id] as string) : ''}
                         onChange={(e) => setOtherText(f.id, e.target.value)}
                         onClick={(e) => e.stopPropagation()}
-                        placeholder={f.otherPlaceholder || t('请输入')}
+                        placeholder={f.otherPlaceholder || t('Please enter')}
                       />
                     )}
                   </label>
@@ -168,7 +168,7 @@ export function WidgetCard({ fields, title, submitLabel, messagePrefix, onSubmit
                 disabled={submitted}
                 value={typeof values[f.id] === 'string' ? values[f.id] as string : ''}
                 onChange={(event) => setOtherText(f.id, event.target.value)}
-                placeholder={f.placeholder || t('请输入')}
+                placeholder={f.placeholder || t('Please enter')}
                 rows={3}
               />
             )}
@@ -208,10 +208,10 @@ export function WidgetCard({ fields, title, submitLabel, messagePrefix, onSubmit
         {submitted ? (
           <span className="cc-widget-done">
             <span className="cc-widget-done-dot" />
-            {t('已提交')}
+            {t('Submitted')}
           </span>
         ) : (
-          <span className="cc-widget-hint">{t('选择后提交，Agent 会按你的选择继续')}</span>
+          <span className="cc-widget-hint">{t('Submit after selection,Agent Will continue according to your choice')}</span>
         )}
         <button
           type="button"
@@ -219,7 +219,7 @@ export function WidgetCard({ fields, title, submitLabel, messagePrefix, onSubmit
           onClick={handleSubmit}
           disabled={!canSubmit}
         >
-          {submitted ? t('已提交') : (submitLabel || t('提交'))}
+          {submitted ? t('Submitted') : (submitLabel || t('Submit'))}
         </button>
       </footer>
     </div>

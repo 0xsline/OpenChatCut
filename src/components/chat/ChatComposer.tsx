@@ -34,11 +34,11 @@ interface ChatComposerProps {
   onModeChange: (m: ChatMode) => void;
   autoApply: boolean;
   onAutoApplyChange: (v: boolean) => void;
-  /** 选择模式: pick clips / canvas regions / transcript
+  /** Select mode: pick clips / canvas regions / transcript
    * spans / ruler times as structured references for the next message. */
   selecting: boolean;
   onToggleSelecting: () => void;
-  /** active creative-mode skill id (agent_skill), or null = 通用 */
+  /** active creative-mode skill id (agent_skill), or null = Universal */
   creativeMode: string | null;
   onCreativeModeChange: (id: string | null) => void;
   references: RefItem[];
@@ -47,7 +47,7 @@ interface ChatComposerProps {
   selectedRefs?: RefItem[];
   onRemoveRef?: (id: string) => void;
   /** Paste supported files (video/image/audio/gif/svg) straight into the chat.
-   * 语义:粘到聊天框的文件先导入媒体池,再自动附成 @ref(不直接上时间线)。 */
+   * Semantics:Files pasted into the chat box are first imported into the media pool.,Then automatically attached @ref(Not directly on the timeline)。 */
   onPasteFiles?: (files: File[]) => void;
   /** true while a pasted file is importing into the pool */
   pasting?: boolean;
@@ -116,8 +116,8 @@ function Popover({ children, onClose, w, anchor }: {
   );
 }
 
-// MG 质量三档标签 (speed|balance|quality)
-const TIER_LABELS: Record<MgTier, string> = { speed: '速度', balance: '均衡', quality: '质量' };
+// MG three-level quality label (speed|balance|quality)
+const TIER_LABELS: Record<MgTier, string> = { speed: 'speed', balance: 'equilibrium', quality: 'quality' };
 
 const REF_ICON: Record<RefItem['kind'], IconName> = {
   video: 'filePlay', image: 'filePlay', gif: 'image', svg: 'image',
@@ -129,7 +129,7 @@ const REF_ICON: Record<RefItem['kind'], IconName> = {
 
 export function ChatComposer(props: ChatComposerProps) {
   const t = useT();
-  // 技能目录自带官方英文 name,英文态直接用,不进词典重复;summary 只有中文,走 t()。
+  // The skill catalog comes with its own official English name, which can be used directly in English without duplication in the dictionary; the summary is only in Chinese, so use t().
   const skillName = (s: { name: string; nameZh: string }): string =>
     (getLocale() === 'en' ? s.name : s.nameZh);
   const {
@@ -139,8 +139,8 @@ export function ChatComposer(props: ChatComposerProps) {
     selectedRefs = [], onRemoveRef, onPasteFiles, pasting, pasteError, onDismissPasteError,
     taRef, placeholder,
   } = props;
-  // 水合自定义技能(manage_skill):挂载时读 IDB → 内存注册表,bump 触发重渲染
-  // 让 allCreativeSkills()/findSkill 反映自定义技能。真源是 IDB,manage_skill 工具也水合同一份。
+  // Hydration custom skill (manage_skill): read IDB → memory registry when mounting, bump triggers re-rendering
+  // Make allCreativeSkills()/findSkill reflect custom skills. The real source is IDB, and the manage_skill tool is also the same.
   const [, bumpCustom] = useState(0);
   useEffect(() => {
     loadCustomSkills().then((list) => { setCustomSkills(list); bumpCustom((n) => n + 1); });
@@ -178,7 +178,7 @@ export function ChatComposer(props: ChatComposerProps) {
 
   const insert = (reference: RefItem) => { onInsertRef(reference); closePop(); taRef.current?.focus(); };
 
-  // 上下拖动改输入区高度:顶边把手 + localStorage 记忆
+  // Drag up and down to change the height of the input area: top handle + localStorage memory
   const [shellH, setShellH] = usePersistedState('cc.composerShellH', COMPOSER_H_DEFAULT);
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
   const onResizePointerDown = useCallback((e: ReactPointerEvent) => {
@@ -197,7 +197,7 @@ export function ChatComposer(props: ChatComposerProps) {
   }, [setShellH]);
   const onResizePointerUp = useCallback(() => { dragRef.current = null; }, []);
 
-  // 模式行:紧凑小卡(选中 = accent 对勾,悬停微亮)
+  // Model line: Compact card (select = accent check mark, hover and light up)
   const modeRow = (m: ChatMode, label: string, desc: string) => {
     const active = mode === m;
     return (
@@ -218,7 +218,7 @@ export function ChatComposer(props: ChatComposerProps) {
     const list = refList(kind);
     return (
       <>
-        <div style={{ fontSize: 10.5, color: theme.textDim, padding: '4px 8px 6px', letterSpacing: 0.4 }}>{kind === 'template' ? t('引用模板库') : t('引用媒体池素材')}</div>
+        <div style={{ fontSize: 10.5, color: theme.textDim, padding: '4px 8px 6px', letterSpacing: 0.4 }}>{kind === 'template' ? t('Reference template library') : t('Quote media pool material')}</div>
         {list.length === 0 && <div style={{ fontSize: 12, color: theme.textDim, padding: '6px 10px' }}>{empty}</div>}
         {list.map((r) => (
           <button key={r.id} onClick={() => insert(r)}
@@ -250,8 +250,8 @@ export function ChatComposer(props: ChatComposerProps) {
         className="cc-chat-composer-resize"
         role="separator"
         aria-orientation="horizontal"
-        aria-label={t('拖动调整输入框高度')}
-        title={t('上下拖动调整输入框高度')}
+        aria-label={t('Drag to adjust the height of the input box')}
+        title={t('Drag up and down to adjust the height of the input box')}
         onPointerDown={onResizePointerDown}
         onPointerMove={onResizePointerMove}
         onPointerUp={onResizePointerUp}
@@ -260,7 +260,7 @@ export function ChatComposer(props: ChatComposerProps) {
         <span className="cc-chat-composer-resize-grip" aria-hidden />
       </div>
       {selectedRefs.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }} title={t('发送时以 chat_context_entry 结构化注入')}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }} title={t('Send as chat_context_entry Structured injection')}>
           {selectedRefs.map((r) => (
             <span
               key={r.id}
@@ -275,7 +275,7 @@ export function ChatComposer(props: ChatComposerProps) {
               {onRemoveRef && (
                 <button
                   type="button"
-                  title={t('移除引用')}
+                  title={t('Remove reference')}
                   onClick={() => onRemoveRef(r.id)}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.textDim, padding: 0, lineHeight: 0, display: 'grid' }}
                 >
@@ -290,14 +290,14 @@ export function ChatComposer(props: ChatComposerProps) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, fontSize: 11.5 }}>
           {pasting && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: theme.accent }}>
-              <Icon name="sparkles" size={12} /> {t('导入素材中…')}
+              <Icon name="sparkles" size={12} /> {t('Importing material...')}
             </span>
           )}
           {pasteError && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#e5866a', minWidth: 0 }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pasteError}</span>
               {onDismissPasteError && (
-                <button type="button" title={t('关闭')} onClick={onDismissPasteError}
+                <button type="button" title={t('close')} onClick={onDismissPasteError}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e5866a', padding: 0, lineHeight: 0, display: 'grid', flexShrink: 0 }}>
                   <Icon name="x" size={11} />
                 </button>
@@ -316,7 +316,7 @@ export function ChatComposer(props: ChatComposerProps) {
           const files = Array.from(e.clipboardData?.files ?? []);
           if (files.length > 0 && onPasteFiles) { e.preventDefault(); onPasteFiles(files); }
         }}
-        placeholder={placeholder ?? t('告诉 AI 要做哪些修改 - @ 引用素材')}
+        placeholder={placeholder ?? t('tell AI What modifications need to be made - @ Quote material')}
         rows={1}
         style={{
           flex: 1, width: '100%', minHeight: 28, minWidth: 0, resize: 'none',
@@ -326,7 +326,7 @@ export function ChatComposer(props: ChatComposerProps) {
       />
       <div className="cc-chat-composer-bar">
         <div className="cc-chat-composer-bar-tools">
-          <button title={t('模式')} onClick={(e) => toggle('mode', e.currentTarget)}
+          <button title={t('mode')} onClick={(e) => toggle('mode', e.currentTarget)}
             className="cc-chat-mode-btn"
             style={{ height: 28, display: 'flex', alignItems: 'center', gap: 3, padding: '0 3px', border: 0, borderRadius: 6, background: pop === 'mode' ? theme.panelAlt : 'transparent', color: theme.text, cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>
             <Icon name="sparkles" size={15} /><span className="cc-chat-mode-label">{mode === 'agent' ? 'Agent' : 'Ask'}</span><Icon name="chevronDown" size={11} />
@@ -334,8 +334,8 @@ export function ChatComposer(props: ChatComposerProps) {
           <button
             type="button"
             title={activeModel
-              ? t('当前模型：{name}', { name: `${activeModel.providerLabel} · ${activeModel.model}` })
-              : t('选择模型')}
+              ? t('Current model:{name}', { name: `${activeModel.providerLabel} · ${activeModel.model}` })
+              : t('Select model')}
             onClick={(event) => toggle('model', event.currentTarget)}
             style={{
               height: 28,
@@ -356,24 +356,24 @@ export function ChatComposer(props: ChatComposerProps) {
           >
             <Icon name="cloud" size={13} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {activeModel?.model ?? t('模型')}
+              {activeModel?.model ?? t('model')}
             </span>
             <Icon name="chevronDown" size={10} />
           </button>
-          <BarBtn icon="sliders" title={t('设置')} active={pop === 'settings'} onClick={(e) => toggle('settings', e.currentTarget)} />
-          <BarBtn icon="cursor" title={t('选择模式：点片段 / 拖画布 / 选文字稿作为引用')} active={selecting} onClick={onToggleSelecting} />
-          <BarBtn icon="plus" title={t('引用媒体池素材')} active={pop === 'assets'} onClick={(e) => toggle('assets', e.currentTarget)} />
-          <BarBtn icon="wand" title={activeSkill ? t('创作模式：{name}', { name: skillName(activeSkill) }) : t('创作模式')} active={pop === 'skill' || !!activeSkill} onClick={(e) => toggle('skill', e.currentTarget)} />
-          <BarBtn icon="bookOpen" title={t('引用模板库')} active={pop === 'templates'} onClick={(e) => toggle('templates', e.currentTarget)} />
-          <BarBtn icon="sparkles" title={enhancing ? t('增强中…') : t('增强提示词')} disabled={enhancing || !value.trim() || running} onClick={onEnhance} />
+          <BarBtn icon="sliders" title={t('settings')} active={pop === 'settings'} onClick={(e) => toggle('settings', e.currentTarget)} />
+          <BarBtn icon="cursor" title={t('Selection mode: point fragment / drag canvas / Select a manuscript as a citation')} active={selecting} onClick={onToggleSelecting} />
+          <BarBtn icon="plus" title={t('Quote media pool material')} active={pop === 'assets'} onClick={(e) => toggle('assets', e.currentTarget)} />
+          <BarBtn icon="wand" title={activeSkill ? t('Creative mode:{name}', { name: skillName(activeSkill) }) : t('creative mode')} active={pop === 'skill' || !!activeSkill} onClick={(e) => toggle('skill', e.currentTarget)} />
+          <BarBtn icon="bookOpen" title={t('Reference template library')} active={pop === 'templates'} onClick={(e) => toggle('templates', e.currentTarget)} />
+          <BarBtn icon="sparkles" title={enhancing ? t('Enhancing…') : t('Enhance prompt words')} disabled={enhancing || !value.trim() || running} onClick={onEnhance} />
         </div>
         {running ? (
-          <button title={t('停止')} onClick={onStop} className="cc-chat-send-btn"
+          <button title={t('stop')} onClick={onStop} className="cc-chat-send-btn"
             style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: theme.accent, cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
             <span style={{ width: 10, height: 10, background: theme.onAccent, borderRadius: 2 }} />
           </button>
         ) : (
-          <button title={t('发送 (Enter)')} onClick={onSubmit} disabled={!canSend} className="cc-chat-send-btn"
+          <button title={t('send (Enter)')} onClick={onSubmit} disabled={!canSend} className="cc-chat-send-btn"
             style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: canSend ? theme.accent : theme.border, color: canSend ? theme.onAccent : theme.textDim, cursor: canSend ? 'pointer' : 'default', display: 'grid', placeItems: 'center', lineHeight: 0, flexShrink: 0 }}>
             <Icon name="arrowUp" size={16} strokeWidth={2.2} />
           </button>
@@ -383,18 +383,18 @@ export function ChatComposer(props: ChatComposerProps) {
       {/* menus rendered fixed — never clipped by composer bounds */}
       {pop === 'mode' && (
         <Popover w={172} anchor={popAnchor} onClose={closePop}>
-          {modeRow('agent', t('代理模式'), t('可编辑时间线，改动可撤销'))}
-          {modeRow('ask', t('问答模式'), t('只回答，不动时间线'))}
+          {modeRow('agent', t('proxy mode'), t('Editable timeline, changes can be undone'))}
+          {modeRow('ask', t('Q&A mode'), t('Just answer, don’t move the timeline'))}
         </Popover>
       )}
       {pop === 'model' && (
         <Popover w={278} anchor={popAnchor} onClose={closePop}>
           <div style={{ fontSize: 10.5, color: theme.textDim, padding: '4px 8px 6px' }}>
-            {t('本条对话使用的模型')}
+            {t('The model used in this conversation')}
           </div>
           {modelState.choices.length === 0 && (
             <div style={{ padding: '7px 9px 9px', color: theme.textDim, fontSize: 11.5, lineHeight: 1.5 }}>
-              {modelState.loaded ? t('请先在设置中配置一个模型厂商。') : t('正在读取模型配置…')}
+              {modelState.loaded ? t('Please configure a model vendor in settings first.') : t('Reading model configuration...')}
             </div>
           )}
           {modelState.choices.map((choice) => {
@@ -436,24 +436,24 @@ export function ChatComposer(props: ChatComposerProps) {
         <Popover anchor={popAnchor} onClose={closePop}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
             <input type="checkbox" checked={autoApply} onChange={(e) => onAutoApplyChange(e.target.checked)} style={{ accentColor: theme.accent }} />
-            {t('自动应用 AI 提案')}
+            {t('Automatically apply AI proposal')}
           </label>
-          <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>{t('开启后 AI 的改动直接生效，无需手动确认（仍可撤销）。')}</div>
+          <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>{t('After opening AI The changes take effect directly without manual confirmation (can still be undone).')}</div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
             <input type="checkbox" checked={agentSettings.skillGuard} onChange={(e) => patchAgent({ skillGuard: e.target.checked })} style={{ accentColor: theme.accent }} />
-            {t('Skill guard · 高成本确认')}
+            {t('Skill guard · High cost confirmation')}
           </label>
           <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
-            {t('生成/导出等昂贵工具即使开启自动应用，仍走提案卡二次确认。')}
+            {t('generate/Even if the automatic application of expensive tools such as export is turned on, the proposal card will still be used for secondary confirmation.')}
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
             <input type="checkbox" checked={agentSettings.thinkingEnabled} onChange={(e) => patchAgent({ thinkingEnabled: e.target.checked })} style={{ accentColor: theme.accent }} />
-            {t('思考模式')}
+            {t('Thinking model')}
           </label>
           <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
-            {t('回答前先展开思考过程；中转不支持时本轮自动关闭。')}
+            {t('Start the thinking process before answering; this round will be automatically closed when the transfer is not supported.')}
           </div>
-          <div style={{ padding: '8px 10px 4px', color: theme.text, fontSize: 12.5 }}>{t('MG 质量')}</div>
+          <div style={{ padding: '8px 10px 4px', color: theme.text, fontSize: 12.5 }}>{t('MG quality')}</div>
           <div style={{ display: 'flex', gap: 4, padding: '0 10px' }}>
             {MG_TIERS.map((tier) => (
               <button key={tier} onClick={() => patchAgent({ mgTier: tier })}
@@ -463,20 +463,20 @@ export function ChatComposer(props: ChatComposerProps) {
             ))}
           </div>
           <div style={{ fontSize: 11, color: theme.textDim, padding: '4px 10px 6px' }}>
-            {t('速度=最快出活 / 均衡 / 质量=打磨动效细节。')}
+            {t('speed=Quickest way to work / equilibrium / quality=Polish the details of motion effects.')}
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
             <input type="checkbox" checked={agentSettings.planMode} onChange={(e) => patchAgent({ planMode: e.target.checked })} style={{ accentColor: theme.accent }} />
-            {t('计划模式')}
+            {t('planning mode')}
           </label>
           <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 10px' }}>
-            {t('先出编号计划，确认后再动手。')}
+            {t('Come up with the numbering plan first, and then proceed after confirming it.')}
           </div>
         </Popover>
       )}
       {pop === 'assets' && (
         <Popover anchor={popAnchor} onClose={closePop}>
-          {refPopoverBody('asset', t('媒体池暂无素材'))}
+          {refPopoverBody('asset', t('There is currently no material in the media pool'))}
         </Popover>
       )}
       {pop === 'skill' && (
@@ -484,20 +484,20 @@ export function ChatComposer(props: ChatComposerProps) {
           <div className="cc-creative-picker-head">
             <span><Icon name="wand" size={15} /></span>
             <div>
-              <strong>{t('选择创作工作流')}</strong>
-              <small>{t('工作流会约束 Agent 的规划与工具调用。')}</small>
+              <strong>{t('Choose an authoring workflow')}</strong>
+              <small>{t('Workflow will be constrained Agent planning and tool invocation.')}</small>
             </div>
           </div>
           <button onClick={() => { onCreativeModeChange(null); closePop(); }}
             className="cc-creative-mode-row" data-active={!creativeMode} aria-pressed={!creativeMode}>
             <span className="cc-creative-mode-icon"><Icon name="sparkles" size={15} /></span>
             <span className="cc-creative-mode-copy">
-              <strong>{t('自由创作')}</strong>
-              <small>{t('不限定工作流，根据当前目标灵活执行。')}</small>
+              <strong>{t('Free creation')}</strong>
+              <small>{t('Workflow is not limited and can be executed flexibly based on current goals.')}</small>
             </span>
             {!creativeMode && <span className="cc-creative-mode-check"><Icon name="check" size={13} strokeWidth={2.4} /></span>}
           </button>
-          <div className="cc-creative-picker-section">{t('专业工作流')}</div>
+          <div className="cc-creative-picker-section">{t('Professional workflow')}</div>
           {allCreativeSkills().map((s) => (
             <button key={s.id} onClick={() => { onCreativeModeChange(s.id); closePop(); }}
               className="cc-creative-mode-row" data-active={creativeMode === s.id}
@@ -506,7 +506,7 @@ export function ChatComposer(props: ChatComposerProps) {
               <span className="cc-creative-mode-copy">
                 <span className="cc-creative-mode-title">
                   <strong>{skillName(s)}</strong>
-                  {!builtinIds.has(s.id) && <em>{t('自定义')}</em>}
+                  {!builtinIds.has(s.id) && <em>{t('Customize')}</em>}
                 </span>
                 <small>{t(s.summary)}</small>
               </span>
@@ -517,7 +517,7 @@ export function ChatComposer(props: ChatComposerProps) {
       )}
       {pop === 'templates' && (
         <Popover anchor={popAnchor} onClose={closePop}>
-          {refPopoverBody('template', t('暂无模板'))}
+          {refPopoverBody('template', t('No template yet'))}
         </Popover>
       )}
     </div>

@@ -8,15 +8,15 @@ import { t, useT } from '../i18n/locale';
 // button AND the popover. GLOBAL history (single-user app) — loads straight from
 // IDB, takes ZERO props, so it can drop into the TopBar with no wiring.
 
-/** "刚刚 / N 分钟前 / N 小时前 / N 天前"。 */
+/** "just now / N minutes ago / N hours ago / N days ago"。 */
 function relTime(ms: number): string {
   const diff = Math.max(0, Date.now() - ms);
   const min = Math.floor(diff / 60_000);
-  if (min < 1) return t('刚刚');
-  if (min < 60) return t('{n} 分钟前', { n: min });
+  if (min < 1) return t('just now');
+  if (min < 60) return t('{n} minutes ago', { n: min });
   const hr = Math.floor(min / 60);
-  if (hr < 24) return t('{n} 小时前', { n: hr });
-  return t('{n} 天前', { n: Math.floor(hr / 24) });
+  if (hr < 24) return t('{n} hours ago', { n: hr });
+  return t('{n} days ago', { n: Math.floor(hr / 24) });
 }
 
 /** bytes → "1.2 MB" / "340 KB" / "12 B" */
@@ -53,7 +53,7 @@ export function ExportHistory() {
 
   return (
     <>
-      <button title={t('导出历史')} onClick={() => setOpen(true)}
+      <button title={t('Export history')} onClick={() => setOpen(true)}
         style={{ width: 28, height: 28, background: 'none', border: 'none', cursor: 'pointer', padding: 0, borderRadius: 4, lineHeight: 0, display: 'grid', placeItems: 'center', color: theme.textDim }}
         onMouseEnter={(e) => { e.currentTarget.style.color = theme.text; e.currentTarget.style.background = theme.panelAlt; }}
         onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; e.currentTarget.style.background = 'none'; }}>
@@ -65,15 +65,15 @@ export function ExportHistory() {
           <div onClick={(e) => e.stopPropagation()} style={card}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '13px 16px', borderBottom: `0.5px solid ${theme.border}` }}>
               <span style={{ color: theme.accent, lineHeight: 0 }}><Icon name="download" size={17} /></span>
-              <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{t('导出历史')}</span>
-              <button onClick={() => setOpen(false)} title={t('关闭')} style={iconBtn}><Icon name="x" size={15} /></button>
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{t('Export history')}</span>
+              <button onClick={() => setOpen(false)} title={t('close')} style={iconBtn}><Icon name="x" size={15} /></button>
             </div>
 
             <div style={{ padding: 12, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 120 }}>
               {loading ? (
-                <div style={emptyState}>{t('加载中…')}</div>
+                <div style={emptyState}>{t('Loading…')}</div>
               ) : records.length === 0 ? (
-                <div style={emptyState}>{t('还没有导出记录')}</div>
+                <div style={emptyState}>{t('No records have been exported yet')}</div>
               ) : (
                 records.map((r) => (
                   <div key={r.id} style={row}>
@@ -89,7 +89,7 @@ export function ExportHistory() {
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 16px', borderTop: `0.5px solid ${theme.border}` }}>
               <button onClick={handleClear} disabled={records.length === 0} style={{ ...ghostBtn, opacity: records.length === 0 ? 0.4 : 1, cursor: records.length === 0 ? 'default' : 'pointer' }}>
-                {t('清空历史')}
+                {t('Clear history')}
               </button>
             </div>
           </div>

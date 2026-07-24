@@ -2,8 +2,8 @@ import type { CSSProperties } from 'react';
 import type { InstalledPack } from '../plugins/store';
 import { theme } from '../theme';
 
-export type CenterTab = '发现' | '已安装' | '创作';
-export type Category = '全部' | 'MG' | '转场' | '特效' | 'LUT' | '缩放';
+export type CenterTab = 'discover' | 'Installed' | 'create';
+export type Category = 'All' | 'MG' | 'Transition' | 'special effects' | 'LUT' | 'Zoom';
 
 export interface RegistryEntry {
   id: string;
@@ -17,14 +17,14 @@ export interface RegistryEntry {
   itemCount?: number;
 }
 
-export const CENTER_TABS: CenterTab[] = ['发现', '已安装', '创作'];
-export const EXTENSION_CATEGORIES: Category[] = ['全部', 'MG', '转场', '特效', 'LUT', '缩放'];
+export const CENTER_TABS: CenterTab[] = ['discover', 'Installed', 'create'];
+export const EXTENSION_CATEGORIES: Category[] = ['All', 'MG', 'Transition', 'special effects', 'LUT', 'Zoom'];
 export const EXTENSION_TYPE_LABEL: Record<string, string> = {
   'mg-template': 'MG',
-  transition: '转场',
-  fx: '特效',
+  transition: 'Transition',
+  fx: 'special effects',
   lut: 'LUT',
-  zoom: '缩放',
+  zoom: 'Zoom',
 };
 
 export function parseRegistry(value: unknown): RegistryEntry[] {
@@ -36,7 +36,7 @@ export function parseRegistry(value: unknown): RegistryEntry[] {
     if (!item.url.startsWith('/') && !/^https?:\/\//.test(item.url)) return [];
     const categories = Array.isArray(item.categories)
       ? item.categories.filter((entry): entry is Category => (
-        EXTENSION_CATEGORIES.includes(entry as Category) && entry !== '全部'
+        EXTENSION_CATEGORIES.includes(entry as Category) && entry !== 'All'
       ))
       : [];
     return [{

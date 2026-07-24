@@ -50,7 +50,7 @@ export type Action =
   | { type: 'removeMarker'; id: string }
   | { type: 'reframeKeyframe'; id: string; frame: number; focalPointX: number; focalPointY: number; magnification: number }
   | { type: 'removeReframeKeyframe'; id: string; frame: number }
-  // generic transform keyframes (PRD §4.5 钢笔工具): frame = item-local edit frame
+  // generic transform keyframes (PRD §4.5 Pen tool): frame = item-local edit frame
   | { type: 'setKeyframe'; id: string; prop: KeyframeProp; frame: number; value: number; easing?: KeyframeEasing }
   | { type: 'removeKeyframe'; id: string; prop: KeyframeProp; frame: number }
   | { type: 'clearKeyframes'; id: string; prop?: KeyframeProp }
@@ -80,7 +80,7 @@ export type Action =
   | { type: 'setGapCap'; id: string; afterWordIndex: number; maxMs: number | null }
   /** Speech-block drag: playback order of source word indices (null clears → chronological). */
   | { type: 'setTranscriptPlayOrder'; id: string; playOrder: number[] | null }
-  /** Pack items on a track in the given id order (clip drag in 文字稿). */
+  /** Pack items on a track in the given id order (clip drag in Transcript). */
   | { type: 'reorderTrackItems'; track: string; orderedIds: string[] }
   | { type: 'clearEdits'; id: string }
   | { type: 'fixTranscriptWord'; id: string; wordIndex: number; text: string }
@@ -148,9 +148,9 @@ function editOptsOf(it: TimelineItem): { maxGapFrames?: number; gapCapsMs?: Reco
 }
 
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
-  // 词操作后时长 = 编辑后词流全长 − 已有左裁(仅 audio:词驱动渲染的窗口起点)。
-  // 左 trim 在删词/压静音后保留;右 trim 重置为"剩余全部"。video+transcript 走
-  // 连续渲染,srcInFrame 是媒体帧语义,不参与词流窗口。
+  // Duration after word operation = full length of the word stream after editing − left clipping (only audio: starting point of the window for word-driven rendering).
+  // The left trim is retained after word deletion/silencing; the right trim is reset to "all remaining". video+transcript go
+  // For continuous rendering, srcInFrame is media frame semantics and does not participate in the word flow window.
   const trim = it.kind === 'audio' ? (it.srcInFrame ?? 0) : 0;
   return Math.max(1, editedFrames(it.transcript!, deleted, fps, editOptsOf(it)) - trim);
 }
@@ -194,9 +194,9 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       if (!target) return s;
       let srcIn = a.srcInFrame === undefined ? target.srcInFrame : Math.max(0, a.srcInFrame);
       let dur = Math.max(1, a.durationInFrames ?? target.durationInFrames);
-      // 转写 audio 的 trim 守卫:窗口 clamp 在编辑后词流总长内(trim 手柄越界自愈,
-      // 词↔帧一致 —— 窗口决定播什么,这里保证窗口本身合法)。video 的 srcInFrame
-      // 是媒体帧,不 clamp。
+      // Transcribe audio's trim guard: the window clamp is within the total length of the word stream after editing (the trim handle self-heals out of bounds,
+      // Word ↔ frame consistency - the window decides what to broadcast, and the window itself is guaranteed to be legal). video's srcInFrame
+      // It's a media frame, not a clamp.
       if (target.kind === 'audio' && target.transcript?.length) {
         const total = editedFrames(target.transcript, new Set(target.deletedWordIdx ?? []), s.fps, editOptsOf(target));
         srcIn = Math.min(srcIn ?? 0, Math.max(0, total - 1));
@@ -262,8 +262,8 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       };
     case 'setEffects': {
       if (lockedItem(s, a.id)) return s;
-      // 非内置 fx(插件/submit_shader)的 def 随动作快照进 state.fxDefs——
-      // 刷新与无头导出(无内存注册表)才解析得了。不清理:def 小,工程顶多几十条。
+      // The def of non-built-in fx (plug-in/submit_shader) is snapshotted into state.fxDefs along with the action——
+      // Refresh and headless export (no memory registry) can be parsed. Not cleaning: def is small, the project can only have dozens of items at most.
       const fxDefs = a.defs?.length
         ? { ...s.fxDefs, ...Object.fromEntries(a.defs.map((d) => [d.id, d])) }
         : s.fxDefs;
@@ -275,7 +275,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
     }
     case 'replaceMedia':
       if (lockedItem(s, a.id)) return s;
-      // 转为视频: swap an MG/text clip for the baked video, keeping its slot
+      // To video: swap an MG/text clip for the baked video, keeping its slot
       // (track/start/duration/name/volume). Effects/transform/etc. are already
       // rendered into the video, so they're dropped.
       return {
@@ -677,11 +677,11 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         ),
       };
     case 'fixTranscriptWord': {
-      // 改错字:只修正某个转写词的文本，以保持词帧双向一致——只替换 .text,
-      // 词的 start/end(帧位)、speaker、词数、以及 clip 的 durationInFrames 全部不动。
+      // Correct typos: Only correct the text of a transliterated word to keep the word frame consistent in both directions - only replace .text,
+      // The word's start/end (frame bit), speaker, number of words, and clip's durationInFrames are all unchanged.
       const it = s.items.find((x) => x.id === a.id);
       const word = it?.transcript?.[a.wordIndex];
-      // 越界 / 无转写 / 文本未变 → 真正 no-op(返回原 state,不进历史栈)
+      // Out of bounds / no transliteration / text unchanged → true no-op (return to original state, do not enter the history stack)
       if (!word || word.text === a.text) return s;
       return {
         ...s,
@@ -693,12 +693,12 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       };
     }
     case 'renameSpeaker': {
-      // 说话人重命名/合并:把 speaker===from 的词全部改标 to，并保持词帧一致——
-      // 只改 word.speaker,text/start/end、词数、clip 时长全不动;from→to 同机制覆盖
-      // 重命名('A'→'主持人')与合并('B'→'A',两位说话人塌成一位)。
-      // 注:TimelineItem 只存 transcript(词),没有 utterances/segment 字段可改。
+      // Speaker renaming/merging: Rename all words with speaker====from to, and keep the word frame consistent——
+      // Only change word.speaker, text/start/end, number of words, and clip duration, leaving them unchanged; from→to is covered by the same mechanism.
+      // Rename ('A'→'Host') and merge ('B'→'A', two speakers collapse into one).
+      // Note: TimelineItem only stores transcript (word), and there are no utterances/segment fields to change.
       const it = s.items.find((x) => x.id === a.id);
-      // 无 item / 无转写 / 没有词的 speaker===from → 真正 no-op(返回原 state,不进历史栈)
+      // No item / no transliteration / speaker without words===from → true no-op (return to original state, do not enter the history stack)
       if (!it?.transcript?.some((w) => w.speaker === a.from)) return s;
       return {
         ...s,
@@ -766,11 +766,11 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       // clip's visible frame 0 sits at srcInFrame in the edited stream, so offset before
       // mapping to a word boundary. Fades belong to the outer edges only: the left half's
       // OUT and the right half's IN are now the mid-clip cut, so drop fadeOut-left / fadeIn-right.
-      const wordDriven = it.kind === 'audio' && !!it.transcript?.length; // 词驱动渲染路径
+      const wordDriven = it.kind === 'audio' && !!it.transcript?.length; // Word driven rendering path
       const tp = it.transcript?.length
         ? splitClipTranscript(it, s.fps, cut + (wordDriven ? (it.srcInFrame ?? 0) : 0))
         : null;
-      // generic keyframes partition at the same cut (boundary anchors keep每帧采样一致)
+      // generic keyframes partition at the same cut (boundary anchors keep sampling consistent for each frame)
       const kp = it.keyframes ? splitItemKeyframes(it.keyframes, cut) : null;
       const left = {
         ...it,

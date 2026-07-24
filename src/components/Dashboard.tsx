@@ -16,18 +16,18 @@ interface DashboardProps {
   onRename: (id: string, name: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => Promise<void>;
-  /** 导出工程为 .ccproj.json(跨端迁移);返回给用户看的结果文案 */
+  /** Export the project as .ccproj.json(Cross-end migration);Result copy returned to the user */
   onExport: (id: string, name: string) => Promise<string>;
-  /** 导入 .ccproj.json;返回结果文案 */
+  /** import .ccproj.json;Return result copy */
   onImport: (file: File) => Promise<string>;
 }
 
 function relTime(ms: number): string {
   const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  if (s < 60) return t('刚刚');
-  if (s < 3600) return t('{n} 分钟前', { n: Math.floor(s / 60) });
-  if (s < 86400) return t('{n} 小时前', { n: Math.floor(s / 3600) });
-  return t('{n} 天前', { n: Math.floor(s / 86400) });
+  if (s < 60) return t('just now');
+  if (s < 3600) return t('{n} minutes ago', { n: Math.floor(s / 60) });
+  if (s < 86400) return t('{n} hours ago', { n: Math.floor(s / 3600) });
+  return t('{n} days ago', { n: Math.floor(s / 86400) });
 }
 
 const THUMB_RENDER_CONCURRENCY = 2;
@@ -61,11 +61,11 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
-  const [note, setNote] = useState<string | null>(null);  // 导入/导出结果的轻提示
-  const [busy, setBusy] = useState(false);                // 大素材 base64 化耗时,防连点
+  const [note, setNote] = useState<string | null>(null);  // Light tips for importing/exporting results
+  const [busy, setBusy] = useState(false);                // Base64 conversion of large materials is time-consuming and prevents connection points
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // 工程卡海报帧:先并行显示缓存(过期缓存也先用),再用两个后台任务刷新。
+  // Project card poster frame: first display the cache in parallel (the expired cache is also used first), and then refresh it with two background tasks.
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const renderingRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -93,7 +93,7 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
             if (!dataUrl) continue;
             await saveProjectThumb(entry.m.id, key, dataUrl);
             if (alive) setThumbs((prev) => ({ ...prev, [entry.m.id]: dataUrl }));
-          } catch { /* 保留旧图或占位 */ } finally {
+          } catch { /* Keep old pictures or placeholders */ } finally {
             renderingRef.current.delete(cacheKey);
           }
         }
@@ -111,36 +111,36 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
 
   const runTransfer = async (work: Promise<string>) => {
     setBusy(true);
-    setNote(t('处理中…'));
+    setNote(t('Processing…'));
     try {
       setNote(await work);
     } catch (err) {
-      setNote(t('失败:{error}', { error: err instanceof Error ? err.message : String(err) }));
+      setNote(t('failed:{error}', { error: err instanceof Error ? err.message : String(err) }));
     } finally {
       setBusy(false);
     }
   };
   const pickImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = '';  // 同一文件可重复选
+    e.target.value = '';  // The same file can be selected repeatedly
     if (file) void runTransfer(onImport(file));
   };
 
   return (
-    // 全局 html/body/#root 都是 overflow:hidden(编辑器需要),仪表盘自己开滚动:
-    // header 固定,main 是唯一的纵向滚动容器,工程多时最后一行也能滚出来。
+    // The global html/body/#root is overflow:hidden (required by the editor), and the dashboard scrolls by itself:
+    // The header is fixed, main is the only vertical scrolling container, and the last line can be scrolled out even if the project is long.
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: theme.bg, color: theme.text, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <header style={{ height: 48, flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10, padding: '0 24px', borderBottom: `0.5px solid ${theme.border}`, background: theme.panel }}>
         <BrandMark size={20} />
         <OpenChatCutWordmark />
-        <span style={{ color: theme.textDim, fontSize: 13 }}>{t('· 我的工程')}</span>
+        <span style={{ color: theme.textDim, fontSize: 13 }}>{t('· my project')}</span>
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-          <button onClick={() => setShortcutsOpen(true)} title={t('编辑快捷键')} className="cc-header-btn" style={settingsBtn}>
+          <button onClick={() => setShortcutsOpen(true)} title={t('Edit shortcut keys')} className="cc-header-btn" style={settingsBtn}>
             <Icon name="keyboard" size={16} />
           </button>
           <LocaleToggle />
           <SkinPicker />
-          <button onClick={() => setSettingsOpen(true)} title={t('设置 · API 密钥')} className="cc-header-btn" style={settingsBtn}>
+          <button onClick={() => setSettingsOpen(true)} title={t('settings · API key')} className="cc-header-btn" style={settingsBtn}>
             <Icon name="sliders" size={16} />
           </button>
         </span>
@@ -149,29 +149,29 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
       <main style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
        <div style={{ maxWidth: 1120, margin: '0 auto', padding: '28px 24px 80px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 18 }}>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em' }}>{t('工程')}</h1>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em' }}>{t('Engineering')}</h1>
           {note && <span style={{ color: theme.textDim, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{note}</span>}
           <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-            <button onClick={() => setCleanupOpen(true)} style={importBtn} title={t('清理所有工程都不引用的上传素材(测试/已删工程残留)')}>
-              <Icon name="trash" size={13} /> {t('清理素材')}
+            <button onClick={() => setCleanupOpen(true)} style={importBtn} title={t('Clean up uploaded materials that are not referenced in all projects(test/Remains of deleted projects)')}>
+              <Icon name="trash" size={13} /> {t('Clean up footage')}
             </button>
-            <button onClick={() => fileRef.current?.click()} disabled={busy} style={importBtn} title={t('导入 .ccproj.json 工程文件(含素材;可来自浏览器版/其它机器)')}>
-              <Icon name="upload" size={13} /> {t('导入工程')}
+            <button onClick={() => fileRef.current?.click()} disabled={busy} style={importBtn} title={t('import .ccproj.json Project documents(Contains materials;Available from browser version/Other machines)')}>
+              <Icon name="upload" size={13} /> {t('Import project')}
             </button>
             <input ref={fileRef} type="file" accept=".json,application/json" onChange={pickImport} style={{ display: 'none' }} />
-            <span style={{ color: theme.textDim, fontSize: 12.5 }}>{t('{n} 个', { n: projects.length })}</span>
+            <span style={{ color: theme.textDim, fontSize: 12.5 }}>{t('{n} a', { n: projects.length })}</span>
           </span>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(232px, 1fr))', alignItems: 'start', gap: 16 }}>
-          <button onClick={onNew} style={newCard} title={t('新建工程')}>
+          <button onClick={onNew} style={newCard} title={t('New construction')}>
             <span style={{ fontSize: 30, color: theme.textDim, lineHeight: 1 }}>＋</span>
-            <span style={{ fontSize: 13, color: theme.textDim }}>{t('新建工程')}</span>
+            <span style={{ fontSize: 13, color: theme.textDim }}>{t('New construction')}</span>
           </button>
 
           {projects.map((m) => (
             <div key={m.id} style={card}>
-              <button onClick={() => onOpen(m.id)} style={thumb} title={t('打开 {name}', { name: m.name })}>
+              <button onClick={() => onOpen(m.id)} style={thumb} title={t('open {name}', { name: m.name })}>
                 {thumbs[m.id] ? (
                   <img src={thumbs[m.id]} alt="" draggable={false} loading="lazy" decoding="async"
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
@@ -189,7 +189,7 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
                     style={nameInput}
                   />
                 ) : (
-                  <div onDoubleClick={() => startRename(m)} title={t('双击重命名')} style={{ fontSize: 13, fontWeight: 550, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.name}</div>
+                  <div onDoubleClick={() => startRename(m)} title={t('Double click to rename')} style={{ fontSize: 13, fontWeight: 550, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.name}</div>
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 11, color: theme.textDim, fontVariantNumeric: 'tabular-nums' }}>{relTime(m.updatedAt)}</span>
@@ -197,21 +197,21 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
                     {confirmId === m.id ? (
                       <button
                         onClick={() => {
-                          void runTransfer(onDelete(m.id).then(() => t('已永久删除「{name}」', { name: m.name })));
+                          void runTransfer(onDelete(m.id).then(() => t('has been permanently deleted"{name}」', { name: m.name })));
                           setConfirmId(null);
                         }}
                         disabled={busy}
                         style={{ ...miniBtn, color: '#f77' }}
-                        title={t('彻底删除工程,并清掉只有它引用的素材文件')}
+                        title={t('Completely delete the project,And clear only the material files it references')}
                       >
-                        {t('确认删除')}
+                        {t('Confirm deletion')}
                       </button>
                     ) : (
                       <>
-                        <button onClick={() => startRename(m)} style={miniBtn} title={t('重命名')}><Icon name="pencil" size={13} /></button>
-                        <button onClick={() => onDuplicate(m.id)} style={miniBtn} title={t('复制')}><Icon name="copy" size={13} /></button>
-                        <button onClick={() => void runTransfer(onExport(m.id, m.name))} disabled={busy} style={miniBtn} title={t('导出为 .ccproj.json(含素材,可在桌面版/其它机器导入)')}><Icon name="download" size={13} /></button>
-                        <button onClick={() => setConfirmId(m.id)} style={miniBtn} title={t('删除')}><Icon name="trash" size={13} /></button>
+                        <button onClick={() => startRename(m)} style={miniBtn} title={t('Rename')}><Icon name="pencil" size={13} /></button>
+                        <button onClick={() => onDuplicate(m.id)} style={miniBtn} title={t('Copy')}><Icon name="copy" size={13} /></button>
+                        <button onClick={() => void runTransfer(onExport(m.id, m.name))} disabled={busy} style={miniBtn} title={t('Export as .ccproj.json(Contains materials,Available in desktop version/Import from other machines)')}><Icon name="download" size={13} /></button>
+                        <button onClick={() => setConfirmId(m.id)} style={miniBtn} title={t('Delete')}><Icon name="trash" size={13} /></button>
                       </>
                     )}
                   </div>

@@ -1,4 +1,4 @@
-// 共享扩展存储 API：安装、版本隔离、启停、卸载。npx tsx server/plugins/extension-store.verify.ts
+// Shared extended storage API: installation, version isolation, start and stop, and uninstall. npx tsx server/plugins/extension-store.verify.ts
 import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
@@ -59,8 +59,8 @@ try {
   });
   assert.equal(response.status, 200);
   const versionDir = Buffer.from(pack.version).toString('base64url');
-  assert.ok(await exists(join(rootDir, pack.id, versionDir, 'manifest.json')), '版本目录必须留在扩展 id 下');
-  assert.equal(await exists(join(rootDir, 'manifest.json')), false, '版本名不可目录穿越');
+  assert.ok(await exists(join(rootDir, pack.id, versionDir, 'manifest.json')), 'The version directory must remain in the extension id down');
+  assert.equal(await exists(join(rootDir, 'manifest.json')), false, 'The version name is not directory traversable');
 
   response = await fetch(harness.base);
   let body = await response.json() as { packs: Array<{ id: string; enabled: boolean }> };
@@ -80,7 +80,7 @@ try {
   assert.equal(response.status, 200);
   assert.equal(await exists(join(rootDir, pack.id)), false);
   assert.deepEqual(JSON.parse(await readFile(join(rootDir, 'index.json'), 'utf8')), []);
-  console.log('extension-store: 安装/版本隔离/启停/卸载 OK');
+  console.log('extension-store: Installation/version isolation/Start and stop/Uninstall OK');
 } finally {
   await harness.close();
   await rm(rootDir, { recursive: true, force: true });

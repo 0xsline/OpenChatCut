@@ -1,7 +1,7 @@
-// 时间线指针状态机(逐字搬自 Timeline.tsx):四条互斥手势——片段拖动/裁剪(drag)、
-// 空白处框选(marquee)、钢笔关键帧点拖(penDrag)、选择模式引用拾取(pickDrag)。
-// move/up 统一挂在滚动容器上;各手势自己 setPointerCapture 到合适目标。
-// 吸附(applySnap)与多选点击语义也在这——它们只被这台机器用。
+// Timeline pointer state machine (translated verbatim from Timeline.tsx): four mutually exclusive gestures - fragment drag/crop (drag),
+// Marquee selection in blank space (marquee), pen keyframe point drag (penDrag), selection mode reference picking (pickDrag).
+// move/up are uniformly hung on the scroll container; each gesture setsPointerCapture to the appropriate target.
+// The applySnap and multi-select click semantics are also here - they are only used by this machine.
 import { useState, type RefObject } from 'react';
 import {
   isItemSelected, selectedIdsOf, trackKind,

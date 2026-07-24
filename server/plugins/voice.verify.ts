@@ -4,7 +4,7 @@ import { validateVoiceRequest } from './voice.ts';
 
 const mm = validateVoiceRequest({
   provider: 'minimax',
-  text: '你好',
+  text: 'hello',
   voiceId: '',
   speed: 1.1,
   pitch: -2,
@@ -96,7 +96,7 @@ assert.throws(
 
 const doubao = validateVoiceRequest({
   provider: 'doubao',
-  text: '你好',
+  text: 'hello',
   voiceId: 'vivi',
   pitch: 1,
   emotion: 'happy',

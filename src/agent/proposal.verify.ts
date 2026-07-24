@@ -18,8 +18,8 @@ const compacted = compactOperations([
 assert.equal(compacted.length, 1);
 assert.equal(compacted[0].callCount, 4);
 assert.equal(compacted[0].actions.length, 4);
-assert.equal(compacted[0].action, '人声隔离');
-assert.equal(compacted[0].impact, '4 处改动');
+assert.equal(compacted[0].action, 'Vocal isolation');
+assert.equal(compacted[0].impact, '4 Change everywhere');
 
 const distinctArguments = compactOperations([
   buildOperation('edit_captions', { itemId: 'clip-1', text: 'First' }, [{ type: 'setItemDenoise', id: 'clip-1', denoisedSrc: '/first.m4a', strength: 10 }]),

@@ -64,8 +64,8 @@ export function ClipFx({ item, fit, width, height }: ClipFxProps) {
     let done = false;
     let raf = 0;
     const finish = () => { if (!done) { done = true; continueRender(handle); } };
-    // .cube LUT 先起加载;tick 等到有结论(成功→套色,失败→透传)才画首帧,
-    // 无头导出下 delayRender 因此把帧卡到 LUT 就绪,不会烧进未调色的早期帧。
+    // .cube LUT Load first;tick Wait until there is a conclusion(success→Color registration,failed→pass-through)Just painted the first frame,
+    // Headless export delayRender So the frame is stuck to LUT ready,No early, ungraded frames are burned in.
     for (const { def } of active) if (def.cube) void ensureCube(def.cube);
     const tick = () => {
       const el = elRef.current;
@@ -104,7 +104,7 @@ export function ClipFx({ item, fit, width, height }: ClipFxProps) {
           the composition's own clip owns audio) */}
       <AbsoluteFill style={{ opacity: 0, pointerEvents: 'none' }}>
         {item.kind === 'image'
-          // impeccable-disable-next-line broken-image -- Remotion Img 组件,src 来自 item 运行时注入
+          // impeccable-disable-next-line broken-image -- Remotion Img component, src comes from item runtime injection
           ? <Img ref={elRef as React.MutableRefObject<HTMLImageElement | null>} src={item.src!} />
           : <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1} muted />}
       </AbsoluteFill>

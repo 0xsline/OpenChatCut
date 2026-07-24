@@ -1,7 +1,7 @@
 ---
 name: shader-gen
 description: |
-  AI shader generator for WebGL video effects, transitions, masks, and color grading (LUT / 调色 / 电影感 / film look). Use when the user wants a video effect (滤镜 / 特效), a transition (转场 / crossfade / wipe / cube / 3d), a mask (蒙版 / 遮罩 / reveal), a zoom / push-in (推近 / 推镜头), or a color grade — try the built-in effects (zoom, builtin LUTs) before generating a new shader.
+  AI shader generator for WebGL video effects, transitions, masks, and color grading (LUT / Color grading / Cinematic feel / film look). Use when the user wants a video effect (filter / special effects), a transition (Transition / crossfade / wipe / cube / 3d), a mask (mask / Mask / reveal), a zoom / push-in (push closer / push shot), or a color grade — try the built-in effects (zoom, builtin LUTs) before generating a new shader.
 user-invocable: true
 ---
 
@@ -84,7 +84,7 @@ These are separate from user-uploaded `.cube` LUT assets (see "Applying an Exist
 
 New shader generation is beta. Before generating, warn the user and wait for explicit confirmation.
 
-Use the user's language. Chinese: "新的特效/转场生成目前还是 beta 阶段，可能会有不稳定的问题。如果你坚持要做，我可以帮你实现。" Skip if user already acknowledged in the same request.
+Use the user's language. Chinese: "new special effects/Transition generation is still beta stage, there may be instability issues. If you insist on doing it, I can help you make it happen." Skip if user already acknowledged in the same request.
 
 ## Supported Targets
 
@@ -128,7 +128,7 @@ Do not call `generate.ts` for this path. Do not pass a real LUT asset id as `ass
 
 ## Usage
 
-Before calling `submit_shader`, restate the user's intent in one concrete sentence, then proceed immediately. After `track_progress` returns, state what was produced in one line — do NOT ask "要保留还是重新生成".
+Before calling `submit_shader`, restate the user's intent in one concrete sentence, then proceed immediately. After `track_progress` returns, state what was produced in one line — do NOT ask "Do you want to keep or regenerate?".
 
 ```ts
 submit_shader({
@@ -160,7 +160,7 @@ submit_shader({
 - Submit, then stop. Tell user the job was created.
 - Use the `track_progress` tool for status/wait after submission.
 - Generation always produces a library asset — never refuse because the timeline isn't ready.
-- **Apply is separate and optional.** Only apply when user explicitly asks ("加到视频", "apply", "用到第一段"). When ambiguous, default to library-only.
+- **Apply is separate and optional.** Only apply when user explicitly asks ("add to video", "apply", "Use the first paragraph"). When ambiguous, default to library-only.
 
 ## Editing Existing Properties
 

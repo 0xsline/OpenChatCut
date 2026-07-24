@@ -34,8 +34,8 @@ export async function submitSubtitleExport(args: SubmitSubtitleExportArgs, state
   const captions = target ? captionsOnTrack(state, target) : null;
   if (!captions) throw new Error('the caption track has no captions to export');
   const words = resolveCaptionWords(captions, state.items, state.fps);
-  // 逐词覆盖(隐藏/换文本/强制换页)同样作用于导出的 SRT/TXT——屏幕上看到什么,
-  // 导出就是什么，以保持文本一致。无覆盖时 displayWords === words，行为不变。
+  // word by word coverage(hide/Change text/Force page break)Also works on exported SRT/TXT——What do you see on the screen?,
+  // The export is all about keeping the text consistent. When there is no override, displayWords === words, the behavior remains unchanged.
   const indices = resolveCaptionWordIndices(captions, state.items, state.fps);
   const { words: displayWords, breakBefore } = applyWordOverrides(words, indices, captions.wordOverrides);
   const pages = paginate(displayWords, captions.pacing, undefined, breakBefore);

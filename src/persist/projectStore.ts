@@ -39,7 +39,7 @@ export function resetProjectStoreMemory(): void {
 const tlId = () => `tl_${newId()}`;
 
 /** wrap a single timeline into a one-sequence project (new projects + migration). */
-export function docFromTimeline(ts: TimelineState, name = '序列 1'): ProjectDoc {
+export function docFromTimeline(ts: TimelineState, name = 'sequence 1'): ProjectDoc {
   const id = tlId();
   const { assets = [], ...state } = ts;
   const timeline = normalizeTimelineTracks({ ...state, id, name, order: 0 });
@@ -169,7 +169,7 @@ const normalizeScenarios = (values: string[] | undefined): string[] | undefined 
 };
 
 const uniqueOwnedStyleName = (requested: string, styles: OwnedStyle[], exceptId?: string): string => {
-  const base = requested.trim() || '未命名风格';
+  const base = requested.trim() || 'unnamed style';
   const names = new Set(styles.filter((style) => style.id !== exceptId).map((style) => style.name));
   if (!names.has(base)) return base;
   let suffix = 2;
@@ -193,7 +193,7 @@ export async function saveOwnedStyle(
   style: DesignStyle,
   metadata: OwnedStyleMetadata = {},
 ): Promise<OwnedStyle> {
-  const trimmed = name.trim() || '未命名风格';
+  const trimmed = name.trim() || 'unnamed style';
   const current = await loadOwnedStyles();
   const existing = current.find((s) => s.name === trimmed);
   const thumbnailUrl = metadata.thumbnailUrl === undefined
@@ -375,12 +375,12 @@ export async function duplicateProject(id: string, name?: string): Promise<Proje
   if (!doc) return null;
   // Allow duplicating soft-deleted sources too (copy is active).
   const src = (await readIndex()).find((m) => m.id === id);
-  const copyName = (name?.trim() || `[Copy] ${src?.name ?? '工程'}`);
+  const copyName = (name?.trim() || `[Copy] ${src?.name ?? 'Engineering'}`);
   return createProject(copyName, doc, src?.description ? { description: src.description } : undefined);
 }
 
 /** Soft-delete: hide from dashboard/list; data kept for restore_project. */
-// ── 工程卡海报帧缓存(key=updatedAt,工程一变即失效重渲) ──────────────────
+// ── Project card poster frame cache (key=updatedAt, re-rendering will be invalidated as soon as the project changes) ──────────────────
 interface ProjectThumb {
   key: number;
   dataUrl: string;
@@ -416,9 +416,9 @@ export async function restoreProject(id: string): Promise<ProjectMeta | null> {
 }
 
 /** Permanently remove project bytes (not exposed as agent tool; dashboard cascade uses this).
- * 清全部按工程分key的数据:doc/聊天/创作模式/提案/版本(后两个键归 proposalStore/versionStore
- * 所有,此处按字面删,避免持久层互相 import)。索引没有该 id 也照删——孤儿文档(冒烟测试
- * 残留)靠这个清。 */
+ * Clear all by projectkeydata:doc/chat/creative mode/proposal/version(The last two keys return proposalStore/versionStore
+ * all,Delete literally here,Avoid persistence layers interacting with each other import). The index does not have the id Also delete - Orphan Document(smoke test
+ * Residue)Rely on this. */
 export async function purgeProject(id: string): Promise<void> {
   await idbDel(projectKey(id));
   await idbDel(chatKey(id));
@@ -431,7 +431,7 @@ export async function purgeProject(id: string): Promise<void> {
   clearProjectSessionPrefs(id);
 }
 
-/** 全部 project:<id> 文档的 id(含索引之外的孤儿——冒烟/旧测试残留)。 */
+/** All project:<id> Documentary id(Orphans outside the index - smoke/remnants of old tests)。 */
 export async function listProjectDocIds(): Promise<string[]> {
   try {
     return (await idbKeys()).filter((k) => k.startsWith('project:')).map((k) => k.slice('project:'.length));
@@ -447,8 +447,8 @@ const newId = () =>
     : `p_${now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
 
 // Auto-name new empty projects with a generated adjective/noun combination.
-const ADJ = ['流光', '静默', '暖阳', '深蓝', '轻盈', '锋利', '柔和', '斑斓', '清冽', '灼热', '朦胧', '澄澈'];
-const NOUN = ['序曲', '航迹', '棱镜', '潮汐', '织机', '回响', '飞羽', '砂丘', '苔原', '穹顶', '流域', '星图'];
+const ADJ = ['streamer', 'silence', 'warm sun', 'dark blue', 'light', 'sharp', 'Soft', 'Beautiful', 'Chill', 'burning', 'hazy', 'clear'];
+const NOUN = ['Overture', 'track', 'prism', 'tide', 'loom', 'echo', 'Flying feathers', 'dunes', 'tundra', 'dome', 'basin', 'star map'];
 export function randomProjectName(): string {
   const pick = (a: string[]) => a[Math.floor(Math.random() * a.length)];
   return `${pick(ADJ)}${pick(NOUN)}`;

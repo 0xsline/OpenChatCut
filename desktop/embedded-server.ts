@@ -1,9 +1,9 @@
-// Electron 内嵌生产 server:一台 127.0.0.1 HTTP server 提供与 dev 相同的全栈——
-//   ① seedKeystore(.env.local,cwd 语义与 dev 一致;打包版由 main 先 chdir userData)
-//   ② /llm 由共享 server 插件挂载，/assemblyai 在此注入密钥
-//   ③ server 插件零改造挂载(实测依赖面仅 middlewares.use + config.logger)
-//   ④ /media/uploads 运行时素材直读 + dist/ 静态兜底(desktop/static-files.ts)
-// 密钥仍只活在这一进程;渲染进程(BrowserWindow)只见同源 HTTP API。
+// Electron embedded production server: a 127.0.0.1 HTTP server provides the same full stack as dev -
+//   ① seedKeystore(.env.local, cwd semantics are consistent with dev; the packaged version is main first chdir userData)
+//   ② /llm is mounted by the shared server plug-in, /assemblyai injects the key here
+//   ③ Zero modification and mounting of server plug-in (the measured dependency is only middlewares.use + config.logger)
+//   ④ /media/uploads Direct reading of materials at runtime + dist/ static cover (desktop/static-files.ts)
+// The key still only lives in this process; the rendering process (BrowserWindow) only sees the same-origin HTTP API.
 import { readFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { resolve } from 'node:path';
@@ -39,13 +39,13 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
   });
   const server = createServer((req, res) => app.handle(req, res));
 
-  // 代理在前(路径不与插件冲突,靠前少走几次匹配)
+  // The agent is first (the path does not conflict with the plug-in, and the first step is less matching)
   app.use('/assemblyai', proxyMiddleware({
     target: () => 'https://api.assemblyai.com',
     headers: assemblyHeaders,
   }));
 
-  // vite server 桩:插件依赖面全集 = middlewares.use + config.logger(已逐插件核实)
+  // vite server pile: complete set of plug-in dependencies = middlewares.use + config.logger (verified by plug-in)
   const fake = {
     middlewares: { use: app.use.bind(app) },
     httpServer: server,
@@ -63,7 +63,7 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
     await fn?.call(plugin as never, fake);
   }
 
-  // 静态兜底在最后:运行时上传素材优先于 dist 的 build 期拷贝
+  // Static security at the end: Uploading materials at runtime takes precedence over dist’s build-stage copy
   app.use('/media/uploads', uploadsMiddleware());
   app.use(distStaticMiddleware(distDir));
 

@@ -16,7 +16,7 @@ export function CaptionsLayer({ captions, items }: { captions: CaptionsData; ite
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
   const ms = (frame / fps) * 1000; // absolute timeline ms (words already re-timed)
-  // 多车道 scope(sourceEntries)→ 车道引擎;否则单流旧路径(字节不变)
+  // Multi-lane scope(sourceEntries)→ lane engine; otherwise single-stream old path (bytes unchanged)
   if (captions.sourceEntries?.length) return <MultiLaneCaptions captions={captions} items={items} ms={ms} width={width} height={height} />;
   return <SingleStreamCaptions captions={captions} items={items} ms={ms} width={width} height={height} fps={fps} />;
 }
@@ -26,7 +26,7 @@ function SingleStreamCaptions({ captions, items, ms, width, height, fps }: { cap
   const words = useMemo(() => resolveCaptionWords(captions, items, fps), [captions, items, fps]);
   const indices = useMemo(() => resolveCaptionWordIndices(captions, items, fps), [captions, items, fps]);
   const preset = useMemo(() => effectivePreset(captions), [captions]);
-  // 逐词覆盖(隐藏/换文本/强制换页)在分页前生效,不改动 transcript/timing。
+  // Word-by-word overwriting (hide/change text/force page change) takes effect before paging and does not change transcript/timing.
   const { words: displayWords, breakBefore } = useMemo(
     () => applyWordOverrides(words, indices, captions.wordOverrides),
     [words, indices, captions.wordOverrides],
@@ -41,7 +41,7 @@ function SingleStreamCaptions({ captions, items, ms, width, height, fps }: { cap
     <AbsoluteFill style={CAPTION_OVERLAY_STYLE}>
       <div style={containerStyle(preset, captions.template, width, height, captions.layout)}>
         {preset.wholeLine ? (
-          // 整句连续:一页一条文本(无词间隙、无逐词高亮),背景包住整行(经典黑底字幕)。
+          // The entire sentence is continuous: one text per page (no word gaps, no word-by-word highlighting), and the background wraps the entire line (classic black subtitles).
           <div style={{ ...wordStyle(preset, false), background: preset.background ?? 'transparent', borderRadius: 6, padding: preset.background ? '0.1em 0.42em' : 0, whiteSpace: 'pre-wrap' }}>
             {joinCaptionWords(page.words)}
           </div>
@@ -66,9 +66,9 @@ function translationStyle(template: CaptionTemplate): React.CSSProperties {
   return { ...base, fontSize: 40, color: '#ffe14d' };
 }
 
-// ── 多车道渲染(源三兄弟 positions/layout_policy/source_update)────────────────
-// lanes.ts 产出"锚点组→车道页";这里逐组摆位、逐车道渲染(每车道自己的
-// per-source 样式覆盖 + 卡拉OK高亮)。共享块组(anchor 未设)用 captions.layout。
+// ── Multi-lane rendering (source three brothers positions/layout_policy/source_update)────────────────
+// lanes.ts produces "anchor group → lane page"; here it is placed group by group and rendered lane by lane (each lane has its own
+// per-source style override + karaoke highlighting). Shared block groups (anchor is not set) use captions.layout.
 function MultiLaneCaptions({ captions, items, ms, width, height }: { captions: CaptionsData; items: TimelineItem[]; ms: number; width: number; height: number }) {
   const { fps } = useVideoConfig();
   const basePreset = useMemo(() => effectivePreset(captions), [captions]);

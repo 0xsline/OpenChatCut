@@ -1,7 +1,7 @@
-// 打包版把 cwd 钉到 userData:keystore 的 .env.local 路径与默认上传目录都锚在
-// process.cwd()(模块顶层求值),一次 chdir 让两者自然落进用户可写区,server 侧
-// 零改造。必须先于 embedded-server 的 import 链求值——main.ts 里保持本模块是
-// 第一个 import(ESM 按声明序深度优先执行)。dev(未打包)沿用启动 cwd(worktree 根)。
+// The packaged version nails cwd to the .env.local path of userData:keystore and the default upload directory is anchored in
+// process.cwd() (module top-level evaluation), one chdir allows the two to naturally fall into the user-writable area, server side
+// Zero modifications. Must be evaluated before the import chain of embedded-server - keep this module in main.ts
+// The first import (ESM is executed depth first in declaration order). dev (unpackaged) inherits the startup cwd (worktree root).
 import { mkdirSync } from 'node:fs';
 import { app } from 'electron';
 

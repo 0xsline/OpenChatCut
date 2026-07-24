@@ -1,6 +1,6 @@
-// 时间线共享基座:布局常量、时间码/标尺格式化、拖拽类型、音频波形。
-// Timeline 主件与拆出的子件(Toolbar/Ruler/TrackLane/useTimelinePointer)都从这里取,
-// 保证几何与文案只有一份真源。全部逐字搬自 Timeline.tsx 顶部。
+// Timeline shared base: layout constants, timecode/ruler formatting, drag types, audio waveforms.
+// The main Timeline component and the removed components (Toolbar/Ruler/TrackLane/useTimelinePointer) are taken from here.
+// Ensure that geometry and copywriting have only one true source. All copied verbatim from the top of Timeline.tsx.
 import { theme } from '../../theme';
 import type { TimelineItem, TrackId } from '../../editor/types';
 
@@ -19,7 +19,7 @@ export const CLIP_COLOR: Record<TimelineItem['kind'], string> = {
   audio: theme.clipAudio,
   'motion-graphic': theme.clipMg, text: theme.clipText,
 };
-/** default time scale — 1s ≈ 36px @30fps (shorter clips, less “巨型色块”) */
+/** default time scale — 1s ≈ 36px @30fps (shorter clips, less "Giant Color Block") */
 export const PX_PER_FRAME = 1.2;
 export const MIN_TIME_ZOOM = 0.02; // long timelines (3–8 min) must still fit in one viewport
 /** Target minimum pixels between major ruler labels. */

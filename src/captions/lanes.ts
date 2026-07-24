@@ -1,9 +1,9 @@
-// 多车道字幕引擎(edit_captions 的纯逻辑渲染层，无 React):
-// 把 sourceEntries 解析成"锚点组 → 车道页"的渲染模型。
-// - auto-stack(默认):同一位置上下堆叠,列表序 = 上→下,maxVisibleSources 截断
-// - single-lane:同一位置只显 1(或 maxVisibleSources)条,priority/列表序仲裁
-// - manual-slots:slotId 钉到显式槽位;带 anchor 的 entry 自成/并入锚点组
-//   相同 anchor 的多个 source 会组成该锚点上的普通堆叠块。
+// Multi-lane subtitle engine (pure logic rendering layer of edit_captions, no React):
+// Parse sourceEntries into the rendering model of "Anchor Group → Lane Page".
+// - auto-stack (default): stack up and down at the same position, list order = top → bottom, maxVisibleSources truncated
+// - single-lane: Only 1 (or maxVisibleSources) item is displayed at the same position, priority/list order arbitration
+// - manual-slots:slotId is nailed to the explicit slot; the entry with anchor is self-contained/merged into the anchor group
+//   Multiple sources at the same anchor will form a normal stacked block on that anchor.
 import type { CaptionAnchor, CaptionLayoutPolicy, CaptionPage, CaptionsData, CaptionSourceEntry } from './types';
 import { activePage, currentWordIndex, paginate } from './types';
 import type { TimelineItem } from '../editor/types';
@@ -30,7 +30,7 @@ export interface LaneGroup {
 const policyOf = (c: CaptionsData): CaptionLayoutPolicy =>
   c.layoutPolicy ?? { mode: 'auto-stack' };
 
-/** entry 的落点:manual-slots 的 slotId → 槽位几何;否则 entry 自己的 anchor;都无 → 共享块。 */
+/** entry The landing point:manual-slots of slotId → Slot geometry;Otherwise entry own anchor;None → Shared blocks. */
 function placementOf(entry: CaptionSourceEntry, policy: CaptionLayoutPolicy): { anchor?: CaptionAnchor; offsetXRatio?: number; offsetYRatio?: number } {
   if (policy.mode === 'manual-slots' && entry.slotId) {
     const slot = policy.slots.find((s) => s.id === entry.slotId);
@@ -40,13 +40,13 @@ function placementOf(entry: CaptionSourceEntry, policy: CaptionLayoutPolicy): { 
   return {};
 }
 
-/** 当前帧(ms)的车道渲染模型。没有 sourceEntries → null(调用方走单流旧路径)。 */
+/** current frame(ms)Lane rendering model. No sourceEntries → null(The caller takes the old path of single flow)。 */
 export function buildLaneGroups(captions: CaptionsData, items: TimelineItem[], fps: number, ms: number, wordsPerPage: number | undefined): LaneGroup[] | null {
   const entries = captions.sourceEntries ? orderedCaptionSourceEntries(captions.sourceEntries) : undefined;
   if (!entries?.length) return null;
   const policy = policyOf(captions);
 
-  // 每条可见车道:词流 → 分页 → 当前页(没有活动页的车道本帧不占位)
+  // Each visible lane: word flow → paging → current page (lanes without active pages do not occupy this frame)
   const active: Array<{ entry: CaptionSourceEntry; lane: LanePage; order: number }> = [];
   entries.forEach((entry, order) => {
     if (entry.visible === false) return;
@@ -66,7 +66,7 @@ export function buildLaneGroups(captions: CaptionsData, items: TimelineItem[], f
   });
   if (!active.length) return [];
 
-  // single-lane:全部落在共享块位置,priority(缺省=列表序)排序后截断
+  // single-lane: all fall in the shared block position, priority (default = list order) sorted and then truncated
   if (policy.mode === 'single-lane') {
     const cap = Math.max(1, policy.maxVisibleSources ?? 1);
     const picked = [...active]
@@ -75,7 +75,7 @@ export function buildLaneGroups(captions: CaptionsData, items: TimelineItem[], f
     return [{ lanes: picked.map((p) => p.lane) }];
   }
 
-  // auto-stack / manual-slots:按落点分组;同锚点 = 同一个堆叠块。
+  // auto-stack / manual-slots: Group by drop point; same anchor point = same stacking block.
   const cap = policy.mode === 'auto-stack' ? policy.maxVisibleSources : undefined;
   const capped = cap != null ? active.slice(0, Math.max(1, cap)) : active;
   const groups = new Map<string, LaneGroup>();

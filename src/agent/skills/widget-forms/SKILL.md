@@ -50,7 +50,7 @@ Aim for:
 - Honest capability framing. OpenChatCut can help with many video workflows, but do
   not claim unsupported abilities or guarantee a result before inputs are known.
 - The user's language and local product terms. Keep "OpenChatCut", "B-roll",
-  "Motion Graphics", "MG 动画", model/product names, and platform names in their
+  "Motion Graphics", "MG animation", model/product names, and platform names in their
   established forms.
 - User-facing creative wording. For early planning or creative-intake forms,
   prefer natural terms such as idea, direction, plan, story, shot list, audience,
@@ -118,7 +118,7 @@ For voice cards:
   not reliably resolve editor-local media.
 - Keep user-visible descriptions provider-neutral. Describe the voice the same
   way the native OpenChatCut audition UI does: gender / age range / tone / use case,
-  such as `Female / young / friendly, general` or `男 / 中年 / 低沉知识解说`.
+  such as `Female / young / friendly, general` or `male / middle age / Low knowledge explanation`.
   Do not show provider names like ElevenLabs or Doubao in option descriptions.
 - Keep the option `id` equal to the provider voice id needed by `submit_voice`.
 

@@ -1,6 +1,6 @@
-// .env.local 极简解析(dotenv 语义子集,与 server/keystore.ts 的 envLine 写法
-// round-trip):KEY=VALUE 行;值若被成对引号包裹则去引号;未引号值从首个 # 起为注释。
-// Electron 壳没有 vite 的 loadEnv,用这份喂 seedKeystore。
+// .env.local minimalist parsing (dotenv semantic subset, and envLine writing method of server/keystore.ts
+// round-trip):KEY=VALUE line; if the value is wrapped in a pair of quotation marks, it will be unquoted; the unquoted value will be a comment starting from the first #.
+// The Electron shell does not have vite's loadEnv, use this to feed the seedKeystore.
 export function parseEnvText(text: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const line of text.split('\n')) {

@@ -107,12 +107,12 @@ assert.deepEqual(serialized.map(({ url, body, provider }) => ({
 ]);
 
 const legacy = normalizeLlmMessages([
-  { role: 'user', content: '把第一段放到时间线' },
+  { role: 'user', content: 'Put the first paragraph into the timeline' },
   {
     role: 'assistant',
     content: [
       { type: 'thinking', thinking: 'private reasoning', signature: 'sig' },
-      { type: 'text', text: '开始处理。' },
+      { type: 'text', text: 'Start processing.' },
       { type: 'tool_use', id: 'tool_1', name: 'edit_item', input: { itemId: 'a' } },
     ],
   },
@@ -125,11 +125,11 @@ const legacy = normalizeLlmMessages([
 ]);
 
 assert.deepEqual(legacy, [
-  { role: 'user', content: '把第一段放到时间线' },
+  { role: 'user', content: 'Put the first paragraph into the timeline' },
   {
     role: 'assistant',
     content: [
-      { type: 'text', text: '开始处理。' },
+      { type: 'text', text: 'Start processing.' },
       { type: 'tool-call', toolCallId: 'tool_1', toolName: 'edit_item', input: { itemId: 'a' } },
     ],
   },

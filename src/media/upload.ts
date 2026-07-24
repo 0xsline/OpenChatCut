@@ -122,13 +122,13 @@ async function uploadFileSimple(
         return;
       }
       if (xhr.status === 413) {
-        reject(new Error(info?.error ?? t('文件过大，无法上传')));
+        reject(new Error(info?.error ?? t('File is too large and cannot be uploaded')));
         return;
       }
-      reject(new Error(info?.error ?? t('上传失败 ({status})', { status: xhr.status })));
+      reject(new Error(info?.error ?? t('Upload failed ({status})', { status: xhr.status })));
     };
-    xhr.onerror = () => reject(new Error(t('上传失败 ({status})', { status: 0 })));
-    xhr.onabort = () => reject(new Error(t('上传已取消')));
+    xhr.onerror = () => reject(new Error(t('Upload failed ({status})', { status: 0 })));
+    xhr.onabort = () => reject(new Error(t('Upload canceled')));
     xhr.send(file);
   });
 }
@@ -149,10 +149,10 @@ function putPresigned(file: File, uploadUrl: string, onProgress?: UploadProgress
         resolve();
         return;
       }
-      reject(new Error(t('上传失败 ({status})', { status: xhr.status })));
+      reject(new Error(t('Upload failed ({status})', { status: xhr.status })));
     };
-    xhr.onerror = () => reject(new Error(t('上传失败 ({status})', { status: 0 })));
-    xhr.onabort = () => reject(new Error(t('上传已取消')));
+    xhr.onerror = () => reject(new Error(t('Upload failed ({status})', { status: 0 })));
+    xhr.onabort = () => reject(new Error(t('Upload canceled')));
     xhr.send(file);
   });
 }
@@ -197,8 +197,8 @@ async function uploadFileMultipart(file: File, onProgress?: UploadProgress): Pro
   });
   if (!initRes.ok) {
     const info = (await initRes.json().catch(() => null)) as { error?: string } | null;
-    if (initRes.status === 413) throw new Error(info?.error ?? t('文件过大，无法上传'));
-    throw new Error(info?.error ?? t('上传失败 ({status})', { status: initRes.status }));
+    if (initRes.status === 413) throw new Error(info?.error ?? t('File is too large and cannot be uploaded'));
+    throw new Error(info?.error ?? t('Upload failed ({status})', { status: initRes.status }));
   }
   const init = (await initRes.json()) as {
     uploadId: string;
@@ -238,10 +238,10 @@ async function uploadFileMultipart(file: File, onProgress?: UploadProgress): Pro
   });
   if (!completeRes.ok) {
     const info = (await completeRes.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(info?.error ?? t('上传失败 ({status})', { status: completeRes.status }));
+    throw new Error(info?.error ?? t('Upload failed ({status})', { status: completeRes.status }));
   }
   const doneBody = (await completeRes.json()) as { path?: string };
-  if (!doneBody.path) throw new Error(t('上传失败 ({status})', { status: completeRes.status }));
+  if (!doneBody.path) throw new Error(t('Upload failed ({status})', { status: completeRes.status }));
   onProgress?.(1);
   return doneBody.path;
 }
@@ -297,7 +297,7 @@ export async function normalizeUploadedVideo(
     throw new Error('server returned no media path');
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(t('视频兼容性处理失败：{error}', { error: message }));
+    throw new Error(t('Video compatibility processing failed:{error}', { error: message }));
   }
 }
 
@@ -312,7 +312,7 @@ export async function importMedia(
 ): Promise<MediaAsset> {
   const hooks = hooksOf(onProgressOrHooks);
   const kind = kindOf(file);
-  if (!kind) throw new Error(t('不支持的文件类型（视频 / 图片 / 音频 / GIF / SVG）'));
+  if (!kind) throw new Error(t('Unsupported file type (video / picture / Audio / GIF / SVG）'));
   const meta = await probeMediaFile(file, kind, fps);
   const id = newId();
 

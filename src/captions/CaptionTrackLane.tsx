@@ -95,9 +95,9 @@ function CaptionCueBlock({ page, index, target, locked, px, fps, trim }: {
   const handle = (edge: ManualCueEdge) => target && !locked ? <div
     className={`cc-caption-track-trim ${edge === 'start' ? 'left' : 'right'}`}
     role="separator" aria-orientation="vertical" tabIndex={0}
-    aria-label={t(edge === 'start' ? '拖动调整字幕开始时间' : '拖动调整字幕结束时间')}
+    aria-label={t(edge === 'start' ? 'Drag to adjust subtitle start time' : 'Drag to adjust subtitle end time')}
     aria-valuenow={Math.round(edge === 'start' ? startMs : endMs)}
-    title={t(edge === 'start' ? '拖动调整字幕开始时间' : '拖动调整字幕结束时间')}
+    title={t(edge === 'start' ? 'Drag to adjust subtitle start time' : 'Drag to adjust subtitle end time')}
     onPointerDown={(event) => trim.start(event, key, target, edge)}
     onPointerMove={(event) => trim.move(event, key)}
     onPointerUp={(event) => trim.finish(event, key)}
@@ -132,7 +132,7 @@ export function CaptionTrackLane({ state, captions, px, hidden, locked, onUpdate
       background: locked ? `color-mix(in srgb, ${theme.bg} 70%, ${themeAlpha.shadow(1)})` : theme.bg,
       opacity: hidden ? 0.4 : locked ? 0.75 : 1,
     }}>
-      {!pages.length && <span className="cc-caption-track-empty">{t('字幕轨道为空')}</span>}
+      {!pages.length && <span className="cc-caption-track-empty">{t('Subtitle track is empty')}</span>}
       {pages.map((page, index) => <CaptionCueBlock key={`${page.start}:${index}`} page={page} index={index}
         target={page.words.length === 1 ? targets.get(page.words[0]!) : undefined}
         locked={locked} px={px} fps={state.fps} trim={trim} />)}

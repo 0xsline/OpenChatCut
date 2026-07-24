@@ -1,21 +1,21 @@
-// .cube 3D LUT 解析与加载。
-// 数据按 DOMAIN_MIN/MAX 归一化到 [0,1],尺寸限 [2,64],拒绝 1D LUT。
-// 纯逻辑可在 tsx 下跑;fetch 只发生在 ensureCube 调用时。
+// .cube 3D LUT parsing and loading.
+// Data press DOMAIN_MIN/MAX normalized to [0,1],Size limit [2,64],reject 1D LUT。
+// Pure logic can be found in tsx Run down;fetch only occurs in ensureCube when called.
 
 export interface CubeLut {
   size: number;
-  /** size³×3 的 RGB 浮点,已按 domain 归一化到 [0,1] */
+  /** size³×3 of RGB floating point,Pressed domain normalized to [0,1] */
   data: Float32Array;
   title?: string;
   domainMin: [number, number, number];
   domainMax: [number, number, number];
 }
 
-// 尺寸边界
+// size bounds
 const MIN_SIZE = 2;
 const MAX_SIZE = 64;
 
-/** 解析 .cube 文本(Adobe/IRIDAS 3D LUT)。格式错误直接 throw,信息带上下文。 */
+/** parse .cube text(Adobe/IRIDAS 3D LUT). Format error directly throw,Information comes with context. */
 export function parseCube(text: string): CubeLut {
   let size: number | null = null;
   let title: string | undefined;
@@ -72,21 +72,21 @@ export function parseCube(text: string): CubeLut {
   return { size, data, title, domainMin, domainMax };
 }
 
-// ── 加载缓存:url → 已解析 LUT(失败记 null,不重试风暴;无 LUT 就透传)──
+// ── Load cache: url → Parsed LUT (failure will be null, no retry storm; no LUT, transparent transmission)──
 const cache = new Map<string, CubeLut | null>();
 const pending = new Map<string, Promise<CubeLut | null>>();
 
-/** 缓存里已解析好的 LUT(未加载/加载失败 → null)。同步,供渲染热路径。 */
+/** Parsed in cache LUT(not loaded/Loading failed → null). sync,Provides a hot path for rendering. */
 export function getCubeSync(url: string): CubeLut | null {
   return cache.get(url) ?? null;
 }
 
-/** 该 url 是否已有结论(成功或失败)。ClipFx 用它做首帧闸门。 */
+/** the url Is there any conclusion?(success or failure)。ClipFx Use it as a first frame gate. */
 export function cubeSettled(url: string): boolean {
   return cache.has(url);
 }
 
-/** 拉取并解析 .cube(幂等,并发合并);失败返回 null 并缓存失败态。 */
+/** Pull and parse .cube(Idempotent,Concurrent merge);Return on failure null And cache the failure status. */
 export function ensureCube(url: string): Promise<CubeLut | null> {
   if (cache.has(url)) return Promise.resolve(cache.get(url) ?? null);
   const inflight = pending.get(url);
@@ -100,7 +100,7 @@ export function ensureCube(url: string): Promise<CubeLut | null> {
       return lut;
     } catch (err) {
       console.error(`[cube-lut] ${url}:`, err);
-      cache.set(url, null); // 失败 = 透传,不反复打请求
+      cache.set(url, null); // Failure = transparent transmission, no repeated requests
       return null;
     } finally {
       pending.delete(url);
@@ -110,7 +110,7 @@ export function ensureCube(url: string): Promise<CubeLut | null> {
   return p;
 }
 
-/** 测试/预热注入:直接放一个已解析 LUT(或失败态)进缓存。 */
+/** test/Preheat injection:Directly put a parsed LUT(or failed state)into cache. */
 export function primeCube(url: string, lut: CubeLut | null): void {
   cache.set(url, lut);
 }

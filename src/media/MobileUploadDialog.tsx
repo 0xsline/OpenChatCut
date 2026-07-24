@@ -41,23 +41,23 @@ function SessionBody({ session, imported }: { session: MobileUploadSession; impo
   const seconds = Math.max(0, Math.ceil((session.expiresAt - now) / CLOCK_INTERVAL_MS));
   const copyLink = () => {
     void navigator.clipboard.writeText(selectedUrl)
-      .catch(() => { window.prompt(t('复制失败，请手动复制链接'), selectedUrl); });
+      .catch(() => { window.prompt(t('Copy failed, please copy the link manually'), selectedUrl); });
   };
   return <div className="cc-mobile-upload-body">
-    <div className="cc-mobile-upload-qr">{qrDataUrl ? <img src={qrDataUrl} alt={t('手机上传二维码')} /> : <span>{t(qrError ? '二维码生成失败，请复制链接' : '正在生成二维码…')}</span>}</div>
+    <div className="cc-mobile-upload-qr">{qrDataUrl ? <img src={qrDataUrl} alt={t('Upload QR code via mobile phone')} /> : <span>{t(qrError ? 'QR code generation failed, please copy the link' : 'Generating QR code...')}</span>}</div>
     <div className="cc-mobile-upload-instructions">
-      <ol><li>{t('让手机与电脑连接同一 Wi-Fi')}</li><li>{t('使用手机相机扫描二维码')}</li><li>{t('选择素材，上传完成后会自动进入媒体池')}</li></ol>
-      {session.urls.length > 1 && <label>{t('局域网地址')}<select value={selectedUrl} onChange={(event) => setSelectedUrl(event.target.value)}>{session.urls.map((url) => <option key={url} value={url}>{new URL(url).host}</option>)}</select></label>}
-      <div className="cc-mobile-upload-link"><code>{selectedUrl}</code><button type="button" onClick={copyLink}>{t('复制链接')}</button></div>
-      <p>{seconds > 0 ? t('通道将在 {seconds} 秒后关闭', { seconds }) : t('上传通道已过期，请关闭后重试')}</p>
-      <div className="cc-mobile-upload-count"><span className="cc-mobile-upload-live" />{t('已接收并导入 {n} 个素材', { n: imported })}</div>
+      <ol><li>{t('Connect your phone and computer to the same Wi-Fi')}</li><li>{t('Use your phone camera to scan the QR code')}</li><li>{t('Select the material and it will automatically enter the media pool after uploading.')}</li></ol>
+      {session.urls.length > 1 && <label>{t('LAN address')}<select value={selectedUrl} onChange={(event) => setSelectedUrl(event.target.value)}>{session.urls.map((url) => <option key={url} value={url}>{new URL(url).host}</option>)}</select></label>}
+      <div className="cc-mobile-upload-link"><code>{selectedUrl}</code><button type="button" onClick={copyLink}>{t('Copy link')}</button></div>
+      <p>{seconds > 0 ? t('The channel will be in {seconds} Close after seconds', { seconds }) : t('The upload channel has expired, please close it and try again')}</p>
+      <div className="cc-mobile-upload-count"><span className="cc-mobile-upload-live" />{t('Received and imported {n} materials', { n: imported })}</div>
     </div>
   </div>;
 }
 
 function DialogHeader({ close }: { close: () => void }) {
   const t = useT();
-  return <header><div><strong>{t('手机传素材')}</strong><span>{t('扫码后从手机选择视频、图片或音频')}</span></div><button type="button" aria-label={t('关闭')} onClick={close}><Icon name="x" size={18} /></button></header>;
+  return <header><div><strong>{t('Transfer material via mobile phone')}</strong><span>{t('Scan the QR code and select videos, pictures or audios from your phone')}</span></div><button type="button" aria-label={t('close')} onClick={close}><Icon name="x" size={18} /></button></header>;
 }
 
 export function MobileUploadDialog({ onClose, onImport }: MobileUploadDialogProps) {
@@ -69,13 +69,13 @@ export function MobileUploadDialog({ onClose, onImport }: MobileUploadDialogProp
     setClosing(true);
     void finish().finally(onClose);
   };
-  return <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('手机传素材')} onClick={close}>
+  return <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('Transfer material via mobile phone')} onClick={close}>
     <div className="cc-mobile-upload-dialog" onClick={(event) => event.stopPropagation()}>
       <DialogHeader close={close} />
-      {!session && !error && <div className="cc-mobile-upload-loading">{t('正在建立局域网上传通道…')}</div>}
+      {!session && !error && <div className="cc-mobile-upload-loading">{t('Establishing LAN upload channel...')}</div>}
       {session && <SessionBody session={session} imported={imported} />}
-      {error && <div className="cc-mobile-upload-error">{t('手机上传不可用：{error}', { error })}</div>}
-      <footer><span>{t('仅在本次会话中临时开放素材上传，不会暴露编辑器或 API 密钥。')}</span><button type="button" disabled={closing} onClick={close}>{closing ? t('正在完成导入…') : t('完成')}</button></footer>
+      {error && <div className="cc-mobile-upload-error">{t('Mobile upload is not available:{error}', { error })}</div>}
+      <footer><span>{t('Only temporarily open material upload in this session, will not expose the editor or API key.')}</span><button type="button" disabled={closing} onClick={close}>{closing ? t('Completing import...') : t('Complete')}</button></footer>
     </div>
   </div>;
 }

@@ -9,31 +9,31 @@ import { Icon } from '../components/icons';
 import { setLibraryDrag } from './drag';
 import { loadRecentTemplateIds, pushRecentTemplateId } from '../persist/sessionPrefs';
 
-// MG 动画 browser: a horizontal chip row
-// [收藏, 最近, 热门, <categories by count>] filters the card grid; cards show a
-// ⭐ favorite toggle + a ⋮ menu (添加到时间线 / 用 AI 生成 / 删除) on hover.
-// Data model: 收藏 = per-user collected (persisted to localStorage),
-// 最近 = last-added template ids (local), 热门 = full gallery default.
-// 删除 = 软删除(本地隐藏列表),时间线已用片段不受影响;内置/插件条目均可从列表移除。
+// MG animation browser: a horizontal chip row
+// [Collections, recent, popular, <categories by count>] filters the card grid; cards show a
+// ⭐ favorite toggle + a ⋮ menu (add to timeline / generate with AI / delete) on hover.
+// Data model: collection = per-user collected (persisted to localStorage),
+// recent = last-added template ids (local), popular = full gallery default.
+// Delete = soft delete (local hidden list), used clips in the timeline are not affected; built-in/plug-in entries can be removed from the list.
 // Category ids come straight from the template `category`.
 
 // Category id → Chinese label.
 const CAT_LABEL: Record<string, string> = {
-  'call-to-action': '行动号召',
-  'data-visualization': '数据可视化',
-  infographics: '信息图表',
-  'lower-thirds': '下三分之一字幕',
-  'quote-cards': '引用卡片',
-  'social-ui': '社交界面',
-  'talking-head-overlays': '出镜叠加',
-  'text-effects': '文字特效',
-  'title-cards': '标题卡片',
-  'social-media': '社交媒体',
-  'social-shorts': '竖屏自媒体',
-  'koubo-scenes': '口播场景',
-  插件: '插件',
-  扩展: '扩展',
-  uncategorized: '未分类',
+  'call-to-action': 'call to action',
+  'data-visualization': 'data visualization',
+  infographics: 'Infographic',
+  'lower-thirds': 'lower third subtitles',
+  'quote-cards': 'Quote card',
+  'social-ui': 'social interface',
+  'talking-head-overlays': 'Overlay',
+  'text-effects': 'text effects',
+  'title-cards': 'title card',
+  'social-media': 'social media',
+  'social-shorts': 'Vertical screen self-media',
+  'koubo-scenes': 'Oral scene',
+  plug-in: 'plug-in',
+  Expand: 'Expand',
+  uncategorized: 'Uncategorized',
 };
 const catLabel = (id: string) => CAT_LABEL[id] ?? id.replace(/-/g, ' ');
 
@@ -52,7 +52,7 @@ interface TemplateBrowserProps {
 export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd, onUseAI }: TemplateBrowserProps) {
   const t = useT();
   const [favs, setFavs] = usePersistedState<string[]>('cc.favTemplates', []);
-  /** 从资源库列表移除的模板 id(软删除,持久化;不影响时间线已插入片段) */
+  /** Templates removed from the portfolio id(soft delete,persistence;Does not affect the inserted clips in the timeline) */
   const [hidden, setHidden] = usePersistedState<string[]>('cc.hiddenTemplates', []);
   const [recents, setRecents] = useState<string[]>(() => loadRecentTemplateIds());
   const [chip, setChip] = usePersistedState<string>('cc.templateChip', POPULAR);
@@ -89,13 +89,13 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
     };
   }, [menuFor]);
 
-  // 可见列表(已软删除的不进 chips/网格)
+  // Visible list (soft deleted ones are not included in chips/grid)
   const visible = useMemo(
     () => templates.filter((t) => !hiddenSet.has(t.id)),
     [templates, hiddenSet],
   );
 
-  // chips: 收藏, 最近, 热门, then categories sorted by descending count
+  // chips: favorites, recent, popular, then categories sorted by descending count
   const chips = useMemo(() => {
     const counts = new Map<string, number>();
     for (const t of visible) counts.set(t.category, (counts.get(t.category) ?? 0) + 1);
@@ -144,18 +144,18 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 10, marginBottom: 4 }}>
         {chips.map((c) => (
           <button key={c} onClick={() => { setChip(c); closeMenu(); }} style={chipStyle(chip === c)}>
-            {c === FAV ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="star" size={12} />{t('收藏')}</span> : c === RECENT ? t('最近') : c === POPULAR ? t('热门') : t(catLabel(c))}
+            {c === FAV ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="star" size={12} />{t('Collection')}</span> : c === RECENT ? t('Recently') : c === POPULAR ? t('Popular') : t(catLabel(c))}
           </button>
         ))}
       </div>
 
       {chip === FAV && shown.length === 0 ? (
-        <div style={{ color: theme.textDim, fontSize: 12, padding: '20px 8px', textAlign: 'center' }}>{t('还没有收藏的模板。将鼠标移到卡片上点 ★ 收藏。')}</div>
+        <div style={{ color: theme.textDim, fontSize: 12, padding: '20px 8px', textAlign: 'center' }}>{t('There are no favorite templates yet. Move the mouse over the card and click ★ Collection.')}</div>
       ) : chip === RECENT && shown.length === 0 ? (
-        <div style={{ color: theme.textDim, fontSize: 12, padding: '20px 8px', textAlign: 'center' }}>{t('还没有最近使用的模板。点卡片或拖到时间线后会出现在这里。')}</div>
+        <div style={{ color: theme.textDim, fontSize: 12, padding: '20px 8px', textAlign: 'center' }}>{t('There are no recently used templates yet. Click the card or drag it to the timeline and it will appear here.')}</div>
       ) : (
-        /* 统一 16:9 卡片盒:竖版(9:16)缩略图居中 contain 展示、两侧用模糊放大的
-           自身画面垫底(视频平台竖内容惯例),卡片高度与横版一致不再窜层。 */
+        /* unify 16:9 card box:vertical version(9:16)Thumbnail center contain Shown, both sides are magnified with blur
+           Self-image bottom(Video platform vertical content practices),The card height is consistent with the horizontal version and there is no need to change the layers. */
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
           {shown.map((tp) => {
             const isFav = favSet.has(tp.id);
@@ -168,7 +168,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
                 draggable
                 onDragStart={(e) => {
                   remember(tp);
-                  // 插件模板不在 drop 端的 TEMPLATES 里,Tpl 全量随 payload 走
+                  // The plug-in template is not in TEMPLATES on the drop side, and the full amount of Tpl goes with the payload.
                   setLibraryDrag(e, { kind: 'template', id: tp.id, name: tp.name, ...(tp.id.startsWith('plugin:') ? { data: tp } : {}) });
                 }}
                 onMouseEnter={() => setHovered(tp.id)}
@@ -186,11 +186,11 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
                   transition: 'border-color .18s ease, box-shadow .18s ease',
                 }}
               >
-                <button onClick={() => addAndRemember(tp)} title={t('点击或拖到时间线：{name}', { name: tp.name })}
+                <button onClick={() => addAndRemember(tp)} title={t('Click or drag to the timeline:{name}', { name: tp.name })}
                   style={{ cursor: 'inherit', textAlign: 'left', padding: 0, width: '100%', display: 'block', border: 'none', background: 'none', color: theme.text }}>
-                  {/* 两层图都绝对定位铺满:百分比高度在 grid 轨道里会解析失败,
-                      contain 退化成裁切(9:16 曾被裁成横条)——绝对定位对着
-                      aspectRatio 盒子解析,信箱式居中才稳定成立。 */}
+                  {/* Both layers of images are absolutely positioned and filled.:The percentage height is in grid Parsing will fail in the track,
+                      contain degenerate into cropping(9:16 was cut into horizontal strips)——Absolute positioning facing
+                      aspectRatio Box analysis,The mailbox style is centered to be stable. */}
                   <div style={{ aspectRatio: '16 / 9', position: 'relative', background: theme.bg, overflow: 'hidden' }}>
                     {tp.thumb ? (
                       <>
@@ -221,7 +221,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); toggleFav(tp.id); }}
-                      title={isFav ? t('取消收藏') : t('收藏')}
+                      title={isFav ? t('Cancel favorites') : t('Collection')}
                       style={{ position: 'absolute', top: 5, left: 5, width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(0,0,0,0.55)', color: isFav ? '#f5c518' : '#fff', fontSize: 12, lineHeight: 1, display: 'grid', placeItems: 'center' }}
                     >
                       <Icon name="star" size={12} filled={isFav} />
@@ -232,7 +232,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
                         e.stopPropagation();
                         openMenu(tp.id, e.currentTarget);
                       }}
-                      title={t('更多操作')}
+                      title={t('More actions')}
                       aria-expanded={menuFor === tp.id}
                       style={{ position: 'absolute', top: 5, right: 5, width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 13, lineHeight: 1, display: 'grid', placeItems: 'center' }}
                     >⋮</button>
@@ -281,7 +281,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
               style={menuItem}
               onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--cc-hover)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-            >≡ {t('添加到时间线')}</button>
+            >≡ {t('Add to timeline')}</button>
             <button
               type="button"
               role="menuitem"
@@ -289,7 +289,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
               style={{ ...menuItem, display: 'inline-flex', alignItems: 'center', gap: 6 }}
               onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--cc-hover)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-            ><Icon name="sparkles" size={13} />{t('用 AI 生成')}</button>
+            ><Icon name="sparkles" size={13} />{t('use AI generate')}</button>
             <div style={{ height: 0.5, background: theme.border, margin: '4px 6px' }} />
             {confirmDelete ? (
               <div style={{ display: 'flex', gap: 4, padding: '2px 4px 4px' }}>
@@ -300,7 +300,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
                   style={{ ...menuItem, flex: 1, color: theme.danger, textAlign: 'center', padding: '7px 4px' }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--cc-hover)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-                >{t('确认删除')}</button>
+                >{t('Confirm deletion')}</button>
                 <button
                   type="button"
                   role="menuitem"
@@ -308,18 +308,18 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
                   style={{ ...menuItem, flex: 1, color: theme.textDim, textAlign: 'center', padding: '7px 4px' }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--cc-hover)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-                >{t('取消')}</button>
+                >{t('Cancel')}</button>
               </div>
             ) : (
               <button
                 type="button"
                 role="menuitem"
                 onClick={() => setConfirmDelete(true)}
-                title={t('从资源库列表移除(本地隐藏);时间线已用片段不受影响')}
+                title={t('Remove from portfolio(local hide);Used clips in the timeline are not affected')}
                 style={{ ...menuItem, color: theme.danger }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--cc-hover)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-              >{t('删除')}</button>
+              >{t('Delete')}</button>
             )}
           </div>
         </>,

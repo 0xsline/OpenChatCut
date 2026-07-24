@@ -9,8 +9,8 @@ import { Markdown } from './Markdown';
 
 const GREEN = theme.success;
 
-// 从工具参数里取「最有区分度」的那一个做行内摘要——按识别性排序:先具体标识
-// (query/itemId/名字…)，再泛化(action/target…)。让同名多次调用一眼可辨，不再像重复。
+// Take the "most distinguishing" one from the tool parameters and make an in-line summary - sort by identification: identify it specifically first
+// (query/itemId/name…), and then generalize (action/target…). Make multiple calls with the same name identifiable at a glance and no longer look like repetitions.
 const SUMMARY_KEYS = ['query', 'itemId', 'templateName', 'audioName', 'name', 'from', 'to', 'templateId', 'category', 'ratio', 'action', 'format', 'target', 'track', 'renderId'];
 function toolArgSummary(args: unknown): string {
   if (!args || typeof args !== 'object') return '';
@@ -19,24 +19,24 @@ function toolArgSummary(args: unknown): string {
     const v = a[k];
     if (v === undefined || v === null || v === '') continue;
     let s = typeof v === 'object' ? JSON.stringify(v) : String(v);
-    if (k === 'itemId' || k === 'templateId' || k === 'renderId') s = s.slice(0, 8); // uuid 只取前 8
+    if (k === 'itemId' || k === 'templateId' || k === 'renderId') s = s.slice(0, 8); // uuid only takes the first 8
     if (s.length > 26) s = s.slice(0, 24) + '…';
     return s;
   }
   return '';
 }
 
-// 折叠的「思考过程」块 — 原生 thinking 流与内联 <thinking> 抽取都归到这里
-// (两者统一折成 thinking 块,默认折叠)。
+// Collapsed "Thinking Process" block — native thinking flow and inline <thinking> extractions go here
+// (Both are folded into thinking blocks and folded by default).
 function ThinkingBlock({ text }: { text: string }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   return (
     <div style={{ marginBottom: 6 }}>
-      <button onClick={() => setOpen((v) => !v)} title={open ? t('收起思考过程') : t('展开思考过程')}
+      <button onClick={() => setOpen((v) => !v)} title={open ? t('Stop thinking process') : t('Develop thought process')}
         style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.textDim, fontSize: 11.5, padding: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ display: 'inline-flex', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▸</span>
-        {t('思考过程')}
+        {t('thought process')}
       </button>
       {open && (
         <Markdown text={text} style={{ marginTop: 4, maxHeight: 180, overflowY: 'auto', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontStyle: 'italic', fontSize: 11.5, lineHeight: 1.55, color: theme.textDim, whiteSpace: 'pre-wrap', borderLeft: `2px solid ${theme.borderLight}`, paddingLeft: 8 }} />
@@ -49,9 +49,9 @@ interface ChatMessageProps {
   msg: DisplayMessage;
   /** the actively-streaming assistant turn hides the copy button until done */
   streaming?: boolean;
-  /** 用户填完 <widget> 表单卡并提交后，回传拼好的答案文本。 */
+  /** User completes <widget> After the form is uploaded and submitted, the assembled answer text will be returned. */
   onWidgetSubmit?: (answer: string) => void;
-  /** maxTurns 暂停卡「继续」;仅最后一条 continue 卡可点(旧卡只读) */
+  /** maxTurns Pause card "Continue";Only the last one continue Koke points(Old card read only) */
   onContinue?: (() => void) | null;
 }
 
@@ -74,15 +74,15 @@ export function ChatMessage({ msg, streaming, onWidgetSubmit, onContinue }: Chat
     const tool = msg.tool!;
     const r = tool.result as Record<string, unknown> | undefined;
     const ok = !r || !('error' in r);
-    // 关键参数摘要:同名工具的多次调用(search_templates×7、normalize_loudness×8…)
-    // 之前只印工具名，看着像重复；补上区分性参数(query/itemId/category…)一眼可辨。
+    // Summary of key parameters: multiple calls of the tool with the same name (search_templates×7, normalize_loudness×8…)
+    // Previously, only the tool name was printed, which looked like repetition; add the distinguishing parameters (query/itemId/category...) for easy identification at a glance.
     const summary = toolArgSummary(tool.args);
     return (
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9, margin: '9px 0', color: theme.textDim, fontSize: 12.5 }}
         title={typeof tool.args === 'object' ? JSON.stringify(tool.args) : String(tool.args)}>
         <span style={{ width: 7, height: 7, borderRadius: '50%', background: ok ? GREEN : theme.accent, flexShrink: 0, marginTop: 5 }} />
-        {/* 工具名 + 摘要 + 错误同处一个可换行块:minWidth:0 让它能在 flex 父内收缩，
-            overflowWrap:anywhere 断长 token —— 长错误/摘要在面板内 wrap，不再单行溢出被裁。 */}
+        {/* Tool name + Summary + Error in same wrappable block:minWidth:0 so that it can be in flex contraction within the father,
+            overflowWrap:anywhere broken length token —— Long error/summary within panel wrap, no longer will a single line be cut when it overflows. */}
         <span style={{ minWidth: 0, overflowWrap: 'anywhere', lineHeight: 1.45 }}>
           <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: 0.2 }}>{tool.name}</span>
           {summary && <span style={{ opacity: 0.8 }}> · {summary}</span>}
@@ -96,26 +96,26 @@ export function ChatMessage({ msg, streaming, onWidgetSubmit, onContinue }: Chat
     return <div style={{ color: theme.accent, fontSize: 12.5, margin: '8px 0' }}>⚠ {msg.text}</div>;
   }
 
-  // maxTurns 暂停卡(「继续?」):text = 已执行轮数
+  // maxTurns pause card ("continue?"): text = number of rounds executed
   if (msg.role === 'continue') {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0', padding: '9px 12px',
         border: `0.5px solid ${theme.border}`, borderRadius: 4, background: theme.panelAlt, fontSize: 12.5, color: theme.textDim,
       }}>
-        <span style={{ flex: 1 }}>{t('已连续执行 {n} 轮工具，先停一下确认方向。', { n: msg.text })}</span>
+        <span style={{ flex: 1 }}>{t('executed continuously {n} wheel tool, stop for a moment to confirm the direction.', { n: msg.text })}</span>
         {onContinue && (
           <button type="button" onClick={onContinue}
             style={{ border: `0.5px solid ${theme.accent}`, background: 'transparent', color: theme.accent, borderRadius: 6, padding: '4px 14px', fontSize: 12.5, cursor: 'pointer', flexShrink: 0 }}>
-            {t('继续')}
+            {t('continue')}
           </button>
         )}
       </div>
     );
   }
 
-  // assistant 文本里可能嵌入 <widget> 表单块，需拆段落分别渲染。
-  // 纯文本段走轻量 Markdown（**粗体** / `code` / 列表 / 代码块），不再把 ** 原样吐给用户
+  // The <widget> form block may be embedded in the assistant text and needs to be separated into paragraphs to render separately.
+  // The plain text segment uses lightweight Markdown (**bold** / `code` / list / code block), and no longer spits out ** to the user as it is
   const segments = parseWidgets(msg.text);
   return (
     <div style={{ margin: '16px 0' }}>
@@ -136,7 +136,7 @@ export function ChatMessage({ msg, streaming, onWidgetSubmit, onContinue }: Chat
       )}
       {!streaming && msg.text.trim() && (
         <div style={{ marginTop: 6, marginLeft: -5 }}>
-          <button title={copied ? t('已复制') : t('复制文本')} onClick={copy}
+          <button title={copied ? t('Copied') : t('copy text')} onClick={copy}
             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 5, borderRadius: 6, lineHeight: 0, color: copied ? theme.text : theme.textDim, display: 'grid', placeItems: 'center' }}
             onMouseEnter={(e) => { e.currentTarget.style.background = theme.panelAlt; e.currentTarget.style.color = theme.text; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = copied ? theme.text : theme.textDim; }}>

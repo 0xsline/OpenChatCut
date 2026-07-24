@@ -84,7 +84,7 @@ export async function execCaptionsTool(name: string, args: Args, ctx: AgentConte
       if (!words.length) return { enabled: true, template: c.template, pacing: c.pacing, note: 'source track has no transcript words' };
       const indices = resolveCaptionWordIndices(c, s.items, s.fps);
       const item = c.sourceItemId ? s.items.find((it) => it.id === c.sourceItemId) : undefined;
-      // 不在这里丢隐藏词——只做文本替换/换页,让 agent 能在页面里看到已隐藏词的下标+现状,方便决定是否取消隐藏。
+      // Do not throw hidden words here - just do text replacement/page change, so that the agent can see the subscript + status of the hidden words on the page, so that it can be conveniently decided whether to unhide it.
       let visibleOverrides: Record<number, CaptionWordOverride> | undefined;
       if (c.wordOverrides) {
         visibleOverrides = {};

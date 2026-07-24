@@ -1,6 +1,6 @@
-// 时间线顶部工具栏(逐字搬自 Timeline.tsx):编辑模式簇 / 落轨模式 / 旁白录音 /
-// 播放+时间码 / 缩放簇 / 画幅比例 / 字幕显示 / 全屏。时间码 span 由播放头绘制器经
-// timecodeRef 直写(rAF 合帧),这里只渲初值。
+// Timeline top toolbar (word-for-word copy from Timeline.tsx): Edit mode cluster / Drop track mode / Narration recording /
+// Play+timecode/zoom cluster/aspect ratio/subtitle display/full screen. The timecode span is drawn by the playhead painter
+// timecodeRef direct writing (rAF frame), here only the initial value is rendered.
 import { useState, type RefObject } from 'react';
 import { theme } from '../../theme';
 import { Icon, type IconName } from '../icons';
@@ -20,7 +20,7 @@ function ToolSep() {
 }
 
 // One icon toolbar button: monochrome line glyphs, active = accent.
-// 提示走 cc-tip 即时 tooltip(原生 title 有 ~1s 固有延迟);tipRight = 近右缘右对齐
+// Prompt to use cc-tip real-time tooltip (native title has ~1s inherent delay); tipRight = right-aligned near the right edge
 function TB({ icon, title, onClick, active, disabled, tipRight }: {
   icon: IconName; title: string; onClick?: () => void; active?: boolean; disabled?: boolean; tipRight?: boolean;
 }) {
@@ -79,13 +79,13 @@ export function TimelineToolbar({
       <div className="cc-timeline-tool-group">
         <TrackCreateControl commands={commands} />
         <ToolSep />
-        <TB icon="cursor" title={t('选择模式 (V)：拖动移动 / 裁剪首尾')} active={editMode === 'selection'} onClick={() => invokeAction('interaction-mode-selection', undefined, 'toolbar')} />
-        <TB icon="trim" title={t('修剪模式 (N)：裁剪片段边缘，后续片段自动跟随合缝（波纹）')} active={editMode === 'trim'} onClick={() => invokeAction('interaction-mode-trim', undefined, 'toolbar')} />
+        <TB icon="cursor" title={t('Select mode (V):Drag to move / Crop the beginning and the end')} active={editMode === 'selection'} onClick={() => invokeAction('interaction-mode-selection', undefined, 'toolbar')} />
+        <TB icon="trim" title={t('Trim mode (N): Crop the edge of the fragment, and subsequent fragments will automatically follow the seam (ripple)')} active={editMode === 'trim'} onClick={() => invokeAction('interaction-mode-trim', undefined, 'toolbar')} />
         <TB
           icon="rateStretch"
           title={editMode === 'rate-stretch'
-            ? t('退出比率拉伸，返回选择模式')
-            : t('比率拉伸：拖动片段首尾，保持源区间并改变播放速度')}
+            ? t('Exit ratio stretching and return to selection mode')
+            : t('Ratio stretch: drag the beginning and end of the clip to maintain the source range and change the playback speed')}
           active={editMode === 'rate-stretch'}
           onClick={() => invokeAction(
             editMode === 'rate-stretch' ? 'interaction-mode-selection' : 'interaction-mode-rate-stretch',
@@ -93,47 +93,47 @@ export function TimelineToolbar({
             'toolbar',
           )}
         />
-        <TB icon="blade" title={t('刀片模式 (B)：点击片段在该处切分')} active={editMode === 'blade'} onClick={() => invokeAction('interaction-mode-blade', undefined, 'toolbar')} />
-        <TB icon="pencil" title={t('钢笔模式 (P)：在选中片段上点击绘制透明度关键帧（纵向=不透明度，拖点改帧/值，右键删点）')} active={editMode === 'pen'} onClick={() => invokeAction('interaction-mode-pen', undefined, 'toolbar')} />
-        <TB icon="scissors" title={t('在播放头切分选中片段 (C)')} onClick={() => invokeAction('split', undefined, 'toolbar')} />
+        <TB icon="blade" title={t('blade mode (B):Click the segment to split it there')} active={editMode === 'blade'} onClick={() => invokeAction('interaction-mode-blade', undefined, 'toolbar')} />
+        <TB icon="pencil" title={t('pen mode (P): Click to draw a transparency keyframe on the selected clip (vertical=Opacity, drag to change frame/value, right click and delete)')} active={editMode === 'pen'} onClick={() => invokeAction('interaction-mode-pen', undefined, 'toolbar')} />
+        <TB icon="scissors" title={t('Cut the selected clip in the playhead (C)')} onClick={() => invokeAction('split', undefined, 'toolbar')} />
         <TB
           icon="sparkles"
           title={sceneItem
-            ? t('检测选中片段的场景切点')
-            : t('选择一个视频片段后进行场景检测')}
+            ? t('Detect scene cut points of selected clips')
+            : t('Scene detection after selecting a video clip')}
           disabled={!sceneItem}
           onClick={() => setSceneDetectionOpen(true)}
         />
         <TB
           icon="tracking"
           title={trackingItem
-            ? t('跟踪选中视频中的目标（实验功能）')
-            : t('选择一个本机视频片段后进行运动跟踪')}
+            ? t('Track objects in selected videos (experimental)')
+            : t('Motion tracking after selecting a native video clip')}
           disabled={!trackingItem}
           onClick={() => setMotionTrackingOpen(true)}
         />
-        <TB icon="magnet" title={snapping ? t('磁性吸附：开 (S)') : t('磁性吸附：关 (S)')} active={snapping} onClick={() => invokeAction('snapping', undefined, 'toolbar')} />
+        <TB icon="magnet" title={snapping ? t('Magnetic adsorption: on (S)') : t('Magnetic adsorption: off (S)')} active={snapping} onClick={() => invokeAction('snapping', undefined, 'toolbar')} />
         <ToolSep />
         <TB
           icon="insert"
-          title={t('插入落轨：库素材/模板拖入时把后续片段后推（波纹插入）')}
+          title={t('Inserting Drop Tracks: Library Materials/When the template is dragged in, subsequent segments are pushed back (ripple insertion)')}
           active={placeMode === 'insert'}
           onClick={() => setPlaceMode('insert')}
         />
         <TB
           icon="film"
-          title={t('覆盖落轨：库素材/模板按帧位叠放，不推后续片段（默认）')}
+          title={t('Covering the Fall Track: Library Materials/Templates are stacked frame by frame and subsequent clips are not pushed (default)')}
           active={placeMode === 'overwrite'}
           onClick={() => setPlaceMode('overwrite')}
         />
         <ToolSep />
         <span className="cc-mic-group">
           <TB icon="mic" active={recorder.recording}
-            title={recorder.recording ? t('● 录音中，点击停止') : recorder.error ? t('录音失败：{error}', { error: recorder.error }) : t('录制旁白（麦克风 → 音频轨）')}
+            title={recorder.recording ? t('● During recording, click to stop') : recorder.error ? t('Recording failed:{error}', { error: recorder.error }) : t('Record narration (microphone → audio track)')}
             disabled={!canRecord} onClick={recorder.toggle} />
           <Icon name="chevronDown" size={13} />
         </span>
-        {recorder.recording && <span title={t('录音中')} style={{ width: 8, height: 8, borderRadius: '50%', background: theme.accent, animation: 'cc-rec-pulse 1.2s ease-out infinite', flexShrink: 0 }} />}
+        {recorder.recording && <span title={t('Recording')} style={{ width: 8, height: 8, borderRadius: '50%', background: theme.accent, animation: 'cc-rec-pulse 1.2s ease-out infinite', flexShrink: 0 }} />}
         <TimelineSpeedControl
           item={speedItem}
           onChange={(rate) => { if (speedItem) commands.setItemSpeed(speedItem.id, rate); }}
@@ -142,20 +142,20 @@ export function TimelineToolbar({
       <span style={{ flex: 1 }} />
       <TB
         icon={playing ? 'pause' : 'play'}
-        title={playing ? t('暂停 (空格)') : t('播放 (空格)')}
+        title={playing ? t('pause (space)') : t('play (space)')}
         active={playing}
         onClick={() => invokeAction('play-pause', undefined, 'toolbar')}
       />
       <span ref={timecodeRef} className="cc-timeline-timecode">{fmt(playheadFrame, state.fps)} / {fmt(total, state.fps)}</span>
       <span style={{ flex: 1 }} />
-      <TB icon="zoomOut" title={t('缩小时间轴 (⌘−)')} tipRight onClick={() => invokeAction('zoom-out', undefined, 'toolbar')} />
+      <TB icon="zoomOut" title={t('Zoom out timeline (⌘−)')} tipRight onClick={() => invokeAction('zoom-out', undefined, 'toolbar')} />
       <input type="range" min={MIN_TIME_ZOOM} max={6} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))}
-        title={t('缩放时间轴')} className="cc-timeline-zoom" />
-      <TB icon="zoomIn" title={t('放大时间轴 (⌘＋)')} tipRight onClick={() => invokeAction('zoom-in', undefined, 'toolbar')} />
-      <TB icon="fit" title={t('适配视图 (⇧Z)')} tipRight onClick={() => invokeAction('zoom-fit', undefined, 'toolbar')} />
-      <label className="cc-aspect-select cc-tip cc-tip-r" data-tip={t('画幅比例')}>
+        title={t('Zoom timeline')} className="cc-timeline-zoom" />
+      <TB icon="zoomIn" title={t('Zoom into timeline (⌘＋)')} tipRight onClick={() => invokeAction('zoom-in', undefined, 'toolbar')} />
+      <TB icon="fit" title={t('Adapt view (⇧Z)')} tipRight onClick={() => invokeAction('zoom-fit', undefined, 'toolbar')} />
+      <label className="cc-aspect-select cc-tip cc-tip-r" data-tip={t('aspect ratio')}>
         <Icon name="aspect" size={16} />
-        <select aria-label={t('画幅比例')} value={ASPECT_PRESETS.find((preset) => preset.width === state.width && preset.height === state.height)?.label ?? ''}
+        <select aria-label={t('aspect ratio')} value={ASPECT_PRESETS.find((preset) => preset.width === state.width && preset.height === state.height)?.label ?? ''}
           onChange={(event) => {
             if (event.target.value === '__contain__' || event.target.value === '__cover__') {
               commands.setAspect(state.width, state.height, event.target.value === '__cover__' ? 'cover' : 'contain');
@@ -164,12 +164,12 @@ export function TimelineToolbar({
             const preset = ASPECT_PRESETS.find((entry) => entry.label === event.target.value);
             if (preset) commands.setAspect(preset.width, preset.height, state.fit);
           }}>
-          <optgroup label={t('画幅比例')}>{ASPECT_PRESETS.map((preset) => <option key={preset.label} value={preset.label}>{preset.label}</option>)}</optgroup>
-          <optgroup label={t('内容适配')}><option value="__contain__">{t('留边')}</option><option value="__cover__">{t('裁切')}</option></optgroup>
+          <optgroup label={t('aspect ratio')}>{ASPECT_PRESETS.map((preset) => <option key={preset.label} value={preset.label}>{preset.label}</option>)}</optgroup>
+          <optgroup label={t('Content adaptation')}><option value="__contain__">{t('Leave a margin')}</option><option value="__cover__">{t('Cut')}</option></optgroup>
         </select>
       </label>
-      <button className={`cc-caption-toggle cc-tip cc-tip-r${captionsVisible ? ' active' : ''}`} data-tip={captionTracks.length ? t('字幕显示') : t('字幕显示（当前还没有字幕，先转写或让 Agent 生成）')} aria-label={t('字幕显示')} disabled={!captionTracks.length} onClick={() => commands.batch(captionTracks.map((entry) => ({ type: 'updateCaptions', track: entry.id, patch: { enabled: !captionsVisible } })), 'Toggle captions')}><Icon name="captions" size={17} /><span>{captionsVisible ? t('开启') : t('未开启')}</span><Icon name="chevronDown" size={13} /></button>
-      <TB icon="fullscreen" title={t('全屏预览')} tipRight onClick={() => invokeAction('fullscreen', undefined, 'toolbar')} />
+      <button className={`cc-caption-toggle cc-tip cc-tip-r${captionsVisible ? ' active' : ''}`} data-tip={captionTracks.length ? t('Subtitle display') : t('Subtitle display (currently there are no subtitles, please transcribe or let Agent generated)')} aria-label={t('Subtitle display')} disabled={!captionTracks.length} onClick={() => commands.batch(captionTracks.map((entry) => ({ type: 'updateCaptions', track: entry.id, patch: { enabled: !captionsVisible } })), 'Toggle captions')}><Icon name="captions" size={17} /><span>{captionsVisible ? t('turn on') : t('Not turned on')}</span><Icon name="chevronDown" size={13} /></button>
+      <TB icon="fullscreen" title={t('Full screen preview')} tipRight onClick={() => invokeAction('fullscreen', undefined, 'toolbar')} />
       </div>
       {sceneDetectionOpen && sceneItem && (
         <SceneDetectionDialog

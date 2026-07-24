@@ -26,7 +26,7 @@ export function SemanticSearchControls({ scopeId, assets, onResultsChange }: Sem
   }, [onResultsChange, searchedQuery, semantic.state.matches]);
   return <div className="cc-semantic-anchor">
     <button type="button" className={`cc-media-icon cc-semantic-trigger${open || searchedQuery ? ' active' : ''}`}
-      aria-label={t('语义搜索')} title={t('本地语义搜索')} onClick={() => setOpen((value) => !value)}>
+      aria-label={t('Semantic search')} title={t('local semantic search')} onClick={() => setOpen((value) => !value)}>
       <Icon name="sparkles" size={17} />
     </button>
     {open && <SemanticPanel assets={visualAssets} names={names} query={query} setQuery={setQuery}
@@ -68,7 +68,7 @@ function SemanticPanel(props: SemanticPanelProps) {
     props.setSearchedQuery('');
     semantic.cancel();
   };
-  return <section className="cc-semantic-panel" role="dialog" aria-label={t('本地语义搜索')}>
+  return <section className="cc-semantic-panel" role="dialog" aria-label={t('local semantic search')}>
     <PanelHeader onClose={props.onClose} t={t} />
     {semantic.state.status === 'idle' || semantic.state.status === 'error'
       ? <EnableView state={semantic.state} onEnable={() => void semantic.enable()} t={t} />
@@ -79,8 +79,8 @@ function SemanticPanel(props: SemanticPanelProps) {
 
 function PanelHeader({ onClose, t }: { onClose: () => void; t: Translate }) {
   return <header>
-    <div><strong>{t('本地语义搜索')}</strong><span>{t('素材不会上传')}</span></div>
-    <button type="button" aria-label={t('关闭')} onClick={onClose}><Icon name="x" size={15} /></button>
+    <div><strong>{t('local semantic search')}</strong><span>{t('Materials will not be uploaded')}</span></div>
+    <button type="button" aria-label={t('close')} onClick={onClose}><Icon name="x" size={15} /></button>
   </header>;
 }
 
@@ -92,10 +92,10 @@ interface ViewProps {
 function EnableView({ state, onEnable, t }: ViewProps & { onEnable: () => void }) {
   return <div className="cc-semantic-empty">
     <Icon name="sparkles" size={28} />
-    <strong>{t('按画面内容搜索素材')}</strong>
-    <p>{t('首次启用会下载可选模型。索引和搜索都在本机完成，不影响未启用时的编辑器。')}</p>
-    {state.error && <span className="cc-semantic-error">{t('语义搜索暂不可用，请重试。')}</span>}
-    <button type="button" className="primary" onClick={onEnable}>{t('启用本地模型')}</button>
+    <strong>{t('Search materials by screen content')}</strong>
+    <p>{t('Optional models are downloaded upon first activation. Indexing and searching are done locally and do not affect the editor when it is not enabled.')}</p>
+    {state.error && <span className="cc-semantic-error">{t('Semantic search is temporarily unavailable, please try again.')}</span>}
+    <button type="button" className="primary" onClick={onEnable}>{t('Enable local model')}</button>
   </div>;
 }
 
@@ -115,9 +115,9 @@ function ReadyView(props: ReadyViewProps) {
   return <div className="cc-semantic-ready">
     <form onSubmit={(event) => { event.preventDefault(); props.runSearch(); }}>
       <Icon name="search" size={15} />
-      <input value={props.query} maxLength={MAX_SEMANTIC_QUERY_LENGTH} onChange={(event) => props.setQuery(event.target.value)} placeholder={t('例如：海边日落、城市夜景')} disabled={busy} />
+      <input value={props.query} maxLength={MAX_SEMANTIC_QUERY_LENGTH} onChange={(event) => props.setQuery(event.target.value)} placeholder={t('For example: beach sunset, city night view')} disabled={busy} />
       {props.query && <button type="button" onClick={props.clearSearch}><Icon name="x" size={14} /></button>}
-      <button type="submit" className="primary" disabled={busy || !props.query.trim()}>{t('搜索')}</button>
+      <button type="submit" className="primary" disabled={busy || !props.query.trim()}>{t('Search')}</button>
     </form>
     <IndexStatus {...props} />
     <SearchResults state={state} names={props.names} t={t} />
@@ -127,10 +127,10 @@ function ReadyView(props: ReadyViewProps) {
 
 function LoadingView({ state, cancel, t }: ViewProps & { cancel: () => void }) {
   return <div className="cc-semantic-loading">
-    <strong>{t('正在准备本地模型…')}</strong>
+    <strong>{t('Preparing local model...')}</strong>
     <progress max={100} value={state.modelProgress} />
-    <span>{Math.round(state.modelProgress)}% · {state.device === 'webgpu' ? t('GPU 加速') : t('CPU 模式')}</span>
-    <button type="button" onClick={cancel}>{t('取消')}</button>
+    <span>{Math.round(state.modelProgress)}% · {state.device === 'webgpu' ? t('GPU speed up') : t('CPU mode')}</span>
+    <button type="button" onClick={cancel}>{t('Cancel')}</button>
   </div>;
 }
 
@@ -139,22 +139,22 @@ function IndexStatus(props: ReadyViewProps) {
   const indexing = state.status === 'indexing';
   const allIndexed = assets.length > 0 && state.indexedAssets >= assets.length;
   return <div className="cc-semantic-index-status">
-    <div><strong>{indexing ? t('正在建立索引…') : t('本地索引')}</strong><span>{indexing
-      ? t('已处理 {done} / {total}', { done: state.indexedAssets, total: state.totalAssets })
-      : t('已索引 {done} / {total} 个可视素材', { done: Math.min(state.indexedAssets, assets.length), total: assets.length })}</span></div>
-    {indexing ? <button type="button" onClick={props.cancel}>{t('取消')}</button> : <div>
-      <button type="button" disabled={allIndexed || assets.length === 0} onClick={props.index}>{t('索引新素材')}</button>
-      <button type="button" onClick={props.rebuild}>{t('重建')}</button>
-      <button type="button" onClick={props.disable}>{t('停用本地模型')}</button>
+    <div><strong>{indexing ? t('Indexing...') : t('local index')}</strong><span>{indexing
+      ? t('Processed {done} / {total}', { done: state.indexedAssets, total: state.totalAssets })
+      : t('Indexed {done} / {total} visual material', { done: Math.min(state.indexedAssets, assets.length), total: assets.length })}</span></div>
+    {indexing ? <button type="button" onClick={props.cancel}>{t('Cancel')}</button> : <div>
+      <button type="button" disabled={allIndexed || assets.length === 0} onClick={props.index}>{t('Index new material')}</button>
+      <button type="button" onClick={props.rebuild}>{t('rebuild')}</button>
+      <button type="button" onClick={props.disable}>{t('Deactivate local model')}</button>
     </div>}
-    {state.skippedAssets > 0 && <small>{t('有 {n} 个素材无法解码，已跳过', { n: state.skippedAssets })}</small>}
+    {state.skippedAssets > 0 && <small>{t('Yes {n} The material cannot be decoded and has been skipped', { n: state.skippedAssets })}</small>}
   </div>;
 }
 
 function SearchResults({ state, names, t }: ViewProps & { names: Map<string, string> }) {
   if (state.matches.length === 0) return null;
   return <div className="cc-semantic-results">
-    <strong>{t('语义结果 {n} 个', { n: state.matches.length })}</strong>
+    <strong>{t('Semantic results {n} a', { n: state.matches.length })}</strong>
     {state.matches.slice(0, 5).map((match) => <span key={`${match.assetId}:${match.sampleTime}`}>
       <b>{names.get(match.assetId) ?? match.assetId}</b>
       <em>{match.sampleTime > 0 ? formatTime(match.sampleTime) : `${Math.round(match.score * 100)}%`}</em>
@@ -165,7 +165,7 @@ function SearchResults({ state, names, t }: ViewProps & { names: Map<string, str
 function DuplicateResults({ state, names, t }: ViewProps & { names: Map<string, string> }) {
   if (state.duplicates.length === 0) return null;
   return <div className="cc-semantic-results">
-    <strong>{t('疑似重复素材')}</strong>
+    <strong>{t('Suspected duplicate material')}</strong>
     {state.duplicates.slice(0, 3).map((match) => <span key={`${match.leftAssetId}:${match.rightAssetId}`}>
       <b>{names.get(match.leftAssetId)} ↔ {names.get(match.rightAssetId)}</b>
       <em>{Math.round(match.score * 100)}%</em>

@@ -1,7 +1,7 @@
 import type { AgentToolSchema } from '../tool-schema';
 import { MINIMAX_LANGUAGE_BOOSTS } from '../../../shared/media-provider-params';
 
-/** 生成类工具的 Anthropic schema。往这个数组里 push 即可（自动进模型可见工具列表）。 */
+/** Generate tools Anthropic schema. into this array push That’s it (it automatically enters the list of visible tools in the model). */
 export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'submit_image',

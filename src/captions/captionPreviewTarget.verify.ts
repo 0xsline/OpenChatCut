@@ -9,14 +9,14 @@ import {
 
 let captions = newManualCaptions();
 const laneId = captions.sourceEntries![0]!.id;
-captions = { ...captions, ...appendManualCue(captions, laneId, '画面里可编辑', 1_000, 2_000) };
+captions = { ...captions, ...appendManualCue(captions, laneId, 'Editable on screen', 1_000, 2_000) };
 
 const target = findCaptionPreviewTarget(captions, [], 30, 1_500);
 assert.equal(target?.kind, 'manual', 'manual multi-lane captions expose a preview edit target');
-assert.equal(target?.cue.text, '画面里可编辑');
+assert.equal(target?.cue.text, 'Editable on screen');
 
-const textPatch = captionPreviewTextPatch(captions, target!, '预览已改字');
-assert.equal(textPatch?.sourceEntries?.[0]?.words?.[0]?.text, '预览已改字');
+const textPatch = captionPreviewTextPatch(captions, target!, 'Preview has been changed');
+assert.equal(textPatch?.sourceEntries?.[0]?.words?.[0]?.text, 'Preview has been changed');
 
 const stylePatch = captionPreviewStylePatch(captions, target!, { color: '#ff0000' });
 assert.equal(stylePatch.sourceEntries?.[0]?.style?.color, '#ff0000');

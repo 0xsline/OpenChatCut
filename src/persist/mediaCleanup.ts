@@ -1,10 +1,10 @@
-// 素材引用清点与清理。解决两件事:
-//   ① 删工程时级联删素材——但只删「再无别的工程引用」的文件(复制出的工程共享
-//      同名素材,引用计数保它们不被误杀);
-//   ② 无主素材清扫——测试/已删工程留在 /media/uploads/ 的文件,按「全部工程文档
-//      (含软删,可恢复即算引用)引用集」做差找出来,确认后批删。
-// 磁盘删除走 DELETE /upload(server 侧单段安全名);IDB 媒体缓存同步清。
-// R2 云端对象刻意不动:本地删是可逆的(回源仍可找回)。
+// Material reference inventory and cleaning. Solve two things:
+//   ① When deleting a project, the materials will be deleted cascade-but only files that are “no longer referenced by other projects” will be deleted (copied project sharing
+//      For materials with the same name, reference counting ensures that they are not accidentally killed);
+//   ② Cleaning of unowned materials - test/deleted project files left in /media/uploads/, click "All Project Documents"
+//      (Including soft deletion, which can be restored and counted as a reference) Find out the reference set and delete it after confirmation.
+// Delete the disk through DELETE /upload (single segment security name on the server side); the IDB media cache is cleared synchronously.
+// R2 cloud objects are deliberately not moved: local deletion is reversible (it can still be retrieved when returning to the source).
 import { deleteMediaBlob } from './mediaBlobStore';
 import { listPacks } from '../plugins/store';
 import { listProjectDocIds, listProjects, loadProject, purgeProject } from './projectStore';
@@ -18,7 +18,7 @@ export interface UploadFileInfo {
   mtimeMs: number;
 }
 
-/** 盘面清单(server 扫上传目录;dev 与桌面同一 API)。 */
+/** Board list(server Scan to upload directory;dev Same as desktop API)。 */
 export async function listUploadFiles(): Promise<UploadFileInfo[]> {
   const res = await fetch('/upload/list');
   if (!res.ok) throw new Error(`/upload/list → HTTP ${res.status}`);
@@ -26,14 +26,14 @@ export async function listUploadFiles(): Promise<UploadFileInfo[]> {
   return Array.isArray(body.files) ? body.files : [];
 }
 
-/** 全部引用并集 = 工程文档(可排除一个 id——级联删除时排除被删工程自己)
- * ∪ 已安装扩展包的 LUT cube 上传(引用记在共享扩展存储,不在工程文档里,漏了会误杀)。 */
+/** Union of all references = Engineering documentation(One can be excluded id——Exclude the deleted project itself during cascade deletion)
+ * ∪ Extension pack installed LUT cube upload(References are recorded in shared extended storage,Not in the project document,If you miss it, you will accidentally kill someone.)。 */
 export async function collectAllUploadRefs(excludeId?: string): Promise<Set<string>> {
   const refs = new Set<string>();
   for (const id of await listProjectDocIds()) {
     if (id === excludeId) continue;
     const doc = await loadProject(id);
-    if (!doc) continue; // 坏文档读不出引用;其素材自然落进无主清单,文档本身由孤儿清扫处理
+    if (!doc) continue; // Bad documents cannot read references; their materials naturally fall into the unowned list, and the documents themselves are processed by orphan cleaning.
     for (const src of collectUploadSrcs(doc)) refs.add(src);
   }
   for (const pack of await listPacks().catch(() => [])) {
@@ -44,12 +44,12 @@ export async function collectAllUploadRefs(excludeId?: string): Promise<Set<stri
   return refs;
 }
 
-/** 纯函数:盘面清单 − 引用集 = 无主文件。 */
+/** pure function:Board list − reference set = No master file. */
 export function unreferencedOf(files: UploadFileInfo[], refs: Set<string>): UploadFileInfo[] {
   return files.filter((f) => !refs.has(MEDIA_PREFIX + f.name));
 }
 
-/** 删一个上传文件(磁盘 + IDB 缓存)。返回 server 是否确认。 */
+/** Delete an uploaded file(Disk + IDB cache). Return server Confirm or not. */
 export async function deleteUploadFile(name: string): Promise<boolean> {
   const res = await fetch(`/upload?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
   await deleteMediaBlob(MEDIA_PREFIX + name).catch(() => {});
@@ -61,8 +61,8 @@ export interface CleanupScan {
   files: UploadFileInfo[];
 }
 
-/** 清理面板入口:先清孤儿工程文档(索引之外的 project:* ——冒烟/旧测试残留),
- * 再返回当前无主文件清单。 */
+/** Clean panel entrance:Clear the orphan project documents first(outside of index project:* ——smoke/remnants of old tests),
+ * Then return to the current unowned file list. */
 export async function scanUnreferenced(): Promise<CleanupScan> {
   const indexed = new Set((await listProjects({ includeDeleted: true })).map((m) => m.id));
   let orphanDocsPurged = 0;
@@ -76,7 +76,7 @@ export async function scanUnreferenced(): Promise<CleanupScan> {
   return { orphanDocsPurged, files: unreferencedOf(files, refs) };
 }
 
-/** 删工程 + 级联删其独占素材(别的工程还引用的保留)。 */
+/** Delete project + Cascade delete their exclusive materials(Reserves that are also referenced by other projects)。 */
 export async function purgeProjectCascade(id: string): Promise<{ filesDeleted: number }> {
   const doc = await loadProject(id);
   const own = doc ? collectUploadSrcs(doc) : [];

@@ -43,16 +43,16 @@ export function getPluginSkill(slug: string): PluginSkill | undefined {
 /** Verbatim content of a skill's SKILL.md, or a named support file under it. */
 export function readPluginSkillFile(slug: string, file?: string): string | undefined {
   if (!file) return getPluginSkill(slug)?.body;
-  // glob 键相对本模块目录(本文件就在 skills/ 里):./<slug>/<file>,没有 skills/ 前缀
+  // The glob key is relative to this module directory (this file is in skills/): ./<slug>/<file>, without skills/ prefix
   return RAW[`./${slug}/${file.replace(/^\.\//, '')}`];
 }
 
 // The always-in-context index (progressive disclosure). Appended to the system prompt.
 export const PLUGIN_SKILLS_INDEX: string = [
   '',
-  '# 技能库（load_skill 按需加载 · OpenChatCut 的 15 个 SKILL.md）',
-  '下面每条是一个技能的适用场景。当任务命中某技能时，先 load_skill(name=…) 取回它的完整指导流程（SKILL.md 全文）再动手；需要深料时可带 file=（如 "references/voices.md"）。只在相关时加载，别全部加载。',
-  '任何技能要跑脚本 / ffmpeg / node / python，都用 run_code 工具在隔离沙箱执行（files 写入 → command 运行 → outputs 读回产物；沙箱碰不到时间线，产物要落编辑器仍走本地工具）。真实媒体：files 项给 url（本地 /media/… 或公网 https://）即可拉进沙箱 ffprobe/ffmpeg（公网 URL 也可直接喂 ffprobe）。',
-  '沙箱默认已装 ffmpeg（自定义模板）；若某环境没有，命令里先自装：`which ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)`。',
+  '# Skill Library (load_skill Load on demand · OpenChatCut of 15 a SKILL.md）',
+  'Each of the following is an application scenario for a skill. When a task hits a certain skill, first load_skill(name=…) Complete guided process to get it back (SKILL.md Full text) before starting; you can bring it when you need more information file=(such as "references/voices.md"). Only load when relevant, don’t load everything.',
+  'Any skill needs to run a script / ffmpeg / node / python, use both run_code Tools are executed in an isolation sandbox (files write → command run → outputs Read back the product; the sandbox cannot touch the timeline, and the product needs to be dropped into the editor using local tools). Real media:files Item to give url(local /media/… or public network https://) can be pulled into the sandbox ffprobe/ffmpeg (the public URL can also be fed directly to ffprobe). ',
+  'The sandbox is installed by default ffmpeg(Customized template); if a certain environment does not exist, install it first in the command:`which ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)`。',
   ...PLUGIN_SKILLS.map((s) => `- **${s.slug}** — ${s.description}`),
 ].join('\n');

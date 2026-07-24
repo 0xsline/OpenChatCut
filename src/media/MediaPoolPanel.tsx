@@ -28,7 +28,7 @@ interface MediaPoolPanelProps {
   onMoveAssets: (ids: string[], folderId?: string) => void;
   onRenameAsset: (id: string, name: string) => void;
   onSetFavorite: (id: string, favorite: boolean) => void;
-  /** 从素材池删除(两步确认);已落轨片段自带数据拷贝,不受影响 */
+  /** Remove from pool(Two-step confirmation);The tracked clip comes with its own data copy,not affected */
   onRemoveAsset?: (id: string) => void;
   /** Relink File replaces an offline/missing asset and its clip srcs. */
   onRelinkAsset?: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind'] }) => void;
@@ -56,9 +56,9 @@ export function MediaPoolPanel({
   const [view, setView] = usePersistedState<'grid' | 'list'>('cc.mediaView', 'grid');
   const [menu, setMenu] = useState<'sort' | 'filter' | null>(null);
   const [assetMenu, setAssetMenu] = useState<string | null>(null);
-  /** fixed-position menu so overflow:auto grid doesn't clip 收藏/重命名/文件夹 */
+  /** fixed-position menu so overflow:auto grid doesn't clip Collection/Rename/folder */
   const [assetMenuPos, setAssetMenuPos] = useState<{ top: number; left: number } | null>(null);
-  // 删除两步确认:第一次点变「确认删除」,重开菜单即复位
+  // Two-step confirmation of deletion: click "Confirm Delete" for the first time, and then reopen the menu to reset it.
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [currentFolderId, setCurrentFolderId] = useState<string>();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -90,8 +90,8 @@ export function MediaPoolPanel({
   }, [assetMenu]);
 
   // Probe file-backed assets and mark them offline when unreachable.
-  // 必须走 isMediaSrcReachable:裸 HEAD 对 blob:(上传中的占位)规范性失败 → 上传
-  // 还在跑就误标"重新链接";它还兼顾 SPA 假 200 与 405 的 Range 回退。
+  // Must go isMediaSrcReachable: naked HEAD to blob: (placeholder in upload) normative failure → upload
+  // "Relink" is mistakenly marked while still running; it also takes into account the SPA false 200 and 405 Range fallback.
   useEffect(() => {
     let cancelled = false;
     const fileAssets = assets.filter((a) => a.kind !== 'motion-graphic' && a.src);
@@ -164,7 +164,7 @@ export function MediaPoolPanel({
         clearMissing(asset.id);
         relinked++;
       }
-      setRelinkMsg(relinked ? t('已从文件夹按文件名重链 {n} 个素材', { n: relinked }) : t('文件夹中没有与丢失素材同名的文件'));
+      setRelinkMsg(relinked ? t('Relinked from folder by file name {n} materials', { n: relinked }) : t('There is no file with the same name as the missing footage in the folder'));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -215,16 +215,16 @@ export function MediaPoolPanel({
   const submitPrompt = () => {
     const value = promptValue.trim();
     if (!promptState || !value) return;
-    if (promptState.rejectSlash && value.includes('/')) { setError(t('名称不能包含 /')); return; }
+    if (promptState.rejectSlash && value.includes('/')) { setError(t('Name cannot contain /')); return; }
     promptState.onSubmit(value);
     setPromptState(null);
   };
   const createFolder = () => openPrompt({
-    title: '新文件夹名称', initialValue: '', rejectSlash: true,
+    title: 'New folder name', initialValue: '', rejectSlash: true,
     onSubmit: (name) => setCurrentFolderId(onCreateFolder(name, currentFolderId)),
   });
   const renameFolder = () => currentFolder && openPrompt({
-    title: '重命名文件夹', initialValue: currentFolder.name, rejectSlash: true,
+    title: 'Rename folder', initialValue: currentFolder.name, rejectSlash: true,
     onSubmit: (name) => onRenameFolder(currentFolder.id, name),
   });
   const deleteFolder = () => {
@@ -252,32 +252,32 @@ export function MediaPoolPanel({
       <div className="cc-media-toolbar">
         <label className="cc-media-search">
           <Icon name="search" size={16} />
-          <input aria-label={t('搜索素材')} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('搜索')} />
+          <input aria-label={t('Search for material')} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('Search')} />
         </label>
         <SemanticSearchControls scopeId={semanticScopeId} assets={assets} onResultsChange={onSemanticResults} />
-        <button className="cc-media-icon" aria-label={t('上传素材')} title={t('上传素材')} disabled={busy} onClick={() => inputRef.current?.click()}><Icon name="upload" size={19} /></button>
-        <button className="cc-media-icon" aria-label={t('手机传素材')} title={t('手机传素材')} onClick={() => setMobileUploadOpen(true)}><Icon name="qrCode" size={19} /></button>
+        <button className="cc-media-icon" aria-label={t('Upload material')} title={t('Upload material')} disabled={busy} onClick={() => inputRef.current?.click()}><Icon name="upload" size={19} /></button>
+        <button className="cc-media-icon" aria-label={t('Transfer material via mobile phone')} title={t('Transfer material via mobile phone')} onClick={() => setMobileUploadOpen(true)}><Icon name="qrCode" size={19} /></button>
         {busy && uploadRatio != null && (
-          <span className="cc-media-upload-pct" title={t('上传中')} style={{ fontSize: 11, opacity: 0.75, minWidth: 36, fontVariantNumeric: 'tabular-nums' }}>
+          <span className="cc-media-upload-pct" title={t('Uploading')} style={{ fontSize: 11, opacity: 0.75, minWidth: 36, fontVariantNumeric: 'tabular-nums' }}>
             {Math.round(uploadRatio * 100)}%
           </span>
         )}
         {onAddSolid && (
-          <button className="cc-media-icon" aria-label={t('添加纯色')} title={t('添加纯色片段')} onClick={onAddSolid} style={{ fontSize: 11, fontWeight: 700 }}>{t('色')}</button>
+          <button className="cc-media-icon" aria-label={t('add solid color')} title={t('Add a solid color clip')} onClick={onAddSolid} style={{ fontSize: 11, fontWeight: 700 }}>{t('Color')}</button>
         )}
-        <button className="cc-media-icon" aria-label={t('新建文件夹')} title={t('新建文件夹')} onClick={createFolder}><Icon name="folderPlus" size={20} /></button>
-        <button className="cc-media-icon" aria-label={t('切换网格列表')} title={t('切换网格/列表')} onClick={() => setView((value) => value === 'grid' ? 'list' : 'grid')}><Icon name={view === 'grid' ? 'list' : 'grid'} size={19} /></button>
+        <button className="cc-media-icon" aria-label={t('Create new folder')} title={t('Create new folder')} onClick={createFolder}><Icon name="folderPlus" size={20} /></button>
+        <button className="cc-media-icon" aria-label={t('Toggle grid list')} title={t('Switch grid/list')} onClick={() => setView((value) => value === 'grid' ? 'list' : 'grid')}><Icon name={view === 'grid' ? 'list' : 'grid'} size={19} /></button>
         <div className="cc-media-menu-anchor">
-          <button className={`cc-media-icon${menu === 'sort' ? ' active' : ''}`} aria-label={t('素材排序')} title={t('排序')} onClick={() => setMenu((value) => value === 'sort' ? null : 'sort')}><Icon name="sort" size={19} /></button>
+          <button className={`cc-media-icon${menu === 'sort' ? ' active' : ''}`} aria-label={t('Material sorting')} title={t('sort')} onClick={() => setMenu((value) => value === 'sort' ? null : 'sort')}><Icon name="sort" size={19} /></button>
           {menu === 'sort' && <div className="cc-media-popover cc-media-sort-menu">
-            {([['newest', '最新导入'], ['name', '名称 A–Z'], ['duration', '时长']] as const).map(([value, label]) => <button key={value} className={sort === value ? 'selected' : ''} onClick={() => { setSort(value); setMenu(null); }}>{t(label)}</button>)}
+            {([['newest', 'latest import'], ['name', 'Name A–Z'], ['duration', 'duration']] as const).map(([value, label]) => <button key={value} className={sort === value ? 'selected' : ''} onClick={() => { setSort(value); setMenu(null); }}>{t(label)}</button>)}
           </div>}
         </div>
         <div className="cc-media-menu-anchor">
-          <button className={`cc-media-icon${menu === 'filter' || type !== 'all' || favoritesOnly ? ' active' : ''}`} aria-label={t('筛选素材')} title={t('筛选')} onClick={() => setMenu((value) => value === 'filter' ? null : 'filter')}><Icon name="filter" size={19} /></button>
+          <button className={`cc-media-icon${menu === 'filter' || type !== 'all' || favoritesOnly ? ' active' : ''}`} aria-label={t('Filter materials')} title={t('Filter')} onClick={() => setMenu((value) => value === 'filter' ? null : 'filter')}><Icon name="filter" size={19} /></button>
           {menu === 'filter' && <div className="cc-media-popover cc-media-filter-menu">
-            {([['all', '全部'], ['video', '视频'], ['image', '图片'], ['gif', 'GIF'], ['svg', 'SVG'], ['audio', '音频']] as const).map(([value, label]) => <button key={value} className={type === value ? 'selected' : ''} onClick={() => setType(value)}>{t(label)}</button>)}
-            <button className={favoritesOnly ? 'selected' : ''} onClick={() => setFavoritesOnly((value) => !value)}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="star" size={13} filled={favoritesOnly} /> {t('收藏')}</span></button>
+            {([['all', 'All'], ['video', 'video'], ['image', 'picture'], ['gif', 'GIF'], ['svg', 'SVG'], ['audio', 'Audio']] as const).map(([value, label]) => <button key={value} className={type === value ? 'selected' : ''} onClick={() => setType(value)}>{t(label)}</button>)}
+            <button className={favoritesOnly ? 'selected' : ''} onClick={() => setFavoritesOnly((value) => !value)}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="star" size={13} filled={favoritesOnly} /> {t('Collection')}</span></button>
           </div>}
         </div>
       </div>
@@ -290,7 +290,7 @@ export function MediaPoolPanel({
           borderLeft: `2px solid ${theme.accent}`, fontSize: 12, color: theme.textMuted,
         }}>
           <span style={{ flex: 1, minWidth: 140 }}>
-            {t('有 {n} 个素材丢失或无法加载。选择文件夹搜索，或从行内重新链接。', { n: missingList.length })}
+            {t('Yes {n} Materials are missing or cannot be loaded. Select a folder search, or relink from within a row.', { n: missingList.length })}
           </span>
           <button
             type="button"
@@ -300,26 +300,26 @@ export function MediaPoolPanel({
               padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
             }}
           >
-            {t('重新链接离线素材')}
+            {t('Relink offline footage')}
           </button>
         </div>
       )}
 
       {(currentFolder || childFolders.length > 0) && <div className="cc-media-breadcrumb">
-        <button aria-label={t('返回上级文件夹')} disabled={!currentFolder} onClick={() => setCurrentFolderId(currentFolder?.parentId)}>←</button>
+        <button aria-label={t('Return to the parent folder')} disabled={!currentFolder} onClick={() => setCurrentFolderId(currentFolder?.parentId)}>←</button>
         <span>Master{currentFolder ? ` / ${folderPath(currentFolder, folders)}` : ''}</span>
-        {currentFolder && <button aria-label={t('重命名文件夹')} onClick={renameFolder}>{t('重命名')}</button>}
-        {currentFolder && <button aria-label={t('删除空文件夹')} disabled={assets.some((asset) => asset.folderId === currentFolder.id) || folders.some((folder) => folder.parentId === currentFolder.id)} onClick={deleteFolder}>{t('删除')}</button>}
+        {currentFolder && <button aria-label={t('Rename folder')} onClick={renameFolder}>{t('Rename')}</button>}
+        {currentFolder && <button aria-label={t('Delete empty folders')} disabled={assets.some((asset) => asset.folderId === currentFolder.id) || folders.some((folder) => folder.parentId === currentFolder.id)} onClick={deleteFolder}>{t('Delete')}</button>}
       </div>}
       {error && <div className="cc-media-error">{error}</div>}
-      {busy && <div className="cc-media-status">{t('正在导入素材…')}</div>}
+      {busy && <div className="cc-media-status">{t('Importing material...')}</div>}
 
       {selectedAssets.length > 0 && <div className="cc-media-selection">
-        <button onClick={toggleAll}>{visible.every((asset) => selected.has(asset.id)) ? t('清除选择') : t('全选')}</button>
-        <span>{t('已选 {n}', { n: selectedAssets.length })}</span>
-        <button onClick={() => selectedAssets.forEach(onAddAsset)}>{t('加到时间线')}</button>
-        <select aria-label={t('移动所选素材')} defaultValue="" onChange={(event) => { onMoveAssets(selectedAssets.map((asset) => asset.id), event.target.value === '__root__' ? undefined : event.target.value); setSelected(new Set()); event.target.value = ''; }}>
-          <option value="" disabled>{t('移动到…')}</option><option value="__root__">Master</option>
+        <button onClick={toggleAll}>{visible.every((asset) => selected.has(asset.id)) ? t('Clear selection') : t('Select all')}</button>
+        <span>{t('Selected {n}', { n: selectedAssets.length })}</span>
+        <button onClick={() => selectedAssets.forEach(onAddAsset)}>{t('Add to timeline')}</button>
+        <select aria-label={t('Move selected footage')} defaultValue="" onChange={(event) => { onMoveAssets(selectedAssets.map((asset) => asset.id), event.target.value === '__root__' ? undefined : event.target.value); setSelected(new Set()); event.target.value = ''; }}>
+          <option value="" disabled>{t('Move to…')}</option><option value="__root__">Master</option>
           {folders.map((folder) => <option key={folder.id} value={folder.id}>{folderPath(folder, folders)}</option>)}
         </select>
       </div>}
@@ -332,7 +332,7 @@ export function MediaPoolPanel({
           <div className="cc-asset-thumb-wrap">
             <button
               className="cc-asset-thumb"
-              title={missing.has(asset.id) ? t('点击重新链接') : t('加到时间线：{name}', { name: asset.name })}
+              title={missing.has(asset.id) ? t('Click to relink') : t('Add to timeline:{name}', { name: asset.name })}
               onClick={() => {
                 if (missing.has(asset.id) && onRelinkAsset) startRelink(asset.id);
                 else onAddAsset(asset);
@@ -344,13 +344,13 @@ export function MediaPoolPanel({
                   ? (
                     <span style={{ display: 'grid', placeItems: 'center', gap: 4, color: theme.textMuted, fontSize: 11, padding: 8, textAlign: 'center' }}>
                       <Icon name="swap" size={22} />
-                      {t('点击重新链接')}
+                      {t('Click to relink')}
                     </span>
                   )
                   : asset.kind === 'image' || asset.kind === 'gif' || asset.kind === 'svg'
                     ? <img src={asset.src} alt={asset.name} onError={() => markMissing(asset.id)} onLoad={() => clearMissing(asset.id)} />
                     : asset.kind === 'video'
-                      // preload=metadata 不解码画面(黑块),seek 一下才逼浏览器绘帧;顺带避开第 0 帧黑场
+                      // preload=metadata does not decode the picture (black block), seek for a while to force the browser to draw the frame; incidentally avoid the black field of frame 0
                       ? <video src={asset.src} muted preload="metadata" onError={() => markMissing(asset.id)} onLoadedData={() => clearMissing(asset.id)}
                           onLoadedMetadata={(e) => { const v = e.currentTarget; if (Number.isFinite(v.duration) && v.duration > 0) v.currentTime = Math.min(1, v.duration / 2); }} />
                       : asset.kind === 'motion-graphic'
@@ -364,8 +364,8 @@ export function MediaPoolPanel({
               </span>
             )}
             <span className="cc-asset-duration">{durationLabel(asset.durationInFrames, fps)}</span>
-            <input className="cc-asset-check" aria-label={t('选择 {name}', { name: asset.name })} type="checkbox" checked={selected.has(asset.id)} onChange={() => toggleSelected(asset.id)} />
-            <button className="cc-asset-more" aria-label={t('管理 {name}', { name: asset.name })}
+            <input className="cc-asset-check" aria-label={t('Choose {name}', { name: asset.name })} type="checkbox" checked={selected.has(asset.id)} onChange={() => toggleSelected(asset.id)} />
+            <button className="cc-asset-more" aria-label={t('management {name}', { name: asset.name })}
               onClick={(event) => {
                 event.stopPropagation();
                 if (assetMenu === asset.id) {
@@ -392,7 +392,7 @@ export function MediaPoolPanel({
         </div>)}
         {visible.length === 0 && childFolders.length === 0 && (
           <div className="cc-media-empty">
-            {assets.length === 0 ? <><Icon name="folder" size={28} /><strong>{t('这个文件夹是空的')}</strong><span>{t('导入媒体或把素材拖到这里。')}</span></> : <span>{t('当前筛选下没有素材')}</span>}
+            {assets.length === 0 ? <><Icon name="folder" size={28} /><strong>{t('This folder is empty')}</strong><span>{t('Import media or drag footage here.')}</span></> : <span>{t('There is no material under the current filter')}</span>}
           </div>
         )}
       </div>
@@ -406,28 +406,28 @@ export function MediaPoolPanel({
             <div className="cc-media-popover cc-asset-menu-portal" style={{ top: assetMenuPos.top, left: assetMenuPos.left }}
               onClick={(e) => e.stopPropagation()}>
               <button type="button" onClick={() => { onSetFavorite(asset.id, !asset.favorite); setAssetMenu(null); setAssetMenuPos(null); }}>
-                {asset.favorite ? t('取消收藏') : t('收藏')}
+                {asset.favorite ? t('Cancel favorites') : t('Collection')}
               </button>
               <button type="button" onClick={() => {
                 setAssetMenu(null); setAssetMenuPos(null);
-                openPrompt({ title: '素材显示名称', initialValue: asset.name, onSubmit: (name) => onRenameAsset(asset.id, name) });
-              }}>{t('重命名')}</button>
+                openPrompt({ title: 'Material display name', initialValue: asset.name, onSubmit: (name) => onRenameAsset(asset.id, name) });
+              }}>{t('Rename')}</button>
               {onRelinkAsset && asset.kind !== 'motion-graphic' && (
                 <button type="button" onClick={() => {
                   setAssetMenu(null); setAssetMenuPos(null);
                   startRelink(asset.id);
-                }}>{t('重新链接文件')}</button>
+                }}>{t('Relink files')}</button>
               )}
               {onRemoveAsset && (
                 <button type="button" className="danger" onClick={() => {
                   if (confirmDeleteId !== asset.id) { setConfirmDeleteId(asset.id); return; }
                   onRemoveAsset(asset.id);
                   setAssetMenu(null); setAssetMenuPos(null); setConfirmDeleteId(null);
-                }}>{confirmDeleteId === asset.id ? t('确认删除') : t('删除')}</button>
+                }}>{confirmDeleteId === asset.id ? t('Confirm deletion') : t('Delete')}</button>
               )}
               <label className="cc-asset-menu-move">
-                <span>{t('移动到')}</span>
-                <select aria-label={t('移动 {name}', { name: asset.name })} value={asset.folderId ?? ''}
+                <span>{t('move to')}</span>
+                <select aria-label={t('move {name}', { name: asset.name })} value={asset.folderId ?? ''}
                   onChange={(event) => {
                     onMoveAssets([asset.id], event.target.value || undefined);
                     setAssetMenu(null); setAssetMenuPos(null);
@@ -448,24 +448,24 @@ export function MediaPoolPanel({
         <form className="cc-modal" onSubmit={(event) => { event.preventDefault(); submitPrompt(); }}>
           <strong>{t(promptState.title)}</strong>
           <input autoFocus aria-label={t(promptState.title)} value={promptValue} onChange={(event) => setPromptValue(event.target.value)} />
-          <div><button type="button" onClick={() => setPromptState(null)}>{t('取消')}</button><button type="submit" className="primary">{t('确定')}</button></div>
+          <div><button type="button" onClick={() => setPromptState(null)}>{t('Cancel')}</button><button type="submit" className="primary">{t('OK')}</button></div>
         </form>
       </div>}
-      {deleteState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('删除空文件夹')}>
-        <div className="cc-modal"><strong>{t('删除空文件夹「{name}」？', { name: deleteState.name })}</strong><div><button onClick={() => setDeleteState(null)}>{t('取消')}</button><button className="danger" onClick={() => { onDeleteFolder(deleteState.id); setCurrentFolderId(deleteState.parentId); setDeleteState(null); }}>{t('删除')}</button></div></div>
+      {deleteState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('Delete empty folders')}>
+        <div className="cc-modal"><strong>{t('Delete empty folders{name}」？', { name: deleteState.name })}</strong><div><button onClick={() => setDeleteState(null)}>{t('Cancel')}</button><button className="danger" onClick={() => { onDeleteFolder(deleteState.id); setCurrentFolderId(deleteState.parentId); setDeleteState(null); }}>{t('Delete')}</button></div></div>
       </div>}
 
       {showRelinkAll && (
-        <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('重新链接离线素材')} onClick={() => setShowRelinkAll(false)}>
+        <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('Relink offline footage')} onClick={() => setShowRelinkAll(false)}>
           <div className="cc-modal" style={{ width: 'min(420px, 92vw)', maxHeight: '70vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
-            <strong>{t('重新链接离线素材')}</strong>
+            <strong>{t('Relink offline footage')}</strong>
             <p style={{ margin: '8px 0 12px', fontSize: 12, color: theme.textMuted, lineHeight: 1.45 }}>
-              {t('工程中的文件已移动或重命名。选一个文件夹按文件名批量重链，或从下方逐个重新链接。')}
+              {t('Files in the project have been moved or renamed. Select a folder to relink in batches by file name, or relink one by one from below.')}
             </p>
             <input ref={dirInputRef} type="file" multiple hidden onChange={(e) => relinkFromFolder(e.target.files)} />
             <button type="button" className="primary" disabled={dirBusy} onClick={() => dirInputRef.current?.click()}
               style={{ width: '100%', marginBottom: 10 }}>
-              {dirBusy ? t('正在按文件名匹配…') : t('选择文件夹批量重链（按文件名匹配）')}
+              {dirBusy ? t('Matching by filename...') : t('Select folders to batch relink (match by file name)')}
             </button>
             {relinkMsg && <div style={{ fontSize: 12, color: `color-mix(in srgb, ${theme.success} 65%, ${theme.textStrong})`, margin: '0 0 10px' }}>{relinkMsg}</div>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -478,13 +478,13 @@ export function MediaPoolPanel({
                     onClick={() => startRelink(asset.id)}
                     style={{ flexShrink: 0 }}
                   >
-                    {t('重新链接文件')}
+                    {t('Relink files')}
                   </button>
                 </div>
               ))}
-              {missingList.length === 0 && <div style={{ fontSize: 12, color: theme.textDim }}>{t('没有待重链的素材')}</div>}
+              {missingList.length === 0 && <div style={{ fontSize: 12, color: theme.textDim }}>{t('No material to be relinked')}</div>}
             </div>
-            <div style={{ marginTop: 12 }}><button type="button" onClick={() => setShowRelinkAll(false)}>{t('关闭')}</button></div>
+            <div style={{ marginTop: 12 }}><button type="button" onClick={() => setShowRelinkAll(false)}>{t('close')}</button></div>
           </div>
         </div>
       )}

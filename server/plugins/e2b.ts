@@ -153,7 +153,7 @@ export function e2bPlugin(options: E2bOptions): Plugin {
       // ProRes .mov under /media, or a public URL) to a VP9 alpha WebM using the sandbox's
       // ffmpeg (this env's local ffmpeg can't encode alpha webm — see clipExport.ts). The
       // webm is read back as BYTES (binary-safe) and written to media/uploads; returns its
-      // path. This is the "转为视频 = bake to an alpha webm" step that local ffmpeg can't do.
+      // path. This is the "bake to video = bake to an alpha webm" step that local ffmpeg can't do.
       server.middlewares.use('/e2b/transcode-alpha', async (req, res) => {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         let sandbox: Sandbox | undefined;

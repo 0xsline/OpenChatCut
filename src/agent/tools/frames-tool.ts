@@ -171,7 +171,7 @@ async function renderStills(
     };
     return packImages(data.frames, data.gridBase64, note, { renderedBy: data.renderedBy ?? 'remotion' });
   } catch (e) {
-    return { error: `render-still 请求失败: ${e instanceof Error ? e.message : String(e)}` };
+    return { error: `render-still Request failed: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
@@ -227,10 +227,10 @@ async function extractAssetContactSheet(
       frames: sourceTimesMs.length ? sourceTimesMs.map((ms) => Math.round((ms / 1000) * fps)) : [0],
       layout: (data.sampleCount ?? 1) > 1 ? 'contact_sheet' : 'individual',
       note: [
-        `源资产「${asset.name}」contact sheet`,
+        `source assets${asset.name}」contact sheet`,
         data.sampleCount ? `${data.sampleCount} samples` : '',
         labelLine,
-        '（未进时间线合成；每格≈对应源时间区间中点）',
+        '(Not entered into the timeline synthesis; each frame≈Corresponding to the midpoint of the source time interval)',
       ].filter(Boolean).join(' · '),
       renderedBy: data.renderedBy ?? 'ffmpeg',
       sampleCount: data.sampleCount,
@@ -289,7 +289,7 @@ async function viewTimelineFrames(args: Args, ctx: AgentContext): Promise<unknow
     return { error: 'timeline is empty — nothing to render' };
   }
   const frames = pickFrames(args, total, state.fps, DEFAULT_TIMELINE_SCAN);
-  const note = `时间线「${state.name}」${frames.length} 帧（f${frames.join(', f')}，共 ${total} @${state.fps}fps）——目标时间线草稿合成画面（含未提交编辑）`;
+  const note = `Timeline "${state.name}」${frames.length} frame(f${frames.join(', f')}, a total of ${total} @${state.fps}fps)——Target timeline draft synthesis screen (including unsubmitted edits)`;
   return renderStills(state, frames, note);
 }
 
@@ -314,7 +314,7 @@ async function viewAssetFrames(args: Args, ctx: AgentContext): Promise<unknown> 
           __images: [{ frame: 0, base64: b64 }],
           frames: [0],
           layout: 'individual',
-          note: `源资产「${asset.name}」blob 预览（上传中/本地占位）`,
+          note: `source assets${asset.name}」blob Preview (uploading/local placeholder)`,
           renderedBy: 'browser-blob',
         };
       }
@@ -337,7 +337,7 @@ async function viewAssetFrames(args: Args, ctx: AgentContext): Promise<unknown> 
           __images: [{ frame: 0, base64: sheet.base64 }],
           frames: sheet.sourceTimesMs.map((ms) => Math.round((ms / 1000) * fps)),
           layout: sheet.sampleCount > 1 ? 'contact_sheet' : 'individual',
-          note: `源资产「${asset.name}」blob contact sheet · ${sheet.sampleCount} samples · cells L→R T→B: ${labelLine}（上传中本地预览）`,
+          note: `source assets${asset.name}」blob contact sheet · ${sheet.sampleCount} samples · cells L→R T→B: ${labelLine}(Local preview during upload)`,
           renderedBy: 'browser-blob',
           sampleCount: sheet.sampleCount,
           sourceTimesMs: sheet.sourceTimesMs,
@@ -357,7 +357,7 @@ async function viewAssetFrames(args: Args, ctx: AgentContext): Promise<unknown> 
   const total = Math.max(1, asset.durationInFrames);
   const frames = pickFrames(args, total, fps, asset.kind === 'video' || asset.kind === 'gif' ? DEFAULT_ASSET_SCAN : 1);
   const state = assetPreviewState(base, asset, track);
-  const note = `源资产「${asset.name}」${frames.length} 帧（f${frames.join(', f')}，共 ${total}）——单独预览，未合成到时间线`;
+  const note = `source assets${asset.name}」${frames.length} frame(f${frames.join(', f')}, a total of ${total})——Preview alone, not combined into the timeline`;
   return renderStills(state, frames, note);
 }
 

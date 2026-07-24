@@ -208,7 +208,7 @@ export async function kvDel(key: string): Promise<void> {
   await ready();
   const requireSharedDelete = canSync() && isProjectDocumentKey(key);
   if (!remoteCache) {
-    if (requireSharedDelete) throw new Error('共享工程数据库暂时不可用，工程未删除');
+    if (requireSharedDelete) throw new Error('The shared project database is temporarily unavailable and the project has not been deleted.');
     await localDel(key);
     return;
   }

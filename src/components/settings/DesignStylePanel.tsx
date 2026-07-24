@@ -19,9 +19,9 @@ interface DesignStylePanelProps {
 
 // zh labels for the canonical roles; any other (free-form) role shows its own name.
 const COLOR_LABEL: Record<string, string> = {
-  primary: '主色', secondary: '辅色', accent: '强调色', background: '背景', text: '文字',
+  primary: 'main color', secondary: 'secondary color', accent: 'accent color', background: 'background', text: 'text',
 };
-const FONT_LABEL: Record<string, string> = { heading: '标题字体', body: '正文字体' };
+const FONT_LABEL: Record<string, string> = { heading: 'Title font', body: 'body font' };
 
 const EMPTY: DesignStyle = { colors: [], fonts: [] };
 
@@ -37,13 +37,13 @@ const pick = (s: DesignStyle, roles: string[]): string | undefined => {
   return undefined;
 };
 
-/** 设计风格编辑器（manage_design_style）——预设库 + 配色/字体/品牌指引，
- * 本地草稿即时预览,「应用到工程」一次性提交(单条历史)。 */
+/** Design Style Editor (manage_design_style)——Preset library + color matching/font/brand guidelines,
+ * Instant preview of local drafts,"Apply to Project" one-time submission(Single history)。 */
 export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelProps) {
   const t = useT();
   const [draft, setDraft] = useState<DesignStyle>(style ?? EMPTY);
 
-  // "我的风格" — the user's own saved-style library (a GLOBAL personal
+  // "My style" — the user's own saved-style library (a GLOBAL personal
   // library, not scoped to this project).
   const [owned, setOwned] = useState<OwnedStyle[]>([]);
   const [savingName, setSavingName] = useState<string | null>(null); // null = input hidden
@@ -116,8 +116,8 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
     setDraft((d) => ({ ...d, fonts: upsert(d.fonts, role, family, (f) => ({ family: f, role })) }));
 
   // roles are free-form (e.g. "accent copper", "Chinese heading", …) — show the
-  // style's own free-form roles first, then EVERY canonical role in fixed order. 规范
-  // 角色位置恒定:空角色首次赋值若按「draft 在前」推导会当场跳行(配合 upsert 原地替换)。
+  // style's own free-form roles first, then EVERY canonical role in fixed order. canonical
+  // The character position is constant: If the first assignment of an empty character is performed by "draft first" derivation, the line will be skipped on the spot (cooperating with upsert to replace it in place).
   const colorRoles = union(draft.colors.map((c) => c.role).filter((r) => !COLOR_ROLES.includes(r)), COLOR_ROLES);
   const fontRoles = union(draft.fonts.map((f) => f.role).filter((r) => !FONT_ROLES.includes(r)), FONT_ROLES);
 
@@ -136,23 +136,23 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
   return (
     <div onClick={onClose} style={backdrop}>
       <div onClick={(e) => e.stopPropagation()} style={card}>
-        {/* header（窄 popover：图标 + 标题 + 关闭，长副标题在 352 宽放不下，去掉） */}
+        {/* header(narrow popover:icon + Title + Close, long subtitle in 352 If it cannot be relaxed, remove it) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: `0.5px solid ${theme.border}` }}>
           <span style={{ color: primary, lineHeight: 0 }}><Icon name="palette" size={16} /></span>
-          <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{t('设计风格')}</span>
-          <button onClick={onClose} title={t('关闭')} style={iconBtn}><Icon name="x" size={15} /></button>
+          <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{t('design style')}</span>
+          <button onClick={onClose} title={t('close')} style={iconBtn}><Icon name="x" size={15} /></button>
         </div>
 
         <div style={{ padding: '12px 12px 14px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* 风格选择器：紧凑「缩略图 64×36 + 名 12px」行、
-              11px/500 暗色区块标题、选中橙点、顶部「无」卡 */}
+          {/* Style selector: compact thumbnail 64×36 + name 12px"OK,
+              11px/500 Dark block title, selected orange dot, top "None" card */}
           <section>
-            <div style={sectionTitle}>{t('选择 MG 动画的视觉风格')}</div>
+            <div style={sectionTitle}>{t('Choose MG animation visual style')}</div>
             <div style={styleList}>
-              <StyleRow name={t('无')} selected={isEmpty(draft)} onClick={() => { setDraft(EMPTY); setSelectedOwnedId(null); }} />
+              <StyleRow name={t('None')} selected={isEmpty(draft)} onClick={() => { setDraft(EMPTY); setSelectedOwnedId(null); }} />
             </div>
 
-            <div style={{ ...sectionTitle, marginTop: 12 }}>{t('预设')}</div>
+            <div style={{ ...sectionTitle, marginTop: 12 }}>{t('Default')}</div>
             <div style={styleList}>
               {DESIGN_STYLE_PRESETS.map((p) => (
                 <StyleRow key={p.id} name={p.name} title={p.style.styleGuide}
@@ -165,11 +165,11 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
             {owned.length > 0 && (
               <>
                 <div style={{ ...sectionTitle, marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span>{t('我的风格')}</span>
+                  <span>{t('my style')}</span>
                   {sceneOptions.length > 0 && (
                     <select value={sceneFilter} onChange={(event) => setSceneFilter(event.target.value)}
                       style={{ ...textInput, marginLeft: 'auto', width: 128, padding: '4px 6px' }}>
-                      <option value="">{t('全部场景')}</option>
+                      <option value="">{t('All scenes')}</option>
                       {sceneOptions.map((scenario) => <option key={scenario} value={scenario}>{scenario}</option>)}
                     </select>
                   )}
@@ -189,17 +189,17 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
 
           {selectedOwnedId && (
             <section>
-              <div style={sectionTitle}>{t('风格资料')}</div>
+              <div style={sectionTitle}>{t('style information')}</div>
               <div style={{ display: 'grid', gap: 7 }}>
                 <input value={metadataName} onChange={(event) => setMetadataName(event.target.value)}
-                  placeholder={t('风格名称')} style={textInput} />
+                  placeholder={t('style name')} style={textInput} />
                 <input value={metadataScenarios} onChange={(event) => setMetadataScenarios(event.target.value)}
-                  placeholder={t('适用场景，用逗号分隔')} style={textInput} />
+                  placeholder={t('Applicable scenarios, separated by commas')} style={textInput} />
                 <input value={metadataThumbnail} onChange={(event) => setMetadataThumbnail(event.target.value)}
-                  placeholder={t('缩略图 URL（仅用于风格选择器）')} style={textInput} />
+                  placeholder={t('thumbnail URL(only for style selectors)')} style={textInput} />
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={handleSaveMetadata} style={primaryBtn}>{t('保存资料')}</button>
-                  {metadataThumbnail && <button onClick={handleClearThumbnail} style={ghostBtn}>{t('清除缩略图')}</button>}
+                  <button onClick={handleSaveMetadata} style={primaryBtn}>{t('save data')}</button>
+                  {metadataThumbnail && <button onClick={handleClearThumbnail} style={ghostBtn}>{t('Clear thumbnails')}</button>}
                 </div>
               </div>
             </section>
@@ -207,7 +207,7 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
 
           {/* colors (roles are free-form; hex swatch only shows for #hex values) */}
           <section>
-            <div style={sectionTitle}>{t('配色')}</div>
+            <div style={sectionTitle}>{t('color matching')}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
               {colorRoles.map((role) => {
                 const value = colorOf(draft, role) ?? '';
@@ -225,7 +225,7 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
 
           {/* fonts (free-form roles) */}
           <section>
-            <div style={sectionTitle}>{t('字体')}</div>
+            <div style={sectionTitle}>{t('font')}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
               {fontRoles.map((role) => (
                 <FontField key={role} label={FONT_LABEL[role] ?? role} role={role}
@@ -236,44 +236,44 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
 
           {/* style guide */}
           <section>
-            <div style={sectionTitle}>{t('品牌指引（可选）')}</div>
-            <textarea value={draft.styleGuide ?? ''} placeholder={t('用一句话描述这个品牌的视觉倾向,AI 生成时会遵守。')}
+            <div style={sectionTitle}>{t('Brand guidelines (optional)')}</div>
+            <textarea value={draft.styleGuide ?? ''} placeholder={t('Describe the brand’s visual tendencies in one sentence,AI Will be respected when generating.')}
               onChange={(e) => setDraft((d) => ({ ...d, styleGuide: e.target.value }))}
               style={{ ...textInput, minHeight: 54, resize: 'vertical', fontFamily: 'inherit' }} />
           </section>
 
           {/* live preview */}
           <section>
-            <div style={sectionTitle}>{t('预览')}</div>
+            <div style={sectionTitle}>{t('Preview')}</div>
       <div style={{ background: bg, color: fg, borderRadius: 4, padding: '20px 22px', border: `0.5px solid ${theme.border}` }}>
-              <div style={{ fontFamily: heading, fontSize: 26, fontWeight: 800, marginBottom: 6 }}>{t('标题示例 Heading')}</div>
-              <div style={{ fontFamily: body, fontSize: 14, opacity: 0.85, marginBottom: 12 }}>{t('正文示例:这段文字演示正文字体与文字颜色的搭配效果。')}</div>
+              <div style={{ fontFamily: heading, fontSize: 26, fontWeight: 800, marginBottom: 6 }}>{t('Title example Heading')}</div>
+              <div style={{ fontFamily: body, fontSize: 14, opacity: 0.85, marginBottom: 12 }}>{t('Text example:This text demonstrates the matching effect of text font and text color.')}</div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <span style={{ background: primary, color: bg, fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 6 }}>{t('主色按钮')}</span>
-                <span style={{ background: accent, color: bg, fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 6 }}>{t('强调')}</span>
+                <span style={{ background: primary, color: bg, fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 6 }}>{t('Main color button')}</span>
+                <span style={{ background: accent, color: bg, fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 6 }}>{t('emphasize')}</span>
               </div>
             </div>
           </section>
         </div>
 
-        {/* footer（窄 popover：按钮换行、内边距收紧） */}
+        {/* footer(narrow popover: Button wrapping, padding tightening) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', borderTop: `0.5px solid ${theme.border}` }}>
           {savingName !== null && (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input autoFocus value={savingName} placeholder={t('风格名称')}
+              <input autoFocus value={savingName} placeholder={t('style name')}
                 onChange={(e) => setSavingName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleSaveOwned(); if (e.key === 'Escape') setSavingName(null); }}
                 style={{ ...textInput, flex: 1 }} />
-              <button onClick={handleSaveOwned} style={primaryBtn}>{t('确定')}</button>
-              <button onClick={() => setSavingName(null)} style={ghostBtn}>{t('取消')}</button>
+              <button onClick={handleSaveOwned} style={primaryBtn}>{t('OK')}</button>
+              <button onClick={() => setSavingName(null)} style={ghostBtn}>{t('Cancel')}</button>
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <button onClick={() => { onApply(null); onClose(); }} style={{ ...ghostBtn, color: theme.textDim }}>{t('清除风格')}</button>
-            <button onClick={() => setSavingName('')} style={ghostBtn}>{t('保存为我的风格')}</button>
+            <button onClick={() => { onApply(null); onClose(); }} style={{ ...ghostBtn, color: theme.textDim }}>{t('clear style')}</button>
+            <button onClick={() => setSavingName('')} style={ghostBtn}>{t('Save as my style')}</button>
             <div style={{ flex: 1, minWidth: 8 }} />
-            <button onClick={onClose} style={ghostBtn}>{t('取消')}</button>
-            <button onClick={() => { onApply(draft); onClose(); }} style={primaryBtn}>{t('应用到工程')}</button>
+            <button onClick={onClose} style={ghostBtn}>{t('Cancel')}</button>
+            <button onClick={() => { onApply(draft); onClose(); }} style={primaryBtn}>{t('Apply to engineering')}</button>
           </div>
         </div>
       </div>
@@ -282,8 +282,8 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
 }
 
 /** replace IN PLACE / append the entry for `role`; drop it when the value is blank.
- * 必须原地替换而非删后追加:行序由 draft 顺序推导,挪位会让正在编辑的行跳走
- * (下拉选字体/输一个色值字符,该行立刻换位置)。 */
+ * Must be replaced in place rather than deleted and appended:Line order by draft sequential derivation,Shifting will cause the line being edited to jump away.
+ * (Drop down to select font/Enter a color value character,The row immediately changes its position)。 */
 function upsert<T extends { role: string }>(list: T[], role: string, value: string, make: (v: string) => T): T[] {
   const at = list.findIndex((x) => x.role === role);
   if (!value.trim()) return at === -1 ? list : list.filter((x) => x.role !== role);
@@ -294,8 +294,8 @@ function upsert<T extends { role: string }>(list: T[], role: string, value: stri
 const isEmpty = (s: DesignStyle): boolean => s.colors.length === 0 && s.fonts.length === 0 && !s.styleGuide;
 const sameStyle = (a: DesignStyle, b: DesignStyle): boolean => JSON.stringify(a) === JSON.stringify(b);
 
-/** 一行风格选项（64×36 缩略图 + 12px 名 + 选中橙点，行 hover 白@3.5%）。
- *  无 colors → 画一条对角线占位（「无」卡）。 */
+/** One line of style options (64×36 thumbnail + 12px name + Select the orange dot, OK hover white@3.5%）。
+ *  None colors → Draw a diagonal placeholder ("None" card). */
 function StyleRow({ colors, thumbnailUrl, name, title, selected, onClick, onDelete }: {
   colors?: string[]; thumbnailUrl?: string; name: string; title?: string; selected: boolean; onClick: () => void; onDelete?: () => void;
 }) {
@@ -315,7 +315,7 @@ function StyleRow({ colors, thumbnailUrl, name, title, selected, onClick, onDele
         {selected && <span style={dot} />}
       </button>
       {onDelete && (
-        <button onClick={onDelete} title={t('删除此风格')}
+        <button onClick={onDelete} title={t('Delete this style')}
           style={{ ...iconBtn, position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', padding: 2 }}>
           <Icon name="x" size={11} />
         </button>
@@ -324,7 +324,7 @@ function StyleRow({ colors, thumbnailUrl, name, title, selected, onClick, onDele
   );
 }
 
-// 行样式：行高 ~44、缩略图 64×36 radius 4、名 12px、gap 10、pl 8、radius 4。
+// Row style: line height ~44, thumbnail 64×36 radius 4, name 12px, gap 10, pl 8, radius 4.
 const styleList: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 2 };
 const styleRowBtn: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10, width: '100%',
@@ -342,10 +342,10 @@ const noneThumb: React.CSSProperties = {
 const rowName: React.CSSProperties = { fontSize: 12, color: theme.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
 const dot: React.CSSProperties = { width: 8, height: 8, borderRadius: '50%', background: theme.accent, flexShrink: 0 };
 
-// ── 字体字段:可输可选(清单与 search_fonts/导出闸同源) ─────────
+// ── Font field: input and optional (the list has the same source as search_fonts/export gate) ─────────
 
-/** 输入任意 family,或从可加载清单下拉选。输入即过滤(family+中文别名);选项用
- * 各自字体渲染预览——google 子集按需拉、中文 woff2 走本地同源,开销可忽略。 */
+/** Enter any family,Or select from the loadable list drop-down. Filter as you enter(family+Chinese alias);For options
+ * Respective font rendering preview——google Subsets are pulled on demand, Chinese woff2 Use local origin,The overhead is negligible. */
 function FontField({ label, role, value, onChange }: {
   label: string; role: string; value: string; onChange: (v: string) => void;
 }) {
@@ -364,7 +364,7 @@ function FontField({ label, role, value, onChange }: {
   const q = value.trim();
   const options = useMemo(() => {
     const loadable = FONT_CATALOG.filter((f) => f.loadable);
-    // 空值或已选中清单项(重开想换别的)→ 全量;否则按输入过滤,无命中也回全量避免死胡同
+    // Empty value or selected list item (restart and want to change to another one) → Full amount; otherwise, filter by input, return to Full amount if no hit, to avoid dead ends
     if (!q || loadable.some((f) => f.family.toLowerCase() === q.toLowerCase())) return loadable;
     const hits = searchFontCatalog(q, FONT_CATALOG.length).filter((h) => h.loadable);
     return hits.length ? hits : loadable;
@@ -389,18 +389,18 @@ function FontField({ label, role, value, onChange }: {
     <div ref={boxRef} style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4 }}>
       <span title={role} style={{ fontSize: 11.5, color: theme.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t(label)}</span>
       <div style={{ position: 'relative' }}>
-        <input value={value} placeholder={t('如 Inter / 得意黑')} onFocus={() => setOpen(true)}
+        <input value={value} placeholder={t('Such as Inter / proudly black')} onFocus={() => setOpen(true)}
           onClick={() => setOpen(true)}
           onChange={(e) => { onChange(e.target.value); setOpen(true); }}
           onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}
           style={{ ...textInput, paddingRight: 26 }} />
-        <button type="button" aria-label={t('从清单选择字体')} onMouseDown={(e) => { e.preventDefault(); setOpen((v) => !v); }}
+        <button type="button" aria-label={t('Select font from list')} onMouseDown={(e) => { e.preventDefault(); setOpen((v) => !v); }}
           style={caretBtn}>▾</button>
       </div>
       {open && (
         <div style={fontMenu}>
-          {group(t('中文'), zh)}
-          {group(t('西文'), west)}
+          {group(t('Chinese'), zh)}
+          {group(t('Spanish'), west)}
         </div>
       )}
     </div>
@@ -423,8 +423,8 @@ const fontOption: React.CSSProperties = {
   padding: '6px 10px', fontSize: 13, textAlign: 'left',
 };
 
-// 结构：不是居中大 modal，而是 AI 面板左侧的锚定 popover。
-// backdrop 透明、仅作点击外部关闭；popover 左锚定、352 宽。
+// Structure: Instead of a big centered modal, there's an anchored popover to the left of the AI panel.
+// The backdrop is transparent and can only be closed by clicking outside; the popover is left anchored and 352 wide.
 const backdrop: React.CSSProperties = {
   position: 'fixed', inset: 0, background: 'transparent', zIndex: 60,
 };
@@ -434,7 +434,7 @@ const card: React.CSSProperties = {
   background: theme.panelAlt, color: theme.text, border: `0.5px solid ${theme.border}`, borderRadius: 4,
   boxShadow: `0 18px 48px ${themeAlpha.shadow(0.34)}, 0 1px 0 ${themeAlpha.ink(0.04)} inset`,
 };
-// 区块标题：11px / font-weight 500 / oklch(0.6) 暗灰 / pl 8。
+// Block title: 11px / font-weight 500 / oklch(0.6) dark gray / pl 8.
 const sectionTitle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: theme.textDim, paddingLeft: 8, marginBottom: 6, letterSpacing: 0.2 };
 const colorRow: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, background: theme.panelAlt,

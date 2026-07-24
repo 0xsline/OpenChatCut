@@ -3,22 +3,22 @@ import { resolveTrackId, trackAlias, type TimelineItem, type TimelineState } fro
 import { itemWindow, keptSegments, type EditOpts } from '../../transcript/edit';
 import { msToFrame, type TranscriptWord } from '../../transcript/types';
 
-// find_transcript — 参数面:query(必填) + asset / track / fuzzy /
-// includeWordTimestamps / limit。时间坐标查询器:定位一句话何时被说出,把
-// B-roll/MG/marker/overlay 锚到那一刻。timeline 模式尊重剪辑(删词不再命中);
-// asset 模式查资产 RAW 转写(库查询,无视剪辑)。词→帧换算与播放层共用
-// keptSegments 以保持词帧一致。markers 的 transcriptSegments 也复用
-// makeWordFrameMapper,两处锚定语义恒一致。
+// find_transcript — Parameter surface: query (required) + asset / track / fuzzy /
+// includeWordTimestamps/limit. Time coordinate query: Locate when a sentence was spoken, and
+// B-roll/MG/marker/overlay anchor to that moment. The timeline mode respects clipping (deleting words no longer hits);
+// Asset mode checks asset RAW transcription (library query, ignores clipping). Word→frame conversion is shared with the playback layer
+// keptSegments to keep word frames consistent. The transcriptSegments of markers are also reused
+// makeWordFrameMapper, the two anchoring semantics are always consistent.
 
 type Args = Record<string, unknown>;
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
-/** fuzzy 模式:相邻 query token 间最多容忍多少个非 query 词(填充词 "uh," 等)。 */
+/** fuzzy mode:adjacent query token How many non-conformities can be tolerated at most? query word(filler words "uh," Wait)。 */
 const FUZZY_MAX_SKIP = 3;
 
 export function normalize(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9一-鿿]+/g, ' ').trim();
+  return s.toLowerCase().replace(/[^a-z0-9one-Yi]+/g, ' ').trim();
 }
 
 /** Locate a phrase in a word list; returns the first covering [start, start+count) run. */
@@ -41,15 +41,15 @@ export function findPhrase(words: TranscriptWord[], query: string): { start: num
   return { start: s, count: e - s + 1 };
 }
 
-// ── 词→时间轴帧映射(与 TimelineComposition 播放层同一套 keptSegments 数学)──
+// ── Word→Timeline Frame Mapping (same set of keptSegments mathematics as TimelineComposition playback layer)──
 
-/** 一个 clip 的词级帧映射:gi → 时间轴 {fromFrame,toFrame};删掉/被压缩掉的词 → null。 */
+/** one clip word-level frame mapping:gi → timeline {fromFrame,toFrame};delete/compressed words → null。 */
 export function makeWordFrameMapper(item: TimelineItem, fps: number): (gi: number) => { fromFrame: number; toFrame: number } | null {
   const words = item.transcript ?? [];
   const deleted = new Set(item.deletedWordIdx ?? []);
   const opts: EditOpts = {
     maxGapFrames: item.silenceFrames, gapCapsMs: item.gapCapsMs, playOrder: item.transcriptPlayOrder,
-    window: itemWindow(item), // trim 掉的词不再产出帧位(与播放层一致)
+    window: itemWindow(item), // Trimmed words no longer produce frame bits (consistent with the playback layer)
   };
   const segs = keptSegments(words, deleted, fps, item.startFrame, opts);
   return (gi: number) => {
@@ -66,7 +66,7 @@ export function makeWordFrameMapper(item: TimelineItem, fps: number): (gi: numbe
   };
 }
 
-// ── 匹配器(默认连续匹配 / fuzzy token 滑窗)──
+// ── Matcher (default continuous matching / fuzzy token sliding window)──
 
 interface SearchWord { gi: number; text: string; norm: string; start: number; end: number }
 interface MatchPos { from: number; to: number } // positions in the SearchWord view
@@ -80,7 +80,7 @@ function searchView(words: TranscriptWord[], deleted?: Set<number>): SearchWord[
   return out;
 }
 
-/** 默认匹配:大小写/标点/空白不敏感的连续匹配,返回全部(不重叠)命中。 */
+/** Default match:Case/punctuation/Whitespace-insensitive continuation matching,Return to all(No overlap)hit. */
 function contiguousMatches(view: SearchWord[], query: string, limit: number): MatchPos[] {
   const q = normalize(query);
   if (!q) return [];
@@ -102,7 +102,7 @@ function contiguousMatches(view: SearchWord[], query: string, limit: number): Ma
   return out;
 }
 
-/** fuzzy:query 按空白切 token,词序列上按序滑窗匹配,token 间容忍 ≤FUZZY_MAX_SKIP 个填充词。 */
+/** fuzzy:query Cut by blank token,Sequential sliding window matching on word sequences,token tolerance ≤FUZZY_MAX_SKIP a filler word. */
 function fuzzyMatches(view: SearchWord[], query: string, limit: number): MatchPos[] {
   const tokens = normalize(query).split(' ').filter(Boolean);
   if (!tokens.length) return [];
@@ -129,7 +129,7 @@ function fuzzyMatches(view: SearchWord[], query: string, limit: number): MatchPo
   return out;
 }
 
-// ── find_transcript 执行器 ──
+// ── find_transcript executor ──
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
@@ -147,7 +147,7 @@ function parseFindOpts(args: Args): FindOpts | { error: string } {
   };
 }
 
-/** timeline 模式一条命中(帧坐标 + 可选 Words 块)。 */
+/** timeline pattern one hit(Frame coordinates + Optional Words block)。 */
 function timelineMatchRow(state: TimelineState, it: TimelineItem, view: SearchWord[], m: MatchPos, opts: FindOpts, mapper: ReturnType<typeof makeWordFrameMapper>) {
   const span = view.slice(m.from, m.to + 1);
   const first = span[0]!;
@@ -175,7 +175,7 @@ function timelineMatchRow(state: TimelineState, it: TimelineItem, view: SearchWo
   };
 }
 
-/** asset 模式:查单资产的 RAW 转写(无视剪辑),返回源内秒坐标 + 时间轴摆放位置。 */
+/** asset mode:Checking assets RAW Transcribe(Ignore clipping),Returns the second coordinate within the source + Time axis placement. */
 function findInAsset(assetQ: string, opts: FindOpts, ctx: AgentContext): unknown {
   const state = ctx.getState();
   const assets = ctx.getDoc().assets ?? state.assets ?? [];
@@ -186,7 +186,7 @@ function findInAsset(assetQ: string, opts: FindOpts, ctx: AgentContext): unknown
   const asset = cands[0]!;
   if (!asset.transcript?.length) return { error: `asset "${asset.name}" has no transcript` };
 
-  const view = searchView(asset.transcript); // RAW:asset 模式无视剪辑
+  const view = searchView(asset.transcript); // RAW:asset mode ignores clipping
   const found = (opts.fuzzy ? fuzzyMatches : contiguousMatches)(view, opts.query, opts.limit);
   const matches = found.map((m) => {
     const span = view.slice(m.from, m.to + 1);
@@ -209,7 +209,7 @@ function findInAsset(assetQ: string, opts: FindOpts, ctx: AgentContext): unknown
     : { found: false, query: opts.query, mode: 'asset', asset: { id: asset.id, name: asset.name } };
 }
 
-/** find_transcript 主入口(transcript-tools.ts 委托到这)。 */
+/** find_transcript main entrance(transcript-tools.ts Entrusted here)。 */
 export function execFindTranscript(args: Args, ctx: AgentContext): unknown {
   const opts = parseFindOpts(args);
   if ('error' in opts) return opts;
@@ -233,7 +233,7 @@ export function execFindTranscript(args: Args, ctx: AgentContext): unknown {
   const matches: NonNullable<ReturnType<typeof timelineMatchRow>>[] = [];
   for (const it of items) {
     if (matches.length >= opts.limit) break;
-    const view = searchView(it.transcript!, new Set(it.deletedWordIdx ?? [])); // timeline 模式尊重剪辑
+    const view = searchView(it.transcript!, new Set(it.deletedWordIdx ?? [])); // timeline mode respects clipping
     const found = (opts.fuzzy ? fuzzyMatches : contiguousMatches)(view, opts.query, opts.limit - matches.length);
     const mapper = makeWordFrameMapper(it, state.fps);
     for (const m of found) {
@@ -250,7 +250,7 @@ export function execFindTranscript(args: Args, ctx: AgentContext): unknown {
     query: opts.query,
     matchCount: matches.length,
     matches,
-    // 旧字段(向后兼容):首个命中平铺在顶层
+    // Old fields (backwards compatible): first hit tiles on top
     itemId: first.itemId,
     wordStart: first.wordStart,
     wordCount: first.wordCount,

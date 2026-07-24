@@ -1,10 +1,10 @@
-// 极简 connect:实现与 vite server.middlewares 一致的前缀路由语义,让 13 个 server 插件
-// 在 Electron 内嵌 server 里零改造挂载。语义要点(插件代码依赖,勿动):
-//   - use(route, fn):路径整段前缀匹配(/export 命中 /export/job,不命中 /exportx);
-//   - 命中时 req.url 去掉前缀(空则 '/',query 保留),originalUrl 保原值;
-//   - 链推进只靠显式 next()——处理器不调 next 即链止(异步处理器返回也不自动推进,
-//     否则 serveDiskFile 这类"promise 先归、pipe 后完"的处理器会被二次分发踩坏);
-//   - 处理器抛错/拒绝 → 未发头时兜 500。
+// Minimalist connect: implements prefix routing semantics consistent with vite server.middlewares, allowing 13 server plug-ins
+// Zero-modification mounting in Electron embedded server. Semantic points (plug-in code depends on it, don’t touch it):
+//   - use(route, fn): match the entire path prefix (/export hits /export/job, does not hit /exportx);
+//   - When hit, req.url removes the prefix (if empty, '/', query retains), and originalUrl retains its original value;
+//   - Chain advancement only relies on explicit next() - if the processor does not adjust next, the chain will stop (the asynchronous processor will not automatically advance when it returns.
+//     Otherwise, processors such as serveDiskFile that "return promise first and complete pipe later" will be trampled by secondary distribution);
+//   - Processor throws error/rejection → 500 when not issued.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 export type Middleware = (req: IncomingMessage, res: ServerResponse, next: () => void) => unknown;
@@ -16,7 +16,7 @@ export interface MiniConnect {
   handle(req: IncomingMessage, res: ServerResponse): void;
 }
 
-/** route 是否命中 path(整段前缀)。返回去前缀后的 path(未命中 null)。 */
+/** route Is it a hit? path(whole prefix). Return the prefixed path(miss null)。 */
 export function matchRoute(route: string, path: string): string | null {
   if (route === '/' || route === '') return path;
   if (path === route) return '/';
@@ -24,7 +24,7 @@ export function matchRoute(route: string, path: string): string | null {
   return null;
 }
 
-/** 命中后的 req.url:去前缀 path + 原 query。 */
+/** after hit req.url:remove prefix path + original query。 */
 export function rewriteUrl(url: string, route: string): string | null {
   const q = url.indexOf('?');
   const path = q === -1 ? url : url.slice(0, q);
@@ -68,7 +68,7 @@ export function createMiniConnect(onError: (err: unknown) => void): MiniConnect 
           } catch (err) {
             fail(res, err);
           }
-          return;  // 链止于当前处理器;推进只经它调 next()
+          return;  // The chain ends at the current processor; advancement is only through it calling next()
         }
         if (!res.headersSent) {
           res.statusCode = 404;

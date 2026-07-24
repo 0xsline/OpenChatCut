@@ -81,7 +81,7 @@ function reframeAt(curve: NonNullable<ZoomEffect['reframeCurve']>, f: number): Z
   return null;
 }
 
-/** 插件缩放曲线:0..1 归一化包络,整段 clip 线性采样(点间 lerp)。 */
+/** Plug-in scaling curve:0..1 normalized envelope,whole paragraph clip linear sampling(between points lerp)。 */
 export function sampleEnvelope(env: number[], t: number): number {
   if (env.length === 1) return env[0];
   const x = clamp01(t) * (env.length - 1);
@@ -102,7 +102,7 @@ export function zoomAt(z: ZoomEffect, f: number, dur: number): ZoomState {
   const mag = z.magnification ?? 1.5;
   if (z.envelope && z.envelope.length >= 2) {
     const env = Math.max(0, sampleEnvelope(z.envelope, dur > 1 ? f / (dur - 1) : 1));
-    // env 可 >1(过冲弹跳);magnification 下限防翻转
+    // env can be >1 (overshoot bounce);magnification lower limit anti-flip
     return { magnification: Math.max(0.05, 1 + (mag - 1) * env), focalX, focalY };
   }
   const shape = z.shape ?? 'hold';

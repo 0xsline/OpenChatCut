@@ -15,8 +15,8 @@ export const TRACK_ORDER: TrackId[] = ['V2', 'V1', 'A1', 'A2'];
 /** An imported media file in the project's media pool. */
 export type MediaAssetKind = 'video' | 'image' | 'audio' | 'motion-graphic' | 'gif' | 'svg';
 
-/** ingest-time ASR state on a pool asset (「上传即转写」: ingest 落库后自动触发转写,
- * asset 标"转写完成/失败"). Drives the media-pool badge + track_progress readiness. */
+/** ingest-time ASR state on a pool asset ("Upload and transcribe": ingest Automatically trigger transcription after being dropped into the library,
+ * asset mark"Transcription completed/failed"). Drives the media-pool badge + track_progress readiness. */
 export type AssetTranscribeStatus = 'running' | 'done' | 'failed';
 
 export interface MediaAsset {
@@ -32,7 +32,7 @@ export interface MediaAsset {
   /** media-pool organization only; does not affect timeline clips */
   folderId?: string;
   favorite?: boolean;
-  /** ingest ASR (「上传即转写」): the asset's word-level source transcript.
+  /** ingest ASR ("Upload and transcribe"): the asset's word-level source transcript.
    * A clip created from this asset copies the transcript into item.transcript so
    * per-clip edits stay isolated from the asset master. Audio/video only. */
   transcript?: TranscriptWord[];
@@ -49,7 +49,7 @@ export interface MediaFolder {
   parentId?: string;
 }
 
-/** per-clip color/blur adjustments (CSS filter) — 特效(blur)/LUT(color) */
+/** per-clip color/blur adjustments (CSS filter) — Special effects(blur)/LUT(color) */
 export interface ClipFilters {
   /** 1 = normal */
   brightness?: number;
@@ -84,16 +84,16 @@ export type ZoomShape =
   | 'snap' | 'pulse' | 'whip-in';
 // zh labels: 4 base curves + extended library curves
 export const ZOOM_SHAPE_LABELS: Record<ZoomShape, string> = {
-  punch: '冲击',
-  hold: '推进拉回',
-  'slow-push': '慢推',
-  instant: '瞬时',
-  'zoom-out': '拉远',
-  'ease-in': '缓入推近',
-  bounce: '弹性推近',
-  snap: '快切推近',
-  pulse: '心跳脉冲',
-  'whip-in': '甩入推近',
+  punch: 'impact',
+  hold: 'push pull back',
+  'slow-push': 'push slowly',
+  instant: 'Instantaneous',
+  'zoom-out': 'Zoom out',
+  'ease-in': 'Ease in and push in',
+  bounce: 'elastic push closer',
+  snap: 'Fast cut and push closer',
+  pulse: 'heartbeat pulse',
+  'whip-in': 'throw in push close',
 };
 /** library display order */
 export const ZOOM_SHAPE_ORDER: readonly ZoomShape[] = [
@@ -111,16 +111,16 @@ export interface ZoomEffect {
   easeOutFrames?: number;
   /** sparse keyframes (__openchatcutReframeCurve); overrides the shape curve */
   reframeCurve?: ReframeCurveV1;
-  /** 插件缩放曲线:0..1(可到 1.5 过冲)包络,整段 clip 线性采样。
-   * 优先级:reframeCurve > envelope > shape。 */
+  /** Plug-in scaling curve:0..1(Available 1.5 overshoot)envelope,whole paragraph clip Linear sampling.
+   * priority:reframeCurve > envelope > shape。 */
   envelope?: number[];
-  /** 插件曲线显示名(角标/检查器);无 shape 时用 */
+  /** Plug-in curve display name(corner mark/inspector);None shape Used when */
   label?: string;
 }
 
 /** easing of a generic keyframe SEGMENT (this keyframe → the next): named CSS
  * curves or a cubic-bezier control tuple [x1,y1,x2,y2]. Default linear.
- * (PRD §4.5 "bezier 缓动";存储格式自定。) */
+ * (PRD §4.5 "bezier Ease";The storage format is customized.) */
 export type KeyframeEasing = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | [number, number, number, number];
 
 /** one generic transform keyframe. `frame` is the item-LOCAL edited frame
@@ -131,12 +131,12 @@ export interface Keyframe {
   easing?: KeyframeEasing;
 }
 
-/** the five keyframable properties (PRD §4.5: 位置/缩放/透明度/旋转可 K 帧) */
+/** the five keyframable properties (PRD §4.5: location/Zoom/Transparency/Rotation can K frame) */
 export type KeyframeProp = 'x' | 'y' | 'scale' | 'rotation' | 'opacity';
 /** per-prop sparse keyframe curves on an item (sorted by frame — reducer invariant) */
 export type ItemKeyframes = Partial<Record<KeyframeProp, Keyframe[]>>;
 
-/** per-clip visual transform (scale/position/rotation) — 缩放 tab */
+/** per-clip visual transform (scale/position/rotation) — zoom tab */
 export interface ClipTransform {
   /** 1 = 100% */
   scale?: number;
@@ -183,19 +183,19 @@ export interface TimelineItem {
    * for audio (edit_item fade, stored in seconds → frames). */
   fadeInFrames?: number;
   fadeOutFrames?: number;
-  /** static transform for visual clips (缩放/transform: scale, position, rotate) */
+  /** static transform for visual clips (Zoom/transform: scale, position, rotate) */
   transform?: ClipTransform;
-  /** generic transform keyframes (PRD §4.5 钢笔工具): per-prop curves in item-local
+  /** generic transform keyframes (PRD §4.5 pen tool): per-prop curves in item-local
    * edit frames. A keyframed prop overrides its static transform value; opacity
    * multiplies onto fades. Visual clips only. */
   keyframes?: ItemKeyframes;
-  /** color/blur adjustments for visual clips (特效/LUT) */
+  /** color/blur adjustments for visual clips (special effects/LUT) */
   filters?: ClipFilters;
   /** animated zoom (builtin:zoom) — shape curve or reframe keyframes */
   zoom?: ZoomEffect;
   /** per-clip WebGL effect stack (effects[]: builtin:fx-* / lut) */
   effects?: ClipEffect[];
-  /** playback speed (变速/dH rate): 1 = normal, 2 = 2× faster. Retiming
+  /** playback speed (variable speed/dH rate): 1 = normal, 2 = 2× faster. Retiming
    * keeps the source span, so durationInFrames scales by 1/rate. video/audio only. */
   playbackRate?: number;
   /** transcript-based editing: the clip's words + which are deleted (by index).
@@ -217,7 +217,7 @@ export interface TimelineItem {
    */
   gapCapsMs?: Record<string, number>;
   /**
-   * Playback order of SOURCE word indices (drag-reorder speech blocks in 文字稿).
+   * Playback order of SOURCE word indices (drag-reorder speech blocks in Transcript).
    * undefined = chronological 0..n-1. Indices still refer to `transcript[]` slots
    * (variants / gapCaps stay valid). Playback concatenates ranges in this order.
    */
@@ -328,29 +328,29 @@ export function isVisualTransition(type: TransitionType): type is GlslTransition
   return !isAudioTransition(type);
 }
 
-// zh labels for the transition library cards (资源库·转场·画面转场).
+// zh labels for the transition library cards (Resource Library·Transition·Screen Transition).
 // Shared by the inspector select + the resource-library grid.
 export const TRANSITION_LABELS: Record<TransitionType, string> = {
-  'anticipation-zoom': '推进转场',
-  'clean-line-wipe': '白色划线转场',
-  'cross-dissolve': '叠化转场',
-  'dip-to-black': '闪黑转场',
-  flash: '闪白转场',
-  'impact-shake': '冲击抖动转场',
-  'luma-blend': '叠加转场',
-  'organic-dissolve': '光溶转场',
-  'page-curl': '翻页转场',
-  'rack-focus': '焦点转场',
-  'soft-wipe': '柔化擦除转场',
-  'whip-pan': '甩镜转场',
-  'circle-wipe': '圆形擦除转场',
-  'radial-blur': '径向模糊转场',
-  'glitch-cut': '故障切换转场',
-  'dip-to-color': '闪色转场',
+  'anticipation-zoom': 'Promote transition',
+  'clean-line-wipe': 'White line transition',
+  'cross-dissolve': 'dissolve transition',
+  'dip-to-black': 'Flash to black transition',
+  flash: 'flash white transition',
+  'impact-shake': 'Shock shake transition',
+  'luma-blend': 'Overlay transition',
+  'organic-dissolve': 'Photodissolve transition',
+  'page-curl': 'Page turning transition',
+  'rack-focus': 'focus transition',
+  'soft-wipe': 'Soften wipe transition',
+  'whip-pan': 'Scene transition',
+  'circle-wipe': 'circular wipe transition',
+  'radial-blur': 'Radial blur transition',
+  'glitch-cut': 'failover transition',
+  'dip-to-color': 'flash transition',
   /** preset.name.trAudioCrossFade */
-  'audio-cross-fade': '音频交叉淡化',
+  'audio-cross-fade': 'audio crossfade',
   /** submit_shader-generated custom transition (per-item label in customLabel) */
-  'custom-shader': '自定义着色器转场',
+  'custom-shader': 'Custom shader transitions',
 };
 
 /** catalog display order + extended visual transitions. */
@@ -496,8 +496,8 @@ export function ratioLabel(width: number, height: number): string {
   return `${width / d}:${height / d}`;
 }
 
-/** text watermark overlay (updateWatermark — 应用内行为, 无精确签名,
- * shape 自定). A generic brand overlay burned into preview + export;
+/** text watermark overlay (updateWatermark — In-app behavior, No precise signature,
+ * shape Customized). A generic brand overlay burned into preview + export;
  * default disabled, NOT a paywall/free-tier gimmick. */
 export type WatermarkPosition = 'tl' | 'tr' | 'bl' | 'br';
 export interface Watermark {
@@ -534,12 +534,12 @@ export interface TimelineState {
    * Older docs may omit this; use `selectedIdsOf()`.
    */
   selectedIds?: string[];
-  /** captions overlay (字幕), rendered on top + burned into export */
+  /** captions overlay (subtitles), rendered on top + burned into export */
   captions?: CaptionsData | null;
   /** text watermark overlay (updateWatermark), rendered on top + burned into export */
   watermark?: Watermark;
-  /** 非内置 fx(插件/submit_shader)的可序列化 def,按 assetId 存。应用特效时快照,
-   * TimelineComposition 渲染前注册进 ALL_FX——刷新与无头导出因此自包含。 */
+  /** Not built-in fx(plug-in/submit_shader)serializable def,press assetId save. Snapshot when applying effects,
+   * TimelineComposition Register before rendering ALL_FX- Refresh and headless export are therefore self-contained. */
   fxDefs?: Record<string, SerializableFxDef>;
 }
 

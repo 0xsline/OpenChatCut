@@ -112,27 +112,27 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'manage_transcript',
-    description: '管理源转写的修正与翻译变体,不改时间轴(词的起止/帧位/词数/片段时长恒不变)。action(6 个):\n'
-      + '- fix：修正源转写。改错字→传 wordIndex 或 find(错词原文)+ text(正确文本),只改 word.text;改/合并说话人→传 from(现有标签,如 "A")+ to(新显示名,传已有标签即合并两位),只改 word.speaker。\n'
-      + '- retry_transcription：对该 clip 强制重跑 ASR(转写卡住/失败/想重转时),覆盖现有转写。\n'
-      + '- translation_create：把该转写整段翻成 lang,新建/覆盖一个译文变体(词级,共享源时间轴)。\n'
-      + '- translation_ensure：幂等——同 lang 变体已存在则复用,否则翻译新建。日常「翻译一下」优先用它。\n'
-      + '- translation_list：列出该 clip 的原文 + 所有译文变体(id/lang/词数)。\n'
-      + '- translation_read：读某个译文变体的词(传 lang / targetLanguage 选语言)。\n'
-      + '译文变体只承载译文;要在字幕里显示某语言,用 edit_captions 的 language_mode。',
+    description: 'Manage revisions and translation variants of source transcriptions,Do not change the timeline(Beginning and ending of words/Frame bit/Number of words/Clip duration remains unchanged)。action(6 a):\n'
+      + '- fix: Corrected source transcription. Correct typo→pass wordIndex or find(Wrong word in the original text)+ text(correct text),Only change word.text;change/merge speakers→pass from(Existing tags,Such as "A")+ to(New display name,Pass existing tags and merge two digits),Only change word.speaker。\n'
+      + '- retry_transcription: Right clip Forced rerun ASR(Transcription stuck/failed/When you want to transfer again),Overwrite existing transcription.\n'
+      + '- translation_create: Translate the entire transcribed paragraph into lang,New/Override a translation variant(word level,Share source timeline)。\n'
+      + '- translation_ensure: Idempotent - same as lang If the variant already exists, reuse it,Otherwise the translation is new. Give priority to using it for daily "translation".\n'
+      + '- translation_list: List the clip original text + All translation variations(id/lang/Number of words)。\n'
+      + '- translation_read: Read a word in a certain translation variant(pass lang / targetLanguage Select language)。\n'
+      + 'Translation variants only carry translations;To display a certain language in subtitles,use edit_captions of language_mode。',
     input_schema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['fix', 'retry_transcription', 'translation_create', 'translation_ensure', 'translation_list', 'translation_read'], description: '见描述:改错字/说话人、重转、建/保证/列/读译文变体。' },
-        itemId: { type: 'string', description: '目标 clip 的 item id;省略则取该 track 上第一个带转写的音/视频 clip。' },
-        track: { type: 'string', description: 'itemId 省略时,用 track 别名/稳定 id 定位(默认 A1)。' },
-        wordIndex: { type: 'number', description: 'fix 改错字:要修正的词下标(与 find 二选一)。' },
-        find: { type: 'string', description: 'fix 改错字:错词原文,精确匹配一个词(与 wordIndex 二选一)。' },
-        text: { type: 'string', description: 'fix 改错字:修正后的正确文本。' },
-        from: { type: 'string', description: 'fix 改说话人:要重命名的现有说话人标签(如 "A"/"B")。' },
-        to: { type: 'string', description: 'fix 改说话人:新显示名;传一个已存在的标签即合并两位说话人(如 "B"→"A")。' },
-        lang: { type: 'string', description: 'translation_create/ensure:目标语言(如 "English"/"中文"/"日本語");translation_read:要读的变体语言。' },
-        targetLanguage: { type: 'string', description: 'translation_read:要读的译文语言(lang 的别名)。' },
+        action: { type: 'string', enum: ['fix', 'retry_transcription', 'translation_create', 'translation_ensure', 'translation_list', 'translation_read'], description: 'see description:Correct typo/speaker, retransmission, reconstruction/guarantee/Column/Read translation variations.' },
+        itemId: { type: 'string', description: 'target clip of item id;If omitted, take this track on the first transliterated sound/video clip。' },
+        track: { type: 'string', description: 'itemId When omitted,use track Alias/stable id Positioning(Default A1)。' },
+        wordIndex: { type: 'number', description: 'fix Correct typo:subscript of the word to be corrected(with find Choose one)。' },
+        find: { type: 'string', description: 'fix Correct typo:Wrong word in the original text,match a word exactly(with wordIndex Choose one)。' },
+        text: { type: 'string', description: 'fix Correct typo:Corrected text.' },
+        from: { type: 'string', description: 'fix Change speaker:Existing speaker label to be renamed(Such as "A"/"B")。' },
+        to: { type: 'string', description: 'fix Change speaker:New display name;Passing an existing label merges two speakers(Such as "B"→"A")。' },
+        lang: { type: 'string', description: 'translation_create/ensure:target language(Such as "English"/"Chinese"/"Japanese");translation_read:Variant language to read.' },
+        targetLanguage: { type: 'string', description: 'translation_read:Translation language to read(lang alias)。' },
       },
       required: ['action'],
     },
@@ -345,7 +345,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       }
     }
     case 'find_transcript':
-      // 参数面(asset/fuzzy/includeWordTimestamps/limit)+ 全工程搜索:transcript-find.ts。
+      // Parameter surface (asset/fuzzy/includeWordTimestamps/limit) + full project search: transcript-find.ts.
       return execFindTranscript(args, ctx);
     case 'clean_script': {
       // Whole-track batch: clean every

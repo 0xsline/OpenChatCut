@@ -1,6 +1,6 @@
-// 播放头绘制机(逐字搬自 Timeline.tsx):frameupdate → rAF 合帧直绘播放头线
-// (GPU transform)与 ~12fps 节流的时码文本;Player 实例看门狗(预览重挂即重订监听,
-// 走针冻结的根因修复);播放头断点续播(节流持久化 + 项目附着后一次性恢复)。
+// Playhead drawing machine (imported verbatim from Timeline.tsx): frameupdate → rAF frame straight drawing playhead line
+// (GPU transform) timecode text with ~12fps throttling; Player instance watchdog (preview hang and resubmit listening,
+// The root cause of needle freezing has been fixed); the playback head resumes playback at breakpoints (throttle persistence + one-time recovery after project attachment).
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { loadPlayhead, savePlayhead } from '../../persist/sessionPrefs';
@@ -53,7 +53,7 @@ export function usePlayheadPaint({ playerRef, projectId, fps, total, px }: Playh
   useEffect(() => {
     let raf = 0;
     let detach: (() => void) | null = null;
-    let attached: unknown = null; // 当前监听器挂在哪个 Player 实例上
+    let attached: unknown = null; // Which Player instance the listener is currently hung on
     const attachTo = (player: NonNullable<typeof playerRef.current>) => {
       const flush = () => {
         paintRafRef.current = 0;
@@ -66,8 +66,8 @@ export function usePlayheadPaint({ playerRef, projectId, fps, total, px }: Playh
         const pid = projectIdRef.current;
         if (pid) savePlayhead(pid, frame);
       };
-      // 硬刷新不跑 React 卸载清理,detach flush 靠不住——播放/拖动的 frameupdate
-      // 流里节流存一次(~800ms),暂停点/拖到哪都能在 refresh 后恢复。
+      // Hard refresh does not run React uninstall and clean, detach flush is unreliable - play/drag frameupdate
+      // The stream is throttled and saved once (~800ms), and it can be resumed after refresh wherever it is paused/draged.
       let lastHeadSave = 0;
       const onFrame = (event: { detail: { frame: number } }) => {
         pendingFrameRef.current = event.detail.frame;
@@ -109,22 +109,22 @@ export function usePlayheadPaint({ playerRef, projectId, fps, total, px }: Playh
         paintPlayheadRef.current(player.getCurrentFrame(), true);
       }
       return () => {
-        // Flush last head before detaching (refresh / project switch)。已销毁的
-        // player 会读到 0——写 0 等于删键,会把暂停时存的头位擦掉,只在 >0 时写。
+        // Flush last head before detaching (refresh / project switch). Destroyed
+        // The player will read 0 - writing 0 is equivalent to deleting the key, which will erase the header bit saved during pause and only write when >0.
         try { const f = player.getCurrentFrame(); if (f > 0) persistHead(f); } catch { /* ignore */ }
         player.removeEventListener('frameupdate', onFrame);
         player.removeEventListener('play', onPlay);
         player.removeEventListener('pause', onPause);
         player.removeEventListener('ended', onEnded);
-        // 必须清零:若实例切换时恰有 paint rAF 在途,只 cancel 不清零会让
-        // onFrame 永远以为"已有排程"而不再排 → 新实例走针/时间码永冻
-        // (pause 的 force 直绘不受影响,故症状=播放冻结、暂停能同步一次)。
+        // Must be cleared: If there is paint rAF in transit when the instance is switched, only cancel will not clear it.
+        // onFrame always thinks "already scheduled" and no longer schedules → New instance movement/timecode is permanently frozen
+        // (Pause's force direct drawing is not affected, so the symptoms = playback freeze and pause can be synchronized once).
         if (paintRafRef.current) { cancelAnimationFrame(paintRafRef.current); paintRafRef.current = 0; }
       };
     };
-    // 实例看门狗:Player 会随预览重挂(空时间线→占位符→再有内容 = 新实例),
-    // 一次性 attach 会把监听留在死实例上 → 播放时走针/时间码/播放态全部不动。
-    // 每帧比对实例身份,变了就重订(播放头修复的根因)。
+    // Instance watchdog: Player will rehang with preview (empty timeline → placeholder → more content = new instance),
+    // A one-time attach will leave the monitoring on the dead instance → the hand movement/timecode/playback state will not move during playback.
+    // Compare the instance identity every frame and reset it if it changes (the root cause of playhead repair).
     const tick = () => {
       const player = playerRef.current;
       if (player !== attached) {

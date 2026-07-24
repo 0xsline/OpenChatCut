@@ -91,7 +91,7 @@ function renderFx(def: FxDef, time: number, overrides?: Record<string, UniformVa
   const sample = getSampleFrame('fx');
   if (!sample || !ensureRuntime() || !rt || !glCanvas) return false;
   const u = { ...fxUniforms(def, overrides), u_time: time };
-  // cube LUT 卡片:数据没到就先不画(异步入口会 await ensureCube 再来)
+  // cube LUT card: Don’t draw until the data arrives (the asynchronous entry will wait ensureCube again)
   const lut3d = def.cube ? getCubeSync(def.cube) ?? undefined : undefined;
   if (def.cube && !lut3d) return false;
   if (def.pipeline) rt.renderFxChain(def.pipeline(u), sample);

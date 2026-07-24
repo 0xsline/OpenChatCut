@@ -17,8 +17,8 @@ export interface CaptionLayout {
   offsetYRatio?: number;
 }
 
-// Captions (字幕) = a styled singleton overlay burned onto the video, separate
-// from the 文字稿 editing surface. Words are paginated into "pages" and shown in
+// Captions = a styled singleton overlay burned onto the video, separate
+// from the manuscript editing surface. Words are paginated into "pages" and shown in
 // sync with playback (timings are TIMELINE ms once resolved).
 //
 // Captions mirror an audio item's transcript. When that item is
@@ -41,7 +41,7 @@ export interface CaptionsData {
   pacing: CaptionPacing;
   /** audio item whose (edited) transcript drives the captions */
   sourceItemId?: string | null;
-  /** MULTI-source merge — 字幕可汇总全部已转写轨: item ids whose (edited) transcripts
+  /** MULTI-source merge — Subtitles can be compiled into all transcribed tracks: item ids whose (edited) transcripts
    * merge into ONE time-ordered caption stream (see resolveCaptionWords in resolve.ts).
    * Empty/undefined → no effect, `sourceItemId` still drives (backward compatible). */
   sources?: string[];
@@ -54,7 +54,7 @@ export interface CaptionsData {
   offsetFrames?: number;
   /** bilingual: show a translated second line under the original */
   bilingual?: boolean;
-  /** translation language label (e.g. "中文") — display/regeneration hint */
+  /** translation language label (e.g. "Chinese") — display/regeneration hint */
   translationLang?: string;
   /** translated phrase cues (timeline ms), aligned to the source phrases */
   translation?: TranslatedCue[];
@@ -78,12 +78,12 @@ export interface CaptionsData {
   /** whole-block placement (edit_captions action=layout). Unset = the
    * template's default bottom-center. */
   layout?: CaptionLayout;
-  /** 多车道 source 列表(sourceScope.sources)。存在时渲染走多车道引擎;
-   * 与旧 `sources`(单流合并)互斥,写入时应清掉旧字段。 */
+  /** multiple lanes source list(sourceScope.sources). Rendering multi-lane engine when present;
+   * with the old `sources`(Single stream merge)mutually exclusive,Old fields should be cleared when writing. */
   sourceEntries?: CaptionSourceEntry[];
-  /** 多 source 屏幕分配策略(action=layout_policy);null/未设 → auto-stack。 */
+  /** Much source Screen allocation strategy(action=layout_policy);null/Not set → auto-stack。 */
   layoutPolicy?: CaptionLayoutPolicy | null;
-  /** per-source 渲染覆盖,键 = sourceEntries[].id(layout_policy.perSource) */
+  /** per-source Render overlay,key = sourceEntries[].id(layout_policy.perSource) */
   perSource?: Record<string, CaptionPerSource>;
 }
 
@@ -93,10 +93,10 @@ export interface CaptionWordOverride {
   forceBreak?: boolean;
 }
 
-// ── 多车道字幕(edit_captions 三兄弟 positions / layout_policy / source_update)──
-// 一个 captions item 可挂多个"逻辑 source"(不同轨/不同说话人/同轨的翻译变体),
-// 每个 source 是一条独立渲染车道:自己的词流、位置(锚点/槽位)、样式与可见性。
-// sourceEntries 存在时渲染走多车道引擎(lanes.ts);否则走原单流路径(字节不变)。
+// ── Multi-lane subtitles (edit_captions three brothers positions / layout_policy / source_update)──
+// One captions item can be linked to multiple "logical sources" (translation variants of different tracks/different speakers/same track),
+// Each source is an independent rendering lane: its own word flow, position (anchor/slot), style and visibility.
+// When sourceEntries exists, the multi-lane engine (lanes.ts) is used for rendering; otherwise, the original single-stream path is used (bytes remain unchanged).
 
 /** One logical caption source = one render lane (source_set sources[] entry). */
 export interface CaptionSourceEntry {
@@ -144,8 +144,8 @@ export interface CaptionSlot {
 
 /** Per-source render knobs keyed by sourceId (layout_policy.perSource). */
 export interface CaptionPerSource {
-  /** 车道自己的每页词数上限(perSource.maxLines 的近似映射:本仓分页按词数,
-   * 无逐行排版引擎 → maxLines × 模板 wordsPerPage,自定近似并注明)。 */
+  /** Lane own word limit per page(perSource.maxLines Approximate mapping of:This warehouse is paginated by word count,
+   * No progressive layout engine → maxLines × Template wordsPerPage,Customize approximation and indicate)。 */
   maxLines?: number;
 }
 
@@ -166,7 +166,7 @@ const LINGER_MS = 1500;
 // wordOverrides' forceBreak (src/captions/resolve.ts). Optional + defaults to
 // none, so existing callers (translate.ts, no-override render) stay unaffected.
 // `maxCharsPerLine` (optional) switches phrase pacing to the content-aware
-// segmenter (segmenter.ts, 断点打分); unset → 旧逻辑逐字节不变。
+// segmenter (segmenter.ts, breakpoint scoring); unset → the old logic remains unchanged byte by byte.
 export function paginate(words: TranscriptWord[], pacing: CaptionPacing, maxPhraseWords = MAX_PHRASE_WORDS, breakBefore?: Set<number>, maxCharsPerLine?: number): CaptionPage[] {
   if (pacing === 'word') return words.map((w) => ({ words: [w], start: w.start, end: w.end }));
   if (maxCharsPerLine !== undefined) return paginateContentAware(words, maxPhraseWords, breakBefore, maxCharsPerLine);
@@ -177,7 +177,7 @@ export function paginate(words: TranscriptWord[], pacing: CaptionPacing, maxPhra
     cur = [];
   };
   for (let i = 0; i < words.length; i++) {
-    if (breakBefore?.has(i) && cur.length) flush(); // forceBreak: 在该词前另起一页
+    if (breakBefore?.has(i) && cur.length) flush(); // forceBreak: Start a new page before this word
     cur.push(words[i]);
     const next = words[i + 1];
     const bigGap = next ? next.start - words[i].end > GAP_MS : false;
@@ -187,9 +187,9 @@ export function paginate(words: TranscriptWord[], pacing: CaptionPacing, maxPhra
   return pages;
 }
 
-// 内容感知分页(P1-#3):forceBreak 仍最高优先——先按 breakBefore 切成硬块,再在
-// 每块内跑 segmentWords(标点/句末/CJK 助词/孤词打分回退断行)。仅当
-// 调用方显式给 maxCharsPerLine 才走这里;21 个预设默认不传,行为不变(逐预设启用留后续)。
+// Content-aware paging (P1-#3): forceBreak still has the highest priority - press breakBefore first to cut into hard pieces, and then
+// Run segmentWords (punctuation/end of sentence/CJK particle/orphan word scoring, fallback and line break) in each block. only if
+// The caller must explicitly provide maxCharsPerLine before going here; 21 presets are not passed by default, and the behavior remains unchanged (enabling presets one by one will be left for later).
 function paginateContentAware(words: TranscriptWord[], maxPhraseWords: number, breakBefore: Set<number> | undefined, maxCharsPerLine: number): CaptionPage[] {
   const pages: CaptionPage[] = [];
   const cuts = [...(breakBefore ?? [])].filter((i) => i > 0 && i < words.length).sort((a, b) => a - b);
@@ -236,10 +236,10 @@ export function activeTranslation(cues: TranslatedCue[], ms: number): Translated
   return null;
 }
 
-// 汉字/假名/全角区段:相邻两侧都是 CJK 时拼句不插空格(与 script 序列化同一启发)。
+// Kanji/kana/full-width sections: When the adjacent two sides are CJK, no spaces are inserted in the sentence (same inspiration as script serialization).
 const CJK = /[\u3000-\u30ff\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]/;
 
-/** 把一页词拼成整句文本:中文相邻不插空格,拉丁词间用空格。渲染层 wholeLine 与逐句编辑共用。 */
+/** Spell a page of words into a whole sentence of text:Do not insert adjacent spaces between Chinese characters,Use spaces between Latin words. render layer wholeLine Shared with sentence-by-sentence editing. */
 export function joinCaptionWords(ws: { text: string }[]): string {
   let out = '';
   for (const w of ws) {

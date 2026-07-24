@@ -42,9 +42,9 @@ function CaptionTrackBar({ options, track, onChange }: { options: Props['caption
   const t = useT();
   return (
     <div className="cc-captions-sourcebar">
-      <label htmlFor="cc-caption-track">{t('字幕轨道')}</label>
+      <label htmlFor="cc-caption-track">{t('subtitle track')}</label>
       <select id="cc-caption-track" className="cc-cap-select" value={track ?? ''} disabled={!options.length} onChange={(event) => onChange(event.target.value)}>
-        {!options.length && <option value="">{t('请先新建字幕轨道')}</option>}
+        {!options.length && <option value="">{t('Please create a new subtitle track first')}</option>}
         {options.map((option) => <option key={option.id} value={option.id}>{trackTitle(option)}</option>)}
       </select>
     </div>

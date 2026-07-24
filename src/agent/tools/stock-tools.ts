@@ -170,7 +170,7 @@ export const STOCK_TOOL_NAMES = new Set(STOCK_TOOL_SCHEMAS.map((tool) => tool.na
 
 const MAX_BATCH = 4;
 
-// URL 嗅探/命名/时长兜底/metadata 探测:见 ./stock-url-utils.ts(纯函数,拆文件守 500 行上限)
+// URL sniffing/naming/duration/metadata detection: see ./stock-url-utils.ts (pure function, open the file to comply with the 500-line limit)
 
 const newId = (): string =>
   (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -277,7 +277,7 @@ async function registerMediaUrl(
       success: false,
       error: opts.type === 'effect' || opts.type === 'transition'
         ? `type=${opts.type} is not an OpenChatCut media-pool asset`
-        : '无法从 URL 识别媒体类型，请传 type: video|image|audio|gif|svg|motion-graphic',
+        : 'Unable to access from URL To identify the media type, please pass type: video|image|audio|gif|svg|motion-graphic',
       url,
     };
   }
@@ -444,13 +444,13 @@ async function execSearchStockMedia(args: Args): Promise<unknown> {
 
   try {
     const res = await fetch(`/api/stock-search?${params.toString()}`);
-    if (!res.ok) return { error: `素材库搜索失败 (${res.status})`, results: [] };
+    if (!res.ok) return { error: `Library search failed (${res.status})`, results: [] };
     const body = await res.json() as StockSearchResponse;
     if (!body.configured) {
       return {
         error: kind === 'audio' || kind === 'music'
-          ? '未配置音频素材库 API key（FREESOUND_API_KEY），可改用内置音效库或 download_media / push_asset 直接导入 URL'
-          : '未配置素材搜索凭据（PEXELS_API_KEY / PIXABAY_API_KEY / UNSPLASH_ACCESS_KEY / FIRECRAWL_API_KEY），可改用 download_media / push_asset 直接导入 URL',
+          ? 'Audio library not configured API key（FREESOUND_API_KEY), you can use the built-in sound effects library instead or download_media / push_asset Direct import URL'
+          : 'Asset search credentials not configured (PEXELS_API_KEY / PIXABAY_API_KEY / UNSPLASH_ACCESS_KEY / FIRECRAWL_API_KEY), can be used instead download_media / push_asset Direct import URL',
         results: [],
         warnings: body.warnings ?? [],
       };

@@ -47,11 +47,11 @@ function selectorToEntry(sel: Record<string, unknown>, s: TimelineState): Captio
   const vKind = str(variantObj?.variantKind ?? sel.variantKind);
   const vLang = str(variantObj?.languageCode ?? sel.languageCode);
   if (vKind || vLang) {
-    if (vKind && vKind !== 'translation') return { error: `variantKind "${vKind}" 不支持(仅 translation)` };
-    if (!vLang) return { error: 'variant 需要 languageCode(翻译目标语言)' };
+    if (vKind && vKind !== 'translation') return { error: `variantKind "${vKind}" Not supported(only translation)` };
+    if (!vLang) return { error: 'variant need languageCode(Translate target language)' };
     const item = s.items.find((it) => it.id === itemId);
     if (!item?.variants || !findVariantByLang(item.variants, vLang, 'translation')) {
-      return { error: `item ${itemId.slice(0, 8)} 上没有 "${vLang}" 翻译变体 — 先 manage_transcript translation_ensure` };
+      return { error: `item ${itemId.slice(0, 8)} There is no "${vLang}" Translation variants — first manage_transcript translation_ensure` };
     }
     entry.variant = { variantKind: 'translation', languageCode: vLang };
   }
@@ -91,7 +91,7 @@ export function sourceList(c: CaptionsData, s: TimelineState): Result {
       itemId: it.id, track: trackAlias(s, it.track), name: it.name,
       translations: (it.variants ?? []).filter((v) => v.kind === 'translation').map((v) => v.lang),
     })),
-    note: 'auto-stack 里 sources 自上而下按列表序渲染(第一个在最上);per-source 摆位/样式用 positions / source_update。',
+    note: 'auto-stack inside sources Top-down rendering in list order(First one on top);per-source Positioning/For style positions / source_update。',
   };
 }
 
@@ -99,7 +99,7 @@ export function sourceList(c: CaptionsData, s: TimelineState): Result {
 export function sourceSet(json: Record<string, unknown>, c: CaptionsData, ctx: AgentContext, s: TimelineState): Result {
   if (json.sourceScope === null || json.mode === 'clear') {
     ctx.commands.updateCaptions({ sources: undefined, sourceEntries: undefined, layoutPolicy: undefined, perSource: undefined, sourceMode: 'item' });
-    return { ok: true, sourceMode: 'item', sources: null, note: 'cleared — 回到单源 sourceItemId' };
+    return { ok: true, sourceMode: 'item', sources: null, note: 'cleared — Back to single source sourceItemId' };
   }
   if (str(json.mode) === 'timeline') {
     ctx.commands.updateCaptions({ sourceMode: 'timeline', sources: undefined, sourceEntries: undefined });
@@ -119,7 +119,7 @@ export function sourceSet(json: Record<string, unknown>, c: CaptionsData, ctx: A
   return {
     ok: true, sources: normalized.map((e, i) => entryRow(e, i, s)),
     wordCount: resolveCaptionWords({ ...c, ...patch }, s.items, s.fps).length,
-    note: 'auto-stack:列表第一个渲染在最上。',
+    note: 'auto-stack:The first item in the list is rendered on top.',
   };
 }
 
@@ -129,7 +129,7 @@ export function sourceAdd(json: Record<string, unknown>, c: CaptionsData, ctx: A
   const e = selectorToEntry(sel, s);
   if ('error' in e) return { error: `source_add: ${e.error}` };
   const cur = ensureEntries(c, s);
-  // 同 item+variant 已在 scope → 幂等不重复
+  // The same item+variant is already in scope → idempotent without duplication
   if (cur.some((x) => x.itemId === e.itemId && (x.variant?.languageCode ?? '') === (e.variant?.languageCode ?? ''))) {
     return { ok: true, sources: cur.map((x, i) => entryRow(x, i, s)), note: 'already in scope (idempotent)' };
   }
@@ -147,7 +147,7 @@ export function sourceRemove(json: Record<string, unknown>, c: CaptionsData, ctx
   if ('error' in (m as object)) return m as Result;
   const drop = new Set(m as number[]);
   const next = normalizeCaptionSourceEntries(cur.filter((_, i) => !drop.has(i)));
-  // 删到最后一个时回落到单源模式。
+  // Return to single source mode when deleting the last one.
   ctx.commands.updateCaptions({ sourceEntries: next.length ? next : undefined, sources: undefined, sourceMode: 'item' });
   return { ok: true, sources: next.length ? next.map((x, i) => entryRow(x, i, s)) : null };
 }

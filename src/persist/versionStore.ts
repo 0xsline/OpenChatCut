@@ -1,5 +1,5 @@
-// 版本历史(/api/versions):按工程存的具名快照列表,恢复时复用
-// migrateProjectDoc 校验。与 projectStore 共用本机服务端 KV。
+// Version history (/api/versions): List of named snapshots saved by project, reused during recovery
+// migrateProjectDoc verification. Share native server KV with projectStore.
 import { migrateProjectDoc } from './projectStore';
 import { kvGet as idbGet, kvSet as idbSet } from './sharedKv';
 import type { ProjectDoc } from '../editor/types';
@@ -13,7 +13,7 @@ export interface ProjectVersion {
   doc: ProjectDoc;
 }
 
-// 边界校验:持久化数据不可信,先校验再用(id/name/createdAt + doc 经 migrateProjectDoc 规整)。
+// Boundary verification: Persistent data is not trustworthy and should be verified before use (id/name/createdAt + doc is regulated by migrateProjectDoc).
 function toValidVersion(v: unknown): { version: ProjectVersion; migrated: boolean } | null {
   if (!v || typeof v !== 'object') return null;
   const raw = v as Partial<ProjectVersion>;
@@ -40,7 +40,7 @@ async function readAll(projectId: string): Promise<ProjectVersion[]> {
   return versions;
 }
 
-/** 该工程的全部快照,最新在前。任何失败均返回空数组(不信任持久化数据)。 */
+/** All snapshots of the project,Newest first. Any failure returns an empty array(Don’t trust persistent data)。 */
 export async function listVersions(projectId: string): Promise<ProjectVersion[]> {
   try {
     return (await readAll(projectId)).sort((a, b) => b.createdAt - a.createdAt);
@@ -54,9 +54,9 @@ const newId = () =>
     ? crypto.randomUUID()
     : `v_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
 
-/** 保存当前工程文档为一个具名快照(前插,最新在前)。 */
+/** Save the current project document as a named snapshot(forward penetration,latest first)。 */
 export async function saveVersion(projectId: string, name: string, doc: ProjectDoc): Promise<ProjectVersion> {
-  const version: ProjectVersion = { id: newId(), name: name.trim() || '未命名版本', createdAt: Date.now(), doc };
+  const version: ProjectVersion = { id: newId(), name: name.trim() || 'unnamed version', createdAt: Date.now(), doc };
   const current = await readAll(projectId);
   await idbSet(versionsKey(projectId), [version, ...current]);
   return version;

@@ -1,4 +1,4 @@
-# Agent Skills Attribution / Agent Skills 来源说明
+# Agent Skills Attribution / Agent Skills Source statement
 
 The bundled Agent Skills in this directory are adapted from the official
 [ChatCut-Inc/agent-plugin](https://github.com/ChatCut-Inc/agent-plugin) project.
@@ -9,10 +9,10 @@ The upstream plugin identifies its license as `GPL-3.0-only`. This notice applie
 the adapted Agent Skills and their supporting files in this directory. Other parts of
 OpenChatCut and third-party dependencies remain subject to their own terms.
 
-本目录内置的 Agent Skills 基于官方
-[ChatCut-Inc/agent-plugin](https://github.com/ChatCut-Inc/agent-plugin) 项目进行改造。
-OpenChatCut 针对本地优先架构调整了技能结构、操作说明、工具映射、素材存储流程、
-MCP 接入方式和编辑器工作流。
+Built-in this directory Agent Skills Based on official
+[ChatCut-Inc/agent-plugin](https://github.com/ChatCut-Inc/agent-plugin) project for transformation.
+OpenChatCut Adjusted the skill structure, operation instructions, tool mapping, material storage process,
+MCP Access methods and editor workflow.
 
-原插件声明的许可证为 `GPL-3.0-only`。本说明适用于本目录中经过适配的 Agent Skills
-及其配套文件；OpenChatCut 的其他部分和第三方依赖分别遵循各自的许可条款。
+The license declared by the original plug-in is `GPL-3.0-only`. This description applies to adapted Agent Skills
+and its supporting documents;OpenChatCut Other parts and third-party dependencies are subject to their respective license terms.

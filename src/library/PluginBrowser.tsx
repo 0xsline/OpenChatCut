@@ -1,10 +1,10 @@
-// 扩展资源运行时预览；资源数据转换在 pluginResources。
+// Extended resource runtime preview; resource data conversion in pluginResources.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { sampleEnvelope } from '../editor/zoom';
 import { ensureSampleFrame, getSampleFrame, SAMPLE_H, SAMPLE_W } from '../gl/sampleFrames';
 import { theme } from '../theme';
 
-/** 插件缩放曲线:真样片 + 包络驱动缩放,hover 播 0→1(与内置 ZoomThumb 同观感) */
+/** Plug-in scaling curve:real sample + Envelope driven scaling,hover broadcast 0→1(with built-in ZoomThumb Same view) */
 export function EnvelopeThumb({
   envelope,
   magnification = 1.5,
@@ -28,7 +28,7 @@ export function EnvelopeThumb({
     const W = SAMPLE_W;
     const H = SAMPLE_H;
     const env = Math.max(0, sampleEnvelope(envelope, t));
-    // 略夸张倍率,卡片上更易读
+    // Slightly exaggerated magnification to make it easier to read on the card
     const peak = Math.max(magnification, 1.8);
     const scale = 1 + (peak - 1) * env;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -89,13 +89,13 @@ export function EnvelopeThumb({
   );
 }
 
-/** 插件条目预览图卡(pack.thumb 数据 URL / URL) */
+/** Plugin item preview card(pack.thumb data URL / URL) */
 export function PluginImgThumb({ src, name }: { src: string; name: string }) {
-  // impeccable-disable-next-line broken-image -- src 来自安装校验过的插件包(data:image/* 或 URL)
+  // impeccable-disable-next-line broken-image -- src comes from the installed and verified plug-in package (data:image/* or URL)
   return <img src={src} alt={name} draggable={false} style={{ width: '100%', height: '100%', minHeight: 56, objectFit: 'cover', borderRadius: 6, display: 'block' }} />;
 }
 
-/** 插件转场缩略图:名字首字(内置 TransitionThumb 只认注册表 GLSL 类型) */
+/** Plug-in transition thumbnail:initials(Built-in TransitionThumb Only recognize the registry GLSL Type) */
 export function PluginNameThumb({ name }: { name: string }) {
   return (
     <div style={{

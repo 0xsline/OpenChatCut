@@ -32,7 +32,7 @@ At the bottom of the panel:
   - **Auto-apply proposals** — When on, ordinary timeline proposals may apply automatically; generation / export tools still go through confirmation (skill guard).
 - **Proposal / confirmation card** — Structural edits and generation tools may show a review card (apply / reject) before changes land.
 - **+ button** — Upload reference files (images, videos, etc.) to include in your message.
-- **Skills / 技能 (book icon)** — Open the Skills picker below the chat input. Users can choose a preset Skill or one of their saved Skills to guide the AI with a reusable workflow for the current message. Saved Skills are user-owned and can be reused across projects. The picker also includes **Save this editing process as a Skill**, which inserts a prompt asking the AI to help capture the current workflow.
+- **Skills / Skills (book icon)** — Open the Skills picker below the chat input. Users can choose a preset Skill or one of their saved Skills to guide the AI with a reusable workflow for the current message. Saved Skills are user-owned and can be reused across projects. The picker also includes **Save this editing process as a Skill**, which inserts a prompt asking the AI to help capture the current workflow.
 - **Selection button** — Toggle selection mode. When active, the user can reference content by:
   - Clicking items on the timeline or in My Assets to reference specific clips/assets.
   - Dragging a box on the preview canvas to reference a screen region.
@@ -49,13 +49,13 @@ The video preview canvas. Shows a live preview of the timeline at the current pl
 
 Tabs that share one panel group (separate from the AI panel):
 
-- **My Assets** (ZH: "素材库") — The user's media pool. Shows uploaded, recorded, imported, and generated media. Users can drag assets from here onto the timeline. The **Upload** button opens local file / folder import.
+- **My Assets** (ZH: "Material library") — The user's media pool. Shows uploaded, recorded, imported, and generated media. Users can drag assets from here onto the timeline. The **Upload** button opens local file / folder import.
   - **Generation progress:** When AI generation tasks (video, image, music, etc.) are in progress, they appear in My Assets with a progress indicator. This is where users can check if a generation is still running or has completed.
   - **Generation failures:** If a generation fails, My Assets shows a failure status on the asset card. The user can ask the AI to regenerate.
   - **Bins:** Users can create bins/folders to organize assets.
 - **Library** — Built-in presets/effects/assets that can be browsed separately from the user's own assets.
 - **Templates** — Template browser when enabled.
-- **Transcript** (ZH: "文字稿" / ES: "Transcripción") — A text-based editing panel for talking head / interview footage. Users edit the video by editing text:
+- **Transcript** (ZH: "Transcript" / ES: "Transcripción") — A text-based editing panel for talking head / interview footage. Users edit the video by editing text:
   - Select and delete unwanted words/sentences to remove them from the timeline.
   - Drag text segments to reorder the video sequence.
   - While the agent edits, the result previews here live — deletions show struck through — and the user can fine-tune in this panel.

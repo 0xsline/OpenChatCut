@@ -1,5 +1,5 @@
-// 插件包纯校验(安装第一道门):schema/上限/GLSL token/cube 干跑/包络值域。
-// 不碰 WebGL/DOM — 真编译探针在 install.ts(浏览器侧)。tsx 可跑,进 npm test。
+// Pure verification of the plug-in package (the first door to install): schema/upper limit/GLSL token/cube dry run/envelope value range.
+// No touching of WebGL/DOM - real compilation probe is in install.ts (browser side). tsx can be run, enter npm test.
 import { parseCube } from '../gl/fx/cube';
 import {
   ITEM_ID_RE, PACK_ID_RE, PLUGIN_FORMAT, PLUGIN_LIMITS, PROP_KEY_RE,
@@ -17,78 +17,78 @@ const bytes = (s: string): number => new TextEncoder().encode(s).length;
 
 function checkName(errors: string[], at: string, v: unknown): void {
   if (!isStr(v) || !v.trim() || v.length > PLUGIN_LIMITS.maxNameLen) {
-    errors.push(`${at}: name 必须是 1..${PLUGIN_LIMITS.maxNameLen} 字符的字符串`);
+    errors.push(`${at}: name must be 1..${PLUGIN_LIMITS.maxNameLen} string of characters`);
   }
 }
 
 function checkProps(errors: string[], at: string, v: unknown): PluginNumberProp[] | undefined {
   if (v === undefined) return undefined;
   if (!Array.isArray(v) || v.length > PLUGIN_LIMITS.maxProps) {
-    errors.push(`${at}: props 必须是 ≤${PLUGIN_LIMITS.maxProps} 项的数组`);
+    errors.push(`${at}: props must be ≤${PLUGIN_LIMITS.maxProps} array of items`);
     return undefined;
   }
   const seen = new Set<string>();
   for (const [i, p] of v.entries()) {
     const where = `${at}.props[${i}]`;
-    if (!isObj(p)) { errors.push(`${where}: 必须是对象`); continue; }
-    if (!isStr(p.key) || !PROP_KEY_RE.test(p.key)) errors.push(`${where}: key 非法(${PROP_KEY_RE})`);
-    else if (seen.has(p.key)) errors.push(`${where}: key 重复 ${p.key}`);
+    if (!isObj(p)) { errors.push(`${where}: Must be an object`); continue; }
+    if (!isStr(p.key) || !PROP_KEY_RE.test(p.key)) errors.push(`${where}: key illegal(${PROP_KEY_RE})`);
+    else if (seen.has(p.key)) errors.push(`${where}: key Repeat ${p.key}`);
     else seen.add(p.key);
-    if (!isStr(p.label) || !p.label.trim()) errors.push(`${where}: label 缺失`);
+    if (!isStr(p.label) || !p.label.trim()) errors.push(`${where}: label Missing`);
     if (!isNum(p.default) || !isNum(p.min) || !isNum(p.max) || p.min > p.max) {
-      errors.push(`${where}: default/min/max 必须是有限数且 min≤max`);
+      errors.push(`${where}: default/min/max must be a finite number and min≤max`);
     }
-    if (p.step !== undefined && (!isNum(p.step) || p.step <= 0)) errors.push(`${where}: step 必须 >0`);
+    if (p.step !== undefined && (!isNum(p.step) || p.step <= 0)) errors.push(`${where}: step Must >0`);
   }
   return v as PluginNumberProp[];
 }
 
 function checkFrag(errors: string[], at: string, frag: unknown, requiredTokens: string[]): void {
-  if (!isStr(frag) || !frag.trim()) { errors.push(`${at}: frag 缺失`); return; }
-  if (bytes(frag) > PLUGIN_LIMITS.maxFragBytes) errors.push(`${at}: frag 超过 ${PLUGIN_LIMITS.maxFragBytes / 1024}KB`);
+  if (!isStr(frag) || !frag.trim()) { errors.push(`${at}: frag Missing`); return; }
+  if (bytes(frag) > PLUGIN_LIMITS.maxFragBytes) errors.push(`${at}: frag exceed ${PLUGIN_LIMITS.maxFragBytes / 1024}KB`);
   for (const token of requiredTokens) {
-    if (!frag.includes(token)) errors.push(`${at}: frag 必须引用 ${token}`);
+    if (!frag.includes(token)) errors.push(`${at}: frag Must quote ${token}`);
   }
 }
 
-// data:image/* 内联(限长)或 同源路径/https;其余 scheme(javascript: 等)一律拒
+// data:image/* inline (limited length) or origin path/https; other schemes (javascript:, etc.) are rejected
 function checkThumb(errors: string[], at: string, v: unknown): void {
   if (v === undefined) return;
-  if (!isStr(v) || !v.trim()) { errors.push(`${at}: thumb 必须是非空字符串`); return; }
+  if (!isStr(v) || !v.trim()) { errors.push(`${at}: thumb Must be a non-empty string`); return; }
   if (v.startsWith('data:image/')) {
-    if (bytes(v) > PLUGIN_LIMITS.maxThumbBytes) errors.push(`${at}: thumb 超过 ${PLUGIN_LIMITS.maxThumbBytes / 1024}KB`);
+    if (bytes(v) > PLUGIN_LIMITS.maxThumbBytes) errors.push(`${at}: thumb exceed ${PLUGIN_LIMITS.maxThumbBytes / 1024}KB`);
     return;
   }
   if (!v.startsWith('/') && !v.startsWith('https://') && !v.startsWith('http://')) {
-    errors.push(`${at}: thumb 只允许 data:image/* 或 URL(/… | https://…)`);
+    errors.push(`${at}: thumb only allowed data:image/* or URL(/… | https://…)`);
   }
 }
 
 function checkItem(errors: string[], item: unknown, index: number): void {
   const at = `items[${index}]`;
-  if (!isObj(item)) { errors.push(`${at}: 必须是对象`); return; }
-  if (!isStr(item.id) || !ITEM_ID_RE.test(item.id)) errors.push(`${at}: id 非法(${ITEM_ID_RE})`);
+  if (!isObj(item)) { errors.push(`${at}: Must be an object`); return; }
+  if (!isStr(item.id) || !ITEM_ID_RE.test(item.id)) errors.push(`${at}: id illegal(${ITEM_ID_RE})`);
   checkName(errors, at, item.name);
   if (item.desc !== undefined && (!isStr(item.desc) || item.desc.length > PLUGIN_LIMITS.maxDescLen)) {
-    errors.push(`${at}: desc 超长(≤${PLUGIN_LIMITS.maxDescLen})`);
+    errors.push(`${at}: desc Extra long(≤${PLUGIN_LIMITS.maxDescLen})`);
   }
   checkThumb(errors, at, item.thumb);
   switch (item.type) {
     case 'mg-template': {
-      if (!isStr(item.code) || !item.code.trim()) errors.push(`${at}: code 缺失`);
-      else if (bytes(item.code) > PLUGIN_LIMITS.maxCodeBytes) errors.push(`${at}: code 超过 ${PLUGIN_LIMITS.maxCodeBytes / 1024}KB`);
+      if (!isStr(item.code) || !item.code.trim()) errors.push(`${at}: code Missing`);
+      else if (bytes(item.code) > PLUGIN_LIMITS.maxCodeBytes) errors.push(`${at}: code exceed ${PLUGIN_LIMITS.maxCodeBytes / 1024}KB`);
       for (const dim of ['width', 'height'] as const) {
         const v = item[dim];
-        if (v !== undefined && (!isNum(v) || v < 16 || v > 8192)) errors.push(`${at}: ${dim} 必须在 [16, 8192]`);
+        if (v !== undefined && (!isNum(v) || v < 16 || v > 8192)) errors.push(`${at}: ${dim} must be in [16, 8192]`);
       }
-      if (item.props !== undefined && !isObj(item.props)) errors.push(`${at}: props 必须是对象`);
+      if (item.props !== undefined && !isObj(item.props)) errors.push(`${at}: props Must be an object`);
       if (item.propSchema !== undefined) {
         if (!Array.isArray(item.propSchema) || item.propSchema.length > 32) {
-          errors.push(`${at}: propSchema 必须是 ≤32 项的数组`);
+          errors.push(`${at}: propSchema must be ≤32 array of items`);
         } else {
           for (const [i, s] of item.propSchema.entries()) {
             if (!isObj(s) || !isStr(s.key) || !isStr(s.type)) {
-              errors.push(`${at}.propSchema[${i}]: 需要 key/type 字符串`);
+              errors.push(`${at}.propSchema[${i}]: need key/type string`);
             }
           }
         }
@@ -99,7 +99,7 @@ function checkItem(errors: string[], item: unknown, index: number): void {
       checkFrag(errors, at, item.frag, ['u_outgoing', 'u_incoming', 'u_progress']);
       checkProps(errors, at, item.props);
       const d = item.defaultDurationFrames;
-      if (d !== undefined && (!isNum(d) || d < 2 || d > 300)) errors.push(`${at}: defaultDurationFrames 必须在 [2, 300]`);
+      if (d !== undefined && (!isNum(d) || d < 2 || d > 300)) errors.push(`${at}: defaultDurationFrames must be in [2, 300]`);
       return;
     }
     case 'fx': {
@@ -107,7 +107,7 @@ function checkItem(errors: string[], item: unknown, index: number): void {
       checkProps(errors, at, item.props);
       if (item.passes !== undefined) {
         if (!Array.isArray(item.passes) || item.passes.length < 1 || item.passes.length > 4) {
-          errors.push(`${at}: passes 必须是 1..4 段的数组`);
+          errors.push(`${at}: passes must be 1..4 array of segments`);
         } else {
           for (const [i, pass] of item.passes.entries()) checkFrag(errors, `${at}.passes[${i}]`, pass, []);
         }
@@ -115,52 +115,52 @@ function checkItem(errors: string[], item: unknown, index: number): void {
       return;
     }
     case 'lut': {
-      if (!isStr(item.cube) || !item.cube.trim()) { errors.push(`${at}: cube 缺失`); return; }
-      if (bytes(item.cube) > PLUGIN_LIMITS.maxCubeBytes) { errors.push(`${at}: cube 超过 ${PLUGIN_LIMITS.maxCubeBytes / 1024 / 1024}MB`); return; }
+      if (!isStr(item.cube) || !item.cube.trim()) { errors.push(`${at}: cube Missing`); return; }
+      if (bytes(item.cube) > PLUGIN_LIMITS.maxCubeBytes) { errors.push(`${at}: cube exceed ${PLUGIN_LIMITS.maxCubeBytes / 1024 / 1024}MB`); return; }
       try {
         parseCube(item.cube);
       } catch (e) {
-        errors.push(`${at}: cube 解析失败 — ${e instanceof Error ? e.message : String(e)}`);
+        errors.push(`${at}: cube Parsing failed — ${e instanceof Error ? e.message : String(e)}`);
       }
       return;
     }
     case 'zoom': {
       const env = item.envelope;
       if (!Array.isArray(env) || env.length < PLUGIN_LIMITS.minEnvelopePoints || env.length > PLUGIN_LIMITS.maxEnvelopePoints) {
-        errors.push(`${at}: envelope 必须是 ${PLUGIN_LIMITS.minEnvelopePoints}..${PLUGIN_LIMITS.maxEnvelopePoints} 个点`);
+        errors.push(`${at}: envelope must be ${PLUGIN_LIMITS.minEnvelopePoints}..${PLUGIN_LIMITS.maxEnvelopePoints} point`);
       } else if (!env.every((v) => isNum(v) && v >= 0 && v <= PLUGIN_LIMITS.maxEnvelopeValue)) {
-        errors.push(`${at}: envelope 值必须在 [0, ${PLUGIN_LIMITS.maxEnvelopeValue}]`);
+        errors.push(`${at}: envelope value must be within [0, ${PLUGIN_LIMITS.maxEnvelopeValue}]`);
       }
       const mag = item.magnification;
-      if (mag !== undefined && (!isNum(mag) || mag < 1 || mag > 16)) errors.push(`${at}: magnification 必须在 [1, 16]`);
+      if (mag !== undefined && (!isNum(mag) || mag < 1 || mag > 16)) errors.push(`${at}: magnification must be in [1, 16]`);
       return;
     }
     default:
-      errors.push(`${at}: 未知 type ${String(item.type)}`);
+      errors.push(`${at}: unknown type ${String(item.type)}`);
   }
 }
 
-/** 校验一份插件包 JSON(不可信输入)。全部通过才返回 ok。 */
+/** Verify a plug-in package JSON(untrusted input). Return after all passes ok。 */
 export function validatePack(v: unknown): ValidateResult {
   const errors: string[] = [];
-  if (!isObj(v)) return { ok: false, errors: ['插件包必须是 JSON 对象'] };
+  if (!isObj(v)) return { ok: false, errors: ['The plugin package must be JSON object'] };
   if (v.format !== PLUGIN_FORMAT) {
-    errors.push(`format 必须是 "${PLUGIN_FORMAT}"(当前仅支持该版本;未知 format 拒装)`);
+    errors.push(`format must be "${PLUGIN_FORMAT}"(Currently only this version is supported;unknown format Refusal to install)`);
   }
-  if (!isStr(v.id) || !PACK_ID_RE.test(v.id)) errors.push(`包 id 非法(${PACK_ID_RE})`);
+  if (!isStr(v.id) || !PACK_ID_RE.test(v.id)) errors.push(`package id illegal(${PACK_ID_RE})`);
   checkName(errors, 'pack', v.name);
-  if (!isStr(v.version) || !/^\d+\.\d+\.\d+$/.test(v.version)) errors.push('version 必须是 x.y.z');
-  if (v.author !== undefined && (!isStr(v.author) || v.author.length > PLUGIN_LIMITS.maxNameLen)) errors.push('author 超长');
-  if (v.description !== undefined && (!isStr(v.description) || v.description.length > PLUGIN_LIMITS.maxDescLen)) errors.push('description 超长');
+  if (!isStr(v.version) || !/^\d+\.\d+\.\d+$/.test(v.version)) errors.push('version must be x.y.z');
+  if (v.author !== undefined && (!isStr(v.author) || v.author.length > PLUGIN_LIMITS.maxNameLen)) errors.push('author Extra long');
+  if (v.description !== undefined && (!isStr(v.description) || v.description.length > PLUGIN_LIMITS.maxDescLen)) errors.push('description Extra long');
   if (!Array.isArray(v.items) || v.items.length < 1 || v.items.length > PLUGIN_LIMITS.maxItems) {
-    errors.push(`items 必须是 1..${PLUGIN_LIMITS.maxItems} 条`);
+    errors.push(`items must be 1..${PLUGIN_LIMITS.maxItems} Article`);
   } else {
     const ids = new Set<string>();
     for (const [i, item] of v.items.entries()) {
       checkItem(errors, item, i);
       const id = isObj(item) && isStr(item.id) ? item.id : null;
       if (id) {
-        if (ids.has(id)) errors.push(`items[${i}]: id 重复 ${id}`);
+        if (ids.has(id)) errors.push(`items[${i}]: id Repeat ${id}`);
         ids.add(id);
       }
     }
@@ -169,7 +169,7 @@ export function validatePack(v: unknown): ValidateResult {
   return { ok: true, pack: { ...v, format: PLUGIN_FORMAT } as unknown as PluginPack };
 }
 
-/** 单条内容的校验(供「导出为插件」/编辑器内建流使用) */
+/** Verification of single content(For "Export as plug-in"/Editor built-in stream usage) */
 export function validateItem(item: unknown): string[] {
   const errors: string[] = [];
   checkItem(errors, item, 0);

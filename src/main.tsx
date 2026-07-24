@@ -6,14 +6,14 @@ import { loadProjectFonts } from './fonts/googleFonts';
 import { hydratePlugins } from './plugins/store';
 import { initSkins } from './skins';
 
-// 渲染前注入皮肤变量并应用持久化皮肤,避免首帧闪默认色。
+// Inject skin variables and apply persistent skin before rendering to avoid flashing color in the first frame.
 initSkins();
 
 // Register local font faces; TimelineComposition loads used Google faces on demand.
 loadProjectFonts();
 
-// 已安装内容插件注册进运行时注册表(资源库/agent 可见)。时间线渲染不等它——
-// 应用过的内容已快照进 state,见 docs/plugin-system-design.md。
+// Installed content plug-ins are registered in the runtime registry (visible in the resource library/agent). Timeline rendering does not wait for it——
+// The applied content has been snapshotted into state, see docs/plugin-system-design.md.
 void hydratePlugins().catch(() => {});
 
 const root = document.getElementById('root');

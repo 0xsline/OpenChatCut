@@ -31,7 +31,7 @@ export function Divider({ onResize, orientation = 'vertical' }: { onResize: (del
         setActive(false);
         e.currentTarget.releasePointerCapture(e.pointerId);
       }}
-      title={t('拖动调整大小')}
+      title={t('Drag to resize')}
       style={{
         position: 'relative', zIndex: 20,
         width: horiz ? '100%' : 5, height: horiz ? 5 : '100%',
@@ -44,7 +44,7 @@ export function Divider({ onResize, orientation = 'vertical' }: { onResize: (del
       <span style={{
         position: 'absolute', pointerEvents: 'none',
         left: horiz ? 0 : 2, top: horiz ? 2 : 0,
-        // 可见线走 0.5px 发丝(Retina 上 1 物理像素);5px 命中区不变
+        // The visible line goes 0.5px a hair (1 physical pixel on Retina); the 5px hit area remains unchanged
         width: horiz ? '100%' : 0.5, height: horiz ? 0.5 : '100%',
         background: active ? theme.accent : hovered ? theme.borderLight : theme.border,
       }} />

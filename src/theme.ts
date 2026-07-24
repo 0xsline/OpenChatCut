@@ -1,27 +1,27 @@
-// Theme tokens。自换肤系统起(见 skins.ts),这里全部是 var(--cc-*)
-// 间接引用——真值在 skins.ts 的 SKINS 注册表(默认皮肤「石墨」,
-// 与旧 hex 逐值一致)。内联样式照旧写 theme.x,切皮肤零改动零重渲染。
-// ⚠ 这些值只能进 DOM style/CSS:canvas fillStyle、SVG 属性位、hex 字符串拼接
-// 都解析不了 var()(全仓已审计为零,新代码别开先例)。
+// Theme tokens. Since the skinning system (see skins.ts), all here are var(--cc-*)
+// Indirect reference - the true value is in the SKINS registry in skins.ts (default skin "Graphite",
+// Consistent with old hex value-wise). Inline styles are still written as theme.x, with zero modification and zero re-rendering when changing skins.
+// ⚠ These values can only be used in DOM style/CSS:canvas fillStyle, SVG attribute bits, and hex string concatenation
+// None of them can parse var() (the entire position has been audited to zero, and the new code has set a precedent).
 export const theme = {
   bg: 'var(--cc-bg)', // editor void / timeline background
-  inset: 'var(--cc-inset)', // 内凹槽(输入井)
+  inset: 'var(--cc-inset)', // Inner groove (input well)
   panel: 'var(--cc-panel)', // Base editor surface.
   panelAlt: 'var(--cc-panel-alt)', // --surface-raised (cards, chat bubbles, popovers, hover)
-  hover: 'var(--cc-hover)', // 行悬停 / 激活填充
+  hover: 'var(--cc-hover)', // Row hover/activate fill
   border: 'var(--cc-border)', // Panel separator.
   borderLight: 'var(--cc-border-light)',
   text: 'var(--cc-text)', // --foreground
-  textMuted: 'var(--cc-text-muted)', // 次级文本
+  textMuted: 'var(--cc-text-muted)', // secondary text
   textDim: 'var(--cc-text-dim)', // Inactive text.
-  textStrong: 'var(--cc-text-strong)', // 悬停增亮文本
+  textStrong: 'var(--cc-text-strong)', // Highlight text on hover
   accent: 'var(--cc-accent)', // measured export coral
-  accentDeep: 'var(--cc-accent-deep)', // accent 按下 / 主按钮底
-  onAccent: 'var(--cc-on-accent)', // accent 填充上的文字(粉彩皮肤 = 深字)
+  accentDeep: 'var(--cc-accent-deep)', // accent press / bottom of main button
+  onAccent: 'var(--cc-on-accent)', // accent text on fill (pastel skin = dark text)
   gold: 'var(--cc-gold)', // --primary (amber highlight)
   select: 'var(--cc-select)',
-  success: 'var(--cc-success)', // 工具成功/完成态(与 A2 轨芯片同值不同义,独立令牌)
-  danger: 'var(--cc-danger)', // 错误、删除和破坏性操作
+  success: 'var(--cc-success)', // Tool success/completion status (same value and different synonyms as A2 rail chip, independent token)
+  danger: 'var(--cc-danger)', // Errors, deletions and destructive operations
   // Timeline surfaces use subtly blue-tinted dark colors.
   tlTrack: 'var(--cc-tl-track)', // --tl-track-bg (lane behind clips)
   tlSidePanel: 'var(--cc-tl-side-panel)', // --tl-side-panel-bg (track-header column)
@@ -40,7 +40,7 @@ export const theme = {
 const alpha = (channel: string, opacity: number): string =>
   `rgba(var(--cc-${channel}-rgb), ${opacity})`;
 
-/** UI 半透明色。ink 随深浅皮肤反转，shadow 始终表达悬浮层级。 */
+/** UI Translucent color.ink As the skin turns darker and lighter,shadow Always express suspended hierarchy. */
 export const themeAlpha = {
   ink: (opacity: number): string => alpha('ink', opacity),
   accent: (opacity: number): string => alpha('accent', opacity),

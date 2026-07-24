@@ -39,13 +39,13 @@ export interface FxDef {
   passes?: string[];
   /** renderPass graph for effects that reuse an earlier output. */
   pipeline?: (uniforms: Record<string, UniformValue>) => FxPass[];
-  /** .cube 3D LUT URL(/luts/<file>);frag 应为通用 lut.frag(u_lut+u_intensity) */
+  /** .cube 3D LUT URL(/luts/<file>);frag Should be universal lut.frag(u_lut+u_intensity) */
   cube?: string;
 }
 
-/** FxDef 的可序列化子集(无 pipeline 函数字段):随 TimelineState.fxDefs 持久化,
- * 让插件/submit_shader 的自定义 fx 在刷新与无头导出(新鲜浏览器,无内存注册表)
- * 里自包含地渲染。结构上可直接当 FxDef 用(registerCustomFx 接受)。 */
+/** FxDef serializable subset of(None pipeline function field):Follow TimelineState.fxDefs persistence,
+ * let plugin/submit_shader Customization fx Refreshing vs. Headless Export(fresh browser,No memory registry)
+ * Rendered self-contained. Structurally, it can be directly used as FxDef use(registerCustomFx accept)。 */
 export interface SerializableFxDef {
   id: string;
   name: string;
@@ -86,8 +86,8 @@ export function fxPasses(
     const uniforms: Record<string, UniformValue> = { ...fxUniforms(def, overrides), u_time: time };
     let lut3d;
     if (def.cube) {
-      // 语义:LUT 未就绪(加载中/失败)= 透传。intensity 压 0,runtime 会给
-      // u_lut 绑 dummy 单元避免 sampler 类型撞车。
+      // Semantics: LUT not ready (loading/failed) = transparent transmission. If intensity is pressed to 0, runtime will give
+      // u_lut binds dummy units to avoid sampler type crashes.
       lut3d = getCubeSync(def.cube) ?? undefined;
       if (!lut3d) uniforms.u_intensity = 0;
     }

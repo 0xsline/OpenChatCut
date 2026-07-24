@@ -4,21 +4,21 @@ import { recordExport, listExportHistory } from '../../persist/exportHistoryStor
 import { isTerminal, isComplete, isFailed, type JobReportBase } from '../progress/job-model';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 异步渲染 job 工具
+// Asynchronous rendering job tool
 // ---------------------------------------------------------------------------
-// 异步导出的标准名是 submit_export(format=video/audio → 返回 renderId)。
-// 但 `submit_export` 已被同步版工具占用(generate-tools.ts)，为避免同名冲突，异步
-// 渲染提交器取名 submit_render_job。轮询用 track_export。
-// track_export 参数面：required=['action']；renderIds(逗号分隔 id/前缀)、
-// latest(renderIds 省略时默认 true)、onlyActive、timelineId、timeoutSeconds(默认 90，0=无界)。
-// 旧单数 renderId 仍作兼容别名。latest/前缀解析基于本会话的提交记录(见 sessionJobs)。
+// The standard name for asynchronous export is submit_export(format=video/audio → return renderId).
+// However, `submit_export` has been occupied by the synchronous version of the tool (generate-tools.ts). To avoid conflicts with the same name, asynchronous
+// The render submitter is named submit_render_job. Use track_export for polling.
+// track_export parameter surface: required=['action']; renderIds (comma separated id/prefix),
+// latest (default is true when renderIds is omitted), onlyActive, timelineId, timeoutSeconds (default is 90, 0=unbounded).
+// The old singular renderId is still used as a compatible alias. The latest/ prefix is resolved based on the commit records of this session (see sessionJobs).
 //
-// Agent 跑在浏览器里，工具用 fetch 打 dev-server 的 /export/job 端点：
+// Agent runs in the browser, and the tool uses fetch to hit the /export/job endpoint of dev-server:
 //   POST /export/job     → { renderId }
 //   GET  /export/job/:id → { id, status, progress, result?, error? }
-// 完成后 result.path 指向 /media/uploads/ 下的临时导出文件，即工具返回的 downloadUrl。
+// After completion, result.path points to the temporary export file under /media/uploads/, which is the downloadUrl returned by the tool.
 //
-// 接线（集成方在 tools.ts 做，本文件不碰 tools.ts）：
+// Wiring (the integrator does it in tools.ts, this file does not touch tools.ts):
 //   import { EXPORT_TOOL_SCHEMAS, EXPORT_TOOL_NAMES, execExportTool } from './export-tools';
 //   ...EXPORT_TOOL_SCHEMAS  /  if (EXPORT_TOOL_NAMES.has(name)) return execExportTool(name, args, ctx);
 // ═══════════════════════════════════════════════════════════════════════════
@@ -81,14 +81,14 @@ export const EXPORT_TOOL_SCHEMAS: AgentToolSchema[] = [
 
 export const EXPORT_TOOL_NAMES = new Set(EXPORT_TOOL_SCHEMAS.map((t) => t.name));
 
-// 导出族 agent 面向词汇:server 的 succeeded 读作 completed（与同步导出 submit_export
-// 的 status:'completed' 对齐——那是导出家族的终态 wire）。终态"判定"本身走共享 job-model
-// 的 isComplete/isFailed/isTerminal(见下),此函数只负责家族 wire 的呈现。
+// Export family agent oriented vocabulary: server's succeeded is read as completed (with the synchronous export submit_export
+// The status:'completed' alignment - that's the final state of the exported family wire). The final state "judgment" itself takes the shared job-model
+// of isComplete/isFailed/isTerminal (see below), this function is only responsible for the rendering of the family wire.
 function mapStatus(status: string): string {
   return status === 'succeeded' ? 'completed' : status;
 }
 
-/** 后端 /export/job/:id 快照里工具关心的字段（其余忽略）。 */
+/** backend /export/job/:id Fields in the snapshot that the tool cares about (others are ignored). */
 interface JobSnapshot extends JobReportBase<'queued' | 'running' | 'succeeded' | 'failed'> {
   id: string;
   progress: number;
@@ -153,7 +153,7 @@ function recordIfCompleted(result: PollResult): void {
   void recordExport({ name: result.name ?? result.renderId, format, codec: result.codec, sizeBytes: result.sizeBytes, createdAt: Date.now() });
 }
 
-/** GET /export/job/:id 一次，把快照映射成工具结果；传输/未知 renderId 都返回干净 error，绝不抛裸异常。
+/** GET /export/job/:id Once, map the snapshot into tool results; transfer/unknown renderId all returned clean error, never throw naked exceptions.
  *  Exported for register_converted_video (mg-video-tools): resolve a finished render's downloadUrl by renderId. */
 export async function fetchRenderJob(renderId: string): Promise<PollResult> {
   return pollOnce(renderId);
@@ -218,8 +218,8 @@ async function submitRenderJob(args: Args, ctx: AgentContext): Promise<unknown> 
   }
 }
 
-/** 逗号分隔的 id/前缀 → 完整 renderId 列表。前缀对本会话提交记录解析；不认识的
- *  token 原样透传给服务器（可能是别处拿到的完整 id）。歧义前缀报清晰错误。 */
+/** comma separated id/prefix → complete renderId list. Prefix parses the session submission record; unknown
+ *  token Pass it transparently to the server as it is (it may be a complete file obtained elsewhere) id). Ambiguous prefixes report clarity errors. */
 function resolveRenderIds(raw: string): { ids: string[] } | { error: string } {
   const tokens = raw.split(',').map((t) => t.trim()).filter(Boolean);
   if (!tokens.length) return { error: 'renderIds is empty — pass comma-separated render job IDs or prefixes' };
@@ -233,8 +233,8 @@ function resolveRenderIds(raw: string): { ids: string[] } | { error: string } {
   return { ids: [...new Set(ids)] };
 }
 
-/** renderIds 省略时的 latest 语义：newest matching job；onlyActive 只留进行中；
- *  latest=false 列出全部近期 job。基于本会话提交记录 + 实时轮询状态。 */
+/** renderIds when omitted latest Semantics:newest matching job；onlyActive Only stay in progress;
+ *  latest=false List all recent job. Submit records based on this session + Real-time polling status. */
 async function selectLatestJobs(args: Args): Promise<{ ids: string[]; note?: string } | { error: string }> {
   const timelineQ = typeof args.timelineId === 'string' ? args.timelineId.trim() : '';
   const candidates = sessionJobs
@@ -256,14 +256,14 @@ async function selectLatestJobs(args: Args): Promise<{ ids: string[]; note?: str
   return { ids: [candidates[0]!.renderId] };
 }
 
-/** 一组 job 各 poll 一次。 */
+/** a group job each poll Once. */
 async function pollAll(ids: string[]): Promise<PollResult[]> {
   const results = await Promise.all(ids.map((id) => pollOnce(id)));
   for (const r of results) recordIfCompleted(r);
   return results;
 }
 
-/** 单 job 保持旧扁平返回；多 job 返回 { ok, count, jobs } 聚合。 */
+/** Single job Keep the old flat return; more job Return { ok, count, jobs } aggregation. */
 function presentJobs(results: PollResult[], note?: string): unknown {
   if (results.length === 1 && !note) return results[0];
   return { ok: true, count: results.length, jobs: results, ...(note ? { note } : {}) };
@@ -274,7 +274,7 @@ async function trackExport(args: Args): Promise<unknown> {
     const action = args.action === 'wait' ? 'wait' : args.action === 'status' ? 'status' : null;
     if (!action) return { error: 'action is required: "status" or "wait"' };
 
-    // renderIds（逗号分隔）优先；旧单数 renderId 仍兼容；都缺 → latest 语义。
+    // renderIds (comma separated) take precedence; old singular renderIds are still compatible; both lack → latest semantics.
     const rawIds = typeof args.renderIds === 'string' && args.renderIds.trim()
       ? args.renderIds
       : typeof args.renderId === 'string' && args.renderId.trim() ? args.renderId : '';
@@ -294,7 +294,7 @@ async function trackExport(args: Args): Promise<unknown> {
 
     if (action === 'status') return presentJobs(await pollAll(ids), note);
 
-    // action=wait：轮询直到所选 job 全部终态，或 timeoutSeconds 到期（默认 90，0=无界）。
+    // action=wait: Poll until all selected jobs are finalized, or timeoutSeconds expires (default 90, 0=unbounded).
     const requested = typeof args.timeoutSeconds === 'number' && Number.isFinite(args.timeoutSeconds) ? args.timeoutSeconds : DEFAULT_WAIT_SECONDS;
     const bounded = Math.min(Math.max(requested, 0), MAX_WAIT_SECONDS);
     const deadline = bounded === 0 ? Infinity : Date.now() + bounded * 1000;
@@ -309,7 +309,7 @@ async function trackExport(args: Args): Promise<unknown> {
   }
 }
 
-/** 执行一个异步渲染工具。返回 JSON 可序列化结果，绝不抛裸异常。 */
+/** Execute an asynchronous rendering tool. Return JSON Serializable results and never throw naked exceptions. */
 export async function execExportTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   switch (name) {
     case 'submit_render_job':

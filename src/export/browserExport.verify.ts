@@ -51,7 +51,7 @@ assert.equal(loaderCalls, 0, 'frame-rate mismatch must not load the browser rend
 assert.equal(browserTimelineBlocker({
   ...state,
   items: [{ ...state.items[0], effects: [{ id: 'fx_1', assetId: 'builtin:fx-bloom' }] }],
-}), '包含 WebGL 片段特效');
+}), 'contains WebGL clip effects');
 
 assert.equal(browserTimelineBlocker({
   ...state,
@@ -67,7 +67,7 @@ assert.equal(browserTimelineBlocker({
     incomingItemId: 'video_2',
     trackId: 'V1',
   }],
-}), '包含 WebGL 转场');
+}), 'contains WebGL Transition');
 
 const capabilityCalls: Array<Record<string, unknown>> = [];
 const renderCalls: Array<Record<string, unknown>> = [];

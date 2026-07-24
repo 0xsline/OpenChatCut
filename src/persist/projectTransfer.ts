@@ -1,8 +1,8 @@
-// 工程导出/导入(.ccproj.json)——跨端迁移通道:桌面版 Electron
-// 的 IDB 分区与浏览器独立,工程带不过去,这层补上。信封 = ProjectDoc + 聊天 +
-// 创作模式 + 引用的 /media/uploads 素材(base64)。导入即重放:建新工程 → 素材写
-// mediaBlobStore(留档)+ 不可达就直接重发布到本端 server——路径恒 /media/uploads/
-// 与物理端解耦,时间线 src 原样可用(机制同 mediaBlobStore 的新机恢复)。
+// Project export/import (.ccproj.json) - cross-end migration channel: desktop version of Electron
+// The IDB partition is independent of the browser and the project cannot be carried over, so this layer will be added. Envelope = ProjectDoc + Chat +
+// Creative mode + referenced /media/uploads assets (base64). Import and replay: Create new project → Material writing
+// mediaBlobStore (leaving files) + If it is unreachable, it will be republished directly to the local server - the path is constant /media/uploads/
+// Decoupled from the physical side, the timeline src is available as is (the mechanism is the same as mediaBlobStore's new machine recovery).
 import type { ProjectDoc } from '../editor/types';
 import {
   createProject, isPersistedChat, loadChat, loadCreativeMode, loadProject,
@@ -36,7 +36,7 @@ export interface ProjectEnvelope {
   media: ProjectMediaEntry[];
 }
 
-/** doc 引用的 /media/uploads src 全集(素材池 + 各时间线 items),去重保序。 */
+/** doc quoted /media/uploads src Complete works(Material pool + Each timeline items),Remove duplication and preserve order. */
 export function collectUploadSrcs(doc: ProjectDoc): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -51,7 +51,7 @@ export function collectUploadSrcs(doc: ProjectDoc): string[] {
   return out;
 }
 
-/** 上传名单段安全判定(与 server/media-dir isSafeUploadName 同规则,浏览器侧实现)。 */
+/** Security judgment of upload list segment(with server/media-dir isSafeUploadName Same rules,Browser side implementation)。 */
 function isSafeMediaName(name: string): boolean {
   if (!name || name.startsWith('.')) return false;
   return !name.includes('/') && !name.includes('\\') && !name.includes('\0');
@@ -67,7 +67,7 @@ function isMediaEntry(v: unknown): v is ProjectMediaEntry {
     && typeof e.dataBase64 === 'string' && e.dataBase64.length > 0;
 }
 
-/** 边界校验:导入文件是不可信输入。doc 走 migrateProjectDoc(与 IDB 读同一道闸)。 */
+/** Boundary check:Import files are untrusted input.doc go migrateProjectDoc(with IDB Read the same gate)。 */
 export function parseProjectEnvelope(
   text: string,
   migrationOptions?: ProjectMigrationOptions,
@@ -76,16 +76,16 @@ export function parseProjectEnvelope(
   try {
     raw = JSON.parse(text);
   } catch {
-    return { error: '不是合法的 JSON 文件' };
+    return { error: 'not legal JSON File' };
   }
-  if (!raw || typeof raw !== 'object') return { error: '文件内容不是对象' };
+  if (!raw || typeof raw !== 'object') return { error: 'The file content is not an object' };
   const r = raw as Record<string, unknown>;
   if (r.format !== PROJECT_EXPORT_FORMAT) {
-    return { error: `格式不识别(需要 ${PROJECT_EXPORT_FORMAT})` };
+    return { error: `Format not recognized(need ${PROJECT_EXPORT_FORMAT})` };
   }
-  if (typeof r.name !== 'string' || !r.name.trim()) return { error: '缺工程名' };
+  if (typeof r.name !== 'string' || !r.name.trim()) return { error: 'Missing project name' };
   const doc = migrateProjectDoc(r.doc, migrationOptions);
-  if (!doc) return { error: '工程数据(doc)校验不通过' };
+  if (!doc) return { error: 'Engineering data(doc)Verification failed' };
   const media = Array.isArray(r.media) ? r.media.filter(isMediaEntry) : [];
   const chat = isPersistedChat(r.chat) ? r.chat : undefined;
   const creativeMode = typeof r.creativeMode === 'string' && r.creativeMode ? r.creativeMode : undefined;
@@ -114,7 +114,7 @@ function blobToBase64(blob: Blob): Promise<string> {
 async function mediaBlobFor(src: string): Promise<{ blob: Blob; name: string; mime: string } | null> {
   const rec = await getMediaBlob(src);
   if (rec) return { blob: rec.blob, name: rec.name, mime: rec.mime };
-  // IDB 没有(超缓存上限/其它端上传)→ 从 server 现取
+  // IDB does not have (super cache limit/upload from other terminals) → fetch from server
   try {
     const res = await fetch(src);
     if (!res.ok) return null;
@@ -130,13 +130,13 @@ export interface ProjectExportResult {
   filename: string;
   blob: Blob;
   mediaTotal: number;
-  /** 两头都拿不到字节的 src(导出照常,导入端会缺这几个素材)。 */
+  /** Neither end can get bytes src(Export as usual,The import end will lack these materials)。 */
   mediaMissing: string[];
 }
 
 export async function buildProjectExport(id: string, name: string): Promise<ProjectExportResult> {
   const doc = await loadProject(id);
-  if (!doc) throw new Error('工程不存在或已损坏');
+  if (!doc) throw new Error('The project does not exist or is damaged');
   const chat = await loadChat(id);
   const creativeMode = await loadCreativeMode(id);
   const srcs = collectUploadSrcs(doc);
@@ -191,7 +191,7 @@ export async function applyProjectImport(envelope: ProjectEnvelope): Promise<Pro
   for (const entry of envelope.media) {
     try {
       const blob = await (await fetch(`data:${entry.mime};base64,${entry.dataBase64}`)).blob();
-      await putMediaBlob(entry.src, blob, { name: entry.name, mime: entry.mime });  // 留档(≤缓存上限)
+      await putMediaBlob(entry.src, blob, { name: entry.name, mime: entry.mime });  // Keep files (≤ cache limit)
       if (!(await isMediaSrcReachable(entry.src))) {
         await reuploadMediaBlob({ src: entry.src, blob, name: entry.name, mime: entry.mime, bytes: blob.size, savedAt: Date.now() });
       }
@@ -200,8 +200,8 @@ export async function applyProjectImport(envelope: ProjectEnvelope): Promise<Pro
       failed.push(entry.src);
     }
   }
-  // 信封里就没带字节的(导出端两头落空)+ 本轮失败的,一并如实上报;
-  // 总数 = doc 引用 ∪ 信封携带(信封可带 doc 之外的素材,如素材池外挂)。
+  // If there are no bytes in the envelope (both ends of the export end are lost) + if the current round fails, report them truthfully;
+  // Total number = doc reference ∪ Envelope carrying (envelopes can carry materials other than doc, such as material pool plug-ins).
   const carried = new Set(envelope.media.map((m) => m.src));
   const docSrcs = collectUploadSrcs(envelope.doc);
   const mediaMissing = [...docSrcs.filter((s) => !carried.has(s)), ...failed];

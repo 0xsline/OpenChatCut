@@ -34,8 +34,8 @@ export interface SerializeTimelineOptions {
   showSilence?: boolean;
 }
 
-// join word tokens: space-separated except between CJK characters (中文行无空格)
-const CJK = /[㐀-鿿豈-﫿]/;
+// join word tokens: space-separated except between CJK characters (Chinese lines without spaces)
+const CJK = /[㐀-Yi豈-﫿]/;
 export function joinWords(tokens: string[]): string {
   let out = '';
   for (const t of tokens) {

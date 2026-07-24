@@ -20,7 +20,7 @@ const emptyDoc: ProjectDoc = {
 resetProjectStoreMemory();
 assert.equal(await hasProjectHistory(), false, 'brand-new store has no project history');
 
-const project = await createProject('仅有工程', emptyDoc);
+const project = await createProject('only engineering', emptyDoc);
 assert.equal(await hasProjectHistory(), true, 'creating a project initializes the store');
 
 await purgeProject(project.id);

@@ -17,7 +17,7 @@ import {
 import { makeWordFrameMapper } from './tools/transcript-find';
 import { isCjkText, speakerLabel } from '../transcript/segment';
 
-/** Media-pool / template mention kinds (the pre-existing @ 引用). */
+/** Media-pool / template mention kinds (the pre-existing @ Quote). */
 export type AssetRefKind = 'video' | 'image' | 'audio' | 'motion-graphic' | 'gif' | 'svg' | 'template';
 
 // ── metadata per reference type ─────────────────────────────────────────────
@@ -61,7 +61,7 @@ export interface TranscriptSelectionMetadata {
   assetId?: string;
   itemId: string;
   selectedText: string;
-  /** indices into the clip's transcript[] (词级真源 gi) */
+  /** indices into the clip's transcript[] (word-level origin gi) */
   selectedWordIds: number[];
   selectedWords: { text: string; start: number; end: number }[];
   /** source-media ms straight from the word-level timestamps */
@@ -143,7 +143,7 @@ export function timepointRef(frame: number, state: TimelineState): SelectionRefe
   const f = Math.max(0, Math.round(frame));
   return {
     id: `time:${f}`,
-    name: `${formatFrameTime(f, state.fps)} 时间点`,
+    name: `${formatFrameTime(f, state.fps)} time point`,
     kind: 'timepoint',
     metadata: { fps: state.fps, timelineId: timelineIdOf(state), timelineFrameStart: f },
   };
@@ -301,7 +301,7 @@ export function canvasRegionRef(region: RegionRect, frame: number, state: Timeli
   const f = Math.max(0, Math.round(frame));
   return {
     id: `region:${region.x},${region.y},${region.width},${region.height}@${f}`,
-    name: contained.length ? `画面区域（${contained.length} 个片段）` : '画面区域',
+    name: contained.length ? `screen area (${contained.length} fragments)` : 'screen area',
     kind: 'canvas-region',
     metadata: {
       fps: state.fps,
@@ -349,7 +349,7 @@ export function transcriptSelectionRef(
   const label = text.length > TRANSCRIPT_LABEL_MAX ? `${text.slice(0, TRANSCRIPT_LABEL_MAX)}…` : text;
   return {
     id: `transcript:${item.id}:${gis[0]}-${gis[gis.length - 1]}`,
-    name: `“${label}”（${gis.length} 词）`,
+    name: `“${label}”（${gis.length} words)`,
     kind: 'transcript-selection',
     metadata: {
       fps,

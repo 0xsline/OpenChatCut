@@ -31,7 +31,7 @@ function emptyProject(args: Record<string, unknown>): unknown {
   const timelineId = `tl_${randomUUID()}`;
   const timeline = {
     id: timelineId,
-    name: '序列 1',
+    name: 'sequence 1',
     order: 0,
     fps: positiveNumber(args.fps, 30),
     width: positiveNumber(args.compositionWidth, 1920),

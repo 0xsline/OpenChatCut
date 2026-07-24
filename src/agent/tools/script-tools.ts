@@ -10,7 +10,7 @@ import { resolveTrackId, type TrackId } from '../../editor/types';
 // We implement the "no-workspace" host mode:
 // read_script returns timeline.md inline; apply_script takes the edited string
 // back via `timelineMd`. Word timestamps never appear in the file — content
-// matching against stable [sN] segment ids preserves 词↔帧一致 (moat ③).
+// matching against stable [sN] segment ids preserves word↔frame consistency (moat ③).
 
 type Args = Record<string, unknown>;
 
@@ -49,7 +49,7 @@ function resolveRequestedTrack(args: Args, ctx: AgentContext): TrackId | undefin
   if (args.track === undefined || args.track === null || String(args.track).trim() === '') return undefined;
   const ref = String(args.track).trim();
   const trackId = resolveTrackId(ctx.getState(), ref);
-  if (!trackId) throw new Error(`轨道「${ref}」不存在`);
+  if (!trackId) throw new Error(`Orbit "${ref}” does not exist`);
   return trackId;
 }
 
@@ -66,7 +66,7 @@ export async function execScriptTool(name: string, args: Args, ctx: AgentContext
     }
     case 'apply_script': {
       const md = String(args.timelineMd ?? '');
-      if (!md.trim()) return { error: 'timelineMd is required（传回完整编辑后的 timeline.md）' };
+      if (!md.trim()) return { error: 'timelineMd is required(Returns fully edited timeline.md）' };
       try {
         const trackId = resolveRequestedTrack(args, ctx);
         if (args.preview === true) {

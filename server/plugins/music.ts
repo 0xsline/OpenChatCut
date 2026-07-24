@@ -66,10 +66,10 @@ export function musicGenerationPlugin(options: MusicOptions): Plugin {
         try {
           const input = validateMusicRequest(await readJson(req));
           if (input.provider === 'minimax' && !options.minimaxApiKey) {
-            throw new Error('MiniMax is not configured. Set MINIMAX_API_KEY in .env.local or 设置面板.');
+            throw new Error('MiniMax is not configured. Set MINIMAX_API_KEY in .env.local or settings panel.');
           }
           if (input.provider === 'mureka' && !options.apiKey) {
-            throw new Error('Mureka is not configured. Set MUREKA_API_KEY in .env.local or 设置面板.');
+            throw new Error('Mureka is not configured. Set MUREKA_API_KEY in .env.local or settings panel.');
           }
           sendJson(res, 202, enqueueMusic(options, input));
         } catch (error) {

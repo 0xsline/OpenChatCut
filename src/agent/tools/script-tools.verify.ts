@@ -95,7 +95,7 @@ const ctx: AgentContext = {
   templates: [],
   audio: [],
 };
-assert.deepEqual(await execScriptTool('read_script', { track: 'missing' }, ctx), { error: '轨道「missing」不存在' });
+assert.deepEqual(await execScriptTool('read_script', { track: 'missing' }, ctx), { error: 'Orbit "missing” does not exist' });
 const toolRead = await execScriptTool('read_script', { track: speechAlias, showSilence: true }, ctx) as { content: string; trackId: string };
 assert.equal(toolRead.trackId, 'track_v1');
 assert.match(toolRead.content, /script-silence:true/);

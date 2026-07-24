@@ -1,16 +1,16 @@
-// 响度归一分析核心。命名风格同 isolate_voice(动词_名词)。
+// Loudness normalization analysis core. The naming style is the same as isolate_voice(verb_noun).
 //
-// 拆两半:纯函数(可在 node 下跑 check,无 DOM 依赖)+ 浏览器专用(fetch+WebAudio 解码)。
+// Split into two halves: pure function (can run check under node, no DOM dependencies) + browser-specific (fetch+WebAudio decoding).
 
-// ── 纯函数(node-testable) ──────────────────────────────────────────────
+// ── Pure function (node-testable) ───────────────────────────────────────────
 
-// ponytail: 简化版 BS.1770——用 400ms 分块均方能量 + 绝对静音门限近似积分响度,
-// 省略了真正的 K-weighting 预滤波(高架+高通)和相对门限(比未门限响度低10dB的
-// 块也应剔除)。对稳态/準稳态素材(语音、音乐)误差通常在几个 LUFS 内,足够当
-// "要不要提增益/提多少"的粗判;对含大段静音+突发响度的素材会偏离更多。
-// 升级路径:接 K-weighting 双二阶滤波器 + 相对门限,对齐 ITU-R BS.1770-4 全流程。
+// ponytail: Simplified version of BS.1770 - approximate integrated loudness using 400ms block mean square energy + absolute silence threshold,
+// Omits true K-weighting pre-filtering (high shelf + high pass) and relative gate (10dB lower than ungated loudness)
+// blocks should also be removed). For steady/quasi-steady materials (speech, music) the error is usually within a few LUFS, which is sufficient
+// A rough judgment on "whether to increase gain/how much to increase"; the deviation will be greater for materials containing large sections of silence + sudden loudness.
+// Upgrade path: Connect K-weighting biquad filter + relative threshold, align with ITU-R BS.1770-4 full process.
 export function integratedLoudnessFromSamples(samples: Float32Array, sampleRate: number): number {
-  if (samples.length === 0 || sampleRate <= 0) return -70; // 空/非法输入 → 静音下限,不返回 NaN
+  if (samples.length === 0 || sampleRate <= 0) return -70; // Empty/illegal input → mute lower limit, do not return NaN
   const blockSize = Math.max(1, Math.round(sampleRate * 0.4)); // BS.1770 gating block = 400ms
   const blockMeanSquares: number[] = [];
   for (let start = 0; start < samples.length; start += blockSize) {
@@ -19,27 +19,27 @@ export function integratedLoudnessFromSamples(samples: Float32Array, sampleRate:
     for (let i = start; i < end; i++) sum += samples[i] * samples[i];
     blockMeanSquares.push(sum / (end - start));
   }
-  // BS.1770 绝对门限对应的均方阈值(-70 LUFS 以下的块视为静音,不计入平均)
+  // Mean square threshold corresponding to BS.1770 absolute threshold (blocks below -70 LUFS are considered silent and are not included in the average)
   const ABSOLUTE_GATE_MS = 10 ** ((-70 + 0.691) / 10);
   const gated = blockMeanSquares.filter((ms) => ms > ABSOLUTE_GATE_MS);
-  const kept = gated.length > 0 ? gated : blockMeanSquares; // 全静音时退化为用全部块,避免空数组
+  const kept = gated.length > 0 ? gated : blockMeanSquares; // When fully silent, it degenerates to use all blocks to avoid empty arrays.
   const meanSquare = kept.reduce((a, b) => a + b, 0) / kept.length;
-  const EPS = 1e-10; // 防 log10(0) = -Infinity
+  const EPS = 1e-10; // Anti log10(0) = -Infinity
   return -0.691 + 10 * Math.log10(Math.max(meanSquare, EPS));
 }
 
 const MIN_GAIN = 0.05;
 const MAX_GAIN = 8;
 
-/** 达到目标响度所需的线性增益倍数,夹在 [MIN_GAIN, MAX_GAIN] 防止炸音/静音。 */
+/** Linear gain multiple required to achieve target loudness,sandwiched [MIN_GAIN, MAX_GAIN] Prevent popping sound/mute. */
 export function gainForTarget(currentLufs: number, targetLufs: number): number {
-  if (!Number.isFinite(currentLufs) || !Number.isFinite(targetLufs)) return 1; // 非法输入 → 增益不变,不让 NaN 扩散
+  if (!Number.isFinite(currentLufs) || !Number.isFinite(targetLufs)) return 1; // Illegal input → The gain remains unchanged and NaN is not allowed to spread.
   const gain = 10 ** ((targetLufs - currentLufs) / 20);
   if (!Number.isFinite(gain)) return MAX_GAIN;
   return Math.min(MAX_GAIN, Math.max(MIN_GAIN, gain));
 }
 
-// ── 浏览器专用(fetch + WebAudio 解码) ──────────────────────────────────
+// ── Browser only (fetch + WebAudio decoding) ─────────────────────────────────
 
 function mixToMono(buffer: AudioBuffer): Float32Array {
   const { numberOfChannels, length } = buffer;
@@ -51,13 +51,13 @@ function mixToMono(buffer: AudioBuffer): Float32Array {
   return out;
 }
 
-/** 拉取音频源→OfflineAudioContext 离线解码(不出声,不受自动播放策略限制)→混单声道
- * →测积分响度。浏览器专用;node 环境下不该被调到(OfflineAudioContext 不存在)。 */
+/** Pull audio source→OfflineAudioContext Offline decoding(silent,Not restricted by autoplay policy)→Mix mono
+ * →Measure the integrated loudness. Browser only;node The environment should not be adjusted to(OfflineAudioContext does not exist)。 */
 export async function analyzeClipLoudness(src: string): Promise<number> {
   const res = await fetch(src);
-  if (!res.ok) throw new Error(`加载音频失败: ${src} (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`Failed to load audio: ${src} (HTTP ${res.status})`);
   const arrayBuffer = await res.arrayBuffer();
-  // 长度只是占位;真实采样率/声道数以 decodeAudioData 的解码结果为准。
+  // The length is just a placeholder; the actual sampling rate/number of channels is subject to the decoding result of decodeAudioData.
   const ctx = new OfflineAudioContext(1, 1, 44100);
   const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
   return integratedLoudnessFromSamples(mixToMono(audioBuffer), audioBuffer.sampleRate);

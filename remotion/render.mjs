@@ -29,10 +29,10 @@ const COMPOSITION_ID = 'timeline';
 // build the serve bundle once and reuse the serveUrl across every render.
 let bundlePromise;
 
-// 桌面打包版:运行时没有 src/ 源码与 webpack,serve bundle 在打包期预打好,
-// 启动时经 CC_REMOTION_BUNDLE 指进来(可写目录——uploads symlink 要写进去);
-// 无头浏览器同理经 CC_BROWSER_EXECUTABLE 指向随包分发的 chrome-headless-shell
-// (默认 undefined = Remotion 自寻/自下载,dev 行为不变)。
+// Desktop packaging version: There is no src/ source code and webpack at runtime, and the serve bundle is pre-packaged during the packaging period.
+// Point it in via CC_REMOTION_BUNDLE at startup (writable directory - uploads symlink needs to be written in);
+// Headless browser analogy CC_BROWSER_EXECUTABLE points to the chrome-headless-shell distributed with the package
+// (Default undefined = Remotion self-seeking/self-downloading, dev behavior remains unchanged).
 const browserExecutable = () => process.env.CC_BROWSER_EXECUTABLE || undefined;
 
 const renderConcurrency = () => resolveRenderConcurrency();
@@ -78,12 +78,12 @@ async function renderMediaOptimized(options) {
   });
 }
 
-// 素材目录默认 public/media/uploads;dev server 侧可被 MEDIA_DIR 自定义——
-// server/plugins/export 注入 provider(读 keystore)。standalone 脚本保持默认。
+// The default material directory is public/media/uploads; the dev server side can be customized by MEDIA_DIR——
+// server/plugins/export injects provider (read keystore). The standalone script remains the default.
 let uploadsDirProvider = () => UPLOAD_DIR;
-let linkedDir = null; // <serveUrl>/media/uploads symlink 当前指向;目录变化时重连
+let linkedDir = null; // <serveUrl>/media/uploads symlink currently points to; reconnect when the directory changes
 
-/** @param {() => string} fn 返回当前素材目录绝对路径 */
+/** @param {() => string} fn Returns the absolute path of the current material directory */
 export function setUploadsDirProvider(fn) { uploadsDirProvider = fn; }
 
 async function buildServeUrl() {
@@ -97,7 +97,7 @@ async function buildServeUrl() {
   return serveUrl;
 }
 
-/** webpack 打 serve bundle + public 覆盖(不 relink——那是运行时职责)。 */
+/** webpack hit serve bundle + public Cover(No relink- That's a runtime responsibility)。 */
 async function buildBundle(outDir) {
   const serveUrl = await bundle({
     entryPoint: ENTRY_POINT,
@@ -122,20 +122,20 @@ async function buildBundle(outDir) {
   return serveUrl;
 }
 
-/** 打包期预打 serve bundle 到 outDir(desktop/prebuild-remotion.mts 调)。 */
+/** Pre-packaging period serve bundle Arrive outDir(desktop/prebuild-remotion.mts tune)。 */
 export async function prebuildServeBundle(outDir) {
   await rm(outDir, { recursive: true, force: true });
   return buildBundle(outDir);
 }
 
-// 把 <serveUrl>/media/uploads 指到当前素材目录(默认或 MEDIA_DIR 自定义)。
+// Point <serveUrl>/media/uploads to the current material directory (default or MEDIA_DIR custom).
 async function relinkUploads(serveUrl) {
   const dir = uploadsDirProvider();
   await mkdir(dir, { recursive: true });
   const linkPath = path.join(serveUrl, 'media', 'uploads');
   try {
     await rm(linkPath, { recursive: true, force: true });
-    // win32 用 junction:目录软链要管理员/开发者模式,junction 免特权(需绝对路径,dir 恒绝对)
+    // Win32 uses junction: the directory soft link requires administrator/developer mode, junction is privilege-free (requires absolute path, dir is always absolute)
     await symlink(dir, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
     uploadsLive = true;
     linkedDir = dir;
@@ -154,13 +154,13 @@ async function getServeUrl() {
   if (!bundlePromise) {
     const prebuilt = process.env.CC_REMOTION_BUNDLE;
     bundlePromise = prebuilt
-      ? relinkUploads(prebuilt).then(() => prebuilt)  // 预打 bundle:跳过 webpack,只接管 uploads
+      ? relinkUploads(prebuilt).then(() => prebuilt)  // Pre-bundle: skip webpack and only take over uploads
       : buildServeUrl();
   }
   const serveUrl = await bundlePromise;
   const dir = uploadsDirProvider();
   if (uploadsLive && dir !== linkedDir) {
-    await relinkUploads(serveUrl); // MEDIA_DIR 运行时改动兜底(正常路径是 .env 变更→整机重启)
+    await relinkUploads(serveUrl); // MEDIA_DIR changes during runtime (the normal path is .env change→machine restart)
   }
   if (!uploadsLive) {
     await mkdir(dir, { recursive: true }); // ensure exists: cp must never ENOENT-race
@@ -197,7 +197,7 @@ export async function renderTimeline({ state, outputLocation, onProgress, codec 
     frameRange,
     inputProps,
     outputLocation,
-    // 分辨率导出:按短边缩放(1080p 时间线选 720p → scale 2/3);默认 1 不缩放
+    // Resolution export: scale by short side (1080p timeline select 720p → scale 2/3); default 1 does not scale
     scale: scale && Number.isFinite(scale) && scale > 0 ? scale : 1,
     // GLSL transitions need WebGL2 in headless Chrome; 'angle' uses the native
     // GPU backend (Metal on macOS). Swap to 'swangle' (SwiftShader) on servers.
@@ -211,7 +211,7 @@ export async function renderTimeline({ state, outputLocation, onProgress, codec 
 
 /**
  * Render a single-clip sub-timeline to a video, optionally with alpha over a
- * transparent background (导出 MG 动画 = ProRes 4444 alpha; 转为视频 =
+ * transparent background (Export MG animation = ProRes 4444 alpha; Convert to video =
  * bake to an alpha webm). `state` should be a one-item timeline (item at frame 0).
  * @param {object} args
  * @param {import('../src/editor/types').TimelineState} args.state
@@ -235,7 +235,7 @@ export async function renderClip({ state, outputLocation, codec = 'vp8', transpa
     outputLocation,
     // alpha: png intermediate carries the alpha channel; ProRes 4444 needs the
     // explicit yuva444 pixel format (without it, it falls back to opaque 422).
-    // (vp8/vp9 alpha webm doesn't work in this ffmpeg build, so 转为视频 uses
+    // (vp8/vp9 alpha webm doesn't work in this ffmpeg build, so convert to video uses
     // opaque h264 — see clipExport.ts.)
     ...(transparent && codec === 'prores'
       ? { proResProfile: '4444', imageFormat: 'png', pixelFormat: 'yuva444p10le' }
@@ -252,8 +252,8 @@ export async function renderClip({ state, outputLocation, codec = 'vp8', transpa
  * @param {object} args
  * @param {import('../src/editor/types').TimelineState} args.state
  * @param {number[]} args.frames  frame numbers to render
- * @param {unknown} [args.puppeteerInstance]  复用的无头浏览器(批量渲缩略图时
- *   每次冷启 Chrome 太慢);调用方 openBrowser 一次传入、用完自己 close。
+ * @param {unknown} [args.puppeteerInstance]  Reusable headless browser(When rendering thumbnails in batches
+ *   Every cold start Chrome too slow);caller openBrowser Pass it in once and use it up yourself close。
  */
 /** Cap stills per call (contact-sheet path further compresses into one image). */
 const STILL_MAX_FRAMES = 16;

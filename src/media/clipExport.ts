@@ -13,7 +13,7 @@ function clipState(state: TimelineState, item: TimelineItem): TimelineState {
 
 async function fail(res: Response, verb: string): Promise<never> {
   const info = (await res.json().catch(() => null)) as { error?: string } | null;
-  throw new Error(info?.error ?? t('{verb}失败（{status}）', { verb: t(verb), status: res.status }));
+  throw new Error(info?.error ?? t('{verb}failed ({status}）', { verb: t(verb), status: res.status }));
 }
 
 export interface ClipMovExportOptions {
@@ -44,12 +44,12 @@ export async function renderClipMovBlob(
       filename,
     }),
   });
-  if (!res.ok) await fail(res, '导出');
+  if (!res.ok) await fail(res, 'Export');
   const blob = await res.blob();
   return { blob, filename: `${filename}.mov` };
 }
 
-/** 导出 MG 动画 → ProRes 4444 alpha .mov, downloaded in the browser */
+/** Export MG animation → ProRes 4444 alpha .mov, downloaded in the browser */
 export async function exportClipMov(
   state: TimelineState,
   item: TimelineItem,
@@ -66,14 +66,14 @@ export async function exportClipMov(
   URL.revokeObjectURL(url);
 }
 
-/** 转为视频 → opaque h264 mp4 saved under uploads; returns its path (alpha is
+/** Convert to video → opaque h264 mp4 saved under uploads; returns its path (alpha is
  * flattened — this env's ffmpeg can't encode alpha webm/vp9). */
 export async function bakeClipToVideo(state: TimelineState, item: TimelineItem): Promise<string> {
   const res = await fetch('/render-clip', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ state: clipState(state, item), codec: 'h264', transparent: false, mode: 'bake' }),
   });
-  if (!res.ok) await fail(res, '转换');
+  if (!res.ok) await fail(res, 'Convert');
   return (await res.json() as { path: string }).path;
 }
 
@@ -85,13 +85,13 @@ async function bakeClipToProres(state: TimelineState, item: TimelineItem): Promi
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ state: clipState(state, item), codec: 'prores', transparent: true, mode: 'bake' }),
   });
-  if (!res.ok) await fail(res, '转换');
+  if (!res.ok) await fail(res, 'Convert');
   return (await res.json() as { path: string }).path;
 }
 
-/** 转为视频（透明）→ VP9 alpha WebM under uploads; returns its path. Renders a transparent
+/** Convert to video (transparent)→ VP9 alpha WebM under uploads; returns its path. Renders a transparent
  *  ProRes .mov locally, then transcodes it to alpha webm in the e2b sandbox (whose ffmpeg
- *  can do vp9-alpha, which the local build cannot). This is the true "转为视频 =
+ *  can do vp9-alpha, which the local build cannot). This is the true "Convert to video =
  *  alpha webm". Throws if the sandbox is unavailable — the caller falls back to opaque h264. */
 export async function bakeClipToAlphaWebm(state: TimelineState, item: TimelineItem): Promise<string> {
   const source = await bakeClipToProres(state, item);
@@ -99,6 +99,6 @@ export async function bakeClipToAlphaWebm(state: TimelineState, item: TimelineIt
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ source }),
   });
-  if (!res.ok) await fail(res, '透明编码');
+  if (!res.ok) await fail(res, 'transparent encoding');
   return (await res.json() as { path: string }).path;
 }

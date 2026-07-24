@@ -1,5 +1,5 @@
-// checks:皮肤注册表完整性 + 对比度门(impeccable colorize 纪律固化)。
-// 改任何皮肤配色都要过这里:text/panel ≥ 7、textDim/panel ≥ 4.5、
+// checks: skin registry integrity + contrast gate (impeccable colorize discipline curing).
+// To change the color of any skin, you must go through this: text/panel ≥ 7, textDim/panel ≥ 4.5,
 // textMuted/panel ≥ 4.5、onAccent/accent ≥ 4.5(WCAG AA)。
 // `npx tsx src/skins.verify.ts`
 import assert from 'node:assert/strict';
@@ -31,23 +31,23 @@ function mixHex(foreground: string, background: string, foregroundWeight: number
   return `#${mixed.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
 }
 
-// ── 注册表完整性 ──
-assert.ok(SKINS.length >= 2, '至少默认 + 1 套');
-assert.equal(new Set(SKINS.map((s) => s.id)).size, SKINS.length, '皮肤 id 唯一');
-assert.ok(SKINS.some((s) => s.id === DEFAULT_SKIN), '默认皮肤必须在注册表里');
+// ── Registry integrity ──
+assert.ok(SKINS.length >= 2, 'At least by default + 1 set');
+assert.equal(new Set(SKINS.map((s) => s.id)).size, SKINS.length, 'skin id only');
+assert.ok(SKINS.some((s) => s.id === DEFAULT_SKIN), 'The default skin must be in the registry');
 for (const s of SKINS) {
-  assert.ok(/^[a-z]+$/.test(s.id), `${s.id}: id 小写字母`);
-  assert.ok(s.nameZh.trim().length > 0, `${s.id}: 有中文名`);
-  assert.match(s.tokens.accentRgb, /^\d{1,3},\d{1,3},\d{1,3}$/, `${s.id}: accentRgb 三元组`);
-  assert.match(s.tokens.inkRgb, /^\d{1,3},\d{1,3},\d{1,3}$/, `${s.id}: inkRgb 三元组`);
-  assert.match(s.tokens.shadowRgb, /^\d{1,3},\d{1,3},\d{1,3}$/, `${s.id}: shadowRgb 三元组`);
+  assert.ok(/^[a-z]+$/.test(s.id), `${s.id}: id lowercase letters`);
+  assert.ok(s.nameZh.trim().length > 0, `${s.id}: Has a Chinese name`);
+  assert.match(s.tokens.accentRgb, /^\d{1,3},\d{1,3},\d{1,3}$/, `${s.id}: accentRgb Triplet`);
+  assert.match(s.tokens.inkRgb, /^\d{1,3},\d{1,3},\d{1,3}$/, `${s.id}: inkRgb Triplet`);
+  assert.match(s.tokens.shadowRgb, /^\d{1,3},\d{1,3},\d{1,3}$/, `${s.id}: shadowRgb Triplet`);
   for (const [name, value] of Object.entries(s.tokens)) {
     if (name === 'accentRgb' || name === 'inkRgb' || name === 'shadowRgb' || name === 'colorScheme') continue;
-    assert.match(value, /^#[0-9a-f]{6}$/, `${s.id}.${name}: 6 位小写 hex(得进对比度计算)`);
+    assert.match(value, /^#[0-9a-f]{6}$/, `${s.id}.${name}: 6 lower case hex(Contrast calculation)`);
   }
 }
 
-// ── 对比度门(AA) ──
+// ── Contrast Gate (AA) ──
 for (const s of SKINS) {
   const t = s.tokens;
   const gate = (label: string, ratio: number, min: number): void =>
@@ -56,22 +56,22 @@ for (const s of SKINS) {
   gate('text/panelAlt', contrast(t.text, t.panelAlt), 4.5);
   gate('textMuted/panel', contrast(t.textMuted, t.panel), 4.5);
   gate('textDim/panel', contrast(t.textDim, t.panel), 4.4);
-  // onAccent 按 WCAG 组件/大字级(≥3):石墨白字压 coral=3.27。
-  // (身份保留);粉彩皮肤(摩卡/北极/东京夜/拿铁)用深字,实际 ≥4.5。
+  // onAccent by WCAG component/large font level (≥3): graphite white font pressure coral=3.27.
+  // (Identity reserved); Use dark characters for pastel skin (Mocha/Arctic/Tokyo Night/Latte), actual ≥4.5.
   gate('onAccent/accent', contrast(t.onAccent, t.accent), 3);
   gate('textStrong/hover', contrast(t.textStrong, t.hover), 4.5);
   gate('audioFxBadge/panelGold10', contrast(t.text, mixHex(t.gold, t.panel, 0.1)), 4.5);
 }
 
-// ── CSS 生成:默认皮肤进 :root,其余各有覆盖块,body 跟随 ──
+// ── CSS generation: The default skin enters :root, the rest have overlay blocks, and body follows ──
 const css = buildSkinsCss();
-assert.ok(css.includes(':root {'), ':root 块');
+assert.ok(css.includes(':root {'), ':root block');
 for (const s of SKINS) {
   if (s.id === DEFAULT_SKIN) continue;
-  assert.ok(css.includes(`html[data-cc-skin='${s.id}']`), `${s.id} 覆盖块`);
+  assert.ok(css.includes(`html[data-cc-skin='${s.id}']`), `${s.id} cover block`);
 }
-assert.ok(css.includes('--cc-on-accent:'), 'on-accent 变量输出');
-assert.ok(css.includes('--cc-shadow-rgb:'), 'shadow-rgb 变量输出');
-assert.ok(css.includes('body { background: var(--cc-bg)'), 'body 跟随皮肤');
+assert.ok(css.includes('--cc-on-accent:'), 'on-accent variable output');
+assert.ok(css.includes('--cc-shadow-rgb:'), 'shadow-rgb variable output');
+assert.ok(css.includes('body { background: var(--cc-bg)'), 'body follow the skin');
 
-process.stdout.write(`skins.verify: ok (${SKINS.length} skins, 对比度门全过)\n`);
+process.stdout.write(`skins.verify: ok (${SKINS.length} skins, Contrast gate passed)\n`);

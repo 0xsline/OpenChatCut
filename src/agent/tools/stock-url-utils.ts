@@ -1,7 +1,7 @@
 import type { MediaAsset } from '../../editor/types';
 
-// stock/download 工具的纯 URL/媒体探测辅助(从 stock-tools.ts 拆出,守 500 行文件上限)。
-// 无副作用:URL 嗅探、命名、时长兜底、浏览器端 metadata 探测。
+// Pure URL/media detection assistance for the stock/download tool (unpacked from stock-tools.ts, subject to the 500-line file limit).
+// No side effects: URL sniffing, naming, duration profiling, browser-side metadata detection.
 
 export type PoolKind = MediaAsset['kind'];
 
@@ -52,7 +52,7 @@ export interface ProbeResult {
   height?: number;
 }
 
-/** 浏览器端探测媒体 metadata(时长/宽高);node 或超时/失败 → fallback 时长。 */
+/** Browser-side media detection metadata(duration/width and height);node or timeout/failed → fallback duration. */
 export function probeUrl(url: string, kind: PoolKind, fps: number): Promise<ProbeResult> {
   const fallback: ProbeResult = { durationInFrames: fallbackDuration(kind, fps) };
   if (typeof document === 'undefined') return Promise.resolve(fallback);

@@ -1,10 +1,10 @@
-// 导出设置对话框(submit_export 全参数面,5 tab):
-//   视频  codec h264/vp8 + 分辨率 480/720/1080p + 帧率 24/25/30/50/60(缺省跟时间线)
-//   音频  mp3(视频轨忽略)
-//   MG动画 全部 MG 逐个渲成带 alpha 的 ProRes 4444 .mov
-//   字幕  srt / txt(需先开启字幕)
-//   XML   fcp_xml(Premiere)/ fcp_xml_resolve(达芬奇)± 随包渲出 MG .mov
-// 「创建分享链接」(云端公开页)需要分享后端——本地无,不摆假开关。
+// Export settings dialog box (submit_export full parameter surface, 5 tabs):
+//   Video codec h264/vp8 + resolution 480/720/1080p + frame rate 24/25/30/50/60 (default and timeline)
+//   Audio mp3 (video track ignored)
+//   MG animation All MGs are rendered one by one into ProRes 4444 .mov with alpha
+//   Subtitles srt / txt (subtitles need to be turned on first)
+//   XML fcp_xml(Premiere)/ fcp_xml_resolve(DaVinci)± Render MG .mov with the package
+// "Create Sharing Link" (cloud public page) requires a sharing backend - none locally, no false switches.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../i18n/locale';
 import { Icon, type IconName } from '../components/icons';
@@ -42,11 +42,11 @@ interface ExportDialogProps {
 }
 
 const TABS: Array<{ key: ExportTab; label: string; summary: string; icon: IconName }> = [
-  { key: 'video', label: '成片', summary: 'MP4 / WebM', icon: 'film' },
-  { key: 'audio', label: '音轨', summary: 'MP3', icon: 'music' },
-  { key: 'mg', label: '动态图层', summary: 'ProRes 4444', icon: 'sparkles' },
-  { key: 'subtitles', label: '字幕稿', summary: 'SRT / TXT', icon: 'captions' },
-  { key: 'xml', label: '剪辑工程', summary: 'FCPXML', icon: 'clipboard' },
+  { key: 'video', label: 'Completed film', summary: 'MP4 / WebM', icon: 'film' },
+  { key: 'audio', label: 'audio track', summary: 'MP3', icon: 'music' },
+  { key: 'mg', label: 'Dynamic layers', summary: 'ProRes 4444', icon: 'sparkles' },
+  { key: 'subtitles', label: 'Subtitles', summary: 'SRT / TXT', icon: 'captions' },
+  { key: 'xml', label: 'Editing project', summary: 'FCPXML', icon: 'clipboard' },
 ];
 
 const FPS_OPTIONS = [...EXPORT_FPS_OPTIONS];
@@ -151,7 +151,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
   const t = useT();
   const [tab, setTab] = useState<ExportTab>('video');
   const [codec, setCodec] = useState<'h264' | 'vp8'>('h264');
-  // 分辨率默认档 = 时间线短边就近(1080×1920 → 1080p)
+  // Default resolution = closest to the short side of the timeline (1080×1920 → 1080p)
   const defaultRes = useMemo(() => {
     const minSide = Math.min(state.width, state.height);
     if (minSide <= 480) return '480p';
@@ -159,7 +159,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     return '1080p';
   }, [state.width, state.height]);
   const [resolution, setResolution] = useState<ExportResolution>(defaultRes);
-  // 帧率默认 = 时间线 fps 落进档位(不在档位则取 30)
+  // Default frame rate = Timeline fps falls into the gear (if not, it takes 30)
   const [fps, setFps] = useState<number>(FPS_OPTIONS.some((candidate) => candidate === state.fps) ? state.fps : 30);
   const [subtitleFormat, setSubtitleFormat] = useState<'srt' | 'txt'>('srt');
   const captionTracks = useMemo(() => captionTrackEntries(state).filter((entry) => entry.captions), [state]);
@@ -196,13 +196,13 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     : tab === 'audio' ? `${base}.mp3`
       : tab === 'subtitles' ? `${base}.${subtitleFormat}`
         : tab === 'xml' ? `${base}-${nleFormat === 'fcp_xml_resolve' ? 'resolve' : 'premiere'}.fcpxml`
-          : t('{n} 个透明 MOV 文件', { n: mgItems.length });
+          : t('{n} a transparent MOV File', { n: mgItems.length });
   const actionLabel: Record<ExportTab, string> = {
-    video: '导出成片',
-    audio: '提取音轨',
-    mg: '导出动态图层',
-    subtitles: '下载字幕',
-    xml: '生成剪辑工程',
+    video: 'Export to movie',
+    audio: 'Extract audio tracks',
+    mg: 'Export dynamic layers',
+    subtitles: 'Download subtitles',
+    xml: 'Generate editing project',
   };
 
 
@@ -214,13 +214,13 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
 
   const verifyCompletedExport = async (completed: NonNullable<ExportJobSnapshot['result']>) => {
     if (!completed.path) return;
-    setBusy(t('正在检查导出质量…'));
+    setBusy(t('Checking export quality...'));
     setQa({ status: 'running', attempts: 0 });
     setProgress((current) => current ? {
       ...current,
       phase: 'verifying',
       percent: 99,
-      detail: t('检查画面、声音、剪辑点和字幕安全区，失败时最多自动复检 3 轮'),
+      detail: t('Check the picture, sound, editing point and subtitle safe area, and automatically recheck at most if it fails. 3 wheel'),
     } : current);
     const baseline = exportQaExpectations(state);
     const expected = {
@@ -277,7 +277,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     });
     const submitted = (await submission.json().catch(() => null)) as { renderId?: string; error?: string } | null;
     if (!submission.ok || !submitted?.renderId) {
-      throw new Error(submitted?.error ?? t('导出失败 ({status})', { status: submission.status }));
+      throw new Error(submitted?.error ?? t('Export failed ({status})', { status: submission.status }));
     }
 
     let completed: ExportJobSnapshot['result'];
@@ -286,11 +286,11 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
       const snapshot = (await response.json().catch(() => null)) as ExportJobSnapshot | { error?: string } | null;
       if (!response.ok || !snapshot || !('status' in snapshot)) {
         const message = snapshot && 'error' in snapshot ? snapshot.error : undefined;
-        throw new Error(message ?? t('无法读取导出进度 ({status})', { status: response.status }));
+        throw new Error(message ?? t('Unable to read export progress ({status})', { status: response.status }));
       }
-      if (snapshot.status === 'failed') throw new Error(snapshot.error ?? t('导出失败'));
+      if (snapshot.status === 'failed') throw new Error(snapshot.error ?? t('Export failed'));
       if (snapshot.status === 'succeeded') {
-        if (!snapshot.result?.path) throw new Error(t('导出完成，但没有可下载的文件'));
+        if (!snapshot.result?.path) throw new Error(t('Export completed, but no files available for download'));
         setProgress((current) => current ? {
           ...current,
           phase: 'finalizing',
@@ -317,10 +317,10 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
 
     if (format === 'video' && autoQaEnabled) await verifyCompletedExport(completed);
 
-    setBusy(t('正在下载…'));
+    setBusy(t('Downloading…'));
     setProgress((current) => current ? { ...current, phase: 'downloading', percent: 99 } : current);
     const file = await fetch(completed.path!);
-    if (!file.ok) throw new Error(t('下载导出文件失败 ({status})', { status: file.status }));
+    if (!file.ok) throw new Error(t('Failed to download export file ({status})', { status: file.status }));
     const blob = await file.blob();
     const ext = format === 'audio' ? 'mp3' : useCodec === 'vp8' ? 'webm' : 'mp4';
     const filename = completed.name ?? `${base}.${ext}`;
@@ -332,7 +332,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     void recordExport({ name: filename, format, codec: useCodec, sizeBytes: completed.sizeBytes ?? blob.size, createdAt: Date.now() });
   };
 
-  /** 视频优先在浏览器中通过 WebCodecs 渲染，不支持的时间线无缝回退服务端。 */
+  /** Videos are passed first in the browser WebCodecs Rendering, unsupported timeline seamless fallback to the server. */
   const exportVideo = async () => {
     // Auto QA verifies the server-side artifact before it is downloaded, so it
     // must use the compatibility path instead of the in-memory browser blob.
@@ -357,14 +357,14 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
             onProgress: (snapshot) => {
               setRenderEngine('browser');
               const percent = Math.min(98, Math.max(1, Math.round(snapshot.progress * 98)));
-              setBusy(t('浏览器渲染中…'));
+              setBusy(t('Browser rendering...'));
               setProgress((current) => current ? {
                 ...current,
                 phase: 'rendering',
                 percent: Math.max(current.percent, percent),
                 processedFrames: snapshot.encodedFrames,
                 totalFrames: Math.max(1, timelineDuration(state)),
-                detail: t('WebCodecs 浏览器加速'),
+                detail: t('WebCodecs browser acceleration'),
               } : current);
             },
           });
@@ -374,20 +374,20 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
         server: () => exportMedia('video'),
         onFallback: (reason) => {
           setRenderEngine('server');
-          setBusy(t('切换兼容渲染…'));
+          setBusy(t('Toggle compatible rendering…'));
           setProgress((current) => current ? {
             ...current,
             phase: 'preparing',
             percent: 0,
             processedFrames: undefined,
             totalFrames: undefined,
-            detail: t('浏览器快导不可用：{reason}，已切换兼容渲染', { reason }),
+            detail: t('Browser guide is not available:{reason}, compatible rendering has been switched', { reason }),
           } : current);
         },
       });
       if (result.engine === 'server') return;
 
-      setBusy(t('正在下载…'));
+      setBusy(t('Downloading…'));
       setProgress((current) => current ? {
         ...current,
         phase: 'downloading',
@@ -408,27 +408,27 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     }
   };
 
-  /** MG动画:逐个渲 ProRes 4444 alpha .mov(复用单片段导出管线)。 */
+  /** MGanimation:Render one by one ProRes 4444 alpha .mov(Reuse single fragment export pipeline)。 */
   const exportMgBatch = async () => {
     for (let i = 0; i < mgItems.length; i++) {
-      setBusy(t('渲染 MG {i}/{n} · {name}', { i: i + 1, n: mgItems.length, name: mgItems[i].name }));
+      setBusy(t('rendering MG {i}/{n} · {name}', { i: i + 1, n: mgItems.length, name: mgItems[i].name }));
       setProgress((current) => current ? {
         ...current,
         phase: 'rendering',
         percent: Math.round((i / mgItems.length) * 95),
-        detail: t('正在渲染第 {i}/{n} 个动态图层', { i: i + 1, n: mgItems.length }),
+        detail: t('Rendering the {i}/{n} dynamic layers', { i: i + 1, n: mgItems.length }),
       } : current);
       await exportClipMov(state, mgItems[i]);
     }
-    void recordExport({ name: `${mgItems.length} 个 MG · ProRes 4444`, format: 'video', codec: 'prores', createdAt: Date.now() });
+    void recordExport({ name: `${mgItems.length} a MG · ProRes 4444`, format: 'video', codec: 'prores', createdAt: Date.now() });
   };
 
   const exportSubtitles = () => {
-    if (!subtitleCaptions) throw new Error(t('请先开启字幕'));
+    if (!subtitleCaptions) throw new Error(t('Please turn on subtitles first'));
     const text = subtitleFormat === 'srt'
       ? captionsToSrt(subtitleCaptions, state.items, state.fps)
       : captionsToTxt(subtitleCaptions, state.items, state.fps);
-    if (!text) throw new Error(t('当前字幕轨没有可导出的内容'));
+    if (!text) throw new Error(t('The current subtitle track has no exportable content'));
     downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), `${base}.${subtitleFormat}`);
     void recordExport({ name: `${base}.${subtitleFormat}`, format: 'subtitles', createdAt: Date.now() });
   };
@@ -446,12 +446,12 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
       ).entries());
       for (let i = 0; i < uniqueMgItems.length; i++) {
         const [renderKey, item] = uniqueMgItems[i];
-        setBusy(t('渲染 MG {i}/{n} · {name}', { i: i + 1, n: uniqueMgItems.length, name: item.name }));
+        setBusy(t('rendering MG {i}/{n} · {name}', { i: i + 1, n: uniqueMgItems.length, name: item.name }));
         setProgress((current) => current ? {
           ...current,
           phase: 'rendering',
           percent: Math.round((i / uniqueMgItems.length) * 90),
-          detail: t('正在渲染第 {i}/{n} 个动态图层', { i: i + 1, n: uniqueMgItems.length }),
+          detail: t('Rendering the {i}/{n} dynamic layers', { i: i + 1, n: uniqueMgItems.length }),
         } : current);
         try {
           const rendered = await renderClipMovBlob(state, item, { filename: motionGraphicRenderFilename(renderKey) });
@@ -477,7 +477,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     if (failedRenderNames.length) {
       setProgress((current) => current ? {
         ...current,
-        detail: t('{n} 个动态图层渲染失败，XML 已保留占位', { n: failedRenderNames.length }),
+        detail: t('{n} Dynamic layer rendering failed,XML Placeholder reserved', { n: failedRenderNames.length }),
       } : current);
     }
   };
@@ -490,7 +490,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     const startedAt = Date.now();
     setClock(startedAt);
     setProgress({ phase: 'preparing', percent: 0, startedAt });
-    setBusy(t('准备导出…'));
+    setBusy(t('Prepare to export…'));
     try {
       if (tab === 'video') await exportVideo();
       else if (tab === 'audio') await exportMedia('audio');
@@ -506,11 +506,11 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
           ...current,
           phase: 'cancelled',
           finishedAt: Date.now(),
-          detail: t('已取消浏览器渲染'),
+          detail: t('Browser rendering canceled'),
         } : current);
         return;
       }
-      const message = err instanceof Error ? err.message : t('导出失败');
+      const message = err instanceof Error ? err.message : t('Export failed');
       setError(message);
       setProgress((current) => current ? { ...current, phase: 'failed', finishedAt: Date.now() } : current);
     } finally {
@@ -523,15 +523,15 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     || (tab === 'mg' && mgItems.length === 0);
 
   const phaseLabel = progress ? ({
-    queued: t('等待渲染'),
-    preparing: t('准备素材'),
-    rendering: t('正在渲染'),
-    finalizing: t('正在封装'),
-    verifying: t('正在质量检查'),
-    downloading: t('正在下载'),
-    completed: t('导出完成'),
-    failed: t('导出失败'),
-    cancelled: t('已取消'),
+    queued: t('Waiting for rendering'),
+    preparing: t('Prepare materials'),
+    rendering: t('Rendering'),
+    finalizing: t('Packaging'),
+    verifying: t('Under quality inspection'),
+    downloading: t('Downloading'),
+    completed: t('Export completed'),
+    failed: t('Export failed'),
+    cancelled: t('Canceled'),
   } as Record<ExportPhase, string>)[progress.phase] : '';
   const elapsedMs = progress ? (progress.finishedAt ?? clock) - progress.startedAt : 0;
   const etaMs = progress && progress.phase === 'rendering' && progress.percent >= 3 && progress.percent < 99
@@ -549,18 +549,18 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
       >
         <header className="cc-export-header">
           <div>
-            <h2 id="cc-export-title">{t('导出')}</h2>
+            <h2 id="cc-export-title">{t('Export')}</h2>
             <p>{base} · {state.width}×{state.height} · {state.fps} fps</p>
           </div>
-          <button type="button" className="cc-export-close" onClick={onClose} disabled={!!busy} title={t('关闭')}>
+          <button type="button" className="cc-export-close" onClick={onClose} disabled={!!busy} title={t('close')}>
             <Icon name="x" size={16} />
           </button>
         </header>
 
         <div className="cc-export-layout">
           <aside className="cc-export-sidebar">
-            <span className="cc-export-sidebar-label">{t('输出类型')}</span>
-            <div className="cc-export-tabs" role="tablist" aria-label={t('输出类型')}>
+            <span className="cc-export-sidebar-label">{t('Output type')}</span>
+            <div className="cc-export-tabs" role="tablist" aria-label={t('Output type')}>
               {TABS.map((entry) => (
                 <button
                   type="button"
@@ -589,10 +589,10 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
                 <h3>{t(activeTab.label)}</h3>
                 <p>{activeTab.summary}</p>
               </div>
-              <span className="cc-export-local-badge"><i />{tab !== 'video' ? t('本机渲染')
-                : renderEngine === 'server' ? t('兼容渲染')
-                  : renderEngine === 'browser' ? t('浏览器加速')
-                    : renderEngine === 'checking' ? t('检测浏览器') : t('浏览器优先')}</span>
+              <span className="cc-export-local-badge"><i />{tab !== 'video' ? t('native rendering')
+                : renderEngine === 'server' ? t('Compatible rendering')
+                  : renderEngine === 'browser' ? t('browser acceleration')
+                    : renderEngine === 'checking' ? t('Detect browser') : t('Browser first')}</span>
             </div>
 
             <div
@@ -603,22 +603,22 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
             >
               {tab === 'video' && (
                 <>
-                  <Row label={t('编码')}>
+                  <Row label={t('encoding')}>
                     <select className="cc-export-select" value={codec} onChange={(event) => setCodec(event.target.value as 'h264' | 'vp8')}>
                       <option value="h264">MP4 (H.264)</option>
                       <option value="vp8">WebM (VP8)</option>
                     </select>
                   </Row>
-                  <Row label={t('分辨率')}>
+                  <Row label={t('resolution')}>
                     <Segmented options={RESOLUTIONS.map((value) => ({ value, label: value }))} value={resolution} onChange={setResolution} />
                   </Row>
-                  <Row label={t('帧率')}>
+                  <Row label={t('Frame rate')}>
                     <Segmented options={FPS_OPTIONS.map((value) => ({ value, label: `${value} fps` }))} value={fps} onChange={setFps} />
                   </Row>
                   <label className="cc-export-toggle cc-export-qa-toggle">
                     <span>
-                      <strong>{t('导出后自动质量检查')}</strong>
-                      <small>{t('检查画面、声音、剪辑点和字幕安全区；临时失败最多自动复检 3 轮。')}</small>
+                      <strong>{t('Automatic quality check after export')}</strong>
+                      <small>{t('Check the picture, sound, editing point and subtitle safe area; automatic recheck at most if temporary failure occurs 3 wheel.')}</small>
                     </span>
                     <input
                       type="checkbox"
@@ -632,33 +632,33 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
               )}
 
               {tab === 'audio' && (
-                <InfoCard icon="music" title={t('MP3 音轨')} text={t('提取时间线中的完整混音，视频画面不会写入文件。')} />
+                <InfoCard icon="music" title={t('MP3 audio track')} text={t('Extracts the complete mix from the timeline, the video footage is not written to the file.')} />
               )}
 
               {tab === 'mg' && (
                 <InfoCard
                   icon="sparkles"
-                  title={mgItems.length ? t('{n} 个动态图层', { n: mgItems.length }) : t('没有可导出的动态图层')}
+                  title={mgItems.length ? t('{n} dynamic layers', { n: mgItems.length }) : t('No dynamic layers available for export')}
                   text={mgItems.length
-                    ? t('逐个生成带透明通道的 ProRes 4444 MOV，方便在其他工程中复用。')
-                    : t('先在时间线上添加 MG 动画，再从这里生成透明素材。')}
+                    ? t('Generate with transparent channel one by one ProRes 4444 MOV, to facilitate reuse in other projects.')
+                    : t('Add it to the timeline first MG Animation, and then generate transparent material from here.')}
                 />
               )}
 
               {tab === 'subtitles' && (
                 <>
                   {!captionTracks.length && (
-                    <InfoCard icon="captions" title={t('字幕轨尚未开启')} text={t('开启字幕并确认内容后，即可下载字幕稿。')} />
+                    <InfoCard icon="captions" title={t('The subtitle track has not been enabled yet')} text={t('After turning on subtitles and confirming the content, you can download the subtitle draft.')} />
                   )}
-                  <Row label={t('字幕轨道')}>
+                  <Row label={t('subtitle track')}>
                     <select className="cc-export-select" value={subtitleTrack} disabled={!captionTracks.length} onChange={(event) => setSubtitleTrack(event.target.value)}>
                       {!captionTracks.length && <option value="">—</option>}
                       {captionTracks.map((entry) => <option key={entry.id} value={entry.id}>{trackAlias(state, entry.id)}</option>)}
                     </select>
                   </Row>
-                  <Row label={t('格式')}>
+                  <Row label={t('Format')}>
                     <Segmented
-                      options={[{ value: 'srt', label: 'SubRip (.srt)' }, { value: 'txt', label: '纯文本 (.txt)' }] as const}
+                      options={[{ value: 'srt', label: 'SubRip (.srt)' }, { value: 'txt', label: 'plain text (.txt)' }] as const}
                       value={subtitleFormat} onChange={setSubtitleFormat}
                     />
                   </Row>
@@ -667,22 +667,22 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
 
               {tab === 'xml' && (
                 <>
-                  <InfoCard icon="clipboard" title={t('可继续编辑的工程')} text={t('生成带轨道与素材引用的 FCPXML，交给 Premiere Pro 或达芬奇继续制作。')} />
-                  <Row label={t('目标软件')}>
+                  <InfoCard icon="clipboard" title={t('Projects that can be edited')} text={t('Generate files with track and material references FCPXML, give it to Premiere Pro Or Leonardo da Vinci continues to make.')} />
+                  <Row label={t('target software')}>
                     <Segmented
-                      options={[{ value: 'fcp_xml', label: 'Premiere Pro' }, { value: 'fcp_xml_resolve', label: '达芬奇' }] as const}
+                      options={[{ value: 'fcp_xml', label: 'Premiere Pro' }, { value: 'fcp_xml_resolve', label: 'da vinci' }] as const}
                       value={nleFormat} onChange={setNleFormat}
                     />
                   </Row>
                   <label className="cc-export-toggle">
                     <span>
-                      <strong>{t('同时打包动态图层')}</strong>
-                      <small>{t('额外生成带透明通道的 ProRes 4444 MOV。')}</small>
+                      <strong>{t('Pack dynamic layers simultaneously')}</strong>
+                      <small>{t('Additional generation with transparency channel ProRes 4444 MOV。')}</small>
                     </span>
                     <input type="checkbox" checked={includeMg} onChange={(event) => setIncludeMg(event.target.checked)}
                       disabled={mgItems.length === 0} />
                   </label>
-                  <p className="cc-export-footnote">{t('导入后，请在剪辑软件中指向原始素材所在文件夹，以重新链接离线片段。')}</p>
+                  <p className="cc-export-footnote">{t('After importing, point your editing software to the folder containing the original footage to relink the offline clips.')}</p>
                 </>
               )}
 
@@ -708,19 +708,19 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
                   </div>
                   <div className="cc-export-progress-meta">
                     {progress.processedFrames !== undefined && progress.totalFrames !== undefined && (
-                      <span>{t('已渲染 {done}/{total} 帧', { done: progress.processedFrames, total: progress.totalFrames })}</span>
+                      <span>{t('Rendered {done}/{total} frame', { done: progress.processedFrames, total: progress.totalFrames })}</span>
                     )}
                     {progress.detail && <span>{progress.detail}</span>}
-                    <span>{t('已用 {time}', { time: formatDuration(elapsedMs) })}</span>
+                    <span>{t('Used {time}', { time: formatDuration(elapsedMs) })}</span>
                     {etaMs !== null && etaMs < 24 * 60 * 60_000 && (
-                      <span>{t('预计剩余 {time}', { time: formatDuration(etaMs) })}</span>
+                      <span>{t('Estimated remaining {time}', { time: formatDuration(etaMs) })}</span>
                     )}
-                    {progress.outputSize !== undefined && <span>{t('文件大小 {size}', { size: formatBytes(progress.outputSize) })}</span>}
+                    {progress.outputSize !== undefined && <span>{t('file size {size}', { size: formatBytes(progress.outputSize) })}</span>}
                   </div>
                 </div>
               )}
               <div className="cc-export-output">
-                <span>{progress?.phase === 'completed' ? t('已生成') : t('即将生成')}</span>
+                <span>{progress?.phase === 'completed' ? t('Generated') : t('About to generate')}</span>
                 <strong title={outputName}>{outputName}</strong>
               </div>
               {busy && (renderEngine === 'checking' || renderEngine === 'browser') && (
@@ -729,7 +729,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
                   className="cc-export-cancel"
                   onClick={() => browserAbortRef.current?.abort()}
                 >
-                  {t('取消')}
+                  {t('Cancel')}
                 </button>
               )}
               <button
@@ -739,8 +739,8 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
                 disabled={disabled}
               >
                 {!busy && <Icon name={progress?.phase === 'completed' ? 'check' : 'download'} size={17} />}
-                {busy ? `${progress?.percent ?? 0}%` : progress?.phase === 'completed' ? t('完成')
-                  : progress?.phase === 'failed' ? t('重试') : t(actionLabel[tab])}
+                {busy ? `${progress?.percent ?? 0}%` : progress?.phase === 'completed' ? t('Complete')
+                  : progress?.phase === 'failed' ? t('Try again') : t(actionLabel[tab])}
               </button>
             </footer>
           </main>
@@ -772,17 +772,17 @@ function InfoCard({ icon, title, text }: { icon: IconName; title: string; text: 
 }
 
 const QA_ISSUE_LABELS: Record<string, string> = {
-  missing_video: '成片缺少视频轨',
-  duration_mismatch: '成片时长与时间线不一致',
-  resolution_mismatch: '成片分辨率与导出设置不一致',
-  fps_mismatch: '成片帧率与导出设置不一致',
-  missing_audio: '成片缺少应有的音频轨',
-  black_frames: '检测到异常黑帧',
-  frozen_frames: '检测到较长静帧',
-  long_silence: '检测到较长静音',
-  audio_peak: '音频峰值接近削波',
-  caption_safe_area_horizontal: '字幕越出横向安全区',
-  caption_safe_area_vertical: '字幕越出纵向安全区',
+  missing_video: 'The finished film is missing a video track',
+  duration_mismatch: 'The duration of the film is inconsistent with the timeline',
+  resolution_mismatch: 'The final film resolution is inconsistent with the export settings',
+  fps_mismatch: 'The frame rate of the film is inconsistent with the export settings',
+  missing_audio: 'The finished film lacks the proper audio track',
+  black_frames: 'Abnormal black frame detected',
+  frozen_frames: 'Long still frame detected',
+  long_silence: 'Long silence detected',
+  audio_peak: 'Audio peaks are close to clipping',
+  caption_safe_area_horizontal: 'Subtitles exceed the horizontal safe zone',
+  caption_safe_area_vertical: 'Subtitles exceed the vertical safe zone',
 };
 
 function qaIssueLabel(issue: ExportQaIssue, translate: ReturnType<typeof useT>): string {
@@ -795,13 +795,13 @@ function qaIssueLabel(issue: ExportQaIssue, translate: ReturnType<typeof useT>):
 function ExportQaCard({ qa }: { qa: ExportQaUiState }) {
   const t = useT();
   if (qa.status === 'running') {
-    return <div className="cc-export-qa-card running"><strong>{t('正在自动检查成片…')}</strong></div>;
+    return <div className="cc-export-qa-card running"><strong>{t('Automatically checking the finished film...')}</strong></div>;
   }
   if (qa.status === 'error') {
     return (
       <div className="cc-export-qa-card error">
-        <strong>{t('自动质量检查未完成')}</strong>
-        <p>{t('成片仍会正常下载；你可以稍后重新导出复检。')} {qa.message}</p>
+        <strong>{t('Automated quality check not completed')}</strong>
+        <p>{t('The finished film will still download normally; you can re-export it later for review.')} {qa.message}</p>
       </div>
     );
   }
@@ -809,13 +809,13 @@ function ExportQaCard({ qa }: { qa: ExportQaUiState }) {
   return (
     <div className={`cc-export-qa-card ${qa.status}`}>
       <div className="cc-export-qa-summary">
-        <strong>{qa.status === 'passed' ? t('自动质量检查通过') : t('自动质量检查发现问题')}</strong>
-        <span>{t('{errors} 个错误 · {warnings} 个警告', {
+        <strong>{qa.status === 'passed' ? t('Automatic quality check passed') : t('Automatic quality checks identify issues')}</strong>
+        <span>{t('{errors} errors · {warnings} warning', {
           errors: report.summary.errors,
           warnings: report.summary.warnings,
         })}</span>
       </div>
-      {qa.attempts > 1 && <p>{t('第 {n} 轮检查完成', { n: qa.attempts })}</p>}
+      {qa.attempts > 1 && <p>{t('No. {n} Round inspection completed', { n: qa.attempts })}</p>}
       {report.issues.length > 0 && (
         <ul>
           {report.issues.map((issue, index) => (
@@ -827,8 +827,8 @@ function ExportQaCard({ qa }: { qa: ExportQaUiState }) {
       )}
       {qa.evidenceUrl && (
         <details>
-          <summary>{t('查看剪辑点前后对照图')}</summary>
-          <img src={qa.evidenceUrl} alt={t('剪辑点前后画面对照')} />
+          <summary>{t('Check out the before and after pictures of the editing point')}</summary>
+          <img src={qa.evidenceUrl} alt={t('Picture comparison before and after the editing point')} />
         </details>
       )}
     </div>

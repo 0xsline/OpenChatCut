@@ -2,7 +2,7 @@
 // It reads stream and format metadata to determine audio, fps, duration, dimensions,
 // and codec information. The agent probes before
 // finalize_uploaded_asset so it can pass an accurate hasAudioTrack — silent / no-audio
-// media then skips 上传即转写 ASR, and fps/duration are exact.
+// media then skips ASR, and fps/duration are exact.
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
@@ -13,7 +13,7 @@ export const PROBE_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'probe_media',
     description:
-      'Accurately probe a media file with ffprobe in an isolated sandbox. Returns durationSeconds, width, height, fps, hasAudioTrack, hasVideoTrack, and codecs. Accepts a media-pool assetId/prefix, a local /media/… path, or a public https URL. Call this before finalize_uploaded_asset to pass an accurate hasAudioTrack (so silent / no-audio media skips 上传即转写 ASR) and exact fps/duration. Requires the e2b sandbox; if unavailable you can finalize without it (video defaults to transcribe).',
+      'Accurately probe a media file with ffprobe in an isolated sandbox. Returns durationSeconds, width, height, fps, hasAudioTrack, hasVideoTrack, and codecs. Accepts a media-pool assetId/prefix, a local /media/… path, or a public https URL. Call this before finalize_uploaded_asset to pass an accurate hasAudioTrack (so silent / no-audio media skips Upload and transcribe ASR) and exact fps/duration. Requires the e2b sandbox; if unavailable you can finalize without it (video defaults to transcribe).',
     input_schema: {
       type: 'object',
       properties: {
@@ -130,7 +130,7 @@ export async function execProbeTool(name: string, args: Args, ctx: AgentContext)
     source: resolved.url,
     ...probe,
     next: probe.hasAudioTrack
-      ? `Has audio → finalize_uploaded_asset with hasAudioTrack=true${probe.fps ? `, fps=${probe.fps}` : ''}; 上传即转写 ASR auto-starts, then track_progress target=transcription.`
+      ? `Has audio → finalize_uploaded_asset with hasAudioTrack=true${probe.fps ? `, fps=${probe.fps}` : ''}; Upload and transcribe ASR auto-starts, then track_progress target=transcription.`
       : 'No audio track → finalize_uploaded_asset with hasAudioTrack=false to skip transcription.',
   };
 }

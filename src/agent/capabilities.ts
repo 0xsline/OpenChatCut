@@ -2,7 +2,7 @@
 // SERVER-SIDE in vite.config.ts (from .env.local) and injected via `define` as
 // __CONFIGURED_CAPS__ — BOOLEANS ONLY, never any key value reaches the browser.
 // The system prompt reads this so the agent plans around what's available instead
-// of promising e.g. 生图 and only discovering "not configured" mid-execution.
+// of promising e.g. raw graph and only discovering "not configured" mid-execution.
 
 export type CapabilityKey =
   | 'image' | 'voice' | 'video' | 'music' | 'sound'
@@ -60,13 +60,13 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
   ],
   voice: [
     { label: 'ElevenLabs', arg: 'elevenlabs', argKey: 'provider', need: [['ELEVENLABS_API_KEY']] },
-    { label: '豆包', arg: 'doubao', argKey: 'provider', need: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']] },
+    { label: 'bean bag', arg: 'doubao', argKey: 'provider', need: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']] },
     { label: 'MiniMax', arg: 'minimax', argKey: 'provider', need: [['MINIMAX_API_KEY']] },
   ],
   video: [
     { label: 'Seedance', arg: 'seedance2', argKey: 'model', need: [['SEEDANCE_API_KEY']] },
-    { label: '可灵', arg: 'kling', argKey: 'model', need: [['KLING_API_KEY']] },
-    { label: '海螺', arg: 'hailuo', argKey: 'model', need: [['MINIMAX_API_KEY']] },
+    { label: 'Ke Ling', arg: 'kling', argKey: 'model', need: [['KLING_API_KEY']] },
+    { label: 'conch', arg: 'hailuo', argKey: 'model', need: [['MINIMAX_API_KEY']] },
   ],
   music: [
     { label: 'Mureka', arg: 'mureka', argKey: 'provider', need: [['MUREKA_API_KEY']] },
@@ -98,24 +98,24 @@ function providerSuffix(cap: CapabilityKey): string {
   const prefKey = PREFERRED_KEY[cap];
   const pref = prefKey ? (liveModels?.[prefKey] ?? '').trim() : '';
   const chosen = pref ? on.find((r) => r.arg === pref) : undefined;
-  if (chosen) return `·用户默认: ${rowTag(chosen)}——直接用它,勿再询问`;
-  if (on.length === 1) return `·可用: ${rowTag(on[0])}——直接用`;
+  if (chosen) return `·User default: ${rowTag(chosen)}——Use it directly,Don't ask again`;
+  if (on.length === 1) return `·Available: ${rowTag(on[0])}——Use directly`;
   const names = on.map(rowTag).join('、');
-  if (!prefKey) return `·可用: ${names}`;
-  return `·可用: ${names}——用户未设默认:本会话首次用该能力前,先用 ask_followup_questions 单选一家,之后沿用所选`;
+  if (!prefKey) return `·Available: ${names}`;
+  return `·Available: ${names}——The user has not set a default:Before using this ability for the first time in this session,Use first ask_followup_questions Select one,Inherit selected`;
 }
 
 // label + the primary tool + a fallback hint when the capability is off.
 const CAP_ROWS: { key: CapabilityKey; label: string; tool: string; fallback: string }[] = [
-  { key: 'image', label: '生图', tool: 'submit_image', fallback: '改用 push_asset/import_url_asset 导入公网图片，或让用户上传/粘贴' },
-  { key: 'voice', label: '配音/TTS', tool: 'submit_voice', fallback: '让用户自备并上传/粘贴音频' },
-  { key: 'video', label: '生视频', tool: 'submit_video', fallback: '改用 push_asset 导入公网视频，或让用户上传' },
-  { key: 'music', label: '生音乐', tool: 'submit_music', fallback: '改用库内 list_audio/add_audio，或让用户上传' },
-  { key: 'sound', label: '音效生成', tool: 'submit_sound', fallback: '改用库内音效 list_audio/add_audio' },
-  { key: 'stock', label: '在线图库搜索', tool: 'search_stock_media', fallback: '改用 push_asset 直接导入已知公网 URL' },
-  { key: 'transcription', label: '转写/口播剪辑', tool: 'transcribe_track', fallback: '无法做词级删词/清口水/自动字幕' },
-  { key: 'sandbox', label: '沙箱执行(ffmpeg/node/python)', tool: 'run_code', fallback: '跳过 probe_media 等沙箱步骤' },
-  { key: 'web', label: '网页抓取', tool: 'web_browser', fallback: '请用户直接粘贴网页内容' },
+  { key: 'image', label: 'raw picture', tool: 'submit_image', fallback: 'Use instead push_asset/import_url_asset Import images from the public network or let users upload them/Paste' },
+  { key: 'voice', label: 'dubbing/TTS', tool: 'submit_voice', fallback: 'Let users prepare and upload their own/Paste audio' },
+  { key: 'video', label: 'raw video', tool: 'submit_video', fallback: 'Use instead push_asset Import public network videos or let users upload them' },
+  { key: 'music', label: 'live music', tool: 'submit_music', fallback: 'Use library instead list_audio/add_audio, or let users upload' },
+  { key: 'sound', label: 'Sound effect generation', tool: 'submit_sound', fallback: 'Use library sound effects instead list_audio/add_audio' },
+  { key: 'stock', label: 'Online gallery search', tool: 'search_stock_media', fallback: 'Use instead push_asset Directly import known public networks URL' },
+  { key: 'transcription', label: 'Transcribe/oral clip', tool: 'transcribe_track', fallback: 'Unable to delete words at word level/Clear your mouth/automatic subtitles' },
+  { key: 'sandbox', label: 'sandbox execution(ffmpeg/node/python)', tool: 'run_code', fallback: 'skip probe_media Wait for sandbox steps' },
+  { key: 'web', label: 'web scraping', tool: 'web_browser', fallback: 'Please paste the web page content directly' },
 ];
 
 /** System-prompt section listing which key-gated tools are on/off (local editing —
@@ -127,9 +127,9 @@ export function capabilitiesPrompt(caps: Record<CapabilityKey, boolean> = curren
     if (caps[r.key]) on.push(`${r.label}(${r.tool}${providerSuffix(r.key)})`);
     else off.push(`${r.label}(${r.tool})——${r.fallback}`);
   }
-  return `\n\n# 当前可用能力（按已配置的 API key，local 剪辑不吃 key 恒可用）\n`
-    + `✅ 已配置可用：${on.length ? on.join('、') : '（无 key 类能力）'}。\n`
-    + `⬜ 未配置——别在计划里承诺、别调用（调用会返回「not configured」错误，白费一轮）：\n`
-    + (off.length ? off.map((s) => `  - ${s}`).join('\n') : '  （无）')
-    + `\n需要未配置的能力时，按上面每条的替代方案走，或直接告诉用户"该能力未接入"。`;
+  return `\n\n# Currently available capabilities (by configured API key，local Clips don’t eat key always available)\n`
+    + `✅ Configured and available:${on.length ? on.join('、') : '(none key class ability)'}。\n`
+    + `⬜ Not configured - don't commit in the plan, don't call (the call will return "not configured"Error, wasted round):\n`
+    + (off.length ? off.map((s) => `  - ${s}`).join('\n') : '  (none)')
+    + `\nWhen unconfigured capabilities are needed, follow each of the alternatives above, or tell the user directly"This capability is not connected"。`;
 }

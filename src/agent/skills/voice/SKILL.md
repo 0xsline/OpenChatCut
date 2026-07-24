@@ -117,14 +117,14 @@ submit_voice({
 // Chinese via Doubao
 submit_voice({
   provider: "doubao",
-  text: "你好世界",
+  text: "hello world",
   voiceId: "liuchang",
 });
 
 // With speed adjustment (Doubao only)
 submit_voice({
   provider: "doubao",
-  text: "这是一段稍快的中文旁白。",
+  text: "This is a slightly faster Chinese narration.",
   voiceId: "liuchang",
   speedRatio: 1.5,
 });
@@ -132,11 +132,11 @@ submit_voice({
 // With expressive Doubao controls
 submit_voice({
   provider: "doubao",
-  text: "这次事故提醒我们，安全永远不能侥幸。",
+  text: "This accident reminds us that safety can never be left to chance.",
   voiceId: "liuchang",
   emotion: "sad",
   emotionScale: 3,
-  performancePrompt: "痛心但克制，语速稍慢，像新闻专题旁白",
+  performancePrompt: "Sad but restrained, speaking slowly, like a narration on a news topic",
   pitch: -1,
   speedRatio: 0.92,
 });
@@ -155,7 +155,7 @@ submit_voice({
 // MiniMax TTS (when configured) — see references/minimax-tts.md
 submit_voice({
   provider: "minimax",
-  text: "欢迎使用视频编辑助手。",
+  text: "Welcome to Video Editing Assistant.",
   voiceId: "female-yujie",
   speed: 1,
   name: "VO · welcome",
@@ -186,7 +186,7 @@ The audition widget's submit button is fixed to the default label in this build
 (`submitLabel` is accepted but not rendered); keep the question label and option
 labels in the user conversation language, not the target narration language. For example:
 English users see `submit_label="Submit"`, Chinese users see
-`submit_label="提交"`, and Spanish users see `submit_label="Enviar"`.
+`submit_label="Submit"`, and Spanish users see `submit_label="Enviar"`.
 
 "help me generate ... voice over in Chinese" is an English conversation asking
 for Chinese narration, so the audition widget copy stays in English while the
@@ -256,10 +256,10 @@ English request for Chinese narration:
 Chinese request for Chinese narration:
 
 ```html
-<widget submit_label="提交">
+<widget submit_label="Submit">
   <form-visual
     id="voiceId"
-    label="我推荐这几个中文旁白音色，先试听一下："
+    label="I recommend these Chinese narration sounds, give them a try first:"
     required="true"
   >
     <visual-option
@@ -267,21 +267,21 @@ Chinese request for Chinese narration:
       name="Morgan"
       media="/voice-samples/doubao-morgan.mp3"
       aspect-ratio="16:5"
-      summary="男 / 中年 / 低沉知识解说"
+      summary="male / middle age / Low knowledge explanation"
     />
     <visual-option
       value="zhixingnv"
-      name="知性女声"
+      name="intellectual female voice"
       media="/voice-samples/doubao-zhixingnv.mp3"
       aspect-ratio="16:5"
-      summary="女 / 中年 / 冷静知识讲解"
+      summary="female / middle age / Calm knowledge explanation"
     />
     <visual-option
       value="vivi"
       name="Vivi"
       media="/voice-samples/doubao-vivi.mp3"
       aspect-ratio="16:5"
-      summary="女 / 年轻 / 亲切通用口播"
+      summary="female / young / Friendly general oral broadcast"
     />
   </form-visual>
 </widget>

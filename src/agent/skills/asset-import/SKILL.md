@@ -9,7 +9,7 @@ This build runs the editor and its media server locally. There is no hosted impo
 
 ## Path 1 — user's local files (primary)
 
-Ask the user to drag the files into the editor (preview canvas or 我的素材 panel) or use the upload button. The local pipeline then runs automatically: streaming write to `/media/uploads/`, conditional transcode (≤1920 long edge, browser-friendly codec, ~8Mbps), audio extraction, and auto-transcription (ASR starts on upload). Do not ask the user to pre-convert, pre-trim, or transcode anything themselves — the pipeline handles it.
+Ask the user to drag the files into the editor (preview canvas or my material panel) or use the upload button. The local pipeline then runs automatically: streaming write to `/media/uploads/`, conditional transcode (≤1920 long edge, browser-friendly codec, ~8Mbps), audio extraction, and auto-transcription (ASR starts on upload). Do not ask the user to pre-convert, pre-trim, or transcode anything themselves — the pipeline handles it.
 
 The agent cannot read the user's filesystem. If the user gives you a `/Users/...` or `C:\...` path, tell them to drop that file into the editor instead; you cannot fetch it.
 

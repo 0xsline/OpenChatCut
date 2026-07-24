@@ -25,13 +25,13 @@ async function convertHeic(record: MobileUploadRecord): Promise<File> {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const converted = await heicTo({ blob: await response.blob(), type: 'image/jpeg', quality: HEIC_JPEG_QUALITY });
   const jpeg = Array.isArray(converted) ? converted[0] : converted;
-  if (!(jpeg instanceof Blob)) throw new Error(t('HEIC 转换失败'));
+  if (!(jpeg instanceof Blob)) throw new Error(t('HEIC Conversion failed'));
   return new File([jpeg], jpegName(record.name), { type: 'image/jpeg' });
 }
 
 async function importServerMedia(record: MobileUploadRecord, fps: number): Promise<MediaAsset> {
   const kind = kindOfDescriptor(record.name, record.mime);
-  if (!kind) throw new Error(t('不支持的文件类型（视频 / 图片 / 音频 / GIF / SVG）'));
+  if (!kind) throw new Error(t('Unsupported file type (video / picture / Audio / GIF / SVG）'));
   const metadata = await probeMediaSource(record.path, kind, fps);
   if (kind !== 'video') {
     return { id: crypto.randomUUID(), name: record.name, kind: kind as MediaAssetKind, src: record.path, ...metadata };

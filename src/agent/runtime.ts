@@ -249,9 +249,9 @@ export async function runAgent(
       const message = errorMessage(error).trim();
       if (withReasoning
         && !sawContentEvent
-        && /thinking|reasoning|param|invalid|unsupported|不支持/i.test(message)) {
+        && /thinking|reasoning|param|invalid|unsupported|Not supported/i.test(message)) {
         reasoningFellBack = true;
-        onEvent({ type: 'error', message: '当前模型接口不支持思考模式，已自动关闭本轮' });
+        onEvent({ type: 'error', message: 'The current model interface does not support thinking mode and has automatically closed this round.' });
         continue;
       }
       onEvent({ type: 'error', message });
