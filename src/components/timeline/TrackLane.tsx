@@ -6,7 +6,7 @@ import { type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { theme, themeAlpha } from '../../theme';
 import { Icon } from '../icons';
 import {
-  TRANSITION_LABELS, isItemSelected,
+  TRANSITION_LABELS, isItemSelected, timelineTrackIds, trackKind,
   type TimelineItem, type TimelineState, type TrackId, type TransitionItem, type TransitionType,
 } from '../../editor/types';
 import { upsertKeyframe } from '../../editor/keyframes';
@@ -114,6 +114,12 @@ export function TrackLane({
 }: TrackLaneProps) {
   const t = useT();
   const { drag, penDrag, setPenDrag, startDrag, startPick, startMarquee } = pointer;
+  const trackIds = timelineTrackIds(state);
+  const dragOffsetY = drag?.mode === 'move'
+    && trackKind(state, drag.targetTrack) === trackKind(state, drag.baseTrack)
+    && !state.tracks?.[drag.targetTrack]?.locked
+    ? (trackIds.indexOf(drag.targetTrack) - trackIds.indexOf(drag.baseTrack)) * rowHeight
+    : 0;
   return (
     <div
       style={{
@@ -237,6 +243,8 @@ export function TrackLane({
                 ? '2px solid #6a9fd8'
                 : selected ? `2px solid ${theme.textStrong}` : '0.5px solid rgba(255,255,255,.08)',
               boxShadow: isLibOver ? 'inset 0 0 0 0.5px #6a9fd855, 0 0 0 0.5px #6a9fd844' : undefined,
+              transform: dragging && dragOffsetY ? `translate3d(0, ${dragOffsetY}px, 0)` : undefined,
+              zIndex: dragging ? 10 : undefined,
               cursor: pickMode ? 'copy' : locked ? 'not-allowed' : editMode === 'blade' || editMode === 'pen' ? 'crosshair' : 'grab', userSelect: 'none', touchAction: 'none',
             }}
           >

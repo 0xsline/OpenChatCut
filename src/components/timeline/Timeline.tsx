@@ -348,7 +348,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
                   )}
                 </TrackHead>
                 {meta.kind === 'caption' ? <CaptionTrackLane state={state} captions={trackCaptions} trackId={trackId}
-                  playheadFrame={playheadRef.current} px={px} locked={locked} hidden={hidden} snapping={snapping}
+                  playheadFrame={playheadRef.current} px={px} rowHeight={rowHeightOf(trackId)} locked={locked} hidden={hidden} snapping={snapping}
                   trackFromClientY={trackFromClientY} onUpdate={(patch) => commands.updateCaptions(patch, trackId)}
                   onMove={(move) => moveCaptionCue(trackId, move)}
                   onDelete={(laneId, index) => trackCaptions && commands.updateCaptions(removeManualCue(trackCaptions, laneId, index), trackId)} /> : <TrackLane

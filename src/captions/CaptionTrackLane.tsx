@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { captionPages } from './exportCaptions';
-import { captionTrackEntries, type TimelineState, type TrackId } from '../editor/types';
+import { captionTrackEntries, timelineTrackIds, trackKind, type TimelineState, type TrackId } from '../editor/types';
 import { collectTimelineSnapPoints, snapDraggedEdges, type SnapDraggedEdgesOptions, type SnapPoint } from '../editor/snap';
 import type { CaptionPage, CaptionsData } from './types';
 import type { TranscriptWord } from '../transcript/types';
@@ -181,8 +181,9 @@ function useCaptionMove(options: {
   return { drag, start, cancel: () => updateDrag(null) };
 }
 
-function CaptionCueBlock({ page, index, target, locked, selected, px, fps, trim, move, onSelect, onDelete, onMenu }: {
+function CaptionCueBlock({ page, index, target, locked, selected, px, fps, moveOffsetY, trim, move, onSelect, onDelete, onMenu }: {
   page: CaptionPage; index: number; target?: ManualCueTarget; locked: boolean; selected: boolean; px: number; fps: number;
+  moveOffsetY: number;
   trim: ReturnType<typeof useCaptionTrim>; move: ReturnType<typeof useCaptionMove>;
   onSelect: (key: string | null) => void; onDelete: (target: ManualCueTarget) => void;
   onMenu: (event: ReactMouseEvent, target: ManualCueTarget) => void;
@@ -216,7 +217,9 @@ function CaptionCueBlock({ page, index, target, locked, selected, px, fps, trim,
   /> : null;
   return (
     <div className={`cc-caption-track-cue${selected ? ' selected' : ''}`} title={text} tabIndex={target && !locked ? 0 : undefined}
-      style={{ left: startFrame * px, width: Math.max(18, durationFrames * px) }}
+      style={{ left: startFrame * px, width: Math.max(18, durationFrames * px),
+        transform: move.drag?.key === key && moveOffsetY ? `translate3d(0, ${moveOffsetY}px, 0)` : undefined,
+        zIndex: move.drag?.key === key ? 10 : undefined }}
       onPointerDown={(event) => { if (!target) return; onSelect(key); event.currentTarget.focus(); move.start(event, key, target); }}
       onPointerCancel={move.cancel}
       onContextMenu={(event) => { if (!target || locked) return; event.preventDefault(); onSelect(key); onMenu(event, target); }}
@@ -230,9 +233,9 @@ function CaptionCueBlock({ page, index, target, locked, selected, px, fps, trim,
   );
 }
 
-export function CaptionTrackLane({ state, captions, trackId, playheadFrame, px, hidden, locked, snapping, trackFromClientY, onUpdate, onMove, onDelete }: {
+export function CaptionTrackLane({ state, captions, trackId, playheadFrame, px, rowHeight, hidden, locked, snapping, trackFromClientY, onUpdate, onMove, onDelete }: {
   state: TimelineState; captions: CaptionsData | null; trackId: TrackId; playheadFrame: number; px: number;
-  hidden: boolean; locked: boolean; snapping: boolean; trackFromClientY: (clientY: number) => TrackId;
+  hidden: boolean; locked: boolean; snapping: boolean; rowHeight: number; trackFromClientY: (clientY: number) => TrackId;
   onUpdate: (patch: Partial<CaptionsData>) => void; onMove: (move: CaptionCueMove) => void;
   onDelete: (laneId: string, index: number) => void;
 }) {
@@ -249,18 +252,26 @@ export function CaptionTrackLane({ state, captions, trackId, playheadFrame, px, 
   const targets = manualCueTargets(captions);
   const trim = useCaptionTrim({ state, captions, trackId, playheadFrame, px, snapping, locked, onUpdate });
   const move = useCaptionMove({ state, trackId, playheadFrame, px, snapping, locked, trackFromClientY, onMove });
+  const trackIds = timelineTrackIds(state);
+  const moveOffsetY = move.drag
+    && trackKind(state, move.drag.targetTrackId) === 'caption'
+    && !state.tracks?.[move.drag.targetTrackId]?.locked
+    ? (trackIds.indexOf(move.drag.targetTrackId) - trackIds.indexOf(trackId)) * rowHeight
+    : 0;
   const remove = (target: ManualCueTarget) => { setSelected(null); setMenu(null); onDelete(target.laneId, target.index); };
   return (
     <div className="cc-caption-track-lane" style={{
       background: locked ? `color-mix(in srgb, ${theme.bg} 70%, ${themeAlpha.shadow(1)})` : theme.bg,
       opacity: hidden ? 0.4 : locked ? 0.75 : 1,
+      overflow: move.drag ? 'visible' : undefined,
+      zIndex: move.drag ? 20 : undefined,
     }}>
       {!pages.length && <span className="cc-caption-track-empty">{t('字幕轨道为空')}</span>}
       {pages.map((page, index) => {
         const target = page.words.length === 1 ? targets.get(page.words[0]!) : undefined;
         const key = target ? `${target.laneId}:${target.index}` : `${page.start}:${index}`;
         return <CaptionCueBlock key={key} page={page} index={index} target={target} locked={locked} selected={selected === key}
-          px={px} fps={state.fps} trim={trim} move={move} onSelect={setSelected} onDelete={remove}
+          px={px} fps={state.fps} moveOffsetY={moveOffsetY} trim={trim} move={move} onSelect={setSelected} onDelete={remove}
           onMenu={(event, cue) => setMenu({ x: event.clientX, y: event.clientY, target: cue })} />;
       })}
       {menu && <div className="cc-caption-cue-menu" role="menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
