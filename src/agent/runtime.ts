@@ -326,15 +326,20 @@ export async function runAgent(
           }
         }
       }
-      // Emit EXACT context token count from the model's usage report (not a chars/4 estimate).
-      // ai-sdk result.usage resolves after the stream completes; promptTokens = real input tokens.
+      // Emit context token count: prefer EXACT from model usage, fall back to chars/4 estimate.
+      // 9router (OpenAI-compat proxy) may NOT include usage in streaming responses by default
+      // (OpenAI requires stream_options:{include_usage:true}). The fallback ensures the meter
+      // always updates instead of staying stuck at 0K.
       try {
         const usage = await result.usage;
         const promptTokens = (usage as { promptTokens?: number } | null)?.promptTokens;
-        if (typeof promptTokens === 'number' && promptTokens > 0) {
-          onEvent({ type: 'context', tokens: promptTokens, threshold: settings.contextThreshold });
-        }
-      } catch { /* some providers / relays don't report usage — meter stays at last known value */ }
+        const tokens = (typeof promptTokens === 'number' && promptTokens > 0)
+          ? promptTokens
+          : estimateTokens(conv);
+        onEvent({ type: 'context', tokens, threshold: settings.contextThreshold });
+      } catch {
+        onEvent({ type: 'context', tokens: estimateTokens(conv), threshold: settings.contextThreshold });
+      }
       if (askedFollowup) return conv;
       if (!responseUsedTools(responseMessages)) {
         // Level 3 enforce: the agent CANNOT finish while verify_word_budget reports UNDER_BUDGET.
