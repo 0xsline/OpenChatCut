@@ -152,6 +152,39 @@ function responseUsedTools(messages: readonly ModelMessage[]): boolean {
     && message.content.some((part) => part.type === 'tool-call'));
 }
 
+// ── Auto-compact: summarize old conversation when context approaches the model limit ──
+// Triggered before each streamText call. Threshold configurable via CC_CONTEXT_THRESHOLD.
+const CONTEXT_TOKEN_THRESHOLD = Number(process.env.CC_CONTEXT_THRESHOLD) || 800_000;
+const KEEP_RECENT_MESSAGES = 16;
+
+function estimateTokens(messages: readonly ModelMessage[]): number {
+  // rough: ~4 chars/token. Cukup untuk threshold check (bukan exact count).
+  return Math.ceil(JSON.stringify(messages).length / 4);
+}
+
+async function compactConversation(conv: ModelMessage[]): Promise<ModelMessage[]> {
+  if (conv.length <= KEEP_RECENT_MESSAGES) return conv;
+  const oldMessages = conv.slice(0, conv.length - KEEP_RECENT_MESSAGES);
+  const recent = conv.slice(conv.length - KEEP_RECENT_MESSAGES);
+  try {
+    const summaryResult = await streamText({
+      model: getLanguageModel(),
+      system: 'Summarize the following agent conversation concisely. Preserve: the user request, key decisions, the narration script/plan, scene breakdown + word budget, timeline state, what was done so far, and any pending tasks. Output only the summary.',
+      messages: oldMessages,
+      maxOutputTokens: 6000,
+      maxRetries: 0,
+    });
+    const summary = await summaryResult.text;
+    return [
+      { role: 'user', content: `[Auto-compact summary of earlier conversation]\n${summary}\n[End summary — recent messages follow]` } as ModelMessage,
+      ...recent,
+    ];
+  } catch {
+    // fallback: truncate (keep recent only) — better than crashing on context overflow
+    return recent;
+  }
+}
+
 export async function runAgent(
   messages: LLMMessage[],
   ctx: AgentContext,
@@ -211,6 +244,13 @@ export async function runAgent(
       // Responses relays do not consistently persist `rs_*` item IDs. Keep
       // OpenAI turns stateless by replaying portable local history and asking
       // the provider not to store the response.
+      // Auto-compact: if context approaches the model limit, summarize old conversation.
+      if (estimateTokens(conv) > CONTEXT_TOKEN_THRESHOLD) {
+        onEvent({ type: 'error', message: `[context] auto-compact: context melebihi ~${CONTEXT_TOKEN_THRESHOLD} token — merangkum percakapan lama, menyimpan ${KEEP_RECENT_MESSAGES} pesan terbaru` });
+        const compacted = await compactConversation(conv);
+        conv.length = 0;
+        conv.push(...compacted);
+      }
       const requestMessages = protocolForProvider(PROVIDER) === 'openai'
         ? makeMessagesPortable(conv)
         : conv;
