@@ -92,6 +92,11 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     .map((option) => ({ ...option, captions: captionsOnTrack(state, option.id) }));
 
   // keep live refs so agent tools always read the latest timeline/project
+  // 滑块/取色器拖动期间的所有改动合并成一条撤销记录(见 historyReduce 的 gesture)。
+  const historyGesture = useMemo(
+    () => ({ begin: commands.beginHistoryGesture, end: commands.endHistoryGesture }),
+    [commands],
+  );
   const stateRef = useRef(state);
   stateRef.current = state;
   const docRef = useRef(doc);
@@ -560,6 +565,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           onSeedChat={(text) => setChatSeed({ text, nonce: Date.now() })} />
         {selectedItem && (
           <InspectorPanel
+            playerRef={playerRef}
+            historyGesture={historyGesture}
             templates={allTemplates}
             selectedItem={selectedItem}
             fps={state.fps}

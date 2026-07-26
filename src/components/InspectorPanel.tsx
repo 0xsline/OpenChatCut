@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type RefObject } from 'react';
+import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import type { PropSpec, Tpl } from '../types';
 import type { ClipEffect, ClipEffectValue, ClipFilters, ClipTransform, Keyframe, KeyframeEasing, KeyframeProp, TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../editor/types';
@@ -225,21 +226,84 @@ interface InspectorPanelProps {
   onAddTransition: (type: TransitionType) => void;
   onSetTransition: (patch: Partial<TransitionItem>) => void;
   onRemoveTransition: () => void;
+  /** 预览播放器句柄:关键帧栏要跟着播放头实时更新禁用状态与 ◆ 填充。 */
+  playerRef: RefObject<PlayerRef | null>;
+  /** 连续手势边界(拖滑块/取色器):之间的改动合并成一条撤销记录。 */
+  historyGesture: { begin: () => void; end: () => void };
+}
+
+/**
+ * 连续手势的边界。滑块和取色器在拖动期间会逐步 dispatch(这样才有实时预览),
+ * 但那些步必须合并成**一条**撤销记录——否则音量 0→2 按 0.05 步进会压进约 40 条快照,
+ * 而历史上限只有 100 条,拖两次滑块就把用户真正的编辑历史挤没了。
+ * 用 context 传是为了不给十几个滑块调用点各加一遍参数。
+ */
+const HistoryGestureContext = createContext<{ begin: () => void; end: () => void } | null>(null);
+
+/** 指针按下即开始手势,松开(不论在哪松)结束。键盘连按方向键同理。 */
+function useHistoryGesture(): {
+  onPointerDown: () => void;
+  onKeyDown: () => void;
+  onKeyUp: () => void;
+} {
+  const gesture = useContext(HistoryGestureContext);
+  const active = useRef(false);
+  const end = () => {
+    if (!active.current) return;
+    active.current = false;
+    gesture?.end();
+  };
+  const begin = () => {
+    if (active.current) return;
+    active.current = true;
+    gesture?.begin();
+  };
+  // 组件卸载时(比如拖动中切换了选中片段)也要收尾,免得手势一直开着
+  useEffect(() => end, []);
+  return {
+    onPointerDown: () => {
+      begin();
+      // 指针可能在控件外松开,所以监听 window 而不是控件本身
+      window.addEventListener('pointerup', end, { once: true });
+      window.addEventListener('pointercancel', end, { once: true });
+    },
+    onKeyDown: begin,
+    onKeyUp: end,
+  };
+}
+
+/** 取色器:拾色面板里鼠标一动就 onInput 一次,和滑块一样要合并成一条撤销记录。 */
+function ColorParamInput({ value, onPick }: { value: number[]; onPick: (rgb: number[]) => void }) {
+  const gesture = useHistoryGesture();
+  return (
+    <input
+      type="color"
+      value={rgbToHex(value)}
+      onInput={(e) => onPick(hexToRgb(e.currentTarget.value))}
+      {...gesture}
+    />
+  );
 }
 
 /** Compact one-line slider: label | track | value */
 function SliderRow({
-  label, val, min, max, step, fmt, onChange,
+  label, val, min, max, step, fmt, onChange, disabled, disabledReason,
 }: {
   label: string; val: number; min: number; max: number; step: number; fmt: string; onChange: (v: number) => void;
+  /** 已打关键帧但播放头不在片段内时禁用:拖它只会把关键帧写到被夹出来的第 0 帧上。 */
+  disabled?: boolean;
+  disabledReason?: string;
 }) {
+  const gesture = useHistoryGesture();
   return (
-    <label className="cc-insp-row">
+    <label className="cc-insp-row" title={disabled ? disabledReason : undefined} style={disabled ? { opacity: 0.45 } : undefined}>
       <span className="cc-insp-label">{label}</span>
       <input
         className="cc-insp-range"
         type="range" min={min} max={max} step={step} value={val}
+        disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
+        {...gesture}
       />
       <span className="cc-insp-val">{fmt}</span>
     </label>
@@ -249,6 +313,12 @@ function SliderRow({
 /** per-property keyframe API handed down by InspectorPanel (playhead in item-local frames) */
 interface KfApi {
   localFrame: number;
+  /**
+   * 播放头是否真的落在这个片段之内。localFrame 是被夹进 [0, dur) 的,所以播放头在片段
+   * 外时它会塌成第 0 帧——照着它打关键帧就是打在用户根本没看的地方。四个关键帧控件
+   * 和「此处是否已有关键帧」的判断都依赖同一个被夹过的帧号,所以它们要一起按这个开关。
+   */
+  inRange: boolean;
   set: (prop: KeyframeProp, frame: number, value: number, easing?: KeyframeEasing) => void;
   remove: (prop: KeyframeProp, frame: number) => void;
   seekLocal: (frame: number) => void;
@@ -262,18 +332,21 @@ const EASING_OPTIONS: { value: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut'; la
 // end-of-row keyframe rail (PRD §4.5;UI 仿 reframe 关键帧模式,布局自定):
 // ◆ punches/updates at the playhead (filled when one sits there), ‹ › jump
 // between keyframes, × deletes the one under the playhead, plus segment easing.
-function KfCell({ kfs, localFrame, punchValue, onSet, onRemove, onSeekLocal }: {
+function KfCell({ kfs, localFrame, inRange, punchValue, onSet, onRemove, onSeekLocal }: {
   kfs: Keyframe[] | undefined;
   localFrame: number;
+  inRange: boolean;
   punchValue: number;
   onSet: (frame: number, value: number, easing?: KeyframeEasing) => void;
   onRemove: (frame: number) => void;
   onSeekLocal: (frame: number) => void;
 }) {
   const t = useT();
-  const at = kfs?.find((k) => k.frame === localFrame);
-  const prev = kfs ? [...kfs].reverse().find((k) => k.frame < localFrame) : undefined;
-  const next = kfs?.find((k) => k.frame > localFrame);
+  // 播放头不在片段内时 localFrame 是塌到 0 的假值,基于它的一切判断都不能用。
+  const at = inRange ? kfs?.find((k) => k.frame === localFrame) : undefined;
+  const prev = inRange && kfs ? [...kfs].reverse().find((k) => k.frame < localFrame) : undefined;
+  const next = inRange ? kfs?.find((k) => k.frame > localFrame) : undefined;
+  const outside = t('把播放头移进这个片段才能打关键帧');
   const btn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, width: 13, height: 16, display: 'grid', placeItems: 'center', fontSize: 10, color: theme.textDim, lineHeight: 1 };
   const off: React.CSSProperties = { ...btn, opacity: 0.3, cursor: 'default' };
   return (
@@ -281,9 +354,12 @@ function KfCell({ kfs, localFrame, punchValue, onSet, onRemove, onSeekLocal }: {
       <button type="button" style={prev ? btn : off} disabled={!prev} title={t('上一关键帧')} onClick={() => prev && onSeekLocal(prev.frame)}>‹</button>
       <button
         type="button"
-        style={{ ...btn, fontSize: 11, color: at ? theme.accent : kfs?.length ? theme.textMuted : theme.textDim }}
-        title={at ? t('更新播放头处的关键帧') : t('在播放头打关键帧')}
-        onClick={() => onSet(localFrame, punchValue, at?.easing)}
+        disabled={!inRange}
+        style={inRange
+          ? { ...btn, fontSize: 11, color: at ? theme.accent : kfs?.length ? theme.textMuted : theme.textDim }
+          : { ...off, fontSize: 11 }}
+        title={!inRange ? outside : at ? t('更新播放头处的关键帧') : t('在播放头打关键帧')}
+        onClick={() => inRange && onSet(localFrame, punchValue, at?.easing)}
       >{at ? '◆' : '◇'}</button>
       <button type="button" style={next ? btn : off} disabled={!next} title={t('下一关键帧')} onClick={() => next && onSeekLocal(next.frame)}>›</button>
       <button type="button" style={at ? btn : off} disabled={!at} title={t('删除播放头处的关键帧')} onClick={() => at && onRemove(localFrame)}>×</button>
@@ -325,13 +401,15 @@ function TransformControl({ item, onChange, kf }: { item: TimelineItem; onChange
           <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <SliderRow label={t(r.label)} val={value} min={min} max={max} step={r.step} fmt={r.format(value)}
+                disabled={!!kfs?.length && !kf.inRange}
+                disabledReason={t('把播放头移进这个片段才能改这里的关键帧')}
                 onChange={(next) => {
                   const patch = r.toTransformPatch?.(next);
                   if (!kfs?.length && patch) onChange(patch);
-                  else kf.set(r.id, kf.localFrame, next);
+                  else if (kf.inRange) kf.set(r.id, kf.localFrame, next);
                 }} />
             </div>
-            <KfCell kfs={kfs} localFrame={kf.localFrame} punchValue={value}
+            <KfCell kfs={kfs} localFrame={kf.localFrame} inRange={kf.inRange} punchValue={value}
               onSet={(frame, next, easing) => kf.set(r.id, frame, next, easing)}
               onRemove={(frame) => kf.remove(r.id, frame)} onSeekLocal={kf.seekLocal} />
           </div>
@@ -361,9 +439,14 @@ function VolumeControl({
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <SliderRow label={t('音量')} val={vol} min={0} max={2} step={0.05} fmt={`${Math.round(vol * 100)}%`}
-            onChange={(next) => (kfs?.length ? kf.set('volume', kf.localFrame, next) : onChange(next))} />
+            disabled={!!kfs?.length && !kf.inRange}
+            disabledReason={t('把播放头移进这个片段才能改这里的关键帧')}
+            onChange={(next) => {
+              if (!kfs?.length) { onChange(next); return; }
+              if (kf.inRange) kf.set('volume', kf.localFrame, next);
+            }} />
         </div>
-        <KfCell kfs={kfs} localFrame={kf.localFrame} punchValue={vol}
+        <KfCell kfs={kfs} localFrame={kf.localFrame} inRange={kf.inRange} punchValue={vol}
           onSet={(frame, next, easing) => kf.set('volume', frame, next, easing)}
           onRemove={(frame) => kf.remove('volume', frame)} onSeekLocal={kf.seekLocal} />
       </div>
@@ -807,7 +890,7 @@ function EffectsControl({ item, onChange }: { item: TimelineItem; onChange: (eff
                 return (
                   <label key={p.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, color: theme.textDim }}>
                     {t(p.label)}
-                    <input type="color" value={rgbToHex(value)} onInput={(e) => setParam(effect, p.key, hexToRgb(e.currentTarget.value))} />
+                    <ColorParamInput value={value} onPick={(rgb) => setParam(effect, p.key, rgb)} />
                   </label>
                 );
               }
@@ -828,7 +911,7 @@ function EffectsControl({ item, onChange }: { item: TimelineItem; onChange: (eff
 
 // Property editor for the selected timeline item (sits under the preview).
 // Collapsible so it doesn't crowd the preview when you don't need it.
-export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, autoGrade, onItemZoomChange, onItemEffectsChange, onItemSpeedChange, onNormalizeLoudness, onIsolateVoice, getPlayhead, onSetReframeKeyframe, onRemoveReframeKeyframe, onSetItemKeyframe, onRemoveItemKeyframe, onSeek, transition, onAddTransition, onSetTransition, onRemoveTransition }: InspectorPanelProps) {
+export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, autoGrade, onItemZoomChange, onItemEffectsChange, onItemSpeedChange, onNormalizeLoudness, onIsolateVoice, getPlayhead, onSetReframeKeyframe, onRemoveReframeKeyframe, onSetItemKeyframe, onRemoveItemKeyframe, onSeek, transition, onAddTransition, onSetTransition, onRemoveTransition, historyGesture, playerRef }: InspectorPanelProps) {
   const t = useT();
   const [collapsed, setCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const schema = selectedItem
@@ -852,10 +935,50 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
       ? t('文字片段。')
       : null
     : null;
+  // 关键帧栏(禁用状态、◆ 是否填充、前后跳转)必须跟着播放头走。getPlayhead() 只在
+  // 渲染那一刻读一次,而播放头移动本身不会触发本组件重渲染——所以这里订阅 frameupdate,
+  // 按 ~100ms 节流刷新,既保证实时又不至于每帧重渲染。
+  const [playhead, setPlayhead] = useState(() => getPlayhead());
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return undefined;
+    let last = 0;
+    let trailing: ReturnType<typeof setTimeout> | undefined;
+    const apply = (frame: number) => {
+      last = performance.now();
+      setPlayhead((prev) => (prev === frame ? prev : frame));
+    };
+    apply(player.getCurrentFrame());
+    const onFrame = (event: { detail: { frame: number } }) => {
+      const { frame } = event.detail;
+      const wait = 100 - (performance.now() - last);
+      if (wait <= 0) { apply(frame); return; }
+      // 尾随更新不能省:拖一次播放头往往只有一个事件,丢了它状态就永远停在旧值上
+      // (暂停时不会再来下一个),关键帧栏就会一直显示错的启用状态。
+      clearTimeout(trailing);
+      trailing = setTimeout(() => apply(frame), wait);
+    };
+    player.addEventListener('frameupdate', onFrame);
+    return () => {
+      clearTimeout(trailing);
+      player.removeEventListener('frameupdate', onFrame);
+    };
+  }, [playerRef]);
+
+  // 播放头相对片段的位置。先算真实差值再判断在不在范围内,夹过的帧号只用于显示。
+  const playheadLocal = (() => {
+    if (!selectedItem) return { localFrame: 0, inRange: false };
+    const raw = Math.round(playhead) - selectedItem.startFrame;
+    return {
+      localFrame: Math.max(0, Math.min(selectedItem.durationInFrames - 1, raw)),
+      inRange: raw >= 0 && raw < selectedItem.durationInFrames,
+    };
+  })();
   const hasVolume = selectedItem?.kind === 'audio' || selectedItem?.kind === 'video';
   const isVisual = selectedItem != null && selectedItem.kind !== 'audio';
 
   return (
+    <HistoryGestureContext.Provider value={historyGesture}>
     <section className={`cc-inspector${collapsed ? ' collapsed' : ''}`}>
       <button
         type="button"
@@ -879,7 +1002,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
               <>
                 <SectionLabel>{t('音量')}</SectionLabel>
                 <VolumeControl item={selectedItem} onChange={onItemVolumeChange} onNormalize={onNormalizeLoudness} kf={{
-                  localFrame: Math.max(0, Math.min(selectedItem.durationInFrames - 1, Math.round(getPlayhead()) - selectedItem.startFrame)),
+                  ...playheadLocal,
                   set: onSetItemKeyframe,
                   remove: onRemoveItemKeyframe,
                   seekLocal: (frame) => onSeek(selectedItem.startFrame + frame),
@@ -893,7 +1016,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
               <><SectionLabel>{t('变速')}</SectionLabel><SpeedControl item={selectedItem} onChange={onItemSpeedChange} /></>
             )}
             {isVisual && <><SectionLabel>{t('变换')}</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} kf={{
-              localFrame: Math.max(0, Math.min(selectedItem.durationInFrames - 1, Math.round(getPlayhead()) - selectedItem.startFrame)),
+              ...playheadLocal,
               set: onSetItemKeyframe,
               remove: onRemoveItemKeyframe,
               seekLocal: (frame) => onSeek(selectedItem.startFrame + frame),
@@ -944,5 +1067,6 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
       </div>
       )}
     </section>
+    </HistoryGestureContext.Provider>
   );
 }

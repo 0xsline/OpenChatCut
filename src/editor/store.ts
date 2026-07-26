@@ -7,7 +7,7 @@ import type { CaptionsData } from '../captions/types';
 import type { SerializableFxDef } from '../gl/fx/uniforms';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
 import type { AnyAction, AtomicAction, ProjectDispatch } from './reduce';
-import { historyReduce, maxOrder, projectReduce } from './reduce';
+import { historyReduce, isHistoryControlAction, maxOrder, projectReduce } from './reduce';
 
 // Re-export the reducer layer so existing importers (`from './editor/store'`) keep working.
 export type { Action, AnyAction, AtomicAction, BatchAction, ProjectAction, Dispatch, ProjectDispatch } from './reduce';
@@ -139,6 +139,12 @@ export interface EditorCommands {
   patchDesignStyle: (patch: Partial<DesignStyle>) => void;
   undo: () => void;
   redo: () => void;
+  /**
+   * 连续手势的边界(拖滑块、拖取色器)。两者之间的所有改动合并成一条撤销记录,
+   * 撤销回到「拖之前」而不是上一个刻度。指针按下调 begin,松开调 end。
+   */
+  beginHistoryGesture: () => void;
+  endHistoryGesture: () => void;
 }
 
 export function useEditor(initial: ProjectDoc): {
@@ -434,6 +440,8 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       applyState: (state) => dispatch({ type: 'setFullState', state }),
       undo: () => dispatch({ type: 'undo' }),
       redo: () => dispatch({ type: 'redo' }),
+      beginHistoryGesture: () => dispatch({ type: 'history.beginGesture' }),
+      endHistoryGesture: () => dispatch({ type: 'history.endGesture' }),
   };
 }
 
@@ -456,7 +464,8 @@ export function makeDraft(base: ProjectDoc): DraftEngine {
   let doc = base;
   let pending: AnyAction[] = [];
   const dispatch: ProjectDispatch = (a) => {
-    if (a.type === 'undo' || a.type === 'redo') return; // history is meaningless in a draft
+    // draft 是工程副本、按记录的 action 重放,历史栈和手势合并在这里都没有意义
+    if (isHistoryControlAction(a)) return;
     const next = projectReduce(doc, a);
     if (next !== doc) {
       doc = next;

@@ -128,10 +128,25 @@ export interface BatchAction {
 }
 /** any store action: atomic or explicitly grouped (what a draft records) */
 export type AnyAction = AtomicAction | BatchAction;
-/** dispatch accepted by the command set: store actions + history undo/redo */
-export type Dispatch = (a: Action | BatchAction | { type: 'undo' } | { type: 'redo' }) => void;
-/** dispatch at the project level: per-timeline + project actions + undo/redo */
-export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' }) => void;
+/**
+ * 历史栈自身的控制动作(不经过 reducer 改文档):撤销/重做,以及连续手势的边界
+ * ——begin/end 之间的所有改动合并成一条撤销记录(拖滑块、拖取色器)。
+ */
+export type HistoryControlAction =
+  | { type: 'undo' }
+  | { type: 'redo' }
+  | { type: 'history.beginGesture' }
+  | { type: 'history.endGesture' };
+/** 历史控制动作判定(用于类型收窄:字符串前缀判断不会收窄联合类型)。 */
+export function isHistoryControlAction(a: { type: string }): a is HistoryControlAction {
+  return a.type === 'undo' || a.type === 'redo'
+    || a.type === 'history.beginGesture' || a.type === 'history.endGesture';
+}
+
+/** dispatch accepted by the command set: store actions + history control */
+export type Dispatch = (a: Action | BatchAction | HistoryControlAction) => void;
+/** dispatch at the project level: per-timeline + project actions + history control */
+export type ProjectDispatch = (a: AnyAction | HistoryControlAction) => void;
 
 const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'setKeyframe', 'removeKeyframe', 'clearKeyframes', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
@@ -1019,6 +1034,14 @@ export interface History {
   past: ProjectDoc[];
   present: ProjectDoc;
   future: ProjectDoc[];
+  /**
+   * 连续手势(拖滑块、拖取色器)期间的合并状态。'open' = 手势已开始但还没产生改动;
+   * 'pushed' = 本次手势已经压过一次历史,后续步只换 present。
+   *
+   * 没有它的话,音量 0→2 按 0.05 步进会压进约 40 条快照,而 HISTORY_LIMIT 只有 100
+   * ——拖两次滑块就把用户真正的编辑历史挤没了,而且撤销一次只退一格。
+   */
+  gesture?: 'open' | 'pushed';
 }
 
 const HISTORY_LIMIT = 100;
@@ -1042,19 +1065,32 @@ function reduceHistoryAction(present: ProjectDoc, action: AnyAction): {
   return { next, mutating };
 }
 
-export function historyReduce(h: History, a: AnyAction | { type: 'undo' } | { type: 'redo' }): History {
+export function historyReduce(h: History, a: AnyAction | HistoryControlAction): History {
+  // 手势边界由 UI 给出(指针按下/松开)。开始时只记状态,不动历史。
+  if (a.type === 'history.beginGesture') return h.gesture ? h : { ...h, gesture: 'open' };
+  if (a.type === 'history.endGesture') return h.gesture ? { ...h, gesture: undefined } : h;
   if (a.type === 'undo') {
     if (!h.past.length) return h;
     const previous = h.past[h.past.length - 1];
-    return { past: h.past.slice(0, -1), present: previous, future: [h.present, ...h.future] };
+    return { past: h.past.slice(0, -1), present: previous, future: [h.present, ...h.future], gesture: undefined };
   }
   if (a.type === 'redo') {
     if (!h.future.length) return h;
     const next = h.future[0];
-    return { past: pushHistory(h.past, h.present), present: next, future: h.future.slice(1) };
+    return { past: pushHistory(h.past, h.present), present: next, future: h.future.slice(1), gesture: undefined };
   }
   const { next, mutating } = reduceHistoryAction(h.present, a);
   if (next === h.present) return h;
-  if (mutating) return { past: pushHistory(h.past, h.present), present: next, future: [] };
+  if (mutating) {
+    // 一次手势只压一条历史:第一步照常压栈,后续步只替换 present。
+    // 撤销回到的是「拖之前」,而不是上一个刻度。
+    if (h.gesture === 'pushed') return { ...h, present: next, future: [] };
+    return {
+      past: pushHistory(h.past, h.present),
+      present: next,
+      future: [],
+      ...(h.gesture ? { gesture: 'pushed' as const } : {}),
+    };
+  }
   return { ...h, present: next }; // select / tl.switch: no history
 }
