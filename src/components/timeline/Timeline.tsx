@@ -15,7 +15,8 @@ import { CaptionStyleMenu } from '../../captions/CaptionStyleMenu';
 import { CaptionTrackLane, type CaptionCueMove } from '../../captions/CaptionTrackLane';
 import { captionsForTrack } from '../../captions/captionTrack';
 import {
-  appendManualCueToFirstLane, newManualCaptions, removeManualCue, updateManualCue,
+  appendManualCueToFirstLane, isManualCaptionEntry, newManualCaptions, placeManualCueTiming,
+  promoteCaptionEntries, removeManualCue, updateManualCue,
 } from '../../captions/manualCaptions';
 import { TrackHead } from './TrackHead';
 import { TrackLane } from './TrackLane';
@@ -85,15 +86,22 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     if (!source) return;
     const targetTrackId = trackKind(state, move.targetTrackId) === 'caption'
       && !state.tracks?.[move.targetTrackId]?.locked ? move.targetTrackId : sourceTrackId;
-    const sourceCue = source.sourceEntries?.find((entry) => entry.id === move.laneId)?.words?.[move.index];
+    const sourceLane = source.sourceEntries?.find((entry) => entry.id === move.laneId);
+    const sourceCue = sourceLane?.words?.[move.index];
+    // 拖动放置不产生 lane 内重叠:压到邻居贴边,空隙塞不下整个 cue 则回弹原位
     if (targetTrackId === sourceTrackId) {
-      if (sourceCue?.start === Math.round(move.startMs) && sourceCue.end === Math.round(move.endMs)) return;
-      const patch = updateManualCue(source, move.laneId, move.index, move.text, move.startMs, move.endMs);
+      const others = (sourceLane?.words ?? []).filter((_, i) => i !== move.index);
+      const placed = placeManualCueTiming(others, move.startMs, move.endMs - move.startMs);
+      if (!placed || (sourceCue?.start === placed.start && sourceCue.end === placed.end)) return;
+      const patch = updateManualCue(source, move.laneId, move.index, move.text, placed.start, placed.end);
       if (patch) commands.updateCaptions(patch, sourceTrackId);
       return;
     }
     const target = captionsOnTrack(state, targetTrackId) ?? newManualCaptions();
-    const targetPatch = appendManualCueToFirstLane(target, state.items, move.text, move.startMs, move.endMs);
+    const targetWords = promoteCaptionEntries(target, state.items).find(isManualCaptionEntry)?.words ?? [];
+    const placed = placeManualCueTiming(targetWords, move.startMs, move.endMs - move.startMs);
+    if (!placed) return;
+    const targetPatch = appendManualCueToFirstLane(target, state.items, move.text, placed.start, placed.end);
     if (!targetPatch) return;
     commands.batch([
       { type: 'updateCaptions', patch: removeManualCue(source, move.laneId, move.index), track: sourceTrackId },

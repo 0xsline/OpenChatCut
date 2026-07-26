@@ -130,6 +130,30 @@ export function updateManualCue(
   );
 }
 
+/**
+ * 拖动放置的无重叠钳制:把时长 durationMs 的 cue 以期望 startMs 放进 others 之间的
+ * 空隙。压到邻居就贴边(不穿透,与 trim 的邻居钳制同语义);目标空隙塞不下整个
+ * cue → 返回 null,调用方保持原状(回弹)。数据层 append/update 本身仍允许重叠,
+ * 该策略只由拖拽交互使用。
+ */
+export function placeManualCueTiming(
+  others: readonly TranscriptWord[],
+  startMs: number,
+  durationMs: number,
+): Pick<TranscriptWord, 'start' | 'end'> | null {
+  if (!Number.isFinite(startMs) || !Number.isFinite(durationMs)) return null;
+  const requested = Math.max(0, Math.round(startMs));
+  const duration = Math.max(MIN_CUE_MS, Math.round(durationMs));
+  const sorted = [...others].sort((a, b) => a.start - b.start);
+  let insertAt = 0;
+  while (insertAt < sorted.length && sorted[insertAt]!.start <= requested) insertAt += 1;
+  const lower = insertAt > 0 ? sorted[insertAt - 1]!.end : 0;
+  const upper = insertAt < sorted.length ? sorted[insertAt]!.start : Number.POSITIVE_INFINITY;
+  if (upper - lower < duration) return null;
+  const start = Math.min(Math.max(requested, lower), upper - duration);
+  return { start, end: start + duration };
+}
+
 export function resizedManualCueTiming(
   words: readonly TranscriptWord[],
   index: number,
