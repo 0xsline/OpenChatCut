@@ -76,5 +76,7 @@ export default {
     category: 'AudioVideo',
     // 显式定名:unpacked 目录与 CI 冒烟按 release/linux-unpacked/openchatcut 定位
     executableName: 'openchatcut',
+    // 与 package.json desktopName 配对,桌面环境把运行窗口关联到 .desktop 条目
+    syncDesktopName: true,
   },
 };

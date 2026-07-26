@@ -7,6 +7,7 @@
   "author": "OpenChatCut Contributors",
   "type": "module",
   "main": "desktop-dist/main.mjs",
+  "desktopName": "openchatcut.desktop",
   "engines": {
     "node": ">=24 <25"
   },
