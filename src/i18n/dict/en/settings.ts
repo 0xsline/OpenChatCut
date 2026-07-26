@@ -222,4 +222,14 @@ export default {
   '已选 {n} 个 · {size}': '{n} selected · {size}',
   '删除中…': 'Deleting…',
   '删除所选': 'Delete selected',
+  // 外部 Agent 接入指南(McpGuide)
+  '外部 Agent 接入 (MCP)': 'External agents (MCP)',
+  'OpenChatCut 暴露一个 Streamable HTTP MCP 端点。Claude Code / Codex / Cursor 等外部 Agent 接入后,与内置 Agent 共用同一套编辑工具,可直接读写当前工程。':
+    'OpenChatCut exposes a Streamable HTTP MCP endpoint. External agents such as Claude Code, Codex, and Cursor share the same editing tools as the built-in agent and can read and edit the current project directly.',
+  '端点地址': 'Endpoint',
+  '复制到剪贴板': 'Copy',
+  '设置 → 连接器 → 添加自定义连接器,粘贴上面的端点地址即可。':
+    'Settings → Connectors → Add custom connector, then paste the endpoint above.',
+  '端点默认仅监听本机;对外暴露时请配置 OPENCHATCUT_MCP_TOKEN 鉴权。桌面端 5199 端口被占用时会回退随机端口,以启动日志与本页地址为准。':
+    'The endpoint listens on localhost only by default; configure OPENCHATCUT_MCP_TOKEN before exposing it. If port 5199 is taken, the desktop app falls back to a random port — trust the startup log and the address shown here.',
 } as Record<string, string>;

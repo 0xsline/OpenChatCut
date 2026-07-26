@@ -136,6 +136,17 @@ export type KeyframeProp = 'x' | 'y' | 'scale' | 'rotation' | 'opacity';
 /** per-prop sparse keyframe curves on an item (sorted by frame — reducer invariant) */
 export type ItemKeyframes = Partial<Record<KeyframeProp, Keyframe[]>>;
 
+/** fractional layer-crop insets (each 0..1; left+right < 1, top+bottom < 1).
+ * Rendered as clip-path inset BEFORE translate/rotate/scale, so the cropped
+ * window then moves/scales as one unit — named layouts (apply_layout) rely on
+ * exactly this composition order. */
+export interface ClipCrop {
+  left?: number;
+  top?: number;
+  right?: number;
+  bottom?: number;
+}
+
 /** per-clip visual transform (scale/position/rotation) — 缩放 tab */
 export interface ClipTransform {
   /** 1 = 100% */
@@ -146,6 +157,8 @@ export interface ClipTransform {
   y?: number;
   /** rotation in degrees */
   rotation?: number;
+  /** crop the full-canvas layer to a sub-rect (split-screen / PiP 用) */
+  crop?: ClipCrop;
 }
 
 /** one per-clip WebGL effect instance (effects[] entry with an assetId

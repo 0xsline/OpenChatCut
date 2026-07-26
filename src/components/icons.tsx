@@ -9,7 +9,7 @@ export type IconName =
   | 'home' | 'sparkles' | 'sliders' | 'bookOpen' | 'thumbUp' | 'thumbDown' | 'arrowUp'
   | 'paperclip' | 'cornerDownLeft' | 'filePlay' | 'fileHeadphone' | 'clock'
   | 'undo' | 'redo' | 'history' | 'layoutPanel' | 'keyboard' | 'users'
-  | 'download' | 'film' | 'clipboard'
+  | 'download' | 'film' | 'clipboard' | 'plug'
   | 'music' | 'video' | 'image' | 'swap' | 'star' | 'pencil' | 'x' | 'diamond'
   | 'search' | 'upload' | 'folder' | 'folderPlus' | 'grid' | 'list' | 'sort' | 'filter' | 'more' | 'bug'
   | 'palette' | 'wand' | 'tracking' | 'qrCode';
@@ -81,6 +81,7 @@ const P: Record<IconName, string> = {
   download: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3',
   film: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M7 3v18 M17 3v18 M3 8h4 M3 16h4 M17 8h4 M17 16h4 M3 12h18',
   clipboard: 'M9 2h6a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2',
+  plug: 'M12 22v-5 M9 8V2 M15 8V2 M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z',
   music: 'M9 18V5l12-2v13 M9 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0 M21 16m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0',
   video: 'm16 10 4.4-2.65A1 1 0 0 1 22 8.2v7.6a1 1 0 0 1-1.6.85L16 14 M14 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z',
   image: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M8.5 8.5m-1.5 0a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0 M21 15l-5-5L5 21',

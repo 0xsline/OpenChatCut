@@ -45,6 +45,13 @@ function ClipWrapper({ item, children }: { item: TimelineItem; children: React.R
   const transform = (t || kx !== undefined || ky !== undefined || kr !== undefined || ks !== undefined)
     ? `translate(${kx ?? t?.x ?? 0}%, ${ky ?? t?.y ?? 0}%) rotate(${kr ?? t?.rotation ?? 0}deg) scale(${ks ?? t?.scale ?? 1})`
     : undefined;
+  // layer crop (分屏/PiP):clip-path 先裁层,再随 transform 整体移动。无 crop 时
+  // 完全不产出该样式(回归红线:老工程 DOM 不变)。
+  const c = t?.crop;
+  const cropPct = (v: number | undefined) => `${((v ?? 0) * 100).toFixed(3)}%`;
+  const clipPath = c && ((c.left ?? 0) > 0 || (c.top ?? 0) > 0 || (c.right ?? 0) > 0 || (c.bottom ?? 0) > 0)
+    ? `inset(${cropPct(c.top)} ${cropPct(c.right)} ${cropPct(c.bottom)} ${cropPct(c.left)})`
+    : undefined;
   const opacity = ko === undefined ? o : o * Math.max(0, Math.min(1, ko));
   const fl = item.filters;
   const filter = fl
@@ -60,7 +67,7 @@ function ClipWrapper({ item, children }: { item: TimelineItem; children: React.R
       </AbsoluteFill>
     );
   }
-  return <AbsoluteFill style={{ opacity, transform, filter }}>{inner}</AbsoluteFill>;
+  return <AbsoluteFill style={{ opacity, transform, filter, clipPath }}>{inner}</AbsoluteFill>;
 }
 
 // ── Transitions, with CSS approximations for the GLSL set ─────────────────

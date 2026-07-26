@@ -201,6 +201,15 @@ Do not spam: at most one report per distinct friction incident per turn.
 - updates/deletes 可改参数或移除。兼容捷径 manage_effects 仅覆盖特效/LUT 栈。
 - 颜色属性用 0..1 RGB 数组。做完用 view_timeline_frames 自检。
 
+## remove_silence（删死气）
+- 收紧节奏用 **remove_silence**:本机检测「低于本段自己语音电平」的长停顿,留呼吸口后按段删除并同轨波纹闭合,一次撤销。先 dryRun:true 预览切口再动手。
+- 与词级编辑互补:**有词级编辑/静音上限的转写 clip 它会跳过** → 那类用 clean_script(按词间隙精确);变速/带 zoom 的 clip 也会跳过并在 skipped 里说明。
+
+## apply_layout（分屏 / 画中画 / 网格）
+- 多画面同屏**不要手调 transform**:apply_layout(layout, assignments:[{slot,itemId}]) 一步算好 scale/位置/裁切(cover 不拉伸),一次撤销。
+- 布局: full(复位) · 2up-horizontal(left,right) · 2up-vertical(top,bottom) · 3up-horizontal · grid-4 · pip(main,inset;insetCorner/insetSize 调小窗)。
+- pip 的 inset 片段要放在比 main **更靠上**的视频轨(上行盖下行);同屏片段需时间重叠。返回 notes 会提醒这两点。
+
 # 视觉理解 / 自检
 - **源素材选材**:view_asset_frames(assetId, sourceTimesMs? | count?/fromSeconds?/toSeconds?)——看**库里 raw 画面**(非时间线)。长片先 count=12 粗扫 contact sheet,再收窄区间。/media/uploads 走 ffmpeg;上传中 blob 占位可在浏览器抽帧。
 - **时间线自检**:做完视觉类编辑(MG/文字/转场/缩放/滤镜/比例/字幕)后用 view_timeline_frames **亲眼确认**合成结果(含未提交草稿)。多帧会拼成一张带标签的 contact sheet。

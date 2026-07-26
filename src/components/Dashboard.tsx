@@ -3,6 +3,7 @@ import { theme } from '../theme';
 import { loadProject, loadProjectThumb, saveProjectThumb, type ProjectMeta } from '../persist/projectStore';
 import { BrandMark, Icon, OpenChatCutWordmark } from './icons';
 import { SettingsDialog } from './settings/SettingsDialog';
+import { McpGuideDialog } from './settings/McpGuide';
 import { SkinPicker } from './settings/SkinPicker';
 import { LocaleToggle } from './TopBar';
 import { MediaCleanupDialog } from '../media/MediaCleanupDialog';
@@ -60,6 +61,7 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [mcpOpen, setMcpOpen] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);  // 导入/导出结果的轻提示
   const [busy, setBusy] = useState(false);                // 大素材 base64 化耗时,防连点
@@ -135,6 +137,9 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
         <OpenChatCutWordmark />
         <span style={{ color: theme.textDim, fontSize: 13 }}>{t('· 我的工程')}</span>
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+          <button onClick={() => setMcpOpen(true)} title={t('外部 Agent 接入 (MCP)')} className="cc-header-btn" style={settingsBtn}>
+            <Icon name="plug" size={16} />
+          </button>
           <button onClick={() => setShortcutsOpen(true)} title={t('编辑快捷键')} className="cc-header-btn" style={settingsBtn}>
             <Icon name="keyboard" size={16} />
           </button>
@@ -226,6 +231,7 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
 
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {mcpOpen && <McpGuideDialog onClose={() => setMcpOpen(false)} />}
       {cleanupOpen && <MediaCleanupDialog onClose={() => setCleanupOpen(false)} />}
     </div>
   );
