@@ -40,7 +40,7 @@ export const EXPORT_TOOL_SCHEMAS: AgentToolSchema[] = [
         format: { type: 'string', enum: ['video', 'audio'], description: 'Defaults to video.' },
         codec: { type: 'string', enum: ['h264', 'vp8', 'mp3', 'wav'], description: 'Video: h264 (default) or vp8. Audio: mp3 (default) or wav.' },
         resolution: { type: 'string', enum: ['480p', '720p', '1080p'], description: 'Video only. Scale by the short side; omit to use the timeline size.' },
-        fps: { type: 'integer', enum: [24, 25, 30, 50, 60], description: 'Video only. Target frame rate; omit to use the timeline fps.' },
+        fps: { type: 'integer', description: 'Video only. Target frame rate, one of 24/25/30/50/60; omit to use the timeline fps.' },
         name: { type: 'string', description: 'Download filename.' },
         startFrame: { type: 'integer', minimum: 0 },
         endFrameExclusive: { type: 'integer', minimum: 1 },

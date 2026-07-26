@@ -25,9 +25,10 @@ export function llmTarget(req?: IncomingMessage): string {
 export function llmHeaders(req?: IncomingMessage): Record<string, string> {
   const config = resolveLlmProviderConfig(llmProviderForRequest(req), keyReader);
   if (!config.apiKey) return {};
-  return protocolForProvider(config.provider) === 'anthropic'
-    ? { 'x-api-key': config.apiKey, 'anthropic-version': '2023-06-01' }
-    : { authorization: `Bearer ${config.apiKey}` };
+  const protocol = protocolForProvider(config.provider);
+  if (protocol === 'anthropic') return { 'x-api-key': config.apiKey, 'anthropic-version': '2023-06-01' };
+  if (protocol === 'google') return { 'x-goog-api-key': config.apiKey };
+  return { authorization: `Bearer ${config.apiKey}` };
 }
 
 /** One dynamic proxy implementation shared by Vite dev and Electron production. */

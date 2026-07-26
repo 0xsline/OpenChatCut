@@ -55,7 +55,9 @@ function llmProbe(provider: LlmProvider): ProbeDef {
       const key = get(apiKeyName);
       const headers = protocol === 'anthropic'
         ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
-        : bearer(key);
+        : protocol === 'google'
+          ? { 'x-goog-api-key': key }
+          : bearer(key);
       const root = resolveLlmBaseUrl(provider, get(baseUrlName), AI_SDK_BASE_URL_FORMAT);
       return fetch(`${root}/models`, { signal: t(), headers });
     },

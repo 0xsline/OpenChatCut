@@ -1,5 +1,10 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createMoonshotAI } from '@ai-sdk/moonshotai';
+import { createAlibaba } from '@ai-sdk/alibaba';
+import { createDeepSeek } from '@ai-sdk/deepseek';
+import { createMistral } from '@ai-sdk/mistral';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, type LanguageModel } from 'ai';
 import {
@@ -72,21 +77,25 @@ const openaiProvider = createOpenAI({
   apiKey: PROXY_KEY,
   headers: proxyHeaders('openai'),
 });
-const compatibleProviders = new Map<LlmProvider, ReturnType<typeof createOpenAICompatible>>();
+// 有官方专属包的厂商一律用官方包(厂商特有语义 — 如 Gemini thought_signature —
+// 由官方 provider 处理);其余走 openai-compatible。都经 /llm 代理注入真实密钥。
+const proxied = <T>(provider: LlmProvider, create: (o: { baseURL: string; apiKey: string; headers: Record<string, string> }) => T): T =>
+  create({ baseURL: PROXY_API_BASE, apiKey: PROXY_KEY, headers: proxyHeaders(provider) });
+const DEDICATED_PROVIDERS: Partial<Record<LlmProvider, (model: string) => ConfiguredLanguageModel>> = {
+  gemini: proxied('gemini', createGoogleGenerativeAI),
+  kimi: proxied('kimi', createMoonshotAI),
+  qwen: proxied('qwen', createAlibaba),
+  deepseek: proxied('deepseek', createDeepSeek),
+  mistral: proxied('mistral', createMistral),
+};
 
-/** SDK instance name per provider. Gemini MUST be 'google': the openai-compatible
- * transport stores thought signatures captured from responses under
- * providerMetadata[<name>], but re-emits them only from providerOptions.google —
- * any other name breaks the round-trip and Gemini rejects replayed function
- * calls with 400 "missing a thought_signature in functionCall parts". */
-export const sdkProviderName = (provider: LlmProvider): string =>
-  (provider === 'gemini' ? 'google' : provider);
+const compatibleProviders = new Map<LlmProvider, ReturnType<typeof createOpenAICompatible>>();
 
 function compatibleProvider(provider: LlmProvider): ReturnType<typeof createOpenAICompatible> {
   const existing = compatibleProviders.get(provider);
   if (existing) return existing;
   const created = createOpenAICompatible({
-    name: sdkProviderName(provider),
+    name: provider,
     baseURL: PROXY_API_BASE,
     apiKey: PROXY_KEY,
     headers: proxyHeaders(provider),
@@ -107,6 +116,8 @@ export function getLanguageModel(
       ? openaiProvider.chat(model)
       : openaiProvider.responses(model);
   }
+  const dedicated = DEDICATED_PROVIDERS[provider];
+  if (dedicated) return dedicated(model);
   return compatibleProvider(provider)(model);
 }
 

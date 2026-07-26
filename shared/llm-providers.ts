@@ -1,4 +1,6 @@
-export type LlmProtocol = 'anthropic' | 'openai' | 'openai-compatible';
+/** wire protocol the SERVER proxy speaks upstream: auth header + path family.
+ * 'google' = Gemini native API (x-goog-api-key, /models/{id}:generateContent). */
+export type LlmProtocol = 'anthropic' | 'openai' | 'google' | 'openai-compatible';
 export type OpenAiApiMode = 'responses' | 'chat';
 export const DEFAULT_OPENAI_API_MODE: OpenAiApiMode = 'responses';
 
@@ -28,8 +30,8 @@ export const LLM_PROVIDER_PRESETS = [
   {
     id: 'gemini',
     label: 'Google · Gemini',
-    protocol: 'openai-compatible',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    protocol: 'google',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     defaultModel: 'gemini-3.5-flash',
   },
   {
@@ -141,6 +143,7 @@ export function providerApiPath(
 ): string {
   const protocol = protocolForProvider(provider);
   if (protocol === 'anthropic') return '/messages';
+  if (protocol === 'google') return '/models'; // 原生 API 按模型出路径:/models/{id}:generateContent
   if (protocol === 'openai') {
     return normalizeOpenAiApiMode(openAiApiMode) === 'chat'
       ? '/chat/completions'

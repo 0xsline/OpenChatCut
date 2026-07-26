@@ -28,9 +28,21 @@ assert.equal(resolveLlmBaseUrl('qwen', ''), 'https://dashscope-us.aliyuncs.com/c
 assert.equal(resolveLlmBaseUrl('glm', ''), 'https://open.bigmodel.cn/api/paas/v4');
 assert.equal(resolveLlmBaseUrl('deepseek', ''), 'https://api.deepseek.com');
 assert.equal(resolveLlmBaseUrl('minimax', ''), 'https://api.minimaxi.com/v1');
+assert.equal(resolveLlmBaseUrl('gemini', ''), 'https://generativelanguage.googleapis.com/v1beta');
 assert.equal(resolveLlmBaseUrl('openai', 'https://api.openai.com', ''), 'https://api.openai.com/v1');
 assert.equal(resolveLlmBaseUrl('anthropic', 'https://relay.test/api', ''), 'https://relay.test/api/v1');
 assert.equal(llmOperationPath('kimi'), '/chat/completions');
+
+// ── llmHeaders:按协议注入上游鉴权(google=x-goog-api-key;anthropic=x-api-key;其余 Bearer) ──
+{
+  const { seedKeystore } = await import('./keystore.ts');
+  const { llmHeaders } = await import('./plugins/llm-proxy.ts');
+  seedKeystore({ LLM_GEMINI_API_KEY: 'gk-1', LLM_MINIMAX_API_KEY: 'mk-1', LLM_API_KEY: 'ak-1' } as Record<string, string>);
+  const reqFor = (provider: string) => ({ headers: { 'x-openchatcut-provider': provider } } as never);
+  assert.deepEqual(llmHeaders(reqFor('gemini')), { 'x-goog-api-key': 'gk-1' }, 'gemini 原生协议注入 x-goog-api-key');
+  assert.deepEqual(llmHeaders(reqFor('minimax')), { authorization: 'Bearer mk-1' }, 'openai-compatible 厂商 Bearer');
+  assert.deepEqual(llmHeaders(reqFor('anthropic')), { 'x-api-key': 'ak-1', 'anthropic-version': '2023-06-01' }, 'anthropic x-api-key(经遗留迁移)');
+}
 
 const switched = expandLlmProviderPatch(new Map([['LLM_PROVIDER', 'openai']]), 'anthropic');
 assert.deepEqual(Object.fromEntries(switched), {

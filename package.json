@@ -28,7 +28,12 @@
     "desktop:dist:linux": "npm run build && npm run desktop:build:main && npm run desktop:prebundle && tsx desktop/prepare-target.mts linux-x64 && CC_EB_TARGET=linux-x64 electron-builder --config electron-builder.config.mjs --linux AppImage --x64 --publish never"
   },
   "dependencies": {
+    "@ai-sdk/alibaba": "^2.0.16",
     "@ai-sdk/anthropic": "^4.0.16",
+    "@ai-sdk/deepseek": "^3.0.13",
+    "@ai-sdk/google": "^4.0.24",
+    "@ai-sdk/mistral": "^4.0.14",
+    "@ai-sdk/moonshotai": "^3.0.17",
     "@ai-sdk/openai": "^4.0.16",
     "@ai-sdk/openai-compatible": "^3.0.12",
     "@aws-sdk/client-s3": "^3.1089.0",
