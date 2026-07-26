@@ -59,6 +59,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   // 前置 skill_guard 待决卡 + 工具参数实时流(皆为临时态)
   const [pendingGuard, setPendingGuard] = useState<PendingGuard | null>(null);
   const [liveTool, setLiveTool] = useState<LiveTool | null>(null);
+  const [contextTokens, setContextTokens] = useState(0);
   const pendingGuardRef = useRef<PendingGuard | null>(null);
   pendingGuardRef.current = pendingGuard;
   const llmRef = useRef<LLMMessage[]>(initialMessages());
@@ -215,6 +216,8 @@ export function useAgent(ctx: AgentContext, projectId: string) {
             if (proposed.length) ops.push(buildOperation(ev.name, (ev.args ?? {}) as Record<string, unknown>, proposed));
           } else if (ev.type === 'max-turns') {
             setMessages((m) => [...m, { role: 'continue', text: String(ev.turns) }]);
+          } else if (ev.type === 'context') {
+            setContextTokens(ev.tokens);
           } else {
             setMessages((m) => [...m, { role: 'error', text: ev.message }]);
           }
@@ -372,6 +375,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   }, [changeLog]);
 
   return {
+    contextTokens,
     messages, running, hydrated, send, stop, enhance, clearHistory,
     proposal, applyProposal, rejectProposal, proposalStale, forceApplyProposal, reProposeStale,
     pendingGuard, liveTool, changeLog, rollbackChangeSession, canRollbackChangeSession,

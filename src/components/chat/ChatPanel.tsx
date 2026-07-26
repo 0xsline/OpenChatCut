@@ -91,6 +91,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
     messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal, clearHistory,
     proposalStale, forceApplyProposal, reProposeStale, pendingGuard, liveTool,
     changeLog, rollbackChangeSession, canRollbackChangeSession,
+    contextTokens,
   } = useAgent(ctx, projectId);
   const externalProposal = useExternalAgentBridge(ctx, projectId);
   const [input, setInput] = useState('');
@@ -399,7 +400,8 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
           onPasteFiles={importPastedFiles} pasting={pasting > 0}
           pasteError={pasteError} onDismissPasteError={() => setPasteError(null)}
           taRef={taRef}
-          placeholder={messages.length === 0 ? t('描述你想要创建的内容...') : t('告诉 AI 要做哪些修改 - @ 引用素材')} />
+          placeholder={messages.length === 0 ? t('描述你想要创建的内容...') : t('告诉 AI 要做哪些修改 - @ 引用素材')}
+          contextTokens={contextTokens} />
       </div>
     </aside>
   );

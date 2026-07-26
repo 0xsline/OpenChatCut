@@ -44,7 +44,8 @@ export type AgentEvent =
   | { type: 'tool-input-delta'; delta: string }
   | { type: 'tool'; name: string; args: unknown; result: unknown }
   | { type: 'max-turns'; turns: number }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'context'; tokens: number; threshold: number };
 
 export function initialMessages(): LLMMessage[] {
   return [];
@@ -154,7 +155,6 @@ function responseUsedTools(messages: readonly ModelMessage[]): boolean {
 
 // ── Auto-compact: summarize old conversation when context approaches the model limit ──
 // Triggered before each streamText call. Threshold configurable via CC_CONTEXT_THRESHOLD.
-const CONTEXT_TOKEN_THRESHOLD = Number(process.env.CC_CONTEXT_THRESHOLD) || 800_000;
 const KEEP_RECENT_MESSAGES = 16;
 
 function estimateTokens(messages: readonly ModelMessage[]): number {
@@ -244,9 +244,9 @@ export async function runAgent(
       // Responses relays do not consistently persist `rs_*` item IDs. Keep
       // OpenAI turns stateless by replaying portable local history and asking
       // the provider not to store the response.
-      // Auto-compact: if context approaches the model limit, summarize old conversation.
-      if (estimateTokens(conv) > CONTEXT_TOKEN_THRESHOLD) {
-        onEvent({ type: 'error', message: `[context] auto-compact: context melebihi ~${CONTEXT_TOKEN_THRESHOLD} token — merangkum percakapan lama, menyimpan ${KEEP_RECENT_MESSAGES} pesan terbaru` });
+      // Auto-compact: if enabled (agentSettings) and context approaches the model limit, summarize old conversation.
+      if (settings.autoCompact && estimateTokens(conv) > settings.contextThreshold) {
+        onEvent({ type: 'error', message: `[context] auto-compact: context melebihi ~${settings.contextThreshold} token — merangkum percakapan lama, menyimpan ${KEEP_RECENT_MESSAGES} pesan terbaru` });
         const compacted = await compactConversation(conv);
         conv.length = 0;
         conv.push(...compacted);
@@ -326,6 +326,15 @@ export async function runAgent(
           }
         }
       }
+      // Emit EXACT context token count from the model's usage report (not a chars/4 estimate).
+      // ai-sdk result.usage resolves after the stream completes; promptTokens = real input tokens.
+      try {
+        const usage = await result.usage;
+        const promptTokens = (usage as { promptTokens?: number } | null)?.promptTokens;
+        if (typeof promptTokens === 'number' && promptTokens > 0) {
+          onEvent({ type: 'context', tokens: promptTokens, threshold: settings.contextThreshold });
+        }
+      } catch { /* some providers / relays don't report usage — meter stays at last known value */ }
       if (askedFollowup) return conv;
       if (!responseUsedTools(responseMessages)) {
         // Level 3 enforce: the agent CANNOT finish while verify_word_budget reports UNDER_BUDGET.

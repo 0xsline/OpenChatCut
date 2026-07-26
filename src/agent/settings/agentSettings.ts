@@ -17,6 +17,10 @@ export interface AgentSettings {
   mgTier: MgTier;
   /** 计划模式(Agent Settings planMode 开关):先出编号计划,用户确认后再动手。 */
   planMode: boolean;
+  /** Auto-compact: saat context mendekati limit model, summarize percakapan lama (keep recent). */
+  autoCompact: boolean;
+  /** Threshold token untuk trigger auto-compact (default 800000). */
+  contextThreshold: number;
 }
 
 const KEY = 'cc.agentSettings.v1';
@@ -26,6 +30,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   thinkingEnabled: false,
   mgTier: 'balance',
   planMode: false,
+  autoCompact: true,
+  contextThreshold: 800_000,
 };
 
 export function loadAgentSettings(): AgentSettings {
@@ -38,6 +44,9 @@ export function loadAgentSettings(): AgentSettings {
       thinkingEnabled: parsed.thinkingEnabled === true,
       mgTier: MG_TIERS.includes(parsed.mgTier as MgTier) ? (parsed.mgTier as MgTier) : DEFAULT_AGENT_SETTINGS.mgTier,
       planMode: parsed.planMode === true,
+      autoCompact: parsed.autoCompact !== false,
+      contextThreshold: Number.isFinite(Number(parsed.contextThreshold)) && Number(parsed.contextThreshold) > 0
+        ? Number(parsed.contextThreshold) : DEFAULT_AGENT_SETTINGS.contextThreshold,
     };
   } catch {
     return { ...DEFAULT_AGENT_SETTINGS };

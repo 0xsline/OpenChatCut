@@ -46,6 +46,8 @@ interface ChatComposerProps {
   creativeMode: string | null;
   onCreativeModeChange: (id: string | null) => void;
   references: RefItem[];
+  /** Current context token count (from useAgent, for the meter). */
+  contextTokens: number;
   onInsertRef: (reference: RefItem) => void;
   /** Structured @ refs attached to the next send (chat_context_entry). */
   selectedRefs?: RefItem[];
@@ -369,6 +371,14 @@ export function ChatComposer(props: ChatComposerProps) {
           color: theme.text, fontSize: 13, fontFamily: 'inherit', lineHeight: 1.45,
         }}
       />
+      {props.contextTokens > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, padding: '0 8px', fontSize: 10, lineHeight: 1.5, fontVariantNumeric: 'tabular-nums', color: props.contextTokens > agentSettings.contextThreshold * 0.8 ? '#f77' : props.contextTokens > agentSettings.contextThreshold * 0.5 ? '#fc6' : theme.textDim }}>
+          <div style={{ width: 60, height: 4, borderRadius: 2, background: theme.border, overflow: 'hidden' }}>
+            <div style={{ width: `${Math.min(100, (props.contextTokens / agentSettings.contextThreshold) * 100)}%`, height: '100%', background: props.contextTokens > agentSettings.contextThreshold * 0.8 ? '#f77' : props.contextTokens > agentSettings.contextThreshold * 0.5 ? '#fc6' : theme.success }} />
+          </div>
+          {Math.round(props.contextTokens / 1000)}K / {Math.round(agentSettings.contextThreshold / 1000)}K
+        </div>
+      )}
       <div className="cc-chat-composer-bar">
         <div className="cc-chat-composer-bar-tools">
           <button title={t('模式')} onClick={(e) => toggle('mode', e.currentTarget)}
@@ -630,6 +640,34 @@ export function ChatComposer(props: ChatComposerProps) {
           </label>
           <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 10px' }}>
             {t('先出编号计划，确认后再动手。')}
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
+            <input type="checkbox" checked={agentSettings.autoCompact} onChange={(e) => patchAgent({ autoCompact: e.target.checked })} style={{ accentColor: theme.accent }} />
+            Auto-compact context
+          </label>
+          <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 4px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>Threshold (tokens)</span>
+            <input type="number" value={agentSettings.contextThreshold} min={100000} max={1000000} step={50000}
+              onChange={(e) => patchAgent({ contextThreshold: Math.max(50000, Number(e.target.value) || 800000) })}
+              style={{ width: 95, font: 'inherit', fontSize: 11, padding: '3px 6px', borderRadius: 4, border: `0.5px solid ${theme.border}`, background: theme.panelAlt, color: theme.text }} />
+          </div>
+          <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 10px' }}>
+            Summarize old conversation when context approaches the threshold.
+          </div>
+          <div style={{ fontSize: 11, padding: '6px 10px 10px', borderTop: `0.5px solid ${theme.border}` }}>
+            <div style={{ color: theme.textDim, marginBottom: 4 }}>Context usage</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ flex: 1, height: 6, borderRadius: 3, background: theme.border, overflow: 'hidden' }}>
+                <div style={{
+                  width: `${Math.min(100, (props.contextTokens / agentSettings.contextThreshold) * 100)}%`,
+                  height: '100%',
+                  background: props.contextTokens > agentSettings.contextThreshold * 0.8 ? '#f77' : props.contextTokens > agentSettings.contextThreshold * 0.5 ? '#fc6' : theme.success,
+                }} />
+              </div>
+              <span style={{ color: theme.text, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                {Math.round(props.contextTokens / 1000)}K / {Math.round(agentSettings.contextThreshold / 1000)}K
+              </span>
+            </div>
           </div>
         </Popover>
       )}
