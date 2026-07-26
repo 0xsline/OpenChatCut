@@ -47,8 +47,38 @@ export function collectUploadSrcs(doc: ProjectDoc): string[] {
     }
   };
   for (const asset of doc.assets) push(asset.src);
-  for (const timeline of doc.timelines) for (const item of timeline.items) push((item as { src?: unknown }).src);
+  for (const timeline of doc.timelines) {
+    for (const item of timeline.items) {
+      push((item as { src?: unknown }).src);
+      // isolate_voice 的 apply 路径直接把 /media/uploads 路径挂成 denoisedSrc,不建素材,
+      // 漏掉它清理就会把正在播放的那条分离音轨当孤儿删掉。
+      push((item as { denoisedSrc?: unknown }).denoisedSrc);
+    }
+  }
   return out;
+}
+
+/**
+ * 从**读不出**的工程原始字节里捞素材引用。迁移失败的原因可能只是「这份工程是更新版本
+ * 的构建写的」——它一点也没坏,但 `migrateProjectDoc` 一律返回 null。若把这种文档当成
+ * 「零引用」,清理就会把它正在用的素材全部当孤儿删掉。
+ *
+ * 这里退化成在 JSON 文本里直接扫 `/media/uploads/<安全名>`:宁可多留几个文件,
+ * 也不能删掉读不懂的工程正在引用的素材。
+ */
+export function rawUploadSrcs(raw: unknown): string[] {
+  if (raw == null) return [];
+  let text: string;
+  try {
+    text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+  } catch {
+    return []; // 循环引用等:扫不了就交给调用方按「未知」处理
+  }
+  const found = new Set<string>();
+  for (const [, name] of text.matchAll(/\/media\/uploads\/([^"'\\/\s?#]+)/g)) {
+    if (isSafeMediaName(name)) found.add(MEDIA_PREFIX + name);
+  }
+  return [...found];
 }
 
 /** 上传名单段安全判定(与 server/media-dir isSafeUploadName 同规则,浏览器侧实现)。 */

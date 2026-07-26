@@ -282,6 +282,18 @@ export async function hasProjectHistory(): Promise<boolean> {
   }
 }
 
+/**
+ * 工程的原始持久化字节,不经迁移。只给「文档读不出时还想抢救出素材引用」这类
+ * 兜底路径用——正常读工程一律走 loadProject。
+ */
+export async function loadRawProject(id: string): Promise<unknown> {
+  try {
+    return await idbGet<unknown>(projectKey(id));
+  } catch {
+    return null;
+  }
+}
+
 export async function loadProject(id: string, options?: ProjectMigrationOptions): Promise<ProjectDoc | null> {
   try {
     const raw = await idbGet<unknown>(projectKey(id));

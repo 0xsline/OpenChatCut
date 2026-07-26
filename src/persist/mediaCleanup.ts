@@ -7,8 +7,8 @@
 // R2 云端对象刻意不动:本地删是可逆的(回源仍可找回)。
 import { deleteMediaBlob } from './mediaBlobStore';
 import { listPacks } from '../plugins/store';
-import { listProjectDocIds, listProjects, loadProject, purgeProject } from './projectStore';
-import { collectUploadSrcs } from './projectTransfer';
+import { listProjectDocIds, listProjects, loadProject, loadRawProject, purgeProject } from './projectStore';
+import { collectUploadSrcs, rawUploadSrcs } from './projectTransfer';
 
 const MEDIA_PREFIX = '/media/uploads/';
 
@@ -33,8 +33,14 @@ export async function collectAllUploadRefs(excludeId?: string): Promise<Set<stri
   for (const id of await listProjectDocIds()) {
     if (id === excludeId) continue;
     const doc = await loadProject(id);
-    if (!doc) continue; // 坏文档读不出引用;其素材自然落进无主清单,文档本身由孤儿清扫处理
-    for (const src of collectUploadSrcs(doc)) refs.add(src);
+    if (doc) {
+      for (const src of collectUploadSrcs(doc)) refs.add(src);
+      continue;
+    }
+    // 读不出 ≠ 没有引用。迁移失败的原因可能只是「这份工程由更新版本的构建写的」
+    // (startingDocument 对 version > CURRENT 也返回 null),它完全没坏。当成零引用
+    // 就会把它正在用的素材全删掉,所以退化成在原始字节里扫路径:宁可多留不可误删。
+    for (const src of rawUploadSrcs(await loadRawProject(id))) refs.add(src);
   }
   for (const pack of await listPacks().catch(() => [])) {
     for (const url of Object.values(pack.cubeUrls ?? {})) {
