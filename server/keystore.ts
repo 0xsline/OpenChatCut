@@ -84,24 +84,41 @@ export function seedKeystore(env: Record<string, string>): void {
     const v = (env[name] ?? process.env[name] ?? '').trim();
     if (v) { store.set(name, v); envSeeded.add(name); }
   }
-  // One-time in-memory compatibility migration. Old installs had a single LLM
-  // tuple; attach it to the provider that was active when those values were saved.
-  const legacyProvider = normalizeLlmProvider(store.get('LLM_PROVIDER'));
+  for (const [target, value] of planLegacyLlmMigration(
+    (n) => store.has(n),
+    (n) => store.get(n) ?? '',
+  )) {
+    store.set(target, value);
+    envSeeded.add(target);
+  }
+}
+
+/**
+ * One-time compatibility migration plan (exported for verify). Old installs had
+ * a single LLM tuple (LLM_API_KEY/BASE_URL/MODEL); attach it to the provider
+ * that was active when those values were saved. Only migrate into a provider
+ * slot with NO per-provider config at all: LLM_PROVIDER changes over time, and
+ * grafting the legacy base URL onto a provider the user configured later (own
+ * key, preset base) silently reroutes it to the old relay.
+ */
+export function planLegacyLlmMigration(
+  has: (name: string) => boolean,
+  get: (name: string) => string,
+): Array<[string, string]> {
+  const legacyProvider = normalizeLlmProvider(get('LLM_PROVIDER'));
   const names = llmProviderConfigNames(legacyProvider);
-  const migrate = (target: string, value: string): void => {
-    if (!store.has(target) && value) {
-      store.set(target, value);
-      envSeeded.add(target);
-    }
-  };
-  migrate(names.apiKey, store.get('LLM_API_KEY') ?? '');
-  migrate(
+  if ([names.apiKey, names.baseUrl, names.model].some(has)) return [];
+  const plan: Array<[string, string]> = [];
+  const push = (target: string, value: string): void => { if (value) plan.push([target, value]); };
+  push(names.apiKey, get('LLM_API_KEY'));
+  push(
     names.baseUrl,
-    store.has('LLM_BASE_URL')
-      ? resolveLlmBaseUrl(legacyProvider, store.get('LLM_BASE_URL'), store.get('LLM_BASE_URL_FORMAT'))
+    has('LLM_BASE_URL')
+      ? resolveLlmBaseUrl(legacyProvider, get('LLM_BASE_URL'), get('LLM_BASE_URL_FORMAT'))
       : '',
   );
-  migrate(names.model, store.get('LLM_MODEL') ?? '');
+  push(names.model, get('LLM_MODEL'));
+  return plan;
 }
 
 /** Live value for a key (runtime override wins over the .env.local seed). '' if unset. */

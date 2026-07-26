@@ -2,8 +2,27 @@
 // booleans-only status contract of the settings keystore.
 //   npx tsx server/keystore.verify.ts
 import assert from 'node:assert/strict';
-import { KEY_NAMES, NON_SECRET_NAMES, mergeEnvText, seedKeystore, keyStatus, getKey } from './keystore.ts';
+import { KEY_NAMES, NON_SECRET_NAMES, mergeEnvText, planLegacyLlmMigration, seedKeystore, keyStatus, getKey } from './keystore.ts';
 import { LLM_PROVIDER_PRESETS, llmProviderConfigNames } from '../shared/llm-providers.ts';
+
+// ── 遗留单元组迁移:仅当当前厂商完全没有专属配置时才迁;有任一专属值则整体跳过 ──
+{
+  const mk = (entries: Record<string, string>) => {
+    const m = new Map(Object.entries(entries));
+    return planLegacyLlmMigration((n) => m.has(n), (n) => m.get(n) ?? '');
+  };
+  const legacy = mk({ LLM_PROVIDER: 'gemini', LLM_API_KEY: 'k', LLM_BASE_URL: 'https://relay.example', LLM_BASE_URL_FORMAT: 'ai-sdk-prefix' });
+  assert.deepEqual(legacy, [
+    ['LLM_GEMINI_API_KEY', 'k'],
+    ['LLM_GEMINI_BASE_URL', 'https://relay.example'],
+  ], '纯遗留元组迁给当前厂商');
+  // 现场踩过的雷:用户已配 gemini 专属 key,再迁 legacy base 会把请求悄悄改道旧中转
+  assert.deepEqual(mk({
+    LLM_PROVIDER: 'gemini', LLM_GEMINI_API_KEY: 'own-key',
+    LLM_API_KEY: 'k', LLM_BASE_URL: 'https://relay.example', LLM_BASE_URL_FORMAT: 'ai-sdk-prefix',
+  }), [], '厂商已有专属配置 → 迁移整体跳过(base 落预设)');
+  assert.deepEqual(mk({ LLM_PROVIDER: 'minimax' }), [], '无遗留值 → 空计划');
+}
 
 // ── mergeEnvText: update in place, preserve comment/blank/unrelated, append new ──
 const out1 = mergeEnvText('# c\nLLM_API_KEY=old\n\nOTHER=keep\n', new Map([['LLM_API_KEY', 'new'], ['PEXELS_API_KEY', 'px']]));
