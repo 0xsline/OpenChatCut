@@ -196,7 +196,7 @@ export async function runAgent(
   },
 ): Promise<LLMMessage[]> {
   let conv = normalizeLlmMessages(messages);
-  const settings = loadAgentSettings();
+  let settings = loadAgentSettings();
   // 顺序按「越不变的排越前」——提示词缓存匹配的是逐字节前缀,中间插一段每轮都变的
   // 内容,它后面的一切(其余段落、上百个工具 schema、整段历史)就全部作废。
   // editorStatePrompt 是实时时间线快照,必须排在最后一段;新增段落也一律加在它前面。
@@ -216,6 +216,9 @@ export async function runAgent(
   let lastVerifyBudgetStatus: string | null = null;
 
   for (;;) {
+    // Re-read agent settings per turn so UI toggles (auto-compact, planMode, skillGuard, thinking)
+    // take effect immediately mid-run — not just on the next message.
+    settings = loadAgentSettings();
     const withReasoning = settings.thinkingEnabled && !reasoningFellBack;
     const extract = createInlineThinkingExtractor();
     let sawContentEvent = false;
