@@ -86,6 +86,28 @@ function slimItem(it: TimelineItem, state: TimelineState, assets: readonly Media
   };
 }
 
+/**
+ * 一条轨上片段之间的空洞 [fromFrame, toFrame)。主视频轨上的洞导出就是黑帧,不主动
+ * 报出来模型得自己逐个片段做减法才能发现。首尾留白不算——那只是轨道还没开始/已经
+ * 结束,从片段自身的帧号就能看出来。重叠片段用滚动最大右边缘处理。
+ * exported for verify。
+ */
+export function trackGaps(
+  items: readonly TimelineItem[],
+  track: string,
+): { fromFrame: number; toFrame: number }[] {
+  const sorted = items.filter((it) => it.track === track).toSorted((a, b) => a.startFrame - b.startFrame);
+  const first = sorted[0];
+  if (!first) return [];
+  const gaps: { fromFrame: number; toFrame: number }[] = [];
+  let end = first.startFrame;
+  for (const it of sorted) {
+    if (it.startFrame > end) gaps.push({ fromFrame: end, toFrame: it.startFrame });
+    end = Math.max(end, it.startFrame + it.durationInFrames);
+  }
+  return gaps;
+}
+
 function itemsOverlap(it: TimelineItem, from?: number, to?: number): boolean {
   const start = it.startFrame;
   const end = it.startFrame + it.durationInFrames;
@@ -166,14 +188,19 @@ export async function execReadProjectTool(
       width: state.width,
       height: state.height,
       fit: state.fit ?? 'contain',
-      tracks: timelineTrackIds(state).map((id) => ({
-        id,
-        alias: trackAlias(state, id),
-        trackType: trackKind(state, id),
-        name: state.tracks?.[id]?.name,
-        locked: state.tracks?.[id]?.locked ?? false,
-        hidden: trackKind(state, id) === 'caption' ? !captionsOnTrack(state, id)?.enabled : state.tracks?.[id]?.hidden ?? false,
-      })),
+      tracks: timelineTrackIds(state).map((id) => {
+        // 空隙按整条轨算(不受 from/to、itemId 过滤影响),否则报出来的洞是假的。
+        const gaps = trackKind(state, id) === 'caption' ? [] : trackGaps(state.items, id);
+        return {
+          id,
+          alias: trackAlias(state, id),
+          trackType: trackKind(state, id),
+          name: state.tracks?.[id]?.name,
+          locked: state.tracks?.[id]?.locked ?? false,
+          hidden: trackKind(state, id) === 'caption' ? !captionsOnTrack(state, id)?.enabled : state.tracks?.[id]?.hidden ?? false,
+          ...(gaps.length ? { gaps } : {}),
+        };
+      }),
       items: items.map((it) => slimItem(it, state, doc.assets)),
       transitions: (state.transitions ?? []).map((t) => ({
         id: t.id,
