@@ -10,6 +10,7 @@ import { useT } from '../i18n/locale';
 import { Icon, type IconName } from '../components/icons';
 import { captionTrackEntries, timelineDuration, trackAlias, type TimelineState } from '../editor/types';
 import { timelineToFcpxml } from './fcpxml';
+import { exportMediaDir } from './mediaDir';
 import { captionsToSrt, captionsToTxt } from '../captions/exportCaptions';
 import { exportClipMov, renderClipMovBlob } from '../media/clipExport';
 import { sanitizeFileName } from '../media/fileName';
@@ -467,6 +468,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
       title: projectName,
       nleFormat,
       motionGraphicRenderKeys: successfulRenderKeys,
+      mediaDir: await exportMediaDir(),
     });
     const suffix = nleFormat === 'fcp_xml_resolve' ? 'resolve' : 'premiere';
     const xmlFilename = `${base}-${suffix}.fcpxml`;

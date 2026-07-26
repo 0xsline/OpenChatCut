@@ -9,6 +9,7 @@ import { trackGenerationProgress } from '../../generate/progress';
 import { submitVideo } from '../../generate/video';
 import { submitVoice } from '../../generate/voice';
 import { timelineToFcpxml, type NleFormat } from '../../export/fcpxml';
+import { exportMediaDir } from '../../export/mediaDir';
 import { recordExport } from '../../persist/exportHistoryStore';
 import { cacheMediaFromUrl, patchTrackedJob, registerTrackedJob } from '../../persist/jobRegistryStore';
 import { fontFallbackGate } from './font-tools';
@@ -154,12 +155,12 @@ async function exportMedia(args: GenerateArgs, state: TimelineState, format: 'au
   return { ok: true, ...result };
 }
 
-function exportXml(args: GenerateArgs, state: TimelineState): unknown {
+async function exportXml(args: GenerateArgs, state: TimelineState): Promise<unknown> {
   const nleFormat: NleFormat = args.nleFormat === 'fcp_xml_resolve' ? 'fcp_xml_resolve' : 'fcp_xml';
   const keys = Array.isArray(args.motionGraphicRenderKeys)
     ? args.motionGraphicRenderKeys.filter((value): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean)
     : [];
-  const xml = timelineToFcpxml(state, { title: typeof args.name === 'string' ? args.name : undefined, nleFormat, motionGraphicRenderKeys: keys });
+  const xml = timelineToFcpxml(state, { title: typeof args.name === 'string' ? args.name : undefined, nleFormat, motionGraphicRenderKeys: keys, mediaDir: await exportMediaDir() });
   const base = (typeof args.name === 'string' && args.name ? args.name : 'timeline').replace(/\.(?:fcpxml|xml)$/i, '');
   const filename = `${base}.fcpxml`;
   const blob = new Blob([xml], { type: 'application/xml' });

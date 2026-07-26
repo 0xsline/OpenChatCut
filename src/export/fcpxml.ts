@@ -10,7 +10,57 @@ import {
   type TimelineState,
   type TrackId,
 } from '../editor/types';
+import { itemWindow, keptSegments } from '../transcript/edit';
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
+
+/** 素材 URL 前缀:磁盘上落在 mediaDir 里,同名。 */
+const UPLOAD_PREFIX = '/media/uploads/';
+
+/** 绝对磁盘路径 → file:// URL。POSIX 与 Windows 盘符都覆盖;路径分段按 URL 规则
+ * 编码(中文/空格文件名不编码的话 NLE 解析不到),盘符的冒号必须保持原样。 */
+function toFileUrl(absPath: string): string {
+  const slashed = absPath.replace(/\\/g, '/');
+  const rooted = /^[A-Za-z]:/.test(slashed) ? `/${slashed}` : slashed;
+  const encoded = rooted
+    .split('/')
+    .map((seg) => (/^[A-Za-z]:$/.test(seg) ? seg : encodeURIComponent(seg)))
+    .join('/');
+  return `file://${encoded}`;
+}
+
+/**
+ * 片段 src → NLE 能重链的地址。`/media/uploads/<name>` 是同源 URL,物理位置由
+ * mediaDir 决定(MEDIA_DIR 可改),必须换算成绝对路径,否则 NLE 里每条素材都是
+ * 离线的。远程/内联地址原样透传(NLE 关不了它们,但谎报本地路径更糟)。
+ */
+export function resolveAssetSrc(src: string, mediaDir?: string): string {
+  if (/^(?:https?|file|data|blob):/i.test(src)) return src;
+  if (mediaDir && src.startsWith(UPLOAD_PREFIX)) {
+    const name = decodeURIComponent(src.slice(UPLOAD_PREFIX.length));
+    return toFileUrl(`${mediaDir.replace(/[/\\]+$/, '')}/${name}`);
+  }
+  return src.startsWith('/') ? toFileUrl(src) : `file://${src}`;
+}
+
+/**
+ * 音频件的文字稿编辑(删词 / 压静音 / 语块重排)在播放层拆成多段
+ * (TimelineComposition 的 AudioClip),导出必须拆成同样的多条 asset-clip——
+ * 否则 NLE 里会按连续源区间播放,把删掉的词播回来、后面的内容整段丢失。
+ * 与渲染层共用 keptSegments,保证两边永远同一个真源。
+ * video 件的删词不改画面(永远连续播放),所以只有 audio 需要分段。
+ */
+function transcriptSegments(
+  item: TimelineItem,
+  fps: number,
+): ReturnType<typeof keptSegments> | null {
+  if (item.kind !== 'audio' || !item.transcript?.length) return null;
+  return keptSegments(item.transcript, new Set(item.deletedWordIdx ?? []), fps, item.startFrame, {
+    maxGapFrames: item.silenceFrames,
+    gapCapsMs: item.gapCapsMs,
+    playOrder: item.transcriptPlayOrder,
+    window: itemWindow(item),
+  });
+}
 
 /** XML 属性/文本转义（5 个保留字符）。 */
 function escapeXml(raw: string): string {
@@ -97,7 +147,11 @@ function collectAssets(state: TimelineState): Map<string, AssetInfo> {
   const bySrc = new Map<string, AssetInfo>();
   for (const item of state.items) {
     if (!item.src) continue;
-    const usedTo = (item.srcInFrame ?? 0) + item.durationInFrames;
+    // 分段件用到的源区间由最后一段决定,可能远超编辑后时长(删词把中间掏掉了)
+    const segs = transcriptSegments(item, state.fps);
+    const usedTo = segs?.length
+      ? Math.max(...segs.map((seg) => seg.srcEndFrame))
+      : (item.srcInFrame ?? 0) + item.durationInFrames;
     const libraryAsset = state.assets?.find((a) => a.src === item.src);
     const full = Math.max(usedTo, libraryAsset?.durationInFrames ?? 0);
     const existing = bySrc.get(item.src);
@@ -110,12 +164,19 @@ function collectAssets(state: TimelineState): Map<string, AssetInfo> {
   return bySrc;
 }
 
-function assetResourceXml(src: string, info: AssetInfo, fps: number, formatId: string): string {
+function assetResourceXml(
+  src: string,
+  info: AssetInfo,
+  fps: number,
+  formatId: string,
+  mediaDir?: string,
+): string {
   const hasVideo = info.kind !== 'audio';
   const hasAudio = info.kind === 'audio' || info.kind === 'video';
-  const name = escapeXml(src.split('/').pop() || src);
+  const name = escapeXml(decodeURIComponent(src.split('/').pop() || src));
   const formatAttr = hasVideo ? ` format="${formatId}"` : '';
-  return `<asset id="${info.id}" name="${name}" src="file://${escapeXml(src)}" start="0s" duration="${rationalTime(info.durationFrames, fps)}" hasVideo="${hasVideo ? 1 : 0}" hasAudio="${hasAudio ? 1 : 0}"${formatAttr}/>`;
+  const href = escapeXml(resolveAssetSrc(src, mediaDir));
+  return `<asset id="${info.id}" name="${name}" src="${href}" start="0s" duration="${rationalTime(info.durationFrames, fps)}" hasVideo="${hasVideo ? 1 : 0}" hasAudio="${hasAudio ? 1 : 0}"${formatAttr}/>`;
 }
 
 function collectRenderedMotionGraphics(
@@ -167,6 +228,13 @@ function itemToSpineElement(
   const name = escapeXml(item.name);
   if (item.src) {
     const ref = assets.get(item.src)?.id ?? '';
+    const segs = transcriptSegments(item, fps);
+    if (segs?.length) {
+      // 每个保留段一条 clip:offset 已是时间线绝对帧(keptSegments 传入了 startFrame)
+      return segs
+        .map((seg) => `<asset-clip ref="${ref}" lane="${lane}" offset="${rationalTime(seg.fromFrame, fps)}" duration="${rationalTime(seg.durFrames, fps)}" start="${rationalTime(seg.srcStartFrame, fps)}" name="${name}"/>`)
+        .join('\n        ');
+    }
     const start = rationalTime(item.srcInFrame ?? 0, fps);
     return `<asset-clip ref="${ref}" lane="${lane}" offset="${offset}" duration="${duration}" start="${start}" name="${name}"/>`;
   }
@@ -198,6 +266,9 @@ export interface FcpxmlExportOptions {
   nleFormat?: NleFormat;
   /** Render keys returned by export_motion_graphic_prores filenameMode=xml. */
   motionGraphicRenderKeys?: string[];
+  /** 素材目录的绝对磁盘路径(服务端 uploadDir());缺省时 /media/uploads 原样输出,
+   * NLE 会把所有素材标成离线。调用方应从 /api/keys 的 mediaDir 取。 */
+  mediaDir?: string;
 }
 
 export function timelineToFcpxml(
@@ -219,7 +290,8 @@ export function timelineToFcpxml(
   const formatXml = nle === 'fcp_xml_resolve'
     ? `<format id="${formatId}" name="FFVideoFormatCustom${state.width}x${state.height}p${fps}" frameDuration="${rationalTime(1, fps)}" width="${state.width}" height="${state.height}" colorSpace="1-1-1 (Rec. 709)"/>`
     : `<format id="${formatId}" name="FFVideoFormatCustom${state.width}x${state.height}p${fps}" frameDuration="${rationalTime(1, fps)}" width="${state.width}" height="${state.height}"/>`;
-  const assetXmls = Array.from(assets.entries()).map(([src, info]) => assetResourceXml(src, info, fps, formatId));
+  const assetXmls = Array.from(assets.entries())
+    .map(([src, info]) => assetResourceXml(src, info, fps, formatId, opts.mediaDir));
   const motionGraphicXmls = Array.from(renderedMotionGraphics.values())
     .map((info) => motionGraphicResourceXml(info, fps, formatId));
   const resourcesXml = [formatXml, ...assetXmls, ...motionGraphicXmls].join('\n    ');
