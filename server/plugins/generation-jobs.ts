@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
+import { ResultDownloadError } from './result-download.ts';
 
 export type GenerationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
@@ -33,6 +34,8 @@ interface GenerationJob {
   result?: GenerationResult;
   results?: GenerationResult[];
   error?: string;
+  /** 成品已生成但没取回来时,供应商给的结果 URL(见 catch 分支)。 */
+  pendingDownloadUrl?: string;
   cleanupResult?: (result: GenerationResult) => Promise<void> | void;
   retentionMs: number;
   expiryTimer?: NodeJS.Timeout;
@@ -51,6 +54,11 @@ export interface GenerationJobSnapshot {
   result?: GenerationResult;
   results?: GenerationResult[];
   error?: string;
+  /**
+   * 生成成功但下载失败时,供应商的结果 URL。钱已经花了,成品也确实存在,只是没取回来
+   * ——把它交出去,用户/Agent 还能自己取,不必重新生成一遍。
+   */
+  pendingDownloadUrl?: string;
 }
 
 export interface GenerationJobProgress {
@@ -146,6 +154,8 @@ async function runGenerationJob(
   } catch (error) {
     job.status = 'failed';
     job.error = error instanceof Error ? error.message : String(error);
+    // 只是最后一步没取回来:留住结果 URL,别让已经付过的这次生成彻底作废。
+    if (error instanceof ResultDownloadError) job.pendingDownloadUrl = error.url;
     job.progress = 100;
     job.phase = 'failed';
   } finally {
@@ -195,6 +205,7 @@ export function getGenerationJobSnapshot(jobId: string): GenerationJobSnapshot |
     result: job.result,
     results: job.results,
     error: job.error,
+    pendingDownloadUrl: job.pendingDownloadUrl,
   };
 }
 

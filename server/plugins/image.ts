@@ -6,6 +6,7 @@ import type { Plugin } from 'vite';
 
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import { presignGetUpload, putUploadFile } from '../r2.ts';
+import { fetchGeneratedResult } from './result-download.ts';
 const ASPECTS = new Set(['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '4:5', '5:4', '21:9']);
 const SIZES = new Set(['512px', '1K', '2K', '4K']);
 const QUALITIES = new Set(['low', 'medium', 'high', 'auto']);
@@ -387,8 +388,7 @@ async function saveImage(image: ProviderImage, fallbackExt: string): Promise<str
   let ext = fallbackExt === 'jpeg' ? 'jpg' : fallbackExt;
   if (image.b64_json) bytes = Buffer.from(image.b64_json, 'base64');
   else if (image.url) {
-    const response = await fetch(image.url);
-    if (!response.ok) throw new Error(`generated image download failed (${response.status})`);
+    const response = await fetchGeneratedResult(image.url, 'image');
     bytes = Buffer.from(await response.arrayBuffer());
     // URL downloads (e.g. MiniMax) are often jpeg — keep the real extension.
     const urlExt = extname(new URL(image.url).pathname).slice(1).toLowerCase();

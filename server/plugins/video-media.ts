@@ -5,6 +5,7 @@ import { extname, join } from 'node:path';
 
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import { presignGetUpload, putUploadFile } from '../r2.ts';
+import { fetchGeneratedResult } from './result-download.ts';
 
 function mimeFor(path: string): string {
   const extension = extname(path).toLowerCase();
@@ -62,8 +63,7 @@ async function probeVideo(file: string): Promise<{ durationSeconds: number; widt
 }
 
 export async function saveVideo(url: string): Promise<{ path: string; durationSeconds: number; width?: number; height?: number }> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`generated video download failed (${response.status})`);
+  const response = await fetchGeneratedResult(url, 'video');
   const bytes = Buffer.from(await response.arrayBuffer());
   if (!bytes.length) throw new Error('video provider returned empty video');
   const dir = uploadDir();
@@ -75,8 +75,7 @@ export async function saveVideo(url: string): Promise<{ path: string; durationSe
 }
 
 export async function saveImageUrl(url: string): Promise<string> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`generated image download failed (${response.status})`);
+  const response = await fetchGeneratedResult(url, 'image');
   const bytes = Buffer.from(await response.arrayBuffer());
   if (!bytes.length) throw new Error('provider returned an empty last frame');
   const contentType = response.headers.get('content-type') ?? '';

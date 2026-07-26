@@ -4,6 +4,7 @@ import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { uploadDir } from '../media-dir.ts';
+import { fetchGeneratedResult } from './result-download.ts';
 
 function rawFormat(codec: string): string | undefined {
   if (codec === 'pcm') return 's16le';
@@ -81,8 +82,7 @@ export async function saveVoiceAudio(bytes: Buffer, codec: string, sampleRate: n
 }
 
 export async function saveVoiceSubtitle(url: string): Promise<string> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`unable to download MiniMax subtitles (${response.status})`);
+  const response = await fetchGeneratedResult(url, 'subtitle');
   const bytes = Buffer.from(await response.arrayBuffer());
   if (!bytes.length || bytes.length > 5_000_000) throw new Error('MiniMax subtitle file is empty or too large');
   const dir = uploadDir();

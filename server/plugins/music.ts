@@ -7,6 +7,7 @@ import { generateMureka, pickMurekaAudioUrl } from './music-mureka.ts';
 import { isMinimaxCoverModel, minimaxMusicUrl } from './music-minimax.ts';
 import type { MusicOptions, MusicRequest, ValidMusicRequest } from './music-types.ts';
 import { validateMusicRequest } from './music-validation.ts';
+import { fetchGeneratedResult } from './result-download.ts';
 
 export { isMinimaxCoverModel, pickMurekaAudioUrl, validateMusicRequest };
 
@@ -37,7 +38,7 @@ async function minimaxResult(jobId: string, options: MusicOptions, input: ValidM
 async function murekaResults(jobId: string, options: MusicOptions, input: ValidMusicRequest): Promise<GenerationResult[]> {
   const urls = await generateMureka(options, input);
   return Promise.all(urls.map(async (url, index) => {
-    const saved = await saveAudioResponse(await fetch(url), input.audioFormat);
+    const saved = await saveAudioResponse(await fetchGeneratedResult(url, 'audio'), input.audioFormat);
     return {
       assetId: urls.length === 1 ? jobId : `${jobId}:${index + 1}`,
       kind: 'audio' as const,
