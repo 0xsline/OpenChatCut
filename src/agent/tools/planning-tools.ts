@@ -76,15 +76,26 @@ function planScenes(args: Record<string, unknown>): unknown {
     return { phase: p.phase, scene_count: scenes, word_budget: scenes * perScene };
   });
   const floor = Math.round(targetWords * 0.9);
+  const impliedDurationSec = Math.ceil(targetWords / 2.0);
+  const impliedMin = Math.round(impliedDurationSec / 60 * 10) / 10;
+  const requestedMin = durationSeconds ? Math.round(durationSeconds / 60 * 10) / 10 : null;
+  // Conflict: user asked for X words AND Y duration, but X words @ 2 wps needs ~X/2 seconds,
+  // which is >20% longer than Y. Flag it so the agent/user picks one instead of pretending.
+  const conflict = computedFromDuration > 0 && requested > computedFromDuration * 1.2;
   return {
     target_words: targetWords,
     duration_seconds: durationSeconds,
+    implied_duration_seconds: impliedDurationSec,
+    implied_duration_minutes: impliedMin,
     scene_count: sceneCount,
     words_per_scene: perScene,
     narration_density_wps: 2.0,
     phases,
     floor_90pct: floor,
-    note: `Write EACH scene to ~${perScene} words. Total target = ${targetWords}. Do NOT declare done below 90% (${floor} words). Verify with verify_word_budget before finishing.`,
+    ...(conflict ? {
+      CONFLICT: `Requested ${requested} words but duration ${durationSeconds}s only fits ${computedFromDuration} words @ 2.0 wps. ${requested} words actually need ~${impliedDurationSec}s (~${impliedMin} min). PICK ONE before writing: (a) keep ~${computedFromDuration} words for a true ${requestedMin}-min video (~${Math.max(4, Math.round(computedFromDuration / 60))} scenes), OR (b) extend duration to ~${impliedMin} min for ${requested} words (${sceneCount} scenes). Do NOT pretend ${requested} words fits ${durationSeconds}s — at 2.0 wps it does not.`,
+    } : {}),
+    note: `Write EACH scene to ~${perScene} words. Total target = ${targetWords} = ~${impliedMin} min @ 2.0 wps. Do NOT declare done below 90% (${floor} words). Verify with verify_word_budget before finishing.`,
   };
 }
 

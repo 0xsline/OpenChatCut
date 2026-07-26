@@ -153,7 +153,11 @@ This applies to the spoken narration only — figures shown on screen in a stat 
 
 ## Stock Search Strategy
 
-You pick visuals with search_stock_media. Stock libraries index ENGLISH terms, so write every query in English even when the narration is Indonesian (narration "kapal perang" → query "warship naval"). Then:
+You pick visuals via search_stock_batch (one query per scene chunk). Stock libraries index ENGLISH terms, so write every query in English even when the narration is Indonesian (narration "kapal perang" → query "warship naval"). PROVIDER PRIORITY for geopolitical — use the platforms param to target the RIGHT source per query instead of generic stock:
+- Military / hardware / warships / drills / Pentagon briefings / alutsista → platforms=dvids (real US-DoD PD-USGov footage — far more relevant than generic stock for "warship", "missile", "naval drill")
+- Maps / flags / leader photos / archive / historical → platforms=wikimedia (PD/CC-BY — bendera, peta Nine-Dash Line, foto Xi/Marcos/Biden, arsip)
+- Generic B-roll only (city, nature, crowd, weather, abstract) → leave platforms unset (pexels/pixabay/unsplash)
+DVIDS + Wikimedia give more relevant AND monetization-safe (license-gated PD/CC-BY) footage for geopolitics than generic stock. Prefer them first. Then:
 
 - Front-load the SUBJECT (what happens) over the SETTING (where). Narration "ledapan dahsyat di kota" → ["explosion", "blast", "fireball"], NOT ["city", "building", "street"] — setting nouns return generic irrelevant stock.
 - For a SPECIFIC EVENT at a location, combine all three: "ledapan tanker di Selat Hormuz" → ["strait of hormuz", "oil tanker", "explosion"].
@@ -166,8 +170,8 @@ Breaking-news limitation: stock libraries NEVER carry current / recent events (t
 
 Footage must follow the narration scene-by-scene — NOT one long clip over the whole video:
 
-- After the scene audio clips are placed on A1, read each clip's REAL \`startFrame\` + \`durationInFrames\` via \`read_timeline\`. These are your scene timing anchors.
-- For EACH scene, search ONE footage clip via \`search_stock_media\` (English, subject-fronted, matching that scene's narration — e.g. narration "kapal perang" → "warship naval").
+- TRANSCRIBE the VO first: after each segment lands on A1, call transcribe_track (track A1) to get per-sentence timing, then group sentences into ~10-15s narration CHUNKS. The chunk boundaries (startFrame + durationInFrames straight from the transcript) are your footage cut points — far more precise than read_timeline averages, and they are how footage stays glued to the exact sentence being spoken.
+- Search ALL scene footage in ONE call via \`search_stock_batch\`: pass one English query per scene (e.g. ["warship naval fleet", "beijing taiwan map", "indonesia port tanjung priok"]) and get every query results back together, each tagged with its query. Do NOT call \`search_stock_media\` once per scene — that wastes tool calls. Then pick ONE hit per scene from the batch results.
 - Place the footage on video track V1 (or V2) with \`startFrame\` = the scene's audio startFrame and \`durationInFrames\` = the scene's audio duration. **One footage per scene.**
 - Footage MUST CHANGE every scene. When scene 2's audio starts, scene 2's footage shows. Do NOT drop one clip spanning multiple scenes.
 - VERIFY by playing: when the narration says "kapal perang" the screen shows a warship; when it says "Indonesia" it shows an Indonesian port/flag. If a scene mismatches, fix THAT scene's footage only — don't redo the whole timeline.
@@ -183,7 +187,7 @@ Title = [DRAMATIC SUBJECT] + [EMOTION TRIGGER] + [URGENCY MARKER]. Use at least 
 3. Plan the FUNNEL ARC + WORD BUDGET: compute target_words = duration_seconds × 2.0 (or the user's requested count, whichever is larger), break it into scene_count × scene_words (~40-80 words/scene), and assign a word budget to each scene per phase. Include the Indonesia-connection scenes. Show the breakdown + total to the user.
 4. Write narration per scene TO ITS WORD BUDGET (do not under-write — see Word Budget). For longer scenes, split into ~6s clips, each visually self-contained. After writing all scenes, SUM the word counts and EXPAND any under-budget scene until the total ≥ 90% of target.
 5. Generate voiceover with submit_voice (load the voice skill first; confirm a concrete voice preset before submitting). For Bahasa Indonesia narration, prefer KikiVoice (provider: "kikivoice", voiceId: "joni" — bundled Indonesian clone, desktop only) when available; otherwise use a configured ElevenLabs / Doubao / MiniMax voice. Spell digits / symbols / abbreviations out per the Text Normalization section before submitting. Read the REAL TTS audio duration and fit scenes to it, not to estimates.
-6. Select visuals per scene with search_stock_media, following the Stock Search Strategy above (English queries, subject-fronted, action-for-people). For maps / geography use stock map footage or a static map image (interactive maps not available yet). For breaking-news scenes, see the breaking-news limitation — stock will not carry them.
+6. Transcribe each VO segment with transcribe_track (track A1) to get per-sentence timing, then group sentences into ~10-15s narration chunks. Select visuals via search_stock_batch (ONE call, one English query per chunk — NOT search_stock_media per chunk). Place ONE footage per chunk with startFrame = the chunk's EXACT transcript startFrame. This sentence-aligns footage to narration. Follow the Stock Search Strategy (subject-fronted, action-for-people). For maps use stock map footage / static map. For breaking-news see the breaking-news limitation.
 7. Add at most ONE motion-graphic / data overlay per scene, ONLY when the scene names a key number, comparison, or introduces a new subject (person / place / org). Use whatever motion graphic tools are available in OpenChatCut — explore search_templates, submit_motion_graphic, or create_motion_graphic_from_code and pick the best fit for the data. Don't assume specific template names; let the available tools guide the choice. Keep overlays clean, minimal, and readable (documentary style).
 8. Use transitions sparingly (only ~15-20% of scene boundaries). Prefer hard cuts for most. When you do use a transition, pick from what's available in the editor — don't assume specific transition names.
 9. Assemble the timeline aligned to the real voiceover duration. Add captions when useful.

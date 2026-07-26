@@ -164,6 +164,47 @@ export const STOCK_TOOL_SCHEMAS: AgentToolSchema[] = [
       required: ['query'],
     },
   },
+  {
+    name: 'search_stock_batch',
+    description: [
+      'Search stock media for MANY queries in ONE call (parallel) — one query per scene/visual needed.',
+      'Use this instead of calling search_stock_media once per scene (which wastes tool calls).',
+      'Pass an array of English queries (one per scene) and get every query results back together, each tagged with its query.',
+      'Shared kind/orientation/platforms/category/limitPerPlatform apply to every query. Then pick ONE hit per scene and place it.',
+    ].join(' '),
+    input_schema: {
+      type: 'object',
+      properties: {
+        queries: {
+          type: 'array',
+          items: { type: 'string', minLength: 1 },
+          description: 'One English search query per scene/visual (e.g. ["warship naval fleet", "beijing taiwan map", "indonesia port tanjung priok"]).',
+        },
+        kind: {
+          type: 'string',
+          enum: ['any', 'video', 'audio', 'music', 'image'],
+          description: 'Default video. Applied to every query.',
+        },
+        orientation: {
+          type: 'string',
+          enum: ['horizontal', 'square', 'vertical', 'landscape', 'portrait', 'squarish'],
+          description: 'Preferred orientation. Applied to every query.',
+        },
+        platforms: {
+          type: 'string',
+          description: 'Optional comma-separated provider list. Applied to every query.',
+        },
+        limitPerPlatform: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 6,
+          default: 3,
+          description: 'Max results per platform per query.',
+        },
+      },
+      required: ['queries'],
+    },
+  },
 ];
 
 export const STOCK_TOOL_NAMES = new Set(STOCK_TOOL_SCHEMAS.map((tool) => tool.name));
@@ -470,5 +511,33 @@ export async function execStockTool(name: string, args: Args, ctx: AgentContext)
   if (name === 'push_asset') return execPushAsset(args, ctx);
   if (name === 'import_url_asset') return execImportUrlAsset(args, ctx);
   if (name === 'search_stock_media') return execSearchStockMedia(args);
+  if (name === 'search_stock_batch') return execBatchSearchStockMedia(args);
   return { error: `unknown tool ${name}` };
+}
+
+/** Batch stock search: many queries in ONE call (parallel). One query per scene/visual — far fewer
+ *  tool calls than search_stock_media per scene. Shared kind/orientation/platforms/category/
+ *  limitPerPlatform apply to every query; each query's results come back tagged with its query. */
+async function execBatchSearchStockMedia(args: Args): Promise<unknown> {
+  const queries = Array.isArray(args.queries)
+    ? args.queries.map(String).map((q) => q.trim()).filter(Boolean)
+    : [];
+  if (!queries.length) return { error: 'queries must be a non-empty array of strings' };
+  const shared: Args = {};
+  for (const k of ['kind', 'orientation', 'platforms', 'category']) {
+    const v = args[k];
+    if (typeof v === 'string' && v.trim()) shared[k] = v.trim();
+  }
+  if (typeof args.limitPerPlatform === 'number') shared.limitPerPlatform = args.limitPerPlatform;
+  const results = await Promise.all(
+    queries.map(async (q) => {
+      try {
+        const result = await execSearchStockMedia({ query: q, ...shared });
+        return { query: q, result };
+      } catch (e) {
+        return { query: q, error: e instanceof Error ? e.message : String(e) };
+      }
+    }),
+  );
+  return { ok: true, query_count: queries.length, results };
 }
