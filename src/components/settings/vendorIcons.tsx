@@ -28,7 +28,7 @@ import cloudflareSvg from '../../../assets/vendor-icons/cloudflare.svg?raw';
 
 export type VendorId =
   | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter'
-  | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
+  | 'xiaomi' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
   | 'assemblyai' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk';
 
@@ -66,6 +66,7 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
 const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: string }>> = {
   llm: { bg: '#34363c', mono: 'AI', fg: '#f7f7f8' },
   openrouter: { bg: '#5B5BD6', mono: 'OR' },
+  xiaomi: { bg: '#FF6900', mono: 'MI' }, // 小米品牌橙,官方 SVG 未 vendored 前 monogram 兜底
   mureka: { bg: '#7C5CFF', mono: 'μ' },
   e2b: { bg: '#FF8800', mono: 'E2', fg: '#40230a' },
   localdisk: { bg: '#5f6b7a', mono: 'HD', fg: '#eef2f7' }, // 本地磁盘(非厂商,中性灰)

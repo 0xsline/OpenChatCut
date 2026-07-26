@@ -68,6 +68,13 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'MiniMax-M3',
   },
   {
+    id: 'xiaomi',
+    label: 'Xiaomi · MiMo',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://api.xiaomimimo.com/v1',
+    defaultModel: 'mimo-v2.5-pro',
+  },
+  {
     id: 'mistral',
     label: 'Mistral AI',
     protocol: 'openai-compatible',
