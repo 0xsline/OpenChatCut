@@ -1,7 +1,7 @@
 import type { CaptionsData, CaptionSourceEntry, CaptionWordOverride } from './types';
 import type { TimelineItem } from '../editor/types';
 import type { TranscriptWord } from '../transcript/types';
-import { itemWindow, keptWordIndices, mediaWindowKeptIndices, mediaWindowWords, retimeWords } from '../transcript/edit';
+import { itemEditOpts, itemWindow, keptWordIndices, mediaWindowKeptIndices, mediaWindowWords, retimeWords } from '../transcript/edit';
 import { findVariantByLang, resolveVariantText } from '../transcript/variants';
 import { orderedCaptionSourceEntries } from './sourceOrder';
 
@@ -12,18 +12,12 @@ import { orderedCaptionSourceEntries } from './sourceOrder';
 // trimBefore,词编辑不改画面;字幕层要藏词走 wordOverrides)。
 function projectItemWords(item: TimelineItem, src: TranscriptWord[], del: Set<number>, fps: number): TranscriptWord[] {
   if (item.kind !== 'audio') return mediaWindowWords(src, fps, item);
-  return retimeWords(src, del, fps, item.startFrame, {
-    maxGapFrames: item.silenceFrames, gapCapsMs: item.gapCapsMs, playOrder: item.transcriptPlayOrder,
-    window: itemWindow(item),
-  });
+  return retimeWords(src, del, fps, item.startFrame, { ...itemEditOpts(item), window: itemWindow(item) });
 }
 
 function projectItemIndices(item: TimelineItem, del: Set<number>, fps: number): number[] {
   if (item.kind !== 'audio') return mediaWindowKeptIndices(item.transcript ?? [], fps, item);
-  return keptWordIndices(item.transcript ?? [], del, fps, {
-    maxGapFrames: item.silenceFrames, gapCapsMs: item.gapCapsMs, playOrder: item.transcriptPlayOrder,
-    window: itemWindow(item),
-  });
+  return keptWordIndices(item.transcript ?? [], del, fps, { ...itemEditOpts(item), window: itemWindow(item) });
 }
 
 // Items participating in a MULTI-source merge (`sourceMode:'timeline'` = every

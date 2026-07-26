@@ -4,11 +4,13 @@
 import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeTimeline, captionsOnTrack, DEFAULT_WATERMARK, defaultTrackId, isAudioTransition, selectedIdsOf, timelineTrackIds, trackEnd, trackKind } from './types';
 import { scaleItemKeyframes, splitItemKeyframes, upsertKeyframe } from './keyframes';
+import { capFade, fitItemToDuration } from './clipFit';
+import { remainingSourceFrames } from './sourceLimit';
 import { coerceKeyframeValue, supportsKeyframeProperty } from './keyframeRegistry';
 import type { CaptionsData } from '../captions/types';
 import type { SerializableFxDef } from '../gl/fx/uniforms';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
-import { editedFrames, fillerIndices, splitClipTranscript } from '../transcript/edit';
+import { editedFrames, fillerIndices, itemEditOpts, splitClipTranscript } from '../transcript/edit';
 
 const TRACK_KIND_ORDER: readonly TrackKind[] = ['caption', 'video', 'audio'];
 
@@ -75,7 +77,7 @@ export type Action =
   | { type: 'setItemVariants'; id: string; variants: TranscriptVariant[] }
   | { type: 'toggleWord'; id: string; idx: number }
   | { type: 'deleteWords'; id: string; idxs: number[] }
-  | { type: 'cleanScript'; id: string; silenceFrames?: number; removeFillers: boolean; gapCapsMs?: Record<string, number>; replaceGapCaps?: boolean }
+  | { type: 'cleanScript'; id: string; silenceFrames?: number; cutPadFrames?: number; removeFillers: boolean; gapCapsMs?: Record<string, number>; replaceGapCaps?: boolean }
   /** Per-gap silence cap. afterWordIndex = word after the gap; maxMs=null clears the override. */
   | { type: 'setGapCap'; id: string; afterWordIndex: number; maxMs: number | null }
   /** Speech-block drag: playback order of source word indices (null clears → chronological). */
@@ -143,19 +145,55 @@ const lockedItem = (s: TimelineState, id: string): boolean =>
   s.items.some((it) => it.id === id && s.tracks?.[it.track]?.locked);
 
 // recompute a transcript-edited clip's duration under its current edit state
-function editOptsOf(it: TimelineItem): { maxGapFrames?: number; gapCapsMs?: Record<string, number>; playOrder?: number[] } {
-  return { maxGapFrames: it.silenceFrames, gapCapsMs: it.gapCapsMs, playOrder: it.transcriptPlayOrder };
-}
+
 
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
   // 词操作后时长 = 编辑后词流全长 − 已有左裁(仅 audio:词驱动渲染的窗口起点)。
   // 左 trim 在删词/压静音后保留;右 trim 重置为"剩余全部"。video+transcript 走
   // 连续渲染,srcInFrame 是媒体帧语义,不参与词流窗口。
   const trim = it.kind === 'audio' ? (it.srcInFrame ?? 0) : 0;
-  return Math.max(1, editedFrames(it.transcript!, deleted, fps, editOptsOf(it)) - trim);
+  return Math.max(1, editedFrames(it.transcript!, deleted, fps, itemEditOpts(it)) - trim);
+}
+
+/**
+ * 从 `fromFrame` 起首尾相接的同轨后继片段 id,遇到第一个空隙就停。重叠算相接
+ * (同轨允许覆盖摆放),链尾取已扫过片段的最大右边缘。exported for verify。
+ */
+export function contiguousFollowers(
+  items: readonly TimelineItem[],
+  track: TrackId,
+  fromFrame: number,
+): Set<string> {
+  const later = items
+    .filter((it) => it.track === track && it.startFrame >= fromFrame)
+    .toSorted((x, y) => x.startFrame - y.startFrame);
+  const ids = new Set<string>();
+  let chainEnd = fromFrame;
+  for (const it of later) {
+    if (it.startFrame > chainEnd) break;
+    ids.add(it.id);
+    chainEnd = Math.max(chainEnd, it.startFrame + it.durationInFrames);
+  }
+  return ids;
+}
+
+/** 把越界的淡化/关键帧压回各自片段的时长。全部合法时原样返回,不产生新对象。 */
+function fitItems(s: TimelineState): TimelineState {
+  let changed = false;
+  const items = s.items.map((it) => {
+    const next = fitItemToDuration(it);
+    if (next !== it) changed = true;
+    return next;
+  });
+  return changed ? { ...s, items } : s;
 }
 
 export function reduce(s: TimelineState, a: Action): TimelineState {
+  // 任何改动都可能改到 durationInFrames,统一在出口自愈,省得每个 case 各加守卫。
+  return fitItems(applyAction(s, a));
+}
+
+function applyAction(s: TimelineState, a: Action): TimelineState {
   switch (a.type) {
     case 'add': {
       if (s.tracks?.[a.item.track]?.locked) return s;
@@ -198,10 +236,13 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       // 词↔帧一致 —— 窗口决定播什么,这里保证窗口本身合法)。video 的 srcInFrame
       // 是媒体帧,不 clamp。
       if (target.kind === 'audio' && target.transcript?.length) {
-        const total = editedFrames(target.transcript, new Set(target.deletedWordIdx ?? []), s.fps, editOptsOf(target));
+        const total = editedFrames(target.transcript, new Set(target.deletedWordIdx ?? []), s.fps, itemEditOpts(target));
         srcIn = Math.min(srcIn ?? 0, Math.max(0, total - 1));
         dur = Math.min(dur, Math.max(1, total - srcIn));
       }
+      // 其余真实媒体:右边缘不能越过素材尾部(越过只会定格在最后一帧)。
+      const sourceLimit = remainingSourceFrames(target, srcIn ?? 0, s.assets);
+      if (sourceLimit !== null) dur = Math.min(dur, sourceLimit);
       const startFrame = Math.max(0, a.startFrame ?? target.startFrame);
       const oldEnd = target.startFrame + target.durationInFrames;
       const newEnd = startFrame + dur;
@@ -233,13 +274,16 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         ...s,
         items: s.items.map((it) => {
           if (it.id !== a.id) return it;
-          // clamp each fade to at most the clip's length; keep the other side unchanged
+          // 两侧淡化合起来不能超过片段长度。被显式设置的那一侧让位给没动的那一侧
+          // (只调淡入不该把用户原本的淡出悄悄砍短);两侧同时给出时按淡入优先。
           const cap = it.durationInFrames;
-          return {
-            ...it,
-            fadeInFrames: a.fadeInFrames === undefined ? it.fadeInFrames : Math.max(0, Math.min(cap, a.fadeInFrames)),
-            fadeOutFrames: a.fadeOutFrames === undefined ? it.fadeOutFrames : Math.max(0, Math.min(cap, a.fadeOutFrames)),
-          };
+          const fadeInFrames = a.fadeInFrames === undefined
+            ? it.fadeInFrames
+            : capFade(a.fadeInFrames, a.fadeOutFrames === undefined ? cap - (it.fadeOutFrames ?? 0) : cap);
+          const fadeOutFrames = a.fadeOutFrames === undefined
+            ? it.fadeOutFrames
+            : capFade(a.fadeOutFrames, cap - (fadeInFrames ?? 0));
+          return { ...it, fadeInFrames, fadeOutFrames };
         }),
       };
     case 'setTransform':
@@ -295,7 +339,9 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       const durationInFrames = Math.max(1, Math.round(sourceSpan / rate));
       const oldEnd = target.startFrame + target.durationInFrames;
       const deltaEnd = (target.startFrame + durationInFrames) - oldEnd;
-      // Right edge moves with speed — ripple later same-track clips to close/open the gap.
+      // 右边缘随速度移动 → 推后面的同轨片段补上/让开。只推紧贴着的那条连续链:
+      // 用户特意留出的空隙是边界,一次变速不该把整轨后面的东西全拖走。
+      const rippled = deltaEnd === 0 ? null : contiguousFollowers(s.items, target.track, oldEnd);
       return {
         ...s,
         items: s.items.map((it) => {
@@ -307,7 +353,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
               ...(it.keyframes ? { keyframes: scaleItemKeyframes(it.keyframes, durationInFrames / it.durationInFrames) } : {}),
             };
           }
-          if (deltaEnd !== 0 && it.track === target.track && it.startFrame >= oldEnd) {
+          if (rippled?.has(it.id)) {
             return { ...it, startFrame: Math.max(0, it.startFrame + deltaEnd) };
           }
           return it;
@@ -592,6 +638,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
             deletedWordIdx: [...del],
             silenceFrames: a.replaceGapCaps ? undefined : a.silenceFrames,
             gapCapsMs: a.replaceGapCaps ? a.gapCapsMs : it.gapCapsMs,
+            cutPadFrames: a.cutPadFrames === undefined ? it.cutPadFrames : Math.max(0, Math.round(a.cutPadFrames)),
           };
           return { ...next, durationInFrames: editedDuration(next, del, s.fps) };
         }),
@@ -970,8 +1017,10 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
   // per-timeline action → apply to the active timeline only
   const active = activeTimeline(p);
   if (!active) return p;
-  const next = reduce(active, a);
-  if (next === active) return p;
+  // 素材表挂上去(stamp 会再摘掉):裁剪要知道源素材还剩多少可用。
+  const withAssets = { ...active, assets: p.assets };
+  const next = reduce(withAssets, a);
+  if (next === withAssets) return p;
   const stamped = stamp(next, active.id, active.name, active.order);
   return { ...p, timelines: p.timelines.map((t) => (t.id === active.id ? stamped : t)) };
 }

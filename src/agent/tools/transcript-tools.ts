@@ -64,6 +64,7 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
         longSilence: { type: 'number', description: 'Long-pause threshold in ms for the default silence rule (pauses at/above it compress to 200ms). Default 3000 when only includes silence and no silence rule is supplied.' },
         maxPauseSeconds: { type: 'number', description: 'Compress pauses longer than this down to it (e.g. 0.5). Omit to leave pauses.' },
         removeFillers: { type: 'boolean', description: 'Strip filler words (default true).' },
+        cutPadMs: { type: 'number', minimum: 0, maximum: 500, description: 'Breathing room kept around each word cut, split between the two sides (e.g. 150). Borrowed from silence already in the recording, so it never bleeds into a neighbouring word. 0 or omitted cuts exactly on the word boundary.' },
       },
     },
   },
@@ -374,6 +375,9 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       const silenceFrames = typeof args.maxPauseSeconds === 'number'
         ? Math.max(1, Math.round(args.maxPauseSeconds * fps))
         : undefined;
+      const cutPadFrames = typeof args.cutPadMs === 'number'
+        ? Math.max(0, Math.round((Math.min(500, Math.max(0, args.cutPadMs)) / 1000) * fps))
+        : undefined;
       const removeFillers = selection.fillers;
       let fillersRemoved = 0;
       const actions: Action[] = [];
@@ -391,9 +395,13 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
               fps,
             }),
             replaceGapCaps: true,
+            cutPadFrames,
           });
         } else if (!usesTypedArgs) {
-          actions.push({ type: 'cleanScript', id: it.id, silenceFrames, removeFillers });
+          actions.push({ type: 'cleanScript', id: it.id, silenceFrames, removeFillers, cutPadFrames });
+        } else if (cutPadFrames !== undefined) {
+          // 只改呼吸口时把片段现有的压缩设置原样带上,别被 cleanScript 顺手清掉。
+          actions.push({ type: 'cleanScript', id: it.id, removeFillers, cutPadFrames, silenceFrames: it.silenceFrames });
         } else if (fillers.length) {
           actions.push({ type: 'deleteWords', id: it.id, idxs: fillers });
         }

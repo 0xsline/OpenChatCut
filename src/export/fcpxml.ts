@@ -10,7 +10,7 @@ import {
   type TimelineState,
   type TrackId,
 } from '../editor/types';
-import { itemWindow, keptSegments } from '../transcript/edit';
+import { itemEditOpts, itemWindow, keptSegments } from '../transcript/edit';
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
 
 /** 素材 URL 前缀:磁盘上落在 mediaDir 里,同名。 */
@@ -55,9 +55,7 @@ function transcriptSegments(
 ): ReturnType<typeof keptSegments> | null {
   if (item.kind !== 'audio' || !item.transcript?.length) return null;
   return keptSegments(item.transcript, new Set(item.deletedWordIdx ?? []), fps, item.startFrame, {
-    maxGapFrames: item.silenceFrames,
-    gapCapsMs: item.gapCapsMs,
-    playOrder: item.transcriptPlayOrder,
+    ...itemEditOpts(item),
     window: itemWindow(item),
   });
 }

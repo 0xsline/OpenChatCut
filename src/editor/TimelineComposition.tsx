@@ -6,7 +6,7 @@ import { GlTransition } from '../gl/GlTransition';
 import { ClipFx } from '../gl/ClipFx';
 import { firstGlEffect } from '../gl/clipEffects';
 import { ALL_FX, registerCustomFx } from '../gl/fx/effects';
-import { itemWindow, keptSegments } from '../transcript/edit';
+import { itemEditOpts, itemWindow, keptSegments } from '../transcript/edit';
 import { zoomAt } from './zoom';
 import { sampleKeyframes, volumeAtFrame } from './keyframes';
 import { loadTimelineFonts } from '../fonts/projectFonts';
@@ -191,9 +191,7 @@ function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, browser
     return (
       <>
         {keptSegments(item.transcript, del, fps, item.startFrame, {
-          maxGapFrames: item.silenceFrames,
-          gapCapsMs: item.gapCapsMs,
-          playOrder: item.transcriptPlayOrder,
+          ...itemEditOpts(item),
           window: itemWindow(item), // trim 手柄的 [srcIn, srcIn+dur) 切片(词↔帧一致)
         }).map((seg, k) => (
           <Sequence key={`${item.id}_${k}`} from={seg.fromFrame} durationInFrames={seg.durFrames} premountFor={premountFor} name={item.name}>

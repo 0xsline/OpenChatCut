@@ -2,7 +2,7 @@
 // 空白处框选(marquee)、钢笔关键帧点拖(penDrag)、选择模式引用拾取(pickDrag)。
 // move/up 统一挂在滚动容器上;各手势自己 setPointerCapture 到合适目标。
 // 吸附(applySnap)与多选点击语义也在这——它们只被这台机器用。
-import { useState, type RefObject } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import {
   isItemSelected, selectedIdsOf, trackKind,
   type KeyframeEasing, type KeyframeProp, type TimelineItem, type TimelineState, type TrackId,
@@ -11,7 +11,8 @@ import { groupMoveIds, moveItemsByDelta } from '../../editor/multiSelect';
 import { upsertKeyframe } from '../../editor/keyframes';
 import { getKeyframePropertyDefinition } from '../../editor/keyframeRegistry';
 import { rateStretchItem } from '../../editor/rateStretch';
-import { collectTimelineSnapPoints, snapDraggedEdges } from '../../editor/snap';
+import { remainingSourceFrames } from '../../editor/sourceLimit';
+import { collectTimelineSnapPoints, snapDraggedEdges, type SnapHold } from '../../editor/snap';
 import type { EditorCommands } from '../../editor/store';
 import { emitSelectionRef, resolveTimelinePick, type TimelinePickDrag } from '../../agent/selection-refs';
 import { SNAP_PX, type Drag, type DragMode, type EditMode } from './timelineUtil';
@@ -48,6 +49,8 @@ export function useTimelinePointer(deps: PointerDeps) {
   /** Rubber-band multi-select on empty lane (selection mode). Client coords. */
   const [marquee, setMarquee] = useState<Marquee | null>(null);
   const [pickDrag, setPickDrag] = useState<TimelinePickDrag | null>(null);
+  /** 当前吸住的目标,一次拖拽内跨 pointermove 保持(迟滞),松手清空。 */
+  const snapHold = useRef<SnapHold | null>(null);
 
   const startPick = (e: React.PointerEvent, origin: TimelinePickDrag['origin'], item?: TimelineItem) => {
     e.stopPropagation();
@@ -96,6 +99,7 @@ export function useTimelinePointer(deps: PointerDeps) {
       commands.selectItem(id, { mode: 'add' });
     }
     // Only start move drag when not pure multi-toggle without drag intent — still allow drag
+    snapHold.current = null;
     setDrag({ id, mode, baseStart, baseDur, baseTrack, baseSrcIn, startX: e.clientX, deltaF: 0, targetTrack: baseTrack, snapAt: null });
   };
   // All snap targets come from the editor snap registry. Group moves exclude
@@ -109,10 +113,24 @@ export function useTimelinePointer(deps: PointerDeps) {
       playheadFrame: playheadRef.current,
       excludeItemIds: skip,
     });
-    return snapDraggedEdges({
+    const result = snapDraggedEdges({
       mode, baseStart, baseDuration: baseDur, rawDelta,
       points, thresholdFrames: SNAP_PX / px,
+      hold: snapHold.current,
     });
+    snapHold.current = result.hold;
+    return result;
+  };
+  /**
+   * 右手柄最多还能往右拖多少帧:源素材剩余长度减去当前时长。判定不了(图片/MG/
+   * 词驱动音频)返回 Infinity。变速拉伸不消耗额外源帧,所以那个模式不设限。
+   */
+  const trimRightCap = (id: string, baseDur: number): number => {
+    if (editMode === 'rate-stretch') return Infinity;
+    const it = state.items.find((x) => x.id === id);
+    if (!it) return Infinity;
+    const limit = remainingSourceFrames(it, it.srcInFrame ?? 0, state.assets);
+    return limit === null ? Infinity : limit - baseDur;
   };
   const onPointerMove = (e: React.PointerEvent) => {
     if (marquee) {
@@ -136,7 +154,11 @@ export function useTimelinePointer(deps: PointerDeps) {
     }
     if (!drag) return;
     const rawDelta = Math.round((e.clientX - drag.startX) / px);
-    const { deltaF, snapAt } = applySnap(drag.mode, drag.baseStart, drag.baseDur, rawDelta);
+    const snapped = applySnap(drag.mode, drag.baseStart, drag.baseDur, rawDelta);
+    // 拖到素材尾部就停住,预览与最终提交用同一个上界(否则松手会突然弹回来)。
+    const cap = drag.mode === 'trim-right' ? trimRightCap(drag.id, drag.baseDur) : Infinity;
+    const deltaF = Math.min(snapped.deltaF, cap);
+    const snapAt = deltaF === snapped.deltaF ? snapped.snapAt : null;
     const targetTrack = drag.mode === 'move' ? trackFromClientY(e.clientY) : drag.baseTrack;
     setDrag((d) => (d ? { ...d, deltaF, targetTrack, snapAt } : d));
   };
@@ -213,7 +235,8 @@ export function useTimelinePointer(deps: PointerDeps) {
       if (editMode === 'rate-stretch') {
         const next = rateStretchItem(state, id, 'left', deltaF);
         if (next !== state) commands.applyState(next);
-        setDrag(null);
+        snapHold.current = null;
+    setDrag(null);
         return;
       }
       // clamp so the source in-point can't go negative (limits how far left media extends)
@@ -223,7 +246,8 @@ export function useTimelinePointer(deps: PointerDeps) {
       if (editMode === 'rate-stretch') {
         const next = rateStretchItem(state, id, 'right', deltaF);
         if (next !== state) commands.applyState(next);
-        setDrag(null);
+        snapHold.current = null;
+    setDrag(null);
         return;
       }
       const newDur = Math.max(1, baseDur + deltaF);
@@ -244,6 +268,7 @@ export function useTimelinePointer(deps: PointerDeps) {
         }
       }
     }
+    snapHold.current = null;
     setDrag(null);
   };
 

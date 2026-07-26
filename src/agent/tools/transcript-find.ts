@@ -1,6 +1,6 @@
 import type { AgentContext } from '../context';
 import { resolveTrackId, trackAlias, type TimelineItem, type TimelineState } from '../../editor/types';
-import { itemWindow, keptSegments, type EditOpts } from '../../transcript/edit';
+import { itemEditOpts, itemWindow, keptSegments, type EditOpts } from '../../transcript/edit';
 import { msToFrame, type TranscriptWord } from '../../transcript/types';
 
 // find_transcript — 参数面:query(必填) + asset / track / fuzzy /
@@ -47,10 +47,8 @@ export function findPhrase(words: TranscriptWord[], query: string): { start: num
 export function makeWordFrameMapper(item: TimelineItem, fps: number): (gi: number) => { fromFrame: number; toFrame: number } | null {
   const words = item.transcript ?? [];
   const deleted = new Set(item.deletedWordIdx ?? []);
-  const opts: EditOpts = {
-    maxGapFrames: item.silenceFrames, gapCapsMs: item.gapCapsMs, playOrder: item.transcriptPlayOrder,
-    window: itemWindow(item), // trim 掉的词不再产出帧位(与播放层一致)
-  };
+  // trim 掉的词不再产出帧位(与播放层一致)
+  const opts: EditOpts = { ...itemEditOpts(item), window: itemWindow(item) };
   const segs = keptSegments(words, deleted, fps, item.startFrame, opts);
   return (gi: number) => {
     const w = words[gi];

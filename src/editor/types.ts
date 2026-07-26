@@ -223,6 +223,9 @@ export interface TimelineItem {
   /** clean_script silence compression: cap inter-word pauses to this many frames
    * (undefined = keep every pause at its recorded length). */
   silenceFrames?: number;
+  /** clean_script 呼吸口:删词切口两侧一共保留这么多帧的原有静音(两侧平分),
+   * 免得剪切正好压在词边界上削掉辅音。undefined/0 = 精确切在词边界。 */
+  cutPadFrames?: number;
   /**
    * Per-gap silence caps (transcript Gap row / delete-gap).
    * Key = word index AFTER the gap (string for JSON); value = max allowed gap ms

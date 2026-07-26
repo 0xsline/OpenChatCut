@@ -27,6 +27,15 @@ export interface EditOpts {
   /** Source word indices in playback order (speech-block drag). */
   playOrder?: number[];
   /**
+   * 切点两侧各保留的呼吸口预算(帧,两侧平分)。剪切正好落在词边界上会削掉辅音的
+   * 起音和收尾,听起来"黏在一起";这里在**删词/重排造成的切口**上,从原本就存在的
+   * 静音里各借回最多一半,借不到那么多就借多少算多少。
+   *
+   * 只作用于切口:片段自身的首尾、以及被 gapCapsMs/maxGapFrames 压过的间隙都不加
+   * (那些间隙的长度已经由压缩规则说了算)。undefined/0 = 老行为,精确切在词边界。
+   */
+  cutPadFrames?: number;
+  /**
    * Visible window over the EDITED (kept) stream, in edited-local frames —
    * the trim handles' [srcInFrame, srcInFrame+durationInFrames) slice. Segments
    * outside are dropped, boundary segments clipped, survivors re-packed from
@@ -43,6 +52,25 @@ export interface EditOpts {
 export function itemWindow(it: { kind: string; srcInFrame?: number; durationInFrames: number }): EditOpts['window'] {
   if (it.kind !== 'audio') return undefined;
   return { startFrame: it.srcInFrame ?? 0, durFrames: it.durationInFrames };
+}
+
+/**
+ * 一个片段当前的编辑参数。渲染、导出、字幕、find_transcript 都必须用同一份,否则
+ * 加一个开关只有一半路径生效、播放和导出就会各说各话。`window` 不在这里:有的调用
+ * 要整条词流(算总长),有的只要可见片段,由调用方自己按需补 `itemWindow(item)`。
+ */
+export function itemEditOpts(it: {
+  silenceFrames?: number;
+  gapCapsMs?: Record<string, number>;
+  transcriptPlayOrder?: number[];
+  cutPadFrames?: number;
+}): EditOpts {
+  return {
+    maxGapFrames: it.silenceFrames,
+    gapCapsMs: it.gapCapsMs,
+    playOrder: it.transcriptPlayOrder,
+    cutPadFrames: it.cutPadFrames,
+  };
 }
 
 /** Max frames allowed for the gap immediately before `nextWordIdx` (null = uncapped). */
@@ -70,15 +98,18 @@ export function keptSegments(
       : words.map((_, i) => i)
   ).filter((i) => i >= 0 && i < words.length && !deleted.has(i));
 
+  const half = Math.max(0, Math.floor((opts.cutPadFrames ?? 0) / 2));
+
   const segs: KeptSegment[] = [];
   let pos = offsetFrames;
   let si = 0;
   while (si < seq.length) {
     const wi = seq[si]!;
-    const srcStart = msToFrame(words[wi]!.start, fps);
+    let srcStart = msToFrame(words[wi]!.start, fps);
     let srcEnd = msToFrame(words[wi]!.end, fps);
     let sj = si;
     let curWi = wi; // last source word merged into this run
+    let capped = false; // 本段是被静音压缩规则截断的(而不是被删词切开的)
     // Merge forward ONLY through immediate chronological successors. A jump in
     // source index — deleted words sitting between (删词=删视频) or a play-order
     // reorder — ends the run, so the skipped source span is dropped instead of
@@ -92,11 +123,24 @@ export function keptSegments(
       const cap = gapCapFrames(opts, nextWi, fps);
       if (cap != null && gap > cap) {
         srcEnd += cap; // keep only the allowed trailing silence
+        capped = true;
         break;
       }
       srcEnd = msToFrame(words[nextWi]!.end, fps);
       curWi = nextWi;
       sj += 1;
+    }
+    // 呼吸口:切口两侧各从原有静音里借回最多 half 帧。片段自身的首尾不借(那不是
+    // 切出来的),被 cap 压过的间隙也不借(长度已由压缩规则决定)。
+    if (half > 0) {
+      if (wi > 0 && (si === 0 ? true : seq[si - 1] !== wi - 1)) {
+        const silence = srcStart - msToFrame(words[wi - 1]!.end, fps);
+        srcStart = Math.max(0, srcStart - Math.max(0, Math.min(silence, half)));
+      }
+      if (!capped && curWi + 1 < words.length && seq[sj + 1] !== curWi + 1) {
+        const silence = msToFrame(words[curWi + 1]!.start, fps) - srcEnd;
+        srcEnd += Math.max(0, Math.min(silence, half));
+      }
     }
     const durFrames = Math.max(1, srcEnd - srcStart);
     segs.push({ srcStartFrame: srcStart, srcEndFrame: srcEnd, fromFrame: pos, durFrames });
