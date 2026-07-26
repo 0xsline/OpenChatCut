@@ -6,8 +6,9 @@
 // 当前值经 GET /api/keys 的 models 通道回显(服务端 NON_SECRET_NAMES 白名单)。
 import { t } from '../../i18n/locale';
 import {
-  LLM_PROVIDER_PRESETS,
+  allLlmProviderPresets,
   llmProviderConfigNames,
+  type LlmProviderPreset,
 } from '../../../shared/llm-providers';
 import type { IconName } from '../icons';
 import type { VendorId } from './vendorIcons';
@@ -89,13 +90,15 @@ const routeSelect = (name: string, options: readonly SelectOption[]): SettingsFi
   options: [{ value: '', label: '每次询问（默认）' }, ...options],
 });
 
-const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorPage => {
+export const llmPage = (preset: LlmProviderPreset): SettingsVendorPage => {
   const names = llmProviderConfigNames(preset.id);
   return {
     key: `llm/${preset.id}`,
     vendor: preset.id as VendorId,
     title: preset.label,
-    note: '每个厂商独立保存地址、密钥与模型。先测试连接，成功后可从接口返回的模型中选择。',
+    note: preset.custom
+      ? '自定义厂商（ZCode 风格）。保存后写入 .env.local，密钥不进浏览器。'
+      : '每个厂商独立保存地址、密钥与模型。先测试连接，成功后可从接口返回的模型中选择。',
     fields: [
       {
         name: names.baseUrl,
@@ -120,11 +123,37 @@ const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorP
         defaultLabel: preset.defaultModel,
         discoverableModel: true,
         note: '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。',
-        options: [{ value: preset.defaultModel, label: preset.defaultModel }],
+        options: modelOptionsForPreset(preset),
       },
     ],
   };
 };
+
+/** Extra model suggestions for Frame / Maxplus / ZCode-style gateways. */
+function modelOptionsForPreset(
+  preset: LlmProviderPreset,
+): { value: string; label: string }[] {
+  if (preset.id === 'maxplus-grok') {
+    return [
+      { value: 'grok-4.5', label: 'grok-4.5' },
+      { value: 'grok-4.3', label: 'grok-4.3' },
+    ];
+  }
+  if (preset.id === 'maxplus-codex') {
+    return [
+      { value: 'gpt-5.4', label: 'gpt-5.4' },
+      { value: 'gpt-5.5', label: 'gpt-5.5' },
+      { value: 'gpt-5.6-terra', label: 'gpt-5.6-terra' },
+      { value: 'gpt-5.6-sol', label: 'gpt-5.6-sol' },
+    ];
+  }
+  return [{ value: preset.defaultModel, label: preset.defaultModel }];
+}
+
+/** LLM vendor pages from built-in + custom (runtime) presets. */
+export function llmVendorPages(): SettingsVendorPage[] {
+  return allLlmProviderPresets().map(llmPage);
+}
 
 // MiniMax 同一对 Key/Base URL 服务 4 个能力,页按能力只挂该能力的模型字段。
 const MINIMAX_NOTE = 'MiniMax 同一个 Key，配置一次全能力（生图 / 配音 / 视频 / 音乐）通用。';
@@ -137,15 +166,7 @@ const minimaxPage = (cap: string, modelField: SettingsField, title = 'MiniMax', 
   ],
 });
 
-export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
-  {
-    key: 'agent', title: 'Agent 模型', icon: 'sparkles',
-    groups: [
-      { key: 'llm', title: 'Agent 大脑',
-        hint: '对话与工具调用的核心，未配置无法对话。',
-        vendors: LLM_PROVIDER_PRESETS.map(llmPage) },
-    ],
-  },
+const STATIC_NON_LLM_CATEGORIES: readonly SettingsCategory[] = [
   {
     key: 'generation', title: 'AI 生成', icon: 'image',
     groups: [
@@ -306,6 +327,27 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   },
 ];
 
+/** Full settings tree; LLM vendors rebuild from built-in + custom (.env.local). */
+export function getSettingsCategories(): SettingsCategory[] {
+  return [
+    {
+      key: 'agent', title: 'Agent 模型', icon: 'sparkles',
+      groups: [
+        {
+          key: 'llm',
+          title: 'Agent 大脑',
+          hint: '对话与工具调用的核心，未配置无法对话。点 + 可添加自定义厂商（写入 .env.local）。',
+          vendors: llmVendorPages(),
+        },
+      ],
+    },
+    ...STATIC_NON_LLM_CATEGORIES,
+  ];
+}
+
+/** @deprecated Prefer getSettingsCategories() — kept for static imports that only need structure. */
+export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = getSettingsCategories();
+
 /** 暂存改动:字段名在 map 里 = 有暂存;'' = 显式清除(模型字段即回默认)。 */
 export type StagedValues = Record<string, string>;
 
@@ -365,8 +407,8 @@ export function categoryGroupStats(
 
 /** 左树选中 key → 能力组(组 key 全局唯一);找不到回退第一组。 */
 export function findGroup(key: string): SettingsGroup {
-  return SETTINGS_CATEGORIES.flatMap((c) => c.groups).find((g) => g.key === key)
-    ?? SETTINGS_CATEGORIES[0].groups[0];
+  const cats = getSettingsCategories();
+  return cats.flatMap((c) => c.groups).find((g) => g.key === key) ?? cats[0]!.groups[0]!;
 }
 
 /** select 渲染用的完整选项:模型 select 前插「默认（xxx）」;路由 select 自带「每次询问」。 */

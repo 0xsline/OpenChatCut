@@ -7,11 +7,24 @@ import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from '../../agent/
 import { applyAgentModelStatus } from '../../agent/model-selection';
 import { FieldRow, ON, VendorPane, WARN, type FieldCtx } from './settingsVendorPane';
 import {
-  SETTINGS_CATEGORIES, buildPatch, categoryGroupStats, findGroup, groupConfigured,
+  getSettingsCategories, buildPatch, categoryGroupStats, findGroup, groupConfigured,
   isModelField, modelValue, omitKey, savedMessage, vendorConfigured,
   type KeyStatusResponse, type SettingsCategory, type SettingsField, type SettingsGroup,
   type SettingsVendorPage, type StagedValues as Values,
 } from './settingsSchema';
+import {
+  API_FORMAT_OPTIONS,
+  LLM_CUSTOM_PROVIDERS_KEY,
+  apiFormatToProtocol,
+  listCustomLlmProviders,
+  llmProviderConfigNames,
+  normalizeApiFormat,
+  parseCustomLlmProvidersJson,
+  serializeCustomLlmProviders,
+  setCustomLlmProviders,
+  slugifyProviderId,
+  type ProviderApiFormat,
+} from '../../../shared/llm-providers';
 
 // 全局设置模态,三栏:左 =「分类 → 能力」两级可折叠树(能力行 = 状态点 + 名);
 // 中 = 当前能力下的厂商列表(生成四能力顶部带「默认厂商」路由 select);
@@ -110,17 +123,20 @@ function useHover(): [boolean, { onMouseEnter: () => void; onMouseLeave: () => v
 function useTreeSelection(): {
   group: SettingsGroup; page: SettingsVendorPage;
   selectGroup: (key: string) => void; selectVendor: (key: string) => void;
+  bumpVendors: () => void;
 } {
-  const first = SETTINGS_CATEGORIES[0].groups[0];
+  const first = getSettingsCategories()[0]!.groups[0]!;
   const [groupKey, setGroupKey] = useState<string>(first.key);
-  const [vendorKey, setVendorKey] = useState<string>(first.vendors[0].key);
+  const [vendorKey, setVendorKey] = useState<string>(first.vendors[0]!.key);
+  const [, setCatalogTick] = useState(0);
   const group = findGroup(groupKey);
-  const page = group.vendors.find((v) => v.key === vendorKey) ?? group.vendors[0];
+  const page = group.vendors.find((v) => v.key === vendorKey) ?? group.vendors[0]!;
   const selectGroup = (key: string): void => {
     setGroupKey(key);
-    setVendorKey(findGroup(key).vendors[0].key);
+    setVendorKey(findGroup(key).vendors[0]!.key);
   };
-  return { group, page, selectGroup, selectVendor: setVendorKey };
+  const bumpVendors = (): void => setCatalogTick((n) => n + 1);
+  return { group, page, selectGroup, selectVendor: setVendorKey, bumpVendors };
 }
 
 // ── 主组件 ────────────────────────────────────────────────────────────────
@@ -138,9 +154,14 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { status, setStatus, loadError } = useKeyStatus();
   const [values, setValues] = useState<Values>({});
   const [modelOptions, setModelOptions] = useState<Record<string, readonly string[]>>({});
-  const { group, page, selectGroup, selectVendor } = useTreeSelection();
+  const { group, page, selectGroup, selectVendor, bumpVendors } = useTreeSelection();
   const [reveal, setReveal] = useState(false);
+  const [addingProvider, setAddingProvider] = useState(false);
   const { save, saving, msg, error } = useSaveKeys(values, (next) => {
+    if (next.models?.[LLM_CUSTOM_PROVIDERS_KEY] !== undefined) {
+      setCustomLlmProviders(parseCustomLlmProvidersJson(next.models[LLM_CUSTOM_PROVIDERS_KEY]));
+      bumpVendors();
+    }
     setStatus(next);
     applySavedToAgent(next);
     setValues({});
@@ -148,6 +169,15 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const dirty = Object.keys(values).length > 0;
   const { requestClose, warn } = useCloseGuard(dirty, onClose);
   useEscape(requestClose);
+
+  // Hydrate custom providers when status loads
+  useEffect(() => {
+    const raw = status?.models?.[LLM_CUSTOM_PROVIDERS_KEY];
+    if (typeof raw === 'string') {
+      setCustomLlmProviders(parseCustomLlmProvidersJson(raw));
+      bumpVendors();
+    }
+  }, [status?.models?.[LLM_CUSTOM_PROVIDERS_KEY]]);
 
   // 暂存:相对基线(模型字段 = 服务端当前值,其余 = '')无变化即撤销暂存。
   const stage = (field: SettingsField, raw: string): void => {
@@ -185,8 +215,40 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         </header>
         <div style={bodyRow}>
           <CapabilityTree status={status} activeGroup={group.key} onSelect={selectGroup} />
-          <VendorList group={group} activeVendor={page.key} onSelectVendor={selectVendor} ctx={ctx} />
-          <VendorPane page={page} hint={group.hint} ctx={ctx} />
+          <VendorList
+            group={group}
+            activeVendor={page.key}
+            onSelectVendor={(key) => { setAddingProvider(false); selectVendor(key); }}
+            ctx={ctx}
+            onAddProvider={group.key === 'llm' ? () => setAddingProvider(true) : undefined}
+          />
+          {addingProvider && group.key === 'llm' ? (
+            <AddProviderPane
+              onCancel={() => setAddingProvider(false)}
+              onCreated={async (created) => {
+                // Refresh catalog, select new vendor page, seed staged fields
+                bumpVendors();
+                selectVendor(`llm/${created.id}`);
+                setAddingProvider(false);
+                const names = llmProviderConfigNames(created.id);
+                setValues((prev) => ({
+                  ...prev,
+                  [names.baseUrl]: created.baseUrl,
+                  [names.model]: created.defaultModel,
+                  ...(created.apiKey ? { [names.apiKey]: created.apiKey } : {}),
+                }));
+                // Reload status so custom catalog is visible after save path
+                try {
+                  const res = await fetch('/api/keys');
+                  const body = await res.json() as KeyStatusResponse;
+                  setStatus(body);
+                  applySavedToAgent(body);
+                } catch { /* ignore */ }
+              }}
+            />
+          ) : (
+            <VendorPane page={page} hint={group.hint} ctx={ctx} />
+          )}
         </div>
         <FooterBar reveal={reveal} onReveal={setReveal} message={message}
           dirty={dirty} saving={saving} onClose={onClose} onSave={() => { void save(); }} />
@@ -211,7 +273,7 @@ function CapabilityTree({ status, activeGroup, onSelect }: {
   return (
     <nav style={sidebar}>
       <div style={treeScroll}>
-        {SETTINGS_CATEGORIES.map((cat) => (
+        {getSettingsCategories().map((cat) => (
           <TreeCategory key={cat.key} category={cat} status={status} open={!collapsed.has(cat.key)}
             activeGroup={activeGroup} onToggle={() => toggle(cat.key)} onSelect={onSelect} />
         ))}
@@ -267,16 +329,188 @@ function GroupRow({ title, on, active, onSelect }: {
 
 // ── 中栏(路由 select + 厂商列表) ─────────────────────────────────────────
 
-function VendorList({ group, activeVendor, onSelectVendor, ctx }: {
-  group: SettingsGroup; activeVendor: string; onSelectVendor: (key: string) => void; ctx: FieldCtx;
+function VendorList({ group, activeVendor, onSelectVendor, ctx, onAddProvider }: {
+  group: SettingsGroup;
+  activeVendor: string;
+  onSelectVendor: (key: string) => void;
+  ctx: FieldCtx;
+  onAddProvider?: () => void;
 }) {
+  const t = useT();
   return (
     <div style={vendorCol}>
       {group.route && <div style={routeBox}><FieldRow field={group.route} ctx={ctx} /></div>}
+      {onAddProvider && (
+        <button
+          type="button"
+          onClick={onAddProvider}
+          title={t('添加自定义厂商')}
+          style={{
+            font: 'inherit', fontSize: 12, display: 'flex', alignItems: 'center', gap: 7,
+            width: '100%', padding: '6px 9px', borderRadius: 6, cursor: 'pointer', textAlign: 'left',
+            border: `0.5px dashed ${theme.border}`, background: 'transparent', color: theme.textDim, marginBottom: 4,
+          }}
+        >
+          <Icon name="plus" size={14} />
+          <span style={navLabel}>{t('添加厂商')}</span>
+        </button>
+      )}
       {group.vendors.map((p) => (
         <VendorRow key={p.key} page={p} on={vendorConfigured(ctx.status, p)}
           active={p.key === activeVendor} onSelect={() => onSelectVendor(p.key)} />
       ))}
+    </div>
+  );
+}
+
+/** ZCode-style custom provider form → writes LLM_CUSTOM_PROVIDERS + keys into .env.local */
+function AddProviderPane({
+  onCancel,
+  onCreated,
+}: {
+  onCancel: () => void;
+  onCreated: (created: {
+    id: string;
+    label: string;
+    baseUrl: string;
+    defaultModel: string;
+    apiKey: string;
+    apiFormat: ProviderApiFormat;
+  }) => void | Promise<void>;
+}) {
+  const t = useT();
+  const [label, setLabel] = useState('');
+  const [baseUrl, setBaseUrl] = useState('https://api.example.com/v1');
+  // Same 3 formats as ZCode / 9arghCompany provider settings
+  const [apiFormat, setApiFormat] = useState<ProviderApiFormat>('chat_completions');
+  const [model, setModel] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (): Promise<void> => {
+    setError('');
+    const name = label.trim();
+    const url = baseUrl.trim().replace(/\/+$/, '');
+    const modelId = model.trim() || 'default';
+    if (!name || !url) {
+      setError(t('请填写名称和 API URL'));
+      return;
+    }
+    const id = slugifyProviderId(name.startsWith('custom-') ? name : `custom-${name}`);
+    if (!id) {
+      setError(t('名称无效'));
+      return;
+    }
+    setBusy(true);
+    try {
+      const existing = listCustomLlmProviders();
+      if (existing.some((p) => p.id === id)) {
+        setError(t('该厂商已存在'));
+        setBusy(false);
+        return;
+      }
+      const format = normalizeApiFormat(apiFormat);
+      const nextList = [
+        ...existing,
+        {
+          id,
+          label: name,
+          apiFormat: format,
+          protocol: apiFormatToProtocol(format),
+          baseUrl: url,
+          defaultModel: modelId,
+        },
+      ];
+      const names = llmProviderConfigNames(id);
+      const patch: Record<string, string> = {
+        [LLM_CUSTOM_PROVIDERS_KEY]: serializeCustomLlmProviders(nextList),
+        [names.baseUrl]: url,
+        [names.model]: modelId,
+        LLM_PROVIDER: id,
+      };
+      if (apiKey.trim()) patch[names.apiKey] = apiKey.trim();
+
+      const res = await fetch('/api/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const body = await res.json().catch(() => ({})) as { error?: string; models?: Record<string, string> };
+      if (!res.ok) throw new Error(body.error || t('保存失败 ({n})', { n: res.status }));
+
+      setCustomLlmProviders(parseCustomLlmProvidersJson(body.models?.[LLM_CUSTOM_PROVIDERS_KEY]
+        ?? serializeCustomLlmProviders(nextList)));
+
+      await onCreated({
+        id,
+        label: name,
+        baseUrl: url,
+        defaultModel: modelId,
+        apiKey: apiKey.trim(),
+        apiFormat: format,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fieldStyle: React.CSSProperties = {
+    font: 'inherit', fontSize: 12, padding: '7px 9px', borderRadius: 6,
+    border: `0.5px solid ${theme.border}`, background: theme.panelAlt, color: theme.text, width: '100%', boxSizing: 'border-box',
+  };
+
+  return (
+    <div style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div>
+        <b style={{ fontSize: 13 }}>{t('添加自定义厂商')}</b>
+        <div style={{ fontSize: 11.5, color: theme.textDim, marginTop: 4 }}>
+          {t('ZCode 风格：名称 + Base URL + API format + 模型 + Key。保存后写入')} <code>.env.local</code>
+        </div>
+      </div>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 11.5 }}>{t('显示名称')}</span>
+        <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="My Gateway" style={fieldStyle} />
+      </label>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 11.5 }}>API URL / Base URL</span>
+        <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" style={fieldStyle} />
+      </label>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 11.5 }}>{t('API format')}</span>
+        <select
+          value={apiFormat}
+          onChange={(e) => setApiFormat(e.target.value as ProviderApiFormat)}
+          style={fieldStyle}
+        >
+          {API_FORMAT_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+        <span style={{ fontSize: 10.5, color: theme.textDim }}>
+          {apiFormat === 'anthropic_messages' && t('走 /messages（Grok / Claude 网关常用）')}
+          {apiFormat === 'chat_completions' && t('走 /chat/completions（多数兼容网关）')}
+          {apiFormat === 'responses' && t('走 /responses（OpenAI Responses API）')}
+        </span>
+      </label>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 11.5 }}>{t('默认模型 ID')}</span>
+        <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="qwen3.7-plus / grok-4.5 / gpt-5.4" style={fieldStyle} />
+      </label>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 11.5 }}>API Key</span>
+        <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-…" style={fieldStyle} />
+      </label>
+      {error && <div style={{ fontSize: 11.5, color: WARN }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+        <button type="button" onClick={onCancel} style={btnGhost}>{t('取消')}</button>
+        <button type="button" disabled={busy} onClick={() => { void submit(); }}
+          style={{ ...btnPrimary, opacity: busy ? 0.6 : 1 }}>
+          {busy ? t('保存中…') : t('保存到 .env.local')}
+        </button>
+      </div>
     </div>
   );
 }

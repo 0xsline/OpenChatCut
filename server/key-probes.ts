@@ -12,7 +12,7 @@ import {
   resolveLlmBaseUrl,
 } from './llm-config.ts';
 import {
-  LLM_PROVIDER_PRESETS,
+  allLlmProviderPresets,
   llmProviderConfigNames,
   protocolForProvider,
   type LlmProvider,
@@ -54,10 +54,15 @@ function llmProbe(provider: LlmProvider): ProbeDef {
     run: (get) => {
       const key = get(apiKeyName);
       const headers = protocol === 'anthropic'
+<<<<<<< HEAD
         ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
         : protocol === 'google'
           ? { 'x-goog-api-key': key }
           : bearer(key);
+=======
+        ? { 'x-api-key': key, authorization: `Bearer ${key}`, 'anthropic-version': '2023-06-01' }
+        : bearer(key);
+>>>>>>> bf41df3 (feat: custom LLM providers via Settings (port from FrameHandsomez) (#2))
       const root = resolveLlmBaseUrl(provider, get(baseUrlName), AI_SDK_BASE_URL_FORMAT);
       return fetch(`${root}/models`, { signal: t(), headers });
     },
@@ -114,8 +119,9 @@ const minimaxProbe: ProbeDef = {
 };
 
 /** page key(与 settingsSchema 的厂商页 key 同名)→ 探测定义。 */
-export const PROBES: Record<string, ProbeDef> = {
-  ...Object.fromEntries(LLM_PROVIDER_PRESETS.map((preset) => [
+function buildProbes(): Record<string, ProbeDef> {
+  return {
+  ...Object.fromEntries(allLlmProviderPresets().map((preset) => [
     `llm/${preset.id}`,
     llmProbe(preset.id),
   ])),
@@ -247,7 +253,13 @@ export const PROBES: Record<string, ProbeDef> = {
     postCheck: mediaDirPostCheck,
     okText: mediaDirOkText,
   },
-};
+  };
+}
+
+/** Rebuild each call so custom providers added at runtime get probes. */
+export function getProbes(): Record<string, ProbeDef> {
+  return buildProbes();
+}
 
 /** 非 2xx 状态 → 用户能读懂的结论(鉴权 / 地址 / 限流 / 其他)。 */
 export function classifyStatus(status: number, bodyText: string): ProbeResult {
@@ -280,7 +292,8 @@ export function networkMessage(error: unknown): string {
 export function makeGetter(overrides: Record<string, unknown>): Get {
   const clean = new Map<string, string>();
   for (const [name, raw] of Object.entries(overrides)) {
-    if (!(KEY_NAMES as readonly string[]).includes(name)) continue; // 白名单外丢弃
+    // Allow static KEY_NAMES + dynamic LLM_* custom provider keys
+    if (!(KEY_NAMES as readonly string[]).includes(name) && !/^LLM_[A-Z0-9_]+$/.test(name)) continue;
     clean.set(name, String(raw ?? '').trim());
   }
   if (clean.has('LLM_BASE_URL') && !clean.has('LLM_BASE_URL_FORMAT')) {
@@ -291,7 +304,7 @@ export function makeGetter(overrides: Record<string, unknown>): Get {
 
 /** 跑一个厂商页的连通性探测。未配置 / 未知页在发请求前就返回,不打网络。 */
 export async function runProbe(page: string, overrides: Record<string, unknown>): Promise<ProbeResult> {
-  const probe = PROBES[page];
+  const probe = getProbes()[page];
   if (!probe) return { ok: false, message: '该厂商暂不支持连接测试' };
   const get = makeGetter(overrides);
   const ready = probe.needs.some((group) => group.every((n) => get(n).length > 0));

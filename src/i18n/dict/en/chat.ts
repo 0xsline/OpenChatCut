@@ -86,6 +86,8 @@ export default {
 
   // ── ChatComposer:模式 / 设置 popover ──
   '模式': 'Mode',
+  '代理': 'Agent',
+  '问答': 'Ask',
   '代理模式': 'Agent mode',
   '可编辑时间线，改动可撤销': 'Can edit the timeline; changes are undoable',
   '问答模式': 'Ask mode',
@@ -96,6 +98,11 @@ export default {
   '本条对话使用的模型': 'Model used for this chat',
   '请先在设置中配置一个模型厂商。': 'Configure at least one model provider in Settings first.',
   '正在读取模型配置…': 'Loading model configuration…',
+  '添加模型': 'Add model',
+  '添加': 'Add',
+  '模型 ID，例如 grok-4.5': 'Model ID, e.g. grok-4.5',
+  '请输入有效的模型 ID': 'Enter a valid model ID',
+  '移除自定义模型': 'Remove custom model',
   '设置': 'Settings',
   '自动应用 AI 提案': 'Auto-apply AI proposals',
   '开启后 AI 的改动直接生效，无需手动确认（仍可撤销）。': 'When on, AI changes apply immediately without manual confirmation (still undoable).',

@@ -27,7 +27,13 @@ export function llmHeaders(req?: IncomingMessage): Record<string, string> {
   const config = resolveLlmProviderConfig(llmProviderForRequest(req), keyReader);
   if (!config.apiKey) return {};
   const protocol = protocolForProvider(config.provider);
-  if (protocol === 'anthropic') return { 'x-api-key': config.apiKey, 'anthropic-version': '2023-06-01' };
+  if (protocol === 'anthropic') {
+    return {
+      'x-api-key': config.apiKey,
+      authorization: `Bearer ${config.apiKey}`,
+      'anthropic-version': '2023-06-01',
+    };
+  }
   if (protocol === 'google') return { 'x-goog-api-key': config.apiKey };
   return { authorization: `Bearer ${config.apiKey}` };
 }

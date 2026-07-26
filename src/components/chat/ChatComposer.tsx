@@ -9,10 +9,14 @@ import { loadCustomSkills } from '../../persist/skillStore';
 import { loadAgentSettings, saveAgentSettings, MG_TIERS, type AgentSettings, type MgTier } from '../../agent/settings/agentSettings';
 import { usePersistedState } from '../../hooks/usePersistedState';
 import {
+  addAndSelectCustomModel,
+  choiceIsCustom,
   getAgentModelSnapshot,
+  removeCustomModelChoice,
   selectAgentModel,
   subscribeAgentModels,
 } from '../../agent/model-selection';
+import type { LlmProvider } from '../../agent/client';
 
 /** composer shell height (includes textarea + toolbar); drag the top handle to resize */
 const COMPOSER_H_MIN = 88;
@@ -129,9 +133,9 @@ const REF_ICON: Record<RefItem['kind'], IconName> = {
 
 export function ChatComposer(props: ChatComposerProps) {
   const t = useT();
-  // 技能目录自带官方英文 name,英文态直接用,不进词典重复;summary 只有中文,走 t()。
+  // 技能目录自带官方英文 name; 中/泰 用 nameZh แล้วผ่าน t() (พจนานุกรม th/en)
   const skillName = (s: { name: string; nameZh: string }): string =>
-    (getLocale() === 'en' ? s.name : s.nameZh);
+    (getLocale() === 'en' ? s.name : t(s.nameZh));
   const {
     value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange,
     autoApply, onAutoApplyChange, selecting, onToggleSelecting,
@@ -156,6 +160,10 @@ export function ChatComposer(props: ChatComposerProps) {
   const [pop, setPop] = useState<Pop>(null);
   const [popAnchor, setPopAnchor] = useState<HTMLElement | null>(null);
   const [agentSettings, setAgentSettings] = useState<AgentSettings>(() => loadAgentSettings());
+  const [addingModel, setAddingModel] = useState(false);
+  const [newModelId, setNewModelId] = useState('');
+  const [newModelProvider, setNewModelProvider] = useState<LlmProvider | ''>('');
+  const [addModelError, setAddModelError] = useState('');
   const patchAgent = (patch: Partial<AgentSettings>) => {
     setAgentSettings((prev) => {
       const next = { ...prev, ...patch };
@@ -163,14 +171,51 @@ export function ChatComposer(props: ChatComposerProps) {
       return next;
     });
   };
-  const closePop = () => { setPop(null); setPopAnchor(null); };
+  const closePop = () => {
+    setPop(null);
+    setPopAnchor(null);
+    setAddingModel(false);
+    setNewModelId('');
+    setAddModelError('');
+  };
   const toggle = (p: Pop, el?: EventTarget | null) => {
     const node = el instanceof HTMLElement ? el : null;
     setPop((cur) => {
-      if (cur === p) { setPopAnchor(null); return null; }
+      if (cur === p) {
+        setPopAnchor(null);
+        setAddingModel(false);
+        setNewModelId('');
+        setAddModelError('');
+        return null;
+      }
       setPopAnchor(node);
+      if (p === 'model') {
+        const preferred = activeModel?.provider
+          ?? modelState.configuredProviders[0]?.id
+          ?? '';
+        setNewModelProvider(preferred);
+        setAddingModel(false);
+        setNewModelId('');
+        setAddModelError('');
+      }
       return p;
     });
+  };
+  const submitNewModel = () => {
+    const provider = newModelProvider || modelState.configuredProviders[0]?.id;
+    if (!provider) {
+      setAddModelError(t('请先在设置中配置一个模型厂商。'));
+      return;
+    }
+    const ok = addAndSelectCustomModel(provider, newModelId);
+    if (!ok) {
+      setAddModelError(t('请输入有效的模型 ID'));
+      return;
+    }
+    setAddingModel(false);
+    setNewModelId('');
+    setAddModelError('');
+    closePop();
   };
   const canSend = !!value.trim() && !running;
   const refList = (kind: 'asset' | 'template') =>
@@ -329,7 +374,7 @@ export function ChatComposer(props: ChatComposerProps) {
           <button title={t('模式')} onClick={(e) => toggle('mode', e.currentTarget)}
             className="cc-chat-mode-btn"
             style={{ height: 28, display: 'flex', alignItems: 'center', gap: 3, padding: '0 3px', border: 0, borderRadius: 6, background: pop === 'mode' ? theme.panelAlt : 'transparent', color: theme.text, cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>
-            <Icon name="sparkles" size={15} /><span className="cc-chat-mode-label">{mode === 'agent' ? 'Agent' : 'Ask'}</span><Icon name="chevronDown" size={11} />
+            <Icon name="sparkles" size={15} /><span className="cc-chat-mode-label">{mode === 'agent' ? t('代理') : t('问答')}</span><Icon name="chevronDown" size={11} />
           </button>
           <button
             type="button"
@@ -388,10 +433,88 @@ export function ChatComposer(props: ChatComposerProps) {
         </Popover>
       )}
       {pop === 'model' && (
-        <Popover w={278} anchor={popAnchor} onClose={closePop}>
-          <div style={{ fontSize: 10.5, color: theme.textDim, padding: '4px 8px 6px' }}>
-            {t('本条对话使用的模型')}
+        <Popover w={300} anchor={popAnchor} onClose={closePop}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px 6px' }}>
+            <div style={{ flex: 1, fontSize: 10.5, color: theme.textDim }}>{t('本条对话使用的模型')}</div>
+            {modelState.configuredProviders.length > 0 && (
+              <button
+                type="button"
+                title={t('添加模型')}
+                aria-label={t('添加模型')}
+                onClick={() => {
+                  setAddingModel((v) => !v);
+                  setAddModelError('');
+                  if (!newModelProvider) {
+                    setNewModelProvider(
+                      activeModel?.provider ?? modelState.configuredProviders[0]?.id ?? '',
+                    );
+                  }
+                }}
+                style={{
+                  width: 22, height: 22, borderRadius: 5, border: `0.5px solid ${theme.border}`,
+                  background: addingModel ? theme.panelAlt : 'transparent', color: theme.text,
+                  cursor: 'pointer', display: 'grid', placeItems: 'center', padding: 0, flexShrink: 0,
+                }}
+              >
+                <Icon name="plus" size={13} />
+              </button>
+            )}
           </div>
+          {addingModel && (
+            <div style={{ padding: '4px 8px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <select
+                value={newModelProvider}
+                onChange={(e) => setNewModelProvider(e.target.value as LlmProvider)}
+                style={{
+                  font: 'inherit', fontSize: 11.5, padding: '5px 7px', borderRadius: 5,
+                  border: `0.5px solid ${theme.border}`, background: theme.panelAlt, color: theme.text,
+                }}
+              >
+                {modelState.configuredProviders.map((p) => (
+                  <option key={p.id} value={p.id}>{p.label}</option>
+                ))}
+              </select>
+              <input
+                autoFocus
+                value={newModelId}
+                onChange={(e) => { setNewModelId(e.target.value); setAddModelError(''); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); submitNewModel(); }
+                  if (e.key === 'Escape') { e.preventDefault(); setAddingModel(false); }
+                }}
+                placeholder={t('模型 ID，例如 grok-4.5')}
+                style={{
+                  font: 'inherit', fontSize: 12, padding: '6px 8px', borderRadius: 5,
+                  border: `0.5px solid ${theme.border}`, background: theme.panelAlt, color: theme.text,
+                }}
+              />
+              {addModelError && (
+                <div style={{ fontSize: 11, color: '#f77' }}>{addModelError}</div>
+              )}
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => { setAddingModel(false); setAddModelError(''); }}
+                  style={{
+                    font: 'inherit', fontSize: 11.5, padding: '4px 8px', borderRadius: 5,
+                    border: `0.5px solid ${theme.border}`, background: 'transparent', color: theme.textDim, cursor: 'pointer',
+                  }}
+                >
+                  {t('取消')}
+                </button>
+                <button
+                  type="button"
+                  onClick={submitNewModel}
+                  style={{
+                    font: 'inherit', fontSize: 11.5, padding: '4px 10px', borderRadius: 5,
+                    border: `0.5px solid ${theme.accent}`, background: theme.accent, color: '#fff', cursor: 'pointer',
+                  }}
+                >
+                  {t('添加')}
+                </button>
+              </div>
+            </div>
+          )}
           {modelState.choices.length === 0 && (
             <div style={{ padding: '7px 9px 9px', color: theme.textDim, fontSize: 11.5, lineHeight: 1.5 }}>
               {modelState.loaded ? t('请先在设置中配置一个模型厂商。') : t('正在读取模型配置…')}
@@ -399,35 +522,71 @@ export function ChatComposer(props: ChatComposerProps) {
           )}
           {modelState.choices.map((choice) => {
             const active = choice.id === modelState.activeId;
+            const custom = choiceIsCustom(choice);
             return (
-              <button
-                type="button"
+              <div
                 key={choice.id}
-                onClick={() => { selectAgentModel(choice.id); closePop(); }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 9,
+                  gap: 4,
                   width: '100%',
-                  padding: '7px 9px',
-                  border: 0,
                   borderRadius: 3,
                   background: active ? theme.panel : 'transparent',
-                  color: theme.text,
-                  cursor: 'pointer',
-                  textAlign: 'left',
                 }}
               >
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <strong style={{ display: 'block', fontSize: 11.5, fontWeight: 600 }}>
-                    {choice.providerLabel}
-                  </strong>
-                  <small style={{ display: 'block', color: theme.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {choice.model}
-                  </small>
-                </span>
-                {active && <span style={{ color: theme.accent, lineHeight: 0 }}><Icon name="check" size={13} /></span>}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => { selectAgentModel(choice.id); closePop(); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 9,
+                    flex: 1,
+                    minWidth: 0,
+                    padding: '7px 9px',
+                    border: 0,
+                    borderRadius: 3,
+                    background: 'transparent',
+                    color: theme.text,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <strong style={{ display: 'block', fontSize: 11.5, fontWeight: 600 }}>
+                      {choice.providerLabel}
+                      {custom && (
+                        <em style={{ marginLeft: 6, fontStyle: 'normal', fontWeight: 500, fontSize: 10, color: theme.textDim }}>
+                          {t('自定义')}
+                        </em>
+                      )}
+                    </strong>
+                    <small style={{ display: 'block', color: theme.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {choice.model}
+                    </small>
+                  </span>
+                  {active && <span style={{ color: theme.accent, lineHeight: 0 }}><Icon name="check" size={13} /></span>}
+                </button>
+                {custom && (
+                  <button
+                    type="button"
+                    title={t('移除自定义模型')}
+                    aria-label={t('移除自定义模型')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeCustomModelChoice(choice.provider, choice.model);
+                    }}
+                    style={{
+                      width: 24, height: 24, marginRight: 4, border: 0, borderRadius: 4,
+                      background: 'transparent', color: theme.textDim, cursor: 'pointer',
+                      display: 'grid', placeItems: 'center', flexShrink: 0,
+                    }}
+                  >
+                    <Icon name="x" size={12} />
+                  </button>
+                )}
+              </div>
             );
           })}
         </Popover>
