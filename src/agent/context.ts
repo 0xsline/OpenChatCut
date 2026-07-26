@@ -44,6 +44,9 @@ export interface AgentContext {
   openProject?: (projectId: string) => Promise<{ ok: boolean; error?: string } | void>;
   /** Dashboard/title rename when edit_project updates the open project. */
   onProjectRenamed?: (name: string) => void;
+  /** 上一步的完整工程快照(撤销目标),无历史时 null。undo_last_change 用它把
+   * 「回到上一步」表达成一次普通编辑,照常走提案由用户确认。 */
+  getUndoTarget?: () => ProjectDoc | null;
 }
 
 /** Source-media span of a placed clip in ms (srcIn → srcIn + duration·rate). */

@@ -148,6 +148,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
         getProjectId: ctxRef.current.getProjectId,
         openProject: ctxRef.current.openProject,
         onProjectRenamed: ctxRef.current.onProjectRenamed,
+        getUndoTarget: ctxRef.current.getUndoTarget,
       };
       const ops: Operation[] = [];
       let proposalBaseDoc = baseDoc;

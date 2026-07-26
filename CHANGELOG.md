@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / [未发布]
 
+### Added / 新增
+
+- Added an `undo_last_change` agent tool, so "undo that" works in chat. It restores the project state from before the last applied change as a normal proposed edit, meaning the user still confirms it and the revert itself stays undoable.
+  新增 `undo_last_change` Agent 工具，在对话里说「撤销刚才那个」即可。它把上一步的工程状态作为一次普通提案编辑恢复，因此仍由用户确认，且这次回滚本身也可以再被撤销。
+
 ### Changed / 变更
 
 - Editing tools now report what actually changed on the timeline instead of a bare success, so the agent no longer has to re-read the whole project after every edit. Ripple moves collapse into rules (`track / fromFrame / by / count`) rather than listing every displaced clip, with created tracks, removed ids, and a re-read hint when a change is too large to enumerate.

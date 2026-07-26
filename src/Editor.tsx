@@ -76,7 +76,7 @@ function isAutoGradeTarget(item: TimelineItem, state: TimelineState): boolean {
 
 export default function Editor({ initial, project, onHome, onRename }: EditorProps) {
   const t = useT();
-  const { state, doc, commands, canUndo, canRedo } = useEditor(initial);
+  const { state, doc, commands, canUndo, canRedo, getUndoTarget } = useEditor(initial);
   const selectedItem = state.items.find((it) => it.id === state.selectedId) ?? null;
   const trackOptions = useMemo(
     () => timelineTrackIds(state).map((id) => ({
@@ -120,6 +120,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       getState: () => stateRef.current,
       getDoc: () => docRef.current,
       getCreativeMode: () => creativeModeRef.current,
+      getUndoTarget,
       setCreativeMode: changeCreativeMode,
       get templates() { return allTemplatesRef.current; },
       audio: AUDIO_ASSETS,

@@ -43,6 +43,7 @@ import { PLUGIN_SKILL_TOOL_SCHEMAS, PLUGIN_SKILL_TOOL_NAMES, execPluginSkillTool
 import { RUN_CODE_TOOL_SCHEMAS, RUN_CODE_TOOL_NAMES, execRunCodeTool } from './tools/run-code-tools';
 import { PROBE_TOOL_SCHEMAS, PROBE_TOOL_NAMES, execProbeTool } from './tools/probe-tools';
 import { MULTICAM_TOOL_SCHEMAS, MULTICAM_TOOL_NAMES, execMulticamTool } from './tools/multicam-tools';
+import { UNDO_TOOL_SCHEMAS, UNDO_TOOL_NAMES, execUndoTool } from './tools/undo-tools';
 import { LAYOUT_TOOL_SCHEMAS, LAYOUT_TOOL_NAMES, execLayoutTool } from './tools/layout-tools';
 import { SILENCE_TOOL_SCHEMAS, SILENCE_TOOL_NAMES, execSilenceTool } from './tools/silence-tools';
 import { COLOR_SCOPE_TOOL_SCHEMAS, COLOR_SCOPE_TOOL_NAMES, execColorScopeTool } from './tools/color-scope-tools';
@@ -300,6 +301,8 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...PROBE_TOOL_SCHEMAS,
   // 多机位（multicam_sync：音频交叉相关对齐；change_cam：区间内切换可见机位）
   ...MULTICAM_TOOL_SCHEMAS,
+  // 撤销（undo_last_change：把上一步工程快照作为一次普通编辑提出）
+  ...UNDO_TOOL_SCHEMAS,
   // 命名布局（apply_layout：分屏/画中画/网格/复位，一步算好 transform+crop）
   ...LAYOUT_TOOL_SCHEMAS,
   // 删除死气（remove_silence：本机相对电平检测 + split/remove 波纹闭合）
@@ -437,6 +440,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (RUN_CODE_TOOL_NAMES.has(name)) return execRunCodeTool(name, args);
   if (PROBE_TOOL_NAMES.has(name)) return execProbeTool(name, args, ctx);
   if (MULTICAM_TOOL_NAMES.has(name)) return execMulticamTool(name, args, ctx);
+  if (UNDO_TOOL_NAMES.has(name)) return execUndoTool(name, ctx);
   if (LAYOUT_TOOL_NAMES.has(name)) return execLayoutTool(name, args, ctx);
   if (SILENCE_TOOL_NAMES.has(name)) return execSilenceTool(name, args, ctx);
   if (COLOR_SCOPE_TOOL_NAMES.has(name)) return execColorScopeTool(name, args, ctx);

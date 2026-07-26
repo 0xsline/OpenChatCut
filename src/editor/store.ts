@@ -1,4 +1,4 @@
-import { useMemo, useReducer, useRef } from 'react';
+import { useCallback, useMemo, useReducer, useRef } from 'react';
 import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeEditorState, activeTimeline, defaultTrackId, resolveTrackId } from './types';
 import type { Tpl } from '../types';
@@ -149,6 +149,9 @@ export function useEditor(initial: ProjectDoc): {
   commands: EditorCommands;
   canUndo: boolean;
   canRedo: boolean;
+  /** 上一步的完整工程快照(撤销目标),没有历史时 null。Agent 的「撤销」工具把它
+   * 当成一次普通编辑提出来走提案,而不是直接动历史栈——draft 基线才不会失效。 */
+  getUndoTarget: () => ProjectDoc | null;
 } {
   const [h, dispatch] = useReducer(historyReduce, { past: [], present: initial, future: [] });
   const doc = h.present;
@@ -159,7 +162,11 @@ export function useEditor(initial: ProjectDoc): {
 
   const commands = useMemo<EditorCommands>(() => buildCommands(dispatch, () => docRef.current), []);
 
-  return { state: activeEditorState(doc), doc, commands, canUndo: h.past.length > 0, canRedo: h.future.length > 0 };
+  const pastRef = useRef(h.past);
+  pastRef.current = h.past;
+  const getUndoTarget = useCallback((): ProjectDoc | null => pastRef.current[pastRef.current.length - 1] ?? null, []);
+
+  return { state: activeEditorState(doc), doc, commands, canUndo: h.past.length > 0, canRedo: h.future.length > 0, getUndoTarget };
 }
 
 // The editor command set over a project dispatch fn — reused by the live store
