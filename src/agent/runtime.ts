@@ -178,6 +178,9 @@ export async function runAgent(
 
   let reasoningFellBack = false;
   let toolTurns = 0;
+  // Level 3 enforce: track the last verify_word_budget status so the runtime can BLOCK the agent
+  // from finishing while the narration is under the requested word count.
+  let lastVerifyBudgetStatus: string | null = null;
 
   for (;;) {
     const withReasoning = settings.thinkingEnabled && !reasoningFellBack;
@@ -271,8 +274,29 @@ export async function runAgent(
         return completeAbortedTurn(conv, persisted);
       }
       conv = [...conv, ...responseMessages];
+      // Track verify_word_budget result status (for the under-budget finish gate below).
+      for (const m of responseMessages) {
+        const content = (m as { content?: unknown }).content;
+        if ((m as { role?: string }).role === 'tool' && Array.isArray(content)) {
+          for (const part of content as Array<{ type?: string; toolName?: string; result?: { status?: unknown } }>) {
+            if (part?.type === 'tool-result' && part.toolName === 'verify_word_budget') {
+              const status = part.result?.status;
+              if (typeof status === 'string') lastVerifyBudgetStatus = status;
+            }
+          }
+        }
+      }
       if (askedFollowup) return conv;
-      if (!responseUsedTools(responseMessages)) return conv;
+      if (!responseUsedTools(responseMessages)) {
+        // Level 3 enforce: the agent CANNOT finish while verify_word_budget reports UNDER_BUDGET.
+        // Inject a user turn forcing expansion + re-verify and continue the loop (agent must tool-call).
+        if (lastVerifyBudgetStatus === 'UNDER_BUDGET') {
+          conv.push({ role: 'user', content: 'verify_word_budget reported status UNDER_BUDGET. The requested word count is a HARD FLOOR, not a suggestion — stopping short is a failure. You MUST expand the narration (add scenes / lengthen thin ones) and call verify_word_budget again, looping until it returns status ok. Do NOT finish, do NOT ask the user whether to continue — keep writing and verifying.' });
+          if (++toolTurns >= MAX_TOOL_TURNS) { onEvent({ type: 'max-turns', turns: toolTurns }); return conv; }
+          continue;
+        }
+        return conv;
+      }
 
       if (++toolTurns >= MAX_TOOL_TURNS) {
         onEvent({ type: 'max-turns', turns: toolTurns });

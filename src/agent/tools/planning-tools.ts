@@ -43,6 +43,35 @@ export const PLANNING_TOOL_SCHEMAS: AgentToolSchema[] = [
       required: ['scenes', 'target_words'],
     },
   },
+  {
+    name: 'verify_timeline_sync',
+    description: [
+      'Verify footage timeline is sync-correct: (1) every video/image clip is <= max_clip_seconds (default 6s), (2) NO gaps in video coverage over the VO audio (footage must be contiguous, no silent/empty spans), (3) total footage coverage ~= audio duration.',
+      'You MUST call this before declaring the video done. If status is ISSUES, FIX the listed over-length clips (split them) and gaps (fill with footage) — do NOT declare done.',
+    ].join(' '),
+    input_schema: {
+      type: 'object',
+      properties: {
+        video_clips: {
+          type: 'array',
+          description: 'All video/image footage clips on the timeline (track V1), each with startFrame + durationInFrames.',
+          items: {
+            type: 'object',
+            properties: {
+              startFrame: { type: 'number' },
+              durationInFrames: { type: 'number' },
+              name: { type: 'string' },
+            },
+            required: ['startFrame', 'durationInFrames'],
+          },
+        },
+        audio_duration_frames: { type: 'number', description: 'Total VO audio duration in frames (last audio clip endFrame, or sum). Footage must cover this fully.' },
+        fps: { type: 'number', description: 'Timeline fps (default 30).' },
+        max_clip_seconds: { type: 'number', default: 6, description: 'Max seconds per footage clip (default 6).' },
+      },
+      required: ['video_clips', 'audio_duration_frames'],
+    },
+  },
 ];
 
 export const PLANNING_TOOL_NAMES = new Set(PLANNING_TOOL_SCHEMAS.map((t) => t.name));
@@ -58,7 +87,64 @@ const PHASES = [
 export async function execPlanningTool(name: string, args: Record<string, unknown>): Promise<unknown> {
   if (name === 'plan_scenes') return planScenes(args);
   if (name === 'verify_word_budget') return verifyWordBudget(args);
+  if (name === 'verify_timeline_sync') return verifyTimelineSync(args);
   return { error: `unknown planning tool ${name}` };
+}
+
+/** Verify footage timeline: every clip <= max_clip_seconds (default 6s), NO gaps in coverage over
+ *  the VO audio, and total coverage ~= audio duration. The agent MUST call this before declaring
+ *  the video done; ISSUES means FIX over-length clips (split) + gaps (fill), not stop. */
+function verifyTimelineSync(args: Record<string, unknown>): unknown {
+  const rawClips = Array.isArray(args.video_clips) ? args.video_clips : [];
+  const audioDur = Number(args.audio_duration_frames);
+  const fps = Number(args.fps) > 0 ? Number(args.fps) : 30;
+  const maxSec = Number(args.max_clip_seconds) > 0 ? Number(args.max_clip_seconds) : 6;
+  const maxFrames = Math.round(maxSec * fps);
+  if (!Number.isFinite(audioDur) || audioDur <= 0) return { error: 'audio_duration_frames must be a positive number' };
+  const clips = rawClips
+    .map((c, i) => {
+      const o = (c ?? {}) as Record<string, unknown>;
+      return { index: i + 1, name: String(o.name ?? `clip ${i + 1}`), startFrame: Number(o.startFrame) || 0, durationInFrames: Number(o.durationInFrames) || 0 };
+    })
+    .filter((c) => c.durationInFrames > 0)
+    .sort((a, b) => a.startFrame - b.startFrame);
+  if (!clips.length) return { status: 'ISSUES', error: 'no video clips provided', action: 'Place footage on V1 covering the full VO audio before verifying.' };
+  // (1) clips over max
+  const over = clips
+    .filter((c) => c.durationInFrames > maxFrames)
+    .map((c) => ({ index: c.index, name: c.name, durationInFrames: c.durationInFrames, seconds: Math.round((c.durationInFrames / fps) * 10) / 10 }));
+  // (2) gaps: between clips + trailing gap to audio end
+  const gaps: Array<{ from: number; to: number; gap_frames: number; gap_seconds: number }> = [];
+  let prevEnd = 0;
+  for (const c of clips) {
+    if (c.startFrame > prevEnd) {
+      const gf = c.startFrame - prevEnd;
+      gaps.push({ from: prevEnd, to: c.startFrame, gap_frames: gf, gap_seconds: Math.round((gf / fps) * 10) / 10 });
+    }
+    prevEnd = Math.max(prevEnd, c.startFrame + c.durationInFrames);
+  }
+  if (prevEnd < audioDur) {
+    const gf = audioDur - prevEnd;
+    gaps.push({ from: prevEnd, to: audioDur, gap_frames: gf, gap_seconds: Math.round((gf / fps) * 10) / 10 });
+  }
+  // (3) coverage
+  const covered = clips.reduce((s, c) => s + c.durationInFrames, 0);
+  const coveragePct = Math.round((covered / audioDur) * 100);
+  const ok = over.length === 0 && gaps.length === 0 && coveragePct >= 99;
+  return {
+    status: ok ? 'ok' : 'ISSUES',
+    max_clip_seconds: maxSec,
+    max_clip_frames: maxFrames,
+    clip_count: clips.length,
+    over_length_clips: over,
+    gaps,
+    coverage_pct: coveragePct,
+    total_video_frames: covered,
+    audio_duration_frames: audioDur,
+    action: ok
+      ? 'Timeline sync OK — all clips <=6s, no gaps, full coverage.'
+      : `FIX: ${over.length} clip(s) over ${maxSec}s (split each into <=6s sub-clips), ${gaps.length} gap(s) totaling ${gaps.reduce((s, g) => s + g.gap_frames, 0)} frames (fill with footage so coverage is contiguous), coverage ${coveragePct}% (need ~100%). Do NOT declare done until status is ok.`,
+  };
 }
 
 function planScenes(args: Record<string, unknown>): unknown {
