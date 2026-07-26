@@ -1,5 +1,6 @@
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { spawn } from 'node:child_process';
 import { createWriteStream, existsSync } from 'node:fs';
 import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises';
 import { join, extname } from 'node:path';
@@ -13,6 +14,8 @@ import {
 import {
   DEFAULT_UPLOAD_DIR, isCustomUploadDir, isSafeUploadName, serveDiskFile, syncLegacyUploads, uploadDir,
 } from '../media-dir.ts';
+import { ffmpegBin } from '../media-binaries.ts';
+import { getKey } from '../keystore.ts';
 
 // Imported media is written to uploadDir() (default public/media/uploads/, MEDIA_DIR
 // overridable) so the SAME URL path resolves in the Player preview AND the headless
@@ -94,6 +97,35 @@ async function streamToFile(
     throw err;
   }
   return size;
+}
+
+/**
+ * Spawn ffmpeg with `args`, surface stderr tail on failure. Rejects on non-zero
+ * exit, spawn error, or timeout. Mirrors the runFfmpeg pattern in
+ * extract-audio.ts / isolate-voice.ts but resolves the binary via ffmpegBin().
+ */
+function runFfmpeg(args: string[], timeoutMs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(ffmpegBin(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error(`ffmpeg timed out after ${Math.round(timeoutMs / 1000)}s`));
+    }, timeoutMs);
+    child.stderr?.on('data', (c: Buffer) => {
+      stderr += String(c);
+      if (stderr.length > 8000) stderr = stderr.slice(-4000);
+    });
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg exit ${code}: ${stderr.slice(-500)}`));
+    });
+  });
 }
 
 function contentLengthOf(req: IncomingMessage): number | null {
@@ -491,6 +523,114 @@ export function uploadPlugin(): Plugin {
             return;
           }
           const nameHint = typeof body.name === 'string' ? body.name.trim() : undefined;
+
+          // HLS (.m3u8) → mp4 transmux branch. Providers like DVIDS ship most footage
+          // as HLS-only manifests; those can't be byte-streamed like a regular mp4.
+          // Run ffmpeg server-side: copy+aac_adtstoasc first, fall back to libx264
+          // re-encode if the codec set won't mux cleanly. The DVIDS_API_KEY (if
+          // configured) is attached as ?api_key on the ffmpeg INPUT only — it stays
+          // server-side and is never echoed in the response.
+          const isHls = /\.m3u8(?:\?|$)/i.test(remote);
+          if (isHls) {
+            let src = remote;
+            try {
+              const parsed = new URL(remote);
+              const isDvids = parsed.hostname.toLowerCase().endsWith('dvidshub.net');
+              const dvidsKey = getKey('DVIDS_API_KEY');
+              if (isDvids && dvidsKey) {
+                parsed.searchParams.set('api_key', dvidsKey);
+                src = parsed.toString();
+              }
+            } catch {
+              // Malformed URL — fall through with raw remote; ffmpeg will fail → 502.
+              src = remote;
+            }
+
+            const ffmpeg = ffmpegBin();
+            if (!ffmpeg) {
+              sendError(res, 503, 'ffmpeg unavailable');
+              return;
+            }
+
+            const dir = uploadDir();
+            await mkdir(dir, { recursive: true });
+            const fname = `${randomUUID()}.mp4`;
+            const finalPath = join(dir, fname);
+
+            // 1st pass: stream copy + aac_adtstoasc (typical HLS→MP4 fixup).
+            const copyArgs = [
+              '-hide_banner', '-nostdin', '-y',
+              '-i', src,
+              '-c', 'copy',
+              '-bsf:a', 'aac_adtstoasc',
+              finalPath,
+            ];
+            // 2nd pass: re-encode for manifests with codecs `-c copy` can't mux.
+            const reencodeArgs = [
+              '-hide_banner', '-nostdin', '-y',
+              '-i', src,
+              '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+              '-c:a', 'aac',
+              finalPath,
+            ];
+
+            let lastErr: Error | null = null;
+            try {
+              await runFfmpeg(copyArgs, IMPORT_TIMEOUT_MS);
+            } catch (err) {
+              lastErr = err instanceof Error ? err : new Error(String(err));
+              await unlink(finalPath).catch(() => {});
+              try {
+                await runFfmpeg(reencodeArgs, IMPORT_TIMEOUT_MS);
+                lastErr = null;
+              } catch (err2) {
+                lastErr = err2 instanceof Error ? err2 : new Error(String(err2));
+                await unlink(finalPath).catch(() => {});
+              }
+            }
+
+            if (lastErr) {
+              const tail = lastErr.message.slice(-400);
+              sendError(res, 502, `hls transmux failed: ${tail}`);
+              return;
+            }
+
+            // Best-effort R2 write-through — mirrors the non-HLS branch; cloud
+            // failure mustn't block the already-successful local transmux.
+            if (r2Config()) {
+              try { await putUploadFile(fname, finalPath, 'video/mp4'); }
+              catch (err) {
+                server.config.logger.error(
+                  `[import-url→R2] ${fname}: ${err instanceof Error ? err.message : String(err)}`,
+                );
+              }
+            }
+
+            let filename = nameHint;
+            if (!filename) {
+              try {
+                filename = decodeURIComponent(
+                  remote.split('?')[0].split('#')[0].split('/').filter(Boolean).pop() ?? fname,
+                );
+              } catch {
+                filename = fname;
+              }
+            }
+
+            let bytes = 0;
+            try { bytes = (await stat(finalPath)).size; } catch { /* size optional */ }
+
+            // sourceUrl is the raw remote (no api_key) — never expose the key.
+            sendJson(res, 200, {
+              ok: true,
+              path: `/media/uploads/${fname}`,
+              bytes,
+              contentType: 'video/mp4',
+              filename,
+              sourceUrl: remote,
+            });
+            return;
+          }
 
           const r = await fetch(remote, {
             redirect: 'follow',

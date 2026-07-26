@@ -30,6 +30,7 @@ export type VendorId =
   | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter' | '9router'
   | 'xiaomi' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
+  | 'dvids' | 'wikimedia'
   | 'assemblyai' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk' | 'kikivoice';
 
 interface SvgIcon {
@@ -72,6 +73,8 @@ const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: strin
   e2b: { bg: '#FF8800', mono: 'E2', fg: '#40230a' },
   localdisk: { bg: '#5f6b7a', mono: 'HD', fg: '#eef2f7' }, // 本地磁盘(非厂商,中性灰)
   kikivoice: { bg: '#8B5CF6', mono: 'K' }, // KikiVoice (cookie-based voice cloning)
+  dvids: { bg: '#2d3a4a', mono: 'DV', fg: '#e7eef5' }, // DoD / DVIDS (neutral steel)
+  wikimedia: { bg: '#0c6cc3', mono: 'W' }, // Wikimedia Commons (official blue)
 };
 
 interface VendorIconProps {

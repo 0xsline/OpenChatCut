@@ -1,5 +1,11 @@
-export const SEMANTIC_MODEL_ID = 'Xenova/chinese-clip-vit-base-patch16';
-export const SEMANTIC_MODEL_VERSION = 'chinese-clip-vit-base-patch16-q4-v1';
+// Standard OpenAI CLIP (English/general) — far better than Chinese CLIP for
+// geopolitical imagery (warships, missiles, jets, maps, leaders). The agent's
+// Stock Search Strategy already writes English queries, so English CLIP matches
+// well. Override via VITE_SEMANTIC_MODEL_ID if a different model is preferred.
+export const SEMANTIC_MODEL_ID =
+  (import.meta.env?.VITE_SEMANTIC_MODEL_ID as string | undefined)?.trim()
+  || 'Xenova/clip-vit-base-patch16';
+export const SEMANTIC_MODEL_VERSION = 'clip-vit-base-patch16-q8-v1';
 export const MAX_SEMANTIC_QUERY_LENGTH = 240;
 
 export interface SemanticVectorRecord {

@@ -1,5 +1,10 @@
 import type { ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
+import {
+  classifyStockLicense,
+  isDvidsContractor,
+  stripHtml,
+} from './stock-license.ts';
 
 export interface StockPluginOptions {
   pexelsApiKey: string;
@@ -7,9 +12,11 @@ export interface StockPluginOptions {
   unsplashAccessKey?: string;
   freesoundApiKey?: string;
   firecrawlApiKey?: string;
+  /** DVIDS (PD-USGov geopolitical/military footage). Wikimedia Commons needs no key. */
+  dvidsApiKey?: string;
 }
 
-export type StockPlatform = 'pexels' | 'pixabay' | 'unsplash' | 'freesound';
+export type StockPlatform = 'pexels' | 'pixabay' | 'unsplash' | 'freesound' | 'dvids' | 'wikimedia';
 export type StockKind = 'any' | 'image' | 'video' | 'audio' | 'music';
 export type StockOrientation = 'horizontal' | 'vertical' | 'square';
 type SearchableKind = 'image' | 'video' | 'audio';
@@ -24,6 +31,12 @@ export interface StockResult {
   height?: number;
   author?: string;
   durationSeconds?: number;
+  /** monetization-safe license tag (PD / PD-USGov / CC0 / CC-BY); absent = unverified */
+  license?: string;
+  /** required attribution text (artist/credit), surfaced to the agent/user */
+  attribution?: string;
+  /** true when an explicit safe license matched (not just a provider default) */
+  verified?: boolean;
 }
 
 export interface StockSearchRequest {
@@ -53,7 +66,7 @@ interface SearchJob {
   run: () => Promise<StockResult[]>;
 }
 
-const ALL_PLATFORMS: StockPlatform[] = ['pexels', 'pixabay', 'unsplash', 'freesound'];
+const ALL_PLATFORMS: StockPlatform[] = ['pexels', 'pixabay', 'unsplash', 'freesound', 'dvids', 'wikimedia'];
 const DEFAULT_LIMIT = 3;
 const MAX_LIMIT = 6;
 const FIRECRAWL_SEARCH_URL = 'https://api.firecrawl.dev/v2/search';
@@ -84,9 +97,9 @@ export function parseStockPlatforms(
   const explicit = (Array.isArray(value) && value.length > 0)
     || (typeof value === 'string' && value.trim().length > 0);
   const defaults: StockPlatform[] = kind === 'image'
-    ? ['pexels', 'pixabay', 'unsplash']
+    ? ['pexels', 'pixabay', 'unsplash', 'wikimedia']
     : kind === 'video'
-      ? ['pexels', 'pixabay']
+      ? ['pexels', 'pixabay', 'dvids', 'wikimedia']
       : kind === 'audio' || kind === 'music'
         ? ['freesound']
         : [...ALL_PLATFORMS];
@@ -111,6 +124,8 @@ export function parseStockPlatforms(
 
 function supportsKind(platform: StockPlatform, kind: SearchableKind): boolean {
   if (platform === 'pexels' || platform === 'pixabay') return kind === 'image' || kind === 'video';
+  if (platform === 'wikimedia') return kind === 'image' || kind === 'video';
+  if (platform === 'dvids') return kind === 'video';
   if (platform === 'unsplash') return kind === 'image';
   return kind === 'audio';
 }
@@ -408,6 +423,164 @@ async function searchFirecrawl(
   return parseFirecrawlVideos(markdown, limit);
 }
 
+// ── DVIDS (Defense Visual Information Distribution Service) ──────────────────
+// PD-USGov footage. The API IGNORES `term`/full-text (returns default latest
+// videos regardless of query); `keywords` filters by query but is exact-ish and
+// returns 0 for long multi-word queries — so retry with progressively shorter
+// forms. HLS-only items (.m3u8) are returned; the import proxy transmuxes them.
+const DVIDS_ENDPOINT = 'https://api.dvidshub.net/search';
+
+function dvidsKeywordAttempts(query: string): string[] {
+  const tokens = query.split(/\s+/).filter(Boolean);
+  const attempts = [query];
+  if (tokens.length > 2) attempts.push(tokens.slice(0, 2).join(' '));
+  if (tokens.length > 1) attempts.push(tokens[0]!);
+  return attempts;
+}
+
+function parseDurationSeconds(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string') return undefined;
+  const parts = value.trim().split(':').map(Number);
+  if (parts.some((n) => !Number.isFinite(n))) return undefined;
+  if (parts.length === 3) return parts[0]! * 3600 + parts[1]! * 60 + parts[2]!;
+  if (parts.length === 2) return parts[0]! * 60 + parts[1]!;
+  return undefined;
+}
+
+interface DvidsFile { url?: string }
+interface DvidsItem {
+  title?: string; credit?: string; unit_name?: string; branch?: string;
+  download_url?: string; files?: DvidsFile[]; hls_url?: string; duration?: string; thumbnail?: string;
+}
+
+async function searchDvids(
+  fetchImpl: FetchLike,
+  apiKey: string,
+  query: string,
+  kind: SearchableKind,
+  limit: number,
+): Promise<StockResult[]> {
+  if (kind !== 'video') return [];
+  let items: DvidsItem[] = [];
+  for (const attempt of dvidsKeywordAttempts(query)) {
+    const params = new URLSearchParams({
+      api_key: apiKey, type: 'video', max_results: String(limit), keywords: attempt,
+    });
+    const res = await fetchImpl(`${DVIDS_ENDPOINT}?${params.toString()}`, {
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) throw new Error(`DVIDS search failed (${res.status})`);
+    const body = await res.json() as { results?: DvidsItem[] };
+    items = body.results ?? [];
+    if (items.length) break; // keywords is exact-ish: stop at the first form that hits
+  }
+  const results: StockResult[] = [];
+  for (const item of items) {
+    const credit = item.credit || item.unit_name || item.branch || '';
+    if (isDvidsContractor(credit)) continue; // Reuters/AP/Getty masquerading on a gov platform
+    // Prefer a real mp4; otherwise fall back to the HLS master playlist (the
+    // import proxy transmuxes .m3u8 → mp4, re-attaching the api_key server-side).
+    let url = item.download_url || '';
+    for (const file of item.files ?? []) {
+      const furl = file.url ?? '';
+      if (furl.toLowerCase().endsWith('.mp4')) { url = furl; break; }
+    }
+    if (!url) {
+      const hls = item.hls_url || '';
+      // strip the api_key so it never reaches the client/timeline; import-url re-attaches it.
+      url = hls ? hls.split('?')[0]! : '';
+    }
+    if (!url) continue;
+    results.push({
+      platform: 'dvids', kind: 'video',
+      previewUrl: item.thumbnail || url, importUrl: url,
+      author: credit || undefined, durationSeconds: parseDurationSeconds(item.duration),
+      license: 'PD-USGov',
+      attribution: credit || 'U.S. Department of Defense / DVIDS',
+      verified: true,
+    });
+  }
+  return results;
+}
+
+// ── Wikimedia Commons (PD / CC-BY only; CC-BY-SA blocked) ────────────────────
+// Two surfaces via the same api.php: filetype:video (archival footage) and
+// filetype:bitmap (portraits / flags / maps). 429 backoff honors Retry-After.
+const WIKIMEDIA_ENDPOINT = 'https://commons.wikimedia.org/w/api.php';
+const WIKIMEDIA_UA = 'OpenChatCut/1.0 (stock footage sourcing; https://openchatcut.com)';
+
+interface WikimediaImageInfo {
+  url?: string; width?: number; height?: number; mime?: string;
+  extmetadata?: Record<string, { value?: string }>;
+}
+interface WikimediaPage { title?: string; imageinfo?: WikimediaImageInfo[] }
+
+async function wikimediaGet(
+  fetchImpl: FetchLike,
+  params: Record<string, string>,
+): Promise<{ query?: { pages?: Record<string, WikimediaPage> } }> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetchImpl(`${WIKIMEDIA_ENDPOINT}?${new URLSearchParams(params).toString()}`, {
+      headers: { 'User-Agent': WIKIMEDIA_UA },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (res.status !== 429) {
+      if (!res.ok) throw new Error(`Wikimedia search failed (${res.status})`);
+      return await res.json() as { query?: { pages?: Record<string, WikimediaPage> } };
+    }
+    const retryAfter = Number(res.headers.get('retry-after'));
+    const wait = Number.isFinite(retryAfter) && retryAfter > 0
+      ? Math.min(retryAfter, 8)
+      : Math.min(2 * 2 ** attempt, 8);
+    await new Promise<void>((resolve) => setTimeout(resolve, wait * 1000));
+  }
+  return {}; // 429 persisted → caller sees no pages
+}
+
+async function searchWikimedia(
+  fetchImpl: FetchLike,
+  query: string,
+  kind: SearchableKind,
+  limit: number,
+): Promise<StockResult[]> {
+  if (kind !== 'image' && kind !== 'video') return [];
+  const fileType = kind === 'image' ? 'bitmap' : 'video';
+  const data = await wikimediaGet(fetchImpl, {
+    action: 'query', format: 'json', generator: 'search',
+    gsrsearch: `${query} filetype:${fileType}`, gsrnamespace: '6', gsrlimit: String(Math.max(3, limit)),
+    prop: 'imageinfo', iiprop: 'url|size|mime|extmetadata',
+  });
+  const pages = data.query?.pages ?? {};
+  const results: StockResult[] = [];
+  for (const page of Object.values(pages)) {
+    const info = page.imageinfo?.[0];
+    if (!info?.url) continue;
+    const url = info.url;
+    const mime = info.mime ?? '';
+    if (kind === 'image') {
+      if (mime && !mime.startsWith('image/')) continue; // want a raster portrait
+      if (mime === 'image/svg+xml' || mime === 'image/gif') continue;
+    } else {
+      if (!mime.startsWith('video/')) continue;
+      if (/\.(ogv|ogg)(\?|$)/i.test(url)) continue; // theora won't play in browser/Remotion
+    }
+    const extmeta = info.extmetadata ?? {};
+    const gated = classifyStockLicense(stripHtml(extmeta.LicenseShortName), stripHtml(extmeta.Artist));
+    if (!gated.tag) continue; // CC-BY-SA / state media / unrecognized → fail-closed
+    const attribution = stripHtml(extmeta.Artist) || page.title || 'Wikimedia Commons';
+    results.push({
+      platform: 'wikimedia', kind, previewUrl: url, importUrl: url,
+      width: info.width, height: info.height,
+      author: attribution,
+      license: gated.tag,
+      attribution,
+      verified: gated.verified,
+    });
+  }
+  return results;
+}
+
 function addUnavailableWarning(warnings: string[], target: SearchTarget): void {
   const message = target.platform === 'freesound'
     ? 'Freesound 未配置，无法搜索音频或音乐'
@@ -456,6 +629,17 @@ export async function searchStockMedia(
       jobs.push({
         label: 'freesound/audio', platforms: ['freesound'],
         run: () => searchFreesound(fetchImpl, options.freesoundApiKey!, query, limit, kind === 'music'),
+      });
+    } else if (target.platform === 'dvids' && options.dvidsApiKey) {
+      jobs.push({
+        label: `dvids/${target.kind}`, platforms: ['dvids'],
+        run: () => searchDvids(fetchImpl, options.dvidsApiKey!, query, target.kind, limit),
+      });
+    } else if (target.platform === 'wikimedia') {
+      // Wikimedia Commons needs no key — always searched when selected.
+      jobs.push({
+        label: `wikimedia/${target.kind}`, platforms: ['wikimedia'],
+        run: () => searchWikimedia(fetchImpl, query, target.kind, limit),
       });
     } else if (options.firecrawlApiKey && target.kind === 'image'
       && (target.platform === 'pexels' || target.platform === 'pixabay')) {

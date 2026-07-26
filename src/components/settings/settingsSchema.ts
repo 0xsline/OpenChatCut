@@ -240,6 +240,12 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { key: 'stock/pixabay', vendor: 'pixabay', title: 'Pixabay', fields: [secret('PIXABAY_API_KEY', 'API Key')] },
           { key: 'stock/unsplash', vendor: 'unsplash', title: 'Unsplash', fields: [secret('UNSPLASH_ACCESS_KEY', 'Access Key')] },
           { key: 'stock/freesound', vendor: 'freesound', title: 'Freesound', fields: [secret('FREESOUND_API_KEY', 'API Key')] },
+          { key: 'stock/dvids', vendor: 'dvids', title: 'DVIDS',
+            note: 'Defense Visual Information Distribution Service — footage PD-USGov (militer / geopolitik / briefing Pentagon). Mayoritas item HLS, otomatis di-transmux ke mp4 saat diimpor.',
+            fields: [secret('DVIDS_API_KEY', 'API Key')] },
+          { key: 'stock/wikimedia', vendor: 'wikimedia', title: 'Wikimedia Commons',
+            note: 'Tanpa API Key — tersedia langsung. Hanya lisensi PD / CC-BY (CC-BY-SA diblokir demi monetisasi). Untuk bendera, peta, foto pemimpin dunia, arsip sejarah.',
+            fields: [] },
         ] },
       { key: 'transcription', title: '转写 / 口播剪辑', hint: 'transcribe_track · 词级字幕、清口水、删词。',
         vendors: [

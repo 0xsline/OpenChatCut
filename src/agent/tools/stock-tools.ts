@@ -127,9 +127,10 @@ export const STOCK_TOOL_SCHEMAS: AgentToolSchema[] = [
     description: [
       'Search curated stock platforms for B-roll, photos, sounds, or music; returns unified results with importUrl.',
       'kind=any|video|audio|music|image (default video). platforms is an optional comma-separated provider list.',
+      'For geopolitical / military / news / archival footage prefer platforms=dvids,wikimedia (DVIDS = PD-USGov US-DoD footage; Wikimedia = PD/CC-BY flags, maps, leader portraits, archival). Each result carries a monetization-safe license + attribution.',
       'Use category to narrow intent and horizontal|square|vertical for orientation; legacy orientation names remain accepted.',
       'Unsupported provider/type combinations are skipped with warnings. Official keys are preferred; eligible visual searches can use Firecrawl fallback.',
-      'On success, pass a result importUrl to download_media or push_asset.',
+      'On success, pass a result importUrl to download_media or push_asset (DVIDS HLS items are auto-transmuxed to mp4 on import).',
     ].join(' '),
     input_schema: {
       type: 'object',
@@ -151,7 +152,7 @@ export const STOCK_TOOL_SCHEMAS: AgentToolSchema[] = [
         },
         platforms: {
           type: 'string',
-          description: 'Optional comma-separated list: pexels,pixabay,unsplash,freesound.',
+          description: 'Optional comma-separated list: pexels,pixabay,unsplash,freesound,dvids,wikimedia.',
         },
         limitPerPlatform: {
           type: 'integer',

@@ -16,7 +16,7 @@ If a capability is off, say so and offer alternatives (upload, library, another 
 | TTS / voice | `submit_voice` | Doubao pair, `ELEVENLABS_API_KEY`, `MINIMAX_API_KEY` |
 | Music | `submit_music` | `MUREKA_API_KEY`, `MINIMAX_API_KEY` |
 | Sound FX gen | `submit_sound` | `ELEVENLABS_API_KEY` |
-| Stock search | `search_stock_media` | `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `UNSPLASH_ACCESS_KEY`, `FREESOUND_API_KEY` |
+| Stock search | `search_stock_media` | `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `UNSPLASH_ACCESS_KEY`, `FREESOUND_API_KEY`, `DVIDS_API_KEY` (PD-USGov footage). Wikimedia Commons is keyless (always available, PD/CC-BY only). For geopolitical / military / news / archival footage prefer `platforms=dvids,wikimedia`. |
 | Transcription | `transcribe_track` | `ASSEMBLYAI_API_KEY` |
 | Web | `web_browser` | `FIRECRAWL_API_KEY` |
 | Sandbox / ffmpeg helpers | `run_code` | `E2B_API_KEY` (if used) |

@@ -207,6 +207,14 @@ export const PROBES: Record<string, ProbeDef> = {
       return fetch('https://freesound.org/apiv2/search/text/?' + params.toString(), { signal: t() });
     },
   },
+  // DVIDS (PD-USGov footage):api_key 走 query(与 stock 插件同形),假 key 403。
+  'stock/dvids': {
+    needs: [['DVIDS_API_KEY']],
+    run: (get) => {
+      const params = new URLSearchParams({ api_key: get('DVIDS_API_KEY'), type: 'video', max_results: '1', keywords: 'navy' });
+      return fetch(`https://api.dvidshub.net/search?${params.toString()}`, { signal: t() });
+    },
+  },
   'transcription/assemblyai': {
     needs: [['ASSEMBLYAI_API_KEY']],
     run: (get) => fetch('https://api.assemblyai.com/v2/transcript?limit=1', {

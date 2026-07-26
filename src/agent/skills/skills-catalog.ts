@@ -163,6 +163,7 @@ DVIDS + Wikimedia give more relevant AND monetization-safe (license-gated PD/CC-
 - For a SPECIFIC EVENT at a location, combine all three: "ledapan tanker di Selat Hormuz" → ["strait of hormuz", "oil tanker", "explosion"].
 - When a PERSON is the primary subject (a leader ACTING — "Xi Jinping menentang", "Biden menghadapi tekanan"), do NOT query the bare name — that returns a static headshot. Query the ACTION / candid moment: "Xi Jinping menentang Taiwan" → ["xi jinping", "military parade", "beijing"]; a summit → ["xi jinping", "biden", "handshake summit"].
 - Military gear: name the SPECIFIC platform + setting so it can't mismatch — "kapal induk" → ["aircraft carrier", "flight deck", "naval fleet"], not generic "warship" (which also returns jets parked on a deck).
+- For GEOPOLITICAL / military / historical footage, pass platforms=dvids,wikimedia: DVIDS is PD-USGov US-DoD footage (warships, joint exercises, Pentagon briefings, hardware, handshakes) and Wikimedia Commons is PD/CC-BY (flags, maps, leader portraits, archival). Both return monetization-safe licenses with attribution; keep generic civilian B-roll on the default Pexels/Pixabay/Unsplash.
 
 Breaking-news limitation: stock libraries NEVER carry current / recent events (today's strike, this week's conflict, a just-happened disaster). For those scenes, either (a) generate an illustrative composite with submit_image, (b) use archival / historical-style stock, or (c) tell the user the exact footage is unavailable. Never pass generic stock off as the real event.
 

@@ -95,6 +95,7 @@ export function serverPlugins(): Plugin[] {
     get unsplashAccessKey() { return getKey('UNSPLASH_ACCESS_KEY'); },
     get freesoundApiKey() { return getKey('FREESOUND_API_KEY'); },
     get firecrawlApiKey() { return getKey('FIRECRAWL_API_KEY'); },
+    get dvidsApiKey() { return getKey('DVIDS_API_KEY'); },
   }),
   firecrawlPlugin({ get apiKey() { return getKey('FIRECRAWL_API_KEY'); } }),
   kikiPlugin(),

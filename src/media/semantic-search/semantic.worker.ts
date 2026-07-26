@@ -1,9 +1,9 @@
 /// <reference lib="webworker" />
-import { AutoProcessor, AutoTokenizer, ChineseCLIPModel, RawImage } from '@huggingface/transformers';
+import { AutoProcessor, AutoTokenizer, CLIPModel, RawImage } from '@huggingface/transformers';
 import { normalizeVector } from './vectorSearch';
 import { MAX_SEMANTIC_QUERY_LENGTH, SEMANTIC_MODEL_ID, type WorkerRequest, type WorkerResponse } from './types';
 
-type Model = Awaited<ReturnType<typeof ChineseCLIPModel.from_pretrained>>;
+type Model = Awaited<ReturnType<typeof CLIPModel.from_pretrained>>;
 type Processor = Awaited<ReturnType<typeof AutoProcessor.from_pretrained>>;
 type Tokenizer = Awaited<ReturnType<typeof AutoTokenizer.from_pretrained>>;
 type ModelInputs = Record<string, unknown>;
@@ -37,9 +37,9 @@ async function loadModel(request: Extract<WorkerRequest, { type: 'load' }>): Pro
   loading = Promise.all([
     AutoTokenizer.from_pretrained(SEMANTIC_MODEL_ID, { progress_callback: progress }),
     AutoProcessor.from_pretrained(SEMANTIC_MODEL_ID, { progress_callback: progress }),
-    ChineseCLIPModel.from_pretrained(SEMANTIC_MODEL_ID, {
+    CLIPModel.from_pretrained(SEMANTIC_MODEL_ID, {
       device: request.device,
-      dtype: 'q4',
+      dtype: 'q8',
       progress_callback: progress,
     }),
   ]).then(([nextTokenizer, nextProcessor, nextModel]) => {

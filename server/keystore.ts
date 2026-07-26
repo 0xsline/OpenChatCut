@@ -41,6 +41,7 @@ export const KEY_NAMES = [
   'MUREKA_API_KEY', 'MUREKA_BASE_URL',
   'MINIMAX_API_KEY', 'MINIMAX_BASE_URL',
   'PEXELS_API_KEY', 'PIXABAY_API_KEY', 'UNSPLASH_ACCESS_KEY', 'FREESOUND_API_KEY',
+  'DVIDS_API_KEY', // dvidshub.net footage — appended server-side as ?api_key on HLS pulls
   'ASSEMBLYAI_API_KEY',
   'E2B_API_KEY', 'E2B_TEMPLATE',
   'FIRECRAWL_API_KEY',
@@ -144,7 +145,7 @@ export function computeCaps(): Caps {
     music: has('MUREKA_API_KEY') || has('MINIMAX_API_KEY'),
     sound: has('ELEVENLABS_API_KEY'),
     stock: has('PEXELS_API_KEY') || has('PIXABAY_API_KEY') || has('UNSPLASH_ACCESS_KEY')
-      || has('FREESOUND_API_KEY') || has('FIRECRAWL_API_KEY'),
+      || has('FREESOUND_API_KEY') || has('FIRECRAWL_API_KEY') || has('DVIDS_API_KEY'),
     transcription: has('ASSEMBLYAI_API_KEY'),
     sandbox: has('E2B_API_KEY'),
     web: has('FIRECRAWL_API_KEY'),

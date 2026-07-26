@@ -78,6 +78,8 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'Pixabay', arg: 'pixabay', argKey: 'provider', need: [['PIXABAY_API_KEY']] },
     { label: 'Unsplash', arg: 'unsplash', argKey: 'provider', need: [['UNSPLASH_ACCESS_KEY']] },
     { label: 'Freesound', arg: 'freesound', argKey: 'provider', need: [['FREESOUND_API_KEY']] },
+    { label: 'DVIDS', arg: 'dvids', argKey: 'provider', need: [['DVIDS_API_KEY']] }, // PD-USGov footage (militer/geopolitik)
+    { label: 'Wikimedia', arg: 'wikimedia', argKey: 'provider', need: [[]] }, // keyless (PD/CC-BY only)
   ],
 };
 

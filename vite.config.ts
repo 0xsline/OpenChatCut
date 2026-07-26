@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => {
   const pixabayKey = env.PIXABAY_API_KEY || '';
   const unsplashKey = env.UNSPLASH_ACCESS_KEY || '';
   const freesoundKey = env.FREESOUND_API_KEY || '';
+  const dvidsKey = env.DVIDS_API_KEY || '';
   // Firecrawl (web_browser tool): .env.local or shell export (e.g. search-apis.env)
   const firecrawlKey = env.FIRECRAWL_API_KEY || process.env.FIRECRAWL_API_KEY || '';
   const e2bKey = env.E2B_API_KEY || process.env.E2B_API_KEY || '';
@@ -45,7 +46,7 @@ export default defineConfig(({ mode }) => {
         video: Boolean(seedanceKey || klingKey || minimaxKey),
         music: Boolean(murekaKey || minimaxKey),
         sound: Boolean(elevenKey),
-        stock: Boolean(pexelsKey || pixabayKey || unsplashKey || freesoundKey),
+        stock: Boolean(pexelsKey || pixabayKey || unsplashKey || freesoundKey || dvidsKey),
         transcription: Boolean(aaiKey),
         sandbox: Boolean(e2bKey),
         web: Boolean(firecrawlKey),
