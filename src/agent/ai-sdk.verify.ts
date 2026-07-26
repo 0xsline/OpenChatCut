@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { generateText } from 'ai';
+import { generateText, jsonSchema } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import {
   defaultModelForProvider,
@@ -8,6 +8,7 @@ import {
   normalizeLlmProvider,
   normalizeOpenAiApiMode,
   providerApiPath,
+  sdkProviderName,
 } from './client';
 import { LLM_PROVIDER_PRESETS } from '../../shared/llm-providers';
 import {
@@ -59,7 +60,8 @@ for (const preset of LLM_PROVIDER_PRESETS) {
       ? 'anthropic.messages'
       : preset.protocol === 'openai'
         ? 'openai.responses'
-        : `${preset.id}.chat`,
+        // gemini 实例名固定 'google'(thought_signature 捕获/重放键必须对齐)
+        : `${sdkProviderName(preset.id)}.chat`,
   );
 }
 
@@ -178,7 +180,7 @@ assert.deepEqual(makeMessagesPortable([
 
 let geminiRequest: Record<string, unknown> | undefined;
 const gemini = createOpenAICompatible({
-  name: 'gemini',
+  name: sdkProviderName('gemini'),
   baseURL: 'https://example.invalid/v1beta/openai',
   apiKey: 'test-key',
   fetch: async (_input, init) => {
@@ -221,5 +223,74 @@ assert.equal(
     .google.thought_signature,
   'gemini-signature',
 );
+
+// ── Gemini thought_signature 全环路回归(#6 二报):真实响应捕获 → response
+// messages → 下一请求重放。签名由传输层存进 providerMetadata[<实例名>],出向只读
+// providerOptions.google —— 实例名必须是 'google'(sdkProviderName),否则第二跳
+// 丢签名,Gemini 400 "missing a thought_signature in functionCall parts"。
+{
+  const requests: Record<string, unknown>[] = [];
+  const roundtrip = createOpenAICompatible({
+    name: sdkProviderName('gemini'),
+    baseURL: 'https://example.invalid/v1beta/openai',
+    apiKey: 'test-key',
+    fetch: async (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      if (requests.length === 1) {
+        // 首跳:模型返回带 extra_content 签名的 tool call(Gemini 实际线上形态)
+        return new Response(JSON.stringify({
+          id: 'r1', object: 'chat.completion', created: 0, model: 'gemini-test',
+          choices: [{
+            index: 0,
+            finish_reason: 'tool_calls',
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [{
+                id: 'live_tc_1', type: 'function',
+                function: { name: 'edit_track', arguments: '{"trackId":"V1"}' },
+                extra_content: { google: { thought_signature: 'live-signature' } },
+              }],
+            },
+          }],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ error: { message: 'stop after capture' } }), {
+        status: 400, headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+  const first = await generateText({
+    model: roundtrip('gemini-test'),
+    prompt: 'switch track',
+    tools: { edit_track: { inputSchema: jsonSchema({ type: 'object' }) } },
+    maxRetries: 0,
+  });
+  // 二跳:把首跳的 response.messages(含工具结果)原样重放 —— 模拟循环内下一步/下一轮
+  await assert.rejects(generateText({
+    model: roundtrip('gemini-test'),
+    messages: [
+      ...first.response.messages,
+      {
+        role: 'tool',
+        content: [{
+          type: 'tool-result', toolCallId: 'live_tc_1', toolName: 'edit_track',
+          output: { type: 'text', value: '{"ok":true}' },
+        }],
+      },
+    ],
+    maxRetries: 0,
+  }));
+  const replayAssistant = (requests[1].messages as Array<Record<string, unknown>>)
+    .find((m) => m.role === 'assistant' && Array.isArray(m.tool_calls))!;
+  const replayCall = (replayAssistant.tool_calls as Array<Record<string, unknown>>)[0];
+  assert.equal(
+    (replayCall.extra_content as { google: { thought_signature: string } } | undefined)
+      ?.google.thought_signature,
+    'live-signature',
+    'captured thought_signature must survive into the replayed functionCall',
+  );
+}
 
 console.log('ai-sdk checks passed');

@@ -74,11 +74,19 @@ const openaiProvider = createOpenAI({
 });
 const compatibleProviders = new Map<LlmProvider, ReturnType<typeof createOpenAICompatible>>();
 
+/** SDK instance name per provider. Gemini MUST be 'google': the openai-compatible
+ * transport stores thought signatures captured from responses under
+ * providerMetadata[<name>], but re-emits them only from providerOptions.google —
+ * any other name breaks the round-trip and Gemini rejects replayed function
+ * calls with 400 "missing a thought_signature in functionCall parts". */
+export const sdkProviderName = (provider: LlmProvider): string =>
+  (provider === 'gemini' ? 'google' : provider);
+
 function compatibleProvider(provider: LlmProvider): ReturnType<typeof createOpenAICompatible> {
   const existing = compatibleProviders.get(provider);
   if (existing) return existing;
   const created = createOpenAICompatible({
-    name: provider,
+    name: sdkProviderName(provider),
     baseURL: PROXY_API_BASE,
     apiKey: PROXY_KEY,
     headers: proxyHeaders(provider),
