@@ -45,6 +45,8 @@ import { PROBE_TOOL_SCHEMAS, PROBE_TOOL_NAMES, execProbeTool } from './tools/pro
 import { MULTICAM_TOOL_SCHEMAS, MULTICAM_TOOL_NAMES, execMulticamTool } from './tools/multicam-tools';
 import { LAYOUT_TOOL_SCHEMAS, LAYOUT_TOOL_NAMES, execLayoutTool } from './tools/layout-tools';
 import { SILENCE_TOOL_SCHEMAS, SILENCE_TOOL_NAMES, execSilenceTool } from './tools/silence-tools';
+import { COLOR_SCOPE_TOOL_SCHEMAS, COLOR_SCOPE_TOOL_NAMES, execColorScopeTool } from './tools/color-scope-tools';
+import { BEAT_TOOL_SCHEMAS, BEAT_TOOL_NAMES, execBeatTool } from './tools/beat-tools';
 import { AUDIO_ASSET_TOOL_NAMES, execAudioAssetTool } from './tools/audio-asset-tools';
 import { execTranscriptionProgress } from './progress/transcription-progress';
 
@@ -302,6 +304,10 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...LAYOUT_TOOL_SCHEMAS,
   // 删除死气（remove_silence：本机相对电平检测 + split/remove 波纹闭合）
   ...SILENCE_TOOL_SCHEMAS,
+  // 数值化调色示波（inspect_color：黑白点/溢出/色偏/色相直方图，按数字调色）
+  ...COLOR_SCOPE_TOOL_SCHEMAS,
+  // 节拍检测（detect_beats：本机 DSP 出 bpm/拍点/强拍，可落时间线标记做卡点）
+  ...BEAT_TOOL_SCHEMAS,
   // ToolSearch — keyword discovery over this catalog
   {
     name: 'ToolSearch',
@@ -433,6 +439,8 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (MULTICAM_TOOL_NAMES.has(name)) return execMulticamTool(name, args, ctx);
   if (LAYOUT_TOOL_NAMES.has(name)) return execLayoutTool(name, args, ctx);
   if (SILENCE_TOOL_NAMES.has(name)) return execSilenceTool(name, args, ctx);
+  if (COLOR_SCOPE_TOOL_NAMES.has(name)) return execColorScopeTool(name, args, ctx);
+  if (BEAT_TOOL_NAMES.has(name)) return execBeatTool(name, args, ctx);
   if (AUDIO_ASSET_TOOL_NAMES.has(name)) return execAudioAssetTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {

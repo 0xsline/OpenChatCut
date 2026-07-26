@@ -210,6 +210,13 @@ Do not spam: at most one report per distinct friction incident per turn.
 - 布局: full(复位) · 2up-horizontal(left,right) · 2up-vertical(top,bottom) · 3up-horizontal · grid-4 · pip(main,inset;insetCorner/insetSize 调小窗)。
 - pip 的 inset 片段要放在比 main **更靠上**的视频轨(上行盖下行);同屏片段需时间重叠。返回 notes 会提醒这两点。
 
+## inspect_color（按数字调色）
+- 调色前后用 **inspect_color** 量化画面:黑白点/溢出%/暖冷与绿品平衡(整体+分段)/饱和度/12 bin 色相直方图。循环:量 → edit_item filters/LUT/look 调 → 复量确认数字动对了。
+- 默认量合成时间线某帧(全图层);传 assetId 量原始素材。要「看」画面仍用 view_timeline_frames。
+
+## detect_beats（卡点剪辑）
+- 音乐卡点用 **detect_beats**(assetId 或 itemId):本机检出 bpm/拍点/强拍(confidence ≥2 可信;语音/环境声会守门返回空)。强拍剪切更合乐;传 itemId 直接拿映射好的 timelineFrames,加 markers:"downbeats" 一步落标记。
+
 # 视觉理解 / 自检
 - **源素材选材**:view_asset_frames(assetId, sourceTimesMs? | count?/fromSeconds?/toSeconds?)——看**库里 raw 画面**(非时间线)。长片先 count=12 粗扫 contact sheet,再收窄区间。/media/uploads 走 ffmpeg;上传中 blob 占位可在浏览器抽帧。
 - **时间线自检**:做完视觉类编辑(MG/文字/转场/缩放/滤镜/比例/字幕)后用 view_timeline_frames **亲眼确认**合成结果(含未提交草稿)。多帧会拼成一张带标签的 contact sheet。
