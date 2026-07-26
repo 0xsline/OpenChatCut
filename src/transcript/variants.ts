@@ -1,3 +1,5 @@
+import { t } from '../i18n/locale';
+
 // Pure helpers for multi-language transcript variants (translations / corrections).
 //
 // 词帧一致性约束:一个变体只承载 TEXT。词的 start/end/speaker(帧位)
@@ -25,7 +27,7 @@ export function resolveVariantText(sourceWords: TranscriptWord[], variant: Trans
 
 /** Default display label for a variant when none is supplied. */
 function defaultLabel(lang: string, kind: TranscriptVariant['kind']): string {
-  return kind === 'translation' ? lang : `${lang}(校正)`;
+  return kind === 'translation' ? lang : t('{lang}(校正)', { lang });
 }
 
 /** Build a variant. Validates at the boundary (LLM/user text is untrusted): lang

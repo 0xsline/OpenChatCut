@@ -179,7 +179,7 @@ export function CaptionsControls({
               >
                 <option value="">{t('原文（source）')}</option>
                 {sourceVariants.map((v) => (
-                  <option key={v.id} value={v.id}>{v.label}</option>
+                  <option key={v.id} value={v.id}>{t(v.label)}</option>
                 ))}
               </select>
               <p className="cc-cap-hint">{t('切换主字幕行显示的语言。译文只换文本，词的时间/帧位仍取自源。')}</p>

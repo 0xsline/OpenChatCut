@@ -1,3 +1,5 @@
+import { t } from '../i18n/locale';
+
 // 工程模板库(manage_template):模板 = 一组 MG + 设计风格的打包。
 // 一个模板就是一份打包好的 ProjectDoc(它的时间线里的 MG 片段 + designStyle +
 // 携带的媒体资产)。跨工程共享(像"我的设计风格"收藏一样是全局库,不按工程分),
@@ -76,7 +78,7 @@ const newId = () =>
 /** 把一份 ProjectDoc 打包成模板(按名称去重:同名覆盖,复用原 id 并保持列表原位)。
  * assetIds = 文档资产池的全部 id(模板携带整份资产池)。 */
 export async function saveTemplate(name: string, doc: ProjectDoc): Promise<ProjectTemplate> {
-  const trimmed = name.trim() || '未命名模板';
+  const trimmed = name.trim() || t('未命名模板');
   // ponytail: 携带整份资产池而非只挑被引用的资产;剪裁只引用资产是额外逻辑,YAGNI。
   const assetIds = doc.assets.map((a) => a.id);
   const current = await readAll();

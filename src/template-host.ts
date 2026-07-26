@@ -16,6 +16,7 @@
 // traversal that slips past the static check. PRODUCTION must additionally run
 // templates in a sandboxed <iframe sandbox="allow-scripts"> (opaque origin) or a
 // QuickJS WASM realm.
+import { t } from './i18n/locale';
 import * as Babel from '@babel/standalone';
 import * as React from 'react';
 import {
@@ -124,7 +125,7 @@ function stripComments(code: string): string {
 export function validateTemplate(code: string): void {
   const scan = stripComments(code);
   for (const [re, reason] of FORBIDDEN) {
-    if (re.test(scan)) throw new Error(`sandbox 拒绝：检测到「${reason}」`);
+    if (re.test(scan)) throw new Error(t('sandbox 拒绝：检测到「{reason}」', { reason }));
   }
 }
 
@@ -143,11 +144,11 @@ export function compileTemplate(code: string): MgComponent {
   const itemSig = code.match(/const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(\s*\{[^)}]*\bitem\b[^)}]*\}/);
   const m = itemSig ?? code.match(/const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\(|async\b|function)/);
   const name = m?.[1];
-  if (!name) throw new Error('template: 找不到 `const NAME = (...)` 声明');
+  if (!name) throw new Error(t('template: 找不到 `const NAME = (...)` 声明'));
 
   const out = Babel.transform(code, { presets: [['react', { runtime: 'classic' }]], filename: 'template.jsx' });
   const transpiled = out.code;
-  if (!transpiled) throw new Error('template: babel 无输出');
+  if (!transpiled) throw new Error(t('template: babel 无输出'));
 
   // layer 2: whitelist real globals; shadow dangerous ones to undefined; strict mode.
   const names = [...Object.keys(WHITELIST), ...SHADOW];

@@ -1,3 +1,5 @@
+import { t } from '../i18n/locale';
+
 const DB_NAME = 'openchatcut';
 const STORE = 'kv';
 const MIGRATION_KEY = '__openchatcut_shared_store_v1__';
@@ -208,7 +210,7 @@ export async function kvDel(key: string): Promise<void> {
   await ready();
   const requireSharedDelete = canSync() && isProjectDocumentKey(key);
   if (!remoteCache) {
-    if (requireSharedDelete) throw new Error('共享工程数据库暂时不可用，工程未删除');
+    if (requireSharedDelete) throw new Error(t('共享工程数据库暂时不可用，工程未删除'));
     await localDel(key);
     return;
   }

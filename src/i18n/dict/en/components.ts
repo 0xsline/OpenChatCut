@@ -210,4 +210,12 @@ export default {
   '分析并归一到 -14 LUFS': 'Analyze & normalize to -14 LUFS',
   '响度归一 (-14 LUFS)': 'Normalize Loudness (-14 LUFS)',
   '离线素材：{list}': 'Offline media: {list}',
+  '示例工程': 'Demo project',
+  '未命名工程': 'Untitled project',
+  '不是合法的 JSON 文件': 'Not a valid JSON file',
+  '文件内容不是对象': 'File content is not object',
+  '格式不识别(需要 {format})': 'Unrecognized format (needs {format})',
+  '缺工程名': 'Missing project name',
+  '工程数据(doc)校验不通过': 'Project data (doc) validation failed',
+  '工程不存在或已损坏': 'Project does not exist or is corrupted',
 } as Record<string, string>;

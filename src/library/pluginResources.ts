@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { t } from '../i18n/locale';
 import type { ZoomEffect } from '../editor/types';
 import { listPacks, subscribePlugins, type InstalledPack } from '../plugins/store';
 import { pluginAssetId } from '../plugins/types';
@@ -99,7 +100,7 @@ export function pluginTemplates(packs: InstalledPack[]): Tpl[] {
         id: pluginAssetId(pack.id, item.id),
         name: item.name,
         category: '扩展',
-        description: item.desc ?? `${pack.name} 扩展模板`,
+        description: item.desc ?? t('{name} 扩展模板', { name: pack.name }),
         width: item.width ?? 1920,
         height: item.height ?? 1080,
         fps: 30,

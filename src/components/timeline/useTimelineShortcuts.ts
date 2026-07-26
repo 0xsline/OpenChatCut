@@ -3,6 +3,7 @@
 // 新鲜,与原 Timeline 内联写法逐字等价)。I/O 区间(zoneIn/Out)、JKL 穿梭机器、片段
 // 剪贴板整个归本 hook 所有;fxClip 剪贴板与右键菜单共用,留在 Timeline 传入。
 import { useEffect, useRef, useState, type RefObject } from 'react';
+import { t } from '../../i18n/locale';
 import type { PlayerRef } from '@remotion/player';
 import {
   selectedIdsOf, timelineTrackIds, trackKind,
@@ -107,7 +108,7 @@ export function useTimelineShortcuts(deps: ShortcutDeps): { zoneIn: number | nul
           if (!it || state.tracks?.[it.track]?.locked) continue;
           actions.push({ type: 'move' as const, id, startFrame: Math.max(0, it.startFrame + delta) });
         }
-        commands.batch(actions, '微移所选片段');
+        commands.batch(actions, t('微移所选片段'));
       },
       trimSelectedToPlayhead: (side) => {
         const id = state.selectedId;
@@ -328,7 +329,7 @@ export function useTimelineShortcuts(deps: ShortcutDeps): { zoneIn: number | nul
             fadeOutFrames: fxClip.fadeOutFrames ?? 0,
           },
         ];
-        commands.batch(actions, '粘贴片段效果');
+        commands.batch(actions, t('粘贴片段效果'));
       },
       copyEffects: () => {
         const it = state.items.find((x) => x.id === state.selectedId);

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useReducer, useRef } from 'react';
+import { t } from '../i18n/locale';
 import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeEditorState, activeTimeline, defaultTrackId, resolveTrackId } from './types';
 import type { Tpl } from '../types';
@@ -192,23 +193,23 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
         const d = getDoc();
         const base = activeTimeline(d);
         const trackOrder = [uid('track')];
-        const t: Timeline = {
+        const tl: Timeline = {
           fps: base.fps,
           width: opts?.width ?? base.width,
           height: opts?.height ?? base.height,
           fit: opts?.fit ?? base.fit,
           items: [], selectedId: null, trackOrder,
           tracks: { [trackOrder[0]]: { kind: 'video' } },
-          id: uid('tl'), name: opts?.name ?? `序列 ${d.timelines.length + 1}`, order: maxOrder(d) + 1,
+          id: uid('tl'), name: opts?.name ?? t('序列 {n}', { n: d.timelines.length + 1 }), order: maxOrder(d) + 1,
         };
-        dispatch({ type: 'tl.create', timeline: t, activate: opts?.activate });
-        return t.id;
+        dispatch({ type: 'tl.create', timeline: tl, activate: opts?.activate });
+        return tl.id;
       },
       switchTimeline: (id) => dispatch({ type: 'tl.switch', id }),
       duplicateTimeline: (id, opts) => {
         const src = getDoc().timelines.find((t) => t.id === id);
         const newId = uid('tl');
-        dispatch({ type: 'tl.duplicate', id, newId, name: opts?.name ?? `${src?.name ?? '序列'} 副本`, retarget: opts?.retarget, activate: opts?.activate });
+        dispatch({ type: 'tl.duplicate', id, newId, name: opts?.name ?? `${src?.name ?? t('序列')} ${t('副本')}`, retarget: opts?.retarget, activate: opts?.activate });
         return newId;
       },
       deleteTimeline: (id) => dispatch({ type: 'tl.delete', id }),
@@ -298,7 +299,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
             name: '文字',
             width: 1920,
             height: 1080,
-            props: { text: '双击编辑文字', fontSize: 96, color: '#ffffff', fontWeight: 700, align: 'center' },
+            props: { text: t('双击编辑文字'), fontSize: 96, color: '#ffffff', fontWeight: 700, align: 'center' },
           },
         }),
       addAsset: (asset) => dispatch({ type: 'addAsset', asset }),

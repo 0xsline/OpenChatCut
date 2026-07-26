@@ -421,7 +421,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
       } : current);
       await exportClipMov(state, mgItems[i]);
     }
-    void recordExport({ name: `${mgItems.length} 个 MG · ProRes 4444`, format: 'video', codec: 'prores', createdAt: Date.now() });
+    void recordExport({ name: t('{n} 个 MG · ProRes 4444', { n: mgItems.length }), format: 'video', codec: 'prores', createdAt: Date.now() });
   };
 
   const exportSubtitles = () => {

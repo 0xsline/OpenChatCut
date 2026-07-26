@@ -70,4 +70,8 @@ export default {
   '({i}/{total}) 上传 {label}…': '({i}/{total}) Uploading {label}…',
   '({i}/{total}) 转写 {label}…': '({i}/{total}) Transcribing {label}…',
   '已完成 {ok}/{total} 段；失败：{fails}': 'Completed {ok}/{total} clips; failed: {fails}',
+  '说话人': 'Speaker',
+  '说话人 {n}': 'Speaker {n}',
+  '说话人 {code}': 'Speaker {code}',
+  '{lang}(校正)': '{lang} (Revised)',
 } as Record<string, string>;

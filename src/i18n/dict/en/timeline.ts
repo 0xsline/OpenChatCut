@@ -217,4 +217,7 @@ export default {
   '已经对齐（偏移小于 1 帧）': 'Already in sync (offsets under 1 frame)',
   '无法对齐所选片段（置信度过低或解码失败）': 'Could not align the selected clips (low confidence or decode failed)',
   '多机位同步失败': 'Multicam sync failed',
+  '竖屏': 'Vertical',
+  '微移所选片段': 'Nudge selected clips',
+  '粘贴片段效果': 'Paste clip effects',
 } as Record<string, string>;

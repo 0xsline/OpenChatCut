@@ -4,6 +4,7 @@
 // 时间线渲染不依赖这里 —— 应用过的内容已快照进 state(fxDefs/customFrag/code),
 // 水合只服务资源库列表与 agent 工具可见性。
 import { validatePack } from './validate';
+import { t } from '../i18n/locale';
 import { pluginAssetId, type PluginFxItem, type PluginLutItem, type PluginPack, type PluginTransitionItem } from './types';
 import type { SerializableFxDef } from '../gl/fx/uniforms';
 import type { CustomTransitionDef } from '../gl/customTransitions';
@@ -131,7 +132,7 @@ async function requestServer(path = '', init?: RequestInit): Promise<Response> {
   const response = await fetch(`${API_PATH}${path}`, init);
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { error?: string } | null;
-    throw new Error(body?.error ?? `扩展存储请求失败 (${response.status})`);
+    throw new Error(body?.error ?? t('扩展存储请求失败 ({status})', { status: response.status }));
   }
   return response;
 }
@@ -249,7 +250,7 @@ export function fxDefOf(pack: PluginPack, item: PluginFxItem): SerializableFxDef
   return {
     id: pluginAssetId(pack.id, item.id),
     name: item.name,
-    desc: item.desc ?? `${pack.name} 插件特效`,
+    desc: item.desc ?? t('{name} 插件特效', { name: pack.name }),
     frag: item.frag,
     props: item.props ?? [],
     ...(item.passes ? { passes: item.passes } : {}),
@@ -261,7 +262,7 @@ export function lutDefOf(pack: PluginPack, item: PluginLutItem, cubeUrl: string,
   return {
     id: pluginAssetId(pack.id, item.id),
     name: item.name,
-    desc: item.desc ?? `${pack.name} 插件 LUT`,
+    desc: item.desc ?? t('{name} 插件 LUT', { name: pack.name }),
     frag: lutFrag,
     props: [{ key: 'intensity', label: '强度', default: 1, min: 0, max: 1, step: 0.01 }],
     cube: cubeUrl,

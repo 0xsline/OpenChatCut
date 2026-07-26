@@ -54,15 +54,10 @@ function llmProbe(provider: LlmProvider): ProbeDef {
     run: (get) => {
       const key = get(apiKeyName);
       const headers = protocol === 'anthropic'
-<<<<<<< HEAD
-        ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
+        ? { 'x-api-key': key, authorization: `Bearer ${key}`, 'anthropic-version': '2023-06-01' }
         : protocol === 'google'
           ? { 'x-goog-api-key': key }
           : bearer(key);
-=======
-        ? { 'x-api-key': key, authorization: `Bearer ${key}`, 'anthropic-version': '2023-06-01' }
-        : bearer(key);
->>>>>>> bf41df3 (feat: custom LLM providers via Settings (port from FrameHandsomez) (#2))
       const root = resolveLlmBaseUrl(provider, get(baseUrlName), AI_SDK_BASE_URL_FORMAT);
       return fetch(`${root}/models`, { signal: t(), headers });
     },

@@ -156,7 +156,7 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
           className="cc-caption-style-save"
           disabled={!current}
           title={current ? t('把当前模板/覆盖样式保存为用户预设') : t('请先启用字幕')}
-          onClick={() => setNameDraft(`我的样式 ${new Date().toLocaleDateString()}`)}
+          onClick={() => setNameDraft(`${t('我的样式')} ${new Date().toLocaleDateString()}`)}
         >
           {t('＋ 保存当前样式...')}
         </button>

@@ -1,4 +1,5 @@
 import type { DesignStyle, ProjectDoc, TimelineState } from '../editor/types';
+import { t, getLocale } from '../i18n/locale';
 import type { LlmProvider } from '../../shared/llm-providers';
 import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 import {
@@ -39,7 +40,7 @@ export function resetProjectStoreMemory(): void {
 const tlId = () => `tl_${newId()}`;
 
 /** wrap a single timeline into a one-sequence project (new projects + migration). */
-export function docFromTimeline(ts: TimelineState, name = '序列 1'): ProjectDoc {
+export function docFromTimeline(ts: TimelineState, name = t('序列 1')): ProjectDoc {
   const id = tlId();
   const { assets = [], ...state } = ts;
   const timeline = normalizeTimelineTracks({ ...state, id, name, order: 0 });
@@ -170,7 +171,7 @@ const normalizeScenarios = (values: string[] | undefined): string[] | undefined 
 };
 
 const uniqueOwnedStyleName = (requested: string, styles: OwnedStyle[], exceptId?: string): string => {
-  const base = requested.trim() || '未命名风格';
+  const base = requested.trim() || t('未命名风格');
   const names = new Set(styles.filter((style) => style.id !== exceptId).map((style) => style.name));
   if (!names.has(base)) return base;
   let suffix = 2;
@@ -194,7 +195,7 @@ export async function saveOwnedStyle(
   style: DesignStyle,
   metadata: OwnedStyleMetadata = {},
 ): Promise<OwnedStyle> {
-  const trimmed = name.trim() || '未命名风格';
+  const trimmed = name.trim() || t('未命名风格');
   const current = await loadOwnedStyles();
   const existing = current.find((s) => s.name === trimmed);
   const thumbnailUrl = metadata.thumbnailUrl === undefined
@@ -388,7 +389,7 @@ export async function duplicateProject(id: string, name?: string): Promise<Proje
   if (!doc) return null;
   // Allow duplicating soft-deleted sources too (copy is active).
   const src = (await readIndex()).find((m) => m.id === id);
-  const copyName = (name?.trim() || `[Copy] ${src?.name ?? '工程'}`);
+  const copyName = (name?.trim() || `[Copy] ${src?.name ?? t('未命名工程')}`);
   return createProject(copyName, doc, src?.description ? { description: src.description } : undefined);
 }
 
@@ -463,7 +464,10 @@ const newId = () =>
 // Auto-name new empty projects with a generated adjective/noun combination.
 const ADJ = ['流光', '静默', '暖阳', '深蓝', '轻盈', '锋利', '柔和', '斑斓', '清冽', '灼热', '朦胧', '澄澈'];
 const NOUN = ['序曲', '航迹', '棱镜', '潮汐', '织机', '回响', '飞羽', '砂丘', '苔原', '穹顶', '流域', '星图'];
+const ADJ_EN = ['Aurora', 'Silent', 'Warm Sun', 'Deep Blue', 'Lithe', 'Sharp', 'Soft', 'Vivid', 'Crisp', 'Fiery', 'Hazy', 'Lucid'];
+const NOUN_EN = ['Prelude', 'Trail', 'Prism', 'Tide', 'Loom', 'Echo', 'Plume', 'Dune', 'Tundra', 'Dome', 'Basin', 'Starmap'];
 export function randomProjectName(): string {
+  const en = getLocale() === 'en';
   const pick = (a: string[]) => a[Math.floor(Math.random() * a.length)];
-  return `${pick(ADJ)}${pick(NOUN)}`;
+  return `${pick(en ? ADJ_EN : ADJ)}${en ? ' ' : ''}${pick(en ? NOUN_EN : NOUN)}`;
 }

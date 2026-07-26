@@ -89,7 +89,7 @@ export default function App() {
     (async () => {
       let list = await listProjects();
       if (list.length === 0 && !(await hasProjectHistory())) {
-        list = [await createProject('示例工程', await seedDoc())];
+        list = [await createProject(t('示例工程'), await seedDoc())];
       }
       setProjects(list);
     })();

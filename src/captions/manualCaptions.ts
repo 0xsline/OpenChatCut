@@ -1,4 +1,5 @@
 import type { TimelineItem } from '../editor/types';
+import { t } from '../i18n/locale';
 import type { TranscriptWord } from '../transcript/types';
 import { normalizeCaptionSourceEntries } from './sourceOrder';
 import { CAPTION_STYLE_BY_ID } from './styles';
@@ -35,7 +36,7 @@ export function newManualEntry(number: number): CaptionSourceEntry {
   return {
     id: laneId,
     itemId: `manual:${laneId}`,
-    label: `手动字幕 ${number}`,
+    label: t('手动字幕 {n}', { n: number }),
     words: [],
   };
 }

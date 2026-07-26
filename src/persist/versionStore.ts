@@ -1,5 +1,6 @@
 // 版本历史(/api/versions):按工程存的具名快照列表,恢复时复用
 // migrateProjectDoc 校验。与 projectStore 共用本机服务端 KV。
+import { t } from '../i18n/locale';
 import { migrateProjectDoc } from './projectStore';
 import { kvGet as idbGet, kvSet as idbSet } from './sharedKv';
 import type { ProjectDoc } from '../editor/types';
@@ -56,7 +57,7 @@ const newId = () =>
 
 /** 保存当前工程文档为一个具名快照(前插,最新在前)。 */
 export async function saveVersion(projectId: string, name: string, doc: ProjectDoc): Promise<ProjectVersion> {
-  const version: ProjectVersion = { id: newId(), name: name.trim() || '未命名版本', createdAt: Date.now(), doc };
+  const version: ProjectVersion = { id: newId(), name: name.trim() || t('未命名版本'), createdAt: Date.now(), doc };
   const current = await readAll(projectId);
   await idbSet(versionsKey(projectId), [version, ...current]);
   return version;

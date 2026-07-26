@@ -3,6 +3,7 @@
 // (浏览器 UI 在 library/PluginExport.tsx),产物必过 validatePack 才允许下载。
 import { PLUGIN_FORMAT, type PluginItem, type PluginNumberProp, type PluginPack } from './types';
 import { validatePack } from './validate';
+import { t as i18n } from '../i18n/locale';
 import type { FxProperty, SerializableFxDef } from '../gl/fx/uniforms';
 import type { CustomTransitionDef } from '../gl/customTransitions';
 import type { TimelineItem, TransitionItem } from '../editor/types';
@@ -65,7 +66,7 @@ export function transitionCandidates(defs: CustomTransitionDef[], transitions: T
   for (const t of transitions) {
     if (t.type !== 'custom-shader' || !t.customFrag || seenFrag.has(t.customFrag)) continue;
     seenFrag.add(t.customFrag);
-    const name = t.customLabel ?? '自定义转场';
+    const name = t.customLabel ?? i18n('自定义转场');
     // 仅有 uniform 值,反推可调属性的保守范围
     const props: PluginNumberProp[] = Object.entries(t.customUniforms ?? {}).map(([k, v]) => ({
       key: k.replace(/^u_/, ''),

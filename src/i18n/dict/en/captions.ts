@@ -152,4 +152,6 @@ export default {
   '点击编辑这句字幕': 'Click to edit this caption line',
   '这句不再显示（词与时间线不受影响）': 'Hide this line (transcript words and timeline stay untouched)',
   '删除这句': 'Remove line',
+  '手动字幕 {n}': 'Manual captions {n}',
+  '未命名风格': 'Unnamed style',
 } as Record<string, string>;

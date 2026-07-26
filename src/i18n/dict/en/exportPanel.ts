@@ -114,4 +114,10 @@ export default {
   '导出失败': 'Export failed',
   '请先开启字幕': 'Turn on captions first',
   '当前字幕轨没有可导出的内容': 'The current caption track has nothing to export',
+  '包含 WebGL 片段特效': 'Includes WebGL clip effects',
+  '包含 WebGL 转场': 'Includes WebGL transitions',
+  '浏览器快导暂不转换时间线帧率': 'Quick export does not convert the timeline frame rate',
+  '当前浏览器不支持此编码配置': 'This browser does not support the selected encoding',
+  '浏览器快导失败': 'Quick export failed',
+  '{n} 个 MG · ProRes 4444': '{n} MGs · ProRes 4444',
 } as Record<string, string>;

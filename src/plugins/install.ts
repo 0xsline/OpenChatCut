@@ -7,6 +7,7 @@ import { listPacks, savePack, registerPack, unregisterPack, type InstalledPack }
 import type { PluginPack } from './types';
 import { createGlRuntime } from '../gl/runtime';
 import { compileTemplate } from '../template-host';
+import { t } from '../i18n/locale';
 
 export type InstallResult =
   | { ok: true; pack: InstalledPack }
@@ -32,7 +33,7 @@ async function probeShaders(pack: PluginPack): Promise<string[]> {
   try {
     runtime = createGlRuntime(canvas);
   } catch (e) {
-    return [`WebGL 不可用,无法校验 shader:${e instanceof Error ? e.message : String(e)}`];
+    return [t('WebGL 不可用,无法校验 shader:{msg}', { msg: e instanceof Error ? e.message : String(e) })];
   }
   const src = document.createElement('canvas');
   src.width = 2;
@@ -44,7 +45,7 @@ async function probeShaders(pack: PluginPack): Promise<string[]> {
         if (item.type === 'transition') runtime.render(item.frag, src, src, 0.5, {});
         else for (const frag of item.passes ?? [item.frag]) runtime.renderFxChain([{ frag, uniforms: {} }], src);
       } catch (e) {
-        errors.push(`「${item.name}」shader 编译失败:${e instanceof Error ? e.message : String(e)}`);
+        errors.push(t('「{name}」shader 编译失败:{msg}', { name: item.name, msg: e instanceof Error ? e.message : String(e) }));
       }
     }
   } finally {
@@ -62,7 +63,7 @@ async function probeTemplates(pack: PluginPack): Promise<string[]> {
     try {
       compileTemplate(item.code);
     } catch (e) {
-      errors.push(`「${item.name}」模板编译失败:${e instanceof Error ? e.message : String(e)}`);
+      errors.push(t('「{name}」模板编译失败:{msg}', { name: item.name, msg: e instanceof Error ? e.message : String(e) }));
     }
   }
   return errors;
@@ -79,12 +80,12 @@ async function uploadCubes(pack: PluginPack): Promise<{ cubeUrls: Record<string,
       const res = await fetch(`/upload?name=${assetId}.cube&assetId=${assetId}`, { method: 'POST', body: item.cube });
       const body = (await res.json().catch(() => null)) as { path?: string; error?: string } | null;
       if (!res.ok || !body?.path) {
-        errors.push(`「${item.name}」.cube 上传失败:${body?.error ?? `HTTP ${res.status}`}`);
+        errors.push(t('「{name}」.cube 上传失败:{msg}', { name: item.name, msg: body?.error ?? `HTTP ${res.status}` }));
         continue;
       }
       cubeUrls[item.id] = body.path;
     } catch (e) {
-      errors.push(`「${item.name}」.cube 上传失败:${e instanceof Error ? e.message : String(e)}`);
+      errors.push(t('「{name}」.cube 上传失败:{msg}', { name: item.name, msg: e instanceof Error ? e.message : String(e) }));
     }
   }
   return { cubeUrls, errors };
@@ -102,7 +103,7 @@ export async function installFromText(text: string, opts?: InstallFromUrlOpts): 
   if (opts?.sha256) {
     const got = await sha256Hex(text);
     if (got !== opts.sha256.trim().toLowerCase()) {
-      return err([`SHA-256 不匹配(期望 ${opts.sha256.slice(0, 12)}…,实得 ${got.slice(0, 12)}…)`]);
+      return err([t('SHA-256 不匹配(期望 {expected}…,实得 {got}…)', { expected: opts.sha256.slice(0, 12), got: got.slice(0, 12) })]);
     }
   }
 
@@ -110,7 +111,7 @@ export async function installFromText(text: string, opts?: InstallFromUrlOpts): 
   try {
     json = JSON.parse(text);
   } catch {
-    return err(['不是合法 JSON']);
+    return err([t('不是合法 JSON')]);
   }
   const res = validatePack(json);
   if (!res.ok) return err(res.errors);
@@ -141,7 +142,7 @@ export async function installFromText(text: string, opts?: InstallFromUrlOpts): 
     if (previous) {
       try { await registerPack(previous); } catch { /* 尽力恢复 */ }
     }
-    return err([`注册失败:${e instanceof Error ? e.message : String(e)}`]);
+    return err([t('注册失败:{msg}', { msg: e instanceof Error ? e.message : String(e) })]);
   }
   try {
     await savePack(installed);
@@ -150,7 +151,7 @@ export async function installFromText(text: string, opts?: InstallFromUrlOpts): 
     if (previous) {
       try { await registerPack(previous); } catch { /* ignore */ }
     }
-    return err([`写入本地失败:${e instanceof Error ? e.message : String(e)}`]);
+    return err([t('写入本地失败:{msg}', { msg: e instanceof Error ? e.message : String(e) })]);
   }
   return { ok: true, pack: installed };
 }
@@ -160,10 +161,10 @@ export async function installFromUrl(url: string, opts?: InstallFromUrlOpts): Pr
   let text: string;
   try {
     const res = await fetch(url);
-    if (!res.ok) return err([`下载失败:HTTP ${res.status}`]);
+    if (!res.ok) return err([t('下载失败:HTTP {status}', { status: res.status })]);
     text = await res.text();
   } catch (e) {
-    return err([`下载失败(可能被 CORS 拦):${e instanceof Error ? e.message : String(e)}。可下载文件后用「选文件」安装`]);
+    return err([t('下载失败(可能被 CORS 拦):{msg}。可下载文件后用「选文件」安装', { msg: e instanceof Error ? e.message : String(e) })]);
   }
   return installFromText(text, {
     ...opts,

@@ -153,4 +153,10 @@ export default {
   '自定义转场 · {n}': 'Custom transitions · {n}',
   '时间线 MG · {n}': 'Timeline MGs · {n}',
   '导出 JSON': 'Export JSON',
+  '未命名模板': 'Untitled template',
+  '共享工程数据库暂时不可用，工程未删除': 'Shared project database temporarily unavailable; project not deleted',
+  'sandbox 拒绝：检测到「{reason}」': 'Sandbox rejected: detected "{reason}"',
+  'template: 找不到 `const NAME = (...)` 声明': 'template: cannot find `const NAME = (...)` declaration',
+  'template: babel 无输出': 'template: babel produced no output',
+  '{name} 扩展模板': '{name} extension template',
 } as Record<string, string>;

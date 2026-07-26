@@ -4,6 +4,7 @@
 // mediaBlobStore(留档)+ 不可达就直接重发布到本端 server——路径恒 /media/uploads/
 // 与物理端解耦,时间线 src 原样可用(机制同 mediaBlobStore 的新机恢复)。
 import type { ProjectDoc } from '../editor/types';
+import { t } from '../i18n/locale';
 import {
   createProject, isPersistedChat, loadChat, loadCreativeMode, loadProject,
   migrateProjectDoc, saveChat, saveCreativeMode,
@@ -106,16 +107,16 @@ export function parseProjectEnvelope(
   try {
     raw = JSON.parse(text);
   } catch {
-    return { error: '不是合法的 JSON 文件' };
+    return { error: t('不是合法的 JSON 文件') };
   }
-  if (!raw || typeof raw !== 'object') return { error: '文件内容不是对象' };
+  if (!raw || typeof raw !== 'object') return { error: t('文件内容不是对象') };
   const r = raw as Record<string, unknown>;
   if (r.format !== PROJECT_EXPORT_FORMAT) {
-    return { error: `格式不识别(需要 ${PROJECT_EXPORT_FORMAT})` };
+    return { error: t('格式不识别(需要 {format})', { format: PROJECT_EXPORT_FORMAT }) };
   }
-  if (typeof r.name !== 'string' || !r.name.trim()) return { error: '缺工程名' };
+  if (typeof r.name !== 'string' || !r.name.trim()) return { error: t('缺工程名') };
   const doc = migrateProjectDoc(r.doc, migrationOptions);
-  if (!doc) return { error: '工程数据(doc)校验不通过' };
+  if (!doc) return { error: t('工程数据(doc)校验不通过') };
   const media = Array.isArray(r.media) ? r.media.filter(isMediaEntry) : [];
   const chat = isPersistedChat(r.chat) ? r.chat : undefined;
   const creativeMode = typeof r.creativeMode === 'string' && r.creativeMode ? r.creativeMode : undefined;
@@ -166,7 +167,7 @@ export interface ProjectExportResult {
 
 export async function buildProjectExport(id: string, name: string): Promise<ProjectExportResult> {
   const doc = await loadProject(id);
-  if (!doc) throw new Error('工程不存在或已损坏');
+  if (!doc) throw new Error(t('工程不存在或已损坏'));
   const chat = await loadChat(id);
   const creativeMode = await loadCreativeMode(id);
   const srcs = collectUploadSrcs(doc);

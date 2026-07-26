@@ -11,7 +11,7 @@ import {
   type SoundEffect,
 } from '../audio/soundLibrary';
 import { Icon } from '../components/icons';
-import { useT } from '../i18n/locale';
+import { t, useT } from '../i18n/locale';
 import { setLibraryDrag } from './drag';
 
 // Sound-library tab:
@@ -39,7 +39,7 @@ function matchesQuery(s: SoundEffect, q: string): boolean {
   if (!tokens.length) return true;
   const hay = [
     s.name,
-    s.desc,
+    t(s.desc),
     s.group,
     ...s.keywords,
     SOUND_GROUPS.find((g) => g.id === s.group)?.name ?? '',
@@ -182,7 +182,7 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
                 role="option"
                 aria-selected={isPlaying}
                 className={`cc-sound-row${isPlaying ? ' active' : ''}`}
-                title={t('{desc} · 可拖到时间线音轨', { desc: s.desc })}
+                title={t('{desc} · 可拖到时间线音轨', { desc: t(s.desc) })}
                 draggable
                 onDragStart={(e) => {
                   setLibraryDrag(e, {

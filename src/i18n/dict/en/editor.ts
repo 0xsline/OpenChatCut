@@ -27,4 +27,11 @@ export default {
   '柔化擦除转场': 'Soft Wipe',
   '甩镜转场': 'Whip Pan',
   '圆形擦除转场': 'Circle Wipe',
+  '序列': 'Sequence',
+  '序列 {n}': 'Sequence {n}',
+  '副本': 'Copy',
+  '旁白': 'Voiceover',
+  '序列 1': 'Sequence 1',
+  '未命名版本': 'Untitled version',
+  '双击编辑文字': 'Double-click to edit text',
 } as Record<string, string>;

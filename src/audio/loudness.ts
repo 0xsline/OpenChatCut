@@ -1,3 +1,5 @@
+import { t } from '../i18n/locale';
+
 // 响度归一分析核心。命名风格同 isolate_voice(动词_名词)。
 //
 // 拆两半:纯函数(可在 node 下跑 check,无 DOM 依赖)+ 浏览器专用(fetch+WebAudio 解码)。
@@ -55,7 +57,7 @@ function mixToMono(buffer: AudioBuffer): Float32Array {
  * →测积分响度。浏览器专用;node 环境下不该被调到(OfflineAudioContext 不存在)。 */
 export async function analyzeClipLoudness(src: string): Promise<number> {
   const res = await fetch(src);
-  if (!res.ok) throw new Error(`加载音频失败: ${src} (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(t('加载音频失败: {src} (HTTP {status})', { src, status: res.status }));
   const arrayBuffer = await res.arrayBuffer();
   // 长度只是占位;真实采样率/声道数以 decodeAudioData 的解码结果为准。
   const ctx = new OfflineAudioContext(1, 1, 44100);

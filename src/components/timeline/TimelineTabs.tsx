@@ -74,7 +74,7 @@ export function TimelineTabs({ doc, commands }: TimelineTabsProps) {
       <button onClick={() => commands.createTimeline()} title={t('新建序列')} style={tabBtn}>{t('＋序列')}</button>
       <button onClick={() => commands.duplicateTimeline(doc.activeTimelineId)} title={t('复制当前序列')} style={{ ...tabBtn, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="copy" size={13} />{t('复制')}</button>
       <button
-        onClick={() => commands.duplicateTimeline(doc.activeTimelineId, { retarget: { width: 1080, height: 1920, fit: 'cover' }, name: '竖屏' })}
+        onClick={() => commands.duplicateTimeline(doc.activeTimelineId, { retarget: { width: 1080, height: 1920, fit: 'cover' }, name: t('竖屏') })}
         title={t('把当前序列复制为 9:16 竖屏（长转短）')}
         style={{ ...tabBtn, display: 'inline-flex', alignItems: 'center', gap: 4 }}
       ><Icon name="swap" size={13} />{t('竖屏副本')}</button>

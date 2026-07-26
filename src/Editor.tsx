@@ -652,7 +652,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           onReviewItem={(request) => setReviewRequest({ ...request, nonce: Date.now() })}
           onRecordVoiceover={async (blob) => {
             const ext = blob.type.includes('ogg') ? 'ogg' : 'webm';
-            const asset = await importMedia(new File([blob], `旁白.${ext}`, { type: blob.type }), state.fps);
+            const asset = await importMedia(new File([blob], `${t('旁白')}.${ext}`, { type: blob.type }), state.fps);
             ingestToPool(asset); // 旁白 auto-transcribes; the placed A1 clip backfills on completion
             commands.addMediaItem(asset, { track: 'A1', startFrame: getPlayhead() });
           }} />
