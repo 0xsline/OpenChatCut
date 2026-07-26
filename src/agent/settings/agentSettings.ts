@@ -74,34 +74,42 @@ export function agentSettingsPrompt(s: Pick<AgentSettings, 'mgTier' | 'planMode'
   return `\n\n<agent_settings>\n${lines.join('\n')}\n</agent_settings>`;
 }
 
-// ── 内联 <thinking> 抽取(思考模式的展示路径) ─────────────────────────────────
-// 部分中转/模型把推理以字面 <thinking>…</thinking> 混在文本流里,而非原生 thinking
-// 块;两者都折成 thinking 块展示。跨 chunk 状态机:
-// 进入标签后的文本进 thinking 通道不进正文;闭合后恢复;流结束时未闭合 → 余量全归
-// thinking;半截开标签(如 "<thin")最终没成标签 → 原样算正文。
+// ── 内联思考标签抽取(思考模式的展示路径) ─────────────────────────────────
+// 部分中转/模型把推理以字面标签混在文本流里,而非原生 thinking 块:
+// DeepSeek/MiniMax/GLM/Qwen/MiMo 系常用 <think>,部分中转与提示词习惯用 <thinking>。
+// 两种成对标签都识别,对所有厂商统一生效;原生 reasoning 通道不经过这里。
+// 跨 chunk 状态机:进入开标签后的文本进 thinking 通道不进正文;遇到与开标签配对的
+// 闭标签才恢复正文;流结束时未闭合 → 余量全归 thinking;半截开标签(如 "<thin")
+// 最终没成标签 → 原样算正文。
 
-const OPEN_TAG = '<thinking>';
-const CLOSE_TAG = '</thinking>';
+const TAG_PAIRS: ReadonlyArray<readonly [open: string, close: string]> = [
+  ['<think>', '</think>'],
+  ['<thinking>', '</thinking>'],
+];
+const OPEN_TAGS = TAG_PAIRS.map(([open]) => open);
 
 export interface ThinkingSplit {
   text: string;
   thinking: string;
 }
 
-/** `s` 结尾处「可能是 tag 开头」的最长真前缀长度 — 留到下一 chunk 再定夺。 */
-function danglingPrefixLen(s: string, tag: string): number {
-  const max = Math.min(s.length, tag.length - 1);
-  for (let n = max; n > 0; n--) {
-    if (s.endsWith(tag.slice(0, n))) return n;
+/** `s` 结尾处「可能是某个 tag 开头」的最长真前缀长度 — 留到下一 chunk 再定夺。 */
+function danglingPrefixLen(s: string, tags: readonly string[]): number {
+  let hold = 0;
+  for (const tag of tags) {
+    const max = Math.min(s.length, tag.length - 1);
+    for (let n = max; n > hold; n--) {
+      if (s.endsWith(tag.slice(0, n))) { hold = n; break; }
+    }
   }
-  return 0;
+  return hold;
 }
 
 export function createInlineThinkingExtractor(): {
   push(chunk: string): ThinkingSplit;
   flush(): ThinkingSplit;
 } {
-  let inside = false; // 当前扫描位置是否在 <thinking> 标签内
+  let closeTag: string | null = null; // 非空 = 在思考块内,等这一对的闭标签
   let held = ''; // 结尾半截标签候选,并入下一 chunk
 
   const scan = (input: string): ThinkingSplit => {
@@ -109,19 +117,33 @@ export function createInlineThinkingExtractor(): {
     let thinking = '';
     let s = input;
     for (;;) {
-      const tag = inside ? CLOSE_TAG : OPEN_TAG;
-      const i = s.indexOf(tag);
-      if (i >= 0) {
-        if (inside) thinking += s.slice(0, i);
-        else text += s.slice(0, i);
-        s = s.slice(i + tag.length);
-        inside = !inside;
+      if (closeTag) {
+        const i = s.indexOf(closeTag);
+        if (i >= 0) {
+          thinking += s.slice(0, i);
+          s = s.slice(i + closeTag.length);
+          closeTag = null;
+          continue;
+        }
+        const hold = danglingPrefixLen(s, [closeTag]);
+        thinking += s.slice(0, s.length - hold);
+        held = s.slice(s.length - hold);
+        return { text, thinking };
+      }
+      let openAt = -1;
+      let openPair: readonly [open: string, close: string] | undefined;
+      for (const pair of TAG_PAIRS) {
+        const i = s.indexOf(pair[0]);
+        if (i >= 0 && (openAt < 0 || i < openAt)) { openAt = i; openPair = pair; }
+      }
+      if (openPair) {
+        text += s.slice(0, openAt);
+        s = s.slice(openAt + openPair[0].length);
+        closeTag = openPair[1];
         continue;
       }
-      const hold = danglingPrefixLen(s, tag);
-      const emit = s.slice(0, s.length - hold);
-      if (inside) thinking += emit;
-      else text += emit;
+      const hold = danglingPrefixLen(s, OPEN_TAGS);
+      text += s.slice(0, s.length - hold);
       held = s.slice(s.length - hold);
       return { text, thinking };
     }
@@ -137,7 +159,7 @@ export function createInlineThinkingExtractor(): {
       const rest = held;
       held = '';
       // 未闭合 → 余量(含半截闭标签)全归 thinking;标签外的半截开标签只是普通文本。
-      return inside ? { text: '', thinking: rest } : { text: rest, thinking: '' };
+      return closeTag ? { text: '', thinking: rest } : { text: rest, thinking: '' };
     },
   };
 }
