@@ -313,17 +313,12 @@ export class KikiClient {
    *  boundaries into ≤900-char chunks, each synthed, and the MP3 bytes concatenated. */
   async generate(opencutVoiceId: string, text: string, language: string): Promise<Buffer> {
     if (!text || !text.trim()) throw new KikiError('KikiVoice generate: empty text');
-    // Authenticate early with a clear message. An unauthenticated session makes get-sig return
-    // empty fields, which cascades into a misleading "Invalid URL" (empty voiceListUrl →
-    // net.request('')). Fail fast here instead.
-    const authed = await this.checkStatus();
-    if (!authed) {
-      throw new KikiError(
-        'KikiVoice belum terhubung. App otomatis mengambil sesi anonim saat boot; jika masih gagal, buka Settings → 配音/TTS → KikiVoice → Connect.',
-        true,
-      );
-    }
     const lang: 'id' | 'en' = language === 'id' ? 'id' : 'en';
+    // resolveVoice → getSig validates the session (empty sig ⇒ not authenticated, throws a clear
+    // message). We deliberately do NOT gate on checkStatus() here — that endpoint returns
+    // authenticated=false even when the session IS synth-ready (validated at boot), which caused
+    // a false "belum terhubung" block. The real auth test is createTask below; a stale session
+    // surfaces there with a concrete 777/auth error and onRevalidateNeeded re-solves GeeTest.
     const { voiceId, promptText } = await this.resolveVoice(opencutVoiceId || 'joni');
     const chunks = splitForKiki(text, 900);
     const audioChunks: Buffer[] = [];

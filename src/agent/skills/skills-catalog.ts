@@ -120,15 +120,24 @@ In the IMPACT phase, dedicate 2-3 scenes connecting the global topic to Indonesi
 
 Target ~2.0 words/second. Every sentence must ADVANCE the story or reveal NEW information. BANNED filler: "sekarang kita akan membahas", "seperti yang kita ketahui", "perlu dicatat bahwa", "tidak dapat dipungkiri", "pada kesempatan kali ini". Mix vivid action imagery with short punchy dramatic sentences. Write narration in Bahasa Indonesia unless the user asks otherwise. Keep scenes concise — if narration for a scene exceeds ~6 seconds, split it into multiple shorter clips yourself, each with a clear primary visual subject.
 
+## Word Budget (NON-NEGOTIABLE — long-form videos)
+
+LLMs tend to UNDER-write. A 20-minute video at 2.0 wps needs ~2400 words of narration, but without an explicit budget the agent typically produces only ~500 and the video lands at ~4 minutes. So enforce a hard word budget:
+
+- COMPUTE the target up front: target_words = duration_seconds × 2.0, rounded up. Examples: 20 min (1200s) → ~2400 words; 10 min → ~1200; 5 min → ~600; 2 min → ~240. If the user states a word count (e.g. "2500 kata"), use the LARGER of that and the computed target as the FLOOR.
+- BREAK THE TARGET INTO SCENES before writing: choose scene_count so scene_words = target_words / scene_count lands ~40-80 words/scene (≈20-40s each). Examples: 2400 words → 40 scenes × 60 words, or 30 scenes × 80 words. Write the breakdown down (phase → scene → word budget each) and show it to the user.
+- WRITE EVERY SCENE TO ITS WORD BUDGET — do not stop early, do not compress. If a scene feels thin, add concrete detail (specs, numbers, quotes, named events, dates) until it hits its budget.
+- VERIFY before declaring done: SUM the actual word counts of every scene's narration. If the total is < 90% of target_words (or below the user's requested count), EXPAND — add scenes or lengthen thin ones — until it reaches the floor. Do NOT declare the video finished while under budget.
+- Treat anything under ~90% of the requested length as INCOMPLETE. "Bikin 2500 kata" means ≥2250 words actually written, not 500.
+
 ## Voiceover Discipline (KikiVoice 1000-char limit — CRITICAL)
 
-KikiVoice (kiki_core) REJECTS text longer than 1000 characters per request (TEXT_TOO_LONG). A single narration block for a 5-min video is already ~3000+ chars, so one giant voiceover ALWAYS fails:
+KikiVoice (kiki_core) REJECTS text longer than 1000 characters per request (TEXT_TOO_LONG), and a 5-min narration is already ~3000+ chars. But do NOT fix this by firing submit_voice per tiny scene — that means 20-30+ calls for a 20-min video (wasteful, burns token/turn budget). The right granularity is a SEGMENT:
 
-- NEVER submit one giant voiceover for the whole video — it will fail with TEXT_TOO_LONG.
-- Generate ONE \`submit_voice\` call PER SCENE (each scene ~6-10s = ~120-200 chars, safely under 1000). One scene = one audio clip asset.
-- Place each scene's audio clip on track A1 BACK-TO-BACK in scene order: clip 2 starts where clip 1 ends, clip 3 where clip 2 ends, etc. No overlap, no gap.
-- For videos longer than ~5 minutes, group scenes into SEGMENTS (~1-2 minutes each) and generate + assemble ONE SEGMENT AT A TIME. Do NOT try to voice the whole 10-20 minute script in one pass — manage your turn budget and check in with the user between segments.
-- Spell digits/symbols out (Text Normalization) BEFORE splitting, so each scene's text is already normalised.
+- Generate ONE submit_voice call per SEGMENT (one babak/phase = ~2-4 minutes of narration). Send the WHOLE segment's narration text in that single call — the server auto-splits anything over 1000 chars internally and concatenates the audio, so you do NOT split it yourself.
+- Do NOT split into micro-clips (NO narasi_02a / 02b / 02c / 02d). One segment = one submit_voice with the full segment text. A 20-min video is ~4-6 voice calls total.
+- Place each segment's audio clip on track A1 BACK-TO-BACK in order: segment 2 starts where segment 1 ends. No overlap, no gap.
+- Spell digits/symbols out (Text Normalization) BEFORE submitting, so each segment's text is already normalised.
 
 ## Text Normalization (TTS-critical)
 
@@ -171,8 +180,8 @@ Title = [DRAMATIC SUBJECT] + [EMOTION TRIGGER] + [URGENCY MARKER]. Use at least 
 
 1. Read project state: target duration, aspect ratio, platform, narration language (default Bahasa Indonesia).
 2. Research the topic (web_search). Collect facts; mark real-events that need real footage.
-3. Plan the FUNNEL ARC: scene count per phase + the Indonesia-connection scenes.
-4. Write narration per scene at ~2 words/sec. For longer scenes, split into ~6s clips, each visually self-contained with a clear primary subject.
+3. Plan the FUNNEL ARC + WORD BUDGET: compute target_words = duration_seconds × 2.0 (or the user's requested count, whichever is larger), break it into scene_count × scene_words (~40-80 words/scene), and assign a word budget to each scene per phase. Include the Indonesia-connection scenes. Show the breakdown + total to the user.
+4. Write narration per scene TO ITS WORD BUDGET (do not under-write — see Word Budget). For longer scenes, split into ~6s clips, each visually self-contained. After writing all scenes, SUM the word counts and EXPAND any under-budget scene until the total ≥ 90% of target.
 5. Generate voiceover with submit_voice (load the voice skill first; confirm a concrete voice preset before submitting). For Bahasa Indonesia narration, prefer KikiVoice (provider: "kikivoice", voiceId: "joni" — bundled Indonesian clone, desktop only) when available; otherwise use a configured ElevenLabs / Doubao / MiniMax voice. Spell digits / symbols / abbreviations out per the Text Normalization section before submitting. Read the REAL TTS audio duration and fit scenes to it, not to estimates.
 6. Select visuals per scene with search_stock_media, following the Stock Search Strategy above (English queries, subject-fronted, action-for-people). For maps / geography use stock map footage or a static map image (interactive maps not available yet). For breaking-news scenes, see the breaking-news limitation — stock will not carry them.
 7. Add at most ONE motion-graphic / data overlay per scene, ONLY when the scene names a key number, comparison, or introduces a new subject (person / place / org). Use whatever motion graphic tools are available in OpenChatCut — explore search_templates, submit_motion_graphic, or create_motion_graphic_from_code and pick the best fit for the data. Don't assume specific template names; let the available tools guide the choice. Keep overlays clean, minimal, and readable (documentary style).

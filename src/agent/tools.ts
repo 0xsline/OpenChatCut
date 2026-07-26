@@ -39,6 +39,7 @@ import { UPLOAD_TOOL_SCHEMAS, UPLOAD_TOOL_NAMES, execUploadTool } from './tools/
 import { FRICTION_TOOL_SCHEMAS, FRICTION_TOOL_NAMES, execFrictionTool } from './tools/friction-tools';
 import { READ_PROJECT_TOOL_SCHEMAS, READ_PROJECT_TOOL_NAMES, execReadProjectTool } from './tools/read-project-tools';
 import { MG_CODE_TOOL_SCHEMAS, MG_CODE_TOOL_NAMES, execMgCodeTool } from './tools/mg-code-tools';
+import { PLANNING_TOOL_SCHEMAS, PLANNING_TOOL_NAMES, execPlanningTool } from './tools/planning-tools';
 import { PLUGIN_SKILL_TOOL_SCHEMAS, PLUGIN_SKILL_TOOL_NAMES, execPluginSkillTool } from './tools/plugin-skill-tools';
 import { RUN_CODE_TOOL_SCHEMAS, RUN_CODE_TOOL_NAMES, execRunCodeTool } from './tools/run-code-tools';
 import { PROBE_TOOL_SCHEMAS, PROBE_TOOL_NAMES, execProbeTool } from './tools/probe-tools';
@@ -311,6 +312,8 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...COLOR_SCOPE_TOOL_SCHEMAS,
   // 节拍检测（detect_beats：本机 DSP 出 bpm/拍点/强拍，可落时间线标记做卡点）
   ...BEAT_TOOL_SCHEMAS,
+  // Deterministic planning + word-budget verification (long-form narration gate — plan_scenes / verify_word_budget)
+  ...PLANNING_TOOL_SCHEMAS,
   // ToolSearch — keyword discovery over this catalog
   {
     name: 'ToolSearch',
@@ -445,6 +448,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (SILENCE_TOOL_NAMES.has(name)) return execSilenceTool(name, args, ctx);
   if (COLOR_SCOPE_TOOL_NAMES.has(name)) return execColorScopeTool(name, args, ctx);
   if (BEAT_TOOL_NAMES.has(name)) return execBeatTool(name, args, ctx);
+  if (PLANNING_TOOL_NAMES.has(name)) return execPlanningTool(name, args);
   if (AUDIO_ASSET_TOOL_NAMES.has(name)) return execAudioAssetTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {
