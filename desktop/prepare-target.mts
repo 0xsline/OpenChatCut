@@ -2,7 +2,7 @@
 //   ① chrome-headless-shell(渲染/导出用)→ staging 目录 desktop-dist/chrome-headless-shell
 //      (electron-builder.config.mjs 的 extraResources 恒指这里,换目标就换里面内容);
 //   ② @remotion/compositor-<目标>(npm 只装本机平台的,交叉出包要手动补进 node_modules)。
-// 用法:npx tsx desktop/prepare-target.mts darwin-arm64|darwin-x64|win32-x64
+// 用法:npx tsx desktop/prepare-target.mts darwin-arm64|darwin-x64|win32-x64|linux-x64
 // 下载源:chrome-for-testing 公共 CDN(与 @remotion/renderer 自身下载同源同版本);
 // compositor 走 npm pack(吃 .npmrc 镜像配置)。均带本地缓存,重复运行秒完。
 import { execFileSync } from 'node:child_process';
@@ -32,6 +32,9 @@ const TARGETS: Record<string, Target> = {
   'darwin-arm64': { cft: 'mac-arm64', compositor: '@remotion/compositor-darwin-arm64', bin: 'chrome-headless-shell' },
   'darwin-x64': { cft: 'mac-x64', compositor: '@remotion/compositor-darwin-x64', bin: 'chrome-headless-shell' },
   'win32-x64': { cft: 'win64', compositor: '@remotion/compositor-win32-x64-msvc', bin: 'chrome-headless-shell.exe' },
+  // chrome-for-testing 只发 linux64(无 linux-arm64),桌面 Linux 仅支持 x64;
+  // AppImage 面向 glibc 发行版,compositor 取 -gnu 变体。
+  'linux-x64': { cft: 'linux64', compositor: '@remotion/compositor-linux-x64-gnu', bin: 'chrome-headless-shell' },
 };
 
 async function chromeVersion(): Promise<string> {

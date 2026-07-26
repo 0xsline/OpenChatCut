@@ -21,7 +21,7 @@ const COMPOSITORS = [
   'darwin-arm64', 'darwin-x64', 'win32-x64-msvc',
   'linux-arm64-gnu', 'linux-arm64-musl', 'linux-x64-gnu', 'linux-x64-musl',
 ];
-const TARGET_COMPOSITOR = { 'darwin-arm64': 'darwin-arm64', 'darwin-x64': 'darwin-x64', 'win32-x64': 'win32-x64-msvc' };
+const TARGET_COMPOSITOR = { 'darwin-arm64': 'darwin-arm64', 'darwin-x64': 'darwin-x64', 'win32-x64': 'win32-x64-msvc', 'linux-x64': 'linux-x64-gnu' };
 const target = process.env.CC_EB_TARGET ?? `${process.platform}-${process.arch}`;
 const keep = TARGET_COMPOSITOR[target] ?? target;
 const hasMacSigningCertificate = Boolean(process.env.CSC_LINK || process.env.CSC_NAME);
@@ -69,5 +69,12 @@ export default {
   nsis: {
     oneClick: false,
     allowToChangeInstallationDirectory: true,
+  },
+  linux: {
+    target: ['AppImage'],
+    icon: 'public/openchatcut-icon.png',
+    category: 'AudioVideo',
+    // 显式定名:unpacked 目录与 CI 冒烟按 release/linux-unpacked/openchatcut 定位
+    executableName: 'openchatcut',
   },
 };

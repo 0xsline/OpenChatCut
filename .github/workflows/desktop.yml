@@ -57,6 +57,10 @@ jobs:
             os: windows-latest
             script: desktop:dist:win
             artifact: release/*.exe
+          - name: Linux-x64
+            os: ubuntu-latest
+            script: desktop:dist:linux
+            artifact: release/*.AppImage
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -92,6 +96,19 @@ jobs:
           CC_SMOKE: '1'
           CC_SMOKE_RENDER: '1'
         run: '& "release/win-unpacked/OpenChatCut.exe" | Out-Host'
+
+      - name: Smoke test Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          CC_SMOKE: '1'
+          CC_SMOKE_RENDER: '1'
+          ELECTRON_DISABLE_SANDBOX: '1'
+        run: |
+          # Ubuntu 24.04 默认限制非特权 userns,放开让 Electron / headless-shell 沙箱可用
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+          xvfb-run --auto-servernum release/linux-unpacked/openchatcut
 
       - uses: actions/upload-artifact@v7
         with:
@@ -129,13 +146,13 @@ jobs:
             sleep $((attempt * 15))
           done
 
-          find release-assets -type f \( -name '*.dmg' -o -name '*.exe' \) \
+          find release-assets -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' \) \
             -exec cp {} release-files/ \;
-          test "$(find release-files -type f | wc -l | tr -d ' ')" = 3
+          test "$(find release-files -type f | wc -l | tr -d ' ')" = 4
 
       - name: Generate checksums
         working-directory: release-files
-        run: sha256sum ./*.dmg ./*.exe > SHA256SUMS.txt
+        run: sha256sum ./*.dmg ./*.exe ./*.AppImage > SHA256SUMS.txt
 
       - name: Create GitHub Release
         shell: bash
@@ -163,6 +180,7 @@ jobs:
             if gh release upload "$GITHUB_REF_NAME" \
               release-files/*.dmg \
               release-files/*.exe \
+              release-files/*.AppImage \
               release-files/SHA256SUMS.txt \
               --repo "$GITHUB_REPOSITORY" \
               --clobber; then

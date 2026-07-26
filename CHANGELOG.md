@@ -8,6 +8,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / [未发布]
 
+### Added / 新增
+
+- Added Xiaomi MiMo as a built-in OpenAI-compatible Agent provider.
+  新增小米 MiMo 内置 OpenAI-compatible Agent 供应商。
+- Added a Linux x64 AppImage desktop build to the release pipeline.
+  发布流水线新增 Linux x64 AppImage 桌面构建。
+
+### Fixed / 修复
+
+- The collapsed thinking block now also recognizes inline `<think>` tags streamed by DeepSeek, MiniMax, GLM, Qwen, MiMo, and relays, in addition to `<thinking>`, uniformly across all providers.
+  折叠的思考过程块除 `<thinking>` 外，现在也识别 DeepSeek、MiniMax、GLM、Qwen、MiMo 及各类中转以内联 `<think>` 标签输出的推理，对所有供应商统一生效。
+- The desktop app now falls back to a random port when 5199 is taken instead of failing to launch; external MCP clients should use the origin from the startup log in that case.
+  5199 端口被占用时，桌面端现在回退到随机端口而不是启动失败；此时外部 MCP 客户端请改用启动日志中的实际地址。
+
 ## [0.1.3] - 2026-07-23
 
 ### Added / 新增
