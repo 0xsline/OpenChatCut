@@ -17,20 +17,31 @@ export function normalizeVector(vector: ArrayLike<number>): number[] {
   return Array.from(vector, (value) => Number(value) / scale);
 }
 
+/** 相对下限:低于最高分这个比例的结果丢掉。 */
+export const SEMANTIC_RELATIVE_FLOOR = 0.85;
+
 export function rankSemanticMatches(
   records: SemanticVectorRecord[],
   queryVector: number[],
   limit = SEMANTIC_RESULT_LIMIT,
 ): SemanticMatch[] {
   const normalizedQuery = normalizeVector(queryVector);
-  return records
-    .map((record) => ({
-      assetId: record.assetId,
-      sampleTime: record.sampleTime,
-      score: dot(record.vector, normalizedQuery),
-    }))
-    .toSorted((left, right) => right.score - left.score)
-    .slice(0, limit);
+  // 每个素材只留最高分的那一帧:一段视频会索引十几个采样点,不收敛的话同一个镜头
+  // 就能把整张结果列表占满,后面真正相关的素材反而挤不进来。
+  const best = new Map<string, SemanticMatch>();
+  for (const record of records) {
+    const score = dot(record.vector, normalizedQuery);
+    const prev = best.get(record.assetId);
+    if (!prev || score > prev.score) {
+      best.set(record.assetId, { assetId: record.assetId, sampleTime: record.sampleTime, score });
+    }
+  }
+  const ranked = [...best.values()].toSorted((left, right) => right.score - left.score);
+  // 明显不如最佳命中的就别混进来充数。最高分 ≤0 说明整体都不相关,这时不设下限,
+  // 由调用方看分数自己判断,免得一条都不返回。
+  const top = ranked[0]?.score ?? 0;
+  const floor = top > 0 ? top * SEMANTIC_RELATIVE_FLOOR : -Infinity;
+  return ranked.filter((match) => match.score >= floor).slice(0, limit);
 }
 
 export function findDuplicateAssets(
