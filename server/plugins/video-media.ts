@@ -3,21 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 
-import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
+import { isSafeUploadName, mimeFor, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import { presignGetUpload, putUploadFile } from '../r2.ts';
 import { fetchGeneratedResult } from './result-download.ts';
 
-function mimeFor(path: string): string {
-  const extension = extname(path).toLowerCase();
-  if (extension === '.png') return 'image/png';
-  if (extension === '.webp') return 'image/webp';
-  if (extension === '.wav') return 'audio/wav';
-  if (extension === '.mp4') return 'video/mp4';
-  if (extension === '.webm') return 'video/webm';
-  if (extension === '.mp3') return 'audio/mpeg';
-  return 'image/jpeg';
-}
-
+// MIME 判定统一用 media-dir 那张表(上传准入用的是同一张)。这里原本有一份只认 6 种
+// 扩展名的副本,其余一律兜底成 image/jpeg——.heic/.heif/.avif/.gif/.mov 这些确实能进
+// /media/uploads 的类型,会被贴上 image/jpeg 标签连同非 JPEG 字节一起发给供应商。
 export async function mediaDataUrl(path: string): Promise<string> {
   const { file } = localMedia(path);
   const bytes = await readFile(file);
