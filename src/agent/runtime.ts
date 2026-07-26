@@ -19,6 +19,7 @@ import {
   PROVIDER,
 } from './client';
 import { makeMessagesPortable, normalizeLlmMessages } from './messages';
+import { describeTimelineDelta, snapshotTimeline } from './timelineDelta';
 import {
   agentSettingsPrompt,
   createInlineThinkingExtractor,
@@ -117,15 +118,22 @@ function createAgentTools(
         }
 
         try {
+          // 工具前后各拍一次时间线快照:改动型工具直接把「实际改了什么」带回给
+          // 模型,省掉一次全量 read_project(只读工具的差分是 null,不加字段)。
+          const before = snapshotTimeline(ctx.getState());
           const result = await executeTool(schema.name, args, ctx);
-          onEvent({ type: 'tool', name: schema.name, args, result });
+          const changed = describeTimelineDelta(before, ctx.getState());
+          const enriched = changed && result && typeof result === 'object' && !Array.isArray(result)
+            ? { ...(result as Record<string, unknown>), changed }
+            : result;
+          onEvent({ type: 'tool', name: schema.name, args, result: enriched });
           const followup = (result as { __followup?: unknown } | null)?.__followup;
           if (typeof followup === 'string') {
             onEvent({ type: 'text-start' });
             onEvent({ type: 'text-delta', delta: followup });
             onFollowup?.();
           }
-          return result;
+          return enriched;
         } catch (error) {
           const failed = { error: errorMessage(error) };
           onEvent({ type: 'tool', name: schema.name, args, result: failed });

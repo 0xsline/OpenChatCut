@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isSafeUploadName, resolveUploadFile } from '../media-dir.ts';
 import { formatTimeLabel, tileContactSheet } from '../frame-grid.ts';
+import { ffmpegBin } from '../media-binaries.ts';
 
 const MAX_JSON = 32 * 1024;
 const MAX_SAMPLES = 20;
@@ -105,6 +106,77 @@ export function sampleTimesMs(fromMs: number, toMs: number, count: number): numb
   return Array.from({ length: n }, (_, i) => Math.round(lo + ((i + 0.5) / n) * span));
 }
 
+// ── 近重复剔除 ────────────────────────────────────────────────────────────
+// 均匀取样在固定机位素材上会得到 N 张几乎一样的图,白白烧掉视觉 token 也帮不上
+// 定位。先用 ffmpeg 场景检测挑出「画面真的变了」的时刻,不够再用均匀取样补齐。
+// 分析在缩到 160 宽、2fps 上做,成本有界;任何失败都静默退回均匀取样。
+
+/** 场景差异阈值(0..1):够低才能抓到机位内的动作变化,不只是硬切。 */
+const SCENE_THRESHOLD = 0.08;
+const SCENE_ANALYSIS_TIMEOUT_MS = 20_000;
+
+/** 画面显著变化的时刻(毫秒,升序)。失败返回空数组 = 调用方退回均匀取样。 */
+function sceneChangeTimesMs(input: string, fromMs: number, toMs: number): Promise<number[]> {
+  return new Promise((resolve) => {
+    const times: number[] = [];
+    const child = spawn(ffmpegBin(), [
+      '-nostdin', '-hide_banner',
+      '-ss', String(Math.max(0, fromMs) / 1000),
+      '-t', String(Math.max(0, toMs - fromMs) / 1000),
+      '-i', input,
+      '-an', '-sn',
+      '-vf', `scale=160:-2,fps=2,select='gt(scene,${SCENE_THRESHOLD})',showinfo`,
+      '-f', 'null', '-',
+    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let tail = '';
+    const done = (): void => { child.kill('SIGKILL'); resolve(times); };
+    const timer = setTimeout(done, SCENE_ANALYSIS_TIMEOUT_MS);
+    child.stderr?.on('data', (chunk: Buffer) => {
+      // 流式解析 pts_time,避免把整段 showinfo 攒在内存里
+      tail += String(chunk);
+      const lines = tail.split('\n');
+      tail = lines.pop() ?? '';
+      for (const line of lines) {
+        const m = /pts_time:([0-9.]+)/.exec(line);
+        if (m) times.push(Math.round(fromMs + Number(m[1]) * 1000));
+      }
+    });
+    child.on('error', () => { clearTimeout(timer); resolve([]); });
+    child.on('close', () => { clearTimeout(timer); resolve(times); });
+  });
+}
+
+/**
+ * 变化时刻优先、均匀取样补齐,凑够 count 个采样点(升序、互不挨太近)。
+ * 纯函数,便于测试。
+ */
+export function pickDistinctTimes(
+  candidates: readonly number[],
+  fromMs: number,
+  toMs: number,
+  count: number,
+): number[] {
+  const n = Math.max(1, Math.min(MAX_SAMPLES, Math.round(count)));
+  const lo = Math.max(0, fromMs);
+  const hi = Math.max(lo + 1, toMs);
+  const minGap = (hi - lo) / (n * 2); // 挨得太近的算同一处,不重复占位
+  const picked: number[] = [];
+  const tryPush = (t: number): void => {
+    if (picked.length >= n || t < lo || t >= hi) return;
+    if (picked.some((p) => Math.abs(p - t) < minGap)) return;
+    picked.push(t);
+  };
+  // 候选多于名额时按序均摊,避免只取到开头那一堆
+  const sorted = [...candidates].filter((t) => Number.isFinite(t)).sort((a, b) => a - b);
+  const stride = sorted.length > n ? sorted.length / n : 1;
+  for (let i = 0; i < sorted.length && picked.length < n; i += 1) {
+    if (stride > 1 && Math.floor(i % stride) !== 0) continue;
+    tryPush(sorted[i]!);
+  }
+  for (const t of sampleTimesMs(lo, hi, n)) tryPush(t);
+  return picked.sort((a, b) => a - b);
+}
+
 async function extractOneFrame(input: string, timeMs: number, outPath: string): Promise<void> {
   const ss = Math.max(0, timeMs / 1000);
   // -ss before -i for fast seek; fine for contact-sheet accuracy
@@ -162,7 +234,11 @@ export function extractFramesPlugin(): Plugin {
               ? Math.min(body.toMs, durationMs)
               : durationMs;
             const count = typeof body.count === 'number' ? body.count : DEFAULT_SAMPLES;
-            times = sampleTimesMs(fromMs, toMs, count);
+            // 变化处优先(固定机位不会再回 N 张同图);分析失败自动退回均匀取样
+            const scenes = await sceneChangeTimesMs(inputPath, fromMs, toMs);
+            times = scenes.length
+              ? pickDistinctTimes(scenes, fromMs, toMs, count)
+              : sampleTimesMs(fromMs, toMs, count);
           }
           if (!times.length) {
             sendJson(res, 400, { error: 'no sample times' });
