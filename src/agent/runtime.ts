@@ -8,7 +8,7 @@ import {
 } from 'ai';
 import type { AgentContext } from './context';
 import { TOOL_SCHEMAS, executeTool } from './tools';
-import { SYSTEM_PROMPT, designStylePrompt, creativeModePrompt, editorStatePrompt } from './systemPrompt';
+import { SYSTEM_PROMPT, assembleSystemPrompt, creativeModePrompt, designStylePrompt, editorStatePrompt } from './systemPrompt';
 import { capabilitiesPrompt } from './capabilities';
 import { findSkill } from './skills/skills-catalog';
 import { PLUGIN_SKILLS_INDEX } from './skills/plugin-skills';
@@ -163,13 +163,17 @@ export async function runAgent(
 ): Promise<LLMMessage[]> {
   const conv = normalizeLlmMessages(messages);
   const settings = loadAgentSettings();
-  const system = SYSTEM_PROMPT
-    + editorStatePrompt(ctx)
-    + capabilitiesPrompt()
-    + designStylePrompt(ctx.getDoc().designStyle)
-    + creativeModePrompt(findSkill(ctx.getCreativeMode()))
-    + PLUGIN_SKILLS_INDEX
-    + agentSettingsPrompt(settings);
+  // 顺序按「越不变的排越前」——提示词缓存匹配的是逐字节前缀,中间插一段每轮都变的
+  // 内容,它后面的一切(其余段落、上百个工具 schema、整段历史)就全部作废。
+  // editorStatePrompt 是实时时间线快照,必须排在最后一段;新增段落也一律加在它前面。
+  const system = assembleSystemPrompt([
+    SYSTEM_PROMPT,
+    capabilitiesPrompt(),
+    PLUGIN_SKILLS_INDEX,
+    agentSettingsPrompt(settings),
+    designStylePrompt(ctx.getDoc().designStyle),
+    creativeModePrompt(findSkill(ctx.getCreativeMode())),
+  ], editorStatePrompt(ctx));
 
   let reasoningFellBack = false;
   let toolTurns = 0;

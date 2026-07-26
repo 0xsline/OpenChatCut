@@ -10,6 +10,20 @@ import type { AgentContext } from './context';
 // 条目多时截断 —— 细节仍走 read_timeline。快照按「发送这条消息的时刻」取。
 const EDITOR_STATE_MAX_ITEMS = 60;
 
+/**
+ * 拼系统提示词:稳定段落在前,每轮都会变的那一段固定收尾。
+ *
+ * 提示词缓存(Anthropic 显式断点、OpenAI/DeepSeek/Qwen/Kimi 的自动前缀缓存)匹配的都是
+ * **逐字节前缀**。只要有一段易变内容排在中间,它后面的所有东西——其余段落、上百个工具
+ * schema、整段对话历史——每轮都要重新计费。而一次用户消息最多可以跑 MAX_TOOL_TURNS 轮。
+ *
+ * 所以这个函数把易变段强制放到末尾:新增段落加进 `stable` 即可,不必再记住顺序。
+ * exported for verify。
+ */
+export function assembleSystemPrompt(stable: readonly string[], volatilePart: string): string {
+  return stable.join('') + volatilePart;
+}
+
 export function editorStatePrompt(ctx: AgentContext): string {
   const s = ctx.getState();
   const doc = ctx.getDoc();
