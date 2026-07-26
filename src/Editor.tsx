@@ -251,11 +251,32 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   // painted inside Timeline so playback does not re-render the whole editor.
   const getPlayhead = useCallback(() => playerRef.current?.getCurrentFrame() ?? 0, []);
 
-  // autosave this project (all timelines) to IndexedDB (debounced) so a reload restores it
+  // autosave this project (all timelines) to IndexedDB (debounced) so a reload restores it.
+  // 防抖计时器会被 effect 清理掉,所以「离开」这件事必须自己补一次落盘:返回工程列表
+  // (Editor 被卸载)、关标签、刷新都发生在 500ms 窗口内的话,最后那点编辑本来会丢。
+  const unsavedRef = useRef<ProjectDoc | null>(null);
   useEffect(() => {
-    const id = setTimeout(() => saveProject(project.id, doc), 500);
+    unsavedRef.current = doc;
+    const id = setTimeout(() => {
+      unsavedRef.current = null;
+      void saveProject(project.id, doc);
+    }, 500);
     return () => clearTimeout(id);
   }, [doc, project.id]);
+  useEffect(() => {
+    const flush = (): void => {
+      const pending = unsavedRef.current;
+      if (!pending) return;
+      unsavedRef.current = null;
+      void saveProject(project.id, pending).catch(() => { /* 关页途中失败无处可报 */ });
+    };
+    // pagehide 覆盖关标签/刷新/前进后退;卸载时的清理覆盖返回工程列表与切工程。
+    window.addEventListener('pagehide', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, [project.id]);
 
   // Rehydrate missing /media/uploads files from IDB blob cache (disk wipe / new clone).
   // Also resume any open generation jobs so refresh mid-generate still lands assets.
