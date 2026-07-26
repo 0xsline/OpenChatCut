@@ -90,6 +90,16 @@ export const LLM_PROVIDER_PRESETS = [
     baseUrl: 'https://openrouter.ai/api/v1',
     defaultModel: 'openrouter/auto',
   },
+  {
+    // 9Router: BYOK OpenAI-compatible aggregation gateway. Point BASE_URL at your own
+    // instance and set the API key; all models advertised at GET /models become
+    // selectable after the settings "Test & read models" probe (discoverableModel).
+    id: '9router',
+    label: '9Router',
+    protocol: 'openai-compatible',
+    baseUrl: 'http://43.133.32.109:20128/v1',
+    defaultModel: 'ag/claude-sonnet-4-6',
+  },
 ] as const satisfies readonly LlmProviderPreset[];
 
 export type LlmProvider = (typeof LLM_PROVIDER_PRESETS)[number]['id'];

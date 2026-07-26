@@ -28,6 +28,9 @@ import { subtitleExportPlugin } from './subtitles.ts';
 import { generationProgressPlugin } from './generation-jobs.ts';
 import { stockSearchPlugin } from './stock.ts';
 import { firecrawlPlugin } from './firecrawl.ts';
+import { kikiPlugin } from './kiki.ts';
+import { getKikiBridge, KIKI_DEFAULT_UA } from '../kiki/session-bridge.ts';
+import { ElectronKikiTransport } from '../kiki/electron-transport.ts';
 import { settingsPlugin } from './settings.ts';
 import { externalAgentPlugin } from './external-agent.ts';
 import { llmProxyPlugin } from './llm-proxy.ts';
@@ -54,6 +57,22 @@ export function serverPlugins(): Plugin[] {
     get minimaxBaseUrl() { return getKey('MINIMAX_BASE_URL') || 'https://api.minimaxi.com'; },
     get minimaxApiKey() { return getKey('MINIMAX_API_KEY'); },
     get minimaxModel() { return getKey('MINIMAX_TTS_MODEL') || 'speech-2.6-hd'; },
+    // ── KikiVoice (cookie-auth, Electron desktop only) ──
+    get kikiBaseUrl() { return getKikiBridge()?.baseUrl ?? 'https://kikivoice.ai'; },
+    get kikiModel() { return getKikiBridge()?.model ?? 'kiki_core'; },
+    get kikiUserAgent() { return getKikiBridge()?.userAgent ?? KIKI_DEFAULT_UA; },
+    get kikiRefAudioPath() { return getKikiBridge()?.refAudioPath ?? ''; },
+    get getKikiTransport() {
+      return async () => {
+        const bridge = getKikiBridge();
+        const session = bridge?.getSession() ?? null;
+        if (!session) return null;
+        return new ElectronKikiTransport({
+          getSession: () => session,
+          userAgent: bridge?.userAgent ?? KIKI_DEFAULT_UA,
+        });
+      };
+    },
   }), soundGenerationPlugin({ get baseUrl() { return getKey('ELEVENLABS_BASE_URL') || 'https://api.elevenlabs.io'; }, get apiKey() { return getKey('ELEVENLABS_API_KEY'); }, get model() { return getKey('ELEVENLABS_SOUND_MODEL') || 'eleven_text_to_sound_v2'; } }),
   musicGenerationPlugin({
     get baseUrl() { return getKey('MUREKA_BASE_URL') || 'https://api.mureka.ai'; }, get apiKey() { return getKey('MUREKA_API_KEY'); }, get model() { return getKey('MUREKA_MUSIC_MODEL') || 'auto'; },
@@ -78,6 +97,7 @@ export function serverPlugins(): Plugin[] {
     get firecrawlApiKey() { return getKey('FIRECRAWL_API_KEY'); },
   }),
   firecrawlPlugin({ get apiKey() { return getKey('FIRECRAWL_API_KEY'); } }),
+  kikiPlugin(),
   e2bPlugin({ get apiKey() { return getKey('E2B_API_KEY'); }, get template() { return getKey('E2B_TEMPLATE') || undefined; } }),
   ];
 }

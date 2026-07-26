@@ -91,9 +91,15 @@ function minimaxVoice(args: GenerateArgs): SubmitVoiceArgs {
   };
 }
 
-const VOICE_STRATEGIES = { elevenlabs: elevenVoice, doubao: doubaoVoice, minimax: minimaxVoice } as const;
+// kikivoice carries no provider-specific params (cookie-free cloning; voiceId defaults to 'joni'
+// server-side). It only needs voiceBase so the provider field is set to 'kikivoice' — without this
+// strategy the dispatch map below silently rewrote kikivoice → elevenlabs and the agent's call never
+// reached kikiVoice().
+const kikiVoiceArgs = (args: GenerateArgs): SubmitVoiceArgs => ({ ...voiceBase(args, 'kikivoice') });
+
+const VOICE_STRATEGIES = { elevenlabs: elevenVoice, doubao: doubaoVoice, minimax: minimaxVoice, kikivoice: kikiVoiceArgs } as const;
 export function buildSubmitVoiceArgs(args: GenerateArgs): SubmitVoiceArgs {
-  const provider = args.provider === 'doubao' || args.provider === 'minimax' ? args.provider : 'elevenlabs';
+  const provider = args.provider === 'doubao' || args.provider === 'minimax' || args.provider === 'kikivoice' ? args.provider : 'elevenlabs';
   return VOICE_STRATEGIES[provider](args);
 }
 

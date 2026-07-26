@@ -32,6 +32,7 @@ export const KEY_NAMES = [
   'LLM_XIAOMI_API_KEY', 'LLM_XIAOMI_BASE_URL', 'LLM_XIAOMI_MODEL',
   'LLM_MISTRAL_API_KEY', 'LLM_MISTRAL_BASE_URL', 'LLM_MISTRAL_MODEL',
   'LLM_OPENROUTER_API_KEY', 'LLM_OPENROUTER_BASE_URL', 'LLM_OPENROUTER_MODEL',
+  'LLM_9ROUTER_API_KEY', 'LLM_9ROUTER_BASE_URL', 'LLM_9ROUTER_MODEL',
   'IMAGE_API_KEY', 'OPENAI_API_KEY', 'IMAGE_BASE_URL',
   'GEMINI_API_KEY', 'GEMINI_BASE_URL',
   'ELEVENLABS_API_KEY', 'ELEVENLABS_BASE_URL',
@@ -138,7 +139,7 @@ export function computeCaps(): Caps {
   const has = (n: KeyName): boolean => getKey(n).length > 0;
   return {
     image: has('IMAGE_API_KEY') || has('OPENAI_API_KEY') || has('GEMINI_API_KEY') || has('MINIMAX_API_KEY'),
-    voice: (has('DOUBAO_TTS_APP_ID') && has('DOUBAO_TTS_ACCESS_KEY')) || has('ELEVENLABS_API_KEY') || has('MINIMAX_API_KEY'),
+    voice: (has('DOUBAO_TTS_APP_ID') && has('DOUBAO_TTS_ACCESS_KEY')) || has('ELEVENLABS_API_KEY') || has('MINIMAX_API_KEY') || (globalThis as Record<string, unknown>).__kikiVoiceBridge === true,
     video: has('SEEDANCE_API_KEY') || has('KLING_API_KEY') || has('MINIMAX_API_KEY'),
     music: has('MUREKA_API_KEY') || has('MINIMAX_API_KEY'),
     sound: has('ELEVENLABS_API_KEY'),

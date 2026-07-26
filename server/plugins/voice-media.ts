@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { uploadDir } from '../media-dir.ts';
 import { fetchGeneratedResult } from './result-download.ts';
@@ -78,7 +78,10 @@ export async function saveVoiceAudio(bytes: Buffer, codec: string, sampleRate: n
     await writeFile(file, bytes);
   }
   await pitchShift(file, pitch, sampleRate);
-  return { path: `/media/uploads/${file.split('/').pop()!}`, durationSeconds: await probeDuration(file) };
+  // basename(), not file.split('/').pop(): on Windows the path uses backslashes, so split('/')
+  // returns the whole path and the returned src becomes `/media/uploads/C:\Users\…\uuid.mp3`
+  // (invalid URL → 404 → silent clip + flat waveform). basename() is cross-platform.
+  return { path: `/media/uploads/${basename(file)}`, durationSeconds: await probeDuration(file) };
 }
 
 export async function saveVoiceSubtitle(url: string): Promise<string> {
@@ -89,5 +92,5 @@ export async function saveVoiceSubtitle(url: string): Promise<string> {
   await mkdir(dir, { recursive: true });
   const file = join(dir, `${randomUUID()}.minimax-subtitles.json`);
   await writeFile(file, bytes);
-  return `/media/uploads/${file.split('/').pop()!}`;
+  return `/media/uploads/${basename(file)}`;
 }

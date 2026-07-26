@@ -281,7 +281,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     try {
       const out = (await generateAgentText({
         maxOutputTokens: 400,
-        system: '你是视频剪辑助手的提示词增强器。把用户潦草或口语化的剪辑意图，改写成一句清晰、具体、可直接执行的中文剪辑指令。只输出改写后的指令本身，不要解释、不要加引号、不要换行。',
+        system: 'You are a video-editing assistant\'s prompt enhancer. Rewrite the user\'s rough or colloquial editing intent into one clear, specific, directly executable editing instruction. Keep the SAME language the user used (the user mainly speaks Indonesian / Bahasa Indonesia; only use Chinese if the user wrote in Chinese). Output only the rewritten instruction itself — no explanation, no quotes, no line breaks.',
         prompt: t,
       })).trim();
       return out || draft;

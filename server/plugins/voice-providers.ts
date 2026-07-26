@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 
 import type { ValidVoiceRequest, VoiceOptions } from './voice-types.ts';
+import { KikiClient } from '../kiki/kiki-client.ts';
+import { getKikiBridge, setKikiQuota } from '../kiki/session-bridge.ts';
 
 const DOUBAO_VOICES: Record<string, string> = {
   vivi: 'zh_female_vv_uranus_bigtts', xiaohe: 'zh_female_xiaohe_uranus_bigtts', yunzhou: 'zh_male_m191_uranus_bigtts',
@@ -165,4 +168,33 @@ export async function minimaxVoice(options: VoiceOptions, input: ValidVoiceReque
   });
   if (!response.ok) throw new Error(await providerError(response));
   return minimaxVoiceResult(await response.text(), input.stream === true, input.excludeAggregatedAudio === true);
+}
+
+/** KikiVoice: cookie-auth voice cloning via Electron net+session (passes Cloudflare; desktop only).
+ *  Clone ref defaults to the bundled voices/joni.wav (Indonesian). Needs Connect KikiVoice in Settings. */
+export async function kikiVoice(options: VoiceOptions, input: ValidVoiceRequest): Promise<Buffer> {
+  if (!options.getKikiTransport) {
+    throw new Error('KikiVoice requires the desktop app — run OpenChatCut desktop and Connect KikiVoice in Settings.');
+  }
+  const transport = await options.getKikiTransport();
+  if (!transport) {
+    throw new Error('KikiVoice session unavailable — open Settings → KikiVoice → Connect and log in once.');
+  }
+  const refPath = options.kikiRefAudioPath;
+  const client = new KikiClient({
+    baseUrl: (options.kikiBaseUrl || 'https://kikivoice.ai').replace(/\/$/, ''),
+    model: options.kikiModel || 'kiki_core',
+    userAgent: options.kikiUserAgent
+      || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+    transport,
+    onRevalidateNeeded: getKikiBridge()?.revalidate,
+    quotaSink: setKikiQuota,
+    getRefAudio: async () => {
+      if (!refPath) throw new Error('KikiVoice ref audio path not configured (expected bundled voices/joni.wav).');
+      const bytes = Buffer.from(await readFile(refPath));
+      return { filename: 'joni.wav', contentType: 'audio/wav', bytes };
+    },
+  });
+  const lang = input.languageCode === 'en' ? 'en' : 'id';
+  return client.generate(input.voiceId || 'joni', input.text, lang);
 }

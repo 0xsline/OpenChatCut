@@ -76,3 +76,5 @@ docs/
 # 本地营销素材与草稿
 /marketing/
 .pi-*
+.omc/
+.termul/

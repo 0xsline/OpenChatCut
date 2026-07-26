@@ -75,6 +75,125 @@ export const CREATIVE_SKILLS: CreativeSkill[] = [
     scenarios: ["bilibili-cover", "cover-image", "poster", "shorts-cover", "thumbnail", "video-cover"],
     body: "---\nname: video-thumbnail-generator\ndescription: Create platform-ready thumbnails from real video frames. Use when the user wants a thumbnail, cover image, YouTube cover, Shorts cover, Bilibili cover, Xiaohongshu cover, or other video poster image.\n---\n\n# Video Thumbnail Generator\n\nUse this skill to create a high-clarity thumbnail or cover image from the actual video content.\n\n## Non-Negotiables\n\n1. Use the real video as visual evidence.\n   - If the thumbnail shows a person, product, UI, frame, or scene from the video, extract or inspect real frames.\n   - Never invent a generic software interface, fake product screen, or unrelated person.\n\n2. Read style references before recommending styles.\n   - Use `references/thumbnail-styles.md` and `references/thumbnail-style-recipes.md`.\n   - Only offer style directions supported by those references or by the user's explicit instruction.\n\n3. Keep text short and readable.\n   - Usually 2-5 words.\n   - Avoid thin type, low contrast, small labels, and clutter.\n\n## Workflow\n\n1. Confirm platform and aspect ratio if missing.\n   - YouTube / Bilibili: usually 16:9.\n   - Shorts / TikTok / Douyin: usually 9:16.\n   - Xiaohongshu / WeChat Channels: usually 3:4.\n   - Correct ambiguous ratio language gently, especially 4:3 vs 3:4.\n2. Read project state, transcript, and available media context.\n3. Inspect candidate frames:\n   - expressive face\n   - product or UI clearly visible\n   - dramatic action moment\n   - clean composition\n   - strong lighting or clear subject separation\n4. Classify the thumbnail job:\n   - talking-head / opinion / tutorial\n   - product / software / demo\n   - cinematic / documentary / art\n   - entertainment / challenge / reaction\n   - education / business / concept\n5. Propose concise title text options.\n6. Offer 3-6 clearly different style directions.\n   - Each option should name the composition, not only a channel/style label.\n   - Exclude weak options.\n   - Wait for user choice when the direction is not obvious.\n7. Generate thumbnail options using selected real frames and the selected style.\n8. Check mobile readability, subject fidelity, product/UI truthfulness, and visual contrast.\n9. Present results and offer targeted adjustments.\n\n## Prompt Shape\n\n```text\n[Platform] thumbnail, [aspect ratio / dimensions], [style name].\n\nCOMPOSITION: [subject position, scale, background, graphic balance]\nREAL REFERENCE: [describe selected frame zone by zone]\nTEXT: \"[short title]\" in [high-contrast style]\nSTYLE: [one-line style recipe from references]\nCONSTRAINTS: readable at mobile size, no fake UI, no watermark, no play button.\n```\n\n## References\n\n- `references/thumbnail-styles.md`: style library from real thumbnail analysis.\n- `references/thumbnail-style-recipes.md`: quick style recipes and prompt patterns.\n- `references/field-testing-notes.md`: known failure modes.",
   },
+  {
+    id: "11111111-1240-4000-8000-000000000007",
+    name: "Geopolitical Video",
+    nameZh: "地缘政治视频",
+    summary: "Riset topik geopolitik → film dokumenter thriller: struktur FUNNEL ARC, narasi padat, data-viz dokumenter, dan koneksi Indonesia wajib.",
+    scenarios: ["geopolitics", "geopolitik", "news", "conflict", "diplomacy", "documentary", "investigative", "militer", "perang", "cek-fakta"],
+    body: `---
+name: geopolitical-video
+description: Produce a cinematic geopolitical documentary short from a free-text topic — investigative-journalist tone, FUNNEL ARC structure, dense narration, documentary data-viz overlays, and a mandatory Indonesia-connection payoff. Use when the user wants a geopolitical / news / conflict / military / economy video with thriller-style narration.
+---
+
+# Geopolitical Video
+
+Use this workflow when the user wants a cinematic geopolitical documentary short from a free-text topic (conflict, diplomacy, economy, military, global event). The narration must feel like a tense investigative thriller, not a textbook lecture.
+
+This is an OpenChatCut-native workflow. Use web research, stock footage, TTS voiceover, captions, motion graphics, and OpenChatCut editing tools. NOTE: interactive map rendering is NOT available yet — for now use stock map footage or a static map image, and tell the user when they expect an interactive map.
+
+## When to Use
+
+- The user gives a geopolitical topic, news event, conflict, or global-economy question.
+- The video needs an investigative, fact-checker, documentary-thriller tone.
+- The output is a narrated short (portrait social or landscape documentary).
+
+## Research First
+
+1. Before writing narration, research current facts with web_search / web_browser. Collect concrete facts: dates, locations, names, weapon / system / platform specs (e.g. Mark 38 25-mm gun, Arleigh Burke-class, F-35 Lightning II), and numbers (tons, miles, ranges, percentages, dollar amounts).
+2. Attribute claims ("menurut laporan...", "sumber intelijen menyebut..."). Note any REAL recent named event (breaking news / disaster / conflict with date + location) — those scenes need real footage, not generic stock.
+
+## Narrative Structure — FUNNEL ARC (NON-NEGOTIABLE)
+
+Plan scenes across 4 phases:
+
+1. HOOK (~first 10% of scenes): cold open mid-event — exact time + location + dramatic action. NO intro, NO salam, NO "hari ini kita akan membahas". Drop the viewer straight into drama.
+2. CONTEXT (~next 30%): players, history, diplomacy WOVEN INTO action narration — never a separate "background" block. Weave facts like a novel.
+3. ESCALATION (~next 40%): events intensify. Military hardware specs appear naturally WHEN RELEVANT (not a separate section). Direct quotes from leaders add drama. Each scene raises stakes.
+4. IMPACT (~final 20%): economic consequences, global ripple, and CRITICAL — the INDONESIA CONNECTION.
+
+### INDONESIA CONNECTION (NON-NEGOTIABLE)
+
+In the IMPACT phase, dedicate 2-3 scenes connecting the global topic to Indonesia: economic impact (trade routes, supply chain, commodity prices like nickel / CPO / coal), geopolitical implications (ASEAN position, regional security), or diplomatic consequences.
+
+## Narration Density
+
+Target ~2.0 words/second. Every sentence must ADVANCE the story or reveal NEW information. BANNED filler: "sekarang kita akan membahas", "seperti yang kita ketahui", "perlu dicatat bahwa", "tidak dapat dipungkiri", "pada kesempatan kali ini". Mix vivid action imagery with short punchy dramatic sentences. Write narration in Bahasa Indonesia unless the user asks otherwise. Keep scenes concise — if narration for a scene exceeds ~6 seconds, split it into multiple shorter clips yourself, each with a clear primary visual subject.
+
+## Voiceover Discipline (KikiVoice 1000-char limit — CRITICAL)
+
+KikiVoice (kiki_core) REJECTS text longer than 1000 characters per request (TEXT_TOO_LONG). A single narration block for a 5-min video is already ~3000+ chars, so one giant voiceover ALWAYS fails:
+
+- NEVER submit one giant voiceover for the whole video — it will fail with TEXT_TOO_LONG.
+- Generate ONE \`submit_voice\` call PER SCENE (each scene ~6-10s = ~120-200 chars, safely under 1000). One scene = one audio clip asset.
+- Place each scene's audio clip on track A1 BACK-TO-BACK in scene order: clip 2 starts where clip 1 ends, clip 3 where clip 2 ends, etc. No overlap, no gap.
+- For videos longer than ~5 minutes, group scenes into SEGMENTS (~1-2 minutes each) and generate + assemble ONE SEGMENT AT A TIME. Do NOT try to voice the whole 10-20 minute script in one pass — manage your turn budget and check in with the user between segments.
+- Spell digits/symbols out (Text Normalization) BEFORE splitting, so each scene's text is already normalised.
+
+## Text Normalization (TTS-critical)
+
+TTS engines (ElevenLabs / MiniMax / Doubao / KikiVoice) mispronounce or skip raw digits, symbols, and abbreviations in Bahasa Indonesia narration. Before calling submit_voice, spell the voiceoverText out as full Indonesian words:
+
+- Numbers: 2024 → "dua ribu dua puluh empat"; 281 → "dua ratus delapan puluh satu"; 0,9 → "nol koma sembilan".
+- Currency: Rp 15.000 → "lima belas ribu rupiah"; $5 → "lima dolar".
+- Percent / units: 15% → "lima belas persen"; 5 kg → "lima kilogram"; 30°C → "tiga puluh derajat Celsius".
+- Symbols / abbreviations: & → "dan"; @ → "di"; No. → "nomor"; km → "kilometer". Keep common acronyms as letters (WIB, NATO, AS, F-35).
+- Dates / time: 17 Agustus 1945 → "tujuh belas Agustus seribu sembilan ratus empat puluh lima".
+
+This applies to the spoken narration only — figures shown on screen in a stat overlay stay as digits.
+
+## Stock Search Strategy
+
+You pick visuals with search_stock_media. Stock libraries index ENGLISH terms, so write every query in English even when the narration is Indonesian (narration "kapal perang" → query "warship naval"). Then:
+
+- Front-load the SUBJECT (what happens) over the SETTING (where). Narration "ledapan dahsyat di kota" → ["explosion", "blast", "fireball"], NOT ["city", "building", "street"] — setting nouns return generic irrelevant stock.
+- For a SPECIFIC EVENT at a location, combine all three: "ledapan tanker di Selat Hormuz" → ["strait of hormuz", "oil tanker", "explosion"].
+- When a PERSON is the primary subject (a leader ACTING — "Xi Jinping menentang", "Biden menghadapi tekanan"), do NOT query the bare name — that returns a static headshot. Query the ACTION / candid moment: "Xi Jinping menentang Taiwan" → ["xi jinping", "military parade", "beijing"]; a summit → ["xi jinping", "biden", "handshake summit"].
+- Military gear: name the SPECIFIC platform + setting so it can't mismatch — "kapal induk" → ["aircraft carrier", "flight deck", "naval fleet"], not generic "warship" (which also returns jets parked on a deck).
+
+Breaking-news limitation: stock libraries NEVER carry current / recent events (today's strike, this week's conflict, a just-happened disaster). For those scenes, either (a) generate an illustrative composite with submit_image, (b) use archival / historical-style stock, or (c) tell the user the exact footage is unavailable. Never pass generic stock off as the real event.
+
+## Footage-Voiceover Alignment (frame-level — NON-NEGOTIABLE)
+
+Footage must follow the narration scene-by-scene — NOT one long clip over the whole video:
+
+- After the scene audio clips are placed on A1, read each clip's REAL \`startFrame\` + \`durationInFrames\` via \`read_timeline\`. These are your scene timing anchors.
+- For EACH scene, search ONE footage clip via \`search_stock_media\` (English, subject-fronted, matching that scene's narration — e.g. narration "kapal perang" → "warship naval").
+- Place the footage on video track V1 (or V2) with \`startFrame\` = the scene's audio startFrame and \`durationInFrames\` = the scene's audio duration. **One footage per scene.**
+- Footage MUST CHANGE every scene. When scene 2's audio starts, scene 2's footage shows. Do NOT drop one clip spanning multiple scenes.
+- VERIFY by playing: when the narration says "kapal perang" the screen shows a warship; when it says "Indonesia" it shows an Indonesian port/flag. If a scene mismatches, fix THAT scene's footage only — don't redo the whole timeline.
+
+## Title Formula
+
+Title = [DRAMATIC SUBJECT] + [EMOTION TRIGGER] + [URGENCY MARKER]. Use at least one trigger: PANIK, KAGET, MURKA, ANCAM, NEKAT, GERAM, MENGEJUTKAN, DISEGANI, KELABAKAN. End with "!" or "?" or "| Cek Fakta". The title must create a curiosity gap.
+
+## Workflow
+
+1. Read project state: target duration, aspect ratio, platform, narration language (default Bahasa Indonesia).
+2. Research the topic (web_search). Collect facts; mark real-events that need real footage.
+3. Plan the FUNNEL ARC: scene count per phase + the Indonesia-connection scenes.
+4. Write narration per scene at ~2 words/sec. For longer scenes, split into ~6s clips, each visually self-contained with a clear primary subject.
+5. Generate voiceover with submit_voice (load the voice skill first; confirm a concrete voice preset before submitting). For Bahasa Indonesia narration, prefer KikiVoice (provider: "kikivoice", voiceId: "joni" — bundled Indonesian clone, desktop only) when available; otherwise use a configured ElevenLabs / Doubao / MiniMax voice. Spell digits / symbols / abbreviations out per the Text Normalization section before submitting. Read the REAL TTS audio duration and fit scenes to it, not to estimates.
+6. Select visuals per scene with search_stock_media, following the Stock Search Strategy above (English queries, subject-fronted, action-for-people). For maps / geography use stock map footage or a static map image (interactive maps not available yet). For breaking-news scenes, see the breaking-news limitation — stock will not carry them.
+7. Add at most ONE motion-graphic / data overlay per scene, ONLY when the scene names a key number, comparison, or introduces a new subject (person / place / org). Use whatever motion graphic tools are available in OpenChatCut — explore search_templates, submit_motion_graphic, or create_motion_graphic_from_code and pick the best fit for the data. Don't assume specific template names; let the available tools guide the choice. Keep overlays clean, minimal, and readable (documentary style).
+8. Use transitions sparingly (only ~15-20% of scene boundaries). Prefer hard cuts for most. When you do use a transition, pick from what's available in the editor — don't assume specific transition names.
+9. Assemble the timeline aligned to the real voiceover duration. Add captions when useful.
+10. QA before done: hook in the first seconds, funnel arc intact, Indonesia connection present, claims attributed, no filler, no generic intro/outro, narration-visual sync, export readiness.
+
+## Rules
+
+- You are an INVESTIGATOR and FACT-CHECKER, not a commentator. Present facts like evidence. Attribute claims. Build authority + trust.
+- Escalate tension toward each scene's end. NO generic intros, NO outros, NO narrator / speaker labels.
+- Do not invent weapon specs, casualty numbers, dates, or quotes. If unsure after research, label the assumption or omit.
+- Do not put full spoken sentences on screen — use short labels, numbers, lower-thirds.
+- Do not promise interactive maps; map rendering is not yet available. Use stock / static maps.
+- At most one data-viz overlay per scene, only when justified by a figure.
+
+## Output
+
+When planning, show: title, the funnel-arc scene plan (phase -> scenes -> narration gist -> visual -> data-viz cue), the Indonesia-connection scenes, and assumptions. When executing, report the timeline name, narration language / voice, footage sources, and what to review first.
+`,
+  },
 ];
 
 // ponytail: 模块级可变缓存 = 自定义技能的会话内注册表。由两处水合:

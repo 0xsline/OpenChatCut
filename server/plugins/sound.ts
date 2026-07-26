@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 
@@ -137,7 +137,9 @@ async function saveAudio(bytes: Buffer, outputFormat: string): Promise<{ path: s
     file = join(dir, `${randomUUID()}.${ext}`);
     await writeFile(file, bytes);
   }
-  const filename = file.split('/').pop()!;
+  // basename(), not file.split('/').pop() — on Windows the path uses backslashes so split('/')
+  // returns the whole path and the returned src becomes invalid (silent clip + flat waveform).
+  const filename = basename(file);
   return { path: `/media/uploads/${filename}`, durationSeconds: await probeDuration(file) };
 }
 

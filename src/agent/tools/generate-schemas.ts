@@ -34,13 +34,13 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'submit_voice',
-    description: 'Generate one TTS audio asset with ElevenLabs, Doubao, or MiniMax. Creates an asset only; it does not place or replace timeline items. Confirm a provider and voice; MiniMax timbreWeights may mix voices with an empty voiceId.',
+    description: 'Generate one TTS audio asset with ElevenLabs, Doubao, MiniMax, or KikiVoice. Creates an asset only; it does not place or replace timeline items. Confirm a provider and voice; MiniMax timbreWeights may mix voices with an empty voiceId. KikiVoice defaults to voiceId=joni (Indonesian).',
     input_schema: {
       type: 'object',
       properties: {
-        provider: { type: 'string', enum: ['elevenlabs', 'doubao', 'minimax'], description: 'elevenlabs for multilingual/non-Chinese; doubao for Chinese-optimized speech; minimax for MiniMax Chinese TTS.' }, // minimax: provider enum
+        provider: { type: 'string', enum: ['elevenlabs', 'doubao', 'minimax', 'kikivoice'], description: 'elevenlabs for multilingual/non-Chinese; doubao for Chinese-optimized speech; minimax for MiniMax Chinese TTS; kikivoice for cookie-free voice cloning (desktop only, defaults to voiceId=joni).' },
         text: { type: 'string', minLength: 1, description: 'Text to synthesize.' },
-        voiceId: { type: 'string', description: 'Provider-specific voice ID. Required except MiniMax timbreWeights mixing, where it must be empty. MiniMax defaults to female-yujie when omitted without mixing.' },
+        voiceId: { type: 'string', description: 'Provider-specific voice ID. Required for elevenlabs/doubao/minimax; optional for kikivoice (defaults to joni). The only empty-voiceId case is MiniMax timbreWeights mixing, where it must be empty. MiniMax otherwise defaults to female-yujie when omitted.' },
         modelId: { type: 'string', description: 'ElevenLabs only. Defaults to the configured current model.' },
         stability: { type: 'number', minimum: 0, maximum: 1, description: 'ElevenLabs only. Defaults to 0.5.' },
         speed: { type: 'number', minimum: 0.5, maximum: 2, description: 'ElevenLabs (0.7–1.2) or MiniMax (0.5–2). Defaults to 1.' }, // minimax: widened range, server enforces per provider

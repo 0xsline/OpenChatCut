@@ -31,7 +31,7 @@ import type { GuardDecision } from './skills/skillGuard';
 import { completeAbortedTurn } from './abortedTurn';
 
 const MAX_OUTPUT_TOKENS = 64000;
-const MAX_TOOL_TURNS = 30;
+const MAX_TOOL_TURNS = 200;
 type ToolResultOutput = ToolResultPart['output'];
 
 export type LLMMessage = ModelMessage;

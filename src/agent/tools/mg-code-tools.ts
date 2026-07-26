@@ -33,10 +33,19 @@ export const MG_CODE_TOOL_SCHEMAS: AgentToolSchema[] = [
           description: 'Duration in seconds (mutually exclusive with durationInFrames).',
         },
         description: { type: 'string', description: 'Optional human description (stored in props).' },
-        properties: {
+        props: {
           type: 'array',
           description: 'Editable props: { key, label?, type?, defaultValue }[].',
-          items: {},
+          items: {
+            type: 'object',
+            properties: {
+              key: { type: 'string', description: 'Prop key name.' },
+              label: { type: 'string', description: 'Optional human-readable label.' },
+              type: { type: 'string', description: 'Optional value-type hint (string, number, color, ...).' },
+              defaultValue: { description: 'Optional default value (any type).' },
+            },
+            required: ['key'],
+          },
         },
         projectId: { type: 'string', description: 'Ignored; the active project is used.' },
       },
@@ -90,8 +99,8 @@ export async function execMgCodeTool(
   if (typeof args.description === 'string' && args.description.trim()) {
     props.__description = args.description.trim();
   }
-  if (Array.isArray(args.properties)) {
-    for (const p of args.properties) {
+  if (Array.isArray(args.props)) {
+    for (const p of args.props) {
       if (p && typeof p === 'object' && 'key' in p) {
         const row = p as { key: string; defaultValue?: unknown };
         if (typeof row.key === 'string' && row.key) props[row.key] = row.defaultValue;

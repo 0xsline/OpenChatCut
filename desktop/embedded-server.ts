@@ -67,9 +67,10 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
   app.use('/media/uploads', uploadsMiddleware());
   app.use(distStaticMiddleware(distDir));
 
-  // 端口策略:优先 5199(README 里外部 MCP 客户端的文档地址);被占(网页 dev
+  // 端口策略:优先 CC_PORT env 或 5199(README 里外部 MCP 客户端的文档地址);被占(网页 dev
   // server / 第二个桌面实例)时回退随机端口——App 必须能起,MCP 客户端改用启动
   // 日志里的实际端口。其余 listen 错误照旧抛出。
+  const preferredPort = Number(process.env.CC_PORT) || 5199;
   const listenOn = (port: number) => new Promise<number>((resolvePort, reject) => {
     const onError = (err: Error) => reject(err);
     server.once('error', onError);
@@ -80,9 +81,9 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
       else reject(new Error('embedded server failed to bind'));
     });
   });
-  const port = await listenOn(5199).catch((err: NodeJS.ErrnoException) => {
+  const port = await listenOn(preferredPort).catch((err: NodeJS.ErrnoException) => {
     if (err.code !== 'EADDRINUSE') throw err;
-    console.warn('[embedded-server] port 5199 in use — falling back to a random port; point external MCP clients at the origin logged below');
+    console.warn(`[embedded-server] port ${preferredPort} in use — falling back to a random port; point external MCP clients at the origin logged below`);
     return listenOn(0);
   });
   return { server, port, origin: `http://127.0.0.1:${port}` };

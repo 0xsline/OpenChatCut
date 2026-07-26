@@ -92,15 +92,18 @@ function validateMinimax(input: VoiceRequest, text: string): void {
 }
 
 export function validateVoiceRequest(input: VoiceRequest): ValidVoiceRequest {
-  if (input.provider !== 'elevenlabs' && input.provider !== 'doubao' && input.provider !== 'minimax') throw new Error('provider must be elevenlabs, doubao, or minimax');
+  if (input.provider !== 'elevenlabs' && input.provider !== 'doubao' && input.provider !== 'minimax' && input.provider !== 'kikivoice') throw new Error('provider must be elevenlabs, doubao, minimax, or kikivoice');
   const text = String(input.text ?? '').trim();
   const requestedVoiceId = String(input.voiceId ?? '').trim();
-  const voiceId = requestedVoiceId || (input.provider === 'minimax' && !input.timbreWeights?.length ? 'female-yujie' : '');
+  const voiceId = requestedVoiceId
+    || (input.provider === 'minimax' && !input.timbreWeights?.length ? 'female-yujie' : '')
+    || (input.provider === 'kikivoice' ? 'joni' : '');
   if (!text) throw new Error('text is required');
   if (!voiceId && !(input.provider === 'minimax' && input.timbreWeights?.length)) throw new Error('voiceId is required');
   if (input.provider === 'elevenlabs') validateEleven(input);
   else if (input.provider === 'doubao') validateDoubao(input, voiceId);
-  else validateMinimax(input, text);
+  else if (input.provider === 'minimax') validateMinimax(input, text);
+  // kikivoice: cookie-auth + bundled clone ref (joni.wav); no provider-specific params required.
   return { ...input, provider: input.provider, text, voiceId, outputFormat: input.outputFormat ?? 'mp3_44100_128',
     sampleRate: input.sampleRate ?? 32_000,
     bitrate: input.bitrate ?? ((input.audioFormat ?? 'mp3') === 'mp3' ? 128_000 : undefined),

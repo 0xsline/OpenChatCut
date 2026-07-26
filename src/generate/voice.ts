@@ -2,9 +2,11 @@ import type { MediaAsset, TimelineState } from '../editor/types';
 import type { MinimaxLanguageBoost } from '../../shared/media-provider-params';
 
 export interface SubmitVoiceArgs {
-  provider: 'elevenlabs' | 'doubao' | 'minimax';
+  provider: 'elevenlabs' | 'doubao' | 'minimax' | 'kikivoice';
   text: string;
-  voiceId: string;
+  // Optional: kikivoice defaults to 'joni' (server-side); the MCP schema lists voiceId as optional
+  // for kikivoice. ElevenLabs/Doubao/MiniMax require it (enforced in submitVoice).
+  voiceId?: string;
   modelId?: string;
   stability?: number;
   speed?: number;
@@ -78,7 +80,9 @@ function probeAudio(src: string, fps: number): Promise<number> {
 
 export async function submitVoice(args: SubmitVoiceArgs, state: TimelineState): Promise<MediaAsset> {
   const text = args.text.trim();
-  const voiceId = args.voiceId.trim();
+  // kikivoice is cookie-free and defaults to the bundled 'joni' voice; honor the schema's
+  // "defaults to voiceId=joni" so omitting voiceId for kikivoice does not crash or throw.
+  const voiceId = (args.voiceId ?? '').trim() || (args.provider === 'kikivoice' ? 'joni' : '');
   if (!text) throw new Error('text is required');
   if (!voiceId && !args.timbreWeights?.length) throw new Error('voiceId is required unless MiniMax timbreWeights are provided');
   const response = await fetch('/generate/voice', {

@@ -172,6 +172,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'elevenlabs', label: 'ElevenLabs' },
           { value: 'doubao', label: '豆包' },
           { value: 'minimax', label: 'MiniMax' },
+          { value: 'kikivoice', label: 'KikiVoice' },
         ]),
         vendors: [
           { key: 'voice/elevenlabs', vendor: 'elevenlabs', title: 'ElevenLabs',
@@ -190,6 +191,9 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           ] },
           minimaxPage('voice', modelSelect('MINIMAX_TTS_MODEL', '配音模型', 'speech-2.6-hd',
             ['speech-2.6-hd', 'speech-2.8-hd', 'speech-2.8-turbo', 'speech-2.6-turbo', 'speech-02-hd', 'speech-02-turbo'])),
+          { key: 'voice/kikivoice', vendor: 'kikivoice', title: 'KikiVoice',
+            note: 'IP-based, anonymous (no account, no API key). Desktop only — click Connect; a window visits kikivoice.ai over your IP to acquire an anonymous session cookie. The GeeTest 777 gate is solved automatically (crypto) at voice-generation time, not during Connect. Clone ref = bundled joni.wav (Indonesian).',
+            fields: [] },
         ] },
       { key: 'video', title: '生视频', hint: 'submit_video · 文 / 图生视频，任一厂商即可。',
         route: routeSelect('PREFERRED_VIDEO_VENDOR', [
@@ -375,6 +379,9 @@ const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
   elevenlabs: [['ELEVENLABS_API_KEY']],
   doubao: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']],
   minimax: [['MINIMAX_API_KEY']],
+  // kikivoice needs no key (bridge/cookie-based, desktop only) — always selectable. In a browser
+  // the server returns "requires desktop" and the agent falls back to asking.
+  kikivoice: [[]],
   seedance2: [['SEEDANCE_API_KEY']],
   kling: [['KLING_API_KEY']],
   hailuo: [['MINIMAX_API_KEY']],

@@ -2,8 +2,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 
 import { saveVoiceAudio, saveVoiceSubtitle } from './voice-media.ts';
-import { doubaoVoice, elevenLabsVoice, minimaxVoice } from './voice-providers.ts';
-import type { VoiceOptions, VoiceRequest } from './voice-types.ts';
+import { doubaoVoice, elevenLabsVoice, kikiVoice, minimaxVoice } from './voice-providers.ts';
+import type { VoiceOptions, VoiceProvider, VoiceRequest } from './voice-types.ts';
 import { validateVoiceRequest } from './voice-validation.ts';
 
 export { validateVoiceRequest };
@@ -26,7 +26,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-function audioDescriptor(provider: 'elevenlabs' | 'doubao' | 'minimax', outputFormat: string, audioFormat: string, sampleRate: number) {
+function audioDescriptor(provider: VoiceProvider, outputFormat: string, audioFormat: string, sampleRate: number) {
   if (provider === 'elevenlabs') {
     const [codec, rate] = outputFormat.split('_');
     return { codec, sampleRate: Number(rate) };
@@ -45,6 +45,7 @@ export function voiceGenerationPlugin(options: VoiceOptions): Plugin {
           const input = validateVoiceRequest(await readJson(req));
           const minimax = input.provider === 'minimax' ? await minimaxVoice(options, input) : undefined;
           const bytes = input.provider === 'elevenlabs' ? await elevenLabsVoice(options, input)
+            : input.provider === 'kikivoice' ? await kikiVoice(options, input)
             : input.provider === 'doubao' ? await doubaoVoice(options, input) : minimax!.audio;
           const audio = audioDescriptor(input.provider, input.outputFormat, input.audioFormat, input.sampleRate);
           const saved = await saveVoiceAudio(bytes, audio.codec, audio.sampleRate, input.provider === 'doubao' ? input.pitch ?? 0 : 0);

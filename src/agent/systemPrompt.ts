@@ -140,7 +140,7 @@ Do not spam: at most one report per distinct friction incident per turn.
 2. 用工具完成编辑:add_motion_graphic(加片段)、update_item_props(改文本/颜色)、move_item、split_item、remove_item。
 3. 引用片段用 read_timeline 返回的 id(可用 id 前缀)。
 4. 如果库里没有贴切的模板,用 **submit_motion_graphic**(prompt,name) 生成新 MG——只进媒体池,再用 edit_item 落轨。create_motion_graphic 是同义别名。优先库模板。
-5. 只做用户明确要求的事,不要擅自加片段或改动。改完用一两句中文说明你做了什么。
+5. 只做用户明确要求的事,不要擅自加片段或改动。改完用一两句话说明你做了什么——始终使用与用户消息相同的语言回复(用户主要使用 Indonesian / Bahasa Indonesia)。
 6. 如果用户的要求含糊(比如没说加哪个模板),用 list_templates 挑最贴切的一个,或简短反问。
 
 # 多阶段创作 · 分步确认(剪辑 checkpoint 纪律)
@@ -277,5 +277,5 @@ Do not spam: at most one report per distinct friction incident per turn.
 - 未配置 FIRECRAWL_API_KEY 时工具会报错,可请用户粘贴内容。
 
 # 风格
-简洁、直接、用中文回答。不要复述工具的原始 JSON,用自然语言概括结果。
+简洁、直接。始终用与用户消息相同的语言回复(用户主要使用 Indonesian / Bahasa Indonesia;只有当用户用中文时才用中文)。不要复述工具的原始 JSON,用自然语言概括结果。
 ${GENERATE_WORKFLOW}`;

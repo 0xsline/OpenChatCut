@@ -1,6 +1,7 @@
 import type { MinimaxLanguageBoost } from '../../shared/media-provider-params.ts';
+import type { KikiTransport } from '../kiki/types.ts';
 
-export type VoiceProvider = 'elevenlabs' | 'doubao' | 'minimax';
+export type VoiceProvider = 'elevenlabs' | 'doubao' | 'minimax' | 'kikivoice';
 export type MinimaxVoiceFormat = 'mp3' | 'pcm' | 'flac' | 'wav' | 'pcmu_raw' | 'pcmu_wav' | 'opus';
 export type VoiceEffect = 'spacious_echo' | 'auditorium_echo' | 'lofi_telephone' | 'robotic';
 
@@ -15,6 +16,13 @@ export interface VoiceOptions {
   minimaxBaseUrl: string;
   minimaxApiKey: string;
   minimaxModel: string;
+  // ── KikiVoice (cookie-based auth, Electron desktop only) ──
+  kikiBaseUrl?: string;
+  kikiModel?: string;
+  kikiUserAgent?: string;
+  kikiRefAudioPath?: string;
+  /** Resolves the Electron net+session transport (persist:partition). null/absent in browser-dev. */
+  getKikiTransport?: () => Promise<KikiTransport | null>;
 }
 
 export interface VoiceRequest {

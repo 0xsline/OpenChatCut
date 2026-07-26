@@ -2,7 +2,7 @@
 // 从 SettingsDialog.tsx 拆出(500 行上限);布局壳与左/中栏仍在那边。
 // 「测试连接」走 POST /api/keys/test:把本页未保存的暂存值作为 overrides 一并
 // 送去服务端探测(仅本次生效,不落盘),密钥值永远不会出现在响应里。
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { theme, themeAlpha } from '../../theme';
 import { useT } from '../../i18n/locale';
 import { VendorIcon } from './vendorIcons';
@@ -38,17 +38,24 @@ export function VendorPane({ page, hint, ctx }: {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <VendorIcon vendor={page.vendor} size={18} />
           <b style={{ fontSize: 13 }}>{t(page.title)}</b>
-          <span style={{ fontSize: 11, color: on ? ON : theme.textDim }}>{on ? t('已配置') : t('未配置')}</span>
+          {/* kikivoice has no key field (cookie-free); its configured state is shown by the
+              KikiConnectButton badge below, so hide this key-based "configured/not" tag here. */}
+          {page.key !== 'voice/kikivoice' && (
+            <span style={{ fontSize: 11, color: on ? ON : theme.textDim }}>{on ? t('已配置') : t('未配置')}</span>
+          )}
         </div>
         <div style={{ fontSize: 11.5, color: theme.textDim, marginTop: 3, paddingLeft: 26 }}>{t(hint)}</div>
       </div>
       <section style={fieldCardBox}>
         {page.note && <div style={pageNote}>{t(page.note)}</div>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: page.note ? 9 : 0 }}>
+          {page.key === 'voice/kikivoice' && <KikiConnectButton />}
           {page.fields.map((f) => <FieldRow key={f.name} field={f} ctx={ctx} />)}
         </div>
       </section>
-      <TestConnectionRow page={page} ctx={ctx} />
+      {/* kikivoice is cookie-free (no API key); connection state is shown by KikiConnectButton's
+          badge above, so the generic "test connection" row — which probes an API key — is hidden. */}
+      {page.key !== 'voice/kikivoice' && <TestConnectionRow page={page} ctx={ctx} />}
     </div>
   );
 }
@@ -308,6 +315,61 @@ function SelectInput({ field, status, shown, onStage }: {
         <option key={o.value} value={o.value}>{selectOptionLabel(status, field, o)}</option>
       ))}
     </select>
+  );
+}
+
+// ── KikiVoice Connect (cookie-based; no key field) ─────────────────────────
+
+interface KikiStatus { state: 'connected' | 'expired' | 'missing' | 'requires-desktop' | 'unknown'; authenticated: boolean | null }
+
+function KikiConnectButton() {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<KikiStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const kikiLogin = typeof window !== 'undefined' ? window.openChatCutDesktop?.kikiLogin : undefined;
+
+  const refresh = async (): Promise<void> => {
+    try {
+      const r = await fetch('/api/kiki/status');
+      if (r.ok) setStatus((await r.json()) as KikiStatus);
+    } catch { /* transient — leave last status */ }
+  };
+  useEffect(() => { void refresh(); }, []);
+
+  const connect = async (): Promise<void> => {
+    if (!kikiLogin) { setError(t('KikiVoice requires the desktop app.')); return; }
+    setBusy(true); setError(null);
+    try {
+      await kikiLogin();
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const label = status?.state === 'connected' ? t('Connected')
+    : status?.state === 'expired' ? t('Expired — click Connect again')
+    : status?.state === 'missing' ? t('Not logged in')
+    : status?.state === 'requires-desktop' ? t('Desktop app required')
+    : status ? t('Unknown') : '';
+  const color = status?.state === 'connected' ? ON : status?.state && status.state !== 'requires-desktop' ? WARN : theme.textDim;
+
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+        <button type="button" onClick={(e) => { e.preventDefault(); void connect(); }}
+          disabled={!kikiLogin || busy}
+          style={{ ...browseBtn, opacity: !kikiLogin || busy ? 0.55 : 1 }}>
+          {busy ? t('Connecting…') : t('Connect')}
+        </button>
+        {label && <span style={{ fontSize: 11, color }}>{label}</span>}
+      </div>
+      {!kikiLogin && <span style={fieldHint}>{t('Desktop only — click Connect; a window visits kikivoice.ai over your IP and auto-passes GeeTest (no login, anonymous).')}</span>}
+      {error && <span style={{ ...fieldHint, color: WARN }}>{error}</span>}
+    </>
   );
 }
 

@@ -41,8 +41,12 @@ TTS is needed.
 Use `submit_voice` to create a TTS audio asset. The current MCP tool contract is:
 
 - `provider` is required: `doubao` (Chinese-optimized), `elevenlabs` (English /
-  multilingual), or `minimax` (MiniMax TTS — see
-  [references/minimax-tts.md](references/minimax-tts.md)).
+  multilingual), `minimax` (MiniMax TTS — see
+  [references/minimax-tts.md](references/minimax-tts.md)), or `kikivoice`
+  (cookie-free voice cloning — auto GeeTest crypto solve, no API key needed.
+  Use `voiceId=joni` for the default Indonesian male clone voice. Desktop-only.
+  When the capabilities block shows KikiVoice as the default/only voice provider,
+  use it directly without asking the user to pick.).
 - `voiceId` is required and provider-specific. The only exception is MiniMax
   `timbreWeights` mixing, where `voiceId` must be empty. Do not mix catalogs.
 - `submit_voice` creates an audio asset only. Timeline placement, replacement,
@@ -353,9 +357,9 @@ submit_sound({
 
 | Field        | Description                            | Notes           |
 | ------------ | -------------------------------------- | --------------- |
-| `provider`   | TTS provider: `doubao`, `elevenlabs`, or `minimax` | Required |
+| `provider`   | TTS provider: `doubao`, `elevenlabs`, `kikivoice`, or `minimax` | Required |
 | `text`       | Text to synthesize                     | Required        |
-| `voiceId`    | Curated preset id or provider voice id | Required        |
+| `voiceId`    | Curated preset id or provider voice id | Required (kikivoice defaults to `joni`) |
 | `speedRatio` | Speech speed                           | Doubao only     |
 | `modelId`    | ElevenLabs model id                    | ElevenLabs only |
 | `stability`  | ElevenLabs stability                   | ElevenLabs only |
@@ -379,9 +383,11 @@ list, display labels, tags, and sample URLs.
 
 ### Voice presets are provider-specific — do NOT mix them
 
-ElevenLabs, Doubao, and MiniMax have separate voice catalogs. `vivi` / `dayi`
+ElevenLabs, Doubao, MiniMax, and KikiVoice have separate voice catalogs. `vivi` / `dayi`
 are only Doubao; `mark` / `amelia` / `james` are only ElevenLabs; MiniMax system
-voices (e.g. `female-yujie`) are only for `provider: "minimax"`.
+voices (e.g. `female-yujie`) are only for `provider: "minimax"`. KikiVoice is
+cookie-free voice cloning (desktop only) with a single bundled clone ref `joni`
+(Indonesian) — use `provider: "kikivoice"`, `voiceId: "joni"` (or omit voiceId).
 
 If you need a specific voice and a particular language:
 
