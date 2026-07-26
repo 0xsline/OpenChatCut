@@ -8,7 +8,7 @@ import { firstGlEffect } from '../gl/clipEffects';
 import { ALL_FX, registerCustomFx } from '../gl/fx/effects';
 import { itemWindow, keptSegments } from '../transcript/edit';
 import { zoomAt } from './zoom';
-import { sampleKeyframes } from './keyframes';
+import { sampleKeyframes, volumeAtFrame } from './keyframes';
 import { loadTimelineFonts } from '../fonts/projectFonts';
 import { captionTrackEntries, CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
 import type { AspectFit, CssTransitionType, GlslTransitionType, KeyframeProp, TimelineItem, TimelineState, TransitionDirection, TransitionItem, Watermark } from './types';
@@ -183,7 +183,8 @@ function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, browser
   premountFor: number;
   browserRenderer: boolean;
 }) {
-  const vol = muted ? 0 : item.volume ?? 1;
+  // volume keyframes override the static item.volume (item-local edited frames)
+  const volAt = (localFrame: number) => (muted ? 0 : volumeAtFrame(item, localFrame));
   const src = audioSrc(item);
   if (item.transcript && item.transcript.length) {
     const del = new Set(item.deletedWordIdx ?? []);
@@ -197,7 +198,7 @@ function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, browser
         }).map((seg, k) => (
           <Sequence key={`${item.id}_${k}`} from={seg.fromFrame} durationInFrames={seg.durFrames} premountFor={premountFor} name={item.name}>
             <RuntimeAudio browserRenderer={browserRenderer} src={src} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame}
-              volume={(f) => vol * gainAt(seg.fromFrame + f) * audioCrossfadeMul(item, seg.fromFrame - item.startFrame + f, transitions)} />
+              volume={(f) => volAt(seg.fromFrame - item.startFrame + f) * gainAt(seg.fromFrame + f) * audioCrossfadeMul(item, seg.fromFrame - item.startFrame + f, transitions)} />
           </Sequence>
         ))}
       </>
@@ -206,7 +207,7 @@ function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, browser
   return (
     <Sequence from={item.startFrame} durationInFrames={item.durationInFrames} premountFor={premountFor} name={item.name}>
       <RuntimeAudio browserRenderer={browserRenderer} src={src} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-        volume={(f) => vol
+        volume={(f) => volAt(f)
           * gainAt(item.startFrame + f)
           * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)
           * audioCrossfadeMul(item, f, transitions)} />
@@ -228,10 +229,10 @@ function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt, browserRenderer
         {item.kind !== 'image' && (
           item.denoisedSrc ? (
             <RuntimeAudio browserRenderer={browserRenderer} src={item.denoisedSrc} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-              volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
+              volume={(f) => (muted ? 0 : volumeAtFrame(item, f)) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
           ) : (
             <RuntimeAudio browserRenderer={browserRenderer} src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-              volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
+              volume={(f) => (muted ? 0 : volumeAtFrame(item, f)) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
           )
         )}
       </AbsoluteFill>
@@ -247,11 +248,11 @@ function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt, browserRenderer
             <>
               <RuntimeVideo browserRenderer={browserRenderer} src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1} volume={0} style={style} />
               <RuntimeAudio browserRenderer={browserRenderer} src={item.denoisedSrc} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-                volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
+                volume={(f) => (muted ? 0 : volumeAtFrame(item, f)) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
             </>
           )
           : <RuntimeVideo browserRenderer={browserRenderer} src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-            volume={(f) => (muted ? 0 : item.volume ?? 1) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} style={style} />}
+            volume={(f) => (muted ? 0 : volumeAtFrame(item, f)) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} style={style} />}
     </AbsoluteFill>
   );
 }

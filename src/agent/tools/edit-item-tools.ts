@@ -42,7 +42,7 @@ export const EDIT_ITEM_TOOL_SCHEMAS: AgentToolSchema[] = [
           type: 'array',
           description:
             'Generic clip: {type,itemId|id,track|trackId?,fromFrame|startFrame?,durationInFrames?,srcInFrame?,props?,volume?,fadeInSeconds?,fadeOutSeconds?,keyframes?}. '
-            + 'Do NOT set assetId (use deletes+adds to replace media). keyframes: {x|y|scale|rotation|opacity:[{frame,value,easing?}]} item-local frames; x/y are % of canvas in -400..400 (NOT px). '
+            + 'Do NOT set assetId (use deletes+adds to replace media). keyframes: {x|y|scale|rotation|opacity|volume:[{frame,value,easing?}]} item-local frames; x/y are % of canvas in -400..400 (NOT px); volume 0..2 (audio/video only, overrides static volume). '
             + 'No CSS layout fields (left/right/top/bottom/width/height) — position clips via keyframes x/y or transform props; layout INSIDE an MG belongs in its code/props. '
             + 'effect/transition/zoom updates as before (effect assetId swap is for FX stack, not clip media).',
           items: { type: 'object' },

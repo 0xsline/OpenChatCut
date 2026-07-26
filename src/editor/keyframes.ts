@@ -86,6 +86,21 @@ export function sampleKeyframes(kfs: readonly Keyframe[], frame: number): number
   return last.value;
 }
 
+/**
+ * Effective playback volume at an item-local edited frame: volume keyframes
+ * override the static item.volume (same override rule the inspector uses for
+ * every keyframed prop). Clamped to the volume valueRange 0..2 because bezier
+ * easings can overshoot between in-range keyframes.
+ */
+export function volumeAtFrame(
+  item: { volume?: number; keyframes?: ItemKeyframes },
+  localFrame: number,
+): number {
+  const kfs = item.keyframes?.volume;
+  if (!kfs?.length) return item.volume ?? 1;
+  return Math.min(2, Math.max(0, sampleKeyframes(kfs, localFrame)));
+}
+
 /** replace-or-insert a keyframe (same frame overwrites); returns a sorted copy. */
 export function upsertKeyframe(kfs: readonly Keyframe[] | undefined, frame: number, value: number, easing?: KeyframeEasing): Keyframe[] {
   const rest = (kfs ?? []).filter((k) => k.frame !== frame);

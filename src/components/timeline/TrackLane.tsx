@@ -10,6 +10,7 @@ import {
   type TimelineItem, type TimelineState, type TrackId, type TransitionItem, type TransitionType,
 } from '../../editor/types';
 import { upsertKeyframe } from '../../editor/keyframes';
+import { getKeyframePropertyDefinition } from '../../editor/keyframeRegistry';
 import { rateStretchGeometry } from '../../editor/rateStretch';
 import type { EditorCommands } from '../../editor/store';
 import { hasLibraryDrag, parseLibraryDrag, type LibraryDragPayload } from '../../library/drag';
@@ -189,15 +190,17 @@ export function TrackLane({
                 if (f > it.startFrame && f < it.startFrame + it.durationInFrames) commands.splitItem(it.id, f);
                 return;
               }
-              if (editMode === 'pen') { // pen: 1st click selects, next clicks punch opacity kf (纵向=值)
+              if (editMode === 'pen') { // pen: 1st click selects, next clicks punch a kf (纵向=值;音频=音量,其余=透明度)
                 e.stopPropagation();
                 if (e.button !== 0) return;
                 if (!isItemSelected(state, it.id)) { commands.selectItem(it.id); return; }
-                if (it.kind === 'audio' || locked) return;
+                if (locked) return;
+                const prop = it.kind === 'audio' ? 'volume' as const : 'opacity' as const;
+                const [lo, hi] = getKeyframePropertyDefinition(prop).editorRange;
                 const rect = e.currentTarget.getBoundingClientRect();
                 const f = Math.max(0, Math.min(it.durationInFrames - 1, Math.round(frameFromClientX(e.clientX)) - it.startFrame));
-                const v = Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / Math.max(1, rect.height)));
-                commands.setItemKeyframe(it.id, 'opacity', f, Math.round(v * 100) / 100);
+                const frac = Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / Math.max(1, rect.height)));
+                commands.setItemKeyframe(it.id, prop, f, Math.round((lo + frac * (hi - lo)) * 100) / 100);
                 return;
               }
               startDrag(e, it.id, 'move', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0);
@@ -257,16 +260,18 @@ export function TrackLane({
               </svg>
             )}
             <ClipEffectBadges item={it} inTransition={(state.transitions ?? []).find((t) => t.incomingItemId === it.id) ?? null} />
-            {/* pen mode: opacity keyframe rubber band on the selected clip (纵向 = 值 0..1) */}
-            {editMode === 'pen' && selected && it.kind !== 'audio' && (() => {
-              const raw = it.keyframes?.opacity ?? [];
+            {/* pen mode: keyframe rubber band on the selected clip (纵向 = 值;音频=音量 0..2,其余=透明度 0..1) */}
+            {editMode === 'pen' && selected && (() => {
+              const prop = it.kind === 'audio' ? 'volume' as const : 'opacity' as const;
+              const [lo, hi] = getKeyframePropertyDefinition(prop).editorRange;
+              const raw = it.keyframes?.[prop] ?? [];
               const kfs = penDrag?.itemId === it.id
                 ? upsertKeyframe(raw.filter((k) => k.frame !== penDrag.fromFrame), penDrag.frame, penDrag.value, penDrag.easing)
                 : raw;
               if (!kfs.length) return null;
               const h = rowHeight - 8;
               const w = Math.max(1, dur * px);
-              const yOf = (v: number) => 3 + (1 - Math.max(0, Math.min(1, v))) * (h - 6);
+              const yOf = (v: number) => 3 + (1 - Math.max(0, Math.min(1, (v - lo) / (hi - lo)))) * (h - 6);
               const pts = kfs.map((k) => `${(k.frame * px).toFixed(1)},${yOf(k.value).toFixed(1)}`).join(' ');
               const band = `0,${yOf(kfs[0].value).toFixed(1)} ${pts} ${w.toFixed(1)},${yOf(kfs[kfs.length - 1].value).toFixed(1)}`;
               return (
@@ -278,7 +283,7 @@ export function TrackLane({
                   {kfs.map((k) => (
                     <div
                       key={k.frame}
-                      title={t('透明度 {pct}% @ {sec}s — 拖动改帧/值 · 右键删除', { pct: Math.round(k.value * 100), sec: (k.frame / state.fps).toFixed(2) })}
+                      title={t(prop === 'volume' ? '音量 {pct}% @ {sec}s — 拖动改帧/值 · 右键删除' : '透明度 {pct}% @ {sec}s — 拖动改帧/值 · 右键删除', { pct: Math.round(k.value * 100), sec: (k.frame / state.fps).toFixed(2) })}
                       onPointerDown={(e) => {
                         e.stopPropagation();
                         if (e.button !== 0 || locked) return;
@@ -286,12 +291,12 @@ export function TrackLane({
                         // frame (= React key) changes mid-drag, which would drop capture
                         scrollRef.current?.setPointerCapture?.(e.pointerId);
                         const lane = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
-                        setPenDrag({ itemId: it.id, fromFrame: k.frame, frame: k.frame, value: k.value, easing: k.easing, laneTop: lane.top, laneHeight: lane.height });
+                        setPenDrag({ itemId: it.id, prop, fromFrame: k.frame, frame: k.frame, value: k.value, easing: k.easing, laneTop: lane.top, laneHeight: lane.height });
                       }}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        if (!locked) commands.removeItemKeyframe(it.id, 'opacity', k.frame);
+                        if (!locked) commands.removeItemKeyframe(it.id, prop, k.frame);
                       }}
                       style={{ position: 'absolute', left: k.frame * px - 4, top: yOf(k.value) - 4, width: 8, height: 8,
                         background: '#ffd866', border: '0.5px solid rgba(0,0,0,0.85)', transform: 'rotate(45deg)',

@@ -298,7 +298,7 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...RUN_CODE_TOOL_SCHEMAS,
   // 导入探测：probe_media 通过 ffprobe 精确读取 hasAudioTrack/fps/时长
   ...PROBE_TOOL_SCHEMAS,
-  // 多机位音频对齐（multicam_sync：客户端交叉相关挪 startFrame）
+  // 多机位（multicam_sync：音频交叉相关对齐；change_cam：区间内切换可见机位）
   ...MULTICAM_TOOL_SCHEMAS,
   // 命名布局（apply_layout：分屏/画中画/网格/复位，一步算好 transform+crop）
   ...LAYOUT_TOOL_SCHEMAS,

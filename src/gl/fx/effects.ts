@@ -12,6 +12,11 @@ import asciiRainBlurFrag from './ascii-rain-blur.frag?raw';
 import asciiRainCompositeFrag from './ascii-rain-composite.frag?raw';
 import lutFrag from './lut.frag?raw';
 import chromaKeyFrag from './chroma-key.frag?raw';
+import colorWheelsFrag from './color-wheels.frag?raw';
+import levelsFrag from './levels.frag?raw';
+import highlightsShadowsFrag from './highlights-shadows.frag?raw';
+import clarityFrag from './clarity.frag?raw';
+import hslQualifyFrag from './hsl-qualify.frag?raw';
 import vignetteFrag from './vignette.frag?raw';
 import filmGrainFrag from './film-grain.frag?raw';
 import rgbSplitFrag from './rgb-split.frag?raw';
@@ -201,6 +206,69 @@ export const FX_EFFECTS: Record<string, FxDef> = {
       { key: 'similarity', label: '容差', default: 0.18, min: 0, max: 0.6, step: 0.01 },
       { key: 'smoothness', label: '羽化', default: 0.08, min: 0.001, max: 0.4, step: 0.005 },
       { key: 'spill', label: '溢色抑制', default: 0.5, min: 0, max: 1, step: 0.01 },
+    ],
+  },
+
+  // ── 专业调色(colorist toolkit) ───────────────────────────────────────────
+  'builtin:fx-color-wheels': {
+    id: 'builtin:fx-color-wheels',
+    name: '三路色轮',
+    desc: '调色台三路色轮：lift 暗部偏移、gamma 中间调、gain 亮部增益，均以 0.5 灰为中性，逐通道作用。',
+    frag: colorWheelsFrag,
+    props: [
+      { key: 'liftColor', label: '暗部 Lift', kind: 'color', default: [0.5, 0.5, 0.5], uniform: 'u_liftColor' },
+      { key: 'gammaColor', label: '中间调 Gamma', kind: 'color', default: [0.5, 0.5, 0.5], uniform: 'u_gammaColor' },
+      { key: 'gainColor', label: '亮部 Gain', kind: 'color', default: [0.5, 0.5, 0.5], uniform: 'u_gainColor' },
+      { key: 'intensity', label: '强度', default: 1, min: 0, max: 1, step: 0.01 },
+    ],
+  },
+  'builtin:fx-levels': {
+    id: 'builtin:fx-levels',
+    name: '色阶',
+    desc: '输入黑/白场重映射 + 中间调 Gamma + 输出黑/白场（逐通道），配合 inspect_color 的黑白点读数使用。',
+    frag: levelsFrag,
+    props: [
+      { key: 'inBlack', label: '输入黑场', default: 0, min: 0, max: 0.5, step: 0.005 },
+      { key: 'inWhite', label: '输入白场', default: 1, min: 0.5, max: 1, step: 0.005 },
+      { key: 'gamma', label: 'Gamma', default: 1, min: 0.2, max: 3, step: 0.02 },
+      { key: 'outBlack', label: '输出黑场', default: 0, min: 0, max: 0.5, step: 0.005 },
+      { key: 'outWhite', label: '输出白场', default: 1, min: 0.5, max: 1, step: 0.005 },
+    ],
+  },
+  'builtin:fx-highlights-shadows': {
+    id: 'builtin:fx-highlights-shadows',
+    name: '高光/阴影',
+    desc: '按亮度软掩膜分别调整：提亮暗部（保护高光）、回收或增强高光。',
+    frag: highlightsShadowsFrag,
+    props: [
+      { key: 'shadows', label: '阴影', default: 0, min: -1, max: 1, step: 0.02 },
+      { key: 'highlights', label: '高光', default: 0, min: -1, max: 1, step: 0.02 },
+      { key: 'shadowRange', label: '阴影范围', default: 0.35, min: 0.1, max: 0.7, step: 0.01 },
+      { key: 'highlightRange', label: '高光范围', default: 0.35, min: 0.1, max: 0.7, step: 0.01 },
+    ],
+  },
+  'builtin:fx-clarity': {
+    id: 'builtin:fx-clarity',
+    name: '清晰度',
+    desc: '中间调局部对比（亮度 unsharp）：正值增质感，负值柔化肤质。',
+    frag: clarityFrag,
+    props: [
+      { key: 'amount', label: '强度', default: 0.35, min: -1, max: 1, step: 0.02 },
+      { key: 'radius', label: '半径(px)', default: 24, min: 4, max: 64, step: 1 },
+    ],
+  },
+  'builtin:fx-hsl-qualify': {
+    id: 'builtin:fx-hsl-qualify',
+    name: 'HSL 定向调整',
+    desc: '二级校色：只对选中的色相区间（中心±宽度+羽化）做色相偏移/饱和度/明度调整；肤色、天空、品牌色定向修。',
+    frag: hslQualifyFrag,
+    props: [
+      { key: 'hueCenter', label: '色相中心(°)', default: 25, min: 0, max: 360, step: 1 },
+      { key: 'hueWidth', label: '选区宽(°)', default: 25, min: 5, max: 90, step: 1 },
+      { key: 'softness', label: '羽化(°)', default: 20, min: 1, max: 60, step: 1 },
+      { key: 'hueShift', label: '色相偏移(°)', default: 0, min: -60, max: 60, step: 1 },
+      { key: 'satMul', label: '饱和度×', default: 1, min: 0, max: 2, step: 0.02 },
+      { key: 'lumaMul', label: '明度×', default: 1, min: 0.5, max: 1.5, step: 0.01 },
     ],
   },
 
@@ -405,6 +473,11 @@ export const FX_ORDER = [
   'builtin:fx-shake',
   'builtin:fx-luma-key',
   'builtin:fx-chroma-key',
+  'builtin:fx-color-wheels',
+  'builtin:fx-levels',
+  'builtin:fx-highlights-shadows',
+  'builtin:fx-clarity',
+  'builtin:fx-hsl-qualify',
   'builtin:fx-vignette',
   'builtin:fx-film-grain',
   'builtin:fx-rgb-split',

@@ -30,8 +30,8 @@ export default {
   '比率拉伸：拖动片段首尾，保持源区间并改变播放速度': 'Rate Stretch: drag either clip edge to preserve the source range and change playback speed',
   '退出比率拉伸，返回选择模式': 'Exit Rate Stretch and return to Selection mode',
   '刀片模式 (B)：点击片段在该处切分': 'Blade mode (B): click a clip to split it there',
-  '钢笔模式 (P)：在选中片段上点击绘制透明度关键帧（纵向=不透明度，拖点改帧/值，右键删点）':
-    'Pen mode (P): click the selected clip to draw opacity keyframes (vertical = opacity; drag a point to change frame/value, right-click to delete)',
+  '钢笔模式 (P)：在选中片段上点击绘制关键帧（视觉片段=透明度，音频片段=音量；纵向=值，拖点改帧/值，右键删点）':
+    'Pen mode (P): click the selected clip to draw keyframes (visual clips = opacity, audio clips = volume; vertical = value; drag a point to change frame/value, right-click to delete)',
   '在播放头切分选中片段 (C)': 'Split the selected clip at the playhead (C)',
   '检测选中片段的场景切点': 'Detect scene changes in the selected clip',
   '选择一个视频片段后进行场景检测': 'Select a video clip to detect scene changes',
@@ -161,6 +161,7 @@ export default {
   '已应用人声隔离': 'Voice isolation applied',
   '入场转场 · {name}': 'Incoming transition · {name}',
   '透明度 {pct}% @ {sec}s — 拖动改帧/值 · 右键删除': 'Opacity {pct}% @ {sec}s — drag to change frame/value · right-click to delete',
+  '音量 {pct}% @ {sec}s — 拖动改帧/值 · 右键删除': 'Volume {pct}% @ {sec}s — drag to change frame/value · right-click to delete',
   // ── ClipContextMenu.tsx ──
   'AI 多机位同步': 'AI multicam sync',
   '复制': 'Duplicate',

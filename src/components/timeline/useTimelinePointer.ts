@@ -5,10 +5,11 @@
 import { useState, type RefObject } from 'react';
 import {
   isItemSelected, selectedIdsOf, trackKind,
-  type KeyframeEasing, type TimelineItem, type TimelineState, type TrackId,
+  type KeyframeEasing, type KeyframeProp, type TimelineItem, type TimelineState, type TrackId,
 } from '../../editor/types';
 import { groupMoveIds, moveItemsByDelta } from '../../editor/multiSelect';
 import { upsertKeyframe } from '../../editor/keyframes';
+import { getKeyframePropertyDefinition } from '../../editor/keyframeRegistry';
 import { rateStretchItem } from '../../editor/rateStretch';
 import { collectTimelineSnapPoints, snapDraggedEdges } from '../../editor/snap';
 import type { EditorCommands } from '../../editor/store';
@@ -16,7 +17,7 @@ import { emitSelectionRef, resolveTimelinePick, type TimelinePickDrag } from '..
 import { SNAP_PX, type Drag, type DragMode, type EditMode } from './timelineUtil';
 
 export interface PenDrag {
-  itemId: string; fromFrame: number; frame: number; value: number; easing?: KeyframeEasing;
+  itemId: string; prop: KeyframeProp; fromFrame: number; frame: number; value: number; easing?: KeyframeEasing;
   laneTop: number; laneHeight: number;
 }
 export interface Marquee { x0: number; y0: number; x1: number; y1: number; additive: boolean }
@@ -127,8 +128,9 @@ export function useTimelinePointer(deps: PointerDeps) {
       const it = state.items.find((x) => x.id === penDrag.itemId);
       if (it) {
         const frame = Math.max(0, Math.min(it.durationInFrames - 1, frameFromClientX(e.clientX) - it.startFrame));
-        const value = Math.max(0, Math.min(1, 1 - (e.clientY - penDrag.laneTop) / Math.max(1, penDrag.laneHeight)));
-        setPenDrag((d) => (d ? { ...d, frame, value: Math.round(value * 100) / 100 } : d));
+        const [lo, hi] = getKeyframePropertyDefinition(penDrag.prop).editorRange;
+        const frac = Math.max(0, Math.min(1, 1 - (e.clientY - penDrag.laneTop) / Math.max(1, penDrag.laneHeight)));
+        setPenDrag((d) => (d ? { ...d, frame, value: Math.round((lo + frac * (hi - lo)) * 100) / 100 } : d));
       }
       return;
     }
@@ -170,16 +172,16 @@ export function useTimelinePointer(deps: PointerDeps) {
     }
     if (penDrag) {
       const it = state.items.find((x) => x.id === penDrag.itemId);
-      const orig = it?.keyframes?.opacity?.find((k) => k.frame === penDrag.fromFrame);
+      const orig = it?.keyframes?.[penDrag.prop]?.find((k) => k.frame === penDrag.fromFrame);
       if (it && orig && (orig.frame !== penDrag.frame || orig.value !== penDrag.value)) {
         // move = delete old point + set new one, committed as ONE undo step
         const moved = upsertKeyframe(
-          (it.keyframes?.opacity ?? []).filter((k) => k.frame !== penDrag.fromFrame),
+          (it.keyframes?.[penDrag.prop] ?? []).filter((k) => k.frame !== penDrag.fromFrame),
           penDrag.frame, penDrag.value, penDrag.easing,
         );
         commands.applyState({
           ...state,
-          items: state.items.map((x) => (x.id === it.id ? { ...x, keyframes: { ...x.keyframes, opacity: moved } } : x)),
+          items: state.items.map((x) => (x.id === it.id ? { ...x, keyframes: { ...x.keyframes, [penDrag.prop]: moved } } : x)),
         });
       }
       setPenDrag(null);

@@ -313,7 +313,8 @@ function TransformControl({ item, onChange, kf }: { item: TimelineItem; onChange
   const t = useT();
   const rows = KEYFRAME_PROPS
     .map(getKeyframePropertyDefinition)
-    .filter((definition) => definition.supports(item));
+    // 音量不属于变换栈 — VolumeControl 带自己的关键帧轨
+    .filter((definition) => definition.id !== 'volume' && definition.supports(item));
   return (
     <div className="cc-insp-stack">
       {rows.map((r) => {
@@ -340,20 +341,32 @@ function TransformControl({ item, onChange, kf }: { item: TimelineItem; onChange
   );
 }
 
-// audio + video clips carry a playback volume; image/MG do not.
+// audio + video clips carry a playback volume; image/MG do not. With volume
+// keyframes present the slider shows the playhead-sampled value and edits punch
+// a keyframe there (same override rule as TransformControl rows).
 function VolumeControl({
-  item, onChange, onNormalize,
+  item, onChange, onNormalize, kf,
 }: {
   item: TimelineItem;
   onChange: (v: number) => void;
   onNormalize?: () => void | Promise<void>;
+  kf: KfApi;
 }) {
   const t = useT();
-  const vol = item.volume ?? 1;
+  const kfs = item.keyframes?.volume;
+  const vol = kfs?.length ? sampleKeyframes(kfs, kf.localFrame) : item.volume ?? 1;
   const [busy, setBusy] = useState(false);
   return (
     <div>
-      <SliderRow label={t('音量')} val={vol} min={0} max={2} step={0.05} fmt={`${Math.round(vol * 100)}%`} onChange={onChange} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <SliderRow label={t('音量')} val={vol} min={0} max={2} step={0.05} fmt={`${Math.round(vol * 100)}%`}
+            onChange={(next) => (kfs?.length ? kf.set('volume', kf.localFrame, next) : onChange(next))} />
+        </div>
+        <KfCell kfs={kfs} localFrame={kf.localFrame} punchValue={vol}
+          onSet={(frame, next, easing) => kf.set('volume', frame, next, easing)}
+          onRemove={(frame) => kf.remove('volume', frame)} onSeekLocal={kf.seekLocal} />
+      </div>
       {item.kind === 'audio' && onNormalize && (
         <button
           type="button"
@@ -865,7 +878,12 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
             {hasVolume && (
               <>
                 <SectionLabel>{t('音量')}</SectionLabel>
-                <VolumeControl item={selectedItem} onChange={onItemVolumeChange} onNormalize={onNormalizeLoudness} />
+                <VolumeControl item={selectedItem} onChange={onItemVolumeChange} onNormalize={onNormalizeLoudness} kf={{
+                  localFrame: Math.max(0, Math.min(selectedItem.durationInFrames - 1, Math.round(getPlayhead()) - selectedItem.startFrame)),
+                  set: onSetItemKeyframe,
+                  remove: onRemoveItemKeyframe,
+                  seekLocal: (frame) => onSeek(selectedItem.startFrame + frame),
+                }} />
               </>
             )}
             {(selectedItem.kind === 'video' || selectedItem.kind === 'audio') && onIsolateVoice && (

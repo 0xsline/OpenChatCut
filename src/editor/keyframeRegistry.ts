@@ -14,6 +14,7 @@ export interface KeyframePropertyDefinition {
 }
 
 const visual = (item: TimelineItem) => item.kind !== 'audio';
+const audible = (item: TimelineItem) => item.kind === 'audio' || item.kind === 'video';
 const percent = (value: number) => `${Math.round(value)}%`;
 
 export const KEYFRAME_PROPERTY_REGISTRY: Record<KeyframeProp, KeyframePropertyDefinition> = {
@@ -47,6 +48,12 @@ export const KEYFRAME_PROPERTY_REGISTRY: Record<KeyframeProp, KeyframePropertyDe
     id: 'opacity', label: '透明', valueRange: [0, 1], editorRange: [0, 1],
     step: 0.01, defaultValue: 1, supports: visual,
     getBaseValue: () => 1,
+    format: (value) => `${Math.round(value * 100)}%`,
+  },
+  volume: {
+    id: 'volume', label: '音量', valueRange: [0, 2], editorRange: [0, 2],
+    step: 0.05, defaultValue: 1, supports: audible,
+    getBaseValue: (item) => item.volume ?? 1,
     format: (value) => `${Math.round(value * 100)}%`,
   },
 };

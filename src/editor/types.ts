@@ -131,8 +131,8 @@ export interface Keyframe {
   easing?: KeyframeEasing;
 }
 
-/** the five keyframable properties (PRD §4.5: 位置/缩放/透明度/旋转可 K 帧) */
-export type KeyframeProp = 'x' | 'y' | 'scale' | 'rotation' | 'opacity';
+/** keyframable properties (PRD §4.5: 位置/缩放/透明度/旋转可 K 帧;volume 为音频/视频音量包络) */
+export type KeyframeProp = 'x' | 'y' | 'scale' | 'rotation' | 'opacity' | 'volume';
 /** per-prop sparse keyframe curves on an item (sorted by frame — reducer invariant) */
 export type ItemKeyframes = Partial<Record<KeyframeProp, Keyframe[]>>;
 
