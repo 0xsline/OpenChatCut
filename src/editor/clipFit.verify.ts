@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { capFade, fitItemToDuration, fitKeyframes, truncateKeyframes } from './clipFit';
 import { sampleKeyframes } from './keyframes';
 import { reduce } from './reduce';
+import { migrateProjectDoc } from '../persist/projectStore';
 import type { Keyframe, TimelineItem, TimelineState } from './types';
 
 const item = (patch: Partial<TimelineItem> = {}): TimelineItem => ({
@@ -112,4 +113,23 @@ const stateOf = (items: TimelineItem[]): TimelineState => ({
   assert.deepEqual([both.fadeInFrames, both.fadeOutFrames], [70, 30], '两侧同时给出时淡入优先');
 }
 
-console.log('clipFit.verify: ok (淡化联合钳位/被改侧让位/关键帧截断采样不变/真 reduce retime·setSpeed·split)');
+// ── 加载工程时也要自愈:reduce 只在有动作时才走到,存量非法值不能等用户先动一下 ──
+{
+  const legacy = {
+    version: 3, assets: [], mediaFolders: [], activeTimelineId: 'tl1',
+    timelines: [{
+      id: 'tl1', name: 'main', order: 0, fps: 30, width: 1920, height: 1080, selectedId: null,
+      tracks: { V1: { kind: 'video' as const } }, trackOrder: ['V1'],
+      items: [item({ durationInFrames: 100, fadeInFrames: 90, fadeOutFrames: 90 })],
+    }],
+  };
+  const healed = migrateProjectDoc(legacy);
+  assert.ok(healed, '合法工程仍能通过迁移');
+  const it = healed!.timelines[0]!.items[0]!;
+  assert.ok(
+    (it.fadeInFrames ?? 0) + (it.fadeOutFrames ?? 0) <= 100,
+    `加载后仍越界: ${it.fadeInFrames}+${it.fadeOutFrames}(整段会一直是暗的)`,
+  );
+}
+
+console.log('clipFit.verify: ok (淡化联合钳位/被改侧让位/关键帧截断采样不变/真 reduce retime·setSpeed·split/加载自愈)');

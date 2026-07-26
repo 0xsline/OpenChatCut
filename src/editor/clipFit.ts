@@ -66,3 +66,20 @@ export function fitItemToDuration<T extends FitTarget>(item: T): T {
   }
   return { ...item, fadeInFrames, fadeOutFrames, keyframes };
 }
+
+/**
+ * 把一条时间线里所有片段压回各自时长。全部合法时返回原对象(引用相等),
+ * 所以放在 reduce 出口逐动作跑不会引起多余重渲染。
+ *
+ * 加载工程时也要跑一遍:reduce 只在有动作时才走到,历史工程里已经存下的非法淡化
+ * 光靠它修不到——用户得先动一下那个片段才会变正常。
+ */
+export function fitTimelineItems<T extends { items: TimelineItem[] }>(timeline: T): T {
+  let changed = false;
+  const items = timeline.items.map((it) => {
+    const next = fitItemToDuration(it);
+    if (next !== it) changed = true;
+    return next;
+  });
+  return changed ? { ...timeline, items } : timeline;
+}

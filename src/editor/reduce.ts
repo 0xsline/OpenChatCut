@@ -4,7 +4,7 @@
 import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeTimeline, captionsOnTrack, DEFAULT_WATERMARK, defaultTrackId, isAudioTransition, selectedIdsOf, timelineTrackIds, trackEnd, trackKind } from './types';
 import { scaleItemKeyframes, splitItemKeyframes, upsertKeyframe } from './keyframes';
-import { capFade, fitItemToDuration } from './clipFit';
+import { capFade, fitTimelineItems } from './clipFit';
 import { remainingSourceFrames } from './sourceLimit';
 import { coerceKeyframeValue, supportsKeyframeProperty } from './keyframeRegistry';
 import type { CaptionsData } from '../captions/types';
@@ -177,20 +177,9 @@ export function contiguousFollowers(
   return ids;
 }
 
-/** 把越界的淡化/关键帧压回各自片段的时长。全部合法时原样返回,不产生新对象。 */
-function fitItems(s: TimelineState): TimelineState {
-  let changed = false;
-  const items = s.items.map((it) => {
-    const next = fitItemToDuration(it);
-    if (next !== it) changed = true;
-    return next;
-  });
-  return changed ? { ...s, items } : s;
-}
-
 export function reduce(s: TimelineState, a: Action): TimelineState {
   // 任何改动都可能改到 durationInFrames,统一在出口自愈,省得每个 case 各加守卫。
-  return fitItems(applyAction(s, a));
+  return fitTimelineItems(applyAction(s, a));
 }
 
 function applyAction(s: TimelineState, a: Action): TimelineState {

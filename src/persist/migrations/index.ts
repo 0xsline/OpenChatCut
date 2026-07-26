@@ -1,5 +1,6 @@
 import { CURRENT_PROJECT_VERSION } from '../../../shared/project-version';
 import type { ProjectDoc } from '../../editor/types';
+import { fitTimelineItems } from '../../editor/clipFit';
 import {
   dedupeAssets,
   isDesignStyle,
@@ -32,7 +33,8 @@ function finalize(value: unknown): ProjectDoc | null {
   const assets = dedupeAssets(Array.isArray(value.assets) ? value.assets : []).map((asset) => (
     asset.folderId && !folderIds.has(asset.folderId) ? { ...asset, folderId: undefined } : asset
   ));
-  const timelines = value.timelines.map(normalizeTimelineTracks);
+  // 顺手压回合法范围:非法的淡化/越界关键帧只有在这里修,才不用等用户先动一下片段。
+  const timelines = value.timelines.map(normalizeTimelineTracks).map(fitTimelineItems);
   return {
     version: CURRENT_PROJECT_VERSION,
     assets,
