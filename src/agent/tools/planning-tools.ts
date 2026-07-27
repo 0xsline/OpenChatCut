@@ -6,6 +6,15 @@ import type { AgentToolSchema } from '../tool-schema';
 //   verify_word_budget   → count actual narration words vs target → shortfall + under-budget scenes.
 // The agent MUST call verify before declaring the script done; shortfall > 0 means expand, not stop.
 
+// Narration speaking rate (words/second): converts target duration ↔ word budget so the
+// planned word count matches the REAL voiceover audio length. Calibrated to joni (KikiVoice
+// clone, Indonesian): empirically ~2.5 WPS (150 WPM) at speed:'1'. OpenCut-AI measured the
+// same value — their session log shows "joni 2.50" fixed a prior 1.92 bug that under-delivered
+// duration by ~23%. A too-low value here makes the agent write too few words → audio shorter
+// than the target. Override via VITE_NARRATION_WPS for a different voice/language.
+const NARRATION_WPS_ENV = Number(import.meta.env?.VITE_NARRATION_WPS as string | undefined);
+export const NARRATION_WPS = Number.isFinite(NARRATION_WPS_ENV) && NARRATION_WPS_ENV > 0 ? NARRATION_WPS_ENV : 2.5;
+
 export const PLANNING_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'plan_scenes',
@@ -14,7 +23,7 @@ export const PLANNING_TOOL_SCHEMAS: AgentToolSchema[] = [
       type: 'object',
       properties: {
         target_words: { type: 'number', description: 'Requested narration word count (the floor). e.g. 2500.' },
-        duration_seconds: { type: 'number', description: 'Target video length in seconds. If given, target_words = max(target_words, duration_seconds × 2.0 wps narration density).' },
+        duration_seconds: { type: 'number', description: `Target video length in seconds. If given, target_words = max(target_words, duration_seconds × ${NARRATION_WPS} wps narration density — calibrated to the joni voiceover rate).` },
         scene_count: { type: 'number', description: 'Optional scene count override. Default: target_words / 60 (~60 words/scene, ~30s each).' },
       },
       required: ['target_words'],
@@ -162,7 +171,7 @@ function planScenes(args: Record<string, unknown>): unknown {
   const requested = Number(args.target_words);
   if (!Number.isFinite(requested) || requested <= 0) return { error: 'target_words must be a positive number' };
   const durationSeconds = typeof args.duration_seconds === 'number' ? args.duration_seconds : undefined;
-  const computedFromDuration = durationSeconds ? Math.ceil(durationSeconds * 2.0) : 0;
+  const computedFromDuration = durationSeconds ? Math.ceil(durationSeconds * NARRATION_WPS) : 0;
   const targetWords = Math.max(requested, computedFromDuration);
   const sceneCount = typeof args.scene_count === 'number' && args.scene_count > 0
     ? Math.round(args.scene_count)
@@ -173,10 +182,10 @@ function planScenes(args: Record<string, unknown>): unknown {
     return { phase: p.phase, scene_count: scenes, word_budget: scenes * perScene };
   });
   const floor = Math.round(targetWords * 0.9);
-  const impliedDurationSec = Math.ceil(targetWords / 2.0);
+  const impliedDurationSec = Math.ceil(targetWords / NARRATION_WPS);
   const impliedMin = Math.round(impliedDurationSec / 60 * 10) / 10;
   const requestedMin = durationSeconds ? Math.round(durationSeconds / 60 * 10) / 10 : null;
-  // Conflict: user asked for X words AND Y duration, but X words @ 2 wps needs ~X/2 seconds,
+  // Conflict: user asked for X words AND Y duration, but X words @ NARRATION_WPS needs more seconds,
   // which is >20% longer than Y. Flag it so the agent/user picks one instead of pretending.
   const conflict = computedFromDuration > 0 && requested > computedFromDuration * 1.2;
   return {
@@ -186,13 +195,13 @@ function planScenes(args: Record<string, unknown>): unknown {
     implied_duration_minutes: impliedMin,
     scene_count: sceneCount,
     words_per_scene: perScene,
-    narration_density_wps: 2.0,
+    narration_density_wps: NARRATION_WPS,
     phases,
     floor_90pct: floor,
     ...(conflict ? {
-      CONFLICT: `Requested ${requested} words but duration ${durationSeconds}s only fits ${computedFromDuration} words @ 2.0 wps. ${requested} words actually need ~${impliedDurationSec}s (~${impliedMin} min). PICK ONE before writing: (a) keep ~${computedFromDuration} words for a true ${requestedMin}-min video (~${Math.max(4, Math.round(computedFromDuration / 60))} scenes), OR (b) extend duration to ~${impliedMin} min for ${requested} words (${sceneCount} scenes). Do NOT pretend ${requested} words fits ${durationSeconds}s — at 2.0 wps it does not.`,
+      CONFLICT: `Requested ${requested} words but duration ${durationSeconds}s only fits ${computedFromDuration} words @ ${NARRATION_WPS} wps. ${requested} words actually need ~${impliedDurationSec}s (~${impliedMin} min). PICK ONE before writing: (a) keep ~${computedFromDuration} words for a true ${requestedMin}-min video (~${Math.max(4, Math.round(computedFromDuration / 60))} scenes), OR (b) extend duration to ~${impliedMin} min for ${requested} words (${sceneCount} scenes). Do NOT pretend ${requested} words fits ${durationSeconds}s — at ${NARRATION_WPS} wps it does not.`,
     } : {}),
-    note: `Write EACH scene to ~${perScene} words. Total target = ${targetWords} = ~${impliedMin} min @ 2.0 wps. Do NOT declare done below 90% (${floor} words). Verify with verify_word_budget before finishing.`,
+    note: `Write EACH scene to ~${perScene} words. Total target = ${targetWords} = ~${impliedMin} min @ ${NARRATION_WPS} wps. Do NOT declare done below 90% (${floor} words). Verify with verify_word_budget before finishing.`,
   };
 }
 
