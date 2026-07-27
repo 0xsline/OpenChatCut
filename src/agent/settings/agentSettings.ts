@@ -19,7 +19,7 @@ export interface AgentSettings {
   planMode: boolean;
   /** Auto-compact: saat context mendekati limit model, summarize percakapan lama (keep recent). */
   autoCompact: boolean;
-  /** Threshold token untuk trigger auto-compact (default 800000). */
+  /** Model context window size (tokens) — drives the meter denominator + auto-compact trigger. Set per model (200000 Claude, 128000 GPT-4o, 1000000 Gemini/1M). */
   contextThreshold: number;
 }
 
@@ -31,7 +31,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   mgTier: 'balance',
   planMode: false,
   autoCompact: true,
-  contextThreshold: 800_000,
+  contextThreshold: 200_000,
 };
 
 export function loadAgentSettings(): AgentSettings {

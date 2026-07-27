@@ -345,15 +345,18 @@ export async function runAgent(
       conv = [...conv, ...responseMessages];
       // verify_word_budget status is captured directly in createAgentTools' execute()
       // (via onVerifyBudgetStatus) — see comment there. No responseMessages parsing here.
-      // Emit context token count: prefer EXACT from model usage, fall back to chars/4 estimate.
-      // 9router (OpenAI-compat proxy) may NOT include usage in streaming responses by default
-      // (OpenAI requires stream_options:{include_usage:true}). The fallback ensures the meter
-      // always updates instead of staying stuck at 0K.
+      // Emit context token count: prefer EXACT from model usage — INPUT + OUTPUT, since both
+      // fill the context window for the call and both are what the provider charges. Fall back
+      // to a chars/4 estimate when the proxy omits usage (9router/OpenAI-compat streams often do
+      // unless stream_options:{include_usage:true}); the estimate is input-only but keeps the
+      // meter updating instead of stuck at 0K.
       try {
         const usage = await result.usage;
-        const promptTokens = (usage as { promptTokens?: number } | null)?.promptTokens;
+        const u = usage as { promptTokens?: number; completionTokens?: number } | null;
+        const promptTokens = u?.promptTokens;
+        const completionTokens = u?.completionTokens;
         const tokens = (typeof promptTokens === 'number' && promptTokens > 0)
-          ? promptTokens
+          ? promptTokens + (typeof completionTokens === 'number' && completionTokens > 0 ? completionTokens : 0)
           : estimateTokens(conv);
         onEvent({ type: 'context', tokens, threshold: settings.contextThreshold });
       } catch {
