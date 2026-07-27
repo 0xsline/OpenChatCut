@@ -57,6 +57,25 @@ export const STOCK_TOOL_SCHEMAS: AgentToolSchema[] = [
     },
   },
   {
+    name: 'download_media_batch',
+    description: [
+      'Download MANY media files (up to 50) from public URLs into the media pool in ONE call, fetched in parallel (bounded concurrency).',
+      'Use this when you have many footage URLs at once — e.g. one picked URL per narration chunk returned by search_stock_batch — instead of calling download_media once per URL.',
+      'Returns { succeeded, failed, results } with each asset id, preserving input order. For ≤4 items or a single URL, download_media is fine.',
+    ].join(' '),
+    input_schema: {
+      type: 'object',
+      properties: {
+        urls: {
+          type: 'array',
+          items: { type: 'string', format: 'uri' },
+          description: 'Array of public http(s) URLs (up to 50). One per footage you want in the pool.',
+        },
+      },
+      required: ['urls'],
+    },
+  },
+  {
     name: 'push_asset',
     description: [
       'Register a public http(s) media URL as a project asset.',
@@ -406,6 +425,35 @@ async function execDownloadMedia(args: Args, ctx: AgentContext): Promise<unknown
   return batchEnvelope(results);
 }
 
+// Bounded-concurrency map: run fn over items with at most `bound` in flight,
+// preserving input order. Keeps a large footage batch from hammering stock
+// provider CDNs (rate-limit protection) while still parallelizing for speed.
+async function mapBounded<T, R>(items: readonly T[], bound: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(bound, items.length) }, async () => {
+    while (cursor < items.length) {
+      const i = cursor++;
+      out[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+const DOWNLOAD_BATCH_MAX = 50;
+const DOWNLOAD_BATCH_CONCURRENCY = 8;
+
+async function execDownloadMediaBatch(args: Args, ctx: AgentContext): Promise<unknown> {
+  const urls = normalizeUrlList(args.urls);
+  if (!urls.length) return { error: 'urls is required (array of public http(s) URLs)' };
+  if (urls.length > DOWNLOAD_BATCH_MAX) {
+    return { error: `urls accepts at most ${DOWNLOAD_BATCH_MAX} per call (got ${urls.length}); split into batches of ${DOWNLOAD_BATCH_MAX}` };
+  }
+  const results = await mapBounded(urls, DOWNLOAD_BATCH_CONCURRENCY, (url) => registerMediaUrl(url, {}, ctx));
+  return batchEnvelope(results);
+}
+
 async function execPushAsset(args: Args, ctx: AgentContext): Promise<unknown> {
   const urls = normalizeUrlList(args.filePath);
   if (!urls.length) return { error: 'filePath is required (public http(s) URL or array, max 4)' };
@@ -509,6 +557,7 @@ async function execSearchStockMedia(args: Args): Promise<unknown> {
 
 export async function execStockTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   if (name === 'download_media') return execDownloadMedia(args, ctx);
+  if (name === 'download_media_batch') return execDownloadMediaBatch(args, ctx);
   if (name === 'push_asset') return execPushAsset(args, ctx);
   if (name === 'import_url_asset') return execImportUrlAsset(args, ctx);
   if (name === 'search_stock_media') return execSearchStockMedia(args);
