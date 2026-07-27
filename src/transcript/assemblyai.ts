@@ -69,11 +69,12 @@ async function createTranscript(audioUrl: string, opts: TranscribeOptions = {}):
     punctuate: true,
     format_text: true,
   };
-  const lang = opts.languageCode ?? 'zh';
+  const lang = opts.languageCode ?? 'auto';
   if (lang === 'auto') {
     body.language_detection = true;
   } else {
-    // Explicit zh is far more reliable for 中文纪录片口播 than pure auto-detect.
+    // Pinned language_code is more reliable than auto-detect when the spoken language
+    // is known (e.g. 'id' for Indonesian narration, 'en', 'zh'). Default is 'auto'.
     body.language_code = lang;
   }
   const r = await serviceFetch(`${BASE}/transcript`, {

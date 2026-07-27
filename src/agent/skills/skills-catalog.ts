@@ -235,7 +235,7 @@ The title must create a curiosity gap the video then pays off. Never a dry textb
    Only add an overlay when the scene genuinely carries a number / comparison / new name / quote — do NOT decorate every scene. Discover the exact template assetId via search_templates / the motion-graphic library (category motion-graphics, pack id vox-explainer-motion); edit the instance props (headline/value/name/quote + colors) to the scene data. Keep overlays clean and readable (VOX paper/ink/accent palette by default).
 8. TRANSITIONS — hard cuts are the default for MOST scene boundaries. Use the glitch-cut transition ONLY at high-tension beats — NOT every cut: entering the ESCALATION phase, a strike/attack reveal, a "gencatan senjata mati" pivot, or a hard phase-to-phase jump. Keep it to ~15-20% of boundaries maximum so the glitch keeps its punch (every-cut glitch looks noisy and loses impact). Optionally pair a glitch cut with the glitchy-tv-signal sound effect for extra punch at the single biggest reveal.
 9. Assemble the timeline aligned to the real voiceover duration. Add captions when useful.
-10. QA before done: hook in the first seconds, funnel arc intact, Indonesia connection present, claims attributed, no filler, no generic intro/outro, narration-visual sync, export readiness.
+10. QA, then STOP. Check: hook in the first seconds, funnel arc intact, Indonesia connection present, claims attributed, no filler, no generic intro/outro, narration-visual sync. Then report the assembled timeline to the user and STOP — do NOT export unless the user explicitly asks.
 
 ## Rules
 
@@ -245,6 +245,9 @@ The title must create a curiosity gap the video then pays off. Never a dry textb
 - Do not put full spoken sentences on screen — use short labels, numbers, lower-thirds.
 - Do not promise interactive maps; map rendering is not yet available. Use stock / static maps.
 - At most one data-viz overlay per scene, only when justified by a figure.
+- NEVER auto-export. Do NOT call submit_render_job / track_export / verify_export unless the user EXPLICITLY says "export" / "render" / "buat video final". Stop after timeline + QA — the user triggers export themselves. Auto-exporting burns render time + tokens the user did not ask for.
+- Do NOT mass-duplicate footage. Calling duplicate_item many times (e.g. ×30) to fill the timeline from a handful of downloads makes repetitive visuals AND inflates the timeline past the voiceover length. Instead download ONE unique footage per ~6s narration chunk via download_media_batch, and place each as its own ≤6s clip at the chunk's transcript startFrame.
+- Transcribe in the RIGHT language. Pass language:"id" to transcribe_track for Indonesian narration (default is auto-detect). Never transcribe Indonesian audio as another language — that is what produces garbled Chinese/Hindi captions.
 
 ## Output
 

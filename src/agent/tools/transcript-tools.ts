@@ -32,8 +32,8 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'transcribe_track',
-    description: 'Transcribe the audio clip on a track (word-level + speaker labels, via AssemblyAI) and attach the transcript. Required before find_transcript / clean_script / delete_text / captions when the clip has no transcript yet.',
-    input_schema: { type: 'object', properties: { track: { type: 'string', description: 'Track alias or stable id whose audio to transcribe (default A1).' } } },
+    description: 'Transcribe the audio clip on a track (word-level + speaker labels, via AssemblyAI) and attach the transcript. Required before find_transcript / clean_script / delete_text / captions when the clip has no transcript yet. Default language is auto-detect — for Indonesian joni voiceover pass language:"id" for best accuracy.',
+    input_schema: { type: 'object', properties: { track: { type: 'string', description: 'Track alias or stable id whose audio to transcribe (default A1).' }, language: { type: 'string', description: "AssemblyAI language code: 'id' (Indonesian), 'en', 'zh', etc., or 'auto' for language_detection (default). Pin the spoken language for accuracy — e.g. 'id' for Indonesian narration." } } },
   },
   {
     name: 'find_transcript',
@@ -243,7 +243,7 @@ async function manageTranscript(args: Args, ctx: AgentContext, track: TrackId, a
   if (action === 'retry_transcription') {
     if (!it.src) return { error: `item ${it.id} has no media to transcribe` };
     try {
-      const r = await transcribePath(it.src, undefined, { languageCode: 'zh' });
+      const r = await transcribePath(it.src, undefined, { languageCode: typeof args.language === 'string' && args.language.trim() ? args.language.trim() : 'auto' });
       ctx.commands.setItemTranscript(it.id, r.words);
       return { ok: true, action, itemId: it.id, words: r.words.length, text: r.text.slice(0, 200), retried: true };
     } catch (e) {
@@ -336,7 +336,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
             results.push({ itemId: it.id, words: it.transcript.length, text: '', skipped: true });
             continue;
           }
-          const r = await transcribePath(it.src!, undefined, { languageCode: 'zh' });
+          const r = await transcribePath(it.src!, undefined, { languageCode: typeof args.language === 'string' && args.language.trim() ? args.language.trim() : 'auto' });
           ctx.commands.setItemTranscript(it.id, r.words);
           results.push({ itemId: it.id, words: r.words.length, text: r.text.slice(0, 200) });
         }
