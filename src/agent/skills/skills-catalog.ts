@@ -118,13 +118,23 @@ In the IMPACT phase, dedicate 2-3 scenes connecting the global topic to Indonesi
 
 ## Narration Density
 
-Target ~2.0 words/second. Every sentence must ADVANCE the story or reveal NEW information. BANNED filler: "sekarang kita akan membahas", "seperti yang kita ketahui", "perlu dicatat bahwa", "tidak dapat dipungkiri", "pada kesempatan kali ini". Mix vivid action imagery with short punchy dramatic sentences. Write narration in Bahasa Indonesia unless the user asks otherwise. Keep scenes concise — if narration for a scene exceeds ~6 seconds, split it into multiple shorter clips yourself, each with a clear primary visual subject.
+Target ~2.5 words/second — this is the joni voiceover rate (calibrated; matches plan_scenes NARRATION_WPS). Do NOT plan at 2.0 or the audio will run ~20% shorter than the target duration. Every sentence must ADVANCE the story or reveal NEW information. BANNED filler: "sekarang kita akan membahas", "seperti yang kita ketahui", "perlu dicatat bahwa", "tidak dapat dipungkiri", "pada kesempatan kali ini". Mix vivid action imagery with short punchy dramatic sentences. Write narration in Bahasa Indonesia unless the user asks otherwise. Keep scenes concise — if narration for a scene exceeds ~6 seconds, split it into multiple shorter clips yourself, each with a clear primary visual subject.
+
+## Narration Voice (Trikcuan-style — how it should READ)
+
+The script must read like a tense Indonesian news-documentary narrator, not an essay. Hallmarks:
+
+- **Date + event hook first.** Open scenes with the concrete when/what: "Hanya sembilan hari setelah MOU Islamabad... pesawat tempur Amerika kembali menghantam fasilitas militer Iran di Selat Hormuz pada 26 Juni 2026." Anchor every major claim to a date, place, or named action.
+- **Cause→effect chain.** Move as pemicu → balasan → eskalasi: "Pemicunya: drone IRGC menyerang kapal Ever Lovely... yang langsung dibalas AS dengan serangan ke empat target... Iran membalas dengan menghantam pangkalan AS di Kuwait dan Bahrain." Never list facts statically — chain them as action and reaction.
+- **Specifics over vague.** Named actors (Pezeshkian, IRGC, Netanyahu), named platforms/places (Strait of Hormuz, Sirik, Arleigh Burke-class), and real numbers (20 persen minyak dunia, dua juta barel, 60 hari). Vague = "pasukan menyerang daerah itu"; specific = "drone IRGC menyerang kapal dagang Ever Lovely bendera Singapura di Selat Hormuz".
+- **Indonesia local anchors (mandatory in IMPACT).** Don't stop at "berdampak ke Indonesia" — name the concrete local lever: harga BBM / LPG 3 kg, harga minyak goreng, ratusan ribu TKI di kawasan Teluk, ekspor nikel/CPO/batu bara, kurs rupiah, rute pelayaran Selat Malaka. Tie the global event to a price or a group of real Indonesians.
+- **Setup line near the end of HOOK/early CONTEXT.** Tell the viewer what they'll learn: "Dalam video ini kita bedah secara mendalam: apa yang memicu pecahnya gencatan senjata, siapa yang salah, dan apa yang akan terjadi dalam 60 hari negosiasi nuklir ke depan."
 
 ## Word Budget (NON-NEGOTIABLE — long-form videos)
 
-LLMs tend to UNDER-write. A 20-minute video at 2.0 wps needs ~2400 words of narration, but without an explicit budget the agent typically produces only ~500 and the video lands at ~4 minutes. So enforce a hard word budget:
+LLMs tend to UNDER-write. A 20-minute video at 2.5 wps needs ~3000 words of narration, but without an explicit budget the agent typically produces only ~500 and the video lands at ~4 minutes. So enforce a hard word budget:
 
-- COMPUTE the target up front: target_words = duration_seconds × 2.0, rounded up. Examples: 20 min (1200s) → ~2400 words; 10 min → ~1200; 5 min → ~600; 2 min → ~240. If the user states a word count (e.g. "2500 kata"), use the LARGER of that and the computed target as the FLOOR.
+- COMPUTE the target up front: target_words = duration_seconds × 2.5, rounded up (the joni voiceover rate). Examples: 20 min (1200s) → ~3000 words; 10 min → ~1500; 5 min → ~750; 2 min → ~300. If the user states a word count (e.g. "2500 kata"), use the LARGER of that and the computed target as the FLOOR.
 - BREAK THE TARGET INTO SCENES before writing: choose scene_count so scene_words = target_words / scene_count lands ~40-80 words/scene (≈20-40s each). Examples: 2400 words → 40 scenes × 60 words, or 30 scenes × 80 words. Write the breakdown down (phase → scene → word budget each) and show it to the user.
 - WRITE EVERY SCENE TO ITS WORD BUDGET — do not stop early, do not compress. If a scene feels thin, add concrete detail (specs, numbers, quotes, named events, dates) until it hits its budget.
 - VERIFY THE SCRIPT FIRST, BEFORE generating any voice: write ALL scenes' narration as TEXT first, then call verify_word_budget with that text (do NOT submit_voice yet). If status is UNDER_BUDGET (total < 90% target), EXPAND the script text — add scenes / lengthen thin ones — and verify AGAIN, looping until status ok. Only AFTER verify_word_budget returns ok do you call submit_voice per segment. NEVER generate voice for a script that has not passed verify_word_budget — generating 6 babaks of audio then discovering the count is short wastes renders. Do NOT stop partway, do NOT ask the user "should I continue?" or "is this enough?" — keep writing + verifying until status ok. The user's requested word count (e.g. 2400) is a HARD FLOOR, not a suggestion; stopping at 1079 when they asked for 2400 is a failure, even if the footage syncs.
@@ -177,15 +187,30 @@ Footage must follow the narration scene-by-scene — NOT one long clip over the 
 - Footage MUST CHANGE every scene. When scene 2's audio starts, scene 2's footage shows. Do NOT drop one clip spanning multiple scenes.
 - VERIFY by playing: when the narration says "kapal perang" the screen shows a warship; when it says "Indonesia" it shows an Indonesian port/flag. If a scene mismatches, fix THAT scene's footage only — don't redo the whole timeline.
 
-## Title Formula
+## Title Formula (Trikcuan-style — Bahasa Indonesia)
 
-Title = [DRAMATIC SUBJECT] + [EMOTION TRIGGER] + [URGENCY MARKER]. Use at least one trigger: PANIK, KAGET, MURKA, ANCAM, NEKAT, GERAM, MENGEJUTKAN, DISEGANI, KELABAKAN. End with "!" or "?" or "| Cek Fakta". The title must create a curiosity gap.
+Write the title in Bahasa Indonesia, dramatic and curiosity-driven, as **2–3 short segments joined by the | character** (or one punchy sentence). Each segment is a clause, not a label.
+
+Pattern: [AKTOR/KEJADIAN] | [EMOSI/AKSI] | [STAKE/PERTANYAAN].
+
+- Front-load a NAMED actor or concrete event (Trump, AS, Iran, IRGC, Israel, Netanyahu, Singapura, Prabowo — not "sebuah negara").
+- Use at least one EMOTION TRIGGER: PANIK, KAGET, MURKA, ANCAM, HANTAM, NEKAT, GERAM, MENGEJUTKAN, DISEGANI, KELABAKAN, TANTANG, PAMER KEKUATAN. ALL CAPS is allowed for the trigger word.
+- End the last segment with "!", "?", or the series marker "| Cek Fakta" / "? Cek Fakta" (use Cek Fakta when the video verifies a claim or rumor).
+- Optional 🔥 emoji, max one.
+
+Real reference titles (match this voice):
+- "Trump Murka | AS Hantam Iran Lagi | Gencatan Senjata Resmi Mati"
+- "Singapura Panik! Iran IRGC Serang Kapal Kontainernya Di Selat Hormuz? | Cek Fakta"
+- "DUNIA KAGET! INI ALASAN INDONESIA DISEGANI 🔥 HARTA KARUN LANGKA TERSIMPAN DI SINI | Cek Fakta"
+- "Israel Ancam Mesir! Turki Siap Bertindak, AS di Bawah Trump Enggan Campur Tangan"
+
+The title must create a curiosity gap the video then pays off. Never a dry textbook headline ("Analisis Konflik Selat Hormuz" = reject).
 
 ## Workflow
 
 1. Read project state: target duration, aspect ratio, platform, narration language (default Bahasa Indonesia).
 2. Research the topic (web_search). Collect facts; mark real-events that need real footage.
-3. Plan the FUNNEL ARC + WORD BUDGET: compute target_words = duration_seconds × 2.0 (or the user's requested count, whichever is larger), break it into scene_count × scene_words (~40-80 words/scene), and assign a word budget to each scene per phase. Include the Indonesia-connection scenes. Show the breakdown + total to the user.
+3. Plan the FUNNEL ARC + WORD BUDGET: compute target_words = duration_seconds × 2.5 (or the user's requested count, whichever is larger), break it into scene_count × scene_words (~40-80 words/scene), and assign a word budget to each scene per phase. Include the Indonesia-connection scenes. Show the breakdown + total to the user.
 4. Write narration per scene TO ITS WORD BUDGET (do not under-write — see Word Budget). For longer scenes, split into ~6s clips, each visually self-contained. After writing all scenes, SUM the word counts and EXPAND any under-budget scene until the total ≥ 90% of target.
 5. Generate voiceover with submit_voice (load the voice skill first; confirm a concrete voice preset before submitting). For Bahasa Indonesia narration, prefer KikiVoice (provider: "kikivoice", voiceId: "joni" — bundled Indonesian clone, desktop only) when available; otherwise use a configured ElevenLabs / Doubao / MiniMax voice. Spell digits / symbols / abbreviations out per the Text Normalization section before submitting. Read the REAL TTS audio duration and fit scenes to it, not to estimates.
 6. Transcribe each VO segment with transcribe_track (track A1) to get per-sentence timing, then group sentences into ~6s narration chunks (MAX 6s per clip — split longer sentences, merge shorter ones up to 6s). Select visuals via search_stock_batch (ONE call, one English query per ~6s chunk — NOT search_stock_media per chunk). Place ONE footage per chunk with startFrame = the chunk's EXACT transcript startFrame, durationInFrames = chunk duration (≤6s × fps). This keeps footage changing every ~6s AND glued to the narration. Follow the Stock Search Strategy (subject-fronted, action-for-people). For maps use stock map footage / static map. For breaking-news see the breaking-news limitation.
