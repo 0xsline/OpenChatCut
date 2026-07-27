@@ -202,9 +202,14 @@ async function mapBoundedVoice<T, R>(items: readonly T[], bound: number, fn: (it
 const VOICE_BATCH_MAX = 50;
 const VOICE_BATCH_CONCURRENCY = 4;
 
+type VoiceBatchResult =
+  | { ok: true; assetId: string; durationInFrames: number; name: string; text: string; placedItemId?: string; startFrame?: number }
+  | { ok: false; error: string; text: string };
+
 // submit_voice_batch: synth one clip per scene in parallel (one call, not N sequential submit_voice).
-// Returns one audio asset per scene (assetId + durationInFrames) so the agent can place them
-// back-to-back on A1. Per-item failure is isolated (a bad scene doesn't kill the batch).
+// Returns one audio asset per scene (assetId + durationInFrames). If `place` is set, the clips are
+// also auto-placed back-to-back on an audio track in scene order (track auto-created if missing) so
+// the agent never has to emit a fragile edit_item adds[] for VO. Per-item failure is isolated.
 const submitVoiceBatchHandler: Handler = async (args, ctx) => {
   const raw = Array.isArray(args.items) ? args.items : [];
   const items = raw
@@ -219,8 +224,15 @@ const submitVoiceBatchHandler: Handler = async (args, ctx) => {
   if (!items.length) return { error: 'items must be a non-empty array of {text} (max 50)' };
   const provider = args.provider === 'doubao' || args.provider === 'minimax' || args.provider === 'kikivoice' ? args.provider : 'kikivoice';
   const sharedVoice = typeof args.voiceId === 'string' && args.voiceId.trim() ? args.voiceId.trim() : undefined;
+  const placeObj = typeof args.place === 'object' && args.place ? (args.place as Record<string, unknown>) : {};
+  const place = args.place
+    ? {
+        track: typeof placeObj.track === 'string' && placeObj.track.trim() ? placeObj.track.trim() : undefined,
+        startFrame: typeof placeObj.startFrame === 'number' && Number.isFinite(placeObj.startFrame) ? Math.max(0, Math.floor(placeObj.startFrame)) : 0,
+      }
+    : null;
   const state = ctx.getState();
-  const results = await mapBoundedVoice(items, VOICE_BATCH_CONCURRENCY, async (it) => {
+  const results = await mapBoundedVoice(items, VOICE_BATCH_CONCURRENCY, async (it): Promise<VoiceBatchResult> => {
     try {
       const input = buildSubmitVoiceArgs({ text: it.text, voiceId: it.voiceId ?? sharedVoice, provider, name: it.name });
       const asset = await submitVoice(input, state);
@@ -231,6 +243,32 @@ const submitVoiceBatchHandler: Handler = async (args, ctx) => {
     }
   });
   const synthed = results.filter((r) => r.ok).length;
+
+  // Auto-place back-to-back in scene order. Done SEQUENTIALLY after synth so cumulative
+  // startFrames are deterministic; the audio track is created automatically by pickTrack.
+  if (place) {
+    const pool = ctx.getDoc().assets ?? [];
+    let cursor = place.startFrame;
+    let placedCount = 0;
+    for (const r of results) {
+      if (!r.ok || !r.assetId) continue;
+      const asset = pool.find((a) => a.id === r.assetId);
+      if (!asset) continue;
+      const itemId = ctx.commands.addMediaItem(asset, { track: place.track, startFrame: cursor });
+      r.placedItemId = itemId;
+      r.startFrame = cursor;
+      cursor += asset.durationInFrames ?? 0;
+      placedCount++;
+    }
+    const totalDurationInFrames = cursor - place.startFrame;
+    return {
+      ok: synthed > 0, synthed, failed: results.length - synthed, total: results.length,
+      placed: placedCount, totalDurationInFrames,
+      note: placedCount ? `Placed ${placedCount} VO clips back-to-back on an audio track (total ${totalDurationInFrames} frames). No edit_item needed for VO.` : 'No clips placed (synth failed).',
+      results,
+    };
+  }
+
   return { ok: synthed > 0, synthed, failed: results.length - synthed, total: results.length, results };
 };
 

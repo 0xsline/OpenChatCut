@@ -91,7 +91,7 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'submit_voice_batch',
-    description: 'Synthesize MANY voice clips in ONE parallel call — one per scene. Pass one {text, voiceId?} per scene; returns one audio asset per scene (assetId + durationInFrames). Use this instead of submit_voice once per scene — a 12-min video has ~30 scenes. Each scene text should be ≤900 chars (under the KikiVoice limit). Place the returned clips back-to-back on track A1 in scene order.',
+    description: 'Synthesize MANY voice clips in ONE parallel call — one per scene — AND optionally auto-place them back-to-back on an audio track. Pass one {text, voiceId?} per scene. Set place:true to auto-place the clips back-to-back on an audio track in scene order (the track is created automatically if missing — NO edit_track / edit_item needed). This is the normal mode for a narration/VO track. Returns one audio asset per scene (assetId + durationInFrames) and, when place is set, each clip\'s placed itemId + startFrame plus the total narration durationInFrames. Use this instead of submit_voice once per scene — a 12-min video has ~30 scenes. Each scene text should be ≤900 chars (under the KikiVoice limit).',
     input_schema: {
       type: 'object',
       properties: {
@@ -110,6 +110,14 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
         },
         provider: { type: 'string', enum: ['elevenlabs', 'doubao', 'minimax', 'kikivoice'], description: 'Shared provider for all items (default kikivoice).' },
         voiceId: { type: 'string', description: 'Shared voiceId for all items unless overridden per item (default joni).' },
+        place: {
+          type: ['boolean', 'object'],
+          description: 'Auto-place the synth clips back-to-back on an audio track in scene order. Pass true, or {track, startFrame} to customize. The audio track is created automatically if missing (no edit_track needed). Default false (asset-only, like submit_voice). For a narration/VO track pass place:true.',
+          properties: {
+            track: { type: 'string', description: 'Optional target audio track id/name (e.g. "A1"). Auto-created if missing.' },
+            startFrame: { type: 'number', description: 'Start frame of the first clip (default 0).' },
+          },
+        },
       },
       required: ['items'],
     },
