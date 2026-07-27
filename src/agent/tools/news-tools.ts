@@ -10,8 +10,7 @@ export const NEWS_TOOL_SCHEMAS: AgentToolSchema[] = [
     name: 'fetch_trending_topics',
     description: [
       'Fetch CURRENT trending news headlines (default: Indonesia-locale geopolitics / conflict / diplomacy / global economy) from a free Google News RSS feed — no API key needed.',
-      'Use this FIRST when the user gives no specific topic (e.g. "bikin video geopolitik", "apa yang lagi viral", "kamu pilih aja") instead of asking them for a topic.',
-      'Returns recent items with title, source, date, and link. Pick 2–3 concrete, Indonesia-relevant, video-worthy topics from the results and propose them (with a one-line Indonesia angle each), then proceed on one.',
+      'Returns recent items with title, source, date, and link. Use when the active workflow tells you to source current news (e.g. the geopolitical-video skill sources topics from here when the user gives none) — it is NOT a general-purpose "find me a topic" tool, so do not call it unless the workflow calls for current headlines.',
       'Optional query narrows the feed (e.g. "Iran AS", "Laut Cina Selatan", "minyak"); gl/hl change locale; limit caps items.',
     ].join(' '),
     input_schema: {
