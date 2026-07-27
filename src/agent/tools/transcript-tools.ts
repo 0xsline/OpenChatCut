@@ -1,13 +1,13 @@
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
-import { defaultTrackId, resolveTrackId, trackAlias, type TimelineItem, type TrackId } from '../../editor/types';
+import { defaultTrackId, resolveTrackId, trackAlias, type TimelineItem, type TimelineState, type TrackId } from '../../editor/types';
 import { transcribePath } from '../../transcript/assemblyai';
 import { fillerIndices } from '../../transcript/edit';
 import { translateLines } from '../../captions/translate';
 import { createVariant, findVariantByLang, upsertVariant } from '../../transcript/variants';
 import { buildSilenceGapCaps, parseCleanOnly, parseSilenceRule, type SilenceRule } from '../../transcript/clean';
 import type { Action } from '../../editor/reduce';
-import { execFindTranscript, findPhrase, normalize } from './transcript-find';
+import { execFindTranscript, findPhrase, makeWordFrameMapper, normalize } from './transcript-find';
 import { execReadTranscript } from './transcript-read';
 
 // Agent tools for the transcript / caption / "delete text = delete video" surface.
@@ -136,6 +136,23 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
         targetLanguage: { type: 'string', description: 'translation_read:要读的译文语言(lang 的别名)。' },
       },
       required: ['action'],
+    },
+  },
+  {
+    name: 'plan_footage_shots',
+    description: [
+      'Deterministically split the transcribed voiceover on a track into ≤maxSeconds footage SHOTS — frame-precise cut points for multi-shot footage alignment.',
+      'Reads the VO transcript (call transcribe_track first), computes each word\'s GLOBAL timeline frame with the SAME mapping find_transcript uses, then greedily packs words into shots of at most maxSeconds (preferring to break at sentence ends). Returns one entry per shot: startFrame + durationInFrames + the spoken text + the source VO clip id.',
+      'Use this INSTEAD of computing shot boundaries yourself: the frames are exact (no rounding drift) and you only derive ONE English stock keyword from each shot\'s text. Then batch-execute: search_stock_batch (≤12 queries/call) → download_media_batch → edit_item adds[] with each shot\'s startFrame+durationInFrames on V1. Shots tile the VO with no gap/overlap.',
+    ].join(' '),
+    input_schema: {
+      type: 'object',
+      properties: {
+        track: { type: 'string', description: 'Voiceover track alias/stable id (default A1).' },
+        maxSeconds: { type: 'number', minimum: 1, maximum: 30, description: 'Max shot duration in seconds (default 6). Footage changes at most this often — a 20s scene yields ~3-4 shots.' },
+        minSeconds: { type: 'number', minimum: 0.5, maximum: 10, description: 'Trailing shots shorter than this are merged into the previous shot (default 1.5) to avoid tiny tail clips.' },
+      },
+      required: [],
     },
   },
 ];
@@ -315,6 +332,108 @@ async function manageTranscript(args: Args, ctx: AgentContext, track: TrackId, a
   return { error: `unsupported action "${action}"; use fix / retry_transcription / translation_create / translation_ensure / translation_list / translation_read` };
 }
 
+// plan_footage_shots: deterministically pack the transcribed VO into ≤maxSeconds shots for
+// multi-shot footage alignment. Reuses makeWordFrameMapper so shot frames match find_transcript
+// exactly (zero drift); the agent only has to derive a keyword per shot, then batch-execute.
+type FootageShot = {
+  index: number;
+  startFrame: number;
+  endFrameExclusive: number;
+  durationInFrames: number;
+  startSeconds: number;
+  durationSeconds: number;
+  text: string;
+  wordCount: number;
+  itemId: string;
+};
+
+const SENTENCE_END = /[.!?。！？；;]$/;
+
+function planFootageShots(args: Args, state: TimelineState, track: TrackId, alias: string): unknown {
+  const fps = state.fps;
+  const maxSeconds = typeof args.maxSeconds === 'number' && Number.isFinite(args.maxSeconds)
+    ? Math.min(30, Math.max(1, args.maxSeconds)) : 6;
+  const minSeconds = typeof args.minSeconds === 'number' && Number.isFinite(args.minSeconds)
+    ? Math.min(10, Math.max(0.5, args.minSeconds)) : 1.5;
+  const maxFrames = Math.max(1, Math.round(maxSeconds * fps));
+  const minFrames = Math.max(1, Math.round(minSeconds * fps));
+
+  const clips = state.items
+    .filter((it) => (it.kind === 'audio' || it.kind === 'video') && it.track === track && (it.transcript?.length ?? 0) > 0)
+    .sort((a, b) => a.startFrame - b.startFrame);
+  if (!clips.length) return { error: `no transcribed clip on ${alias}; call transcribe_track first` };
+
+  // Flatten kept words across clips with their GLOBAL timeline frames (deleted/trimmed → skipped).
+  type W = { text: string; fromFrame: number; toFrame: number; itemId: string };
+  const words: W[] = [];
+  for (const it of clips) {
+    const mapper = makeWordFrameMapper(it, fps);
+    const tw = it.transcript ?? [];
+    for (let gi = 0; gi < tw.length; gi++) {
+      const f = mapper(gi);
+      if (!f) continue;
+      words.push({ text: tw[gi]!.text, fromFrame: f.fromFrame, toFrame: f.toFrame, itemId: it.id });
+    }
+  }
+  if (!words.length) return { error: `all words on ${alias} are deleted/trimmed; nothing to plan` };
+
+  // Greedily pack words into contiguous (tiling) shots ≤ maxFrames, cutting at word starts
+  // and preferring a natural cut right after a sentence end once the shot is ≥70% full.
+  const shots: FootageShot[] = [];
+  const naturalBreakThreshold = Math.round(maxFrames * 0.7);
+  let i = 0;
+  while (i < words.length) {
+    const start = words[i]!.fromFrame;
+    const ceiling = start + maxFrames;
+    let j = i;
+    while (j + 1 < words.length && words[j + 1]!.toFrame <= ceiling) {
+      j++;
+      if (SENTENCE_END.test(words[j]!.text.trim()) && words[j]!.fromFrame - start >= naturalBreakThreshold) break;
+    }
+    const isLast = j + 1 >= words.length;
+    const end = isLast ? words[j]!.toFrame : Math.min(words[j + 1]!.fromFrame, ceiling);
+    const text = words.slice(i, j + 1).map((w) => w.text).join(' ').replace(/\s+/g, ' ').trim();
+    shots.push({
+      index: shots.length,
+      startFrame: start,
+      endFrameExclusive: end,
+      durationInFrames: Math.max(1, end - start),
+      startSeconds: Math.round((start / fps) * 100) / 100,
+      durationSeconds: Math.round(((end - start) / fps) * 100) / 100,
+      text,
+      wordCount: j - i + 1,
+      itemId: words[i]!.itemId,
+    });
+    i = j + 1;
+  }
+
+  // Merge a trailing shot shorter than minSeconds into the previous one.
+  if (shots.length > 1 && shots[shots.length - 1]!.durationInFrames < minFrames) {
+    const last = shots.pop()!;
+    const prev = shots[shots.length - 1]!;
+    prev.endFrameExclusive = last.endFrameExclusive;
+    prev.durationInFrames = last.endFrameExclusive - prev.startFrame;
+    prev.durationSeconds = Math.round((prev.durationInFrames / fps) * 100) / 100;
+    prev.text = `${prev.text} ${last.text}`.trim();
+    prev.wordCount += last.wordCount;
+  }
+
+  const totalDurationInFrames = shots.length
+    ? shots[shots.length - 1]!.endFrameExclusive - shots[0]!.startFrame
+    : 0;
+
+  return {
+    ok: true,
+    track: alias,
+    fps,
+    maxSeconds,
+    totalDurationInFrames,
+    shotCount: shots.length,
+    shots,
+    next: `Each shot is a ≤${maxSeconds}s footage slot tiling the VO with no gap/overlap. Derive ONE English stock keyword from each shot's text, then search_stock_batch (≤12 queries/call; group by platform — dvids for military/hardware, wikimedia for maps/flags/archive, default for generic B-roll) → download_media_batch → edit_item adds:[{type:'video', assetId, track:'V1', startFrame, durationInFrames}] one entry per shot.`,
+  };
+}
+
 // Execute a transcript/caption tool. Returns undefined if `name` isn't one of ours.
 export async function execTranscriptTool(name: string, args: Args, ctx: AgentContext): Promise<unknown | undefined> {
   if (name === 'read_transcript') return execReadTranscript(args, ctx);
@@ -348,6 +467,9 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
     case 'find_transcript':
       // 参数面(asset/fuzzy/includeWordTimestamps/limit)+ 全工程搜索:transcript-find.ts。
       return execFindTranscript(args, ctx);
+    case 'plan_footage_shots':
+      // Frame-precise ≤maxSeconds shot plan over the transcribed VO (multi-shot footage alignment).
+      return planFootageShots(args, state, track, alias);
     case 'clean_script': {
       // Whole-track batch: clean every
       // transcribed clip on the track, not just the first. itemId narrows to one clip.
