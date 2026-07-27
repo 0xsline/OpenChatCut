@@ -92,6 +92,29 @@ assert.equal(rt.shotCount, 2, 'tiny tail shot merged into the previous (not a 3r
 assert.equal(rt.shots[1]!.endFrameExclusive, 366, 'merged shot now spans the tail');
 assert.ok(String(rt.shots[1]!.text).includes('End.'), 'merged tail text appended');
 
+// pause-gap regression (M1): a silence between words must NOT create a black gap — the shot
+// extends across the pause so consecutive shots still tile perfectly.
+const gapWords = [
+  ...Array.from({ length: 11 }, (_, k) => ({ text: `p${k}`, start: k * 500, end: k * 500 + 500 })), // contiguous to frame 165
+  { text: 'next', start: 7000, end: 7500 }, // 1.5s pause before it → frame 210
+  { text: 'more', start: 7500, end: 8000 }, // frame 225→240
+  { text: 'more2', start: 8000, end: 8500 }, // frame 240→255
+  { text: 'last', start: 8500, end: 9000 }, // frame 255→270 (≥minSeconds so shot1 isn't merged)
+];
+const gapDoc: ProjectDoc = {
+  ...baseDoc,
+  timelines: [{ ...baseDoc.timelines[0]!, items: [{ id: 'gap_clip', track: 'audio_main', startFrame: 0, durationInFrames: 270, kind: 'audio', name: 'Gap', src: '/gap.wav', transcript: gapWords }] }],
+};
+const gapCtx = { ...ctx, getState: () => activeEditorState(gapDoc) } satisfies AgentContext;
+const rg = await execTranscriptTool('plan_footage_shots', { track: 'A1', maxSeconds: 6 }, gapCtx) as PlanResult;
+assert.equal(rg.shotCount, 2);
+assert.equal(rg.totalDurationInFrames, 270);
+assert.equal(rg.shots[0]!.endFrameExclusive, 210, 'shot0 extends across the pause (no clamp → no gap)');
+assert.equal(rg.shots[1]!.startFrame, 210, 'shot1 tiles shot0 — NO gap across the silence');
+for (let k = 1; k < rg.shots.length; k++) {
+  assert.equal(rg.shots[k]!.startFrame, rg.shots[k - 1]!.endFrameExclusive, `gap-regression: contiguous at shot ${k}`);
+}
+
 // error: track with no transcript
 const emptyDoc: ProjectDoc = { ...baseDoc, timelines: [{ ...baseDoc.timelines[0]!, items: [] }] };
 const emptyCtx = { ...ctx, getState: () => activeEditorState(emptyDoc) } satisfies AgentContext;
@@ -99,4 +122,4 @@ const err = await execTranscriptTool('plan_footage_shots', { track: 'A1' }, empt
 assert.equal(err.ok, undefined);
 assert.match(String(err.error), /transcribe_track first/);
 
-console.log('plan-footage-shots.verify: ok (tiling/≤maxFrames/global-offset/tail-merge/error)');
+console.log('plan-footage-shots.verify: ok (tiling/no-gap/global-offset/tail-merge/pause-gap/error)');

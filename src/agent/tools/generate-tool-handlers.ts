@@ -261,10 +261,12 @@ const submitVoiceBatchHandler: Handler = async (args, ctx) => {
       placedCount++;
     }
     const totalDurationInFrames = cursor - place.startFrame;
+    const failed = results.length - synthed;
     return {
-      ok: synthed > 0, synthed, failed: results.length - synthed, total: results.length,
+      ok: synthed > 0, synthed, failed, total: results.length,
       placed: placedCount, totalDurationInFrames,
       note: placedCount ? `Placed ${placedCount} VO clips back-to-back on an audio track (total ${totalDurationInFrames} frames). No edit_item needed for VO.` : 'No clips placed (synth failed).',
+      ...(failed > 0 && placedCount > 0 ? { warning: `${failed} scene(s) failed synth and were SKIPPED — later scenes shifted left to close the gap. Call plan_footage_shots AFTER this to derive footage anchors from the audio that actually landed; any per-scene startFrames you planned before this call are now off by the skipped scene(s).` } : {}),
       results,
     };
   }

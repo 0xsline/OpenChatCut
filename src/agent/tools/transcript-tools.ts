@@ -142,7 +142,7 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
     name: 'plan_footage_shots',
     description: [
       'Deterministically split the transcribed voiceover on a track into ≤maxSeconds footage SHOTS — frame-precise cut points for multi-shot footage alignment.',
-      'Reads the VO transcript (call transcribe_track first), computes each word\'s GLOBAL timeline frame with the SAME mapping find_transcript uses, then greedily packs words into shots of at most maxSeconds (preferring to break at sentence ends). Returns one entry per shot: startFrame + durationInFrames + the spoken text + the source VO clip id.',
+      'Reads the VO transcript (call transcribe_track first), computes each word\'s GLOBAL timeline frame with the SAME mapping find_transcript uses, then greedily packs words into shots of approximately maxSeconds that TILE the VO with no gap/overlap (preferring to break at sentence ends). A shot may run slightly past maxSeconds to cover a trailing pause, so footage never flashes black between shots. Returns one entry per shot: startFrame + durationInFrames + the spoken text + the source VO clip id.',
       'Use this INSTEAD of computing shot boundaries yourself: the frames are exact (no rounding drift) and you only derive ONE English stock keyword from each shot\'s text. Then batch-execute: search_stock_batch (≤12 queries/call) → download_media_batch → edit_item adds[] with each shot\'s startFrame+durationInFrames on V1. Shots tile the VO with no gap/overlap.',
     ].join(' '),
     input_schema: {
@@ -377,7 +377,7 @@ function planFootageShots(args: Args, state: TimelineState, track: TrackId, alia
   }
   if (!words.length) return { error: `all words on ${alias} are deleted/trimmed; nothing to plan` };
 
-  // Greedily pack words into contiguous (tiling) shots ≤ maxFrames, cutting at word starts
+  // Greedily pack words into contiguous (tiling) shots ≈ maxSeconds, cutting at word starts
   // and preferring a natural cut right after a sentence end once the shot is ≥70% full.
   const shots: FootageShot[] = [];
   const naturalBreakThreshold = Math.round(maxFrames * 0.7);
@@ -391,7 +391,12 @@ function planFootageShots(args: Args, state: TimelineState, track: TrackId, alia
       if (SENTENCE_END.test(words[j]!.text.trim()) && words[j]!.fromFrame - start >= naturalBreakThreshold) break;
     }
     const isLast = j + 1 >= words.length;
-    const end = isLast ? words[j]!.toFrame : Math.min(words[j + 1]!.fromFrame, ceiling);
+    // The shot ENDS at the next shot's first word start, so consecutive shots tile with NO GAP —
+    // even across inter-word pauses the footage holds through the silence instead of flashing black.
+    // (Clamping to `ceiling` here would create a black gap whenever a pause straddles the cut,
+    // which AssemblyAI/TTS output does constantly.) A shot may therefore run slightly past
+    // maxSeconds when a pause precedes the cut — no-gap tiling matters more than a hard cap for pace.
+    const end = isLast ? words[j]!.toFrame : words[j + 1]!.fromFrame;
     const text = words.slice(i, j + 1).map((w) => w.text).join(' ').replace(/\s+/g, ' ').trim();
     shots.push({
       index: shots.length,
@@ -430,7 +435,7 @@ function planFootageShots(args: Args, state: TimelineState, track: TrackId, alia
     totalDurationInFrames,
     shotCount: shots.length,
     shots,
-    next: `Each shot is a ≤${maxSeconds}s footage slot tiling the VO with no gap/overlap. Derive ONE English stock keyword from each shot's text, then search_stock_batch (≤12 queries/call; group by platform — dvids for military/hardware, wikimedia for maps/flags/archive, default for generic B-roll) → download_media_batch → edit_item adds:[{type:'video', assetId, track:'V1', startFrame, durationInFrames}] one entry per shot.`,
+    next: `Each shot is a ~${maxSeconds}s footage slot tiling the VO with NO gap/overlap (a shot may run slightly past ${maxSeconds}s to cover a trailing pause). Derive ONE English stock keyword from each shot's text, then search_stock_batch (≤12 queries/call; group by platform — dvids for military/hardware, wikimedia for maps/flags/archive, default for generic B-roll) → download_media_batch → edit_item adds:[{type:'video', assetId, track:'V1', startFrame, durationInFrames}] one entry per shot.`,
   };
 }
 
