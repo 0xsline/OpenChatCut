@@ -360,14 +360,17 @@ export async function runAgent(
       try {
         const usage = await result.usage;
         const u = usage as { promptTokens?: number; completionTokens?: number } | null;
-        const promptTokens = u?.promptTokens;
-        const completionTokens = u?.completionTokens;
-        const tokens = (typeof promptTokens === 'number' && promptTokens > 0)
-          ? promptTokens + (typeof completionTokens === 'number' && completionTokens > 0 ? completionTokens : 0)
-          : estimateTokens(conv);
-        onEvent({ type: 'context', tokens, threshold: settings.contextThreshold });
+        // INPUT + OUTPUT. Many OpenAI-compat gateways omit usage in streams, or return
+        // promptTokens but not completionTokens — estimate whichever side is missing so the
+        // meter reflects BOTH (input from the conversation, output from the generated text),
+        // never just the input side.
+        const inTokens = (typeof u?.promptTokens === 'number' && u.promptTokens > 0)
+          ? u.promptTokens : estimateTokens(conv);
+        const outTokens = (typeof u?.completionTokens === 'number' && u.completionTokens > 0)
+          ? u.completionTokens : Math.ceil(visibleText.length / 4);
+        onEvent({ type: 'context', tokens: inTokens + outTokens, threshold: settings.contextThreshold });
       } catch {
-        onEvent({ type: 'context', tokens: estimateTokens(conv), threshold: settings.contextThreshold });
+        onEvent({ type: 'context', tokens: estimateTokens(conv) + Math.ceil(visibleText.length / 4), threshold: settings.contextThreshold });
       }
       if (askedFollowup) return conv;
       if (!responseUsedTools(responseMessages)) {
