@@ -7,7 +7,26 @@
     "version": "1.0.2",
     "url": "/plugins/demo-pack.json",
     "sha256": "3e204cf35f4d3b21fc5f93a2f3076a3d77939ce0ff3d4cf610ebe1cdf869ae84",
-    "categories": ["MG", "转场", "特效", "LUT", "缩放"],
+    "categories": [
+      "MG",
+      "转场",
+      "特效",
+      "LUT",
+      "缩放"
+    ],
+    "itemCount": 5
+  },
+  {
+    "id": "vox-explainer-motion",
+    "name": "VOX Explainer Motion",
+    "description": "Kinetic headline · big stat count-up · data bar grow · lower-third reveal · pull quote",
+    "author": "Willy",
+    "version": "1.0.0",
+    "url": "/plugins/vox-explainer-motion.json",
+    "sha256": "1887051b89ae5763bf5dc8634e3935849d16e74030fd952b8a4f49397ee2694c",
+    "categories": [
+      "MG"
+    ],
     "itemCount": 5
   }
 ]

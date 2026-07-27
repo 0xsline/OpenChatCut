@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">
+  <rect width="320" height="180" fill="#F2EEE3"/>
+  <text x="22" y="36" font-family="Inter,Arial,sans-serif" font-size="13" font-weight="900" fill="#15140F">Where the money goes</text>
+  <g font-family="Inter,Arial,sans-serif" font-size="8" font-weight="600" fill="#15140F">
+    <text x="22" y="72">Housing</text>
+    <rect x="82" y="64" width="192" height="10" fill="#E2231A"/>
+    <text x="298" y="72" text-anchor="end">34%</text>
+    <text x="22" y="96">Food</text>
+    <rect x="82" y="88" width="125" height="10" fill="#15140F"/>
+    <text x="298" y="96" text-anchor="end">22%</text>
+    <text x="22" y="120">Transport</text>
+    <rect x="82" y="112" width="102" height="10" fill="#15140F"/>
+    <text x="298" y="120" text-anchor="end">18%</text>
+    <text x="22" y="144">Health</text>
+    <rect x="82" y="136" width="79" height="10" fill="#15140F"/>
+    <text x="298" y="144" text-anchor="end">14%</text>
+  </g>
+</svg>

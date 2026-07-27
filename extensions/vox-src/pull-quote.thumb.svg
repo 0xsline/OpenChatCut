@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">
+  <rect width="320" height="180" fill="#F2EEE3"/>
+  <g font-family="Inter,Arial,sans-serif" font-size="15" font-weight="800" fill="#15140F">
+    <text x="22" y="56">We have never seen a</text>
+  </g>
+  <rect x="20" y="66" width="60" height="18" fill="#FFE100"/>
+  <g font-family="Inter,Arial,sans-serif" font-size="15" font-weight="800" fill="#15140F">
+    <text x="22" y="80">squeeze like this</text>
+    <text x="22" y="104">before.</text>
+  </g>
+  <rect x="22" y="128" width="14" height="2" fill="#15140F"/>
+  <text x="42" y="132" font-family="Inter,Arial,sans-serif" font-size="8" font-weight="700" fill="#15140F" opacity="0.7">DR. ANWAR TAN · ECONOMIST, UI</text>
+</svg>

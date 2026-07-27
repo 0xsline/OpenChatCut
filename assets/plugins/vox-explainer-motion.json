@@ -1,0 +1,372 @@
+{
+  "format": "openchatcut-plugin@1",
+  "id": "vox-explainer-motion",
+  "name": "VOX Explainer Motion",
+  "version": "1.0.0",
+  "author": "Willy",
+  "description": "Five VOX-style explainer motion graphics: kinetic headline, big stat count-up, data bar grow, lower-third reveal, pull quote. Off-white paper, ink black, yellow accent, red alert, Inter display.",
+  "items": [
+    {
+      "id": "kinetic-headline",
+      "name": "Kinetic Headline",
+      "width": 1920,
+      "height": 1080,
+      "desc": "VOX kinetic headline: word-by-word pop, keyword highlighted with accent block sweep.",
+      "props": {
+        "headline": "Why prices keep rising",
+        "kicker": "THE ECONOMY · EPISODE 14",
+        "highlightIndex": 1,
+        "accentColor": "#FFE100",
+        "inkColor": "#15140F",
+        "paperColor": "#F2EEE3",
+        "font": "Inter",
+        "transparentBackground": false
+      },
+      "propSchema": [
+        {
+          "key": "headline",
+          "type": "text",
+          "label": "Headline"
+        },
+        {
+          "key": "kicker",
+          "type": "text",
+          "label": "Kicker"
+        },
+        {
+          "key": "highlightIndex",
+          "type": "number",
+          "label": "Highlight word index",
+          "defaultValue": 1,
+          "min": 0,
+          "max": 20,
+          "step": 1
+        },
+        {
+          "key": "accentColor",
+          "type": "color",
+          "label": "Accent",
+          "defaultValue": "#FFE100"
+        },
+        {
+          "key": "inkColor",
+          "type": "color",
+          "label": "Ink",
+          "defaultValue": "#15140F"
+        },
+        {
+          "key": "paperColor",
+          "type": "color",
+          "label": "Paper",
+          "defaultValue": "#F2EEE3"
+        },
+        {
+          "key": "font",
+          "type": "font",
+          "label": "Font",
+          "defaultValue": "Inter"
+        },
+        {
+          "key": "transparentBackground",
+          "type": "boolean",
+          "label": "Transparent BG",
+          "defaultValue": false
+        }
+      ],
+      "code": "const Component = ({ item }) => {\n  const frame = useCurrentFrame();\n  const { fps } = useVideoConfig();\n  const props = item.props || {};\n  const words = String(props.headline).split(' ');\n  const hi = Number(props.highlightIndex);\n  const bg = props.transparentBackground ? 'transparent' : props.paperColor;\n  const rootStyle = { position: 'absolute', inset: 0, backgroundColor: bg };\n\n  return (\n    <div style={{ ...rootStyle, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: 80 }}>\n      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 32 }}>\n        <div style={{ width: 44, height: 4, backgroundColor: props.inkColor }} />\n        <span style={{ fontFamily: props.font, fontWeight: 800, fontSize: 22, letterSpacing: '0.18em', textTransform: 'uppercase', color: props.inkColor, opacity: 0.65 }}>{props.kicker}</span>\n      </div>\n      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.1em 0.26em', fontFamily: props.font, fontWeight: 900, fontSize: 132, lineHeight: 0.96, letterSpacing: '-0.025em', color: props.inkColor }}>\n        {words.map((w, i) => {\n          const start = i * 5;\n          const s = spring({ frame: frame - start, fps, config: { damping: 14, stiffness: 180 } });\n          const op = Math.min(1, s * 2);\n          const sweep = interpolate(frame - start - 8, [0, 10], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n          const isHi = i === hi;\n          const wrapStyle = { display: 'inline-block', position: 'relative', transform: `scale(${s})`, opacity: op };\n          if (isHi) {\n            return (\n              <span key={i} style={{ ...wrapStyle, padding: '0 0.12em' }}>\n                <span style={{ position: 'relative', zIndex: 2 }}>{w}</span>\n                <span style={{ position: 'absolute', inset: 0, zIndex: 1, backgroundColor: props.accentColor, transform: `scaleX(${sweep})`, transformOrigin: 'left center' }} />\n              </span>\n            );\n          }\n          return <span key={i} style={wrapStyle}>{w}</span>;\n        })}\n      </div>\n    </div>\n  );\n};\n",
+      "thumb": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20320%20180%22%3E%0A%20%20%3Crect%20width%3D%22320%22%20height%3D%22180%22%20fill%3D%22%23F2EEE3%22%2F%3E%0A%20%20%3Crect%20x%3D%2222%22%20y%3D%2232%22%20width%3D%2220%22%20height%3D%223%22%20fill%3D%22%2315140F%22%2F%3E%0A%20%20%3Ctext%20x%3D%2248%22%20y%3D%2238%22%20font-family%3D%22Inter%2CArial%2Csans-serif%22%20font-size%3D%228%22%20font-weight%3D%22800%22%20letter-spacing%3D%221.4%22%20fill%3D%22%2315140F%22%20opacity%3D%220.6%22%3ETHE%20ECONOMY%3C%2Ftext%3E%0A%20%20%3Crect%20x%3D%2260%22%20y%3D%2274%22%20width%3D%2274%22%20height%3D%2222%22%20fill%3D%22%23FFE100%22%2F%3E%0A%20%20%3Ctext%20x%3D%2222%22%20y%3D%2292%22%20font-family%3D%22Inter%2CArial%2Csans-serif%22%20font-size%3D%2222%22%20font-weight%3D%22900%22%20fill%3D%22%2315140F%22%3EWhy%20prices%20keep%3C%2Ftext%3E%0A%20%20%3Ctext%20x%3D%2222%22%20y%3D%22118%22%20font-family%3D%22Inter%2CArial%2Csans-serif%22%20font-size%3D%2222%22%20font-weight%3D%22900%22%20fill%3D%22%2315140F%22%3Erising%3C%2Ftext%3E%0A%3C%2Fsvg%3E",
+      "type": "mg-template"
+    },
+    {
+      "id": "big-stat",
+      "name": "Big Stat Count-up",
+      "width": 1920,
+      "height": 1080,
+      "desc": "VOX big stat: animated count-up, accent underline sweep, source line.",
+      "props": {
+        "value": 47,
+        "suffix": "%",
+        "label": "of households affected",
+        "source": "Source: Bureau of Statistics, 2025",
+        "accentColor": "#FFE100",
+        "alertColor": "#E2231A",
+        "inkColor": "#15140F",
+        "paperColor": "#F2EEE3",
+        "font": "Inter",
+        "transparentBackground": false
+      },
+      "propSchema": [
+        {
+          "key": "value",
+          "type": "number",
+          "label": "Value",
+          "defaultValue": 47,
+          "min": 0,
+          "step": 1
+        },
+        {
+          "key": "suffix",
+          "type": "text",
+          "label": "Suffix",
+          "defaultValue": "%"
+        },
+        {
+          "key": "label",
+          "type": "text",
+          "label": "Label"
+        },
+        {
+          "key": "source",
+          "type": "text",
+          "label": "Source"
+        },
+        {
+          "key": "accentColor",
+          "type": "color",
+          "label": "Underline",
+          "defaultValue": "#FFE100"
+        },
+        {
+          "key": "alertColor",
+          "type": "color",
+          "label": "Suffix color",
+          "defaultValue": "#E2231A"
+        },
+        {
+          "key": "inkColor",
+          "type": "color",
+          "label": "Ink",
+          "defaultValue": "#15140F"
+        },
+        {
+          "key": "paperColor",
+          "type": "color",
+          "label": "Paper",
+          "defaultValue": "#F2EEE3"
+        },
+        {
+          "key": "font",
+          "type": "font",
+          "label": "Font",
+          "defaultValue": "Inter"
+        },
+        {
+          "key": "transparentBackground",
+          "type": "boolean",
+          "label": "Transparent BG",
+          "defaultValue": false
+        }
+      ],
+      "code": "const Component = ({ item }) => {\n  const frame = useCurrentFrame();\n  const props = item.props || {};\n  const target = Number(props.value);\n  const dur = 30;\n  const eased = interpolate(frame, [0, dur], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });\n  const shown = Math.round(target * eased);\n  const under = interpolate(frame - dur, [0, 14], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const bg = props.transparentBackground ? 'transparent' : props.paperColor;\n  const rootStyle = { position: 'absolute', inset: 0, backgroundColor: bg };\n\n  return (\n    <div style={{ ...rootStyle, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: 80 }}>\n      <div style={{ fontFamily: props.font, fontWeight: 800, fontSize: 24, letterSpacing: '0.16em', textTransform: 'uppercase', color: props.inkColor, opacity: 0.65, marginBottom: 10 }}>{props.label}</div>\n      <div style={{ fontFamily: props.font, fontWeight: 900, fontSize: 300, lineHeight: 0.88, letterSpacing: '-0.04em', color: props.inkColor, display: 'flex', alignItems: 'flex-start' }}>\n        {shown}\n        <span style={{ fontSize: 96, fontWeight: 800, color: props.alertColor, marginLeft: 10, marginTop: 26 }}>{props.suffix}</span>\n      </div>\n      <div style={{ height: 9, width: '46%', backgroundColor: props.accentColor, transform: `scaleX(${under})`, transformOrigin: 'left center', marginTop: 18 }} />\n      <div style={{ fontFamily: props.font, fontSize: 18, color: props.inkColor, opacity: 0.6, marginTop: 24 }}>{props.source}</div>\n    </div>\n  );\n};\n",
+      "thumb": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20320%20180%22%3E%0A%20%20%3Crect%20width%3D%22320%22%20height%3D%22180%22%20fill%3D%22%23F2EEE3%22%2F%3E%0A%20%20%3Ctext%20x%3D%2222%22%20y%3D%2240%22%20font-family%3D%22Inter%2CArial%2Csans-serif%22%20font-size%3D%228%22%20font-weight%3D%22800%22%20letter-spacing%3D%221.3%22%20fill%3D%22%2315140F%22%20opacity%3D%220.6%22%3EOF%20HOUSEHOLDS%20AFFECTED%3C%2Ftext%3E%0A%20%20%3Ctext%20x%3D%2218%22%20y%3D%22124%22%20font-family%3D%22Inter%2CArial%2Csans-serif%22%20font-size%3D%2282%22%20font-weight%3D%22900%22%20fill%3D%22%2315140F%22%20letter-spacing%3D%22-4%22%3E47%3C%2Ftext%3E%0A%20%20%3Ctext%20x%3D%22128%22%20y%3D%2272%22%20font-family%3D%22Inter%2CArial%2Csans-serif%22%20font-size%3D%2228%22%20font-weight%3D%22800%22%20fill%3D%22%23E2231A%22%3E%25%3C%2Ftext%3E%0A%20%20%3Crect%20x%3D%2222%22%20y%3D%22138%22%20width%3D%22128%22%20height%3D%225%22%20fill%3D%22%23FFE100%22%2F%3E%0A%20%20%3Ctext%20x%3D%2222%22%20y%3D%22162%22%20font-family%3D%22Inter%2CArial%2Csans-serif%22%20font-size%3D%228%22%20fill%3D%22%2315140F%22%20opacity%3D%220.5%22%3ESource%3A%20Bureau%20of%20Statistics%2C%202025%3C%2Ftext%3E%0A%3C%2Fsvg%3E",
+      "type": "mg-template"
+    },
+    {
+      "id": "data-bars",
+      "name": "Data Bar Grow",
+      "width": 1920,
+      "height": 1080,
+      "desc": "VOX data chart: bars grow with staggered ease, one bar in alert color.",
+      "props": {
+        "title": "Where the money goes",
+        "dataJson": "[{\"name\":\"Housing\",\"val\":34,\"pct\":100,\"acc\":true},{\"name\":\"Food\",\"val\":22,\"pct\":65},{\"name\":\"Transport\",\"val\":18,\"pct\":53},{\"name\":\"Healthcare\",\"val\":14,\"pct\":41}]",
+        "barColor": "#15140F",
+        "alertColor": "#E2231A",
+        "inkColor": "#15140F",
+        "paperColor": "#F2EEE3",
+        "font": "Inter",
+        "transparentBackground": false
+      },
+      "propSchema": [
+        {
+          "key": "title",
+          "type": "text",
+          "label": "Title"
+        },
+        {
+          "key": "dataJson",
+          "type": "text",
+          "label": "Data (JSON array)"
+        },
+        {
+          "key": "barColor",
+          "type": "color",
+          "label": "Bar",
+          "defaultValue": "#15140F"
+        },
+        {
+          "key": "alertColor",
+          "type": "color",
+          "label": "Alert bar",
+          "defaultValue": "#E2231A"
+        },
+        {
+          "key": "inkColor",
+          "type": "color",
+          "label": "Ink",
+          "defaultValue": "#15140F"
+        },
+        {
+          "key": "paperColor",
+          "type": "color",
+          "label": "Paper",
+          "defaultValue": "#F2EEE3"
+        },
+        {
+          "key": "font",
+          "type": "font",
+          "label": "Font",
+          "defaultValue": "Inter"
+        },
+        {
+          "key": "transparentBackground",
+          "type": "boolean",
+          "label": "Transparent BG",
+          "defaultValue": false
+        }
+      ],
+      "code": "const Component = ({ item }) => {\n  const frame = useCurrentFrame();\n  const props = item.props || {};\n  const parseBars = (raw) => {\n    try {\n      const v = JSON.parse(String(raw));\n      return Array.isArray(v) ? v : [];\n    } catch {\n      return [];\n    }\n  };\n  const bars = parseBars(props.dataJson);\n  const bg = props.transparentBackground ? 'transparent' : props.paperColor;\n  const rootStyle = { position: 'absolute', inset: 0, backgroundColor: bg };\n\n  return (\n    <div style={{ ...rootStyle, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: 80 }}>\n      <div style={{ fontFamily: props.font, fontWeight: 900, fontSize: 52, letterSpacing: '-0.01em', color: props.inkColor, marginBottom: 44, maxWidth: '80%' }}>{props.title}</div>\n      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>\n        {bars.map((b, i) => {\n          const start = 6 + i * 8;\n          const grow = interpolate(frame - start, [0, 22], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });\n          const pct = (Number(b.pct) || 0) * grow;\n          const fill = b.acc ? props.alertColor : props.barColor;\n          const rowStyle = { display: 'grid', gridTemplateColumns: '240px 1fr 110px', alignItems: 'center', gap: 20 };\n          return (\n            <div key={i} style={rowStyle}>\n              <div style={{ fontFamily: props.font, fontWeight: 600, fontSize: 26, color: props.inkColor }}>{b.name}</div>\n              <div style={{ height: 32, backgroundColor: 'rgba(21,20,15,0.08)', borderRadius: 4, overflow: 'hidden' }}>\n                <div style={{ height: '100%', width: pct + '%', backgroundColor: fill, borderRadius: 4 }} />\n              </div>\n              <div style={{ fontFamily: props.font, fontWeight: 600, fontSize: 24, textAlign: 'right', color: props.inkColor }}>{b.val}%</div>\n            </div>\n          );\n        })}\n      </div>\n    </div>\n  );\n};\n",
+      "thumb": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20320%20180%22%3E%0A%20%20%3Crect%20width%3D%22320%22%20height%3D%22180%22%20fill%3D%22%23F2EEE3%22%2F%3E%0A%20%20%3Ctext%20x%3D%2222%22%20y%3D%2236%22%20font-family%3D%22Inter%2CArial%2Csans-serif%22%20font-size%3D%2213%22%20font-weight%3D%22900%22%20fill%3D%22%2315140F%22%3EWhere%20the%20money%20goes%3C%2Ftext%3E%0A%20%20%3Cg%20font-family%3D%22Inter%2CArial%2Csans-serif%22%20font-size%3D%228%22%20font-weight%3D%22600%22%20fill%3D%22%2315140F%22%3E%0A%20%20%20%20%3Ctext%20x%3D%2222%22%20y%3D%2272%22%3EHousing%3C%2Ftext%3E%0A%20%20%20%20%3Crect%20x%3D%2282%22%20y%3D%2264%22%20width%3D%22192%22%20height%3D%2210%22%20fill%3D%22%23E2231A%22%2F%3E%0A%20%20%20%20%3Ctext%20x%3D%22298%22%20y%3D%2272%22%20text-anchor%3D%22end%22%3E34%25%3C%2Ftext%3E%0A%20%20%20%20%3Ctext%20x%3D%2222%22%20y%3D%2296%22%3EFood%3C%2Ftext%3E%0A%20%20%20%20%3Crect%20x%3D%2282%22%20y%3D%2288%22%20width%3D%22125%22%20height%3D%2210%22%20fill%3D%22%2315140F%22%2F%3E%0A%20%20%20%20%3Ctext%20x%3D%22298%22%20y%3D%2296%22%20text-anchor%3D%22end%22%3E22%25%3C%2Ftext%3E%0A%20%20%20%20%3Ctext%20x%3D%2222%22%20y%3D%22120%22%3ETransport%3C%2Ftext%3E%0A%20%20%20%20%3Crect%20x%3D%2282%22%20y%3D%22112%22%20width%3D%22102%22%20height%3D%2210%22%20fill%3D%22%2315140F%22%2F%3E%0A%20%20%20%20%3Ctext%20x%3D%22298%22%20y%3D%22120%22%20text-anchor%3D%22end%22%3E18%25%3C%2Ftext%3E%0A%20%20%20%20%3Ctext%20x%3D%2222%22%20y%3D%22144%22%3EHealth%3C%2Ftext%3E%0A%20%20%20%20%3Crect%20x%3D%2282%22%20y%3D%22136%22%20width%3D%2279%22%20height%3D%2210%22%20fill%3D%22%2315140F%22%2F%3E%0A%20%20%20%20%3Ctext%20x%3D%22298%22%20y%3D%22144%22%20text-anchor%3D%22end%22%3E14%25%3C%2Ftext%3E%0A%20%20%3C%2Fg%3E%0A%3C%2Fsvg%3E",
+      "type": "mg-template"
+    },
+    {
+      "id": "lower-third",
+      "name": "Lower-Third Reveal",
+      "width": 1920,
+      "height": 1080,
+      "desc": "VOX lower-third: accent bar grow + name/role mask wipe. Default transparent overlay.",
+      "props": {
+        "name": "Maya Hartono",
+        "role": "SENIOR ECONOMICS REPORTER",
+        "accentColor": "#FFE100",
+        "inkColor": "#15140F",
+        "inkSoftColor": "#4A463B",
+        "paperColor": "#F2EEE3",
+        "font": "Inter",
+        "transparentBackground": true
+      },
+      "propSchema": [
+        {
+          "key": "name",
+          "type": "text",
+          "label": "Name"
+        },
+        {
+          "key": "role",
+          "type": "text",
+          "label": "Role"
+        },
+        {
+          "key": "accentColor",
+          "type": "color",
+          "label": "Accent",
+          "defaultValue": "#FFE100"
+        },
+        {
+          "key": "inkColor",
+          "type": "color",
+          "label": "Ink",
+          "defaultValue": "#15140F"
+        },
+        {
+          "key": "inkSoftColor",
+          "type": "color",
+          "label": "Ink soft",
+          "defaultValue": "#4A463B"
+        },
+        {
+          "key": "paperColor",
+          "type": "color",
+          "label": "Paper",
+          "defaultValue": "#F2EEE3"
+        },
+        {
+          "key": "font",
+          "type": "font",
+          "label": "Font",
+          "defaultValue": "Inter"
+        },
+        {
+          "key": "transparentBackground",
+          "type": "boolean",
+          "label": "Transparent BG",
+          "defaultValue": true
+        }
+      ],
+      "code": "const Component = ({ item }) => {\n  const frame = useCurrentFrame();\n  const props = item.props || {};\n  const barGrow = interpolate(frame, [0, 12], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) });\n  const wipe = interpolate(frame - 8, [0, 14], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n  const bg = props.transparentBackground ? 'transparent' : props.paperColor;\n  const rootStyle = { position: 'absolute', inset: 0, backgroundColor: bg, display: 'flex', alignItems: 'flex-end', padding: 80 };\n\n  return (\n    <div style={rootStyle}>\n      <div style={{ display: 'flex', alignItems: 'stretch' }}>\n        <div style={{ width: 10, backgroundColor: props.accentColor, alignSelf: 'stretch', transform: `scaleY(${barGrow})`, transformOrigin: 'top center' }} />\n        <div style={{ overflow: 'hidden' }}>\n          <div style={{ transform: `translateX(${(1 - wipe) * 100}%)`, padding: '12px 26px' }}>\n            <div style={{ fontFamily: props.font, fontWeight: 900, fontSize: 58, letterSpacing: '-0.01em', lineHeight: 1, color: props.inkColor }}>{props.name}</div>\n            <div style={{ fontFamily: props.font, fontWeight: 600, fontSize: 22, letterSpacing: '0.04em', color: props.inkSoftColor, marginTop: 8 }}>{props.role}</div>\n          </div>\n        </div>\n      </div>\n    </div>\n  );\n};\n",
+      "thumb": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20320%20180%22%3E%0A%20%20%3Crect%20width%3D%22320%22%20height%3D%22180%22%20fill%3D%22%232a2a26%22%2F%3E%0A%20%20%3Crect%20x%3D%2222%22%20y%3D%22118%22%20width%3D%225%22%20height%3D%2242%22%20fill%3D%22%23FFE100%22%2F%3E%0A%20%20%3Ctext%20x%3D%2236%22%20y%3D%22140%22%20font-family%3D%22Inter%2CArial%2Csans-serif%22%20font-size%3D%2218%22%20font-weight%3D%22900%22%20fill%3D%22%23F2EEE3%22%3EMaya%20Hartono%3C%2Ftext%3E%0A%20%20%3Ctext%20x%3D%2236%22%20y%3D%22156%22%20font-family%3D%22Inter%2CArial%2Csans-serif%22%20font-size%3D%228%22%20font-weight%3D%22600%22%20letter-spacing%3D%220.8%22%20fill%3D%22%23F2EEE3%22%20opacity%3D%220.7%22%3ESENIOR%20ECONOMICS%20REPORTER%3C%2Ftext%3E%0A%3C%2Fsvg%3E",
+      "type": "mg-template"
+    },
+    {
+      "id": "pull-quote",
+      "name": "Pull Quote Highlight",
+      "width": 1920,
+      "height": 1080,
+      "desc": "VOX pull quote: word stagger, keyword highlighted with accent sweep, citation.",
+      "props": {
+        "quote": "We have never seen a squeeze like this before.",
+        "highlightIndex": 5,
+        "citation": "DR. ANWAR TAN · ECONOMIST, UI",
+        "accentColor": "#FFE100",
+        "inkColor": "#15140F",
+        "paperColor": "#F2EEE3",
+        "font": "Inter",
+        "transparentBackground": false
+      },
+      "propSchema": [
+        {
+          "key": "quote",
+          "type": "text",
+          "label": "Quote"
+        },
+        {
+          "key": "highlightIndex",
+          "type": "number",
+          "label": "Highlight word index",
+          "defaultValue": 5,
+          "min": 0,
+          "max": 20,
+          "step": 1
+        },
+        {
+          "key": "citation",
+          "type": "text",
+          "label": "Citation"
+        },
+        {
+          "key": "accentColor",
+          "type": "color",
+          "label": "Accent",
+          "defaultValue": "#FFE100"
+        },
+        {
+          "key": "inkColor",
+          "type": "color",
+          "label": "Ink",
+          "defaultValue": "#15140F"
+        },
+        {
+          "key": "paperColor",
+          "type": "color",
+          "label": "Paper",
+          "defaultValue": "#F2EEE3"
+        },
+        {
+          "key": "font",
+          "type": "font",
+          "label": "Font",
+          "defaultValue": "Inter"
+        },
+        {
+          "key": "transparentBackground",
+          "type": "boolean",
+          "label": "Transparent BG",
+          "defaultValue": false
+        }
+      ],
+      "code": "const Component = ({ item }) => {\n  const frame = useCurrentFrame();\n  const { fps } = useVideoConfig();\n  const props = item.props || {};\n  const words = String(props.quote).split(' ');\n  const hi = Number(props.highlightIndex);\n  const bg = props.transparentBackground ? 'transparent' : props.paperColor;\n  const rootStyle = { position: 'absolute', inset: 0, backgroundColor: bg };\n\n  return (\n    <div style={{ ...rootStyle, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: 80 }}>\n      <div style={{ fontFamily: props.font, fontWeight: 800, fontSize: 78, lineHeight: 1.12, letterSpacing: '-0.015em', color: props.inkColor, maxWidth: '92%', display: 'flex', flexWrap: 'wrap', gap: '0.1em 0.26em' }}>\n        {words.map((w, i) => {\n          const start = i * 4;\n          const s = spring({ frame: frame - start, fps, config: { damping: 16, stiffness: 170 } });\n          const op = Math.min(1, s * 2);\n          const sweep = interpolate(frame - start - 6, [0, 9], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });\n          const isHi = i === hi;\n          const wrapStyle = { display: 'inline-block', position: 'relative', transform: `scale(${s})`, opacity: op };\n          if (isHi) {\n            return (\n              <span key={i} style={{ ...wrapStyle, padding: '0 0.1em' }}>\n                <span style={{ position: 'relative', zIndex: 2 }}>{w}</span>\n                <span style={{ position: 'absolute', inset: 0, zIndex: 1, backgroundColor: props.accentColor, transform: `scaleX(${sweep})`, transformOrigin: 'left center' }} />\n              </span>\n            );\n          }\n          return <span key={i} style={wrapStyle}>{w}</span>;\n        })}\n      </div>\n      <div style={{ fontFamily: props.font, fontWeight: 700, fontSize: 22, letterSpacing: '0.04em', color: props.inkColor, opacity: 0.65, marginTop: 38, display: 'flex', alignItems: 'center', gap: 12 }}>\n        <span style={{ width: 28, height: 2, backgroundColor: props.inkColor, display: 'inline-block' }} />\n        {props.citation}\n      </div>\n    </div>\n  );\n};\n",
+      "thumb": "data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20320%20180%22%3E%0A%20%20%3Crect%20width%3D%22320%22%20height%3D%22180%22%20fill%3D%22%23F2EEE3%22%2F%3E%0A%20%20%3Cg%20font-family%3D%22Inter%2CArial%2Csans-serif%22%20font-size%3D%2215%22%20font-weight%3D%22800%22%20fill%3D%22%2315140F%22%3E%0A%20%20%20%20%3Ctext%20x%3D%2222%22%20y%3D%2256%22%3EWe%20have%20never%20seen%20a%3C%2Ftext%3E%0A%20%20%3C%2Fg%3E%0A%20%20%3Crect%20x%3D%2220%22%20y%3D%2266%22%20width%3D%2260%22%20height%3D%2218%22%20fill%3D%22%23FFE100%22%2F%3E%0A%20%20%3Cg%20font-family%3D%22Inter%2CArial%2Csans-serif%22%20font-size%3D%2215%22%20font-weight%3D%22800%22%20fill%3D%22%2315140F%22%3E%0A%20%20%20%20%3Ctext%20x%3D%2222%22%20y%3D%2280%22%3Esqueeze%20like%20this%3C%2Ftext%3E%0A%20%20%20%20%3Ctext%20x%3D%2222%22%20y%3D%22104%22%3Ebefore.%3C%2Ftext%3E%0A%20%20%3C%2Fg%3E%0A%20%20%3Crect%20x%3D%2222%22%20y%3D%22128%22%20width%3D%2214%22%20height%3D%222%22%20fill%3D%22%2315140F%22%2F%3E%0A%20%20%3Ctext%20x%3D%2242%22%20y%3D%22132%22%20font-family%3D%22Inter%2CArial%2Csans-serif%22%20font-size%3D%228%22%20font-weight%3D%22700%22%20fill%3D%22%2315140F%22%20opacity%3D%220.7%22%3EDR.%20ANWAR%20TAN%20%C2%B7%20ECONOMIST%2C%20UI%3C%2Ftext%3E%0A%3C%2Fsvg%3E",
+      "type": "mg-template"
+    }
+  ]
+}

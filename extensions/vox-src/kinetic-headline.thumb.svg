@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">
+  <rect width="320" height="180" fill="#F2EEE3"/>
+  <rect x="22" y="32" width="20" height="3" fill="#15140F"/>
+  <text x="48" y="38" font-family="Inter,Arial,sans-serif" font-size="8" font-weight="800" letter-spacing="1.4" fill="#15140F" opacity="0.6">THE ECONOMY</text>
+  <rect x="60" y="74" width="74" height="22" fill="#FFE100"/>
+  <text x="22" y="92" font-family="Inter,Arial,sans-serif" font-size="22" font-weight="900" fill="#15140F">Why prices keep</text>
+  <text x="22" y="118" font-family="Inter,Arial,sans-serif" font-size="22" font-weight="900" fill="#15140F">rising</text>
+</svg>
