@@ -33,6 +33,12 @@ export interface SettingsField {
   readonly defaultLabel?: string;
   /** Agent LLM field populated from the provider's /models response after a connection test. */
   readonly discoverableModel?: boolean;
+  /** multi=true = a rotatable key POOL (dynamic list of N keys with fail-over).
+   *  name is the pool env var (e.g. ASSEMBLYAI_API_KEYS); providerId maps it to
+   *  status.keyPools[id] for the per-key masked status. Secret values are still
+   *  never echoed — the staged value is a {rm,add} mutation, not the keys. */
+  readonly multi?: boolean;
+  readonly providerId?: string;
 }
 
 export interface SettingsVendorPage {
@@ -63,15 +69,36 @@ export interface SettingsCategory {
 }
 
 // GET/POST /api/keys 的响应形状 — secret 只回布尔与来源;models 是非密值通道
-// (模型、URL 与路由,未设 = ''),永远不含任何密钥值。
+// (模型、URL 与路由,未设 = ''),永远不含任何密钥值。keyPools 是 rotatable 多密钥
+// 池的非密元数据(遮罩后缀 + 健康/激活状态),同样不含任何密钥值。
 export interface KeyState { configured: boolean; source: 'env' | 'runtime' | 'none'; }
+export type KeyHealth = 'active' | 'cooldown' | 'exhausted';
+export interface KeySlotStatus {
+  /** Masked suffix only (last 4 chars), e.g. "…3a9f". Never the value. */
+  readonly suffix: string;
+  readonly status: KeyHealth;
+  readonly cooldownSeconds: number;
+}
+export interface PoolStatus {
+  readonly id: string;
+  readonly count: number;
+  /** Index pickKey() will hand out next, or -1 if pool empty. */
+  readonly activeIndex: number;
+  readonly keys: readonly KeySlotStatus[];
+}
 export interface KeyStatusResponse {
   keys: Record<string, KeyState>;
   caps: Record<string, boolean>;
   models: Record<string, string>;
+  /** Per-provider rotatable key-pool status (masked suffix + health). Optional so
+   *  older server responses without it still type-check. */
+  keyPools?: Record<string, PoolStatus>;
 }
 
 const secret = (name: string, label: string): SettingsField => ({ name, label, kind: 'secret' });
+/** A rotatable key pool: name = pool env var, providerId maps to keyPools[id]. */
+const secretPool = (name: string, label: string, providerId: string): SettingsField =>
+  ({ name, label, kind: 'secret', multi: true, providerId });
 const text = (name: string, label: string, placeholder?: string, note?: string): SettingsField =>
   ({ name, label, kind: 'text', placeholder, note });
 /** 非密模型 text 字段:值回显,placeholder=「默认 xxx」。 */
@@ -264,13 +291,13 @@ const STATIC_NON_LLM_CATEGORIES: readonly SettingsCategory[] = [
     groups: [
       { key: 'stock', title: '在线图库', hint: 'search_stock_media · 搜索可商用图片 / 视频素材。',
         vendors: [
-          { key: 'stock/pexels', vendor: 'pexels', title: 'Pexels', fields: [secret('PEXELS_API_KEY', 'API Key')] },
-          { key: 'stock/pixabay', vendor: 'pixabay', title: 'Pixabay', fields: [secret('PIXABAY_API_KEY', 'API Key')] },
-          { key: 'stock/unsplash', vendor: 'unsplash', title: 'Unsplash', fields: [secret('UNSPLASH_ACCESS_KEY', 'Access Key')] },
-          { key: 'stock/freesound', vendor: 'freesound', title: 'Freesound', fields: [secret('FREESOUND_API_KEY', 'API Key')] },
+          { key: 'stock/pexels', vendor: 'pexels', title: 'Pexels', fields: [secretPool('PEXELS_API_KEYS', 'API Key', 'PEXELS')] },
+          { key: 'stock/pixabay', vendor: 'pixabay', title: 'Pixabay', fields: [secretPool('PIXABAY_API_KEYS', 'API Key', 'PIXABAY')] },
+          { key: 'stock/unsplash', vendor: 'unsplash', title: 'Unsplash', fields: [secretPool('UNSPLASH_ACCESS_KEYS', 'Access Key', 'UNSPLASH')] },
+          { key: 'stock/freesound', vendor: 'freesound', title: 'Freesound', fields: [secretPool('FREESOUND_API_KEYS', 'API Key', 'FREESOUND')] },
           { key: 'stock/dvids', vendor: 'dvids', title: 'DVIDS',
             note: 'Defense Visual Information Distribution Service — footage PD-USGov (militer / geopolitik / briefing Pentagon). Mayoritas item HLS, otomatis di-transmux ke mp4 saat diimpor.',
-            fields: [secret('DVIDS_API_KEY', 'API Key')] },
+            fields: [secretPool('DVIDS_API_KEYS', 'API Key', 'DVIDS')] },
           { key: 'stock/wikimedia', vendor: 'wikimedia', title: 'Wikimedia Commons',
             note: 'Tanpa API Key — tersedia langsung. Hanya lisensi PD / CC-BY (CC-BY-SA diblokir demi monetisasi). Untuk bendera, peta, foto pemimpin dunia, arsip sejarah.',
             fields: [] },
@@ -278,7 +305,8 @@ const STATIC_NON_LLM_CATEGORIES: readonly SettingsCategory[] = [
       { key: 'transcription', title: '转写 / 口播剪辑', hint: 'transcribe_track · 词级字幕、清口水、删词。',
         vendors: [
           { key: 'transcription/assemblyai', vendor: 'assemblyai', title: 'AssemblyAI',
-            fields: [secret('ASSEMBLYAI_API_KEY', 'API Key')] },
+            note: '支持多 Key 自动轮换：耗尽 / 被限流（429）的密钥会自动冷却，下个请求切换到健康密钥。仅显示遮罩后缀，密钥值永不回填。',
+            fields: [secretPool('ASSEMBLYAI_API_KEYS', 'API Key', 'ASSEMBLYAI')] },
         ] },
     ],
   },
@@ -387,12 +415,14 @@ export function modelValue(status: KeyStatusResponse | null, name: string): stri
 }
 
 /** 厂商页「已配置」:页内全部 secret 都 configured(豆包 = 双 key 齐);
- * 无 secret 的页(本地磁盘)看任一字段是否已设值。 */
+ * 无 secret 的页(本地磁盘)看任一字段是否已设值。multi 池字段看 keyPools 计数。 */
 export function vendorConfigured(status: KeyStatusResponse | null, page: SettingsVendorPage): boolean {
   if (!status) return false;
   const secrets = page.fields.filter((f) => f.kind === 'secret');
   if (secrets.length === 0) return page.fields.some((f) => Boolean(status.keys[f.name]?.configured));
-  return secrets.every((f) => Boolean(status.keys[f.name]?.configured));
+  return secrets.every((f) => f.multi
+    ? Boolean(status.keyPools?.[f.providerId ?? '']?.count)
+    : Boolean(status.keys[f.name]?.configured));
 }
 
 /** 能力组「已配置」判定:llm 看任一厂商页是否完整配置,其余看服务端能力布尔(caps)。 */

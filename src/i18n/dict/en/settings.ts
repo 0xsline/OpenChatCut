@@ -283,4 +283,22 @@ export default {
     'Settings → Connectors → Add custom connector, then paste the endpoint above.',
   '端点默认仅监听本机;对外暴露时请配置 OPENCHATCUT_MCP_TOKEN 鉴权。桌面端 5199 端口被占用时会回退随机端口,以启动日志与本页地址为准。':
     'The endpoint listens on localhost only by default; configure OPENCHATCUT_MCP_TOKEN before exposing it. If port 5199 is taken, the desktop app falls back to a random port — trust the startup log and the address shown here.',
+
+  // ── Multi-key rotation pool (Assets providers) ──
+  '支持多 Key 自动轮换：耗尽 / 被限流（429）的密钥会自动冷却，下个请求切换到健康密钥。仅显示遮罩后缀，密钥值永不回填。':
+    'Multi-key fail-over: an exhausted / rate-limited (429) key auto-cools and the next request switches to a healthy key. Only a masked suffix is shown — key values are never echoed.',
+  '未配置 · 点下方添加首个密钥': 'Not configured — add the first key below',
+  '将移除': 'Will remove',
+  '密钥 {n}': 'Key {n}',
+  '输入新密钥': 'Enter new key',
+  '添加密钥': 'Add key',
+  '移除': 'Remove',
+  '恢复': 'Restore',
+  '新增': 'New',
+  '激活': 'Active',
+  '就绪': 'Standby',
+  '耗尽': 'Exhausted',
+  '冷却 {n}s': 'Cooldown {n}s',
+  '共 {n} 个可用密钥': '{n} usable keys',
+  '激活 {suf}': 'active {suf}',
 } as Record<string, string>;

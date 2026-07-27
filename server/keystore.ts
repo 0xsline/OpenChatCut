@@ -9,6 +9,19 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { AI_SDK_BASE_URL_FORMAT, resolveLlmBaseUrl } from './llm-config.ts';
+// Rotatable multi-key pools (Assets providers). NOTE: key-rotation imports getKey
+// from THIS module, so this is a circular ESM import — safe because both modules
+// only reference each other inside function bodies (lazy at call time), never at
+// module top level, so both are fully initialized before either is exercised.
+import {
+  allPoolStatuses,
+  applyPoolMutation,
+  getPool,
+  isPoolEnvName,
+  parsePoolMutation,
+  parsePoolValue,
+  type PoolStatus,
+} from './key-rotation.ts';
 import {
   LLM_CUSTOM_PROVIDERS_KEY,
   LLM_PROVIDER_PRESETS,
@@ -55,6 +68,10 @@ export const KEY_NAMES = [
   'PEXELS_API_KEY', 'PIXABAY_API_KEY', 'UNSPLASH_ACCESS_KEY', 'FREESOUND_API_KEY',
   'DVIDS_API_KEY', // dvidshub.net footage — appended server-side as ?api_key on HLS pulls
   'ASSEMBLYAI_API_KEY',
+  // Rotatable provider key POOLS (1-line JSON arrays of keys; SECRET — values
+  // never echoed, only their masked suffix/status via keyStatus().keyPools).
+  'ASSEMBLYAI_API_KEYS', 'PEXELS_API_KEYS', 'PIXABAY_API_KEYS',
+  'UNSPLASH_ACCESS_KEYS', 'FREESOUND_API_KEYS', 'DVIDS_API_KEYS',
   'E2B_API_KEY', 'E2B_TEMPLATE',
   'FIRECRAWL_API_KEY',
   'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET', 'R2_ENABLED', 'R2_PRESIGN',
@@ -170,6 +187,12 @@ export function getKey(name: KeyName): string {
   return store.get(name) ?? '';
 }
 
+/** Test seam: clear the in-memory store (used by verifies; not part of the app flow). */
+export function __resetKeystore(): void {
+  store.clear();
+  envSeeded.clear();
+}
+
 // Capability booleans derived from current key presence — SAME logic as the vite.config
 // `define` snapshot, but computed live so the agent perceives runtime key changes.
 export interface Caps {
@@ -184,9 +207,10 @@ export function computeCaps(): Caps {
     video: has('SEEDANCE_API_KEY') || has('KLING_API_KEY') || has('MINIMAX_API_KEY'),
     music: has('MUREKA_API_KEY') || has('MINIMAX_API_KEY'),
     sound: has('ELEVENLABS_API_KEY'),
-    stock: has('PEXELS_API_KEY') || has('PIXABAY_API_KEY') || has('UNSPLASH_ACCESS_KEY')
-      || has('FREESOUND_API_KEY') || has('FIRECRAWL_API_KEY') || has('DVIDS_API_KEY'),
-    transcription: has('ASSEMBLYAI_API_KEY'),
+    stock: getPool('PEXELS').length > 0 || getPool('PIXABAY').length > 0
+      || getPool('UNSPLASH').length > 0 || getPool('FREESOUND').length > 0
+      || has('FIRECRAWL_API_KEY') || getPool('DVIDS').length > 0,
+    transcription: getPool('ASSEMBLYAI').length > 0,
     sandbox: has('E2B_API_KEY'),
     web: has('FIRECRAWL_API_KEY'),
     storage: has('R2_ACCOUNT_ID') && has('R2_ACCESS_KEY_ID') && has('R2_SECRET_ACCESS_KEY') && has('R2_BUCKET')
@@ -195,7 +219,15 @@ export function computeCaps(): Caps {
 }
 
 export interface KeyState { configured: boolean; source: 'env' | 'runtime' | 'none'; }
-export interface KeyStatus { keys: Record<string, KeyState>; caps: Caps; models: Record<string, string>; }
+export interface KeyStatus {
+  keys: Record<string, KeyState>;
+  caps: Caps;
+  models: Record<string, string>;
+  /** Browser-safe per-key pool status for rotatable providers (masked suffix +
+   *  health/active index). Like `models`, this is non-secret metadata — key
+   *  values never appear here, only their last-4-char suffix. */
+  keyPools: Record<string, PoolStatus>;
+}
 
 /** Browser-facing status. SECURITY INVARIANT: a SECRET key's value (any name not in
  * NON_SECRET_NAMES) NEVER appears in this (or any) response — secrets surface as
@@ -215,11 +247,15 @@ export function keyStatus(): KeyStatus {
   }
   for (const name of names) {
     if (!isAllowedKeyName(name)) continue;
-    const set = getKey(name).length > 0;
+    // Pool env vars hold JSON: '[]' is a non-empty string but means "no keys".
+    // Derive configured from the parsed pool so the boolean matches getPool().
+    const set = isPoolEnvName(name)
+      ? parsePoolValue(getKey(name)).length > 0
+      : getKey(name).length > 0;
     keys[name] = { configured: set, source: set ? (envSeeded.has(name) ? 'env' : 'runtime') : 'none' };
     if (isNonSecretName(name)) models[name] = getKey(name);
   }
-  return { keys, caps: computeCaps(), models };
+  return { keys, caps: computeCaps(), models, keyPools: allPoolStatuses() };
 }
 
 /** Apply key edits from the settings UI: validate, update memory, persist to .env.local.
@@ -230,8 +266,17 @@ export async function setKeys(patch: Record<string, unknown>): Promise<void> {
     if (!isAllowedKeyName(name)) continue;  // whitelist + dynamic LLM_* + custom-provider catalog
     const v = String(raw ?? '');
     if (/[\r\n]/.test(v)) throw new Error(`invalid value for ${name}: no newlines allowed`);
-    const t = v.trim();
-    if (t.includes('"') && t.includes("'")) throw new Error(`invalid value for ${name}: cannot contain both quote types`);
+    let t = v.trim();
+    if (isPoolEnvName(name)) {
+      // Pool vars are edited as a mutation ({rm:[indices], add:[keys]}) because the
+      // browser never holds the existing secret values. Apply it onto the currently
+      // stored pool (read server-side) and persist the resulting canonical JSON.
+      const mut = parsePoolMutation(t);
+      if (!mut) throw new Error(`invalid key-list change for ${name}`);
+      t = applyPoolMutation(getKey(name), mut.rm, mut.add);
+    } else if (t.includes('"') && t.includes("'")) {
+      throw new Error(`invalid value for ${name}: cannot contain both quote types`);
+    }
     clean.set(name, t);
   }
   if (clean.size === 0) return;

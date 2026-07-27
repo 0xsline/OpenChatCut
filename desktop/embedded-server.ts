@@ -5,11 +5,12 @@
 //   ④ /media/uploads 运行时素材直读 + dist/ 静态兜底(desktop/static-files.ts)
 // 密钥仍只活在这一进程;渲染进程(BrowserWindow)只见同源 HTTP API。
 import { readFile } from 'node:fs/promises';
-import { createServer, type Server } from 'node:http';
+import { createServer, type Server, type IncomingMessage } from 'node:http';
 import { resolve } from 'node:path';
 import type { ViteDevServer } from 'vite';
 import { serverPlugins } from '../server/plugins/index.ts';
-import { getKey, seedKeystore } from '../server/keystore.ts';
+import { seedKeystore } from '../server/keystore.ts';
+import { pickKey, markRateLimited, shouldFailover } from '../server/key-rotation.ts';
 import { proxyMiddleware } from '../server/proxy.ts';
 import { parseEnvText } from './env-file.ts';
 import { createMiniConnect } from './mini-connect.ts';
@@ -26,9 +27,15 @@ async function seedFromEnvLocal(): Promise<void> {
   seedKeystore(parseEnvText(text));
 }
 
-function assemblyHeaders(): Record<string, string> {
-  const k = getKey('ASSEMBLYAI_API_KEY');
-  return k ? { authorization: k } : {};
+// Per-request stash of the rotation index picked for AssemblyAI, keyed by the
+// request object so onUpstreamStatus can mark the exact key that was used.
+const assemblyRotIdx = new WeakMap<IncomingMessage, number>();
+
+function assemblyHeaders(req: IncomingMessage): Record<string, string> {
+  const picked = pickKey('ASSEMBLYAI');
+  if (!picked) return {};
+  assemblyRotIdx.set(req, picked.index);
+  return { authorization: picked.key };
 }
 
 export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServer> {
@@ -43,6 +50,12 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
   app.use('/assemblyai', proxyMiddleware({
     target: () => 'https://api.assemblyai.com',
     headers: assemblyHeaders,
+    onUpstreamStatus: (req, status) => {
+      const idx = assemblyRotIdx.get(req);
+      if (idx != null && shouldFailover('ASSEMBLYAI', status)) {
+        markRateLimited('ASSEMBLYAI', idx);
+      }
+    },
   }));
 
   // vite server 桩:插件依赖面全集 = middlewares.use + config.logger(已逐插件核实)

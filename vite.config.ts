@@ -1,7 +1,8 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { serverPlugins } from './server/plugins/index.ts';
-import { seedKeystore, getKey } from './server/keystore.ts';
+import { seedKeystore } from './server/keystore.ts';
+import { pickKey, markRateLimited, parsePoolValue, shouldFailover } from './server/key-rotation.ts';
 import { productAssetsPlugin } from './server/product-assets.ts';
 
 // https://vite.dev/config/
@@ -30,6 +31,17 @@ export default defineConfig(({ mode }) => {
   const unsplashKey = env.UNSPLASH_ACCESS_KEY || '';
   const freesoundKey = env.FREESOUND_API_KEY || '';
   const dvidsKey = env.DVIDS_API_KEY || '';
+  // Rotatable pools (Assets providers): configured if the pool JSON has ≥1 key OR the
+  // legacy single slot is set. Mirrors server getPool() so the boot capability snapshot
+  // stays accurate when *_KEYS live in .env.local (not just the legacy single slot).
+  const hasPool = (poolName: string, legacy: string): boolean =>
+    parsePoolValue(env[poolName] ?? '').length > 0 || Boolean(legacy);
+  const stockConfigured = hasPool('PEXELS_API_KEYS', pexelsKey)
+    || hasPool('PIXABAY_API_KEYS', pixabayKey)
+    || hasPool('UNSPLASH_ACCESS_KEYS', unsplashKey)
+    || hasPool('FREESOUND_API_KEYS', freesoundKey)
+    || hasPool('DVIDS_API_KEYS', dvidsKey);
+  const transcriptionConfigured = hasPool('ASSEMBLYAI_API_KEYS', aaiKey);
   // Firecrawl (web_browser tool): .env.local or shell export (e.g. search-apis.env)
   const firecrawlKey = env.FIRECRAWL_API_KEY || process.env.FIRECRAWL_API_KEY || '';
   const e2bKey = env.E2B_API_KEY || process.env.E2B_API_KEY || '';
@@ -46,8 +58,8 @@ export default defineConfig(({ mode }) => {
         video: Boolean(seedanceKey || klingKey || minimaxKey),
         music: Boolean(murekaKey || minimaxKey),
         sound: Boolean(elevenKey),
-        stock: Boolean(pexelsKey || pixabayKey || unsplashKey || freesoundKey || dvidsKey),
-        transcription: Boolean(aaiKey),
+        stock: stockConfigured,
+        transcription: transcriptionConfigured,
         sandbox: Boolean(e2bKey),
         web: Boolean(firecrawlKey),
       }),
@@ -61,14 +73,28 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       proxy: {
         // AssemblyAI transcription — key injected server-side (never in browser).
+        // Multi-key fail-over: pickKey() hands out the active key and we stash its
+        // index on the request; if upstream returns 429/402 we park that key so the
+        // NEXT request advances to a healthy one. (The in-flight 429 is still
+        // forwarded to the client — retrying a streamed audio upload in-place would
+        // require buffering the whole body, which is not worth it.)
         '/assemblyai': {
           target: 'https://api.assemblyai.com',
           changeOrigin: true,
           rewrite: (p) => p.replace(/^\/assemblyai/, ''),
           configure: (proxy) => {
-            proxy.on('proxyReq', (proxyReq) => {
-              const ak = getKey('ASSEMBLYAI_API_KEY') || aaiKey;  // live override
-              if (ak) proxyReq.setHeader('authorization', ak);
+            proxy.on('proxyReq', (proxyReq, req) => {
+              const picked = pickKey('ASSEMBLYAI');
+              if (picked) {
+                (req as { __rotIdx?: number }).__rotIdx = picked.index;
+                proxyReq.setHeader('authorization', picked.key);
+              }
+            });
+            proxy.on('proxyRes', (proxyRes, req) => {
+              const idx = (req as { __rotIdx?: number }).__rotIdx;
+              if (idx != null && shouldFailover('ASSEMBLYAI', proxyRes.statusCode ?? 0)) {
+                markRateLimited('ASSEMBLYAI', idx);
+              }
             });
           },
         },

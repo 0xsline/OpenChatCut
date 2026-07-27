@@ -5,6 +5,7 @@
 // 厂商报错文案压平截断后才进 message。端点与鉴权头逐一对齐各 vite-plugin-* 的
 // 真实调用写法(豆包三 header / MiniMax base_resp / Gemini x-goog-api-key…)。
 import { getKey, KEY_NAMES, type KeyName } from './keystore.ts';
+import { peekActiveKey } from './key-rotation.ts';
 import { r2Probe } from './r2.ts';
 import { mediaDirProbe, mediaDirPostCheck, mediaDirOkText } from './media-dir.ts';
 import {
@@ -180,46 +181,46 @@ function buildProbes(): Record<string, ProbeDef> {
   // /v1/search 已对匿名开放(实测无 key 也 200),验不出 key;collections
   // 是账户绑定端点,假 key 稳定 401。
   'stock/pexels': {
-    needs: [['PEXELS_API_KEY']],
+    needs: [['PEXELS_API_KEYS'], ['PEXELS_API_KEY']],
     run: (get) => fetch('https://api.pexels.com/v1/collections?per_page=1', {
-      signal: t(), headers: { Authorization: get('PEXELS_API_KEY') },
+      signal: t(), headers: { Authorization: peekActiveKey('PEXELS') || get('PEXELS_API_KEY') },
     }),
   },
   // Pixabay 官方设计:key 走 query 参数(服务端直连 HTTPS,与 stock 插件同形)。
   'stock/pixabay': {
-    needs: [['PIXABAY_API_KEY']],
+    needs: [['PIXABAY_API_KEYS'], ['PIXABAY_API_KEY']],
     run: (get) => {
-      const params = new URLSearchParams({ key: get('PIXABAY_API_KEY'), q: 'sky', per_page: '3' });
+      const params = new URLSearchParams({ key: peekActiveKey('PIXABAY') || get('PIXABAY_API_KEY'), q: 'sky', per_page: '3' });
       return fetch(`https://pixabay.com/api/?${params.toString()}`, { signal: t() });
     },
   },
   // Unsplash:search 端点要求 Client-ID,假 key 401。
   'stock/unsplash': {
-    needs: [['UNSPLASH_ACCESS_KEY']],
+    needs: [['UNSPLASH_ACCESS_KEYS'], ['UNSPLASH_ACCESS_KEY']],
     run: (get) => fetch('https://api.unsplash.com/search/photos?query=sky&per_page=1', {
-      signal: t(), headers: { Authorization: 'Client-ID ' + get('UNSPLASH_ACCESS_KEY') },
+      signal: t(), headers: { Authorization: 'Client-ID ' + (peekActiveKey('UNSPLASH') || get('UNSPLASH_ACCESS_KEY')) },
     }),
   },
   // Freesound:token 走 query(与 stock 插件同形),假 token 401。
   'stock/freesound': {
-    needs: [['FREESOUND_API_KEY']],
+    needs: [['FREESOUND_API_KEYS'], ['FREESOUND_API_KEY']],
     run: (get) => {
-      const params = new URLSearchParams({ query: 'wind', page_size: '1', fields: 'id', token: get('FREESOUND_API_KEY') });
+      const params = new URLSearchParams({ query: 'wind', page_size: '1', fields: 'id', token: peekActiveKey('FREESOUND') || get('FREESOUND_API_KEY') });
       return fetch('https://freesound.org/apiv2/search/text/?' + params.toString(), { signal: t() });
     },
   },
   // DVIDS (PD-USGov footage):api_key 走 query(与 stock 插件同形),假 key 403。
   'stock/dvids': {
-    needs: [['DVIDS_API_KEY']],
+    needs: [['DVIDS_API_KEYS'], ['DVIDS_API_KEY']],
     run: (get) => {
-      const params = new URLSearchParams({ api_key: get('DVIDS_API_KEY'), type: 'video', max_results: '1', keywords: 'navy' });
+      const params = new URLSearchParams({ api_key: peekActiveKey('DVIDS') || get('DVIDS_API_KEY'), type: 'video', max_results: '1', keywords: 'navy' });
       return fetch(`https://api.dvidshub.net/search?${params.toString()}`, { signal: t() });
     },
   },
   'transcription/assemblyai': {
-    needs: [['ASSEMBLYAI_API_KEY']],
+    needs: [['ASSEMBLYAI_API_KEYS'], ['ASSEMBLYAI_API_KEY']],
     run: (get) => fetch('https://api.assemblyai.com/v2/transcript?limit=1', {
-      signal: t(), headers: { authorization: get('ASSEMBLYAI_API_KEY') },
+      signal: t(), headers: { authorization: peekActiveKey('ASSEMBLYAI') || get('ASSEMBLYAI_API_KEY') },
     }),
   },
   'sandbox/e2b': {

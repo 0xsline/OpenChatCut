@@ -52,11 +52,18 @@ function useKeyStatus(): {
   const [loadError, setLoadError] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
-    fetch('/api/keys')
-      .then((r) => r.json() as Promise<KeyStatusResponse>)
-      .then((d) => { if (alive) setStatus(d); })
-      .catch(() => { if (alive) setLoadError(t('无法读取配置（dev 服务未就绪？）')); });
-    return () => { alive = false; };
+    const pull = (): void => {
+      fetch('/api/keys')
+        .then((r) => r.json() as Promise<KeyStatusResponse>)
+        .then((d) => { if (alive) setStatus(d); })
+        .catch(() => { if (alive) setLoadError(t('无法读取配置（dev 服务未就绪？）')); });
+    };
+    pull();
+    // Poll every 4s while the dialog is open so the rotatable key-pool indicators
+    // (active key / cooldown countdowns) update live. values (staged edits) are
+    // separate state, so polling never disturbs in-flight user edits.
+    const timer = window.setInterval(pull, 4000);
+    return () => { alive = false; window.clearInterval(timer); };
   }, []);
   return { status, setStatus, loadError };
 }
@@ -180,7 +187,12 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   }, [status?.models?.[LLM_CUSTOM_PROVIDERS_KEY]]);
 
   // 暂存:相对基线(模型字段 = 服务端当前值,其余 = '')无变化即撤销暂存。
+  // multi 池字段:raw 是 {rm,add} mutasi JSON;'' = 无变更(撤销)。
   const stage = (field: SettingsField, raw: string): void => {
+    if (field.multi) {
+      setValues((prev) => raw === '' ? omitKey(prev, field.name) : { ...prev, [field.name]: raw });
+      return;
+    }
     const baseline = isModelField(field) ? modelValue(status, field.name) : '';
     setValues((prev) => raw === baseline ? omitKey(prev, field.name) : { ...prev, [field.name]: raw });
   };

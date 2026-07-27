@@ -36,6 +36,7 @@ import { settingsPlugin } from './settings.ts';
 import { externalAgentPlugin } from './external-agent.ts';
 import { llmProxyPlugin } from './llm-proxy.ts';
 import { getKey } from '../keystore.ts';
+import { peekActiveKey } from '../key-rotation.ts';
 
 export function serverPlugins(): Plugin[] {
   return [llmProxyPlugin(), projectStorePlugin(), extensionStorePlugin(), externalAgentPlugin(), settingsPlugin(), exportPlugin(), exportQaPlugin(), uploadMultipartPlugin(), uploadPlugin(), mobileUploadPlugin(), extractAudioPlugin(), extractFramesPlugin(), sceneDetectionPlugin(), autoGradePlugin(), mediaPreviewPlugin(), isolateVoicePlugin(), normalizeMediaPlugin(), imageGenerationPlugin({
@@ -91,12 +92,16 @@ export function serverPlugins(): Plugin[] {
   generationProgressPlugin(),
   subtitleExportPlugin(),
   stockSearchPlugin({
-    get pexelsApiKey() { return getKey('PEXELS_API_KEY'); },
-    get pixabayApiKey() { return getKey('PIXABAY_API_KEY'); },
-    get unsplashAccessKey() { return getKey('UNSPLASH_ACCESS_KEY'); },
-    get freesoundApiKey() { return getKey('FREESOUND_API_KEY'); },
+    // peekActiveKey = non-advancing: the guard in searchStockMedia reads these
+    // getters to decide whether to schedule a platform, so inspection must NOT
+    // rotate the active key. The actual per-request key (+ fail-over retry) is
+    // chosen inside each job via pickKey() in stock.ts.
+    get pexelsApiKey() { return peekActiveKey('PEXELS'); },
+    get pixabayApiKey() { return peekActiveKey('PIXABAY'); },
+    get unsplashAccessKey() { return peekActiveKey('UNSPLASH'); },
+    get freesoundApiKey() { return peekActiveKey('FREESOUND'); },
     get firecrawlApiKey() { return getKey('FIRECRAWL_API_KEY'); },
-    get dvidsApiKey() { return getKey('DVIDS_API_KEY'); },
+    get dvidsApiKey() { return peekActiveKey('DVIDS'); },
   }),
   firecrawlPlugin({ get apiKey() { return getKey('FIRECRAWL_API_KEY'); } }),
   newsPlugin(),

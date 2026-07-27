@@ -5,6 +5,7 @@ import {
   isDvidsContractor,
   stripHtml,
 } from './stock-license.ts';
+import { markRateLimitedByValue, shouldFailover } from '../key-rotation.ts';
 
 export interface StockPluginOptions {
   pexelsApiKey: string;
@@ -588,6 +589,39 @@ function addUnavailableWarning(warnings: string[], target: SearchTarget): void {
   if (!warnings.includes(message)) warnings.push(message);
 }
 
+/** Pull a 3-digit HTTP status out of a search fn's thrown Error message
+ *  (e.g. "Pexels search failed (429)"). Returns null if none found. */
+function extractHttpStatus(err: unknown): number | null {
+  if (!(err instanceof Error)) return null;
+  const m = /\((\d{3})\)/.exec(err.message);
+  return m ? Number(m[1]) : null;
+}
+
+/** Run a stock search with fail-over: if the upstream returns a rate-limit /
+ *  quota status (429 / 402), park the key that was used (looked up by VALUE, so
+ *  this stays compatible with the literal keys test fixtures inject through
+ *  `options`) and retry ONCE with whatever the getter returns next — in
+ *  production that's the advanced active key; in tests it's the same literal so
+ *  no retry fires. */
+async function withFailover<T>(
+  providerId: string,
+  getKey: () => string,
+  search: (apiKey: string) => Promise<T>,
+): Promise<T> {
+  const key = getKey();
+  try {
+    return await search(key);
+  } catch (err) {
+    const status = extractHttpStatus(err);
+    if (status != null && shouldFailover(providerId, status)) {
+      markRateLimitedByValue(providerId, key);
+      const next = getKey();
+      if (next && next !== key) return search(next);
+    }
+    throw err;
+  }
+}
+
 export async function searchStockMedia(
   options: StockPluginOptions,
   request: StockSearchRequest,
@@ -609,7 +643,8 @@ export async function searchStockMedia(
     if (target.platform === 'pexels' && options.pexelsApiKey) {
       jobs.push({
         label: `pexels/${target.kind}`, platforms: ['pexels'],
-        run: () => searchPexels(fetchImpl, options.pexelsApiKey, query, target.kind, orientation, limit),
+        run: () => withFailover('PEXELS', () => options.pexelsApiKey,
+          (k) => searchPexels(fetchImpl, k, query, target.kind, orientation, limit)),
       });
     } else if (target.platform === 'pixabay' && options.pixabayApiKey) {
       if (orientation === 'square') {
@@ -618,22 +653,26 @@ export async function searchStockMedia(
       }
       jobs.push({
         label: `pixabay/${target.kind}`, platforms: ['pixabay'],
-        run: () => searchPixabay(fetchImpl, options.pixabayApiKey, query, target.kind, orientation, limit),
+        run: () => withFailover('PIXABAY', () => options.pixabayApiKey,
+          (k) => searchPixabay(fetchImpl, k, query, target.kind, orientation, limit)),
       });
     } else if (target.platform === 'unsplash' && options.unsplashAccessKey) {
       jobs.push({
         label: 'unsplash/image', platforms: ['unsplash'],
-        run: () => searchUnsplash(fetchImpl, options.unsplashAccessKey!, query, target.kind, orientation, limit),
+        run: () => withFailover('UNSPLASH', () => options.unsplashAccessKey!,
+          (k) => searchUnsplash(fetchImpl, k, query, target.kind, orientation, limit)),
       });
     } else if (target.platform === 'freesound' && options.freesoundApiKey) {
       jobs.push({
         label: 'freesound/audio', platforms: ['freesound'],
-        run: () => searchFreesound(fetchImpl, options.freesoundApiKey!, query, limit, kind === 'music'),
+        run: () => withFailover('FREESOUND', () => options.freesoundApiKey!,
+          (k) => searchFreesound(fetchImpl, k, query, limit, kind === 'music')),
       });
     } else if (target.platform === 'dvids' && options.dvidsApiKey) {
       jobs.push({
         label: `dvids/${target.kind}`, platforms: ['dvids'],
-        run: () => searchDvids(fetchImpl, options.dvidsApiKey!, query, target.kind, limit),
+        run: () => withFailover('DVIDS', () => options.dvidsApiKey!,
+          (k) => searchDvids(fetchImpl, k, query, target.kind, limit)),
       });
     } else if (target.platform === 'wikimedia') {
       // Wikimedia Commons needs no key — always searched when selected.

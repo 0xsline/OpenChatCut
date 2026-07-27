@@ -2,13 +2,14 @@
 // 从 SettingsDialog.tsx 拆出(500 行上限);布局壳与左/中栏仍在那边。
 // 「测试连接」走 POST /api/keys/test:把本页未保存的暂存值作为 overrides 一并
 // 送去服务端探测(仅本次生效,不落盘),密钥值永远不会出现在响应里。
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { theme, themeAlpha } from '../../theme';
 import { useT } from '../../i18n/locale';
 import { VendorIcon } from './vendorIcons';
 import {
   fieldPlaceholder, isModelField, modelValue, selectOptionLabel, selectOptions, vendorConfigured,
-  type KeyStatusResponse, type SettingsField, type SettingsVendorPage, type StagedValues as Values,
+  type KeySlotStatus, type KeyStatusResponse, type PoolStatus, type SettingsField,
+  type SettingsVendorPage, type StagedValues as Values,
 } from './settingsSchema';
 
 export const ON = theme.success; // 状态绿 → 语义令牌(石墨值≈原 #4caf7d,浅肤自动换深绿)
@@ -135,19 +136,22 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
   // value: undefined = 无暂存改动;'' = 暂存清除 / 回默认;其余 = 暂存新值。
   const value = ctx.values[field.name];
   const st = status?.keys[field.name];
-  const configured = Boolean(st?.configured);
-  const stagedClear = value === '' && field.kind !== 'toggle';
+  // multi 池字段的「已配置」看 keyPools 计数(兼容 legacy 单 key 回退),其余看 keys 布尔。
+  const configured = field.multi
+    ? Boolean(status?.keyPools?.[field.providerId ?? '']?.count)
+    : Boolean(st?.configured);
+  const stagedClear = value === '' && field.kind !== 'toggle' && !field.multi;
   // 模型 / 路由字段回显服务端当前值;secret / base url 永不回填。
   const shown = value ?? (isModelField(field) ? modelValue(status, field.name) : '');
-  // select 用「默认」选项即清除;toggle 的关/开本身就是设/清。
-  const clearable = configured && field.kind !== 'select' && field.kind !== 'toggle';
+  // select 用「默认」选项即清除;toggle 的关/开本身就是设/清;multi 池有自己的增删按钮。
+  const clearable = configured && field.kind !== 'select' && field.kind !== 'toggle' && !field.multi;
   const discovered = field.discoverableModel ? ctx.modelOptions[field.name] ?? [] : [];
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <span style={fieldHead}>
         <span style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
           {t(field.label)}
-          {configured && <span style={sourceTag}>{st?.source === 'env' ? '.env.local' : t('本次设置')}</span>}
+          {configured && !field.multi && <span style={sourceTag}>{st?.source === 'env' ? '.env.local' : t('本次设置')}</span>}
         </span>
         {clearable && (
           <button type="button" onClick={(e) => { e.preventDefault(); onToggleClear(field.name); }}
@@ -158,15 +162,17 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
       </span>
       {field.kind === 'toggle'
         ? <ToggleSwitch field={field} shown={shown} onStage={onStage} />
-        : field.discoverableModel && discovered.length > 0
-          ? <ModelInput field={field} shown={shown} models={discovered} reveal={reveal}
-              configured={configured} stagedClear={stagedClear} onStage={onStage} />
-          : field.kind === 'select'
-          ? <SelectInput field={field} status={status} shown={shown} onStage={onStage} />
-          : field.kind === 'directory'
-            ? <DirectoryInput field={field} shown={shown} stagedClear={stagedClear} onStage={onStage} />
-            : <TextInput field={field} shown={shown} reveal={reveal} configured={configured}
-                stagedClear={stagedClear} onStage={onStage} />}
+        : field.multi
+          ? <KeyPoolField field={field} ctx={ctx} />
+          : field.discoverableModel && discovered.length > 0
+            ? <ModelInput field={field} shown={shown} models={discovered} reveal={reveal}
+                configured={configured} stagedClear={stagedClear} onStage={onStage} />
+            : field.kind === 'select'
+            ? <SelectInput field={field} status={status} shown={shown} onStage={onStage} />
+            : field.kind === 'directory'
+              ? <DirectoryInput field={field} shown={shown} stagedClear={stagedClear} onStage={onStage} />
+              : <TextInput field={field} shown={shown} reveal={reveal} configured={configured}
+                  stagedClear={stagedClear} onStage={onStage} />}
       {field.note && <span style={{ fontSize: 10.5, color: theme.textDim }}>{t(field.note)}</span>}
     </label>
   );
@@ -302,6 +308,123 @@ function DirectoryInput({ field, shown, stagedClear, onStage }: {
   );
 }
 
+// ── 多密钥轮换池 (Assets providers) ────────────────────────────────────────
+// 密钥值永不回填浏览器:已存密钥只显示遮罩后缀 + 健康/激活状态,且不可原地编辑
+// (要换只能删了重加)。编辑表达为对当前已存池的 {rm:[索引], add:[新值]} 变更,服务端
+// 读自己的密钥应用后持久化。本地 added/removed 状态在暂存被清空(保存后)时复位。
+function KeyPoolField({ field, ctx }: { field: SettingsField; ctx: FieldCtx }) {
+  const t = useT();
+  const providerId = field.providerId ?? '';
+  const pool: PoolStatus | undefined = ctx.status?.keyPools?.[providerId];
+  const existing: readonly KeySlotStatus[] = pool?.keys ?? [];
+  const activeIndex = pool?.activeIndex ?? -1;
+
+  const [removed, setRemoved] = useState<Set<number>>(() => new Set());
+  const [added, setAdded] = useState<string[]>([]);
+  const staged = ctx.values[field.name];
+  const prevStaged = useRef<string | undefined>(staged);
+
+  // 保存后暂存被清空 → 复位本地编辑态(新增/移除)。轮询只改 status、不动 values,故不触发。
+  useEffect(() => {
+    if (prevStaged.current !== undefined && staged === undefined) {
+      setRemoved(new Set());
+      setAdded([]);
+    }
+    prevStaged.current = staged;
+  }, [staged]);
+
+  const commit = (nextRemoved: Set<number>, nextAdded: string[]): void => {
+    const rm = [...nextRemoved].filter((i) => i >= 0 && i < existing.length);
+    const add = nextAdded.map((s) => s.trim()).filter(Boolean);
+    const hasChange = rm.length > 0 || add.length > 0;
+    // '' = 无变更(stage 的多路径视作撤销,不进 dirty);非空变更发 mutasi JSON。
+    ctx.onStage(field, hasChange ? JSON.stringify({ rm, add }) : '');
+  };
+  const toggleRemove = (i: number): void => {
+    const next = new Set(removed);
+    if (next.has(i)) next.delete(i); else next.add(i);
+    setRemoved(next);
+    commit(next, added);
+  };
+  const setAddedAt = (i: number, v: string): void => {
+    const next = added.slice(); next[i] = v;
+    setAdded(next); commit(removed, next);
+  };
+  const removeAddedAt = (i: number): void => {
+    const next = added.slice(); next.splice(i, 1);
+    setAdded(next); commit(removed, next);
+  };
+  const addRow = (): void => {
+    const next = [...added, ''];
+    setAdded(next); commit(removed, next);
+  };
+
+  const usableCount = existing.length - removed.size + added.filter((a) => a.trim()).length;
+  const activeSlot = activeIndex >= 0 ? existing[activeIndex] : undefined;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {existing.length === 0 && added.length === 0 && (
+        <span style={{ fontSize: 11, color: theme.textDim }}>{t('未配置 · 点下方添加首个密钥')}</span>
+      )}
+      {existing.map((slot, i) => {
+        const isRemoved = removed.has(i);
+        const isActive = i === activeIndex;
+        return (
+          <div key={`k${i}`} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <input
+              type="password" readOnly tabIndex={-1} value=""
+              placeholder={isRemoved ? t('将移除') : (slot.suffix || t('密钥 {n}', { n: i + 1 }))}
+              style={{ ...input, flex: 1, minWidth: 0, opacity: isRemoved ? 0.45 : 1,
+                textDecoration: isRemoved ? 'line-through' : 'none' }}
+            />
+            <KeyStatusChip slot={slot} active={isActive} />
+            <button type="button" onClick={(e) => { e.preventDefault(); toggleRemove(i); }}
+              style={{ ...clearBtn, color: isRemoved ? ON : WARN, flex: '0 0 auto' }}>
+              {isRemoved ? t('恢复') : t('移除')}
+            </button>
+          </div>
+        );
+      })}
+      {added.map((val, i) => (
+        <div key={`a${i}`} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <input
+            type="password" autoComplete="off" spellCheck={false} value={val}
+            onChange={(e) => setAddedAt(i, e.target.value)}
+            placeholder={t('输入新密钥')}
+            style={{ ...input, flex: 1, minWidth: 0 }}
+          />
+          <span style={{ ...statusChipBase, color: theme.textDim, border: `0.5px solid ${theme.border}` }}>{t('新增')}</span>
+          <button type="button" onClick={(e) => { e.preventDefault(); removeAddedAt(i); }}
+            style={{ ...clearBtn, color: WARN, flex: '0 0 auto' }}>×</button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 1 }}>
+        <button type="button" onClick={(e) => { e.preventDefault(); addRow(); }} style={addKeyBtn}>
+          + {t('添加密钥')}
+        </button>
+        <span style={{ fontSize: 10.5, color: theme.textDim }}>
+          {t('共 {n} 个可用密钥', { n: usableCount })}
+          {activeSlot ? t(' · 激活 {suf}', { suf: activeSlot.suffix }) : ''}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function KeyStatusChip({ slot, active }: { slot: KeySlotStatus; active: boolean }) {
+  const t = useT();
+  let label: string; let color: string;
+  // Health wins over "active": a key that is cooling / exhausted must show red
+  // even if it sits at activeIndex (the just-rate-limited key is at activeIndex
+  // but is NOT healthy). "active" only promotes a healthy key from 就绪 to 激活.
+  if (slot.status === 'cooldown') { label = t('冷却 {n}s', { n: slot.cooldownSeconds }); color = WARN; }
+  else if (slot.status === 'exhausted') { label = t('耗尽'); color = WARN; }
+  else if (active) { label = t('激活'); color = ON; }
+  else { label = t('就绪'); color = theme.textDim; }
+  return <span style={{ ...statusChipBase, color, border: `0.5px solid ${color}`, flex: '0 0 auto' }}>{label}</span>;
+}
+
 function SelectInput({ field, status, shown, onStage }: {
   field: SettingsField; status: KeyStatusResponse | null; shown: string;
   onStage: (field: SettingsField, raw: string) => void;
@@ -395,6 +518,14 @@ const clearBtn: React.CSSProperties = {
 const browseBtn: React.CSSProperties = {
   font: 'inherit', fontSize: 11.5, color: theme.text, background: theme.panelAlt,
   border: `0.5px solid ${theme.border}`, borderRadius: 6, padding: '6px 11px',
+  cursor: 'pointer', flex: '0 0 auto', whiteSpace: 'nowrap',
+};
+const statusChipBase: React.CSSProperties = {
+  fontSize: 10, borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', background: theme.panelAlt,
+};
+const addKeyBtn: React.CSSProperties = {
+  font: 'inherit', fontSize: 11, color: theme.text, background: 'transparent',
+  border: `0.5px dashed ${theme.border}`, borderRadius: 6, padding: '5px 11px',
   cursor: 'pointer', flex: '0 0 auto', whiteSpace: 'nowrap',
 };
 const fieldHint: React.CSSProperties = { fontSize: 10.5, color: theme.textDim };

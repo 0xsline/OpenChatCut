@@ -17,6 +17,10 @@ export interface ProxyRoute {
   forceJsonContentType?: boolean;
   /** Replace upstream error bodies with one actionable message. */
   errorMessage?: (status: number, req: IncomingMessage) => string;
+  /** Called with the upstream HTTP status BEFORE the response is forwarded to the
+   *  client (headers not yet sent). Lets a route observe rate-limit statuses to
+   *  drive key fail-over without buffering/replaying the body. */
+  onUpstreamStatus?: (req: IncomingMessage, statusCode: number) => void;
 }
 
 export function proxyMiddleware(route: ProxyRoute): Middleware {
@@ -91,6 +95,9 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
           outHeaders['content-type'] = 'application/json';
         }
       }
+      // Observe the upstream status (e.g. 429/402) before forwarding so the route
+      // can park the key it used; must run before writeHead pipes the body out.
+      route.onUpstreamStatus?.(req, upRes.statusCode ?? 0);
       res.writeHead(status, outHeaders);
       upRes.pipe(res);
     });
