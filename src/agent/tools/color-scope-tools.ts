@@ -23,6 +23,8 @@ export const COLOR_SCOPE_TOOL_SCHEMAS: AgentToolSchema[] = [
       'media-pool asset frame before any grading instead.',
       'Typical loop: inspect_color → adjust via edit_item filters / color effects / LUT looks → inspect_color again to',
       'confirm the numbers moved as intended. Use view_timeline_frames when you also want to SEE the frame.',
+      'To match another shot in one call, pass referenceFrame/referenceSeconds or referenceAssetId/referenceSourceSeconds.',
+      'The result includes signed target-minus-reference deltas and dead-zone-filtered named control suggestions.',
     ].join(' '),
     input_schema: {
       type: 'object',
@@ -31,6 +33,10 @@ export const COLOR_SCOPE_TOOL_SCHEMAS: AgentToolSchema[] = [
         seconds: { type: 'number', description: 'Timeline time in seconds (alternative to frame).' },
         assetId: { type: 'string', description: 'Measure a RAW media-pool asset instead of the timeline (prefix id ok).' },
         sourceSeconds: { type: 'number', description: 'Asset mode only: source time to sample (default: asset midpoint).' },
+        referenceFrame: { type: 'number', description: 'Reference timeline frame to compare against.' },
+        referenceSeconds: { type: 'number', description: 'Reference timeline time in seconds (alternative to referenceFrame).' },
+        referenceAssetId: { type: 'string', description: 'Compare against a RAW media-pool asset frame (prefix id ok).' },
+        referenceSourceSeconds: { type: 'number', description: 'Reference asset source time (default: midpoint).' },
       },
     },
   },
@@ -112,42 +118,115 @@ function compactStats(s: ColorScopeStats): Record<string, unknown> {
   };
 }
 
+type ScopeResult = Record<string, unknown> & { rawStats: ColorScopeStats };
+
+const delta = (target: number, reference: number): number => round3(target - reference);
+
+function suggestion(control: string, direction: string, value: number, reason: string) {
+  return { control, direction, targetMinusReference: round3(value), reason };
+}
+
+export function compareColorScopes(target: ColorScopeStats, reference: ColorScopeStats) {
+  const meanLuma = target.meanLuma - reference.meanLuma;
+  const contrast = (target.whitePoint - target.blackPoint) - (reference.whitePoint - reference.blackPoint);
+  const saturation = target.saturationMean - reference.saturationMean;
+  const warmCool = target.warmCool - reference.warmCool;
+  const greenMagenta = target.greenMagenta - reference.greenMagenta;
+  const suggestions = [
+    ...(Math.abs(meanLuma) >= 0.03 ? [suggestion('brightness', meanLuma > 0 ? 'decrease' : 'increase', meanLuma, 'match mean luma')] : []),
+    ...(Math.abs(contrast) >= 0.05 ? [suggestion('contrast', contrast > 0 ? 'decrease' : 'increase', contrast, 'match black-to-white span')] : []),
+    ...(Math.abs(saturation) >= 0.04 ? [suggestion('saturate', saturation > 0 ? 'decrease' : 'increase', saturation, 'match mean saturation')] : []),
+    ...(Math.abs(warmCool) >= 0.025 ? [suggestion('temperature', warmCool > 0 ? 'cooler' : 'warmer', warmCool, 'match R-B balance')] : []),
+    ...(Math.abs(greenMagenta) >= 0.02 ? [suggestion('tint', greenMagenta > 0 ? 'toward magenta' : 'toward green', greenMagenta, 'match green-magenta balance')] : []),
+    ...(target.clippedHighlightsPct - reference.clippedHighlightsPct >= 0.01
+      ? [suggestion('highlights', 'decrease', target.clippedHighlightsPct - reference.clippedHighlightsPct, 'reduce extra highlight clipping')] : []),
+    ...(target.clippedShadowsPct - reference.clippedShadowsPct >= 0.01
+      ? [suggestion('shadows', 'lift', target.clippedShadowsPct - reference.clippedShadowsPct, 'reduce extra shadow clipping')] : []),
+  ];
+  return {
+    targetMinusReference: {
+      blackPoint: delta(target.blackPoint, reference.blackPoint),
+      whitePoint: delta(target.whitePoint, reference.whitePoint),
+      meanLuma: delta(target.meanLuma, reference.meanLuma),
+      clippedShadowsPct: delta(target.clippedShadowsPct, reference.clippedShadowsPct),
+      clippedHighlightsPct: delta(target.clippedHighlightsPct, reference.clippedHighlightsPct),
+      channelMeans: {
+        r: delta(target.channelMeans.r, reference.channelMeans.r),
+        g: delta(target.channelMeans.g, reference.channelMeans.g),
+        b: delta(target.channelMeans.b, reference.channelMeans.b),
+      },
+      warmCool: delta(target.warmCool, reference.warmCool),
+      greenMagenta: delta(target.greenMagenta, reference.greenMagenta),
+      saturationMean: delta(target.saturationMean, reference.saturationMean),
+      tilt: Object.fromEntries((['shadows', 'mids', 'highlights'] as const).map((band) => [band, {
+        warmCool: delta(target.tilt[band].warmCool, reference.tilt[band].warmCool),
+        greenMagenta: delta(target.tilt[band].greenMagenta, reference.tilt[band].greenMagenta),
+      }])),
+      hueHistogram: target.hueHistogram.map((bin, index) => ({
+        label: bin.label,
+        pct: delta(bin.pct, reference.hueHistogram[index]?.pct ?? 0),
+      })),
+    },
+    suggestions,
+  };
+}
+
+async function measureAsset(ctx: AgentContext, rawId: unknown, rawSeconds: unknown): Promise<ScopeResult> {
+  const q = typeof rawId === 'string' ? rawId.trim() : '';
+  const asset = ctx.getDoc().assets.find((item) => item.id === q || item.id.startsWith(q));
+  if (!asset) throw new Error(`no media-pool asset ${q}`);
+  if (!asset.src.startsWith('/media/uploads/')) {
+    throw new Error(`asset ${asset.id} is not an uploaded media file — inspect the timeline instead`);
+  }
+  const sourceMs = typeof rawSeconds === 'number'
+    ? rawSeconds * 1000
+    : asset.kind === 'image' ? 0 : undefined;
+  const { data } = await decodeBase64Pixels(await assetFrameBase64(asset.src, sourceMs));
+  const rawStats = analyzeRgbaPixels(data);
+  return {
+    mode: 'asset', assetId: asset.id,
+    sourceSeconds: sourceMs === undefined ? 'midpoint' : round3(sourceMs / 1000),
+    reading: describeScopeStats(rawStats), stats: compactStats(rawStats), rawStats,
+  };
+}
+
+async function measureTimeline(ctx: AgentContext, rawFrame: unknown, rawSeconds: unknown): Promise<ScopeResult> {
+  const state = ctx.getState();
+  const contentEnd = state.items.reduce((max, item) => Math.max(max, item.startFrame + item.durationInFrames), 0);
+  if (contentEnd === 0) throw new Error('timeline is empty — nothing to measure');
+  const frame = typeof rawFrame === 'number' ? Math.max(0, Math.round(rawFrame))
+    : typeof rawSeconds === 'number' ? Math.max(0, Math.round(rawSeconds * state.fps))
+      : Math.floor(contentEnd / 2);
+  const { data } = await decodeBase64Pixels(await timelineFrameBase64(ctx, frame));
+  const rawStats = analyzeRgbaPixels(data);
+  return {
+    mode: 'timeline', frame, seconds: round3(frame / state.fps),
+    reading: describeScopeStats(rawStats), stats: compactStats(rawStats), rawStats,
+  };
+}
+
+function publicResult(result: ScopeResult): Record<string, unknown> {
+  const { rawStats: _rawStats, ...visible } = result;
+  return visible;
+}
+
 export async function execColorScopeTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   if (name !== 'inspect_color') return { error: `unknown tool ${name}` };
   try {
-    if (typeof args.assetId === 'string' && args.assetId.trim()) {
-      const q = args.assetId.trim();
-      const asset = ctx.getDoc().assets.find((a) => a.id === q || a.id.startsWith(q));
-      if (!asset) return { error: `no media-pool asset ${q}` };
-      if (!asset.src.startsWith('/media/uploads/')) {
-        return { error: `asset ${asset.id} is not an uploaded media file — inspect the timeline instead` };
-      }
-      const sourceMs = typeof args.sourceSeconds === 'number' ? args.sourceSeconds * 1000 : undefined;
-      const { data } = await decodeBase64Pixels(await assetFrameBase64(asset.src, sourceMs));
-      const stats = analyzeRgbaPixels(data);
-      return {
-        mode: 'asset',
-        assetId: asset.id,
-        ...(sourceMs !== undefined ? { sourceSeconds: round3(sourceMs / 1000) } : { sourceSeconds: 'midpoint' }),
-        reading: describeScopeStats(stats),
-        stats: compactStats(stats),
-      };
-    }
-
-    const state = ctx.getState();
-    const contentEnd = state.items.reduce((max, it) => Math.max(max, it.startFrame + it.durationInFrames), 0);
-    const frame = typeof args.frame === 'number' ? Math.max(0, Math.round(args.frame))
-      : typeof args.seconds === 'number' ? Math.max(0, Math.round(args.seconds * state.fps))
-        : Math.floor(contentEnd / 2);
-    if (contentEnd === 0) return { error: 'timeline is empty — nothing to measure' };
-    const { data } = await decodeBase64Pixels(await timelineFrameBase64(ctx, frame));
-    const stats = analyzeRgbaPixels(data);
+    const target = typeof args.assetId === 'string' && args.assetId.trim()
+      ? await measureAsset(ctx, args.assetId, args.sourceSeconds)
+      : await measureTimeline(ctx, args.frame, args.seconds);
+    const hasReference = ['referenceAssetId', 'referenceFrame', 'referenceSeconds']
+      .some((key) => args[key] !== undefined);
+    if (!hasReference) return publicResult(target);
+    const reference = typeof args.referenceAssetId === 'string' && args.referenceAssetId.trim()
+      ? await measureAsset(ctx, args.referenceAssetId, args.referenceSourceSeconds)
+      : await measureTimeline(ctx, args.referenceFrame, args.referenceSeconds);
     return {
-      mode: 'timeline',
-      frame,
-      seconds: round3(frame / state.fps),
-      reading: describeScopeStats(stats),
-      stats: compactStats(stats),
+      mode: 'comparison',
+      target: publicResult(target),
+      reference: publicResult(reference),
+      ...compareColorScopes(target.rawStats, reference.rawStats),
     };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };

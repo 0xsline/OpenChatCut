@@ -204,4 +204,5 @@ export default {
   '分析中…': 'Analyzing…',
   '分析并归一到 -14 LUFS': 'Analyze & normalize to -14 LUFS',
   '响度归一 (-14 LUFS)': 'Normalize Loudness (-14 LUFS)',
+  '离线素材：{list}': 'Offline media: {list}',
 } as Record<string, string>;

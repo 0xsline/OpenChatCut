@@ -2,6 +2,7 @@
 // 验证:合成 RGBA 图案上的示波统计——灰阶(中性/无主色)、纯橙(主色相/暖偏)、
 // 过曝(高光溢出)、teal-orange 双簇、暗部偏蓝的分段色偏、空输入。
 import assert from 'node:assert/strict';
+import { compareColorScopes } from '../agent/tools/color-scope-tools';
 import { analyzeRgbaPixels, describeScopeStats } from './scopes';
 
 const near = (a: number, b: number, eps: number): boolean => Math.abs(a - b) < eps;
@@ -70,4 +71,18 @@ function rgba(blocks: Array<[r: number, g: number, b: number, n: number]>): Uint
   assert.deepEqual(s.dominantHues, []);
 }
 
-console.log('scopes.verify: ok (灰阶/主色相/溢出/双簇/分段色偏/空输入)');
+// ── 参考镜头对比:有符号差值 + 死区后的具名旋钮建议 ──
+{
+  const target = analyzeRgbaPixels(rgba([[230, 135, 40, 5000]]), 1);
+  const reference = analyzeRgbaPixels(rgba([[100, 100, 100, 5000]]), 1);
+  const compared = compareColorScopes(target, reference);
+  assert.ok(compared.targetMinusReference.meanLuma > 0, '目标比参考更亮时差值为正');
+  assert.ok(compared.targetMinusReference.warmCool > 0, '目标比参考更暖时差值为正');
+  assert.deepEqual(
+    compared.suggestions.map((entry) => [entry.control, entry.direction]),
+    [['brightness', 'decrease'], ['saturate', 'decrease'], ['temperature', 'cooler']],
+  );
+  assert.deepEqual(compareColorScopes(reference, reference).suggestions, [], '死区内不生成无意义建议');
+}
+
+console.log('scopes.verify: ok (灰阶/主色相/溢出/双簇/分段色偏/参考对比/空输入)');

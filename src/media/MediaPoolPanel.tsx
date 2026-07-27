@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../components/icons';
 import { theme } from '../theme';
@@ -6,7 +6,6 @@ import { useT } from '../i18n/locale';
 import type { MediaAsset, MediaFolder } from '../editor/types';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { importMedia } from './upload';
-import { isMediaSrcReachable } from '../persist/mediaBlobStore';
 import { MgThumb } from './MgThumb';
 import { durationLabel, folderPath } from './mediaPoolFormat';
 import { SemanticSearchControls } from './semantic-search/SemanticSearchControls';
@@ -19,6 +18,8 @@ interface MediaPoolPanelProps {
   assets: MediaAsset[];
   folders: MediaFolder[];
   fps: number;
+  offlineAssetIds: ReadonlySet<string>;
+  onAssetLoadError: (asset: MediaAsset) => void;
   onImport: (file: File, onProgress?: (ratio: number) => void) => Promise<MediaAsset>;
   onImportMobile: (record: MobileUploadRecord) => Promise<void>;
   onAddAsset: (asset: MediaAsset) => void;
@@ -39,7 +40,8 @@ interface MediaPoolPanelProps {
 type PromptState = { title: string; initialValue: string; rejectSlash?: boolean; onSubmit: (value: string) => void };
 type DeleteState = { id: string; name: string; parentId?: string };
 export function MediaPoolPanel({
-  semanticScopeId, assets, folders, fps, onImport, onImportMobile, onAddAsset, onCreateFolder, onRenameFolder,
+  semanticScopeId, assets, folders, fps, offlineAssetIds, onAssetLoadError,
+  onImport, onImportMobile, onAddAsset, onCreateFolder, onRenameFolder,
   onDeleteFolder, onMoveAssets, onRenameAsset, onSetFavorite, onRemoveAsset, onRelinkAsset, onAddSolid,
 }: MediaPoolPanelProps) {
   const t = useT();
@@ -65,8 +67,11 @@ export function MediaPoolPanel({
   const [promptState, setPromptState] = useState<PromptState | null>(null);
   const [promptValue, setPromptValue] = useState('');
   const [deleteState, setDeleteState] = useState<DeleteState | null>(null);
-  /** Asset ids whose media failed to load and can be relinked. */
-  const [missing, setMissing] = useState<Set<string>>(() => new Set());
+  const [mediaErrors, setMediaErrors] = useState<Set<string>>(() => new Set());
+  const missing = useMemo(
+    () => new Set([...offlineAssetIds, ...mediaErrors]),
+    [offlineAssetIds, mediaErrors],
+  );
   const [relinkTarget, setRelinkTarget] = useState<string | null>(null);
   const dirInputRef = useRef<HTMLInputElement>(null);
   const [dirBusy, setDirBusy] = useState(false);
@@ -89,24 +94,12 @@ export function MediaPoolPanel({
     };
   }, [assetMenu]);
 
-  // Probe file-backed assets and mark them offline when unreachable.
-  // 必须走 isMediaSrcReachable:裸 HEAD 对 blob:(上传中的占位)规范性失败 → 上传
-  // 还在跑就误标"重新链接";它还兼顾 SPA 假 200 与 405 的 Range 回退。
-  useEffect(() => {
-    let cancelled = false;
-    const fileAssets = assets.filter((a) => a.kind !== 'motion-graphic' && a.src);
-    void (async () => {
-      const next = new Set<string>();
-      await Promise.all(fileAssets.map(async (asset) => {
-        if (!(await isMediaSrcReachable(asset.src))) next.add(asset.id);
-      }));
-      if (!cancelled) setMissing(next);
-    })();
-    return () => { cancelled = true; };
-  }, [assets]);
-
-  const markMissing = (id: string) => setMissing((s) => new Set(s).add(id));
-  const clearMissing = (id: string) => setMissing((s) => {
+  const markMissing = (id: string) => {
+    const asset = assets.find((item) => item.id === id);
+    if (asset) onAssetLoadError(asset);
+    setMediaErrors((current) => new Set(current).add(id));
+  };
+  const clearMissing = (id: string) => setMediaErrors((s) => {
     if (!s.has(id)) return s;
     const n = new Set(s);
     n.delete(id);

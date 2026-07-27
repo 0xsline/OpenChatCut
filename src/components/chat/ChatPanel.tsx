@@ -35,6 +35,15 @@ const EMPTY_PROJECT_STARTERS = [
   { label: '知识成片', description: '把主题整理成清晰讲解', prompt: '把主题整理成结构清晰、带字幕和视觉提示的讲解视频', icon: 'play' as const },
 ];
 
+const QUICK_ACTIONS = [
+  { label: '删除填充词', prompt: '删除当前口播中的填充词，并保持字幕与画面同步' },
+  { label: '删除静音', prompt: '删除当前时间线中的静音停顿，并收紧空隙' },
+  { label: '跳切', prompt: '把当前口播剪成节奏紧凑的跳切版本' },
+  { label: '生成字幕', prompt: '为当前口播生成并应用同步字幕' },
+  { label: '响度标准化', prompt: '将当前时间线中的人声音量标准化' },
+  { label: '横转竖', prompt: '将当前工程转换为 9:16 竖屏，并调整主要画面构图' },
+];
+
 interface ChatPanelProps {
   ctx: AgentContext;
   /** the current project's id — chat history is persisted per project */
@@ -78,7 +87,11 @@ const GUARD_SKILL_LABELS = {
 
 export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPreviewState, seed, creativeMode, onCreativeModeChange, onImportMedia }: ChatPanelProps) {
   const t = useT();
-  const { messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal, clearHistory, proposalStale, forceApplyProposal, reProposeStale, pendingGuard, liveTool } = useAgent(ctx, projectId);
+  const {
+    messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal, clearHistory,
+    proposalStale, forceApplyProposal, reProposeStale, pendingGuard, liveTool,
+    changeLog, rollbackChangeSession, canRollbackChangeSession,
+  } = useAgent(ctx, projectId);
   const externalProposal = useExternalAgentBridge(ctx, projectId);
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<ChatMode>('agent');
@@ -235,6 +248,38 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
         <button onClick={onToggleCollapse} title={t('收起 OpenChatCut Agent')} style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 13 }}><span style={{ transform: 'rotate(90deg)', display: 'inline-flex' }}><Icon name="chevronDown" size={14} /></span></button>
       </div>
 
+      {changeLog.length > 0 && (
+        <details style={{ borderBottom: `0.5px solid ${theme.border}`, padding: '7px 12px', fontSize: 12 }}>
+          <summary style={{ cursor: 'pointer', color: theme.textDim }}>
+            {t('Agent 修改记录')}（{changeLog.length}）
+          </summary>
+          <div style={{ display: 'grid', gap: 8, maxHeight: 180, overflow: 'auto', paddingTop: 8 }}>
+            {[...changeLog].reverse().map((session) => {
+              const canRollback = !running && canRollbackChangeSession(session.id);
+              return (
+                <div key={session.id} style={{ border: `0.5px solid ${theme.border}`, borderRadius: 6, padding: 8 }}>
+                  <div style={{ color: theme.text, lineHeight: 1.4 }}>{session.summary}</div>
+                  <div style={{ color: theme.textDim, fontSize: 11, marginTop: 2 }}>
+                    {new Date(session.createdAt).toLocaleString()} · {session.operations.length} {t('项操作')}
+                  </div>
+                  {session.operations.map((operation, index) => (
+                    <div key={`${session.id}:${index}`} style={{ color: theme.textDim, marginTop: 4 }}>
+                      {operation.action} · {operation.target} · {operation.impact}
+                    </div>
+                  ))}
+                  <button type="button" disabled={!canRollback}
+                    title={canRollback ? t('恢复到这次 Agent 修改前') : t('工程后来已有其他修改')}
+                    onClick={() => rollbackChangeSession(session.id)}
+                    style={{ marginTop: 7, border: `0.5px solid ${theme.border}`, borderRadius: 5, padding: '4px 8px', background: 'transparent', color: canRollback ? theme.text : theme.textDim, cursor: canRollback ? 'pointer' : 'default', opacity: canRollback ? 1 : 0.5 }}>
+                    {t('回滚此会话')}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      )}
+
       {/* messages */}
       <div ref={scrollRef} className={`cc-chat-messages${messages.length === 0 ? ' empty' : ''}`}>
         {messages.length === 0 && (
@@ -327,6 +372,18 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
 
       {/* composer — minWidth:0 so narrow chat column can't force send-btn overflow */}
       <div style={{ padding: '12px 12px 12px 12px', borderTop: `0.5px solid ${theme.border}`, minWidth: 0, flexShrink: 0, boxSizing: 'border-box' }}>
+        <select aria-label={t('快速操作')} value="" disabled={running}
+          onChange={(event) => {
+            if (event.target.value === '') return;
+            const action = QUICK_ACTIONS[Number(event.target.value)];
+            if (!action) return;
+            setInput(t(action.prompt));
+            requestAnimationFrame(() => taRef.current?.focus());
+          }}
+          style={{ width: '100%', marginBottom: 8, border: `0.5px solid ${theme.border}`, borderRadius: 6, padding: '6px 8px', background: theme.panelAlt, color: theme.text, fontSize: 12 }}>
+          <option value="">{t('快速操作…')}</option>
+          {QUICK_ACTIONS.map((action, index) => <option key={action.label} value={index}>{t(action.label)}</option>)}
+        </select>
         <ChatComposer
           value={input} onChange={(value) => {
             setInput(value);

@@ -90,6 +90,9 @@ const EXPECTED_NON_SECRET = new Set<string>([
   ...MODEL_ROUTING_NAMES,
   ...LLM_PROVIDER_PRESETS.flatMap((preset) => {
     const names = llmProviderConfigNames(preset.id);
+    for (const name of Object.values(names)) {
+      assert.ok((KEY_NAMES as readonly string[]).includes(name), `${name} is whitelisted`);
+    }
     return [names.baseUrl, names.model];
   }),
 ]);

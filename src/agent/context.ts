@@ -32,6 +32,8 @@ export interface AgentContext {
   getState: () => TimelineState;
   /** the whole project — all timelines + which is active (manage_timelines reads this) */
   getDoc: () => ProjectDoc;
+  /** Sources confirmed unreachable on this machine. Environment-specific; never persisted. */
+  getOfflineMediaSrcs?: () => ReadonlySet<string>;
   /** the active creative-mode skill id, or null; drives prompt injection */
   getCreativeMode: () => string | null;
   /** switch / clear the active creative mode (manage_skill activate; chat-level, not undoable) */

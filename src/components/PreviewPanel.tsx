@@ -20,12 +20,15 @@ interface PreviewPanelProps {
   state: TimelineState;
   playerRef: RefObject<PlayerRef | null>;
   onImport: (file: File) => Promise<void>;
+  offlineSrcs?: ReadonlySet<string>;
   /** 画布字幕直编(选中框+浮动工具条)。未传(如提案预览态)则只读。 */
   onUpdateCaptions?: (patch: Partial<CaptionsData>, track?: TrackId) => void;
   onSeedChat?: (text: string) => void;
 }
 
-export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImport, onUpdateCaptions, onSeedChat }: PreviewPanelProps) {
+export const PreviewPanel = memo(function PreviewPanel({
+  state, playerRef, onImport, offlineSrcs, onUpdateCaptions, onSeedChat,
+}: PreviewPanelProps) {
   const t = useT();
   const duration = timelineDuration(state);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -39,6 +42,9 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
   // document 标准事件不保证跟着响,SDK emitter 才是真源。
   const [fullscreen, setFullscreen] = useState(false);
   const hasItems = state.items.length > 0;
+  const offlineNames = [...new Set(state.items
+    .filter((item) => !!item.src && offlineSrcs?.has(item.src))
+    .map((item) => item.name))];
   useEffect(() => {
     const player = playerRef.current;
     if (!player) return;
@@ -141,6 +147,15 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
               spaceKeyToPlayOrPause={false}
               loop
             />
+            {offlineNames.length > 0 && (
+              <div role="status" style={{
+                position: 'absolute', top: 8, left: 8, right: 8, zIndex: 12,
+                padding: '6px 10px', borderRadius: 6, background: themeAlpha.shadow(0.88),
+                border: `1px solid ${theme.accent}`, color: theme.text, fontSize: 11,
+              }}>
+                {t('离线素材：{list}', { list: offlineNames.join('、') })}
+              </div>
+            )}
             {showSafe && <SafeZoneOverlay />}
             {pickMode && <RegionPickOverlay state={state} playerRef={playerRef} />}
             {!pickMode && !fullscreen && onUpdateCaptions && captionTrackEntries(state).map(({ id, captions }) => captions?.enabled ? (

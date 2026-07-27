@@ -15,6 +15,8 @@ export interface ProxyRoute {
   headers: (req: IncomingMessage) => Record<string, string>;
   /** Normalize generic relay responses so provider SDKs can parse JSON. */
   forceJsonContentType?: boolean;
+  /** Replace upstream error bodies with one actionable message. */
+  errorMessage?: (status: number, req: IncomingMessage) => string;
 }
 
 export function proxyMiddleware(route: ProxyRoute): Middleware {
@@ -58,6 +60,13 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
       path: basePath + requestPath + query,
       headers,
     }, (upRes) => {
+      const status = upRes.statusCode ?? 502;
+      if (status >= 400 && route.errorMessage) {
+        upRes.resume();
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ error: { message: route.errorMessage(status, req) } }));
+        return;
+      }
       const outHeaders: Record<string, string | string[]> = {};
       for (const [k, v] of Object.entries(upRes.headers)) {
         if (!HOP_BY_HOP.has(k.toLowerCase()) && v !== undefined) outHeaders[k] = v;
@@ -68,7 +77,7 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
           outHeaders['content-type'] = 'application/json';
         }
       }
-      res.writeHead(upRes.statusCode ?? 502, outHeaders);
+      res.writeHead(status, outHeaders);
       upRes.pipe(res);
     });
 

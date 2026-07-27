@@ -16,3 +16,22 @@ export function unresolvedToolCalls(
   }
   return [...pending].map(([toolCallId, toolName]) => ({ toolCallId, toolName }));
 }
+
+/** 保留已经收到的模型消息,并给中止时悬空的工具调用补一个可继续对话的结果。 */
+export function completeAbortedTurn(
+  history: readonly ModelMessage[],
+  responseMessages: readonly ModelMessage[],
+): ModelMessage[] {
+  const messages = [...history, ...responseMessages];
+  const pending = unresolvedToolCalls(messages);
+  if (!pending.length) return messages;
+  return [...messages, {
+    role: 'tool',
+    content: pending.map(({ toolCallId, toolName }) => ({
+      type: 'tool-result' as const,
+      toolCallId,
+      toolName,
+      output: { type: 'execution-denied' as const, reason: 'Stopped by the user before this tool finished.' },
+    })),
+  } as ModelMessage];
+}

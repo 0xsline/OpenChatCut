@@ -2,7 +2,7 @@
 // 验证 read_project 报出的轨道空洞:只报片段之间的洞(首尾留白不算),重叠不算洞,
 // 按轨隔离,乱序输入也要对。主视频轨上的洞导出就是黑帧,所以值得主动报。
 import assert from 'node:assert/strict';
-import { trackGaps } from './read-project-tools';
+import { execReadProjectTool, trackGaps } from './read-project-tools';
 import type { TimelineItem } from '../../editor/types';
 
 const clip = (id: string, startFrame: number, durationInFrames: number, track = 'V1'): TimelineItem => ({
@@ -52,4 +52,30 @@ const clip = (id: string, startFrame: number, durationInFrames: number, track = 
   assert.deepEqual(trackGaps(items, 'A1'), [], '不存在的轨没有洞');
 }
 
-console.log('track-gaps.verify: ok (洞/首尾不算/重叠与包含/乱序/按轨隔离)');
+// ── read_project 把本机离线状态同时暴露给素材与时间线片段 ──
+{
+  const src = '/media/uploads/missing.mp4';
+  const timeline = {
+    id: 'tl', name: 'Timeline', order: 0, fps: 30, width: 1920, height: 1080,
+    items: [{ ...clip('offline', 0, 30), src }],
+    trackOrder: ['V1'], tracks: { V1: { kind: 'video' } },
+  };
+  const doc = {
+    version: 3, activeTimelineId: 'tl', timelines: [timeline], mediaFolders: [],
+    assets: [{ id: 'asset-offline', name: 'missing.mp4', kind: 'video', src, durationInFrames: 30 }],
+  };
+  const result = await execReadProjectTool('read_project', {}, {
+    getState: () => timeline,
+    getDoc: () => doc,
+    getOfflineMediaSrcs: () => new Set([src]),
+    getProjectId: () => 'project',
+  } as never) as {
+    timeline: { items: Array<{ offline: boolean }> };
+    mediaPool: { assets: Array<{ offline: boolean }>; offlineAssetCount: number };
+  };
+  assert.equal(result.timeline.items[0]?.offline, true);
+  assert.equal(result.mediaPool.assets[0]?.offline, true);
+  assert.equal(result.mediaPool.offlineAssetCount, 1);
+}
+
+console.log('track-gaps.verify: ok (洞/首尾不算/重叠与包含/乱序/按轨隔离/离线状态)');

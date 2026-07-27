@@ -70,6 +70,7 @@ const chatKey = (id: string) => `chat:${id}`;
 export interface PersistedChat {
   messages: unknown[];
   llm: unknown[];
+  changeLog?: unknown[];
   llmFormat?: 'ai-sdk-v1';
   llmProvider?: LlmProvider;
 }

@@ -12,8 +12,16 @@ import { makeDraft, replayActions } from '../editor/store';
 import { buildOperation, buildProposal, isProposalStale, partitionProposalActions, type Operation, type Proposal } from './proposal';
 import { isSkillAllowed, rememberSkillAllowed, type GuardDecision } from './skills/skillGuard';
 import type { GenerationGuardSkill } from './settings/agentSettings';
-import { loadChat, saveChat, clearChat } from '../persist/projectStore';
+import { loadChat, saveChat } from '../persist/projectStore';
 import { loadProposal, saveProposal, clearProposal } from '../persist/proposalStore';
+import {
+  appendAgentChange,
+  canRollbackAgentChange,
+  createAgentChangeSession,
+  parseAgentChangeLog,
+  rollbackAgentChange,
+  type AgentChangeSession,
+} from './changeLog';
 
 export interface DisplayMessage {
   // 'continue' = maxTurns 暂停卡(点「继续」续跑;持久化,刷新后仍可续)
@@ -39,6 +47,7 @@ export interface LiveTool {
 
 export function useAgent(ctx: AgentContext, projectId: string) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
+  const [changeLog, setChangeLog] = useState<AgentChangeSession[]>([]);
   const [running, setRunning] = useState(false);
   // true once this project's saved chat has been loaded — consumers that want to act
   // "only on a genuinely empty chat" (e.g. scenario-preset composer seeding) gate on it
@@ -69,12 +78,14 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     let alive = true;
     hydratedRef.current = false;
     setHydrated(false);
+    setChangeLog([]);
     setProposal(null);
     setProposalStale(false);
     void (async () => {
       const [saved, pending] = await Promise.all([loadChat(projectId), loadProposal(projectId)]);
       if (!alive) return;
       setMessages(saved ? (saved.messages as DisplayMessage[]) : []);
+      setChangeLog(parseAgentChangeLog(saved?.changeLog));
       if (saved) {
         const sourceProvider = normalizeLlmProvider(saved.llmProvider ?? 'anthropic');
         llmRef.current = prepareMessagesForProvider(
@@ -106,12 +117,13 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     void saveChat(projectId, {
       messages,
       llm: llmRef.current,
+      changeLog,
       llmFormat: 'ai-sdk-v1',
       llmProvider: llmProviderRef.current,
     });
     if (proposal) void saveProposal(projectId, proposal);
     else void clearProposal(projectId);
-  }, [messages, running, proposal, projectId]);
+  }, [messages, changeLog, running, proposal, projectId]);
 
   const send = useCallback(
     async (text: string, opts?: { askOnly?: boolean; references?: AgentReference[] }) => {
@@ -151,6 +163,8 @@ export function useAgent(ctx: AgentContext, projectId: string) {
         getUndoTarget: ctxRef.current.getUndoTarget,
       };
       const ops: Operation[] = [];
+      const persistentOps: Operation[] = [];
+      let persistentBeforeDoc: typeof baseDoc | null = null;
       let proposalBaseDoc = baseDoc;
       let draftInvalidated = false;
       let assistantText = '';
@@ -189,12 +203,14 @@ export function useAgent(ctx: AgentContext, projectId: string) {
             const { persistent, proposed } = partitionProposalActions(actions);
             if (persistent.length) {
               const observed = ctxRef.current.getDoc();
+              persistentBeforeDoc ??= observed;
               if (observed !== baseDoc && observed !== proposalBaseDoc) {
                 draftInvalidated = true;
                 proposalBaseDoc = observed;
               }
               proposalBaseDoc = replayActions(proposalBaseDoc, persistent);
               ctxRef.current.commands.applyDoc(proposalBaseDoc);
+              persistentOps.push(buildOperation(ev.name, (ev.args ?? {}) as Record<string, unknown>, persistent));
             }
             if (proposed.length) ops.push(buildOperation(ev.name, (ev.args ?? {}) as Record<string, unknown>, proposed));
           } else if (ev.type === 'max-turns') {
@@ -222,6 +238,17 @@ export function useAgent(ctx: AgentContext, projectId: string) {
           },
         });
         llmProviderRef.current = PROVIDER;
+        if (persistentBeforeDoc && persistentOps.length) {
+          const afterDoc = ctxRef.current.getDoc();
+          const session = createAgentChangeSession(
+            assistantText,
+            persistentOps,
+            persistentBeforeDoc,
+            afterDoc,
+            !draftInvalidated,
+          );
+          setChangeLog((current) => appendAgentChange(current, session));
+        }
         if (!ac.signal.aborted && ops.length) {
           if (draftInvalidated) setMessages((m) => [...m, { role: 'error', text: '生成期间工程发生了其他修改；素材已保存到媒体池，请重新发送落轨请求。' }]);
           else {
@@ -274,6 +301,8 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     const chosen = p.options[0].operations.filter((_, i) => selected.has(i));
     const result = replayActions(currentDoc, chosen.flatMap((o) => o.actions));
     ctxRef.current.commands.applyDoc(result);
+    const session = createAgentChangeSession(p.summary, chosen, currentDoc, result);
+    setChangeLog((current) => appendAgentChange(current, session));
     llmRef.current.push({ role: 'user', content: `（已应用提案：${chosen.length}/${p.options[0].operations.length} 项操作。）` });
     setProposalStale(false);
     setProposal(null);
@@ -325,13 +354,26 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     llmProviderRef.current = PROVIDER;
     setProposal(null);
     setMessages([]);
-    void clearChat(projectId);
     void clearProposal(projectId);
   }, [running, projectId]);
+
+  const rollbackChangeSession = useCallback((id: string): boolean => {
+    const session = changeLog.find((item) => item.id === id);
+    if (!session) return false;
+    const previous = rollbackAgentChange(session, ctxRef.current.getDoc());
+    if (!previous) return false;
+    ctxRef.current.commands.applyDoc(previous);
+    return true;
+  }, [changeLog]);
+
+  const canRollbackChangeSession = useCallback((id: string): boolean => {
+    const session = changeLog.find((item) => item.id === id);
+    return !!session && canRollbackAgentChange(session, ctxRef.current.getDoc());
+  }, [changeLog]);
 
   return {
     messages, running, hydrated, send, stop, enhance, clearHistory,
     proposal, applyProposal, rejectProposal, proposalStale, forceApplyProposal, reProposeStale,
-    pendingGuard, liveTool,
+    pendingGuard, liveTool, changeLog, rollbackChangeSession, canRollbackChangeSession,
   };
 }

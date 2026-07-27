@@ -186,7 +186,7 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
     input_schema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['params', 'status', 'wait'], description: 'params returns submitted settings, status checks immediately, wait polls until terminal or timeout.' },
+        action: { type: 'string', enum: ['params', 'status', 'wait', 'resume'], description: 'params returns settings, status checks immediately, wait polls, and resume retries only a failed result download without regenerating.' },
         target: { type: 'string', enum: ['generation'] },
         jobIds: { type: 'string', minLength: 1, description: 'One or more comma-separated generation job IDs.' },
         assetIds: { type: 'string', description: 'Reserved; generation jobs are tracked by jobIds.' },

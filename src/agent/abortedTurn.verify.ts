@@ -2,7 +2,7 @@
 // 用户点「停止」后,会话历史必须仍然可以继续往下发:已发出的工具调用不能悬空。
 // 这里验证「找出没有结果的工具调用」这条判定——它决定要补几个「已取消」结果。
 import assert from 'node:assert/strict';
-import { unresolvedToolCalls } from './abortedTurn';
+import { completeAbortedTurn, unresolvedToolCalls } from './abortedTurn';
 import type { ModelMessage as LLMMessage } from 'ai';
 
 const call = (id: string, name: string): LLMMessage => ({
@@ -68,19 +68,10 @@ const text = (role: 'user' | 'assistant', value: string): LLMMessage => ({
 
 // ── 补完「已取消」之后,悬空清零(模拟 commitAbortedTurn 的收尾) ──
 {
-  const conv: LLMMessage[] = [text('user', 'go'), call('t9', 'submit_image')];
-  const pending = unresolvedToolCalls(conv);
-  assert.equal(pending.length, 1);
-  conv.push({
-    role: 'tool',
-    content: pending.map(({ toolCallId, toolName }) => ({
-      type: 'tool-result' as const,
-      toolCallId,
-      toolName,
-      output: { type: 'execution-denied' as const, reason: 'Stopped by the user before this tool finished.' },
-    })),
-  } as unknown as LLMMessage);
-  assert.deepEqual(unresolvedToolCalls(conv), [], '补完之后会话可以继续往下发');
+  const history = [text('user', 'go')];
+  const completed = completeAbortedTurn(history, [call('t9', 'submit_image')]);
+  assert.equal(completed.length, 3, '模型已经返回的消息必须保留');
+  assert.deepEqual(unresolvedToolCalls(completed), [], '补完之后会话可以继续往下发');
 }
 
 console.log('abortedTurn.verify: ok (无悬空/单个悬空/并发部分回来/跨消息匹配/补完清零)');

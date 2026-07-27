@@ -3,12 +3,15 @@
 // (变化点优先入选、挨太近的不重复占位、候选过多按序均摊、窗口外丢弃、
 // 无候选时与均匀取样完全一致)。
 import assert from 'node:assert/strict';
-import { pickDistinctTimes, sampleTimesMs } from './extract-frames.ts';
+import { frameSeekArgs, pickDistinctTimes, sampleTimesMs } from './extract-frames.ts';
 
 const inWindow = (times: number[], lo: number, hi: number): boolean =>
   times.every((t) => t >= lo && t < hi);
 const ascending = (times: number[]): boolean =>
   times.every((t, i) => i === 0 || t >= times[i - 1]!);
+
+assert.deepEqual(frameSeekArgs(0), [], '静态图片零秒取帧不得在输入前 seek');
+assert.deepEqual(frameSeekArgs(1500), ['-ss', '1.5'], '视频正时间继续走快速 seek');
 
 // ── 均匀取样:等分块中点、条数、区间 ──
 {

@@ -23,7 +23,7 @@ export const READ_PROJECT_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'read_project',
     description: [
-      'View the project — tracks, timeline items, markers, media-pool folders, and assets.',
+      'View the project — tracks, timeline items, markers, media-pool folders, assets, and explicit offline-media status.',
       'Default = full overview. Narrow with view:"timeline"|"assets", timelineId, track, fromFrame/toFrame, itemId, assetId.',
       'Pass code:true with assetId to include MG source code.',
     ].join(' '),
@@ -55,7 +55,12 @@ function splitIds(raw: unknown): string[] {
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-function slimItem(it: TimelineItem, state: TimelineState, assets: readonly MediaAsset[]) {
+function slimItem(
+  it: TimelineItem,
+  state: TimelineState,
+  assets: readonly MediaAsset[],
+  offlineSrcs: ReadonlySet<string>,
+) {
   const sourceAssetId = it.src ? assets.find((asset) => asset.src === it.src)?.id ?? null : null;
   const denoisedAssetId = it.denoisedSrc
     ? assets.find((asset) => asset.src === it.denoisedSrc && asset.kind === 'audio')?.id ?? null
@@ -69,6 +74,7 @@ function slimItem(it: TimelineItem, state: TimelineState, assets: readonly Media
     startFrame: it.startFrame,
     durationInFrames: it.durationInFrames,
     src: it.src ?? null,
+    offline: !!it.src && offlineSrcs.has(it.src),
     templateId: it.templateId ?? null,
     volume: it.volume ?? null,
     zoom: it.zoom ?? null,
@@ -139,6 +145,7 @@ export async function execReadProjectTool(
   const includeCode = args.code === true;
   const doc = ctx.getDoc();
   const state = timeline as TimelineState;
+  const offlineSrcs = ctx.getOfflineMediaSrcs?.() ?? new Set<string>();
 
   let trackIdFilter: string | null = null;
   if (trackFilter) {
@@ -201,7 +208,7 @@ export async function execReadProjectTool(
           ...(gaps.length ? { gaps } : {}),
         };
       }),
-      items: items.map((it) => slimItem(it, state, doc.assets)),
+      items: items.map((it) => slimItem(it, state, doc.assets, offlineSrcs)),
       transitions: (state.transitions ?? []).map((t) => ({
         id: t.id,
         type: t.type,
@@ -260,6 +267,7 @@ export async function execReadProjectTool(
         name: a.name,
         kind: a.kind,
         src: a.src || null,
+        offline: !!a.src && offlineSrcs.has(a.src),
         durationInFrames: a.durationInFrames,
         width: a.width ?? null,
         height: a.height ?? null,
@@ -268,6 +276,7 @@ export async function execReadProjectTool(
         ...(includeCode && assetIds.length && a.code ? { code: a.code } : {}),
       })),
       assetCount: doc.assets.length,
+      offlineAssetCount: doc.assets.filter((asset) => offlineSrcs.has(asset.src)).length,
     };
     if (doc.designStyle) {
       out.designStyle = {

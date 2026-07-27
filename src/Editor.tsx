@@ -21,7 +21,6 @@ import { saveProject, loadCreativeMode, saveCreativeMode, type ProjectMeta } fro
 import { importMedia } from './media/upload';
 import { importUploadedMedia } from './media/mobileImport';
 import type { MobileUploadRecord } from './media/mobileUploadApi';
-import { ensureMediaSrcs } from './persist/mediaBlobStore';
 import { resumeOpenGenerationJobs } from './persist/jobRegistryStore';
 import { enqueueTranscription, shouldTranscribe } from './transcript/transcribe-jobs';
 import { enqueueVisualAnalysis, refreshVisualAnalysis } from './agent/progress/visual-analysis-jobs';
@@ -40,6 +39,7 @@ import { showAppToast } from './ui/appToast';
 import { isolateVoiceOnSrc, strengthFromAudioFxId } from './audio/isolateVoice';
 import { analyzeClipLoudness, gainForTarget } from './audio/loudness';
 import { analyzeAutoGrade, type AutoGradeResponse } from './color/autoGrade';
+import { useOfflineMedia } from './media/useOfflineMedia';
 
 interface EditorProps {
   initial: ProjectDoc;
@@ -101,6 +101,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   stateRef.current = state;
   const docRef = useRef(doc);
   docRef.current = doc;
+  const { offlineSrcs, offlineSrcsRef, offlineAssetIds, markOffline: markMediaOffline } = useOfflineMedia(doc);
 // 创作模式:选中的技能 id 注入系统提示，并存入 IDB(不进 undo 历史)。
   const [creativeMode, setCreativeMode] = useState<string | null>(null);
   const creativeModeRef = useRef(creativeMode);
@@ -124,6 +125,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       commands,
       getState: () => stateRef.current,
       getDoc: () => docRef.current,
+      getOfflineMediaSrcs: () => offlineSrcsRef.current,
       getCreativeMode: () => creativeModeRef.current,
       getUndoTarget,
       setCreativeMode: changeCreativeMode,
@@ -287,15 +289,6 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   // Also resume any open generation jobs so refresh mid-generate still lands assets.
   useEffect(() => {
     let alive = true;
-    const currentDoc = docRef.current;
-    const srcs = [
-      ...currentDoc.assets.map((a) => a.src),
-      ...currentDoc.timelines.flatMap((tl) => tl.items.map((it) => it.src).filter(Boolean) as string[]),
-    ];
-    void ensureMediaSrcs(srcs).then((r) => {
-      if (!alive || r.restored.length === 0) return;
-      try { playerRef.current?.seekTo(playerRef.current.getCurrentFrame()); } catch { /* ignore */ }
-    });
     void resumeOpenGenerationJobs(project.id, {
       getState: () => stateRef.current,
       onAsset: (asset) => {
@@ -519,7 +512,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       </div>
 
       <div style={{ gridColumn: 3, gridRow: 2, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} transitions={state.transitions ?? []} fxDefs={state.fxDefs ?? {}} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onRemoveMediaAsset={commands.removeMediaAsset}
+        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} transitions={state.transitions ?? []} fxDefs={state.fxDefs ?? {}} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} offlineAssetIds={offlineAssetIds} onAssetLoadError={(asset) => markMediaOffline(asset.src)} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onRemoveMediaAsset={commands.removeMediaAsset}
           onRelinkMediaAsset={(id, next) => commands.relinkMediaAsset(id, next)}
           onAddSolid={() => commands.addSolidItem({ startFrame: getPlayhead() })}
           onUseTemplateAI={useTemplateAI}
@@ -561,6 +554,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       </div>
       <div style={{ gridColumn: 5, gridRow: 2, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
         <PreviewPanel state={autoGradePreviewState ?? previewState ?? state} playerRef={playerRef} onImport={importToCanvas}
+          offlineSrcs={offlineSrcs}
           onUpdateCaptions={previewState || autoGradePreviewState ? undefined : commands.updateCaptions}
           onSeedChat={(text) => setChatSeed({ text, nonce: Date.now() })} />
         {selectedItem && (

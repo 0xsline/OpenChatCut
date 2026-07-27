@@ -28,6 +28,7 @@ import {
   type GenerationGuardSkill,
 } from './settings/agentSettings';
 import type { GuardDecision } from './skills/skillGuard';
+import { completeAbortedTurn } from './abortedTurn';
 
 const MAX_OUTPUT_TOKENS = 64000;
 const MAX_TOOL_TURNS = 30;
@@ -161,7 +162,7 @@ export async function runAgent(
     onSkillGuard?: (info: { skill: GenerationGuardSkill; tool: string }) => Promise<GuardDecision>;
   },
 ): Promise<LLMMessage[]> {
-  const conv = normalizeLlmMessages(messages);
+  let conv = normalizeLlmMessages(messages);
   const settings = loadAgentSettings();
   // 顺序按「越不变的排越前」——提示词缓存匹配的是逐字节前缀,中间插一段每轮都变的
   // 内容,它后面的一切(其余段落、上百个工具 schema、整段历史)就全部作废。
@@ -183,12 +184,14 @@ export async function runAgent(
     const extract = createInlineThinkingExtractor();
     let sawContentEvent = false;
     let textStarted = false;
+    let visibleText = '';
     let askedFollowup = false;
     const emitText = (delta: string) => {
       if (!textStarted) {
         onEvent({ type: 'text-start' });
         textStarted = true;
       }
+      visibleText += delta;
       onEvent({ type: 'text-delta', delta });
     };
     const tools = opts?.askOnly
@@ -221,34 +224,53 @@ export async function runAgent(
         ...(withReasoning ? { reasoning: 'medium' as const } : {}),
       });
 
-      for await (const part of result.stream) {
-        if (part.type === 'text-delta') {
-          sawContentEvent = true;
-          const extracted = extract.push(part.text);
-          if (extracted.thinking) onEvent({ type: 'thinking-delta', delta: extracted.thinking });
-          if (extracted.text) emitText(extracted.text);
-        } else if (part.type === 'reasoning-delta') {
-          sawContentEvent = true;
-          if (part.text) onEvent({ type: 'thinking-delta', delta: part.text });
-        } else if (part.type === 'tool-input-start') {
-          sawContentEvent = true;
-          onEvent({ type: 'tool-input-start', name: part.toolName });
-        } else if (part.type === 'tool-input-delta') {
-          sawContentEvent = true;
-          if (part.delta) onEvent({ type: 'tool-input-delta', delta: part.delta });
-        } else if (part.type === 'error') {
-          throw part.error;
-        } else if (part.type === 'abort') {
-          return conv;
+      let aborted = false;
+      try {
+        for await (const part of result.stream) {
+          if (part.type === 'text-delta') {
+            sawContentEvent = true;
+            const extracted = extract.push(part.text);
+            if (extracted.thinking) onEvent({ type: 'thinking-delta', delta: extracted.thinking });
+            if (extracted.text) emitText(extracted.text);
+          } else if (part.type === 'reasoning-delta') {
+            sawContentEvent = true;
+            if (part.text) onEvent({ type: 'thinking-delta', delta: part.text });
+          } else if (part.type === 'tool-input-start') {
+            sawContentEvent = true;
+            onEvent({ type: 'tool-input-start', name: part.toolName });
+          } else if (part.type === 'tool-input-delta') {
+            sawContentEvent = true;
+            if (part.delta) onEvent({ type: 'tool-input-delta', delta: part.delta });
+          } else if (part.type === 'error') {
+            throw part.error;
+          } else if (part.type === 'abort') {
+            aborted = true;
+            break;
+          }
         }
+      } catch (error) {
+        if (!opts?.signal?.aborted) throw error;
+        aborted = true;
       }
 
       const tail = extract.flush();
       if (tail.thinking) onEvent({ type: 'thinking-delta', delta: tail.thinking });
       if (tail.text) emitText(tail.text);
 
-      const responseMessages = await result.responseMessages;
-      conv.push(...responseMessages);
+      let responseMessages: ModelMessage[];
+      try {
+        responseMessages = await result.responseMessages;
+      } catch (error) {
+        if (!aborted && !opts?.signal?.aborted) throw error;
+        responseMessages = [];
+      }
+      if (aborted || opts?.signal?.aborted) {
+        const persisted = responseMessages.length || !visibleText
+          ? responseMessages
+          : [{ role: 'assistant', content: [{ type: 'text', text: visibleText }] } as ModelMessage];
+        return completeAbortedTurn(conv, persisted);
+      }
+      conv = [...conv, ...responseMessages];
       if (askedFollowup) return conv;
       if (!responseUsedTools(responseMessages)) return conv;
 

@@ -226,6 +226,7 @@ Do not spam: at most one report per distinct friction incident per turn.
 
 ## inspect_color（按数字调色）
 - 调色前后用 **inspect_color** 量化画面:黑白点/溢出%/暖冷与绿品平衡(整体+分段)/饱和度/12 bin 色相直方图。循环:量 → edit_item filters/LUT/look 调 → 复量确认数字动对了。
+- 要匹配参考镜头时在同一次 inspect_color 传 referenceFrame/referenceSeconds 或 referenceAssetId；按返回的 targetMinusReference 有符号差值与 suggestions 调整，不靠截图猜。
 - 默认量合成时间线某帧(全图层);传 assetId 量原始素材。要「看」画面仍用 view_timeline_frames。
 
 ## detect_beats（卡点剪辑）

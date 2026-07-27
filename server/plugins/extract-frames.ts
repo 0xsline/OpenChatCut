@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isSafeUploadName, resolveUploadFile } from '../media-dir.ts';
 import { formatTimeLabel, tileContactSheet } from '../frame-grid.ts';
-import { ffmpegBin } from '../media-binaries.ts';
+import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 
 const MAX_JSON = 32 * 1024;
 const MAX_SAMPLES = 20;
@@ -80,7 +80,7 @@ function run(cmd: string, args: string[], timeoutMs: number): Promise<void> {
 
 async function probeDurationMs(path: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    const child = spawn('ffprobe', [
+    const child = spawn(ffprobeBin(), [
       '-v', 'error',
       '-show_entries', 'format=duration',
       '-of', 'default=nw=1:nk=1',
@@ -177,12 +177,16 @@ export function pickDistinctTimes(
   return picked.sort((a, b) => a - b);
 }
 
+export function frameSeekArgs(timeMs: number): string[] {
+  const seconds = Math.max(0, timeMs / 1000);
+  // Images have a single frame: putting `-ss 0` before `-i` can consume it.
+  return seconds > 0 ? ['-ss', String(seconds)] : [];
+}
+
 async function extractOneFrame(input: string, timeMs: number, outPath: string): Promise<void> {
-  const ss = Math.max(0, timeMs / 1000);
-  // -ss before -i for fast seek; fine for contact-sheet accuracy
-  await run('ffmpeg', [
+  await run(ffmpegBin(), [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-    '-ss', String(ss),
+    ...frameSeekArgs(timeMs),
     '-i', input,
     '-frames:v', '1',
     '-q:v', '4',

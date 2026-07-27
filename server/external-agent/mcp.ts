@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -11,6 +12,7 @@ import {
   connectedProjectIds,
   editorStatuses,
   invokeEditorTool,
+  onRegisteredToolsChanged,
   registeredTools,
   resolveProjectId,
   setTargetProject,
@@ -185,6 +187,54 @@ function makeServer(baseUrl: string): Server {
   return server;
 }
 
+interface McpSession {
+  server: Server;
+  transport: StreamableHTTPServerTransport;
+}
+
+const sessions = new Map<string, McpSession>();
+
+onRegisteredToolsChanged(() => {
+  for (const { server } of sessions.values()) {
+    void server.sendToolListChanged().catch(() => undefined);
+  }
+});
+
+function sessionIdOf(req: IncomingMessage): string | null {
+  const value = req.headers['mcp-session-id'];
+  return typeof value === 'string' && value ? value : null;
+}
+
+function sendSessionError(res: ServerResponse, status: number, message: string): void {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({
+    jsonrpc: '2.0',
+    error: { code: status === 404 ? -32001 : -32000, message },
+    id: null,
+  }));
+}
+
+async function startMcpSession(
+  req: IncomingMessage,
+  res: ServerResponse,
+  baseUrl: string,
+): Promise<void> {
+  let session: McpSession;
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: randomUUID,
+    onsessioninitialized: (sessionId) => { sessions.set(sessionId, session); },
+  });
+  const server = makeServer(baseUrl);
+  session = { server, transport };
+  transport.onclose = () => {
+    const sessionId = transport.sessionId;
+    if (sessionId) sessions.delete(sessionId);
+  };
+  await server.connect(transport);
+  await transport.handleRequest(req, res);
+  if (!transport.sessionId) await server.close();
+}
+
 interface EmbeddedImage {
   base64: string;
   frame?: number;
@@ -234,12 +284,19 @@ export async function handleMcpRequest(
   res: ServerResponse,
   baseUrl: string,
 ): Promise<void> {
-  const server = makeServer(baseUrl);
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  res.on('close', () => {
-    void transport.close();
-    void server.close();
-  });
-  await server.connect(transport);
-  await transport.handleRequest(req, res);
+  const sessionId = sessionIdOf(req);
+  if (sessionId) {
+    const session = sessions.get(sessionId);
+    if (!session) {
+      sendSessionError(res, 404, 'MCP session not found');
+      return;
+    }
+    await session.transport.handleRequest(req, res);
+    return;
+  }
+  if (req.method !== 'POST') {
+    sendSessionError(res, 400, 'MCP session id is required');
+    return;
+  }
+  await startMcpSession(req, res, baseUrl);
 }

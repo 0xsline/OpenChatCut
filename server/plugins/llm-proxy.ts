@@ -3,6 +3,7 @@ import type { Plugin } from 'vite';
 import { getKey, type KeyName } from '../keystore.ts';
 import {
   normalizeLlmProvider,
+  llmProviderPreset,
   protocolForProvider,
   type LlmProvider,
 } from '../../shared/llm-providers.ts';
@@ -31,6 +32,24 @@ export function llmHeaders(req?: IncomingMessage): Record<string, string> {
   return { authorization: `Bearer ${config.apiKey}` };
 }
 
+export function llmErrorMessage(status: number, req?: IncomingMessage): string {
+  const provider = llmProviderForRequest(req);
+  const label = llmProviderPreset(provider).label;
+  if (status === 401 || status === 403) {
+    return `${label} 认证失败。请在“设置 → Agent 模型”中检查 API Key。`;
+  }
+  if (status === 402 || status === 429) {
+    return `${label} 额度不足或请求过于频繁。请检查账户额度，稍后重试。`;
+  }
+  if (status === 404) {
+    return `${label} 的接口或模型不存在。请检查 Base URL 和模型名称。`;
+  }
+  if (status >= 500) {
+    return `${label} 服务暂时不可用（HTTP ${status}）。请稍后重试或切换模型。`;
+  }
+  return `${label} 请求失败（HTTP ${status}）。请检查“设置 → Agent 模型”中的连接配置。`;
+}
+
 /** One dynamic proxy implementation shared by Vite dev and Electron production. */
 export function llmProxyPlugin(): Plugin {
   return {
@@ -40,6 +59,7 @@ export function llmProxyPlugin(): Plugin {
         target: llmTarget,
         headers: llmHeaders,
         forceJsonContentType: true,
+        errorMessage: llmErrorMessage,
       }));
     },
   };

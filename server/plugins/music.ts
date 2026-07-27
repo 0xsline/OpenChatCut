@@ -29,14 +29,13 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-async function minimaxResult(jobId: string, options: MusicOptions, input: ValidMusicRequest): Promise<GenerationResult> {
-  const response = await fetch(await minimaxMusicUrl(options, input));
+async function minimaxResult(jobId: string, input: ValidMusicRequest, url: string): Promise<GenerationResult> {
+  const response = await fetch(url);
   const saved = await saveAudioResponse(response, input.audioFormat, input.sampleRate);
   return { assetId: jobId, kind: 'audio', name: input.name, ...saved };
 }
 
-async function murekaResults(jobId: string, options: MusicOptions, input: ValidMusicRequest): Promise<GenerationResult[]> {
-  const urls = await generateMureka(options, input);
+async function murekaResults(jobId: string, input: ValidMusicRequest, urls: string[]): Promise<GenerationResult[]> {
   return Promise.all(urls.map(async (url, index) => {
     const saved = await saveAudioResponse(await fetchGeneratedResult(url, 'audio'), input.audioFormat);
     return {
@@ -53,9 +52,16 @@ function enqueueMusic(options: MusicOptions, input: ValidMusicRequest) {
   return createGenerationJob({
     kind: 'music', provider: input.provider, mode: input.mode, prompt: input.prompt,
     name: input.name, model, count: input.count,
-  }, async (jobId) => input.provider === 'minimax'
-    ? minimaxResult(jobId, options, input)
-    : murekaResults(jobId, options, input));
+  }, async (jobId, _update, registerDownload) => {
+    const urls = input.provider === 'minimax'
+      ? [await minimaxMusicUrl(options, input)]
+      : await generateMureka(options, input);
+    const download = () => input.provider === 'minimax'
+      ? minimaxResult(jobId, input, urls[0])
+      : murekaResults(jobId, input, urls);
+    registerDownload(urls[0], download);
+    return download();
+  });
 }
 
 export function musicGenerationPlugin(options: MusicOptions): Plugin {
