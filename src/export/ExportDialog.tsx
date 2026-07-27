@@ -706,7 +706,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
                     <span>{progress.percent}%</span>
                   </div>
                   <div className="cc-export-progress-track" aria-hidden="true">
-                    <i style={{ width: `${progress.percent}%` }} />
+                    <i style={{ transform: `scaleX(${progress.percent / 100})` }} />
                   </div>
                   <div className="cc-export-progress-meta">
                     {progress.processedFrames !== undefined && progress.totalFrames !== undefined && (

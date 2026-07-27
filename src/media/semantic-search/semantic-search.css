@@ -1,6 +1,6 @@
 .cc-semantic-anchor { position:relative; display:flex; }
 .cc-semantic-trigger.active { color:var(--cc-accent); background:var(--cc-hover); }
-.cc-semantic-panel { position:absolute; z-index:40; top:30px; left:-245px; width:340px; max-height:min(560px, 70vh); overflow:auto; border:0.5px solid var(--cc-border); border-radius:7px; background:var(--cc-panel); color:var(--cc-text); box-shadow:0 16px 40px rgba(var(--cc-ink-rgb),.55); }
+.cc-semantic-panel { position:absolute; z-index:40; top:30px; left:-245px; width:340px; max-height:min(560px, 70vh); overflow:auto; border:0.5px solid var(--cc-border); border-radius:6px; background:var(--cc-panel); color:var(--cc-text); box-shadow:0 6px 8px rgba(var(--cc-shadow-rgb),.52); }
 .cc-semantic-panel > header { display:flex; align-items:center; justify-content:space-between; padding:11px 12px; border-bottom:0.5px solid var(--cc-border); }
 .cc-semantic-panel > header div { display:flex; flex-direction:column; gap:2px; }
 .cc-semantic-panel > header strong { font-size:13px; }

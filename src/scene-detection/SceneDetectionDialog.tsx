@@ -156,7 +156,7 @@ export function SceneDetectionDialog({ state, commands, item, onClose }: SceneDe
 
             <div className="cc-scene-progress-card">
               <div><span>{phase}</span><strong>{Math.round((job?.progress ?? 0) * 100)}%</strong></div>
-              <div className="cc-scene-progress-track"><i style={{ width: `${Math.round((job?.progress ?? 0) * 100)}%` }} /></div>
+              <div className="cc-scene-progress-track"><i style={{ transform: `scaleX(${job?.progress ?? 0})` }} /></div>
               {job?.status === 'detecting' && job.result === null && (
                 <small>{t('已分析到 {time}', { time: formatTime(job.processedMs) })}</small>
               )}

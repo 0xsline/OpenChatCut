@@ -80,7 +80,7 @@ function TrackingSettings(props: TrackingSettingsProps) {
       {props.targets.map((target) => <option key={target.id} value={target.id}>{t('让「{name}」跟随目标', { name: target.name })}</option>)}
     </select></label>
     <label><span>{t('最低置信度')}</span><strong>{props.minConfidence.toFixed(2)}</strong><input type="range" min={0.5} max={0.9} step={0.01} value={props.minConfidence} disabled={props.running} onChange={(event) => props.onConfidence(Number(event.target.value))} /></label>
-    <div className="cc-tracking-progress"><div><span>{props.running ? t('正在跟踪画面…') : props.result ? t('跟踪分析完成') : t('等待框选目标')}</span><strong>{props.percent}%</strong></div><i><b style={{ width: `${props.percent}%` }} /></i></div>
+    <div className="cc-tracking-progress"><div><span>{props.running ? t('正在跟踪画面…') : props.result ? t('跟踪分析完成') : t('等待框选目标')}</span><strong>{props.percent}%</strong></div><i><b style={{ transform: `scaleX(${props.percent / 100})` }} /></i></div>
     {props.result && <div className={`cc-tracking-result${props.result.stoppedBecauseLost ? ' warning' : ''}`}>
       <strong>{t('{n} 个有效跟踪点', { n: props.result.points.length })}</strong>
       <span>{t('平均置信度 {value}', { value: props.result.averageConfidence.toFixed(2) })}</span>

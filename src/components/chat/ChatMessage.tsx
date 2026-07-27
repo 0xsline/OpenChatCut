@@ -39,7 +39,7 @@ function ThinkingBlock({ text }: { text: string }) {
         {t('思考过程')}
       </button>
       {open && (
-        <Markdown text={text} style={{ marginTop: 4, maxHeight: 180, overflowY: 'auto', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontStyle: 'italic', fontSize: 11.5, lineHeight: 1.55, color: theme.textDim, whiteSpace: 'pre-wrap', borderLeft: `2px solid ${theme.borderLight}`, paddingLeft: 8 }} />
+        <Markdown text={text} style={{ marginTop: 4, maxHeight: 180, overflowY: 'auto', padding: '6px 8px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontStyle: 'italic', fontSize: 11.5, lineHeight: 1.55, color: theme.textDim, whiteSpace: 'pre-wrap', background: theme.panelAlt, border: `0.5px solid ${theme.border}`, borderRadius: 4 }} />
       )}
     </div>
   );
@@ -80,20 +80,20 @@ export function ChatMessage({ msg, streaming, onWidgetSubmit, onContinue }: Chat
     return (
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9, margin: '9px 0', color: theme.textDim, fontSize: 12.5 }}
         title={typeof tool.args === 'object' ? JSON.stringify(tool.args) : String(tool.args)}>
-        <span style={{ width: 7, height: 7, borderRadius: '50%', background: ok ? GREEN : theme.accent, flexShrink: 0, marginTop: 5 }} />
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: ok ? GREEN : theme.danger, flexShrink: 0, marginTop: 5 }} />
         {/* 工具名 + 摘要 + 错误同处一个可换行块:minWidth:0 让它能在 flex 父内收缩，
             overflowWrap:anywhere 断长 token —— 长错误/摘要在面板内 wrap，不再单行溢出被裁。 */}
         <span style={{ minWidth: 0, overflowWrap: 'anywhere', lineHeight: 1.45 }}>
           <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', letterSpacing: 0.2 }}>{tool.name}</span>
           {summary && <span style={{ opacity: 0.8 }}> · {summary}</span>}
-          {!ok && <span style={{ color: theme.accent }}> — {String(r!.error)}</span>}
+          {!ok && <span style={{ color: theme.danger }}>：{String(r!.error)}</span>}
         </span>
       </div>
     );
   }
 
   if (msg.role === 'error') {
-    return <div style={{ color: theme.accent, fontSize: 12.5, margin: '8px 0' }}>⚠ {msg.text}</div>;
+    return <div style={{ color: theme.danger, fontSize: 12.5, margin: '8px 0' }}>⚠ {msg.text}</div>;
   }
 
   // maxTurns 暂停卡(「继续?」):text = 已执行轮数
