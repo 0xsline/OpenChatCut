@@ -79,6 +79,9 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const t = useT();
   const { state, doc, commands, canUndo, canRedo, getUndoTarget } = useEditor(initial);
   const selectedItem = state.items.find((it) => it.id === state.selectedId) ?? null;
+  const [reviewRequest, setReviewRequest] = useState<{
+    itemId: string; frame: number; clientX: number; clientY: number; nonce: number;
+  } | null>(null);
   const trackOptions = useMemo(
     () => timelineTrackIds(state).map((id) => ({
       id,
@@ -556,6 +559,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       <div style={{ gridColumn: 5, gridRow: 2, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
         <PreviewPanel state={autoGradePreviewState ?? previewState ?? state} playerRef={playerRef} onImport={importToCanvas}
           projectId={project.id} timelineId={doc.activeTimelineId} reviewState={state} selectedItem={selectedItem}
+          reviewRequest={reviewRequest}
           offlineSrcs={offlineSrcs}
           onUpdateCaptions={previewState || autoGradePreviewState ? undefined : commands.updateCaptions}
           onSeedChat={(text) => setChatSeed({ text, nonce: Date.now() })} />
@@ -645,6 +649,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         <Timeline state={state} commands={commands} playerRef={playerRef}
           projectId={project.id}
           shortcutApiRef={shortcutApiRef}
+          onReviewItem={(request) => setReviewRequest({ ...request, nonce: Date.now() })}
           onRecordVoiceover={async (blob) => {
             const ext = blob.type.includes('ogg') ? 'ogg' : 'webm';
             const asset = await importMedia(new File([blob], `旁白.${ext}`, { type: blob.type }), state.fps);

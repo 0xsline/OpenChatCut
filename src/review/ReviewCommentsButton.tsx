@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Icon } from '../components/icons';
 import type { TimelineItem, TimelineState } from '../editor/types';
 import { useT } from '../i18n/locale';
@@ -18,14 +18,24 @@ interface ReviewCommentsButtonProps {
   timelineId: string;
   state: TimelineState;
   selectedItem: TimelineItem | null;
+  openRequest?: ReviewOpenRequest | null;
   getCurrentFrame: () => number;
   onSeek: (frame: number) => void;
+}
+
+export interface ReviewOpenRequest {
+  itemId: string;
+  frame: number;
+  clientX: number;
+  clientY: number;
+  nonce: number;
 }
 
 interface ReviewPanelProps extends ReviewCommentsButtonProps {
   comments: ReviewComment[];
   busy: boolean;
   error: string;
+  target: ReviewOpenRequest | null;
   commit: (next: ReviewComment[]) => Promise<boolean>;
   onClose: () => void;
 }
@@ -33,13 +43,25 @@ interface ReviewPanelProps extends ReviewCommentsButtonProps {
 export function ReviewCommentsButton(props: ReviewCommentsButtonProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState<ReviewOpenRequest | null>(null);
   const { comments, busy, error, commit } = useStoredComments(props.projectId);
   const openCount = comments.filter((comment) => !comment.resolved).length;
+
+  useEffect(() => {
+    if (!props.openRequest) return;
+    setTarget(props.openRequest);
+    setOpen(true);
+  }, [props.openRequest]);
+
+  const toggle = () => {
+    if (!open) setTarget(null);
+    setOpen(!open);
+  };
 
   return (
     <div style={{ position: 'relative' }}>
       <button type="button" title={t('审阅评论')} aria-label={t('审阅评论')}
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggle}
         style={{ ...toolbarButton, color: open ? theme.text : theme.textDim, background: open ? theme.panelAlt : 'transparent' }}>
         <Icon name="clipboard" size={12} />
         <span>{t('评论')}</span>
@@ -47,7 +69,7 @@ export function ReviewCommentsButton(props: ReviewCommentsButtonProps) {
       </button>
       {open && (
         <ReviewPanel {...props} comments={comments} busy={busy} error={error}
-          commit={commit} onClose={() => setOpen(false)} />
+          target={target} commit={commit} onClose={() => setOpen(false)} />
       )}
     </div>
   );
@@ -90,16 +112,35 @@ function useStoredComments(projectId: string) {
 
 function ReviewPanel(props: ReviewPanelProps) {
   const t = useT();
+  const panelRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [reply, setReply] = useState('');
+  const [position, setPosition] = useState({ left: 8, top: 8 });
   const visible = useMemo(
     () => [...props.comments].sort((a, b) => Number(a.resolved) - Number(b.resolved) || b.createdAt - a.createdAt),
     [props.comments],
   );
 
+  useLayoutEffect(() => {
+    if (!props.target || !panelRef.current) return;
+    const rect = panelRef.current.getBoundingClientRect();
+    setPosition({
+      left: Math.max(8, Math.min(props.target.clientX + 8, window.innerWidth - rect.width - 8)),
+      top: Math.max(8, Math.min(props.target.clientY + 8, window.innerHeight - rect.height - 8)),
+    });
+  }, [props.target, visible.length, replyingTo, props.error]);
+
   const addComment = () => {
-    const anchor = reviewAnchor(props.timelineId, props.getCurrentFrame(), props.state, props.selectedItem);
+    const selectedItem = props.target
+      ? props.state.items.find((item) => item.id === props.target?.itemId) ?? null
+      : props.selectedItem;
+    const anchor = reviewAnchor(
+      props.timelineId,
+      props.target?.frame ?? props.getCurrentFrame(),
+      props.state,
+      selectedItem,
+    );
     return props.commit([...props.comments, createReviewComment(anchor, text)])
       .then((saved) => { if (saved) setText(''); });
   };
@@ -113,7 +154,8 @@ function ReviewPanel(props: ReviewPanelProps) {
   });
 
   return (
-    <div role="dialog" aria-label={t('审阅评论')} style={popover}>
+    <div ref={panelRef} role="dialog" aria-label={t('审阅评论')}
+      style={props.target ? { ...popover, position: 'fixed', left: position.left, top: position.top, right: 'auto' } : popover}>
       <PanelHeader onClose={props.onClose} />
       <AddCommentForm text={text} setText={setText} busy={props.busy} onAdd={addComment} />
       <CommentList {...props} comments={visible} replyingTo={replyingTo} reply={reply}
@@ -144,7 +186,7 @@ function AddCommentForm({ text, setText, busy, onAdd }: {
   const t = useT();
   return (
     <div style={{ padding: 10, borderBottom: `0.5px solid ${theme.border}` }}>
-      <textarea value={text} onChange={(event) => setText(event.target.value)}
+      <textarea autoFocus value={text} onChange={(event) => setText(event.target.value)}
         placeholder={t('在当前帧添加审阅评论')} style={textarea} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
         <span style={{ flex: 1, fontSize: 10, color: theme.textMuted }}>

@@ -47,9 +47,10 @@ interface TimelineProps {
   onRecordVoiceover?: (blob: Blob) => void;
   /** Filled by Timeline so Editor can bind the global shortcut dispatcher. */
   shortcutApiRef?: RefObject<TimelineShortcutApi | null>;
+  onReviewItem?: (request: { itemId: string; frame: number; clientX: number; clientY: number }) => void;
 }
 
-export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceover, shortcutApiRef }: TimelineProps) {
+export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceover, shortcutApiRef, onReviewItem }: TimelineProps) {
   const t = useT();
   const empty = state.items.length === 0;
   const total = empty ? 0 : timelineDuration(state);
@@ -441,7 +442,11 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
             selectedIds={selectedIdsOf(state)}
             transitions={(state.transitions ?? []).filter((t) => t.incomingItemId === item.id || t.outgoingItemId === item.id)}
             fxClip={fxClip} onCopyFx={setFxClip} onClose={() => setCtxMenu(null)}
-            onExportMg={exportMg} onConvertToVideo={convertToVideo} />
+            onExportMg={exportMg} onConvertToVideo={convertToVideo}
+            onAddComment={(target, frame, clientX, clientY) => {
+              playerRef.current?.seekTo(frame);
+              onReviewItem?.({ itemId: target.id, frame, clientX, clientY });
+            }} />
         );
       })()}
 

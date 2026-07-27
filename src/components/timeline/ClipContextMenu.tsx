@@ -41,11 +41,12 @@ interface ClipContextMenuProps {
   onExportMg: (item: TimelineItem) => void;
   /** 转为视频 → bake to a video clip in place */
   onConvertToVideo: (item: TimelineItem) => void;
+  onAddComment: (item: TimelineItem, frame: number, clientX: number, clientY: number) => void;
 }
 
 const PASTE_HINT = '⌘⌥V';
 
-export function ClipContextMenu({ item, transitions, x, y, playhead, commands, timeline, selectedIds, fxClip, onCopyFx, onClose, onExportMg, onConvertToVideo }: ClipContextMenuProps) {
+export function ClipContextMenu({ item, transitions, x, y, playhead, commands, timeline, selectedIds, fxClip, onCopyFx, onClose, onExportMg, onConvertToVideo, onAddComment }: ClipContextMenuProps) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [syncBusy, setSyncBusy] = useState(false);
@@ -144,6 +145,7 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
   const isDom = item.kind === 'motion-graphic' || item.kind === 'text'; // DOM clips → alpha MG export
   const canSpeed = item.kind === 'video' || item.kind === 'audio'; // playbackRate only affects av
   const rate = item.playbackRate ?? 1;
+  const reviewFrame = Math.max(item.startFrame, Math.min(playhead, item.startFrame + item.durationInFrames - 1));
   const run = (fn: () => void) => () => { fn(); onClose(); };
 
   const copyFx = () => onCopyFx({ filters: item.filters, transform: item.transform, zoom: item.zoom, fadeInFrames: item.fadeInFrames, fadeOutFrames: item.fadeOutFrames });
@@ -166,6 +168,8 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
 
   return (
     <div ref={ref} style={style}>
+      <Item label={t('添加评论')} icon="clipboard" onClick={run(() => onAddComment(item, reviewFrame, x, y))} />
+      <Sep />
       <Item
         label={syncBusy ? t('多机位同步中…') : t('AI 多机位同步')}
         icon="users"

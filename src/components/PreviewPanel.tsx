@@ -19,7 +19,7 @@ import {
 import { appendDroppedManualCaption } from '../captions/manualCaptions';
 import { Icon } from './icons';
 import { useT } from '../i18n/locale';
-import { ReviewCommentsButton } from '../review/ReviewCommentsButton';
+import { ReviewCommentsButton, type ReviewOpenRequest } from '../review/ReviewCommentsButton';
 
 const SHARED_AUDIO_TAGS = 32;
 
@@ -35,11 +35,12 @@ interface PreviewPanelProps {
   timelineId: string;
   reviewState: TimelineState;
   selectedItem: TimelineItem | null;
+  reviewRequest?: ReviewOpenRequest | null;
 }
 
 export const PreviewPanel = memo(function PreviewPanel({
   state, playerRef, onImport, offlineSrcs, onUpdateCaptions, onSeedChat,
-  projectId, timelineId, reviewState, selectedItem,
+  projectId, timelineId, reviewState, selectedItem, reviewRequest,
 }: PreviewPanelProps) {
   const t = useT();
   const duration = timelineDuration(state);
@@ -110,6 +111,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             timelineId={timelineId}
             state={reviewState}
             selectedItem={selectedItem}
+            openRequest={reviewRequest}
             getCurrentFrame={() => playerRef.current?.getCurrentFrame() ?? 0}
             onSeek={(frame) => playerRef.current?.seekTo(frame)}
           />
