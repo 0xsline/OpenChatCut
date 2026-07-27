@@ -166,6 +166,10 @@ export function ChatComposer(props: ChatComposerProps) {
   const [newModelId, setNewModelId] = useState('');
   const [newModelProvider, setNewModelProvider] = useState<LlmProvider | ''>('');
   const [addModelError, setAddModelError] = useState('');
+  // Free-typing draft for the context-window field. Clamp on blur, NOT per keystroke —
+  // per-keystroke clamping (Math.max(min, …)) fights the user typing digit-by-digit (e.g.
+  // typing "200000" collapses each intermediate "2"/"20"/"200" back to the min).
+  const [ctxWinDraft, setCtxWinDraft] = useState<string | null>(null);
   const patchAgent = (patch: Partial<AgentSettings>) => {
     setAgentSettings((prev) => {
       const next = { ...prev, ...patch };
@@ -647,8 +651,13 @@ export function ChatComposer(props: ChatComposerProps) {
           </label>
           <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 4px', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span>{t('Context window (tokens)')}</span>
-            <input type="number" value={agentSettings.contextThreshold} min={10000} max={10000000} step={10000}
-              onChange={(e) => patchAgent({ contextThreshold: Math.min(10000000, Math.max(10000, Number(e.target.value) || 200000)) })}
+            <input type="number" value={ctxWinDraft ?? agentSettings.contextThreshold} min={10000} max={10000000} step={10000}
+              onChange={(e) => setCtxWinDraft(e.target.value)}
+              onBlur={() => {
+                const n = Math.min(10000000, Math.max(10000, Math.round(Number(ctxWinDraft)) || 200000));
+                patchAgent({ contextThreshold: n });
+                setCtxWinDraft(null);
+              }}
               style={{ width: 95, font: 'inherit', fontSize: 11, padding: '3px 6px', borderRadius: 4, border: `0.5px solid ${theme.border}`, background: theme.panelAlt, color: theme.text }} />
           </div>
           <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 10px' }}>
