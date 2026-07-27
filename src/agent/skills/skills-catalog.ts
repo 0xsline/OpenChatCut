@@ -190,14 +190,14 @@ Breaking-news limitation: stock libraries NEVER carry current / recent events (t
 
 ## Footage-Voiceover Alignment (frame-level — NON-NEGOTIABLE)
 
-Footage must follow the narration scene-by-scene — NOT one long clip over the whole video:
+Footage must follow the narration chunk-by-chunk — NOT one long clip over the whole video:
 
 - TRANSCRIBE the VO first: after each segment lands on A1, call transcribe_track (track A1) to get per-sentence timing, then group sentences into ~6s narration CHUNKS (MAX 6 seconds per footage clip — footage must change frequently for pace). If a sentence runs longer than 6s, split it into ≤6s sub-chunks on natural pauses; if shorter, merge adjacent sentences up to 6s. The chunk boundaries (startFrame + durationInFrames straight from the transcript) are your footage cut points — far more precise than read_timeline averages, and they are how footage stays glued to the exact words being spoken.
 - Search chunk footage in BATCHES via \`search_stock_batch\`: pass ONE English query per ~6s chunk, where each query is the ENGLISH TRANSLATION of what is SPOKEN in that chunk (chunk narrates "kapal perang Amerika lintasi Selat Hormuz" → query "us navy warship strait of hormuz"). The query MUST come from that chunk's narration — that is how footage stays glued to the exact words. \`search_stock_batch\` caps at 12 queries/call, so a 12-min video (~120 chunks) is ~10 batched search calls. Each result is tagged with its query so hits map back to chunks. Do NOT call \`search_stock_media\` per chunk. Pick ONE hit URL per chunk.
 - DOWNLOAD every picked footage in ONE call via \`download_media_batch\` (up to 50 URLs, fetched in parallel): collect the one picked URL per chunk and pass them together. Do NOT call \`download_media\` once per URL — that is ~120 calls for a 12-min video. Batch them (~50/call → ~3 calls for 120 chunks), then place each clip at its chunk's transcript startFrame with duration ≤6s.
-- Place the footage on video track V1 (or V2) with \`startFrame\` = the scene's audio startFrame and \`durationInFrames\` = the scene's audio duration. **One footage per scene.**
-- Footage MUST CHANGE every scene. When scene 2's audio starts, scene 2's footage shows. Do NOT drop one clip spanning multiple scenes.
-- VERIFY by playing: when the narration says "kapal perang" the screen shows a warship; when it says "Indonesia" it shows an Indonesian port/flag. If a scene mismatches, fix THAT scene's footage only — don't redo the whole timeline.
+- Place the footage on video track V1 (or V2) with \`startFrame\` = the chunk's audio startFrame and \`durationInFrames\` = the chunk's audio duration (≤6s). **One footage per chunk.**
+- Footage MUST CHANGE every chunk. When the next chunk's audio starts, that chunk's footage shows. Do NOT drop one clip spanning multiple chunks.
+- VERIFY by playing: when the narration says "kapal perang" the screen shows a warship; when it says "Indonesia" it shows an Indonesian port/flag. If a chunk mismatches, fix THAT chunk's footage only — don't redo the whole timeline.
 
 ## Title Formula (Trikcuan-style — Bahasa Indonesia)
 

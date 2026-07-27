@@ -450,7 +450,13 @@ async function execDownloadMediaBatch(args: Args, ctx: AgentContext): Promise<un
   if (urls.length > DOWNLOAD_BATCH_MAX) {
     return { error: `urls accepts at most ${DOWNLOAD_BATCH_MAX} per call (got ${urls.length}); split into batches of ${DOWNLOAD_BATCH_MAX}` };
   }
-  const results = await mapBounded(urls, DOWNLOAD_BATCH_CONCURRENCY, (url) => registerMediaUrl(url, {}, ctx));
+  const results = await mapBounded(urls, DOWNLOAD_BATCH_CONCURRENCY, (url) =>
+    registerMediaUrl(url, {}, ctx).catch((e): BatchRow => ({
+      success: false,
+      error: e instanceof Error ? e.message : String(e),
+      url,
+    })),
+  );
   return batchEnvelope(results);
 }
 

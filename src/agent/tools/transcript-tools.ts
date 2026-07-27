@@ -243,7 +243,7 @@ async function manageTranscript(args: Args, ctx: AgentContext, track: TrackId, a
   if (action === 'retry_transcription') {
     if (!it.src) return { error: `item ${it.id} has no media to transcribe` };
     try {
-      const r = await transcribePath(it.src, undefined, { languageCode: typeof args.language === 'string' && args.language.trim() ? args.language.trim() : 'auto' });
+      const r = await transcribePath(it.src, undefined, { languageCode: (() => { const l = args.language ?? args.lang; return typeof l === 'string' && l.trim() ? l.trim() : 'auto'; })() });
       ctx.commands.setItemTranscript(it.id, r.words);
       return { ok: true, action, itemId: it.id, words: r.words.length, text: r.text.slice(0, 200), retried: true };
     } catch (e) {
@@ -336,7 +336,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
             results.push({ itemId: it.id, words: it.transcript.length, text: '', skipped: true });
             continue;
           }
-          const r = await transcribePath(it.src!, undefined, { languageCode: typeof args.language === 'string' && args.language.trim() ? args.language.trim() : 'auto' });
+          const r = await transcribePath(it.src!, undefined, { languageCode: (() => { const l = args.language ?? args.lang; return typeof l === 'string' && l.trim() ? l.trim() : 'auto'; })() });
           ctx.commands.setItemTranscript(it.id, r.words);
           results.push({ itemId: it.id, words: r.words.length, text: r.text.slice(0, 200) });
         }

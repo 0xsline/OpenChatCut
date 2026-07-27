@@ -81,11 +81,21 @@ function anthropicProviderFor(provider: LlmProvider): ReturnType<typeof createAn
   }
   return p;
 }
-const openaiProvider = createOpenAI({
-  baseURL: PROXY_API_BASE,
-  apiKey: PROXY_KEY,
-  headers: proxyHeaders('openai'),
-});
+// OpenAI-protocol providers are ALSO cached PER PROVIDER ID (same reason as anthropic
+// above): a custom provider with apiFormat 'responses' (→ protocol 'openai') must carry
+// its OWN x-openchatcut-provider header so the server routes to LLM_<ID>_BASE_URL, not
+// api.openai.com. A singleton would hard-code the header to 'openai' and misroute every
+// openai-protocol custom provider. The built-in 'openai' id still works (its cache entry
+// just has header 'openai').
+const openaiProviders = new Map<LlmProvider, ReturnType<typeof createOpenAI>>();
+function openaiProviderFor(provider: LlmProvider): ReturnType<typeof createOpenAI> {
+  let p = openaiProviders.get(provider);
+  if (!p) {
+    p = createOpenAI({ baseURL: PROXY_API_BASE, apiKey: PROXY_KEY, headers: proxyHeaders(provider) });
+    openaiProviders.set(provider, p);
+  }
+  return p;
+}
 // 有官方专属包的厂商一律用官方包(厂商特有语义 — 如 Gemini thought_signature —
 // 由官方 provider 处理);其余走 openai-compatible。都经 /llm 代理注入真实密钥。
 const proxied = <T>(provider: LlmProvider, create: (o: { baseURL: string; apiKey: string; headers: Record<string, string> }) => T): T =>
@@ -122,8 +132,8 @@ export function getLanguageModel(
   if (protocol === 'anthropic') return anthropicProviderFor(provider)(model);
   if (protocol === 'openai') {
     return openAiApiMode === 'chat'
-      ? openaiProvider.chat(model)
-      : openaiProvider.responses(model);
+      ? openaiProviderFor(provider).chat(model)
+      : openaiProviderFor(provider).responses(model);
   }
   const dedicated = DEDICATED_PROVIDERS[provider];
   if (dedicated) return dedicated(model);

@@ -1,0 +1,7 @@
+# Normalize line endings to LF on checkout for files whose bytes are integrity-checked
+# (plugin manifests are sha256-verified at install — CRLF drift on Windows would break
+# that check) or tokenized verbatim (MG template JSX, thumbnails). Keep these LF-only
+# so checkouts are byte-identical across platforms.
+*.json text eol=lf
+*.svg text eol=lf
+*.jsx text eol=lf

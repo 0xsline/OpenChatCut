@@ -643,19 +643,19 @@ export function ChatComposer(props: ChatComposerProps) {
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
             <input type="checkbox" checked={agentSettings.autoCompact} onChange={(e) => patchAgent({ autoCompact: e.target.checked })} style={{ accentColor: theme.accent }} />
-            Auto-compact context
+            {t('Auto-compact context')}
           </label>
           <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 4px', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span>Threshold (tokens)</span>
-            <input type="number" value={agentSettings.contextThreshold} min={100000} max={1000000} step={50000}
-              onChange={(e) => patchAgent({ contextThreshold: Math.max(50000, Number(e.target.value) || 800000) })}
+            <span>{t('Threshold (tokens)')}</span>
+            <input type="number" value={agentSettings.contextThreshold} min={50000} max={1000000} step={50000}
+              onChange={(e) => patchAgent({ contextThreshold: Math.min(1000000, Math.max(50000, Number(e.target.value) || 800000)) })}
               style={{ width: 95, font: 'inherit', fontSize: 11, padding: '3px 6px', borderRadius: 4, border: `0.5px solid ${theme.border}`, background: theme.panelAlt, color: theme.text }} />
           </div>
           <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 10px' }}>
-            Summarize old conversation when context approaches the threshold.
+            {t('Summarize old conversation when context approaches the threshold.')}
           </div>
           <div style={{ fontSize: 11, padding: '6px 10px 10px', borderTop: `0.5px solid ${theme.border}` }}>
-            <div style={{ color: theme.textDim, marginBottom: 4 }}>Context usage</div>
+            <div style={{ color: theme.textDim, marginBottom: 4 }}>{t('Context usage')}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <div style={{ flex: 1, height: 6, borderRadius: 3, background: theme.border, overflow: 'hidden' }}>
                 <div style={{

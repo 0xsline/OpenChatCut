@@ -583,8 +583,8 @@ async function searchWikimedia(
 
 function addUnavailableWarning(warnings: string[], target: SearchTarget): void {
   const message = target.platform === 'freesound'
-    ? 'Freesound 未配置，无法搜索音频或音乐'
-    : `${target.platform} 未配置，已跳过 ${target.kind} 搜索`;
+    ? 'Freesound API key not configured — cannot search audio/music'
+    : `${target.platform} API key not configured — skipped ${target.kind} search`;
   if (!warnings.includes(message)) warnings.push(message);
 }
 

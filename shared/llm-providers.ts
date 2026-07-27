@@ -177,9 +177,11 @@ export function listCustomLlmProviders(): readonly CustomLlmProviderDef[] {
 }
 
 export function setCustomLlmProviders(list: readonly CustomLlmProviderDef[]): void {
+  const seen = new Set<string>();
   customProviders = list
     .map(normalizeCustomDef)
-    .filter((item): item is CustomLlmProviderDef => item !== null);
+    .filter((item): item is CustomLlmProviderDef => item !== null)
+    .filter((item) => (seen.has(item.id) ? false : (seen.add(item.id), true))); // dedup by id, keep first
 }
 
 export function parseCustomLlmProvidersJson(raw: unknown): CustomLlmProviderDef[] {

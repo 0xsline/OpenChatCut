@@ -78,3 +78,7 @@ docs/
 .pi-*
 .omc/
 .termul/
+
+# tldr MCP daemon artifacts (runtime, not source)
+.tldr/
+.tldrignore

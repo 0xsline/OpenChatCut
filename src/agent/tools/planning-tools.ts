@@ -135,7 +135,7 @@ function verifyTimelineSync(args: Record<string, unknown>): unknown {
       unionCovered += c.durationInFrames; // disjoint segment — count it whole
     } else if (c.startFrame < prevEnd) {
       // overlap: this clip starts before the previous one ends (wasted frames)
-      const of = prevEnd - c.startFrame;
+      const of = Math.min(prevEnd - c.startFrame, c.durationInFrames);
       overlaps.push({ index: c.index, name: c.name, overlap_frames: of, overlap_seconds: Math.round((of / fps) * 10) / 10 });
       unionCovered += Math.max(0, cEnd - prevEnd); // only the part extending past prevEnd
     } else {

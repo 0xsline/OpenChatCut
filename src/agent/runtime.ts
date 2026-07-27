@@ -167,7 +167,16 @@ const KEEP_RECENT_MESSAGES = 16;
 
 function estimateTokens(messages: readonly ModelMessage[]): number {
   // rough: ~4 chars/token. Cukup untuk threshold check (bukan exact count).
-  return Math.ceil(JSON.stringify(messages).length / 4);
+  // Strip image/file parts first — base64 frame data (view_timeline_frames) would
+  // otherwise inflate the char count ~33% and trip auto-compact far too early, since
+  // image tokens are computed from pixel dims, not 1:4 chars.
+  const stripped = messages.map((m) => {
+    const content = (m as { content?: unknown }).content;
+    if (!Array.isArray(content)) return m;
+    const filtered = content.filter((part: { type?: string }) => part?.type !== 'file' && part?.type !== 'image');
+    return { ...(m as object), content: filtered };
+  });
+  return Math.ceil(JSON.stringify(stripped).length / 4);
 }
 
 async function compactConversation(conv: ModelMessage[], signal?: AbortSignal): Promise<ModelMessage[]> {
@@ -264,10 +273,11 @@ export async function runAgent(
         conv.length = 0;
         conv.push(...compacted);
         // Re-fire guard: if even the kept-recent window alone exceeds the threshold (one
-        // huge tool dump), drop oldest messages from the front so the gate doesn't fire
-        // again next turn and re-summarize its own summary (losing the original request).
+        // huge tool dump), trim oldest from the RECENT window so the gate doesn't fire
+        // again next turn and re-summarize its own summary. Keep index 0 (the summary)
+        // intact — splice(1,1), NOT shift(), so the original-request summary is preserved.
         while (estimateTokens(conv) > settings.contextThreshold && conv.length > 4) {
-          conv.shift();
+          conv.splice(1, 1);
         }
       }
       const requestMessages = protocolForProvider(PROVIDER) === 'openai'
