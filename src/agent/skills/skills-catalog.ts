@@ -98,6 +98,17 @@ This is an OpenChatCut-native workflow. Use web research, stock footage, TTS voi
 - The video needs an investigative, fact-checker, documentary-thriller tone.
 - The output is a narrated short (portrait social or landscape documentary).
 
+## Topic Sourcing (when the user gives NO topic — NON-NEGOTIABLE)
+
+If the user did NOT hand you a concrete topic (they said "bikin video geopolitik", "apa yang lagi viral", "kamu pilih aja", or just picked this mode with no prompt), DO NOT ask them "topik apa?". They may not follow the news — asking blocks the whole pipeline. Instead, source and propose:
+
+1. Call \`fetch_trending_topics\` (free Google News RSS, Indonesia-locale geopolitics / conflict / diplomacy / economy). Optional \`query\` to narrow (e.g. "Iran AS", "Laut Cina Selatan", "minyak").
+2. From the freshest results, pick 2–3 of the most video-worthy, Indonesia-relevant headlines. For each, write ONE line: the topic + its Indonesia angle (BBM / LPG 3 kg / TKI di Teluk / ekspor nikel-CPO-batu bara / rupiah / rute Selat Malaka / posisi ASEAN).
+3. Propose those 2–3 as a short numbered list and ask ONLY "yang mana?" (or offer to pick the best yourself). The moment they choose — or say "kamu pilih" — LOCK that topic and proceed. Do not loop back to "topik apa".
+4. If \`fetch_trending_topics\` errors (regionally blocked), fall back to \`web_search\` with \`tbs: "qdr:d"\` (last 24h) + a geopolitical query, then do the same propose-2-3 step.
+
+Never stall on "please give me a topic". Source, propose, proceed.
+
 ## Research First
 
 1. Before writing narration, research current facts with web_search / web_browser. Collect concrete facts: dates, locations, names, weapon / system / platform specs (e.g. Mark 38 25-mm gun, Arleigh Burke-class, F-35 Lightning II), and numbers (tons, miles, ranges, percentages, dollar amounts).
@@ -209,7 +220,7 @@ The title must create a curiosity gap the video then pays off. Never a dry textb
 ## Workflow
 
 1. Read project state: target duration, aspect ratio, platform, narration language (default Bahasa Indonesia).
-2. Research the topic (web_search). Collect facts; mark real-events that need real footage.
+2. If the user gave NO topic, run Topic Sourcing first (fetch_trending_topics → propose 2-3 → lock one with the user). Then research the chosen topic (web_search). Collect facts; mark real-events that need real footage.
 3. Plan the FUNNEL ARC + WORD BUDGET: compute target_words = duration_seconds × 2.5 (or the user's requested count, whichever is larger), break it into scene_count × scene_words (~40-80 words/scene), and assign a word budget to each scene per phase. Include the Indonesia-connection scenes. Show the breakdown + total to the user.
 4. Write narration per scene TO ITS WORD BUDGET (do not under-write — see Word Budget). For longer scenes, split into ~6s clips, each visually self-contained. After writing all scenes, SUM the word counts and EXPAND any under-budget scene until the total ≥ 90% of target.
 5. Generate voiceover with submit_voice (load the voice skill first; confirm a concrete voice preset before submitting). For Bahasa Indonesia narration, prefer KikiVoice (provider: "kikivoice", voiceId: "joni" — bundled Indonesian clone, desktop only) when available; otherwise use a configured ElevenLabs / Doubao / MiniMax voice. Spell digits / symbols / abbreviations out per the Text Normalization section before submitting. Read the REAL TTS audio duration and fit scenes to it, not to estimates.

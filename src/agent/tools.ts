@@ -32,6 +32,7 @@ import { MARKERS_TOOL_SCHEMAS, MARKERS_TOOL_NAMES, execMarkersTool } from './too
 import { MG_VIDEO_TOOL_SCHEMAS, MG_VIDEO_TOOL_NAMES, execMgVideoTool } from './tools/mg-video-tools';
 import { EDIT_ASSET_TOOL_SCHEMAS, EDIT_ASSET_TOOL_NAMES, execEditAssetTool } from './tools/edit-asset-tools';
 import { WEB_TOOL_SCHEMAS, WEB_TOOL_NAMES, execWebTool } from './tools/web-tools';
+import { NEWS_TOOL_SCHEMAS, NEWS_TOOL_NAMES, execNewsTool } from './tools/news-tools';
 import { FONT_TOOL_SCHEMAS, FONT_TOOL_NAMES, execFontTool } from './tools/font-tools';
 import { FOLLOWUP_TOOL_SCHEMAS, FOLLOWUP_TOOL_NAMES, execFollowupTool } from './tools/followup-tools';
 import { PROJECT_TOOL_SCHEMAS, PROJECT_TOOL_NAMES, execProjectTool } from './tools/project-tools';
@@ -280,6 +281,7 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...EDIT_ASSET_TOOL_SCHEMAS,
   // 网页抓取：markdown/html/links/screenshot/branding/summary
   ...WEB_TOOL_SCHEMAS,
+  ...NEWS_TOOL_SCHEMAS,
   // 字体目录搜索；导出 confirmFontFallback 门在 generate-tools
   ...FONT_TOOL_SCHEMAS,
   // 主动追问：agent 缺关键信息时发交互表单卡，runtime __followup 特判渲染并暂停
@@ -432,6 +434,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (MG_VIDEO_TOOL_NAMES.has(name)) return execMgVideoTool(name, args, ctx);
   if (EDIT_ASSET_TOOL_NAMES.has(name)) return execEditAssetTool(name, args, ctx);
   if (WEB_TOOL_NAMES.has(name)) return execWebTool(name, args, ctx);
+  if (NEWS_TOOL_NAMES.has(name)) return execNewsTool(name, args);
   if (FONT_TOOL_NAMES.has(name)) return execFontTool(name, args, ctx);
   if (FOLLOWUP_TOOL_NAMES.has(name)) return execFollowupTool(name, args, ctx);
   if (PROJECT_TOOL_NAMES.has(name)) return execProjectTool(name, args, ctx);

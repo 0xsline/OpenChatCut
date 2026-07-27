@@ -28,6 +28,7 @@ import { subtitleExportPlugin } from './subtitles.ts';
 import { generationProgressPlugin } from './generation-jobs.ts';
 import { stockSearchPlugin } from './stock.ts';
 import { firecrawlPlugin } from './firecrawl.ts';
+import { newsPlugin } from './news.ts';
 import { kikiPlugin } from './kiki.ts';
 import { getKikiBridge, KIKI_DEFAULT_UA } from '../kiki/session-bridge.ts';
 import { ElectronKikiTransport } from '../kiki/electron-transport.ts';
@@ -98,6 +99,7 @@ export function serverPlugins(): Plugin[] {
     get dvidsApiKey() { return getKey('DVIDS_API_KEY'); },
   }),
   firecrawlPlugin({ get apiKey() { return getKey('FIRECRAWL_API_KEY'); } }),
+  newsPlugin(),
   kikiPlugin(),
   e2bPlugin({ get apiKey() { return getKey('E2B_API_KEY'); }, get template() { return getKey('E2B_TEMPLATE') || undefined; } }),
   ];
