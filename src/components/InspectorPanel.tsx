@@ -8,12 +8,15 @@ import { sampleKeyframes } from '../editor/keyframes';
 import { KEYFRAME_PROPS, getKeyframePropertyDefinition } from '../editor/keyframeRegistry';
 import { ALL_FX as FX_EFFECTS, LUT_EFFECTS } from '../gl/fx/effects';
 const FX_IDS = Object.keys(FX_EFFECTS);
+const compactNumber = (value: number) => String(Number(value.toFixed(2)));
 import { usePersistedState } from '../hooks/usePersistedState';
 import { Icon } from './icons';
 import { FONT_CATALOG } from '../fonts/googleFonts';
 import { useT } from '../i18n/locale';
 import { showAppToast } from '../ui/appToast';
 import { importMedia } from '../media/upload';
+import { ScalarControl } from './inspector/ScalarControl';
+import { snapScalar } from './inspector/scalarMath';
 
 /** MG propSchema field types: text/number/color/boolean/font/select/image/asset/video. */
 function PropSchemaField({
@@ -220,6 +223,7 @@ interface InspectorPanelProps {
   /** generic transform keyframes (PRD §4.5) on the selected item — item-local frames */
   onSetItemKeyframe: (prop: KeyframeProp, frame: number, value: number, easing?: KeyframeEasing) => void;
   onRemoveItemKeyframe: (prop: KeyframeProp, frame: number) => void;
+  onResetItemKeyframes: (props: readonly KeyframeProp[]) => void;
   /** seek the preview to an ABSOLUTE timeline frame (‹/› keyframe jumps) */
   onSeek: (frame: number) => void;
   transition: TransitionItem | null;
@@ -259,7 +263,11 @@ function useHistoryGesture(): {
     gesture?.begin();
   };
   // 组件卸载时(比如拖动中切换了选中片段)也要收尾,免得手势一直开着
-  useEffect(() => end, []);
+  useEffect(() => () => {
+    if (!active.current) return;
+    active.current = false;
+    gesture?.end();
+  }, [gesture]);
   return {
     onPointerDown: () => {
       begin();
@@ -287,26 +295,58 @@ function ColorParamInput({ value, onPick }: { value: number[]; onPick: (rgb: num
 
 /** Compact one-line slider: label | track | value */
 function SliderRow({
-  label, val, min, max, step, fmt, onChange, disabled, disabledReason,
+  label, val, min, max, step, fmt, inputScale, onChange, onReset, resetDisabled, disabled, disabledReason,
 }: {
   label: string; val: number; min: number; max: number; step: number; fmt: string; onChange: (v: number) => void;
+  inputScale?: number;
+  onReset?: () => void;
+  resetDisabled?: boolean;
   /** 已打关键帧但播放头不在片段内时禁用:拖它只会把关键帧写到被夹出来的第 0 帧上。 */
   disabled?: boolean;
   disabledReason?: string;
 }) {
+  const t = useT();
   const gesture = useHistoryGesture();
   return (
-    <label className="cc-insp-row" title={disabled ? disabledReason : undefined} style={disabled ? { opacity: 0.45 } : undefined}>
+    <div className="cc-insp-row" title={disabled ? disabledReason : undefined} style={disabled ? { opacity: 0.45 } : undefined}>
       <span className="cc-insp-label">{label}</span>
       <input
+        aria-label={label}
         className="cc-insp-range"
-        type="range" min={min} max={max} step={step} value={val}
+        type="range" min={min} max={max} step="any" value={val}
         disabled={disabled}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => onChange(snapScalar(Number(e.target.value), min, max, step))}
         {...gesture}
       />
-      <span className="cc-insp-val">{fmt}</span>
-    </label>
+      <span className="cc-insp-val">
+        <ScalarControl
+          ariaLabel={t('输入{name}的精确值', { name: label })}
+          disabled={disabled}
+          formatValue={fmt}
+          inputScale={inputScale}
+          max={max}
+          min={min}
+          onChange={onChange}
+          onGestureEnd={gesture.onKeyUp}
+          onGestureStart={gesture.onKeyDown}
+          step={step}
+          title={t('点击输入精确值；左右拖动调整；Shift ×10；⌘ ×0.1')}
+          value={val}
+        />
+        {onReset && (
+          <button
+            aria-label={t('重置{name}', { name: label })}
+            className="cc-insp-reset"
+            disabled={resetDisabled}
+            title={t('重置{name}', { name: label })}
+            type="button"
+            onClick={onReset}
+          >
+            <Icon name="undo" size={11} />
+          </button>
+        )}
+      </span>
+    </div>
   );
 }
 
@@ -385,7 +425,14 @@ function KfCell({ kfs, localFrame, inRange, punchValue, onSet, onRemove, onSeekL
 // scale / position / rotation for visual clips (缩放 tab) + per-property
 // keyframe rails and an opacity curve row. A keyframed prop shows the
 // value sampled at the playhead; dragging it then punches a keyframe there.
-function TransformControl({ item, onChange, kf }: { item: TimelineItem; onChange: (p: ClipTransform) => void; kf: KfApi }) {
+function TransformControl({
+  item, onChange, onReset, kf,
+}: {
+  item: TimelineItem;
+  onChange: (p: ClipTransform) => void;
+  onReset: (props: readonly KeyframeProp[]) => void;
+  kf: KfApi;
+}) {
   const t = useT();
   const rows = KEYFRAME_PROPS
     .map(getKeyframePropertyDefinition)
@@ -401,8 +448,11 @@ function TransformControl({ item, onChange, kf }: { item: TimelineItem; onChange
           <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <SliderRow label={t(r.label)} val={value} min={min} max={max} step={r.step} fmt={r.format(value)}
+                inputScale={r.id === 'scale' || r.id === 'opacity' ? 100 : 1}
                 disabled={!!kfs?.length && !kf.inRange}
                 disabledReason={t('把播放头移进这个片段才能改这里的关键帧')}
+                onReset={() => onReset([r.id])}
+                resetDisabled={!kfs?.length && Math.abs(r.getBaseValue(item) - r.defaultValue) < 1e-6}
                 onChange={(next) => {
                   const patch = r.toTransformPatch?.(next);
                   if (!kfs?.length && patch) onChange(patch);
@@ -423,11 +473,12 @@ function TransformControl({ item, onChange, kf }: { item: TimelineItem; onChange
 // keyframes present the slider shows the playhead-sampled value and edits punch
 // a keyframe there (same override rule as TransformControl rows).
 function VolumeControl({
-  item, onChange, onNormalize, kf,
+  item, onChange, onNormalize, onReset, kf,
 }: {
   item: TimelineItem;
   onChange: (v: number) => void;
   onNormalize?: () => void | Promise<void>;
+  onReset: (props: readonly KeyframeProp[]) => void;
   kf: KfApi;
 }) {
   const t = useT();
@@ -439,8 +490,11 @@ function VolumeControl({
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <SliderRow label={t('音量')} val={vol} min={0} max={2} step={0.05} fmt={`${Math.round(vol * 100)}%`}
+            inputScale={100}
             disabled={!!kfs?.length && !kf.inRange}
             disabledReason={t('把播放头移进这个片段才能改这里的关键帧')}
+            onReset={() => onReset(['volume'])}
+            resetDisabled={!kfs?.length && Math.abs((item.volume ?? 1) - 1) < 1e-6}
             onChange={(next) => {
               if (!kfs?.length) { onChange(next); return; }
               if (kf.inRange) kf.set('volume', kf.localFrame, next);
@@ -511,6 +565,8 @@ function IsolateVoiceControl({
         max={100}
         step={5}
         fmt={`${Math.round(strength)}`}
+        onReset={() => setStrength(70)}
+        resetDisabled={strength === 70}
         onChange={setStrength}
       />
       <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
@@ -560,6 +616,8 @@ function SpeedControl({ item, onChange }: { item: TimelineItem; onChange: (rate:
         max={4}
         step={0.05}
         fmt={`${rate.toFixed(2)}×`}
+        onReset={() => onChange(1)}
+        resetDisabled={Math.abs(rate - 1) < 1e-6}
         onChange={onChange}
       />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
@@ -602,6 +660,8 @@ function FadeControl({ item, fps, onChange }: { item: TimelineItem; fps: number;
         max={maxSec}
         step={0.1}
         fmt={`${sec.toFixed(1)}s`}
+        onReset={() => onChange({ [key]: 0 })}
+        resetDisabled={sec === 0}
         onChange={(v) => onChange({ [key]: Math.round(v * fps) })}
       />
     );
@@ -664,6 +724,7 @@ function ZoomControl({ zoom, onChange, getLocalFrame, fps, onSetKeyframe, onRemo
 }) {
   const t = useT();
   const localFrame = getLocalFrame();
+  const hasKeyframes = !!zoom?.reframeCurve?.keyframes.length;
   return (
     <div className="cc-insp-stack">
       <label className="cc-insp-row">
@@ -679,9 +740,15 @@ function ZoomControl({ zoom, onChange, getLocalFrame, fps, onSetKeyframe, onRemo
       </label>
       {zoom && (
         <>
-          <SliderRow label={t('倍数')} val={zoom.magnification ?? 1.5} min={1} max={4} step={0.05} fmt={`${(zoom.magnification ?? 1.5).toFixed(2)}×`} onChange={(v) => onChange({ magnification: v })} />
-          <SliderRow label={t('焦点X')} val={zoom.focalPointX ?? 0.5} min={0} max={1} step={0.01} fmt={`${Math.round((zoom.focalPointX ?? 0.5) * 100)}%`} onChange={(v) => onChange({ focalPointX: v })} />
-          <SliderRow label={t('焦点Y')} val={zoom.focalPointY ?? 0.5} min={0} max={1} step={0.01} fmt={`${Math.round((zoom.focalPointY ?? 0.5) * 100)}%`} onChange={(v) => onChange({ focalPointY: v })} />
+          <SliderRow label={t('倍数')} val={zoom.magnification ?? 1.5} min={1} max={4} step={0.05} fmt={`${(zoom.magnification ?? 1.5).toFixed(2)}×`}
+            onReset={() => onChange({ magnification: 1.5, reframeCurve: undefined })} resetDisabled={!hasKeyframes && Math.abs((zoom.magnification ?? 1.5) - 1.5) < 1e-6}
+            onChange={(v) => onChange({ magnification: v })} />
+          <SliderRow label={t('焦点X')} val={zoom.focalPointX ?? 0.5} min={0} max={1} step={0.01} fmt={`${compactNumber((zoom.focalPointX ?? 0.5) * 100)}%`} inputScale={100}
+            onReset={() => onChange({ focalPointX: 0.5, reframeCurve: undefined })} resetDisabled={!hasKeyframes && Math.abs((zoom.focalPointX ?? 0.5) - 0.5) < 1e-6}
+            onChange={(v) => onChange({ focalPointX: v })} />
+          <SliderRow label={t('焦点Y')} val={zoom.focalPointY ?? 0.5} min={0} max={1} step={0.01} fmt={`${compactNumber((zoom.focalPointY ?? 0.5) * 100)}%`} inputScale={100}
+            onReset={() => onChange({ focalPointY: 0.5, reframeCurve: undefined })} resetDisabled={!hasKeyframes && Math.abs((zoom.focalPointY ?? 0.5) - 0.5) < 1e-6}
+            onChange={(v) => onChange({ focalPointY: v })} />
           <div className="cc-insp-actions">
             <button
               type="button"
@@ -773,8 +840,30 @@ function TransitionControl({ transition, fps, onAdd, onSet, onRemove, audioMode 
 }
 
 // small uppercase-ish divider label between control groups.
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <div className="cc-insp-section">{children}</div>;
+function SectionLabel({
+  children, onReset, resetDisabled,
+}: {
+  children: React.ReactNode;
+  onReset?: () => void;
+  resetDisabled?: boolean;
+}) {
+  const t = useT();
+  return (
+    <div className="cc-insp-section">
+      <span>{children}</span>
+      {onReset && (
+        <button
+          className="cc-insp-group-reset"
+          disabled={resetDisabled}
+          title={t('重置整个分组')}
+          type="button"
+          onClick={onReset}
+        >
+          {t('重置')}
+        </button>
+      )}
+    </div>
+  );
 }
 
 // brightness / contrast / saturation / blur implemented with CSS filters.
@@ -828,10 +917,14 @@ function FilterControl({ item, onChange, autoGrade }: {
           )}
         </div>
       )}
-      <SliderRow label={t('亮度')} val={fl.brightness ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.brightness ?? 1) * 100)}%`} onChange={(v) => onChange({ brightness: v })} />
-      <SliderRow label={t('对比')} val={fl.contrast ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.contrast ?? 1) * 100)}%`} onChange={(v) => onChange({ contrast: v })} />
-      <SliderRow label={t('饱和')} val={fl.saturate ?? 1} min={0} max={2} step={0.05} fmt={`${Math.round((fl.saturate ?? 1) * 100)}%`} onChange={(v) => onChange({ saturate: v })} />
-      <SliderRow label={t('模糊')} val={fl.blur ?? 0} min={0} max={30} step={1} fmt={`${Math.round(fl.blur ?? 0)}px`} onChange={(v) => onChange({ blur: v })} />
+      <SliderRow label={t('亮度')} val={fl.brightness ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.brightness ?? 1) * 100)}%`} inputScale={100}
+        onReset={() => onChange({ brightness: 1 })} resetDisabled={Math.abs((fl.brightness ?? 1) - 1) < 1e-6} onChange={(v) => onChange({ brightness: v })} />
+      <SliderRow label={t('对比')} val={fl.contrast ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.contrast ?? 1) * 100)}%`} inputScale={100}
+        onReset={() => onChange({ contrast: 1 })} resetDisabled={Math.abs((fl.contrast ?? 1) - 1) < 1e-6} onChange={(v) => onChange({ contrast: v })} />
+      <SliderRow label={t('饱和')} val={fl.saturate ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.saturate ?? 1) * 100)}%`} inputScale={100}
+        onReset={() => onChange({ saturate: 1 })} resetDisabled={Math.abs((fl.saturate ?? 1) - 1) < 1e-6} onChange={(v) => onChange({ saturate: v })} />
+      <SliderRow label={t('模糊')} val={fl.blur ?? 0} min={0} max={30} step={1} fmt={`${compactNumber(fl.blur ?? 0)}px`}
+        onReset={() => onChange({ blur: 0 })} resetDisabled={(fl.blur ?? 0) === 0} onChange={(v) => onChange({ blur: v })} />
     </div>
   );
 }
@@ -911,7 +1004,7 @@ function EffectsControl({ item, onChange }: { item: TimelineItem; onChange: (eff
 
 // Property editor for the selected timeline item (sits under the preview).
 // Collapsible so it doesn't crowd the preview when you don't need it.
-export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, autoGrade, onItemZoomChange, onItemEffectsChange, onItemSpeedChange, onNormalizeLoudness, onIsolateVoice, getPlayhead, onSetReframeKeyframe, onRemoveReframeKeyframe, onSetItemKeyframe, onRemoveItemKeyframe, onSeek, transition, onAddTransition, onSetTransition, onRemoveTransition, historyGesture, playerRef }: InspectorPanelProps) {
+export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, autoGrade, onItemZoomChange, onItemEffectsChange, onItemSpeedChange, onNormalizeLoudness, onIsolateVoice, getPlayhead, onSetReframeKeyframe, onRemoveReframeKeyframe, onSetItemKeyframe, onRemoveItemKeyframe, onResetItemKeyframes, onSeek, transition, onAddTransition, onSetTransition, onRemoveTransition, historyGesture, playerRef }: InspectorPanelProps) {
   const t = useT();
   const [collapsed, setCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const schema = selectedItem
@@ -976,6 +1069,14 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
   })();
   const hasVolume = selectedItem?.kind === 'audio' || selectedItem?.kind === 'video';
   const isVisual = selectedItem != null && selectedItem.kind !== 'audio';
+  const transformProps = selectedItem
+    ? KEYFRAME_PROPS.filter((prop) => prop !== 'volume' && getKeyframePropertyDefinition(prop).supports(selectedItem))
+    : [];
+  const transformResetDisabled = !selectedItem || !transformProps.some((prop) => {
+    const definition = getKeyframePropertyDefinition(prop);
+    return !!selectedItem.keyframes?.[prop]?.length
+      || Math.abs(definition.getBaseValue(selectedItem) - definition.defaultValue) >= 1e-6;
+  });
 
   return (
     <HistoryGestureContext.Provider value={historyGesture}>
@@ -1001,7 +1102,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
             {hasVolume && (
               <>
                 <SectionLabel>{t('音量')}</SectionLabel>
-                <VolumeControl item={selectedItem} onChange={onItemVolumeChange} onNormalize={onNormalizeLoudness} kf={{
+                <VolumeControl item={selectedItem} onChange={onItemVolumeChange} onNormalize={onNormalizeLoudness} onReset={onResetItemKeyframes} kf={{
                   ...playheadLocal,
                   set: onSetItemKeyframe,
                   remove: onRemoveItemKeyframe,
@@ -1015,22 +1116,34 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
             {(selectedItem.kind === 'video' || selectedItem.kind === 'audio') && onItemSpeedChange && (
               <><SectionLabel>{t('变速')}</SectionLabel><SpeedControl item={selectedItem} onChange={onItemSpeedChange} /></>
             )}
-            {isVisual && <><SectionLabel>{t('变换')}</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} kf={{
+            {isVisual && <><SectionLabel onReset={() => onResetItemKeyframes(transformProps)} resetDisabled={transformResetDisabled}>{t('变换')}</SectionLabel><TransformControl item={selectedItem} onChange={onItemTransformChange} onReset={onResetItemKeyframes} kf={{
               ...playheadLocal,
               set: onSetItemKeyframe,
               remove: onRemoveItemKeyframe,
               seekLocal: (frame) => onSeek(selectedItem.startFrame + frame),
             }} /></>}
-            {isVisual && <><SectionLabel>{t('滤镜')}</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} autoGrade={autoGrade} /></>}
+            {isVisual && <><SectionLabel
+              onReset={() => onItemFiltersChange({ brightness: 1, contrast: 1, saturate: 1, blur: 0 })}
+              resetDisabled={Math.abs((selectedItem.filters?.brightness ?? 1) - 1) < 1e-6
+                && Math.abs((selectedItem.filters?.contrast ?? 1) - 1) < 1e-6
+                && Math.abs((selectedItem.filters?.saturate ?? 1) - 1) < 1e-6
+                && (selectedItem.filters?.blur ?? 0) === 0}
+            >{t('滤镜')}</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} autoGrade={autoGrade} /></>}
             {/* GIF 不进 GL 管线(渲染端只纹理化 video/image),不提供特效入口;历史遗留可在片段右键移除 */}
             {(selectedItem.kind === 'video' || selectedItem.kind === 'image') && <><SectionLabel>{t('特效')}</SectionLabel><EffectsControl item={selectedItem} onChange={onItemEffectsChange} /></>}
-            {isVisual && <><SectionLabel>{t('缩放')}</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} getLocalFrame={() => Math.max(0, Math.min(selectedItem.durationInFrames - 1, getPlayhead() - selectedItem.startFrame))} fps={fps} onSetKeyframe={onSetReframeKeyframe} onRemoveKeyframe={onRemoveReframeKeyframe} /></>}
+            {isVisual && <><SectionLabel
+              onReset={() => onItemZoomChange(null)}
+              resetDisabled={!selectedItem.zoom}
+            >{t('缩放')}</SectionLabel><ZoomControl zoom={selectedItem.zoom} onChange={onItemZoomChange} getLocalFrame={() => Math.max(0, Math.min(selectedItem.durationInFrames - 1, getPlayhead() - selectedItem.startFrame))} fps={fps} onSetKeyframe={onSetReframeKeyframe} onRemoveKeyframe={onRemoveReframeKeyframe} /></>}
             {isVisual && <><SectionLabel>{t('转场')}</SectionLabel><TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} audioMode={false} /></>}
             {selectedItem.kind === 'audio' && (
               <><SectionLabel>{t('音频转场')}</SectionLabel>
               <TransitionControl transition={transition} fps={fps} onAdd={onAddTransition} onSet={onSetTransition} onRemove={onRemoveTransition} audioMode /></>
             )}
-            <SectionLabel>{t('淡入淡出')}</SectionLabel>
+            <SectionLabel
+              onReset={() => onItemFadeChange({ fadeInFrames: 0, fadeOutFrames: 0 })}
+              resetDisabled={(selectedItem.fadeInFrames ?? 0) === 0 && (selectedItem.fadeOutFrames ?? 0) === 0}
+            >{t('淡入淡出')}</SectionLabel>
             <FadeControl item={selectedItem} fps={fps} onChange={onItemFadeChange} />
             {selectedItem.kind === 'solid' && (
               <>

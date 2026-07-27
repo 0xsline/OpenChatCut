@@ -40,6 +40,7 @@ import { isolateVoiceOnSrc, strengthFromAudioFxId } from './audio/isolateVoice';
 import { analyzeClipLoudness, gainForTarget } from './audio/loudness';
 import { analyzeAutoGrade, type AutoGradeResponse } from './color/autoGrade';
 import { useOfflineMedia } from './media/useOfflineMedia';
+import { keyframeResetBatch } from './editor/keyframeReset';
 
 interface EditorProps {
   initial: ProjectDoc;
@@ -616,6 +617,11 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             onRemoveReframeKeyframe={(frame) => state.selectedId && commands.removeReframeKeyframe(state.selectedId, frame)}
             onSetItemKeyframe={(prop, frame, value, easing) => state.selectedId && commands.setItemKeyframe(state.selectedId, prop, frame, value, easing)}
             onRemoveItemKeyframe={(prop, frame) => state.selectedId && commands.removeItemKeyframe(state.selectedId, prop, frame)}
+            onResetItemKeyframes={(props) => {
+              if (!state.selectedId) return;
+              const reset = keyframeResetBatch(state.selectedId, props);
+              commands.batch(reset.actions, reset.label);
+            }}
             onSeek={(frame) => shortcutApiRef.current?.seekTo(frame)}
             transition={state.transitions?.find((t) => t.incomingItemId === state.selectedId) ?? null}
             onAddTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}

@@ -1240,21 +1240,46 @@ button, input, select { font: inherit; }
 .cc-insp-section {
   font-size:10px; color:var(--cc-text-dim); letter-spacing:0.06em; text-transform:uppercase;
   margin-top:8px; padding-top:6px; border-top:0.5px solid var(--cc-hover);
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
 }
 .cc-insp-groups > .cc-insp-section:first-child { margin-top:0; border-top:0; padding-top:0; }
 .cc-insp-hint { font-size:11px; color:var(--cc-text-dim); line-height:1.4; margin-bottom:2px; }
 .cc-insp-muted { font-size:11px; color:var(--cc-text-dim); }
 .cc-insp-stack { display:flex; flex-direction:column; gap:5px; }
 .cc-insp-row {
-  display:grid; grid-template-columns:40px 1fr 40px; align-items:center; gap:8px;
+  display:grid; grid-template-columns:44px minmax(60px, 1fr) 76px; align-items:center; gap:8px;
   font-size:11px; color:var(--cc-text-muted); min-height:22px;
 }
 .cc-insp-label { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .cc-insp-val {
+  display:flex; align-items:center; justify-content:flex-end; gap:3px; min-width:0;
   text-align:right; font-variant-numeric:tabular-nums; color:var(--cc-text-muted); font-size:10.5px;
 }
 .cc-insp-range {
-  width:100%; height:4px; accent-color:#6a9fd8; cursor:pointer; margin:0;
+  width:100%; height:4px; accent-color:var(--cc-accent); cursor:pointer; margin:0;
+}
+.cc-insp-scalar, .cc-insp-number {
+  width:54px; height:20px; padding:1px 4px; border:0.5px solid transparent; border-radius:4px;
+  background:transparent; color:var(--cc-text-muted); font:inherit; font-variant-numeric:tabular-nums; text-align:right;
+}
+.cc-insp-scalar { cursor:ew-resize; }
+.cc-insp-scalar:hover, .cc-insp-scalar:focus-visible, .cc-insp-number:focus {
+  background:var(--cc-inset); border-color:var(--cc-border-light); outline:none;
+}
+.cc-insp-number { background:var(--cc-inset); border-color:var(--cc-accent); }
+.cc-insp-reset, .cc-insp-group-reset {
+  border:0; background:none; color:var(--cc-text-dim); cursor:pointer;
+}
+.cc-insp-reset {
+  width:17px; height:20px; padding:0; border-radius:4px;
+  display:grid; place-items:center;
+}
+.cc-insp-reset:hover:not(:disabled), .cc-insp-group-reset:hover:not(:disabled) {
+  color:var(--cc-text); background:var(--cc-hover);
+}
+.cc-insp-reset:disabled, .cc-insp-group-reset:disabled { opacity:0.28; cursor:default; }
+.cc-insp-group-reset {
+  padding:1px 4px; border-radius:3px; font-size:9.5px; letter-spacing:0; text-transform:none;
 }
 .cc-insp-select {
   flex:1; min-width:0; background:var(--cc-inset); color:var(--cc-text); border:0.5px solid var(--cc-border);
