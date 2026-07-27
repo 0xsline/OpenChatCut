@@ -8,10 +8,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / [未发布]
 
+## [0.1.6] - 2026-07-27
+
 ### Added / 新增
 
 - Added an `undo_last_change` agent tool, so "undo that" works in chat. It restores the project state from before the last applied change as a normal proposed edit, meaning the user still confirms it and the revert itself stays undoable.
   新增 `undo_last_change` Agent 工具，在对话里说「撤销刚才那个」即可。它把上一步的工程状态作为一次普通提案编辑恢复，因此仍由用户确认，且这次回滚本身也可以再被撤销。
+- Added per-track gap reporting to `read_project`, allowing the agent to find empty ranges without reconstructing them from every clip.
+  `read_project` 新增逐轨空隙报告，Agent 无需遍历全部片段即可定位空白区间。
+- Added precise Inspector controls with direct numeric entry, drag scrubbing, keyboard adjustment, and one-click resets while preserving keyframe-aware editing.
+  检查器新增精确数值输入、拖拽微调、键盘调节与一键复位，同时保持关键帧感知的编辑行为。
 
 ### Changed / 变更
 
@@ -19,6 +25,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   编辑类工具现在会回报时间线上实际发生的变化，而不只是「成功」，Agent 不必在每次编辑后重读整个工程。波纹位移压缩成规则（`track / fromFrame / by / count`）而不是逐条列出被推动的片段，另附新建轨道、被删片段 id，以及变更过多时的重读提示。
 - Frame contact sheets now prefer moments where the picture actually changes, filling the rest with even sampling, so a locked-off shot no longer returns a grid of near-identical frames.
   帧联系表现在优先取画面真正发生变化的时刻，其余用均匀取样补齐；固定机位素材不会再返回一整版几乎相同的画面。
+- Unified editor panel spacing, controls, typography, and state styling across the shell, library, media pool, preview, chat, timeline, and Inspector.
+  统一编辑器壳层、资源库、素材池、预览、聊天、时间线与检查器的间距、控件、字体和状态样式。
+- Kept the volatile timeline snapshot out of the cached Agent prompt prefix, improving prompt-cache reuse without changing project context.
+  将频繁变化的时间线快照移出 Agent 提示词缓存前缀，在不丢失工程上下文的前提下提高缓存复用率。
 
 ### Fixed / 修复
 
@@ -26,6 +36,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   修复 FCPXML 导出的素材路径不可用:`/media/uploads/<名字>` 被原样写成 `file:///media/uploads/<名字>`(指向文件系统根目录),导入达芬奇或 Final Cut 后每条素材都是离线的。现按真实素材目录(遵循 `MEDIA_DIR`)换算为绝对路径并逐段 URL 编码,中文与含空格的文件名也能正确重链。
 - Fixed FCPXML export flattening transcript-edited audio into one contiguous clip: deleted words came back in the NLE and the material after them was lost. Audio clips now export one clip per kept segment, sharing the same `keptSegments` source of truth as playback. Video clips keep playing continuously through word deletions, so they stay a single clip.
   修复 FCPXML 导出把文字稿编辑过的音频压成单段连续片段:被删掉的词会在 NLE 中重现,其后的内容整段丢失。音频片段现按保留段逐段导出,与播放层共用同一个 `keptSegments` 真源;视频片段的删词不改画面,仍保持单段。
+- Fixed Agent generation, progress, aborted-turn history, and media inspection paths so partial replies survive cancellation, image references retain their real MIME type, and frame extraction failures are surfaced and recovered consistently.
+  修复 Agent 生成、进度、停止后的历史记录与媒体检查链路：取消时保留已有回复，图片引用保持真实 MIME 类型，抽帧失败能够一致地报告并恢复。
+- Fixed generated-result downloads by retrying transient failures and retaining the remote URL when local persistence still fails.
+  修复生成结果下载：短暂失败会自动重试，本地持久化仍失败时保留远端 URL。
+- Fixed editor persistence and media lifecycle edge cases: pending autosaves now flush when leaving, and cleanup no longer deletes uploads still referenced by a project.
+  修复编辑器持久化与素材生命周期边界：离开编辑器时写入待处理自动保存，清理任务也不再删除工程仍在引用的上传素材。
+- Fixed invalid timeline state by healing out-of-range fades and keyframes on load, and by keeping edits within clip duration, source media, and cut boundaries.
+  修复非法时间线状态：载入时修正越界淡入淡出与关键帧，编辑时保证片段不超出自身时长、源素材和切割边界。
+- Fixed slider drags creating excessive undo steps and exposed keyframe controls only where the selected item supports them.
+  修复滑杆拖动生成过多撤销步骤的问题，并仅在选中项支持时显示关键帧控件。
+- Fixed semantic media search returning duplicate or weak matches by deduplicating results per asset and applying a relevance floor.
+  修复语义素材搜索返回重复或低相关结果的问题，现按素材去重并过滤弱匹配。
 
 ## [0.1.5] - 2026-07-27
 
