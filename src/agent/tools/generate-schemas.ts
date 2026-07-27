@@ -90,6 +90,31 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
     },
   },
   {
+    name: 'submit_voice_batch',
+    description: 'Synthesize MANY voice clips in ONE parallel call — one per scene. Pass one {text, voiceId?} per scene; returns one audio asset per scene (assetId + durationInFrames). Use this instead of submit_voice once per scene — a 12-min video has ~30 scenes. Each scene text should be ≤900 chars (under the KikiVoice limit). Place the returned clips back-to-back on track A1 in scene order.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              text: { type: 'string', minLength: 1, description: 'The scene narration text to synthesize (normalized, ≤900 chars).' },
+              voiceId: { type: 'string', description: 'Optional per-item voice override (default joni for kikivoice).' },
+              name: { type: 'string', description: 'Optional media-pool asset name for this clip.' },
+            },
+            required: ['text'],
+          },
+          description: 'One entry per scene (1-50).',
+        },
+        provider: { type: 'string', enum: ['elevenlabs', 'doubao', 'minimax', 'kikivoice'], description: 'Shared provider for all items (default kikivoice).' },
+        voiceId: { type: 'string', description: 'Shared voiceId for all items unless overridden per item (default joni).' },
+      },
+      required: ['items'],
+    },
+  },
+  {
     name: 'submit_sound',
     description: 'Generate one original/custom sound effect with ElevenLabs and create an audio asset in the media pool. Does not place timeline items. For ordinary whooshes, clicks, impacts, dings, and similar editing sounds, use the existing library first.',
     input_schema: {

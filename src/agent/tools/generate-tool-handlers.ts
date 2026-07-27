@@ -189,9 +189,55 @@ async function submitExportHandler(args: GenerateArgs, ctx: AgentContext): Promi
   return { error: 'format must be video, audio, subtitles, or xml' };
 }
 
+// Bounded-concurrency map for batch voice synth (KikiVoice rate-limit aware, order-preserving).
+async function mapBoundedVoice<T, R>(items: readonly T[], bound: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(bound, items.length) }, async () => {
+    while (cursor < items.length) { const i = cursor++; out[i] = await fn(items[i]); }
+  });
+  await Promise.all(workers);
+  return out;
+}
+const VOICE_BATCH_MAX = 50;
+const VOICE_BATCH_CONCURRENCY = 4;
+
+// submit_voice_batch: synth one clip per scene in parallel (one call, not N sequential submit_voice).
+// Returns one audio asset per scene (assetId + durationInFrames) so the agent can place them
+// back-to-back on A1. Per-item failure is isolated (a bad scene doesn't kill the batch).
+const submitVoiceBatchHandler: Handler = async (args, ctx) => {
+  const raw = Array.isArray(args.items) ? args.items : [];
+  const items = raw
+    .filter((it): it is Record<string, unknown> => !!it && typeof it === 'object' && !Array.isArray(it))
+    .map((it) => ({
+      text: typeof it.text === 'string' ? it.text : '',
+      voiceId: typeof it.voiceId === 'string' && it.voiceId.trim() ? it.voiceId.trim() : undefined,
+      name: typeof it.name === 'string' && it.name.trim() ? it.name.trim() : undefined,
+    }))
+    .filter((it) => it.text.trim())
+    .slice(0, VOICE_BATCH_MAX);
+  if (!items.length) return { error: 'items must be a non-empty array of {text} (max 50)' };
+  const provider = args.provider === 'doubao' || args.provider === 'minimax' || args.provider === 'kikivoice' ? args.provider : 'kikivoice';
+  const sharedVoice = typeof args.voiceId === 'string' && args.voiceId.trim() ? args.voiceId.trim() : undefined;
+  const state = ctx.getState();
+  const results = await mapBoundedVoice(items, VOICE_BATCH_CONCURRENCY, async (it) => {
+    try {
+      const input = buildSubmitVoiceArgs({ text: it.text, voiceId: it.voiceId ?? sharedVoice, provider, name: it.name });
+      const asset = await submitVoice(input, state);
+      addAsset(ctx, asset);
+      return { ok: true, assetId: asset.id, durationInFrames: asset.durationInFrames, name: asset.name, text: it.text };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e), text: it.text };
+    }
+  });
+  const synthed = results.filter((r) => r.ok).length;
+  return { ok: synthed > 0, synthed, failed: results.length - synthed, total: results.length, results };
+};
+
 const COMMANDS: Record<string, Handler> = {
   submit_image: safe(submitImageHandler),
   submit_voice: safe(submitVoiceHandler),
+  submit_voice_batch: safe(submitVoiceBatchHandler),
   submit_sound: safe(submitSoundHandler),
   submit_music: safe(submitMusicHandler),
   submit_video: safe(submitVideoHandler),

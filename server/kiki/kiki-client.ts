@@ -20,6 +20,11 @@ export interface KikiClientOptions {
   baseUrl: string; // https://kikivoice.ai
   model: string; // KIKI_MODEL (e.g. "kiki_core")
   userAgent: string; // must match the UA the login window used (cf_clearance binds IP+UA)
+  /** TTS speed multiplier passed to create-task ('1' = normal). <1 slower, >1 faster.
+   *  From KIKI_SPEED env. Use to compensate a clone whose natural pace misses the target WPS
+   *  (e.g. joni speaks ~3.1 wps at '1'; '0.8' ≈ 2.5 wps). Prefer planning at the real WPS
+   *  (VITE_NARRATION_WPS) over slowing the voice — slowed TTS can sound unnatural. */
+  speed?: string;
   transport: KikiTransport;
   /** Clone reference audio for a voice id. Desktop bundles joni.wav (Indonesian). */
   getRefAudio: (voiceId: string) => Promise<KikiFilePart>;
@@ -229,7 +234,7 @@ export class KikiClient {
       clone_source_voice_prompt_text_language: promptLanguage,
       clone_source_voice_gender: '0',
       model_type: this.opts.model,
-      speed: '1',
+      speed: this.opts.speed ?? '1',
       volume: '100',
       audio_format: 'mp3',
       audio_high_quality: '0',

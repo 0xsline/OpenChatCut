@@ -184,6 +184,7 @@ export async function kikiVoice(options: VoiceOptions, input: ValidVoiceRequest)
   const client = new KikiClient({
     baseUrl: (options.kikiBaseUrl || 'https://kikivoice.ai').replace(/\/$/, ''),
     model: options.kikiModel || 'kiki_core',
+    speed: process.env.KIKI_SPEED || undefined,
     userAgent: options.kikiUserAgent
       || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
     transport,

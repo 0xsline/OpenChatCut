@@ -151,14 +151,14 @@ LLMs tend to UNDER-write. A 20-minute video at 2.5 wps needs ~3000 words of narr
 - VERIFY THE SCRIPT FIRST, BEFORE generating any voice: write ALL scenes' narration as TEXT first, then call verify_word_budget with that text (do NOT submit_voice yet). If status is UNDER_BUDGET (total < 90% target), EXPAND the script text — add scenes / lengthen thin ones — and verify AGAIN, looping until status ok. Only AFTER verify_word_budget returns ok do you call submit_voice per segment. NEVER generate voice for a script that has not passed verify_word_budget — generating 6 babaks of audio then discovering the count is short wastes renders. Do NOT stop partway, do NOT ask the user "should I continue?" or "is this enough?" — keep writing + verifying until status ok. The user's requested word count (e.g. 2400) is a HARD FLOOR, not a suggestion; stopping at 1079 when they asked for 2400 is a failure, even if the footage syncs.
 - Treat anything under ~90% of the requested length as INCOMPLETE. "Bikin 2500 kata" means ≥2250 words actually written, not 500.
 
-## Voiceover Discipline (KikiVoice 1000-char limit — CRITICAL)
+## Voiceover Discipline (PER SCENE — one audio clip per scene)
 
-KikiVoice (kiki_core) REJECTS text longer than 1000 characters per request (TEXT_TOO_LONG), and a 5-min narration is already ~3000+ chars. But do NOT fix this by firing submit_voice per tiny scene — that means 20-30+ calls for a 20-min video (wasteful, burns token/turn budget). The right granularity is a SEGMENT:
+Generate ONE voice clip PER SCENE — not one big blob per babak. A scene is ~40-80 words (~300-600 chars), comfortably UNDER KikiVoice's 1000-char limit, so each scene is a single clean TTS call with no server-side splitting. One audio clip per scene = one footage alignment unit per scene (transcribe the scene clip, place its footage at the scene's start).
 
-- Generate ONE submit_voice call per SEGMENT (one babak/phase = ~2-4 minutes of narration). Send the WHOLE segment's narration text in that single call — the server auto-splits anything over 1000 chars internally and concatenates the audio, so you do NOT split it yourself.
-- Do NOT split into micro-clips (NO narasi_02a / 02b / 02c / 02d). One segment = one submit_voice with the full segment text. A 20-min video is ~4-6 voice calls total.
-- Place each segment's audio clip on track A1 BACK-TO-BACK in order: segment 2 starts where segment 1 ends. No overlap, no gap.
-- Spell digits/symbols out (Text Normalization) BEFORE submitting, so each segment's text is already normalised.
+- Use submit_voice_batch to synth ALL scenes in ONE parallel call (like download_media_batch): pass one {text, voiceId} per scene. The server synth's them concurrently and returns one audio asset per scene (with duration). This is the FAST path — do NOT fire submit_voice once per scene sequentially (30 sequential calls for a 12-min video is slow).
+- Each scene's text = the FULL normalized narration for that scene (digits/symbols spelled out — see Text Normalization). Keep each scene ≤900 chars; if a scene runs longer, split it into TWO scenes in the plan, not two TTS calls.
+- Place the returned audio clips on track A1 BACK-TO-BACK in scene order: scene 2's clip starts where scene 1's ends. No overlap, no gap. Each clip's duration comes from the batch result.
+- Do NOT bundle multiple scenes into one submit_voice call — that recreates the big-blob problem (server splits it, you lose the per-scene clip granularity needed to align footage per scene).
 
 ## Text Normalization (TTS-critical)
 
