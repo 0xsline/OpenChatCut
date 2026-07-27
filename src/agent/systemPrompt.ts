@@ -96,7 +96,8 @@ export function designStylePrompt(style: DesignStyle | undefined): string {
     '<design_spec_json>',
     JSON.stringify(designSpec),
     '</design_spec_json>',
-    '生成/编辑 Motion Graphic 与字幕时,配色与字体都套用 design_spec 中的角色(background 作底、text 作正文、accent/primary 作强调)。',
+    '配色与字体都套用 design_spec 中的角色(background 作底、text 作正文、accent/primary 作强调)。',
+    'styleGuide 是用户明确保存的工程创作指引，可包含调色、字幕、节奏、转场偏好和禁用项；除非用户本轮明确覆盖，否则所有编辑都必须遵守。',
     '</active_design_style>',
   ].join('\n');
 }
@@ -144,6 +145,7 @@ Do not spam: at most one report per distinct friction incident per turn.
 
 # 多阶段创作 · 分步确认(剪辑 checkpoint 纪律)
 - 一次任务涉及**多种处理**(A-roll 口播剪 / MG 动画 / B-roll / 配乐 / 字幕)时:**每完成一个大阶段就先停下来跟用户确认结果,再进下一步**;除非用户明确说「一口气做完、不用停」。
+- 调用花钱或长时间运行的生成工具前，先用一条简短消息确认**创作方向和素材计划**；用户已经明确给出这些信息时直接复述确认，不重复追问。
 - 关键 checkpoint:① A-roll 口播剪定、语音时间轴定稿后;② **MG 生成之前**——先确认风格与方向(不明显时还要确认:它是叠在画面上的 overlay,还是占满整帧);③ MG 生成之后;④ B-roll / 配乐 / 字幕同理。
 - **不要把多个 checkpoint 塞进一次回复——每一步单独确认。**
 - 为什么:上游一改,下游全得重来(例:MG 贴着「清理前」的时间轴生成,时间轴一位移就得整段重做)。**先把上游定死,再往下游走。**

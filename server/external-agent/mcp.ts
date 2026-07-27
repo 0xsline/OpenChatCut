@@ -19,6 +19,8 @@ import {
 } from './broker.ts';
 import { createExternalProject, listExternalProjects } from './projects.ts';
 
+export const OPENCHATCUT_SKILL_BASELINE = '2026-07-27.1';
+
 const PROJECT_SELECTOR = {
   type: 'string',
   description: 'OpenChatCut project id. Optional when exactly one editor is connected or target_project was called.',
@@ -158,6 +160,7 @@ function makeServer(baseUrl: string): Server {
     {
       capabilities: { tools: {} },
       instructions: [
+        `OpenChatCut external skill baseline: ${OPENCHATCUT_SKILL_BASELINE}. Update with npx skills update openchatcut when the installed skill is older.`,
         'OpenChatCut project edits are session-scoped.',
         'Call begin_edit_session first with approvalMode manual (default) or auto, then pass its editSessionId to every editor tool.',
         'Call review_edit_session when the draft is ready.',

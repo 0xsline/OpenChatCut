@@ -5,7 +5,7 @@
 // 最多能跑 MAX_TOOL_TURNS 轮。所以这里守的不变式是:**易变段永远是最后一段**,
 // 两次调用之间只要稳定段没变,公共前缀就必须一路覆盖到易变段开头。
 import assert from 'node:assert/strict';
-import { assembleSystemPrompt, editorStatePrompt } from './systemPrompt';
+import { assembleSystemPrompt, designStylePrompt, editorStatePrompt, SYSTEM_PROMPT } from './systemPrompt';
 import type { AgentContext } from './context';
 import type { ProjectDoc, TimelineItem, TimelineState } from '../editor/types';
 
@@ -76,6 +76,18 @@ const commonPrefixLength = (a: string, b: string): number => {
   const a = assembleSystemPrompt(['SYSTEM', 'CAPS', 'AAAA'], 'S');
   const b = assembleSystemPrompt(['SYSTEM', 'CAPS', 'BBBB'], 'S');
   assert.equal(commonPrefixLength(a, b), 'SYSTEMCAPS'.length, '只从真正变化的那一段开始失效');
+}
+
+// ── 工程创作指引会进入提示词，并覆盖所有编辑而非只约束 MG ──
+{
+  const prompt = designStylePrompt({
+    colors: [],
+    fonts: [],
+    styleGuide: '字幕保持两行以内，避免炫光转场。',
+  });
+  assert.match(prompt, /字幕保持两行以内/);
+  assert.match(prompt, /所有编辑都必须遵守/);
+  assert.match(SYSTEM_PROMPT, /创作方向和素材计划/);
 }
 
 console.log('systemPromptOrder.verify: ok (易变段收尾/真 editorStatePrompt 不污染前缀/失效点最小化)');

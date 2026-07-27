@@ -36,6 +36,7 @@ jobs:
           fi
       - run: npm run lint
       - run: npm test
+      - run: npm run verify:agent-skill
       - run: npm run build
 
   package:

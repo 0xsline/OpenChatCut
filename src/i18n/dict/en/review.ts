@@ -1,0 +1,18 @@
+export default {
+  '审阅评论': 'Review comments',
+  '评论': 'Comments',
+  '评论加载失败': 'Failed to load comments',
+  '评论保存失败': 'Failed to save comment',
+  '回复保存失败': 'Failed to save reply',
+  '在当前帧添加审阅评论': 'Add a review comment at the current frame',
+  '绑定当前帧；可用时同时记录片段与源位置': 'Anchors to this frame and, when available, the clip and source position',
+  '添加评论': 'Add comment',
+  '还没有审阅评论': 'No review comments yet',
+  '片段': 'Clip',
+  '时间线': 'Timeline',
+  '输入回复': 'Write a reply',
+  '回复': 'Reply',
+  '重新打开': 'Reopen',
+  '解决': 'Resolve',
+  '删除评论': 'Delete comment',
+} satisfies Record<string, string>;

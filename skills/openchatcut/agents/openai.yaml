@@ -1,0 +1,18 @@
+interface:
+  display_name: "OpenChatCut"
+  short_description: "Connect and edit local OpenChatCut video projects"
+  brand_color: "#7C3AED"
+  icon_small: "./assets/openchatcut-icon.png"
+  icon_large: "./assets/openchatcut-icon.png"
+  default_prompt: "Use $openchatcut to connect to OpenChatCut and inspect the selected video project."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "openchatcut"
+      description: "OpenChatCut local editor MCP server"
+      transport: "streamable_http"
+      url: "http://localhost:5199/api/external-mcp/mcp"
+
+policy:
+  allow_implicit_invocation: true

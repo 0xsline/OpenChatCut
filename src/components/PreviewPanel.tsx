@@ -2,7 +2,13 @@ import { memo, useEffect, useRef, useState, type CSSProperties, type RefObject }
 import { Player, type CallbackListener, type PlayerRef } from '@remotion/player';
 import { theme, themeAlpha } from '../theme';
 import { TimelineComposition } from '../editor/TimelineComposition';
-import { captionTrackEntries, timelineDuration, type TimelineState, type TrackId } from '../editor/types';
+import {
+  captionTrackEntries,
+  timelineDuration,
+  type TimelineItem,
+  type TimelineState,
+  type TrackId,
+} from '../editor/types';
 import { canvasRegionRef, emitSelectionRef, regionFromDrag, useSelectionRefMode } from '../agent/selection-refs';
 import { CaptionPreviewEditor } from '../captions/CaptionPreviewEditor';
 import type { CaptionsData } from '../captions/types';
@@ -13,6 +19,7 @@ import {
 import { appendDroppedManualCaption } from '../captions/manualCaptions';
 import { Icon } from './icons';
 import { useT } from '../i18n/locale';
+import { ReviewCommentsButton } from '../review/ReviewCommentsButton';
 
 const SHARED_AUDIO_TAGS = 32;
 
@@ -24,10 +31,15 @@ interface PreviewPanelProps {
   /** 画布字幕直编(选中框+浮动工具条)。未传(如提案预览态)则只读。 */
   onUpdateCaptions?: (patch: Partial<CaptionsData>, track?: TrackId) => void;
   onSeedChat?: (text: string) => void;
+  projectId: string;
+  timelineId: string;
+  reviewState: TimelineState;
+  selectedItem: TimelineItem | null;
 }
 
 export const PreviewPanel = memo(function PreviewPanel({
   state, playerRef, onImport, offlineSrcs, onUpdateCaptions, onSeedChat,
+  projectId, timelineId, reviewState, selectedItem,
 }: PreviewPanelProps) {
   const t = useT();
   const duration = timelineDuration(state);
@@ -92,17 +104,27 @@ export const PreviewPanel = memo(function PreviewPanel({
             {t('选择模式：在画面上拖框选区作为引用')}
           </span>
         )}
-        {state.items.length > 0 && (
-          <button type="button" onClick={() => setShowSafe((v) => !v)}
-            title={t('切换标题/动作安全区参考框（竖屏成片构图辅助）')}
-            style={{
-              marginLeft: 'auto', fontSize: 11, lineHeight: 1, padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
-              border: `0.5px solid ${theme.border}`, background: showSafe ? theme.panelAlt : 'transparent',
-              color: showSafe ? theme.text : theme.textDim,
-            }}>
-            {t('安全框')}
-          </button>
-        )}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <ReviewCommentsButton
+            projectId={projectId}
+            timelineId={timelineId}
+            state={reviewState}
+            selectedItem={selectedItem}
+            getCurrentFrame={() => playerRef.current?.getCurrentFrame() ?? 0}
+            onSeek={(frame) => playerRef.current?.seekTo(frame)}
+          />
+          {state.items.length > 0 && (
+            <button type="button" onClick={() => setShowSafe((v) => !v)}
+              title={t('切换标题/动作安全区参考框（竖屏成片构图辅助）')}
+              style={{
+                fontSize: 11, lineHeight: 1, padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
+                border: `0.5px solid ${theme.border}`, background: showSafe ? theme.panelAlt : 'transparent',
+                color: showSafe ? theme.text : theme.textDim,
+              }}>
+              {t('安全框')}
+            </button>
+          )}
+        </div>
       </div>
       <div className="cc-preview-stage"
         // Suppress the browser's native <video> context menu (download / picture-in-picture

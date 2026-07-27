@@ -5,6 +5,17 @@ description: Use when checking whether agent edits are reflected in the OpenChat
 
 # Verification
 
+Use the lowest verification level that proves the requested result:
+
+| Level | Required evidence |
+|---|---|
+| L0 | Static checks such as the focused verification script, `npx tsc --noEmit`, tests, and build. |
+| L1 | A real Agent run against the editor at `localhost:5199`, followed by structural and rendered evidence. |
+| L2 | The packaged desktop app completing the user scenario, including human visual review where automation is insufficient. |
+
+Runtime behavior changes require L0 + L1. Release and desktop-only changes also
+require L2 when the packaged app is the behavior under test.
+
 Prefer two signals:
 
 1. `read_project` for structure: assets, tracks, items, frame placement, timeline duration.
@@ -51,6 +62,22 @@ When talking about seconds, verify the fps from `read_project` or use adapter to
 When reporting a timeline item location, use only the latest `read_project` structure for track alias, item id, start, duration, and asset id. Do not report planned/default tracks or tool-call intent as verified placement.
 
 Do not treat a command-line JSON response alone as sufficient when the user asks whether the editor reflects the result. Use the editor URL or visual proof when practical.
+
+## Real Agent transcript check
+
+After every L1 Agent run, inspect the complete chat record before reporting
+success:
+
+1. Read the final assistant response and every tool row created by the run.
+2. Expand failed or warning rows and record the exact error.
+3. Check for aborted turns, repeated retries, stale proposals, incomplete jobs,
+   and tool results that the final response incorrectly describes as successful.
+4. Compare the latest `read_project` result with the visible timeline.
+5. For visual edits, inspect returned timeline frames rather than trusting the
+   assistant summary.
+
+A run with a correct-looking timeline but an unreported tool error is not a
+clean pass. Fix the cause or report the remaining error explicitly.
 
 If verification fails, classify the gap before changing tools:
 

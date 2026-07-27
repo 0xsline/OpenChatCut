@@ -468,8 +468,8 @@ export interface DesignFont { family: string; role: string; }
 export interface DesignStyle {
   colors: DesignColor[];
   fonts: DesignFont[];
-  /** brand + motion guidelines (designSpec.styleGuide — often a detailed
-   * spring/stagger motion spec, not just a vibe sentence) */
+  /** Project editing guidance for color, typography, captions, pacing, motion,
+   * transitions, and explicit avoid rules. */
   styleGuide?: string;
 }
 

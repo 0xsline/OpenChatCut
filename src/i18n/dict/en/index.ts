@@ -11,6 +11,7 @@ import generate from './generate';
 import library from './library';
 import media from './media';
 import progress from './progress';
+import review from './review';
 import script from './script';
 import settings from './settings';
 import timeline from './timeline';
@@ -20,5 +21,5 @@ import transcript from './transcript';
 export const EN: Record<string, string> = Object.assign(
   {},
   audio, captions, chat, components, editor, exportPanel, fx, generate,
-  library, media, progress, script, settings, timeline, topbar, transcript,
+  library, media, progress, review, script, settings, timeline, topbar, transcript,
 );

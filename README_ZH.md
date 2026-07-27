@@ -225,6 +225,15 @@ OpenChatCut 目前处于积极开发阶段，编辑器、工程格式和 Agent �
 
 ## 在 Codex / Claude Code 中使用
 
+安装单入口 OpenChatCut Agent Skill：
+
+```bash
+npx skills add 0xsline/OpenChatCut
+```
+
+然后对 Agent 说“设置 OpenChatCut”。安装的路由 Skill 会注册本地 MCP
+连接，并按需加载编辑器内置的 15 个专项 Skill，避免技能列表出现大量入口。
+
 OpenChatCut 暴露 Streamable HTTP MCP：
 
 ```text

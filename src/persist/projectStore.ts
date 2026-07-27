@@ -440,6 +440,7 @@ export async function purgeProject(id: string): Promise<void> {
   await idbDel(`proposal:${id}`);
   await idbDel(`versions:${id}`);
   await idbDel(`jobs:${id}`);
+  await idbDel(`review:${id}`);
   await idbSet(INDEX_KEY, (await readIndex()).filter((m) => m.id !== id));
   clearProjectSessionPrefs(id);
 }

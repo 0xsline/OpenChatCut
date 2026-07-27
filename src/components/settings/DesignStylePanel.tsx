@@ -10,6 +10,7 @@ import {
   loadOwnedStyles, saveOwnedStyle, updateOwnedStyle, deleteOwnedStyle, type OwnedStyle,
 } from '../../persist/projectStore';
 import { FONT_CATALOG, searchFontCatalog } from '../../fonts/googleFonts';
+import { DesignStyleTransferButtons } from './DesignStyleTransferButtons';
 
 interface DesignStylePanelProps {
   style: DesignStyle | undefined;
@@ -37,7 +38,7 @@ const pick = (s: DesignStyle, roles: string[]): string | undefined => {
   return undefined;
 };
 
-/** 设计风格编辑器（manage_design_style）——预设库 + 配色/字体/品牌指引，
+  /** 设计风格编辑器（manage_design_style）——预设库 + 配色/字体/工程创作指引，
  * 本地草稿即时预览,「应用到工程」一次性提交(单条历史)。 */
 export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelProps) {
   const t = useT();
@@ -234,10 +235,10 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
             </div>
           </section>
 
-          {/* style guide */}
+          {/* project editing guide */}
           <section>
-            <div style={sectionTitle}>{t('品牌指引（可选）')}</div>
-            <textarea value={draft.styleGuide ?? ''} placeholder={t('用一句话描述这个品牌的视觉倾向,AI 生成时会遵守。')}
+            <div style={sectionTitle}>{t('工程创作指引（可选）')}</div>
+            <textarea value={draft.styleGuide ?? ''} placeholder={t('写下调色、字幕、节奏、转场偏好和禁用项，Agent 编辑时会遵守。')}
               onChange={(e) => setDraft((d) => ({ ...d, styleGuide: e.target.value }))}
               style={{ ...textInput, minHeight: 54, resize: 'vertical', fontFamily: 'inherit' }} />
           </section>
@@ -271,6 +272,10 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <button onClick={() => { onApply(null); onClose(); }} style={{ ...ghostBtn, color: theme.textDim }}>{t('清除风格')}</button>
             <button onClick={() => setSavingName('')} style={ghostBtn}>{t('保存为我的风格')}</button>
+            <DesignStyleTransferButtons name={metadataName} style={draft}
+              scenarios={metadataScenarios.split(',').map((value) => value.trim()).filter(Boolean)}
+              thumbnailUrl={metadataThumbnail}
+              onImported={(entry) => { selectOwned(entry); void refreshOwned(); }} />
             <div style={{ flex: 1, minWidth: 8 }} />
             <button onClick={onClose} style={ghostBtn}>{t('取消')}</button>
             <button onClick={() => { onApply(draft); onClose(); }} style={primaryBtn}>{t('应用到工程')}</button>

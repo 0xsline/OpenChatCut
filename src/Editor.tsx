@@ -555,6 +555,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       </div>
       <div style={{ gridColumn: 5, gridRow: 2, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
         <PreviewPanel state={autoGradePreviewState ?? previewState ?? state} playerRef={playerRef} onImport={importToCanvas}
+          projectId={project.id} timelineId={doc.activeTimelineId} reviewState={state} selectedItem={selectedItem}
           offlineSrcs={offlineSrcs}
           onUpdateCaptions={previewState || autoGradePreviewState ? undefined : commands.updateCaptions}
           onSeedChat={(text) => setChatSeed({ text, nonce: Date.now() })} />

@@ -225,6 +225,16 @@ The core timeline, local projects, built-in media, and manual editing do not dep
 
 ## Using OpenChatCut with Codex / Claude Code
 
+Install the single OpenChatCut Agent Skill:
+
+```bash
+npx skills add 0xsline/OpenChatCut
+```
+
+Then tell the agent `Set up OpenChatCut`. The installed router registers the
+local MCP connection and loads the editor's 15 specialized skills on demand,
+so the agent's skill list stays compact.
+
 OpenChatCut exposes a Streamable HTTP MCP endpoint:
 
 ```text
