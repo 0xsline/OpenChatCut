@@ -451,7 +451,7 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   if (SILENCE_TOOL_NAMES.has(name)) return execSilenceTool(name, args, ctx);
   if (COLOR_SCOPE_TOOL_NAMES.has(name)) return execColorScopeTool(name, args, ctx);
   if (BEAT_TOOL_NAMES.has(name)) return execBeatTool(name, args, ctx);
-  if (PLANNING_TOOL_NAMES.has(name)) return execPlanningTool(name, args);
+  if (PLANNING_TOOL_NAMES.has(name)) return execPlanningTool(name, args, ctx);
   if (AUDIO_ASSET_TOOL_NAMES.has(name)) return execAudioAssetTool(name, args, ctx);
   switch (name) {
     case 'read_timeline': {

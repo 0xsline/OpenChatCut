@@ -1,4 +1,5 @@
 import type { AgentToolSchema } from '../tool-schema';
+import type { AgentContext } from '../context';
 
 // Deterministic planning + verification tools so the agent can't under-write long-form videos.
 // LLMs tend to produce ~500 words when asked for 2500; these tools enforce a real word budget.
@@ -81,6 +82,21 @@ export const PLANNING_TOOL_SCHEMAS: AgentToolSchema[] = [
       required: ['video_clips', 'audio_duration_frames'],
     },
   },
+  {
+    name: 'verify_footage_diversity',
+    description: [
+      'Deterministically check the ACTUAL placed footage for visual diversity — reads the real V1 video items from the timeline (not agent claims).',
+      'You MUST call this before declaring the video done. Flags: (1) any clip reused more than max_reuse times (default 2), (2) the SAME clip on two consecutive shots (visual stutter). Returns status ok | LOW_DIVERSITY | NO_FOOTAGE. If LOW_DIVERSITY, download DISTINCT footage for the violating shots (one unique clip per shot, never reuse on adjacent shots) and re-place + re-verify — do NOT declare done while reusing.',
+    ].join(' '),
+    input_schema: {
+      type: 'object',
+      properties: {
+        track: { type: 'string', description: "Video track to check (default 'V1')." },
+        max_reuse: { type: 'number', minimum: 1, maximum: 10, description: 'Max times a single clip may be reused across the whole video (default 2). 1 = every shot unique.' },
+      },
+      required: [],
+    },
+  },
 ];
 
 export const PLANNING_TOOL_NAMES = new Set(PLANNING_TOOL_SCHEMAS.map((t) => t.name));
@@ -93,11 +109,64 @@ const PHASES = [
   { phase: 'IMPACT (incl. Indonesia connection)', weight: 0.20 },
 ] as const;
 
-export async function execPlanningTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+export async function execPlanningTool(name: string, args: Record<string, unknown>, ctx?: AgentContext): Promise<unknown> {
   if (name === 'plan_scenes') return planScenes(args);
   if (name === 'verify_word_budget') return verifyWordBudget(args);
   if (name === 'verify_timeline_sync') return verifyTimelineSync(args);
+  if (name === 'verify_footage_diversity') return verifyFootageDiversity(args, ctx);
   return { error: `unknown planning tool ${name}` };
+}
+
+/** Verify footage diversity from the ACTUAL placed V1 items (reads timeline state, not agent
+ *  claims). Flags clips reused >max_reuse times and any clip on two consecutive shots — both
+ *  make a multi-shot video look like a stuttering loop. status ok | LOW_DIVERSITY | NO_FOOTAGE. */
+function verifyFootageDiversity(args: Record<string, unknown>, ctx?: AgentContext): unknown {
+  if (!ctx) return { error: 'verify_footage_diversity needs the agent context (timeline state) — run it through executeTool.' };
+  const state = ctx.getState();
+  const requestedTrack = typeof args.track === 'string' && args.track.trim() ? args.track.trim() : 'V1';
+  const maxReuse = typeof args.max_reuse === 'number' && Number.isFinite(args.max_reuse)
+    ? Math.min(10, Math.max(1, Math.floor(args.max_reuse))) : 2;
+  // Footage clips = video items with a real source URL (excludes motion-graphic/text/title items).
+  const clips = state.items
+    .filter((it) => it.kind === 'video' && typeof it.src === 'string' && it.src)
+    .sort((a, b) => a.startFrame - b.startFrame);
+  if (!clips.length) {
+    return { status: 'NO_FOOTAGE', track: requestedTrack, action: `No video footage clips found. Place one distinct clip per shot on ${requestedTrack} before verifying.` };
+  }
+  // Group by source URL (the real clip identity — same src = same downloaded footage).
+  const bySrc = new Map<string, number[]>();
+  clips.forEach((it, i) => {
+    const arr = bySrc.get(it.src!) ?? [];
+    arr.push(i);
+    bySrc.set(it.src!, arr);
+  });
+  // (1) over-reuse: a clip used more than maxReuse times total.
+  const overReuse = [...bySrc.entries()]
+    .filter(([, idxs]) => idxs.length > maxReuse)
+    .map(([src, idxs]) => ({ src_tail: src.slice(-48), count: idxs.length, at_shots: idxs.map((i) => i + 1) }));
+  // (2) consecutive duplicates: the SAME clip on two adjacent shots (visual stutter).
+  const consecutive: Array<{ shot: number; next_shot: number; src_tail: string }> = [];
+  for (let i = 0; i + 1 < clips.length; i++) {
+    if (clips[i]!.src === clips[i + 1]!.src) {
+      consecutive.push({ shot: i + 1, next_shot: i + 2, src_tail: (clips[i]!.src ?? '').slice(-48) });
+    }
+  }
+  const uniqueClips = bySrc.size;
+  const totalClips = clips.length;
+  const ok = overReuse.length === 0 && consecutive.length === 0;
+  return {
+    status: ok ? 'ok' : 'LOW_DIVERSITY',
+    track: requestedTrack,
+    total_clips: totalClips,
+    unique_clips: uniqueClips,
+    diversity_pct: Math.round((uniqueClips / totalClips) * 100),
+    max_reuse: maxReuse,
+    over_reuse: overReuse,
+    consecutive_duplicates: consecutive,
+    action: ok
+      ? `Footage diversity OK — ${uniqueClips} unique clip(s) across ${totalClips} shot(s), no over-reuse, no consecutive duplicates.`
+      : `LOW DIVERSITY: ${overReuse.length} clip(s) reused more than ${maxReuse}×, ${consecutive.length} consecutive duplicate(s). Download a DISTINCT footage clip for each violating shot (one keyword → one unique clip), and do NOT place the same clip on adjacent shots. Re-place the new clips and call verify_footage_diversity again until status is ok — do NOT declare the video done.`,
+  };
 }
 
 /** Verify footage timeline: every clip <= max_clip_seconds (default 6s), NO gaps in coverage over

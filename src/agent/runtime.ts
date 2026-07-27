@@ -97,6 +97,7 @@ function createAgentTools(
   onSkillGuard?: (info: { skill: GenerationGuardSkill; tool: string }) => Promise<GuardDecision>,
   onFollowup?: () => void,
   onVerifyBudgetStatus?: (status: string) => void,
+  onVerifyFootageStatus?: (status: string) => void,
 ): ToolSet {
   return Object.fromEntries(TOOL_SCHEMAS.map((schema) => [
     schema.name,
@@ -131,6 +132,10 @@ function createAgentTools(
           if (schema.name === 'verify_word_budget') {
             const status = (result as { status?: unknown } | null)?.status;
             if (typeof status === 'string') onVerifyBudgetStatus?.(status);
+          }
+          if (schema.name === 'verify_footage_diversity') {
+            const status = (result as { status?: unknown } | null)?.status;
+            if (typeof status === 'string') onVerifyFootageStatus?.(status);
           }
           const changed = describeTimelineDelta(before, ctx.getState());
           const enriched = changed && result && typeof result === 'object' && !Array.isArray(result)
@@ -232,6 +237,7 @@ export async function runAgent(
   // Level 3 enforce: track the last verify_word_budget status so the runtime can BLOCK the agent
   // from finishing while the narration is under the requested word count.
   let lastVerifyBudgetStatus: string | null = null;
+  let lastFootageDiversityStatus: string | null = null;
 
   for (;;) {
     // Re-read agent settings per turn so UI toggles (auto-compact, planMode, skillGuard, thinking)
@@ -260,6 +266,7 @@ export async function runAgent(
           opts?.onSkillGuard,
           () => { askedFollowup = true; },
           (status) => { lastVerifyBudgetStatus = status; },
+          (status) => { lastFootageDiversityStatus = status; },
         );
 
     try {
@@ -368,6 +375,14 @@ export async function runAgent(
         // Inject a user turn forcing expansion + re-verify and continue the loop (agent must tool-call).
         if (lastVerifyBudgetStatus === 'UNDER_BUDGET') {
           conv.push({ role: 'user', content: 'verify_word_budget reported status UNDER_BUDGET. The requested word count is a HARD FLOOR, not a suggestion — stopping short is a failure. You MUST expand the narration (add scenes / lengthen thin ones) and call verify_word_budget again, looping until it returns status ok. Do NOT finish, do NOT ask the user whether to continue — keep writing and verifying.' });
+          if (++toolTurns >= MAX_TOOL_TURNS) { onEvent({ type: 'max-turns', turns: toolTurns }); return conv; }
+          continue;
+        }
+        // Level 3 enforce: the agent CANNOT finish while verify_footage_diversity reports
+        // LOW_DIVERSITY (same clip reused on consecutive shots / over the reuse cap = stuttering
+        // loop visuals). Force distinct-footage download + re-place + re-verify.
+        if (lastFootageDiversityStatus === 'LOW_DIVERSITY') {
+          conv.push({ role: 'user', content: 'verify_footage_diversity reported status LOW_DIVERSITY — footage is being reused (the same clip on consecutive shots, or one clip over the reuse cap). Repetitive visuals look like a broken loop and are a failure. Download DISTINCT footage for each violating shot (one unique clip per shot, NEVER the same clip on two adjacent shots), re-place them, and call verify_footage_diversity again until status is ok. Do NOT finish, do NOT ask whether to continue.' });
           if (++toolTurns >= MAX_TOOL_TURNS) { onEvent({ type: 'max-turns', turns: toolTurns }); return conv; }
           continue;
         }
