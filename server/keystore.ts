@@ -10,15 +10,23 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { AI_SDK_BASE_URL_FORMAT, resolveLlmBaseUrl } from './llm-config.ts';
 import {
+  LLM_CUSTOM_PROVIDERS_KEY,
   LLM_PROVIDER_PRESETS,
+  allLlmProviderPresets,
+  isDynamicLlmEnvKey,
+  isNonSecretLlmEnvKey,
   llmProviderConfigNames,
   normalizeLlmProvider,
+  parseCustomLlmProvidersJson,
+  setCustomLlmProviders,
 } from '../shared/llm-providers.ts';
 
 const ENV_PATH = resolve(process.cwd(), '.env.local');
 
 // Whitelist of settable env vars — mirrors what vite.config.ts reads. POST /api/keys
 // rejects anything outside this set so the endpoint can never write arbitrary env.
+// Dynamic LLM_*_(API_KEY|BASE_URL|MODEL) and LLM_CUSTOM_PROVIDERS are also allowed
+// (see isAllowedKeyName) so the user can add custom providers that persist to .env.local.
 export const KEY_NAMES = [
   'LLM_API_KEY', 'LLM_BASE_URL', 'LLM_BASE_URL_FORMAT',
   'LLM_ANTHROPIC_API_KEY', 'LLM_ANTHROPIC_BASE_URL', 'LLM_ANTHROPIC_MODEL',
@@ -33,6 +41,9 @@ export const KEY_NAMES = [
   'LLM_MISTRAL_API_KEY', 'LLM_MISTRAL_BASE_URL', 'LLM_MISTRAL_MODEL',
   'LLM_OPENROUTER_API_KEY', 'LLM_OPENROUTER_BASE_URL', 'LLM_OPENROUTER_MODEL',
   'LLM_9ROUTER_API_KEY', 'LLM_9ROUTER_BASE_URL', 'LLM_9ROUTER_MODEL',
+  'LLM_MAXPLUS_GROK_API_KEY', 'LLM_MAXPLUS_GROK_BASE_URL', 'LLM_MAXPLUS_GROK_MODEL',
+  'LLM_MAXPLUS_CODEX_API_KEY', 'LLM_MAXPLUS_CODEX_BASE_URL', 'LLM_MAXPLUS_CODEX_MODEL',
+  LLM_CUSTOM_PROVIDERS_KEY,
   'IMAGE_API_KEY', 'OPENAI_API_KEY', 'IMAGE_BASE_URL',
   'GEMINI_API_KEY', 'GEMINI_BASE_URL',
   'ELEVENLABS_API_KEY', 'ELEVENLABS_BASE_URL',
@@ -58,14 +69,26 @@ export const KEY_NAMES = [
   'PREFERRED_IMAGE_VENDOR', 'PREFERRED_VOICE_VENDOR',
   'PREFERRED_VIDEO_VENDOR', 'PREFERRED_MUSIC_VENDOR',
 ] as const;
-export type KeyName = (typeof KEY_NAMES)[number];
+export type KeyName = (typeof KEY_NAMES)[number] | string;
 const SETTABLE = new Set<string>(KEY_NAMES);
+
+/** Static whitelist OR a dynamic LLM_*_(API_KEY|BASE_URL|MODEL) name OR the custom-provider
+ * catalog. POST /api/keys uses this so the user can persist custom providers. */
+function isAllowedKeyName(name: string): boolean {
+  return SETTABLE.has(name) || isDynamicLlmEnvKey(name) || name === LLM_CUSTOM_PROVIDERS_KEY;
+}
+
+function isNonSecretName(name: string): boolean {
+  if (STATIC_NON_SECRET.has(name)) return true;
+  return isNonSecretLlmEnvKey(name);
+}
 
 // Names whose VALUES may be sent to the browser (model ids / vendor routing — config,
 // not credentials). Deliberately a separate explicit list rather than derived from
 // KEY_NAMES: adding a key to the whitelist must never accidentally make it non-secret.
-export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
+const STATIC_NON_SECRET = new Set<string>([
   'LLM_PROVIDER', 'LLM_MODEL', 'LLM_OPENAI_API_MODE',
+  LLM_CUSTOM_PROVIDERS_KEY,
   'GEMINI_IMAGE_MODEL', 'ELEVENLABS_TTS_MODEL', 'ELEVENLABS_SOUND_MODEL',
   'DOUBAO_TTS_RESOURCE_ID', 'SEEDANCE_VIDEO_MODEL', 'KLING_VIDEO_MODEL', 'MUREKA_MUSIC_MODEL',
   'MINIMAX_TTS_MODEL', 'MINIMAX_VIDEO_MODEL', 'MINIMAX_MUSIC_MODEL', 'MINIMAX_IMAGE_MODEL',
@@ -78,16 +101,32 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
     return [names.baseUrl, names.model];
   }),
 ]);
+export const NON_SECRET_NAMES: ReadonlySet<string> = STATIC_NON_SECRET;
 
 const store = new Map<string, string>();  // current value per key (seed + runtime overrides)
 const envSeeded = new Set<string>();       // which keys came from .env.local / process.env at startup
 
+/** Re-sync the shared custom-provider registry from the persisted LLM_CUSTOM_PROVIDERS JSON. */
+function syncCustomProvidersFromStore(): void {
+  setCustomLlmProviders(parseCustomLlmProvidersJson(store.get(LLM_CUSTOM_PROVIDERS_KEY) ?? ''));
+}
+
+function seedName(env: Record<string, string>, name: string): void {
+  const v = (env[name] ?? process.env[name] ?? '').trim();
+  if (v) { store.set(name, v); envSeeded.add(name); }
+}
+
 /** Seed the store from Vite's loaded env (+ process.env fallback). Call once at startup. */
 export function seedKeystore(env: Record<string, string>): void {
-  for (const name of KEY_NAMES) {
-    const v = (env[name] ?? process.env[name] ?? '').trim();
-    if (v) { store.set(name, v); envSeeded.add(name); }
+  for (const name of KEY_NAMES) seedName(env, name);
+  // Dynamic LLM_* keys for custom / future vendors (not listed statically in KEY_NAMES).
+  for (const name of Object.keys(env)) {
+    if (isDynamicLlmEnvKey(name) && !store.has(name)) seedName(env, name);
   }
+  for (const name of Object.keys(process.env)) {
+    if (isDynamicLlmEnvKey(name) && !store.has(name)) seedName(env, name);
+  }
+  syncCustomProvidersFromStore();
   for (const [target, value] of planLegacyLlmMigration(
     (n) => store.has(n),
     (n) => store.get(n) ?? '',
@@ -164,10 +203,20 @@ export interface KeyStatus { keys: Record<string, KeyState>; caps: Caps; models:
 export function keyStatus(): KeyStatus {
   const keys: Record<string, KeyState> = {};
   const models: Record<string, string> = {};
-  for (const name of KEY_NAMES) {
+  // Static whitelist + any dynamic LLM keys currently in memory + every known provider's
+  // config slots (so the settings UI can stage them even before they're saved).
+  const names = new Set<string>([...KEY_NAMES, ...store.keys()]);
+  for (const preset of allLlmProviderPresets()) {
+    const n = llmProviderConfigNames(preset.id);
+    names.add(n.apiKey);
+    names.add(n.baseUrl);
+    names.add(n.model);
+  }
+  for (const name of names) {
+    if (!isAllowedKeyName(name)) continue;
     const set = getKey(name).length > 0;
     keys[name] = { configured: set, source: set ? (envSeeded.has(name) ? 'env' : 'runtime') : 'none' };
-    if (NON_SECRET_NAMES.has(name)) models[name] = getKey(name);
+    if (isNonSecretName(name)) models[name] = getKey(name);
   }
   return { keys, caps: computeCaps(), models };
 }
@@ -177,7 +226,7 @@ export function keyStatus(): KeyStatus {
 export async function setKeys(patch: Record<string, unknown>): Promise<void> {
   let clean = new Map<string, string>();
   for (const [name, raw] of Object.entries(patch)) {
-    if (!SETTABLE.has(name)) continue;  // whitelist
+    if (!isAllowedKeyName(name)) continue;  // whitelist + dynamic LLM_* + custom-provider catalog
     const v = String(raw ?? '');
     if (/[\r\n]/.test(v)) throw new Error(`invalid value for ${name}: no newlines allowed`);
     const t = v.trim();
@@ -192,6 +241,7 @@ export async function setKeys(patch: Record<string, unknown>): Promise<void> {
     if (v) { store.set(name, v); envSeeded.delete(name); }  // now a runtime value
     else store.delete(name);
   }
+  if (clean.has(LLM_CUSTOM_PROVIDERS_KEY)) syncCustomProvidersFromStore();
   const existing = await readFile(ENV_PATH, 'utf8').catch((err: NodeJS.ErrnoException) => {
     if (err.code === 'ENOENT') return '';
     throw err;

@@ -55,20 +55,22 @@ for (const preset of LLM_PROVIDER_PRESETS) {
   assert.equal(normalizeLlmProvider(preset.id), preset.id);
   assert.equal(defaultModelForProvider(preset.id), preset.defaultModel);
   assert.doesNotThrow(() => new URL(preset.baseUrl));
-  // 有官方专属包的厂商走官方包(provider id 因包而异);其余 openai-compatible
-  const DEDICATED_PROVIDER_IDS: Record<string, string> = {
-    anthropic: 'anthropic.messages',
-    openai: 'openai.responses',
-    gemini: 'google.generative-ai',
+  // SDK provider id depends on wire protocol: anthropic/openai/google are native
+  // protocols; kimi/qwen/deepseek/mistral use dedicated vendor SDK packages; everything
+  // else (openai-compatible) → '<id>.chat'. Protocol-driven so anthropic-speaking presets
+  // (e.g. maxplus-grok) resolve to 'anthropic.messages' rather than '<id>.chat'.
+  const DEDICATED_SDK_PROVIDER_ID: Record<string, string> = {
     kimi: 'moonshotai.chat',
     qwen: 'alibaba.chat',
     deepseek: 'deepseek.chat',
     mistral: 'mistral.chat',
   };
-  assert.equal(
-    getLanguageModel(preset.id, 'test-model').provider,
-    DEDICATED_PROVIDER_IDS[preset.id] ?? `${preset.id}.chat`,
-  );
+  const expectedSdkId =
+    preset.protocol === 'anthropic' ? 'anthropic.messages'
+    : preset.protocol === 'openai' ? 'openai.responses'
+    : preset.protocol === 'google' ? 'google.generative-ai'
+    : DEDICATED_SDK_PROVIDER_ID[preset.id] ?? `${preset.id}.chat`;
+  assert.equal(getLanguageModel(preset.id, 'test-model').provider, expectedSdkId);
 }
 
 // Exercise the real AI SDK provider serializers without making a network call.

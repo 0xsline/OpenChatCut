@@ -113,24 +113,34 @@ function verifyTimelineSync(args: Record<string, unknown>): unknown {
   const over = clips
     .filter((c) => c.durationInFrames > maxFrames)
     .map((c) => ({ index: c.index, name: c.name, durationInFrames: c.durationInFrames, seconds: Math.round((c.durationInFrames / fps) * 10) / 10 }));
-  // (2) gaps: between clips + trailing gap to audio end
+  // (2) gaps + overlaps: walk sorted clips tracking the union extent (prevEnd).
   const gaps: Array<{ from: number; to: number; gap_frames: number; gap_seconds: number }> = [];
+  const overlaps: Array<{ index: number; name: string; overlap_frames: number; overlap_seconds: number }> = [];
   let prevEnd = 0;
+  let unionCovered = 0; // unique frames covered (overlaps not double-counted)
   for (const c of clips) {
+    const cEnd = c.startFrame + c.durationInFrames;
     if (c.startFrame > prevEnd) {
       const gf = c.startFrame - prevEnd;
       gaps.push({ from: prevEnd, to: c.startFrame, gap_frames: gf, gap_seconds: Math.round((gf / fps) * 10) / 10 });
+      unionCovered += c.durationInFrames; // disjoint segment — count it whole
+    } else if (c.startFrame < prevEnd) {
+      // overlap: this clip starts before the previous one ends (wasted frames)
+      const of = prevEnd - c.startFrame;
+      overlaps.push({ index: c.index, name: c.name, overlap_frames: of, overlap_seconds: Math.round((of / fps) * 10) / 10 });
+      unionCovered += Math.max(0, cEnd - prevEnd); // only the part extending past prevEnd
+    } else {
+      unionCovered += c.durationInFrames; // contiguous
     }
-    prevEnd = Math.max(prevEnd, c.startFrame + c.durationInFrames);
+    prevEnd = Math.max(prevEnd, cEnd);
   }
   if (prevEnd < audioDur) {
     const gf = audioDur - prevEnd;
     gaps.push({ from: prevEnd, to: audioDur, gap_frames: gf, gap_seconds: Math.round((gf / fps) * 10) / 10 });
   }
-  // (3) coverage
-  const covered = clips.reduce((s, c) => s + c.durationInFrames, 0);
-  const coveragePct = Math.round((covered / audioDur) * 100);
-  const ok = over.length === 0 && gaps.length === 0 && coveragePct >= 99;
+  // (3) coverage — union-based so overlapping regions aren't double-counted
+  const coveragePct = Math.round((unionCovered / audioDur) * 100);
+  const ok = over.length === 0 && gaps.length === 0 && overlaps.length === 0 && coveragePct >= 99;
   return {
     status: ok ? 'ok' : 'ISSUES',
     max_clip_seconds: maxSec,
@@ -138,12 +148,13 @@ function verifyTimelineSync(args: Record<string, unknown>): unknown {
     clip_count: clips.length,
     over_length_clips: over,
     gaps,
+    overlaps,
     coverage_pct: coveragePct,
-    total_video_frames: covered,
+    total_video_frames: unionCovered,
     audio_duration_frames: audioDur,
     action: ok
-      ? 'Timeline sync OK — all clips <=6s, no gaps, full coverage.'
-      : `FIX: ${over.length} clip(s) over ${maxSec}s (split each into <=6s sub-clips), ${gaps.length} gap(s) totaling ${gaps.reduce((s, g) => s + g.gap_frames, 0)} frames (fill with footage so coverage is contiguous), coverage ${coveragePct}% (need ~100%). Do NOT declare done until status is ok.`,
+      ? 'Timeline sync OK — all clips <=6s, no gaps, no overlaps, full coverage.'
+      : `FIX: ${over.length} over-length clip(s) (split into <=${maxSec}s), ${gaps.length} gap(s) totaling ${gaps.reduce((s, g) => s + g.gap_frames, 0)} frames (fill with footage), ${overlaps.length} overlap(s) totaling ${overlaps.reduce((s, o) => s + o.overlap_frames, 0)} frames (re-align so clips abut, not overlap), coverage ${coveragePct}% (need ~100%). Do NOT declare done until status is ok.`,
   };
 }
 

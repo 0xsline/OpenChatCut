@@ -372,9 +372,9 @@ export function ChatComposer(props: ChatComposerProps) {
         }}
       />
       {props.contextTokens > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, padding: '0 8px', fontSize: 10, lineHeight: 1.5, fontVariantNumeric: 'tabular-nums', color: props.contextTokens > agentSettings.contextThreshold * 0.8 ? '#f77' : props.contextTokens > agentSettings.contextThreshold * 0.5 ? '#fc6' : theme.textDim }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, padding: '0 8px', fontSize: 10, lineHeight: 1.5, fontVariantNumeric: 'tabular-nums', color: props.contextTokens > agentSettings.contextThreshold * 0.8 ? theme.danger : props.contextTokens > agentSettings.contextThreshold * 0.5 ? '#fc6' : theme.textDim }}>
           <div style={{ width: 60, height: 4, borderRadius: 2, background: theme.border, overflow: 'hidden' }}>
-            <div style={{ width: `${Math.min(100, (props.contextTokens / agentSettings.contextThreshold) * 100)}%`, height: '100%', background: props.contextTokens > agentSettings.contextThreshold * 0.8 ? '#f77' : props.contextTokens > agentSettings.contextThreshold * 0.5 ? '#fc6' : theme.success }} />
+            <div style={{ width: `${Math.min(100, (props.contextTokens / agentSettings.contextThreshold) * 100)}%`, height: '100%', background: props.contextTokens > agentSettings.contextThreshold * 0.8 ? theme.danger : props.contextTokens > agentSettings.contextThreshold * 0.5 ? '#fc6' : theme.success }} />
           </div>
           {Math.round(props.contextTokens / 1000)}K / {Math.round(agentSettings.contextThreshold / 1000)}K
         </div>
@@ -499,7 +499,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 }}
               />
               {addModelError && (
-                <div style={{ fontSize: 11, color: '#f77' }}>{addModelError}</div>
+                <div style={{ fontSize: 11, color: theme.danger }}>{addModelError}</div>
               )}
               <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                 <button
@@ -517,7 +517,7 @@ export function ChatComposer(props: ChatComposerProps) {
                   onClick={submitNewModel}
                   style={{
                     font: 'inherit', fontSize: 11.5, padding: '4px 10px', borderRadius: 5,
-                    border: `0.5px solid ${theme.accent}`, background: theme.accent, color: '#fff', cursor: 'pointer',
+                    border: `0.5px solid ${theme.accent}`, background: theme.accent, color: theme.onAccent, cursor: 'pointer',
                   }}
                 >
                   {t('添加')}
@@ -661,7 +661,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 <div style={{
                   width: `${Math.min(100, (props.contextTokens / agentSettings.contextThreshold) * 100)}%`,
                   height: '100%',
-                  background: props.contextTokens > agentSettings.contextThreshold * 0.8 ? '#f77' : props.contextTokens > agentSettings.contextThreshold * 0.5 ? '#fc6' : theme.success,
+                  background: props.contextTokens > agentSettings.contextThreshold * 0.8 ? theme.danger : props.contextTokens > agentSettings.contextThreshold * 0.5 ? '#fc6' : theme.success,
                 }} />
               </div>
               <span style={{ color: theme.text, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>

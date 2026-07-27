@@ -519,11 +519,18 @@ export async function execStockTool(name: string, args: Args, ctx: AgentContext)
 /** Batch stock search: many queries in ONE call (parallel). One query per scene/visual — far fewer
  *  tool calls than search_stock_media per scene. Shared kind/orientation/platforms/category/
  *  limitPerPlatform apply to every query; each query's results come back tagged with its query. */
+// Cap parallel stock searches per call: a 20-min video has ~40 scenes, and firing 40
+// simultaneous requests at Pexels/Pixabay/DVIDS/Wikimedia risks rate-limit bans (DVIDS
+// is strict). The agent should batch in groups, not dump all scenes at once.
+const MAX_BATCH_QUERIES = 12;
+
 async function execBatchSearchStockMedia(args: Args): Promise<unknown> {
-  const queries = Array.isArray(args.queries)
-    ? args.queries.map(String).map((q) => q.trim()).filter(Boolean)
+  const rawQueries = Array.isArray(args.queries)
+    ? args.queries.filter((q): q is string => typeof q === 'string').map((q) => q.trim()).filter(Boolean)
     : [];
-  if (!queries.length) return { error: 'queries must be a non-empty array of strings' };
+  if (!rawQueries.length) return { error: 'queries must be a non-empty array of strings' };
+  const truncated = rawQueries.length > MAX_BATCH_QUERIES;
+  const queries = truncated ? rawQueries.slice(0, MAX_BATCH_QUERIES) : rawQueries;
   const shared: Args = {};
   for (const k of ['kind', 'orientation', 'platforms', 'category']) {
     const v = args[k];
@@ -540,5 +547,12 @@ async function execBatchSearchStockMedia(args: Args): Promise<unknown> {
       }
     }),
   );
-  return { ok: true, query_count: queries.length, results };
+  return {
+    ok: true,
+    query_count: queries.length,
+    ...(truncated
+      ? { truncated: true, dropped: rawQueries.length - MAX_BATCH_QUERIES, note: `capped at ${MAX_BATCH_QUERIES} queries per call to avoid provider rate-limits — call again for the remaining scenes` }
+      : {}),
+    results,
+  };
 }

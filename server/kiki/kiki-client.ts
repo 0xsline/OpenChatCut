@@ -358,6 +358,14 @@ function splitForKiki(text: string, maxLen: number): string[] {
       // hard-split a single over-long sentence on whitespace
       let w = '';
       for (const word of s.split(/(\s+)/)) {
+        if (word.length > maxLen) {
+          // Space-less scripts (Chinese/Japanese/Thai): a single "word" can itself
+          // exceed maxLen, so the (w+word) check would never split it. Flush what we
+          // have, then char-split the over-long word so no chunk violates the limit.
+          if (w.trim()) { chunks.push(w.trim()); w = ''; }
+          for (let i = 0; i < word.length; i += maxLen) chunks.push(word.slice(i, i + maxLen));
+          continue;
+        }
         if ((w + word).length > maxLen) { if (w.trim()) chunks.push(w.trim()); w = word; }
         else w += word;
       }

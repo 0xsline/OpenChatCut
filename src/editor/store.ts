@@ -244,7 +244,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
             track: pickTrack(at?.track, 'video'),
             durationInFrames: at?.durationInFrames ?? Math.round(5 * 30),
             kind: 'solid',
-            name: at?.name ?? '纯色',
+            name: at?.name ?? t('纯色'),
             width: 1920,
             height: 1080,
             props: { color: at?.color ?? '#1a1a1a' },
@@ -296,7 +296,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
             track: pickTrack(at?.track ?? 'V2', 'video'), // titles default to the top video track
             durationInFrames: at?.durationInFrames ?? 90,
             kind: 'text',
-            name: '文字',
+            name: t('文字'),
             width: 1920,
             height: 1080,
             props: { text: t('双击编辑文字'), fontSize: 96, color: '#ffffff', fontWeight: 700, align: 'center' },

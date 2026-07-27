@@ -66,7 +66,7 @@ const CHROME_FILES = [
 
 const CONTENT_COLORS_BY_FILE = new Map<string, ReadonlySet<string>>([
   ['src/components/settings/DesignStylePanel.tsx', new Set(['#000000'])],
-  ['src/components/chat/ChatComposer.tsx', new Set(['#e5866a'])],
+  ['src/components/chat/ChatComposer.tsx', new Set(['#e5866a', '#fc6'])], // #fc6 = fixed semantic warning amber for the medium-usage token meter state
   ['src/components/settings/settingsVendorPane.tsx', new Set(['#f77'])],
   ['src/components/PreviewPanel.tsx', new Set([
     '#000', 'rgba(255,255,255,${opacity})', 'rgba(255,255,255,0.18)',

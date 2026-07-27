@@ -74,6 +74,7 @@ assert.equal(getKey('LLM_API_KEY'), 'secret-abc', 'getKey returns the live value
 // SECRET 值仍然绝不出现在任何响应里 ──
 const MODEL_ROUTING_NAMES = [
   'LLM_PROVIDER', 'LLM_MODEL', 'LLM_OPENAI_API_MODE',
+  'LLM_CUSTOM_PROVIDERS', // JSON catalog of custom-provider configs — config, not credentials
   'GEMINI_IMAGE_MODEL', 'ELEVENLABS_TTS_MODEL', 'ELEVENLABS_SOUND_MODEL',
   'DOUBAO_TTS_RESOURCE_ID', 'SEEDANCE_VIDEO_MODEL', 'KLING_VIDEO_MODEL', 'MUREKA_MUSIC_MODEL',
   'MINIMAX_TTS_MODEL', 'MINIMAX_VIDEO_MODEL', 'MINIMAX_MUSIC_MODEL', 'MINIMAX_IMAGE_MODEL',

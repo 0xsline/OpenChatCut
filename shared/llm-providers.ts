@@ -266,6 +266,10 @@ export function protocolToApiFormat(
   if (protocol === 'openai') {
     return openAiMode === 'chat' ? 'chat_completions' : 'responses';
   }
+  // 'google' has no user-selectable wire format (the @ai-sdk/google client owns the
+  // native /models/{id}:generateContent path). Return a benign default; providerApiPath
+  // short-circuits google before reaching here, so this only guards direct callers.
+  if (protocol === 'google') return 'chat_completions';
   return 'chat_completions';
 }
 

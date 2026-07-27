@@ -1,8 +1,13 @@
 // checks:key-probes 纯逻辑 — 探测表覆盖面、override 白名单、状态分类、
 // MiniMax base_resp 后置校验、runProbe 的不打网络早退。全程无真实网络请求。
 import assert from 'node:assert/strict';
-import { PROBES, classifyStatus, makeGetter, minimaxPostCheck, networkMessage, runProbe } from './key-probes.ts';
+import { getProbes, classifyStatus, makeGetter, minimaxPostCheck, networkMessage, runProbe } from './key-probes.ts';
 import { LLM_PROVIDER_PRESETS } from '../shared/llm-providers.ts';
+
+// Probes are built dynamically (so runtime-added custom LLM providers get a probe page).
+// Snapshot once here — no custom providers are seeded during this test, so the set equals
+// the built-in pages exactly.
+const PROBES = getProbes();
 
 // 1. 与 settingsSchema 的厂商页一一对应(page key 同名);llm 页随 preset 推导,
 //    其余能力页加页时同步这份清单。
@@ -12,7 +17,7 @@ const EXPECTED_PAGES = [
   'voice/elevenlabs', 'voice/doubao', 'voice/minimax',
   'video/seedance', 'video/kling', 'video/hailuo',
   'music/mureka', 'music/minimax',
-  'stock/pexels', 'stock/pixabay', 'stock/unsplash', 'stock/freesound',
+  'stock/pexels', 'stock/pixabay', 'stock/unsplash', 'stock/freesound', 'stock/dvids',
   'transcription/assemblyai',
   'sandbox/e2b',
   'web/firecrawl',
@@ -71,7 +76,7 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
 {
   const unset = await runProbe('storage/local', {});
   assert.equal(unset.ok, true);
-  assert.match(unset.message, /默认目录 .*public\/media\/uploads/); // 文案带机器相关绝对路径,只锚定尾段
+  assert.match(unset.message, /默认目录 .*public[\\/]media[\\/]uploads/); // 文案带机器相关绝对路径,只锚定尾段(Windows=\, POSIX=/)
   const relative = await runProbe('storage/local', { MEDIA_DIR: 'relative/path' });
   assert.equal(relative.ok, false);
   assert.match(relative.message, /绝对路径/);

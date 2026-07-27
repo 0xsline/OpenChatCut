@@ -96,6 +96,7 @@ function createAgentTools(
   settings: ReturnType<typeof loadAgentSettings>,
   onSkillGuard?: (info: { skill: GenerationGuardSkill; tool: string }) => Promise<GuardDecision>,
   onFollowup?: () => void,
+  onVerifyBudgetStatus?: (status: string) => void,
 ): ToolSet {
   return Object.fromEntries(TOOL_SCHEMAS.map((schema) => [
     schema.name,
@@ -124,6 +125,13 @@ function createAgentTools(
           // 模型,省掉一次全量 read_project(只读工具的差分是 null,不加字段)。
           const before = snapshotTimeline(ctx.getState());
           const result = await executeTool(schema.name, args, ctx);
+          // Level 3 enforce: capture verify_word_budget's status DIRECTLY from the tool's
+          // return value (robust — does not depend on the SDK's responseMessages shape,
+          // which wraps results as JSON text and would otherwise need parsing).
+          if (schema.name === 'verify_word_budget') {
+            const status = (result as { status?: unknown } | null)?.status;
+            if (typeof status === 'string') onVerifyBudgetStatus?.(status);
+          }
           const changed = describeTimelineDelta(before, ctx.getState());
           const enriched = changed && result && typeof result === 'object' && !Array.isArray(result)
             ? { ...(result as Record<string, unknown>), changed }
@@ -162,7 +170,7 @@ function estimateTokens(messages: readonly ModelMessage[]): number {
   return Math.ceil(JSON.stringify(messages).length / 4);
 }
 
-async function compactConversation(conv: ModelMessage[]): Promise<ModelMessage[]> {
+async function compactConversation(conv: ModelMessage[], signal?: AbortSignal): Promise<ModelMessage[]> {
   if (conv.length <= KEEP_RECENT_MESSAGES) return conv;
   const oldMessages = conv.slice(0, conv.length - KEEP_RECENT_MESSAGES);
   const recent = conv.slice(conv.length - KEEP_RECENT_MESSAGES);
@@ -173,6 +181,7 @@ async function compactConversation(conv: ModelMessage[]): Promise<ModelMessage[]
       messages: oldMessages,
       maxOutputTokens: 6000,
       maxRetries: 0,
+      abortSignal: signal,
     });
     const summary = await summaryResult.text;
     return [
@@ -241,6 +250,7 @@ export async function runAgent(
           settings,
           opts?.onSkillGuard,
           () => { askedFollowup = true; },
+          (status) => { lastVerifyBudgetStatus = status; },
         );
 
     try {
@@ -249,10 +259,16 @@ export async function runAgent(
       // the provider not to store the response.
       // Auto-compact: if enabled (agentSettings) and context approaches the model limit, summarize old conversation.
       if (settings.autoCompact && estimateTokens(conv) > settings.contextThreshold) {
-        onEvent({ type: 'error', message: `[context] auto-compact: context melebihi ~${settings.contextThreshold} token — merangkum percakapan lama, menyimpan ${KEEP_RECENT_MESSAGES} pesan terbaru` });
-        const compacted = await compactConversation(conv);
+        onEvent({ type: 'error', message: `[context] auto-compact: context exceeded ~${settings.contextThreshold} tokens — summarizing older conversation, keeping ${KEEP_RECENT_MESSAGES} recent messages` });
+        const compacted = await compactConversation(conv, opts?.signal);
         conv.length = 0;
         conv.push(...compacted);
+        // Re-fire guard: if even the kept-recent window alone exceeds the threshold (one
+        // huge tool dump), drop oldest messages from the front so the gate doesn't fire
+        // again next turn and re-summarize its own summary (losing the original request).
+        while (estimateTokens(conv) > settings.contextThreshold && conv.length > 4) {
+          conv.shift();
+        }
       }
       const requestMessages = protocolForProvider(PROVIDER) === 'openai'
         ? makeMessagesPortable(conv)
@@ -317,18 +333,8 @@ export async function runAgent(
         return completeAbortedTurn(conv, persisted);
       }
       conv = [...conv, ...responseMessages];
-      // Track verify_word_budget result status (for the under-budget finish gate below).
-      for (const m of responseMessages) {
-        const content = (m as { content?: unknown }).content;
-        if ((m as { role?: string }).role === 'tool' && Array.isArray(content)) {
-          for (const part of content as Array<{ type?: string; toolName?: string; result?: { status?: unknown } }>) {
-            if (part?.type === 'tool-result' && part.toolName === 'verify_word_budget') {
-              const status = part.result?.status;
-              if (typeof status === 'string') lastVerifyBudgetStatus = status;
-            }
-          }
-        }
-      }
+      // verify_word_budget status is captured directly in createAgentTools' execute()
+      // (via onVerifyBudgetStatus) — see comment there. No responseMessages parsing here.
       // Emit context token count: prefer EXACT from model usage, fall back to chars/4 estimate.
       // 9router (OpenAI-compat proxy) may NOT include usage in streaming responses by default
       // (OpenAI requires stream_options:{include_usage:true}). The fallback ensures the meter

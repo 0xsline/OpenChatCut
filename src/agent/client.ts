@@ -67,11 +67,20 @@ const proxyHeaders = (provider: LlmProvider): Record<string, string> => ({
   'x-openchatcut-provider': provider,
 });
 
-const anthropicProvider = createAnthropic({
-  baseURL: PROXY_API_BASE,
-  apiKey: PROXY_KEY,
-  headers: proxyHeaders('anthropic'),
-});
+// Anthropic-protocol providers are cached PER PROVIDER ID (not a single singleton):
+// maxplus-grok and other Anthropic-speaking gateways carry their own config
+// (LLM_MAXPLUS_GROK_*), routed server-side via the x-openchatcut-provider header.
+// A shared singleton would hard-code that header to 'anthropic' and misroute every
+// anthropic-protocol preset to api.anthropic.com.
+const anthropicProviders = new Map<LlmProvider, ReturnType<typeof createAnthropic>>();
+function anthropicProviderFor(provider: LlmProvider): ReturnType<typeof createAnthropic> {
+  let p = anthropicProviders.get(provider);
+  if (!p) {
+    p = createAnthropic({ baseURL: PROXY_API_BASE, apiKey: PROXY_KEY, headers: proxyHeaders(provider) });
+    anthropicProviders.set(provider, p);
+  }
+  return p;
+}
 const openaiProvider = createOpenAI({
   baseURL: PROXY_API_BASE,
   apiKey: PROXY_KEY,
@@ -110,7 +119,7 @@ export function getLanguageModel(
   openAiApiMode: OpenAiApiMode = OPENAI_API_MODE,
 ): ConfiguredLanguageModel {
   const protocol = protocolForProvider(provider);
-  if (protocol === 'anthropic') return anthropicProvider(model);
+  if (protocol === 'anthropic') return anthropicProviderFor(provider)(model);
   if (protocol === 'openai') {
     return openAiApiMode === 'chat'
       ? openaiProvider.chat(model)
