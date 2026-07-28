@@ -147,6 +147,13 @@ function modelOptionsForPreset(
       { value: 'gpt-5.6-sol', label: 'gpt-5.6-sol' },
     ];
   }
+  if (preset.id === 'zai-coding') {
+    return [
+      { value: 'glm-5.2', label: 'glm-5.2' },
+      { value: 'glm-4.7', label: 'glm-4.7' },
+      { value: 'glm-5-turbo', label: 'glm-5-turbo' },
+    ];
+  }
   return [{ value: preset.defaultModel, label: preset.defaultModel }];
 }
 

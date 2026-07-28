@@ -27,7 +27,7 @@ import freesoundSvg from '../../../assets/vendor-icons/freesound.svg?raw';
 import cloudflareSvg from '../../../assets/vendor-icons/cloudflare.svg?raw';
 
 export type VendorId =
-  | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter' | '9router'
+  | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'zai-coding' | 'deepseek' | 'mistral' | 'openrouter' | '9router'
   | 'xiaomi' | 'maxplus-grok' | 'maxplus-codex' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
   | 'dvids' | 'wikimedia'
@@ -46,6 +46,7 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
   kimi: { svg: kimiSvg },
   qwen: { svg: qwenSvg },
   glm: { svg: zhipuSvg },
+  'zai-coding': { svg: zhipuSvg }, // Z.AI = Zhipu international brand; reuse icon
   deepseek: { svg: deepseekSvg },
   mistral: { svg: mistralSvg },
   minimax: { svg: minimaxSvg },

@@ -27,6 +27,7 @@ assert.equal(defaultModelForProvider('openai'), 'gpt-5');
 assert.equal(defaultModelForProvider('kimi'), 'kimi-k3');
 assert.equal(defaultModelForProvider('qwen'), 'qwen-plus');
 assert.equal(defaultModelForProvider('glm'), 'glm-5.2');
+assert.equal(defaultModelForProvider('zai-coding'), 'glm-5.2');
 assert.equal(defaultModelForProvider('openrouter'), 'openrouter/auto');
 assert.equal(providerApiPath('anthropic'), '/messages');
 assert.equal(providerApiPath('openai'), '/responses');

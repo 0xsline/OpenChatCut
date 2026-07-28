@@ -90,6 +90,16 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'glm-5.2',
   },
   {
+    // ZAI (z.ai) GLM Coding Plan — subscription (prompt-quota) endpoint, BUKAN pay-per-token
+    // standard API. Pakai API key yang dibuat di bawah Coding Plan subscription
+    // (z.ai/manage-apikey), bukan key API biasa. Region International.
+    id: 'zai-coding',
+    label: 'ZAI · GLM Coding Plan',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://api.z.ai/api/coding/paas/v4',
+    defaultModel: 'glm-5.2',
+  },
+  {
     id: 'deepseek',
     label: 'DeepSeek',
     protocol: 'openai-compatible',

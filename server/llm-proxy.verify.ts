@@ -26,6 +26,7 @@ assert.equal(resolveLlmBaseUrl('anthropic', ''), 'https://api.anthropic.com/v1')
 assert.equal(resolveLlmBaseUrl('kimi', ''), 'https://api.moonshot.ai/v1');
 assert.equal(resolveLlmBaseUrl('qwen', ''), 'https://dashscope-us.aliyuncs.com/compatible-mode/v1');
 assert.equal(resolveLlmBaseUrl('glm', ''), 'https://open.bigmodel.cn/api/paas/v4');
+assert.equal(resolveLlmBaseUrl('zai-coding', ''), 'https://api.z.ai/api/coding/paas/v4');
 assert.equal(resolveLlmBaseUrl('deepseek', ''), 'https://api.deepseek.com');
 assert.equal(resolveLlmBaseUrl('minimax', ''), 'https://api.minimaxi.com/v1');
 assert.equal(resolveLlmBaseUrl('gemini', ''), 'https://generativelanguage.googleapis.com/v1beta');
