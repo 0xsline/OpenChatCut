@@ -156,6 +156,20 @@ Describe the goal → Agent reads the project → Produces verifiable edits → 
 
 ---
 
+## Community Resources
+
+The [OpenChatCut resource library](https://openchatcut.com/resources) is a shared catalog for reusable editing assets:
+
+- Browse MG animations, sound effects, transitions, visual effects, zooms, and LUTs by category.
+- Hover visual cards to watch the complete result, or play audio resources before downloading.
+- Copy an install URL into OpenChatCut's Extension Center, or download the original resource package.
+- Submit your own resource file, preview source, metadata, and license for review and publication.
+- Manage installed extensions locally without changing the original project media.
+
+Installable visual resources use the same `openchatcut-plugin@1` format and runtime validation as the editor. Published resources stay compatible with the project specification instead of becoming a separate marketplace-only format.
+
+---
+
 ## Use Cases
 
 - **Talking-head and interview editing**: transcribe audio or video, remove mistakes, pauses, and repetition through text, then generate captions automatically.
