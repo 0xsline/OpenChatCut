@@ -140,9 +140,6 @@ function useCaptionMove(options: {
   const [drag, setDrag] = useState<MoveDrag | null>(null);
   const dragRef = useRef<MoveDrag | null>(null);
   const updateDrag = (next: MoveDrag | null) => { dragRef.current = next; setDrag(next); };
-  const delta = (current: CueDrag, clientX: number) => cueDeltaFrames(
-    current, clientX, 'move', state, trackId, playheadFrame, px, snapping,
-  );
   const start = (event: ReactPointerEvent, key: string, target: ManualCueTarget) => {
     const cue = target.words[target.index];
     if (!cue || locked || event.button !== 0) return;
@@ -151,7 +148,10 @@ function useCaptionMove(options: {
       deltaFrames: 0, targetTrackId: trackId });
   };
   useEffect(() => {
-    if (!drag) return;
+    if (!dragRef.current) return;
+    const delta = (current: CueDrag, clientX: number) => cueDeltaFrames(
+      current, clientX, 'move', state, trackId, playheadFrame, px, snapping,
+    );
     const move = (event: PointerEvent) => {
       const current = dragRef.current;
       if (!current) return;

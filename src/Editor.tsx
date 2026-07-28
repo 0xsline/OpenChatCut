@@ -149,7 +149,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       },
       onProjectRenamed: onRename,
     }),
-    [commands, project.id, onRename, changeCreativeMode],
+    [commands, project.id, onRename, changeCreativeMode, offlineSrcsRef, getUndoTarget],
   );
   // a pending proposal's draft result, previewed in the player (null = committed)
   const [previewState, setPreviewState] = useState<TimelineState | null>(null);
