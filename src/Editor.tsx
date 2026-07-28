@@ -36,7 +36,7 @@ import type { TimelineShortcutApi } from './shortcuts/timelineApi';
 import { ShortcutsDialog } from './shortcuts/ShortcutsDialog';
 import { AppToastHost } from './ui/AppToastHost';
 import { showAppToast } from './ui/appToast';
-import { isolateVoiceOnSrc, strengthFromAudioFxId } from './audio/isolateVoice';
+import { isolateVoiceOnSrc } from './audio/isolateVoice';
 import { analyzeClipLoudness, gainForTarget } from './audio/loudness';
 import { analyzeAutoGrade, type AutoGradeResponse } from './color/autoGrade';
 import { useOfflineMedia } from './media/useOfflineMedia';
@@ -516,7 +516,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       </div>
 
       <div style={{ gridColumn: 3, gridRow: 2, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} transitions={state.transitions ?? []} fxDefs={state.fxDefs ?? {}} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} offlineAssetIds={offlineAssetIds} onAssetLoadError={(asset) => markMediaOffline(asset.src)} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onRemoveMediaAsset={commands.removeMediaAsset}
+        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} offlineAssetIds={offlineAssetIds} onAssetLoadError={(asset) => markMediaOffline(asset.src)} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onRemoveMediaAsset={commands.removeMediaAsset}
           onRelinkMediaAsset={(id, next) => commands.relinkMediaAsset(id, next)}
           onAddSolid={() => commands.addSolidItem({ startFrame: getPlayhead() })}
           onUseTemplateAI={useTemplateAI}
@@ -534,23 +534,6 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             commands.setItemEffects(state.selectedId, next, serializableDefsFor(next));
           }}
           onApplyZoom={(zoom) => state.selectedId && commands.setItemZoom(state.selectedId, zoom)}
-          onApplyAudioFx={async (audioFxId) => {
-            const id = state.selectedId;
-            const item = id ? state.items.find((it) => it.id === id) : null;
-            if (!item || (item.kind !== 'video' && item.kind !== 'audio')) {
-              showAppToast(t('人声隔离只能用在视频 / 音频片段上'), { error: true });
-              return;
-            }
-            showAppToast(t('人声隔离处理中…'), { ms: 60_000 });
-            try {
-              const strength = strengthFromAudioFxId(audioFxId);
-              const r = await isolateVoiceOnSrc(item.src ?? '', strength, { force: true });
-              commands.setItemDenoise(item.id, r.path, r.strength);
-              showAppToast(t('人声隔离已应用'));
-            } catch (err) {
-              showAppToast(err instanceof Error ? err.message : t('人声隔离失败'), { error: true });
-            }
-          }}
  />
       </div>
       <div style={{ gridColumn: 4, gridRow: 2 }}>

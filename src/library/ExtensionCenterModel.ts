@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import type { InstalledPack } from '../plugins/store';
 import { theme } from '../theme';
 
-export type CenterTab = '发现' | '已安装' | '创作';
+export type CenterTab = '发现' | '已安装';
 export type Category = '全部' | 'MG' | '转场' | '特效' | 'LUT' | '缩放';
 
 export interface RegistryEntry {
@@ -17,7 +17,7 @@ export interface RegistryEntry {
   itemCount?: number;
 }
 
-export const CENTER_TABS: CenterTab[] = ['发现', '已安装', '创作'];
+export const CENTER_TABS: CenterTab[] = ['发现', '已安装'];
 export const EXTENSION_CATEGORIES: Category[] = ['全部', 'MG', '转场', '特效', 'LUT', '缩放'];
 export const EXTENSION_TYPE_LABEL: Record<string, string> = {
   'mg-template': 'MG',

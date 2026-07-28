@@ -1,5 +1,5 @@
-// 「导出为插件」:勾选会话内自定义内容(AI 生成的特效/转场、时间线 MG)→
-// 组包校验 → 下载 JSON。数据采集在这里,组包纯逻辑在 plugins/export.ts。
+// 「创作扩展」:勾选会话内自定义内容 → 组包校验 →
+// 保存到本地资源库或下载投稿 JSON。组包纯逻辑在 plugins/export.ts。
 import { useMemo, useState } from 'react';
 import { theme } from '../theme';
 import { useT } from '../i18n/locale';
@@ -7,7 +7,8 @@ import type { TimelineItem, TransitionItem } from '../editor/types';
 import type { SerializableFxDef } from '../gl/fx/uniforms';
 import { CUSTOM_FX } from '../gl/fx/effects';
 import { listCustomTransitions } from '../gl/customTransitions';
-import { buildExportPack, fxCandidates, mgCandidates, transitionCandidates, type ExportCandidate } from '../plugins/export';
+import { buildExportPack, fxCandidates, lutCandidates, mgCandidates, transitionCandidates, zoomCandidates, type ExportCandidate } from '../plugins/export';
+import { installFromText } from '../plugins/install';
 import { PACK_ID_RE } from '../plugins/types';
 
 interface PluginExportProps {
@@ -53,19 +54,24 @@ export function PluginExport({ items, transitions, fxDefs, defaultOpen = false }
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<string[]>([]);
   const [done, setDone] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  // 采集三路候选:CUSTOM_FX(会话)∪ state.fxDefs(持久)、注册表 ∪ 时间线转场、时间线 MG
+  // 会话注册表与工程持久数据合并去重,只导出用户创作内容。
   const groups = useMemo(() => {
     const defs = new Map<string, SerializableFxDef>();
     for (const d of Object.values(fxDefs)) defs.set(d.id, d);
     for (const d of Object.values(CUSTOM_FX)) if (!d.pipeline) defs.set(d.id, d as SerializableFxDef);
+    const allDefs = [...defs.values()];
     return {
-      fx: fxCandidates([...defs.values()]),
+      fx: fxCandidates(allDefs),
+      lut: lutCandidates(allDefs),
       tr: transitionCandidates(listCustomTransitions(), transitions),
+      zoom: zoomCandidates(items),
       mg: mgCandidates(items),
     };
   }, [items, transitions, fxDefs]);
-  const total = groups.fx.length + groups.tr.length + groups.mg.length;
+  const allCandidates = [...groups.fx, ...groups.lut, ...groups.tr, ...groups.zoom, ...groups.mg];
+  const total = allCandidates.length;
 
   const toggle = (key: string) => {
     setChecked((prev) => {
@@ -75,16 +81,37 @@ export function PluginExport({ items, transitions, fxDefs, defaultOpen = false }
     });
   };
 
-  const doExport = () => {
+  const buildSelected = () => {
     setDone(null);
-    const selected = [...groups.fx, ...groups.tr, ...groups.mg].filter((c) => checked.has(c.key)).map((c) => c.item);
-    if (!selected.length) { setErrors([t('先勾选要打包的内容')]); return; }
-    if (!PACK_ID_RE.test(packId.trim())) { setErrors([t('包 id 需为小写字母/数字/连字符(2..40 位),如 my-pack')]); return; }
+    const selected = allCandidates.filter((c) => checked.has(c.key)).map((c) => c.item);
+    if (!selected.length) { setErrors([t('先勾选要打包的内容')]); return null; }
+    if (!PACK_ID_RE.test(packId.trim())) { setErrors([t('包 id 需为小写字母/数字/连字符(2..40 位),如 my-pack')]); return null; }
     const res = buildExportPack({ id: packId, name: packName || packId, author }, selected);
-    if (!res.ok) { setErrors(res.errors.slice(0, 4)); return; }
+    if (!res.ok) { setErrors(res.errors.slice(0, 4)); return null; }
     setErrors([]);
+    return res;
+  };
+
+  const doExport = () => {
+    const res = buildSelected();
+    if (!res) return;
     download(`${res.pack.id}.json`, res.json);
-    setDone(t('已导出 {file}({n} 条内容)——分享该文件即可让他人安装', { file: `${res.pack.id}.json`, n: selected.length }));
+    setDone(t('已导出 {file}({n} 条内容)——可直接上传资源网站', { file: `${res.pack.id}.json`, n: res.pack.items.length }));
+  };
+
+  const doSave = async () => {
+    const res = buildSelected();
+    if (!res) return;
+    setSaving(true);
+    try {
+      const installed = await installFromText(res.json);
+      if (!installed.ok) { setErrors(installed.errors.slice(0, 4)); return; }
+      setDone(t('已保存到资源库({n} 条内容)，可在对应分类直接使用', { n: res.pack.items.length }));
+    } catch (error) {
+      setErrors([t('保存失败：{message}', { message: error instanceof Error ? error.message : String(error) })]);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const inputStyle = { background: theme.panelAlt, color: theme.text, border: `0.5px solid ${theme.border}`, borderRadius: 6, padding: '4px 8px', fontSize: 12, minWidth: 0 } as const;
@@ -94,14 +121,14 @@ export function PluginExport({ items, transitions, fxDefs, defaultOpen = false }
       <button onClick={() => setOpen((o) => !o)}
         style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.text, fontSize: 12, fontWeight: 600, padding: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 150ms ease-out', fontSize: 10, color: theme.textDim }}>▶</span>
-        {t('导出扩展包')}
-        <span style={{ fontWeight: 400, color: theme.textDim, fontSize: 11 }}>{t('把 AI 生成的特效、转场和时间线 MG 打包分享')}</span>
+        {t('创作扩展')}
+        <span style={{ fontWeight: 400, color: theme.textDim, fontSize: 11 }}>{t('把 Agent 生成和时间线创作保存到资源库，或导出投稿包')}</span>
       </button>
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
           {total === 0 ? (
             <div style={{ fontSize: 11.5, color: theme.textDim, lineHeight: 1.6 }}>
-              {t('本工程暂无可导出的自定义内容。让 Agent 用 submit_shader 生成特效/转场,或往时间线加 MG 片段后再来。')}
+              {t('本工程暂无可保存的创作。让 Agent 生成内容，或在时间线制作 MG/缩放后再来。')}
             </div>
           ) : (
             <>
@@ -111,12 +138,18 @@ export function PluginExport({ items, transitions, fxDefs, defaultOpen = false }
                 <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder={t('作者(可选)')} style={{ ...inputStyle, width: 90 }} />
               </div>
               <Group title={t('自定义特效 · {n}', { n: groups.fx.length })} list={groups.fx} checked={checked} toggle={toggle} />
+              <Group title={t('自定义 LUT · {n}', { n: groups.lut.length })} list={groups.lut} checked={checked} toggle={toggle} />
               <Group title={t('自定义转场 · {n}', { n: groups.tr.length })} list={groups.tr} checked={checked} toggle={toggle} />
+              <Group title={t('时间线缩放 · {n}', { n: groups.zoom.length })} list={groups.zoom} checked={checked} toggle={toggle} />
               <Group title={t('时间线 MG · {n}', { n: groups.mg.length })} list={groups.mg} checked={checked} toggle={toggle} />
-              <div>
-                <button onClick={doExport}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => { void doSave(); }} disabled={saving}
+                  style={{ background: theme.accent, color: theme.onAccent, border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.65 : 1 }}>
+                  {saving ? t('保存中…') : t('保存到资源库')}
+                </button>
+                <button onClick={doExport} disabled={saving}
                   style={{ background: theme.accent, color: theme.onAccent, border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                  {t('导出 JSON')}
+                  {t('导出投稿包')}
                 </button>
               </div>
             </>

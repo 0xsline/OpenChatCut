@@ -1,11 +1,14 @@
-// 导出为插件(DIY 闭环):把会话内自定义内容——submit_shader 生成的特效/转场、
-// 时间线上的 MG 片段——打包成 openchatcut-plugin@1 JSON。纯函数,数据由调用方注入
+// 导出为插件(DIY 闭环):把会话内自定义内容——特效/LUT/转场、
+// 时间线上的 MG/缩放——打包成 openchatcut-plugin@1 JSON。纯函数,数据由调用方注入
 // (浏览器 UI 在 library/PluginExport.tsx),产物必过 validatePack 才允许下载。
 import { PLUGIN_FORMAT, type PluginItem, type PluginNumberProp, type PluginPack } from './types';
 import { validatePack } from './validate';
 import type { FxProperty, SerializableFxDef } from '../gl/fx/uniforms';
 import type { CustomTransitionDef } from '../gl/customTransitions';
 import type { TimelineItem, TransitionItem } from '../editor/types';
+import { zoomAt } from '../editor/zoom';
+
+const ZOOM_EXPORT_SAMPLES = 32;
 
 /** 一个可勾选的导出候选(item.id 由 buildExportPack 统一重排,这里先占位) */
 export interface ExportCandidate {
@@ -39,6 +42,26 @@ export function fxCandidates(defs: SerializableFxDef[]): ExportCandidate[] {
         frag: d.frag,
         ...(numberProps(d.props) ? { props: numberProps(d.props) } : {}),
         ...(d.passes ? { passes: d.passes } : {}),
+      },
+    });
+  }
+  return out;
+}
+
+/** 自定义 LUT 候选:只收带原始 .cube 文本的 custom: 资源。 */
+export function lutCandidates(defs: SerializableFxDef[]): ExportCandidate[] {
+  const seen = new Set<string>();
+  const out: ExportCandidate[] = [];
+  for (const d of defs) {
+    if (!d.id.startsWith('custom:') || !d.cube || seen.has(d.id)) continue;
+    seen.add(d.id);
+    out.push({
+      key: `lut:${d.id}`,
+      label: d.name,
+      item: {
+        type: 'lut', id: 'lut', name: d.name, cube: d.cube,
+        ...(d.desc ? { desc: d.desc.slice(0, 500) } : {}),
+        ...(numberProps(d.props) ? { props: numberProps(d.props) } : {}),
       },
     });
   }
@@ -99,6 +122,39 @@ export function mgCandidates(items: TimelineItem[]): ExportCandidate[] {
         ...(it.height ? { height: it.height } : {}),
         ...(it.durationInFrames ? { durationInFrames: it.durationInFrames } : {}),
         ...(it.props && Object.keys(it.props).length ? { props: it.props } : {}),
+      },
+    });
+  }
+  return out;
+}
+
+/** 时间线缩放候选:把当前实际曲线采样成可移植 envelope。 */
+export function zoomCandidates(items: TimelineItem[]): ExportCandidate[] {
+  const seen = new Set<string>();
+  const out: ExportCandidate[] = [];
+  for (const it of items) {
+    if (!it.zoom || it.zoom.reframeCurve) continue;
+    const z = it.zoom;
+    const duration = Math.max(2, it.durationInFrames);
+    const magnification = z.magnification ?? 1.5;
+    const denominator = Math.max(0.05, magnification - 1);
+    const envelope = z.envelope?.length
+      ? z.envelope
+      : Array.from({ length: ZOOM_EXPORT_SAMPLES }, (_, index) => {
+          const frame = index * (duration - 1) / (ZOOM_EXPORT_SAMPLES - 1);
+          return Number(((zoomAt(z, frame, duration).magnification - 1) / denominator).toFixed(4));
+        });
+    const signature = JSON.stringify({ envelope, magnification, x: z.focalPointX, y: z.focalPointY });
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    const name = z.label ?? `${it.name} 缩放`;
+    out.push({
+      key: `zoom:${it.id}`,
+      label: name,
+      item: {
+        type: 'zoom', id: 'zoom', name, envelope, magnification,
+        ...(z.focalPointX != null ? { focalPointX: z.focalPointX } : {}),
+        ...(z.focalPointY != null ? { focalPointY: z.focalPointY } : {}),
       },
     });
   }

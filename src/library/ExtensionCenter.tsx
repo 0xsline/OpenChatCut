@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../components/icons';
-import type { TimelineItem, TransitionItem } from '../editor/types';
-import type { SerializableFxDef } from '../gl/fx/uniforms';
 import { useT } from '../i18n/locale';
 import type { InstallResult } from '../plugins/install';
 import { removePack, setPackEnabled } from '../plugins/store';
@@ -17,13 +15,9 @@ import {
   type RegistryEntry,
 } from './ExtensionCenterModel';
 import { ExtensionTag } from './ExtensionCenterParts';
-import { PluginExport } from './PluginExport';
 import { usePluginPacks } from './pluginResources';
 
 interface ExtensionCenterProps {
-  items: TimelineItem[];
-  transitions: TransitionItem[];
-  fxDefs: Record<string, SerializableFxDef>;
   onClose: () => void;
 }
 
@@ -93,7 +87,7 @@ function CenterHeader({ tab, installedCount, onTab, onClose, showLocalInstall, o
         </div>
         <span style={{ flex: 1 }} />
         <ExtensionTag verified>{t('本机共享存储')}</ExtensionTag>
-        {tab === '发现' && <button type="button" onClick={onLocalInstall} style={secondaryButton()}>{t(showLocalInstall ? '收起本地安装' : '本地安装')}</button>}
+        {tab === '发现' && <button type="button" onClick={onLocalInstall} style={secondaryButton()}>{t(showLocalInstall ? '收起本地安装' : '安装')}</button>}
       </div>
       <nav style={{ display: 'flex', gap: 18, marginTop: 11 }}>
         {CENTER_TABS.map((item) => (
@@ -106,7 +100,7 @@ function CenterHeader({ tab, installedCount, onTab, onClose, showLocalInstall, o
   );
 }
 
-export function ExtensionCenter({ items, transitions, fxDefs, onClose }: ExtensionCenterProps) {
+export function ExtensionCenter({ onClose }: ExtensionCenterProps) {
   const t = useT();
   const packs = usePluginPacks();
   const [tab, setTab] = useState<CenterTab>('发现');
@@ -134,13 +128,6 @@ export function ExtensionCenter({ items, transitions, fxDefs, onClose }: Extensi
             onToggle={(pack) => actions.runAction(pack.id, setPackEnabled(pack.id, !pack.enabled), pack.enabled ? t('已停用「{name}」', { name: pack.name }) : t('已启用「{name}」', { name: pack.name }))}
             onRemove={(pack) => actions.runAction(pack.id, removePack(pack.id), t('已卸载「{name}」', { name: pack.name }), () => setConfirmId(null))}
           />
-        )}
-        {tab === '创作' && (
-          <div style={{ maxWidth: 720 }}>
-            <div style={{ color: theme.textStrong, fontSize: 13, fontWeight: 700 }}>{t('创建扩展包')}</div>
-            <div style={{ color: theme.textDim, fontSize: 10.5, lineHeight: 1.6, margin: '4px 0 12px' }}>{t('把当前工程中的自定义 MG、Shader 特效和转场打包分享；接收方安装后仍会经过安全校验。')}</div>
-            <PluginExport items={items} transitions={transitions} fxDefs={fxDefs} defaultOpen />
-          </div>
         )}
       </div>
     </section>
