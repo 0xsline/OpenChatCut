@@ -268,6 +268,17 @@ export function lutDefOf(pack: PluginPack, item: PluginLutItem, cubeUrl: string,
   };
 }
 
+export function lutShaderDefOf(pack: PluginPack, item: PluginLutItem): SerializableFxDef {
+  if (!item.frag) throw new Error(`LUT「${item.name}」缺少 frag`);
+  return {
+    id: pluginAssetId(pack.id, item.id),
+    name: item.name,
+    desc: item.desc ?? `${pack.name} 插件 LUT`,
+    frag: item.frag,
+    props: item.props ?? [],
+  };
+}
+
 export function transitionDefOf(pack: PluginPack, item: PluginTransitionItem): CustomTransitionDef {
   return {
     id: pluginAssetId(pack.id, item.id),
@@ -289,15 +300,21 @@ export async function registerPack(pack: InstalledPack): Promise<void> {
     if (item.type === 'fx') fx.registerCustomFx(fxDefOf(pack, item));
     else if (item.type === 'lut') {
       const cubeUrl = pack.cubeUrls?.[item.id];
-      if (cubeUrl) fx.registerCustomFx(lutDefOf(pack, item, cubeUrl, fx.LUT_FRAG));
+      if (item.frag) fx.registerCustomFx(lutShaderDefOf(pack, item));
+      else if (cubeUrl) fx.registerCustomFx(lutDefOf(pack, item, cubeUrl, fx.LUT_FRAG));
     } else if (item.type === 'transition') {
       tr.registerCustomTransition(transitionDefOf(pack, item));
     } else if (item.type === 'zoom') {
       registerCustomZoom({
         id: pluginAssetId(pack.id, item.id),
         label: item.name,
-        envelope: item.envelope,
+        ...(item.envelope ? { envelope: item.envelope } : {}),
+        ...(item.shape ? { shape: item.shape } : {}),
         ...(item.magnification !== undefined ? { magnification: item.magnification } : {}),
+        ...(item.focalPointX !== undefined ? { focalPointX: item.focalPointX } : {}),
+        ...(item.focalPointY !== undefined ? { focalPointY: item.focalPointY } : {}),
+        ...(item.easeInFrames !== undefined ? { easeInFrames: item.easeInFrames } : {}),
+        ...(item.easeOutFrames !== undefined ? { easeOutFrames: item.easeOutFrames } : {}),
       });
     }
     // mg-template 无注册表:资源库列表直接读 listPacks()

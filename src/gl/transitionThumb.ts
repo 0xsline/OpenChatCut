@@ -12,6 +12,7 @@ export const THUMB_H = SAMPLE_H;
 const PREVIEW_PROGRESS = 0.42;
 /** slower + clearer than before so hover reads as a real transition */
 export const HOVER_DURATION_MS = 1500;
+export const HOVER_HOLD_FRACTION = 0.1;
 
 let glCanvas: HTMLCanvasElement | null = null;
 let rt: GlRuntime | null = null;

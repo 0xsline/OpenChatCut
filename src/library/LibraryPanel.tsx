@@ -299,9 +299,10 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
               const data = zoomItems.find((x) => x.id === id)?.data;
               const pluginZoom = data ? asPluginZoom(data) : null;
               // 插件包络:真样片 + 包络缩放动画(与内置 ZoomThumb 同观感)
-              return pluginZoom?.envelope
-                ? <EnvelopeThumb envelope={pluginZoom.envelope} magnification={pluginZoom.magnification} playing={hovered} />
-                : <ZoomThumb shape={id as ZoomShape} playing={hovered} />;
+              if (pluginZoom?.envelope) {
+                return <EnvelopeThumb envelope={pluginZoom.envelope} magnification={pluginZoom.magnification} playing={hovered} />;
+              }
+              return <ZoomThumb shape={pluginZoom?.shape ?? id as ZoomShape} playing={hovered} />;
             }}
           />
         ) : subTab === 'LUT' ? (

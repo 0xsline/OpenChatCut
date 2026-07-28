@@ -6,6 +6,7 @@ import { customTransitionUniforms, getCustomTransition } from '../gl/customTrans
 import {
   drawCustomTransitionFrame,
   drawTransitionFrame,
+  HOVER_HOLD_FRACTION,
   HOVER_DURATION_MS,
   THUMB_H,
   THUMB_W,
@@ -70,13 +71,15 @@ export function TransitionThumb({ type, playing = false }: TransitionThumbProps)
     }
     let raf = 0;
     const t0 = performance.now();
-    const HOLD = 0.1;
     const tick = (now: number) => {
       const cycle = ((now - t0) % HOVER_DURATION_MS) / HOVER_DURATION_MS;
       let progress: number;
-      if (cycle < HOLD) progress = 0;
-      else if (cycle > 1 - HOLD) progress = 1;
-      else progress = (cycle - HOLD) / (1 - 2 * HOLD);
+      if (cycle < HOVER_HOLD_FRACTION) progress = 0;
+      else if (cycle > 1 - HOVER_HOLD_FRACTION) progress = 1;
+      else {
+        progress = (cycle - HOVER_HOLD_FRACTION)
+          / (1 - 2 * HOVER_HOLD_FRACTION);
+      }
       paint(progress);
       raf = requestAnimationFrame(tick);
     };

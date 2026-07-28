@@ -97,6 +97,7 @@ export function mgCandidates(items: TimelineItem[]): ExportCandidate[] {
         type: 'mg-template', id: 'mg', name: it.name, code: it.code,
         ...(it.width ? { width: it.width } : {}),
         ...(it.height ? { height: it.height } : {}),
+        ...(it.durationInFrames ? { durationInFrames: it.durationInFrames } : {}),
         ...(it.props && Object.keys(it.props).length ? { props: it.props } : {}),
       },
     });

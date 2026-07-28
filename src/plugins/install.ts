@@ -73,7 +73,7 @@ async function uploadCubes(pack: PluginPack): Promise<{ cubeUrls: Record<string,
   const cubeUrls: Record<string, string> = {};
   const errors: string[] = [];
   for (const item of pack.items) {
-    if (item.type !== 'lut') continue;
+    if (item.type !== 'lut' || !item.cube) continue;
     const assetId = `plugin-${pack.id}-${item.id}-cube`.replace(/[^a-zA-Z0-9_-]/g, '-');
     try {
       const res = await fetch(`/upload?name=${assetId}.cube&assetId=${assetId}`, { method: 'POST', body: item.cube });

@@ -52,6 +52,7 @@ export interface PluginMgTemplateItem extends PluginItemBase {
   code: string;
   width?: number;
   height?: number;
+  durationInFrames?: number;
   props?: Record<string, unknown>;
   /**
    * 可选:检查器字段 schema(与 Tpl.propSchema 同构)。
@@ -85,17 +86,28 @@ export interface PluginFxItem extends PluginItemBase {
   passes?: string[];
 }
 
-/** LUT:.cube 文本;安装时上传成 /media/uploads 文件,def.cube 记 URL */
+/** LUT:.cube 文件或资源库同款公式调色 shader。 */
 export interface PluginLutItem extends PluginItemBase {
   type: 'lut';
-  cube: string;
+  cube?: string;
+  frag?: string;
+  props?: PluginNumberProp[];
 }
 
-/** 缩放曲线:0..1 归一化包络,整段 clip 线性采样(ZoomEffect.envelope) */
+export type PluginZoomShape =
+  | 'hold' | 'punch' | 'slow-push' | 'instant' | 'zoom-out' | 'ease-in' | 'bounce'
+  | 'snap' | 'pulse' | 'whip-in';
+
+/** 缩放可复用内置 shape,也可提供整段 clip 线性采样的自定义包络。 */
 export interface PluginZoomItem extends PluginItemBase {
   type: 'zoom';
-  envelope: number[];
+  envelope?: number[];
+  shape?: PluginZoomShape;
   magnification?: number;
+  focalPointX?: number;
+  focalPointY?: number;
+  easeInFrames?: number;
+  easeOutFrames?: number;
 }
 
 export type PluginItem =
