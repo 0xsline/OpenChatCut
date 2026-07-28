@@ -400,7 +400,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
               background: theme.textStrong, pointerEvents: 'none',
               boxShadow: '0 0 0 0.5px #0006',
               willChange: 'transform',
-              zIndex: 13,
+              zIndex: 30,
             }}
           >
             <div className="cc-playhead-handle" style={{ transform: 'translateX(-6px)', width: 13, height: 11, background: theme.textStrong, clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />

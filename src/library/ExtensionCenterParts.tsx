@@ -177,7 +177,7 @@ export function InstallPanel({
       padding: 10,
       borderRadius: 5,
     }}>
-      <div style={{ fontSize: 11.5, color: theme.text, fontWeight: 650 }}>{t('本地安装')}</div>
+      <div style={{ fontSize: 11.5, color: theme.text, fontWeight: 650 }}>{t('安装')}</div>
       <div style={{ fontSize: 10.5, color: theme.textDim }}>
         {t('仅安装你信任的扩展包；安装前会校验格式并真实编译其中的 MG 与 Shader。')}
       </div>

@@ -14,7 +14,6 @@ import {
   type CenterTab,
   type RegistryEntry,
 } from './ExtensionCenterModel';
-import { ExtensionTag } from './ExtensionCenterParts';
 import { usePluginPacks } from './pluginResources';
 
 interface ExtensionCenterProps {
@@ -40,7 +39,7 @@ function useRegistry(query: string, category: Category): RegistryEntry[] {
   }, [registry, query, category]);
 }
 
-function useExtensionActions() {
+function useExtensionActions(onInstalled: (id: string) => void) {
   const t = useT();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
@@ -48,9 +47,12 @@ function useExtensionActions() {
     setBusyId(id); setStatus(null);
     void task.then((result) => {
       setBusyId(null);
-      setStatus(result.ok
-        ? { ok: true, text: t('已安装「{name}」', { name: result.pack.name }) }
-        : { ok: false, text: result.errors.slice(0, 3).join('；') });
+      if (result.ok) {
+        setStatus({ ok: true, text: t('已安装「{name}」', { name: result.pack.name }) });
+        onInstalled(result.pack.id);
+        return;
+      }
+      setStatus({ ok: false, text: result.errors.slice(0, 3).join('；') });
     }).catch((error) => {
       setBusyId(null);
       setStatus({ ok: false, text: error instanceof Error ? error.message : String(error) });
@@ -86,8 +88,7 @@ function CenterHeader({ tab, installedCount, onTab, onClose, showLocalInstall, o
           <div style={{ color: theme.textDim, fontSize: 10.5 }}>{t('发现、管理并分享创意扩展包')}</div>
         </div>
         <span style={{ flex: 1 }} />
-        <ExtensionTag verified>{t('本机共享存储')}</ExtensionTag>
-        {tab === '发现' && <button type="button" onClick={onLocalInstall} style={secondaryButton()}>{t(showLocalInstall ? '收起本地安装' : '安装')}</button>}
+        {tab === '发现' && <button type="button" onClick={onLocalInstall} style={secondaryButton()}>{t(showLocalInstall ? '收起安装' : '安装')}</button>}
       </div>
       <nav style={{ display: 'flex', gap: 18, marginTop: 11 }}>
         {CENTER_TABS.map((item) => (
@@ -110,7 +111,11 @@ export function ExtensionCenter({ onClose }: ExtensionCenterProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const entries = useRegistry(query, category);
-  const actions = useExtensionActions();
+  const actions = useExtensionActions((id) => {
+    setTab('已安装');
+    setExpandedId(id);
+    setShowLocalInstall(false);
+  });
   return (
     <section style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: theme.panel }}>
       <CenterHeader tab={tab} installedCount={packs.length} onTab={setTab} onClose={onClose} showLocalInstall={showLocalInstall} onLocalInstall={() => setShowLocalInstall((value) => !value)} />
