@@ -15,9 +15,11 @@ export interface StockPluginOptions {
   firecrawlApiKey?: string;
   /** DVIDS (PD-USGov geopolitical/military footage). Wikimedia Commons needs no key. */
   dvidsApiKey?: string;
+  /** SearXNG base URL (self-hosted meta-search; key-less). Enables real web-image search. */
+  searxngUrl?: string;
 }
 
-export type StockPlatform = 'pexels' | 'pixabay' | 'unsplash' | 'freesound' | 'dvids' | 'wikimedia';
+export type StockPlatform = 'pexels' | 'pixabay' | 'unsplash' | 'freesound' | 'dvids' | 'wikimedia' | 'searxng';
 export type StockKind = 'any' | 'image' | 'video' | 'audio' | 'music';
 export type StockOrientation = 'horizontal' | 'vertical' | 'square';
 type SearchableKind = 'image' | 'video' | 'audio';
@@ -67,7 +69,7 @@ interface SearchJob {
   run: () => Promise<StockResult[]>;
 }
 
-const ALL_PLATFORMS: StockPlatform[] = ['pexels', 'pixabay', 'unsplash', 'freesound', 'dvids', 'wikimedia'];
+const ALL_PLATFORMS: StockPlatform[] = ['pexels', 'pixabay', 'unsplash', 'freesound', 'dvids', 'wikimedia', 'searxng'];
 const DEFAULT_LIMIT = 3;
 const MAX_LIMIT = 6;
 const FIRECRAWL_SEARCH_URL = 'https://api.firecrawl.dev/v2/search';
@@ -127,7 +129,7 @@ function supportsKind(platform: StockPlatform, kind: SearchableKind): boolean {
   if (platform === 'pexels' || platform === 'pixabay') return kind === 'image' || kind === 'video';
   if (platform === 'wikimedia') return kind === 'image' || kind === 'video';
   if (platform === 'dvids') return kind === 'video';
-  if (platform === 'unsplash') return kind === 'image';
+  if (platform === 'unsplash' || platform === 'searxng') return kind === 'image';
   return kind === 'audio';
 }
 
@@ -582,10 +584,131 @@ async function searchWikimedia(
   return results;
 }
 
+// ── SearXNG (self-hosted meta-search; Google+Bing+DDG image search) ──────────
+// Key-less, free. Returns REAL web photos (news sites, photo agencies) but the
+// license is UNVERIFIED — every candidate carries license 'PD' provider-default
+// + verified=false (copyright on the user; the agent places the clip, there is no
+// auto-attach monetization gate). SearXNG's image category filters by ENGINE
+// name, not content/domain, so it surfaces stock-agency watermarks, dictionary
+// pages, social login walls, and SVG icons as "image" hits. The blocklists below
+// (ported from OpenCut-AI's google_images.py) drop those before they become
+// candidates; only raster-extension photos from clean hosts pass.
+const SEARXNG_UA = 'OpenChatCut/1.0 (web image search)';
+
+// Stock-agency watermarked previews + icon CDNs (decode-fail / not editorial).
+const SEARXNG_ICON_HOSTS = [
+  'alamy', 'shutterstock', 'gettyimages', 'getty', 'depositphotos', 'dreamstime',
+  'istockphoto', 'stock.adobe', 'vecteezy', '123rf', 'pond5', 'freepik',
+  'lookaside.instagram', 'instagram',
+  'devicon', 'jsdelivr', 'lucide-static', 'cdnjs.cloudflare', 'simpleicons',
+  'fontawesome', 'iconify', 'icons.getbootstrap',
+];
+
+// Text-content / dictionary / encyclopedia / social / app-store / financial /
+// reference domains SearXNG surfaces as "image" hits but which serve no usable
+// editorial imagery (login walls, definition pages, JS widgets, HTML chapters).
+const SEARXNG_NON_VISUAL_HOSTS = [
+  'merriam-webster.com', 'dictionary.com', 'thesaurus.com', 'wiktionary.org',
+  'etymonline.com', 'yourdictionary.com', 'wordreference.com',
+  'wikipedia.org', 'britannica.com',
+  'facebook.com', 'reddit.com', 'linkedin.com', 'medium.com', 'quora.com',
+  'play.google.com', 'apps.apple.com',
+  'gmanetwork.com', 'philnews', 'learn-physics.org',
+  'forexfactory.com', 'nseindia.com', 'investopedia.com',
+  'voachinese.com', 'duchinese.net', 'hanzii.net', 'yoyochinese.com',
+  'zhihu.com', 'jingyan.baidu.com', 'chiebukuro.yahoo.co.jp', '52pojie.cn',
+  'edurev.in', 'it.ccm.net', '360kuai.com',
+  'support.microsoft.com', 'techcommunity.microsoft.com', 'elevenforum.com',
+  'nickel.eu', 'nickel.com', 'nikel.co.id', 'chemistrylearner.com', 'samaterials.com',
+  'periodic-table.rsc.org',
+  'worldatlas.com', 'geocountries.com', 'touropia.com', 'theworldfactbook.org',
+  'nationsonline.org', 'ontheworldmap.com', 'mapsofworld.com', 'southchinasea.org',
+  'tripadvisor.com', 'taraletsanywhere.com',
+  'boxhub.com', 'conexdepot.com', 'conexwest.com', 'containerone.net',
+  'cars.usnews.com', 'edmunds.com', 'electrek.co', 'eletric-vehicles.com',
+  'gsmarena.com', 'samsung.com',
+  'morowalikab.go.id', 'imip.co.id', 'lestari.kompas.com',
+  'quiz.mygov.in', 'mybharat.gov.in',
+  'kapal.co.id', 'kapal.org', 'pelni.co.id', 'kapal-indonesia-jepang.net',
+];
+
+const SEARXNG_PHOTO_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
+
+function searxngHost(url: string): string {
+  try {
+    return (new URL(url).hostname ?? '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function isSearxngPhotoUrl(url: string): boolean {
+  const lowered = url.toLowerCase().split('?')[0] ?? '';
+  if (lowered.endsWith('.svg') || lowered.endsWith('.gif')) return false;
+  if (!SEARXNG_PHOTO_EXTENSIONS.some((ext) => lowered.endsWith(ext))) return false;
+  const host = searxngHost(url);
+  if (!host) return false;
+  if (SEARXNG_ICON_HOSTS.some((frag) => host.includes(frag))) return false;
+  if (SEARXNG_NON_VISUAL_HOSTS.some((frag) => host.includes(frag))) return false;
+  return true;
+}
+
+// Cap concurrent SearXNG calls so a batch search (≤12 queries) doesn't overwhelm
+// the single local SearXNG container / trip 429 (mirrors OpenCut-AI's semaphore).
+const SEARXNG_CONCURRENCY = 3;
+let searxngActive = 0;
+const searxngQueue: Array<() => void> = [];
+
+async function withSearxngSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (searxngActive >= SEARXNG_CONCURRENCY) {
+    await new Promise<void>((resolve) => { searxngQueue.push(resolve); });
+  }
+  searxngActive += 1;
+  try {
+    return await run();
+  } finally {
+    searxngActive -= 1;
+    searxngQueue.shift()?.();
+  }
+}
+
+async function searchSearXNG(
+  fetchImpl: FetchLike,
+  baseUrl: string,
+  query: string,
+  limit: number,
+): Promise<StockResult[]> {
+  const root = baseUrl.trim().replace(/\/+$/, '');
+  const searchUrl = `${root}/search?${new URLSearchParams({ q: query, categories: 'images', format: 'json' }).toString()}`;
+  return withSearxngSlot(async () => {
+    const res = await fetchImpl(searchUrl, {
+      headers: { 'User-Agent': SEARXNG_UA },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) throw new Error(`SearXNG search failed (${res.status})`);
+    const body = await res.json() as { results?: Array<{ img_src?: string; image?: string; url?: string }> };
+    const out: StockResult[] = [];
+    for (const item of body.results ?? []) {
+      const img = item.img_src || item.image || item.url || '';
+      if (!img || !isSearxngPhotoUrl(img)) continue;
+      out.push({
+        platform: 'searxng', kind: 'image',
+        previewUrl: img, importUrl: img,
+        attribution: searxngHost(img) || 'web image',
+        license: 'PD', verified: false,
+      });
+      if (out.length >= limit) break;
+    }
+    return out;
+  });
+}
+
 function addUnavailableWarning(warnings: string[], target: SearchTarget): void {
   const message = target.platform === 'freesound'
     ? 'Freesound API key not configured — cannot search audio/music'
-    : `${target.platform} API key not configured — skipped ${target.kind} search`;
+    : target.platform === 'searxng'
+      ? 'SearXNG URL not configured (SEARXNG_URL) — skipped web image search'
+      : `${target.platform} API key not configured — skipped ${target.kind} search`;
   if (!warnings.includes(message)) warnings.push(message);
 }
 
@@ -680,6 +803,16 @@ export async function searchStockMedia(
         label: `wikimedia/${target.kind}`, platforms: ['wikimedia'],
         run: () => searchWikimedia(fetchImpl, query, target.kind, limit),
       });
+    } else if (target.platform === 'searxng') {
+      // SearXNG (self-hosted meta-search; key-less). Opt-in via platforms=searxng.
+      if (options.searxngUrl) {
+        jobs.push({
+          label: `searxng/${target.kind}`, platforms: ['searxng'],
+          run: () => searchSearXNG(fetchImpl, options.searxngUrl!, query, limit),
+        });
+      } else {
+        addUnavailableWarning(warnings, target);
+      }
     } else if (options.firecrawlApiKey && target.kind === 'image'
       && (target.platform === 'pexels' || target.platform === 'pixabay')) {
       if (!missingFirecrawlImages.includes(target.platform)) missingFirecrawlImages.push(target.platform);

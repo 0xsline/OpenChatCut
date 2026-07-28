@@ -74,6 +74,7 @@ export const KEY_NAMES = [
   'UNSPLASH_ACCESS_KEYS', 'FREESOUND_API_KEYS', 'DVIDS_API_KEYS',
   'E2B_API_KEY', 'E2B_TEMPLATE',
   'FIRECRAWL_API_KEY',
+  'SEARXNG_URL', // self-hosted meta-search base URL (Google+Bing image search) — config, not a credential
   'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET', 'R2_ENABLED', 'R2_PRESIGN',
   'MEDIA_DIR',
   // ── model ids (non-secret config; raw values echoed via keyStatus().models) ──
@@ -114,6 +115,7 @@ const STATIC_NON_SECRET = new Set<string>([
   'R2_ENABLED', // 云同步开关('' 缺省=启用,'0'=停用)——配置不是凭据
   'R2_PRESIGN', // 浏览器预签名直传('' 缺省=启用,'0'=仅服务端写穿)
   'MEDIA_DIR',  // 素材保存目录(本机路径,''=默认 public/media/uploads)——配置不是凭据
+  'SEARXNG_URL', // SearXNG 自托管元搜索地址(配置非凭据)
   ...LLM_PROVIDER_PRESETS.flatMap((preset) => {
     const names = llmProviderConfigNames(preset.id);
     return [names.baseUrl, names.model];

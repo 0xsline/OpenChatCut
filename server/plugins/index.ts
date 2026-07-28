@@ -102,6 +102,7 @@ export function serverPlugins(): Plugin[] {
     get freesoundApiKey() { return peekActiveKey('FREESOUND'); },
     get firecrawlApiKey() { return getKey('FIRECRAWL_API_KEY'); },
     get dvidsApiKey() { return peekActiveKey('DVIDS'); },
+    get searxngUrl() { return getKey('SEARXNG_URL'); },
   }),
   firecrawlPlugin({ get apiKey() { return getKey('FIRECRAWL_API_KEY'); } }),
   newsPlugin(),

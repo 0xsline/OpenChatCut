@@ -171,7 +171,7 @@ export const STOCK_TOOL_SCHEMAS: AgentToolSchema[] = [
         },
         platforms: {
           type: 'string',
-          description: 'Optional comma-separated list: pexels,pixabay,unsplash,freesound,dvids,wikimedia.',
+          description: 'Optional comma-separated list: pexels,pixabay,unsplash,freesound,dvids,wikimedia,searxng (searxng = real web images via self-hosted SearXNG; needs SEARXNG_URL).',
         },
         limitPerPlatform: {
           type: 'integer',
@@ -212,7 +212,7 @@ export const STOCK_TOOL_SCHEMAS: AgentToolSchema[] = [
         },
         platforms: {
           type: 'string',
-          description: 'Optional comma-separated provider list. Applied to every query.',
+          description: 'Optional comma-separated provider list. Applied to every query. Add searxng for real web-image search (needs SEARXNG_URL).',
         },
         limitPerPlatform: {
           type: 'integer',

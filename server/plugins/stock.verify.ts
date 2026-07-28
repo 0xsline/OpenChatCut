@@ -328,6 +328,7 @@ assert.deepEqual(stockProperties.kind?.enum, ['any', 'video', 'audio', 'music', 
 assert.equal(stockProperties.limitPerPlatform?.minimum, 1);
 assert.equal(stockProperties.limitPerPlatform?.maximum, 6);
 assert(String(stockProperties.platforms?.description).includes('dvids'));
+assert(String(stockProperties.platforms?.description).includes('searxng'));
 
 const originalFetch = globalThis.fetch;
 let agentRequest: URL | undefined;
@@ -356,4 +357,54 @@ try {
   globalThis.fetch = originalFetch;
 }
 
-console.log('stock search filters verified (pexels, pixabay, unsplash, freesound, dvids, wikimedia + license gate)');
+// ── SearXNG (self-hosted meta-search; Google+Bing image search) ──────────────
+function searxngFetch(results: Array<{ img_src?: string; image?: string; url?: string; title?: string }>): typeof fetch {
+  return (async (input: RequestInfo | URL) => {
+    const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+    searxngCalls.push({ url });
+    // SearXNG serves /search?format=json with a top-level `results` array.
+    return json({ results });
+  }) as typeof fetch;
+}
+const searxngCalls: FetchCall[] = [];
+const searxngGood = await searchStockMedia({ searxngUrl: 'http://localhost:8080' }, {
+  query: 'iranian frigate', kind: 'image', platforms: 'searxng',
+}, searxngFetch([
+  { img_src: 'https://news.example/frigate.jpg', title: 'Iranian frigate' }, // kept (clean raster host)
+  { img_src: 'https://c1.staticflickr.com/x/abc.jpg' },                      // kept (flickr CDN)
+  { img_src: 'https://www.alamy.com/thumb.jpg' },                            // dropped (stock-agency watermark)
+  { img_src: 'https://cdn.jsdelivr.net/icon.svg' },                          // dropped (icon host + svg)
+  { img_src: 'https://www.merriam-webster.com/word.jpg' },                   // dropped (dictionary non-visual host)
+  { img_src: 'https://example.com/page.html' },                              // dropped (not a raster extension)
+  { img_src: 'https://example.com/anim.gif' },                               // dropped (gif rejected)
+]));
+assert.equal(searxngGood.configured, true);
+assert.equal(searxngGood.results.length, 2, 'only clean raster-photo hosts pass (alamy/jsdelivr/merriam-webster/html/gif dropped)');
+assert.equal(searxngGood.results[0]?.platform, 'searxng');
+assert.equal(searxngGood.results[0]?.kind, 'image');
+assert.equal(searxngGood.results[0]?.license, 'PD');
+assert.equal(searxngGood.results[0]?.verified, false);
+assert.equal(searxngGood.results[0]?.importUrl, 'https://news.example/frigate.jpg');
+assert.equal(searxngGood.results[1]?.importUrl, 'https://c1.staticflickr.com/x/abc.jpg');
+assert.deepEqual(searxngGood.searchedPlatforms, ['searxng']);
+assert.equal(searxngCalls[0]?.url.pathname, '/search');
+assert.equal(searxngCalls[0]?.url.searchParams.get('categories'), 'images');
+assert.equal(searxngCalls[0]?.url.searchParams.get('format'), 'json');
+assert.equal(searxngCalls[0]?.url.searchParams.get('q'), 'iranian frigate');
+
+// SearXNG without SEARXNG_URL configured → not configured + actionable warning.
+const searxngUnset = await searchStockMedia({}, {
+  query: 'frigate', kind: 'image', platforms: 'searxng',
+}, searxngFetch([]));
+assert.equal(searxngUnset.configured, false);
+assert.deepEqual(searxngUnset.results, []);
+assert(searxngUnset.warnings.some((w) => w.includes('SearXNG URL not configured')));
+
+// SearXNG is image-only — a video request to it is skipped (unsupported kind).
+const searxngVideo = await searchStockMedia({ searxngUrl: 'http://localhost:8080' }, {
+  query: 'frigate', kind: 'video', platforms: 'searxng',
+}, searxngFetch([{ img_src: 'https://news.example/x.jpg' }]));
+assert.equal(searxngVideo.configured, false);
+assert.deepEqual(searxngVideo.results, []);
+
+console.log('stock search filters verified (pexels, pixabay, unsplash, freesound, dvids, wikimedia, searxng + license gate)');

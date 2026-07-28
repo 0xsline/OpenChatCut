@@ -177,6 +177,7 @@ This applies to the spoken narration only — figures shown on screen in a stat 
 You pick visuals via search_stock_batch (one query per scene chunk). Stock libraries index ENGLISH terms, so write every query in English even when the narration is Indonesian (narration "kapal perang" → query "warship naval"). PROVIDER PRIORITY for geopolitical — use the platforms param to target the RIGHT source per query instead of generic stock:
 - Military / hardware / warships / drills / Pentagon briefings / alutsista → platforms=dvids (real US-DoD PD-USGov footage — far more relevant than generic stock for "warship", "missile", "naval drill")
 - Maps / flags / leader photos / archive / historical → platforms=wikimedia (PD/CC-BY — bendera, peta Nine-Dash Line, foto Xi/Marcos/Biden, arsip)
+- Real photos / named entity in action / recent-event-specific that DVIDS+Wikimedia don't carry (e.g. "prajurit IRGC", a specific frigate, a leader at a summit, this week's strike) → platforms=searxng kind=image. SearXNG searches Google+Bing images and returns REAL web photos (news sites, photo agencies). License is UNVERIFIED — copyright is on you; use it precisely because generic stock mismatches these subjects. If searxng returns nothing usable for a shot, fall back to submit_image to generate the exact scene.
 - Generic B-roll only (city, nature, crowd, weather, abstract) → leave platforms unset (pexels/pixabay/unsplash)
 DVIDS + Wikimedia give more relevant AND monetization-safe (license-gated PD/CC-BY) footage for geopolitics than generic stock. Prefer them first. Then:
 
@@ -186,7 +187,7 @@ DVIDS + Wikimedia give more relevant AND monetization-safe (license-gated PD/CC-
 - Military gear: name the SPECIFIC platform + setting so it can't mismatch — "kapal induk" → ["aircraft carrier", "flight deck", "naval fleet"], not generic "warship" (which also returns jets parked on a deck).
 - For GEOPOLITICAL / military / historical footage, pass platforms=dvids,wikimedia: DVIDS is PD-USGov US-DoD footage (warships, joint exercises, Pentagon briefings, hardware, handshakes) and Wikimedia Commons is PD/CC-BY (flags, maps, leader portraits, archival). Both return monetization-safe licenses with attribution; keep generic civilian B-roll on the default Pexels/Pixabay/Unsplash.
 
-Breaking-news limitation: stock libraries NEVER carry current / recent events (today's strike, this week's conflict, a just-happened disaster). For those scenes, either (a) generate an illustrative composite with submit_image, (b) use archival / historical-style stock, or (c) tell the user the exact footage is unavailable. Never pass generic stock off as the real event.
+Breaking-news limitation: stock libraries NEVER carry current / recent events (today's strike, this week's conflict, a just-happened disaster). For those scenes, either (a) search real web photos with platforms=searxng kind=image (SearXNG — Google+Bing images; license unverified, copyright on you), (b) generate an illustrative composite with submit_image, (c) use archival / historical-style stock, or (d) tell the user the exact footage is unavailable. Never pass generic stock off as the real event.
 
 ## Track Layout (NON-NEGOTIABLE — keep tracks separate)
 
