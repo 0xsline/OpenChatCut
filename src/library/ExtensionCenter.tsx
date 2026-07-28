@@ -25,7 +25,7 @@ function useRegistry(query: string, category: Category): RegistryEntry[] {
   const [registry, setRegistry] = useState<RegistryEntry[]>([]);
   useEffect(() => {
     let alive = true;
-    void fetch('/plugins/index.json')
+    void fetch('/plugins/index.json', { cache: 'no-store' })
       .then((response) => (response.ok ? response.json() : []))
       .then((value) => { if (alive) setRegistry(parseRegistry(value)); })
       .catch(() => {});

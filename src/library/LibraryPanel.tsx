@@ -154,7 +154,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
         </div>
       ) : (
       <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px 7px 16px', fontSize: 12, borderBottom: `0.5px solid ${theme.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, padding: '10px 12px 7px 16px', fontSize: 12, borderBottom: `0.5px solid ${theme.border}` }}>
         <div style={{ display: 'flex', gap: 14, minWidth: 0, overflowX: 'auto', whiteSpace: 'nowrap', flex: 1 }}>
           {SUB_TABS.map((tab) => (
             <button key={tab} onClick={() => setSubTab(tab)}

@@ -130,7 +130,6 @@ export default {
   '安装失败': 'Install failed',
   '插件包是一份 JSON(MG 模板 / 转场 / 特效 / LUT / 缩放曲线),安装后出现在各分类里。': 'A plugin pack is a single JSON file (MG templates / transitions / effects / LUTs / zoom curves); once installed, its items appear in each category.',
   '示例:': 'Example: ',
-  '安装官方示例包': 'Install the official sample pack',
   '插件包 JSON 的 URL…': 'Plugin pack JSON URL…',
   '安装中…': 'Installing…',
   '安装': 'Install',
