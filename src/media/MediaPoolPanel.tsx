@@ -14,6 +14,7 @@ import { filterMediaAssets, type MediaSortKey, type MediaTypeFilter } from './me
 import { MobileUploadDialog } from './MobileUploadDialog';
 import type { MobileUploadRecord } from './mobileUploadApi';
 import { setMediaAssetDrag } from './drag';
+import { AssetExportButton } from './AssetExportButton';
 interface MediaPoolPanelProps {
   semanticScopeId: string;
   assets: MediaAsset[];
@@ -60,7 +61,7 @@ export function MediaPoolPanel({
   const [menu, setMenu] = useState<'sort' | 'filter' | null>(null);
   const [assetMenu, setAssetMenu] = useState<string | null>(null);
   /** fixed-position menu so overflow:auto grid doesn't clip 收藏/重命名/文件夹 */
-  const [assetMenuPos, setAssetMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [assetMenuPos, setAssetMenuPos] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
   // 删除两步确认:第一次点变「确认删除」,重开菜单即复位
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [currentFolderId, setCurrentFolderId] = useState<string>();
@@ -307,6 +308,7 @@ export function MediaPoolPanel({
       </div>}
       {error && <div className="cc-media-error">{error}</div>}
       {busy && <div className="cc-media-status">{t('正在导入素材…')}</div>}
+      {assets.length > 0 && <div className="cc-media-export-guide">{t('点击素材右上角“⋯”：图片、视频和音频可下载原文件，MG 可导出透明 MOV。')}</div>}
 
       {selectedAssets.length > 0 && <div className="cc-media-selection">
         <button onClick={toggleAll}>{visible.every((asset) => selected.has(asset.id)) ? t('清除选择') : t('全选')}</button>
@@ -372,16 +374,13 @@ export function MediaPoolPanel({
                 }
                 setConfirmDeleteId(null);
                 const r = event.currentTarget.getBoundingClientRect();
-                const menuW = 150;
-                const menuH = 150;
-                const left = Math.min(window.innerWidth - menuW - 8, Math.max(8, r.right - menuW));
-                // prefer below the ⋮ button; flip above if near bottom of viewport
-                const below = r.bottom + 6;
-                const top = below + menuH > window.innerHeight - 8
-                  ? Math.max(8, r.top - menuH - 6)
-                  : below;
+                const panel = event.currentTarget.closest('.cc-media-pool')?.getBoundingClientRect();
+                const menuW = 152;
+                const left = Math.min((panel?.right ?? window.innerWidth) - menuW - 8, Math.max((panel?.left ?? 0) + 8, r.left));
                 setAssetMenu(asset.id);
-                setAssetMenuPos({ top, left });
+                setAssetMenuPos(r.bottom > window.innerHeight / 2
+                  ? { bottom: window.innerHeight - r.top + 4, left }
+                  : { top: r.bottom + 4, left });
               }}
             ><Icon name="more" size={17} /></button>
           </div>
@@ -400,8 +399,10 @@ export function MediaPoolPanel({
         return createPortal(
           <>
             <div className="cc-asset-menu-backdrop" onClick={() => { setAssetMenu(null); setAssetMenuPos(null); }} />
-            <div className="cc-media-popover cc-asset-menu-portal" style={{ top: assetMenuPos.top, left: assetMenuPos.left }}
+            <div className="cc-media-popover cc-asset-menu-portal" style={assetMenuPos}
               onClick={(e) => e.stopPropagation()}>
+              {!missing.has(asset.id) && <AssetExportButton asset={asset} fps={fps} onError={setError}
+                onComplete={() => { setAssetMenu(null); setAssetMenuPos(null); }} />}
               <button type="button" onClick={() => { onSetFavorite(asset.id, !asset.favorite); setAssetMenu(null); setAssetMenuPos(null); }}>
                 {asset.favorite ? t('取消收藏') : t('收藏')}
               </button>
