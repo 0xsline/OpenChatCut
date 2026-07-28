@@ -188,6 +188,17 @@ DVIDS + Wikimedia give more relevant AND monetization-safe (license-gated PD/CC-
 
 Breaking-news limitation: stock libraries NEVER carry current / recent events (today's strike, this week's conflict, a just-happened disaster). For those scenes, either (a) generate an illustrative composite with submit_image, (b) use archival / historical-style stock, or (c) tell the user the exact footage is unavailable. Never pass generic stock off as the real event.
 
+## Track Layout (NON-NEGOTIABLE — keep tracks separate)
+
+Do NOT pile everything on one track. Each asset type gets its OWN track so footage, overlays, VO, and music never collide or overwrite each other:
+
+- **V1** = Footage (B-roll, one clip per shot, ≤6s)
+- **V2** = Motion graphics / VOX overlays (kinetic-headline, big-stat, data-bars, lower-third, pull-quote) — layered OVER the footage on V1, NOT placed on V1 itself
+- **A1** = VO narration (submit_voice_batch place:{} auto-places clips here, back-to-back)
+- **A2** = Background music bed — SEPARATE from VO so you can mix levels independently
+
+Placement when calling edit_item / add_motion_graphic / submit_music: footage → track V1, motion graphics → track V2, VO → A1 (auto via submit_voice_batch), music → track A2. NEVER put motion graphics on V1 (they overwrite/compete with the footage clip) and NEVER put music on A1 (it fights the VO narration — music must sit on its own A2 so the VO stays intelligible).
+
 ## Footage-Voiceover Alignment (frame-level — NON-NEGOTIABLE)
 
 Footage must follow the narration chunk-by-chunk — NOT one long clip over the whole video:
@@ -228,7 +239,7 @@ The title must create a curiosity gap the video then pays off. Never a dry textb
 4. Write narration per scene TO ITS WORD BUDGET (do not under-write — see Word Budget). For longer scenes, split into ~6s clips, each visually self-contained. After writing all scenes, SUM the word counts and EXPAND any under-budget scene until the total ≥ 90% of target.
 5. Generate voiceover with submit_voice (load the voice skill first; confirm a concrete voice preset before submitting). For Bahasa Indonesia narration, prefer KikiVoice (provider: "kikivoice", voiceId: "joni" — bundled Indonesian clone, desktop only) when available; otherwise use a configured ElevenLabs / Doubao / MiniMax voice. Spell digits / symbols / abbreviations out per the Text Normalization section before submitting. Read the REAL TTS audio duration and fit scenes to it, not to estimates.
 6. After VO lands on A1, transcribe_track (track A1) once, then call \`plan_footage_shots\` (track A1, maxSeconds 6) to get a frame-precise shot table (startFrame + durationInFrames + spoken text per ≤6s shot — no manual chunk math). Derive ONE English keyword per shot from its text, select visuals via \`search_stock_batch\` (≤12 queries/call, group by platform — NOT \`search_stock_media\` per shot), download via \`download_media_batch\`, then place ONE footage per shot at its planned startFrame+durationInFrames via \`edit_item\` adds[]. This keeps footage changing every ~6s AND glued to the narration, with ~15-20 tool calls for a 10-min video. Follow the Stock Search Strategy (subject-fronted, action-for-people). For maps use stock map footage / static map. For breaking-news see the breaking-news limitation.
-7. MOTION GRAPHICS — prefer the built-in **VOX Explainer Motion** pack (now installed). When a scene names a key number, a comparison, or introduces a new subject, drop AT MOST ONE overlay using the VOX template that fits:
+7. MOTION GRAPHICS — prefer the built-in **VOX Explainer Motion** pack (now installed). When a scene names a key number, a comparison, or introduces a new subject, drop AT MOST ONE overlay ON TRACK **V2** (layered OVER the footage on V1 — NEVER on V1 itself; see Track Layout) using the VOX template that fits:
    - kinetic-headline — the video title, a chapter/phase heading, or a one-line thesis (word-by-word pop + accent sweep on the keyword).
    - big-stat — a SINGLE headline number (percent of GDP, barrel count, casualty figure, range in km) with a count-up + accent underline.
    - data-bars — a COMPARISON of several values (defense budgets, export shares, polling, fleet sizes) — staggered bars, one in alert red.
@@ -236,7 +247,7 @@ The title must create a curiosity gap the video then pays off. Never a dry textb
    - pull-quote — a dramatic direct quote from a leader/expert, keyword highlighted in accent.
    Only add an overlay when the scene genuinely carries a number / comparison / new name / quote — do NOT decorate every scene. Discover the exact template assetId via search_templates / the motion-graphic library (category motion-graphics, pack id vox-explainer-motion); edit the instance props (headline/value/name/quote + colors) to the scene data. Keep overlays clean and readable (VOX paper/ink/accent palette by default).
 8. TRANSITIONS — hard cuts are the default for MOST scene boundaries. Use the glitch-cut transition ONLY at high-tension beats — NOT every cut: entering the ESCALATION phase, a strike/attack reveal, a "gencatan senjata mati" pivot, or a hard phase-to-phase jump. Keep it to ~15-20% of boundaries maximum so the glitch keeps its punch (every-cut glitch looks noisy and loses impact). Optionally pair a glitch cut with the glitchy-tv-signal sound effect for extra punch at the single biggest reveal.
-9. Assemble the timeline aligned to the real voiceover duration. Add captions when useful.
+9. Assemble the timeline aligned to the real voiceover duration. If the user wants music, add a background music bed on track **A2** (NOT A1 — A1 is the VO narration; see Track Layout), kept low under the narration. Add captions when useful.
 10. QA, then STOP. Check: hook in the first seconds, funnel arc intact, Indonesia connection present, claims attributed, no filler, no generic intro/outro, narration-visual sync. Then report the assembled timeline to the user and STOP — do NOT export unless the user explicitly asks.
 
 ## Rules
