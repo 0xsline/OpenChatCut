@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import { KEY_NAMES, NON_SECRET_NAMES, mergeEnvText, planLegacyLlmMigration, seedKeystore, keyStatus, getKey } from './keystore.ts';
 import { LLM_PROVIDER_PRESETS, llmProviderConfigNames } from '../shared/llm-providers.ts';
 
+const isolatedSeed = Object.fromEntries(KEY_NAMES.map((name) => [name, '']));
+
 // ── 遗留单元组迁移:仅当当前厂商完全没有专属配置时才迁;有任一专属值则整体跳过 ──
 {
   const mk = (entries: Record<string, string>) => {
@@ -57,7 +59,7 @@ assert.ok(out4.includes('E2B_TEMPLATE=\'"wrapped"\''), 'quote-wrapped value re-q
 assert.ok(out4.includes('PEXELS_API_KEY=plain-key'), 'plain value stays unquoted');
 
 // ── seed + status: booleans + source only, and the derived caps — NEVER a key value ──
-seedKeystore({ LLM_API_KEY: 'secret-abc', PEXELS_API_KEY: 'px-1' } as Record<string, string>);
+seedKeystore({ ...isolatedSeed, LLM_API_KEY: 'secret-abc', PEXELS_API_KEY: 'px-1' } as Record<string, string>);
 const st = keyStatus();
 assert.equal(st.keys.LLM_API_KEY.configured, true, 'seeded key marked configured');
 assert.equal(st.keys.LLM_API_KEY.source, 'env', 'seeded key sourced from env');
@@ -102,7 +104,7 @@ assert.deepStrictEqual(
 );
 
 // seed one SECRET + one non-secret on top of the state above (seeds accumulate in-process)
-seedKeystore({ LLM_API_KEY: 'sec-x', MINIMAX_TTS_MODEL: 'speech-2.8-hd' } as Record<string, string>);
+seedKeystore({ ...isolatedSeed, LLM_API_KEY: 'sec-x', MINIMAX_TTS_MODEL: 'speech-2.8-hd' } as Record<string, string>);
 const st2 = keyStatus();
 assert.equal(st2.models['MINIMAX_TTS_MODEL'], 'speech-2.8-hd', 'non-secret model value echoed in models');
 assert.equal(st2.models['KLING_VIDEO_MODEL'], '', 'unset non-secret name echoes empty string');

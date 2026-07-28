@@ -8,6 +8,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / [未发布]
 
+## [0.1.7] - 2026-07-29
+
+### Added / 新增
+
+- Added community resource packages with category-specific previews, creator and license metadata, review-ready exports, and install URLs shared by the website and editor.
+  新增社区资源包：支持按分类生成预览、记录作者与许可证、导出可审核资源，并由官网与编辑器共用安装 URL。
+- Added Extension Center discovery synced with the public resource catalog, plus URL/file installation and local enable, disable, and uninstall management.
+  新增与官网资源目录同步的扩展中心发现页，并支持通过 URL 或文件安装，以及本地启用、停用和卸载管理。
+- Added reusable resource export from the media pool so locally imported or Agent-generated assets can be packaged for contribution.
+  新增从素材池导出可复用资源包，支持将本地导入或 Agent 生成的素材整理后投稿。
+- Added first-run configuration guidance, direct media placement onto a chosen video track, contextual clip review comments, and expanded Agent review workflows.
+  新增首次配置引导、将素材直接放入指定视频轨道、片段上下文评论，以及更完整的 Agent 审阅工作流。
+
+### Changed / 变更
+
+- Streamlined the resource library and Extension Center layouts, removed duplicate sample content, and documented the contribution and installation workflow in both READMEs.
+  精简资源库与扩展中心布局，清理重复示例内容，并在中英文 README 中补充投稿与安装流程。
+- Added Ko-fi and Afdian sponsorship links to the project documentation.
+  在项目文档中新增 Ko-fi 与爱发电赞助入口。
+
+### Fixed / 修复
+
+- Installed URL packages now appear immediately in the Installed tab and remain manageable after reload.
+  通过 URL 安装的扩展现在会立即出现在“已安装”页，并在重新加载后继续可管理。
+- Fixed timeline drag feedback so the playhead guide remains visible while moving captions, video clips, and other timeline items.
+  修复时间线拖动反馈，移动字幕、视频及其他片段时播放头参考线会保持可见。
+
 ## [0.1.6] - 2026-07-27
 
 ### Added / 新增

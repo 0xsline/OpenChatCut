@@ -174,15 +174,27 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 
 ## 社区资源库
 
-[OpenChatCut 社区资源库](https://openchatcut.com/zh/resources)用于发现、安装和分享可复用的剪辑资源：
+[OpenChatCut 社区资源库](https://openchatcut.com/zh/resources)用于发现、安装和分享可复用的 MG 动画、音效、转场、特效、缩放和 LUT。
 
-- 按分类浏览 MG 动画、音效、转场、特效、缩放和 LUT。
+<p align="center">
+  <a href="https://openchatcut.com/zh/resources">
+    <img src="assets/readme-pic/08-community-resources.png" alt="OpenChatCut 社区资源库" />
+  </a>
+</p>
+
+### 发现与安装
+
 - 悬停视觉卡片查看完整变化，下载前可直接试听音频资源。
-- 复制安装 URL 到 OpenChatCut 扩展中心，或下载原始资源包。
-- 提交自己的资源文件、预览素材、元数据与许可证，审核通过后公开发布。
-- 在本机管理已安装扩展，不修改工程中的原始媒体。
+- 复制资源的安装 URL 到 OpenChatCut 扩展中心，或下载原始资源包。
+- 在编辑器内浏览官网目录，并在本机管理已安装扩展。
 
-可安装的视觉资源沿用编辑器的 `openchatcut-plugin@1` 格式与运行时校验。发布后的资源持续对齐项目规范，而不是形成一套只供网站展示的独立格式。
+### 贡献资源
+
+1. 打开[贡献资源](https://openchatcut.com/zh/resources/submit)，选择资源分类。
+2. 上传资源与该分类要求的预览输入，网站会渲染用于公开展示的预览。
+3. 填写作者和许可证信息，提交审核；审核通过后公开上架。
+
+可安装的视觉资源沿用编辑器的 `openchatcut-plugin@1` 格式与运行时校验。OpenChatCut 官方资源使用 MIT 许可证；社区投稿者在提交时选择许可证，发布卡片会显示作者与许可信息。
 
 ---
 
