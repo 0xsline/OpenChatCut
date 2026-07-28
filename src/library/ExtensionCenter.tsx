@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../components/icons';
-import { useT } from '../i18n/locale';
+import { getLocale, useT, type Locale } from '../i18n/locale';
 import type { InstallResult } from '../plugins/install';
 import { removePack, setPackEnabled } from '../plugins/store';
 import { theme } from '../theme';
@@ -20,23 +20,56 @@ interface ExtensionCenterProps {
   onClose: () => void;
 }
 
-function useRegistry(query: string, category: Category): RegistryEntry[] {
+const REGISTRY_URL = import.meta.env.VITE_RESOURCE_REGISTRY_URL
+  || 'https://openchatcut.com/api/resources/extensions';
+const registryCacheKey = (locale: Locale) => `cc.extension-registry.${locale}`;
+
+function readRegistryCache(locale: Locale): RegistryEntry[] {
+  try {
+    return parseRegistry(JSON.parse(localStorage.getItem(registryCacheKey(locale)) ?? '[]'));
+  } catch {
+    return [];
+  }
+}
+
+function saveRegistryCache(locale: Locale, entries: RegistryEntry[]): void {
+  try {
+    localStorage.setItem(registryCacheKey(locale), JSON.stringify(entries));
+  } catch { /* 缓存不可用不影响在线发现 */ }
+}
+
+async function fetchRegistry(locale: Locale, signal: AbortSignal): Promise<RegistryEntry[]> {
+  const url = new URL(REGISTRY_URL, window.location.origin);
+  url.searchParams.set('locale', locale);
+  const response = await fetch(url, { cache: 'no-store', signal });
+  if (!response.ok) throw new Error(`Registry request failed: ${response.status}`);
+  return parseRegistry(await response.json());
+}
+
+function useRegistry(query: string, category: Category, locale: Locale) {
   const [registry, setRegistry] = useState<RegistryEntry[]>([]);
+  const [syncFailed, setSyncFailed] = useState(false);
   useEffect(() => {
-    let alive = true;
-    void fetch('/plugins/index.json', { cache: 'no-store' })
-      .then((response) => (response.ok ? response.json() : []))
-      .then((value) => { if (alive) setRegistry(parseRegistry(value)); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, []);
-  return useMemo(() => {
+    const controller = new AbortController();
+    setRegistry(readRegistryCache(locale));
+    setSyncFailed(false);
+    void fetchRegistry(locale, controller.signal).then((entries) => {
+      setRegistry(entries);
+      saveRegistryCache(locale, entries);
+    }).catch((error) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      setSyncFailed(true);
+    });
+    return () => controller.abort();
+  }, [locale]);
+  const entries = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     return registry.filter((entry) => {
       if (category !== '全部' && !entry.categories.includes(category)) return false;
       return !needle || `${entry.name} ${entry.description ?? ''} ${entry.author ?? ''}`.toLocaleLowerCase().includes(needle);
     });
   }, [registry, query, category]);
+  return { entries, syncFailed };
 }
 
 function useExtensionActions(onInstalled: () => void) {
@@ -103,13 +136,14 @@ function CenterHeader({ tab, installedCount, onTab, onClose, showLocalInstall, o
 
 export function ExtensionCenter({ onClose }: ExtensionCenterProps) {
   const t = useT();
+  const locale = getLocale();
   const packs = usePluginPacks();
   const [tab, setTab] = useState<CenterTab>('发现');
   const [category, setCategory] = useState<Category>('全部');
   const [query, setQuery] = useState('');
   const [showLocalInstall, setShowLocalInstall] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
-  const entries = useRegistry(query, category);
+  const registry = useRegistry(query, category, locale);
   const actions = useExtensionActions(() => {
     setTab('已安装');
     setShowLocalInstall(false);
@@ -119,7 +153,8 @@ export function ExtensionCenter({ onClose }: ExtensionCenterProps) {
       <CenterHeader tab={tab} installedCount={packs.length} onTab={setTab} onClose={onClose} showLocalInstall={showLocalInstall} onLocalInstall={() => setShowLocalInstall((value) => !value)} />
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14 }}>
         {actions.status && <div style={{ marginBottom: 10, padding: '7px 9px', border: `0.5px solid ${actions.status.ok ? theme.success : theme.danger}`, borderRadius: 3, background: theme.panelAlt, color: actions.status.ok ? theme.text : theme.danger, fontSize: 11 }}>{actions.status.text}</div>}
-        {tab === '发现' && <ExtensionDiscover entries={entries} packs={packs} busyId={actions.busyId} showLocalInstall={showLocalInstall} query={query} category={category} onQuery={setQuery} onCategory={setCategory} onInstall={actions.runInstall} />}
+        {tab === '发现' && registry.syncFailed && <div style={{ marginBottom: 10, color: theme.textDim, fontSize: 10.5 }}>{t('官网资源暂时不可用，正在显示上次同步内容。')}</div>}
+        {tab === '发现' && <ExtensionDiscover entries={registry.entries} packs={packs} busyId={actions.busyId} showLocalInstall={showLocalInstall} query={query} category={category} onQuery={setQuery} onCategory={setCategory} onInstall={actions.runInstall} />}
         {tab === '已安装' && (
           <ExtensionInstalled
             packs={packs}

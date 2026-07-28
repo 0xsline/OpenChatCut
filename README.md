@@ -414,6 +414,18 @@ See the bilingual [`CHANGELOG.md`](CHANGELOG.md) for notable changes, or browse 
 
 ---
 
+## Sponsor
+
+If OpenChatCut helps you, you can support its continued development on Ko-fi.
+
+<p align="center">
+  <a href="https://ko-fi.com/Y5N2241IP5">
+    <img alt="Support me on Ko-fi" src="https://img.shields.io/badge/Support_me_on-Ko--fi-72a4f2?logo=kofi&amp;logoColor=white" />
+  </a>
+</p>
+
+---
+
 ## License
 
 OpenChatCut is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).

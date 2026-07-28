@@ -412,6 +412,18 @@ OpenChatCut 基于以下核心项目与规范构建：
 
 ---
 
+## 赞助
+
+如果 OpenChatCut 对你有帮助，欢迎通过 Ko-fi 支持项目持续开发。
+
+<p align="center">
+  <a href="https://ko-fi.com/Y5N2241IP5">
+    <img alt="通过 Ko-fi 支持项目" src="https://img.shields.io/badge/Support_me_on-Ko--fi-72a4f2?logo=kofi&amp;logoColor=white" />
+  </a>
+</p>
+
+---
+
 ## 许可证
 
 OpenChatCut 采用 [GNU Affero General Public License v3.0 或更高版本](LICENSE)。
