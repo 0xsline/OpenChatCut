@@ -13,6 +13,7 @@ import type { SemanticMatch } from './semantic-search/types';
 import { filterMediaAssets, type MediaSortKey, type MediaTypeFilter } from './mediaPoolFilter';
 import { MobileUploadDialog } from './MobileUploadDialog';
 import type { MobileUploadRecord } from './mobileUploadApi';
+import { setMediaAssetDrag } from './drag';
 interface MediaPoolPanelProps {
   semanticScopeId: string;
   assets: MediaAsset[];
@@ -325,7 +326,10 @@ export function MediaPoolPanel({
           <div className="cc-asset-thumb-wrap">
             <button
               className="cc-asset-thumb"
-              title={missing.has(asset.id) ? t('点击重新链接') : t('加到时间线：{name}', { name: asset.name })}
+              title={missing.has(asset.id) ? t('点击重新链接') : t('点击加入时间线，或拖到指定轨道：{name}', { name: asset.name })}
+              draggable={!missing.has(asset.id)}
+              style={missing.has(asset.id) ? undefined : { cursor: 'grab' }}
+              onDragStart={(event) => setMediaAssetDrag(event, asset)}
               onClick={() => {
                 if (missing.has(asset.id) && onRelinkAsset) startRelink(asset.id);
                 else onAddAsset(asset);
@@ -341,10 +345,10 @@ export function MediaPoolPanel({
                     </span>
                   )
                   : asset.kind === 'image' || asset.kind === 'gif' || asset.kind === 'svg'
-                    ? <img src={asset.src} alt={asset.name} onError={() => markMissing(asset.id)} onLoad={() => clearMissing(asset.id)} />
+                    ? <img src={asset.src} alt={asset.name} draggable={false} onError={() => markMissing(asset.id)} onLoad={() => clearMissing(asset.id)} />
                     : asset.kind === 'video'
                       // preload=metadata 不解码画面(黑块),seek 一下才逼浏览器绘帧;顺带避开第 0 帧黑场
-                      ? <video src={asset.src} muted preload="metadata" onError={() => markMissing(asset.id)} onLoadedData={() => clearMissing(asset.id)}
+                      ? <video src={asset.src} muted preload="metadata" draggable={false} onError={() => markMissing(asset.id)} onLoadedData={() => clearMissing(asset.id)}
                           onLoadedMetadata={(e) => { const v = e.currentTarget; if (Number.isFinite(v.duration) && v.duration > 0) v.currentTime = Math.min(1, v.duration / 2); }} />
                       : asset.kind === 'motion-graphic'
                         ? <MgThumb asset={asset} fps={fps} />

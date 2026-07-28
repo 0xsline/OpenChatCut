@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { theme } from '../theme';
+import { getAgentModelSnapshot, subscribeAgentModels } from '../agent/model-selection';
 import { loadProject, loadProjectThumb, saveProjectThumb, type ProjectMeta } from '../persist/projectStore';
 import { BrandMark, Icon, OpenChatCutWordmark } from './icons';
 import { SettingsDialog } from './settings/SettingsDialog';
@@ -54,8 +55,25 @@ async function renderProjectPoster(m: ProjectMeta): Promise<string | null> {
   return b64 ? `data:image/jpeg;base64,${b64}` : null;
 }
 
+function ModelSetupCard({ onOpen }: { onOpen: () => void }) {
+  const t = useT();
+  return (
+    <section role="status" style={modelSetupCard}>
+      <span style={modelSetupIcon}><Icon name="sparkles" size={18} /></span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <strong style={{ display: 'block', color: theme.textStrong, fontSize: 13.5 }}>{t('配置模型后开始使用 Agent')}</strong>
+        <span style={{ display: 'block', marginTop: 3, color: theme.textDim, fontSize: 11.5, lineHeight: 1.5 }}>
+          {t('添加任一模型厂商的 API 密钥，即可在编辑器中使用对话式剪辑。')}
+        </span>
+      </span>
+      <button type="button" onClick={onOpen} style={modelSetupButton}>{t('配置模型')}</button>
+    </section>
+  );
+}
+
 export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDelete, onExport, onImport }: DashboardProps) {
   const t = useT();
+  const modelSnapshot = useSyncExternalStore(subscribeAgentModels, getAgentModelSnapshot);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -153,6 +171,9 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
 
       <main style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
        <div style={{ maxWidth: 1120, margin: '0 auto', padding: '28px 24px 80px' }}>
+        {modelSnapshot.loaded && modelSnapshot.choices.length === 0 && (
+          <ModelSetupCard onOpen={() => setSettingsOpen(true)} />
+        )}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 18 }}>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em' }}>{t('工程')}</h1>
           {note && <span style={{ color: theme.textDim, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{note}</span>}
@@ -249,6 +270,19 @@ const thumb: React.CSSProperties = {
 const nameInput: React.CSSProperties = { font: 'inherit', fontSize: 13, fontWeight: 550, background: theme.panelAlt, color: theme.text, border: `0.5px solid ${theme.accent}`, borderRadius: 5, padding: '2px 6px', width: '100%' };
 const miniBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 12, padding: '2px 4px', borderRadius: 4, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };
 const settingsBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', padding: 6, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };
+const modelSetupCard: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, padding: '13px 14px',
+  border: `0.5px solid ${theme.accent}`, borderRadius: 6, background: theme.panelAlt,
+};
+const modelSetupIcon: React.CSSProperties = {
+  width: 34, height: 34, flex: '0 0 auto', display: 'grid', placeItems: 'center',
+  borderRadius: 6, color: theme.textStrong, background: theme.hover,
+};
+const modelSetupButton: React.CSSProperties = {
+  flex: '0 0 auto', border: `0.5px solid ${theme.accent}`, borderRadius: 5,
+  background: theme.accent, color: theme.onAccent, padding: '7px 12px',
+  fontSize: 12, fontWeight: 650, cursor: 'pointer',
+};
 const importBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: theme.text,
   background: 'none', border: `0.5px solid ${theme.border}`, borderRadius: 6, padding: '4px 10px', cursor: 'pointer',

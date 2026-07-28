@@ -20,6 +20,7 @@ import { useT } from '../../i18n/locale';
 import { CLIP_COLOR, waveformPath, type EditMode } from './timelineUtil';
 import { ClipMediaLayers } from './ClipMediaLayers';
 import { isPreviewable } from '../../media/clipPreview';
+import { canDropMediaAsset, hasCompatibleMediaDrag, parseMediaAssetDrag } from '../../media/drag';
 import type { useTimelinePointer } from './useTimelinePointer';
 
 /** corner chips so applied fx / lut / zoom / denoise / transition are visible on the clip */
@@ -116,6 +117,7 @@ export function TrackLane({
   const t = useT();
   const { drag, penDrag, setPenDrag, startDrag, startPick, startMarquee } = pointer;
   const trackIds = timelineTrackIds(state);
+  const laneKind = trackKind(state, trackId);
   const dragOffsetY = drag?.mode === 'move'
     && trackKind(state, drag.targetTrack) === trackKind(state, drag.baseTrack)
     && !state.tracks?.[drag.targetTrack]?.locked
@@ -136,13 +138,24 @@ export function TrackLane({
         if (editMode === 'selection' && !locked) startMarquee(e);
       }}
       onDragOver={(e) => {
-        if (!hasLibraryDrag(e) || locked) return;
+        if (locked || (!hasLibraryDrag(e) && !hasCompatibleMediaDrag(e, laneKind))) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
         setLibDropTarget(`track:${trackId}`);
       }}
       onDragLeave={() => setLibDropTarget((t) => (t === `track:${trackId}` ? null : t))}
       onDrop={(e) => {
+        const mediaAssetId = parseMediaAssetDrag(e);
+        if (mediaAssetId) {
+          setLibDropTarget(null);
+          e.preventDefault();
+          e.stopPropagation();
+          const asset = (state.assets ?? []).find((item) => item.id === mediaAssetId);
+          if (!locked && asset && canDropMediaAsset(asset, laneKind)) {
+            commands.addMediaItem(asset, { track: trackId, startFrame: frameFromClientX(e.clientX) });
+          }
+          return;
+        }
         const payload = parseLibraryDrag(e);
         setLibDropTarget(null);
         if (!payload || locked) return;

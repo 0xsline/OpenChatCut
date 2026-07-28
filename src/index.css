@@ -446,7 +446,8 @@ button, input, select { font: inherit; }
 .cc-track-fixed-action:disabled { color:var(--cc-border-light); cursor:default; }
 .cc-track-name { min-width:0; padding-left:1px; color:var(--cc-text-dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .cc-caption-track-lane { flex:1; position:relative; overflow:hidden; }
-.cc-caption-track-cue { position:absolute; top:8px; bottom:8px; box-sizing:border-box; overflow:hidden; padding:5px 7px; border:0.5px solid color-mix(in srgb, var(--cc-track-caption) 78%, white); border-radius:4px; background:color-mix(in srgb, var(--cc-track-caption) 76%, var(--cc-panel)); color:var(--cc-text-strong); font-size:11px; line-height:1.35; white-space:nowrap; text-overflow:ellipsis; touch-action:none; cursor:grab; }
+.cc-caption-track-cue { position:absolute; top:8px; bottom:8px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; overflow:hidden; padding:5px 7px; border:0.5px solid color-mix(in srgb, var(--cc-track-caption) 78%, white); border-radius:4px; background:color-mix(in srgb, var(--cc-track-caption) 76%, var(--cc-panel)); color:var(--cc-text-strong); font-size:11px; line-height:1.35; white-space:nowrap; text-align:center; touch-action:none; cursor:grab; }
+.cc-caption-track-cue > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .cc-caption-track-cue:active { cursor:grabbing; }
 .cc-caption-track-cue.selected { outline:2px solid var(--cc-accent); outline-offset:-2px; }
 .cc-caption-track-cue:focus-visible { outline:2px solid var(--cc-accent); outline-offset:-2px; }

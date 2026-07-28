@@ -25,6 +25,9 @@ export default {
   // ---- Dashboard ----
   '· 我的工程': '· My Projects',
   '设置 · API 密钥': 'Settings · API Keys',
+  '配置模型后开始使用 Agent': 'Configure a model to start using the Agent',
+  '添加任一模型厂商的 API 密钥，即可在编辑器中使用对话式剪辑。': 'Add an API key for any model provider to use conversational editing in the editor.',
+  '配置模型': 'Configure Model',
   '处理中…': 'Processing…',
   '失败:{error}': 'Failed: {error}',
   '工程': 'Projects',
