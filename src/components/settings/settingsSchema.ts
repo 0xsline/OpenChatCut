@@ -301,6 +301,12 @@ const STATIC_NON_LLM_CATEGORIES: readonly SettingsCategory[] = [
           { key: 'stock/wikimedia', vendor: 'wikimedia', title: 'Wikimedia Commons',
             note: 'Tanpa API Key — tersedia langsung. Hanya lisensi PD / CC-BY (CC-BY-SA diblokir demi monetisasi). Untuk bendera, peta, foto pemimpin dunia, arsip sejarah.',
             fields: [] },
+          { key: 'stock/searxng', vendor: 'searxng', title: 'SearXNG',
+            note: 'Self-hosted meta-search (Google+Bing+DDG image search) — tanpa API Key, gratis. '
+              + 'Untuk foto REAL web (subjek geopolitik spesifik yg stock tidak punya: prajurit IRGC, frigate tertentu, tokoh di summit). '
+              + 'Lisensi TIDAK terverifikasi — copyright tanggungan Anda. Jalankan: docker run -d -p 8080:8080 searxng/searxng, lalu isi http://localhost:8080.',
+            fields: [text('SEARXNG_URL', 'Base URL', 'http://localhost:8080',
+              'URL container SearXNG Anda. Kosong = nonaktif (agent skip, kembali ke stock biasa).')] },
         ] },
       { key: 'transcription', title: '转写 / 口播剪辑', hint: 'transcribe_track · 词级字幕、清口水、删词。',
         vendors: [
