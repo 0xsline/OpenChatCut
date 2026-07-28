@@ -62,9 +62,23 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
     }, (upRes) => {
       const status = upRes.statusCode ?? 502;
       if (status >= 400 && route.errorMessage) {
-        upRes.resume();
-        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ error: { message: route.errorMessage(status, req) } }));
+        const errorMessage = route.errorMessage; // capture before the async closure (TS can't keep the narrow inside it)
+        // Collect + log the REAL upstream error body so 4xx/5xx causes are diagnosable
+        // (the generic errorMessage otherwise hides the provider's actual reason — e.g.
+        // warungkeys/z.ai rejecting a tool schema or a param). Surface a short reason too.
+        let upstreamBody = '';
+        upRes.setEncoding('utf8');
+        upRes.on('data', (chunk: string) => { upstreamBody += chunk; });
+        upRes.on('end', () => {
+          console.error(`[proxy ${status}] ${req.method} ${req.url} upstream=${route.target(req)} body=${upstreamBody.slice(0, 1200)}`);
+          let reason = '';
+          try {
+            const parsed = JSON.parse(upstreamBody) as { error?: { message?: string }; message?: string };
+            reason = parsed.error?.message ?? parsed.message ?? '';
+          } catch { reason = upstreamBody.slice(0, 200); }
+          res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({ error: { message: errorMessage(status, req) + (reason ? ` — ${reason}` : '') } }));
+        });
         return;
       }
       const outHeaders: Record<string, string | string[]> = {};

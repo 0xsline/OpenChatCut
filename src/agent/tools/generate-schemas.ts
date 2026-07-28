@@ -111,8 +111,8 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
         provider: { type: 'string', enum: ['elevenlabs', 'doubao', 'minimax', 'kikivoice'], description: 'Shared provider for all items (default kikivoice).' },
         voiceId: { type: 'string', description: 'Shared voiceId for all items unless overridden per item (default joni).' },
         place: {
-          type: ['boolean', 'object'],
-          description: 'Auto-place the synth clips back-to-back on an audio track in scene order. Pass true, or {track, startFrame} to customize. The audio track is created automatically if missing (no edit_track needed). Default false (asset-only, like submit_voice). For a narration/VO track pass place:true.',
+          type: 'object',
+          description: 'Auto-place the synth clips back-to-back on an audio track in scene order. Pass {} (empty object) or {track, startFrame} to customize. The audio track is created automatically if missing (no edit_track needed). Omit the field entirely for asset-only mode (like submit_voice). For a narration/VO track pass place:{}.',
           properties: {
             track: { type: 'string', description: 'Optional target audio track id/name (e.g. "A1"). Auto-created if missing.' },
             startFrame: { type: 'number', description: 'Start frame of the first clip (default 0).' },
