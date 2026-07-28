@@ -232,6 +232,24 @@ Real reference titles (match this voice):
 
 The title must create a curiosity gap the video then pays off. Never a dry textbook headline ("Analisis Konflik Selat Hormuz" = reject).
 
+## YouTube Package (Title + Description + Timestamps + Tags — generate AFTER the timeline is assembled)
+
+Once the video is assembled (after the QA/STOP step), produce the full YouTube upload package in Bahasa Indonesia, calibrated to the Trikcuan channel voice. Present it as labeled copy-paste blocks the user can drop straight into YouTube Studio.
+
+**Title** — the Title Formula above (2–3 segments joined by the pipe character |, or one punchy sentence ending with ! or "| Cek Fakta"). NAMED actor + EMOTION trigger. Indonesian.
+
+**Description** — plain text (no markdown), 3 short paragraphs + a hashtag line:
+1. COLD OPEN (2–3 sentences): the specific event — exact date, weapon/platform, target, the stake. Concrete nouns, not summary ("Pada 26 Juni 2026, pesawat tempur Amerika menghantam fasilitas militer Iran di Selat Hormuz...").
+2. CONTEXT + STAKES (2–3 sentences): why it escalated, the broader arena, one quantified stake ("Selat Hormuz—20 persen minyak dunia—kembali menjadi arena perang saraf...").
+3. INDONESIA CONNECTION (2–3 sentences): local impact (BBM/LPG 3 kg, rupiah, TKI di Teluk, ekspor nikel/CPO/batu bara, rute Selat Malaka, posisi ASEAN) + a "Dalam video ini kita bedah..." line telling the viewer what they'll learn.
+4. Hashtag line: ~6 hashtags, each #-prefixed, no spaces inside, mix of event + topic + broad reach. Example: #PerangIran2026 #SelatHormuz #ASvsIran #GencatanSenjataIran #BeritaTerkini #HargaMinyak.
+
+**Timestamps (YouTube chapters)** — Trikcuan omits these, but the user wants them. Derive from the FUNNEL ARC phases + scene boundaries (use the plan_scenes breakdown + the REAL voiceover duration; map scene start frames to seconds at fps 30, rounded). Format each line as MM:SS Label, Indonesian:
+- First line MUST start at 0:00 (YouTube ignores chapters otherwise).
+- One chapter per phase transition / major scene boundary: 0:00 Pembuka (HOOK), then M:SS Konteks, M:SS Eskalasi, M:SS Dampak ke Indonesia, M:SS Penutup — labels are short phrases (3–5 words) describing THAT section, not just the phase name. 4–8 chapters for a 10-min video. Paste this list into the description (YouTube parses it as chapters).
+
+**Tags** — a SINGLE comma-separated line of ~15–20 long-tail SEO keywords in Bahasa Indonesia, drawn from the SPECIFIC content (named operations, weapons, places, people, dates) — not generic terms. Mix event phrases ("AS serang Iran 2026"), actors ("IRGC", "Trump Iran Truth Social"), stakes ("harga minyak Indonesia naik"), and broad reach ("berita Timur Tengah terkini"). No #-prefix, comma-separated, no trailing space after commas. Example: AS serang Iran 2026,IRGC serang Kuwait Bahrain,MOU Islamabad dilanggar,Selat Hormuz diblokade,dampak perang Iran ke Indonesia,harga minyak Indonesia naik,perang AS Iran terbaru.
+
 ## Workflow
 
 1. Read project state: target duration, aspect ratio, platform, narration language (default Bahasa Indonesia).
@@ -249,7 +267,7 @@ The title must create a curiosity gap the video then pays off. Never a dry textb
    Only add an overlay when the scene genuinely carries a number / comparison / new name / quote — do NOT decorate every scene. Discover the exact template assetId via search_templates / the motion-graphic library (category motion-graphics, pack id vox-explainer-motion); edit the instance props (headline/value/name/quote + colors) to the scene data. Keep overlays clean and readable (VOX paper/ink/accent palette by default).
 8. TRANSITIONS — hard cuts are the default for MOST scene boundaries. Use the glitch-cut transition ONLY at high-tension beats — NOT every cut: entering the ESCALATION phase, a strike/attack reveal, a "gencatan senjata mati" pivot, or a hard phase-to-phase jump. Keep it to ~15-20% of boundaries maximum so the glitch keeps its punch (every-cut glitch looks noisy and loses impact). Optionally pair a glitch cut with the glitchy-tv-signal sound effect for extra punch at the single biggest reveal.
 9. Assemble the timeline aligned to the real voiceover duration. If the user wants music, add a background music bed on track **A2** (NOT A1 — A1 is the VO narration; see Track Layout), kept low under the narration. Add captions when useful.
-10. QA, then STOP. Check: hook in the first seconds, funnel arc intact, Indonesia connection present, claims attributed, no filler, no generic intro/outro, narration-visual sync. Then report the assembled timeline to the user and STOP — do NOT export unless the user explicitly asks.
+10. QA, then STOP. Check: hook in the first seconds, funnel arc intact, Indonesia connection present, claims attributed, no filler, no generic intro/outro, narration-visual sync. Then report the assembled timeline AND the YouTube Package (Title + Description + Timestamps + Tags — see its section) to the user, and STOP — do NOT export unless the user explicitly asks.
 
 ## Rules
 
