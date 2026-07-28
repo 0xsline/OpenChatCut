@@ -105,7 +105,7 @@ export function parseStockPlatforms(
       ? ['pexels', 'pixabay', 'dvids', 'wikimedia']
       : kind === 'audio' || kind === 'music'
         ? ['freesound']
-        : [...ALL_PLATFORMS];
+        : ALL_PLATFORMS.filter((platform) => platform !== 'searxng'); // searxng is opt-in (explicit platforms=), never in the kind:any default
   if (!explicit) return { platforms: defaults, warnings: [], explicit: false };
 
   const tokens = (Array.isArray(value) ? value : String(value).split(','))
@@ -643,10 +643,15 @@ function searxngHost(url: string): string {
 }
 
 function isSearxngPhotoUrl(url: string): boolean {
-  const lowered = url.toLowerCase().split('?')[0] ?? '';
+  // Require http(s) first (block javascript:/data:/file:) — defense-in-depth so a
+  // non-http img_src can never become previewUrl/importUrl downstream.
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return false; }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  const lowered = parsed.pathname.toLowerCase();
   if (lowered.endsWith('.svg') || lowered.endsWith('.gif')) return false;
   if (!SEARXNG_PHOTO_EXTENSIONS.some((ext) => lowered.endsWith(ext))) return false;
-  const host = searxngHost(url);
+  const host = parsed.hostname.toLowerCase();
   if (!host) return false;
   if (SEARXNG_ICON_HOSTS.some((frag) => host.includes(frag))) return false;
   if (SEARXNG_NON_VISUAL_HOSTS.some((frag) => host.includes(frag))) return false;
@@ -654,7 +659,9 @@ function isSearxngPhotoUrl(url: string): boolean {
 }
 
 // Cap concurrent SearXNG calls so a batch search (≤12 queries) doesn't overwhelm
-// the single local SearXNG container / trip 429 (mirrors OpenCut-AI's semaphore).
+// the single local SearXNG container / trip 429. 3 balances Node's batch fan-out
+// against a small container (the Python source uses 2; the 429 retry below is the
+// backstop when the cap is exceeded).
 const SEARXNG_CONCURRENCY = 3;
 let searxngActive = 0;
 const searxngQueue: Array<() => void> = [];
@@ -681,10 +688,25 @@ async function searchSearXNG(
   const root = baseUrl.trim().replace(/\/+$/, '');
   const searchUrl = `${root}/search?${new URLSearchParams({ q: query, categories: 'images', format: 'json' }).toString()}`;
   return withSearxngSlot(async () => {
-    const res = await fetchImpl(searchUrl, {
+    // 429 backoff (mirrors searchWikimedia + the Python source's _searxng_get): up
+    // to 3 attempts honoring Retry-After (cap 8s). Persistent 429 → return [] silently
+    // (the local container is overwhelmed for this query; the agent falls back).
+    let res = await fetchImpl(searchUrl, {
       headers: { 'User-Agent': SEARXNG_UA },
       signal: AbortSignal.timeout(20_000),
     });
+    for (let attempt = 0; attempt < 2 && res.status === 429; attempt++) {
+      const retryAfter = Number(res.headers.get('retry-after'));
+      const wait = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter, 8)
+        : Math.min(2 * 2 ** attempt, 8);
+      await new Promise<void>((resolve) => { setTimeout(resolve, wait * 1000); });
+      res = await fetchImpl(searchUrl, {
+        headers: { 'User-Agent': SEARXNG_UA },
+        signal: AbortSignal.timeout(20_000),
+      });
+    }
+    if (res.status === 429) return []; // persistent rate-limit after retries
     if (!res.ok) throw new Error(`SearXNG search failed (${res.status})`);
     const body = await res.json() as { results?: Array<{ img_src?: string; image?: string; url?: string }> };
     const out: StockResult[] = [];
@@ -692,10 +714,12 @@ async function searchSearXNG(
       const img = item.img_src || item.image || item.url || '';
       if (!img || !isSearxngPhotoUrl(img)) continue;
       out.push({
+        // license left ABSENT: web-image hits are UNVERIFIED (StockResult.license
+        // contract = "absent = unverified"). verified:false + attribution = source.
         platform: 'searxng', kind: 'image',
         previewUrl: img, importUrl: img,
         attribution: searxngHost(img) || 'web image',
-        license: 'PD', verified: false,
+        verified: false,
       });
       if (out.length >= limit) break;
     }
@@ -805,7 +829,7 @@ export async function searchStockMedia(
       });
     } else if (target.platform === 'searxng') {
       // SearXNG (self-hosted meta-search; key-less). Opt-in via platforms=searxng.
-      if (options.searxngUrl) {
+      if (options.searxngUrl?.trim()) {
         jobs.push({
           label: `searxng/${target.kind}`, platforms: ['searxng'],
           run: () => searchSearXNG(fetchImpl, options.searxngUrl!, query, limit),

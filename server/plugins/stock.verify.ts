@@ -157,6 +157,7 @@ assert(allResponse.results.some((result) => result.kind === 'audio'));
 assert(allResponse.results.some((result) => result.platform === 'dvids' && result.license === 'PD-USGov'));
 assert(allResponse.results.some((result) => result.platform === 'wikimedia' && result.license === 'PD'));
 assert(allResponse.warnings.some((warning) => warning.includes('Pixabay') && warning.includes('方形')));
+assert(!allResponse.warnings.some((warning) => warning.includes('SearXNG')), 'searxng must NOT be attempted for kind:any without SEARXNG_URL (opt-in only)');
 // every provider received the category-augmented query in its own param name
 assert(allCalls.every((call) => {
   const q = call.url.searchParams.get('query')
@@ -377,12 +378,13 @@ const searxngGood = await searchStockMedia({ searxngUrl: 'http://localhost:8080'
   { img_src: 'https://www.merriam-webster.com/word.jpg' },                   // dropped (dictionary non-visual host)
   { img_src: 'https://example.com/page.html' },                              // dropped (not a raster extension)
   { img_src: 'https://example.com/anim.gif' },                               // dropped (gif rejected)
+  { img_src: 'javascript://evil.com/x.jpg' },                                // dropped (non-http protocol)
 ]));
 assert.equal(searxngGood.configured, true);
 assert.equal(searxngGood.results.length, 2, 'only clean raster-photo hosts pass (alamy/jsdelivr/merriam-webster/html/gif dropped)');
 assert.equal(searxngGood.results[0]?.platform, 'searxng');
 assert.equal(searxngGood.results[0]?.kind, 'image');
-assert.equal(searxngGood.results[0]?.license, 'PD');
+assert.equal(searxngGood.results[0]?.license, undefined, 'searxng results leave license ABSENT (absent = unverified)');
 assert.equal(searxngGood.results[0]?.verified, false);
 assert.equal(searxngGood.results[0]?.importUrl, 'https://news.example/frigate.jpg');
 assert.equal(searxngGood.results[1]?.importUrl, 'https://c1.staticflickr.com/x/abc.jpg');
@@ -406,5 +408,17 @@ const searxngVideo = await searchStockMedia({ searxngUrl: 'http://localhost:8080
 }, searxngFetch([{ img_src: 'https://news.example/x.jpg' }]));
 assert.equal(searxngVideo.configured, false);
 assert.deepEqual(searxngVideo.results, []);
+
+// SearXNG 429 retry: a transient 429 is retried, then succeeds (not a hard failure).
+let searxng429Calls = 0;
+const searxngRetry = await searchStockMedia({ searxngUrl: 'http://localhost:8080' }, {
+  query: 'frigate', kind: 'image', platforms: 'searxng',
+}, (async () => {
+  searxng429Calls += 1;
+  if (searxng429Calls === 1) return new Response('{}', { status: 429, headers: { 'retry-after': '0' } });
+  return json({ results: [{ img_src: 'https://news.example/after-retry.jpg' }] });
+}) as typeof fetch);
+assert.equal(searxngRetry.results.length, 1, 'a transient 429 is retried, then succeeds');
+assert.equal(searxngRetry.results[0]?.importUrl, 'https://news.example/after-retry.jpg');
 
 console.log('stock search filters verified (pexels, pixabay, unsplash, freesound, dvids, wikimedia, searxng + license gate)');
