@@ -44,7 +44,7 @@ assert.ok(off.includes('--tier speed'), '包含 pass --tier 措辞');
 assert.ok(!off.includes('plan_mode'), 'planMode off → 无计划指令');
 const on = agentSettingsPrompt({ mgTier: 'quality', planMode: true, skillGuard: false });
 assert.ok(on.includes('motion_graphic_tier=quality') && on.includes('--tier quality'), 'tier 跟随设置');
-assert.ok(on.includes('plan_mode=on') && on.includes('编号计划'), 'planMode on → 先计划后动手指令');
+assert.ok(on.includes('plan_mode=on') && on.includes('numbered plan'), 'planMode on → 先计划后动手指令');
 
 // ── Inline <thinking> extract state machine ──
 const run = (chunks: string[]) => {

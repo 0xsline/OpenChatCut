@@ -62,10 +62,10 @@ export function agentSettingsPrompt(s: Pick<AgentSettings, 'mgTier' | 'planMode'
     `motion_graphic_tier=${s.mgTier}`,
     `When using the motion-graphic-gen skill for this request, pass --tier ${s.mgTier}.`,
     'This value was snapshotted when the user sent the message and applies only to this request.',
-    `生成 MG 时按档位取舍:speed=最快出活 / balance=均衡 / quality=打磨动效细节。`,
+    'For motion graphics, honor the selected tier: speed = fastest delivery, balance = balanced quality and speed, quality = polish motion details.',
   ];
   if (s.planMode) {
-    lines.push('plan_mode=on:先只输出编号计划并等用户确认,再开始调用工具。');
+    lines.push('plan_mode=on: output only a numbered plan first, wait for user confirmation, then call tools.');
   }
   if (s.skillGuard !== false) {
     lines.push('skill_guard=true');

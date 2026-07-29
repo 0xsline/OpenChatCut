@@ -44,7 +44,7 @@ export const PROJECT_TOOL_SCHEMAS: AgentToolSchema[] = [
     input_schema: {
       type: 'object',
       properties: {
-        name: { type: 'string', description: 'Display name (default: random or "新工程").' },
+        name: { type: 'string', description: 'Display name (default: a localized new-project name).' },
         description: { type: 'string' },
         compositionWidth: { type: 'number', description: 'Default 1920.' },
         compositionHeight: { type: 'number', description: 'Default 1080.' },
@@ -99,7 +99,7 @@ export const PROJECT_TOOL_SCHEMAS: AgentToolSchema[] = [
     name: 'edit_project',
     description: [
       'Update project-level settings or speakers. action=update: change name/description via json {"name"?, "description"?}.',
-      'action=speaker-update: project-wide rename/merge a speaker — {from:"A", to:"新名字"} relabels every word of that speaker across all transcribed clips in the open project.',
+      'action=speaker-update: project-wide rename/merge a speaker — {from:"A", to:"New name"} relabels every word of that speaker across all transcribed clips in the open project.',
       'speaker-create/speaker-delete are unsupported here (no speaker roster — speakers are per-word diarization labels); use speaker-update to relabel, or manage_transcript fix per clip.',
     ].join(' '),
     input_schema: {

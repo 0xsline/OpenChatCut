@@ -86,8 +86,8 @@ const commonPrefixLength = (a: string, b: string): number => {
     styleGuide: '字幕保持两行以内，避免炫光转场。',
   });
   assert.match(prompt, /字幕保持两行以内/);
-  assert.match(prompt, /所有编辑都必须遵守/);
-  assert.match(SYSTEM_PROMPT, /创作方向和素材计划/);
+  assert.match(prompt, /Follow it for every edit/);
+  assert.match(SYSTEM_PROMPT, /creative direction and asset plan/);
 }
 
 console.log('systemPromptOrder.verify: ok (易变段收尾/真 editorStatePrompt 不污染前缀/失效点最小化)');

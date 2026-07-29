@@ -23,21 +23,21 @@ export type TemplatePlacement = 'append' | 'replace' | ExactTemplatePlacement;
 export const TEMPLATE_TOOL_SCHEMAS: AgentToolSchema[] = [{
   name: 'manage_template',
   description: [
-    '工程模板 = 一组 MG(动态图形)+ 设计风格的打包,可跨工程复用。',
+    'A project template packages motion graphics and a design style for reuse across projects.',
     'action: get | list_assets | apply | copy_assets | save.',
-    'get(不带 templateId)=列出所有已存模板(id/name/资产数);get(带 templateId)=查看某模板详情(MG 列表 + 设计风格摘要 + 资产数)。',
-    'list_assets(带 templateId)=列出该模板携带的媒体资产(id/name/kind),据此决定套用现成 vs 重新生成——apply 前应先 list_assets。',
-    'apply(带 templateId)=把模板套用到当前工程。placement 可用 append/replace,也可指定 startFrame、durationInFrames、targetTrackId 精确落位;omitAssetIds 跳过这些携带资产及引用它们的片段。',
-    'copy_assets(带 templateId)=只把模板资产复制进当前工程,返回新生成的工程本地 asset id,不放置模板时间线。',
-    'save(带 name)=把当前工程打包保存为模板(同名覆盖)。',
+    'get without templateId lists saved templates with id/name/asset count; get with templateId returns motion graphics, design-style summary, and asset count.',
+    'list_assets with templateId lists bundled media assets by id/name/kind so you can choose reuse versus regeneration; call it before apply.',
+    'apply with templateId applies the template to the current project. placement accepts append/replace or exact startFrame, durationInFrames, and targetTrackId. omitAssetIds skips bundled assets and clips that directly reference them.',
+    'copy_assets with templateId copies only bundled assets into the current project and returns new project-local asset ids without placing the template timeline.',
+    'save with name packages the current project as a template and replaces a template with the same name.',
   ].join(' '),
   input_schema: {
     type: 'object',
     properties: {
       action: { type: 'string', enum: ['get', 'list_assets', 'apply', 'copy_assets', 'save'] },
-      templateId: { type: 'string', description: 'get(详情)/list_assets/apply/copy_assets 的目标模板 id;用 get(无参)先列出。' },
+      templateId: { type: 'string', description: 'Target template id for get details/list_assets/apply/copy_assets; call get without arguments to list templates first.' },
       placement: {
-        description: 'apply: append/replace,或用对象指定起始帧、目标总时长和目标主轨道。',
+        description: 'apply: append/replace, or an object specifying start frame, target total duration, and target primary track.',
         oneOf: [
           { type: 'string', enum: ['append', 'replace'] },
           {
@@ -51,8 +51,8 @@ export const TEMPLATE_TOOL_SCHEMAS: AgentToolSchema[] = [{
           },
         ],
       },
-      omitAssetIds: { type: 'array', items: { type: 'string' }, description: 'apply: 跳过这些携带资产(及直接引用它们的片段)。' },
-      name: { type: 'string', description: 'save: 模板名称(必填;同名覆盖)。' },
+      omitAssetIds: { type: 'array', items: { type: 'string' }, description: 'apply: skip these bundled assets and clips that directly reference them.' },
+      name: { type: 'string', description: 'save: required template name; replaces a template with the same name.' },
     },
     required: ['action'],
   },

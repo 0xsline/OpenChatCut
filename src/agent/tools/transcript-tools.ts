@@ -113,27 +113,27 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'manage_transcript',
-    description: '管理源转写的修正与翻译变体,不改时间轴(词的起止/帧位/词数/片段时长恒不变)。action(6 个):\n'
-      + '- fix：修正源转写。改错字→传 wordIndex 或 find(错词原文)+ text(正确文本),只改 word.text;改/合并说话人→传 from(现有标签,如 "A")+ to(新显示名,传已有标签即合并两位),只改 word.speaker。\n'
-      + '- retry_transcription：对该 clip 强制重跑 ASR(转写卡住/失败/想重转时),覆盖现有转写。\n'
-      + '- translation_create：把该转写整段翻成 lang,新建/覆盖一个译文变体(词级,共享源时间轴)。\n'
-      + '- translation_ensure：幂等——同 lang 变体已存在则复用,否则翻译新建。日常「翻译一下」优先用它。\n'
-      + '- translation_list：列出该 clip 的原文 + 所有译文变体(id/lang/词数)。\n'
-      + '- translation_read：读某个译文变体的词(传 lang / targetLanguage 选语言)。\n'
-      + '译文变体只承载译文;要在字幕里显示某语言,用 edit_captions 的 language_mode。',
+    description: 'Correct source transcripts and manage translation variants without changing the timeline; word timing, frame positions, word count, and clip duration remain unchanged. Six actions:\n'
+      + '- fix: correct the source transcript. For a word, pass wordIndex or find with the incorrect source text plus text with the correction; only word.text changes. To rename or merge a speaker, pass from with an existing label such as "A" plus to with the new display name; passing another existing label merges them. Only word.speaker changes.\n'
+      + '- retry_transcription: force ASR to rerun for the clip and replace its transcript when transcription is stuck, failed, or needs refreshing.\n'
+      + '- translation_create: translate the full transcript to lang and create or replace a word-level translation variant sharing the source timeline.\n'
+      + '- translation_ensure: idempotently reuse an existing variant for lang or create it otherwise. Prefer this for ordinary translation requests.\n'
+      + '- translation_list: list the source transcript and all translation variants with id/lang/word count.\n'
+      + '- translation_read: read words from a translation variant selected by lang or targetLanguage.\n'
+      + 'Translation variants contain translated text only. To display a language in captions, use edit_captions language_mode.',
     input_schema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['fix', 'retry_transcription', 'translation_create', 'translation_ensure', 'translation_list', 'translation_read'], description: '见描述:改错字/说话人、重转、建/保证/列/读译文变体。' },
-        itemId: { type: 'string', description: '目标 clip 的 item id;省略则取该 track 上第一个带转写的音/视频 clip。' },
-        track: { type: 'string', description: 'itemId 省略时,用 track 别名/稳定 id 定位(默认 A1)。' },
-        wordIndex: { type: 'number', description: 'fix 改错字:要修正的词下标(与 find 二选一)。' },
-        find: { type: 'string', description: 'fix 改错字:错词原文,精确匹配一个词(与 wordIndex 二选一)。' },
-        text: { type: 'string', description: 'fix 改错字:修正后的正确文本。' },
-        from: { type: 'string', description: 'fix 改说话人:要重命名的现有说话人标签(如 "A"/"B")。' },
-        to: { type: 'string', description: 'fix 改说话人:新显示名;传一个已存在的标签即合并两位说话人(如 "B"→"A")。' },
-        lang: { type: 'string', description: 'translation_create/ensure:目标语言(如 "English"/"中文"/"日本語");translation_read:要读的变体语言。' },
-        targetLanguage: { type: 'string', description: 'translation_read:要读的译文语言(lang 的别名)。' },
+        action: { type: 'string', enum: ['fix', 'retry_transcription', 'translation_create', 'translation_ensure', 'translation_list', 'translation_read'], description: 'See the tool description: correct words/speakers, rerun ASR, or create/ensure/list/read translation variants.' },
+        itemId: { type: 'string', description: 'Target clip item id; omit to use the first transcribed audio/video clip on the track.' },
+        track: { type: 'string', description: 'When itemId is omitted, locate by track alias or stable id; default A1.' },
+        wordIndex: { type: 'number', description: 'fix word: index of the word to correct; mutually exclusive with find.' },
+        find: { type: 'string', description: 'fix word: incorrect source text that must match exactly one word; mutually exclusive with wordIndex.' },
+        text: { type: 'string', description: 'fix word: corrected text.' },
+        from: { type: 'string', description: 'fix speaker: existing speaker label to rename, such as "A" or "B".' },
+        to: { type: 'string', description: 'fix speaker: new display name; passing an existing label merges the speakers, for example "B" to "A".' },
+        lang: { type: 'string', description: 'translation_create/ensure: target language, such as English, Chinese, or Japanese; translation_read: variant language to read.' },
+        targetLanguage: { type: 'string', description: 'translation_read: alias of lang for selecting the translated language.' },
       },
       required: ['action'],
     },

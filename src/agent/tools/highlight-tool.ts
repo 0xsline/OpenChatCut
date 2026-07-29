@@ -44,17 +44,17 @@ export const HIGHLIGHT_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'find_highlights',
     description:
-      '智能切片(长转短成片):读取时间线上已转写视频的逐词稿,由 LLM 挑出最精彩、能独立成篇的高光片段,每段复制出一条竖屏短视频序列(默认 9:16)并裁到该高光的帧区间。片段需先转写(transcribe_track)。返回每条短视频的序列 id/标题/帧区间。LLM 失败时回退启发式(信息密度分块)。',
+      'Create short-form highlights from long-form content: read the word-level transcript of a timeline clip, use an LLM to select the strongest self-contained moments, duplicate each into a vertical sequence (default 9:16), and trim it to the selected frame range. The clip must be transcribed first with transcribe_track. Returns each sequence id, title, and frame range. Falls back to information-density heuristics if LLM selection fails.',
     input_schema: {
       type: 'object',
       properties: {
-        count: { type: 'integer', description: '要生成的短视频数量(默认 3)。' },
-        ratio: { type: 'string', enum: ['9:16', '16:9', '1:1', '4:3', '3:4'], description: '短视频画布比例(默认 9:16)。' },
-        topic: { type: 'string', description: '可选:只挑与该话题相关的高光。' },
-        instruction: { type: 'string', description: '可选:额外挑选偏好(如"最有情绪冲突的""含数据点的")。' },
-        itemId: { type: 'string', description: '可选:指定已转写的 video/audio clip(默认词数最多的那条)。' },
-        minSeconds: { type: 'number', description: '每段最短秒数(默认 3)。' },
-        maxSeconds: { type: 'number', description: '每段最长秒数(默认 60)。' },
+        count: { type: 'integer', description: 'Number of short videos to create; default 3.' },
+        ratio: { type: 'string', enum: ['9:16', '16:9', '1:1', '4:3', '3:4'], description: 'Short-video canvas ratio; default 9:16.' },
+        topic: { type: 'string', description: 'Optional: select only highlights related to this topic.' },
+        instruction: { type: 'string', description: 'Optional selection preference, such as strongest emotional conflict or moments containing data points.' },
+        itemId: { type: 'string', description: 'Optional transcribed video/audio clip; defaults to the clip with the most words.' },
+        minSeconds: { type: 'number', description: 'Minimum duration per highlight; default 3 seconds.' },
+        maxSeconds: { type: 'number', description: 'Maximum duration per highlight; default 60 seconds.' },
       },
     },
   },
@@ -63,14 +63,14 @@ export const HIGHLIGHT_TOOL_SCHEMAS: AgentToolSchema[] = [
 export const HIGHLIGHT_TOOL_NAMES = new Set(HIGHLIGHT_TOOL_SCHEMAS.map((t) => t.name));
 
 // Highlight judgment criteria - talking-head-guide.md rules.
-const SELECT_SYSTEM = `你是短视频剪辑师,从一段口播的逐词转写里挑出最适合做成独立竖屏短视频的高光片段。
-判定亮点:观点、结论、故事、情绪、冲突、教程步骤、数据点,或某个指定话题。
-- 每个亮点必须能被独立理解:保留理解它所需的主语、铺垫、问题与结论,别砍掉上下文。
-- 若某句短促有力的话依赖前后语境才成立,就连语境一起保留,别只留那一句。
-- 用户若指定话题,只挑该话题;若要"最精彩",优先信息密度与表达力度。
-- 每段是连续的一段词(startWordIndex..endWordIndex,含端点),片段之间不得重叠。
-只输出严格 JSON 数组(不要解释、不要 markdown 围栏):
-[{"startWordIndex":整数,"endWordIndex":整数,"title":"短标题","reason":"为何精彩"}]`;
+const SELECT_SYSTEM = `You are a short-form video editor. Select the strongest moments from a word-level talking-head transcript for standalone vertical clips.
+A highlight may be an opinion, conclusion, story, emotion, conflict, tutorial step, data point, or a user-specified topic.
+- Every highlight must stand on its own. Keep the subject, setup, question, and conclusion needed to understand it.
+- If a punchy sentence depends on nearby context, include that context instead of selecting only the sentence.
+- If the user specifies a topic, select only that topic. If they ask for the best moments, prioritize information density and expressive force.
+- Every highlight is one continuous inclusive word range (startWordIndex..endWordIndex), and ranges must not overlap.
+Output only a strict JSON array with no explanation or Markdown fence:
+[{"startWordIndex":0,"endWordIndex":0,"title":"Short title","reason":"Why it is compelling"}]`;
 
 // ── LLM selection (can be replaced by setHighlightSelector with stub for offline self-test)──────────────
 type HighlightSelector = (words: WordRef[], opts: SelectOpts) => Promise<unknown>;
@@ -79,10 +79,10 @@ type HighlightSelector = (words: WordRef[], opts: SelectOpts) => Promise<unknown
 async function llmSelectHighlights(words: WordRef[], opts: SelectOpts): Promise<unknown> {
   const list = words.map((w) => `${w.i}:${w.t}`).join(' ');
   const bias = [
-    opts.topic ? `只挑与话题「${opts.topic}」相关的片段。` : '',
-    opts.instruction ? `额外偏好:${opts.instruction}` : '',
+    opts.topic ? `Select only segments related to this topic: ${opts.topic}.` : '',
+    opts.instruction ? `Additional preference: ${opts.instruction}.` : '',
   ].join('');
-  const user = `逐词转写(共 ${words.length} 词,格式 序号:词):\n${list}\n\n挑出最多 ${opts.count} 段高光。${bias}`;
+  const user = `Word-level transcript (${words.length} words, format index:word):\n${list}\n\nSelect up to ${opts.count} highlights. ${bias}`;
   const text = (await generateAgentText({
     maxOutputTokens: 8192,
     system: SELECT_SYSTEM,

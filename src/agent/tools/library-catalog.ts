@@ -204,7 +204,7 @@ export function buildLibraryItems(templates: Tpl[]): LibraryItem[] {
       id: z.id,
       name: z.label,
       category: 'zoom',
-      description: '插件缩放曲线(envelope 包络)',
+      description: 'Plugin zoom curve (envelope)',
       usage: `edit_item adds:[{type:"effect",targetItemId:"<clip>",assetId:"${z.id}"}]`,
     });
   }
