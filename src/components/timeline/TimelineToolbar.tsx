@@ -1,6 +1,6 @@
-// 时间线顶部工具栏(逐字搬自 Timeline.tsx):编辑模式簇 / 落轨模式 / 旁白录音 /
-// 播放+时间码 / 缩放簇 / 画幅比例 / 字幕显示 / 全屏。时间码 span 由播放头绘制器经
-// timecodeRef 直写(rAF 合帧),这里只渲初值。
+// Toolbar at the top of the timeline (translated verbatim from Timeline.tsx): Editing mode cluster / Drop track mode / Narration recording /
+// Play + time code / zoom cluster / aspect ratio / caption display / full screen. The timecode span is drawn by the playhead painter
+// timecodeRef direct writing (rAF frame), here only the initial value is rendered.
 import { useState, type RefObject } from 'react';
 import { theme } from '../../theme';
 import { Icon, type IconName } from '../icons';
@@ -20,7 +20,7 @@ function ToolSep() {
 }
 
 // One icon toolbar button: monochrome line glyphs, active = accent.
-// 提示走 cc-tip 即时 tooltip(原生 title 有 ~1s 固有延迟);tipRight = 近右缘右对齐
+// Prompt to use cc-tip real-time tooltip (native title has ~1s inherent delay); tipRight = right-aligned near the right edge
 function TB({ icon, title, onClick, active, disabled, tipRight }: {
   icon: IconName; title: string; onClick?: () => void; active?: boolean; disabled?: boolean; tipRight?: boolean;
 }) {

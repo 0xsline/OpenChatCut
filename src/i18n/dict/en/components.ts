@@ -1,7 +1,7 @@
-// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
-// 覆盖分区:App.tsx / Editor.tsx / components 根目录壳件 / reframe。
+// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
+// Cover partition: App.tsx / Editor.tsx / components root directory shell / reframe.
 export default {
-  // ---- App.tsx(启动/工程导入导出提示) ----
+  // ---- App.tsx (startup/project import and export prompt) ----
   '加载工程…': 'Loading project…',
   '加载编辑器…': 'Loading editor…',
   '加载中…': 'Loading…',
@@ -12,11 +12,11 @@ export default {
   '已导入「{name}」;缺 {n} 个素材({list})': 'Imported "{name}"; {n} asset(s) missing ({list})',
   '已导入「{name}」(素材 {a}/{b})': 'Imported "{name}" (assets {a}/{b})',
 
-  // ---- Editor.tsx(「用 AI 生成」聊天预填) ----
+  // ---- Editor.tsx ("Generated with AI" chat pre-fill) ----
   '参考模板「{name}」，用 create_motion_graphic 生成一个类似风格的动画： @{name} ':
     'Using template "{name}" as a style reference, generate a similar animation with create_motion_graphic: @{name} ',
 
-  // ---- 相对时间(Dashboard / ExportHistory / VersionHistory 共用) ----
+  // ---- Relative time (shared by Dashboard / ExportHistory / VersionHistory) ----
   '刚刚': 'Just now',
   '{n} 分钟前': '{n} min ago',
   '{n} 小时前': '{n} hr ago',
@@ -75,12 +75,12 @@ export default {
   // ---- Divider ----
   '拖动调整大小': 'Drag to resize',
 
-  // ---- InspectorPanel:MG propSchema 字段 ----
+  // ---- InspectorPanel:MG propSchema field ----
   '(预览)': '(preview)',
   '视频 URL 或 /media/uploads/…': 'Video URL or /media/uploads/…',
   '图片 URL 或 /media/uploads/…': 'Image URL or /media/uploads/…',
 
-  // ---- InspectorPanel:关键帧轨(KfCell) ----
+  // ---- InspectorPanel:Keyframe Track (KfCell) ----
   '上一关键帧': 'Previous keyframe',
   '下一关键帧': 'Next keyframe',
   '更新播放头处的关键帧': 'Update the keyframe at the playhead',
@@ -93,7 +93,7 @@ export default {
   '缓入出': 'Ease In-Out',
   '贝塞尔': 'Bezier',
 
-  // ---- InspectorPanel:变换/音量/淡入淡出/文字 ----
+  // ---- InspectorPanel:Transform/Volume/Fade/Text ----
   '缩放比例': 'Scale',
   '水平': 'Horizontal',
   '垂直': 'Vertical',
@@ -119,7 +119,7 @@ export default {
   '粗体': 'Bold',
   '特粗': 'Black',
 
-  // ---- InspectorPanel:缩放(zoom)控件 ----
+  // ---- InspectorPanel: zoom control ----
   '曲线': 'Curve',
   '无': 'None',
   '倍数': 'Magnification',
@@ -130,7 +130,7 @@ export default {
   '关键帧（覆盖曲线，逐帧插值）': 'Keyframes (override the curve; interpolated per frame)',
   '删除关键帧': 'Delete keyframe',
 
-  // ---- InspectorPanel:转场控件 ----
+  // ---- InspectorPanel: Transition control ----
   '与前一段相邻音频交叉淡化（出点渐弱 / 入点渐强）': 'Cross-fades with the previous adjacent audio (fade out at the cut / fade in after)',
   '从前一个相邻片段进入本片段': 'Transitions into this clip from the previous adjacent clip',
   '类型': 'Type',
@@ -139,7 +139,7 @@ export default {
   '上': 'Up',
   '下': 'Down',
 
-  // ---- InspectorPanel:滤镜/特效 ----
+  // ---- InspectorPanel: Filter/Special Effects ----
   '亮度': 'Brightness',
   '对比': 'Contrast',
   '饱和': 'Saturation',
@@ -164,7 +164,7 @@ export default {
   '下移': 'Move down',
   '移除特效': 'Remove effect',
 
-  // ---- InspectorPanel:主面板 ----
+  // ---- InspectorPanel: Main panel ----
   '展开属性': 'Expand properties',
   '收起属性': 'Collapse properties',
   '属性': 'Properties',
@@ -196,7 +196,7 @@ export default {
   '填充颜色': 'Fill Color',
   '该模板无可编辑属性。': 'This template has no editable properties.',
 
-  // ---- 共享常量标签:editor/types.ts TRANSITION_LABELS(使用处在本分区包 t) ----
+  // ---- Shared constant labels: editor/types.ts TRANSITION_LABELS (used in this partition package t) ----
   '闪白转场': 'Flash',
   '径向模糊转场': 'Radial Blur',
   '故障切换转场': 'Glitch Cut',
@@ -204,7 +204,7 @@ export default {
   '音频交叉淡化': 'Audio Cross-Fade',
   '自定义着色器转场': 'Custom Shader',
 
-  // ---- 共享常量标签:editor/types.ts ZOOM_SHAPE_LABELS(使用处在本分区包 t) ----
+  // ---- Shared constant labels: editor/types.ts ZOOM_SHAPE_LABELS (used in this partition package t) ----
   '冲击': 'Punch',
   '瞬时': 'Instant',
   '心跳脉冲': 'Pulse',

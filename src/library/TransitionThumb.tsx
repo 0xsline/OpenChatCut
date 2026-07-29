@@ -15,7 +15,7 @@ import {
 } from '../gl/transitionThumb';
 
 interface TransitionThumbProps {
-  /** 内置 GLSL 类型 id,或 plugin:/custom: 注册表 id */
+  /** Built-in GLSL type id, or plugin:/custom: registry id */
   type: string;
   playing?: boolean;
 }
@@ -47,7 +47,7 @@ export function TransitionThumb({ type, playing = false }: TransitionThumbProps)
         const url = await transitionThumbUrlAsync(type);
         if (!cancelled) setStaticUrl(url || transitionThumbUrl(type));
       } else {
-        // 自定义/插件:现画一帧作 still(不进全局 cache,id 可热更)
+        // Customization/plugin: draw a frame now as still (does not enter the global cache, the id can be hot-changed)
         const off = document.createElement('canvas');
         off.width = THUMB_W;
         off.height = THUMB_H;
@@ -59,7 +59,7 @@ export function TransitionThumb({ type, playing = false }: TransitionThumbProps)
       if (!cancelled) paint(0.42);
     })();
     return () => { cancelled = true; };
-    // custom 注册表同 id 热更新时靠 type 键重跑
+    // The custom registry is the same as the id. When hot updating, rely on the type key to rerun.
   }, [custom, paint, type]);
 
   useEffect(() => {

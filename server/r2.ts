@@ -1,10 +1,10 @@
-// Cloudflare R2 存储层(S3 兼容,server-only)。架构:上传写穿(本地磁盘=缓存,
-// R2=真源)+ 读取回源(磁盘缺文件时经 dev server 从 R2 取回并落盘)——素材 src
-// 保持同源 /media/uploads/... 路径不变,桶保持私有,密钥只在 keystore/.env.local。
-// S3 ingest(request_asset_upload_url);我们以服务端代读写
-// 替代 presigned 直传,规避去浏览器直连 R2 的 CORS 配置。
-// 代理:R2 端点国内直连时好时坏——尊重 HTTPS_PROXY/https_proxy 环境变量(Clash)。
-// 大文件:put/get 走流式,避免 1GB+ 素材整包进 Node 堆。
+// Cloudflare R2 storage layer (S3 compatible, server-only). Architecture: Upload Write Through (local disk = cache,
+// R2 = true source) + read back to the source (when the disk is missing files, it is retrieved from R2 via the dev server and dropped to the disk) - asset src
+// Keep the same origin /media/uploads/... path unchanged, the bucket remains private, and the key is only in keystore/.env.local.
+// S3 ingest(request_asset_upload_url); we use the server to read and write
+// Replace presigned direct transmission and avoid the CORS configuration of direct browser connection to R2.
+// Proxy: R2 endpoint domestic direct connection is sometimes good or bad - respect the HTTPS_PROXY/https_proxy environment variable (Clash).
+// Large files: put/get is streamed to avoid 1GB+ asset being packed into the Node heap.
 import { createReadStream, createWriteStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
@@ -25,8 +25,8 @@ export interface R2Config {
   bucket: string;
 }
 
-/** 四项齐全 + 开关未停用才算启用云存储(计入 caps.storage)。
- * ignoreEnabled:测试连接即使停用也要能验密钥。 */
+/** Cloud storage (counted into caps.storage) must be enabled when all four items are complete + the switch is not disabled.
+ * ignoreEnabled: The test connection must be able to verify the key even if it is disabled. */
 export function r2Config(get: Get = fromKeystore, opts?: { ignoreEnabled?: boolean }): R2Config | null {
   if (!opts?.ignoreEnabled && get('R2_ENABLED') === '0') return null;
   const accountId = get('R2_ACCOUNT_ID');
@@ -44,7 +44,7 @@ function proxyHandler(): NodeHttpHandler | undefined {
   return new NodeHttpHandler({ httpsAgent: agent });
 }
 
-// client 随配置变化重建(设置面板改 key 即时生效);同配置内存复用。
+// The client is rebuilt as the configuration changes (key changes in the settings panel take effect immediately); the same configuration memory is reused.
 let cached: { key: string; client: S3Client } | null = null;
 function clientFor(cfg: R2Config): S3Client {
   const key = `${cfg.accountId}|${cfg.accessKeyId}|${cfg.secretAccessKey.slice(0, 6)}`;
@@ -62,7 +62,7 @@ function clientFor(cfg: R2Config): S3Client {
 
 export type UploadBody = Buffer | Uint8Array | Readable;
 
-/** 上传写穿:PUT uploads/<name> 到 R2。Body 可为 Buffer 或可读流(大文件用流)。 */
+/** Upload writethrough:PUT uploads/<name> to R2. Body can be a Buffer or a readable stream (stream for large files). */
 export async function putUploadObject(
   name: string,
   body: UploadBody,
@@ -82,7 +82,7 @@ export async function putUploadObject(
   }));
 }
 
-/** 从本地文件流式写穿到 R2(大视频路径)。 */
+/** Streaming write-through from local file to R2 (large video path).*/
 export async function putUploadFile(
   name: string,
   filePath: string,
@@ -98,7 +98,7 @@ export interface R2Object {
   bytes: number;
 }
 
-/** 读取回源到内存(仅适合小对象/测试;大文件请用 getUploadObjectToFile)。 */
+/** Read back from source to memory (only suitable for small objects/tests; please use getUploadObjectToFile for large files).*/
 export async function getUploadObject(name: string): Promise<R2Object | null> {
   const cfg = r2Config();
   if (!cfg) return null;
@@ -114,7 +114,7 @@ export async function getUploadObject(name: string): Promise<R2Object | null> {
   }
 }
 
-/** 读取回源并流式落盘(大文件回源缓存)。返回 contentType + bytes;不存在 → null。 */
+/** Read back to the source and stream to the disk (large file back to the source cache). Return contentType + bytes; does not exist → null.*/
 export async function getUploadObjectToFile(
   name: string,
   destPath: string,
@@ -146,9 +146,9 @@ function isNotFound(err: unknown): boolean {
 }
 
 /**
- * 是否允许浏览器直连 R2 的预签名 PUT/GET。
- * 默认开启(R2 已配置时);设 R2_PRESIGN=0 则仅服务端写穿(规避 CORS)。
- * request_asset_upload_url → S3 presigned PUT。
+ * Whether to allow browsers to directly connect to R2's pre-signed PUT/GET.
+ * Enabled by default (when R2 is configured); set R2_PRESIGN=0 to only write through the server (to avoid CORS).
+ * request_asset_upload_url → S3 presigned PUT.
  */
 export function r2PresignEnabled(get: Get = fromKeystore): boolean {
   if (!r2Config(get)) return false;
@@ -204,8 +204,8 @@ export async function presignGetUpload(
   return { downloadUrl, fileKey: key, expiresIn };
 }
 
-/** 测试连接探针:HeadBucket 合成 Response(桶存在 + 鉴权通过 = 200)。
- * S3 错误映射为对应 HTTP 状态给 classifyStatus;网络层错误原样抛给 networkMessage。 */
+/** Test connection probe: HeadBucket synthetic response (bucket exists + authentication passed = 200).
+ * S3 errors are mapped to the corresponding HTTP status to classifyStatus; network layer errors are thrown to networkMessage as they are.*/
 export async function r2Probe(get: Get): Promise<Response> {
   const cfg = r2Config(get, { ignoreEnabled: true });
   if (!cfg) return new Response('missing config', { status: 400 });
@@ -219,6 +219,6 @@ export async function r2Probe(get: Get): Promise<Response> {
       const note = status === 404 ? `bucket「${cfg.bucket}」不存在` : name;
       return new Response(note, { status });
     }
-    throw err; // 网络层(DNS/超时/代理)→ runProbe 的 networkMessage
+    throw err; // Network layer (DNS/timeouts/proxy) → runProbe's networkMessage
   }
 }

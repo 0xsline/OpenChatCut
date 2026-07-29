@@ -1,6 +1,6 @@
-// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
-// 来源:src/components/timeline/*(Timeline/Toolbar/TrackHead/TrackLane/ClipContextMenu/
-// MarkerEditor/TimelineRuler/TimelineTabs/libraryDropActions)。
+// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
+// Source: src/components/timeline/*(Timeline/Toolbar/TrackHead/TrackLane/ClipContextMenu/
+// MarkerEditor/TimelineRuler/TimelineTabs/libraryDropActions).
 export default {
   // ── Timeline.tsx ──
   '该轨道还没有可用文字稿': 'This track has no usable transcript yet',

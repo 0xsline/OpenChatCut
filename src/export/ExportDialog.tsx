@@ -1,10 +1,10 @@
-// 导出设置对话框(submit_export 全参数面,5 tab):
-//   视频  codec h264/vp8 + 分辨率 480/720/1080p + 帧率 24/25/30/50/60(缺省跟时间线)
-//   音频  mp3(视频轨忽略)
-//   MG动画 全部 MG 逐个渲成带 alpha 的 ProRes 4444 .mov
-//   字幕  srt / txt(需先开启字幕)
-//   XML   fcp_xml(Premiere)/ fcp_xml_resolve(达芬奇)± 随包渲出 MG .mov
-// 「创建分享链接」(云端公开页)需要分享后端——本地无,不摆假开关。
+// Export settings dialog box (submit_export full parameter surface, 5 tabs):
+// Video codec h264/vp8 + resolution 480/720/1080p + frame rate 24/25/30/50/60 (default and timeline)
+// Audio mp3 (video track ignored)
+// MG animation. All MGs are rendered into ProRes 4444 .mov with alpha one by one.
+// Captions srt / txt (captions need to be turned on first)
+// XML fcp_xml(Premiere)/ fcp_xml_resolve(DaVinci)± Render MG .mov with the package
+// "Create Sharing Link" (cloud public page) requires a sharing backend - none locally, no false switches.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../i18n/locale';
 import { Icon, type IconName } from '../components/icons';
@@ -152,7 +152,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
   const t = useT();
   const [tab, setTab] = useState<ExportTab>('video');
   const [codec, setCodec] = useState<'h264' | 'vp8'>('h264');
-  // 分辨率默认档 = 时间线短边就近(1080×1920 → 1080p)
+  // Default resolution = closest to the short side of the timeline (1080×1920 → 1080p)
   const defaultRes = useMemo(() => {
     const minSide = Math.min(state.width, state.height);
     if (minSide <= 480) return '480p';
@@ -160,7 +160,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     return '1080p';
   }, [state.width, state.height]);
   const [resolution, setResolution] = useState<ExportResolution>(defaultRes);
-  // 帧率默认 = 时间线 fps 落进档位(不在档位则取 30)
+  // Default frame rate = Timeline fps falls into the gear (if not, it takes 30)
   const [fps, setFps] = useState<number>(FPS_OPTIONS.some((candidate) => candidate === state.fps) ? state.fps : 30);
   const [subtitleFormat, setSubtitleFormat] = useState<'srt' | 'txt'>('srt');
   const captionTracks = useMemo(() => captionTrackEntries(state).filter((entry) => entry.captions), [state]);
@@ -333,7 +333,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     void recordExport({ name: filename, format, codec: useCodec, sizeBytes: completed.sizeBytes ?? blob.size, createdAt: Date.now() });
   };
 
-  /** 视频优先在浏览器中通过 WebCodecs 渲染，不支持的时间线无缝回退服务端。 */
+  /** The video is first rendered in the browser through WebCodecs, and the unsupported timeline seamlessly falls back to the server.*/
   const exportVideo = async () => {
     // Auto QA verifies the server-side artifact before it is downloaded, so it
     // must use the compatibility path instead of the in-memory browser blob.
@@ -409,7 +409,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     }
   };
 
-  /** MG动画:逐个渲 ProRes 4444 alpha .mov(复用单片段导出管线)。 */
+  /** MG animation: render ProRes 4444 alpha.mov one by one (reusing single-clip export pipeline).*/
   const exportMgBatch = async () => {
     for (let i = 0; i < mgItems.length; i++) {
       setBusy(t('渲染 MG {i}/{n} · {name}', { i: i + 1, n: mgItems.length, name: mgItems[i].name }));

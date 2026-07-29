@@ -1,5 +1,5 @@
-// 插件包纯校验(安装第一道门):schema/上限/GLSL token/cube 干跑/包络值域。
-// 不碰 WebGL/DOM — 真编译探针在 install.ts(浏览器侧)。tsx 可跑,进 npm test。
+// Pure plugin-package validation at the installation boundary: schema and size limits, GLSL tokens,
+// CUBE dry runs, and envelope ranges. Browser-side compilation stays in install.ts; npm test runs this file through tsx.
 import { parseCube } from "../gl/fx/cube.js";
 import {
   ITEM_ID_RE,
@@ -77,7 +77,7 @@ function checkFrag(
   }
 }
 
-// data:image/* 内联(限长)或 同源路径/https;其余 scheme(javascript: 等)一律拒
+// data:image/* inline (limited length) or origin path/https; other schemes (javascript:, etc.) are rejected
 function checkThumb(errors: string[], at: string, v: unknown): void {
   if (v === undefined) return;
   if (!isStr(v) || !v.trim()) {
@@ -246,7 +246,7 @@ function checkItem(errors: string[], item: unknown, index: number): void {
   }
 }
 
-/** 校验一份插件包 JSON(不可信输入)。全部通过才返回 ok。 */
+/** Verify a plugin package JSON (untrusted input). Returns ok only after all pass. */
 export function validatePack(v: unknown): ValidateResult {
   const errors: string[] = [];
   if (!isObj(v)) return { ok: false, errors: ["插件包必须是 JSON 对象"] };
@@ -294,7 +294,7 @@ export function validatePack(v: unknown): ValidateResult {
   };
 }
 
-/** 单条内容的校验(供「导出为插件」/编辑器内建流使用) */
+/** Verification of a single piece of content (for use by "Export as plugin"/editor built-in stream)*/
 export function validateItem(item: unknown): string[] {
   const errors: string[] = [];
   checkItem(errors, item, 0);

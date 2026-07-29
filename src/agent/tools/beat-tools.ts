@@ -1,6 +1,6 @@
-// detect_beats —— 本机节拍检测(卡点剪辑):谱通量 + 自相关 + 相位网格,零模型
-// 依赖(src/audio/beats.ts)。可选把拍点落成时间线标记(复用 addMarker batch,
-// 映射语义与场景检测一致:srcIn + playbackRate)。
+// detect_beats - native beat detection (stuck point clipping): spectral flux + autocorrelation + phase grid, zero model
+// Depends on (src/audio/beats.ts). You can optionally mark the shooting points as timeline markers (reuse addMarker batch,
+// The mapping semantics are consistent with scene detection: srcIn + playbackRate).
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { AtomicAction } from '../../editor/reduce';
@@ -9,7 +9,7 @@ import { analyzeAssetBeats, type BeatAnalysis } from '../../audio/beats';
 
 type Args = Record<string, unknown>;
 
-/** 响应里最多回这么多拍(长曲全量拍点又多又没必要,总数照报)。 */
+/** The maximum number of beats that can be returned in the response (the full number of beats for a long song is too many and unnecessary, the total number is reported). */
 const MAX_LISTED = 200;
 const DEFAULT_MARKER_CAP = 120;
 
@@ -40,7 +40,7 @@ export const BEAT_TOOL_SCHEMAS: AgentToolSchema[] = [
 
 export const BEAT_TOOL_NAMES = new Set(BEAT_TOOL_SCHEMAS.map((t) => t.name));
 
-/** 源秒 → 时间线帧(与场景检测同一映射:srcIn + playbackRate,窗口外丢弃)。 */
+/** Source seconds → timeline frame (same mapping as scene detection: srcIn + playbackRate, discard outside window).*/
 function mapToTimelineFrames(times: readonly number[], item: TimelineItem, fps: number): number[] {
   const sourceIn = item.srcInFrame ?? 0;
   const rate = Math.max(0.01, item.playbackRate ?? 1);

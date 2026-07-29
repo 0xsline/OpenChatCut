@@ -15,8 +15,8 @@ export const TRACK_ORDER: TrackId[] = ['V2', 'V1', 'A1', 'A2'];
 /** An imported media file in the project's media pool. */
 export type MediaAssetKind = 'video' | 'image' | 'audio' | 'motion-graphic' | 'gif' | 'svg';
 
-/** ingest-time ASR state on a pool asset (「上传即转写」: ingest 落库后自动触发转写,
- * asset 标"转写完成/失败"). Drives the media-pool badge + track_progress readiness. */
+/** ingest-time ASR state on a pool asset ("upload and transcribe": transcribe is automatically triggered after ingest is dropped from the library,
+ * asset marked "Transscription completed/failed"). Drives the media-pool badge + track_progress readiness. */
 export type AssetTranscribeStatus = 'running' | 'done' | 'failed';
 
 export interface MediaAsset {
@@ -32,7 +32,7 @@ export interface MediaAsset {
   /** media-pool organization only; does not affect timeline clips */
   folderId?: string;
   favorite?: boolean;
-  /** ingest ASR (「上传即转写」): the asset's word-level source transcript.
+  /** ingest ASR ("Upload and Transcribe"): the asset's word-level source transcript.
    * A clip created from this asset copies the transcript into item.transcript so
    * per-clip edits stay isolated from the asset master. Audio/video only. */
   transcript?: TranscriptWord[];
@@ -49,7 +49,7 @@ export interface MediaFolder {
   parentId?: string;
 }
 
-/** per-clip color/blur adjustments (CSS filter) — 特效(blur)/LUT(color) */
+/** per-clip color/blur adjustments (CSS filter) — special effects (blur)/LUT(color) */
 export interface ClipFilters {
   /** 1 = normal */
   brightness?: number;
@@ -111,16 +111,16 @@ export interface ZoomEffect {
   easeOutFrames?: number;
   /** sparse keyframes (__openchatcutReframeCurve); overrides the shape curve */
   reframeCurve?: ReframeCurveV1;
-  /** 插件缩放曲线:0..1(可到 1.5 过冲)包络,整段 clip 线性采样。
-   * 优先级:reframeCurve > envelope > shape。 */
+  /** Plugin scaling curve: 0..1 (can reach 1.5 overshoot) envelope, linear sampling of the entire clip.
+   * Priority: reframeCurve > envelope > shape. */
   envelope?: number[];
-  /** 插件曲线显示名(角标/检查器);无 shape 时用 */
+  /** Plugin curve display name (script/inspector); used when there is no shape */
   label?: string;
 }
 
 /** easing of a generic keyframe SEGMENT (this keyframe → the next): named CSS
  * curves or a cubic-bezier control tuple [x1,y1,x2,y2]. Default linear.
- * (PRD §4.5 "bezier 缓动";存储格式自定。) */
+ * (PRD §4.5 "bezier easing"; storage format is customized.) */
 export type KeyframeEasing = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | [number, number, number, number];
 
 /** one generic transform keyframe. `frame` is the item-LOCAL edited frame
@@ -131,7 +131,7 @@ export interface Keyframe {
   easing?: KeyframeEasing;
 }
 
-/** keyframable properties (PRD §4.5: 位置/缩放/透明度/旋转可 K 帧;volume 为音频/视频音量包络) */
+/** keyframable properties (PRD §4.5: Position/scale/transparency/rotation can be K frames; volume is the audio/video volume envelope) */
 export type KeyframeProp = 'x' | 'y' | 'scale' | 'rotation' | 'opacity' | 'volume';
 /** per-prop sparse keyframe curves on an item (sorted by frame — reducer invariant) */
 export type ItemKeyframes = Partial<Record<KeyframeProp, Keyframe[]>>;
@@ -147,7 +147,7 @@ export interface ClipCrop {
   bottom?: number;
 }
 
-/** per-clip visual transform (scale/position/rotation) — 缩放 tab */
+/** per-clip visual transform (scale/position/rotation) — scale tab */
 export interface ClipTransform {
   /** 1 = 100% */
   scale?: number;
@@ -157,7 +157,7 @@ export interface ClipTransform {
   y?: number;
   /** rotation in degrees */
   rotation?: number;
-  /** crop the full-canvas layer to a sub-rect (split-screen / PiP 用) */
+  /** crop the full-canvas layer to a sub-rect (split-screen / for PiP) */
   crop?: ClipCrop;
 }
 
@@ -196,19 +196,19 @@ export interface TimelineItem {
    * for audio (edit_item fade, stored in seconds → frames). */
   fadeInFrames?: number;
   fadeOutFrames?: number;
-  /** static transform for visual clips (缩放/transform: scale, position, rotate) */
+  /** static transform for visual clips (scale/transform: scale, position, rotate) */
   transform?: ClipTransform;
-  /** generic transform keyframes (PRD §4.5 钢笔工具): per-prop curves in item-local
+  /** generic transform keyframes (PRD §4.5 Pen tool): per-prop curves in item-local
    * edit frames. A keyframed prop overrides its static transform value; opacity
    * multiplies onto fades. Visual clips only. */
   keyframes?: ItemKeyframes;
-  /** color/blur adjustments for visual clips (特效/LUT) */
+  /** color/blur adjustments for visual clips (special effects/LUT) */
   filters?: ClipFilters;
   /** animated zoom (builtin:zoom) — shape curve or reframe keyframes */
   zoom?: ZoomEffect;
   /** per-clip WebGL effect stack (effects[]: builtin:fx-* / lut) */
   effects?: ClipEffect[];
-  /** playback speed (变速/dH rate): 1 = normal, 2 = 2× faster. Retiming
+  /** playback speed (variable speed/dH rate): 1 = normal, 2 = 2× faster. Retiming
    * keeps the source span, so durationInFrames scales by 1/rate. video/audio only. */
   playbackRate?: number;
   /** transcript-based editing: the clip's words + which are deleted (by index).
@@ -223,8 +223,8 @@ export interface TimelineItem {
   /** clean_script silence compression: cap inter-word pauses to this many frames
    * (undefined = keep every pause at its recorded length). */
   silenceFrames?: number;
-  /** clean_script 呼吸口:删词切口两侧一共保留这么多帧的原有静音(两侧平分),
-   * 免得剪切正好压在词边界上削掉辅音。undefined/0 = 精确切在词边界。 */
+  /** clean_script Breathing port: A total of so many frames of original silence are retained on both sides of the word deletion cutout (both sides are divided equally),
+   * Prevent the cut from hitting the word boundary and cutting off the consonants. undefined/0 = cut exactly at word boundaries. */
   cutPadFrames?: number;
   /**
    * Per-gap silence caps (transcript Gap row / delete-gap).
@@ -233,7 +233,7 @@ export interface TimelineItem {
    */
   gapCapsMs?: Record<string, number>;
   /**
-   * Playback order of SOURCE word indices (drag-reorder speech blocks in 文字稿).
+   * Playback order of SOURCE word indices (drag-reorder speech blocks in transcript).
    * undefined = chronological 0..n-1. Indices still refer to `transcript[]` slots
    * (variants / gapCaps stay valid). Playback concatenates ranges in this order.
    */
@@ -344,7 +344,7 @@ export function isVisualTransition(type: TransitionType): type is GlslTransition
   return !isAudioTransition(type);
 }
 
-// zh labels for the transition library cards (资源库·转场·画面转场).
+// en labels for the transition library cards (Resource Library·Transition·Screen Transition).
 // Shared by the inspector select + the resource-library grid.
 export const TRANSITION_LABELS: Record<TransitionType, string> = {
   'anticipation-zoom': '推进转场',
@@ -512,8 +512,8 @@ export function ratioLabel(width: number, height: number): string {
   return `${width / d}:${height / d}`;
 }
 
-/** text watermark overlay (updateWatermark — 应用内行为, 无精确签名,
- * shape 自定). A generic brand overlay burned into preview + export;
+/** text watermark overlay (updateWatermark — in-app behavior, no precise signature,
+ * shape (custom shape). A generic brand overlay burned into preview + export;
  * default disabled, NOT a paywall/free-tier gimmick. */
 export type WatermarkPosition = 'tl' | 'tr' | 'bl' | 'br';
 export interface Watermark {
@@ -550,12 +550,12 @@ export interface TimelineState {
    * Older docs may omit this; use `selectedIdsOf()`.
    */
   selectedIds?: string[];
-  /** captions overlay (字幕), rendered on top + burned into export */
+  /** captions overlay (captions), rendered on top + burned into export*/
   captions?: CaptionsData | null;
   /** text watermark overlay (updateWatermark), rendered on top + burned into export */
   watermark?: Watermark;
-  /** 非内置 fx(插件/submit_shader)的可序列化 def,按 assetId 存。应用特效时快照,
-   * TimelineComposition 渲染前注册进 ALL_FX——刷新与无头导出因此自包含。 */
+  /** Serializable def of non-built-in fx (plugin/submit_shader), stored by assetId. Snapshot when applying effects,
+   * TimelineComposition is registered in ALL_FX before rendering - refresh and headless export are therefore self-contained.*/
   fxDefs?: Record<string, SerializableFxDef>;
 }
 

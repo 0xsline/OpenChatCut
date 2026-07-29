@@ -179,7 +179,7 @@ export function buildLibraryItems(templates: Tpl[]): LibraryItem[] {
     });
   }
 
-  // 运行时注册的自定义/插件内容(submit_shader 产物 + 已装插件),agent 才看得见摸得着
+  // Only the custom/plugin content registered at runtime (submit_shader product + installed plugin) can be seen and touched by the agent.
   for (const d of Object.values(CUSTOM_FX)) {
     items.push({
       id: d.id,

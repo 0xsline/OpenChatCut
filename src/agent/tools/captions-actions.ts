@@ -10,8 +10,8 @@ import { captionsOnTrack, defaultTrackId, resolveTrackId, timelineTrackIds, trac
 // edit_captions uses one tool with a 21-action dispatcher. Most action data
 // arrives as a JSON string in `json`. Backed by OpenChatCut's captions overlay
 // (enable/template/style/layout/display overrides/multi-source/translation).
-// 多车道三兄弟(layout_policy / positions / source_update)在 captions-lanes.ts,
-// 数据模型 = CaptionsData.sourceEntries(每 source 一条渲染车道)。
+// The three brothers of multi-lane (layout_policy / positions / source_update) are in captions-lanes.ts,
+// Data model = CaptionsData.sourceEntries (one rendering lane per source).
 
 type Args = Record<string, unknown>;
 type Result = Record<string, unknown>;

@@ -1,5 +1,5 @@
-// EN 词典装配(单一真源):按领域分文件,键=中文原文,值=英文。
-// 每个领域文件由对应扫换工作线独占填写,互不触碰,避免合并冲突。
+// EN dictionary assembly (single source of truth): files are divided into fields, key=Chinese original text, value=English.
+// Each field file is filled exclusively by the corresponding scanning and swapping work line and does not touch each other to avoid merge conflicts.
 import audio from './audio';
 import captions from './captions';
 import chat from './chat';

@@ -43,7 +43,7 @@ export function getPluginSkill(slug: string): PluginSkill | undefined {
 /** Verbatim content of a skill's SKILL.md, or a named support file under it. */
 export function readPluginSkillFile(slug: string, file?: string): string | undefined {
   if (!file) return getPluginSkill(slug)?.body;
-  // glob 键相对本模块目录(本文件就在 skills/ 里):./<slug>/<file>,没有 skills/ 前缀
+  // The glob key is relative to this module directory (this file is in skills/):./<slug>/<file>, without skills/ prefix
   return RAW[`./${slug}/${file.replace(/^\.\//, '')}`];
 }
 

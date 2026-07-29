@@ -1,10 +1,10 @@
-// 极简 connect:实现与 vite server.middlewares 一致的前缀路由语义,让 13 个 server 插件
-// 在 Electron 内嵌 server 里零改造挂载。语义要点(插件代码依赖,勿动):
-//   - use(route, fn):路径整段前缀匹配(/export 命中 /export/job,不命中 /exportx);
-//   - 命中时 req.url 去掉前缀(空则 '/',query 保留),originalUrl 保原值;
-//   - 链推进只靠显式 next()——处理器不调 next 即链止(异步处理器返回也不自动推进,
-//     否则 serveDiskFile 这类"promise 先归、pipe 后完"的处理器会被二次分发踩坏);
-//   - 处理器抛错/拒绝 → 未发头时兜 500。
+// Minimal Connect-compatible router for mounting all server plugins unchanged in Electron.
+// Semantics are dependency-sensitive:
+// - use(route, fn) matches a complete path prefix: /export matches /export/job but not /exportx.
+// - On a match, req.url drops the prefix (empty becomes "/") while preserving the query and originalUrl.
+// - Only explicit next() advances the chain. A resolved async handler does not advance automatically,
+//   preventing a second dispatch from overtaking handlers such as serveDiskFile that finish piping later.
+// - A thrown or rejected handler returns 500 if headers have not been sent.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 export type Middleware = (req: IncomingMessage, res: ServerResponse, next: () => void) => unknown;
@@ -16,7 +16,7 @@ export interface MiniConnect {
   handle(req: IncomingMessage, res: ServerResponse): void;
 }
 
-/** route 是否命中 path(整段前缀)。返回去前缀后的 path(未命中 null)。 */
+/** Whether route hits path (whole prefix). Returns the prefixed path (misses null). */
 export function matchRoute(route: string, path: string): string | null {
   if (route === '/' || route === '') return path;
   if (path === route) return '/';
@@ -24,7 +24,7 @@ export function matchRoute(route: string, path: string): string | null {
   return null;
 }
 
-/** 命中后的 req.url:去前缀 path + 原 query。 */
+/** Req.url after hit: remove the prefix path + original query. */
 export function rewriteUrl(url: string, route: string): string | null {
   const q = url.indexOf('?');
   const path = q === -1 ? url : url.slice(0, q);
@@ -68,7 +68,7 @@ export function createMiniConnect(onError: (err: unknown) => void): MiniConnect 
           } catch (err) {
             fail(res, err);
           }
-          return;  // 链止于当前处理器;推进只经它调 next()
+          return;  // The chain ends at the current processor; advance only through it by calling next()
         }
         if (!res.headersSent) {
           res.statusCode = 404;

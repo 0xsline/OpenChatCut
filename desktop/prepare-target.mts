@@ -1,10 +1,10 @@
-// 跨平台出包的"备料"步:把目标平台的两样平台专属二进制放到位——
-//   ① chrome-headless-shell(渲染/导出用)→ staging 目录 desktop-dist/chrome-headless-shell
-//      (electron-builder.config.mjs 的 extraResources 恒指这里,换目标就换里面内容);
-//   ② @remotion/compositor-<目标>(npm 只装本机平台的,交叉出包要手动补进 node_modules)。
-// 用法:npx tsx desktop/prepare-target.mts darwin-arm64|darwin-x64|win32-x64|linux-x64
-// 下载源:chrome-for-testing 公共 CDN(与 @remotion/renderer 自身下载同源同版本);
-// compositor 走 npm pack(吃 .npmrc 镜像配置)。均带本地缓存,重复运行秒完。
+// Stage the two platform-specific binaries required for a cross-platform package:
+//   1. chrome-headless-shell for rendering/export into desktop-dist/chrome-headless-shell.
+//      electron-builder.config.mjs always reads extraResources from this staging directory.
+//   2. @remotion/compositor-<target>. npm installs only the host package, so cross-builds add it manually.
+// Usage: npx tsx desktop/prepare-target.mts darwin-arm64|darwin-x64|win32-x64|linux-x64
+// Chrome comes from the Chrome for Testing CDN used by @remotion/renderer at the same version.
+// The compositor uses npm pack and respects .npmrc registry settings. Both downloads are cached.
 import { execFileSync } from 'node:child_process';
 import { createWriteStream, existsSync } from 'node:fs';
 import { chmod, cp, mkdir, readFile, readdir, rename, rm } from 'node:fs/promises';
@@ -16,24 +16,24 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const STAGING = join(ROOT, 'desktop-dist', 'chrome-headless-shell');
 const CACHE = join(ROOT, 'node_modules', '.remotion', 'chrome-headless-shell');
-const FALLBACK_CHROME_VERSION = '149.0.7790.0'; // renderer TESTED_VERSION(缓存 VERSION 文件缺失时兜底)
+const FALLBACK_CHROME_VERSION = '149.0.7790.0'; // renderer TESTED_VERSION fallback when the cached VERSION file is missing
 
 interface Target {
-  /** chrome-for-testing 平台名(下载 URL 与目录名) */
+  /** Chrome for Testing platform name used in download URLs and directory names. */
   cft: string;
-  /** @remotion/compositor 平台包名 */
+  /** Platform package name for @remotion/compositor. */
   compositor: string;
-  /** chrome 可执行文件名 */
+  /** Chrome executable name. */
   bin: string;
 }
 
-// compositor 包名以 @remotion/renderer 的 optionalDependencies 为准(win32 带 -msvc 后缀)
+// Compositor names follow @remotion/renderer optionalDependencies; win32 packages use the -msvc suffix.
 const TARGETS: Record<string, Target> = {
   'darwin-arm64': { cft: 'mac-arm64', compositor: '@remotion/compositor-darwin-arm64', bin: 'chrome-headless-shell' },
   'darwin-x64': { cft: 'mac-x64', compositor: '@remotion/compositor-darwin-x64', bin: 'chrome-headless-shell' },
   'win32-x64': { cft: 'win64', compositor: '@remotion/compositor-win32-x64-msvc', bin: 'chrome-headless-shell.exe' },
-  // chrome-for-testing 只发 linux64(无 linux-arm64),桌面 Linux 仅支持 x64;
-  // AppImage 面向 glibc 发行版,compositor 取 -gnu 变体。
+  // Chrome for Testing ships linux64 only, so desktop Linux supports x64 only.
+  // AppImage targets glibc distributions, so use the -gnu compositor variant.
   'linux-x64': { cft: 'linux64', compositor: '@remotion/compositor-linux-x64-gnu', bin: 'chrome-headless-shell' },
 };
 
@@ -50,7 +50,7 @@ async function download(url: string, dest: string): Promise<void> {
   await pipeline(Readable.fromWeb(res.body as import('node:stream/web').ReadableStream), createWriteStream(dest));
 }
 
-/** 确保缓存里有 <cft> 平台的 chrome-headless-shell(缺则从 CfT CDN 拉 zip 解开)。 */
+/** Ensure chrome-headless-shell is cached for the target platform, downloading and extracting it if needed. */
 async function ensureChrome(t: Target): Promise<string> {
   const dir = join(CACHE, t.cft);
   const marker = join(dir, `chrome-headless-shell-${t.cft}`, t.bin);
@@ -68,7 +68,7 @@ async function ensureChrome(t: Target): Promise<string> {
   return dir;
 }
 
-/** 确保 node_modules 里有目标平台的 compositor 包(npm pack + 解 tgz,绕过 os/cpu 门)。 */
+/** Install the target compositor package with npm pack and tgz extraction, bypassing host OS/CPU filters. */
 async function ensureCompositor(pkg: string): Promise<void> {
   const dest = join(ROOT, 'node_modules', ...pkg.split('/'));
   if (existsSync(join(dest, 'package.json'))) {

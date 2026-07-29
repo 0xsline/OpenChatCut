@@ -436,7 +436,7 @@ async function execFinalize(args: Args, ctx: AgentContext): Promise<unknown> {
     return { error: 'durationInSeconds is required for audio/video/gif' };
   }
 
-  // 上传即转写:ingest 落库后自动触发 ASR，并根据调用方提供的
+  // Upload and transcribe: ASR is automatically triggered after ingest is dropped into the database, and the
   // hasAudioTrack signal; audio always, video unless explicitly told there's no audio.
   const hasAudio = shouldTranscribe(kind, typeof args.hasAudioTrack === 'boolean' ? args.hasAudioTrack : undefined);
 

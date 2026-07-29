@@ -50,7 +50,7 @@ async function uploadBlob(blob: Blob): Promise<string> {
 
 export interface TranscribeOptions {
   /**
-   * ISO-639-1. Default `zh` for this product (中文口播).
+   * ISO-639-1. Default `zh` for this product (Chinese oral broadcast).
    * Pass `auto` to use AssemblyAI language_detection instead.
    */
   languageCode?: string | 'auto';
@@ -73,7 +73,7 @@ async function createTranscript(audioUrl: string, opts: TranscribeOptions = {}):
   if (lang === 'auto') {
     body.language_detection = true;
   } else {
-    // Explicit zh is far more reliable for 中文纪录片口播 than pure auto-detect.
+    // Explicit zh is far more reliable for Chinese documentary oral broadcast than pure auto-detect.
     body.language_code = lang;
   }
   const r = await serviceFetch(`${BASE}/transcript`, {

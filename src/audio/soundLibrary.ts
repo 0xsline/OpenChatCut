@@ -1,6 +1,6 @@
 // Built-in sound-effect library.
 // Data: sound-library/sounds.json + assets/sound-effects/<id>.mp3.
-// UI: search + chips(热门/分组) + waveform cards with peaks.
+// UI: search + chips(popular/group) + waveform cards with peaks.
 
 export interface SoundEffect {
   id: string;

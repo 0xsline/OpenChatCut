@@ -1,7 +1,7 @@
-// 素材目录的绝对磁盘路径(FCPXML 导出重链用)。物理位置由服务端的 MEDIA_DIR
-// 决定,浏览器侧只能问服务端;一个会话内不会变,取一次缓存住。
-// 拿不到就返回 undefined —— 导出仍然出得来,只是 NLE 里素材是离线的,
-// 比整个导出失败好。
+// The absolute disk path of the asset directory (for FCPXML export heavy link). The physical location is determined by the server's MEDIA_DIR
+// Decision, the browser can only ask the server; it will not change within a session, it will be cached once.
+// Return undefined if it cannot be obtained - the export can still be done, but the asset in NLE is offline.
+// Better than failing the entire export.
 
 let cached: string | undefined;
 let inflight: Promise<string | undefined> | undefined;
@@ -13,11 +13,11 @@ async function fetchMediaDir(): Promise<string | undefined> {
     const body = (await res.json()) as { mediaDir?: unknown };
     return typeof body.mediaDir === 'string' && body.mediaDir ? body.mediaDir : undefined;
   } catch {
-    return undefined; // 预览构建等没有该端点的场景
+    return undefined; // Preview build and other scenarios without this endpoint
   }
 }
 
-/** 当前素材目录的绝对路径;不可用时 undefined。 */
+/** The absolute path of the current asset directory; undefined when not available. */
 export async function exportMediaDir(): Promise<string | undefined> {
   if (cached !== undefined) return cached;
   inflight ??= fetchMediaDir().then((dir) => {
@@ -28,7 +28,7 @@ export async function exportMediaDir(): Promise<string | undefined> {
   return inflight;
 }
 
-/** 测试用:清掉进程内缓存。 */
+/** For testing: clear the in-process cache. */
 export function resetExportMediaDirCache(): void {
   cached = undefined;
   inflight = undefined;

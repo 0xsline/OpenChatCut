@@ -21,7 +21,7 @@ export default defineConfig(({ mode }) => {
   const doubaoAppId = env.DOUBAO_TTS_APP_ID || '';
   const doubaoAccessKey = env.DOUBAO_TTS_ACCESS_KEY || '';
   const murekaKey = env.MUREKA_API_KEY || '';
-  // MiniMax 国内开放平台 — one key gates TTS / Hailuo video / music / image.
+  // MiniMax domestic open platform — one key gates TTS / Hailuo video / music / image.
   const minimaxKey = env.MINIMAX_API_KEY || '';
   const seedanceKey = env.SEEDANCE_API_KEY || '';
   const klingKey = env.KLING_API_KEY || '';

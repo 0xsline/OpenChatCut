@@ -56,7 +56,7 @@ function drawFit(ctx: CanvasRenderingContext2D, el: MediaEl, fit: AspectFit): vo
 
 function MediaSource({ item, trim, elRef }: { item: TimelineItem; trim: number; elRef: React.MutableRefObject<MediaEl | null> }) {
   if (item.kind === 'image') {
-    // impeccable-disable-next-line broken-image -- Remotion Img 组件,src 来自 item 运行时注入
+    // impeccable-disable-next-line broken-image -- Remotion Img component, src comes from item runtime injection
     return <Img ref={elRef as React.MutableRefObject<HTMLImageElement | null>} src={item.src!} />;
   }
   // muted: the ORIGINAL clip sequences (rendered beneath the GL canvas) own the audio

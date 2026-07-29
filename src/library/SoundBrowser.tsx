@@ -15,8 +15,8 @@ import { useT } from '../i18n/locale';
 import { setLibraryDrag } from './drag';
 
 // Sound-library tab:
-//   search ("Search sounds") + chips [热门, …groups] + list rows:
-//   [group-color glyph / play] [name] [waveform] [duration] [+ add]
+// search ("Search sounds") + chips [popular, …groups] + list rows:
+// [group-color glyph / play] [name] [waveform] [duration] [+ add]
 
 const POPULAR = '__popular__';
 const WAVE_W = 100;

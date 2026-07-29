@@ -1,5 +1,5 @@
-// 「创作扩展」:勾选会话内自定义内容 → 组包校验 →
-// 保存到本地资源库或下载投稿 JSON。组包纯逻辑在 plugins/export.ts。
+// "Creation Extension": Check the custom content in the session → Group package verification →
+// Save to local resource library or download submission JSON. The pure logic of the group package is in plugins/export.ts.
 import { useMemo, useState } from 'react';
 import { theme } from '../theme';
 import { useT } from '../i18n/locale';
@@ -26,7 +26,7 @@ function download(filename: string, json: string): void {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  // 同步 revoke 会掐掉尚未启动的下载(Chrome);留足启动窗口再回收
+  // Synchronous revoke will kill uninitiated downloads (Chrome); leave enough startup window before recycling
   window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
@@ -56,7 +56,7 @@ export function PluginExport({ items, transitions, fxDefs, defaultOpen = false }
   const [done, setDone] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // 会话注册表与工程持久数据合并去重,只导出用户创作内容。
+  // The session registry and project persistent data are merged and deduplicated, and only user-created content is exported.
   const groups = useMemo(() => {
     const defs = new Map<string, SerializableFxDef>();
     for (const d of Object.values(fxDefs)) defs.set(d.id, d);

@@ -1,12 +1,12 @@
 #version 300 es
 precision highp float;
 
-// 高光/阴影:按亮度软掩膜分别提亮暗部(向白拉,保护高光)与压暗/提亮高光。
+// Highlights/shadows: soft luminance masks lift shadows toward white while protecting highlights, and adjust highlights separately.
 uniform sampler2D u_input;
-uniform float u_shadows;        // -1..1,正数提亮暗部
-uniform float u_highlights;     // -1..1,负数回收高光
-uniform float u_shadowRange;    // 暗部掩膜上限亮度
-uniform float u_highlightRange; // 高光掩膜宽度
+uniform float u_shadows;        // -1..1; positive values lift shadows
+uniform float u_highlights;     // -1..1; negative values recover highlights
+uniform float u_shadowRange;    // Upper luminance bound of the shadow mask
+uniform float u_highlightRange; // Highlight-mask width
 
 in vec2 v_texCoord;
 out vec4 fragColor;

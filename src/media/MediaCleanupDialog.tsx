@@ -1,5 +1,5 @@
-// 「清理素材」面板:打开即扫——先清孤儿工程文档(冒烟/旧测试残留),
-// 再列出全部工程都不引用的上传文件,勾选确认后批删(磁盘 + IDB 缓存)。
+// "Clean Assets" panel: scan after opening - first clear the orphan project documents (smoke/old test residue),
+// Then list the uploaded files that are not referenced by all projects, check and delete them in batches (disk + IDB cache).
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { theme, themeAlpha } from '../theme';
 import { useT } from '../i18n/locale';

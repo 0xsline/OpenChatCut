@@ -1,7 +1,7 @@
-// 时间线指针状态机(逐字搬自 Timeline.tsx):四条互斥手势——片段拖动/裁剪(drag)、
-// 空白处框选(marquee)、钢笔关键帧点拖(penDrag)、选择模式引用拾取(pickDrag)。
-// move/up 统一挂在滚动容器上;各手势自己 setPointerCapture 到合适目标。
-// 吸附(applySnap)与多选点击语义也在这——它们只被这台机器用。
+// Timeline pointer state machine (translated verbatim from Timeline.tsx): four mutually exclusive gestures - fragment drag/crop (drag),
+// Marquee selection in blank space (marquee), pen keyframe point drag (penDrag), selection mode reference picking (pickDrag).
+// move/up are hung on the scroll container; each gesture setsPointerCapture to the appropriate target.
+// The applySnap and multi-select click semantics are also here - they are only used by this machine.
 import { useRef, useState, type RefObject } from 'react';
 import {
   isItemSelected, selectedIdsOf, trackKind,
@@ -49,7 +49,7 @@ export function useTimelinePointer(deps: PointerDeps) {
   /** Rubber-band multi-select on empty lane (selection mode). Client coords. */
   const [marquee, setMarquee] = useState<Marquee | null>(null);
   const [pickDrag, setPickDrag] = useState<TimelinePickDrag | null>(null);
-  /** 当前吸住的目标,一次拖拽内跨 pointermove 保持(迟滞),松手清空。 */
+  /** The currently sucked target is held (hysteresis) across pointermove within one drag, and cleared when released. */
   const snapHold = useRef<SnapHold | null>(null);
 
   const startPick = (e: React.PointerEvent, origin: TimelinePickDrag['origin'], item?: TimelineItem) => {
@@ -122,8 +122,8 @@ export function useTimelinePointer(deps: PointerDeps) {
     return result;
   };
   /**
-   * 右手柄最多还能往右拖多少帧:源素材剩余长度减去当前时长。判定不了(图片/MG/
-   * 词驱动音频)返回 Infinity。变速拉伸不消耗额外源帧,所以那个模式不设限。
+   * The maximum number of frames the right handle can be dragged to the right: the remaining length of the source asset minus the current duration. Unable to determine (picture/MG/
+   * Word Driven Audio) Return to Infinity. Variable speed stretching does not consume additional source frames, so there is no limit to that mode.
    */
   const trimRightCap = (id: string, baseDur: number): number => {
     if (editMode === 'rate-stretch') return Infinity;
@@ -155,7 +155,7 @@ export function useTimelinePointer(deps: PointerDeps) {
     if (!drag) return;
     const rawDelta = Math.round((e.clientX - drag.startX) / px);
     const snapped = applySnap(drag.mode, drag.baseStart, drag.baseDur, rawDelta);
-    // 拖到素材尾部就停住,预览与最终提交用同一个上界(否则松手会突然弹回来)。
+    // Drag to the end of the asset and stop. Use the same upper bound for preview and final submission (otherwise it will bounce back suddenly if you let go).
     const cap = drag.mode === 'trim-right' ? trimRightCap(drag.id, drag.baseDur) : Infinity;
     const deltaF = Math.min(snapped.deltaF, cap);
     const snapAt = deltaF === snapped.deltaF ? snapped.snapAt : null;

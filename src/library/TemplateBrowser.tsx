@@ -9,12 +9,12 @@ import { Icon } from '../components/icons';
 import { setLibraryDrag } from './drag';
 import { loadRecentTemplateIds, pushRecentTemplateId } from '../persist/sessionPrefs';
 
-// MG 动画 browser: a horizontal chip row
-// [收藏, 最近, 热门, <categories by count>] filters the card grid; cards show a
-// ⭐ favorite toggle + a ⋮ menu (添加到时间线 / 用 AI 生成 / 删除) on hover.
-// Data model: 收藏 = per-user collected (persisted to localStorage),
-// 最近 = last-added template ids (local), 热门 = full gallery default.
-// 删除 = 软删除(本地隐藏列表),时间线已用片段不受影响;内置/插件条目均可从列表移除。
+// MG animation browser: a horizontal chip row
+// [Collection, recent, popular, <categories by count>] filters the card grid; cards show a
+// ⭐ favorite toggle + a ⋮ menu (add to timeline / generate with AI / delete) on hover.
+// Data model: collection = per-user collected (persisted to localStorage),
+// recent = last-added template ids (local), popular = full gallery default.
+// Delete = soft delete (local hidden list), used clips in the timeline are not affected; built-in/plugin entries can be removed from the list.
 // Category ids come straight from the template `category`.
 
 // Category id → Chinese label.
@@ -52,7 +52,7 @@ interface TemplateBrowserProps {
 export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd, onUseAI }: TemplateBrowserProps) {
   const t = useT();
   const [favs, setFavs] = usePersistedState<string[]>('cc.favTemplates', []);
-  /** 从资源库列表移除的模板 id(软删除,持久化;不影响时间线已插入片段) */
+  /** Template id removed from the resource library list (soft deletion, persistence; does not affect the inserted clips in the timeline) */
   const [hidden, setHidden] = usePersistedState<string[]>('cc.hiddenTemplates', []);
   const [recents, setRecents] = useState<string[]>(() => loadRecentTemplateIds());
   const [chip, setChip] = usePersistedState<string>('cc.templateChip', POPULAR);
@@ -89,13 +89,13 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
     };
   }, [menuFor]);
 
-  // 可见列表(已软删除的不进 chips/网格)
+  // Visible list (soft deleted ones are not included in chips/grid)
   const visible = useMemo(
     () => templates.filter((t) => !hiddenSet.has(t.id)),
     [templates, hiddenSet],
   );
 
-  // chips: 收藏, 最近, 热门, then categories sorted by descending count
+  // chips: favorites, recent, popular, then categories sorted by descending count
   const chips = useMemo(() => {
     const counts = new Map<string, number>();
     for (const t of visible) counts.set(t.category, (counts.get(t.category) ?? 0) + 1);
@@ -154,8 +154,8 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
       ) : chip === RECENT && shown.length === 0 ? (
         <div style={{ color: theme.textDim, fontSize: 12, padding: '20px 8px', textAlign: 'center' }}>{t('还没有最近使用的模板。点卡片或拖到时间线后会出现在这里。')}</div>
       ) : (
-        /* 统一 16:9 卡片盒:竖版(9:16)缩略图居中 contain 展示、两侧用模糊放大的
-           自身画面垫底(视频平台竖内容惯例),卡片高度与横版一致不再窜层。 */
+        /* Unified 16:9 card box: vertical version (9:16) thumbnails are displayed in the center and blurred on both sides.
+The own screen is at the bottom (the convention for vertical content on video platforms), and the height of the card is the same as the horizontal version, so there is no need to change layers.*/
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
           {shown.map((tp) => {
             const isFav = favSet.has(tp.id);
@@ -168,7 +168,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
                 draggable
                 onDragStart={(e) => {
                   remember(tp);
-                  // 插件模板不在 drop 端的 TEMPLATES 里,Tpl 全量随 payload 走
+                  // The plugin template is not in TEMPLATES on the drop side, and the full amount of Tpl goes with the payload.
                   setLibraryDrag(e, { kind: 'template', id: tp.id, name: tp.name, ...(tp.id.startsWith('plugin:') ? { data: tp } : {}) });
                 }}
                 onMouseEnter={() => setHovered(tp.id)}
@@ -188,9 +188,9 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
               >
                 <button onClick={() => addAndRemember(tp)} title={t('点击或拖到时间线：{name}', { name: tp.name })}
                   style={{ cursor: 'inherit', textAlign: 'left', padding: 0, width: '100%', display: 'block', border: 'none', background: 'none', color: theme.text }}>
-                  {/* 两层图都绝对定位铺满:百分比高度在 grid 轨道里会解析失败,
-                      contain 退化成裁切(9:16 曾被裁成横条)——绝对定位对着
-                      aspectRatio 盒子解析,信箱式居中才稳定成立。 */}
+                  {/* Both layers of images are absolutely positioned and covered: the percentage height will fail to be parsed in the grid track.
+contain degenerates into cutting (9:16 was cut into horizontal strips) - absolute positioning
+aspectRatio box analysis, letterbox centering is stable.*/}
                   <div style={{ aspectRatio: '16 / 9', position: 'relative', background: theme.bg, overflow: 'hidden' }}>
                     {tp.thumb ? (
                       <>

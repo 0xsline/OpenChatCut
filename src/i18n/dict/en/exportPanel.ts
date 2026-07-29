@@ -1,13 +1,13 @@
-// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
+// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
 export default {
   '导出设置': 'Export Settings',
   '发布工作台': 'Delivery Studio',
   '关闭': 'Close',
-  // 页签
+  // Tag
   '视频': 'Video',
   '音频': 'Audio',
   'MG动画': 'Motion Graphics',
-  '字幕': 'Captions', // 与 captions.ts 同键同值(合并去序依赖)
+  '字幕': 'Captions', // Same key and same value as captions.ts (merge and remove order dependencies)
   '成片': 'Final video',
   '音轨': 'Audio mix',
   '动态图层': 'Motion layers',
@@ -15,7 +15,7 @@ export default {
   '剪辑工程': 'Edit project',
   '输出类型': 'Output type',
   '本机渲染': 'Local render',
-  // 参数行
+  // Parameter line
   '编码': 'Codec',
   '分辨率': 'Resolution',
   '帧率': 'Frame rate',
@@ -25,7 +25,7 @@ export default {
   '目标软件': 'Target app',
   '纯文本 (.txt)': 'Plain text (.txt)',
   '达芬奇': 'DaVinci Resolve',
-  // 页签说明
+  // Page description
   'MP3 音轨': 'MP3 audio mix',
   '提取时间线中的完整混音，视频画面不会写入文件。': 'Extracts the complete timeline mix without writing video frames.',
   '{n} 个动态图层': '{n} motion layers',
@@ -47,7 +47,7 @@ export default {
   '包含 MG动画': 'Include MG animations',
   '把每个 MG动画渲染成带 alpha 的 ProRes 4444 .mov，并和 XML 一起下载。': 'Renders each MG animation to an alpha ProRes 4444 .mov, downloaded alongside the XML.',
   '导入后，请在剪辑软件中指向原始素材所在文件夹，以重新链接离线片段。': 'After importing, point your NLE at the original media folder to relink offline clips.',
-  // 状态 / 错误
+  // status / error
   '渲染 MG {i}/{n} · {name}': 'Rendering MG {i}/{n} · {name}',
   '正在渲染第 {i}/{n} 个动态图层': 'Rendering motion layer {i}/{n}',
   '导出中…': 'Exporting…',

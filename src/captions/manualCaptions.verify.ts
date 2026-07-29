@@ -51,7 +51,7 @@ captions = { ...captions, ...removeManualCue(captions, laneId, 0) };
 captions = { ...captions, ...removeManualCue(captions, laneId, 0) };
 assert.equal(captions.sourceEntries!.find((entry) => entry.id === laneId)?.words?.length, 0);
 
-// —— placeManualCueTiming:拖动放置的无重叠钳制(同轨/跨轨拖拽共用) ——
+//  —  placeManualCueTiming: non-overlapping clamping of dragging and placing (shared with same-track/cross-track drag and drop)  —
 const occupied = [{ text: 'a', start: 0, end: 1_000 }, { text: 'c', start: 1_200, end: 2_000 }];
 assert.equal(placeManualCueTiming(occupied, 1_050, 1_000), null, '1000ms cue 拖进 200ms 间隙 → 拒绝(调用方回弹)');
 assert.deepEqual(placeManualCueTiming(occupied, 1_050, 150), { start: 1_050, end: 1_200 }, '塞得下按请求位放,右侧被邻居顶住');

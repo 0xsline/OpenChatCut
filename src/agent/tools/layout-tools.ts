@@ -1,6 +1,6 @@
-// apply_layout:命名布局一步摆位(分屏/画中画/网格/复位)。
-// 工具替 Agent 算好每个槽位的 scale/x/y/crop(cover 不拉伸),一次 batch = 一步撤销,
-// 免去"手调 transform → view_timeline_frames 截图对齐"的循环。
+// apply_layout: Name the layout in one step (split screen/picture-in-picture/grid/reset).
+// The tool calculates the scale/x/y/crop of each slot for the Agent (cover is not stretched), one batch = one step undo,
+// Eliminate the cycle of "manually adjusting transform → view_timeline_frames screenshot alignment".
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { TimelineItem } from '../../editor/types';
@@ -12,7 +12,7 @@ import {
 
 type Args = Record<string, unknown>;
 
-/** 全画布可视层的 kind 才能按槽位摆(MG/text 有自己的盒模型,音频无画面)。 */
+/** The kind of the full canvas visual layer can be placed according to the slot (MG/text has its own box model, audio has no picture). */
 const PLACEABLE_KINDS = new Set<TimelineItem['kind']>(['video', 'image', 'gif', 'svg']);
 
 export const LAYOUT_TOOL_SCHEMAS: AgentToolSchema[] = [
@@ -124,7 +124,7 @@ export function execLayoutTool(name: string, args: Args, ctx: AgentContext): unk
   );
 
   const notes: string[] = [];
-  // 时间重叠提醒:不同时出现的 clip 摆同一布局多半是误会。
+  // Time overlap reminder: clips that do not appear at the same time and placed in the same layout are probably a misunderstanding.
   const spans = assignments.map(({ itemId }) => {
     const it = items.get(itemId)!;
     return [it.startFrame, it.startFrame + it.durationInFrames] as const;
@@ -134,7 +134,7 @@ export function execLayoutTool(name: string, args: Args, ctx: AgentContext): unk
   if (assignments.length > 1 && overlapFrom >= overlapTo) {
     notes.push('assigned clips never overlap in time — they will not appear on screen together');
   }
-  // pip 叠放提醒:时间线上方的行渲染在上层,inset 必须比 main 更靠上。
+  // pip stacking reminder: lines above the timeline are rendered on the upper layer, and inset must be higher than main.
   if (layout === 'pip') {
     const mainId = assignments.find((a) => a.slot === 'main')?.itemId;
     const insetId = assignments.find((a) => a.slot === 'inset')?.itemId;

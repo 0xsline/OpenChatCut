@@ -1,7 +1,7 @@
-// 轨道头「字幕样式与翻译」弹层:内置样式列表 + 用户预设(存/用/删)+ 保存命名 +
-// 翻译子菜单。字幕域组件——Timeline 只管单开互斥与定位(captionMenu 状态/外点关闭),
-// 动作与预设/命名/忙碌状态都在这里。命名走内联输入,不用 window.prompt(Electron 不支持)。
-// 错误行例外:也被菜单外的「开启字幕」按钮写(该轨无文字稿),故由 Timeline 持有传入。
+// Track header "Caption Style and Translation" pop-up layer: built-in style list + user default (save/use/delete) + save name +
+// Translation submenu. Caption domain component - Timeline only supports single-open mutual exclusion and positioning (captionMenu status/outside point closed),
+// Actions and presets/names/busy states are all here. The name is input inline, without window.prompt (Electron does not support it).
+// Exception for the error line: it is also written by the "Turn on captions" button outside the menu (there is no text script for this track), so it is passed in by Timeline.
 import { useEffect, useState } from 'react';
 import { CAPTION_STYLES } from './styles';
 import { buildTranslation } from './translate';

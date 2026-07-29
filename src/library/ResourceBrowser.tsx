@@ -3,7 +3,7 @@ import { theme } from '../theme';
 import { useT } from '../i18n/locale';
 import { setLibraryDrag, type LibraryDragKind } from './drag';
 
-// Generic resource-library category browser (转场/特效/缩放/LUT).
+// Generic resource-library category browser (Transition/Special Effects/Scale/LUT).
 // `layout="grid"` uses cards with a thumbnail and label;
 // `layout="list"` is the denser list used by some categories.
 //
@@ -17,14 +17,14 @@ export interface ResourceItem {
   name: string;
   desc?: string;
   badge?: string;
-  /** 插件条目:随拖拽 payload 带走的应用数据(见 drag.ts LibraryDragPayload.data) */
+  /** Plugin entry: application data taken away with the drag payload (see drag.ts LibraryDragPayload.data) */
   data?: unknown;
-  /** 插件条目预览图(data:image/* 或 URL);有则卡片直接用 */
+  /** Plugin item preview image (data:image/* or URL); if available, use the card directly */
   thumb?: string;
 }
 
 interface ResourceBrowserProps {
-  /** what this category applies to, e.g. "点击应用到选中片段" */
+  /** what this category applies to, e.g. "Click to apply to the selected fragment" */
   hint: string;
   items: ResourceItem[];
   onApply: (id: string) => void;

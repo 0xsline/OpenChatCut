@@ -8,7 +8,7 @@ import { t, useT } from '../i18n/locale';
 // button AND the popover. GLOBAL history (single-user app) — loads straight from
 // IDB, takes ZERO props, so it can drop into the TopBar with no wiring.
 
-/** "刚刚 / N 分钟前 / N 小时前 / N 天前"。 */
+/** "Just / N minutes ago / N hours ago / N days ago". */
 function relTime(ms: number): string {
   const diff = Math.max(0, Date.now() - ms);
   const min = Math.floor(diff / 60_000);

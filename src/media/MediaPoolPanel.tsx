@@ -31,7 +31,7 @@ interface MediaPoolPanelProps {
   onMoveAssets: (ids: string[], folderId?: string) => void;
   onRenameAsset: (id: string, name: string) => void;
   onSetFavorite: (id: string, favorite: boolean) => void;
-  /** 从素材池删除(两步确认);已落轨片段自带数据拷贝,不受影响 */
+  /** Delete from the asset pool (two-step confirmation); the tracked clips have their own data copies and will not be affected */
   onRemoveAsset?: (id: string) => void;
   /** Relink File replaces an offline/missing asset and its clip srcs. */
   onRelinkAsset?: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind'] }) => void;
@@ -60,9 +60,9 @@ export function MediaPoolPanel({
   const [view, setView] = usePersistedState<'grid' | 'list'>('cc.mediaView', 'grid');
   const [menu, setMenu] = useState<'sort' | 'filter' | null>(null);
   const [assetMenu, setAssetMenu] = useState<string | null>(null);
-  /** fixed-position menu so overflow:auto grid doesn't clip 收藏/重命名/文件夹 */
+  /** fixed-position menu so overflow:auto grid doesn't clip collection/rename/folder */
   const [assetMenuPos, setAssetMenuPos] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
-  // 删除两步确认:第一次点变「确认删除」,重开菜单即复位
+  // Two-step confirmation for deletion: Click "Confirm Delete" for the first time, and the menu will be reset when reopening
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [currentFolderId, setCurrentFolderId] = useState<string>();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -349,7 +349,7 @@ export function MediaPoolPanel({
                   : asset.kind === 'image' || asset.kind === 'gif' || asset.kind === 'svg'
                     ? <img src={asset.src} alt={asset.name} draggable={false} onError={() => markMissing(asset.id)} onLoad={() => clearMissing(asset.id)} />
                     : asset.kind === 'video'
-                      // preload=metadata 不解码画面(黑块),seek 一下才逼浏览器绘帧;顺带避开第 0 帧黑场
+                      // preload=metadata does not decode the picture (black block), seek for a while to force the browser to draw the frame; incidentally avoid the black field of frame 0
                       ? <video src={asset.src} muted preload="metadata" draggable={false} onError={() => markMissing(asset.id)} onLoadedData={() => clearMissing(asset.id)}
                           onLoadedMetadata={(e) => { const v = e.currentTarget; if (Number.isFinite(v.duration) && v.duration > 0) v.currentTime = Math.min(1, v.duration / 2); }} />
                       : asset.kind === 'motion-graphic'

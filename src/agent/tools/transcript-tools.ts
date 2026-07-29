@@ -346,7 +346,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       }
     }
     case 'find_transcript':
-      // 参数面(asset/fuzzy/includeWordTimestamps/limit)+ 全工程搜索:transcript-find.ts。
+      // Parameter surface (asset/fuzzy/includeWordTimestamps/limit) + full project search: transcript-find.ts.
       return execFindTranscript(args, ctx);
     case 'clean_script': {
       // Whole-track batch: clean every
@@ -400,7 +400,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
         } else if (!usesTypedArgs) {
           actions.push({ type: 'cleanScript', id: it.id, silenceFrames, removeFillers, cutPadFrames });
         } else if (cutPadFrames !== undefined) {
-          // 只改呼吸口时把片段现有的压缩设置原样带上,别被 cleanScript 顺手清掉。
+          // When only changing the breathing port, keep the existing compression settings of the clip as they are, so they won't be cleared by cleanScript.
           actions.push({ type: 'cleanScript', id: it.id, removeFillers, cutPadFrames, silenceFrames: it.silenceFrames });
         } else if (fillers.length) {
           actions.push({ type: 'deleteWords', id: it.id, idxs: fillers });

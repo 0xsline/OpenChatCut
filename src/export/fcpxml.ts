@@ -1,7 +1,7 @@
-// FCPXML 序列化器（submit_export format=xml, nleFormat fcp_xml/fcp_xml_resolve）。
-// 纯函数：读 TimelineState → 吐 FCPXML 1.10 字符串。无 DOM/fetch/fs，不含
-// Date.now()/Math.random()，同一输入永远同一输出，方便 headless 测试和
-// server/client 两端复用。集成方负责把它接到 submit_export 的 xml 分支。
+// FCPXML serializer (submit_export format=xml, nleFormat fcp_xml/fcp_xml_resolve).
+// Pure function: read TimelineState → spit FCPXML 1.10 string. No DOM/fetch/fs, excluding
+// Date.now()/Math.random(), the same input always has the same output, which is convenient for headless testing and
+// Server/client is reused at both ends. The integrator is responsible for connecting it to the xml branch of submit_export.
 import {
   timelineDuration,
   timelineTrackIds,
@@ -13,11 +13,11 @@ import {
 import { itemEditOpts, itemWindow, keptSegments } from '../transcript/edit';
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
 
-/** 素材 URL 前缀:磁盘上落在 mediaDir 里,同名。 */
+/** Asset URL prefix: it is in mediaDir on the disk and has the same name. */
 const UPLOAD_PREFIX = '/media/uploads/';
 
-/** 绝对磁盘路径 → file:// URL。POSIX 与 Windows 盘符都覆盖;路径分段按 URL 规则
- * 编码(中文/空格文件名不编码的话 NLE 解析不到),盘符的冒号必须保持原样。 */
+/** Absolute disk path → file:// URL. Both POSIX and Windows drive letters are covered; path segmentation is based on URL rules
+ * Encoding (Chinese/space file names cannot be parsed by NLE if they are not encoded), and the colon in the drive letter must remain intact. */
 function toFileUrl(absPath: string): string {
   const slashed = absPath.replace(/\\/g, '/');
   const rooted = /^[A-Za-z]:/.test(slashed) ? `/${slashed}` : slashed;
@@ -29,9 +29,9 @@ function toFileUrl(absPath: string): string {
 }
 
 /**
- * 片段 src → NLE 能重链的地址。`/media/uploads/<name>` 是同源 URL,物理位置由
- * mediaDir 决定(MEDIA_DIR 可改),必须换算成绝对路径,否则 NLE 里每条素材都是
- * 离线的。远程/内联地址原样透传(NLE 关不了它们,但谎报本地路径更糟)。
+ * Fragment src → NLE address that can be relinked. `/media/uploads/<name>` is the same origin URL, the physical location is
+ * mediaDir is determined (MEDIA_DIR can be changed) and must be converted into an absolute path, otherwise every asset in NLE is
+ * Offline. Remote/inline addresses are passed through as is (NLE can't turn them off, but lying about local paths is worse).
  */
 export function resolveAssetSrc(src: string, mediaDir?: string): string {
   if (/^(?:https?|file|data|blob):/i.test(src)) return src;
@@ -43,11 +43,11 @@ export function resolveAssetSrc(src: string, mediaDir?: string): string {
 }
 
 /**
- * 音频件的文字稿编辑(删词 / 压静音 / 语块重排)在播放层拆成多段
- * (TimelineComposition 的 AudioClip),导出必须拆成同样的多条 asset-clip——
- * 否则 NLE 里会按连续源区间播放,把删掉的词播回来、后面的内容整段丢失。
- * 与渲染层共用 keptSegments,保证两边永远同一个真源。
- * video 件的删词不改画面(永远连续播放),所以只有 audio 需要分段。
+ * Transcript editing of audio files (word deletion/mute/block rearrangement) is split into multiple segments at the playback layer
+ * (AudioClip of TimelineComposition), the export must be split into the same multiple asset-clips —
+ * Otherwise, NLE will play according to the continuous source interval, and the deleted words will be played back, and the entire subsequent content will be lost.
+ * Share keptSegments with the rendering layer to ensure that both sides always have the same true source.
+ * Deleting words from video files does not change the picture (plays continuously forever), so only audio needs to be segmented.
  */
 function transcriptSegments(
   item: TimelineItem,
@@ -60,7 +60,7 @@ function transcriptSegments(
   });
 }
 
-/** XML 属性/文本转义（5 个保留字符）。 */
+/** XML attribute/text escape (5 reserved characters). */
 function escapeXml(raw: string): string {
   return raw
     .replace(/&/g, '&amp;')
@@ -70,21 +70,21 @@ function escapeXml(raw: string): string {
     .replace(/'/g, '&apos;');
 }
 
-/** XML 注释不能含 "--"；占位说明是给人看的，直接把连字符替换掉最省事。 */
+/** XML comments cannot contain "--"; the placeholder description is for human viewing, so it is easiest to replace the hyphen directly. */
 function xmlComment(text: string): string {
   return `<!-- ${text.replace(/-/g, '_')} -->`;
 }
 
-/** FCPXML 资源/元素 id 必须是合法 NCName：非法字符替换 + 固定前缀保证不以数字开头。 */
+/** FCPXML resource/element id must be legal NCName: illegal character replacement + fixed prefix guaranteed not to start with a number.*/
 function sanitizeId(raw: string): string {
   return `id-${raw.replace(/[^A-Za-z0-9_.-]/g, '_')}`;
 }
 
 /**
- * 帧 → FCPXML 有理数时间 "N/Ds"。整数帧率直接用 frames/fps；非整数帧率
- * （如 29.97）放大到整数分母再取整，保证与 frames/fps 秒数精确等价——
- * 此处是最简单能保证精确往返换算的写法，不追求 NTSC 1001/30000
- * 的行业惯例分母。
+ * Frame → FCPXML rational number time "N/Ds". Integer frame rate directly uses frames/fps; non-integer frame rate
+ * (For example, 29.97) Amplify to the integer denominator and then round to an integer to ensure that it is exactly equivalent to frames/fps seconds——
+ * Here is the simplest way to ensure accurate round-trip conversion, without pursuing NTSC 1001/30000
+ * industry practice denominator.
  */
 function rationalTime(frames: number, fps: number): string {
   if (Number.isInteger(fps)) return `${frames}/${fps}s`;
@@ -112,8 +112,8 @@ function validateState(state: TimelineState): void {
   }
 }
 
-/** 轨道 → FCPXML lane：底部视频轨(V1)=lane 1，往上每条轨 +1；A1=lane -1，
- * 往下每条轨 -1（负数惯例：音频挂在主线下方）。未知轨兜底成视频 lane 1。 */
+/** Track → FCPXML lane: Bottom video track (V1)=lane 1, each track above +1; A1=lane -1,
+ * -1 for each track down (negative convention: audio hangs below the main line). Unknown track pockets into video lane 1.*/
 function buildLaneOf(state: TimelineState): (track: TrackId) => number {
   const ids = timelineTrackIds(state);
   const videoTracks = ids.filter((id) => trackKind(state, id) === 'video');
@@ -140,12 +140,12 @@ interface RenderedMotionGraphicInfo {
   durationFrames: number;
 }
 
-/** 按 src 去重收集 asset 资源：同一素材在时间线上多次使用只登记一条 asset。 */
+/** Press src to remove duplicates and collect asset resources: only one asset will be registered if the same asset is used multiple times on the timeline.*/
 function collectAssets(state: TimelineState): Map<string, AssetInfo> {
   const bySrc = new Map<string, AssetInfo>();
   for (const item of state.items) {
     if (!item.src) continue;
-    // 分段件用到的源区间由最后一段决定,可能远超编辑后时长(删词把中间掏掉了)
+    // The source interval used in segmented parts is determined by the last paragraph, which may far exceed the duration after editing (word deletion removes the middle)
     const segs = transcriptSegments(item, state.fps);
     const usedTo = segs?.length
       ? Math.max(...segs.map((seg) => seg.srcEndFrame))
@@ -211,9 +211,9 @@ function motionGraphicResourceXml(
   return `<asset id="${info.id}" name="${escapeXml(info.filename)}" src="file:./${escapeXml(info.filename)}" start="0s" duration="${rationalTime(info.durationFrames, fps)}" hasVideo="1" hasAudio="0" format="${formatId}"/>`;
 }
 
-/** 有 src 的条目（video/audio/image/gif）→ asset-clip；没有 src 的条目
- * （motion-graphic/text，MG 没有真实媒体文件）→ 带名字+注释的占位 gap，
- * 集成方可用 export_motion_graphic_prores 渲出透明视频后替换这段 gap。 */
+/** Entries with src (video/audio/image/gif) → asset-clip; entries without src
+ * (motion-graphic/text, MG does not have real media files) → placeholder gap with name + annotation,
+ * The integrator can use export_motion_graphic_prores to render the transparent video and replace this gap.*/
 function itemToSpineElement(
   item: TimelineItem,
   fps: number,
@@ -228,7 +228,7 @@ function itemToSpineElement(
     const ref = assets.get(item.src)?.id ?? '';
     const segs = transcriptSegments(item, fps);
     if (segs?.length) {
-      // 每个保留段一条 clip:offset 已是时间线绝对帧(keptSegments 传入了 startFrame)
+      // One clip for each reserved segment:offset is already the absolute frame of the timeline (keptSegments passed in startFrame)
       return segs
         .map((seg) => `<asset-clip ref="${ref}" lane="${lane}" offset="${rationalTime(seg.fromFrame, fps)}" duration="${rationalTime(seg.durFrames, fps)}" start="${rationalTime(seg.srcStartFrame, fps)}" name="${name}"/>`)
         .join('\n        ');
@@ -246,16 +246,16 @@ function itemToSpineElement(
 }
 
 /**
- * 把当前时间线序列化成 FCPXML 1.10 文档（Final Cut Pro / DaVinci Resolve /
- * 经 Resolve 转一手的 Premiere 都能读）。
+ * Serialize the current timeline into an FCPXML 1.10 document (Final Cut Pro / DaVinci Resolve /
+ * Can be read by any Premiere converted by Resolve).
  *
- * 结构：<fcpxml> → <resources>(一条 <format> + 每个去重 src 一条 <asset>)
- * → <library><event><project><sequence><spine>。spine 用一条铺满全长的
- * 背景 <gap> 当主线（lane 0），每个 item 都作为它的 lane 子节点，offset 用
- * 时间线绝对帧位换算——因为背景 gap 本身从 0 开始铺满全长，lane 子节点的
- * "相对锚点偏移"数值上就等于绝对偏移，不用另算相对坐标。这是简化多轨
- * OpenChatCut 时间线（每轨独立绝对帧位）到 FCPX 磁性时间线（连接片段带 lane）
- * 的直接映射方式；按 FCPXML 规范实现。
+ * Structure: <fcpxml> → <resources>(one <format> + one <asset> for each deduplicated src)
+ * → <library><event><project><sequence><spine>. Use a spine that covers the entire length
+ * Background <gap> When the main line (lane 0), each item is used as its lane child node, and offset is used
+ * Timeline absolute frame conversion - because the background gap itself starts from 0 and covers the entire length, the lane child node
+ * "Relative anchor point offset" is numerically equal to the absolute offset, and there is no need to calculate additional relative coordinates. This is a simplified multitrack
+ * OpenChatCut timeline (independent absolute frame bits for each track) to FCPX magnetic timeline (connected clips with lane)
+ * Direct mapping method; implemented according to FCPXML specification.
  */
 export type NleFormat = 'fcp_xml' | 'fcp_xml_resolve';
 
@@ -264,8 +264,8 @@ export interface FcpxmlExportOptions {
   nleFormat?: NleFormat;
   /** Render keys returned by export_motion_graphic_prores filenameMode=xml. */
   motionGraphicRenderKeys?: string[];
-  /** 素材目录的绝对磁盘路径(服务端 uploadDir());缺省时 /media/uploads 原样输出,
-   * NLE 会把所有素材标成离线。调用方应从 /api/keys 的 mediaDir 取。 */
+  /** The absolute disk path of the asset directory (server uploadDir()); by default, /media/uploads is output as is,
+   *NLE will mark all assets as offline. The caller should fetch from the mediaDir of /api/keys. */
   mediaDir?: string;
 }
 

@@ -68,13 +68,13 @@ export function collectTimelineSnapPoints(
   return points.filter((point) => Number.isFinite(point.frame));
 }
 
-/** 吸附半径的按类型加权:播放头比片段边缘更"粗",等距时它赢。 */
+/** Weighting of snap radius by type: the playhead is "thicker" than the clip edge, it wins when isometric. */
 const SNAP_WEIGHT: Partial<Record<SnapPointType, number>> = {
   playhead: 1.5,
   'timeline-start': 1.5,
 };
 
-/** 吸住之后要离开多远才松开(阈值的倍数)。>1 才有迟滞,否则会在边界上反复抖。 */
+/** How far away you have to go before releasing after sucking (a multiple of the threshold). >1 will cause hysteresis, otherwise it will jitter repeatedly on the boundary. */
 export const STICKY_RELEASE = 1.5;
 
 const radiusFor = (type: SnapPointType, thresholdFrames: number): number =>
@@ -86,7 +86,7 @@ export function findClosestSnapPoint(
   thresholdFrames: number,
 ): SnapPoint | null {
   let best: SnapPoint | null = null;
-  // 用「距离 / 该类型的半径」打分,这样加权才既放宽范围又影响优先级。1 = 正好在边界上。
+  // Use "distance / radius of this type" to score, so that weighting will not only relax the scope but also affect the priority. 1 = exactly on the boundary.
   let bestScore = 1;
   for (const point of points) {
     const radius = radiusFor(point.type, thresholdFrames);
@@ -101,7 +101,7 @@ export function findClosestSnapPoint(
 
 type SnapEdge = 'start' | 'end';
 
-/** 当前吸住的目标。由调用方在一次拖拽内原样传回来,松手时丢掉。 */
+/** The currently sucked target. The caller passes it back intact within a drag and drops it when letting go. */
 export interface SnapHold {
   frame: number;
   edge: SnapEdge;
@@ -115,7 +115,7 @@ export interface SnapDraggedEdgesOptions {
   rawDelta: number;
   points: SnapPoint[];
   thresholdFrames: number;
-  /** 上一次 move 的结果。传了才有迟滞;不传就是每次重算的老行为。 */
+  /** The result of the last move. There is lag only if it is passed; if it is not passed, it is the old behavior of recalculating every time. */
   hold?: SnapHold | null;
 }
 
@@ -129,14 +129,14 @@ export function snapDraggedEdges(options: SnapDraggedEdgesOptions): {
   const deltaFor = (edge: SnapEdge, frame: number): number => frame - baseStart - (edge === 'end' ? baseDuration : 0);
   const edges: SnapEdge[] = mode === 'trim-left' ? ['start'] : mode === 'trim-right' ? ['end'] : ['start', 'end'];
 
-  // 已经吸住的先尝试续住:走出 1.5 倍半径才松开,目标消失(比如那个片段被删了)也松开。
+  // If it has been sucked, try to continue holding it first: release it after walking out of 1.5 times the radius, and release it when the target disappears (for example, the clip is deleted).
   if (hold && edges.includes(hold.edge) && points.some((point) => point.frame === hold.frame)) {
     if (Math.abs(probe(hold.edge) - hold.frame) <= radiusFor(hold.type, thresholdFrames) * STICKY_RELEASE) {
       return { deltaF: deltaFor(hold.edge, hold.frame), snapAt: hold.frame, hold };
     }
   }
 
-  // 重新找:move 手势同时探片段的头和尾,取归一化距离更小的那个(平局归头)。
+  // Find again: The move gesture simultaneously explores the head and tail of the fragment, and takes the one with a smaller normalized distance (a tie returns to the head).
   let best: { edge: SnapEdge; point: SnapPoint; score: number } | null = null;
   for (const edge of edges) {
     const point = findClosestSnapPoint(points, probe(edge), thresholdFrames);

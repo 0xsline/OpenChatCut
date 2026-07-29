@@ -2,7 +2,7 @@
 // SERVER-SIDE in vite.config.ts (from .env.local) and injected via `define` as
 // __CONFIGURED_CAPS__ — BOOLEANS ONLY, never any key value reaches the browser.
 // The system prompt reads this so the agent plans around what's available instead
-// of promising e.g. 生图 and only discovering "not configured" mid-execution.
+// of promising e.g. raw graph and only discovering "not configured" mid-execution.
 
 export type CapabilityKey =
   | 'image' | 'voice' | 'video' | 'music' | 'sound'

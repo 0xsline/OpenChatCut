@@ -1,14 +1,14 @@
-// 导出分辨率/帧率参数检查:短边缩放、夹取、视频专用校验。
-// 跑法:npx tsx server/plugins/export-params.verify.ts（已接入 npm test）。
+// Export resolution/frame rate parameter check: short side scaling, clamping, video-specific verification.
+// Run with: npx tsx server/plugins/export-params.verify.ts (connected to npm test).
 import assert from 'node:assert/strict';
 import { exportScale, validateVideoParams } from './export.ts';
 
-// 短边对齐:1080p 时间线 → 480p = 480/1080;竖屏 1080×1920 → 720p 用短边 1080
+// Short edge alignment: 1080p timeline → 480p = 480/1080; vertical screen 1080×1920 → 720p with short edge 1080
 assert.equal(exportScale({ width: 1920, height: 1080 }, '480p'), 480 / 1080);
 assert.equal(exportScale({ width: 1080, height: 1920 }, '720p'), 720 / 1080);
 assert.equal(exportScale({ width: 1920, height: 1080 }, '1080p'), 1);
 assert.equal(exportScale({ width: 1920, height: 1080 }, undefined), 1, '省略=不缩放');
-// 720 时间线选 1080p = 放大 1.5(允许);夹取上限 4
+// 720 Timeline selection 1080p = Magnification 1.5 (allowed); Clip upper limit 4
 assert.equal(exportScale({ width: 1280, height: 720 }, '1080p'), 1.5);
 assert.equal(exportScale({ width: 100, height: 100 }, '1080p'), 4, '上限夹 4');
 

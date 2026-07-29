@@ -7,8 +7,8 @@ import { McpGuideDialog } from './settings/McpGuide';
 import { getLocale, setLocale, useT } from '../i18n/locale';
 import { invokeAction } from '../shortcuts/actionRegistry';
 
-// 语言切换:文本小丸显示当前语言,点击中英互切。
-// 编辑器顶栏与 Dashboard 顶栏共用(从这里导出)。
+// Language switching: The text pill displays the current language, click to switch between Chinese and English.
+// The editor top bar is shared with the Dashboard top bar (exported from here).
 export function LocaleToggle() {
   const t = useT();
   const locale = getLocale();
@@ -64,7 +64,7 @@ export function TopBar({ projectName, canUndo, canRedo, exporting, onHome, onRen
       </button>
       <span style={{ width: 1, height: 20, background: theme.border, margin: '0 4px' }} />
 
-      {/* center: project title(本地单机无协作,不放协作者 users 图标) */}
+      {/* center: project title (no collaboration on local single machine, no collaborator users icon)*/}
       <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', fontSize: 12, color: theme.text }}>
         {editing ? (
           <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit}

@@ -1,9 +1,9 @@
-// 设置面板的信息架构(一级分类 → 二级能力组 → 三级厂商页 → 字段)与纯展示逻辑。
-// 三栏:左树 = 分类 → 能力;中列 = 该能力下的厂商列表;右列 = 选中厂商的配置页。
-// Agent LLM 为每个厂商保存独立的 API URL、API Key 和模型;生成类能力可额外提供
-// 默认厂商路由。布局/交互在 SettingsDialog.tsx,厂商图标在 vendorIcons.tsx。
-// 安全不变式:secret 字段只有布尔状态,值永不回填;模型/路由字段是非密配置,
-// 当前值经 GET /api/keys 的 models 通道回显(服务端 NON_SECRET_NAMES 白名单)。
+// Set the information architecture of the panel (first-level classification → second-level capability group → third-level provider page → fields) and pure display logic.
+// Three columns: Left tree = Category → Capability; Middle column = Vendor list under this capability; Right column = Configuration page of the selected vendor.
+// Agent LLM saves independent API URLs, API Keys and models for each vendor; the capability to generate classes can be additionally provided
+// Default provider route. Layout/interaction is in SettingsDialog.tsx, vendor icons are in vendorIcons.tsx.
+// Security invariant: the secret field only has a Boolean status, and the value will never be backfilled; the model/routing field is a non-secret configuration,
+// The current value is echoed through the models channel of GET /api/keys (server-side NON_SECRET_NAMES whitelist).
 import { t } from '../../i18n/locale';
 import {
   LLM_PROVIDER_PRESETS,
@@ -19,37 +19,37 @@ export interface SelectOption { readonly value: string; readonly label: string; 
 export interface SettingsField {
   readonly name: string;
   readonly label: string;
-  /** secret=密钥(遮罩、永不回填);text=明文输入;select=下拉(恒为非密模型/路由值);
-   * toggle=开关(非密,''=默认开、'0'=停用);directory=桌面原生目录选择 + 手动输入 */
+  /** secret=key (mask, never backfill); text=plain text input; select=drop-down (always non-secret model/routing value);
+   * toggle=switch (non-secret, ''=on by default, '0'=disabled);directory=desktop native directory selection + manual input */
   readonly kind: FieldKind;
-  /** 未配置时的 placeholder(仅非模型 text:官方默认地址提示);缺省用通用文案 */
+  /** Placeholder when not configured (only non-model text: official default address prompt); default to universal copy */
   readonly placeholder?: string;
   readonly note?: string;
-  /** select 的选项;text 时作为 datalist 输入建议(如 LLM_MODEL) */
+  /** Select option; text is used as datalist input suggestion (such as LLM_MODEL) */
   readonly options?: readonly SelectOption[];
-  /** 非密模型字段的默认值名:select 首项渲染「默认（xxx）」,text 渲染「默认 xxx」
-   * placeholder。text 字段带它即走 models 值通道(select 恒走);清除 = 回默认('')。 */
+  /** The default value name of the non-confidential model field: select renders the first item "default (xxx)", text renders "default xxx"
+   * placeholder. The text field takes it to the models value channel (select constant); clear = returns to default (''). */
   readonly defaultLabel?: string;
   /** Agent LLM field populated from the provider's /models response after a connection test. */
   readonly discoverableModel?: boolean;
 }
 
 export interface SettingsVendorPage {
-  /** 中列选中标识,全局唯一:'能力/厂商' 如 'video/hailuo' */
+  /** Selected identifier in the middle column, globally unique: 'capability/provider' such as 'video/hailuo' */
   readonly key: string;
   readonly vendor: VendorId;
   readonly title: string;
-  /** 页级小注(渲染在字段卡顶部,如 MiniMax 共享 Key、ElevenLabs 兼音效) */
+  /** Page-level small notes (rendered at the top of the field card, such as MiniMax shared Key, ElevenLabs and sound effects) */
   readonly note?: string;
   readonly fields: readonly SettingsField[];
 }
 
 export interface SettingsGroup {
-  /** 能力 key(对应服务端 caps),或特例 'llm';全局唯一,是左树的选中标识 */
+  /** Capability key (corresponding to server caps), or special case 'llm'; globally unique, it is the selection identifier of the left tree */
   readonly key: string;
   readonly title: string;
   readonly hint: string;
-  /** 生成四能力的「默认厂商」路由字段(PREFERRED_*),渲染在中列顶部;缺省不渲染 */
+  /** Generate the "Default Vendor" routing field (PREFERRED_*) with four capabilities and render it at the top of the middle column; not rendered by default */
   readonly route?: SettingsField;
   readonly vendors: readonly SettingsVendorPage[];
 }
@@ -61,8 +61,8 @@ export interface SettingsCategory {
   readonly groups: readonly SettingsGroup[];
 }
 
-// GET/POST /api/keys 的响应形状 — secret 只回布尔与来源;models 是非密值通道
-// (模型、URL 与路由,未设 = ''),永远不含任何密钥值。
+// Response shape of GET/POST /api/keys — secret only returns Boolean and source; models are non-secret value channels
+// (Models, URLs and routes, not set = ''), never contains any key value.
 export interface KeyState { configured: boolean; source: 'env' | 'runtime' | 'none'; }
 export interface KeyStatusResponse {
   keys: Record<string, KeyState>;
@@ -73,16 +73,16 @@ export interface KeyStatusResponse {
 const secret = (name: string, label: string): SettingsField => ({ name, label, kind: 'secret' });
 const text = (name: string, label: string, placeholder?: string, note?: string): SettingsField =>
   ({ name, label, kind: 'text', placeholder, note });
-/** 非密模型 text 字段:值回显,placeholder=「默认 xxx」。 */
+/** Non-confidential model text field: value echo, placeholder="default xxx". */
 const modelText = (name: string, label: string, defaultLabel: string, note?: string): SettingsField =>
   ({ name, label, kind: 'text', defaultLabel, note });
 const directory = (name: string, label: string, defaultLabel: string, note?: string): SettingsField =>
   ({ name, label, kind: 'directory', defaultLabel, note });
-/** 非密模型 select:首项自动生成「默认（xxx）」(value='')。 */
+/** Non-confidential model select: The first item automatically generates "default (xxx)" (value=''). */
 const modelSelect = (name: string, label: string, defaultLabel: string, values: readonly string[]): SettingsField =>
   ({ name, label, kind: 'select', defaultLabel, options: values.map((v) => ({ value: v, label: v })) });
 
-/** 能力路由 select:'' = 每次询问;其余 value 与 agent 工具参数 / PREFERRED_* 存值一致。 */
+/** Capability routing select:'' = asked every time; the remaining values are consistent with the agent tool parameters/PREFERRED_* stored values. */
 const routeSelect = (name: string, options: readonly SelectOption[]): SettingsField => ({
   name, label: '默认厂商', kind: 'select',
   note: '选中未配置的厂商时，Agent 会回退为先询问。',
@@ -126,7 +126,7 @@ const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorP
   };
 };
 
-// MiniMax 同一对 Key/Base URL 服务 4 个能力,页按能力只挂该能力的模型字段。
+// MiniMax serves 4 capabilities for the same Key/Base URL pair, and only the model fields of that capability are linked to the capability on the page.
 const MINIMAX_NOTE = 'MiniMax 同一个 Key，配置一次全能力（生图 / 配音 / 视频 / 音乐）通用。';
 const minimaxPage = (cap: string, modelField: SettingsField, title = 'MiniMax', vendor: VendorId = 'minimax'): SettingsVendorPage => ({
   key: `${cap}/${vendor}`, vendor, title, note: MINIMAX_NOTE,
@@ -296,14 +296,14 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   },
 ];
 
-/** 暂存改动:字段名在 map 里 = 有暂存;'' = 显式清除(模型字段即回默认)。 */
+/** Temporary changes: field name in map = temporary storage; '' = clear explicitly (model fields will return to default).*/
 export type StagedValues = Record<string, string>;
 
 export function omitKey(obj: StagedValues, name: string): StagedValues {
   return Object.fromEntries(Object.entries(obj).filter(([k]) => k !== name));
 }
 
-/** '' 是显式清除,原样发送;非空值 trim 后发送;纯空白输入视为无改动(防误清)。 */
+/** '' is explicitly cleared and sent as is; non-null values ​​are sent after trimming; pure blank input is regarded as unchanged (to prevent misclearing).*/
 export function buildPatch(values: StagedValues): Record<string, string> {
   const patch: Record<string, string> = {};
   for (const [name, raw] of Object.entries(values)) {
@@ -317,18 +317,18 @@ export function savedMessage(): string {
   return t('已保存 · 工具即时生效，Agent 下一条消息即可感知');
 }
 
-/** 字段是否走非密 models 值通道(当前值回显;暂存基线 = 服务端当前值;清除 = 回默认)。 */
+/** Whether the field goes through the non-confidential models value channel (current value echo; temporary baseline = current value on the server; clear = return to default).*/
 export function isModelField(field: SettingsField): boolean {
   return field.kind === 'select' || field.kind === 'toggle' || field.defaultLabel !== undefined;
 }
 
-/** 服务端当前模型 / 路由值('' = 未设 = 用默认)。 */
+/** Current model/routing value on the server ('' = not set = use default).*/
 export function modelValue(status: KeyStatusResponse | null, name: string): string {
   return status?.models?.[name] ?? '';
 }
 
-/** 厂商页「已配置」:页内全部 secret 都 configured(豆包 = 双 key 齐);
- * 无 secret 的页(本地磁盘)看任一字段是否已设值。 */
+/** provider page "Configured": All secrets in the page are configured (doubao = double keys);
+ * Pages without secret (local disk) to see if any field has been set.*/
 export function vendorConfigured(status: KeyStatusResponse | null, page: SettingsVendorPage): boolean {
   if (!status) return false;
   const secrets = page.fields.filter((f) => f.kind === 'secret');
@@ -336,14 +336,14 @@ export function vendorConfigured(status: KeyStatusResponse | null, page: Setting
   return secrets.every((f) => Boolean(status.keys[f.name]?.configured));
 }
 
-/** 能力组「已配置」判定:llm 看任一厂商页是否完整配置,其余看服务端能力布尔(caps)。 */
+/** Determination of "configured" capability group: llm depends on whether any provider page is fully configured, and the rest depends on the server capability Boolean (caps).*/
 export function groupConfigured(status: KeyStatusResponse | null, group: SettingsGroup): boolean {
   if (!status) return false;
   if (group.key === 'llm') return group.vendors.some((page) => vendorConfigured(status, page));
   return Boolean(status.caps[group.key]);
 }
 
-/** 分类徽标:已配置能力数 / 能力总数(能力级计数)。 */
+/** Classification logo: Number of configured capabilities/Total number of capabilities (capability level count).*/
 export function categoryGroupStats(
   status: KeyStatusResponse | null, category: SettingsCategory,
 ): { done: number; total: number } {
@@ -353,21 +353,21 @@ export function categoryGroupStats(
   };
 }
 
-/** 左树选中 key → 能力组(组 key 全局唯一);找不到回退第一组。 */
+/** Select key → ability group in the left tree (the group key is globally unique); if not found, fall back to the first group.*/
 export function findGroup(key: string): SettingsGroup {
   return SETTINGS_CATEGORIES.flatMap((c) => c.groups).find((g) => g.key === key)
     ?? SETTINGS_CATEGORIES[0].groups[0];
 }
 
-/** select 渲染用的完整选项:模型 select 前插「默认（xxx）」;路由 select 自带「每次询问」。 */
+/** Complete options for select rendering: insert "default (xxx)" before model select; routing select comes with "ask every time".*/
 export function selectOptions(field: SettingsField): readonly SelectOption[] {
   const base = field.options ?? [];
   if (field.defaultLabel === undefined) return base;
   return [{ value: '', label: t('默认（{name}）', { name: t(field.defaultLabel) }) }, ...base];
 }
 
-// 路由选项 value → 判「已配置」所需 key(OR 的 AND 组;镜像服务端 computeCaps 与
-// agent capabilities 的 CAP_PROVIDERS,勿单独改动)。
+// Routing option value → AND group of keys required to determine "configured" (OR; mirror server computeCaps and
+// CAP_PROVIDERS of agent capabilities, do not change them separately).
 const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
   'gpt-image-2': [['IMAGE_API_KEY'], ['OPENAI_API_KEY']],
   'nano-banana': [['GEMINI_API_KEY']],
@@ -381,8 +381,8 @@ const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
   mureka: [['MUREKA_API_KEY']],
 };
 
-/** 路由下拉选项文案:厂商未配置时加「（未配置）」后缀,仍可选(Agent 侧有回退询问护栏)。
- * 非路由 select(模型下拉)原样返回。 */
+/** Routing drop-down option copy: Add the "(not configured)" suffix when the provider has not configured it, and it is still optional (there is a fallback inquiry guardrail on the Agent side).
+ * Non-routing select (model drop-down) returns unchanged.*/
 export function selectOptionLabel(
   status: KeyStatusResponse | null, field: SettingsField, opt: SelectOption,
 ): string {
@@ -393,7 +393,7 @@ export function selectOptionLabel(
   return ok ? t(opt.label) : t('{name}（未配置）', { name: t(opt.label) });
 }
 
-/** 输入框 placeholder:secret / 普通 text 永不回填、只描述状态;模型 text 描述默认值。 */
+/** Input box placeholder: secret / Ordinary text never backfills, only describes the status; model text describes the default value.*/
 export function fieldPlaceholder(field: SettingsField, configured: boolean, stagedClear: boolean): string {
   if (isModelField(field)) {
     if (stagedClear) return t('恢复默认 · 保存后生效');

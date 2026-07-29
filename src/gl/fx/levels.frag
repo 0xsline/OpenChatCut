@@ -1,7 +1,7 @@
 #version 300 es
 precision highp float;
 
-// 色阶:输入黑/白场重映射 + 中间调 gamma + 输出黑/白场,逐通道。
+// Per-channel levels: remap input black/white points, apply midtone gamma, then map output black/white points.
 uniform sampler2D u_input;
 uniform float u_inBlack;
 uniform float u_inWhite;

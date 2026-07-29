@@ -1,13 +1,13 @@
-// inspect_color —— 数值化调色示波:量一帧画面的黑白点/溢出/色偏/饱和度/色相直方图,
-// 让 Agent 按数字调色而不是凭截图目测。像素统计在 src/color/scopes.ts(纯函数);
-// 这里只做取帧(复用 /render-still 与 /api/extract-frames)与解码胶水。
+// inspect_color - Numerical color grading oscilloscope: measure the black and white points/overflow/color shift/saturation/hue histogram of a frame,
+// Let Agent adjust color by numbers rather than by visual inspection based on screenshots. Pixel statistics are in src/color/scopes.ts (pure function);
+// Here we only do frame fetching (multiplexing /render-still and /api/extract-frames) and decoding glue.
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { analyzeRgbaPixels, describeScopeStats, type ColorScopeStats } from '../../color/scopes';
 
 type Args = Record<string, unknown>;
 
-/** 统计前把长边压到这个尺寸:对全帧统计足够,解码/遍历都省一个量级。 */
+/** Press the long side to this size before counting: it is enough for full frame statistics and saves an order of magnitude in decoding/traversal. */
 const ANALYZE_MAX_EDGE = 320;
 
 export const COLOR_SCOPE_TOOL_SCHEMAS: AgentToolSchema[] = [
@@ -44,7 +44,7 @@ export const COLOR_SCOPE_TOOL_SCHEMAS: AgentToolSchema[] = [
 
 export const COLOR_SCOPE_TOOL_NAMES = new Set(COLOR_SCOPE_TOOL_SCHEMAS.map((t) => t.name));
 
-/** base64 PNG/JPEG → 降采样 RGBA 像素(浏览器专用:createImageBitmap + canvas)。 */
+/** base64 PNG/JPEG → downsample RGBA pixels (browser-specific: createImageBitmap + canvas). */
 async function decodeBase64Pixels(base64: string): Promise<{ data: Uint8ClampedArray; width: number; height: number }> {
   const blob = await (await fetch(`data:image/png;base64,${base64}`)).blob();
   const bitmap = await createImageBitmap(blob);
@@ -79,7 +79,7 @@ async function timelineFrameBase64(ctx: AgentContext, frame: number): Promise<st
 async function assetFrameBase64(src: string, sourceMs: number | undefined): Promise<string> {
   const body: Record<string, unknown> = { src };
   if (sourceMs !== undefined) body.sourceTimesMs = [Math.max(0, Math.round(sourceMs))];
-  else body.count = 1; // 服务端自动取中点
+  else body.count = 1; // The server automatically takes the midpoint
   const res = await fetch('/api/extract-frames', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

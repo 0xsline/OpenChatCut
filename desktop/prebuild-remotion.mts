@@ -1,6 +1,6 @@
-// 打包期预打 remotion serve bundle → desktop-dist/remotion-bundle。
-// 打包版运行时没有 src/ 源码和 webpack,渲染的 serveUrl 只能来自这里
-// (main.ts 首启把它拷进 userData 并经 CC_REMOTION_BUNDLE 指给 render.mjs)。
+// Prebuild the Remotion serve bundle into desktop-dist/remotion-bundle during packaging.
+// Packaged builds do not include the src/ tree or webpack, so this is the only available render serveUrl.
+// On first launch, main.ts copies it into userData and passes the path to render.mjs via CC_REMOTION_BUNDLE.
 import { join } from 'node:path';
 // @ts-expect-error — plain .mjs render pipeline has no .d.ts
 import { prebuildServeBundle } from '../remotion/render.mjs';

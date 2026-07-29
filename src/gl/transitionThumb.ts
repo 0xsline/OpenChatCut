@@ -104,7 +104,7 @@ export function drawTransitionFrame(
   return paintTransition(dest, def?.frag ?? null, progress, extra, type);
 }
 
-/** 自定义/插件转场(registry frag + 默认 uniforms)的 A/B 预览 */
+/** A/B preview of custom/plugin transitions (registry frag + default uniforms)*/
 export function drawCustomTransitionFrame(
   dest: HTMLCanvasElement | CanvasRenderingContext2D,
   frag: string,

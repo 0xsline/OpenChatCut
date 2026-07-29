@@ -102,9 +102,9 @@ function partPath(uploadId: string, part: number): string {
   return join(sessionDir(uploadId), `part-${String(part).padStart(5, '0')}`);
 }
 
-// 磁盘上的 part 文件即收件记录。不能在 meta.json 里记 received:并发 part 请求
-// 各自 load→改→save 整份 meta,后写的会用旧快照覆盖别人刚记的标记(读改写竞态,
-// 大文件必现 missing parts 误报)。
+// The part file on disk is the receipt record. Cannot record received: concurrent part requests in meta.json
+// Each load→modify→save the entire meta, and the later ones will use the old snapshot to overwrite the tags just remembered by others (read-modify race state,
+// Large files will cause missing parts false positives).
 async function receivedParts(uploadId: string): Promise<number[]> {
   const names = await readdir(sessionDir(uploadId)).catch(() => [] as string[]);
   return names

@@ -5,7 +5,7 @@
 //
 // Google Fonts loading; export gated on confirmFontFallback
 // (search_fonts returns canonical family names). Chinese foundry faces
-// (得意黑/鸿蒙/…) aren't on Google Fonts — they ship as bundled woff2
+// (Deyihei/Hongmeng/…) aren't on Google Fonts — they ship as bundled woff2
 // under assets/fonts and register via localFonts.ts (source:'bundled', loadable).
 //
 import { loadFont as loadAnton } from '@remotion/google-fonts/Anton';
@@ -95,8 +95,8 @@ const GOOGLE_LOADABLE: ReadonlyArray<{ family: string; aliases?: string[]; load:
 ];
 
 /** Full search catalog for search_fonts + export font gate + Inspector font picker.
- * Bundled CJK rows derive from localFonts.LOCAL_CJK_FONTS (全部中文
- * alias 可搜) and are loadable: loadProjectFonts() registers their FontFaces. */
+ * Bundled CJK rows derive from localFonts.LOCAL_CJK_FONTS (all Chinese
+ * alias searchable) and are loadable: loadProjectFonts() registers their FontFaces. */
 export const FONT_CATALOG: readonly FontCatalogEntry[] = [
   ...GOOGLE_LOADABLE.map((f) => ({
     family: f.family,

@@ -1,13 +1,13 @@
-// 内容插件(openchatcut-plugin@1)领域类型与上限。设计:docs/plugin-system-design.md。
-// 社区 DIY 内容(MG/转场/特效/LUT/缩放)的打包分发格式。
-// 纯类型和常量，保持 Node 验证脚本可直接执行。
+// Content plugin (openchatcut-plugin@1) field type and upper limit. Design:docs/plugin-system-design.md.
+// Package and distribution format for community DIY content (MG/transition/special effects/LUT/zoom).
+// Pure types and constants, keeping Node validation scripts directly executable.
 //
-// format 兼容策略:仅认 PLUGIN_FORMAT 精确字符串;未知 format 一律拒装
-// (见 validatePack)。未来 @2 需同步改 PLUGIN_FORMAT + 迁移说明,不静默兼容。
+// format compatibility policy: only recognize the exact string of PLUGIN_FORMAT; unknown formats will be refused to install
+// (see validatePack). In the future, @2 needs to change PLUGIN_FORMAT + migration instructions simultaneously, which is not silently compatible.
 
 export const PLUGIN_FORMAT = 'openchatcut-plugin@1';
 
-/** 安装校验上限(第三方内容视为不可信输入) */
+/** Installation verification upper limit (third-party content is regarded as untrusted input) */
 export const PLUGIN_LIMITS = {
   maxItems: 64,
   maxFragBytes: 64 * 1024,
@@ -16,11 +16,11 @@ export const PLUGIN_LIMITS = {
   maxProps: 12,
   minEnvelopePoints: 2,
   maxEnvelopePoints: 120,
-  /** 包络值域上限(>1 允许过冲弹跳曲线) */
+  /** Upper limit of envelope value range (>1 allows overshoot bounce curve) */
   maxEnvelopeValue: 1.5,
   maxNameLen: 60,
   maxDescLen: 500,
-  /** 预览图上限(data URL 内联,保持包单文件自包含) */
+  /** Upper limit of preview image (data URL inline, keep package file self-contained) */
   maxThumbBytes: 128 * 1024,
 } as const;
 
@@ -28,7 +28,7 @@ export const PACK_ID_RE = /^[a-z0-9][a-z0-9-]{1,39}$/;
 export const ITEM_ID_RE = /^[a-z0-9][a-z0-9-]{1,39}$/;
 export const PROP_KEY_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,30}$/;
 
-/** 可调数值属性(与 CustomTransitionProp / FxNumberProperty 同构) */
+/** Adjustable numeric property (identical to CustomTransitionProp / FxNumberProperty) */
 export interface PluginNumberProp {
   key: string;
   label: string;
@@ -42,11 +42,11 @@ interface PluginItemBase {
   id: string;
   name: string;
   desc?: string;
-  /** 预览图:data:image/* 内联(≤128KB)或同源/https URL;资源库卡片直接用 */
+  /** Preview image: data:image/* Inline (≤128KB) or same-origin/https URL; use the resource library card directly */
   thumb?: string;
 }
 
-/** MG 模板:应用时 code 快照进 item.code(既有机制),运行期永远走沙箱 */
+/** MG template: When applying, the code snapshot is entered into item.code (existing mechanism), and the sandbox is always used during runtime */
 export interface PluginMgTemplateItem extends PluginItemBase {
   type: 'mg-template';
   code: string;
@@ -55,8 +55,8 @@ export interface PluginMgTemplateItem extends PluginItemBase {
   durationInFrames?: number;
   props?: Record<string, unknown>;
   /**
-   * 可选:检查器字段 schema(与 Tpl.propSchema 同构)。
-   * 省略时由 props 值类型自动推断(string→text, #hex→color, number→number, boolean→boolean)。
+   * Optional: Checker field schema (isomorphic to Tpl.propSchema).
+   * When omitted, it is automatically inferred from the props value type (string→text, #hex→color, number→number, boolean→boolean).
    */
   propSchema?: Array<{
     key: string;
@@ -69,7 +69,7 @@ export interface PluginMgTemplateItem extends PluginItemBase {
   }>;
 }
 
-/** 转场:双输入 GLSL(u_outgoing/u_incoming/u_progress),应用时快照进 TransitionItem.customFrag */
+/** Transition: dual input GLSL (u_outgoing/u_incoming/u_progress), snapshot into TransitionItem.customFrag when applied */
 export interface PluginTransitionItem extends PluginItemBase {
   type: 'transition';
   frag: string;
@@ -77,16 +77,16 @@ export interface PluginTransitionItem extends PluginItemBase {
   defaultDurationFrames?: number;
 }
 
-/** 特效:单输入 GLSL(u_input);应用时 def 写入 state.fxDefs 自包含 */
+/** Special effect: single-input GLSL(u_input); when applied, def is written to state.fxDefs self-contained */
 export interface PluginFxItem extends PluginItemBase {
   type: 'fx';
   frag: string;
   props?: PluginNumberProp[];
-  /** 线性多 pass(每段读上一段输出);不支持 DAG pipeline */
+  /** Linear multi-pass (each segment reads the output of the previous segment); DAG pipeline is not supported */
   passes?: string[];
 }
 
-/** LUT:.cube 文件或资源库同款公式调色 shader。 */
+/** LUT: .cube file or the same formula color shader in the resource library. */
 export interface PluginLutItem extends PluginItemBase {
   type: 'lut';
   cube?: string;
@@ -98,7 +98,7 @@ export type PluginZoomShape =
   | 'hold' | 'punch' | 'slow-push' | 'instant' | 'zoom-out' | 'ease-in' | 'bounce'
   | 'snap' | 'pulse' | 'whip-in';
 
-/** 缩放可复用内置 shape,也可提供整段 clip 线性采样的自定义包络。 */
+/** Zoom can reuse the built-in shape, or provide a custom envelope for linear sampling of the entire clip. */
 export interface PluginZoomItem extends PluginItemBase {
   type: 'zoom';
   envelope?: number[];
@@ -127,7 +127,7 @@ export interface PluginPack {
   items: PluginItem[];
 }
 
-/** 运行时资产 id:与 builtin: / custom: 前缀并列,永不冲突 */
+/** Runtime asset id: is parallel to builtin: / custom: prefix and never conflicts */
 export function pluginAssetId(packId: string, itemId: string): string {
   return `plugin:${packId}/${itemId}`;
 }

@@ -96,7 +96,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     .map((option) => ({ ...option, captions: captionsOnTrack(state, option.id) }));
 
   // keep live refs so agent tools always read the latest timeline/project
-  // 滑块/取色器拖动期间的所有改动合并成一条撤销记录(见 historyReduce 的 gesture)。
+  // All changes made during dragging of the slider/color picker are merged into an undo record (see gesture of historyReduce).
   const historyGesture = useMemo(
     () => ({ begin: commands.beginHistoryGesture, end: commands.endHistoryGesture }),
     [commands],
@@ -106,7 +106,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const docRef = useRef(doc);
   docRef.current = doc;
   const { offlineSrcs, offlineSrcsRef, offlineAssetIds, markOffline: markMediaOffline } = useOfflineMedia(doc);
-// 创作模式:选中的技能 id 注入系统提示，并存入 IDB(不进 undo 历史)。
+// Creative mode: The selected skill id is injected into the system prompt and stored in the IDB (without entering the undo history).
   const [creativeMode, setCreativeMode] = useState<string | null>(null);
   const creativeModeRef = useRef(creativeMode);
   creativeModeRef.current = creativeMode;
@@ -116,7 +116,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     saveCreativeMode(project.id, id);
   }, [project.id]);
   const playerRef = useRef<PlayerRef | null>(null);
-  // 内置 + 已装插件的 MG 模板:agent(browse_library/加 MG)与资源库共用同一份
+  // Built-in + plugin MG template: agent (browse_library/plus MG) shares the same copy with the resource library
   const pluginPacks = usePluginPacks();
   const allTemplates = useMemo(
     () => (pluginPacks.length ? [...TEMPLATES, ...pluginTemplates(pluginPacks)] : TEMPLATES),
@@ -247,13 +247,13 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     };
   }, [autoGradeSession, state]);
   const selectedAutoGrade = autoGradeSession?.recommendations.find((entry) => entry.itemId === state.selectedId) ?? null;
-  // library「用 AI 生成」→ prefill the chat composer (nonce forces re-seed of the same text)
+  // library「Generated with AI」→ prefill the chat composer (nonce forces re-seed of the same text)
   const [chatSeed, setChatSeed] = useState<{ text: string; nonce: number; reference?: AgentReference } | null>(null);
-  // 设计风格(品牌)编辑器弹窗。
+  // Design style (brand) editor pop-up window.
   const [showDesign, setShowDesign] = useState(false);
-  // 版本历史弹窗。
+  // Version history pop-up window.
   const [showVersions, setShowVersions] = useState(false);
-  // 快捷键帮助。
+  // Shortcut key help.
   const [showShortcuts, setShowShortcuts] = useState(false);
   /** Timeline fills this; Editor binds the global shortcut dispatcher to it. */
   const shortcutApiRef = useRef<TimelineShortcutApi | null>(null);
@@ -263,8 +263,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const getPlayhead = useCallback(() => playerRef.current?.getCurrentFrame() ?? 0, []);
 
   // autosave this project (all timelines) to IndexedDB (debounced) so a reload restores it.
-  // 防抖计时器会被 effect 清理掉,所以「离开」这件事必须自己补一次落盘:返回工程列表
-  // (Editor 被卸载)、关标签、刷新都发生在 500ms 窗口内的话,最后那点编辑本来会丢。
+  // The anti-shake timer will be cleared by the effect, so the "leave" process must be completed by yourself: Return to the project list
+  // If (Editor is uninstalled), closing tabs, and refreshing all occur within the 500ms window, the last bit of editing would have been lost.
   const unsavedRef = useRef<ProjectDoc | null>(null);
   useEffect(() => {
     unsavedRef.current = doc;
@@ -279,9 +279,9 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       const pending = unsavedRef.current;
       if (!pending) return;
       unsavedRef.current = null;
-      void saveProject(project.id, pending).catch(() => { /* 关页途中失败无处可报 */ });
+      void saveProject(project.id, pending).catch(() => { /* Failed on the way to close the page and nowhere to report*/ });
     };
-    // pagehide 覆盖关标签/刷新/前进后退;卸载时的清理覆盖返回工程列表与切工程。
+    // pagehide covers the label/refresh/forward and backward; the cleanup during uninstallation covers the return to the project list and cut projects.
     window.addEventListener('pagehide', flush);
     return () => {
       window.removeEventListener('pagehide', flush);
@@ -307,8 +307,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   }, [project.id, commands]); // only on open / project switch
 
   // Switching timelines: seek the shared Player so it doesn't show a stale frame.
-  // 跳过挂载首跑——否则会把 Timeline 侧刚从 sessionPrefs 恢复的播放头顶回 0
-  //(父 effect 晚于子 effect,恢复必被覆盖)。
+  // Skip mounting the first run - otherwise the playback head just restored from sessionPrefs on the Timeline side will be reset to 0
+  //(The parent effect is later than the child effect, and recovery will be overwritten).
   const firstTimelineRef = useRef(true);
   useEffect(() => {
     if (firstTimelineRef.current) { firstTimelineRef.current = false; return; }
@@ -323,10 +323,10 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const [timelineH, setTimelineH] = usePersistedState('openchatcut.timelineH.ui-v1', Math.max(TIMELINE_MIN_H, Math.round((viewportH - HEADER_H) * 350 / BASELINE_CONTENT_H)));
   const [chatCollapsed, setChatCollapsed] = usePersistedState('cc.chatCollapsed', false);
   const addTemplate = useCallback((tpl: Tpl) => commands.addMotionGraphic(tpl), [commands]);
-  // Add an asset to the pool AND kick off "上传即转写" ASR for audio-bearing media.
+  // Add an asset to the pool AND kick off "upload-and-transcribe" ASR for audio-bearing media.
   // On completion the transcript is written onto the asset (so later placements inherit
   // it) and backfilled onto any clip already placed from this asset (drag-to-canvas /
-  // voiceover), so the口播 is editable as soon as ASR lands.
+  // voiceover), so the voiceover is editable as soon as ASR lands.
   // Kick ASR. Prefer race-ahead asrPath (extract started right after master upload).
   const startAssetTranscription = useCallback((
     asset: Pick<MediaAsset, 'id' | 'src' | 'kind'> & { name?: string },
@@ -451,7 +451,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   // Export: POST the current timeline to the dev-server /export endpoint (which
   // renders it in headless Chrome via @remotion/renderer) and download the MP4.
   const [exportOpen, setExportOpen] = useState(false);
-  // 导出走设置对话框，共 5 个 tab:视频/音频/MG动画/字幕/XML。
+  // Export the settings dialog box, with a total of 5 tabs: video/audio/MG animation/captions/XML.
   const onExport = useCallback(() => setExportOpen(true), []);
   useEditorActions({
     commands,
@@ -636,7 +636,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           onRecordVoiceover={async (blob) => {
             const ext = blob.type.includes('ogg') ? 'ogg' : 'webm';
             const asset = await importMedia(new File([blob], `旁白.${ext}`, { type: blob.type }), state.fps);
-            ingestToPool(asset); // 旁白 auto-transcribes; the placed A1 clip backfills on completion
+            ingestToPool(asset); // Narration auto-transcribes; the placed A1 clip backfills on completion
             commands.addMediaItem(asset, { track: 'A1', startFrame: getPlayhead() });
           }} />
       </div>

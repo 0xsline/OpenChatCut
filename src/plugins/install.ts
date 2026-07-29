@@ -1,7 +1,7 @@
-// 插件安装管线(浏览器侧):JSON → 纯校验 → 真编译探针(GLSL 经 GlRuntime,
-// MG 经 template-host 沙箱编译)→ LUT .cube 上传成文件 → 注册 → 入库。
-// 事务顺序:先 register 成功再 save;任一步失败回滚注册表(不留半装状态)。
-// 运行期沙箱照常兜底,这里是第一道门。
+// Plugin installation pipeline (browser side): JSON → pure verification → true compilation probe (GLSL via GlRuntime,
+// MG is compiled by template-host sandbox) → LUT .cube is uploaded into a file → registered → stored in the database.
+// Transaction sequence: first register successfully and then save; if any step fails, the registry will be rolled back (leaving no half-installed state).
+// The sandbox runs as usual, and this is the first door.
 import { validatePack } from './validate';
 import { listPacks, savePack, registerPack, unregisterPack, type InstalledPack } from './store';
 import type { PluginPack } from './types';
@@ -13,14 +13,14 @@ export type InstallResult =
   | { ok: false; errors: string[] };
 
 export type InstallFromUrlOpts = {
-  /** 可选:期望 body 的 SHA-256(hex,小写或大写均可);不匹配则拒装 */
+  /** Optional: SHA-256 of expected body (hex, lowercase or uppercase is acceptable); if it does not match, refuse to install */
   sha256?: string;
   source?: InstalledPack['source'];
 };
 
 const err = (errors: string[]): InstallResult => ({ ok: false, errors });
 
-/** GLSL 真编译探针:tiny canvas 上跑一遍,编译/链接失败即拒。 */
+/** GLSL real compilation probe: run it on tiny canvas, and reject it if compilation/linking fails. */
 async function probeShaders(pack: PluginPack): Promise<string[]> {
   const shaderItems = pack.items.filter((i) => i.type === 'fx' || i.type === 'transition');
   if (!shaderItems.length) return [];
@@ -53,7 +53,7 @@ async function probeShaders(pack: PluginPack): Promise<string[]> {
   return errors;
 }
 
-/** MG 模板真编译探针(template-host 沙箱静态面) */
+/** MG template true compilation probe (template-host sandbox static side)*/
 async function probeTemplates(pack: PluginPack): Promise<string[]> {
   const errors: string[] = [];
   const mgItems = pack.items.filter((i) => i.type === 'mg-template');
@@ -68,7 +68,7 @@ async function probeTemplates(pack: PluginPack): Promise<string[]> {
   return errors;
 }
 
-/** LUT .cube 上传成 /media/uploads 文件(导出 bundle symlink / R2 备份天然覆盖) */
+/** LUT.cube is uploaded to /media/uploads file (export bundle symlink / R2 backup natural coverage)*/
 async function uploadCubes(pack: PluginPack): Promise<{ cubeUrls: Record<string, string>; errors: string[] }> {
   const cubeUrls: Record<string, string> = {};
   const errors: string[] = [];
@@ -90,14 +90,14 @@ async function uploadCubes(pack: PluginPack): Promise<{ cubeUrls: Record<string,
   return { cubeUrls, errors };
 }
 
-/** 计算 UTF-8 文本的 SHA-256 hex(小写) */
+/** Calculate SHA-256 hex (lowercase) of UTF-8 text*/
 export async function sha256Hex(text: string): Promise<string> {
   const data = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest('SHA-256', data);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** 从 JSON 文本安装(文件/粘贴共用)。opts.sha256 可选完整性校验。 */
+/** Install from JSON text (file/paste common). opts.sha256 Optional integrity check.*/
 export async function installFromText(text: string, opts?: InstallFromUrlOpts): Promise<InstallResult> {
   if (opts?.sha256) {
     const got = await sha256Hex(text);
@@ -130,16 +130,16 @@ export async function installFromText(text: string, opts?: InstallFromUrlOpts): 
     ...(opts?.source ? { source: opts.source } : {}),
   };
 
-  // 事务:摘掉同 id 旧包注册 → 注册新包 → 持久化;失败回滚注册表
+  // Transaction: Remove the registration of the old package with the same ID → Register the new package → Persistence; roll back the registry on failure
   const previous = (await listPacks()).find((p) => p.id === installed.id) ?? null;
   if (previous) {
-    try { await unregisterPack(previous); } catch { /* 旧包反注册失败仍继续覆盖 */ }
+    try { await unregisterPack(previous); } catch { /* Old package de-registration fails and continues to be overwritten*/ }
   }
   try {
     await registerPack(installed);
   } catch (e) {
     if (previous) {
-      try { await registerPack(previous); } catch { /* 尽力恢复 */ }
+      try { await registerPack(previous); } catch { /* Try your best to recover*/ }
     }
     return err([`注册失败:${e instanceof Error ? e.message : String(e)}`]);
   }
@@ -155,7 +155,7 @@ export async function installFromText(text: string, opts?: InstallFromUrlOpts): 
   return { ok: true, pack: installed };
 }
 
-/** 从 URL 安装(gist/raw/远程索引等;跨域被 CORS 拦时提示改用文件安装) */
+/** Install from URL (gist/raw/remote index, etc.; when cross-domain is blocked by CORS, you will be prompted to use file installation instead)*/
 export async function installFromUrl(url: string, opts?: InstallFromUrlOpts): Promise<InstallResult> {
   let text: string;
   try {

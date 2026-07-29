@@ -1,6 +1,6 @@
 // Demo / agent seed audio assets (BGM + sample VO) — NOT the Library "Audio" tab.
-// 库背景音乐清单(Audio FX/人声隔离已下线)。
-// SFX live in soundLibrary.ts (音效 tab). Product audio: assets/audio|media (URL /audio|/media).
+// Library background music list (Audio FX/vocal isolation is offline).
+// SFX live in soundLibrary.ts (sound effects tab). Product audio: assets/audio|media (URL /audio|/media).
 
 export interface AudioAsset {
   id: string;

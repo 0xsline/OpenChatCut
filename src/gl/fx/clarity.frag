@@ -1,13 +1,13 @@
 #version 300 es
 precision highp float;
 
-// Clarity 局部对比:亮度 unsharp——泊松盘采样估局部均值,按差值推拉中间调。
-// 正值增清晰度,负值柔化。ponytail: 单 pass 12 taps 近似大半径模糊,
-// 分离双 pass 高斯是升级路径(需要给 FX 注册表开 samplers 声明)。
+// Local-contrast clarity: estimate mean luminance with a Poisson-disk unsharp sample and adjust midtones by the difference.
+// Positive values sharpen; negative values soften. ponytail: one 12-tap pass approximates a large-radius blur.
+// Upgrade to a separable two-pass Gaussian blur if the FX registry gains sampler declarations.
 uniform sampler2D u_input;
 uniform vec2 u_resolution;
 uniform float u_amount; // -1..1
-uniform float u_radius; // 像素
+uniform float u_radius; // Pixels
 
 in vec2 v_texCoord;
 out vec4 fragColor;
@@ -31,7 +31,7 @@ void main() {
   localMean /= 13.0;
   float luma = lumaOf(c.rgb);
   float detail = luma - localMean;
-  // 中间调权重:黑白两端少动,避免溢出与噪点放大
+  // Weight midtones while protecting the black and white extremes from clipping and amplified noise.
   float midWeight = smoothstep(0.0, 0.25, luma) * (1.0 - smoothstep(0.75, 1.0, luma));
   float boosted = luma + detail * u_amount * 1.6 * midWeight;
   vec3 rgb = c.rgb * (luma > 1e-4 ? boosted / luma : 1.0);

@@ -1,6 +1,6 @@
 // Runnable check: `npx tsx src/editor/sourceLimit.verify.ts`.
-// 验证「片段不能比源素材更长」:剩余源帧的换算(含变速)、哪些片段不设限
-// (图片/MG/文字/词驱动音频),以及经真 reduce 确认右侧裁剪确实被这条上界挡住。
+// Verify that "the clip cannot be longer than the source asset": conversion of remaining source frames (including variable speed), which clips are not limited
+// (picture/MG/text/word-driven audio), and it is confirmed by real reduce that the right cropping is indeed blocked by this upper bound.
 import assert from 'node:assert/strict';
 import { remainingSourceFrames } from './sourceLimit';
 import { reduce } from './reduce';
@@ -22,7 +22,7 @@ const stateOf = (items: TimelineItem[]): TimelineState => ({
   tracks: { V1: { kind: 'video' } }, trackOrder: ['V1'], items, assets,
 });
 
-// ── 剩余源帧:入点之后还剩多少,变速按 时间线帧 = 源帧 / rate 换算 ──
+// ── Remaining source frames: How much is left after the entry point, variable speed timeline frame = source frame / rate conversion ──
 {
   assert.equal(remainingSourceFrames(item(), 0, assets), 300);
   assert.equal(remainingSourceFrames(item(), 120, assets), 180, '入点吃掉的部分不算数');
@@ -31,7 +31,7 @@ const stateOf = (items: TimelineItem[]): TimelineState => ({
   assert.equal(remainingSourceFrames(item(), 999, assets), 1, '入点越过尾部时至少留 1 帧,不返回 0/负数');
 }
 
-// ── 判定不了长度就不设限,免得把本来可以随便拉长的东西锁死 ──
+// ── If you can’t determine the length, don’t set a limit, so as not to lock something that can be stretched arbitrarily ──
 {
   assert.equal(remainingSourceFrames(item({ kind: 'image', src: '/m/a.png' }), 0, assets), null, '图片可以任意拉长');
   assert.equal(remainingSourceFrames(item({ kind: 'motion-graphic', src: undefined }), 0, assets), null, 'MG 是生成的');
@@ -49,7 +49,7 @@ const stateOf = (items: TimelineItem[]): TimelineState => ({
   );
 }
 
-// ── 经真 reduce:右侧裁剪被素材尾部挡住,不再能拉出定格帧 ──
+// ── Jingzhen reduce: The right crop is blocked by the tail of the asset, and the freeze frame can no longer be pulled out──
 {
   const before = stateOf([item({ durationInFrames: 100 })]);
   const stretched = reduce(before, { type: 'retime', id: 'a', durationInFrames: 5000 });
@@ -62,7 +62,7 @@ const stateOf = (items: TimelineItem[]): TimelineState => ({
   assert.equal(shorter.items[0]!.durationInFrames, 60, '范围内的裁剪不受影响');
 }
 
-// ── 没有素材信息的片段照旧可以随便拉长(MG/模板) ──
+// ──Clips without asset information can still be lengthened (MG/template)──
 {
   const mg = stateOf([item({ kind: 'motion-graphic', src: undefined, durationInFrames: 60 })]);
   assert.equal(reduce(mg, { type: 'retime', id: 'a', durationInFrames: 900 }).items[0]!.durationInFrames, 900);

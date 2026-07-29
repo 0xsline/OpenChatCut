@@ -1,13 +1,13 @@
-// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
-// 来源:src/captions/* 面板 chrome(CaptionsControls / CaptionStyleMenu)+
-// styles.ts 的 labelZh/hint(数据不动,展示处 t() 查这里)。
+// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
+// Source: src/captions/* panel chrome(CaptionsControls / CaptionStyleMenu)+
+// labelZh/hint of styles.ts (the data does not move, the display location t() can be found here).
 export default {
   '拖到预览画面任意位置新建字幕': 'Drag onto the preview to create a caption anywhere',
   '可拖到预览画面任意位置新建并编辑字幕': 'Drag onto the preview to create and edit a caption anywhere',
   '双击编辑字幕': 'Double-click to edit caption',
   '文A': 'Aa',
   '字': 'A',
-  // 字幕样式名(styles.ts labelZh,21 条)
+  // Caption style name (styles.ts labelZh, 21 items)
   '简洁白字': 'Clean White',
   '影院白字': 'Cinema White',
   '清爽高亮': 'Fresh Highlight',
@@ -29,7 +29,7 @@ export default {
   '产品绿标': 'Product Green',
   '信号青': 'Signal Cyan',
   '得意黑': 'Smiley Sans',
-  // 字幕样式一句话说明(styles.ts hint)
+  // One sentence description of caption style (styles.ts hint)
   '白字无底，适合口播': 'White text, no backing — great for voiceover',
   '轻阴影，像正片字幕': 'Soft shadow, like feature-film subtitles',
   '青底高亮当前词，中文友好': 'Cyan highlight on the current word, CJK-friendly',
@@ -51,11 +51,11 @@ export default {
   '青白字 + 荧光绿': 'Cool white type + neon green',
   '科技风青绿高亮': 'Techy teal highlight',
   '中文展示字体': 'Chinese display typeface',
-  // CaptionsControls — 面板头/状态
+  // CaptionsControls — Panel header/state
   '字幕': 'Captions',
   '收起': 'Collapse',
   '展开': 'Expand',
-  // CaptionsControls — 创建/显示开关
+  // CaptionsControls — Create/display switches
   '生成字幕': 'Generate captions',
   '手动添加字幕': 'Add captions manually',
   '从文字稿打开「字幕样式」，或在这里手动添加独立字幕。': 'Open "Caption styles" from Transcript, or add independent captions manually here.',
@@ -67,7 +67,7 @@ export default {
   '从工程里移除字幕': 'Remove captions from the project',
   '移除': 'Remove',
   '字幕已关闭，预览/导出都不会烧录。再点「显示」或勾选即可恢复。': 'Captions are off — neither preview nor export will burn them in. Click "Show" or tick the box to bring them back.',
-  // CaptionsControls — 样式/节奏
+  // CaptionsControls — Style/Rhythm
   '样式外观': 'Style',
   '字幕样式': 'Caption styles',
   '显示节奏': 'Pacing',
@@ -91,7 +91,7 @@ export default {
   '结束秒数': 'End time in seconds',
   '字幕文字': 'Caption text',
   '删除': 'Delete',
-  // CaptionsControls — 语言变体/双语翻译
+  // CaptionsControls — Language variants/bilingual translations
   '字幕语言（文本变体）': 'Caption language (text variant)',
   '原文（source）': 'Original (source)',
   '切换主字幕行显示的语言。译文只换文本，词的时间/帧位仍取自源。': 'Switch the language of the main caption line. Translations swap text only — word timing/frames still come from the source.',
@@ -108,7 +108,7 @@ export default {
   '重新翻译': 'Re-translate',
   '生成翻译': 'Generate translation',
   '显示翻译第二行（{lang}）': 'Show translated second line ({lang})',
-  // CaptionStyleMenu — 弹层 chrome 与错误
+  // CaptionStyleMenu — Pop-up chrome and errors
   '样式': 'Styles',
   '我的样式': 'My styles',
   '删除此预设': 'Delete this preset',
@@ -126,10 +126,10 @@ export default {
   '删除样式失败': 'Failed to delete style',
   '该轨道还没有可翻译的文字稿，请先完成转写': 'This track has no transcript to translate yet — finish transcription first',
   '字幕翻译失败': 'Caption translation failed',
-  // 黑底白字默认样式(styles.ts)
+  // Default style of white text on black background (styles.ts)
   '黑底白字': 'Subtitle Bar',
   '整句黑底条，经典字幕（默认）': 'Full-line black bar — classic subtitles (default)',
-  // 画布字幕直编(CaptionPreviewEditor)
+  // Canvas caption direct editing (CaptionPreviewEditor)
   '点击选中字幕，双击直接改文字': 'Click to select the caption; double-click to edit the text',
   '点击选中字幕；拖动移动位置；双击直接改文字': 'Click to select; drag to reposition; double-click to edit the text',
   '文字颜色': 'Text color',
@@ -142,7 +142,7 @@ export default {
   '缩小字号': 'Smaller text',
   '放大字号': 'Bigger text',
   '优化这句字幕（{time} 处，保持时间不变）：「{text}」': 'Improve this caption line (at {time}, keep its timing): "{text}"',
-  // 逐句编辑(CaptionCueEditor)
+  // Sentence-by-sentence editing (CaptionCueEditor)
   '逐句编辑': 'Edit lines',
   '（{n} 句）': ' ({n} lines)',
   '转写字幕车道请在对话里修改；手动车道可在上方「手动字幕」中直接编辑。': 'Edit transcript-driven lanes in chat; manual lanes can be edited directly in “Manual captions” above.',

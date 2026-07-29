@@ -1,22 +1,22 @@
-// 桌面打包配置(M2 起,M4 扩三目标)。产物:release/。
-// 跑法:npm run desktop:dist(:mac-x64 / :win)——链条 = vite build → esbuild 主进程
-//      → 预打 remotion bundle → prepare-target 备料 → electron-builder。
-// 说明:
-//   - files 只带主进程 bundle;生产依赖 node_modules 由 electron-builder 自动收
-//     (@remotion/renderer 等运行时真用;@remotion/bundler 仅 import 到,预打后不执行)。
-//     compositor 平台包按 CC_EB_TARGET 只留目标平台的(每个 ~180MB,全带会胖 3 倍)。
-//   - 不用 asar:@remotion/renderer 对 compositor 二进制先 chmod 再 spawn,拿的是
-//     模块解析出的路径——asar 下即使 unpack 了,路径字符串仍指 asar 内,chmod ENOTDIR
-//     (实测)。真文件铺开一次性消灭这类问题,代价只是启动多些小文件 IO。
-//   - dist / 预打 remotion-bundle 走 extraResources;chrome-headless-shell 指
-//     desktop-dist 的 staging 目录(prepare-target 按目标平台填充,main.ts 按
-//     process.resourcesPath 定位;bundle 首启拷 userData 换可写)。
-//   - 未配签名:mac 出的是 ad-hoc 签名包,分发要右键打开或 xattr -cr 放行;
-//     Windows 未签名会触发 SmartScreen 提示。正式分发再接证书/公证。
-//   - 图标:macOS 使用预生成的标准 icns，避免自动转换产生损坏的 48px 图层；
-//     Windows 继续由 Web 端 PNG 派生 ico。
+// Desktop packaging configuration, introduced in M2 and expanded to three targets in M4. Output: release/.
+// Run npm run desktop:dist(:mac-x64 / :win). The pipeline is Vite build → esbuild main process
+// → prebuild Remotion bundle → prepare target binaries → electron-builder.
+// Notes:
+// - files includes only the main-process bundle; electron-builder collects production node_modules automatically.
+//   @remotion/renderer is required at runtime, while @remotion/bundler is used only during prebuild.
+//   Keep only the CC_EB_TARGET compositor package because each one is about 180 MB.
+// - asar stays disabled because @remotion/renderer chmods and spawns the compositor at its resolved path.
+//   Even when unpacked, an asar path still points inside the archive and chmod fails with ENOTDIR.
+//   Expanding real files avoids that failure at the cost of extra small-file I/O during startup.
+// - dist and the prebuilt Remotion bundle use extraResources. prepare-target populates the
+//   chrome-headless-shell staging directory, main.ts locates it through process.resourcesPath,
+//   and the bundle is copied into writable userData on first launch.
+// - Without signing credentials, macOS builds use ad-hoc signing and Windows builds trigger SmartScreen.
+//   Add certificates and notarization for official distribution.
+// - macOS uses a pre-generated standard icns to avoid corrupt 48 px layers during conversion.
+//   Windows continues deriving its ico from the web PNG.
 
-// 包名以 @remotion/renderer 的 optionalDependencies 为准(win32 带 -msvc,linux 带 libc 后缀)
+// Package names follow @remotion/renderer optionalDependencies: win32 uses -msvc and Linux includes a libc suffix.
 const COMPOSITORS = [
   'darwin-arm64', 'darwin-x64', 'win32-x64-msvc',
   'linux-arm64-gnu', 'linux-arm64-musl', 'linux-x64-gnu', 'linux-x64-musl',
@@ -35,14 +35,14 @@ export default {
     'desktop-dist/main.mjs',
     'desktop-dist/preload.cjs',
     'package.json',
-    // 只带目标平台的 compositor(renderer 运行时按 process.platform require 对应包)
+    // Keep only the target compositor; renderer selects its package from process.platform at runtime.
     ...COMPOSITORS.filter((c) => c !== keep).map((c) => `!node_modules/@remotion/compositor-${c}/**`),
   ],
   asar: false,
   extraResources: [
-    // dist 排除 media/uploads:vite 把 public/ 整个拷进 dist,用户素材(可达数 GB)
-    // 会被烧进安装包。运行时 /media/uploads 由 uploadsMiddleware 从素材目录直读
-    // (打包版 = userData),从不读 resources/dist —— 带上纯属死重。
+    // Exclude media/uploads because Vite copies all of public/ into dist, which would embed gigabytes of user assets.
+    // uploadsMiddleware serves /media/uploads directly from the asset directory (userData in packaged builds),
+    // so resources/dist never needs those files.
     { from: 'dist', to: 'dist', filter: ['**/*', '!media/uploads/**'] },
     { from: 'desktop-dist/remotion-bundle', to: 'remotion-bundle' },
     { from: 'desktop-dist/chrome-headless-shell', to: 'chrome-headless-shell' },
@@ -58,8 +58,8 @@ export default {
     // and CI packages have no notarization identity, so enabling it only adds
     // library-validation restrictions without a security benefit.
     hardenedRuntime: hasMacSigningCertificate,
-    // 没有 Developer ID 时也完整签署 Bundle，防止 Finder 将应用标成不可运行。
-    // CI 后续注入 CSC_LINK / CSC_NAME 后，由 electron-builder 自动使用正式证书。
+    // Sign the bundle ad hoc without a Developer ID so Finder still treats it as executable.
+    // When CI injects CSC_LINK / CSC_NAME, electron-builder selects the official certificate automatically.
     ...(hasMacSigningCertificate ? {} : { identity: '-' }),
   },
   win: {
@@ -74,9 +74,9 @@ export default {
     target: ['AppImage'],
     icon: 'public/openchatcut-icon.png',
     category: 'AudioVideo',
-    // 显式定名:unpacked 目录与 CI 冒烟按 release/linux-unpacked/openchatcut 定位
+    // Keep the executable name stable for release/linux-unpacked/openchatcut and CI smoke tests.
     executableName: 'openchatcut',
-    // 与 package.json desktopName 配对,桌面环境把运行窗口关联到 .desktop 条目
+    // Pair with package.json desktopName so desktop environments associate the window with its .desktop entry.
     syncDesktopName: true,
   },
 };

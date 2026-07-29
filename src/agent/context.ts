@@ -8,7 +8,7 @@ import {
   type AssetRefKind, type SelectionReference,
 } from './selection-refs';
 
-/** A media-pool asset or template mention (the pre-existing @ 引用). */
+/** A media-pool asset or template mention (the pre-existing @ reference). */
 export interface AssetReference {
   id: string;
   name: string;
@@ -46,8 +46,8 @@ export interface AgentContext {
   openProject?: (projectId: string) => Promise<{ ok: boolean; error?: string } | void>;
   /** Dashboard/title rename when edit_project updates the open project. */
   onProjectRenamed?: (name: string) => void;
-  /** 上一步的完整工程快照(撤销目标),无历史时 null。undo_last_change 用它把
-   * 「回到上一步」表达成一次普通编辑,照常走提案由用户确认。 */
+  /** The complete project snapshot of the previous step (undo target), null if there is no history. undo_last_change Use it to
+   * "Go back to the previous step" is expressed as a normal edit, and the proposal will be confirmed by the user as usual. */
   getUndoTarget?: () => ProjectDoc | null;
 }
 

@@ -77,8 +77,8 @@ const openaiProvider = createOpenAI({
   apiKey: PROXY_KEY,
   headers: proxyHeaders('openai'),
 });
-// 有官方专属包的厂商一律用官方包(厂商特有语义 — 如 Gemini thought_signature —
-// 由官方 provider 处理);其余走 openai-compatible。都经 /llm 代理注入真实密钥。
+// providers with official exclusive packages must use official packages (provider-specific semantics — such as Gemini thought_signature —
+// Handled by the official provider); the rest go to openai-compatible. The real key is injected via the /llm agent.
 const proxied = <T>(provider: LlmProvider, create: (o: { baseURL: string; apiKey: string; headers: Record<string, string> }) => T): T =>
   create({ baseURL: PROXY_API_BASE, apiKey: PROXY_KEY, headers: proxyHeaders(provider) });
 const DEDICATED_PROVIDERS: Partial<Record<LlmProvider, (model: string) => ConfiguredLanguageModel>> = {

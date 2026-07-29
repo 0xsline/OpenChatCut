@@ -1,6 +1,6 @@
-// 库素材拖放应用器(逐字搬自 Timeline.tsx):fx/lut/zoom/transition 落到片段,
-// sound/template 落到轨道(自动挑对类型的轨)。拒收必须给原因(notice)——此前
-// 静默 return false,用户只看到「拖了没反应」。
+// Library asset drag and drop application (translated verbatim from Timeline.tsx): fx/lut/zoom/transition drop into clip,
+// sound/template falls to the track (the track of the right type is automatically selected). Reasons for rejection must be given (notice) - before
+// Silent return false, the user only sees "No response after dragging".
 import {
   CSS_TRANSITION_TYPES, TRANSITION_LABELS, defaultTrackId, timelineTrackIds, trackKind,
   type TimelineItem, type TimelineState, type TrackId, type TransitionType, type ZoomShape,
@@ -25,7 +25,7 @@ interface DropCtx {
 export function applyLibraryToClip({ state, commands, notice }: DropCtx, payload: LibraryDragPayload, item: TimelineItem): boolean {
   const visual = item.kind !== 'audio';
   if (payload.kind === 'fx' || payload.kind === 'lut') {
-    // GIF 不进 GL 管线(MediaFill/ClipFx 只纹理化 video/image),收下也不会渲染——诚实拒收
+    // GIF does not enter the GL pipeline (MediaFill/ClipFx only textures video/image), and will not be rendered if accepted - honest rejection
     if (item.kind !== 'video' && item.kind !== 'image') {
       notice(t('{kind}只能用在视频 / 图片片段上（GIF/MG 不走 GL 特效管线）', { kind: payload.kind === 'lut' ? 'LUT' : t('特效') }));
       return false;
@@ -42,7 +42,7 @@ export function applyLibraryToClip({ state, commands, notice }: DropCtx, payload
   }
   if (payload.kind === 'zoom') {
     if (!visual) { notice(t('缩放只能用在画面片段上')); return false; }
-    // 插件曲线:包络随 payload.data 走(形状校验后用)
+    // plugin curve: envelope follows payload.data (used after shape verification)
     const pluginZoom = payload.data ? asPluginZoom(payload.data) : null;
     commands.setItemZoom(item.id, pluginZoom ?? { shape: payload.id as ZoomShape, magnification: 1.5, envelope: undefined, label: undefined });
     commands.selectItem(item.id);
@@ -78,7 +78,7 @@ export function applyLibraryToClip({ state, commands, notice }: DropCtx, payload
     return true;
   }
   if (payload.kind === 'transition') {
-    // incoming = this clip;reducer 要求同轨前面有相邻片段——先验并给原因
+    // incoming = this clip;reducer requires adjacent clips in front of the same track - a priori and give reasons
     const prior = state.items.find((x) =>
       x.id !== item.id && x.track === item.track
       && Math.abs((x.startFrame + x.durationInFrames) - item.startFrame) <= 2);
@@ -86,7 +86,7 @@ export function applyLibraryToClip({ state, commands, notice }: DropCtx, payload
       notice(t('转场挂在两段的接缝上：请拖到「后一个」片段，它前面要有相邻同轨片段'));
       return false;
     }
-    // GLSL 专属转场只在 视频/图片 对上有完整效果;DOM 片段(MG/文字/GIF…)会退化为叠化——照常应用但点破
+    // GLSL exclusive transitions only have full effect on video/picture pairs; DOM fragments (MG/text/GIF...) will degenerate into dissolves - apply as usual but click broken
     const glCapable = (k: TimelineItem['kind']) => k === 'video' || k === 'image';
     const isPlugin = isPluginAssetId(payload.id);
     const displayName = isPlugin ? payload.name : t(TRANSITION_LABELS[payload.id as TransitionType] ?? payload.id);
@@ -94,7 +94,7 @@ export function applyLibraryToClip({ state, commands, notice }: DropCtx, payload
       notice(t('「{name}」只在视频/图片片段间有完整效果，MG/文字等片段上会显示为叠化', { name: displayName }));
     }
     if (isPlugin) {
-      // 插件转场:注册表取 frag 快照进 TransitionItem(与 submit_shader 同机制)
+      // plugin transition: the registry takes a frag snapshot into TransitionItem (same mechanism as submit_shader)
       const def = getCustomTransition(payload.id);
       if (!def) { notice(t('插件转场「{name}」未安装或已卸载', { name: payload.name })); return false; }
       commands.addTransition(item.id, 'custom-shader', undefined, { frag: def.frag, uniforms: customTransitionUniforms(def), label: def.label });
@@ -136,7 +136,7 @@ export function applyLibraryToTrack(
     return true;
   }
   if (payload.kind === 'template') {
-    // 插件模板不在 TEMPLATES 里:Tpl 随 payload.data 走(沙箱照常兜底)
+    // The plugin template is not in TEMPLATES: Tpl goes with payload.data (the sandbox keeps the secret as usual)
     const tpl = TEMPLATES.find((t) => t.id === payload.id) ?? (payload.data ? asPluginTpl(payload.data) : null);
     if (!tpl) return false;
     // prefer video track under cursor

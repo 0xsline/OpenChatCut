@@ -1,6 +1,6 @@
 // The playful film-crew "thinking…" phrases shown while the agent runs
 // We cycle one
-// per running turn instead of a plain "思考中…".
+// per running turn instead of a plain "Thinking about...".
 export const THINKING_PHRASES: string[] = [
   '拉焦中', '推轨道车', '检查片门', '打板儿', '同期声走起', '走位走位',
   'Action!', '卡点卡点', '架灯架灯', '找感觉', '推翻重来', '勘景去',

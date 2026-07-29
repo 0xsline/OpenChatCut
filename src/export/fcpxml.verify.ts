@@ -1,7 +1,7 @@
 // Runnable check: `npx tsx src/export/fcpxml.verify.ts`.
-// 验证 FCPXML 导出:结构与转义、轨道→lane、MG 占位/烘焙引用,以及两条 P0 修复——
-// ① 音频文字稿编辑必须拆成与播放层(keptSegments)逐段一致的多条 asset-clip;
-// ② 素材换算成 mediaDir 下的绝对 file:// 路径,否则 NLE 里全是离线素材。
+// Verify FCPXML export: structure and escape, track→lane, MG placeholder/baked reference, and two P0 fixes —
+// ① Audio transcript editing must be split into multiple asset-clips that are consistent with the playback layer (keptSegments) segment by segment;
+// ② The assets are converted to the absolute file:// path under mediaDir, otherwise the NLE is full of offline assets.
 import assert from 'node:assert/strict';
 import { resolveAssetSrc, timelineToFcpxml } from './fcpxml';
 import { keptSegments } from '../transcript/edit';
@@ -10,7 +10,7 @@ import type { TimelineState } from '../editor/types';
 const clipsOf = (xml: string): string[] => xml.match(/<asset-clip[^>]*\/>/g) ?? [];
 const attr = (el: string, name: string): string => el.match(new RegExp(`${name}="([^"]*)"`))?.[1] ?? '';
 
-// ── 基础结构:单根、必需节点、XML 转义、无 undefined/NaN 泄漏 ──
+// ── Infrastructure: single root, required nodes, XML escaping, no undefined/NaN leaks ──
 {
   const state: TimelineState = {
     fps: 30, width: 1920, height: 1080, selectedId: null,
@@ -31,16 +31,16 @@ const attr = (el: string, name: string): string => el.match(new RegExp(`${name}=
   assert.ok(xml.includes('Title &amp; &lt;Intro&gt;'), '名字要转义');
   assert.ok(!xml.includes('Title & <Intro>'), '未转义原文不得泄漏');
   assert.ok(!/undefined|NaN/.test(xml), '输出不得含 undefined/NaN');
-  // MG 无媒体 → 占位 gap;音频 → asset-clip
+  // MG no media → placeholder gap;audio → asset-clip
   assert.equal(clipsOf(xml).length, 1, '仅音频出 asset-clip');
   assert.equal((xml.match(/<gap name="MG:/g) ?? []).length, 2, '两个 MG 占位 gap');
-  // 轨道 → lane:视频正、音频负
+  // Track → lane: video positive, audio negative
   assert.equal(attr(clipsOf(xml)[0]!, 'lane'), '-1', '音频挂负 lane');
 }
 
-// ── P0-①:音频文字稿编辑 → 多段,逐段与 keptSegments 对齐 ──
+// ── P0-①: Audio transcript editing → multiple paragraphs, aligned with keptSegments one by one ──
 {
-  // hello 0–1s | ummmm 1–3s(删) | world 3–4s,时间戳是毫秒
+  // hello 0–1s | ummmm 1–3s(delete) | world 3–4s, timestamp is milliseconds
   const transcript = [
     { text: 'hello', start: 0, end: 1000 },
     { text: 'ummmm', start: 1000, end: 3000 },
@@ -63,19 +63,19 @@ const attr = (el: string, name: string): string => el.match(new RegExp(`${name}=
     assert.equal(attr(clips[i]!, 'duration'), `${seg.durFrames}/30s`, `第 ${i + 1} 段时长`);
     assert.equal(attr(clips[i]!, 'start'), `${seg.srcStartFrame}/30s`, `第 ${i + 1} 段源入点`);
   });
-  // 回归红线:删掉的词绝不能被某一段覆盖(源 30–90 帧)
+  // Regression red line: deleted words must not be overwritten by a paragraph (source frames 30–90)
   const covers = clips.some((c) => {
     const s = Number(attr(c, 'start').split('/')[0]);
     const d = Number(attr(c, 'duration').split('/')[0]);
     return s < 90 && s + d > 30;
   });
   assert.ok(!covers, '删掉的口癖不得出现在任何一段里');
-  // asset 时长要盖住实际用到的最远源帧(编辑后时长 60 < 用到的 120)
+  // The asset duration should cover the farthest source frame actually used (duration after editing 60 < used 120)
   const assetDur = timelineToFcpxml(state).match(/<asset [^>]*duration="([^"]*)"/)?.[1];
   assert.equal(assetDur, '120/30s', 'asset 时长按真实用到的源区间');
 }
 
-// ── video 件的删词不改画面 → 仍是单段(与渲染层语义一致) ──
+// ── The deletion of words in the video file does not change the picture → it is still a single segment (same semantics as the rendering layer) ──
 {
   const state: TimelineState = {
     fps: 30, width: 1920, height: 1080, selectedId: null,
@@ -90,7 +90,7 @@ const attr = (el: string, name: string): string => el.match(new RegExp(`${name}=
   assert.equal(clipsOf(timelineToFcpxml(state)).length, 1, 'video 件保持单段连续播放');
 }
 
-// ── P0-②:素材路径换算成绝对 file:// ──
+// ── P0-②: Convert the asset path to absolute file:// ──
 {
   assert.equal(
     resolveAssetSrc('/media/uploads/a.mp4', '/Users/me/proj/public/media/uploads'),
@@ -133,7 +133,7 @@ const attr = (el: string, name: string): string => el.match(new RegExp(`${name}=
   assert.ok(xml.includes('name="采访.wav"'), 'asset 名字用可读的解码后文件名');
 }
 
-// ── Resolve 变体保留既有差异 ──
+// ── Resolve variants retain existing differences ──
 {
   const state: TimelineState = {
     fps: 30, width: 1920, height: 1080, selectedId: null,

@@ -30,11 +30,11 @@ import { Icon } from '../components/icons';
 // Two built-in LUTs implemented with published camera-log transfer functions.
 // They apply through the same pipeline as other effects.
 const LUT_ITEMS: ResourceItem[] = LUT_IDS.map((id) => ({ id, name: LUT_EFFECTS[id].name }));
-/** 画面转场 — GLSL transitions in catalog order. */
+/** Screen transitions — GLSL transitions in catalog order. */
 const TRANSITION_ITEMS: ResourceItem[] = TRANSITION_ORDER.map((t) => ({
   id: t, name: TRANSITION_LABELS[t],
 }));
-/** 音频转场 — trAudioCrossFade. */
+/** Audio transition — trAudioCrossFade. */
 const AUDIO_CROSSFADE_THUMB = '/library-previews/audio-crossfade.jpg';
 const AUDIO_TRANSITION_ITEMS: ResourceItem[] = AUDIO_TRANSITION_ORDER.map((t) => ({
   id: t, name: TRANSITION_LABELS[t],
@@ -51,7 +51,7 @@ interface LibraryPanelProps {
   playerRef: RefObject<PlayerRef | null>;
   fps: number;
   items: TimelineItem[];
-  /** A1/V1 aliases + names for 文字稿 track picker */
+  /** A1/V1 aliases + names for script track picker */
   trackOptions: TranscriptTrackOption[];
   captionTracks: Array<TranscriptTrackOption & { captions: CaptionsData | null }>;
   onSetCaptions: (c: CaptionsData | null, track?: TrackId) => void;
@@ -79,14 +79,14 @@ interface LibraryPanelProps {
   onRemoveMediaAsset: (id: string) => void;
   onRelinkMediaAsset?: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind'] }) => void;
   onAddSolid?: () => void;
-  /** ⋮ menu「用 AI 生成」: seed the chat with this template as a reference */
+  /** ⋮ menu「Generated with AI」: seed the chat with this template as a reference */
   onUseTemplateAI: (tpl: Tpl) => void;
   /** currently-selected clip — resource-library tabs apply to it */
   selectedItem: TimelineItem | null;
-  /** custom = 插件转场(type='custom-shader' 时快照 frag 进 TransitionItem) */
+  /** custom = plugin transition (type='custom-shader' snapshot frag into TransitionItem) */
   onApplyTransition: (type: TransitionType, custom?: { frag: string; uniforms: Record<string, number>; label: string }) => void;
   onApplyFx: (assetId: string) => void;
-  /** 内置曲线传 {shape};插件曲线传 {envelope,label}(见 PluginBrowser.asPluginZoom) */
+  /** The built-in curve passes {shape}; the plugin curve passes {envelope, label} (see PluginBrowser.asPluginZoom) */
   onApplyZoom: (zoom: ZoomEffect) => void;
 }
 
@@ -99,7 +99,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('我的素材');
   const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('MG 动画');
   const [extensionOpen, setExtensionOpen] = useState(false);
-  // 已装扩展条目并入各分类(带「扩展」角标);缩放/转场在 onApply 里按 id 分流
+  // The installed extension items are merged into each category (with the "Extension" corner mark); zoom/transition is split by id in onApply
   const pluginPacks = usePluginPacks();
   const transitionItems = [...TRANSITION_ITEMS, ...pluginResourceItems(pluginPacks, 'transition')];
   const fxItems = [...FX_ITEMS, ...pluginResourceItems(pluginPacks, 'fx')];
@@ -115,7 +115,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
     const pluginZoom = data ? asPluginZoom(data) : null;
     onApplyZoom(pluginZoom ?? { shape: id as ZoomShape, magnification: 1.5, envelope: undefined, label: undefined });
   };
-  // 音频转场：源 catalog 无独立条目，已隐藏假入口（§4.2）
+  // Audio transition: The source catalog has no independent entries and the false entry has been hidden (§4.2)
   const showSfx = mainTab === '资源库' && subTab === '音效';     // sound effects
   const isTranscript = mainTab === '文字稿';
   const isCaptions = mainTab === '字幕';
@@ -190,7 +190,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
           <SoundBrowser fps={fps} onAdd={onAddAudio} />
         ) : subTab === '转场' ? (
           <div className="cc-transition-browser">
-            {/* 音频交叉淡化 — trAudioCrossFade；选中音频片段时高亮可用 */}
+            {/* Audio crossfade — trAudioCrossFade; highlighting available when audio clip is selected*/}
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 11, color: theme.textDim, margin: '0 4px 8px', letterSpacing: 0.3 }}>
                 {t('音频转场 · Audio Cross Fade')}
@@ -215,7 +215,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
               items={transitionItems}
               applicable={selectedItem != null && selKind !== 'audio'}
               onApply={applyTransitionById}
-              // 内置与 plugin:/custom: 同一套 A/B 样片 + hover 0→1 预览(真 GLSL)
+              // Built-in and plugin:/custom: the same set of A/B samples + hover 0→1 preview (true GLSL)
               renderThumb={(id, hovered) => <TransitionThumb type={id} playing={hovered} />}
             />
           </div>
@@ -240,7 +240,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
             renderThumb={(id, hovered) => {
               const data = zoomItems.find((x) => x.id === id)?.data;
               const pluginZoom = data ? asPluginZoom(data) : null;
-              // 插件包络:真样片 + 包络缩放动画(与内置 ZoomThumb 同观感)
+              // plugin envelope: real sample + envelope zoom animation (same look and feel as built-in ZoomThumb)
               if (pluginZoom?.envelope) {
                 return <EnvelopeThumb envelope={pluginZoom.envelope} magnification={pluginZoom.magnification} playing={hovered} />;
               }

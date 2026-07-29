@@ -33,7 +33,7 @@ assert.equal(resolveLlmBaseUrl('openai', 'https://api.openai.com', ''), 'https:/
 assert.equal(resolveLlmBaseUrl('anthropic', 'https://relay.test/api', ''), 'https://relay.test/api/v1');
 assert.equal(llmOperationPath('kimi'), '/chat/completions');
 
-// ── llmHeaders:按协议注入上游鉴权(google=x-goog-api-key;anthropic=x-api-key;其余 Bearer) ──
+// ── llmHeaders: Inject upstream authentication according to the protocol (google=x-goog-api-key;anthropic=x-api-key; the rest Bearer) ──
 {
   const { KEY_NAMES, seedKeystore } = await import('./keystore.ts');
   const { llmErrorMessage, llmHeaders } = await import('./plugins/llm-proxy.ts');

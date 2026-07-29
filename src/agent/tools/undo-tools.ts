@@ -1,9 +1,9 @@
-// undo_last_change:让 Agent 能响应「撤销刚才那个改动」。
+// undo_last_change: Allow the Agent to respond to "undo the change just now".
 //
-// 它不去动真实历史栈——那会让本轮 draft 的基线失效(draft 是工程副本,
-// 提案批准时按记录的 action 重放)。改成把「上一步的完整工程快照」当作一次普通
-// 编辑提出来,照常走 propose→approve:用户仍然先看后批,回滚也就成了历史里
-// 正常的一步(自己还能再被撤销)。
+// It does not touch the real history stack - that will invalidate the baseline of this round of draft (draft is a copy of the project,
+// Replay according to the recorded action when the proposal is approved). Change to treat "the complete project snapshot of the previous step" as a normal
+// The editor proposes it, proceed as usual propose→approve: users still read it first and then approve it, and rollback becomes a thing of the past.
+// A normal step (it can be undone again).
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 
@@ -23,7 +23,7 @@ export const UNDO_TOOL_SCHEMAS: AgentToolSchema[] = [
 
 export const UNDO_TOOL_NAMES = new Set(UNDO_TOOL_SCHEMAS.map((t) => t.name));
 
-/** 工具执行:取撤销目标 → 作为整工程替换提出。exported for verify。 */
+/** Tool execution: Get undo target → proposed as whole project replacement. exported for verify. */
 export function execUndoTool(
   name: string,
   ctx: Pick<AgentContext, 'commands' | 'getDoc' | 'getUndoTarget'>,

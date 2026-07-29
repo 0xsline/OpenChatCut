@@ -1,18 +1,18 @@
-// 片段不能比它的源素材更长。
+// A clip cannot be longer than its source asset.
 //
-// 左侧裁剪一直有 srcInFrame 兜底(入点不能为负),右侧却完全没有上界:把右手柄
-// 往外拖可以拉出比素材还长的片段,超出的部分只是定格在最后一帧。上界由 reduce 的
-// retime 统一执行——指针拖拽和 agent 的裁剪工具都汇到那一条路上。
+// There is always a srcInFrame bottom when cropping on the left side (the entry point cannot be negative), but there is no upper bound at all on the right side: move the right handle
+// Drag outward to pull out a clip that is longer than the asset, and the excess part will only be frozen in the last frame. The upper bound is given by reduce's
+// Retime is executed uniformly - pointer drag and agent's cropping tools are all merged into that road.
 import type { MediaAsset, TimelineItem } from './types';
 
 type SourceItem = Pick<TimelineItem, 'kind' | 'src' | 'playbackRate' | 'transcript'>;
 
 /**
- * 从 `srcInFrame` 出发还能播多少条时间线帧;判定不了长度就返回 null(不设限)。
+ * How many timeline frames can be played starting from `srcInFrame`; if the length cannot be determined, null (no limit) is returned.
  *
- * 只对真实文件媒体(video/audio)生效:图片、MG、文字、纯色本来就可以任意拉长。
- * 词驱动音频(audio + transcript)由 retime 自己按编辑后词流长度收口,不走这里,
- * 否则两套上界会打架。playbackRate 换算:时间线帧 = 源帧 / rate。
+ * Only effective for real file media (video/audio): pictures, MG, text, and solid colors can be stretched arbitrarily.
+ * Word-driven audio (audio + transcript) is closed by retime itself according to the length of the word stream after editing. Do not go here.
+ * Otherwise the two sets of upper bounds will fight. playbackRate conversion: timeline frame = source frame / rate.
  */
 export function remainingSourceFrames(
   item: SourceItem,

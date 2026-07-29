@@ -1,5 +1,5 @@
-// 多机位工具:multicam_sync(音频交叉相关对齐,挪 startFrame)与 change_cam
-// (机位切换:区间内删其他机位的遮挡段,split/remove 无波纹 batch,一步撤销)。
+// Multi-camera tools: multicam_sync (audio cross-correlation alignment, move startFrame) and change_cam
+// (Camera switching: delete the blocked segments of other cameras in the interval, split/remove without ripple batch, undo in one step).
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { canMulticamItem, runMulticamSync } from '../../multicam/sync';
@@ -105,7 +105,7 @@ export async function execMulticamTool(name: string, args: Args, ctx: AgentConte
   };
 }
 
-/** change_cam 边界校验 + 规划 + 单 batch 提交(exported for verify)。 */
+/** change_cam boundary verification + planning + single batch submission (exported for verify).*/
 export function execChangeCam(args: Args, ctx: Pick<AgentContext, 'getState' | 'commands'>): unknown {
   const state: TimelineState = ctx.getState();
   const rawIds = Array.isArray(args.itemIds) ? args.itemIds.map(String) : [];
@@ -132,7 +132,7 @@ export function execChangeCam(args: Args, ctx: Pick<AgentContext, 'getState' | '
   const toFrame = Math.min(groupEnd, Math.round(toSecondsRaw * fps));
   if (toFrame - fromFrame < 1) return { error: `empty switch range (${fromSecondsRaw}s → ${toSecondsRaw}s)` };
 
-  // 同一源文件的段都算目标机位(此前的切换会把一个机位切成多段)
+  // Segments of the same source file are all considered target cameras (previous switching will cut one camera into multiple segments)
   const isTargetAngle = (it: TimelineItem) => it.id === target.id || (!!target.src && it.src === target.src);
   const targets = group.filter(isTargetAngle);
   const others = group.filter((it) => !isTargetAngle(it));

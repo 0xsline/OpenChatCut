@@ -170,7 +170,7 @@ export const STOCK_TOOL_NAMES = new Set(STOCK_TOOL_SCHEMAS.map((tool) => tool.na
 
 const MAX_BATCH = 4;
 
-// URL 嗅探/命名/时长兜底/metadata 探测:见 ./stock-url-utils.ts(纯函数,拆文件守 500 行上限)
+// URL sniffing/naming/duration/metadata detection: see ./stock-url-utils.ts (pure function, open the file and keep the 500-line limit)
 
 const newId = (): string =>
   (typeof crypto !== 'undefined' && crypto.randomUUID)

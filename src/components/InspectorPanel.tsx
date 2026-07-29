@@ -138,7 +138,7 @@ function PropSchemaField({
           />
           {typeof value === 'string' && value && (
             isVideo
-              // preload=metadata 不解码画面(黑块),seek 一下才逼浏览器绘帧;顺带避开第 0 帧黑场
+              // preload=metadata does not decode the picture (black block), seek for a while to force the browser to draw the frame; incidentally avoid the black field of frame 0
               ? <video src={value} muted playsInline preload="metadata" style={{ maxWidth: '100%', maxHeight: 72, objectFit: 'contain', borderRadius: 4, background: theme.bg }}
                   onLoadedMetadata={(e) => { const v = e.currentTarget; if (Number.isFinite(v.duration) && v.duration > 0) v.currentTime = Math.min(1, v.duration / 2); }} />
               : <img src={value} alt="" style={{ maxWidth: '100%', maxHeight: 72, objectFit: 'contain', borderRadius: 4, background: theme.bg }} />
@@ -208,13 +208,13 @@ interface InspectorPanelProps {
   autoGrade?: AutoGradeControlProps;
   onItemZoomChange: (patch: Partial<ZoomEffect> | null) => void;
   onItemEffectsChange: (effects: ClipEffect[]) => void;
-  /** 变速 (0.1–8×); 预览/导出 preservePitch */
+  /** Variable speed (0.1–8×); preview/export preservePitch*/
   onItemSpeedChange?: (rate: number) => void;
-  /** 响度归一到 -14 LUFS（分析后 set volume） */
+  /** Loudness normalized to -14 LUFS (set volume after analysis)*/
   onNormalizeLoudness?: () => void | Promise<void>;
   /**
-   * 人声隔离（开箱 ffmpeg）：apply 挂 denoisedSrc，clear 清除。
-   * strength 0..100；返回后由 store setItemDenoise。
+   * Vocal isolation (out of the box ffmpeg): apply hangs denoisedSrc, clear clears.
+   * strength 0..100; returned by store setItemDenoise.
    */
   onIsolateVoice?: (action: 'apply' | 'clear', strength?: number) => void | Promise<void>;
   getPlayhead: () => number;
@@ -230,21 +230,21 @@ interface InspectorPanelProps {
   onAddTransition: (type: TransitionType) => void;
   onSetTransition: (patch: Partial<TransitionItem>) => void;
   onRemoveTransition: () => void;
-  /** 预览播放器句柄:关键帧栏要跟着播放头实时更新禁用状态与 ◆ 填充。 */
+  /** Preview player handle: The keyframe bar should be updated in real time with the playhead disabled state and ◆ filled.*/
   playerRef: RefObject<PlayerRef | null>;
-  /** 连续手势边界(拖滑块/取色器):之间的改动合并成一条撤销记录。 */
+  /** Continuous gesture boundaries (drag slider/color picker): Changes between them are merged into one undo record.*/
   historyGesture: { begin: () => void; end: () => void };
 }
 
 /**
- * 连续手势的边界。滑块和取色器在拖动期间会逐步 dispatch(这样才有实时预览),
- * 但那些步必须合并成**一条**撤销记录——否则音量 0→2 按 0.05 步进会压进约 40 条快照,
- * 而历史上限只有 100 条,拖两次滑块就把用户真正的编辑历史挤没了。
- * 用 context 传是为了不给十几个滑块调用点各加一遍参数。
+ * The boundaries of continuous gestures. The slider and color picker will be gradually dispatched during dragging (so that there is a real-time preview),
+ * But those steps must be merged into **one** undo record - otherwise volume 0→2 in 0.05 steps will push in about 40 snapshots,
+ * The upper limit of history is only 100. Dragging the slider twice will squeeze out the user's real editing history.
+ * The purpose of passing context is to avoid adding parameters to each of the dozen slider call points.
  */
 const HistoryGestureContext = createContext<{ begin: () => void; end: () => void } | null>(null);
 
-/** 指针按下即开始手势,松开(不论在哪松)结束。键盘连按方向键同理。 */
+/** The gesture starts when the pointer is pressed and ends when the pointer is released (no matter where it is released). The same goes for pressing the arrow keys on the keyboard.*/
 function useHistoryGesture(): {
   onPointerDown: () => void;
   onKeyDown: () => void;
@@ -262,7 +262,7 @@ function useHistoryGesture(): {
     active.current = true;
     gesture?.begin();
   };
-  // 组件卸载时(比如拖动中切换了选中片段)也要收尾,免得手势一直开着
+  // When the component is uninstalled (for example, the selected fragment is switched during dragging), it must also be finished to prevent the gesture from being turned on all the time.
   useEffect(() => () => {
     if (!active.current) return;
     active.current = false;
@@ -271,7 +271,7 @@ function useHistoryGesture(): {
   return {
     onPointerDown: () => {
       begin();
-      // 指针可能在控件外松开,所以监听 window 而不是控件本身
+      // The pointer may be released outside the control, so listen to window rather than the control itself
       window.addEventListener('pointerup', end, { once: true });
       window.addEventListener('pointercancel', end, { once: true });
     },
@@ -280,7 +280,7 @@ function useHistoryGesture(): {
   };
 }
 
-/** 取色器:拾色面板里鼠标一动就 onInput 一次,和滑块一样要合并成一条撤销记录。 */
+/** Color Picker: OnInput is triggered once when the mouse is moved in the color picker panel. Like the slider, it must be merged into an undo record.*/
 function ColorParamInput({ value, onPick }: { value: number[]; onPick: (rgb: number[]) => void }) {
   const gesture = useHistoryGesture();
   return (
@@ -301,7 +301,7 @@ function SliderRow({
   inputScale?: number;
   onReset?: () => void;
   resetDisabled?: boolean;
-  /** 已打关键帧但播放头不在片段内时禁用:拖它只会把关键帧写到被夹出来的第 0 帧上。 */
+  /** Disabled when keyframed but the playhead is not within the clip: dragging it will only write the keyframe to the clipped frame 0.*/
   disabled?: boolean;
   disabledReason?: string;
 }) {
@@ -354,9 +354,9 @@ function SliderRow({
 interface KfApi {
   localFrame: number;
   /**
-   * 播放头是否真的落在这个片段之内。localFrame 是被夹进 [0, dur) 的,所以播放头在片段
-   * 外时它会塌成第 0 帧——照着它打关键帧就是打在用户根本没看的地方。四个关键帧控件
-   * 和「此处是否已有关键帧」的判断都依赖同一个被夹过的帧号,所以它们要一起按这个开关。
+   * Whether the playhead actually falls within this clip. localFrame is sandwiched into [0, dur), so the playhead is in the clip
+   * When outside, it collapses to frame 0 - keyframing it will hit a place where the user is not even looking. Four keyframe controls
+   * and "Whether there is a keyframe here" both rely on the same clipped frame number, so they need to press this switch together.
    */
   inRange: boolean;
   set: (prop: KeyframeProp, frame: number, value: number, easing?: KeyframeEasing) => void;
@@ -369,7 +369,7 @@ const EASING_OPTIONS: { value: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut'; la
   { value: 'easeOut', label: '缓出' }, { value: 'easeInOut', label: '缓入出' },
 ];
 
-// end-of-row keyframe rail (PRD §4.5;UI 仿 reframe 关键帧模式,布局自定):
+// end-of-row keyframe rail (PRD §4.5; UI imitates reframe keyframe mode, custom layout):
 // ◆ punches/updates at the playhead (filled when one sits there), ‹ › jump
 // between keyframes, × deletes the one under the playhead, plus segment easing.
 function KfCell({ kfs, localFrame, inRange, punchValue, onSet, onRemove, onSeekLocal }: {
@@ -382,7 +382,7 @@ function KfCell({ kfs, localFrame, inRange, punchValue, onSet, onRemove, onSeekL
   onSeekLocal: (frame: number) => void;
 }) {
   const t = useT();
-  // 播放头不在片段内时 localFrame 是塌到 0 的假值,基于它的一切判断都不能用。
+  // When the playhead is not within the clip, localFrame is a false value that collapses to 0, and all judgments based on it cannot be used.
   const at = inRange ? kfs?.find((k) => k.frame === localFrame) : undefined;
   const prev = inRange && kfs ? [...kfs].reverse().find((k) => k.frame < localFrame) : undefined;
   const next = inRange ? kfs?.find((k) => k.frame > localFrame) : undefined;
@@ -422,7 +422,7 @@ function KfCell({ kfs, localFrame, inRange, punchValue, onSet, onRemove, onSeekL
   );
 }
 
-// scale / position / rotation for visual clips (缩放 tab) + per-property
+// scale / position / rotation for visual clips (zoom tab) + per-property
 // keyframe rails and an opacity curve row. A keyframed prop shows the
 // value sampled at the playhead; dragging it then punches a keyframe there.
 function TransformControl({
@@ -436,7 +436,7 @@ function TransformControl({
   const t = useT();
   const rows = KEYFRAME_PROPS
     .map(getKeyframePropertyDefinition)
-    // 音量不属于变换栈 — VolumeControl 带自己的关键帧轨
+    // Volume is not part of the transform stack — VolumeControl has its own keyframe track
     .filter((definition) => definition.id !== 'volume' && definition.supports(item));
   return (
     <div className="cc-insp-stack">
@@ -780,7 +780,7 @@ function ZoomControl({ zoom, onChange, getLocalFrame, fps, onSetKeyframe, onRemo
 
 
 // transition INTO the selected clip from the previous adjacent same-track clip.
-// Picking a type creates it; 无 removes it.
+// Picking a type creates it; None removes it.
 function TransitionControl({ transition, fps, onAdd, onSet, onRemove, audioMode }: {
   transition: TransitionItem | null;
   fps: number;
@@ -932,7 +932,7 @@ function FilterControl({ item, onChange, autoGrade }: {
 const rgbToHex = (rgb: number[]) => `#${rgb.slice(0, 3).map((n) => Math.round(Math.min(1, Math.max(0, n)) * 255).toString(16).padStart(2, '0')).join('')}`;
 const hexToRgb = (hex: string) => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255);
 
-// Per-clip WebGL effect stack (特效 / builtin:fx-*). Order is render
+// Per-clip WebGL effect stack (effects / builtin:fx-*). Order is render
 // order: each card consumes the previous card's output.
 function EffectsControl({ item, onChange }: { item: TimelineItem; onChange: (effects: ClipEffect[]) => void }) {
   const t = useT();
@@ -1028,9 +1028,9 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
       ? t('文字片段。')
       : null
     : null;
-  // 关键帧栏(禁用状态、◆ 是否填充、前后跳转)必须跟着播放头走。getPlayhead() 只在
-  // 渲染那一刻读一次,而播放头移动本身不会触发本组件重渲染——所以这里订阅 frameupdate,
-  // 按 ~100ms 节流刷新,既保证实时又不至于每帧重渲染。
+  // The keyframe bar (disabled state, ◆ filling or not, jump forward and backward) must follow the playhead. getPlayhead() only in
+  // It is read once at the moment of rendering, and the movement of the playhead itself will not trigger the re-rendering of this component - so subscribe to frameupdate here,
+  // Throttle refresh to ~100ms to ensure real-time without re-rendering every frame.
   const [playhead, setPlayhead] = useState(() => getPlayhead());
   useEffect(() => {
     const player = playerRef.current;
@@ -1046,8 +1046,8 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
       const { frame } = event.detail;
       const wait = 100 - (performance.now() - last);
       if (wait <= 0) { apply(frame); return; }
-      // 尾随更新不能省:拖一次播放头往往只有一个事件,丢了它状态就永远停在旧值上
-      // (暂停时不会再来下一个),关键帧栏就会一直显示错的启用状态。
+      // Trailing updates cannot be saved: once you drag the playhead, there is often only one event. If you lose it, the state will always stop at the old value.
+      // (The next one will not come when paused), the keyframe bar will always show the wrong enabled status.
       clearTimeout(trailing);
       trailing = setTimeout(() => apply(frame), wait);
     };
@@ -1058,7 +1058,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
     };
   }, [playerRef]);
 
-  // 播放头相对片段的位置。先算真实差值再判断在不在范围内,夹过的帧号只用于显示。
+  // The position of the playhead relative to the clip. Calculate the real difference first and then determine whether it is within the range. The clipped frame number is only used for display.
   const playheadLocal = (() => {
     if (!selectedItem) return { localFrame: 0, inRange: false };
     const raw = Math.round(playhead) - selectedItem.startFrame;
@@ -1129,7 +1129,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
                 && Math.abs((selectedItem.filters?.saturate ?? 1) - 1) < 1e-6
                 && (selectedItem.filters?.blur ?? 0) === 0}
             >{t('滤镜')}</SectionLabel><FilterControl item={selectedItem} onChange={onItemFiltersChange} autoGrade={autoGrade} /></>}
-            {/* GIF 不进 GL 管线(渲染端只纹理化 video/image),不提供特效入口;历史遗留可在片段右键移除 */}
+            {/* GIF does not enter the GL pipeline (the rendering side only textures video/image) and does not provide effects entry; historical legacy can be removed by right-clicking on the clip*/}
             {(selectedItem.kind === 'video' || selectedItem.kind === 'image') && <><SectionLabel>{t('特效')}</SectionLabel><EffectsControl item={selectedItem} onChange={onItemEffectsChange} /></>}
             {isVisual && <><SectionLabel
               onReset={() => onItemZoomChange(null)}

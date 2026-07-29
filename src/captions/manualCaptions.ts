@@ -131,10 +131,10 @@ export function updateManualCue(
 }
 
 /**
- * 拖动放置的无重叠钳制:把时长 durationMs 的 cue 以期望 startMs 放进 others 之间的
- * 空隙。压到邻居就贴边(不穿透,与 trim 的邻居钳制同语义);目标空隙塞不下整个
- * cue → 返回 null,调用方保持原状(回弹)。数据层 append/update 本身仍允许重叠,
- * 该策略只由拖拽交互使用。
+ * Drag-placed non-overlapping clamp: Put a cue of durationMs with the desired startMs between others
+ * gap. If the neighbor is pressed, it will be welted (not penetrated, the same semantics as trim's neighbor clamping); the target gap cannot fit the entire
+ * cue → returns null, the caller remains intact (rebound). The data layer append/update itself still allows overlap,
+ * This strategy is only used by drag-and-drop interactions.
  */
 export function placeManualCueTiming(
   others: readonly TranscriptWord[],

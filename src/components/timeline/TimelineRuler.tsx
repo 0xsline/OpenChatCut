@@ -1,6 +1,6 @@
-// 时间标尺(逐字搬自 Timeline.tsx):点击/按住拖动 seek;选择模式下点=时间点、
-// 拖=时间段(startPick)。刻度密度随缩放取「好看的」主刻度;上面叠 I/O 入出点旗
-// 与项目级标记图钉(点图钉开批注编辑器)。时码 span 由播放头绘制器直写初值以外的帧。
+// Time ruler (moved verbatim from Timeline.tsx): click/hold drag seek; point in selection mode = time point,
+// Drag = time period (startPick). The scale density changes with scaling to "good-looking" main scales; the I/O input and output flags are stacked on top.
+// Mark the pin with the project level (click the pin to open the comment editor). The timecode span is written directly by the playhead painter to frames other than the initial value.
 import { type RefObject } from 'react';
 import { theme } from '../../theme';
 import { MARKER_HEX, type Marker, type TimelineState } from '../../editor/types';
@@ -38,7 +38,7 @@ export function TimelineRuler({
       onPointerDown={(e) => {
         if (pickMode) { startPick(e, 'ruler'); return; }
         if (e.button !== 0) return;
-        e.currentTarget.setPointerCapture(e.pointerId); // 按住拖动=连续 seek;抬手自动释放
+        e.currentTarget.setPointerCapture(e.pointerId); // Press and drag = continuous seek; raise your hand to release automatically
         e.currentTarget.style.cursor = 'grabbing';
         seekTo(e.clientX);
       }}
@@ -102,7 +102,7 @@ export function TimelineRuler({
               <div title={t('入点 (I)')} style={{
                 position: 'absolute', left: zoneIn * px, top: 2, transform: 'translateX(-50%)',
                 width: 0, height: 0,
-                // impeccable-disable-next-line side-tab -- CSS 三角形小旗(入点标记),非卡片彩边
+                // impeccable-disable-next-line side-tab -- CSS triangular flag (entry mark), non-card colored edge
                 borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
                 borderTop: '8px solid #58a6ff',
               }} />
@@ -111,7 +111,7 @@ export function TimelineRuler({
               <div title={t('出点 (O)')} style={{
                 position: 'absolute', left: zoneOut * px, top: 2, transform: 'translateX(-50%)',
                 width: 0, height: 0,
-                // impeccable-disable-next-line side-tab -- CSS 三角形小旗(出点标记),非卡片彩边
+                // impeccable-disable-next-line side-tab -- CSS triangular flag (point mark), non-card colored edge
                 borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
                 borderTop: '8px solid #f0883e',
               }} />

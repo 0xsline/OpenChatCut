@@ -1,6 +1,6 @@
-// 数值化调色示波(inspect_color 核心):对一帧 RGBA 像素算黑白点、溢出、通道均值、
-// 三段色偏、饱和度与 30° 色相直方图。纯函数,node 可测;取帧/解码胶水在工具层。
-// 让 Agent「按数字调色」:量化当前画面 → 有针对性地改 filters/LUT/look → 复测。
+// Numerical color grading oscilloscope (inspect_color core): calculate black and white points, overflow, channel average,
+// Three-segment color cast, saturation and 30° hue histogram. Pure function, node measurable; get the frame/decoding glue in the tool layer.
+// Let Agent "color by numbers": quantify the current picture → change filters/LUT/look in a targeted manner → retest.
 
 export interface ChannelMeans {
   r: number;
@@ -8,38 +8,38 @@ export interface ChannelMeans {
   b: number;
 }
 
-/** 一段亮度带的色偏:warmCool = R−B(>0 偏暖),greenMagenta = G−(R+B)/2(>0 偏绿)。 */
+/** The color shift of a brightness band: warmCool = R−B (>0 is warmer), greenMagenta = G−(R+B)/2 (>0 is greener). */
 export interface ColorTilt {
   warmCool: number;
   greenMagenta: number;
 }
 
 export interface HueBin {
-  /** bin 起始角(0/30/…/330) */
+  /** bin starting angle (0/30/…/330) */
   fromDeg: number;
   label: string;
-  /** 占比 0..1(饱和度×明度加权),全图无彩时全 0 */
+  /** Proportion 0..1 (weighted by saturation × lightness), all 0 when there is no color in the whole image */
   pct: number;
 }
 
 export interface ColorScopeStats {
   sampledPixels: number;
-  /** 亮度 P1 / P99(0..1)——有效黑白点 */
+  /** Brightness P1 / P99(0..1) — effective black and white point */
   blackPoint: number;
   whitePoint: number;
   meanLuma: number;
-  /** 亮度贴地/贴顶的像素占比 0..1 */
+  /** Brightness floor/top pixel ratio 0..1 */
   clippedShadowsPct: number;
   clippedHighlightsPct: number;
   channelMeans: ChannelMeans;
-  /** 全图色偏与饱和度 */
+  /** Full image color cast and saturation */
   warmCool: number;
   greenMagenta: number;
   saturationMean: number;
-  /** 按亮度分段的色偏(shadows <0.25 / mids / highlights >0.7) */
+  /** Color cast segmented by brightness (shadows <0.25 / mids / highlights >0.7) */
   tilt: { shadows: ColorTilt; mids: ColorTilt; highlights: ColorTilt };
   hueHistogram: HueBin[];
-  /** 占比降序的主色相标签(≥5% 才列) */
+  /** Main hue labels in descending order (listed only if ≥5%) */
   dominantHues: string[];
 }
 
@@ -60,7 +60,7 @@ function percentileSorted(sorted: Float32Array, p: number): number {
   return sorted[idx]!;
 }
 
-/** RGB(0..1) → 色相角度 0..360 与 HSV 饱和度/明度。 */
+/** RGB(0..1) → Hue angle 0..360 and HSV saturation/lightness. */
 function hsv(r: number, g: number, b: number): { hueDeg: number; sat: number; val: number } {
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
@@ -79,8 +79,8 @@ function hsv(r: number, g: number, b: number): { hueDeg: number; sat: number; va
 }
 
 /**
- * 分析一帧 RGBA 像素(Uint8,4 通道连续)。sampleStep 隔点采样(默认自动:
- * 目标 ≤ 12 万采样),对统计量足够且省一个量级的时间。
+ * Analyze a frame of RGBA pixels (Uint8, 4 channels continuous). sampleStep sampling at intervals (default automatic:
+ * Target ≤ 120,000 samples), which is sufficient for statistics and saves an order of magnitude of time.
  */
 export function analyzeRgbaPixels(
   data: Uint8Array | Uint8ClampedArray,
@@ -178,7 +178,7 @@ export function analyzeRgbaPixels(
   };
 }
 
-/** 把统计量压成几行给 LLM 的可读判读(确定性文案,不做建议,只陈述事实)。 */
+/** Compress statistics into a few lines for LLM's readable interpretation (definitive copy, no recommendations, just facts). */
 export function describeScopeStats(s: ColorScopeStats): string[] {
   const pct = (v: number): string => `${(v * 100).toFixed(1)}%`;
   const lines = [

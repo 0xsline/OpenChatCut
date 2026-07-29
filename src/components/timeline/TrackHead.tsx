@@ -1,7 +1,7 @@
-// 轨道头单元:类型芯片 + 显隐/静音/锁定/字幕开关/字幕菜单/闪避 + 删除 + 轨名,
-// 以及「自动闪避·混音角色」弹层。弹层的单开互斥与外点关闭状态仍归 Timeline
-// (两个菜单跨轨道只能开一个),本组件只渲染与转发;字幕菜单以 children 传入挂载。
-// 折叠轨已下线——不再提供 collapse 按钮,轨高恒定。
+// Track header unit: type chip + show/mute/lock/caption switch/caption menu/dodge + delete + track name,
+// And the "Auto-dodge·Mixed character" elastic layer. The single-open mutual exclusion and external point closing status of the elastic layer still belong to the Timeline
+// (Only one of the two menus can be opened across tracks). This component only renders and forwards; the caption menu is mounted with children passed in.
+// The collapse track is offline - the collapse button is no longer provided, and the track height is constant.
 import type { ReactNode } from 'react';
 import { theme } from '../../theme';
 import { Icon } from '../icons';
@@ -82,7 +82,7 @@ export function TrackHead({
   );
 }
 
-// Duck (自动闪避) role menu is a track-head menu item, not a
+// Duck (auto-dodge) role menu is a track-head menu item, not a
 // permanent widget. Sets the per-track role (anchor speech / follower music) + duck depth;
 // the engine (TimelineComposition duckGain) already reacts to it.
 function DuckMenu({ trackId, config, pos, commands, onClose }: {

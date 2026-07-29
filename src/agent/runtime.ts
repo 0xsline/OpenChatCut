@@ -119,8 +119,8 @@ function createAgentTools(
         }
 
         try {
-          // 工具前后各拍一次时间线快照:改动型工具直接把「实际改了什么」带回给
-          // 模型,省掉一次全量 read_project(只读工具的差分是 null,不加字段)。
+          // Take a timeline snapshot before and after the tool: the modification tool directly brings back "what was actually changed"
+          // Model, omit a full read_project (the difference of read-only tools is null, no fields are added).
           const before = snapshotTimeline(ctx.getState());
           const result = await executeTool(schema.name, args, ctx);
           const changed = describeTimelineDelta(before, ctx.getState());
@@ -164,9 +164,9 @@ export async function runAgent(
 ): Promise<LLMMessage[]> {
   let conv = normalizeLlmMessages(messages);
   const settings = loadAgentSettings();
-  // 顺序按「越不变的排越前」——提示词缓存匹配的是逐字节前缀,中间插一段每轮都变的
-  // 内容,它后面的一切(其余段落、上百个工具 schema、整段历史)就全部作废。
-  // editorStatePrompt 是实时时间线快照,必须排在最后一段;新增段落也一律加在它前面。
+  // The order is "the more unchanged, the higher up" - the prompt word cache matches the byte-by-byte prefix, and inserts a paragraph in the middle that changes every round.
+  // Content, everything following it (the rest of the paragraphs, hundreds of tool schemas, the entire history) will be invalid.
+  // editorStatePrompt is a real-time timeline snapshot and must be placed in the last paragraph; new paragraphs are always added in front of it.
   const system = assembleSystemPrompt([
     SYSTEM_PROMPT,
     capabilitiesPrompt(),

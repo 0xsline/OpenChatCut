@@ -28,7 +28,7 @@ interface PreviewPanelProps {
   playerRef: RefObject<PlayerRef | null>;
   onImport: (file: File) => Promise<void>;
   offlineSrcs?: ReadonlySet<string>;
-  /** 画布字幕直编(选中框+浮动工具条)。未传(如提案预览态)则只读。 */
+  /** Direct editing of canvas captions (check box + floating toolbar). If it has not been transmitted (such as proposal preview status), it is read-only. */
   onUpdateCaptions?: (patch: Partial<CaptionsData>, track?: TrackId) => void;
   onSeedChat?: (text: string) => void;
   projectId: string;
@@ -49,10 +49,10 @@ export const PreviewPanel = memo(function PreviewPanel({
   const [busy, setBusy] = useState(false);
   const [showSafe, setShowSafe] = useState(false);
   const [autoEditCaption, setAutoEditCaption] = useState<{ trackId: TrackId; laneId: string } | null>(null);
-  // 全屏预览(` 快捷键/时间线工具栏按钮把 Player 全屏)时露出 Player
-  // 自带控制条;编辑态仍走时间线 transport,不显示双套控制。
-  // 必须听 Remotion 自己的 fullscreenchange:它在 Chrome 走 webkit 遗留 API,
-  // document 标准事件不保证跟着响,SDK emitter 才是真源。
+  // Expose Player during full screen preview (` shortcut key/timeline toolbar button to make Player full screen)
+  // Comes with a control bar; the editing state still uses the timeline transport, and does not display dual sets of controls.
+  // Must listen to Remotion's own fullscreenchange: it walks the webkit legacy API in Chrome,
+  // The document standard event is not guaranteed to be triggered, the SDK emitter is the real source.
   const [fullscreen, setFullscreen] = useState(false);
   const hasItems = state.items.length > 0;
   const offlineNames = [...new Set(state.items
@@ -65,7 +65,7 @@ export const PreviewPanel = memo(function PreviewPanel({
     player.addEventListener('fullscreenchange', onChange);
     return () => player.removeEventListener('fullscreenchange', onChange);
   }, [playerRef, hasItems]);
-  // 选择模式 (canvas-region-marked): drag a marquee → region reference
+  // Selection mode (canvas-region-marked): drag a marquee → region reference
   const pickMode = useSelectionRefMode();
   const importFiles = async (files: FileList | File[]) => {
     if (!files.length || busy) return;
@@ -159,7 +159,7 @@ export const PreviewPanel = memo(function PreviewPanel({
               compositionWidth={state.width}
               compositionHeight={state.height}
               numberOfSharedAudioTags={SHARED_AUDIO_TAGS}
-              // 全屏铺黑:webkit 遗留全屏对 div 不自动垫黑底,两侧会透出页面棋盘格
+              // Full screen black: WebKit legacy full screen div does not automatically blacken the background, and the page checkerboard will be revealed on both sides.
               style={{ width: '100%', height: '100%', backgroundColor: fullscreen ? '#000' : undefined }}
               controls={fullscreen}
               // Playback runs only through the timeline transport

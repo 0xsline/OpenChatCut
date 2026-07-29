@@ -225,7 +225,7 @@ export async function execDesignTool(name: string, args: Args, ctx: AgentContext
       ctx.commands.setDesignStyle(null);
       return { ok: true, cleared: true };
 
-    // "我的风格" is a global personal library, not a project-scoped collection.
+    // "My Style" is a global personal library, not a project-scoped collection.
     // Writes go straight to the store, bypassing
     // ctx.commands (there is no timeline edit / undo entry to make).
     case 'save': {

@@ -1,7 +1,7 @@
-// remove_silence —— 删除死气(静音段):本机 WebAudio 分析,不打网络。
-// 检测在 src/audio/silence.ts(相对语音电平 + 绝对下限 + 呼吸口),
-// 编辑在 src/editor/silenceRebuild.ts(split/remove 串 batch,一步撤销,
-// 同轨波纹闭合)。转写 clip 的词级路径归 clean_script,这里守门不抢活。
+// remove_silence - delete dead air (silent segment): native WebAudio analysis, no network connection.
+// Detected in src/audio/silence.ts (relative voice level + absolute lower limit + breathing port),
+// Edit in src/editor/silenceRebuild.ts(split/remove string batch, one step undo,
+// Co-orbital ripple closure). The word-level path for transcribing clip belongs to clean_script, which is a gatekeeper here.
 import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { TimelineItem } from '../../editor/types';
@@ -63,7 +63,7 @@ export async function execSilenceTool(name: string, args: Args, ctx: AgentContex
   const edited: Array<{ itemId: string; removedSec: number; cuts: Array<{ fromSec: number; toSec: number }> }> = [];
   const allActions: Action[] = [];
   const spanCache = new Map<string, Promise<SilenceSpan[]>>();
-  /** 同轨在前的 clip 删掉的帧数 → 后续 clip 规划前先左移这么多。 */
+  /** The number of frames deleted from the previous clip on the same track → Shift left by this amount before planning subsequent clips.*/
   const trackShift = new Map<string, number>();
 
   const ordered = [...targets].sort((a, b) => a.track === b.track ? a.startFrame - b.startFrame : String(a.track).localeCompare(String(b.track)));

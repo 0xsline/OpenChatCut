@@ -1,6 +1,6 @@
 // Runnable check: `npx tsx src/agent/abortedTurn.verify.ts`.
-// 用户点「停止」后,会话历史必须仍然可以继续往下发:已发出的工具调用不能悬空。
-// 这里验证「找出没有结果的工具调用」这条判定——它决定要补几个「已取消」结果。
+// After the user clicks "Stop", the session history must still be able to continue to be sent down: the tool calls that have been issued cannot be left hanging.
+// Here we verify the judgment "Find tool calls without results" - it determines how many "cancelled" results should be added.
 import assert from 'node:assert/strict';
 import { completeAbortedTurn, unresolvedToolCalls } from './abortedTurn';
 import type { ModelMessage as LLMMessage } from 'ai';
@@ -19,24 +19,24 @@ const text = (role: 'user' | 'assistant', value: string): LLMMessage => ({
   role, content: [{ type: 'text', text: value }],
 } as unknown as LLMMessage);
 
-// ── 全部有结果 → 没有悬空 ──
+// ── All have results → No dangling ──
 {
   assert.deepEqual(unresolvedToolCalls([text('user', 'hi'), call('t1', 'remove_item'), result('t1', 'remove_item')]), []);
   assert.deepEqual(unresolvedToolCalls([]), []);
   assert.deepEqual(unresolvedToolCalls([text('user', 'hi'), text('assistant', 'ok')]), []);
 }
 
-// ── 中途被打断:最后一个调用没有结果 ──
+// ── Interrupted midway: The last call has no result ──
 {
   const conv = [
     text('user', '删两段'),
     call('t1', 'remove_item'), result('t1', 'remove_item'),
-    call('t2', 'remove_item'), // 用户在这里点了停止
+    call('t2', 'remove_item'), // The user clicked stop here
   ];
   assert.deepEqual(unresolvedToolCalls(conv), [{ toolCallId: 't2', toolName: 'remove_item' }]);
 }
 
-// ── 一轮里并发多个调用,只有部分回来了 ──
+// ── Multiple calls are made concurrently in one round, only some of them come back ──
 {
   const conv: LLMMessage[] = [
     text('user', '看看这几段'),
@@ -56,7 +56,7 @@ const text = (role: 'user' | 'assistant', value: string): LLMMessage => ({
   ], '没回来的两个都要补收尾,顺序按发出顺序');
 }
 
-// ── 结果在更后面的消息里也算数(不要求紧邻) ──
+// ── The result is also counted in later messages (immediate proximity is not required) ──
 {
   const conv = [
     call('t1', 'x'),
@@ -66,7 +66,7 @@ const text = (role: 'user' | 'assistant', value: string): LLMMessage => ({
   assert.deepEqual(unresolvedToolCalls(conv), []);
 }
 
-// ── 补完「已取消」之后,悬空清零(模拟 commitAbortedTurn 的收尾) ──
+// ── After completing "Cancelled", clear it in the air (simulating the end of commitAbortedTurn) ──
 {
   const history = [text('user', 'go')];
   const completed = completeAbortedTurn(history, [call('t9', 'submit_image')]);

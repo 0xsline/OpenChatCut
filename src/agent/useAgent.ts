@@ -24,22 +24,22 @@ import {
 } from './changeLog';
 
 export interface DisplayMessage {
-  // 'continue' = maxTurns 暂停卡(点「继续」续跑;持久化,刷新后仍可续)
+  // 'continue' = maxTurns Pause card (click "Continue" to continue running; persistent, can continue after refreshing)
   role: 'user' | 'assistant' | 'tool' | 'error' | 'continue';
   text: string;
-  /** 推理流(原生 thinking_delta 或内联 <thinking> 抽取),渲染为折叠的「思考过程」块 */
+  /** Reasoning flow (native thinking_delta or inline <thinking> extraction), rendered as a collapsed "thinking process" block */
   thinking?: string;
   tool?: { name: string; args: unknown; result: unknown };
 }
 
-/** 前置 skill_guard 待决请求(渲染为等待用户确认的卡片)。 */
+/** Prepend skill_guard pending requests (rendered as cards waiting for user confirmation). */
 export interface PendingGuard {
   skill: GenerationGuardSkill;
   tool: string;
   resolve: (d: GuardDecision) => void;
 }
 
-/** 工具参数流式撰写中的实时行(临时态,不持久化)。 */
+/** Real-time rows in tool parameter streaming writing (temporary, not persistent). */
 export interface LiveTool {
   name: string;
   partial: string;
@@ -54,9 +54,9 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   const [hydrated, setHydrated] = useState(false);
   // pending edit proposal awaiting the user's apply/reject
   const [proposal, setProposal] = useState<Proposal | null>(null);
-  // 提案过期横幅(三选:仍然应用 / 重新提案 / 取消)
+  // Proposal expired banner (three choices: still apply / re-propose / cancel)
   const [proposalStale, setProposalStale] = useState(false);
-  // 前置 skill_guard 待决卡 + 工具参数实时流(皆为临时态)
+  // Pre-skill_guard pending card + tool parameter real-time stream (all temporary)
   const [pendingGuard, setPendingGuard] = useState<PendingGuard | null>(null);
   const [liveTool, setLiveTool] = useState<LiveTool | null>(null);
   const pendingGuardRef = useRef<PendingGuard | null>(null);
@@ -175,7 +175,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
           if (ev.type === 'text-start') {
             setMessages((m) => {
               const last = m[m.length - 1];
-              // thinking 增量可能已开了本轮的助手气泡(只有思考没正文)→ 复用,不再另起一条
+              // The thinking increment may have opened the current round of assistant bubbles (only thinking without text) → reuse, no longer create a new one
               if (last?.role === 'assistant' && last.text === '' && last.thinking) return m;
               return [...m, { role: 'assistant', text: '' }];
             });
@@ -221,7 +221,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
         }, {
           askOnly: opts?.askOnly,
           signal: ac.signal,
-          // 前置 skill_guard:已记住授权直接放行;否则挂待决卡等用户。
+          // Pre-skill_guard: Authorization has been remembered and released directly; otherwise, the pending card will be hung up to wait for the user.
           onSkillGuard: ({ skill, tool }) => {
             if (isSkillAllowed(skill, projectId)) return Promise.resolve<GuardDecision>('allow-once');
             return new Promise<GuardDecision>((resolve) => {
@@ -265,14 +265,14 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     [running, projectId],
   );
 
-  // Stop the in-flight turn (发送按钮在运行中切换为停止)。
-  // 待决 skill_guard 卡随停止一并按「拒绝」结算,避免 Promise 悬挂。
+  // Stop the in-flight turn (Send button switches to stop in flight).
+  // The pending skill_guard card will be settled by pressing "Reject" when stopped to avoid Promise hanging.
   const stop = useCallback(() => {
     pendingGuardRef.current?.resolve('deny');
     abortRef.current?.abort();
   }, []);
 
-  // 增强提示词(✨ wand): one-shot LLM rewrite of the composer draft into a
+  // Enhanced prompt word (✨ wand): one-shot LLM rewrite of the composer draft into a
   // clearer, executable editing instruction. No tools, no state change; returns
   // the improved text (or the original on any failure).
   const enhance = useCallback(async (draft: string): Promise<string> => {
@@ -311,7 +311,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   const applyProposal = useCallback((selected: Set<number>) => {
     const p = proposalRef.current;
     if (!p) return;
-    // 过期不再直接丢弃:挂横幅,等用户选 仍然应用/重新提案/取消。
+    // Expired items will no longer be discarded directly: hang a banner and wait for the user to choose to still apply/re-propose/cancel.
     if (isProposalStale(p, ctxRef.current.getDoc())) {
       setProposalStale(true);
       return;
@@ -319,10 +319,10 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     doApply(selected);
   }, [doApply]);
 
-  // 「仍然应用」:明知快照已变仍重放 —— 索引敏感操作可能落错位,由用户拍板。
+  // "Apply anyway": Replay even though the snapshot has changed - index-sensitive operations may be misplaced and may be decided by the user.
   const forceApplyProposal = useCallback((selected: Set<number>) => { doApply(selected); }, [doApply]);
 
-  // 「重新提案」:丢弃旧卡,请 agent 按当前时间线重推等价修改。
+  // "Re-proposal": Discard the old card and ask the agent to re-promote the equivalent modification according to the current timeline.
   const reProposeStale = useCallback(() => {
     if (!proposalRef.current) return;
     setProposalStale(false);
@@ -345,7 +345,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     setProposal(null);
   }, []);
 
-  // 清空对话: drop the rendered rows + the LLM history +
+  // Clear the conversation: drop the rendered rows + the LLM history +
   // the persisted copy + any pending proposal, so a fresh conversation starts
   // (does NOT touch the timeline).
   const clearHistory = useCallback(() => {

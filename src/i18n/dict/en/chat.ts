@@ -1,7 +1,7 @@
-// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
-// 覆盖:components/chat/*。聊天消息内容本体(LLM 生成文本)不进词典,只翻 chrome。
+// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
+// Override: components/chat/*. The chat message content ontology (LLM generated text) is not entered into the dictionary, but can only be translated into Chrome.
 export default {
-  // ── ChatPanel 壳层 ──
+  // ── ChatPanel shell ──
   '展开 OpenChatCut Agent': 'Expand OpenChatCut Agent',
   '收起 OpenChatCut Agent': 'Collapse OpenChatCut Agent',
   '清空对话': 'Clear chat',
@@ -34,7 +34,7 @@ export default {
   '将当前时间线中的人声音量标准化': 'Normalize dialogue loudness on the current timeline',
   '将当前工程转换为 9:16 竖屏，并调整主要画面构图': 'Convert the current project to 9:16 portrait and reframe the main visuals',
 
-  // ── 空工程 starter(标签 + 预填提示词) ──
+  // ── Empty project starter (label + prefilled prompt word) ──
   '口播净剪': 'Clean talking-head edit',
   '去停顿、赘词并同步字幕': 'Remove pauses and filler, then sync captions',
   '动态包装': 'Motion package',
@@ -54,7 +54,7 @@ export default {
   '根据我的概念策划一支 AI 影像，补全镜头、声音和节奏': 'Plan an AI visual from my concept, developing the shots, sound, and pacing',
   '把主题整理成结构清晰、带字幕和视觉提示的讲解视频': 'Turn the topic into a structured explainer with captions and visual cues',
 
-  // ── 片场「思考中」短语(en/zh 双语清单) ──
+  // ── "Thinking" phrases on set (en/zh bilingual list) ──
   '拉焦中': 'Pulling focus',
   '推轨道车': 'Pushing the dolly',
   '检查片门': 'Checking the gate',
@@ -84,7 +84,7 @@ export default {
   'L切走起': 'Rolling an L-cut',
   '接胶片': 'Splicing film',
 
-  // ── ChatComposer:模式 / 设置 popover ──
+  // ── ChatComposer:mode / settings popover ──
   '模式': 'Mode',
   '代理模式': 'Agent mode',
   '可编辑时间线，改动可撤销': 'Can edit the timeline; changes are undoable',
@@ -111,7 +111,7 @@ export default {
   '计划模式': 'Plan mode',
   '先出编号计划，确认后再动手。': 'Presents a numbered plan first; acts after you confirm.',
 
-  // ── ChatComposer:引用 / 技能 / 动作条 ──
+  // ── ChatComposer: Reference / Skill / Action Bar ──
   '选择模式：点片段 / 拖画布 / 选文字稿作为引用': 'Selection mode: click clips / drag canvas / select transcript as references',
   '引用媒体池素材': 'Reference media-pool assets',
   '媒体池暂无素材': 'No assets in the media pool yet',
@@ -134,7 +134,7 @@ export default {
   '导入素材中…': 'Importing media…',
   '关闭': 'Close',
 
-  // ── 创作技能 summary(技能名走 catalog 自带英文 name,不进词典) ──
+  // ── Creation skill summary (the skill name is in the catalog and comes with its own English name, not in the dictionary) ──
   '把一条长播客、访谈、课程或直播剪成适合社媒发布的短视频和高光。': 'Cut one long podcast, interview, course, or livestream into social-ready shorts and highlights.',
   '把产品、活动、旅行或游戏素材剪成适合社媒发布的 Reels。': 'Turn product, event, travel, or gameplay footage into social-ready reels.',
   '规划并制作 AI 电影感短片，覆盖故事、镜头、提示词、连续性和最终检查。': 'Plan and produce AI cinematic shorts — story, shots, prompts, continuity, and final checks.',
@@ -174,7 +174,7 @@ export default {
   '展开全部': 'Expand all',
   '{n} 次': '{n} calls',
 
-  // ── WidgetCard(表单字段/选项文案是 LLM 输出,不翻;只翻静态 chrome) ──
+  // ── WidgetCard (form field/option copy is LLM output, not translated; only static chrome is translated) ──
   '必选': 'Required',
   '可选': 'Optional',
   '其他…': 'Other…',

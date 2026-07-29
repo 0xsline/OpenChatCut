@@ -7,9 +7,9 @@ import { isSafeUploadName, mimeFor, resolveUploadFile, uploadDir } from '../medi
 import { presignGetUpload, putUploadFile } from '../r2.ts';
 import { fetchGeneratedResult } from './result-download.ts';
 
-// MIME 判定统一用 media-dir 那张表(上传准入用的是同一张)。这里原本有一份只认 6 种
-// 扩展名的副本,其余一律兜底成 image/jpeg——.heic/.heif/.avif/.gif/.mov 这些确实能进
-// /media/uploads 的类型,会被贴上 image/jpeg 标签连同非 JPEG 字节一起发给供应商。
+// MIME determination uses the media-dir table (the same table is used for upload access). There was originally a copy here that only recognized 6 species.
+// A copy of the extension, and the rest will be image/jpeg — .heic/.heif/.avif/.gif/.mov These can indeed be entered
+// The type of /media/uploads will be tagged with image/jpeg and sent to the supplier together with non-JPEG bytes.
 export async function mediaDataUrl(path: string): Promise<string> {
   const { file } = localMedia(path);
   const bytes = await readFile(file);

@@ -1,26 +1,26 @@
-// 静音死气检测核心(remove_silence)。命名风格同 loudness(纯函数 + 浏览器专用拆分)。
+// Silent dead air detection core (remove_silence). The naming style is the same as loudness (pure function + browser-specific split).
 //
-// 检测语义:
-//   死气 = 电平显著低于「这段录音自己的语音电平」的连续非语音段。
-//   参照电平取窗口 RMS 的高分位(默认 P90),阈值 = 参照 + thresholdDb(默认 -26dB),
-//   再叠一道绝对下限(-35dBFS):两者都低于才算静。相对阈值保证音乐床/响环境音
-//   不被切;参照本身低于 -45dBFS 视为"整段没有语音",直接不出段。
-//   边界各留 padMs 呼吸口,短于 minSilenceMs 的间隙不动。
+// Detection semantics:
+// Dead air = Continuous non-speech segments whose level is significantly lower than "the level of this recording's own speech".
+// The reference level takes the high decile of the window RMS (default P90), threshold = reference + thresholdDb (default -26dB),
+// Add another absolute lower limit (-35dBFS): it is considered quiet if both are lower than it. Relative threshold ensures music bed/loud ambient sound
+// Not cut; if the reference itself is lower than -45dBFS, it will be regarded as "the entire segment has no voice", and the segment will not be output directly.
+// Leave padMs breathing ports on each boundary, and the gap shorter than minSilenceMs will not move.
 
-// ── 纯函数(node-testable) ──────────────────────────────────────────────
+// ── Pure function (node-testable) ────────────────────────────────────────────
 
 export interface SilenceSpan {
-  /** 源媒体毫秒(相对被分析音频的 0 点) */
+  /** Source media milliseconds (relative to 0 point of the analyzed audio) */
   startMs: number;
   endMs: number;
 }
 
 export interface SilenceParams {
-  /** 相对语音参照电平的判静阈值(dB,默认 -26;更负 = 更保守) */
+  /** Silence threshold relative to speech reference level (dB, default -26; more negative = more conservative) */
   thresholdDb?: number;
-  /** 只删至少这么长的静段(ms,默认 600) */
+  /** Only delete static segments that are at least this long (ms, default 600) */
   minSilenceMs?: number;
-  /** 每侧保留的呼吸口(ms,默认 150) */
+  /** Breathing ports reserved on each side (ms, default 150) */
   padMs?: number;
 }
 
@@ -30,14 +30,14 @@ export const SILENCE_DEFAULTS: Required<SilenceParams> = {
   padMs: 150,
 };
 
-/** 整段录音没有可信语音参照时的判定下限(dBFS)。 */
+/** The lower limit (dBFS) when there is no credible voice reference for the entire recording. */
 const SPEECH_FLOOR_DB = -45;
-/** 相对阈值之外的绝对判静上限(dBFS):再怎么"相对低",高于它就不算静。 */
+/** The absolute upper limit of static determination (dBFS) outside the relative threshold: no matter how "relatively low" it is, anything above it is not considered static. */
 const ABSOLUTE_SILENCE_DB = -35;
 
 const toDb = (rms: number): number => 20 * Math.log10(Math.max(rms, 1e-8));
 
-/** 窗口化 RMS 包络(不重叠 hop = windowMs)。 */
+/** Windowed RMS envelope (non-overlapping hop = windowMs). */
 export function rmsEnvelope(samples: Float32Array, sampleRate: number, windowMs = 50): Float32Array {
   if (samples.length === 0 || sampleRate <= 0 || windowMs <= 0) return new Float32Array(0);
   const win = Math.max(1, Math.round((sampleRate * windowMs) / 1000));
@@ -58,7 +58,7 @@ function percentileDb(env: Float32Array, p: number): number {
   return toDb(sorted[idx] ?? 0);
 }
 
-/** 从 RMS 包络找死气段(源毫秒)。 */
+/** Find the dead breath segment (source milliseconds) from the RMS envelope. */
 export function detectSilentSpans(
   env: Float32Array,
   windowMs: number,
@@ -70,7 +70,7 @@ export function detectSilentSpans(
   const padMs = params.padMs ?? SILENCE_DEFAULTS.padMs;
 
   const speechRefDb = percentileDb(env, 0.9);
-  if (speechRefDb < SPEECH_FLOOR_DB) return []; // 整段没有语音参照(纯静/纯底噪)→ 不动
+  if (speechRefDb < SPEECH_FLOOR_DB) return []; // There is no voice reference in the entire paragraph (pure silence/pure noise) → no movement
   const gateDb = Math.min(speechRefDb + thresholdDb, ABSOLUTE_SILENCE_DB);
 
   const spans: SilenceSpan[] = [];
@@ -91,7 +91,7 @@ export function detectSilentSpans(
   return spans;
 }
 
-// ── 浏览器专用(fetch + WebAudio 解码) ──────────────────────────────────
+// ── Browser only (fetch + WebAudio decoding) ─────────────────────────────────
 
 function mixToMono(buffer: AudioBuffer): Float32Array {
   const { numberOfChannels, length } = buffer;
@@ -105,7 +105,7 @@ function mixToMono(buffer: AudioBuffer): Float32Array {
 
 const ENVELOPE_WINDOW_MS = 50;
 
-/** 拉源→离线解码→混单声道→包络→死气段(源毫秒)。浏览器专用。 */
+/** Pull source → offline decoding → mix mono → envelope → silent interval (source milliseconds). Browser only. */
 export async function analyzeClipSilence(src: string, params: SilenceParams = {}): Promise<SilenceSpan[]> {
   const res = await fetch(src);
   if (!res.ok) throw new Error(`加载音频失败: ${src} (HTTP ${res.status})`);

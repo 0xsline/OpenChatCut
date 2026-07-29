@@ -1,4 +1,4 @@
-// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
+// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
 export default {
   '切换界面语言': 'Switch UI language',
   '返回工程列表': 'Back to projects',

@@ -33,7 +33,7 @@ function finalize(value: unknown): ProjectDoc | null {
   const assets = dedupeAssets(Array.isArray(value.assets) ? value.assets : []).map((asset) => (
     asset.folderId && !folderIds.has(asset.folderId) ? { ...asset, folderId: undefined } : asset
   ));
-  // 顺手压回合法范围:非法的淡化/越界关键帧只有在这里修,才不用等用户先动一下片段。
+  // Smoothly push back to the legal range: illegal fade/out-of-bounds keyframes can only be repaired here, without waiting for the user to move the clip first.
   const timelines = value.timelines.map(normalizeTimelineTracks).map(fitTimelineItems);
   return {
     version: CURRENT_PROJECT_VERSION,

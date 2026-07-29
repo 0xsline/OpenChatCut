@@ -1,6 +1,6 @@
 #version 300 es
 precision highp float;
-// Inspired by disposable / 拍立得 / cheap point-and-shoot: soft focus feel via
+// Inspired by disposable, instant, and cheap point-and-shoot cameras: soft focus feel via
 // mild blur-like desat, green-magenta cast, heavy grain, vignette-ish edges.
 // Not an official film stock.
 uniform sampler2D u_input;

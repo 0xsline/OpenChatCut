@@ -3,12 +3,12 @@ import type { AgentContext } from '../context';
 import type { MediaAsset, TimelineItem } from '../../editor/types';
 import { compileTemplate } from '../../template-host';
 
-// edit_asset: 改/删「库资产」(媒体池里的 asset,非时间线片段)。
-// - update: 改名 / 改 props / 对 code 类资产(MG)换源码 — 换 code 必须先通过 MG 沙箱，
-//   未通过则不落库。MediaAsset 不存缩略图(MG 预览按 code 现渲),无需失效。
-// - delete: 从池里移除。confirmImpact:若有片段引用它(MG 按 templateId、媒体按 src),
-//   先报计数、要 confirm:true 才删(片段自身已拷贝 code/持有 src,删池条目不破坏它们)。
-// manage_media_pool.rename_asset 也支持改名；edit_asset 保留同一能力。
+// edit_asset: Change/delete "library assets" (assets in the media pool, non-timeline clips).
+// - update: rename / change props / change the source code of the code class asset (MG) - changing the code must first go through the MG sandbox.
+// If it fails, it will not be dropped into the library. MediaAsset does not store thumbnails (MG preview is rendered according to code), no need to invalidate.
+// - delete: Remove from the pool. confirmImpact: If a fragment refers to it (MG presses templateId, media presses src),
+// Report the count first and delete after confirm:true (the fragment itself has copied the code/holds src, and deleting the pool entries will not destroy them).
+// manage_media_pool.rename_asset also supports rename; edit_asset retains the same capability.
 
 type Args = Record<string, unknown>;
 
@@ -58,7 +58,7 @@ function update(asset: MediaAsset, args: Args, ctx: AgentContext): unknown {
   if (code) {
     if (asset.kind !== 'motion-graphic') return { error: `asset "${asset.name}" is ${asset.kind}, not a code (motion-graphic) asset — code cannot be set` };
     try {
-      compileTemplate(code); // 静态黑名单与受限作用域编译均通过后才落库。
+      compileTemplate(code); // Static blacklist and restricted scope compilation must be passed before being dropped into the library.
     } catch (e) {
       return { error: `new code rejected by sandbox: ${e instanceof Error ? e.message : String(e)}`, code };
     }

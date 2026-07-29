@@ -6,7 +6,7 @@ import type { DisplayMessage } from '../../agent/useAgent';
 
 const GREEN = theme.success;
 
-// Collapsed row for a run of same-name tool calls: "● edit_gap · 20 次 ▸".
+// Collapsed row for a run of same-name tool calls: "● edit_gap · 20 times ▸".
 // Click to expand the individual rows (each keeps its own arg summary). Mirrors
 // the single tool-row look in ChatMessage so the collapsed/expanded states match.
 export function ToolGroupRow({ name, items }: { name: string; items: { msg: DisplayMessage; index: number }[] }) {

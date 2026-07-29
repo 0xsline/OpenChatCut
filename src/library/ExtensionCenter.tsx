@@ -35,7 +35,7 @@ function readRegistryCache(locale: Locale): RegistryEntry[] {
 function saveRegistryCache(locale: Locale, entries: RegistryEntry[]): void {
   try {
     localStorage.setItem(registryCacheKey(locale), JSON.stringify(entries));
-  } catch { /* 缓存不可用不影响在线发现 */ }
+  } catch { /* Unavailability of cache does not affect online discovery*/ }
 }
 
 async function fetchRegistry(locale: Locale, signal: AbortSignal): Promise<RegistryEntry[]> {

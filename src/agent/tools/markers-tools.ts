@@ -6,14 +6,14 @@ import { buildModel, type SegRow } from '../../script/serialize';
 import { makeWordFrameMapper } from './transcript-find';
 import { resolveTimeline } from './timeline-target';
 
-// manage_markers — 时间线批注(点/段),锚在帧上或某 clip 上，契约为 marker-note-v2。
-// 参数包含 action + fromFrame/durationFrames/note/itemId +
-// markers/updates(批量)。编辑层已全就绪(Marker 类型 + reducer addMarker/updateMarker/
-// removeMarker + store 命令),这里只做薄 agent 包装:list/create/update/delete。
-// transcript-backed notes:create 传 transcriptSegments("3"/"3-5"/逗号列表,
-// 与 read_script 的 [sN] 同一套编号)即可省 fromFrame/note——帧位由词级时间戳换算
-// (makeWordFrameMapper,与播放层共用映射),note 正文拷贝段文本,可挂 notePrefix 标签;
-// transcriptTrack 过滤轨道。批量 markers[] 的每一项同样支持。
+// manage_markers — Timeline annotations (points/segments), anchored on the frame or a clip, the contract is marker-note-v2.
+// Parameters include action + fromFrame/durationFrames/note/itemId +
+// markers/updates (batch). The editing layer is fully ready (Marker type + reducer addMarker/updateMarker/
+// removeMarker + store command), only thin agent packaging is used here: list/create/update/delete.
+// transcript-backed notes:create pass transcriptSegments("3"/"3-5"/comma list,
+// The same set of numbers as [sN] of read_script) can be omitted fromFrame/note - the frame bit is converted from the word-level timestamp
+// (makeWordFrameMapper, shared mapping with the playback layer), copy the text of the note body, and can attach the notePrefix tag;
+// transcriptTrack filter track. Batch markers[] for each item are also supported.
 
 type Args = Record<string, unknown>;
 
@@ -67,7 +67,7 @@ const num = (v: unknown): number | undefined => (typeof v === 'number' && Number
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
 const color = (v: unknown): MarkerColor | undefined => (COLORS.includes(v as MarkerColor) ? (v as MarkerColor) : undefined);
 
-/** "3" / "3-5" / "2,4-6"(容忍 s 前缀,如 "s3-s4")→ 升序去重段号;非法返回 null。 */
+/** "3" / "3-5" / "2,4-6" (tolerate s prefix, such as "s3-s4") → remove duplicate segment numbers in ascending order; illegal return null.*/
 function parseSegmentSpec(spec: string): number[] | null {
   const out = new Set<number>();
   for (const part of spec.split(',')) {
@@ -83,9 +83,9 @@ function parseSegmentSpec(spec: string): number[] | null {
 
 interface SegmentAnchor { fromFrame: number; durationFrames: number; note: string }
 
-/** transcriptSegments → {fromFrame, durationFrames, note}。段号与 read_script 的 [sN]
- *  同一套编号(buildModel);帧位经 makeWordFrameMapper 用词级时间戳换算(与播放层同源,
- *  保持词帧一致);note = 所选段的 keptText(即 read_script 显示的文本)。 */
+/** transcriptSegments → {fromFrame, durationFrames, note}. Segment number and read_script's [sN]
+ *  The same set of numbers (buildModel); the frame bits are converted with word-level timestamps by makeWordFrameMapper (same origin as the playback layer,
+ *  Keep the word frame consistent); note = keptText of the selected segment (that is, the text displayed by read_script).*/
 function resolveTranscriptSegments(state: TimelineState, spec: string, trackFilter?: string): SegmentAnchor | { error: string } {
   const sns = parseSegmentSpec(spec);
   if (!sns) return { error: `transcriptSegments "${spec}" 无法解析——用 read_script 输出的 [sN] 编号,如 "3"、"3-5" 或 "2,4-6"` };
@@ -93,7 +93,7 @@ function resolveTranscriptSegments(state: TimelineState, spec: string, trackFilt
   const tracks = trackFilter ? model.filter((t) => t.track.toLowerCase() === trackFilter.toLowerCase()) : model;
   if (trackFilter && !tracks.length) return { error: `transcriptTrack "${trackFilter}" 不存在或该轨无内容` };
 
-  // 每个转写 region(= 一个转写 clip)按 sn 建索引;候选 = 含全部所选段的 region
+  // Each transcribed region (= a transcribed clip) is indexed by sn; candidate = region containing all selected segments
   const candidates: { track: string; itemId: string; rows: Map<number, SegRow> }[] = [];
   for (const t of tracks) {
     for (const region of t.regions) {
@@ -135,7 +135,7 @@ function createOpts(o: Args, state: TimelineState): { fromFrame: number; opts: P
   let note = str(o.note);
   const spec = str(o.transcriptSegments);
   if (spec) {
-    // 显式 fromFrame/note 优先；缺省时从所选段派生(note 可挂 notePrefix 标签)。
+    // Explicit fromFrame/note takes precedence; by default it is derived from the selected segment (note can be tagged with notePrefix).
     const derived = resolveTranscriptSegments(state, spec, str(o.transcriptTrack));
     if ('error' in derived) return derived;
     if (fromFrame === undefined) fromFrame = derived.fromFrame;

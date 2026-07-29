@@ -132,7 +132,7 @@ function parseKeyframesArg(raw: unknown): { keyframes?: ItemKeyframes; error?: s
       const value = finiteNum(k.value);
       if (frame === undefined || frame < 0) return { error: `keyframes.${prop}: frame must be a finite number ≥ 0` };
       if (value === undefined || value < lo || value > hi) {
-        // 实况教训:模型按 px 发 x/y 被拒——单位是画布百分比,错误里点明
+        // Real-life lessons: The model was rejected when sending x/y according to px - the unit is the canvas percentage, and the error is pointed out
         const unitNote = prop === 'x' || prop === 'y' ? ' (x/y are % of canvas, NOT px; 100 = one full canvas width/height)' : '';
         return { error: `keyframes.${prop}: value must be a finite number in ${lo}..${hi}${unitNote}` };
       }

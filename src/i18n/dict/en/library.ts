@@ -1,6 +1,6 @@
-// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
+// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
 export default {
-  // LibraryPanel 主/子页签
+  // LibraryPanel main/sub tab
   '我的素材': 'My Media',
   '资源库': 'Library',
   '文字稿': 'Transcript',
@@ -44,7 +44,7 @@ export default {
   '预览：{name}（选中片段后可应用）': 'Preview: {name} (select a clip to apply)',
   '应用到选中片段：{name}': 'Apply to selected clip: {name}',
   '拖到时间线：{name}': 'Drag to timeline: {name}',
-  // TemplateBrowser chips / 分类标签(组件内写死的 UI 标签)
+  // TemplateBrowser chips / Category labels (UI labels hard-coded in components)
   '收藏': 'Favorite',
   '最近': 'Recent',
   '热门': 'Popular',
@@ -69,7 +69,7 @@ export default {
   '更多操作': 'More actions',
   '添加到时间线': 'Add to timeline',
   '用 AI 生成': 'Generate with AI',
-  '确认删除': 'Confirm Delete', // 与 components.ts 同键同值
+  '确认删除': 'Confirm Delete', // Same key and same value as components.ts
   '取消': 'Cancel',
   '删除': 'Delete',
   '从资源库列表移除(本地隐藏);时间线已用片段不受影响': 'Remove from the library list (hidden locally); clips already on the timeline are not affected',

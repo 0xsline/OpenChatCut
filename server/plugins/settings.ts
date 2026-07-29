@@ -41,9 +41,9 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-/** keyStatus + 当前素材目录的绝对路径。FCPXML 导出要把 /media/uploads/<name>
- * 换算成真实磁盘路径,否则 NLE 里每条素材都是离线的;目录随 MEDIA_DIR 变,
- * 只有服务端知道,所以随设置一起回给前端(非密钥,可公开)。 */
+/** keyStatus + absolute path to the current asset directory. FCPXML export goes to /media/uploads/<name>
+ * Convert to real disk path, otherwise every asset in NLE will be offline; the directory changes with MEDIA_DIR,
+ * Only the server knows, so it is returned to the front-end along with the settings (non-key, can be disclosed). */
 function settingsBody() {
   return { ...keyStatus(), mediaDir: uploadDir() };
 }
@@ -55,8 +55,8 @@ export function settingsPlugin(): Plugin {
       server.middlewares.use('/api/keys', async (req, res) => {
         try {
           if (req.method === 'GET') { sendJson(res, 200, settingsBody()); return; }
-          // POST /api/keys/test:「测试连接」探测。overrides = 面板未保存的暂存值,
-          // 仅本次探测生效,不落 keystore / .env.local;结果永不含密钥值。
+          // POST /api/keys/test: "Test connection" detection. overrides = unsaved temporary values of the panel,
+          // Only this detection takes effect and does not fall into keystore / .env.local; the result will never contain the key value.
           if (req.method === 'POST' && req.url === '/test') {
             const body = await readBody(req);
             const page = typeof body.page === 'string' ? body.page : '';

@@ -5,7 +5,7 @@ import { pluginAssetId } from '../plugins/types';
 import type { PropSpec, Tpl } from '../types';
 import type { ResourceItem } from './ResourceBrowser';
 
-/** 已装扩展实时列表(安装/卸载自动刷新) */
+/** Real-time list of installed extensions (installation/uninstallation automatically refreshes) */
 export function usePluginPacks(): InstalledPack[] {
   const [packs, setPacks] = useState<InstalledPack[]>([]);
   useEffect(() => {
@@ -21,7 +21,7 @@ export function usePluginPacks(): InstalledPack[] {
   return packs;
 }
 
-/** 某类扩展条目 → 资源卡列表(转场/特效/LUT/缩放 tab 合并用) */
+/** Certain types of extended entries → Resource card list (for transition/special effects/LUT/zoom tab merging) */
 export function pluginResourceItems(
   packs: InstalledPack[],
   type: 'fx' | 'lut' | 'transition' | 'zoom',
@@ -54,7 +54,7 @@ export function pluginResourceItems(
   return out;
 }
 
-/** 从 props 默认值推断检查器 schema(无 propSchema 时的回落) */
+/** Infer checker schema from props default values (fallback when no propSchema is available) */
 function inferPropSchema(props: Record<string, unknown>): PropSpec[] {
   const out: PropSpec[] = [];
   for (const [key, val] of Object.entries(props)) {
@@ -96,7 +96,7 @@ function schemaFromMgItem(item: {
   }));
 }
 
-/** 扩展 MG 模板 → Tpl(合并进模板浏览器;code 走既有沙箱编译/快照机制) */
+/** Extend MG template → Tpl (merge into template browser; code uses existing sandbox compilation/snapshot mechanism) */
 export function pluginTemplates(packs: InstalledPack[]): Tpl[] {
   const out: Tpl[] = [];
   for (const pack of packs) {
@@ -123,7 +123,7 @@ export function pluginTemplates(packs: InstalledPack[]): Tpl[] {
   return out;
 }
 
-/** 模板拖拽 data 的形状校验(拖拽 JSON 不可信)→ 可直接 addMotionGraphic 的 Tpl */
+/** Shape verification of template drag and drop data (drag and drop JSON is not trustworthy) → Tpl of addMotionGraphic can be directly added*/
 export function asPluginTpl(data: unknown): Tpl | null {
   if (!data || typeof data !== 'object') return null;
   const template = data as Partial<Tpl>;
@@ -159,7 +159,7 @@ export function asPluginTpl(data: unknown): Tpl | null {
   };
 }
 
-/** 缩放卡片 data 的形状校验(拖拽 JSON 不可信) */
+/** Shape verification of zoom card data (drag and drop JSON is not trusted)*/
 export function asPluginZoom(data: unknown): ZoomEffect | null {
   if (!data || typeof data !== 'object') return null;
   const zoom = data as Partial<ZoomEffect> & { label?: unknown };

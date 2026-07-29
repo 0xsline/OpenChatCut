@@ -14,7 +14,7 @@ import { useT } from './i18n/locale';
 
 const Editor = lazy(() => import('./Editor'));
 
-// A brand-new project starts empty; the first-run "示例工程" gets the seed clips.
+// A brand-new project starts empty; the first-run "Sample Project" gets the seed clips.
 const emptyState = (): TimelineState => ({
   fps: 30,
   width: 1920,
@@ -117,7 +117,7 @@ export default function App() {
       onNew={async () => { const m = await createProject(randomProjectName(), emptyDoc()); await refresh(); go(`#/editor/${m.id}`); }}
       onRename={async (id, name) => { await renameProject(id, name); refresh(); }}
       onDuplicate={async (id) => { await duplicateProject(id); refresh(); }}
-      onDelete={async (id) => { await purgeProjectCascade(id); refresh(); }}  // 级联:删工程 + 清其独占素材
+      onDelete={async (id) => { await purgeProjectCascade(id); refresh(); }}  // Cascade: delete the project + clear its exclusive assets
       onExport={async (id, name) => {
         const r = await buildProjectExport(id, name);
         downloadBlob(r.blob, r.filename);
@@ -138,7 +138,7 @@ export default function App() {
   );
 }
 
-// Blob 下载:同步 revoke 会掐掉 Chrome 的下载(插件导出踩过),必须挂 DOM + 延时回收。
+// Blob download: Synchronous revoke will interrupt the Chrome download (plugin export is ignored), and DOM + delayed recycling must be installed.
 function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

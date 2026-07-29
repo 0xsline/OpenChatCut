@@ -18,9 +18,9 @@ interface DashboardProps {
   onRename: (id: string, name: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => Promise<void>;
-  /** 导出工程为 .ccproj.json(跨端迁移);返回给用户看的结果文案 */
+  /** Export the project as .ccproj.json (cross-end migration); return the result copy to the user */
   onExport: (id: string, name: string) => Promise<string>;
-  /** 导入 .ccproj.json;返回结果文案 */
+  /** Import .ccproj.json; return the result copy */
   onImport: (file: File) => Promise<string>;
 }
 
@@ -81,11 +81,11 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
-  const [note, setNote] = useState<string | null>(null);  // 导入/导出结果的轻提示
-  const [busy, setBusy] = useState(false);                // 大素材 base64 化耗时,防连点
+  const [note, setNote] = useState<string | null>(null);  // Light tips for importing/exporting results
+  const [busy, setBusy] = useState(false);                // Base64 conversion of large assets is time-consuming and prevents connection points
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // 工程卡海报帧:先并行显示缓存(过期缓存也先用),再用两个后台任务刷新。
+  // Project card poster frame: first display the cache in parallel (the expired cache is also used first), and then refresh it with two background tasks.
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const renderingRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -113,7 +113,7 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
             if (!dataUrl) continue;
             await saveProjectThumb(entry.m.id, key, dataUrl);
             if (alive) setThumbs((prev) => ({ ...prev, [entry.m.id]: dataUrl }));
-          } catch { /* 保留旧图或占位 */ } finally {
+          } catch { /* Keep old pictures or placeholders*/ } finally {
             renderingRef.current.delete(cacheKey);
           }
         }
@@ -142,13 +142,13 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
   };
   const pickImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = '';  // 同一文件可重复选
+    e.target.value = '';  // The same file can be selected repeatedly
     if (file) void runTransfer(onImport(file));
   };
 
   return (
-    // 全局 html/body/#root 都是 overflow:hidden(编辑器需要),仪表盘自己开滚动:
-    // header 固定,main 是唯一的纵向滚动容器,工程多时最后一行也能滚出来。
+    // The global html/body/#root is overflow:hidden (required by the editor), and the dashboard scrolls by itself:
+    // The header is fixed, main is the only vertical scrolling container, and the last line can be scrolled out even if the project is long.
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: theme.bg, color: theme.text, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <header style={{ height: 48, flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10, padding: '0 24px', borderBottom: `0.5px solid ${theme.border}`, background: theme.panel }}>
         <BrandMark size={20} />

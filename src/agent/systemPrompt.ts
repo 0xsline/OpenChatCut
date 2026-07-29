@@ -5,20 +5,20 @@ import { timelineTrackIds, trackAlias, trackKind, type DesignStyle } from '../ed
 import { type CreativeSkill } from './skills/skills-catalog';
 import type { AgentContext } from './context';
 
-// <editor_state>:每条消息随发的时间线快照,拼进 system,
-// agent 开局即见时间线,无需先调 read_timeline。保持紧凑:不含 props/转场细节,
-// 条目多时截断 —— 细节仍走 read_timeline。快照按「发送这条消息的时刻」取。
+// <editor_state>: Timeline snapshot of each message, spelled into system,
+// The agent will see the timeline when it starts, there is no need to adjust read_timeline first. Keep it compact: no props/transition details,
+// Truncated when there are many entries - details still go to read_timeline. Snapshots are taken based on the "time when this message was sent".
 const EDITOR_STATE_MAX_ITEMS = 60;
 
 /**
- * 拼系统提示词:稳定段落在前,每轮都会变的那一段固定收尾。
+ * Spelling system prompt words: The stable paragraph comes first, and the paragraph that changes every round has a fixed ending.
  *
- * 提示词缓存(Anthropic 显式断点、OpenAI/DeepSeek/Qwen/Kimi 的自动前缀缓存)匹配的都是
- * **逐字节前缀**。只要有一段易变内容排在中间,它后面的所有东西——其余段落、上百个工具
- * schema、整段对话历史——每轮都要重新计费。而一次用户消息最多可以跑 MAX_TOOL_TURNS 轮。
+ * The prompt word cache (Anthropic explicit breakpoint, OpenAI/DeepSeek/Qwen/Kimi's automatic prefix cache) matches all
+ * **Byte-by-byte prefix**. As long as there’s a piece of volatile content in the middle, everything that comes after it — the rest of the paragraphs, hundreds of tools
+ * Schema, entire conversation history - recalculated every round. A user message can run for up to MAX_TOOL_TURNS rounds.
  *
- * 所以这个函数把易变段强制放到末尾:新增段落加进 `stable` 即可,不必再记住顺序。
- * exported for verify。
+ * So this function forces the volatile paragraphs to the end: just add new paragraphs to `stable` without having to remember the order.
+ * exported for verify.
  */
 export function assembleSystemPrompt(stable: readonly string[], volatilePart: string): string {
   return stable.join('') + volatilePart;

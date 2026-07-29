@@ -136,9 +136,9 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   "PREFERRED_VOICE_VENDOR",
   "PREFERRED_VIDEO_VENDOR",
   "PREFERRED_MUSIC_VENDOR",
-  "R2_ENABLED", // 云同步开关('' 缺省=启用,'0'=停用)——配置不是凭据
-  "R2_PRESIGN", // 浏览器预签名直传('' 缺省=启用,'0'=仅服务端写穿)
-  "MEDIA_DIR", // 素材保存目录(本机路径,''=默认 public/media/uploads)——配置不是凭据
+  "R2_ENABLED", // Cloud synchronization switch ('' default = enabled, '0' = disabled) - configuration is not credentials
+  "R2_PRESIGN", // Browser pre-signed direct transmission ('' default = enabled, '0' = server-side write-through only)
+  "MEDIA_DIR", // Asset saving directory (local path, '' = default public/media/uploads) - configuration is not credentials
   ...LLM_PROVIDER_PRESETS.flatMap((preset) => {
     const names = llmProviderConfigNames(preset.id);
     return [names.baseUrl, names.model];
