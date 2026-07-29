@@ -22,6 +22,7 @@
   <a href="#产品导览">产品导览</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#在-codex--claude-code-中使用">Agent / MCP</a> ·
+  <a href="#社区">社区</a> ·
   <a href="#赞助">赞助</a> ·
   <a href="#更新日志">更新日志</a> ·
   <a href="#star-趋势">Star 趋势</a> ·
@@ -30,7 +31,7 @@
 
 <p align="center">
   <a href="https://github.com/0xsline/OpenChatCut"><img alt="GitHub Repository" src="https://img.shields.io/badge/GitHub-Repository-181717?style=flat&logo=github" /></a>
-  <a href="https://discord.gg/JActyWMjms"><img alt="Discord 社区" src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=flat&logo=discord&logoColor=white" /></a>
+  <a href="https://discord.gg/bSGUAeWYkh"><img alt="Discord 社区" src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=flat&logo=discord&logoColor=white" /></a>
   <img alt="Status" src="https://img.shields.io/badge/status-active_development-FF8A3D?style=flat" />
   <img alt="Local First" src="https://img.shields.io/badge/data-local_first-111827?style=flat" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-6-3178C6?style=flat&logo=typescript&logoColor=white" />
@@ -75,6 +76,19 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 - 🧩 **MG 与 WebGL**：动态图形模板、自定义 shader、视觉特效和转场。
 - 📦 **可交付导出**：MP4、音频、字幕、FCPXML 和工程数据。
 - 🖥️ **Local-first**：工程和素材优先保存在本机，密钥只进入服务端。
+
+---
+
+## 社区
+
+加入 OpenChatCut 社区，交流使用心得、功能建议与开发进展：
+
+- [加入 Discord](https://discord.gg/bSGUAeWYkh)
+- 使用微信扫描下方二维码加入微信群。
+
+<p align="center">
+  <img src="assets/readme-pic/wechat-community.png" width="220" alt="OpenChatCut 微信社区二维码" />
+</p>
 
 ---
 
