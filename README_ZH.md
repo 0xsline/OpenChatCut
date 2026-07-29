@@ -22,8 +22,8 @@
   <a href="#产品导览">产品导览</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#在-codex--claude-code-中使用">Agent / MCP</a> ·
-  <a href="#社区">社区</a> ·
   <a href="#赞助">赞助</a> ·
+  <a href="#社区">社区</a> ·
   <a href="#更新日志">更新日志</a> ·
   <a href="#star-趋势">Star 趋势</a> ·
   <a href="#贡献">参与贡献</a>
@@ -77,21 +77,6 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 - 📦 **可交付导出**：MP4、音频、字幕、FCPXML 和工程数据。
 - 🖥️ **Local-first**：工程和素材优先保存在本机，密钥只进入服务端。
 
----
-
-## 社区
-
-加入 OpenChatCut 社区，交流使用心得、功能建议与开发进展：
-
-- [加入 Discord](https://discord.gg/bSGUAeWYkh)
-- 使用微信扫描下方二维码加入微信群。
-
-<p align="center">
-  <img src="assets/readme-pic/wechat-community.png" width="220" alt="OpenChatCut 微信社区二维码" />
-</p>
-
----
-
 ## 赞助
 
 如果 OpenChatCut 对你有帮助，欢迎通过 Ko-fi 或爱发电支持项目持续开发。
@@ -103,6 +88,19 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
   <a href="https://www.ifdian.net/a/sline?utm_source=copylink&amp;utm_medium=link">
     <img alt="通过爱发电支持 OpenChatCut" src="https://img.shields.io/badge/%E6%94%AF%E6%8C%81%E9%A1%B9%E7%9B%AE-%E7%88%B1%E5%8F%91%E7%94%B5-946CE6" />
   </a>
+</p>
+
+---
+
+## 社区
+
+加入 OpenChatCut 社区，交流使用心得、功能建议与开发进展：
+
+- [加入 Discord](https://discord.gg/bSGUAeWYkh)
+- 使用微信扫描下方二维码加入微信群。
+
+<p align="center">
+  <img src="assets/readme-pic/wechat-community.png" width="220" alt="OpenChatCut 微信社区二维码" />
 </p>
 
 ---
