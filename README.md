@@ -22,8 +22,8 @@
   <a href="#product-tour">Product Tour</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#using-openchatcut-with-codex--claude-code">Agent / MCP</a> ·
-  <a href="#community">Community</a> ·
   <a href="#sponsor">Sponsor</a> ·
+  <a href="#community">Community</a> ·
   <a href="#changelog">Changelog</a> ·
   <a href="#star-growth">Star Growth</a> ·
   <a href="#contributing">Contributing</a>
@@ -77,21 +77,6 @@ OpenChatCut is built for creators and developers who want AI to participate in t
 - 📦 **Production-ready exports**: MP4, audio, captions, FCPXML, and complete project data.
 - 🖥️ **Local-first**: projects and media stay on your machine by default, while API keys remain server-side.
 
----
-
-## Community
-
-Join the OpenChatCut community to discuss workflows, share feedback, and follow development:
-
-- [Join Discord](https://discord.gg/bSGUAeWYkh)
-- Scan the QR code below with WeChat.
-
-<p align="center">
-  <img src="assets/readme-pic/wechat-community.png" width="220" alt="OpenChatCut WeChat community QR code" />
-</p>
-
----
-
 ## Sponsor
 
 If OpenChatCut helps you, you can support its continued development on Ko-fi or Afdian.
@@ -103,6 +88,19 @@ If OpenChatCut helps you, you can support its continued development on Ko-fi or 
   <a href="https://www.ifdian.net/a/sline?utm_source=copylink&amp;utm_medium=link">
     <img alt="Support OpenChatCut on Afdian" src="https://img.shields.io/badge/Support_on-Afdian-946CE6" />
   </a>
+</p>
+
+---
+
+## Community
+
+Join the OpenChatCut community to discuss workflows, share feedback, and follow development:
+
+- [Join Discord](https://discord.gg/bSGUAeWYkh)
+- Scan the QR code below with WeChat.
+
+<p align="center">
+  <img src="assets/readme-pic/wechat-community.png" width="220" alt="OpenChatCut WeChat community QR code" />
 </p>
 
 ---
