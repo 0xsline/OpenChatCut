@@ -34,7 +34,7 @@ import {
 } from './timelineUtil';
 import type { LibraryDragPayload } from '../../library/drag';
 import { useSelectionRefMode } from '../../agent/selection-refs';
-import { useT } from '../../i18n/locale';
+import { getLocale, useT } from '../../i18n/locale';
 import type { TimelineShortcutApi } from '../../shortcuts/timelineApi';
 
 interface TimelineProps {
@@ -52,6 +52,7 @@ interface TimelineProps {
 
 export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceover, shortcutApiRef, onReviewItem }: TimelineProps) {
   const t = useT();
+  const locale = getLocale();
   const empty = state.items.length === 0;
   const total = empty ? 0 : timelineDuration(state);
   const trackIds = timelineTrackIds(state);
@@ -357,13 +358,13 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             const headConfig = meta.kind === 'caption' ? { ...config, hidden } : config;
             const locked = config.locked ?? false;
             const kindLabel = meta.kind === 'video' ? '视频' : meta.kind === 'audio' ? '音频' : '字幕';
-            const trackName = config.name || `${t(kindLabel)} ${alias.slice(1)}`;
+            const trackName = config.name || (locale === 'en' ? alias : `${t(kindLabel)}${alias.slice(1)}`);
             const busy = items.length > 0 || !!trackCaptions
               || (indexes.transitionsByTrack.get(trackId)?.length ?? 0) > 0;
             return (
               <div key={trackId} className="cc-track-row" style={{ height: rowHeightOf(trackId), background: isDropTarget ? `color-mix(in srgb, ${theme.success} 15%, ${theme.bg})` : undefined }}>
                 <TrackHead
-                  trackId={trackId} kind={meta.kind} alias={alias} trackName={trackName} config={headConfig}
+                  trackId={trackId} kind={meta.kind} trackName={trackName} config={headConfig}
                   busy={busy} menuElevated={captionMenu?.id === trackId || duckMenu?.id === trackId}
                   width={HEADER_W} commands={commands}
                   onToggleCaptions={() => toggleCaptions(trackId)}

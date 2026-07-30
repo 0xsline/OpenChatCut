@@ -4,7 +4,7 @@
 import { theme } from '../../theme';
 import type { TimelineItem, TimelineState, TrackId, TransitionItem } from '../../editor/types';
 
-/** sticky track-head: pad 16 + badge+7 icons@20 + 7×gap4 ≈ 200 */
+/** sticky track-head: pad 16 + compact label + track actions + 4px gaps */
 export const HEADER_W = 212;
 export const MIN_ROW = 34;
 export const RULER_H = 28;

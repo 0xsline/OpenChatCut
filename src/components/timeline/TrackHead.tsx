@@ -1,7 +1,6 @@
-// Track header unit: type chip + show/mute/lock/caption switch/caption menu/dodge + delete + track name,
-// And the "Auto-dodge·Mixed character" elastic layer. The single-open mutual exclusion and external point closing status of the elastic layer still belong to the Timeline
-// (Only one of the two menus can be opened across tracks). This component only renders and forwards; the caption menu is mounted with children passed in.
-// The collapse track is offline - the collapse button is no longer provided, and the track height is constant.
+// Track header unit: highlighted track label + show/mute/lock/caption menu/dodge/delete actions,
+// plus the "Auto-dodge · mix role" popover. Cross-track menu exclusivity stays in Timeline;
+// this component only renders and forwards commands.
 import type { ReactNode } from 'react';
 import { theme } from '../../theme';
 import { Icon } from '../icons';
@@ -18,8 +17,6 @@ const flagBtn = (active: boolean): React.CSSProperties => ({
 interface TrackHeadProps {
   trackId: TrackId;
   kind: TrackKind;
-  /** stable alias like "C1"/"V1"/"A2" */
-  alias: string;
   trackName: string;
   config: TrackFlags;
   /** non-empty track (or has transitions) — delete disabled */
@@ -38,7 +35,7 @@ interface TrackHeadProps {
 }
 
 export function TrackHead({
-  trackId, kind, alias, trackName, config, busy, menuElevated, width,
+  trackId, kind, trackName, config, busy, menuElevated, width,
   commands, onToggleCaptions, onToggleCaptionMenu, onToggleDuckMenu, duckMenuPos, onCloseDuckMenu, children,
 }: TrackHeadProps) {
   const t = useT();
@@ -46,15 +43,14 @@ export function TrackHead({
   const muted = config.muted ?? false;
   const locked = config.locked ?? false;
   const isCaption = kind === 'caption';
-  const badgeLabel = kind === 'video' ? '视' : kind === 'audio' ? '音' : '字';
-  const badgeColor = kind === 'video' ? theme.trackVideo : kind === 'audio' ? theme.trackAudioA1 : theme.trackCaption;
+  const tagColor = kind === 'video' ? theme.trackVideo : kind === 'audio' ? theme.trackAudioA1 : theme.trackCaption;
   const nameTitle = config.role === 'anchor' ? `${trackName} · ${t('主轨（闪避）')}`
     : config.role === 'follower' ? `${trackName} · ${t('跟随（闪避）')}`
       : trackName;
   return (
     <div className="cc-track-head" style={{ width, ...(menuElevated ? { zIndex: 40 } : {}) }}>
       <div className="cc-track-head-controls">
-        <span className="cc-track-badge" title={t('{name}（{id}）', { name: trackName, id: trackId })} style={{ background: badgeColor }}>{`${t(badgeLabel)}${alias.slice(1)}`}</span>
+        <span className="cc-track-name" title={t('{name}（{id}）', { name: nameTitle, id: trackId })} style={{ background: tagColor }}>{trackName}</span>
         <button style={flagBtn(hidden)} title={hidden ? t('显示轨道') : t('隐藏轨道')} onClick={isCaption ? onToggleCaptions : () => commands.toggleTrackFlag(trackId, 'hidden')}><Icon name={hidden ? 'eyeOff' : 'eye'} size={14} /></button>
         {!isCaption && <button style={flagBtn(muted)} title={muted ? t('取消静音') : t('静音轨道')} onClick={() => commands.toggleTrackFlag(trackId, 'muted')}><Icon name={muted ? 'volumeOff' : 'volume'} size={14} /></button>}
         <button style={{ ...flagBtn(false), color: locked ? theme.gold : theme.textMuted }} title={locked ? t('解锁轨道') : t('锁定轨道（禁止移动 / 裁剪 / 删除 / 落轨）')} onClick={() => commands.toggleTrackFlag(trackId, 'locked')}><Icon name={locked ? 'lock' : 'unlock'} size={14} /></button>
@@ -70,10 +66,6 @@ export function TrackHead({
           <Icon name="trash" size={13} />
         </button>
       </div>
-      <span className="cc-track-name" title={nameTitle}>
-        {trackName}
-        {config.role === 'anchor' ? ` · ${t('主轨')}` : config.role === 'follower' ? ` · ${t('跟随')}` : ''}
-      </span>
       {children}
       {duckMenuPos && (
         <DuckMenu trackId={trackId} config={config} pos={duckMenuPos} commands={commands} onClose={onCloseDuckMenu} />

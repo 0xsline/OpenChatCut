@@ -16,7 +16,7 @@ import { TrackCreateControl } from './TrackCreateControl';
 
 // Group spacing between toolbar clusters uses gaps without a visible divider.
 function ToolSep() {
-  return <span style={{ width: 0, margin: '0 6px', flexShrink: 0 }} />;
+  return <span className="cc-timeline-tool-separator" aria-hidden="true" />;
 }
 
 // One icon toolbar button: monochrome line glyphs, active = accent.
@@ -139,7 +139,7 @@ export function TimelineToolbar({
           onChange={(rate) => { if (speedItem) commands.setItemSpeed(speedItem.id, rate); }}
         />
       </div>
-      <span style={{ flex: 1 }} />
+      <div className="cc-timeline-transport">
       <TB
         icon={playing ? 'pause' : 'play'}
         title={playing ? t('暂停 (空格)') : t('播放 (空格)')}
@@ -147,7 +147,8 @@ export function TimelineToolbar({
         onClick={() => invokeAction('play-pause', undefined, 'toolbar')}
       />
       <span ref={timecodeRef} className="cc-timeline-timecode">{fmt(playheadFrame, state.fps)} / {fmt(total, state.fps)}</span>
-      <span style={{ flex: 1 }} />
+      </div>
+      <div className="cc-timeline-view-controls">
       <TB icon="zoomOut" title={t('缩小时间轴 (⌘−)')} tipRight onClick={() => invokeAction('zoom-out', undefined, 'toolbar')} />
       <input type="range" min={MIN_TIME_ZOOM} max={6} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))}
         title={t('缩放时间轴')} className="cc-timeline-zoom" />
@@ -170,6 +171,7 @@ export function TimelineToolbar({
       </label>
       <button className={`cc-caption-toggle cc-tip cc-tip-r${captionsVisible ? ' active' : ''}`} data-tip={captionTracks.length ? t('字幕显示') : t('字幕显示（当前还没有字幕，先转写或让 Agent 生成）')} aria-label={t('字幕显示')} disabled={!captionTracks.length} onClick={() => commands.batch(captionTracks.map((entry) => ({ type: 'updateCaptions', track: entry.id, patch: { enabled: !captionsVisible } })), 'Toggle captions')}><Icon name="captions" size={17} /><span>{captionsVisible ? t('开启') : t('未开启')}</span><Icon name="chevronDown" size={13} /></button>
       <TB icon="fullscreen" title={t('全屏预览')} tipRight onClick={() => invokeAction('fullscreen', undefined, 'toolbar')} />
+      </div>
       </div>
       {sceneDetectionOpen && sceneItem && (
         <SceneDetectionDialog

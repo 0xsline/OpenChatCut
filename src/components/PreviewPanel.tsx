@@ -21,7 +21,6 @@ import { Icon } from './icons';
 import { useT } from '../i18n/locale';
 import { ReviewCommentsButton, type ReviewOpenRequest } from '../review/ReviewCommentsButton';
 import { usePreviewTimelineState } from '../media/previewMedia';
-import { usePreviewDiagnostics, type PreviewDiagnosticsSnapshot } from '../previewDiagnostics';
 
 const SHARED_AUDIO_TAGS = 8;
 
@@ -52,7 +51,6 @@ export const PreviewPanel = memo(function PreviewPanel({
   const videoBoxRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [showSafe, setShowSafe] = useState(false);
-  const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false);
   const [autoEditCaption, setAutoEditCaption] = useState<{ trackId: TrackId; laneId: string } | null>(null);
   // Expose Player during full screen preview (` shortcut key/timeline toolbar button to make Player full screen)
   // Comes with a control bar; the editing state still uses the timeline transport, and does not display dual sets of controls.
@@ -61,7 +59,6 @@ export const PreviewPanel = memo(function PreviewPanel({
   const [fullscreen, setFullscreen] = useState(false);
   const hasItems = state.items.length > 0;
   const preview = usePreviewTimelineState(state);
-  const diagnostics = usePreviewDiagnostics(videoBoxRef, diagnosticsEnabled && hasItems);
   const failedProxies = preview.proxies.filter(({ proxy }) => proxy.status === 'failed');
   const pendingProxies = preview.proxies.filter(({ proxy }) => proxy.status === 'loading').length;
   const offlineNames = [...new Set(state.items
@@ -106,7 +103,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   }));
   return (
     <section style={{ display: 'flex', flex: 1, flexDirection: 'column', background: theme.panel, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-      <div style={{ height: 30, padding: '0 12px', display: 'flex', alignItems: 'center', borderBottom: `0.5px solid ${theme.border}`, flexShrink: 0 }}>
+      <div className="cc-preview-header" style={{ height: 30, padding: '0 12px', display: 'flex', alignItems: 'center', borderBottom: `0.5px solid ${theme.border}`, flexShrink: 0 }}>
         <span style={{ fontSize: 12, color: theme.text }}>{t('预览')}</span>
         {pickMode && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 10, fontSize: 11, color: theme.accent }}>
@@ -114,7 +111,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             {t('选择模式：在画面上拖框选区作为引用')}
           </span>
         )}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div className="cc-preview-header-actions" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
           <ReviewCommentsButton
             projectId={projectId}
             timelineId={timelineId}
@@ -124,17 +121,6 @@ export const PreviewPanel = memo(function PreviewPanel({
             getCurrentFrame={() => playerRef.current?.getCurrentFrame() ?? 0}
             onSeek={(frame) => playerRef.current?.seekTo(frame)}
           />
-          {hasItems && (
-            <button type="button" onClick={() => setDiagnosticsEnabled((enabled) => !enabled)}
-              aria-pressed={diagnosticsEnabled} title={t('切换预览性能诊断')}
-              style={{
-                fontSize: 11, lineHeight: 1, padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
-                border: `0.5px solid ${theme.border}`, background: diagnosticsEnabled ? theme.panelAlt : 'transparent',
-                color: diagnosticsEnabled ? theme.text : theme.textDim,
-              }}>
-              {t('诊断')}
-            </button>
-          )}
           {state.items.length > 0 && (
             <button type="button" onClick={() => setShowSafe((v) => !v)}
               title={t('切换标题/动作安全区参考框（竖屏成片构图辅助）')}
@@ -231,7 +217,6 @@ export const PreviewPanel = memo(function PreviewPanel({
                   : t('正在准备 {n} 个预览代理…', { n: pendingProxies })}
               </div>
             )}
-            {diagnosticsEnabled && diagnostics && <PreviewDiagnosticsReadout value={diagnostics} />}
             {showSafe && <SafeZoneOverlay />}
             {pickMode && <RegionPickOverlay state={state} playerRef={playerRef} />}
             {!pickMode && !fullscreen && onUpdateCaptions && captionTrackEntries(state).map(({ id, captions }) => captions?.enabled ? (
@@ -253,30 +238,6 @@ export const PreviewPanel = memo(function PreviewPanel({
   );
 });
 
-function supportMetric(supported: boolean, count: number): string {
-  return supported ? String(count) : 'unsupported';
-}
-
-function PreviewDiagnosticsReadout({ value }: { value: PreviewDiagnosticsSnapshot }) {
-  const processing = value.processingDurationMs === null ? 'n/a' : `${value.processingDurationMs.toFixed(1)}ms`;
-  const pixels = `${(value.previewBackingPixels / 1_000_000).toFixed(2)}MP`;
-  return (
-    <output style={{
-      position: 'absolute', right: 8, bottom: 8, zIndex: 13,
-      maxWidth: 'calc(100% - 16px)', padding: '6px 8px', borderRadius: 5,
-      background: themeAlpha.shadow(0.88), color: theme.textMuted,
-      fontSize: 9, lineHeight: 1.45, fontVariantNumeric: 'tabular-nums',
-      pointerEvents: 'none',
-    }}>
-      {`rAF gaps ${value.rafGapCount} (max ${value.longestRafGapMs.toFixed(1)}ms) · `}
-      {`video dropped ${value.droppedVideoFrames} · presented ${value.presentedVideoFrames} · processing ${processing}`}
-      <br />
-      {`LoAF ${supportMetric(value.longAnimationFrameSupported, value.longAnimationFrameCount)} · `}
-      {`long task ${supportMetric(value.longTaskSupported, value.longTaskCount)} · `}
-      {`active media ${value.activeMediaElements} · canvas ${value.canvasElements} · WebGL ${value.activeWebGlRuntimes} · backing ${pixels}`}
-    </output>
-  );
-}
 
 // Selection-mode marquee over the video rect: drag a rectangle → canvas-region
 // reference in COMPOSITION coordinates, with the visual clips it covers at the

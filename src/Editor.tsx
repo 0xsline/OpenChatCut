@@ -13,6 +13,7 @@ import { Divider } from './components/Divider';
 import { DesignStylePanel } from './components/settings/DesignStylePanel';
 import { VersionHistory } from './components/VersionHistory';
 import { usePersistedState } from './hooks/usePersistedState';
+import { useEditorPanelLayout } from './hooks/useEditorPanelLayout';
 import { useEditor } from './editor/store';
 import type { ProjectDoc, TimelineItem, TimelineState } from './editor/types';
 import { captionsOnTrack, selectedIdsOf, timelineTrackIds, trackAlias, trackKind } from './editor/types';
@@ -49,14 +50,6 @@ interface EditorProps {
   onRename: (name: string) => void;
 }
 
-const HEADER_H = 41;
-const CHAT_MIN_W = 320;
-const ASSETS_MIN_W = 176;
-const CANVAS_MIN_W = 280;
-const TIMELINE_MIN_H = 260;
-const SPLITTER_TOTAL_W = 0;
-const BASELINE_VIEWPORT_W = 1463;
-const BASELINE_CONTENT_H = 761;
 
 interface AutoGradeRecommendation {
   itemId: string;
@@ -315,13 +308,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     playerRef.current?.seekTo(0);
   }, [doc.activeTimelineId]);
 
-  // Default panel geometry is normalized against a 1463×802 CSS-pixel viewport.
-  const viewportW = typeof window === 'undefined' ? 1440 : window.innerWidth;
-  const viewportH = typeof window === 'undefined' ? 900 : window.innerHeight;
-  const [chatW, setChatW] = usePersistedState('openchatcut.chatW.ui-v1', Math.max(CHAT_MIN_W, Math.round(viewportW * 356 / BASELINE_VIEWPORT_W)));
-  const [libW, setLibW] = usePersistedState('openchatcut.libW.ui-v1', Math.max(ASSETS_MIN_W, Math.round(viewportW * 406 / BASELINE_VIEWPORT_W)));
-  const [timelineH, setTimelineH] = usePersistedState('openchatcut.timelineH.ui-v1', Math.max(TIMELINE_MIN_H, Math.round((viewportH - HEADER_H) * 350 / BASELINE_CONTENT_H)));
   const [chatCollapsed, setChatCollapsed] = usePersistedState('cc.chatCollapsed', false);
+  const panelLayout = useEditorPanelLayout(chatCollapsed);
   const [inspectorCollapsed, setInspectorCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const addTemplate = useCallback((tpl: Tpl) => commands.addMotionGraphic(tpl), [commands]);
   // Add an asset to the pool AND kick off "upload-and-transcribe" ASR for audio-bearing media.
@@ -447,7 +435,6 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     setChatCollapsed(false);
     setChatSeed({ text: t('参考模板「{name}」，用 create_motion_graphic 生成一个类似风格的动画： @{name} ', { name: tpl.name }), nonce: Date.now(), reference: { id: tpl.id, name: tpl.name, kind: 'template' } });
   }, [setChatCollapsed, t]);
-  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
   // Export: POST the current timeline to the dev-server /export endpoint (which
   // renders it in headless Chrome via @remotion/renderer) and download the MP4.
@@ -475,10 +462,11 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
 
   return (
     <div
+      className="cc-editor-shell"
       style={{
         display: 'grid',
-        gridTemplateColumns: `${chatCollapsed ? 46 : chatW}px 0 ${libW}px 0 minmax(0, 1fr)`,
-        gridTemplateRows: `${HEADER_H}px minmax(0, 1fr) 0 ${timelineH}px`,
+        gridTemplateColumns: panelLayout.gridTemplateColumns,
+        gridTemplateRows: panelLayout.gridTemplateRows,
         height: '100vh',
         overflow: 'hidden',
         background: theme.bg,
@@ -513,7 +501,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       <ChatPanel ctx={agentCtx} projectId={project.id} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} seed={chatSeed} creativeMode={creativeMode} onCreativeModeChange={changeCreativeMode} onImportMedia={importToPool} />
 
       <div style={{ gridColumn: 2, gridRow: '2 / 5' }}>
-        {!chatCollapsed && <Divider onResize={(dx) => setChatW((w) => clamp(w + dx, CHAT_MIN_W, Math.max(CHAT_MIN_W, viewportW - libW - CANVAS_MIN_W - SPLITTER_TOTAL_W)))} />}
+        {!chatCollapsed && <Divider onResize={panelLayout.resizeChat} />}
       </div>
 
       <div style={{ gridColumn: 3, gridRow: 2, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
@@ -538,7 +526,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
  />
       </div>
       <div style={{ gridColumn: 4, gridRow: 2 }}>
-        <Divider onResize={(dx) => setLibW((w) => clamp(w + dx, ASSETS_MIN_W, Math.max(ASSETS_MIN_W, viewportW - (chatCollapsed ? 46 : chatW) - CANVAS_MIN_W - SPLITTER_TOTAL_W)))} />
+        <Divider onResize={panelLayout.resizeLibrary} />
       </div>
       <div className="cc-preview-workspace" style={{ gridColumn: 5, gridRow: 2 }}>
         <PreviewPanel state={autoGradePreviewState ?? previewState ?? state} playerRef={playerRef} onImport={importToCanvas}
@@ -630,7 +618,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         )}
       </div>
       <div style={{ gridColumn: '3 / -1', gridRow: 3 }}>
-        <Divider orientation="horizontal" onResize={(dy) => setTimelineH((h) => clamp(h - dy, TIMELINE_MIN_H, Math.max(TIMELINE_MIN_H, viewportH - HEADER_H - 300)))} />
+        <Divider orientation="horizontal" onResize={panelLayout.resizeTimeline} />
       </div>
       <div style={{ gridColumn: '3 / -1', gridRow: 4, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         <TimelineTabs doc={doc} commands={commands} />

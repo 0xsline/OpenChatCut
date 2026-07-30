@@ -5,7 +5,6 @@ const RAW_COLOR = /(?<![\w-])#[\da-f]{3,8}\b|rgba?\([^)]*\)/gi;
 const TOKENIZED_CHANNEL = 'var(--cc-';
 
 const CONTENT_COLOR_SELECTORS = new Set([
-  '.cc-track-badge',
   '.cc-export-qa-card img',
   '.cc-audio-waveform path',
   '.cc-clip-wave path',

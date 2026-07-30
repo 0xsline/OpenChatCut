@@ -198,6 +198,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
                 display: 'grid',
                 gridTemplateColumns: `repeat(${virtualGrid.columnCount}, ${virtualGrid.columnWidth}px)`,
                 columnGap: 10,
+                justifyContent: 'space-evenly',
               }}
             >
               {shown.slice(row.startIndex, row.endIndex).map((template) => (
