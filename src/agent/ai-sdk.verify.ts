@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { generateText, jsonSchema } from 'ai';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import {
   defaultModelForProvider,
   getLanguageModel,
@@ -36,12 +35,12 @@ assert.equal(providerApiPath('gemini'), '/models');
 assert.equal(providerApiPath('openrouter'), '/chat/completions');
 assert.equal(normalizeOpenAiApiMode('chat'), 'chat');
 assert.equal(normalizeOpenAiApiMode('unexpected'), 'responses');
-assert.equal(getLanguageModel('anthropic', 'test-model').provider, 'anthropic.messages');
-assert.equal(getLanguageModel('openai', 'test-model').provider, 'openai.responses');
-assert.equal(getLanguageModel('openai', 'test-model', 'chat').provider, 'openai.chat');
-assert.equal(getLanguageModel('kimi', 'test-model').provider, 'moonshotai.chat');
-assert.equal(getLanguageModel('gemini', 'test-model').provider, 'google.generative-ai');
-assert.equal(getLanguageModel('openrouter', 'openrouter/auto').provider, 'openrouter.chat');
+assert.equal((await getLanguageModel('anthropic', 'test-model')).provider, 'anthropic.messages');
+assert.equal((await getLanguageModel('openai', 'test-model')).provider, 'openai.responses');
+assert.equal((await getLanguageModel('openai', 'test-model', 'chat')).provider, 'openai.chat');
+assert.equal((await getLanguageModel('kimi', 'test-model')).provider, 'moonshotai.chat');
+assert.equal((await getLanguageModel('gemini', 'test-model')).provider, 'google.generative-ai');
+assert.equal((await getLanguageModel('openrouter', 'openrouter/auto')).provider, 'openrouter.chat');
 assert.deepEqual(getLanguageModelProviderOptions('openai'), { openai: { store: false } });
 assert.equal(getLanguageModelProviderOptions('openai', 'chat'), undefined);
 assert.deepEqual(getLanguageModelProviderOptions('minimax'), {
@@ -66,7 +65,7 @@ for (const preset of LLM_PROVIDER_PRESETS) {
     mistral: 'mistral.chat',
   };
   assert.equal(
-    getLanguageModel(preset.id, 'test-model').provider,
+    (await getLanguageModel(preset.id, 'test-model')).provider,
     DEDICATED_PROVIDER_IDS[preset.id] ?? `${preset.id}.chat`,
   );
 }
@@ -99,7 +98,7 @@ try {
     ['kimi', 'kimi-test', undefined],
   ] as const) {
     await assert.rejects(generateText({
-      model: getLanguageModel(provider, model, openAiApiMode),
+      model: await getLanguageModel(provider, model, openAiApiMode),
       prompt: 'ping',
       maxRetries: 0,
     }));
@@ -192,6 +191,7 @@ assert.deepEqual(makeMessagesPortable([
   const urls: string[] = [];
   const headerKeys: string[] = [];
   const requests: Record<string, unknown>[] = [];
+  const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
   const google = createGoogleGenerativeAI({
     baseURL: 'https://example.invalid/v1beta',
     apiKey: 'test-key',

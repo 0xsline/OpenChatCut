@@ -65,8 +65,12 @@ export function collectReferencedFonts(
   return [...families].sort((a, b) => a.localeCompare(b));
 }
 
-/** Register only fonts used by the active composition. Remotion waits on each loader. */
-export function loadTimelineFonts(state: TimelineState): void {
+export interface ProjectFontFace {
+  family: string;
+  weight?: number;
+}
+
+export function collectReferencedFontFaces(state: TimelineState): ProjectFontFace[] {
   const weights = new Map<string, Set<number>>();
   const configs = captionTrackEntries(state).map((entry) => entry.captions).filter(Boolean) as CaptionsData[];
   if (!configs.length && state.captions) configs.push(state.captions);
@@ -83,9 +87,18 @@ export function loadTimelineFonts(state: TimelineState): void {
       weights.set(face.family, set);
     }
   }
-  for (const family of collectReferencedFonts(state)) {
+
+  return collectReferencedFonts(state).flatMap((family) => {
     const fontWeights = weights.get(family);
-    if (fontWeights?.size) fontWeights.forEach((weight) => ensureFont(family, weight));
-    else ensureFont(family);
-  }
+    return fontWeights?.size
+      ? [...fontWeights].map((weight) => ({ family, weight }))
+      : [{ family }];
+  });
+}
+
+/** Resolve only when every face used by the active composition is ready. */
+export function loadTimelineFonts(state: TimelineState): Promise<void> {
+  const loads = collectReferencedFontFaces(state)
+    .map(({ family, weight }) => ensureFont(family, weight));
+  return Promise.all(loads).then(() => undefined);
 }

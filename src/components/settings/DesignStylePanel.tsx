@@ -9,7 +9,7 @@ import { DESIGN_STYLE_PRESETS } from '../../editor/design-presets';
 import {
   loadOwnedStyles, saveOwnedStyle, updateOwnedStyle, deleteOwnedStyle, type OwnedStyle,
 } from '../../persist/projectStore';
-import { FONT_CATALOG, searchFontCatalog } from '../../fonts/googleFonts';
+import { FONT_CATALOG, searchFontCatalog } from '../../fonts/googleFontCatalog';
 import { DesignStyleTransferButtons } from './DesignStyleTransferButtons';
 
 interface DesignStylePanelProps {

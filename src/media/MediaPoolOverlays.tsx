@@ -1,0 +1,103 @@
+import { createPortal } from 'react-dom';
+import type { CSSProperties, RefObject } from 'react';
+import type { MediaAsset, MediaFolder } from '../editor/types';
+import { useT } from '../i18n/locale';
+import { theme } from '../theme';
+import { AssetExportButton } from './AssetExportButton';
+import { folderPath } from './mediaPoolFormat';
+
+interface AssetMenuPortalProps {
+  asset?: MediaAsset;
+  position: CSSProperties | null;
+  fps: number;
+  folders: MediaFolder[];
+  missing: boolean;
+  confirmDelete: boolean;
+  canRelink: boolean;
+  canRemove: boolean;
+  onClose: () => void;
+  onError: (message: string) => void;
+  onFavorite: () => void;
+  onRename: () => void;
+  onRelink: () => void;
+  onRemove: () => void;
+  onMove: (folderId?: string) => void;
+}
+
+export function AssetMenuPortal(props: AssetMenuPortalProps) {
+  if (!props.asset || !props.position) return null;
+  return createPortal(
+    <>
+      <div className="cc-asset-menu-backdrop" onClick={props.onClose} />
+      <div className="cc-media-popover cc-asset-menu-portal" style={props.position} onClick={(event) => event.stopPropagation()}>
+        <AssetMenuActions {...props} asset={props.asset} />
+      </div>
+    </>,
+    document.body,
+  );
+}
+
+function AssetMenuActions(props: AssetMenuPortalProps & { asset: MediaAsset }) {
+  const { asset } = props;
+  const t = useT();
+  return (
+    <>
+      {!props.missing && <AssetExportButton asset={asset} fps={props.fps} onError={props.onError} onComplete={props.onClose} />}
+      <button type="button" onClick={props.onFavorite}>{asset.favorite ? t('取消收藏') : t('收藏')}</button>
+      <button type="button" onClick={props.onRename}>{t('重命名')}</button>
+      {props.canRelink && asset.kind !== 'motion-graphic' && <button type="button" onClick={props.onRelink}>{t('重新链接文件')}</button>}
+      {props.canRemove && <button type="button" className="danger" onClick={props.onRemove}>{props.confirmDelete ? t('确认删除') : t('删除')}</button>}
+      <label className="cc-asset-menu-move">
+        <span>{t('移动到')}</span>
+        <select aria-label={t('移动 {name}', { name: asset.name })} value={asset.folderId ?? ''} onChange={(event) => props.onMove(event.target.value || undefined)}>
+          <option value="">Master</option>
+          {props.folders.map((folder) => <option key={folder.id} value={folder.id}>{folderPath(folder, props.folders)}</option>)}
+        </select>
+      </label>
+    </>
+  );
+}
+
+interface RelinkAllDialogProps {
+  open: boolean;
+  busy: boolean;
+  message: string | null;
+  missingAssets: MediaAsset[];
+  inputRef: RefObject<HTMLInputElement | null>;
+  onClose: () => void;
+  onPickFolder: (files: FileList | null) => void;
+  onRelink: (id: string) => void;
+}
+
+export function RelinkAllDialog(props: RelinkAllDialogProps) {
+  const t = useT();
+  if (!props.open) return null;
+  return (
+    <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('重新链接离线素材')} onClick={props.onClose}>
+      <div className="cc-modal" style={{ width: 'min(420px, 92vw)', maxHeight: '70vh', overflow: 'auto' }} onClick={(event) => event.stopPropagation()}>
+        <strong>{t('重新链接离线素材')}</strong>
+        <p style={{ margin: '8px 0 12px', fontSize: 12, color: theme.textMuted, lineHeight: 1.45 }}>{t('工程中的文件已移动或重命名。选一个文件夹按文件名批量重链，或从下方逐个重新链接。')}</p>
+        <input ref={props.inputRef} type="file" multiple hidden onChange={(event) => props.onPickFolder(event.target.files)} />
+        <button type="button" className="primary" disabled={props.busy} onClick={() => props.inputRef.current?.click()} style={{ width: '100%', marginBottom: 10 }}>
+          {props.busy ? t('正在按文件名匹配…') : t('选择文件夹批量重链（按文件名匹配）')}
+        </button>
+        {props.message && <div style={{ fontSize: 12, color: `color-mix(in srgb, ${theme.success} 65%, ${theme.textStrong})`, margin: '0 0 10px' }}>{props.message}</div>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {props.missingAssets.map((asset) => <RelinkRow key={asset.id} asset={asset} onRelink={props.onRelink} />)}
+          {props.missingAssets.length === 0 && <div style={{ fontSize: 12, color: theme.textDim }}>{t('没有待重链的素材')}</div>}
+        </div>
+        <div style={{ marginTop: 12 }}><button type="button" onClick={props.onClose}>{t('关闭')}</button></div>
+      </div>
+    </div>
+  );
+}
+
+function RelinkRow({ asset, onRelink }: { asset: MediaAsset; onRelink: (id: string) => void }) {
+  const t = useT();
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 4, background: theme.panelAlt }}>
+      <span style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{asset.name}</span>
+      <button type="button" className="primary" onClick={() => onRelink(asset.id)} style={{ flexShrink: 0 }}>{t('重新链接文件')}</button>
+    </div>
+  );
+}

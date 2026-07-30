@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
-import { SEMANTIC_MODEL_VERSION } from './types';
-import { findDuplicateAssets, rankSemanticMatches } from './vectorSearch';
+import { SemanticClient } from './semanticClient';
+import {
+  SEMANTIC_MODEL_VERSION, type WorkerRequest, type WorkerResponse,
+} from './types';
+import {
+  findDuplicateAssets, findDuplicateAssetsPacked, packSemanticVectors, rankSemanticMatches,
+} from './vectorSearch';
 import { shouldPruneVector } from './vectorStore';
 
 const records = [
@@ -39,6 +44,74 @@ const sharedIntro = [
   { scopeId: 'project-a', assetId: 'video-b', sampleTime: 10, vector: [0, 1, 0] },
 ];
 assert.deepEqual(findDuplicateAssets(sharedIntro, 0.9), []);
+
+const exactRecords = records.map((record) => ({ ...record, vector: new Float32Array(record.vector) }));
+const exactExpected = findDuplicateAssets(exactRecords, 0.995);
+assert.deepEqual(
+  findDuplicateAssetsPacked(packSemanticVectors(exactRecords), 0.995),
+  exactExpected,
+  'packed full-scan results preserve pair order, scores, and threshold behavior exactly',
+);
+
+class FakeSemanticWorker {
+  onmessage: Worker['onmessage'] = null;
+  onerror: Worker['onerror'] = null;
+  requests: WorkerRequest[] = [];
+  transfers: Transferable[][] = [];
+  terminated = false;
+
+  postMessage(message: unknown, transfer: Transferable[] = []): void {
+    this.requests.push(structuredClone(message, { transfer }) as WorkerRequest);
+    this.transfers.push(transfer);
+  }
+
+  terminate(): void {
+    this.terminated = true;
+  }
+
+  respond(response: WorkerResponse): void {
+    this.onmessage?.call(this as unknown as Worker, { data: response } as MessageEvent<WorkerResponse>);
+  }
+}
+
+const fakeWorker = new FakeSemanticWorker();
+const client = new SemanticClient(() => fakeWorker as unknown as Worker);
+const staleController = new AbortController();
+const stalePromise = client.findDuplicateAssets(exactRecords, 0.995, staleController.signal);
+const staleRequest = fakeWorker.requests[0] as Extract<WorkerRequest, { type: 'find-duplicates' }>;
+assert.equal(staleRequest.type, 'find-duplicates');
+assert.equal(fakeWorker.transfers[0]?.length, 3, 'all packed numeric buffers are transferred');
+staleController.abort();
+await assert.rejects(stalePromise, { name: 'AbortError' });
+
+const currentPromise = client.findDuplicateAssets(exactRecords, 0.995);
+const currentRequest = fakeWorker.requests[1] as Extract<WorkerRequest, { type: 'find-duplicates' }>;
+fakeWorker.respond({
+  id: staleRequest.id,
+  type: 'result',
+  result: { type: 'duplicates', matches: [{ leftAssetId: 'stale', rightAssetId: 'result', score: 1 }] },
+});
+let currentSettled = false;
+void currentPromise.then(
+  () => { currentSettled = true; },
+  () => { currentSettled = true; },
+);
+await Promise.resolve();
+assert.equal(currentSettled, false, 'a stale response cannot settle the current request');
+fakeWorker.respond({
+  id: currentRequest.id,
+  type: 'result',
+  result: {
+    type: 'duplicates',
+    matches: findDuplicateAssetsPacked(currentRequest.vectors, currentRequest.threshold),
+  },
+});
+assert.deepEqual(await currentPromise, exactExpected);
+
+const disposedPromise = client.findDuplicateAssets(exactRecords);
+client.dispose();
+await assert.rejects(disposedPromise, { name: 'AbortError' });
+assert.equal(fakeWorker.terminated, true, 'disposal terminates the worker and rejects pending requests');
 
 const validIds = new Set(['kept']);
 assert.equal(shouldPruneVector({ scopeId: 'other', modelVersion: 'old', assetId: 'gone' }, 'project-a', validIds), false);

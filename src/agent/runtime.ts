@@ -35,6 +35,9 @@ const MAX_TOOL_TURNS = 30;
 type ToolResultOutput = ToolResultPart['output'];
 
 export type LLMMessage = ModelMessage;
+export interface AgentRuntimeModule {
+  runAgent: typeof runAgent;
+}
 
 export type AgentEvent =
   | { type: 'text-start' }
@@ -210,7 +213,7 @@ export async function runAgent(
         : conv;
       const providerOptions = getLanguageModelProviderOptions();
       const result = streamText({
-        model: getLanguageModel(),
+        model: await getLanguageModel(),
         system,
         messages: requestMessages,
         tools,

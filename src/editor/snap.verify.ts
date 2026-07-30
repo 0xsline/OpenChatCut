@@ -2,7 +2,9 @@
 // Two new rules for verifying adsorption: (1) Hysteresis - after being sucked, you have to go out of 1.5 times the radius before releasing, otherwise it will be on the boundary
 // It will shake back and forth; (2) Weighted by type - the adsorption radius of the play head is larger, and it wins when it is equidistant.
 import assert from 'node:assert/strict';
-import { findClosestSnapPoint, snapDraggedEdges, STICKY_RELEASE, type SnapPoint } from './snap';
+import {
+  findClosestSnapPoint, snapDraggedEdges, sortTimelineSnapPoints, STICKY_RELEASE, type SnapPoint,
+} from './snap';
 
 const THRESHOLD = 4; // frame
 const base = { baseStart: 100, baseDuration: 50, points: [] as SnapPoint[], thresholdFrames: THRESHOLD };
@@ -74,6 +76,21 @@ const base = { baseStart: 100, baseDuration: 50, points: [] as SnapPoint[], thre
 {
   const none = snapDraggedEdges({ ...base, points: [{ frame: 900, type: 'playhead' }], mode: 'move', rawDelta: 7 });
   assert.deepEqual([none.deltaF, none.snapAt, none.hold], [7, null, null]);
+}
+
+// ── Sorting + binary search is result-identical, including equal-distance tie order ──
+{
+  const points: SnapPoint[] = [
+    { frame: 108, type: 'item-start', itemId: 'later-in-registry' },
+    { frame: 92, type: 'item-end', itemId: 'earlier-in-registry' },
+    { frame: 500, type: 'marker-start', markerId: 'far' },
+  ];
+  const probes = [88, 92, 96, 100, 104, 108, 112];
+  const before = probes.map((frame) => findClosestSnapPoint(points, frame, 10));
+  const sorted = sortTimelineSnapPoints(points);
+  const after = probes.map((frame) => findClosestSnapPoint(sorted, frame, 10));
+  assert.deepEqual(after, before, '排序后二分搜索必须保持相等距离与边界结果');
+  assert.equal(findClosestSnapPoint(sorted, 100, 10)?.itemId, 'earlier-in-registry');
 }
 
 console.log('snap.verify: ok (类型加权/迟滞保持与释放/目标消失即松开/边归属/trim-right)');

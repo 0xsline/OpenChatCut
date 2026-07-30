@@ -15,6 +15,7 @@ import {
   type ProjectMigrationOptions,
   type ProjectMigrationProgress,
 } from './migrations';
+import { clearSemanticVectors } from '../media/semantic-search/vectorStore';
 
 // Server-backed multi-project store with an IndexedDB cache. The server store is
 // shared by every local browser and dev port; Node checks use a memory fallback.
@@ -428,11 +429,25 @@ export async function restoreProject(id: string): Promise<ProjectMeta | null> {
   return next;
 }
 
+export interface ProjectPurgeOptions {
+  /** Test/server seam; browsers default to the semantic IndexedDB cleanup. */
+  semanticCleanup?: (scopeId: string) => Promise<void>;
+}
+
+async function clearProjectSemanticVectors(id: string, options?: ProjectPurgeOptions): Promise<void> {
+  if (options?.semanticCleanup) {
+    await options.semanticCleanup(id);
+    return;
+  }
+  if (typeof indexedDB !== 'undefined') await clearSemanticVectors(id);
+}
+
 /** Permanently remove project bytes (not exposed as agent tool; dashboard cascade uses this).
  * Clear all data keyed by project: doc/chat/creation mode/proposal/version (the last two keys belong to proposalStore/versionStore
  * All, delete them literally here to avoid mutual import of persistence layers). Even if the index does not have the id, it will be deleted - orphan document (smoke test)
  * Residues) rely on this to clear.*/
-export async function purgeProject(id: string): Promise<void> {
+export async function purgeProject(id: string, options?: ProjectPurgeOptions): Promise<void> {
+  await clearProjectSemanticVectors(id, options);
   await idbDel(projectKey(id));
   await idbDel(chatKey(id));
   await idbDel(creativeModeKey(id));

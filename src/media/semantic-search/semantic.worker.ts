@@ -1,7 +1,10 @@
 /// <reference lib="webworker" />
 import { AutoProcessor, AutoTokenizer, ChineseCLIPModel, RawImage } from '@huggingface/transformers';
-import { normalizeVector } from './vectorSearch';
-import { MAX_SEMANTIC_QUERY_LENGTH, SEMANTIC_MODEL_ID, type WorkerRequest, type WorkerResponse } from './types';
+import { findDuplicateAssetsPacked, normalizeVector } from './vectorSearch';
+import {
+  MAX_SEMANTIC_QUERY_LENGTH, SEMANTIC_MODEL_ID,
+  type PackedSemanticVectors, type WorkerRequest, type WorkerResponse,
+} from './types';
 
 type Model = Awaited<ReturnType<typeof ChineseCLIPModel.from_pretrained>>;
 type Processor = Awaited<ReturnType<typeof AutoProcessor.from_pretrained>>;
@@ -84,11 +87,15 @@ function readEmbedding(output: unknown, key: 'text_embeds' | 'image_embeds'): Ar
 function validateRequest(value: unknown): WorkerRequest {
   if (!value || typeof value !== 'object') throw new Error('Invalid semantic worker request');
   const request = value as Record<string, unknown>;
-  if (!Number.isInteger(request.id)) throw new Error('Invalid semantic worker request id');
+  if (!Number.isSafeInteger(request.id) || (request.id as number) < 0) {
+    throw new Error('Invalid semantic worker request id');
+  }
   if (request.type === 'load' && (request.device === 'webgpu' || request.device === 'wasm')) return request as WorkerRequest;
   if (request.type === 'embed-text' && typeof request.text === 'string'
     && request.text.length > 0 && request.text.length <= MAX_SEMANTIC_QUERY_LENGTH) return request as WorkerRequest;
   if (request.type === 'embed-image' && isValidFrame(request.frame)) return request as WorkerRequest;
+  if (request.type === 'find-duplicates' && typeof request.threshold === 'number'
+    && Number.isFinite(request.threshold) && isValidPackedVectors(request.vectors)) return request as WorkerRequest;
   throw new Error('Invalid semantic worker request payload');
 }
 
@@ -101,15 +108,46 @@ function isValidFrame(value: unknown): boolean {
   return frame.data.length === (frame.width as number) * (frame.height as number) * RGBA_CHANNELS;
 }
 
+function isValidPackedVectors(value: unknown): value is PackedSemanticVectors {
+  if (!value || typeof value !== 'object') return false;
+  const vectors = value as Partial<PackedSemanticVectors>;
+  if (!Array.isArray(vectors.assetIds) || !vectors.assetIds.every((assetId) => typeof assetId === 'string')) {
+    return false;
+  }
+  if (!(vectors.assetVectorOffsets instanceof Uint32Array)
+    || !(vectors.vectorValueOffsets instanceof Uint32Array)
+    || !(vectors.values instanceof Float32Array)) return false;
+  if (vectors.assetVectorOffsets.length !== vectors.assetIds.length + 1) return false;
+  const vectorCount = vectors.vectorValueOffsets.length - 1;
+  if (vectorCount < 0 || !offsetsAreValid(vectors.assetVectorOffsets, vectorCount)) return false;
+  return offsetsAreValid(vectors.vectorValueOffsets, vectors.values.length);
+}
+
+function offsetsAreValid(offsets: Uint32Array, expectedEnd: number): boolean {
+  if (offsets.length === 0 || offsets[0] !== 0) return false;
+  for (let index = 1; index < offsets.length; index += 1) {
+    if (offsets[index]! < offsets[index - 1]!) return false;
+  }
+  return offsets[offsets.length - 1] === expectedEnd;
+}
+
 async function handleRequest(value: unknown): Promise<void> {
   const request = validateRequest(value);
-  if (request.type === 'load') await loadModel(request);
-  const vector = request.type === 'embed-text'
-    ? await embedText(request.text)
-    : request.type === 'embed-image'
-      ? await embedImage(request)
-      : undefined;
-  post({ id: request.id, type: 'result', vector });
+  if (request.type === 'load') {
+    await loadModel(request);
+    post({ id: request.id, type: 'result', result: { type: 'loaded' } });
+    return;
+  }
+  if (request.type === 'embed-text') {
+    post({ id: request.id, type: 'result', result: { type: 'embedding', vector: await embedText(request.text) } });
+    return;
+  }
+  if (request.type === 'embed-image') {
+    post({ id: request.id, type: 'result', result: { type: 'embedding', vector: await embedImage(request) } });
+    return;
+  }
+  const matches = findDuplicateAssetsPacked(request.vectors, request.threshold);
+  post({ id: request.id, type: 'result', result: { type: 'duplicates', matches } });
 }
 
 workerScope.onmessage = (event: MessageEvent<unknown>) => {

@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Icon } from '../components/icons';
 import { theme } from '../theme';
 import { useT } from '../i18n/locale';
 import type { MediaAsset, MediaFolder } from '../editor/types';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { importMedia } from './upload';
-import { MgThumb } from './MgThumb';
-import { durationLabel, folderPath } from './mediaPoolFormat';
+import { folderPath } from './mediaPoolFormat';
 import { SemanticSearchControls } from './semantic-search/SemanticSearchControls';
 import type { SemanticMatch } from './semantic-search/types';
 import { filterMediaAssets, type MediaSortKey, type MediaTypeFilter } from './mediaPoolFilter';
 import { MobileUploadDialog } from './MobileUploadDialog';
 import type { MobileUploadRecord } from './mobileUploadApi';
-import { setMediaAssetDrag } from './drag';
-import { AssetExportButton } from './AssetExportButton';
+import { MediaAssetCard, MediaFolderCard } from './MediaPoolCard';
+import { useFixedVirtualGrid } from '../hooks/useFixedVirtualGrid';
+import { AssetMenuPortal, RelinkAllDialog } from './MediaPoolOverlays';
 interface MediaPoolPanelProps {
   semanticScopeId: string;
   assets: MediaAsset[];
@@ -41,6 +40,9 @@ interface MediaPoolPanelProps {
 
 type PromptState = { title: string; initialValue: string; rejectSlash?: boolean; onSubmit: (value: string) => void };
 type DeleteState = { id: string; name: string; parentId?: string };
+type MediaGridEntry =
+  | { kind: 'folder'; folder: MediaFolder }
+  | { kind: 'asset'; asset: MediaAsset };
 export function MediaPoolPanel({
   semanticScopeId, assets, folders, fps, offlineAssetIds, onAssetLoadError,
   onImport, onImportMobile, onAddAsset, onCreateFolder, onRenameFolder,
@@ -66,6 +68,10 @@ export function MediaPoolPanel({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [currentFolderId, setCurrentFolderId] = useState<string>();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [pointerPreviewId, setPointerPreviewId] = useState<string | null>(null);
+  const [focusedAssetId, setFocusedAssetId] = useState<string | null>(null);
+  const [focusedFolderId, setFocusedFolderId] = useState<string | null>(null);
+  const [draggedAssetId, setDraggedAssetId] = useState<string | null>(null);
   const [promptState, setPromptState] = useState<PromptState | null>(null);
   const [promptValue, setPromptValue] = useState('');
   const [deleteState, setDeleteState] = useState<DeleteState | null>(null);
@@ -96,22 +102,23 @@ export function MediaPoolPanel({
     };
   }, [assetMenu]);
 
-  const markMissing = (id: string) => {
+  const markMissing = useCallback((id: string) => {
     const asset = assets.find((item) => item.id === id);
     if (asset) onAssetLoadError(asset);
     setMediaErrors((current) => new Set(current).add(id));
-  };
-  const clearMissing = (id: string) => setMediaErrors((s) => {
-    if (!s.has(id)) return s;
-    const n = new Set(s);
-    n.delete(id);
-    return n;
-  });
+  }, [assets, onAssetLoadError]);
+  const clearMissing = useCallback((id: string) => setMediaErrors((current) => {
+    if (!current.has(id)) return current;
+    const next = new Set(current);
+    next.delete(id);
+    return next;
+  }), []);
 
-  const startRelink = (id: string) => {
+  const startRelink = useCallback((id: string) => {
+    if (!onRelinkAsset) return;
     setRelinkTarget(id);
     requestAnimationFrame(() => relinkInputRef.current?.click());
-  };
+  }, [onRelinkAsset]);
 
   const onRelinkPick = async (files: FileList | null) => {
     const file = files?.[0];
@@ -228,17 +235,83 @@ export function MediaPoolPanel({
       setDeleteState({ id: currentFolder.id, name: currentFolder.name, parentId: currentFolder.parentId });
     }
   };
-  const toggleSelected = (id: string) => setSelected((old) => {
+  const toggleSelected = useCallback((id: string) => setSelected((old) => {
     const next = new Set(old);
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
-  });
+  }), []);
   const toggleAll = () => setSelected((old) => {
     const next = new Set(old);
     const allSelected = visible.length > 0 && visible.every((asset) => next.has(asset.id));
     for (const asset of visible) { if (allSelected) next.delete(asset.id); else next.add(asset.id); }
     return next;
   });
+
+  const showFolders = !q && !semanticResults;
+  const gridEntries = useMemo<MediaGridEntry[]>(() => [
+    ...(showFolders ? childFolders.map((folder) => ({ kind: 'folder' as const, folder })) : []),
+    ...visible.map((asset) => ({ kind: 'asset' as const, asset })),
+  ], [childFolders, semanticResults, q, visible]);
+  const activePreviewId = focusedAssetId ?? pointerPreviewId;
+  const pinnedIndexes = useMemo(() => {
+    const pinnedIds = new Set([assetMenu, activePreviewId, focusedAssetId, pointerPreviewId, draggedAssetId]
+      .filter((id): id is string => id != null));
+    for (const id of selected) pinnedIds.add(id);
+    const indexes: number[] = [];
+    gridEntries.forEach((entry, index) => {
+      if (entry.kind === 'asset' && pinnedIds.has(entry.asset.id)) indexes.push(index);
+      if (entry.kind === 'folder' && entry.folder.id === focusedFolderId) indexes.push(index);
+    });
+    return indexes;
+  }, [activePreviewId, assetMenu, draggedAssetId, focusedAssetId, focusedFolderId, gridEntries, pointerPreviewId, selected]);
+  const virtualGrid = useFixedVirtualGrid({
+    itemCount: gridEntries.length,
+    cardWidth: view === 'grid' ? 104 : 1,
+    rowHeight: view === 'grid' ? 96 : 28,
+    columnGap: view === 'grid' ? 12 : 0,
+    rowGap: view === 'grid' ? 25 : 0,
+    overscanRows: 2,
+    fixedColumnCount: view === 'list' ? 1 : undefined,
+    pinnedIndexes,
+  });
+  useEffect(() => {
+    if (view === 'list') {
+      setPointerPreviewId(null);
+      return;
+    }
+    const pointerIndex = gridEntries.findIndex((entry) => entry.kind === 'asset' && entry.asset.id === pointerPreviewId);
+    if (pointerIndex >= 0
+      && (pointerIndex < virtualGrid.visibleStartIndex || pointerIndex >= virtualGrid.visibleEndIndex)) {
+      setPointerPreviewId(null);
+    }
+  }, [gridEntries, pointerPreviewId, view, virtualGrid.visibleEndIndex, virtualGrid.visibleStartIndex]);
+  useEffect(() => {
+    const assetExists = gridEntries.some((entry) => entry.kind === 'asset' && entry.asset.id === focusedAssetId);
+    const folderExists = gridEntries.some((entry) => entry.kind === 'folder' && entry.folder.id === focusedFolderId);
+    if (focusedAssetId && !assetExists) setFocusedAssetId(null);
+    if (focusedFolderId && !folderExists) setFocusedFolderId(null);
+  }, [focusedAssetId, focusedFolderId, gridEntries]);
+  const openFolder = useCallback((id: string) => setCurrentFolderId(id), []);
+  const openAssetMenu = useCallback((id: string, anchor: HTMLElement) => {
+    if (assetMenu === id) {
+      setAssetMenu(null);
+      setAssetMenuPos(null);
+      return;
+    }
+    setConfirmDeleteId(null);
+    const rect = anchor.getBoundingClientRect();
+    const panel = anchor.closest('.cc-media-pool')?.getBoundingClientRect();
+    const menuWidth = 152;
+    const left = Math.min(
+      (panel?.right ?? window.innerWidth) - menuWidth - 8,
+      Math.max((panel?.left ?? 0) + 8, rect.left),
+    );
+    setAssetMenu(id);
+    setAssetMenuPos(rect.bottom > window.innerHeight / 2
+      ? { bottom: window.innerHeight - rect.top + 4, left }
+      : { top: rect.bottom + 4, left });
+  }, [assetMenu]);
+  const menuAsset = assetMenu ? assets.find((asset) => asset.id === assetMenu) : undefined;
 
   return (
     <div className="cc-media-pool" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void onPick(event.dataTransfer.files); }}>
@@ -321,126 +394,83 @@ export function MediaPoolPanel({
       </div>}
 
       <div className={`cc-media-grid ${view}`}>
-        {!q && !semanticResults && childFolders.map((folder) => <button key={folder.id} className="cc-folder-card" onClick={() => setCurrentFolderId(folder.id)}>
-          <span><Icon name="folder" size={34} /></span><strong>{folder.name}</strong>
-        </button>)}
-        {visible.map((asset) => <div key={asset.id} className={`cc-asset-card${selected.has(asset.id) ? ' selected' : ''}${missing.has(asset.id) ? ' missing' : ''}`}>
-          <div className="cc-asset-thumb-wrap">
-            <button
-              className="cc-asset-thumb"
-              title={missing.has(asset.id) ? t('点击重新链接') : t('点击加入时间线，或拖到指定轨道：{name}', { name: asset.name })}
-              draggable={!missing.has(asset.id)}
-              style={missing.has(asset.id) ? undefined : { cursor: 'grab' }}
-              onDragStart={(event) => setMediaAssetDrag(event, asset)}
-              onClick={() => {
-                if (missing.has(asset.id) && onRelinkAsset) startRelink(asset.id);
-                else onAddAsset(asset);
+        <div
+          ref={virtualGrid.containerRef}
+          className="cc-media-virtual-canvas"
+          style={{ height: virtualGrid.totalHeight }}
+        >
+          {virtualGrid.rows.map((row) => (
+            <div
+              key={row.rowIndex}
+              className="cc-media-virtual-row"
+              style={{
+                top: row.top,
+                height: virtualGrid.rowHeight,
+                gridTemplateColumns: view === 'grid'
+                  ? `repeat(${virtualGrid.columnCount}, ${virtualGrid.columnWidth}px)`
+                  : 'minmax(0, 1fr)',
+                columnGap: view === 'grid' ? 12 : 0,
               }}
             >
-              {view === 'list'
-                ? <Icon name={asset.kind === 'audio' ? 'music' : asset.kind === 'motion-graphic' ? 'sparkles' : asset.kind === 'gif' || asset.kind === 'svg' ? 'image' : asset.kind} size={16} />
-                : missing.has(asset.id)
-                  ? (
-                    <span style={{ display: 'grid', placeItems: 'center', gap: 4, color: theme.textMuted, fontSize: 11, padding: 8, textAlign: 'center' }}>
-                      <Icon name="swap" size={22} />
-                      {t('点击重新链接')}
-                    </span>
-                  )
-                  : asset.kind === 'image' || asset.kind === 'gif' || asset.kind === 'svg'
-                    ? <img src={asset.src} alt={asset.name} draggable={false} onError={() => markMissing(asset.id)} onLoad={() => clearMissing(asset.id)} />
-                    : asset.kind === 'video'
-                      // preload=metadata does not decode the picture (black block), seek for a while to force the browser to draw the frame; incidentally avoid the black field of frame 0
-                      ? <video src={asset.src} muted preload="metadata" draggable={false} onError={() => markMissing(asset.id)} onLoadedData={() => clearMissing(asset.id)}
-                          onLoadedMetadata={(e) => { const v = e.currentTarget; if (Number.isFinite(v.duration) && v.duration > 0) v.currentTime = Math.min(1, v.duration / 2); }} />
-                      : asset.kind === 'motion-graphic'
-                        ? <MgThumb asset={asset} fps={fps} />
-                        : <Icon name="music" size={42} strokeWidth={2.2} />}
-            </button>
-            {asset.kind === 'audio' && <span className="cc-asset-audio-mark"><Icon name="volume" size={14} /></span>}
-            {(asset.kind === 'gif' || asset.kind === 'svg') && (
-              <span className="cc-asset-audio-mark" style={{ left: 4, right: 'auto', fontSize: 9, fontWeight: 700, letterSpacing: 0.3 }}>
-                {asset.kind.toUpperCase()}
-              </span>
-            )}
-            <span className="cc-asset-duration">{durationLabel(asset.durationInFrames, fps)}</span>
-            <input className="cc-asset-check" aria-label={t('选择 {name}', { name: asset.name })} type="checkbox" checked={selected.has(asset.id)} onChange={() => toggleSelected(asset.id)} />
-            <button className="cc-asset-more" aria-label={t('管理 {name}', { name: asset.name })}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (assetMenu === asset.id) {
-                  setAssetMenu(null);
-                  setAssetMenuPos(null);
-                  return;
-                }
-                setConfirmDeleteId(null);
-                const r = event.currentTarget.getBoundingClientRect();
-                const panel = event.currentTarget.closest('.cc-media-pool')?.getBoundingClientRect();
-                const menuW = 152;
-                const left = Math.min((panel?.right ?? window.innerWidth) - menuW - 8, Math.max((panel?.left ?? 0) + 8, r.left));
-                setAssetMenu(asset.id);
-                setAssetMenuPos(r.bottom > window.innerHeight / 2
-                  ? { bottom: window.innerHeight - r.top + 4, left }
-                  : { top: r.bottom + 4, left });
-              }}
-            ><Icon name="more" size={17} /></button>
-          </div>
-          <button className="cc-asset-name" title={asset.name} onClick={() => onAddAsset(asset)}>{asset.name}</button>
-        </div>)}
-        {visible.length === 0 && childFolders.length === 0 && (
+              {gridEntries.slice(row.startIndex, row.endIndex).map((entry) => entry.kind === 'folder'
+                ? (
+                  <MediaFolderCard
+                    key={`folder:${entry.folder.id}`}
+                    folder={entry.folder}
+                    onOpen={openFolder}
+                    onFocusChange={setFocusedFolderId}
+                  />
+                )
+                : (
+                  <MediaAssetCard
+                    key={`asset:${entry.asset.id}`}
+                    asset={entry.asset}
+                    fps={fps}
+                    view={view}
+                    active={activePreviewId === entry.asset.id}
+                    selected={selected.has(entry.asset.id)}
+                    missing={missing.has(entry.asset.id)}
+                    canRelink={!!onRelinkAsset}
+                    onAdd={onAddAsset}
+                    onPointerChange={setPointerPreviewId}
+                    onDragChange={setDraggedAssetId}
+                    onFocusChange={setFocusedAssetId}
+                    onLoadError={markMissing}
+                    onLoadSuccess={clearMissing}
+                    onOpenMenu={openAssetMenu}
+                    onRelink={startRelink}
+                    onToggleSelected={toggleSelected}
+                  />
+                ))}
+            </div>
+          ))}
+        </div>
+        {gridEntries.length === 0 && (
           <div className="cc-media-empty">
-            {assets.length === 0 ? <><Icon name="folder" size={28} /><strong>{t('这个文件夹是空的')}</strong><span>{t('导入媒体或把素材拖到这里。')}</span></> : <span>{t('当前筛选下没有素材')}</span>}
+            {assets.length === 0
+              ? <><Icon name="folder" size={28} /><strong>{t('这个文件夹是空的')}</strong><span>{t('导入媒体或把素材拖到这里。')}</span></>
+              : <span>{t('当前筛选下没有素材')}</span>}
           </div>
         )}
       </div>
 
-      {assetMenu && assetMenuPos && (() => {
-        const asset = assets.find((a) => a.id === assetMenu);
-        if (!asset) return null;
-        return createPortal(
-          <>
-            <div className="cc-asset-menu-backdrop" onClick={() => { setAssetMenu(null); setAssetMenuPos(null); }} />
-            <div className="cc-media-popover cc-asset-menu-portal" style={assetMenuPos}
-              onClick={(e) => e.stopPropagation()}>
-              {!missing.has(asset.id) && <AssetExportButton asset={asset} fps={fps} onError={setError}
-                onComplete={() => { setAssetMenu(null); setAssetMenuPos(null); }} />}
-              <button type="button" onClick={() => { onSetFavorite(asset.id, !asset.favorite); setAssetMenu(null); setAssetMenuPos(null); }}>
-                {asset.favorite ? t('取消收藏') : t('收藏')}
-              </button>
-              <button type="button" onClick={() => {
-                setAssetMenu(null); setAssetMenuPos(null);
-                openPrompt({ title: '素材显示名称', initialValue: asset.name, onSubmit: (name) => onRenameAsset(asset.id, name) });
-              }}>{t('重命名')}</button>
-              {onRelinkAsset && asset.kind !== 'motion-graphic' && (
-                <button type="button" onClick={() => {
-                  setAssetMenu(null); setAssetMenuPos(null);
-                  startRelink(asset.id);
-                }}>{t('重新链接文件')}</button>
-              )}
-              {onRemoveAsset && (
-                <button type="button" className="danger" onClick={() => {
-                  if (confirmDeleteId !== asset.id) { setConfirmDeleteId(asset.id); return; }
-                  onRemoveAsset(asset.id);
-                  setAssetMenu(null); setAssetMenuPos(null); setConfirmDeleteId(null);
-                }}>{confirmDeleteId === asset.id ? t('确认删除') : t('删除')}</button>
-              )}
-              <label className="cc-asset-menu-move">
-                <span>{t('移动到')}</span>
-                <select aria-label={t('移动 {name}', { name: asset.name })} value={asset.folderId ?? ''}
-                  onChange={(event) => {
-                    onMoveAssets([asset.id], event.target.value || undefined);
-                    setAssetMenu(null); setAssetMenuPos(null);
-                  }}>
-                  <option value="">Master</option>
-                  {folders.map((folder) => (
-                    <option key={folder.id} value={folder.id}>{folderPath(folder, folders)}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </>,
-          document.body,
-        );
-      })()}
+      <AssetMenuPortal
+        asset={menuAsset}
+        position={assetMenuPos}
+        fps={fps}
+        folders={folders}
+        missing={menuAsset ? missing.has(menuAsset.id) : false}
+        confirmDelete={menuAsset?.id === confirmDeleteId}
+        canRelink={!!onRelinkAsset}
+        canRemove={!!onRemoveAsset}
+        onClose={() => { setAssetMenu(null); setAssetMenuPos(null); }}
+        onError={setError}
+        onFavorite={() => { if (menuAsset) onSetFavorite(menuAsset.id, !menuAsset.favorite); setAssetMenu(null); setAssetMenuPos(null); }}
+        onRename={() => { if (menuAsset) openPrompt({ title: '素材显示名称', initialValue: menuAsset.name, onSubmit: (name) => onRenameAsset(menuAsset.id, name) }); setAssetMenu(null); setAssetMenuPos(null); }}
+        onRelink={() => { if (menuAsset) startRelink(menuAsset.id); setAssetMenu(null); setAssetMenuPos(null); }}
+        onRemove={() => { if (!menuAsset || !onRemoveAsset) return; if (confirmDeleteId !== menuAsset.id) { setConfirmDeleteId(menuAsset.id); return; } onRemoveAsset(menuAsset.id); setAssetMenu(null); setAssetMenuPos(null); setConfirmDeleteId(null); }}
+        onMove={(folderId) => { if (menuAsset) onMoveAssets([menuAsset.id], folderId); setAssetMenu(null); setAssetMenuPos(null); }}
+      />
 
       {promptState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t(promptState.title)}>
         <form className="cc-modal" onSubmit={(event) => { event.preventDefault(); submitPrompt(); }}>
@@ -453,39 +483,16 @@ export function MediaPoolPanel({
         <div className="cc-modal"><strong>{t('删除空文件夹「{name}」？', { name: deleteState.name })}</strong><div><button onClick={() => setDeleteState(null)}>{t('取消')}</button><button className="danger" onClick={() => { onDeleteFolder(deleteState.id); setCurrentFolderId(deleteState.parentId); setDeleteState(null); }}>{t('删除')}</button></div></div>
       </div>}
 
-      {showRelinkAll && (
-        <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('重新链接离线素材')} onClick={() => setShowRelinkAll(false)}>
-          <div className="cc-modal" style={{ width: 'min(420px, 92vw)', maxHeight: '70vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
-            <strong>{t('重新链接离线素材')}</strong>
-            <p style={{ margin: '8px 0 12px', fontSize: 12, color: theme.textMuted, lineHeight: 1.45 }}>
-              {t('工程中的文件已移动或重命名。选一个文件夹按文件名批量重链，或从下方逐个重新链接。')}
-            </p>
-            <input ref={dirInputRef} type="file" multiple hidden onChange={(e) => relinkFromFolder(e.target.files)} />
-            <button type="button" className="primary" disabled={dirBusy} onClick={() => dirInputRef.current?.click()}
-              style={{ width: '100%', marginBottom: 10 }}>
-              {dirBusy ? t('正在按文件名匹配…') : t('选择文件夹批量重链（按文件名匹配）')}
-            </button>
-            {relinkMsg && <div style={{ fontSize: 12, color: `color-mix(in srgb, ${theme.success} 65%, ${theme.textStrong})`, margin: '0 0 10px' }}>{relinkMsg}</div>}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {missingList.map((asset) => (
-          <div key={asset.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 4, background: theme.panelAlt }}>
-                  <span style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{asset.name}</span>
-                  <button
-                    type="button"
-                    className="primary"
-                    onClick={() => startRelink(asset.id)}
-                    style={{ flexShrink: 0 }}
-                  >
-                    {t('重新链接文件')}
-                  </button>
-                </div>
-              ))}
-              {missingList.length === 0 && <div style={{ fontSize: 12, color: theme.textDim }}>{t('没有待重链的素材')}</div>}
-            </div>
-            <div style={{ marginTop: 12 }}><button type="button" onClick={() => setShowRelinkAll(false)}>{t('关闭')}</button></div>
-          </div>
-        </div>
-      )}
+      <RelinkAllDialog
+        open={showRelinkAll}
+        busy={dirBusy}
+        message={relinkMsg}
+        missingAssets={missingList}
+        inputRef={dirInputRef}
+        onClose={() => setShowRelinkAll(false)}
+        onPickFolder={relinkFromFolder}
+        onRelink={startRelink}
+      />
       {mobileUploadOpen && <MobileUploadDialog onClose={() => setMobileUploadOpen(false)} onImport={onImportMobile} />}
     </div>
   );

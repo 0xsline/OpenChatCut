@@ -6,7 +6,7 @@ import { validatePack } from './validate';
 import { listPacks, savePack, registerPack, unregisterPack, type InstalledPack } from './store';
 import type { PluginPack } from './types';
 import { createGlRuntime } from '../gl/runtime';
-import { compileTemplate } from '../template-host';
+import { prepareTemplate } from '../template-host';
 
 export type InstallResult =
   | { ok: true; pack: InstalledPack }
@@ -60,7 +60,7 @@ async function probeTemplates(pack: PluginPack): Promise<string[]> {
   if (!mgItems.length) return [];
   for (const item of mgItems) {
     try {
-      compileTemplate(item.code);
+      await prepareTemplate(item.code);
     } catch (e) {
       errors.push(`「${item.name}」模板编译失败:${e instanceof Error ? e.message : String(e)}`);
     }

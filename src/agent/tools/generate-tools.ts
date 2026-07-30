@@ -1,11 +1,8 @@
 import type { AgentContext } from '../context';
-import { GENERATE_TOOL_SCHEMAS } from './generate-schemas';
 import { executeGenerateCommand } from './generate-tool-handlers';
 import type { GenerateArgs } from './generate-tool-input';
 
-export { GENERATE_TOOL_SCHEMAS } from './generate-schemas';
-
-export const GENERATE_TOOL_NAMES = new Set(GENERATE_TOOL_SCHEMAS.map((tool) => tool.name));
+export { GENERATE_TOOL_NAMES, GENERATE_TOOL_SCHEMAS } from './generate-schemas';
 
 export async function execGenerateTool(name: string, args: GenerateArgs, ctx: AgentContext): Promise<unknown> {
   return executeGenerateCommand(name, args, ctx);

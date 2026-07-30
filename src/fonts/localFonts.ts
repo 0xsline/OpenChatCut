@@ -11,7 +11,7 @@
  * Headless rendering: render bundle overlay assets/, the same source /fonts path can also be loaded.
  */
 
-/** Normalized matching key (case/whitespace/punctuation insensitive). googleFonts.ts re-export for search. */
+/** Normalized matching key (case/whitespace/punctuation insensitive). */
 export function normalizeFontKey(value: string): string {
   return value
     .toLowerCase()

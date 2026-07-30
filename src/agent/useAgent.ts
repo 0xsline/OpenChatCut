@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { resolveAgentReferences, type AgentContext, type AgentReference } from './context';
-import { initialMessages, runAgent, type LLMMessage } from './runtime';
-import {
-  generateAgentText,
-  normalizeLlmProvider,
-  PROVIDER,
-  type LlmProvider,
-} from './client';
+import { resolveAgentReferences } from './context';
+import type { AgentContext, AgentReference } from './context';
+import type { AgentRuntimeModule, LLMMessage } from './runtime';
+import { normalizeLlmProvider, PROVIDER } from './providerConfig';
+import type { LlmProvider } from './providerConfig';
 import { normalizeLlmMessages, prepareMessagesForProvider } from './messages';
 import { makeDraft, replayActions } from '../editor/store';
 import { buildOperation, buildProposal, isProposalStale, partitionProposalActions, type Operation, type Proposal } from './proposal';
@@ -44,6 +41,24 @@ export interface LiveTool {
   name: string;
   partial: string;
 }
+
+// Runtime boundary: the editor may mount the chat shell while it is collapsed.
+// A literal import keeps the Vite chunk statically discoverable without eagerly
+// evaluating the AI SDK, tool registry, or provider client.
+const importAgentRuntime = async (): Promise<AgentRuntimeModule> => import('./runtime');
+let agentRuntimePromise: Promise<AgentRuntimeModule> | null = null;
+
+export function preloadAgentRuntime(): Promise<AgentRuntimeModule> {
+  if (!agentRuntimePromise) {
+    agentRuntimePromise = importAgentRuntime().catch((error: unknown) => {
+      agentRuntimePromise = null;
+      throw error;
+    });
+  }
+  return agentRuntimePromise;
+}
+
+const initialMessages = (): LLMMessage[] => [];
 
 export function useAgent(ctx: AgentContext, projectId: string) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -171,6 +186,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
       const ac = new AbortController();
       abortRef.current = ac;
       try {
+        const { runAgent } = await preloadAgentRuntime();
         llmRef.current = await runAgent(llmRef.current, draftCtx, (ev) => {
           if (ev.type === 'text-start') {
             setMessages((m) => {
@@ -279,6 +295,8 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     const t = draft.trim();
     if (!t) return draft;
     try {
+      // The enhancer is another first-send boundary and must not make client.ts eager.
+      const { generateAgentText } = await import('./client');
       const out = (await generateAgentText({
         maxOutputTokens: 400,
         system: 'You improve prompts for a video-editing assistant. Rewrite the user\'s rough or conversational editing intent as one clear, specific, directly executable instruction in the user\'s language. Output only the rewritten instruction, with no explanation, quotation marks, or line breaks.',

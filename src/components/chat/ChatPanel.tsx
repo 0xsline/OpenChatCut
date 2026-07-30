@@ -4,7 +4,7 @@ import { useT } from '../../i18n/locale';
 import type { AgentContext } from '../../agent/context';
 import type { MediaAsset, TimelineState } from '../../editor/types';
 import { kindOf } from '../../media/upload';
-import { useAgent } from '../../agent/useAgent';
+import { preloadAgentRuntime, useAgent } from '../../agent/useAgent';
 import { useExternalAgentBridge } from '../../agent/useExternalAgentBridge';
 import { ExternalProposalCard } from './ExternalProposalCard';
 import { thinkingPhrase } from './thinkingPhrases';
@@ -93,6 +93,9 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
     proposalStale, forceApplyProposal, reProposeStale, pendingGuard, liveTool,
     changeLog, rollbackChangeSession, canRollbackChangeSession,
   } = useAgent(ctx, projectId);
+  useEffect(() => {
+    if (!collapsed) void preloadAgentRuntime().catch(() => undefined);
+  }, [collapsed]);
   const externalProposal = useExternalAgentBridge(ctx, projectId);
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<ChatMode>('agent');

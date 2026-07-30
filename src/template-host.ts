@@ -16,7 +16,6 @@
 // traversal that slips past the static check. PRODUCTION must additionally run
 // templates in a sandboxed <iframe sandbox="allow-scripts"> (opaque origin) or a
 // QuickJS WASM realm.
-import * as Babel from '@babel/standalone';
 import * as React from 'react';
 import {
   useCurrentFrame, useVideoConfig, interpolate, interpolateColors,
@@ -129,32 +128,62 @@ export function validateTemplate(code: string): void {
 }
 
 const cache = new Map<string, MgComponent>();
+const pending = new Map<string, Promise<MgComponent>>();
 
-export function compileTemplate(code: string): MgComponent {
-  const cached = cache.get(code);
-  if (cached) return cached;
-
-  validateTemplate(code); // layer 1
-
-  // Component identification: The template convention component signature is `({ item }) => JSX`, give priority to those with item in parameter deconstruction
-  // const——Some templates write the tool function in front of the component. If you press "first const" to retrieve it, the helper will be treated as a component.
-  // Render (receive {item} and return it as is → React #31; or deconstruct a hand full of undefined → spring NaN).
-  // If the item signature is not found then fall back to the old heuristic (the first const).
-  const itemSig = code.match(/const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(\s*\{[^)}]*\bitem\b[^)}]*\}/);
-  const m = itemSig ?? code.match(/const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\(|async\b|function)/);
-  const name = m?.[1];
+function templateName(code: string): string {
+  const itemSignature = code.match(
+    /const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(\s*\{[^)}]*\bitem\b[^)}]*\}/,
+  );
+  const fallback = code.match(/const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\(|async\b|function)/);
+  const name = (itemSignature ?? fallback)?.[1];
   if (!name) throw new Error('template: 找不到 `const NAME = (...)` 声明');
+  return name;
+}
 
-  const out = Babel.transform(code, { presets: [['react', { runtime: 'classic' }]], filename: 'template.jsx' });
-  const transpiled = out.code;
-  if (!transpiled) throw new Error('template: babel 无输出');
-
-  // layer 2: whitelist real globals; shadow dangerous ones to undefined; strict mode.
+function evaluateTemplate(transpiled: string, name: string): MgComponent {
   const names = [...Object.keys(WHITELIST), ...SHADOW];
   const values = [...Object.values(WHITELIST), ...SHADOW.map(() => undefined)];
   const factory = new Function(...names, `"use strict";\n${transpiled}\n;return ${name};`);
-  const Component = factory(...values) as MgComponent;
+  return factory(...values) as MgComponent;
+}
 
-  cache.set(code, Component);
-  return Component;
+async function compileUncached(code: string): Promise<MgComponent> {
+  validateTemplate(code);
+  const name = templateName(code);
+  // Compiler boundary: user/plugin JSX is the only path allowed to load Babel.
+  const Babel = await import('@babel/standalone');
+  const output = Babel.transform(code, {
+    presets: [['react', { runtime: 'classic' }]],
+    filename: 'template.jsx',
+  }).code;
+  if (!output) throw new Error('template: babel 无输出');
+  return evaluateTemplate(output, name);
+}
+
+/** Validate, compile, and cache one code-backed template before it can render. */
+export function prepareTemplate(code: string): Promise<MgComponent> {
+  const compiled = cache.get(code);
+  if (compiled) return Promise.resolve(compiled);
+  const inFlight = pending.get(code);
+  if (inFlight) return inFlight;
+  const promise = compileUncached(code).then(
+    (component) => {
+      cache.set(code, component);
+      pending.delete(code);
+      return component;
+    },
+    (error: unknown) => {
+      pending.delete(code);
+      throw error;
+    },
+  );
+  pending.set(code, promise);
+  return promise;
+}
+
+/** Synchronous render path. Call prepareTemplate() at a readiness boundary first. */
+export function getCompiledTemplate(code: string): MgComponent {
+  const compiled = cache.get(code);
+  if (!compiled) throw new Error('template: 尚未完成编译');
+  return compiled;
 }

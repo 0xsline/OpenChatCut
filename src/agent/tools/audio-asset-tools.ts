@@ -2,7 +2,7 @@ import type { AgentContext } from '../context';
 import type { AudioAsset } from '../../audio/library';
 import { defaultTrackId, resolveTrackId, trackAlias } from '../../editor/types';
 
-export const AUDIO_ASSET_TOOL_NAMES = new Set(['list_audio', 'add_audio']);
+export { AUDIO_ASSET_TOOL_NAMES } from './schemas/audio-asset-tools';
 
 type Args = Record<string, unknown>;
 

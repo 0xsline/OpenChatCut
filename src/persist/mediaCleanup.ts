@@ -17,6 +17,10 @@ export interface UploadFileInfo {
   bytes: number;
   mtimeMs: number;
 }
+export interface UnreferencedSourceCandidate extends UploadFileInfo {
+  kind: 'unreferenced-source';
+  autoDelete: false;
+}
 
 /** Disk list (server scans the upload directory; dev has the same API as the desktop). */
 export async function listUploadFiles(): Promise<UploadFileInfo[]> {
@@ -64,11 +68,13 @@ export async function deleteUploadFile(name: string): Promise<boolean> {
 
 export interface CleanupScan {
   orphanDocsPurged: number;
-  files: UploadFileInfo[];
+  /** Backward-compatible candidate list used by the existing confirmation dialog. */
+  files: UnreferencedSourceCandidate[];
+  sourceCandidates: UnreferencedSourceCandidate[];
 }
 
-/** Clean up the panel entrance: first clear the orphan project documents (project:* outside the index - smoke/old test residue),
- * Then return to the current unowned file list.*/
+/** Inventory only: orphan project records may be purged, but source uploads are
+ * returned as confirmation-required candidates and are never deleted here. */
 export async function scanUnreferenced(): Promise<CleanupScan> {
   const indexed = new Set((await listProjects({ includeDeleted: true })).map((m) => m.id));
   let orphanDocsPurged = 0;
@@ -79,7 +85,12 @@ export async function scanUnreferenced(): Promise<CleanupScan> {
     }
   }
   const [files, refs] = await Promise.all([listUploadFiles(), collectAllUploadRefs()]);
-  return { orphanDocsPurged, files: unreferencedOf(files, refs) };
+  const sourceCandidates = unreferencedOf(files, refs).map((file) => ({
+    ...file,
+    kind: 'unreferenced-source' as const,
+    autoDelete: false as const,
+  }));
+  return { orphanDocsPurged, files: sourceCandidates, sourceCandidates };
 }
 
 /** Delete the project + cascade to delete its exclusive assets (reserved assets that are also referenced by other projects).*/

@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { captionPages } from './exportCaptions';
 import { captionTrackEntries, timelineTrackIds, trackKind, type TimelineState, type TrackId } from '../editor/types';
-import { collectTimelineSnapPoints, snapDraggedEdges, type SnapDraggedEdgesOptions, type SnapPoint } from '../editor/snap';
+import {
+  collectTimelineSnapPoints, snapDraggedEdges, sortTimelineSnapPoints,
+  type SnapDraggedEdgesOptions, type SnapPoint,
+} from '../editor/snap';
 import type { CaptionPage, CaptionsData } from './types';
 import type { TranscriptWord } from '../transcript/types';
 import { theme, themeAlpha } from '../theme';
@@ -41,6 +44,7 @@ interface CueDrag {
   baseStartMs: number;
   baseEndMs: number;
   deltaFrames: number;
+  snapPoints: SnapPoint[];
 }
 
 interface TrimDrag extends CueDrag {
@@ -61,8 +65,8 @@ function manualCueTargets(captions: CaptionsData | null): Map<TranscriptWord, Ma
   return targets;
 }
 
-function captionSnapPoints(state: TimelineState, sourceTrackId: TrackId, playheadFrame: number): SnapPoint[] {
-  const points = collectTimelineSnapPoints(state, { playheadFrame });
+function captionSnapPoints(state: TimelineState, sourceTrackId: TrackId): SnapPoint[] {
+  const points = collectTimelineSnapPoints(state, {});
   for (const entry of captionTrackEntries(state)) {
     if (entry.id === sourceTrackId || !entry.captions) continue;
     for (const page of captionPages(entry.captions, state.items, state.fps)) {
@@ -70,7 +74,7 @@ function captionSnapPoints(state: TimelineState, sourceTrackId: TrackId, playhea
       points.push({ frame: Math.round(page.end * state.fps / 1000), type: 'item-end' });
     }
   }
-  return points;
+  return sortTimelineSnapPoints(points);
 }
 
 function cueDeltaFrames(
@@ -78,7 +82,6 @@ function cueDeltaFrames(
   clientX: number,
   mode: SnapDraggedEdgesOptions['mode'],
   state: TimelineState,
-  trackId: TrackId,
   playheadFrame: number,
   px: number,
   snapping: boolean,
@@ -89,8 +92,9 @@ function cueDeltaFrames(
   const baseDuration = Math.max(1, Math.round((drag.baseEndMs - drag.baseStartMs) * state.fps / 1000));
   const snapped = snapDraggedEdges({
     mode, baseStart, baseDuration, rawDelta,
-    points: captionSnapPoints(state, trackId, playheadFrame),
+    points: drag.snapPoints,
     thresholdFrames: SNAP_PX / px,
+    dynamicPlayheadFrame: playheadFrame,
   });
   return Math.max(-baseStart, snapped.deltaF);
 }
@@ -102,7 +106,7 @@ function useCaptionTrim(options: {
   const { state, captions, trackId, playheadFrame, px, snapping, locked, onUpdate } = options;
   const [drag, setDrag] = useState<TrimDrag | null>(null);
   const delta = (current: TrimDrag, clientX: number) => cueDeltaFrames(
-    current, clientX, current.edge === 'start' ? 'trim-left' : 'trim-right', state, trackId, playheadFrame, px, snapping,
+    current, clientX, current.edge === 'start' ? 'trim-left' : 'trim-right', state, playheadFrame, px, snapping,
   );
   const start = (event: ReactPointerEvent, key: string, target: ManualCueTarget, edge: ManualCueEdge) => {
     const cue = target.words[target.index];
@@ -110,7 +114,10 @@ function useCaptionTrim(options: {
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
-    setDrag({ key, target, edge, startX: event.clientX, baseStartMs: cue.start, baseEndMs: cue.end, deltaFrames: 0 });
+    setDrag({
+      key, target, edge, startX: event.clientX, baseStartMs: cue.start, baseEndMs: cue.end,
+      deltaFrames: 0, snapPoints: captionSnapPoints(state, trackId),
+    });
   };
   const move = (event: ReactPointerEvent, key: string) => {
     if (!drag || drag.key !== key) return;
@@ -144,13 +151,15 @@ function useCaptionMove(options: {
     const cue = target.words[target.index];
     if (!cue || locked || event.button !== 0) return;
     event.preventDefault();
-    updateDrag({ key, target, startX: event.clientX, baseStartMs: cue.start, baseEndMs: cue.end,
-      deltaFrames: 0, targetTrackId: trackId });
+    updateDrag({
+      key, target, startX: event.clientX, baseStartMs: cue.start, baseEndMs: cue.end,
+      deltaFrames: 0, targetTrackId: trackId, snapPoints: captionSnapPoints(state, trackId),
+    });
   };
   useEffect(() => {
     if (!dragRef.current) return;
     const delta = (current: CueDrag, clientX: number) => cueDeltaFrames(
-      current, clientX, 'move', state, trackId, playheadFrame, px, snapping,
+      current, clientX, 'move', state, playheadFrame, px, snapping,
     );
     const move = (event: PointerEvent) => {
       const current = dragRef.current;

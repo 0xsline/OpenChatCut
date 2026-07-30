@@ -1,14 +1,14 @@
-// Local durability for uploaded media: keep a copy of each /media/uploads/*
-// blob in IndexedDB so a wiped public/ folder (or new machine clone of only
-// ProjectDoc) can re-publish files. Paths stay the same so timeline src still
-// works after restore.
-// Local-first stand-in for cloud object storage.
+// Browser fallback durability for /media/uploads/* blobs. A local server can
+// explicitly advertise that its filesystem path is authoritative; otherwise a
+// bounded IndexedDB copy preserves pure-web/offline restore behavior. Paths stay
+// stable so persisted projects can re-publish missing media after reopening.
 
 const DB_NAME = 'openchatcut-media';
 const STORE = 'blobs';
 const DB_VERSION = 1;
-/** Skip caching giant files to avoid quota thrash (still on disk via /upload). */
-const MAX_CACHE_BYTES = 200 * 1024 * 1024;
+const MAX_FILE_CACHE_BYTES = 200 * 1024 * 1024;
+const MAX_TOTAL_CACHE_BYTES = 1024 * 1024 * 1024;
+const MEDIA_AUTHORITY_HEADER = 'x-openchatcut-media-authority';
 
 export interface MediaBlobRecord {
   src: string;
@@ -17,10 +17,24 @@ export interface MediaBlobRecord {
   mime: string;
   bytes: number;
   savedAt: number;
+  lastAccessedAt?: number;
 }
 
 const memory = new Map<string, MediaBlobRecord>();
 const hasIdb = (): boolean => typeof indexedDB !== 'undefined';
+let writeQueue: Promise<void> = Promise.resolve();
+
+function normalizeRecord(value: MediaBlobRecord): MediaBlobRecord | null {
+  if (!value || typeof value.src !== 'string' || !(value.blob instanceof Blob)
+    || typeof value.name !== 'string' || typeof value.mime !== 'string') return null;
+  const savedAt = Number.isFinite(value.savedAt) ? value.savedAt : Date.now();
+  return {
+    ...value,
+    bytes: value.blob.size,
+    savedAt,
+    lastAccessedAt: typeof value.lastAccessedAt === 'number' && Number.isFinite(value.lastAccessedAt) ? value.lastAccessedAt : savedAt,
+  };
+}
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -32,6 +46,48 @@ function openDb(): Promise<IDBDatabase> {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+}
+interface StoredBlobMeta { src: string; bytes: number; lastAccessedAt: number }
+
+async function idbMetadata(): Promise<StoredBlobMeta[]> {
+  const metaOf = (value: MediaBlobRecord): StoredBlobMeta | null => {
+    const record = normalizeRecord(value);
+    return record ? {
+      src: record.src,
+      bytes: record.blob.size,
+      lastAccessedAt: record.lastAccessedAt ?? record.savedAt,
+    } : null;
+  };
+  if (!hasIdb()) {
+    return [...memory.values()].map(metaOf).filter((value): value is StoredBlobMeta => value !== null);
+  }
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const values: StoredBlobMeta[] = [];
+    const request = db.transaction(STORE, 'readonly').objectStore(STORE).openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) { resolve(values); return; }
+      const meta = metaOf(cursor.value as MediaBlobRecord);
+      if (meta) values.push(meta);
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+function enqueueWrite(work: () => Promise<void>): Promise<void> {
+  const result = writeQueue.then(work);
+  writeQueue = result.catch(() => {});
+  return result;
+}
+
+async function serverPathIsAuthoritative(src: string): Promise<boolean> {
+  try {
+    const response = await fetch(src, { method: 'HEAD', cache: 'no-store' });
+    return response.ok && response.headers.get(MEDIA_AUTHORITY_HEADER) === 'server';
+  } catch {
+    return false;
+  }
 }
 
 async function idbPut(rec: MediaBlobRecord): Promise<void> {
@@ -49,11 +105,13 @@ async function idbPut(rec: MediaBlobRecord): Promise<void> {
 }
 
 async function idbGet(src: string): Promise<MediaBlobRecord | undefined> {
-  if (!hasIdb()) return memory.get(src);
+  if (!hasIdb()) return normalizeRecord(memory.get(src) as MediaBlobRecord) ?? undefined;
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(src);
-    req.onsuccess = () => resolve(req.result as MediaBlobRecord | undefined);
+    req.onsuccess = () => {
+      resolve(normalizeRecord(req.result as MediaBlobRecord) ?? undefined);
+    };
     req.onerror = () => reject(req.error);
   });
 }
@@ -75,9 +133,10 @@ async function idbDel(src: string): Promise<void> {
 /** Test helper. */
 export function resetMediaBlobMemory(): void {
   memory.clear();
+  writeQueue = Promise.resolve();
 }
 
-/** Cache a blob under its public src path (best-effort; never throws to callers). */
+/** Cache a source blob when no authoritative local server copy is advertised. */
 export async function putMediaBlob(
   src: string,
   data: Blob | File,
@@ -85,40 +144,60 @@ export async function putMediaBlob(
 ): Promise<void> {
   if (!src.startsWith('/media/uploads/')) return;
   const bytes = data.size;
-  if (bytes <= 0 || bytes > MAX_CACHE_BYTES) return;
-  const name = meta?.name
-    ?? (data instanceof File ? data.name : src.split('/').pop() ?? 'file');
-  const mime = meta?.mime
-    || (data instanceof File ? data.type : data.type)
-    || 'application/octet-stream';
-  try {
+  if (bytes <= 0 || bytes > MAX_FILE_CACHE_BYTES || await serverPathIsAuthoritative(src)) return;
+  await enqueueWrite(async () => {
+    const existing = await idbMetadata();
+    if (existing.reduce((total, record) => total + record.bytes, 0)
+      - (existing.find((record) => record.src === src)?.bytes ?? 0) + bytes > MAX_TOTAL_CACHE_BYTES) return;
+    const isFile = typeof File !== 'undefined' && data instanceof File;
+    const timestamp = Date.now();
     await idbPut({
       src,
       blob: data,
-      name,
-      mime,
+      name: meta?.name ?? (isFile ? (data as File).name : src.split('/').pop() ?? 'file'),
+      mime: meta?.mime || data.type || 'application/octet-stream',
       bytes,
-      savedAt: Date.now(),
+      savedAt: timestamp,
+      lastAccessedAt: timestamp,
     });
-  } catch {
-    /* quota / private mode — disk upload already succeeded */
-  }
+  }).catch(() => {
+    /* quota / private mode — an existing source is never evicted */
+  });
 }
 
 export async function getMediaBlob(src: string): Promise<MediaBlobRecord | undefined> {
   try {
-    return await idbGet(src);
+    const record = await idbGet(src);
+    if (!record) return undefined;
+    const touched = { ...record, bytes: record.blob.size, lastAccessedAt: Date.now() };
+    await enqueueWrite(() => idbPut(touched)).catch(() => {});
+    return touched;
   } catch {
     return undefined;
   }
 }
 
 export async function deleteMediaBlob(src: string): Promise<void> {
-  try {
-    await idbDel(src);
-  } catch {
-    /* ignore */
-  }
+  await enqueueWrite(() => idbDel(src)).catch(() => {
+    /* best effort; server deletion remains authoritative */
+  });
+}
+export interface MediaBlobStoreUsage {
+  bytes: number;
+  records: number;
+  maxBytes: number;
+  lru: Array<{ src: string; bytes: number; lastAccessedAt: number }>;
+}
+
+export async function mediaBlobStoreUsage(): Promise<MediaBlobStoreUsage> {
+  const lru = (await idbMetadata().catch(() => []))
+    .sort((a, b) => a.lastAccessedAt - b.lastAccessedAt);
+  return {
+    bytes: lru.reduce((total, record) => total + record.bytes, 0),
+    records: lru.length,
+    maxBytes: MAX_TOTAL_CACHE_BYTES,
+    lru,
+  };
 }
 
 /** Vite dev's history fallback will return 200 + index.html for any missing paths - for media paths,

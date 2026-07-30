@@ -1,9 +1,9 @@
+export { PLUGIN_SKILL_TOOL_SCHEMAS, PLUGIN_SKILL_TOOL_NAMES } from './schemas/plugin-skill-tools';
 // load_skill — progressive-disclosure loader for the 15 bundled agent skills.
 // The system prompt carries each skill's name+description (PLUGIN_SKILLS_INDEX); when a
 // task matches, the agent calls load_skill to pull that skill's full SKILL.md body (or a
 // support file under it) unchanged. This is our portable stand-in for the native Agent
 // Skills container feature, which our relay + local-tool architecture can't run.
-import type { AgentToolSchema } from '../tool-schema';
 import { PLUGIN_SKILLS, readPluginSkillFile } from '../skills/plugin-skills';
 import { allCreativeSkills } from '../skills/skills-catalog';
 
@@ -13,25 +13,6 @@ import { allCreativeSkills } from '../skills/skills-catalog';
 function creativeSlug(body: string): string | undefined {
   return /^---[\s\S]*?\bname:\s*([\w-]+)/.exec(body)?.[1];
 }
-
-export const PLUGIN_SKILL_TOOL_SCHEMAS: AgentToolSchema[] = [
-  {
-    name: 'load_skill',
-    description:
-      'Load the full verbatim guidance of one plugin skill (its SKILL.md) from the skill library listed in the system prompt. Call this when the task matches a skill\'s description, before doing the work. Pass file= to load a support doc under the skill instead of SKILL.md. Available skills: '
-      + PLUGIN_SKILLS.map((s) => s.slug).join(', ') + '.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', description: 'Skill id, e.g. "talking-head-guide", "voice", "shader-gen".' },
-        file: { type: 'string', description: 'Optional support file under the skill (e.g. "references/voices.md"); omit to load SKILL.md.' },
-      },
-      required: ['name'],
-    },
-  },
-];
-
-export const PLUGIN_SKILL_TOOL_NAMES = new Set(PLUGIN_SKILL_TOOL_SCHEMAS.map((t) => t.name));
 
 export function execPluginSkillTool(name: string, args: Record<string, unknown>): unknown {
   if (name !== 'load_skill') return { error: `unknown tool ${name}` };

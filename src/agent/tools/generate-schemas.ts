@@ -248,3 +248,5 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
     },
   },
 ];
+
+export const GENERATE_TOOL_NAMES = new Set(GENERATE_TOOL_SCHEMAS.map((tool) => tool.name));

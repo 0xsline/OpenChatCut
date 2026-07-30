@@ -60,6 +60,13 @@ export interface GlRuntime {
   dispose: () => void;
 }
 
+let activeGlRuntimes = 0;
+
+/** Existing WebGL runtimes only; querying this never creates a context. */
+export function activeGlRuntimeCount(): number {
+  return activeGlRuntimes;
+}
+
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
   const sh = gl.createShader(type);
   if (!sh) throw new Error('createShader failed');
@@ -233,6 +240,9 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
     return unit + 1;
   };
 
+  let disposed = false;
+  activeGlRuntimes += 1;
+
   return {
     canvas,
     render(frag, outgoing, incoming, progress, extra) {
@@ -340,6 +350,9 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null); // restore for later single-pass draws
     },
     dispose() {
+      if (disposed) return;
+      disposed = true;
+      activeGlRuntimes = Math.max(0, activeGlRuntimes - 1);
       for (const p of programs.values()) gl.deleteProgram(p);
       programs.clear();
       gl.deleteBuffer(buf);

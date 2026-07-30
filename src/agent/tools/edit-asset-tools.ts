@@ -1,7 +1,7 @@
-import type { AgentToolSchema } from '../tool-schema';
+export { EDIT_ASSET_TOOL_SCHEMAS, EDIT_ASSET_TOOL_NAMES } from './schemas/edit-asset-tools';
 import type { AgentContext } from '../context';
 import type { MediaAsset, TimelineItem } from '../../editor/types';
-import { compileTemplate } from '../../template-host';
+import { prepareTemplate } from '../../template-host';
 
 // edit_asset: Change/delete "library assets" (assets in the media pool, non-timeline clips).
 // - update: rename / change props / change the source code of the code class asset (MG) - changing the code must first go through the MG sandbox.
@@ -12,32 +12,6 @@ import { compileTemplate } from '../../template-host';
 
 type Args = Record<string, unknown>;
 
-export const EDIT_ASSET_TOOL_SCHEMAS: AgentToolSchema[] = [
-  {
-    name: 'edit_asset',
-    description: [
-      'Update or delete media-pool assets, not timeline clips; use move_item/remove_item for clips.',
-      'action=update changes name or props; code assets such as generated motion graphics may receive new code, which must pass sandbox compilation before any change is saved.',
-      'action=delete removes the asset from the media pool. If clips reference it, confirm:true is required; existing clips remain intact because they retain their own code/src.',
-    ].join(' '),
-    input_schema: {
-      type: 'object',
-      properties: {
-        action: { type: 'string', enum: ['update', 'delete'] },
-        assetId: { type: 'string', description: 'Target asset id or unique prefix.' },
-        name: { type: 'string', description: 'update: new display name.' },
-        code: { type: 'string', description: 'update: new source for a code asset such as motion graphics; sandbox-validated.' },
-        props: { type: 'object', description: 'update: merge into asset props to change defaults.' },
-        favorite: { type: 'boolean', description: 'update: favorite flag.' },
-        confirm: { type: 'boolean', description: 'delete: confirm deletion when clips still reference the asset (confirmImpact).' },
-      },
-      required: ['action', 'assetId'],
-    },
-  },
-];
-
-export const EDIT_ASSET_TOOL_NAMES = new Set(EDIT_ASSET_TOOL_SCHEMAS.map((t) => t.name));
-
 const strArg = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
 
 /** count timeline clips that reference this asset (MG by templateId, media by src). */
@@ -47,7 +21,7 @@ function referencingItems(items: TimelineItem[], asset: MediaAsset): number {
   ).length;
 }
 
-function update(asset: MediaAsset, args: Args, ctx: AgentContext): unknown {
+async function update(asset: MediaAsset, args: Args, ctx: AgentContext): Promise<unknown> {
   const patch: Partial<Pick<MediaAsset, 'name' | 'code' | 'props' | 'favorite'>> = {};
   const name = strArg(args.name);
   if (name) patch.name = name;
@@ -58,7 +32,7 @@ function update(asset: MediaAsset, args: Args, ctx: AgentContext): unknown {
   if (code) {
     if (asset.kind !== 'motion-graphic') return { error: `asset "${asset.name}" is ${asset.kind}, not a code (motion-graphic) asset — code cannot be set` };
     try {
-      compileTemplate(code); // Static blacklist and restricted scope compilation must be passed before being dropped into the library.
+      await prepareTemplate(code); // Sandbox validation and restricted-scope compilation must complete before persistence.
     } catch (e) {
       return { error: `new code rejected by sandbox: ${e instanceof Error ? e.message : String(e)}`, code };
     }

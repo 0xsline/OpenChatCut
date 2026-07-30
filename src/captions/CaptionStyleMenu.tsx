@@ -10,7 +10,6 @@ import { deleteCaptionPreset, listCaptionPresets, saveCaptionPreset, type Captio
 import { captionsOnTrack, type TimelineState, type TrackId } from '../editor/types';
 import type { EditorCommands } from '../editor/store';
 import { useT } from '../i18n/locale';
-import { ensureFont } from '../fonts/googleFonts';
 import { captionsForTrack } from './captionTrack';
 import { newManualCaptions } from './manualCaptions';
 
@@ -109,7 +108,6 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
       <div className="cc-caption-style-title">{t('样式')}</div>
       <div className="cc-caption-style-list">
         {CAPTION_STYLES.map((style) => {
-          ensureFont(style.fontFamily);
           return (
             <button type="button" key={style.id} className={current?.template === style.id ? 'active' : ''} onClick={() => applyStyle(style.id)}>
               <span className="cc-caption-style-swatch" style={{ background: style.highlightBackground ?? '#292929', color: style.highlightBackground ? style.highlightColor : style.color, fontFamily: style.fontFamily, WebkitTextStroke: style.strokeWidth ? `${Math.min(1, style.strokeWidth)}px ${style.strokeColor}` : undefined }}>Aa</span>

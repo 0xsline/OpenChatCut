@@ -5,7 +5,7 @@ import type {
   ToolResultPart,
   UserContent,
 } from 'ai';
-import type { LlmProvider } from './client';
+import type { LlmProvider } from './providerConfig';
 
 type UnknownRecord = Record<string, unknown>;
 type ToolResultOutput = ToolResultPart['output'];

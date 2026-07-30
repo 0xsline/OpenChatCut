@@ -1,6 +1,6 @@
 import { Audio as BrowserAudio, Video as BrowserVideo, type AudioProps as BrowserAudioProps, type VideoProps as BrowserVideoProps } from '@remotion/media';
 import { AbsoluteFill, Audio as ServerAudio, Img, OffthreadVideo, Sequence, getRemotionEnvironment, useCurrentFrame } from 'remotion';
-import { compileTemplate } from '../template-host';
+import { getCompiledTemplate } from '../template-host';
 import { CaptionsLayer } from '../captions/CaptionsLayer';
 import { GlTransition } from '../gl/GlTransition';
 import { ClipFx } from '../gl/ClipFx';
@@ -9,12 +9,12 @@ import { ALL_FX, registerCustomFx } from '../gl/fx/effects';
 import { itemEditOpts, itemWindow, keptSegments } from '../transcript/edit';
 import { zoomAt } from './zoom';
 import { sampleKeyframes, volumeAtFrame } from './keyframes';
-import { loadTimelineFonts } from '../fonts/projectFonts';
 import { captionTrackEntries, CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
 import type { AspectFit, CssTransitionType, GlslTransitionType, KeyframeProp, TimelineItem, TimelineState, TransitionDirection, TransitionItem, Watermark } from './types';
 import { sourceFrameAt } from './sourceLimit';
 import { continuousVideoAudioGroups } from './transitionAudio';
 import { PreviewTransitionIn, previewTransitionType } from './transitionPreview';
+import { TimelineReadinessGate, timelineReadinessKey } from './TimelineReadinessGate';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
 // fadeIn, then 1→0 across fadeOut. Used for visual opacity + audio volume.
@@ -301,7 +301,7 @@ function ItemLayer({ item, canvasW, canvasH, fit }: { item: TimelineItem; canvas
   const dh = item.height ?? 1080;
   const scale = fit === 'cover' ? Math.max(canvasW / dw, canvasH / dh) : Math.min(canvasW / dw, canvasH / dh);
   try {
-    const Template = compileTemplate(item.code ?? '');
+    const Template = getCompiledTemplate(item.code ?? '');
     return (
       <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
         <div style={{ width: dw, height: dh, position: 'relative', flexShrink: 0, transform: `scale(${scale})` }}>
@@ -327,8 +327,7 @@ export type TimelineCompositionProps = Record<string, unknown> & {
   browserRenderer?: boolean;
 };
 
-export function TimelineComposition({ state, transparent, browserRenderer = false }: TimelineCompositionProps) {
-  loadTimelineFonts(state);
+function TimelineContent({ state, transparent, browserRenderer = false }: TimelineCompositionProps) {
   // Non-built-in fx (plugin/submit_shader)def is self-contained with state: synchronously registered into ALL_FX before rendering,
   // The first frame of the subcomponent (MediaFill's firstGlEffect route) is parsed - a fresh browser with headless export
   // There is no memory registry, it all depends on this. Idempotism is guarded; rendering external registries is the only deliberate exception here.
@@ -488,5 +487,13 @@ export function TimelineComposition({ state, transparent, browserRenderer = fals
       {state.watermark?.enabled && state.watermark.text
         && <WatermarkLayer watermark={state.watermark} canvasH={state.height} />}
     </AbsoluteFill>
+  );
+}
+
+export function TimelineComposition(props: TimelineCompositionProps) {
+  return (
+    <TimelineReadinessGate key={timelineReadinessKey(props.state)} state={props.state}>
+      {() => <TimelineContent {...props} />}
+    </TimelineReadinessGate>
   );
 }
