@@ -43,6 +43,7 @@ const QUICK_ACTIONS = [
   { label: '响度标准化', prompt: '将当前时间线中的人声音量标准化' },
   { label: '横转竖', prompt: '将当前工程转换为 9:16 竖屏，并调整主要画面构图' },
 ];
+const MESSAGE_WINDOW_SIZE = 40;
 
 interface ChatPanelProps {
   ctx: AgentContext;
@@ -98,12 +99,14 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   const [autoApply, setAutoApply] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
   const [selectedRefs, setSelectedRefs] = useState<RefItem[]>([]);
+  const [visibleMessageCount, setVisibleMessageCount] = useState(MESSAGE_WINDOW_SIZE);
   // Restore composer draft / mode when switching projects (session continuity).
   useEffect(() => {
     setInput(loadComposerDraft(projectId));
     setMode(loadChatMode(projectId));
     setAutoApply(loadChatAutoApply(projectId));
     setSelectedRefs([]);
+    setVisibleMessageCount(MESSAGE_WINDOW_SIZE);
   }, [projectId]);
   // Debounced draft persist — empty clears the key.
   useEffect(() => {
@@ -126,6 +129,8 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   // When there is no thinking data, the original random scene phrase is retained.
   const lastMsg = messages[messages.length - 1];
   const streamingThinking = running && lastMsg?.role === 'assistant' && !!lastMsg.thinking && !lastMsg.text;
+  const visibleFrom = Math.max(0, messages.length - visibleMessageCount);
+  const visibleMessages = messages.slice(visibleFrom);
 
   // @-referenceable things: media-pool assets + template library
   const references: RefItem[] = [
@@ -301,7 +306,14 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
             </div>
           </div>
         )}
-        {groupMessages(messages).map((item) =>
+        {visibleFrom > 0 && (
+          <button type="button"
+            onClick={() => setVisibleMessageCount((count) => count + MESSAGE_WINDOW_SIZE)}
+            style={{ display: 'block', margin: '4px auto 12px', padding: '5px 10px', border: `0.5px solid ${theme.border}`, borderRadius: 6, background: 'transparent', color: theme.textDim, cursor: 'pointer', fontSize: 12 }}>
+            {t('加载更早消息')}（{visibleFrom}）
+          </button>
+        )}
+        {groupMessages(visibleMessages, visibleFrom).map((item) =>
           item.kind === 'toolgroup' ? (
             <ToolGroupRow key={item.index} name={item.name} items={item.items} />
           ) : (

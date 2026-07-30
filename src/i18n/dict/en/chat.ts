@@ -198,4 +198,5 @@ export default {
   '仍然应用': 'Apply anyway',
   '重新提案': 'Re-propose',
   '外部 Agent：{message}': 'External agent: {message}',
+  '加载更早消息': 'Load earlier messages',
 } as Record<string, string>;

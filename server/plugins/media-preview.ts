@@ -1,6 +1,7 @@
 // Timeline clip preview data (sound wave on track + video thumbnail frame bar):
 // GET /api/waveform?src=/media/uploads/x.mp4 → { peaks:number[], peaksPerSecond, durationMs }
 // GET /api/filmstrip?src=/media/uploads/x.mp4 → image/jpeg(1×N frame strip)
+// GET /api/media-frame?src=/media/uploads/x.mp4&time=1.25 → image/jpeg
 // The server uses ffmpeg to generate and cache the results. Peak density is 100/s; frame bars vs. full media duration
 // Equidistant sampling, the client completes time mapping based on trim, scaling and playback rate.
 import type { Plugin } from 'vite';
@@ -10,7 +11,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
+import { isSafeUploadName, resolveUploadFile, serveDiskFile, uploadDir } from '../media-dir.ts';
 import { ffmpegBin } from '../frame-grid.ts';
 
 const PEAKS_PER_SECOND = 100; // source samplesPerPeak = sampleRate/100
@@ -175,6 +176,15 @@ async function buildFilmstrip(file: string, p: Probe, out: string): Promise<void
   }
 }
 
+async function buildFrame(file: string, time: number, out: string): Promise<void> {
+  await run(ffmpegBin(), [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    '-ss', String(time), '-i', file, '-frames:v', '1', '-an',
+    '-vf', 'scale=960:540:force_original_aspect_ratio=decrease',
+    '-q:v', '3', out,
+  ], 30_000);
+}
+
 /** Concurrent requests for the same asset are merged to avoid running multiple copies of ffmpeg at the same time.*/
 const inFlight = new Map<string, Promise<void>>();
 function once(key: string, work: () => Promise<void>): Promise<void> {
@@ -185,76 +195,110 @@ function once(key: string, work: () => Promise<void>): Promise<void> {
   return p;
 }
 
+async function resolveReq(req: IncomingMessage, res: ServerResponse) {
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  const name = uploadNameFromSrc(url.searchParams.get('src') ?? '');
+  if (!name) { sendJson(res, 400, { error: 'src must be /media/uploads/<name>' }); return null; }
+  const file = resolveUploadFile(name);
+  if (!file || !existsSync(file)) { sendJson(res, 404, { error: 'media not found' }); return null; }
+  return { name, file, size: (await stat(file)).size };
+}
+
+async function handleWaveform(req: IncomingMessage, res: ServerResponse, logError: (message: string) => void) {
+  try {
+    const hit = await resolveReq(req, res);
+    if (!hit) return;
+    const cache = cacheKey(hit.name, hit.size, 'peaks', 'json');
+    if (!existsSync(cache)) {
+      await once(cache, async () => {
+        const p = await probe(hit.file);
+        await mkdir(previewDir(), { recursive: true });
+        if (!p.hasAudio) {
+          await writeFile(cache, JSON.stringify({ peaks: [], peaksPerSecond: PEAKS_PER_SECOND, durationMs: p.durationMs }));
+          return;
+        }
+        const peaks = await computePeaks(hit.file, p.durationMs);
+        const tmp = `${cache}.tmp`;
+        await writeFile(tmp, JSON.stringify({ peaks, peaksPerSecond: PEAKS_PER_SECOND, durationMs: p.durationMs }));
+        await rename(tmp, cache);
+      });
+    }
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.end(await readFile(cache));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logError(`[waveform] ${message}`);
+    sendJson(res, /spawn|ENOENT/i.test(message) ? 503 : 500, { error: message });
+  }
+}
+
+async function handleFilmstrip(req: IncomingMessage, res: ServerResponse, logError: (message: string) => void) {
+  try {
+    const hit = await resolveReq(req, res);
+    if (!hit) return;
+    const cache = cacheKey(hit.name, hit.size, 'strip', 'jpg');
+    if (!existsSync(cache)) {
+      await once(cache, async () => {
+        const p = await probe(hit.file);
+        if (!p.width || !p.height) throw new Error('not a video');
+        await mkdir(previewDir(), { recursive: true });
+        const tmp = `${cache}.tmp.jpg`;
+        await buildFilmstrip(hit.file, p, tmp);
+        await rename(tmp, cache);
+      });
+    }
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.end(await readFile(cache));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logError(`[filmstrip] ${message}`);
+    sendJson(res, /spawn|ENOENT/i.test(message) ? 503 : 500, { error: message });
+  }
+}
+
+async function handleMediaFrame(req: IncomingMessage, res: ServerResponse, logError: (message: string) => void) {
+  try {
+    const hit = await resolveReq(req, res);
+    if (!hit) return;
+    const rawTime = new URL(req.url ?? '/', 'http://localhost').searchParams.get('time');
+    const requested = rawTime === null ? Number.NaN : Number(rawTime);
+    if (!Number.isFinite(requested) || requested < 0) {
+      sendJson(res, 400, { error: 'time must be a non-negative number' });
+      return;
+    }
+    const p = await probe(hit.file);
+    if (!p.width || !p.height) throw new Error('not a video');
+    const time = Math.min(requested, Math.max(0, p.durationMs / 1000 - 0.001));
+    const cache = cacheKey(hit.name, hit.size, `frame-${Math.round(time * 1000)}`, 'jpg');
+    if (!existsSync(cache)) {
+      await once(cache, async () => {
+        await mkdir(previewDir(), { recursive: true });
+        const tmp = `${cache}.tmp.jpg`;
+        await buildFrame(hit.file, time, tmp);
+        await rename(tmp, cache);
+      });
+    }
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    await serveDiskFile(req, res, cache);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logError(`[media-frame] ${message}`);
+    sendJson(res, /spawn|ENOENT/i.test(message) ? 503 : 500, { error: message });
+  }
+}
+
 export function mediaPreviewPlugin(): Plugin {
   return {
     name: 'openchatcut-media-preview',
     configureServer(server) {
-      const resolveReq = async (req: IncomingMessage, res: ServerResponse) => {
-        const url = new URL(req.url ?? '/', 'http://localhost');
-        const name = uploadNameFromSrc(url.searchParams.get('src') ?? '');
-        if (!name) { sendJson(res, 400, { error: 'src must be /media/uploads/<name>' }); return null; }
-        const file = resolveUploadFile(name);
-        if (!file || !existsSync(file)) { sendJson(res, 404, { error: 'media not found' }); return null; }
-        const size = (await stat(file)).size;
-        return { name, file, size };
-      };
-
-      server.middlewares.use('/api/waveform', async (req, res) => {
-        try {
-          const hit = await resolveReq(req, res);
-          if (!hit) return;
-          const cache = cacheKey(hit.name, hit.size, 'peaks', 'json');
-          if (!existsSync(cache)) {
-            await once(cache, async () => {
-              const p = await probe(hit.file);
-              if (!p.hasAudio) {
-                await mkdir(previewDir(), { recursive: true });
-                await writeFile(cache, JSON.stringify({ peaks: [], peaksPerSecond: PEAKS_PER_SECOND, durationMs: p.durationMs }));
-                return;
-              }
-              const peaks = await computePeaks(hit.file, p.durationMs);
-              await mkdir(previewDir(), { recursive: true });
-              const tmp = `${cache}.tmp`;
-              await writeFile(tmp, JSON.stringify({ peaks, peaksPerSecond: PEAKS_PER_SECOND, durationMs: p.durationMs }));
-              await rename(tmp, cache); // Atomic replacement: half of JSON will not be read
-            });
-          }
-          res.statusCode = 200;
-          res.setHeader('Content-Type', 'application/json');
-          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-          res.end(await readFile(cache));
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          server.config.logger.error(`[waveform] ${message}`);
-          sendJson(res, /spawn|ENOENT/i.test(message) ? 503 : 500, { error: message });
-        }
-      });
-
-      server.middlewares.use('/api/filmstrip', async (req, res) => {
-        try {
-          const hit = await resolveReq(req, res);
-          if (!hit) return;
-          const cache = cacheKey(hit.name, hit.size, 'strip', 'jpg');
-          if (!existsSync(cache)) {
-            await once(cache, async () => {
-              const p = await probe(hit.file);
-              if (!p.width || !p.height) throw new Error('not a video');
-              await mkdir(previewDir(), { recursive: true });
-              const tmp = `${cache}.tmp.jpg`;
-              await buildFilmstrip(hit.file, p, tmp);
-              await rename(tmp, cache);
-            });
-          }
-          res.statusCode = 200;
-          res.setHeader('Content-Type', 'image/jpeg');
-          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-          res.end(await readFile(cache));
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          server.config.logger.error(`[filmstrip] ${message}`);
-          sendJson(res, /spawn|ENOENT/i.test(message) ? 503 : 500, { error: message });
-        }
-      });
+      const logError = (message: string) => server.config.logger.error(message);
+      server.middlewares.use('/api/waveform', (req, res) => handleWaveform(req, res, logError));
+      server.middlewares.use('/api/filmstrip', (req, res) => handleFilmstrip(req, res, logError));
+      server.middlewares.use('/api/media-frame', (req, res) => handleMediaFrame(req, res, logError));
     },
   };
 }

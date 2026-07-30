@@ -21,7 +21,7 @@ import { Icon } from './icons';
 import { useT } from '../i18n/locale';
 import { ReviewCommentsButton, type ReviewOpenRequest } from '../review/ReviewCommentsButton';
 
-const SHARED_AUDIO_TAGS = 32;
+const SHARED_AUDIO_TAGS = 8;
 
 interface PreviewPanelProps {
   state: TimelineState;
