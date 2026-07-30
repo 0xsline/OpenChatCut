@@ -15,6 +15,7 @@ const VIDEO_EXT = /\.(mp4|mov|webm|mkv|m4v|avi|mpeg|mpg)$/i;
 const AUDIO_EXT = /\.(mp3|wav|m4a|aac|ogg|flac|opus)$/i;
 /** Pure audio above this still gets re-encoded smaller for ASR. */
 const LARGE_AUDIO_BYTES = 40 * 1024 * 1024;
+const UPLOAD_TIMEOUT_MS = 10 * 60_000;
 
 export class TranscriptionError extends Error {
   readonly code: 'source-unavailable' | 'service-unavailable';
@@ -40,18 +41,61 @@ async function serviceFetch(input: RequestInfo | URL, init?: RequestInit): Promi
   }
 }
 
-async function uploadBlob(blob: Blob): Promise<string> {
-  const r = await serviceFetch(`${BASE}/upload`, { method: 'POST', body: blob });
-  if (!r.ok) throw new Error(`upload failed: HTTP ${r.status}`);
-  const { upload_url } = await r.json();
-  if (!upload_url) throw new Error('upload: no upload_url returned');
-  return upload_url;
+async function uploadBlob(blob: Blob, opts: TranscribeOptions): Promise<string> {
+  report(opts, 'uploading-audio', `0% of ${Math.ceil(blob.size / 1024 / 1024)} MB`);
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('POST', `${BASE}/upload`);
+    request.timeout = UPLOAD_TIMEOUT_MS;
+    request.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+      report(opts, 'uploading-audio', `${percent}% (${Math.ceil(event.loaded / 1024 / 1024)} / ${Math.ceil(event.total / 1024 / 1024)} MB)`);
+    };
+    request.onerror = () => reject(new TranscriptionError('service-unavailable', 'AssemblyAI upload network error'));
+    request.ontimeout = () => reject(new TranscriptionError('service-unavailable', `AssemblyAI upload timed out after ${Math.round(UPLOAD_TIMEOUT_MS / 60_000)} minutes`));
+    request.onload = () => {
+      if (request.status < 200 || request.status >= 300) {
+        reject(new Error(`AssemblyAI upload failed: HTTP ${request.status}${request.responseText ? `: ${request.responseText.slice(0, 300)}` : ''}`));
+        return;
+      }
+      try {
+        const body = JSON.parse(request.responseText) as { upload_url?: string };
+        if (!body.upload_url) throw new Error('AssemblyAI upload returned no upload URL');
+        resolve(body.upload_url);
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    };
+    request.send(blob);
+  });
+}
+
+async function uploadLocalPath(path: string, opts: TranscribeOptions): Promise<string> {
+  report(opts, 'uploading-audio', 'server-to-AssemblyAI transfer');
+  const response = await serviceFetch('/api/assemblyai-upload', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ src: path }),
+  });
+  if (!response.ok) throw new Error(`AssemblyAI server upload failed: ${await response.text()}`);
+  const body = await response.json() as { uploadUrl?: string; bytes?: number };
+  if (!body.uploadUrl) throw new Error('AssemblyAI server upload returned no upload URL');
+  report(opts, 'uploading-audio', `completed ${Math.ceil((body.bytes ?? 0) / 1024 / 1024)} MB`);
+  return body.uploadUrl;
+}
+
+export type TranscriptionPhase = 'extracting-audio' | 'loading-audio' | 'uploading-audio' | 'creating-job' | 'queued' | 'processing' | 'completed';
+
+export interface TranscriptionProgress {
+  phase: TranscriptionPhase;
+  detail?: string;
 }
 
 export interface TranscribeOptions {
   /**
-   * ISO-639-1. Default `zh` for this product (Chinese oral broadcast).
-   * Pass `auto` to use AssemblyAI language_detection instead.
+   * ISO-639-1, or `auto` to use AssemblyAI language detection.
+   * Defaults to `auto` so English and multilingual media work without setup.
    */
   languageCode?: string | 'auto';
   /**
@@ -59,9 +103,15 @@ export interface TranscribeOptions {
    * When set, skip another extract-audio call.
    */
   asrPath?: string | null;
+  onProgress?: (event: TranscriptionProgress) => void;
 }
 
-async function createTranscript(audioUrl: string, opts: TranscribeOptions = {}): Promise<string> {
+function report(opts: TranscribeOptions, phase: TranscriptionPhase, detail?: string): void {
+  console.info('[transcription]', phase, detail ?? '');
+  opts.onProgress?.({ phase, detail });
+}
+
+export async function createTranscript(audioUrl: string, opts: TranscribeOptions = {}): Promise<string> {
   const body: Record<string, unknown> = {
     audio_url: audioUrl,
     speaker_labels: true,
@@ -69,29 +119,30 @@ async function createTranscript(audioUrl: string, opts: TranscribeOptions = {}):
     punctuate: true,
     format_text: true,
   };
-  const lang = opts.languageCode ?? 'zh';
+  const lang = opts.languageCode ?? 'auto';
   if (lang === 'auto') {
     body.language_detection = true;
   } else {
-    // Explicit zh is far more reliable for Chinese documentary oral broadcast than pure auto-detect.
     body.language_code = lang;
   }
+  report(opts, 'creating-job', opts.languageCode === 'auto' || !opts.languageCode ? 'automatic language detection' : `language ${opts.languageCode}`);
   const r = await serviceFetch(`${BASE}/transcript`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!r.ok) throw new Error(`create failed: HTTP ${r.status}`);
+  if (!r.ok) throw new Error(`AssemblyAI job creation failed: HTTP ${r.status}`);
   const { id, error } = await r.json();
   if (error) throw new Error(error);
   if (!id) throw new Error('transcript: no id returned');
   return id;
 }
 
-async function poll(id: string, onWait?: () => void): Promise<TranscriptResult> {
+async function poll(id: string, opts: TranscribeOptions): Promise<TranscriptResult> {
+  let previousStatus = '';
   for (;;) {
     const r = await serviceFetch(`${BASE}/transcript/${id}`);
-    if (!r.ok) throw new Error(`poll failed: HTTP ${r.status}`);
+    if (!r.ok) throw new Error(`AssemblyAI status check failed: HTTP ${r.status}`);
     const d = await r.json();
     if (d.status === 'completed') {
       const mapW = (w: { text: string; start: number; end: number; speaker?: string | null }) => ({
@@ -113,10 +164,14 @@ async function poll(id: string, onWait?: () => void): Promise<TranscriptResult> 
             : [{ text: u.text, start: u.start, end: u.end, speaker: u.speaker }]),
         );
       }
+      report(opts, 'completed', `${words.length} words`);
       return { text: d.text ?? words.map((w: { text: string }) => w.text).join(''), words, utterances };
     }
-    if (d.status === 'error') throw new Error(d.error ?? 'transcription error');
-    onWait?.();
+    if (d.status === 'error') throw new Error(`AssemblyAI transcription failed: ${d.error ?? 'unknown error'}`);
+    if (d.status !== previousStatus) {
+      previousStatus = d.status;
+      report(opts, d.status === 'queued' ? 'queued' : 'processing', `job ${id.slice(0, 8)}`);
+    }
     await new Promise((res) => setTimeout(res, 2500));
   }
 }
@@ -124,12 +179,11 @@ async function poll(id: string, onWait?: () => void): Promise<TranscriptResult> 
 /** Transcribe an audio Blob: upload → create → poll to completion. */
 export async function transcribeBlob(
   blob: Blob,
-  onWait?: () => void,
   opts: TranscribeOptions = {},
 ): Promise<TranscriptResult> {
-  const url = await uploadBlob(blob);
+  const url = await uploadBlob(blob, opts);
   const id = await createTranscript(url, opts);
-  return poll(id, onWait);
+  return poll(id, opts);
 }
 
 /** Read a media source, falling back to the local-first IndexedDB copy. */
@@ -194,16 +248,22 @@ async function shouldExtractForAsr(path: string): Promise<boolean> {
  */
 export async function transcribePath(
   path: string,
-  onWait?: () => void,
   opts: TranscribeOptions = {},
 ): Promise<TranscriptResult> {
   let source = path;
   if (opts.asrPath && opts.asrPath.startsWith('/media/')) {
     source = opts.asrPath;
   } else if (await shouldExtractForAsr(path)) {
+    report(opts, 'extracting-audio');
     const extracted = await extractAudioForAsr(path);
     if (extracted) source = extracted;
   }
+  if (source.startsWith('/media/uploads/')) {
+    const url = await uploadLocalPath(source, opts);
+    const id = await createTranscript(url, opts);
+    return poll(id, opts);
+  }
+  report(opts, 'loading-audio', source === path ? 'original media' : 'extracted speech audio');
   let blob: Blob;
   try {
     blob = await loadTranscriptionSource(source);
@@ -213,5 +273,5 @@ export async function transcribePath(
     if (source === path) throw error;
     blob = await loadTranscriptionSource(path);
   }
-  return transcribeBlob(blob, onWait, { languageCode: opts.languageCode });
+  return transcribeBlob(blob, opts);
 }
