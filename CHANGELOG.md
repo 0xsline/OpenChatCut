@@ -29,6 +29,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   统一时间线工具栏控件的四像素间距节奏，同时保留编辑工具组之间的清晰分隔。
 - Replaced duplicate two-line timeline track badges and names with one compact highlighted label: “视频1”/“字幕1” in Chinese and “V1”/“C1” in English.
   将时间线轨道头重复的两行徽章与名称合并为单个紧凑高亮标签：中文显示“视频1”“字幕1”，英文显示“V1”“C1”。
+- Rounded variable-speed values for display and matched presets with a tolerance, preventing IEEE-754 noise such as `1.0000000000000004×` from leaking into clip context menus.
+  对变速值进行显示舍入并以容差匹配预设，避免 `1.0000000000000004×` 等 IEEE-754 浮点噪声出现在片段右键菜单中。
 
 ## [0.1.7] - 2026-07-29
 

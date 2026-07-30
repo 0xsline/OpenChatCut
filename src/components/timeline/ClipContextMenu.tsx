@@ -10,6 +10,15 @@ import { useT } from '../../i18n/locale';
 
 // speed presets for the variable speed submenu
 const SPEED_PRESETS = [0.25, 0.5, 1, 1.5, 2, 4] as const;
+const SPEED_PRESET_EPSILON = 0.01;
+
+function displaySpeedRate(rate: number): number {
+  return Number(rate.toFixed(3));
+}
+
+function matchesSpeedPreset(rate: number, preset: number): boolean {
+  return Math.abs(rate - preset) < SPEED_PRESET_EPSILON;
+}
 
 // Clip right-click menu. AI multi-camera synchronization: client audio alignment (src/multicam).
 
@@ -145,6 +154,7 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
   const isDom = item.kind === 'motion-graphic' || item.kind === 'text'; // DOM clips → alpha MG export
   const canSpeed = item.kind === 'video' || item.kind === 'audio'; // playbackRate only affects av
   const rate = item.playbackRate ?? 1;
+  const displayedRate = displaySpeedRate(rate);
   const reviewFrame = Math.max(item.startFrame, Math.min(playhead, item.startFrame + item.durationInFrames - 1));
   const run = (fn: () => void) => () => { fn(); onClose(); };
 
@@ -206,18 +216,21 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
       )}
       <Item label={t('复制效果')} icon="sparkles" disabled={!isVisual} onClick={run(copyFx)} />
       <Item label={t('粘贴效果')} icon="clipboard" shortcut={PASTE_HINT} disabled={!isVisual || !fxClip} onClick={run(pasteFx)} />
-      <Item label={rate !== 1 ? t('变速（{rate}×）', { rate }) : t('变速')} icon="clock" chevron disabled={!canSpeed}
+      <Item label={!matchesSpeedPreset(rate, 1) ? t('变速（{rate}×）', { rate: displayedRate }) : t('变速')} icon="clock" chevron disabled={!canSpeed}
         onClick={canSpeed ? () => setShowSpeed((v) => !v) : undefined} />
       {showSpeed && canSpeed && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '2px 9px 6px 35px' }}>
-          {SPEED_PRESETS.map((s) => (
-            <button key={s} onClick={run(() => commands.setItemSpeed(item.id, s))}
-              style={{
-                cursor: 'pointer', fontSize: 11, padding: '3px 8px', borderRadius: 5,
-                border: `0.5px solid ${s === rate ? theme.accent : theme.border}`,
-                background: s === rate ? theme.accent : 'none', color: s === rate ? theme.onAccent : theme.text,
-              }}>{s}×</button>
-          ))}
+          {SPEED_PRESETS.map((s) => {
+            const active = matchesSpeedPreset(rate, s);
+            return (
+              <button key={s} onClick={run(() => commands.setItemSpeed(item.id, s))}
+                style={{
+                  cursor: 'pointer', fontSize: 11, padding: '3px 8px', borderRadius: 5,
+                  border: `0.5px solid ${active ? theme.accent : theme.border}`,
+                  background: active ? theme.accent : 'none', color: active ? theme.onAccent : theme.text,
+                }}>{s}×</button>
+            );
+          })}
         </div>
       )}
       <Sep />
