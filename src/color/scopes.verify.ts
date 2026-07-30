@@ -1,13 +1,13 @@
 // Runnable check: `npx tsx src/color/scopes.verify.ts`.
-// Verification: Oscilloscope statistics on synthetic RGBA patterns - grayscale (neutral/no dominant color), pure orange (main hue/warm bias),
-// Overexposure (highlight overflow), teal-orange double cluster, segmented color cast with bluish shadows, and empty input.
+// 验证:合成 RGBA 图案上的示波统计——灰阶(中性/无主色)、纯橙(主色相/暖偏)、
+// 过曝(高光溢出)、teal-orange 双簇、暗部偏蓝的分段色偏、空输入。
 import assert from 'node:assert/strict';
 import { compareColorScopes } from '../agent/tools/color-scope-tools';
 import { analyzeRgbaPixels, describeScopeStats } from './scopes';
 
 const near = (a: number, b: number, eps: number): boolean => Math.abs(a - b) < eps;
 
-/** Construct RGBA buffer: give [r,g,b](0..255) row by row, n pixels per color block. */
+/** 构造 RGBA 缓冲:按行给 [r,g,b](0..255),每色块 n 像素。 */
 function rgba(blocks: Array<[r: number, g: number, b: number, n: number]>): Uint8Array {
   const total = blocks.reduce((a, [, , , n]) => a + n, 0);
   const out = new Uint8Array(total * 4);
@@ -21,7 +21,7 @@ function rgba(blocks: Array<[r: number, g: number, b: number, n: number]>): Uint
   return out;
 }
 
-// ── Grayscale gradient: black and white dots, no saturation, no main color, color shift ≈ 0 ──
+// ── 灰阶渐变:黑白点贴边、无饱和、无主色、色偏≈0 ──
 {
   const blocks: Array<[number, number, number, number]> = [];
   for (let v = 0; v <= 255; v += 5) blocks.push([v, v, v, 40]);
@@ -33,7 +33,7 @@ function rgba(blocks: Array<[r: number, g: number, b: number, n: number]>): Uint
   assert.ok(describeScopeStats(s).some((line) => line.includes('near-neutral')), '判读提示中性');
 }
 
-// ── Pure orange picture: main hue orange, warm, high saturation ──
+// ── 纯橙色画面:主色相 orange、warm 偏正、饱和度高 ──
 {
   const s = analyzeRgbaPixels(rgba([[255, 128, 0, 5000]]), 1);
   assert.equal(s.dominantHues[0], 'orange', '主色相 orange');
@@ -42,7 +42,7 @@ function rgba(blocks: Array<[r: number, g: number, b: number, n: number]>): Uint
   assert.ok(near(s.hueHistogram.find((b) => b.label === 'orange')!.pct, 1, 1e-6), '直方图集中在 orange bin');
 }
 
-// ── Overexposure: 35% pure white → highlight bloom ratio ≈ 0.35, white point = 1 ──
+// ── 过曝:35% 纯白 → 高光溢出占比 ≈ 0.35,白点=1 ──
 {
   const s = analyzeRgbaPixels(rgba([[255, 255, 255, 3500], [120, 120, 120, 6500]]), 1);
   assert.ok(near(s.clippedHighlightsPct, 0.35, 0.01), `高光溢出≈35%(${s.clippedHighlightsPct})`);
@@ -50,28 +50,28 @@ function rgba(blocks: Array<[r: number, g: number, b: number, n: number]>): Uint
   assert.ok(s.clippedShadowsPct < 0.01, '暗部无溢出');
 }
 
-// ── teal-orange: Both main color clusters are recognized ──
+// ── teal-orange:两个主色簇都被识别 ──
 {
   const s = analyzeRgbaPixels(rgba([[230, 140, 40, 4000], [20, 160, 180, 4000], [128, 128, 128, 2000]]), 1);
   assert.ok(s.dominantHues.includes('orange') && (s.dominantHues.includes('cyan') || s.dominantHues.includes('azure')),
     `teal-orange 双簇(${s.dominantHues.join(',')})`);
 }
 
-// ── Segmented color cast: dark parts are bluer, bright parts are warmer, and the segmented tilts should be different from each other ──
+// ── 分段色偏:暗部偏蓝、亮部偏暖,分段 tilt 应互异 ──
 {
   const s = analyzeRgbaPixels(rgba([[20, 25, 60, 4000], [235, 210, 170, 4000]]), 1);
   assert.ok(s.tilt.shadows.warmCool < -0.05, `暗部偏蓝(${s.tilt.shadows.warmCool})`);
   assert.ok(s.tilt.highlights.warmCool > 0.05, `亮部偏暖(${s.tilt.highlights.warmCool})`);
 }
 
-// ── Empty input will not explode ──
+// ── 空输入不炸 ──
 {
   const s = analyzeRgbaPixels(new Uint8Array(0));
   assert.equal(s.sampledPixels, 0);
   assert.deepEqual(s.dominantHues, []);
 }
 
-// ── Reference shot comparison: signed difference + named knob suggestion after dead zone ──
+// ── 参考镜头对比:有符号差值 + 死区后的具名旋钮建议 ──
 {
   const target = analyzeRgbaPixels(rgba([[230, 135, 40, 5000]]), 1);
   const reference = analyzeRgbaPixels(rgba([[100, 100, 100, 5000]]), 1);

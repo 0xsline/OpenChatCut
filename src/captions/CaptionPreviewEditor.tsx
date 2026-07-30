@@ -15,12 +15,12 @@ import {
 import { Icon } from '../components/icons';
 import { useT } from '../i18n/locale';
 
-// Preview the caption direct editing layer on the canvas: click on the screen caption → check box + floating toolbar (AI Edit/Style/Font Size).
-// Editor side overlay, no synthesis: geometry is recalculated by passing "display area px size" to containerStyle,
-// The hit box is a transparent copy of the text in the same font (same layout as true rendering). Single stream text changes
-// cueTextPatch, the manual lane is directly changed to correspond to the cue; the style/font size/color/position are all updated with updateCaptions, which can be revoked.
-// Drag and drop: press and hold the caption to move → let go and submit the layout offset at once (one step undo); display the entity during dragging
-// The ghost follows the hand, and the synthetic layer falls to the same position after letting go. All styles use cc-capedit-* classes (tokens, with skins).
+// 预览画布上的字幕直编层:点画面字幕→选中框+浮动工具条(AI 编辑/样式/字号)。
+// 编辑器侧 overlay,不进合成:几何靠对 containerStyle 传"显示区 px 尺寸"复算,
+// 命中盒是同字体的透明文本副本(与真渲染同版式)。单流文本改动走
+// cueTextPatch,手动车道直接改对应 cue;样式/字号/颜色/位置均走 updateCaptions,可撤销。
+// 拖拽:按住字幕移动 → 松手一次性提交 layout 偏移(一步 undo);拖动中显示实体
+// 幽灵跟手,松手后合成层落到同一位置。样式全走 cc-capedit-* 类(令牌,随皮肤)。
 
 interface CaptionPreviewEditorProps {
   state: TimelineState;
@@ -35,7 +35,7 @@ interface CaptionPreviewEditorProps {
 const FONT_STEP = 1.12;
 const clampFont = (v: number): number => Math.min(0.14, Math.max(0.02, v));
 const DRAG_THRESHOLD = 4;
-/** Text color quick color palette (white/black + common accent colors) */
+/** 文字颜色快捷色板(白/黑 + 常用强调色) */
 const COLOR_SWATCHES = ['#ffffff', '#0a0a0a', '#FFD84A', '#FF5A5A', '#6EE7F9', '#7CFF9B', '#FF8FD1', '#FFA94D'];
 
 interface DragRef {
@@ -57,7 +57,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
   const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
   const dragRef = useRef<DragRef | null>(null);
 
-  // Display area size (the outer wrapper has been shaped according to the canvas ratio, inset-0 is the video area 1:1)
+  // 显示区尺寸(外层 wrapper 已按画布比例定形,inset-0 即视频区 1:1)
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
@@ -67,7 +67,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
     return () => ro.disconnect();
   }, []);
 
-  // Follow the playhead (Player frameupdate)
+  // 跟播放头(Player frameupdate)
   useEffect(() => {
     const player = playerRef.current;
     if (!player) return;
@@ -88,7 +88,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
   );
   const cue = target?.cue;
 
-  // In other words, exit the selection; click on overlay to exit also
+  // 换句即退出选中;点 overlay 外部也退出
   useEffect(() => { setSelected(false); setEditing(false); setPop(null); }, [target?.key]);
   useEffect(() => {
     if (!autoEditLaneId || target?.kind !== 'manual' || target.laneId !== autoEditLaneId || !cue) return;
@@ -135,7 +135,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
   const setColor = (hex: string) => {
     onUpdateCaptions(captionPreviewStylePatch(captions, target, { color: hex }));
   };
-  // ── Drag and move (bottom anchor offsetYRatio positive upward, containerStyle takes the negative sign) ──
+  // ── 拖拽移动(bottom 锚 offsetYRatio 正向朝上,containerStyle 里取负号) ──
   const anchorV = (() => {
     const a = target.layout?.anchor ?? 'bottom-center';
     return a.startsWith('top') ? 'top' : (a.startsWith('middle') || a === 'center') ? 'middle' : 'bottom';
@@ -182,7 +182,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
       }));
       setSelected(true);
     } else {
-      // Drag threshold not reached = click to select
+      // 未达拖拽阈值 = 点击选中
       setSelected(true);
       playerRef.current?.pause();
     }
@@ -212,7 +212,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
               }}
             />
           ) : (
-            // Hitbox: A copy of the same layout text. Normally transparent (the real captions are on the composite layer), they will appear during dragging when the ghost follows your hand.
+            // 命中盒:同版式文本副本。平时透明(真字幕在合成层),拖动中显形当幽灵跟手
             <div
               className="cc-capedit-hit"
               role="button"
@@ -232,7 +232,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
             <div className="cc-capedit-frame" aria-hidden />
           )}
 
-          {/* Floating toolbar (AI editing | text/style/color | font size | delete)*/}
+          {/* 浮动工具条(AI 编辑 | 文字/样式/颜色 | 字号 | 删) */}
           {selected && !drag && (
             <div className="cc-capedit-bar" onPointerDown={(e) => e.stopPropagation()}>
               {onSeedChat && (

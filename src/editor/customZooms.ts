@@ -1,13 +1,13 @@
-// Runtime custom zoom curve registry (plugin zoom entry): Registered when installing/starting hydration,
-// edit_item is parsed by plugin: assetId, envelope snapshot is entered into item.zoom (self-contained, same as
-// customTransitions idea). PURE — tsx is runnable.
+// 运行时自定义缩放曲线注册表(插件 zoom 条目):安装/启动水合时注册,
+// edit_item 按 plugin: assetId 解析,envelope 快照进 item.zoom(自包含,同
+// customTransitions 思路)。PURE — tsx 可跑。
 import type { ZoomEffect, ZoomShape } from './types';
 
 export interface CustomZoomDef {
   /** plugin:<pack>/<item> */
   id: string;
   label: string;
-  /** 0..1 (can reach 1.5 overshoot) envelope, linear sampling of the entire clip */
+  /** 0..1(可到 1.5 过冲)包络,整段 clip 线性采样 */
   envelope?: number[];
   shape?: ZoomShape;
   magnification?: number;
@@ -24,7 +24,7 @@ export function registerCustomZoom(def: CustomZoomDef): CustomZoomDef {
   return def;
 }
 
-/** Uninstall the plugin scaling curve. */
+/** 卸载插件缩放曲线。 */
 export function unregisterCustomZoom(id: string): boolean {
   return registry.delete(id);
 }
@@ -37,7 +37,7 @@ export function listCustomZooms(): CustomZoomDef[] {
   return [...registry.values()];
 }
 
-/** def → item.zoom snapshot (magnification can be overridden by the caller) */
+/** def → item.zoom 快照(magnification 可被调用方覆盖) */
 export function zoomFromCustomDef(def: CustomZoomDef, magnification?: number): ZoomEffect {
   return {
     ...(def.envelope ? { envelope: [...def.envelope] } : {}),

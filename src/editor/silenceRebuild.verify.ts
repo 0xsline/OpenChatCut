@@ -1,6 +1,6 @@
 // Runnable check: `npx tsx src/editor/silenceRebuild.verify.ts`.
-// Verify: span→local frame cropping (clamp/segment/edge), and the planned split/remove sequence
-// After applying [real reducer] one by one, the number of segments/duration/srcIn/ripple left shift of the timeline are all correct.
+// 验证:span→局部帧裁剪(clamp/并碎段/贴边),以及规划出的 split/remove 序列
+// 经【真实 reducer】逐条应用后,时间线的段数/时长/srcIn/波纹左移全部正确。
 import assert from 'node:assert/strict';
 import { reduce, type Action } from './reduce';
 import { planSilenceRemoval, silenceRemovalBlocker, spansToLocalCuts } from './silenceRebuild';
@@ -21,26 +21,26 @@ const baseState = (items: TimelineItem[]): TimelineState => ({
 const apply = (state: TimelineState, actions: Action[]): TimelineState =>
   actions.reduce((s, a) => reduce(s, a), state);
 
-// ── spansToLocalCuts: source milliseconds → local frame, clamp source window, srcIn takes effect ──
-const trimmed = clip({ srcInFrame: 60, durationInFrames: 240 }); // Source window [60, 300)
+// ── spansToLocalCuts:源毫秒 → 局部帧,clamp 源窗口,srcIn 生效 ──
+const trimmed = clip({ srcInFrame: 60, durationInFrames: 240 }); // 源窗口 [60, 300)
 const cuts1 = spansToLocalCuts(trimmed, [
-  { startMs: 0, endMs: 1000 },      // source [0,30) — before window, insufficient after clamp → lose
-  { startMs: 4000, endMs: 5000 },   // source [120,150) → local [60,90)
-  { startMs: 9800, endMs: 12000 },  // source [294,360) → local [234,240) tail
+  { startMs: 0, endMs: 1000 },      // 源 [0,30) — 在窗口前,clamp 后不足 → 丢
+  { startMs: 4000, endMs: 5000 },   // 源 [120,150) → 局部 [60,90)
+  { startMs: 9800, endMs: 12000 },  // 源 [294,360) → 局部 [234,240) 贴尾
 ], FPS);
 assert.deepEqual(cuts1, [{ fromFrame: 60, toFrame: 90 }, { fromFrame: 234, toFrame: 240 }], 'clamp + srcIn 映射');
 
-// The fragmented reserved sections are merged and deleted: the two sections of silence are only separated by 3 frames → merged into one section
+// 碎保留段并入删除:两段静音只隔 3 帧 → 合并为一段
 const cuts2 = spansToLocalCuts(clip({}), [
   { startMs: 1000, endMs: 2000 },
   { startMs: 2100, endMs: 3000 },
 ], FPS);
 assert.deepEqual(cuts2, [{ fromFrame: 30, toFrame: 90 }], '3 帧保留段并入');
 
-// The entire line is quiet: conservative and giving up
+// 整条全静:保守放弃
 assert.deepEqual(spansToLocalCuts(clip({}), [{ startMs: 0, endMs: 10_000 }], FPS), [], '整条全静不动');
 
-// ── Planning + true reducer: dead energy in the middle, subsequent clip ripples on the same track shift left ──
+// ── 规划 + 真 reducer:中段死气,后续同轨 clip 波纹左移 ──
 {
   const follower = clip({ id: 'next', startFrame: 300, durationInFrames: 90 });
   let n = 0;
@@ -55,7 +55,7 @@ assert.deepEqual(spansToLocalCuts(clip({}), [{ startMs: 0, endMs: 10_000 }], FPS
   assert.deepEqual([c!.id, c!.startFrame], ['next', 240], '同轨后续 clip 左移 60 帧');
 }
 
-// ── The death energy at the beginning + the death energy at the end (the original id is deleted at the beginning, and the whole paragraph at the end is removed) ──
+// ── 开头死气 + 结尾死气(头删原 id,尾整段移除) ──
 {
   let n = 0;
   const plan = planSilenceRemoval(clip({}), [
@@ -69,7 +69,7 @@ assert.deepEqual(spansToLocalCuts(clip({}), [{ startMs: 0, endMs: 10_000 }], FPS
   assert.deepEqual([only.startFrame, only.durationInFrames, only.srcInFrame], [0, 155, 45], '头尾都删净,srcIn=45');
 }
 
-// ── Multiple sections of dead energy: three reserved sections, srcIn jumps section by section, and the last section is aligned ──
+// ── 多段死气:三保留段,srcIn 逐段跳,末段贴齐 ──
 {
   let n = 0;
   const plan = planSilenceRemoval(clip({}), [
@@ -88,7 +88,7 @@ assert.deepEqual(spansToLocalCuts(clip({}), [{ startMs: 0, endMs: 10_000 }], FPS
   assert.equal(total, 300 - plan.removedFrames, '总时长恒等');
 }
 
-// ── Fade in and out to the outer edge: keep fadeIn in the first section, fadeOut in the last section, and no fade in the cut ──
+// ── 淡入淡出归到外缘:首段保 fadeIn,末段保 fadeOut,切口无淡化 ──
 {
   let n = 0;
   const faded = clip({ fadeInFrames: 12, fadeOutFrames: 15 });
@@ -101,7 +101,7 @@ assert.deepEqual(spansToLocalCuts(clip({}), [{ startMs: 0, endMs: 10_000 }], FPS
   assert.equal(segs[1]!.fadeOutFrames, 15, '末段保留 fadeOut');
 }
 
-// ── Gatekeeper: variable speed/zoom/word-level editing/non-audio/video/passive ──
+// ── 守门:变速/zoom/词级编辑/非音视频/无源 ──
 assert.match(silenceRemovalBlocker(clip({ playbackRate: 2 })) ?? '', /变速/);
 assert.match(silenceRemovalBlocker(clip({ zoom: { kind: 'shape' } as never })) ?? '', /zoom/);
 assert.match(silenceRemovalBlocker(clip({ kind: 'image' })) ?? '', /无音频/);

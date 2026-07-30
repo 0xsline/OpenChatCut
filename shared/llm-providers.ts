@@ -143,7 +143,7 @@ export function providerApiPath(
 ): string {
   const protocol = protocolForProvider(provider);
   if (protocol === 'anthropic') return '/messages';
-  if (protocol === 'google') return '/models'; // Native API path according to model:/models/{id}:generateContent
+  if (protocol === 'google') return '/models'; // 原生 API 按模型出路径:/models/{id}:generateContent
   if (protocol === 'openai') {
     return normalizeOpenAiApiMode(openAiApiMode) === 'chat'
       ? '/chat/completions'

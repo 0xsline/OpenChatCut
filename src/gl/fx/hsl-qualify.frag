@@ -1,13 +1,13 @@
 #version 300 es
 precision highp float;
 
-// HSL secondary correction: select a feathered hue-arc segment and adjust hue, saturation, and lightness only inside it.
-// Fade the mask on low-saturation pixels to avoid tinting neutral gray areas.
+// HSL 定向二级校色:按色相圆环选中一段(中心±宽度,外加羽化),只对选区内
+// 像素做色相旋转/饱和度/明度调整;低饱和像素按饱和度淡出避免灰面误染。
 uniform sampler2D u_input;
 uniform float u_hueCenter;  // 0..360
-uniform float u_hueWidth;   // Selection half-width in degrees
-uniform float u_softness;   // Feather width in degrees
-uniform float u_hueShift;   // -60..60 degrees
+uniform float u_hueWidth;   // 选区半宽(度)
+uniform float u_softness;   // 羽化宽度(度)
+uniform float u_hueShift;   // -60..60 度
 uniform float u_satMul;     // 0..2
 uniform float u_lumaMul;    // 0.5..1.5
 
@@ -34,9 +34,9 @@ void main() {
   vec3 hsv = rgb2hsv(c.rgb);
   float hueDeg = hsv.x * 360.0;
   float dist = abs(hueDeg - u_hueCenter);
-  dist = min(dist, 360.0 - dist); // Circular hue distance
+  dist = min(dist, 360.0 - dist); // 圆环距离
   float mask = 1.0 - smoothstep(u_hueWidth, u_hueWidth + max(u_softness, 0.5), dist);
-  mask *= smoothstep(0.04, 0.18, hsv.y); // Fade neutral gray areas
+  mask *= smoothstep(0.04, 0.18, hsv.y); // 灰面淡出
   vec3 adjusted = hsv;
   adjusted.x = fract((hueDeg + u_hueShift) / 360.0 + 1.0);
   adjusted.y = clamp(hsv.y * u_satMul, 0.0, 1.0);

@@ -54,7 +54,7 @@ for (const preset of LLM_PROVIDER_PRESETS) {
   assert.equal(normalizeLlmProvider(preset.id), preset.id);
   assert.equal(defaultModelForProvider(preset.id), preset.defaultModel);
   assert.doesNotThrow(() => new URL(preset.baseUrl));
-  // Providers with official exclusive packages use the official package (provider id varies from package to package); the rest are openai-compatible
+  // 有官方专属包的厂商走官方包(provider id 因包而异);其余 openai-compatible
   const DEDICATED_PROVIDER_IDS: Record<string, string> = {
     anthropic: 'anthropic.messages',
     openai: 'openai.responses',
@@ -183,10 +183,10 @@ assert.deepEqual(makeMessagesPortable([
   { role: 'assistant', content: [{ type: 'text', text: 'visible' }] },
 ]);
 
-// ── Gemini (official @ai-sdk/google, native API) thought_signature full loop regression (#6):
-// The first hop native response carries parts[].thoughtSignature → captured into response messages →
-// Replayed by prepareMessagesForProvider with the same provider → the functionCall part of the second-hop request must
-// Bring back the same signature (Strong verification in Gemini 3 cycle, if lost, it will be 400).
+// ── Gemini(官方 @ai-sdk/google,原生 API)thought_signature 全环路回归(#6):
+// 首跳原生响应携带 parts[].thoughtSignature → 捕获进 response messages →
+// 经 prepareMessagesForProvider 同厂商重放 → 二跳请求的 functionCall part 必须
+// 带回同一签名(Gemini 3 循环内强校验,丢了就是 400)。
 {
   const urls: string[] = [];
   const headerKeys: string[] = [];
@@ -229,7 +229,7 @@ assert.deepEqual(makeMessagesPortable([
   assert.equal(headerKeys[0], 'test-key', '鉴权走 x-goog-api-key(代理端将覆盖为真实 key)');
   const captured = first.response.messages.find((m) => m.role === 'assistant');
   assert.ok(captured, 'first hop yields an assistant message');
-  // Second hop: Replay + tool results through our history pipeline (same vendor reserved providerOptions)
+  // 二跳:经我们的历史管道(同厂商保留 providerOptions)重放 + 工具结果
   await assert.rejects(generateText({
     model: google('gemini-test'),
     messages: prepareMessagesForProvider([
@@ -254,8 +254,8 @@ assert.deepEqual(makeMessagesPortable([
     'captured thought_signature must survive into the replayed functionCall part');
 }
 
-// ── kimi/qwen/deepseek/mistral Official package type: {base}/chat/completions + Bearer,
-// Consistent with the /llm proxy contract (the proxy overwrites the real key according to the provider); the payload contains model+messages. ──
+// ── kimi/qwen/deepseek/mistral 官方包线型:都打 {base}/chat/completions + Bearer,
+// 与 /llm 代理契约一致(代理端按厂商覆盖真实 key);payload 含 model+messages。──
 {
   const { createMoonshotAI } = await import('@ai-sdk/moonshotai');
   const { createAlibaba } = await import('@ai-sdk/alibaba');

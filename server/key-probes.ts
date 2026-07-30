@@ -1,9 +1,9 @@
-// Set the server detection table of the "Test Connection" panel: the lightest real authentication request for each provider page
-// (read-only endpoint or near-zero cost call), verify that the Key + Base URL is available. The key comes from keystore,
-// Or the request body overrides (the temporary value that has not been saved in the panel will only take effect for this detection and will not be saved).
-// Security invariant: The result only contains ok / message / status / latencyMs, and never echoes any key value;
-// The provider's error copy is flattened and truncated before entering the message. Align the endpoints and authentication headers of each vite-plugin-* one by one
-// Real call writing method (beanbao three header / MiniMax base_resp / Gemini x-goog-api-key...).
+// 设置面板「测试连接」的服务端探测表:每个厂商页一条最轻量的真实鉴权请求
+// (只读端点或近零成本调用),验证 Key + Base URL 可用。密钥来自 keystore,
+// 或请求体 overrides(面板里尚未保存的暂存值,仅本次探测生效、不落盘)。
+// 安全不变式:结果只含 ok / message / status / latencyMs,永不回显任何密钥值;
+// 厂商报错文案压平截断后才进 message。端点与鉴权头逐一对齐各 vite-plugin-* 的
+// 真实调用写法(豆包三 header / MiniMax base_resp / Gemini x-goog-api-key…)。
 import { getKey, KEY_NAMES, type KeyName } from './keystore.ts';
 import { r2Probe } from './r2.ts';
 import { mediaDirProbe, mediaDirPostCheck, mediaDirOkText } from './media-dir.ts';
@@ -29,12 +29,12 @@ export interface ProbeResult {
 type Get = (name: KeyName) => string;
 
 interface ProbeDef {
-  /** Starting test threshold: OR AND group (doubao = App ID + Access Key together) */
+  /** 起测门槛:OR 的 AND 组(豆包 = App ID + Access Key 齐) */
   readonly needs: readonly (readonly KeyName[])[];
   readonly run: (get: Get) => Promise<Response>;
-  /** 2xx may also be a provider-level failure (MiniMax base_resp); return error text, null = true success */
+  /** 2xx 也可能是厂商级失败(MiniMax base_resp);返回错误文案,null = 真成功 */
   readonly postCheck?: (bodyText: string) => string | null;
-  /** Custom conclusion when successful (non-network check such as local disk probe); null/default = general "connection successful" */
+  /** 成功时的自定义结论(本地磁盘探针等非网络检查);null/缺省 = 通用「连接成功」 */
   readonly okText?: (bodyText: string) => string | null;
   /** Parse a successful model-catalog response. Only LLM provider pages use this. */
   readonly models?: (bodyText: string) => string[];
@@ -82,12 +82,12 @@ export function parseModelCatalog(bodyText: string): string[] {
   }
 }
 
-/** The provider's error copy is flattened before entering the results: line breaks and truncation are removed. Never splice any key values.*/
+/** 厂商报错文案进结果前压平:去换行、截断。绝不拼接任何密钥值。 */
 export function sanitize(text: string): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, 140);
 }
 
-/** MiniMax: HTTP 200 may also cause authentication failure, the truth is in base_resp.status_code(0 = success).*/
+/** MiniMax:HTTP 200 也可能鉴权失败,真相在 base_resp.status_code(0 = 成功)。 */
 export function minimaxPostCheck(bodyText: string): string | null {
   try {
     const body = JSON.parse(bodyText) as { base_resp?: { status_code?: number; status_msg?: string } };
@@ -97,12 +97,12 @@ export function minimaxPostCheck(bodyText: string): string | null {
     const hint = code === 1004 ? '（鉴权失败，检查 Key）' : '';
     return `MiniMax base_resp ${code}${msg ? ` · ${sanitize(msg)}` : ''}${hint}`;
   } catch {
-    return null; // Non-JSON 2xx are counted as successful
+    return null; // 非 JSON 的 2xx 按成功算
   }
 }
 
-// The four capability pages of MiniMax share one detection: POST /v1/get_voice (free read-only;
-// The voice_cloning list is usually empty, minimal response).
+// MiniMax 四个能力页共用一条探测:POST /v1/get_voice(免费只读;
+// voice_cloning 列表通常为空,响应最小)。
 const minimaxProbe: ProbeDef = {
   needs: [['MINIMAX_API_KEY']],
   run: (get) => fetch(`${base(get, 'MINIMAX_BASE_URL', 'https://api.minimaxi.com')}/v1/get_voice`, {
@@ -113,7 +113,7 @@ const minimaxProbe: ProbeDef = {
   postCheck: minimaxPostCheck,
 };
 
-/** page key (same name as the vendor page key of settingsSchema) → detection definition.*/
+/** page key(与 settingsSchema 的厂商页 key 同名)→ 探测定义。 */
 export const PROBES: Record<string, ProbeDef> = {
   ...Object.fromEntries(LLM_PROVIDER_PRESETS.map((preset) => [
     `llm/${preset.id}`,
@@ -138,7 +138,7 @@ export const PROBES: Record<string, ProbeDef> = {
       signal: t(), headers: { 'xi-api-key': get('ELEVENLABS_API_KEY') },
     }),
   },
-  // openpeech does not have free probing endpoints, synthesizing 1 word is the minimum real verification (the cost is negligible).
+  // openspeech 没有免费探测端点,合成 1 个字是最小真实验证(费用可忽略)。
   'voice/doubao': {
     needs: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']],
     run: (get) => fetch(`${base(get, 'DOUBAO_TTS_BASE_URL', 'https://openspeech.bytedance.com')}/api/v3/tts/unidirectional`, {
@@ -176,15 +176,15 @@ export const PROBES: Record<string, ProbeDef> = {
     }),
   },
   'music/minimax': minimaxProbe,
-  // /v1/search has been opened to anonymous users (the measured number is 200 without key), and the key; collections cannot be detected
-  // It is the account binding endpoint, and the fake key is stable 401.
+  // /v1/search 已对匿名开放(实测无 key 也 200),验不出 key;collections
+  // 是账户绑定端点,假 key 稳定 401。
   'stock/pexels': {
     needs: [['PEXELS_API_KEY']],
     run: (get) => fetch('https://api.pexels.com/v1/collections?per_page=1', {
       signal: t(), headers: { Authorization: get('PEXELS_API_KEY') },
     }),
   },
-  // Pixabay official design: key takes the query parameter (the server is directly connected to HTTPS, the same shape as the stock plugin).
+  // Pixabay 官方设计:key 走 query 参数(服务端直连 HTTPS,与 stock 插件同形)。
   'stock/pixabay': {
     needs: [['PIXABAY_API_KEY']],
     run: (get) => {
@@ -192,14 +192,14 @@ export const PROBES: Record<string, ProbeDef> = {
       return fetch(`https://pixabay.com/api/?${params.toString()}`, { signal: t() });
     },
   },
-  // Unsplash: The search endpoint requires Client-ID, fake key 401.
+  // Unsplash:search 端点要求 Client-ID,假 key 401。
   'stock/unsplash': {
     needs: [['UNSPLASH_ACCESS_KEY']],
     run: (get) => fetch('https://api.unsplash.com/search/photos?query=sky&per_page=1', {
       signal: t(), headers: { Authorization: 'Client-ID ' + get('UNSPLASH_ACCESS_KEY') },
     }),
   },
-  // Freesound: token uses query (same shape as stock plugin), false token 401.
+  // Freesound:token 走 query(与 stock 插件同形),假 token 401。
   'stock/freesound': {
     needs: [['FREESOUND_API_KEY']],
     run: (get) => {
@@ -225,14 +225,14 @@ export const PROBES: Record<string, ProbeDef> = {
       signal: t(), headers: bearer(get('FIRECRAWL_API_KEY')),
     }),
   },
-  // S3 HeadBucket is sent via SDK (SigV4 signature cannot be fetched manually), r2.ts synthesizes Response:
-  // 200=The bucket exists and has been authenticated; 403/404 goes to classifyStatus; the network layer throws it to networkMessage as it is.
+  // S3 HeadBucket 经 SDK 发出(SigV4 签名没法手拼 fetch),r2.ts 合成 Response:
+  // 200=桶在且鉴权过;403/404 走 classifyStatus;网络层原样抛给 networkMessage。
   'storage/r2': {
     needs: [['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET']],
     run: (get) => r2Probe(get),
   },
-  // Local saving directory: disk check (create directory + write and delete detection files), non-network request. Empty group needs = not filled in
-  // It can also be tested (if not set = use the default directory, it is legal).
+  // 本地保存目录:磁盘检查(建目录 + 写删探测文件),非网络请求。空组 needs = 未填
+  // 也可测(未设 = 用默认目录,本身就是合法状态)。
   'storage/local': {
     needs: [[]],
     run: (get) => mediaDirProbe(get),
@@ -241,7 +241,7 @@ export const PROBES: Record<string, ProbeDef> = {
   },
 };
 
-/** Non-2xx status → Conclusion that users can understand (authentication/address/current limiting/others). */
+/** 非 2xx 状态 → 用户能读懂的结论(鉴权 / 地址 / 限流 / 其他)。 */
 export function classifyStatus(status: number, bodyText: string): ProbeResult {
   if (status === 401 || status === 403) {
     return { ok: false, status, message: `鉴权失败（HTTP ${status}）· Key 无效、过期或无此接口权限` };
@@ -256,23 +256,23 @@ export function classifyStatus(status: number, bodyText: string): ProbeResult {
   return { ok: false, status, message: `HTTP ${status}${detail ? ` · ${detail}` : ''}` };
 }
 
-/** Network layer failure (unable to connect/timeout) ≠ Key error, the text clearly distinguishes it, and prompts that a proxy may be required. */
+/** 网络层失败(连不上 / 超时)≠ Key 错误,文案明确区分,并提示可能需要代理。 */
 export function networkMessage(error: unknown): string {
   const raw = error instanceof Error
     ? `${error.name}: ${error.message}${error.cause instanceof Error ? `（${error.cause.message}）` : ''}`
     : String(error);
-  // Note: undici comes with a 10s connection timeout, which is often triggered before our 12s overall gate, and does not write a dead number of seconds.
+  // 注意:undici 自带 10s 连接超时,常先于我们 12s 的整体闸触发,不写死秒数。
   if (/timeout|abort/i.test(raw)) {
     return '连接超时 · 服务不可达或网络受限（可能需代理），不代表 Key 错误';
   }
   return `网络不可达 · ${sanitize(raw)} · 本机连不上该服务（可能需代理），不代表 Key 错误`;
 }
 
-/** Temporarily stored overrides (in the whitelist, the empty string represents clearing for this test) overwrite the stored value.*/
+/** 暂存 overrides(白名单内，空串代表本次测试清除)覆盖已存值。 */
 export function makeGetter(overrides: Record<string, unknown>): Get {
   const clean = new Map<string, string>();
   for (const [name, raw] of Object.entries(overrides)) {
-    if (!(KEY_NAMES as readonly string[]).includes(name)) continue; // Discarded outside the whitelist
+    if (!(KEY_NAMES as readonly string[]).includes(name)) continue; // 白名单外丢弃
     clean.set(name, String(raw ?? '').trim());
   }
   if (clean.has('LLM_BASE_URL') && !clean.has('LLM_BASE_URL_FORMAT')) {
@@ -281,7 +281,7 @@ export function makeGetter(overrides: Record<string, unknown>): Get {
   return (name) => clean.has(name) ? clean.get(name)! : getKey(name);
 }
 
-/** Run a connectivity probe of the provider's page. Unconfigured/unknown pages are returned before sending a request and do not hit the network.*/
+/** 跑一个厂商页的连通性探测。未配置 / 未知页在发请求前就返回,不打网络。 */
 export async function runProbe(page: string, overrides: Record<string, unknown>): Promise<ProbeResult> {
   const probe = PROBES[page];
   if (!probe) return { ok: false, message: '该厂商暂不支持连接测试' };

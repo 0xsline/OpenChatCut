@@ -10,7 +10,7 @@ import { resolveTrackId, type TrackId } from '../../editor/types';
 // We implement the "no-workspace" host mode:
 // read_script returns timeline.md inline; apply_script takes the edited string
 // back via `timelineMd`. Word timestamps never appear in the file — content
-// matching against stable [sN] segment ids preserves word↔frame consistency (moat ③).
+// matching against stable [sN] segment ids preserves 词↔帧一致 (moat ③).
 
 type Args = Record<string, unknown>;
 

@@ -44,7 +44,7 @@ export function Divider({ onResize, orientation = 'vertical' }: { onResize: (del
       <span style={{
         position: 'absolute', pointerEvents: 'none',
         left: horiz ? 0 : 2, top: horiz ? 2 : 0,
-        // Visible line goes 0.5px hair (1 physical pixel on Retina); 5px hit area unchanged
+        // 可见线走 0.5px 发丝(Retina 上 1 物理像素);5px 命中区不变
         width: horiz ? '100%' : 0.5, height: horiz ? 0.5 : '100%',
         background: active ? theme.accent : hovered ? theme.borderLight : theme.border,
       }} />

@@ -22,8 +22,8 @@ export interface LibraryDragPayload {
   src?: string;
   /** sound: duration in seconds */
   seconds?: number;
-  /** Application data of plugin entries (zoom envelope/transition frag/MG template), self-contained parsing on the drop side,
-   * No need to check the plugin library. The receiving end verifies the shape before use (drag-and-drop JSON is regarded as untrusted input). */
+  /** 插件条目的应用数据(缩放包络/转场 frag/MG 模板),drop 端自包含解析,
+   * 不必反查插件库。接收端按形状校验后再用(拖拽 JSON 视为不可信输入)。 */
   data?: unknown;
 }
 

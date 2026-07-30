@@ -93,7 +93,8 @@ async function normalizeVideoSrc(src: string, targetFps: number): Promise<{
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ src, targetFps }),
     });
-    const data = (await res.json()) as {
+    const responseText = await res.text();
+    let data: {
       path?: string;
       width?: number;
       height?: number;
@@ -103,6 +104,11 @@ async function normalizeVideoSrc(src: string, targetFps: number): Promise<{
       fps?: number;
       error?: string;
     };
+    try {
+      data = JSON.parse(responseText) as typeof data;
+    } catch {
+      throw new Error("HTTP " + res.status + ": server returned a non-JSON response");
+    }
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     if (data.path?.startsWith('/media/uploads/')) {
       return {
@@ -326,7 +332,7 @@ async function execFinalize(args: Args, ctx: AgentContext): Promise<unknown> {
     return { error: 'durationInSeconds is required for audio/video/gif' };
   }
 
-  // Upload and transcribe: ASR is automatically triggered after ingest is dropped into the database, and the
+  // 上传即转写:ingest 落库后自动触发 ASR，并根据调用方提供的
   // hasAudioTrack signal; audio always, video unless explicitly told there's no audio.
   const hasAudio = shouldTranscribe(kind, typeof args.hasAudioTrack === 'boolean' ? args.hasAudioTrack : undefined);
 

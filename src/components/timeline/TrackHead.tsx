@@ -1,6 +1,7 @@
-// Track header unit: highlighted track label + show/mute/lock/caption menu/dodge/delete actions,
-// plus the "Auto-dodge · mix role" popover. Cross-track menu exclusivity stays in Timeline;
-// this component only renders and forwards commands.
+// 轨道头单元:类型芯片 + 显隐/静音/锁定/字幕开关/字幕菜单/闪避 + 删除 + 轨名,
+// 以及「自动闪避·混音角色」弹层。弹层的单开互斥与外点关闭状态仍归 Timeline
+// (两个菜单跨轨道只能开一个),本组件只渲染与转发;字幕菜单以 children 传入挂载。
+// 折叠轨已下线——不再提供 collapse 按钮,轨高恒定。
 import type { ReactNode } from 'react';
 import { theme } from '../../theme';
 import { Icon } from '../icons';
@@ -17,6 +18,8 @@ const flagBtn = (active: boolean): React.CSSProperties => ({
 interface TrackHeadProps {
   trackId: TrackId;
   kind: TrackKind;
+  /** stable alias like "C1"/"V1"/"A2" */
+  alias: string;
   trackName: string;
   config: TrackFlags;
   /** non-empty track (or has transitions) — delete disabled */
@@ -35,7 +38,7 @@ interface TrackHeadProps {
 }
 
 export function TrackHead({
-  trackId, kind, trackName, config, busy, menuElevated, width,
+  trackId, kind, alias, trackName, config, busy, menuElevated, width,
   commands, onToggleCaptions, onToggleCaptionMenu, onToggleDuckMenu, duckMenuPos, onCloseDuckMenu, children,
 }: TrackHeadProps) {
   const t = useT();
@@ -43,14 +46,15 @@ export function TrackHead({
   const muted = config.muted ?? false;
   const locked = config.locked ?? false;
   const isCaption = kind === 'caption';
-  const tagColor = kind === 'video' ? theme.trackVideo : kind === 'audio' ? theme.trackAudioA1 : theme.trackCaption;
+  const badgeLabel = kind === 'video' ? '视' : kind === 'audio' ? '音' : '字';
+  const badgeColor = kind === 'video' ? theme.trackVideo : kind === 'audio' ? theme.trackAudioA1 : theme.trackCaption;
   const nameTitle = config.role === 'anchor' ? `${trackName} · ${t('主轨（闪避）')}`
     : config.role === 'follower' ? `${trackName} · ${t('跟随（闪避）')}`
       : trackName;
   return (
     <div className="cc-track-head" style={{ width, ...(menuElevated ? { zIndex: 40 } : {}) }}>
       <div className="cc-track-head-controls">
-        <span className="cc-track-name" title={t('{name}（{id}）', { name: nameTitle, id: trackId })} style={{ background: tagColor }}>{trackName}</span>
+        <span className="cc-track-badge" title={t('{name}（{id}）', { name: trackName, id: trackId })} style={{ background: badgeColor }}>{`${t(badgeLabel)}${alias.slice(1)}`}</span>
         <button style={flagBtn(hidden)} title={hidden ? t('显示轨道') : t('隐藏轨道')} onClick={isCaption ? onToggleCaptions : () => commands.toggleTrackFlag(trackId, 'hidden')}><Icon name={hidden ? 'eyeOff' : 'eye'} size={14} /></button>
         {!isCaption && <button style={flagBtn(muted)} title={muted ? t('取消静音') : t('静音轨道')} onClick={() => commands.toggleTrackFlag(trackId, 'muted')}><Icon name={muted ? 'volumeOff' : 'volume'} size={14} /></button>}
         <button style={{ ...flagBtn(false), color: locked ? theme.gold : theme.textMuted }} title={locked ? t('解锁轨道') : t('锁定轨道（禁止移动 / 裁剪 / 删除 / 落轨）')} onClick={() => commands.toggleTrackFlag(trackId, 'locked')}><Icon name={locked ? 'lock' : 'unlock'} size={14} /></button>
@@ -66,6 +70,10 @@ export function TrackHead({
           <Icon name="trash" size={13} />
         </button>
       </div>
+      <span className="cc-track-name" title={nameTitle}>
+        {trackName}
+        {config.role === 'anchor' ? ` · ${t('主轨')}` : config.role === 'follower' ? ` · ${t('跟随')}` : ''}
+      </span>
       {children}
       {duckMenuPos && (
         <DuckMenu trackId={trackId} config={config} pos={duckMenuPos} commands={commands} onClose={onCloseDuckMenu} />
@@ -74,7 +82,7 @@ export function TrackHead({
   );
 }
 
-// Duck (auto-dodge) role menu is a track-head menu item, not a
+// Duck (自动闪避) role menu is a track-head menu item, not a
 // permanent widget. Sets the per-track role (anchor speech / follower music) + duck depth;
 // the engine (TimelineComposition duckGain) already reacts to it.
 function DuckMenu({ trackId, config, pos, commands, onClose }: {

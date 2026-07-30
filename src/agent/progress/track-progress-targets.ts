@@ -1,6 +1,7 @@
-// Upload and visual-analysis executors for track_progress. The lightweight
-// schema extension lives in tools/schemas/progress.ts.
-export { withProgressTargets } from '../tools/schemas/progress';
+// track_progress target extension. generate-tools.ts owns target=generation;
+// this module adds upload and visual-analysis while transcription remains in
+// transcription-progress.ts. Missing targets default to generation.
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { isMediaSrcReachable } from '../../persist/mediaBlobStore';
 import {
@@ -13,6 +14,26 @@ import {
 
 type Args = Record<string, unknown>;
 
+/** Immutably extend the track_progress schema with every supported target. */
+export function withProgressTargets(schemas: AgentToolSchema[]): AgentToolSchema[] {
+  return schemas.map((tool) => {
+    if (tool.name !== 'track_progress') return tool;
+    const properties = (tool.input_schema.properties ?? {}) as Record<string, unknown>;
+    return {
+      ...tool,
+      description: `${tool.description} For target=transcription, poll ingest ASR readiness (上传即转写) by assetIds instead of jobIds; a succeeded asset then carries a word-level transcript that clips inherit. target=upload checks whether each asset's media file is reachable (blob placeholders report running until relinked to /media/uploads); target=visual-analysis polls contact-sheet warm / frame-readiness jobs (enqueue on ingest; use view_asset_frames / view_timeline_frames for actual vision).`,
+      input_schema: {
+        ...tool.input_schema,
+        properties: {
+          ...properties,
+          target: { type: 'string', enum: ['generation', 'transcription', 'upload', 'visual-analysis'], description: 'Which async task kind to inspect: generation (default), transcription, upload, or visual-analysis.' },
+          assetIds: { type: 'string', description: 'Comma-separated asset IDs/prefixes, for target=transcription / upload / visual-analysis.' },
+        },
+        required: ['action'],
+      },
+    };
+  });
+}
 
 type UploadStatus = 'succeeded' | 'running' | 'failed' | 'not_found';
 

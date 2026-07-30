@@ -1,9 +1,9 @@
-// Electron embedded production server: a 127.0.0.1 HTTP server provides the same full stack as dev —
-// ① seedKeystore(.env.local, cwd semantics are consistent with dev; the packaged version is main first chdir userData)
-// ② /llm is mounted by the shared server plugin, /assemblyai injects the key here
-// ③ Zero modification and mounting of server plugin (the measured dependency is only middlewares.use + config.logger)
-// ④ /media/uploads Direct reading of assets at runtime + dist/ static cover (desktop/static-files.ts)
-// The key still only lives in this process; the rendering process (BrowserWindow) only sees the same-origin HTTP API.
+// Electron 内嵌生产 server:一台 127.0.0.1 HTTP server 提供与 dev 相同的全栈——
+//   ① seedKeystore(.env.local,cwd 语义与 dev 一致;打包版由 main 先 chdir userData)
+//   ② /llm 由共享 server 插件挂载，/assemblyai 在此注入密钥
+//   ③ server 插件零改造挂载(实测依赖面仅 middlewares.use + config.logger)
+//   ④ /media/uploads 运行时素材直读 + dist/ 静态兜底(desktop/static-files.ts)
+// 密钥仍只活在这一进程;渲染进程(BrowserWindow)只见同源 HTTP API。
 import { readFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { resolve } from 'node:path';
@@ -39,13 +39,13 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
   });
   const server = createServer((req, res) => app.handle(req, res));
 
-  // The agent is in front (the path does not conflict with the plugin, so it will take less matching)
+  // 代理在前(路径不与插件冲突,靠前少走几次匹配)
   app.use('/assemblyai', proxyMiddleware({
     target: () => 'https://api.assemblyai.com',
     headers: assemblyHeaders,
   }));
 
-  // vite server pile: complete set of plugin dependencies = middlewares.use + config.logger (verified by plugin)
+  // vite server 桩:插件依赖面全集 = middlewares.use + config.logger(已逐插件核实)
   const fake = {
     middlewares: { use: app.use.bind(app) },
     httpServer: server,
@@ -63,13 +63,13 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
     await fn?.call(plugin as never, fake);
   }
 
-  // Static cover at the end: uploading assets at runtime takes precedence over dist's build-stage copy
+  // 静态兜底在最后:运行时上传素材优先于 dist 的 build 期拷贝
   app.use('/media/uploads', uploadsMiddleware());
   app.use(distStaticMiddleware(distDir));
 
-  // Port policy: priority 5199 (document address of external MCP client in README); occupied (web page dev
-  // server / second desktop instance), fall back to a random port - the App must be able to start, and the MCP client is started instead.
-  // The actual port in the log. Other listen errors are still thrown.
+  // 端口策略:优先 5199(README 里外部 MCP 客户端的文档地址);被占(网页 dev
+  // server / 第二个桌面实例)时回退随机端口——App 必须能起,MCP 客户端改用启动
+  // 日志里的实际端口。其余 listen 错误照旧抛出。
   const listenOn = (port: number) => new Promise<number>((resolvePort, reject) => {
     const onError = (err: Error) => reject(err);
     server.once('error', onError);

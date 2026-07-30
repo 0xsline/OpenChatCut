@@ -15,7 +15,7 @@ import { t as translate, useT } from '../i18n/locale';
 import { setLibraryDrag, type LibraryDragKind } from './drag';
 import { useFixedVirtualGrid } from '../hooks/useFixedVirtualGrid';
 
-// Generic resource-library category browser (Transition/Special Effects/Scale/LUT).
+// Generic resource-library category browser (转场/特效/缩放/LUT).
 // `layout="grid"` uses cards with a thumbnail and label;
 // `layout="list"` is the denser list used by some categories.
 //
@@ -29,14 +29,14 @@ export interface ResourceItem {
   name: string;
   desc?: string;
   badge?: string;
-  /** Plugin entry: application data taken away with the drag payload (see drag.ts LibraryDragPayload.data) */
+  /** 插件条目:随拖拽 payload 带走的应用数据(见 drag.ts LibraryDragPayload.data) */
   data?: unknown;
-  /** Plugin item preview image (data:image/* or URL); if available, use the card directly */
+  /** 插件条目预览图(data:image/* 或 URL);有则卡片直接用 */
   thumb?: string;
 }
 
 interface ResourceBrowserProps {
-  /** what this category applies to, e.g. "Click to apply to the selected fragment" */
+  /** what this category applies to, e.g. "点击应用到选中片段" */
   hint: string;
   items: ResourceItem[];
   onApply: (id: string) => void;

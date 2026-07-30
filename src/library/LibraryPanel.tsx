@@ -12,6 +12,8 @@ import type { AudioAsset } from '../audio/library';
 import { FX_EFFECTS, FX_IDS, LUT_EFFECTS, LUT_IDS } from '../gl/fx/effects';
 import { TranscriptPanel, type TranscriptTrackOption } from '../transcript/TranscriptPanel';
 import { CaptionsPanel } from '../captions/CaptionsPanel';
+import { newManualCaptions } from '../captions/manualCaptions';
+import { parseSrt } from '../captions/srt';
 import { MediaPoolPanel } from '../media/MediaPoolPanel';
 import { TemplateBrowser } from './TemplateBrowser';
 import { ResourceBrowser, type ResourceItem } from './ResourceBrowser';
@@ -30,11 +32,11 @@ import { Icon } from '../components/icons';
 // Two built-in LUTs implemented with published camera-log transfer functions.
 // They apply through the same pipeline as other effects.
 const LUT_ITEMS: ResourceItem[] = LUT_IDS.map((id) => ({ id, name: LUT_EFFECTS[id].name }));
-/** Screen transitions — GLSL transitions in catalog order. */
+/** 画面转场 — GLSL transitions in catalog order. */
 const TRANSITION_ITEMS: ResourceItem[] = TRANSITION_ORDER.map((t) => ({
   id: t, name: TRANSITION_LABELS[t],
 }));
-/** Audio transition — trAudioCrossFade. */
+/** 音频转场 — trAudioCrossFade. */
 const AUDIO_CROSSFADE_THUMB = '/library-previews/audio-crossfade.jpg';
 const AUDIO_TRANSITION_ITEMS: ResourceItem[] = AUDIO_TRANSITION_ORDER.map((t) => ({
   id: t, name: TRANSITION_LABELS[t],
@@ -51,7 +53,7 @@ interface LibraryPanelProps {
   playerRef: RefObject<PlayerRef | null>;
   fps: number;
   items: TimelineItem[];
-  /** A1/V1 aliases + names for script track picker */
+  /** A1/V1 aliases + names for 文字稿 track picker */
   trackOptions: TranscriptTrackOption[];
   captionTracks: Array<TranscriptTrackOption & { captions: CaptionsData | null }>;
   onSetCaptions: (c: CaptionsData | null, track?: TrackId) => void;
@@ -63,6 +65,8 @@ interface LibraryPanelProps {
   onSetTranscriptPlayOrder: (id: string, playOrder: number[] | null) => void;
   onReorderTrackItems: (track: string, orderedIds: string[]) => void;
   onClearEdits: (id: string) => void;
+  onClearGeneratedTranscripts: () => void;
+  onClearAllCaptions: () => void;
   assets: MediaAsset[];
   mediaFolders: MediaFolder[];
   offlineAssetIds: ReadonlySet<string>;
@@ -79,27 +83,27 @@ interface LibraryPanelProps {
   onRemoveMediaAsset: (id: string) => void;
   onRelinkMediaAsset?: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind'] }) => void;
   onAddSolid?: () => void;
-  /** ⋮ menu「Generated with AI」: seed the chat with this template as a reference */
+  /** ⋮ menu「用 AI 生成」: seed the chat with this template as a reference */
   onUseTemplateAI: (tpl: Tpl) => void;
   /** currently-selected clip — resource-library tabs apply to it */
   selectedItem: TimelineItem | null;
-  /** custom = plugin transition (type='custom-shader' snapshot frag into TransitionItem) */
+  /** custom = 插件转场(type='custom-shader' 时快照 frag 进 TransitionItem) */
   onApplyTransition: (type: TransitionType, custom?: { frag: string; uniforms: Record<string, number>; label: string }) => void;
   onApplyFx: (assetId: string) => void;
-  /** The built-in curve passes {shape}; the plugin curve passes {envelope, label} (see PluginBrowser.asPluginZoom) */
+  /** 内置曲线传 {shape};插件曲线传 {envelope,label}(见 PluginBrowser.asPluginZoom) */
   onApplyZoom: (zoom: ZoomEffect) => void;
 }
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿', '字幕'] as const;
 const SUB_TABS = ['MG 动画', '音效', '转场', '特效', '缩放', 'LUT'] as const;
-export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captionTracks, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, offlineAssetIds, onAssetLoadError, onImportMedia, onImportMobileMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onRemoveMediaAsset, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
+export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captionTracks, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, onClearGeneratedTranscripts, onClearAllCaptions, assets, mediaFolders, offlineAssetIds, onAssetLoadError, onImportMedia, onImportMobileMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onRemoveMediaAsset, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
   const t = useT();
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('我的素材');
   const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('MG 动画');
   const [extensionOpen, setExtensionOpen] = useState(false);
-  // The installed extension items are merged into each category (with the "Extension" corner mark); zoom/transition is split by id in onApply
+  // 已装扩展条目并入各分类(带「扩展」角标);缩放/转场在 onApply 里按 id 分流
   const pluginPacks = usePluginPacks();
   const transitionItems = [...TRANSITION_ITEMS, ...pluginResourceItems(pluginPacks, 'transition')];
   const fxItems = [...FX_ITEMS, ...pluginResourceItems(pluginPacks, 'fx')];
@@ -115,7 +119,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
     const pluginZoom = data ? asPluginZoom(data) : null;
     onApplyZoom(pluginZoom ?? { shape: id as ZoomShape, magnification: 1.5, envelope: undefined, label: undefined });
   };
-  // Audio transition: The source catalog has no independent entries and the false entry has been hidden (§4.2)
+  // 音频转场：源 catalog 无独立条目，已隐藏假入口（§4.2）
   const showSfx = mainTab === '资源库' && subTab === '音效';     // sound effects
   const isTranscript = mainTab === '文字稿';
   const isCaptions = mainTab === '字幕';
@@ -127,6 +131,15 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
       onSetCaptions({ enabled: true, template: 'black-bar', pacing: 'phrase', sourceItemId: sourceItemIds[0]!, sources: sourceItemIds.length > 1 ? sourceItemIds : undefined, sourceMode: sourceItemIds.length > 1 ? 'item' : undefined, bilingual: false }, target.id);
     }
     setMainTab('字幕');
+  };
+  const importSrt = async (file: File) => {
+    try {
+      const words = parseSrt(await file.text());
+      onSetCaptions({ ...newManualCaptions(), sourceEntries: [{ id: `srt_${crypto.randomUUID()}`, itemId: 'manual:srt', label: file.name, words }] }, captionTracks[0]?.id);
+      setMainTab('字幕');
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+    }
   };
 
   return (
@@ -140,10 +153,10 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
       {extensionOpen ? (
         <ExtensionCenter onClose={() => setExtensionOpen(false)} />
       ) : isCaptions ? (
-        <CaptionsPanel playerRef={playerRef} fps={fps} items={items} captionTracks={captionTracks} onSetCaptions={onSetCaptions} onUpdateCaptions={onUpdateCaptions} />
+        <CaptionsPanel playerRef={playerRef} fps={fps} items={items} captionTracks={captionTracks} onSetCaptions={onSetCaptions} onUpdateCaptions={onUpdateCaptions} onClearAllCaptions={onClearAllCaptions} />
       ) : isTranscript ? (
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, borderTop: `0.5px solid ${theme.border}` }}>
-          <TranscriptPanel playerRef={playerRef} fps={fps} items={items} trackOptions={trackOptions} onSetItemTranscript={onSetItemTranscript} onToggleWord={onToggleWord} onCleanScript={onCleanScript} onSetGapCap={onSetGapCap} onSetTranscriptPlayOrder={onSetTranscriptPlayOrder} onReorderTrackItems={onReorderTrackItems} onClearEdits={onClearEdits} onOpenCaptionStyles={captionTracks.length ? openCaptionStyles : undefined} />
+          <TranscriptPanel playerRef={playerRef} fps={fps} items={items} trackOptions={trackOptions} onSetItemTranscript={onSetItemTranscript} onToggleWord={onToggleWord} onCleanScript={onCleanScript} onSetGapCap={onSetGapCap} onSetTranscriptPlayOrder={onSetTranscriptPlayOrder} onReorderTrackItems={onReorderTrackItems} onClearEdits={onClearEdits} onClearGeneratedTranscripts={onClearGeneratedTranscripts} onImportSrt={(file) => { void importSrt(file); }} onOpenCaptionStyles={captionTracks.length ? openCaptionStyles : undefined} />
         </div>
       ) : isMyAssets ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, borderTop: `0.5px solid ${theme.border}` }}>
@@ -190,7 +203,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
           <SoundBrowser fps={fps} onAdd={onAddAudio} />
         ) : subTab === '转场' ? (
           <div className="cc-transition-browser">
-            {/* Audio crossfade — trAudioCrossFade; highlighting available when audio clip is selected*/}
+            {/* 音频交叉淡化 — trAudioCrossFade；选中音频片段时高亮可用 */}
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 11, color: theme.textDim, margin: '0 4px 8px', letterSpacing: 0.3 }}>
                 {t('音频转场 · Audio Cross Fade')}
@@ -215,7 +228,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
               items={transitionItems}
               applicable={selectedItem != null && selKind !== 'audio'}
               onApply={applyTransitionById}
-              // Built-in and plugin:/custom: the same set of A/B samples + hover 0→1 preview (true GLSL)
+              // 内置与 plugin:/custom: 同一套 A/B 样片 + hover 0→1 预览(真 GLSL)
               renderThumb={(id, hovered) => <TransitionThumb type={id} playing={hovered} />}
             />
           </div>
@@ -240,7 +253,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
             renderThumb={(id, hovered) => {
               const data = zoomItems.find((x) => x.id === id)?.data;
               const pluginZoom = data ? asPluginZoom(data) : null;
-              // plugin envelope: real sample + envelope zoom animation (same look and feel as built-in ZoomThumb)
+              // 插件包络:真样片 + 包络缩放动画(与内置 ZoomThumb 同观感)
               if (pluginZoom?.envelope) {
                 return <EnvelopeThumb envelope={pluginZoom.envelope} magnification={pluginZoom.magnification} playing={hovered} />;
               }

@@ -1,0 +1,6 @@
+.env
+.env.local
+data
+media
+node_modules
+dist

@@ -249,8 +249,6 @@ function normalizeReason(meta: ProbeMeta, targetBitrate: number, forceCfr: boole
     const efficient = Math.max(targetBitrate * 1.15, SKIP_MAX_SOURCE_BITRATE_BPS);
     if (meta.sourceBitrate > efficient) return 'source bitrate exceeds efficient threshold';
   }
-  // Very large files even if "compatible" (e.g. long 1080p high quality) — soft cap ~1.5GB
-  if (meta.size > 1.5 * 1024 * 1024 * 1024) return 'source file larger than 1.5GB';
   return null;
 }
 

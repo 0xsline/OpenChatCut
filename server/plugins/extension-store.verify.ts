@@ -1,4 +1,4 @@
-// Shared extended storage API: installation, version isolation, start, stop, and uninstall. npx tsx server/plugins/extension-store.verify.ts
+// 共享扩展存储 API：安装、版本隔离、启停、卸载。npx tsx server/plugins/extension-store.verify.ts
 import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';

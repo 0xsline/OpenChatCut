@@ -1,4 +1,4 @@
-// Client-side ASR job table for "upload and transcribe" (automatically trigger transcribe after ingest is dropped).
+// Client-side ASR job table for "上传即转写" (ingest 落库后自动触发转写).
 // Unlike generation/render jobs (which run server-side and are polled over HTTP),
 // transcription runs IN THE BROWSER via transcribePath, so its "job table" is this
 // in-memory Map keyed by assetId. The agent polls it through track_progress
@@ -23,10 +23,10 @@ export interface TranscribeJob {
 const jobs = new Map<string, TranscribeJob>();
 
 const POLL_MS = 1000;
-const DEFAULT_LANG = 'zh';
+const DEFAULT_LANG = 'auto';
 
 interface EnqueueOptions {
-  languageCode?: string;
+  languageCode?: string | 'auto';
   /** Fired once on the terminal state so a real-store writer can persist the result
    *  onto the asset (MediaAsset.transcript / transcribeStatus). The agent path omits
    *  this and reads the terminal state via track_progress instead. */
@@ -64,7 +64,7 @@ export function enqueueTranscription(
     } catch {
       asrPath = undefined;
     }
-    return transcribePath(asset.src, undefined, {
+    return transcribePath(asset.src, {
       languageCode: opts.languageCode ?? DEFAULT_LANG,
       asrPath: asrPath || undefined,
     });

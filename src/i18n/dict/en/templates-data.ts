@@ -1,5 +1,5 @@
-// EN data dictionary: English display name of Chinese key **data** (self-made template name, etc.). tData() looks here in en state.
-// It has nothing to do with UI fragmentation (16 fragments assembled by index.ts) - the data name is not the UI copy and is a separate table.
+// EN 数据词典:中文键**数据**(自制模板名等)的英文显示名。tData() 在 en 态查这里。
+// 与 UI 分片(index.ts 装配的 16 片)无关——数据名不是 UI 文案,单独成表。
 export default {
   '竖屏·重点词弹出': 'Vertical · Keyword Pop',
   '竖屏·大字幕条': 'Vertical · Big Caption',

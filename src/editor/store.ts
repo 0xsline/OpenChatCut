@@ -54,7 +54,7 @@ export interface EditorCommands {
   setItemEffects: (id: string, effects: ClipEffect[], defs?: SerializableFxDef[]) => void;
   /** Set playback speed and retime the clip while preserving its media span. */
   setItemSpeed: (id: string, rate: number) => void;
-  /** replace a clip (MG/text) with a baked video at src, keeping its slot (convert to video)*/
+  /** replace a clip (MG/text) with a baked video at src, keeping its slot (转为视频) */
   replaceItemMedia: (id: string, src: string) => void;
   /** Add a ruler/clip marker at a frame and return its id. */
   addMarker: (fromFrame: number, opts?: { note?: string; color?: Marker['color']; durationFrames?: number; scope?: Marker['scope']; itemId?: string }) => string;
@@ -62,7 +62,7 @@ export interface EditorCommands {
   removeMarker: (id: string) => void;
   setReframeKeyframe: (id: string, frame: number, focalPointX: number, focalPointY: number, magnification: number) => void;
   removeReframeKeyframe: (id: string, frame: number) => void;
-  /** set/update one generic transform keyframe at an item-local frame (PRD §4.5 Pen tool)*/
+  /** set/update one generic transform keyframe at an item-local frame (PRD §4.5 钢笔工具) */
   setItemKeyframe: (id: string, prop: KeyframeProp, frame: number, value: number, easing?: KeyframeEasing) => void;
   removeItemKeyframe: (id: string, prop: KeyframeProp, frame: number) => void;
   /** clear one prop's generic keyframes, or all of them when prop omitted */
@@ -90,6 +90,8 @@ export interface EditorCommands {
   /** Ingest an ASR result into a pool asset. Clips created from the asset
    * inherit its transcript at placement; status/error drive the media-pool badge. */
   setAssetTranscription: (id: string, patch: Partial<Pick<MediaAsset, 'transcript' | 'transcribeStatus' | 'transcribeError'>>) => void;
+  clearGeneratedTranscripts: () => void;
+  clearAllCaptions: () => void;
   /** replace a clip's text-only transcript variants (translations / corrections) */
   setItemVariants: (id: string, variants: TranscriptVariant[]) => void;
   toggleWord: (id: string, idx: number) => void;
@@ -99,14 +101,14 @@ export interface EditorCommands {
   setGapCap: (id: string, afterWordIndex: number, maxMs: number | null) => void;
   /** Speech-block drag: playback order of source word indices (null = chronological). */
   setTranscriptPlayOrder: (id: string, playOrder: number[] | null) => void;
-  /** Clip drag in transcript: pack items on track in this id order.*/
+  /** Clip drag in 文字稿: pack items on track in this id order. */
   reorderTrackItems: (track: string, orderedIds: string[]) => void;
   clearEdits: (id: string) => void;
-  /** Correction of typos: Only the text of the wordIndex-th transliterated word is corrected, and the timing/number of words/segment duration remains unchanged.*/
+  /** 改错字:只修正第 wordIndex 个转写词的 text,timing/词数/片段时长全不变。 */
   fixTranscriptWord: (id: string, wordIndex: number, text: string) => void;
-  /** Speaker renaming/merging: Change all words with speaker===from to to; only change.speaker.*/
+  /** 说话人重命名/合并:把 speaker===from 的词全部改标 to;只改 .speaker。 */
   renameSpeaker: (id: string, from: string, to: string) => void;
-  /** AI vocal isolation: hang/clear denoisedSrc.*/
+  /** AI 人声隔离：挂上/清除 denoisedSrc。 */
   setItemDenoise: (id: string, denoisedSrc: string | null, strength?: number | null) => void;
   /** Select one clip. mode: replace (default) | toggle (⌘/Ctrl) | add. */
   selectItem: (id: string | null, opts?: { mode?: 'replace' | 'toggle' | 'add' }) => void;
@@ -140,8 +142,8 @@ export interface EditorCommands {
   undo: () => void;
   redo: () => void;
   /**
-   * Boundaries for continuous gestures (drag the slider, drag the color picker). All changes between the two are merged into one undo record,
-   * Undo goes back to "before dragging" instead of the previous tick. Press the pointer to adjust begin, release it to adjust end.
+   * 连续手势的边界(拖滑块、拖取色器)。两者之间的所有改动合并成一条撤销记录,
+   * 撤销回到「拖之前」而不是上一个刻度。指针按下调 begin,松开调 end。
    */
   beginHistoryGesture: () => void;
   endHistoryGesture: () => void;
@@ -155,8 +157,8 @@ export function useEditor(initial: ProjectDoc): {
   commands: EditorCommands;
   canUndo: boolean;
   canRedo: boolean;
-  /** The complete project snapshot of the previous step (undo target), null if there is no history. Agent's "undo" tool
-   * Treat the proposal as an ordinary editor, rather than directly touching the history stack - the draft baseline will not become invalid.*/
+  /** 上一步的完整工程快照(撤销目标),没有历史时 null。Agent 的「撤销」工具把它
+   * 当成一次普通编辑提出来走提案,而不是直接动历史栈——draft 基线才不会失效。 */
   getUndoTarget: () => ProjectDoc | null;
 } {
   const [h, dispatch] = useReducer(historyReduce, { past: [], present: initial, future: [] });
@@ -416,6 +418,28 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       updateWatermark: (patch) => dispatch({ type: 'updateWatermark', patch }),
       setItemTranscript: (id, words) => dispatch({ type: 'setItemTranscript', id, words }),
       setAssetTranscription: (id, patch) => dispatch({ type: 'pool.setTranscription', id, patch }),
+      clearGeneratedTranscripts: () => {
+        const doc = getDoc();
+        dispatch({ type: 'tl.setDoc', doc: {
+          ...doc,
+          assets: doc.assets.map((asset) => ({ ...asset, transcript: undefined, transcribeStatus: undefined, transcribeError: undefined })),
+          timelines: doc.timelines.map((timeline) => ({
+            ...timeline,
+            items: timeline.items.map((item) => ({ ...item, transcript: undefined, variants: undefined, deletedWordIdx: undefined, silenceFrames: undefined, gapCapsMs: undefined, transcriptPlayOrder: undefined })),
+          })),
+        } });
+      },
+      clearAllCaptions: () => {
+        const doc = getDoc();
+        dispatch({ type: 'tl.setDoc', doc: {
+          ...doc,
+          timelines: doc.timelines.map((timeline) => ({
+            ...timeline,
+            captions: null,
+            tracks: Object.fromEntries(Object.entries(timeline.tracks ?? {}).map(([id, track]) => [id, track?.captions ? { ...track, captions: null } : track])),
+          })),
+        } });
+      },
       setItemVariants: (id, variants) => dispatch({ type: 'setItemVariants', id, variants }),
       toggleWord: (id, idx) => dispatch({ type: 'toggleWord', id, idx }),
       deleteWords: (id, idxs) => dispatch({ type: 'deleteWords', id, idxs }),
@@ -464,7 +488,7 @@ export function makeDraft(base: ProjectDoc): DraftEngine {
   let doc = base;
   let pending: AnyAction[] = [];
   const dispatch: ProjectDispatch = (a) => {
-    // Draft is a copy of the project, replay of recorded actions, history stack and gesture merging are meaningless here.
+    // draft 是工程副本、按记录的 action 重放,历史栈和手势合并在这里都没有意义
     if (isHistoryControlAction(a)) return;
     const next = projectReduce(doc, a);
     if (next !== doc) {

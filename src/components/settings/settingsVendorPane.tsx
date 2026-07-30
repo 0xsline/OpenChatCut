@@ -1,7 +1,7 @@
-// Right column of the settings panel: Select the provider's configuration page (header + field card + test connection row) and field rendering.
-// Detach from SettingsDialog.tsx (500 line limit); the layout shell and left/center columns are still there.
-// "Test connection" goes to POST /api/keys/test: Combine the unsaved temporary values ​​of this page as overrides
-// Send to the server for detection (only effective this time, not dropped), the key value will never appear in the response.
+// 设置面板右栏:选中厂商的配置页(头 + 字段卡 + 测试连接行)与字段渲染件。
+// 从 SettingsDialog.tsx 拆出(500 行上限);布局壳与左/中栏仍在那边。
+// 「测试连接」走 POST /api/keys/test:把本页未保存的暂存值作为 overrides 一并
+// 送去服务端探测(仅本次生效,不落盘),密钥值永远不会出现在响应里。
 import { useState } from 'react';
 import { theme, themeAlpha } from '../../theme';
 import { useT } from '../../i18n/locale';
@@ -11,10 +11,10 @@ import {
   type KeyStatusResponse, type SettingsField, type SettingsVendorPage, type StagedValues as Values,
 } from './settingsSchema';
 
-export const ON = theme.success; // Status green → Semantic token (graphite value ≈ original #4caf7d, light skin automatically changes to dark green)
-export const WARN = '#f77';    // Error / Clear warning (retain the original panel error color)
+export const ON = theme.success; // 状态绿 → 语义令牌(石墨值≈原 #4caf7d,浅肤自动换深绿)
+export const WARN = '#f77';    // 错误 / 清除警示(沿用原面板错误色)
 
-/** Field rendering shared context: server status + temporary storage + plain text switch + temporary storage/clear callback. */
+/** 字段渲染共享上下文:服务端状态 + 暂存 + 明文开关 + 暂存/清除回调。 */
 export interface FieldCtx {
   status: KeyStatusResponse | null;
   values: Values;
@@ -25,7 +25,7 @@ export interface FieldCtx {
   onModelsDiscovered: (name: string, models: readonly string[]) => void;
 }
 
-// ──Provider configuration page ────────────────────────────────────────────────────────
+// ── 厂商配置页 ────────────────────────────────────────────────────────────
 
 export function VendorPane({ page, hint, ctx }: {
   page: SettingsVendorPage; hint: string; ctx: FieldCtx;
@@ -53,12 +53,12 @@ export function VendorPane({ page, hint, ctx }: {
   );
 }
 
-// ── Test connection ───────────────────────────────────────────────────────
+// ── 测试连接 ─────────────────────────────────────────────────────────────
 
 interface ProbeResponse { ok: boolean; message: string; latencyMs?: number; models?: string[]; }
 interface ProbeShown { page: string; ok: boolean; message: string; }
 
-/** Unsaved temporary values in the fields on this page → detect overrides; the empty string represents the default value for this test. */
+/** 本页字段里未保存的暂存值→探测 overrides；空串代表本次测试按默认值。 */
 function stagedOverrides(page: SettingsVendorPage, values: Values): Record<string, string> {
   const overrides: Record<string, string> = {};
   for (const f of page.fields) {
@@ -120,19 +120,19 @@ function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: Field
   );
 }
 
-// ──Field rendering ────────────────────────────────────────────────────────
+// ── 字段渲染 ─────────────────────────────────────────────────────────────
 
 export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }) {
   const t = useT();
   const { status, reveal, onStage, onToggleClear } = ctx;
-  // value: undefined = no temporary changes; '' = temporary cache clear / return to default; the rest = temporary new values.
+  // value: undefined = 无暂存改动;'' = 暂存清除 / 回默认;其余 = 暂存新值。
   const value = ctx.values[field.name];
   const st = status?.keys[field.name];
   const configured = Boolean(st?.configured);
   const stagedClear = value === '' && field.kind !== 'toggle';
-  // Model / routing field echoes the current value of the server; secret / base url will never be backfilled.
+  // 模型 / 路由字段回显服务端当前值;secret / base url 永不回填。
   const shown = value ?? (isModelField(field) ? modelValue(status, field.name) : '');
-  // Select uses the "default" option to clear; toggle's off/on itself is set/clear.
+  // select 用「默认」选项即清除;toggle 的关/开本身就是设/清。
   const clearable = configured && field.kind !== 'select' && field.kind !== 'toggle';
   const discovered = field.discoverableModel ? ctx.modelOptions[field.name] ?? [] : [];
   return (
@@ -197,8 +197,8 @@ function ModelInput({ field, shown, models, reveal, configured, stagedClear, onS
   );
 }
 
-/** Switch field:''/Anything other than '0' = enabled (default), '0' = disabled. On = temporary storage ''(clear key to return to default),
- * Off = Temporary storage '0' - The semantics are naturally consistent with the "'' explicit clear" of buildPatch, and it will take effect immediately after saving. */
+/** 开关字段:'' / 任意非 '0' = 启用(默认),'0' = 停用。开 = 暂存 ''(清键回默认),
+ * 关 = 暂存 '0'——与 buildPatch 的「'' 显式清除」语义天然一致,保存即生效。 */
 function ToggleSwitch({ field, shown, onStage }: {
   field: SettingsField; shown: string;
   onStage: (field: SettingsField, raw: string) => void;
@@ -300,7 +300,7 @@ function SelectInput({ field, status, shown, onStage }: {
   onStage: (field: SettingsField, raw: string) => void;
 }) {
   const opts = selectOptions(field);
-  const unknown = shown !== '' && !opts.some((o) => o.value === shown);  // Manually changing the value of.env.local is also displayed faithfully
+  const unknown = shown !== '' && !opts.some((o) => o.value === shown);  // 手改 .env.local 的值也如实显示
   return (
     <select value={shown} onChange={(e) => onStage(field, e.target.value)} style={select}>
       {unknown && <option value={shown}>{shown}</option>}
@@ -311,7 +311,7 @@ function SelectInput({ field, status, shown, onStage }: {
   );
 }
 
-// ── Style ───────────────────────────────────────────────────────────
+// ── 样式 ─────────────────────────────────────────────────────────────────
 
 const pane: React.CSSProperties = {
   flex: 1, minWidth: 0, overflowY: 'auto', padding: '14px 20px 16px', display: 'flex', flexDirection: 'column', gap: 12,

@@ -8,7 +8,7 @@ import { ALL_FX, LUT_EFFECTS } from '../../gl/fx/effects';
 import { Icon, type IconName } from '../icons';
 import { useT } from '../../i18n/locale';
 
-// speed presets for the variable speed submenu
+// speed presets for the 变速 submenu
 const SPEED_PRESETS = [0.25, 0.5, 1, 1.5, 2, 4] as const;
 const SPEED_PRESET_EPSILON = 0.01;
 
@@ -20,7 +20,7 @@ function matchesSpeedPreset(rate: number, preset: number): boolean {
   return Math.abs(rate - preset) < SPEED_PRESET_EPSILON;
 }
 
-// Clip right-click menu. AI multi-camera synchronization: client audio alignment (src/multicam).
+// Clip right-click menu. AI 多机位同步:客户端音频对齐(src/multicam)。
 
 /** effects copied from a clip (the clip's effects[] stack) */
 export interface FxClip {
@@ -33,7 +33,7 @@ export interface FxClip {
 
 interface ClipContextMenuProps {
   item: TimelineItem;
-  /** Transitions (in/out) related to this clip are listed and removed by "Applied Effects" */
+  /** 与本片段相关的转场(入/出),供「已应用效果」列出与移除 */
   transitions: TransitionItem[];
   x: number;
   y: number;
@@ -46,9 +46,9 @@ interface ClipContextMenuProps {
   fxClip: FxClip | null;
   onCopyFx: (fx: FxClip) => void;
   onClose: () => void;
-  /** Export MG animation → ProRes 4444 alpha .mov download */
+  /** 导出 MG 动画 → ProRes 4444 alpha .mov download */
   onExportMg: (item: TimelineItem) => void;
-  /** Turn to video → bake to a video clip in place */
+  /** 转为视频 → bake to a video clip in place */
   onConvertToVideo: (item: TimelineItem) => void;
   onAddComment: (item: TimelineItem, frame: number, clientX: number, clientY: number) => void;
 }
@@ -116,7 +116,7 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
 
   const [showSpeed, setShowSpeed] = useState(false);
   const [showApplied, setShowApplied] = useState(false);
-  // Use conservative clamping for the initial value, and accurately shrink it after measuring the actual size (expanding sub-area/weight when changing anchor)
+  // 初值用保守夹取,量到真实尺寸后精确收拢(展开子区/换 anchor 时重量)
   const [pos, setPos] = useState(() => ({ left: Math.min(x, window.innerWidth - 210), top: Math.min(y, window.innerHeight - 380) }));
   useLayoutEffect(() => {
     const el = ref.current;
@@ -128,7 +128,7 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
     });
   }, [x, y, showApplied, showSpeed]);
 
-  // List of applied effects: special effects/LUT/zoom/transition, click to remove
+  // 已应用效果清单:特效/LUT/缩放/转场,点击即移除
   const effects = item.effects ?? [];
   const applied: { key: string; label: string; remove: () => void }[] = [
     ...effects.map((fx) => ({
@@ -167,8 +167,8 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
     commands.setItemFade(item.id, { fadeInFrames: fxClip.fadeInFrames ?? 0, fadeOutFrames: fxClip.fadeOutFrames ?? 0 });
   };
 
-  // keep the menu on-screen: The height of the menu changes with the entry/expanded state. If the height is estimated to be too high, it will overflow at the bottom——
-  // After the mounting and unfolding state changes, measure the real size and then clamp it (useLayoutEffect is run before drawing and does not flash).
+  // keep the menu on-screen:菜单高度随条目/展开态变化,写死估高会在底部溢出——
+  // 挂载与展开态变化后量真实尺寸再夹取(useLayoutEffect 在绘制前跑,不闪)。
   const style: React.CSSProperties = {
     position: 'fixed', left: pos.left, top: pos.top,
     zIndex: 100, minWidth: 200, maxHeight: 'calc(100vh - 16px)', overflowY: 'auto',

@@ -1,4 +1,4 @@
-export { MARKERS_TOOL_SCHEMAS, MARKERS_TOOL_NAMES } from './schemas/markers-tools';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { MARKER_HEX, type Marker, type MarkerColor, type Timeline, type TimelineState } from '../../editor/types';
 import { makeDraft } from '../../editor/store';
@@ -6,24 +6,68 @@ import { buildModel, type SegRow } from '../../script/serialize';
 import { makeWordFrameMapper } from './transcript-find';
 import { resolveTimeline } from './timeline-target';
 
-// manage_markers — Timeline annotations (points/segments), anchored on the frame or a clip, the contract is marker-note-v2.
-// Parameters include action + fromFrame/durationFrames/note/itemId +
-// markers/updates (batch). The editing layer is fully ready (Marker type + reducer addMarker/updateMarker/
-// removeMarker + store command), only thin agent packaging is used here: list/create/update/delete.
-// transcript-backed notes:create pass transcriptSegments("3"/"3-5"/comma list,
-// The same set of numbers as [sN] of read_script) can be omitted fromFrame/note - the frame bit is converted from the word-level timestamp
-// (makeWordFrameMapper, shared mapping with the playback layer), copy the text of the note body, and can attach the notePrefix tag;
-// transcriptTrack filter track. Batch markers[] for each item are also supported.
+// manage_markers — 时间线批注(点/段),锚在帧上或某 clip 上，契约为 marker-note-v2。
+// 参数包含 action + fromFrame/durationFrames/note/itemId +
+// markers/updates(批量)。编辑层已全就绪(Marker 类型 + reducer addMarker/updateMarker/
+// removeMarker + store 命令),这里只做薄 agent 包装:list/create/update/delete。
+// transcript-backed notes:create 传 transcriptSegments("3"/"3-5"/逗号列表,
+// 与 read_script 的 [sN] 同一套编号)即可省 fromFrame/note——帧位由词级时间戳换算
+// (makeWordFrameMapper,与播放层共用映射),note 正文拷贝段文本,可挂 notePrefix 标签;
+// transcriptTrack 过滤轨道。批量 markers[] 的每一项同样支持。
 
 type Args = Record<string, unknown>;
 
 const COLORS = Object.keys(MARKER_HEX) as MarkerColor[];
 
+export const MARKERS_TOOL_SCHEMAS: AgentToolSchema[] = [
+  {
+    name: 'manage_markers',
+    description: [
+      '时间线批注/TODO 锚点(契约 marker-note-v2)。marker = 点(durationFrames 0)或段(>0),',
+      'scope=project 锚在标尺帧上,scope=item 锚在某 clip 上。',
+      'action: list(列全部) | create(建;可传 markers[] 批量) | update(改;可传 updates[] 批量) | delete(删)。',
+      'transcript-backed notes:要给转写原句做批注时,传 transcriptSegments(Active Script 的 [sN] 段号)+ 可选 notePrefix,',
+      '代替手写 note——fromFrame 自动取首个所选段的起点(显式传 fromFrame 则优先),note 正文从 read_script 输出拷贝。',
+      `color 取 ${COLORS.join('/')} 之一。`,
+    ].join(' '),
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'create', 'update', 'delete'] },
+        timelineId: { type: 'string', description: '目标时间线 id 或前缀；省略时使用当前时间线，不会切换当前时间线。' },
+        fromFrame: { type: 'number', description: 'Integer timeline frame to anchor the marker at (required for create unless transcriptSegments is used).' },
+        durationFrames: { type: 'number', description: '段长;0 或省略 = 点标记(用 transcriptSegments 时默认覆盖所选段)。' },
+        note: { type: 'string', description: 'Marker note text (required for create unless transcriptSegments is used).' },
+        color: { type: 'string', enum: COLORS },
+        scope: { type: 'string', enum: ['project', 'item'], description: 'item 需配 itemId。默认 project。' },
+        itemId: { type: 'string', description: 'scope=item 时锚定的 clip id。' },
+        markerId: { type: 'string', description: 'update/delete 的目标 marker id。' },
+        transcriptSegments: { type: 'string', description: 'Active Script segment ids/ranges from timeline.md, e.g. "3-4"; note text is copied from read_script output.' },
+        transcriptTrack: { type: 'string', description: 'Track filter for transcriptSegments, e.g. V1 or A1.' },
+        notePrefix: { type: 'string', description: 'Optional label prefix when transcriptSegments derives the note body.' },
+        markers: {
+          type: 'array',
+          description: 'create 批量:每项 {fromFrame?, note?, color?, durationFrames?, scope?, itemId?, transcriptSegments?, transcriptTrack?, notePrefix?};fromFrame 可省,用 transcriptSegments 定位。',
+          items: { type: 'object' },
+        },
+        updates: {
+          type: 'array',
+          description: 'update 批量:每项 {id, note?, color?, fromFrame?, durationFrames?}。',
+          items: { type: 'object' },
+        },
+      },
+      required: ['action'],
+    },
+  },
+];
+
+export const MARKERS_TOOL_NAMES = new Set(MARKERS_TOOL_SCHEMAS.map((t) => t.name));
+
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
 const color = (v: unknown): MarkerColor | undefined => (COLORS.includes(v as MarkerColor) ? (v as MarkerColor) : undefined);
 
-/** "3" / "3-5" / "2,4-6" (tolerate s prefix, such as "s3-s4") → remove duplicate segment numbers in ascending order; illegal return null.*/
+/** "3" / "3-5" / "2,4-6"(容忍 s 前缀,如 "s3-s4")→ 升序去重段号;非法返回 null。 */
 function parseSegmentSpec(spec: string): number[] | null {
   const out = new Set<number>();
   for (const part of spec.split(',')) {
@@ -39,9 +83,9 @@ function parseSegmentSpec(spec: string): number[] | null {
 
 interface SegmentAnchor { fromFrame: number; durationFrames: number; note: string }
 
-/** transcriptSegments → {fromFrame, durationFrames, note}. Segment number and read_script's [sN]
- *  The same set of numbers (buildModel); the frame bits are converted with word-level timestamps by makeWordFrameMapper (same origin as the playback layer,
- *  Keep the word frame consistent); note = keptText of the selected segment (that is, the text displayed by read_script).*/
+/** transcriptSegments → {fromFrame, durationFrames, note}。段号与 read_script 的 [sN]
+ *  同一套编号(buildModel);帧位经 makeWordFrameMapper 用词级时间戳换算(与播放层同源,
+ *  保持词帧一致);note = 所选段的 keptText(即 read_script 显示的文本)。 */
 function resolveTranscriptSegments(state: TimelineState, spec: string, trackFilter?: string): SegmentAnchor | { error: string } {
   const sns = parseSegmentSpec(spec);
   if (!sns) return { error: `transcriptSegments "${spec}" 无法解析——用 read_script 输出的 [sN] 编号,如 "3"、"3-5" 或 "2,4-6"` };
@@ -49,7 +93,7 @@ function resolveTranscriptSegments(state: TimelineState, spec: string, trackFilt
   const tracks = trackFilter ? model.filter((t) => t.track.toLowerCase() === trackFilter.toLowerCase()) : model;
   if (trackFilter && !tracks.length) return { error: `transcriptTrack "${trackFilter}" 不存在或该轨无内容` };
 
-  // Each transcribed region (= a transcribed clip) is indexed by sn; candidate = region containing all selected segments
+  // 每个转写 region(= 一个转写 clip)按 sn 建索引;候选 = 含全部所选段的 region
   const candidates: { track: string; itemId: string; rows: Map<number, SegRow> }[] = [];
   for (const t of tracks) {
     for (const region of t.regions) {
@@ -91,7 +135,7 @@ function createOpts(o: Args, state: TimelineState): { fromFrame: number; opts: P
   let note = str(o.note);
   const spec = str(o.transcriptSegments);
   if (spec) {
-    // Explicit fromFrame/note takes precedence; by default it is derived from the selected segment (note can be tagged with notePrefix).
+    // 显式 fromFrame/note 优先；缺省时从所选段派生(note 可挂 notePrefix 标签)。
     const derived = resolveTranscriptSegments(state, spec, str(o.transcriptTrack));
     if ('error' in derived) return derived;
     if (fromFrame === undefined) fromFrame = derived.fromFrame;

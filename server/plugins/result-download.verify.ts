@@ -1,6 +1,6 @@
 // Runnable check: `npx tsx server/plugins/result-download.verify.ts`.
-// Downloading the finished product is the last step after "the money has been spent", and the cost of failure is the highest. Verification: Transient errors will be retried,
-// 4xx does not retry in vain, and the error thrown after exhaustion of retries carries the supplier URL (the task layer retains the paid results accordingly).
+// 成品下载是「钱已经花完」之后的最后一步,失败代价最高。验证:瞬时错误会重试、
+// 4xx 不白重试、重试用尽后抛出的错误带着供应商 URL(任务层据此留住已付费的结果)。
 import assert from 'node:assert/strict';
 import {
   ResultDownloadError,
@@ -13,7 +13,7 @@ const ok = () => new Response('bytes', { status: 200 });
 const status = (code: number) => new Response('nope', { status: code });
 const URL_ = 'https://provider.example/out.mp4';
 
-/** Record each call and return in sequence according to the preset script (Response returns directly, Error is thrown). */
+/** 记录每次调用,按预设脚本依次返回(Response 直接返回,Error 抛出)。 */
 function scriptedFetch(script: Array<Response | Error>) {
   const calls: string[] = [];
   const waits: number[] = [];
@@ -27,7 +27,7 @@ function scriptedFetch(script: Array<Response | Error>) {
   return { fetchImpl, sleep, calls, waits };
 }
 
-// ── Backoff and retry determination ──
+// ── 退避与可重试判定 ──
 {
   assert.deepEqual([downloadBackoffMs(1), downloadBackoffMs(2)], [400, 800], '指数退避');
   for (const code of [408, 425, 429, 500, 502, 503, 504]) {
@@ -38,7 +38,7 @@ function scriptedFetch(script: Array<Response | Error>) {
   }
 }
 
-// ── One-time success: no retrying, no waiting ──
+// ── 一次成功:不重试、不等待 ──
 {
   const s = scriptedFetch([ok()]);
   const res = await fetchGeneratedResult(URL_, 'video', s);
@@ -47,7 +47,7 @@ function scriptedFetch(script: Array<Response | Error>) {
   assert.deepEqual(s.waits, []);
 }
 
-// ──Success after instant 5xx: This is the half that really saves money──
+// ── 瞬时 5xx 后成功:这才是真正省钱的那一半 ──
 {
   const s = scriptedFetch([status(502), ok()]);
   const res = await fetchGeneratedResult(URL_, 'video', s);
@@ -56,14 +56,14 @@ function scriptedFetch(script: Array<Response | Error>) {
   assert.deepEqual(s.waits, [400]);
 }
 
-// ── Retry even if network abnormality occurs ──
+// ── 网络异常也重试 ──
 {
   const s = scriptedFetch([new Error('ECONNRESET'), ok()]);
   assert.equal((await fetchGeneratedResult(URL_, 'video', s)).status, 200);
   assert.equal(s.calls.length, 2);
 }
 
-// ── Retry exhausted: throw ResultDownloadError with URL ──
+// ── 重试用尽:抛 ResultDownloadError 且带着 URL ──
 {
   const s = scriptedFetch([status(503), status(503), status(503)]);
   const error = await fetchGeneratedResult(URL_, 'video', s).then(() => null, (e: unknown) => e);
@@ -75,7 +75,7 @@ function scriptedFetch(script: Array<Response | Error>) {
   assert.deepEqual(s.waits, [400, 800]);
 }
 
-// ── 4xx Give up immediately, but still bring the URL ──
+// ── 4xx 立即放弃,但仍然带 URL ──
 {
   const s = scriptedFetch([status(404), ok(), ok()]);
   const error = await fetchGeneratedResult(URL_, 'image', s).then(() => null, (e: unknown) => e);

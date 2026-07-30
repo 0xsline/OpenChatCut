@@ -1,6 +1,6 @@
-// External Agent Access Guide (MCP Discoverability, TODO F12): Displays the current actual endpoint + each client
-// Access the command and copy with one click. The endpoint is window.location.origin - web version/desktop version (including 5199
-// Occupied fallback random port) are automatically correct. Pure display component, does not touch any server state.
+// 外部 Agent 接入指南(MCP 可发现性,TODO F12):展示当前实际端点 + 各客户端
+// 接入命令,一键复制。端点取 window.location.origin —— 网页版/桌面版(含 5199
+// 被占回退随机端口)都自动正确。纯展示组件,不触任何服务端状态。
 import { useState } from 'react';
 import { theme } from '../../theme';
 import { useT } from '../../i18n/locale';

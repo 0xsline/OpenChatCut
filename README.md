@@ -22,7 +22,6 @@
   <a href="#product-tour">Product Tour</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#using-openchatcut-with-codex--claude-code">Agent / MCP</a> ·
-  <a href="#community">Community</a> ·
   <a href="#sponsor">Sponsor</a> ·
   <a href="#changelog">Changelog</a> ·
   <a href="#star-growth">Star Growth</a> ·
@@ -31,7 +30,7 @@
 
 <p align="center">
   <a href="https://github.com/0xsline/OpenChatCut"><img alt="GitHub Repository" src="https://img.shields.io/badge/GitHub-Repository-181717?style=flat&logo=github" /></a>
-  <a href="https://discord.gg/bSGUAeWYkh"><img alt="Discord Community" src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=flat&logo=discord&logoColor=white" /></a>
+  <a href="https://discord.gg/JActyWMjms"><img alt="Discord Community" src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=flat&logo=discord&logoColor=white" /></a>
   <img alt="Status" src="https://img.shields.io/badge/status-active_development-FF8A3D?style=flat" />
   <img alt="Local First" src="https://img.shields.io/badge/data-local_first-111827?style=flat" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-6-3178C6?style=flat&logo=typescript&logoColor=white" />
@@ -39,10 +38,6 @@
   <img alt="Remotion" src="https://img.shields.io/badge/Remotion-4-0B84F3?style=flat" />
   <img alt="Electron" src="https://img.shields.io/badge/Electron-43-47848F?style=flat&logo=electron&logoColor=white" />
   <img alt="MCP" src="https://img.shields.io/badge/MCP-Agent_native-7C3AED?style=flat" />
-</p>
-
-<p align="center">
-  <a href="https://linux.do" alt="LINUX DO"><img src="https://shorturl.at/ggSqS" /></a>
 </p>
 
 <p align="center">
@@ -80,18 +75,6 @@ OpenChatCut is built for creators and developers who want AI to participate in t
 - 🧩 **Motion Graphics and WebGL**: editable motion templates, custom shaders, visual effects, and transitions.
 - 📦 **Production-ready exports**: MP4, audio, captions, FCPXML, and complete project data.
 - 🖥️ **Local-first**: projects and media stay on your machine by default, while API keys remain server-side.
-
-## Community
-
-Join the OpenChatCut community to discuss workflows, share feedback, and follow development:
-
-- [Join Discord](https://discord.gg/bSGUAeWYkh)
-- Scan the QR code below with WeChat.
-
-<p align="center">
-  <br />
-  <img src="assets/readme-pic/wechat-community.png" width="220" alt="OpenChatCut WeChat community QR code" />
-</p>
 
 ---
 

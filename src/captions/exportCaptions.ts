@@ -1,13 +1,13 @@
-// Caption export (submit_export format=captions, subtitleFormat srt/txt):
-// Page into cue from the current caption track (CaptionsData → resolveCaptionWords rearranged word list),
-// Spit SubRip or plain text. Pure function, no DOM/fetch, same input and same output, shared by check and UI.
+// 字幕导出(submit_export format=subtitles, subtitleFormat srt/txt):
+// 从当前字幕轨(CaptionsData → resolveCaptionWords 重排后的词表)分页成 cue,
+// 吐 SubRip 或纯文本。纯函数,无 DOM/fetch,同输入同输出,供 check 与 UI 共用。
 import { paginate, type CaptionPage } from './types';
 import { resolveCaptionWords } from './resolve';
 import type { CaptionsData } from './types';
 import type { TimelineItem } from '../editor/types';
 import { isManualCaptionEntry } from './manualCaptions';
 
-/** ms → SRT timecode `HH:MM:SS,mmm`. */
+/** ms → SRT 时间码 `HH:MM:SS,mmm`。 */
 export function srtTimestamp(ms: number): string {
   const clamped = Math.max(0, Math.round(ms));
   const hh = Math.floor(clamped / 3_600_000);
@@ -18,7 +18,7 @@ export function srtTimestamp(ms: number): string {
   return `${pad(hh)}:${pad(mm)}:${pad(ss)},${pad(mmm, 3)}`;
 }
 
-/** Chinese adjacent words are directly connected, including spaces between Western words (same spelling rules as CaptionsLayer rendering).*/
+/** 中文相邻词直接连写,含西文的词间空格(与 CaptionsLayer 渲染一致的拼行规则)。 */
 function pageText(page: CaptionPage): string {
   let out = '';
   for (const word of page.words) {
@@ -31,7 +31,7 @@ function pageText(page: CaptionPage): string {
   return out;
 }
 
-/** caption cue list (common intermediate state between SRT and TXT). Empty vocabulary → [].*/
+/** 字幕 cue 列表(SRT 与 TXT 的共同中间态)。空词表 → []。 */
 export function captionPages(captions: CaptionsData, items: TimelineItem[], fps: number): CaptionPage[] {
   if (captions.sourceEntries?.some(isManualCaptionEntry)) {
     const manual = captions.sourceEntries
@@ -50,7 +50,7 @@ export function captionPages(captions: CaptionsData, items: TimelineItem[], fps:
   return paginate(words, captions.pacing ?? 'phrase');
 }
 
-/** SubRip (.srt): sequence number + start and end time codes + single line text.*/
+/** SubRip (.srt):序号 + 起止时间码 + 单行文本。 */
 export function captionsToSrt(captions: CaptionsData, items: TimelineItem[], fps: number): string {
   const pages = captionPages(captions, items, fps);
   return pages
@@ -58,7 +58,7 @@ export function captionsToSrt(captions: CaptionsData, items: TimelineItem[], fps
     .join('\n\n') + (pages.length ? '\n' : '');
 }
 
-/** Plain text (.txt): one line per page, no timecode.*/
+/** 纯文本 (.txt):一页一行,无时间码。 */
 export function captionsToTxt(captions: CaptionsData, items: TimelineItem[], fps: number): string {
   const pages = captionPages(captions, items, fps);
   return pages.map(pageText).join('\n') + (pages.length ? '\n' : '');

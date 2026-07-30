@@ -1,6 +1,6 @@
-// Export as plugin (DIY closed loop): Customize the content in the session - special effects/LUT/transition,
-// MG/zoom on timeline - packaged as openchatcut-plugin@1 JSON. Pure function, data is injected by the caller
-// (Browser UI is in library/PluginExport.tsx), the product must pass validatePack before it can be downloaded.
+// 导出为插件(DIY 闭环):把会话内自定义内容——特效/LUT/转场、
+// 时间线上的 MG/缩放——打包成 openchatcut-plugin@1 JSON。纯函数,数据由调用方注入
+// (浏览器 UI 在 library/PluginExport.tsx),产物必过 validatePack 才允许下载。
 import { PLUGIN_FORMAT, type PluginItem, type PluginNumberProp, type PluginPack } from './types';
 import { validatePack } from './validate';
 import type { FxProperty, SerializableFxDef } from '../gl/fx/uniforms';
@@ -10,9 +10,9 @@ import { zoomAt } from '../editor/zoom';
 
 const ZOOM_EXPORT_SAMPLES = 32;
 
-/** A selectable export candidate (item.id is uniformly rearranged by buildExportPack, occupying space here first) */
+/** 一个可勾选的导出候选(item.id 由 buildExportPack 统一重排,这里先占位) */
 export interface ExportCandidate {
-  /** Unique key within session (used in checked state) */
+  /** 会话内唯一键(勾选状态用) */
   key: string;
   label: string;
   item: PluginItem;
@@ -26,7 +26,7 @@ function numberProps(props: FxProperty[] | undefined): PluginNumberProp[] | unde
   return out.length ? out : undefined;
 }
 
-/** Custom effects candidates: only custom: (submit_shader product); plugin: (other people’s content) and builtin: not imported */
+/** 自定义特效候选:只收 custom:(submit_shader 产物);plugin:(他人内容)与 builtin: 不导 */
 export function fxCandidates(defs: SerializableFxDef[]): ExportCandidate[] {
   const seen = new Set<string>();
   const out: ExportCandidate[] = [];
@@ -48,7 +48,7 @@ export function fxCandidates(defs: SerializableFxDef[]): ExportCandidate[] {
   return out;
 }
 
-/** Custom LUT candidates: only custom: resources with original .cube text. */
+/** 自定义 LUT 候选:只收带原始 .cube 文本的 custom: 资源。 */
 export function lutCandidates(defs: SerializableFxDef[]): ExportCandidate[] {
   const seen = new Set<string>();
   const out: ExportCandidate[] = [];
@@ -68,8 +68,8 @@ export function lutCandidates(defs: SerializableFxDef[]): ExportCandidate[] {
   return out;
 }
 
-/** Custom transition candidates: custom:tr-* in the registry, plus the only customFrag left on the timeline
- * (The registry is cleared after submit_shader is refreshed, and the frag only lives on TransitionItem). Press frag to remove duplicates.*/
+/** 自定义转场候选:注册表里的 custom:tr-*,加上时间线上仅存 customFrag 的
+ * (submit_shader 刷新后注册表清空,frag 只活在 TransitionItem 上)。按 frag 去重。 */
 export function transitionCandidates(defs: CustomTransitionDef[], transitions: TransitionItem[]): ExportCandidate[] {
   const seenFrag = new Set<string>();
   const out: ExportCandidate[] = [];
@@ -89,7 +89,7 @@ export function transitionCandidates(defs: CustomTransitionDef[], transitions: T
     if (t.type !== 'custom-shader' || !t.customFrag || seenFrag.has(t.customFrag)) continue;
     seenFrag.add(t.customFrag);
     const name = t.customLabel ?? '自定义转场';
-    // Only uniform values, infer the conservative range of adjustable properties
+    // 仅有 uniform 值,反推可调属性的保守范围
     const props: PluginNumberProp[] = Object.entries(t.customUniforms ?? {}).map(([k, v]) => ({
       key: k.replace(/^u_/, ''),
       label: k.replace(/^u_/, ''),
@@ -106,7 +106,7 @@ export function transitionCandidates(defs: CustomTransitionDef[], transitions: T
   return out;
 }
 
-/** Timeline MG candidates (remove duplicates by code, only one will appear if the same template is uploaded multiple times)*/
+/** 时间线 MG 候选(按 code 去重,同模板多次上轨只出一条) */
 export function mgCandidates(items: TimelineItem[]): ExportCandidate[] {
   const seenCode = new Set<string>();
   const out: ExportCandidate[] = [];
@@ -128,7 +128,7 @@ export function mgCandidates(items: TimelineItem[]): ExportCandidate[] {
   return out;
 }
 
-/** Timeline scaling candidate: Sample the current actual curve into a portable envelope.*/
+/** 时间线缩放候选:把当前实际曲线采样成可移植 envelope。 */
 export function zoomCandidates(items: TimelineItem[]): ExportCandidate[] {
   const seen = new Set<string>();
   const out: ExportCandidate[] = [];
@@ -171,7 +171,7 @@ export interface ExportMeta {
 
 export type BuildResult = { ok: true; pack: PluginPack; json: string } | { ok: false; errors: string[] };
 
-/** Group package: Each type of content is rearranged with a unique ID (fx-1/tr-1/mg-1...), and the entire package is released only after passing validatePack.*/
+/** 组包:每类内容重排唯一 id(fx-1/tr-1/mg-1…),整包过 validatePack 才放行。 */
 export function buildExportPack(meta: ExportMeta, selected: PluginItem[]): BuildResult {
   const counters: Record<string, number> = {};
   const items = selected.map((item) => {

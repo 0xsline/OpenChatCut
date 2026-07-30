@@ -34,7 +34,7 @@ export function registerCustomTransition(def: CustomTransitionDef): CustomTransi
   return def;
 }
 
-/** Uninstall custom/plugin transitions. */
+/** 卸载自定义/插件转场。 */
 export function unregisterCustomTransition(id: string): boolean {
   return registry.delete(id);
 }
@@ -44,7 +44,7 @@ export function getCustomTransition(id: string): CustomTransitionDef | undefined
   return registry.get(id);
 }
 
-/** Enumerate all registered custom/plugin transitions (browse_library directory + export as plugin). */
+/** 枚举全部已注册自定义/插件转场(browse_library 目录 + 导出为插件用)。 */
 export function listCustomTransitions(): CustomTransitionDef[] {
   return [...registry.values()];
 }

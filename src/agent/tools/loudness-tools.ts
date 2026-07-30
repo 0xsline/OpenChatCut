@@ -1,18 +1,35 @@
-export { LOUDNESS_TOOL_SCHEMAS, LOUDNESS_TOOL_NAMES } from './schemas/loudness-tools';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import { analyzeClipLoudness, gainForTarget } from '../../audio/loudness';
 
-// normalize_loudness - Normalize loudness (target default -14 LUFS, streaming platform standard).
-// The naming style is the same as isolate_voice/edit_captions(verb_noun).
+// normalize_loudness —— 响度归一(目标默认 -14 LUFS,流媒体平台标准)。
+// 命名风格同 isolate_voice/edit_captions(动词_名词)。
 //
-// Pure offline WebAudio analysis (src/audio/loudness.ts), no new store actions - direct gain
-// Reuse the existing `setItemVolume` command (loudness normalization in this model is "calculating the correct volume").
+// 纯离线 WebAudio 分析(src/audio/loudness.ts),不落新的 store 动作——增益直接
+// 复用已有的 `setItemVolume` 命令(响度归一在这个模型里就是"算出正确的 volume")。
 
 type Args = Record<string, unknown>;
 
 const DEFAULT_TARGET_LUFS = -14;
 
-/** Target audio clip collection: given the itemId, only find that one (prefix matching), otherwise all audio clips on the timeline. */
+export const LOUDNESS_TOOL_SCHEMAS: AgentToolSchema[] = [
+  {
+    name: 'normalize_loudness',
+    description:
+      'Normalize audio clip(s) to a target integrated loudness (LUFS) by analyzing each clip offline (WebAudio) and applying the computed gain as the clip volume. Defaults to -14 LUFS (streaming loudness standard). To normalize MANY/all clips, call this ONCE with NO itemId — a single call processes every audio clip on the active timeline and returns per-clip results ({itemId, measuredLufs, gain}). Do NOT call it once per clip. Pass itemId ONLY to normalize a single specific clip.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        target: { type: 'number', description: 'Target integrated loudness in LUFS (default -14).' },
+        itemId: { type: 'string', description: 'Normalize only this clip (prefix id ok). Omit to normalize all audio clips.' },
+      },
+    },
+  },
+];
+
+export const LOUDNESS_TOOL_NAMES = new Set(LOUDNESS_TOOL_SCHEMAS.map((t) => t.name));
+
+/** 目标音频 clip 集合:给了 itemId 就只找那一条(前缀匹配),否则时间线上所有 audio clip。 */
 function findAudioItems(ctx: AgentContext, itemId: unknown) {
   const audioItems = ctx.getState().items.filter((it) => it.kind === 'audio');
   const q = itemId === undefined || itemId === null ? '' : String(itemId);
@@ -37,13 +54,13 @@ export async function execLoudnessTool(name: string, args: Args, ctx: AgentConte
 
   for (const item of items) {
     if (!item.src) {
-      skipped.push({ itemId: item.id, note: 'no src' }); // Passive source cannot be analyzed, skipping will not throw an error
+      skipped.push({ itemId: item.id, note: 'no src' }); // 无源不可分析,跳过不抛错
       continue;
     }
     try {
       const measuredLufs = await analyzeClipLoudness(item.src);
       const gain = gainForTarget(measuredLufs, target);
-      ctx.commands.setItemVolume(item.id, gain); // Reuse existing commands without adding reducer actions
+      ctx.commands.setItemVolume(item.id, gain); // 复用既有命令,不新增 reducer 动作
       normalized.push({ itemId: item.id, measuredLufs, gain });
     } catch (e) {
       skipped.push({ itemId: item.id, note: `解码失败: ${e instanceof Error ? e.message : String(e)}` });

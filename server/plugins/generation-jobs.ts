@@ -17,7 +17,7 @@ export interface GenerationResult {
   fps?: number;
   /** Offset of a ranged export within the source timeline. */
   sourceStartSeconds?: number;
-  // Export/rendering job reuses the same queue: Optional field, allowing the rendering product to self-describe the size and encoding (left blank for generated jobs).
+  // 导出/渲染 job 复用同一队列：可选字段，让渲染产物自描述大小与编码（生成类 job 不填）。
   sizeBytes?: number;
   codec?: string;
   encoder?: H264EncoderProfile;
@@ -37,7 +37,7 @@ interface GenerationJob {
   result?: GenerationResult;
   results?: GenerationResult[];
   error?: string;
-  /** When the finished product has been generated but not retrieved, the result URL given by the supplier (see catch branch). */
+  /** 成品已生成但没取回来时,供应商给的结果 URL(见 catch 分支)。 */
   pendingDownloadUrl?: string;
   resumeDownload?: () => Promise<GenerationResult | GenerationResult[]>;
   resumeDownloadUrl?: string;
@@ -60,8 +60,8 @@ export interface GenerationJobSnapshot {
   results?: GenerationResult[];
   error?: string;
   /**
-   * The resulting URL of the provider when the generation is successful but the download fails. The money has been spent, and the finished product does exist, but I haven't gotten it back.
-   *  — Hand it over, the user/Agent can still get it by himself without having to regenerate it.
+   * 生成成功但下载失败时,供应商的结果 URL。钱已经花了,成品也确实存在,只是没取回来
+   * ——把它交出去,用户/Agent 还能自己取,不必重新生成一遍。
    */
   pendingDownloadUrl?: string;
 }

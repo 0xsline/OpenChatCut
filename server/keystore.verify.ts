@@ -7,7 +7,7 @@ import { LLM_PROVIDER_PRESETS, llmProviderConfigNames } from '../shared/llm-prov
 
 const isolatedSeed = Object.fromEntries(KEY_NAMES.map((name) => [name, '']));
 
-// ── Legacy unit group migration: only migrate if the current provider has no proprietary configuration; if there is any proprietary value, skip it altogether ──
+// ── 遗留单元组迁移:仅当当前厂商完全没有专属配置时才迁;有任一专属值则整体跳过 ──
 {
   const mk = (entries: Record<string, string>) => {
     const m = new Map(Object.entries(entries));
@@ -18,7 +18,7 @@ const isolatedSeed = Object.fromEntries(KEY_NAMES.map((name) => [name, '']));
     ['LLM_GEMINI_API_KEY', 'k'],
     ['LLM_GEMINI_BASE_URL', 'https://relay.example'],
   ], '纯遗留元组迁给当前厂商');
-  // The mine that has been stepped on on site: The user has been assigned gemini exclusive key, and then moving to legacy base will quietly redirect the request to the old transit
+  // 现场踩过的雷:用户已配 gemini 专属 key,再迁 legacy base 会把请求悄悄改道旧中转
   assert.deepEqual(mk({
     LLM_PROVIDER: 'gemini', LLM_GEMINI_API_KEY: 'own-key',
     LLM_API_KEY: 'k', LLM_BASE_URL: 'https://relay.example', LLM_BASE_URL_FORMAT: 'ai-sdk-prefix',
@@ -71,18 +71,18 @@ const serialized = JSON.stringify(st);
 assert.ok(!serialized.includes('secret-abc') && !serialized.includes('px-1'), 'status leaks NO key value to the browser');
 assert.equal(getKey('LLM_API_KEY'), 'secret-abc', 'getKey returns the live value server-side');
 
-// ── non-secret model/routing/toggle channel: explicit routing names + per-vendor
-// Base URL/model name (derived with LLM_PROVIDER_PRESETS), the value is echoed by keyStatus().models —
-// The SECRET value still never appears in any response ──
+// ── non-secret model/routing/toggle channel: explicit routing names + 每厂商的
+// Base URL/模型名(随 LLM_PROVIDER_PRESETS 推导),值经 keyStatus().models 回显 —
+// SECRET 值仍然绝不出现在任何响应里 ──
 const MODEL_ROUTING_NAMES = [
   'LLM_PROVIDER', 'LLM_MODEL', 'LLM_OPENAI_API_MODE',
   'GEMINI_IMAGE_MODEL', 'ELEVENLABS_TTS_MODEL', 'ELEVENLABS_SOUND_MODEL',
   'DOUBAO_TTS_RESOURCE_ID', 'SEEDANCE_VIDEO_MODEL', 'KLING_VIDEO_MODEL', 'MUREKA_MUSIC_MODEL',
   'MINIMAX_TTS_MODEL', 'MINIMAX_VIDEO_MODEL', 'MINIMAX_MUSIC_MODEL', 'MINIMAX_IMAGE_MODEL',
   'PREFERRED_IMAGE_VENDOR', 'PREFERRED_VOICE_VENDOR', 'PREFERRED_VIDEO_VENDOR', 'PREFERRED_MUSIC_VENDOR',
-  'R2_ENABLED', // Cloud synchronization switch (''=enable/'0'=disable)
-  'R2_PRESIGN', // Browser pre-signed direct transmission (''=enabled/'0'=server-side write-through only)
-  'MEDIA_DIR',  // Asset saving directory (''=default public/media/uploads)
+  'R2_ENABLED', // 云同步开关(''=启用/'0'=停用)
+  'R2_PRESIGN', // 浏览器预签名直传(''=启用/'0'=仅服务端写穿)
+  'MEDIA_DIR',  // 素材保存目录(''=默认 public/media/uploads)
 ] as const;
 for (const name of MODEL_ROUTING_NAMES) {
   assert.ok((KEY_NAMES as readonly string[]).includes(name), `${name} is whitelisted (settable via POST /api/keys)`);

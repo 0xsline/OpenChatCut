@@ -1,13 +1,29 @@
-export { UNDO_TOOL_SCHEMAS, UNDO_TOOL_NAMES } from './schemas/undo-tools';
-// undo_last_change: Allow the Agent to respond to "undo the change just now".
+// undo_last_change:让 Agent 能响应「撤销刚才那个改动」。
 //
-// It does not touch the real history stack - that will invalidate the baseline of this round of draft (draft is a copy of the project,
-// Replay according to the recorded action when the proposal is approved). Change to treat "the complete project snapshot of the previous step" as a normal
-// The editor proposes it, proceed as usual propose→approve: users still read it first and then approve it, and rollback becomes a thing of the past.
-// A normal step (it can be undone again).
+// 它不去动真实历史栈——那会让本轮 draft 的基线失效(draft 是工程副本,
+// 提案批准时按记录的 action 重放)。改成把「上一步的完整工程快照」当作一次普通
+// 编辑提出来,照常走 propose→approve:用户仍然先看后批,回滚也就成了历史里
+// 正常的一步(自己还能再被撤销)。
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 
-/** Tool execution: Get undo target → proposed as whole project replacement. exported for verify. */
+export const UNDO_TOOL_SCHEMAS: AgentToolSchema[] = [
+  {
+    name: 'undo_last_change',
+    description: [
+      'Revert the project to its state before the most recent applied change — use it when the user asks to undo,',
+      'roll back, or take back the last edit. Proposed like any other edit, so the user still confirms it,',
+      'and the revert itself stays undoable. It only reaches changes that were already APPLIED:',
+      'edits still pending in the current proposal are dropped by rejecting that proposal, not with this tool.',
+      'Call it once per undo step; to undo several steps, ask the user to confirm each.',
+    ].join(' '),
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+];
+
+export const UNDO_TOOL_NAMES = new Set(UNDO_TOOL_SCHEMAS.map((t) => t.name));
+
+/** 工具执行:取撤销目标 → 作为整工程替换提出。exported for verify。 */
 export function execUndoTool(
   name: string,
   ctx: Pick<AgentContext, 'commands' | 'getDoc' | 'getUndoTarget'>,

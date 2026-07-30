@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { TranscriptionError, transcribePath, type TranscribeOptions } from './assemblyai';
+import { TranscriptionError, transcribePath, type TranscribeOptions, type TranscriptionProgress } from './assemblyai';
 import type { TranscriptResult, TranscriptStatus } from './types';
 import { t } from '../i18n/locale';
 
@@ -20,6 +20,23 @@ export function useTranscript() {
   const [error, setError] = useState<string | null>(null);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [progressNote, setProgressNote] = useState<string | null>(null);
+  const [progressLog, setProgressLog] = useState<string[]>([]);
+
+  const reportProgress = (label: string | undefined, event: TranscriptionProgress) => {
+    const phase = {
+      'extracting-audio': t('正在提取语音音轨…'),
+      'loading-audio': t('正在读取语音音轨…'),
+      'uploading-audio': t('正在上传音频到 AssemblyAI…'),
+      'creating-job': t('正在创建 AssemblyAI 转写任务…'),
+      queued: t('AssemblyAI 已排队，等待处理…'),
+      processing: t('AssemblyAI 正在转写…'),
+      completed: t('AssemblyAI 转写完成'),
+    }[event.phase];
+    const message = `${label ? `${label}: ` : ''}${phase}${event.detail ? ` (${event.detail})` : ''}`;
+    setStatus(event.phase === 'queued' || event.phase === 'processing' || event.phase === 'completed' ? 'processing' : 'uploading');
+    setProgressNote(message);
+    setProgressLog((current) => [...current, `${new Date().toLocaleTimeString()} ${message}`].slice(-12));
+  };
 
   const reset = useCallback(() => {
     setStatus('idle');
@@ -27,6 +44,7 @@ export function useTranscript() {
     setError(null);
     setActiveItemId(null);
     setProgressNote(null);
+    setProgressLog([]);
   }, []);
 
   const run = useCallback(async (
@@ -41,11 +59,7 @@ export function useTranscript() {
     try {
       const r = await transcribePath(
         path,
-        () => {
-          setStatus('processing');
-          setProgressNote(opts?.label ? t('转写 {label}…', { label: opts.label }) : t('转写中…'));
-        },
-        { languageCode: opts?.languageCode },
+        { languageCode: opts?.languageCode, onProgress: (event) => reportProgress(opts?.label, event) },
       );
       setResult(r);
       setStatus('done');
@@ -70,6 +84,7 @@ export function useTranscript() {
   ) => {
     setError(null);
     setResult(null);
+    setProgressLog([]);
     let last: TranscriptResult | null = null;
     const failures: string[] = [];
     let ok = 0;
@@ -79,13 +94,9 @@ export function useTranscript() {
       setStatus('uploading');
       setProgressNote(t('({i}/{total}) 上传 {label}…', { i: i + 1, total: jobs.length, label: job.label }));
       try {
-        const r = await transcribePath(
-          job.path,
-          () => {
-            setStatus('processing');
-            setProgressNote(t('({i}/{total}) 转写 {label}…', { i: i + 1, total: jobs.length, label: job.label }));
-          },
-          opts,
+          const r = await transcribePath(
+            job.path,
+            { ...opts, onProgress: (event) => reportProgress(`(${i + 1}/${jobs.length}) ${job.label}`, event) },
         );
         last = r;
         setResult(r);
@@ -114,5 +125,5 @@ export function useTranscript() {
     return last;
   }, []);
 
-  return { status, result, error, activeItemId, progressNote, run, runMany, reset };
+  return { status, result, error, activeItemId, progressNote, progressLog, run, runMany, reset };
 }

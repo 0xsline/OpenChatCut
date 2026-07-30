@@ -62,10 +62,10 @@ function slimItem(
 }
 
 /**
- * Gaps between clips on a track [fromFrame, toFrame). The hole on the main video track is exported as a black frame and is not active.
- * The reported model has to be discovered by subtracting it segment by segment. Blank spaces at the beginning and end don't count - it's just that the track hasn't started/has started
- * The end can be seen from the frame number of the clip itself. Overlapping fragments are treated with scrolling maximum right edge.
- * exported for verify.
+ * 一条轨上片段之间的空洞 [fromFrame, toFrame)。主视频轨上的洞导出就是黑帧,不主动
+ * 报出来模型得自己逐个片段做减法才能发现。首尾留白不算——那只是轨道还没开始/已经
+ * 结束,从片段自身的帧号就能看出来。重叠片段用滚动最大右边缘处理。
+ * exported for verify。
  */
 export function trackGaps(
   items: readonly TimelineItem[],
@@ -165,7 +165,7 @@ export async function execReadProjectTool(
       height: state.height,
       fit: state.fit ?? 'contain',
       tracks: timelineTrackIds(state).map((id) => {
-        // The gaps are calculated based on the entire track (not affected by from/to, itemId filtering), otherwise the holes reported are false.
+        // 空隙按整条轨算(不受 from/to、itemId 过滤影响),否则报出来的洞是假的。
         const gaps = trackKind(state, id) === 'caption' ? [] : trackGaps(state.items, id);
         return {
           id,

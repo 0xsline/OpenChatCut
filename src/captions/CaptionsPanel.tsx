@@ -16,10 +16,12 @@ interface Props {
   captionTracks: Array<TranscriptTrackOption & { captions: CaptionsData | null }>;
   onSetCaptions: (captions: CaptionsData | null, track?: TrackId) => void;
   onUpdateCaptions: (patch: Partial<CaptionsData>, track?: TrackId) => void;
+  onClearAllCaptions: () => void;
 }
 
 export function CaptionsPanel(props: Props) {
-  const { playerRef, fps, items, captionTracks, onSetCaptions, onUpdateCaptions } = props;
+  const t = useT();
+  const { playerRef, fps, items, captionTracks, onSetCaptions, onUpdateCaptions, onClearAllCaptions } = props;
   const [captionTrack, setCaptionTrack] = useState<TrackId | null>(captionTracks[0]?.id ?? null);
   const captions = captionTracks.find((option) => option.id === captionTrack)?.captions ?? null;
   useEffect(() => {
@@ -32,6 +34,11 @@ export function CaptionsPanel(props: Props) {
     <div className="cc-captions-workspace">
       <div className="cc-captions-context">
         <CaptionTrackBar options={captionTracks} track={captionTrack} onChange={setCaptionTrack} />
+        <div style={{ display: 'flex', gap: 6, padding: '0 10px 8px' }}>
+          <button type="button" className="cc-cap-btn sm" disabled={!captionTracks.some((track) => track.captions)} onClick={() => {
+            if (window.confirm(t('清除项目中全部字幕？此操作可撤销。'))) onClearAllCaptions();
+          }}>{t('清除全部字幕')}</button>
+        </div>
       </div>
       <CaptionsControls captionTrackId={captionTrack ?? undefined} captions={captions} sourceVariants={(captions?.sourceItemId ? items.find((item) => item.id === captions.sourceItemId)?.variants : undefined) ?? []} items={items} fps={fps} onSeekMs={(ms) => playerRef.current?.seekTo(msToFrame(ms, fps))} onCreateManual={() => set(newManualCaptions())} getPlayheadMs={() => ((playerRef.current?.getCurrentFrame() ?? 0) / fps) * 1000} onUpdate={update} onRemove={() => set(null)} onTranslate={translation.run} translating={translation.running} translateError={translation.error} />
     </div>

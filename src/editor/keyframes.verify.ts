@@ -1,7 +1,7 @@
 // Runnable check: `npx tsx src/editor/keyframes.verify.ts`.
-// Verification: volume keyframe channel - volumeAtFrame fallback/override/interpolation/out-of-bounds clamping; split carry
-// The volume channel and the sampling on both sides of the cut point are consistent; the registry supports dispatching by kind; the reducer is
-// setKeyframe accepts audio volume and rejects picture volume; tool layer per-prop verification.
+// 验证:音量关键帧通道——volumeAtFrame 回退/覆盖/插值/越界钳制;split 携带
+// volume 通道且切点两侧采样一致;注册表 supports 按 kind 分派;reducer 经
+// setKeyframe 接受音频 volume、拒绝图片 volume;工具层 per-prop 校验。
 import assert from 'node:assert/strict';
 import { sampleKeyframes, splitItemKeyframes, volumeAtFrame } from './keyframes';
 import {
@@ -15,7 +15,7 @@ const item = (patch: Partial<TimelineItem>): TimelineItem => ({
   id: 'a1', track: 'a-audio-1', startFrame: 0, durationInFrames: 120, kind: 'audio', name: 'a', ...patch,
 } as TimelineItem);
 
-// ── volumeAtFrame: no keyframe to fall back to static volume; with keyframe to overwrite the static value and interpolate by frame ──
+// ── volumeAtFrame:无关键帧回退静态音量;有关键帧覆盖静态值并按帧插值 ──
 assert.equal(volumeAtFrame({}, 10), 1, '无 volume 字段默认 1');
 assert.equal(volumeAtFrame({ volume: 0.4 }, 10), 0.4, '无关键帧回退 item.volume');
 const ducked = { volume: 0.3, keyframes: { volume: [{ frame: 0, value: 1 }, { frame: 10, value: 0.2 }] } };
@@ -24,13 +24,13 @@ assert.ok(near(volumeAtFrame(ducked, 5), 0.6), '线性插值中点');
 assert.equal(volumeAtFrame(ducked, 999), 0.2, '越过末帧保持末值');
 assert.equal(volumeAtFrame(ducked, -5), 1, '首帧之前保持首值');
 
-// ── Clamp: overshoot Bezier can sample >2 between inbound keyframes, and must be clamped back to 0..2 ──
+// ── 钳制:overshoot 贝塞尔在界内关键帧之间可采样出 >2,必须钳回 0..2 ──
 const shoot = { keyframes: { volume: [{ frame: 0, value: 0, easing: [0.3, 3, 0.7, 3] as [number, number, number, number] }, { frame: 10, value: 2 }] } };
 const rawMid = sampleKeyframes(shoot.keyframes.volume, 5);
 assert.ok(rawMid > 2, `构造的 overshoot 中点应 >2(实际 ${rawMid.toFixed(3)})`);
 assert.equal(volumeAtFrame(shoot, 5), 2, 'overshoot 钳到 2');
 
-// ── split:volume The channel is split with cutting, and the sampling on both sides of the cutting point is consistent with that before cutting frame by frame ──
+// ── split:volume 通道随切割分裂,切点两侧采样与切前逐帧一致 ──
 const kfs = { volume: [{ frame: 0, value: 1 }, { frame: 40, value: 0.2 }, { frame: 100, value: 1.6 }] };
 const [l, r] = splitItemKeyframes(kfs, 30);
 assert.ok(l?.volume?.length && r?.volume?.length, 'split 两侧都有 volume 通道');
@@ -40,7 +40,7 @@ for (let f = 0; f < 120; f++) {
   assert.ok(near(orig, post, 1e-9), `帧 ${f} 切前后采样一致`);
 }
 
-// ── Registry: volume in KEYFRAME_PROPS; audio/video supported, image not supported; coerce clamp 0..2 ──
+// ── 注册表:volume 在 KEYFRAME_PROPS;audio/video 支持,image 不支持;coerce 钳 0..2 ──
 assert.ok(KEYFRAME_PROPS.includes('volume'), 'KEYFRAME_PROPS 含 volume');
 const def = getKeyframePropertyDefinition('volume');
 assert.deepEqual([...def.valueRange], [0, 2], 'volume valueRange 0..2');
@@ -52,7 +52,7 @@ assert.ok(!supportsKeyframeProperty(item({ kind: 'audio' }), 'opacity'), 'audio 
 assert.equal(coerceKeyframeValue('volume', 9), 2, 'coerce 上钳 2');
 assert.equal(coerceKeyframeValue('volume', -1), 0, 'coerce 下钳 0');
 
-// ── reducer:setKeyframe accepts audio+volume; rejects image+volume(state as is) ──
+// ── reducer:setKeyframe 接受 audio+volume;拒绝 image+volume(state 原样) ──
 const base: TimelineState = {
   fps: 30, width: 1920, height: 1080, selectedId: null,
   tracks: { 'a-audio-1': { kind: 'audio' }, 'a-video-1': { kind: 'video' } },
@@ -66,7 +66,7 @@ assert.equal(s2, base, 'image 上的 volume 关键帧被拒(state 不变)');
 const s3 = reduce(s1, { type: 'setKeyframe', id: 'a1', prop: 'volume', frame: 20, value: 7 });
 assert.deepEqual(s3.items[0].keyframes?.volume?.map((k) => k.value), [0.5, 2], 'reducer 写入时按 valueRange 钳制');
 
-// ── Tool layer: edit_item verification per-prop support and scope ──
+// ── 工具层:edit_item 校验 per-prop 支持与范围 ──
 const { validateGenericUpdate } = await import('../agent/tools/edit-item-generic');
 const okAudio = validateGenericUpdate(base, { type: 'update', itemId: 'a1', keyframes: { volume: [{ frame: 0, value: 1.5 }] } });
 assert.ok(!('error' in okAudio && okAudio.error), 'audio+volume 关键帧通过校验');

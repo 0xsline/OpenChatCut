@@ -1,7 +1,7 @@
 // Runnable check: `npx tsx src/persist/uploadRefs.verify.ts`.
-// Asset reference inventory is the basis for deleting files. Missing one means deleting assets that the user is still using. Here are two things to verify:
-// ① denoisedSrc (the product of isolate_voice, directly linked to the path without creating the asset) must be counted as a reference;
-// ② When the project document cannot be read, it degenerates into scanning the original bytes instead of treating it as a "zero reference".
+// 素材引用清点是删文件的依据,漏一个就是删掉用户还在用的素材。这里验证两条:
+//   ① denoisedSrc(isolate_voice 的产物,不建素材直接挂路径)必须算作引用;
+//   ② 工程文档读不出时退化成扫原始字节,而不是当成「零引用」。
 import assert from 'node:assert/strict';
 import { collectUploadSrcs, rawUploadSrcs } from './projectTransfer';
 import type { ProjectDoc } from '../editor/types';
@@ -14,7 +14,7 @@ const docOf = (items: unknown[], assets: unknown[] = []): ProjectDoc => ({
   }],
 } as unknown as ProjectDoc);
 
-// ── denoisedSrc must be counted as a reference ──
+// ── denoisedSrc 必须算引用 ──
 {
   const doc = docOf(
     [{ id: 'a', track: 'A1', startFrame: 0, durationInFrames: 30, kind: 'audio', name: 'a', src: '/media/uploads/raw.wav', denoisedSrc: '/media/uploads/clean.wav' }],
@@ -29,9 +29,9 @@ const docOf = (items: unknown[], assets: unknown[] = []): ProjectDoc => ({
   assert.equal(new Set(refs).size, refs.length, '不重复');
 }
 
-// ── Original bytes that cannot be read: still need to fish out the reference ──
+// ── 读不出的原始字节:仍要把引用捞出来 ──
 {
-  // The version is newer than the local machine → migrateProjectDoc returns null, but the project is not broken at all
+  // 版本比本机新 → migrateProjectDoc 返回 null,但工程一点没坏
   const future = {
     version: 999, assets: [{ src: '/media/uploads/a.mp4' }], mediaFolders: [],
     activeTimelineId: 'tl1',
@@ -41,7 +41,7 @@ const docOf = (items: unknown[], assets: unknown[] = []): ProjectDoc => ({
   assert.deepEqual(refs, ['/media/uploads/a.mp4', '/media/uploads/b.wav', '/media/uploads/c.wav']);
 }
 
-// ── Boundaries: null value, illegal name, query string, repetition ──
+// ── 边界:空值、非法名、查询串、重复 ──
 {
   assert.deepEqual(rawUploadSrcs(null), []);
   assert.deepEqual(rawUploadSrcs(undefined), []);
@@ -62,13 +62,13 @@ const docOf = (items: unknown[], assets: unknown[] = []): ProjectDoc => ({
     ['/media/uploads/f.mp4'],
     '查询串不进文件名',
   );
-  // Circular reference: If it cannot be scanned, it will return empty, and the caller will handle it as unknown (instead of throwing an exception and causing the entire cleanup to hang up)
+  // 循环引用:扫不了就返回空,由调用方按未知处理(而不是抛异常让整个清理挂掉)
   const cyclic: Record<string, unknown> = { src: '/media/uploads/z.mp4' };
   cyclic.self = cyclic;
   assert.deepEqual(rawUploadSrcs(cyclic), []);
 }
 
-// ── It is better to keep more than delete by mistake: the original scan is a superset of collectUploadSrcs ──
+// ── 宁可多留不可误删:原始扫描是 collectUploadSrcs 的超集 ──
 {
   const doc = docOf(
     [{ id: 'a', track: 'A1', startFrame: 0, durationInFrames: 30, kind: 'audio', name: 'a', src: '/media/uploads/raw.wav', denoisedSrc: '/media/uploads/clean.wav' }],

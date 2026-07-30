@@ -1,11 +1,11 @@
 // Runnable check: `npx tsx server/plugins/reference-mime.verify.ts`.
 //
-// Take the real code path: put several temporary files with different extensions in the upload directory, and call the real reference assets for suppliers
-// mediaDataUrl(), asserts that the data: prefix indicates the **real type**.
+// 走真实代码路径:在上传目录里放几个不同扩展名的临时文件,调用真正给供应商拼参考素材
+// 的 mediaDataUrl(),断言 data: 前缀标的是**真实类型**。
 //
-// There is originally a copy of MIME here that only recognizes 6 extensions, and the rest are all image/jpeg - `.heic`
-// `.avif` `.gif` `.mov` These types can indeed enter /media/uploads and will be labeled image/jpeg
-// Send to vendor along with non-JPEG bytes.
+// 这里原本有一份只认 6 种扩展名的 MIME 副本,其余一律兜底成 image/jpeg——`.heic`
+// `.avif` `.gif` `.mov` 这些确实能进 /media/uploads 的类型,会被贴上 image/jpeg 标签
+// 连同非 JPEG 字节一起发给供应商。
 import assert from 'node:assert/strict';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -24,7 +24,7 @@ const CASES: Array<[ext: string, mime: string]> = [
   ['m4v', 'video/mp4'],
   ['m4a', 'audio/mp4'],
   ['flac', 'audio/flac'],
-  // The ones that are already recognized must remain unchanged.
+  // 原本就认得的几种必须保持不变
   ['png', 'image/png'],
   ['webp', 'image/webp'],
   ['mp4', 'video/mp4'],

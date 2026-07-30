@@ -1,3 +1,13 @@
+// Local multipart upload — stand-in for S3 CreateMultipartUpload / UploadPart / Complete.
+// Browser (or agent) can retry individual parts without re-sending a multi-GB body.
+//
+//   POST /upload/multipart/init     JSON { name, size, assetId?, contentType? }
+//   PUT  /upload/multipart/part?uploadId=&part=N   raw body
+//   GET  /upload/multipart/status?uploadId=
+//   POST /upload/multipart/complete JSON { uploadId }
+//   DELETE /upload/multipart?uploadId=   abort
+//
+// Parts land under uploadDir()/.multipart/<id>/ ; complete concatenates → /media/uploads/<file>.
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createReadStream, createWriteStream, existsSync } from 'node:fs';
@@ -9,58 +19,33 @@ import { Transform } from 'node:stream';
 import { putUploadFile, r2Config } from '../r2.ts';
 import { uploadDir } from '../media-dir.ts';
 import { maxUploadBytes } from './upload.ts';
-const DEFAULT_PART_SIZE = 8 * 1024 * 1024;
+
+const DEFAULT_PART_SIZE = 8 * 1024 * 1024; // 8 MiB
 const MAX_PARTS = 10_000;
-const DEFAULT_IDLE_TTL_MS = 2 * 60 * 60_000, DEFAULT_ABSOLUTE_TTL_MS = 24 * 60 * 60_000;
-const DEFAULT_ACTIVE_GRACE_MS = 2 * 60_000, DEFAULT_GC_INTERVAL_MS = 5 * 60_000;
-const DEFAULT_ROUTE_GC_MS = 30_000;
-function envLimit(name: string, fallback: number): number {
-  const value = Number(process.env[name]);
-  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
-}
-function multipartLimits(): MultipartGcLimits {
-  return {
-    idleTtlMs: envLimit('UPLOAD_MULTIPART_IDLE_TTL_MS', DEFAULT_IDLE_TTL_MS),
-    absoluteTtlMs: envLimit('UPLOAD_MULTIPART_ABSOLUTE_TTL_MS', DEFAULT_ABSOLUTE_TTL_MS),
-    activeGraceMs: envLimit('UPLOAD_MULTIPART_ACTIVE_GRACE_MS', DEFAULT_ACTIVE_GRACE_MS),
-    maxSessions: envLimit('UPLOAD_MULTIPART_MAX_SESSIONS', 32),
-    maxBytes: envLimit('UPLOAD_MULTIPART_MAX_BYTES', maxUploadBytes() * 2),
-  };
-}
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
 interface MultipartMeta {
-  uploadId: string; name: string; ext: string; assetId?: string; contentType?: string;
-  size: number; partSize: number; partCount: number; createdAt: number; updatedAt: number;
+  uploadId: string;
+  name: string;
+  ext: string;
+  assetId?: string;
+  contentType?: string;
+  size: number;
+  partSize: number;
+  partCount: number;
+  createdAt: number;
 }
-export interface MultipartGcLimits { idleTtlMs: number; absoluteTtlMs: number; activeGraceMs: number; maxSessions: number; maxBytes: number }
-export interface MultipartSessionInfo { uploadId: string; createdAt: number; updatedAt: number; bytes: number; active?: boolean }
-export function selectMultipartGcVictims(
-  sessions: MultipartSessionInfo[],
-  limits: MultipartGcLimits,
-  now = Date.now(),
-): Set<string> {
-  const protectedSession = (session: MultipartSessionInfo) =>
-    session.active === true || now - session.updatedAt < limits.activeGraceMs;
-  const victims = new Set(sessions
-    .filter((session) => !protectedSession(session)
-      && (now - session.updatedAt >= limits.idleTtlMs
-        || now - session.createdAt >= limits.absoluteTtlMs))
-    .map((session) => session.uploadId));
-  const kept = sessions.filter((session) => !victims.has(session.uploadId));
-  let count = kept.length;
-  let bytes = kept.reduce((total, session) => total + session.bytes, 0);
-  for (const session of [...kept].sort((a, b) => a.updatedAt - b.updatedAt)) {
-    if (count <= limits.maxSessions && bytes <= limits.maxBytes) break;
-    if (protectedSession(session)) continue;
-    victims.add(session.uploadId);
-    count -= 1;
-    bytes -= session.bytes;
-  }
-  return victims;
-}
+
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
-  res.statusCode = status; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(body));
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(body));
 }
-function sendError(res: ServerResponse, status: number, message: string): void { sendJson(res, status, { error: message }); }
+
+function sendError(res: ServerResponse, status: number, message: string): void {
+  sendJson(res, status, { error: message });
+}
+
 function readJson(req: IncomingMessage, max = 64 * 1024): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -84,43 +69,42 @@ function readJson(req: IncomingMessage, max = 64 * 1024): Promise<unknown> {
     req.on('error', reject);
   });
 }
-function multipartRoot(): string { return join(uploadDir(), '.multipart'); }
-function sessionDir(uploadId: string): string { return join(multipartRoot(), uploadId); }
-function isSafeUploadId(id: string): boolean { return /^[a-zA-Z0-9_-]{8,80}$/.test(id); }
-function parseMeta(raw: unknown, uploadId: string): MultipartMeta | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const value = raw as Partial<MultipartMeta>;
-  const numbers = [value.size, value.partSize, value.partCount, value.createdAt];
-  if (value.uploadId !== uploadId || typeof value.name !== 'string' || typeof value.ext !== 'string' || !/^\.[a-z0-9]{1,16}$/.test(value.ext)
-    || !numbers.every((item) => typeof item === 'number' && Number.isFinite(item) && item > 0)
-    || (value.assetId !== undefined && !/^[a-zA-Z0-9_-]{1,80}$/.test(value.assetId)) || (value.contentType !== undefined && (typeof value.contentType !== 'string' || value.contentType.length > 200)) || !Number.isInteger(Number(value.partCount)) || value.partCount! > MAX_PARTS
-    || value.partCount !== Math.ceil(value.size! / value.partSize!)) return null;
-  const updatedAt = typeof value.updatedAt === 'number' && Number.isFinite(value.updatedAt)
-    ? value.updatedAt : value.createdAt;
-  return { ...value, updatedAt } as MultipartMeta;
+
+function multipartRoot(): string {
+  return join(uploadDir(), '.multipart');
 }
+
+function sessionDir(uploadId: string): string {
+  return join(multipartRoot(), uploadId);
+}
+
+function isSafeUploadId(id: string): boolean {
+  return /^[a-zA-Z0-9_-]{8,80}$/.test(id);
+}
+
 async function loadMeta(uploadId: string): Promise<MultipartMeta | null> {
+  const path = join(sessionDir(uploadId), 'meta.json');
+  if (!existsSync(path)) return null;
   try {
-    return parseMeta(JSON.parse(await readFile(join(sessionDir(uploadId), 'meta.json'), 'utf8')), uploadId);
+    return JSON.parse(await readFile(path, 'utf8')) as MultipartMeta;
   } catch {
     return null;
   }
 }
+
 async function saveMeta(meta: MultipartMeta): Promise<void> {
   const dir = sessionDir(meta.uploadId);
   await mkdir(dir, { recursive: true });
-  const tmp = join(dir, `.meta-${randomUUID()}.tmp`);
-  try {
-    await writeFile(tmp, JSON.stringify(meta), 'utf8');
-    await rename(tmp, join(dir, 'meta.json'));
-  } catch (error) {
-    await unlink(tmp).catch(() => {});
-    throw error;
-  }
+  await writeFile(join(dir, 'meta.json'), JSON.stringify(meta), 'utf8');
 }
+
 function partPath(uploadId: string, part: number): string {
   return join(sessionDir(uploadId), `part-${String(part).padStart(5, '0')}`);
 }
+
+// 磁盘上的 part 文件即收件记录。不能在 meta.json 里记 received:并发 part 请求
+// 各自 load→改→save 整份 meta,后写的会用旧快照覆盖别人刚记的标记(读改写竞态,
+// 大文件必现 missing parts 误报)。
 async function receivedParts(uploadId: string): Promise<number[]> {
   const names = await readdir(sessionDir(uploadId)).catch(() => [] as string[]);
   return names
@@ -129,6 +113,7 @@ async function receivedParts(uploadId: string): Promise<number[]> {
     .map((m) => Number(m[1]))
     .sort((a, b) => a - b);
 }
+
 async function streamBodyToFile(
   req: IncomingMessage,
   destPath: string,
@@ -153,6 +138,7 @@ async function streamBodyToFile(
   }
   return size;
 }
+
 async function concatParts(meta: MultipartMeta, destPath: string): Promise<number> {
   await unlink(destPath).catch(() => {});
   const out = createWriteStream(destPath);
@@ -176,84 +162,34 @@ async function concatParts(meta: MultipartMeta, destPath: string): Promise<numbe
   }
   return total;
 }
-async function sessionBytes(uploadId: string): Promise<number> {
-  const names = await readdir(sessionDir(uploadId)).catch(() => [] as string[]);
-  let bytes = 0;
-  for (const name of names) {
-    if (!/^part-\d{5}$/.test(name)) continue;
-    bytes += (await stat(join(sessionDir(uploadId), name)).catch(() => null))?.size ?? 0;
-  }
-  return bytes;
-}
-async function gcMultipartSessions(
-  limits: MultipartGcLimits,
-  active: ReadonlySet<string>,
-): Promise<{ bytes: number; sessions: number }> {
-  const names = await readdir(multipartRoot()).catch(() => [] as string[]);
-  const rows: MultipartSessionInfo[] = [];
-  for (const uploadId of names.filter(isSafeUploadId)) {
-    const [meta, usage, dirInfo] = await Promise.all([
-      loadMeta(uploadId), sessionBytes(uploadId), stat(sessionDir(uploadId)).catch(() => null),
-    ]);
-    rows.push({
-      uploadId, bytes: meta?.size ?? usage, active: active.has(uploadId),
-      createdAt: meta?.createdAt ?? 0, updatedAt: meta?.updatedAt ?? dirInfo?.mtimeMs ?? 0,
-    });
-  }
-  const victims = selectMultipartGcVictims(rows, limits);
-  const removed = new Set<string>();
-  await Promise.all([...victims].map(async (id) => {
-    try {
-      await rm(sessionDir(id), { recursive: true, force: true });
-      removed.add(id);
-    } catch { /* keep it counted so admission remains bounded */ }
-  }));
-  const kept = rows.filter((row) => !removed.has(row.uploadId));
-  return { bytes: kept.reduce((total, row) => total + row.bytes, 0), sessions: kept.length };
-}
-async function loadLiveMeta(uploadId: string, limits: MultipartGcLimits): Promise<MultipartMeta | null> {
-  const meta = await loadMeta(uploadId);
-  if (!meta) return null;
+
+/** Drop sessions older than TTL (best-effort, on init). */
+async function gcStaleSessions(): Promise<void> {
+  const root = multipartRoot();
+  if (!existsSync(root)) return;
   const now = Date.now();
-  if (now - meta.updatedAt >= limits.idleTtlMs || now - meta.createdAt >= limits.absoluteTtlMs) {
-    await rm(sessionDir(uploadId), { recursive: true, force: true }).catch(() => {});
-    return null;
+  const names = await readdir(root).catch(() => [] as string[]);
+  for (const name of names) {
+    if (!isSafeUploadId(name)) continue;
+    const meta = await loadMeta(name);
+    if (!meta || now - meta.createdAt > SESSION_TTL_MS) {
+      await rm(sessionDir(name), { recursive: true, force: true }).catch(() => {});
+    }
   }
-  const touched = { ...meta, updatedAt: now };
-  await saveMeta(touched);
-  return touched;
 }
+
 export function uploadMultipartPlugin(): Plugin {
   return {
     name: 'openchatcut-upload-multipart',
     configureServer(server) {
-      const limits = multipartLimits();
-      const active = new Set<string>();
-      let lastGcAt = 0;
-      let gcRun: Promise<{ bytes: number; sessions: number }> | null = null;
-      let usage = { bytes: 0, sessions: 0 };
-      let pendingBytes = 0, pendingSessions = 0;
-      const runGc = (force = false) => {
-        if (!force && Date.now() - lastGcAt < DEFAULT_ROUTE_GC_MS) return Promise.resolve(usage);
-        if (!gcRun) {
-          lastGcAt = Date.now();
-          gcRun = gcMultipartSessions(limits, active)
-            .then((next) => (usage = next))
-            .finally(() => { gcRun = null; });
-        }
-        return gcRun;
-      };
-      void runGc(true);
-      const gcTimer = setInterval(() => { void runGc(true); }, DEFAULT_GC_INTERVAL_MS);
-      gcTimer.unref?.();
-      server.httpServer?.once('close', () => clearInterval(gcTimer));
+      // Must register before bare /upload (connect prefix match).
       server.middlewares.use('/upload/multipart/init', async (req, res) => {
         if (req.method !== 'POST') {
           sendError(res, 405, 'method not allowed — use POST');
           return;
         }
         try {
-          await runGc(true);
+          void gcStaleSessions();
           const body = (await readJson(req)) as {
             name?: string;
             size?: number;
@@ -272,11 +208,6 @@ export function uploadMultipartPlugin(): Plugin {
             sendError(res, 413, `file too large (max ${Math.round(max / (1024 ** 3))}GB)`);
             return;
           }
-          if (size > limits.maxBytes || usage.sessions + pendingSessions >= limits.maxSessions
-            || usage.bytes + pendingBytes + size > limits.maxBytes) {
-            sendError(res, 429, 'multipart storage capacity is currently in use');
-            return;
-          }
           let partSize = Number(body.partSize) || DEFAULT_PART_SIZE;
           partSize = Math.min(Math.max(partSize, 1024 * 1024), 64 * 1024 * 1024);
           let partCount = Math.ceil(size / partSize);
@@ -287,21 +218,18 @@ export function uploadMultipartPlugin(): Plugin {
           const assetIdRaw = String(body.assetId ?? '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
           const ext = (extname(name).toLowerCase().replace(/[^.a-z0-9]/g, '') || '.bin');
           const uploadId = randomUUID().replace(/-/g, '');
-          const timestamp = Date.now();
           const meta: MultipartMeta = {
-            uploadId, name, ext, size, partSize, partCount,
+            uploadId,
+            name,
+            ext,
             assetId: assetIdRaw || undefined,
             contentType: typeof body.contentType === 'string' ? body.contentType : undefined,
-            createdAt: timestamp, updatedAt: timestamp,
+            size,
+            partSize,
+            partCount,
+            createdAt: Date.now(),
           };
-          pendingBytes += size; pendingSessions += 1;
-          try {
-            await saveMeta(meta);
-          } finally {
-            pendingBytes -= size;
-            pendingSessions -= 1;
-          }
-          usage = { bytes: usage.bytes + size, sessions: usage.sessions + 1 };
+          await saveMeta(meta);
           sendJson(res, 200, {
             uploadId,
             partSize,
@@ -316,12 +244,12 @@ export function uploadMultipartPlugin(): Plugin {
           sendError(res, 500, message);
         }
       });
+
       server.middlewares.use('/upload/multipart/part', async (req, res) => {
         if (req.method !== 'PUT' && req.method !== 'POST') {
           sendError(res, 405, 'method not allowed — use PUT or POST');
           return;
         }
-        let activeUploadId = '';
         try {
           const url = new URL(req.url ?? '/', 'http://localhost');
           const uploadId = url.searchParams.get('uploadId') ?? '';
@@ -330,10 +258,7 @@ export function uploadMultipartPlugin(): Plugin {
             sendError(res, 400, 'invalid uploadId');
             return;
           }
-          activeUploadId = uploadId;
-          active.add(uploadId);
-          void runGc();
-          const meta = await loadLiveMeta(uploadId, limits);
+          const meta = await loadMeta(uploadId);
           if (!meta) {
             sendError(res, 404, 'upload session not found or expired');
             return;
@@ -342,19 +267,25 @@ export function uploadMultipartPlugin(): Plugin {
             sendError(res, 400, `part must be 1..${meta.partCount}`);
             return;
           }
+          // Last part may be smaller; others should be full partSize (allow slightly less for edge).
+          const maxPart = part === meta.partCount
+            ? meta.partSize
+            : meta.partSize;
+          // Last part exact: size - (partCount-1)*partSize
           const expectedMax = part === meta.partCount
             ? meta.size - meta.partSize * (meta.partCount - 1)
             : meta.partSize;
           const dest = partPath(uploadId, part);
-          const tmp = `${dest}.${randomUUID()}.tmp`;
           await mkdir(sessionDir(uploadId), { recursive: true });
-          const bytes = await streamBodyToFile(req, tmp, expectedMax);
+          const bytes = await streamBodyToFile(req, dest, maxPart + 1024);
           if (bytes === 0) {
-            await unlink(tmp).catch(() => {});
+            await unlink(dest).catch(() => {});
             sendError(res, 400, 'empty part body');
             return;
           }
-          await rename(tmp, dest);
+          if (part === meta.partCount && bytes > expectedMax + 64) {
+            // soft: still accept if slightly off due to encoding
+          }
           const received = await receivedParts(uploadId);
           sendJson(res, 200, { ok: true, part, bytes, received: received.length, partCount: meta.partCount });
         } catch (err) {
@@ -362,16 +293,14 @@ export function uploadMultipartPlugin(): Plugin {
           server.config.logger.error(`[multipart/part] ${message}`);
           if (!res.headersSent) sendError(res, 500, message);
           else res.end();
-        } finally {
-          if (activeUploadId) active.delete(activeUploadId);
         }
       });
+
       server.middlewares.use('/upload/multipart/status', async (req, res) => {
         if (req.method !== 'GET') {
           sendError(res, 405, 'method not allowed — use GET');
           return;
         }
-        let activeUploadId = '';
         try {
           const url = new URL(req.url ?? '/', 'http://localhost');
           const uploadId = url.searchParams.get('uploadId') ?? '';
@@ -379,10 +308,7 @@ export function uploadMultipartPlugin(): Plugin {
             sendError(res, 400, 'invalid uploadId');
             return;
           }
-          activeUploadId = uploadId;
-          active.add(uploadId);
-          void runGc();
-          const meta = await loadLiveMeta(uploadId, limits);
+          const meta = await loadMeta(uploadId);
           if (!meta) {
             sendError(res, 404, 'upload session not found or expired');
             return;
@@ -398,16 +324,14 @@ export function uploadMultipartPlugin(): Plugin {
           });
         } catch (err) {
           sendError(res, 500, err instanceof Error ? err.message : String(err));
-        } finally {
-          if (activeUploadId) active.delete(activeUploadId);
         }
       });
+
       server.middlewares.use('/upload/multipart/complete', async (req, res) => {
         if (req.method !== 'POST') {
           sendError(res, 405, 'method not allowed — use POST');
           return;
         }
-        let activeUploadId = '';
         try {
           const body = (await readJson(req)) as { uploadId?: string };
           const uploadId = String(body.uploadId ?? '');
@@ -415,10 +339,7 @@ export function uploadMultipartPlugin(): Plugin {
             sendError(res, 400, 'invalid uploadId');
             return;
           }
-          activeUploadId = uploadId;
-          active.add(uploadId);
-          void runGc();
-          const meta = await loadLiveMeta(uploadId, limits);
+          const meta = await loadMeta(uploadId);
           if (!meta) {
             sendError(res, 404, 'upload session not found or expired');
             return;
@@ -431,6 +352,7 @@ export function uploadMultipartPlugin(): Plugin {
             sendError(res, 400, `missing parts: ${missing.slice(0, 20).join(',')}${missing.length > 20 ? '…' : ''}`);
             return;
           }
+
           const dir = uploadDir();
           await mkdir(dir, { recursive: true });
           const fname = meta.assetId ? `${meta.assetId}${meta.ext}` : `${randomUUID()}${meta.ext}`;
@@ -442,10 +364,12 @@ export function uploadMultipartPlugin(): Plugin {
             sendError(res, 400, 'assembled empty file');
             return;
           }
+          // Optional size check (allow 1% slack for odd clients)
           if (Math.abs(bytes - meta.size) > Math.max(1024, meta.size * 0.01)) {
             server.config.logger.info(`[multipart] size mismatch declared=${meta.size} got=${bytes}`);
           }
           await rename(partOut, finalPath);
+
           let cloud: 'ok' | 'off' | 'failed' = 'off';
           if (r2Config()) {
             try {
@@ -456,11 +380,9 @@ export function uploadMultipartPlugin(): Plugin {
               server.config.logger.error(`[multipart→R2] ${fname}: ${err instanceof Error ? err.message : String(err)}`);
             }
           }
+
           await rm(sessionDir(uploadId), { recursive: true, force: true }).catch(() => {});
-          usage = {
-            bytes: Math.max(0, usage.bytes - meta.size),
-            sessions: Math.max(0, usage.sessions - 1),
-          };
+
           sendJson(res, 200, {
             path: `/media/uploads/${fname}`,
             bytes,
@@ -472,16 +394,15 @@ export function uploadMultipartPlugin(): Plugin {
           const message = err instanceof Error ? err.message : String(err);
           server.config.logger.error(`[multipart/complete] ${message}`);
           sendError(res, 500, message);
-        } finally {
-          if (activeUploadId) active.delete(activeUploadId);
         }
       });
+
       server.middlewares.use('/upload/multipart', async (req, res, next) => {
+        // Only handle DELETE abort on exact /upload/multipart?uploadId=
         if (req.method !== 'DELETE') {
           next();
           return;
         }
-        void runGc();
         try {
           const url = new URL(req.url ?? '/', 'http://localhost');
           const uploadId = url.searchParams.get('uploadId') ?? '';

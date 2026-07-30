@@ -1,6 +1,6 @@
 // Runnable check: `npx tsx src/editor/layouts.verify.ts`.
-// Verification: Cover placement and inverse visible rectangle are exactly equal to the slots (all layouts × all slots); no stretching (scale single value is
-// year-on-year); anchor boundary; fit mailbox; pip parameters; illegal slot rejection; tool layer verification and batch output.
+// 验证:cover 放置反推可视矩形恰等于槽位(全部布局×全部槽);无拉伸(scale 单值即
+// 同比);anchor 边界;fit 信箱;pip 参数;非法槽拒绝;工具层校验与 batch 产出。
 import assert from 'node:assert/strict';
 import {
   LAYOUT_IDS, layoutSlots, placeInSlot, visibleRectOf,
@@ -14,7 +14,7 @@ const near = (a: number, b: number, eps = 1e-6): boolean => Math.abs(a - b) < ep
 const rectNear = (a: SlotRect, b: SlotRect): boolean =>
   near(a.x, b.x, 1e-4) && near(a.y, b.y, 1e-4) && near(a.w, b.w, 1e-4) && near(a.h, b.h, 1e-4);
 
-// ── cover: each layout, each slot, visible rectangle === slot (no overlap, no missing corners, no stretching) ──
+// ── cover:每个布局每个槽,可视矩形 === 槽位(不重叠、不缺角、不拉伸) ──
 for (const layout of LAYOUT_IDS) {
   const slots = layoutSlots(layout as LayoutId);
   for (const [name, slot] of Object.entries(slots)) {
@@ -29,7 +29,7 @@ for (const layout of LAYOUT_IDS) {
   }
 }
 
-// ── Specific values: Left half screen = original size, middle half cropped, left shift 25%; grid angle = half size without cropping ──
+// ── 具体数值:左半屏 = 原尺寸裁中间一半、左移 25%;网格角 = 半尺寸无裁切 ──
 const left = placeInSlot(layoutSlots('2up-horizontal').left!, 'cover');
 assert.ok(near(left.scale!, 1) && near(left.x!, -25) && near(left.y!, 0), '左半屏 scale1/x-25');
 assert.ok(near(left.crop!.left!, 0.25) && near(left.crop!.right!, 0.25), '左半屏左右各裁 1/4');
@@ -37,14 +37,14 @@ const tl = placeInSlot(layoutSlots('grid-4')['top-left']!, 'cover');
 assert.equal(tl.crop, undefined, '同比槽(grid 角)无需裁切');
 assert.ok(near(tl.scale!, 0.5) && near(tl.x!, -25) && near(tl.y!, -25), 'grid 角半尺寸居角');
 
-// ── Anchor: 0 keeps left/top (left is not cropped), 1 keeps right/bottom; the visible rectangle is still exactly equal to the slot ──
+// ── anchor:0 保左/上(左不裁),1 保右/下;可视矩形仍恰等于槽 ──
 const keepLeft = placeInSlot(layoutSlots('2up-horizontal').left!, 'cover', 0, 0.5);
 assert.ok(near(keepLeft.crop!.left!, 0) && near(keepLeft.crop!.right!, 0.5), 'anchorX=0 只裁右侧');
 assert.ok(rectNear(visibleRectOf(keepLeft), layoutSlots('2up-horizontal').left!), 'anchor 不破坏槽位对齐');
 const keepBottom = placeInSlot(layoutSlots('2up-vertical').top!, 'cover', 0.5, 1);
 assert.ok(near(keepBottom.crop!.top!, 0.5) && near(keepBottom.crop!.bottom!, 0), 'anchorY=1 只裁上侧');
 
-// ── fit: The mailbox is not cut, the box is contained in the slot and centered ──
+// ── fit:信箱不裁切,盒子含于槽内且居中 ──
 const fitLeft = placeInSlot(layoutSlots('2up-horizontal').left!, 'fit');
 assert.equal(fitLeft.crop, undefined, 'fit 不裁切');
 assert.ok(near(fitLeft.scale!, 0.5), 'fit 取 min(slot.w, slot.h)');
@@ -53,21 +53,21 @@ const slotL = layoutSlots('2up-horizontal').left!;
 assert.ok(fitBox.x >= slotL.x - 1e-6 && fitBox.x + fitBox.w <= slotL.x + slotL.w + 1e-6, 'fit 盒子横向含于槽');
 assert.ok(near(fitBox.x + fitBox.w / 2, slotL.x + slotL.w / 2), 'fit 居中');
 
-// ── full = reset:scale1 / no displacement / no cropping ──
+// ── full = 复位:scale1 / 无位移 / 无裁切 ──
 const full = placeInSlot(layoutSlots('full').full!, 'cover');
 assert.ok(near(full.scale!, 1) && near(full.x!, 0) && near(full.y!, 0) && full.crop === undefined && full.rotation === 0, 'full 即复位');
 
-// ── pip: corner/size/margin parameters take effect and are clamped ──
+// ── pip:角落/尺寸/边距参数生效并被钳制 ──
 const pip = layoutSlots('pip', { corner: 'top-left', size: 0.25, margin: 0.05 });
 assert.ok(rectNear(pip.inset!, { x: 0.05, y: 0.05, w: 0.25, h: 0.25 }), 'pip 左上角小窗');
 const clamped = layoutSlots('pip', { size: 5, margin: -1 });
 assert.ok(near(clamped.inset!.w, 0.6) && near(clamped.inset!.x, 0.4), 'pip 参数越界被钳制');
 
-// ──Illegal slot rejection──
+// ── 非法槽拒绝 ──
 assert.throws(() => placeInSlot({ x: 0.8, y: 0, w: 0.5, h: 1 }), /invalid slot/, '越出画布的槽拒绝');
 assert.throws(() => placeInSlot({ x: 0, y: 0, w: 0, h: 1 }), /invalid slot/, '零宽槽拒绝');
 
-// ── Tool layer: verification, batch output, pip stacking and time overlap reminder ──
+// ── 工具层:校验、batch 产出、pip 叠放与时间重叠提醒 ──
 assert.ok(LAYOUT_TOOL_NAMES.has('apply_layout'));
 interface Recorded { actions: Array<{ type: string; id: string; patch: Record<string, unknown> }>; label?: string }
 const recorded: Recorded = { actions: [] };
@@ -105,7 +105,7 @@ assert.match(dup.error ?? '', /assigned twice/, '重复槽报错');
 const audio = execLayoutTool('apply_layout', { layout: 'full', assignments: [{ slot: 'full', itemId: 'snd' }] }, ctx) as { error?: string };
 assert.match(audio.error ?? '', /visual clips/, '音频片段拒绝');
 
-// trackOrder V2 in front (upstream) → inset V1 (downstream) should be reminded; if the time does not overlap, it should also be reminded
+// trackOrder V2 在前(上行)→ inset 放 V1(下行)应提醒;时间不重叠也应提醒
 const warn = execLayoutTool('apply_layout', {
   layout: 'pip',
   assignments: [{ slot: 'main', itemId: 'b' }, { slot: 'inset', itemId: 'a' }],

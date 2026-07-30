@@ -1,9 +1,9 @@
-// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
-// Source: src/transcript/*(TranscriptPanel / TranscriptViews / useTranscript).
+// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
+// 来源:src/transcript/*(TranscriptPanel / TranscriptViews / useTranscript)。
 export default {
   '素材文件不可用，请在“我的素材”中重新链接后再转写': 'The media file is unavailable. Relink it in My Media before transcribing.',
   '无法连接转写服务，请检查网络和 AssemblyAI 配置后重试': 'Cannot reach the transcription service. Check the network and AssemblyAI settings, then try again.',
-  // TranscriptPanel — Toolbar and pause pop-up layer
+  // TranscriptPanel — 工具条与停顿弹层
   '停顿': 'Pauses',
   '段落视图': 'Paragraph view',
   '片段视图': 'Segment view',
@@ -15,23 +15,37 @@ export default {
   '已压缩 {count} 处长停顿到 {sec}s（约省 {saved}s）': 'Compressed {count} long pauses down to {sec}s (saving about {saved}s)',
   ' · 去填充词 {n}': ' · {n} filler words removed',
   '应用': 'Apply',
-  // TranscriptPanel — track selection and editing bar
+  // TranscriptPanel — 轨道选择与编辑条
   '转写轨道': 'Transcription tracks',
   '时间线上还没有可转写的音视频轨': 'No audio or video track on the timeline can be transcribed yet',
   '点词删除/恢复（当前段）。已删': 'Click words to delete/restore (current clip). Deleted',
   '词': 'words',
   '还原全部': 'Restore all',
+  '清除转写': 'Clear transcripts',
+  '清除项目中全部自动转写': 'Clear all generated transcripts in this project',
+  '清除全部自动转写？此操作可撤销。': 'Clear all generated transcripts? This action can be undone.',
+  '导入 SRT': 'Import SRT',
+  '清除全部字幕': 'Clear all subtitles',
+  '清除项目中全部字幕？此操作可撤销。': 'Clear all subtitles in this project? This action can be undone.',
   '选择模式：拖选一段词句作为引用（松开即添加到聊天）': 'Selection mode: drag across words to quote them (release to add to chat)',
-  // TranscriptPanel — Empty state and transcription entry
+  // TranscriptPanel — 空态与转写入口
   '还没有可转写的轨道': 'No transcribable tracks yet',
   '把口播 / 配音或带人声的视频加到时间线后，再打开文字稿。': 'Add narration / voiceover or a video with speech to the timeline, then open the transcript.',
   '转写词级文字稿': 'Transcribe word-level script',
-  '中文词级转写 · 说话人分离 · 该轨共 {n} 段会逐段上传。转写后可点词删减（删词=剪音频）。': 'Word-level Chinese transcription · speaker diarization · all {n} clips on this track upload one by one. Then click words to cut them (delete a word = cut the audio).',
+  '自动语言检测 · 词级转写 · 说话人分离 · 该轨共 {n} 段会逐段上传。转写后可点词删减（删词=剪音频）。': 'Automatic language detection · word-level transcription · speaker diarization · all {n} clips on this track upload one by one. Then click words to cut them (delete a word = cut the audio).',
   '包含疑似背景音乐（已跳过 {n} 段）': 'Include likely background music ({n} clips skipped)',
   '该轨只有背景音乐类素材。打开「包含疑似背景音乐」或换到配音轨。': 'This track only has background-music clips. Turn on "Include likely background music" or switch to a voiceover track.',
   '转写中…': 'Transcribing…',
+  '正在提取语音音轨…': 'Extracting a speech audio track…',
+  '正在读取语音音轨…': 'Loading the speech audio track…',
+  '正在上传音频到 AssemblyAI…': 'Uploading audio to AssemblyAI…',
+  '正在创建 AssemblyAI 转写任务…': 'Creating an AssemblyAI transcription job…',
+  'AssemblyAI 已排队，等待处理…': 'AssemblyAI has queued the transcription…',
+  'AssemblyAI 正在转写…': 'AssemblyAI is transcribing…',
+  'AssemblyAI 转写完成': 'AssemblyAI transcription complete',
+  '转写详细日志': 'Transcription details',
   '转写 {alias}（{n} 段）': 'Transcribe {alias} ({n} clips)',
-  // TranscriptPanel — fragment navigation and text
+  // TranscriptPanel — 片段导航与正文
   '跳转到片段': 'Jump to clip',
   ' · {n}词': ' · {n} words',
   ' · {n} 词': ' · {n} words',
@@ -46,7 +60,7 @@ export default {
   '已转写 {done}/{total} 段': 'Transcribed {done}/{total} clips',
   ' · 可点「重新转写」补全失败段': ' · click "Re-transcribe" to fill in failed clips',
   ' · 正文仅显示当前段': ' · showing only the current clip',
-  // TranscriptViews — word/segment/breath
+  // TranscriptViews — 词/语段/气口
   '恢复此词': 'Restore this word',
   '删除此词': 'Delete this word',
   '这段还没有转写文本。': 'This clip has no transcript text yet.',
@@ -63,7 +77,7 @@ export default {
   '压到 0.5s': 'Cap at 0.5s',
   '删气口': 'Delete gap',
   '还原': 'Reset',
-  // useTranscript — Transcribe task progress/errors
+  // useTranscript — 转写任务进度/错误
   '上传 {label}…': 'Uploading {label}…',
   '上传音频…': 'Uploading audio…',
   '转写 {label}…': 'Transcribing {label}…',

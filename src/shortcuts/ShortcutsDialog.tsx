@@ -21,7 +21,7 @@ interface Pending { id: string; keys: string; conflicts: ShortcutAction[] }
  *  with conflict detection. Reset one action or the full default preset. */
 export function ShortcutsDialog({ onClose }: ShortcutsDialogProps) {
   const t = useT();
-  // The shortcut key directory comes with the official English label. Use it directly in English mode without entering the dictionary and repeating it.
+  // 快捷键目录自带官方英文 label,英文态直接用它,不再进词典重复一份。
   const en = getLocale() === 'en';
   const actionLabel = (a: Pick<ShortcutAction, 'label' | 'labelZh'>): string => (en ? a.label : a.labelZh);
   const [, bump] = useState(0);

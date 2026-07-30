@@ -1,7 +1,7 @@
 // Runnable check: `npx tsx src/editor/historyGesture.verify.ts`.
-// Continuous gestures (drag the slider, drag the color picker) must leave only one undo record: the undo must go back to "before dragging" instead of
-// Previous tick. Without it, volume 0→2 will push in about 40 snapshots in 0.05 steps, and the upper limit is only 100
-//  — Drag twice and the user’s real editing history is squeezed out.
+// 连续手势(拖滑块、拖取色器)必须只留一条撤销记录:撤销要回到「拖之前」,而不是
+// 上一个刻度。没有它的话音量 0→2 按 0.05 步进会压进约 40 条快照,而上限只有 100
+// ——拖两次就把用户真正的编辑历史挤没了。
 import assert from 'node:assert/strict';
 import { historyReduce, type History } from './reduce';
 import type { ProjectDoc, TimelineItem } from './types';
@@ -23,14 +23,14 @@ const start = (): History => ({ past: [], present: docOf(1), future: [] });
 const volumeOf = (h: History) => h.present.timelines[0]!.items[0]!.volume;
 const setVolume = (h: History, volume: number) => historyReduce(h, { type: 'setVolume', id: 'a', volume });
 
-// ── Disable gestures: each step is a history (original behavior, single keyboard adjustment is still the same) ──
+// ── 不开手势:每一步都是一条历史(原有行为,键盘单次调整仍然如此) ──
 {
   let h = start();
   for (const v of [1.1, 1.2, 1.3]) h = setVolume(h, v);
   assert.equal(h.past.length, 3, '没有手势边界时逐步记录');
 }
 
-// ── Gestures enabled: Only one of the 40 steps is left, and the undo returns to before dragging ──
+// ── 开了手势:40 步只留一条,且撤销回到拖之前 ──
 {
   let h = start();
   h = historyReduce(h, { type: 'history.beginGesture' });
@@ -45,7 +45,7 @@ const setVolume = (h: History, volume: number) => historyReduce(h, { type: 'setV
   assert.equal(undone.past.length, 0);
 }
 
-// ── Two independent gestures = two histories, will not be merged across gestures ──
+// ── 两次独立手势 = 两条历史,不会跨手势合并 ──
 {
   let h = start();
   for (const [a, b] of [[1.5, 1.8], [0.5, 0.2]] as const) {
@@ -59,7 +59,7 @@ const setVolume = (h: History, volume: number) => historyReduce(h, { type: 'setV
   assert.equal(volumeOf(historyReduce(h, { type: 'undo' })), 1.8, '撤销回到第二次手势之前');
 }
 
-// ── The gesture did not change during the process: an extra piece of history should not be created out of thin air──
+// ── 手势中途没有产生改动:不该凭空多出一条历史 ──
 {
   let h = start();
   h = historyReduce(h, { type: 'history.beginGesture' });
@@ -68,7 +68,7 @@ const setVolume = (h: History, volume: number) => historyReduce(h, { type: 'setV
   assert.equal(h.gesture, undefined, '结束后手势状态清干净');
 }
 
-// ── The redo branch will still be cleared during the gesture (the same as normal editing) ──
+// ── 手势期间照样清空 redo 分支(和普通编辑一致) ──
 {
   let h = start();
   h = setVolume(h, 1.5);
@@ -81,7 +81,7 @@ const setVolume = (h: History, volume: number) => historyReduce(h, { type: 'setV
   assert.equal(h.past.length, 1);
 }
 
-// ── undo/redo will turn off the gesture state to prevent the state from getting stuck after undoing the drag ──
+// ── undo/redo 会关掉手势状态,避免拖动中途撤销后状态卡住 ──
 {
   let h = start();
   h = historyReduce(h, { type: 'history.beginGesture' });
@@ -93,7 +93,7 @@ const setVolume = (h: History, volume: number) => historyReduce(h, { type: 'setV
   assert.equal(h.past.length, 1, '之后的编辑照常记录');
 }
 
-// ── Repeating begin will not repeat the open gesture──
+// ── 重复 begin 不会重复开手势 ──
 {
   let h = start();
   h = historyReduce(h, { type: 'history.beginGesture' });

@@ -19,7 +19,7 @@ const CONTENT_COLOR_SELECTORS = new Set([
   '.cc-transition-marker',
   '.cc-transition-marker:hover',
   '.cc-capedit-colordot',
-  // The functional status color must maintain the original semantics and not change color following the skin.
+  // 功能状态色必须保持原有语义，不跟随皮肤变色。
   '.cc-media-error',
   '.cc-asset-menu-portal button.danger',
   '.cc-asset-menu-portal button.danger:hover',

@@ -38,13 +38,13 @@ const pick = (s: DesignStyle, roles: string[]): string | undefined => {
   return undefined;
 };
 
-  /** Design style editor (manage_design_style) - default library + color matching/font/project creation guide,
- * Real-time preview of local drafts, "Apply to project" one-time submission (single history). */
+  /** 设计风格编辑器（manage_design_style）——预设库 + 配色/字体/工程创作指引，
+ * 本地草稿即时预览,「应用到工程」一次性提交(单条历史)。 */
 export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelProps) {
   const t = useT();
   const [draft, setDraft] = useState<DesignStyle>(style ?? EMPTY);
 
-  // "My style" — the user's own saved-style library (a GLOBAL personal
+  // "我的风格" — the user's own saved-style library (a GLOBAL personal
   // library, not scoped to this project).
   const [owned, setOwned] = useState<OwnedStyle[]>([]);
   const [savingName, setSavingName] = useState<string | null>(null); // null = input hidden
@@ -117,8 +117,8 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
     setDraft((d) => ({ ...d, fonts: upsert(d.fonts, role, family, (f) => ({ family: f, role })) }));
 
   // roles are free-form (e.g. "accent copper", "Chinese heading", …) — show the
-  // style's own free-form roles first, then EVERY canonical role in fixed order. Canonical
-  // The character position is constant: if the first assignment of an empty character is performed by "draft first" derivation, the line will be skipped on the spot (cooperating with upsert to replace it in place).
+  // style's own free-form roles first, then EVERY canonical role in fixed order. 规范
+  // 角色位置恒定:空角色首次赋值若按「draft 在前」推导会当场跳行(配合 upsert 原地替换)。
   const colorRoles = union(draft.colors.map((c) => c.role).filter((r) => !COLOR_ROLES.includes(r)), COLOR_ROLES);
   const fontRoles = union(draft.fonts.map((f) => f.role).filter((r) => !FONT_ROLES.includes(r)), FONT_ROLES);
 
@@ -137,7 +137,7 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
   return (
     <div onClick={onClose} style={backdrop}>
       <div onClick={(e) => e.stopPropagation()} style={card}>
-        {/* header (narrow popover: icon + title + close, long caption cannot fit in 352 width, so remove it) */}
+        {/* header（窄 popover：图标 + 标题 + 关闭，长副标题在 352 宽放不下，去掉） */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: `0.5px solid ${theme.border}` }}>
           <span style={{ color: primary, lineHeight: 0 }}><Icon name="palette" size={16} /></span>
           <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{t('设计风格')}</span>
@@ -145,8 +145,8 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
         </div>
 
         <div style={{ padding: '12px 12px 14px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Style Selector: Compact "Thumbnail 64×36 + Name 12px" row,
-11px/500 dark block title, selected orange dot, top "none" card*/}
+          {/* 风格选择器：紧凑「缩略图 64×36 + 名 12px」行、
+              11px/500 暗色区块标题、选中橙点、顶部「无」卡 */}
           <section>
             <div style={sectionTitle}>{t('选择 MG 动画的视觉风格')}</div>
             <div style={styleList}>
@@ -257,7 +257,7 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
           </section>
         </div>
 
-        {/* footer (narrow popover: button wrapping, padding tightening)*/}
+        {/* footer（窄 popover：按钮换行、内边距收紧） */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', borderTop: `0.5px solid ${theme.border}` }}>
           {savingName !== null && (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -287,8 +287,8 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
 }
 
 /** replace IN PLACE / append the entry for `role`; drop it when the value is blank.
- * It must be replaced in place rather than appended after deletion: the line order is derived from the draft order, and shifting will cause the line being edited to jump.
- * (Pull down to select a font/enter a color value character, and the line will change position immediately).*/
+ * 必须原地替换而非删后追加:行序由 draft 顺序推导,挪位会让正在编辑的行跳走
+ * (下拉选字体/输一个色值字符,该行立刻换位置)。 */
 function upsert<T extends { role: string }>(list: T[], role: string, value: string, make: (v: string) => T): T[] {
   const at = list.findIndex((x) => x.role === role);
   if (!value.trim()) return at === -1 ? list : list.filter((x) => x.role !== role);
@@ -299,8 +299,8 @@ function upsert<T extends { role: string }>(list: T[], role: string, value: stri
 const isEmpty = (s: DesignStyle): boolean => s.colors.length === 0 && s.fonts.length === 0 && !s.styleGuide;
 const sameStyle = (a: DesignStyle, b: DesignStyle): boolean => JSON.stringify(a) === JSON.stringify(b);
 
-/** One row of style options (64×36 thumbnail + 12px name + selected orange dot, row hover white @3.5%).
- *  None colors → Draw a diagonal placeholder ("None" card).*/
+/** 一行风格选项（64×36 缩略图 + 12px 名 + 选中橙点，行 hover 白@3.5%）。
+ *  无 colors → 画一条对角线占位（「无」卡）。 */
 function StyleRow({ colors, thumbnailUrl, name, title, selected, onClick, onDelete }: {
   colors?: string[]; thumbnailUrl?: string; name: string; title?: string; selected: boolean; onClick: () => void; onDelete?: () => void;
 }) {
@@ -329,7 +329,7 @@ function StyleRow({ colors, thumbnailUrl, name, title, selected, onClick, onDele
   );
 }
 
-// Row style: line height ~44, thumbnail 64×36 radius 4, name 12px, gap 10, pl 8, radius 4.
+// 行样式：行高 ~44、缩略图 64×36 radius 4、名 12px、gap 10、pl 8、radius 4。
 const styleList: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 2 };
 const styleRowBtn: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10, width: '100%',
@@ -347,10 +347,10 @@ const noneThumb: React.CSSProperties = {
 const rowName: React.CSSProperties = { fontSize: 12, color: theme.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
 const dot: React.CSSProperties = { width: 8, height: 8, borderRadius: '50%', background: theme.accent, flexShrink: 0 };
 
-// ── Font field: input and optional (the list has the same source as search_fonts/export gate) ─────────
+// ── 字体字段:可输可选(清单与 search_fonts/导出闸同源) ─────────
 
-/** Enter any family, or select from the loadable list. Input is filtered (family+Chinese alias); option is used
- * Respective font rendering preview - google subset is pulled on demand, Chinese woff2 uses the same local origin, and the overhead is negligible.*/
+/** 输入任意 family,或从可加载清单下拉选。输入即过滤(family+中文别名);选项用
+ * 各自字体渲染预览——google 子集按需拉、中文 woff2 走本地同源,开销可忽略。 */
 function FontField({ label, role, value, onChange }: {
   label: string; role: string; value: string; onChange: (v: string) => void;
 }) {
@@ -369,7 +369,7 @@ function FontField({ label, role, value, onChange }: {
   const q = value.trim();
   const options = useMemo(() => {
     const loadable = FONT_CATALOG.filter((f) => f.loadable);
-    // Empty value or selected list item (restart and want to change to another one) → Full amount; otherwise, filter by input, return to Full amount if no hit, to avoid dead ends
+    // 空值或已选中清单项(重开想换别的)→ 全量;否则按输入过滤,无命中也回全量避免死胡同
     if (!q || loadable.some((f) => f.family.toLowerCase() === q.toLowerCase())) return loadable;
     const hits = searchFontCatalog(q, FONT_CATALOG.length).filter((h) => h.loadable);
     return hits.length ? hits : loadable;
@@ -428,8 +428,8 @@ const fontOption: React.CSSProperties = {
   padding: '6px 10px', fontSize: 13, textAlign: 'left',
 };
 
-// Structure: Instead of a big centered modal, there's an anchored popover to the left of the AI ​​panel.
-// The backdrop is transparent and can only be closed by clicking outside; the popover is left anchored and 352 wide.
+// 结构：不是居中大 modal，而是 AI 面板左侧的锚定 popover。
+// backdrop 透明、仅作点击外部关闭；popover 左锚定、352 宽。
 const backdrop: React.CSSProperties = {
   position: 'fixed', inset: 0, background: 'transparent', zIndex: 60,
 };
@@ -439,7 +439,7 @@ const card: React.CSSProperties = {
   background: theme.panelAlt, color: theme.text, border: `0.5px solid ${theme.border}`, borderRadius: 4,
   boxShadow: `0 18px 48px ${themeAlpha.shadow(0.34)}, 0 1px 0 ${themeAlpha.ink(0.04)} inset`,
 };
-// Block title: 11px / font-weight 500 / oklch(0.6) dark gray / pl 8.
+// 区块标题：11px / font-weight 500 / oklch(0.6) 暗灰 / pl 8。
 const sectionTitle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: theme.textDim, paddingLeft: 8, marginBottom: 6, letterSpacing: 0.2 };
 const colorRow: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, background: theme.panelAlt,

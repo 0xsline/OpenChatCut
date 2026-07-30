@@ -1,7 +1,7 @@
-// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
-// Override: components/settings/* + shortcuts/ShortcutsDialog + media/MediaCleanupDialog.
+// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
+// 覆盖:components/settings/* + shortcuts/ShortcutsDialog + media/MediaCleanupDialog。
 export default {
-  // ── SettingsDialog shell ──
+  // ── SettingsDialog 壳层 ──
   '设置 · API 密钥': 'Settings · API Keys',
   '关闭': 'Close',
   '收起': 'Collapse',
@@ -17,7 +17,7 @@ export default {
   '（已 gitignore），经服务端注入，': ' (gitignored), injected by the server — ',
   '不进浏览器。': 'never sent to the browser.',
 
-  // ── Category / Capability Group / Vendor Page Title ──
+  // ── 分类 / 能力组 / 厂商页标题 ──
   'Agent 模型': 'Agent Model',
   'Agent 大脑': 'Agent Brain',
   'AI 生成': 'AI Generation',
@@ -42,7 +42,7 @@ export default {
   'MiniMax 海螺': 'MiniMax Hailuo',
   '本地磁盘': 'Local Disk',
 
-  // ── capability group hint ──
+  // ── 能力组 hint ──
   '对话与工具调用的核心，未配置无法对话。': 'Core of chat and tool calls — chat is unavailable until configured.',
   'submit_image · 文生图 / 图生图，任一厂商即可。': 'submit_image · Text-to-image / image-to-image; any one vendor works.',
   'submit_voice · 文字转配音，任一厂商即可。': 'submit_voice · Text to voiceover; any one vendor works.',
@@ -54,7 +54,7 @@ export default {
   'run_code · 云端沙箱运行 ffmpeg / node / python。': 'run_code · Run ffmpeg / node / python in a cloud sandbox.',
   'web_browser · 抓取网页内容供 Agent 参考。': 'web_browser · Fetch web pages for the Agent to reference.',
 
-  // ── Field label ──
+  // ── 字段标签 ──
   '默认厂商': 'Default vendor',
   '接口格式': 'API format',
   'Responses API（推荐）': 'Responses API (recommended)',
@@ -75,14 +75,14 @@ export default {
   'Bucket 名': 'Bucket name',
   '模板 ID（可选）': 'Template ID (optional)',
 
-  // ── routing options ──
+  // ── 路由选项 ──
   '每次询问（默认）': 'Ask every time (default)',
   '豆包': 'Doubao',
   '可灵': 'Kling',
   '{name}（未配置）': '{name} (not configured)',
   '选中未配置的厂商时，Agent 会回退为先询问。': 'If the chosen vendor is not configured, the Agent falls back to asking first.',
 
-  // ──Page Note/Field Note──
+  // ── 页注 / 字段注 ──
   'MiniMax 同一个 Key，配置一次全能力（生图 / 配音 / 视频 / 音乐）通用。': 'One MiniMax key covers every capability (image / voice / video / music) — configure once.',
   'Key 同时用于音效生成（submit_sound）。': 'The key is also used for sound-effect generation (submit_sound).',
   '可直接使用 Anthropic 官方 API Key；如使用兼容服务，再修改 Base URL 和模型。': 'Use an official Anthropic API key directly, or change the Base URL and model for a compatible service.',
@@ -104,7 +104,7 @@ export default {
     'An isolated Linux sandbox in the cloud — never touches local files. The Agent uses it for run_code: ffprobe to probe media duration / dimensions / codecs, ffmpeg to transcode / extract frames / process AV, and node / python skill scripts; results come back and local tools apply them to the timeline. Leaving it unset only affects these tools — editing and preview are unaffected.',
   '默认模板不带 ffmpeg；转码 / 抽帧类任务需自建含 ffmpeg 的模板并填其 ID。': 'The default template has no ffmpeg; for transcode / frame-extraction tasks, build a template with ffmpeg and enter its ID.',
 
-  // ──Provider page status/test connection/field rendering──
+  // ── 厂商页状态 / 测试连接 / 字段渲染 ──
   '已配置': 'Configured',
   '未配置': 'Not configured',
   '测试中…': 'Testing…',
@@ -193,7 +193,7 @@ export default {
   '如 Inter / 得意黑': 'e.g. Inter / Smiley Sans',
   '从清单选择字体': 'Pick a font from the list',
 
-  // ── SkinPicker (skin photo official theme name) ──
+  // ── SkinPicker(皮肤名照官方主题名) ──
   '皮肤': 'Skin',
   '石墨': 'Graphite',
   '墨黑': 'Midnight',
@@ -202,7 +202,7 @@ export default {
   '东京夜': 'Tokyo Night',
   '拿铁(浅色)': 'Latte (Light)',
 
-  // ── ShortcutsDialog (the action/group name directly uses the catalog’s built-in English label, without entering the dictionary) ──
+  // ── ShortcutsDialog(动作/分组名直接用 catalog 自带英文 label,不进词典) ──
   '键盘快捷键': 'Keyboard Shortcuts',
   '点击快捷键可改绑': 'Click a shortcut to rebind',
   '全部重置': 'Reset all',
@@ -224,7 +224,7 @@ export default {
   '已选 {n} 个 · {size}': '{n} selected · {size}',
   '删除中…': 'Deleting…',
   '删除所选': 'Delete selected',
-  // External Agent Access Guide (McpGuide)
+  // 外部 Agent 接入指南(McpGuide)
   '外部 Agent 接入 (MCP)': 'External agents (MCP)',
   'OpenChatCut 暴露一个 Streamable HTTP MCP 端点。Claude Code / Codex / Cursor 等外部 Agent 接入后,与内置 Agent 共用同一套编辑工具,可直接读写当前工程。':
     'OpenChatCut exposes a Streamable HTTP MCP endpoint. External agents such as Claude Code, Codex, and Cursor share the same editing tools as the built-in agent and can read and edit the current project directly.',

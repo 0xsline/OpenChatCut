@@ -8,7 +8,8 @@ import {
 } from 'ai';
 import type { AgentContext } from './context';
 import { TOOL_SCHEMAS, executeTool } from './tools';
-import { SYSTEM_PROMPT, assembleSystemPrompt, creativeModePrompt, designStylePrompt, editorStatePrompt } from './systemPrompt';
+import { SYSTEM_PROMPT, agentLanguagePrompt, assembleSystemPrompt, creativeModePrompt, designStylePrompt, editorStatePrompt } from './systemPrompt';
+import { getLocale } from '../i18n/locale';
 import { capabilitiesPrompt } from './capabilities';
 import { findSkill } from './skills/skills-catalog';
 import { PLUGIN_SKILLS_INDEX } from './skills/plugin-skills';
@@ -122,8 +123,8 @@ function createAgentTools(
         }
 
         try {
-          // Take a timeline snapshot before and after the tool: the modification tool directly brings back "what was actually changed"
-          // Model, omit a full read_project (the difference of read-only tools is null, no fields are added).
+          // 工具前后各拍一次时间线快照:改动型工具直接把「实际改了什么」带回给
+          // 模型,省掉一次全量 read_project(只读工具的差分是 null,不加字段)。
           const before = snapshotTimeline(ctx.getState());
           const result = await executeTool(schema.name, args, ctx);
           const changed = describeTimelineDelta(before, ctx.getState());
@@ -167,11 +168,12 @@ export async function runAgent(
 ): Promise<LLMMessage[]> {
   let conv = normalizeLlmMessages(messages);
   const settings = loadAgentSettings();
-  // The order is "the more unchanged, the higher up" - the prompt word cache matches the byte-by-byte prefix, and inserts a paragraph in the middle that changes every round.
-  // Content, everything following it (the rest of the paragraphs, hundreds of tool schemas, the entire history) will be invalid.
-  // editorStatePrompt is a real-time timeline snapshot and must be placed in the last paragraph; new paragraphs are always added in front of it.
+  // 顺序按「越不变的排越前」——提示词缓存匹配的是逐字节前缀,中间插一段每轮都变的
+  // 内容,它后面的一切(其余段落、上百个工具 schema、整段历史)就全部作废。
+  // editorStatePrompt 是实时时间线快照,必须排在最后一段;新增段落也一律加在它前面。
   const system = assembleSystemPrompt([
     SYSTEM_PROMPT,
+    agentLanguagePrompt(getLocale()),
     capabilitiesPrompt(),
     PLUGIN_SKILLS_INDEX,
     agentSettingsPrompt(settings),
@@ -179,10 +181,13 @@ export async function runAgent(
     creativeModePrompt(findSkill(ctx.getCreativeMode())),
   ], editorStatePrompt(ctx));
 
+  let reasoningFellBack = false;
   let toolTurns = 0;
 
   for (;;) {
+    const withReasoning = settings.thinkingEnabled && !reasoningFellBack;
     const extract = createInlineThinkingExtractor();
+    let sawContentEvent = false;
     let textStarted = false;
     let visibleText = '';
     let askedFollowup = false;
@@ -221,20 +226,25 @@ export async function runAgent(
         maxRetries: 0,
         abortSignal: opts?.signal,
         ...(providerOptions ? { providerOptions } : {}),
+        ...(withReasoning ? { reasoning: 'medium' as const } : {}),
       });
 
       let aborted = false;
       try {
         for await (const part of result.stream) {
           if (part.type === 'text-delta') {
+            sawContentEvent = true;
             const extracted = extract.push(part.text);
             if (extracted.thinking) onEvent({ type: 'thinking-delta', delta: extracted.thinking });
             if (extracted.text) emitText(extracted.text);
           } else if (part.type === 'reasoning-delta') {
+            sawContentEvent = true;
             if (part.text) onEvent({ type: 'thinking-delta', delta: part.text });
           } else if (part.type === 'tool-input-start') {
+            sawContentEvent = true;
             onEvent({ type: 'tool-input-start', name: part.toolName });
           } else if (part.type === 'tool-input-delta') {
+            sawContentEvent = true;
             if (part.delta) onEvent({ type: 'tool-input-delta', delta: part.delta });
           } else if (part.type === 'error') {
             throw part.error;
@@ -276,6 +286,13 @@ export async function runAgent(
     } catch (error) {
       if (opts?.signal?.aborted) return conv;
       const message = errorMessage(error).trim();
+      if (withReasoning
+        && !sawContentEvent
+        && /thinking|reasoning|param|invalid|unsupported|不支持/i.test(message)) {
+        reasoningFellBack = true;
+        onEvent({ type: 'error', message: '当前模型接口不支持思考模式，已自动关闭本轮' });
+        continue;
+      }
       onEvent({ type: 'error', message });
       return conv;
     }

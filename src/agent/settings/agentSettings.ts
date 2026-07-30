@@ -1,19 +1,21 @@
 // Agent settings that actually change code paths (not soft prompt hints).
-// skill_guard: high-cost tools never auto-apply even when "auto-apply" is on.
+// skill_guard: high-cost tools never auto-apply even when "自动应用" is on.
 
-/** MG generates three levels of quality. */
+/** MG 生成质量三档。 */
 export type MgTier = 'speed' | 'balance' | 'quality';
 export const MG_TIERS: readonly MgTier[] = ['speed', 'balance', 'quality'];
 
 export interface AgentSettings {
   /**
    * skill_guard: high-cost tools never auto-apply — user must confirm
-   * via the existing proposal card even when "Auto-Apply" is on.
+   * via the existing proposal card even when "自动应用" is on.
    */
   skillGuard: boolean;
-  /** MG quality file (default balance), injected through <agent_settings>. */
+  /** 思考模式(开 → 请求带 thinking:'adaptive' + effort:'medium')。 */
+  thinkingEnabled: boolean;
+  /** MG 质量档(默认 balance),经 <agent_settings> 注入。 */
   mgTier: MgTier;
-  /** Plan mode (Agent Settings planMode switch): come up with the numbering plan first, and then start after the user confirms it. */
+  /** 计划模式(Agent Settings planMode 开关):先出编号计划,用户确认后再动手。 */
   planMode: boolean;
 }
 
@@ -21,6 +23,7 @@ const KEY = 'cc.agentSettings.v1';
 
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   skillGuard: true,
+  thinkingEnabled: false,
   mgTier: 'balance',
   planMode: false,
 };
@@ -32,6 +35,7 @@ export function loadAgentSettings(): AgentSettings {
     const parsed = JSON.parse(raw) as Partial<AgentSettings>;
     return {
       skillGuard: parsed.skillGuard !== false,
+      thinkingEnabled: parsed.thinkingEnabled === true,
       mgTier: MG_TIERS.includes(parsed.mgTier as MgTier) ? (parsed.mgTier as MgTier) : DEFAULT_AGENT_SETTINGS.mgTier,
       planMode: parsed.planMode === true,
     };
@@ -49,19 +53,19 @@ export function saveAgentSettings(next: AgentSettings): void {
 }
 
 /**
- * <agent_settings> section injected per request:
+ * 每请求注入的 <agent_settings> 段:
  * `<agent_settings>motion_graphic_tier=${tier} … pass --tier ${tier}</agent_settings>`,
- * Appended to the end of the system assembly (runtime.runAgent). The English key remains unchanged.
+ * 追加到 system 组装尾部 (runtime.runAgent)。英文 key 保持不变。
  */
 export function agentSettingsPrompt(s: Pick<AgentSettings, 'mgTier' | 'planMode' | 'skillGuard'>): string {
   const lines = [
     `motion_graphic_tier=${s.mgTier}`,
     `When using the motion-graphic-gen skill for this request, pass --tier ${s.mgTier}.`,
     'This value was snapshotted when the user sent the message and applies only to this request.',
-    'For motion graphics, honor the selected tier: speed = fastest delivery, balance = balanced quality and speed, quality = polish motion details.',
+    `生成 MG 时按档位取舍:speed=最快出活 / balance=均衡 / quality=打磨动效细节。`,
   ];
   if (s.planMode) {
-    lines.push('plan_mode=on: output only a numbered plan first, wait for user confirmation, then call tools.');
+    lines.push('plan_mode=on:先只输出编号计划并等用户确认,再开始调用工具。');
   }
   if (s.skillGuard !== false) {
     lines.push('skill_guard=true');
@@ -70,13 +74,13 @@ export function agentSettingsPrompt(s: Pick<AgentSettings, 'mgTier' | 'planMode'
   return `\n\n<agent_settings>\n${lines.join('\n')}\n</agent_settings>`;
 }
 
-// ── Inline thinking tag extraction ───────────────────────────────────────────
-// Some relays/models mix reasoning into the text flow with literal labels instead of native thinking blocks:
-// DeepSeek/MiniMax/GLM/Qwen/MiMo systems commonly use <think>, and some transfer and prompt words use <thinking>.
-// Both pairs are stripped from the visible reply and routed to the collapsed thinking block.
-// Cross-chunk state machine: The text after entering the open tag enters the thinking channel but not the main text; when it encounters the text that is paired with the open tag
-// The text is restored only when the tag is closed; the stream is not closed at the end → all the remainder goes to thinking; the tag is opened half way (such as "<thin")
-// In the end, it did not become a label → the text is counted as it is.
+// ── 内联思考标签抽取(思考模式的展示路径) ─────────────────────────────────
+// 部分中转/模型把推理以字面标签混在文本流里,而非原生 thinking 块:
+// DeepSeek/MiniMax/GLM/Qwen/MiMo 系常用 <think>,部分中转与提示词习惯用 <thinking>。
+// 两种成对标签都识别,对所有厂商统一生效;原生 reasoning 通道不经过这里。
+// 跨 chunk 状态机:进入开标签后的文本进 thinking 通道不进正文;遇到与开标签配对的
+// 闭标签才恢复正文;流结束时未闭合 → 余量全归 thinking;半截开标签(如 "<thin")
+// 最终没成标签 → 原样算正文。
 
 const TAG_PAIRS: ReadonlyArray<readonly [open: string, close: string]> = [
   ['<think>', '</think>'],
@@ -89,7 +93,7 @@ export interface ThinkingSplit {
   thinking: string;
 }
 
-/** The longest true prefix length at the end of `s` that "may be the beginning of a tag" - left to the next chunk to be determined.*/
+/** `s` 结尾处「可能是某个 tag 开头」的最长真前缀长度 — 留到下一 chunk 再定夺。 */
 function danglingPrefixLen(s: string, tags: readonly string[]): number {
   let hold = 0;
   for (const tag of tags) {
@@ -105,8 +109,8 @@ export function createInlineThinkingExtractor(): {
   push(chunk: string): ThinkingSplit;
   flush(): ThinkingSplit;
 } {
-  let closeTag: string | null = null; // Non-empty = within the thinking block, wait for the closing tag of this pair
-  let held = ''; // The last half label candidate is merged into the next chunk.
+  let closeTag: string | null = null; // 非空 = 在思考块内,等这一对的闭标签
+  let held = ''; // 结尾半截标签候选,并入下一 chunk
 
   const scan = (input: string): ThinkingSplit => {
     let text = '';
@@ -154,7 +158,7 @@ export function createInlineThinkingExtractor(): {
     flush(): ThinkingSplit {
       const rest = held;
       held = '';
-      // Unclosed → The remainder (including half-closed tags) are all attributed to thinking; the half-open tags outside the tags are just ordinary text.
+      // 未闭合 → 余量(含半截闭标签)全归 thinking;标签外的半截开标签只是普通文本。
       return closeTag ? { text: '', thinking: rest } : { text: rest, thinking: '' };
     },
   };

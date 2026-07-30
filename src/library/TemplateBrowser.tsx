@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { theme, themeAlpha } from '../theme';
 import { tData, useT } from '../i18n/locale';
@@ -8,14 +8,13 @@ import type { Tpl } from '../types';
 import { Icon } from '../components/icons';
 import { setLibraryDrag } from './drag';
 import { loadRecentTemplateIds, pushRecentTemplateId } from '../persist/sessionPrefs';
-import { useFixedVirtualGrid } from '../hooks/useFixedVirtualGrid';
 
-// MG animation browser: a horizontal chip row
-// [Collection, recent, popular, <categories by count>] filters the card grid; cards show a
-// ⭐ favorite toggle + a ⋮ menu (add to timeline / generate with AI / delete) on hover.
-// Data model: collection = per-user collected (persisted to localStorage),
-// recent = last-added template ids (local), popular = full gallery default.
-// Delete = soft delete (local hidden list), used clips in the timeline are not affected; built-in/plugin entries can be removed from the list.
+// MG 动画 browser: a horizontal chip row
+// [收藏, 最近, 热门, <categories by count>] filters the card grid; cards show a
+// ⭐ favorite toggle + a ⋮ menu (添加到时间线 / 用 AI 生成 / 删除) on hover.
+// Data model: 收藏 = per-user collected (persisted to localStorage),
+// 最近 = last-added template ids (local), 热门 = full gallery default.
+// 删除 = 软删除(本地隐藏列表),时间线已用片段不受影响;内置/插件条目均可从列表移除。
 // Category ids come straight from the template `category`.
 
 // Category id → Chinese label.
@@ -53,37 +52,30 @@ interface TemplateBrowserProps {
 export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd, onUseAI }: TemplateBrowserProps) {
   const t = useT();
   const [favs, setFavs] = usePersistedState<string[]>('cc.favTemplates', []);
-  /** Template id removed from the resource library list (soft deletion, persistence; does not affect the inserted clips in the timeline) */
+  /** 从资源库列表移除的模板 id(软删除,持久化;不影响时间线已插入片段) */
   const [hidden, setHidden] = usePersistedState<string[]>('cc.hiddenTemplates', []);
   const [recents, setRecents] = useState<string[]>(() => loadRecentTemplateIds());
   const [chip, setChip] = usePersistedState<string>('cc.templateChip', POPULAR);
+  const [hovered, setHovered] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [focusedId, setFocusedId] = useState<string | null>(null);
-  const [draggedId, setDraggedId] = useState<string | null>(null);
   const favSet = useMemo(() => new Set(favs), [favs]);
   const hiddenSet = useMemo(() => new Set(hidden), [hidden]);
-  const toggleFav = useCallback((id: string) => {
-    setFavs((current) => current.includes(id)
-      ? current.filter((candidate) => candidate !== id)
-      : [...current, id]);
-  }, [setFavs]);
-  const hideTemplate = useCallback((id: string) => {
-    setHidden((current) => current.includes(id) ? current : [...current, id]);
-    setFavs((current) => current.filter((candidate) => candidate !== id));
-  }, [setFavs, setHidden]);
-  const remember = useCallback((tpl: Tpl) => setRecents(pushRecentTemplateId(tpl.id)), []);
-  const addAndRemember = useCallback((tpl: Tpl) => {
-    remember(tpl);
-    onAdd(tpl);
-  }, [onAdd, remember]);
+  const toggleFav = (id: string) =>
+    setFavs((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
+  const hideTemplate = (id: string) => {
+    setHidden((h) => (h.includes(id) ? h : [...h, id]));
+    setFavs((f) => f.filter((x) => x !== id));
+  };
+  const remember = (tpl: Tpl) => setRecents(pushRecentTemplateId(tpl.id));
+  const addAndRemember = (tpl: Tpl) => { remember(tpl); onAdd(tpl); };
 
-  const closeMenu = useCallback(() => {
+  const closeMenu = () => {
     setMenuFor(null);
     setMenuPos(null);
     setConfirmDelete(false);
-  }, []);
+  };
 
   // Close portal menu on scroll / resize so it doesn't float away from the card.
   useEffect(() => {
@@ -95,15 +87,15 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
       window.removeEventListener('scroll', onDismiss, true);
       window.removeEventListener('resize', onDismiss);
     };
-  }, [closeMenu, menuFor]);
+  }, [menuFor]);
 
-  // Visible list (soft deleted ones are not included in chips/grid)
+  // 可见列表(已软删除的不进 chips/网格)
   const visible = useMemo(
     () => templates.filter((t) => !hiddenSet.has(t.id)),
     [templates, hiddenSet],
   );
 
-  // chips: favorites, recent, popular, then categories sorted by descending count
+  // chips: 收藏, 最近, 热门, then categories sorted by descending count
   const chips = useMemo(() => {
     const counts = new Map<string, number>();
     for (const t of visible) counts.set(t.category, (counts.get(t.category) ?? 0) + 1);
@@ -121,24 +113,6 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
     return visible.filter((t) => t.category === chip);
   }, [visible, chip, favSet, recents]);
 
-  const pinnedIndexes = useMemo(() => {
-    const pinnedIds = new Set([menuFor, focusedId, draggedId].filter((id): id is string => id != null));
-    const indexes: number[] = [];
-    shown.forEach((template, index) => {
-      if (pinnedIds.has(template.id)) indexes.push(index);
-    });
-    return indexes;
-  }, [draggedId, focusedId, menuFor, shown]);
-  const virtualGrid = useFixedVirtualGrid({
-    itemCount: shown.length,
-    cardWidth: 120,
-    rowHeight: 97,
-    columnGap: 10,
-    rowGap: 10,
-    overscanRows: 1,
-    pinnedIndexes,
-  });
-
   const menuTpl = menuFor ? shown.find((t) => t.id === menuFor) ?? visible.find((t) => t.id === menuFor) : null;
 
   const chipStyle = (active: boolean): React.CSSProperties => ({
@@ -148,7 +122,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
     color: active ? theme.bg : theme.textDim, fontWeight: active ? 600 : 400, whiteSpace: 'nowrap',
   });
 
-  const openMenu = useCallback((tpId: string, anchor: HTMLElement) => {
+  const openMenu = (tpId: string, anchor: HTMLElement) => {
     if (menuFor === tpId) {
       closeMenu();
       return;
@@ -162,7 +136,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
     setConfirmDelete(false);
     setMenuFor(tpId);
     setMenuPos({ top, left });
-  }, [closeMenu, menuFor]);
+  };
 
   return (
     <>
@@ -180,45 +154,94 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
       ) : chip === RECENT && shown.length === 0 ? (
         <div style={{ color: theme.textDim, fontSize: 12, padding: '20px 8px', textAlign: 'center' }}>{t('还没有最近使用的模板。点卡片或拖到时间线后会出现在这里。')}</div>
       ) : (
-        /* Fixed-size rows keep scroll geometry stable while only viewport rows are mounted. */
-        <div
-          ref={virtualGrid.containerRef}
-          className="cc-template-virtual-grid"
-          style={{ position: 'relative', height: virtualGrid.totalHeight }}
-        >
-          {virtualGrid.rows.map((row) => (
-            <div
-              key={row.rowIndex}
-              style={{
-                position: 'absolute',
-                top: row.top,
-                left: 0,
-                width: '100%',
-                height: virtualGrid.rowHeight,
-                display: 'grid',
-                gridTemplateColumns: `repeat(${virtualGrid.columnCount}, ${virtualGrid.columnWidth}px)`,
-                columnGap: 10,
-                justifyContent: 'space-evenly',
-              }}
-            >
-              {shown.slice(row.startIndex, row.endIndex).map((template) => (
-                <TemplateCard
-                  key={template.id}
-                  template={template}
-                  favorite={favSet.has(template.id)}
-                  menuOpen={menuFor === template.id}
-                  onAdd={addAndRemember}
-                  onRemember={remember}
-                  onToggleFavorite={toggleFav}
-                  onOpenMenu={openMenu}
-                  onFocusChange={setFocusedId}
-                  onDragChange={setDraggedId}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
+        /* 统一 16:9 卡片盒:竖版(9:16)缩略图居中 contain 展示、两侧用模糊放大的
+           自身画面垫底(视频平台竖内容惯例),卡片高度与横版一致不再窜层。 */
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
+          {shown.map((tp) => {
+            const isFav = favSet.has(tp.id);
+            const isHover = hovered === tp.id;
+            const showActions = isHover || menuFor === tp.id || isFav;
+            const portrait = (tp.height ?? 0) > (tp.width ?? 1);
+            return (
+              <div
+                key={tp.id}
+                draggable
+                onDragStart={(e) => {
+                  remember(tp);
+                  // 插件模板不在 drop 端的 TEMPLATES 里,Tpl 全量随 payload 走
+                  setLibraryDrag(e, { kind: 'template', id: tp.id, name: tp.name, ...(tp.id.startsWith('plugin:') ? { data: tp } : {}) });
+                }}
+                onMouseEnter={() => setHovered(tp.id)}
+                onMouseLeave={() => setHovered((h) => (h === tp.id ? null : h))}
+                style={{
+                  position: 'relative',
+                  border: `0.5px solid ${isHover ? theme.borderLight : theme.border}`,
+    borderRadius: 4,
+                  background: theme.panelAlt,
+                  // Keep overflow hidden so thumb corners clip; menu is portaled to body.
+                  overflow: 'hidden',
+                  minWidth: 0,
+                  cursor: 'grab',
+                  boxShadow: isHover ? `0 8px 24px ${themeAlpha.shadow(0.35)}` : 'none',
+                  transition: 'border-color .18s ease, box-shadow .18s ease',
+                }}
+              >
+                <button onClick={() => addAndRemember(tp)} title={t('点击或拖到时间线：{name}', { name: tp.name })}
+                  style={{ cursor: 'inherit', textAlign: 'left', padding: 0, width: '100%', display: 'block', border: 'none', background: 'none', color: theme.text }}>
+                  {/* 两层图都绝对定位铺满:百分比高度在 grid 轨道里会解析失败,
+                      contain 退化成裁切(9:16 曾被裁成横条)——绝对定位对着
+                      aspectRatio 盒子解析,信箱式居中才稳定成立。 */}
+                  <div style={{ aspectRatio: '16 / 9', position: 'relative', background: theme.bg, overflow: 'hidden' }}>
+                    {tp.thumb ? (
+                      <>
+                        {portrait && (
+                          <img src={tp.thumb} alt="" aria-hidden loading="lazy" draggable={false}
+                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(16px) brightness(0.5)', transform: 'scale(1.25)' }} />
+                        )}
+                        <img src={tp.thumb} alt={tData(tp.name)} loading="lazy" draggable={false}
+                          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: portrait ? 'contain' : 'cover', transform: isHover ? 'scale(1.035)' : 'none', transition: 'transform .3s ease' }} />
+                      </>
+                    ) : <span style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: 20, color: theme.textDim }}>＋</span>}
+                  </div>
+                  <div style={{ padding: '6px 8px 7px', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, boxSizing: 'border-box' }}>
+                    <span style={{
+                      flex: 1, fontSize: 10.5, lineHeight: 1.3,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
+                    }}>{tData(tp.name)}</span>
+                    <span style={{
+                      flexShrink: 0, fontSize: 8.5, color: theme.textDim, lineHeight: 1.4,
+                      border: `0.5px solid ${theme.border}`, borderRadius: 4, padding: '0.5px 4px',
+                    }}>{ratioLabel(tp.width, tp.height)}</span>
+                  </div>
+                </button>
 
+                {/* hover actions: ★ favorite (top-left) + ⋮ menu (top-right) */}
+                {showActions && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleFav(tp.id); }}
+                      title={isFav ? t('取消收藏') : t('收藏')}
+                      style={{ position: 'absolute', top: 5, left: 5, width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(0,0,0,0.55)', color: isFav ? '#f5c518' : '#fff', fontSize: 12, lineHeight: 1, display: 'grid', placeItems: 'center' }}
+                    >
+                      <Icon name="star" size={12} filled={isFav} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openMenu(tp.id, e.currentTarget);
+                      }}
+                      title={t('更多操作')}
+                      aria-expanded={menuFor === tp.id}
+                      style={{ position: 'absolute', top: 5, right: 5, width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 13, lineHeight: 1, display: 'grid', placeItems: 'center' }}
+                    >⋮</button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {/* Portal menu — avoids clip from card overflow:hidden + scrollable grid parent */}
@@ -256,12 +279,16 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
               role="menuitem"
               onClick={() => { addAndRemember(menuTpl); closeMenu(); }}
               style={menuItem}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--cc-hover)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
             >≡ {t('添加到时间线')}</button>
             <button
               type="button"
               role="menuitem"
               onClick={() => { onUseAI(menuTpl); closeMenu(); }}
               style={{ ...menuItem, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--cc-hover)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
             ><Icon name="sparkles" size={13} />{t('用 AI 生成')}</button>
             <div style={{ height: 0.5, background: theme.border, margin: '4px 6px' }} />
             {confirmDelete ? (
@@ -271,12 +298,16 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
                   role="menuitem"
                   onClick={() => { hideTemplate(menuTpl.id); closeMenu(); }}
                   style={{ ...menuItem, flex: 1, color: theme.danger, textAlign: 'center', padding: '7px 4px' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--cc-hover)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
                 >{t('确认删除')}</button>
                 <button
                   type="button"
                   role="menuitem"
                   onClick={() => setConfirmDelete(false)}
                   style={{ ...menuItem, flex: 1, color: theme.textDim, textAlign: 'center', padding: '7px 4px' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--cc-hover)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
                 >{t('取消')}</button>
               </div>
             ) : (
@@ -286,6 +317,8 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
                 onClick={() => setConfirmDelete(true)}
                 title={t('从资源库列表移除(本地隐藏);时间线已用片段不受影响')}
                 style={{ ...menuItem, color: theme.danger }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--cc-hover)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
               >{t('删除')}</button>
             )}
           </div>
@@ -293,112 +326,6 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
         document.body,
       )}
     </>
-  );
-});
-interface TemplateCardProps {
-  template: Tpl;
-  favorite: boolean;
-  menuOpen: boolean;
-  onAdd: (template: Tpl) => void;
-  onRemember: (template: Tpl) => void;
-  onToggleFavorite: (id: string) => void;
-  onOpenMenu: (id: string, anchor: HTMLElement) => void;
-  onFocusChange: (id: string | null) => void;
-  onDragChange: (id: string | null) => void;
-}
-
-const TemplateCard = memo(function TemplateCard({
-  template,
-  favorite,
-  menuOpen,
-  onAdd,
-  onRemember,
-  onToggleFavorite,
-  onOpenMenu,
-  onFocusChange,
-  onDragChange,
-}: TemplateCardProps) {
-  const t = useT();
-  const portrait = (template.height ?? 0) > (template.width ?? 1);
-  return (
-    <div
-      className={`cc-template-card${favorite ? ' favorite' : ''}${menuOpen ? ' menu-open' : ''}`}
-      draggable
-      onDragStart={(event) => {
-        onDragChange(template.id);
-        onRemember(template);
-        setLibraryDrag(event, {
-          kind: 'template',
-          id: template.id,
-          name: template.name,
-          ...(template.id.startsWith('plugin:') ? { data: template } : {}),
-        });
-      }}
-      onDragEnd={() => onDragChange(null)}
-      onFocusCapture={() => onFocusChange(template.id)}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onFocusChange(null);
-      }}
-    >
-      <button
-        className="cc-template-add"
-        onClick={() => onAdd(template)}
-        title={t('点击或拖到时间线：{name}', { name: template.name })}
-      >
-        <div className="cc-template-thumb">
-          {template.thumb ? (
-            <>
-              {portrait && (
-                <img
-                  className="cc-template-thumb-backdrop"
-                  src={template.thumb}
-                  alt=""
-                  aria-hidden
-                  loading="lazy"
-                  draggable={false}
-                />
-              )}
-              <img
-                className={`cc-template-thumb-image${portrait ? ' portrait' : ''}`}
-                src={template.thumb}
-                alt={tData(template.name)}
-                loading="lazy"
-                draggable={false}
-              />
-            </>
-          ) : (
-            <span className="cc-template-thumb-missing">＋</span>
-          )}
-        </div>
-        <div className="cc-template-meta">
-          <span className="cc-template-name">{tData(template.name)}</span>
-          <span className="cc-template-ratio">{ratioLabel(template.width, template.height)}</span>
-        </div>
-      </button>
-      <button
-        type="button"
-        className="cc-template-favorite"
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggleFavorite(template.id);
-        }}
-        title={favorite ? t('取消收藏') : t('收藏')}
-      >
-        <Icon name="star" size={12} filled={favorite} />
-      </button>
-      <button
-        type="button"
-        className="cc-template-more"
-        onClick={(event) => {
-          event.stopPropagation();
-          onOpenMenu(template.id, event.currentTarget);
-        }}
-        title={t('更多操作')}
-        aria-expanded={menuOpen}
-      >
-        ⋮
-      </button>
-    </div>
   );
 });
 

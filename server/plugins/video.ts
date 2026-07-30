@@ -114,7 +114,7 @@ async function generateSeedance(input: ValidVideoRequest, options: VideoOptions)
   throw new Error('seedance2 generation timed out');
 }
 
-/** Map agent @ImageN / @VideoN (and image/video) to Kling Omni <<<image_n>>> / <<<video_n>>> tokens.*/
+/** Map agent @ImageN / @VideoN (and 图片/视频) to Kling Omni <<<image_n>>> / <<<video_n>>> tokens. */
 export function klingPrompt(prompt: string): string {
   return prompt
     .replace(/@(Image|图片)(\d+)/gi, '<<<image_$2>>>')

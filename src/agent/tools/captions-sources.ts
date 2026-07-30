@@ -129,7 +129,7 @@ export function sourceAdd(json: Record<string, unknown>, c: CaptionsData, ctx: A
   const e = selectorToEntry(sel, s);
   if ('error' in e) return { error: `source_add: ${e.error}` };
   const cur = ensureEntries(c, s);
-  // The same item+variant is already in scope → idempotent without duplication
+  // 同 item+variant 已在 scope → 幂等不重复
   if (cur.some((x) => x.itemId === e.itemId && (x.variant?.languageCode ?? '') === (e.variant?.languageCode ?? ''))) {
     return { ok: true, sources: cur.map((x, i) => entryRow(x, i, s)), note: 'already in scope (idempotent)' };
   }
@@ -147,7 +147,7 @@ export function sourceRemove(json: Record<string, unknown>, c: CaptionsData, ctx
   if ('error' in (m as object)) return m as Result;
   const drop = new Set(m as number[]);
   const next = normalizeCaptionSourceEntries(cur.filter((_, i) => !drop.has(i)));
-  // Return to single source mode when deleting the last one.
+  // 删到最后一个时回落到单源模式。
   ctx.commands.updateCaptions({ sourceEntries: next.length ? next : undefined, sources: undefined, sourceMode: 'item' });
   return { ok: true, sources: next.length ? next.map((x, i) => entryRow(x, i, s)) : null };
 }

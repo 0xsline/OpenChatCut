@@ -1,8 +1,8 @@
-// The session ending judgment after a round of abort is separated into a file so that it can be directly imported by the Node verification script.
-// (runtime.ts will also pull in the entire tool graph, which contains resources such as GLSL that Node cannot load).
+// 中止一轮之后的会话收尾判定,单独成文件是为了能被 Node 验证脚本直接导入
+// (runtime.ts 会连带拉进整张工具图,里面有 GLSL 之类 Node 加载不了的资源)。
 import type { ModelMessage } from 'ai';
 
-/** Tool calls that have been issued in the session but have no results yet (used to make up for the ending when aborted). exported for verify. */
+/** 会话里已发出但还没有结果的工具调用(中止时用来补收尾)。exported for verify。 */
 export function unresolvedToolCalls(
   messages: readonly ModelMessage[],
 ): Array<{ toolCallId: string; toolName: string }> {
@@ -17,7 +17,7 @@ export function unresolvedToolCalls(
   return [...pending].map(([toolCallId, toolName]) => ({ toolCallId, toolName }));
 }
 
-/** Retain the model message that has been received, and add a result that can continue the conversation to the tool call that was suspended when it was suspended. */
+/** 保留已经收到的模型消息,并给中止时悬空的工具调用补一个可继续对话的结果。 */
 export function completeAbortedTurn(
   history: readonly ModelMessage[],
   responseMessages: readonly ModelMessage[],

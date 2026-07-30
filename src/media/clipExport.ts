@@ -49,7 +49,7 @@ export async function renderClipMovBlob(
   return { blob, filename: `${filename}.mov` };
 }
 
-/** Export MG animation → ProRes 4444 alpha.mov, downloaded in the browser*/
+/** 导出 MG 动画 → ProRes 4444 alpha .mov, downloaded in the browser */
 export async function exportClipMov(
   state: TimelineState,
   item: TimelineItem,
@@ -66,7 +66,7 @@ export async function exportClipMov(
   URL.revokeObjectURL(url);
 }
 
-/** Convert to video → opaque h264 mp4 saved under uploads; returns its path (alpha is
+/** 转为视频 → opaque h264 mp4 saved under uploads; returns its path (alpha is
  * flattened — this env's ffmpeg can't encode alpha webm/vp9). */
 export async function bakeClipToVideo(state: TimelineState, item: TimelineItem): Promise<string> {
   const res = await fetch('/render-clip', {
@@ -89,9 +89,9 @@ async function bakeClipToProres(state: TimelineState, item: TimelineItem): Promi
   return (await res.json() as { path: string }).path;
 }
 
-/** Render to video (transparent) → VP9 alpha WebM under uploads; returns its path. Renders a transparent
+/** 转为视频（透明）→ VP9 alpha WebM under uploads; returns its path. Renders a transparent
  *  ProRes .mov locally, then transcodes it to alpha webm in the e2b sandbox (whose ffmpeg
- *  can do vp9-alpha, which the local build cannot). This is the true " to video =
+ *  can do vp9-alpha, which the local build cannot). This is the true "转为视频 =
  *  alpha webm". Throws if the sandbox is unavailable — the caller falls back to opaque h264. */
 export async function bakeClipToAlphaWebm(state: TimelineState, item: TimelineItem): Promise<string> {
   const source = await bakeClipToProres(state, item);

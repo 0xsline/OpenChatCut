@@ -34,11 +34,11 @@ interface ChatComposerProps {
   onModeChange: (m: ChatMode) => void;
   autoApply: boolean;
   onAutoApplyChange: (v: boolean) => void;
-  /** Select mode: pick clips / canvas regions / transcript
+  /** 选择模式: pick clips / canvas regions / transcript
    * spans / ruler times as structured references for the next message. */
   selecting: boolean;
   onToggleSelecting: () => void;
-  /** active creative-mode skill id (agent_skill), or null = universal */
+  /** active creative-mode skill id (agent_skill), or null = 通用 */
   creativeMode: string | null;
   onCreativeModeChange: (id: string | null) => void;
   references: RefItem[];
@@ -47,7 +47,7 @@ interface ChatComposerProps {
   selectedRefs?: RefItem[];
   onRemoveRef?: (id: string) => void;
   /** Paste supported files (video/image/audio/gif/svg) straight into the chat.
-   * Semantics: Files attached to the chat box are first imported into the media pool and then automatically attached to @ref (not directly uploaded to the timeline). */
+   * 语义:粘到聊天框的文件先导入媒体池,再自动附成 @ref(不直接上时间线)。 */
   onPasteFiles?: (files: File[]) => void;
   /** true while a pasted file is importing into the pool */
   pasting?: boolean;
@@ -116,7 +116,7 @@ function Popover({ children, onClose, w, anchor }: {
   );
 }
 
-// MG three-level quality label (speed|balance|quality)
+// MG 质量三档标签 (speed|balance|quality)
 const TIER_LABELS: Record<MgTier, string> = { speed: '速度', balance: '均衡', quality: '质量' };
 
 const REF_ICON: Record<RefItem['kind'], IconName> = {
@@ -129,7 +129,7 @@ const REF_ICON: Record<RefItem['kind'], IconName> = {
 
 export function ChatComposer(props: ChatComposerProps) {
   const t = useT();
-  // The skill catalog comes with its own official English name, which can be used directly in English without duplication in the dictionary; the summary is only in Chinese, so use t().
+  // 技能目录自带官方英文 name,英文态直接用,不进词典重复;summary 只有中文,走 t()。
   const skillName = (s: { name: string; nameZh: string }): string =>
     (getLocale() === 'en' ? s.name : s.nameZh);
   const {
@@ -139,8 +139,8 @@ export function ChatComposer(props: ChatComposerProps) {
     selectedRefs = [], onRemoveRef, onPasteFiles, pasting, pasteError, onDismissPasteError,
     taRef, placeholder,
   } = props;
-  // Hydration custom skill (manage_skill): read IDB → memory registry when mounting, bump triggers re-rendering
-  // Make allCreativeSkills()/findSkill reflect custom skills. The real source is IDB, and the manage_skill tool is also the same.
+  // 水合自定义技能(manage_skill):挂载时读 IDB → 内存注册表,bump 触发重渲染
+  // 让 allCreativeSkills()/findSkill 反映自定义技能。真源是 IDB,manage_skill 工具也水合同一份。
   const [, bumpCustom] = useState(0);
   useEffect(() => {
     loadCustomSkills().then((list) => { setCustomSkills(list); bumpCustom((n) => n + 1); });
@@ -178,7 +178,7 @@ export function ChatComposer(props: ChatComposerProps) {
 
   const insert = (reference: RefItem) => { onInsertRef(reference); closePop(); taRef.current?.focus(); };
 
-  // Drag up and down to change the height of the input area: top handle + localStorage memory
+  // 上下拖动改输入区高度:顶边把手 + localStorage 记忆
   const [shellH, setShellH] = usePersistedState('cc.composerShellH', COMPOSER_H_DEFAULT);
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
   const onResizePointerDown = useCallback((e: ReactPointerEvent) => {
@@ -197,7 +197,7 @@ export function ChatComposer(props: ChatComposerProps) {
   }, [setShellH]);
   const onResizePointerUp = useCallback(() => { dragRef.current = null; }, []);
 
-  // Model line: compact card (selected = accent check mark, slightly illuminated when hovering)
+  // 模式行:紧凑小卡(选中 = accent 对勾,悬停微亮)
   const modeRow = (m: ChatMode, label: string, desc: string) => {
     const active = mode === m;
     return (
@@ -445,6 +445,13 @@ export function ChatComposer(props: ChatComposerProps) {
           </label>
           <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
             {t('生成/导出等昂贵工具即使开启自动应用，仍走提案卡二次确认。')}
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
+            <input type="checkbox" checked={agentSettings.thinkingEnabled} onChange={(e) => patchAgent({ thinkingEnabled: e.target.checked })} style={{ accentColor: theme.accent }} />
+            {t('思考模式')}
+          </label>
+          <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
+            {t('回答前先展开思考过程；中转不支持时本轮自动关闭。')}
           </div>
           <div style={{ padding: '8px 10px 4px', color: theme.text, fontSize: 12.5 }}>{t('MG 质量')}</div>
           <div style={{ display: 'flex', gap: 4, padding: '0 10px' }}>

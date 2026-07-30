@@ -18,7 +18,7 @@ type Args = Record<string, unknown>;
 
 const MAX_BATCH = 4;
 
-// URL sniffing/naming/duration/metadata detection: see ./stock-url-utils.ts (pure function, open the file and keep the 500-line limit)
+// URL 嗅探/命名/时长兜底/metadata 探测:见 ./stock-url-utils.ts(纯函数,拆文件守 500 行上限)
 
 const newId = (): string =>
   (typeof crypto !== 'undefined' && crypto.randomUUID)

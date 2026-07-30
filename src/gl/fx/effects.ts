@@ -209,7 +209,7 @@ export const FX_EFFECTS: Record<string, FxDef> = {
     ],
   },
 
-  // ── Professional colorist toolkit ─────────────────────────────────────────
+  // ── 专业调色(colorist toolkit) ───────────────────────────────────────────
   'builtin:fx-color-wheels': {
     id: 'builtin:fx-color-wheels',
     name: '三路色轮',
@@ -710,20 +710,20 @@ export const LUT_IDS = [
 // every per-clip GL effect (fx + lut) — ClipFx / agent / inspector resolve here
 export const ALL_FX: Record<string, FxDef> = { ...FX_EFFECTS, ...LUT_EFFECTS };
 
-// ── Runtime custom fx (submit_shader's LLM generated product) registry ──────────────────────
-// effect-tools.ts captures ALL_FX with "reference" when loading the module (`const FX_EFFECTS = ALL_FX`),
-// So just write "in place" to the ALL_FX object, manage_effects' `assetId in FX_EFFECTS`
-// Use describe() to instantly find custom fx - no need to change effect-tools.ts. CUSTOM_FXSave another copy
-// Customized entries for easy differentiation/enumeration/testing. Built-in fx and LUTs remain unchanged.
-// ponytail: The essence of the registry is to share the runtime state. This is the only place where it must be "changed in place" (the only place where it can be changed
-// The way effect-tools that captures the reference sees the new fx); the rest still adheres to the immutable contract.
+// ── 运行时自定义 fx（submit_shader 的 LLM 生成产物）注册表 ─────────────────────
+// effect-tools.ts 在模块加载时用「引用」捕获了 ALL_FX（`const FX_EFFECTS = ALL_FX`），
+// 所以只要往 ALL_FX 这个对象「原地」写入，manage_effects 的 `assetId in FX_EFFECTS`
+// 与 describe() 就能立刻查到自定义 fx——无需改动 effect-tools.ts。CUSTOM_FX 另存一份
+// 自定义条目，便于区分/枚举/测试。内置 fx 与 LUT 保持不变。
+// ponytail: 注册表本质是共享运行时状态，这里是唯一必须「原地改」的地方（唯一能让已
+// 捕获引用的 effect-tools 看到新 fx 的方式）；其余仍遵守不可变约定。
 export const CUSTOM_FX: Record<string, FxDef> = {};
 
-/** Generic lut.frag source code (the plugin LUT def is assembled with it + its own .cube URL). */
+/** 通用 lut.frag 源码(插件 LUT def 用它 + 自己的 .cube URL 组装)。 */
 export const LUT_FRAG = lutFrag;
 
-/** When applying special effects, take the serializable def of non-built-in assetId (plugin:/custom:), along with setItemEffects
- * Snapshot into state.fxDefs - refresh/headless export (no memory registry) to render. The built-in returns null. */
+/** 应用特效时取非内置 assetId(plugin:/custom:)的可序列化 def,随 setItemEffects
+ * 快照进 state.fxDefs——刷新/无头导出(无内存注册表)才渲染得出。内置返回空。 */
 export function serializableDefsFor(effects: Array<{ assetId: string }>): SerializableFxDef[] {
   const out: SerializableFxDef[] = [];
   for (const { assetId } of effects) {
@@ -739,14 +739,14 @@ export function serializableDefsFor(effects: Array<{ assetId: string }>): Serial
   return out;
 }
 
-/** Register a runtime custom fx: write CUSTOM_FX and merge it into ALL_FX in place for effect-tools to find. */
+/** 注册一个运行时自定义 fx：写入 CUSTOM_FX，并原地并入 ALL_FX 供 effect-tools 查到。 */
 export function registerCustomFx(def: FxDef): FxDef {
   CUSTOM_FX[def.id] = def;
   ALL_FX[def.id] = def;
   return def;
 }
 
-/** Uninstall custom/plugin fx (CUSTOM_FX entry only; built-in not uninstallable). */
+/** 卸载自定义/插件 fx(仅 CUSTOM_FX 条目;内置不可卸)。 */
 export function unregisterCustomFx(id: string): boolean {
   if (!(id in CUSTOM_FX)) return false;
   delete CUSTOM_FX[id];

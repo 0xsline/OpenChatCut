@@ -1,6 +1,6 @@
-// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
-// Source: src/editor/types.ts UI label of top-level constant (the constant body remains in Chinese, and the usage package is t(label)).
-// The dynamic label v1 of undo historical/project data stored in reduce/store does not enter i18n (see the scanning rules).
+// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
+// 来源:src/editor/types.ts 顶层常量的 UI 标签(常量本体保持中文,使用处包 t(label))。
+// reduce/store 里存进 undo 历史/工程数据的动态标签 v1 不进 i18n(见扫换规则)。
 export default {
   // ZOOM_SHAPE_LABELS
   '冲击': 'Punch',

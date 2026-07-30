@@ -4,18 +4,18 @@ import type { TimelineItem } from '../editor/types';
 import { useT } from '../i18n/locale';
 import { buildCues, cueTextPatch, fmtCueMs } from './captionCues';
 
-// Sentence-by-sentence caption editing: List the pagination results of the same pipeline in the rendering layer (resolve→overrides→paginate) as
-// A list of sentences that can be clicked/changed. Changes written back to wordOverrides (with agent edit_captions
-// display_text (same channel): The entire new text of the sentence is hung on the first word of the sentence (with forceBreak to occupy an exclusive page),
-// The rest of the words hidden; the first complement of the next sentence forceBreak prevents the following words from merging pages. Undo the existing undo.
-// Cost: Sentences that have been modified by hand lose the word-by-word karaoke highlighting granularity (the entire sentence is highlighted with the first word).
+// 逐句字幕编辑:把渲染层同一条管线(resolve→overrides→paginate)的分页结果列成
+// 可点击/可改文字的句子列表。改动写回 wordOverrides(与 agent edit_captions 的
+// display_text 同一通道):整句新文本挂在该句第一个词上(带 forceBreak 独占一页),
+// 其余词 hidden;下一句句首补 forceBreak 防止后词并页。撤销走既有 undo。
+// 代价:被手改过的句子失去逐词卡拉OK高亮粒度(整句随第一个词高亮)。
 
 interface CaptionCueEditorProps {
   captions: CaptionsData;
   items: TimelineItem[];
   fps: number;
   onUpdate: (patch: Partial<CaptionsData>) => void;
-  /** Click sentence → the preview jumps to the beginning of the sentence (timeline ms) */
+  /** 点句 → 预览跳到该句开头(时间线 ms) */
   onSeekMs?: (ms: number) => void;
 }
 

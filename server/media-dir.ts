@@ -1,8 +1,8 @@
-// Asset storage directory (server-only): MEDIA_DIR allows users to save uploaded/generated assets
-// Any local directory (such as an external hard drive). The URL is always from the same origin /media/uploads/<name>, decoupled from the physical location —
-// When the custom directory is outside public/, it is directly flowed out by the middleware of the upload plugin (with Range, video seek required);
-// Read the backend chain: custom directory → old default directory → R2 back to the source. When switching directories, copy the old directory assets to
-// Create a new directory (keep the original files) and render the exported single directory symlink to see all the assets.
+// 素材保存目录(server-only):MEDIA_DIR 让用户把上传/生成素材改存
+// 任意本机目录(如外置硬盘)。URL 恒为同源 /media/uploads/<name>,与物理位置解耦——
+// 自定义目录在 public/ 之外时由 upload 插件的中间件直接流出(带 Range,视频 seek 必需);
+// 读取兜底链:自定义目录 → 旧默认目录 → R2 回源。切换目录时把旧目录素材复制到
+// 新目录(保留原文件),渲染导出的单目录 symlink 才能看到全部素材。
 import { createReadStream, existsSync } from 'node:fs';
 import { copyFile, mkdir, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -12,16 +12,16 @@ import { getKey, type KeyName } from './keystore.ts';
 
 export const DEFAULT_UPLOAD_DIR = join(process.cwd(), 'public', 'media', 'uploads');
 
-/** Security judgment of uploaded file name (shared by all readers and writers): single paragraph (no path separation), not starting with a dot (exclude
- * Traversal and .part/.sync intermediate state), no control characters. Allows Chinese and other Unicode names (actually existing in the asset library,
- * `\w` Whitelisting will leak them to SPA false 200). */
+/** 上传文件名安全判定(全部读写方共用):单段(无路径分隔)、不以点开头(排除
+ * 穿越与 .part/.sync 中间态)、无控制符。允许中文等 Unicode 名(实际存在于素材库,
+ * `\w` 白名单会把它们漏给 SPA 假 200)。 */
 export function isSafeUploadName(name: string): boolean {
   if (!name || name.startsWith('.')) return false;
   if (name.includes('/') || name.includes('\\') || name.includes('\0')) return false;
   return true;
 }
 
-/** Expand ~/ and require an absolute path; illegal (relative path) returns null. */
+/** 展开 ~/ 并要求绝对路径;非法(相对路径)返回 null。 */
 export function expandMediaDir(raw: string): string | null {
   const t = raw.trim();
   if (!t) return null;
@@ -30,7 +30,7 @@ export function expandMediaDir(raw: string): string | null {
   return resolve(expanded);
 }
 
-/** The current asset saving directory: MEDIA_DIR will default to public/media/uploads if it is not set or is illegal. */
+/** 当前素材保存目录:MEDIA_DIR 未设或非法时回默认 public/media/uploads。 */
 export function uploadDir(): string {
   return expandMediaDir(getKey('MEDIA_DIR')) ?? DEFAULT_UPLOAD_DIR;
 }
@@ -39,7 +39,7 @@ export function isCustomUploadDir(): boolean {
   return uploadDir() !== DEFAULT_UPLOAD_DIR;
 }
 
-/** The real disk path of the uploaded file: custom directory first, old default directory; none → null. */
+/** 上传文件的真实磁盘路径:自定义目录优先,旧默认目录兜底;都没有 → null。 */
 export function resolveUploadFile(name: string): string | null {
   if (!isSafeUploadName(name)) return null;
   const dir = uploadDir();
@@ -51,7 +51,7 @@ export function resolveUploadFile(name: string): string | null {
   return null;
 }
 
-// ── Directly stream disk files (the custom directory is outside public/ and cannot be reached by Vite static service) ──────────
+// ── 直接流出磁盘文件(自定义目录在 public/ 之外,Vite 静态服务够不到) ──────────
 
 const MIME: Record<string, string> = {
   mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
@@ -67,7 +67,7 @@ export function mimeFor(name: string): string {
   return MIME[ext] ?? 'application/octet-stream';
 }
 
-/** GET/HEAD A disk file, supports single segment Range (206/416, video seek dependent). */
+/** GET/HEAD 一个磁盘文件,支持单段 Range(206/416,视频 seek 依赖)。 */
 export async function serveDiskFile(req: IncomingMessage, res: ServerResponse, file: string): Promise<void> {
   const info = await stat(file);
   const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
@@ -75,7 +75,7 @@ export async function serveDiskFile(req: IncomingMessage, res: ServerResponse, f
   let end = info.size - 1;
   let status = 200;
   if (range && (range[1] !== '' || range[2] !== '')) {
-    if (range[1] === '') start = Math.max(0, info.size - Number(range[2]));  // bytes=-N suffix segment
+    if (range[1] === '') start = Math.max(0, info.size - Number(range[2]));  // bytes=-N 后缀段
     else {
       start = Number(range[1]);
       if (range[2] !== '') end = Math.min(end, Number(range[2]));
@@ -98,10 +98,10 @@ export async function serveDiskFile(req: IncomingMessage, res: ServerResponse, f
   createReadStream(file, { start, end }).pipe(res);
 }
 
-// ── Start synchronization ────────────────────────────────────────────────────────
+// ── 启动同步 ─────────────────────────────────────────────────────────────
 
-/** Copy the missing assets in the old directory (the original files are retained;.sync transfer atoms are dropped).
- * Idempotent, skip existing files by file name; return the number of successful copies.*/
+/** 把旧目录中目标缺少的素材复制过去(原文件保留;.sync 中转原子落名)。
+ * 幂等,按文件名跳过已有；返回成功复制数。 */
 export async function syncUploadDirectories(
   source: string,
   target: string,
@@ -131,7 +131,7 @@ export async function syncUploadDirectories(
   return copied;
 }
 
-/** Compatible with MEDIA_DIR saved at startup: add old assets missing in the default directory to the current custom directory.*/
+/** 兼容启动时已保存的 MEDIA_DIR:把默认目录里缺的老素材补到当前自定义目录。 */
 export async function syncLegacyUploads(log: (msg: string) => void): Promise<void> {
   if (!isCustomUploadDir()) return;
   try {
@@ -141,12 +141,12 @@ export async function syncLegacyUploads(log: (msg: string) => void): Promise<voi
   }
 }
 
-// ── Test connection probe ────────────────────────────────────────────────────
+// ── 测试连接探针 ─────────────────────────────────────────────────────────
 
 interface DirProbeBody { ok: boolean; note?: string; error?: string; }
 
-/** Local save directory probe: Heng 200 + JSON {ok,note|error} (not a network request, you should not leave if it fails
- * HTTP copy of classifyStatus) - postCheck takes error, okText takes note.*/
+/** 本地保存目录探针:恒 200 + JSON {ok,note|error}(不是网络请求,失败也不该走
+ * classifyStatus 的 HTTP 文案)——postCheck 取 error,okText 取 note。 */
 export async function mediaDirProbe(get: (name: KeyName) => string): Promise<Response> {
   const body = await checkMediaDir(get('MEDIA_DIR'));
   return new Response(JSON.stringify(body), {

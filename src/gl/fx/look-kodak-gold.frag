@@ -1,7 +1,7 @@
 #version 300 es
 precision highp float;
 // Inspired by Kodak Gold / consumer color negative: warm yellow-green nostalgia,
-// soft contrast and a millennium snapshot feel. Not an official LUT.
+// soft contrast, "千禧年随手拍" vibe. Not an official LUT.
 uniform sampler2D u_input;
 uniform float u_intensity;
 uniform float u_yellow;

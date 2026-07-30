@@ -1,6 +1,6 @@
-// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
-// Source: src/audio/* (recorder error message + soundLibrary grouping label).
-// The English name of the group follows the nameEn; usage (library partition) package t(group.name) that comes with soundLibrary.SOUND_GROUPS.
+// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
+// 来源:src/audio/*(recorder 错误提示 + soundLibrary 分组标签)。
+// 分组英文名沿用 soundLibrary.SOUND_GROUPS 自带的 nameEn;使用处(library 分区)包 t(group.name)。
 export default {
   // recorder.ts
   '此浏览器不支持录音': 'Recording is not supported in this browser',

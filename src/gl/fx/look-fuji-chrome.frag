@@ -1,7 +1,7 @@
 #version 300 es
 precision highp float;
 // Inspired by Fuji Classic Chrome film sim: muted chroma, soft S-curve,
-// cool-leaning mids and a documentary travel-editorial look. Not an official LUT.
+// cool-leaning mids, documentary / "小红书旅行" look. Not an official LUT.
 uniform sampler2D u_input;
 uniform float u_intensity;
 uniform float u_fade;

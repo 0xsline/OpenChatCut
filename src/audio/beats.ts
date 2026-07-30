@@ -1,16 +1,16 @@
-// Beat detection core (detect_beats): spectral flux onset envelope → autocorrelation fixed BPM (for frequency doubling
-// log-Gaussian preference suppression) → phase fitting to equidistant beat grid → 4/4 accent heuristic to pick downbeats.
-// Pure DSP, zero model dependence, node testable; suitable for soundtracks/BGM with a stable rhythm (please segment the variable speed tracks).
-// The splitting style is the same as loudness/silence: pure function + browser decoding glue.
+// 节拍检测核心(detect_beats):谱通量 onset 包络 → 自相关定 BPM(倍频用
+// log-高斯偏好压制)→ 相位拟合出等距节拍网格 → 4/4 重音启发式挑强拍。
+// 纯 DSP、零模型依赖,node 可测;适用节奏稳定的配乐/BGM(变速曲目请分段)。
+// 拆分风格同 loudness/silence:纯函数 + 浏览器解码胶水。
 
 export interface BeatAnalysis {
-  /** 0 = No credible beat detected */
+  /** 0 = 没检出可信节拍 */
   bpm: number;
-  /** The multiple of the autocorrelation peak relative to the mean value; ≥2 is considered credible, and below 1.2 is basically unrhythmic asset */
+  /** 自相关峰相对均值的倍数;≥2 视为可信,1.2 以下基本是无节奏素材 */
   confidence: number;
-  /** Beat time (source seconds, equidistant grid) */
+  /** 节拍时刻(源秒,等距网格) */
   beats: number[];
-  /** The first beat of each measure (4/4 heuristic, accent phase) */
+  /** 每小节第一拍(4/4 启发式,重音相位) */
   downbeats: number[];
 }
 
@@ -18,10 +18,10 @@ const FFT_SIZE = 1024;
 const HOP = 512;
 const MIN_BPM = 60;
 const MAX_BPM = 180;
-/** No beat will be generated if the reliability is lower than this (voice/ambient sound gatekeeping) */
+/** 低于此可信度不产出节拍(语音/环境声守门) */
 const MIN_CONFIDENCE = 1.2;
 
-/** Iterate over in-place radix-2 FFT (internal use only, length must be a power of 2). */
+/** 迭代原地 radix-2 FFT(仅内部用,长度必须是 2 的幂)。 */
 function fft(re: Float64Array, im: Float64Array): void {
   const n = re.length;
   for (let i = 1, j = 0; i < n; i++) {
@@ -57,7 +57,7 @@ function fft(re: Float64Array, im: Float64Array): void {
   }
 }
 
-/** Spectral flux onset envelope: frame length 1024/hop 512, half-wave rectification + 0.5s sliding mean detrending. */
+/** 谱通量 onset 包络:帧长 1024/hop 512,半波整流 + 0.5s 滑动均值去趋势。 */
 export function onsetEnvelope(samples: Float32Array, sampleRate: number): { env: Float64Array; hopSeconds: number } {
   const hopSeconds = HOP / sampleRate;
   const frames = Math.floor((samples.length - FFT_SIZE) / HOP);
@@ -85,7 +85,7 @@ export function onsetEnvelope(samples: Float32Array, sampleRate: number): { env:
     }
     flux[t] = t === 0 ? 0 : sum;
   }
-  // De-trend: subtract 0.5s from the sliding mean and then rectify it by half wave to highlight the transient and suppress the continuous energy.
+  // 去趋势:减 0.5s 滑动均值再半波整流,突出瞬态、压掉持续能量
   const half = Math.max(1, Math.round(0.25 / hopSeconds));
   const env = new Float64Array(frames);
   for (let t = 0; t < frames; t++) {
@@ -105,7 +105,7 @@ interface TempoEstimate {
   confidence: number;
 }
 
-/** Autocorrelation fixed BPM: 60..180 sweep, log2-Gaussian (center 120) pressure multiplication; peak parabolic refinement. */
+/** 自相关定 BPM:60..180 扫描,log2-高斯(中心 120)压倍频;峰值抛物线细化。 */
 export function estimateTempo(env: Float64Array, hopSeconds: number): TempoEstimate | null {
   const minLag = Math.max(2, Math.floor(60 / MAX_BPM / hopSeconds));
   const maxLag = Math.ceil(60 / MIN_BPM / hopSeconds);
@@ -135,7 +135,7 @@ export function estimateTempo(env: Float64Array, hopSeconds: number): TempoEstim
     }
   }
   if (bestLag < 0) return null;
-  // Parabolic refinement sub-hop period
+  // 抛物线细化亚 hop 周期
   let period = bestLag;
   if (bestLag > minLag && bestLag < maxLag) {
     const y0 = ac[bestLag - 1]!;
@@ -151,7 +151,7 @@ export function estimateTempo(env: Float64Array, hopSeconds: number): TempoEstim
   };
 }
 
-/** Phase fitting: Sweep the offset within a cycle, take the envelope sample and the largest equidistant grid (hop units). */
+/** 相位拟合:在一个周期内扫偏移,取包络采样和最大的等距网格(hop 单位)。 */
 export function fitBeatGrid(env: Float64Array, periodHops: number): number[] {
   if (env.length === 0 || !(periodHops > 1)) return [];
   const sample = (x: number): number => {
@@ -177,7 +177,7 @@ export function fitBeatGrid(env: Float64Array, periodHops: number): number[] {
   return beats;
 }
 
-/** 4/4 accent heuristic: Among the four bar phases, the group with the largest beat point envelope is the downbeat. */
+/** 4/4 重音启发式:四种小节相位里,拍点包络和最大的那组是强拍。 */
 export function pickDownbeats(env: Float64Array, beatsHops: readonly number[]): number[] {
   if (beatsHops.length < 4) return [];
   const at = (x: number): number => env[Math.min(env.length - 1, Math.max(0, Math.round(x)))]!;
@@ -194,7 +194,7 @@ export function pickDownbeats(env: Float64Array, beatsHops: readonly number[]): 
   return beatsHops.filter((_, i) => (i - bestPhase) % 4 === 0 && i >= bestPhase);
 }
 
-/** One-stop: PCM → BeatAnalysis(source seconds). Rhythmic/arrhythmic asset returns bpm 0 + empty beat. */
+/** 一站式:PCM → BeatAnalysis(源秒)。节奏不稳/无节奏素材返回 bpm 0 + 空拍。 */
 export function analyzeBeats(samples: Float32Array, sampleRate: number): BeatAnalysis {
   const none: BeatAnalysis = { bpm: 0, confidence: 0, beats: [], downbeats: [] };
   if (samples.length < sampleRate * 4 || sampleRate <= 0) return none;
@@ -213,7 +213,7 @@ export function analyzeBeats(samples: Float32Array, sampleRate: number): BeatAna
   };
 }
 
-// ── Browser-specific (fetch + WebAudio decoding, splitting style is the same as loudness/silence) ──────────
+// ── 浏览器专用(fetch + WebAudio 解码,拆分风格同 loudness/silence) ──────────
 
 function mixToMono(buffer: AudioBuffer): Float32Array {
   const { numberOfChannels, length } = buffer;
@@ -225,7 +225,7 @@ function mixToMono(buffer: AudioBuffer): Float32Array {
   return out;
 }
 
-/** Pull source → offline decoding → mix mono → beat analysis (source seconds). Browser only. */
+/** 拉源→离线解码→混单声道→节拍分析(源秒)。浏览器专用。 */
 export async function analyzeAssetBeats(src: string): Promise<BeatAnalysis> {
   const res = await fetch(src);
   if (!res.ok) throw new Error(`加载音频失败: ${src} (HTTP ${res.status})`);

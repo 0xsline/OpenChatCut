@@ -1,0 +1,31 @@
+services:
+  openchatcut:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM node:24-bookworm-slim
+        RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg chromium && rm -rf /var/lib/apt/lists/*
+        WORKDIR /app
+        COPY package.json package-lock.json ./
+        RUN npm ci --ignore-scripts
+        RUN chmod 755 node_modules/@ffprobe-installer/linux-x64/ffprobe
+        COPY . .
+        RUN npm run build
+        RUN mkdir -p /data/.openchatcut /data/media
+        ENV HOME=/data
+        EXPOSE 5199
+        CMD npm run dev -- --host 0.0.0.0 --port 5199
+    env_file: .env
+    container_name: openchatcut
+    restart: unless-stopped
+    ports:
+      - 100.98.241.63:15199:5199
+    volumes:
+      - ./data:/data/.openchatcut
+      - ./media:/data/media
+      - ./.env.local:/app/.env.local
+    mem_limit: 1500m
+    cpus: 1.5
+    pids_limit: 512
+    security_opt:
+      - no-new-privileges:true

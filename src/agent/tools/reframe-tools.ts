@@ -1,30 +1,51 @@
-export { REFRAME_TOOL_SCHEMAS, REFRAME_TOOL_NAMES } from './schemas/reframe-tools';
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { TimelineItem, TimelineState } from '../../editor/types';
 import { detectFocalPoints, magnificationForAspect } from '../../reframe/detect';
 
-// auto_reframe — Custom tool.
-// reframe originally only had the "write/render" infrastructure (builtin:zoom + reserved
-// __openchatcutReframeCurve = ReframeCurveV1), there is no "sample video → detect subject → automatically generate key frames"
-// Agent tool. This tool connects the heuristic detection of src/reframe/detect.ts to EditorCore:
-// Sampling target video → detect focus every intervalFrames → write frame by frame setReframeKeyframe,
-// Let a cropping window like 16:9→9:16 follow the subject. Pixel sampling can only be run in the browser (headless and graceful error reporting).
+// auto_reframe — 自定工具。
+// reframe 原本只有“写入/渲染”基础设施(builtin:zoom + reserved
+// __openchatcutReframeCurve = ReframeCurveV1),没有“采样视频→检测主体→自动生成关键帧”
+// 的 Agent 工具。本工具把 src/reframe/detect.ts 的启发式检测接到 EditorCore:
+// 采样目标视频 → 每隔 intervalFrames 检测焦点 → 逐帧写 setReframeKeyframe,
+// 让 16:9→9:16 之类的裁剪窗口跟随主体。像素采样只能在浏览器跑(headless 优雅报错)。
 
 type Args = Record<string, unknown>;
 
-/** Prefix matching parsing target clip (same semantics as findItem of tools.ts/effect-tools.ts) */
+export const REFRAME_TOOL_SCHEMAS: AgentToolSchema[] = [
+  {
+    name: 'auto_reframe',
+    description:
+      "Auto-reframe a video clip: sample its frames, detect the subject/focal point per interval, and write reframe keyframes (builtin:zoom __openchatcutReframeCurve) so the crop window follows the subject when the canvas aspect differs (e.g. 16:9→9:16). Clears the clip's existing reframe keyframes first, then re-detects. Browser-only (needs the actual video pixels); returns an error if run headless or if the target isn't a video with a source.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string', description: 'Target video clip id (prefix ok).' },
+        intervalFrames: { type: 'number', description: 'Sample the video every N frames (default 15, min 1). Smaller = more keyframes, slower.' },
+        sensitivity: { type: 'number', description: '0..1 focus sharpness: higher snaps the focal point harder to the strongest-detail region (default 0.5).' },
+        smooth: { type: 'number', description: '0..1 temporal EMA on focal path (default 0.45). Higher = less crop jitter; 0 = raw per-frame energy.' },
+        maxSamples: { type: 'number', description: 'Cap on seek samples for long clips (default 60).' },
+      },
+      required: ['itemId'],
+    },
+  },
+];
+
+export const REFRAME_TOOL_NAMES = new Set(REFRAME_TOOL_SCHEMAS.map((t) => t.name));
+
+/** 前缀匹配解析目标 clip(与 tools.ts/effect-tools.ts 的 findItem 语义一致) */
 function findItem(items: TimelineItem[], id: unknown): TimelineItem | null {
   const q = String(id ?? '');
   if (!q) return null;
   return items.find((it) => it.id === q || it.id.startsWith(q)) ?? null;
 }
 
-/** Use media src to create an off-screen <video>, wait for the metadata to be ready (get videoWidth/Height), and time out */
+/** 用媒体 src 建一个离屏 <video>,等元数据就绪(拿 videoWidth/Height),超时兜底 */
 function loadVideo(src: string): Promise<HTMLVideoElement> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
     video.muted = true;
-    video.crossOrigin = 'anonymous'; // Same source /media/uploads has no impact; avoid contaminating read pixels when crossing sources
+    video.crossOrigin = 'anonymous'; // 同源 /media/uploads 无影响;跨源时避免污染读像素
     video.preload = 'auto';
     const cleanup = (): void => {
       video.removeEventListener('loadedmetadata', onOk);
@@ -48,7 +69,7 @@ function loadVideo(src: string): Promise<HTMLVideoElement> {
   });
 }
 
-/** Clear all existing reframe keyframes for this clip (automatic reframe = full replacement, not superposition)*/
+/** 清掉该 clip 已有的全部 reframe 关键帧(自动重跑 = 全量替换,而非叠加) */
 function clearReframe(ctx: AgentContext, item: TimelineItem): void {
   const kfs = item.zoom?.reframeCurve?.keyframes ?? [];
   for (const k of kfs) ctx.commands.removeReframeKeyframe(item.id, k.frame);
@@ -57,7 +78,7 @@ function clearReframe(ctx: AgentContext, item: TimelineItem): void {
 export async function execReframeTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
   if (name !== 'auto_reframe') return { error: `unknown tool ${name}` };
 
-  // —— Boundary verification: environment (pixel sampling requires a browser) ——
+  // —— 边界校验:环境(像素采样需浏览器) ——
   if (typeof document === 'undefined' || typeof HTMLVideoElement === 'undefined') {
     return { error: 'auto_reframe 需要浏览器环境(视频像素采样),当前无 DOM,无法运行。' };
   }
@@ -70,7 +91,7 @@ export async function execReframeTool(name: string, args: Args, ctx: AgentContex
   }
   if (!item.src) return { error: `clip ${item.id} 没有可采样的视频源(src 缺失)` };
 
-  // ——Parameter cleaning——
+  // —— 参数清洗 ——
   const intervalFrames = Number.isFinite(Number(args.intervalFrames)) ? Math.max(1, Math.floor(Number(args.intervalFrames))) : undefined;
   const sensitivity = Number.isFinite(Number(args.sensitivity)) ? Math.max(0, Math.min(1, Number(args.sensitivity))) : undefined;
   const smooth = Number.isFinite(Number(args.smooth)) ? Math.max(0, Math.min(1, Number(args.smooth))) : undefined;

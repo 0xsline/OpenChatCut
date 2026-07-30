@@ -13,17 +13,17 @@ import {
   type SettingsVendorPage, type StagedValues as Values,
 } from './settingsSchema';
 
-// Global settings modal, three columns: left = "Classification → Capability" two-level collapsible tree (capability row = status indicator + name);
-// Center = list of providers under the current capability (generating four capabilities with a "default provider" route select at the top);
-// Right = Select the provider's configuration page (header = icon + name + configuration status, body = fields).
-// The key value only flows to the dev server via POST /api/keys (stored in memory + .env.local, already gitignore),
-// Server-side injection; GET only returns Boolean for secret, never backfills. The model/routing field is a non-secret configuration and the current value is
-// Echoed through GET's models channel.
-// values semantics: field name appearing in values = temporary changes; '' = explicit temporary clearing (sent when saving,
-// The backend treats the empty string as deleting the key and deletes the row from .env.local, which means "return to default" for the model field). Temporary baseline:
-// Model field = current value on the server, the rest = '' (the echoed value is not temporarily stored, only the actual changes are entered into the values);
-// values are shared globally by field name and the switching tree nodes are not cleared (MINIMAX_* instant synchronization across capability pages).
-// The right column (vendor configuration page + field rendering + test connection) is in settingsVendorPane.tsx.
+// 全局设置模态,三栏:左 =「分类 → 能力」两级可折叠树(能力行 = 状态点 + 名);
+// 中 = 当前能力下的厂商列表(生成四能力顶部带「默认厂商」路由 select);
+// 右 = 选中厂商的配置页(头 = 图标 + 名称 + 配置状态,体 = 字段)。
+// 密钥值只经 POST /api/keys 流向 dev server(存内存 + .env.local,已 gitignore),
+// 服务端注入;GET 对 secret 只回布尔,永不回填。模型 / 路由字段是非密配置,当前值
+// 经 GET 的 models 通道回显。
+// values 语义:字段名出现在 values 里 = 有暂存改动;'' = 显式暂存清除(保存时发送,
+// 后端把空串视为删除该键并从 .env.local 删行,对模型字段即「回到默认」)。暂存基线:
+// 模型字段 = 服务端当前值,其余 = ''(回显值不算暂存,只有真实改动进 values);
+// values 按字段名全局共享且切换树节点不清空(MINIMAX_* 跨能力页即时同步)。
+// 右栏(厂商配置页 + 字段渲染 + 测试连接)在 settingsVendorPane.tsx。
 const CLOSE_CONFIRM_MS = 2000;
 const TREE_WIDTH = 200;
 const VENDOR_COL_WIDTH = 185;
@@ -75,7 +75,7 @@ function useSaveKeys(values: Values, onSaved: (next: KeyStatusResponse) => void)
   return { save, saving, msg, error };
 }
 
-/** Anti-accidental closing: When there are unsaved changes, Mask/Esc will only warn you for the first time, and it will be truly closed when triggered again within 2 seconds. */
+/** 防误关:有未保存改动时,遮罩 / Esc 第一次只警示,2 秒内再次触发才真正关闭。 */
 function useCloseGuard(dirty: boolean, onClose: () => void): { requestClose: () => void; warn: string | null } {
   const [warn, setWarn] = useState<string | null>(null);
   const armedAt = useRef(0);
@@ -106,7 +106,7 @@ function useHover(): [boolean, { onMouseEnter: () => void; onMouseLeave: () => v
   return [hovered, { onMouseEnter: () => setHovered(true), onMouseLeave: () => setHovered(false) }];
 }
 
-/** The left tree capability is selected + the middle column provider is selected; when changing capabilities, the middle column is reset to the first provider with the capability. */
+/** 左树能力选中 + 中列厂商选中;切能力时中列重置为该能力第一家。 */
 function useTreeSelection(): {
   group: SettingsGroup; page: SettingsVendorPage;
   selectGroup: (key: string) => void; selectVendor: (key: string) => void;
@@ -123,9 +123,9 @@ function useTreeSelection(): {
   return { group, page, selectGroup, selectVendor: setVendorKey };
 }
 
-// ── Main component ───────────────────────────────────────────────────────────
+// ── 主组件 ────────────────────────────────────────────────────────────────
 
-/** After successful saving, let the agent side immediately perceive: caps / key Boolean / model routing / LLM interface and model. */
+/** 保存成功后让 agent 侧即时感知:caps / key 布尔 / 模型路由 / LLM 接口与模型。 */
 function applySavedToAgent(next: KeyStatusResponse): void {
   applyLiveCaps(next.caps);
   applyLiveKeyStatus(next.keys);
@@ -149,7 +149,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { requestClose, warn } = useCloseGuard(dirty, onClose);
   useEscape(requestClose);
 
-  // Temporary storage: relative to the baseline (model field = current value of the server, the rest = ''), if there is no change, the temporary storage will be cancelled.
+  // 暂存:相对基线(模型字段 = 服务端当前值,其余 = '')无变化即撤销暂存。
   const stage = (field: SettingsField, raw: string): void => {
     const baseline = isModelField(field) ? modelValue(status, field.name) : '';
     setValues((prev) => raw === baseline ? omitKey(prev, field.name) : { ...prev, [field.name]: raw });
@@ -195,7 +195,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ── Left column (categories can be folded → capabilities can be selected) ──────────────────────────────────────
+// ── 左栏(分类可折叠 → 能力可选中) ───────────────────────────────────────
 
 function CapabilityTree({ status, activeGroup, onSelect }: {
   status: KeyStatusResponse | null; activeGroup: string; onSelect: (key: string) => void;
@@ -265,7 +265,7 @@ function GroupRow({ title, on, active, onSelect }: {
   );
 }
 
-// ── Middle column (route select + provider list) ────────────────────────────────────────
+// ── 中栏(路由 select + 厂商列表) ─────────────────────────────────────────
 
 function VendorList({ group, activeVendor, onSelectVendor, ctx }: {
   group: SettingsGroup; activeVendor: string; onSelectVendor: (key: string) => void; ctx: FieldCtx;
@@ -319,9 +319,9 @@ function FooterBar({ reveal, onReveal, message, dirty, saving, onClose, onSave }
   );
 }
 
-// ── style ───────────────────────────────────────────────────────────
+// ── 样式 ─────────────────────────────────────────────────────────────────
 
-/** Shared by left tree capability row/middle column provider row: selected accent left bar + panelAlt bottom. */
+/** 左树能力行 / 中列厂商行共用:选中态 accent 左条 + panelAlt 底。 */
 function navRowStyle(active: boolean, hovered: boolean): React.CSSProperties {
   return {
     font: 'inherit', fontSize: 12, display: 'flex', alignItems: 'center', gap: 7,

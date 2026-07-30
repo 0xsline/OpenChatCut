@@ -106,16 +106,16 @@ export function sampleTimesMs(fromMs: number, toMs: number, count: number): numb
   return Array.from({ length: n }, (_, i) => Math.round(lo + ((i + 0.5) / n) * span));
 }
 
-// ── Remove nearly duplicates ───────────────────────────────────────────────────────
-// Uniform sampling will result in N almost identical pictures on fixed-camera asset, and burning visual tokens in vain will not help.
-// position. First use ffmpeg scene detection to pick out the moments when "the picture really changes", and then use uniform sampling to fill in the gaps.
-// Analysis is done at scaled down to 160 width, 2fps, at a bounded cost; any failure silently falls back to uniform sampling.
+// ── 近重复剔除 ────────────────────────────────────────────────────────────
+// 均匀取样在固定机位素材上会得到 N 张几乎一样的图,白白烧掉视觉 token 也帮不上
+// 定位。先用 ffmpeg 场景检测挑出「画面真的变了」的时刻,不够再用均匀取样补齐。
+// 分析在缩到 160 宽、2fps 上做,成本有界;任何失败都静默退回均匀取样。
 
-/** Scene difference threshold (0..1): low enough to capture the action changes in the camera, not just hard cuts.*/
+/** 场景差异阈值(0..1):够低才能抓到机位内的动作变化,不只是硬切。 */
 const SCENE_THRESHOLD = 0.08;
 const SCENE_ANALYSIS_TIMEOUT_MS = 20_000;
 
-/** The moment when the picture changes significantly (milliseconds, ascending order). Returns empty array on failure = caller falls back to uniform sampling.*/
+/** 画面显著变化的时刻(毫秒,升序)。失败返回空数组 = 调用方退回均匀取样。 */
 function sceneChangeTimesMs(input: string, fromMs: number, toMs: number): Promise<number[]> {
   return new Promise((resolve) => {
     const times: number[] = [];
@@ -132,7 +132,7 @@ function sceneChangeTimesMs(input: string, fromMs: number, toMs: number): Promis
     const done = (): void => { child.kill('SIGKILL'); resolve(times); };
     const timer = setTimeout(done, SCENE_ANALYSIS_TIMEOUT_MS);
     child.stderr?.on('data', (chunk: Buffer) => {
-      // Streaming analysis of pts_time avoids storing the entire showinfo in memory
+      // 流式解析 pts_time,避免把整段 showinfo 攒在内存里
       tail += String(chunk);
       const lines = tail.split('\n');
       tail = lines.pop() ?? '';
@@ -147,8 +147,8 @@ function sceneChangeTimesMs(input: string, fromMs: number, toMs: number): Promis
 }
 
 /**
- * The change time is given priority, and the samples are evenly sampled to complete count sampling points (in ascending order, not too close to each other).
- * Pure function, easy to test.
+ * 变化时刻优先、均匀取样补齐,凑够 count 个采样点(升序、互不挨太近)。
+ * 纯函数,便于测试。
  */
 export function pickDistinctTimes(
   candidates: readonly number[],
@@ -159,14 +159,14 @@ export function pickDistinctTimes(
   const n = Math.max(1, Math.min(MAX_SAMPLES, Math.round(count)));
   const lo = Math.max(0, fromMs);
   const hi = Math.max(lo + 1, toMs);
-  const minGap = (hi - lo) / (n * 2); // Those that are too close together will be counted as being in the same place and will not occupy the same space again.
+  const minGap = (hi - lo) / (n * 2); // 挨得太近的算同一处,不重复占位
   const picked: number[] = [];
   const tryPush = (t: number): void => {
     if (picked.length >= n || t < lo || t >= hi) return;
     if (picked.some((p) => Math.abs(p - t) < minGap)) return;
     picked.push(t);
   };
-  // When there are more candidates than places, they will be divided evenly in order to avoid only taking the first pile.
+  // 候选多于名额时按序均摊,避免只取到开头那一堆
   const sorted = [...candidates].filter((t) => Number.isFinite(t)).sort((a, b) => a - b);
   const stride = sorted.length > n ? sorted.length / n : 1;
   for (let i = 0; i < sorted.length && picked.length < n; i += 1) {
@@ -238,7 +238,7 @@ export function extractFramesPlugin(): Plugin {
               ? Math.min(body.toMs, durationMs)
               : durationMs;
             const count = typeof body.count === 'number' ? body.count : DEFAULT_SAMPLES;
-            // Changes are given priority (the fixed camera position will not return N pictures of the same image); analysis failure automatically returns to uniform sampling
+            // 变化处优先(固定机位不会再回 N 张同图);分析失败自动退回均匀取样
             const scenes = await sceneChangeTimesMs(inputPath, fromMs, toMs);
             times = scenes.length
               ? pickDistinctTimes(scenes, fromMs, toMs, count)

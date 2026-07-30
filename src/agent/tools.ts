@@ -1,51 +1,59 @@
 import type { AgentToolSchema } from './tool-schema';
 import type { AgentContext } from './context';
-import { AUDIO_ASSET_TOOL_NAMES } from './tools/schemas/audio-asset-tools';
-import { TRANSCRIPT_TOOL_NAMES, TRANSCRIPT_TOOL_SCHEMAS } from './tools/schemas/transcript-tools';
-import { TIMELINE_TOOL_NAMES, TIMELINE_TOOL_SCHEMAS } from './tools/schemas/timeline-tools';
-import { SCRIPT_TOOL_NAMES, SCRIPT_TOOL_SCHEMAS } from './tools/schemas/script-tools';
-import { FRAMES_TOOL_NAMES, FRAMES_TOOL_SCHEMAS } from './tools/schemas/frames-tool';
-import { SCENE_DETECTION_TOOL_NAMES, SCENE_DETECTION_TOOL_SCHEMAS } from './tools/schemas/scene-detection-tools';
-import { GENERATE_TOOL_NAMES, GENERATE_TOOL_SCHEMAS } from './tools/generate-schemas';
-import { EFFECT_TOOL_NAMES, EFFECT_TOOL_SCHEMAS } from './tools/schemas/effect-tools';
-import { LIBRARY_TOOL_NAMES, LIBRARY_TOOL_SCHEMAS } from './tools/schemas/library-tools';
-import { EDIT_ITEM_TOOL_NAMES, EDIT_ITEM_TOOL_SCHEMAS } from './tools/schemas/edit-item-tools';
-import { MEDIA_POOL_TOOL_NAMES, MEDIA_POOL_TOOL_SCHEMAS } from './tools/schemas/media-pool-tools';
-import { TRACK_TOOL_NAMES, TRACK_TOOL_SCHEMAS } from './tools/schemas/track-tools';
-import { DESIGN_TOOL_NAMES, DESIGN_TOOL_SCHEMAS } from './tools/schemas/design-tools';
-import { STOCK_TOOL_NAMES, STOCK_TOOL_SCHEMAS } from './tools/schemas/stock-tools';
-import { CAPTIONS_TOOL_NAMES, CAPTIONS_TOOL_SCHEMAS } from './tools/schemas/captions-tools';
-import { SHADER_TOOL_NAMES, SHADER_TOOL_SCHEMAS } from './tools/schemas/shader-tools';
-import { HIGHLIGHT_TOOL_NAMES, HIGHLIGHT_TOOL_SCHEMAS } from './tools/schemas/highlight-tool';
-import { REFRAME_TOOL_NAMES, REFRAME_TOOL_SCHEMAS } from './tools/schemas/reframe-tools';
-import { EXPORT_TOOL_NAMES, EXPORT_TOOL_SCHEMAS } from './tools/schemas/export-tools';
-import { EXPORT_QA_TOOL_NAMES, EXPORT_QA_TOOL_SCHEMAS } from './tools/schemas/export-qa-tools';
-import { TEMPLATE_TOOL_NAMES, TEMPLATE_TOOL_SCHEMAS } from './tools/schemas/template-tools';
-import { LOUDNESS_TOOL_NAMES, LOUDNESS_TOOL_SCHEMAS } from './tools/schemas/loudness-tools';
-import { ISOLATE_VOICE_TOOL_NAMES, ISOLATE_VOICE_TOOL_SCHEMAS } from './tools/schemas/isolate-voice-tools';
-import { SKILL_TOOL_NAMES, SKILL_TOOL_SCHEMAS } from './tools/schemas/skill-tools';
-import { WATERMARK_TOOL_NAMES, WATERMARK_TOOL_SCHEMAS } from './tools/schemas/watermark-tools';
-import { MARKERS_TOOL_NAMES, MARKERS_TOOL_SCHEMAS } from './tools/schemas/markers-tools';
-import { MG_VIDEO_TOOL_NAMES, MG_VIDEO_TOOL_SCHEMAS } from './tools/schemas/mg-video-tools';
-import { EDIT_ASSET_TOOL_NAMES, EDIT_ASSET_TOOL_SCHEMAS } from './tools/schemas/edit-asset-tools';
-import { WEB_TOOL_NAMES, WEB_TOOL_SCHEMAS } from './tools/schemas/web-tools';
-import { FONT_TOOL_NAMES, FONT_TOOL_SCHEMAS } from './tools/schemas/font-tools';
-import { FOLLOWUP_TOOL_NAMES, FOLLOWUP_TOOL_SCHEMAS } from './tools/schemas/followup-tools';
-import { PROJECT_TOOL_NAMES, PROJECT_TOOL_SCHEMAS } from './tools/schemas/project-tools';
-import { UPLOAD_TOOL_NAMES, UPLOAD_TOOL_SCHEMAS } from './tools/schemas/upload-tools';
-import { FRICTION_TOOL_NAMES, FRICTION_TOOL_SCHEMAS } from './tools/schemas/friction-tools';
-import { READ_PROJECT_TOOL_NAMES, READ_PROJECT_TOOL_SCHEMAS } from './tools/schemas/read-project-tools';
-import { MG_CODE_TOOL_NAMES, MG_CODE_TOOL_SCHEMAS } from './tools/schemas/mg-code-tools';
-import { PLUGIN_SKILL_TOOL_NAMES, PLUGIN_SKILL_TOOL_SCHEMAS } from './tools/schemas/plugin-skill-tools';
-import { RUN_CODE_TOOL_NAMES, RUN_CODE_TOOL_SCHEMAS } from './tools/schemas/run-code-tools';
-import { PROBE_TOOL_NAMES, PROBE_TOOL_SCHEMAS } from './tools/schemas/probe-tools';
-import { MULTICAM_TOOL_NAMES, MULTICAM_TOOL_SCHEMAS } from './tools/schemas/multicam-tools';
-import { UNDO_TOOL_NAMES, UNDO_TOOL_SCHEMAS } from './tools/schemas/undo-tools';
-import { LAYOUT_TOOL_NAMES, LAYOUT_TOOL_SCHEMAS } from './tools/schemas/layout-tools';
-import { SILENCE_TOOL_NAMES, SILENCE_TOOL_SCHEMAS } from './tools/schemas/silence-tools';
-import { COLOR_SCOPE_TOOL_NAMES, COLOR_SCOPE_TOOL_SCHEMAS } from './tools/schemas/color-scope-tools';
-import { BEAT_TOOL_NAMES, BEAT_TOOL_SCHEMAS } from './tools/schemas/beat-tools';
-import { withProgressTargets } from './tools/schemas/progress';
+import { ASPECT_PRESETS, defaultTrackId, resolveTrackId, timelineTrackIds, trackAlias, trackKind, type AspectFit, type MediaAsset } from '../editor/types';
+import { compileTemplate } from '../template-host';
+import { generateAgentText } from './client';
+import { designStyleHint } from './systemPrompt';
+import { TRANSCRIPT_TOOL_SCHEMAS, TRANSCRIPT_TOOL_NAMES, execTranscriptTool } from './tools/transcript-tools';
+import { TIMELINE_TOOL_SCHEMAS, TIMELINE_TOOL_NAMES, execTimelineTool } from './tools/timeline-tools';
+import { SCRIPT_TOOL_SCHEMAS, SCRIPT_TOOL_NAMES, execScriptTool } from './tools/script-tools';
+import { FRAMES_TOOL_SCHEMAS, FRAMES_TOOL_NAMES, execFramesTool } from './tools/frames-tool';
+import { SCENE_DETECTION_TOOL_SCHEMAS, SCENE_DETECTION_TOOL_NAMES, execSceneDetectionTool } from './tools/scene-detection-tools';
+import { GENERATE_TOOL_SCHEMAS, GENERATE_TOOL_NAMES, execGenerateTool } from './tools/generate-tools';
+import { EFFECT_TOOL_SCHEMAS, EFFECT_TOOL_NAMES, execEffectTool } from './tools/effect-tools';
+import { LIBRARY_TOOL_SCHEMAS, LIBRARY_TOOL_NAMES, execLibraryTool } from './tools/library-tools';
+import { EDIT_ITEM_TOOL_SCHEMAS, EDIT_ITEM_TOOL_NAMES, execEditItemTool } from './tools/edit-item-tools';
+import { MEDIA_POOL_TOOL_SCHEMAS, MEDIA_POOL_TOOL_NAMES, execMediaPoolTool } from './tools/media-pool-tools';
+import { TRACK_TOOL_SCHEMAS, TRACK_TOOL_NAMES, execTrackTool } from './tools/track-tools';
+import { DESIGN_TOOL_SCHEMAS, DESIGN_TOOL_NAMES, execDesignTool } from './tools/design-tools';
+import { STOCK_TOOL_SCHEMAS, STOCK_TOOL_NAMES, execStockTool } from './tools/stock-tools';
+import { CAPTIONS_TOOL_SCHEMAS, CAPTIONS_TOOL_NAMES, execCaptionsTool } from './tools/captions-tools';
+import { SHADER_TOOL_SCHEMAS, SHADER_TOOL_NAMES, execShaderTool } from './tools/shader-tools';
+import { HIGHLIGHT_TOOL_SCHEMAS, HIGHLIGHT_TOOL_NAMES, execHighlightTool } from './tools/highlight-tool';
+import { REFRAME_TOOL_SCHEMAS, REFRAME_TOOL_NAMES, execReframeTool } from './tools/reframe-tools';
+import { EXPORT_TOOL_SCHEMAS, EXPORT_TOOL_NAMES, execExportTool } from './tools/export-tools';
+import { EXPORT_QA_TOOL_SCHEMAS, EXPORT_QA_TOOL_NAMES, execExportQaTool } from './tools/export-qa-tools';
+import { TEMPLATE_TOOL_SCHEMAS, TEMPLATE_TOOL_NAMES, execTemplateTool } from './tools/template-tools';
+import { LOUDNESS_TOOL_SCHEMAS, LOUDNESS_TOOL_NAMES, execLoudnessTool } from './tools/loudness-tools';
+import { ISOLATE_VOICE_TOOL_SCHEMAS, ISOLATE_VOICE_TOOL_NAMES, execIsolateVoiceTool } from './tools/isolate-voice-tools';
+import { SKILL_TOOL_SCHEMAS, SKILL_TOOL_NAMES, execSkillTool } from './tools/skill-tools';
+import { WATERMARK_TOOL_SCHEMAS, WATERMARK_TOOL_NAMES, execWatermarkTool } from './tools/watermark-tools';
+import { MARKERS_TOOL_SCHEMAS, MARKERS_TOOL_NAMES, execMarkersTool } from './tools/markers-tools';
+import { MG_VIDEO_TOOL_SCHEMAS, MG_VIDEO_TOOL_NAMES, execMgVideoTool } from './tools/mg-video-tools';
+import { EDIT_ASSET_TOOL_SCHEMAS, EDIT_ASSET_TOOL_NAMES, execEditAssetTool } from './tools/edit-asset-tools';
+import { WEB_TOOL_SCHEMAS, WEB_TOOL_NAMES, execWebTool } from './tools/web-tools';
+import { FONT_TOOL_SCHEMAS, FONT_TOOL_NAMES, execFontTool } from './tools/font-tools';
+import { FOLLOWUP_TOOL_SCHEMAS, FOLLOWUP_TOOL_NAMES, execFollowupTool } from './tools/followup-tools';
+import { PROJECT_TOOL_SCHEMAS, PROJECT_TOOL_NAMES, execProjectTool } from './tools/project-tools';
+import { UPLOAD_TOOL_SCHEMAS, UPLOAD_TOOL_NAMES, execUploadTool } from './tools/upload-tools';
+import { FRICTION_TOOL_SCHEMAS, FRICTION_TOOL_NAMES, execFrictionTool } from './tools/friction-tools';
+import { READ_PROJECT_TOOL_SCHEMAS, READ_PROJECT_TOOL_NAMES, execReadProjectTool } from './tools/read-project-tools';
+import { MG_CODE_TOOL_SCHEMAS, MG_CODE_TOOL_NAMES, execMgCodeTool } from './tools/mg-code-tools';
+import { PLUGIN_SKILL_TOOL_SCHEMAS, PLUGIN_SKILL_TOOL_NAMES, execPluginSkillTool } from './tools/plugin-skill-tools';
+import { RUN_CODE_TOOL_SCHEMAS, RUN_CODE_TOOL_NAMES, execRunCodeTool } from './tools/run-code-tools';
+import { PROBE_TOOL_SCHEMAS, PROBE_TOOL_NAMES, execProbeTool } from './tools/probe-tools';
+import { MULTICAM_TOOL_SCHEMAS, MULTICAM_TOOL_NAMES, execMulticamTool } from './tools/multicam-tools';
+import { UNDO_TOOL_SCHEMAS, UNDO_TOOL_NAMES, execUndoTool } from './tools/undo-tools';
+import { LAYOUT_TOOL_SCHEMAS, LAYOUT_TOOL_NAMES, execLayoutTool } from './tools/layout-tools';
+import { SILENCE_TOOL_SCHEMAS, SILENCE_TOOL_NAMES, execSilenceTool } from './tools/silence-tools';
+import { COLOR_SCOPE_TOOL_SCHEMAS, COLOR_SCOPE_TOOL_NAMES, execColorScopeTool } from './tools/color-scope-tools';
+import { BEAT_TOOL_SCHEMAS, BEAT_TOOL_NAMES, execBeatTool } from './tools/beat-tools';
+import { AUDIO_ASSET_TOOL_NAMES, execAudioAssetTool } from './tools/audio-asset-tools';
+import { execTranscriptionProgress } from './progress/transcription-progress';
+
+// track_progress schema extender + upload/visual-analysis handlers
+// live in track-progress-targets.ts; transcription in transcription-progress.ts.
+import { withProgressTargets, execUploadProgress, execVisualAnalysisProgress } from './progress/track-progress-targets';
 
 // Canonical tool definitions (name / description / JSON input_schema). Each one
 // executes against the EditorCore command layer (tool == command). Vercel AI SDK
@@ -225,83 +233,83 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...MEDIA_POOL_TOOL_SCHEMAS,
   // Script system (read_script/apply_script with deterministic timeline.md round trips).
   ...SCRIPT_TOOL_SCHEMAS,
-  // Multimodal self-check: view_timeline_frames lets the agent inspect rendered frames.
+  // multimodal self-check (view_timeline_frames — agent 渲帧自检)
   ...FRAMES_TOOL_SCHEMAS,
-  // Local FFmpeg scene detection: report cut points or atomically generate markers and batch cuts.
+  // 本地 FFmpeg 场景检测：报告切点，或原子生成 markers / 批量切片。
   ...SCENE_DETECTION_TOOL_SCHEMAS,
-  // AI generation tools from generate-tools.ts: submit_image/video/voice/music/sound.
-  // track_progress also accepts target=transcription for upload-and-transcribe readiness.
+  // AI 生成套件（GPT 主攻，定义在 generate-tools.ts：submit_image/video/voice/music/sound）
+  // track_progress schema extended to also accept target=transcription (上传即转写 readiness).
   ...withProgressTargets(GENERATE_TOOL_SCHEMAS),
-  // browse_library → edit_item provides unified discovery and application for fx/lut/zoom/transition/sound.
+  // browse_library → edit_item（fx/lut/zoom/transition/sound 统一发现与落地）
   ...LIBRARY_TOOL_SCHEMAS,
   ...EDIT_ITEM_TOOL_SCHEMAS,
-  // Compatibility shortcut: manage_effects maps to edit_item type=effect list/add/update/remove.
+  // 兼容捷径：manage_effects（等价 edit_item type=effect 的 list/add/update/remove）
   ...EFFECT_TOOL_SCHEMAS,
-  // Project design system: manage_design_style list/get/apply/update/clear.
+  // 设计风格 = 工程品牌（manage_design_style：list/get/apply/update/clear）
   ...DESIGN_TOOL_SCHEMAS,
-  // Online asset import (download_media / push_asset + search_stock_media; import_url_asset alias)
+  // 在线素材导入（download_media / push_asset + search_stock_media；import_url_asset 别名）
   ...STOCK_TOOL_SCHEMAS,
-  // Word-level caption overrides: hide or replace words and force line breaks.
+  // 逐词字幕覆盖（edit_captions display_text：read_captions/edit_caption_words 隐藏/改词/强制换行）
   ...CAPTIONS_TOOL_SCHEMAS,
-  // Custom WebGL effects: generate → compile and verify → register → apply through manage_effects.
+  // LLM 生成自定义 WebGL 特效（submit_shader type:effect——生成→编译校验→注册，再由 manage_effects 应用）
   ...SHADER_TOOL_SCHEMAS,
-  // Smart clips: find highlights from the word-level transcript → duplicate a 9:16 timeline → trim while preserving word frames.
+  // 智能切片：LLM 读词级转写找高光 → duplicateTimeline 9:16 → 裁段，并保持词帧一致。
   ...HIGHLIGHT_TOOL_SCHEMAS,
-  // Auto reframe: sample frames → detect subject focus → setReframeKeyframe through the existing render path.
+  // auto-reframe 自动检测：采样帧→主体焦点→setReframeKeyframe（复用现成 reframe 渲染链）
   ...REFRAME_TOOL_SCHEMAS,
-  // Async render jobs: submit_render_job enqueues a long render and track_export polls progress/results.
+  // 异步渲染 job：submit_render_job 入队长渲染 + track_export 轮询进度/取结果
   ...EXPORT_TOOL_SCHEMAS,
-  // Export QA: streams, duration, black/still frames, silence, peaks, and evidence frames around edit points.
+  // 成片自动验收：流/时长/黑帧/静帧/静音/峰值 + 剪辑点前后证据图
   ...EXPORT_QA_TOOL_SCHEMAS,
-  // Project templates: manage_template get/list_assets/apply installs a bundled MG and design style set.
+  // 工程模板（manage_template）：get/list_assets/apply 打包套用一组 MG+设计风格
   ...TEMPLATE_TOOL_SCHEMAS,
-  // Loudness normalization: offline WebAudio analysis → per-clip gain through setItemVolume.
+  // 响度归一（自定 normalize_loudness）：WebAudio 离线分析→per-clip 增益，复用 setItemVolume
   ...LOUDNESS_TOOL_SCHEMAS,
-  // Voice isolation: FFmpeg spectral denoising → setItemDenoise(denoisedSrc).
+  // 人声隔离：ffmpeg 频谱降噪 → setItemDenoise(denoisedSrc)
   ...ISOLATE_VOICE_TOOL_SCHEMAS,
-  // Custom skill CRUD: list/get/create/update/delete; custom and built-in skills share the same catalog.
+  // 自定义创作技能 CRUD：list/get/create/update/delete，自定义技能与内置技能并列注入
   ...SKILL_TOOL_SCHEMAS,
-  // Text watermark overlay: enabled/text/position/opacity for preview and burned-in export.
+  // 文本水印叠加：enabled/text/position/opacity，渲染 + 烧录导出
   ...WATERMARK_TOOL_SCHEMAS,
-  // Timeline annotations/TODOs: list/create/update/delete point or range anchors on frames or clips.
+  // 时间线批注/TODO 锚点：list/create/update/delete，点/段锚帧或锚 clip
   ...MARKERS_TOOL_SCHEMAS,
-  // MG → video: bake an MG asset into a media-pool video.
+  // MG → 视频：烘焙 MG 为媒体池 video 资产
   ...MG_VIDEO_TOOL_SCHEMAS,
-  // Update/delete library assets: sandbox code/props/name updates and confirm delete impact.
+  // 改/删库资产：update code/props/name 过沙箱 + delete confirmImpact
   ...EDIT_ASSET_TOOL_SCHEMAS,
-  // Web scraping: markdown/html/links/screenshot/branding/summary
+  // 网页抓取：markdown/html/links/screenshot/branding/summary
   ...WEB_TOOL_SCHEMAS,
-  // Font catalog search; generate-tools enforces confirmFontFallback during export.
+  // 字体目录搜索；导出 confirmFontFallback 门在 generate-tools
   ...FONT_TOOL_SCHEMAS,
-  // Follow-up questions: render an interactive form card and pause the runtime through __followup.
+  // 主动追问：agent 缺关键信息时发交互表单卡，runtime __followup 特判渲染并暂停
   ...FOLLOWUP_TOOL_SCHEMAS,
-  // Project session: create/list/delete/duplicate/edit/restore/target_project + get_editor_url
+  // 工程会话：create/list/delete/duplicate/edit/restore/target_project + get_editor_url
   ...PROJECT_TOOL_SCHEMAS,
-  // Local upload/download chain: request_asset_upload_url/finalize_uploaded_asset/request_asset_download
+  // 本地上传/下载链：request_asset_upload_url/finalize_uploaded_asset/request_asset_download
   ...UPLOAD_TOOL_SCHEMAS,
-  // Silent friction reporting through a localStorage ring buffer; no backend.
+  // 静默摩擦上报：localStorage 本地环，无后端
   ...FRICTION_TOOL_SCHEMAS,
-  // Project overview.
+  // 工程总览
   ...READ_PROJECT_TOOL_SCHEMAS,
-  // Inline JSX → MG asset
+  // 内联 JSX → MG 资产
   ...MG_CODE_TOOL_SCHEMAS,
-  // Load 15 built-in SKILL.md on demand (load_skill · progressive disclosure)
+  // 按需加载 15 个内置 SKILL.md（load_skill · 渐进式披露）
   ...PLUGIN_SKILL_TOOL_SCHEMAS,
-  // Run skill-provided scripts, FFmpeg, Node, or Python through run_code in an isolated e2b sandbox.
+  // 在自有 e2b 沙箱里跑 skill 自带脚本 / ffmpeg / node / python（run_code）
   ...RUN_CODE_TOOL_SCHEMAS,
-  // Import probe: probe_media reads hasAudioTrack/fps/duration through ffprobe.
+  // 导入探测：probe_media 通过 ffprobe 精确读取 hasAudioTrack/fps/时长
   ...PROBE_TOOL_SCHEMAS,
-  // Multicam: multicam_sync aligns audio by cross-correlation; change_cam switches the visible angle in a range.
+  // 多机位（multicam_sync：音频交叉相关对齐；change_cam：区间内切换可见机位）
   ...MULTICAM_TOOL_SCHEMAS,
-  // Undo: undo_last_change submits the previous project snapshot as a normal edit.
+  // 撤销（undo_last_change：把上一步工程快照作为一次普通编辑提出）
   ...UNDO_TOOL_SCHEMAS,
-  // Named layouts: apply_layout computes transform+crop for split screen, picture-in-picture, grid, or reset.
+  // 命名布局（apply_layout：分屏/画中画/网格/复位，一步算好 transform+crop）
   ...LAYOUT_TOOL_SCHEMAS,
-  // Remove dead air: local relative-level detection plus split/remove ripple closure.
+  // 删除死气（remove_silence：本机相对电平检测 + split/remove 波纹闭合）
   ...SILENCE_TOOL_SCHEMAS,
-  // Numeric color scopes: inspect_color reports black/white points, clipping, casts, and hue histograms.
+  // 数值化调色示波（inspect_color：黑白点/溢出/色偏/色相直方图，按数字调色）
   ...COLOR_SCOPE_TOOL_SCHEMAS,
-  // Beat detection: local DSP reports BPM, beats, and downbeats and can add timeline markers for beat cuts.
+  // 节拍检测（detect_beats：本机 DSP 出 bpm/拍点/强拍，可落时间线标记做卡点）
   ...BEAT_TOOL_SCHEMAS,
   // ToolSearch — keyword discovery over this catalog
   {
@@ -322,79 +330,298 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   },
 ];
 
-type Args = Record<string, unknown>;
 
-type ToolExecutor = (name: string, args: Args, ctx: AgentContext) => unknown | Promise<unknown>;
-type ToolExecutorLoader = () => Promise<ToolExecutor>;
-
-// Tool-name-selected literal imports keep Vite's chunk graph finite and
-// statically discoverable while leaving executor groups outside the registry chunk.
-const EXECUTOR_GROUPS: ReadonlyArray<readonly [ReadonlySet<string>, ToolExecutorLoader]> = [
-  [TRANSCRIPT_TOOL_NAMES, async () => (await import('./tools/transcript-tools')).execTranscriptTool],
-  [TIMELINE_TOOL_NAMES, async () => (await import('./tools/timeline-tools')).execTimelineTool],
-  [TRACK_TOOL_NAMES, async () => (await import('./tools/track-tools')).execTrackTool],
-  [MEDIA_POOL_TOOL_NAMES, async () => (await import('./tools/media-pool-tools')).execMediaPoolTool],
-  [SCRIPT_TOOL_NAMES, async () => (await import('./tools/script-tools')).execScriptTool],
-  [FRAMES_TOOL_NAMES, async () => (await import('./tools/frames-tool')).execFramesTool],
-  [SCENE_DETECTION_TOOL_NAMES, async () => (await import('./tools/scene-detection-tools')).execSceneDetectionTool],
-  [GENERATE_TOOL_NAMES, async () => (await import('./tools/generate-tools')).execGenerateTool],
-  [LIBRARY_TOOL_NAMES, async () => (await import('./tools/library-tools')).execLibraryTool],
-  [EDIT_ITEM_TOOL_NAMES, async () => (await import('./tools/edit-item-tools')).execEditItemTool],
-  [EFFECT_TOOL_NAMES, async () => (await import('./tools/effect-tools')).execEffectTool],
-  [DESIGN_TOOL_NAMES, async () => (await import('./tools/design-tools')).execDesignTool],
-  [STOCK_TOOL_NAMES, async () => (await import('./tools/stock-tools')).execStockTool],
-  [CAPTIONS_TOOL_NAMES, async () => (await import('./tools/captions-tools')).execCaptionsTool],
-  [SHADER_TOOL_NAMES, async () => (await import('./tools/shader-tools')).execShaderTool],
-  [HIGHLIGHT_TOOL_NAMES, async () => (await import('./tools/highlight-tool')).execHighlightTool],
-  [REFRAME_TOOL_NAMES, async () => (await import('./tools/reframe-tools')).execReframeTool],
-  [EXPORT_TOOL_NAMES, async () => (await import('./tools/export-tools')).execExportTool],
-  [EXPORT_QA_TOOL_NAMES, async () => (await import('./tools/export-qa-tools')).execExportQaTool],
-  [TEMPLATE_TOOL_NAMES, async () => (await import('./tools/template-tools')).execTemplateTool],
-  [LOUDNESS_TOOL_NAMES, async () => (await import('./tools/loudness-tools')).execLoudnessTool],
-  [ISOLATE_VOICE_TOOL_NAMES, async () => (await import('./tools/isolate-voice-tools')).execIsolateVoiceTool],
-  [SKILL_TOOL_NAMES, async () => (await import('./tools/skill-tools')).execSkillTool],
-  [WATERMARK_TOOL_NAMES, async () => (await import('./tools/watermark-tools')).execWatermarkTool],
-  [MARKERS_TOOL_NAMES, async () => (await import('./tools/markers-tools')).execMarkersTool],
-  [MG_VIDEO_TOOL_NAMES, async () => (await import('./tools/mg-video-tools')).execMgVideoTool],
-  [EDIT_ASSET_TOOL_NAMES, async () => (await import('./tools/edit-asset-tools')).execEditAssetTool],
-  [WEB_TOOL_NAMES, async () => (await import('./tools/web-tools')).execWebTool],
-  [FONT_TOOL_NAMES, async () => (await import('./tools/font-tools')).execFontTool],
-  [FOLLOWUP_TOOL_NAMES, async () => (await import('./tools/followup-tools')).execFollowupTool],
-  [PROJECT_TOOL_NAMES, async () => (await import('./tools/project-tools')).execProjectTool],
-  [UPLOAD_TOOL_NAMES, async () => (await import('./tools/upload-tools')).execUploadTool],
-  [FRICTION_TOOL_NAMES, async () => (await import('./tools/friction-tools')).execFrictionTool],
-  [READ_PROJECT_TOOL_NAMES, async () => (await import('./tools/read-project-tools')).execReadProjectTool],
-  [MG_CODE_TOOL_NAMES, async () => (await import('./tools/mg-code-tools')).execMgCodeTool],
-  [PLUGIN_SKILL_TOOL_NAMES, async () => (await import('./tools/plugin-skill-tools')).execPluginSkillTool],
-  [RUN_CODE_TOOL_NAMES, async () => (await import('./tools/run-code-tools')).execRunCodeTool],
-  [PROBE_TOOL_NAMES, async () => (await import('./tools/probe-tools')).execProbeTool],
-  [MULTICAM_TOOL_NAMES, async () => (await import('./tools/multicam-tools')).execMulticamTool],
-  [UNDO_TOOL_NAMES, async () => {
-    const { execUndoTool } = await import('./tools/undo-tools');
-    return (name, _args, ctx) => execUndoTool(name, ctx);
-  }],
-  [LAYOUT_TOOL_NAMES, async () => (await import('./tools/layout-tools')).execLayoutTool],
-  [SILENCE_TOOL_NAMES, async () => (await import('./tools/silence-tools')).execSilenceTool],
-  [COLOR_SCOPE_TOOL_NAMES, async () => (await import('./tools/color-scope-tools')).execColorScopeTool],
-  [BEAT_TOOL_NAMES, async () => (await import('./tools/beat-tools')).execBeatTool],
-  [AUDIO_ASSET_TOOL_NAMES, async () => (await import('./tools/audio-asset-tools')).execAudioAssetTool],
-];
-
-const EXECUTOR_BY_NAME = new Map<string, ToolExecutorLoader>();
-for (const [names, load] of EXECUTOR_GROUPS) {
-  for (const name of names) EXECUTOR_BY_NAME.set(name, load);
+// Ask the model to write a fresh Remotion MG component following the template
+// contract. Uses the same provider-neutral AI SDK transport as the agent loop. `brandHint`
+// injects the project's applied design style so generated MGs match the brand.
+async function generateMgCode(description: string, brandHint = ''): Promise<string> {
+  const sys = `You write ONE Remotion motion-graphic React component. Output ONLY the code — no markdown fences, no prose.
+Contract (MUST follow exactly):
+- Shape: const Name = ({item}) => { ...; return (<AbsoluteFill>...</AbsoluteFill>); };
+- NO import / require / export. These globals are already injected: React, useCurrentFrame, useVideoConfig, interpolate, interpolateColors, spring, Easing, random, Img, Audio, Sequence, AbsoluteFill.
+- Canvas is 1920x1080. Animate with useCurrentFrame()+interpolate()/spring({fps,frame,config}). Get { fps, durationInFrames } from useVideoConfig().
+- interpolate()'s inputRange MUST be strictly increasing (e.g. [0, 15, 30]). When breakpoints are computed (per-item offsets, durationInFrames fractions), clamp with Math.max(prev + 1, next) so a later value can never be <= an earlier one — a non-monotonic inputRange throws at render time.
+- Pure, synchronous rendering only. FORBIDDEN: fetch, XMLHttpRequest, WebSocket, document, window, globalThis, eval, new Function, .constructor, localStorage, setTimeout, setInterval, while(true), for(;;), debugger.
+- Style inline. Make it clean and visually appealing (large readable text, tasteful colors, smooth fade/slide/scale animations).${brandHint}`;
+  let code = (await generateAgentText({
+    maxOutputTokens: 64000, // don't truncate generated components
+    system: sys,
+    prompt: description,
+  })).trim();
+  code = code.replace(/^\s*```[a-zA-Z]*\s*\n?/, '').replace(/\n?```\s*$/, '').trim(); // strip fences
+  return code;
 }
 
+type Args = Record<string, unknown>;
 
-// Execute a tool call against the live editor. Schema validation remains in the
-// AI SDK tool wrapper; executor modules are selected only after a validated call.
+function findItem(ctx: AgentContext, itemId: unknown) {
+  const id = String(itemId ?? '');
+  const items = ctx.getState().items;
+  return items.find((it) => it.id === id || it.id.startsWith(id)) ?? null;
+}
+
+// Execute a tool call against the live editor. Returns a JSON-serializable result.
 export async function executeTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
-  if (name === 'track_progress') {
-    const { execProgressTool } = await import('./tools/progress-tools');
-    return execProgressTool(name, args, ctx);
+  if (name === 'ToolSearch') {
+    const q = String(args.query ?? '').trim().toLowerCase();
+    if (!q) return { error: 'query is required', results: [] };
+    const limit = Math.min(30, Math.max(1, Math.round(Number(args.limit) || 12)));
+    const tokens = q.split(/\s+/).filter(Boolean);
+    const scored = TOOL_SCHEMAS
+      .filter((t) => t.name !== 'ToolSearch')
+      .map((t) => {
+        const hay = `${t.name} ${t.description ?? ''}`.toLowerCase();
+        let score = 0;
+        for (const tok of tokens) {
+          if (t.name.toLowerCase() === tok) score += 10;
+          else if (t.name.toLowerCase().includes(tok)) score += 5;
+          else if (hay.includes(tok)) score += 2;
+        }
+        return { tool: t, score };
+      })
+      .filter((r) => r.score > 0)
+      .sort((a, b) => b.score - a.score || a.tool.name.localeCompare(b.tool.name))
+      .slice(0, limit);
+    return {
+      query: q,
+      count: scored.length,
+      results: scored.map(({ tool }) => ({
+        name: tool.name,
+        description: (tool.description ?? '').slice(0, 280),
+      })),
+      note: scored.length
+        ? 'Call matching tools by exact name; schemas are already in this session.'
+        : 'No tools matched; try export / caption / stock / video / voice.',
+    };
   }
-  const loadExecutor = EXECUTOR_BY_NAME.get(name);
-  if (loadExecutor) return (await loadExecutor())(name, args, ctx);
-  const { execCoreTool } = await import('./tools/core-tools');
-  return execCoreTool(name, args, ctx, TOOL_SCHEMAS);
+  if (TRANSCRIPT_TOOL_NAMES.has(name)) return execTranscriptTool(name, args, ctx);
+  if (TIMELINE_TOOL_NAMES.has(name)) return execTimelineTool(name, args, ctx);
+  if (TRACK_TOOL_NAMES.has(name)) return execTrackTool(name, args, ctx);
+  if (MEDIA_POOL_TOOL_NAMES.has(name)) return execMediaPoolTool(name, args, ctx);
+  if (SCRIPT_TOOL_NAMES.has(name)) return execScriptTool(name, args, ctx);
+  if (FRAMES_TOOL_NAMES.has(name)) return execFramesTool(name, args, ctx);
+  if (SCENE_DETECTION_TOOL_NAMES.has(name)) return execSceneDetectionTool(name, args, ctx);
+  // track_progress target=transcription → Claude-owned handler (readiness of 上传即转写
+  // ASR); upload → file reachability; visual-analysis → contact-sheet warm jobs;
+  // target omitted/generation falls through to grok's execGenerateTool below.
+  if (name === 'track_progress' && args.target === 'transcription') return execTranscriptionProgress(args, ctx);
+  if (name === 'track_progress' && args.target === 'upload') return execUploadProgress(args, ctx);
+  if (name === 'track_progress' && args.target === 'visual-analysis') return execVisualAnalysisProgress(args, ctx);
+  if (name === 'track_progress' && args.target === undefined) return execGenerateTool(name, { ...args, target: 'generation' }, ctx);
+  if (GENERATE_TOOL_NAMES.has(name)) return execGenerateTool(name, args, ctx);
+  if (LIBRARY_TOOL_NAMES.has(name)) return execLibraryTool(name, args, ctx);
+  if (EDIT_ITEM_TOOL_NAMES.has(name)) return execEditItemTool(name, args, ctx);
+  if (EFFECT_TOOL_NAMES.has(name)) return execEffectTool(name, args, ctx);
+  if (DESIGN_TOOL_NAMES.has(name)) return execDesignTool(name, args, ctx);
+  if (STOCK_TOOL_NAMES.has(name)) return execStockTool(name, args, ctx);
+  if (CAPTIONS_TOOL_NAMES.has(name)) return execCaptionsTool(name, args, ctx);
+  if (SHADER_TOOL_NAMES.has(name)) return execShaderTool(name, args, ctx);
+  if (HIGHLIGHT_TOOL_NAMES.has(name)) return execHighlightTool(name, args, ctx);
+  if (REFRAME_TOOL_NAMES.has(name)) return execReframeTool(name, args, ctx);
+  if (EXPORT_TOOL_NAMES.has(name)) return execExportTool(name, args, ctx);
+  if (EXPORT_QA_TOOL_NAMES.has(name)) return execExportQaTool(name, args, ctx);
+  if (TEMPLATE_TOOL_NAMES.has(name)) return execTemplateTool(name, args, ctx);
+  if (LOUDNESS_TOOL_NAMES.has(name)) return execLoudnessTool(name, args, ctx);
+  if (ISOLATE_VOICE_TOOL_NAMES.has(name)) return execIsolateVoiceTool(name, args, ctx);
+  if (SKILL_TOOL_NAMES.has(name)) return execSkillTool(name, args, ctx);
+  if (WATERMARK_TOOL_NAMES.has(name)) return execWatermarkTool(name, args, ctx);
+  if (MARKERS_TOOL_NAMES.has(name)) return execMarkersTool(name, args, ctx);
+  if (MG_VIDEO_TOOL_NAMES.has(name)) return execMgVideoTool(name, args, ctx);
+  if (EDIT_ASSET_TOOL_NAMES.has(name)) return execEditAssetTool(name, args, ctx);
+  if (WEB_TOOL_NAMES.has(name)) return execWebTool(name, args, ctx);
+  if (FONT_TOOL_NAMES.has(name)) return execFontTool(name, args, ctx);
+  if (FOLLOWUP_TOOL_NAMES.has(name)) return execFollowupTool(name, args, ctx);
+  if (PROJECT_TOOL_NAMES.has(name)) return execProjectTool(name, args, ctx);
+  if (UPLOAD_TOOL_NAMES.has(name)) return execUploadTool(name, args, ctx);
+  if (FRICTION_TOOL_NAMES.has(name)) return execFrictionTool(name, args, ctx);
+  if (READ_PROJECT_TOOL_NAMES.has(name)) return execReadProjectTool(name, args, ctx);
+  if (MG_CODE_TOOL_NAMES.has(name)) return execMgCodeTool(name, args, ctx);
+  if (PLUGIN_SKILL_TOOL_NAMES.has(name)) return execPluginSkillTool(name, args);
+  if (RUN_CODE_TOOL_NAMES.has(name)) return execRunCodeTool(name, args);
+  if (PROBE_TOOL_NAMES.has(name)) return execProbeTool(name, args, ctx);
+  if (MULTICAM_TOOL_NAMES.has(name)) return execMulticamTool(name, args, ctx);
+  if (UNDO_TOOL_NAMES.has(name)) return execUndoTool(name, ctx);
+  if (LAYOUT_TOOL_NAMES.has(name)) return execLayoutTool(name, args, ctx);
+  if (SILENCE_TOOL_NAMES.has(name)) return execSilenceTool(name, args, ctx);
+  if (COLOR_SCOPE_TOOL_NAMES.has(name)) return execColorScopeTool(name, args, ctx);
+  if (BEAT_TOOL_NAMES.has(name)) return execBeatTool(name, args, ctx);
+  if (AUDIO_ASSET_TOOL_NAMES.has(name)) return execAudioAssetTool(name, args, ctx);
+  switch (name) {
+    case 'read_timeline': {
+      const s = ctx.getState();
+      return {
+        fps: s.fps,
+        tracks: timelineTrackIds(s).map((id) => ({ id, alias: trackAlias(s, id), trackType: trackKind(s, id) })),
+        items: s.items.map((it) => ({
+          id: it.id, trackId: it.track, track: trackAlias(s, it.track), name: it.name,
+          startFrame: it.startFrame, durationInFrames: it.durationInFrames, props: it.props,
+          // library-facing fields (read_project track-fx / transitions)
+          zoom: it.zoom ?? null,
+          effects: (it.effects ?? []).map((e) => ({ effectId: e.id, assetId: e.assetId, overrides: e.overrides ?? {} })),
+        })),
+        transitions: (s.transitions ?? []).map((t) => ({
+          id: t.id, type: t.type, assetId: `builtin:tr-${t.type}`,
+          durationInFrames: t.durationInFrames,
+          outgoingItemId: t.outgoingItemId, incomingItemId: t.incomingItemId, trackId: t.trackId,
+        })),
+      };
+    }
+    case 'list_templates': {
+      const cat = args.category ? String(args.category).toLowerCase() : null;
+      if (!cat) {
+        const counts: Record<string, number> = {};
+        for (const t of ctx.templates) counts[t.category] = (counts[t.category] ?? 0) + 1;
+        return { categories: counts, total: ctx.templates.length, hint: '传 category 或用 search_templates 精确找' };
+      }
+      return ctx.templates.filter((t) => t.category.toLowerCase() === cat).map((t) => t.name);
+    }
+    case 'search_templates': {
+      const q = String(args.query ?? '').toLowerCase();
+      return ctx.templates
+        .filter((t) => t.name.toLowerCase().includes(q) || t.category.toLowerCase().includes(q))
+        .slice(0, 15)
+        .map((t) => ({ name: t.name, category: t.category }));
+    }
+
+    case 'add_motion_graphic': {
+      const q = String(args.templateName ?? '').toLowerCase();
+      const matches = ctx.templates.filter((t) => t.name.toLowerCase().includes(q));
+      if (matches.length === 0) return { error: `no template matching "${args.templateName}"`, available: ctx.templates.map((t) => t.name) };
+      const tpl = matches[0];
+      const s = ctx.getState();
+      const track = resolveTrackId(s, args.track ?? 'V1', 'video') ?? defaultTrackId(s, 'video');
+      if (!track) return { error: 'no video track; create one with edit_track first' };
+      const startFrame = typeof args.startFrame === 'number' ? args.startFrame : undefined;
+      ctx.commands.addMotionGraphic(tpl, { track, startFrame, ripple: args.ripple === true });
+      return { ok: true, added: tpl.name, trackId: track, track: trackAlias(ctx.getState(), track) };
+    }
+    case 'update_item_props': {
+      const it = findItem(ctx, args.itemId);
+      if (!it) return { error: `no item ${args.itemId}` };
+      ctx.commands.updateItemProps(it.id, (args.props ?? {}) as Args);
+      return { ok: true, itemId: it.id, updated: Object.keys((args.props ?? {}) as Args) };
+    }
+    case 'move_item': {
+      const it = findItem(ctx, args.itemId);
+      if (!it) return { error: `no item ${args.itemId}` };
+      const kind = it.kind === 'audio' ? 'audio' : 'video';
+      const track = args.track === undefined ? undefined : resolveTrackId(ctx.getState(), args.track, kind);
+      if (args.track !== undefined && !track) return { error: `no compatible track ${args.track}` };
+      ctx.commands.moveItem(it.id, { track: track ?? undefined, startFrame: args.startFrame as number });
+      return { ok: true, itemId: it.id };
+    }
+    case 'set_item_timing': {
+      const it = findItem(ctx, args.itemId);
+      if (!it) return { error: `no item ${args.itemId}` };
+      if (args.startFrame !== undefined || args.durationInFrames !== undefined) {
+        ctx.commands.setItemTiming(it.id, {
+          startFrame: args.startFrame as number,
+          durationInFrames: args.durationInFrames as number,
+          ripple: args.ripple === true,
+        });
+      }
+      // fade in SECONDS (edit_item fadeIn/fadeOut) → frames; reducer clamps to clip length
+      const fps = ctx.getState().fps;
+      const toFrames = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.round(v * fps)) : undefined);
+      const fadeInFrames = toFrames(args.fadeInSeconds);
+      const fadeOutFrames = toFrames(args.fadeOutSeconds);
+      if (fadeInFrames !== undefined || fadeOutFrames !== undefined) {
+        ctx.commands.setItemFade(it.id, { fadeInFrames, fadeOutFrames });
+      }
+      return {
+        ok: true,
+        itemId: it.id,
+        ripple: args.ripple === true,
+        ...(fadeInFrames !== undefined ? { fadeInFrames } : {}),
+        ...(fadeOutFrames !== undefined ? { fadeOutFrames } : {}),
+      };
+    }
+    case 'duplicate_item': {
+      const it = findItem(ctx, args.itemId);
+      if (!it) return { error: `no item ${args.itemId}` };
+      ctx.commands.duplicateItem(it.id);
+      return { ok: true, duplicated: it.name };
+    }
+    case 'submit_motion_graphic':
+    case 'create_motion_graphic': {
+      // submit_* creates a pool asset only; placement is a separate edit_item.
+      const description = String(args.prompt ?? args.description ?? '').trim();
+      if (!description) return { error: 'prompt (or description) is required' };
+      const name = String(args.name ?? '').trim() || 'Generated MG';
+      const fps = ctx.getState().fps || 30;
+      let durationInFrames: number;
+      if (typeof args.durationInFrames === 'number' && args.durationInFrames > 0) {
+        durationInFrames = Math.max(15, Math.round(args.durationInFrames));
+      } else {
+        durationInFrames = Math.max(15, Math.round((Number(args.durationSeconds) || 3) * fps));
+      }
+      const width = typeof args.width === 'number' && args.width > 0 ? Math.round(args.width) : 1920;
+      const height = typeof args.height === 'number' && args.height > 0 ? Math.round(args.height) : 1080;
+      let code: string;
+      try {
+        code = await generateMgCode(description, designStyleHint(ctx.getDoc().designStyle));
+      } catch (e) {
+        return { error: `generation failed: ${e instanceof Error ? e.message : String(e)}` };
+      }
+      if (!code) return { error: 'model returned empty code' };
+      // Sandbox gate: compileTemplate runs the static blocklist (validateTemplate)
+      // then compiles in the restricted scope — both must pass before we add it.
+      try {
+        compileTemplate(code);
+      } catch (e) {
+        return { error: `generated code rejected by sandbox: ${e instanceof Error ? e.message : String(e)}`, code };
+      }
+      const asset: MediaAsset = {
+        id: crypto.randomUUID(),
+        name,
+        kind: 'motion-graphic',
+        src: '', // code-backed; no media file
+        code,
+        durationInFrames,
+        width,
+        height,
+        props: {},
+      };
+      // addAsset is persistent (survives proposal reject); do NOT auto-place on timeline.
+      ctx.commands.addAsset(asset);
+      const jobId = `mg_${asset.id}`;
+      return {
+        ok: true,
+        status: 'succeeded',
+        jobId,
+        assetId: asset.id,
+        name: asset.name,
+        kind: 'motion-graphic',
+        durationInFrames,
+        width,
+        height,
+        note: 'Motion graphic asset is in the media pool only (submit_* contract). Place with edit_item adds:[{type:"motion-graphic",assetId:"<this assetId>",trackId?,fromFrame?}]. For catalog templates use library:motion-graphic:<templateId> or add_motion_graphic instead.',
+      };
+    }
+    case 'clear_timeline':
+      ctx.commands.clearTimeline();
+      return { ok: true };
+    case 'set_aspect_ratio': {
+      const preset = ASPECT_PRESETS.find((p) => p.label === String(args.ratio));
+      if (!preset) return { error: `unknown ratio ${args.ratio}` };
+      const fit = (args.fit as AspectFit) ?? ctx.getState().fit ?? 'contain';
+      ctx.commands.setAspect(preset.width, preset.height, fit);
+      return { ok: true, ratio: preset.label, width: preset.width, height: preset.height, fit };
+    }
+    case 'remove_item': {
+      const it = findItem(ctx, args.itemId);
+      if (!it) return { error: `no item ${args.itemId}` };
+      if (args.ripple === true) ctx.commands.rippleDeleteItem(it.id); // close the gap
+      else ctx.commands.removeItem(it.id);
+      return { ok: true, removed: it.name, ripple: args.ripple === true };
+    }
+    case 'split_item': {
+      const it = findItem(ctx, args.itemId);
+      if (!it) return { error: `no item ${args.itemId}` };
+      ctx.commands.splitItem(it.id, Number(args.atFrame));
+      return { ok: true, itemId: it.id };
+    }
+    default:
+      return { error: `unknown tool ${name}` };
+  }
 }

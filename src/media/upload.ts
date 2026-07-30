@@ -275,7 +275,8 @@ export async function normalizeUploadedVideo(
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ src, targetFps }),
     });
-    const data = (await res.json()) as {
+    const responseText = await res.text();
+    let data: {
       path?: string;
       width?: number;
       height?: number;
@@ -284,6 +285,11 @@ export async function normalizeUploadedVideo(
       normalized?: boolean;
       error?: string;
     };
+    try {
+      data = JSON.parse(responseText) as typeof data;
+    } catch {
+      throw new Error("HTTP " + res.status + ": server returned a non-JSON response");
+    }
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     if (data.path?.startsWith('/media/uploads/')) {
       return {

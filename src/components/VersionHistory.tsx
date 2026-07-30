@@ -12,7 +12,7 @@ interface VersionHistoryProps {
   onClose: () => void;
 }
 
-/** "Just / N minutes ago / N hours ago / N days ago". */
+/** "刚刚 / N 分钟前 / N 小时前 / N 天前"。 */
 function relTime(ms: number): string {
   const diff = Math.max(0, Date.now() - ms);
   const min = Math.floor(diff / 60_000);
@@ -23,12 +23,12 @@ function relTime(ms: number): string {
   return t('{n} 天前', { n: Math.floor(hr / 24) });
 }
 
-/** Version history - named project snapshot + one-click rollback to restore reused atomic applyDoc. */
+/** 版本历史——具名工程快照 + 一键回滚,恢复复用原子 applyDoc。 */
 export function VersionHistory({ projectId, currentDoc, onRestore, onClose }: VersionHistoryProps) {
   const t = useT();
   const [versions, setVersions] = useState<ProjectVersion[]>([]);
   const [loading, setLoading] = useState(true);
-  const [savingName, setSavingName] = useState<string | null>(null); // null = input box hidden
+  const [savingName, setSavingName] = useState<string | null>(null); // null = 输入框隐藏
 
   const refresh = () => {
     listVersions(projectId).then((list) => { setVersions(list); setLoading(false); });

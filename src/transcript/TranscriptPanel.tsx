@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import type { TimelineItem, TrackId } from '../editor/types';
 import { emitSelectionRef, transcriptRefFromDomSelection, useSelectionRefMode } from '../agent/selection-refs';
@@ -26,6 +26,8 @@ interface TranscriptPanelProps {
   onSetTranscriptPlayOrder: (id: string, playOrder: number[] | null) => void;
   onReorderTrackItems: (track: TrackId, orderedIds: string[]) => void;
   onClearEdits: (id: string) => void;
+  onClearGeneratedTranscripts: () => void;
+  onImportSrt: (file: File) => void;
   onOpenCaptionStyles?: (sourceItemIds: string[]) => void;
 }
 
@@ -33,11 +35,11 @@ const MANY_CLIPS = 10;
 
 export function TranscriptPanel({
   playerRef, fps, items, trackOptions,
-  onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits,
+  onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, onClearGeneratedTranscripts, onImportSrt,
   onOpenCaptionStyles,
 }: TranscriptPanelProps) {
   const t = useT();
-  const { status, error, progressNote, runMany, reset } = useTranscript();
+  const { status, error, progressNote, progressLog, runMany, reset } = useTranscript();
   const defaultId = useMemo(() => pickDefaultTrack(trackOptions, items), [trackOptions, items]);
   const [track, setTrack] = useState<TrackId | null>(defaultId);
   // Both views use ScriptView (speaker blocks + Gap rows). segment uses a lower
@@ -54,9 +56,15 @@ export function TranscriptPanel({
   const [showAllSections, setShowAllSections] = useState(false);
   const dragClipFrom = useRef<string | null>(null);
   const [dragOverClipId, setDragOverClipId] = useState<string | null>(null);
-  // selection mode (transcript-selected): drag-select words → structured reference
+  // 选择模式 (transcript-selected): drag-select words → structured reference
   const pickMode = useSelectionRefMode();
   const bodyRef = useRef<HTMLDivElement>(null);
+  const srtInputRef = useRef<HTMLInputElement>(null);
+  const selectSrt = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) onImportSrt(file);
+    event.target.value = '';
+  };
 
   // Keep selection valid when project tracks change.
   useEffect(() => {
@@ -102,7 +110,7 @@ export function TranscriptPanel({
   const focusIndex = focusItem ? clips.findIndex((c) => c.id === focusItem.id) : -1;
 
   // Selection mode: a native text selection over the word spans becomes a
-  // transcript-selection reference (word id / text / source media ms + keptSegments frame map).
+  // transcript-selection reference (词 id / 文本 / 源媒体 ms + keptSegments 帧映射).
   const pickFromDomSelection = () => {
     if (!pickMode || !bodyRef.current) return;
     const reference = transcriptRefFromDomSelection(bodyRef.current, clips, fps);
@@ -169,6 +177,15 @@ export function TranscriptPanel({
           onClick={() => onOpenCaptionStyles?.(transcribed.map((item) => item.id))}
         >
           <Icon name="captions" size={13} />{t('字幕样式')}
+        </button>
+        <input ref={srtInputRef} type="file" accept=".srt,application/x-subrip,text/plain" hidden onChange={selectSrt} />
+        <button type="button" className="cc-tx-btn" title={t('导入 SRT')} onClick={() => srtInputRef.current?.click()}>
+          <Icon name="captions" size={13} />{t('导入 SRT')}
+        </button>
+        <button type="button" className="cc-tx-btn" disabled={!trackHasWords} title={t('清除项目中全部自动转写')} onClick={() => {
+          if (window.confirm(t('清除全部自动转写？此操作可撤销。'))) onClearGeneratedTranscripts();
+        }}>
+          <Icon name="x" size={13} />{t('清除转写')}
         </button>
         <span className="cc-tx-spacer" />
         {pauseOpen && (
@@ -242,7 +259,7 @@ export function TranscriptPanel({
             <div className="cc-tx-empty-kicker">{aliasLabel}</div>
             <div className="cc-tx-empty-title">{t('转写词级文字稿')}</div>
             <p className="cc-tx-muted">
-              {t('中文词级转写 · 说话人分离 · 该轨共 {n} 段会逐段上传。转写后可点词删减（删词=剪音频）。', { n: clips.length })}
+              {t('自动语言检测 · 词级转写 · 说话人分离 · 该轨共 {n} 段会逐段上传。转写后可点词删减（删词=剪音频）。', { n: clips.length })}
             </p>
             {skippedMusic > 0 && (
               <label className="cc-tx-check music">
@@ -269,6 +286,10 @@ export function TranscriptPanel({
               </button>
             )}
             {status === 'error' && <div className="cc-tx-error">{error}</div>}
+            {(busy || error) && progressLog.length > 0 && <details className="cc-tx-error" open>
+              <summary>{t('转写详细日志')}</summary>
+              <pre style={{ whiteSpace: 'pre-wrap', margin: '6px 0 0', font: 'inherit' }}>{progressLog.join('\n')}</pre>
+            </details>}
           </div>
         ) : (
           <>

@@ -1,15 +1,43 @@
-export { SILENCE_TOOL_SCHEMAS, SILENCE_TOOL_NAMES } from './schemas/silence-tools';
-// remove_silence - delete dead air (silent segment): native WebAudio analysis, no network connection.
-// Detected in src/audio/silence.ts (relative voice level + absolute lower limit + breathing port),
-// Edit in src/editor/silenceRebuild.ts(split/remove string batch, one step undo,
-// Co-orbital ripple closure). The word-level path for transcribing clip belongs to clean_script, which is a gatekeeper here.
+// remove_silence —— 删除死气(静音段):本机 WebAudio 分析,不打网络。
+// 检测在 src/audio/silence.ts(相对语音电平 + 绝对下限 + 呼吸口),
+// 编辑在 src/editor/silenceRebuild.ts(split/remove 串 batch,一步撤销,
+// 同轨波纹闭合)。转写 clip 的词级路径归 clean_script,这里守门不抢活。
+import type { AgentToolSchema } from '../tool-schema';
 import type { AgentContext } from '../context';
 import type { TimelineItem } from '../../editor/types';
 import type { Action } from '../../editor/reduce';
-import { analyzeClipSilence, type SilenceSpan } from '../../audio/silence';
+import { analyzeClipSilence, SILENCE_DEFAULTS, type SilenceSpan } from '../../audio/silence';
 import { planSilenceRemoval, silenceRemovalBlocker, spansToLocalCuts } from '../../editor/silenceRebuild';
 
 type Args = Record<string, unknown>;
+
+export const SILENCE_TOOL_SCHEMAS: AgentToolSchema[] = [
+  {
+    name: 'remove_silence',
+    description: [
+      'Remove dead air — quiet, speech-free stretches — from clips, ripple-closing each gap on its own track (ONE undoable batch).',
+      'Detection is on-device and relative: a stretch counts as silence only when its level sits well below the clip\'s own speech level',
+      '(so music beds and loud ambience are never cut), it lasts at least minSilenceMs, and a padMs breathing room is kept on both sides.',
+      'Use this to tighten pacing (long pauses, dead space between takes). It complements word-level editing:',
+      'transcribed clips that already have word edits or gap caps are skipped — use clean_script there, it trims pauses word-precisely.',
+      'Clips with playbackRate≠1 or an animated zoom are skipped (reported in skipped[]). Ripple is per-track: other tracks do not shift.',
+      'Call once with NO itemId to sweep every audio/video clip on the active timeline; pass itemId for a single clip.',
+      'Pass dryRun:true to preview the cut list (seconds) without editing.',
+    ].join(' '),
+    input_schema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string', description: 'Only this clip (prefix id ok). Omit to process every audio/video clip.' },
+        thresholdDb: { type: 'number', minimum: -60, maximum: -6, description: `Silence gate relative to the clip's speech level in dB (default ${SILENCE_DEFAULTS.thresholdDb}; more negative = more conservative).` },
+        minSilenceMs: { type: 'number', minimum: 200, maximum: 10000, description: `Only remove pauses at least this long (default ${SILENCE_DEFAULTS.minSilenceMs}ms).` },
+        padMs: { type: 'number', minimum: 0, maximum: 1000, description: `Breathing room kept on each side of a cut (default ${SILENCE_DEFAULTS.padMs}ms).` },
+        dryRun: { type: 'boolean', description: 'true = report the would-be cuts without editing.' },
+      },
+    },
+  },
+];
+
+export const SILENCE_TOOL_NAMES = new Set(SILENCE_TOOL_SCHEMAS.map((t) => t.name));
 
 function targetItems(ctx: AgentContext, itemId: unknown): TimelineItem[] | { error: string } {
   const clips = ctx.getState().items.filter((it) => it.kind === 'video' || it.kind === 'audio');
@@ -35,7 +63,7 @@ export async function execSilenceTool(name: string, args: Args, ctx: AgentContex
   const edited: Array<{ itemId: string; removedSec: number; cuts: Array<{ fromSec: number; toSec: number }> }> = [];
   const allActions: Action[] = [];
   const spanCache = new Map<string, Promise<SilenceSpan[]>>();
-  /** The number of frames deleted from the previous clip on the same track → Shift left by this amount before planning subsequent clips.*/
+  /** 同轨在前的 clip 删掉的帧数 → 后续 clip 规划前先左移这么多。 */
   const trackShift = new Map<string, number>();
 
   const ordered = [...targets].sort((a, b) => a.track === b.track ? a.startFrame - b.startFrame : String(a.track).localeCompare(String(b.track)));

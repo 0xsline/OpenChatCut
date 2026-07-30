@@ -1,7 +1,7 @@
-// Timeline shortcut API assembly (source shortcut-dispatcher): global dispatcher in Editor,Timeline every time
-// Rendering rebuilds TimelineShortcutApi with latest closure into shortcutApiRef(effect no dependency array=forever
-// Fresh, literally equivalent to the original Timeline inline writing method). I/O zone (zoneIn/Out), JKL shuttle machine, fragment
-// The entire clipboard is owned by this hook; the fxClip clipboard is shared with the right-click menu and is passed in by Timeline.
+// 时间线快捷键 API 装配(源 shortcut-dispatcher):全局分发器在 Editor,Timeline 每次
+// 渲染用最新闭包重建 TimelineShortcutApi 塞进 shortcutApiRef(effect 无依赖数组=永远
+// 新鲜,与原 Timeline 内联写法逐字等价)。I/O 区间(zoneIn/Out)、JKL 穿梭机器、片段
+// 剪贴板整个归本 hook 所有;fxClip 剪贴板与右键菜单共用,留在 Timeline 传入。
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import {

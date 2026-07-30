@@ -203,7 +203,7 @@ function localAssetPath(path: string): string {
   if (!path.startsWith('/media/uploads/')) throw new Error('reference asset must be under /media/uploads/');
   const name = path.slice('/media/uploads/'.length);
   if (!isSafeUploadName(name)) throw new Error('invalid reference asset path');
-  const file = resolveUploadFile(name);  // Customized directories take priority, and the old default directories are ignored.
+  const file = resolveUploadFile(name);  // 自定义目录优先,旧默认目录兜底
   if (!file) throw new Error(`reference asset not found: ${name}`);
   return file;
 }

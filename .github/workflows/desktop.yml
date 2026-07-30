@@ -71,8 +71,8 @@ jobs:
           cache: npm
       - run: npm ci --loglevel=error
 
-      # First write the browser version corresponding to Remotion, and then use desktop:dist
-      # The prepare-target step puts the target platform browser and compositor into the installation package.
+      # 先写入 Remotion 对应的浏览器版本，再由 desktop:dist 的
+      # prepare-target 步骤把目标平台浏览器和 compositor 放进安装包。
       - name: Ensure Remotion browser
         run: node -e "import('@remotion/renderer').then(m => m.ensureBrowser()).then(() => console.log('browser ready'))"
 
@@ -106,7 +106,7 @@ jobs:
           CC_SMOKE_RENDER: '1'
           ELECTRON_DISABLE_SANDBOX: '1'
         run: |
-          # Ubuntu 24.04 restricts non-privileged userns by default, allowing the Electron / headless-shell sandbox to be available
+          # Ubuntu 24.04 默认限制非特权 userns,放开让 Electron / headless-shell 沙箱可用
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
           xvfb-run --auto-servernum release/linux-unpacked/openchatcut

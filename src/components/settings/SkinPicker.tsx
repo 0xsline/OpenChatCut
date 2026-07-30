@@ -1,6 +1,6 @@
-// Skin selector: brush button + drop-down card, row = three-color point (bottom/panel/accent)
-// Preview + name + check mark. The switch takes effect immediately (applySkin changes to <html data-cc-skin>),
-// localStorage is persistent; TopBar is shared with Dashboard header.
+// 皮肤选择器:笔刷按钮 + 下拉小卡,行 = 三色点(底/面板/accent)
+// 预览 + 名称 + 选中对勾。切换即时生效(applySkin 改 <html data-cc-skin>),
+// localStorage 持久;TopBar 与 Dashboard 头部共用。
 import { useState } from 'react';
 import { theme, themeAlpha } from '../../theme';
 import { useT } from '../../i18n/locale';
