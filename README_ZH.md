@@ -262,6 +262,10 @@ http://localhost:5199
 
 `.env.local` 中只需填写你实际使用的模型或素材服务。没有配置的第三方能力会明确提示缺少对应 Key，不影响本地时间线编辑、内置素材和已配置的其他能力。
 
+### AssemblyAI 转录
+
+在 `.env.local` 中设置 `ASSEMBLYAI_API_KEY`，或在**设置 → 转录**中保存。该 Key 只保存在服务端 keystore 和已被 Git 忽略的 `.env.local` 中。本地上传的媒体转录时，OpenChatCut 会先提取紧凑的语音音轨，再从本地服务端直接流式上传至 AssemblyAI；浏览器既不会代理音频，也不会获取 Key。
+
 本地 H.264 导出会在 macOS 上优先使用 VideoToolbox，在兼容的 Windows 设备上优先使用 NVENC，失败时自动回退软件编码。可用 `OPENCHATCUT_RENDER_CONCURRENCY` 和 `OPENCHATCUT_MAX_ACTIVE_EXPORTS` 调整渲染并发及重型导出上限，用 `OPENCHATCUT_DISABLE_HARDWARE_ENCODING` 关闭硬件编码，或用 `OPENCHATCUT_H264_ENCODER` 覆盖 FFmpeg 侧的编码器选择；详见 [`.env.example`](.env.example)。
 
 ### 桌面端开发
