@@ -57,7 +57,7 @@ function SessionBody({ session, imported }: { session: MobileUploadSession; impo
 
 function DialogHeader({ close }: { close: () => void }) {
   const t = useT();
-  return <header><div><strong>{t('手机传素材')}</strong><span>{t('扫码后从手机选择视频、图片或音频')}</span></div><button type="button" aria-label={t('关闭')} onClick={close}><Icon name="x" size={18} /></button></header>;
+  return <header><div><strong>{t('手机传素材')}</strong><span>{t('扫码后从手机选择视频、图片或音频')}</span></div><button type="button" autoFocus aria-label={t('关闭')} onClick={close}><Icon name="x" size={18} /></button></header>;
 }
 
 export function MobileUploadDialog({ onClose, onImport }: MobileUploadDialogProps) {

@@ -5,6 +5,7 @@ import {
   exportScale,
   type ExportResolution,
 } from '../../src/export/mediaSettings.ts';
+import { MAX_VIDEO_BITRATE_BPS, MIN_VIDEO_BITRATE_BPS } from '../../src/export/bitrate.ts';
 import { sanitizeFileName } from '../file-name.ts';
 
 export { EXPORT_FPS_OPTIONS, EXPORT_RESOLUTIONS, exportScale } from '../../src/export/mediaSettings.ts';
@@ -21,6 +22,7 @@ export type ExportRequest = {
   endSeconds?: number;
   resolution?: ExportResolution;
   fps?: number;
+  videoBitrate?: number;
 };
 
 export type ExportTimeline = {
@@ -45,12 +47,13 @@ export interface ExportPlan {
   durationSeconds: number;
   scale: number;
   retimeFps: number | undefined;
+  videoBitrate: number | undefined;
 }
 
 class ExportRequestError extends Error {}
 
 export function validateVideoParams(
-  body: { resolution?: unknown; fps?: unknown } | null,
+  body: { resolution?: unknown; fps?: unknown; videoBitrate?: unknown } | null,
   format: 'video' | 'audio',
 ): void {
   if (body?.resolution !== undefined) {
@@ -63,6 +66,14 @@ export function validateVideoParams(
     if (format !== 'video') throw new ExportRequestError('fps applies to video exports only');
     if (typeof body.fps !== 'number' || !(EXPORT_FPS_OPTIONS as readonly number[]).includes(body.fps)) {
       throw new ExportRequestError('fps must be 24, 25, 30, 50, or 60');
+    }
+  }
+  if (body?.videoBitrate !== undefined) {
+    if (format !== 'video') throw new ExportRequestError('videoBitrate applies to video exports only');
+    if (!Number.isInteger(body.videoBitrate)
+      || (body.videoBitrate as number) < MIN_VIDEO_BITRATE_BPS
+      || (body.videoBitrate as number) > MAX_VIDEO_BITRATE_BPS) {
+      throw new ExportRequestError('videoBitrate must be an integer between 1000000 and 80000000 bps');
     }
   }
 }
@@ -118,5 +129,6 @@ export function planExport(body: ExportRequest | null): ExportPlan {
     durationSeconds: frames / fps,
     scale: exportScale(state as { width?: unknown; height?: unknown }, body?.resolution),
     retimeFps: format === 'video' && body?.fps !== undefined && body.fps !== fps ? body.fps : undefined,
+    videoBitrate: format === 'video' ? body?.videoBitrate : undefined,
   };
 }

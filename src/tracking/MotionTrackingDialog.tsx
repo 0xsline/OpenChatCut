@@ -62,7 +62,7 @@ function TrackingHeader({ item, close }: { item: TimelineItem; close: () => void
   const t = useT();
   return <header className="cc-tracking-header">
     <div><h2 id="cc-tracking-title">{t('运动跟踪')} <em>{t('实验功能')}</em></h2><p>{item.name} · {t('本机分析，不上传素材')}</p></div>
-    <button type="button" onClick={close} aria-label={t('关闭')}><Icon name="x" size={17} /></button>
+    <button type="button" autoFocus onClick={close} aria-label={t('关闭')}><Icon name="x" size={17} /></button>
   </header>;
 }
 

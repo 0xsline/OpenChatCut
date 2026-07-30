@@ -123,11 +123,14 @@ await renderTimelineInBrowser({
   codec: 'vp8',
   resolution: '1080p',
   fps: 30,
+  videoBitrate: 12_000_000,
   loadRenderer: async () => runtime as never,
   loadComposition,
 });
 assert.equal(capabilityCalls[1].container, 'webm');
 assert.equal(capabilityCalls[1].audioCodec, 'opus');
+assert.equal(capabilityCalls[1].videoBitrate, 12_000_000);
+assert.equal(renderCalls[1].videoBitrate, 12_000_000);
 
 const unsupported = await renderTimelineInBrowser({
   state,

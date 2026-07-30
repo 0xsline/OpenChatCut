@@ -227,6 +227,12 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
           enum: ['480p', '720p', '1080p'],
           description: 'Video max-height ladder (default timeline size). Scales width to keep aspect.',
         },
+        videoBitrate: {
+          type: 'integer',
+          minimum: 1_000_000,
+          maximum: 80_000_000,
+          description: 'Video only. Exact output bitrate in bits per second; omit for the renderer default.',
+        },
         timelineId: {
           type: 'string',
           description: 'Export a non-active timeline by id/prefix without switching (video/audio/xml).',

@@ -33,6 +33,8 @@ export default {
   '钢笔模式 (P)：在选中片段上点击绘制关键帧（视觉片段=透明度，音频片段=音量；纵向=值，拖点改帧/值，右键删点）':
     'Pen mode (P): click the selected clip to draw keyframes (visual clips = opacity, audio clips = volume; vertical = value; drag a point to change frame/value, right-click to delete)',
   '在播放头切分选中片段 (C)': 'Split the selected clip at the playhead (C)',
+  '插入落轨': 'Insert placement',
+  '覆盖落轨': 'Overwrite placement',
   '检测选中片段的场景切点': 'Detect scene changes in the selected clip',
   '选择一个视频片段后进行场景检测': 'Select a video clip to detect scene changes',
   '跟踪选中视频中的目标（实验功能）': 'Track a target in the selected video (experimental)',

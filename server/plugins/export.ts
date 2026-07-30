@@ -107,6 +107,7 @@ async function renderExportPlan(
       codec: plan.media.codec,
       frameRange: plan.frameRange,
       scale: plan.scale,
+      videoBitrate: plan.videoBitrate,
       onProgress: (value: number) => {
         const normalized = Math.min(1, Math.max(0, Number(value) || 0));
         update({
@@ -120,8 +121,13 @@ async function renderExportPlan(
     if (retimed && plan.retimeFps) {
       update({ phase: 'finalizing', progress: 93, processedFrames: plan.totalFrames });
       const outputSize = exportOutputSize(plan.state, plan.scale);
-      await retimeFps(filepath, retimed, plan.retimeFps, plan.media.codec as 'h264' | 'vp8',
-        resolveH264TargetBitrate({ ...outputSize, fps: plan.retimeFps }));
+      await retimeFps(
+        filepath,
+        retimed,
+        plan.retimeFps,
+        plan.media.codec as 'h264' | 'vp8',
+        plan.videoBitrate ?? resolveH264TargetBitrate({ ...outputSize, fps: plan.retimeFps }),
+      );
       await unlink(filepath).catch(() => {});
       await rename(retimed, filepath);
     }
@@ -413,12 +419,24 @@ export function exportPlugin(): Plugin {
           outputLocation = finalOutput;
           const scale = exportScale(state as { width?: unknown; height?: unknown }, body.resolution);
           await withExportPermit(async () => {
-            await renderTimeline({ state, outputLocation: finalOutput, codec: media.codec, frameRange, scale });
+            await renderTimeline({
+              state,
+              outputLocation: finalOutput,
+              codec: media.codec,
+              frameRange,
+              scale,
+              videoBitrate: format === 'video' ? body.videoBitrate : undefined,
+            });
             if (format === 'video' && body.fps !== undefined && body.fps !== fps) {
               retimedOutput = `${finalOutput}.retimed.${media.ext}`;
               const outputSize = exportOutputSize(state, scale);
-              await retimeFps(finalOutput, retimedOutput, body.fps, media.codec as 'h264' | 'vp8',
-                resolveH264TargetBitrate({ ...outputSize, fps: body.fps }));
+              await retimeFps(
+                finalOutput,
+                retimedOutput,
+                body.fps,
+                media.codec as 'h264' | 'vp8',
+                body.videoBitrate ?? resolveH264TargetBitrate({ ...outputSize, fps: body.fps }),
+              );
               await unlink(finalOutput).catch(() => {});
               await rename(retimedOutput, finalOutput);
               retimedOutput = null;

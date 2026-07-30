@@ -18,7 +18,7 @@ import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGra
 import { recordExport } from '../persist/exportHistoryStore';
 
 import { exportVideoWithFallback, isAbortError, renderTimelineInBrowser } from './browserExport';
-import { EXPORT_FPS_OPTIONS, EXPORT_RESOLUTIONS, type ExportResolution } from './mediaSettings';
+import { EXPORT_FPS_OPTIONS, EXPORT_RESOLUTIONS, scaledExportDimensions, type ExportResolution } from './mediaSettings';
 import {
   captionLayoutQaIssues,
   exportQaExpectations,
@@ -32,6 +32,15 @@ import {
   runExportQa,
   saveExportAutoQaPreference,
 } from './autoQa';
+import { ExportBitrateControl } from './ExportBitrateControl';
+import {
+  DEFAULT_CUSTOM_BITRATE_MBPS,
+  MAX_VIDEO_BITRATE_MBPS,
+  MIN_VIDEO_BITRATE_MBPS,
+  requestedVideoBitrateBps,
+  resolveVideoBitrateBps,
+  type VideoBitrateMode,
+} from './bitrate';
 
 
 type ExportTab = 'video' | 'audio' | 'mg' | 'subtitles' | 'xml';
@@ -162,6 +171,18 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
   const [resolution, setResolution] = useState<ExportResolution>(defaultRes);
   // Default frame rate = Timeline fps falls into the gear (if not, it takes 30)
   const [fps, setFps] = useState<number>(FPS_OPTIONS.some((candidate) => candidate === state.fps) ? state.fps : 30);
+  const [bitrateMode, setBitrateMode] = useState<VideoBitrateMode>('auto');
+  const [customBitrateMbps, setCustomBitrateMbps] = useState(DEFAULT_CUSTOM_BITRATE_MBPS);
+  const exportDimensions = scaledExportDimensions(state, resolution);
+  const bitrateInput = {
+    mode: bitrateMode,
+    width: exportDimensions.width,
+    height: exportDimensions.height,
+    fps,
+    customMbps: customBitrateMbps,
+  };
+  const resolvedVideoBitrate = resolveVideoBitrateBps(bitrateInput);
+  const requestedVideoBitrate = requestedVideoBitrateBps(bitrateInput);
   const [subtitleFormat, setSubtitleFormat] = useState<'srt' | 'txt'>('srt');
   const captionTracks = useMemo(() => captionTrackEntries(state).filter((entry) => entry.captions), [state]);
   const [subtitleTrack, setSubtitleTrack] = useState(captionTracks[0]?.id ?? '');
@@ -270,6 +291,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
     if (format === 'video') {
       body.resolution = resolution;
       if (fps !== state.fps) body.fps = fps;
+      if (requestedVideoBitrate !== undefined) body.videoBitrate = requestedVideoBitrate;
     }
     const submission = await fetch('/export/job', {
       method: 'POST',
@@ -354,6 +376,7 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
             codec,
             resolution,
             fps,
+            videoBitrate: requestedVideoBitrate,
             signal: controller.signal,
             onProgress: (snapshot) => {
               setRenderEngine('browser');
@@ -616,6 +639,19 @@ export function ExportDialog({ state, projectName, onClose }: ExportDialogProps)
                   </Row>
                   <Row label={t('帧率')}>
                     <Segmented options={FPS_OPTIONS.map((value) => ({ value, label: `${value} fps` }))} value={fps} onChange={setFps} />
+                  </Row>
+                  <Row label={t('码率')}>
+                    <ExportBitrateControl
+                      mode={bitrateMode}
+                      customMbps={customBitrateMbps}
+                      resolvedBps={resolvedVideoBitrate}
+                      disabled={!!busy}
+                      onModeChange={setBitrateMode}
+                      onCustomMbpsChange={(value) => setCustomBitrateMbps(Math.max(
+                        MIN_VIDEO_BITRATE_MBPS,
+                        Math.min(MAX_VIDEO_BITRATE_MBPS, value),
+                      ))}
+                    />
                   </Row>
                   <label className="cc-export-toggle cc-export-qa-toggle">
                     <span>

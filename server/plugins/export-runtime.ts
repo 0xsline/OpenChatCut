@@ -7,6 +7,7 @@ import {
   h264EncodingArgs,
   isHardwareH264Encoder,
   resolveH264Encoder,
+  type H264Encoder,
 } from '../media-acceleration.ts';
 import { TaskLimiter, type ReleaseTaskPermit } from '../task-limiter.ts';
 
@@ -131,6 +132,15 @@ function runFfmpeg(args: string[]): Promise<void> {
   });
 }
 
+export function retimeVideoEncodingArgs(
+  codec: 'h264' | 'vp8',
+  encoder: H264Encoder,
+  targetBitrate: number,
+): string[] {
+  if (codec === 'vp8') return ['-c:v', 'libvpx', '-b:v', String(targetBitrate)];
+  return h264EncodingArgs({ encoder, targetBitrate, softwarePreset: 'medium' });
+}
+
 /** Re-sample presentation FPS; temporal interpolation intentionally stays off. */
 export async function retimeFps(
   input: string,
@@ -143,7 +153,7 @@ export async function retimeFps(
   const base = ['-nostdin', '-hide_banner', '-loglevel', 'error', '-y', '-i', input, '-vf', `fps=${targetFps}`];
   try {
     if (codec === 'vp8') {
-      await runFfmpeg([...base, '-c:v', 'libvpx', '-b:v', '4M', '-c:a', 'copy', output]);
+      await runFfmpeg([...base, ...retimeVideoEncodingArgs('vp8', 'libx264', targetBitrate), '-c:a', 'copy', output]);
       return;
     }
     await retimeH264(base, output, targetBitrate);
@@ -158,11 +168,7 @@ async function retimeH264(base: string[], output: string, targetBitrate: number)
   let lastError: unknown;
   for (const encoder of h264EncoderAttempts(preferred)) {
     try {
-      const videoArgs = h264EncodingArgs({
-        encoder,
-        ...(isHardwareH264Encoder(encoder) ? { targetBitrate } : { softwareCrf: 18 }),
-        softwarePreset: 'medium',
-      });
+      const videoArgs = retimeVideoEncodingArgs('h264', encoder, targetBitrate);
       await runFfmpeg([...base, ...videoArgs, '-c:a', 'copy', output]);
       return;
     } catch (error) {

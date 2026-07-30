@@ -9,6 +9,7 @@ import {
   exportJobFilename,
   resolveMaxActiveExports,
   retimeFps,
+  retimeVideoEncodingArgs,
 } from './export-runtime.ts';
 
 assert.equal(resolveMaxActiveExports(undefined), 1);
@@ -16,6 +17,15 @@ assert.equal(resolveMaxActiveExports('invalid'), 1);
 assert.equal(resolveMaxActiveExports('0'), 1);
 assert.equal(resolveMaxActiveExports('2'), 2);
 assert.equal(resolveMaxActiveExports('99'), 4);
+
+assert.deepEqual(
+  retimeVideoEncodingArgs('vp8', 'libx264', 12_000_000),
+  ['-c:v', 'libvpx', '-b:v', '12000000'],
+);
+for (const encoder of ['h264_videotoolbox', 'libx264'] as const) {
+  const args = retimeVideoEncodingArgs('h264', encoder, 12_000_000);
+  assert.equal(args[args.indexOf('-b:v') + 1], '12000000', `${encoder} retime keeps the selected bitrate`);
+}
 
 const exportDir = await mkdtemp(join(tmpdir(), 'openchatcut-export-cleanup-'));
 try {

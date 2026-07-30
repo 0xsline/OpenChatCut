@@ -12,6 +12,8 @@ export interface SubmitMediaExportArgs {
   fps?: number;
   /** Target max-height ladder: 480p | 720p | 1080p. */
   resolution?: '480p' | '720p' | '1080p';
+  /** Exact video bitrate in bits per second. */
+  videoBitrate?: number;
 }
 
 export interface MediaExportResult {
@@ -71,6 +73,7 @@ export async function submitMediaExport(args: SubmitMediaExportArgs, state: Time
       endFrameExclusive: args.endFrameExclusive,
       startSeconds: args.startSeconds,
       endSeconds: args.endSeconds,
+      videoBitrate: args.format === 'video' ? args.videoBitrate : undefined,
     }),
   });
   if (!response.ok) {

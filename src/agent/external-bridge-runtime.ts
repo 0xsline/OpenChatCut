@@ -16,6 +16,7 @@ import { isExternalDraftTool } from './external-tool-policy';
 import { isProposalStale, type Proposal } from './proposal';
 import { replayActions } from '../editor/store';
 import { saveProject } from '../persist/projectStore';
+import { saveAutomaticVersion } from '../persist/versionStore';
 import {
   saveExternalProposal,
   type StoredExternalProposal,
@@ -122,6 +123,7 @@ export class ExternalBridgeRuntime {
     }
     const chosen = proposal.options[0].operations.filter((_, index) => selected.has(index));
     const result = replayActions(currentDoc, chosen.flatMap((operation) => operation.actions));
+    await saveAutomaticVersion(this.projectId, '外部 Agent 修改前', currentDoc);
     const saveResult = await saveProject(this.projectId, result);
     if (!saveResult.saved) {
       throw new Error('The edited project could not be saved. The proposal remains pending.');

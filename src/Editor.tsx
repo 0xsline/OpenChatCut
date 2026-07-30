@@ -19,6 +19,7 @@ import type { ProjectDoc, TimelineItem, TimelineState } from './editor/types';
 import { captionsOnTrack, selectedIdsOf, timelineTrackIds, trackAlias, trackKind } from './editor/types';
 import { TEMPLATES } from './editor/initial';
 import { saveProject, loadCreativeMode, saveCreativeMode, type ProjectMeta } from './persist/projectStore';
+import { useAutomaticVersions } from './persist/useAutomaticVersions';
 import { importMedia } from './media/upload';
 import { importUploadedMedia } from './media/mobileImport';
 import type { MobileUploadRecord } from './media/mobileUploadApi';
@@ -254,6 +255,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   // Read the playhead only when an edit needs it. Continuous visual updates are
   // painted inside Timeline so playback does not re-render the whole editor.
   const getPlayhead = useCallback(() => playerRef.current?.getCurrentFrame() ?? 0, []);
+
+  useAutomaticVersions(project.id, doc);
 
   // autosave this project (all timelines) to IndexedDB (debounced) so a reload restores it.
   // The anti-shake timer will be cleared by the effect, so the "leave" process must be completed by yourself: Return to the project list

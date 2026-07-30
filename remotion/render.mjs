@@ -176,10 +176,19 @@ async function getServeUrl() {
  * @param {string} args.outputLocation  absolute output path
  * @param {'h264'|'vp8'|'mp3'|'wav'} [args.codec]
  * @param {[number, number]} [args.frameRange] inclusive Remotion frame range
+ * @param {number} [args.videoBitrate] video bitrate in bits per second
  * @param {(progress: number) => void} [args.onProgress]  0..1
  * @returns {Promise<string>} the outputLocation
  */
-export async function renderTimeline({ state, outputLocation, onProgress, codec = 'h264', frameRange, scale }) {
+export async function renderTimeline({
+  state,
+  outputLocation,
+  onProgress,
+  codec = 'h264',
+  frameRange,
+  scale,
+  videoBitrate,
+}) {
   if (!state || typeof state !== 'object' || !Array.isArray(state.items)) {
     throw new Error('renderTimeline: a valid TimelineState (with items[]) is required');
   }
@@ -199,6 +208,9 @@ export async function renderTimeline({ state, outputLocation, onProgress, codec 
     outputLocation,
     // Resolution export: scale by short side (1080p timeline select 720p → scale 2/3); default 1 does not scale
     scale: scale && Number.isFinite(scale) && scale > 0 ? scale : 1,
+    videoBitrate: Number.isFinite(videoBitrate) && videoBitrate > 0
+      ? `${Math.round(videoBitrate / 1000)}k`
+      : undefined,
     // GLSL transitions need WebGL2 in headless Chrome; 'angle' uses the native
     // GPU backend (Metal on macOS). Swap to 'swangle' (SwiftShader) on servers.
     chromiumOptions: { gl: 'angle' },

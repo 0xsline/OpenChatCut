@@ -13,6 +13,7 @@ export interface BrowserExportOptions {
   codec: BrowserVideoCodec;
   resolution: ExportResolution;
   fps: number;
+  videoBitrate?: number;
   signal?: AbortSignal;
   onProgress?: (progress: RenderMediaOnWebProgress) => void;
   loadRenderer?: () => Promise<WebRendererModule>;
@@ -103,7 +104,7 @@ export function browserScaledExportDimensions(
 }
 
 export async function renderTimelineInBrowser(options: BrowserExportOptions): Promise<BrowserExportAttempt> {
-  const { state, codec, resolution, fps, signal, onProgress } = options;
+  const { state, codec, resolution, fps, videoBitrate, signal, onProgress } = options;
   if (signal?.aborted) throw abortError();
   if (fps !== state.fps) {
     return {
@@ -118,6 +119,7 @@ export async function renderTimelineInBrowser(options: BrowserExportOptions): Pr
   const { width, height, scale } = browserScaledExportDimensions(state, resolution);
   const container = codec === 'h264' ? 'mp4' : 'webm';
   const audioCodec = codec === 'h264' ? 'aac' : 'opus';
+  const resolvedVideoBitrate = videoBitrate ?? 'high';
   const renderer = await (options.loadRenderer ?? (() => import('@remotion/web-renderer')))();
   if (signal?.aborted) throw abortError();
 
@@ -127,7 +129,7 @@ export async function renderTimelineInBrowser(options: BrowserExportOptions): Pr
     audioCodec,
     width,
     height,
-    videoBitrate: 'high',
+    videoBitrate: resolvedVideoBitrate,
     audioBitrate: 'high',
   });
   const issues = capability.issues.map((issue) => issue.message);
@@ -163,7 +165,7 @@ export async function renderTimelineInBrowser(options: BrowserExportOptions): Pr
       onProgress,
       hardwareAcceleration: 'prefer-hardware',
       pageResponsiveness: 'medium',
-      videoBitrate: 'high',
+      videoBitrate: resolvedVideoBitrate,
       audioBitrate: 'high',
       transparent: false,
     });

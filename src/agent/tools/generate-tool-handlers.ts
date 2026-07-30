@@ -148,7 +148,10 @@ async function exportMedia(args: GenerateArgs, state: TimelineState, format: 'au
     startFrame: typeof args.startFrame === 'number' ? args.startFrame : undefined,
     endFrameExclusive: typeof args.endFrameExclusive === 'number' ? args.endFrameExclusive : undefined,
     startSeconds: typeof args.startSeconds === 'number' ? args.startSeconds : undefined,
-    endSeconds: typeof args.endSeconds === 'number' ? args.endSeconds : undefined, fps, resolution,
+    endSeconds: typeof args.endSeconds === 'number' ? args.endSeconds : undefined,
+    fps,
+    resolution,
+    videoBitrate: typeof args.videoBitrate === 'number' ? args.videoBitrate : undefined,
   };
   const result = await submitMediaExport(input, state);
   void recordExport({ name: result.name, format: result.format, codec: result.codec, sizeBytes: result.sizeBytes, frameRange: frameRangeOf(result.startFrame, result.endFrameExclusive), createdAt: Date.now() });
