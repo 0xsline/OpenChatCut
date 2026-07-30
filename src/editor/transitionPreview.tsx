@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { AbsoluteFill, useCurrentFrame } from 'remotion';
 import { CSS_TRANSITION_TYPES } from './types';
-import type { AspectFit, CssTransitionType, TimelineItem, TransitionDirection, TransitionItem } from './types';
+import type { CssTransitionType, TransitionDirection, TransitionItem } from './types';
 
 const PREVIEW_APPROXIMATION: Partial<Record<TransitionItem['type'], CssTransitionType>> = {
   'clean-line-wipe': 'soft-wipe',
@@ -18,23 +18,6 @@ const PREVIEW_APPROXIMATION: Partial<Record<TransitionItem['type'], CssTransitio
 export function previewTransitionType(type: TransitionItem['type']): CssTransitionType {
   if (CSS_TRANSITION_TYPES.has(type)) return type as CssTransitionType;
   return PREVIEW_APPROXIMATION[type] ?? 'cross-dissolve';
-}
-
-export function previewTransitionParts(durationInFrames: number) {
-  const duration = Math.max(1, Math.round(durationInFrames));
-  const outFrames = Math.floor(duration / 2);
-  return { outFrames, inFrames: duration - outFrames };
-}
-
-export function transitionStillSrc(item: TimelineItem, sourceFrame: number, fps: number): string | undefined {
-  if (!item.src) return undefined;
-  if (item.kind === 'image' || item.kind === 'gif' || item.kind === 'svg') return item.src;
-  if (item.kind !== 'video' || !item.src.startsWith('/media/uploads/')) return undefined;
-  const params = new URLSearchParams({
-    src: item.src.split('#')[0],
-    time: (Math.max(0, sourceFrame) / Math.max(1, fps)).toFixed(3),
-  });
-  return `/api/media-frame?${params}`;
 }
 
 interface Entrance {
@@ -79,20 +62,11 @@ interface LayerProps {
   frames: number;
   dir: TransitionDirection;
   line?: boolean;
-  frozenSrc?: string;
-  preloadSrc?: string;
-  fit?: AspectFit;
   children: ReactNode;
 }
 
 function StyledLayer({ entrance, children }: { entrance: Entrance; children: ReactNode }) {
   return <AbsoluteFill style={{ opacity: entrance.opacity, transform: entrance.transform, filter: entrance.filter, clipPath: entrance.clipPath }}>{children}</AbsoluteFill>;
-}
-
-function FrozenFrame({ src, fit = 'contain' }: { src: string; fit?: AspectFit }) {
-  return <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
-    <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: fit === 'cover' ? 'cover' : 'contain' }} />
-  </AbsoluteFill>;
 }
 
 function WipeLine({ p, dir }: { p: number; dir: TransitionDirection }) {
@@ -109,56 +83,38 @@ function WipeLine({ p, dir }: { p: number; dir: TransitionDirection }) {
   return <div style={{ position: 'absolute', transform: 'translate(-2px, -2px)', ...style }} />;
 }
 
-function Layer({ style, entrance, children }: { style?: CSSProperties; entrance: Entrance; children: ReactNode }) {
+function Layer({ style, entrance, line, p, dir, children }: {
+  style?: CSSProperties;
+  entrance: Entrance;
+  line?: boolean;
+  p: number;
+  dir: TransitionDirection;
+  children: ReactNode;
+}) {
   return (
     <AbsoluteFill style={style}>
-      <StyledLayer entrance={entrance}>{children}</StyledLayer>
-      {entrance.overlay && <AbsoluteFill style={{ background: entrance.overlay.background, opacity: entrance.overlay.opacity }} />}
-    </AbsoluteFill>
-  );
-}
-
-export function PreviewTransitionIn({ type, frames, dir, line, frozenSrc, fit, isolated = false, children }: LayerProps & { isolated?: boolean }) {
-  const frame = useCurrentFrame();
-  if (frame >= frames) return <AbsoluteFill>{children}</AbsoluteFill>;
-  const p = frozenSrc ? 0.5 + 0.5 * frame / Math.max(1, frames - 1) : frame / Math.max(1, frames);
-  const entrance = entranceStyle(type, Math.max(0, p), dir);
-  if (frozenSrc) return (
-    <AbsoluteFill>
-      <FrozenFrame src={frozenSrc} fit={fit} />
       <StyledLayer entrance={entrance}>{children}</StyledLayer>
       {entrance.overlay && <AbsoluteFill style={{ background: entrance.overlay.background, opacity: entrance.overlay.opacity }} />}
       {line && <WipeLine p={p} dir={dir} />}
     </AbsoluteFill>
   );
-  return <Layer style={isolated ? { background: backgroundFor(type) } : undefined}
-    entrance={entrance}>{children}</Layer>;
 }
 
-export function PreviewTransitionOut({ type, frames, dir, line, duration, frozenSrc, preloadSrc, fit, children }: LayerProps & { duration: number }) {
+export function PreviewTransitionIn({ type, frames, dir, line, isolated = false, children }: LayerProps & { isolated?: boolean }) {
   const frame = useCurrentFrame();
-  const local = frame - (duration - frames);
-  if (local < 0) return (
-    <AbsoluteFill>
+  // Keep the wrapper tree stable after completion: remounting BrowserVideo makes
+  // Remotion wait for a fresh seek and pauses the shared audio transport.
+  const p = Math.max(0, Math.min(1, frame / Math.max(1, frames)));
+  const entrance = entranceStyle(type, p, dir);
+  return (
+    <Layer
+      style={isolated ? { background: backgroundFor(type) } : undefined}
+      entrance={entrance}
+      line={line}
+      p={p}
+      dir={dir}
+    >
       {children}
-      <AbsoluteFill style={{ opacity: 0, pointerEvents: 'none' }}>
-        {frozenSrc && <FrozenFrame src={frozenSrc} fit={fit} />}
-        {preloadSrc && <FrozenFrame src={preloadSrc} fit={fit} />}
-      </AbsoluteFill>
-    </AbsoluteFill>
+    </Layer>
   );
-  const p = 0.5 * local / Math.max(1, frames - 1);
-  if (frozenSrc) {
-    const entrance = entranceStyle(type, Math.max(0, p), dir);
-    return (
-      <AbsoluteFill>
-        {children}
-        <StyledLayer entrance={entrance}><FrozenFrame src={frozenSrc} fit={fit} /></StyledLayer>
-        {entrance.overlay && <AbsoluteFill style={{ background: entrance.overlay.background, opacity: entrance.overlay.opacity }} />}
-        {line && <WipeLine p={p} dir={dir} />}
-      </AbsoluteFill>
-    );
-  }
-  return <Layer style={{ background: backgroundFor(type) }}
-    entrance={entranceStyle(type, Math.max(0, 1 - p * 2), dir)}>{children}</Layer>;
 }

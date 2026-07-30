@@ -14,7 +14,7 @@ import { captionTrackEntries, CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, isAud
 import type { AspectFit, CssTransitionType, GlslTransitionType, KeyframeProp, TimelineItem, TimelineState, TransitionDirection, TransitionItem, Watermark } from './types';
 import { sourceFrameAt } from './sourceLimit';
 import { continuousVideoAudioGroups } from './transitionAudio';
-import { PreviewTransitionIn, PreviewTransitionOut, previewTransitionParts, previewTransitionType, transitionStillSrc } from './transitionPreview';
+import { PreviewTransitionIn, previewTransitionType } from './transitionPreview';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
 // fadeIn, then 1→0 across fadeOut. Used for visual opacity + audio volume.
@@ -364,19 +364,23 @@ export function TimelineComposition({ state, transparent, browserRenderer = fals
   const groupedVideoIds = new Set(videoAudioGroups.flatMap((group) => group.map((item) => item.id)));
 
   // A transition straddles the cut: half retreats into outgoing, half
-  // into incoming). Extend each clip's render window so both are visible across
-  // the window, and drive the incoming clip's entrance over it. GLSL types run
-  // the real fragment shader when BOTH clips are texturable
-  // (video/image); with a DOM clip involved (MG/text — no GL texture, same
-  // limit as any DOM layer) they fall back to a CSS cross-dissolve.
+  // into incoming). Extend each clip's render window so both stay live across
+  // the window, and drive the incoming clip's entrance over it.
+  //
+  // Preview (Player) + any video: use a live CSS approximation of the GLSL type.
+  // Mounting GlTransition's hidden <Video>s alongside the live clip videos
+  // used to cold-seek multiple decoders on the same frame and stall playback; the
+  // later freeze-still workaround (media-frame JPEGs) literally froze half the
+  // transition. Live dual-clip CSS keeps both decoders already premounted and
+  // never freezes a side to a still. Headless export still runs real GLSL.
+  // Gif is also excluded from GL: GlTransition uses <Video> for sources, so a
+  // gif would hang delayRender during export — CSS fallback instead.
   const byId = new Map(state.items.map((it) => [it.id, it]));
-  // Gif is also excluded: GlTransition uses <Video> to hang the source, gif cannot be decoded → delayRender freezes the export; use CSS fallback
   const texturable = (it?: TimelineItem) => !!it && isRasterMediaKind(it.kind) && it.kind !== 'svg' && it.kind !== 'gif';
   const enabledTransitions = (state.transitions ?? []).filter((t) => t.enabled !== false);
   const visualTransitions = enabledTransitions.filter((t) => !isAudioTransition(t.type));
-  type PreviewEdge = { type: CssTransitionType; frames: number; dir: TransitionDirection; line?: boolean; frozenSrc?: string; preloadSrc?: string };
-  const entranceOf = new Map<string, PreviewEdge & { isolated: boolean }>();
-  const exitOf = new Map<string, PreviewEdge>();
+  type PreviewEdge = { type: CssTransitionType; frames: number; dir: TransitionDirection; line?: boolean; isolated: boolean };
+  const entranceOf = new Map<string, PreviewEdge>();
   const extendBefore = new Map<string, number>();
   const extendAfter = new Map<string, number>();
   interface GlWindow { key: string; type: GlslTransitionType | 'custom-shader'; direction: TransitionDirection; from: number; L: number; outgoing: TimelineItem; incoming: TimelineItem; trimOut: number; trimIn: number; customFrag?: string; customUniforms?: Record<string, number> }
@@ -385,19 +389,19 @@ export function TimelineComposition({ state, transparent, browserRenderer = fals
     const half = Math.floor(t.durationInFrames / 2);
     const out = byId.get(t.outgoingItemId);
     const inc = byId.get(t.incomingItemId);
-    const lightweightPreview = environment.isPlayer && (out?.kind === 'video' || inc?.kind === 'video');
-    if (lightweightPreview) {
-      const type = previewTransitionType(t.type);
-      const parts = previewTransitionParts(t.durationInFrames);
-      const edge = { type, dir: t.direction ?? 'left', line: t.type === 'clean-line-wipe' };
-      const outgoingStill = out && transitionStillSrc(out, sourceFrameAt(out, out.durationInFrames - 1), state.fps);
-      const incomingStill = inc && transitionStillSrc(inc, sourceFrameAt(inc, 0), state.fps);
-      if (parts.outFrames) exitOf.set(t.outgoingItemId, { ...edge, frames: parts.outFrames, frozenSrc: incomingStill, preloadSrc: outgoingStill });
-      entranceOf.set(t.incomingItemId, { ...edge, frames: parts.inFrames, frozenSrc: outgoingStill, isolated: !outgoingStill });
-      continue;
-    }
     extendBefore.set(t.incomingItemId, half);
     extendAfter.set(t.outgoingItemId, t.durationInFrames - half);
+    const liveCssPreview = environment.isPlayer && (out?.kind === 'video' || inc?.kind === 'video');
+    if (liveCssPreview) {
+      entranceOf.set(t.incomingItemId, {
+        type: previewTransitionType(t.type),
+        frames: t.durationInFrames,
+        dir: t.direction ?? 'left',
+        line: t.type === 'clean-line-wipe',
+        isolated: false,
+      });
+      continue;
+    }
     if (GLSL_TRANSITION_TYPES.has(t.type) && texturable(out) && texturable(inc)) {
       const from = inc!.startFrame - half; // R = incoming.from - floor(L/2)
       glWindows.push({
@@ -426,7 +430,6 @@ export function TimelineComposition({ state, transparent, browserRenderer = fals
         const eb = extendBefore.get(item.id) ?? 0;
         const ea = extendAfter.get(item.id) ?? 0;
         const entrance = entranceOf.get(item.id);
-        const exit = exitOf.get(item.id);
         const content = (
           <ClipWrapper item={item} frameOffset={-eb}>
             {item.kind === 'motion-graphic'
@@ -438,14 +441,11 @@ export function TimelineComposition({ state, transparent, browserRenderer = fals
               : <MediaFill item={item} frameOffset={-eb} fit={fit} muted={isMuted(item.track)} groupedAudio={groupedVideoIds.has(item.id)} gainAt={(frame) => duckGain(item.track, frame)} canvasW={state.width} canvasH={state.height} browserRenderer={browserRenderer} />}
           </ClipWrapper>
         );
-        const exiting = exit
-          ? <PreviewTransitionOut type={exit.type} frames={exit.frames} dir={exit.dir} line={exit.line} duration={item.durationInFrames} frozenSrc={exit.frozenSrc} preloadSrc={exit.preloadSrc} fit={fit}>{content}</PreviewTransitionOut>
-          : content;
         return (
           <Sequence key={item.id} from={item.startFrame - eb} durationInFrames={item.durationInFrames + eb + ea} premountFor={premountFrames} name={item.name}>
             {entrance
-              ? <PreviewTransitionIn type={entrance.type} frames={entrance.frames} dir={entrance.dir} line={entrance.line} frozenSrc={entrance.frozenSrc} fit={fit} isolated={entrance.isolated}>{exiting}</PreviewTransitionIn>
-              : exiting}
+              ? <PreviewTransitionIn type={entrance.type} frames={entrance.frames} dir={entrance.dir} line={entrance.line} isolated={entrance.isolated}>{content}</PreviewTransitionIn>
+              : content}
           </Sequence>
         );
       })}

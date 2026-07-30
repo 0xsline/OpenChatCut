@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { AbsoluteFill, Img, Video, continueRender, delayRender, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Img, Video, continueRender, delayRender, getRemotionEnvironment, useCurrentFrame, useVideoConfig } from 'remotion';
 import { createGlRuntime, type GlRuntime } from './runtime';
 import { GLSL_TRANSITIONS } from './transitions';
 import type { AspectFit, GlslTransitionType, TimelineItem, TransitionDirection } from '../editor/types';
@@ -94,11 +94,16 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !def) return;
-    const handle = delayRender(`gl-transition ${type} f${frame}`);
+    // delayRender only for headless export — it must wait for both sources
+    // before capturing the frame. In the Player, waiting stalls the whole
+    // transport (looks like a freeze on the outgoing tail); paint when ready
+    // instead and let the next frame retry if a seek is still in flight.
+    const blockForExport = getRemotionEnvironment().isRendering;
+    const handle = blockForExport ? delayRender(`gl-transition ${type} f${frame}`) : null;
     let done = false;
     let raf = 0;
     const finish = () => {
-      if (!done) {
+      if (!done && handle != null) {
         done = true;
         continueRender(handle);
       }
