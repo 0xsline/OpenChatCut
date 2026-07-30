@@ -446,13 +446,6 @@ export function ChatComposer(props: ChatComposerProps) {
           <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
             {t('生成/导出等昂贵工具即使开启自动应用，仍走提案卡二次确认。')}
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
-            <input type="checkbox" checked={agentSettings.thinkingEnabled} onChange={(e) => patchAgent({ thinkingEnabled: e.target.checked })} style={{ accentColor: theme.accent }} />
-            {t('思考模式')}
-          </label>
-          <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
-            {t('回答前先展开思考过程；中转不支持时本轮自动关闭。')}
-          </div>
           <div style={{ padding: '8px 10px 4px', color: theme.text, fontSize: 12.5 }}>{t('MG 质量')}</div>
           <div style={{ display: 'flex', gap: 4, padding: '0 10px' }}>
             {MG_TIERS.map((tier) => (

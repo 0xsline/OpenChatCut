@@ -11,8 +11,6 @@ export interface AgentSettings {
    * via the existing proposal card even when "Auto-Apply" is on.
    */
   skillGuard: boolean;
-  /** Thinking mode (on → request with thinking:'adaptive' + effort:'medium'). */
-  thinkingEnabled: boolean;
   /** MG quality file (default balance), injected through <agent_settings>. */
   mgTier: MgTier;
   /** Plan mode (Agent Settings planMode switch): come up with the numbering plan first, and then start after the user confirms it. */
@@ -23,7 +21,6 @@ const KEY = 'cc.agentSettings.v1';
 
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   skillGuard: true,
-  thinkingEnabled: false,
   mgTier: 'balance',
   planMode: false,
 };
@@ -35,7 +32,6 @@ export function loadAgentSettings(): AgentSettings {
     const parsed = JSON.parse(raw) as Partial<AgentSettings>;
     return {
       skillGuard: parsed.skillGuard !== false,
-      thinkingEnabled: parsed.thinkingEnabled === true,
       mgTier: MG_TIERS.includes(parsed.mgTier as MgTier) ? (parsed.mgTier as MgTier) : DEFAULT_AGENT_SETTINGS.mgTier,
       planMode: parsed.planMode === true,
     };
@@ -74,10 +70,10 @@ export function agentSettingsPrompt(s: Pick<AgentSettings, 'mgTier' | 'planMode'
   return `\n\n<agent_settings>\n${lines.join('\n')}\n</agent_settings>`;
 }
 
-// ──Inline thinking tag extraction (display path of thinking mode) ─────────────────────────────────
+// ── Inline thinking tag extraction ───────────────────────────────────────────
 // Some relays/models mix reasoning into the text flow with literal labels instead of native thinking blocks:
 // DeepSeek/MiniMax/GLM/Qwen/MiMo systems commonly use <think>, and some transfer and prompt words use <thinking>.
-// Both pairs of tags are recognized and are uniformly effective for all providers; the native reasoning channel does not pass through here.
+// Both pairs are stripped from the visible reply and routed to the collapsed thinking block.
 // Cross-chunk state machine: The text after entering the open tag enters the thinking channel but not the main text; when it encounters the text that is paired with the open tag
 // The text is restored only when the tag is closed; the stream is not closed at the end → all the remainder goes to thinking; the tag is opened half way (such as "<thin")
 // In the end, it did not become a label → the text is counted as it is.

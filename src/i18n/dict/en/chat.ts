@@ -101,8 +101,6 @@ export default {
   '开启后 AI 的改动直接生效，无需手动确认（仍可撤销）。': 'When on, AI changes apply immediately without manual confirmation (still undoable).',
   'Skill guard · 高成本确认': 'Skill guard · confirm high-cost',
   '生成/导出等昂贵工具即使开启自动应用，仍走提案卡二次确认。': 'Expensive tools (generation/export) still go through the proposal card even with auto-apply on.',
-  '思考模式': 'Thinking mode',
-  '回答前先展开思考过程；中转不支持时本轮自动关闭。': 'Thinks before answering; auto-disables for the turn if the relay lacks support.',
   'MG 质量': 'MG quality',
   '速度': 'Speed',
   '均衡': 'Balanced',

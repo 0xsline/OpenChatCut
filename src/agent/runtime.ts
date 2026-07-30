@@ -176,13 +176,10 @@ export async function runAgent(
     creativeModePrompt(findSkill(ctx.getCreativeMode())),
   ], editorStatePrompt(ctx));
 
-  let reasoningFellBack = false;
   let toolTurns = 0;
 
   for (;;) {
-    const withReasoning = settings.thinkingEnabled && !reasoningFellBack;
     const extract = createInlineThinkingExtractor();
-    let sawContentEvent = false;
     let textStarted = false;
     let visibleText = '';
     let askedFollowup = false;
@@ -221,25 +218,20 @@ export async function runAgent(
         maxRetries: 0,
         abortSignal: opts?.signal,
         ...(providerOptions ? { providerOptions } : {}),
-        ...(withReasoning ? { reasoning: 'medium' as const } : {}),
       });
 
       let aborted = false;
       try {
         for await (const part of result.stream) {
           if (part.type === 'text-delta') {
-            sawContentEvent = true;
             const extracted = extract.push(part.text);
             if (extracted.thinking) onEvent({ type: 'thinking-delta', delta: extracted.thinking });
             if (extracted.text) emitText(extracted.text);
           } else if (part.type === 'reasoning-delta') {
-            sawContentEvent = true;
             if (part.text) onEvent({ type: 'thinking-delta', delta: part.text });
           } else if (part.type === 'tool-input-start') {
-            sawContentEvent = true;
             onEvent({ type: 'tool-input-start', name: part.toolName });
           } else if (part.type === 'tool-input-delta') {
-            sawContentEvent = true;
             if (part.delta) onEvent({ type: 'tool-input-delta', delta: part.delta });
           } else if (part.type === 'error') {
             throw part.error;
@@ -281,13 +273,6 @@ export async function runAgent(
     } catch (error) {
       if (opts?.signal?.aborted) return conv;
       const message = errorMessage(error).trim();
-      if (withReasoning
-        && !sawContentEvent
-        && /thinking|reasoning|param|invalid|unsupported|不支持/i.test(message)) {
-        reasoningFellBack = true;
-        onEvent({ type: 'error', message: '当前模型接口不支持思考模式，已自动关闭本轮' });
-        continue;
-      }
       onEvent({ type: 'error', message });
       return conv;
     }

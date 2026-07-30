@@ -10,7 +10,6 @@ import {
 // ── Default value (node has no localStorage → load uses catch/empty storage, return to default in both cases) ──
 assert.deepStrictEqual(loadAgentSettings(), DEFAULT_AGENT_SETTINGS, '无存储 → 默认值');
 assert.strictEqual(DEFAULT_AGENT_SETTINGS.skillGuard, true);
-assert.strictEqual(DEFAULT_AGENT_SETTINGS.thinkingEnabled, false, 'thinkingEnabled 默认 false');
 assert.strictEqual(DEFAULT_AGENT_SETTINGS.mgTier, 'balance', 'mgTier 默认 balance');
 assert.strictEqual(DEFAULT_AGENT_SETTINGS.planMode, false, 'planMode 默认 false');
 assert.deepStrictEqual([...MG_TIERS], ['speed', 'balance', 'quality']);
@@ -25,16 +24,22 @@ Object.defineProperty(globalThis, 'localStorage', {
     setItem: (k: string, v: string) => { store.set(k, v); },
   },
 });
-saveAgentSettings({ skillGuard: false, thinkingEnabled: true, mgTier: 'quality', planMode: true });
+saveAgentSettings({ skillGuard: false, mgTier: 'quality', planMode: true });
 assert.deepStrictEqual(
   loadAgentSettings(),
-  { skillGuard: false, thinkingEnabled: true, mgTier: 'quality', planMode: true },
+  { skillGuard: false, mgTier: 'quality', planMode: true },
   'save→load roundtrip 保真',
+);
+// Removed settings from older storage must not leak back into the active settings shape.
+store.set('cc.agentSettings.v1', JSON.stringify({ skillGuard: true, thinkingEnabled: true, mgTier: 'speed', planMode: false }));
+assert.deepStrictEqual(
+  loadAgentSettings(),
+  { skillGuard: true, mgTier: 'speed', planMode: false },
+  '旧 thinkingEnabled 字段被忽略',
 );
 // Illegal tier / Missing fields fall back to default
 store.set('cc.agentSettings.v1', JSON.stringify({ mgTier: 'ludicrous' }));
 assert.strictEqual(loadAgentSettings().mgTier, 'balance', '非法 tier 回落 balance');
-assert.strictEqual(loadAgentSettings().thinkingEnabled, false, '缺字段回落默认');
 
 // ── <agent_settings> injection ──
 const off = agentSettingsPrompt({ mgTier: 'speed', planMode: false, skillGuard: true });

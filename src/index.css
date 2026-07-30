@@ -1213,15 +1213,17 @@ button, input, select { font: inherit; }
   .cc-cap-manual-actions { grid-column:auto; }
 }
 
-/* ── Compact inspector (always docked under preview; does not unmount) ── */
+/* ── Preview workspace and right-docked inspector ── */
+.cc-preview-workspace {
+  display:flex; position:relative; min-height:0; min-width:0; overflow:hidden;
+  container:preview-workspace / inline-size;
+}
 .cc-inspector {
-  border-top:0.5px solid var(--cc-border); background:var(--cc-panel);
+  width:300px; border-left:0.5px solid var(--cc-border); background:var(--cc-panel);
   display:flex; flex-direction:column; min-height:0;
-  flex:0 0 auto; /* don't let preview steal this space */
-  max-height:min(280px, 36%);
+  flex:0 0 300px;
   overflow:hidden;
 }
-.cc-inspector.collapsed { max-height:34px; }
 .cc-inspector:not(.collapsed) .cc-insp-body { min-height:72px; }
 .cc-insp-header {
   display:flex; align-items:center; gap:6px; width:100%; text-align:left;
@@ -1248,6 +1250,12 @@ button, input, select { font: inherit; }
 .cc-insp-groups > .cc-insp-section:first-child { margin-top:0; border-top:0; padding-top:0; }
 .cc-insp-hint { font-size:11px; color:var(--cc-text-dim); line-height:1.4; margin-bottom:2px; }
 .cc-insp-muted { font-size:11px; color:var(--cc-text-dim); }
+@container preview-workspace (max-width:720px) {
+  .cc-inspector {
+    position:absolute; inset:0 0 0 auto; z-index:12;
+    width:min(320px, 82%); box-shadow:-12px 0 28px color-mix(in srgb, var(--cc-bg) 55%, transparent);
+  }
+}
 .cc-insp-stack { display:flex; flex-direction:column; gap:5px; }
 .cc-insp-row {
   display:grid; grid-template-columns:44px minmax(60px, 1fr) 76px; align-items:center; gap:8px;

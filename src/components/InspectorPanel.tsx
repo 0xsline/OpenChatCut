@@ -9,7 +9,6 @@ import { KEYFRAME_PROPS, getKeyframePropertyDefinition } from '../editor/keyfram
 import { ALL_FX as FX_EFFECTS, LUT_EFFECTS } from '../gl/fx/effects';
 const FX_IDS = Object.keys(FX_EFFECTS);
 const compactNumber = (value: number) => String(Number(value.toFixed(2)));
-import { usePersistedState } from '../hooks/usePersistedState';
 import { Icon } from './icons';
 import { FONT_CATALOG } from '../fonts/googleFonts';
 import { useT } from '../i18n/locale';
@@ -200,6 +199,8 @@ interface InspectorPanelProps {
   templates: Tpl[];
   selectedItem: TimelineItem | null;
   fps: number;
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
   onItemPropChange: (key: string, value: unknown) => void;
   onItemVolumeChange: (volume: number) => void;
   onItemFadeChange: (fade: FadePatch) => void;
@@ -1002,11 +1003,9 @@ function EffectsControl({ item, onChange }: { item: TimelineItem; onChange: (eff
   );
 }
 
-// Property editor for the selected timeline item (sits under the preview).
-// Collapsible so it doesn't crowd the preview when you don't need it.
-export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, autoGrade, onItemZoomChange, onItemEffectsChange, onItemSpeedChange, onNormalizeLoudness, onIsolateVoice, getPlayhead, onSetReframeKeyframe, onRemoveReframeKeyframe, onSetItemKeyframe, onRemoveItemKeyframe, onResetItemKeyframes, onSeek, transition, onAddTransition, onSetTransition, onRemoveTransition, historyGesture, playerRef }: InspectorPanelProps) {
+// Property editor for the selected timeline item, docked beside the preview.
+export function InspectorPanel({ templates, selectedItem, fps, collapsed, onCollapsedChange, onItemPropChange, onItemVolumeChange, onItemFadeChange, onItemTransformChange, onItemFiltersChange, autoGrade, onItemZoomChange, onItemEffectsChange, onItemSpeedChange, onNormalizeLoudness, onIsolateVoice, getPlayhead, onSetReframeKeyframe, onRemoveReframeKeyframe, onSetItemKeyframe, onRemoveItemKeyframe, onResetItemKeyframes, onSeek, transition, onAddTransition, onSetTransition, onRemoveTransition, historyGesture, playerRef }: InspectorPanelProps) {
   const t = useT();
-  const [collapsed, setCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const schema = selectedItem
     ? templates.find((tpl) => tpl.id === selectedItem.templateId)?.propSchema ?? []
     : [];
@@ -1083,7 +1082,7 @@ export function InspectorPanel({ templates, selectedItem, fps, onItemPropChange,
     <section className={`cc-inspector${collapsed ? ' collapsed' : ''}`}>
       <button
         type="button"
-        onClick={() => setCollapsed((v) => !v)}
+        onClick={() => onCollapsedChange(!collapsed)}
         title={collapsed ? t('展开属性') : t('收起属性')}
         className="cc-insp-header"
       >

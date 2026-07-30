@@ -322,6 +322,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const [libW, setLibW] = usePersistedState('openchatcut.libW.ui-v1', Math.max(ASSETS_MIN_W, Math.round(viewportW * 406 / BASELINE_VIEWPORT_W)));
   const [timelineH, setTimelineH] = usePersistedState('openchatcut.timelineH.ui-v1', Math.max(TIMELINE_MIN_H, Math.round((viewportH - HEADER_H) * 350 / BASELINE_CONTENT_H)));
   const [chatCollapsed, setChatCollapsed] = usePersistedState('cc.chatCollapsed', false);
+  const [inspectorCollapsed, setInspectorCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const addTemplate = useCallback((tpl: Tpl) => commands.addMotionGraphic(tpl), [commands]);
   // Add an asset to the pool AND kick off "upload-and-transcribe" ASR for audio-bearing media.
   // On completion the transcript is written onto the asset (so later placements inherit
@@ -539,20 +540,24 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       <div style={{ gridColumn: 4, gridRow: 2 }}>
         <Divider onResize={(dx) => setLibW((w) => clamp(w + dx, ASSETS_MIN_W, Math.max(ASSETS_MIN_W, viewportW - (chatCollapsed ? 46 : chatW) - CANVAS_MIN_W - SPLITTER_TOTAL_W)))} />
       </div>
-      <div style={{ gridColumn: 5, gridRow: 2, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+      <div className="cc-preview-workspace" style={{ gridColumn: 5, gridRow: 2 }}>
         <PreviewPanel state={autoGradePreviewState ?? previewState ?? state} playerRef={playerRef} onImport={importToCanvas}
           projectId={project.id} timelineId={doc.activeTimelineId} reviewState={state} selectedItem={selectedItem}
           reviewRequest={reviewRequest}
           offlineSrcs={offlineSrcs}
           onUpdateCaptions={previewState || autoGradePreviewState ? undefined : commands.updateCaptions}
-          onSeedChat={(text) => setChatSeed({ text, nonce: Date.now() })} />
-        {selectedItem && (
+          onSeedChat={(text) => setChatSeed({ text, nonce: Date.now() })}
+          inspectorOpen={!!selectedItem && !inspectorCollapsed}
+          onToggleInspector={() => setInspectorCollapsed((collapsed) => !collapsed)} />
+        {selectedItem && !inspectorCollapsed && (
           <InspectorPanel
             playerRef={playerRef}
             historyGesture={historyGesture}
             templates={allTemplates}
             selectedItem={selectedItem}
             fps={state.fps}
+            collapsed={inspectorCollapsed}
+            onCollapsedChange={setInspectorCollapsed}
             onItemPropChange={(key, value) => state.selectedId && commands.updateItemProps(state.selectedId, { [key]: value })}
             onItemVolumeChange={(v) => state.selectedId && commands.setItemVolume(state.selectedId, v)}
             onItemFadeChange={(fade) => state.selectedId && commands.setItemFade(state.selectedId, fade)}

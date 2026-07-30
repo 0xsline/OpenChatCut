@@ -36,11 +36,13 @@ interface PreviewPanelProps {
   reviewState: TimelineState;
   selectedItem: TimelineItem | null;
   reviewRequest?: ReviewOpenRequest | null;
+  inspectorOpen: boolean;
+  onToggleInspector: () => void;
 }
 
 export const PreviewPanel = memo(function PreviewPanel({
   state, playerRef, onImport, offlineSrcs, onUpdateCaptions, onSeedChat,
-  projectId, timelineId, reviewState, selectedItem, reviewRequest,
+  projectId, timelineId, reviewState, selectedItem, reviewRequest, inspectorOpen, onToggleInspector,
 }: PreviewPanelProps) {
   const t = useT();
   const duration = timelineDuration(state);
@@ -124,6 +126,17 @@ export const PreviewPanel = memo(function PreviewPanel({
                 color: showSafe ? theme.text : theme.textDim,
               }}>
               {t('安全框')}
+            </button>
+          )}
+          {selectedItem && (
+            <button type="button" onClick={onToggleInspector} aria-pressed={inspectorOpen}
+              title={inspectorOpen ? t('收起属性') : t('展开属性')}
+              style={{
+                fontSize: 11, lineHeight: 1, padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
+                border: `0.5px solid ${theme.border}`, background: inspectorOpen ? theme.panelAlt : 'transparent',
+                color: inspectorOpen ? theme.text : theme.textDim,
+              }}>
+              {t('属性')}
             </button>
           )}
         </div>
