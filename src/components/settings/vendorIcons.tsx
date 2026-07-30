@@ -28,7 +28,9 @@ import cloudflareSvg from '../../../assets/vendor-icons/cloudflare.svg?raw';
 
 export type VendorId =
   | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter'
-  | 'xiaomi' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
+  | 'ollama' | 'lmstudio' | 'xiaomi' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
+  | 'seedance' | 'kling' | 'mureka' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
+  | 'assemblyai' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk';
   | 'seedance' | 'kling' | 'mureka' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
   | 'assemblyai' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk';
 
@@ -66,6 +68,8 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
 const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: string }>> = {
   llm: { bg: '#34363c', mono: 'AI', fg: '#f7f7f8' },
   openrouter: { bg: '#5B5BD6', mono: 'OR' },
+  ollama: { bg: '#111111', mono: 'OL', fg: '#ffffff' },
+  lmstudio: { bg: '#2B5B84', mono: 'LM', fg: '#ffffff' },
   xiaomi: { bg: '#FF6900', mono: 'MI' }, // Xiaomi brand orange, official SVG not vendored before monogram cover
   mureka: { bg: '#7C5CFF', mono: 'μ' },
   e2b: { bg: '#FF8800', mono: 'E2', fg: '#40230a' },

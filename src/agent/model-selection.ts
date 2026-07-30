@@ -48,7 +48,8 @@ export function applyAgentModelStatus(
 ): void {
   const choices = LLM_PROVIDER_PRESETS.flatMap((preset): AgentModelChoice[] => {
     const names = llmProviderConfigNames(preset.id);
-    if (!keys[names.apiKey]?.configured) return [];
+    const isLocal = preset.id === 'ollama' || preset.id === 'lmstudio';
+    if (!isLocal && !keys[names.apiKey]?.configured) return [];
     const model = models[names.model]?.trim() || defaultModelForProvider(preset.id);
     return [{
       id: `${preset.id}:${model}`,
