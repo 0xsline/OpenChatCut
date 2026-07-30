@@ -60,7 +60,7 @@ function MediaSource({ item, trim, elRef }: { item: TimelineItem; trim: number; 
     return <Img ref={elRef as React.MutableRefObject<HTMLImageElement | null>} src={item.src!} />;
   }
   // muted: the ORIGINAL clip sequences (rendered beneath the GL canvas) own the audio
-  return <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={trim} muted />;
+  return <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={trim} playbackRate={item.playbackRate ?? 1} muted />;
 }
 
 export function GlTransition({ type, direction, L, windowStart, outgoing, incoming, trimOut, trimIn, width, height, fit, customFrag, customUniforms }: GlTransitionProps) {

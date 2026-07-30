@@ -12,6 +12,7 @@ import { sampleKeyframes, volumeAtFrame } from './keyframes';
 import { loadTimelineFonts } from '../fonts/projectFonts';
 import { captionTrackEntries, CSS_TRANSITION_TYPES, GLSL_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
 import type { AspectFit, CssTransitionType, GlslTransitionType, KeyframeProp, TimelineItem, TimelineState, TransitionDirection, TransitionItem, Watermark } from './types';
+import { sourceFrameAt } from './sourceLimit';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
 // fadeIn, then 1→0 across fadeOut. Used for visual opacity + audio volume.
@@ -28,8 +29,8 @@ function fadeFactor(frame: number, dur: number, fadeIn = 0, fadeOut = 0): number
 // Generic keyframes (PRD §4.5): a keyframed prop overrides its static transform
 // value at the current local frame; keyframed opacity multiplies onto the fades.
 // Items WITHOUT keyframes take the exact pre-keyframe code path (regression red line).
-function ClipWrapper({ item, children }: { item: TimelineItem; children: React.ReactNode }) {
-  const frame = useCurrentFrame();
+function ClipWrapper({ item, frameOffset = 0, children }: { item: TimelineItem; frameOffset?: number; children: React.ReactNode }) {
+  const frame = useCurrentFrame() + frameOffset;
   const o = fadeFactor(frame, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames);
   const kf = item.keyframes;
   const kv = (prop: KeyframeProp): number | undefined => {
@@ -214,10 +215,18 @@ function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, browser
 }
 
 // Imported image / video / gif / svg fills the canvas by the fit mode (objectFit).
-function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt, browserRenderer }: { item: TimelineItem; fit: AspectFit; muted: boolean; canvasW: number; canvasH: number; gainAt: (frame: number) => number; browserRenderer: boolean }) {
+function MediaFill({ item, frameOffset, fit, muted, canvasW, canvasH, gainAt, browserRenderer }: { item: TimelineItem; frameOffset: number; fit: AspectFit; muted: boolean; canvasW: number; canvasH: number; gainAt: (frame: number) => number; browserRenderer: boolean }) {
   const objectFit = fit === 'cover' ? 'cover' : 'contain';
   const style: React.CSSProperties = { width: '100%', height: '100%', objectFit };
   const still = item.kind === 'image' || item.kind === 'gif' || item.kind === 'svg';
+  const trimBefore = sourceFrameAt(item, frameOffset);
+  const volume = (frame: number) => {
+    const localFrame = frame + frameOffset;
+    if (localFrame < 0 || localFrame >= item.durationInFrames) return 0;
+    return (muted ? 0 : volumeAtFrame(item, localFrame))
+      * gainAt(item.startFrame + localFrame)
+      * fadeFactor(localFrame, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames);
+  };
   // clip carries a WebGL effect → render pixels through the GL pass; video keeps
   // its audio via a separate muted-visual <Audio> (the GL source video is muted).
   if (firstGlEffect(item) && (item.kind === 'video' || item.kind === 'image')) {
@@ -226,11 +235,9 @@ function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt, browserRenderer
         <ClipFx item={item} fit={fit} width={canvasW} height={canvasH} />
         {item.kind !== 'image' && (
           item.denoisedSrc ? (
-            <RuntimeAudio browserRenderer={browserRenderer} src={item.denoisedSrc} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-              volume={(f) => (muted ? 0 : volumeAtFrame(item, f)) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
+            <RuntimeAudio browserRenderer={browserRenderer} src={item.denoisedSrc} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} volume={volume} />
           ) : (
-            <RuntimeAudio browserRenderer={browserRenderer} src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-              volume={(f) => (muted ? 0 : volumeAtFrame(item, f)) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
+            <RuntimeAudio browserRenderer={browserRenderer} src={item.src!} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} volume={volume} />
           )
         )}
       </AbsoluteFill>
@@ -244,13 +251,11 @@ function MediaFill({ item, fit, muted, canvasW, canvasH, gainAt, browserRenderer
           // visual from original video (muted) + isolated voice track
           ? (
             <>
-              <RuntimeVideo browserRenderer={browserRenderer} src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1} volume={0} style={style} />
-              <RuntimeAudio browserRenderer={browserRenderer} src={item.denoisedSrc} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-                volume={(f) => (muted ? 0 : volumeAtFrame(item, f)) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} />
+              <RuntimeVideo browserRenderer={browserRenderer} src={item.src!} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} volume={0} style={style} />
+              <RuntimeAudio browserRenderer={browserRenderer} src={item.denoisedSrc} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} volume={volume} />
             </>
           )
-          : <RuntimeVideo browserRenderer={browserRenderer} src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-            volume={(f) => (muted ? 0 : volumeAtFrame(item, f)) * gainAt(item.startFrame + f) * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)} style={style} />}
+          : <RuntimeVideo browserRenderer={browserRenderer} src={item.src!} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} volume={volume} style={style} />}
     </AbsoluteFill>
   );
 }
@@ -404,8 +409,8 @@ export function TimelineComposition({ state, transparent, browserRenderer = fals
         L: t.durationInFrames,
         outgoing: out!,
         incoming: inc!,
-        trimOut: Math.max(0, (out!.srcInFrame ?? 0) + (from - out!.startFrame)),
-        trimIn: Math.max(0, (inc!.srcInFrame ?? 0) + (from - inc!.startFrame)),
+        trimOut: sourceFrameAt(out!, from - out!.startFrame),
+        trimIn: sourceFrameAt(inc!, from - inc!.startFrame),
         // custom-shader carries its GLSL + uniforms from the item to GlTransition
         ...(t.type === 'custom-shader' ? { customFrag: t.customFrag, customUniforms: t.customUniforms } : {}),
       });
@@ -423,14 +428,14 @@ export function TimelineComposition({ state, transparent, browserRenderer = fals
         const ea = extendAfter.get(item.id) ?? 0;
         const entrance = entranceOf.get(item.id);
         const content = (
-          <ClipWrapper item={item}>
+          <ClipWrapper item={item} frameOffset={-eb}>
             {item.kind === 'motion-graphic'
               ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
               : item.kind === 'text'
               ? <TextLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
               : item.kind === 'solid'
               ? <SolidLayer item={item} />
-              : <MediaFill item={item} fit={fit} muted={isMuted(item.track)} gainAt={(frame) => duckGain(item.track, frame)} canvasW={state.width} canvasH={state.height} browserRenderer={browserRenderer} />}
+              : <MediaFill item={item} frameOffset={-eb} fit={fit} muted={isMuted(item.track)} gainAt={(frame) => duckGain(item.track, frame)} canvasW={state.width} canvasH={state.height} browserRenderer={browserRenderer} />}
           </ClipWrapper>
         );
         return (

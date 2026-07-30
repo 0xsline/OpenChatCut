@@ -40,6 +40,7 @@ import { loadFont as loadSpecialElite } from '@remotion/google-fonts/SpecialElit
 import { loadFont as loadUnbounded } from '@remotion/google-fonts/Unbounded';
 import { loadFont as loadVT323 } from '@remotion/google-fonts/VT323';
 import { loadFont as loadZCOOLQingKeHuangYou } from '@remotion/google-fonts/ZCOOLQingKeHuangYou';
+import { getRemotionEnvironment } from 'remotion';
 import { LOCAL_CJK_FONTS, normalizeFontKey, registerLocalFonts } from './localFonts';
 
 export { ensureLocalFont, LOCAL_CJK_FONTS, normalizeFontKey } from './localFonts';
@@ -55,8 +56,26 @@ export interface FontCatalogEntry {
   source: 'google' | 'bundled';
 }
 
+type NotoSansSCWeight = NonNullable<NonNullable<Parameters<typeof loadNotoSansSC>[1]>['weights']>[number];
+
+function loadNotoSansSCFace(fontWeight = 400): unknown {
+  const weight = Math.min(900, Math.max(100, Math.round(fontWeight / 100) * 100));
+  return loadNotoSansSC('normal', {
+    weights: [String(weight) as NotoSansSCWeight],
+    subsets: ['chinese-simplified', 'latin'],
+    ignoreTooManyRequestsWarning: true,
+  });
+}
+
+interface GoogleLoadable {
+  family: string;
+  aliases?: string[];
+  load: () => unknown;
+  loadWeight?: (fontWeight?: number) => unknown;
+}
+
 // CSS family names for every remotion google-fonts package we ship.
-const GOOGLE_LOADABLE: ReadonlyArray<{ family: string; aliases?: string[]; load: () => unknown }> = [
+const GOOGLE_LOADABLE: ReadonlyArray<GoogleLoadable> = [
   { family: 'Anton', load: loadAnton },
   { family: 'Archivo Black', load: loadArchivoBlack },
   { family: 'Bangers', load: loadBangers },
@@ -75,7 +94,7 @@ const GOOGLE_LOADABLE: ReadonlyArray<{ family: string; aliases?: string[]; load:
   { family: 'Montserrat', load: loadMontserrat },
   { family: 'Mulish', load: loadMulish },
   { family: 'Newsreader', load: loadNewsreader },
-  { family: 'Noto Sans SC', aliases: ['Noto Sans CJK SC'], load: loadNotoSansSC },
+  { family: 'Noto Sans SC', aliases: ['Noto Sans CJK SC'], load: loadNotoSansSC, loadWeight: loadNotoSansSCFace },
   { family: 'Noto Serif SC', load: loadNotoSerifSC },
   { family: 'Noto Serif TC', load: loadNotoSerifTC },
   { family: 'Nunito', load: loadNunito },
@@ -177,10 +196,10 @@ export function searchFontCatalog(query: string, limit = 25): FontSearchHit[] {
   return hits;
 }
 
-const loadedGoogleFamilies = new Set<string>();
+const loadedGoogleFaces = new Set<string>();
 
 /** Register one Google face. Unknown/generic/local families are no-ops. */
-export function ensureFont(family: string): void {
+export function ensureFont(family: string, fontWeight?: number): void {
   const first = family.split(',')[0]?.trim().replace(/^["']|["']$/g, '') ?? '';
   const key = normalizeFontKey(first);
   if (!key || GENERIC_FAMILIES.has(key)) return;
@@ -188,12 +207,19 @@ export function ensureFont(family: string): void {
     normalizeFontKey(candidate.family) === key
     || candidate.aliases?.some((alias) => normalizeFontKey(alias) === key),
   );
-  if (!font || loadedGoogleFamilies.has(font.family)) return;
+  if (!font) return;
+  // CJK Google fonts are split into hundreds of files. Browser preview uses its
+  // system CJK fallback; deterministic export loads only the requested face.
+  if (font.loadWeight && typeof document !== 'undefined' && !getRemotionEnvironment().isRendering) return;
+  const weighted = font.loadWeight && fontWeight !== undefined;
+  const faceKey = weighted ? `${font.family}:${fontWeight}` : font.family;
+  if (loadedGoogleFaces.has(faceKey)) return;
   try {
-    font.load();
-    loadedGoogleFamilies.add(font.family);
+    if (weighted) font.loadWeight!(fontWeight);
+    else font.load();
+    loadedGoogleFaces.add(faceKey);
   } catch {
-    loadedGoogleFamilies.delete(font.family);
+    loadedGoogleFaces.delete(faceKey);
   }
 }
 

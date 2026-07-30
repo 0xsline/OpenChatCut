@@ -6,6 +6,13 @@
 import type { MediaAsset, TimelineItem } from './types';
 
 type SourceItem = Pick<TimelineItem, 'kind' | 'src' | 'playbackRate' | 'transcript'>;
+type SourceTimingItem = Pick<TimelineItem, 'srcInFrame' | 'playbackRate'>;
+
+/** Source-media frame at an item-local timeline frame (negative during transition pre-roll). */
+export function sourceFrameAt(item: SourceTimingItem, localFrame: number): number {
+  const rate = Math.max(0.01, item.playbackRate ?? 1);
+  return Math.max(0, (item.srcInFrame ?? 0) + localFrame * rate);
+}
 
 /**
  * How many timeline frames can be played starting from `srcInFrame`; if the length cannot be determined, null (no limit) is returned.

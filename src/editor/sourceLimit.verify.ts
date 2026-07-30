@@ -2,7 +2,7 @@
 // Verify that "the clip cannot be longer than the source asset": conversion of remaining source frames (including variable speed), which clips are not limited
 // (picture/MG/text/word-driven audio), and it is confirmed by real reduce that the right cropping is indeed blocked by this upper bound.
 import assert from 'node:assert/strict';
-import { remainingSourceFrames } from './sourceLimit';
+import { remainingSourceFrames, sourceFrameAt } from './sourceLimit';
 import { reduce } from './reduce';
 import type { MediaAsset, TimelineItem, TimelineState } from './types';
 
@@ -21,6 +21,15 @@ const stateOf = (items: TimelineItem[]): TimelineState => ({
   fps: 30, width: 1920, height: 1080, selectedId: null,
   tracks: { V1: { kind: 'video' } }, trackOrder: ['V1'], items, assets,
 });
+
+// ── Transition pre-roll keeps the source position continuous at the cut ──
+{
+  const incoming = item({ srcInFrame: 1263 });
+  assert.equal(sourceFrameAt(incoming, -15), 1248);
+  assert.equal(sourceFrameAt(incoming, 0), 1263);
+  assert.equal(sourceFrameAt(item({ srcInFrame: 100, playbackRate: 2 }), -15), 70);
+  assert.equal(sourceFrameAt(item({ srcInFrame: 5 }), -15), 0, '源入点不足时不越过素材开头');
+}
 
 // ── Remaining source frames: How much is left after the entry point, variable speed timeline frame = source frame / rate conversion ──
 {
