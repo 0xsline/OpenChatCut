@@ -120,7 +120,7 @@ function useSemanticSnapshotEffects(
   useEffect(() => () => {
     runtime.operation.current?.abort();
     runtime.duplicateOperation.current?.abort();
-    runtime.client.current.dispose();
+    runtime.client.current.cancel();
   }, [runtime]);
 }
 

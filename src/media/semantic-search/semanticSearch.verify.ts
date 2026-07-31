@@ -109,10 +109,10 @@ fakeWorker.respond({
 });
 assert.deepEqual(await currentPromise, exactExpected);
 
-const disposedPromise = client.findDuplicateAssets(exactRecords);
-client.dispose();
-await assert.rejects(disposedPromise, { name: 'AbortError' });
-assert.equal(fakeWorker.terminated, true, 'disposal terminates the worker and rejects pending requests');
+const canceledPromise = client.findDuplicateAssets(exactRecords);
+client.cancel();
+await assert.rejects(canceledPromise, { name: 'AbortError' });
+assert.equal(fakeWorker.terminated, true, 'cancel terminates the worker and rejects pending requests');
 const resumedPromise = client.findDuplicateAssets(exactRecords);
 const resumedRequest = fakeWorker.requests[3] as Extract<WorkerRequest, { type: 'find-duplicates' }>;
 fakeWorker.respond({
@@ -123,7 +123,10 @@ fakeWorker.respond({
     matches: findDuplicateAssetsPacked(resumedRequest.vectors, resumedRequest.threshold),
   },
 });
-assert.deepEqual(await resumedPromise, exactExpected, 'StrictMode cleanup can restart the semantic worker');
+assert.deepEqual(await resumedPromise, exactExpected, 'StrictMode cleanup can restart the semantic worker after canceling it');
+const disposedPromise = client.findDuplicateAssets(exactRecords);
+client.dispose();
+await assert.rejects(disposedPromise, { name: 'AbortError' });
 
 const validIds = new Set(['kept']);
 assert.equal(shouldPruneVector({ scopeId: 'other', modelVersion: 'old', assetId: 'gone' }, 'project-a', validIds), false);

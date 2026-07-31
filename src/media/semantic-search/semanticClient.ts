@@ -24,6 +24,7 @@ const promiseConstructor = Promise as unknown as {
 export class SemanticClient {
   private worker: Worker | null = null;
   private requestId = 0;
+  private disposed = false;
   private readonly pending = new Map<number, PendingRequest>();
   private readonly createWorker: SemanticWorkerFactory;
 
@@ -65,6 +66,7 @@ export class SemanticClient {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.cancel();
   }
 
@@ -74,6 +76,7 @@ export class SemanticClient {
   }
 
   private getWorker(): Worker {
+    if (this.disposed) throw new Error('Semantic client is disposed');
     if (this.worker) return this.worker;
     const worker = this.createWorker();
     worker.onmessage = (event: MessageEvent<unknown>) => {
