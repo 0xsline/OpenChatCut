@@ -27,6 +27,9 @@ const canSync = (): boolean =>
 const isProjectDocumentKey = (key: string): boolean => /^project:[a-zA-Z0-9_-]{1,160}$/.test(key);
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
+const projectLoadTrace = (event: string, detail: Record<string, unknown> = {}) => {
+  if (import.meta.env.DEV) console.info('[project-load]', event, detail);
+};
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -110,10 +113,29 @@ async function requestSnapshot(path = '', init?: RequestInit): Promise<StoreSnap
 }
 
 async function requestEntry(key: string): Promise<EntryResponse> {
-  const response = await fetch(`${API_PATH}/entry?key=${encodeURIComponent(key)}`, { cache: 'no-store' });
+  const startedAt = performance.now();
+  projectLoadTrace('store-request-start', { key });
+  let response: Response;
+  try {
+    response = await fetch(`${API_PATH}/entry?key=${encodeURIComponent(key)}`, { cache: 'no-store' });
+  } catch (error) {
+    projectLoadTrace('store-request-network-error', {
+      key,
+      elapsedMs: Math.round(performance.now() - startedAt),
+      error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+    });
+    throw error;
+  }
+  projectLoadTrace('store-request-response', {
+    key,
+    status: response.status,
+    ok: response.ok,
+    elapsedMs: Math.round(performance.now() - startedAt),
+  });
   if (!response.ok) throw new Error(`project index request failed: ${response.status}`);
   const value: unknown = await response.json();
   if (!isRecord(value) || typeof value.found !== 'boolean') throw new Error('invalid project index response');
+  projectLoadTrace('store-entry-result', { key, found: value.found });
   return value as unknown as EntryResponse;
 }
 
@@ -175,15 +197,27 @@ async function disableRemote(): Promise<void> {
 
 export async function kvGet<T>(key: string): Promise<T | undefined> {
   await ready();
+  const projectKey = isProjectDocumentKey(key);
+  if (projectKey) projectLoadTrace('kv-get', { key, remoteAvailable: Boolean(remoteCache), remoteKnown: remoteKnown.has(key) });
   if (remoteCache) {
     try {
       if (key === 'projects' || !remoteKnown.has(key)) await fetchRemoteEntry(key);
-    } catch {
+    } catch (error) {
+      if (projectKey) projectLoadTrace('remote-fallback-to-local', {
+        key,
+        error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+      });
       await disableRemote();
     }
   }
-  if (remoteCache) return remoteCache[key] as T | undefined;
-  return localGet<T>(key);
+  if (remoteCache) {
+    const value = remoteCache[key] as T | undefined;
+    if (projectKey) projectLoadTrace('kv-get-result', { key, source: 'server', found: value !== undefined });
+    return value;
+  }
+  const value = await localGet<T>(key);
+  if (projectKey) projectLoadTrace('kv-get-result', { key, source: 'indexeddb', found: value !== undefined });
+  return value;
 }
 
 export async function kvSet(key: string, value: unknown): Promise<void> {

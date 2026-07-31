@@ -21,6 +21,9 @@ import { clearSemanticVectors } from '../media/semantic-search/vectorStore';
 // shared by every local browser and dev port; Node checks use a memory fallback.
 const INDEX_KEY = 'projects';
 const projectKey = (id: string) => `project:${id}`;
+const projectLoadTrace = (event: string, detail: Record<string, unknown> = {}) => {
+  if (import.meta.env.DEV) console.info('[project-load]', event, detail);
+};
 
 export interface ProjectMeta {
   id: string;
@@ -297,28 +300,60 @@ export async function loadRawProject(id: string): Promise<unknown> {
 }
 
 export async function loadProject(id: string, options?: ProjectMigrationOptions): Promise<ProjectDoc | null> {
+  const startedAt = performance.now();
+  projectLoadTrace('document-load-start', { projectId: id });
   try {
     const raw = await idbGet<unknown>(projectKey(id));
+    projectLoadTrace('document-load-raw', {
+      projectId: id,
+      found: raw !== undefined,
+      type: raw === null ? 'null' : Array.isArray(raw) ? 'array' : typeof raw,
+    });
     let upgraded = false;
     const doc = migrateProjectDoc(raw, {
       onProgress: (progress) => {
         upgraded = true;
+        projectLoadTrace('document-migration-progress', { projectId: id, progress });
         options?.onProgress?.(progress);
       },
     });
-    if (!doc) return null;
+    if (!doc) {
+      projectLoadTrace('document-load-invalid-or-missing', {
+        projectId: id,
+        elapsedMs: Math.round(performance.now() - startedAt),
+      });
+      return null;
+    }
     // Persist only after the complete chain succeeds. A broken migration leaves
     // the original bytes untouched and can be retried by a future build.
     if (upgraded) {
       try {
         await idbSet(projectKey(id), doc);
-      } catch {
+        projectLoadTrace('document-migration-persisted', { projectId: id });
+      } catch (error) {
+        projectLoadTrace('document-migration-persist-failed', {
+          projectId: id,
+          error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+        });
         // The migrated in-memory document is still safe to open. Persistence can
         // retry on the next load without ever writing an intermediate version.
       }
     }
+    projectLoadTrace('document-load-complete', {
+      projectId: id,
+      version: doc.version,
+      timelines: doc.timelines.length,
+      assets: doc.assets.length,
+      migrated: upgraded,
+      elapsedMs: Math.round(performance.now() - startedAt),
+    });
     return doc;
-  } catch {
+  } catch (error) {
+    projectLoadTrace('document-load-error', {
+      projectId: id,
+      elapsedMs: Math.round(performance.now() - startedAt),
+      error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+    });
     return null;
   }
 }

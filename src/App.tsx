@@ -33,6 +33,9 @@ function parseHash(): Route {
   return m ? { name: 'editor', id: m[1] } : { name: 'dashboard' };
 }
 const go = (hash: string) => { window.location.hash = hash; };
+const projectLoadTrace = (event: string, detail: Record<string, unknown> = {}) => {
+  if (import.meta.env.DEV) console.info('[project-load]', event, detail);
+};
 
 function Splash({ text }: { text: string }) {
   return (
@@ -48,7 +51,23 @@ function EditorLoader({ meta, onHome, onRename }: { meta: ProjectMeta; onHome: (
   const [initial, setInitial] = useState<ProjectDoc | null>(null);
   useEffect(() => {
     let alive = true;
-    loadProject(meta.id).then((d) => { if (alive) setInitial(d ?? emptyDoc()); });
+    const startedAt = performance.now();
+    projectLoadTrace('editor-load-start', { projectId: meta.id, name: meta.name });
+    loadProject(meta.id).then((d) => {
+      projectLoadTrace('editor-load-complete', {
+        projectId: meta.id,
+        found: Boolean(d),
+        elapsedMs: Math.round(performance.now() - startedAt),
+      });
+      if (alive) setInitial(d ?? emptyDoc());
+    }).catch((error: unknown) => {
+      projectLoadTrace('editor-load-rejected', {
+        projectId: meta.id,
+        elapsedMs: Math.round(performance.now() - startedAt),
+        error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+      });
+      if (alive) setInitial(emptyDoc());
+    });
     return () => { alive = false; };
   }, [meta.id]);
   if (!initial) return <Splash text={t('加载工程…')} />;
@@ -87,7 +106,13 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
+      const startedAt = performance.now();
+      projectLoadTrace('project-index-load-start', { route });
       let list = await listProjects();
+      projectLoadTrace('project-index-load-complete', {
+        count: list.length,
+        elapsedMs: Math.round(performance.now() - startedAt),
+      });
       if (list.length === 0 && !(await hasProjectHistory())) {
         list = [await createProject('示例工程', await seedDoc())];
       }

@@ -442,11 +442,29 @@ export function projectStorePlugin(): Plugin {
     name: 'openchatcut-project-store',
     configureServer(server) {
       server.middlewares.use('/api/project-store', async (req, res) => {
+        const startedAt = Date.now();
+        const key = req.url?.startsWith('/entry?')
+          ? new URL(req.url, 'http://localhost').searchParams.get('key')
+          : null;
+        const isProjectRead = req.method === 'GET' && !!key && PROJECT_DOCUMENT_KEY.test(key);
+        if (isProjectRead) server.config.logger.info(`[project-store] read start key=${key}`);
         try {
           await handleRequest(req, res);
+          if (isProjectRead) {
+            const entry = await getStoredEntry(key!);
+            const value = entry.value as { version?: unknown; timelines?: unknown; assets?: unknown } | undefined;
+            server.config.logger.info(
+              `[project-store] read complete key=${key} status=${res.statusCode} found=${entry.found}`
+              + ` version=${value?.version ?? 'n/a'}`
+              + ` timelines=${Array.isArray(value?.timelines) ? value.timelines.length : 'n/a'}`
+              + ` assets=${Array.isArray(value?.assets) ? value.assets.length : 'n/a'}`
+              + ` elapsedMs=${Date.now() - startedAt}`,
+            );
+          }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           server.config.logger.error(`[project-store] ${message}`);
+          if (isProjectRead) server.config.logger.error(`[project-store] read failed key=${key} elapsedMs=${Date.now() - startedAt}`);
           if (!res.headersSent) sendJson(res, 400, { error: message });
         }
       });
