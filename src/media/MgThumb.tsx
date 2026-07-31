@@ -4,7 +4,7 @@
 // 中帧才有字),悬停播放、移开回中帧。编译失败回落星形占位(与旧观感一致)。
 import { useMemo, useRef } from 'react';
 import { Player, type PlayerRef } from '@remotion/player';
-import { compileTemplate } from '../template-host';
+import { getCompiledTemplate as compileTemplate } from '../template-host';
 import type { MediaAsset } from '../editor/types';
 import { Icon } from '../components/icons';
 
