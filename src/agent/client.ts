@@ -1,21 +1,18 @@
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { createOpenAI } from '@ai-sdk/openai';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateText, type LanguageModel } from 'ai';
+import { generateText } from 'ai';
+import type { LanguageModel } from 'ai';
 import {
-  DEFAULT_LLM_PROVIDER,
-  DEFAULT_OPENAI_API_MODE,
-  defaultModelForProvider,
-  normalizeLlmProvider,
-  normalizeOpenAiApiMode,
+  MODEL,
+  OPENAI_API_MODE,
+  PROVIDER,
   protocolForProvider,
-  providerApiPath,
-  type LlmProvider,
-  type OpenAiApiMode,
-} from '../../shared/llm-providers';
+} from './providerConfig';
+import type { LlmProvider, OpenAiApiMode } from './providerConfig';
 import { normalizeLlmMessages } from './messages';
 
 export {
+  MODEL,
+  OPENAI_API_MODE,
+  PROVIDER,
   DEFAULT_LLM_PROVIDER,
   DEFAULT_OPENAI_API_MODE,
   defaultModelForProvider,
@@ -23,33 +20,12 @@ export {
   normalizeOpenAiApiMode,
   protocolForProvider,
   providerApiPath,
-};
-export type { LlmProvider, OpenAiApiMode };
+  setLlmConfig,
+  setLlmModel,
+  setLlmProvider,
+} from './providerConfig';
+export type { LlmProvider, OpenAiApiMode } from './providerConfig';
 export type ConfiguredLanguageModel = Exclude<LanguageModel, string>;
-
-export let PROVIDER: LlmProvider = DEFAULT_LLM_PROVIDER;
-export let MODEL = defaultModelForProvider(PROVIDER);
-export let OPENAI_API_MODE: OpenAiApiMode = DEFAULT_OPENAI_API_MODE;
-
-export function setLlmConfig(
-  provider: unknown,
-  model: unknown,
-  openAiApiMode: unknown = OPENAI_API_MODE,
-): void {
-  PROVIDER = normalizeLlmProvider(provider);
-  MODEL = typeof model === 'string' && model.trim()
-    ? model.trim()
-    : defaultModelForProvider(PROVIDER);
-  OPENAI_API_MODE = normalizeOpenAiApiMode(openAiApiMode);
-}
-
-export function setLlmModel(model: string): void {
-  setLlmConfig(PROVIDER, model);
-}
-
-export function setLlmProvider(provider: unknown): void {
-  setLlmConfig(provider, '');
-}
 
 const ORIGIN = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
 // The server proxy target owns the provider/version prefix. AI SDK appends the
@@ -58,48 +34,84 @@ const ORIGIN = typeof window !== 'undefined' ? window.location.origin : 'http://
 const PROXY_API_BASE = `${ORIGIN}/llm`;
 const PROXY_KEY = 'proxy-injects-the-real-key';
 
-const proxyHeaders = (provider: LlmProvider): Record<string, string> => ({
-  'x-openchatcut-provider': provider,
-});
 
-const anthropicProvider = createAnthropic({
-  baseURL: PROXY_API_BASE,
-  apiKey: PROXY_KEY,
-  headers: proxyHeaders('anthropic'),
-});
-const openaiProvider = createOpenAI({
-  baseURL: PROXY_API_BASE,
-  apiKey: PROXY_KEY,
-  headers: proxyHeaders('openai'),
-});
-const compatibleProviders = new Map<LlmProvider, ReturnType<typeof createOpenAICompatible>>();
+interface ProviderOptions {
+  baseURL: string;
+  apiKey: string;
+  headers: Record<string, string>;
+}
 
-function compatibleProvider(provider: LlmProvider): ReturnType<typeof createOpenAICompatible> {
-  const existing = compatibleProviders.get(provider);
-  if (existing) return existing;
-  const created = createOpenAICompatible({
-    name: provider,
+type ModelFactory = (model: string) => ConfiguredLanguageModel;
+type OpenAiProvider = {
+  chat: ModelFactory;
+  responses: ModelFactory;
+};
+
+const factoryPromises = new Map<LlmProvider, Promise<ModelFactory>>();
+let openAiProviderPromise: Promise<OpenAiProvider> | null = null;
+
+function providerOptions(provider: LlmProvider): ProviderOptions {
+  return {
     baseURL: PROXY_API_BASE,
     apiKey: PROXY_KEY,
-    headers: proxyHeaders(provider),
-  });
-  compatibleProviders.set(provider, created);
+    headers: { 'x-openchatcut-provider': provider },
+  };
+}
+
+// The configured provider is runtime-selected. Every branch is a literal so
+// Vite discovers all allowed chunks without evaluating unselected SDKs.
+async function createProviderFactory(provider: LlmProvider): Promise<ModelFactory> {
+  const options = providerOptions(provider);
+  switch (provider) {
+    case 'anthropic':
+      return (await import('@ai-sdk/anthropic')).createAnthropic(options);
+    case 'gemini':
+      return (await import('@ai-sdk/google')).createGoogleGenerativeAI(options);
+    case 'kimi':
+      return (await import('@ai-sdk/moonshotai')).createMoonshotAI(options);
+    case 'qwen':
+      return (await import('@ai-sdk/alibaba')).createAlibaba(options);
+    case 'deepseek':
+      return (await import('@ai-sdk/deepseek')).createDeepSeek(options);
+    case 'mistral':
+      return (await import('@ai-sdk/mistral')).createMistral(options);
+    default: {
+      const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible');
+      return createOpenAICompatible({ name: provider, ...options });
+    }
+  }
+}
+
+function providerFactory(provider: LlmProvider): Promise<ModelFactory> {
+  const existing = factoryPromises.get(provider);
+  if (existing) return existing;
+  const created = createProviderFactory(provider);
+  factoryPromises.set(provider, created);
+  created.catch(() => factoryPromises.delete(provider));
   return created;
 }
 
-export function getLanguageModel(
+function openAiProvider(): Promise<OpenAiProvider> {
+  if (openAiProviderPromise) return openAiProviderPromise;
+  openAiProviderPromise = import('@ai-sdk/openai')
+    .then(({ createOpenAI }) => createOpenAI(providerOptions('openai')))
+    .catch((error: unknown) => {
+      openAiProviderPromise = null;
+      throw error;
+    });
+  return openAiProviderPromise;
+}
+
+export async function getLanguageModel(
   provider: LlmProvider = PROVIDER,
   model: string = MODEL,
   openAiApiMode: OpenAiApiMode = OPENAI_API_MODE,
-): ConfiguredLanguageModel {
-  const protocol = protocolForProvider(provider);
-  if (protocol === 'anthropic') return anthropicProvider(model);
-  if (protocol === 'openai') {
-    return openAiApiMode === 'chat'
-      ? openaiProvider.chat(model)
-      : openaiProvider.responses(model);
+): Promise<ConfiguredLanguageModel> {
+  if (protocolForProvider(provider) === 'openai') {
+    const openai = await openAiProvider();
+    return openAiApiMode === 'chat' ? openai.chat(model) : openai.responses(model);
   }
-  return compatibleProvider(provider)(model);
+  return (await providerFactory(provider))(model);
 }
 
 export function getLanguageModelProviderOptions(
@@ -122,7 +134,7 @@ export async function generateAgentText(options: {
 }): Promise<string> {
   const providerOptions = getLanguageModelProviderOptions();
   const base = {
-    model: getLanguageModel(),
+    model: await getLanguageModel(),
     system: options.system,
     maxOutputTokens: options.maxOutputTokens,
     ...(providerOptions ? { providerOptions } : {}),

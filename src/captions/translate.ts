@@ -3,7 +3,6 @@ import type { CaptionsData, TranslatedCue } from './types';
 import { paginate } from './types';
 import { resolveCaptionWords } from './resolve';
 import { CAPTION_STYLE_BY_ID } from './styles';
-import { generateAgentText } from '../agent/client';
 
 // Translate the current caption phrases into `lang`, keeping each translation
 // timed to its source phrase. Data model: a transcript translation VARIANT that
@@ -30,6 +29,8 @@ export async function buildTranslation(
 export async function translateLines(lines: string[], lang: string): Promise<string[]> {
   const phrases = lines;
   const numbered = phrases.map((p, i) => `${i + 1}. ${p}`).join('\n');
+  // Translation is an explicit send boundary; do not load the AI client at editor startup.
+  const { generateAgentText } = await import('../agent/client');
   const text = (await generateAgentText({
     maxOutputTokens: 8000,
     system: `You are a subtitle translator. Translate each numbered line into ${lang}. Keep it natural and concise (subtitle length). Return ONLY a JSON array of strings — one per input line, same order and same count, no numbering, no extra prose.`,

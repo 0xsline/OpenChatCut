@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../../components/icons';
 import type { MediaAsset } from '../../editor/types';
 import { useT } from '../../i18n/locale';
 import { isSemanticMedia } from './mediaFrames';
+import { resolveSemanticPanelRect } from './semanticPanelPosition';
 import { MAX_SEMANTIC_QUERY_LENGTH, type SemanticMatch } from './types';
 import { useSemanticSearch } from './useSemanticSearch';
 import './semantic-search.css';
@@ -18,18 +20,20 @@ export function SemanticSearchControls({ scopeId, assets, onResultsChange }: Sem
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [searchedQuery, setSearchedQuery] = useState('');
+  const anchorRef = useRef<HTMLDivElement>(null);
   const semantic = useSemanticSearch(scopeId, assets);
   const visualAssets = useMemo(() => assets.filter(isSemanticMedia), [assets]);
   const names = useMemo(() => new Map(assets.map((asset) => [asset.id, asset.name])), [assets]);
   useEffect(() => {
     onResultsChange(searchedQuery ? semantic.state.matches : null);
   }, [onResultsChange, searchedQuery, semantic.state.matches]);
-  return <div className="cc-semantic-anchor">
+  return <div ref={anchorRef} className="cc-semantic-anchor">
     <button type="button" className={`cc-media-icon cc-semantic-trigger${open || searchedQuery ? ' active' : ''}`}
-      aria-label={t('语义搜索')} title={t('本地语义搜索')} onClick={() => setOpen((value) => !value)}>
+      aria-label={t('语义搜索')} title={t('本地语义搜索')} aria-haspopup="dialog" aria-expanded={open}
+      onClick={() => setOpen((value) => !value)}>
       <Icon name="sparkles" size={17} />
     </button>
-    {open && <SemanticPanel assets={visualAssets} names={names} query={query} setQuery={setQuery}
+    {open && <SemanticPanelPortal anchorRef={anchorRef} assets={visualAssets} names={names} query={query} setQuery={setQuery}
       setSearchedQuery={setSearchedQuery} semantic={semantic} onClose={() => setOpen(false)} t={t} />}
   </div>;
 }
@@ -48,7 +52,59 @@ interface SemanticPanelProps {
   t: Translate;
 }
 
-function SemanticPanel(props: SemanticPanelProps) {
+function SemanticPanelPortal(props: SemanticPanelProps & { anchorRef: RefObject<HTMLDivElement | null> }) {
+  const panelRef = useRef<HTMLElement>(null);
+  const position = useSemanticPanelPosition(props.anchorRef, panelRef);
+  useEffect(() => {
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!panelRef.current?.contains(target) && !props.anchorRef.current?.contains(target)) props.onClose();
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') props.onClose();
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePress);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePress);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [props.anchorRef, props.onClose]);
+  return createPortal(<SemanticPanel {...props} panelRef={panelRef} style={position} />, document.body);
+}
+
+function useSemanticPanelPosition(
+  anchorRef: RefObject<HTMLDivElement | null>,
+  panelRef: RefObject<HTMLElement | null>,
+): CSSProperties {
+  const [position, setPosition] = useState<CSSProperties>({ visibility: 'hidden' });
+  useLayoutEffect(() => {
+    const update = () => {
+      const anchor = anchorRef.current;
+      const panel = panelRef.current;
+      if (!anchor || !panel) return;
+      const anchorRect = anchor.getBoundingClientRect();
+      const bounds = anchor.closest('.cc-library-panel')?.getBoundingClientRect()
+        ?? document.documentElement.getBoundingClientRect();
+      setPosition(resolveSemanticPanelRect(
+        anchorRect, bounds, { width: window.innerWidth, height: window.innerHeight }, panel.offsetHeight,
+      ));
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [anchorRef, panelRef]);
+  return position;
+}
+
+function SemanticPanel(props: SemanticPanelProps & {
+  panelRef: RefObject<HTMLElement | null>;
+  style: CSSProperties;
+}) {
   const { semantic, t } = props;
   const runSearch = () => {
     const next = props.query.trim();
@@ -68,7 +124,7 @@ function SemanticPanel(props: SemanticPanelProps) {
     props.setSearchedQuery('');
     semantic.cancel();
   };
-  return <section className="cc-semantic-panel" role="dialog" aria-label={t('本地语义搜索')}>
+  return <section ref={props.panelRef} style={props.style} className="cc-semantic-panel" role="dialog" aria-label={t('本地语义搜索')}>
     <PanelHeader onClose={props.onClose} t={t} />
     {semantic.state.status === 'idle' || semantic.state.status === 'error'
       ? <EnableView state={semantic.state} onEnable={() => void semantic.enable()} t={t} />
@@ -91,11 +147,12 @@ interface ViewProps {
 
 function EnableView({ state, onEnable, t }: ViewProps & { onEnable: () => void }) {
   return <div className="cc-semantic-empty">
-    <Icon name="sparkles" size={28} />
-    <strong>{t('按画面内容搜索素材')}</strong>
-    <p>{t('首次启用会下载可选模型。索引和搜索都在本机完成，不影响未启用时的编辑器。')}</p>
+    <span className="cc-semantic-empty-icon"><Icon name="sparkles" size={18} /></span>
+    <div><strong>{t('按画面内容搜索素材')}</strong>
+      <p>{t('首次启用会下载可选模型。索引和搜索都在本机完成，不影响未启用时的编辑器。')}</p>
+    </div>
     {state.error && <span className="cc-semantic-error">{t('语义搜索暂不可用，请重试。')}</span>}
-    <button type="button" className="primary" onClick={onEnable}>{t('启用本地模型')}</button>
+    <button type="button" className="primary" onClick={onEnable}><Icon name="sparkles" size={13} />{t('启用本地模型')}</button>
   </div>;
 }
 

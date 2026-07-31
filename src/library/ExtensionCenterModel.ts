@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import type { InstalledPack } from '../plugins/store';
 import { theme } from '../theme';
 
-export type CenterTab = '发现' | '已安装' | '创作';
+export type CenterTab = '发现' | '已安装';
 export type Category = '全部' | 'MG' | '转场' | '特效' | 'LUT' | '缩放';
 
 export interface RegistryEntry {
@@ -12,12 +12,12 @@ export interface RegistryEntry {
   author?: string;
   version?: string;
   url: string;
+  pageUrl?: string;
   sha256?: string;
   categories: Category[];
-  itemCount?: number;
 }
 
-export const CENTER_TABS: CenterTab[] = ['发现', '已安装', '创作'];
+export const CENTER_TABS: CenterTab[] = ['发现', '已安装'];
 export const EXTENSION_CATEGORIES: Category[] = ['全部', 'MG', '转场', '特效', 'LUT', '缩放'];
 export const EXTENSION_TYPE_LABEL: Record<string, string> = {
   'mg-template': 'MG',
@@ -25,6 +25,18 @@ export const EXTENSION_TYPE_LABEL: Record<string, string> = {
   fx: '特效',
   lut: 'LUT',
   zoom: '缩放',
+};
+const REGISTRY_CATEGORY_LABEL: Record<string, Exclude<Category, '全部'>> = {
+  mg: 'MG',
+  MG: 'MG',
+  transition: '转场',
+  转场: '转场',
+  fx: '特效',
+  特效: '特效',
+  lut: 'LUT',
+  LUT: 'LUT',
+  zoom: '缩放',
+  缩放: '缩放',
 };
 
 export function parseRegistry(value: unknown): RegistryEntry[] {
@@ -35,8 +47,10 @@ export function parseRegistry(value: unknown): RegistryEntry[] {
     if (typeof item.id !== 'string' || typeof item.name !== 'string' || typeof item.url !== 'string') return [];
     if (!item.url.startsWith('/') && !/^https?:\/\//.test(item.url)) return [];
     const categories = Array.isArray(item.categories)
-      ? item.categories.filter((entry): entry is Category => (
-        EXTENSION_CATEGORIES.includes(entry as Category) && entry !== '全部'
+      ? item.categories.flatMap((entry) => (
+        typeof entry === 'string' && REGISTRY_CATEGORY_LABEL[entry]
+          ? [REGISTRY_CATEGORY_LABEL[entry]]
+          : []
       ))
       : [];
     return [{
@@ -47,8 +61,8 @@ export function parseRegistry(value: unknown): RegistryEntry[] {
       ...(typeof item.description === 'string' ? { description: item.description.slice(0, 240) } : {}),
       ...(typeof item.author === 'string' ? { author: item.author.slice(0, 80) } : {}),
       ...(typeof item.version === 'string' ? { version: item.version.slice(0, 80) } : {}),
-      ...(typeof item.itemCount === 'number' && Number.isFinite(item.itemCount)
-        ? { itemCount: Math.max(0, Math.floor(item.itemCount)) }
+      ...(typeof item.pageUrl === 'string' && /^https?:\/\//.test(item.pageUrl)
+        ? { pageUrl: item.pageUrl }
         : {}),
       ...(typeof item.sha256 === 'string' && /^[0-9a-fA-F]{64}$/.test(item.sha256)
         ? { sha256: item.sha256.toLowerCase() }
@@ -83,7 +97,8 @@ export function secondaryButton(disabled = false): CSSProperties {
     borderRadius: 4,
     background: 'transparent',
     color: theme.text,
-    padding: '5px 9px',
+    minHeight: 28,
+    padding: '4px 8px',
     fontSize: 10.5,
     cursor: disabled ? 'default' : 'pointer',
     opacity: disabled ? 0.5 : 1,

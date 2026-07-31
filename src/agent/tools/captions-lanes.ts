@@ -7,12 +7,12 @@ import { findVariantByLang } from '../../transcript/variants';
 import { resolveTrackId, type TimelineState } from '../../editor/types';
 import { moveCaptionSourceEntry, normalizeCaptionSourceEntries } from '../../captions/sourceOrder';
 
-// edit_captions 多车道工具组：
-// - positions      一次调用把多个 source 各就各位(同锚点=同块堆叠)
-// - layout_policy  single-lane / auto-stack / manual-slots + perSource 覆盖
-// - source_update  按选择器改单个 source 的可见性/锚点/槽位/样式/变体
-// 数据落 CaptionsData.sourceEntries / layoutPolicy / perSource(captions/types.ts),
-// 渲染由 captions/lanes.ts 引擎消费。
+// edit_captions Multi-lane tool set:
+// - positions puts multiple sources into place in one call (same anchor point = stacked in the same block)
+// - layout_policy single-lane / auto-stack / manual-slots + perSource overrides
+// - source_update changes the visibility/anchor/slot/style/variation of a single source by selector
+// Data falls into CaptionsData.sourceEntries / layoutPolicy / perSource(captions/types.ts),
+// Rendering is consumed by the captions/lanes.ts engine.
 
 type Result = Record<string, unknown>;
 type Json = Record<string, unknown>;
@@ -30,7 +30,7 @@ const ANCHORS = new Set<string>([
 let seq = 0;
 const laneId = (): string => `src_${(++seq).toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
-/** 现 scope 提升为 sourceEntries(已有则拷贝;旧 sources[]/sourceItemId/timeline 一次性升级)。 */
+/** Now scope is upgraded to sourceEntries (copy if existing; old sources[]/sourceItemId/timeline will be upgraded in one go).*/
 export function ensureEntries(c: CaptionsData, s: TimelineState): CaptionSourceEntry[] {
   if (c.sourceEntries?.length) return normalizeCaptionSourceEntries(c.sourceEntries);
   const transcribed = (id: string) => s.items.some((it) => it.id === id && (it.transcript?.length ?? 0) > 0);
@@ -45,7 +45,7 @@ export function ensureEntries(c: CaptionsData, s: TimelineState): CaptionSourceE
   return [];
 }
 
-/** 选择器 → 命中的 entry 下标(selector 家族:index/id/sourceId/itemId/trackId/assetId/label/variant/slotId)。 */
+/** Selector → Hit entry subscript (selector family: index/id/sourceId/itemId/trackId/assetId/label/variant/slotId).*/
 export function matchEntries(entries: CaptionSourceEntry[], sel: Json, s: TimelineState): number[] | { error: string } {
   const idx = num(sel.index);
   if (idx !== undefined) {
@@ -102,7 +102,7 @@ const entrySummary = (e: CaptionSourceEntry, i: number) => ({
   ...(e.slotId ? { slotId: e.slotId } : {}), ...(e.visible === false ? { visible: false } : {}),
 });
 
-/** action=layout_policy — 多 source 分屏策略(可只带 perSource 覆盖)。 */
+/** action=layout_policy — multi-source split-screen strategy (can only be overridden with perSource). */
 export function execLayoutPolicy(json: Json, c: CaptionsData, ctx: AgentContext): Result {
   if (json.layoutPolicy === null) {
     ctx.commands.updateCaptions({ layoutPolicy: null });
@@ -143,7 +143,7 @@ export function execLayoutPolicy(json: Json, c: CaptionsData, ctx: AgentContext)
   return { ok: true, layoutPolicy: patch.layoutPolicy ?? c.layoutPolicy ?? { mode: 'auto-stack' }, ...(patch.perSource ? { perSource: patch.perSource } : {}), note: 'perSource.maxLines 按 maxLines×模板每页词数近似(分页按词数)' };
 }
 
-/** action=positions — 一次调用摆多个 source(同锚点=同块堆叠)。 */
+/** action=positions — call multiple sources in one call (same anchor point = same block stack).*/
 export function execPositions(json: Json, c: CaptionsData, ctx: AgentContext, s: TimelineState): Result {
   const raw = Array.isArray(json.positions) ? json.positions : null;
   if (!raw?.length) return { error: 'positions 参数例(可直接照抄改数):{"positions":[{"index":0,"anchor":"top-center","offsetYRatio":0.08},{"index":1,"anchor":"bottom-center","offsetYRatio":-0.08}]}——每条 = 选择器(index/sourceId/trackId/variant…)+ anchor(3×3);同 anchor 会堆叠成一块' };
@@ -165,7 +165,7 @@ export function execPositions(json: Json, c: CaptionsData, ctx: AgentContext, s:
   return { ok: true, placed, note: '同 anchor 的多个 source 在该锚点堆叠为一个普通字幕块;像素级 left/top 用 action=layout(整块)' };
 }
 
-/** action=source_update — 按选择器改单个/多个 source 的呈现(不动字幕轨/item)。 */
+/** action=source_update — Change the presentation of single/multiple sources according to the selector (without moving the caption track/item).*/
 export function execSourceUpdate(json: Json, c: CaptionsData, ctx: AgentContext, s: TimelineState): Result {
   const raw = Array.isArray(json.updates) ? json.updates : (json.update ? [json.update] : null);
   if (!raw?.length) return { error: 'source_update 参数例(可直接照抄改数):{"updates":[{"index":0,"anchor":"bottom-center","offsetYRatio":-0.08},{"trackId":"A2","visible":false},{"index":1,"style":{"sizePx":54,"color":"#fff"}}]}——每条 = 选择器 + 要改的字段(visible/anchor/offsetXRatio/offsetYRatio/slotId/style/preset/variant);sourceId 用 source_list 查' };
@@ -197,7 +197,7 @@ export function execSourceUpdate(json: Json, c: CaptionsData, ctx: AgentContext,
         const v = num(o[k]);
         if (v !== undefined) e[k] = v;
       }
-      // 变体切换:variant 对象或 variantKind+languageCode 简写;要求翻译已存在(源:先 translation_ensure)
+      // Variant switching: variant object or variantKind+languageCode abbreviation; requires translation to already exist (source: first translation_ensure)
       const variantObj = o.variant && typeof o.variant === 'object' ? (o.variant as Json) : undefined;
       const vKind = str(variantObj?.variantKind ?? o.variantKind);
       const vLang = str(variantObj?.languageCode ?? o.languageCode);
@@ -210,7 +210,7 @@ export function execSourceUpdate(json: Json, c: CaptionsData, ctx: AgentContext,
         e.variant = { variantKind: 'translation', languageCode: vLang };
       }
       if (o.variant === null) e = { ...e, variant: undefined };
-      // per-source 样式:preset(模板 id → 整套样式)与/或 style 显式字段
+      // per-source style: preset (template id → complete set of styles) and/or style explicit field
       const presetId = str(o.preset) || str(o.templatePreset);
       if (presetId) {
         const tpl = CAPTION_STYLE_BY_ID[presetId as CaptionTemplate];

@@ -5,6 +5,7 @@ import {
   type MediaAsset,
   type MediaFolder,
   type Timeline,
+  type TimelineItem,
   type TimelineState,
 } from '../../editor/types';
 
@@ -17,10 +18,32 @@ export type LooseProjectShape = {
   designStyle?: unknown;
 };
 
+const ITEM_KINDS = new Set<TimelineItem['kind']>([
+  'motion-graphic', 'audio', 'video', 'image', 'text', 'gif', 'svg', 'solid',
+]);
+
+const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const optionalFinite = (value: unknown): boolean => value === undefined || finite(value);
+
+export function isTimelineItem(value: unknown): value is TimelineItem {
+  if (!value || typeof value !== 'object') return false;
+  const item = value as Partial<TimelineItem>;
+  return typeof item.id === 'string' && !!item.id
+    && typeof item.track === 'string' && !!item.track
+    && typeof item.name === 'string'
+    && typeof item.kind === 'string' && ITEM_KINDS.has(item.kind as TimelineItem['kind'])
+    && finite(item.startFrame) && Number.isInteger(item.startFrame) && item.startFrame >= 0
+    && finite(item.durationInFrames) && Number.isInteger(item.durationInFrames) && item.durationInFrames > 0
+    && optionalFinite(item.srcInFrame) && (item.srcInFrame === undefined || item.srcInFrame >= 0)
+    && optionalFinite(item.playbackRate) && (item.playbackRate === undefined || item.playbackRate > 0)
+    && optionalFinite(item.volume) && (item.volume === undefined || (item.volume >= 0 && item.volume <= 2));
+}
+
 export function isTimelineState(value: unknown): value is TimelineState {
-  return !!value && typeof value === 'object'
-    && Array.isArray((value as { items?: unknown }).items)
-    && typeof (value as { fps?: unknown }).fps === 'number';
+  if (!value || typeof value !== 'object') return false;
+  const state = value as Partial<TimelineState>;
+  return Array.isArray(state.items) && state.items.every(isTimelineItem)
+    && finite(state.fps) && state.fps > 0;
 }
 
 export function isProjectShape(value: unknown): value is LooseProjectShape {
@@ -44,7 +67,7 @@ export function isMediaAsset(value: unknown): value is MediaAsset {
     && typeof asset.name === 'string'
     && (asset.kind === 'video' || asset.kind === 'image' || asset.kind === 'audio' || asset.kind === 'motion-graphic')
     && typeof asset.src === 'string'
-    && typeof asset.durationInFrames === 'number'
+    && finite(asset.durationInFrames) && asset.durationInFrames > 0
     && (asset.kind !== 'motion-graphic' || typeof asset.code === 'string');
 }
 

@@ -3,20 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 
-import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
+import { isSafeUploadName, mimeFor, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import { presignGetUpload, putUploadFile } from '../r2.ts';
+import { fetchGeneratedResult } from './result-download.ts';
 
-function mimeFor(path: string): string {
-  const extension = extname(path).toLowerCase();
-  if (extension === '.png') return 'image/png';
-  if (extension === '.webp') return 'image/webp';
-  if (extension === '.wav') return 'audio/wav';
-  if (extension === '.mp4') return 'video/mp4';
-  if (extension === '.webm') return 'video/webm';
-  if (extension === '.mp3') return 'audio/mpeg';
-  return 'image/jpeg';
-}
-
+// MIME determination uses the media-dir table (the same table is used for upload access). There was originally a copy here that only recognized 6 species.
+// A copy of the extension, and the rest will be image/jpeg — .heic/.heif/.avif/.gif/.mov These can indeed be entered
+// The type of /media/uploads will be tagged with image/jpeg and sent to the supplier together with non-JPEG bytes.
 export async function mediaDataUrl(path: string): Promise<string> {
   const { file } = localMedia(path);
   const bytes = await readFile(file);
@@ -62,8 +55,7 @@ async function probeVideo(file: string): Promise<{ durationSeconds: number; widt
 }
 
 export async function saveVideo(url: string): Promise<{ path: string; durationSeconds: number; width?: number; height?: number }> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`generated video download failed (${response.status})`);
+  const response = await fetchGeneratedResult(url, 'video');
   const bytes = Buffer.from(await response.arrayBuffer());
   if (!bytes.length) throw new Error('video provider returned empty video');
   const dir = uploadDir();
@@ -75,8 +67,7 @@ export async function saveVideo(url: string): Promise<{ path: string; durationSe
 }
 
 export async function saveImageUrl(url: string): Promise<string> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`generated image download failed (${response.status})`);
+  const response = await fetchGeneratedResult(url, 'image');
   const bytes = Buffer.from(await response.arrayBuffer());
   if (!bytes.length) throw new Error('provider returned an empty last frame');
   const contentType = response.headers.get('content-type') ?? '';

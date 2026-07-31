@@ -6,7 +6,7 @@ export interface SemanticVectorRecord {
   scopeId: string;
   assetId: string;
   sampleTime: number;
-  vector: number[];
+  vector: ArrayLike<number>;
 }
 
 export interface SemanticMatch {
@@ -21,6 +21,13 @@ export interface DuplicateMatch {
   score: number;
 }
 
+export interface PackedSemanticVectors {
+  assetIds: string[];
+  assetVectorOffsets: Uint32Array;
+  vectorValueOffsets: Uint32Array;
+  values: Float32Array;
+}
+
 export interface FramePixels {
   data: Uint8ClampedArray;
   width: number;
@@ -33,9 +40,20 @@ export type SemanticDevice = 'webgpu' | 'wasm';
 export type WorkerRequest =
   | { id: number; type: 'load'; device: SemanticDevice }
   | { id: number; type: 'embed-text'; text: string }
-  | { id: number; type: 'embed-image'; frame: FramePixels };
+  | { id: number; type: 'embed-image'; frame: FramePixels }
+  | {
+    id: number;
+    type: 'find-duplicates';
+    threshold: number;
+    vectors: PackedSemanticVectors;
+  };
+
+export type WorkerResult =
+  | { type: 'loaded' }
+  | { type: 'embedding'; vector: number[] }
+  | { type: 'duplicates'; matches: DuplicateMatch[] };
 
 export type WorkerResponse =
-  | { id: number; type: 'result'; vector?: number[] }
+  | { id: number; type: 'result'; result: WorkerResult }
   | { id: number; type: 'error'; message: string }
   | { id: number; type: 'progress'; progress?: number; file?: string };

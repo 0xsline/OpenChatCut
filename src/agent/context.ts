@@ -8,7 +8,7 @@ import {
   type AssetRefKind, type SelectionReference,
 } from './selection-refs';
 
-/** A media-pool asset or template mention (the pre-existing @ 引用). */
+/** A media-pool asset or template mention (the pre-existing @ reference). */
 export interface AssetReference {
   id: string;
   name: string;
@@ -32,6 +32,8 @@ export interface AgentContext {
   getState: () => TimelineState;
   /** the whole project — all timelines + which is active (manage_timelines reads this) */
   getDoc: () => ProjectDoc;
+  /** Sources confirmed unreachable on this machine. Environment-specific; never persisted. */
+  getOfflineMediaSrcs?: () => ReadonlySet<string>;
   /** the active creative-mode skill id, or null; drives prompt injection */
   getCreativeMode: () => string | null;
   /** switch / clear the active creative mode (manage_skill activate; chat-level, not undoable) */
@@ -44,6 +46,9 @@ export interface AgentContext {
   openProject?: (projectId: string) => Promise<{ ok: boolean; error?: string } | void>;
   /** Dashboard/title rename when edit_project updates the open project. */
   onProjectRenamed?: (name: string) => void;
+  /** The complete project snapshot of the previous step (undo target), null if there is no history. undo_last_change Use it to
+   * "Go back to the previous step" is expressed as a normal edit, and the proposal will be confirmed by the user as usual. */
+  getUndoTarget?: () => ProjectDoc | null;
 }
 
 /** Source-media span of a placed clip in ms (srcIn → srcIn + duration·rate). */

@@ -13,10 +13,11 @@ import {
 import { Icon } from '../components/icons';
 import { useT } from '../i18n/locale';
 import { setLibraryDrag } from './drag';
+import { useFixedVirtualGrid } from '../hooks/useFixedVirtualGrid';
 
 // Sound-library tab:
-//   search ("Search sounds") + chips [热门, …groups] + list rows:
-//   [group-color glyph / play] [name] [waveform] [duration] [+ add]
+// search ("Search sounds") + chips [popular, …groups] + list rows:
+// [group-color glyph / play] [name] [waveform] [duration] [+ add]
 
 const POPULAR = '__popular__';
 const WAVE_W = 100;
@@ -68,18 +69,22 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
   const [chip, setChip] = useState<string>(POPULAR);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const playingIdRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef(0);
 
   const stopAudition = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
-    const a = audioRef.current;
-    if (a) {
-      a.pause();
-      a.removeAttribute('src');
-      a.load();
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
     }
     audioRef.current = null;
+    playingIdRef.current = null;
     setPlayingId(null);
     setProgress(0);
   }, []);
@@ -93,26 +98,24 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
     rafRef.current = requestAnimationFrame(tick);
   }, []);
 
-  const audition = useCallback(
-    (s: SoundEffect) => {
-      if (playingId === s.id) {
-        stopAudition();
-        return;
-      }
+  const audition = useCallback((sound: SoundEffect) => {
+    if (playingIdRef.current === sound.id) {
       stopAudition();
-      const a = new Audio(soundEffectSrc(s.id));
-      a.preload = 'auto';
-      audioRef.current = a;
-      setPlayingId(s.id);
-      setProgress(0);
-      a.onended = () => stopAudition();
-      a.onerror = () => stopAudition();
-      void a.play().then(() => {
-        rafRef.current = requestAnimationFrame(tick);
-      }).catch(() => stopAudition());
-    },
-    [playingId, stopAudition, tick],
-  );
+      return;
+    }
+    stopAudition();
+    const audio = new Audio(soundEffectSrc(sound.id));
+    audio.preload = 'auto';
+    audioRef.current = audio;
+    playingIdRef.current = sound.id;
+    setPlayingId(sound.id);
+    setProgress(0);
+    audio.onended = () => stopAudition();
+    audio.onerror = () => stopAudition();
+    void audio.play().then(() => {
+      rafRef.current = requestAnimationFrame(tick);
+    }).catch(() => stopAudition());
+  }, [stopAudition, tick]);
 
   const list = useMemo(() => {
     const q = query.trim();
@@ -121,6 +124,27 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
     else base = base.filter((s) => s.group === chip);
     return [...base].sort((a, b) => a.order - b.order);
   }, [chip, query]);
+
+  const pinnedIndexes = useMemo(() => {
+    const pinnedIds = new Set([playingId, focusedId, draggedId].filter((id): id is string => id != null));
+    const indexes: number[] = [];
+    list.forEach((sound, index) => {
+      if (pinnedIds.has(sound.id)) indexes.push(index);
+    });
+    return indexes;
+  }, [draggedId, focusedId, list, playingId]);
+  const virtualList = useFixedVirtualGrid({
+    itemCount: list.length,
+    cardWidth: 1,
+    rowHeight: 40,
+    rowGap: 4,
+    overscanRows: 2,
+    fixedColumnCount: 1,
+    pinnedIndexes,
+  });
+  const addSound = useCallback((sound: SoundEffect) => {
+    onAdd(toAsset(sound, fps));
+  }, [fps, onAdd]);
 
   return (
     <div className="cc-sound-browser">
@@ -169,74 +193,36 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
       {list.length === 0 ? (
         <div className="cc-sound-empty">{t('此分类下暂无音效')}{query ? t('（与「{query}」不匹配）', { query }) : ''}</div>
       ) : (
-        <div className="cc-sound-list" role="listbox" aria-label={t('音效列表')}>
-          {list.map((s) => {
-            const tone = SOUND_GROUP_TONE[s.group] ?? SOUND_GROUP_TONE['ui-motion-feedback']!;
-            const isPlaying = playingId === s.id;
-            const bins = resamplePeaks(s.peaks, WAVE_BINS);
-            const path = peaksToPath(bins, WAVE_W, WAVE_H);
-            const clipId = `cc-sfx-clip-${s.id}`;
+        <div
+          ref={virtualList.containerRef}
+          className="cc-sound-list"
+          role="listbox"
+          aria-label={t('音效列表')}
+          style={{ height: virtualList.totalHeight }}
+        >
+          {virtualList.rows.map((row) => {
+            const sound = list[row.startIndex];
+            if (!sound) return null;
             return (
               <div
-                key={s.id}
-                role="option"
-                aria-selected={isPlaying}
-                className={`cc-sound-row${isPlaying ? ' active' : ''}`}
-                title={t('{desc} · 可拖到时间线音轨', { desc: s.desc })}
-                draggable
-                onDragStart={(e) => {
-                  setLibraryDrag(e, {
-                    kind: 'sound',
-                    id: s.id,
-                    name: s.name,
-                    src: soundEffectSrc(s.id),
-                    seconds: s.seconds,
-                  });
+                key={sound.id}
+                style={{
+                  position: 'absolute',
+                  top: row.top,
+                  left: 0,
+                  width: '100%',
+                  height: virtualList.rowHeight,
                 }}
-                onClick={() => audition(s)}
-                onDoubleClick={() => onAdd(toAsset(s, fps))}
               >
-                <button
-                  type="button"
-                  className="cc-sound-glyph"
-                  style={{ backgroundColor: tone.bg, color: tone.ink }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    audition(s);
-                  }}
-                  aria-label={isPlaying ? t('暂停 {name}', { name: s.name }) : t('试听 {name}', { name: s.name })}
-                >
-                  <Icon name={isPlaying ? 'pause' : 'play'} size={12} />
-                </button>
-
-                <div className="cc-sound-meta">
-                  <div className="cc-sound-name">{s.name}</div>
-                </div>
-
-                <div className="cc-sound-wave" aria-hidden>
-                  <svg viewBox={`0 0 ${WAVE_W} ${WAVE_H}`} preserveAspectRatio="none">
-                    <path d={path} className="cc-sound-wave-base" />
-                    <clipPath id={clipId}>
-                      <rect x={0} y={0} width={(isPlaying ? progress : 0) * WAVE_W} height={WAVE_H} />
-                    </clipPath>
-                    <path d={path} className="cc-sound-wave-prog" clipPath={`url(#${clipId})`} style={{ fill: tone.glyph }} />
-                  </svg>
-                </div>
-
-                <span className="cc-sound-dur">{formatSoundDuration(s.seconds)}</span>
-
-                <button
-                  type="button"
-                  className="cc-sound-add"
-                  title={t('添加到时间线：{name}', { name: s.name })}
-                  aria-label={t('添加 {name}', { name: s.name })}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAdd(toAsset(s, fps));
-                  }}
-                >
-                  <Icon name="plus" size={14} />
-                </button>
+                <SoundRow
+                  sound={sound}
+                  playing={playingId === sound.id}
+                  progress={playingId === sound.id ? progress : 0}
+                  onAudition={audition}
+                  onAdd={addSound}
+                  onFocusChange={setFocusedId}
+                  onDragChange={setDraggedId}
+                />
               </div>
             );
           })}
@@ -244,6 +230,98 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
       )}
 
       <div className="cc-sound-hint">{t('单击试听 · 双击/点 + 或拖到时间线音轨 · 共 {n} 个音效', { n: SOUND_EFFECTS.length })}</div>
+    </div>
+  );
+});
+
+interface SoundRowProps {
+  sound: SoundEffect;
+  playing: boolean;
+  progress: number;
+  onAudition: (sound: SoundEffect) => void;
+  onAdd: (sound: SoundEffect) => void;
+  onFocusChange: (id: string | null) => void;
+  onDragChange: (id: string | null) => void;
+}
+
+const SoundRow = memo(function SoundRow({
+  sound,
+  playing,
+  progress,
+  onAudition,
+  onAdd,
+  onFocusChange,
+  onDragChange,
+}: SoundRowProps) {
+  const t = useT();
+  const tone = SOUND_GROUP_TONE[sound.group] ?? SOUND_GROUP_TONE['ui-motion-feedback']!;
+  const path = useMemo(
+    () => peaksToPath(resamplePeaks(sound.peaks, WAVE_BINS), WAVE_W, WAVE_H),
+    [sound.peaks],
+  );
+  const clipId = `cc-sfx-clip-${sound.id}`;
+  return (
+    <div
+      role="option"
+      aria-selected={playing}
+      className={`cc-sound-row${playing ? ' active' : ''}`}
+      title={t('{desc} · 可拖到时间线音轨', { desc: sound.desc })}
+      draggable
+      onDragStart={(event) => {
+        onDragChange(sound.id);
+        setLibraryDrag(event, {
+          kind: 'sound',
+          id: sound.id,
+          name: sound.name,
+          src: soundEffectSrc(sound.id),
+          seconds: sound.seconds,
+        });
+      }}
+      onDragEnd={() => onDragChange(null)}
+      onFocusCapture={() => onFocusChange(sound.id)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onFocusChange(null);
+      }}
+      onClick={() => onAudition(sound)}
+      onDoubleClick={() => onAdd(sound)}
+    >
+      <button
+        type="button"
+        className="cc-sound-glyph"
+        style={{ backgroundColor: tone.bg, color: tone.ink }}
+        onClick={(event) => {
+          event.stopPropagation();
+          onAudition(sound);
+        }}
+        aria-label={playing ? t('暂停 {name}', { name: sound.name }) : t('试听 {name}', { name: sound.name })}
+      >
+        <Icon name={playing ? 'pause' : 'play'} size={12} />
+      </button>
+      <div className="cc-sound-meta">
+        <div className="cc-sound-name">{sound.name}</div>
+      </div>
+      <div className="cc-sound-wave" aria-hidden>
+        <svg viewBox={`0 0 ${WAVE_W} ${WAVE_H}`} preserveAspectRatio="none">
+          <path d={path} className="cc-sound-wave-base" />
+          <clipPath id={clipId}>
+            <rect x={0} y={0} width={progress * WAVE_W} height={WAVE_H} />
+          </clipPath>
+          <path d={path} className="cc-sound-wave-prog" clipPath={`url(#${clipId})`} style={{ fill: tone.glyph }} />
+        </svg>
+      </div>
+      <span className="cc-sound-dur">{formatSoundDuration(sound.seconds)}</span>
+      <button
+        type="button"
+        className="cc-sound-add"
+        title={t('添加到时间线：{name}', { name: sound.name })}
+        aria-label={t('添加 {name}', { name: sound.name })}
+        onClick={(event) => {
+          event.stopPropagation();
+          onAdd(sound);
+        }}
+      >
+        <Icon name="plus" size={14} />
+      </button>
     </div>
   );
 });

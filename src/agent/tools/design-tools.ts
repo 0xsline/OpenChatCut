@@ -1,4 +1,4 @@
-import type { AgentToolSchema } from '../tool-schema';
+export { DESIGN_TOOL_SCHEMAS, DESIGN_TOOL_NAMES } from './schemas/design-tools';
 import type { AgentContext } from '../context';
 import {
   COLOR_ROLES, FONT_ROLES, type DesignColor, type DesignFont, type DesignStyle,
@@ -7,44 +7,6 @@ import { DESIGN_STYLE_PRESETS, findPreset } from '../../editor/design-presets';
 import {
   loadOwnedStyles, saveOwnedStyle, updateOwnedStyle, deleteOwnedStyle,
 } from '../../persist/projectStore';
-
-// manage_design_style controls the project's reusable brand identity and drives
-// the colors and fonts the agent selects for motion graphics and captions.
-// Styles come from the public catalog or the user's global personal library.
-export const DESIGN_TOOL_SCHEMAS: AgentToolSchema[] = [{
-  name: 'manage_design_style',
-  description: [
-    '管理工程的设计风格(品牌)。应用中的设计风格就是本工程的品牌,驱动你生成 MG/字幕时用的配色与字体。',
-    'action: list | get | apply | update | clear | save | delete.',
-    'list=列出风格库,返回 {catalog(内置预设), owned(用户"我的风格"收藏)}; get=查看当前工程已应用的风格;',
-    'apply=把某风格(presetId,内置或用户收藏均可)或自定义 designSpec 套用到工程(applyToProject 默认 true);',
-    'update=对当前工程风格做局部修改;传 presetId 时可修改收藏风格的内容、名称、场景标签或缩略图; clear=清除工程风格;',
-    'save=把 designSpec(或未传时用当前工程已应用的风格)存入用户的"我的风格"收藏,需 name,可附带 scenarios/thumbnailUrl; delete=从收藏中删除(presetId 为收藏项 id;内置预设不可删除)。',
-    'designSpec/patch 结构: {colors:[{role,value}], fonts:[{family,role}], styleGuide}。',
-    `role 是自由文本(取值如 "accent copper"/"text secondary"/"Chinese heading"),常用 color role: ${COLOR_ROLES.join('/')}; font role: ${FONT_ROLES.join('/')},但不限于这些。`,
-    'styleGuide 可写详细的动效/spring/stagger 规格。',
-    'colors/fonts 也可传旧式对象形(如 {colors:{primary:"#..."}, fonts:{heading:"Inter"}}),会自动规整为数组。',
-  ].join(' '),
-  input_schema: {
-    type: 'object',
-    properties: {
-      action: { type: 'string', enum: ['list', 'get', 'apply', 'update', 'clear', 'save', 'delete'] },
-      presetId: { type: 'string', description: 'apply/delete: 风格 id(内置预设或"我的风格"收藏项,先用 list 查看)。' },
-      designSpec: { type: 'string', description: 'apply/save: 自定义风格的 JSON,含 colors/fonts/styleGuide。' },
-      patch: { type: 'string', description: 'update: 局部修改的 JSON(只写要改的字段)。' },
-      applyToProject: { type: 'boolean', description: 'apply: 是否立即套到当前工程(默认 true)。' },
-      name: { type: 'string', description: 'save: 收藏名称(必填;同名会覆盖已有收藏)。' },
-      rename: { type: 'string', description: 'update + presetId: 新的收藏名称;重名时自动添加数字后缀。' },
-      scenarios: { type: 'array', items: { type: 'string' }, description: 'save/update: 适用场景标签;空数组清除。' },
-      scenario: { type: 'string', description: 'list: 只返回包含此场景标签的风格。' },
-      thumbnailUrl: { type: 'string', description: 'save/update: 风格选择器封面 URL;不参与生成。' },
-      clearThumbnail: { type: 'boolean', description: 'update + presetId: 清除封面,不会删除风格。' },
-    },
-    required: ['action'],
-  },
-}];
-
-export const DESIGN_TOOL_NAMES = new Set(DESIGN_TOOL_SCHEMAS.map((t) => t.name));
 
 type Args = Record<string, unknown>;
 
@@ -225,7 +187,7 @@ export async function execDesignTool(name: string, args: Args, ctx: AgentContext
       ctx.commands.setDesignStyle(null);
       return { ok: true, cleared: true };
 
-    // "我的风格" is a global personal library, not a project-scoped collection.
+    // "My Style" is a global personal library, not a project-scoped collection.
     // Writes go straight to the store, bypassing
     // ctx.commands (there is no timeline edit / undo entry to make).
     case 'save': {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { AbsoluteFill, Img, Video, continueRender, delayRender, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Img, Video, continueRender, delayRender, getRemotionEnvironment, useCurrentFrame, useVideoConfig } from 'remotion';
 import { createGlRuntime, type GlRuntime } from './runtime';
 import { GLSL_TRANSITIONS } from './transitions';
 import type { AspectFit, GlslTransitionType, TimelineItem, TransitionDirection } from '../editor/types';
@@ -56,11 +56,11 @@ function drawFit(ctx: CanvasRenderingContext2D, el: MediaEl, fit: AspectFit): vo
 
 function MediaSource({ item, trim, elRef }: { item: TimelineItem; trim: number; elRef: React.MutableRefObject<MediaEl | null> }) {
   if (item.kind === 'image') {
-    // impeccable-disable-next-line broken-image -- Remotion Img 组件,src 来自 item 运行时注入
+    // impeccable-disable-next-line broken-image -- Remotion Img component, src comes from item runtime injection
     return <Img ref={elRef as React.MutableRefObject<HTMLImageElement | null>} src={item.src!} />;
   }
   // muted: the ORIGINAL clip sequences (rendered beneath the GL canvas) own the audio
-  return <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={trim} muted />;
+  return <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={trim} playbackRate={item.playbackRate ?? 1} muted />;
 }
 
 export function GlTransition({ type, direction, L, windowStart, outgoing, incoming, trimOut, trimIn, width, height, fit, customFrag, customUniforms }: GlTransitionProps) {
@@ -94,11 +94,16 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !def) return;
-    const handle = delayRender(`gl-transition ${type} f${frame}`);
+    // delayRender only for headless export — it must wait for both sources
+    // before capturing the frame. In the Player, waiting stalls the whole
+    // transport (looks like a freeze on the outgoing tail); paint when ready
+    // instead and let the next frame retry if a seek is still in flight.
+    const blockForExport = getRemotionEnvironment().isRendering;
+    const handle = blockForExport ? delayRender(`gl-transition ${type} f${frame}`) : null;
     let done = false;
     let raf = 0;
     const finish = () => {
-      if (!done) {
+      if (!done && handle != null) {
         done = true;
         continueRender(handle);
       }

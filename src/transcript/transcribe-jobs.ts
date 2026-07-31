@@ -1,4 +1,4 @@
-// Client-side ASR job table for "上传即转写" (ingest 落库后自动触发转写).
+// Client-side ASR job table for "upload and transcribe" (automatically trigger transcribe after ingest is dropped).
 // Unlike generation/render jobs (which run server-side and are polled over HTTP),
 // transcription runs IN THE BROWSER via transcribePath, so its "job table" is this
 // in-memory Map keyed by assetId. The agent polls it through track_progress

@@ -4,9 +4,9 @@ export interface CaptionStyle {
   id: CaptionTemplate;
   /** English preset name. */
   label: string;
-  /** 中文说明（控件展示用） */
+  /** Chinese description (for control display) */
   labelZh: string;
-  /** 一句话告诉用户这是什么观感 */
+  /** Tell the user what this looks like in one sentence */
   hint: string;
   fontFamily: string;
   fontSize: number;
@@ -20,9 +20,9 @@ export interface CaptionStyle {
   textTransform?: 'none' | 'uppercase';
   displayMode?: 'stacked';
   wordsPerPage?: number;
-  /** 整句连续渲染:一页拼成一条文本(无词间隙、无逐词高亮),背景包住整行 */
+  /** Continuous rendering of the entire sentence: one page is spelled into one text (no word gaps, no word-by-word highlighting), and the background wraps the entire line */
   wholeLine?: boolean;
-  /** wholeLine 的整行背景色(如经典黑底字幕条) */
+  /** The whole line background color of wholeLine (such as the classic black caption strip) */
   background?: string;
 }
 

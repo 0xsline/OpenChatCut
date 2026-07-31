@@ -38,20 +38,26 @@ function RegistryCard({ entry, installed, busyId, onInstall }: {
     source: { kind: 'registry', url: entry.url, ...(entry.sha256 ? { sha256: entry.sha256 } : {}) },
   }));
   return (
-    <article style={{ border: `0.5px solid ${theme.border}`, background: theme.panelAlt, padding: 11, borderRadius: 5, display: 'flex', flexDirection: 'column', gap: 9, minHeight: 116 }}>
-      <div style={{ display: 'flex', gap: 9, minWidth: 0 }}>
-        <ExtensionGlyph label={entry.name} />
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ color: theme.textStrong, fontSize: 12.5, fontWeight: 700 }}>{entry.name}</div>
-          <div style={{ color: theme.textDim, fontSize: 10, marginTop: 2 }}>{entry.author ?? t('社区作者')}{entry.version ? ` · v${entry.version}` : ''}</div>
+    <article style={{ border: `0.5px solid ${theme.border}`, background: theme.panelAlt, padding: 9, borderRadius: 5, display: 'flex', alignItems: 'center', gap: 9 }}>
+      <ExtensionGlyph label={entry.name} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+          <div style={{ color: theme.textStrong, fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.name}</div>
+          {entry.version && <span style={{ color: theme.textDim, fontSize: 9.5 }}>v{entry.version}</span>}
         </div>
-        {entry.sha256 && <ExtensionTag verified>{t('完整性已校验')}</ExtensionTag>}
+        <div title={entry.description} style={{ color: theme.textDim, fontSize: 10, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {entry.description ?? t('创意资源扩展包')}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
+          <span style={{ color: theme.textDim, fontSize: 9.5 }}>{entry.author ?? t('社区作者')}</span>
+          {entry.categories.map((item) => <ExtensionTag key={item}>{t(item)}</ExtensionTag>)}
+          {entry.sha256 && <ExtensionTag verified>{t('已校验')}</ExtensionTag>}
+        </div>
       </div>
-      <div style={{ color: theme.textDim, fontSize: 10.5, lineHeight: 1.5, flex: 1 }}>{entry.description ?? t('创意资源扩展包')}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        {entry.categories.map((item) => <ExtensionTag key={item}>{t(item)}</ExtensionTag>)}
-        {entry.itemCount !== undefined && <ExtensionTag>{t('{n} 个项目', { n: entry.itemCount })}</ExtensionTag>}
-        <span style={{ flex: 1 }} />
+        {entry.pageUrl && (
+          <a href={entry.pageUrl} target="_blank" rel="noreferrer" aria-label={t('在官网查看')} title={t('在官网查看')} style={{ ...secondaryButton(), display: 'grid', placeItems: 'center', width: 28, padding: 0, textDecoration: 'none' }}>↗</a>
+        )}
         <button type="button" disabled={disabled} onClick={install} style={{ ...secondaryButton(disabled), borderColor: !installed || hasUpdate ? theme.accent : theme.border, color: !installed || hasUpdate ? theme.textStrong : theme.textDim }}>
           {busyId === entry.id ? t('安装中…') : hasUpdate ? t('更新') : installed ? t('已安装') : t('安装')}
         </button>
@@ -90,7 +96,7 @@ export function ExtensionDiscover(props: DiscoverProps) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
       {props.showLocalInstall && <InstallPanel busy={props.busyId !== null} onInstall={(task) => props.onInstall('local', task)} />}
       <DiscoverToolbar query={props.query} category={props.category} onQuery={props.onQuery} onCategory={props.onCategory} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(245px, 1fr))', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {props.entries.map((entry) => (
           <RegistryCard key={entry.id} entry={entry} installed={props.packs.find((pack) => pack.id === entry.id)} busyId={props.busyId} onInstall={props.onInstall} />
         ))}

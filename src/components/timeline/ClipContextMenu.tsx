@@ -8,10 +8,19 @@ import { ALL_FX, LUT_EFFECTS } from '../../gl/fx/effects';
 import { Icon, type IconName } from '../icons';
 import { useT } from '../../i18n/locale';
 
-// speed presets for the 变速 submenu
+// speed presets for the variable speed submenu
 const SPEED_PRESETS = [0.25, 0.5, 1, 1.5, 2, 4] as const;
+const SPEED_PRESET_EPSILON = 0.01;
 
-// Clip right-click menu. AI 多机位同步:客户端音频对齐(src/multicam)。
+function displaySpeedRate(rate: number): number {
+  return Number(rate.toFixed(3));
+}
+
+function matchesSpeedPreset(rate: number, preset: number): boolean {
+  return Math.abs(rate - preset) < SPEED_PRESET_EPSILON;
+}
+
+// Clip right-click menu. AI multi-camera synchronization: client audio alignment (src/multicam).
 
 /** effects copied from a clip (the clip's effects[] stack) */
 export interface FxClip {
@@ -24,7 +33,7 @@ export interface FxClip {
 
 interface ClipContextMenuProps {
   item: TimelineItem;
-  /** 与本片段相关的转场(入/出),供「已应用效果」列出与移除 */
+  /** Transitions (in/out) related to this clip are listed and removed by "Applied Effects" */
   transitions: TransitionItem[];
   x: number;
   y: number;
@@ -37,15 +46,16 @@ interface ClipContextMenuProps {
   fxClip: FxClip | null;
   onCopyFx: (fx: FxClip) => void;
   onClose: () => void;
-  /** 导出 MG 动画 → ProRes 4444 alpha .mov download */
+  /** Export MG animation → ProRes 4444 alpha .mov download */
   onExportMg: (item: TimelineItem) => void;
-  /** 转为视频 → bake to a video clip in place */
+  /** Turn to video → bake to a video clip in place */
   onConvertToVideo: (item: TimelineItem) => void;
+  onAddComment: (item: TimelineItem, frame: number, clientX: number, clientY: number) => void;
 }
 
 const PASTE_HINT = '⌘⌥V';
 
-export function ClipContextMenu({ item, transitions, x, y, playhead, commands, timeline, selectedIds, fxClip, onCopyFx, onClose, onExportMg, onConvertToVideo }: ClipContextMenuProps) {
+export function ClipContextMenu({ item, transitions, x, y, playhead, commands, timeline, selectedIds, fxClip, onCopyFx, onClose, onExportMg, onConvertToVideo, onAddComment }: ClipContextMenuProps) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [syncBusy, setSyncBusy] = useState(false);
@@ -106,7 +116,7 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
 
   const [showSpeed, setShowSpeed] = useState(false);
   const [showApplied, setShowApplied] = useState(false);
-  // 初值用保守夹取,量到真实尺寸后精确收拢(展开子区/换 anchor 时重量)
+  // Use conservative clamping for the initial value, and accurately shrink it after measuring the actual size (expanding sub-area/weight when changing anchor)
   const [pos, setPos] = useState(() => ({ left: Math.min(x, window.innerWidth - 210), top: Math.min(y, window.innerHeight - 380) }));
   useLayoutEffect(() => {
     const el = ref.current;
@@ -118,7 +128,7 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
     });
   }, [x, y, showApplied, showSpeed]);
 
-  // 已应用效果清单:特效/LUT/缩放/转场,点击即移除
+  // List of applied effects: special effects/LUT/zoom/transition, click to remove
   const effects = item.effects ?? [];
   const applied: { key: string; label: string; remove: () => void }[] = [
     ...effects.map((fx) => ({
@@ -144,6 +154,8 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
   const isDom = item.kind === 'motion-graphic' || item.kind === 'text'; // DOM clips → alpha MG export
   const canSpeed = item.kind === 'video' || item.kind === 'audio'; // playbackRate only affects av
   const rate = item.playbackRate ?? 1;
+  const displayedRate = displaySpeedRate(rate);
+  const reviewFrame = Math.max(item.startFrame, Math.min(playhead, item.startFrame + item.durationInFrames - 1));
   const run = (fn: () => void) => () => { fn(); onClose(); };
 
   const copyFx = () => onCopyFx({ filters: item.filters, transform: item.transform, zoom: item.zoom, fadeInFrames: item.fadeInFrames, fadeOutFrames: item.fadeOutFrames });
@@ -155,8 +167,8 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
     commands.setItemFade(item.id, { fadeInFrames: fxClip.fadeInFrames ?? 0, fadeOutFrames: fxClip.fadeOutFrames ?? 0 });
   };
 
-  // keep the menu on-screen:菜单高度随条目/展开态变化,写死估高会在底部溢出——
-  // 挂载与展开态变化后量真实尺寸再夹取(useLayoutEffect 在绘制前跑,不闪)。
+  // keep the menu on-screen: The height of the menu changes with the entry/expanded state. If the height is estimated to be too high, it will overflow at the bottom——
+  // After the mounting and unfolding state changes, measure the real size and then clamp it (useLayoutEffect is run before drawing and does not flash).
   const style: React.CSSProperties = {
     position: 'fixed', left: pos.left, top: pos.top,
     zIndex: 100, minWidth: 200, maxHeight: 'calc(100vh - 16px)', overflowY: 'auto',
@@ -166,6 +178,8 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
 
   return (
     <div ref={ref} style={style}>
+      <Item label={t('添加评论')} icon="clipboard" onClick={run(() => onAddComment(item, reviewFrame, x, y))} />
+      <Sep />
       <Item
         label={syncBusy ? t('多机位同步中…') : t('AI 多机位同步')}
         icon="users"
@@ -202,18 +216,21 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
       )}
       <Item label={t('复制效果')} icon="sparkles" disabled={!isVisual} onClick={run(copyFx)} />
       <Item label={t('粘贴效果')} icon="clipboard" shortcut={PASTE_HINT} disabled={!isVisual || !fxClip} onClick={run(pasteFx)} />
-      <Item label={rate !== 1 ? t('变速（{rate}×）', { rate }) : t('变速')} icon="clock" chevron disabled={!canSpeed}
+      <Item label={!matchesSpeedPreset(rate, 1) ? t('变速（{rate}×）', { rate: displayedRate }) : t('变速')} icon="clock" chevron disabled={!canSpeed}
         onClick={canSpeed ? () => setShowSpeed((v) => !v) : undefined} />
       {showSpeed && canSpeed && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '2px 9px 6px 35px' }}>
-          {SPEED_PRESETS.map((s) => (
-            <button key={s} onClick={run(() => commands.setItemSpeed(item.id, s))}
-              style={{
-                cursor: 'pointer', fontSize: 11, padding: '3px 8px', borderRadius: 5,
-                border: `0.5px solid ${s === rate ? theme.accent : theme.border}`,
-                background: s === rate ? theme.accent : 'none', color: s === rate ? theme.onAccent : theme.text,
-              }}>{s}×</button>
-          ))}
+          {SPEED_PRESETS.map((s) => {
+            const active = matchesSpeedPreset(rate, s);
+            return (
+              <button key={s} onClick={run(() => commands.setItemSpeed(item.id, s))}
+                style={{
+                  cursor: 'pointer', fontSize: 11, padding: '3px 8px', borderRadius: 5,
+                  border: `0.5px solid ${active ? theme.accent : theme.border}`,
+                  background: active ? theme.accent : 'none', color: active ? theme.onAccent : theme.text,
+                }}>{s}×</button>
+            );
+          })}
         </div>
       )}
       <Sep />

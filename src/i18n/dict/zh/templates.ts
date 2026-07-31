@@ -1,4 +1,4 @@
-// ZH 数据词典(反向:英文数据名→中文显示)。数据文件,行数上限豁免。
+// ZH data dictionary (reverse: English data name → Chinese display). Data files are exempt from the upper limit of row count.
 export default {
   'Bar Chart - Annual Sales': '柱状图 · 年度销售',
   'Bar Chart - Category Sales': '柱状图 · 品类销售',

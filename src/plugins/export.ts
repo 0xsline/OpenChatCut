@@ -1,15 +1,18 @@
-// 导出为插件(DIY 闭环):把会话内自定义内容——submit_shader 生成的特效/转场、
-// 时间线上的 MG 片段——打包成 openchatcut-plugin@1 JSON。纯函数,数据由调用方注入
-// (浏览器 UI 在 library/PluginExport.tsx),产物必过 validatePack 才允许下载。
+// Export as plugin (DIY closed loop): Customize the content in the session - special effects/LUT/transition,
+// MG/zoom on timeline - packaged as openchatcut-plugin@1 JSON. Pure function, data is injected by the caller
+// (Browser UI is in library/PluginExport.tsx), the product must pass validatePack before it can be downloaded.
 import { PLUGIN_FORMAT, type PluginItem, type PluginNumberProp, type PluginPack } from './types';
 import { validatePack } from './validate';
 import type { FxProperty, SerializableFxDef } from '../gl/fx/uniforms';
 import type { CustomTransitionDef } from '../gl/customTransitions';
 import type { TimelineItem, TransitionItem } from '../editor/types';
+import { zoomAt } from '../editor/zoom';
 
-/** 一个可勾选的导出候选(item.id 由 buildExportPack 统一重排,这里先占位) */
+const ZOOM_EXPORT_SAMPLES = 32;
+
+/** A selectable export candidate (item.id is uniformly rearranged by buildExportPack, occupying space here first) */
 export interface ExportCandidate {
-  /** 会话内唯一键(勾选状态用) */
+  /** Unique key within session (used in checked state) */
   key: string;
   label: string;
   item: PluginItem;
@@ -23,7 +26,7 @@ function numberProps(props: FxProperty[] | undefined): PluginNumberProp[] | unde
   return out.length ? out : undefined;
 }
 
-/** 自定义特效候选:只收 custom:(submit_shader 产物);plugin:(他人内容)与 builtin: 不导 */
+/** Custom effects candidates: only custom: (submit_shader product); plugin: (other people’s content) and builtin: not imported */
 export function fxCandidates(defs: SerializableFxDef[]): ExportCandidate[] {
   const seen = new Set<string>();
   const out: ExportCandidate[] = [];
@@ -45,8 +48,28 @@ export function fxCandidates(defs: SerializableFxDef[]): ExportCandidate[] {
   return out;
 }
 
-/** 自定义转场候选:注册表里的 custom:tr-*,加上时间线上仅存 customFrag 的
- * (submit_shader 刷新后注册表清空,frag 只活在 TransitionItem 上)。按 frag 去重。 */
+/** Custom LUT candidates: only custom: resources with original .cube text. */
+export function lutCandidates(defs: SerializableFxDef[]): ExportCandidate[] {
+  const seen = new Set<string>();
+  const out: ExportCandidate[] = [];
+  for (const d of defs) {
+    if (!d.id.startsWith('custom:') || !d.cube || seen.has(d.id)) continue;
+    seen.add(d.id);
+    out.push({
+      key: `lut:${d.id}`,
+      label: d.name,
+      item: {
+        type: 'lut', id: 'lut', name: d.name, cube: d.cube,
+        ...(d.desc ? { desc: d.desc.slice(0, 500) } : {}),
+        ...(numberProps(d.props) ? { props: numberProps(d.props) } : {}),
+      },
+    });
+  }
+  return out;
+}
+
+/** Custom transition candidates: custom:tr-* in the registry, plus the only customFrag left on the timeline
+ * (The registry is cleared after submit_shader is refreshed, and the frag only lives on TransitionItem). Press frag to remove duplicates.*/
 export function transitionCandidates(defs: CustomTransitionDef[], transitions: TransitionItem[]): ExportCandidate[] {
   const seenFrag = new Set<string>();
   const out: ExportCandidate[] = [];
@@ -66,7 +89,7 @@ export function transitionCandidates(defs: CustomTransitionDef[], transitions: T
     if (t.type !== 'custom-shader' || !t.customFrag || seenFrag.has(t.customFrag)) continue;
     seenFrag.add(t.customFrag);
     const name = t.customLabel ?? '自定义转场';
-    // 仅有 uniform 值,反推可调属性的保守范围
+    // Only uniform values, infer the conservative range of adjustable properties
     const props: PluginNumberProp[] = Object.entries(t.customUniforms ?? {}).map(([k, v]) => ({
       key: k.replace(/^u_/, ''),
       label: k.replace(/^u_/, ''),
@@ -83,7 +106,7 @@ export function transitionCandidates(defs: CustomTransitionDef[], transitions: T
   return out;
 }
 
-/** 时间线 MG 候选(按 code 去重,同模板多次上轨只出一条) */
+/** Timeline MG candidates (remove duplicates by code, only one will appear if the same template is uploaded multiple times)*/
 export function mgCandidates(items: TimelineItem[]): ExportCandidate[] {
   const seenCode = new Set<string>();
   const out: ExportCandidate[] = [];
@@ -97,7 +120,41 @@ export function mgCandidates(items: TimelineItem[]): ExportCandidate[] {
         type: 'mg-template', id: 'mg', name: it.name, code: it.code,
         ...(it.width ? { width: it.width } : {}),
         ...(it.height ? { height: it.height } : {}),
+        ...(it.durationInFrames ? { durationInFrames: it.durationInFrames } : {}),
         ...(it.props && Object.keys(it.props).length ? { props: it.props } : {}),
+      },
+    });
+  }
+  return out;
+}
+
+/** Timeline scaling candidate: Sample the current actual curve into a portable envelope.*/
+export function zoomCandidates(items: TimelineItem[]): ExportCandidate[] {
+  const seen = new Set<string>();
+  const out: ExportCandidate[] = [];
+  for (const it of items) {
+    if (!it.zoom || it.zoom.reframeCurve) continue;
+    const z = it.zoom;
+    const duration = Math.max(2, it.durationInFrames);
+    const magnification = z.magnification ?? 1.5;
+    const denominator = Math.max(0.05, magnification - 1);
+    const envelope = z.envelope?.length
+      ? z.envelope
+      : Array.from({ length: ZOOM_EXPORT_SAMPLES }, (_, index) => {
+          const frame = index * (duration - 1) / (ZOOM_EXPORT_SAMPLES - 1);
+          return Number(((zoomAt(z, frame, duration).magnification - 1) / denominator).toFixed(4));
+        });
+    const signature = JSON.stringify({ envelope, magnification, x: z.focalPointX, y: z.focalPointY });
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    const name = z.label ?? `${it.name} 缩放`;
+    out.push({
+      key: `zoom:${it.id}`,
+      label: name,
+      item: {
+        type: 'zoom', id: 'zoom', name, envelope, magnification,
+        ...(z.focalPointX != null ? { focalPointX: z.focalPointX } : {}),
+        ...(z.focalPointY != null ? { focalPointY: z.focalPointY } : {}),
       },
     });
   }
@@ -114,7 +171,7 @@ export interface ExportMeta {
 
 export type BuildResult = { ok: true; pack: PluginPack; json: string } | { ok: false; errors: string[] };
 
-/** 组包:每类内容重排唯一 id(fx-1/tr-1/mg-1…),整包过 validatePack 才放行。 */
+/** Group package: Each type of content is rearranged with a unique ID (fx-1/tr-1/mg-1...), and the entire package is released only after passing validatePack.*/
 export function buildExportPack(meta: ExportMeta, selected: PluginItem[]): BuildResult {
   const counters: Record<string, number> = {};
   const items = selected.map((item) => {

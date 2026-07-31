@@ -1,10 +1,10 @@
-// 时间线共享基座:布局常量、时间码/标尺格式化、拖拽类型、音频波形。
-// Timeline 主件与拆出的子件(Toolbar/Ruler/TrackLane/useTimelinePointer)都从这里取,
-// 保证几何与文案只有一份真源。全部逐字搬自 Timeline.tsx 顶部。
+// Timeline shared base: layout constants, timecode/ruler formatting, drag type, audio waveform.
+// The main Timeline component and the removed component components (Toolbar/Ruler/TrackLane/useTimelinePointer) are taken from here.
+// Ensure that geometry and copy have only one true source. All copied verbatim from the top of Timeline.tsx.
 import { theme } from '../../theme';
-import type { TimelineItem, TrackId } from '../../editor/types';
+import type { TimelineItem, TimelineState, TrackId, TransitionItem } from '../../editor/types';
 
-/** sticky track-head: pad 16 + badge+7 icons@20 + 7×gap4 ≈ 200 */
+/** sticky track-head: pad 16 + compact label + track actions + 4px gaps */
 export const HEADER_W = 212;
 export const MIN_ROW = 34;
 export const RULER_H = 28;
@@ -19,11 +19,175 @@ export const CLIP_COLOR: Record<TimelineItem['kind'], string> = {
   audio: theme.clipAudio,
   'motion-graphic': theme.clipMg, text: theme.clipText,
 };
-/** default time scale — 1s ≈ 36px @30fps (shorter clips, less “巨型色块”) */
+/** default time scale — 1s ≈ 36px @30fps (shorter clips, less “giant color block”) */
 export const PX_PER_FRAME = 1.2;
 export const MIN_TIME_ZOOM = 0.02; // long timelines (3–8 min) must still fit in one viewport
 /** Target minimum pixels between major ruler labels. */
 export const RULER_LABEL_MIN_PX = 52;
+
+export const TIMELINE_OVERSCAN_PX = 480;
+export const MAX_RULER_TICKS = 190;
+
+export interface TimelineFrameWindow {
+  startFrame: number;
+  endFrame: number;
+}
+
+export interface TimelineTrackItemIndex {
+  items: readonly TimelineItem[];
+  maxEndFrames: readonly number[];
+}
+
+export interface TimelineIndexes {
+  itemsByTrack: ReadonlyMap<TrackId, readonly TimelineItem[]>;
+  itemById: ReadonlyMap<string, TimelineItem>;
+  transitionsByTrack: ReadonlyMap<TrackId, readonly TransitionItem[]>;
+  transitionByIncomingId: ReadonlyMap<string, TransitionItem>;
+  itemWindowsByTrack: ReadonlyMap<TrackId, TimelineTrackItemIndex>;
+  itemOrderById: ReadonlyMap<string, number>;
+}
+
+export function timelineFrameWindow(
+  scrollLeft: number,
+  clientWidth: number,
+  pxPerFrame: number,
+  overscanPx = TIMELINE_OVERSCAN_PX,
+): TimelineFrameWindow {
+  const px = Math.max(0.001, pxPerFrame);
+  const startFrame = Math.max(0, Math.floor((scrollLeft - HEADER_W - overscanPx) / px));
+  const endFrame = Math.max(startFrame + 1, Math.ceil((scrollLeft + clientWidth - HEADER_W + overscanPx) / px));
+  return { startFrame, endFrame };
+}
+
+export function intersectFrameRange(
+  startFrame: number,
+  durationInFrames: number,
+  window: TimelineFrameWindow,
+): TimelineFrameWindow | null {
+  const start = Math.max(startFrame, window.startFrame);
+  const end = Math.min(startFrame + Math.max(0, durationInFrames), window.endFrame);
+  return end > start ? { startFrame: start, endFrame: end } : null;
+}
+
+export function framePointInWindow(frame: number, window: TimelineFrameWindow): boolean {
+  return frame >= window.startFrame && frame < window.endFrame;
+}
+
+function trackItemWindowIndex(items: readonly TimelineItem[]): TimelineTrackItemIndex {
+  const sorted = [...items].sort((a, b) => a.startFrame - b.startFrame);
+  const maxEndFrames: number[] = [];
+  let maxEnd = -Infinity;
+  for (const item of sorted) {
+    maxEnd = Math.max(maxEnd, item.startFrame + item.durationInFrames);
+    maxEndFrames.push(maxEnd);
+  }
+  return { items: sorted, maxEndFrames };
+}
+
+export function buildTimelineIndexes(state: TimelineState): TimelineIndexes {
+  const itemsByTrack = new Map<TrackId, TimelineItem[]>();
+  const itemById = new Map<string, TimelineItem>();
+  const itemOrderById = new Map<string, number>();
+  state.items.forEach((item, order) => {
+    const items = itemsByTrack.get(item.track);
+    if (items) items.push(item);
+    else itemsByTrack.set(item.track, [item]);
+    if (!itemById.has(item.id)) itemById.set(item.id, item);
+    if (!itemOrderById.has(item.id)) itemOrderById.set(item.id, order);
+  });
+  const transitionsByTrack = new Map<TrackId, TransitionItem[]>();
+  const transitionByIncomingId = new Map<string, TransitionItem>();
+  for (const transition of state.transitions ?? []) {
+    const transitions = transitionsByTrack.get(transition.trackId);
+    if (transitions) transitions.push(transition);
+    else transitionsByTrack.set(transition.trackId, [transition]);
+    if (!transitionByIncomingId.has(transition.incomingItemId)) {
+      transitionByIncomingId.set(transition.incomingItemId, transition);
+    }
+  }
+  const itemWindowsByTrack = new Map<TrackId, TimelineTrackItemIndex>();
+  itemsByTrack.forEach((items, trackId) => itemWindowsByTrack.set(trackId, trackItemWindowIndex(items)));
+  return { itemsByTrack, itemById, transitionsByTrack, transitionByIncomingId, itemWindowsByTrack, itemOrderById };
+}
+
+function lowerBound(values: readonly number[], target: number): number {
+  let lo = 0;
+  let hi = values.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (values[mid]! <= target) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function lowerBoundItemStart(items: readonly TimelineItem[], target: number): number {
+  let lo = 0;
+  let hi = items.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (items[mid]!.startFrame < target) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+export function visibleTimelineItems(
+  index: TimelineTrackItemIndex | undefined,
+  window: TimelineFrameWindow,
+  pinnedIds: ReadonlySet<string>,
+  itemById: ReadonlyMap<string, TimelineItem>,
+  itemOrderById: ReadonlyMap<string, number>,
+  trackId: TrackId,
+): TimelineItem[] {
+  const visible = new Map<string, TimelineItem>();
+  if (index) {
+    const first = lowerBound(index.maxEndFrames, window.startFrame);
+    const last = lowerBoundItemStart(index.items, window.endFrame);
+    for (let i = first; i < last; i += 1) {
+      const item = index.items[i]!;
+      if (intersectFrameRange(item.startFrame, item.durationInFrames, window)) visible.set(item.id, item);
+    }
+  }
+  for (const id of pinnedIds) {
+    const item = itemById.get(id);
+    if (item?.track === trackId) visible.set(id, item);
+  }
+  return [...visible.values()].sort((a, b) => (itemOrderById.get(a.id) ?? 0) - (itemOrderById.get(b.id) ?? 0));
+}
+
+export function timelinePinnedItemIds(
+  selectedIds: Iterable<string>,
+  interactionIds: Iterable<string | null | undefined>,
+  transitions: readonly TransitionItem[],
+): ReadonlySet<string> {
+  const pinned = new Set(selectedIds);
+  for (const id of interactionIds) if (id) pinned.add(id);
+  const seeds = new Set(pinned);
+  for (const transition of transitions) {
+    if (!seeds.has(transition.incomingItemId) && !seeds.has(transition.outgoingItemId)) continue;
+    pinned.add(transition.incomingItemId);
+    pinned.add(transition.outgoingItemId);
+  }
+  return pinned;
+}
+
+export function rulerTickWindow(
+  window: TimelineFrameWindow,
+  endFrame: number,
+  majorFrames: number,
+  minorTicksPerMajor: number,
+): { firstMajor: number; majorCount: number; majorStride: number; minorStride: number } {
+  const firstMajor = Math.max(0, Math.floor(window.startFrame / majorFrames));
+  const lastMajor = Math.min(Math.ceil(endFrame / majorFrames), Math.ceil(window.endFrame / majorFrames));
+  const rawMajorCount = Math.max(0, lastMajor - firstMajor + 1);
+  const majorStride = Math.max(1, Math.ceil(rawMajorCount / MAX_RULER_TICKS));
+  const majorCount = Math.ceil(rawMajorCount / majorStride);
+  const minorBudget = Math.max(0, MAX_RULER_TICKS - majorCount);
+  const minorTotal = majorCount * minorTicksPerMajor;
+  const minorStride = minorBudget > 0 ? Math.max(1, Math.ceil(minorTotal / minorBudget)) : Infinity;
+  return { firstMajor, majorCount, majorStride, minorStride };
+}
 
 export function fmt(frames: number, fps: number): string {
   const s = frames / fps;

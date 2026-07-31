@@ -2,8 +2,18 @@ import { SEMANTIC_MODEL_VERSION, type SemanticVectorRecord } from './types';
 
 const DATABASE_NAME = 'openchatcut-semantic-index';
 const STORE_NAME = 'vectors';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
+const SCOPE_MODEL_INDEX = 'by-scope-model';
+const SCOPE_ASSET_INDEX = 'by-scope-asset';
 const SAMPLE_TIME_KEY_PRECISION = 3;
+type PromiseResolvers<T> = {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+};
+const promiseConstructor = Promise as unknown as {
+  withResolvers<T>(): PromiseResolvers<T>;
+};
 
 interface StoredVector {
   key: string;
@@ -18,12 +28,23 @@ const recordKey = (scopeId: string, assetId: string, sampleTime: number) =>
   `${SEMANTIC_MODEL_VERSION}:${scopeId}:${assetId}:${sampleTime.toFixed(SAMPLE_TIME_KEY_PRECISION)}`;
 
 function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE_NAME, { keyPath: 'key' });
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('Unable to open semantic index'));
-  });
+  const { promise, resolve, reject } = promiseConstructor.withResolvers<IDBDatabase>();
+  const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+  request.onupgradeneeded = () => {
+    const database = request.result;
+    const store = database.objectStoreNames.contains(STORE_NAME)
+      ? request.transaction!.objectStore(STORE_NAME)
+      : database.createObjectStore(STORE_NAME, { keyPath: 'key' });
+    if (!store.indexNames.contains(SCOPE_MODEL_INDEX)) {
+      store.createIndex(SCOPE_MODEL_INDEX, ['scopeId', 'modelVersion']);
+    }
+    if (!store.indexNames.contains(SCOPE_ASSET_INDEX)) {
+      store.createIndex(SCOPE_ASSET_INDEX, ['scopeId', 'assetId']);
+    }
+  };
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error ?? new Error('Unable to open semantic index'));
+  return promise;
 }
 
 async function withStore<T>(
@@ -31,32 +52,33 @@ async function withStore<T>(
   run: (store: IDBObjectStore, resolve: (value: T) => void, reject: (reason?: unknown) => void) => void,
 ): Promise<T> {
   const database = await openDatabase();
-  return new Promise<T>((resolve, reject) => {
-    const transaction = database.transaction(STORE_NAME, mode);
-    const finish = (value: T) => { database.close(); resolve(value); };
-    transaction.onerror = () => { database.close(); reject(transaction.error); };
-    run(transaction.objectStore(STORE_NAME), finish, reject);
-  });
+  const { promise, resolve, reject } = promiseConstructor.withResolvers<T>();
+  const transaction = database.transaction(STORE_NAME, mode);
+  const finish = (value: T) => { database.close(); resolve(value); };
+  const fail = (reason?: unknown) => { database.close(); reject(reason); };
+  transaction.onerror = () => fail(transaction.error);
+  run(transaction.objectStore(STORE_NAME), finish, fail);
+  return promise;
 }
 
 export async function readSemanticVectors(scopeId: string): Promise<SemanticVectorRecord[]> {
   return withStore('readonly', (store, resolve, reject) => {
-    const request = store.getAll();
+    const request = store.index(SCOPE_MODEL_INDEX).getAll(IDBKeyRange.only([scopeId, SEMANTIC_MODEL_VERSION]));
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve((request.result as StoredVector[])
-      .filter((item) => item.modelVersion === SEMANTIC_MODEL_VERSION && item.scopeId === scopeId)
-      .map((item) => ({ scopeId, assetId: item.assetId, sampleTime: item.sampleTime, vector: Array.from(item.vector) })));
+      .map((item) => ({ scopeId, assetId: item.assetId, sampleTime: item.sampleTime, vector: item.vector })));
   });
 }
 
 export async function replaceAssetVectors(scopeId: string, assetId: string, records: SemanticVectorRecord[]): Promise<void> {
-  const existing = await readStoredVectors();
-  await withStore<void>('readwrite', (store, resolve) => {
-    for (const item of existing) {
-      if (item.scopeId === scopeId && item.assetId === assetId) store.delete(item.key);
-    }
-    for (const record of records) store.put(toStoredVector(record));
-    store.transaction.oncomplete = () => resolve();
+  await withStore<void>('readwrite', (store, resolve, reject) => {
+    const request = store.index(SCOPE_ASSET_INDEX).getAllKeys(IDBKeyRange.only([scopeId, assetId]));
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      for (const key of request.result) store.delete(key);
+      for (const record of records) store.put(toStoredVector(record));
+      store.transaction.oncomplete = () => resolve();
+    };
   });
 }
 

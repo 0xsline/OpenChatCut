@@ -1,5 +1,6 @@
 import { CURRENT_PROJECT_VERSION } from '../../../shared/project-version';
 import type { ProjectDoc } from '../../editor/types';
+import { fitTimelineItems } from '../../editor/clipFit';
 import {
   dedupeAssets,
   isDesignStyle,
@@ -32,7 +33,8 @@ function finalize(value: unknown): ProjectDoc | null {
   const assets = dedupeAssets(Array.isArray(value.assets) ? value.assets : []).map((asset) => (
     asset.folderId && !folderIds.has(asset.folderId) ? { ...asset, folderId: undefined } : asset
   ));
-  const timelines = value.timelines.map(normalizeTimelineTracks);
+  // Smoothly push back to the legal range: illegal fade/out-of-bounds keyframes can only be repaired here, without waiting for the user to move the clip first.
+  const timelines = value.timelines.map(normalizeTimelineTracks).map(fitTimelineItems);
   return {
     version: CURRENT_PROJECT_VERSION,
     assets,

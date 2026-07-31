@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme, themeAlpha } from '../../theme';
 import {
@@ -15,7 +15,8 @@ import { CaptionStyleMenu } from '../../captions/CaptionStyleMenu';
 import { CaptionTrackLane, type CaptionCueMove } from '../../captions/CaptionTrackLane';
 import { captionsForTrack } from '../../captions/captionTrack';
 import {
-  appendManualCueToFirstLane, newManualCaptions, removeManualCue, updateManualCue,
+  appendManualCueToFirstLane, isManualCaptionEntry, newManualCaptions, placeManualCueTiming,
+  promoteCaptionEntries, removeManualCue, updateManualCue,
 } from '../../captions/manualCaptions';
 import { TrackHead } from './TrackHead';
 import { TrackLane } from './TrackLane';
@@ -28,12 +29,12 @@ import { usePlayheadPaint } from './usePlayheadPaint';
 import { useTimelineZoomController } from './useTimelineZoomController';
 import { applyLibraryToClip as applyToClip, applyLibraryToTrack as applyToTrack } from './libraryDropActions';
 import {
-  HEADER_W, MAX_ROW, MIN_ROW, RULER_H, TRACK_ROW,
-  rulerMajorSeconds, rulerMinorCount, type EditMode,
+  HEADER_W, MAX_ROW, MIN_ROW, RULER_H, TRACK_ROW, buildTimelineIndexes,
+  rulerMajorSeconds, rulerMinorCount, timelineFrameWindow, timelinePinnedItemIds, type EditMode,
 } from './timelineUtil';
 import type { LibraryDragPayload } from '../../library/drag';
 import { useSelectionRefMode } from '../../agent/selection-refs';
-import { useT } from '../../i18n/locale';
+import { getLocale, useT } from '../../i18n/locale';
 import type { TimelineShortcutApi } from '../../shortcuts/timelineApi';
 
 interface TimelineProps {
@@ -46,13 +47,19 @@ interface TimelineProps {
   onRecordVoiceover?: (blob: Blob) => void;
   /** Filled by Timeline so Editor can bind the global shortcut dispatcher. */
   shortcutApiRef?: RefObject<TimelineShortcutApi | null>;
+  onReviewItem?: (request: { itemId: string; frame: number; clientX: number; clientY: number }) => void;
 }
 
-export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceover, shortcutApiRef }: TimelineProps) {
+export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceover, shortcutApiRef, onReviewItem }: TimelineProps) {
   const t = useT();
+  const locale = getLocale();
   const empty = state.items.length === 0;
   const total = empty ? 0 : timelineDuration(state);
   const trackIds = timelineTrackIds(state);
+  const indexes = useMemo(
+    () => buildTimelineIndexes(state),
+    [state.items, state.transitions],
+  );
   const innerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const timelineId = (state as { id?: string }).id;
@@ -65,7 +72,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
         : trackAlias(state, id) === 'A1' ? theme.trackAudioA1 : theme.trackAudioA2;
     return { kind, color };
   };
-  // 播放头绘制机:rAF 合帧直绘 + Player 看门狗 + 断点续播(usePlayheadPaint)
+  // Playhead drawing machine: rAF frame direct drawing + Player watchdog + breakpoint resume (usePlayheadPaint)
   const { playheadRef, playheadLineRef, toolbarTimecodeRef, rulerTimecodeRef, paintPlayhead, playing } =
     usePlayheadPaint({ playerRef, projectId, fps: state.fps, total, px });
   // editing mode (Selection V / Blade B / Trim N / Pen P). selection =
@@ -78,22 +85,29 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   const [snapping, setSnapping] = usePersistedState('cc.snapping', true);
   const captionsVisible = captionTrackEntries(state).some((entry) => entry.captions?.enabled);
   const [captionMenu, setCaptionMenu] = useState<{ id: TrackId; left: number; top: number } | null>(null);
-  // 错误行归 Timeline:菜单外的「开启字幕」按钮也会写它(该轨无文字稿),菜单内展示
+  // Error line return Timeline: The "Turn on captions" button outside the menu will also write it (there is no text script for this track), and it will be displayed in the menu
   const [captionError, setCaptionError] = useState<string | null>(null);
   const moveCaptionCue = (sourceTrackId: TrackId, move: CaptionCueMove) => {
     const source = captionsOnTrack(state, sourceTrackId);
     if (!source) return;
     const targetTrackId = trackKind(state, move.targetTrackId) === 'caption'
       && !state.tracks?.[move.targetTrackId]?.locked ? move.targetTrackId : sourceTrackId;
-    const sourceCue = source.sourceEntries?.find((entry) => entry.id === move.laneId)?.words?.[move.index];
+    const sourceLane = source.sourceEntries?.find((entry) => entry.id === move.laneId);
+    const sourceCue = sourceLane?.words?.[move.index];
+    // Dragging and placing will not cause overlap in the lane: if it is pressed to the neighbor's edge, and the gap cannot fit the entire cue, it will spring back to its original position.
     if (targetTrackId === sourceTrackId) {
-      if (sourceCue?.start === Math.round(move.startMs) && sourceCue.end === Math.round(move.endMs)) return;
-      const patch = updateManualCue(source, move.laneId, move.index, move.text, move.startMs, move.endMs);
+      const others = (sourceLane?.words ?? []).filter((_, i) => i !== move.index);
+      const placed = placeManualCueTiming(others, move.startMs, move.endMs - move.startMs);
+      if (!placed || (sourceCue?.start === placed.start && sourceCue.end === placed.end)) return;
+      const patch = updateManualCue(source, move.laneId, move.index, move.text, placed.start, placed.end);
       if (patch) commands.updateCaptions(patch, sourceTrackId);
       return;
     }
     const target = captionsOnTrack(state, targetTrackId) ?? newManualCaptions();
-    const targetPatch = appendManualCueToFirstLane(target, state.items, move.text, move.startMs, move.endMs);
+    const targetWords = promoteCaptionEntries(target, state.items).find(isManualCaptionEntry)?.words ?? [];
+    const placed = placeManualCueTiming(targetWords, move.startMs, move.endMs - move.startMs);
+    if (!placed) return;
+    const targetPatch = appendManualCueToFirstLane(target, state.items, move.text, placed.start, placed.end);
     if (!targetPatch) return;
     commands.batch([
       { type: 'updateCaptions', patch: removeManualCue(source, move.laneId, move.index), track: sourceTrackId },
@@ -109,7 +123,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     document.addEventListener('pointerdown', close);
     return () => document.removeEventListener('pointerdown', close);
   }, [captionMenu]);
-  // Duck (自动闪避) role menu is a track-head menu item, not a
+  // Duck (auto-dodge) role menu is a track-head menu item, not a
   // permanent widget. Sets the per-track role (anchor speech / follower music) + duck depth;
   // the engine (TimelineComposition duckGain) already reacts to it.
   const [duckMenu, setDuckMenu] = useState<{ id: TrackId; left: number; top: number } | null>(null);
@@ -122,7 +136,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     document.addEventListener('pointerdown', close);
     return () => document.removeEventListener('pointerdown', close);
   }, [duckMenu]);
-  // mic voiceover recording (录制旁白). Toggle to start/stop; the blob
+  // mic voiceover recording (recording narration). Toggle to start/stop; the blob
   // is uploaded + dropped on an audio track by the parent.
   const recorder = useRecorder(onRecordVoiceover ?? (() => {}));
   const toggleCaptions = (trackId: TrackId) => {
@@ -131,7 +145,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     const captions = captionsForTrack(state, trackId);
     commands.setCaptions(captions ?? newManualCaptions(), trackId);
   };
-  // 选择模式 (selection mode): clicks/drags pick REFERENCES for the chat
+  // selection mode: clicks/drags pick REFERENCES for the chat
   // instead of editing — clip click → item ref, ruler click → timepoint, drag
   // over ruler/lanes → timerange. Editing gestures are untouched when off.
   const pickMode = useSelectionRefMode();
@@ -159,10 +173,10 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
       })
       .map((it) => it.id);
   };
-  // clip right-click menu + effect clipboard (复制效果/粘贴效果)
+  // clip right-click menu + effect clipboard (copy effect/paste effect)
   const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [fxClip, setFxClip] = useState<FxClip | null>(null);
-  // single-clip render (导出 MG 动画 / 转为视频) status toast
+  // single-clip render (export MG animation / convert to video) status toast
   const [clipJob, setClipJob] = useState<{ msg: string; error?: boolean } | null>(null);
   const exportMg = async (it: TimelineItem) => {
     setClipJob({ msg: t('导出 MG 动画中（ProRes 4444）…') });
@@ -174,20 +188,35 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     try { const src = await bakeClipToVideo(state, it); commands.replaceItemMedia(it.id, src); setClipJob(null); }
     catch (e) { setClipJob({ msg: e instanceof Error ? e.message : t('转换失败'), error: true }); }
   };
-  const [availW, setAvailW] = useState(0);
+  const [viewport, setViewport] = useState({ scrollLeft: 0, clientWidth: 0 });
   // content is at least as wide as the panel, so track rows/ruler never stop
   // short of the right edge when the project is short or zoomed out.
-  const innerW = Math.max(HEADER_W + total * px + 240, availW);
-
-  useEffect(() => {
+  const innerW = Math.max(HEADER_W + total * px + 240, viewport.clientWidth);
+  useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const measure = () => setAvailW(el.clientWidth);
+    let raf = 0;
+    const measure = () => {
+      raf = 0;
+      const next = { scrollLeft: el.scrollLeft, clientWidth: el.clientWidth };
+      setViewport((current) => current.scrollLeft === next.scrollLeft
+        && current.clientWidth === next.clientWidth ? current : next);
+    };
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(measure); };
     measure();
-    const ro = new ResizeObserver(measure);
+    const ro = new ResizeObserver(schedule);
     ro.observe(el);
-    return () => ro.disconnect();
+    el.addEventListener('scroll', schedule, { passive: true });
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      ro.disconnect();
+      el.removeEventListener('scroll', schedule);
+    };
   }, []);
+  const visibleWindow = useMemo(
+    () => timelineFrameWindow(viewport.scrollLeft, viewport.clientWidth, px),
+    [px, viewport.clientWidth, viewport.scrollLeft],
+  );
 
   // equal-height tracks; scale via Alt+wheel. (collapse UI removed — always full row)
   // Duck role is set via agent edit_track / track menu — not permanent track-header widgets.
@@ -201,7 +230,6 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   const minorFrames = Math.max(1, Math.round(majorFrames / minorDivs));
   const minorTicksPerMajor = Math.max(1, Math.round(majorFrames / minorFrames) - 1);
   const rulerSpanFrames = Math.max(total, Math.ceil((innerW - HEADER_W) / Math.max(px, 0.001)));
-  const majorCount = Math.ceil(rulerSpanFrames / majorFrames) + 1;
 
   const frameFromClientX = (clientX: number): number => {
     const r = innerRef.current?.getBoundingClientRect();
@@ -219,7 +247,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     return trackIds[trackIds.length - 1] ?? '';
   };
 
-  // 指针状态机:片段拖动/裁剪、空白框选、钢笔点拖、引用拾取(useTimelinePointer)
+  // Pointer state machine: fragment drag/crop, blank frame selection, pen point drag, reference picking (useTimelinePointer)
   const pointer = useTimelinePointer({
     state, commands, editMode, snapping, pickMode, px,
     playheadRef, scrollRef, frameFromClientX, trackFromClientY, itemsInMarquee,
@@ -229,7 +257,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   /** library resource dropped on a clip (fx/lut/zoom/transition) or track (sound/mg) */
   const [libDropTarget, setLibDropTarget] = useState<string | null>(null);
 
-  // 拖放被拒必须给原因——此前静默 return false,用户只看到「拖了没反应」
+  // If drag and drop is rejected, a reason must be given - previously silent return false, the user only sees "Drag and no response"
   const dropNotice = (msg: string) => {
     setClipJob({ msg });
     window.setTimeout(() => setClipJob((cur) => (cur && cur.msg === msg && !cur.error ? null : cur)), 3000);
@@ -259,7 +287,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   // markers (manage_markers): add at the playhead + open its note editor
   const [editMarker, setEditMarker] = useState<string | null>(null);
   const markers = state.markers ?? [];
-  // 快捷键 API 装配 + I/O 区间/JKL 穿梭/片段剪贴板(整机在 useTimelineShortcuts)
+  // Shortcut API assembly + I/O interval/JKL shuttle/fragment clipboard (the whole machine is in useTimelineShortcuts)
   const { zoneIn, zoneOut } = useTimelineShortcuts({
     shortcutApiRef, state, commands, playerRef, playheadRef, total,
     seekFrame, paintPlayhead, setEditMode, setSnapping, fitToView, zoomBy,
@@ -267,6 +295,14 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   });
 
   const editing = markers.find((m) => m.id === editMarker) ?? null;
+  const pinnedItemIds = useMemo(() => timelinePinnedItemIds(
+    selectedIdsOf(state),
+    [drag?.id, pointer.penDrag?.itemId, ctxMenu?.id, libDropTarget, pickDrag?.item?.id],
+    state.transitions ?? [],
+  ), [
+    ctxMenu?.id, drag?.id, libDropTarget, pickDrag?.item?.id, pointer.penDrag?.itemId,
+    state.selectedId, state.selectedIds, state.transitions,
+  ]);
 
   return (
     <section className="cc-timeline" style={{ flex: 1, borderLeft: `0.5px solid ${theme.border}`, background: theme.bg, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
@@ -298,13 +334,15 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
         title={t('Ctrl/⌘+滚轮 缩放时间轴 · Alt+滚轮 缩放轨道高度')}>
         <div ref={innerRef} style={{ position: 'relative', width: innerW }}>
           {/* ruler (click to seek, hold to scrub; selection mode: click = timepoint, drag = timerange).
-              播放头线/三角是 pointerEvents:none,点它即点标尺——scrub 同一路径生效。 */}
+The playhead line/triangle is pointerEvents:none, click it to click the ruler - scrub the same path to take effect.*/}
           <TimelineRuler
             state={state} empty={empty} px={px}
-            majorCount={majorCount} majorFrames={majorFrames} minorFrames={minorFrames} minorTicksPerMajor={minorTicksPerMajor}
+            majorFrames={majorFrames} minorFrames={minorFrames} minorTicksPerMajor={minorTicksPerMajor}
+            rulerEndFrame={rulerSpanFrames} visibleWindow={visibleWindow}
             pickMode={pickMode} startPick={startPick} seekTo={seekTo}
             rulerTimecodeRef={rulerTimecodeRef} playheadFrame={playheadRef.current}
             zoneIn={zoneIn} zoneOut={zoneOut} markers={markers} onEditMarker={setEditMarker}
+            pinnedMarkerId={editMarker}
           />
 
           {/* tracks */}
@@ -313,25 +351,25 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
             const alias = trackAlias(state, trackId);
             const config = state.tracks?.[trackId] ?? {};
             const trackCaptions = meta.kind === 'caption' ? captionsOnTrack(state, trackId) : null;
-            const items = state.items.filter((it) => it.track === trackId);
-            const dragIsAudio = drag ? state.items.find((it) => it.id === drag.id)?.kind === 'audio' : false;
+            const items = indexes.itemsByTrack.get(trackId) ?? [];
+            const dragIsAudio = drag ? indexes.itemById.get(drag.id)?.kind === 'audio' : false;
             const isDropTarget = drag?.mode === 'move' && drag.targetTrack === trackId && meta.kind === (dragIsAudio ? 'audio' : 'video') && !state.tracks?.[trackId]?.locked;
             const hidden = meta.kind === 'caption' ? !trackCaptions?.enabled : config.hidden ?? false;
             const headConfig = meta.kind === 'caption' ? { ...config, hidden } : config;
             const locked = config.locked ?? false;
             const kindLabel = meta.kind === 'video' ? '视频' : meta.kind === 'audio' ? '音频' : '字幕';
-            const trackName = config.name || `${t(kindLabel)} ${alias.slice(1)}`;
+            const trackName = config.name || (locale === 'en' ? alias : `${t(kindLabel)}${alias.slice(1)}`);
             const busy = items.length > 0 || !!trackCaptions
-              || (state.transitions ?? []).some((transition) => transition.trackId === trackId);
+              || (indexes.transitionsByTrack.get(trackId)?.length ?? 0) > 0;
             return (
               <div key={trackId} className="cc-track-row" style={{ height: rowHeightOf(trackId), background: isDropTarget ? `color-mix(in srgb, ${theme.success} 15%, ${theme.bg})` : undefined }}>
                 <TrackHead
-                  trackId={trackId} kind={meta.kind} alias={alias} trackName={trackName} config={headConfig}
+                  trackId={trackId} kind={meta.kind} trackName={trackName} config={headConfig}
                   busy={busy} menuElevated={captionMenu?.id === trackId || duckMenu?.id === trackId}
                   width={HEADER_W} commands={commands}
                   onToggleCaptions={() => toggleCaptions(trackId)}
-                  // 两个菜单都贴触发按钮弹,top 夹取余量=菜单最大高+边距(字幕 420、闪避≈300);
-                  // 字幕菜单左夹取还要给右弹的翻译子菜单留位(212+4+128)
+                  // Both menus are attached with trigger buttons, top clamping margin = maximum menu height + margin (captions 420, dodge ≈ 300);
+                  // When the caption menu is clipped to the left, space should be reserved for the translation submenu that pops to the right (212+4+128)
                   onToggleCaptionMenu={(rect) => {
                     setCaptionError(null);
                     setCaptionMenu((open) => open?.id === trackId ? null : { id: trackId, left: Math.min(rect.right + 5, window.innerWidth - 350), top: Math.max(8, Math.min(rect.top, window.innerHeight - 430)) });
@@ -352,9 +390,10 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
                   trackFromClientY={trackFromClientY} onUpdate={(patch) => commands.updateCaptions(patch, trackId)}
                   onMove={(move) => moveCaptionCue(trackId, move)}
                   onDelete={(laneId, index) => trackCaptions && commands.updateCaptions(removeManualCue(trackCaptions, laneId, index), trackId)} /> : <TrackLane
-                  trackId={trackId} items={items} state={state} commands={commands} pointer={pointer}
+                  trackId={trackId} indexes={indexes} state={state} commands={commands} pointer={pointer}
                   editMode={editMode} pickMode={pickMode} locked={locked} hidden={hidden}
-                  px={px} rowHeight={rowHeightOf(trackId)}
+                  px={px} rowHeight={rowHeightOf(trackId)} visibleWindow={visibleWindow}
+                  pinnedItemIds={pinnedItemIds}
                   libDropTarget={libDropTarget} setLibDropTarget={setLibDropTarget}
                   applyLibraryToClip={applyLibraryToClip} applyLibraryToTrack={applyLibraryToTrack}
                   frameFromClientX={frameFromClientX} onContextMenu={setCtxMenu} scrollRef={scrollRef}
@@ -365,7 +404,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
 
           {/* snap guide — appears while a drag edge is locked onto a target */}
           {drag && drag.snapAt !== null && (
-            <div style={{ position: 'absolute', top: 0, left: HEADER_W + drag.snapAt * px, width: 1, height: RULER_H + tracksHeight, background: '#4fd1ff', pointerEvents: 'none', boxShadow: '0 0 4px #4fd1ff' }} />
+            <div className="cc-snap-guide" style={{ position: 'absolute', top: 0, left: HEADER_W + drag.snapAt * px, height: RULER_H + tracksHeight }} />
           )}
 
           {/* selection-mode timerange marquee (time-marked drag) */}
@@ -387,14 +426,13 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
             style={{
               position: 'absolute', top: 0, left: 0,
               transform: `translate3d(${HEADER_W + playheadRef.current * px}px,0,0)`,
-              width: 1, height: RULER_H + tracksHeight,
-              background: theme.textStrong, pointerEvents: 'none',
-              boxShadow: '0 0 0 0.5px #0006',
+              height: RULER_H + tracksHeight,
+              pointerEvents: 'none',
               willChange: 'transform',
-              zIndex: 13,
+              zIndex: 30,
             }}
           >
-            <div className="cc-playhead-handle" style={{ transform: 'translateX(-6px)', width: 13, height: 11, background: theme.textStrong, clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
+            <div className="cc-playhead-handle" style={{ transform: 'translateX(-6px)', width: 13, height: 11, clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
           </div>
         </div>
       </div>
@@ -433,11 +471,15 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
             selectedIds={selectedIdsOf(state)}
             transitions={(state.transitions ?? []).filter((t) => t.incomingItemId === item.id || t.outgoingItemId === item.id)}
             fxClip={fxClip} onCopyFx={setFxClip} onClose={() => setCtxMenu(null)}
-            onExportMg={exportMg} onConvertToVideo={convertToVideo} />
+            onExportMg={exportMg} onConvertToVideo={convertToVideo}
+            onAddComment={(target, frame, clientX, clientY) => {
+              playerRef.current?.seekTo(frame);
+              onReviewItem?.({ itemId: target.id, frame, clientX, clientY });
+            }} />
         );
       })()}
 
-      {/* single-clip render status (导出 MG / 转为视频 take a few seconds) */}
+      {/* single-clip render status (export MG / convert to video take a few seconds)*/}
       {clipJob && (
         <div style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 200,
           background: clipJob.error ? theme.accent : theme.panelAlt, color: clipJob.error ? theme.onAccent : theme.text,

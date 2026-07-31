@@ -1,6 +1,6 @@
 // Shared photoreal sample frames for library-card previews (FX / LUT / zoom /
-// transitions). Loaded once from /library-previews/*.jpg then drawn into fixed
-// offscreen canvases so WebGL texImage2D always gets a ready TexImageSource.
+// transitions). Loaded on demand from /library-previews/*.jpg into a bounded,
+// releasable decoded-canvas cache for WebGL TexImageSource input.
 
 export const SAMPLE_W = 320;
 export const SAMPLE_H = 180;
@@ -11,10 +11,14 @@ const SRC = {
   in: '/library-previews/sample-in.jpg',   // warm interior — transition B
 } as const;
 
-type Kind = keyof typeof SRC;
+export type SampleFrameKind = keyof typeof SRC;
 
-const canvases: Partial<Record<Kind, HTMLCanvasElement>> = {};
-const loaders: Partial<Record<Kind, Promise<HTMLCanvasElement>>> = {};
+const MAX_DECODED_ENTRIES = 3;
+const FRAME_BYTES = SAMPLE_W * SAMPLE_H * 4;
+const MAX_DECODED_BYTES = MAX_DECODED_ENTRIES * FRAME_BYTES;
+const canvases = new Map<SampleFrameKind, HTMLCanvasElement>();
+const loaders = new Map<SampleFrameKind, Promise<HTMLCanvasElement>>();
+const generations: Record<SampleFrameKind, number> = { fx: 0, out: 0, in: 0 };
 
 function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement) {
   const iw = img.naturalWidth;
@@ -26,40 +30,96 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement) {
   ctx.drawImage(img, (SAMPLE_W - dw) / 2, (SAMPLE_H - dh) / 2, dw, dh);
 }
 
-function loadKind(kind: Kind): Promise<HTMLCanvasElement> {
-  if (canvases[kind]) return Promise.resolve(canvases[kind]!);
-  if (loaders[kind]) return loaders[kind]!;
-  loaders[kind] = new Promise((resolve, reject) => {
+function rememberCanvas(kind: SampleFrameKind, canvas: HTMLCanvasElement): void {
+  const previous = canvases.get(kind);
+  if (previous) {
+    canvases.delete(kind);
+    if (previous !== canvas) {
+      previous.width = 0;
+      previous.height = 0;
+    }
+  }
+  canvases.set(kind, canvas);
+  while (canvases.size > MAX_DECODED_ENTRIES || canvases.size * FRAME_BYTES > MAX_DECODED_BYTES) {
+    const oldest = canvases.keys().next().value as SampleFrameKind | undefined;
+    if (!oldest) break;
+    const evicted = canvases.get(oldest);
+    canvases.delete(oldest);
+    if (evicted) {
+      evicted.width = 0;
+      evicted.height = 0;
+    }
+  }
+}
+
+function loadKind(kind: SampleFrameKind): Promise<HTMLCanvasElement> {
+  const cached = canvases.get(kind);
+  if (cached) {
+    canvases.delete(kind);
+    canvases.set(kind, cached);
+    return Promise.resolve(cached);
+  }
+  const pending = loaders.get(kind);
+  if (pending) return pending;
+  const generation = generations[kind];
+  const load = new Promise<HTMLCanvasElement>((resolve, reject) => {
     const img = new Image();
     img.decoding = 'async';
     img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = SAMPLE_W;
-      c.height = SAMPLE_H;
-      const ctx = c.getContext('2d')!;
+      const canvas = document.createElement('canvas');
+      canvas.width = SAMPLE_W;
+      canvas.height = SAMPLE_H;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('2d context unavailable for sample frame'));
+        return;
+      }
       ctx.fillStyle = '#111';
       ctx.fillRect(0, 0, SAMPLE_W, SAMPLE_H);
       drawCover(ctx, img);
-      canvases[kind] = c;
-      resolve(c);
+      if (generations[kind] === generation) rememberCanvas(kind, canvas);
+      resolve(canvas);
     };
     img.onerror = () => reject(new Error(`failed to load ${SRC[kind]}`));
     img.src = SRC[kind];
   });
-  return loaders[kind]!;
+  let settled: Promise<HTMLCanvasElement>;
+  settled = load.finally(() => {
+    if (loaders.get(kind) === settled) loaders.delete(kind);
+  });
+  loaders.set(kind, settled);
+  return settled;
 }
 
-/** kick off all sample loads (call once from library mount) */
+/** Kick off bounded sample-frame loads for preview consumers. */
 export function preloadSampleFrames(): Promise<void> {
-  return Promise.all((Object.keys(SRC) as Kind[]).map((k) => loadKind(k))).then(() => undefined);
+  return Promise.all((Object.keys(SRC) as SampleFrameKind[]).map(loadKind)).then(() => undefined);
 }
 
 /** sync access after load; null if not ready yet */
-export function getSampleFrame(kind: Kind): HTMLCanvasElement | null {
-  return canvases[kind] ?? null;
+export function getSampleFrame(kind: SampleFrameKind): HTMLCanvasElement | null {
+  const canvas = canvases.get(kind);
+  if (!canvas) return null;
+  canvases.delete(kind);
+  canvases.set(kind, canvas);
+  return canvas;
 }
 
 /** ensure ready then return */
-export async function ensureSampleFrame(kind: Kind): Promise<HTMLCanvasElement> {
+export async function ensureSampleFrame(kind: SampleFrameKind): Promise<HTMLCanvasElement> {
   return loadKind(kind);
+}
+
+/** Release decoded preview frames when their resource tab is left. */
+export function clearSampleFrames(kinds: readonly SampleFrameKind[]): void {
+  for (const kind of kinds) {
+    generations[kind]++;
+    loaders.delete(kind);
+    const canvas = canvases.get(kind);
+    canvases.delete(kind);
+    if (canvas) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+  }
 }

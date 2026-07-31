@@ -1,4 +1,4 @@
-import { useMemo, useReducer, useRef } from 'react';
+import { useCallback, useMemo, useReducer, useRef } from 'react';
 import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeEditorState, activeTimeline, defaultTrackId, resolveTrackId } from './types';
 import type { Tpl } from '../types';
@@ -7,7 +7,7 @@ import type { CaptionsData } from '../captions/types';
 import type { SerializableFxDef } from '../gl/fx/uniforms';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
 import type { AnyAction, AtomicAction, ProjectDispatch } from './reduce';
-import { historyReduce, maxOrder, projectReduce } from './reduce';
+import { historyReduce, isHistoryControlAction, maxOrder, projectReduce } from './reduce';
 
 // Re-export the reducer layer so existing importers (`from './editor/store'`) keep working.
 export type { Action, AnyAction, AtomicAction, BatchAction, ProjectAction, Dispatch, ProjectDispatch } from './reduce';
@@ -54,7 +54,7 @@ export interface EditorCommands {
   setItemEffects: (id: string, effects: ClipEffect[], defs?: SerializableFxDef[]) => void;
   /** Set playback speed and retime the clip while preserving its media span. */
   setItemSpeed: (id: string, rate: number) => void;
-  /** replace a clip (MG/text) with a baked video at src, keeping its slot (转为视频) */
+  /** replace a clip (MG/text) with a baked video at src, keeping its slot (convert to video)*/
   replaceItemMedia: (id: string, src: string) => void;
   /** Add a ruler/clip marker at a frame and return its id. */
   addMarker: (fromFrame: number, opts?: { note?: string; color?: Marker['color']; durationFrames?: number; scope?: Marker['scope']; itemId?: string }) => string;
@@ -62,7 +62,7 @@ export interface EditorCommands {
   removeMarker: (id: string) => void;
   setReframeKeyframe: (id: string, frame: number, focalPointX: number, focalPointY: number, magnification: number) => void;
   removeReframeKeyframe: (id: string, frame: number) => void;
-  /** set/update one generic transform keyframe at an item-local frame (PRD §4.5 钢笔工具) */
+  /** set/update one generic transform keyframe at an item-local frame (PRD §4.5 Pen tool)*/
   setItemKeyframe: (id: string, prop: KeyframeProp, frame: number, value: number, easing?: KeyframeEasing) => void;
   removeItemKeyframe: (id: string, prop: KeyframeProp, frame: number) => void;
   /** clear one prop's generic keyframes, or all of them when prop omitted */
@@ -99,14 +99,14 @@ export interface EditorCommands {
   setGapCap: (id: string, afterWordIndex: number, maxMs: number | null) => void;
   /** Speech-block drag: playback order of source word indices (null = chronological). */
   setTranscriptPlayOrder: (id: string, playOrder: number[] | null) => void;
-  /** Clip drag in 文字稿: pack items on track in this id order. */
+  /** Clip drag in transcript: pack items on track in this id order.*/
   reorderTrackItems: (track: string, orderedIds: string[]) => void;
   clearEdits: (id: string) => void;
-  /** 改错字:只修正第 wordIndex 个转写词的 text,timing/词数/片段时长全不变。 */
+  /** Correction of typos: Only the text of the wordIndex-th transliterated word is corrected, and the timing/number of words/segment duration remains unchanged.*/
   fixTranscriptWord: (id: string, wordIndex: number, text: string) => void;
-  /** 说话人重命名/合并:把 speaker===from 的词全部改标 to;只改 .speaker。 */
+  /** Speaker renaming/merging: Change all words with speaker===from to to; only change.speaker.*/
   renameSpeaker: (id: string, from: string, to: string) => void;
-  /** AI 人声隔离：挂上/清除 denoisedSrc。 */
+  /** AI vocal isolation: hang/clear denoisedSrc.*/
   setItemDenoise: (id: string, denoisedSrc: string | null, strength?: number | null) => void;
   /** Select one clip. mode: replace (default) | toggle (⌘/Ctrl) | add. */
   selectItem: (id: string | null, opts?: { mode?: 'replace' | 'toggle' | 'add' }) => void;
@@ -139,6 +139,12 @@ export interface EditorCommands {
   patchDesignStyle: (patch: Partial<DesignStyle>) => void;
   undo: () => void;
   redo: () => void;
+  /**
+   * Boundaries for continuous gestures (drag the slider, drag the color picker). All changes between the two are merged into one undo record,
+   * Undo goes back to "before dragging" instead of the previous tick. Press the pointer to adjust begin, release it to adjust end.
+   */
+  beginHistoryGesture: () => void;
+  endHistoryGesture: () => void;
 }
 
 export function useEditor(initial: ProjectDoc): {
@@ -149,6 +155,9 @@ export function useEditor(initial: ProjectDoc): {
   commands: EditorCommands;
   canUndo: boolean;
   canRedo: boolean;
+  /** The complete project snapshot of the previous step (undo target), null if there is no history. Agent's "undo" tool
+   * Treat the proposal as an ordinary editor, rather than directly touching the history stack - the draft baseline will not become invalid.*/
+  getUndoTarget: () => ProjectDoc | null;
 } {
   const [h, dispatch] = useReducer(historyReduce, { past: [], present: initial, future: [] });
   const doc = h.present;
@@ -159,7 +168,11 @@ export function useEditor(initial: ProjectDoc): {
 
   const commands = useMemo<EditorCommands>(() => buildCommands(dispatch, () => docRef.current), []);
 
-  return { state: activeEditorState(doc), doc, commands, canUndo: h.past.length > 0, canRedo: h.future.length > 0 };
+  const pastRef = useRef(h.past);
+  pastRef.current = h.past;
+  const getUndoTarget = useCallback((): ProjectDoc | null => pastRef.current[pastRef.current.length - 1] ?? null, []);
+
+  return { state: activeEditorState(doc), doc, commands, canUndo: h.past.length > 0, canRedo: h.future.length > 0, getUndoTarget };
 }
 
 // The editor command set over a project dispatch fn — reused by the live store
@@ -427,6 +440,8 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       applyState: (state) => dispatch({ type: 'setFullState', state }),
       undo: () => dispatch({ type: 'undo' }),
       redo: () => dispatch({ type: 'redo' }),
+      beginHistoryGesture: () => dispatch({ type: 'history.beginGesture' }),
+      endHistoryGesture: () => dispatch({ type: 'history.endGesture' }),
   };
 }
 
@@ -449,7 +464,8 @@ export function makeDraft(base: ProjectDoc): DraftEngine {
   let doc = base;
   let pending: AnyAction[] = [];
   const dispatch: ProjectDispatch = (a) => {
-    if (a.type === 'undo' || a.type === 'redo') return; // history is meaningless in a draft
+    // Draft is a copy of the project, replay of recorded actions, history stack and gesture merging are meaningless here.
+    if (isHistoryControlAction(a)) return;
     const next = projectReduce(doc, a);
     if (next !== doc) {
       doc = next;

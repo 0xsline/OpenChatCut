@@ -36,6 +36,7 @@ jobs:
           fi
       - run: npm run lint
       - run: npm test
+      - run: npm run verify:agent-skill
       - run: npm run build
 
   package:
@@ -57,6 +58,10 @@ jobs:
             os: windows-latest
             script: desktop:dist:win
             artifact: release/*.exe
+          - name: Linux-x64
+            os: ubuntu-latest
+            script: desktop:dist:linux
+            artifact: release/*.AppImage
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -66,8 +71,8 @@ jobs:
           cache: npm
       - run: npm ci --loglevel=error
 
-      # 先写入 Remotion 对应的浏览器版本，再由 desktop:dist 的
-      # prepare-target 步骤把目标平台浏览器和 compositor 放进安装包。
+      # First write the browser version corresponding to Remotion, and then use desktop:dist
+      # The prepare-target step puts the target platform browser and compositor into the installation package.
       - name: Ensure Remotion browser
         run: node -e "import('@remotion/renderer').then(m => m.ensureBrowser()).then(() => console.log('browser ready'))"
 
@@ -92,6 +97,19 @@ jobs:
           CC_SMOKE: '1'
           CC_SMOKE_RENDER: '1'
         run: '& "release/win-unpacked/OpenChatCut.exe" | Out-Host'
+
+      - name: Smoke test Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          CC_SMOKE: '1'
+          CC_SMOKE_RENDER: '1'
+          ELECTRON_DISABLE_SANDBOX: '1'
+        run: |
+          # Ubuntu 24.04 restricts non-privileged userns by default, allowing the Electron / headless-shell sandbox to be available
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+          xvfb-run --auto-servernum release/linux-unpacked/openchatcut
 
       - uses: actions/upload-artifact@v7
         with:
@@ -129,13 +147,13 @@ jobs:
             sleep $((attempt * 15))
           done
 
-          find release-assets -type f \( -name '*.dmg' -o -name '*.exe' \) \
+          find release-assets -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' \) \
             -exec cp {} release-files/ \;
-          test "$(find release-files -type f | wc -l | tr -d ' ')" = 3
+          test "$(find release-files -type f | wc -l | tr -d ' ')" = 4
 
       - name: Generate checksums
         working-directory: release-files
-        run: sha256sum ./*.dmg ./*.exe > SHA256SUMS.txt
+        run: sha256sum ./*.dmg ./*.exe ./*.AppImage > SHA256SUMS.txt
 
       - name: Create GitHub Release
         shell: bash
@@ -163,6 +181,7 @@ jobs:
             if gh release upload "$GITHUB_REF_NAME" \
               release-files/*.dmg \
               release-files/*.exe \
+              release-files/*.AppImage \
               release-files/SHA256SUMS.txt \
               --repo "$GITHUB_REPOSITORY" \
               --clobber; then

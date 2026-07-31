@@ -8,7 +8,7 @@ import {
 } from 'ai';
 import type { AgentContext } from './context';
 import { TOOL_SCHEMAS, executeTool } from './tools';
-import { SYSTEM_PROMPT, designStylePrompt, creativeModePrompt, editorStatePrompt } from './systemPrompt';
+import { SYSTEM_PROMPT, assembleSystemPrompt, creativeModePrompt, designStylePrompt, editorStatePrompt } from './systemPrompt';
 import { capabilitiesPrompt } from './capabilities';
 import { findSkill } from './skills/skills-catalog';
 import { PLUGIN_SKILLS_INDEX } from './skills/plugin-skills';
@@ -19,6 +19,7 @@ import {
   PROVIDER,
 } from './client';
 import { makeMessagesPortable, normalizeLlmMessages } from './messages';
+import { describeTimelineDelta, snapshotTimeline } from './timelineDelta';
 import {
   agentSettingsPrompt,
   createInlineThinkingExtractor,
@@ -27,12 +28,16 @@ import {
   type GenerationGuardSkill,
 } from './settings/agentSettings';
 import type { GuardDecision } from './skills/skillGuard';
+import { completeAbortedTurn } from './abortedTurn';
 
 const MAX_OUTPUT_TOKENS = 64000;
 const MAX_TOOL_TURNS = 30;
 type ToolResultOutput = ToolResultPart['output'];
 
 export type LLMMessage = ModelMessage;
+export interface AgentRuntimeModule {
+  runAgent: typeof runAgent;
+}
 
 export type AgentEvent =
   | { type: 'text-start' }
@@ -117,15 +122,22 @@ function createAgentTools(
         }
 
         try {
+          // Take a timeline snapshot before and after the tool: the modification tool directly brings back "what was actually changed"
+          // Model, omit a full read_project (the difference of read-only tools is null, no fields are added).
+          const before = snapshotTimeline(ctx.getState());
           const result = await executeTool(schema.name, args, ctx);
-          onEvent({ type: 'tool', name: schema.name, args, result });
+          const changed = describeTimelineDelta(before, ctx.getState());
+          const enriched = changed && result && typeof result === 'object' && !Array.isArray(result)
+            ? { ...(result as Record<string, unknown>), changed }
+            : result;
+          onEvent({ type: 'tool', name: schema.name, args, result: enriched });
           const followup = (result as { __followup?: unknown } | null)?.__followup;
           if (typeof followup === 'string') {
             onEvent({ type: 'text-start' });
             onEvent({ type: 'text-delta', delta: followup });
             onFollowup?.();
           }
-          return result;
+          return enriched;
         } catch (error) {
           const failed = { error: errorMessage(error) };
           onEvent({ type: 'tool', name: schema.name, args, result: failed });
@@ -153,30 +165,33 @@ export async function runAgent(
     onSkillGuard?: (info: { skill: GenerationGuardSkill; tool: string }) => Promise<GuardDecision>;
   },
 ): Promise<LLMMessage[]> {
-  const conv = normalizeLlmMessages(messages);
+  let conv = normalizeLlmMessages(messages);
   const settings = loadAgentSettings();
-  const system = SYSTEM_PROMPT
-    + editorStatePrompt(ctx)
-    + capabilitiesPrompt()
-    + designStylePrompt(ctx.getDoc().designStyle)
-    + creativeModePrompt(findSkill(ctx.getCreativeMode()))
-    + PLUGIN_SKILLS_INDEX
-    + agentSettingsPrompt(settings);
+  // The order is "the more unchanged, the higher up" - the prompt word cache matches the byte-by-byte prefix, and inserts a paragraph in the middle that changes every round.
+  // Content, everything following it (the rest of the paragraphs, hundreds of tool schemas, the entire history) will be invalid.
+  // editorStatePrompt is a real-time timeline snapshot and must be placed in the last paragraph; new paragraphs are always added in front of it.
+  const system = assembleSystemPrompt([
+    SYSTEM_PROMPT,
+    capabilitiesPrompt(),
+    PLUGIN_SKILLS_INDEX,
+    agentSettingsPrompt(settings),
+    designStylePrompt(ctx.getDoc().designStyle),
+    creativeModePrompt(findSkill(ctx.getCreativeMode())),
+  ], editorStatePrompt(ctx));
 
-  let reasoningFellBack = false;
   let toolTurns = 0;
 
   for (;;) {
-    const withReasoning = settings.thinkingEnabled && !reasoningFellBack;
     const extract = createInlineThinkingExtractor();
-    let sawContentEvent = false;
     let textStarted = false;
+    let visibleText = '';
     let askedFollowup = false;
     const emitText = (delta: string) => {
       if (!textStarted) {
         onEvent({ type: 'text-start' });
         textStarted = true;
       }
+      visibleText += delta;
       onEvent({ type: 'text-delta', delta });
     };
     const tools = opts?.askOnly
@@ -198,7 +213,7 @@ export async function runAgent(
         : conv;
       const providerOptions = getLanguageModelProviderOptions();
       const result = streamText({
-        model: getLanguageModel(),
+        model: await getLanguageModel(),
         system,
         messages: requestMessages,
         tools,
@@ -206,37 +221,51 @@ export async function runAgent(
         maxRetries: 0,
         abortSignal: opts?.signal,
         ...(providerOptions ? { providerOptions } : {}),
-        ...(withReasoning ? { reasoning: 'medium' as const } : {}),
       });
 
-      for await (const part of result.stream) {
-        if (part.type === 'text-delta') {
-          sawContentEvent = true;
-          const extracted = extract.push(part.text);
-          if (extracted.thinking) onEvent({ type: 'thinking-delta', delta: extracted.thinking });
-          if (extracted.text) emitText(extracted.text);
-        } else if (part.type === 'reasoning-delta') {
-          sawContentEvent = true;
-          if (part.text) onEvent({ type: 'thinking-delta', delta: part.text });
-        } else if (part.type === 'tool-input-start') {
-          sawContentEvent = true;
-          onEvent({ type: 'tool-input-start', name: part.toolName });
-        } else if (part.type === 'tool-input-delta') {
-          sawContentEvent = true;
-          if (part.delta) onEvent({ type: 'tool-input-delta', delta: part.delta });
-        } else if (part.type === 'error') {
-          throw part.error;
-        } else if (part.type === 'abort') {
-          return conv;
+      let aborted = false;
+      try {
+        for await (const part of result.stream) {
+          if (part.type === 'text-delta') {
+            const extracted = extract.push(part.text);
+            if (extracted.thinking) onEvent({ type: 'thinking-delta', delta: extracted.thinking });
+            if (extracted.text) emitText(extracted.text);
+          } else if (part.type === 'reasoning-delta') {
+            if (part.text) onEvent({ type: 'thinking-delta', delta: part.text });
+          } else if (part.type === 'tool-input-start') {
+            onEvent({ type: 'tool-input-start', name: part.toolName });
+          } else if (part.type === 'tool-input-delta') {
+            if (part.delta) onEvent({ type: 'tool-input-delta', delta: part.delta });
+          } else if (part.type === 'error') {
+            throw part.error;
+          } else if (part.type === 'abort') {
+            aborted = true;
+            break;
+          }
         }
+      } catch (error) {
+        if (!opts?.signal?.aborted) throw error;
+        aborted = true;
       }
 
       const tail = extract.flush();
       if (tail.thinking) onEvent({ type: 'thinking-delta', delta: tail.thinking });
       if (tail.text) emitText(tail.text);
 
-      const responseMessages = await result.responseMessages;
-      conv.push(...responseMessages);
+      let responseMessages: ModelMessage[];
+      try {
+        responseMessages = await result.responseMessages;
+      } catch (error) {
+        if (!aborted && !opts?.signal?.aborted) throw error;
+        responseMessages = [];
+      }
+      if (aborted || opts?.signal?.aborted) {
+        const persisted = responseMessages.length || !visibleText
+          ? responseMessages
+          : [{ role: 'assistant', content: [{ type: 'text', text: visibleText }] } as ModelMessage];
+        return completeAbortedTurn(conv, persisted);
+      }
+      conv = [...conv, ...responseMessages];
       if (askedFollowup) return conv;
       if (!responseUsedTools(responseMessages)) return conv;
 
@@ -247,13 +276,6 @@ export async function runAgent(
     } catch (error) {
       if (opts?.signal?.aborted) return conv;
       const message = errorMessage(error).trim();
-      if (withReasoning
-        && !sawContentEvent
-        && /thinking|reasoning|param|invalid|unsupported|不支持/i.test(message)) {
-        reasoningFellBack = true;
-        onEvent({ type: 'error', message: '当前模型接口不支持思考模式，已自动关闭本轮' });
-        continue;
-      }
       onEvent({ type: 'error', message });
       return conv;
     }

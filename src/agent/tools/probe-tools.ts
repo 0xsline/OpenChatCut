@@ -1,30 +1,13 @@
+export { PROBE_TOOL_SCHEMAS, PROBE_TOOL_NAMES } from './schemas/probe-tools';
 // probe_media runs ffprobe in the e2b sandbox through the existing /e2b/run proxy.
 // It reads stream and format metadata to determine audio, fps, duration, dimensions,
 // and codec information. The agent probes before
 // finalize_uploaded_asset so it can pass an accurate hasAudioTrack — silent / no-audio
-// media then skips 上传即转写 ASR, and fps/duration are exact.
-import type { AgentToolSchema } from '../tool-schema';
+// media then skips ASR, and fps/duration are exact.
 import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
 
 type Args = Record<string, unknown>;
-
-export const PROBE_TOOL_SCHEMAS: AgentToolSchema[] = [
-  {
-    name: 'probe_media',
-    description:
-      'Accurately probe a media file with ffprobe in an isolated sandbox. Returns durationSeconds, width, height, fps, hasAudioTrack, hasVideoTrack, and codecs. Accepts a media-pool assetId/prefix, a local /media/… path, or a public https URL. Call this before finalize_uploaded_asset to pass an accurate hasAudioTrack (so silent / no-audio media skips 上传即转写 ASR) and exact fps/duration. Requires the e2b sandbox; if unavailable you can finalize without it (video defaults to transcribe).',
-    input_schema: {
-      type: 'object',
-      properties: {
-        source: { type: 'string', description: 'Media-pool assetId/prefix, a local /media/… path, or a public https:// URL.' },
-      },
-      required: ['source'],
-    },
-  },
-];
-
-export const PROBE_TOOL_NAMES = new Set(PROBE_TOOL_SCHEMAS.map((t) => t.name));
 
 export interface ProbeResult {
   durationSeconds?: number;

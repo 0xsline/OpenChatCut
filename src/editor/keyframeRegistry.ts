@@ -14,7 +14,9 @@ export interface KeyframePropertyDefinition {
 }
 
 const visual = (item: TimelineItem) => item.kind !== 'audio';
-const percent = (value: number) => `${Math.round(value)}%`;
+const audible = (item: TimelineItem) => item.kind === 'audio' || item.kind === 'video';
+const compact = (value: number) => String(Number(value.toFixed(2)));
+const percent = (value: number) => `${compact(value)}%`;
 
 export const KEYFRAME_PROPERTY_REGISTRY: Record<KeyframeProp, KeyframePropertyDefinition> = {
   scale: {
@@ -22,7 +24,7 @@ export const KEYFRAME_PROPERTY_REGISTRY: Record<KeyframeProp, KeyframePropertyDe
     step: 0.05, defaultValue: 1, supports: visual,
     getBaseValue: (item) => item.transform?.scale ?? 1,
     toTransformPatch: (scale) => ({ scale }),
-    format: (value) => `${Math.round(value * 100)}%`,
+    format: (value) => `${compact(value * 100)}%`,
   },
   x: {
     id: 'x', label: '水平', valueRange: [-400, 400], editorRange: [-100, 100],
@@ -41,13 +43,19 @@ export const KEYFRAME_PROPERTY_REGISTRY: Record<KeyframeProp, KeyframePropertyDe
     step: 1, defaultValue: 0, supports: visual,
     getBaseValue: (item) => item.transform?.rotation ?? 0,
     toTransformPatch: (rotation) => ({ rotation }),
-    format: (value) => `${Math.round(value)}°`,
+    format: (value) => `${compact(value)}°`,
   },
   opacity: {
     id: 'opacity', label: '透明', valueRange: [0, 1], editorRange: [0, 1],
     step: 0.01, defaultValue: 1, supports: visual,
     getBaseValue: () => 1,
-    format: (value) => `${Math.round(value * 100)}%`,
+    format: (value) => `${compact(value * 100)}%`,
+  },
+  volume: {
+    id: 'volume', label: '音量', valueRange: [0, 2], editorRange: [0, 2],
+    step: 0.05, defaultValue: 1, supports: audible,
+    getBaseValue: (item) => item.volume ?? 1,
+    format: (value) => `${compact(value * 100)}%`,
   },
 };
 

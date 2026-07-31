@@ -130,6 +130,30 @@ export function updateManualCue(
   );
 }
 
+/**
+ * Drag-placed non-overlapping clamp: Put a cue of durationMs with the desired startMs between others
+ * gap. If the neighbor is pressed, it will be welted (not penetrated, the same semantics as trim's neighbor clamping); the target gap cannot fit the entire
+ * cue → returns null, the caller remains intact (rebound). The data layer append/update itself still allows overlap,
+ * This strategy is only used by drag-and-drop interactions.
+ */
+export function placeManualCueTiming(
+  others: readonly TranscriptWord[],
+  startMs: number,
+  durationMs: number,
+): Pick<TranscriptWord, 'start' | 'end'> | null {
+  if (!Number.isFinite(startMs) || !Number.isFinite(durationMs)) return null;
+  const requested = Math.max(0, Math.round(startMs));
+  const duration = Math.max(MIN_CUE_MS, Math.round(durationMs));
+  const sorted = [...others].sort((a, b) => a.start - b.start);
+  let insertAt = 0;
+  while (insertAt < sorted.length && sorted[insertAt]!.start <= requested) insertAt += 1;
+  const lower = insertAt > 0 ? sorted[insertAt - 1]!.end : 0;
+  const upper = insertAt < sorted.length ? sorted[insertAt]!.start : Number.POSITIVE_INFINITY;
+  if (upper - lower < duration) return null;
+  const start = Math.min(Math.max(requested, lower), upper - duration);
+  return { start, end: start + duration };
+}
+
 export function resizedManualCueTiming(
   words: readonly TranscriptWord[],
   index: number,

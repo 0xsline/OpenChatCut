@@ -1,24 +1,24 @@
-import type { AgentToolSchema } from '../tool-schema';
+export { HIGHLIGHT_TOOL_SCHEMAS, HIGHLIGHT_TOOL_NAMES } from './schemas/highlight-tool';
 import type { AgentContext } from '../context';
 import { ASPECT_PRESETS, type AspectPreset, type TimelineItem } from '../../editor/types';
 import { msToFrame, type TranscriptWord } from '../../transcript/types';
 import { generateAgentText } from '../client';
 
-// find_highlights —— 智能切片 / 长转短成片口。
+// find_highlights - smart slicing / convert long to short into slices.
 //
-// "clip/highlight extraction / cut slices / make a short version" 本质是转写编辑
-// 工作流(哪些词的语义决定播什么),而非一条原子命令。实现路径:LLM 读转写打分 →
-// 批量短视频序列。因此:
-//   · 工具名为 find_highlights;
-//   · 高光判定标准复用 talking-head-guide 的规则(见 SELECT_SYSTEM);
-//   · 长转短复用既有基础设施 duplicateTimeline({retarget}) + ASPECT_PRESETS(与
-//     timeline-tools.ts 长转短完全同一路径),不另造重定位;
-//   · 裁到高光帧区间时,转写 clip 走"删文本=删视频"(deleteWords)以保持词帧一致，
-//     非转写 clip 走帧级 setItemTiming/removeItem。
+// "clip/highlight extraction / cut slices / make a short version" is essentially transliteration editing
+// Workflow (the semantics of which words determine what to broadcast), not an atomic command. Implementation path: LLM reading, conversion and scoring →
+// Batch short video sequences. Therefore:
+// · The tool name is find_highlights;
+// · The highlight judgment standard reuses the rules of talking-head-guide (see SELECT_SYSTEM);
+// · Long to short reuse existing infrastructure duplicateTimeline({retarget}) + ASPECT_PRESETS(with
+// timeline-tools.ts long to short is exactly the same path), no additional relocation is required;
+// · When cutting to the highlight frame interval, rewrite the clip as "delete text = delete video" (deleteWords) to keep the word frame consistent.
+// Non-transcribed clip goes to frame level setItemTiming/removeItem.
 
 type Args = Record<string, unknown>;
 
-/** LLM 挑出的一段高光:一段连续的词区间(含端点)+ 标题/理由。 */
+/** A highlight selected by LLM: a continuous word interval (including endpoints) + title/reason. */
 export interface Highlight {
   startWordIndex: number;
   endWordIndex: number;
@@ -26,7 +26,7 @@ export interface Highlight {
   reason?: string;
 }
 
-/** 发给 LLM 的紧凑词条(索引对齐原转写下标,不可裁剪否则错位)。 */
+/** Compact entry sent to LLM (the index is aligned with the original transcribed subscript, and cannot be cropped otherwise it will be misaligned). */
 interface WordRef {
   i: number;
   t: string;
@@ -40,49 +40,27 @@ interface SelectOpts {
   instruction?: string;
 }
 
-export const HIGHLIGHT_TOOL_SCHEMAS: AgentToolSchema[] = [
-  {
-    name: 'find_highlights',
-    description:
-      '智能切片(长转短成片):读取时间线上已转写视频的逐词稿,由 LLM 挑出最精彩、能独立成篇的高光片段,每段复制出一条竖屏短视频序列(默认 9:16)并裁到该高光的帧区间。片段需先转写(transcribe_track)。返回每条短视频的序列 id/标题/帧区间。LLM 失败时回退启发式(信息密度分块)。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        count: { type: 'integer', description: '要生成的短视频数量(默认 3)。' },
-        ratio: { type: 'string', enum: ['9:16', '16:9', '1:1', '4:3', '3:4'], description: '短视频画布比例(默认 9:16)。' },
-        topic: { type: 'string', description: '可选:只挑与该话题相关的高光。' },
-        instruction: { type: 'string', description: '可选:额外挑选偏好(如"最有情绪冲突的""含数据点的")。' },
-        itemId: { type: 'string', description: '可选:指定已转写的 video/audio clip(默认词数最多的那条)。' },
-        minSeconds: { type: 'number', description: '每段最短秒数(默认 3)。' },
-        maxSeconds: { type: 'number', description: '每段最长秒数(默认 60)。' },
-      },
-    },
-  },
-];
+// Highlight judgment criteria - talking-head-guide.md rules.
+const SELECT_SYSTEM = `You are a short-form video editor. Select the strongest moments from a word-level talking-head transcript for standalone vertical clips.
+A highlight may be an opinion, conclusion, story, emotion, conflict, tutorial step, data point, or a user-specified topic.
+- Every highlight must stand on its own. Keep the subject, setup, question, and conclusion needed to understand it.
+- If a punchy sentence depends on nearby context, include that context instead of selecting only the sentence.
+- If the user specifies a topic, select only that topic. If they ask for the best moments, prioritize information density and expressive force.
+- Every highlight is one continuous inclusive word range (startWordIndex..endWordIndex), and ranges must not overlap.
+Output only a strict JSON array with no explanation or Markdown fence:
+[{"startWordIndex":0,"endWordIndex":0,"title":"Short title","reason":"Why it is compelling"}]`;
 
-export const HIGHLIGHT_TOOL_NAMES = new Set(HIGHLIGHT_TOOL_SCHEMAS.map((t) => t.name));
-
-// 高光判定标准——talking-head-guide.md 规则。
-const SELECT_SYSTEM = `你是短视频剪辑师,从一段口播的逐词转写里挑出最适合做成独立竖屏短视频的高光片段。
-判定亮点:观点、结论、故事、情绪、冲突、教程步骤、数据点,或某个指定话题。
-- 每个亮点必须能被独立理解:保留理解它所需的主语、铺垫、问题与结论,别砍掉上下文。
-- 若某句短促有力的话依赖前后语境才成立,就连语境一起保留,别只留那一句。
-- 用户若指定话题,只挑该话题;若要"最精彩",优先信息密度与表达力度。
-- 每段是连续的一段词(startWordIndex..endWordIndex,含端点),片段之间不得重叠。
-只输出严格 JSON 数组(不要解释、不要 markdown 围栏):
-[{"startWordIndex":整数,"endWordIndex":整数,"title":"短标题","reason":"为何精彩"}]`;
-
-// ── LLM 选段(可被 setHighlightSelector 替换成 stub 以离线自检)──────────────
+// ── LLM selection (can be replaced by setHighlightSelector with stub for offline self-test)──────────────
 type HighlightSelector = (words: WordRef[], opts: SelectOpts) => Promise<unknown>;
 
-/** 生产路径:真调 LLM,返回解析后的原始数组(未校验,视为不可信)。 */
+/** Production path: True tune LLM, return the parsed original array (not verified, regarded as untrustworthy). */
 async function llmSelectHighlights(words: WordRef[], opts: SelectOpts): Promise<unknown> {
   const list = words.map((w) => `${w.i}:${w.t}`).join(' ');
   const bias = [
-    opts.topic ? `只挑与话题「${opts.topic}」相关的片段。` : '',
-    opts.instruction ? `额外偏好:${opts.instruction}` : '',
+    opts.topic ? `Select only segments related to this topic: ${opts.topic}.` : '',
+    opts.instruction ? `Additional preference: ${opts.instruction}.` : '',
   ].join('');
-  const user = `逐词转写(共 ${words.length} 词,格式 序号:词):\n${list}\n\n挑出最多 ${opts.count} 段高光。${bias}`;
+  const user = `Word-level transcript (${words.length} words, format index:word):\n${list}\n\nSelect up to ${opts.count} highlights. ${bias}`;
   const text = (await generateAgentText({
     maxOutputTokens: 8192,
     system: SELECT_SYSTEM,
@@ -92,12 +70,12 @@ async function llmSelectHighlights(words: WordRef[], opts: SelectOpts): Promise<
 }
 
 let selector: HighlightSelector = llmSelectHighlights;
-/** 仅供 .check 用:注入离线选段 stub;传 null 还原真 LLM 路径。 */
+/** For.check only: Inject offline selection stub; pass null to restore the true LLM path.*/
 export function setHighlightSelector(fn: HighlightSelector | null): void {
   selector = fn ?? llmSelectHighlights;
 }
 
-/** 从模型文本里抠出第一个 JSON 数组并解析;失败抛错(交由上层转成 error)。 */
+/** Extract the first JSON array from the model text and parse it; if it fails, an error will be thrown (it will be handed over to the upper layer and converted into an error).*/
 function parseJsonArray(text: string): unknown {
   const cleaned = text.replace(/^\s*```[a-zA-Z]*\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
   const start = cleaned.indexOf('[');
@@ -115,8 +93,8 @@ export interface ValidateHighlightOpts {
 }
 
 /**
- * 校验并清洗 LLM 输出(不可信):丢弃非整数/越界/start>end 的条目,按起点排序后去重叠
- * (重叠段只保留先出现的),最多取 max 段。可选按时长过滤。导出以便直接单测拒绝越界/重叠。
+ * Verify and clean LLM output (untrustworthy): discard non-integer/out-of-bounds/start>end entries, sort by starting point and remove overlaps
+ * (Only the overlapping segment that appears first is retained), and at most max segments are taken. Optional filtering by duration. Export for direct single testing to reject out of bounds/overlap.
  */
 export function validateHighlights(
   raw: unknown,
@@ -165,7 +143,7 @@ export function validateHighlights(
   const out: Highlight[] = [];
   let lastEnd = -1;
   for (const h of cleaned) {
-    if (h.startWordIndex <= lastEnd) continue; // 与已保留区间重叠 → 丢弃
+    if (h.startWordIndex <= lastEnd) continue; // Overlaps with reserved interval → discard
     out.push(h);
     lastEnd = h.endWordIndex;
     if (out.length >= max) break;
@@ -236,7 +214,7 @@ export function heuristicHighlights(
   return picked;
 }
 
-/** 时间线上"主内容":带转写的音/视频 clip 里词数最多的一条(视频优先)。 */
+/** "Main content" on the timeline: the audio/video clip with the largest number of words (video priority).*/
 function pickTranscribedItem(items: TimelineItem[], itemId?: string): TimelineItem | null {
   if (itemId) {
     const q = itemId;
@@ -261,8 +239,8 @@ export interface Short {
 }
 
 /**
- * 把每段高光落成一条短视频序列:复制原序列并重定位到目标画布,切到高光帧区间。
- * 转写 clip 走 deleteWords 以保持词帧一致，其余 clip 走帧级裁剪。返回落成的短视频清单。
+ * Turn each highlight into a short video sequence: copy the original sequence and relocate it to the target canvas, and cut to the highlight frame interval.
+ * To transcribe clips, use deleteWords to keep word frames consistent, and use frame-level cropping for other clips. Return to the completed short video list.
  */
 export function assembleShorts(
   ctx: AgentContext,
@@ -277,20 +255,20 @@ export function assembleShorts(
   for (const hl of highlights) {
     const spanStart = item.startFrame + msToFrame(words[hl.startWordIndex].start, fps);
     const rawEnd = item.startFrame + msToFrame(words[hl.endWordIndex].end, fps);
-    const spanEnd = Math.max(rawEnd, spanStart + 1); // 至少 1 帧
+    const spanEnd = Math.max(rawEnd, spanStart + 1); // at least 1 frame
     const copyId = ctx.commands.duplicateTimeline(srcTimelineId, {
       name: hl.title,
       retarget: { width: preset.width, height: preset.height, fit: 'cover' },
       activate: false,
     });
-    ctx.commands.switchTimeline(copyId); // 逐 clip 命令只作用于 active 序列 → 先切到副本
+    ctx.commands.switchTimeline(copyId); // The clip-by-clip command only works on the active sequence → cut to the copy first
     trimCopyToHighlight(ctx, item.id, words.length, hl, spanStart, spanEnd);
     shorts.push({ timelineId: copyId, title: hl.title, startFrame: spanStart, endFrame: spanEnd, ratio: preset.label });
   }
   return shorts;
 }
 
-/** 在当前 active 副本上,把 [spanStart,spanEnd) 之外的内容全部裁掉,并把区间平移到 0。 */
+/** On the current active copy, cut out all content except [spanStart,spanEnd) and translate the interval to 0.*/
 function trimCopyToHighlight(
   ctx: AgentContext,
   transcribedId: string,
@@ -299,16 +277,16 @@ function trimCopyToHighlight(
   spanStart: number,
   spanEnd: number,
 ): void {
-  const snapshot = [...ctx.getState().items]; // 先快照:后续编辑不改其它 clip 的绝对帧位
+  const snapshot = [...ctx.getState().items]; // Snapshot first: subsequent editing does not change the absolute frame bits of other clips
 
-  // 1) 转写 clip:删掉高光之外的词("删文本=删视频",词↔帧一致由该机制保证),
-  //    保留词按序播放,再整体平移到帧 0 让短视频从高光开头起播。
+  // 1) Transcribe clip: delete words other than highlights ("delete text = delete video", word ↔ frame consistency is guaranteed by this mechanism),
+  //    The reserved words are played in order, and then the whole pan is moved to frame 0 so that the short video starts from the highlight.
   const outside: number[] = [];
   for (let i = 0; i < wordCount; i++) if (i < hl.startWordIndex || i > hl.endWordIndex) outside.push(i);
   if (outside.length) ctx.commands.deleteWords(transcribedId, outside);
   ctx.commands.moveItem(transcribedId, { startFrame: 0 });
 
-  // 2) 其余 clip:与 [spanStart,spanEnd) 求交——无交叠删除,有交叠裁剪并平移 -spanStart。
+  // 2) The rest of the clips: intersect with [spanStart,spanEnd) - delete without overlap, crop and translate with -spanStart.
   for (const it of snapshot) {
     if (it.id === transcribedId) continue;
     const itemEnd = it.startFrame + it.durationInFrames;
@@ -319,8 +297,8 @@ function trimCopyToHighlight(
       continue;
     }
     const leftTrim = oStart - it.startFrame;
-    // 有源媒体(视频/音频)左裁需同步推进 srcInFrame;MG/文字无源,时间轴动画随起点走。
-    // ponytail: MG 被头部裁剪会丢开场动画,短视频场景可接受。
+    // Active media (video/audio) left clipping needs to be advanced srcInFrame simultaneously; MG/text is passive, and the timeline animation follows the starting point.
+    // ponytail: MG will lose the opening animation if its head is cropped, so short video scenes are acceptable.
     ctx.commands.setItemTiming(it.id, {
       startFrame: oStart - spanStart,
       durationInFrames: oEnd - oStart,
@@ -393,7 +371,7 @@ export async function execHighlightTool(name: string, args: Args, ctx: AgentCont
   }
 
   const shorts = assembleShorts(ctx, srcTimelineId, item, highlights, preset);
-  ctx.commands.switchTimeline(originalActiveId); // 还原用户视图到原序列(duplicate 用 activate:false)
+  ctx.commands.switchTimeline(originalActiveId); // Restore the user view to the original sequence (duplicate with activate:false)
 
   return {
     ok: true,

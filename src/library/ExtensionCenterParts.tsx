@@ -18,53 +18,11 @@ export function SourceLabel({ pack }: { pack: InstalledPack }) {
   return <span>{label}</span>;
 }
 
-export function ExtensionToggle({
-  checked,
-  disabled,
-  onChange,
-}: {
-  checked: boolean;
-  disabled: boolean;
-  onChange: () => void;
-}) {
-  const t = useT();
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={checked ? t('停用扩展') : t('启用扩展')}
-      disabled={disabled}
-      onClick={onChange}
-      style={{
-        width: 30,
-        height: 17,
-        border: `0.5px solid ${checked ? theme.accent : theme.border}`,
-        borderRadius: 9,
-        padding: 2,
-        background: checked ? `color-mix(in srgb, ${theme.accent} 28%, ${theme.panelAlt})` : theme.panelAlt,
-        cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled ? 0.55 : 1,
-      }}
-    >
-      <span style={{
-        display: 'block',
-        width: 11,
-        height: 11,
-        borderRadius: '50%',
-        background: checked ? theme.accent : theme.textDim,
-        transform: checked ? 'translateX(13px)' : 'translateX(0)',
-        transition: 'transform 140ms ease-out',
-      }} />
-    </button>
-  );
-}
-
 export function ExtensionGlyph({ label }: { label: string }) {
   return (
     <div style={{
-      width: 38,
-      height: 38,
+      width: 36,
+      height: 36,
       display: 'grid',
       placeItems: 'center',
       flex: '0 0 auto',
@@ -177,7 +135,7 @@ export function InstallPanel({
       padding: 10,
       borderRadius: 5,
     }}>
-      <div style={{ fontSize: 11.5, color: theme.text, fontWeight: 650 }}>{t('本地安装')}</div>
+      <div style={{ fontSize: 11.5, color: theme.text, fontWeight: 650 }}>{t('安装')}</div>
       <div style={{ fontSize: 10.5, color: theme.textDim }}>
         {t('仅安装你信任的扩展包；安装前会校验格式并真实编译其中的 MG 与 Shader。')}
       </div>

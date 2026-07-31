@@ -12,6 +12,8 @@ export interface SubmitMediaExportArgs {
   fps?: number;
   /** Target max-height ladder: 480p | 720p | 1080p. */
   resolution?: '480p' | '720p' | '1080p';
+  /** Exact video bitrate in bits per second. */
+  videoBitrate?: number;
 }
 
 export interface MediaExportResult {
@@ -71,6 +73,7 @@ export async function submitMediaExport(args: SubmitMediaExportArgs, state: Time
       endFrameExclusive: args.endFrameExclusive,
       startSeconds: args.startSeconds,
       endSeconds: args.endSeconds,
+      videoBitrate: args.format === 'video' ? args.videoBitrate : undefined,
     }),
   });
   if (!response.ok) {
@@ -78,8 +81,8 @@ export async function submitMediaExport(args: SubmitMediaExportArgs, state: Time
     throw new Error(result.error ?? `media export failed (${response.status})`);
   }
   const blob = await response.blob();
-  // 客户端本就有正确的 UTF-8 名字，直接用它做 anchor.download（anchor 走 JS 字符串，
-  // 中文安全）；不再回解析服务端的 Content-Disposition 头（headers.get 按 ISO-8859-1 会乱码）。
+  // The client already has the correct UTF-8 name, and it can be used directly as anchor.download (anchor uses JS strings,
+  // Chinese security); no longer parse the Content-Disposition header of the server (headers.get will be garbled according to ISO-8859-1).
   const base = (args.name ?? 'export').replace(/\.(?:mp4|webm|mp3|wav)$/i, '');
   const name = `${base}.${ext}`;
   const url = URL.createObjectURL(blob);

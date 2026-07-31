@@ -2,7 +2,7 @@ import type { MediaAsset, TimelineState } from '../editor/types';
 import { isComplete, type JobReportBase } from '../agent/progress/job-model';
 
 export interface TrackGenerationProgressArgs {
-  action: 'params' | 'status' | 'wait';
+  action: 'params' | 'status' | 'wait' | 'resume';
   jobIds: string[];
   timeoutSeconds?: number;
 }
@@ -22,6 +22,7 @@ export interface GenerationJobReport extends JobReportBase<'queued' | 'running' 
   params?: Record<string, unknown>;
   result?: GenerationJobResult;
   results?: GenerationJobResult[];
+  pendingDownloadUrl?: string;
 }
 
 interface ProgressResponse {

@@ -1,11 +1,8 @@
 import type { AgentContext } from '../context';
-import { GENERATE_TOOL_SCHEMAS } from './generate-schemas';
 import { executeGenerateCommand } from './generate-tool-handlers';
 import type { GenerateArgs } from './generate-tool-input';
 
-export { GENERATE_TOOL_SCHEMAS } from './generate-schemas';
-
-export const GENERATE_TOOL_NAMES = new Set(GENERATE_TOOL_SCHEMAS.map((tool) => tool.name));
+export { GENERATE_TOOL_NAMES, GENERATE_TOOL_SCHEMAS } from './generate-schemas';
 
 export async function execGenerateTool(name: string, args: GenerateArgs, ctx: AgentContext): Promise<unknown> {
   return executeGenerateCommand(name, args, ctx);
@@ -48,7 +45,7 @@ export const GENERATE_WORKFLOW = `
 - submit_video returns immediately with a jobId. Call track_progress target=generation with action=status or action=wait; only a successful tracked result creates the media-pool video asset.
 
 ## Generation job progress
-- Use track_progress only with target=generation for submit_music/submit_video job IDs. action=params reads submitted settings, status is non-blocking, and wait is explicitly bounded by timeoutSeconds.
+- Use track_progress only with target=generation for submit_music/submit_video job IDs. action=params reads submitted settings, status is non-blocking, wait is explicitly bounded by timeoutSeconds, and resume retries a failed result download without regenerating.
 - Do not claim a generated asset exists until track_progress reports succeeded and addedAssets includes it. Retrying track_progress is idempotent and never duplicates an existing asset.
 
 ## Export

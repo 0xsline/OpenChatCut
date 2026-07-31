@@ -3,7 +3,7 @@ import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import { useT } from '../i18n/locale';
 import type { Tpl } from '../types';
-import type { MediaAsset, MediaFolder, TimelineItem, TrackId, TransitionItem, TransitionType, ZoomShape } from '../editor/types';
+import type { MediaAsset, MediaFolder, TimelineItem, TrackId, TransitionType, ZoomShape } from '../editor/types';
 import type { MobileUploadRecord } from '../media/mobileUploadApi';
 import { AUDIO_TRANSITION_ORDER, TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../editor/types';
 import type { CaptionsData } from '../captions/types';
@@ -25,22 +25,16 @@ import { ExtensionCenter } from './ExtensionCenter';
 import { isPluginAssetId } from '../plugins/types';
 import { customTransitionUniforms, getCustomTransition } from '../gl/customTransitions';
 import type { ZoomEffect } from '../editor/types';
-import type { SerializableFxDef } from '../gl/fx/uniforms';
 import { Icon } from '../components/icons';
-import {
-  AUDIO_FX_ISOLATE_DEFAULT,
-  AUDIO_FX_ISOLATE_LIGHT,
-  AUDIO_FX_ISOLATE_STRONG,
-} from '../audio/isolateVoice';
 
 // Two built-in LUTs implemented with published camera-log transfer functions.
 // They apply through the same pipeline as other effects.
 const LUT_ITEMS: ResourceItem[] = LUT_IDS.map((id) => ({ id, name: LUT_EFFECTS[id].name }));
-/** 画面转场 — GLSL transitions in catalog order. */
+/** Screen transitions — GLSL transitions in catalog order. */
 const TRANSITION_ITEMS: ResourceItem[] = TRANSITION_ORDER.map((t) => ({
   id: t, name: TRANSITION_LABELS[t],
 }));
-/** 音频转场 — trAudioCrossFade. */
+/** Audio transition — trAudioCrossFade. */
 const AUDIO_CROSSFADE_THUMB = '/library-previews/audio-crossfade.jpg';
 const AUDIO_TRANSITION_ITEMS: ResourceItem[] = AUDIO_TRANSITION_ORDER.map((t) => ({
   id: t, name: TRANSITION_LABELS[t],
@@ -49,36 +43,6 @@ const AUDIO_TRANSITION_ITEMS: ResourceItem[] = AUDIO_TRANSITION_ORDER.map((t) =>
 }));
 const FX_ITEMS: ResourceItem[] = FX_IDS.map((id) => ({ id, name: FX_EFFECTS[id].name }));
 const ZOOM_ITEMS: ResourceItem[] = ZOOM_SHAPE_ORDER.map((s) => ({ id: s, name: ZOOM_SHAPE_LABELS[s] }));
-/** 音频效果 — open-box isolate_voice presets (strength via id). Thumbs in assets/library-previews. */
-const AUDIO_FX_THUMBS: Record<string, string> = {
-  [AUDIO_FX_ISOLATE_DEFAULT]: '/library-previews/isolate-voice.jpg',
-  [AUDIO_FX_ISOLATE_LIGHT]: '/library-previews/isolate-voice-light.jpg',
-  [AUDIO_FX_ISOLATE_STRONG]: '/library-previews/isolate-voice-strong.jpg',
-};
-const AUDIO_FX_ITEMS: ResourceItem[] = [
-  {
-    id: AUDIO_FX_ISOLATE_DEFAULT,
-    name: '人声隔离',
-    desc: '开箱 ffmpeg 频谱降噪 · 强度 70',
-    badge: 'AI',
-    thumb: AUDIO_FX_THUMBS[AUDIO_FX_ISOLATE_DEFAULT],
-  },
-  {
-    id: AUDIO_FX_ISOLATE_LIGHT,
-    name: '人声隔离（轻）',
-    desc: '轻度降噪 · 干净麦 · 强度 35',
-    badge: '轻',
-    thumb: AUDIO_FX_THUMBS[AUDIO_FX_ISOLATE_LIGHT],
-  },
-  {
-    id: AUDIO_FX_ISOLATE_STRONG,
-    name: '人声隔离（强）',
-    desc: '强力降噪 · 嘈杂环境 · 强度 90',
-    badge: '强',
-    thumb: AUDIO_FX_THUMBS[AUDIO_FX_ISOLATE_STRONG],
-  },
-];
-
 interface LibraryPanelProps {
   semanticScopeId: string;
   templates: Tpl[];
@@ -87,7 +51,7 @@ interface LibraryPanelProps {
   playerRef: RefObject<PlayerRef | null>;
   fps: number;
   items: TimelineItem[];
-  /** A1/V1 aliases + names for 文字稿 track picker */
+  /** A1/V1 aliases + names for script track picker */
   trackOptions: TranscriptTrackOption[];
   captionTracks: Array<TranscriptTrackOption & { captions: CaptionsData | null }>;
   onSetCaptions: (c: CaptionsData | null, track?: TrackId) => void;
@@ -101,6 +65,8 @@ interface LibraryPanelProps {
   onClearEdits: (id: string) => void;
   assets: MediaAsset[];
   mediaFolders: MediaFolder[];
+  offlineAssetIds: ReadonlySet<string>;
+  onAssetLoadError: (asset: MediaAsset) => void;
   onImportMedia: (file: File, onProgress?: (ratio: number) => void) => Promise<MediaAsset>;
   onImportMobileMedia: (record: MobileUploadRecord) => Promise<void>;
   onAddMediaItem: (asset: MediaAsset) => void;
@@ -113,32 +79,27 @@ interface LibraryPanelProps {
   onRemoveMediaAsset: (id: string) => void;
   onRelinkMediaAsset?: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind'] }) => void;
   onAddSolid?: () => void;
-  /** ⋮ menu「用 AI 生成」: seed the chat with this template as a reference */
+  /** ⋮ menu「Generated with AI」: seed the chat with this template as a reference */
   onUseTemplateAI: (tpl: Tpl) => void;
-  /** 扩展中心「创作」的数据源 */
-  transitions: TransitionItem[];
-  fxDefs: Record<string, SerializableFxDef>;
   /** currently-selected clip — resource-library tabs apply to it */
   selectedItem: TimelineItem | null;
-  /** custom = 插件转场(type='custom-shader' 时快照 frag 进 TransitionItem) */
+  /** custom = plugin transition (type='custom-shader' snapshot frag into TransitionItem) */
   onApplyTransition: (type: TransitionType, custom?: { frag: string; uniforms: Record<string, number>; label: string }) => void;
   onApplyFx: (assetId: string) => void;
-  /** 内置曲线传 {shape};插件曲线传 {envelope,label}(见 PluginBrowser.asPluginZoom) */
+  /** The built-in curve passes {shape}; the plugin curve passes {envelope, label} (see PluginBrowser.asPluginZoom) */
   onApplyZoom: (zoom: ZoomEffect) => void;
-  /** 音频效果（人声隔离等）应用到选中 video/audio */
-  onApplyAudioFx?: (audioFxId: string) => void | Promise<void>;
 }
 
 const MAIN_TABS = ['我的素材', '资源库', '文字稿', '字幕'] as const;
-const SUB_TABS = ['MG 动画', '音效', '音频效果', '转场', '特效', '缩放', 'LUT'] as const;
-export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captionTracks, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, onImportMedia, onImportMobileMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onRemoveMediaAsset, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, transitions, fxDefs, selectedItem, onApplyTransition, onApplyFx, onApplyZoom, onApplyAudioFx }: LibraryPanelProps) {
+const SUB_TABS = ['MG 动画', '音效', '转场', '特效', '缩放', 'LUT'] as const;
+export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captionTracks, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, offlineAssetIds, onAssetLoadError, onImportMedia, onImportMobileMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onRemoveMediaAsset, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
   const t = useT();
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
   const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('我的素材');
   const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('MG 动画');
   const [extensionOpen, setExtensionOpen] = useState(false);
-  // 已装扩展条目并入各分类(带「扩展」角标);缩放/转场在 onApply 里按 id 分流
+  // The installed extension items are merged into each category (with the "Extension" corner mark); zoom/transition is split by id in onApply
   const pluginPacks = usePluginPacks();
   const transitionItems = [...TRANSITION_ITEMS, ...pluginResourceItems(pluginPacks, 'transition')];
   const fxItems = [...FX_ITEMS, ...pluginResourceItems(pluginPacks, 'fx')];
@@ -154,7 +115,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
     const pluginZoom = data ? asPluginZoom(data) : null;
     onApplyZoom(pluginZoom ?? { shape: id as ZoomShape, magnification: 1.5, envelope: undefined, label: undefined });
   };
-  // 音频转场：源 catalog 无独立条目，已隐藏假入口（§4.2）
+  // Audio transition: The source catalog has no independent entries and the false entry has been hidden (§4.2)
   const showSfx = mainTab === '资源库' && subTab === '音效';     // sound effects
   const isTranscript = mainTab === '文字稿';
   const isCaptions = mainTab === '字幕';
@@ -177,7 +138,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
         ))}
       </div>
       {extensionOpen ? (
-        <ExtensionCenter items={items} transitions={transitions} fxDefs={fxDefs} onClose={() => setExtensionOpen(false)} />
+        <ExtensionCenter onClose={() => setExtensionOpen(false)} />
       ) : isCaptions ? (
         <CaptionsPanel playerRef={playerRef} fps={fps} items={items} captionTracks={captionTracks} onSetCaptions={onSetCaptions} onUpdateCaptions={onUpdateCaptions} />
       ) : isTranscript ? (
@@ -186,14 +147,14 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
         </div>
       ) : isMyAssets ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, borderTop: `0.5px solid ${theme.border}` }}>
-          <MediaPoolPanel semanticScopeId={semanticScopeId} assets={assets} folders={mediaFolders} fps={fps} onImport={onImportMedia} onImportMobile={onImportMobileMedia} onAddAsset={onAddMediaItem}
+          <MediaPoolPanel semanticScopeId={semanticScopeId} assets={assets} folders={mediaFolders} fps={fps} offlineAssetIds={offlineAssetIds} onAssetLoadError={onAssetLoadError} onImport={onImportMedia} onImportMobile={onImportMobileMedia} onAddAsset={onAddMediaItem}
             onCreateFolder={onCreateMediaFolder} onRenameFolder={onRenameMediaFolder} onDeleteFolder={onDeleteMediaFolder}
             onMoveAssets={onMoveMediaAssets} onRenameAsset={onRenameMediaAsset} onSetFavorite={onSetMediaAssetFavorite} onRemoveAsset={onRemoveMediaAsset}
             onRelinkAsset={onRelinkMediaAsset} onAddSolid={onAddSolid} />
         </div>
       ) : (
       <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px 7px 16px', fontSize: 12, borderBottom: `0.5px solid ${theme.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, padding: '10px 12px 7px 16px', fontSize: 12, borderBottom: `0.5px solid ${theme.border}` }}>
         <div style={{ display: 'flex', gap: 14, minWidth: 0, overflowX: 'auto', whiteSpace: 'nowrap', flex: 1 }}>
           {SUB_TABS.map((tab) => (
             <button key={tab} onClick={() => setSubTab(tab)}
@@ -227,26 +188,9 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
           <TemplateBrowser templates={templates} onAdd={onAddTemplate} onUseAI={onUseTemplateAI} />
         ) : showSfx ? (
           <SoundBrowser fps={fps} onAdd={onAddAudio} />
-        ) : subTab === '音频效果' ? (
-          <ResourceBrowser
-            layout="grid"
-            dragKind="audio-fx"
-            hint="点击应用到选中视频/音频（开箱人声隔离 · 也可拖到时间线片段）"
-            items={AUDIO_FX_ITEMS}
-            applicable={(selKind === 'video' || selKind === 'audio') && !!onApplyAudioFx}
-            disabledNote={
-              (selKind === 'video' || selKind === 'audio')
-              && selectedItem
-              && !selectedItem.src?.startsWith('/media/uploads/')
-                ? '需先上传到媒体池（/media/uploads）'
-                : undefined
-            }
-            onApply={(id) => { void onApplyAudioFx?.(id); }}
-            thumb={(id) => AUDIO_FX_THUMBS[id] ?? ''}
-          />
         ) : subTab === '转场' ? (
           <div className="cc-transition-browser">
-            {/* 音频交叉淡化 — trAudioCrossFade；选中音频片段时高亮可用 */}
+            {/* Audio crossfade — trAudioCrossFade; highlighting available when audio clip is selected*/}
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 11, color: theme.textDim, margin: '0 4px 8px', letterSpacing: 0.3 }}>
                 {t('音频转场 · Audio Cross Fade')}
@@ -271,7 +215,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
               items={transitionItems}
               applicable={selectedItem != null && selKind !== 'audio'}
               onApply={applyTransitionById}
-              // 内置与 plugin:/custom: 同一套 A/B 样片 + hover 0→1 预览(真 GLSL)
+              // Built-in and plugin:/custom: the same set of A/B samples + hover 0→1 preview (true GLSL)
               renderThumb={(id, hovered) => <TransitionThumb type={id} playing={hovered} />}
             />
           </div>
@@ -296,10 +240,11 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
             renderThumb={(id, hovered) => {
               const data = zoomItems.find((x) => x.id === id)?.data;
               const pluginZoom = data ? asPluginZoom(data) : null;
-              // 插件包络:真样片 + 包络缩放动画(与内置 ZoomThumb 同观感)
-              return pluginZoom?.envelope
-                ? <EnvelopeThumb envelope={pluginZoom.envelope} magnification={pluginZoom.magnification} playing={hovered} />
-                : <ZoomThumb shape={id as ZoomShape} playing={hovered} />;
+              // plugin envelope: real sample + envelope zoom animation (same look and feel as built-in ZoomThumb)
+              if (pluginZoom?.envelope) {
+                return <EnvelopeThumb envelope={pluginZoom.envelope} magnification={pluginZoom.magnification} playing={hovered} />;
+              }
+              return <ZoomThumb shape={pluginZoom?.shape ?? id as ZoomShape} playing={hovered} />;
             }}
           />
         ) : subTab === 'LUT' ? (

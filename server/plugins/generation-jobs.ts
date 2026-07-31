@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
+import { ResultDownloadError } from './result-download.ts';
 
 export type GenerationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
@@ -15,7 +16,7 @@ export interface GenerationResult {
   fps?: number;
   /** Offset of a ranged export within the source timeline. */
   sourceStartSeconds?: number;
-  // 导出/渲染 job 复用同一队列：可选字段，让渲染产物自描述大小与编码（生成类 job 不填）。
+  // Export/rendering job reuses the same queue: Optional field, allowing the rendering product to self-describe the size and encoding (left blank for generated jobs).
   sizeBytes?: number;
   codec?: string;
 }
@@ -33,6 +34,10 @@ interface GenerationJob {
   result?: GenerationResult;
   results?: GenerationResult[];
   error?: string;
+  /** When the finished product has been generated but not retrieved, the result URL given by the supplier (see catch branch). */
+  pendingDownloadUrl?: string;
+  resumeDownload?: () => Promise<GenerationResult | GenerationResult[]>;
+  resumeDownloadUrl?: string;
   cleanupResult?: (result: GenerationResult) => Promise<void> | void;
   retentionMs: number;
   expiryTimer?: NodeJS.Timeout;
@@ -51,6 +56,11 @@ export interface GenerationJobSnapshot {
   result?: GenerationResult;
   results?: GenerationResult[];
   error?: string;
+  /**
+   * The resulting URL of the provider when the generation is successful but the download fails. The money has been spent, and the finished product does exist, but I haven't gotten it back.
+   *  — Hand it over, the user/Agent can still get it by himself without having to regenerate it.
+   */
+  pendingDownloadUrl?: string;
 }
 
 export interface GenerationJobProgress {
@@ -61,6 +71,10 @@ export interface GenerationJobProgress {
 }
 
 export type UpdateGenerationJob = (progress: GenerationJobProgress) => void;
+export type RegisterGenerationDownload = (
+  url: string,
+  resume: () => Promise<GenerationResult | GenerationResult[]>,
+) => void;
 
 export interface GenerationJobOptions {
   /** Keep the job queued until a permit for expensive local work is available. */
@@ -124,9 +138,34 @@ function applyProgress(job: GenerationJob, next: GenerationJobProgress): void {
   job.updatedAt = Date.now();
 }
 
+function completeGenerationJob(job: GenerationJob, returned: GenerationResult | GenerationResult[]): void {
+  job.results = Array.isArray(returned) ? returned : [returned];
+  job.result = job.results[0];
+  job.status = 'succeeded';
+  job.progress = 100;
+  job.phase = 'completed';
+  job.error = undefined;
+  job.pendingDownloadUrl = undefined;
+  job.resumeDownload = undefined;
+  job.resumeDownloadUrl = undefined;
+  if (job.totalFrames !== undefined) job.processedFrames = job.totalFrames;
+}
+
+function failGenerationJob(job: GenerationJob, error: unknown): void {
+  job.status = 'failed';
+  job.error = error instanceof Error ? error.message : String(error);
+  job.pendingDownloadUrl = error instanceof ResultDownloadError ? error.url : job.resumeDownloadUrl;
+  job.progress = 100;
+  job.phase = 'failed';
+}
+
 async function runGenerationJob(
   job: GenerationJob,
-  task: (jobId: string, update: UpdateGenerationJob) => Promise<GenerationResult | GenerationResult[]>,
+  task: (
+    jobId: string,
+    update: UpdateGenerationJob,
+    registerDownload: RegisterGenerationDownload,
+  ) => Promise<GenerationResult | GenerationResult[]>,
   options: GenerationJobOptions,
 ): Promise<void> {
   let release: (() => void) | undefined;
@@ -136,18 +175,13 @@ async function runGenerationJob(
     job.progress = 10;
     job.phase = 'starting';
     job.updatedAt = Date.now();
-    const returned = await task(job.id, (next) => applyProgress(job, next));
-    job.results = Array.isArray(returned) ? returned : [returned];
-    job.result = job.results[0];
-    job.status = 'succeeded';
-    job.progress = 100;
-    job.phase = 'completed';
-    if (job.totalFrames !== undefined) job.processedFrames = job.totalFrames;
+    const returned = await task(job.id, (next) => applyProgress(job, next), (url, resume) => {
+      job.resumeDownloadUrl = url;
+      job.resumeDownload = resume;
+    });
+    completeGenerationJob(job, returned);
   } catch (error) {
-    job.status = 'failed';
-    job.error = error instanceof Error ? error.message : String(error);
-    job.progress = 100;
-    job.phase = 'failed';
+    failGenerationJob(job, error);
   } finally {
     job.updatedAt = Date.now();
     release?.();
@@ -157,7 +191,11 @@ async function runGenerationJob(
 
 export function createGenerationJob(
   params: Record<string, unknown>,
-  task: (jobId: string, update: UpdateGenerationJob) => Promise<GenerationResult | GenerationResult[]>,
+  task: (
+    jobId: string,
+    update: UpdateGenerationJob,
+    registerDownload: RegisterGenerationDownload,
+  ) => Promise<GenerationResult | GenerationResult[]>,
   options: GenerationJobOptions = {},
 ): { jobId: string; status: 'queued' } {
   cleanOldJobs();
@@ -179,6 +217,27 @@ export function createGenerationJob(
   return { jobId: id, status: 'queued' };
 }
 
+export async function resumeGenerationJobDownload(jobId: string): Promise<boolean> {
+  const job = jobs.get(jobId);
+  if (!job || job.status !== 'failed' || !job.resumeDownload || !job.pendingDownloadUrl) return false;
+  if (job.expiryTimer) clearTimeout(job.expiryTimer);
+  job.status = 'running';
+  job.progress = 99;
+  job.phase = 'downloading';
+  job.error = undefined;
+  job.updatedAt = Date.now();
+  try {
+    completeGenerationJob(job, await job.resumeDownload());
+    return true;
+  } catch (error) {
+    failGenerationJob(job, error);
+    return false;
+  } finally {
+    job.updatedAt = Date.now();
+    scheduleExpiry(job);
+  }
+}
+
 export function getGenerationJobSnapshot(jobId: string): GenerationJobSnapshot | undefined {
   const job = jobs.get(jobId);
   if (!job) return undefined;
@@ -195,6 +254,7 @@ export function getGenerationJobSnapshot(jobId: string): GenerationJobSnapshot |
     result: job.result,
     results: job.results,
     error: job.error,
+    pendingDownloadUrl: job.pendingDownloadUrl,
   };
 }
 
@@ -204,7 +264,7 @@ export function deleteGenerationJob(jobId: string): Promise<boolean> {
 }
 
 interface ProgressRequest {
-  action?: 'params' | 'status' | 'wait';
+  action?: 'params' | 'status' | 'wait' | 'resume';
   target?: string;
   jobIds?: string[] | string;
   timeoutSeconds?: number;
@@ -247,6 +307,7 @@ function report(job: GenerationJob, action: ProgressRequest['action']) {
     ...(job.result ? { result: job.result } : {}),
     ...(job.results && job.results.length > 1 ? { results: job.results } : {}),
     ...(job.error ? { error: job.error } : {}),
+    ...(job.pendingDownloadUrl ? { pendingDownloadUrl: job.pendingDownloadUrl } : {}),
   };
 }
 
@@ -261,7 +322,7 @@ export function generationProgressPlugin(): Plugin {
         try {
           const input = await readJson(req);
           if (input.target !== 'generation') throw new Error('target must be generation');
-          if (!input.action || !['params', 'status', 'wait'].includes(input.action)) throw new Error('action must be params, status, or wait');
+          if (!input.action || !['params', 'status', 'wait', 'resume'].includes(input.action)) throw new Error('action must be params, status, wait, or resume');
           const jobIds = parseJobIds(input.jobIds);
           if (!jobIds.length) throw new Error('jobIds is required');
           const timeoutSeconds = input.timeoutSeconds ?? 90;
@@ -274,6 +335,9 @@ export function generationProgressPlugin(): Plugin {
               if (known.every((job) => !job || TERMINAL.has(job.status))) break;
               await wait(250);
             }
+          }
+          if (input.action === 'resume') {
+            await Promise.all(jobIds.map((id) => resumeGenerationJobDownload(id)));
           }
 
           const reports = jobIds.map((id) => {

@@ -1,7 +1,7 @@
-// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
-// 覆盖:components/settings/* + shortcuts/ShortcutsDialog + media/MediaCleanupDialog。
+// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
+// Override: components/settings/* + shortcuts/ShortcutsDialog + media/MediaCleanupDialog.
 export default {
-  // ── SettingsDialog 壳层 ──
+  // ── SettingsDialog shell ──
   '设置 · API 密钥': 'Settings · API Keys',
   '关闭': 'Close',
   '收起': 'Collapse',
@@ -17,7 +17,7 @@ export default {
   '（已 gitignore），经服务端注入，': ' (gitignored), injected by the server — ',
   '不进浏览器。': 'never sent to the browser.',
 
-  // ── 分类 / 能力组 / 厂商页标题 ──
+  // ── Category / Capability Group / Vendor Page Title ──
   'Agent 模型': 'Agent Model',
   'Agent 大脑': 'Agent Brain',
   'AI 生成': 'AI Generation',
@@ -42,7 +42,7 @@ export default {
   'MiniMax 海螺': 'MiniMax Hailuo',
   '本地磁盘': 'Local Disk',
 
-  // ── 能力组 hint ──
+  // ── capability group hint ──
   '对话与工具调用的核心，未配置无法对话。': 'Core of chat and tool calls — chat is unavailable until configured.',
   'submit_image · 文生图 / 图生图，任一厂商即可。': 'submit_image · Text-to-image / image-to-image; any one vendor works.',
   'submit_voice · 文字转配音，任一厂商即可。': 'submit_voice · Text to voiceover; any one vendor works.',
@@ -54,7 +54,7 @@ export default {
   'run_code · 云端沙箱运行 ffmpeg / node / python。': 'run_code · Run ffmpeg / node / python in a cloud sandbox.',
   'web_browser · 抓取网页内容供 Agent 参考。': 'web_browser · Fetch web pages for the Agent to reference.',
 
-  // ── 字段标签 ──
+  // ── Field label ──
   '默认厂商': 'Default vendor',
   '接口格式': 'API format',
   'Responses API（推荐）': 'Responses API (recommended)',
@@ -75,14 +75,14 @@ export default {
   'Bucket 名': 'Bucket name',
   '模板 ID（可选）': 'Template ID (optional)',
 
-  // ── 路由选项 ──
+  // ── routing options ──
   '每次询问（默认）': 'Ask every time (default)',
   '豆包': 'Doubao',
   '可灵': 'Kling',
   '{name}（未配置）': '{name} (not configured)',
   '选中未配置的厂商时，Agent 会回退为先询问。': 'If the chosen vendor is not configured, the Agent falls back to asking first.',
 
-  // ── 页注 / 字段注 ──
+  // ──Page Note/Field Note──
   'MiniMax 同一个 Key，配置一次全能力（生图 / 配音 / 视频 / 音乐）通用。': 'One MiniMax key covers every capability (image / voice / video / music) — configure once.',
   'Key 同时用于音效生成（submit_sound）。': 'The key is also used for sound-effect generation (submit_sound).',
   '可直接使用 Anthropic 官方 API Key；如使用兼容服务，再修改 Base URL 和模型。': 'Use an official Anthropic API key directly, or change the Base URL and model for a compatible service.',
@@ -104,7 +104,7 @@ export default {
     'An isolated Linux sandbox in the cloud — never touches local files. The Agent uses it for run_code: ffprobe to probe media duration / dimensions / codecs, ffmpeg to transcode / extract frames / process AV, and node / python skill scripts; results come back and local tools apply them to the timeline. Leaving it unset only affects these tools — editing and preview are unaffected.',
   '默认模板不带 ffmpeg；转码 / 抽帧类任务需自建含 ffmpeg 的模板并填其 ID。': 'The default template has no ffmpeg; for transcode / frame-extraction tasks, build a template with ffmpeg and enter its ID.',
 
-  // ── 厂商页状态 / 测试连接 / 字段渲染 ──
+  // ──Provider page status/test connection/field rendering──
   '已配置': 'Configured',
   '未配置': 'Not configured',
   '测试中…': 'Testing…',
@@ -168,6 +168,8 @@ export default {
   '标题字体': 'Heading font',
   '正文字体': 'Body font',
   '品牌指引（可选）': 'Brand guide (optional)',
+  '工程创作指引（可选）': 'Project editing guide (optional)',
+  '写下调色、字幕、节奏、转场偏好和禁用项，Agent 编辑时会遵守。': 'Describe color, captions, pacing, transition preferences, and anything the Agent should avoid.',
   '用一句话描述这个品牌的视觉倾向,AI 生成时会遵守。': "Describe the brand's visual direction in one sentence; AI generation will follow it.",
   '预览': 'Preview',
   '标题示例 Heading': 'Heading Sample',
@@ -191,7 +193,7 @@ export default {
   '如 Inter / 得意黑': 'e.g. Inter / Smiley Sans',
   '从清单选择字体': 'Pick a font from the list',
 
-  // ── SkinPicker(皮肤名照官方主题名) ──
+  // ── SkinPicker (skin photo official theme name) ──
   '皮肤': 'Skin',
   '石墨': 'Graphite',
   '墨黑': 'Midnight',
@@ -200,7 +202,7 @@ export default {
   '东京夜': 'Tokyo Night',
   '拿铁(浅色)': 'Latte (Light)',
 
-  // ── ShortcutsDialog(动作/分组名直接用 catalog 自带英文 label,不进词典) ──
+  // ── ShortcutsDialog (the action/group name directly uses the catalog’s built-in English label, without entering the dictionary) ──
   '键盘快捷键': 'Keyboard Shortcuts',
   '点击快捷键可改绑': 'Click a shortcut to rebind',
   '全部重置': 'Reset all',
@@ -222,4 +224,43 @@ export default {
   '已选 {n} 个 · {size}': '{n} selected · {size}',
   '删除中…': 'Deleting…',
   '删除所选': 'Delete selected',
+  // External Agent Access Guide (McpGuide)
+  '外部 Agent 接入 (MCP)': 'External agents (MCP)',
+  'OpenChatCut 暴露一个 Streamable HTTP MCP 端点。Claude Code / Codex / Cursor 等外部 Agent 接入后,与内置 Agent 共用同一套编辑工具,可直接读写当前工程。':
+    'OpenChatCut exposes a Streamable HTTP MCP endpoint. External agents such as Claude Code, Codex, and Cursor share the same editing tools as the built-in agent and can read and edit the current project directly.',
+  '端点地址': 'Endpoint',
+  '内置 Agent 与外部 MCP': 'Built-in Agent vs external MCP',
+  '内置 Agent 会先生成可预览的修改提案，由你应用或拒绝；外部 MCP 使用独立编辑会话，manual 模式等待审核，auto 模式在 review 时直接应用。两者都只通过 EditorCore 命令修改工程。':
+    'The built-in Agent creates a previewable proposal for you to apply or reject. External MCP uses an isolated edit session: manual mode waits for review, while auto mode applies during review. Both modify projects only through EditorCore commands.',
+  '连接本地模型': 'Connect a local model',
+  '打开 设置 → Agent 模型 → Agent 大脑 → OpenAI，填写本地或兼容服务的 API URL 和模型；按服务选择 Responses API 或 Chat Completions API，再点“测试并读取模型”。仅在服务要求时填写 API Key。':
+    'Open Settings → Agent Model → Agent Brain → OpenAI, enter the API URL and model for your local or compatible service, choose Responses API or Chat Completions API as required, then click “Test and load models.” Enter an API key only if the service requires one.',
+  '复制到剪贴板': 'Copy',
+  '编辑配方': 'Editing recipe',
+  '导入配方': 'Import recipe',
+  '导出配方': 'Export recipe',
+  '配方导入失败': 'Could not import recipe',
+  '配方导出失败': 'Could not export recipe',
+  '配方文件过大': 'Recipe file is too large',
+  '配方文件不是有效的 JSON': 'Recipe file is not valid JSON',
+  '配方文件结构无效': 'Recipe file structure is invalid',
+  '配方文件版本不受支持': 'Recipe file version is not supported',
+  '配方缺少风格内容': 'Recipe is missing its style',
+  '配方风格结构无效': 'Recipe style structure is invalid',
+  '配方内容过多': 'Recipe contains too many entries',
+  '配方颜色结构无效': 'Recipe color structure is invalid',
+  '配方字体结构无效': 'Recipe font structure is invalid',
+  '配方名称无效': 'Recipe name is invalid',
+  '颜色角色无效': 'Color role is invalid',
+  '颜色值无效': 'Color value is invalid',
+  '字体角色无效': 'Font role is invalid',
+  '字体名称无效': 'Font family is invalid',
+  '工程创作指引无效': 'Project editing guide is invalid',
+  '适用场景结构无效': 'Recipe scenarios are invalid',
+  '适用场景无效': 'Recipe scenario is invalid',
+  '缩略图地址无效': 'Thumbnail URL is invalid',
+  '设置 → 连接器 → 添加自定义连接器,粘贴上面的端点地址即可。':
+    'Settings → Connectors → Add custom connector, then paste the endpoint above.',
+  '端点默认仅监听本机;对外暴露时请配置 OPENCHATCUT_MCP_TOKEN 鉴权。桌面端 5199 端口被占用时会回退随机端口,以启动日志与本页地址为准。':
+    'The endpoint listens on localhost only by default; configure OPENCHATCUT_MCP_TOKEN before exposing it. If port 5199 is taken, the desktop app falls back to a random port — trust the startup log and the address shown here.',
 } as Record<string, string>;

@@ -54,7 +54,7 @@ export function TranscriptPanel({
   const [showAllSections, setShowAllSections] = useState(false);
   const dragClipFrom = useRef<string | null>(null);
   const [dragOverClipId, setDragOverClipId] = useState<string | null>(null);
-  // 选择模式 (transcript-selected): drag-select words → structured reference
+  // selection mode (transcript-selected): drag-select words → structured reference
   const pickMode = useSelectionRefMode();
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -102,7 +102,7 @@ export function TranscriptPanel({
   const focusIndex = focusItem ? clips.findIndex((c) => c.id === focusItem.id) : -1;
 
   // Selection mode: a native text selection over the word spans becomes a
-  // transcript-selection reference (词 id / 文本 / 源媒体 ms + keptSegments 帧映射).
+  // transcript-selection reference (word id / text / source media ms + keptSegments frame map).
   const pickFromDomSelection = () => {
     if (!pickMode || !bodyRef.current) return;
     const reference = transcriptRefFromDomSelection(bodyRef.current, clips, fps);

@@ -1,6 +1,6 @@
-// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
-// 来源:src/gl/fx/effects.ts(ALL_FX/LUT_EFFECTS 的 name/desc/参数 label;展示处包 t(),
-// 数据文件本身不动)。已在别的分片的通用词(亮度/对比/饱和/颜色/方向/旋转/缩放/模式/速度)不重复收。
+// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
+// Source: src/gl/fx/effects.ts(name/desc/parameter label of ALL_FX/LUT_EFFECTS; display package t(),
+// The data file itself does not move). Common words (brightness/contrast/saturation/color/direction/rotation/zoom/mode/speed) that are already in other fragments will not be collected repeatedly.
 export default {
   // ── FX names ──
   '黑底叠加': 'Luma Key',
@@ -113,7 +113,7 @@ export default {
     'Soft blur, green cast, coarse grain, vignette — that instant / disposable-camera vibe.',
   '钨丝灯冷青、高光微溢——夜街/霓虹（灵感自 CineStill 800T）。':
     'Tungsten cool cyan with slight highlight halation — night streets/neon (inspired by CineStill 800T).',
-  // ── 参数 label ──
+  // ── Parameter label ──
   '强度': 'Intensity',
   '阈值': 'Threshold',
   '柔和': 'Softness',

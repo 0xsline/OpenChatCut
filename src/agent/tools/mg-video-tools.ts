@@ -1,4 +1,4 @@
-import type { AgentToolSchema } from '../tool-schema';
+export { MG_VIDEO_TOOL_SCHEMAS, MG_VIDEO_TOOL_NAMES } from './schemas/mg-video-tools';
 import type { AgentContext } from '../context';
 import {
   timelineTrackIds,
@@ -15,79 +15,19 @@ import { fetchRenderJob } from './export-tools';
 import { resolveTimeline } from './timeline-target';
 
 // convert_motion_graphic_to_video + register_converted_video.
-// Flow: convert 云渲 MG 原长 → renderId → track_export 等完成 →
-// register_converted_video 把产物注册为媒体池 video 资产;同 MG 去重到同一 asset。
+// Flow: convert cloud rendering MG original length → renderId → track_export and so on →
+// register_converted_video registers the product as a media pool video asset; same as MG to remove duplicates to the same asset.
 //
-// 本地实现:/render-clip 端点(renderClip)与 clipExport.bakeClipToVideo 已在,渲染是
-// 同步的,故 convert 一步渲染+注册(返回 assetId);register 单独暴露,供导入外部已渲产物。
-// 透明:MG/text/svg 这类带 alpha 的片段,先本地渲透明 ProRes,再进 e2b 沙箱转 VP9 alpha
-// webm 入池(「转为视频 = alpha webm」);沙箱不可用/失败则优雅回退不透明 h264。
-// 不透明 raster(video/image/gif)本就无 alpha,直接 h264。
+// Local implementation: /render-clip endpoint (renderClip) and clipExport.bakeClipToVideo are already there, rendering is
+// Synchronous, so convert renders in one step + registers (returns assetId); register is exposed separately for importing external rendered products.
+// Transparent: MG/text/svg, this type of fragment with alpha, first render transparent ProRes locally, and then enter the e2b sandbox to convert to VP9 alpha
+// Webm is pooled ("convert to video = alpha webm"); if the sandbox is unavailable/fails, gracefully fall back to opaque h264.
+// Opaque raster(video/image/gif) has no alpha, directly h264.
 
 type Args = Record<string, unknown>;
 
 // Clip kinds that carry transparency worth preserving when baked (MG/vector/text).
 const ALPHA_CAPABLE = new Set(['motion-graphic', 'text', 'svg']);
-
-export const MG_VIDEO_TOOL_SCHEMAS: AgentToolSchema[] = [
-  {
-    name: 'convert_motion_graphic_to_video',
-    description:
-      'Bake a motion-graphic (or any non-audio clip) on the timeline into a real video asset in the media pool, so it can be reused/exported like footage. Renders the clip full-length via the headless renderer. Transparent MG/text/svg clips bake to a VP9 alpha WebM (transparency preserved, via the sandbox) so they composite over other clips; if the sandbox is unavailable it falls back to opaque h264. Raster clips (video/image/gif) bake to opaque h264. Pass opaque:true to force flatten, replace:true to also swap the source clip in place. Identify the clip by itemId (preferred) or assetId.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        itemId: { type: 'string', description: 'Timeline clip id (prefix ok) to convert. Preferred.' },
-        assetId: { type: 'string', description: 'Fallback: convert the first placed clip that references this asset/template id.' },
-        replace: { type: 'boolean', description: 'Also replace the source clip in place with the baked video (default false = only add to media pool).' },
-        opaque: { type: 'boolean', description: 'Force an opaque h264 bake even for MG/text/svg (skip the transparent VP9 webm path).' },
-      },
-    },
-  },
-  {
-    name: 'register_converted_video',
-    description:
-      'Import a finished MG→video render as a video asset in the media pool — step 2 of the MG→video convert flow. After track_export reports the render complete, call this with the renderId (preferred) to promote the render output into the media pool as a real video asset; the local backend resolves the output itself, no download URL needed. outputUrl is only a fallback when a renderId is unavailable. Returns the video asset id (re-running dedupes to the same asset). Afterwards place the video with edit_item (add a video item referencing the returned videoAssetId).',
-    input_schema: {
-      type: 'object',
-      properties: {
-        mgAssetId: { type: 'string', description: 'Source motion-graphic asset id (the mgAssetId of the converted clip).' },
-        renderId: { type: 'string', description: 'The convert render id (preferred; pass it once track_export reports the render complete).' },
-        outputUrl: { type: 'string', description: 'Raw render output URL — only as a fallback when a renderId is unavailable.' },
-        name: { type: 'string', description: 'Display name for the media-pool asset (defaults to "<MG name> (video)").' },
-        durationInFrames: { type: 'number', description: 'Duration in frames (defaults to the source MG length if omitted).' },
-      },
-      required: ['mgAssetId'],
-    },
-  },
-  {
-    name: 'export_motion_graphic_prores',
-    description:
-      'Export motion-graphic clip(s) as transparent ProRes 4444 .mov file(s) (alpha preserved) — the NLE hand-off format, downloaded in the browser. Use before an XML export so the timeline can reference already-rendered MG media. Identify by itemId(s) (preferred) or assetId(s); batch exports each. Unlike convert_motion_graphic_to_video (opaque h264 into the pool), this keeps alpha and downloads a .mov.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        itemId: { type: 'string', description: 'MG timeline item id (prefix ok). Preferred.' },
-        itemIds: { type: 'array', items: { type: 'string' }, description: 'Batch: several MG item ids/prefixes.' },
-        assetId: { type: 'string', description: 'MG asset id/prefix — exports its first placed timeline instance.' },
-        assetIds: { type: 'array', items: { type: 'string' }, description: 'Batch: several MG asset ids/prefixes.' },
-        filenameMode: {
-          type: 'string',
-          enum: ['asset', 'xml'],
-          description: 'asset = user-friendly asset-name .mov; xml = mg-<renderKey>.mov for submit_export XML compatibility. Defaults to asset.',
-        },
-        name: { type: 'string', description: 'Optional base filename (single export); ".mov" is appended.' },
-        preferTimelineInstance: {
-          type: 'boolean',
-          description: 'When assetId is used, export the first timeline instance and its edited properties when present. Defaults to true. Set false to render the media-pool/template defaults.',
-        },
-        timelineId: { type: 'string', description: 'Optional timeline id/prefix used to resolve item or asset instances without switching timelines.' },
-      },
-    },
-  },
-];
-
-export const MG_VIDEO_TOOL_NAMES = new Set(MG_VIDEO_TOOL_SCHEMAS.map((t) => t.name));
 
 const uid = () => `asset_${crypto.randomUUID()}`;
 

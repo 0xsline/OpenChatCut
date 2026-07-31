@@ -43,16 +43,16 @@ export function getPluginSkill(slug: string): PluginSkill | undefined {
 /** Verbatim content of a skill's SKILL.md, or a named support file under it. */
 export function readPluginSkillFile(slug: string, file?: string): string | undefined {
   if (!file) return getPluginSkill(slug)?.body;
-  // glob 键相对本模块目录(本文件就在 skills/ 里):./<slug>/<file>,没有 skills/ 前缀
+  // The glob key is relative to this module directory (this file is in skills/):./<slug>/<file>, without skills/ prefix
   return RAW[`./${slug}/${file.replace(/^\.\//, '')}`];
 }
 
 // The always-in-context index (progressive disclosure). Appended to the system prompt.
 export const PLUGIN_SKILLS_INDEX: string = [
   '',
-  '# 技能库（load_skill 按需加载 · OpenChatCut 的 15 个 SKILL.md）',
-  '下面每条是一个技能的适用场景。当任务命中某技能时，先 load_skill(name=…) 取回它的完整指导流程（SKILL.md 全文）再动手；需要深料时可带 file=（如 "references/voices.md"）。只在相关时加载，别全部加载。',
-  '任何技能要跑脚本 / ffmpeg / node / python，都用 run_code 工具在隔离沙箱执行（files 写入 → command 运行 → outputs 读回产物；沙箱碰不到时间线，产物要落编辑器仍走本地工具）。真实媒体：files 项给 url（本地 /media/… 或公网 https://）即可拉进沙箱 ffprobe/ffmpeg（公网 URL 也可直接喂 ffprobe）。',
-  '沙箱默认已装 ffmpeg（自定义模板）；若某环境没有，命令里先自装：`which ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)`。',
+  '# Skill library (load_skill on demand · 15 OpenChatCut SKILL.md files)',
+  'Each entry below describes when a skill applies. When a task matches one, call load_skill(name=…) to retrieve its full workflow before acting. For deeper material, pass file= (for example, "references/voices.md"). Load only relevant skills, not the entire library.',
+  'When a skill needs scripts, ffmpeg, node, or python, use run_code in the isolated sandbox: write files, run a command, then read outputs. The sandbox cannot access the timeline; use local editor tools to place resulting assets. For real media, pass a local /media/… or public https:// URL in files so the sandbox can fetch it for ffprobe/ffmpeg. Public URLs may also be passed directly to ffprobe.',
+  'The custom sandbox image includes ffmpeg. If an environment lacks it, install it first with: `which ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)`.',
   ...PLUGIN_SKILLS.map((s) => `- **${s.slug}** — ${s.description}`),
 ].join('\n');

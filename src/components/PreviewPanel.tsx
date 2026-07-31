@@ -2,7 +2,13 @@ import { memo, useEffect, useRef, useState, type CSSProperties, type RefObject }
 import { Player, type CallbackListener, type PlayerRef } from '@remotion/player';
 import { theme, themeAlpha } from '../theme';
 import { TimelineComposition } from '../editor/TimelineComposition';
-import { captionTrackEntries, timelineDuration, type TimelineState, type TrackId } from '../editor/types';
+import {
+  captionTrackEntries,
+  timelineDuration,
+  type TimelineItem,
+  type TimelineState,
+  type TrackId,
+} from '../editor/types';
 import { canvasRegionRef, emitSelectionRef, regionFromDrag, useSelectionRefMode } from '../agent/selection-refs';
 import { CaptionPreviewEditor } from '../captions/CaptionPreviewEditor';
 import type { CaptionsData } from '../captions/types';
@@ -13,19 +19,32 @@ import {
 import { appendDroppedManualCaption } from '../captions/manualCaptions';
 import { Icon } from './icons';
 import { useT } from '../i18n/locale';
+import { ReviewCommentsButton, type ReviewOpenRequest } from '../review/ReviewCommentsButton';
+import { usePreviewTimelineState } from '../media/previewMedia';
 
-const SHARED_AUDIO_TAGS = 32;
+const SHARED_AUDIO_TAGS = 8;
 
 interface PreviewPanelProps {
   state: TimelineState;
   playerRef: RefObject<PlayerRef | null>;
   onImport: (file: File) => Promise<void>;
-  /** 画布字幕直编(选中框+浮动工具条)。未传(如提案预览态)则只读。 */
+  offlineSrcs?: ReadonlySet<string>;
+  /** Direct editing of canvas captions (check box + floating toolbar). If it has not been transmitted (such as proposal preview status), it is read-only. */
   onUpdateCaptions?: (patch: Partial<CaptionsData>, track?: TrackId) => void;
   onSeedChat?: (text: string) => void;
+  projectId: string;
+  timelineId: string;
+  reviewState: TimelineState;
+  selectedItem: TimelineItem | null;
+  reviewRequest?: ReviewOpenRequest | null;
+  inspectorOpen: boolean;
+  onToggleInspector: () => void;
 }
 
-export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImport, onUpdateCaptions, onSeedChat }: PreviewPanelProps) {
+export const PreviewPanel = memo(function PreviewPanel({
+  state, playerRef, onImport, offlineSrcs, onUpdateCaptions, onSeedChat,
+  projectId, timelineId, reviewState, selectedItem, reviewRequest, inspectorOpen, onToggleInspector,
+}: PreviewPanelProps) {
   const t = useT();
   const duration = timelineDuration(state);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -33,12 +52,18 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
   const [busy, setBusy] = useState(false);
   const [showSafe, setShowSafe] = useState(false);
   const [autoEditCaption, setAutoEditCaption] = useState<{ trackId: TrackId; laneId: string } | null>(null);
-  // 全屏预览(` 快捷键/时间线工具栏按钮把 Player 全屏)时露出 Player
-  // 自带控制条;编辑态仍走时间线 transport,不显示双套控制。
-  // 必须听 Remotion 自己的 fullscreenchange:它在 Chrome 走 webkit 遗留 API,
-  // document 标准事件不保证跟着响,SDK emitter 才是真源。
+  // Expose Player during full screen preview (` shortcut key/timeline toolbar button to make Player full screen)
+  // Comes with a control bar; the editing state still uses the timeline transport, and does not display dual sets of controls.
+  // Must listen to Remotion's own fullscreenchange: it walks the webkit legacy API in Chrome,
+  // The document standard event is not guaranteed to be triggered, the SDK emitter is the real source.
   const [fullscreen, setFullscreen] = useState(false);
   const hasItems = state.items.length > 0;
+  const preview = usePreviewTimelineState(state);
+  const failedProxies = preview.proxies.filter(({ proxy }) => proxy.status === 'failed');
+  const pendingProxies = preview.proxies.filter(({ proxy }) => proxy.status === 'loading').length;
+  const offlineNames = [...new Set(state.items
+    .filter((item) => !!item.src && offlineSrcs?.has(item.src))
+    .map((item) => item.name))];
   useEffect(() => {
     const player = playerRef.current;
     if (!player) return;
@@ -46,7 +71,7 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
     player.addEventListener('fullscreenchange', onChange);
     return () => player.removeEventListener('fullscreenchange', onChange);
   }, [playerRef, hasItems]);
-  // 选择模式 (canvas-region-marked): drag a marquee → region reference
+  // Selection mode (canvas-region-marked): drag a marquee → region reference
   const pickMode = useSelectionRefMode();
   const importFiles = async (files: FileList | File[]) => {
     if (!files.length || busy) return;
@@ -78,7 +103,7 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
   }));
   return (
     <section style={{ display: 'flex', flex: 1, flexDirection: 'column', background: theme.panel, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-      <div style={{ height: 30, padding: '0 12px', display: 'flex', alignItems: 'center', borderBottom: `0.5px solid ${theme.border}`, flexShrink: 0 }}>
+      <div className="cc-preview-header" style={{ height: 30, padding: '0 12px', display: 'flex', alignItems: 'center', borderBottom: `0.5px solid ${theme.border}`, flexShrink: 0 }}>
         <span style={{ fontSize: 12, color: theme.text }}>{t('预览')}</span>
         {pickMode && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 10, fontSize: 11, color: theme.accent }}>
@@ -86,17 +111,39 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
             {t('选择模式：在画面上拖框选区作为引用')}
           </span>
         )}
-        {state.items.length > 0 && (
-          <button type="button" onClick={() => setShowSafe((v) => !v)}
-            title={t('切换标题/动作安全区参考框（竖屏成片构图辅助）')}
-            style={{
-              marginLeft: 'auto', fontSize: 11, lineHeight: 1, padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
-              border: `0.5px solid ${theme.border}`, background: showSafe ? theme.panelAlt : 'transparent',
-              color: showSafe ? theme.text : theme.textDim,
-            }}>
-            {t('安全框')}
-          </button>
-        )}
+        <div className="cc-preview-header-actions" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <ReviewCommentsButton
+            projectId={projectId}
+            timelineId={timelineId}
+            state={reviewState}
+            selectedItem={selectedItem}
+            openRequest={reviewRequest}
+            getCurrentFrame={() => playerRef.current?.getCurrentFrame() ?? 0}
+            onSeek={(frame) => playerRef.current?.seekTo(frame)}
+          />
+          {state.items.length > 0 && (
+            <button type="button" onClick={() => setShowSafe((v) => !v)}
+              title={t('切换标题/动作安全区参考框（竖屏成片构图辅助）')}
+              style={{
+                fontSize: 11, lineHeight: 1, padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
+                border: `0.5px solid ${theme.border}`, background: showSafe ? theme.panelAlt : 'transparent',
+                color: showSafe ? theme.text : theme.textDim,
+              }}>
+              {t('安全框')}
+            </button>
+          )}
+          {selectedItem && (
+            <button type="button" onClick={onToggleInspector} aria-pressed={inspectorOpen}
+              title={inspectorOpen ? t('收起属性') : t('展开属性')}
+              style={{
+                fontSize: 11, lineHeight: 1, padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
+                border: `0.5px solid ${theme.border}`, background: inspectorOpen ? theme.panelAlt : 'transparent',
+                color: inspectorOpen ? theme.text : theme.textDim,
+              }}>
+              {t('属性')}
+            </button>
+          )}
+        </div>
       </div>
       <div className="cc-preview-stage"
         // Suppress the browser's native <video> context menu (download / picture-in-picture
@@ -119,17 +166,25 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
             position: 'relative', width: 'auto', height: '100%',
             maxWidth: '100%', maxHeight: '100%',
             aspectRatio: `${state.width} / ${state.height}`,
+          }} onErrorCapture={(event) => {
+            if (!(event.target instanceof HTMLVideoElement)) return;
+            const failedUrl = event.target.currentSrc || event.target.src;
+            const source = preview.proxies.find(({ src, proxy }) => {
+              const urls = [src, proxy.status === 'ready' ? proxy.previewSrc : ''].filter(Boolean);
+              return urls.some((url) => new URL(url, window.location.href).href === failedUrl);
+            });
+            if (source) preview.requestFallback(source.src);
           }}>
             <Player
               ref={playerRef}
               component={TimelineComposition}
-              inputProps={{ state }}
+              inputProps={{ state: preview.state }}
               durationInFrames={duration}
               fps={state.fps}
               compositionWidth={state.width}
               compositionHeight={state.height}
               numberOfSharedAudioTags={SHARED_AUDIO_TAGS}
-              // 全屏铺黑:webkit 遗留全屏对 div 不自动垫黑底,两侧会透出页面棋盘格
+              // Full screen black: WebKit legacy full screen div does not automatically blacken the background, and the page checkerboard will be revealed on both sides.
               style={{ width: '100%', height: '100%', backgroundColor: fullscreen ? '#000' : undefined }}
               controls={fullscreen}
               // Playback runs only through the timeline transport
@@ -141,6 +196,27 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
               spaceKeyToPlayOrPause={false}
               loop
             />
+            {offlineNames.length > 0 && (
+              <div role="status" style={{
+                position: 'absolute', top: 8, left: 8, right: 8, zIndex: 12,
+                padding: '6px 10px', borderRadius: 6, background: themeAlpha.shadow(0.88),
+                border: `1px solid ${theme.accent}`, color: theme.text, fontSize: 11,
+              }}>
+                {t('离线素材：{list}', { list: offlineNames.join('、') })}
+              </div>
+            )}
+            {(pendingProxies > 0 || failedProxies.length > 0) && (
+              <div role="status" style={{
+                position: 'absolute', bottom: 8, left: 8, zIndex: 12,
+                maxWidth: 'calc(100% - 16px)', padding: '5px 8px', borderRadius: 5,
+                background: themeAlpha.shadow(0.84), color: failedProxies.length ? theme.accent : theme.textMuted,
+                fontSize: 10,
+              }}>
+                {failedProxies.length
+                  ? t('预览代理失败，已回退原始媒体：{list}', { list: failedProxies.map(({ src }) => src.split('/').pop()).join('、') })
+                  : t('正在准备 {n} 个预览代理…', { n: pendingProxies })}
+              </div>
+            )}
             {showSafe && <SafeZoneOverlay />}
             {pickMode && <RegionPickOverlay state={state} playerRef={playerRef} />}
             {!pickMode && !fullscreen && onUpdateCaptions && captionTrackEntries(state).map(({ id, captions }) => captions?.enabled ? (
@@ -161,6 +237,7 @@ export const PreviewPanel = memo(function PreviewPanel({ state, playerRef, onImp
     </section>
   );
 });
+
 
 // Selection-mode marquee over the video rect: drag a rectangle → canvas-region
 // reference in COMPOSITION coordinates, with the visual clips it covers at the

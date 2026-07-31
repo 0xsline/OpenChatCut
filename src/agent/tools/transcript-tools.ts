@@ -1,4 +1,4 @@
-import type { AgentToolSchema } from '../tool-schema';
+export { TRANSCRIPT_TOOL_SCHEMAS, TRANSCRIPT_TOOL_NAMES } from './schemas/transcript-tools';
 import type { AgentContext } from '../context';
 import { defaultTrackId, resolveTrackId, trackAlias, type TimelineItem, type TrackId } from '../../editor/types';
 import { transcribePath } from '../../transcript/assemblyai';
@@ -9,137 +9,6 @@ import { buildSilenceGapCaps, parseCleanOnly, parseSilenceRule, type SilenceRule
 import type { Action } from '../../editor/reduce';
 import { execFindTranscript, findPhrase, normalize } from './transcript-find';
 import { execReadTranscript } from './transcript-read';
-
-// Agent tools for the transcript / caption / "delete text = delete video" surface.
-// Names + semantics: transcribe (import_media/manage_transcript),
-// find_transcript, clean_script, delete_text (apply_script), edit_captions.
-
-export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
-  {
-    name: 'read_transcript',
-    description: 'Read the current timeline transcript as a compact phrase view for planning and semantic editing. This is the default transcript reading surface for long videos and multiple takes: words are grouped by speaker changes, pauses, and a bounded phrase size while retaining source item, source timestamps, timeline frames, and original word-index ranges. Deleted/trimmed words are omitted, but the word-level transcript remains unchanged for precise edits. Use find_transcript when locating a specific quote instead.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        itemId: { type: 'string', description: 'Optional clip id or unique prefix. Omit to read all transcribed clips.' },
-        track: { type: 'string', description: 'Optional track alias/id. Ignored when itemId is set.' },
-        silenceThresholdSeconds: { type: 'number', minimum: 0, maximum: 10, description: 'Start a new phrase after this pause; defaults to 0.5 seconds.' },
-        maxWordsPerPhrase: { type: 'integer', minimum: 1, maximum: 100, description: 'Hard cap for uninterrupted speech; defaults to 40 words.' },
-        offset: { type: 'integer', minimum: 0, description: 'Phrase offset for pagination; defaults to 0.' },
-        limit: { type: 'integer', minimum: 1, maximum: 200, description: 'Maximum phrases to return; defaults to 80.' },
-      },
-    },
-  },
-  {
-    name: 'transcribe_track',
-    description: 'Transcribe the audio clip on a track (word-level + speaker labels, via AssemblyAI) and attach the transcript. Required before find_transcript / clean_script / delete_text / captions when the clip has no transcript yet.',
-    input_schema: { type: 'object', properties: { track: { type: 'string', description: 'Track alias or stable id whose audio to transcribe (default A1).' } } },
-  },
-  {
-    name: 'find_transcript',
-    description: 'Find WHEN a phrase is spoken — a time-coordinate lookup, not a transcript reader or editing tool. Returns matches with their timeline frame range (fromFrame/toFrame) so you can anchor B-roll, motion graphics, markers, or overlays at that moment (or locate a spot before delete_text). Default: contiguous case/punctuation/whitespace-insensitive match over every transcribed clip on the timeline; edits are respected (deleted words won\'t match). asset = search ONE asset\'s raw transcript regardless of timeline use (library lookup, ignores edits). track = restrict to that track. fuzzy = token-order match with window tolerance (use when ASR may have fillers like "uh," between query tokens). includeWordTimestamps = add a Words block under each match with each word\'s start → end time — use when syncing animation beats to which word is being said; skip for plain phrase anchoring (extra output). limit = max results (default 10).',
-    input_schema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: 'Text to search for.' },
-        asset: { type: 'string', description: 'Asset ID or prefix ID. Omit to search across the whole project.' },
-        track: { type: 'string', description: 'Track alias (V1/A1/...) or track id. Restricts the search to that track.' },
-        fuzzy: { type: 'boolean', description: 'Token-window match (tolerates fillers between tokens).' },
-        includeWordTimestamps: { type: 'boolean', description: 'Include per-word timestamps inside each match (default false). Adds a Words block under each match with each word\'s start -> end time. Use when syncing animation beats to speech cadence (e.g., MG internal rhythm matched to which word is being said).' },
-        limit: { type: 'integer', description: 'Max results returned (default 10).' },
-      },
-      required: ['query'],
-    },
-  },
-  {
-    name: 'clean_script',
-    description: 'Mechanically clean transcribed clips with fixed filler removal and typed pause rules. only may be "fillers", "silence", or "fillers,silence". silence accepts compress:400, restore:500, normalize:500, range:300-800, plus legacy max:400, min:500, 500, and min:300,max:800. Rules that lengthen a pause never exceed the silence present in the recording. Existing maxPauseSeconds/removeFillers calls remain supported. The whole operation is one undo step.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        track: { type: 'string', description: 'Track alias/id whose voiceover clips to clean (default A1). Cleans every transcribed clip on it.' },
-        itemId: { type: 'string', description: 'Optional: clean only this one clip instead of the whole track.' },
-        only: { type: 'string', description: 'Run fillers, silence, or both as fillers,silence. Omit for existing default behavior.' },
-        silence: { type: 'string', description: 'Pause rule: compress:400, restore:500, normalize:500, range:300-800, or legacy syntax.' },
-        longSilence: { type: 'number', description: 'Long-pause threshold in ms for the default silence rule (pauses at/above it compress to 200ms). Default 3000 when only includes silence and no silence rule is supplied.' },
-        maxPauseSeconds: { type: 'number', description: 'Compress pauses longer than this down to it (e.g. 0.5). Omit to leave pauses.' },
-        removeFillers: { type: 'boolean', description: 'Strip filler words (default true).' },
-      },
-    },
-  },
-  {
-    name: 'edit_gap',
-    description:
-      'List or edit breath/silence gaps between spoken words on a transcribed clip. Gaps are computed from word timestamps (next.start − prev.end), not separate assets. action=list returns visible gaps with afterWordIndex/gapSeconds/context. action=delete removes one gap (silence→0, later audio ripples earlier). action=cap compresses one gap to maxSeconds (e.g. 0.2). action=restore clears a per-gap override so the original pause returns. Prefer list first to get afterWordIndex. For batch whole-track pause cleanup use clean_script instead.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        action: {
-          type: 'string',
-          enum: ['list', 'delete', 'cap', 'restore'],
-          description: 'list=enumerate gaps; delete=remove one gap; cap=compress one gap; restore=undo per-gap override.',
-        },
-        track: { type: 'string', description: 'Track alias/id (default A1) when itemId omitted.' },
-        itemId: { type: 'string', description: 'Target clip id (prefix ok). Prefer when multiple clips share a track.' },
-        afterWordIndex: {
-          type: 'number',
-          description: 'Word index AFTER the gap (from list). Required for delete/cap/restore unless afterText is given.',
-        },
-        afterText: {
-          type: 'string',
-          description: 'Locate gap by the spoken phrase that STARTS after the gap (matched in transcript). Alternative to afterWordIndex.',
-        },
-        gapIndex: {
-          type: 'number',
-          description: '0-based index among listable gaps on the clip (from list). Alternative to afterWordIndex.',
-        },
-        maxSeconds: {
-          type: 'number',
-          description: 'cap only: max pause seconds to keep (e.g. 0.2 or 0.5). Required for cap.',
-        },
-        minGapSeconds: {
-          type: 'number',
-          description: 'list only: min raw gap to include (default 0.25s).',
-        },
-      },
-      required: ['action'],
-    },
-  },
-  {
-    name: 'delete_text',
-    description: 'Delete a spoken phrase from a track — "delete text = delete video": the matching words\' audio and their time are cut and the clip re-times. If unsure of the exact wording, find_transcript first. ⚠ AUDIO clips only re-time this way; a VIDEO clip always plays continuously from srcInFrame — deleting its words cuts NOTHING (captions keep mirroring the audible speech, so the deletion has no visible effect). To cut a video clip use split_item / edit_item (srcInFrame + durationInFrames); to hide individual words from captions use edit_captions action=display_text.',
-    input_schema: { type: 'object', properties: { track: { type: 'string' }, query: { type: 'string', description: 'The phrase to delete (matched against the transcript).' } }, required: ['query'] },
-  },
-  {
-    name: 'manage_transcript',
-    description: '管理源转写的修正与翻译变体,不改时间轴(词的起止/帧位/词数/片段时长恒不变)。action(6 个):\n'
-      + '- fix：修正源转写。改错字→传 wordIndex 或 find(错词原文)+ text(正确文本),只改 word.text;改/合并说话人→传 from(现有标签,如 "A")+ to(新显示名,传已有标签即合并两位),只改 word.speaker。\n'
-      + '- retry_transcription：对该 clip 强制重跑 ASR(转写卡住/失败/想重转时),覆盖现有转写。\n'
-      + '- translation_create：把该转写整段翻成 lang,新建/覆盖一个译文变体(词级,共享源时间轴)。\n'
-      + '- translation_ensure：幂等——同 lang 变体已存在则复用,否则翻译新建。日常「翻译一下」优先用它。\n'
-      + '- translation_list：列出该 clip 的原文 + 所有译文变体(id/lang/词数)。\n'
-      + '- translation_read：读某个译文变体的词(传 lang / targetLanguage 选语言)。\n'
-      + '译文变体只承载译文;要在字幕里显示某语言,用 edit_captions 的 language_mode。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        action: { type: 'string', enum: ['fix', 'retry_transcription', 'translation_create', 'translation_ensure', 'translation_list', 'translation_read'], description: '见描述:改错字/说话人、重转、建/保证/列/读译文变体。' },
-        itemId: { type: 'string', description: '目标 clip 的 item id;省略则取该 track 上第一个带转写的音/视频 clip。' },
-        track: { type: 'string', description: 'itemId 省略时,用 track 别名/稳定 id 定位(默认 A1)。' },
-        wordIndex: { type: 'number', description: 'fix 改错字:要修正的词下标(与 find 二选一)。' },
-        find: { type: 'string', description: 'fix 改错字:错词原文,精确匹配一个词(与 wordIndex 二选一)。' },
-        text: { type: 'string', description: 'fix 改错字:修正后的正确文本。' },
-        from: { type: 'string', description: 'fix 改说话人:要重命名的现有说话人标签(如 "A"/"B")。' },
-        to: { type: 'string', description: 'fix 改说话人:新显示名;传一个已存在的标签即合并两位说话人(如 "B"→"A")。' },
-        lang: { type: 'string', description: 'translation_create/ensure:目标语言(如 "English"/"中文"/"日本語");translation_read:要读的变体语言。' },
-        targetLanguage: { type: 'string', description: 'translation_read:要读的译文语言(lang 的别名)。' },
-      },
-      required: ['action'],
-    },
-  },
-];
-
-export const TRANSCRIPT_TOOL_NAMES = new Set(TRANSCRIPT_TOOL_SCHEMAS.map((t) => t.name));
 
 type Args = Record<string, unknown>;
 
@@ -345,7 +214,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       }
     }
     case 'find_transcript':
-      // 参数面(asset/fuzzy/includeWordTimestamps/limit)+ 全工程搜索:transcript-find.ts。
+      // Parameter surface (asset/fuzzy/includeWordTimestamps/limit) + full project search: transcript-find.ts.
       return execFindTranscript(args, ctx);
     case 'clean_script': {
       // Whole-track batch: clean every
@@ -374,6 +243,9 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       const silenceFrames = typeof args.maxPauseSeconds === 'number'
         ? Math.max(1, Math.round(args.maxPauseSeconds * fps))
         : undefined;
+      const cutPadFrames = typeof args.cutPadMs === 'number'
+        ? Math.max(0, Math.round((Math.min(500, Math.max(0, args.cutPadMs)) / 1000) * fps))
+        : undefined;
       const removeFillers = selection.fillers;
       let fillersRemoved = 0;
       const actions: Action[] = [];
@@ -391,9 +263,13 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
               fps,
             }),
             replaceGapCaps: true,
+            cutPadFrames,
           });
         } else if (!usesTypedArgs) {
-          actions.push({ type: 'cleanScript', id: it.id, silenceFrames, removeFillers });
+          actions.push({ type: 'cleanScript', id: it.id, silenceFrames, removeFillers, cutPadFrames });
+        } else if (cutPadFrames !== undefined) {
+          // When only changing the breathing port, keep the existing compression settings of the clip as they are, so they won't be cleared by cleanScript.
+          actions.push({ type: 'cleanScript', id: it.id, removeFillers, cutPadFrames, silenceFrames: it.silenceFrames });
         } else if (fillers.length) {
           actions.push({ type: 'deleteWords', id: it.id, idxs: fillers });
         }

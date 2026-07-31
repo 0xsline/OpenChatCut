@@ -47,6 +47,7 @@ const editors = new Map<string, EditorRegistration>();
 const queues = new Map<string, QueuedCall[]>();
 const pending = new Map<string, QueuedCall>();
 const waiters = new Map<string, () => void>();
+const toolChangeListeners = new Set<() => void>();
 // ponytail: one local user's selected project. Use MCP-session scoped targets if this
 // endpoint becomes a multi-user hosted service.
 let targetProjectId: string | null = null;
@@ -56,8 +57,17 @@ export function registerEditor(
   editorId: string,
   tools: ExternalToolSchema[],
 ): void {
+  const before = JSON.stringify(registeredTools());
   editors.set(projectId, { editorId, lastSeen: Date.now(), tools });
+  if (JSON.stringify(registeredTools()) !== before) {
+    for (const listener of toolChangeListeners) listener();
+  }
   waiters.get(projectId)?.();
+}
+
+export function onRegisteredToolsChanged(listener: () => void): () => void {
+  toolChangeListeners.add(listener);
+  return () => toolChangeListeners.delete(listener);
 }
 
 export function touchEditor(projectId: string, editorId: string): boolean {

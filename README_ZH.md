@@ -22,6 +22,8 @@
   <a href="#产品导览">产品导览</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#在-codex--claude-code-中使用">Agent / MCP</a> ·
+  <a href="#社区">社区</a> ·
+  <a href="#赞助">赞助</a> ·
   <a href="#更新日志">更新日志</a> ·
   <a href="#star-趋势">Star 趋势</a> ·
   <a href="#贡献">参与贡献</a>
@@ -29,7 +31,7 @@
 
 <p align="center">
   <a href="https://github.com/0xsline/OpenChatCut"><img alt="GitHub Repository" src="https://img.shields.io/badge/GitHub-Repository-181717?style=flat&logo=github" /></a>
-  <a href="https://discord.gg/JActyWMjms"><img alt="Discord 社区" src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=flat&logo=discord&logoColor=white" /></a>
+  <a href="https://discord.gg/bSGUAeWYkh"><img alt="Discord 社区" src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=flat&logo=discord&logoColor=white" /></a>
   <img alt="Status" src="https://img.shields.io/badge/status-active_development-FF8A3D?style=flat" />
   <img alt="Local First" src="https://img.shields.io/badge/data-local_first-111827?style=flat" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-6-3178C6?style=flat&logo=typescript&logoColor=white" />
@@ -37,6 +39,10 @@
   <img alt="Remotion" src="https://img.shields.io/badge/Remotion-4-0B84F3?style=flat" />
   <img alt="Electron" src="https://img.shields.io/badge/Electron-43-47848F?style=flat&logo=electron&logoColor=white" />
   <img alt="MCP" src="https://img.shields.io/badge/MCP-Agent_native-7C3AED?style=flat" />
+</p>
+
+<p align="center">
+  <a href="https://linux.do" alt="LINUX DO"><img src="https://shorturl.at/ggSqS" /></a>
 </p>
 
 <p align="center">
@@ -74,6 +80,33 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 - 🧩 **MG 与 WebGL**：动态图形模板、自定义 shader、视觉特效和转场。
 - 📦 **可交付导出**：MP4、音频、字幕、FCPXML 和工程数据。
 - 🖥️ **Local-first**：工程和素材优先保存在本机，密钥只进入服务端。
+
+## 社区
+
+加入 OpenChatCut 社区，交流使用心得、功能建议与开发进展：
+
+- [加入 Discord](https://discord.gg/bSGUAeWYkh)
+- 使用微信扫描下方二维码加入微信群。
+
+<p align="center">
+  <br />
+  <img src="assets/readme-pic/wechat-community.png" width="220" alt="OpenChatCut 微信社区二维码" />
+</p>
+
+---
+
+## 赞助
+
+如果 OpenChatCut 对你有帮助，欢迎通过 Ko-fi 或爱发电支持项目持续开发。
+
+<p align="center">
+  <a href="https://ko-fi.com/Y5N2241IP5">
+    <img alt="通过 Ko-fi 支持项目" src="https://img.shields.io/badge/Support_me_on-Ko--fi-72a4f2?logo=kofi&amp;logoColor=white" />
+  </a>
+  <a href="https://www.ifdian.net/a/sline?utm_source=copylink&amp;utm_medium=link">
+    <img alt="通过爱发电支持 OpenChatCut" src="https://img.shields.io/badge/%E6%94%AF%E6%8C%81%E9%A1%B9%E7%9B%AE-%E7%88%B1%E5%8F%91%E7%94%B5-946CE6" />
+  </a>
+</p>
 
 ---
 
@@ -156,6 +189,32 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 
 ---
 
+## 社区资源库
+
+[OpenChatCut 社区资源库](https://openchatcut.com/zh/resources)用于发现、安装和分享可复用的 MG 动画、音效、转场、特效、缩放和 LUT。
+
+<p align="center">
+  <a href="https://openchatcut.com/zh/resources">
+    <img src="assets/readme-pic/08-community-resources.png" alt="OpenChatCut 社区资源库" />
+  </a>
+</p>
+
+### 发现与安装
+
+- 悬停视觉卡片查看完整变化，下载前可直接试听音频资源。
+- 复制资源的安装 URL 到 OpenChatCut 扩展中心，或下载原始资源包。
+- 在编辑器内浏览官网目录，并在本机管理已安装扩展。
+
+### 贡献资源
+
+1. 打开[贡献资源](https://openchatcut.com/zh/resources/submit)，选择资源分类。
+2. 上传资源与该分类要求的预览输入，网站会渲染用于公开展示的预览。
+3. 填写作者和许可证信息，提交审核；审核通过后公开上架。
+
+可安装的视觉资源沿用编辑器的 `openchatcut-plugin@1` 格式与运行时校验。OpenChatCut 官方资源使用 MIT 许可证；社区投稿者在提交时选择许可证，发布卡片会显示作者与许可信息。
+
+---
+
 ## 典型使用场景
 
 - **口播与访谈精剪**：转写音视频，按文字删除口误、停顿和冗余内容，再自动生成字幕。
@@ -179,7 +238,7 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 
 ### 桌面安装包
 
-从 [GitHub Releases](https://github.com/0xsline/OpenChatCut/releases/latest) 下载最新的 macOS 与 Windows 构建。目前提供 Apple Silicon、Intel Mac 的 DMG，以及 Windows x64 安装包。
+从 [GitHub Releases](https://github.com/0xsline/OpenChatCut/releases/latest) 下载最新的 macOS、Windows 与 Linux 构建。目前提供 Apple Silicon、Intel Mac 的 DMG、Windows x64 安装包，以及 Linux x64 AppImage。
 
 这些仍是早期构建。macOS 安装包尚未签名和公证，首次启动时可能需要在系统设置中手动允许。
 
@@ -217,13 +276,22 @@ npm run desktop:dev
 
 ## 项目状态
 
-OpenChatCut 目前处于积极开发阶段，编辑器、工程格式和 Agent 工具仍会持续迭代。预构建的 macOS 与 Windows 安装包已发布到 [GitHub Releases](https://github.com/0xsline/OpenChatCut/releases)；开发和排障时，从源码运行仍是最透明的方式。
+OpenChatCut 目前处于积极开发阶段，编辑器、工程格式和 Agent 工具仍会持续迭代。预构建的 macOS、Windows 与 Linux 安装包已发布到 [GitHub Releases](https://github.com/0xsline/OpenChatCut/releases)；开发和排障时，从源码运行仍是最透明的方式。
 
 基础时间线、本地工程、内置素材和手动编辑不依赖云服务。AI 模型、在线素材、生成、转写等联网能力只在你配置对应服务后启用。
 
 ---
 
 ## 在 Codex / Claude Code 中使用
+
+安装单入口 OpenChatCut Agent Skill：
+
+```bash
+npx skills add 0xsline/OpenChatCut
+```
+
+然后对 Agent 说“设置 OpenChatCut”。安装的路由 Skill 会注册本地 MCP
+连接，并按需加载编辑器内置的 15 个专项 Skill，避免技能列表出现大量入口。
 
 OpenChatCut 暴露 Streamable HTTP MCP：
 
@@ -297,7 +365,7 @@ OPENCHATCUT_EDITOR_URL=https://your-editor.example.com
 |---|---|
 | 前端 | React 19、TypeScript 6、Vite 8 |
 | 编辑核心 | 不可变时间线状态、命令层、提案式应用 |
-| Agent | Vercel AI SDK 7（Anthropic、OpenAI、Gemini、Kimi、Qwen、GLM、DeepSeek、MiniMax、Mistral 与兼容接口）、Agent Skills、MCP SDK |
+| Agent | Vercel AI SDK 7（Anthropic、OpenAI、Gemini、Kimi、Qwen、GLM、DeepSeek、MiniMax、小米 MiMo、Mistral 与兼容接口）、Agent Skills、MCP SDK |
 | 预览与视觉 | Remotion Player、WebGL / GLSL |
 | 服务端 | Vite / Electron 双宿主插件、服务端密钥仓 |
 | 持久化 | `~/.openchatcut` 下的本机共享工程库、IndexedDB 缓存、可配置本地素材目录、可选 Cloudflare R2 |

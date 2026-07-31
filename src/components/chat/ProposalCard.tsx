@@ -9,7 +9,7 @@ export function ProposalCard({ proposal, onApply, onReject, onPreview, stale, on
   onApply: (selected: Set<number>) => void;
   onReject: () => void;
   onPreview: (on: boolean) => void;
-  /** 提案过期(staleness):真时footer换 仍然应用/重新提案/取消 三选 */
+  /** Proposal expiration (staleness): Real time footer change, still apply/re-propose/cancel three choices */
   stale?: boolean;
   onForceApply?: (selected: Set<number>) => void;
   onRePropose?: () => void;

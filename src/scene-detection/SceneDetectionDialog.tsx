@@ -128,7 +128,7 @@ export function SceneDetectionDialog({ state, commands, item, onClose }: SceneDe
             <h2 id="cc-scene-title">{t('场景检测')}</h2>
             <p>{item.name} · {t('本机分析，不上传素材')}</p>
           </div>
-          <button type="button" className="cc-scene-icon-button" onClick={close} aria-label={t('关闭')}>
+          <button type="button" autoFocus className="cc-scene-icon-button" onClick={close} aria-label={t('关闭')}>
             <Icon name="x" size={17} />
           </button>
         </header>
@@ -156,7 +156,7 @@ export function SceneDetectionDialog({ state, commands, item, onClose }: SceneDe
 
             <div className="cc-scene-progress-card">
               <div><span>{phase}</span><strong>{Math.round((job?.progress ?? 0) * 100)}%</strong></div>
-              <div className="cc-scene-progress-track"><i style={{ width: `${Math.round((job?.progress ?? 0) * 100)}%` }} /></div>
+              <div className="cc-scene-progress-track"><i style={{ transform: `scaleX(${job?.progress ?? 0})` }} /></div>
               {job?.status === 'detecting' && job.result === null && (
                 <small>{t('已分析到 {time}', { time: formatTime(job.processedMs) })}</small>
               )}

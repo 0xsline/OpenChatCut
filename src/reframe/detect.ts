@@ -1,43 +1,42 @@
-// 自动 reframe 检测核心。
-// 自定设计:此前只有 reframe 曲线的“写入/渲染”
-// 基础设施(builtin:zoom + reserved __openchatcutReframeCurve = ReframeCurveV1),并没有
-// “采样视频 → 检测主体 → 生成 reframe 关键帧”的自动检测工具。本文件的启发式检测
-// (逐格对比度/方差能量 → 显著区域质心)是自定的轻量 MVP,零重依赖
-// (不引 MediaPipe / TF.js / 任何 npm 包)。
+// Automatic reframe detection core.
+// The existing infrastructure only wrote and rendered reframe curves through builtin:zoom and
+// reserved __openchatcutReframeCurve = ReframeCurveV1. This module adds the missing
+// sample video → detect subject → generate keyframes path. Its lightweight heuristic maps
+// per-frame contrast/variance energy to a salient-region centroid without MediaPipe, TF.js, or other dependencies.
 //
-// 纯 / 浏览器分工:
-//   纯(无 DOM,可 headless 单测):focalFromEnergyGrid / magnificationForAspect /
-//     energyGridFromImageData(接受结构化像素,不依赖 window)。
-//   仅浏览器:detectFocalPoints 在 source 为 HTMLVideoElement 时会 seek + 画到
-//     离屏 canvas 取像素(可选用实验性 FaceDetector),这部分只能在浏览器跑。
+// Pure/browser split:
+//   Pure and headless-testable: focalFromEnergyGrid, magnificationForAspect, and
+//   energyGridFromImageData, which accepts structured pixels without relying on window.
+//   Browser-only: detectFocalPoints seeks an HTMLVideoElement, draws it to an offscreen canvas,
+//   and optionally uses the experimental FaceDetector API.
 //
-// 坐标约定(与 editor/types.ts ReframeKeyframe + zoom.ts reframeAt 对齐):
-//   focalPointX/Y ∈ 0..1 composition-normalized(0=左/上,1=右/下),渲染端映射为
-//   transformOrigin `${x*100}% ${y*100}%`;magnification ∈ 0.05..16。
+// Coordinate convention, aligned with editor/types.ts ReframeKeyframe and zoom.ts reframeAt:
+// focalPointX/Y are composition-normalized to 0..1 (left/top to right/bottom) and render as
+// transformOrigin `${x*100}% ${y*100}%`; magnification is constrained to 0.05..16.
 
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 const clampMag = (x: number): number => Math.max(0.05, Math.min(16, x));
 
-// —— 默认常量(无魔数散落) ——
-const DEFAULT_INTERVAL = 15; // 每 15 帧采一次(~0.5s @30fps)
+// Default constants.
+const DEFAULT_INTERVAL = 15; // Sample every 15 frames, about 0.5 seconds at 30 fps.
 const DEFAULT_GRID_COLS = 16;
 const DEFAULT_GRID_ROWS = 9;
-const DEFAULT_MAX_SAMPLES = 60; // seek 采样上限,防止长片卡死（略抬以跟长口播）
-const DEFAULT_SENSITIVITY = 0.5; // 0..1,越高焦点越贴最强能量区
-const DEFAULT_SMOOTH = 0.45; // EMA 平滑系数 0=不平滑,1=极粘
-const SAMPLE_CANVAS_W = 96; // 小尺寸采样画布(能量足够,速度快)
+const DEFAULT_MAX_SAMPLES = 60; // Bound seeks while allowing longer talking-head footage.
+const DEFAULT_SENSITIVITY = 0.5; // 0..1; higher values pull focus toward the strongest energy region.
+const DEFAULT_SMOOTH = 0.45; // EMA smoothing: 0 disables smoothing and 1 is maximally sticky.
+const SAMPLE_CANVAS_W = 96; // Small samples retain enough energy detail while remaining fast.
 const SAMPLE_CANVAS_H = 54;
 
-/** 结构化像素(HTMLImageData 的最小子集;用 number[] 便于 headless 造测试数据) */
+/** Minimal HTMLImageData-compatible shape; number[] keeps headless fixtures simple. */
 export interface ImageDataLike {
   data: Uint8ClampedArray | number[];
   width: number;
   height: number;
 }
 
-/** 检测结果:一条 reframe 关键帧(字段/取值域严格匹配 ReframeKeyframe) */
+/** Detected reframe keyframe whose fields and ranges match ReframeKeyframe. */
 export interface DetectedKeyframe {
-  /** effect-local 帧(clip 起点为 0) */
+  /** Effect-local frame, where the clip starts at 0. */
   frame: number;
   /** 0..1 composition-normalized */
   focalPointX: number;
@@ -46,23 +45,23 @@ export interface DetectedKeyframe {
   magnification: number;
 }
 
-/** 外部注入的采样器:给 effect-local 帧,返回该帧像素(无则 null)。headless 可用假实现。 */
+/** Injected sampler that returns pixels for an effect-local frame, or null; tests may supply a synthetic implementation. */
 export type FrameSampler = (frameLocal: number) => Promise<ImageDataLike | null>;
 
 export interface DetectOptions {
-  /** clip 长度(effect-local 帧) */
+  /** Clip length in effect-local frames. */
   durationInFrames: number;
-  /** 时间线帧率(seek 用) */
+  /** Timeline frame rate used for seeking. */
   fps: number;
-  /** 目标画布宽高比 = width/height(决定 magnification) */
+  /** Target canvas aspect ratio, width/height, used to calculate magnification. */
   dstAspect: number;
-  /** 源入点(帧):seek 时间 = (srcInFrame + f)/fps */
+  /** Source in-point in frames; seek time is (srcInFrame + f) / fps. */
   srcInFrame?: number;
   intervalFrames?: number;
   gridCols?: number;
   gridRows?: number;
   sensitivity?: number;
-  /** 源画面宽高(FrameSampler 路径必须给;video 路径默认取 videoWidth/Height) */
+  /** Source dimensions; required for FrameSampler and inferred from videoWidth/videoHeight for video. */
   srcWidth?: number;
   srcHeight?: number;
   maxSamples?: number;
@@ -73,12 +72,12 @@ export interface DetectOptions {
   smooth?: number;
 }
 
-// ===================== 纯函数(无 DOM,headless 单测) =====================
+// ===================== Pure functions (DOM-free and headless-testable) =====================
 
 /**
- * 能量网格 → 能量加权质心,返回 0..1 归一化焦点。
- * cell 取其中心坐标 ((c+0.5)/cols, (r+0.5)/rows);负能量按 0 计;
- * 空网格 / 全零 → 画面中心 (0.5,0.5)。scale-invariant(整体缩放不影响结果)。
+ * Convert an energy grid to an energy-weighted centroid normalized to 0..1.
+ * Each cell uses its center coordinate ((c+0.5)/cols, (r+0.5)/rows), and negative energy is clamped to 0.
+ * Empty or all-zero grids return (0.5, 0.5). Uniformly scaling all values does not change the result.
  */
 export function focalFromEnergyGrid(grid: number[][]): { x: number; y: number } {
   const rows = grid.length;
@@ -102,9 +101,9 @@ export function focalFromEnergyGrid(grid: number[][]): { x: number; y: number } 
 }
 
 /**
- * 把 srcW×srcH 的画面填满目标宽高比 dstAspect(=dstW/dstH)所需的 zoom 倍数。
- * = cover/contain 比 = max(srcA/dstA, dstA/srcA)。例:16:9→9:16 ≈ 3.16;16:9→16:9 = 1。
- * clamp 到 magnification 合法域 0.05..16。非法入参 → 1(不缩放)。
+ * Calculate the zoom required to fill dstAspect (= dstW/dstH) with a srcW×srcH frame.
+ * The cover/contain ratio is max(srcA/dstA, dstA/srcA); for example, 16:9→9:16 ≈ 3.16.
+ * Clamp to the valid 0.05..16 range and return 1 for invalid input.
  */
 export function magnificationForAspect(srcW: number, srcH: number, dstAspect: number): number {
   if (!(srcW > 0) || !(srcH > 0) || !(dstAspect > 0)) return 1;
@@ -115,8 +114,8 @@ export function magnificationForAspect(srcW: number, srcH: number, dstAspect: nu
 }
 
 /**
- * 逐格亮度方差 = 对比度/边缘能量(显著度代理)。DOM-free:只读结构化像素。
- * 方差越大 = 细节/边缘越多 ≈ 越可能是主体所在。
+ * Estimate saliency from per-cell luminance variance, a proxy for contrast and edge energy.
+ * Higher variance suggests more detail and a greater likelihood of containing the subject.
  */
 export function energyGridFromImageData(img: ImageDataLike, cols: number, rows: number): number[][] {
   const { data, width, height } = img;
@@ -148,7 +147,7 @@ export function energyGridFromImageData(img: ImageDataLike, cols: number, rows: 
   return grid;
 }
 
-/** sensitivity(0..1)锐化:归一到 0..1 再取幂,让焦点更贴最强能量区。 */
+/** Normalize and exponentiate by sensitivity so higher values favor the strongest energy region. */
 function emphasize(grid: number[][], sensitivity: number): number[][] {
   let max = 0;
   for (const row of grid) for (const e of row) if (e > max) max = e;
@@ -157,7 +156,7 @@ function emphasize(grid: number[][], sensitivity: number): number[][] {
   return grid.map((row) => row.map((e) => Math.pow(Math.max(0, e) / max, p)));
 }
 
-/** 采样帧序列:0..dur-1,步长 interval,含首尾,单调递增,受 maxSamples 约束。 */
+/** Build a monotonic frame sequence from 0 to dur-1, including both ends and respecting maxSamples. */
 export function sampleFrames(durationInFrames: number, interval: number, maxSamples: number): number[] {
   const last = Math.max(0, Math.floor(durationInFrames) - 1);
   if (durationInFrames <= 0) return [];
@@ -170,9 +169,9 @@ export function sampleFrames(durationInFrames: number, interval: number, maxSamp
   return frames;
 }
 
-// ===================== 浏览器:采样 + 检测 =====================
+// ===================== Browser sampling and detection =====================
 
-/** 一帧的抓取结果:像素 + 可选的 FaceDetector 焦点(有脸则优先用脸) */
+/** Captured frame pixels and an optional FaceDetector focal point, which takes precedence when present. */
 type Capture = (frameLocal: number) => Promise<{ img: ImageDataLike; faceFocal: { x: number; y: number } | null } | null>;
 
 interface FaceBox {
@@ -182,7 +181,7 @@ interface FaceDetectorLike {
   detect(source: CanvasImageSource): Promise<FaceBox[]>;
 }
 
-/** 若浏览器支持实验性 FaceDetector 则返回一个实例,否则 null(优雅降级) */
+/** Create the experimental FaceDetector when supported, otherwise degrade gracefully to null. */
 function makeFaceDetector(): FaceDetectorLike | null {
   const ctor = (globalThis as { FaceDetector?: new (o?: unknown) => FaceDetectorLike }).FaceDetector;
   if (typeof ctor !== 'function') return null;
@@ -193,7 +192,7 @@ function makeFaceDetector(): FaceDetectorLike | null {
   }
 }
 
-/** 从 HTMLVideoElement 建抓取器:seek → 画到小 canvas → getImageData(+可选人脸) */
+/** Build an HTMLVideoElement capture path: seek → draw to a small canvas → read pixels and optionally detect a face. */
 function buildVideoCapture(video: HTMLVideoElement, opts: DetectOptions): Capture {
   if (typeof document === 'undefined') throw new Error('auto reframe: no DOM (video sampling is browser-only)');
   const canvas = document.createElement('canvas');
@@ -212,7 +211,7 @@ function buildVideoCapture(video: HTMLVideoElement, opts: DetectOptions): Captur
     try {
       img = c2d.getImageData(0, 0, canvas.width, canvas.height);
     } catch {
-      // 跨源污染的 canvas 无法读像素 → 该帧跳过
+      // Cross-origin-tainted canvases cannot expose pixels, so skip this frame.
       return null;
     }
     const faceFocal = faceDetector ? await detectFace(faceDetector, canvas) : null;
@@ -220,7 +219,7 @@ function buildVideoCapture(video: HTMLVideoElement, opts: DetectOptions): Captur
   };
 }
 
-/** seek 到指定秒并等待 'seeked'(带超时兜底,不抛不挂) */
+/** Seek to a timestamp and wait for seeked, with a timeout that neither throws nor hangs. */
 function seekVideo(video: HTMLVideoElement, timeSec: number): Promise<void> {
   return new Promise((resolve) => {
     let done = false;
@@ -236,11 +235,11 @@ function seekVideo(video: HTMLVideoElement, timeSec: number): Promise<void> {
     } catch {
       finish();
     }
-    setTimeout(finish, 500); // 兜底:seek 失败也别卡住
+    setTimeout(finish, 500); // Keep a failed seek from blocking detection.
   });
 }
 
-/** 用 FaceDetector 取最大人脸的中心(归一化);无脸/出错 → null */
+/** Return the normalized center of the largest detected face, or null when absent or on error. */
 async function detectFace(detector: FaceDetectorLike, canvas: HTMLCanvasElement): Promise<{ x: number; y: number } | null> {
   try {
     const faces = await detector.detect(canvas);
@@ -254,10 +253,10 @@ async function detectFace(detector: FaceDetectorLike, canvas: HTMLCanvasElement)
 }
 
 /**
- * 采样视频 → 每个采样帧检测焦点 → 生成一串 reframe 关键帧。
- * source 为 HTMLVideoElement 时走浏览器采样(需 DOM);为 FrameSampler 时用注入像素
- * (可 headless)。有 FaceDetector 且检到脸 → 用脸中心,否则用能量质心。
- * 检测失败的帧跳过;全部失败 → 返回 []。magnification 全程一致 = 目标宽高比填充倍数。
+ * Sample video → detect focus per sampled frame → generate reframe keyframes.
+ * HTMLVideoElement uses the browser path, while FrameSampler injects pixels for headless use.
+ * Prefer a detected face center and fall back to the energy centroid. Skip failed frames and return []
+ * when all fail. Magnification remains constant at the target-aspect fill ratio.
  */
 export async function detectFocalPoints(source: HTMLVideoElement | FrameSampler, opts: DetectOptions): Promise<DetectedKeyframe[]> {
   if (!opts || !(opts.durationInFrames > 0)) return [];
@@ -289,7 +288,7 @@ export async function detectFocalPoints(source: HTMLVideoElement | FrameSampler,
     try {
       cap = await capture(frame);
     } catch {
-      cap = null; // 单帧失败不影响整体
+      cap = null; // A single failed frame does not invalidate the full detection run.
     }
     if (!cap) continue;
     const raw = cap.faceFocal ?? focalFromEnergyGrid(emphasize(energyGridFromImageData(cap.img, cols, rows), sensitivity));

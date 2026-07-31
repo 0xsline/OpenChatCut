@@ -1,8 +1,8 @@
-// 工程导出/导入(.ccproj.json)——跨端迁移通道:桌面版 Electron
-// 的 IDB 分区与浏览器独立,工程带不过去,这层补上。信封 = ProjectDoc + 聊天 +
-// 创作模式 + 引用的 /media/uploads 素材(base64)。导入即重放:建新工程 → 素材写
-// mediaBlobStore(留档)+ 不可达就直接重发布到本端 server——路径恒 /media/uploads/
-// 与物理端解耦,时间线 src 原样可用(机制同 mediaBlobStore 的新机恢复)。
+// Project export/import (.ccproj.json) - cross-end migration channel: desktop version of Electron
+// The IDB partition is independent of the browser, and the project cannot carry it through, so this layer will be added. Envelope = ProjectDoc + Chat +
+// Authoring mode + referenced /media/uploads asset (base64). Import and replay: Create new project → Asset writing
+// mediaBlobStore (leaving files) + If it is unreachable, it will be republished directly to the local server - the path is constant /media/uploads/
+// Decoupled from the physical side, the timeline src is available as it is (the mechanism is the same as mediaBlobStore's new machine recovery).
 import type { ProjectDoc } from '../editor/types';
 import {
   createProject, isPersistedChat, loadChat, loadCreativeMode, loadProject,
@@ -36,7 +36,7 @@ export interface ProjectEnvelope {
   media: ProjectMediaEntry[];
 }
 
-/** doc 引用的 /media/uploads src 全集(素材池 + 各时间线 items),去重保序。 */
+/** The complete set of /media/uploads src referenced by doc (asset pool + each timeline items), without duplication and order preservation. */
 export function collectUploadSrcs(doc: ProjectDoc): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -47,11 +47,41 @@ export function collectUploadSrcs(doc: ProjectDoc): string[] {
     }
   };
   for (const asset of doc.assets) push(asset.src);
-  for (const timeline of doc.timelines) for (const item of timeline.items) push((item as { src?: unknown }).src);
+  for (const timeline of doc.timelines) {
+    for (const item of timeline.items) {
+      push((item as { src?: unknown }).src);
+      // The apply path of isolate_voice directly links the /media/uploads path to denoisedSrc without creating assets.
+      // If you miss it, the separated audio track being played will be deleted as an orphan.
+      push((item as { denoisedSrc?: unknown }).denoisedSrc);
+    }
+  }
   return out;
 }
 
-/** 上传名单段安全判定(与 server/media-dir isSafeUploadName 同规则,浏览器侧实现)。 */
+/**
+ * Get asset references from the **unreadable** original bytes of the project. The reason for migration failure may simply be "This project is an updated version.
+ *'s build" - it's not broken at all, but `migrateProjectDoc` always returns null. If this kind of document is regarded as
+ * "Zero reference", cleanup will delete all the assets it is using as orphans.
+ *
+ * This is reduced to scanning `/media/uploads/<security name>` directly in the JSON text: I would rather leave a few more files,
+ * Nor can you delete assets being referenced by projects that you cannot understand.
+ */
+export function rawUploadSrcs(raw: unknown): string[] {
+  if (raw == null) return [];
+  let text: string;
+  try {
+    text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+  } catch {
+    return []; // Circular references, etc.: If they cannot be scanned, they will be handed over to the caller as "unknown".
+  }
+  const found = new Set<string>();
+  for (const [, name] of text.matchAll(/\/media\/uploads\/([^"'\\/\s?#]+)/g)) {
+    if (isSafeMediaName(name)) found.add(MEDIA_PREFIX + name);
+  }
+  return [...found];
+}
+
+/** Upload list segment safety determination (same rules as server/media-dir isSafeUploadName, implemented on the browser side). */
 function isSafeMediaName(name: string): boolean {
   if (!name || name.startsWith('.')) return false;
   return !name.includes('/') && !name.includes('\\') && !name.includes('\0');
@@ -67,7 +97,7 @@ function isMediaEntry(v: unknown): v is ProjectMediaEntry {
     && typeof e.dataBase64 === 'string' && e.dataBase64.length > 0;
 }
 
-/** 边界校验:导入文件是不可信输入。doc 走 migrateProjectDoc(与 IDB 读同一道闸)。 */
+/** Boundary check: The imported file is an untrusted input. doc goes through migrateProjectDoc (the same gate as IDB reading). */
 export function parseProjectEnvelope(
   text: string,
   migrationOptions?: ProjectMigrationOptions,
@@ -114,7 +144,7 @@ function blobToBase64(blob: Blob): Promise<string> {
 async function mediaBlobFor(src: string): Promise<{ blob: Blob; name: string; mime: string } | null> {
   const rec = await getMediaBlob(src);
   if (rec) return { blob: rec.blob, name: rec.name, mime: rec.mime };
-  // IDB 没有(超缓存上限/其它端上传)→ 从 server 现取
+  // IDB does not have (super cache limit/upload from other terminals) → fetch from server
   try {
     const res = await fetch(src);
     if (!res.ok) return null;
@@ -130,7 +160,7 @@ export interface ProjectExportResult {
   filename: string;
   blob: Blob;
   mediaTotal: number;
-  /** 两头都拿不到字节的 src(导出照常,导入端会缺这几个素材)。 */
+  /** Neither end can get the byte src (the export is as usual, the import end will lack these assets).*/
   mediaMissing: string[];
 }
 
@@ -191,7 +221,7 @@ export async function applyProjectImport(envelope: ProjectEnvelope): Promise<Pro
   for (const entry of envelope.media) {
     try {
       const blob = await (await fetch(`data:${entry.mime};base64,${entry.dataBase64}`)).blob();
-      await putMediaBlob(entry.src, blob, { name: entry.name, mime: entry.mime });  // 留档(≤缓存上限)
+      await putMediaBlob(entry.src, blob, { name: entry.name, mime: entry.mime });  // Keep files (≤ cache limit)
       if (!(await isMediaSrcReachable(entry.src))) {
         await reuploadMediaBlob({ src: entry.src, blob, name: entry.name, mime: entry.mime, bytes: blob.size, savedAt: Date.now() });
       }
@@ -200,8 +230,8 @@ export async function applyProjectImport(envelope: ProjectEnvelope): Promise<Pro
       failed.push(entry.src);
     }
   }
-  // 信封里就没带字节的(导出端两头落空)+ 本轮失败的,一并如实上报;
-  // 总数 = doc 引用 ∪ 信封携带(信封可带 doc 之外的素材,如素材池外挂)。
+  // If there are no bytes in the envelope (both ends of the export end are lost) + if the current round fails, report them truthfully;
+  // Total number = doc reference ∪ Envelope carrying (envelopes can carry assets other than doc, such as asset pool plugins).
   const carried = new Set(envelope.media.map((m) => m.src));
   const docSrcs = collectUploadSrcs(envelope.doc);
   const mediaMissing = [...docSrcs.filter((s) => !carried.has(s)), ...failed];

@@ -78,6 +78,19 @@ const v3 = fixture('project-v3.json');
 {
   assert.equal(migrateProjectDoc({ ...v3 as object, version: 99 }), null, 'future versions are not guessed');
   assert.equal(migrateProjectDoc({ version: 2, timelines: [], activeTimelineId: '' }), null);
+  const validItem = (v3 as { timelines: Array<{ items: unknown[] }> }).timelines[0]!.items[0]!;
+  const invalidItem = (patch: Record<string, unknown>) => ({
+    ...(v3 as { timelines: Array<{ items: unknown[] }> }),
+    timelines: [{
+      ...(v3 as { timelines: Array<Record<string, unknown>> }).timelines[0],
+      items: [{ ...(validItem as object), ...patch }],
+    }],
+  });
+  assert.equal(migrateProjectDoc(invalidItem({ durationInFrames: Number.NaN })), null, 'NaN duration is rejected');
+  assert.equal(migrateProjectDoc(invalidItem({ durationInFrames: -5 })), null, 'negative duration is rejected');
+  assert.equal(migrateProjectDoc(invalidItem({ playbackRate: 0 })), null, 'zero playback rate is rejected');
+  assert.equal(migrateProjectDoc(invalidItem({ volume: 50 })), null, 'out-of-range volume is rejected');
+  assert.equal(migrateProjectDoc(invalidItem({ id: '' })), null, 'empty item ids are rejected');
 }
 
 // Portable project imports report and use the exact same migration chain.

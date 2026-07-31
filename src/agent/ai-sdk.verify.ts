@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { generateText } from 'ai';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { generateText, jsonSchema } from 'ai';
 import {
   defaultModelForProvider,
   getLanguageModel,
@@ -32,14 +31,16 @@ assert.equal(providerApiPath('anthropic'), '/messages');
 assert.equal(providerApiPath('openai'), '/responses');
 assert.equal(providerApiPath('openai', 'chat'), '/chat/completions');
 assert.equal(providerApiPath('kimi'), '/chat/completions');
+assert.equal(providerApiPath('gemini'), '/models');
 assert.equal(providerApiPath('openrouter'), '/chat/completions');
 assert.equal(normalizeOpenAiApiMode('chat'), 'chat');
 assert.equal(normalizeOpenAiApiMode('unexpected'), 'responses');
-assert.equal(getLanguageModel('anthropic', 'test-model').provider, 'anthropic.messages');
-assert.equal(getLanguageModel('openai', 'test-model').provider, 'openai.responses');
-assert.equal(getLanguageModel('openai', 'test-model', 'chat').provider, 'openai.chat');
-assert.equal(getLanguageModel('kimi', 'test-model').provider, 'kimi.chat');
-assert.equal(getLanguageModel('openrouter', 'openrouter/auto').provider, 'openrouter.chat');
+assert.equal((await getLanguageModel('anthropic', 'test-model')).provider, 'anthropic.messages');
+assert.equal((await getLanguageModel('openai', 'test-model')).provider, 'openai.responses');
+assert.equal((await getLanguageModel('openai', 'test-model', 'chat')).provider, 'openai.chat');
+assert.equal((await getLanguageModel('kimi', 'test-model')).provider, 'moonshotai.chat');
+assert.equal((await getLanguageModel('gemini', 'test-model')).provider, 'google.generative-ai');
+assert.equal((await getLanguageModel('openrouter', 'openrouter/auto')).provider, 'openrouter.chat');
 assert.deepEqual(getLanguageModelProviderOptions('openai'), { openai: { store: false } });
 assert.equal(getLanguageModelProviderOptions('openai', 'chat'), undefined);
 assert.deepEqual(getLanguageModelProviderOptions('minimax'), {
@@ -53,13 +54,19 @@ for (const preset of LLM_PROVIDER_PRESETS) {
   assert.equal(normalizeLlmProvider(preset.id), preset.id);
   assert.equal(defaultModelForProvider(preset.id), preset.defaultModel);
   assert.doesNotThrow(() => new URL(preset.baseUrl));
+  // Providers with official exclusive packages use the official package (provider id varies from package to package); the rest are openai-compatible
+  const DEDICATED_PROVIDER_IDS: Record<string, string> = {
+    anthropic: 'anthropic.messages',
+    openai: 'openai.responses',
+    gemini: 'google.generative-ai',
+    kimi: 'moonshotai.chat',
+    qwen: 'alibaba.chat',
+    deepseek: 'deepseek.chat',
+    mistral: 'mistral.chat',
+  };
   assert.equal(
-    getLanguageModel(preset.id, 'test-model').provider,
-    preset.protocol === 'anthropic'
-      ? 'anthropic.messages'
-      : preset.protocol === 'openai'
-        ? 'openai.responses'
-        : `${preset.id}.chat`,
+    (await getLanguageModel(preset.id, 'test-model')).provider,
+    DEDICATED_PROVIDER_IDS[preset.id] ?? `${preset.id}.chat`,
   );
 }
 
@@ -91,7 +98,7 @@ try {
     ['kimi', 'kimi-test', undefined],
   ] as const) {
     await assert.rejects(generateText({
-      model: getLanguageModel(provider, model, openAiApiMode),
+      model: await getLanguageModel(provider, model, openAiApiMode),
       prompt: 'ping',
       maxRetries: 0,
     }));
@@ -176,50 +183,112 @@ assert.deepEqual(makeMessagesPortable([
   { role: 'assistant', content: [{ type: 'text', text: 'visible' }] },
 ]);
 
-let geminiRequest: Record<string, unknown> | undefined;
-const gemini = createOpenAICompatible({
-  name: 'gemini',
-  baseURL: 'https://example.invalid/v1beta/openai',
-  apiKey: 'test-key',
-  fetch: async (_input, init) => {
-    geminiRequest = JSON.parse(String(init?.body)) as Record<string, unknown>;
-    return new Response(JSON.stringify({ error: { message: 'intentional test response' } }), {
-      status: 400,
-      headers: { 'content-type': 'application/json' },
+// ── Gemini (official @ai-sdk/google, native API) thought_signature full loop regression (#6):
+// The first hop native response carries parts[].thoughtSignature → captured into response messages →
+// Replayed by prepareMessagesForProvider with the same provider → the functionCall part of the second-hop request must
+// Bring back the same signature (Strong verification in Gemini 3 cycle, if lost, it will be 400).
+{
+  const urls: string[] = [];
+  const headerKeys: string[] = [];
+  const requests: Record<string, unknown>[] = [];
+  const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
+  const google = createGoogleGenerativeAI({
+    baseURL: 'https://example.invalid/v1beta',
+    apiKey: 'test-key',
+    fetch: async (input, init) => {
+      urls.push(String(input));
+      headerKeys.push(String(new Headers(init?.headers).get('x-goog-api-key')));
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      if (requests.length === 1) {
+        return new Response(JSON.stringify({
+          candidates: [{
+            content: {
+              role: 'model',
+              parts: [{
+                functionCall: { name: 'edit_track', args: { trackId: 'V1' } },
+                thoughtSignature: 'live-signature',
+              }],
+            },
+            finishReason: 'STOP',
+          }],
+          usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ error: { code: 400, message: 'stop after capture' } }), {
+        status: 400, headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+  const first = await generateText({
+    model: google('gemini-test'),
+    prompt: 'switch track',
+    tools: { edit_track: { inputSchema: jsonSchema({ type: 'object' }) } },
+    maxRetries: 0,
+  });
+  assert.ok(urls[0].includes('/models/gemini-test:generateContent'), '原生模型路径');
+  assert.equal(headerKeys[0], 'test-key', '鉴权走 x-goog-api-key(代理端将覆盖为真实 key)');
+  const captured = first.response.messages.find((m) => m.role === 'assistant');
+  assert.ok(captured, 'first hop yields an assistant message');
+  // Second hop: Replay + tool results through our history pipeline (same vendor reserved providerOptions)
+  await assert.rejects(generateText({
+    model: google('gemini-test'),
+    messages: prepareMessagesForProvider([
+      ...first.response.messages,
+      {
+        role: 'tool',
+        content: [{
+          type: 'tool-result',
+          toolCallId: (captured!.content as Array<{ type: string; toolCallId?: string }>)
+            .find((p) => p.type === 'tool-call')!.toolCallId!,
+          toolName: 'edit_track',
+          output: { type: 'text', value: '{"ok":true}' },
+        }],
+      },
+    ], 'gemini', 'gemini'),
+    maxRetries: 0,
+  }));
+  const contents = requests[1].contents as Array<{ role: string; parts: Array<Record<string, unknown>> }>;
+  const fcPart = contents.flatMap((c) => c.parts).find((p) => p.functionCall);
+  assert.ok(fcPart, 'replayed request contains the functionCall part');
+  assert.equal(fcPart!.thoughtSignature, 'live-signature',
+    'captured thought_signature must survive into the replayed functionCall part');
+}
+
+// ── kimi/qwen/deepseek/mistral Official package type: {base}/chat/completions + Bearer,
+// Consistent with the /llm proxy contract (the proxy overwrites the real key according to the provider); the payload contains model+messages. ──
+{
+  const { createMoonshotAI } = await import('@ai-sdk/moonshotai');
+  const { createAlibaba } = await import('@ai-sdk/alibaba');
+  const { createDeepSeek } = await import('@ai-sdk/deepseek');
+  const { createMistral } = await import('@ai-sdk/mistral');
+  const cases: Array<[string, (o: { baseURL: string; apiKey: string; fetch: typeof fetch }) => (m: string) => Parameters<typeof generateText>[0]['model']]> = [
+    ['moonshotai', createMoonshotAI],
+    ['alibaba', createAlibaba],
+    ['deepseek', createDeepSeek],
+    ['mistral', createMistral],
+  ];
+  for (const [label, create] of cases) {
+    let url = '';
+    let auth = '';
+    let body: Record<string, unknown> = {};
+    const provider = create({
+      baseURL: 'https://example.invalid/llm',
+      apiKey: 'proxy-key',
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        url = String(input);
+        auth = String(new Headers(init?.headers).get('authorization'));
+        body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(JSON.stringify({ error: { message: 'stop' } }), {
+          status: 400, headers: { 'content-type': 'application/json' },
+        });
+      }) as typeof fetch,
     });
-  },
-});
-await assert.rejects(generateText({
-  model: gemini('gemini-test'),
-  messages: prepareMessagesForProvider([
-    {
-      role: 'assistant',
-      content: [{
-        type: 'tool-call',
-        toolCallId: 'gemini_tool_1',
-        toolName: 'edit_item',
-        input: { itemId: 'a' },
-        providerOptions: { google: { thoughtSignature: 'gemini-signature' } },
-      }],
-    },
-    {
-      role: 'tool',
-      content: [{
-        type: 'tool-result',
-        toolCallId: 'gemini_tool_1',
-        toolName: 'edit_item',
-        output: { type: 'text', value: '{"ok":true}' },
-      }],
-    },
-  ], 'gemini', 'gemini'),
-  maxRetries: 0,
-}));
-const geminiToolCall = ((geminiRequest?.messages as Array<Record<string, unknown>>)[0]
-  .tool_calls as Array<Record<string, unknown>>)[0];
-assert.equal(
-  (geminiToolCall.extra_content as { google: { thought_signature: string } })
-    .google.thought_signature,
-  'gemini-signature',
-);
+    await assert.rejects(generateText({ model: provider('test-model'), prompt: 'hi', maxRetries: 0 }));
+    assert.ok(url.endsWith('/llm/chat/completions'), `${label}: /chat/completions 路径(got ${url})`);
+    assert.equal(auth, 'Bearer proxy-key', `${label}: Bearer 鉴权`);
+    assert.equal(body.model, 'test-model', `${label}: model 字段`);
+    assert.ok(Array.isArray(body.messages), `${label}: messages 数组`);
+  }
+}
 
 console.log('ai-sdk checks passed');

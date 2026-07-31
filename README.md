@@ -22,6 +22,8 @@
   <a href="#product-tour">Product Tour</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#using-openchatcut-with-codex--claude-code">Agent / MCP</a> ·
+  <a href="#community">Community</a> ·
+  <a href="#sponsor">Sponsor</a> ·
   <a href="#changelog">Changelog</a> ·
   <a href="#star-growth">Star Growth</a> ·
   <a href="#contributing">Contributing</a>
@@ -29,7 +31,7 @@
 
 <p align="center">
   <a href="https://github.com/0xsline/OpenChatCut"><img alt="GitHub Repository" src="https://img.shields.io/badge/GitHub-Repository-181717?style=flat&logo=github" /></a>
-  <a href="https://discord.gg/JActyWMjms"><img alt="Discord Community" src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=flat&logo=discord&logoColor=white" /></a>
+  <a href="https://discord.gg/bSGUAeWYkh"><img alt="Discord Community" src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=flat&logo=discord&logoColor=white" /></a>
   <img alt="Status" src="https://img.shields.io/badge/status-active_development-FF8A3D?style=flat" />
   <img alt="Local First" src="https://img.shields.io/badge/data-local_first-111827?style=flat" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-6-3178C6?style=flat&logo=typescript&logoColor=white" />
@@ -37,6 +39,10 @@
   <img alt="Remotion" src="https://img.shields.io/badge/Remotion-4-0B84F3?style=flat" />
   <img alt="Electron" src="https://img.shields.io/badge/Electron-43-47848F?style=flat&logo=electron&logoColor=white" />
   <img alt="MCP" src="https://img.shields.io/badge/MCP-Agent_native-7C3AED?style=flat" />
+</p>
+
+<p align="center">
+  <a href="https://linux.do" alt="LINUX DO"><img src="https://shorturl.at/ggSqS" /></a>
 </p>
 
 <p align="center">
@@ -74,6 +80,33 @@ OpenChatCut is built for creators and developers who want AI to participate in t
 - 🧩 **Motion Graphics and WebGL**: editable motion templates, custom shaders, visual effects, and transitions.
 - 📦 **Production-ready exports**: MP4, audio, captions, FCPXML, and complete project data.
 - 🖥️ **Local-first**: projects and media stay on your machine by default, while API keys remain server-side.
+
+## Community
+
+Join the OpenChatCut community to discuss workflows, share feedback, and follow development:
+
+- [Join Discord](https://discord.gg/bSGUAeWYkh)
+- Scan the QR code below with WeChat.
+
+<p align="center">
+  <br />
+  <img src="assets/readme-pic/wechat-community.png" width="220" alt="OpenChatCut WeChat community QR code" />
+</p>
+
+---
+
+## Sponsor
+
+If OpenChatCut helps you, you can support its continued development on Ko-fi or Afdian.
+
+<p align="center">
+  <a href="https://ko-fi.com/Y5N2241IP5">
+    <img alt="Support me on Ko-fi" src="https://img.shields.io/badge/Support_me_on-Ko--fi-72a4f2?logo=kofi&amp;logoColor=white" />
+  </a>
+  <a href="https://www.ifdian.net/a/sline?utm_source=copylink&amp;utm_medium=link">
+    <img alt="Support OpenChatCut on Afdian" src="https://img.shields.io/badge/Support_on-Afdian-946CE6" />
+  </a>
+</p>
 
 ---
 
@@ -156,6 +189,32 @@ Describe the goal → Agent reads the project → Produces verifiable edits → 
 
 ---
 
+## Community Resources
+
+The [OpenChatCut resource library](https://openchatcut.com/resources) is a shared catalog for reusable MG animations, sound effects, transitions, visual effects, zooms, and LUTs.
+
+<p align="center">
+  <a href="https://openchatcut.com/resources">
+    <img src="assets/readme-pic/08-community-resources.en.png" alt="OpenChatCut community resource library" />
+  </a>
+</p>
+
+### Discover and install
+
+- Hover visual cards to watch the complete result, or play audio resources before downloading.
+- Copy a resource's install URL into OpenChatCut's Extension Center, or download its original package.
+- Browse the website catalog inside the editor and manage installed extensions locally.
+
+### Contribute a resource
+
+1. Open [Contribute a resource](https://openchatcut.com/resources/submit) and choose its category.
+2. Upload the resource and the category-specific preview inputs; the site renders the published preview.
+3. Add the creator and license information, then submit it for review and publication.
+
+Installable visual resources use the editor's `openchatcut-plugin@1` format and runtime validation. Official OpenChatCut resources use the MIT license; community contributors select a license during submission, and each published card identifies its creator and license.
+
+---
+
 ## Use Cases
 
 - **Talking-head and interview editing**: transcribe audio or video, remove mistakes, pauses, and repetition through text, then generate captions automatically.
@@ -179,7 +238,7 @@ Describe the goal → Agent reads the project → Produces verifiable edits → 
 
 ### Desktop installers
 
-Download the latest macOS and Windows builds from [GitHub Releases](https://github.com/0xsline/OpenChatCut/releases/latest). The release currently includes DMG installers for Apple Silicon and Intel Macs, plus an x64 Windows installer.
+Download the latest macOS, Windows, and Linux builds from [GitHub Releases](https://github.com/0xsline/OpenChatCut/releases/latest). The release currently includes DMG installers for Apple Silicon and Intel Macs, an x64 Windows installer, and an x64 Linux AppImage.
 
 These are early builds. The macOS packages are not yet signed or notarized, so the operating system may require manual approval on first launch.
 
@@ -217,13 +276,23 @@ The desktop app uses an Electron shell with the same embedded services. The web 
 
 ## Project Status
 
-OpenChatCut is under active development. The editor, project format, and agent tools will continue to evolve. Prebuilt macOS and Windows installers are published on [GitHub Releases](https://github.com/0xsline/OpenChatCut/releases); running from source remains the most transparent option for development and troubleshooting.
+OpenChatCut is under active development. The editor, project format, and agent tools will continue to evolve. Prebuilt macOS, Windows, and Linux installers are published on [GitHub Releases](https://github.com/0xsline/OpenChatCut/releases); running from source remains the most transparent option for development and troubleshooting.
 
 The core timeline, local projects, built-in media, and manual editing do not depend on cloud services. Connected features such as AI models, online media, generation, and transcription are enabled only after you configure the corresponding services.
 
 ---
 
 ## Using OpenChatCut with Codex / Claude Code
+
+Install the single OpenChatCut Agent Skill:
+
+```bash
+npx skills add 0xsline/OpenChatCut
+```
+
+Then tell the agent `Set up OpenChatCut`. The installed router registers the
+local MCP connection and loads the editor's 15 specialized skills on demand,
+so the agent's skill list stays compact.
 
 OpenChatCut exposes a Streamable HTTP MCP endpoint:
 
@@ -298,7 +367,7 @@ Clients must send `Authorization: Bearer <token>`. The current bridge is designe
 |---|---|
 | Frontend | React 19, TypeScript 6, Vite 8 |
 | Editing core | Immutable timeline state, command layer, and proposal-based application |
-| Agent | Vercel AI SDK 7 (Anthropic, OpenAI, Gemini, Kimi, Qwen, GLM, DeepSeek, MiniMax, Mistral, and compatible APIs), Agent Skills, MCP SDK |
+| Agent | Vercel AI SDK 7 (Anthropic, OpenAI, Gemini, Kimi, Qwen, GLM, DeepSeek, MiniMax, Xiaomi MiMo, Mistral, and compatible APIs), Agent Skills, MCP SDK |
 | Preview and visuals | Remotion Player, WebGL / GLSL |
 | Server | Dual-host Vite / Electron plugins and a server-side keystore |
 | Persistence | Shared local project store under `~/.openchatcut`, IndexedDB cache, configurable local media directory, optional Cloudflare R2 |

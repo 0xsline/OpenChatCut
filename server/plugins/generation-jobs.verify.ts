@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { TaskLimiter } from '../task-limiter.ts';
-import { createGenerationJob, deleteGenerationJob, getGenerationJobSnapshot } from './generation-jobs.ts';
+import {
+  createGenerationJob, deleteGenerationJob, getGenerationJobSnapshot, resumeGenerationJobDownload,
+} from './generation-jobs.ts';
 import { pickMurekaAudioUrl } from './music.ts';
+import { ResultDownloadError } from './result-download.ts';
 
 const success = createGenerationJob({ kind: 'music' }, async (jobId, update) => {
   update({ phase: 'rendering', progress: 63, processedFrames: 63, totalFrames: 100 });
@@ -68,6 +71,22 @@ await new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
 assert.equal(getGenerationJobSnapshot(failure.jobId)?.status, 'failed');
 assert.equal(getGenerationJobSnapshot(failure.jobId)?.phase, 'failed');
 assert.equal(getGenerationJobSnapshot(failure.jobId)?.error, 'expected failure');
+
+let downloadAttempts = 0;
+const resumable = createGenerationJob({ kind: 'video' }, async (id, _update, registerDownload) => {
+  const download = async () => {
+    downloadAttempts += 1;
+    if (downloadAttempts === 1) throw new ResultDownloadError('https://cdn.example/result.mp4', 'network');
+    return cleanupResult(id);
+  };
+  registerDownload('https://cdn.example/result.mp4', download);
+  return download();
+});
+await new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
+assert.equal(getGenerationJobSnapshot(resumable.jobId)?.pendingDownloadUrl, 'https://cdn.example/result.mp4');
+assert.equal(await resumeGenerationJobDownload(resumable.jobId), true);
+assert.equal(getGenerationJobSnapshot(resumable.jobId)?.status, 'succeeded');
+assert.equal(downloadAttempts, 2, 'resume must retry only the download callback');
 
 const limiter = new TaskLimiter(1);
 let finishFirst: (() => void) | undefined;

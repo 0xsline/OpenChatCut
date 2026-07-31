@@ -5,7 +5,6 @@ const RAW_COLOR = /(?<![\w-])#[\da-f]{3,8}\b|rgba?\([^)]*\)/gi;
 const TOKENIZED_CHANNEL = 'var(--cc-';
 
 const CONTENT_COLOR_SELECTORS = new Set([
-  '.cc-track-badge',
   '.cc-export-qa-card img',
   '.cc-audio-waveform path',
   '.cc-clip-wave path',
@@ -20,7 +19,7 @@ const CONTENT_COLOR_SELECTORS = new Set([
   '.cc-transition-marker',
   '.cc-transition-marker:hover',
   '.cc-capedit-colordot',
-  // 功能状态色必须保持原有语义，不跟随皮肤变色。
+  // The functional status color must maintain the original semantics and not change color following the skin.
   '.cc-media-error',
   '.cc-asset-menu-portal button.danger',
   '.cc-asset-menu-portal button.danger:hover',

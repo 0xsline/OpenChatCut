@@ -1,6 +1,6 @@
-// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
+// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
 export default {
-  // MediaPoolPanel 工具栏
+  // MediaPoolPanel toolbar
   '搜索素材': 'Search media',
   '搜索': 'Search',
   '上传素材': 'Upload media',
@@ -22,10 +22,11 @@ export default {
   '图片': 'Image',
   '音频': 'Audio',
   '收藏': 'Favorite',
-  // 丢失素材 / 重链
+  // Lost asset / heavy chain
   '有 {n} 个素材丢失或无法加载。选择文件夹搜索，或从行内重新链接。': '{n} assets are missing or failed to load. Pick a folder to search, or relink from each row.',
   '重新链接离线素材': 'Relink Offline Media',
   '点击重新链接': 'Click to relink',
+  '点击加入时间线，或拖到指定轨道：{name}': 'Click to add to the timeline, or drag to a specific track: {name}',
   '重新链接文件': 'Relink file',
   '工程中的文件已移动或重命名。选一个文件夹按文件名批量重链，或从下方逐个重新链接。': 'Files in this project were moved or renamed. Pick a folder to batch-relink by filename, or relink each asset below.',
   '正在按文件名匹配…': 'Matching by filename…',
@@ -33,7 +34,7 @@ export default {
   '已从文件夹按文件名重链 {n} 个素材': 'Relinked {n} assets from the folder by filename',
   '文件夹中没有与丢失素材同名的文件': 'No files in the folder match the missing assets by name',
   '没有待重链的素材': 'Nothing left to relink',
-  // 文件夹 / 选择 / 卡片
+  // folder / selection / card
   '返回上级文件夹': 'Back to parent folder',
   '重命名': 'Rename',
   '重命名文件夹': 'Rename folder',
@@ -46,6 +47,13 @@ export default {
   '已选 {n}': 'Selected {n}',
   '加到时间线': 'Add to timeline',
   '加到时间线：{name}': 'Add to timeline: {name}',
+  '点击素材右上角“⋯”：图片、视频和音频可下载原文件，MG 可导出透明 MOV。': 'Open the top-right menu: download original image, video, and audio files, or export MG as a transparent MOV.',
+  '下载原文件': 'Download original',
+  '导出透明 MOV': 'Export transparent MOV',
+  '导出中…': 'Exporting…',
+  '素材导出失败：{message}': 'Media export failed: {message}',
+  'MG 素材缺少动画代码': 'The MG asset is missing animation code',
+  '素材地址无效': 'The media URL is invalid',
   '移动所选素材': 'Move selected assets',
   '移动到…': 'Move to…',
   '移动到': 'Move to',
@@ -56,7 +64,7 @@ export default {
   '导入媒体或把素材拖到这里。': 'Import media or drag files here.',
   '当前筛选下没有素材': 'No assets match the current filter',
   '取消收藏': 'Unfavorite',
-  '确认删除': 'Confirm Delete', // 与 components.ts 同键同值
+  '确认删除': 'Confirm Delete', // Same key and same value as components.ts
   '取消': 'Cancel',
   '确定': 'OK',
   '关闭': 'Close',
@@ -74,7 +82,7 @@ export default {
   '透明编码': 'Alpha encode',
   // MediaCleanupDialog
   '清理素材': 'Clean Up Media',
-  // 下面四条与 settings.ts 同键——取同值,消除合并顺序依赖
+  // The following four items have the same key as settings.ts - take the same value and eliminate the dependence on the merge order.
   '列出所有工程都不引用的上传文件': 'Uploads not referenced by any project',
   '扫描中…(逐工程收集引用)': 'Scanning… (collecting references per project)',
   '没有无主素材,盘上很干净 ✨': 'No orphaned media — the disk is clean ✨',

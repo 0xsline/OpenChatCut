@@ -1,7 +1,7 @@
 import type { AgentToolSchema } from '../tool-schema';
 import { MINIMAX_LANGUAGE_BOOSTS } from '../../../shared/media-provider-params';
 
-/** 生成类工具的 Anthropic schema。往这个数组里 push 即可（自动进模型可见工具列表）。 */
+/** Anthropic schema for generating class tools. Just push into this array (it will automatically enter the model's visible tool list). */
 export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'submit_image',
@@ -67,10 +67,12 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
         volume: { type: 'number', exclusiveMinimum: 0, maximum: 10, description: 'MiniMax only. voice_setting.vol (>0–10). Defaults to 1.' },
         performancePrompt: { type: 'string', maxLength: 200, description: 'Doubao only. Natural-language performance direction.' },
         explicitDialect: { type: 'string', enum: ['dongbei', 'shaanxi', 'sichuan'], description: 'Doubao only; supported by the Vivi preset.' },
-        sampleRate: { type: 'integer', enum: [8000, 16000, 22050, 24000, 32000, 44100], description: 'MiniMax audio_setting.sample_rate.' },
-        bitrate: { type: 'integer', enum: [32000, 64000, 128000, 256000], description: 'MiniMax MP3 bitrate.' },
+        // ponytail: Numeric enum will be rejected by Gemini native API (Schema.enum only accepts TYPE_STRING) - write in
+        // description, the provider API side will still verify illegal values.
+        sampleRate: { type: 'integer', description: 'MiniMax audio_setting.sample_rate. One of 8000/16000/22050/24000/32000/44100.' },
+        bitrate: { type: 'integer', description: 'MiniMax MP3 bitrate. One of 32000/64000/128000/256000.' },
         audioFormat: { type: 'string', enum: ['mp3', 'pcm', 'flac', 'wav', 'pcmu_raw', 'pcmu_wav', 'opus'], description: 'MiniMax audio output format.' },
-        channel: { type: 'integer', enum: [1, 2], description: 'MiniMax output channels.' },
+        channel: { type: 'integer', minimum: 1, maximum: 2, description: 'MiniMax output channels (1 = mono, 2 = stereo).' },
         forceCbr: { type: 'boolean', description: 'MiniMax constant bitrate; true requires stream=true and MP3.' },
         stream: { type: 'boolean', description: 'MiniMax HTTP streaming transport. OpenChatCut consumes it server-side and saves one durable audio asset.' },
         excludeAggregatedAudio: { type: 'boolean', description: 'MiniMax stream option. Requires stream=true; concatenates incremental chunks.' },
@@ -115,8 +117,8 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
         lyrics: { type: 'string', maxLength: 5000, description: 'Mureka song/track or MiniMax t2m/cover lyrics. Provider-specific limits are validated.' },
         isInstrumental: { type: 'boolean', description: 'MiniMax t2m only. Force instrumental.' },
         lyricsOptimizer: { type: 'boolean', description: 'MiniMax t2m only. Auto-generate lyrics from prompt.' },
-        sampleRate: { type: 'integer', enum: [16000, 24000, 32000, 44100], description: 'MiniMax only. Default 44100.' },
-        bitrate: { type: 'integer', enum: [32000, 64000, 128000, 256000], description: 'MiniMax only. Default 256000.' },
+        sampleRate: { type: 'integer', description: 'MiniMax only. One of 16000/24000/32000/44100; default 44100.' },
+        bitrate: { type: 'integer', description: 'MiniMax only. One of 32000/64000/128000/256000; default 256000.' },
         audioFormat: { type: 'string', enum: ['mp3', 'wav', 'pcm', 'flac'], description: 'MiniMax: mp3/wav/pcm. Mureka: mp3/wav/flac. Default mp3.' },
         referenceAssetId: { type: 'string', description: 'MiniMax cover only. Project audio asset id; mutually exclusive with coverFeatureId.' },
         coverFeatureId: { type: 'string', description: 'MiniMax cover only. Preprocessed feature ID; requires lyrics and excludes referenceAssetId.' },
@@ -184,7 +186,7 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
     input_schema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['params', 'status', 'wait'], description: 'params returns submitted settings, status checks immediately, wait polls until terminal or timeout.' },
+        action: { type: 'string', enum: ['params', 'status', 'wait', 'resume'], description: 'params returns settings, status checks immediately, wait polls, and resume retries only a failed result download without regenerating.' },
         target: { type: 'string', enum: ['generation'] },
         jobIds: { type: 'string', minLength: 1, description: 'One or more comma-separated generation job IDs.' },
         assetIds: { type: 'string', description: 'Reserved; generation jobs are tracked by jobIds.' },
@@ -225,6 +227,12 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
           enum: ['480p', '720p', '1080p'],
           description: 'Video max-height ladder (default timeline size). Scales width to keep aspect.',
         },
+        videoBitrate: {
+          type: 'integer',
+          minimum: 1_000_000,
+          maximum: 80_000_000,
+          description: 'Video only. Exact output bitrate in bits per second; omit for the renderer default.',
+        },
         timelineId: {
           type: 'string',
           description: 'Export a non-active timeline by id/prefix without switching (video/audio/xml).',
@@ -246,3 +254,5 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
     },
   },
 ];
+
+export const GENERATE_TOOL_NAMES = new Set(GENERATE_TOOL_SCHEMAS.map((tool) => tool.name));

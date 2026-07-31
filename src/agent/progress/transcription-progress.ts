@@ -1,4 +1,4 @@
-// track_progress target=transcription — readiness of the "上传即转写" ASR jobs
+// track_progress target=transcription — readiness of the "upload-and-transcribe" ASR jobs
 // track_progress reads the job table; transcription runs client-side, so the
 // "table" is the in-browser transcribe-jobs registry). generate-tools.ts owns
 // target=generation; this Claude-owned handler is dispatched from tools.ts for

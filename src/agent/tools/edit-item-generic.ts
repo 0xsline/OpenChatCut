@@ -7,7 +7,7 @@
 import type { ItemKeyframes, Keyframe, KeyframeProp, MediaAsset, TimelineItem, TimelineState } from '../../editor/types';
 import { defaultTrackId, resolveTrackId } from '../../editor/types';
 import { isValidEasing } from '../../editor/keyframes';
-import { getKeyframePropertyDefinition, KEYFRAME_PROPS } from '../../editor/keyframeRegistry';
+import { getKeyframePropertyDefinition, KEYFRAME_PROPS, supportsKeyframeProperty } from '../../editor/keyframeRegistry';
 
 type OpResult = Record<string, unknown>;
 
@@ -112,7 +112,7 @@ export interface GenericCommands {
   rippleDeleteItem: (id: string) => void;
 }
 
-// keyframes arg: {x|y|scale|rotation|opacity: [{frame,value,easing?}…]} — boundary
+// keyframes arg: {x|y|scale|rotation|opacity|volume: [{frame,value,easing?}…]} — boundary
 // validation for LLM output (prop whitelist, finite frame ≥0, value in range, easing shape).
 function parseKeyframesArg(raw: unknown): { keyframes?: ItemKeyframes; error?: string } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -132,7 +132,7 @@ function parseKeyframesArg(raw: unknown): { keyframes?: ItemKeyframes; error?: s
       const value = finiteNum(k.value);
       if (frame === undefined || frame < 0) return { error: `keyframes.${prop}: frame must be a finite number ≥ 0` };
       if (value === undefined || value < lo || value > hi) {
-        // 实况教训:模型按 px 发 x/y 被拒——单位是画布百分比,错误里点明
+        // Real-life lessons: The model was rejected when sending x/y according to px - the unit is the canvas percentage, and the error is pointed out
         const unitNote = prop === 'x' || prop === 'y' ? ' (x/y are % of canvas, NOT px; 100 = one full canvas width/height)' : '';
         return { error: `keyframes.${prop}: value must be a finite number in ${lo}..${hi}${unitNote}` };
       }
@@ -178,10 +178,16 @@ export function validateGenericUpdate(state: TimelineState, entry: Record<string
   if (toFrames(entry.fadeInSeconds) !== undefined) plan.fadeInFrames = toFrames(entry.fadeInSeconds);
   if (toFrames(entry.fadeOutSeconds) !== undefined) plan.fadeOutFrames = toFrames(entry.fadeOutSeconds);
   if (entry.keyframes !== undefined) {
-    // generic transform keyframes (PRD §4.5) — visual clips only, item-local frames
-    if (it.kind === 'audio') return { error: 'keyframes apply to visual clips only (audio has no x/y/scale/rotation/opacity)' };
+    // generic keyframes (PRD §4.5), item-local frames — per-prop support by clip
+    // kind (visual: x/y/scale/rotation/opacity; audio/video: volume). The reducer
+    // silently drops unsupported props, so reject here with a real error.
     const parsed = parseKeyframesArg(entry.keyframes);
     if (parsed.error) return { error: parsed.error };
+    for (const prop of Object.keys(parsed.keyframes!) as KeyframeProp[]) {
+      if (!supportsKeyframeProperty(it, prop)) {
+        return { error: `keyframes.${prop} is not supported on a ${it.kind} clip` };
+      }
+    }
     plan.keyframes = parsed.keyframes;
   }
 

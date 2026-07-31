@@ -5,7 +5,7 @@ import { pluginAssetId } from '../plugins/types';
 import type { PropSpec, Tpl } from '../types';
 import type { ResourceItem } from './ResourceBrowser';
 
-/** 已装扩展实时列表(安装/卸载自动刷新) */
+/** Real-time list of installed extensions (installation/uninstallation automatically refreshes) */
 export function usePluginPacks(): InstalledPack[] {
   const [packs, setPacks] = useState<InstalledPack[]>([]);
   useEffect(() => {
@@ -21,7 +21,7 @@ export function usePluginPacks(): InstalledPack[] {
   return packs;
 }
 
-/** 某类扩展条目 → 资源卡列表(转场/特效/LUT/缩放 tab 合并用) */
+/** Certain types of extended entries → Resource card list (for transition/special effects/LUT/zoom tab merging) */
 export function pluginResourceItems(
   packs: InstalledPack[],
   type: 'fx' | 'lut' | 'transition' | 'zoom',
@@ -37,7 +37,16 @@ export function pluginResourceItems(
         badge: '扩展',
         ...(item.thumb ? { thumb: item.thumb } : {}),
         ...(item.type === 'zoom'
-          ? { data: { envelope: item.envelope, magnification: item.magnification ?? 1.5, label: item.name } }
+          ? { data: {
+              envelope: item.envelope,
+              shape: item.shape,
+              magnification: item.magnification ?? 1.5,
+              focalPointX: item.focalPointX,
+              focalPointY: item.focalPointY,
+              easeInFrames: item.easeInFrames,
+              easeOutFrames: item.easeOutFrames,
+              label: item.name,
+            } }
           : {}),
       });
     }
@@ -45,7 +54,7 @@ export function pluginResourceItems(
   return out;
 }
 
-/** 从 props 默认值推断检查器 schema(无 propSchema 时的回落) */
+/** Infer checker schema from props default values (fallback when no propSchema is available) */
 function inferPropSchema(props: Record<string, unknown>): PropSpec[] {
   const out: PropSpec[] = [];
   for (const [key, val] of Object.entries(props)) {
@@ -87,7 +96,7 @@ function schemaFromMgItem(item: {
   }));
 }
 
-/** 扩展 MG 模板 → Tpl(合并进模板浏览器;code 走既有沙箱编译/快照机制) */
+/** Extend MG template → Tpl (merge into template browser; code uses existing sandbox compilation/snapshot mechanism) */
 export function pluginTemplates(packs: InstalledPack[]): Tpl[] {
   const out: Tpl[] = [];
   for (const pack of packs) {
@@ -103,7 +112,7 @@ export function pluginTemplates(packs: InstalledPack[]): Tpl[] {
         width: item.width ?? 1920,
         height: item.height ?? 1080,
         fps: 30,
-        durationInFrames: 150,
+        durationInFrames: item.durationInFrames ?? 150,
         props,
         propSchema: schemaFromMgItem(item),
         thumb: item.thumb ?? null,
@@ -114,7 +123,7 @@ export function pluginTemplates(packs: InstalledPack[]): Tpl[] {
   return out;
 }
 
-/** 模板拖拽 data 的形状校验(拖拽 JSON 不可信)→ 可直接 addMotionGraphic 的 Tpl */
+/** Shape verification of template drag and drop data (drag and drop JSON is not trustworthy) → Tpl of addMotionGraphic can be directly added*/
 export function asPluginTpl(data: unknown): Tpl | null {
   if (!data || typeof data !== 'object') return null;
   const template = data as Partial<Tpl>;
@@ -150,22 +159,34 @@ export function asPluginTpl(data: unknown): Tpl | null {
   };
 }
 
-/** 缩放卡片 data 的形状校验(拖拽 JSON 不可信) */
+/** Shape verification of zoom card data (drag and drop JSON is not trusted)*/
 export function asPluginZoom(data: unknown): ZoomEffect | null {
   if (!data || typeof data !== 'object') return null;
-  const zoom = data as { envelope?: unknown; magnification?: unknown; label?: unknown };
-  if (
-    !Array.isArray(zoom.envelope)
-    || zoom.envelope.length < 2
-    || !zoom.envelope.every((value) => typeof value === 'number' && Number.isFinite(value))
-  ) return null;
+  const zoom = data as Partial<ZoomEffect> & { label?: unknown };
+  const envelope = Array.isArray(zoom.envelope)
+    && zoom.envelope.length >= 2
+    && zoom.envelope.every((value) => typeof value === 'number' && Number.isFinite(value))
+    ? zoom.envelope
+    : undefined;
+  const shapes = new Set([
+    'hold', 'punch', 'slow-push', 'instant', 'zoom-out', 'ease-in',
+    'bounce', 'snap', 'pulse', 'whip-in',
+  ]);
+  const shape = typeof zoom.shape === 'string' && shapes.has(zoom.shape)
+    ? zoom.shape as ZoomEffect['shape']
+    : undefined;
+  if (!envelope && !shape) return null;
   const magnification = typeof zoom.magnification === 'number' && Number.isFinite(zoom.magnification)
     ? Math.min(16, Math.max(1, zoom.magnification))
     : 1.5;
   return {
-    envelope: zoom.envelope,
+    ...(envelope ? { envelope } : {}),
+    ...(shape ? { shape } : {}),
     magnification,
-    shape: undefined,
+    ...(typeof zoom.focalPointX === 'number' ? { focalPointX: zoom.focalPointX } : {}),
+    ...(typeof zoom.focalPointY === 'number' ? { focalPointY: zoom.focalPointY } : {}),
+    ...(typeof zoom.easeInFrames === 'number' ? { easeInFrames: zoom.easeInFrames } : {}),
+    ...(typeof zoom.easeOutFrames === 'number' ? { easeOutFrames: zoom.easeOutFrames } : {}),
     ...(typeof zoom.label === 'string' ? { label: zoom.label } : {}),
   };
 }

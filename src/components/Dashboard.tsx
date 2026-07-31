@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { theme } from '../theme';
+import { getAgentModelSnapshot, subscribeAgentModels } from '../agent/model-selection';
 import { loadProject, loadProjectThumb, saveProjectThumb, type ProjectMeta } from '../persist/projectStore';
 import { BrandMark, Icon, OpenChatCutWordmark } from './icons';
 import { SettingsDialog } from './settings/SettingsDialog';
+import { McpGuideDialog } from './settings/McpGuide';
 import { SkinPicker } from './settings/SkinPicker';
 import { LocaleToggle } from './TopBar';
 import { MediaCleanupDialog } from '../media/MediaCleanupDialog';
@@ -16,9 +18,9 @@ interface DashboardProps {
   onRename: (id: string, name: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => Promise<void>;
-  /** 导出工程为 .ccproj.json(跨端迁移);返回给用户看的结果文案 */
+  /** Export the project as .ccproj.json (cross-end migration); return the result copy to the user */
   onExport: (id: string, name: string) => Promise<string>;
-  /** 导入 .ccproj.json;返回结果文案 */
+  /** Import .ccproj.json; return the result copy */
   onImport: (file: File) => Promise<string>;
 }
 
@@ -53,19 +55,37 @@ async function renderProjectPoster(m: ProjectMeta): Promise<string | null> {
   return b64 ? `data:image/jpeg;base64,${b64}` : null;
 }
 
+function ModelSetupCard({ onOpen }: { onOpen: () => void }) {
+  const t = useT();
+  return (
+    <section role="status" style={modelSetupCard}>
+      <span style={modelSetupIcon}><Icon name="sparkles" size={18} /></span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <strong style={{ display: 'block', color: theme.textStrong, fontSize: 13.5 }}>{t('配置模型后开始使用 Agent')}</strong>
+        <span style={{ display: 'block', marginTop: 3, color: theme.textDim, fontSize: 11.5, lineHeight: 1.5 }}>
+          {t('添加任一模型厂商的 API 密钥，即可在编辑器中使用对话式剪辑。')}
+        </span>
+      </span>
+      <button type="button" onClick={onOpen} style={modelSetupButton}>{t('配置模型')}</button>
+    </section>
+  );
+}
+
 export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDelete, onExport, onImport }: DashboardProps) {
   const t = useT();
+  const modelSnapshot = useSyncExternalStore(subscribeAgentModels, getAgentModelSnapshot);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [mcpOpen, setMcpOpen] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
-  const [note, setNote] = useState<string | null>(null);  // 导入/导出结果的轻提示
-  const [busy, setBusy] = useState(false);                // 大素材 base64 化耗时,防连点
+  const [note, setNote] = useState<string | null>(null);  // Light tips for importing/exporting results
+  const [busy, setBusy] = useState(false);                // Base64 conversion of large assets is time-consuming and prevents connection points
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // 工程卡海报帧:先并行显示缓存(过期缓存也先用),再用两个后台任务刷新。
+  // Project card poster frame: first display the cache in parallel (the expired cache is also used first), and then refresh it with two background tasks.
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const renderingRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -93,7 +113,7 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
             if (!dataUrl) continue;
             await saveProjectThumb(entry.m.id, key, dataUrl);
             if (alive) setThumbs((prev) => ({ ...prev, [entry.m.id]: dataUrl }));
-          } catch { /* 保留旧图或占位 */ } finally {
+          } catch { /* Keep old pictures or placeholders*/ } finally {
             renderingRef.current.delete(cacheKey);
           }
         }
@@ -122,19 +142,22 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
   };
   const pickImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = '';  // 同一文件可重复选
+    e.target.value = '';  // The same file can be selected repeatedly
     if (file) void runTransfer(onImport(file));
   };
 
   return (
-    // 全局 html/body/#root 都是 overflow:hidden(编辑器需要),仪表盘自己开滚动:
-    // header 固定,main 是唯一的纵向滚动容器,工程多时最后一行也能滚出来。
+    // The global html/body/#root is overflow:hidden (required by the editor), and the dashboard scrolls by itself:
+    // The header is fixed, main is the only vertical scrolling container, and the last line can be scrolled out even if the project is long.
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: theme.bg, color: theme.text, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <header style={{ height: 48, flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10, padding: '0 24px', borderBottom: `0.5px solid ${theme.border}`, background: theme.panel }}>
         <BrandMark size={20} />
         <OpenChatCutWordmark />
         <span style={{ color: theme.textDim, fontSize: 13 }}>{t('· 我的工程')}</span>
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+          <button onClick={() => setMcpOpen(true)} title={t('外部 Agent 接入 (MCP)')} className="cc-header-btn" style={settingsBtn}>
+            <Icon name="plug" size={16} />
+          </button>
           <button onClick={() => setShortcutsOpen(true)} title={t('编辑快捷键')} className="cc-header-btn" style={settingsBtn}>
             <Icon name="keyboard" size={16} />
           </button>
@@ -148,6 +171,9 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
 
       <main style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
        <div style={{ maxWidth: 1120, margin: '0 auto', padding: '28px 24px 80px' }}>
+        {modelSnapshot.loaded && modelSnapshot.choices.length === 0 && (
+          <ModelSetupCard onOpen={() => setSettingsOpen(true)} />
+        )}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 18 }}>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em' }}>{t('工程')}</h1>
           {note && <span style={{ color: theme.textDim, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{note}</span>}
@@ -226,6 +252,7 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
 
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {mcpOpen && <McpGuideDialog onClose={() => setMcpOpen(false)} />}
       {cleanupOpen && <MediaCleanupDialog onClose={() => setCleanupOpen(false)} />}
     </div>
   );
@@ -243,6 +270,19 @@ const thumb: React.CSSProperties = {
 const nameInput: React.CSSProperties = { font: 'inherit', fontSize: 13, fontWeight: 550, background: theme.panelAlt, color: theme.text, border: `0.5px solid ${theme.accent}`, borderRadius: 5, padding: '2px 6px', width: '100%' };
 const miniBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 12, padding: '2px 4px', borderRadius: 4, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };
 const settingsBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', padding: 6, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };
+const modelSetupCard: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, padding: '13px 14px',
+  border: `0.5px solid ${theme.accent}`, borderRadius: 6, background: theme.panelAlt,
+};
+const modelSetupIcon: React.CSSProperties = {
+  width: 34, height: 34, flex: '0 0 auto', display: 'grid', placeItems: 'center',
+  borderRadius: 6, color: theme.textStrong, background: theme.hover,
+};
+const modelSetupButton: React.CSSProperties = {
+  flex: '0 0 auto', border: `0.5px solid ${theme.accent}`, borderRadius: 5,
+  background: theme.accent, color: theme.onAccent, padding: '7px 12px',
+  fontSize: 12, fontWeight: 650, cursor: 'pointer',
+};
 const importBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: theme.text,
   background: 'none', border: `0.5px solid ${theme.border}`, borderRadius: 6, padding: '4px 10px', cursor: 'pointer',

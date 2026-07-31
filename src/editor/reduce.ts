@@ -4,11 +4,13 @@
 import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeTimeline, captionsOnTrack, DEFAULT_WATERMARK, defaultTrackId, isAudioTransition, selectedIdsOf, timelineTrackIds, trackEnd, trackKind } from './types';
 import { scaleItemKeyframes, splitItemKeyframes, upsertKeyframe } from './keyframes';
+import { capFade, fitTimelineItems } from './clipFit';
+import { remainingSourceFrames } from './sourceLimit';
 import { coerceKeyframeValue, supportsKeyframeProperty } from './keyframeRegistry';
 import type { CaptionsData } from '../captions/types';
 import type { SerializableFxDef } from '../gl/fx/uniforms';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
-import { editedFrames, fillerIndices, splitClipTranscript } from '../transcript/edit';
+import { editedFrames, fillerIndices, itemEditOpts, splitClipTranscript } from '../transcript/edit';
 
 const TRACK_KIND_ORDER: readonly TrackKind[] = ['caption', 'video', 'audio'];
 
@@ -50,7 +52,7 @@ export type Action =
   | { type: 'removeMarker'; id: string }
   | { type: 'reframeKeyframe'; id: string; frame: number; focalPointX: number; focalPointY: number; magnification: number }
   | { type: 'removeReframeKeyframe'; id: string; frame: number }
-  // generic transform keyframes (PRD §4.5 钢笔工具): frame = item-local edit frame
+  // generic transform keyframes (PRD §4.5 Pen tool): frame = item-local edit frame
   | { type: 'setKeyframe'; id: string; prop: KeyframeProp; frame: number; value: number; easing?: KeyframeEasing }
   | { type: 'removeKeyframe'; id: string; prop: KeyframeProp; frame: number }
   | { type: 'clearKeyframes'; id: string; prop?: KeyframeProp }
@@ -75,12 +77,12 @@ export type Action =
   | { type: 'setItemVariants'; id: string; variants: TranscriptVariant[] }
   | { type: 'toggleWord'; id: string; idx: number }
   | { type: 'deleteWords'; id: string; idxs: number[] }
-  | { type: 'cleanScript'; id: string; silenceFrames?: number; removeFillers: boolean; gapCapsMs?: Record<string, number>; replaceGapCaps?: boolean }
+  | { type: 'cleanScript'; id: string; silenceFrames?: number; cutPadFrames?: number; removeFillers: boolean; gapCapsMs?: Record<string, number>; replaceGapCaps?: boolean }
   /** Per-gap silence cap. afterWordIndex = word after the gap; maxMs=null clears the override. */
   | { type: 'setGapCap'; id: string; afterWordIndex: number; maxMs: number | null }
   /** Speech-block drag: playback order of source word indices (null clears → chronological). */
   | { type: 'setTranscriptPlayOrder'; id: string; playOrder: number[] | null }
-  /** Pack items on a track in the given id order (clip drag in 文字稿). */
+  /** Pack items on a track in the given id order (clip drag in script). */
   | { type: 'reorderTrackItems'; track: string; orderedIds: string[] }
   | { type: 'clearEdits'; id: string }
   | { type: 'fixTranscriptWord'; id: string; wordIndex: number; text: string }
@@ -126,10 +128,25 @@ export interface BatchAction {
 }
 /** any store action: atomic or explicitly grouped (what a draft records) */
 export type AnyAction = AtomicAction | BatchAction;
-/** dispatch accepted by the command set: store actions + history undo/redo */
-export type Dispatch = (a: Action | BatchAction | { type: 'undo' } | { type: 'redo' }) => void;
-/** dispatch at the project level: per-timeline + project actions + undo/redo */
-export type ProjectDispatch = (a: AnyAction | { type: 'undo' } | { type: 'redo' }) => void;
+/**
+ * Control actions of the history stack itself (without changing the document through the reducer): undo/redo, and the boundaries of continuous gestures
+ *  — All changes between begin/end are merged into an undo record (drag the slider, drag the color picker).
+ */
+export type HistoryControlAction =
+  | { type: 'undo' }
+  | { type: 'redo' }
+  | { type: 'history.beginGesture' }
+  | { type: 'history.endGesture' };
+/** History control action judgment (used for type narrowing: string prefix judgment will not narrow union types). */
+export function isHistoryControlAction(a: { type: string }): a is HistoryControlAction {
+  return a.type === 'undo' || a.type === 'redo'
+    || a.type === 'history.beginGesture' || a.type === 'history.endGesture';
+}
+
+/** dispatch accepted by the command set: store actions + history control */
+export type Dispatch = (a: Action | BatchAction | HistoryControlAction) => void;
+/** dispatch at the project level: per-timeline + project actions + history control */
+export type ProjectDispatch = (a: AnyAction | HistoryControlAction) => void;
 
 const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'setKeyframe', 'removeKeyframe', 'clearKeyframes', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
@@ -143,19 +160,44 @@ const lockedItem = (s: TimelineState, id: string): boolean =>
   s.items.some((it) => it.id === id && s.tracks?.[it.track]?.locked);
 
 // recompute a transcript-edited clip's duration under its current edit state
-function editOptsOf(it: TimelineItem): { maxGapFrames?: number; gapCapsMs?: Record<string, number>; playOrder?: number[] } {
-  return { maxGapFrames: it.silenceFrames, gapCapsMs: it.gapCapsMs, playOrder: it.transcriptPlayOrder };
-}
+
 
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
-  // 词操作后时长 = 编辑后词流全长 − 已有左裁(仅 audio:词驱动渲染的窗口起点)。
-  // 左 trim 在删词/压静音后保留;右 trim 重置为"剩余全部"。video+transcript 走
-  // 连续渲染,srcInFrame 是媒体帧语义,不参与词流窗口。
+  // Duration after word operation = Full length of word stream after editing − There is left clipping (only audio: the starting point of the window for word-driven rendering).
+  // The left trim is retained after word deletion/silencing; the right trim is reset to "all remaining". video+transcript go
+  // Continuous rendering, srcInFrame is media frame semantics and does not participate in the word flow window.
   const trim = it.kind === 'audio' ? (it.srcInFrame ?? 0) : 0;
-  return Math.max(1, editedFrames(it.transcript!, deleted, fps, editOptsOf(it)) - trim);
+  return Math.max(1, editedFrames(it.transcript!, deleted, fps, itemEditOpts(it)) - trim);
+}
+
+/**
+ * Starting from `fromFrame`, the subsequent segment ids of the same track are connected end to end, and stop when encountering the first gap. Overlap counts as connected
+ * (The same track allows overlapping placement), the end of the chain takes the largest right edge of the swept clip. exported for verify.
+ */
+export function contiguousFollowers(
+  items: readonly TimelineItem[],
+  track: TrackId,
+  fromFrame: number,
+): Set<string> {
+  const later = items
+    .filter((it) => it.track === track && it.startFrame >= fromFrame)
+    .toSorted((x, y) => x.startFrame - y.startFrame);
+  const ids = new Set<string>();
+  let chainEnd = fromFrame;
+  for (const it of later) {
+    if (it.startFrame > chainEnd) break;
+    ids.add(it.id);
+    chainEnd = Math.max(chainEnd, it.startFrame + it.durationInFrames);
+  }
+  return ids;
 }
 
 export function reduce(s: TimelineState, a: Action): TimelineState {
+  // Any changes may be changed to durationInFrames, which will be self-healed at the exit, eliminating the need to add guards to each case.
+  return fitTimelineItems(applyAction(s, a));
+}
+
+function applyAction(s: TimelineState, a: Action): TimelineState {
   switch (a.type) {
     case 'add': {
       if (s.tracks?.[a.item.track]?.locked) return s;
@@ -194,14 +236,17 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       if (!target) return s;
       let srcIn = a.srcInFrame === undefined ? target.srcInFrame : Math.max(0, a.srcInFrame);
       let dur = Math.max(1, a.durationInFrames ?? target.durationInFrames);
-      // 转写 audio 的 trim 守卫:窗口 clamp 在编辑后词流总长内(trim 手柄越界自愈,
-      // 词↔帧一致 —— 窗口决定播什么,这里保证窗口本身合法)。video 的 srcInFrame
-      // 是媒体帧,不 clamp。
+      // Transcribe audio's trim guard: the window clamp is within the total length of the word stream after editing (the trim handle crosses the boundary and self-heals,
+      // Word ↔ frame is consistent - the window decides what to broadcast, and the window itself is guaranteed to be legal). video's srcInFrame
+      // It is a media frame, not clamp.
       if (target.kind === 'audio' && target.transcript?.length) {
-        const total = editedFrames(target.transcript, new Set(target.deletedWordIdx ?? []), s.fps, editOptsOf(target));
+        const total = editedFrames(target.transcript, new Set(target.deletedWordIdx ?? []), s.fps, itemEditOpts(target));
         srcIn = Math.min(srcIn ?? 0, Math.max(0, total - 1));
         dur = Math.min(dur, Math.max(1, total - srcIn));
       }
+      // Other real media: The right edge cannot cross the end of the asset (it will only freeze at the last frame).
+      const sourceLimit = remainingSourceFrames(target, srcIn ?? 0, s.assets);
+      if (sourceLimit !== null) dur = Math.min(dur, sourceLimit);
       const startFrame = Math.max(0, a.startFrame ?? target.startFrame);
       const oldEnd = target.startFrame + target.durationInFrames;
       const newEnd = startFrame + dur;
@@ -233,13 +278,16 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         ...s,
         items: s.items.map((it) => {
           if (it.id !== a.id) return it;
-          // clamp each fade to at most the clip's length; keep the other side unchanged
+          // The fades on both sides combined cannot exceed the clip length. The side that is explicitly set gives way to the side that is not moved
+          // (Only adjusting the fade-in should not shorten the user's original fade-out); when both sides are given at the same time, press the fade-in priority.
           const cap = it.durationInFrames;
-          return {
-            ...it,
-            fadeInFrames: a.fadeInFrames === undefined ? it.fadeInFrames : Math.max(0, Math.min(cap, a.fadeInFrames)),
-            fadeOutFrames: a.fadeOutFrames === undefined ? it.fadeOutFrames : Math.max(0, Math.min(cap, a.fadeOutFrames)),
-          };
+          const fadeInFrames = a.fadeInFrames === undefined
+            ? it.fadeInFrames
+            : capFade(a.fadeInFrames, a.fadeOutFrames === undefined ? cap - (it.fadeOutFrames ?? 0) : cap);
+          const fadeOutFrames = a.fadeOutFrames === undefined
+            ? it.fadeOutFrames
+            : capFade(a.fadeOutFrames, cap - (fadeInFrames ?? 0));
+          return { ...it, fadeInFrames, fadeOutFrames };
         }),
       };
     case 'setTransform':
@@ -262,8 +310,8 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       };
     case 'setEffects': {
       if (lockedItem(s, a.id)) return s;
-      // 非内置 fx(插件/submit_shader)的 def 随动作快照进 state.fxDefs——
-      // 刷新与无头导出(无内存注册表)才解析得了。不清理:def 小,工程顶多几十条。
+      // The def of non-built-in fx (plugin/submit_shader) is snapshotted into state.fxDefs with the action —
+      // Refresh and headless export (no memory registry) can be parsed. Not cleaning: def is small, the project can only have dozens of items at most.
       const fxDefs = a.defs?.length
         ? { ...s.fxDefs, ...Object.fromEntries(a.defs.map((d) => [d.id, d])) }
         : s.fxDefs;
@@ -275,7 +323,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
     }
     case 'replaceMedia':
       if (lockedItem(s, a.id)) return s;
-      // 转为视频: swap an MG/text clip for the baked video, keeping its slot
+      // To video: swap an MG/text clip for the baked video, keeping its slot
       // (track/start/duration/name/volume). Effects/transform/etc. are already
       // rendered into the video, so they're dropped.
       return {
@@ -295,7 +343,9 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       const durationInFrames = Math.max(1, Math.round(sourceSpan / rate));
       const oldEnd = target.startFrame + target.durationInFrames;
       const deltaEnd = (target.startFrame + durationInFrames) - oldEnd;
-      // Right edge moves with speed — ripple later same-track clips to close/open the gap.
+      // The right edge moves with the speed → push the following same-track clip to fill in/get out of the way. Push only the closest continuous chain:
+      // The gap intentionally left by the user is the boundary. One speed change should not drag away everything behind the entire track.
+      const rippled = deltaEnd === 0 ? null : contiguousFollowers(s.items, target.track, oldEnd);
       return {
         ...s,
         items: s.items.map((it) => {
@@ -307,7 +357,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
               ...(it.keyframes ? { keyframes: scaleItemKeyframes(it.keyframes, durationInFrames / it.durationInFrames) } : {}),
             };
           }
-          if (deltaEnd !== 0 && it.track === target.track && it.startFrame >= oldEnd) {
+          if (rippled?.has(it.id)) {
             return { ...it, startFrame: Math.max(0, it.startFrame + deltaEnd) };
           }
           return it;
@@ -592,6 +642,7 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
             deletedWordIdx: [...del],
             silenceFrames: a.replaceGapCaps ? undefined : a.silenceFrames,
             gapCapsMs: a.replaceGapCaps ? a.gapCapsMs : it.gapCapsMs,
+            cutPadFrames: a.cutPadFrames === undefined ? it.cutPadFrames : Math.max(0, Math.round(a.cutPadFrames)),
           };
           return { ...next, durationInFrames: editedDuration(next, del, s.fps) };
         }),
@@ -677,11 +728,11 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
         ),
       };
     case 'fixTranscriptWord': {
-      // 改错字:只修正某个转写词的文本，以保持词帧双向一致——只替换 .text,
-      // 词的 start/end(帧位)、speaker、词数、以及 clip 的 durationInFrames 全部不动。
+      // Correct typos: Only correct the text of a transliterated word to keep the word frame consistent in both directions - only replace .text,
+      // The start/end (frame bit), speaker, number of words, and durationInFrames of the clip are all unchanged.
       const it = s.items.find((x) => x.id === a.id);
       const word = it?.transcript?.[a.wordIndex];
-      // 越界 / 无转写 / 文本未变 → 真正 no-op(返回原 state,不进历史栈)
+      // Out of bounds / No transliteration / Text unchanged → True no-op (return to original state, do not enter the history stack)
       if (!word || word.text === a.text) return s;
       return {
         ...s,
@@ -693,12 +744,12 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       };
     }
     case 'renameSpeaker': {
-      // 说话人重命名/合并:把 speaker===from 的词全部改标 to，并保持词帧一致——
-      // 只改 word.speaker,text/start/end、词数、clip 时长全不动;from→to 同机制覆盖
-      // 重命名('A'→'主持人')与合并('B'→'A',两位说话人塌成一位)。
-      // 注:TimelineItem 只存 transcript(词),没有 utterances/segment 字段可改。
+      // Speaker renaming/merging: Rename all words with speaker===from to to, and keep the word frame consistent —
+      // Only change word.speaker, text/start/end, number of words, clip duration, all unchanged; from→to covered by the same mechanism
+      // Rename ('A'→'Host') and merge ('B'→'A', two speakers collapse into one).
+      // Note: TimelineItem only stores transcript (word), and there is no utterances/segment field to change.
       const it = s.items.find((x) => x.id === a.id);
-      // 无 item / 无转写 / 没有词的 speaker===from → 真正 no-op(返回原 state,不进历史栈)
+      // No item / No transliteration / Speaker without words ===from → true no-op (return to original state, do not enter the history stack)
       if (!it?.transcript?.some((w) => w.speaker === a.from)) return s;
       return {
         ...s,
@@ -766,11 +817,11 @@ export function reduce(s: TimelineState, a: Action): TimelineState {
       // clip's visible frame 0 sits at srcInFrame in the edited stream, so offset before
       // mapping to a word boundary. Fades belong to the outer edges only: the left half's
       // OUT and the right half's IN are now the mid-clip cut, so drop fadeOut-left / fadeIn-right.
-      const wordDriven = it.kind === 'audio' && !!it.transcript?.length; // 词驱动渲染路径
+      const wordDriven = it.kind === 'audio' && !!it.transcript?.length; // Word-driven rendering path
       const tp = it.transcript?.length
         ? splitClipTranscript(it, s.fps, cut + (wordDriven ? (it.srcInFrame ?? 0) : 0))
         : null;
-      // generic keyframes partition at the same cut (boundary anchors keep每帧采样一致)
+      // generic keyframes partition at the same cut (boundary anchors keep sampling consistent for each frame)
       const kp = it.keyframes ? splitItemKeyframes(it.keyframes, cut) : null;
       const left = {
         ...it,
@@ -970,8 +1021,10 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
   // per-timeline action → apply to the active timeline only
   const active = activeTimeline(p);
   if (!active) return p;
-  const next = reduce(active, a);
-  if (next === active) return p;
+  // Hang up the asset table (the stamp will be removed again): When cropping, you need to know how much source asset is left.
+  const withAssets = { ...active, assets: p.assets };
+  const next = reduce(withAssets, a);
+  if (next === withAssets) return p;
   const stamped = stamp(next, active.id, active.name, active.order);
   return { ...p, timelines: p.timelines.map((t) => (t.id === active.id ? stamped : t)) };
 }
@@ -981,6 +1034,14 @@ export interface History {
   past: ProjectDoc[];
   present: ProjectDoc;
   future: ProjectDoc[];
+  /**
+   * Merge status during continuous gestures (drag the slider, drag the color picker). 'open' = The gesture has started but no changes have been made;
+   * 'pushed' = This gesture has been pushed through history once, and only present will be changed in subsequent steps.
+   *
+   * Without it, volume 0→2 will push in about 40 snapshots in 0.05 steps, while HISTORY_LIMIT is only 100
+   * — Drag the slider twice to squeeze out the user's real editing history, and undo only backs out one space.
+   */
+  gesture?: 'open' | 'pushed';
 }
 
 const HISTORY_LIMIT = 100;
@@ -1004,19 +1065,32 @@ function reduceHistoryAction(present: ProjectDoc, action: AnyAction): {
   return { next, mutating };
 }
 
-export function historyReduce(h: History, a: AnyAction | { type: 'undo' } | { type: 'redo' }): History {
+export function historyReduce(h: History, a: AnyAction | HistoryControlAction): History {
+  // Gesture boundaries are given by the UI (pointer pressed/released). At the beginning, only the status is recorded and the history is not touched.
+  if (a.type === 'history.beginGesture') return h.gesture ? h : { ...h, gesture: 'open' };
+  if (a.type === 'history.endGesture') return h.gesture ? { ...h, gesture: undefined } : h;
   if (a.type === 'undo') {
     if (!h.past.length) return h;
     const previous = h.past[h.past.length - 1];
-    return { past: h.past.slice(0, -1), present: previous, future: [h.present, ...h.future] };
+    return { past: h.past.slice(0, -1), present: previous, future: [h.present, ...h.future], gesture: undefined };
   }
   if (a.type === 'redo') {
     if (!h.future.length) return h;
     const next = h.future[0];
-    return { past: pushHistory(h.past, h.present), present: next, future: h.future.slice(1) };
+    return { past: pushHistory(h.past, h.present), present: next, future: h.future.slice(1), gesture: undefined };
   }
   const { next, mutating } = reduceHistoryAction(h.present, a);
   if (next === h.present) return h;
-  if (mutating) return { past: pushHistory(h.past, h.present), present: next, future: [] };
+  if (mutating) {
+    // Only one history is pushed at a time: the first step is pushed onto the stack as usual, and subsequent steps only replace present.
+    // Undo returns to "before dragging", not the previous tick.
+    if (h.gesture === 'pushed') return { ...h, present: next, future: [] };
+    return {
+      past: pushHistory(h.past, h.present),
+      present: next,
+      future: [],
+      ...(h.gesture ? { gesture: 'pushed' as const } : {}),
+    };
+  }
   return { ...h, present: next }; // select / tl.switch: no history
 }

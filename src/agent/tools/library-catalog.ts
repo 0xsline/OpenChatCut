@@ -179,7 +179,7 @@ export function buildLibraryItems(templates: Tpl[]): LibraryItem[] {
     });
   }
 
-  // 运行时注册的自定义/插件内容(submit_shader 产物 + 已装插件),agent 才看得见摸得着
+  // Only the custom/plugin content registered at runtime (submit_shader product + installed plugin) can be seen and touched by the agent.
   for (const d of Object.values(CUSTOM_FX)) {
     items.push({
       id: d.id,
@@ -204,7 +204,7 @@ export function buildLibraryItems(templates: Tpl[]): LibraryItem[] {
       id: z.id,
       name: z.label,
       category: 'zoom',
-      description: '插件缩放曲线(envelope 包络)',
+      description: 'Plugin zoom curve (envelope)',
       usage: `edit_item adds:[{type:"effect",targetItemId:"<clip>",assetId:"${z.id}"}]`,
     });
   }

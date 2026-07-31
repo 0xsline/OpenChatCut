@@ -1,6 +1,6 @@
-// 标记批注编辑弹窗(逐字搬自 Timeline.tsx):点标尺图钉打开——批注 textarea +
-// 8 色圈 + 时长秒输入(0=点,>0=区间条)+ 删除/完成。编辑即写(updateMarker 直落),
-// 「完成」只是关窗。
+// Mark annotation editing pop-up window (moved verbatim from Timeline.tsx): Click the ruler pin to open - annotation textarea +
+// 8 color circle + duration seconds input (0=point, >0=interval bar) + delete/complete. Edit and write (updateMarker straight off),
+// "Done" just closes the window.
 import { theme, themeAlpha } from '../../theme';
 import { MARKER_HEX, type Marker, type MarkerColor } from '../../editor/types';
 import type { EditorCommands } from '../../editor/store';

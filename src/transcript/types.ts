@@ -7,7 +7,7 @@ export interface TranscriptWord {
   speaker?: string | null; // 'A' | 'B' | ... when diarization is on
 }
 
-/** One speaker turn (AssemblyAI utterance) = a "片段" in segment view. */
+/** One speaker turn (AssemblyAI utterance) = a "segment" in segment view. */
 export interface TranscriptUtterance {
   speaker: string;
   text: string;
@@ -38,7 +38,7 @@ export interface TranscriptVariantWord {
  */
 export interface TranscriptVariant {
   id: string;
-  /** display language / label of this variant, e.g. "English", "中文" */
+  /** Display language or label for this variant, for example, "English" or "Chinese". */
   lang: string;
   kind: 'translation' | 'corrected';
   label: string;

@@ -1,6 +1,6 @@
 import type { GlslTransitionType } from '../editor/types';
 import { createGlRuntime, type GlRuntime } from './runtime';
-import { ensureSampleFrame, getSampleFrame, SAMPLE_H, SAMPLE_W } from './sampleFrames';
+import { clearSampleFrames, ensureSampleFrame, getSampleFrame, SAMPLE_H, SAMPLE_W } from './sampleFrames';
 import { GLSL_TRANSITIONS } from './transitions';
 
 // Photoreal A/B samples (outdoor → warm interior) so transition motion is
@@ -12,9 +12,35 @@ export const THUMB_H = SAMPLE_H;
 const PREVIEW_PROGRESS = 0.42;
 /** slower + clearer than before so hover reads as a real transition */
 export const HOVER_DURATION_MS = 1500;
+export const HOVER_HOLD_FRACTION = 0.1;
 
 let glCanvas: HTMLCanvasElement | null = null;
 let rt: GlRuntime | null = null;
+let activeRuntimeUsers = 0;
+let resourceGeneration = 0;
+
+function disposeTransitionThumbRuntime(): void {
+  rt?.dispose();
+  rt = null;
+  if (glCanvas) {
+    glCanvas.width = 0;
+    glCanvas.height = 0;
+  }
+  glCanvas = null;
+}
+
+export function acquireTransitionThumbRuntime(): void {
+  activeRuntimeUsers++;
+}
+
+export function releaseTransitionThumbRuntime(): void {
+  activeRuntimeUsers = Math.max(0, activeRuntimeUsers - 1);
+  if (activeRuntimeUsers === 0) disposeTransitionThumbRuntime();
+}
+
+export function disposeIdleTransitionThumbRuntime(): void {
+  if (activeRuntimeUsers === 0) disposeTransitionThumbRuntime();
+}
 
 function ensureRuntime(): boolean {
   if (glCanvas && rt) return true;
@@ -25,10 +51,16 @@ function ensureRuntime(): boolean {
     rt = createGlRuntime(glCanvas);
     return true;
   } catch {
-    glCanvas = null;
-    rt = null;
+    disposeTransitionThumbRuntime();
     return false;
   }
+}
+
+/** Release decoded/runtime data when leaving transition resources; encoded stills stay in bounded LRU. */
+export function cleanupTransitionThumbResources(): void {
+  resourceGeneration++;
+  clearSampleFrames(['out', 'in']);
+  disposeTransitionThumbRuntime();
 }
 
 /** 2D fallback when GL compile/draw fails — still show a readable A/B mix. */
@@ -103,7 +135,7 @@ export function drawTransitionFrame(
   return paintTransition(dest, def?.frag ?? null, progress, extra, type);
 }
 
-/** 自定义/插件转场(registry frag + 默认 uniforms)的 A/B 预览 */
+/** A/B preview of custom/plugin transitions (registry frag + default uniforms)*/
 export function drawCustomTransitionFrame(
   dest: HTMLCanvasElement | CanvasRenderingContext2D,
   frag: string,
@@ -113,10 +145,37 @@ export function drawCustomTransitionFrame(
   return paintTransition(dest, frag, progress, uniforms, 'custom');
 }
 
-const cache = new Map<string, string>();
+const STILL_MAX_ENTRIES = 24;
+const STILL_MAX_BYTES = 4 * 1024 * 1024;
+const stills = new Map<string, { url: string; bytes: number }>();
+let stillBytes = 0;
+
+function readStill(type: string): string | undefined {
+  const entry = stills.get(type);
+  if (!entry) return undefined;
+  stills.delete(type);
+  stills.set(type, entry);
+  return entry.url;
+}
+
+function cacheStill(type: string, url: string): void {
+  const previous = stills.get(type);
+  if (previous) stillBytes -= previous.bytes;
+  stills.delete(type);
+  const bytes = url.length * 2;
+  if (bytes > STILL_MAX_BYTES) return;
+  stills.set(type, { url, bytes });
+  stillBytes += bytes;
+  while (stills.size > STILL_MAX_ENTRIES || stillBytes > STILL_MAX_BYTES) {
+    const oldest = stills.keys().next().value as string | undefined;
+    if (!oldest) break;
+    stillBytes -= stills.get(oldest)?.bytes ?? 0;
+    stills.delete(oldest);
+  }
+}
 
 export function transitionThumbUrl(type: GlslTransitionType): string {
-  const hit = cache.get(type);
+  const hit = readStill(type);
   if (hit) return hit;
   try {
     if (!getSampleFrame('out') || !getSampleFrame('in')) return '';
@@ -125,7 +184,50 @@ export function transitionThumbUrl(type: GlslTransitionType): string {
     off.height = THUMB_H;
     if (!drawTransitionFrame(off, type, PREVIEW_PROGRESS)) return '';
     const url = off.toDataURL('image/jpeg', 0.85);
-    cache.set(type, url);
+    cacheStill(type, url);
+    return url;
+  } catch {
+    return '';
+  }
+}
+
+function hashShader(frag: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < frag.length; i++) {
+    hash ^= frag.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function customStillKey(id: string, frag: string): string {
+  return `custom:${id}:${hashShader(frag)}`;
+}
+
+export function getCachedTransitionThumbUrl(type: GlslTransitionType): string {
+  return readStill(type) ?? '';
+}
+
+export function getCachedCustomTransitionThumbUrl(id: string, frag: string): string {
+  return readStill(customStillKey(id, frag)) ?? '';
+}
+
+export function customTransitionThumbUrl(
+  id: string,
+  frag: string,
+  uniforms: Record<string, number>,
+): string {
+  const key = customStillKey(id, frag);
+  const hit = readStill(key);
+  if (hit) return hit;
+  try {
+    if (!getSampleFrame('out') || !getSampleFrame('in')) return '';
+    const off = document.createElement('canvas');
+    off.width = THUMB_W;
+    off.height = THUMB_H;
+    if (!drawCustomTransitionFrame(off, frag, PREVIEW_PROGRESS, uniforms)) return '';
+    const url = off.toDataURL('image/jpeg', 0.85);
+    cacheStill(key, url);
     return url;
   } catch {
     return '';
@@ -133,7 +235,21 @@ export function transitionThumbUrl(type: GlslTransitionType): string {
 }
 
 export async function transitionThumbUrlAsync(type: GlslTransitionType): Promise<string> {
-  await Promise.all([ensureSampleFrame('out'), ensureSampleFrame('in')]);
-  cache.delete(type);
-  return transitionThumbUrl(type);
+  const cached = readStill(type);
+  if (cached) return cached;
+  const generation = resourceGeneration;
+  try {
+    await Promise.all([ensureSampleFrame('out'), ensureSampleFrame('in')]);
+    if (resourceGeneration !== generation) return '';
+    return transitionThumbUrl(type);
+  } catch {
+    return '';
+  } finally {
+    disposeIdleTransitionThumbRuntime();
+  }
+}
+
+export function clearTransitionThumbStillCache(): void {
+  stills.clear();
+  stillBytes = 0;
 }

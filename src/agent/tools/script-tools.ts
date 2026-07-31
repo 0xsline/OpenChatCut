@@ -1,4 +1,4 @@
-import type { AgentToolSchema } from '../tool-schema';
+export { SCRIPT_TOOL_SCHEMAS, SCRIPT_TOOL_NAMES } from './schemas/script-tools';
 import type { AgentContext } from '../context';
 import { serializeTimeline } from '../../script/serialize';
 import { applyScript } from '../../script/apply';
@@ -10,40 +10,9 @@ import { resolveTrackId, type TrackId } from '../../editor/types';
 // We implement the "no-workspace" host mode:
 // read_script returns timeline.md inline; apply_script takes the edited string
 // back via `timelineMd`. Word timestamps never appear in the file — content
-// matching against stable [sN] segment ids preserves 词↔帧一致 (moat ③).
+// matching against stable [sN] segment ids preserves word↔frame consistency (moat ③).
 
 type Args = Record<string, unknown>;
-
-export const SCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
-  {
-    name: 'read_script',
-    description:
-      'Materialize the current timeline as timeline.md (segment-id-coded Markdown). Track sections (## V1/A1…), source regions (### file), rows: [sN] transcript sentence / [cN] Nf clip / [gap Nf]. Body order = playback order. Read this before apply_script; edit the TEXT then pass it back. Keep the <!-- script-stamp --> comment intact.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        track: { type: 'string', description: 'Optional timeline track alias/id. Omit to keep the existing full-timeline behavior.' },
-        showSilence: { type: 'boolean', description: 'Include editable [silence=Ns] markers. Default false.' },
-      },
-    },
-  },
-  {
-    name: 'apply_script',
-    description:
-      'Commit an edited timeline.md back to the timeline (atomic; any invalid row rejects the whole script). Edit grammar: strike words inside a [sN] row with ~~word~~ (delete text = delete video); strike or delete a whole row to remove it; reorder rows to reorder clips (frames are re-derived from body order — never write frame numbers); deleting a [gap Nf] row closes the gap. Re-adding previously deleted words restores them. Do NOT change spoken words. preview=true validates and reports without changing anything.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        timelineMd: { type: 'string', description: 'The FULL edited timeline.md content (from read_script, with your edits).' },
-        preview: { type: 'boolean', description: 'true = validate + report the diff without applying.' },
-        track: { type: 'string', description: 'Optional timeline track alias/id. Use the same scope as read_script.' },
-      },
-      required: ['timelineMd'],
-    },
-  },
-];
-
-export const SCRIPT_TOOL_NAMES = new Set(SCRIPT_TOOL_SCHEMAS.map((t) => t.name));
 
 function resolveRequestedTrack(args: Args, ctx: AgentContext): TrackId | undefined {
   if (args.track === undefined || args.track === null || String(args.track).trim() === '') return undefined;

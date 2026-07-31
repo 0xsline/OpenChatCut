@@ -1,4 +1,4 @@
-import { CAPTION_STYLES } from '../captions/styles';
+import { effectivePreset } from '../captions/renderStyles';
 import type { CaptionsData } from '../captions/types';
 import { captionTrackEntries, type TimelineItem, type TimelineState } from '../editor/types';
 import { ensureFont } from './googleFonts';
@@ -43,8 +43,11 @@ function fontsFromItem(item: TimelineItem, into: Set<string>): void {
 
 function fontsFromCaptions(captions: CaptionsData | null | undefined, into: Set<string>): void {
   if (!captions?.enabled) return;
-  const style = CAPTION_STYLES.find((candidate) => candidate.id === captions.template);
-  if (style?.fontFamily) pushFamily(into, style.fontFamily);
+  const style = effectivePreset(captions);
+  pushFamily(into, style.fontFamily);
+  for (const entry of captions.sourceEntries ?? []) {
+    if (entry.style?.fontFamily) pushFamily(into, entry.style.fontFamily);
+  }
 }
 
 export function collectReferencedFonts(
@@ -62,7 +65,40 @@ export function collectReferencedFonts(
   return [...families].sort((a, b) => a.localeCompare(b));
 }
 
-/** Register only fonts used by the active composition. Remotion waits on each loader. */
-export function loadTimelineFonts(state: TimelineState): void {
-  for (const family of collectReferencedFonts(state)) ensureFont(family);
+export interface ProjectFontFace {
+  family: string;
+  weight?: number;
+}
+
+export function collectReferencedFontFaces(state: TimelineState): ProjectFontFace[] {
+  const weights = new Map<string, Set<number>>();
+  const configs = captionTrackEntries(state).map((entry) => entry.captions).filter(Boolean) as CaptionsData[];
+  if (!configs.length && state.captions) configs.push(state.captions);
+  for (const captions of configs) {
+    if (!captions.enabled) continue;
+    const base = effectivePreset(captions);
+    const faces = [{ family: base.fontFamily, weight: base.fontWeight }, ...(captions.sourceEntries ?? []).map((entry) => ({
+      family: entry.style?.fontFamily ?? base.fontFamily,
+      weight: entry.style?.fontWeight ?? base.fontWeight,
+    }))];
+    for (const face of faces) {
+      const set = weights.get(face.family) ?? new Set<number>();
+      set.add(face.weight);
+      weights.set(face.family, set);
+    }
+  }
+
+  return collectReferencedFonts(state).flatMap((family) => {
+    const fontWeights = weights.get(family);
+    return fontWeights?.size
+      ? [...fontWeights].map((weight) => ({ family, weight }))
+      : [{ family }];
+  });
+}
+
+/** Resolve only when every face used by the active composition is ready. */
+export function loadTimelineFonts(state: TimelineState): Promise<void> {
+  const loads = collectReferencedFontFaces(state)
+    .map(({ family, weight }) => ensureFont(family, weight));
+  return Promise.all(loads).then(() => undefined);
 }

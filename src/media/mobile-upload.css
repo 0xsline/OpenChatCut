@@ -1,4 +1,4 @@
-.cc-mobile-upload-dialog { width:min(680px,calc(100vw - 32px)); overflow:hidden; border:0.5px solid var(--cc-border); border-radius:10px; background:var(--cc-panel-alt); color:var(--cc-text); box-shadow:0 24px 80px rgba(var(--cc-shadow-rgb),0.72); }
+.cc-mobile-upload-dialog { width:min(680px,calc(100vw - 32px)); overflow:hidden; border:0.5px solid var(--cc-border); border-radius:6px; background:var(--cc-panel-alt); color:var(--cc-text); box-shadow:0 6px 8px rgba(var(--cc-shadow-rgb),0.52); }
 .cc-mobile-upload-dialog header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 18px; border-bottom:0.5px solid var(--cc-border); }
 .cc-mobile-upload-dialog header div { display:flex; min-width:0; flex-direction:column; gap:3px; }
 .cc-mobile-upload-dialog header strong { font-size:15px; }
@@ -6,7 +6,7 @@
 .cc-mobile-upload-dialog button { border:0.5px solid var(--cc-border); border-radius:5px; background:var(--cc-hover); color:var(--cc-text); cursor:pointer; }
 .cc-mobile-upload-dialog header button { display:grid; width:30px; height:30px; flex:0 0 30px; place-items:center; padding:0; }
 .cc-mobile-upload-body { display:grid; grid-template-columns:250px minmax(0,1fr); gap:22px; padding:22px; }
-.cc-mobile-upload-qr { display:grid; width:240px; height:240px; place-items:center; overflow:hidden; border-radius:8px; background:#fff; color:#333; font-size:12px; }
+.cc-mobile-upload-qr { display:grid; width:240px; height:240px; place-items:center; overflow:hidden; border-radius:4px; background:#fff; color:#333; font-size:12px; }
 .cc-mobile-upload-qr img { display:block; width:240px; height:240px; }
 .cc-mobile-upload-instructions { display:flex; min-width:0; flex-direction:column; gap:12px; }
 .cc-mobile-upload-instructions ol { display:grid; gap:8px; margin:0; padding-left:20px; color:var(--cc-text-muted); font-size:12px; line-height:1.45; }

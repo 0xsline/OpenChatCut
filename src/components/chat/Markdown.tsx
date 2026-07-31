@@ -22,6 +22,11 @@ export function Markdown({ text, style }: MarkdownProps) {
           a: ({ href, children }) => (
             <a href={href} target="_blank" rel="noreferrer">{children}</a>
           ),
+          table: ({ children }) => (
+            <div className="cc-md-table-scroll" tabIndex={0}>
+              <table>{children}</table>
+            </div>
+          ),
         }}
       >
         {text}

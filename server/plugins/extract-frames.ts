@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isSafeUploadName, resolveUploadFile } from '../media-dir.ts';
 import { formatTimeLabel, tileContactSheet } from '../frame-grid.ts';
+import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 
 const MAX_JSON = 32 * 1024;
 const MAX_SAMPLES = 20;
@@ -79,7 +80,7 @@ function run(cmd: string, args: string[], timeoutMs: number): Promise<void> {
 
 async function probeDurationMs(path: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    const child = spawn('ffprobe', [
+    const child = spawn(ffprobeBin(), [
       '-v', 'error',
       '-show_entries', 'format=duration',
       '-of', 'default=nw=1:nk=1',
@@ -105,12 +106,87 @@ export function sampleTimesMs(fromMs: number, toMs: number, count: number): numb
   return Array.from({ length: n }, (_, i) => Math.round(lo + ((i + 0.5) / n) * span));
 }
 
+// ── Remove nearly duplicates ───────────────────────────────────────────────────────
+// Uniform sampling will result in N almost identical pictures on fixed-camera asset, and burning visual tokens in vain will not help.
+// position. First use ffmpeg scene detection to pick out the moments when "the picture really changes", and then use uniform sampling to fill in the gaps.
+// Analysis is done at scaled down to 160 width, 2fps, at a bounded cost; any failure silently falls back to uniform sampling.
+
+/** Scene difference threshold (0..1): low enough to capture the action changes in the camera, not just hard cuts.*/
+const SCENE_THRESHOLD = 0.08;
+const SCENE_ANALYSIS_TIMEOUT_MS = 20_000;
+
+/** The moment when the picture changes significantly (milliseconds, ascending order). Returns empty array on failure = caller falls back to uniform sampling.*/
+function sceneChangeTimesMs(input: string, fromMs: number, toMs: number): Promise<number[]> {
+  return new Promise((resolve) => {
+    const times: number[] = [];
+    const child = spawn(ffmpegBin(), [
+      '-nostdin', '-hide_banner',
+      '-ss', String(Math.max(0, fromMs) / 1000),
+      '-t', String(Math.max(0, toMs - fromMs) / 1000),
+      '-i', input,
+      '-an', '-sn',
+      '-vf', `scale=160:-2,fps=2,select='gt(scene,${SCENE_THRESHOLD})',showinfo`,
+      '-f', 'null', '-',
+    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let tail = '';
+    const done = (): void => { child.kill('SIGKILL'); resolve(times); };
+    const timer = setTimeout(done, SCENE_ANALYSIS_TIMEOUT_MS);
+    child.stderr?.on('data', (chunk: Buffer) => {
+      // Streaming analysis of pts_time avoids storing the entire showinfo in memory
+      tail += String(chunk);
+      const lines = tail.split('\n');
+      tail = lines.pop() ?? '';
+      for (const line of lines) {
+        const m = /pts_time:([0-9.]+)/.exec(line);
+        if (m) times.push(Math.round(fromMs + Number(m[1]) * 1000));
+      }
+    });
+    child.on('error', () => { clearTimeout(timer); resolve([]); });
+    child.on('close', () => { clearTimeout(timer); resolve(times); });
+  });
+}
+
+/**
+ * The change time is given priority, and the samples are evenly sampled to complete count sampling points (in ascending order, not too close to each other).
+ * Pure function, easy to test.
+ */
+export function pickDistinctTimes(
+  candidates: readonly number[],
+  fromMs: number,
+  toMs: number,
+  count: number,
+): number[] {
+  const n = Math.max(1, Math.min(MAX_SAMPLES, Math.round(count)));
+  const lo = Math.max(0, fromMs);
+  const hi = Math.max(lo + 1, toMs);
+  const minGap = (hi - lo) / (n * 2); // Those that are too close together will be counted as being in the same place and will not occupy the same space again.
+  const picked: number[] = [];
+  const tryPush = (t: number): void => {
+    if (picked.length >= n || t < lo || t >= hi) return;
+    if (picked.some((p) => Math.abs(p - t) < minGap)) return;
+    picked.push(t);
+  };
+  // When there are more candidates than places, they will be divided evenly in order to avoid only taking the first pile.
+  const sorted = [...candidates].filter((t) => Number.isFinite(t)).sort((a, b) => a - b);
+  const stride = sorted.length > n ? sorted.length / n : 1;
+  for (let i = 0; i < sorted.length && picked.length < n; i += 1) {
+    if (stride > 1 && Math.floor(i % stride) !== 0) continue;
+    tryPush(sorted[i]!);
+  }
+  for (const t of sampleTimesMs(lo, hi, n)) tryPush(t);
+  return picked.sort((a, b) => a - b);
+}
+
+export function frameSeekArgs(timeMs: number): string[] {
+  const seconds = Math.max(0, timeMs / 1000);
+  // Images have a single frame: putting `-ss 0` before `-i` can consume it.
+  return seconds > 0 ? ['-ss', String(seconds)] : [];
+}
+
 async function extractOneFrame(input: string, timeMs: number, outPath: string): Promise<void> {
-  const ss = Math.max(0, timeMs / 1000);
-  // -ss before -i for fast seek; fine for contact-sheet accuracy
-  await run('ffmpeg', [
+  await run(ffmpegBin(), [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-    '-ss', String(ss),
+    ...frameSeekArgs(timeMs),
     '-i', input,
     '-frames:v', '1',
     '-q:v', '4',
@@ -162,7 +238,11 @@ export function extractFramesPlugin(): Plugin {
               ? Math.min(body.toMs, durationMs)
               : durationMs;
             const count = typeof body.count === 'number' ? body.count : DEFAULT_SAMPLES;
-            times = sampleTimesMs(fromMs, toMs, count);
+            // Changes are given priority (the fixed camera position will not return N pictures of the same image); analysis failure automatically returns to uniform sampling
+            const scenes = await sceneChangeTimesMs(inputPath, fromMs, toMs);
+            times = scenes.length
+              ? pickDistinctTimes(scenes, fromMs, toMs, count)
+              : sampleTimesMs(fromMs, toMs, count);
           }
           if (!times.length) {
             sendJson(res, 400, { error: 'no sample times' });

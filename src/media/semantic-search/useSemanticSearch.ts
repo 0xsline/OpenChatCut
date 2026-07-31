@@ -1,12 +1,12 @@
 import {
-  useCallback, useEffect, useRef, useState,
+  useCallback, useEffect, useMemo, useRef, useState,
   type Dispatch, type MutableRefObject, type SetStateAction,
 } from 'react';
 import type { MediaAsset } from '../../editor/types';
 import { isSemanticMedia } from './mediaFrames';
 import { indexSemanticAssets, isAbortError, loadWithFallback } from './semanticOperations';
 import { SemanticClient } from './semanticClient';
-import { findDuplicateAssets, rankSemanticMatches } from './vectorSearch';
+import { DUPLICATE_SIMILARITY_THRESHOLD, rankSemanticMatches } from './vectorSearch';
 import { clearSemanticVectors, pruneSemanticVectors, readSemanticVectors } from './vectorStore';
 import {
   MAX_SEMANTIC_QUERY_LENGTH,
@@ -34,6 +34,11 @@ const initialState: SemanticSearchState = {
 
 const preferredDevice = (): SemanticDevice => ('gpu' in navigator ? 'webgpu' : 'wasm');
 type StateSetter = Dispatch<SetStateAction<SemanticSearchState>>;
+interface SemanticSnapshot {
+  scopeId: string;
+  assets: MediaAsset[];
+}
+type SnapshotRef = MutableRefObject<SemanticSnapshot>;
 
 export function useSemanticSearch(scopeId: string, assets: MediaAsset[]) {
   const lifecycle = useSemanticLifecycle(scopeId, assets);
@@ -46,40 +51,114 @@ export function useSemanticSearch(scopeId: string, assets: MediaAsset[]) {
       await index();
     }
   }, [index, lifecycle.modelChanged, startEnable]);
-  const queries = useSemanticQueries(scopeId, lifecycle.client, lifecycle.records, lifecycle.setState);
-  const cancel = useCancelSemantic(lifecycle.client, lifecycle.operation, lifecycle.setState);
+  const queries = useSemanticQueries(
+    lifecycle.client, lifecycle.records, lifecycle.snapshot, lifecycle.snapshotRef, lifecycle.setState,
+  );
+  const cancel = useCancelSemantic(
+    lifecycle.client, lifecycle.operation, lifecycle.duplicateOperation, lifecycle.setState,
+  );
   return { state: lifecycle.state, enable, index, cancel, ...queries };
+}
+
+interface SemanticRuntime {
+  client: MutableRefObject<SemanticClient>;
+  operation: MutableRefObject<AbortController | null>;
+  duplicateOperation: MutableRefObject<AbortController | null>;
+  records: MutableRefObject<SemanticVectorRecord[]>;
+  modelChanged: MutableRefObject<boolean>;
+  setState: StateSetter;
 }
 
 function useSemanticLifecycle(scopeId: string, assets: MediaAsset[]) {
   const [state, setState] = useState<SemanticSearchState>(initialState);
-  const client = useRef(new SemanticClient());
+  const client = useRef<SemanticClient | null>(null);
   const operation = useRef<AbortController | null>(null);
+  const duplicateOperation = useRef<AbortController | null>(null);
   const records = useRef<SemanticVectorRecord[]>([]);
   const modelChanged = useRef(false);
+  if (client.current === null) client.current = new SemanticClient();
+  const runtime = useMemo<SemanticRuntime>(() => ({
+    client: client as MutableRefObject<SemanticClient>,
+    operation, duplicateOperation, records, modelChanged, setState,
+  }), [client, duplicateOperation, modelChanged, operation, records, setState]);
+  const snapshot = useMemo<SemanticSnapshot>(() => ({ scopeId, assets }), [scopeId, assets]);
+  const snapshotRef = useRef(snapshot);
+  const previousScope = useRef(scopeId);
+  snapshotRef.current = snapshot;
+  useSemanticSnapshotEffects(scopeId, assets, snapshot, snapshotRef, previousScope, runtime);
+  const refresh = useSemanticRefresh(snapshot, snapshotRef, runtime);
+  return { state, ...runtime, snapshot, snapshotRef, refresh };
+}
+
+function useSemanticSnapshotEffects(
+  scopeId: string,
+  assets: MediaAsset[],
+  snapshot: SemanticSnapshot,
+  snapshotRef: SnapshotRef,
+  previousScope: MutableRefObject<string>,
+  runtime: SemanticRuntime,
+): void {
+  useEffect(() => {
+    runtime.operation.current?.abort();
+    runtime.operation.current = null;
+    runtime.duplicateOperation.current?.abort();
+    runtime.duplicateOperation.current = null;
+    if (previousScope.current !== scopeId) {
+      previousScope.current = scopeId;
+      runtime.client.current.cancel();
+      runtime.records.current = [];
+      runtime.modelChanged.current = false;
+      runtime.setState(initialState);
+    }
+  }, [assets, previousScope, runtime, scopeId]);
   useEffect(
-    () => pruneMissingAssets(scopeId, assets, records, modelChanged, setState),
-    [scopeId, assets],
+    () => pruneMissingAssets(
+      snapshot, snapshotRef, runtime.records, runtime.modelChanged, runtime.setState,
+    ),
+    [runtime, snapshot, snapshotRef],
   );
-  useEffect(() => () => client.current.cancel(), []);
-  const refresh = useCallback(async () => {
-    records.current = await readSemanticVectors(scopeId);
-    const indexedAssets = new Set(records.current.map((record) => record.assetId)).size;
-    setState((current) => ({
-      ...current, indexedAssets, duplicates: findDuplicateAssets(records.current),
-    }));
-  }, [scopeId]);
-  return { state, setState, client, operation, records, modelChanged, refresh };
+  useEffect(() => () => {
+    runtime.operation.current?.abort();
+    runtime.duplicateOperation.current?.abort();
+    runtime.client.current.dispose();
+  }, [runtime]);
+}
+
+function useSemanticRefresh(
+  snapshot: SemanticSnapshot,
+  snapshotRef: SnapshotRef,
+  runtime: SemanticRuntime,
+): () => Promise<void> {
+  return useCallback(async () => {
+    const controller = new AbortController();
+    runtime.duplicateOperation.current?.abort();
+    runtime.duplicateOperation.current = controller;
+    try {
+      const stored = await readSemanticVectors(snapshot.scopeId);
+      if (snapshotRef.current !== snapshot) throw semanticStaleResultError();
+      const ids = new Set(snapshot.assets.map((asset) => asset.id));
+      const nextRecords = stored.filter((record) => ids.has(record.assetId));
+      const duplicates = await runtime.client.current.findDuplicateAssets(
+        nextRecords, DUPLICATE_SIMILARITY_THRESHOLD, controller.signal,
+      );
+      if (snapshotRef.current !== snapshot) throw semanticStaleResultError();
+      runtime.records.current = nextRecords;
+      const indexedAssets = new Set(nextRecords.map((record) => record.assetId)).size;
+      runtime.setState((current) => ({ ...current, indexedAssets, duplicates }));
+    } finally {
+      if (runtime.duplicateOperation.current === controller) runtime.duplicateOperation.current = null;
+    }
+  }, [runtime, snapshot, snapshotRef]);
 }
 
 function pruneMissingAssets(
-  scopeId: string,
-  assets: MediaAsset[],
+  snapshot: SemanticSnapshot,
+  snapshotRef: SnapshotRef,
   records: MutableRefObject<SemanticVectorRecord[]>,
   modelChanged: MutableRefObject<boolean>,
   setState: StateSetter,
 ) {
-  const ids = new Set(assets.map((asset) => asset.id));
+  const ids = new Set(snapshot.assets.map((asset) => asset.id));
   records.current = records.current.filter((record) => ids.has(record.assetId));
   const indexedAssets = new Set(records.current.map((record) => record.assetId)).size;
   setState((current) => ({
@@ -87,9 +166,13 @@ function pruneMissingAssets(
     matches: current.matches.filter((match) => ids.has(match.assetId)),
     duplicates: current.duplicates.filter((match) => ids.has(match.leftAssetId) && ids.has(match.rightAssetId)),
   }));
-  void pruneSemanticVectors(scopeId, ids)
-    .then((result) => { modelChanged.current ||= result.staleModelRemoved; })
-    .catch((reason) => setFailure(setState, reason));
+  void pruneSemanticVectors(snapshot.scopeId, ids)
+    .then((result) => {
+      if (snapshotRef.current === snapshot) modelChanged.current ||= result.staleModelRemoved;
+    })
+    .catch((reason) => {
+      if (snapshotRef.current === snapshot) setFailure(setState, reason);
+    });
 }
 
 function useEnableSemantic(
@@ -113,7 +196,7 @@ function useEnableSemantic(
     } catch (reason) {
       if (!isAbortError(reason)) setFailure(setState, reason);
     } finally {
-      operation.current = null;
+      if (operation.current === controller) operation.current = null;
     }
     return ready;
   }, [client, operation, refresh, setState]);
@@ -155,25 +238,33 @@ function useIndexSemantic(
     }));
     try {
       const progress = await indexSemanticAssets(scopeId, lifecycle.client.current, pending, controller.signal, (next) => {
-        lifecycle.setState((current) => ({ ...current, indexedAssets: next.completed, skippedAssets: next.skipped }));
+        if (!controller.signal.aborted) {
+          lifecycle.setState((current) => ({ ...current, indexedAssets: next.completed, skippedAssets: next.skipped }));
+        }
       });
       await refresh();
-      lifecycle.setState((current) => ({ ...current, status: 'ready', skippedAssets: progress.skipped }));
+      if (!controller.signal.aborted) {
+        lifecycle.setState((current) => ({ ...current, status: 'ready', skippedAssets: progress.skipped }));
+      }
     } catch (reason) {
       if (!isAbortError(reason)) setFailure(lifecycle.setState, reason);
     } finally {
-      lifecycle.operation.current = null;
+      if (lifecycle.operation.current === controller) lifecycle.operation.current = null;
     }
   }, [scopeId, assets, lifecycle, refresh]);
 }
 
 function useSemanticQueries(
-  scopeId: string,
   client: MutableRefObject<SemanticClient>,
   records: MutableRefObject<SemanticVectorRecord[]>,
+  snapshot: SemanticSnapshot,
+  snapshotRef: SnapshotRef,
   setState: StateSetter,
 ) {
+  const searchRequest = useRef(0);
   const search = useCallback(async (text: string) => {
+    const request = searchRequest.current + 1;
+    searchRequest.current = request;
     const query = text.trim();
     if (!query) return setState((current) => ({ ...current, matches: [] }));
     if (query.length > MAX_SEMANTIC_QUERY_LENGTH) {
@@ -183,41 +274,55 @@ function useSemanticQueries(
     setState((current) => ({ ...current, status: 'searching', matches: [], error: null }));
     try {
       const vector = await client.current.embedText(query);
+      if (snapshotRef.current !== snapshot || searchRequest.current !== request) return;
       setState((current) => ({ ...current, status: 'ready', matches: rankSemanticMatches(records.current, vector) }));
     } catch (reason) {
-      setFailure(setState, reason);
+      if (snapshotRef.current === snapshot && searchRequest.current === request && !isAbortError(reason)) {
+        setFailure(setState, reason);
+      }
     }
-  }, [client, records, setState]);
+  }, [client, records, setState, snapshot, snapshotRef]);
   const reset = useCallback(async () => {
+    searchRequest.current += 1;
     try {
-      await clearSemanticVectors(scopeId);
+      await clearSemanticVectors(snapshot.scopeId);
+      if (snapshotRef.current !== snapshot) return false;
       records.current = [];
-      setState((current) => ({ ...current, indexedAssets: 0, totalAssets: 0, skippedAssets: 0, matches: [], duplicates: [], error: null }));
+      setState((current) => ({
+        ...current, indexedAssets: 0, totalAssets: 0, skippedAssets: 0, matches: [], duplicates: [], error: null,
+      }));
       return true;
     } catch (reason) {
-      setFailure(setState, reason);
+      if (snapshotRef.current === snapshot) setFailure(setState, reason);
       return false;
     }
-  }, [scopeId, records, setState]);
+  }, [records, setState, snapshot, snapshotRef]);
   return { search, reset };
 }
 
 function useCancelSemantic(
   client: MutableRefObject<SemanticClient>,
   operation: MutableRefObject<AbortController | null>,
+  duplicateOperation: MutableRefObject<AbortController | null>,
   setState: StateSetter,
 ) {
   return useCallback(() => {
     operation.current?.abort();
     operation.current = null;
+    duplicateOperation.current?.abort();
+    duplicateOperation.current = null;
     client.current.cancel();
     setState((current) => ({
       ...current, status: 'idle', device: null, modelProgress: 0, matches: [], error: null,
     }));
-  }, [client, operation, setState]);
+  }, [client, duplicateOperation, operation, setState]);
 }
 
 function setFailure(setState: StateSetter, reason: unknown): void {
   const error = reason instanceof Error ? reason.message : String(reason);
   setState((current) => ({ ...current, status: 'error', error }));
+}
+
+function semanticStaleResultError(): DOMException {
+  return new DOMException('Semantic snapshot changed', 'AbortError');
 }

@@ -15,6 +15,7 @@ import {
   type ProjectMigrationOptions,
   type ProjectMigrationProgress,
 } from './migrations';
+import { clearSemanticVectors } from '../media/semantic-search/vectorStore';
 
 // Server-backed multi-project store with an IndexedDB cache. The server store is
 // shared by every local browser and dev port; Node checks use a memory fallback.
@@ -70,6 +71,7 @@ const chatKey = (id: string) => `chat:${id}`;
 export interface PersistedChat {
   messages: unknown[];
   llm: unknown[];
+  changeLog?: unknown[];
   llmFormat?: 'ai-sdk-v1';
   llmProvider?: LlmProvider;
 }
@@ -282,6 +284,18 @@ export async function hasProjectHistory(): Promise<boolean> {
   }
 }
 
+/**
+ * The original persistent bytes of the project, without migration. Only for those who want to rescue asset references when the document cannot be read.
+ * Use the back-up path—normally use loadProject when reading projects.
+ */
+export async function loadRawProject(id: string): Promise<unknown> {
+  try {
+    return await idbGet<unknown>(projectKey(id));
+  } catch {
+    return null;
+  }
+}
+
 export async function loadProject(id: string, options?: ProjectMigrationOptions): Promise<ProjectDoc | null> {
   try {
     const raw = await idbGet<unknown>(projectKey(id));
@@ -380,7 +394,7 @@ export async function duplicateProject(id: string, name?: string): Promise<Proje
 }
 
 /** Soft-delete: hide from dashboard/list; data kept for restore_project. */
-// ── 工程卡海报帧缓存(key=updatedAt,工程一变即失效重渲) ──────────────────
+// ── Project card poster frame cache (key=updatedAt, re-rendering will be invalidated as soon as the project changes) ──────────────────
 interface ProjectThumb {
   key: number;
   dataUrl: string;
@@ -415,11 +429,25 @@ export async function restoreProject(id: string): Promise<ProjectMeta | null> {
   return next;
 }
 
+export interface ProjectPurgeOptions {
+  /** Test/server seam; browsers default to the semantic IndexedDB cleanup. */
+  semanticCleanup?: (scopeId: string) => Promise<void>;
+}
+
+async function clearProjectSemanticVectors(id: string, options?: ProjectPurgeOptions): Promise<void> {
+  if (options?.semanticCleanup) {
+    await options.semanticCleanup(id);
+    return;
+  }
+  if (typeof indexedDB !== 'undefined') await clearSemanticVectors(id);
+}
+
 /** Permanently remove project bytes (not exposed as agent tool; dashboard cascade uses this).
- * 清全部按工程分key的数据:doc/聊天/创作模式/提案/版本(后两个键归 proposalStore/versionStore
- * 所有,此处按字面删,避免持久层互相 import)。索引没有该 id 也照删——孤儿文档(冒烟测试
- * 残留)靠这个清。 */
-export async function purgeProject(id: string): Promise<void> {
+ * Clear all data keyed by project: doc/chat/creation mode/proposal/version (the last two keys belong to proposalStore/versionStore
+ * All, delete them literally here to avoid mutual import of persistence layers). Even if the index does not have the id, it will be deleted - orphan document (smoke test)
+ * Residues) rely on this to clear.*/
+export async function purgeProject(id: string, options?: ProjectPurgeOptions): Promise<void> {
+  await clearProjectSemanticVectors(id, options);
   await idbDel(projectKey(id));
   await idbDel(chatKey(id));
   await idbDel(creativeModeKey(id));
@@ -427,11 +455,12 @@ export async function purgeProject(id: string): Promise<void> {
   await idbDel(`proposal:${id}`);
   await idbDel(`versions:${id}`);
   await idbDel(`jobs:${id}`);
+  await idbDel(`review:${id}`);
   await idbSet(INDEX_KEY, (await readIndex()).filter((m) => m.id !== id));
   clearProjectSessionPrefs(id);
 }
 
-/** 全部 project:<id> 文档的 id(含索引之外的孤儿——冒烟/旧测试残留)。 */
+/** All project:<id> ids of documents (including orphans outside the index - smoke/old test remnants).*/
 export async function listProjectDocIds(): Promise<string[]> {
   try {
     return (await idbKeys()).filter((k) => k.startsWith('project:')).map((k) => k.slice('project:'.length));

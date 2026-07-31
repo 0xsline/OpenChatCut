@@ -1,29 +1,23 @@
 import type { CaptionsData, CaptionSourceEntry, CaptionWordOverride } from './types';
 import type { TimelineItem } from '../editor/types';
 import type { TranscriptWord } from '../transcript/types';
-import { itemWindow, keptWordIndices, mediaWindowKeptIndices, mediaWindowWords, retimeWords } from '../transcript/edit';
+import { itemEditOpts, itemWindow, keptWordIndices, mediaWindowKeptIndices, mediaWindowWords, retimeWords } from '../transcript/edit';
 import { findVariantByLang, resolveVariantText } from '../transcript/variants';
 import { orderedCaptionSourceEntries } from './sourceOrder';
 
-// 词 → 时间线投影按 kind 分流，并与播放层保持一致:
-// audio = 编辑后词流(keptSegments 重排,删词/压静音/trim 窗口全生效);
-// video = 连续播放媒体 [srcIn, srcIn+dur×rate),窗口内可闻即显——transcript
-// 删词不隐藏、时序永不重排(TimelineComposition 对 video 恒 OffthreadVideo
-// trimBefore,词编辑不改画面;字幕层要藏词走 wordOverrides)。
+// Word → Timeline projection is split by kind and consistent with the playback layer:
+// audio = word flow after editing (keptSegments rearrangement, word deletion/mute/trim window all take effect);
+// video = continuous playback of media [srcIn, srcIn+dur×rate), which can be heard and displayed in the window — transcript
+// Deleted words are not hidden, and timing is never rearranged (TimelineComposition is constant for video OffthreadVideo
+// trimBefore, word editing does not change the picture; the caption layer needs to hide words (wordOverrides).
 function projectItemWords(item: TimelineItem, src: TranscriptWord[], del: Set<number>, fps: number): TranscriptWord[] {
   if (item.kind !== 'audio') return mediaWindowWords(src, fps, item);
-  return retimeWords(src, del, fps, item.startFrame, {
-    maxGapFrames: item.silenceFrames, gapCapsMs: item.gapCapsMs, playOrder: item.transcriptPlayOrder,
-    window: itemWindow(item),
-  });
+  return retimeWords(src, del, fps, item.startFrame, { ...itemEditOpts(item), window: itemWindow(item) });
 }
 
 function projectItemIndices(item: TimelineItem, del: Set<number>, fps: number): number[] {
   if (item.kind !== 'audio') return mediaWindowKeptIndices(item.transcript ?? [], fps, item);
-  return keptWordIndices(item.transcript ?? [], del, fps, {
-    maxGapFrames: item.silenceFrames, gapCapsMs: item.gapCapsMs, playOrder: item.transcriptPlayOrder,
-    window: itemWindow(item),
-  });
+  return keptWordIndices(item.transcript ?? [], del, fps, { ...itemEditOpts(item), window: itemWindow(item) });
 }
 
 // Items participating in a MULTI-source merge (`sourceMode:'timeline'` = every
@@ -47,7 +41,7 @@ function mergedSourceItems(captions: CaptionsData, items: TimelineItem[]): Timel
 }
 
 /** One lane's words (TIMELINE ms): the entry's item transcript, variant text
- * swapped in BEFORE retiming (翻译只换文本，时序永远来自源词),
+ * swapped in BEFORE retiming (the translation only changes the text, the timing always comes from the source word),
  * deletions/silence/trim window all honored (same math as the play layer). */
 export function resolveEntryWords(entry: CaptionSourceEntry, items: TimelineItem[], fps: number): TranscriptWord[] {
   if (entry.words) return entry.words.map((word) => ({ ...word }));
@@ -69,7 +63,7 @@ function mergeWords(sourceItems: TimelineItem[], fps: number): TranscriptWord[] 
   const all: TranscriptWord[] = [];
   for (const it of sourceItems) {
     const del = new Set(it.deletedWordIdx ?? []);
-    all.push(...projectItemWords(it, it.transcript ?? [], del, fps)); // 字幕跟随实际播放(按 kind 分流)
+    all.push(...projectItemWords(it, it.transcript ?? [], del, fps)); // Captions follow actual playback (split by kind)
   }
   return all.sort((a, b) => a.start - b.start);
 }
@@ -129,7 +123,7 @@ export function resolveCaptionWordIndices(captions: CaptionsData, items: Timelin
   const item = captions.sourceItemId ? items.find((it) => it.id === captions.sourceItemId) : undefined;
   if (item?.transcript?.length) {
     const del = new Set(item.deletedWordIdx ?? []);
-    // 与 resolveCaptionWords 同一套存活规则(按 kind 分流),否则 wordOverrides 错位
+    // The same set of survival rules as resolveCaptionWords (divided according to kind), otherwise wordOverrides will be misplaced
     return projectItemIndices(item, del, fps);
   }
   return (captions.words ?? []).map((_, i) => i);

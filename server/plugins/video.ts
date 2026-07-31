@@ -114,7 +114,7 @@ async function generateSeedance(input: ValidVideoRequest, options: VideoOptions)
   throw new Error('seedance2 generation timed out');
 }
 
-/** Map agent @ImageN / @VideoN (and 图片/视频) to Kling Omni <<<image_n>>> / <<<video_n>>> tokens. */
+/** Map agent @ImageN / @VideoN (and image/video) to Kling Omni <<<image_n>>> / <<<video_n>>> tokens.*/
 export function klingPrompt(prompt: string): string {
   return prompt
     .replace(/@(Image|图片)(\d+)/gi, '<<<image_$2>>>')
@@ -289,6 +289,21 @@ async function generateHailuo(input: ValidVideoRequest, options: VideoOptions): 
   throw new Error('hailuo generation timed out');
 }
 
+async function saveVideoResults(
+  jobId: string,
+  name: string,
+  videoUrl: string,
+  lastFrameUrl?: string,
+): Promise<GenerationResult | GenerationResult[]> {
+  const video = { assetId: jobId, kind: 'video' as const, name, ...await saveVideo(videoUrl) };
+  if (!lastFrameUrl) return video;
+  const path = await saveImageUrl(lastFrameUrl);
+  return [video, {
+    assetId: `${jobId}:last-frame`, kind: 'image', name: `${name} · Last frame`, path,
+    durationSeconds: 5,
+  }];
+}
+
 export function videoGenerationPlugin(options: VideoOptions): Plugin {
   return {
     name: 'openchatcut-video-generation',
@@ -301,22 +316,22 @@ export function videoGenerationPlugin(options: VideoOptions): Plugin {
           const submission = createGenerationJob({
             kind: 'video', model: input.model, name, prompt: input.prompt,
             durationSeconds: input.durationSeconds, ratio: input.ratio,
-          }, async (jobId): Promise<GenerationResult | GenerationResult[]> => {
+          }, async (jobId, _update, registerDownload): Promise<GenerationResult | GenerationResult[]> => {
             if (input.model === 'seedance2') {
               const generated = await generateSeedance(input, options);
-              const video = { assetId: jobId, kind: 'video' as const, name, ...await saveVideo(generated.videoUrl) };
-              if (!input.returnLastFrame) return video;
-              if (!generated.lastFrameUrl) throw new Error('seedance2 did not return the requested last frame');
-              const path = await saveImageUrl(generated.lastFrameUrl);
-              return [video, {
-                assetId: `${jobId}:last-frame`, kind: 'image', name: `${name} · Last frame`, path,
-                durationSeconds: 5,
-              }];
+              if (input.returnLastFrame && !generated.lastFrameUrl) throw new Error('seedance2 did not return the requested last frame');
+              const download = () => saveVideoResults(
+                jobId, name, generated.videoUrl, input.returnLastFrame ? generated.lastFrameUrl : undefined,
+              );
+              registerDownload(generated.videoUrl, download);
+              return download();
             }
             const url = input.model === 'kling'
               ? await generateKling(input, options)
               : await generateHailuo(input, options);
-            return { assetId: jobId, kind: 'video', name, ...await saveVideo(url) };
+            const download = () => saveVideoResults(jobId, name, url);
+            registerDownload(url, download);
+            return download();
           });
           sendJson(res, 202, submission);
         } catch (error) {

@@ -13,15 +13,16 @@ import { Divider } from './components/Divider';
 import { DesignStylePanel } from './components/settings/DesignStylePanel';
 import { VersionHistory } from './components/VersionHistory';
 import { usePersistedState } from './hooks/usePersistedState';
+import { useEditorPanelLayout } from './hooks/useEditorPanelLayout';
 import { useEditor } from './editor/store';
 import type { ProjectDoc, TimelineItem, TimelineState } from './editor/types';
 import { captionsOnTrack, selectedIdsOf, timelineTrackIds, trackAlias, trackKind } from './editor/types';
 import { TEMPLATES } from './editor/initial';
 import { saveProject, loadCreativeMode, saveCreativeMode, type ProjectMeta } from './persist/projectStore';
+import { useAutomaticVersions } from './persist/useAutomaticVersions';
 import { importMedia } from './media/upload';
 import { importUploadedMedia } from './media/mobileImport';
 import type { MobileUploadRecord } from './media/mobileUploadApi';
-import { ensureMediaSrcs } from './persist/mediaBlobStore';
 import { resumeOpenGenerationJobs } from './persist/jobRegistryStore';
 import { enqueueTranscription, shouldTranscribe } from './transcript/transcribe-jobs';
 import { enqueueVisualAnalysis, refreshVisualAnalysis } from './agent/progress/visual-analysis-jobs';
@@ -37,9 +38,11 @@ import type { TimelineShortcutApi } from './shortcuts/timelineApi';
 import { ShortcutsDialog } from './shortcuts/ShortcutsDialog';
 import { AppToastHost } from './ui/AppToastHost';
 import { showAppToast } from './ui/appToast';
-import { isolateVoiceOnSrc, strengthFromAudioFxId } from './audio/isolateVoice';
+import { isolateVoiceOnSrc } from './audio/isolateVoice';
 import { analyzeClipLoudness, gainForTarget } from './audio/loudness';
 import { analyzeAutoGrade, type AutoGradeResponse } from './color/autoGrade';
+import { useOfflineMedia } from './media/useOfflineMedia';
+import { keyframeResetBatch } from './editor/keyframeReset';
 
 interface EditorProps {
   initial: ProjectDoc;
@@ -48,14 +51,6 @@ interface EditorProps {
   onRename: (name: string) => void;
 }
 
-const HEADER_H = 41;
-const CHAT_MIN_W = 320;
-const ASSETS_MIN_W = 176;
-const CANVAS_MIN_W = 280;
-const TIMELINE_MIN_H = 260;
-const SPLITTER_TOTAL_W = 0;
-const BASELINE_VIEWPORT_W = 1463;
-const BASELINE_CONTENT_H = 761;
 
 interface AutoGradeRecommendation {
   itemId: string;
@@ -76,8 +71,11 @@ function isAutoGradeTarget(item: TimelineItem, state: TimelineState): boolean {
 
 export default function Editor({ initial, project, onHome, onRename }: EditorProps) {
   const t = useT();
-  const { state, doc, commands, canUndo, canRedo } = useEditor(initial);
+  const { state, doc, commands, canUndo, canRedo, getUndoTarget } = useEditor(initial);
   const selectedItem = state.items.find((it) => it.id === state.selectedId) ?? null;
+  const [reviewRequest, setReviewRequest] = useState<{
+    itemId: string; frame: number; clientX: number; clientY: number; nonce: number;
+  } | null>(null);
   const trackOptions = useMemo(
     () => timelineTrackIds(state).map((id) => ({
       id,
@@ -92,11 +90,17 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     .map((option) => ({ ...option, captions: captionsOnTrack(state, option.id) }));
 
   // keep live refs so agent tools always read the latest timeline/project
+  // All changes made during dragging of the slider/color picker are merged into an undo record (see gesture of historyReduce).
+  const historyGesture = useMemo(
+    () => ({ begin: commands.beginHistoryGesture, end: commands.endHistoryGesture }),
+    [commands],
+  );
   const stateRef = useRef(state);
   stateRef.current = state;
   const docRef = useRef(doc);
   docRef.current = doc;
-// 创作模式:选中的技能 id 注入系统提示，并存入 IDB(不进 undo 历史)。
+  const { offlineSrcs, offlineSrcsRef, offlineAssetIds, markOffline: markMediaOffline } = useOfflineMedia(doc);
+// Creative mode: The selected skill id is injected into the system prompt and stored in the IDB (without entering the undo history).
   const [creativeMode, setCreativeMode] = useState<string | null>(null);
   const creativeModeRef = useRef(creativeMode);
   creativeModeRef.current = creativeMode;
@@ -106,7 +110,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     saveCreativeMode(project.id, id);
   }, [project.id]);
   const playerRef = useRef<PlayerRef | null>(null);
-  // 内置 + 已装插件的 MG 模板:agent(browse_library/加 MG)与资源库共用同一份
+  // Built-in + plugin MG template: agent (browse_library/plus MG) shares the same copy with the resource library
   const pluginPacks = usePluginPacks();
   const allTemplates = useMemo(
     () => (pluginPacks.length ? [...TEMPLATES, ...pluginTemplates(pluginPacks)] : TEMPLATES),
@@ -119,7 +123,9 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       commands,
       getState: () => stateRef.current,
       getDoc: () => docRef.current,
+      getOfflineMediaSrcs: () => offlineSrcsRef.current,
       getCreativeMode: () => creativeModeRef.current,
+      getUndoTarget,
       setCreativeMode: changeCreativeMode,
       get templates() { return allTemplatesRef.current; },
       audio: AUDIO_ASSETS,
@@ -137,7 +143,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       },
       onProjectRenamed: onRename,
     }),
-    [commands, project.id, onRename, changeCreativeMode],
+    [commands, project.id, onRename, changeCreativeMode, offlineSrcsRef, getUndoTarget],
   );
   // a pending proposal's draft result, previewed in the player (null = committed)
   const [previewState, setPreviewState] = useState<TimelineState | null>(null);
@@ -235,13 +241,13 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     };
   }, [autoGradeSession, state]);
   const selectedAutoGrade = autoGradeSession?.recommendations.find((entry) => entry.itemId === state.selectedId) ?? null;
-  // library「用 AI 生成」→ prefill the chat composer (nonce forces re-seed of the same text)
+  // library「Generated with AI」→ prefill the chat composer (nonce forces re-seed of the same text)
   const [chatSeed, setChatSeed] = useState<{ text: string; nonce: number; reference?: AgentReference } | null>(null);
-  // 设计风格(品牌)编辑器弹窗。
+  // Design style (brand) editor pop-up window.
   const [showDesign, setShowDesign] = useState(false);
-  // 版本历史弹窗。
+  // Version history pop-up window.
   const [showVersions, setShowVersions] = useState(false);
-  // 快捷键帮助。
+  // Shortcut key help.
   const [showShortcuts, setShowShortcuts] = useState(false);
   /** Timeline fills this; Editor binds the global shortcut dispatcher to it. */
   const shortcutApiRef = useRef<TimelineShortcutApi | null>(null);
@@ -250,25 +256,39 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   // painted inside Timeline so playback does not re-render the whole editor.
   const getPlayhead = useCallback(() => playerRef.current?.getCurrentFrame() ?? 0, []);
 
-  // autosave this project (all timelines) to IndexedDB (debounced) so a reload restores it
+  useAutomaticVersions(project.id, doc);
+
+  // autosave this project (all timelines) to IndexedDB (debounced) so a reload restores it.
+  // The anti-shake timer will be cleared by the effect, so the "leave" process must be completed by yourself: Return to the project list
+  // If (Editor is uninstalled), closing tabs, and refreshing all occur within the 500ms window, the last bit of editing would have been lost.
+  const unsavedRef = useRef<ProjectDoc | null>(null);
   useEffect(() => {
-    const id = setTimeout(() => saveProject(project.id, doc), 500);
+    unsavedRef.current = doc;
+    const id = setTimeout(() => {
+      unsavedRef.current = null;
+      void saveProject(project.id, doc);
+    }, 500);
     return () => clearTimeout(id);
   }, [doc, project.id]);
+  useEffect(() => {
+    const flush = (): void => {
+      const pending = unsavedRef.current;
+      if (!pending) return;
+      unsavedRef.current = null;
+      void saveProject(project.id, pending).catch(() => { /* Failed on the way to close the page and nowhere to report*/ });
+    };
+    // pagehide covers the label/refresh/forward and backward; the cleanup during uninstallation covers the return to the project list and cut projects.
+    window.addEventListener('pagehide', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, [project.id]);
 
   // Rehydrate missing /media/uploads files from IDB blob cache (disk wipe / new clone).
   // Also resume any open generation jobs so refresh mid-generate still lands assets.
   useEffect(() => {
     let alive = true;
-    const currentDoc = docRef.current;
-    const srcs = [
-      ...currentDoc.assets.map((a) => a.src),
-      ...currentDoc.timelines.flatMap((tl) => tl.items.map((it) => it.src).filter(Boolean) as string[]),
-    ];
-    void ensureMediaSrcs(srcs).then((r) => {
-      if (!alive || r.restored.length === 0) return;
-      try { playerRef.current?.seekTo(playerRef.current.getCurrentFrame()); } catch { /* ignore */ }
-    });
     void resumeOpenGenerationJobs(project.id, {
       getState: () => stateRef.current,
       onAsset: (asset) => {
@@ -283,26 +303,22 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   }, [project.id, commands]); // only on open / project switch
 
   // Switching timelines: seek the shared Player so it doesn't show a stale frame.
-  // 跳过挂载首跑——否则会把 Timeline 侧刚从 sessionPrefs 恢复的播放头顶回 0
-  //(父 effect 晚于子 effect,恢复必被覆盖)。
+  // Skip mounting the first run - otherwise the playback head just restored from sessionPrefs on the Timeline side will be reset to 0
+  //(The parent effect is later than the child effect, and recovery will be overwritten).
   const firstTimelineRef = useRef(true);
   useEffect(() => {
     if (firstTimelineRef.current) { firstTimelineRef.current = false; return; }
     playerRef.current?.seekTo(0);
   }, [doc.activeTimelineId]);
 
-  // Default panel geometry is normalized against a 1463×802 CSS-pixel viewport.
-  const viewportW = typeof window === 'undefined' ? 1440 : window.innerWidth;
-  const viewportH = typeof window === 'undefined' ? 900 : window.innerHeight;
-  const [chatW, setChatW] = usePersistedState('openchatcut.chatW.ui-v1', Math.max(CHAT_MIN_W, Math.round(viewportW * 356 / BASELINE_VIEWPORT_W)));
-  const [libW, setLibW] = usePersistedState('openchatcut.libW.ui-v1', Math.max(ASSETS_MIN_W, Math.round(viewportW * 406 / BASELINE_VIEWPORT_W)));
-  const [timelineH, setTimelineH] = usePersistedState('openchatcut.timelineH.ui-v1', Math.max(TIMELINE_MIN_H, Math.round((viewportH - HEADER_H) * 350 / BASELINE_CONTENT_H)));
   const [chatCollapsed, setChatCollapsed] = usePersistedState('cc.chatCollapsed', false);
+  const panelLayout = useEditorPanelLayout(chatCollapsed);
+  const [inspectorCollapsed, setInspectorCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
   const addTemplate = useCallback((tpl: Tpl) => commands.addMotionGraphic(tpl), [commands]);
-  // Add an asset to the pool AND kick off "上传即转写" ASR for audio-bearing media.
+  // Add an asset to the pool AND kick off "upload-and-transcribe" ASR for audio-bearing media.
   // On completion the transcript is written onto the asset (so later placements inherit
   // it) and backfilled onto any clip already placed from this asset (drag-to-canvas /
-  // voiceover), so the口播 is editable as soon as ASR lands.
+  // voiceover), so the voiceover is editable as soon as ASR lands.
   // Kick ASR. Prefer race-ahead asrPath (extract started right after master upload).
   const startAssetTranscription = useCallback((
     asset: Pick<MediaAsset, 'id' | 'src' | 'kind'> & { name?: string },
@@ -422,12 +438,11 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     setChatCollapsed(false);
     setChatSeed({ text: t('参考模板「{name}」，用 create_motion_graphic 生成一个类似风格的动画： @{name} ', { name: tpl.name }), nonce: Date.now(), reference: { id: tpl.id, name: tpl.name, kind: 'template' } });
   }, [setChatCollapsed, t]);
-  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
   // Export: POST the current timeline to the dev-server /export endpoint (which
   // renders it in headless Chrome via @remotion/renderer) and download the MP4.
   const [exportOpen, setExportOpen] = useState(false);
-  // 导出走设置对话框，共 5 个 tab:视频/音频/MG动画/字幕/XML。
+  // Export the settings dialog box, with a total of 5 tabs: video/audio/MG animation/captions/XML.
   const onExport = useCallback(() => setExportOpen(true), []);
   useEditorActions({
     commands,
@@ -450,10 +465,11 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
 
   return (
     <div
+      className="cc-editor-shell"
       style={{
         display: 'grid',
-        gridTemplateColumns: `${chatCollapsed ? 46 : chatW}px 0 ${libW}px 0 minmax(0, 1fr)`,
-        gridTemplateRows: `${HEADER_H}px minmax(0, 1fr) 0 ${timelineH}px`,
+        gridTemplateColumns: panelLayout.gridTemplateColumns,
+        gridTemplateRows: panelLayout.gridTemplateRows,
         height: '100vh',
         overflow: 'hidden',
         background: theme.bg,
@@ -488,11 +504,11 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       <ChatPanel ctx={agentCtx} projectId={project.id} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((v) => !v)} onPreviewState={setPreviewState} seed={chatSeed} creativeMode={creativeMode} onCreativeModeChange={changeCreativeMode} onImportMedia={importToPool} />
 
       <div style={{ gridColumn: 2, gridRow: '2 / 5' }}>
-        {!chatCollapsed && <Divider onResize={(dx) => setChatW((w) => clamp(w + dx, CHAT_MIN_W, Math.max(CHAT_MIN_W, viewportW - libW - CANVAS_MIN_W - SPLITTER_TOTAL_W)))} />}
+        {!chatCollapsed && <Divider onResize={panelLayout.resizeChat} />}
       </div>
 
       <div style={{ gridColumn: 3, gridRow: 2, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} transitions={state.transitions ?? []} fxDefs={state.fxDefs ?? {}} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onRemoveMediaAsset={commands.removeMediaAsset}
+        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} offlineAssetIds={offlineAssetIds} onAssetLoadError={(asset) => markMediaOffline(asset.src)} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onRemoveMediaAsset={commands.removeMediaAsset}
           onRelinkMediaAsset={(id, next) => commands.relinkMediaAsset(id, next)}
           onAddSolid={() => commands.addSolidItem({ startFrame: getPlayhead() })}
           onUseTemplateAI={useTemplateAI}
@@ -510,37 +526,29 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             commands.setItemEffects(state.selectedId, next, serializableDefsFor(next));
           }}
           onApplyZoom={(zoom) => state.selectedId && commands.setItemZoom(state.selectedId, zoom)}
-          onApplyAudioFx={async (audioFxId) => {
-            const id = state.selectedId;
-            const item = id ? state.items.find((it) => it.id === id) : null;
-            if (!item || (item.kind !== 'video' && item.kind !== 'audio')) {
-              showAppToast(t('人声隔离只能用在视频 / 音频片段上'), { error: true });
-              return;
-            }
-            showAppToast(t('人声隔离处理中…'), { ms: 60_000 });
-            try {
-              const strength = strengthFromAudioFxId(audioFxId);
-              const r = await isolateVoiceOnSrc(item.src ?? '', strength, { force: true });
-              commands.setItemDenoise(item.id, r.path, r.strength);
-              showAppToast(t('人声隔离已应用'));
-            } catch (err) {
-              showAppToast(err instanceof Error ? err.message : t('人声隔离失败'), { error: true });
-            }
-          }}
  />
       </div>
       <div style={{ gridColumn: 4, gridRow: 2 }}>
-        <Divider onResize={(dx) => setLibW((w) => clamp(w + dx, ASSETS_MIN_W, Math.max(ASSETS_MIN_W, viewportW - (chatCollapsed ? 46 : chatW) - CANVAS_MIN_W - SPLITTER_TOTAL_W)))} />
+        <Divider onResize={panelLayout.resizeLibrary} />
       </div>
-      <div style={{ gridColumn: 5, gridRow: 2, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+      <div className="cc-preview-workspace" style={{ gridColumn: 5, gridRow: 2 }}>
         <PreviewPanel state={autoGradePreviewState ?? previewState ?? state} playerRef={playerRef} onImport={importToCanvas}
+          projectId={project.id} timelineId={doc.activeTimelineId} reviewState={state} selectedItem={selectedItem}
+          reviewRequest={reviewRequest}
+          offlineSrcs={offlineSrcs}
           onUpdateCaptions={previewState || autoGradePreviewState ? undefined : commands.updateCaptions}
-          onSeedChat={(text) => setChatSeed({ text, nonce: Date.now() })} />
-        {selectedItem && (
+          onSeedChat={(text) => setChatSeed({ text, nonce: Date.now() })}
+          inspectorOpen={!!selectedItem && !inspectorCollapsed}
+          onToggleInspector={() => setInspectorCollapsed((collapsed) => !collapsed)} />
+        {selectedItem && !inspectorCollapsed && (
           <InspectorPanel
+            playerRef={playerRef}
+            historyGesture={historyGesture}
             templates={allTemplates}
             selectedItem={selectedItem}
             fps={state.fps}
+            collapsed={inspectorCollapsed}
+            onCollapsedChange={setInspectorCollapsed}
             onItemPropChange={(key, value) => state.selectedId && commands.updateItemProps(state.selectedId, { [key]: value })}
             onItemVolumeChange={(v) => state.selectedId && commands.setItemVolume(state.selectedId, v)}
             onItemFadeChange={(fade) => state.selectedId && commands.setItemFade(state.selectedId, fade)}
@@ -593,6 +601,11 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             onRemoveReframeKeyframe={(frame) => state.selectedId && commands.removeReframeKeyframe(state.selectedId, frame)}
             onSetItemKeyframe={(prop, frame, value, easing) => state.selectedId && commands.setItemKeyframe(state.selectedId, prop, frame, value, easing)}
             onRemoveItemKeyframe={(prop, frame) => state.selectedId && commands.removeItemKeyframe(state.selectedId, prop, frame)}
+            onResetItemKeyframes={(props) => {
+              if (!state.selectedId) return;
+              const reset = keyframeResetBatch(state.selectedId, props);
+              commands.batch(reset.actions, reset.label);
+            }}
             onSeek={(frame) => shortcutApiRef.current?.seekTo(frame)}
             transition={state.transitions?.find((t) => t.incomingItemId === state.selectedId) ?? null}
             onAddTransition={(type) => state.selectedId && commands.addTransition(state.selectedId, type)}
@@ -608,17 +621,18 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         )}
       </div>
       <div style={{ gridColumn: '3 / -1', gridRow: 3 }}>
-        <Divider orientation="horizontal" onResize={(dy) => setTimelineH((h) => clamp(h - dy, TIMELINE_MIN_H, Math.max(TIMELINE_MIN_H, viewportH - HEADER_H - 300)))} />
+        <Divider orientation="horizontal" onResize={panelLayout.resizeTimeline} />
       </div>
       <div style={{ gridColumn: '3 / -1', gridRow: 4, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         <TimelineTabs doc={doc} commands={commands} />
         <Timeline state={state} commands={commands} playerRef={playerRef}
           projectId={project.id}
           shortcutApiRef={shortcutApiRef}
+          onReviewItem={(request) => setReviewRequest({ ...request, nonce: Date.now() })}
           onRecordVoiceover={async (blob) => {
             const ext = blob.type.includes('ogg') ? 'ogg' : 'webm';
             const asset = await importMedia(new File([blob], `旁白.${ext}`, { type: blob.type }), state.fps);
-            ingestToPool(asset); // 旁白 auto-transcribes; the placed A1 clip backfills on completion
+            ingestToPool(asset); // Narration auto-transcribes; the placed A1 clip backfills on completion
             commands.addMediaItem(asset, { track: 'A1', startFrame: getPlayhead() });
           }} />
       </div>

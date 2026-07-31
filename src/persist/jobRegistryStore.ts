@@ -128,7 +128,7 @@ export async function cacheMediaFromUrl(src: string, name?: string): Promise<voi
   if (!src.startsWith('/media/uploads/')) return;
   try {
     const res = await fetch(src, { cache: 'no-store' });
-    // Vite dev 对缺失路径回退 200 + index.html——别把 HTML 当媒体缓存进去。
+    // Vite dev fallback 200 + index.html for missing paths - don't cache HTML as media.
     if (!res.ok || (res.headers.get('content-type') ?? '').includes('text/html')) return;
     const blob = await res.blob();
     await putMediaBlob(src, blob, {

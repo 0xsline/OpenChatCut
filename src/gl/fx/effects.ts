@@ -12,6 +12,11 @@ import asciiRainBlurFrag from './ascii-rain-blur.frag?raw';
 import asciiRainCompositeFrag from './ascii-rain-composite.frag?raw';
 import lutFrag from './lut.frag?raw';
 import chromaKeyFrag from './chroma-key.frag?raw';
+import colorWheelsFrag from './color-wheels.frag?raw';
+import levelsFrag from './levels.frag?raw';
+import highlightsShadowsFrag from './highlights-shadows.frag?raw';
+import clarityFrag from './clarity.frag?raw';
+import hslQualifyFrag from './hsl-qualify.frag?raw';
 import vignetteFrag from './vignette.frag?raw';
 import filmGrainFrag from './film-grain.frag?raw';
 import rgbSplitFrag from './rgb-split.frag?raw';
@@ -201,6 +206,69 @@ export const FX_EFFECTS: Record<string, FxDef> = {
       { key: 'similarity', label: '容差', default: 0.18, min: 0, max: 0.6, step: 0.01 },
       { key: 'smoothness', label: '羽化', default: 0.08, min: 0.001, max: 0.4, step: 0.005 },
       { key: 'spill', label: '溢色抑制', default: 0.5, min: 0, max: 1, step: 0.01 },
+    ],
+  },
+
+  // ── Professional colorist toolkit ─────────────────────────────────────────
+  'builtin:fx-color-wheels': {
+    id: 'builtin:fx-color-wheels',
+    name: '三路色轮',
+    desc: '调色台三路色轮：lift 暗部偏移、gamma 中间调、gain 亮部增益，均以 0.5 灰为中性，逐通道作用。',
+    frag: colorWheelsFrag,
+    props: [
+      { key: 'liftColor', label: '暗部 Lift', kind: 'color', default: [0.5, 0.5, 0.5], uniform: 'u_liftColor' },
+      { key: 'gammaColor', label: '中间调 Gamma', kind: 'color', default: [0.5, 0.5, 0.5], uniform: 'u_gammaColor' },
+      { key: 'gainColor', label: '亮部 Gain', kind: 'color', default: [0.5, 0.5, 0.5], uniform: 'u_gainColor' },
+      { key: 'intensity', label: '强度', default: 1, min: 0, max: 1, step: 0.01 },
+    ],
+  },
+  'builtin:fx-levels': {
+    id: 'builtin:fx-levels',
+    name: '色阶',
+    desc: '输入黑/白场重映射 + 中间调 Gamma + 输出黑/白场（逐通道），配合 inspect_color 的黑白点读数使用。',
+    frag: levelsFrag,
+    props: [
+      { key: 'inBlack', label: '输入黑场', default: 0, min: 0, max: 0.5, step: 0.005 },
+      { key: 'inWhite', label: '输入白场', default: 1, min: 0.5, max: 1, step: 0.005 },
+      { key: 'gamma', label: 'Gamma', default: 1, min: 0.2, max: 3, step: 0.02 },
+      { key: 'outBlack', label: '输出黑场', default: 0, min: 0, max: 0.5, step: 0.005 },
+      { key: 'outWhite', label: '输出白场', default: 1, min: 0.5, max: 1, step: 0.005 },
+    ],
+  },
+  'builtin:fx-highlights-shadows': {
+    id: 'builtin:fx-highlights-shadows',
+    name: '高光/阴影',
+    desc: '按亮度软掩膜分别调整：提亮暗部（保护高光）、回收或增强高光。',
+    frag: highlightsShadowsFrag,
+    props: [
+      { key: 'shadows', label: '阴影', default: 0, min: -1, max: 1, step: 0.02 },
+      { key: 'highlights', label: '高光', default: 0, min: -1, max: 1, step: 0.02 },
+      { key: 'shadowRange', label: '阴影范围', default: 0.35, min: 0.1, max: 0.7, step: 0.01 },
+      { key: 'highlightRange', label: '高光范围', default: 0.35, min: 0.1, max: 0.7, step: 0.01 },
+    ],
+  },
+  'builtin:fx-clarity': {
+    id: 'builtin:fx-clarity',
+    name: '清晰度',
+    desc: '中间调局部对比（亮度 unsharp）：正值增质感，负值柔化肤质。',
+    frag: clarityFrag,
+    props: [
+      { key: 'amount', label: '强度', default: 0.35, min: -1, max: 1, step: 0.02 },
+      { key: 'radius', label: '半径(px)', default: 24, min: 4, max: 64, step: 1 },
+    ],
+  },
+  'builtin:fx-hsl-qualify': {
+    id: 'builtin:fx-hsl-qualify',
+    name: 'HSL 定向调整',
+    desc: '二级校色：只对选中的色相区间（中心±宽度+羽化）做色相偏移/饱和度/明度调整；肤色、天空、品牌色定向修。',
+    frag: hslQualifyFrag,
+    props: [
+      { key: 'hueCenter', label: '色相中心(°)', default: 25, min: 0, max: 360, step: 1 },
+      { key: 'hueWidth', label: '选区宽(°)', default: 25, min: 5, max: 90, step: 1 },
+      { key: 'softness', label: '羽化(°)', default: 20, min: 1, max: 60, step: 1 },
+      { key: 'hueShift', label: '色相偏移(°)', default: 0, min: -60, max: 60, step: 1 },
+      { key: 'satMul', label: '饱和度×', default: 1, min: 0, max: 2, step: 0.02 },
+      { key: 'lumaMul', label: '明度×', default: 1, min: 0.5, max: 1.5, step: 0.01 },
     ],
   },
 
@@ -405,6 +473,11 @@ export const FX_ORDER = [
   'builtin:fx-shake',
   'builtin:fx-luma-key',
   'builtin:fx-chroma-key',
+  'builtin:fx-color-wheels',
+  'builtin:fx-levels',
+  'builtin:fx-highlights-shadows',
+  'builtin:fx-clarity',
+  'builtin:fx-hsl-qualify',
   'builtin:fx-vignette',
   'builtin:fx-film-grain',
   'builtin:fx-rgb-split',
@@ -637,20 +710,20 @@ export const LUT_IDS = [
 // every per-clip GL effect (fx + lut) — ClipFx / agent / inspector resolve here
 export const ALL_FX: Record<string, FxDef> = { ...FX_EFFECTS, ...LUT_EFFECTS };
 
-// ── 运行时自定义 fx（submit_shader 的 LLM 生成产物）注册表 ─────────────────────
-// effect-tools.ts 在模块加载时用「引用」捕获了 ALL_FX（`const FX_EFFECTS = ALL_FX`），
-// 所以只要往 ALL_FX 这个对象「原地」写入，manage_effects 的 `assetId in FX_EFFECTS`
-// 与 describe() 就能立刻查到自定义 fx——无需改动 effect-tools.ts。CUSTOM_FX 另存一份
-// 自定义条目，便于区分/枚举/测试。内置 fx 与 LUT 保持不变。
-// ponytail: 注册表本质是共享运行时状态，这里是唯一必须「原地改」的地方（唯一能让已
-// 捕获引用的 effect-tools 看到新 fx 的方式）；其余仍遵守不可变约定。
+// ── Runtime custom fx (submit_shader's LLM generated product) registry ──────────────────────
+// effect-tools.ts captures ALL_FX with "reference" when loading the module (`const FX_EFFECTS = ALL_FX`),
+// So just write "in place" to the ALL_FX object, manage_effects' `assetId in FX_EFFECTS`
+// Use describe() to instantly find custom fx - no need to change effect-tools.ts. CUSTOM_FXSave another copy
+// Customized entries for easy differentiation/enumeration/testing. Built-in fx and LUTs remain unchanged.
+// ponytail: The essence of the registry is to share the runtime state. This is the only place where it must be "changed in place" (the only place where it can be changed
+// The way effect-tools that captures the reference sees the new fx); the rest still adheres to the immutable contract.
 export const CUSTOM_FX: Record<string, FxDef> = {};
 
-/** 通用 lut.frag 源码(插件 LUT def 用它 + 自己的 .cube URL 组装)。 */
+/** Generic lut.frag source code (the plugin LUT def is assembled with it + its own .cube URL). */
 export const LUT_FRAG = lutFrag;
 
-/** 应用特效时取非内置 assetId(plugin:/custom:)的可序列化 def,随 setItemEffects
- * 快照进 state.fxDefs——刷新/无头导出(无内存注册表)才渲染得出。内置返回空。 */
+/** When applying special effects, take the serializable def of non-built-in assetId (plugin:/custom:), along with setItemEffects
+ * Snapshot into state.fxDefs - refresh/headless export (no memory registry) to render. The built-in returns null. */
 export function serializableDefsFor(effects: Array<{ assetId: string }>): SerializableFxDef[] {
   const out: SerializableFxDef[] = [];
   for (const { assetId } of effects) {
@@ -666,14 +739,14 @@ export function serializableDefsFor(effects: Array<{ assetId: string }>): Serial
   return out;
 }
 
-/** 注册一个运行时自定义 fx：写入 CUSTOM_FX，并原地并入 ALL_FX 供 effect-tools 查到。 */
+/** Register a runtime custom fx: write CUSTOM_FX and merge it into ALL_FX in place for effect-tools to find. */
 export function registerCustomFx(def: FxDef): FxDef {
   CUSTOM_FX[def.id] = def;
   ALL_FX[def.id] = def;
   return def;
 }
 
-/** 卸载自定义/插件 fx(仅 CUSTOM_FX 条目;内置不可卸)。 */
+/** Uninstall custom/plugin fx (CUSTOM_FX entry only; built-in not uninstallable). */
 export function unregisterCustomFx(id: string): boolean {
   if (!(id in CUSTOM_FX)) return false;
   delete CUSTOM_FX[id];

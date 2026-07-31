@@ -3,7 +3,7 @@ import { captionPages, captionsToSrt } from './exportCaptions';
 import { buildLaneGroups } from './lanes';
 import {
   appendDroppedManualCaption, appendManualCue, appendManualCueToFirstLane, appendManualLane, isManualCaptionEntry,
-  newManualCaptions, removeManualCue, resizeManualCue, updateManualCue,
+  newManualCaptions, placeManualCueTiming, removeManualCue, resizeManualCue, updateManualCue,
 } from './manualCaptions';
 
 let captions = newManualCaptions();
@@ -50,5 +50,13 @@ assert.equal(droppedEntry.style?.highlightBackground, '#FF2E63');
 captions = { ...captions, ...removeManualCue(captions, laneId, 0) };
 captions = { ...captions, ...removeManualCue(captions, laneId, 0) };
 assert.equal(captions.sourceEntries!.find((entry) => entry.id === laneId)?.words?.length, 0);
+
+//  —  placeManualCueTiming: non-overlapping clamping of dragging and placing (shared with same-track/cross-track drag and drop)  —
+const occupied = [{ text: 'a', start: 0, end: 1_000 }, { text: 'c', start: 1_200, end: 2_000 }];
+assert.equal(placeManualCueTiming(occupied, 1_050, 1_000), null, '1000ms cue 拖进 200ms 间隙 → 拒绝(调用方回弹)');
+assert.deepEqual(placeManualCueTiming(occupied, 1_050, 150), { start: 1_050, end: 1_200 }, '塞得下按请求位放,右侧被邻居顶住');
+assert.deepEqual(placeManualCueTiming(occupied, 950, 200), { start: 1_000, end: 1_200 }, '压到前邻居尾部 → 贴边恰好填满间隙');
+assert.deepEqual(placeManualCueTiming(occupied, 5_000, 700), { start: 5_000, end: 5_700 }, '可越过邻居跳到远处开阔区');
+assert.deepEqual(placeManualCueTiming([], -500, 800), { start: 0, end: 800 }, '空 lane:负落点钳到 0,时长保持');
 
 console.log('manualCaptions.check: ok');

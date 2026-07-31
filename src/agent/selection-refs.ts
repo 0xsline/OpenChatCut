@@ -17,7 +17,7 @@ import {
 import { makeWordFrameMapper } from './tools/transcript-find';
 import { isCjkText, speakerLabel } from '../transcript/segment';
 
-/** Media-pool / template mention kinds (the pre-existing @ 引用). */
+/** Media-pool / template mention kinds (the pre-existing @ reference). */
 export type AssetRefKind = 'video' | 'image' | 'audio' | 'motion-graphic' | 'gif' | 'svg' | 'template';
 
 // ── metadata per reference type ─────────────────────────────────────────────
@@ -61,7 +61,7 @@ export interface TranscriptSelectionMetadata {
   assetId?: string;
   itemId: string;
   selectedText: string;
-  /** indices into the clip's transcript[] (词级真源 gi) */
+  /** indices into the clip's transcript[] (word-level true source gi) */
   selectedWordIds: number[];
   selectedWords: { text: string; start: number; end: number }[];
   /** source-media ms straight from the word-level timestamps */

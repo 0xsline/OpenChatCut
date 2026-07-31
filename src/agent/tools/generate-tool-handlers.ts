@@ -9,6 +9,7 @@ import { trackGenerationProgress } from '../../generate/progress';
 import { submitVideo } from '../../generate/video';
 import { submitVoice } from '../../generate/voice';
 import { timelineToFcpxml, type NleFormat } from '../../export/fcpxml';
+import { exportMediaDir } from '../../export/mediaDir';
 import { recordExport } from '../../persist/exportHistoryStore';
 import { cacheMediaFromUrl, patchTrackedJob, registerTrackedJob } from '../../persist/jobRegistryStore';
 import { fontFallbackGate } from './font-tools';
@@ -92,8 +93,8 @@ const submitVideoHandler: Handler = async (args, ctx) => {
 
 async function trackProgressHandler(args: GenerateArgs, ctx: AgentContext): Promise<unknown> {
   if (args.target !== 'generation') return { error: 'this local track_progress implementation currently supports target=generation only' };
-  const action = args.action as 'params' | 'status' | 'wait';
-  if (!['params', 'status', 'wait'].includes(action)) return { error: 'action must be params, status, or wait' };
+  const action = args.action as 'params' | 'status' | 'wait' | 'resume';
+  if (!['params', 'status', 'wait', 'resume'].includes(action)) return { error: 'action must be params, status, wait, or resume' };
   const jobIds = String(args.jobIds ?? '').split(',').map((id) => id.trim()).filter(Boolean);
   const projectId = ctx.getProjectId?.();
   if (projectId) for (const jobId of jobIds) void registerTrackedJob({ jobId, projectId, kind: 'generation', status: 'running' });
@@ -147,19 +148,22 @@ async function exportMedia(args: GenerateArgs, state: TimelineState, format: 'au
     startFrame: typeof args.startFrame === 'number' ? args.startFrame : undefined,
     endFrameExclusive: typeof args.endFrameExclusive === 'number' ? args.endFrameExclusive : undefined,
     startSeconds: typeof args.startSeconds === 'number' ? args.startSeconds : undefined,
-    endSeconds: typeof args.endSeconds === 'number' ? args.endSeconds : undefined, fps, resolution,
+    endSeconds: typeof args.endSeconds === 'number' ? args.endSeconds : undefined,
+    fps,
+    resolution,
+    videoBitrate: typeof args.videoBitrate === 'number' ? args.videoBitrate : undefined,
   };
   const result = await submitMediaExport(input, state);
   void recordExport({ name: result.name, format: result.format, codec: result.codec, sizeBytes: result.sizeBytes, frameRange: frameRangeOf(result.startFrame, result.endFrameExclusive), createdAt: Date.now() });
   return { ok: true, ...result };
 }
 
-function exportXml(args: GenerateArgs, state: TimelineState): unknown {
+async function exportXml(args: GenerateArgs, state: TimelineState): Promise<unknown> {
   const nleFormat: NleFormat = args.nleFormat === 'fcp_xml_resolve' ? 'fcp_xml_resolve' : 'fcp_xml';
   const keys = Array.isArray(args.motionGraphicRenderKeys)
     ? args.motionGraphicRenderKeys.filter((value): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean)
     : [];
-  const xml = timelineToFcpxml(state, { title: typeof args.name === 'string' ? args.name : undefined, nleFormat, motionGraphicRenderKeys: keys });
+  const xml = timelineToFcpxml(state, { title: typeof args.name === 'string' ? args.name : undefined, nleFormat, motionGraphicRenderKeys: keys, mediaDir: await exportMediaDir() });
   const base = (typeof args.name === 'string' && args.name ? args.name : 'timeline').replace(/\.(?:fcpxml|xml)$/i, '');
   const filename = `${base}.fcpxml`;
   const blob = new Blob([xml], { type: 'application/xml' });

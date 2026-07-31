@@ -1,13 +1,13 @@
-// EN 词典(领域分片,键=中文原文)。数据文件,行数上限豁免。
+// EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
 export default {
   '导出设置': 'Export Settings',
   '发布工作台': 'Delivery Studio',
   '关闭': 'Close',
-  // 页签
+  // Tag
   '视频': 'Video',
   '音频': 'Audio',
   'MG动画': 'Motion Graphics',
-  '字幕': 'Captions', // 与 captions.ts 同键同值(合并去序依赖)
+  '字幕': 'Captions', // Same key and same value as captions.ts (merge and remove order dependencies)
   '成片': 'Final video',
   '音轨': 'Audio mix',
   '动态图层': 'Motion layers',
@@ -15,17 +15,27 @@ export default {
   '剪辑工程': 'Edit project',
   '输出类型': 'Output type',
   '本机渲染': 'Local render',
-  // 参数行
+  // Parameter line
   '编码': 'Codec',
+  '格式 / 编码': 'Format / codec',
   '分辨率': 'Resolution',
   '帧率': 'Frame rate',
+  '码率': 'Bitrate',
+  '自动': 'Auto',
+  '小文件': 'Smaller file',
+  '推荐': 'Recommended',
+  '高质量': 'High quality',
+  '自定义': 'Custom',
+  '码率模式': 'Bitrate mode',
+  '自定义码率': 'Custom bitrate',
+  '预计视频码率：{value} Mbps': 'Estimated video bitrate: {value} Mbps',
   '导出后自动质量检查': 'Automatically quality-check after export',
   '检查画面、声音、剪辑点和字幕安全区；临时失败最多自动复检 3 轮。': 'Checks video, audio, edit points, and caption safe areas; transient failures are retried up to three times.',
   '格式': 'Format',
   '目标软件': 'Target app',
   '纯文本 (.txt)': 'Plain text (.txt)',
   '达芬奇': 'DaVinci Resolve',
-  // 页签说明
+  // Page description
   'MP3 音轨': 'MP3 audio mix',
   '提取时间线中的完整混音，视频画面不会写入文件。': 'Extracts the complete timeline mix without writing video frames.',
   '{n} 个动态图层': '{n} motion layers',
@@ -47,7 +57,7 @@ export default {
   '包含 MG动画': 'Include MG animations',
   '把每个 MG动画渲染成带 alpha 的 ProRes 4444 .mov，并和 XML 一起下载。': 'Renders each MG animation to an alpha ProRes 4444 .mov, downloaded alongside the XML.',
   '导入后，请在剪辑软件中指向原始素材所在文件夹，以重新链接离线片段。': 'After importing, point your NLE at the original media folder to relink offline clips.',
-  // 状态 / 错误
+  // status / error
   '渲染 MG {i}/{n} · {name}': 'Rendering MG {i}/{n} · {name}',
   '正在渲染第 {i}/{n} 个动态图层': 'Rendering motion layer {i}/{n}',
   '导出中…': 'Exporting…',
@@ -60,6 +70,7 @@ export default {
   '下载字幕': 'Download captions',
   '生成剪辑工程': 'Create edit project',
   '即将生成': 'Output',
+  '输出规格': 'Output settings',
   '已生成': 'Created',
   '等待渲染': 'Waiting to render',
   '准备素材': 'Preparing media',
@@ -68,6 +79,11 @@ export default {
   'WebCodecs 浏览器加速': 'WebCodecs browser acceleration',
   '切换兼容渲染…': 'Switching to compatibility renderer…',
   '浏览器快导不可用：{reason}，已切换兼容渲染': 'Browser fast export unavailable: {reason}. Switched to compatibility rendering.',
+  '包含 WebGL 片段特效': 'Contains WebGL clip effects',
+  '包含 WebGL 转场': 'Contains WebGL transitions',
+  '浏览器快导暂不转换时间线帧率': 'Browser fast export cannot retime the timeline yet',
+  '当前浏览器不支持此编码配置': 'This browser does not support the selected encoding settings',
+  '浏览器快导失败': 'Browser fast export failed',
   '已取消浏览器渲染': 'Browser rendering cancelled',
   '正在封装': 'Finalizing file',
   '正在质量检查': 'Running quality checks',

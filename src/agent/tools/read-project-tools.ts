@@ -1,4 +1,4 @@
-import type { AgentToolSchema } from '../tool-schema';
+export { READ_PROJECT_TOOL_SCHEMAS, READ_PROJECT_TOOL_NAMES } from './schemas/read-project-tools';
 import type { AgentContext } from '../context';
 import {
   captionTrackEntries,
@@ -19,43 +19,17 @@ import { resolveTimeline } from './timeline-target';
 
 type Args = Record<string, unknown>;
 
-export const READ_PROJECT_TOOL_SCHEMAS: AgentToolSchema[] = [
-  {
-    name: 'read_project',
-    description: [
-      'View the project — tracks, timeline items, markers, media-pool folders, and assets.',
-      'Default = full overview. Narrow with view:"timeline"|"assets", timelineId, track, fromFrame/toFrame, itemId, assetId.',
-      'Pass code:true with assetId to include MG source code.',
-    ].join(' '),
-    input_schema: {
-      type: 'object',
-      properties: {
-        view: {
-          type: 'string',
-          enum: ['timeline', 'assets'],
-          description: "'timeline' tracks+items+markers; 'assets' library only. Omit for full overview.",
-        },
-        timelineId: { type: 'string', description: 'Inspect a non-active timeline by id/prefix without switching.' },
-        track: { type: 'string', description: 'Filter by track alias (e.g. C1, V1, A1).' },
-        fromFrame: { type: 'number', description: 'Items overlapping this frame or later (half-open with toFrame).' },
-        toFrame: { type: 'number', description: 'Exclusive upper frame bound.' },
-        itemId: { type: 'string', description: 'Item id(s) or prefixes, comma-separated.' },
-        assetId: { type: 'string', description: 'Asset id(s) or prefixes, comma-separated.' },
-        code: { type: 'boolean', description: 'Include MG code when assetId is set.' },
-        projectId: { type: 'string', description: 'Ignored; the active project is used.' },
-      },
-    },
-  },
-];
-
-export const READ_PROJECT_TOOL_NAMES = new Set(READ_PROJECT_TOOL_SCHEMAS.map((t) => t.name));
-
 function splitIds(raw: unknown): string[] {
   if (typeof raw !== 'string' || !raw.trim()) return [];
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-function slimItem(it: TimelineItem, state: TimelineState, assets: readonly MediaAsset[]) {
+function slimItem(
+  it: TimelineItem,
+  state: TimelineState,
+  assets: readonly MediaAsset[],
+  offlineSrcs: ReadonlySet<string>,
+) {
   const sourceAssetId = it.src ? assets.find((asset) => asset.src === it.src)?.id ?? null : null;
   const denoisedAssetId = it.denoisedSrc
     ? assets.find((asset) => asset.src === it.denoisedSrc && asset.kind === 'audio')?.id ?? null
@@ -69,6 +43,7 @@ function slimItem(it: TimelineItem, state: TimelineState, assets: readonly Media
     startFrame: it.startFrame,
     durationInFrames: it.durationInFrames,
     src: it.src ?? null,
+    offline: !!it.src && offlineSrcs.has(it.src),
     templateId: it.templateId ?? null,
     volume: it.volume ?? null,
     zoom: it.zoom ?? null,
@@ -84,6 +59,28 @@ function slimItem(it: TimelineItem, state: TimelineState, assets: readonly Media
       ? { denoisedAssetId, strength: it.denoiseStrength ?? null }
       : null,
   };
+}
+
+/**
+ * Gaps between clips on a track [fromFrame, toFrame). The hole on the main video track is exported as a black frame and is not active.
+ * The reported model has to be discovered by subtracting it segment by segment. Blank spaces at the beginning and end don't count - it's just that the track hasn't started/has started
+ * The end can be seen from the frame number of the clip itself. Overlapping fragments are treated with scrolling maximum right edge.
+ * exported for verify.
+ */
+export function trackGaps(
+  items: readonly TimelineItem[],
+  track: string,
+): { fromFrame: number; toFrame: number }[] {
+  const sorted = items.filter((it) => it.track === track).toSorted((a, b) => a.startFrame - b.startFrame);
+  const first = sorted[0];
+  if (!first) return [];
+  const gaps: { fromFrame: number; toFrame: number }[] = [];
+  let end = first.startFrame;
+  for (const it of sorted) {
+    if (it.startFrame > end) gaps.push({ fromFrame: end, toFrame: it.startFrame });
+    end = Math.max(end, it.startFrame + it.durationInFrames);
+  }
+  return gaps;
 }
 
 function itemsOverlap(it: TimelineItem, from?: number, to?: number): boolean {
@@ -117,6 +114,7 @@ export async function execReadProjectTool(
   const includeCode = args.code === true;
   const doc = ctx.getDoc();
   const state = timeline as TimelineState;
+  const offlineSrcs = ctx.getOfflineMediaSrcs?.() ?? new Set<string>();
 
   let trackIdFilter: string | null = null;
   if (trackFilter) {
@@ -166,15 +164,20 @@ export async function execReadProjectTool(
       width: state.width,
       height: state.height,
       fit: state.fit ?? 'contain',
-      tracks: timelineTrackIds(state).map((id) => ({
-        id,
-        alias: trackAlias(state, id),
-        trackType: trackKind(state, id),
-        name: state.tracks?.[id]?.name,
-        locked: state.tracks?.[id]?.locked ?? false,
-        hidden: trackKind(state, id) === 'caption' ? !captionsOnTrack(state, id)?.enabled : state.tracks?.[id]?.hidden ?? false,
-      })),
-      items: items.map((it) => slimItem(it, state, doc.assets)),
+      tracks: timelineTrackIds(state).map((id) => {
+        // The gaps are calculated based on the entire track (not affected by from/to, itemId filtering), otherwise the holes reported are false.
+        const gaps = trackKind(state, id) === 'caption' ? [] : trackGaps(state.items, id);
+        return {
+          id,
+          alias: trackAlias(state, id),
+          trackType: trackKind(state, id),
+          name: state.tracks?.[id]?.name,
+          locked: state.tracks?.[id]?.locked ?? false,
+          hidden: trackKind(state, id) === 'caption' ? !captionsOnTrack(state, id)?.enabled : state.tracks?.[id]?.hidden ?? false,
+          ...(gaps.length ? { gaps } : {}),
+        };
+      }),
+      items: items.map((it) => slimItem(it, state, doc.assets, offlineSrcs)),
       transitions: (state.transitions ?? []).map((t) => ({
         id: t.id,
         type: t.type,
@@ -233,6 +236,7 @@ export async function execReadProjectTool(
         name: a.name,
         kind: a.kind,
         src: a.src || null,
+        offline: !!a.src && offlineSrcs.has(a.src),
         durationInFrames: a.durationInFrames,
         width: a.width ?? null,
         height: a.height ?? null,
@@ -241,6 +245,7 @@ export async function execReadProjectTool(
         ...(includeCode && assetIds.length && a.code ? { code: a.code } : {}),
       })),
       assetCount: doc.assets.length,
+      offlineAssetCount: doc.assets.filter((asset) => offlineSrcs.has(asset.src)).length,
     };
     if (doc.designStyle) {
       out.designStyle = {

@@ -1,6 +1,6 @@
-// checks:皮肤注册表完整性 + 对比度门(impeccable colorize 纪律固化)。
-// 改任何皮肤配色都要过这里:text/panel ≥ 7、textDim/panel ≥ 4.5、
-// textMuted/panel ≥ 4.5、onAccent/accent ≥ 4.5(WCAG AA)。
+// checks: skin registry integrity + contrast gate (impeccable colorize discipline curing).
+// To change the color of any skin, you must go here: text/panel ≥ 7, textDim/panel ≥ 4.5,
+// textMuted/panel ≥ 4.5, onAccent/accent ≥ 4.5 (WCAG AA).
 // `npx tsx src/skins.verify.ts`
 import assert from 'node:assert/strict';
 import { DEFAULT_SKIN, SKINS, buildSkinsCss } from './skins';
@@ -31,7 +31,7 @@ function mixHex(foreground: string, background: string, foregroundWeight: number
   return `#${mixed.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
 }
 
-// ── 注册表完整性 ──
+// ── Registry integrity ──
 assert.ok(SKINS.length >= 2, '至少默认 + 1 套');
 assert.equal(new Set(SKINS.map((s) => s.id)).size, SKINS.length, '皮肤 id 唯一');
 assert.ok(SKINS.some((s) => s.id === DEFAULT_SKIN), '默认皮肤必须在注册表里');
@@ -47,7 +47,7 @@ for (const s of SKINS) {
   }
 }
 
-// ── 对比度门(AA) ──
+// ── Contrast Gate (AA) ──
 for (const s of SKINS) {
   const t = s.tokens;
   const gate = (label: string, ratio: number, min: number): void =>
@@ -56,14 +56,14 @@ for (const s of SKINS) {
   gate('text/panelAlt', contrast(t.text, t.panelAlt), 4.5);
   gate('textMuted/panel', contrast(t.textMuted, t.panel), 4.5);
   gate('textDim/panel', contrast(t.textDim, t.panel), 4.4);
-  // onAccent 按 WCAG 组件/大字级(≥3):石墨白字压 coral=3.27。
-  // (身份保留);粉彩皮肤(摩卡/北极/东京夜/拿铁)用深字,实际 ≥4.5。
+  // onAccent by WCAG component/large font level (≥3): graphite white font pressure coral=3.27.
+  // (Identity reserved); Use dark characters for pastel skin (Mocha/Arctic/Tokyo Night/Latte), actual ≥4.5.
   gate('onAccent/accent', contrast(t.onAccent, t.accent), 3);
   gate('textStrong/hover', contrast(t.textStrong, t.hover), 4.5);
   gate('audioFxBadge/panelGold10', contrast(t.text, mixHex(t.gold, t.panel, 0.1)), 4.5);
 }
 
-// ── CSS 生成:默认皮肤进 :root,其余各有覆盖块,body 跟随 ──
+// ── CSS generation: The default skin enters:root, the rest have overlay blocks, and body follows ──
 const css = buildSkinsCss();
 assert.ok(css.includes(':root {'), ':root 块');
 for (const s of SKINS) {

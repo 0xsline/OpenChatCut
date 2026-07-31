@@ -27,11 +27,20 @@ export interface EditOpts {
   /** Source word indices in playback order (speech-block drag). */
   playOrder?: number[];
   /**
+   * The breathing port budget reserved on both sides of the tangent point (frame, divided equally on both sides). If the cut falls right on the word boundary, the consonants will be cut off.
+   * The onset and ending sound "glued together"; here is the **cut caused by word deletion/rearrangement**, from what originally existed
+   * Each person in Shizune can borrow up to half. If you can’t borrow that much, you can borrow as much as you like.
+   *
+   * Only applies to cuts: the beginning and end of the fragment itself and the gaps covered by gapCapsMs/maxGapFrames are not added.
+   * (The length of those gaps is already dictated by the compression rules). undefined/0 = old behavior, cut exactly at word boundaries.
+   */
+  cutPadFrames?: number;
+  /**
    * Visible window over the EDITED (kept) stream, in edited-local frames —
    * the trim handles' [srcInFrame, srcInFrame+durationInFrames) slice. Segments
    * outside are dropped, boundary segments clipped, survivors re-packed from
    * offsetFrames. Undefined = whole stream (pre-window behavior, byte-identical).
-   * 修「trim 转写 clip 改帧不改词」软点:渲染/字幕/find 全走这一个闸门。
+   * Fix the soft points of "trim transcribe clip, change the frame but not the words": render/caption/find all go through this gate.
    */
   window?: { startFrame: number; durFrames: number };
 }
@@ -43,6 +52,25 @@ export interface EditOpts {
 export function itemWindow(it: { kind: string; srcInFrame?: number; durationInFrames: number }): EditOpts['window'] {
   if (it.kind !== 'audio') return undefined;
   return { startFrame: it.srcInFrame ?? 0, durFrames: it.durationInFrames };
+}
+
+/**
+ * The current editing parameters of a clip. Rendering, export, captions, and find_transcript must all use the same copy, otherwise
+ * Adding a switch will only take effect on half of the paths, and playback and export will have their own issues. `window` is not here: some calls
+ * It requires the entire word stream (total length), and some only require visible fragments, and the caller can fill in `itemWindow(item)` as needed.
+ */
+export function itemEditOpts(it: {
+  silenceFrames?: number;
+  gapCapsMs?: Record<string, number>;
+  transcriptPlayOrder?: number[];
+  cutPadFrames?: number;
+}): EditOpts {
+  return {
+    maxGapFrames: it.silenceFrames,
+    gapCapsMs: it.gapCapsMs,
+    playOrder: it.transcriptPlayOrder,
+    cutPadFrames: it.cutPadFrames,
+  };
 }
 
 /** Max frames allowed for the gap immediately before `nextWordIdx` (null = uncapped). */
@@ -70,17 +98,20 @@ export function keptSegments(
       : words.map((_, i) => i)
   ).filter((i) => i >= 0 && i < words.length && !deleted.has(i));
 
+  const half = Math.max(0, Math.floor((opts.cutPadFrames ?? 0) / 2));
+
   const segs: KeptSegment[] = [];
   let pos = offsetFrames;
   let si = 0;
   while (si < seq.length) {
     const wi = seq[si]!;
-    const srcStart = msToFrame(words[wi]!.start, fps);
+    let srcStart = msToFrame(words[wi]!.start, fps);
     let srcEnd = msToFrame(words[wi]!.end, fps);
     let sj = si;
     let curWi = wi; // last source word merged into this run
+    let capped = false; // This paragraph is truncated by the silence compression rule (rather than cut by word deletion)
     // Merge forward ONLY through immediate chronological successors. A jump in
-    // source index — deleted words sitting between (删词=删视频) or a play-order
+    // source index — deleted words sitting between (delete words = delete video) or a play-order
     // reorder — ends the run, so the skipped source span is dropped instead of
     // being played through; deleting words must shorten the corresponding frames.
     while (sj + 1 < seq.length) {
@@ -92,11 +123,24 @@ export function keptSegments(
       const cap = gapCapFrames(opts, nextWi, fps);
       if (cap != null && gap > cap) {
         srcEnd += cap; // keep only the allowed trailing silence
+        capped = true;
         break;
       }
       srcEnd = msToFrame(words[nextWi]!.end, fps);
       curWi = nextWi;
       sj += 1;
+    }
+    // Breathing port: Each side of the cutout borrows up to half frames from the original silence. The beginning and end of the fragment itself are not borrowed (that is not
+    // cut out), the gap pressed by cap will not be borrowed (the length has been determined by the compression rules).
+    if (half > 0) {
+      if (wi > 0 && (si === 0 ? true : seq[si - 1] !== wi - 1)) {
+        const silence = srcStart - msToFrame(words[wi - 1]!.end, fps);
+        srcStart = Math.max(0, srcStart - Math.max(0, Math.min(silence, half)));
+      }
+      if (!capped && curWi + 1 < words.length && seq[sj + 1] !== curWi + 1) {
+        const silence = msToFrame(words[curWi + 1]!.start, fps) - srcEnd;
+        srcEnd += Math.max(0, Math.min(silence, half));
+      }
     }
     const durFrames = Math.max(1, srcEnd - srcStart);
     segs.push({ srcStartFrame: srcStart, srcEndFrame: srcEnd, fromFrame: pos, durFrames });
@@ -160,7 +204,7 @@ export function keptWordIndices(words: TranscriptWord[], deleted: Set<number>, f
   return out;
 }
 
-// Re-project surviving words onto the EDITED timeline (`fVe` 算法):
+// Re-project surviving words onto the EDITED timeline (`fVe` algorithm):
 // clamp each word to its covering kept segment, map source-frame → timeline-frame,
 // then de-overlap so timings stay monotonic. Returns words with TIMELINE ms.
 // Words that fall in a deleted / compressed-out region are dropped.
@@ -288,15 +332,15 @@ export function fillerIndices(words: TranscriptWord[]): number[] {
   return idxs;
 }
 
-// ── video 件的字幕投影:媒体帧窗口直投(2026-07-17,长转短 e2e 抓获)─────────
-// audio 与 video 的 srcInFrame 语义不同:audio 的窗口切在"编辑后词流"上
-// (播放层渲 keptSegments,删词=剪音频);video 则**永远连续播放**媒体
-// [srcIn, srcIn+dur×rate)(TimelineComposition 的 OffthreadVideo trimBefore,
-// 词级删除不改视频画面)。字幕必须忠实于实际播放:video 件按媒体帧窗口把
-// 词直投到时间线,时序绝不重排;且**删词也不隐藏**——窗口内的语音都可闻,
-// 藏掉它的字幕就是"开头几秒有人说话没字幕"事故(agent 的 delete_text 选区
-// 常比它切的 srcIn 窗口窄)。要在字幕里隐藏个别词走 wordOverrides(
-// edit_captions display_text {hidden}),那才是字幕层的显示决定。
+// ── Caption projection of video files: media frame window direct projection (2026-07-17, long to short e2e capture)─────────
+// The srcInFrame semantics of audio and video are different: the window of audio is cut on the "edited word flow"
+// (Playback layer rendering keptSegments, word deletion=cut audio); video then **continuously plays** the media
+// [srcIn, srcIn+dur×rate)(TimelineComposition's OffthreadVideo trimBefore,
+// Word-level deletion does not change the video screen). Captions must be faithful to actual playback: video files are placed in media frame windows
+// Words are directly thrown into the timeline, and the timing will never be rearranged; and **words will not be hidden even if they are deleted** - all the voices in the window can be heard,
+// Hiding its captions is an accident of "someone speaks without captions in the first few seconds" (agent's delete_text selection
+// often narrower than the srcIn window it cuts). To hide individual words in captions, use wordOverrides(
+// edit_captions display_text {hidden}), that is the display decision of the caption layer.
 interface MediaWindowItem {
   startFrame: number;
   durationInFrames: number;
@@ -304,7 +348,7 @@ interface MediaWindowItem {
   playbackRate?: number;
 }
 
-/** video 件:窗口内全部词(时间线 ms)——可闻即显,transcript 删词不参与。 */
+/** video file: all words in the window (timeline ms) - displayed when heard, transcript deletion will not be involved. */
 export function mediaWindowWords(
   words: TranscriptWord[],
   fps: number,
@@ -317,7 +361,7 @@ export function mediaWindowWords(
   for (let i = 0; i < words.length; i++) {
     const wS = msToFrame(words[i].start, fps);
     const wE = msToFrame(words[i].end, fps);
-    if (wE <= srcIn || wS >= winEnd) continue; // 窗口外
+    if (wE <= srcIn || wS >= winEnd) continue; // outside the window
     const fromF = item.startFrame + (Math.max(wS, srcIn) - srcIn) / rate;
     const toF = item.startFrame + (Math.min(wE, winEnd) - srcIn) / rate;
     const start = (fromF / fps) * 1000;
@@ -326,7 +370,7 @@ export function mediaWindowWords(
   return out;
 }
 
-/** 与 mediaWindowWords 同一套存活规则的源词索引(wordOverrides 键)。 */
+/** Source word index (wordOverrides key) with the same set of survival rules as mediaWindowWords. */
 export function mediaWindowKeptIndices(
   words: TranscriptWord[],
   fps: number,

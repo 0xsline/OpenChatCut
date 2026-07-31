@@ -1,12 +1,13 @@
-// 时间线顶部工具栏(逐字搬自 Timeline.tsx):编辑模式簇 / 落轨模式 / 旁白录音 /
-// 播放+时间码 / 缩放簇 / 画幅比例 / 字幕显示 / 全屏。时间码 span 由播放头绘制器经
-// timecodeRef 直写(rAF 合帧),这里只渲初值。
-import { useState, type RefObject } from 'react';
+// Toolbar at the top of the timeline (translated verbatim from Timeline.tsx): Editing mode cluster / Drop track mode / Narration recording /
+// Play + time code / zoom cluster / aspect ratio / caption display / full screen. The timecode span is drawn by the playhead painter
+// timecodeRef direct writing (rAF frame), here only the initial value is rendered.
+import { useRef, useState, type MouseEvent, type RefObject } from 'react';
 import { theme } from '../../theme';
 import { Icon, type IconName } from '../icons';
 import { ASPECT_PRESETS, captionTrackEntries, type TimelineState } from '../../editor/types';
 import type { EditorCommands } from '../../editor/store';
 import { useT } from '../../i18n/locale';
+import { useFocusReturn } from '../../hooks/useFocusReturn';
 import { invokeAction } from '../../shortcuts/actionRegistry';
 import { MIN_TIME_ZOOM, fmt, type EditMode } from './timelineUtil';
 import { TimelineSpeedControl } from './TimelineSpeedControl';
@@ -16,11 +17,11 @@ import { TrackCreateControl } from './TrackCreateControl';
 
 // Group spacing between toolbar clusters uses gaps without a visible divider.
 function ToolSep() {
-  return <span style={{ width: 0, margin: '0 6px', flexShrink: 0 }} />;
+  return <span className="cc-timeline-tool-separator" aria-hidden="true" />;
 }
 
 // One icon toolbar button: monochrome line glyphs, active = accent.
-// 提示走 cc-tip 即时 tooltip(原生 title 有 ~1s 固有延迟);tipRight = 近右缘右对齐
+// Prompt to use cc-tip real-time tooltip (native title has ~1s inherent delay); tipRight = right-aligned near the right edge
 function TB({ icon, title, onClick, active, disabled, tipRight }: {
   icon: IconName; title: string; onClick?: () => void; active?: boolean; disabled?: boolean; tipRight?: boolean;
 }) {
@@ -31,6 +32,69 @@ function TB({ icon, title, onClick, active, disabled, tipRight }: {
       onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
       <Icon name={icon} size={16} />
     </button>
+  );
+}
+function closeTimelineMenu(details: HTMLDetailsElement | null, restoreFocus = false) {
+  if (!details) return;
+  details.open = false;
+  if (restoreFocus) queueMicrotask(() => details.querySelector<HTMLElement>('summary')?.focus());
+}
+
+function runMenuAction(
+  event: MouseEvent<HTMLButtonElement>,
+  action: () => void,
+  restoreFocus = true,
+) {
+  action();
+  closeTimelineMenu(event.currentTarget.closest('details'), restoreFocus);
+}
+
+function TimelineMoreControl(props: {
+  placeMode: 'insert' | 'overwrite';
+  sceneEnabled: boolean;
+  trackingEnabled: boolean;
+  onScene: (restoreFocus: () => void) => void;
+  onTracking: (restoreFocus: () => void) => void;
+  onPlaceMode: (mode: 'insert' | 'overwrite') => void;
+}) {
+  const t = useT();
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const restoreFocus = () => detailsRef.current?.querySelector<HTMLElement>('summary')?.focus();
+  return (
+    <details
+      ref={detailsRef}
+      onToggle={(event) => {
+        const details = event.currentTarget;
+        if (details.open) requestAnimationFrame(() => details.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus());
+      }}
+      className="cc-track-create cc-timeline-more"
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || !event.currentTarget.open) return;
+        event.preventDefault();
+        event.stopPropagation();
+        closeTimelineMenu(detailsRef.current, true);
+      }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) closeTimelineMenu(event.currentTarget);
+      }}
+    >
+      <summary aria-label={t('更多操作')} title={t('更多操作')}><Icon name="more" size={16} /></summary>
+      <div className="cc-track-create-menu cc-timeline-more-menu">
+        <button disabled={!props.sceneEnabled} onClick={(event) => runMenuAction(event, () => props.onScene(restoreFocus), false)}>
+          <Icon name="sparkles" size={15} />{t('场景检测')}
+        </button>
+        <button disabled={!props.trackingEnabled} onClick={(event) => runMenuAction(event, () => props.onTracking(restoreFocus), false)}>
+          <Icon name="tracking" size={15} />{t('运动跟踪')}
+        </button>
+        <div className="cc-track-create-separator" />
+        <button className={props.placeMode === 'insert' ? 'selected' : ''} onClick={(event) => runMenuAction(event, () => props.onPlaceMode('insert'))}>
+          <Icon name="insert" size={15} />{t('插入落轨')}
+        </button>
+        <button className={props.placeMode === 'overwrite' ? 'selected' : ''} onClick={(event) => runMenuAction(event, () => props.onPlaceMode('overwrite'))}>
+          <Icon name="film" size={15} />{t('覆盖落轨')}
+        </button>
+      </div>
+    </details>
   );
 }
 
@@ -72,6 +136,7 @@ export function TimelineToolbar({
   )) ?? null;
   const [sceneDetectionOpen, setSceneDetectionOpen] = useState(false);
   const [motionTrackingOpen, setMotionTrackingOpen] = useState(false);
+  const modalFocus = useFocusReturn();
   const captionTracks = captionTrackEntries(state).filter((entry) => entry.captions);
   return (
     <>
@@ -94,37 +159,17 @@ export function TimelineToolbar({
           )}
         />
         <TB icon="blade" title={t('刀片模式 (B)：点击片段在该处切分')} active={editMode === 'blade'} onClick={() => invokeAction('interaction-mode-blade', undefined, 'toolbar')} />
-        <TB icon="pencil" title={t('钢笔模式 (P)：在选中片段上点击绘制透明度关键帧（纵向=不透明度，拖点改帧/值，右键删点）')} active={editMode === 'pen'} onClick={() => invokeAction('interaction-mode-pen', undefined, 'toolbar')} />
+        <TB icon="pencil" title={t('钢笔模式 (P)：在选中片段上点击绘制关键帧（视觉片段=透明度，音频片段=音量；纵向=值，拖点改帧/值，右键删点）')} active={editMode === 'pen'} onClick={() => invokeAction('interaction-mode-pen', undefined, 'toolbar')} />
         <TB icon="scissors" title={t('在播放头切分选中片段 (C)')} onClick={() => invokeAction('split', undefined, 'toolbar')} />
-        <TB
-          icon="sparkles"
-          title={sceneItem
-            ? t('检测选中片段的场景切点')
-            : t('选择一个视频片段后进行场景检测')}
-          disabled={!sceneItem}
-          onClick={() => setSceneDetectionOpen(true)}
-        />
-        <TB
-          icon="tracking"
-          title={trackingItem
-            ? t('跟踪选中视频中的目标（实验功能）')
-            : t('选择一个本机视频片段后进行运动跟踪')}
-          disabled={!trackingItem}
-          onClick={() => setMotionTrackingOpen(true)}
-        />
         <TB icon="magnet" title={snapping ? t('磁性吸附：开 (S)') : t('磁性吸附：关 (S)')} active={snapping} onClick={() => invokeAction('snapping', undefined, 'toolbar')} />
         <ToolSep />
-        <TB
-          icon="insert"
-          title={t('插入落轨：库素材/模板拖入时把后续片段后推（波纹插入）')}
-          active={placeMode === 'insert'}
-          onClick={() => setPlaceMode('insert')}
-        />
-        <TB
-          icon="film"
-          title={t('覆盖落轨：库素材/模板按帧位叠放，不推后续片段（默认）')}
-          active={placeMode === 'overwrite'}
-          onClick={() => setPlaceMode('overwrite')}
+        <TimelineMoreControl
+          placeMode={placeMode}
+          sceneEnabled={!!sceneItem}
+          trackingEnabled={!!trackingItem}
+          onScene={(restoreFocus) => { modalFocus.remember(restoreFocus); setSceneDetectionOpen(true); }}
+          onTracking={(restoreFocus) => { modalFocus.remember(restoreFocus); setMotionTrackingOpen(true); }}
+          onPlaceMode={setPlaceMode}
         />
         <ToolSep />
         <span className="cc-mic-group">
@@ -139,7 +184,7 @@ export function TimelineToolbar({
           onChange={(rate) => { if (speedItem) commands.setItemSpeed(speedItem.id, rate); }}
         />
       </div>
-      <span style={{ flex: 1 }} />
+      <div className="cc-timeline-transport">
       <TB
         icon={playing ? 'pause' : 'play'}
         title={playing ? t('暂停 (空格)') : t('播放 (空格)')}
@@ -147,7 +192,8 @@ export function TimelineToolbar({
         onClick={() => invokeAction('play-pause', undefined, 'toolbar')}
       />
       <span ref={timecodeRef} className="cc-timeline-timecode">{fmt(playheadFrame, state.fps)} / {fmt(total, state.fps)}</span>
-      <span style={{ flex: 1 }} />
+      </div>
+      <div className="cc-timeline-view-controls">
       <TB icon="zoomOut" title={t('缩小时间轴 (⌘−)')} tipRight onClick={() => invokeAction('zoom-out', undefined, 'toolbar')} />
       <input type="range" min={MIN_TIME_ZOOM} max={6} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))}
         title={t('缩放时间轴')} className="cc-timeline-zoom" />
@@ -171,12 +217,13 @@ export function TimelineToolbar({
       <button className={`cc-caption-toggle cc-tip cc-tip-r${captionsVisible ? ' active' : ''}`} data-tip={captionTracks.length ? t('字幕显示') : t('字幕显示（当前还没有字幕，先转写或让 Agent 生成）')} aria-label={t('字幕显示')} disabled={!captionTracks.length} onClick={() => commands.batch(captionTracks.map((entry) => ({ type: 'updateCaptions', track: entry.id, patch: { enabled: !captionsVisible } })), 'Toggle captions')}><Icon name="captions" size={17} /><span>{captionsVisible ? t('开启') : t('未开启')}</span><Icon name="chevronDown" size={13} /></button>
       <TB icon="fullscreen" title={t('全屏预览')} tipRight onClick={() => invokeAction('fullscreen', undefined, 'toolbar')} />
       </div>
+      </div>
       {sceneDetectionOpen && sceneItem && (
         <SceneDetectionDialog
           state={state}
           commands={commands}
           item={sceneItem}
-          onClose={() => setSceneDetectionOpen(false)}
+          onClose={() => { setSceneDetectionOpen(false); modalFocus.restore(); }}
         />
       )}
       {motionTrackingOpen && trackingItem && (
@@ -184,7 +231,7 @@ export function TimelineToolbar({
           state={state}
           commands={commands}
           item={trackingItem}
-          onClose={() => setMotionTrackingOpen(false)}
+          onClose={() => { setMotionTrackingOpen(false); modalFocus.restore(); }}
         />
       )}
     </>
