@@ -58,6 +58,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5199,
       strictPort: true,
+      allowedHosts: ['editor.inferencesaver.com'],
       proxy: {
         // AssemblyAI transcription — key injected server-side (never in browser).
         '/assemblyai': {
