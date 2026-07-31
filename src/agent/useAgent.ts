@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { resolveAgentReferences } from './context';
 import type { AgentContext, AgentReference } from './context';
 import type { AgentRuntimeModule, LLMMessage } from './runtime';
-import { normalizeLlmProvider, PROVIDER } from './providerConfig';
+import { normalizeLlmProvider, MODEL, PROVIDER } from './providerConfig';
 import type { LlmProvider } from './providerConfig';
 import { normalizeLlmMessages, prepareMessagesForProvider } from './messages';
 import { makeDraft, replayActions } from '../editor/store';
@@ -161,6 +161,14 @@ export function useAgent(ctx: AgentContext, projectId: string) {
         llmProviderRef.current = PROVIDER;
       }
       llmRef.current.push({ role: 'user', content });
+      const startedAt = performance.now();
+      if (import.meta.env.DEV) console.info('[chat]', 'request-start', {
+        projectId,
+        provider: PROVIDER,
+        model: MODEL,
+        askOnly: opts?.askOnly === true,
+        referenceCount: contextEntries.length,
+      });
       setRunning(true);
       // Faithful propose→apply: run the agent's tools against a DRAFT copy of the
       // PROJECT (so it sees its own pending edits, incl. timeline switches)
@@ -241,6 +249,13 @@ export function useAgent(ctx: AgentContext, projectId: string) {
           } else if (ev.type === 'max-turns') {
             setMessages((m) => [...m, { role: 'continue', text: String(ev.turns) }]);
           } else {
+            if (import.meta.env.DEV) console.error('[chat]', 'agent-error', {
+              projectId,
+              provider: PROVIDER,
+              model: MODEL,
+              elapsedMs: Math.round(performance.now() - startedAt),
+              error: ev.message,
+            });
             setMessages((m) => [...m, { role: 'error', text: ev.message }]);
           }
         }, {
@@ -301,6 +316,15 @@ export function useAgent(ctx: AgentContext, projectId: string) {
             setProposal(buildProposal(ops, assistantText, proposalBaseDoc, draft.getState()));
           }
         }
+        if (import.meta.env.DEV) console.info('[chat]', 'request-complete', {
+          projectId,
+          provider: PROVIDER,
+          model: MODEL,
+          elapsedMs: Math.round(performance.now() - startedAt),
+          aborted: ac.signal.aborted,
+          responseChars: assistantText.length,
+          toolCount: persistentOps.length + ops.length,
+        });
       } finally {
         abortRef.current = null;
         setLiveTool(null);

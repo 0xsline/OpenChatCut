@@ -17,10 +17,16 @@ export interface ProxyRoute {
   forceJsonContentType?: boolean;
   /** Replace upstream error bodies with one actionable message. */
   errorMessage?: (status: number, req: IncomingMessage) => string;
+  /** Observability hook; must not receive request bodies or secret header values. */
+  onTrace?: (event: 'start' | 'complete' | 'error', detail: { label?: string; method: string; path: string; status?: number; elapsedMs: number; error?: string }) => void;
+  traceLabel?: (req: IncomingMessage) => string;
 }
 
 export function proxyMiddleware(route: ProxyRoute): Middleware {
   return (req, res) => {
+    const startedAt = Date.now();
+    const tracePath = (req.url ?? '/').split('?')[0];
+    const traceLabel = route.traceLabel?.(req);
     let target: URL;
     try {
       target = new URL(route.target(req));
@@ -40,6 +46,7 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
     }
     headers.host = target.host;
     for (const [k, v] of Object.entries(route.headers(req))) if (v) headers[k] = v;
+    route.onTrace?.('start', { label: traceLabel, method: req.method ?? 'GET', path: tracePath, elapsedMs: 0 });
 
     const basePath = target.pathname.replace(/\/$/, '');
     const rawUrl = req.url ?? '/';
@@ -61,6 +68,7 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
       headers,
     }, (upRes) => {
       const status = upRes.statusCode ?? 502;
+      route.onTrace?.('complete', { label: traceLabel, method: req.method ?? 'GET', path: tracePath, status, elapsedMs: Date.now() - startedAt });
       if (status >= 400 && route.errorMessage) {
         upRes.resume();
         res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -82,6 +90,7 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
     });
 
     upstream.on('error', (err) => {
+      route.onTrace?.('error', { label: traceLabel, method: req.method ?? 'GET', path: tracePath, elapsedMs: Date.now() - startedAt, error: err.message });
       if (!res.headersSent) {
         res.writeHead(502, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: `upstream request failed: ${err.message}` }));

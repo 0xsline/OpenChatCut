@@ -60,6 +60,15 @@ export function llmProxyPlugin(): Plugin {
         headers: llmHeaders,
         forceJsonContentType: true,
         errorMessage: llmErrorMessage,
+        traceLabel: (req) => {
+          const config = resolveLlmProviderConfig(llmProviderForRequest(req), keyReader);
+          return `${config.provider}:${config.model}:key=${config.apiKey ? 'present' : 'missing'}`;
+        },
+        onTrace: (event, detail) => {
+          console.info(
+            `[llm-proxy] ${event} config=${detail.label ?? 'unknown'} method=${detail.method} path=${detail.path} status=${detail.status ?? '-'} elapsedMs=${detail.elapsedMs}${detail.error ? ` error=${detail.error}` : ''}`,
+          );
+        },
       }));
     },
   };
