@@ -1,8 +1,8 @@
-// 时间线指针状态机(逐字搬自 Timeline.tsx):四条互斥手势——片段拖动/裁剪(drag)、
-// 空白处框选(marquee)、钢笔关键帧点拖(penDrag)、选择模式引用拾取(pickDrag)。
-// move/up 统一挂在滚动容器上;各手势自己 setPointerCapture 到合适目标。
-// 吸附(applySnap)与多选点击语义也在这——它们只被这台机器用。
-import { useRef, useState, type RefObject } from 'react';
+// Timeline pointer state machine (translated verbatim from Timeline.tsx): four mutually exclusive gestures - fragment drag/crop (drag),
+// Marquee selection in blank space (marquee), pen keyframe point drag (penDrag), selection mode reference picking (pickDrag).
+// move/up are hung on the scroll container; each gesture setsPointerCapture to the appropriate target.
+// The applySnap and multi-select click semantics are also here - they are only used by this machine.
+import { useEffect, useRef, useState, type RefObject, type SetStateAction } from 'react';
 import {
   isItemSelected, selectedIdsOf, trackKind,
   type KeyframeEasing, type KeyframeProp, type TimelineItem, type TimelineState, type TrackId,
@@ -12,7 +12,10 @@ import { upsertKeyframe } from '../../editor/keyframes';
 import { getKeyframePropertyDefinition } from '../../editor/keyframeRegistry';
 import { rateStretchItem } from '../../editor/rateStretch';
 import { remainingSourceFrames } from '../../editor/sourceLimit';
-import { collectTimelineSnapPoints, snapDraggedEdges, type SnapHold } from '../../editor/snap';
+import {
+  collectTimelineSnapPoints, snapDraggedEdges, sortTimelineSnapPoints,
+  type SnapHold, type SnapPoint,
+} from '../../editor/snap';
 import type { EditorCommands } from '../../editor/store';
 import { emitSelectionRef, resolveTimelinePick, type TimelinePickDrag } from '../../agent/selection-refs';
 import { SNAP_PX, type Drag, type DragMode, type EditMode } from './timelineUtil';
@@ -22,6 +25,21 @@ export interface PenDrag {
   laneTop: number; laneHeight: number;
 }
 export interface Marquee { x0: number; y0: number; x1: number; y1: number; additive: boolean }
+
+type PointerStateSetter<T> = (next: SetStateAction<T>, publish?: boolean) => void;
+
+function usePointerState<T>(initial: T) {
+  const [value, publishValue] = useState(initial);
+  const ref = useRef(value);
+  const setValue: PointerStateSetter<T> = (next, publish = true) => {
+    const resolved = typeof next === 'function'
+      ? (next as (current: T) => T)(ref.current)
+      : next;
+    ref.current = resolved;
+    if (publish) publishValue(resolved);
+  };
+  return [value, setValue, ref] as const;
+}
 
 interface PointerDeps {
   state: TimelineState;
@@ -38,19 +56,125 @@ interface PointerDeps {
   itemsInMarquee: (left: number, top: number, right: number, bottom: number) => string[];
 }
 
+function selectForDrag(
+  state: TimelineState,
+  commands: EditorCommands,
+  id: string,
+  event: React.PointerEvent,
+): string[] {
+  const selected = selectedIdsOf(state);
+  if (event.metaKey || event.ctrlKey) {
+    commands.selectItem(id, { mode: 'toggle' });
+    return selected.includes(id) ? [id] : [...selected, id];
+  }
+  if (event.shiftKey && state.selectedId) {
+    const anchor = state.items.find((item) => item.id === state.selectedId);
+    const target = state.items.find((item) => item.id === id);
+    if (anchor && target && anchor.track === target.track) {
+      const lo = Math.min(anchor.startFrame, target.startFrame);
+      const hi = Math.max(anchor.startFrame, target.startFrame);
+      const range = state.items
+        .filter((item) => item.track === anchor.track
+          && item.startFrame >= lo && item.startFrame <= hi)
+        .map((item) => item.id);
+      commands.selectItems(range);
+      return range;
+    }
+    commands.selectItem(id);
+    return [id];
+  }
+  if (!isItemSelected(state, id)) {
+    commands.selectItem(id);
+    return [id];
+  }
+  commands.selectItem(id, { mode: 'add' });
+  return selected;
+}
+
+function commitMoveGesture(state: TimelineState, commands: EditorCommands, drag: Drag) {
+  const { id, baseStart, deltaF, targetTrack, baseTrack } = drag;
+  const validTrack = !!targetTrack
+    && trackKind(state, targetTrack) === trackKind(state, baseTrack)
+    && !state.tracks?.[targetTrack]?.locked;
+  const track = validTrack ? targetTrack : baseTrack;
+  if (deltaF === 0 && track === baseTrack) return;
+  const ids = groupMoveIds(state, id);
+  if (ids.length === 1) {
+    commands.moveItem(id, { startFrame: Math.max(0, baseStart + deltaF), track });
+    return;
+  }
+  const next = moveItemsByDelta(
+    state,
+    ids,
+    deltaF,
+    track !== baseTrack ? { from: baseTrack, to: track } : null,
+  );
+  if (next !== state) commands.applyState(next);
+}
+
+function commitTrimGesture(
+  state: TimelineState,
+  commands: EditorCommands,
+  drag: Drag,
+  editMode: EditMode,
+) {
+  const { id, mode, baseStart, baseDur, baseSrcIn, deltaF, baseTrack } = drag;
+  if (editMode === 'rate-stretch') {
+    const next = rateStretchItem(state, id, mode === 'trim-left' ? 'left' : 'right', deltaF);
+    if (next !== state) commands.applyState(next);
+    return;
+  }
+  if (mode === 'trim-left') {
+    const delta = Math.max(Math.min(deltaF, baseDur - 1), -baseSrcIn);
+    if (delta !== 0) commands.setItemTiming(id, {
+      startFrame: Math.max(0, baseStart + delta),
+      durationInFrames: baseDur - delta,
+      srcInFrame: baseSrcIn + delta,
+    });
+    return;
+  }
+  const durationInFrames = Math.max(1, baseDur + deltaF);
+  const actual = durationInFrames - baseDur;
+  if (actual === 0) return;
+  if (editMode !== 'trim') {
+    commands.setItemTiming(id, { durationInFrames });
+    return;
+  }
+  const clipEnd = baseStart + baseDur;
+  const items = state.items.map((item) =>
+    item.id === id ? { ...item, durationInFrames }
+      : item.track === baseTrack && item.startFrame >= clipEnd
+        ? { ...item, startFrame: item.startFrame + actual }
+        : item);
+  commands.applyState({ ...state, items });
+}
+
+export function commitTimelineDragGesture(
+  state: TimelineState,
+  commands: EditorCommands,
+  drag: Drag,
+  editMode: EditMode,
+) {
+  if (drag.mode === 'move') commitMoveGesture(state, commands, drag);
+  else commitTrimGesture(state, commands, drag, editMode);
+}
+
 export function useTimelinePointer(deps: PointerDeps) {
   const {
     state, commands, editMode, snapping, pickMode, px,
     playheadRef, scrollRef, frameFromClientX, trackFromClientY, itemsInMarquee,
   } = deps;
-  const [drag, setDrag] = useState<Drag | null>(null);
+  const [drag, setDrag, dragRef] = usePointerState<Drag | null>(null);
   // pen mode: one opacity keyframe dot being dragged (live preview, atomic commit on release)
-  const [penDrag, setPenDrag] = useState<PenDrag | null>(null);
+  const [penDrag, setPenDrag, penDragRef] = usePointerState<PenDrag | null>(null);
   /** Rubber-band multi-select on empty lane (selection mode). Client coords. */
-  const [marquee, setMarquee] = useState<Marquee | null>(null);
-  const [pickDrag, setPickDrag] = useState<TimelinePickDrag | null>(null);
-  /** 当前吸住的目标,一次拖拽内跨 pointermove 保持(迟滞),松手清空。 */
+  const [marquee, setMarquee, marqueeRef] = usePointerState<Marquee | null>(null);
+  const [pickDrag, setPickDrag, pickDragRef] = usePointerState<TimelinePickDrag | null>(null);
+  /** The currently sucked target is held (hysteresis) across pointermove within one drag, and cleared when released. */
   const snapHold = useRef<SnapHold | null>(null);
+  const gestureSnapPoints = useRef<SnapPoint[]>([]);
+  const pendingMove = useRef<{ clientX: number; clientY: number } | null>(null);
+  const pointerMoveRaf = useRef(0);
 
   const startPick = (e: React.PointerEvent, origin: TimelinePickDrag['origin'], item?: TimelineItem) => {
     e.stopPropagation();
@@ -77,53 +201,33 @@ export function useTimelinePointer(deps: PointerDeps) {
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     // Multi-select: ⌘/Ctrl toggle, ⇧ range on same track; plain click replaces.
-    if (e.metaKey || e.ctrlKey) {
-      commands.selectItem(id, { mode: 'toggle' });
-    } else if (e.shiftKey && state.selectedId) {
-      const anchor = state.items.find((x) => x.id === state.selectedId);
-      const target = state.items.find((x) => x.id === id);
-      if (anchor && target && anchor.track === target.track) {
-        const lo = Math.min(anchor.startFrame, target.startFrame);
-        const hi = Math.max(anchor.startFrame, target.startFrame);
-        const range = state.items
-          .filter((x) => x.track === anchor.track && x.startFrame >= lo && x.startFrame <= hi)
-          .map((x) => x.id);
-        commands.selectItems(range);
-      } else {
-        commands.selectItem(id);
-      }
-    } else if (!isItemSelected(state, id)) {
-      commands.selectItem(id);
-    } else {
-      // already in multi-selection: keep set, set primary via re-add
-      commands.selectItem(id, { mode: 'add' });
-    }
+    const selectedForGesture = selectForDrag(state, commands, id, e);
     // Only start move drag when not pure multi-toggle without drag intent — still allow drag
     snapHold.current = null;
+    const excluded = mode === 'move' && selectedForGesture.includes(id)
+      ? selectedForGesture
+      : [id];
+    gestureSnapPoints.current = sortTimelineSnapPoints(
+      collectTimelineSnapPoints(state, { excludeItemIds: excluded }),
+    );
     setDrag({ id, mode, baseStart, baseDur, baseTrack, baseSrcIn, startX: e.clientX, deltaF: 0, targetTrack: baseTrack, snapAt: null });
   };
   // All snap targets come from the editor snap registry. Group moves exclude
   // every selected clip so members never snap to each other.
   const applySnap = (mode: DragMode, baseStart: number, baseDur: number, rawDelta: number): { deltaF: number; snapAt: number | null } => {
     if (!snapping) return { deltaF: rawDelta, snapAt: null };
-    const skip = new Set(
-      mode === 'move' && drag?.id ? groupMoveIds(state, drag.id) : drag?.id ? [drag.id] : [],
-    );
-    const points = collectTimelineSnapPoints(state, {
-      playheadFrame: playheadRef.current,
-      excludeItemIds: skip,
-    });
+    const points = gestureSnapPoints.current;
     const result = snapDraggedEdges({
-      mode, baseStart, baseDuration: baseDur, rawDelta,
-      points, thresholdFrames: SNAP_PX / px,
-      hold: snapHold.current,
+      mode, baseStart, baseDuration: baseDur, rawDelta, points,
+      thresholdFrames: SNAP_PX / px, hold: snapHold.current,
+      dynamicPlayheadFrame: playheadRef.current,
     });
     snapHold.current = result.hold;
     return result;
   };
   /**
-   * 右手柄最多还能往右拖多少帧:源素材剩余长度减去当前时长。判定不了(图片/MG/
-   * 词驱动音频)返回 Infinity。变速拉伸不消耗额外源帧,所以那个模式不设限。
+   * The maximum number of frames the right handle can be dragged to the right: the remaining length of the source asset minus the current duration. Unable to determine (picture/MG/
+   * Word Driven Audio) Return to Infinity. Variable speed stretching does not consume additional source frames, so there is no limit to that mode.
    */
   const trimRightCap = (id: string, baseDur: number): number => {
     if (editMode === 'rate-stretch') return Infinity;
@@ -132,143 +236,129 @@ export function useTimelinePointer(deps: PointerDeps) {
     const limit = remainingSourceFrames(it, it.srcInFrame ?? 0, state.assets);
     return limit === null ? Infinity : limit - baseDur;
   };
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (marquee) {
-      setMarquee((m) => (m ? { ...m, x1: e.clientX, y1: e.clientY } : m));
+  const applyPointerMove = (clientX: number, clientY: number, publish = true) => {
+    const currentMarquee = marqueeRef.current;
+    if (currentMarquee) {
+      setMarquee({ ...currentMarquee, x1: clientX, y1: clientY }, publish);
       return;
     }
-    if (pickDrag) {
-      const f = frameFromClientX(e.clientX);
-      setPickDrag((d) => (d ? { ...d, endFrame: f } : d));
+    const currentPick = pickDragRef.current;
+    if (currentPick) {
+      setPickDrag({ ...currentPick, endFrame: frameFromClientX(clientX) }, publish);
       return;
     }
-    if (penDrag) {
-      const it = state.items.find((x) => x.id === penDrag.itemId);
-      if (it) {
-        const frame = Math.max(0, Math.min(it.durationInFrames - 1, frameFromClientX(e.clientX) - it.startFrame));
-        const [lo, hi] = getKeyframePropertyDefinition(penDrag.prop).editorRange;
-        const frac = Math.max(0, Math.min(1, 1 - (e.clientY - penDrag.laneTop) / Math.max(1, penDrag.laneHeight)));
-        setPenDrag((d) => (d ? { ...d, frame, value: Math.round((lo + frac * (hi - lo)) * 100) / 100 } : d));
-      }
+    const currentPen = penDragRef.current;
+    if (currentPen) {
+      const it = state.items.find((item) => item.id === currentPen.itemId);
+      if (!it) return;
+      const frame = Math.max(0, Math.min(
+        it.durationInFrames - 1,
+        frameFromClientX(clientX) - it.startFrame,
+      ));
+      const [lo, hi] = getKeyframePropertyDefinition(currentPen.prop).editorRange;
+      const frac = Math.max(0, Math.min(
+        1,
+        1 - (clientY - currentPen.laneTop) / Math.max(1, currentPen.laneHeight),
+      ));
+      const value = Math.round((lo + frac * (hi - lo)) * 100) / 100;
+      setPenDrag({ ...currentPen, frame, value }, publish);
       return;
     }
-    if (!drag) return;
-    const rawDelta = Math.round((e.clientX - drag.startX) / px);
-    const snapped = applySnap(drag.mode, drag.baseStart, drag.baseDur, rawDelta);
-    // 拖到素材尾部就停住,预览与最终提交用同一个上界(否则松手会突然弹回来)。
-    const cap = drag.mode === 'trim-right' ? trimRightCap(drag.id, drag.baseDur) : Infinity;
+    const currentDrag = dragRef.current;
+    if (!currentDrag) return;
+    const rawDelta = Math.round((clientX - currentDrag.startX) / px);
+    const snapped = applySnap(currentDrag.mode, currentDrag.baseStart, currentDrag.baseDur, rawDelta);
+    const cap = currentDrag.mode === 'trim-right'
+      ? trimRightCap(currentDrag.id, currentDrag.baseDur)
+      : Infinity;
     const deltaF = Math.min(snapped.deltaF, cap);
     const snapAt = deltaF === snapped.deltaF ? snapped.snapAt : null;
-    const targetTrack = drag.mode === 'move' ? trackFromClientY(e.clientY) : drag.baseTrack;
-    setDrag((d) => (d ? { ...d, deltaF, targetTrack, snapAt } : d));
+    const targetTrack = currentDrag.mode === 'move'
+      ? trackFromClientY(clientY)
+      : currentDrag.baseTrack;
+    setDrag({ ...currentDrag, deltaF, targetTrack, snapAt }, publish);
   };
+  const flushPointerMove = (publish: boolean) => {
+    if (pointerMoveRaf.current) cancelAnimationFrame(pointerMoveRaf.current);
+    pointerMoveRaf.current = 0;
+    const move = pendingMove.current;
+    pendingMove.current = null;
+    if (move) applyPointerMove(move.clientX, move.clientY, publish);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!marqueeRef.current && !pickDragRef.current && !penDragRef.current && !dragRef.current) return;
+    pendingMove.current = { clientX: e.clientX, clientY: e.clientY };
+    if (pointerMoveRaf.current) return;
+    pointerMoveRaf.current = requestAnimationFrame(() => flushPointerMove(true));
+  };
+  useEffect(() => () => {
+    if (pointerMoveRaf.current) cancelAnimationFrame(pointerMoveRaf.current);
+    pointerMoveRaf.current = 0;
+    pendingMove.current = null;
+  }, []);
   const onPointerUp = () => {
-    if (marquee) {
-      const m = marquee;
+    flushPointerMove(false);
+    const currentMarquee = marqueeRef.current;
+    if (currentMarquee) {
       setMarquee(null);
-      const dx = Math.abs(m.x1 - m.x0);
-      const dy = Math.abs(m.y1 - m.y0);
-      // tiny move = empty-lane click → clear selection (unless additive)
+      const dx = Math.abs(currentMarquee.x1 - currentMarquee.x0);
+      const dy = Math.abs(currentMarquee.y1 - currentMarquee.y0);
       if (dx < 4 && dy < 4) {
-        if (!m.additive) commands.selectItem(null);
+        if (!currentMarquee.additive) commands.selectItem(null);
         return;
       }
       const ids = itemsInMarquee(
-        Math.min(m.x0, m.x1), Math.min(m.y0, m.y1),
-        Math.max(m.x0, m.x1), Math.max(m.y0, m.y1),
+        Math.min(currentMarquee.x0, currentMarquee.x1),
+        Math.min(currentMarquee.y0, currentMarquee.y1),
+        Math.max(currentMarquee.x0, currentMarquee.x1),
+        Math.max(currentMarquee.y0, currentMarquee.y1),
       );
-      if (m.additive) {
-        const prev = selectedIdsOf(state);
-        commands.selectItems([...new Set([...prev, ...ids])]);
+      if (currentMarquee.additive) {
+        commands.selectItems([...new Set([...selectedIdsOf(state), ...ids])]);
       } else {
         commands.selectItems(ids);
       }
       return;
     }
-    if (pickDrag) {
-      // click vs drag threshold: ~4px of pointer travel in frames at this zoom
-      const ref = resolveTimelinePick(pickDrag, Math.max(1, Math.round(4 / px)), state);
+    const currentPick = pickDragRef.current;
+    if (currentPick) {
+      const ref = resolveTimelinePick(currentPick, Math.max(1, Math.round(4 / px)), state);
       if (ref) emitSelectionRef(ref);
       setPickDrag(null);
       return;
     }
-    if (penDrag) {
-      const it = state.items.find((x) => x.id === penDrag.itemId);
-      const orig = it?.keyframes?.[penDrag.prop]?.find((k) => k.frame === penDrag.fromFrame);
-      if (it && orig && (orig.frame !== penDrag.frame || orig.value !== penDrag.value)) {
-        // move = delete old point + set new one, committed as ONE undo step
+    const currentPen = penDragRef.current;
+    if (currentPen) {
+      const item = state.items.find((candidate) => candidate.id === currentPen.itemId);
+      const original = item?.keyframes?.[currentPen.prop]?.find(
+        (keyframe) => keyframe.frame === currentPen.fromFrame,
+      );
+      if (item && original && (
+        original.frame !== currentPen.frame || original.value !== currentPen.value
+      )) {
         const moved = upsertKeyframe(
-          (it.keyframes?.[penDrag.prop] ?? []).filter((k) => k.frame !== penDrag.fromFrame),
-          penDrag.frame, penDrag.value, penDrag.easing,
+          (item.keyframes?.[currentPen.prop] ?? []).filter(
+            (keyframe) => keyframe.frame !== currentPen.fromFrame,
+          ),
+          currentPen.frame,
+          currentPen.value,
+          currentPen.easing,
         );
         commands.applyState({
           ...state,
-          items: state.items.map((x) => (x.id === it.id ? { ...x, keyframes: { ...x.keyframes, [penDrag.prop]: moved } } : x)),
+          items: state.items.map((candidate) => candidate.id === item.id
+            ? { ...candidate, keyframes: { ...candidate.keyframes, [currentPen.prop]: moved } }
+            : candidate),
         });
       }
       setPenDrag(null);
       return;
     }
-    if (!drag) { return; }
-    const { id, mode, baseStart, baseDur, baseSrcIn, deltaF, targetTrack, baseTrack } = drag;
-    if (mode === 'move') {
-      // Keep clips on the same track kind (video / audio / caption).
-      const okTrack = !!targetTrack && trackKind(state, targetTrack) === trackKind(state, baseTrack)
-        && !state.tracks?.[targetTrack]?.locked;
-      const track = okTrack ? targetTrack : baseTrack;
-      const ids = groupMoveIds(state, id);
-      if (deltaF !== 0 || track !== baseTrack) {
-        if (ids.length === 1) {
-          commands.moveItem(id, { startFrame: Math.max(0, baseStart + deltaF), track });
-        } else {
-          // multi-select: one undo step — same Δt for every selected clip, relative track shift
-          const next = moveItemsByDelta(
-            state,
-            ids,
-            deltaF,
-            track !== baseTrack ? { from: baseTrack, to: track } : null,
-          );
-          if (next !== state) commands.applyState(next);
-        }
-      }
-    } else if (mode === 'trim-left') {
-      if (editMode === 'rate-stretch') {
-        const next = rateStretchItem(state, id, 'left', deltaF);
-        if (next !== state) commands.applyState(next);
-        snapHold.current = null;
-    setDrag(null);
-        return;
-      }
-      // clamp so the source in-point can't go negative (limits how far left media extends)
-      const d = Math.max(Math.min(deltaF, baseDur - 1), -baseSrcIn);
-      if (d !== 0) commands.setItemTiming(id, { startFrame: Math.max(0, baseStart + d), durationInFrames: baseDur - d, srcInFrame: baseSrcIn + d });
-    } else if (mode === 'trim-right') {
-      if (editMode === 'rate-stretch') {
-        const next = rateStretchItem(state, id, 'right', deltaF);
-        if (next !== state) commands.applyState(next);
-        snapHold.current = null;
-    setDrag(null);
-        return;
-      }
-      const newDur = Math.max(1, baseDur + deltaF);
-      const actual = newDur - baseDur;
-      if (actual !== 0) {
-        if (editMode === 'trim') {
-          // ripple: retime this clip + slide every later same-track clip by the
-          // duration change (one atomic step via applyState, so it's a single undo)
-          const clipEnd = baseStart + baseDur;
-          const items = state.items.map((it) =>
-            it.id === id ? { ...it, durationInFrames: newDur }
-              : it.track === baseTrack && it.startFrame >= clipEnd ? { ...it, startFrame: it.startFrame + actual }
-              : it,
-          );
-          commands.applyState({ ...state, items });
-        } else {
-          commands.setItemTiming(id, { durationInFrames: newDur });
-        }
-      }
-    }
+    const currentDrag = dragRef.current;
+    if (!currentDrag) return;
+    commitTimelineDragGesture(state, commands, currentDrag, editMode);
     snapHold.current = null;
+    gestureSnapPoints.current = [];
     setDrag(null);
   };
 

@@ -1,8 +1,8 @@
-// 轨道片段带(逐字搬自 Timeline.tsx):一条轨道的可编辑区——片段盒(拖动/裁剪/
-// 刀片/钢笔/引用拾取按 editMode 分派)、音频波形、效果角标、钢笔透明度关键帧
-// 叠层、库素材拖放(fx/lut/zoom/transition 落片段,sound/template 落轨道)、转场缝标。
-// 指针机(drag/penDrag 等)由 useTimelinePointer 供给,经 pointer prop 整只传入。
-import { type Dispatch, type RefObject, type SetStateAction } from 'react';
+// Track clip band (translated verbatim from Timeline.tsx): the editable area of a track - clip box (drag/crop/
+// Blade/pen/reference picking dispatched by editMode), audio waveform, effect marker, pen transparency keyframe
+// Overlay, library asset drag and drop (fx/lut/zoom/transition drop clip, sound/template drop track), transition seam mark.
+// The pointer machine (drag/penDrag, etc.) is provided by useTimelinePointer and is passed in through the pointer prop.
+import { type Dispatch, type RefObject, type SetStateAction, useMemo } from 'react';
 import { theme, themeAlpha } from '../../theme';
 import { Icon } from '../icons';
 import {
@@ -17,7 +17,10 @@ import { hasLibraryDrag, parseLibraryDrag, type LibraryDragPayload } from '../..
 import { ALL_FX, FX_EFFECTS, LUT_EFFECTS } from '../../gl/fx/effects';
 import { ZOOM_SHAPE_LABELS } from '../../editor/types';
 import { useT } from '../../i18n/locale';
-import { CLIP_COLOR, waveformPath, type EditMode } from './timelineUtil';
+import {
+  CLIP_COLOR, intersectFrameRange, visibleTimelineItems, waveformPath,
+  type EditMode, type TimelineFrameWindow, type TimelineIndexes,
+} from './timelineUtil';
 import { ClipMediaLayers } from './ClipMediaLayers';
 import { isPreviewable } from '../../media/clipPreview';
 import { canDropMediaAsset, hasCompatibleMediaDrag, parseMediaAssetDrag } from '../../media/drag';
@@ -62,7 +65,7 @@ function ClipEffectBadges({
   }
   if (item.zoom?.shape || item.zoom?.envelope || (item.zoom?.reframeCurve?.keyframes.length ?? 0) > 0) {
     const shape = item.zoom?.shape;
-    // 插件包络曲线无 shape,用自带 label(插件数据,不进词典)
+    // The plugin envelope curve has no shape, use the built-in label (plugin data, not entered into the dictionary)
     const name = shape ? t(ZOOM_SHAPE_LABELS[shape] ?? shape) : item.zoom?.label;
     chips.push({
       key: 'zoom',
@@ -90,7 +93,7 @@ function ClipEffectBadges({
 
 interface TrackLaneProps {
   trackId: TrackId;
-  items: TimelineItem[];
+  indexes: TimelineIndexes;
   state: TimelineState;
   commands: EditorCommands;
   pointer: ReturnType<typeof useTimelinePointer>;
@@ -100,6 +103,8 @@ interface TrackLaneProps {
   hidden: boolean;
   px: number;
   rowHeight: number;
+  visibleWindow: TimelineFrameWindow;
+  pinnedItemIds: ReadonlySet<string>;
   libDropTarget: string | null;
   setLibDropTarget: Dispatch<SetStateAction<string | null>>;
   applyLibraryToClip: (payload: LibraryDragPayload, item: TimelineItem) => boolean;
@@ -110,13 +115,31 @@ interface TrackLaneProps {
 }
 
 export function TrackLane({
-  trackId, items, state, commands, pointer, editMode, pickMode, locked, hidden, px, rowHeight,
-  libDropTarget, setLibDropTarget, applyLibraryToClip, applyLibraryToTrack, frameFromClientX,
-  onContextMenu, scrollRef,
+  trackId, state, commands, pointer, editMode, pickMode, locked, hidden, px, rowHeight,
+  visibleWindow, pinnedItemIds, indexes, libDropTarget, setLibDropTarget,
+  applyLibraryToClip, applyLibraryToTrack, frameFromClientX, onContextMenu, scrollRef,
 }: TrackLaneProps) {
   const t = useT();
   const { drag, penDrag, setPenDrag, startDrag, startPick, startMarquee } = pointer;
   const trackIds = timelineTrackIds(state);
+  const items = indexes.itemsByTrack.get(trackId) ?? [];
+  const renderedItems = useMemo(() => visibleTimelineItems(
+    indexes.itemWindowsByTrack.get(trackId),
+    visibleWindow,
+    pinnedItemIds,
+    indexes.itemById,
+    indexes.itemOrderById,
+    trackId,
+  ), [indexes, pinnedItemIds, trackId, visibleWindow]);
+  const transitions = indexes.transitionsByTrack.get(trackId) ?? [];
+  const visibleTransitions = useMemo(() => transitions.filter((transition) => {
+    const incoming = indexes.itemById.get(transition.incomingItemId);
+    if (!incoming) return false;
+    const transitionStart = incoming.startFrame - Math.floor(transition.durationInFrames / 2);
+    return pinnedItemIds.has(transition.incomingItemId)
+      || pinnedItemIds.has(transition.outgoingItemId)
+      || !!intersectFrameRange(transitionStart, transition.durationInFrames, visibleWindow);
+  }), [indexes, pinnedItemIds, transitions, visibleWindow]);
   const laneKind = trackKind(state, trackId);
   const dragOffsetY = drag?.mode === 'move'
     && trackKind(state, drag.targetTrack) === trackKind(state, drag.baseTrack)
@@ -125,9 +148,10 @@ export function TrackLane({
     : 0;
   return (
     <div
+      className="cc-track-lane"
       style={{
-        // locked lane: slightly dimmed (锁定轨底色微暗;锁图标同时高亮)
-        flex: 1, position: 'relative', background: locked ? `color-mix(in srgb, ${theme.bg} 70%, ${themeAlpha.shadow(1)})` : theme.bg, opacity: hidden ? 0.4 : locked ? 0.75 : 1,
+        // locked lane: slightly dimmed (the background color of the locked lane is dimmed; the lock icon is highlighted at the same time)
+        flex: 1, position: 'relative', background: locked ? `color-mix(in srgb, ${theme.bg} 70%, ${themeAlpha.shadow(1)})` : undefined, opacity: hidden ? 0.4 : locked ? 0.75 : 1,
         outline: libDropTarget === `track:${trackId}` ? '0.5px dashed #6a9fd8' : undefined,
         outlineOffset: -2,
         cursor: pickMode ? 'crosshair' : undefined,
@@ -171,7 +195,7 @@ export function TrackLane({
         applyLibraryToTrack(payload, trackId, f);
       }}
     >
-      {items.map((it) => {
+      {renderedItems.map((it) => {
         const selected = isItemSelected(state, it.id);
         // Group-move preview: every selected clip rides the same delta as the grab handle
         const groupMove = !!drag && drag.mode === 'move' && isItemSelected(state, drag.id) && selected;
@@ -183,6 +207,10 @@ export function TrackLane({
         const durTrim = drag?.id === it.id && drag.mode === 'trim-left' ? -drag.deltaF
           : drag?.id === it.id && drag.mode === 'trim-right' ? drag.deltaF : 0;
         const dur = stretch?.durationInFrames ?? Math.max(1, it.durationInFrames + durTrim);
+        const mediaIntersection = intersectFrameRange(start, dur, visibleWindow);
+        const renderSrcIn = (it.srcInFrame ?? 0)
+          + (drag?.id === it.id && drag.mode === 'trim-left' && !stretch ? drag.deltaF : 0);
+        const renderPlaybackRate = stretch?.playbackRate ?? (it.playbackRate ?? 1);
         const canRateStretch = it.kind === 'video' || it.kind === 'audio';
         const showHandles = !pickMode && editMode !== 'blade' && editMode !== 'pen'
           && (editMode !== 'rate-stretch' || canRateStretch);
@@ -190,7 +218,9 @@ export function TrackLane({
         return (
           <div
             key={it.id}
+            className={`cc-timeline-clip${selected ? ' is-selected' : ''}${isLibOver ? ' is-library-over' : ''}`}
             title={it.name}
+            data-clip-kind={it.kind}
             onPointerDown={(e) => {
               if (pickMode) { // selection mode: click → item ref, drag → timerange (no editing)
                 commands.selectItem(it.id);
@@ -203,7 +233,7 @@ export function TrackLane({
                 if (f > it.startFrame && f < it.startFrame + it.durationInFrames) commands.splitItem(it.id, f);
                 return;
               }
-              if (editMode === 'pen') { // pen: 1st click selects, next clicks punch a kf (纵向=值;音频=音量,其余=透明度)
+              if (editMode === 'pen') { // pen: 1st click selects, next clicks punch a kf (vertical = value; audio = volume, rest = transparency)
                 e.stopPropagation();
                 if (e.button !== 0) return;
                 if (!isItemSelected(state, it.id)) { commands.selectItem(it.id); return; }
@@ -250,30 +280,36 @@ export function TrackLane({
             style={{
               position: 'absolute', left: Math.max(0, start) * px, top: 4, height: rowHeight - 8, width: dur * px,
               background: CLIP_COLOR[it.kind] ?? theme.clipMg,
-              // 视频缩略帧条由 ClipMediaLayers 画(CSS 背景加载不了 mp4);图片仍用自身作底
+              // The video thumbnail frame bar is drawn by ClipMediaLayers (CSS background cannot load mp4); the image still uses itself as the background
               backgroundImage: it.kind === 'image' && it.src ? `linear-gradient(90deg, transparent 0%, rgba(0,0,0,.4) 78%), url(${it.src})` : undefined,
               backgroundSize: 'auto 100%', backgroundRepeat: 'no-repeat',
               borderRadius: 3, color: '#fff', fontSize: 11,
               display: 'flex', alignItems: 'flex-end', padding: '0 8px 5px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
-              border: isLibOver
-                ? '2px solid #6a9fd8'
-                : selected ? `2px solid ${theme.textStrong}` : '0.5px solid rgba(255,255,255,.08)',
-              boxShadow: isLibOver ? 'inset 0 0 0 0.5px #6a9fd855, 0 0 0 0.5px #6a9fd844' : undefined,
               transform: dragging && dragOffsetY ? `translate3d(0, ${dragOffsetY}px, 0)` : undefined,
               zIndex: dragging ? 10 : undefined,
               cursor: pickMode ? 'copy' : locked ? 'not-allowed' : editMode === 'blade' || editMode === 'pen' ? 'crosshair' : 'grab', userSelect: 'none', touchAction: 'none',
             }}
           >
             {(it.kind === 'audio' || it.kind === 'video') && (
-              <ClipMediaLayers item={it} px={px} fps={state.fps} height={rowHeight - 8} />
+              <ClipMediaLayers
+                item={it} px={px} fps={state.fps} height={rowHeight - 8}
+                clipStartFrame={start} durationInFrames={dur}
+                srcInFrame={renderSrcIn} playbackRate={renderPlaybackRate}
+                visibleWindow={visibleWindow}
+              />
             )}
-            {it.kind === 'audio' && !isPreviewable(it.src) && (
-              <svg className="cc-audio-waveform" viewBox={`0 0 ${Math.max(1, dur * px - 6)} 24`} preserveAspectRatio="none" aria-hidden>
-                <path d={waveformPath(`${it.id}:${it.name}`, Math.max(1, dur * px - 6))} />
-              </svg>
-            )}
-            <ClipEffectBadges item={it} inTransition={(state.transitions ?? []).find((t) => t.incomingItemId === it.id) ?? null} />
-            {/* pen mode: keyframe rubber band on the selected clip (纵向 = 值;音频=音量 0..2,其余=透明度 0..1) */}
+            {it.kind === 'audio' && !isPreviewable(it.src) && mediaIntersection && (() => {
+              const left = (mediaIntersection.startFrame - start) * px + 3;
+              const width = Math.max(1, (mediaIntersection.endFrame - mediaIntersection.startFrame) * px - 6);
+              return (
+                <svg className="cc-audio-waveform" viewBox={`0 0 ${width} 24`}
+                  preserveAspectRatio="none" aria-hidden style={{ left, width }}>
+                  <path d={waveformPath(`${it.id}:${it.name}:${mediaIntersection.startFrame}`, width)} />
+                </svg>
+              );
+            })()}
+            <ClipEffectBadges item={it} inTransition={indexes.transitionByIncomingId.get(it.id) ?? null} />
+            {/* pen mode: keyframe rubber band on the selected clip (vertical = value; audio = volume 0..2, rest = transparency 0..1)*/}
             {editMode === 'pen' && selected && (() => {
               const prop = it.kind === 'audio' ? 'volume' as const : 'opacity' as const;
               const [lo, hi] = getKeyframePropertyDefinition(prop).editorRange;
@@ -329,8 +365,8 @@ export function TrackLane({
         );
       })}
       {/* transition badges at each cut on this track */}
-      {(state.transitions ?? []).filter((tn) => tn.trackId === trackId).map((tn) => {
-        const inItem = state.items.find((it) => it.id === tn.incomingItemId);
+      {visibleTransitions.map((tn) => {
+        const inItem = indexes.itemById.get(tn.incomingItemId);
         if (!inItem) return null;
         const label = t(TRANSITION_LABELS[tn.type as TransitionType] ?? tn.type);
         return (

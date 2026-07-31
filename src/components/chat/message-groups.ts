@@ -11,7 +11,7 @@ export type RenderItem =
 /** Fold this many+ consecutive same-tool calls into a collapsible group. */
 export const GROUP_MIN = 3;
 
-export function groupMessages(messages: DisplayMessage[]): RenderItem[] {
+export function groupMessages(messages: DisplayMessage[], indexOffset = 0): RenderItem[] {
   const out: RenderItem[] = [];
   let i = 0;
   while (i < messages.length) {
@@ -23,13 +23,13 @@ export function groupMessages(messages: DisplayMessage[]): RenderItem[] {
       const run = j - i;
       if (run >= GROUP_MIN) {
         const items = [];
-        for (let k = i; k < j; k++) items.push({ msg: messages[k], index: k });
-        out.push({ kind: 'toolgroup', name, items, index: i });
+        for (let k = i; k < j; k++) items.push({ msg: messages[k], index: indexOffset + k });
+        out.push({ kind: 'toolgroup', name, items, index: indexOffset + i });
         i = j;
         continue;
       }
     }
-    out.push({ kind: 'single', msg: m, index: i });
+    out.push({ kind: 'single', msg: m, index: indexOffset + i });
     i++;
   }
   return out;

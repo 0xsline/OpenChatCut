@@ -43,6 +43,7 @@ const QUICK_ACTIONS = [
   { label: '响度标准化', prompt: '将当前时间线中的人声音量标准化' },
   { label: '横转竖', prompt: '将当前工程转换为 9:16 竖屏，并调整主要画面构图' },
 ];
+const MESSAGE_WINDOW_SIZE = 40;
 
 interface ChatPanelProps {
   ctx: AgentContext;
@@ -52,17 +53,17 @@ interface ChatPanelProps {
   onToggleCollapse: () => void;
   /** show a proposal's draft result in the player (null = show committed state) */
   onPreviewState: (state: TimelineState | null) => void;
-  /** prefill the composer (library「用 AI 生成」); bump the number to re-seed */
+  /** prefill the composer (library "generated with AI"); bump the number to re-seed */
   seed?: { text: string; nonce: number; reference?: RefItem } | null;
   /** active creative-mode skill id (agent_skill), or null */
   creativeMode: string | null;
   onCreativeModeChange: (id: string | null) => void;
-  /** Import a pasted/attached file into the media pool (same pipeline as 我的素材 upload). */
+  /** Import a pasted/attached file into the media pool (same pipeline as my asset upload). */
   onImportMedia: (file: File) => Promise<MediaAsset>;
 }
 
-// 运行计时:AI 思考/执行期间实时跳动的秒数(保留两位小数)。挂载即起表,
-// 随 running 指示行卸载;一位小数 100ms 刷新即可,tabular-nums 防抖动。
+// Run time: The number of seconds of real-time jumps during AI thinking/execution (keep two decimal places). Mount and start the table,
+// Uninstall with the running instructions; refresh with one decimal place in 100ms, tabular-nums to prevent jitter.
 function ElapsedTimer() {
   const [now, setNow] = useState(() => performance.now());
   const startRef = useRef(performance.now());
@@ -78,7 +79,7 @@ function ElapsedTimer() {
   );
 }
 
-// 前置 skill_guard 卡上的技能中文名(受 gate 的 3 个生成技能)
+// Chinese name of the skill on the front skill_guard card (3 generated skills affected by gate)
 const GUARD_SKILL_LABELS = {
   'image-gen': '图像生成',
   'motion-graphic-gen': 'MG 动画生成',
@@ -101,12 +102,14 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   const [autoApply, setAutoApply] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
   const [selectedRefs, setSelectedRefs] = useState<RefItem[]>([]);
+  const [visibleMessageCount, setVisibleMessageCount] = useState(MESSAGE_WINDOW_SIZE);
   // Restore composer draft / mode when switching projects (session continuity).
   useEffect(() => {
     setInput(loadComposerDraft(projectId));
     setMode(loadChatMode(projectId));
     setAutoApply(loadChatAutoApply(projectId));
     setSelectedRefs([]);
+    setVisibleMessageCount(MESSAGE_WINDOW_SIZE);
   }, [projectId]);
   // Debounced draft persist — empty clears the key.
   useEffect(() => {
@@ -115,7 +118,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   }, [input, projectId]);
   useEffect(() => { saveChatMode(projectId, mode); }, [mode, projectId]);
   useEffect(() => { saveChatAutoApply(projectId, autoApply); }, [autoApply, projectId]);
-  // 选择模式: panels pick clips/regions/words as refs
+  // Select mode: panels pick clips/regions/words as refs
   const [selecting, setSelecting] = useState(false);
   const [pasting, setPasting] = useState(0);
   const [pasteError, setPasteError] = useState<string | null>(null);
@@ -125,10 +128,12 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   const runSeedRef = useRef(0);
   if (running && runSeedRef.current === 0) runSeedRef.current = messages.length + 1;
   if (!running) runSeedRef.current = 0;
-  // 正在收 thinking(本轮助手气泡只有思考、还没正文)→ 底部指示换成微光「思考中…」;
-  // 无 thinking 数据时保留原随机片场短语。
+  // Collecting thinking (this round of assistant bubbles only have thoughts, no text yet) → The bottom indication is changed to a dim light "Thinking...";
+  // When there is no thinking data, the original random scene phrase is retained.
   const lastMsg = messages[messages.length - 1];
   const streamingThinking = running && lastMsg?.role === 'assistant' && !!lastMsg.thinking && !lastMsg.text;
+  const visibleFrom = Math.max(0, messages.length - visibleMessageCount);
+  const visibleMessages = messages.slice(visibleFrom);
 
   // @-referenceable things: media-pool assets + template library
   const references: RefItem[] = [
@@ -140,7 +145,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, running, proposal]);
 
-  // library「用 AI 生成」seeds the composer (attaches the template as a chat ref)
+  // library "generated with AI" seeds the composer (attaches the template as a chat ref)
   useEffect(() => {
     if (seed && !collapsed) {
       setInput(seed.text);
@@ -153,7 +158,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   // clear any preview when the proposal is resolved (applied/rejected)
   useEffect(() => { if (!proposal) onPreviewState(null); }, [proposal, onPreviewState]);
 
-  // 设置·自动应用: when on, apply the proposal (all ops) as soon as it arrives.
+  // Settings·Auto-apply: when on, apply the proposal (all ops) as soon as it arrives.
   // skill_guard: high-cost tools still require the proposal card.
   useEffect(() => {
     if (!proposal || !autoApply) return;
@@ -194,18 +199,18 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   };
   // Keep the cross-panel pick mode in sync with the toggle; force it off when
   // the panel collapses/unmounts so no orphaned crosshair lingers (selection
-  // mode stays active across picks for 连续拾取).
+  // mode stays active across picks for continuous pickup).
   useEffect(() => {
     setSelectionRefMode(selecting && !collapsed);
     return () => setSelectionRefMode(false);
   }, [selecting, collapsed]);
   useEffect(() => { if (collapsed) setSelecting(false); }, [collapsed]);
-  // Picks from Timeline / Preview / 文字稿 land as chips in the composer.
+  // Picks from Timeline / Preview / Transcript land as chips in the composer.
   const insertRefRef = useRef(insertRef);
   insertRefRef.current = insertRef;
   useEffect(() => onSelectionRef((reference) => insertRefRef.current(reference)), []);
   // Paste files straight into the composer: import each supported file into the
-  // media pool (same pipeline as 我的素材 upload — probe + upload + auto-ASR) and
+  // media pool (same pipeline as my asset upload — probe + upload + auto-ASR) and
   // attach it as an @ reference so the agent can place it (chat_context_entry).
   const importPastedFiles = async (files: File[]) => {
     const supported = files.filter((f) => kindOf(f) !== null);
@@ -304,7 +309,14 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
             </div>
           </div>
         )}
-        {groupMessages(messages).map((item) =>
+        {visibleFrom > 0 && (
+          <button type="button"
+            onClick={() => setVisibleMessageCount((count) => count + MESSAGE_WINDOW_SIZE)}
+            style={{ display: 'block', margin: '4px auto 12px', padding: '5px 10px', border: `0.5px solid ${theme.border}`, borderRadius: 6, background: 'transparent', color: theme.textDim, cursor: 'pointer', fontSize: 12 }}>
+            {t('加载更早消息')}（{visibleFrom}）
+          </button>
+        )}
+        {groupMessages(visibleMessages, visibleFrom).map((item) =>
           item.kind === 'toolgroup' ? (
             <ToolGroupRow key={item.index} name={item.name} items={item.items} />
           ) : (

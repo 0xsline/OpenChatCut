@@ -353,7 +353,7 @@ export function MediaPoolPanel({
                       ? <video src={asset.src} muted preload="metadata" draggable={false} onError={() => markMissing(asset.id)} onLoadedData={() => clearMissing(asset.id)}
                           onLoadedMetadata={(e) => { const v = e.currentTarget; if (Number.isFinite(v.duration) && v.duration > 0) v.currentTime = Math.min(1, v.duration / 2); }} />
                       : asset.kind === 'motion-graphic'
-                        ? <MgThumb asset={asset} fps={fps} />
+                        ? <MgThumb asset={asset} fps={fps} active />
                         : <Icon name="music" size={42} strokeWidth={2.2} />}
             </button>
             {asset.kind === 'audio' && <span className="cc-asset-audio-mark"><Icon name="volume" size={14} /></span>}
