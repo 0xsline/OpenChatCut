@@ -13,6 +13,7 @@ import {
 } from './llm-config.ts';
 import {
   LLM_PROVIDER_PRESETS,
+  isLocalLlmProvider,
   llmProviderConfigNames,
   protocolForProvider,
   type LlmProvider,
@@ -49,7 +50,7 @@ function llmProbe(provider: LlmProvider): ProbeDef {
   const protocol = protocolForProvider(provider);
   const apiKeyName = names.apiKey as KeyName;
   const baseUrlName = names.baseUrl as KeyName;
-  const isLocal = provider === 'ollama' || provider === 'lmstudio';
+  const isLocal = isLocalLlmProvider(provider);
   return {
     needs: isLocal ? [[]] : [[apiKeyName]],
     run: (get) => {

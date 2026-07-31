@@ -1,6 +1,7 @@
 import {
   LLM_PROVIDER_PRESETS,
   defaultModelForProvider,
+  isLocalLlmProvider,
   llmProviderConfigNames,
   normalizeLlmProvider,
   type LlmProvider,
@@ -48,9 +49,10 @@ export function applyAgentModelStatus(
 ): void {
   const choices = LLM_PROVIDER_PRESETS.flatMap((preset): AgentModelChoice[] => {
     const names = llmProviderConfigNames(preset.id);
-    const isLocal = preset.id === 'ollama' || preset.id === 'lmstudio';
-    if (!isLocal && !keys[names.apiKey]?.configured) return [];
-    const model = models[names.model]?.trim() || defaultModelForProvider(preset.id);
+    const savedModel = models[names.model]?.trim();
+    const isLocal = isLocalLlmProvider(preset.id);
+    if (isLocal ? !savedModel : !keys[names.apiKey]?.configured) return [];
+    const model = savedModel || defaultModelForProvider(preset.id);
     return [{
       id: `${preset.id}:${model}`,
       provider: preset.id,

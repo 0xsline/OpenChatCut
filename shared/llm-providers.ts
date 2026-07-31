@@ -125,6 +125,11 @@ export function normalizeLlmProvider(value: unknown): LlmProvider {
   return PRESETS.has(normalized) ? normalized as LlmProvider : DEFAULT_LLM_PROVIDER;
 }
 
+export function isLocalLlmProvider(provider: unknown): boolean {
+  const normalized = normalizeLlmProvider(provider);
+  return normalized === 'ollama' || normalized === 'lmstudio';
+}
+
 export function llmProviderPreset(provider: unknown): (typeof LLM_PROVIDER_PRESETS)[number] {
   return PRESETS.get(normalizeLlmProvider(provider)) ?? LLM_PROVIDER_PRESETS[0];
 }
