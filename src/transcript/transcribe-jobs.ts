@@ -85,6 +85,12 @@ export function getTranscribeJob(assetId: string): TranscribeJob | undefined {
   return jobs.get(assetId);
 }
 
+/** Forget transient ASR state for selected assets after their persisted transcripts
+ * are cleared. This makes a completed job eligible for a deliberate retry. */
+export function resetTranscribeJobs(assetIds: Iterable<string>): void {
+  for (const assetId of assetIds) jobs.delete(assetId);
+}
+
 /** Wait until every listed asset's in-flight ASR job settles, or timeout elapses.
  *  Assets with no live job (already persisted onto the asset, or never enqueued) are
  *  not waited on — track_progress reconciles those from the asset itself. */

@@ -6,6 +6,7 @@ import type { AudioAsset } from '../audio/library';
 import type { CaptionsData } from '../captions/types';
 import type { SerializableFxDef } from '../gl/fx/uniforms';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
+import { resetTranscribeJobs } from '../transcript/transcribe-jobs';
 import type { AnyAction, AtomicAction, ProjectDispatch } from './reduce';
 import { historyReduce, isHistoryControlAction, maxOrder, projectReduce } from './reduce';
 
@@ -420,6 +421,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       setAssetTranscription: (id, patch) => dispatch({ type: 'pool.setTranscription', id, patch }),
       clearGeneratedTranscripts: () => {
         const doc = getDoc();
+        resetTranscribeJobs(doc.assets.map((asset) => asset.id));
         dispatch({ type: 'tl.setDoc', doc: {
           ...doc,
           assets: doc.assets.map((asset) => ({ ...asset, transcript: undefined, transcribeStatus: undefined, transcribeError: undefined })),
