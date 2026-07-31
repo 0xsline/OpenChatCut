@@ -4,10 +4,16 @@ import {
   type DesignStyle,
   type MediaAsset,
   type MediaFolder,
+  type MulticamAngle,
+  type MulticamGroup,
+  type MulticamSyncEvidence,
   type Timeline,
   type TimelineItem,
+  type TimelineLinkGroup,
   type TimelineState,
-} from '../../editor/types';
+} from '../../editor/types.js';
+import { isSourceClockMetadata } from '../../editor/timecode.js';
+import { withMediaSourceRevision } from '../../editor/mediaSourceRevision.js';
 
 export type LooseProjectShape = {
   version?: unknown;
@@ -18,9 +24,17 @@ export type LooseProjectShape = {
   designStyle?: unknown;
 };
 
-const ITEM_KINDS = new Set<TimelineItem['kind']>([
-  'motion-graphic', 'audio', 'video', 'image', 'text', 'gif', 'svg', 'solid',
-]);
+const ITEM_KINDS: Record<TimelineItem['kind'], true> = {
+  'motion-graphic': true,
+  audio: true,
+  video: true,
+  image: true,
+  text: true,
+  gif: true,
+  svg: true,
+  solid: true,
+  sequence: true,
+};
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const optionalFinite = (value: unknown): boolean => value === undefined || finite(value);
@@ -31,12 +45,13 @@ export function isTimelineItem(value: unknown): value is TimelineItem {
   return typeof item.id === 'string' && !!item.id
     && typeof item.track === 'string' && !!item.track
     && typeof item.name === 'string'
-    && typeof item.kind === 'string' && ITEM_KINDS.has(item.kind as TimelineItem['kind'])
+    && typeof item.kind === 'string' && ITEM_KINDS[item.kind as TimelineItem['kind']] === true
     && finite(item.startFrame) && Number.isInteger(item.startFrame) && item.startFrame >= 0
     && finite(item.durationInFrames) && Number.isInteger(item.durationInFrames) && item.durationInFrames > 0
     && optionalFinite(item.srcInFrame) && (item.srcInFrame === undefined || item.srcInFrame >= 0)
     && optionalFinite(item.playbackRate) && (item.playbackRate === undefined || item.playbackRate > 0)
-    && optionalFinite(item.volume) && (item.volume === undefined || (item.volume >= 0 && item.volume <= 2));
+    && optionalFinite(item.volume) && (item.volume === undefined || (item.volume >= 0 && item.volume <= 2))
+    && (item.kind !== 'sequence' || (typeof item.timelineId === 'string' && item.timelineId.length > 0));
 }
 
 export function isTimelineState(value: unknown): value is TimelineState {
@@ -71,10 +86,24 @@ export function isMediaAsset(value: unknown): value is MediaAsset {
     && (asset.kind !== 'motion-graphic' || typeof asset.code === 'string');
 }
 
+function normalizeAssetClocks(asset: MediaAsset): MediaAsset {
+  const sourceTimecode = isSourceClockMetadata(asset.sourceTimecode) ? asset.sourceTimecode : undefined;
+  const captureClock = isSourceClockMetadata(asset.captureClock) ? asset.captureClock : undefined;
+  if (sourceTimecode === asset.sourceTimecode && captureClock === asset.captureClock) return asset;
+  const { sourceTimecode: _sourceTimecode, captureClock: _captureClock, ...rest } = asset;
+  return {
+    ...rest,
+    ...(sourceTimecode ? { sourceTimecode } : {}),
+    ...(captureClock ? { captureClock } : {}),
+  };
+}
+
 export function dedupeAssets(values: readonly unknown[]): MediaAsset[] {
   const unique = new Map<string, MediaAsset>();
   for (const value of values) {
-    if (isMediaAsset(value) && !unique.has(value.id)) unique.set(value.id, value);
+    if (isMediaAsset(value) && !unique.has(value.id)) {
+      unique.set(value.id, withMediaSourceRevision(normalizeAssetClocks(value)));
+    }
   }
   return [...unique.values()];
 }
@@ -122,6 +151,101 @@ function withCaptionTrack(timeline: Timeline): Timeline {
   };
 }
 
+function isLinkGroup(value: unknown, itemIds: ReadonlySet<string>): value is TimelineLinkGroup {
+  if (!value || typeof value !== 'object') return false;
+  const group = value as Partial<TimelineLinkGroup>;
+  return typeof group.id === 'string' && !!group.id
+    && (group.mode === 'linked' || group.mode === 'sync-lock')
+    && Array.isArray(group.itemIds)
+    && group.itemIds.length >= 2
+    && new Set(group.itemIds).size === group.itemIds.length
+    && group.itemIds.every((id) => typeof id === 'string' && itemIds.has(id))
+    && typeof group.anchorItemId === 'string'
+    && group.itemIds.includes(group.anchorItemId);
+}
+
+function isMulticamEvidence(value: unknown, angleIds: ReadonlySet<string>): value is MulticamSyncEvidence {
+  if (!value || typeof value !== 'object') return false;
+  const evidence = value as Partial<MulticamSyncEvidence>;
+  return typeof evidence.angleId === 'string' && angleIds.has(evidence.angleId)
+    && (evidence.method === 'source-timecode' || evidence.method === 'capture-clock' || evidence.method === 'audio')
+    && finite(evidence.confidence) && evidence.confidence >= 0 && evidence.confidence <= 1
+    && finite(evidence.offsetFrames);
+}
+
+function isMulticamAngle(value: unknown): value is MulticamAngle {
+  if (!value || typeof value !== 'object') return false;
+  const angle = value as Partial<MulticamAngle>;
+  return typeof angle.id === 'string' && !!angle.id
+    && typeof angle.itemId === 'string' && !!angle.itemId
+    && typeof angle.label === 'string'
+    && (angle.micRole === undefined
+      || angle.micRole === 'program' || angle.micRole === 'reference'
+      || angle.micRole === 'camera' || angle.micRole === 'scratch' || angle.micRole === 'none')
+    && finite(angle.offsetFrames)
+    && finite(angle.confidence) && angle.confidence >= 0 && angle.confidence <= 1
+    && isTimelineItem(angle.source)
+    && (angle.source.kind === 'video' || angle.source.kind === 'audio');
+}
+
+function normalizeMulticamGroup(value: unknown): MulticamGroup | null {
+  if (!value || typeof value !== 'object') return null;
+  const group = value as Partial<MulticamGroup>;
+  if (typeof group.id !== 'string' || !group.id || !Array.isArray(group.angles)) return null;
+  const angles = group.angles.filter(isMulticamAngle);
+  if (angles.length < 2) return null;
+  const angleIds = new Set(angles.map((angle) => angle.id));
+  if (angleIds.size !== angles.length
+    || typeof group.referenceAngleId !== 'string' || !angleIds.has(group.referenceAngleId)
+    || typeof group.masterAngleId !== 'string' || !angleIds.has(group.masterAngleId)
+    || (group.syncMethod !== 'source-timecode' && group.syncMethod !== 'capture-clock' && group.syncMethod !== 'audio')) {
+    return null;
+  }
+  const evidence = Array.isArray(group.evidence) ? group.evidence.filter((entry) => isMulticamEvidence(entry, angleIds)) : [];
+  if (angles.some((angle) => !evidence.some((entry) => entry.angleId === angle.id))) return null;
+  const decisions = Array.isArray(group.decisions)
+    ? group.decisions.filter((decision) => !!decision && typeof decision === 'object'
+      && typeof decision.id === 'string'
+      && Number.isInteger(decision.fromFrame) && decision.fromFrame >= 0
+      && Number.isInteger(decision.toFrame) && decision.toFrame > decision.fromFrame
+      && typeof decision.angleId === 'string' && angleIds.has(decision.angleId))
+    : undefined;
+  return {
+    ...group,
+    angles,
+    evidence,
+    ...(decisions?.length ? { decisions } : { decisions: undefined }),
+  } as MulticamGroup;
+}
+
+/** Drop corrupt/dangling optional professional metadata without changing legacy timelines. */
+export function normalizeTimelineGroups(timeline: Timeline): Timeline {
+  if (timeline.linkGroups === undefined && timeline.multicamGroups === undefined) return timeline;
+  const itemIds = new Set(timeline.items.map((item) => item.id));
+  const linkGroups = Array.isArray(timeline.linkGroups)
+    ? timeline.linkGroups.filter((group) => isLinkGroup(group, itemIds))
+    : undefined;
+  const multicamGroups = Array.isArray(timeline.multicamGroups)
+    ? timeline.multicamGroups.map(normalizeMulticamGroup).filter((group): group is MulticamGroup => !!group)
+    : undefined;
+  const memberships = new Map((multicamGroups ?? []).flatMap((group) =>
+    group.angles.map((angle) => [angle.itemId, { groupId: group.id, angleId: angle.id }] as const)));
+  const items = memberships.size
+    ? timeline.items.map((item) => {
+        const membership = memberships.get(item.id);
+        return membership
+          ? { ...item, multicamGroupId: membership.groupId, multicamAngleId: membership.angleId }
+          : item;
+      })
+    : timeline.items;
+  return {
+    ...timeline,
+    items,
+    ...(timeline.linkGroups === undefined && linkGroups === undefined ? {} : { linkGroups: linkGroups?.length ? linkGroups : undefined }),
+    ...(timeline.multicamGroups === undefined && multicamGroups === undefined ? {} : { multicamGroups: multicamGroups?.length ? multicamGroups : undefined }),
+  };
+}
+
 /** V3 uses stable track ids instead of display aliases such as V1/A1. */
 export function normalizeTimelineTracks(timeline: Timeline): Timeline {
   const clean = stripTimelineAssets(timeline);
@@ -129,14 +253,14 @@ export function normalizeTimelineTracks(timeline: Timeline): Timeline {
   const alreadyStable = !!clean.trackOrder?.length
     && !ids.some((id) => /^[CVA]\d+$/i.test(id))
     && ids.every((id) => ['video', 'audio', 'caption'].includes(clean.tracks?.[id]?.kind ?? ''));
-  if (alreadyStable) return withCaptionTrack(clean);
+  if (alreadyStable) return normalizeTimelineGroups(withCaptionTrack(clean));
   const remap = new Map(ids.map((id, index) => [id, `track_${clean.id}_${index + 1}`]));
   const trackOrder = ids.map((id) => remap.get(id)!);
   const tracks = Object.fromEntries(ids.map((id) => {
     const nextId = remap.get(id)!;
     return [nextId, { ...clean.tracks?.[id], kind: trackKind(clean, id) }];
   }));
-  return withCaptionTrack({
+  return normalizeTimelineGroups(withCaptionTrack({
     ...clean,
     trackOrder,
     tracks,
@@ -145,7 +269,16 @@ export function normalizeTimelineTracks(timeline: Timeline): Timeline {
       ...transition,
       trackId: remap.get(transition.trackId) ?? transition.trackId,
     })),
-  });
+    ...(clean.multicamGroups === undefined ? {} : {
+      multicamGroups: clean.multicamGroups.map((group) => ({
+        ...group,
+        angles: group.angles.map((angle) => ({
+          ...angle,
+          source: { ...angle.source, track: remap.get(angle.source.track) ?? angle.source.track },
+        })),
+      })),
+    }),
+  }));
 }
 
 /** Pre-versioned single timelines become deterministic V1 project documents. */

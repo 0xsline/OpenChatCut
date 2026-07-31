@@ -1,6 +1,8 @@
-import { CURRENT_PROJECT_VERSION } from '../../../shared/project-version';
-import type { ProjectDoc } from '../../editor/types';
-import { fitTimelineItems } from '../../editor/clipFit';
+import { CURRENT_PROJECT_VERSION } from '../../../shared/project-version.js';
+import type { ProjectDoc } from '../../editor/types.js';
+import { fitTimelineItems } from '../../editor/clipFit.js';
+import { sequenceGraphError } from '../../editor/sequenceGraph.js';
+import { sourceRevisionOf } from '../../editor/mediaSourceRevision.js';
 import {
   dedupeAssets,
   isDesignStyle,
@@ -9,10 +11,10 @@ import {
   normalizeFolders,
   normalizeTimelineTracks,
   timelineToV1,
-} from './normalize';
-import type { ProjectMigrationOptions, ProjectMigrationResult, ProjectMigrationStep } from './types';
-import { v1ToV2 } from './v1-to-v2';
-import { v2ToV3 } from './v2-to-v3';
+} from './normalize.js';
+import type { ProjectMigrationOptions, ProjectMigrationResult, ProjectMigrationStep } from './types.js';
+import { v1ToV2 } from './v1-to-v2.js';
+import { v2ToV3 } from './v2-to-v3.js';
 
 const migrations: readonly ProjectMigrationStep[] = [v1ToV2, v2ToV3];
 const migrationByVersion = new Map(migrations.map((migration) => [migration.fromVersion, migration]));
@@ -34,8 +36,16 @@ function finalize(value: unknown): ProjectDoc | null {
     asset.folderId && !folderIds.has(asset.folderId) ? { ...asset, folderId: undefined } : asset
   ));
   // Smoothly push back to the legal range: illegal fade/out-of-bounds keyframes can only be repaired here, without waiting for the user to move the clip first.
-  const timelines = value.timelines.map(normalizeTimelineTracks).map(fitTimelineItems);
-  return {
+  const sourceRevisionBySrc = new Map(assets.map((asset) => [asset.src, sourceRevisionOf(asset)]));
+  const timelines = value.timelines.map(normalizeTimelineTracks).map(fitTimelineItems).map((timeline) => ({
+    ...timeline,
+    items: timeline.items.map((item) => (
+      item.sourceRevision || !item.src || !sourceRevisionBySrc.has(item.src)
+        ? item
+        : { ...item, sourceRevision: sourceRevisionBySrc.get(item.src) }
+    )),
+  }));
+  const doc: ProjectDoc = {
     version: CURRENT_PROJECT_VERSION,
     assets,
     mediaFolders,
@@ -45,6 +55,7 @@ function finalize(value: unknown): ProjectDoc | null {
       : timelines[0].id,
     ...(isDesignStyle(value.designStyle) ? { designStyle: value.designStyle } : {}),
   };
+  return sequenceGraphError(doc) ? null : doc;
 }
 
 /** Pure, ordered migration runner. It never mutates or persists the source value. */
@@ -86,4 +97,4 @@ export function runProjectMigrations(
   return doc ? { doc, sourceVersion, appliedSteps } : null;
 }
 
-export type { ProjectMigrationOptions, ProjectMigrationProgress, ProjectMigrationResult } from './types';
+export type { ProjectMigrationOptions, ProjectMigrationProgress, ProjectMigrationResult } from './types.js';

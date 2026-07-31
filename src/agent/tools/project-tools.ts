@@ -1,6 +1,7 @@
 export { PROJECT_TOOL_SCHEMAS, PROJECT_TOOL_NAMES } from './schemas/project-tools';
 import type { AgentContext } from '../context';
 import type { ProjectDoc, TimelineState } from '../../editor/types';
+import { hasOperationalTranscript } from '../../transcript/types';
 import {
   docFromTimeline,
   listProjects,
@@ -221,7 +222,7 @@ function execSpeakerUpdate(args: Args, ctx: AgentContext): unknown {
   const from = String(args.from ?? args.id ?? json.from ?? json.speaker ?? json.id ?? '').trim();
   const to = String(args.to ?? json.to ?? json.name ?? json.newName ?? '').trim();
   if (!from || !to) return { error: 'speaker-update needs {from:"A", to:"新名字"} — from = existing speaker label, to = new name' };
-  const items = ctx.getState().items.filter((it) => it.transcript?.some((w) => w.speaker === from));
+  const items = ctx.getState().items.filter((it) => hasOperationalTranscript(it) && it.transcript.some((w) => w.speaker === from));
   if (!items.length) return { error: `no word labeled speaker "${from}" in this project`, hint: 'read_captions {words:true} / read_script show speaker labels' };
   let wordsChanged = 0;
   for (const it of items) {

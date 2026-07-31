@@ -37,7 +37,7 @@ const SESSION_TOOLS: ExternalRegisteredTool[] = [
   },
   {
     name: 'get_edit_session',
-    description: 'Read draft/review/apply status. Manual sessions wait for approval; auto sessions apply during review_edit_session.',
+    description: 'Read session status: drafting/awaiting_review or terminal applied/rejected/cancelled/stale/failed.',
     input_schema: {
       type: 'object',
       properties: { editSessionId: SESSION_ID_PROPERTY },
@@ -60,7 +60,7 @@ const SESSION_TOOLS: ExternalRegisteredTool[] = [
   },
   {
     name: 'discard_edit_session',
-    description: 'Discard a draft or pending review without changing the live OpenChatCut project.',
+    description: 'Cancel a draft or pending review without changing the live OpenChatCut project.',
     input_schema: {
       type: 'object',
       properties: { editSessionId: SESSION_ID_PROPERTY },

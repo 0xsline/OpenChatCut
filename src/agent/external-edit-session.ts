@@ -3,12 +3,17 @@ import { buildOperation, buildProposal, type Operation, type Proposal } from './
 import { makeDraft, type DraftEngine } from '../editor/store';
 import type { ProjectDoc } from '../editor/types';
 
+export type ExternalEditSessionTerminalStatus =
+  | 'applied'
+  | 'rejected'
+  | 'cancelled'
+  | 'stale'
+  | 'failed';
+
 export type ExternalEditSessionStatus =
   | 'drafting'
   | 'awaiting_review'
-  | 'applied'
-  | 'rejected'
-  | 'discarded';
+  | ExternalEditSessionTerminalStatus;
 
 export type ExternalApprovalMode = 'manual' | 'auto';
 
@@ -26,6 +31,19 @@ export interface ExternalEditSession {
   createdAt: number;
   updatedAt: number;
   appliedOperationCount?: number;
+}
+
+export class ExternalEditSessionOutcomeError extends Error {
+  readonly outcome: Exclude<ExternalEditSessionTerminalStatus, 'applied'>;
+
+  constructor(
+    outcome: Exclude<ExternalEditSessionTerminalStatus, 'applied'>,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ExternalEditSessionOutcomeError';
+    this.outcome = outcome;
+  }
 }
 
 export function revisionOf(doc: ProjectDoc): string {
@@ -135,14 +153,14 @@ export function restoreExternalEditSession(input: {
   sessionId: string;
   clientName: string;
   approvalMode?: ExternalApprovalMode;
-  status?: Extract<ExternalEditSessionStatus, 'awaiting_review' | 'applied' | 'rejected' | 'discarded'>;
+  status?: 'awaiting_review' | ExternalEditSessionTerminalStatus | 'discarded';
   baseRevision: string;
   createdAt: number;
   appliedOperationCount?: number;
   operationCount: number;
   proposal: Proposal | null;
 }, fallbackDoc: ProjectDoc): ExternalEditSession {
-  const status = input.status ?? 'awaiting_review';
+  const status = input.status === 'discarded' ? 'cancelled' : input.status ?? 'awaiting_review';
   return {
     id: input.sessionId,
     clientName: input.clientName,
@@ -162,7 +180,7 @@ export function restoreExternalEditSession(input: {
 
 export function finishExternalEditSession(
   session: ExternalEditSession,
-  status: Extract<ExternalEditSessionStatus, 'applied' | 'rejected' | 'discarded'>,
+  status: ExternalEditSessionTerminalStatus,
   appliedOperationCount?: number,
 ): ExternalEditSession {
   return {

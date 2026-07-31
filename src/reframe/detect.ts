@@ -1,3 +1,4 @@
+import { sourceFrameAt } from '../editor/sourceLimit';
 // Automatic reframe detection core.
 // The existing infrastructure only wrote and rendered reframe curves through builtin:zoom and
 // reserved __openchatcutReframeCurve = ReframeCurveV1. This module adds the missing
@@ -55,8 +56,9 @@ export interface DetectOptions {
   fps: number;
   /** Target canvas aspect ratio, width/height, used to calculate magnification. */
   dstAspect: number;
-  /** Source in-point in frames; seek time is (srcInFrame + f) / fps. */
+  /** Source in-point and playback speed used for source-window seeking. */
   srcInFrame?: number;
+  playbackRate?: number;
   intervalFrames?: number;
   gridCols?: number;
   gridRows?: number;
@@ -201,10 +203,9 @@ function buildVideoCapture(video: HTMLVideoElement, opts: DetectOptions): Captur
   const c2d = canvas.getContext('2d', { willReadFrequently: true });
   if (!c2d) throw new Error('auto reframe: 2d canvas context unavailable');
   const faceDetector = makeFaceDetector();
-  const srcInFrame = opts.srcInFrame ?? 0;
 
   return async (frameLocal) => {
-    const timeSec = (srcInFrame + frameLocal) / Math.max(1, opts.fps);
+    const timeSec = sourceFrameAt(opts, frameLocal) / Math.max(1, opts.fps);
     await seekVideo(video, timeSec);
     c2d.drawImage(video, 0, 0, canvas.width, canvas.height);
     let img: ImageDataLike;

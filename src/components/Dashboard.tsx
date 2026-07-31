@@ -18,9 +18,9 @@ interface DashboardProps {
   onRename: (id: string, name: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => Promise<void>;
-  /** Export the project as .ccproj.json (cross-end migration); return the result copy to the user */
+  /** Export a streaming .ccproj package; return the result copy to the user. */
   onExport: (id: string, name: string) => Promise<string>;
-  /** Import .ccproj.json; return the result copy */
+  /** Import current .ccproj or legacy .ccproj.json; return the result copy. */
   onImport: (file: File) => Promise<string>;
 }
 
@@ -212,10 +212,10 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
             <button onClick={() => setCleanupOpen(true)} style={importBtn} title={t('清理所有工程都不引用的上传素材(测试/已删工程残留)')}>
               <Icon name="trash" size={13} /> {t('清理素材')}
             </button>
-            <button onClick={() => fileRef.current?.click()} disabled={busy} style={importBtn} title={t('导入 .ccproj.json 工程文件(含素材;可来自浏览器版/其它机器)')}>
+            <button onClick={() => fileRef.current?.click()} disabled={busy} style={importBtn} title={t('导入 .ccproj 工程文件(兼容旧 .ccproj.json)')}>
               <Icon name="upload" size={13} /> {t('导入工程')}
             </button>
-            <input ref={fileRef} type="file" accept=".json,application/json" onChange={pickImport} style={{ display: 'none' }} />
+            <input ref={fileRef} type="file" accept=".ccproj,.json,application/json,application/x-openchatcut-project" onChange={pickImport} style={{ display: 'none' }} />
             <span style={{ color: theme.textDim, fontSize: 12.5 }}>
               {normalizedQuery
                 ? t('{n} / {total} 个', { n: visibleProjects.length, total: projects.length })
@@ -271,7 +271,7 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
                       <>
                         <button onClick={() => startRename(m)} style={miniBtn} title={t('重命名')}><Icon name="pencil" size={13} /></button>
                         <button onClick={() => onDuplicate(m.id)} style={miniBtn} title={t('复制')}><Icon name="copy" size={13} /></button>
-                        <button onClick={() => void runTransfer(onExport(m.id, m.name))} disabled={busy} style={miniBtn} title={t('导出为 .ccproj.json(含素材,可在桌面版/其它机器导入)')}><Icon name="download" size={13} /></button>
+                        <button onClick={() => void runTransfer(onExport(m.id, m.name))} disabled={busy} style={miniBtn} title={t('导出为流式 .ccproj(含素材,可在桌面版/其它机器导入)')}><Icon name="download" size={13} /></button>
                         <button onClick={() => setConfirmId(m.id)} style={miniBtn} title={t('删除')}><Icon name="trash" size={13} /></button>
                       </>
                     )}

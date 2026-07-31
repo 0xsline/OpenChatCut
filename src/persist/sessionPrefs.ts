@@ -1,3 +1,11 @@
+import {
+  clearTimelineViewStates,
+  loadTimelineViewState,
+  saveTimelineViewState,
+  type TimelineViewState,
+  type TimelineViewStorage,
+} from '../editor/timelineViewState';
+
 // Lightweight per-project UI continuity (localStorage). Not part of ProjectDoc /
 // undo — lost keys only reset chrome, never the timeline.
 
@@ -69,17 +77,37 @@ export function saveChatAutoApply(projectId: string, on: boolean): void {
   writeRaw(autoApplyKey(projectId), on ? '1' : '0');
 }
 
-// ── playhead (frame) ────────────────────────────────────────────────────────
+// ── legacy current-timeline playhead (frame) ───────────────────────────────
 
 export function loadPlayhead(projectId: string): number {
-  const n = Number(readRaw(playheadKey(projectId)));
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  const frame = Number(readRaw(playheadKey(projectId)));
+  return Number.isFinite(frame) && frame > 0 ? Math.floor(frame) : 0;
 }
 
 export function savePlayhead(projectId: string, frame: number): void {
-  const f = Math.max(0, Math.floor(frame));
-  if (f <= 0) removeRaw(playheadKey(projectId));
-  else writeRaw(playheadKey(projectId), String(f));
+  const normalized = Math.max(0, Math.floor(frame));
+  if (normalized <= 0) removeRaw(playheadKey(projectId));
+  else writeRaw(playheadKey(projectId), String(normalized));
+}
+
+// ── per-timeline editor view ────────────────────────────────────────────────
+
+function browserViewStorage(): TimelineViewStorage | null {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
+export function loadTimelineView(projectId: string, timelineId: string): TimelineViewState | null {
+  const storage = browserViewStorage();
+  return storage ? loadTimelineViewState(storage, projectId, timelineId) : null;
+}
+
+export function saveTimelineView(projectId: string, timelineId: string, patch: Partial<TimelineViewState>): void {
+  const storage = browserViewStorage();
+  if (storage) saveTimelineViewState(storage, projectId, timelineId, patch);
 }
 
 /** Permanently remove all browser-local UI continuity for one deleted project. */
@@ -90,6 +118,8 @@ export function clearProjectSessionPrefs(projectId: string): void {
     autoApplyKey(projectId),
     playheadKey(projectId),
   ]) removeRaw(key);
+  const storage = browserViewStorage();
+  if (storage) clearTimelineViewStates(storage, projectId);
 }
 
 // ── recent MG templates (global, not per-project) ───────────────────────────

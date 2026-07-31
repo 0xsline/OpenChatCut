@@ -80,6 +80,32 @@ function remotionCancelSignal(signal) {
   else signal.addEventListener('abort', cancellation.cancel, { once: true });
   return cancellation.cancelSignal;
 }
+/**
+ * Defense in depth: the headless browser must never become a second network
+ * client for project media. Server entrypoints materialize these fields first.
+ */
+export function assertMaterializedRenderSnapshot(snapshot, operation = 'render') {
+  const seen = new WeakSet();
+  const visit = (value, fieldPrefix) => {
+    if (value === null || typeof value !== 'object' || seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      value.forEach((child, index) => visit(child, `${fieldPrefix}[${index}]`));
+      return;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      const field = fieldPrefix ? `${fieldPrefix}.${key}` : key;
+      if (typeof child === 'string'
+        && /^https?:\/\//i.test(child)
+        && (/(?:^|_)(?:src|url|path|cube|lut)$/i.test(key) || /(?:Src|Url|Path)$/.test(key))) {
+        throw new Error(`${operation}: external media at ${field} was not materialized`);
+      }
+      if (child && typeof child === 'object') visit(child, field);
+    }
+  };
+  visit(snapshot, '');
+}
+
 
 
 /** Render with the selected probed engine, then make a truthful software retry. */
@@ -160,6 +186,13 @@ async function buildBundle(outDir) {
     // bundle's webpack the same trick (asset/source = raw text module).
     webpackOverride: (config) => ({
       ...config,
+      resolve: {
+        ...config.resolve,
+        extensionAlias: {
+          ...config.resolve?.extensionAlias,
+          '.js': ['.js', '.ts', '.tsx'],
+        },
+      },
       module: {
         ...config.module,
         rules: [...(config.module?.rules ?? []), { test: /\.frag$/, type: 'asset/source' }],
@@ -225,6 +258,8 @@ async function getServeUrl() {
  * Render a timeline state to video or audio at outputLocation.
  * @param {object} args
  * @param {import('../src/editor/types').TimelineState} args.state
+ * @param {import('../src/editor/types').ProjectDoc} [args.project]
+ * @param {string} [args.timelineId]
  * @param {string} args.outputLocation  absolute output path
  * @param {'h264'|'vp8'|'mp3'|'wav'} [args.codec]
  * @param {[number, number]} [args.frameRange] inclusive Remotion frame range
@@ -236,6 +271,8 @@ async function getServeUrl() {
  */
 export async function renderTimeline({
   state,
+  project,
+  timelineId,
   outputLocation,
   onProgress,
   codec = 'h264',
@@ -251,10 +288,12 @@ export async function renderTimeline({
   }
   if (!outputLocation) throw new Error('renderTimeline: outputLocation is required');
   signal?.throwIfAborted();
+  assertMaterializedRenderSnapshot(state, 'renderTimeline');
+  if (project) assertMaterializedRenderSnapshot(project, 'renderTimeline');
   const cancelSignal = remotionCancelSignal(signal);
 
   const serveUrl = await getServeUrl();
-  const inputProps = { state };
+  const inputProps = { state, project, timelineId };
   const composition = await selectComposition({
     serveUrl, id: COMPOSITION_ID, inputProps, browserExecutable: browserExecutable(),
   });
@@ -308,6 +347,7 @@ export async function renderClip({
     throw new Error('renderClip: a single-item TimelineState is required');
   }
   if (!outputLocation) throw new Error('renderClip: outputLocation is required');
+  assertMaterializedRenderSnapshot(state, 'renderClip');
   const serveUrl = await getServeUrl();
   const inputProps = { state, transparent };
   const composition = await selectComposition({
@@ -342,11 +382,13 @@ export async function renderClip({
 /** Cap stills per call (contact-sheet path further compresses into one image). */
 const STILL_MAX_FRAMES = 16;
 
-export async function renderTimelineStills({ state, frames, puppeteerInstance }) {
+export async function renderTimelineStills({ state, project, timelineId, frames, puppeteerInstance }) {
   if (!state || !Array.isArray(state.items)) throw new Error('renderTimelineStills: state.items required');
   if (!Array.isArray(frames) || !frames.length) throw new Error('renderTimelineStills: frames[] required');
+  assertMaterializedRenderSnapshot(state, 'renderTimelineStills');
+  if (project) assertMaterializedRenderSnapshot(project, 'renderTimelineStills');
   const serveUrl = await getServeUrl();
-  const inputProps = { state };
+  const inputProps = { state, project, timelineId };
   // Reuse one browser for the batch when caller doesn't pass one — opening Chrome
   // per frame was the dominant cost of view_*_frames.
   const { openBrowser } = await import('@remotion/renderer');

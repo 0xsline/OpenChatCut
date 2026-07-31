@@ -6,6 +6,7 @@ import type { CaptionTemplate } from '../../captions/types';
 import { findVariantByLang } from '../../transcript/variants';
 import { resolveTrackId, type TimelineState } from '../../editor/types';
 import { moveCaptionSourceEntry, normalizeCaptionSourceEntries } from '../../captions/sourceOrder';
+import { hasOperationalTranscript } from '../../transcript/types';
 
 // edit_captions Multi-lane tool set:
 // - positions puts multiple sources into place in one call (same anchor point = stacked in the same block)
@@ -32,12 +33,15 @@ const laneId = (): string => `src_${(++seq).toString(36)}_${Math.random().toStri
 
 /** Now scope is upgraded to sourceEntries (copy if existing; old sources[]/sourceItemId/timeline will be upgraded in one go).*/
 export function ensureEntries(c: CaptionsData, s: TimelineState): CaptionSourceEntry[] {
-  if (c.sourceEntries?.length) return normalizeCaptionSourceEntries(c.sourceEntries);
-  const transcribed = (id: string) => s.items.some((it) => it.id === id && (it.transcript?.length ?? 0) > 0);
+  if (c.sourceEntries?.length) {
+    return normalizeCaptionSourceEntries(c.sourceEntries).filter((entry) =>
+      entry.words !== undefined || hasOperationalTranscript(s.items.find((item) => item.id === entry.itemId)));
+  }
+  const transcribed = (id: string) => s.items.some((it) => it.id === id && hasOperationalTranscript(it));
   if (c.sources?.length) return c.sources.filter(transcribed).map((itemId) => ({ id: laneId(), itemId }));
   if (c.sourceMode === 'timeline') {
     return s.items
-      .filter((it) => (it.transcript?.length ?? 0) > 0)
+      .filter((it) => hasOperationalTranscript(it))
       .sort((a, b) => a.startFrame - b.startFrame || a.id.localeCompare(b.id))
       .map((it) => ({ id: laneId(), itemId: it.id }));
   }

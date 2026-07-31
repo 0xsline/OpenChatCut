@@ -3,6 +3,7 @@ import {
   type Dispatch, type MutableRefObject, type SetStateAction,
 } from 'react';
 import type { MediaAsset } from '../../editor/types';
+import { sourceRevisionOf } from '../../editor/mediaSourceRevision';
 import { isSemanticMedia } from './mediaFrames';
 import { indexSemanticAssets, isAbortError, loadWithFallback } from './semanticOperations';
 import { SemanticClient } from './semanticClient';
@@ -136,8 +137,10 @@ function useSemanticRefresh(
     try {
       const stored = await readSemanticVectors(snapshot.scopeId);
       if (snapshotRef.current !== snapshot) throw semanticStaleResultError();
-      const ids = new Set(snapshot.assets.map((asset) => asset.id));
-      const nextRecords = stored.filter((record) => ids.has(record.assetId));
+      const revisions = new Map(snapshot.assets.map((asset) => [asset.id, sourceRevisionOf(asset)]));
+      const nextRecords = stored.filter((record) => (
+        record.sourceRevision === revisions.get(record.assetId)
+      ));
       const duplicates = await runtime.client.current.findDuplicateAssets(
         nextRecords, DUPLICATE_SIMILARITY_THRESHOLD, controller.signal,
       );
@@ -158,17 +161,24 @@ function pruneMissingAssets(
   modelChanged: MutableRefObject<boolean>,
   setState: StateSetter,
 ) {
-  const ids = new Set(snapshot.assets.map((asset) => asset.id));
-  records.current = records.current.filter((record) => ids.has(record.assetId));
+  const revisions = new Map(snapshot.assets.map((asset) => [asset.id, sourceRevisionOf(asset)]));
+  const ids = new Set(revisions.keys());
+  records.current = records.current.filter((record) => (
+    record.sourceRevision === revisions.get(record.assetId)
+  ));
   const indexedAssets = new Set(records.current.map((record) => record.assetId)).size;
   setState((current) => ({
     ...current, indexedAssets,
-    matches: current.matches.filter((match) => ids.has(match.assetId)),
+    matches: current.matches.filter((match) => (
+      match.sourceRevision === revisions.get(match.assetId)
+    )),
     duplicates: current.duplicates.filter((match) => ids.has(match.leftAssetId) && ids.has(match.rightAssetId)),
   }));
-  void pruneSemanticVectors(snapshot.scopeId, ids)
+  void pruneSemanticVectors(snapshot.scopeId, ids, revisions)
     .then((result) => {
-      if (snapshotRef.current === snapshot) modelChanged.current ||= result.staleModelRemoved;
+      if (snapshotRef.current === snapshot) {
+        modelChanged.current ||= result.staleModelRemoved || result.staleSourceRemoved;
+      }
     })
     .catch((reason) => {
       if (snapshotRef.current === snapshot) setFailure(setState, reason);

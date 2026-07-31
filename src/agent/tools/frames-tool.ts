@@ -1,7 +1,10 @@
 export { FRAMES_TOOL_SCHEMAS, FRAMES_TOOL_NAMES } from './schemas/frames-tool';
 import type { AgentContext } from '../context';
-import type { MediaAsset, Timeline, TimelineItem, TimelineState, TrackId } from '../../editor/types';
-import { defaultTrackId, timelineDuration } from '../../editor/types';
+import type { MediaAsset, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackId } from '../../editor/types';
+import { defaultTrackId } from '../../editor/types';
+import { resolveTimelineRenderPlan } from '../../editor/sequenceGraph';
+import { sourceWindowForTimelineRange } from '../../editor/sourceLimit';
+import type { SourceFrameWindow } from '../../editor/sourceLimit';
 import { extractBlobContactSheet, extractBlobImagePreview, isBlobishSrc } from './blob-frames';
 import { resolveTimeline } from './timeline-target';
 
@@ -60,12 +63,119 @@ function pickFrames(
     frames.map((f) => Math.max(0, Math.min(Math.max(0, total - 1), Math.round(f)))),
   )].slice(0, MAX_FRAMES);
 }
+/** Clamp source-coordinate arguments to a half-open visible source window. */
+export function constrainSourceFrameArgs(
+  args: Args,
+  window: SourceFrameWindow,
+  fps: number,
+): Args {
+  const firstFrame = Math.max(0, Math.ceil(window.startFrame));
+  const lastFrame = Math.max(firstFrame, Math.ceil(window.endFrame) - 1);
+  const clampFrame = (value: number) => Math.max(firstFrame, Math.min(lastFrame, value));
+  const constrained = { ...args };
+  if (Array.isArray(args.sourceTimesMs) && args.sourceTimesMs.length) {
+    constrained.sourceTimesMs = args.sourceTimesMs.map((value) =>
+      Math.round((clampFrame((Number(value) / 1000) * fps) / fps) * 1000));
+  } else if (Array.isArray(args.frames) && args.frames.length) {
+    constrained.frames = args.frames.map((value) => clampFrame(Number(value)));
+  } else if (Array.isArray(args.seconds) && args.seconds.length) {
+    constrained.seconds = args.seconds.map((value) => clampFrame(Number(value) * fps) / fps);
+  } else {
+    const requestedFrom = typeof args.fromSeconds === 'number'
+      ? args.fromSeconds * fps
+      : window.startFrame;
+    const requestedTo = typeof args.toSeconds === 'number'
+      ? args.toSeconds * fps
+      : window.endFrame;
+    constrained.fromSeconds = Math.max(window.startFrame, requestedFrom) / fps;
+    constrained.toSeconds = Math.max(
+      Math.max(window.startFrame, requestedFrom) + 1,
+      Math.min(window.endFrame, requestedTo),
+    ) / fps;
+  }
+  return constrained;
+}
+
+interface AssetFrameTarget {
+  asset: MediaAsset;
+  item?: TimelineItem;
+  base: Timeline;
+  sourceWindow: SourceFrameWindow;
+}
+
+function resolveAssetFrameTarget(args: Args, ctx: AgentContext): AssetFrameTarget | { error: string } {
+  const assetQuery = typeof args.assetId === 'string' ? args.assetId.trim() : '';
+  const itemQuery = typeof args.itemId === 'string' ? args.itemId.trim() : '';
+  if (!assetQuery && !itemQuery) {
+    return { error: 'view_asset_frames requires assetId or itemId' };
+  }
+  const doc = ctx.getDoc();
+  let base: Timeline;
+  try {
+    base = resolveTimeline(ctx, typeof args.timelineId === 'string' ? args.timelineId : undefined);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+
+  let item: TimelineItem | undefined;
+  if (itemQuery) {
+    const exact = base.items.find((candidate) => candidate.id === itemQuery);
+    const matches = exact ? [exact] : base.items.filter((candidate) => candidate.id.startsWith(itemQuery));
+    if (matches.length !== 1) {
+      return { error: matches.length ? `ambiguous item prefix "${itemQuery}"` : `no item ${itemQuery}` };
+    }
+    item = matches[0]!;
+  }
+
+  const itemAsset = item
+    ? doc.assets.find((asset) =>
+      (item!.src && asset.src === item!.src) || (item!.templateId && asset.id === item!.templateId))
+    : undefined;
+  const exactAsset = assetQuery
+    ? doc.assets.find((asset) => asset.id === assetQuery)
+    : itemAsset;
+  const assetMatches = exactAsset
+    ? [exactAsset]
+    : assetQuery
+      ? doc.assets.filter((asset) => asset.id.startsWith(assetQuery))
+      : [];
+  if (assetMatches.length !== 1) {
+    return {
+      error: assetMatches.length
+        ? `ambiguous asset prefix "${assetQuery}"`
+        : item
+          ? `item ${item.id} has no matching media-pool source asset`
+          : `no asset ${assetQuery}`,
+    };
+  }
+  const asset = assetMatches[0]!;
+  if (item && itemAsset?.id !== asset.id) {
+    return { error: `asset ${asset.id} is not the source of item ${item.id}` };
+  }
+  const rawWindow = item
+    ? sourceWindowForTimelineRange(item, 0, item.durationInFrames)
+    : { startFrame: 0, endFrame: Math.max(1, asset.durationInFrames) };
+  const sourceWindow = {
+    startFrame: Math.min(Math.max(0, asset.durationInFrames), rawWindow.startFrame),
+    endFrame: Math.min(Math.max(0, asset.durationInFrames), rawWindow.endFrame),
+  };
+  if (sourceWindow.endFrame <= sourceWindow.startFrame) {
+    return { error: `item ${item?.id ?? asset.id} has no visible source frames` };
+  }
+  return { asset, item, base, sourceWindow };
+}
+
 
 type ImagePayload = {
   __images: { frame: number; base64: string }[];
   frames: number[];
   layout: 'contact_sheet' | 'individual';
   note: string;
+  coordinateSpace?: 'timeline' | 'source';
+  timelineId?: string;
+  assetId?: string;
+  itemId?: string;
+  sourceWindow?: SourceFrameWindow;
   renderedBy?: string;
   sampleCount?: number;
   sourceTimesMs?: number[];
@@ -101,12 +211,14 @@ async function renderStills(
   state: TimelineState,
   frames: number[],
   note: string,
+  project?: ProjectDoc,
+  timelineId?: string,
 ): Promise<ImagePayload | { error: string }> {
   try {
     const res = await fetch('/render-still', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state, frames, grid: true, fps: state.fps }),
+      body: JSON.stringify({ state, frames, grid: true, fps: state.fps, ...(project && timelineId ? { project, timelineId } : {}) }),
     });
     if (!res.ok) {
       const info = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -129,6 +241,7 @@ async function extractAssetContactSheet(
   args: Args,
   asset: MediaAsset,
   fps: number,
+  metadata: Pick<ImagePayload, 'coordinateSpace' | 'assetId' | 'itemId' | 'sourceWindow'>,
 ): Promise<ImagePayload | { error: string } | null> {
   if (!src.startsWith('/media/uploads/')) return null;
   if (asset.kind !== 'video' && asset.kind !== 'gif') return null;
@@ -183,6 +296,7 @@ async function extractAssetContactSheet(
       renderedBy: data.renderedBy ?? 'ffmpeg',
       sampleCount: data.sampleCount,
       sourceTimesMs,
+      ...metadata,
     };
   } catch {
     return null;
@@ -227,68 +341,93 @@ function assetPreviewState(base: TimelineState, asset: MediaAsset, track: TrackI
 
 async function viewTimelineFrames(args: Args, ctx: AgentContext): Promise<unknown> {
   let state: Timeline;
+  let total: number;
+  const project = ctx.getDoc();
   try {
     state = resolveTimeline(ctx, typeof args.timelineId === 'string' ? args.timelineId : undefined);
+    total = resolveTimelineRenderPlan(project, state.id).durationInFrames;
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   }
-  const total = Math.max(1, timelineDuration(state));
   if (total <= 0 || !state.items.length) {
     return { error: 'timeline is empty — nothing to render' };
   }
   const frames = pickFrames(args, total, state.fps, DEFAULT_TIMELINE_SCAN);
-  const note = `时间线「${state.name}」${frames.length} 帧（f${frames.join(', f')}，共 ${total} @${state.fps}fps）——目标时间线草稿合成画面（含未提交编辑）`;
-  return renderStills(state, frames, note);
+  const note = `时间线「${state.name}」${frames.length} 帧（绝对时间线坐标 f${frames.join(', f')}，共 ${total} @${state.fps}fps）——目标时间线草稿合成画面（含未提交编辑）`;
+  const rendered = await renderStills(state, frames, note, project, state.id);
+  return 'error' in rendered
+    ? rendered
+    : { ...rendered, coordinateSpace: 'timeline', timelineId: state.id };
 }
 
 async function viewAssetFrames(args: Args, ctx: AgentContext): Promise<unknown> {
-  const q = typeof args.assetId === 'string' ? args.assetId.trim() : '';
-  if (!q) return { error: 'view_asset_frames requires assetId' };
-  const asset = ctx.getDoc().assets.find((a) => a.id === q || a.id.startsWith(q));
-  if (!asset) return { error: `no asset ${q}` };
+  const target = resolveAssetFrameTarget(args, ctx);
+  if ('error' in target) return target;
+  const { asset, item, base, sourceWindow } = target;
   if (asset.kind === 'audio') {
     return { error: `asset "${asset.name}" is audio — it has no frames to render` };
   }
 
-  const base = ctx.getState();
   const fps = base.fps || 30;
+  const constrainedArgs = constrainSourceFrameArgs(args, sourceWindow, fps);
+  const metadata: Pick<ImagePayload, 'coordinateSpace' | 'assetId' | 'itemId' | 'sourceWindow'> = {
+    coordinateSpace: 'source',
+    assetId: asset.id,
+    itemId: item?.id,
+    sourceWindow,
+  };
+  const windowNote = item
+    ? `item ${item.id} 可见源窗口 [${sourceWindow.startFrame}, ${sourceWindow.endFrame})`
+    : `完整源窗口 [${sourceWindow.startFrame}, ${sourceWindow.endFrame})`;
 
   // Upload-in-progress placeholder: sample from blob: in the browser (no server path yet).
   if (isBlobishSrc(asset.src)) {
     if (asset.kind === 'image' || asset.kind === 'svg') {
-      const b64 = await extractBlobImagePreview(asset.src);
-      if (b64) {
+      const base64 = await extractBlobImagePreview(asset.src);
+      if (base64) {
         return {
-          __images: [{ frame: 0, base64: b64 }],
+          __images: [{ frame: 0, base64 }],
           frames: [0],
           layout: 'individual',
-          note: `源资产「${asset.name}」blob 预览（上传中/本地占位）`,
+          note: `源资产「${asset.name}」blob 预览 · ${windowNote}`,
           renderedBy: 'browser-blob',
+          ...metadata,
         };
       }
     }
     if (asset.kind === 'video' || asset.kind === 'gif') {
-      const count = Math.max(1, Math.min(MAX_FRAMES, Math.round(Number(args.count) || DEFAULT_ASSET_SCAN)));
+      const count = Math.max(
+        1,
+        Math.min(MAX_FRAMES, Math.round(Number(constrainedArgs.count) || DEFAULT_ASSET_SCAN)),
+      );
+      const sourceTimesMs = Array.isArray(constrainedArgs.sourceTimesMs)
+        ? constrainedArgs.sourceTimesMs.map(Number).filter((value) => Number.isFinite(value))
+        : Array.isArray(constrainedArgs.seconds)
+          ? constrainedArgs.seconds.map((seconds) => Math.round(Number(seconds) * 1000))
+          : Array.isArray(constrainedArgs.frames)
+            ? constrainedArgs.frames.map((frame) => Math.round((Number(frame) / fps) * 1000))
+            : undefined;
       const sheet = await extractBlobContactSheet(asset.src, {
-        sourceTimesMs: Array.isArray(args.sourceTimesMs)
-          ? args.sourceTimesMs.map(Number).filter((n) => Number.isFinite(n))
-          : Array.isArray(args.seconds)
-            ? args.seconds.map((s) => Math.round(Number(s) * 1000))
-            : undefined,
+        sourceTimesMs,
         count,
-        fromMs: typeof args.fromSeconds === 'number' ? Math.round(args.fromSeconds * 1000) : undefined,
-        toMs: typeof args.toSeconds === 'number' ? Math.round(args.toSeconds * 1000) : undefined,
+        fromMs: typeof constrainedArgs.fromSeconds === 'number'
+          ? Math.round(constrainedArgs.fromSeconds * 1000)
+          : undefined,
+        toMs: typeof constrainedArgs.toSeconds === 'number'
+          ? Math.round(constrainedArgs.toSeconds * 1000)
+          : undefined,
       });
       if (sheet) {
-        const labelLine = sheet.labels.map((l, i) => `[${i + 1}]${l}`).join(' ');
+        const labelLine = sheet.labels.map((label, index) => `[${index + 1}]${label}`).join(' ');
         return {
           __images: [{ frame: 0, base64: sheet.base64 }],
           frames: sheet.sourceTimesMs.map((ms) => Math.round((ms / 1000) * fps)),
           layout: sheet.sampleCount > 1 ? 'contact_sheet' : 'individual',
-          note: `源资产「${asset.name}」blob contact sheet · ${sheet.sampleCount} samples · cells L→R T→B: ${labelLine}（上传中本地预览）`,
+          note: `源资产「${asset.name}」blob contact sheet · ${sheet.sampleCount} samples · cells L→R T→B: ${labelLine} · ${windowNote}`,
           renderedBy: 'browser-blob',
           sampleCount: sheet.sampleCount,
           sourceTimesMs: sheet.sourceTimesMs,
+          ...metadata,
         };
       }
     }
@@ -296,17 +435,31 @@ async function viewAssetFrames(args: Args, ctx: AgentContext): Promise<unknown> 
 
   // Prefer fast ffmpeg contact sheet for uploaded video/gif masters.
   if (asset.src) {
-    const sheet = await extractAssetContactSheet(asset.src, args, asset, fps);
-    if (sheet && !('error' in sheet)) return sheet;
+    const sheet = await extractAssetContactSheet(
+      asset.src,
+      constrainedArgs,
+      asset,
+      fps,
+      metadata,
+    );
+    if (sheet && !('error' in sheet)) {
+      return { ...sheet, note: `${sheet.note} · ${windowNote}` };
+    }
   }
 
   const track = defaultTrackId(base, 'video');
   if (!track) return { error: 'no video track to render the asset preview on' };
   const total = Math.max(1, asset.durationInFrames);
-  const frames = pickFrames(args, total, fps, asset.kind === 'video' || asset.kind === 'gif' ? DEFAULT_ASSET_SCAN : 1);
+  const frames = pickFrames(
+    constrainedArgs,
+    total,
+    fps,
+    asset.kind === 'video' || asset.kind === 'gif' ? DEFAULT_ASSET_SCAN : 1,
+  );
   const state = assetPreviewState(base, asset, track);
-  const note = `源资产「${asset.name}」${frames.length} 帧（f${frames.join(', f')}，共 ${total}）——单独预览，未合成到时间线`;
-  return renderStills(state, frames, note);
+  const note = `源资产「${asset.name}」${frames.length} 帧（源坐标 f${frames.join(', f')}，共 ${total}）——单独预览，未合成到时间线 · ${windowNote}`;
+  const rendered = await renderStills(state, frames, note);
+  return 'error' in rendered ? rendered : { ...rendered, ...metadata };
 }
 
 export async function execFramesTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {

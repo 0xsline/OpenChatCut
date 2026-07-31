@@ -87,7 +87,15 @@ export async function saveVoiceSubtitle(url: string): Promise<string> {
   if (!bytes.length || bytes.length > 5_000_000) throw new Error('MiniMax subtitle file is empty or too large');
   const dir = uploadDir();
   await mkdir(dir, { recursive: true });
-  const file = join(dir, `${randomUUID()}.minimax-subtitles.json`);
-  await writeFile(file, bytes);
-  return `/media/uploads/${file.split('/').pop()!}`;
+  const filename = `${randomUUID()}.minimax-subtitles.json`;
+  const file = join(dir, filename);
+  const partial = `${file}.part`;
+  try {
+    await writeFile(partial, bytes, { flag: 'wx' });
+    await rename(partial, file);
+    return `/media/uploads/${filename}`;
+  } catch (error) {
+    await unlink(partial).catch(() => undefined);
+    throw error;
+  }
 }

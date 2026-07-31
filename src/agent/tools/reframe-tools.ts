@@ -87,6 +87,7 @@ export async function execReframeTool(name: string, args: Args, ctx: AgentContex
       fps: state.fps,
       dstAspect,
       srcInFrame: item.srcInFrame ?? 0,
+      playbackRate: item.playbackRate,
       intervalFrames,
       sensitivity,
       smooth,

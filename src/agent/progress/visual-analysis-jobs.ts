@@ -8,12 +8,14 @@
 
 import type { MediaAsset } from '../../editor/types';
 import { isMediaSrcReachable } from '../../persist/mediaBlobStore';
+import { sourceRevisionOf } from '../../editor/mediaSourceRevision';
 import { isTerminal, type JobReportBase } from './job-model';
 
 export type VisualAnalysisStatus = 'running' | 'succeeded' | 'failed' | 'not_found';
 
 export interface VisualAnalysisJob {
   assetId: string;
+  sourceRevision: string;
   status: VisualAnalysisStatus;
   /** Sample count when a contact sheet was built, else 0 for image / probe-only. */
   sampleCount?: number;
@@ -32,12 +34,14 @@ export interface VisualAnalysisReport extends JobReportBase<VisualAnalysisStatus
 
 /** Idempotent start. video → extract-frames warm; image → succeed; audio → not visual. */
 export function enqueueVisualAnalysis(
-  asset: Pick<MediaAsset, 'id' | 'src' | 'kind'>,
+  asset: Pick<MediaAsset, 'id' | 'src' | 'kind' | 'sourceRevision' | 'sourceSize' | 'sourceModifiedAt'>,
 ): void {
+  const sourceRevision = sourceRevisionOf(asset);
   if (!asset.src) return;
   if (asset.kind === 'audio') {
     jobs.set(asset.id, {
       assetId: asset.id,
+      sourceRevision,
       status: 'succeeded',
       sampleCount: 0,
       note: 'audio has no frames; visual-analysis is a no-op',
@@ -45,14 +49,20 @@ export function enqueueVisualAnalysis(
     return;
   }
   const prior = jobs.get(asset.id);
-  if (prior && prior.status !== 'failed') return;
+  if (prior?.sourceRevision === sourceRevision && prior.status !== 'failed') return;
 
-  jobs.set(asset.id, { assetId: asset.id, status: 'running' });
+  jobs.set(asset.id, { assetId: asset.id, sourceRevision, status: 'running' });
   void runAnalysis(asset)
-    .then((job) => { jobs.set(asset.id, job); })
+    .then((job) => {
+      if (jobs.get(asset.id)?.sourceRevision === sourceRevision) {
+        jobs.set(asset.id, { ...job, sourceRevision });
+      }
+    })
     .catch((err: unknown) => {
+      if (jobs.get(asset.id)?.sourceRevision !== sourceRevision) return;
       jobs.set(asset.id, {
         assetId: asset.id,
+        sourceRevision,
         status: 'failed',
         error: err instanceof Error ? err.message : String(err),
       });
@@ -60,8 +70,8 @@ export function enqueueVisualAnalysis(
 }
 
 async function runAnalysis(
-  asset: Pick<MediaAsset, 'id' | 'src' | 'kind'>,
-): Promise<VisualAnalysisJob> {
+  asset: Pick<MediaAsset, 'id' | 'src' | 'kind' | 'sourceRevision' | 'sourceSize' | 'sourceModifiedAt'>,
+): Promise<Omit<VisualAnalysisJob, 'sourceRevision'>> {
   const src = asset.src!;
   // Wait briefly if still a blob placeholder (upload in flight).
   if (src.startsWith('blob:') || src.startsWith('data:')) {
@@ -135,10 +145,13 @@ async function runAnalysis(
  * Re-enqueue after relink (blob → /media/uploads) so a stuck "running" placeholder
  * job gets a real probe. Forces restart when prior was running on blob.
  */
-export function refreshVisualAnalysis(asset: Pick<MediaAsset, 'id' | 'src' | 'kind'>): void {
+export function refreshVisualAnalysis(
+  asset: Pick<MediaAsset, 'id' | 'src' | 'kind' | 'sourceRevision' | 'sourceSize' | 'sourceModifiedAt'>,
+): void {
   const prior = jobs.get(asset.id);
-  if (prior?.status === 'succeeded') return;
-  if (prior?.status === 'running') jobs.delete(asset.id);
+  const sourceRevision = sourceRevisionOf(asset);
+  if (prior?.sourceRevision === sourceRevision && prior.status === 'succeeded') return;
+  jobs.delete(asset.id);
   enqueueVisualAnalysis(asset);
 }
 

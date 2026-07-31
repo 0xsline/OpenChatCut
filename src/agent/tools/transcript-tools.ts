@@ -3,12 +3,14 @@ import type { AgentContext } from '../context';
 import { defaultTrackId, resolveTrackId, trackAlias, type TimelineItem, type TrackId } from '../../editor/types';
 import { transcribePath } from '../../transcript/assemblyai';
 import { fillerIndices } from '../../transcript/edit';
+import { hasOperationalTranscript } from '../../transcript/types';
 import { translateLines } from '../../captions/translate';
 import { createVariant, findVariantByLang, upsertVariant } from '../../transcript/variants';
 import { buildSilenceGapCaps, parseCleanOnly, parseSilenceRule, type SilenceRule } from '../../transcript/clean';
 import type { Action } from '../../editor/reduce';
 import { execFindTranscript, findPhrase, normalize } from './transcript-find';
 import { execReadTranscript } from './transcript-read';
+import { execSearchMedia } from './media-search';
 
 type Args = Record<string, unknown>;
 
@@ -18,7 +20,7 @@ type Args = Record<string, unknown>;
 // audio clip on a track, optionally requiring an attached transcript
 function trackClip(ctx: AgentContext, track: TrackId, needTranscript: boolean): TimelineItem | null {
   return ctx.getState().items.find((it) =>
-    (it.kind === 'audio' || it.kind === 'video') && it.track === track && it.src && (!needTranscript || (it.transcript?.length ?? 0) > 0)) ?? null;
+    (it.kind === 'audio' || it.kind === 'video') && it.track === track && it.src && (!needTranscript || hasOperationalTranscript(it))) ?? null;
 }
 
 function resolveClip(ctx: AgentContext, track: TrackId, itemId: unknown, needTranscript: boolean): TimelineItem | null {
@@ -119,7 +121,7 @@ async function manageTranscript(args: Args, ctx: AgentContext, track: TrackId, a
     }
   }
 
-  if (!it.transcript?.length) return { error: `item ${it.id} has no transcript; call transcribe_track first` };
+  if (!hasOperationalTranscript(it)) return { error: `item ${it.id} has no current transcript; call transcribe_track first` };
 
   if (action === 'fix') {
     // fix supports ASR word correction or speaker rename/merge, routed by fields.
@@ -186,6 +188,7 @@ async function manageTranscript(args: Args, ctx: AgentContext, track: TrackId, a
 // Execute a transcript/caption tool. Returns undefined if `name` isn't one of ours.
 export async function execTranscriptTool(name: string, args: Args, ctx: AgentContext): Promise<unknown | undefined> {
   if (name === 'read_transcript') return execReadTranscript(args, ctx);
+  if (name === 'search_media') return execSearchMedia(args, ctx);
   const state = ctx.getState();
   const track = resolveTrackId(state, args.track ?? 'A1') ?? defaultTrackId(state, 'audio');
   if (!track) return { error: 'no track available; create one with edit_track first' };
@@ -200,7 +203,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       const results: { itemId: string; words: number; text: string; skipped?: boolean }[] = [];
       try {
         for (const it of clips) {
-          if (it.transcript?.length) {
+          if (hasOperationalTranscript(it)) {
             results.push({ itemId: it.id, words: it.transcript.length, text: '', skipped: true });
             continue;
           }
@@ -221,8 +224,8 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
       // transcribed clip on the track, not just the first. itemId narrows to one clip.
       const targetId = typeof args.itemId === 'string' ? args.itemId : '';
       const clips = targetId
-        ? state.items.filter((x) => (x.id === targetId || x.id.startsWith(targetId)) && (x.transcript?.length ?? 0) > 0)
-        : state.items.filter((x) => x.track === track && (x.transcript?.length ?? 0) > 0);
+        ? state.items.filter((x) => (x.id === targetId || x.id.startsWith(targetId)) && hasOperationalTranscript(x))
+        : state.items.filter((x) => x.track === track && hasOperationalTranscript(x));
       if (!clips.length) return { error: targetId ? `no transcribed item ${targetId}` : `no transcript on ${alias}; call transcribe_track first` };
       const fps = state.fps;
       const usesTypedArgs = args.only != null || args.silence != null || args.longSilence != null;
@@ -289,7 +292,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
     case 'edit_gap': {
       const action = String(args.action ?? '');
       const it = resolveClip(ctx, track, args.itemId, true);
-      if (!it?.transcript?.length) {
+      if (!hasOperationalTranscript(it)) {
         return { error: args.itemId ? `no transcribed item ${String(args.itemId)}` : `no transcript on ${alias}; call transcribe_track first` };
       }
       const minGap = typeof args.minGapSeconds === 'number' ? args.minGapSeconds : 0.25;
@@ -359,7 +362,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
     }
     case 'delete_text': {
       const it = trackClip(ctx, track, true);
-      if (!it?.transcript) return { error: `no transcript on ${alias}; call transcribe_track first` };
+      if (!hasOperationalTranscript(it)) return { error: `no current transcript on ${alias}; call transcribe_track first` };
       const m = findPhrase(it.transcript, String(args.query ?? ''));
       if (!m) return { deleted: false, query: args.query, note: 'phrase not found' };
       const idxs = Array.from({ length: m.count }, (_, k) => m.start + k);

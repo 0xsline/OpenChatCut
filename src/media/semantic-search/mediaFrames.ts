@@ -4,6 +4,10 @@ import type { FramePixels } from './types';
 const MAX_FRAME_EDGE = 448;
 const VIDEO_SAMPLE_INTERVAL_SECONDS = 15;
 const MAX_VIDEO_SAMPLE_COUNT = 12;
+const MAX_SCENE_SAMPLE_COUNT = 96;
+const LONG_VIDEO_SECONDS = 60;
+const SHORT_SCENE_SECONDS = 4;
+const MAX_DETECTED_SCENES = 500;
 const SAME_SEEK_THRESHOLD_SECONDS = 0.01;
 const MIN_VIDEO_DURATION_SECONDS = 0.25;
 const VIDEO_END_EPSILON_SECONDS = 0.01;
@@ -35,7 +39,12 @@ function waitForMedia(target: HTMLImageElement | HTMLVideoElement, eventName: st
   });
 }
 
-function capturePixels(source: CanvasImageSource, width: number, height: number, sampleTime: number): FramePixels {
+function capturePixels(
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+  sample: Pick<FramePixels, 'sampleTime' | 'sceneId' | 'sceneStart' | 'sceneEnd'>,
+): FramePixels {
   const scale = Math.min(1, MAX_FRAME_EDGE / Math.max(width, height));
   const targetWidth = Math.max(1, Math.round(width * scale));
   const targetHeight = Math.max(1, Math.round(height * scale));
@@ -46,7 +55,7 @@ function capturePixels(source: CanvasImageSource, width: number, height: number,
   if (!context) throw new Error('Canvas is unavailable');
   context.drawImage(source, 0, 0, targetWidth, targetHeight);
   const pixels = context.getImageData(0, 0, targetWidth, targetHeight);
-  return { data: pixels.data, width: targetWidth, height: targetHeight, sampleTime };
+  return { data: pixels.data, width: targetWidth, height: targetHeight, ...sample };
 }
 
 async function sampleImage(asset: MediaAsset, signal: AbortSignal): Promise<FramePixels[]> {
@@ -55,7 +64,7 @@ async function sampleImage(asset: MediaAsset, signal: AbortSignal): Promise<Fram
   image.src = asset.src;
   if (!image.complete) await waitForMedia(image, 'load', signal);
   throwIfAborted(signal);
-  return [capturePixels(image, image.naturalWidth, image.naturalHeight, 0)];
+  return [capturePixels(image, image.naturalWidth, image.naturalHeight, { sampleTime: 0 })];
 }
 
 async function seekVideo(video: HTMLVideoElement, time: number, signal: AbortSignal): Promise<void> {
@@ -64,14 +73,104 @@ async function seekVideo(video: HTMLVideoElement, time: number, signal: AbortSig
   await waitForMedia(video, 'seeked', signal);
 }
 
-function videoSampleTimes(duration: number): number[] {
-  if (!Number.isFinite(duration) || duration <= MIN_VIDEO_DURATION_SECONDS) return [0];
+function fallbackSamplePlan(duration: number): SceneSamplePlan[] {
+  if (!Number.isFinite(duration) || duration <= MIN_VIDEO_DURATION_SECONDS) {
+    return [{ sampleTime: 0 }];
+  }
   const count = Math.min(MAX_VIDEO_SAMPLE_COUNT, Math.max(1, Math.ceil(duration / VIDEO_SAMPLE_INTERVAL_SECONDS)));
   const step = duration / count;
   return Array.from({ length: count }, (_, index) => {
-    const midpoint = step * (index + 0.5);
-    return Number(Math.min(duration - VIDEO_END_EPSILON_SECONDS, midpoint).toFixed(3));
+    return {
+      sampleTime: Number(Math.min(
+        duration - VIDEO_END_EPSILON_SECONDS,
+        step * (index + 0.5),
+      ).toFixed(3)),
+    };
   });
+}
+
+export interface SceneSamplePlan {
+  sceneId?: string;
+  sceneStart?: number;
+  sceneEnd?: number;
+  sampleTime: number;
+}
+
+function evenlySelect<T>(values: readonly T[], count: number): T[] {
+  if (count >= values.length) return [...values];
+  return Array.from({ length: count }, (_, index) => values[Math.floor(index * values.length / count)]!);
+}
+
+/**
+ * One representative midpoint per detected shot. When the hard budget is exceeded,
+ * short shots win first and remaining slots are spread across the whole source.
+ */
+export function sceneAwareSamplePlan(
+  duration: number,
+  boundaries: readonly number[],
+  maxSamples = MAX_SCENE_SAMPLE_COUNT,
+): SceneSamplePlan[] {
+  if (!Number.isFinite(duration) || duration <= MIN_VIDEO_DURATION_SECONDS) {
+    return [{ sceneId: 'scene-0-0', sceneStart: 0, sceneEnd: Math.max(0, duration), sampleTime: 0 }];
+  }
+  const cap = Math.max(1, Math.min(MAX_SCENE_SAMPLE_COUNT, Math.round(maxSamples)));
+  const cuts = [...new Set(boundaries
+    .filter((time) => Number.isFinite(time) && time > 0 && time < duration)
+    .map((time) => Number(time.toFixed(3))))]
+    .sort((left, right) => left - right);
+  const edges = [0, ...cuts, duration];
+  const shots = edges.slice(0, -1).map((sceneStart, index) => {
+    const sceneEnd = edges[index + 1]!;
+    return {
+      sceneId: `scene-${Math.round(sceneStart * 1000)}-${Math.round(sceneEnd * 1000)}`,
+      sceneStart,
+      sceneEnd,
+      sampleTime: Number(Math.min(
+        duration - VIDEO_END_EPSILON_SECONDS,
+        sceneStart + (sceneEnd - sceneStart) / 2,
+      ).toFixed(3)),
+    };
+  });
+  if (shots.length <= cap) return shots;
+
+  const selected = new Set<SceneSamplePlan>();
+  const shortShots = shots
+    .filter((shot) => shot.sceneEnd - shot.sceneStart <= SHORT_SCENE_SECONDS)
+    .sort((left, right) => (
+      (left.sceneEnd - left.sceneStart) - (right.sceneEnd - right.sceneStart)
+      || left.sceneStart - right.sceneStart
+    ));
+  for (const shot of shortShots.slice(0, cap)) selected.add(shot);
+  const remaining = shots.filter((shot) => !selected.has(shot));
+  for (const shot of evenlySelect(remaining, cap - selected.size)) selected.add(shot);
+  return [...selected].sort((left, right) => left.sampleTime - right.sampleTime);
+}
+
+async function scenePlanForLongVideo(
+  asset: MediaAsset,
+  duration: number,
+  signal: AbortSignal,
+): Promise<SceneSamplePlan[] | null> {
+  if (duration < LONG_VIDEO_SECONDS || !asset.src.startsWith('/media/uploads/')) return null;
+  try {
+    const response = await fetch('/api/detect-scenes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ src: asset.src, minSceneMs: 250, maxScenes: MAX_DETECTED_SCENES }),
+      signal,
+    });
+    if (!response.ok) return null;
+    const result = await response.json() as {
+      scenes?: Array<{ timeMs?: number }>;
+    };
+    const boundaries = (result.scenes ?? [])
+      .map((scene) => Number(scene.timeMs) / 1000)
+      .filter(Number.isFinite);
+    return sceneAwareSamplePlan(duration, boundaries);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    return null;
+  }
 }
 
 async function sampleVideo(asset: MediaAsset, signal: AbortSignal): Promise<FramePixels[]> {
@@ -80,16 +179,21 @@ async function sampleVideo(asset: MediaAsset, signal: AbortSignal): Promise<Fram
   video.preload = 'auto';
   video.muted = true;
   video.src = asset.src;
-  await waitForMedia(video, 'loadeddata', signal);
-  let frames: FramePixels[] = [];
-  for (const time of videoSampleTimes(video.duration)) {
-    throwIfAborted(signal);
-    await seekVideo(video, time, signal);
-    frames = [...frames, capturePixels(video, video.videoWidth, video.videoHeight, time)];
+  try {
+    await waitForMedia(video, 'loadeddata', signal);
+    const plan = await scenePlanForLongVideo(asset, video.duration, signal)
+      ?? fallbackSamplePlan(video.duration);
+    const frames: FramePixels[] = [];
+    for (const sample of plan) {
+      throwIfAborted(signal);
+      await seekVideo(video, sample.sampleTime, signal);
+      frames.push(capturePixels(video, video.videoWidth, video.videoHeight, sample));
+    }
+    return frames;
+  } finally {
+    video.removeAttribute('src');
+    video.load();
   }
-  video.removeAttribute('src');
-  video.load();
-  return frames;
 }
 
 export const isSemanticMedia = (asset: MediaAsset) =>

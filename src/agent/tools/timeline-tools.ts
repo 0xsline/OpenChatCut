@@ -1,6 +1,7 @@
 export { TIMELINE_TOOL_SCHEMAS, TIMELINE_TOOL_NAMES } from './schemas/timeline-tools';
 import type { AgentContext } from '../context';
-import { ASPECT_PRESETS, ratioLabel, timelineDuration, type AspectFit, type ProjectDoc, type Timeline } from '../../editor/types';
+import { ASPECT_PRESETS, ratioLabel, type AspectFit, type ProjectDoc, type Timeline } from '../../editor/types';
+import { resolveTimelineRenderPlan, sequenceReferenceError, sequenceReferencesTo, type SequenceReference } from '../../editor/sequenceGraph';
 
 // manage_timelines — ONE action-based tool, not separate create/switch tools.
 // Mutating actions flow through propose→apply via the project-level draft;
@@ -31,7 +32,9 @@ function findTimeline(doc: ProjectDoc, id: unknown): Timeline | null {
 const describe = (t: Timeline, doc: ProjectDoc) => ({
   id: t.id, name: t.name, width: t.width, height: t.height, ratio: ratioLabel(t.width, t.height),
   active: t.id === doc.activeTimelineId, hidden: t.hidden ?? false,
-  clips: t.items.length, durationInFrames: timelineDuration(t),
+  clips: t.items.length,
+  nestedInstances: t.items.filter((item) => item.kind === 'sequence').length,
+  durationInFrames: resolveTimelineRenderPlan(doc, t.id).durationInFrames,
 });
 
 export async function execTimelineTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
@@ -108,22 +111,50 @@ export async function execTimelineTool(name: string, args: Args, ctx: AgentConte
       return { ok: true, changed, timeline: updated ? describe(updated, after) : t.id };
     }
 
+    case 'insert': {
+      const target = findTimeline(doc, args.timelineId);
+      if (!target) return { error: `no timeline ${args.timelineId}`, available: doc.timelines.map((t) => ({ id: t.id, name: t.name })) };
+      const owner = findTimeline(doc, doc.activeTimelineId);
+      if (!owner) return { error: `no active timeline ${doc.activeTimelineId}` };
+      const referenceError = sequenceReferenceError(doc, owner.id, target.id);
+      if (referenceError) return { error: referenceError.message, sequenceError: referenceError.toJSON() };
+      const addResult = ctx.commands.addSequence(target.id, {
+        track: typeof args.track === 'string' ? args.track : undefined,
+        startFrame: typeof args.startFrame === 'number' ? Math.max(0, Math.round(args.startFrame)) : undefined,
+        sourceStartFrame: typeof args.sourceStartFrame === 'number' ? Math.max(0, Math.round(args.sourceStartFrame)) : undefined,
+        sourceDurationInFrames: typeof args.sourceDurationInFrames === 'number' ? Math.max(1, Math.round(args.sourceDurationInFrames)) : undefined,
+        playbackRate: typeof args.playbackRate === 'number' ? args.playbackRate : undefined,
+      });
+      if (!addResult.ok) {
+        return {
+          error: addResult.error,
+          ...(addResult.sequenceError ? { sequenceError: addResult.sequenceError } : {}),
+        };
+      }
+      const itemId = addResult.itemId;
+      const instance = ctx.getState().items.find((item) => item.id === itemId);
+      return { ok: true, item: instance ?? { id: itemId, timelineId: target.id } };
+    }
+
     case 'delete': {
       const ids = Array.isArray(args.timelineIds) && args.timelineIds.length ? args.timelineIds : [args.timelineId];
       const deleted: string[] = [];
       const kept: string[] = [];
+      const blocked: Array<{ timeline: string; references: SequenceReference[] }> = [];
       for (const raw of ids) {
         const cur = ctx.getDoc();
         const t = findTimeline(cur, raw);
         if (!t) { kept.push(String(raw)); continue; }
         if (cur.timelines.length <= 1) { kept.push(t.name); continue; } // keep ≥1 (reducer guards too)
+        const references = sequenceReferencesTo(cur, t.id);
+        if (references.length) { kept.push(t.name); blocked.push({ timeline: t.id, references }); continue; }
         ctx.commands.deleteTimeline(t.id);
         deleted.push(t.name);
       }
-      return { ok: deleted.length > 0, deleted, ...(kept.length ? { kept, note: '至少保留一条序列/未找到的已跳过' } : {}) };
+      return { ok: deleted.length > 0, deleted, ...(kept.length ? { kept, note: '至少保留一条序列、被嵌套实例引用或未找到的已跳过' } : {}), ...(blocked.length ? { blocked } : {}) };
     }
 
     default:
-      return { error: `unknown action ${args.action}（可选 list/create/duplicate/switch/update/delete）` };
+      return { error: `unknown action ${args.action}（可选 list/create/duplicate/switch/update/delete/insert）` };
   }
 }

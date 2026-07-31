@@ -88,7 +88,13 @@ function buildMg(pack: InstalledPack): TimelineState {
   const template = pluginTemplates([pack])[0];
   if (!template) throw new Error('package has no mg-template item');
   const applied = applyLibraryToTrack(
-    { state: draft.getState(), commands: draft.commands, notice: () => undefined },
+    {
+      state: draft.getState(),
+      getState: () => draft.getState(),
+      getAssets: () => draft.getState().assets ?? [],
+      commands: draft.commands,
+      notice: () => undefined,
+    },
     { v: 1, kind: 'template', id: template.id, name: template.name, data: template },
     TRACK,
     0,
@@ -141,7 +147,13 @@ function buildVisual(
   if (!item) throw new Error('preview clip was not created');
   let notice = '';
   const applied = applyLibraryToClip(
-    { state, commands: draft.commands, notice: (message) => { notice = message; } },
+    {
+      state,
+      getState: () => draft.getState(),
+      getAssets: () => draft.getState().assets ?? [],
+      commands: draft.commands,
+      notice: (message) => { notice = message; },
+    },
     resourcePayload(pack, category),
     item,
   );

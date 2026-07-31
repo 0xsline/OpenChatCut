@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 // WebGL2 transition runtime — the compositor contract:
 // one shared fullscreen quad; fragment shaders receive v_texCoord and the
 // uniforms u_outgoing / u_incoming / u_progress (+ u_resolution / u_aspect /
@@ -18,7 +20,8 @@ attribute vec2 a_texCoord;
 varying vec2 v_texCoord;
 void main() { gl_Position = vec4(a_position, 0.0, 1.0); v_texCoord = a_texCoord; }`;
 
-import type { CubeLut } from './fx/cube';
+import { GL_COLOR_PIPELINE } from './colorPipeline.js';
+import type { CubeLut } from './fx/cube.js';
 
 export type UniformValue = number | number[];
 
@@ -117,6 +120,12 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
   // without it some GPUs present+clear before the 2D readback lands.
   const gl = canvas.getContext('webgl2', { premultipliedAlpha: false, alpha: true, preserveDrawingBuffer: true });
   if (!gl) throw new Error('WebGL2 not available');
+  const colorManagedGl = gl as WebGL2RenderingContext & {
+    drawingBufferColorSpace?: PredefinedColorSpace;
+    unpackColorSpace?: PredefinedColorSpace;
+  };
+  if ('drawingBufferColorSpace' in colorManagedGl) colorManagedGl.drawingBufferColorSpace = GL_COLOR_PIPELINE.framebuffer;
+  if ('unpackColorSpace' in colorManagedGl) colorManagedGl.unpackColorSpace = GL_COLOR_PIPELINE.texture;
 
   // fullscreen quad as a triangle strip: interleaved [posX posY | u v]
   const buf = gl.createBuffer();
@@ -172,6 +181,7 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
     gl.activeTexture(gl.TEXTURE0 + unit);
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); // DOM sources are top-down
+    gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
   };
 
@@ -242,10 +252,14 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
 
   let disposed = false;
   activeGlRuntimes += 1;
+  const assertContextAvailable = () => {
+    if (disposed || gl.isContextLost()) throw new Error('WebGL context lost');
+  };
 
   return {
     canvas,
     render(frag, outgoing, incoming, progress, extra) {
+      assertContextAvailable();
       let prog = programs.get(frag);
       if (!prog) {
         prog = link(gl, frag);
@@ -269,8 +283,9 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
       const locIn = gl.getUniformLocation(prog, 'u_incoming');
       if (locIn) gl.uniform1i(locIn, 1);
 
-      // Clamp straddle progress to [.005, .995] to avoid endpoint artifacts.
-      setUniform(prog, 'u_progress', Math.max(0.005, Math.min(0.995, progress)));
+      // The shared frame builder maps Remotion's first/last Sequence frames to
+      // exact shader endpoints. Preserve 0/1 so the following ordinary frame cannot snap.
+      setUniform(prog, 'u_progress', Math.max(0, Math.min(1, progress)));
       setUniform(prog, 'u_resolution', [canvas.width, canvas.height]);
       setUniform(prog, 'u_aspect', canvas.width / Math.max(1, canvas.height));
       for (const [k, v] of Object.entries(extra ?? {})) setUniform(prog, k, v);
@@ -280,6 +295,7 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     },
     renderFx(frag, input, extra, lut3d) {
+      assertContextAvailable();
       const prog = getProgram(frag);
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.useProgram(prog);
@@ -303,12 +319,14 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     },
     renderFxChain(passes, input) {
+      assertContextAvailable();
       if (passes.length === 0) return;
       const rt = ensureFbos(Math.max(0, passes.length - 1));
       // upload the source once (flip: DOM sources are top-down)
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, texFx);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, input);
       for (let i = 0; i < passes.length; i++) {
         const last = i === passes.length - 1;

@@ -1,6 +1,6 @@
-import type { TranscriptWord } from '../transcript/types';
-import type { CaptionStyleOverride } from './styles';
-import { segmentWords } from './segmenter';
+import type { TranscriptWord } from '../transcript/types.js';
+import type { CaptionStyleOverride } from './styles.js';
+import { segmentWords } from './segmenter.js';
 
 /** 3×3 title-safe anchors + shorthands (edit_captions action=layout preset). */
 export type CaptionAnchor =

@@ -1,7 +1,11 @@
+import { createWriteStream } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import { extname, join } from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import type { MusicAudioFormat } from './music-types.ts';
@@ -36,17 +40,28 @@ export async function saveAudioResponse(
   rawSampleRate = 44_100,
 ): Promise<{ path: string; durationSeconds: number }> {
   if (!response.ok) throw new Error(await musicProviderError(response));
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (!bytes.length) throw new Error('music provider returned empty audio');
+  if (!response.body) throw new Error('music provider returned empty audio');
   const ext = ['wav', 'pcm', 'flac'].includes(format) ? format : 'mp3';
   const dir = uploadDir();
   await mkdir(dir, { recursive: true });
   const filename = `${randomUUID()}.${ext}`;
   const file = join(dir, filename);
-  await writeFile(file, bytes);
-  const durationSeconds = ext === 'pcm' ? bytes.length / (rawSampleRate * 2) : await probeDuration(file);
-  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) throw new Error('unable to determine generated music duration');
-  return { path: `/media/uploads/${filename}`, durationSeconds };
+  const partial = join(dir, `.${filename}.part`);
+  try {
+    await pipeline(
+      Readable.fromWeb(response.body as WebReadableStream),
+      createWriteStream(partial, { flags: 'wx' }),
+    );
+    const bytes = (await stat(partial)).size;
+    if (!bytes) throw new Error('music provider returned empty audio');
+    const durationSeconds = ext === 'pcm' ? bytes / (rawSampleRate * 2) : await probeDuration(partial);
+    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) throw new Error('unable to determine generated music duration');
+    await rename(partial, file);
+    return { path: `/media/uploads/${filename}`, durationSeconds };
+  } catch (error) {
+    await rm(partial, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 
 function localUpload(uploadPath: string): { file: string; name: string } {

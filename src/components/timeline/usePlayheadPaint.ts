@@ -3,23 +3,27 @@
 // Repair the root cause of needle freezing); resume playback at breakpoint (throttle persistence + one-time recovery after project attachment).
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
-import { loadPlayhead, savePlayhead } from '../../persist/sessionPrefs';
+import { loadTimelineView, saveTimelineView } from '../../persist/sessionPrefs';
 import { HEADER_W, fmt, fmtClock } from './timelineUtil';
 
 interface PlayheadDeps {
   playerRef: RefObject<PlayerRef | null>;
   projectId?: string;
+  timelineId?: string;
   fps: number;
   total: number;
   px: number;
 }
 
-export function usePlayheadPaint({ playerRef, projectId, fps, total, px }: PlayheadDeps) {
+export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total, px }: PlayheadDeps) {
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
+  const timelineIdRef = useRef(timelineId);
+  timelineIdRef.current = timelineId;
   const totalRef = useRef(total);
   totalRef.current = total;
-  // Restore saved playhead once per project attach (after Player is live).
+  // Restore once per project + timeline pair. A missing record deliberately seeks
+  // to frame 0 instead of inheriting the Player's stale frame from another tab.
   const restoredForRef = useRef<string | null>(null);
   const pxRef = useRef(px);
   pxRef.current = px;
@@ -50,6 +54,26 @@ export function usePlayheadPaint({ playerRef, projectId, fps, total, px }: Playh
   };
   const paintPlayheadRef = useRef(paintPlayhead);
   paintPlayheadRef.current = paintPlayhead;
+  const restorePlayerRef = useRef((_player: NonNullable<typeof playerRef.current>): boolean => false);
+  restorePlayerRef.current = (player) => {
+    const pid = projectIdRef.current;
+    const tid = timelineIdRef.current;
+    if (!pid || !tid) return false;
+    const key = `${pid}\u0000${tid}`;
+    if (restoredForRef.current === key) {
+      const frame = Math.min(playheadRef.current, Math.max(0, totalRef.current - 1));
+      try { player.seekTo(frame); } catch { /* ignore */ }
+      paintPlayheadRef.current(frame, true);
+      return true;
+    }
+    restoredForRef.current = key;
+    const saved = loadTimelineView(pid, tid);
+    const max = Math.max(0, totalRef.current - 1);
+    const frame = Math.min(saved?.playhead ?? 0, max);
+    try { player.seekTo(frame); } catch { /* ignore */ }
+    paintPlayheadRef.current(frame, true);
+    return true;
+  };
   useEffect(() => {
     let raf = 0;
     let detach: (() => void) | null = null;
@@ -64,7 +88,8 @@ export function usePlayheadPaint({ playerRef, projectId, fps, total, px }: Playh
       };
       const persistHead = (frame: number) => {
         const pid = projectIdRef.current;
-        if (pid) savePlayhead(pid, frame);
+        const tid = timelineIdRef.current;
+        if (pid && tid) saveTimelineView(pid, tid, { playhead: frame });
       };
       // Hard refresh does not run React uninstall and clean, detach flush is unreliable - play/drag frameupdate
       // The stream is throttled and saved once (~800ms), and it can be resumed after refresh wherever it is paused/draged.
@@ -94,24 +119,12 @@ export function usePlayheadPaint({ playerRef, projectId, fps, total, px }: Playh
       player.addEventListener('pause', onPause);
       player.addEventListener('ended', onEnded);
       try { setPlaying(!!player.isPlaying?.()); } catch { /* ignore */ }
-      // One-shot restore after Player mounts for this project.
-      const pid = projectIdRef.current;
-      if (pid && restoredForRef.current !== pid) {
-        restoredForRef.current = pid;
-        const saved = loadPlayhead(pid);
-        const max = Math.max(0, totalRef.current - 1);
-        const frame = saved > 0 ? Math.min(saved, max) : player.getCurrentFrame();
-        if (saved > 0) {
-          try { player.seekTo(frame); } catch { /* ignore */ }
-        }
-        paintPlayheadRef.current(frame, true);
-      } else {
+      if (!restorePlayerRef.current(player)) {
         paintPlayheadRef.current(player.getCurrentFrame(), true);
       }
       return () => {
-        // Flush last head before detaching (refresh / project switch). Destroyed
-        // The player will read 0 - writing 0 is equivalent to deleting the key, which will erase the header bit stored during pause and only write when >0.
-        try { const f = player.getCurrentFrame(); if (f > 0) persistHead(f); } catch { /* ignore */ }
+        // Persist the last known frame before this Player instance detaches.
+        try { persistHead(player.getCurrentFrame()); } catch { /* ignore */ }
         player.removeEventListener('frameupdate', onFrame);
         player.removeEventListener('play', onPlay);
         player.removeEventListener('pause', onPause);
@@ -137,6 +150,15 @@ export function usePlayheadPaint({ playerRef, projectId, fps, total, px }: Playh
     tick();
     return () => { cancelAnimationFrame(raf); detach?.(); };
   }, [playerRef]);
+  useEffect(() => {
+    const player = playerRef.current;
+    if (player) restorePlayerRef.current(player);
+    return () => {
+      if (projectId && timelineId) {
+        saveTimelineView(projectId, timelineId, { playhead: playheadRef.current });
+      }
+    };
+  }, [playerRef, projectId, timelineId]);
   useEffect(() => { paintPlayheadRef.current(playheadRef.current, true); }, [px, fps, total]);
 
   return { playheadRef, playheadLineRef, toolbarTimecodeRef, rulerTimecodeRef, paintPlayhead, playing };

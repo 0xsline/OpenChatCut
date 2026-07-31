@@ -9,6 +9,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { getKey, type KeyName } from './keystore.ts';
+import { getUploadObjectToFile, r2Config } from './r2.ts';
 
 export const DEFAULT_UPLOAD_DIR = join(process.cwd(), 'public', 'media', 'uploads');
 
@@ -17,7 +18,7 @@ export const DEFAULT_UPLOAD_DIR = join(process.cwd(), 'public', 'media', 'upload
  * `\w` Whitelisting will leak them to SPA false 200). */
 export function isSafeUploadName(name: string): boolean {
   if (!name || name.startsWith('.')) return false;
-  if (name.includes('/') || name.includes('\\') || name.includes('\0')) return false;
+  if (name.includes('/') || name.includes('\\') || /[\x00-\x1f\x7f]/.test(name)) return false;
   return true;
 }
 
@@ -49,6 +50,98 @@ export function resolveUploadFile(name: string): string | null {
     if (existsSync(file)) return file;
   }
   return null;
+}
+
+export interface ResolvedUploadFile {
+  file: string;
+  contentType: string;
+  bytes: number;
+  cached: boolean;
+}
+
+export interface UploadHydrationDependencies {
+  resolveLocal: (name: string) => string | null;
+  cloudAvailable: () => boolean;
+  uploadDirectory: () => string;
+  downloadToFile: typeof getUploadObjectToFile;
+}
+
+const defaultUploadHydrationDependencies: UploadHydrationDependencies = {
+  resolveLocal: resolveUploadFile,
+  cloudAvailable: () => r2Config() !== null,
+  uploadDirectory: uploadDir,
+  downloadToFile: getUploadObjectToFile,
+};
+const uploadHydrations = new Map<string, Promise<ResolvedUploadFile | null>>();
+const uploadMutationQueues = new Map<string, Promise<void>>();
+
+/** Serialize every local/cloud publication for one upload object identity. */
+export function enqueueUploadMutation<T>(name: string, work: () => Promise<T>): Promise<T> {
+  const previous = uploadMutationQueues.get(name) ?? Promise.resolve();
+  const run = previous.catch(() => undefined).then(work);
+  const settled = run.then(() => undefined, () => undefined);
+  uploadMutationQueues.set(name, settled);
+  void settled.finally(() => {
+    if (uploadMutationQueues.get(name) === settled) uploadMutationQueues.delete(name);
+  });
+  return run;
+}
+
+async function resolveOrHydrateUploadFileOnce(
+  name: string,
+  dependencies: UploadHydrationDependencies,
+): Promise<ResolvedUploadFile | null> {
+  const local = dependencies.resolveLocal(name);
+  if (local) {
+    try {
+      const info = await stat(local);
+      if (info.isFile()) {
+        return { file: local, contentType: mimeFor(name), bytes: info.size, cached: true };
+      }
+    } catch {
+      // A concurrent removal is a cache miss; let the R2 read-through restore it.
+    }
+  }
+
+  if (!dependencies.cloudAvailable()) return null;
+  const directory = dependencies.uploadDirectory();
+  await mkdir(directory, { recursive: true });
+  const partPath = join(directory, `.${name}.part`);
+  const finalPath = join(directory, name);
+  try {
+    const object = await dependencies.downloadToFile(name, partPath);
+    if (!object) return null;
+    const contentType = object.contentType.split(';', 1)[0]?.trim().toLowerCase();
+    if (contentType === 'text/html') return null;
+    await rename(partPath, finalPath);
+    return {
+      file: finalPath,
+      contentType: object.contentType,
+      bytes: object.bytes,
+      cached: false,
+    };
+  } finally {
+    await unlink(partPath).catch(() => undefined);
+  }
+}
+
+/** Resolve locally or share one atomic R2 hydration among all concurrent readers of the same safe name. */
+export function resolveOrHydrateUploadFile(
+  name: string,
+  dependencies: UploadHydrationDependencies = defaultUploadHydrationDependencies,
+): Promise<ResolvedUploadFile | null> {
+  if (!isSafeUploadName(name)) return Promise.resolve(null);
+  const inFlight = uploadHydrations.get(name);
+  if (inFlight) return inFlight;
+
+  const shared = enqueueUploadMutation(
+    name,
+    () => resolveOrHydrateUploadFileOnce(name, dependencies),
+  ).finally(() => {
+    uploadHydrations.delete(name);
+  });
+  uploadHydrations.set(name, shared);
+  return shared;
 }
 
 // ── Directly stream disk files (the custom directory is outside public/ and cannot be reached by Vite static service) ──────────

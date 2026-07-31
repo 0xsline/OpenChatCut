@@ -5,6 +5,7 @@ export { BEAT_TOOL_SCHEMAS, BEAT_TOOL_NAMES } from './schemas/beat-tools';
 import type { AgentContext } from '../context';
 import type { AtomicAction } from '../../editor/reduce';
 import type { TimelineItem } from '../../editor/types';
+import { sourceFramesToTimelineFrames, sourceWindowForTimelineRange } from '../../editor/sourceLimit';
 import { analyzeAssetBeats, type BeatAnalysis } from '../../audio/beats';
 
 type Args = Record<string, unknown>;
@@ -15,10 +16,11 @@ const DEFAULT_MARKER_CAP = 120;
 
 /** Source seconds → timeline frame (same mapping as scene detection: srcIn + playbackRate, discard outside window).*/
 function mapToTimelineFrames(times: readonly number[], item: TimelineItem, fps: number): number[] {
-  const sourceIn = item.srcInFrame ?? 0;
-  const rate = Math.max(0.01, item.playbackRate ?? 1);
+  const window = sourceWindowForTimelineRange(item, 0, item.durationInFrames);
   const frames = times.flatMap((seconds) => {
-    const local = Math.round((seconds * fps - sourceIn) / rate);
+    const sourceFrame = seconds * fps;
+    if (sourceFrame <= window.startFrame || sourceFrame >= window.endFrame) return [];
+    const local = Math.round(sourceFramesToTimelineFrames(item, sourceFrame - window.startFrame));
     if (local <= 0 || local >= item.durationInFrames) return [];
     return [item.startFrame + local];
   });

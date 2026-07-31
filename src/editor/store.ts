@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useReducer, useRef } from 'react';
-import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, ProjectDoc, Timeline, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
+import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeEditorState, activeTimeline, defaultTrackId, resolveTrackId } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
@@ -8,6 +8,11 @@ import type { SerializableFxDef } from '../gl/fx/uniforms';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
 import type { AnyAction, AtomicAction, ProjectDispatch } from './reduce';
 import { historyReduce, isHistoryControlAction, maxOrder, projectReduce } from './reduce';
+import { resolveTimelineRenderPlan, sequenceReferenceError, type SequenceGraphErrorDetails } from './sequenceGraph';
+import { sourceFramesToTimelineFrames } from './sourceLimit';
+import { planOverwrite } from './overwrite';
+import { sourceRevisionOf } from './mediaSourceRevision';
+import { planSlip, type SlipResult } from './slip';
 
 // Re-export the reducer layer so existing importers (`from './editor/store'`) keep working.
 export type { Action, AnyAction, AtomicAction, BatchAction, ProjectAction, Dispatch, ProjectDispatch } from './reduce';
@@ -19,32 +24,46 @@ export { reduce, projectReduce } from './reduce';
 // two items share an id → moveItem moves both). crypto.randomUUID avoids that.
 const uid = (p: string) => `${p}_${crypto.randomUUID()}`;
 
+export type AddSequenceResult =
+  | { ok: true; itemId: string }
+  | { ok: false; error: string; sequenceError?: SequenceGraphErrorDetails };
+
 export interface EditorCommands {
-  addMotionGraphic: (tpl: Tpl, at?: { track?: TrackId; startFrame?: number; ripple?: boolean }) => void;
-  addAudio: (asset: AudioAsset, at?: { track?: TrackId; startFrame?: number; ripple?: boolean }) => void;
+  addMotionGraphic: (tpl: Tpl, at?: { track?: TrackId; startFrame?: number; ripple?: boolean; overwrite?: boolean }) => void;
+  addAudio: (asset: AudioAsset, at?: { track?: TrackId; startFrame?: number; ripple?: boolean; overwrite?: boolean }) => void;
   addAsset: (asset: MediaAsset) => void;
-  addMediaItem: (asset: MediaAsset, at?: { track?: TrackId; startFrame?: number; ripple?: boolean }) => string;
+  addMediaItem: (asset: MediaAsset, at?: { track?: TrackId; startFrame?: number; ripple?: boolean; overwrite?: boolean }) => string;
+  /** Add an instance of another timeline without copying its contents. */
+  addSequence: (timelineId: string, at?: {
+    track?: TrackId;
+    startFrame?: number;
+    sourceStartFrame?: number;
+    sourceDurationInFrames?: number;
+    playbackRate?: number;
+    ripple?: boolean;
+  }) => AddSequenceResult;
   createMediaFolder: (name: string, parentId?: string) => string;
   renameMediaFolder: (id: string, name: string) => void;
   deleteMediaFolder: (id: string) => void;
   moveMediaAssets: (ids: string[], folderId?: string) => void;
   renameMediaAsset: (id: string, name: string) => void;
   setMediaAssetFavorite: (id: string, favorite: boolean) => void;
-  /** Edit a library asset in place: rename / re-code (MG) / props / favorite. */
-  editMediaAsset: (id: string, patch: Partial<Pick<MediaAsset, 'name' | 'code' | 'props' | 'favorite' | 'src' | 'durationInFrames' | 'width' | 'height' | 'kind'>>) => void;
+  /** Edit library metadata, code defaults, or exact ingest clocks. */
+  editMediaAsset: (id: string, patch: Partial<Pick<MediaAsset, 'name' | 'code' | 'props' | 'favorite' | 'sourceTimecode' | 'captureClock'>>) => void;
   /** Remove a library asset from the media pool. */
   removeMediaAsset: (id: string) => void;
   /**
    * Relink missing or offline media.
    * Updates the pool asset and every timeline clip that still points at the old src.
    */
-  relinkMediaAsset: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind'] }) => void;
+  relinkMediaAsset: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind']; sourceRevision?: string; sourceSize?: number; sourceModifiedAt?: number }) => void;
   /** Solid-color item on a video track. */
   addSolidItem: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number; color?: string; name?: string }) => void;
   addTextClip: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number; ripple?: boolean }) => void;
   updateItemProps: (id: string, patch: Record<string, unknown>) => void;
   moveItem: (id: string, to: { track?: TrackId; startFrame?: number }) => void;
   setItemTiming: (id: string, timing: { startFrame?: number; durationInFrames?: number; srcInFrame?: number; ripple?: boolean }) => void;
+  slipItem: (id: string, deltaInFrames: number) => SlipResult;
   setItemVolume: (id: string, volume: number) => void;
   setItemFade: (id: string, fade: { fadeInFrames?: number; fadeOutFrames?: number }) => void;
   setItemTransform: (id: string, patch: ClipTransform) => void;
@@ -89,7 +108,7 @@ export interface EditorCommands {
   setItemTranscript: (id: string, words: TranscriptWord[]) => void;
   /** Ingest an ASR result into a pool asset. Clips created from the asset
    * inherit its transcript at placement; status/error drive the media-pool badge. */
-  setAssetTranscription: (id: string, patch: Partial<Pick<MediaAsset, 'transcript' | 'transcribeStatus' | 'transcribeError'>>) => void;
+  setAssetTranscription: (id: string, patch: Partial<Pick<MediaAsset, 'transcript' | 'transcriptSourceRevision' | 'transcribeStatus' | 'transcribeError'>>) => void;
   /** replace a clip's text-only transcript variants (translations / corrections) */
   setItemVariants: (id: string, variants: TranscriptVariant[]) => void;
   toggleWord: (id: string, idx: number) => void;
@@ -187,6 +206,19 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
     dispatch({ type: 'track.create', track: { id, kind } });
     return id;
   };
+  const placeItem = (
+    item: Omit<TimelineItem, 'startFrame'>,
+    at: { startFrame?: number; ripple?: boolean; overwrite?: boolean } | undefined,
+  ) => {
+    if (!at?.overwrite) {
+      dispatch({ type: 'add', item, startFrame: at?.startFrame, ripple: at?.ripple });
+      return;
+    }
+    const doc = getDoc();
+    const state = { ...activeTimeline(doc), assets: doc.assets };
+    const plan = planOverwrite(state, item, at.startFrame ?? 0, () => uid('item'));
+    if (plan) dispatch({ type: 'batch', label: 'Overwrite clip', actions: plan.actions });
+  };
   return {
       createTimeline: (opts) => {
         const d = getDoc();
@@ -252,39 +284,33 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       },
       setDesignStyle: (style) => dispatch({ type: 'design.set', style }),
       patchDesignStyle: (patch) => dispatch({ type: 'design.patch', patch }),
-      addMotionGraphic: (tpl, at) =>
-        dispatch({
-          type: 'add',
-          startFrame: at?.startFrame,
-          ripple: at?.ripple,
-          item: {
-            id: uid('item'),
-            track: pickTrack(at?.track, 'video'),
-            durationInFrames: tpl.durationInFrames,
-            kind: 'motion-graphic',
-            templateId: tpl.id,
-            name: tpl.name,
-            code: tpl.code,
-            props: { ...tpl.props },
-            width: tpl.width,
-            height: tpl.height,
-          },
-        }),
-      addAudio: (asset, at) =>
-        dispatch({
-          type: 'add',
-          startFrame: at?.startFrame,
-          ripple: at?.ripple,
-          item: {
-            id: uid('item'),
-            track: pickTrack(at?.track, 'audio'),
-            durationInFrames: asset.durationInFrames,
-            kind: 'audio',
-            name: asset.name,
-            src: asset.src,
-            volume: 1,
-          },
-        }),
+      addMotionGraphic: (tpl, at) => {
+        const item = {
+          id: uid('item'),
+          track: pickTrack(at?.track, 'video'),
+          durationInFrames: tpl.durationInFrames,
+          kind: 'motion-graphic' as const,
+          templateId: tpl.id,
+          name: tpl.name,
+          code: tpl.code,
+          props: { ...tpl.props },
+          width: tpl.width,
+          height: tpl.height,
+        };
+        placeItem(item, at);
+      },
+      addAudio: (asset, at) => {
+        const item = {
+          id: uid('item'),
+          track: pickTrack(at?.track, 'audio'),
+          durationInFrames: asset.durationInFrames,
+          kind: 'audio' as const,
+          name: asset.name,
+          src: asset.src,
+          volume: 1,
+        };
+        placeItem(item, at);
+      },
       addTextClip: (at) =>
         dispatch({
           type: 'add',
@@ -301,7 +327,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
             props: { text: '双击编辑文字', fontSize: 96, color: '#ffffff', fontWeight: 700, align: 'center' },
           },
         }),
-      addAsset: (asset) => dispatch({ type: 'addAsset', asset }),
+      addAsset: (asset: MediaAsset) => dispatch({ type: 'addAsset', asset }),
       addMediaItem: (asset, at) => {
         const item = asset.kind === 'motion-graphic'
           ? {
@@ -311,6 +337,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
               kind: 'motion-graphic' as const,
               templateId: asset.id,
               name: asset.name,
+              sourceRevision: sourceRevisionOf(asset),
               code: asset.code,
               props: { ...asset.props },
               width: asset.width,
@@ -323,20 +350,57 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
               kind: asset.kind as Exclude<typeof asset.kind, 'motion-graphic'>,
               name: asset.name,
               src: asset.src,
+              sourceRevision: sourceRevisionOf(asset),
               volume: asset.kind === 'audio' || asset.kind === 'video' ? 1 : undefined,
               width: asset.width,
               height: asset.height,
               // A clip inherits a copy of the asset's ingest transcript,
               // so per-clip word edits never mutate the asset master.
               transcript: asset.transcript?.length ? [...asset.transcript] : undefined,
+              transcriptStale: asset.transcript?.length ? asset.transcriptStale : undefined,
             };
+        placeItem(item, at);
+        return item.id;
+      },
+      addSequence: (timelineId, at) => {
+        const doc = getDoc();
+        const owner = activeTimeline(doc);
+        const referenceError = sequenceReferenceError(doc, owner.id, timelineId);
+        if (referenceError) {
+          return { ok: false, error: referenceError.message, sequenceError: referenceError.toJSON() };
+        }
+        const target = doc.timelines.find((timeline) => timeline.id === timelineId);
+        if (!target) return { ok: false, error: `Cannot add missing timeline ${timelineId}` };
+        const sourceDuration = resolveTimelineRenderPlan(doc, timelineId).durationInFrames;
+        const sourceStartFrame = Math.max(0, Math.round(at?.sourceStartFrame ?? 0));
+        const availableSourceFrames = Math.max(0, sourceDuration - sourceStartFrame);
+        if (availableSourceFrames <= 0) {
+          return { ok: false, error: `Timeline ${timelineId} has no source frames available from frame ${sourceStartFrame}` };
+        }
+        const requestedSourceFrames = Math.min(
+          availableSourceFrames,
+          Math.max(1, at?.sourceDurationInFrames ?? availableSourceFrames),
+        );
+        const playbackRate = Math.max(0.1, Math.min(8, at?.playbackRate ?? 1));
+        const id = uid('item');
         dispatch({
           type: 'add',
           startFrame: at?.startFrame,
           ripple: at?.ripple,
-          item,
+          item: {
+            id,
+            track: pickTrack(at?.track, 'video'),
+            durationInFrames: Math.max(1, Math.round(sourceFramesToTimelineFrames({ playbackRate }, requestedSourceFrames))),
+            kind: 'sequence',
+            timelineId,
+            name: target.name,
+            width: target.width,
+            height: target.height,
+            srcInFrame: sourceStartFrame,
+            playbackRate,
+          },
         });
-        return item.id;
+        return { ok: true, itemId: id };
       },
       updateItemProps: (id, patch) => dispatch({ type: 'updateProps', id, patch }),
       moveItem: (id, to) => {
@@ -345,6 +409,13 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
         dispatch({ type: 'move', id, ...to, track });
       },
       setItemTiming: (id, timing) => dispatch({ type: 'retime', id, ...timing }),
+      slipItem: (id, deltaInFrames) => {
+        const result = planSlip(activeEditorState(getDoc()), id, deltaInFrames);
+        if (result.ok && Math.abs(result.appliedDeltaInFrames) >= 1e-6) {
+          dispatch({ type: 'slip', id, deltaInFrames: result.appliedDeltaInFrames });
+        }
+        return result;
+      },
       setItemVolume: (id, volume) => dispatch({ type: 'setVolume', id, volume }),
       setItemFade: (id, fade) => dispatch({ type: 'setFade', id, ...fade }),
       setItemTransform: (id, patch) => dispatch({ type: 'setTransform', id, patch }),

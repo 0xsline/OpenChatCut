@@ -1,5 +1,6 @@
 import type { TimelineItem } from '../editor/types';
 import type { TranscriptWord } from '../transcript/types';
+import { hasOperationalTranscript } from '../transcript/types';
 import { normalizeCaptionSourceEntries } from './sourceOrder';
 import { CAPTION_STYLE_BY_ID } from './styles';
 import type { CaptionLayout, CaptionsData, CaptionSourceEntry, CaptionTemplate } from './types';
@@ -41,7 +42,10 @@ export function newManualEntry(number: number): CaptionSourceEntry {
 }
 
 export function promoteCaptionEntries(captions: CaptionsData, items: TimelineItem[]): CaptionSourceEntry[] {
-  if (captions.sourceEntries?.length) return normalizeCaptionSourceEntries(captions.sourceEntries);
+  if (captions.sourceEntries?.length) {
+    return normalizeCaptionSourceEntries(captions.sourceEntries).filter((entry) =>
+      entry.words !== undefined || hasOperationalTranscript(items.find((item) => item.id === entry.itemId)));
+  }
   const ids = sourceIds(captions, items);
   const entries: CaptionSourceEntry[] = ids.map((itemId) => ({ id: id(), itemId }));
   if (captions.words) entries.push({ ...newManualEntry(1), words: captions.words.map((word) => ({ ...word })) });
@@ -50,10 +54,15 @@ export function promoteCaptionEntries(captions: CaptionsData, items: TimelineIte
 
 function sourceIds(captions: CaptionsData, items: TimelineItem[]): string[] {
   if (captions.sourceMode === 'timeline') {
-    return items.filter((item) => item.transcript?.length).map((item) => item.id);
+    return items.filter((item) => hasOperationalTranscript(item)).map((item) => item.id);
   }
-  if (captions.sources?.length) return captions.sources;
-  return captions.sourceItemId ? [captions.sourceItemId] : [];
+  if (captions.sources?.length) {
+    return captions.sources.filter((itemId) => hasOperationalTranscript(items.find((item) => item.id === itemId)));
+  }
+  return captions.sourceItemId
+    && hasOperationalTranscript(items.find((item) => item.id === captions.sourceItemId))
+    ? [captions.sourceItemId]
+    : [];
 }
 
 export function appendManualLane(captions: CaptionsData, items: TimelineItem[]): Partial<CaptionsData> {

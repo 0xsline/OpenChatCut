@@ -1,27 +1,32 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ViteDevServer } from 'vite';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
-import { createWriteStream, existsSync } from 'node:fs';
-import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises';
+import {
+  constants as fsConstants, createReadStream, createWriteStream, existsSync, type Stats,
+} from 'node:fs';
+import {
+  copyFile, link, mkdir, open, readFile, readdir, rename, stat, unlink, writeFile, type FileHandle,
+} from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { Readable, Transform } from 'node:stream';
 import {
-  getUploadObjectToFile, presignGetUpload, presignPutUpload, putUploadFile,
-  r2Config, r2PresignEnabled,
+  deleteUploadObject, presignGetUpload, presignPutUpload,
+  putUploadFile, r2Config, r2PresignEnabled,
 } from '../r2.ts';
 import {
-  DEFAULT_UPLOAD_DIR, isCustomUploadDir, isSafeUploadName, serveDiskFile,
-  syncLegacyUploads, uploadDir,
+  DEFAULT_UPLOAD_DIR, enqueueUploadMutation, isCustomUploadDir, isSafeUploadName,
+  resolveOrHydrateUploadFile, serveDiskFile, syncLegacyUploads, uploadDir,
 } from '../media-dir.ts';
+import { safePublicFetch, UnsafePublicUrlError } from '../safe-public-fetch.ts';
 import { deleteMediaPreviewDerivatives } from './media-preview.ts';
 
 const MAX_JSON_BYTES = 64 * 1024;
 const IMPORT_TIMEOUT_MS = 30 * 60_000;
 const MEDIA_AUTHORITY_HEADER = 'X-OpenChatCut-Media-Authority';
 type Logger = ViteDevServer['config']['logger'];
-type CloudState = 'ok' | 'off' | 'failed';
+type CloudState = 'ok' | 'off' | 'failed' | 'exists';
 
 export function maxUploadBytes(): number {
   const raw = process.env.UPLOAD_MAX_BYTES?.trim();
@@ -103,14 +108,6 @@ function sendError(res: ServerResponse, status: number, message: string): void {
   sendJson(res, status, { error: message });
 }
 
-function isHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
 
 const CONTENT_TYPE_EXTENSIONS: Record<string, string> = {
   'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov',
@@ -153,22 +150,15 @@ async function serveR2Media(
   res: ServerResponse,
   logger: Logger,
 ): Promise<void> {
-  const directory = uploadDir();
   try {
-    if (!r2Config()) { sendError(res, 404, `media not found: ${name}`); return; }
-    await mkdir(directory, { recursive: true });
-    const partPath = join(directory, `.${name}.part`);
-    const finalPath = join(directory, name);
-    const object = await getUploadObjectToFile(name, partPath);
-    if (!object) {
-      await unlink(partPath).catch(() => {});
+    const resolved = await resolveOrHydrateUploadFile(name);
+    if (!resolved) {
       sendError(res, 404, `media not found: ${name}`);
       return;
     }
-    await rename(partPath, finalPath);
-    logger.info(`[R2 回源] ${name} (${object.bytes} bytes)`);
+    if (!resolved.cached) logger.info(`[R2 回源] ${name} (${resolved.bytes} bytes)`);
     res.setHeader(MEDIA_AUTHORITY_HEADER, 'server');
-    await serveDiskFile(req, res, finalPath);
+    await serveDiskFile(req, res, resolved.file);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`[R2 回源] ${name}: ${message}`);
@@ -229,25 +219,20 @@ async function handleHydrate(req: IncomingMessage, res: ServerResponse, logger: 
     const body = JSON.parse((await readBody(req)).toString('utf8') || '{}') as { name?: string; path?: string };
     const name = hydrateName(body);
     if (!isSafeUploadName(name)) { sendError(res, 400, 'unsafe or missing name'); return; }
-    const directory = uploadDir();
-    const finalPath = join(directory, name);
-    if (existsSync(finalPath)) {
-      const info = await stat(finalPath);
-      sendJson(res, 200, { ok: true, path: `/media/uploads/${name}`, bytes: info.size, cached: true });
+    const resolved = await resolveOrHydrateUploadFile(name);
+    if (!resolved) {
+      sendError(res, 404, r2Config()
+        ? `R2 object not found: ${name}`
+        : `media not found locally and R2 is off: ${name}`);
       return;
     }
-    if (!r2Config()) { sendError(res, 404, `media not found locally and R2 is off: ${name}`); return; }
-    await mkdir(directory, { recursive: true });
-    const partPath = join(directory, `.${name}.part`);
-    const object = await getUploadObjectToFile(name, partPath);
-    if (!object) {
-      await unlink(partPath).catch(() => {});
-      sendError(res, 404, `R2 object not found: ${name}`);
-      return;
-    }
-    await rename(partPath, finalPath);
-    logger.info(`[upload/hydrate] ${name} (${object.bytes} bytes)`);
-    sendJson(res, 200, { ok: true, path: `/media/uploads/${name}`, bytes: object.bytes, cached: false });
+    if (!resolved.cached) logger.info(`[upload/hydrate] ${name} (${resolved.bytes} bytes)`);
+    sendJson(res, 200, {
+      ok: true,
+      path: `/media/uploads/${name}`,
+      bytes: resolved.bytes,
+      cached: resolved.cached,
+    });
   } catch (error) {
     sendError(res, 500, error instanceof Error ? error.message : String(error));
   }
@@ -325,27 +310,80 @@ async function mirrorUpload(
   contentType: string | undefined,
   logger: Logger,
   label: string,
+  options?: { ifAbsent: true; rollbackToken: string },
 ): Promise<CloudState> {
   if (!r2Config()) return 'off';
   try {
+    if (options) {
+      const result = await putUploadFile(name, path, contentType, options);
+      return result === 'exists' ? 'exists' : result === 'off' ? 'off' : 'ok';
+    }
     await putUploadFile(name, path, contentType);
     return 'ok';
   } catch (error) {
     logger.error(`[${label}] ${name}: ${error instanceof Error ? error.message : String(error)}`);
+    if (options) throw error;
     return 'failed';
   }
 }
 
 async function handleDeleteUpload(req: IncomingMessage, res: ServerResponse): Promise<void> {
   try {
-    const name = new URL(req.url ?? '/', 'http://localhost').searchParams.get('name') ?? '';
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    const name = url.searchParams.get('name') ?? '';
     if (!isSafeUploadName(name)) { sendError(res, 400, 'unsafe or missing name'); return; }
-    let removed = 0;
-    for (const directory of [uploadDir(), DEFAULT_UPLOAD_DIR]) {
-      try { await unlink(join(directory, name)); removed += 1; } catch { /* absent */ }
+    const rollbackToken = url.searchParams.get('rollbackToken') ?? undefined;
+    if (url.searchParams.has('rollbackToken') && !/^[A-Za-z0-9-]{1,128}$/.test(rollbackToken ?? '')) {
+      sendError(res, 400, 'invalid rollback token');
+      return;
     }
-    const derivativesRemoved = await deleteMediaPreviewDerivatives(name);
-    sendJson(res, 200, { ok: true, removed, derivativesRemoved });
+    const result = await enqueueUploadMutation(name, async () => {
+      let removed = 0;
+      let derivativesRemoved = 0;
+      let r2Removed = false;
+      const failures: unknown[] = [];
+      for (const directory of new Set([uploadDir(), DEFAULT_UPLOAD_DIR])) {
+        try {
+          if (rollbackToken) {
+            if (await deleteLocalUploadIfOwned(directory, name, rollbackToken)) removed += 1;
+          } else {
+            try {
+              await unlink(join(directory, name));
+              removed += 1;
+            } catch (error) {
+              if (fileErrorCode(error) !== 'ENOENT') throw error;
+            }
+            await clearUploadOwner(directory, name);
+          }
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+      try {
+        r2Removed = await deleteUploadObject(name, rollbackToken);
+      } catch (error) {
+        failures.push(error);
+      }
+      if (!rollbackToken || removed > 0 || r2Removed) {
+        try {
+          derivativesRemoved = await deleteMediaPreviewDerivatives(name);
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+      if (failures.length) {
+        const detail = failures.map((error) => error instanceof Error ? error.message : String(error)).join('; ');
+        throw new AggregateError(failures, `upload delete incomplete: ${detail}`);
+      }
+      return {
+        ok: true,
+        removed,
+        r2Removed,
+        derivativesRemoved,
+        ownershipMatched: !rollbackToken || removed > 0 || r2Removed,
+      };
+    });
+    sendJson(res, 200, result);
   } catch (error) {
     sendError(res, 500, error instanceof Error ? error.message : String(error));
   }
@@ -366,33 +404,387 @@ function rejectDeclaredSize(req: IncomingMessage, res: ServerResponse, maxBytes:
   return false;
 }
 
+function fileErrorCode(error: unknown): string {
+  return (error as NodeJS.ErrnoException).code ?? '';
+}
+
+interface UploadFileIdentity {
+  dev: number;
+  ino: number;
+  size: number;
+  mtimeMs: number;
+}
+
+interface UploadImportOwner extends UploadFileIdentity {
+  rollbackToken: string;
+}
+
+function uploadFileIdentity(info: Stats): UploadFileIdentity {
+  return { dev: info.dev, ino: info.ino, size: info.size, mtimeMs: info.mtimeMs };
+}
+
+function sameUploadFile(
+  left: UploadFileIdentity,
+  right: UploadFileIdentity,
+): boolean {
+  return left.dev === right.dev && left.ino === right.ino
+    && left.size === right.size && left.mtimeMs === right.mtimeMs;
+}
+
+function uploadOwnerPath(directory: string, name: string): string {
+  return join(directory, `.${name}.import-owner.json`);
+}
+
+async function restoreCapturedPath(capturedPath: string, originalPath: string): Promise<void> {
+  try {
+    await link(capturedPath, originalPath);
+  } catch (error) {
+    const code = fileErrorCode(error);
+    if (code === 'EEXIST') {
+      await unlink(capturedPath);
+      return;
+    }
+    if (!['EPERM', 'ENOSYS', 'ENOTSUP', 'EOPNOTSUPP'].includes(code)) throw error;
+    try {
+      await copyFile(capturedPath, originalPath, fsConstants.COPYFILE_EXCL);
+    } catch (copyError) {
+      if (fileErrorCode(copyError) !== 'EEXIST') throw copyError;
+    }
+  }
+  await unlink(capturedPath);
+}
+
+async function removeCapturedPathIf(
+  path: string,
+  predicate: (capturedPath: string) => Promise<boolean>,
+): Promise<boolean> {
+  const capturedPath = `${path}.${randomUUID()}.rollback`;
+  try {
+    await rename(path, capturedPath);
+  } catch (error) {
+    if (fileErrorCode(error) === 'ENOENT') return false;
+    throw error;
+  }
+  let remove: boolean;
+  try {
+    remove = await predicate(capturedPath);
+  } catch (error) {
+    await restoreCapturedPath(capturedPath, path);
+    throw error;
+  }
+  if (remove) {
+    await unlink(capturedPath);
+    return true;
+  }
+  await restoreCapturedPath(capturedPath, path);
+  return false;
+}
+
+async function writeUploadOwner(
+  directory: string,
+  name: string,
+  finalPath: string,
+  rollbackToken: string,
+  expected: UploadFileIdentity,
+): Promise<boolean> {
+  const current = uploadFileIdentity(await stat(finalPath));
+  if (!sameUploadFile(current, expected)) return false;
+  const markerPath = uploadOwnerPath(directory, name);
+  const partPath = `${markerPath}.${randomUUID()}.part`;
+  const owner: UploadImportOwner = { rollbackToken, ...expected };
+  try {
+    await writeFile(partPath, JSON.stringify(owner), { flag: 'wx' });
+    await rename(partPath, markerPath);
+    return true;
+  } catch (error) {
+    await unlink(partPath).catch(() => {});
+    throw error;
+  }
+}
+
+async function clearUploadOwner(directory: string, name: string): Promise<void> {
+  try {
+    await unlink(uploadOwnerPath(directory, name));
+  } catch (error) {
+    if (fileErrorCode(error) !== 'ENOENT') throw error;
+  }
+}
+
+async function deleteLocalUploadIfOwned(
+  directory: string,
+  name: string,
+  rollbackToken: string,
+): Promise<boolean> {
+  const markerPath = uploadOwnerPath(directory, name);
+  const capturedMarker = `${markerPath}.${randomUUID()}.rollback`;
+  try {
+    await rename(markerPath, capturedMarker);
+  } catch (error) {
+    if (fileErrorCode(error) === 'ENOENT') return false;
+    throw error;
+  }
+  let owner: UploadImportOwner;
+  try {
+    owner = JSON.parse(await readFile(capturedMarker, 'utf8')) as UploadImportOwner;
+  } catch (error) {
+    await restoreCapturedPath(capturedMarker, markerPath);
+    throw error;
+  }
+  if (owner.rollbackToken !== rollbackToken) {
+    await restoreCapturedPath(capturedMarker, markerPath);
+    return false;
+  }
+  try {
+    const removed = await removeCapturedPathIf(join(directory, name), async (capturedPath) => (
+      sameUploadFile(uploadFileIdentity(await stat(capturedPath)), owner)
+    ));
+    await unlink(capturedMarker);
+    return removed;
+  } catch (error) {
+    await restoreCapturedPath(capturedMarker, markerPath);
+    throw error;
+  }
+}
+
+async function deleteLocalUploadIfIdentity(
+  finalPath: string,
+  expected: UploadFileIdentity,
+): Promise<boolean> {
+  return removeCapturedPathIf(finalPath, async (capturedPath) => (
+    sameUploadFile(uploadFileIdentity(await stat(capturedPath)), expected)
+  ));
+}
+
+async function publishPartIfAbsent(
+  partPath: string,
+  finalPath: string,
+): Promise<UploadFileIdentity | null> {
+  const partIdentity = uploadFileIdentity(await stat(partPath));
+  try {
+    await link(partPath, finalPath);
+    return partIdentity;
+  } catch (error) {
+    const code = fileErrorCode(error);
+    if (code === 'EEXIST') return null;
+    if (!['EPERM', 'ENOSYS', 'ENOTSUP', 'EOPNOTSUPP'].includes(code)) throw error;
+  }
+  let target: FileHandle;
+  try {
+    target = await open(finalPath, 'wx');
+  } catch (error) {
+    if (fileErrorCode(error) === 'EEXIST') return null;
+    throw error;
+  }
+  const initialIdentity = uploadFileIdentity(await target.stat());
+  try {
+    await pipeline(
+      createReadStream(partPath),
+      target.createWriteStream({ autoClose: false }),
+    );
+    return uploadFileIdentity(await target.stat());
+  } catch (error) {
+    const cleanupErrors: unknown[] = [error];
+    try {
+      await removeCapturedPathIf(finalPath, async (capturedPath) => {
+        const current = uploadFileIdentity(await stat(capturedPath));
+        return current.dev === initialIdentity.dev && current.ino === initialIdentity.ino;
+      });
+    } catch (cleanupError) {
+      cleanupErrors.push(cleanupError);
+    }
+    if (cleanupErrors.length > 1) {
+      throw new AggregateError(cleanupErrors, 'exclusive upload copy failed and cleanup was incomplete');
+    }
+    throw error;
+  } finally {
+    await target.close().catch(() => {});
+  }
+}
+
 async function handleUploadWrite(req: IncomingMessage, res: ServerResponse, logger: Logger): Promise<void> {
   const maxBytes = maxUploadBytes();
+  let partPath: string | undefined;
+  let finalPath: string | undefined;
+  let createdLocalIdentity: UploadFileIdentity | undefined;
+  let removeCreatedLocal = false;
+  let removeCreatedR2 = false;
+  let createdServerName: string | undefined;
+  let createdRollbackToken: string | undefined;
   try {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const original = url.searchParams.get('name') ?? 'file';
     const assetId = (url.searchParams.get('assetId') ?? '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+    const ifAbsent = url.searchParams.get('ifAbsent') === '1';
+    const requestedRollbackToken = url.searchParams.get('rollbackToken') ?? '';
+    if (ifAbsent && requestedRollbackToken && !/^[A-Za-z0-9-]{1,128}$/.test(requestedRollbackToken)) {
+      req.resume();
+      sendError(res, 400, 'invalid rollback token');
+      return;
+    }
     const extension = extname(original).toLowerCase().replace(/[^.a-z0-9]/g, '') || '.bin';
     if (rejectDeclaredSize(req, res, maxBytes)) return;
     const directory = uploadDir();
     await mkdir(directory, { recursive: true });
     const name = assetId ? `${assetId}${extension}` : `${randomUUID()}${extension}`;
-    const partPath = join(directory, `.${name}.part`);
-    const finalPath = join(directory, name);
+    const path = `/media/uploads/${name}`;
+    if (ifAbsent && diskUpload(name)) {
+      req.resume();
+      sendJson(res, 200, { path, created: false, existing: true });
+      return;
+    }
+    partPath = join(directory, `.${name}.${randomUUID()}.part`);
+    finalPath = join(directory, name);
     const bytes = await streamToFile(req, partPath, maxBytes);
     if (bytes === 0) {
       await unlink(partPath).catch(() => {});
+      partPath = undefined;
       sendError(res, 400, 'empty body');
       return;
     }
-    await rename(partPath, finalPath);
-    const cloud = await mirrorUpload(name, finalPath, req.headers['content-type'] || undefined, logger, 'upload→R2');
-    sendJson(res, 200, {
-      path: `/media/uploads/${name}`, bytes, fileKey: `uploads/${name}`,
-      assetId: assetId || undefined, cloud,
+    await enqueueUploadMutation(name, async () => {
+      if (ifAbsent) {
+        const rollbackToken = requestedRollbackToken || randomUUID();
+        try {
+          if (diskUpload(name)) {
+            await unlink(partPath!);
+            partPath = undefined;
+            sendJson(res, 200, { path, created: false, existing: true });
+            return;
+          }
+          createdServerName = name;
+          createdRollbackToken = rollbackToken;
+          const cloud = await mirrorUpload(
+            name,
+            partPath!,
+            req.headers['content-type'] || undefined,
+            logger,
+            'upload→R2',
+            { ifAbsent: true, rollbackToken },
+          );
+          if (cloud === 'exists') {
+            await unlink(partPath!);
+            partPath = undefined;
+            sendJson(res, 200, { path, created: false, existing: true, cloud });
+            return;
+          }
+          removeCreatedR2 = cloud === 'ok';
+          const createdIdentity = await publishPartIfAbsent(partPath!, finalPath!);
+          if (!createdIdentity) {
+            await unlink(partPath!);
+            partPath = undefined;
+            if (removeCreatedR2) {
+              await deleteUploadObject(name, rollbackToken);
+              removeCreatedR2 = false;
+            }
+            sendJson(res, 200, { path, created: false, existing: true, cloud });
+            return;
+          }
+          createdLocalIdentity = createdIdentity;
+          removeCreatedLocal = true;
+          const markerWritten = await writeUploadOwner(
+            directory,
+            name,
+            finalPath!,
+            rollbackToken,
+            createdIdentity,
+          );
+          if (!markerWritten) {
+            removeCreatedLocal = false;
+            createdLocalIdentity = undefined;
+            if (removeCreatedR2) {
+              await deleteUploadObject(name, rollbackToken);
+              removeCreatedR2 = false;
+            }
+            await unlink(partPath!);
+            partPath = undefined;
+            sendJson(res, 200, { path, created: false, existing: true, cloud });
+            return;
+          }
+          await unlink(partPath!);
+          partPath = undefined;
+          sendJson(res, 200, {
+            path, bytes, fileKey: `uploads/${name}`,
+            assetId: assetId || undefined, cloud, created: true, rollbackToken,
+          });
+          removeCreatedLocal = false;
+          createdLocalIdentity = undefined;
+          removeCreatedR2 = false;
+          return;
+        } catch (error) {
+          const failures: unknown[] = [error];
+          if (removeCreatedLocal) {
+            try {
+              const removed = await deleteLocalUploadIfOwned(directory, name, rollbackToken);
+              if (!removed && createdLocalIdentity) {
+                await deleteLocalUploadIfIdentity(finalPath!, createdLocalIdentity);
+              }
+            } catch (cleanupError) {
+              failures.push(cleanupError);
+            }
+            removeCreatedLocal = false;
+            createdLocalIdentity = undefined;
+          }
+          if (removeCreatedR2) {
+            try {
+              await deleteUploadObject(name, rollbackToken);
+            } catch (cleanupError) {
+              failures.push(cleanupError);
+            }
+            removeCreatedR2 = false;
+          }
+          if (partPath) {
+            try {
+              await unlink(partPath);
+            } catch (cleanupError) {
+              if (fileErrorCode(cleanupError) !== 'ENOENT') failures.push(cleanupError);
+            }
+            partPath = undefined;
+          }
+          if (failures.length > 1) {
+            throw new AggregateError(failures, 'create-only upload failed and rollback was incomplete');
+          }
+          throw error;
+        }
+      }
+      await rename(partPath!, finalPath!);
+      partPath = undefined;
+      await clearUploadOwner(directory, name);
+      const cloud = await mirrorUpload(name, finalPath!, req.headers['content-type'] || undefined, logger, 'upload→R2');
+      sendJson(res, 200, {
+        path, bytes, fileKey: `uploads/${name}`,
+        assetId: assetId || undefined, cloud, created: true,
+      });
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const failures: unknown[] = [error];
+    if (partPath) {
+      try { await unlink(partPath); } catch (cleanupError) {
+        if (fileErrorCode(cleanupError) !== 'ENOENT') failures.push(cleanupError);
+      }
+    }
+    if (removeCreatedLocal && finalPath && createdLocalIdentity) {
+      try {
+        const removed = createdServerName && createdRollbackToken
+          ? await deleteLocalUploadIfOwned(uploadDir(), createdServerName, createdRollbackToken)
+          : false;
+        if (!removed) await deleteLocalUploadIfIdentity(finalPath, createdLocalIdentity);
+      } catch (cleanupError) {
+        failures.push(cleanupError);
+      }
+      removeCreatedLocal = false;
+      createdLocalIdentity = undefined;
+    }
+    if (removeCreatedR2 && createdServerName) {
+      try {
+        await deleteUploadObject(createdServerName, createdRollbackToken);
+      } catch (cleanupError) {
+        failures.push(cleanupError);
+      }
+    }
+    const failure = failures.length > 1
+      ? new AggregateError(failures, 'upload failed and temporary cleanup was incomplete')
+      : error;
+    const message = failure instanceof Error ? failure.message : String(failure);
     logger.error(`[upload] ${message}`);
     if (!res.headersSent) sendError(res, error instanceof UploadTooLargeError ? 413 : 500, message);
     else res.end();
@@ -421,20 +813,40 @@ async function fetchRemoteImport(
   res: ServerResponse,
 ): Promise<RemoteImport | null> {
   const remote = String(body.url ?? '').trim();
-  if (!remote || !isHttpUrl(remote)) { sendError(res, 400, 'url must be a public http(s) URI'); return null; }
+  if (!remote) { sendError(res, 400, 'url must be a public http(s) URI'); return null; }
   const nameHint = typeof body.name === 'string' ? body.name.trim() : undefined;
-  const response = await fetch(remote, {
-    redirect: 'follow', signal: AbortSignal.timeout(IMPORT_TIMEOUT_MS),
-    headers: { 'User-Agent': 'openchatcut-import/1.0' },
-  });
-  if (!response.ok) { sendError(res, 200, `upstream HTTP ${response.status}`); return null; }
+  let response: Response;
+  try {
+    response = await safePublicFetch(remote, {
+      signal: AbortSignal.timeout(IMPORT_TIMEOUT_MS),
+      headers: { 'User-Agent': 'openchatcut-import/1.0' },
+    });
+  } catch (error) {
+    if (error instanceof UnsafePublicUrlError) {
+      sendError(res, 400, error.message);
+      return null;
+    }
+    throw error;
+  }
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    sendError(res, 200, `upstream HTTP ${response.status}`);
+    return null;
+  }
+  const contentType = response.headers.get('content-type');
+  if (contentType?.split(';', 1)[0]?.trim().toLowerCase() === 'text/html') {
+    await response.body?.cancel().catch(() => undefined);
+    sendError(res, 400, 'upstream returned HTML instead of media');
+    return null;
+  }
   const declared = Number(response.headers.get('content-length') ?? '');
   if (Number.isFinite(declared) && declared > maxBytes) {
+    await response.body?.cancel().catch(() => undefined);
     sendError(res, 413, new UploadTooLargeError(maxBytes).message);
     return null;
   }
   if (!response.body) { sendError(res, 400, 'upstream empty body'); return null; }
-  return { response, remote, nameHint, contentType: response.headers.get('content-type') };
+  return { response, remote, nameHint, contentType };
 }
 async function saveRemoteImport(imported: RemoteImport, maxBytes: number, logger: Logger, res: ServerResponse) {
   const extension = extFromUrlOrType(imported.remote, imported.contentType, imported.nameHint);

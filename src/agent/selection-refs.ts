@@ -16,6 +16,7 @@ import {
 } from '../editor/types';
 import { makeWordFrameMapper } from './tools/transcript-find';
 import { isCjkText, speakerLabel } from '../transcript/segment';
+import { hasOperationalTranscript } from '../transcript/types';
 
 /** Media-pool / template mention kinds (the pre-existing @ reference). */
 export type AssetRefKind = 'video' | 'image' | 'audio' | 'motion-graphic' | 'gif' | 'svg' | 'template';
@@ -328,6 +329,7 @@ export function transcriptSelectionRef(
   fps: number,
   timelineId?: string,
 ): SelectionReference | null {
+  if (!hasOperationalTranscript(item)) return null;
   const words = item.transcript ?? [];
   const gis = [...new Set(wordIdxs)]
     .filter((i) => Number.isInteger(i) && i >= 0 && i < words.length)

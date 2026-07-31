@@ -1,26 +1,57 @@
-// Client-side ASR job table for "upload and transcribe" (automatically trigger transcribe after ingest is dropped).
-// Unlike generation/render jobs (which run server-side and are polled over HTTP),
-// transcription runs IN THE BROWSER via transcribePath, so its "job table" is this
-// in-memory Map keyed by assetId. The agent polls it through track_progress
-// target=transcription (see generate-tools.ts); the UI drag-drop path polls it via
-// the onComplete callback. The transcript result is written onto the pool asset
-// (MediaAsset.transcript) by the caller, so it survives reload; this Map is only the
-// live/transient status while ASR is in flight.
+// Client-side ASR coordinator for upload-and-transcribe. Live status remains in
+// memory for track_progress, while upload URL, AssemblyAI job id/status, retries,
+// and source revision are checkpointed so a refreshed editor resumes polling
+// without uploading or submitting the same provider job again.
 import type { MediaAsset } from '../editor/types';
-import type { TranscriptWord } from './types';
-import { transcribePath } from './assemblyai';
+import {
+  sourceRevisionOf,
+  type MediaSourceDescriptor,
+} from '../editor/mediaSourceRevision';
+import { hasOperationalTranscript, type TranscriptWord } from './types';
+import {
+  transcribePathResumable,
+  type AssemblyAiProviderStatus,
+} from './assemblyai';
+import {
+  loadTranscriptionCheckpoint,
+  saveTranscriptionCheckpoint,
+  type TranscriptionCheckpoint,
+  type TranscriptionProviderStatus,
+} from '../persist/transcriptionJobStore';
 import { isTerminal, type JobReportBase } from '../agent/progress/job-model';
 
 export type TranscribeJobStatus = 'running' | 'done' | 'failed';
 
 export interface TranscribeJob {
+  projectId: string;
   assetId: string;
   status: TranscribeJobStatus;
+  /** Monotonic identity for this in-memory attempt. */
+  generation: number;
+  sourceRevision: string;
+  providerJobId?: string;
+  providerStatus?: TranscriptionProviderStatus;
+  retryAttempts?: number;
+  stale?: boolean;
   words?: TranscriptWord[];
   error?: string;
 }
 
 const jobs = new Map<string, TranscribeJob>();
+const jobKey = (projectId: string, assetId: string): string => (
+  `${encodeURIComponent(projectId)}:${encodeURIComponent(assetId)}`
+);
+let nextGeneration = 0;
+
+function isCurrentGeneration(
+  projectId: string,
+  assetId: string,
+  sourceRevision: string,
+  generation: number,
+): boolean {
+  const current = jobs.get(jobKey(projectId, assetId));
+  return current?.generation === generation && current.sourceRevision === sourceRevision;
+}
 
 const POLL_MS = 1000;
 const DEFAULT_LANG = 'zh';
@@ -31,12 +62,22 @@ interface EnqueueOptions {
    *  onto the asset (MediaAsset.transcript / transcribeStatus). The agent path omits
    *  this and reads the terminal state via track_progress instead. */
   onComplete?: (job: TranscribeJob) => void;
+  /** Live source lookup used as the final stale-result commit guard. */
+  getCurrentAsset?: () => (MediaSourceDescriptor & { id: string }) | null | undefined;
   /**
    * Race-ahead ASR audio path (or a promise of one). When import starts extract-audio
    * right after the master lands—before video normalize—pass the promise here so
    * transcription doesn't wait for normalize or re-extract.
    */
   asrPath?: string | null | Promise<string | null | undefined>;
+}
+
+function storedProviderStatus(status: AssemblyAiProviderStatus): TranscriptionProviderStatus {
+  if (status === 'uploaded') return 'uploaded';
+  if (status === 'submitted') return 'submitted';
+  if (status === 'completed') return 'completed';
+  if (status === 'error') return 'failed';
+  return 'processing';
 }
 
 /** Should this asset auto-transcribe on ingest? Audio always; video unless finalize
@@ -47,52 +88,249 @@ export function shouldTranscribe(kind: MediaAsset['kind'], hasAudioTrack?: boole
   return false;
 }
 
-/** Start ASR for an asset. Idempotent per assetId: a running or done job is never
- *  restarted (a failed one may be retried). No-op without a src. */
+/** Start or resume ASR for one exact project, asset, and source revision. */
 export function enqueueTranscription(
-  asset: Pick<MediaAsset, 'id' | 'src'>,
+  projectId: string,
+  asset: MediaSourceDescriptor & { id: string },
   opts: EnqueueOptions = {},
 ): void {
-  if (!asset.src) return;
-  const prior = jobs.get(asset.id);
-  if (prior && prior.status !== 'failed') return;
-  jobs.set(asset.id, { assetId: asset.id, status: 'running' });
-  void (async () => {
-    let asrPath: string | null | undefined;
+  if (!projectId || !asset.src) return;
+  const sourceRevision = sourceRevisionOf(asset);
+  const logicalJobKey = jobKey(projectId, asset.id);
+  const prior = jobs.get(logicalJobKey);
+  if (prior && prior.sourceRevision === sourceRevision && prior.status !== 'failed') return;
+
+  const generation = ++nextGeneration;
+  jobs.set(logicalJobKey, {
+    projectId,
+    assetId: asset.id,
+    generation,
+    sourceRevision,
+    status: 'running',
+  });
+  const sourceIsCurrent = (): boolean => {
+    if (!opts.getCurrentAsset) return true;
+    const current = opts.getCurrentAsset();
+    return Boolean(
+      current
+      && current.id === asset.id
+      && sourceRevisionOf(current) === sourceRevision
+    );
+  };
+
+  void (async (): Promise<TranscribeJob | null> => {
+    const key = { projectId, assetId: asset.id, sourceRevision };
+    let checkpoint: TranscriptionCheckpoint | undefined;
     try {
-      asrPath = opts.asrPath != null ? await opts.asrPath : undefined;
-    } catch {
-      asrPath = undefined;
+      const now = Date.now();
+      const existing = await loadTranscriptionCheckpoint(key);
+      if (!isCurrentGeneration(projectId, asset.id, sourceRevision, generation)) return null;
+
+      checkpoint = {
+        projectId,
+        assetId: asset.id,
+        sourceRevision,
+        provider: 'assemblyai',
+        providerJobId: existing?.providerJobId,
+        providerStatus: existing?.providerStatus === 'completed'
+          ? 'completed'
+          : existing?.providerStatus ?? 'preparing',
+        uploadUrl: existing?.uploadUrl,
+        languageCode: opts.languageCode ?? existing?.languageCode ?? DEFAULT_LANG,
+        retry: {
+          attempts: (existing?.retry.attempts ?? 0) + 1,
+          lastAttemptAt: now,
+        },
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      };
+      await saveTranscriptionCheckpoint(checkpoint);
+      if (!isCurrentGeneration(projectId, asset.id, sourceRevision, generation)) return null;
+      jobs.set(logicalJobKey, {
+        projectId,
+        assetId: asset.id,
+        generation,
+        sourceRevision,
+        status: 'running',
+        providerJobId: checkpoint.providerJobId,
+        providerStatus: checkpoint.providerStatus,
+        retryAttempts: checkpoint.retry.attempts,
+      });
+
+      let asrPath: string | null | undefined;
+      try {
+        asrPath = opts.asrPath != null ? await opts.asrPath : undefined;
+      } catch {
+        asrPath = undefined;
+      }
+      if (!isCurrentGeneration(projectId, asset.id, sourceRevision, generation)) return null;
+
+      const result = await transcribePathResumable(
+        asset.src,
+        {
+          uploadUrl: checkpoint.uploadUrl,
+          providerJobId: checkpoint.providerJobId,
+        },
+        async (provider) => {
+          if (!isCurrentGeneration(projectId, asset.id, sourceRevision, generation)) return;
+          const nextCheckpoint: TranscriptionCheckpoint = {
+            ...checkpoint!,
+            uploadUrl: provider.uploadUrl ?? checkpoint!.uploadUrl,
+            providerJobId: provider.providerJobId ?? checkpoint!.providerJobId,
+            providerStatus: storedProviderStatus(provider.providerStatus ?? 'processing'),
+            updatedAt: Date.now(),
+          };
+          await saveTranscriptionCheckpoint(nextCheckpoint);
+          if (!isCurrentGeneration(projectId, asset.id, sourceRevision, generation)) return;
+          checkpoint = nextCheckpoint;
+          jobs.set(logicalJobKey, {
+            projectId,
+            assetId: asset.id,
+            generation,
+            sourceRevision,
+            status: 'running',
+            providerJobId: checkpoint.providerJobId,
+            providerStatus: checkpoint.providerStatus,
+            retryAttempts: checkpoint.retry.attempts,
+          });
+        },
+        undefined,
+        {
+          languageCode: checkpoint.languageCode,
+          asrPath: asrPath || undefined,
+        },
+      );
+
+      if (!isCurrentGeneration(projectId, asset.id, sourceRevision, generation)) return null;
+      if (!sourceIsCurrent()) {
+        const staleCheckpoint: TranscriptionCheckpoint = {
+          ...checkpoint,
+          providerStatus: 'stale',
+          updatedAt: Date.now(),
+        };
+        await saveTranscriptionCheckpoint(staleCheckpoint);
+        if (!isCurrentGeneration(projectId, asset.id, sourceRevision, generation)) return null;
+        checkpoint = staleCheckpoint;
+        return {
+          projectId,
+          assetId: asset.id,
+          generation,
+          sourceRevision,
+          status: 'failed',
+          stale: true,
+          providerJobId: checkpoint.providerJobId,
+          providerStatus: 'stale',
+          retryAttempts: checkpoint.retry.attempts,
+          error: 'transcription result ignored because the source revision changed',
+        };
+      }
+
+      const completedCheckpoint: TranscriptionCheckpoint = {
+        ...checkpoint,
+        providerStatus: 'completed',
+        updatedAt: Date.now(),
+      };
+      await saveTranscriptionCheckpoint(completedCheckpoint);
+      if (!isCurrentGeneration(projectId, asset.id, sourceRevision, generation)) return null;
+      checkpoint = completedCheckpoint;
+      return {
+        projectId,
+        assetId: asset.id,
+        generation,
+        sourceRevision,
+        status: 'done',
+        words: result.words,
+        providerJobId: checkpoint.providerJobId,
+        providerStatus: 'completed',
+        retryAttempts: checkpoint.retry.attempts,
+      };
+    } catch (error) {
+      if (!isCurrentGeneration(projectId, asset.id, sourceRevision, generation) || !sourceIsCurrent()) return null;
+      const message = error instanceof Error ? error.message : String(error);
+      if (!checkpoint) {
+        return {
+          projectId,
+          assetId: asset.id,
+          generation,
+          sourceRevision,
+          status: 'failed',
+          error: message,
+        };
+      }
+      const failedCheckpoint: TranscriptionCheckpoint = {
+        ...checkpoint,
+        providerStatus: 'failed',
+        retry: {
+          ...checkpoint.retry,
+          lastError: message,
+          nextRetryAt: Date.now() + Math.min(60_000, 2 ** checkpoint.retry.attempts * 1_000),
+        },
+        updatedAt: Date.now(),
+      };
+      await saveTranscriptionCheckpoint(failedCheckpoint);
+      if (!isCurrentGeneration(projectId, asset.id, sourceRevision, generation)) return null;
+      checkpoint = failedCheckpoint;
+      return {
+        projectId,
+        assetId: asset.id,
+        generation,
+        sourceRevision,
+        status: 'failed',
+        providerJobId: checkpoint.providerJobId,
+        providerStatus: 'failed',
+        retryAttempts: checkpoint.retry.attempts,
+        error: message,
+      };
     }
-    return transcribePath(asset.src, undefined, {
-      languageCode: opts.languageCode ?? DEFAULT_LANG,
-      asrPath: asrPath || undefined,
-    });
-  })()
-    .then((result): TranscribeJob => ({ assetId: asset.id, status: 'done', words: result.words }))
-    .catch((error: unknown): TranscribeJob => ({
-      assetId: asset.id,
+  })().then((job) => {
+    if (!job || !isCurrentGeneration(projectId, asset.id, sourceRevision, generation)) return;
+    if (!job.stale && !sourceIsCurrent()) return;
+    jobs.set(logicalJobKey, job);
+    if (!job.stale) opts.onComplete?.(job);
+  }).catch((error) => {
+    if (!isCurrentGeneration(projectId, asset.id, sourceRevision, generation) || !sourceIsCurrent()) return;
+    const current = jobs.get(logicalJobKey)!;
+    const job: TranscribeJob = {
+      ...current,
       status: 'failed',
       error: error instanceof Error ? error.message : String(error),
-    }))
-    .then((job) => {
-      jobs.set(asset.id, job);
-      opts.onComplete?.(job);
-    });
+    };
+    jobs.set(logicalJobKey, job);
+    opts.onComplete?.(job);
+  });
 }
 
-export function getTranscribeJob(assetId: string): TranscribeJob | undefined {
-  return jobs.get(assetId);
+/** Timeline transcript propagation is keyed by source identity, never display name. */
+export function untranscribedTimelineItemIdsForRevision(
+  items: readonly {
+    id: string;
+    sourceRevision?: string;
+    transcript?: TranscriptWord[];
+    transcriptStale?: boolean;
+  }[],
+  sourceRevision: string,
+): string[] {
+  return items
+    .filter((item) => item.sourceRevision === sourceRevision && !hasOperationalTranscript(item))
+    .map((item) => item.id);
 }
 
-/** Wait until every listed asset's in-flight ASR job settles, or timeout elapses.
+export function getTranscribeJob(projectId: string, assetId: string): TranscribeJob | undefined {
+  return jobs.get(jobKey(projectId, assetId));
+}
+
+/** Wait until every listed asset's in-flight ASR job settles in one project, or timeout elapses.
  *  Assets with no live job (already persisted onto the asset, or never enqueued) are
  *  not waited on — track_progress reconciles those from the asset itself. */
-export async function waitForTranscribeJobs(assetIds: string[], timeoutMs: number): Promise<void> {
+export async function waitForTranscribeJobs(
+  projectId: string,
+  assetIds: string[],
+  timeoutMs: number,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const pending = assetIds.some((id) => {
-      const job = jobs.get(id);
+      const job = jobs.get(jobKey(projectId, id));
       return job !== undefined && !isTerminal(job.status);
     });
     if (!pending || Date.now() >= deadline) return;
@@ -113,6 +351,10 @@ export type TranscriptionReportStatus = 'running' | 'succeeded' | 'failed' | 'no
 export interface TranscriptionReport extends JobReportBase<TranscriptionReportStatus> {
   assetId: string;
   wordCount?: number;
+  sourceRevision?: string;
+  providerJobId?: string;
+  providerStatus?: TranscriptionProviderStatus;
+  retryAttempts?: number;
 }
 
 export function transcriptionReport(
@@ -120,9 +362,17 @@ export function transcriptionReport(
   job: TranscribeJob | undefined,
   assetWordCount: number,
 ): TranscriptionReport {
-  if (job?.status === 'done') return { assetId, status: 'succeeded', wordCount: job.words?.length ?? assetWordCount };
-  if (job?.status === 'failed') return { assetId, status: 'failed', error: job.error };
-  if (job?.status === 'running') return { assetId, status: 'running' };
+  const provider = job ? {
+    sourceRevision: job.sourceRevision,
+    providerJobId: job.providerJobId,
+    providerStatus: job.providerStatus,
+    retryAttempts: job.retryAttempts,
+  } : {};
+  if (job?.status === 'done') {
+    return { assetId, ...provider, status: 'succeeded', wordCount: job.words?.length ?? assetWordCount };
+  }
+  if (job?.status === 'failed') return { assetId, ...provider, status: 'failed', error: job.error };
+  if (job?.status === 'running') return { assetId, ...provider, status: 'running' };
   // No live job: fall back to what's persisted on the asset.
   if (assetWordCount > 0) return { assetId, status: 'succeeded', wordCount: assetWordCount };
   return { assetId, status: 'not_found' };

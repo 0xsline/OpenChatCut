@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { resolveAgentReferences } from './context';
 import type { AgentContext, AgentReference } from './context';
-import type { AgentRuntimeModule, LLMMessage } from './runtime';
+import type { AgentRuntimeModule, LLMMessage, RuntimeGuardRequest } from './runtime';
 import { normalizeLlmProvider, PROVIDER } from './providerConfig';
 import type { LlmProvider } from './providerConfig';
 import { normalizeLlmMessages, prepareMessagesForProvider } from './messages';
 import { makeDraft, replayActions } from '../editor/store';
 import { buildOperation, buildProposal, isProposalStale, partitionProposalActions, type Operation, type Proposal } from './proposal';
 import { isSkillAllowed, rememberSkillAllowed, type GuardDecision } from './skills/skillGuard';
-import type { GenerationGuardSkill } from './settings/agentSettings';
 import { loadChat, saveChat } from '../persist/projectStore';
 import { loadProposal, saveProposal, clearProposal } from '../persist/proposalStore';
 import { saveAutomaticVersion } from '../persist/versionStore';
@@ -31,9 +30,7 @@ export interface DisplayMessage {
 }
 
 /** Prepend skill_guard pending requests (rendered as cards waiting for user confirmation). */
-export interface PendingGuard {
-  skill: GenerationGuardSkill;
-  tool: string;
+export interface PendingGuard extends RuntimeGuardRequest {
   resolve: (d: GuardDecision) => void;
 }
 
@@ -246,16 +243,15 @@ export function useAgent(ctx: AgentContext, projectId: string) {
           askOnly: opts?.askOnly,
           signal: ac.signal,
           // Pre-skill_guard: Authorization has been remembered and released directly; otherwise, the pending card will be hung up to wait for the user.
-          onSkillGuard: ({ skill, tool }) => {
-            if (isSkillAllowed(skill, projectId)) return Promise.resolve<GuardDecision>('allow-once');
+          onSkillGuard: (guard) => {
+            if (isSkillAllowed(guard.skill, projectId)) return Promise.resolve<GuardDecision>('allow-once');
             return new Promise<GuardDecision>((resolve) => {
               setPendingGuard({
-                skill,
-                tool,
-                resolve: (d) => {
+                ...guard,
+                resolve: (decision) => {
                   setPendingGuard(null);
-                  if (d === 'allow-scope') rememberSkillAllowed(skill, projectId);
-                  resolve(d);
+                  if (decision === 'allow-scope') rememberSkillAllowed(guard.skill, projectId);
+                  resolve(decision);
                 },
               });
             });

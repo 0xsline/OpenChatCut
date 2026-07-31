@@ -51,11 +51,20 @@ function beginQa(context: ExportQaContext): void {
   } : current);
 }
 
-async function verifyCompletedExport(context: ExportQaContext, completed: ExportJobResult): Promise<void> {
+async function verifyCompletedExport(
+  context: ExportQaContext,
+  completed: ExportJobResult,
+  signal?: AbortSignal,
+): Promise<void> {
+  signal?.throwIfAborted();
   if (!completed.path) return;
   beginQa(context);
   try {
-    const result = await runExportQa(qaRequest(context.state, completed, context.fps));
+    const result = await runExportQa(
+      qaRequest(context.state, completed, context.fps),
+      { signal },
+    );
+    signal?.throwIfAborted();
     const report = mergeExportQaIssues(result.response.report, captionLayoutQaIssues(context.state));
     const mediaType = result.response.evidence?.mediaType ?? 'image/jpeg';
     const base64 = result.response.evidence?.base64;
@@ -66,11 +75,12 @@ async function verifyCompletedExport(context: ExportQaContext, completed: Export
       ...(base64 ? { evidenceUrl: `data:${mediaType};base64,${base64}` } : {}),
     });
   } catch (reason) {
+    signal?.throwIfAborted();
     const message = reason instanceof Error ? reason.message : String(reason);
     context.setQa({ status: 'error', attempts: 0, message });
   }
 }
 
 export function createExportVerifier(context: ExportQaContext) {
-  return (completed: ExportJobResult) => verifyCompletedExport(context, completed);
+  return (completed: ExportJobResult, signal?: AbortSignal) => verifyCompletedExport(context, completed, signal);
 }

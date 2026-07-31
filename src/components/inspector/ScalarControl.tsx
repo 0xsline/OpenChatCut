@@ -6,6 +6,7 @@ interface ScalarControlProps {
   disabled?: boolean;
   formatValue: string;
   inputScale?: number;
+  mixed?: boolean;
   max: number;
   min: number;
   onChange: (value: number) => void;
@@ -31,6 +32,7 @@ export function ScalarControl({
   disabled,
   formatValue,
   inputScale = 1,
+  mixed = false,
   max,
   min,
   onChange,
@@ -41,13 +43,13 @@ export function ScalarControl({
   value,
 }: ScalarControlProps) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(() => displayNumber(value * inputScale));
+  const [draft, setDraft] = useState(() => mixed ? '' : displayNumber(value * inputScale));
   const inputRef = useRef<HTMLInputElement>(null);
   const scrub = useRef<ScrubState | null>(null);
 
   useEffect(() => {
-    if (!editing) setDraft(displayNumber(value * inputScale));
-  }, [editing, inputScale, value]);
+    if (!editing) setDraft(mixed ? '' : displayNumber(value * inputScale));
+  }, [editing, inputScale, mixed, value]);
 
   useEffect(() => {
     if (editing) inputRef.current?.select();
@@ -57,7 +59,7 @@ export function ScalarControl({
     const parsed = Number(draft);
     if (draft.trim() && Number.isFinite(parsed)) {
       const next = clampScalar(parsed / inputScale, min, max);
-      if (Math.abs(next - value) >= 1e-9) onChange(next);
+      if (mixed || Math.abs(next - value) >= 1e-9) onChange(next);
     }
     setEditing(false);
   };
@@ -145,6 +147,7 @@ export function ScalarControl({
       }}
       onPointerMove={(event) => {
         const active = scrub.current;
+        if (mixed) return;
         if (!active || active.pointerId !== event.pointerId) return;
         const deltaX = event.clientX - active.startX;
         if (Math.abs(deltaX) < 3 && !active.moved) return;
@@ -159,7 +162,7 @@ export function ScalarControl({
         if (!active.moved) setEditing(true);
       }}
     >
-      {formatValue}
+      {mixed ? '—' : formatValue}
     </button>
   );
 }

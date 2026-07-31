@@ -81,11 +81,14 @@ function ElapsedTimer() {
   );
 }
 
-// Chinese name of the skill on the front skill_guard card (3 generated skills affected by gate)
 const GUARD_SKILL_LABELS = {
   'image-gen': '图像生成',
   'motion-graphic-gen': 'MG 动画生成',
   'video-gen': '视频生成',
+  'audio-gen': '音频 / 音乐生成',
+  'gpu-operation': '长时 GPU 任务',
+  'irreversible-export': '不可逆导出',
+  'high-cost-operation': '高成本 / 长时或不可逆操作',
 } as const;
 
 export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPreviewState, seed, creativeMode, onCreativeModeChange, onImportMedia }: ChatPanelProps) {
@@ -353,8 +356,18 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
         {pendingGuard && (
           <div style={{ margin: '10px 0', padding: '10px 12px', border: `0.5px solid ${theme.border}`, borderRadius: 4, background: theme.panelAlt }}>
             <div style={{ fontSize: 12.5, color: theme.text, marginBottom: 8, lineHeight: 1.5 }}>
-              {t('AI 请求运行生成技能：{name}', { name: t(GUARD_SKILL_LABELS[pendingGuard.skill]) })}
-              <span style={{ color: theme.textDim }}>（{pendingGuard.tool}）</span>
+              {t('AI 请求执行需确认操作：{name}', { name: t(GUARD_SKILL_LABELS[pendingGuard.skill]) })}
+              <span style={{ color: theme.textDim }}>（{pendingGuard.requestedTool ?? pendingGuard.tool}）</span>
+              {pendingGuard.operationId && (
+                <div style={{ marginTop: 5, color: theme.textDim, fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 11 }}>
+                  {t('原任务')} {pendingGuard.operationId}
+                </div>
+              )}
+              {pendingGuard.summary && (
+                <div style={{ marginTop: 5, color: theme.textDim, fontSize: 11.5, overflowWrap: 'anywhere' }}>
+                  {pendingGuard.summary}
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button type="button" onClick={() => pendingGuard.resolve('allow-once')}

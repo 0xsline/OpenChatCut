@@ -3,6 +3,7 @@ import type { CaptionsData } from '../captions/types';
 import type { IconName } from '../components/icons';
 import {
   captionTrackEntries,
+  type ProjectDoc,
   type TimelineItem,
   type TimelineState,
   type TrackId,
@@ -15,6 +16,8 @@ import {
   resolveVideoBitrateBps,
   type VideoBitrateMode,
 } from './bitrate';
+import type { BackgroundExportJob, ExportJobStore } from './backgroundExportStore';
+import type { ExportFailure } from './exportFailure';
 import { browserScaledExportDimensions } from './browserExport';
 import {
   EXPORT_FPS_OPTIONS,
@@ -86,10 +89,15 @@ export interface ExportWorkflowModel {
   engineReason: ExportEngineReason;
   clock: number;
   error: string | null;
+  failure: ExportFailure | null;
+  jobs: readonly BackgroundExportJob[];
   progress: ExportProgress | null;
   qa: ExportQaUiState | null;
   renderEngine: RenderEngine;
   resetFeedback: () => void;
+  selectedJobId: string | null;
+  cancelJob: (jobId: string) => void;
+  viewJob: (jobId: string | null) => void;
   run: () => Promise<void>;
   toggleAutoQa: (enabled: boolean) => void;
 }
@@ -161,9 +169,12 @@ function outputName(base: string, tab: ExportTab, video: ExportVideoSettings, su
   return mgOutput;
 }
 
-export function useExportDialogModel({ state, projectName, onClose }: {
+export function useExportDialogModel({ state, project, projectId, projectName, exportJobs, onClose }: {
   state: TimelineState;
+  project: ProjectDoc;
+  projectId: string;
   projectName: string;
+  exportJobs: ExportJobStore;
   onClose: () => void;
 }): ExportDialogModel {
   const t = useT();
@@ -175,11 +186,11 @@ export function useExportDialogModel({ state, projectName, onClose }: {
   const mgItems = useMemo(() => state.items.filter((item) => item.kind === 'motion-graphic'), [state.items]);
   const base = sanitizeFileName(projectName, 'export');
   const workflow = useExportWorkflow({
-    state, projectName, base, tab, codec: video.codec, resolution: video.resolution,
+    state, project, timelineId: project.activeTimelineId, projectId, projectName, base, tab, codec: video.codec, resolution: video.resolution,
     fps: video.fps, requestedVideoBitrate: video.requestedBitrate,
     subtitleFormat: subtitles.format, subtitleCaptions: subtitles.captions,
     nleFormat, includeMg, mgItems, onClose,
-  });
+  }, exportJobs);
   const name = outputName(base, tab, video, subtitles, nleFormat, t('{n} 个透明 MOV 文件', { n: mgItems.length }));
   const videoSummary = `${video.codec === 'h264' ? 'MP4 · H.264' : 'WebM · VP8'} · ${video.dimensions.width}×${video.dimensions.height} · ${video.fps} fps · ${(video.resolvedBitrate / 1_000_000).toFixed(1)} Mbps`;
   const disabled = !!workflow.busy

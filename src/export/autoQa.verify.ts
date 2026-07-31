@@ -8,6 +8,20 @@ import {
   type ExportQaRequest,
 } from './autoQa';
 import type { ExportQaReport } from './quality';
+interface Deferred<Value> {
+  promise: Promise<Value>;
+  resolve(value?: Value): void;
+}
+
+function deferred<Value>(): Deferred<Value> {
+  let resolvePromise!: (value: Value | PromiseLike<Value>) => void;
+  const promise = new Promise<Value>((resolve) => { resolvePromise = resolve; });
+  return {
+    promise,
+    resolve: (value) => { resolvePromise(value as Value); },
+  };
+}
+
 
 const storage = new Map<string, string>();
 Object.defineProperty(globalThis, 'localStorage', {
@@ -71,5 +85,29 @@ await assert.rejects(
   /bad request/,
 );
 assert.equal(calls, 1, 'non-retryable validation errors fail immediately');
+
+let cancelledCalls = 0;
+const qaStarted = deferred<void>();
+const qaResponse = deferred<Response>();
+const qaController = new AbortController();
+let qaSignal: AbortSignal | null | undefined;
+const cancelledQa = runExportQa(request, {
+  signal: qaController.signal,
+  fetcher: async (_input, init) => {
+    cancelledCalls += 1;
+    qaSignal = init?.signal;
+    qaStarted.resolve();
+    return qaResponse.promise;
+  },
+});
+await qaStarted.promise;
+assert.equal(qaSignal, qaController.signal);
+qaController.abort(new DOMException('cancelled', 'AbortError'));
+qaResponse.resolve(new Response(JSON.stringify({ ok: true, report }), { status: 200 }));
+await assert.rejects(
+  cancelledQa,
+  (error) => error instanceof DOMException && error.name === 'AbortError',
+);
+assert.equal(cancelledCalls, 1, 'cancelled QA does not retry');
 
 console.log('export auto QA checks passed');

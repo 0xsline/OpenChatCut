@@ -1,8 +1,9 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { CaptionsData } from '../captions/types';
-import type { TimelineItem, TimelineState } from '../editor/types';
+import type { ProjectDoc, TimelineItem, TimelineState } from '../editor/types';
 import type { ExportQaReport } from './quality';
 import type { ExportResolution } from './mediaSettings';
+import type { ExportFailure } from './exportFailure';
 
 export type ExportTab = 'video' | 'audio' | 'mg' | 'subtitles' | 'xml';
 export type ExportPhase = 'queued' | 'preparing' | 'rendering' | 'finalizing' | 'verifying' | 'downloading' | 'completed' | 'failed' | 'cancelled';
@@ -45,6 +46,7 @@ export interface ExportJobSnapshot {
   totalFrames?: number;
   result?: ExportJobResult;
   error?: string;
+  failure?: ExportFailure;
 }
 
 export interface ExportJobResult {
@@ -62,6 +64,10 @@ export interface ExportJobResult {
 
 export interface UseExportWorkflowOptions {
   state: TimelineState;
+  /** Full project graph is present for nested-sequence preview/export; legacy callers may omit it. */
+  project?: ProjectDoc;
+  timelineId?: string;
+  projectId: string;
   projectName: string;
   base: string;
   tab: ExportTab;
@@ -81,6 +87,7 @@ export interface WorkflowStateSetters {
   setBusy: StateSetter<string | null>;
   setClock: StateSetter<number>;
   setError: StateSetter<string | null>;
+  setFailure: StateSetter<ExportFailure | null>;
   setProgress: StateSetter<ExportProgress | null>;
   setQa: StateSetter<ExportQaUiState | null>;
   setRenderEngine: StateSetter<RenderEngine>;
@@ -88,12 +95,16 @@ export interface WorkflowStateSetters {
   setEngineReason: StateSetter<ExportEngineReason>;
 }
 
+export interface ExportOperationResult {
+  targetCommitted: true;
+}
+
 export interface WorkflowOperations {
-  exportAudio: () => Promise<void>;
-  exportMg: () => Promise<void>;
-  exportSubtitles: () => Promise<void>;
-  exportVideo: () => Promise<void>;
-  exportXml: () => Promise<void>;
+  exportAudio: (signal?: AbortSignal) => Promise<ExportOperationResult | void>;
+  exportMg: (signal?: AbortSignal) => Promise<ExportOperationResult | void>;
+  exportSubtitles: (signal?: AbortSignal) => Promise<ExportOperationResult | void>;
+  exportVideo: (signal?: AbortSignal) => Promise<ExportOperationResult | void>;
+  exportXml: (signal?: AbortSignal) => Promise<ExportOperationResult | void>;
 }
 
 export interface BrowserAbortRef {

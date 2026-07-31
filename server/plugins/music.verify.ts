@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
-import { isMinimaxCoverModel, pickMurekaAudioUrl, validateMusicRequest } from './music.ts';
+import {
+  IncompleteGenerationResultError,
+  generationResultCheckpoint,
+  setGenerationResultUrlAt,
+  requireGenerationResultUrls,
+} from './generation-jobs.ts';
+import { expectedMusicResultCount, isMinimaxCoverModel, pickMurekaAudioUrl, validateMusicRequest } from './music.ts';
 import { murekaRequestShape } from './music-mureka.ts';
 
 assert.equal(pickMurekaAudioUrl({ choices: [{ audio_url: 'a' }] }), 'a');
@@ -16,6 +22,52 @@ const murekaSong = validateMusicRequest({
 assert.equal(murekaSong.count, 3);
 assert.equal(murekaSong.gender, 'female');
 assert.equal(murekaRequestShape(murekaSong, 'auto').endpoint, '/v1/song/generate');
+assert.equal(expectedMusicResultCount(mureka), 1);
+assert.equal(expectedMusicResultCount(murekaSong), 3);
+assert.equal(expectedMusicResultCount({ provider: 'minimax', count: 3 }), 1);
+assert.deepEqual(
+  generationResultCheckpoint(['https://cdn/audio-1.mp3'], 3, 'mureka-task'),
+  { urls: ['https://cdn/audio-1.mp3'], complete: false },
+);
+assert.deepEqual(
+  generationResultCheckpoint(['https://cdn/audio-1.mp3', 'https://cdn/audio-2.mp3'], 3, 'mureka-task'),
+  { urls: ['https://cdn/audio-1.mp3', 'https://cdn/audio-2.mp3'], complete: false },
+);
+assert.throws(
+  () => generationResultCheckpoint(['https://cdn/audio-1.mp3'], 3),
+  (error) => error instanceof IncompleteGenerationResultError && error.retryable,
+);
+const providerMurekaUrls = [
+  'https://cdn/new-audio-1.mp3',
+  'https://cdn/new-audio-2.mp3',
+  'https://cdn/new-audio-3.mp3',
+];
+let afterFirstMurekaCheckpoint = ['https://cdn/old-audio-1.mp3'];
+for (const [index, url] of providerMurekaUrls.entries()) {
+  afterFirstMurekaCheckpoint = setGenerationResultUrlAt(afterFirstMurekaCheckpoint, index, url);
+}
+assert.deepEqual(
+  requireGenerationResultUrls(afterFirstMurekaCheckpoint, 3),
+  providerMurekaUrls,
+  'Mureka recovery after the first checkpoint must replace stale signed URLs and restore all three results',
+);
+let afterSecondMurekaCheckpoint = [
+  'https://cdn/old-audio-1.mp3',
+  'https://cdn/old-audio-2.mp3',
+];
+for (const [index, url] of providerMurekaUrls.entries()) {
+  afterSecondMurekaCheckpoint = setGenerationResultUrlAt(afterSecondMurekaCheckpoint, index, url);
+}
+assert.deepEqual(
+  requireGenerationResultUrls(afterSecondMurekaCheckpoint, 3),
+  providerMurekaUrls,
+  'Mureka recovery after the second checkpoint must replace the authoritative ordered result set',
+);
+assert.deepEqual(
+  setGenerationResultUrlAt(afterSecondMurekaCheckpoint, 2, providerMurekaUrls[2]),
+  afterSecondMurekaCheckpoint,
+  'repeating a Mureka resume checkpoint must be idempotent',
+);
 
 const promptSong = validateMusicRequest({ provider: 'mureka', mode: 'prompt-song', styles: ['pop', 'j-pop'] });
 assert.deepEqual(promptSong.styles, ['pop', 'j-pop']);

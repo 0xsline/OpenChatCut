@@ -160,44 +160,50 @@ export function createInlineThinkingExtractor(): {
   };
 }
 
-/** Tools that cost money / long GPU / irreversible export (gated by skill_guard).
- *  Names match live TOOL_SCHEMAS (not legacy generate_* aliases). */
-export const HIGH_COST_TOOLS = new Set([
-  // live submit_* generation surface
-  'submit_image',
-  'submit_video',
-  'submit_music',
-  'submit_sound',
-  'submit_voice',
-  'submit_motion_graphic',
-  'create_motion_graphic', // alias of submit_motion_graphic
-  'submit_shader',
-  // export / bake
-  'submit_export',
-  'submit_render_job',
-  'export_timeline',
-  'export_motion_graphic_prores',
-  'convert_motion_graphic_to_video',
-  // legacy aliases kept for older proposals
-  'submit_image_generation',
-  'submit_video_generation',
-  'submit_music_generation',
-  'submit_sound_generation',
-  'submit_voice_generation',
-  'generate_image',
-  'generate_video',
-  'generate_music',
-  'generate_voice',
-  'generate_sound',
-]);
+/** Tools that cost money / long GPU / irreversible export (gated at runtime).
+ * Names match live TOOL_SCHEMAS plus persisted legacy aliases. */
+export const HIGH_COST_TOOLS: Readonly<Record<string, true>> = {
+  submit_image: true,
+  submit_video: true,
+  submit_music: true,
+  submit_sound: true,
+  submit_voice: true,
+  submit_motion_graphic: true,
+  create_motion_graphic: true,
+  create_motion_graphic_from_code: true,
+  submit_shader: true,
+  rerun_generation: true,
+  submit_export: true,
+  submit_render_job: true,
+  export_timeline: true,
+  export_motion_graphic_prores: true,
+  convert_motion_graphic_to_video: true,
+  submit_image_generation: true,
+  submit_video_generation: true,
+  submit_music_generation: true,
+  submit_sound_generation: true,
+  submit_voice_generation: true,
+  generate_image: true,
+  generate_video: true,
+  generate_music: true,
+  generate_voice: true,
+  generate_sound: true,
+};
 
 export function isHighCostTool(name: string): boolean {
-  return HIGH_COST_TOOLS.has(name);
+  return HIGH_COST_TOOLS[name] === true;
 }
 
-/** skill_guard keys for image, motion-graphic, and video generation. */
-export type GenerationGuardSkill = 'image-gen' | 'motion-graphic-gen' | 'video-gen';
+export type GenerationGuardSkill =
+  | 'image-gen'
+  | 'motion-graphic-gen'
+  | 'video-gen'
+  | 'audio-gen'
+  | 'gpu-operation'
+  | 'irreversible-export'
+  | 'high-cost-operation';
 
+/** Every HIGH_COST_TOOLS entry has a runtime guard; known skills retain tailored copy. */
 export function generationSkillForTool(tool: string): GenerationGuardSkill | null {
   if (tool === 'submit_image' || tool === 'generate_image' || tool === 'submit_image_generation') return 'image-gen';
   if (
@@ -205,5 +211,15 @@ export function generationSkillForTool(tool: string): GenerationGuardSkill | nul
     || tool === 'create_motion_graphic_from_code'
   ) return 'motion-graphic-gen';
   if (tool === 'submit_video' || tool === 'generate_video' || tool === 'submit_video_generation') return 'video-gen';
-  return null;
+  if (
+    tool === 'submit_music' || tool === 'submit_sound' || tool === 'submit_voice'
+    || tool === 'generate_music' || tool === 'generate_sound' || tool === 'generate_voice'
+    || tool === 'submit_music_generation' || tool === 'submit_sound_generation' || tool === 'submit_voice_generation'
+  ) return 'audio-gen';
+  if (tool === 'submit_shader') return 'gpu-operation';
+  if (
+    tool === 'submit_export' || tool === 'submit_render_job' || tool === 'export_timeline'
+    || tool === 'export_motion_graphic_prores' || tool === 'convert_motion_graphic_to_video'
+  ) return 'irreversible-export';
+  return isHighCostTool(tool) ? 'high-cost-operation' : null;
 }

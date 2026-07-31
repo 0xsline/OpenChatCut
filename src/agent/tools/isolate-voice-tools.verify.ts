@@ -44,8 +44,10 @@ const initial: ProjectDoc = {
 };
 
 let history: History = { past: [], present: structuredClone(initial), future: [] };
+let denoiseWrites = 0;
 const commands = {
   setItemDenoise: (id: string, denoisedSrc: string | null, strength?: number | null) => {
+    denoiseWrites += 1;
     history = historyReduce(history, { type: 'setItemDenoise', id, denoisedSrc, strength });
   },
 } as EditorCommands;
@@ -131,4 +133,81 @@ assert.equal(clearAgain.ok, true);
 assert.match(String(clearAgain.note), /本来就没有/);
 assert.equal(history.past.length, 3);
 
-console.log('isolate voice attach checks passed');
+const originalFetch = globalThis.fetch;
+try {
+  const pending: {
+    body?: { src?: string; sourceRevision?: string };
+    settle?: (response: Response) => void;
+  } = {};
+  globalThis.fetch = ((_input, init) => new Promise<Response>((resolve) => {
+    pending.body = JSON.parse(String(init?.body ?? '{}')) as { src?: string; sourceRevision?: string };
+    pending.settle = resolve;
+  })) as typeof fetch;
+
+  const writesBeforeRelink = denoiseWrites;
+  const staleRequest = execIsolateVoiceTool('isolate_voice', {
+    action: 'apply',
+    itemId: 'item_interview',
+    strength: 75,
+  }, ctx) as Promise<Record<string, unknown>>;
+  const pendingBody = pending.body;
+  const settlePending = pending.settle;
+  assert(pendingBody, 'apply must submit the isolation request before waiting');
+  assert(typeof pendingBody.sourceRevision === 'string');
+  assert(settlePending);
+
+  history = historyReduce(history, {
+    type: 'pool.relinkAsset',
+    id: 'asset_source_voice_001',
+    src: '/media/uploads/interview-relinked.mp4',
+    sourceRevision: 'source-relinked-during-isolation',
+  });
+  const historyEntriesAfterRelink = history.past.length;
+  settlePending(Response.json({
+    path: '/media/uploads/interview-stale-denoised.wav',
+    sourceRevision: pendingBody.sourceRevision,
+    bytes: 321,
+    engine: 'ffmpeg-open-box',
+  }));
+
+  const stale = await staleRequest;
+  assert.equal(stale.ok, false);
+  assert.equal(stale.status, 'stale');
+  assert.equal(stale.stale, true);
+  assert.equal(stale.reason, 'item_source_changed');
+  assert.equal(stale.sourceRevision, pendingBody.sourceRevision);
+  assert.equal(stale.currentSourceRevision, 'source-relinked-during-isolation');
+  assert.equal(stale.resultSourceRevision, pendingBody.sourceRevision);
+  assert.equal('denoisedSrc' in stale, false, 'stale result must discard the derived URL');
+  assert.equal(denoiseWrites, writesBeforeRelink, 'relink during isolation must skip setItemDenoise');
+  assert.equal(history.past.length, historyEntriesAfterRelink, 'stale completion must not create history');
+  assert.equal(activeTimeline(history.present).items[0]?.denoisedSrc, undefined);
+
+  const successfulBody: { value?: { src?: string; sourceRevision?: string } } = {};
+  globalThis.fetch = (async (_input, init) => {
+    const body = JSON.parse(String(init?.body ?? '{}')) as { src?: string; sourceRevision?: string };
+    successfulBody.value = body;
+    return Response.json({
+      path: '/media/uploads/interview-relinked-denoised.wav',
+      sourceRevision: body.sourceRevision,
+      bytes: 654,
+      engine: 'ffmpeg-open-box',
+    });
+  }) as typeof fetch;
+
+  const successful = await execIsolateVoiceTool('isolate_voice', {
+    action: 'apply',
+    itemId: 'item_interview',
+    strength: 65,
+  }, ctx) as Record<string, unknown>;
+  assert.equal(successful.ok, true, 'unchanged source during the request must still commit');
+  assert.equal(successfulBody.value?.src, '/media/uploads/interview-relinked.mp4');
+  assert.equal(successful.sourceRevision, successfulBody.value?.sourceRevision);
+  assert.equal(activeTimeline(history.present).items[0]?.denoisedSrc, '/media/uploads/interview-relinked-denoised.wav');
+  assert.equal(activeTimeline(history.present).items[0]?.denoiseStrength, 65);
+  assert.equal(denoiseWrites, writesBeforeRelink + 1);
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+console.log('isolate voice attach and stale apply checks passed');

@@ -1,4 +1,5 @@
 import type { TimelineItem } from '../../editor/types';
+import { sourceWindowForTimelineRange } from '../../editor/sourceLimit';
 import { filmstripBackground, peaksPath, useClipPreview } from '../../media/clipPreview';
 import { intersectFrameRange, type TimelineFrameWindow } from './timelineUtil';
 
@@ -30,13 +31,16 @@ export function clipMediaGeometry(options: {
     options.visibleWindow,
   );
   if (!intersection) return null;
-  const playbackRate = options.playbackRate > 0 ? options.playbackRate : 1;
   const offsetFrames = intersection.startFrame - options.clipStartFrame;
   return {
     leftPx: offsetFrames * options.px,
     widthPx: Math.max(1, (intersection.endFrame - intersection.startFrame) * options.px),
     durationInFrames: intersection.endFrame - intersection.startFrame,
-    srcInFrame: options.srcInFrame + offsetFrames * playbackRate,
+    srcInFrame: sourceWindowForTimelineRange(
+      options,
+      offsetFrames,
+      intersection.endFrame - intersection.startFrame,
+    ).startFrame,
   };
 }
 
@@ -102,7 +106,7 @@ export function ClipMediaLayers({ item, px, fps, height, clipStartFrame, duratio
   playbackRate: number;
   visibleWindow: TimelineFrameWindow;
 }) {
-  const preview = useClipPreview(item.src, item.kind);
+  const preview = useClipPreview(item.src, item.kind, item.sourceRevision);
   const geometry = clipMediaGeometry({
     clipStartFrame, durationInFrames, srcInFrame, playbackRate, px, visibleWindow,
   });

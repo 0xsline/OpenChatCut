@@ -1,7 +1,8 @@
 import type { RenderMediaOnWebProgress } from '@remotion/web-renderer';
 import type { ComponentType } from 'react';
 import type { TimelineCompositionProps } from '../editor/TimelineComposition';
-import { GLSL_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, timelineDuration, type TimelineState } from '../editor/types';
+import { GLSL_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, timelineDuration, type ProjectDoc, type TimelineState } from '../editor/types';
+import { resolveTimelineRenderPlan } from '../editor/sequenceGraph';
 import { webScaledExportDimensions, type ExportResolution } from './mediaSettings';
 const DEFAULT_CAPABILITY_BITRATE_BPS = 12_000_000;
 
@@ -12,6 +13,8 @@ type WebRendererModule = Pick<typeof import('@remotion/web-renderer'), 'canRende
 
 export interface BrowserExportOptions {
   state: TimelineState;
+  project?: ProjectDoc;
+  timelineId?: string;
   codec: BrowserVideoCodec;
   resolution: ExportResolution;
   fps: number;
@@ -46,21 +49,32 @@ export function isAbortError(error: unknown): boolean {
  * Features that still depend on legacy Remotion Video/OffthreadVideo are kept
  * on the server path until their pixel sources can be consumed by web-renderer.
  */
-export function browserTimelineBlocker(state: TimelineState): string | null {
-  if (state.items.some((item) => (item.effects?.length ?? 0) > 0)) {
+export function browserTimelineBlocker(state: TimelineState, project?: ProjectDoc, timelineId?: string): string | null {
+  const rootId = timelineId ?? project?.activeTimelineId;
+  const states = project && rootId
+    ? [
+        state,
+        ...resolveTimelineRenderPlan(project, rootId).timelineIds
+          .filter((id) => id !== rootId)
+          .map((id) => project.timelines.find((timeline) => timeline.id === id))
+          .filter((timeline): timeline is NonNullable<typeof timeline> => !!timeline),
+      ]
+    : [state];
+  if (states.some((entry) => entry.items.some((item) => (item.effects?.length ?? 0) > 0))) {
     return '包含 WebGL 片段特效';
   }
-
-  const items = new Map(state.items.map((item) => [item.id, item]));
-  const hasGlTransition = (state.transitions ?? []).some((transition) => {
-    if (transition.enabled === false || isAudioTransition(transition.type) || !GLSL_TRANSITION_TYPES.has(transition.type)) return false;
-    const outgoing = items.get(transition.outgoingItemId);
-    const incoming = items.get(transition.incomingItemId);
-    const texturable = (item: typeof outgoing) => !!item
-      && isRasterMediaKind(item.kind)
-      && item.kind !== 'svg'
-      && item.kind !== 'gif';
-    return texturable(outgoing) && texturable(incoming);
+  const hasGlTransition = states.some((entry) => {
+    const items = new Map(entry.items.map((item) => [item.id, item]));
+    return (entry.transitions ?? []).some((transition) => {
+      if (transition.enabled === false || isAudioTransition(transition.type) || !GLSL_TRANSITION_TYPES.has(transition.type)) return false;
+      const outgoing = items.get(transition.outgoingItemId);
+      const incoming = items.get(transition.incomingItemId);
+      const texturable = (item: typeof outgoing) => !!item
+        && isRasterMediaKind(item.kind)
+        && item.kind !== 'svg'
+        && item.kind !== 'gif';
+      return texturable(outgoing) && texturable(incoming);
+    });
   });
   return hasGlTransition ? '包含 WebGL 转场' : null;
 }
@@ -121,7 +135,7 @@ function staticBrowserBlocker(
       issues: [`timeline=${options.state.fps}fps, requested=${options.fps}fps`],
     };
   }
-  const blocker = browserTimelineBlocker(options.state);
+  const blocker = browserTimelineBlocker(options.state, options.project, options.timelineId);
   return blocker ? { status: 'unsupported', reason: blocker, issues: [blocker] } : null;
 }
 
@@ -167,8 +181,8 @@ async function executeBrowserRender(
   options: BrowserExportOptions,
   config: BrowserRenderConfig,
 ): Promise<Extract<BrowserExportAttempt, { status: 'rendered' }>> {
-  const { state, codec, signal, onProgress } = options;
-  const props: TimelineCompositionProps = { state, transparent: false, browserRenderer: true };
+  const { state, project, timelineId, codec, signal, onProgress } = options;
+  const props: TimelineCompositionProps = { state, project, timelineId, transparent: false, browserRenderer: true };
   try {
     const { TimelineComposition } = await (options.loadComposition ?? (() => import('../editor/TimelineComposition')))();
     throwIfAborted(signal);
@@ -176,7 +190,7 @@ async function executeBrowserRender(
       composition: {
         id: 'openchatcut-timeline-browser',
         component: TimelineComposition,
-        durationInFrames: Math.max(1, timelineDuration(state)),
+        durationInFrames: Math.max(1, project && timelineId ? resolveTimelineRenderPlan(project, timelineId).durationInFrames : timelineDuration(state)),
         fps: state.fps,
         width: state.width,
         height: state.height,

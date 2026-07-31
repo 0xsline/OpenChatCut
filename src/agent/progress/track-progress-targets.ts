@@ -127,12 +127,10 @@ export async function execVisualAnalysisProgress(
     })
     : assets.map((hit) => ({ q: hit.id, hit }));
 
-  // Kick jobs for known assets that never started analysis.
+  // Enqueue is revision-aware: same-source jobs are idempotent, while relinked
+  // assets replace stale terminal/running entries before they can be reported.
   for (const { hit } of list) {
-    if (!hit?.src) continue;
-    if (!getVisualAnalysisJob(hit.id)) {
-      enqueueVisualAnalysis({ id: hit.id, src: hit.src, kind: hit.kind });
-    }
+    if (hit?.src) enqueueVisualAnalysis(hit);
   }
 
   const reportOne = (q: string, hit: Hit['hit']) => {
@@ -157,7 +155,7 @@ export async function execVisualAnalysisProgress(
         // blob may have relinked — re-enqueue with live src
         const live = (ctx?.getDoc().assets ?? []).find((a) => a.id === hit.id) ?? hit;
         if (live.src && !live.src.startsWith('blob:')) {
-          enqueueVisualAnalysis({ id: live.id, src: live.src, kind: live.kind });
+          enqueueVisualAnalysis(live);
         }
       }
       const liveHit = hit

@@ -2,7 +2,7 @@ const READ_ONLY_TOOL_NAMES = new Set([
   'read_timeline', 'list_templates', 'search_templates', 'list_audio',
   'read_script', 'view_timeline_frames', 'view_asset_frames', 'browse_library',
   'read_captions', 'read_project', 'read_transcript', 'find_transcript',
-  'search_fonts',
+  'search_media', 'search_fonts',
 ]);
 
 const DRAFT_EDIT_TOOL_NAMES = new Set([

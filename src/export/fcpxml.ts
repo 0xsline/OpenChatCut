@@ -11,6 +11,8 @@ import {
   type TrackId,
 } from '../editor/types';
 import { itemEditOpts, itemWindow, keptSegments } from '../transcript/edit';
+import { hasOperationalTranscript } from '../transcript/types';
+import { sourceWindowForTimelineRange } from '../editor/sourceLimit';
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
 
 /** Asset URL prefix: it is in mediaDir on the disk and has the same name. */
@@ -53,7 +55,7 @@ function transcriptSegments(
   item: TimelineItem,
   fps: number,
 ): ReturnType<typeof keptSegments> | null {
-  if (item.kind !== 'audio' || !item.transcript?.length) return null;
+  if (item.kind !== 'audio' || !hasOperationalTranscript(item)) return null;
   return keptSegments(item.transcript, new Set(item.deletedWordIdx ?? []), fps, item.startFrame, {
     ...itemEditOpts(item),
     window: itemWindow(item),
@@ -149,7 +151,7 @@ function collectAssets(state: TimelineState): Map<string, AssetInfo> {
     const segs = transcriptSegments(item, state.fps);
     const usedTo = segs?.length
       ? Math.max(...segs.map((seg) => seg.srcEndFrame))
-      : (item.srcInFrame ?? 0) + item.durationInFrames;
+      : sourceWindowForTimelineRange(item, 0, item.durationInFrames).endFrame;
     const libraryAsset = state.assets?.find((a) => a.src === item.src);
     const full = Math.max(usedTo, libraryAsset?.durationInFrames ?? 0);
     const existing = bySrc.get(item.src);

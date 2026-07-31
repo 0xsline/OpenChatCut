@@ -45,3 +45,76 @@ commitTimelineDragGesture(state, commands, drag, 'selection');
 assert.equal(calls.length, 1, 'pointer release delegates one EditorCore commit');
 assert.equal(calls[0]?.method, 'moveItem');
 assert.deepEqual(calls[0]?.args, ['clip-a', { startFrame: 115, track: 'video-main' }]);
+
+calls.length = 0;
+commitTimelineDragGesture(state, commands, {
+  ...drag,
+  mode: 'trim-left',
+  deltaF: 10,
+}, 'trim');
+assert.deepEqual(
+  calls[0]?.args,
+  ['clip-a', { startFrame: 110, durationInFrames: 40, srcInFrame: 22 }],
+  '1x left trim keeps the established source in-point behavior',
+);
+
+calls.length = 0;
+const fastState: TimelineState = {
+  ...state,
+  items: [{ ...state.items[0]!, playbackRate: 2 }],
+};
+commitTimelineDragGesture(fastState, commands, {
+  ...drag,
+  mode: 'trim-left',
+  deltaF: 10,
+}, 'trim');
+assert.equal(calls[0]?.method, 'setItemTiming');
+assert.deepEqual(
+  calls[0]?.args,
+  ['clip-a', { startFrame: 110, durationInFrames: 40, srcInFrame: 32 }],
+  '2x left trim consumes twice as many source frames while keeping the timeline right edge fixed',
+);
+
+calls.length = 0;
+const slowState: TimelineState = {
+  ...state,
+  items: [{ ...state.items[0]!, playbackRate: 0.5 }],
+};
+commitTimelineDragGesture(slowState, commands, {
+  ...drag,
+  mode: 'trim-left',
+  deltaF: 10,
+}, 'trim');
+assert.deepEqual(
+  calls[0]?.args,
+  ['clip-a', { startFrame: 110, durationInFrames: 40, srcInFrame: 17 }],
+  '0.5x left trim consumes half as many source frames',
+);
+
+calls.length = 0;
+const edgeState: TimelineState = {
+  ...fastState,
+  items: [{ ...fastState.items[0]!, startFrame: 1, srcInFrame: 100 }],
+};
+commitTimelineDragGesture(edgeState, commands, {
+  ...drag,
+  mode: 'trim-left',
+  baseStart: 1,
+  baseSrcIn: 100,
+  deltaF: -100,
+}, 'trim');
+assert.deepEqual(
+  calls[0]?.args,
+  ['clip-a', { startFrame: 0, durationInFrames: 51, srcInFrame: 98 }],
+  'timeline-head clamp adjusts the effective delta so the right edge remains fixed',
+);
+
+calls.length = 0;
+commitTimelineDragGesture(state, commands, {
+  ...drag,
+  mode: 'slip',
+  deltaF: 7,
+}, 'slip');
+assert.equal(calls.length, 1, 'slip release commits exactly one editor operation');
+assert.equal(calls[0]?.method, 'slipItem');
+assert.deepEqual(calls[0]?.args, ['clip-a', 7]);

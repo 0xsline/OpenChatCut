@@ -11,13 +11,14 @@ import { groupMoveIds, moveItemsByDelta } from '../../editor/multiSelect';
 import { upsertKeyframe } from '../../editor/keyframes';
 import { getKeyframePropertyDefinition } from '../../editor/keyframeRegistry';
 import { rateStretchItem } from '../../editor/rateStretch';
-import { remainingSourceFrames } from '../../editor/sourceLimit';
+import { remainingSourceFrames, sourceFramesToTimelineFrames, sourceWindowForTimelineRange } from '../../editor/sourceLimit';
 import {
   collectTimelineSnapPoints, snapDraggedEdges, sortTimelineSnapPoints,
   type SnapHold, type SnapPoint,
 } from '../../editor/snap';
 import type { EditorCommands } from '../../editor/store';
 import { emitSelectionRef, resolveTimelinePick, type TimelinePickDrag } from '../../agent/selection-refs';
+import { hasOperationalTranscript } from '../../transcript/types';
 import { SNAP_PX, type Drag, type DragMode, type EditMode } from './timelineUtil';
 
 export interface PenDrag {
@@ -125,11 +126,24 @@ function commitTrimGesture(
     return;
   }
   if (mode === 'trim-left') {
-    const delta = Math.max(Math.min(deltaF, baseDur - 1), -baseSrcIn);
+    const target = state.items.find((item) => item.id === id);
+    if (!target) return;
+    const wordDriven = target.kind === 'audio' && hasOperationalTranscript(target);
+    const sourceBacktrack = wordDriven
+      ? baseSrcIn
+      : sourceFramesToTimelineFrames(target, baseSrcIn);
+    const earliestDelta = Math.max(-baseStart, -Math.floor(sourceBacktrack));
+    const delta = Math.max(Math.min(deltaF, baseDur - 1), earliestDelta);
     if (delta !== 0) commands.setItemTiming(id, {
-      startFrame: Math.max(0, baseStart + delta),
+      startFrame: baseStart + delta,
       durationInFrames: baseDur - delta,
-      srcInFrame: baseSrcIn + delta,
+      srcInFrame: wordDriven
+        ? sourceWindowForTimelineRange({ srcInFrame: baseSrcIn, playbackRate: 1 }, delta, baseDur - delta).startFrame
+        : sourceWindowForTimelineRange(
+            { ...target, srcInFrame: baseSrcIn },
+            delta,
+            baseDur - delta,
+          ).startFrame,
     });
     return;
   }
@@ -155,7 +169,9 @@ export function commitTimelineDragGesture(
   drag: Drag,
   editMode: EditMode,
 ) {
-  if (drag.mode === 'move') commitMoveGesture(state, commands, drag);
+  if (drag.mode === 'slip') {
+    if (Math.abs(drag.deltaF) >= 1e-6) commands.slipItem(drag.id, drag.deltaF);
+  } else if (drag.mode === 'move') commitMoveGesture(state, commands, drag);
   else commitTrimGesture(state, commands, drag, editMode);
 }
 
@@ -215,6 +231,7 @@ export function useTimelinePointer(deps: PointerDeps) {
   // All snap targets come from the editor snap registry. Group moves exclude
   // every selected clip so members never snap to each other.
   const applySnap = (mode: DragMode, baseStart: number, baseDur: number, rawDelta: number): { deltaF: number; snapAt: number | null } => {
+    if (mode === 'slip') return { deltaF: rawDelta, snapAt: null };
     if (!snapping) return { deltaF: rawDelta, snapAt: null };
     const points = gestureSnapPoints.current;
     const result = snapDraggedEdges({
@@ -267,6 +284,10 @@ export function useTimelinePointer(deps: PointerDeps) {
     const currentDrag = dragRef.current;
     if (!currentDrag) return;
     const rawDelta = Math.round((clientX - currentDrag.startX) / px);
+    if (currentDrag.mode === 'slip') {
+      setDrag({ ...currentDrag, deltaF: rawDelta, targetTrack: currentDrag.baseTrack, snapAt: null }, publish);
+      return;
+    }
     const snapped = applySnap(currentDrag.mode, currentDrag.baseStart, currentDrag.baseDur, rawDelta);
     const cap = currentDrag.mode === 'trim-right'
       ? trimRightCap(currentDrag.id, currentDrag.baseDur)
@@ -291,10 +312,33 @@ export function useTimelinePointer(deps: PointerDeps) {
     if (pointerMoveRaf.current) return;
     pointerMoveRaf.current = requestAnimationFrame(() => flushPointerMove(true));
   };
-  useEffect(() => () => {
+  const cancelPointerGesture = () => {
     if (pointerMoveRaf.current) cancelAnimationFrame(pointerMoveRaf.current);
     pointerMoveRaf.current = 0;
     pendingMove.current = null;
+    snapHold.current = null;
+    gestureSnapPoints.current = [];
+    setDrag(null);
+    setPenDrag(null);
+    setMarquee(null);
+    setPickDrag(null);
+  };
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || (
+        !dragRef.current && !penDragRef.current && !marqueeRef.current && !pickDragRef.current
+      )) return;
+      event.preventDefault();
+      event.stopPropagation();
+      cancelPointerGesture();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      if (pointerMoveRaf.current) cancelAnimationFrame(pointerMoveRaf.current);
+      pointerMoveRaf.current = 0;
+      pendingMove.current = null;
+    };
   }, []);
   const onPointerUp = () => {
     flushPointerMove(false);
@@ -361,6 +405,7 @@ export function useTimelinePointer(deps: PointerDeps) {
     gestureSnapPoints.current = [];
     setDrag(null);
   };
+  const onPointerCancel = () => cancelPointerGesture();
 
-  return { drag, penDrag, setPenDrag, marquee, pickDrag, startDrag, startPick, startMarquee, onPointerMove, onPointerUp };
+  return { drag, penDrag, setPenDrag, marquee, pickDrag, startDrag, startPick, startMarquee, onPointerMove, onPointerUp, onPointerCancel };
 }

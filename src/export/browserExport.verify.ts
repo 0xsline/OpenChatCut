@@ -1,11 +1,29 @@
 import assert from 'node:assert/strict';
+import { clearExportHistory, listExportHistory } from '../persist/exportHistoryStore';
 import type { TimelineState } from '../editor/types';
+
 import {
   browserScaledExportDimensions,
   browserTimelineBlocker,
   exportVideoWithFallback,
   renderTimelineInBrowser,
+  type BrowserExportAttempt,
 } from './browserExport';
+import type { ExportDestination } from './exportDestination';
+import { saveBrowserResult, type VideoExportContext } from './videoExportOperation';
+interface Deferred<Value> {
+  promise: Promise<Value>;
+  resolve(value?: Value): void;
+}
+
+function deferred<Value>(): Deferred<Value> {
+  let resolvePromise!: (value: Value | PromiseLike<Value>) => void;
+  const promise = new Promise<Value>((resolve) => { resolvePromise = resolve; });
+  return {
+    promise,
+    resolve: (value) => { resolvePromise(value as Value); },
+  };
+}
 
 const state: TimelineState = {
   fps: 30,
@@ -209,6 +227,263 @@ await assert.rejects(
   (error: unknown) => error instanceof DOMException && error.name === 'AbortError',
 );
 assert.equal(serverCalls, 2, 'cancel must never start a server fallback job');
+
+interface BrowserDeliveryContextOptions {
+  autoQaEnabled: boolean;
+  destination: ExportDestination;
+  markTargetCommitted?: () => void;
+  verifyCompletedExport?: VideoExportContext['verifyCompletedExport'];
+}
+
+function browserDeliveryContext(options: BrowserDeliveryContextOptions): VideoExportContext {
+  return {
+    autoQaEnabled: options.autoQaEnabled,
+    browserAbortRef: { current: null },
+    beginTargetCommit: () => undefined,
+    endTargetCommit: () => undefined,
+    destination: options.destination,
+    exportServerVideo: async () => ({}),
+    markTargetCommitted: options.markTargetCommitted ?? (() => undefined),
+    options: {
+      state,
+      projectId: 'project-browser-lifecycle',
+      projectName: 'Lifecycle',
+      base: 'browser-lifecycle',
+      tab: 'video',
+      codec: 'h264',
+      resolution: '1080p',
+      fps: 30,
+      subtitleFormat: 'srt',
+      subtitleCaptions: null,
+      nleFormat: 'fcp_xml',
+      includeMg: false,
+      mgItems: [],
+      onClose: () => undefined,
+    },
+    setBusy: () => undefined,
+    setEngineInfo: () => undefined,
+    setEngineReason: () => undefined,
+    setProgress: () => undefined,
+    setQa: () => undefined,
+    setRenderEngine: () => undefined,
+    t: (key) => key,
+    verifyCompletedExport: options.verifyCompletedExport ?? (async () => undefined),
+  };
+}
+
+const browserEngine = {
+  id: 'browser-webcodecs',
+  label: 'WebCodecs',
+  hardware: true,
+  transport: 'browser',
+} as const;
+const renderedAttempt: Extract<BrowserExportAttempt, { status: 'rendered' }> = {
+  status: 'rendered',
+  blob,
+  issues: [],
+};
+
+await clearExportHistory();
+const beforeWriteController = new AbortController();
+beforeWriteController.abort(new DOMException('cancelled', 'AbortError'));
+let beforeWriteCalls = 0;
+let beforeWriteCommits = 0;
+const beforeWriteDestination: ExportDestination = {
+  type: 'browser-file',
+  label: 'browser-lifecycle.mp4',
+  handle: {
+    kind: 'file',
+    name: 'browser-lifecycle.mp4',
+    queryPermission: async () => 'granted',
+    requestPermission: async () => 'granted',
+    createWritable: async () => ({
+      write: async () => { beforeWriteCalls += 1; },
+      close: async () => undefined,
+    }),
+  },
+};
+await assert.rejects(
+  saveBrowserResult(
+    browserDeliveryContext({
+      autoQaEnabled: false,
+      destination: beforeWriteDestination,
+      markTargetCommitted: () => { beforeWriteCommits += 1; },
+    }),
+    renderedAttempt,
+    browserEngine,
+    performance.now(),
+    beforeWriteController.signal,
+  ),
+  (error) => error instanceof DOMException && error.name === 'AbortError',
+);
+assert.equal(beforeWriteCalls, 0, 'rendered output cancelled before save never opens the writer');
+assert.equal(beforeWriteCommits, 0);
+assert.equal((await listExportHistory()).length, 0);
+
+await clearExportHistory();
+const deliveryOriginalFetch = globalThis.fetch;
+const qaStarted = deferred<void>();
+const qaGate = deferred<void>();
+const qaController = new AbortController();
+let stagedCleanup = 0;
+let qaWrites = 0;
+let qaCommits = 0;
+globalThis.fetch = (async (input, init) => {
+  const url = String(input);
+  if (url.startsWith('/export/stage?')) {
+    assert.equal(init?.signal, qaController.signal);
+    return Response.json({
+      path: '/media/uploads/openchatcut-export-stage-browser-lifecycle.mp4',
+      sizeBytes: blob.size,
+    });
+  }
+  if (url.startsWith('/export/stage/')) {
+    stagedCleanup += 1;
+    return new Response(null, { status: 204 });
+  }
+  throw new Error(`unexpected request: ${url}`);
+}) as typeof fetch;
+const qaDestination: ExportDestination = {
+  type: 'browser-file',
+  label: 'browser-lifecycle.mp4',
+  handle: {
+    kind: 'file',
+    name: 'browser-lifecycle.mp4',
+    queryPermission: async () => 'granted',
+    requestPermission: async () => 'granted',
+    createWritable: async () => ({
+      write: async () => { qaWrites += 1; },
+      close: async () => undefined,
+    }),
+  },
+};
+const qaSaving = saveBrowserResult(
+  browserDeliveryContext({
+    autoQaEnabled: true,
+    destination: qaDestination,
+    markTargetCommitted: () => { qaCommits += 1; },
+    verifyCompletedExport: async (_completed, signal) => {
+      assert.equal(signal, qaController.signal);
+      qaStarted.resolve();
+      await qaGate.promise;
+    },
+  }),
+  renderedAttempt,
+  browserEngine,
+  performance.now(),
+  qaController.signal,
+);
+await qaStarted.promise;
+qaController.abort(new DOMException('cancelled', 'AbortError'));
+qaGate.resolve();
+await assert.rejects(
+  qaSaving,
+  (error) => error instanceof DOMException && error.name === 'AbortError',
+);
+globalThis.fetch = deliveryOriginalFetch;
+assert.equal(stagedCleanup, 1, 'cancelled browser QA removes its staged export');
+assert.equal(qaWrites, 0, 'cancelled browser QA never writes the destination');
+assert.equal(qaCommits, 0);
+assert.equal((await listExportHistory()).length, 0);
+
+await clearExportHistory();
+const writeStarted = deferred<void>();
+const writeGate = deferred<void>();
+const writeController = new AbortController();
+let writerAborts = 0;
+let writerCloses = 0;
+let writeCommits = 0;
+const pendingWriteDestination: ExportDestination = {
+  type: 'browser-file',
+  label: 'browser-lifecycle.mp4',
+  handle: {
+    kind: 'file',
+    name: 'browser-lifecycle.mp4',
+    queryPermission: async () => 'granted',
+    requestPermission: async () => 'granted',
+    createWritable: async () => ({
+      write: async () => {
+        writeStarted.resolve();
+        await writeGate.promise;
+      },
+      close: async () => { writerCloses += 1; },
+      abort: async () => { writerAborts += 1; },
+    }),
+  },
+};
+const pendingWrite = saveBrowserResult(
+  browserDeliveryContext({
+    autoQaEnabled: false,
+    destination: pendingWriteDestination,
+    markTargetCommitted: () => { writeCommits += 1; },
+  }),
+  renderedAttempt,
+  browserEngine,
+  performance.now(),
+  writeController.signal,
+);
+await writeStarted.promise;
+writeController.abort(new DOMException('cancelled', 'AbortError'));
+writeGate.resolve();
+await assert.rejects(
+  pendingWrite,
+  (error) => error instanceof DOMException && error.name === 'AbortError',
+);
+assert.equal(writerAborts, 1, 'pending browser destination write aborts once');
+assert.equal(writerCloses, 0);
+assert.equal(writeCommits, 0);
+assert.equal((await listExportHistory()).length, 0);
+
+await clearExportHistory();
+const committedCloseStarted = deferred<void>();
+const committedCloseGate = deferred<void>();
+const committedController = new AbortController();
+let normalWrites = 0;
+let normalCloses = 0;
+let normalCommits = 0;
+let normalAborts = 0;
+const normalDestination: ExportDestination = {
+  type: 'browser-file',
+  label: 'browser-lifecycle.mp4',
+  handle: {
+    kind: 'file',
+    name: 'browser-lifecycle.mp4',
+    queryPermission: async () => 'granted',
+    requestPermission: async () => 'granted',
+    createWritable: async () => ({
+      write: async () => { normalWrites += 1; },
+      close: async () => {
+        normalCloses += 1;
+        committedCloseStarted.resolve();
+        await committedCloseGate.promise;
+      },
+      abort: async () => { normalAborts += 1; },
+    }),
+  },
+};
+const committedSaving = saveBrowserResult(
+  browserDeliveryContext({
+    autoQaEnabled: false,
+    destination: normalDestination,
+    markTargetCommitted: () => { normalCommits += 1; },
+  }),
+  renderedAttempt,
+  browserEngine,
+  performance.now(),
+  committedController.signal,
+);
+await committedCloseStarted.promise;
+committedController.abort(new DOMException('late cancellation', 'AbortError'));
+committedCloseGate.resolve();
+await committedSaving;
+const historyTick = deferred<void>();
+setTimeout(() => { historyTick.resolve(); }, 0);
+await historyTick.promise;
+assert.equal(normalWrites, 1);
+assert.equal(normalCloses, 1);
+assert.equal(normalAborts, 1);
+assert.equal(normalCommits, 1);
+assert.equal((await listExportHistory()).some((entry) => entry.name === 'browser-lifecycle.mp4'), true);
 
 const controller = new AbortController();
 controller.abort();

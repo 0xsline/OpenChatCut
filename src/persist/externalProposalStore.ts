@@ -1,7 +1,10 @@
 // Pending proposal created by an external MCP client. The draft is kept in the
 // editor session; once review starts, this record survives refresh/browser changes.
 
-import type { ExternalApprovalMode } from '../agent/external-edit-session';
+import type {
+  ExternalApprovalMode,
+  ExternalEditSessionTerminalStatus,
+} from '../agent/external-edit-session';
 import type { Proposal } from '../agent/proposal';
 import { parseProposal } from './proposalStore';
 import { kvGet, kvSet } from './sharedKv';
@@ -10,7 +13,7 @@ export interface StoredExternalProposal {
   sessionId: string;
   clientName: string;
   approvalMode: ExternalApprovalMode;
-  status: 'awaiting_review' | 'applied' | 'rejected' | 'discarded';
+  status: 'awaiting_review' | ExternalEditSessionTerminalStatus;
   baseRevision: string;
   createdAt: number;
   operationCount: number;
@@ -18,12 +21,18 @@ export interface StoredExternalProposal {
   proposal: Proposal | null;
 }
 
-const STORED_STATUSES = new Set<StoredExternalProposal['status']>([
+const STORED_STATUSES: ReadonlySet<string> = new Set([
   'awaiting_review',
   'applied',
   'rejected',
-  'discarded',
+  'cancelled',
+  'stale',
+  'failed',
 ]);
+
+function isStoredStatus(value: unknown): value is StoredExternalProposal['status'] {
+  return typeof value === 'string' && STORED_STATUSES.has(value);
+}
 
 const externalProposalKey = (projectId: string) => `external-proposal:${projectId}`;
 
@@ -31,9 +40,12 @@ function parseStoredExternalProposal(raw: unknown): StoredExternalProposal | nul
   if (!raw || typeof raw !== 'object') return null;
   const value = raw as Partial<StoredExternalProposal>;
   const proposal = parseProposal(value.proposal);
-  const status = STORED_STATUSES.has(value.status as StoredExternalProposal['status'])
-    ? value.status as StoredExternalProposal['status']
-    : 'awaiting_review';
+  const rawStatus: unknown = value.status;
+  const status = rawStatus === 'discarded'
+    ? 'cancelled'
+    : isStoredStatus(rawStatus)
+      ? rawStatus
+      : 'awaiting_review';
   if (
     typeof value.sessionId !== 'string'
     || typeof value.clientName !== 'string'

@@ -1,6 +1,7 @@
 export { EDIT_ASSET_TOOL_SCHEMAS, EDIT_ASSET_TOOL_NAMES } from './schemas/edit-asset-tools';
 import type { AgentContext } from '../context';
 import type { MediaAsset, TimelineItem } from '../../editor/types';
+import { isSourceClockMetadata } from '../../editor/timecode';
 import { prepareTemplate } from '../../template-host';
 
 // edit_asset: Change/delete "library assets" (assets in the media pool, non-timeline clips).
@@ -22,11 +23,25 @@ function referencingItems(items: TimelineItem[], asset: MediaAsset): number {
 }
 
 async function update(asset: MediaAsset, args: Args, ctx: AgentContext): Promise<unknown> {
-  const patch: Partial<Pick<MediaAsset, 'name' | 'code' | 'props' | 'favorite'>> = {};
+  const patch: Partial<Pick<MediaAsset, 'name' | 'code' | 'props' | 'favorite' | 'sourceTimecode' | 'captureClock'>> = {};
   const name = strArg(args.name);
   if (name) patch.name = name;
   if (typeof args.favorite === 'boolean') patch.favorite = args.favorite;
   if (args.props && typeof args.props === 'object') patch.props = { ...asset.props, ...(args.props as Record<string, unknown>) };
+  if (args.sourceTimecode !== undefined) {
+    if (!isSourceClockMetadata(args.sourceTimecode)) {
+      return { error: 'sourceTimecode must use integer frameCount, positive rational frameRate, and boolean dropFrame' };
+    }
+    patch.sourceTimecode = args.sourceTimecode;
+  }
+  if (args.captureClock !== undefined) {
+    if (!isSourceClockMetadata(args.captureClock)) {
+      return { error: 'captureClock must use integer frameCount, positive rational frameRate, and boolean dropFrame' };
+    }
+    patch.captureClock = args.captureClock;
+  }
+  if (args.clearSourceTimecode === true) patch.sourceTimecode = undefined;
+  if (args.clearCaptureClock === true) patch.captureClock = undefined;
 
   const code = strArg(args.code);
   if (code) {
@@ -39,7 +54,7 @@ async function update(asset: MediaAsset, args: Args, ctx: AgentContext): Promise
     patch.code = code;
   }
 
-  if (Object.keys(patch).length === 0) return { error: 'nothing to update; pass name / code / props / favorite' };
+  if (Object.keys(patch).length === 0) return { error: 'nothing to update; pass name / code / props / favorite / sourceTimecode / captureClock' };
   ctx.commands.editMediaAsset(asset.id, patch);
   return { ok: true, updated: Object.keys(patch), assetId: asset.id };
 }

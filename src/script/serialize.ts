@@ -5,6 +5,7 @@
 // `[gap Nf]`. Body order = playback order; apply re-derives all frames.
 import { timelineTrackIds, trackAlias, type TimelineItem, type TimelineState, type TrackId } from '../editor/types';
 import { buildScriptRows, toSegments } from '../transcript/segment';
+import { hasOperationalTranscript } from '../transcript/types';
 
 export interface SegRow {
   kind: 'seg';
@@ -67,7 +68,7 @@ export function buildModel(state: TimelineState, options: SerializeTimelineOptio
         if (regions.length) regions[regions.length - 1].rows.push(gap);
         else regions.push({ source: it.name, rows: [gap] });
       }
-      if (it.transcript?.length) {
+      if (hasOperationalTranscript(it)) {
         // a transcript item is always its own region → [sN] unambiguous per region
         const deleted = new Set(it.deletedWordIdx ?? []);
         const rows: Row[] = [];

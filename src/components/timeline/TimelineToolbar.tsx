@@ -124,7 +124,7 @@ export function TimelineToolbar({
 }: TimelineToolbarProps) {
   const t = useT();
   const speedItem = state.items.find((item) => (
-    item.id === state.selectedId && (item.kind === 'video' || item.kind === 'audio')
+    item.id === state.selectedId && (item.kind === 'video' || item.kind === 'audio' || item.kind === 'sequence')
   )) ?? null;
   const sceneItem = state.items.find((item) => (
     item.id === state.selectedId && (item.kind === 'video' || item.kind === 'gif')
@@ -146,6 +146,12 @@ export function TimelineToolbar({
         <ToolSep />
         <TB icon="cursor" title={t('选择模式 (V)：拖动移动 / 裁剪首尾')} active={editMode === 'selection'} onClick={() => invokeAction('interaction-mode-selection', undefined, 'toolbar')} />
         <TB icon="trim" title={t('修剪模式 (N)：裁剪片段边缘，后续片段自动跟随合缝（波纹）')} active={editMode === 'trim'} onClick={() => invokeAction('interaction-mode-trim', undefined, 'toolbar')} />
+        <TB
+          icon="swap"
+          title={t('滑移模式 (U)：保持时间线位置和时长，仅拖动源素材区间')}
+          active={editMode === 'slip'}
+          onClick={() => invokeAction('interaction-mode-slip', undefined, 'toolbar')}
+        />
         <TB
           icon="rateStretch"
           title={editMode === 'rate-stretch'

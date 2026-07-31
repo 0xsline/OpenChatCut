@@ -1,4 +1,10 @@
 import { downloadBlob } from './exportFiles';
+import {
+  createExportFailure,
+  exportFailureFrom,
+  ExportFailureError,
+  isExportFailure,
+} from './exportFailure';
 
 type ExportPermissionState = 'granted' | 'denied' | 'prompt';
 type ExportPermissionDescriptor = { mode: 'readwrite' };
@@ -65,6 +71,13 @@ export const DEFAULT_EXPORT_DESTINATION: ExportDestination = Object.freeze({
   type: 'downloads',
   label: '浏览器下载目录',
 });
+
+export function exportDestinationTargetPath(destination: ExportDestination, filename: string): string {
+  const target = checkedDestination(destination);
+  const safeName = checkedFilename(filename);
+  if (target.type === 'browser-file') return target.handle.name;
+  return `${target.label.replace(/[\\/]$/, '')}/${safeName}`;
+}
 const DATABASE_NAME = 'openchatcut-export-destinations';
 const STORE_NAME = 'destinations';
 const LAST_BROWSER_DIRECTORY_KEY = 'last-browser-directory';
@@ -244,10 +257,17 @@ async function restoredBrowserDestination(): Promise<ExportDestination | null> {
 
 async function ensureBrowserWritePermission(
   handle: BrowserExportDirectoryHandle | BrowserExportFileHandle,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   const current = await handle.queryPermission(DIRECTORY_PERMISSION);
+  signal?.throwIfAborted();
   if (current === 'granted') return;
-  if (current === 'prompt' && await handle.requestPermission(DIRECTORY_PERMISSION) === 'granted') return;
+  if (current === 'prompt') {
+    const requested = await handle.requestPermission(DIRECTORY_PERMISSION);
+    signal?.throwIfAborted();
+    if (requested === 'granted') return;
+  }
   throw new ExportDestinationError('没有所选导出目录的写入权限，请重新选择目录');
 }
 
@@ -322,11 +342,31 @@ function safeSourceUrl(sourceUrl: unknown): string {
 async function browserWritable(
   handle: BrowserExportDirectoryHandle | BrowserExportFileHandle,
   filename: string,
+  signal?: AbortSignal,
 ): Promise<BrowserExportWritable> {
-  await ensureBrowserWritePermission(handle);
-  if (handle.kind === 'file') return handle.createWritable();
+  signal?.throwIfAborted();
+  await ensureBrowserWritePermission(handle, signal);
+  signal?.throwIfAborted();
+  if (handle.kind === 'file') {
+    const writable = await handle.createWritable();
+    try {
+      signal?.throwIfAborted();
+      return writable;
+    } catch (error) {
+      await writable.abort?.(error).catch(() => undefined);
+      throw error;
+    }
+  }
   const file = await handle.getFileHandle(filename, { create: true });
-  return file.createWritable();
+  signal?.throwIfAborted();
+  const writable = await file.createWritable();
+  try {
+    signal?.throwIfAborted();
+    return writable;
+  } catch (error) {
+    await writable.abort?.(error).catch(() => undefined);
+    throw error;
+  }
 }
 
 function desktopWriteError(status: number): ExportDestinationError {
@@ -344,13 +384,22 @@ async function putDesktopBody(
   destination: Extract<ExportDestination, { type: 'desktop-directory' }>,
   filename: string,
   body: Blob | ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
 ): Promise<void> {
-  const init: RequestInit & { duplex?: 'half' } = { method: 'PUT', body };
+  signal?.throwIfAborted();
+  const init: RequestInit & { duplex?: 'half' } = { method: 'PUT', body, signal };
   if (body instanceof ReadableStream) init.duplex = 'half';
   const endpoint = `/api/export-destinations/${encodeURIComponent(destination.grantId)}/${encodeURIComponent(filename)}`;
   const response = await fetch(endpoint, init);
   if (response.ok) return;
+  signal?.throwIfAborted();
+  const payload: unknown = await response.json().catch(() => null);
+  signal?.throwIfAborted();
+  if (payload && typeof payload === 'object' && 'failure' in payload && isExportFailure(payload.failure)) {
+    throw new ExportFailureError(payload.failure);
+  }
   await response.body?.cancel().catch(() => undefined);
+  signal?.throwIfAborted();
   throw desktopWriteError(response.status);
 }
 
@@ -358,14 +407,28 @@ async function writeBrowserBlob(
   handle: BrowserExportDirectoryHandle | BrowserExportFileHandle,
   filename: string,
   blob: Blob,
+  signal?: AbortSignal,
 ): Promise<void> {
-  const writable = await browserWritable(handle, filename);
+  signal?.throwIfAborted();
+  const writable = await browserWritable(handle, filename, signal);
+  let abortPromise: Promise<void> | null = null;
+  const abortWrite = (reason: unknown): Promise<void> => {
+    abortPromise ??= writable.abort?.(reason).catch(() => undefined) ?? Promise.resolve();
+    return abortPromise;
+  };
+  const onAbort = () => { void abortWrite(signal?.reason); };
+  signal?.addEventListener('abort', onAbort, { once: true });
   try {
+    signal?.throwIfAborted();
     await writable.write(blob);
+    signal?.throwIfAborted();
     await writable.close();
   } catch (error) {
-    await writable.abort?.(error).catch(() => undefined);
+    await abortWrite(error);
+    signal?.throwIfAborted();
     throw error;
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
   }
 }
 
@@ -373,58 +436,132 @@ async function writeBrowserResponse(
   handle: BrowserExportDirectoryHandle | BrowserExportFileHandle,
   filename: string,
   response: Response,
+  signal?: AbortSignal,
 ): Promise<void> {
-  const writable = await browserWritable(handle, filename);
-  if (!response.body) {
+  signal?.throwIfAborted();
+  const writable = await browserWritable(handle, filename, signal);
+  const reader = response.body?.getReader();
+  let abortPromise: Promise<void> | null = null;
+  const abortWrite = (reason: unknown): Promise<void> => {
+    abortPromise ??= Promise.all([
+      reader?.cancel(reason).catch(() => undefined),
+      writable.abort?.(reason).catch(() => undefined),
+    ]).then(() => undefined);
+    return abortPromise;
+  };
+  const onAbort = () => { void abortWrite(signal?.reason); };
+  signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    signal?.throwIfAborted();
+    if (reader) {
+      while (true) {
+        signal?.throwIfAborted();
+        const chunk = await reader.read();
+        signal?.throwIfAborted();
+        if (chunk.done) break;
+        await writable.write(chunk.value);
+        signal?.throwIfAborted();
+      }
+    }
+    signal?.throwIfAborted();
     await writable.close();
-    return;
+  } catch (error) {
+    await abortWrite(error);
+    signal?.throwIfAborted();
+    throw error;
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+    reader?.releaseLock();
   }
-  await response.body.pipeTo(writable as unknown as WritableStream<Uint8Array>);
+}
+
+function destinationWriteFailure(error: unknown, targetPath: string): ExportFailureError {
+  const existing = exportFailureFrom(error);
+  if (existing) return new ExportFailureError(existing);
+  return new ExportFailureError(createExportFailure({
+    stage: 'destination',
+    code: 'export_destination_write_failed',
+    retryable: true,
+    targetPath,
+    message: error instanceof Error ? error.message : String(error),
+  }));
 }
 
 export async function writeBlobToDestination(
   destination: ExportDestination,
   filename: string,
   blob: Blob,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   const target = checkedDestination(destination);
   const safeName = checkedFilename(filename);
-  if (!(blob instanceof Blob)) throw new ExportDestinationError('导出文件内容无效');
-  if (target.type === 'downloads') {
-    downloadBlob(blob, safeName);
-    return;
+  const targetPath = exportDestinationTargetPath(target, safeName);
+  try {
+    signal?.throwIfAborted();
+    if (!(blob instanceof Blob)) throw new ExportDestinationError('导出文件内容无效');
+    if (target.type === 'downloads') {
+      signal?.throwIfAborted();
+      downloadBlob(blob, safeName);
+      return;
+    }
+    if (target.type === 'browser-directory' || target.type === 'browser-file') {
+      await writeBrowserBlob(target.handle, safeName, blob, signal);
+      return;
+    }
+    await putDesktopBody(target, safeName, blob, signal);
+  } catch (error) {
+    signal?.throwIfAborted();
+    throw destinationWriteFailure(error, targetPath);
   }
-  if (target.type === 'browser-directory' || target.type === 'browser-file') {
-    await writeBrowserBlob(target.handle, safeName, blob);
-    return;
-  }
-  await putDesktopBody(target, safeName, blob);
 }
 
 export async function writeUrlToDestination(
   destination: ExportDestination,
   filename: string,
   sourceUrl: string,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   const target = checkedDestination(destination);
   const safeName = checkedFilename(filename);
-  const response = await fetch(safeSourceUrl(sourceUrl));
+  const targetPath = exportDestinationTargetPath(target, safeName);
+  let response: Response;
+  try {
+    signal?.throwIfAborted();
+    response = await fetch(safeSourceUrl(sourceUrl), signal ? { signal } : undefined);
+    signal?.throwIfAborted();
+  } catch (error) {
+    signal?.throwIfAborted();
+    throw destinationWriteFailure(error, targetPath);
+  }
   if (!response.ok) {
     await response.body?.cancel().catch(() => undefined);
-    throw new ExportDestinationError('读取导出文件失败（HTTP {status}）', { status: response.status });
+    signal?.throwIfAborted();
+    throw new ExportFailureError(createExportFailure({
+      stage: 'destination',
+      code: 'export_source_read_failed',
+      retryable: response.status >= 500,
+      targetPath,
+      message: `读取导出文件失败（HTTP ${response.status}）`,
+    }));
   }
   try {
+    signal?.throwIfAborted();
     if (target.type === 'browser-directory' || target.type === 'browser-file') {
-      await writeBrowserResponse(target.handle, safeName, response);
+      await writeBrowserResponse(target.handle, safeName, response, signal);
       return;
     }
     if (target.type === 'desktop-directory') {
-      await putDesktopBody(target, safeName, response.body ?? new Blob());
+      await putDesktopBody(target, safeName, response.body ?? new Blob(), signal);
       return;
     }
-    downloadBlob(await response.blob(), safeName);
+    const blob = await response.blob();
+    signal?.throwIfAborted();
+    downloadBlob(blob, safeName);
   } catch (error) {
     await response.body?.cancel().catch(() => undefined);
-    throw error;
+    signal?.throwIfAborted();
+    throw destinationWriteFailure(error, targetPath);
   }
 }

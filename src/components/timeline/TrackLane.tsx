@@ -12,11 +12,14 @@ import {
 import { upsertKeyframe } from '../../editor/keyframes';
 import { getKeyframePropertyDefinition } from '../../editor/keyframeRegistry';
 import { rateStretchGeometry } from '../../editor/rateStretch';
+import { sourceWindowForTimelineRange } from '../../editor/sourceLimit';
+import { planSlip } from '../../editor/slip';
 import type { EditorCommands } from '../../editor/store';
 import { hasLibraryDrag, parseLibraryDrag, type LibraryDragPayload } from '../../library/drag';
 import { ALL_FX, FX_EFFECTS, LUT_EFFECTS } from '../../gl/fx/effects';
 import { ZOOM_SHAPE_LABELS } from '../../editor/types';
 import { useT } from '../../i18n/locale';
+import { hasOperationalTranscript } from '../../transcript/types';
 import {
   CLIP_COLOR, intersectFrameRange, visibleTimelineItems, waveformPath,
   type EditMode, type TimelineFrameWindow, type TimelineIndexes,
@@ -109,6 +112,8 @@ interface TrackLaneProps {
   setLibDropTarget: Dispatch<SetStateAction<string | null>>;
   applyLibraryToClip: (payload: LibraryDragPayload, item: TimelineItem) => boolean;
   applyLibraryToTrack: (payload: LibraryDragPayload, trackId: TrackId, startFrame: number) => boolean;
+  rippleOnDrop: boolean;
+  overwriteOnDrop: boolean;
   frameFromClientX: (clientX: number) => number;
   onContextMenu: (menu: { id: string; x: number; y: number }) => void;
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -117,7 +122,7 @@ interface TrackLaneProps {
 export function TrackLane({
   trackId, state, commands, pointer, editMode, pickMode, locked, hidden, px, rowHeight,
   visibleWindow, pinnedItemIds, indexes, libDropTarget, setLibDropTarget,
-  applyLibraryToClip, applyLibraryToTrack, frameFromClientX, onContextMenu, scrollRef,
+  applyLibraryToClip, applyLibraryToTrack, rippleOnDrop, overwriteOnDrop, frameFromClientX, onContextMenu, scrollRef,
 }: TrackLaneProps) {
   const t = useT();
   const { drag, penDrag, setPenDrag, startDrag, startPick, startMarquee } = pointer;
@@ -176,7 +181,12 @@ export function TrackLane({
           e.stopPropagation();
           const asset = (state.assets ?? []).find((item) => item.id === mediaAssetId);
           if (!locked && asset && canDropMediaAsset(asset, laneKind)) {
-            commands.addMediaItem(asset, { track: trackId, startFrame: frameFromClientX(e.clientX) });
+            commands.addMediaItem(asset, {
+              track: trackId,
+              startFrame: frameFromClientX(e.clientX),
+              ripple: rippleOnDrop,
+              overwrite: overwriteOnDrop,
+            });
           }
           return;
         }
@@ -203,28 +213,48 @@ export function TrackLane({
         const stretchEdge = drag?.mode === 'trim-left' ? 'left' : drag?.mode === 'trim-right' ? 'right' : null;
         const stretch = editMode === 'rate-stretch' && drag?.id === it.id && stretchEdge
           ? rateStretchGeometry(it, stretchEdge, drag.deltaF) : null;
-        const start = stretch?.startFrame ?? (it.startFrame + (dragging && drag && drag.mode !== 'trim-right' ? drag.deltaF : 0));
+        const start = stretch?.startFrame ?? (it.startFrame + (dragging && drag && (drag.mode === 'move' || drag.mode === 'trim-left') ? drag.deltaF : 0));
         const durTrim = drag?.id === it.id && drag.mode === 'trim-left' ? -drag.deltaF
           : drag?.id === it.id && drag.mode === 'trim-right' ? drag.deltaF : 0;
         const dur = stretch?.durationInFrames ?? Math.max(1, it.durationInFrames + durTrim);
         const mediaIntersection = intersectFrameRange(start, dur, visibleWindow);
-        const renderSrcIn = (it.srcInFrame ?? 0)
-          + (drag?.id === it.id && drag.mode === 'trim-left' && !stretch ? drag.deltaF : 0);
+        const liveSlip = drag?.id === it.id && drag.mode === 'slip'
+          ? planSlip(state, it.id, drag.deltaF)
+          : null;
+        const renderSrcIn = liveSlip?.ok
+          ? liveSlip.srcInFrame
+          : drag?.id === it.id && drag.mode === 'trim-left' && !stretch
+            ? sourceWindowForTimelineRange(
+                it.kind === 'audio' && hasOperationalTranscript(it) ? { ...it, playbackRate: 1 } : it,
+                drag.deltaF,
+                dur,
+              ).startFrame
+            : it.srcInFrame ?? 0;
         const renderPlaybackRate = stretch?.playbackRate ?? (it.playbackRate ?? 1);
         const canRateStretch = it.kind === 'video' || it.kind === 'audio';
-        const showHandles = !pickMode && editMode !== 'blade' && editMode !== 'pen'
+        const canSlip = it.kind === 'video' || it.kind === 'audio';
+        const showHandles = !pickMode && editMode !== 'blade' && editMode !== 'pen' && editMode !== 'slip'
           && (editMode !== 'rate-stretch' || canRateStretch);
         const isLibOver = libDropTarget === it.id;
         return (
           <div
             key={it.id}
             className={`cc-timeline-clip${selected ? ' is-selected' : ''}${isLibOver ? ' is-library-over' : ''}`}
-            title={it.name}
+            title={editMode === 'slip' && !canSlip ? t('此类型没有可滑移的源区间') : it.name}
             data-clip-kind={it.kind}
             onPointerDown={(e) => {
               if (pickMode) { // selection mode: click → item ref, drag → timerange (no editing)
                 commands.selectItem(it.id);
                 startPick(e, 'clip', it);
+                return;
+              }
+              if (editMode === 'slip') {
+                const availability = canSlip ? planSlip(state, it.id, 0) : null;
+                if (availability?.ok) startDrag(e, it.id, 'slip', it.startFrame, it.durationInFrames, it.track, it.srcInFrame ?? 0);
+                else {
+                  e.stopPropagation();
+                  commands.selectItem(it.id);
+                }
                 return;
               }
               if (editMode === 'blade') { // blade mode: click cuts the clip here
@@ -287,7 +317,7 @@ export function TrackLane({
               display: 'flex', alignItems: 'flex-end', padding: '0 8px 5px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
               transform: dragging && dragOffsetY ? `translate3d(0, ${dragOffsetY}px, 0)` : undefined,
               zIndex: dragging ? 10 : undefined,
-              cursor: pickMode ? 'copy' : locked ? 'not-allowed' : editMode === 'blade' || editMode === 'pen' ? 'crosshair' : 'grab', userSelect: 'none', touchAction: 'none',
+              cursor: pickMode ? 'copy' : locked ? 'not-allowed' : editMode === 'slip' ? canSlip ? 'ew-resize' : 'not-allowed' : editMode === 'blade' || editMode === 'pen' ? 'crosshair' : 'grab', userSelect: 'none', touchAction: 'none',
             }}
           >
             {(it.kind === 'audio' || it.kind === 'video') && (

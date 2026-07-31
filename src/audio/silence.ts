@@ -1,11 +1,19 @@
-// Silent dead air detection core (remove_silence). The naming style is the same as loudness (pure function + browser-specific split).
+// Conservative silence-removal core. RMS only proposes acoustically quiet
+// candidates; it never decides speech/non-speech. Destructive removal requires
+// feature-gated, revision-bound VAD evidence with sufficient confidence.
 //
-// Detection semantics:
-// Dead air = Continuous non-speech segments whose level is significantly lower than "the level of this recording's own speech".
-// The reference level takes the high decile of the window RMS (default P90), threshold = reference + thresholdDb (default -26dB),
-// Add another absolute lower limit (-35dBFS): it is considered quiet if both are lower than it. Relative threshold ensures music bed/loud ambient sound
-// Not cut; if the reference itself is lower than -45dBFS, it will be regarded as "the entire segment has no voice", and the segment will not be output directly.
-// Leave padMs breathing ports on each boundary, and the gap shorter than minSilenceMs will not move.
+// The RMS reference uses the recording's high-decile level plus an absolute
+// ceiling, then applies minimum duration and boundary padding. Music, applause,
+// room tone, and low speech remain protected whenever VAD is missing or unsure.
+
+import { sourceRevisionOf } from '../editor/mediaSourceRevision';
+import {
+  obtainVadEvidence,
+  removableSilenceFromEvidence,
+  vadSilenceRemovalEnabled,
+  VAD_MODEL,
+  VAD_MODEL_VERSION,
+} from './vad';
 
 // ── Pure function (node-testable) ────────────────────────────────────────────
 
@@ -16,12 +24,20 @@ export interface SilenceSpan {
 }
 
 export interface SilenceParams {
-  /** Silence threshold relative to speech reference level (dB, default -26; more negative = more conservative) */
+  /** Silence threshold relative to the recording's RMS reference (dB, default -26; more negative = more conservative) */
   thresholdDb?: number;
   /** Only delete static segments that are at least this long (ms, default 600) */
   minSilenceMs?: number;
   /** Breathing ports reserved on each side (ms, default 150) */
   padMs?: number;
+}
+
+export interface SilenceAnalysisContext {
+  assetId?: string;
+  sourceRevision?: string;
+  vadThreshold?: number;
+  featureEnabled?: boolean;
+  signal?: AbortSignal;
 }
 
 export const SILENCE_DEFAULTS: Required<SilenceParams> = {
@@ -30,8 +46,8 @@ export const SILENCE_DEFAULTS: Required<SilenceParams> = {
   padMs: 150,
 };
 
-/** The lower limit (dBFS) when there is no credible voice reference for the entire recording. */
-const SPEECH_FLOOR_DB = -45;
+/** Below this dBFS reference the whole recording lacks enough acoustic evidence to classify. */
+const SIGNAL_REFERENCE_FLOOR_DB = -45;
 /** The absolute upper limit of static determination (dBFS) outside the relative threshold: no matter how "relatively low" it is, anything above it is not considered static. */
 const ABSOLUTE_SILENCE_DB = -35;
 
@@ -69,9 +85,9 @@ export function detectSilentSpans(
   const minSilenceMs = params.minSilenceMs ?? SILENCE_DEFAULTS.minSilenceMs;
   const padMs = params.padMs ?? SILENCE_DEFAULTS.padMs;
 
-  const speechRefDb = percentileDb(env, 0.9);
-  if (speechRefDb < SPEECH_FLOOR_DB) return []; // There is no voice reference in the entire paragraph (pure silence/pure noise) → no movement
-  const gateDb = Math.min(speechRefDb + thresholdDb, ABSOLUTE_SILENCE_DB);
+  const signalReferenceDb = percentileDb(env, 0.9);
+  if (signalReferenceDb < SIGNAL_REFERENCE_FLOOR_DB) return [];
+  const gateDb = Math.min(signalReferenceDb + thresholdDb, ABSOLUTE_SILENCE_DB);
 
   const spans: SilenceSpan[] = [];
   let runStart = -1;
@@ -105,13 +121,39 @@ function mixToMono(buffer: AudioBuffer): Float32Array {
 
 const ENVELOPE_WINDOW_MS = 50;
 
-/** Pull source → offline decoding → mix mono → envelope → silent interval (source milliseconds). Browser only. */
-export async function analyzeClipSilence(src: string, params: SilenceParams = {}): Promise<SilenceSpan[]> {
-  const res = await fetch(src);
+/**
+ * Pull source → decode → RMS quiet candidates → VAD evidence intersection.
+ * The destructive result is empty unless the feature flag is enabled and
+ * confident model evidence exists; RMS alone never claims speech/non-speech.
+ */
+export async function analyzeClipSilence(
+  src: string,
+  params: SilenceParams = {},
+  context: SilenceAnalysisContext = {},
+): Promise<SilenceSpan[]> {
+  const featureEnabled = context.featureEnabled ?? vadSilenceRemovalEnabled();
+  if (!featureEnabled) return [];
+  const res = await fetch(src, { signal: context.signal });
   if (!res.ok) throw new Error(`加载音频失败: ${src} (HTTP ${res.status})`);
   const arrayBuffer = await res.arrayBuffer();
-  const ctx = new OfflineAudioContext(1, 1, 44100);
-  const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-  const env = rmsEnvelope(mixToMono(audioBuffer), audioBuffer.sampleRate, ENVELOPE_WINDOW_MS);
-  return detectSilentSpans(env, ENVELOPE_WINDOW_MS, params);
+  const audioContext = new OfflineAudioContext(1, 1, 44100);
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+  const samples = mixToMono(audioBuffer);
+  const rmsQuiet = detectSilentSpans(
+    rmsEnvelope(samples, audioBuffer.sampleRate, ENVELOPE_WINDOW_MS),
+    ENVELOPE_WINDOW_MS,
+    params,
+  );
+  const sourceRevision = context.sourceRevision ?? sourceRevisionOf({ src });
+  const evidence = await obtainVadEvidence({
+    assetId: context.assetId ?? `source:${sourceRevision}`,
+    sourceRevision,
+    model: VAD_MODEL,
+    modelVersion: VAD_MODEL_VERSION,
+    threshold: Math.max(0, Math.min(1, context.vadThreshold ?? 0.5)),
+  }, samples, audioBuffer.sampleRate, context.signal);
+  return removableSilenceFromEvidence(rmsQuiet, evidence, {
+    featureEnabled,
+    speechPaddingMs: params.padMs,
+  });
 }

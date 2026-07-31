@@ -1,17 +1,24 @@
 import type { AgentContext } from '../context';
 import type { MediaAsset, TimelineState } from '../../editor/types';
 import { submitImage } from '../../generate/image';
-import { submitMusic } from '../../generate/music';
+import { submitMusic, type MusicGenerationSubmission } from '../../generate/music';
 import { submitSound } from '../../generate/sound';
 import { submitSubtitleExport, type SubmitSubtitleExportArgs } from '../../generate/subtitles';
 import { submitMediaExport, type SubmitMediaExportArgs } from '../../generate/media-export';
 import { trackGenerationProgress } from '../../generate/progress';
-import { submitVideo } from '../../generate/video';
+import { submitVideo, type VideoGenerationSubmission } from '../../generate/video';
 import { submitVoice } from '../../generate/voice';
 import { timelineToFcpxml, type NleFormat } from '../../export/fcpxml';
 import { exportMediaDir } from '../../export/mediaDir';
 import { recordExport } from '../../persist/exportHistoryStore';
-import { cacheMediaFromUrl, patchTrackedJob, registerTrackedJob } from '../../persist/jobRegistryStore';
+import {
+  applyGenerationJobReports,
+  cacheMediaFromUrl,
+  registerTrackedJob,
+  patchTrackedJob,
+  resolveTrackedJobForProject,
+  type GenerationRetryClass,
+} from '../../persist/jobRegistryStore';
 import { fontFallbackGate } from './font-tools';
 import {
   buildSubmitImageArgs,
@@ -29,6 +36,10 @@ const safe = (handler: Handler): Handler => async (args, ctx) => {
   try {
     return await handler(args, ctx);
   } catch (error) {
+    if (error instanceof Error && 'code' in error) {
+      const structured = error as Error & { code: unknown; issues?: unknown };
+      return { error: structured.message, code: structured.code, issues: structured.issues };
+    }
     return { error: error instanceof Error ? error.message : String(error) };
   }
 };
@@ -67,27 +78,153 @@ const submitSoundHandler: Handler = async (args, ctx) => {
   return { ok: true, assetId: asset.id, name: asset.name, src: asset.src, durationInFrames: asset.durationInFrames, addedTo: 'media-pool' };
 };
 
-function trackSubmission(ctx: AgentContext, jobId: string, status: 'queued', label: string, params: Record<string, unknown>): void {
+async function registerSubmissionIntent(
+  ctx: AgentContext,
+  operationId: string,
+  toolName: 'submit_music' | 'submit_video',
+  label: string,
+  submitArgs: Record<string, unknown>,
+  provider?: string,
+  model?: string,
+): Promise<void> {
   const projectId = ctx.getProjectId?.();
   if (!projectId) return;
-  void registerTrackedJob({ jobId, projectId, kind: 'generation', label, status, params });
+  const now = Date.now();
+  await registerTrackedJob({
+    operationId,
+    jobId: operationId,
+    projectId,
+    kind: 'generation',
+    label,
+    status: 'submitting',
+    toolName,
+    submitArgs,
+    provider,
+    model,
+    retryClass: 'none',
+    timestamps: { submittedAt: now },
+  });
+}
+
+function retryClassForSubmissionError(error: unknown): GenerationRetryClass {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\b(?:408|409|425|429|5\d\d)\b|network|fetch|timeout|temporar|unavailable/i.test(message)
+    ? 'provider-retryable'
+    : 'provider-terminal';
+}
+
+async function recordSubmissionFailure(
+  ctx: AgentContext,
+  operationId: string,
+  error: unknown,
+): Promise<GenerationRetryClass> {
+  const retryClass = retryClassForSubmissionError(error);
+  const projectId = ctx.getProjectId?.();
+  if (!projectId) return retryClass;
+  await patchTrackedJob(projectId, operationId, {
+    status: 'failed',
+    error: error instanceof Error ? error.message : String(error),
+    retryClass,
+    releaseIdempotencyKey: retryClass === 'provider-terminal',
+    timestamps: { failedAt: Date.now() },
+  });
+  return retryClass;
+}
+
+async function trackSubmission(
+  ctx: AgentContext,
+  submission: {
+    operationId: string;
+    jobId: string;
+    status: 'queued';
+    provider?: string;
+    providerTaskId?: string;
+    acceptedAt?: number;
+    sourceRevisions?: string[];
+  },
+  label: string,
+  toolName: 'submit_music' | 'submit_video',
+  submitArgs: Record<string, unknown>,
+  model?: string,
+): Promise<void> {
+  const projectId = ctx.getProjectId?.();
+  if (!projectId) return;
+  const now = Date.now();
+  await registerTrackedJob({
+    operationId: submission.operationId,
+    jobId: submission.jobId,
+    projectId,
+    kind: 'generation',
+    label,
+    status: submission.status,
+    toolName,
+    submitArgs,
+    provider: submission.provider,
+    model,
+    providerTaskId: submission.providerTaskId,
+    sourceRevisions: submission.sourceRevisions,
+    retryClass: 'none',
+    timestamps: { submittedAt: now, acceptedAt: submission.acceptedAt ?? now },
+  });
+}
+
+function submissionOperationId(args: GenerateArgs): string {
+  if (args.__rerunGeneration === true) return crypto.randomUUID();
+  if (typeof args.__operationId === 'string' && args.__operationId.trim()) return args.__operationId;
+  throw new Error('generation submission requires a reserved operation id');
 }
 
 const submitMusicHandler: Handler = async (args, ctx) => {
   const input = buildSubmitMusicArgs(args);
-  const submission = await submitMusic(input, ctx.getState());
-  trackSubmission(ctx, submission.jobId, submission.status, input.name || input.prompt?.slice(0, 80) || input.mode || 'music', {
-    tool: 'submit_music', prompt: input.prompt, provider: input.provider, mode: input.mode,
-  });
+  const operationId = submissionOperationId(args);
+  const submitArgs: Record<string, unknown> = { ...input };
+  const label = input.name || input.prompt?.slice(0, 80) || input.mode || 'music';
+  await registerSubmissionIntent(ctx, operationId, 'submit_music', label, submitArgs, input.provider, input.provider);
+  let submission: MusicGenerationSubmission;
+  try {
+    submission = await submitMusic({ ...input, operationId }, ctx.getState());
+  } catch (error) {
+    const retryClass = await recordSubmissionFailure(ctx, operationId, error);
+    if (retryClass === 'provider-retryable') {
+      return {
+        status: 'pending',
+        resumable: true,
+        operationId,
+        jobId: operationId,
+        retryClass,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+    throw error;
+  }
+  await trackSubmission(ctx, submission, label, 'submit_music', submitArgs, input.provider);
   return { ok: true, ...submission, next: `Call track_progress with target=generation and jobIds=${submission.jobId}.` };
 };
 
 const submitVideoHandler: Handler = async (args, ctx) => {
   const input = buildSubmitVideoArgs(args);
-  const submission = await submitVideo(input, ctx.getState());
-  trackSubmission(ctx, submission.jobId, submission.status, input.name || input.prompt?.slice(0, 80) || input.model, {
-    tool: 'submit_video', model: input.model, prompt: input.prompt,
-  });
+  const operationId = submissionOperationId(args);
+  const submitArgs: Record<string, unknown> = { ...input };
+  const label = input.name || input.prompt?.slice(0, 80) || input.model;
+  await registerSubmissionIntent(ctx, operationId, 'submit_video', label, submitArgs, input.model, input.model);
+  let submission: VideoGenerationSubmission;
+  try {
+    submission = await submitVideo({ ...input, operationId }, ctx.getState());
+  } catch (error) {
+    const retryClass = await recordSubmissionFailure(ctx, operationId, error);
+    if (retryClass === 'provider-retryable') {
+      return {
+        status: 'pending',
+        resumable: true,
+        operationId,
+        jobId: operationId,
+        retryClass,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+    throw error;
+  }
+  await trackSubmission(ctx, submission, label, 'submit_video', submitArgs, input.model);
   return { ok: true, model: input.model, ...submission, next: `Call track_progress with target=generation and jobIds=${submission.jobId}.` };
 };
 
@@ -96,16 +233,13 @@ async function trackProgressHandler(args: GenerateArgs, ctx: AgentContext): Prom
   const action = args.action as 'params' | 'status' | 'wait' | 'resume';
   if (!['params', 'status', 'wait', 'resume'].includes(action)) return { error: 'action must be params, status, wait, or resume' };
   const jobIds = String(args.jobIds ?? '').split(',').map((id) => id.trim()).filter(Boolean);
+  const result = await trackGenerationProgress({
+    action,
+    jobIds,
+    timeoutSeconds: typeof args.timeoutSeconds === 'number' ? args.timeoutSeconds : undefined,
+  }, ctx.getState());
   const projectId = ctx.getProjectId?.();
-  if (projectId) for (const jobId of jobIds) void registerTrackedJob({ jobId, projectId, kind: 'generation', status: 'running' });
-  const result = await trackGenerationProgress({ action, jobIds, timeoutSeconds: typeof args.timeoutSeconds === 'number' ? args.timeoutSeconds : undefined }, ctx.getState());
-  if (projectId) {
-    for (const report of result.reports) {
-      void patchTrackedJob(projectId, report.jobId, {
-        status: report.status, error: report.error, resultPath: report.result?.path, resultAssetId: report.result?.assetId,
-      });
-    }
-  }
+  if (projectId) await applyGenerationJobReports(projectId, result.reports);
   result.completedAssets.forEach((asset) => addAsset(ctx, asset));
   return {
     ok: true, target: 'generation', action, reports: result.reports,
@@ -192,6 +326,37 @@ async function submitExportHandler(args: GenerateArgs, ctx: AgentContext): Promi
   return { error: 'format must be video, audio, subtitles, or xml' };
 }
 
+async function rerunGenerationHandler(args: GenerateArgs, ctx: AgentContext): Promise<unknown> {
+  const projectId = ctx.getProjectId?.();
+  if (!projectId) return { error: 'rerun_generation requires a persisted project id' };
+  const resolution = await resolveTrackedJobForProject(projectId, String(args.jobId ?? ''));
+  if (!resolution.ok) return {
+    error: resolution.message,
+    code: resolution.code,
+    candidates: resolution.candidates,
+  };
+  const original = resolution.job;
+  if (original.submitArgsVersion !== 1 || !original.submitArgs || !original.toolName) {
+    return {
+      error: `generation operation ${original.operationId} is a legacy summary-only snapshot and cannot be rerun safely`,
+      code: 'legacy_summary',
+    };
+  }
+  const rerunArgs: GenerateArgs = {
+    ...original.submitArgs,
+    __rerunGeneration: true,
+    __rerunOf: original.operationId,
+  };
+  const result = original.toolName === 'submit_video'
+    ? await submitVideoHandler(rerunArgs, ctx)
+    : original.toolName === 'submit_music'
+      ? await submitMusicHandler(rerunArgs, ctx)
+      : { error: `generation operation ${original.operationId} uses unsupported rerun tool ${original.toolName}` };
+  return result && typeof result === 'object' && !Array.isArray(result)
+    ? { ...(result as Record<string, unknown>), rerunOf: original.operationId }
+    : result;
+}
+
 const COMMANDS: Record<string, Handler> = {
   submit_image: safe(submitImageHandler),
   submit_voice: safe(submitVoiceHandler),
@@ -199,6 +364,7 @@ const COMMANDS: Record<string, Handler> = {
   submit_music: safe(submitMusicHandler),
   submit_video: safe(submitVideoHandler),
   track_progress: safe(trackProgressHandler),
+  rerun_generation: safe(rerunGenerationHandler),
   submit_export: safe(submitExportHandler),
 };
 

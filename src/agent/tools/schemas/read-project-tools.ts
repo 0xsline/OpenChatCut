@@ -4,9 +4,10 @@ export const READ_PROJECT_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'read_project',
     description: [
-      'View the project — tracks, timeline items, markers, media-pool folders, assets, and explicit offline-media status.',
-      'Default = full overview. Narrow with view:"timeline"|"assets", timelineId, track, fromFrame/toFrame, itemId, assetId.',
-      'Pass code:true with assetId to include MG source code.',
+      'Read the project currently targeted by this agent session, including draft state visible to the current tool context.',
+      'Default = full overview. Narrow with view:"timeline"|"assets", timelineId, track, fromFrame/toFrame, itemId, or assetId; projectId cannot retarget this call.',
+      'Unknown timeline/track references return an error. itemId/assetId are filters, so unmatched prefixes return empty item/asset arrays rather than an error.',
+      'Pass code:true with assetId to include MG source code. Read at session start or after out-of-band changes; between your own edits, apply mutation deltas unless a note requests a reread.',
     ].join(' '),
     input_schema: {
       type: 'object',
@@ -23,8 +24,9 @@ export const READ_PROJECT_TOOL_SCHEMAS: AgentToolSchema[] = [
         itemId: { type: 'string', description: 'Item id(s) or prefixes, comma-separated.' },
         assetId: { type: 'string', description: 'Asset id(s) or prefixes, comma-separated.' },
         code: { type: 'boolean', description: 'Include MG code when assetId is set.' },
-        projectId: { type: 'string', description: 'Ignored; the active project is used.' },
+        projectId: { type: 'string', description: 'Ignored. Use target_project first; this reads the project targeted by the current session.' },
       },
+      additionalProperties: false,
     },
   },
 ];

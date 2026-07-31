@@ -12,6 +12,9 @@ function canShareAudio(
   const previousAudio = previous.denoisedSrc || previous.src;
   const nextAudio = next.denoisedSrc || next.src;
   if (!previousAudio || previousAudio !== nextAudio || previous.track !== next.track) return false;
+  if ((previous.denoisedSrc || next.denoisedSrc)
+    && (previous.src !== next.src
+      || (previous.denoiseStrength ?? 100) !== (next.denoiseStrength ?? 100))) return false;
   if (previous.startFrame + previous.durationInFrames !== next.startFrame) return false;
   if (Math.abs((previous.playbackRate ?? 1) - (next.playbackRate ?? 1)) > FRAME_EPSILON) return false;
   if (audioTransitionPairs.has(`${previous.id}:${next.id}`)) return false;

@@ -16,6 +16,8 @@ export interface MusicOptions {
 }
 
 export interface MusicRequest {
+  operationId?: string;
+  sourceRevisions?: string[];
   prompt?: string;
   name?: string;
   provider?: string;

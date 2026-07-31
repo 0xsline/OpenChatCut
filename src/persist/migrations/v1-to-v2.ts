@@ -1,5 +1,5 @@
-import { dedupeAssets, isDesignStyle, isProjectShape, normalizeFolders, stripTimelineAssets } from './normalize';
-import type { ProjectMigrationStep } from './types';
+import { dedupeAssets, isDesignStyle, isProjectShape, normalizeFolders, stripTimelineAssets } from './normalize.js';
+import type { ProjectMigrationStep } from './types.js';
 
 export const v1ToV2: ProjectMigrationStep = {
   id: 'v1-to-v2',

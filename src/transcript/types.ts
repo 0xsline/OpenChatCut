@@ -7,6 +7,18 @@ export interface TranscriptWord {
   speaker?: string | null; // 'A' | 'B' | ... when diarization is on
 }
 
+export interface TranscriptCarrier {
+  transcript?: TranscriptWord[];
+  transcriptStale?: boolean;
+}
+
+/** A retained stale transcript is review-only and must never drive playback or edits. */
+export function hasOperationalTranscript<T extends TranscriptCarrier>(
+  item: T | null | undefined,
+): item is T & { transcript: TranscriptWord[]; transcriptStale?: false } {
+  return !!item && item.transcriptStale !== true && Array.isArray(item.transcript) && item.transcript.length > 0;
+}
+
 /** One speaker turn (AssemblyAI utterance) = a "segment" in segment view. */
 export interface TranscriptUtterance {
   speaker: string;

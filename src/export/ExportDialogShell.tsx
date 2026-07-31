@@ -8,12 +8,11 @@ import type { ExportTab } from './useExportWorkflow';
 interface ExportDialogShellProps {
   base: string;
   state: TimelineState;
-  busy: boolean;
   onClose: () => void;
   children: ReactNode;
 }
 
-function ExportDialogHeader({ base, state, busy, onClose }: Omit<ExportDialogShellProps, 'children'>) {
+function ExportDialogHeader({ base, state, onClose }: Omit<ExportDialogShellProps, 'children'>) {
   const t = useT();
   return (
     <header className="cc-export-header">
@@ -21,16 +20,16 @@ function ExportDialogHeader({ base, state, busy, onClose }: Omit<ExportDialogShe
         <h2 id="cc-export-title">{t('导出')}</h2>
         <p>{base} · {state.width}×{state.height} · {state.fps} fps</p>
       </div>
-      <button type="button" className="cc-export-close" onClick={onClose} disabled={busy} title={t('关闭')}>
+      <button type="button" className="cc-export-close" onClick={onClose} title={t('关闭')}>
         <Icon name="x" size={16} />
       </button>
     </header>
   );
 }
 
-export function ExportDialogShell({ base, state, busy, onClose, children }: ExportDialogShellProps) {
+export function ExportDialogShell({ base, state, onClose, children }: ExportDialogShellProps) {
   return (
-    <div className="cc-export-overlay" onClick={busy ? undefined : onClose}>
+    <div className="cc-export-overlay" onClick={onClose}>
       <div
         className="cc-export-panel"
         role="dialog"
@@ -38,7 +37,7 @@ export function ExportDialogShell({ base, state, busy, onClose, children }: Expo
         aria-labelledby="cc-export-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <ExportDialogHeader base={base} state={state} busy={busy} onClose={onClose} />
+        <ExportDialogHeader base={base} state={state} onClose={onClose} />
         <div className="cc-export-layout">{children}</div>
       </div>
     </div>

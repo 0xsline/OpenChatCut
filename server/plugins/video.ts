@@ -1,7 +1,25 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
-import { createGenerationJob, type GenerationResult } from './generation-jobs.ts';
-import { mediaDataUrl, providerMediaUrl, saveImageUrl, saveVideo } from './video-media.ts';
+import {
+  createGenerationJob,
+  IncompleteGenerationResultError,
+  generationResultCheckpoint,
+  registerGenerationJobResumer,
+  waitForGenerationAcceptance,
+  requireGenerationResultUrls,
+  type GenerationJobSnapshot,
+  type GenerationResult,
+  type RegisterGenerationDownload,
+  type RegisterGenerationProviderTask,
+} from './generation-jobs.ts';
+import {
+  materializeVideoReferences,
+  mediaDataUrl,
+  providerMediaUrl,
+  saveImageUrl,
+  saveVideo,
+  ServerReferencePreflightError,
+} from './video-media.ts';
 import {
   hailuoApiResolution, seedanceApiResolution, validateVideoRequest, videoSeconds,
   type KlingVideoReferType, type ValidVideoRequest, type VideoRequest,
@@ -63,6 +81,10 @@ const wait = (milliseconds: number) => new Promise((resolvePromise) => setTimeou
 
 interface SeedanceResult { videoUrl: string; lastFrameUrl?: string }
 
+export function expectedVideoResultCount(input: Pick<ValidVideoRequest, 'model' | 'returnLastFrame'>): number {
+  return input.model === 'seedance2' && input.returnLastFrame ? 2 : 1;
+}
+
 export function seedanceRequestBody(
   input: ValidVideoRequest,
   model: string,
@@ -81,25 +103,37 @@ export function seedanceRequestBody(
   return body;
 }
 
-async function generateSeedance(input: ValidVideoRequest, options: VideoOptions): Promise<SeedanceResult> {
+async function generateSeedance(
+  input: ValidVideoRequest,
+  options: VideoOptions,
+  registerProviderTask: RegisterGenerationProviderTask,
+  existingTaskId?: string,
+): Promise<SeedanceResult> {
   if (!options.seedanceApiKey) throw new Error('Seedance generation is not configured. Set SEEDANCE_API_KEY in .env.local.');
-  const content: Array<Record<string, unknown>> = [{ type: 'text', text: input.prompt }];
-  if (input.firstFramePath) content.push({ type: 'image_url', image_url: { url: await mediaDataUrl(input.firstFramePath) }, role: 'first_frame' });
-  if (input.lastFramePath) content.push({ type: 'image_url', image_url: { url: await mediaDataUrl(input.lastFramePath) }, role: 'last_frame' });
-  for (const path of input.refImagePaths) content.push({ type: 'image_url', image_url: { url: await mediaDataUrl(path) }, role: 'reference_image' });
-  for (const path of input.refVideoPaths) content.push({ type: 'video_url', video_url: { url: await providerMediaUrl(path) }, role: 'reference_video' });
-  for (const path of input.refAudioPaths) content.push({ type: 'audio_url', audio_url: { url: await mediaDataUrl(path) }, role: 'reference_audio' });
   const baseUrl = options.seedanceBaseUrl.replace(/\/$/, '');
   const headers = { Authorization: `Bearer ${options.seedanceApiKey}`, 'Content-Type': 'application/json' };
-  const body = seedanceRequestBody(input, options.seedanceModel, content);
-  const task = await requestJson(`${baseUrl}/contents/generations/tasks`, {
-    method: 'POST', headers,
-    body: JSON.stringify(body),
-  });
-  const taskId = String(task.id ?? '');
-  if (!taskId) throw new Error('seedance2 did not return a task id');
+  let taskId = existingTaskId;
+  let current: Record<string, unknown>;
+  if (taskId) {
+    current = await requestJson(`${baseUrl}/contents/generations/tasks/${encodeURIComponent(taskId)}`, { headers });
+  } else {
+    const content: Array<Record<string, unknown>> = [{ type: 'text', text: input.prompt }];
+    if (input.firstFramePath) content.push({ type: 'image_url', image_url: { url: await mediaDataUrl(input.firstFramePath) }, role: 'first_frame' });
+    if (input.lastFramePath) content.push({ type: 'image_url', image_url: { url: await mediaDataUrl(input.lastFramePath) }, role: 'last_frame' });
+    for (const path of input.refImagePaths) content.push({ type: 'image_url', image_url: { url: await mediaDataUrl(path) }, role: 'reference_image' });
+    for (const path of input.refVideoPaths) content.push({ type: 'video_url', video_url: { url: await providerMediaUrl(path) }, role: 'reference_video' });
+    for (const path of input.refAudioPaths) content.push({ type: 'audio_url', audio_url: { url: await mediaDataUrl(path) }, role: 'reference_audio' });
+    current = await requestJson(`${baseUrl}/contents/generations/tasks`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(seedanceRequestBody(input, options.seedanceModel, content)),
+    });
+    taskId = String(current.id ?? '');
+    if (!taskId) throw new Error('seedance2 did not return a task id');
+    await registerProviderTask('seedance2', taskId);
+  }
+  if (!taskId) throw new Error('seedance2 provider task id is unavailable');
   const deadline = Date.now() + 10 * 60_000;
-  let current = task;
   while (Date.now() < deadline) {
     const status = String(current.status ?? '');
     if (status === 'succeeded') {
@@ -121,48 +155,61 @@ export function klingPrompt(prompt: string): string {
     .replace(/@(Video|视频)(\d+)/gi, '<<<video_$2>>>');
 }
 
-async function generateKling(input: ValidVideoRequest, options: VideoOptions): Promise<string> {
+async function generateKling(
+  input: ValidVideoRequest,
+  options: VideoOptions,
+  registerProviderTask: RegisterGenerationProviderTask,
+  existingTaskId?: string,
+): Promise<string> {
   if (!options.klingApiKey) throw new Error('Kling generation is not configured. Set KLING_API_KEY in .env.local.');
-  const imageList: Array<{ image_url: string; type?: 'first_frame' | 'end_frame' }> = [];
-  if (input.firstFramePath) imageList.push({ image_url: await mediaDataUrl(input.firstFramePath), type: 'first_frame' });
-  if (input.lastFramePath) imageList.push({ image_url: await mediaDataUrl(input.lastFramePath), type: 'end_frame' });
-  for (const path of input.refImagePaths) imageList.push({ image_url: await mediaDataUrl(path) });
-  // Omni video ref: feature (motion/camera/style) or base (edit source). At most one.
-  const referType: KlingVideoReferType = input.refVideoMode === 'base' ? 'base' : 'feature';
-  const videoList: Array<{ video_url: string; refer_type: KlingVideoReferType; keep_original_sound?: string }> = [];
-  for (const path of input.refVideoPaths) {
-    videoList.push({
-      video_url: await mediaDataUrl(path),
-      refer_type: referType,
-      // Base edit: keep source audio by default so dialogue/SFX survive when possible.
-      ...(referType === 'base' ? { keep_original_sound: 'yes' } : {}),
-    });
-  }
-  const mode = input.mode ?? (input.resolution === '1080p' ? 'pro' : 'std');
-  const body: Record<string, unknown> = {
-    model_name: options.klingModel,
-    prompt: input.shotType === 'customize' ? '' : klingPrompt(input.prompt),
-    mode,
-    aspect_ratio: input.ratio,
-    duration: String(input.durationSeconds),
-  };
-  if (imageList.length) body.image_list = imageList;
-  if (videoList.length) body.video_list = videoList;
-  if (input.shotType) {
-    body.multi_shot = true;
-    body.shot_type = input.shotType;
-  }
-  if (input.shotType === 'customize') {
-    body.multi_prompt = input.multiPrompts!.map((shot) => ({ index: shot.index, prompt: klingPrompt(shot.prompt), duration: String(videoSeconds(shot.duration, 0)) }));
-  }
   const baseUrl = options.klingBaseUrl.replace(/\/$/, '');
   const headers = { Authorization: `Bearer ${options.klingApiKey}`, 'Content-Type': 'application/json' };
-  const task = await requestJson(`${baseUrl}/v1/videos/omni-video`, { method: 'POST', headers, body: JSON.stringify(body) });
-  const data = task.data as Record<string, unknown> | undefined;
-  const taskId = String(data?.task_id ?? '');
-  if (!taskId) throw new Error('kling did not return a task id');
+  let taskId = existingTaskId;
+  let current: Record<string, unknown>;
+  if (taskId) {
+    current = await requestJson(`${baseUrl}/v1/videos/omni-video/${encodeURIComponent(taskId)}`, { headers });
+  } else {
+    const imageList: Array<{ image_url: string; type?: 'first_frame' | 'end_frame' }> = [];
+    if (input.firstFramePath) imageList.push({ image_url: await mediaDataUrl(input.firstFramePath), type: 'first_frame' });
+    if (input.lastFramePath) imageList.push({ image_url: await mediaDataUrl(input.lastFramePath), type: 'end_frame' });
+    for (const path of input.refImagePaths) imageList.push({ image_url: await mediaDataUrl(path) });
+    const referType: KlingVideoReferType = input.refVideoMode === 'base' ? 'base' : 'feature';
+    const videoList: Array<{ video_url: string; refer_type: KlingVideoReferType; keep_original_sound?: string }> = [];
+    for (const path of input.refVideoPaths) {
+      videoList.push({
+        video_url: await mediaDataUrl(path),
+        refer_type: referType,
+        ...(referType === 'base' ? { keep_original_sound: 'yes' } : {}),
+      });
+    }
+    const body: Record<string, unknown> = {
+      model_name: options.klingModel,
+      prompt: input.shotType === 'customize' ? '' : klingPrompt(input.prompt),
+      mode: input.mode ?? (input.resolution === '1080p' ? 'pro' : 'std'),
+      aspect_ratio: input.ratio,
+      duration: String(input.durationSeconds),
+    };
+    if (imageList.length) body.image_list = imageList;
+    if (videoList.length) body.video_list = videoList;
+    if (input.shotType) {
+      body.multi_shot = true;
+      body.shot_type = input.shotType;
+    }
+    if (input.shotType === 'customize') {
+      body.multi_prompt = input.multiPrompts!.map((shot) => ({
+        index: shot.index,
+        prompt: klingPrompt(shot.prompt),
+        duration: String(videoSeconds(shot.duration, 0)),
+      }));
+    }
+    current = await requestJson(`${baseUrl}/v1/videos/omni-video`, { method: 'POST', headers, body: JSON.stringify(body) });
+    const data = current.data as Record<string, unknown> | undefined;
+    taskId = String(data?.task_id ?? '');
+    if (!taskId) throw new Error('kling did not return a task id');
+    await registerProviderTask('kling', taskId);
+  }
+  if (!taskId) throw new Error('kling provider task id is unavailable');
   const deadline = Date.now() + 10 * 60_000;
-  let current = task;
   while (Date.now() < deadline) {
     const currentData = current.data as Record<string, unknown> | undefined;
     const status = String(currentData?.task_status ?? currentData?.status ?? '');
@@ -263,19 +310,28 @@ export function hailuoRequestBody(
   return body;
 }
 
-async function generateHailuo(input: ValidVideoRequest, options: VideoOptions): Promise<string> {
+async function generateHailuo(
+  input: ValidVideoRequest,
+  options: VideoOptions,
+  registerProviderTask: RegisterGenerationProviderTask,
+  existingTaskId?: string,
+): Promise<string> {
   if (!options.minimaxApiKey) throw new Error('MiniMax is not configured. Set MINIMAX_API_KEY in .env.local or 设置面板.');
   const baseUrl = options.minimaxBaseUrl.replace(/\/$/, '');
   const headers = { Authorization: `Bearer ${options.minimaxApiKey}`, 'Content-Type': 'application/json' };
-  const firstFrame = input.firstFramePath ? await mediaDataUrl(input.firstFramePath) : undefined;
-  const lastFrame = input.lastFramePath ? await mediaDataUrl(input.lastFramePath) : undefined;
-  const body = hailuoRequestBody(input, options.minimaxModel, firstFrame, lastFrame);
-  const submit = await minimaxJson(`${baseUrl}/v1/video_generation`, { method: 'POST', headers, body: JSON.stringify(body) });
-  const taskId = String(submit.data.task_id ?? '');
-  if (!taskId) throw new Error('hailuo did not return a task id');
+  let taskId = existingTaskId;
+  if (!taskId) {
+    const firstFrame = input.firstFramePath ? await mediaDataUrl(input.firstFramePath) : undefined;
+    const lastFrame = input.lastFramePath ? await mediaDataUrl(input.lastFramePath) : undefined;
+    const body = hailuoRequestBody(input, options.minimaxModel, firstFrame, lastFrame);
+    const submit = await minimaxJson(`${baseUrl}/v1/video_generation`, { method: 'POST', headers, body: JSON.stringify(body) });
+    taskId = String(submit.data.task_id ?? '');
+    if (!taskId) throw new Error('hailuo did not return a task id');
+    await registerProviderTask('hailuo', taskId);
+  }
   const deadline = Date.now() + 10 * 60_000;
   while (Date.now() < deadline) {
-    await wait(10_000);  // documented MiniMax polling interval
+    await wait(10_000);
     const poll = await minimaxJson(`${baseUrl}/v1/query/video_generation?task_id=${encodeURIComponent(taskId)}`, { headers });
     const status = String(poll.data.status ?? '');
     if (status === 'Success') {
@@ -304,40 +360,111 @@ async function saveVideoResults(
   }];
 }
 
+async function runVideoOperation(
+  operationId: string,
+  name: string,
+  input: ValidVideoRequest,
+  options: VideoOptions,
+  registerDownload: RegisterGenerationDownload,
+  registerProviderTask: RegisterGenerationProviderTask,
+  providerTaskId?: string,
+  storedResultUrls: readonly string[] = [],
+): Promise<GenerationResult | GenerationResult[]> {
+  const expectedResultCount = expectedVideoResultCount(input);
+  const checkpoint = generationResultCheckpoint(storedResultUrls, expectedResultCount, providerTaskId);
+  let urls = checkpoint.urls;
+  if (!checkpoint.complete) {
+    if (input.model === 'seedance2') {
+      const generated = await generateSeedance(input, options, registerProviderTask, providerTaskId);
+      if (input.returnLastFrame && !generated.lastFrameUrl) {
+        throw new IncompleteGenerationResultError(expectedResultCount, 1);
+      }
+      urls = requireGenerationResultUrls(
+        [generated.videoUrl, ...(generated.lastFrameUrl ? [generated.lastFrameUrl] : [])],
+        expectedResultCount,
+      );
+    } else {
+      const url = input.model === 'kling'
+        ? await generateKling(input, options, registerProviderTask, providerTaskId)
+        : await generateHailuo(input, options, registerProviderTask, providerTaskId);
+      urls = requireGenerationResultUrls([url], expectedResultCount);
+    }
+  }
+  urls = requireGenerationResultUrls(urls, expectedResultCount);
+  const download = () => saveVideoResults(
+    operationId,
+    name,
+    urls[0],
+    input.model === 'seedance2' && input.returnLastFrame ? urls[1] : undefined,
+  );
+  for (const [index, url] of urls.entries()) await registerDownload(url, download, index);
+  return download();
+}
+
 export function videoGenerationPlugin(options: VideoOptions): Plugin {
+  for (const provider of ['seedance2', 'kling', 'hailuo'] as const) {
+    registerGenerationJobResumer('submit_video', provider, async (
+      snapshot: GenerationJobSnapshot,
+      _update,
+      registerDownload,
+      registerProviderTask,
+    ) => {
+      const input = validate(snapshot.params as VideoRequest);
+      const name = snapshot.label
+        || String(input.name ?? '').trim()
+        || `Video · ${(input.prompt || input.multiPrompts?.[0]?.prompt || input.model).slice(0, 36)}`;
+      return runVideoOperation(
+        snapshot.operationId,
+        name,
+        input,
+        options,
+        registerDownload,
+        registerProviderTask,
+        snapshot.providerTaskId,
+        snapshot.resultUrls,
+      );
+    });
+  }
   return {
     name: 'openchatcut-video-generation',
     configureServer(server) {
       server.middlewares.use('/generate/video', async (req, res) => {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         try {
-          const input = validate(await readJson(req));
+          const raw = await readJson(req);
+          const input = validate(await materializeVideoReferences(raw));
           const name = String(input.name ?? '').trim() || `Video · ${(input.prompt || input.multiPrompts?.[0]?.prompt || input.model).slice(0, 36)}`;
-          const submission = createGenerationJob({
-            kind: 'video', model: input.model, name, prompt: input.prompt,
-            durationSeconds: input.durationSeconds, ratio: input.ratio,
-          }, async (jobId, _update, registerDownload): Promise<GenerationResult | GenerationResult[]> => {
-            if (input.model === 'seedance2') {
-              const generated = await generateSeedance(input, options);
-              if (input.returnLastFrame && !generated.lastFrameUrl) throw new Error('seedance2 did not return the requested last frame');
-              const download = () => saveVideoResults(
-                jobId, name, generated.videoUrl, input.returnLastFrame ? generated.lastFrameUrl : undefined,
-              );
-              registerDownload(generated.videoUrl, download);
-              return download();
-            }
-            const url = input.model === 'kling'
-              ? await generateKling(input, options)
-              : await generateHailuo(input, options);
-            const download = () => saveVideoResults(jobId, name, url);
-            registerDownload(url, download);
-            return download();
-          });
-          sendJson(res, 202, submission);
+          const submitArgs = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== 'operationId'));
+          const submission = await createGenerationJob(
+            { kind: 'video', ...input },
+            (operationId, _update, registerDownload, registerProviderTask) => runVideoOperation(
+              operationId,
+              name,
+              input,
+              options,
+              registerDownload,
+              registerProviderTask,
+            ),
+            {
+              operationId: raw.operationId,
+              provider: input.model,
+              toolName: 'submit_video',
+              label: name,
+              submitArgs,
+              sourceRevisions: input.sourceRevisions,
+              expectedResultCount: expectedVideoResultCount(input),
+            },
+          );
+          const accepted = await waitForGenerationAcceptance(submission.operationId);
+          sendJson(res, 202, { ...submission, ...accepted });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           server.config.logger.error(`[generate:video] ${message}`);
-          sendJson(res, 400, { error: message });
+          if (error instanceof ServerReferencePreflightError) {
+            sendJson(res, 400, { error: message, code: error.code, issues: error.issues });
+          } else {
+            sendJson(res, 400, { error: message });
+          }
         }
       });
     },

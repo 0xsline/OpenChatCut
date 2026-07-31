@@ -1,6 +1,7 @@
 import type { MediaAsset, TimelineState } from '../editor/types';
 
 export interface SubmitMusicArgs {
+  operationId?: string;
   prompt?: string;
   name?: string;
   provider?: 'mureka' | 'minimax';
@@ -34,14 +35,24 @@ export interface SubmitMusicArgs {
 }
 
 interface MusicResponse {
+  operationId?: string;
   jobId?: string;
   status?: 'queued';
+  provider?: string;
+  providerTaskId?: string;
+  acceptedAt?: number;
+  sourceRevisions?: string[];
   error?: string;
 }
 
 export interface MusicGenerationSubmission {
+  operationId: string;
   jobId: string;
   status: 'queued';
+  provider?: string;
+  providerTaskId?: string;
+  acceptedAt?: number;
+  sourceRevisions?: string[];
 }
 
 function resolveAsset(ref: string, state?: TimelineState, kind?: MediaAsset['kind']): MediaAsset {
@@ -64,10 +75,12 @@ function resolveAsset(ref: string, state?: TimelineState, kind?: MediaAsset['kin
 
 export async function submitMusic(args: SubmitMusicArgs, state?: TimelineState): Promise<MusicGenerationSubmission> {
   const prompt = args.prompt?.trim() ?? '';
-  const referenceAudioPath = args.referenceAssetId
-    ? resolveAsset(args.referenceAssetId, state, 'audio').src
-    : undefined;
+  const referenceAsset = args.referenceAssetId ? resolveAsset(args.referenceAssetId, state, 'audio') : undefined;
+  const referenceAudioPath = referenceAsset?.src;
   const sourceAsset = args.sourceAssetId ? resolveAsset(args.sourceAssetId, state) : undefined;
+  const sourceRevisions = [...new Set(
+    [referenceAsset?.sourceRevision, sourceAsset?.sourceRevision].filter((revision): revision is string => Boolean(revision)),
+  )];
   const response = await fetch('/generate/music', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -77,12 +90,21 @@ export async function submitMusic(args: SubmitMusicArgs, state?: TimelineState):
       referenceAudioPath,
       sourceAssetPath: sourceAsset?.src,
       sourceAssetKind: sourceAsset?.kind,
+      sourceRevisions,
       referenceAssetId: undefined,
       sourceAssetId: undefined,
     }),
   });
   const result = await response.json().catch(() => ({})) as MusicResponse;
   if (!response.ok) throw new Error(result.error ?? `music generation failed (${response.status})`);
-  if (!result.jobId || result.status !== 'queued') throw new Error('music generation returned an invalid job submission');
-  return { jobId: result.jobId, status: result.status };
+  if (!result.operationId || !result.jobId || result.status !== 'queued') throw new Error('music generation returned an invalid job submission');
+  return {
+    operationId: result.operationId,
+    jobId: result.jobId,
+    status: result.status,
+    provider: result.provider,
+    providerTaskId: result.providerTaskId,
+    acceptedAt: result.acceptedAt,
+    sourceRevisions: result.sourceRevisions ?? sourceRevisions,
+  };
 }

@@ -2,8 +2,8 @@ export { PROBE_TOOL_SCHEMAS, PROBE_TOOL_NAMES } from './schemas/probe-tools';
 // probe_media runs ffprobe in the e2b sandbox through the existing /e2b/run proxy.
 // It reads stream and format metadata to determine audio, fps, duration, dimensions,
 // and codec information. The agent probes before
-// finalize_uploaded_asset so it can pass an accurate hasAudioTrack — silent / no-audio
-// media then skips ASR, and fps/duration are exact.
+// finalize_uploaded_asset so it can pass measured hasAudioTrack/fps/duration metadata;
+// silent/no-audio media then skips ASR.
 import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
 
@@ -18,9 +18,11 @@ export interface ProbeResult {
   hasVideoTrack: boolean;
   videoCodec?: string;
   audioCodec?: string;
+  /** Explicit planning risks derived from probed metadata; empty means none detected by these checks. */
+  qualityRisks: string[];
 }
 
-/** ffprobe r_frame_rate is a rational string like "30/1" or "30000/1001" → 30 / 29.97. */
+/** Parse an ffprobe rational frame rate such as "30/1" or "30000/1001". */
 function parseFrameRate(...candidates: unknown[]): number | undefined {
   for (const raw of candidates) {
     if (typeof raw !== 'string' || !raw.includes('/')) continue;
@@ -40,15 +42,37 @@ export function parseProbe(json: unknown): ProbeResult {
   const video = streams.find((s) => s?.codec_type === 'video');
   const durRaw = data.format?.duration ?? video?.duration ?? audio?.duration;
   const duration = Number(durRaw);
+  const width = typeof video?.width === 'number' ? video.width : undefined;
+  const height = typeof video?.height === 'number' ? video.height : undefined;
+  const averageFps = parseFrameRate(video?.avg_frame_rate);
+  const nominalFps = parseFrameRate(video?.r_frame_rate);
+  const fps = averageFps ?? nominalFps;
+  const qualityRisks: string[] = [];
+  if (width !== undefined && height !== undefined && (width < 720 || height < 480)) {
+    qualityRisks.push(`low_resolution: ${width}x${height}; enlargement may look soft`);
+  }
+  if (audio && audio.channels === 1) {
+    qualityRisks.push('mono_audio: stereo delivery may need deliberate channel treatment');
+  }
+  if (Number.isFinite(duration) && duration > 0 && duration < 3) {
+    qualityRisks.push('very_short: source is under 3 seconds');
+  }
+  if (averageFps && nominalFps && Math.abs(averageFps - nominalFps) > 0.01) {
+    qualityRisks.push(`variable_frame_rate: nominal ${nominalFps}fps differs from average ${averageFps}fps`);
+  }
+  if (fps && fps < 20) {
+    qualityRisks.push(`low_frame_rate: ${fps}fps may look uneven in motion`);
+  }
   return {
     durationSeconds: Number.isFinite(duration) && duration > 0 ? duration : undefined,
-    width: typeof video?.width === 'number' ? video.width : undefined,
-    height: typeof video?.height === 'number' ? video.height : undefined,
-    fps: parseFrameRate(video?.r_frame_rate, video?.avg_frame_rate),
+    width,
+    height,
+    fps,
     hasAudioTrack: audio !== undefined,
     hasVideoTrack: video !== undefined,
     videoCodec: typeof video?.codec_name === 'string' ? video.codec_name : undefined,
     audioCodec: typeof audio?.codec_name === 'string' ? audio.codec_name : undefined,
+    qualityRisks,
   };
 }
 

@@ -1,10 +1,10 @@
 // Timeline domain model. Deliberately small — the shape the
 // agent tools operate on (items with frame positions on named tracks).
 
-import type { CaptionsData } from '../captions/types';
-import type { SerializableFxDef } from '../gl/fx/uniforms';
-import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
-import type { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
+import type { CaptionsData } from '../captions/types.js';
+import type { SerializableFxDef } from '../gl/fx/uniforms.js';
+import type { TranscriptWord, TranscriptVariant } from '../transcript/types.js';
+import type { CURRENT_PROJECT_VERSION } from '../../shared/project-version.js';
 
 /** Stable track id. Human aliases (C1/V1/A1/...) are derived from track order. */
 export type TrackId = string;
@@ -19,12 +19,37 @@ export type MediaAssetKind = 'video' | 'image' | 'audio' | 'motion-graphic' | 'g
  * asset marked "Transscription completed/failed"). Drives the media-pool badge + track_progress readiness. */
 export type AssetTranscribeStatus = 'running' | 'done' | 'failed';
 
+/** Exact frame rate used by source clocks (for example 30000/1001). */
+export interface RationalFrameRate {
+  numerator: number;
+  denominator: number;
+}
+
+/**
+ * Parsed source clock. `frameCount` is the normalized physical frame count;
+ * `dropFrame` records how the human-readable label was encoded.
+ */
+export interface SourceClockMetadata {
+  frameCount: number;
+  frameRate: RationalFrameRate;
+  dropFrame: boolean;
+}
+
 export interface MediaAsset {
   id: string;
   name: string;
   kind: MediaAssetKind;
   src: string; // same-origin path under /media/uploads
   durationInFrames: number;
+  /** Stable identity of the source bytes/representation used by derivatives. */
+  sourceRevision?: string;
+  /** File metadata used to deterministically derive sourceRevision when available. */
+  sourceSize?: number;
+  sourceModifiedAt?: number;
+  /** Embedded source timecode normalized at ingest. */
+  sourceTimecode?: SourceClockMetadata;
+  /** Capture-device clock normalized at ingest when source timecode is absent. */
+  captureClock?: SourceClockMetadata;
   width?: number;
   height?: number;
   code?: string;
@@ -36,6 +61,10 @@ export interface MediaAsset {
    * A clip created from this asset copies the transcript into item.transcript so
    * per-clip edits stay isolated from the asset master. Audio/video only. */
   transcript?: TranscriptWord[];
+  /** Source revision captured when the current transcript was committed. */
+  transcriptSourceRevision?: string;
+  /** The source changed after this transcript was produced; keep it for review. */
+  transcriptStale?: boolean;
   /** ingest ASR state; undefined = never transcribed (image/no-audio or pre-ingest). */
   transcribeStatus?: AssetTranscribeStatus;
   /** last ASR failure reason (transcribeStatus='failed'), for the pool badge tooltip. */
@@ -178,7 +207,7 @@ export interface TimelineItem {
   startFrame: number;
   durationInFrames: number;
   name: string;
-  kind: 'motion-graphic' | 'audio' | 'video' | 'image' | 'text' | 'gif' | 'svg' | 'solid';
+  kind: 'motion-graphic' | 'audio' | 'video' | 'image' | 'text' | 'gif' | 'svg' | 'solid' | 'sequence';
   // motion-graphic fields:
   templateId?: string;
   code?: string;
@@ -188,9 +217,16 @@ export interface TimelineItem {
   height?: number;
   // audio / video / image / gif / svg source:
   src?: string;
+  /** Revision copied from the pool asset when this clip was placed or relinked. */
+  sourceRevision?: string;
+  /** Nested sequence reference. Required when kind='sequence'; absent on legacy items. */
+  timelineId?: string;
+  /** Persistent multicam membership; copied by split so angle identity survives edits. */
+  multicamGroupId?: string;
+  multicamAngleId?: string;
   /** 0..1 playback volume (default 1) — audio + video */
   volume?: number;
-  /** source in-point (frames) for video/audio trimming — left-trim advances it */
+  /** source in-point (frames) for video/audio trimming or a nested sequence source window */
   srcInFrame?: number;
   /** fade in/out durations (frames): opacity ramp for visual clips, volume ramp
    * for audio (edit_item fade, stored in seconds → frames). */
@@ -208,12 +244,14 @@ export interface TimelineItem {
   zoom?: ZoomEffect;
   /** per-clip WebGL effect stack (effects[]: builtin:fx-* / lut) */
   effects?: ClipEffect[];
-  /** playback speed (variable speed/dH rate): 1 = normal, 2 = 2× faster. Retiming
-   * keeps the source span, so durationInFrames scales by 1/rate. video/audio only. */
+  /** Playback speed: 1 = normal, 2 = 2× faster. Retiming keeps the source span,
+   * so durationInFrames scales by 1/rate. Applies to video/audio/sequence items. */
   playbackRate?: number;
   /** transcript-based editing: the clip's words + which are deleted (by index).
    * durationInFrames reflects the EDITED length (kept words only). */
   transcript?: TranscriptWord[];
+  /** Relink preserved the transcript for review, but it no longer matches source bytes. */
+  transcriptStale?: boolean;
   deletedWordIdx?: number[];
   /** text-only translation / correction variants of `transcript`. Each keys words
    * by their SOURCE index and carries only text — timing always comes from the
@@ -245,6 +283,59 @@ export interface TimelineItem {
   denoisedSrc?: string | null;
   /** isolation strength 0–100 (atten-lim-db), default 100 */
   denoiseStrength?: number | null;
+}
+
+export type TimelineLinkMode = 'linked' | 'sync-lock';
+
+/** Linked A/V or sync-lock membership. Offsets are defined by the anchor item. */
+export interface TimelineLinkGroup {
+  id: string;
+  itemIds: string[];
+  anchorItemId: string;
+  mode: TimelineLinkMode;
+}
+
+export type MulticamMicRole = 'program' | 'reference' | 'camera' | 'scratch' | 'none';
+export type MulticamSyncMethod = 'source-timecode' | 'capture-clock' | 'audio';
+
+export interface MulticamSyncEvidence {
+  angleId: string;
+  method: MulticamSyncMethod;
+  confidence: number;
+  offsetFrames: number;
+  referenceClockFrame?: number;
+  angleClockFrame?: number;
+  lagSeconds?: number;
+}
+
+export interface MulticamAngle {
+  id: string;
+  /** Current/original item id; split descendants retain id via multicamAngleId. */
+  itemId: string;
+  /** Immutable aligned source snapshot used to restore a previously switched-out range. */
+  source: TimelineItem;
+  label: string;
+  micRole?: MulticamMicRole;
+  offsetFrames: number;
+  confidence: number;
+}
+
+/** One non-destructive editorial decision over a right-open timeline range. */
+export interface MulticamAngleDecision {
+  id: string;
+  fromFrame: number;
+  toFrame: number;
+  angleId: string;
+}
+
+export interface MulticamGroup {
+  id: string;
+  referenceAngleId: string;
+  masterAngleId: string;
+  angles: MulticamAngle[];
+  syncMethod: MulticamSyncMethod;
+  evidence: MulticamSyncEvidence[];
+  decisions?: MulticamAngleDecision[];
 }
 
 /** how 16:9-designed content adapts when the canvas ratio changes (`fit`) */
@@ -540,6 +631,10 @@ export interface TimelineState {
   transitions?: TransitionItem[];
   /** timeline annotations / TODO anchors (manage_markers) */
   markers?: Marker[];
+  /** Optional professional edit relationships; absent in legacy projects. */
+  linkGroups?: TimelineLinkGroup[];
+  /** Persistent multicam sources, sync evidence and range camera decisions. */
+  multicamGroups?: MulticamGroup[];
   /** derived compatibility view of ProjectDoc.assets; never persisted here */
   assets?: MediaAsset[];
   /** Primary selection (last clicked) — inspector / single-item ops. */

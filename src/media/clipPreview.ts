@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { sourceFramesToTimelineFrames, timelineFramesToSourceFrames } from '../editor/sourceLimit';
 
 // Timeline clip previews: waveform peaks and video thumbnail strips. The server generates and caches
 // /api/waveform and /api/filmstrip (see server/plugins/media-preview.ts); this module only handles
@@ -78,8 +79,11 @@ async function fetchFilmstrip(query: string, signal: AbortSignal): Promise<Strip
   }
 }
 
-async function load(src: string, wantStrip: boolean, e: Entry, signal: AbortSignal): Promise<void> {
-  const query = `src=${encodeURIComponent(src)}`;
+async function load(src: string, sourceRevision: string | undefined, wantStrip: boolean, e: Entry, signal: AbortSignal): Promise<void> {
+  const query = new URLSearchParams({
+    src,
+    ...(sourceRevision ? { sourceRevision } : {}),
+  }).toString();
   const [wave, strip] = await Promise.all([
     fetchWaveform(query, signal),
     wantStrip ? fetchFilmstrip(query, signal) : Promise.resolve<StripResult>({ url: null }),
@@ -114,8 +118,12 @@ function setLoadFailure(entry: Entry, wantStrip: boolean, error: unknown): void 
  * Fragment preview data. Multiple fragments of the same src share one request and one result.
  * kind determines whether frame strips are required (video only); non-native assets directly return null.
  */
-export function useClipPreview(src: string | undefined, kind: string): ClipPreview | null {
-  const key = isPreviewable(src) ? src : '';
+export function useClipPreview(
+  src: string | undefined,
+  kind: string,
+  sourceRevision?: string,
+): ClipPreview | null {
+  const key = isPreviewable(src) ? `${src}\u0000${sourceRevision ?? 'legacy'}` : '';
   const wantStrip = kind === 'video';
   const [, bump] = useState(0);
 
@@ -127,7 +135,7 @@ export function useClipPreview(src: string | undefined, kind: string): ClipPrevi
     if (!e.value && !e.promise) {
       const controller = new AbortController();
       e.controller = controller;
-      e.promise = load(key, wantStrip, e, controller.signal)
+      e.promise = load(src!, sourceRevision, wantStrip, e, controller.signal)
         .catch((error) => {
           if (!controller.signal.aborted) setLoadFailure(e, wantStrip, error);
         })
@@ -143,7 +151,7 @@ export function useClipPreview(src: string | undefined, kind: string): ClipPrevi
         if (entries.get(key) === e) entries.delete(key);
       }
     };
-  }, [key, wantStrip]);
+  }, [key, sourceRevision, src, wantStrip]);
 
   return key ? entryFor(key).value : null;
 }
@@ -159,14 +167,13 @@ export function filmstripBackground(
   { px, fps, srcInFrame, playbackRate }: { px: number; fps: number; srcInFrame: number; playbackRate: number },
 ): { backgroundImage: string; backgroundSize: string; backgroundPositionX: string } | null {
   if (!preview.stripUrl || !preview.durationMs) return null;
-  const rate = playbackRate > 0 ? playbackRate : 1;
   const srcFrames = (preview.durationMs / 1000) * fps;
-  const fullW = (srcFrames * px) / rate;
+  const fullW = sourceFramesToTimelineFrames({ playbackRate }, srcFrames) * px;
   if (!(fullW > 0)) return null;
   return {
     backgroundImage: `url(${preview.stripUrl})`,
     backgroundSize: `${fullW.toFixed(1)}px 100%`,
-    backgroundPositionX: `${(-(srcInFrame * px) / rate).toFixed(1)}px`,
+    backgroundPositionX: `${(-sourceFramesToTimelineFrames({ playbackRate }, srcInFrame) * px).toFixed(1)}px`,
   };
 }
 
@@ -183,12 +190,11 @@ export function peaksPath(
 ): string {
   const { peaks, peaksPerSecond } = preview;
   if (!peaks.length || widthPx <= 0) return '';
-  const rate = playbackRate > 0 ? playbackRate : 1;
   const cols = Math.max(1, Math.min(2000, Math.floor(widthPx / 2)));
   const mid = height / 2;
   const perFrame = peaksPerSecond / fps; // How many peaks does one source frame correspond to?
   const startIdx = srcInFrame * perFrame;
-  const spanIdx = durationInFrames * rate * perFrame;
+  const spanIdx = timelineFramesToSourceFrames({ playbackRate }, durationInFrames) * perFrame;
   const out: string[] = [];
   for (let c = 0; c < cols; c += 1) {
     const from = startIdx + (c / cols) * spanIdx;

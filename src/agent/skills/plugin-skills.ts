@@ -11,11 +11,13 @@
 import { parseSkillFrontmatter, type SkillFront } from './skill-frontmatter';
 
 // Vite raw-imports every file under skills/ (SKILL.md + references/examples/scripts).
-const RAW = import.meta.glob('./*/**/*', {
-  query: '?raw',
-  import: 'default',
-  eager: true,
-}) as Record<string, string>;
+const RAW = (typeof import.meta.env === 'undefined'
+  ? {}
+  : import.meta.glob('./*/**/*', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    })) as Record<string, string>;
 
 export interface PluginSkill extends SkillFront {
   slug: string; // Directory name is the stable skill id.

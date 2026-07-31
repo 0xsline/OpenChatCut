@@ -7,14 +7,16 @@ import type { TimelineState } from './types';
 
 interface TimelineReadinessGateProps {
   state: TimelineState;
+  dependencies?: readonly TimelineState[];
   children: () => ReactNode;
 }
 
-export function timelineReadinessKey(state: TimelineState): string {
-  const templates = state.items
+export function timelineReadinessKey(state: TimelineState, dependencies: readonly TimelineState[] = []): string {
+  const states = [state, ...dependencies];
+  const templates = states.flatMap((entry) => entry.items
     .filter((item) => item.kind === 'motion-graphic' && item.code)
-    .map((item) => item.code as string);
-  return JSON.stringify([collectReferencedFontFaces(state), templates]);
+    .map((item) => item.code as string));
+  return JSON.stringify([states.flatMap(collectReferencedFontFaces), templates]);
 }
 
 function prepareTimelineTemplates(state: TimelineState): Promise<void> {
@@ -29,8 +31,8 @@ function prepareTimelineTemplates(state: TimelineState): Promise<void> {
   })).then(() => undefined);
 }
 
-export function TimelineReadinessGate({ state, children }: TimelineReadinessGateProps) {
-  const [readinessState] = useState(() => state);
+export function TimelineReadinessGate({ state, dependencies = [], children }: TimelineReadinessGateProps) {
+  const [readinessStates] = useState(() => [state, ...dependencies]);
   const [handle] = useState(() => delayRender('Preparing project fonts and templates'));
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,13 +56,13 @@ export function TimelineReadinessGate({ state, children }: TimelineReadinessGate
       }
     };
     Promise.resolve()
-      .then(() => Promise.all([loadTimelineFonts(readinessState), prepareTimelineTemplates(readinessState)]))
+      .then(() => Promise.all(readinessStates.flatMap((entry) => [loadTimelineFonts(entry), prepareTimelineTemplates(entry)])))
       .then(
       () => { if (active) setReady(true); release(); },
       (reason: unknown) => fail(reason),
     );
     return () => { active = false; release(); };
-  }, [handle, readinessState]);
+  }, [handle, readinessStates]);
 
   if (error) return <AbsoluteFill style={{ color: '#f88', fontFamily: 'monospace', fontSize: 20, padding: 40, whiteSpace: 'pre-wrap' }}>{error}</AbsoluteFill>;
   return ready ? children() : null;

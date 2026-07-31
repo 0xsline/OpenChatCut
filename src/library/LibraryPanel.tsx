@@ -43,6 +43,13 @@ const AUDIO_TRANSITION_ITEMS: ResourceItem[] = AUDIO_TRANSITION_ORDER.map((t) =>
 }));
 const FX_ITEMS: ResourceItem[] = FX_IDS.map((id) => ({ id, name: FX_EFFECTS[id].name }));
 const ZOOM_ITEMS: ResourceItem[] = ZOOM_SHAPE_ORDER.map((s) => ({ id: s, name: ZOOM_SHAPE_LABELS[s] }));
+export interface SequenceLibraryOption {
+  id: string;
+  name: string;
+  durationInFrames: number;
+  disabledReason?: string;
+}
+
 interface LibraryPanelProps {
   semanticScopeId: string;
   templates: Tpl[];
@@ -51,6 +58,8 @@ interface LibraryPanelProps {
   playerRef: RefObject<PlayerRef | null>;
   fps: number;
   items: TimelineItem[];
+  sequenceOptions: SequenceLibraryOption[];
+  onAddSequence: (timelineId: string) => void;
   /** A1/V1 aliases + names for script track picker */
   trackOptions: TranscriptTrackOption[];
   captionTracks: Array<TranscriptTrackOption & { captions: CaptionsData | null }>;
@@ -77,7 +86,7 @@ interface LibraryPanelProps {
   onRenameMediaAsset: (id: string, name: string) => void;
   onSetMediaAssetFavorite: (id: string, favorite: boolean) => void;
   onRemoveMediaAsset: (id: string) => void;
-  onRelinkMediaAsset?: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind'] }) => void;
+  onRelinkMediaAsset?: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind']; sourceRevision?: string; sourceSize?: number; sourceModifiedAt?: number }) => void;
   onAddSolid?: () => void;
   /** ⋮ menu「Generated with AI」: seed the chat with this template as a reference */
   onUseTemplateAI: (tpl: Tpl) => void;
@@ -90,9 +99,9 @@ interface LibraryPanelProps {
   onApplyZoom: (zoom: ZoomEffect) => void;
 }
 
-const MAIN_TABS = ['我的素材', '资源库', '文字稿', '字幕'] as const;
+const MAIN_TABS = ['我的素材', '序列', '资源库', '文字稿', '字幕'] as const;
 const SUB_TABS = ['MG 动画', '音效', '转场', '特效', '缩放', 'LUT'] as const;
-export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, trackOptions, captionTracks, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, offlineAssetIds, onAssetLoadError, onImportMedia, onImportMobileMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onRemoveMediaAsset, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
+export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, sequenceOptions, onAddSequence, trackOptions, captionTracks, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, offlineAssetIds, onAssetLoadError, onImportMedia, onImportMobileMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onRemoveMediaAsset, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
   const t = useT();
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
@@ -120,6 +129,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
   const isTranscript = mainTab === '文字稿';
   const isCaptions = mainTab === '字幕';
   const isMyAssets = mainTab === '我的素材';
+  const isSequences = mainTab === '序列';
   const openCaptionStyles = (sourceItemIds: string[]) => {
     const target = captionTracks[0];
     if (!target) return;
@@ -144,6 +154,39 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
       ) : isTranscript ? (
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, borderTop: `0.5px solid ${theme.border}` }}>
           <TranscriptPanel playerRef={playerRef} fps={fps} items={items} trackOptions={trackOptions} onSetItemTranscript={onSetItemTranscript} onToggleWord={onToggleWord} onCleanScript={onCleanScript} onSetGapCap={onSetGapCap} onSetTranscriptPlayOrder={onSetTranscriptPlayOrder} onReorderTrackItems={onReorderTrackItems} onClearEdits={onClearEdits} onOpenCaptionStyles={captionTracks.length ? openCaptionStyles : undefined} />
+        </div>
+      ) : isSequences ? (
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, borderTop: `0.5px solid ${theme.border}`, padding: 10 }}>
+          <div style={{ color: theme.textDim, fontSize: 11, lineHeight: 1.5, margin: '0 2px 8px' }}>
+            {t('点击把序列作为引用实例加入当前时间线；修改子序列会同步到所有实例。')}
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {sequenceOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                disabled={!!option.disabledReason}
+                title={option.disabledReason}
+                onClick={() => onAddSequence(option.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  border: `0.5px solid ${theme.border}`,
+                  borderRadius: 6,
+                  background: theme.panelAlt,
+                  color: option.disabledReason ? theme.textDim : theme.text,
+                  padding: '9px 10px',
+                  cursor: option.disabledReason ? 'not-allowed' : 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{option.name}</span>
+                <span style={{ flex: '0 0 auto', color: theme.textDim, fontSize: 10 }}>{(option.durationInFrames / fps).toFixed(1)}s</span>
+              </button>
+            ))}
+          </div>
         </div>
       ) : isMyAssets ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, borderTop: `0.5px solid ${theme.border}` }}>

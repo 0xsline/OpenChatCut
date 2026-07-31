@@ -2,13 +2,15 @@
 // Used by timeline pointer (group drag), shortcuts (⌫), and clip context menu.
 import {
   selectedIdsOf, timelineTrackIds, trackKind,
-  type TimelineItem, type TimelineState, type TrackId,
+  type TimelineState, type TrackId,
 } from './types';
+import { moveLockedItemIds, removeItemsWithGroups } from './linkGroups';
 
 /** Ids that should move together when dragging `primaryId` (the grab handle). */
 export function groupMoveIds(state: TimelineState, primaryId: string): string[] {
   const ids = selectedIdsOf(state);
-  return ids.includes(primaryId) && ids.length > 1 ? ids : [primaryId];
+  const seeds = ids.includes(primaryId) && ids.length > 1 ? ids : [primaryId];
+  return moveLockedItemIds(state, seeds);
 }
 
 /**
@@ -28,10 +30,13 @@ export function moveItemsByDelta(
   const dTrack = fromIdx >= 0 && toIdx >= 0 ? toIdx - fromIdx : 0;
   if (deltaF === 0 && dTrack === 0) return state;
 
-  const idSet = new Set(ids);
+  const idSet = new Set(moveLockedItemIds(state, ids));
+  const moving = state.items.filter((item) => idSet.has(item.id));
+  if (moving.some((item) => state.tracks?.[item.track]?.locked)) return state;
+  const earliest = Math.min(...moving.map((item) => item.startFrame));
+  const sharedDelta = Math.max(deltaF, -earliest);
   const items = state.items.map((it) => {
     if (!idSet.has(it.id)) return it;
-    if (state.tracks?.[it.track]?.locked) return it;
     let track = it.track;
     if (dTrack !== 0) {
       const ni = order.indexOf(it.track) + dTrack;
@@ -45,7 +50,7 @@ export function moveItemsByDelta(
         }
       }
     }
-    return { ...it, startFrame: Math.max(0, it.startFrame + deltaF), track };
+    return { ...it, startFrame: it.startFrame + sharedDelta, track };
   });
   return { ...state, items };
 }
@@ -56,28 +61,5 @@ export function removeItemsFromState(
   ids: string[],
   ripple = false,
 ): TimelineState {
-  if (!ids.length) return state;
-  let items = [...state.items];
-  let transitions = [...(state.transitions ?? [])];
-  const sorted = [...ids]
-    .map((id) => items.find((x) => x.id === id))
-    .filter((x): x is TimelineItem => !!x)
-    .sort((a, b) => b.startFrame - a.startFrame);
-  for (const gone of sorted) {
-    if (state.tracks?.[gone.track]?.locked) continue;
-    const end = gone.startFrame + gone.durationInFrames;
-    items = items
-      .filter((it) => it.id !== gone.id)
-      .map((it) => (ripple && it.track === gone.track && it.startFrame >= end
-        ? { ...it, startFrame: Math.max(0, it.startFrame - gone.durationInFrames) }
-        : it));
-    transitions = transitions.filter((t) => t.incomingItemId !== gone.id && t.outgoingItemId !== gone.id);
-  }
-  return {
-    ...state,
-    items,
-    transitions,
-    selectedId: null,
-    selectedIds: [],
-  };
+  return ids.length ? removeItemsWithGroups(state, ids, ripple) : state;
 }

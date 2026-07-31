@@ -20,6 +20,7 @@ export interface IsolateVoiceResult {
   path: string;
   bytes?: number;
   engine?: string;
+  sourceRevision: string;
   strength: number;
 }
 
@@ -27,7 +28,7 @@ export interface IsolateVoiceResult {
 export async function isolateVoiceOnSrc(
   src: string,
   strength = 70,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; sourceRevision?: string },
 ): Promise<IsolateVoiceResult> {
   if (!src.startsWith('/media/uploads/')) {
     throw new Error('需先上传到媒体池（/media/uploads）');
@@ -36,21 +37,28 @@ export async function isolateVoiceOnSrc(
   const res = await fetch('/api/isolate-voice', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ src, strength: s, force: opts?.force === true }),
+    body: JSON.stringify({
+      src,
+      strength: s,
+      force: opts?.force === true,
+      sourceRevision: opts?.sourceRevision,
+    }),
   });
   const data = (await res.json().catch(() => ({}))) as {
     path?: string;
     error?: string;
     bytes?: number;
     engine?: string;
+    sourceRevision?: string;
   };
-  if (!res.ok || !data.path) {
+  if (!res.ok || !data.path || !data.sourceRevision) {
     throw new Error(data.error ?? `isolate-voice HTTP ${res.status}`);
   }
   return {
     path: data.path,
     bytes: data.bytes,
     engine: data.engine,
+    sourceRevision: data.sourceRevision,
     strength: s,
   };
 }

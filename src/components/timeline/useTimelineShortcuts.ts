@@ -11,6 +11,8 @@ import {
 import { removeItemsFromState } from '../../editor/multiSelect';
 import type { EditorCommands } from '../../editor/store';
 import type { AtomicAction } from '../../editor/store';
+import { sourceWindowForTimelineRange } from '../../editor/sourceLimit';
+import { hasOperationalTranscript } from '../../transcript/types';
 import type { FxClip } from './ClipContextMenu';
 import type { TimelineShortcutApi, ItemClipboard } from '../../shortcuts/timelineApi';
 import type { EditMode } from './timelineUtil';
@@ -124,7 +126,11 @@ export function useTimelineShortcuts(deps: ShortcutDeps): { zoneIn: number | nul
           };
           // Advance source in-point so the visible media stays aligned (split semantics).
           if (it.kind === 'video' || it.kind === 'audio') {
-            timing.srcInFrame = (it.srcInFrame ?? 0) + delta;
+            timing.srcInFrame = sourceWindowForTimelineRange(
+              it.kind === 'audio' && hasOperationalTranscript(it) ? { ...it, playbackRate: 1 } : it,
+              delta,
+              timing.durationInFrames,
+            ).startFrame;
           }
           commands.setItemTiming(id, timing);
         } else {

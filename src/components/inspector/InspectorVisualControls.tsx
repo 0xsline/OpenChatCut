@@ -2,9 +2,11 @@ import type { ReactNode } from 'react';
 import { theme } from '../../theme';
 import type { ClipEffect, ClipEffectValue, ClipFilters, TimelineItem } from '../../editor/types';
 import { ALL_FX as FX_EFFECTS, LUT_EFFECTS } from '../../gl/fx/effects';
+import type { SelectedPreviewStatus } from '../../gl/previewAdapter';
 import { useT } from '../../i18n/locale';
 import { ColorParamInput, SliderRow } from './InspectorKeyframeControls';
 import type { AutoGradeControlProps } from './InspectorTypes';
+import { PreviewFidelityStatus } from './PreviewFidelityStatus';
 
 const FX_IDS = Object.keys(FX_EFFECTS);
 const compactNumber = (value: number) => String(Number(value.toFixed(2)));
@@ -37,8 +39,9 @@ export function SectionLabel({
 }
 
 // brightness / contrast / saturation / blur implemented with CSS filters.
-export function FilterControl({ item, onChange, autoGrade }: {
+export function FilterControl({ item, mixed, onChange, autoGrade }: {
   item: TimelineItem;
+  mixed?: Partial<Record<keyof ClipFilters, boolean>>;
   onChange: (p: ClipFilters) => void;
   autoGrade?: AutoGradeControlProps;
 }) {
@@ -87,13 +90,13 @@ export function FilterControl({ item, onChange, autoGrade }: {
           )}
         </div>
       )}
-      <SliderRow label={t('亮度')} val={fl.brightness ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.brightness ?? 1) * 100)}%`} inputScale={100}
+      <SliderRow label={t('亮度')} val={fl.brightness ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.brightness ?? 1) * 100)}%`} inputScale={100} mixed={mixed?.brightness}
         onReset={() => onChange({ brightness: 1 })} resetDisabled={Math.abs((fl.brightness ?? 1) - 1) < 1e-6} onChange={(v) => onChange({ brightness: v })} />
-      <SliderRow label={t('对比')} val={fl.contrast ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.contrast ?? 1) * 100)}%`} inputScale={100}
+      <SliderRow label={t('对比')} val={fl.contrast ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.contrast ?? 1) * 100)}%`} inputScale={100} mixed={mixed?.contrast}
         onReset={() => onChange({ contrast: 1 })} resetDisabled={Math.abs((fl.contrast ?? 1) - 1) < 1e-6} onChange={(v) => onChange({ contrast: v })} />
-      <SliderRow label={t('饱和')} val={fl.saturate ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.saturate ?? 1) * 100)}%`} inputScale={100}
+      <SliderRow label={t('饱和')} val={fl.saturate ?? 1} min={0} max={2} step={0.05} fmt={`${compactNumber((fl.saturate ?? 1) * 100)}%`} inputScale={100} mixed={mixed?.saturate}
         onReset={() => onChange({ saturate: 1 })} resetDisabled={Math.abs((fl.saturate ?? 1) - 1) < 1e-6} onChange={(v) => onChange({ saturate: v })} />
-      <SliderRow label={t('模糊')} val={fl.blur ?? 0} min={0} max={30} step={1} fmt={`${compactNumber(fl.blur ?? 0)}px`}
+      <SliderRow label={t('模糊')} val={fl.blur ?? 0} min={0} max={30} step={1} fmt={`${compactNumber(fl.blur ?? 0)}px`} mixed={mixed?.blur}
         onReset={() => onChange({ blur: 0 })} resetDisabled={(fl.blur ?? 0) === 0} onChange={(v) => onChange({ blur: v })} />
     </div>
   );
@@ -102,7 +105,7 @@ export function FilterControl({ item, onChange, autoGrade }: {
 
 // Per-clip WebGL effect stack (effects / builtin:fx-*). Order is render
 // order: each card consumes the previous card's output.
-export function EffectsControl({ item, onChange }: { item: TimelineItem; onChange: (effects: ClipEffect[]) => void }) {
+export function EffectsControl({ item, onChange, previewStatus }: { item: TimelineItem; onChange: (effects: ClipEffect[]) => void; previewStatus?: SelectedPreviewStatus }) {
   const t = useT();
   const effects = item.effects ?? [];
   const active = effects.filter((fx) => fx.assetId in FX_EFFECTS);
@@ -131,6 +134,7 @@ export function EffectsControl({ item, onChange }: { item: TimelineItem; onChang
         {FX_IDS.map((id) => <option key={id} value={id}>{t(FX_EFFECTS[id].name)}</option>)}
       </select>
       {active.length === 0 && <div style={{ fontSize: 10.5, color: theme.textDim }}>{t('尚未添加特效。')}</div>}
+      {active.length > 0 && <PreviewFidelityStatus status={previewStatus} />}
       {active.map((effect, index) => {
         const def = FX_EFFECTS[effect.assetId];
         return (

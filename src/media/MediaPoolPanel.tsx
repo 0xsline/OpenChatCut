@@ -32,7 +32,7 @@ interface MediaPoolPanelProps {
   /** Delete from the asset pool (two-step confirmation); the tracked clips have their own data copies and will not be affected */
   onRemoveAsset?: (id: string) => void;
   /** Relink File replaces an offline/missing asset and its clip srcs. */
-  onRelinkAsset?: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind'] }) => void;
+  onRelinkAsset?: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind']; sourceRevision?: string; sourceSize?: number; sourceModifiedAt?: number }) => void;
   /** Add a solid-color clip. */
   onAddSolid?: () => void;
 }
@@ -123,6 +123,9 @@ export function MediaPoolPanel({
         width: next.width,
         height: next.height,
         kind: next.kind,
+        sourceRevision: next.sourceRevision,
+        sourceSize: next.sourceSize,
+        sourceModifiedAt: next.sourceModifiedAt,
       });
       clearMissing(id);
     } catch (reason) {
@@ -148,7 +151,17 @@ export function MediaPoolPanel({
         const f = byName.get(asset.name);
         if (!f) continue;
         const next = await importMedia(f, fps);
-        onRelinkAsset(asset.id, { src: next.src, name: next.name, durationInFrames: next.durationInFrames, width: next.width, height: next.height, kind: next.kind });
+        onRelinkAsset(asset.id, {
+          src: next.src,
+          name: next.name,
+          durationInFrames: next.durationInFrames,
+          width: next.width,
+          height: next.height,
+          kind: next.kind,
+          sourceRevision: next.sourceRevision,
+          sourceSize: next.sourceSize,
+          sourceModifiedAt: next.sourceModifiedAt,
+        });
         clearMissing(asset.id);
         relinked++;
       }

@@ -7,7 +7,9 @@
 // placed afterwards inherit the transcript while preserving word/frame alignment.
 import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
+import { sourceRevisionOf } from '../../editor/mediaSourceRevision';
 import { getTranscribeJob, waitForTranscribeJobs, transcriptionReport } from '../../transcript/transcribe-jobs';
+import { hasOperationalTranscript } from '../../transcript/types';
 import { isComplete } from './job-model';
 
 const DEFAULT_WAIT_SECONDS = 90;
@@ -17,6 +19,11 @@ type Args = Record<string, unknown>;
 
 function poolAssets(ctx: AgentContext): MediaAsset[] {
   return ctx.getDoc().assets ?? ctx.getState().assets ?? [];
+}
+
+function currentRevisionJob(projectId: string, asset: MediaAsset) {
+  const job = getTranscribeJob(projectId, asset.id);
+  return job?.sourceRevision === sourceRevisionOf(asset) ? job : undefined;
 }
 
 /** G2 prefix match: comma-separated asset ids/prefixes → concrete pool asset ids.
@@ -39,6 +46,8 @@ function resolveAssetIds(ctx: AgentContext, raw: unknown): { ids: string[]; unre
 export async function execTranscriptionProgress(args: Args, ctx: AgentContext): Promise<unknown> {
   const action = args.action as 'params' | 'status' | 'wait';
   if (!['params', 'status', 'wait'].includes(action)) return { error: 'action must be params, status, or wait' };
+  const projectId = ctx.getProjectId?.();
+  if (!projectId) return { error: 'transcription progress requires a persisted project id' };
 
   const { ids, unresolved } = resolveAssetIds(ctx, args.assetIds ?? args.jobIds);
   if (ids.length === 0) {
@@ -49,13 +58,13 @@ export async function execTranscriptionProgress(args: Args, ctx: AgentContext): 
     const seconds = typeof args.timeoutSeconds === 'number'
       ? Math.min(Math.max(0, args.timeoutSeconds), MAX_WAIT_SECONDS)
       : DEFAULT_WAIT_SECONDS;
-    await waitForTranscribeJobs(ids, seconds * 1000);
+    await waitForTranscribeJobs(projectId, ids, seconds * 1000);
   }
 
   const assets = poolAssets(ctx);
   const reports = ids.map((id) => {
     const asset = assets.find((a) => a.id === id);
-    return transcriptionReport(id, getTranscribeJob(id), asset?.transcript?.length ?? 0);
+    return transcriptionReport(id, asset ? currentRevisionJob(projectId, asset) : undefined, hasOperationalTranscript(asset) ? asset.transcript.length : 0);
   });
 
   // Persist terminal ASR results onto the pool asset as completed or failed.
@@ -64,8 +73,8 @@ export async function execTranscriptionProgress(args: Args, ctx: AgentContext): 
     for (const id of ids) {
       const asset = assets.find((a) => a.id === id);
       if (!asset) continue;
-      const job = getTranscribeJob(id);
-      if (job?.status === 'done' && job.words && !(asset.transcript?.length)) {
+      const job = currentRevisionJob(projectId, asset);
+      if (job?.status === 'done' && job.words && !hasOperationalTranscript(asset)) {
         ctx.commands.setAssetTranscription(id, { transcript: job.words, transcribeStatus: 'done', transcribeError: undefined });
       } else if (job?.status === 'failed' && asset.transcribeStatus !== 'failed') {
         ctx.commands.setAssetTranscription(id, { transcribeStatus: 'failed', transcribeError: job.error });

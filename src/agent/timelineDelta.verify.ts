@@ -1,6 +1,6 @@
 // Runnable check: `npx tsx src/agent/timelineDelta.verify.ts`.
-// Verification tool difference: read-only without difference, create new/change track/change length into clips, press the overall displacement of the corrugation into rules,
-// Sporadic displacement returns to enumeration, deletion and new track reporting, 30 upper limit prompts, and ripple deletion through the real reducer.
+// Covers reconstructable typed property changes, contiguous-only shift compression,
+// deletion/new-track reporting, the 30-item limit, and a real reducer ripple.
 import assert from 'node:assert/strict';
 import { describeTimelineDelta, snapshotTimeline } from './timelineDelta';
 import { reduce } from '../editor/reduce';
@@ -117,4 +117,80 @@ const stateOf = (items: TimelineItem[], tracks: Record<string, { kind: 'video' |
   }
 }
 
-console.log('timelineDelta.verify: ok (只读/变更分类/波纹压缩/零星枚举/上限/新轨/真 reducer)');
+// ── Same displacement is not compressed when moved items are not a contiguous range ──
+{
+  const items = Array.from({ length: 6 }, (_, index) =>
+    clip(String.fromCharCode(97 + index), 'trk-lower', index * 30));
+  const before = snapshotTimeline(stateOf(items));
+  const movedIds = new Set(['a', 'c', 'e']);
+  const after = stateOf(items.map((item) =>
+    movedIds.has(item.id) ? { ...item, startFrame: item.startFrame + 10 } : item));
+  const delta = describeTimelineDelta(before, after)!;
+  assert.equal(delta.shifted, undefined, 'non-contiguous moves must retain item-level identity');
+  assert.deepEqual(delta.clips?.map((item) => item.id), ['a', 'c', 'e']);
+  assert.deepEqual(
+    delta.changes
+      ?.filter((change) => change.entity === 'item' && change.field === 'startFrame')
+      .map((change) => change.itemId),
+    ['a', 'c', 'e'],
+    'uncompressed shifts include typed item IDs and before/after positions',
+  );
+}
+
+// ── Attribute and transition changes are typed with before/after values ──
+{
+  const original = {
+    ...clip('rich', 'trk-lower', 0),
+    src: '/m/old.mp4',
+    props: { text: 'Before', opacity: 1, color: '#fff' },
+    volume: 1,
+    transform: { crop: { left: 0.1 }, scale: 1 },
+    effects: [{ id: 'fx-a', assetId: 'builtin:fx-blur', overrides: { amount: 1 } }],
+  } as TimelineItem;
+  const beforeState = {
+    ...stateOf([original]),
+    transitions: [{
+      id: 'tr-a',
+      type: 'cross-dissolve',
+      durationInFrames: 12,
+      outgoingItemId: 'out',
+      incomingItemId: 'rich',
+      trackId: 'trk-lower',
+    }],
+  } as TimelineState;
+  const before = snapshotTimeline(beforeState);
+  const changed = {
+    ...original,
+    src: '/m/new.mp4',
+    props: { text: 'After', opacity: 0.5, color: '#fff' },
+    volume: 0.4,
+    transform: { crop: { left: 0.2, right: 0.1 }, scale: 1 },
+    effects: [{ id: 'fx-b', assetId: 'builtin:fx-pixelate', overrides: { amount: 2 } }],
+  } as TimelineItem;
+  const afterState = {
+    ...stateOf([changed]),
+    transitions: [{
+      ...beforeState.transitions![0]!,
+      durationInFrames: 24,
+    }],
+  } as TimelineState;
+  const delta = describeTimelineDelta(before, afterState)!;
+  const fields = delta.changes
+    ?.filter((change) => change.entity === 'item')
+    .map((change) => change.field) ?? [];
+  for (const expected of ['text', 'src', 'opacity', 'volume', 'crop', 'effects']) {
+    assert.ok(fields.includes(expected as typeof fields[number]), `reports ${expected} change`);
+  }
+  const textChange = delta.changes?.find((change) =>
+    change.entity === 'item' && change.field === 'text');
+  assert.deepEqual(
+    textChange && { before: textChange.before, after: textChange.after },
+    { before: 'Before', after: 'After' },
+    'typed changes carry values needed to update the agent timeline model',
+  );
+  const transitionChange = delta.changes?.find((change) => change.entity === 'transition');
+  assert.equal(transitionChange?.before?.durationInFrames, 12);
+  assert.equal(transitionChange?.after?.durationInFrames, 24);
+}
+
+console.log('timelineDelta.verify: ok (typed properties/transitions, contiguous shifts, limits, tracks, reducer ripple)');

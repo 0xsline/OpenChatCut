@@ -1,6 +1,8 @@
 import type { RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import type { Tpl } from '../../types';
+import type { SelectedPreviewStatus } from '../../gl/previewAdapter';
+import type { SlipPlan, SlipResult } from '../../editor/slip';
 import type {
   ClipEffect,
   ClipFilters,
@@ -36,6 +38,8 @@ export interface AutoGradeControlProps {
 export interface InspectorPanelProps {
   templates: Tpl[];
   selectedItem: TimelineItem | null;
+  selectedIds: readonly string[];
+  selectedItems: readonly TimelineItem[];
   fps: number;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
@@ -47,7 +51,10 @@ export interface InspectorPanelProps {
   autoGrade?: AutoGradeControlProps;
   onItemZoomChange: (patch: Partial<ZoomEffect> | null) => void;
   onItemEffectsChange: (effects: ClipEffect[]) => void;
+  selectedPreviewStatuses?: readonly SelectedPreviewStatus[];
   onItemSpeedChange?: (rate: number) => void;
+  slipPlan?: SlipPlan | null;
+  onItemSlip?: (deltaInFrames: number) => SlipResult;
   onNormalizeLoudness?: () => void | Promise<void>;
   onIsolateVoice?: (action: 'apply' | 'clear', strength?: number) => void | Promise<void>;
   getPlayhead: () => number;

@@ -2,11 +2,13 @@ import { useState, type CSSProperties } from 'react';
 import { theme } from '../../theme';
 import type { TimelineItem, TransitionItem, TransitionType, ZoomEffect, ZoomShape } from '../../editor/types';
 import { AUDIO_TRANSITION_ORDER, TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../../editor/types';
+import type { SelectedPreviewStatus } from '../../gl/previewAdapter';
 import { useT } from '../../i18n/locale';
 import { showAppToast } from '../../ui/appToast';
 import { Icon } from '../icons';
 import { SliderRow } from './InspectorKeyframeControls';
 import type { FadePatch } from './InspectorTypes';
+import { PreviewFidelityStatus } from './PreviewFidelityStatus';
 
 const compactNumber = (value: number) => String(Number(value.toFixed(2)));
 
@@ -91,7 +93,7 @@ export function IsolateVoiceControl({
   );
 }
 
-export function SpeedControl({ item, onChange }: { item: TimelineItem; onChange: (rate: number) => void }) {
+export function SpeedControl({ item, mixed, onChange }: { item: TimelineItem; mixed?: boolean; onChange: (rate: number) => void }) {
   const t = useT();
   const rate = item.playbackRate ?? 1;
   return (
@@ -99,12 +101,13 @@ export function SpeedControl({ item, onChange }: { item: TimelineItem; onChange:
       <SliderRow
         label={t('变速')}
         val={rate}
+        mixed={mixed}
         min={0.25}
         max={4}
         step={0.05}
         fmt={`${rate.toFixed(2)}×`}
         onReset={() => onChange(1)}
-        resetDisabled={Math.abs(rate - 1) < 1e-6}
+        resetDisabled={!mixed && Math.abs(rate - 1) < 1e-6}
         onChange={onChange}
       />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
@@ -133,7 +136,7 @@ export function SpeedControl({ item, onChange }: { item: TimelineItem; onChange:
 }
 
 // fade in/out (seconds) — opacity ramp for visual clips, volume ramp for audio.
-export function FadeControl({ item, fps, onChange }: { item: TimelineItem; fps: number; onChange: (f: FadePatch) => void }) {
+export function FadeControl({ item, mixed, fps, onChange }: { item: TimelineItem; mixed?: Partial<Record<keyof FadePatch, boolean>>; fps: number; onChange: (f: FadePatch) => void }) {
   const t = useT();
   const maxSec = Math.max(0.1, item.durationInFrames / fps);
   const row = (label: string, frames: number | undefined, key: keyof FadePatch) => {
@@ -143,12 +146,13 @@ export function FadeControl({ item, fps, onChange }: { item: TimelineItem; fps: 
         key={key}
         label={label}
         val={sec}
+        mixed={mixed?.[key]}
         min={0}
         max={maxSec}
         step={0.1}
         fmt={`${sec.toFixed(1)}s`}
         onReset={() => onChange({ [key]: 0 })}
-        resetDisabled={sec === 0}
+        resetDisabled={!mixed?.[key] && sec === 0}
         onChange={(v) => onChange({ [key]: Math.round(v * fps) })}
       />
     );
@@ -162,7 +166,7 @@ export function FadeControl({ item, fps, onChange }: { item: TimelineItem; fps: 
 }
 
 // text clip content controls (text/fontSize/color/weight/align) — props-backed.
-export function TextControl({ item, onPropChange }: { item: TimelineItem; onPropChange: (key: string, value: unknown) => void }) {
+export function TextControl({ item, mixed, onPropChange }: { item: TimelineItem; mixed?: (key: string) => boolean; onPropChange: (key: string, value: unknown) => void }) {
   const t = useT();
   const p = item.props ?? {};
   const selStyle: CSSProperties = { background: theme.bg, color: theme.text, border: `0.5px solid ${theme.borderLight}`, borderRadius: 4, padding: '3px 5px' };
@@ -170,26 +174,31 @@ export function TextControl({ item, onPropChange }: { item: TimelineItem; onProp
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <label style={{ fontSize: 11, color: theme.textDim }}>
         <div style={{ marginBottom: 4 }}>{t('文字内容')}</div>
-        <textarea value={String(p.text ?? '')} onChange={(e) => onPropChange('text', e.target.value)} rows={2}
+        <textarea value={mixed?.('text') ? '' : String(p.text ?? '')} placeholder={mixed?.('text') ? '—' : undefined} onChange={(e) => onPropChange('text', e.target.value)} rows={2}
           style={{ width: '100%', padding: '6px 8px', background: theme.bg, color: theme.text, border: `0.5px solid ${theme.borderLight}`, borderRadius: 5, resize: 'vertical', fontFamily: 'inherit', fontSize: 12 }} />
       </label>
       <label style={{ fontSize: 11, color: theme.textDim }}>
-        <div style={{ marginBottom: 4 }}>{t('字号')} <span style={{ opacity: 0.7 }}>{Number(p.fontSize ?? 96)}</span></div>
-        <input type="range" min={24} max={300} step={2} value={Number(p.fontSize ?? 96)} onChange={(e) => onPropChange('fontSize', Number(e.target.value))} style={{ width: '100%' }} />
+        <div style={{ marginBottom: 4 }}>{t('字号')} <span style={{ opacity: 0.7 }}>{mixed?.('fontSize') ? '—' : Number(p.fontSize ?? 96)}</span></div>
+        {mixed?.('fontSize') ? <input type="number" min={24} max={300} step={2} placeholder="—" onBlur={(e) => {
+          const value = Number(e.currentTarget.value);
+          if (e.currentTarget.value && Number.isFinite(value)) onPropChange('fontSize', value);
+        }} style={{ width: '100%', ...selStyle }} /> : <input type="range" min={24} max={300} step={2} value={Number(p.fontSize ?? 96)} onChange={(e) => onPropChange('fontSize', Number(e.target.value))} style={{ width: '100%' }} />}
       </label>
       <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
-          {t('颜色')} <input type="color" value={String(p.color ?? '#ffffff')} onChange={(e) => onPropChange('color', e.target.value)} />
+          {t('颜色')} {mixed?.('color') && <span>—</span>} <input type="color" value={String(p.color ?? '#ffffff')} onChange={(e) => onPropChange('color', e.target.value)} />
         </label>
         <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
           {t('对齐')}
-          <select value={String(p.align ?? 'center')} onChange={(e) => onPropChange('align', e.target.value)} style={selStyle}>
+          <select value={mixed?.('align') ? '__mixed' : String(p.align ?? 'center')} onChange={(e) => onPropChange('align', e.target.value)} style={selStyle}>
+            {mixed?.('align') && <option value="__mixed" disabled>—</option>}
             <option value="left">{t('左')}</option><option value="center">{t('中')}</option><option value="right">{t('右')}</option>
           </select>
         </label>
         <label style={{ fontSize: 11, color: theme.textDim, display: 'flex', alignItems: 'center', gap: 6 }}>
           {t('粗细')}
-          <select value={String(p.fontWeight ?? 700)} onChange={(e) => onPropChange('fontWeight', Number(e.target.value))} style={selStyle}>
+          <select value={mixed?.('fontWeight') ? '__mixed' : String(p.fontWeight ?? 700)} onChange={(e) => onPropChange('fontWeight', Number(e.target.value))} style={selStyle}>
+            {mixed?.('fontWeight') && <option value="__mixed" disabled>—</option>}
             <option value="400">{t('常规')}</option><option value="700">{t('粗体')}</option><option value="900">{t('特粗')}</option>
           </select>
         </label>
@@ -201,8 +210,9 @@ export function TextControl({ item, onPropChange }: { item: TimelineItem; onProp
 
 // animated zoom (builtin:zoom): shape curve + magnification + focal point,
 // plus ReframeCurveV1 sparse keyframes (drop focal+mag at the playhead).
-export function ZoomControl({ zoom, onChange, getLocalFrame, fps, onSetKeyframe, onRemoveKeyframe }: {
+export function ZoomControl({ zoom, mixed, onChange, getLocalFrame, fps, onSetKeyframe, onRemoveKeyframe }: {
   zoom: ZoomEffect | undefined;
+  mixed?: Partial<Record<'shape' | 'magnification' | 'focalPointX' | 'focalPointY', boolean>>;
   onChange: (patch: Partial<ZoomEffect> | null) => void;
   getLocalFrame: () => number;
   fps: number;
@@ -216,25 +226,26 @@ export function ZoomControl({ zoom, onChange, getLocalFrame, fps, onSetKeyframe,
     <div className="cc-insp-stack">
       <label className="cc-insp-row">
         <span className="cc-insp-label">{t('曲线')}</span>
-        <select className="cc-insp-select" value={zoom?.shape ?? ''} onChange={(e) => {
+        <select className="cc-insp-select" value={mixed?.shape ? '__mixed' : zoom?.shape ?? ''} onChange={(e) => {
           const v = e.target.value as ZoomShape | '';
           if (!v) onChange(null);
           else onChange({ shape: v });
         }}>
+          {mixed?.shape && <option value="__mixed" disabled>—</option>}
           <option value="">{t('无')}</option>
           {ZOOM_SHAPE_ORDER.map((k) => <option key={k} value={k}>{t(ZOOM_SHAPE_LABELS[k])}</option>)}
         </select>
       </label>
       {zoom && (
         <>
-          <SliderRow label={t('倍数')} val={zoom.magnification ?? 1.5} min={1} max={4} step={0.05} fmt={`${(zoom.magnification ?? 1.5).toFixed(2)}×`}
-            onReset={() => onChange({ magnification: 1.5, reframeCurve: undefined })} resetDisabled={!hasKeyframes && Math.abs((zoom.magnification ?? 1.5) - 1.5) < 1e-6}
+          <SliderRow label={t('倍数')} val={zoom.magnification ?? 1.5} min={1} max={4} step={0.05} fmt={`${(zoom.magnification ?? 1.5).toFixed(2)}×`} mixed={mixed?.magnification}
+            onReset={() => onChange({ magnification: 1.5, reframeCurve: undefined })} resetDisabled={!mixed?.magnification && !hasKeyframes && Math.abs((zoom.magnification ?? 1.5) - 1.5) < 1e-6}
             onChange={(v) => onChange({ magnification: v })} />
-          <SliderRow label={t('焦点X')} val={zoom.focalPointX ?? 0.5} min={0} max={1} step={0.01} fmt={`${compactNumber((zoom.focalPointX ?? 0.5) * 100)}%`} inputScale={100}
-            onReset={() => onChange({ focalPointX: 0.5, reframeCurve: undefined })} resetDisabled={!hasKeyframes && Math.abs((zoom.focalPointX ?? 0.5) - 0.5) < 1e-6}
+          <SliderRow label={t('焦点X')} val={zoom.focalPointX ?? 0.5} min={0} max={1} step={0.01} fmt={`${compactNumber((zoom.focalPointX ?? 0.5) * 100)}%`} inputScale={100} mixed={mixed?.focalPointX}
+            onReset={() => onChange({ focalPointX: 0.5, reframeCurve: undefined })} resetDisabled={!mixed?.focalPointX && !hasKeyframes && Math.abs((zoom.focalPointX ?? 0.5) - 0.5) < 1e-6}
             onChange={(v) => onChange({ focalPointX: v })} />
-          <SliderRow label={t('焦点Y')} val={zoom.focalPointY ?? 0.5} min={0} max={1} step={0.01} fmt={`${compactNumber((zoom.focalPointY ?? 0.5) * 100)}%`} inputScale={100}
-            onReset={() => onChange({ focalPointY: 0.5, reframeCurve: undefined })} resetDisabled={!hasKeyframes && Math.abs((zoom.focalPointY ?? 0.5) - 0.5) < 1e-6}
+          <SliderRow label={t('焦点Y')} val={zoom.focalPointY ?? 0.5} min={0} max={1} step={0.01} fmt={`${compactNumber((zoom.focalPointY ?? 0.5) * 100)}%`} inputScale={100} mixed={mixed?.focalPointY}
+            onReset={() => onChange({ focalPointY: 0.5, reframeCurve: undefined })} resetDisabled={!mixed?.focalPointY && !hasKeyframes && Math.abs((zoom.focalPointY ?? 0.5) - 0.5) < 1e-6}
             onChange={(v) => onChange({ focalPointY: v })} />
           <div className="cc-insp-actions">
             <button
@@ -268,7 +279,7 @@ export function ZoomControl({ zoom, onChange, getLocalFrame, fps, onSetKeyframe,
 
 // transition INTO the selected clip from the previous adjacent same-track clip.
 // Picking a type creates it; None removes it.
-export function TransitionControl({ transition, fps, onAdd, onSet, onRemove, audioMode }: {
+export function TransitionControl({ transition, fps, onAdd, onSet, onRemove, audioMode, previewStatus }: {
   transition: TransitionItem | null;
   fps: number;
   onAdd: (type: TransitionType) => void;
@@ -276,6 +287,7 @@ export function TransitionControl({ transition, fps, onAdd, onSet, onRemove, aud
   onRemove: () => void;
   /** true = only audio-cross-fade (trAudioCrossFade) */
   audioMode?: boolean;
+  previewStatus?: SelectedPreviewStatus;
 }) {
   const t = useT();
   const selStyle: CSSProperties = { background: theme.bg, color: theme.text, border: `0.5px solid ${theme.borderLight}`, borderRadius: 4, padding: '3px 5px' };
@@ -306,6 +318,7 @@ export function TransitionControl({ transition, fps, onAdd, onSet, onRemove, aud
           {options.map((k) => <option key={k} value={k}>{t(TRANSITION_LABELS[k])}</option>)}
         </select>
       </label>
+      {shown && !audioMode && <PreviewFidelityStatus status={previewStatus} />}
       {shown && (
         <>
           <label style={{ fontSize: 11, color: theme.textDim }}>

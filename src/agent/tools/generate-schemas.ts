@@ -196,6 +196,17 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
     },
   },
   {
+    name: 'rerun_generation',
+    description: 'Explicitly rerun one previously tracked generation operation with its complete original submit args. Exact operation/job IDs win; a prefix is accepted only when unique. Legacy summary-only rows and ambiguous prefixes are rejected before any provider call.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        jobId: { type: 'string', minLength: 1, description: 'Exact operation/job ID or a unique prefix. Ambiguous prefixes are rejected with distinguishable candidate IDs.' },
+      },
+      required: ['jobId'],
+    },
+  },
+  {
     name: 'submit_export',
     description: [
       'Export the active timeline synchronously as MP4/WebM video, MP3/WAV audio, SRT/TXT subtitles,',

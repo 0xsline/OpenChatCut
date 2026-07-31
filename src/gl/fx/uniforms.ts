@@ -1,8 +1,8 @@
 // Pure uniform helpers for per-clip effects — no shader imports, so this is
 // runnable under `npx tsx` (the .frag?raw imports live in effects.ts).
 // gn(name, default, min, max) = clamp(properties[name] ?? default).
-import type { FxPass, UniformValue } from '../runtime';
-import { getCubeSync } from './cube';
+import type { FxPass, UniformValue } from '../runtime.js';
+import { getCubeSync } from './cube.js';
 
 interface FxNumberProperty {
   key: string;   // Property name in properties[key].

@@ -4,6 +4,7 @@ import { MARKER_HEX, type Marker, type MarkerColor, type Timeline, type Timeline
 import { makeDraft } from '../../editor/store';
 import { buildModel, type SegRow } from '../../script/serialize';
 import { makeWordFrameMapper } from './transcript-find';
+import { hasOperationalTranscript } from '../../transcript/types';
 import { resolveTimeline } from './timeline-target';
 
 // manage_markers — Timeline annotations (points/segments), anchored on the frame or a clip, the contract is marker-note-v2.
@@ -68,7 +69,7 @@ function resolveTranscriptSegments(state: TimelineState, spec: string, trackFilt
 
   const cand = candidates[0]!;
   const item = state.items.find((it) => it.id === cand.itemId);
-  if (!item?.transcript?.length) return { error: `转写区域对应的 clip ${cand.itemId} 已无转写,请重新 read_script` };
+  if (!hasOperationalTranscript(item)) return { error: `转写区域对应的 clip ${cand.itemId} 已无当前转写,请重新 read_script` };
   const deleted = new Set(item.deletedWordIdx ?? []);
   const mapper = makeWordFrameMapper(item, state.fps);
   const firstRow = cand.rows.get(sns[0]!)!;

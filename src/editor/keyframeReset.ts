@@ -1,9 +1,9 @@
-import type { AtomicAction } from './reduce';
+import type { Action } from './reduce';
 import { getKeyframePropertyDefinition } from './keyframeRegistry';
 import type { ClipTransform, KeyframeProp } from './types';
 
 export interface KeyframeResetBatch {
-  actions: AtomicAction[];
+  actions: Action[];
   label: string;
 }
 
@@ -12,7 +12,7 @@ export function keyframeResetBatch(
   requestedProps: readonly KeyframeProp[],
 ): KeyframeResetBatch {
   const props = [...new Set(requestedProps)];
-  const actions: AtomicAction[] = props.map((prop) => ({ type: 'clearKeyframes', id, prop }));
+  const actions: Action[] = props.map((prop) => ({ type: 'clearKeyframes', id, prop }));
   const transform: ClipTransform = {};
   let resetVolume = false;
 

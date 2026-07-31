@@ -13,7 +13,7 @@ import {
   LATIN_PENALTY_PATTERNS, LATIN_QUANTIFIERS, MODAL_PARTICLES, NO_LINE_START, ORPHAN_PICK_DEMOTION,
   PAUSE_MIN_MS, PAUSE_SUPPRESSED_CONNECTORS, PAUSE_SUPPRESSED_MIN_MS, QUESTION_HEAD, QUESTION_TAIL,
   QUESTION_TAIL_EXCLUDE, SHORT_FUNCTION_WORD, pauseBreakPriority,
-} from './segmenterData';
+} from './segmenterData.js';
 
 /** Input word (TranscriptWord structure is compatible; pause breakpoint does not participate when there is no timestamp). */
 export interface SegmentWord {

@@ -1,5 +1,6 @@
 import type { AtomicAction } from '../editor/reduce';
 import type { TimelineItem } from '../editor/types';
+import { sourceFramesToTimelineFrames, sourceWindowForTimelineRange } from '../editor/sourceLimit';
 import type { SceneChange } from './detect';
 
 export interface MappedScene extends SceneChange {
@@ -13,11 +14,11 @@ export function mapScenesToItem(
   item: TimelineItem,
   fps: number,
 ): MappedScene[] {
-  const sourceIn = item.srcInFrame ?? 0;
-  const rate = Math.max(0.01, item.playbackRate ?? 1);
+  const window = sourceWindowForTimelineRange(item, 0, item.durationInFrames);
   const mapped = scenes.flatMap((scene): MappedScene[] => {
     const sourceFrame = (scene.timeMs / 1000) * fps;
-    const itemLocalFrame = Math.round((sourceFrame - sourceIn) / rate);
+    if (sourceFrame <= window.startFrame || sourceFrame >= window.endFrame) return [];
+    const itemLocalFrame = Math.round(sourceFramesToTimelineFrames(item, sourceFrame - window.startFrame));
     if (itemLocalFrame <= 0 || itemLocalFrame >= item.durationInFrames) return [];
     return [{ ...scene, itemLocalFrame, timelineFrame: item.startFrame + itemLocalFrame }];
   });

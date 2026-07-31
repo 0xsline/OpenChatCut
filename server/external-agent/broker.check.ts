@@ -1,39 +1,85 @@
 import assert from 'node:assert/strict';
 import {
+  cancelEditorCallsForOwner,
   connectedProjectIds,
-  isProjectConnected,
+  editorBinding,
+  ExternalEditorCallError,
   invokeEditorTool,
+  isProjectConnected,
   nextEditorCall,
+  nextEditorCancellation,
   onRegisteredToolsChanged,
+  pendingEditorCallsForTest,
   registerEditor,
-  resolveProjectId,
+  resetExternalAgentBrokerForTest,
   settleEditorCall,
+  unregisterEditor,
 } from './broker.ts';
 
 const projectId = 'project-check';
 const editorId = 'editor-check';
+const revision = 'v1-project-check';
+const tools = [{
+  name: 'read_timeline',
+  input_schema: { type: 'object' as const, properties: {} },
+}];
+
+function hasOutcome(outcome: ExternalEditorCallError['outcome']): (error: unknown) => boolean {
+  return (error) => error instanceof ExternalEditorCallError && error.outcome === outcome;
+}
+
+resetExternalAgentBrokerForTest();
 let toolChanges = 0;
 const stopWatchingTools = onRegisteredToolsChanged(() => { toolChanges += 1; });
-registerEditor(projectId, editorId, [{
-  name: 'read_timeline',
-  input_schema: { type: 'object', properties: {} },
-}]);
+registerEditor(projectId, editorId, revision, tools);
 assert.equal(toolChanges, 1, 'first editor registration announces the expanded tool list');
-registerEditor(projectId, editorId, [{
-  name: 'read_timeline',
-  input_schema: { type: 'object', properties: {} },
-}]);
+registerEditor(projectId, editorId, revision, tools);
 assert.equal(toolChanges, 1, 'heartbeats with the same schemas do not spam list-changed');
 stopWatchingTools();
 assert.deepEqual(connectedProjectIds(), [projectId]);
-assert.equal(resolveProjectId(undefined), projectId);
 
-const resultPromise = invokeEditorTool(projectId, 'read_timeline', {});
-const call = await nextEditorCall(projectId, editorId, new AbortController().signal);
-assert.equal(call?.name, 'read_timeline');
+const binding = editorBinding(projectId);
+assert(binding);
+const resultPromise = invokeEditorTool('owner-success', binding, 'read_timeline', {});
+const call = await nextEditorCall(projectId, editorId, revision, new AbortController().signal);
+assert(call);
+assert.equal(call.name, 'read_timeline');
+assert.deepEqual(call.binding, binding);
 assert.equal(isProjectConnected(projectId, Date.now() + 60_000), true, 'in-flight calls keep a busy editor connected');
-assert.equal(settleEditorCall(call!.id, true, { fps: 30 }), true);
+assert.equal(settleEditorCall(call.id, 'applied', { fps: 30 }), true);
 assert.equal(isProjectConnected(projectId, Date.now() + 60_000), false, 'settled calls no longer mask an offline editor');
 assert.deepEqual(await resultPromise, { fps: 30 });
+
+const inFlightPromise = invokeEditorTool('owner-evicted', binding, 'read_timeline', {});
+const inFlight = await nextEditorCall(projectId, editorId, revision, new AbortController().signal);
+assert(inFlight);
+assert.equal(cancelEditorCallsForOwner('owner-evicted'), 1);
+await assert.rejects(inFlightPromise, hasOutcome('cancelled'));
+const cancellation = await nextEditorCancellation(
+  projectId,
+  editorId,
+  AbortSignal.timeout(100),
+);
+assert.equal(cancellation?.id, inFlight.id, 'in-flight cancellation is delivered cooperatively to the editor');
+assert.equal(cancellation?.outcome, 'cancelled');
+assert.equal(settleEditorCall(inFlight.id, 'applied', { late: true }), false, 'late mutation results cannot revive a cancelled call');
+
+const queuedPromise = invokeEditorTool('owner-project-close', binding, 'read_timeline', {});
+assert.equal(unregisterEditor(projectId, editorId), true);
+await assert.rejects(queuedPromise, hasOutcome('cancelled'));
+assert.equal(pendingEditorCallsForTest().length, 0, 'project close settles queued calls instead of leaving them pending');
+
+registerEditor(projectId, editorId, revision, tools);
+const staleBinding = editorBinding(projectId);
+assert(staleBinding);
+const stalePromise = invokeEditorTool('owner-stale', staleBinding, 'read_timeline', {});
+registerEditor(projectId, editorId, 'v2-project-check', tools);
+await assert.rejects(stalePromise, hasOutcome('stale'));
+assert.equal(pendingEditorCallsForTest().length, 0, 'revision changes remove stale calls from the dequeue path');
+assert.throws(
+  () => invokeEditorTool('owner-old-binding', staleBinding, 'read_timeline', {}),
+  hasOutcome('stale'),
+);
+
 await import('./mcp.verify.ts');
 console.log('external-agent broker check passed');

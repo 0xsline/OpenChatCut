@@ -4,12 +4,25 @@
 import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeTimeline, captionsOnTrack, DEFAULT_WATERMARK, defaultTrackId, isAudioTransition, selectedIdsOf, timelineTrackIds, trackEnd, trackKind } from './types';
 import { scaleItemKeyframes, splitItemKeyframes, upsertKeyframe } from './keyframes';
-import { capFade, fitTimelineItems } from './clipFit';
-import { remainingSourceFrames } from './sourceLimit';
+import { capFade, fitItemToDuration, fitTimelineItems } from './clipFit';
+import { remainingSourceFrames, sourceWindowForTimelineRange, timelineFramesToSourceFrames } from './sourceLimit';
 import { coerceKeyframeValue, supportsKeyframeProperty } from './keyframeRegistry';
+import { reconcileTransitions } from './transitionReconcile';
+import { planSlip } from './slip';
+import { sequenceGraphError, sequenceReferencesTo } from './sequenceGraph';
+import { createMediaSourceRevision, revisionAfterRelink, sourceRevisionOf, withMediaSourceRevision } from './mediaSourceRevision';
+import {
+  applyRippleShifts,
+  linkedItemIds,
+  moveItemWithGroups,
+  removeItemsWithGroups,
+  retimeItemWithGroups,
+  unlinkItems,
+} from './linkGroups';
 import type { CaptionsData } from '../captions/types';
 import type { SerializableFxDef } from '../gl/fx/uniforms';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
+import { hasOperationalTranscript } from '../transcript/types';
 import { editedFrames, fillerIndices, itemEditOpts, splitClipTranscript } from '../transcript/edit';
 
 const TRACK_KIND_ORDER: readonly TrackKind[] = ['caption', 'video', 'audio'];
@@ -39,6 +52,7 @@ export type Action =
   | { type: 'updateProps'; id: string; patch: Record<string, unknown> }
   | { type: 'move'; id: string; track?: TrackId; startFrame?: number }
   | { type: 'retime'; id: string; startFrame?: number; durationInFrames?: number; srcInFrame?: number; ripple?: boolean }
+  | { type: 'slip'; id: string; deltaInFrames: number }
   | { type: 'setVolume'; id: string; volume: number }
   | { type: 'setFade'; id: string; fadeInFrames?: number; fadeOutFrames?: number }
   | { type: 'setTransform'; id: string; patch: ClipTransform }
@@ -94,6 +108,13 @@ export type Action =
   | { type: 'selectAll' }
   | { type: 'setFullState'; state: TimelineState };
 
+const TRANSITION_RECONCILING_ACTIONS = new Set<Action['type']>([
+  'add', 'move', 'retime', 'slip', 'setSpeed', 'replaceMedia', 'duplicate', 'remove', 'split', 'clear',
+  'track.tighten', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap',
+  'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'addTransition',
+  'setTransition', 'setFullState',
+]);
+
 // ── Project-level actions for multiple timelines ──────────────────────────
 // These operate on the ProjectDoc (the set of timelines), not on any single
 // timeline's items. All per-timeline Actions above are routed to the active
@@ -111,9 +132,9 @@ export type ProjectAction =
   | { type: 'pool.renameFolder'; id: string; name: string }
   | { type: 'pool.deleteFolder'; id: string }
   | { type: 'pool.moveAssets'; ids: string[]; folderId?: string }
-  | { type: 'pool.updateAsset'; id: string; patch: Partial<Pick<MediaAsset, 'name' | 'favorite' | 'code' | 'props' | 'src' | 'durationInFrames' | 'width' | 'height' | 'kind'>> }
-  | { type: 'pool.setTranscription'; id: string; patch: Partial<Pick<MediaAsset, 'transcript' | 'transcribeStatus' | 'transcribeError'>> }
-  | { type: 'pool.relinkAsset'; id: string; src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind'] }
+  | { type: 'pool.updateAsset'; id: string; patch: Partial<Pick<MediaAsset, 'name' | 'favorite' | 'code' | 'props' | 'sourceTimecode' | 'captureClock'>> }
+  | { type: 'pool.setTranscription'; id: string; patch: Partial<Pick<MediaAsset, 'transcript' | 'transcriptSourceRevision' | 'transcriptStale' | 'transcribeStatus' | 'transcribeError'>> }
+  | { type: 'pool.relinkAsset'; id: string; src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind']; sourceRevision?: string; sourceSize?: number; sourceModifiedAt?: number }
   | { type: 'pool.removeAsset'; id: string }
   | { type: 'design.set'; style: DesignStyle | null }
   | { type: 'design.patch'; patch: Partial<DesignStyle> };
@@ -148,7 +169,7 @@ export type Dispatch = (a: Action | BatchAction | HistoryControlAction) => void;
 /** dispatch at the project level: per-timeline + project actions + history control */
 export type ProjectDispatch = (a: AnyAction | HistoryControlAction) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'setKeyframe', 'removeKeyframe', 'clearKeyframes', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
+const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'slip', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'setKeyframe', 'removeKeyframe', 'clearKeyframes', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
   'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset', 'pool.setTranscription', 'pool.relinkAsset', 'pool.removeAsset']);
@@ -163,6 +184,7 @@ const lockedItem = (s: TimelineState, id: string): boolean =>
 
 
 function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): number {
+  if (!hasOperationalTranscript(it)) return it.durationInFrames;
   // Duration after word operation = Full length of word stream after editing − There is left clipping (only audio: the starting point of the window for word-driven rendering).
   // The left trim is retained after word deletion/silencing; the right trim is reset to "all remaining". video+transcript go
   // Continuous rendering, srcInFrame is media frame semantics and does not participate in the word flow window.
@@ -192,9 +214,216 @@ export function contiguousFollowers(
   return ids;
 }
 
+type RetimeAction = Extract<Action, { type: 'retime' }>;
+export type OverwriteLaneAction = Extract<Action, { type: 'add' | 'retime' | 'remove' | 'split' }>;
+type RetimePatch = Pick<TimelineItem, 'startFrame' | 'durationInFrames' | 'srcInFrame'>;
+
+function retimePatchForItem(s: TimelineState, target: TimelineItem, action: RetimeAction): RetimePatch {
+  let srcInFrame = action.srcInFrame === undefined ? target.srcInFrame : Math.max(0, action.srcInFrame);
+  let durationInFrames = Math.max(1, action.durationInFrames ?? target.durationInFrames);
+  if (target.kind === 'audio' && hasOperationalTranscript(target)) {
+    const total = editedFrames(
+      target.transcript,
+      new Set(target.deletedWordIdx ?? []),
+      s.fps,
+      itemEditOpts(target),
+    );
+    srcInFrame = Math.min(srcInFrame ?? 0, Math.max(0, total - 1));
+    durationInFrames = Math.min(durationInFrames, Math.max(1, total - srcInFrame));
+  }
+  const sourceLimit = remainingSourceFrames(target, srcInFrame ?? 0, s.assets);
+  if (sourceLimit !== null) durationInFrames = Math.min(durationInFrames, sourceLimit);
+  return {
+    startFrame: Math.max(0, action.startFrame ?? target.startFrame),
+    durationInFrames,
+    srcInFrame,
+  };
+}
+
+function splitTimelineItem(
+  s: TimelineState,
+  item: TimelineItem,
+  atFrame: number,
+  newId: string,
+): [TimelineItem, TimelineItem] {
+  const cut = atFrame - item.startFrame;
+  const sourceWindow = sourceWindowForTimelineRange(item, 0, cut);
+  // Word-driven audio partitions its already-edited word stream in visible timeline time.
+  const wordDriven = item.kind === 'audio' && hasOperationalTranscript(item);
+  const transcriptCut = wordDriven
+    ? sourceWindowForTimelineRange({ ...item, playbackRate: 1 }, 0, cut).endFrame
+    : sourceWindow.endFrame;
+  const transcriptParts = hasOperationalTranscript(item)
+    ? splitClipTranscript(item, s.fps, transcriptCut)
+    : null;
+  const keyframeParts = item.keyframes ? splitItemKeyframes(item.keyframes, cut) : null;
+  const left: TimelineItem = {
+    ...item,
+    durationInFrames: cut,
+    fadeOutFrames: undefined,
+    ...(transcriptParts ? {
+      transcript: transcriptParts.left.transcript,
+      deletedWordIdx: transcriptParts.left.deletedWordIdx,
+      variants: transcriptParts.left.variants,
+      gapCapsMs: transcriptParts.left.gapCapsMs,
+      transcriptPlayOrder: undefined,
+    } : {}),
+    ...(keyframeParts ? { keyframes: keyframeParts[0] } : {}),
+  };
+  const right: TimelineItem = {
+    ...item,
+    id: newId,
+    startFrame: atFrame,
+    durationInFrames: item.durationInFrames - cut,
+    srcInFrame: wordDriven && transcriptParts ? 0 : sourceWindow.endFrame,
+    fadeInFrames: undefined,
+    ...(transcriptParts ? {
+      transcript: transcriptParts.right.transcript,
+      deletedWordIdx: transcriptParts.right.deletedWordIdx,
+      variants: transcriptParts.right.variants,
+      gapCapsMs: transcriptParts.right.gapCapsMs,
+      transcriptPlayOrder: undefined,
+    } : {}),
+    ...(keyframeParts ? { keyframes: keyframeParts[1] } : {}),
+  };
+  return [fitItemToDuration(left), fitItemToDuration(right)];
+}
+
+/**
+ * A split keeps the original id on the left fragment. Transitions entering the
+ * clip therefore keep their incoming endpoint, while transitions leaving its
+ * original right edge must follow the new right-fragment id.
+ */
+function remapSplitTransitionEndpoints(
+  transitions: TimelineState['transitions'],
+  originalId: string,
+  rightId: string,
+): TimelineState['transitions'] {
+  if (!transitions?.some((transition) => transition.outgoingItemId === originalId)) return transitions;
+  return transitions.map((transition) => transition.outgoingItemId === originalId
+    ? { ...transition, outgoingItemId: rightId }
+    : transition);
+}
+
+function reconcileOverwriteLaneState(state: TimelineState): TimelineState {
+  if (!state.transitions?.length) return state;
+  return { ...state, transitions: reconcileTransitions(state.items, state.transitions) };
+}
+
+function overwriteLaneTarget(
+  state: TimelineState,
+  targetTrackId: TrackId,
+  id: string,
+): TimelineItem | null {
+  let target: TimelineItem | null = null;
+  for (const item of state.items) {
+    if (item.id !== id) continue;
+    if (target) return null;
+    target = item;
+  }
+  return target?.track === targetTrackId ? target : null;
+}
+
+/**
+ * Apply one overwrite-planner operation to exactly one target lane.
+ * Unlike user-facing remove/retime commands, this never follows link groups:
+ * a changed target item is unlinked while every companion keeps its geometry.
+ * Invalid or inapplicable operations reject instead of silently becoming no-ops.
+ */
+export function applyOverwriteLaneAction(
+  state: TimelineState,
+  targetTrackId: TrackId,
+  action: OverwriteLaneAction,
+): TimelineState | null {
+  if (state.tracks?.[targetTrackId]?.locked) return null;
+
+  switch (action.type) {
+    case 'add': {
+      const startFrame = action.startFrame;
+      if (action.ripple || action.item.track !== targetTrackId || startFrame === undefined
+        || !Number.isFinite(startFrame) || startFrame < 0
+        || !Number.isFinite(action.item.durationInFrames) || action.item.durationInFrames < 1
+        || state.items.some((item) => item.id === action.item.id)) return null;
+      const endFrame = startFrame + action.item.durationInFrames;
+      if (!Number.isFinite(endFrame)) return null;
+      const overlapsTargetLane = state.items.some((item) => item.track === targetTrackId
+        && item.startFrame < endFrame
+        && item.startFrame + item.durationInFrames > startFrame);
+      if (overlapsTargetLane) return null;
+      const item = fitItemToDuration({ ...action.item, startFrame });
+      if (item.startFrame !== startFrame || item.durationInFrames !== action.item.durationInFrames) return null;
+      return reconcileOverwriteLaneState({
+        ...state,
+        items: [...state.items, item],
+        selectedId: item.id,
+        selectedIds: [item.id],
+      });
+    }
+    case 'remove': {
+      if (action.ripple) return null;
+      const target = overwriteLaneTarget(state, targetTrackId, action.id);
+      if (!target) return null;
+      const remainingIds = new Set(state.items
+        .filter((item) => item.id !== action.id)
+        .map((item) => item.id));
+      const selectedIds = selectedIdsOf(state).filter((id) => remainingIds.has(id));
+      const removed = unlinkItems({
+        ...state,
+        items: state.items.filter((item) => item.id !== action.id),
+        transitions: (state.transitions ?? []).filter((transition) =>
+          transition.incomingItemId !== action.id && transition.outgoingItemId !== action.id),
+        selectedIds,
+        selectedId: selectedIds[selectedIds.length - 1] ?? null,
+      }, [action.id]);
+      return reconcileOverwriteLaneState(removed);
+    }
+    case 'retime': {
+      if (action.ripple) return null;
+      const target = overwriteLaneTarget(state, targetTrackId, action.id);
+      if (!target) return null;
+      const patch = retimePatchForItem(state, target, action);
+      if (!Number.isFinite(patch.startFrame) || patch.startFrame < 0
+        || !Number.isFinite(patch.durationInFrames) || patch.durationInFrames < 1
+        || (patch.srcInFrame !== undefined && (!Number.isFinite(patch.srcInFrame) || patch.srcInFrame < 0))
+        || (action.startFrame !== undefined && patch.startFrame !== action.startFrame)
+        || (action.durationInFrames !== undefined && patch.durationInFrames !== action.durationInFrames)
+        || (action.srcInFrame !== undefined && patch.srcInFrame !== action.srcInFrame)
+        || (patch.startFrame === target.startFrame
+          && patch.durationInFrames === target.durationInFrames
+          && patch.srcInFrame === target.srcInFrame)) return null;
+      const retimed = fitItemToDuration({ ...target, ...patch });
+      const unlinked = unlinkItems({
+        ...state,
+        items: state.items.map((item) => item.id === target.id ? retimed : item),
+      }, [target.id]);
+      return reconcileOverwriteLaneState(unlinked);
+    }
+    case 'split': {
+      const target = overwriteLaneTarget(state, targetTrackId, action.id);
+      if (!target || !Number.isFinite(action.atFrame)
+        || action.atFrame <= target.startFrame
+        || action.atFrame >= target.startFrame + target.durationInFrames
+        || state.items.some((item) => item.id === action.newId)) return null;
+      const [left, right] = splitTimelineItem(state, target, action.atFrame, action.newId);
+      if (left.startFrame !== target.startFrame
+        || left.durationInFrames !== action.atFrame - target.startFrame
+        || right.startFrame !== action.atFrame
+        || right.durationInFrames !== target.startFrame + target.durationInFrames - action.atFrame) return null;
+      const unlinked = unlinkItems({
+        ...state,
+        items: state.items.flatMap((item) => item.id === target.id ? [left, right] : [item]),
+        transitions: remapSplitTransitionEndpoints(state.transitions, target.id, right.id),
+      }, [target.id]);
+      return reconcileOverwriteLaneState(unlinked);
+    }
+  }
+}
+
 export function reduce(s: TimelineState, a: Action): TimelineState {
   // Any changes may be changed to durationInFrames, which will be self-healed at the exit, eliminating the need to add guards to each case.
-  return fitTimelineItems(applyAction(s, a));
+  const next = fitTimelineItems(applyAction(s, a));
+  if (!TRANSITION_RECONCILING_ACTIONS.has(a.type) || !next.transitions?.length) return next;
+  return { ...next, transitions: reconcileTransitions(next.items, next.transitions) };
 }
 
 function applyAction(s: TimelineState, a: Action): TimelineState {
@@ -206,10 +435,15 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
       const item: TimelineItem = { ...a.item, startFrame };
       // Ripple insert: push same-track clips at/after the
       // insertion point right by the new clip's duration to make room (no overwrite).
-      const base = a.ripple
-        ? s.items.map((it) => (it.track === item.track && it.startFrame >= startFrame
-            ? { ...it, startFrame: it.startFrame + item.durationInFrames } : it))
-        : s.items;
+      let base = s.items;
+      if (a.ripple) {
+        const shifts = new Map(s.items
+          .filter((it) => it.track === item.track && it.startFrame >= startFrame)
+          .map((it) => [it.id, item.durationInFrames]));
+        const shifted = applyRippleShifts(s, shifts);
+        if (!shifted) return s;
+        base = shifted.items;
+      }
       return { ...s, items: [...base, item], selectedId: item.id, selectedIds: [item.id] };
     }
     case 'updateProps':
@@ -220,50 +454,46 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
           it.id === a.id ? { ...it, props: { ...it.props, ...a.patch } } : it,
         ),
       };
-    case 'move':
-      if (s.items.some((it) => it.id === a.id && (s.tracks?.[it.track]?.locked || (a.track && s.tracks?.[a.track]?.locked)))) return s;
-      return {
-        ...s,
-        items: s.items.map((it) =>
-          it.id === a.id
-            ? { ...it, track: a.track ?? it.track, startFrame: Math.max(0, a.startFrame ?? it.startFrame) }
-            : it,
-        ),
-      };
+    case 'move': {
+      const target = s.items.find((it) => it.id === a.id);
+      if (!target) return s;
+      return moveItemWithGroups(
+        s,
+        a.id,
+        Math.max(0, a.startFrame ?? target.startFrame),
+        a.track,
+      );
+    }
     case 'retime': {
       if (s.items.some((it) => it.id === a.id && s.tracks?.[it.track]?.locked)) return s;
       const target = s.items.find((it) => it.id === a.id);
       if (!target) return s;
-      let srcIn = a.srcInFrame === undefined ? target.srcInFrame : Math.max(0, a.srcInFrame);
-      let dur = Math.max(1, a.durationInFrames ?? target.durationInFrames);
-      // Transcribe audio's trim guard: the window clamp is within the total length of the word stream after editing (the trim handle crosses the boundary and self-heals,
-      // Word ↔ frame is consistent - the window decides what to broadcast, and the window itself is guaranteed to be legal). video's srcInFrame
-      // It is a media frame, not clamp.
-      if (target.kind === 'audio' && target.transcript?.length) {
-        const total = editedFrames(target.transcript, new Set(target.deletedWordIdx ?? []), s.fps, itemEditOpts(target));
-        srcIn = Math.min(srcIn ?? 0, Math.max(0, total - 1));
-        dur = Math.min(dur, Math.max(1, total - srcIn));
-      }
-      // Other real media: The right edge cannot cross the end of the asset (it will only freeze at the last frame).
-      const sourceLimit = remainingSourceFrames(target, srcIn ?? 0, s.assets);
-      if (sourceLimit !== null) dur = Math.min(dur, sourceLimit);
-      const startFrame = Math.max(0, a.startFrame ?? target.startFrame);
+      const targetPatch = retimePatchForItem(s, target, a);
       const oldEnd = target.startFrame + target.durationInFrames;
-      const newEnd = startFrame + dur;
+      const newEnd = targetPatch.startFrame + targetPatch.durationInFrames;
       const deltaEnd = newEnd - oldEnd;
       // ripple retime: when the clip's right edge moves, shift later same-track clips
       // by the same delta (shorten = close gap; lengthen = push).
+      const linkedIds = new Set(linkedItemIds(s, [a.id]));
+      const grouped = retimeItemWithGroups(s, a.id, targetPatch);
+      if (!grouped) return s;
+      if (!a.ripple || deltaEnd === 0) return grouped;
+      const linkedMembers = s.items.filter((item) => linkedIds.has(item.id));
+      const shifts = new Map(s.items
+        .filter((item) => !linkedIds.has(item.id) && linkedMembers.some((member) =>
+          item.track === member.track
+          && item.startFrame >= member.startFrame + member.durationInFrames))
+        .map((item) => [item.id, deltaEnd]));
+      return applyRippleShifts(grouped, shifts, linkedIds) ?? s;
+    }
+    case 'slip': {
+      const plan = planSlip(s, a.id, a.deltaInFrames);
+      if (!plan.ok || Math.abs(plan.appliedDeltaInFrames) < 1e-6) return s;
       return {
         ...s,
-        items: s.items.map((it) => {
-          if (it.id === a.id) {
-            return { ...it, startFrame, durationInFrames: dur, srcInFrame: srcIn };
-          }
-          if (a.ripple && deltaEnd !== 0 && it.track === target.track && it.startFrame >= oldEnd) {
-            return { ...it, startFrame: Math.max(0, it.startFrame + deltaEnd) };
-          }
-          return it;
-        }),
+        items: s.items.map((item) => item.id === a.id
+          ? { ...item, srcInFrame: plan.srcInFrame }
+          : item),
       };
     }
     case 'setVolume':
@@ -330,7 +560,9 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
         ...s,
         items: s.items.map((it) => (it.id === a.id
           ? { id: it.id, track: it.track, startFrame: it.startFrame, durationInFrames: it.durationInFrames,
-              kind: 'video', name: it.name, src: a.src, volume: it.volume ?? 1 }
+              kind: 'video', name: it.name, src: a.src,
+              sourceRevision: createMediaSourceRevision({ src: a.src, kind: 'video', durationInFrames: it.durationInFrames }),
+              volume: it.volume ?? 1 }
           : it)),
       };
     case 'setSpeed': {
@@ -339,7 +571,7 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
       if (!target) return s;
       const rate = Math.max(0.1, Math.min(8, a.rate));
       // preserve the source span: newDuration = sourceSpan / rate
-      const sourceSpan = target.durationInFrames * (target.playbackRate ?? 1);
+      const sourceSpan = timelineFramesToSourceFrames(target, target.durationInFrames);
       const durationInFrames = Math.max(1, Math.round(sourceSpan / rate));
       const oldEnd = target.startFrame + target.durationInFrames;
       const deltaEnd = (target.startFrame + durationInFrames) - oldEnd;
@@ -494,7 +726,14 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
       return { ...s, items: [...s.items, copy], selectedId: copy.id, selectedIds: [copy.id] };
     }
     case 'clear':
-      return { ...s, items: [], selectedId: null, selectedIds: [] };
+      return {
+        ...s,
+        items: [],
+        selectedId: null,
+        selectedIds: [],
+        linkGroups: undefined,
+        multicamGroups: undefined,
+      };
     case 'setCanvas':
       return { ...s, width: a.width, height: a.height, fit: a.fit ?? s.fit ?? 'contain' };
     case 'toggleTrack': {
@@ -601,19 +840,36 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
         ...s,
         items: s.items.map((it) =>
           it.id === a.id
-            ? { ...it, transcript: a.words, deletedWordIdx: [], silenceFrames: undefined, gapCapsMs: undefined }
+            ? {
+                ...it,
+                transcript: a.words,
+                transcriptStale: false,
+                // A retained stale transcript used a different source revision (and,
+                // while stale, media-frame coordinates). Its old trim cannot be
+                // reinterpreted as an offset into the new packed word stream.
+                srcInFrame: it.transcriptStale === true ? 0 : it.srcInFrame,
+                deletedWordIdx: [],
+                silenceFrames: undefined,
+                gapCapsMs: undefined,
+                transcriptPlayOrder: undefined,
+                cutPadFrames: undefined,
+                variants: undefined,
+              }
             : it,
         ),
       };
     case 'setItemVariants':
       // Replace the item's text-only transcript variants. Purely additive metadata:
       // it touches neither transcript words, timings, nor durationInFrames.
-      return { ...s, items: s.items.map((it) => (it.id === a.id ? { ...it, variants: a.variants } : it)) };
+      return hasOperationalTranscript(s.items.find((it) => it.id === a.id))
+        ? { ...s, items: s.items.map((it) => (it.id === a.id ? { ...it, variants: a.variants } : it)) }
+        : s;
     case 'toggleWord':
+      if (!hasOperationalTranscript(s.items.find((it) => it.id === a.id))) return s;
       return {
         ...s,
         items: s.items.map((it) => {
-          if (it.id !== a.id || !it.transcript) return it;
+          if (it.id !== a.id) return it;
           const del = new Set(it.deletedWordIdx ?? []);
           if (del.has(a.idx)) del.delete(a.idx);
           else del.add(a.idx);
@@ -621,22 +877,24 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
         }),
       };
     case 'deleteWords':
+      if (!hasOperationalTranscript(s.items.find((it) => it.id === a.id))) return s;
       return {
         ...s,
         items: s.items.map((it) => {
-          if (it.id !== a.id || !it.transcript) return it;
+          if (it.id !== a.id) return it;
           const del = new Set(it.deletedWordIdx ?? []);
-          for (const idx of a.idxs) if (idx >= 0 && idx < it.transcript.length) del.add(idx);
+          for (const idx of a.idxs) if (idx >= 0 && idx < it.transcript!.length) del.add(idx);
           return { ...it, deletedWordIdx: [...del], durationInFrames: editedDuration(it, del, s.fps) };
         }),
       };
     case 'cleanScript':
+      if (!hasOperationalTranscript(s.items.find((it) => it.id === a.id))) return s;
       return {
         ...s,
         items: s.items.map((it) => {
-          if (it.id !== a.id || !it.transcript) return it;
+          if (it.id !== a.id) return it;
           const del = new Set(it.deletedWordIdx ?? []);
-          if (a.removeFillers) for (const idx of fillerIndices(it.transcript)) del.add(idx);
+          if (a.removeFillers) for (const idx of fillerIndices(it.transcript!)) del.add(idx);
           const next = {
             ...it,
             deletedWordIdx: [...del],
@@ -649,7 +907,7 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
       };
     case 'setGapCap': {
       const it = s.items.find((x) => x.id === a.id);
-      if (!it?.transcript || a.afterWordIndex < 0 || a.afterWordIndex >= it.transcript.length) return s;
+      if (!hasOperationalTranscript(it) || a.afterWordIndex < 0 || a.afterWordIndex >= it.transcript.length) return s;
       const key = String(a.afterWordIndex);
       const prev = it.gapCapsMs ?? {};
       let nextCaps: Record<string, number> | undefined;
@@ -674,7 +932,7 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
     }
     case 'setTranscriptPlayOrder': {
       const it = s.items.find((x) => x.id === a.id);
-      if (!it?.transcript?.length) return s;
+      if (!hasOperationalTranscript(it)) return s;
       const playOrder = a.playOrder;
       if (playOrder == null) {
         if (!it.transcriptPlayOrder?.length) return s;
@@ -720,19 +978,22 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
         ),
       };
     }
-    case 'clearEdits':
+    case 'clearEdits': {
+      if (!hasOperationalTranscript(s.items.find((it) => it.id === a.id))) return s;
       return {
         ...s,
         items: s.items.map((it) =>
-          it.id === a.id && it.transcript ? { ...it, deletedWordIdx: [], silenceFrames: undefined, gapCapsMs: undefined, transcriptPlayOrder: undefined, durationInFrames: editedFrames(it.transcript, new Set(), s.fps) } : it,
+          it.id === a.id ? { ...it, deletedWordIdx: [], silenceFrames: undefined, gapCapsMs: undefined, transcriptPlayOrder: undefined, durationInFrames: editedFrames(it.transcript!, new Set(), s.fps) } : it,
         ),
       };
+    }
     case 'fixTranscriptWord': {
       // Correct typos: Only correct the text of a transliterated word to keep the word frame consistent in both directions - only replace .text,
       // The start/end (frame bit), speaker, number of words, and durationInFrames of the clip are all unchanged.
       const it = s.items.find((x) => x.id === a.id);
-      const word = it?.transcript?.[a.wordIndex];
-      // Out of bounds / No transliteration / Text unchanged → True no-op (return to original state, do not enter the history stack)
+      if (!hasOperationalTranscript(it)) return s;
+      const word = it.transcript[a.wordIndex];
+      // Out of bounds / No current transcript / Text unchanged → True no-op (return to original state, do not enter the history stack)
       if (!word || word.text === a.text) return s;
       return {
         ...s,
@@ -750,7 +1011,7 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
       // Note: TimelineItem only stores transcript (word), and there is no utterances/segment field to change.
       const it = s.items.find((x) => x.id === a.id);
       // No item / No transliteration / Speaker without words ===from → true no-op (return to original state, do not enter the history stack)
-      if (!it?.transcript?.some((w) => w.speaker === a.from)) return s;
+      if (!hasOperationalTranscript(it) || !it.transcript.some((w) => w.speaker === a.from)) return s;
       return {
         ...s,
         items: s.items.map((item) =>
@@ -788,62 +1049,19 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
         ),
       };
     }
-    case 'remove': {
-      const gone = s.items.find((it) => it.id === a.id);
-      if (gone && s.tracks?.[gone.track]?.locked) return s;
-      // Ripple delete closes the gap by shifting same-track clips that
-      // start at/after the removed clip's OUT point left by its duration.
-      const end = gone ? gone.startFrame + gone.durationInFrames : 0;
-      const kept = s.items
-        .filter((it) => it.id !== a.id)
-        .map((it) => (a.ripple && gone && it.track === gone.track && it.startFrame >= end
-          ? { ...it, startFrame: Math.max(0, it.startFrame - gone.durationInFrames) } : it));
-      const nextSel = selectedIdsOf(s).filter((id) => id !== a.id);
+    case 'remove':
+      return removeItemsWithGroups(s, [a.id], a.ripple);
+    case 'split': {
+      const item = s.items.find((candidate) => candidate.id === a.id);
+      if (!item || s.tracks?.[item.track]?.locked
+        || a.atFrame <= item.startFrame
+        || a.atFrame >= item.startFrame + item.durationInFrames) return s;
+      const [left, right] = splitTimelineItem(s, item, a.atFrame, a.newId);
       return {
         ...s,
-        items: kept,
-        // drop transitions that referenced the removed clip
-        transitions: (s.transitions ?? []).filter((t) => t.incomingItemId !== a.id && t.outgoingItemId !== a.id),
-        selectedIds: nextSel,
-        selectedId: nextSel[nextSel.length - 1] ?? null,
+        items: s.items.flatMap((candidate) => candidate.id === a.id ? [left, right] : [candidate]),
+        transitions: remapSplitTransitionEndpoints(s.transitions, item.id, right.id),
       };
-    }
-    case 'split': {
-      const it = s.items.find((x) => x.id === a.id);
-      if (!it || s.tracks?.[it.track]?.locked || a.atFrame <= it.startFrame || a.atFrame >= it.startFrame + it.durationInFrames) return s;
-      const cut = a.atFrame - it.startFrame; // frames of source consumed by the left half
-      // Partition transcript/deleted/variants/gapCaps per half so each half's words
-      // must match its own source window. The cut arrives in VISIBLE-local frames; a trimmed
-      // clip's visible frame 0 sits at srcInFrame in the edited stream, so offset before
-      // mapping to a word boundary. Fades belong to the outer edges only: the left half's
-      // OUT and the right half's IN are now the mid-clip cut, so drop fadeOut-left / fadeIn-right.
-      const wordDriven = it.kind === 'audio' && !!it.transcript?.length; // Word-driven rendering path
-      const tp = it.transcript?.length
-        ? splitClipTranscript(it, s.fps, cut + (wordDriven ? (it.srcInFrame ?? 0) : 0))
-        : null;
-      // generic keyframes partition at the same cut (boundary anchors keep sampling consistent for each frame)
-      const kp = it.keyframes ? splitItemKeyframes(it.keyframes, cut) : null;
-      const left = {
-        ...it,
-        durationInFrames: cut,
-        fadeOutFrames: undefined,
-        ...(tp ? { transcript: tp.left.transcript, deletedWordIdx: tp.left.deletedWordIdx, variants: tp.left.variants, gapCapsMs: tp.left.gapCapsMs, transcriptPlayOrder: undefined } : {}),
-        ...(kp ? { keyframes: kp[0] } : {}),
-      };
-      // the right half resumes the source where the left one ended (advances srcInFrame).
-      // Transcribed clips: the right half's WORDS are already rebased to start at the
-      // boundary, so its window starts at 0 — carrying srcIn+cut would double-trim.
-      const right = {
-        ...it,
-        id: a.newId,
-        startFrame: a.atFrame,
-        durationInFrames: it.durationInFrames - cut,
-        srcInFrame: wordDriven && tp ? 0 : (it.srcInFrame ?? 0) + cut,
-        fadeInFrames: undefined,
-        ...(tp ? { transcript: tp.right.transcript, deletedWordIdx: tp.right.deletedWordIdx, variants: tp.right.variants, gapCapsMs: tp.right.gapCapsMs, transcriptPlayOrder: undefined } : {}),
-        ...(kp ? { keyframes: kp[1] } : {}),
-      };
-      return { ...s, items: s.items.flatMap((x) => (x.id === a.id ? [left, right] : [x])) };
     }
     case 'select': {
       if (a.id === null) return { ...s, selectedId: null, selectedIds: [] };
@@ -893,13 +1111,14 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
   }
   if (a.type === 'addAsset') {
     if (p.assets.some((asset) => asset.id === a.asset.id)) return p;
-    return { ...p, assets: [...p.assets, a.asset] };
+    return { ...p, assets: [...p.assets, withMediaSourceRevision(a.asset)] };
   }
   if (isProjectAction(a)) {
     switch (a.type) {
       case 'tl.create': {
         const activeTimelineId = a.activate === false ? p.activeTimelineId : a.timeline.id;
-        return { ...p, timelines: [...p.timelines, a.timeline], activeTimelineId };
+        const next = { ...p, timelines: [...p.timelines, a.timeline], activeTimelineId };
+        return sequenceGraphError(next) ? p : next;
       }
       case 'tl.switch':
         return p.activeTimelineId !== a.id && p.timelines.some((t) => t.id === a.id)
@@ -914,11 +1133,13 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
           ...src, id: a.newId, name: a.name, order: maxOrder(p) + 1, selectedId: null, hidden: false,
           ...(a.retarget ? { width: a.retarget.width, height: a.retarget.height, fit: a.retarget.fit ?? src.fit ?? 'contain' } : {}),
         };
-        return { ...p, timelines: [...p.timelines, copy], activeTimelineId: a.activate === false ? p.activeTimelineId : copy.id };
+        const next = { ...p, timelines: [...p.timelines, copy], activeTimelineId: a.activate === false ? p.activeTimelineId : copy.id };
+        return sequenceGraphError(next) ? p : next;
       }
       case 'tl.delete': {
-        if (p.timelines.length <= 1) return p; // keep at least one timeline
+        if (p.timelines.length <= 1 || sequenceReferencesTo(p, a.id).length > 0) return p;
         const rest = p.timelines.filter((t) => t.id !== a.id);
+        if (rest.length === p.timelines.length) return p;
         const fallback = rest.find((t) => !t.hidden) ?? rest[0];
         const activeTimelineId = p.activeTimelineId === a.id ? fallback.id : p.activeTimelineId;
         return { ...p, timelines: rest, activeTimelineId };
@@ -940,7 +1161,7 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
         return { ...p, timelines, activeTimelineId };
       }
       case 'tl.setDoc':
-        return a.doc; // atomic commit of a project-level proposal (one history step)
+        return sequenceGraphError(a.doc) ? p : a.doc; // invalid sequence graphs never enter history
       case 'pool.createFolder':
         return p.mediaFolders.some((folder) => folder.parentId === a.folder.parentId && folder.name === a.folder.name)
           ? p
@@ -963,20 +1184,33 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
       case 'pool.updateAsset': {
         const asset = p.assets.find((item) => item.id === a.id);
         if (!asset || Object.entries(a.patch).every(([key, value]) => asset[key as keyof MediaAsset] === value)) return p;
-        return { ...p, assets: p.assets.map((item) => item.id === a.id ? { ...item, ...a.patch } : item) };
+        const next = { ...asset, ...a.patch };
+        const sourceChanged = 'code' in a.patch || 'props' in a.patch;
+        const updated = sourceChanged
+          ? { ...next, sourceRevision: revisionAfterRelink(asset, { ...next, sourceRevision: undefined }) }
+          : next;
+        return { ...p, assets: p.assets.map((item) => item.id === a.id ? updated : item) };
       }
       case 'pool.setTranscription': {
         // Ingest ASR result → pool asset. Objects (words[]) always
         // differ by identity, so unlike updateAsset we don't early-out on equality.
-        if (!p.assets.some((item) => item.id === a.id)) return p;
-        return { ...p, assets: p.assets.map((item) => item.id === a.id ? { ...item, ...a.patch } : item) };
+        const asset = p.assets.find((item) => item.id === a.id);
+        if (!asset) return p;
+        const patch = 'transcript' in a.patch
+          ? {
+              ...a.patch,
+              transcriptSourceRevision: a.patch.transcriptSourceRevision ?? sourceRevisionOf(asset),
+              transcriptStale: false,
+            }
+          : a.patch;
+        return { ...p, assets: p.assets.map((item) => item.id === a.id ? { ...item, ...patch } : item) };
       }
       case 'pool.relinkAsset': {
         // Relink File / Relink Missing Media updates the pool asset and every clip using its old src.
         const asset = p.assets.find((item) => item.id === a.id);
         if (!asset) return p;
         const oldSrc = asset.src;
-        const nextAsset: MediaAsset = {
+        const replacement = {
           ...asset,
           src: a.src,
           name: a.name ?? asset.name,
@@ -984,24 +1218,61 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
           width: a.width ?? asset.width,
           height: a.height ?? asset.height,
           kind: a.kind ?? asset.kind,
+          sourceRevision: a.sourceRevision,
+          sourceSize: a.sourceSize,
+          sourceModifiedAt: a.sourceModifiedAt,
+          // Exact clocks belong to the old source bytes and must be re-probed.
+          sourceTimecode: undefined,
+          captureClock: undefined,
+        };
+        const nextAsset: MediaAsset = {
+          ...replacement,
+          sourceRevision: revisionAfterRelink(asset, replacement),
+          transcriptStale: asset.transcript?.length ? true : asset.transcriptStale,
+        };
+        type RelinkableTimelineItem = TimelineItem & {
+          assetId?: string;
+          sourceTimecode?: MediaAsset['sourceTimecode'];
+          captureClock?: MediaAsset['captureClock'];
+        };
+        const usesRelinkedAsset = (item: TimelineItem): boolean => {
+          if (item.kind === 'motion-graphic' && item.templateId === a.id) return false;
+          const linked = item as RelinkableTimelineItem;
+          return linked.assetId !== undefined ? linked.assetId === a.id : item.src === oldSrc;
+        };
+        const relinkTimelineItem = (item: TimelineItem): TimelineItem => {
+          const {
+            denoisedSrc: _staleDenoisedSrc,
+            denoiseStrength: _staleDenoiseStrength,
+            sourceTimecode: _staleSourceTimecode,
+            captureClock: _staleCaptureClock,
+            ...sourceIndependent
+          } = item as RelinkableTimelineItem;
+          return {
+            ...sourceIndependent,
+            src: a.src,
+            sourceRevision: nextAsset.sourceRevision,
+            name: a.name ?? item.name,
+            width: a.width ?? item.width,
+            height: a.height ?? item.height,
+            durationInFrames: a.durationInFrames ?? item.durationInFrames,
+            transcriptStale: item.transcript?.length ? true : item.transcriptStale,
+          };
         };
         return {
           ...p,
           assets: p.assets.map((item) => (item.id === a.id ? nextAsset : item)),
           timelines: p.timelines.map((tl) => ({
             ...tl,
-            items: tl.items.map((it) => {
-              if (it.src !== oldSrc && !(it.kind === 'motion-graphic' && it.templateId === a.id)) return it;
-              if (it.kind === 'motion-graphic' && it.templateId === a.id) return it; // MG code assets don't use src relink
-              return {
-                ...it,
-                src: a.src,
-                name: a.name ?? it.name,
-                width: a.width ?? it.width,
-                height: a.height ?? it.height,
-                durationInFrames: a.durationInFrames ?? it.durationInFrames,
-                kind: (a.kind && a.kind !== 'motion-graphic' ? a.kind : it.kind) as typeof it.kind,
-              };
+            items: tl.items.map((item) => usesRelinkedAsset(item) ? relinkTimelineItem(item) : item),
+            multicamGroups: tl.multicamGroups?.map((group) => {
+              let changed = false;
+              const angles = group.angles.map((angle) => {
+                if (!usesRelinkedAsset(angle.source)) return angle;
+                changed = true;
+                return { ...angle, source: relinkTimelineItem(angle.source) };
+              });
+              return changed ? { ...group, angles } : group;
             }),
           })),
         };
@@ -1026,7 +1297,8 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
   const next = reduce(withAssets, a);
   if (next === withAssets) return p;
   const stamped = stamp(next, active.id, active.name, active.order);
-  return { ...p, timelines: p.timelines.map((t) => (t.id === active.id ? stamped : t)) };
+  const candidate = { ...p, timelines: p.timelines.map((t) => (t.id === active.id ? stamped : t)) };
+  return sequenceGraphError(candidate) ? p : candidate;
 }
 
 // ── history wrapper (snapshot-based undo/redo over the whole project) ──────

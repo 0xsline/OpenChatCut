@@ -1,3 +1,4 @@
+import { sourceFrameAt } from '../editor/sourceLimit';
 import { createGrayTemplate, findBestMatch, rgbaToGrayscale } from './templateMatch';
 import {
   TrackingError,
@@ -113,7 +114,7 @@ interface TrackSequenceOptions {
 
 async function matchFrame(options: TrackSequenceOptions, localFrame: number, x: number, y: number, radius: number) {
   const { video, canvas, template, request } = options;
-  const sourceTime = (request.srcInFrame + localFrame * request.playbackRate) / request.fps;
+  const sourceTime = sourceFrameAt(request, localFrame) / request.fps;
   if (sourceTime >= video.duration) return null;
   await seekVideo(video, sourceTime, request.signal);
   return findBestMatch(framePixels(video, canvas), canvas.width, canvas.height, template, x, y, radius);
@@ -153,7 +154,7 @@ async function analyzeLoadedVideo(video: HTMLVideoElement, request: TrackingRequ
   canvas.height = size.height;
   const region = regionPixels(request.region, size.width, size.height);
   const frames = sampleFrames(request.durationInFrames);
-  const startSeconds = request.srcInFrame / request.fps;
+  const startSeconds = sourceFrameAt(request, 0) / request.fps;
   await seekVideo(video, startSeconds, request.signal);
   const firstFrame = framePixels(video, canvas);
   const template = createGrayTemplate(firstFrame, size.width, region.x, region.y, region.width, region.height);

@@ -11,14 +11,17 @@ function clipState(state: TimelineState, item: TimelineItem): TimelineState {
   return { ...state, selectedId: null, transitions: [], markers: [], items: [{ ...item, startFrame: 0 }] };
 }
 
-async function fail(res: Response, verb: string): Promise<never> {
+async function fail(res: Response, verb: string, signal?: AbortSignal): Promise<never> {
+  signal?.throwIfAborted();
   const info = (await res.json().catch(() => null)) as { error?: string } | null;
+  signal?.throwIfAborted();
   throw new Error(info?.error ?? t('{verb}失败（{status}）', { verb: t(verb), status: res.status }));
 }
 
 export interface ClipMovExportOptions {
   /** Download filename or basename. A trailing .mov is normalized automatically. */
   filename?: string;
+  signal?: AbortSignal;
 }
 
 export interface RenderedClipMov {
@@ -32,6 +35,8 @@ export async function renderClipMovBlob(
   item: TimelineItem,
   options: ClipMovExportOptions = {},
 ): Promise<RenderedClipMov> {
+  const { signal } = options;
+  signal?.throwIfAborted();
   const requestedName = options.filename?.replace(/\.mov$/i, '') ?? item.name;
   const filename = sanitizeFileName(requestedName, 'clip');
   const res = await fetch('/render-clip', {
@@ -43,9 +48,13 @@ export async function renderClipMovBlob(
       mode: 'download',
       filename,
     }),
+    signal,
   });
-  if (!res.ok) await fail(res, '导出');
+  signal?.throwIfAborted();
+  if (!res.ok) await fail(res, '导出', signal);
+  signal?.throwIfAborted();
   const blob = await res.blob();
+  signal?.throwIfAborted();
   return { blob, filename: `${filename}.mov` };
 }
 

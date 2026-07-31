@@ -61,6 +61,24 @@ export interface TranscribeOptions {
   asrPath?: string | null;
 }
 
+export type AssemblyAiProviderStatus =
+  | 'uploaded'
+  | 'submitted'
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'error';
+
+export interface AssemblyAiResumeCheckpoint {
+  uploadUrl?: string;
+  providerJobId?: string;
+  providerStatus?: AssemblyAiProviderStatus;
+}
+
+export type AssemblyAiCheckpointWriter = (
+  checkpoint: AssemblyAiResumeCheckpoint,
+) => void | Promise<void>;
+
 async function createTranscript(audioUrl: string, opts: TranscribeOptions = {}): Promise<string> {
   const body: Record<string, unknown> = {
     audio_url: audioUrl,
@@ -88,11 +106,18 @@ async function createTranscript(audioUrl: string, opts: TranscribeOptions = {}):
   return id;
 }
 
-async function poll(id: string, onWait?: () => void): Promise<TranscriptResult> {
+async function poll(
+  id: string,
+  onWait?: () => void,
+  onCheckpoint?: AssemblyAiCheckpointWriter,
+  resume: AssemblyAiResumeCheckpoint = {},
+): Promise<TranscriptResult> {
   for (;;) {
     const r = await serviceFetch(`${BASE}/transcript/${id}`);
     if (!r.ok) throw new Error(`poll failed: HTTP ${r.status}`);
     const d = await r.json();
+    const providerStatus = String(d.status ?? 'processing') as AssemblyAiProviderStatus;
+    await onCheckpoint?.({ ...resume, providerJobId: id, providerStatus });
     if (d.status === 'completed') {
       const mapW = (w: { text: string; start: number; end: number; speaker?: string | null }) => ({
         text: (w.text ?? '').trim(),
@@ -192,11 +217,7 @@ async function shouldExtractForAsr(path: string): Promise<boolean> {
  * small ASR track server-side; then only that small blob is sent to AssemblyAI.
  * Pass opts.asrPath when extract already raced ahead of normalize/finalize.
  */
-export async function transcribePath(
-  path: string,
-  onWait?: () => void,
-  opts: TranscribeOptions = {},
-): Promise<TranscriptResult> {
+async function transcriptionBlobForPath(path: string, opts: TranscribeOptions): Promise<Blob> {
   let source = path;
   if (opts.asrPath && opts.asrPath.startsWith('/media/')) {
     source = opts.asrPath;
@@ -204,14 +225,56 @@ export async function transcribePath(
     const extracted = await extractAudioForAsr(path);
     if (extracted) source = extracted;
   }
-  let blob: Blob;
   try {
-    blob = await loadTranscriptionSource(source);
+    return await loadTranscriptionSource(source);
   } catch (error) {
     // A raced-ahead ASR extract can disappear independently of the original.
     // Fall back to the original media (or its IndexedDB copy) before failing.
     if (source === path) throw error;
-    blob = await loadTranscriptionSource(path);
+    return loadTranscriptionSource(path);
   }
-  return transcribeBlob(blob, onWait, { languageCode: opts.languageCode });
+}
+
+/**
+ * Resume from the latest durable provider checkpoint. A known upload URL skips
+ * re-upload; a known provider job id skips both upload and duplicate submission.
+ */
+export async function transcribePathResumable(
+  path: string,
+  resume: AssemblyAiResumeCheckpoint,
+  onCheckpoint: AssemblyAiCheckpointWriter,
+  onWait?: () => void,
+  opts: TranscribeOptions = {},
+): Promise<TranscriptResult> {
+  let checkpoint = { ...resume };
+  let providerJobId = checkpoint.providerJobId;
+  if (!providerJobId) {
+    let uploadUrl = checkpoint.uploadUrl;
+    if (!uploadUrl) {
+      uploadUrl = await uploadBlob(await transcriptionBlobForPath(path, opts));
+      checkpoint = { ...checkpoint, uploadUrl, providerStatus: 'uploaded' };
+      await onCheckpoint(checkpoint);
+    }
+    providerJobId = await createTranscript(uploadUrl, opts);
+    checkpoint = {
+      ...checkpoint,
+      uploadUrl,
+      providerJobId,
+      providerStatus: 'submitted',
+    };
+    // This write is awaited before the first poll, closing the refresh/re-upload window.
+    await onCheckpoint(checkpoint);
+  }
+  return poll(providerJobId, onWait, async (next) => {
+    checkpoint = next;
+    await onCheckpoint(next);
+  }, checkpoint);
+}
+
+export async function transcribePath(
+  path: string,
+  onWait?: () => void,
+  opts: TranscribeOptions = {},
+): Promise<TranscriptResult> {
+  return transcribePathResumable(path, {}, () => {}, onWait, opts);
 }

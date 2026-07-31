@@ -75,6 +75,7 @@ export function ColorParamInput({ value, onPick }: { value: number[]; onPick: (r
 interface SliderRowProps {
   label: string; val: number; min: number; max: number; step: number; fmt: string; onChange: (value: number) => void;
   inputScale?: number;
+  mixed?: boolean;
   onReset?: () => void;
   resetDisabled?: boolean;
   disabled?: boolean;
@@ -83,7 +84,7 @@ interface SliderRowProps {
 
 /** Compact one-line slider: label | track | value */
 export function SliderRow({
-  label, val, min, max, step, fmt, inputScale, onChange, onReset, resetDisabled, disabled, disabledReason,
+  label, val, min, max, step, fmt, inputScale, mixed = false, onChange, onReset, resetDisabled, disabled, disabledReason,
 }: SliderRowProps) {
   const t = useT();
   const gesture = useHistoryGesture();
@@ -96,7 +97,7 @@ export function SliderRow({
         className="cc-insp-range"
         style={{ '--cc-insp-range-fill': `${progress}%` } as CSSProperties}
         type="range" min={min} max={max} step="any" value={val}
-        disabled={disabled}
+        disabled={disabled || mixed}
         onChange={(e) => onChange(snapScalar(Number(e.target.value), min, max, step))}
         {...gesture}
       />
@@ -106,6 +107,7 @@ export function SliderRow({
           disabled={disabled}
           formatValue={fmt}
           inputScale={inputScale}
+          mixed={mixed}
           max={max}
           min={min}
           onChange={onChange}
@@ -215,9 +217,10 @@ function KfCell({ kfs, localFrame, inRange, punchValue, onSet, onRemove, onSeekL
 // keyframe rails and an opacity curve row. A keyframed prop shows the
 // value sampled at the playhead; dragging it then punches a keyframe there.
 export function TransformControl({
-  item, onChange, onReset, kf,
+  item, mixed, onChange, onReset, kf,
 }: {
   item: TimelineItem;
+  mixed?: (prop: KeyframeProp) => boolean;
   onChange: (p: ClipTransform) => void;
   onReset: (props: readonly KeyframeProp[]) => void;
   kf: KfApi;
@@ -238,10 +241,11 @@ export function TransformControl({
             <div style={{ flex: 1, minWidth: 0 }}>
               <SliderRow label={t(r.label)} val={value} min={min} max={max} step={r.step} fmt={r.format(value)}
                 inputScale={r.id === 'scale' || r.id === 'opacity' ? 100 : 1}
+                mixed={mixed?.(r.id)}
                 disabled={!!kfs?.length && !kf.inRange}
                 disabledReason={t('把播放头移进这个片段才能改这里的关键帧')}
                 onReset={() => onReset([r.id])}
-                resetDisabled={!kfs?.length && Math.abs(r.getBaseValue(item) - r.defaultValue) < 1e-6}
+                resetDisabled={!mixed?.(r.id) && !kfs?.length && Math.abs(r.getBaseValue(item) - r.defaultValue) < 1e-6}
                 onChange={(next) => {
                   const patch = r.toTransformPatch?.(next);
                   if (!kfs?.length && patch) onChange(patch);
@@ -260,6 +264,7 @@ export function TransformControl({
 
 interface VolumeControlProps {
   item: TimelineItem;
+  mixed?: boolean;
   onChange: (value: number) => void;
   onNormalize?: () => void | Promise<void>;
   onReset: (props: readonly KeyframeProp[]) => void;
@@ -270,7 +275,7 @@ interface VolumeControlProps {
 // keyframes present the slider shows the playhead-sampled value and edits punch
 // a keyframe there (same override rule as TransformControl rows).
 export function VolumeControl({
-  item, onChange, onNormalize, onReset, kf,
+  item, mixed, onChange, onNormalize, onReset, kf,
 }: VolumeControlProps) {
   const t = useT();
   const kfs = item.keyframes?.volume;
@@ -282,10 +287,11 @@ export function VolumeControl({
         <div style={{ flex: 1, minWidth: 0 }}>
           <SliderRow label={t('音量')} val={vol} min={0} max={2} step={0.05} fmt={`${Math.round(vol * 100)}%`}
             inputScale={100}
+            mixed={mixed}
             disabled={!!kfs?.length && !kf.inRange}
             disabledReason={t('把播放头移进这个片段才能改这里的关键帧')}
             onReset={() => onReset(['volume'])}
-            resetDisabled={!kfs?.length && Math.abs((item.volume ?? 1) - 1) < 1e-6}
+            resetDisabled={!mixed && !kfs?.length && Math.abs((item.volume ?? 1) - 1) < 1e-6}
             onChange={(next) => {
               if (!kfs?.length) { onChange(next); return; }
               if (kf.inRange) kf.set('volume', kf.localFrame, next);

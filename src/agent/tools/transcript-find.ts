@@ -1,7 +1,7 @@
 import type { AgentContext } from '../context';
 import { resolveTrackId, trackAlias, type TimelineItem, type TimelineState } from '../../editor/types';
 import { itemEditOpts, itemWindow, keptSegments, type EditOpts } from '../../transcript/edit';
-import { msToFrame, type TranscriptWord } from '../../transcript/types';
+import { hasOperationalTranscript, msToFrame, type TranscriptWord } from '../../transcript/types';
 
 // find_transcript — Parameter surface: query (required) + asset / track / fuzzy /
 // includeWordTimestamps/limit. Time coordinate query: Locate when a sentence was spoken, and
@@ -45,6 +45,7 @@ export function findPhrase(words: TranscriptWord[], query: string): { start: num
 
 /** Word-level frame mapping of a clip: gi → timeline {fromFrame,toFrame}; deleted/compressed words → null. */
 export function makeWordFrameMapper(item: TimelineItem, fps: number): (gi: number) => { fromFrame: number; toFrame: number } | null {
+  if (!hasOperationalTranscript(item)) return () => null;
   const words = item.transcript ?? [];
   const deleted = new Set(item.deletedWordIdx ?? []);
   // The trimmed words no longer produce frame bits (consistent with the playback layer)
@@ -182,7 +183,10 @@ function findInAsset(assetQ: string, opts: FindOpts, ctx: AgentContext): unknown
   if (!cands.length) return { error: `no asset matching "${assetQ}" — pass an asset id or prefix from the media pool` };
   if (cands.length > 1) return { error: `asset prefix "${assetQ}" is ambiguous (${cands.map((a) => a.id.slice(0, 12)).join(', ')})` };
   const asset = cands[0]!;
-  if (!asset.transcript?.length) return { error: `asset "${asset.name}" has no transcript` };
+  if (asset.transcriptStale) {
+    return { error: `asset "${asset.name}" transcript is stale after source replacement; transcribe it again` };
+  }
+  if (!hasOperationalTranscript(asset)) return { error: `asset "${asset.name}" has no transcript` };
 
   const view = searchView(asset.transcript); // RAW:asset mode ignores clipping
   const found = (opts.fuzzy ? fuzzyMatches : contiguousMatches)(view, opts.query, opts.limit);
@@ -216,7 +220,7 @@ export function execFindTranscript(args: Args, ctx: AgentContext): unknown {
   if (assetQ) return findInAsset(assetQ, opts, ctx);
 
   const state = ctx.getState();
-  let items = state.items.filter((it) => (it.transcript?.length ?? 0) > 0);
+  let items = state.items.filter((it) => hasOperationalTranscript(it));
   const trackQ = typeof args.track === 'string' ? args.track.trim() : '';
   if (trackQ) {
     const trackId = resolveTrackId(state, trackQ);

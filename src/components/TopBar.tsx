@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { theme } from '../theme';
 import { Icon, type IconName } from './icons';
 import { ExportHistory } from './ExportHistory';
+import { GenerationActivity } from './GenerationActivity';
 import { SkinPicker } from './settings/SkinPicker';
 import { McpGuideDialog } from './settings/McpGuide';
 import { getLocale, setLocale, useT } from '../i18n/locale';
@@ -26,10 +27,13 @@ export function LocaleToggle() {
 }
 
 interface TopBarProps {
+  projectId: string;
   projectName: string;
   canUndo: boolean;
   canRedo: boolean;
   exporting?: boolean;
+  exportJobCount?: number;
+  onResumeGeneration?: () => Promise<void>;
   onHome?: () => void;
   onRename?: (name: string) => void;
 }
@@ -46,7 +50,7 @@ function TBtn({ icon, title, onClick, disabled }: { icon: IconName; title: strin
   );
 }
 
-export function TopBar({ projectName, canUndo, canRedo, exporting, onHome, onRename }: TopBarProps) {
+export function TopBar({ projectId, projectName, canUndo, canRedo, exporting, exportJobCount = 0, onHome, onRename, onResumeGeneration }: TopBarProps) {
   const t = useT();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
@@ -85,14 +89,17 @@ export function TopBar({ projectName, canUndo, canRedo, exporting, onHome, onRen
       <span id="cc-agent-change-log-slot" style={{ display: 'contents' }} />
       <TBtn icon="palette" title={t('设计风格(品牌)')} onClick={() => invokeAction('open-design', undefined, 'toolbar')} />
       <SkinPicker />
+      <GenerationActivity projectId={projectId} onResume={onResumeGeneration} />
       <TBtn icon="history" title={t('历史版本')} onClick={() => invokeAction('open-history', undefined, 'toolbar')} />
       {/* self-contained: trigger + popover, global export history, zero props */}
       <ExportHistory />
       <LocaleToggle />
       <TBtn icon="layoutPanel" title={t('切换面板布局')} onClick={() => invokeAction('toggle-layout', undefined, 'toolbar')} />
-      <button onClick={() => invokeAction('open-export', undefined, 'toolbar')} disabled={exporting} title={t('导出 MP4')}
-        style={{ width: 58, height: 26, background: theme.accent, color: theme.onAccent, border: 'none', borderRadius: 2, padding: 0, fontSize: 12, fontWeight: 600, cursor: exporting ? 'default' : 'pointer', opacity: exporting ? 0.6 : 1, marginLeft: 4 }}>
-        {exporting ? t('导出中…') : t('导出')}
+      <button onClick={() => invokeAction('open-export', undefined, 'toolbar')}
+        title={exporting ? t('查看后台导出任务') : t('导出 MP4')}
+        aria-label={exporting ? t('查看后台导出任务') : t('导出 MP4')}
+        style={{ minWidth: 58, height: 26, background: theme.accent, color: theme.onAccent, border: 'none', borderRadius: 2, padding: '0 8px', fontSize: 12, fontWeight: 600, cursor: 'pointer', marginLeft: 4 }}>
+        {exporting ? t('{n} 个导出', { n: Math.max(1, exportJobCount) }) : t('导出')}
       </button>
       <div title={t('账户')} style={{ width: 20, height: 20, borderRadius: '50%', marginLeft: 2, background: 'conic-gradient(from 210deg, #6d6cff, #ff5f9e, #ffb35f, #6d6cff)', flexShrink: 0 }} />
       </div>

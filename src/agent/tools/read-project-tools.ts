@@ -12,6 +12,7 @@ import {
   type MediaAsset,
   type TimelineState,
 } from '../../editor/types';
+import { hasOperationalTranscript } from '../../transcript/types';
 import { resolveTimeline } from './timeline-target';
 
 // read_project returns one overview of project state, including timeline and assets.
@@ -53,7 +54,8 @@ function slimItem(
       overrides: e.overrides ?? {},
     })),
     props: it.props ?? null,
-    hasTranscript: Array.isArray(it.transcript) && it.transcript.length > 0,
+    hasTranscript: hasOperationalTranscript(it),
+    transcriptStale: it.transcriptStale === true,
     sourceAssetId,
     voiceIsolation: it.denoisedSrc
       ? { denoisedAssetId, strength: it.denoiseStrength ?? null }

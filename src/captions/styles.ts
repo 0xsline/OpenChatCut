@@ -1,4 +1,4 @@
-import type { CaptionTemplate } from './types';
+import type { CaptionTemplate } from './types.js';
 
 export interface CaptionStyle {
   id: CaptionTemplate;

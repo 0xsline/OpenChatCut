@@ -16,8 +16,10 @@ import {
   validateGenericAdd,
   validateGenericDelete,
   validateGenericUpdate,
+  validateSlipUpdate,
 } from './edit-item-generic';
 import { parseTransitionAssetId, parseZoomLibraryId } from './library-catalog';
+import { rejectSpecializedUnknownFields } from './edit-item-fields';
 import {
   cleanOverrides,
   envelopeFrom,
@@ -35,14 +37,21 @@ type TransitionError = { error: string; hint: string; examples?: string[] };
 
 export function validateAdd(ctx: AgentContext, entry: Entry): OpResult {
   const type = String(entry.type ?? '');
-  if (type === 'effect') return validateEffectAdd(ctx, entry);
-  if (type === 'transition') return validateTransitionAdd(ctx, entry);
+  if (type === 'effect' || type === 'transition') {
+    const unknown = rejectSpecializedUnknownFields('adds', type, entry);
+    if (unknown) return { error: unknown };
+    return type === 'effect' ? validateEffectAdd(ctx, entry) : validateTransitionAdd(ctx, entry);
+  }
   if (type === 'motion-graphic') {
-    if (/^library:motion-graphic:/.test(String(entry.assetId ?? ''))) return validateMgAdd(ctx, entry);
+    if (/^library:motion-graphic:/.test(String(entry.assetId ?? ''))) {
+      const unknown = rejectSpecializedUnknownFields('adds', type, entry);
+      return unknown ? { error: unknown } : validateMgAdd(ctx, entry);
+    }
     return validateGenericAdd(ctx.getState(), ctx.getDoc().assets ?? [], entry);
   }
   if (type === 'audio' && /^library:sound:/.test(String(entry.assetId ?? ''))) {
-    return validateAudioAdd(ctx, entry);
+    const unknown = rejectSpecializedUnknownFields('adds', type, entry);
+    return unknown ? { error: unknown } : validateAudioAdd(ctx, entry);
   }
   if (GENERIC_ADD_KINDS.has(type)) return validateGenericAdd(ctx.getState(), ctx.getDoc().assets ?? [], entry);
   return {
@@ -52,15 +61,23 @@ export function validateAdd(ctx: AgentContext, entry: Entry): OpResult {
 }
 
 export function validateUpdate(ctx: AgentContext, entry: Entry): OpResult {
+  if (entry.operation !== undefined) return validateSlipUpdate(ctx.getState(), entry);
   const type = String(entry.type ?? 'effect');
-  if (type === 'transition') return validateTransitionUpdate(ctx, entry);
+  if (type === 'transition' || type === 'effect') {
+    const unknown = rejectSpecializedUnknownFields('updates', type, entry);
+    if (unknown) return { error: unknown };
+    return type === 'transition' ? validateTransitionUpdate(ctx, entry) : validateEffectUpdate(ctx, entry);
+  }
   if (GENERIC_ITEM_KINDS.has(type)) return validateGenericUpdate(ctx.getState(), entry);
-  if (type === 'effect') return validateEffectUpdate(ctx, entry);
   return { error: `update type not supported: ${type}` };
 }
 
 export function validateDelete(ctx: AgentContext, entry: Entry): OpResult {
   const type = String(entry.type ?? '');
+  if (type === 'transition' || type === 'effect' || !type) {
+    const unknown = rejectSpecializedUnknownFields('deletes', type, entry);
+    if (unknown) return { error: unknown };
+  }
   if (type === 'transition') return validateTransitionDelete(ctx, entry);
   if (GENERIC_ITEM_KINDS.has(type)) return validateGenericDelete(ctx.getState(), entry);
   if (type !== 'effect' && type) return { error: `delete unsupported type ${type}` };
@@ -250,10 +267,12 @@ function validateMgAdd(ctx: AgentContext, entry: Entry): OpResult {
   const state = ctx.getState();
   const track = resolveTrackId(state, entry.track ?? entry.trackId ?? 'V1', 'video') ?? defaultTrackId(state, 'video');
   if (!track) return { error: 'no video track; create one with edit_track first' };
+  const startFrame = typeof entry.fromFrame === 'number'
+    ? entry.fromFrame
+    : typeof entry.startFrame === 'number' ? entry.startFrame : undefined;
   return {
     ok: true, kind: 'motion-graphic', plan: 'addMg', templateId: template.id,
-    name: template.name, track,
-    startFrame: typeof entry.startFrame === 'number' ? entry.startFrame : undefined,
+    name: template.name, track, startFrame,
   };
 }
 

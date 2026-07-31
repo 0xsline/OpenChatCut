@@ -1,6 +1,7 @@
 import type { AgentContext } from '../context';
 import { resolveTrackId, trackAlias, type TimelineItem } from '../../editor/types';
 import { packTranscriptPhrases, type TranscriptPhrase } from '../../transcript/phrases';
+import { hasOperationalTranscript } from '../../transcript/types';
 import { makeWordFrameMapper } from './transcript-find';
 
 type Args = Record<string, unknown>;
@@ -21,7 +22,7 @@ function boundedNumber(value: unknown, fallback: number, minimum: number, maximu
   return Math.max(minimum, Math.min(maximum, parsed));
 }
 
-function matchingItem(items: TimelineItem[], query: string): TimelineItem | { error: string } | null {
+function matchingItem<T extends TimelineItem>(items: readonly T[], query: string): T | { error: string } | null {
   const exact = items.filter((item) => item.id === query);
   const matches = exact.length ? exact : items.filter((item) => item.id.startsWith(query));
   if (!matches.length) return null;
@@ -75,7 +76,7 @@ function timelinePhrases(item: TimelineItem, ctx: AgentContext, args: Args): Tim
 
 export function execReadTranscript(args: Args, ctx: AgentContext): unknown {
   const state = ctx.getState();
-  let items = state.items.filter((item) => (item.transcript?.length ?? 0) > 0);
+  let items = state.items.filter((item) => hasOperationalTranscript(item));
 
   const itemQuery = typeof args.itemId === 'string' ? args.itemId.trim() : '';
   if (itemQuery) {

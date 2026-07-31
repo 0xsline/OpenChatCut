@@ -6,6 +6,11 @@ export interface SemanticVectorRecord {
   scopeId: string;
   assetId: string;
   sampleTime: number;
+  /** Source bytes revision captured when this embedding was produced. */
+  sourceRevision?: string;
+  sceneId?: string;
+  sceneStart?: number;
+  sceneEnd?: number;
   vector: ArrayLike<number>;
 }
 
@@ -13,6 +18,10 @@ export interface SemanticMatch {
   assetId: string;
   sampleTime: number;
   score: number;
+  sourceRevision?: string;
+  sceneId?: string;
+  sceneStart?: number;
+  sceneEnd?: number;
 }
 
 export interface DuplicateMatch {
@@ -33,6 +42,9 @@ export interface FramePixels {
   width: number;
   height: number;
   sampleTime: number;
+  sceneId?: string;
+  sceneStart?: number;
+  sceneEnd?: number;
 }
 
 export type SemanticDevice = 'webgpu' | 'wasm';

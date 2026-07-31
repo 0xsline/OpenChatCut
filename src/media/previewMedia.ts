@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { TimelineState } from '../editor/types';
+import type { ProjectDoc, TimelineState } from '../editor/types';
+import { resolveTimelineRenderPlan } from '../editor/sequenceGraph';
 import { isPreviewable } from './clipPreview';
 
 export interface PreviewProxySource {
@@ -184,6 +185,38 @@ export function usePreviewTimelineState(state: TimelineState) {
   return {
     state: previewState,
     proxies,
+    requestFallback: (src: string) => { reportPreviewPlaybackFailure(src); },
+  };
+}
+
+/** Resolve preview proxies across the complete reachable nested-sequence graph. */
+export function usePreviewProjectDoc(project: ProjectDoc, timelineId: string) {
+  const plan = useMemo(() => resolveTimelineRenderPlan(project, timelineId), [project, timelineId]);
+  const reachable = useMemo(() => new Set(plan.timelineIds), [plan.timelineIds]);
+  const sources = useMemo(() => [...new Set(project.timelines
+    .filter((timeline) => reachable.has(timeline.id))
+    .flatMap((timeline) => timeline.items)
+    .filter((item) => item.kind === 'video' && isPreviewable(item.src))
+    .map((item) => item.src!))].sort(), [project.timelines, reachable]);
+  const sourceKey = sources.join('\u0000');
+  const revision = useProxySources(sources, sourceKey);
+  const previewProject = useMemo<ProjectDoc>(() => ({
+    ...project,
+    timelines: project.timelines.map((timeline) => ({
+      ...timeline,
+      items: timeline.items.map((item) => {
+        if (item.kind !== 'video' || !item.src) return item;
+        const proxy = stateFor(item.src);
+        return proxy.status === 'ready' ? { ...item, src: proxy.previewSrc } : item;
+      }),
+    })),
+  }), [project, revision]);
+  const state = previewProject.timelines.find((timeline) => timeline.id === timelineId)!;
+  return {
+    project: previewProject,
+    state,
+    plan,
+    proxies: sources.map((src) => ({ src, proxy: stateFor(src) })),
     requestFallback: (src: string) => { reportPreviewPlaybackFailure(src); },
   };
 }

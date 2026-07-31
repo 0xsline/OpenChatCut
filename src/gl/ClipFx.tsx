@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { AbsoluteFill, Img, Video, continueRender, delayRender, useCurrentFrame, useVideoConfig } from 'remotion';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AbsoluteFill, Img, Video, continueRender, delayRender, getRemotionEnvironment, useCurrentFrame, useVideoConfig } from 'remotion';
 import { createGlRuntime, type GlRuntime } from './runtime';
 import { cubeSettled, ensureCube } from './fx/cube';
-import { fxPasses } from './fx/uniforms';
+import { disposeRuntimeSlot, ensureRuntimeSlot } from './runtimeSlot';
+import { buildEffectShaderFrame } from './shaderFrame';
+import { glPreviewFailureReason } from './previewAdapter';
+import type { SelectedPreviewFallbackReason, SelectedPreviewStatusListener } from './previewAdapter';
 import type { AspectFit, TimelineItem } from '../editor/types';
+import { sourceFrameAt } from '../editor/sourceLimit';
 import { glEffects } from './clipEffects';
 
 // One video/image clip rendered through a builtin:fx-* single-input WebGL pass.
@@ -19,6 +23,8 @@ interface ClipFxProps {
   fit: AspectFit;
   width: number;
   height: number;
+  frameOffset?: number;
+  onPreviewStatus?: SelectedPreviewStatusListener;
 }
 
 type MediaEl = HTMLVideoElement | HTMLImageElement;
@@ -41,12 +47,16 @@ function drawFit(ctx: CanvasRenderingContext2D, el: MediaEl, fit: AspectFit): vo
   ctx.drawImage(el, (W - dw) / 2, (H - dh) / 2, dw, dh);
 }
 
-export function ClipFx({ item, fit, width, height }: ClipFxProps) {
-  const frame = useCurrentFrame();
+export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewStatus }: ClipFxProps) {
+  const frame = useCurrentFrame() + frameOffset;
   const { fps } = useVideoConfig();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const sourceLayerRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<GlRuntime | null>(null);
   const elRef = useRef<MediaEl | null>(null);
+  const failedAdapterRef = useRef<{ definitionKey: string; reason: SelectedPreviewFallbackReason } | null>(null);
+  const [renderedKey, setRenderedKey] = useState<string | null>(null);
+  const trimBefore = sourceFrameAt(item, frameOffset);
 
   const staging = useMemo(() => {
     const c = document.createElement('canvas');
@@ -55,60 +65,107 @@ export function ClipFx({ item, fit, width, height }: ClipFxProps) {
     return c;
   }, [width, height]);
 
-  const active = glEffects(item);
+  const active = useMemo(() => glEffects(item), [item.effects]);
+  const definitionKey = useMemo(
+    () => active.map(({ def }) => `${def.id}:${def.frag}`).join('\u0000'),
+    [active],
+  );
+  const renderKey = useMemo(
+    () => JSON.stringify([frame, fit, width, height, active.map(({ fx }) => [fx.id, fx.overrides])]),
+    [frame, fit, width, height, active],
+  );
+
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || active.length === 0) return;
-    const handle = delayRender(`clip-fx ${active.map(({ def }) => def.id).join(',')}`);
+    const blockForExport = getRemotionEnvironment().isRendering;
+    const handle = blockForExport ? delayRender(`clip-fx ${active.map(({ def }) => def.id).join(',')}`) : null;
     let done = false;
     let raf = 0;
-    const finish = () => { if (!done) { done = true; continueRender(handle); } };
-    // .cube LUT is loaded first; tick waits until there is a conclusion (success → color registration, failure → transparent transmission) before drawing the first frame.
-    // Use delayRender for headless export so frames are stuck to LUT ready and no ungraded early frames are burned in.
+    const report = (phase: 'waiting' | 'ready' | 'fallback', fallbackReason?: SelectedPreviewFallbackReason) => {
+      onPreviewStatus?.({
+        kind: 'effect',
+        targetId: item.id,
+        adapter: 'gl-effect',
+        phase,
+        fallbackReason,
+      });
+    };
+    const finish = () => {
+      if (!done && handle != null) {
+        done = true;
+        continueRender(handle);
+      }
+    };
+    const priorFailure = failedAdapterRef.current?.definitionKey === definitionKey
+      ? failedAdapterRef.current.reason
+      : null;
+    if (priorFailure) {
+      report('fallback', priorFailure);
+      finish();
+      return () => finish();
+    }
+    let waitingReported = false;
+    const reportWaiting = () => {
+      if (waitingReported) return;
+      waitingReported = true;
+      report('fallback', 'media-loading');
+    };
+    // .cube LUT is loaded first; tick waits until loading has settled. A failed
+    // LUT is an intentional pass-through with intensity=0 in fxPasses().
     for (const { def } of active) if (def.cube) void ensureCube(def.cube);
     const tick = () => {
       const el = elRef.current;
-      if (!el || !isReady(el)) { raf = requestAnimationFrame(tick); return; }
-      if (active.some(({ def }) => def.cube && !cubeSettled(def.cube))) { raf = requestAnimationFrame(tick); return; }
+      if (!el || !isReady(el)) { reportWaiting(); raf = requestAnimationFrame(tick); return; }
+      if (active.some(({ def }) => def.cube && !cubeSettled(def.cube))) { reportWaiting(); raf = requestAnimationFrame(tick); return; }
       try {
-        if (!runtimeRef.current) runtimeRef.current = createGlRuntime(canvas);
+        const runtime = ensureRuntimeSlot(runtimeRef, () => createGlRuntime(canvas));
         const ctx = staging.getContext('2d');
         if (!ctx) throw new Error('2d context unavailable');
         drawFit(ctx, el, fit);
-        // u_time (seconds, clip-local) drives animated fx (CRT wobble/noise,
-        // camera shake); static fx ignore it.
-        runtimeRef.current.renderFxChain(
-          fxPasses(active.map(({ fx, def }) => ({ def, overrides: fx.overrides })), frame / fps),
-          staging,
+        const shaderFrame = buildEffectShaderFrame(
+          active.map(({ fx, def }) => ({ def, overrides: fx.overrides })),
+          frame,
+          fps,
         );
-      } catch (e) {
-        // WebGL unavailable / compile failure → leave canvas empty; the media
-        // clip still shows nothing worse than a transparent frame.
-        // ponytail: no GL re-probe; a broken stack degrades to a blank layer.
-        console.error('[clip-fx]', e);
+        runtime.renderFxChain(shaderFrame.passes, staging);
+        // Make the freshly drawn canvas authoritative before unblocking export;
+        // React state then preserves the same choice for subsequent renders.
+        canvas.style.opacity = '1';
+        if (sourceLayerRef.current) sourceLayerRef.current.style.opacity = '0';
+        setRenderedKey(renderKey);
+        report('ready');
+      } catch (error) {
+        const reason = glPreviewFailureReason(error);
+        failedAdapterRef.current = { definitionKey, reason };
+        disposeRuntimeSlot(runtimeRef);
+        report('fallback', reason);
+        console.error('[clip-fx]', error);
       }
       finish();
     };
     tick();
     return () => { cancelAnimationFrame(raf); finish(); };
-    // re-run each frame (animated fx need u_time) + when params/layout change.
-  }, [active, fit, staging, item, frame, fps]);
+  }, [active, definitionKey, fit, staging, item.id, frame, fps, renderKey, onPreviewStatus]);
 
-  useEffect(() => () => { runtimeRef.current?.dispose(); runtimeRef.current = null; }, []);
+  useEffect(() => () => {
+    disposeRuntimeSlot(runtimeRef);
+  }, [width, height, definitionKey]);
 
+  const showingShaderFrame = renderedKey === renderKey;
   if (active.length === 0) return null;
   return (
     <AbsoluteFill>
-      {/* hidden frame-synced source (opacity keeps decode/seek active; muted —
-          the composition's own clip owns audio) */}
-      <AbsoluteFill style={{ opacity: 0, pointerEvents: 'none' }}>
+      {/* The source is the honest Player fallback while media/GL is unavailable.
+          Once this exact frame+parameter key is drawn, only the GL canvas shows. */}
+      <AbsoluteFill ref={sourceLayerRef} style={{ opacity: showingShaderFrame ? 0 : 1, pointerEvents: 'none' }}>
         {item.kind === 'image'
           // impeccable-disable-next-line broken-image -- Remotion Img component, src comes from item runtime injection
-          ? <Img ref={elRef as React.MutableRefObject<HTMLImageElement | null>} src={item.src!} />
-          : <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1} muted />}
+          ? <Img ref={elRef as React.MutableRefObject<HTMLImageElement | null>} src={item.src!} style={{ width: '100%', height: '100%', objectFit: fit }} />
+          : <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} muted style={{ width: '100%', height: '100%', objectFit: fit }} />}
       </AbsoluteFill>
-      <canvas ref={canvasRef} width={width} height={height} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+      <canvas ref={canvasRef} width={width} height={height} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: showingShaderFrame ? 1 : 0 }} />
     </AbsoluteFill>
   );
 }

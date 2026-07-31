@@ -1,7 +1,15 @@
 import { isAbortError } from './browserExport';
-import { exportDestinationErrorMessage } from './exportDestination';
+import { ExportDestinationError, exportDestinationErrorMessage } from './exportDestination';
+import {
+  createExportFailure,
+  exportFailureFrom,
+  withExportFailureTarget,
+  type ExportFailure,
+} from './exportFailure';
+import { assertExportMediaReadable } from './exportMediaPlan';
 import type {
   ExportProgress,
+  ExportOperationResult,
   ExportQaUiState,
   StateSetter,
   Translate,
@@ -10,6 +18,7 @@ import type {
 } from './exportWorkflowTypes';
 
 interface ExportRunContext {
+  signal: AbortSignal;
   busy: string | null;
   operations: WorkflowOperations;
   options: UseExportWorkflowOptions;
@@ -18,20 +27,32 @@ interface ExportRunContext {
   setBusy: StateSetter<string | null>;
   setClock: StateSetter<number>;
   setError: StateSetter<string | null>;
+  setFailure: StateSetter<ExportFailure | null>;
   setProgress: StateSetter<ExportProgress | null>;
   setQa: StateSetter<ExportQaUiState | null>;
   t: Translate;
+  targetPath: string | null;
 }
 
-async function executeAsyncSelected(context: ExportRunContext): Promise<void> {
+async function executeAsyncSelected(context: ExportRunContext): Promise<ExportOperationResult | void> {
   const { tab } = context.options;
-  if (tab === 'video') await context.operations.exportVideo();
-  else if (tab === 'audio') await context.operations.exportAudio();
-  else if (tab === 'mg') await context.operations.exportMg();
-  else await context.operations.exportXml();
+  if (tab === 'video') return context.operations.exportVideo(context.signal);
+  if (tab === 'audio') return context.operations.exportAudio(context.signal);
+  if (tab === 'mg') return context.operations.exportMg(context.signal);
+  return context.operations.exportXml(context.signal);
 }
 
 function markCancelled(context: ExportRunContext): void {
+  const failure = createExportFailure({
+    stage: 'cancel',
+    code: 'export_cancelled',
+    retryable: false,
+    cleanupStatus: 'succeeded',
+    targetPath: context.targetPath,
+    message: context.t('已取消导出'),
+  });
+  context.setFailure(failure);
+  context.setError(failure.message);
   context.setProgress((current) => current ? {
     ...current,
     phase: 'cancelled',
@@ -47,15 +68,28 @@ async function runExport(context: ExportRunContext): Promise<void> {
     return;
   }
   context.setError(null);
+  context.setFailure(null);
   context.setQa(null);
   const startedAt = Date.now();
   context.setClock(startedAt);
   context.setProgress({ phase: 'preparing', percent: 0, startedAt });
   context.setBusy(context.t('准备导出…'));
   try {
+    context.signal.throwIfAborted();
+    const mediaSnapshot = context.options.project
+      ? {
+        ...context.options.project,
+        activeTimelineId: context.options.timelineId ?? context.options.project.activeTimelineId,
+      }
+      : context.options.state;
+    await assertExportMediaReadable(mediaSnapshot);
+    context.signal.throwIfAborted();
     await context.prepareDestination();
-    if (context.options.tab === 'subtitles') await context.operations.exportSubtitles();
-    else await executeAsyncSelected(context);
+    context.signal.throwIfAborted();
+    const result = context.options.tab === 'subtitles'
+      ? await context.operations.exportSubtitles(context.signal)
+      : await executeAsyncSelected(context);
+    if (!result?.targetCommitted) context.signal.throwIfAborted();
     const finishedAt = Date.now();
     context.setClock(finishedAt);
     context.setProgress((current) => current ? { ...current, phase: 'completed', percent: 100, finishedAt } : current);
@@ -64,7 +98,19 @@ async function runExport(context: ExportRunContext): Promise<void> {
       markCancelled(context);
       return;
     }
-    context.setError(exportDestinationErrorMessage(reason, context.t));
+    const existing = exportFailureFrom(reason);
+    const message = exportDestinationErrorMessage(reason, context.t);
+    const failure = existing
+      ? withExportFailureTarget(existing, context.targetPath ?? existing.targetPath)
+      : createExportFailure({
+        stage: reason instanceof ExportDestinationError ? 'destination' : 'render',
+        code: reason instanceof ExportDestinationError ? 'export_destination_failed' : 'export_failed',
+        retryable: true,
+        targetPath: context.targetPath,
+        message,
+      });
+    context.setFailure(failure);
+    context.setError(failure.message);
     context.setProgress((current) => current ? { ...current, phase: 'failed', finishedAt: Date.now() } : current);
   } finally {
     context.setBusy(null);

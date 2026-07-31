@@ -83,23 +83,39 @@ async function requestFor(input: ValidMusicRequest, options: MusicOptions) {
   return murekaRequestShape(input, options.model, uploadedId);
 }
 
+
 function checkModelCompatibility(model: string, input: ValidMusicRequest): void {
   if (!/mureka-o2/i.test(model)) return;
   if (input.mode === 'instrumental' || input.mode === 'soundtrack') throw new Error(`Mureka ${input.mode} does not support mureka-o2`);
   if (input.vocalId || input.melodyId) throw new Error('mureka-o2 does not support vocalId or melodyId');
 }
 
-export async function generateMureka(options: MusicOptions, input: ValidMusicRequest): Promise<string[]> {
+export async function generateMureka(
+  options: MusicOptions,
+  input: ValidMusicRequest,
+  onTaskAccepted: (taskId: string) => Promise<void>,
+  existingTaskId?: string,
+): Promise<string[]> {
   checkModelCompatibility(options.model, input);
   const baseUrl = options.baseUrl.replace(/\/$/, '');
-  const request = await requestFor(input, options);
-  const response = await fetch(`${baseUrl}${request.endpoint}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(request.body),
-  });
-  if (!response.ok) throw new Error(await musicProviderError(response));
-  const task = await awaitChoices(baseUrl, options.apiKey, await response.json() as MurekaTask, request.query);
+  const query = input.mode === 'instrumental' ? 'instrumental' : 'song';
+  let initial: MurekaTask;
+  if (existingTaskId) {
+    initial = await fetchTask(`${baseUrl}/v1/${query}/query/${encodeURIComponent(existingTaskId)}`, options.apiKey);
+    initial.id ??= existingTaskId;
+  } else {
+    const request = await requestFor(input, options);
+    const response = await fetch(`${baseUrl}${request.endpoint}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(request.body),
+    });
+    if (!response.ok) throw new Error(await musicProviderError(response));
+    initial = await response.json() as MurekaTask;
+    if (!initial.id) throw new Error('Mureka did not return a task id');
+    await onTaskAccepted(String(initial.id));
+  }
+  const task = await awaitChoices(baseUrl, options.apiKey, initial, query);
   const urls = pickMurekaAudioUrls(task, input.audioFormat);
   if (!urls.length) throw new Error(`Mureka returned no ${input.audioFormat} audio URL`);
   return urls;

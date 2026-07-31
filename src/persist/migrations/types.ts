@@ -1,4 +1,4 @@
-import type { ProjectDoc } from '../../editor/types';
+import type { ProjectDoc } from '../../editor/types.js';
 
 export interface ProjectMigrationProgress {
   fromVersion: number;

@@ -9,8 +9,8 @@
 // retime / setSpeed / split / deleting words and muting will change durationInFrames but ignore these two,
 // So the repair is done at the exit of reduce instead of adding a guard in each case:
 // One less branch means one less place to miss. By the way, the illegal values ​​that have been saved in the historical project will be self-healed.
-import { splitKeyframes } from './keyframes';
-import type { ItemKeyframes, Keyframe, KeyframeProp, TimelineItem } from './types';
+import { splitKeyframes } from './keyframes.js';
+import type { ItemKeyframes, Keyframe, KeyframeProp, TimelineItem } from './types.js';
 
 /** Fade clamp: Return the negative number to zero, and then give `room` to the opposite side. undefined means "not set", keep it unset. */
 export function capFade(value: number | undefined, room: number): number | undefined {

@@ -1,17 +1,20 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AbsoluteFill, Img, Video, continueRender, delayRender, getRemotionEnvironment, useCurrentFrame, useVideoConfig } from 'remotion';
 import { createGlRuntime, type GlRuntime } from './runtime';
+import { disposeRuntimeSlot, ensureRuntimeSlot } from './runtimeSlot';
+import { buildTransitionShaderFrame } from './shaderFrame';
+import { glPreviewFailureReason, glTransitionPresentation } from './previewAdapter';
+import type { SelectedPreviewFallbackReason, SelectedPreviewStatusListener } from './previewAdapter';
 import { GLSL_TRANSITIONS } from './transitions';
-import type { AspectFit, GlslTransitionType, TimelineItem, TransitionDirection } from '../editor/types';
+import { PreviewTransitionIn } from '../editor/transitionPreview';
+import type { AspectFit, CssTransitionType, GlslTransitionType, TimelineItem, TransitionDirection } from '../editor/types';
 
-// One GLSL transition window straddling the cut from R to R+L. Mounts
-// its own hidden, muted media elements for both clips (Remotion keeps them
-// frame-accurate in preview AND in headless render), rasterizes each to a 2D
-// staging canvas with the clip's contain/cover placement, and mixes the two
-// canvases in WebGL with the transition's fragment shader, following the
-// compositor's texture path (decoded frame / canvas → texImage2D); DOM clips
-// (MG/text) can't be textured — the composition falls back to CSS for those,
-// so MG layers stay outside the GL pipeline.
+// One GLSL transition window straddling the cut from R to R+L. One muted,
+// frame-synced media pair feeds both the deterministic CSS fallback and the 2D
+// staging canvases. The fallback is authoritative while sources/GL are pending
+// or failed; the GL canvas replaces it only after the exact frame is drawn.
+// DOM clips (MG/text) cannot be textured, so TimelineComposition keeps them on
+// its existing CSS path.
 
 interface GlTransitionProps {
   type: GlslTransitionType | 'custom-shader';
@@ -32,6 +35,10 @@ interface GlTransitionProps {
   width: number;
   height: number;
   fit: AspectFit;
+  fallbackType: CssTransitionType;
+  fallbackLine?: boolean;
+  previewTargetId?: string;
+  onPreviewStatus?: SelectedPreviewStatusListener;
 }
 
 type MediaEl = HTMLVideoElement | HTMLImageElement;
@@ -54,22 +61,26 @@ function drawFit(ctx: CanvasRenderingContext2D, el: MediaEl, fit: AspectFit): vo
   ctx.drawImage(el, (W - dw) / 2, (H - dh) / 2, dw, dh);
 }
 
-function MediaSource({ item, trim, elRef }: { item: TimelineItem; trim: number; elRef: React.MutableRefObject<MediaEl | null> }) {
+function MediaSource({ item, trim, fit, elRef }: { item: TimelineItem; trim: number; fit: AspectFit; elRef: React.MutableRefObject<MediaEl | null> }) {
+  const style: React.CSSProperties = { width: '100%', height: '100%', objectFit: fit };
   if (item.kind === 'image') {
     // impeccable-disable-next-line broken-image -- Remotion Img component, src comes from item runtime injection
-    return <Img ref={elRef as React.MutableRefObject<HTMLImageElement | null>} src={item.src!} />;
+    return <Img ref={elRef as React.MutableRefObject<HTMLImageElement | null>} src={item.src!} style={style} />;
   }
-  // muted: the ORIGINAL clip sequences (rendered beneath the GL canvas) own the audio
-  return <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={trim} playbackRate={item.playbackRate ?? 1} muted />;
+  // muted: the ORIGINAL clip sequences own audio; this element owns fallback + GL pixels.
+  return <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={trim} playbackRate={item.playbackRate ?? 1} muted style={style} />;
 }
 
-export function GlTransition({ type, direction, L, windowStart, outgoing, incoming, trimOut, trimIn, width, height, fit, customFrag, customUniforms }: GlTransitionProps) {
+export function GlTransition({ type, direction, L, windowStart, outgoing, incoming, trimOut, trimIn, width, height, fit, fallbackType, fallbackLine, customFrag, customUniforms, previewTargetId, onPreviewStatus }: GlTransitionProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fallbackRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<GlRuntime | null>(null);
   const outRef = useRef<MediaEl | null>(null);
   const inRef = useRef<MediaEl | null>(null);
+  const failedAdapterRef = useRef<{ frag: string; reason: SelectedPreviewFallbackReason } | null>(null);
+  const [renderedKey, setRenderedKey] = useState<string | null>(null);
 
   // 2D staging canvases: clip pixels with contain/cover layout → GL texture source
   const staging = useMemo(() => {
@@ -90,45 +101,95 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
       : GLSL_TRANSITIONS[type]),
     [type, customFrag, customUniforms],
   );
+  const renderKey = useMemo(
+    () => JSON.stringify([
+      frame, L, windowStart, width, height, fit, type, direction,
+      customUniforms, outgoing.src, incoming.src, trimOut, trimIn,
+    ]),
+    [frame, L, windowStart, width, height, fit, type, direction, customUniforms, outgoing.src, incoming.src, trimOut, trimIn],
+  );
+  const presentation = glTransitionPresentation(renderedKey === renderKey);
+
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !def) return;
     // delayRender only for headless export — it must wait for both sources
     // before capturing the frame. In the Player, waiting stalls the whole
-    // transport (looks like a freeze on the outgoing tail); paint when ready
-    // instead and let the next frame retry if a seek is still in flight.
+    // transport, so the explicit waiting/fallback status replaces blocking.
     const blockForExport = getRemotionEnvironment().isRendering;
     const handle = blockForExport ? delayRender(`gl-transition ${type} f${frame}`) : null;
     let done = false;
     let raf = 0;
+    const report = (phase: 'waiting' | 'ready' | 'fallback', fallbackReason?: SelectedPreviewFallbackReason) => {
+      if (!previewTargetId || !onPreviewStatus) return;
+      onPreviewStatus({
+        kind: 'transition',
+        targetId: previewTargetId,
+        adapter: phase === 'ready' ? 'gl-transition' : 'css-transition',
+        phase,
+        fallbackReason,
+      });
+    };
     const finish = () => {
       if (!done && handle != null) {
         done = true;
         continueRender(handle);
       }
     };
+    const priorFailure = failedAdapterRef.current?.frag === def.frag ? failedAdapterRef.current.reason : null;
+    if (priorFailure) {
+      canvas.style.opacity = '0';
+      if (fallbackRef.current) fallbackRef.current.style.opacity = '1';
+      setRenderedKey(null);
+      report('fallback', priorFailure);
+      finish();
+      return () => finish();
+    }
+    let waitingReported = false;
+    const reportWaiting = () => {
+      if (waitingReported) return;
+      waitingReported = true;
+      report('fallback', 'media-loading');
+    };
     const tick = () => {
       const o = outRef.current;
       const i = inRef.current;
       if (!o || !i || !isReady(o) || !isReady(i)) {
+        reportWaiting();
         raf = requestAnimationFrame(tick);
         return;
       }
       try {
-        if (!runtimeRef.current) runtimeRef.current = createGlRuntime(canvas);
-        const octx = staging.out.getContext('2d')!;
-        const ictx = staging.in.getContext('2d')!;
+        const runtime = ensureRuntimeSlot(runtimeRef, () => createGlRuntime(canvas));
+        const octx = staging.out.getContext('2d');
+        const ictx = staging.in.getContext('2d');
+        if (!octx || !ictx) throw new Error('2d context unavailable');
         drawFit(octx, o, fit);
         drawFit(ictx, i, fit);
-        const progress = L > 0 ? frame / L : 1;
-        const time = (windowStart + frame) / fps;
-        runtimeRef.current.render(def.frag, staging.out, staging.in, progress, def.uniforms({ time, aspect: width / Math.max(1, height), direction }));
-      } catch (e) {
-        // WebGL unavailable / compile failure: leave the canvas empty — the
-        // underlying clips still render beneath (hard cut instead of transition).
-        // ponytail: no runtime re-probe; a broken GL stack degrades to a cut.
-        console.error('[gl-transition]', e);
+        const shaderFrame = buildTransitionShaderFrame(def, {
+          sequenceFrame: frame,
+          durationInFrames: L,
+          windowStartFrame: windowStart,
+          fps,
+          width,
+          height,
+          direction,
+        });
+        runtime.render(shaderFrame.frag, staging.out, staging.in, shaderFrame.progress, shaderFrame.uniforms);
+        canvas.style.opacity = '1';
+        if (fallbackRef.current) fallbackRef.current.style.opacity = '0';
+        setRenderedKey(renderKey);
+        report('ready');
+      } catch (error) {
+        const reason = glPreviewFailureReason(error);
+        failedAdapterRef.current = { frag: def.frag, reason };
+        disposeRuntimeSlot(runtimeRef);
+        canvas.style.opacity = '0';
+        if (fallbackRef.current) fallbackRef.current.style.opacity = '1';
+        setRenderedKey(null);
+        report('fallback', reason);
+        console.error('[gl-transition]', error);
       }
       finish();
     };
@@ -137,21 +198,21 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
       cancelAnimationFrame(raf);
       finish();
     };
-  }, [frame, fps, L, windowStart, fit, type, direction, def, staging, width, height]);
+  }, [frame, fps, L, windowStart, fit, type, direction, def, staging, width, height, renderKey, previewTargetId, onPreviewStatus]);
 
   useEffect(() => () => {
-    runtimeRef.current?.dispose();
-    runtimeRef.current = null;
-  }, []);
+    disposeRuntimeSlot(runtimeRef);
+  }, [width, height, def?.frag]);
 
   return (
     <AbsoluteFill>
-      {/* hidden frame-synced media sources (opacity keeps decode/seek active) */}
-      <AbsoluteFill style={{ opacity: 0, pointerEvents: 'none' }}>
-        <MediaSource item={outgoing} trim={trimOut} elRef={outRef} />
-        <MediaSource item={incoming} trim={trimIn} elRef={inRef} />
+      <AbsoluteFill ref={fallbackRef} style={{ opacity: presentation.showFallback ? 1 : 0, pointerEvents: 'none' }}>
+        <MediaSource item={outgoing} trim={trimOut} fit={fit} elRef={outRef} />
+        <PreviewTransitionIn type={fallbackType} frames={L} dir={direction} line={fallbackLine}>
+          <MediaSource item={incoming} trim={trimIn} fit={fit} elRef={inRef} />
+        </PreviewTransitionIn>
       </AbsoluteFill>
-      <canvas ref={canvasRef} width={width} height={height} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+      <canvas ref={canvasRef} width={width} height={height} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: presentation.showGl ? 1 : 0 }} />
     </AbsoluteFill>
   );
 }

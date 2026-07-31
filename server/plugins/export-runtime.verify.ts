@@ -109,7 +109,7 @@ await assert.rejects(
 assert.equal(existsSync(staleOutput), false, 'failed FPS conversion must remove partial output');
 
 const controller = new AbortController();
-const { jobId } = createGenerationJob(
+const { jobId } = await createGenerationJob(
   { kind: 'export-cancellation-check' },
   async () => {
     controller.signal.throwIfAborted();

@@ -29,14 +29,23 @@ export function rankSemanticMatches(
   limit = SEMANTIC_RESULT_LIMIT,
 ): SemanticMatch[] {
   const normalizedQuery = normalizeVector(queryVector);
-  // Only the frame with the highest score is retained for each asset: a video will index more than a dozen sampling points. If it does not converge, it will be the same shot.
-  // The entire result list can be filled up, and the really relevant asset behind will not be squeezed in.
+  // Scene-aware records retain one best frame per shot. Legacy records without
+  // a scene id preserve the historical one-best-frame-per-asset behavior.
   const best = new Map<string, SemanticMatch>();
   for (const record of records) {
     const score = dot(record.vector, normalizedQuery);
-    const prev = best.get(record.assetId);
+    const key = `${record.assetId}:${record.sceneId ?? 'legacy'}`;
+    const prev = best.get(key);
     if (!prev || score > prev.score) {
-      best.set(record.assetId, { assetId: record.assetId, sampleTime: record.sampleTime, score });
+      best.set(key, {
+        assetId: record.assetId,
+        sourceRevision: record.sourceRevision,
+        sampleTime: record.sampleTime,
+        sceneId: record.sceneId,
+        sceneStart: record.sceneStart,
+        sceneEnd: record.sceneEnd,
+        score,
+      });
     }
   }
   const ranked = Array.from(best.values()).toSorted((left, right) => right.score - left.score);

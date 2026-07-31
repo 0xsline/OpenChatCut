@@ -1,4 +1,5 @@
 import type { MediaAsset } from '../../editor/types';
+import { sourceRevisionOf } from '../../editor/mediaSourceRevision';
 import { sampleAssetFrames, SemanticMediaDecodeError } from './mediaFrames';
 import type { SemanticClient } from './semanticClient';
 import type { SemanticDevice, SemanticVectorRecord } from './types';
@@ -34,12 +35,24 @@ async function indexAsset(
   signal: AbortSignal,
 ): Promise<boolean> {
   try {
+    const sourceRevision = sourceRevisionOf(asset);
     const frames = await sampleAssetFrames(asset, signal);
-    let records: SemanticVectorRecord[] = [];
+    const records: SemanticVectorRecord[] = [];
     for (const frame of frames) {
       const vector = await client.embedImage(frame);
-      records = [...records, { scopeId, assetId: asset.id, sampleTime: frame.sampleTime, vector }];
+      if (signal.aborted) throw new DOMException('Indexing canceled', 'AbortError');
+      records.push({
+        scopeId,
+        assetId: asset.id,
+        sourceRevision,
+        sampleTime: frame.sampleTime,
+        sceneId: frame.sceneId,
+        sceneStart: frame.sceneStart,
+        sceneEnd: frame.sceneEnd,
+        vector,
+      });
     }
+    if (signal.aborted) throw new DOMException('Indexing canceled', 'AbortError');
     await replaceAssetVectors(scopeId, asset.id, records);
     return true;
   } catch (reason) {

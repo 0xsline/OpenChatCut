@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
-import { hailuoApiResolution, hailuoRequestBody, isMinimaxSubjectModel, klingPrompt, seedanceApiResolution, seedanceRequestBody,
-  validateMinimaxVideoMode, validateVideoRequest } from './video.ts';
+import {
+  IncompleteGenerationResultError,
+  generationResultCheckpoint,
+  setGenerationResultUrlAt,
+  requireGenerationResultUrls,
+} from './generation-jobs.ts';
+import {
+  expectedVideoResultCount,
+  hailuoApiResolution, hailuoRequestBody, isMinimaxSubjectModel, klingPrompt, seedanceApiResolution, seedanceRequestBody,
+  validateMinimaxVideoMode, validateVideoRequest,
+} from './video.ts';
 
 assert.equal(hailuoApiResolution(undefined), '768P');
 assert.equal(hailuoApiResolution('720p'), '768P');
@@ -106,6 +115,49 @@ assert.equal(seedBody.camera_fixed, true);
 assert.equal(seedBody.return_last_frame, true);
 assert.equal(seedBody.execution_expires_after, 3600);
 assert.equal(seedBody.priority, 9);
+assert.equal(expectedVideoResultCount(seed), 1);
+assert.equal(expectedVideoResultCount(seedControls), 2);
+assert.equal(expectedVideoResultCount({ model: 'kling' }), 1);
+assert.deepEqual(generationResultCheckpoint([], 2), { urls: [], complete: false });
+assert.deepEqual(
+  generationResultCheckpoint(['https://cdn/video.mp4'], 2, 'seedance-task'),
+  { urls: ['https://cdn/video.mp4'], complete: false },
+);
+assert.deepEqual(
+  generationResultCheckpoint(['https://cdn/video.mp4', 'https://cdn/last.jpg'], 2, 'seedance-task'),
+  { urls: ['https://cdn/video.mp4', 'https://cdn/last.jpg'], complete: true },
+);
+assert.throws(
+  () => generationResultCheckpoint(['https://cdn/video.mp4'], 2),
+  (error) => error instanceof IncompleteGenerationResultError
+    && error.code === 'generation_result_incomplete'
+    && error.retryable,
+);
+let refreshedSeedanceUrls = setGenerationResultUrlAt(
+  ['https://cdn/old-video.mp4'],
+  0,
+  'https://cdn/new-video.mp4',
+);
+refreshedSeedanceUrls = setGenerationResultUrlAt(
+  refreshedSeedanceUrls,
+  1,
+  'https://cdn/new-last.jpg',
+);
+assert.deepEqual(
+  requireGenerationResultUrls(refreshedSeedanceUrls, 2),
+  ['https://cdn/new-video.mp4', 'https://cdn/new-last.jpg'],
+  'an authoritative provider query must replace a stale signed video URL by result index',
+);
+assert.deepEqual(
+  setGenerationResultUrlAt(refreshedSeedanceUrls, 1, 'https://cdn/new-last.jpg'),
+  refreshedSeedanceUrls,
+  'repeating the same indexed resume checkpoint must be idempotent',
+);
+assert.deepEqual(
+  generationResultCheckpoint(['https://cdn/single.mp4', 'https://cdn/single.mp4'], 1),
+  { urls: ['https://cdn/single.mp4'], complete: true },
+  'single-result providers must remain complete after URL de-duplication',
+);
 assert.throws(
   () => validateVideoRequest({ model: 'seedance2', prompt: 'x', executionExpiresAfter: 3599 }),
   /executionExpiresAfter/,

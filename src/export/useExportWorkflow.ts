@@ -1,25 +1,34 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { useT } from '../i18n/locale';
 import { loadExportAutoQaPreference, saveExportAutoQaPreference } from './autoQa';
 import { createArtifactExporters } from './artifactExportOperations';
+import {
+  type BackgroundExportJobSetters,
+  type ExportJobStore,
+} from './backgroundExportStore';
 import { createExportVerifier } from './exportQaOperation';
 import { createExportRunner } from './exportRunOperation';
-import { ensureExportDestinationWritable, exportDestinationErrorMessage } from './exportDestination';
+import {
+  ensureExportDestinationWritable,
+  exportDestinationErrorMessage,
+  exportDestinationTargetPath,
+} from './exportDestination';
+import type { ExportDestination } from './exportDestination';
+import { immutableExportSnapshot } from './exportMediaPlan';
 import { createServerExporter } from './serverExportOperation';
 import { createVideoExporter } from './videoExportOperation';
 import { useExportDestination } from './useExportDestination';
 import type {
   BrowserAbortRef,
+  ExportEngineInfo,
+  ExportOperationResult,
+  ExportEngineReason,
   ExportProgress,
   ExportQaUiState,
-  ExportEngineInfo,
-  ExportEngineReason,
   RenderEngine,
-  StateSetter,
   Translate,
   UseExportWorkflowOptions,
   WorkflowOperations,
-  WorkflowStateSetters,
 } from './exportWorkflowTypes';
 
 export type {
@@ -30,40 +39,27 @@ export type {
   RenderEngine,
 } from './exportWorkflowTypes';
 
-function useBusyClock(busy: string | null, setClock: StateSetter<number>): void {
-  useEffect(() => {
-    if (!busy) return undefined;
-    const timer = window.setInterval(() => setClock(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [busy, setClock]);
-}
-
-function useWorkflowState() {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<ExportProgress | null>(null);
-  const [clock, setClock] = useState(Date.now());
-  const [renderEngine, setRenderEngine] = useState<RenderEngine>('idle');
-  const [qa, setQa] = useState<ExportQaUiState | null>(null);
-  const [engineInfo, setEngineInfo] = useState<ExportEngineInfo | null>(null);
-  const [engineReason, setEngineReason] = useState<ExportEngineReason>(null);
-  useBusyClock(busy, setClock);
-  return {
-    busy, clock, engineInfo, engineReason, error, progress, qa, renderEngine,
-    setBusy, setClock, setEngineInfo, setEngineReason, setError, setProgress, setQa, setRenderEngine,
-  };
-}
+const COMMITTED_EXPORT = Object.freeze({ targetCommitted: true }) satisfies ExportOperationResult;
 
 function createWorkflowOperations(
   options: UseExportWorkflowOptions,
   autoQaEnabled: boolean,
   browserAbortRef: BrowserAbortRef,
-  destination: ReturnType<typeof useExportDestination>['destination'],
-  setters: WorkflowStateSetters,
+  destination: ExportDestination,
+  setters: BackgroundExportJobSetters,
+  targetPath: string,
   t: Translate,
 ): WorkflowOperations {
   const verifyCompletedExport = createExportVerifier({ fps: options.fps, state: options.state, t, ...setters });
-  const exportServer = createServerExporter({ autoQaEnabled, destination, options, t, verifyCompletedExport, ...setters });
+  const exportServer = createServerExporter({
+    autoQaEnabled,
+    destination,
+    options,
+    targetPath,
+    t,
+    verifyCompletedExport,
+    ...setters,
+  });
   const artifacts = createArtifactExporters({ destination, options, t, ...setters });
   const exportVideo = createVideoExporter({
     autoQaEnabled,
@@ -76,30 +72,11 @@ function createWorkflowOperations(
     ...setters,
   });
   return {
-    exportAudio: async () => { await exportServer('audio'); },
-    exportMg: artifacts.exportMg,
-    exportSubtitles: artifacts.exportSubtitles,
-    exportVideo,
-    exportXml: artifacts.exportXml,
-  };
-}
-
-function createAutoQaToggle(
-  setAutoQaEnabled: StateSetter<boolean>,
-  setQa: StateSetter<ExportQaUiState | null>,
-) {
-  return (enabled: boolean) => {
-    setAutoQaEnabled(enabled);
-    saveExportAutoQaPreference({ enabled });
-    if (!enabled) setQa(null);
-  };
-}
-
-function createResetFeedback(setters: WorkflowStateSetters) {
-  return () => {
-    setters.setError(null);
-    setters.setProgress(null);
-    setters.setQa(null);
+    exportAudio: async (signal) => { await exportServer('audio', signal); return COMMITTED_EXPORT; },
+    exportMg: async (signal) => { await artifacts.exportMg(signal); return COMMITTED_EXPORT; },
+    exportSubtitles: async (signal) => { await artifacts.exportSubtitles(signal); return COMMITTED_EXPORT; },
+    exportVideo: async (signal) => { await exportVideo(signal); return COMMITTED_EXPORT; },
+    exportXml: async (signal) => { await artifacts.exportXml(signal); return COMMITTED_EXPORT; },
   };
 }
 
@@ -114,31 +91,109 @@ function suggestedExportFilename(options: UseExportWorkflowOptions): string | un
   return undefined;
 }
 
-export function useExportWorkflow(options: UseExportWorkflowOptions) {
+function snapshotWorkflowOptions(options: UseExportWorkflowOptions): UseExportWorkflowOptions {
+  return Object.freeze({
+    ...options,
+    state: immutableExportSnapshot(options.state),
+    ...(options.project ? { project: immutableExportSnapshot(options.project) } : {}),
+    subtitleCaptions: immutableExportSnapshot(options.subtitleCaptions),
+    mgItems: immutableExportSnapshot(options.mgItems),
+  });
+}
+
+const EMPTY_WORKFLOW = {
+  busy: null,
+  clock: 0,
+  engineInfo: null,
+  engineReason: null,
+  error: null,
+  failure: null,
+  progress: null,
+  qa: null,
+  renderEngine: 'idle',
+} satisfies {
+  busy: string | null;
+  clock: number;
+  engineInfo: ExportEngineInfo | null;
+  engineReason: ExportEngineReason;
+  error: string | null;
+  failure: null;
+  progress: ExportProgress | null;
+  qa: ExportQaUiState | null;
+  renderEngine: RenderEngine;
+};
+
+export function useExportWorkflow(options: UseExportWorkflowOptions, exportJobs: ExportJobStore) {
   const t = useT();
-  const state = useWorkflowState();
+  const initialJobs = exportJobs.getSnapshot().jobs;
+  const [viewedJobId, setViewedJobId] = useState<string | null>(() => initialJobs.at(-1)?.id ?? null);
+  const [setupError, setSetupError] = useState<string | null>(null);
   const browserAbortRef = useRef<AbortController | null>(null);
   const [autoQaEnabled, setAutoQaEnabled] = useState(() => loadExportAutoQaPreference().enabled);
   const destinationState = useExportDestination(suggestedExportFilename(options));
-  const setters: WorkflowStateSetters = state;
-  const operations = createWorkflowOperations(options, autoQaEnabled, browserAbortRef, destinationState.destination, setters, t);
-  const run = createExportRunner({
-    busy: state.busy,
-    operations,
-    options,
-    prepareDestination: () => ensureExportDestinationWritable(destinationState.destination),
-    progress: state.progress,
-    t,
-    ...setters,
-  });
+  const jobSnapshot = useSyncExternalStore(exportJobs.subscribe, exportJobs.getSnapshot, exportJobs.getSnapshot);
+  const viewedJob = viewedJobId ? jobSnapshot.jobs.find((job) => job.id === viewedJobId) : undefined;
+  const state = viewedJob ?? EMPTY_WORKFLOW;
+
+  const run = async () => {
+    if (state.busy) return;
+    if (state.progress?.phase === 'completed') {
+      options.onClose();
+      return;
+    }
+    const filename = suggestedExportFilename(options) ?? `${options.base}-${options.tab}`;
+    let targetPath: string;
+    try {
+      targetPath = exportDestinationTargetPath(destinationState.destination, filename);
+    } catch (error) {
+      setSetupError(exportDestinationErrorMessage(error, t));
+      return;
+    }
+    setSetupError(null);
+    const capturedOptions = snapshotWorkflowOptions(options);
+    const capturedDestination = destinationState.destination;
+    const jobId = exportJobs.start({
+      label: filename,
+      targetPath,
+      async execute({ signal, setters }) {
+        const operations = createWorkflowOperations(
+          capturedOptions,
+          autoQaEnabled,
+          browserAbortRef,
+          capturedDestination,
+          setters,
+          targetPath,
+          t,
+        );
+        const execute = createExportRunner({
+          busy: null,
+          operations,
+          options: capturedOptions,
+          prepareDestination: () => ensureExportDestinationWritable(capturedDestination),
+          progress: null,
+          signal,
+          targetPath,
+          t,
+          ...setters,
+        });
+        await execute();
+      },
+    });
+    setViewedJobId(jobId);
+  };
   const chooseDestination = async () => {
-    state.setError(null);
+    setSetupError(null);
     try {
       await destinationState.chooseDestination();
     } catch (reason) {
-      state.setError(exportDestinationErrorMessage(reason, t));
+      setSetupError(exportDestinationErrorMessage(reason, t));
     }
   };
+  const toggleAutoQa = (enabled: boolean) => {
+    setAutoQaEnabled(enabled);
+    saveExportAutoQaPreference({ enabled });
+  };
+
   return {
     autoQaEnabled,
     busy: state.busy,
@@ -147,14 +202,25 @@ export function useExportWorkflow(options: UseExportWorkflowOptions) {
     destination: destinationState.destination,
     engineInfo: state.engineInfo,
     engineReason: state.engineReason,
-    cancelExport: () => browserAbortRef.current?.abort(),
-    clock: state.clock,
-    error: state.error,
+    cancelExport: () => {
+      if (viewedJobId) exportJobs.cancel(viewedJobId);
+      browserAbortRef.current?.abort();
+    },
+    cancelJob: (jobId: string) => { exportJobs.cancel(jobId); },
+    clock: state.clock || Date.now(),
+    error: state.error ?? setupError,
+    failure: state.failure,
+    jobs: jobSnapshot.jobs,
     progress: state.progress,
     qa: state.qa,
     renderEngine: state.renderEngine,
-    resetFeedback: createResetFeedback(setters),
+    resetFeedback: () => {
+      setSetupError(null);
+      setViewedJobId(null);
+    },
     run,
-    toggleAutoQa: createAutoQaToggle(setAutoQaEnabled, state.setQa),
+    selectedJobId: viewedJobId,
+    toggleAutoQa,
+    viewJob: setViewedJobId,
   };
 }

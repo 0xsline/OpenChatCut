@@ -11,11 +11,23 @@ import {
   type BrowserExportDirectoryHandle,
   type ExportDestination,
 } from './exportDestination';
+import { ExportFailureError } from './exportFailure';
 import { exportDestinationMatchesFilename } from './useExportDestination';
 
 const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
 const originalFetch = globalThis.fetch;
 const indexedDbDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB');
+interface Deferred {
+  promise: Promise<void>;
+  resolve(): void;
+}
+
+function deferred(): Deferred {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 
 function installWindow(value: unknown): void {
   Object.defineProperty(globalThis, 'window', { configurable: true, value });
@@ -202,6 +214,48 @@ function verifyDestinationCompatibility(): void {
   assert.equal(exportDestinationMatchesFilename(DEFAULT_EXPORT_DESTINATION, undefined, 'clip.mp4'), true);
 }
 
+async function verifyBrowserStreamCancellationAbortsWritable(): Promise<void> {
+  const writeStarted = deferred();
+  const writeGate = deferred();
+  const controller = new AbortController();
+  let aborts = 0;
+  let closes = 0;
+  const destination: ExportDestination = {
+    type: 'browser-file',
+    label: 'clip.mp4',
+    handle: {
+      kind: 'file',
+      name: 'clip.mp4',
+      queryPermission: async () => 'granted',
+      requestPermission: async () => 'granted',
+      createWritable: async () => ({
+        write: async () => {
+          writeStarted.resolve();
+          await writeGate.promise;
+        },
+        close: async () => { closes += 1; },
+        abort: async () => { aborts += 1; },
+      }),
+    },
+  };
+  globalThis.fetch = (async () => new Response('streamed-video')) as typeof fetch;
+  const writing = writeUrlToDestination(
+    destination,
+    'clip.mp4',
+    '/media/uploads/source.mp4',
+    controller.signal,
+  );
+  await writeStarted.promise;
+  controller.abort(new DOMException('cancelled', 'AbortError'));
+  writeGate.resolve();
+  await assert.rejects(
+    writing,
+    (error) => error instanceof DOMException && error.name === 'AbortError',
+  );
+  assert.equal(aborts, 1, 'aborting a streamed browser write cleans up the writable');
+  assert.equal(closes, 0, 'an aborted writable is not closed as a successful target');
+}
+
 async function verifyDesktopRestoreAndStreaming(): Promise<void> {
   const grant = { grantId: 'a'.repeat(43), label: 'Exports' };
   installWindow({
@@ -215,10 +269,24 @@ async function verifyDesktopRestoreAndStreaming(): Promise<void> {
   assert.deepEqual(await chooseExportDestination(), { type: 'desktop-directory', ...grant });
   const requests: string[] = [];
   let uploaded = '';
+  let failDestination = false;
   globalThis.fetch = (async (input, init) => {
     const url = String(input);
     requests.push(url);
     if (!init) return new Response('streamed-video');
+    if (failDestination) {
+      return Response.json({
+        error: 'export target is already being written',
+        failure: {
+          stage: 'destination',
+          code: 'export_target_leased',
+          retryable: true,
+          cleanupStatus: 'not-required',
+          targetPath: '/tmp/Exports/clip.mp4',
+          message: 'export target is already being written',
+        },
+      }, { status: 409 });
+    }
     uploaded = await new Response(init.body).text();
     return new Response(null, { status: 204 });
   }) as typeof fetch;
@@ -230,6 +298,15 @@ async function verifyDesktopRestoreAndStreaming(): Promise<void> {
   ]);
   assert.equal(uploaded, 'streamed-video');
   await assert.rejects(() => writeBlobToDestination(destination, '../clip.mp4', new Blob()), /导出文件名无效/);
+  failDestination = true;
+  await assert.rejects(
+    () => writeBlobToDestination(destination, 'clip.mp4', new Blob(['racer'])),
+    (error: unknown) => error instanceof ExportFailureError
+      && error.failure.stage === 'destination'
+      && error.failure.code === 'export_target_leased'
+      && error.failure.retryable
+      && error.failure.targetPath === '/tmp/Exports/clip.mp4',
+  );
 }
 
 try {
@@ -250,6 +327,7 @@ try {
   await verifyMultiFileUsesDirectoryPicker();
   await verifyPickerCancellation();
   verifyDestinationCompatibility();
+  await verifyBrowserStreamCancellationAbortsWritable();
   await verifyDesktopRestoreAndStreaming();
   console.log('export destination verification passed');
 } finally {

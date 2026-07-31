@@ -2,6 +2,7 @@ import type { CaptionsData, CaptionSourceEntry, CaptionWordOverride } from './ty
 import type { TimelineItem } from '../editor/types';
 import type { TranscriptWord } from '../transcript/types';
 import { itemEditOpts, itemWindow, keptWordIndices, mediaWindowKeptIndices, mediaWindowWords, retimeWords } from '../transcript/edit';
+import { hasOperationalTranscript } from '../transcript/types';
 import { findVariantByLang, resolveVariantText } from '../transcript/variants';
 import { orderedCaptionSourceEntries } from './sourceOrder';
 
@@ -28,13 +29,13 @@ function projectItemIndices(item: TimelineItem, del: Set<number>, fps: number): 
 // code path as before this feature).
 function mergedSourceItems(captions: CaptionsData, items: TimelineItem[]): TimelineItem[] | undefined {
   if (captions.sourceMode === 'timeline') {
-    const all = items.filter((it) => (it.transcript?.length ?? 0) > 0);
+    const all = items.filter((it) => hasOperationalTranscript(it));
     return all.length ? [...all].sort((a, b) => a.startFrame - b.startFrame || a.id.localeCompare(b.id)) : undefined;
   }
   if (captions.sources?.length) {
     const found = captions.sources
       .map((id) => items.find((it) => it.id === id))
-      .filter((it): it is TimelineItem => !!it?.transcript?.length);
+      .filter((it): it is TimelineItem => hasOperationalTranscript(it));
     return found.length ? found : undefined;
   }
   return undefined;
@@ -46,7 +47,7 @@ function mergedSourceItems(captions: CaptionsData, items: TimelineItem[]): Timel
 export function resolveEntryWords(entry: CaptionSourceEntry, items: TimelineItem[], fps: number): TranscriptWord[] {
   if (entry.words) return entry.words.map((word) => ({ ...word }));
   const item = items.find((it) => it.id === entry.itemId);
-  if (!item?.transcript?.length) return [];
+  if (!hasOperationalTranscript(item)) return [];
   const del = new Set(item.deletedWordIdx ?? []);
   const variant = entry.variant
     ? findVariantByLang(item.variants ?? [], entry.variant.languageCode, entry.variant.variantKind)
@@ -83,8 +84,9 @@ export function resolveCaptionWords(captions: CaptionsData, items: TimelineItem[
   }
   const merged = mergedSourceItems(captions, items);
   if (merged) return mergeWords(merged, fps);
+  if (captions.sourceMode === 'timeline' || captions.sources?.length) return [];
   const item = captions.sourceItemId ? items.find((it) => it.id === captions.sourceItemId) : undefined;
-  if (item?.transcript?.length) {
+  if (hasOperationalTranscript(item)) {
     const del = new Set(item.deletedWordIdx ?? []);
     // Swap in the chosen variant's TEXT on the SOURCE words BEFORE retiming, so all
     // timing comes from the projection (source frames) — the variant never touches a
@@ -93,6 +95,7 @@ export function resolveCaptionWords(captions: CaptionsData, items: TimelineItem[
     const src = variant ? resolveVariantText(item.transcript, variant) : item.transcript;
     return projectItemWords(item, src, del, fps);
   }
+  if (captions.sourceItemId) return [];
   const offMs = ((captions.offsetFrames ?? 0) / fps) * 1000;
   return (captions.words ?? []).map((w) => ({ ...w, start: w.start + offMs, end: w.end + offMs }));
 }
@@ -120,12 +123,14 @@ export function resolveCaptionWordIndices(captions: CaptionsData, items: Timelin
     }, 0);
     return Array.from({ length: count }, (_, i) => i);
   }
+  if (captions.sourceMode === 'timeline' || captions.sources?.length) return [];
   const item = captions.sourceItemId ? items.find((it) => it.id === captions.sourceItemId) : undefined;
-  if (item?.transcript?.length) {
+  if (hasOperationalTranscript(item)) {
     const del = new Set(item.deletedWordIdx ?? []);
     // The same set of survival rules as resolveCaptionWords (divided according to kind), otherwise wordOverrides will be misplaced
     return projectItemIndices(item, del, fps);
   }
+  if (captions.sourceItemId) return [];
   return (captions.words ?? []).map((_, i) => i);
 }
 

@@ -39,6 +39,7 @@ function useInspectorPlayhead(getPlayhead: () => number, playerRef: RefObject<Pl
 function InspectorHeader({ panel }: { panel: InspectorPanelProps }) {
   const t = useT();
   const item = panel.selectedItem;
+  const count = panel.selectedItems.length;
   return (
     <button
       type="button"
@@ -49,7 +50,7 @@ function InspectorHeader({ panel }: { panel: InspectorPanelProps }) {
       <span className={`cc-insp-chevron${panel.collapsed ? ' closed' : ''}`}><Icon name="chevronDown" size={12} /></span>
       <span className="cc-insp-heading">
         <span className="cc-insp-title">{t('片段属性')}</span>
-        {item && <span className="cc-insp-title-name" title={item.name}>{item.name}</span>}
+        {item && <span className="cc-insp-title-name" title={item.name}>{count > 1 ? t('{n} 个片段', { n: count }) : item.name}</span>}
       </span>
       {item?.denoisedSrc && <span className="cc-insp-pill">{t('人声隔离')}</span>}
     </button>

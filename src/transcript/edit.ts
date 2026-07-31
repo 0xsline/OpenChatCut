@@ -1,4 +1,5 @@
 import { msToFrame, type TranscriptWord, type TranscriptVariant } from './types';
+import { sourceFramesToTimelineFrames, sourceWindowForTimelineRange } from '../editor/sourceLimit';
 
 // Transcript-based editing: deleting a word removes its audible source range.
 // The kept audio = maximal runs of NON-deleted words, each run playing the
@@ -44,6 +45,7 @@ export interface EditOpts {
    */
   window?: { startFrame: number; durFrames: number };
 }
+
 
 /** The window an item's trim fields describe. ONLY audio clips render word-driven
  * (AudioClip keptSegments) — a video item's srcInFrame is MEDIA frames feeding its
@@ -181,10 +183,14 @@ function windowSegments(
   return out;
 }
 
-// Edited clip length in frames (sum of kept segment durations), min 1.
+/** Exact edited-stream length. Unlike editedFrames, an unusable word stream stays 0. */
+export function editedStreamFrames(words: TranscriptWord[], deleted: Set<number>, fps: number, opts: EditOpts = {}): number {
+  return keptSegments(words, deleted, fps, 0, opts).reduce((s, seg) => s + seg.durFrames, 0);
+}
+
+// Edited clip length in frames, min 1 for timeline item duration invariants.
 export function editedFrames(words: TranscriptWord[], deleted: Set<number>, fps: number, opts: EditOpts = {}): number {
-  const total = keptSegments(words, deleted, fps, 0, opts).reduce((s, seg) => s + seg.durFrames, 0);
-  return Math.max(1, total);
+  return Math.max(1, editedStreamFrames(words, deleted, fps, opts));
 }
 
 /** Source indices of words that SURVIVE the edit state (deletions + window) — the
@@ -354,16 +360,14 @@ export function mediaWindowWords(
   fps: number,
   item: MediaWindowItem,
 ): TranscriptWord[] {
-  const rate = item.playbackRate ?? 1;
-  const srcIn = item.srcInFrame ?? 0;
-  const winEnd = srcIn + item.durationInFrames * rate;
+  const window = sourceWindowForTimelineRange(item, 0, item.durationInFrames);
   const out: TranscriptWord[] = [];
   for (let i = 0; i < words.length; i++) {
     const wS = msToFrame(words[i].start, fps);
     const wE = msToFrame(words[i].end, fps);
-    if (wE <= srcIn || wS >= winEnd) continue; // outside the window
-    const fromF = item.startFrame + (Math.max(wS, srcIn) - srcIn) / rate;
-    const toF = item.startFrame + (Math.min(wE, winEnd) - srcIn) / rate;
+    if (wE <= window.startFrame || wS >= window.endFrame) continue; // outside the window
+    const fromF = item.startFrame + sourceFramesToTimelineFrames(item, Math.max(wS, window.startFrame) - window.startFrame);
+    const toF = item.startFrame + sourceFramesToTimelineFrames(item, Math.min(wE, window.endFrame) - window.startFrame);
     const start = (fromF / fps) * 1000;
     out.push({ text: words[i].text, start, end: Math.max(start + 1, (toF / fps) * 1000), speaker: words[i].speaker });
   }
@@ -376,14 +380,12 @@ export function mediaWindowKeptIndices(
   fps: number,
   item: MediaWindowItem,
 ): number[] {
-  const rate = item.playbackRate ?? 1;
-  const srcIn = item.srcInFrame ?? 0;
-  const winEnd = srcIn + item.durationInFrames * rate;
+  const window = sourceWindowForTimelineRange(item, 0, item.durationInFrames);
   const idxs: number[] = [];
   for (let i = 0; i < words.length; i++) {
     const wS = msToFrame(words[i].start, fps);
     const wE = msToFrame(words[i].end, fps);
-    if (wE <= srcIn || wS >= winEnd) continue;
+    if (wE <= window.startFrame || wS >= window.endFrame) continue;
     idxs.push(i);
   }
   return idxs;

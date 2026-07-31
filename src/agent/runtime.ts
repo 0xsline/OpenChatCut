@@ -29,6 +29,7 @@ import {
 } from './settings/agentSettings';
 import type { GuardDecision } from './skills/skillGuard';
 import { completeAbortedTurn } from './abortedTurn';
+import { resolveTrackedJobForProject } from '../persist/jobRegistryStore';
 
 const MAX_OUTPUT_TOKENS = 64000;
 const MAX_TOOL_TURNS = 30;
@@ -51,6 +52,53 @@ export type AgentEvent =
 
 export function initialMessages(): LLMMessage[] {
   return [];
+}
+
+export interface RuntimeGuardRequest {
+  skill: GenerationGuardSkill;
+  /** Actual provider/export tool whose execution is being confirmed. */
+  tool: string;
+  requestedTool?: string;
+  operationId?: string;
+  summary?: string;
+}
+
+function summarizeGuardArgs(toolName: string, args: Record<string, unknown>): string {
+  const keys = ['provider', 'model', 'mode', 'durationSeconds', 'resolution', 'ratio', 'name'] as const;
+  const details = keys.flatMap((key) => args[key] === undefined ? [] : [`${key}=${String(args[key])}`]);
+  if (typeof args.prompt === 'string' && args.prompt.trim()) {
+    const prompt = args.prompt.trim();
+    details.push(`prompt=${JSON.stringify(prompt.length > 120 ? `${prompt.slice(0, 117)}…` : prompt)}`);
+  }
+  return [toolName, ...details].join(' · ');
+}
+
+/** Resolve reruns before confirmation so the card names the original operation and args. */
+export async function runtimeGuardForTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  ctx: AgentContext,
+): Promise<RuntimeGuardRequest | null> {
+  const defaultSkill = generationSkillForTool(toolName);
+  if (!defaultSkill) return null;
+  if (toolName !== 'rerun_generation') {
+    return { skill: defaultSkill, tool: toolName, summary: summarizeGuardArgs(toolName, args) };
+  }
+  const projectId = ctx.getProjectId?.();
+  if (!projectId) throw new Error('rerun_generation requires a persisted project id');
+  const resolution = await resolveTrackedJobForProject(projectId, String(args.jobId ?? ''));
+  if (!resolution.ok) throw new Error(resolution.message);
+  const original = resolution.job;
+  if (original.submitArgsVersion !== 1 || !original.submitArgs || !original.toolName) {
+    throw new Error(`generation operation ${original.operationId} is a legacy summary-only snapshot and cannot be rerun safely`);
+  }
+  return {
+    skill: generationSkillForTool(original.toolName) ?? 'high-cost-operation',
+    tool: original.toolName,
+    requestedTool: toolName,
+    operationId: original.operationId,
+    summary: summarizeGuardArgs(original.toolName, original.submitArgs),
+  };
 }
 
 function errorMessage(error: unknown): string {
@@ -96,7 +144,7 @@ function createAgentTools(
   ctx: AgentContext,
   onEvent: (event: AgentEvent) => void,
   settings: ReturnType<typeof loadAgentSettings>,
-  onSkillGuard?: (info: { skill: GenerationGuardSkill; tool: string }) => Promise<GuardDecision>,
+  onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>,
   onFollowup?: () => void,
 ): ToolSet {
   return Object.fromEntries(TOOL_SCHEMAS.map((schema) => [
@@ -108,20 +156,21 @@ function createAgentTools(
       ),
       execute: async (input) => {
         const args = input ?? {};
-        const guardSkill = settings.skillGuard ? generationSkillForTool(schema.name) : null;
-        if (guardSkill && onSkillGuard) {
-          const decision = await onSkillGuard({ skill: guardSkill, tool: schema.name });
-          if (decision === 'deny') {
-            const denied = {
-              denied: true,
-              note: 'User denied this generation via skill_guard. Do not retry automatically; ask what to adjust instead.',
-            };
-            onEvent({ type: 'tool', name: schema.name, args, result: denied });
-            return denied;
-          }
-        }
-
         try {
+          const guard = settings.skillGuard ? await runtimeGuardForTool(schema.name, args, ctx) : null;
+          if (guard) {
+            const decision = onSkillGuard ? await onSkillGuard(guard) : 'deny';
+            if (decision === 'deny') {
+              const denied = {
+                denied: true,
+                note: onSkillGuard
+                  ? 'User denied this high-cost or irreversible operation. Do not retry automatically; ask what to adjust instead.'
+                  : 'This high-cost or irreversible operation requires runtime confirmation, but no confirmation handler is available.',
+              };
+              onEvent({ type: 'tool', name: schema.name, args, result: denied });
+              return denied;
+            }
+          }
           // Take a timeline snapshot before and after the tool: the modification tool directly brings back "what was actually changed"
           // Model, omit a full read_project (the difference of read-only tools is null, no fields are added).
           const before = snapshotTimeline(ctx.getState());
@@ -162,7 +211,7 @@ export async function runAgent(
   opts?: {
     askOnly?: boolean;
     signal?: AbortSignal;
-    onSkillGuard?: (info: { skill: GenerationGuardSkill; tool: string }) => Promise<GuardDecision>;
+    onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>;
   },
 ): Promise<LLMMessage[]> {
   let conv = normalizeLlmMessages(messages);

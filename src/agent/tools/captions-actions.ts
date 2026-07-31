@@ -5,7 +5,8 @@ import { mapCaptionStyle } from '../../captions/styleMap';
 import { sourceList, sourceSet, sourceAdd, sourceRemove, languageMode, bilingual, firstTranscribedOnTrack } from './captions-sources';
 import { execLayoutPolicy, execPositions, execSourceUpdate } from './captions-lanes';
 import { listCaptionPresets, saveCaptionPreset, deleteCaptionPreset, resolveCaptionPreset, type CaptionPreset } from '../../captions/presetStore';
-import { captionsOnTrack, defaultTrackId, resolveTrackId, timelineTrackIds, trackAlias } from '../../editor/types';
+import { captionsOnTrack, defaultTrackId, resolveTrackId, timelineTrackIds, trackAlias, type TimelineState } from '../../editor/types';
+import { hasOperationalTranscript } from '../../transcript/types';
 
 // edit_captions uses one tool with a 21-action dispatcher. Most action data
 // arrives as a JSON string in `json`. Backed by OpenChatCut's captions overlay
@@ -52,7 +53,7 @@ function toLayout(json: Record<string, unknown>, width: number, height: number):
 }
 
 /** display_text: per-word overrides (hide / retext / force break) + clearOverrides. */
-function displayText(json: Record<string, unknown>, c: CaptionsData, ctx: AgentContext, s: { items: { id: string; transcript?: unknown[] }[] }): Result {
+function displayText(json: Record<string, unknown>, c: CaptionsData, ctx: AgentContext, s: TimelineState): Result {
   if (json.clearOverrides === true || json.clear_overrides === true) {
     ctx.commands.updateCaptions({ wordOverrides: {} });
     return { ok: true, cleared: true };
@@ -60,7 +61,10 @@ function displayText(json: Record<string, unknown>, c: CaptionsData, ctx: AgentC
   const raw = json.overrides;
   if (!Array.isArray(raw) || raw.length === 0) return { error: 'display_text needs {overrides:[{wordIndex,...}]} or {clearOverrides:true}' };
   const item = c.sourceItemId ? s.items.find((it) => it.id === c.sourceItemId) : undefined;
-  const total = item?.transcript?.length ?? c.words?.length ?? 0;
+  if (c.sourceItemId && !hasOperationalTranscript(item)) {
+    return { error: `caption source ${c.sourceItemId} has no current transcript; transcribe it again` };
+  }
+  const total = hasOperationalTranscript(item) ? item.transcript.length : c.words?.length ?? 0;
   const next: Record<number, CaptionWordOverride> = { ...(c.wordOverrides ?? {}) };
   const ignored: string[] = [];
   const errors: string[] = [];
@@ -124,13 +128,15 @@ export async function editCaptions(args: Args, ctx: AgentContext): Promise<Resul
 
   // ── lifecycle ──
   if (action === 'enable') {
-    const transcribed = s.items.filter((it) => (it.transcript?.length ?? 0) > 0);
-    if (!c && !transcribed.length) return { error: 'no transcript to caption; run transcribe_track first' };
+    const transcribed = s.items.filter((it) => hasOperationalTranscript(it));
+    const hasManualWords = !!c?.words?.length || !!c?.sourceEntries?.some((entry) => entry.words !== undefined);
+    if (!transcribed.length && !hasManualWords) return { error: 'no current transcript to caption; run transcribe_track first' };
     const presetArg = str(args.preset);
     const template: CaptionTemplate = presetArg && presetArg !== 'auto' && isTemplate(presetArg) ? presetArg : (c?.template ?? 'plain');
     const pacing: CaptionPacing = c?.pacing ?? 'phrase';
     const base: CaptionsData = { ...(c ?? {}), enabled: true, template, pacing };
-    if (!c?.sourceItemId && !c?.sources && transcribed[0]) base.sourceItemId = transcribed[0].id;
+    const currentSource = c?.sourceItemId ? s.items.find((item) => item.id === c.sourceItemId) : undefined;
+    if (!hasOperationalTranscript(currentSource) && transcribed[0]) base.sourceItemId = transcribed[0].id;
     if (c) ctx.commands.updateCaptions(base); else ctx.commands.setCaptions(base);
     return { ok: true, enabled: true, template, pacing, note: 'captions read the anchored source; for ALL audible tracks use action=source_set {mode:"timeline"}.' };
   }
@@ -166,7 +172,7 @@ export async function editCaptions(args: Args, ctx: AgentContext): Promise<Resul
           trackOrder,
           trackId: trackAlias(s, id),
           id,
-          hasTranscript: s.items.some((item) => item.track === id && (item.transcript?.length ?? 0) > 0),
+          hasTranscript: s.items.some((item) => item.track === id && hasOperationalTranscript(item)),
         })),
       };
     }

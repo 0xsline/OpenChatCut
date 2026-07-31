@@ -1,4 +1,4 @@
-// Default keyboard preset with 55 actions. The UI can show Chinese via labelZh.
+// Default keyboard preset with 56 actions. The UI can show Chinese via labelZh.
 
 export type ShortcutGroup =
   | 'ai'
@@ -28,7 +28,7 @@ export const SHORTCUT_GROUPS: { id: ShortcutGroup; label: string; labelZh: strin
   { id: 'ai', label: 'AI', labelZh: 'AI' },
 ];
 
-/** Canonical 55 actions — source of truth for help UI + matcher. */
+/** Canonical 56 actions — source of truth for help UI + matcher. */
 export const SHORTCUT_CATALOG: ShortcutAction[] = [
   { id: 'play-pause', label: 'Play / Pause', labelZh: '播放/暂停', group: 'playback', keys: 'Space' },
   { id: 'seek-back', label: 'Previous frame', labelZh: '上一帧', group: 'playback', keys: '←' },
@@ -52,6 +52,7 @@ export const SHORTCUT_CATALOG: ShortcutAction[] = [
   { id: 'split', label: 'Split', labelZh: '切分', group: 'edit', keys: 'C / Enter' },
   { id: 'interaction-mode-selection', label: 'Selection Mode', labelZh: '选择模式', group: 'edit', keys: 'V' },
   { id: 'interaction-mode-trim', label: 'Trim Edit Mode', labelZh: '修剪模式', group: 'edit', keys: 'N' },
+  { id: 'interaction-mode-slip', label: 'Slip Edit Mode', labelZh: '滑移模式', group: 'edit', keys: 'U' },
   { id: 'interaction-mode-blade', label: 'Blade Edit Mode', labelZh: '刀片模式', group: 'edit', keys: 'B' },
   { id: 'interaction-mode-pen', label: 'Pen Edit Mode', labelZh: '钢笔模式', group: 'edit', keys: 'P' },
   { id: 'nudge-left', label: 'Nudge left 1 / 5 frames', labelZh: '左移 1/5 帧', group: 'edit', keys: 'E / Shift + E' },

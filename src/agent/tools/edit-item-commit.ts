@@ -16,7 +16,7 @@ export function commitPlan(ctx: AgentContext, plan: OpResult, ripple = false): O
   if (name === 'addAudio') return commitAudioPlan(ctx, plan, ripple);
   if (name === 'addMg') return commitMotionGraphicPlan(ctx, plan, ripple);
   if (name === 'addMedia') return commitMediaPlan(ctx, plan);
-  if (name === 'genericUpdate' || name === 'genericDelete') {
+  if (name === 'genericUpdate' || name === 'genericDelete' || name === 'slip') {
     return applyGeneric(plan, ctx.commands) ?? { error: `unknown plan ${name}` };
   }
   return { error: `unknown plan ${name}` };

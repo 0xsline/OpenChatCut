@@ -10,6 +10,7 @@ import type { TimelineItem, TimelineState, TrackId } from '../editor/types';
 import type { EditorCommands } from '../editor/store';
 import { itemById, serializeTimeline, type Row, type SegRow, type SilenceRow } from './serialize';
 import { parseScript, type ParsedRun, type ParsedSegRow, type ParsedSilenceRow } from './parse';
+import { hasOperationalTranscript } from '../transcript/types';
 
 type Cmds = Pick<EditorCommands, 'deleteWords' | 'toggleWord' | 'removeItem' | 'moveItem' | 'setGapCap'>;
 
@@ -44,6 +45,7 @@ function consumeRun(words: { text: string }[], wi: number, run: ParsedRun, line:
 interface WordPlan { item: TimelineItem; toDelete: number[]; toRestore: number[]; removeWhole: boolean }
 
 function planSegRows(item: TimelineItem, canonRows: SegRow[], parsedRows: ParsedSegRow[]): WordPlan {
+  if (!hasOperationalTranscript(item)) throw new Error(`「${item.name}」的转写已失效，请重新转写后再应用脚本编辑`);
   const words = item.transcript!;
   const currentDeleted = new Set(item.deletedWordIdx ?? []);
   const bySn = new Map<number, ParsedSegRow>();

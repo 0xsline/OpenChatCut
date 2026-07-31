@@ -7,6 +7,7 @@ import { importMedia } from '../../media/upload';
 
 interface PropSchemaFieldProps {
   spec: PropSpec;
+  mixed?: boolean;
   value: unknown;
   onChange: (value: unknown) => void;
 }
@@ -25,7 +26,7 @@ export function PropSchemaField(props: PropSchemaFieldProps) {
   const label = props.spec.label ?? props.spec.key;
   return (
     <label className="cc-insp-mg-field">
-      <span title={props.spec.key}>{label}</span>
+      <span title={props.spec.key}>{label}{props.mixed ? ' —' : ''}</span>
       <PropControl {...props} />
     </label>
   );

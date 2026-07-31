@@ -4,6 +4,7 @@ import { t } from '../i18n/locale';
 import { kindOfDescriptor, probeMediaSource } from './mediaProbe';
 import type { MobileUploadRecord } from './mobileUploadApi';
 import { importMedia, normalizeUploadedVideo } from './upload';
+import { createMediaSourceRevision } from '../editor/mediaSourceRevision';
 
 const HEIC_EXTENSIONS = ['.heic', '.heif'];
 const HEIC_MIME_TYPES = new Set(['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence']);
@@ -33,12 +34,34 @@ async function importServerMedia(record: MobileUploadRecord, fps: number): Promi
   const kind = kindOfDescriptor(record.name, record.mime);
   if (!kind) throw new Error(t('不支持的文件类型（视频 / 图片 / 音频 / GIF / SVG）'));
   const metadata = await probeMediaSource(record.path, kind, fps);
+  const sourceSize = record.bytes;
+  const sourceModifiedAt = record.createdAt;
+  const sourceRevision = createMediaSourceRevision({
+    src: record.path,
+    name: record.name,
+    kind: kind as MediaAssetKind,
+    sourceSize,
+    sourceModifiedAt,
+    durationInFrames: metadata.durationInFrames,
+    width: metadata.width,
+    height: metadata.height,
+  });
   if (kind !== 'video') {
-    return { id: crypto.randomUUID(), name: record.name, kind: kind as MediaAssetKind, src: record.path, ...metadata };
+    return {
+      id: crypto.randomUUID(),
+      name: record.name,
+      kind: kind as MediaAssetKind,
+      src: record.path,
+      sourceRevision,
+      sourceSize,
+      sourceModifiedAt,
+      ...metadata,
+    };
   }
   const normalized = await normalizeUploadedVideo(record.path, fps);
   return {
     id: crypto.randomUUID(), name: record.name, kind, src: normalized.src,
+    sourceRevision, sourceSize, sourceModifiedAt,
     durationInFrames: normalized.durationSeconds
       ? Math.max(1, Math.round(normalized.durationSeconds * fps)) : metadata.durationInFrames,
     width: normalized.width ?? metadata.width,

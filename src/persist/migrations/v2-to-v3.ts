@@ -1,5 +1,5 @@
-import { isProjectShape, normalizeTimelineTracks } from './normalize';
-import type { ProjectMigrationStep } from './types';
+import { isProjectShape, normalizeTimelineTracks } from './normalize.js';
+import type { ProjectMigrationStep } from './types.js';
 
 export const v2ToV3: ProjectMigrationStep = {
   id: 'v2-to-v3',

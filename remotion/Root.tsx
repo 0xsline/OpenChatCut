@@ -1,6 +1,7 @@
 import { Composition } from 'remotion';
 import { TimelineComposition } from '../src/editor/TimelineComposition';
 import { timelineDuration, type TimelineState } from '../src/editor/types';
+import { resolveTimelineRenderPlan } from '../src/editor/sequenceGraph';
 import { loadProjectFonts } from '../src/fonts/googleFonts';
 
 // Register local faces; TimelineComposition registers used Google faces before render.
@@ -26,9 +27,12 @@ export function Root() {
       // Metadata comes from the timeline itself — same source of truth as the
       // Player (see timelineDuration in src/editor/types.ts). Min 1 frame.
       calculateMetadata={({ props }) => {
-        const { state } = props;
+        const { state, project, timelineId } = props;
+        const durationInFrames = project && timelineId
+          ? resolveTimelineRenderPlan(project, timelineId).durationInFrames
+          : timelineDuration(state);
         return {
-          durationInFrames: Math.max(1, timelineDuration(state)),
+          durationInFrames: Math.max(1, durationInFrames),
           fps: state.fps,
           width: state.width,
           height: state.height,

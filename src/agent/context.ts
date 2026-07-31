@@ -1,6 +1,7 @@
 import type { EditorCommands } from '../editor/store';
 import type { ProjectDoc, TimelineItem, TimelineState } from '../editor/types';
 import { trackAlias } from '../editor/types';
+import { sourceWindowForTimelineRange } from '../editor/sourceLimit';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
 import {
@@ -54,9 +55,11 @@ export interface AgentContext {
 /** Source-media span of a placed clip in ms (srcIn → srcIn + duration·rate). */
 function sourceMediaSpan(item: TimelineItem, fps: number): Record<string, number> {
   if (item.kind !== 'video' && item.kind !== 'audio' && item.kind !== 'gif') return {};
-  const startMs = ((item.srcInFrame ?? 0) / fps) * 1000;
-  const endMs = startMs + ((item.durationInFrames * (item.playbackRate ?? 1)) / fps) * 1000;
-  return { sourceMediaStartMs: Math.round(startMs), sourceMediaEndMs: Math.round(endMs) };
+  const window = sourceWindowForTimelineRange(item, 0, item.durationInFrames);
+  return {
+    sourceMediaStartMs: Math.round((window.startFrame / fps) * 1000),
+    sourceMediaEndMs: Math.round((window.endFrame / fps) * 1000),
+  };
 }
 
 /** A selection-mode reference → one structured `user_reference` entry. Item

@@ -6,7 +6,7 @@ import {
   randomProjectName, docFromTimeline, hasProjectHistory, type ProjectMeta,
 } from './persist/projectStore';
 import type { ProjectDoc, TimelineState } from './editor/types';
-import { applyProjectImport, buildProjectExport, parseProjectEnvelope } from './persist/projectTransfer';
+import { buildProjectExport, importProjectPackage } from './persist/projectTransfer';
 import { purgeProjectCascade } from './persist/mediaCleanup';
 import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from './agent/capabilities';
 import { applyAgentModelStatus } from './agent/model-selection';
@@ -126,13 +126,17 @@ export default function App() {
           : t('已导出「{name}」(含 {n} 个素材)', { name, n: r.mediaTotal });
       }}
       onImport={async (file) => {
-        const parsed = parseProjectEnvelope(await file.text());
-        if ('error' in parsed) return t('导入失败:{error}', { error: parsed.error });
-        const r = await applyProjectImport(parsed.envelope);
-        await refresh();
-        return r.mediaMissing.length
-          ? t('已导入「{name}」;缺 {n} 个素材({list})', { name: r.meta.name, n: r.mediaMissing.length, list: r.mediaMissing.map((s: string) => s.split('/').pop()).join('、') })
-          : t('已导入「{name}」(素材 {a}/{b})', { name: r.meta.name, a: r.mediaRestored, b: r.mediaTotal });
+        try {
+          const r = await importProjectPackage(file);
+          await refresh();
+          return r.mediaMissing.length
+            ? t('已导入「{name}」;缺 {n} 个素材({list})', { name: r.meta.name, n: r.mediaMissing.length, list: r.mediaMissing.map((s: string) => s.split('/').pop()).join('、') })
+            : t('已导入「{name}」(素材 {a}/{b})', { name: r.meta.name, a: r.mediaRestored, b: r.mediaTotal });
+        } catch (error) {
+          return t('导入失败:{error}', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }}
     />
   );

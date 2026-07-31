@@ -3,7 +3,7 @@
 // contract preserves frame consistency: for every rendered frame,
 // pre-split and post-split sampling agree exactly (straddled bezier segments are
 // de-Casteljau-subdivided, never approximated).
-import type { ItemKeyframes, Keyframe, KeyframeEasing, KeyframeProp } from './types';
+import type { ItemKeyframes, Keyframe, KeyframeEasing, KeyframeProp } from './types.js';
 
 /** CSS timing-function control points for the named easings. */
 const NAMED_BEZIER: Record<string, readonly [number, number, number, number]> = {

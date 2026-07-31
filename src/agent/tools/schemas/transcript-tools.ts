@@ -22,6 +22,23 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
     input_schema: { type: 'object', properties: { track: { type: 'string', description: 'Track alias or stable id whose audio to transcribe (default A1).' } } },
   },
   {
+    name: 'search_media',
+    description: 'Search project media through one typed surface. Returns visual ChineseCLIP scene hits and spoken transcript hits with normalized per-modality scores, source time ranges, asset ids, and source revisions. Results are grouped by modality because cosine and transcript scores are not directly comparable; stale derived hits are excluded.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Visual concept or spoken phrase to find.' },
+        modalities: {
+          type: 'array',
+          items: { type: 'string', enum: ['visual', 'spoken'] },
+          description: 'Optional subset; defaults to both visual and spoken.',
+        },
+        limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Maximum hits per modality; defaults to 12.' },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'find_transcript',
     description: 'Find WHEN a phrase is spoken — a time-coordinate lookup, not a transcript reader or editing tool. Returns matches with their timeline frame range (fromFrame/toFrame) so you can anchor B-roll, motion graphics, markers, or overlays at that moment (or locate a spot before delete_text). Default: contiguous case/punctuation/whitespace-insensitive match over every transcribed clip on the timeline; edits are respected (deleted words won\'t match). asset = search ONE asset\'s raw transcript regardless of timeline use (library lookup, ignores edits). track = restrict to that track. fuzzy = token-order match with window tolerance (use when ASR may have fillers like "uh," between query tokens). includeWordTimestamps = add a Words block under each match with each word\'s start → end time — use when syncing animation beats to which word is being said; skip for plain phrase anchoring (extra output). limit = max results (default 10).',
     input_schema: {

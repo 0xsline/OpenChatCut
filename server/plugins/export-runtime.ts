@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { readdir, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ffmpegBin } from '../media-binaries.ts';
+import { isSafeUploadName } from '../media-dir.ts';
 import {
   h264EncoderAttempts,
   h264EncoderFallbackReason,
@@ -29,7 +30,7 @@ const EXPORT_CANCEL_TIMEOUT_MS = 15_000;
 const EXPORT_JOB_FILE_PREFIX = 'openchatcut-export-job-';
 const EXPORT_JOB_EXTENSIONS = new Set(['mp4', 'webm', 'mp3', 'wav']);
 const EXPORT_JOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const EXPORT_JOB_FILENAME = /^openchatcut-export-job-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:mp4|webm|mp3|wav)$/i;
+const EXPORT_JOB_FILENAME = /^openchatcut-export-job-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(?:mp4|webm|mp3|wav)$/i;
 
 interface CleanupStaleExportOptions {
   now?: number;
@@ -52,6 +53,15 @@ export function exportJobFilename(id: string, extension: string): string {
     throw new Error('invalid export job filename');
   }
   return `${EXPORT_JOB_FILE_PREFIX}${id}.${extension}`;
+}
+
+export function exportJobResultName(path: string, assetId: string): string | null {
+  const prefix = '/media/uploads/';
+  if (!path.startsWith(prefix)) return null;
+  const name = path.slice(prefix.length);
+  const match = EXPORT_JOB_FILENAME.exec(name);
+  if (!isSafeUploadName(name) || !match || match[1].toLowerCase() !== assetId.toLowerCase()) return null;
+  return name;
 }
 
 export async function unlinkWithRetry(path: string, attempts = 3, delayMs = 100): Promise<void> {

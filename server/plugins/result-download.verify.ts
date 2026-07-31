@@ -2,6 +2,7 @@
 // Downloading the finished product is the last step after "the money has been spent", and the cost of failure is the highest. Verification: Transient errors will be retried,
 // 4xx does not retry in vain, and the error thrown after exhaustion of retries carries the supplier URL (the task layer retains the paid results accordingly).
 import assert from 'node:assert/strict';
+import { safePublicFetch, type PublicUrlResolver, type PublicUrlTransport } from '../safe-public-fetch.ts';
 import {
   ResultDownloadError,
   downloadBackoffMs,
@@ -9,7 +10,10 @@ import {
   isRetryableDownloadStatus,
 } from './result-download.ts';
 
-const ok = () => new Response('bytes', { status: 200 });
+const ok = (body: BodyInit = 'bytes', contentType = 'video/mp4') => new Response(body, {
+  status: 200,
+  headers: { 'content-type': contentType },
+});
 const status = (code: number) => new Response('nope', { status: code });
 const URL_ = 'https://provider.example/out.mp4';
 
@@ -45,6 +49,13 @@ function scriptedFetch(script: Array<Response | Error>) {
   assert.equal(res.status, 200);
   assert.equal(s.calls.length, 1);
   assert.deepEqual(s.waits, []);
+}
+
+// ── Structured subtitle results keep their own strict JSON MIME contract ──
+{
+  const s = scriptedFetch([ok('{"subtitles":[]}', 'application/json')]);
+  const res = await fetchGeneratedResult('https://provider.example/subtitles.json', 'subtitle', s);
+  assert.equal(await res.text(), '{"subtitles":[]}');
 }
 
 // ──Success after instant 5xx: This is the half that really saves money──
@@ -83,6 +94,101 @@ function scriptedFetch(script: Array<Response | Error>) {
   assert.equal(error.url, URL_);
   assert.equal(s.calls.length, 1, '404 不重试');
   assert.deepEqual(s.waits, [], '也不该等待');
+}
+
+// ── Successful responses must be media, never provider HTML/error payloads ──
+{
+  let cancelled = 0;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) { controller.enqueue(new TextEncoder().encode('<html>error</html>')); },
+    cancel() { cancelled += 1; },
+  });
+  const s = scriptedFetch([ok(body, 'text/html; charset=utf-8')]);
+  const error = await fetchGeneratedResult(URL_, 'video', s).then(() => null, (e: unknown) => e);
+  assert.ok(error instanceof ResultDownloadError);
+  assert.equal(error.retryable, false);
+  assert.match(error.message, /content type text\/html/);
+  assert.equal(s.calls.length, 1, 'MIME policy failures must not be retried');
+  assert.equal(cancelled, 1, 'rejected response bodies must be cancelled');
+}
+
+// ── Declared and streamed bodies both obey a strict byte ceiling ──
+{
+  const declared = scriptedFetch([new Response('12345', {
+    status: 200,
+    headers: { 'content-type': 'image/png', 'content-length': '5' },
+  })]);
+  const declaredError = await fetchGeneratedResult(URL_, 'image', { ...declared, maxBytes: 4 })
+    .then(() => null, (e: unknown) => e);
+  assert.ok(declaredError instanceof ResultDownloadError);
+  assert.equal(declaredError.retryable, false);
+  assert.match(declaredError.message, /content length exceeds 4 byte limit/);
+
+  let pulls = 0;
+  let cancels = 0;
+  const streamedBody = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulls += 1;
+      controller.enqueue(Uint8Array.of(1, 2, 3));
+    },
+    cancel() { cancels += 1; },
+  });
+  const streamed = scriptedFetch([ok(streamedBody)]);
+  const response = await fetchGeneratedResult(URL_, 'video', { ...streamed, maxBytes: 4 });
+  const streamedError = await response.arrayBuffer().then(() => null, (e: unknown) => e);
+  assert.ok(streamedError instanceof ResultDownloadError);
+  assert.equal(streamedError.retryable, false);
+  assert.match(streamedError.message, /body exceeds 4 byte limit/);
+  assert.equal(cancels, 1, 'the upstream stream must be terminated as soon as the cap is crossed');
+}
+
+// ── The generated-result entry point retains safePublicFetch DNS/IP/redirect pinning ──
+{
+  const publicAddress = '93.184.216.34';
+  let transports = 0;
+  const transport: PublicUrlTransport = async () => {
+    transports += 1;
+    return ok();
+  };
+  const guarded = (resolver: PublicUrlResolver, redirecting = false) => (
+    async (input: string | URL) => safePublicFetch(input, {
+      resolver,
+      transport: redirecting
+        ? async () => {
+          transports += 1;
+          return new Response(null, { status: 302, headers: { location: 'https://rebind.example/out.mp4' } });
+        }
+        : transport,
+    })
+  );
+  const publicResolver: PublicUrlResolver = async () => [{ address: publicAddress, family: 4 }];
+  for (const unsafe of [
+    'http://127.0.0.1/out.mp4',
+    'http://169.254.169.254/latest/meta-data',
+    'http://metadata.google.internal/latest/meta-data',
+  ]) {
+    const error = await fetchGeneratedResult(unsafe, 'video', { fetchImpl: guarded(publicResolver) })
+      .then(() => null, (e: unknown) => e);
+    assert.ok(error instanceof ResultDownloadError);
+    assert.equal(error.retryable, false);
+  }
+  const privateDnsError = await fetchGeneratedResult('https://private.example/out.mp4', 'video', {
+    fetchImpl: guarded(async () => [{ address: '10.0.0.1', family: 4 }]),
+  }).then(() => null, (e: unknown) => e);
+  assert.ok(privateDnsError instanceof ResultDownloadError);
+
+  let resolutions = 0;
+  const redirectRebindError = await fetchGeneratedResult('https://rebind.example/out.mp4', 'video', {
+    fetchImpl: guarded(async () => {
+      resolutions += 1;
+      return resolutions === 1
+        ? [{ address: publicAddress, family: 4 }]
+        : [{ address: '127.0.0.1', family: 4 }];
+    }, true),
+  }).then(() => null, (e: unknown) => e);
+  assert.ok(redirectRebindError instanceof ResultDownloadError);
+  assert.equal(redirectRebindError.retryable, false);
+  assert.equal(resolutions, 2, 'every redirect hop must resolve and validate again');
 }
 
 console.log('result-download.verify: ok (退避/可重试判定/瞬时恢复/网络异常/带 URL 的失败/4xx 不重试)');

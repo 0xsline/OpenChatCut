@@ -1,3 +1,7 @@
+import type { ProjectDoc, Timeline, TimelineState } from '../../src/editor/types.ts';
+import { resolveTimelineRenderPlan, sequenceGraphError } from '../../src/editor/sequenceGraph.ts';
+import { isTimelineState } from '../../src/persist/migrations/normalize.ts';
+import { runProjectMigrations } from '../../src/persist/migrations/index.ts';
 import { normalizeFrameRange } from '../../src/export/range.ts';
 import {
   EXPORT_FPS_OPTIONS,
@@ -13,6 +17,8 @@ export type { ExportResolution } from '../../src/export/mediaSettings.ts';
 
 export type ExportRequest = {
   state?: unknown;
+  project?: unknown;
+  timelineId?: unknown;
   format?: 'video' | 'audio';
   codec?: 'h264' | 'vp8' | 'mp3' | 'wav';
   name?: string;
@@ -36,9 +42,10 @@ export const EXPORT_MEDIA = {
   mp3: { codec: 'mp3', ext: 'mp3', mime: 'audio/mpeg' },
   wav: { codec: 'wav', ext: 'wav', mime: 'audio/wav' },
 } as const;
-
 export interface ExportPlan {
-  state: unknown;
+  state: TimelineState;
+  project?: ProjectDoc;
+  timelineId?: string;
   format: 'video' | 'audio';
   media: (typeof EXPORT_MEDIA)[keyof typeof EXPORT_MEDIA];
   frameRange: [number, number] | undefined;
@@ -90,12 +97,54 @@ export function exportDuration(state: ExportTimeline): number {
   );
 }
 
+function isTimeline(value: unknown): value is Timeline {
+  return isTimelineState(value)
+    && 'id' in value
+    && typeof value.id === 'string'
+    && 'name' in value
+    && typeof value.name === 'string'
+    && 'order' in value
+    && typeof value.order === 'number';
+}
+
+function currentTimelinesFrom(value: unknown): Timeline[] | null {
+  if (!value || typeof value !== 'object' || !('timelines' in value) || !Array.isArray(value.timelines)) return null;
+  return value.timelines.every(isTimeline) ? value.timelines : null;
+}
+
 export function planExport(body: ExportRequest | null): ExportPlan {
-  const state = body?.state;
-  if (!state || typeof state !== 'object' || !Array.isArray((state as { items?: unknown }).items)) {
-    throw new ExportRequestError('body must be { state: TimelineState } with an items array');
+  const requestedState = body?.state;
+  if (!isTimelineState(requestedState)) {
+    throw new ExportRequestError('body must be { state: TimelineState } with a valid items array');
   }
-  const fps = (state as ExportTimeline).fps;
+  let state = requestedState;
+  let project: ProjectDoc | undefined;
+  let timelineId: string | undefined;
+  let nestedDuration: number | undefined;
+  if (body?.project !== undefined) {
+    const currentTimelines = currentTimelinesFrom(body.project);
+    const graphError = currentTimelines ? sequenceGraphError({ timelines: currentTimelines }) : null;
+    if (graphError) throw graphError;
+    const migrated = runProjectMigrations(body.project);
+    if (!migrated) {
+      throw new ExportRequestError('project must be a valid current or legacy ProjectDoc');
+    }
+    const migratedProject = migrated.doc;
+    project = migratedProject;
+    if (body.timelineId !== undefined && (typeof body.timelineId !== 'string' || !body.timelineId)) {
+      throw new ExportRequestError('timelineId must be a non-empty string');
+    }
+    const selectedTimelineId = body.timelineId ?? migratedProject.activeTimelineId;
+    timelineId = selectedTimelineId;
+    const root = migratedProject.timelines.find((timeline: Timeline) => timeline.id === selectedTimelineId);
+    if (!root) throw new ExportRequestError(`timeline ${selectedTimelineId} not found in project`);
+    const nestedPlan = resolveTimelineRenderPlan(migratedProject, selectedTimelineId);
+    state = root;
+    nestedDuration = nestedPlan.durationInFrames;
+  } else if (body?.timelineId !== undefined) {
+    throw new ExportRequestError('timelineId requires project');
+  }
+  const fps = state.fps;
   if (!Number.isFinite(fps) || fps <= 0) throw new ExportRequestError('state.fps must be a positive number');
   if (body?.format !== undefined && body.format !== 'video' && body.format !== 'audio') {
     throw new ExportRequestError('format must be video or audio');
@@ -113,7 +162,9 @@ export function planExport(body: ExportRequest | null): ExportPlan {
     throw new ExportRequestError(`${format} export does not support codec=${codec}`);
   }
   validateVideoParams(body, format);
-  const totalFrames = exportDuration(state as ExportTimeline);
+  const totalFrames = nestedDuration === undefined
+    ? exportDuration(state)
+    : Math.max(fps, nestedDuration);
   const startFrame = body?.startFrame ?? (body?.startSeconds === undefined ? undefined : Math.floor(body.startSeconds * fps));
   const endFrame = body?.endFrameExclusive ?? (body?.endSeconds === undefined ? undefined : Math.ceil(body.endSeconds * fps));
   const frameRange = normalizeFrameRange(totalFrames, startFrame, endFrame);
@@ -121,13 +172,15 @@ export function planExport(body: ExportRequest | null): ExportPlan {
   const media = EXPORT_MEDIA[codec];
   return {
     state,
+    project,
+    timelineId,
     format,
     media,
     frameRange,
     totalFrames: frames,
     filename: exportFilename(body?.name, media.ext),
     durationSeconds: frames / fps,
-    scale: exportScale(state as { width?: unknown; height?: unknown }, body?.resolution),
+    scale: exportScale(state, body?.resolution),
     retimeFps: format === 'video' && body?.fps !== undefined && body.fps !== fps ? body.fps : undefined,
     videoBitrate: format === 'video' ? body?.videoBitrate : undefined,
   };

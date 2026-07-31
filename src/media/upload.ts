@@ -4,6 +4,7 @@ import { putMediaBlob } from '../persist/mediaBlobStore';
 import { extractAudioForAsr } from '../transcript/assemblyai';
 import { extractAsrFromFile } from '../transcript/client-asr-extract';
 import { kindOf, probeMediaFile, type MediaKind } from './mediaProbe';
+import { createMediaSourceRevision } from '../editor/mediaSourceRevision';
 
 export { kindOf } from './mediaProbe';
 export type { MediaKind } from './mediaProbe';
@@ -23,9 +24,11 @@ export interface ImportMediaHooks {
    * Use to race-ahead extract-audio / ASR while normalize still runs.
    */
   onUploaded?: (info: {
-    assetId: string;
+    id: string;
     src: string;
     kind: MediaKind;
+    name: string;
+    sourceRevision: string;
     /** Resolves to small ASR track path when extract succeeds (video/audio). */
     asrPath: Promise<string | null>;
   }) => void;
@@ -315,6 +318,18 @@ export async function importMedia(
   if (!kind) throw new Error(t('不支持的文件类型（视频 / 图片 / 音频 / GIF / SVG）'));
   const meta = await probeMediaFile(file, kind, fps);
   const id = newId();
+  const sourceSize = file.size;
+  const sourceModifiedAt = file.lastModified;
+  const sourceRevision = createMediaSourceRevision({
+    src: `file:${file.name}`,
+    name: file.name,
+    kind: kind as MediaAssetKind,
+    sourceSize,
+    sourceModifiedAt,
+    durationInFrames: meta.durationInFrames,
+    width: meta.width,
+    height: meta.height,
+  });
 
   // Local preview while upload runs — blob: is marked reachable by mediaBlobStore helpers.
   const blobUrl = URL.createObjectURL(file);
@@ -324,6 +339,9 @@ export async function importMedia(
     kind: kind as MediaAssetKind,
     src: blobUrl,
     durationInFrames: meta.durationInFrames,
+    sourceRevision,
+    sourceSize,
+    sourceModifiedAt,
     width: meta.width,
     height: meta.height,
   };
@@ -350,7 +368,7 @@ export async function importMedia(
         extractAudioForAsr(srcRaw).then((p) => { if (!p) throw new Error('server-asr-miss'); return p; }),
       ]).catch(() => null)
       : Promise.resolve(null);
-    hooks.onUploaded?.({ assetId: id, src: srcRaw, kind, asrPath });
+    hooks.onUploaded?.({ id, src: srcRaw, kind, name: file.name, sourceRevision, asrPath });
 
     let src = srcRaw;
     let width = meta.width;
@@ -368,7 +386,13 @@ export async function importMedia(
     hooks.onProgress?.(1);
 
     if (src === srcRaw) {
-      void putMediaBlob(src, file, { name: file.name, mime: file.type });
+      void putMediaBlob(src, file, {
+        name: file.name,
+        mime: file.type,
+        sourceRevision,
+        sourceSize,
+        sourceModifiedAt,
+      });
     }
 
     const ready: MediaAsset = {
@@ -377,6 +401,9 @@ export async function importMedia(
       kind: kind as MediaAssetKind,
       src,
       durationInFrames,
+      sourceRevision,
+      sourceSize,
+      sourceModifiedAt,
       width,
       height,
     };

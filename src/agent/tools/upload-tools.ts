@@ -3,6 +3,8 @@ import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
 import { enqueueTranscription, shouldTranscribe } from '../../transcript/transcribe-jobs';
 import { extractAudioForAsr } from '../../transcript/assemblyai';
+import { hasOperationalTranscript } from '../../transcript/types';
+import { createMediaSourceRevision } from '../../editor/mediaSourceRevision';
 
 // Local-development upload flow:
 //   request_asset_upload_url → finalize_uploaded_asset → request_asset_download
@@ -329,6 +331,8 @@ async function execFinalize(args: Args, ctx: AgentContext): Promise<unknown> {
   // Upload and transcribe: ASR is automatically triggered after ingest is dropped into the database, and the
   // hasAudioTrack signal; audio always, video unless explicitly told there's no audio.
   const hasAudio = shouldTranscribe(kind, typeof args.hasAudioTrack === 'boolean' ? args.hasAudioTrack : undefined);
+  const projectId = ctx.getProjectId?.();
+  if (hasAudio && !projectId) return { error: 'transcription requires a persisted project id' };
 
   // Race: extract-audio for ASR while video normalize runs (don't serialize them).
   const asrRace = hasAudio && readUrl.startsWith('/media/uploads/')
@@ -352,12 +356,22 @@ async function execFinalize(args: Args, ctx: AgentContext): Promise<unknown> {
     }
     normalized = Boolean(norm.normalized);
   }
+  const sourceRevision = createMediaSourceRevision({
+    src,
+    name: filename,
+    kind,
+    sourceSize: finalSize,
+    durationInFrames,
+    width,
+    height,
+  });
 
   const existing = findAsset(ctx, assetId);
   if (existing) {
     // Complete a register_placeholder row (or re-finalize after re-upload).
     if (src !== existing.src || width !== existing.width || height !== existing.height
-      || durationInFrames !== existing.durationInFrames || filename !== existing.name) {
+      || durationInFrames !== existing.durationInFrames || filename !== existing.name
+      || sourceRevision !== existing.sourceRevision) {
       ctx.commands.relinkMediaAsset(existing.id, {
         src,
         name: filename,
@@ -365,13 +379,28 @@ async function execFinalize(args: Args, ctx: AgentContext): Promise<unknown> {
         width: width ?? existing.width,
         height: height ?? existing.height,
         kind,
+        sourceRevision,
+        sourceSize: finalSize,
       });
     }
-    const needsAsr = hasAudio && existing.transcribeStatus !== 'done'
-      && !(existing.transcript && existing.transcript.length > 0);
+    const needsAsr = hasAudio && (
+      sourceRevision !== existing.sourceRevision
+      || existing.transcribeStatus !== 'done'
+      || !hasOperationalTranscript(existing)
+    );
     if (needsAsr) {
       ctx.commands.setAssetTranscription(existing.id, { transcribeStatus: 'running', transcribeError: undefined });
-      enqueueTranscription({ id: existing.id, src }, { asrPath: asrRace });
+      enqueueTranscription(projectId!, {
+        id: existing.id,
+        src,
+        name: filename,
+        kind,
+        sourceRevision,
+        sourceSize: finalSize,
+        durationInFrames,
+        width,
+        height,
+      }, { asrPath: asrRace });
     }
     return {
       ok: true,
@@ -403,6 +432,8 @@ async function execFinalize(args: Args, ctx: AgentContext): Promise<unknown> {
     kind,
     src,
     durationInFrames,
+    sourceRevision,
+    sourceSize: finalSize,
     width,
     height,
     transcribeStatus: hasAudio ? 'running' : undefined,
@@ -410,7 +441,7 @@ async function execFinalize(args: Args, ctx: AgentContext): Promise<unknown> {
   ctx.commands.addAsset(asset);
 
   // Fire ASR now (race extract already started above while normalize ran).
-  if (hasAudio) enqueueTranscription(asset, { asrPath: asrRace });
+  if (hasAudio) enqueueTranscription(projectId!, asset, { asrPath: asrRace });
 
   return {
     ok: true,

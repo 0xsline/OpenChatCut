@@ -1,4 +1,5 @@
 import type { TimelineItem, TimelineState } from '../editor/types';
+import { sourceFrameAt } from '../editor/sourceLimit';
 
 export interface ReviewRegion {
   x: number;
@@ -93,7 +94,7 @@ export function reviewAnchor(
     ? state.assets?.find((asset) => asset.src === selectedItem.src)?.id
     : undefined;
   const sourceFrame = selectedItem.src
-    ? Math.round((selectedItem.srcInFrame ?? 0) + localFrame * (selectedItem.playbackRate ?? 1))
+    ? Math.round(sourceFrameAt(selectedItem, localFrame))
     : undefined;
   return {
     ...anchor,

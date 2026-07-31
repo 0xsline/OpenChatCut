@@ -1,4 +1,5 @@
 import { timelineDuration } from '../editor/types';
+import { resolveTimelineRenderPlan, sequenceGraphError } from '../editor/sequenceGraph';
 import { recordExport } from '../persist/exportHistoryStore';
 import {
   browserScaledExportDimensions,
@@ -11,6 +12,7 @@ import { removeStagedBrowserExport, stageBrowserExport } from './browserExportSt
 import { writeBlobToDestination, type ExportDestination } from './exportDestination';
 import { planVideoExportRoute, recordExportPerformance, type ExportRoutePlan } from './exportRoutePlanner';
 import { isServerRenderError } from './serverExportOperation';
+import { createSequenceGraphExportFailure, ExportFailureError } from './exportFailure';
 import type {
   BrowserAbortRef,
   ExportEngineInfo,
@@ -23,11 +25,14 @@ import type {
   UseExportWorkflowOptions,
 } from './exportWorkflowTypes';
 
-interface VideoExportContext {
+export interface VideoExportContext {
   autoQaEnabled: boolean;
   browserAbortRef: BrowserAbortRef;
   destination: ExportDestination;
   exportServerVideo: (signal?: AbortSignal) => Promise<ExportJobResult>;
+  beginTargetCommit(): void;
+  endTargetCommit(): void;
+  markTargetCommitted(): void;
   options: UseExportWorkflowOptions;
   setBusy: StateSetter<string | null>;
   setEngineInfo: StateSetter<ExportEngineInfo | null>;
@@ -36,7 +41,19 @@ interface VideoExportContext {
   setQa: StateSetter<ExportQaUiState | null>;
   setRenderEngine: StateSetter<RenderEngine>;
   t: Translate;
-  verifyCompletedExport: (completed: ExportJobResult) => Promise<void>;
+  verifyCompletedExport: (completed: ExportJobResult, signal?: AbortSignal) => Promise<void>;
+}
+
+export function validateVideoExportSequenceGraph(options: Pick<UseExportWorkflowOptions, 'project'>): void {
+  if (!options.project) return;
+  const error = sequenceGraphError(options.project);
+  if (error) throw new ExportFailureError(createSequenceGraphExportFailure(error), { cause: error });
+}
+
+function exportDuration(options: UseExportWorkflowOptions): number {
+  return options.project && options.timelineId
+    ? resolveTimelineRenderPlan(options.project, options.timelineId).durationInFrames
+    : timelineDuration(options.state);
 }
 
 function browserProgress(context: VideoExportContext): NonNullable<BrowserExportOptions['onProgress']> {
@@ -49,16 +66,18 @@ function browserProgress(context: VideoExportContext): NonNullable<BrowserExport
       phase: 'rendering',
       percent: Math.max(current.percent, percent),
       processedFrames: snapshot.encodedFrames,
-      totalFrames: Math.max(1, timelineDuration(context.options.state)),
+      totalFrames: Math.max(1, exportDuration(context.options)),
       detail: context.t('WebCodecs 浏览器加速'),
     } : current);
   };
 }
 
 function browserOptions(context: VideoExportContext, signal: AbortSignal): BrowserExportOptions {
-  const { state, codec, resolution, fps, requestedVideoBitrate } = context.options;
+  const { state, project, timelineId, codec, resolution, fps, requestedVideoBitrate } = context.options;
   return {
     state,
+    project,
+    timelineId,
     codec,
     resolution,
     fps,
@@ -111,7 +130,7 @@ function browserResult(context: VideoExportContext, path: string, sizeBytes: num
   return {
     path,
     sizeBytes,
-    durationSeconds: timelineDuration(state) / state.fps,
+    durationSeconds: exportDuration(context.options) / state.fps,
     width: dimensions.width,
     height: dimensions.height,
     fps,
@@ -125,29 +144,46 @@ async function verifyBrowserResult(
   blob: Blob,
   filename: string,
   engine: ExportEngineInfo,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   if (!context.autoQaEnabled) return;
   let path: string | null = null;
   try {
-    const staged = await stageBrowserExport(blob, filename);
+    const staged = await stageBrowserExport(blob, filename, signal);
+    signal?.throwIfAborted();
     path = staged.path;
-    await context.verifyCompletedExport(browserResult(context, path, staged.sizeBytes, engine));
+    await context.verifyCompletedExport(
+      browserResult(context, path, staged.sizeBytes, engine),
+      signal,
+    );
+    signal?.throwIfAborted();
   } catch (error) {
+    signal?.throwIfAborted();
     context.setQa({ status: 'error', attempts: 0, message: error instanceof Error ? error.message : String(error) });
   } finally {
-    if (path) await removeStagedBrowserExport(path);
+    if (path) {
+      try {
+        await removeStagedBrowserExport(path);
+      } finally {
+        signal?.throwIfAborted();
+      }
+    }
   }
 }
 
-async function saveBrowserResult(
+export async function saveBrowserResult(
   context: VideoExportContext,
   attempt: Extract<BrowserExportAttempt, { status: 'rendered' }>,
   engine: ExportEngineInfo,
   startedAt: number,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   const { base, codec, state, resolution } = context.options;
   const filename = `${base}.${codec === 'vp8' ? 'webm' : 'mp4'}`;
-  await verifyBrowserResult(context, attempt.blob, filename, engine);
+  await verifyBrowserResult(context, attempt.blob, filename, engine, signal);
+  signal?.throwIfAborted();
   context.setBusy(context.t('正在保存…'));
   context.setProgress((current) => current ? {
     ...current,
@@ -156,7 +192,15 @@ async function saveBrowserResult(
     outputSize: attempt.blob.size,
     detail: context.t('正在写入所选位置'),
   } : current);
-  await writeBlobToDestination(context.destination, filename, attempt.blob);
+  signal?.throwIfAborted();
+  context.beginTargetCommit();
+  try {
+    await writeBlobToDestination(context.destination, filename, attempt.blob, signal);
+    context.markTargetCommitted();
+  } catch (error) {
+    context.endTargetCommit();
+    throw error;
+  }
   const dimensions = browserScaledExportDimensions(state, resolution);
   recordExportPerformance(engine, {
     width: dimensions.width,
@@ -196,7 +240,7 @@ async function runBrowserThenServer(
     return;
   }
   if (attempt.status === 'rendered') {
-    await saveBrowserResult(context, attempt, plan.browserEngine, startedAt);
+    await saveBrowserResult(context, attempt, plan.browserEngine, startedAt, controller.signal);
     return;
   }
   switchToServer(context, plan.serverEngine, attempt.reason);
@@ -220,11 +264,15 @@ async function runServerThenBrowser(
   const startedAt = performance.now();
   const attempt = await runBrowserRoute(context, controller, plan.browserEngine);
   if (attempt.status !== 'rendered') throw new Error(attempt.reason);
-  await saveBrowserResult(context, attempt, plan.browserEngine, startedAt);
+  await saveBrowserResult(context, attempt, plan.browserEngine, startedAt, controller.signal);
 }
 
-async function exportVideo(context: VideoExportContext): Promise<void> {
+async function exportVideo(context: VideoExportContext, ownerSignal?: AbortSignal): Promise<void> {
+  validateVideoExportSequenceGraph(context.options);
   const controller = new AbortController();
+  const abortFromOwner = () => controller.abort(ownerSignal?.reason);
+  if (ownerSignal?.aborted) abortFromOwner();
+  else ownerSignal?.addEventListener('abort', abortFromOwner, { once: true });
   context.browserAbortRef.current = controller;
   context.setRenderEngine('checking');
   context.setEngineInfo(null);
@@ -237,10 +285,11 @@ async function exportVideo(context: VideoExportContext): Promise<void> {
     if (plan.route === 'browser') await runBrowserThenServer(context, controller, plan);
     else await runServerThenBrowser(context, controller, plan);
   } finally {
+    ownerSignal?.removeEventListener('abort', abortFromOwner);
     if (context.browserAbortRef.current === controller) context.browserAbortRef.current = null;
   }
 }
 
 export function createVideoExporter(context: VideoExportContext) {
-  return () => exportVideo(context);
+  return (signal?: AbortSignal) => exportVideo(context, signal);
 }

@@ -1,6 +1,7 @@
 import type { AgentToolSchema } from './tool-schema';
 import type { AgentContext } from './context';
 import { AUDIO_ASSET_TOOL_NAMES } from './tools/schemas/audio-asset-tools';
+import { SCENE_QUALITY_TOOL_NAMES, SCENE_QUALITY_TOOL_SCHEMAS } from './tools/schemas/scene-quality-tools';
 import { TRANSCRIPT_TOOL_NAMES, TRANSCRIPT_TOOL_SCHEMAS } from './tools/schemas/transcript-tools';
 import { TIMELINE_TOOL_NAMES, TIMELINE_TOOL_SCHEMAS } from './tools/schemas/timeline-tools';
 import { SCRIPT_TOOL_NAMES, SCRIPT_TOOL_SCHEMAS } from './tools/schemas/script-tools';
@@ -291,7 +292,7 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...RUN_CODE_TOOL_SCHEMAS,
   // Import probe: probe_media reads hasAudioTrack/fps/duration through ffprobe.
   ...PROBE_TOOL_SCHEMAS,
-  // Multicam: multicam_sync aligns audio by cross-correlation; change_cam switches the visible angle in a range.
+  // Professional timeline: persistent clock/audio multicam, range switches, and linked/sync-lock groups.
   ...MULTICAM_TOOL_SCHEMAS,
   // Undo: undo_last_change submits the previous project snapshot as a normal edit.
   ...UNDO_TOOL_SCHEMAS,
@@ -303,6 +304,8 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...COLOR_SCOPE_TOOL_SCHEMAS,
   // Beat detection: local DSP reports BPM, beats, and downbeats and can add timeline markers for beat cuts.
   ...BEAT_TOOL_SCHEMAS,
+  // Optional advisory review of multi-scene plans; it has no runtime enforcement role.
+  ...SCENE_QUALITY_TOOL_SCHEMAS,
   // ToolSearch — keyword discovery over this catalog
   {
     name: 'ToolSearch',
@@ -378,6 +381,7 @@ const EXECUTOR_GROUPS: ReadonlyArray<readonly [ReadonlySet<string>, ToolExecutor
   [COLOR_SCOPE_TOOL_NAMES, async () => (await import('./tools/color-scope-tools')).execColorScopeTool],
   [BEAT_TOOL_NAMES, async () => (await import('./tools/beat-tools')).execBeatTool],
   [AUDIO_ASSET_TOOL_NAMES, async () => (await import('./tools/audio-asset-tools')).execAudioAssetTool],
+  [SCENE_QUALITY_TOOL_NAMES, async () => (await import('./tools/scene-quality-tools')).execSceneQualityTool],
 ];
 
 const EXECUTOR_BY_NAME = new Map<string, ToolExecutorLoader>();

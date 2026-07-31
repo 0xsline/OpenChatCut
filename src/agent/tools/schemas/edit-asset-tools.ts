@@ -5,8 +5,8 @@ export const EDIT_ASSET_TOOL_SCHEMAS: AgentToolSchema[] = [
     name: 'edit_asset',
     description: [
       'Update or delete media-pool assets, not timeline clips; use move_item/remove_item for clips.',
-      'action=update changes name or props; code assets such as generated motion graphics may receive new code, which must pass sandbox compilation before any change is saved.',
-      'action=delete removes the asset from the media pool. If clips reference it, confirm:true is required; existing clips remain intact because they retain their own code/src.',
+      'action=update changes name, props, or exact sourceTimecode/captureClock metadata; code assets such as generated motion graphics may receive new code,',
+      'which must pass sandbox compilation before any change is saved. Clock metadata uses normalized frameCount + rational frameRate + dropFrame.',
     ].join(' '),
     input_schema: {
       type: 'object',
@@ -17,6 +17,36 @@ export const EDIT_ASSET_TOOL_SCHEMAS: AgentToolSchema[] = [
         code: { type: 'string', description: 'update: new source for a code asset such as motion graphics; sandbox-validated.' },
         props: { type: 'object', description: 'update: merge into asset props to change defaults.' },
         favorite: { type: 'boolean', description: 'update: favorite flag.' },
+        sourceTimecode: {
+          type: 'object',
+          description: 'Normalized embedded timecode: {frameCount, frameRate:{numerator,denominator}, dropFrame}.',
+          properties: {
+            frameCount: { type: 'number' },
+            frameRate: {
+              type: 'object',
+              properties: { numerator: { type: 'number' }, denominator: { type: 'number' } },
+              required: ['numerator', 'denominator'],
+            },
+            dropFrame: { type: 'boolean' },
+          },
+          required: ['frameCount', 'frameRate', 'dropFrame'],
+        },
+        captureClock: {
+          type: 'object',
+          description: 'Normalized capture clock with the same exact structure as sourceTimecode.',
+          properties: {
+            frameCount: { type: 'number' },
+            frameRate: {
+              type: 'object',
+              properties: { numerator: { type: 'number' }, denominator: { type: 'number' } },
+              required: ['numerator', 'denominator'],
+            },
+            dropFrame: { type: 'boolean' },
+          },
+          required: ['frameCount', 'frameRate', 'dropFrame'],
+        },
+        clearSourceTimecode: { type: 'boolean', description: 'update: remove embedded source timecode metadata.' },
+        clearCaptureClock: { type: 'boolean', description: 'update: remove capture clock metadata.' },
         confirm: { type: 'boolean', description: 'delete: confirm deletion when clips still reference the asset (confirmImpact).' },
       },
       required: ['action', 'assetId'],

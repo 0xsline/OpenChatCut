@@ -3,13 +3,21 @@ export interface StagedBrowserExport {
   sizeBytes: number;
 }
 
-export async function stageBrowserExport(blob: Blob, filename: string): Promise<StagedBrowserExport> {
+export async function stageBrowserExport(
+  blob: Blob,
+  filename: string,
+  signal?: AbortSignal,
+): Promise<StagedBrowserExport> {
+  signal?.throwIfAborted();
   const response = await fetch(`/export/stage?name=${encodeURIComponent(filename)}`, {
     method: 'POST',
     headers: { 'Content-Type': blob.type || 'application/octet-stream' },
     body: blob,
+    signal,
   });
+  signal?.throwIfAborted();
   const result = (await response.json().catch(() => null)) as Partial<StagedBrowserExport> & { error?: string } | null;
+  signal?.throwIfAborted();
   if (!response.ok || typeof result?.path !== 'string' || typeof result.sizeBytes !== 'number') {
     throw new Error(result?.error ?? `failed to stage browser export (${response.status})`);
   }

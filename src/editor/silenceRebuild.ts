@@ -3,7 +3,9 @@
 // The semantics are all handled by it) and remove (same track ripple closure), no new reducer action is added.
 import type { Action } from './reduce';
 import type { TimelineItem } from './types';
+import { sourceFramesToTimelineFrames, sourceWindowForTimelineRange } from './sourceLimit';
 import type { SilenceSpan } from '../audio/silence';
+import { hasOperationalTranscript } from '../transcript/types';
 
 /** The cut segments are too fragmented and meaningless: if the reserved segments between static segments are shorter than this number of frames, they will be merged and deleted. */
 const MIN_KEEP_FRAMES = 6;
@@ -20,15 +22,21 @@ export interface PlannedRemoval {
 
 /** Source millisecond dead air segment → clip visible local frame segment (clamp to clip source window; clip to edge and small segment). */
 export function spansToLocalCuts(
-  item: Pick<TimelineItem, 'durationInFrames' | 'srcInFrame'>,
+  item: Pick<TimelineItem, 'durationInFrames' | 'srcInFrame' | 'playbackRate'>,
   spans: readonly SilenceSpan[],
   fps: number,
 ): Array<{ fromFrame: number; toFrame: number }> {
-  const srcIn = item.srcInFrame ?? 0;
+  const window = sourceWindowForTimelineRange(item, 0, item.durationInFrames);
   const clamped = spans
-    .map((s) => ({
-      fromFrame: Math.max(0, Math.round((s.startMs / 1000) * fps) - srcIn),
-      toFrame: Math.min(item.durationInFrames, Math.round((s.endMs / 1000) * fps) - srcIn),
+    .map((span) => ({
+      fromFrame: Math.max(0, Math.round(sourceFramesToTimelineFrames(
+        item,
+        (span.startMs / 1000) * fps - window.startFrame,
+      ))),
+      toFrame: Math.min(item.durationInFrames, Math.round(sourceFramesToTimelineFrames(
+        item,
+        (span.endMs / 1000) * fps - window.startFrame,
+      ))),
     }))
     .filter((c) => c.toFrame - c.fromFrame >= MIN_CUT_FRAMES)
     .sort((a, b) => a.fromFrame - b.fromFrame);
@@ -123,7 +131,7 @@ export function silenceRemovalBlocker(item: TimelineItem): string | null {
   if (!item.src) return '无媒体源';
   if ((item.playbackRate ?? 1) !== 1) return '已变速(playbackRate≠1) — 先删静音再变速,或用 clean_script';
   if (item.zoom) return '带动画缩放(zoom) — 分段会打断缩放曲线,先移除 zoom';
-  if (item.transcript?.length && (item.deletedWordIdx?.length || item.silenceFrames !== undefined || item.gapCapsMs)) {
+  if (hasOperationalTranscript(item) && (item.deletedWordIdx?.length || item.silenceFrames !== undefined || item.gapCapsMs)) {
     return '已有词级编辑/静音压缩 — 转写 clip 请用 clean_script 的静音上限(它按词间隙精确处理)';
   }
   return null;

@@ -32,8 +32,273 @@ export interface ProjectMeta {
   description?: string;
 }
 
+export interface ProjectSaveResult {
+  projectId: string;
+  revision: number;
+  epoch: number;
+  status: 'saved' | 'failed' | 'superseded';
+  saved: boolean;
+  indexUpdated: boolean;
+  error?: unknown;
+}
+
+export interface ProjectFlushEntry {
+  projectId: string;
+  ok: boolean;
+  pending: number;
+  revision: number;
+  result?: ProjectSaveResult;
+}
+
+export interface ProjectFlushResult {
+  ok: boolean;
+  projects: ProjectFlushEntry[];
+}
+
+interface ProjectSaveState {
+  epoch: number;
+  nextRevision: number;
+  pending: number;
+  tail: Promise<void>;
+  lastResult?: ProjectSaveResult;
+  blocked?: unknown;
+}
+
+type PersistProjectSnapshot = (
+  projectId: string,
+  snapshot: ProjectDoc,
+) => Promise<{ saved: boolean; indexUpdated: boolean }>;
+
+function immutableProjectSnapshot(doc: ProjectDoc): ProjectDoc {
+  try {
+    return structuredClone(doc);
+  } catch {
+    // Runtime-only fields such as an in-flight Promise are deliberately absent
+    // from persisted ProjectDoc JSON.
+    return JSON.parse(JSON.stringify(doc)) as ProjectDoc;
+  }
+}
+
+/**
+ * Per-project save queue. A snapshot is captured before enqueue, every writer
+ * for one project runs in revision order, and a rejected write never poisons the
+ * tail used by subsequent saves.
+ */
+export class SaveCoordinator {
+  private readonly states = new Map<string, ProjectSaveState>();
+  private readonly persist: PersistProjectSnapshot;
+  private readonly snapshot: (doc: ProjectDoc) => ProjectDoc;
+
+  constructor(
+    persist: PersistProjectSnapshot,
+    snapshot: (doc: ProjectDoc) => ProjectDoc = immutableProjectSnapshot,
+  ) {
+    this.persist = persist;
+    this.snapshot = snapshot;
+  }
+
+  private stateFor(projectId: string): ProjectSaveState {
+    let state = this.states.get(projectId);
+    if (!state) {
+      state = { epoch: 0, nextRevision: 0, pending: 0, tail: Promise.resolve() };
+      this.states.set(projectId, state);
+    }
+    return state;
+  }
+
+  enqueue(projectId: string, doc: ProjectDoc): Promise<ProjectSaveResult> {
+    const state = this.stateFor(projectId);
+    if (state.blocked !== undefined) {
+      return Promise.resolve({
+        projectId,
+        revision: state.nextRevision,
+        epoch: state.epoch,
+        status: 'failed',
+        saved: false,
+        indexUpdated: false,
+        error: state.blocked,
+      });
+    }
+    const snapshot = this.snapshot(doc);
+    const revision = ++state.nextRevision;
+    const epoch = state.epoch;
+    state.pending += 1;
+
+    const run = async (): Promise<ProjectSaveResult> => {
+      if (state.epoch !== epoch) {
+        return {
+          projectId, revision, epoch, status: 'superseded',
+          saved: false, indexUpdated: false,
+        };
+      }
+      try {
+        const persisted = await this.persist(projectId, snapshot);
+        if (!persisted.saved) {
+          return {
+            projectId, revision, epoch, status: 'failed',
+            saved: false, indexUpdated: persisted.indexUpdated,
+            error: new Error('project save failed'),
+          };
+        }
+        return {
+          projectId, revision, epoch, status: 'saved',
+          saved: true, indexUpdated: persisted.indexUpdated,
+        };
+      } catch (error) {
+        return {
+          projectId, revision, epoch, status: 'failed',
+          saved: false, indexUpdated: false, error,
+        };
+      }
+    };
+
+    const result = state.tail.then(run);
+    state.tail = result.then((value) => {
+      state.lastResult = value;
+      state.pending -= 1;
+    }, (error) => {
+      state.lastResult = {
+        projectId, revision, epoch, status: 'failed',
+        saved: false, indexUpdated: false, error,
+      };
+      state.pending -= 1;
+    });
+    return result;
+  }
+
+  async flush(projectId: string | 'all' = 'all'): Promise<ProjectFlushResult> {
+    const ids = projectId === 'all' ? [...this.states.keys()] : [projectId];
+    const projects = await Promise.all(ids.map(async (id): Promise<ProjectFlushEntry> => {
+      const state = this.states.get(id);
+      if (!state) return { projectId: id, ok: true, pending: 0, revision: 0 };
+      for (;;) {
+        const tail = state.tail;
+        await tail;
+        if (state.pending === 0 && state.tail === tail) break;
+      }
+      const result = state.lastResult;
+      return {
+        projectId: id,
+        ok: state.blocked === undefined && result?.status !== 'failed',
+        pending: state.pending,
+        revision: state.nextRevision,
+        ...(result ? { result } : {}),
+      };
+    }));
+    return { ok: projects.every((entry) => entry.ok), projects };
+  }
+
+  hasPending(projectId?: string): boolean {
+    if (projectId !== undefined) return (this.states.get(projectId)?.pending ?? 0) > 0;
+    return [...this.states.values()].some((state) => state.pending > 0);
+  }
+
+  hasFailure(projectId?: string): boolean {
+    const failed = (state: ProjectSaveState | undefined) =>
+      state?.blocked !== undefined || (state?.pending === 0 && state.lastResult?.status === 'failed');
+    if (projectId !== undefined) return failed(this.states.get(projectId)) === true;
+    return [...this.states.values()].some(failed);
+  }
+
+  /**
+   * Permanently close a project's queue before destructive removal. Existing
+   * writers may finish, but new snapshots are rejected until the store resets.
+   */
+  invalidate(projectId: string): void {
+    const state = this.stateFor(projectId);
+    state.epoch += 1;
+    state.blocked = new Error('project save queue was invalidated');
+  }
+
+  reset(): void {
+    this.states.clear();
+  }
+}
+
+export interface ProjectIndexMutation<T> {
+  /** null means the operation was a read/no-op and must not rewrite INDEX_KEY. */
+  next: ProjectMeta[] | null;
+  value: T;
+}
+
+type ReadProjectIndex = () => Promise<ProjectMeta[]>;
+type WriteProjectIndex = (index: ProjectMeta[]) => Promise<void>;
+
+/**
+ * One recoverable queue owns every INDEX_KEY read-modify-write transaction.
+ * Project document writes remain independent; only their index commit is
+ * serialized with metadata, create, delete, restore, and purge mutations.
+ */
+export class ProjectIndexCoordinator {
+  private tail: Promise<void> = Promise.resolve();
+  private readonly readStore: ReadProjectIndex;
+  private readonly writeStore: WriteProjectIndex;
+
+  constructor(readStore: ReadProjectIndex, writeStore: WriteProjectIndex) {
+    this.readStore = readStore;
+    this.writeStore = writeStore;
+  }
+
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.tail.catch(() => undefined).then(operation);
+    this.tail = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  read(): Promise<ProjectMeta[]> {
+    return this.enqueue(() => this.readStore());
+  }
+
+  mutate<T>(
+    operation: (current: ProjectMeta[]) => ProjectIndexMutation<T> | Promise<ProjectIndexMutation<T>>,
+  ): Promise<T> {
+    return this.enqueue(async () => {
+      const current = await this.readStore();
+      const mutation = await operation(current);
+      if (mutation.next !== null) await this.writeStore(mutation.next);
+      return mutation.value;
+    });
+  }
+
+  async flush(): Promise<void> {
+    await this.tail;
+  }
+
+  reset(): void {
+    this.tail = Promise.resolve();
+  }
+}
+
+async function persistProjectSnapshot(
+  id: string,
+  doc: ProjectDoc,
+): Promise<{ saved: boolean; indexUpdated: boolean }> {
+  try {
+    await idbSet(projectKey(id), doc);
+  } catch {
+    return { saved: false, indexUpdated: false };
+  }
+  try {
+    const indexUpdated = await mutateProjectIndex((index) => {
+      if (!index.some((meta) => meta.id === id)) return { next: null, value: false };
+      const updatedAt = now();
+      return {
+        next: index.map((meta) => (meta.id === id ? { ...meta, updatedAt } : meta)),
+        value: true,
+      };
+    });
+    return { saved: true, indexUpdated };
+  } catch {
+    return { saved: true, indexUpdated: false };
+  }
+}
+
+export const projectSaveCoordinator = new SaveCoordinator(persistProjectSnapshot);
+
 /** Test helper: wipe in-memory fallback (no-op when IDB is real). */
 export function resetProjectStoreMemory(): void {
+  projectSaveCoordinator.reset();
+  projectIndexCoordinator.reset();
   resetSharedKvMemory();
 }
 
@@ -258,9 +523,24 @@ export async function deleteOwnedStyle(id: string): Promise<void> {
   }
 }
 
-async function readIndex(): Promise<ProjectMeta[]> {
+async function readIndexStore(): Promise<ProjectMeta[]> {
   const raw = await idbGet<unknown>(INDEX_KEY);
   return Array.isArray(raw) ? (raw as ProjectMeta[]).filter((m) => m && typeof m.id === 'string') : [];
+}
+
+export const projectIndexCoordinator = new ProjectIndexCoordinator(
+  readIndexStore,
+  (index) => idbSet(INDEX_KEY, index),
+);
+
+function readIndex(): Promise<ProjectMeta[]> {
+  return projectIndexCoordinator.read();
+}
+
+function mutateProjectIndex<T>(
+  operation: (current: ProjectMeta[]) => ProjectIndexMutation<T> | Promise<ProjectIndexMutation<T>>,
+): Promise<T> {
+  return projectIndexCoordinator.mutate(operation);
 }
 
 /** Projects for the dashboard / agent, newest-edited first.
@@ -323,26 +603,21 @@ export async function loadProject(id: string, options?: ProjectMigrationOptions)
   }
 }
 
-/** Save a project's document (all timelines) and bump its index entry's updatedAt. */
-export async function saveProject(
-  id: string,
-  doc: ProjectDoc,
-): Promise<{ saved: boolean; indexUpdated: boolean }> {
-  try {
-    await idbSet(projectKey(id), doc);
-  } catch {
-    return { saved: false, indexUpdated: false };
-  }
-  try {
-    const index = await readIndex();
-    const entry = index.find((m) => m.id === id);
-    if (entry) {
-      await idbSet(INDEX_KEY, index.map((m) => (m.id === id ? { ...m, updatedAt: now() } : m)));
-    }
-    return { saved: true, indexUpdated: true };
-  } catch {
-    return { saved: true, indexUpdated: false };
-  }
+/** Capture and enqueue a project's document; writes for the same project never overlap. */
+export function saveProject(id: string, doc: ProjectDoc): Promise<ProjectSaveResult> {
+  return projectSaveCoordinator.enqueue(id, doc);
+}
+
+export function flushProjectSaves(projectId: string | 'all' = 'all'): Promise<ProjectFlushResult> {
+  return projectSaveCoordinator.flush(projectId);
+}
+
+export function hasPendingProjectSaves(projectId?: string): boolean {
+  return projectSaveCoordinator.hasPending(projectId);
+}
+
+export function hasProjectSaveFailure(projectId?: string): boolean {
+  return projectSaveCoordinator.hasFailure(projectId);
 }
 
 export async function createProject(
@@ -357,31 +632,43 @@ export async function createProject(
     ...(opts?.description ? { description: opts.description } : {}),
   };
   await idbSet(projectKey(meta.id), doc);
-  await idbSet(INDEX_KEY, [meta, ...(await readIndex())]);
+  await mutateProjectIndex((index) => ({
+    next: [meta, ...index.filter((entry) => entry.id !== meta.id)],
+    value: undefined,
+  }));
   return meta;
 }
 
 export async function renameProject(id: string, name: string): Promise<void> {
-  const index = await readIndex();
-  await idbSet(INDEX_KEY, index.map((m) => (m.id === id ? { ...m, name, updatedAt: now() } : m)));
+  await mutateProjectIndex((index) => {
+    if (!index.some((meta) => meta.id === id)) return { next: null, value: undefined };
+    const updatedAt = now();
+    return {
+      next: index.map((meta) => (meta.id === id ? { ...meta, name, updatedAt } : meta)),
+      value: undefined,
+    };
+  });
 }
 
 export async function updateProjectMeta(
   id: string,
   patch: { name?: string; description?: string | null },
 ): Promise<ProjectMeta | null> {
-  const index = await readIndex();
-  const entry = index.find((m) => m.id === id);
-  if (!entry) return null;
-  const next: ProjectMeta = {
-    ...entry,
-    updatedAt: now(),
-    ...(typeof patch.name === 'string' && patch.name.trim() ? { name: patch.name.trim() } : {}),
-  };
-  if (patch.description === null) delete next.description;
-  else if (typeof patch.description === 'string') next.description = patch.description;
-  await idbSet(INDEX_KEY, index.map((m) => (m.id === id ? next : m)));
-  return next;
+  return mutateProjectIndex((index) => {
+    const entry = index.find((meta) => meta.id === id);
+    if (!entry) return { next: null, value: null };
+    const next: ProjectMeta = {
+      ...entry,
+      updatedAt: now(),
+      ...(typeof patch.name === 'string' && patch.name.trim() ? { name: patch.name.trim() } : {}),
+    };
+    if (patch.description === null) delete next.description;
+    else if (typeof patch.description === 'string') next.description = patch.description;
+    return {
+      next: index.map((meta) => (meta.id === id ? next : meta)),
+      value: next,
+    };
+  });
 }
 
 export async function duplicateProject(id: string, name?: string): Promise<ProjectMeta | null> {
@@ -410,23 +697,30 @@ export async function saveProjectThumb(id: string, key: number, dataUrl: string)
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  const index = await readIndex();
-  if (!index.some((m) => m.id === id)) return;
-  await idbSet(
-    INDEX_KEY,
-    index.map((m) => (m.id === id ? { ...m, deletedAt: now(), updatedAt: now() } : m)),
-  );
+  await mutateProjectIndex((index) => {
+    if (!index.some((meta) => meta.id === id)) return { next: null, value: undefined };
+    const deletedAt = now();
+    return {
+      next: index.map((meta) => (
+        meta.id === id ? { ...meta, deletedAt, updatedAt: deletedAt } : meta
+      )),
+      value: undefined,
+    };
+  });
 }
 
 /** Undo a soft delete. */
 export async function restoreProject(id: string): Promise<ProjectMeta | null> {
-  const index = await readIndex();
-  const entry = index.find((m) => m.id === id);
-  if (!entry) return null;
-  const next: ProjectMeta = { ...entry, updatedAt: now() };
-  delete next.deletedAt;
-  await idbSet(INDEX_KEY, index.map((m) => (m.id === id ? next : m)));
-  return next;
+  return mutateProjectIndex((index) => {
+    const entry = index.find((meta) => meta.id === id);
+    if (!entry) return { next: null, value: null };
+    const next: ProjectMeta = { ...entry, updatedAt: now() };
+    delete next.deletedAt;
+    return {
+      next: index.map((meta) => (meta.id === id ? next : meta)),
+      value: next,
+    };
+  });
 }
 
 export interface ProjectPurgeOptions {
@@ -447,6 +741,8 @@ async function clearProjectSemanticVectors(id: string, options?: ProjectPurgeOpt
  * All, delete them literally here to avoid mutual import of persistence layers). Even if the index does not have the id, it will be deleted - orphan document (smoke test)
  * Residues) rely on this to clear.*/
 export async function purgeProject(id: string, options?: ProjectPurgeOptions): Promise<void> {
+  projectSaveCoordinator.invalidate(id);
+  await projectSaveCoordinator.flush(id);
   await clearProjectSemanticVectors(id, options);
   await idbDel(projectKey(id));
   await idbDel(chatKey(id));
@@ -456,7 +752,10 @@ export async function purgeProject(id: string, options?: ProjectPurgeOptions): P
   await idbDel(`versions:${id}`);
   await idbDel(`jobs:${id}`);
   await idbDel(`review:${id}`);
-  await idbSet(INDEX_KEY, (await readIndex()).filter((m) => m.id !== id));
+  await mutateProjectIndex((index) => ({
+    next: index.filter((meta) => meta.id !== id),
+    value: undefined,
+  }));
   clearProjectSessionPrefs(id);
 }
 

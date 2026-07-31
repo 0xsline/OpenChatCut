@@ -8,8 +8,20 @@ import type { ItemKeyframes, Keyframe, KeyframeProp, MediaAsset, TimelineItem, T
 import { defaultTrackId, resolveTrackId } from '../../editor/types';
 import { isValidEasing } from '../../editor/keyframes';
 import { getKeyframePropertyDefinition, KEYFRAME_PROPS, supportsKeyframeProperty } from '../../editor/keyframeRegistry';
+import { planSlip, type SlipFailure, type SlipResult } from '../../editor/slip';
+import { rejectUnknownFields } from './edit-item-fields';
+export { didYouMean, rejectUnknownFields } from './edit-item-fields';
 
 type OpResult = Record<string, unknown>;
+
+function slipFailureToOpResult(failure: SlipFailure): OpResult {
+  return {
+    ok: false,
+    code: failure.code,
+    itemId: failure.itemId,
+    error: failure.error,
+  };
+}
 
 export const GENERIC_ITEM_KINDS: ReadonlySet<string> = new Set([
   'video', 'image', 'audio', 'gif', 'svg', 'motion-graphic', 'text', 'solid',
@@ -31,79 +43,45 @@ function findItem(items: TimelineItem[], id: unknown): TimelineItem | null {
 }
 
 /** Reject unknown fields with actionable edit_item errors. */
-const GENERIC_UPDATE_KEYS = new Set([
-  'type', 'itemId', 'id', 'track', 'trackId',
-  'startFrame', 'fromFrame', 'durationInFrames', 'srcInFrame',
-  'props', 'volume', 'fadeInSeconds', 'fadeOutSeconds', 'keyframes',
-  'ripple', 'projectId',
-]);
-const GENERIC_ADD_KEYS = new Set([
-  'type', 'assetId', 'track', 'trackId', 'startFrame', 'fromFrame', 'durationInFrames', 'projectId',
-]);
+const GENERIC_UPDATE_KEYS: Record<string, true> = {
+  type: true,
+  itemId: true,
+  id: true,
+  track: true,
+  trackId: true,
+  startFrame: true,
+  fromFrame: true,
+  durationInFrames: true,
+  srcInFrame: true,
+  props: true,
+  volume: true,
+  fadeInSeconds: true,
+  fadeOutSeconds: true,
+  keyframes: true,
+};
+const GENERIC_ADD_KEYS: Record<string, true> = {
+  type: true,
+  assetId: true,
+  track: true,
+  trackId: true,
+  startFrame: true,
+  fromFrame: true,
+  durationInFrames: true,
+};
+const SLIP_UPDATE_KEYS: Record<string, true> = {
+  type: true,
+  itemId: true,
+  id: true,
+  operation: true,
+  deltaInFrames: true,
+};
 
-/** Closest allowed key by edit distance (cap 3) for "Did you mean …?" hints. */
-export function didYouMean(got: string, allowed: readonly string[]): string | null {
-  const g = got.toLowerCase();
-  let best: string | null = null;
-  let bestD = Infinity;
-  for (const a of allowed) {
-    const d = levenshtein(g, a.toLowerCase());
-    if (d < bestD) { bestD = d; best = a; }
-  }
-  return bestD <= 3 ? best : null;
-}
-
-function levenshtein(a: string, b: string): number {
-  const m = a.length;
-  const n = b.length;
-  if (!m) return n;
-  if (!n) return m;
-  const row = Array.from({ length: n + 1 }, (_, j) => j);
-  for (let i = 1; i <= m; i++) {
-    let prev = row[0]!;
-    row[0] = i;
-    for (let j = 1; j <= n; j++) {
-      const tmp = row[j]!;
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      row[j] = Math.min(row[j]! + 1, row[j - 1]! + 1, prev + cost);
-      prev = tmp;
-    }
-  }
-  return row[n]!;
-}
-
-/** Reject keys not in the allowed set; special-case assetId on updates. */
-export function rejectUnknownFields(
-  entry: Record<string, unknown>,
-  allowed: ReadonlySet<string>,
-  opts?: { banAssetId?: boolean },
-): string | null {
-  if (opts?.banAssetId && entry.assetId !== undefined) {
-    return (
-      'assetId cannot be updated on an existing timeline item.\n\n'
-      + 'To replace media, use one edit_item batch with deletes:[{id:"old item id"}] and '
-      + 'adds:[{type:"video|audio|image|gif|svg|motion-graphic", assetId:"new asset id", trackId, '
-      + 'fromFrame, durationInFrames}] (read the old item first and reuse its timing). '
-      + 'srcInFrame / fades / props are not add fields — set them with a follow-up edit_item '
-      + 'update on the new item id after this batch applies.'
-    );
-  }
-  const allowedList = [...allowed];
-  for (const key of Object.keys(entry)) {
-    if (allowed.has(key)) continue;
-    // assetId already handled above when banAssetId; if not banned, still reject as unknown
-    const hint = didYouMean(key, allowedList);
-    return hint
-      ? `unknown field "${key}". Did you mean "${hint}"?\n\nUse only supported fields from the edit_item schema. If this was a spelling variant, retry with the exact field name from the tool description.`
-      : `unknown field "${key}".\n\nUse only supported fields from the edit_item schema. Supported: ${allowedList.join(', ')}.`;
-  }
-  return null;
-}
 
 /** Editor command subset the generic committer needs (satisfied by EditorCommands). */
 export interface GenericCommands {
   moveItem: (id: string, to: { track?: string; startFrame?: number }) => void;
   setItemTiming: (id: string, timing: { startFrame?: number; durationInFrames?: number; srcInFrame?: number }) => void;
+  slipItem: (id: string, deltaInFrames: number) => SlipResult;
   updateItemProps: (id: string, patch: Record<string, unknown>) => void;
   setItemVolume: (id: string, volume: number) => void;
   setItemFade: (id: string, fade: { fadeInFrames?: number; fadeOutFrames?: number }) => void;
@@ -198,9 +176,39 @@ export function validateGenericUpdate(state: TimelineState, entry: Record<string
   return plan;
 }
 
+export function validateSlipUpdate(state: TimelineState, entry: Record<string, unknown>): OpResult {
+  if (entry.operation !== undefined && entry.operation !== 'slip') {
+    return {
+      ok: false,
+      error: `update operation not supported: ${String(entry.operation)}`,
+      code: 'unknown-operation',
+      supported: ['slip'],
+    };
+  }
+  const unknown = rejectUnknownFields(entry, SLIP_UPDATE_KEYS);
+  if (unknown) return { error: unknown, code: 'unknown-field' };
+  const itemRef = entry.itemId ?? entry.id;
+  const item = findItem(state.items, itemRef);
+  if (!item) {
+    return { ok: false, error: `item not found: ${String(itemRef ?? '')}`, code: 'unknown-item' };
+  }
+  const deltaInFrames = finiteNum(entry.deltaInFrames);
+  if (deltaInFrames === undefined) {
+    return { ok: false, error: 'slip needs a finite deltaInFrames', code: 'invalid-delta' };
+  }
+  const result = planSlip(state, item.id, deltaInFrames);
+  if (!result.ok) return slipFailureToOpResult(result);
+  return { ...result, kind: item.kind, plan: 'slip', status: result.clamped ? 'clamped' : 'planned' };
+}
+
 // Delete any kind. Per-entry ripple closes the gap (independent of batch-level ripple).
 // Delete operations accept either {id} or {itemId}.
-const GENERIC_DELETE_KEYS = new Set(['type', 'itemId', 'id', 'ripple', 'projectId']);
+const GENERIC_DELETE_KEYS: Record<string, true> = {
+  type: true,
+  itemId: true,
+  id: true,
+  ripple: true,
+};
 export function validateGenericDelete(state: TimelineState, entry: Record<string, unknown>): OpResult {
   const unknown = rejectUnknownFields(entry, GENERIC_DELETE_KEYS);
   if (unknown) return { error: unknown };
@@ -282,6 +290,16 @@ export function applyGeneric(plan: OpResult, commands: GenericCommands): OpResul
       }
     }
     return { ok: true, kind: plan.kind, plan: 'genericUpdate', itemId: id };
+  }
+  if (plan.plan === 'slip') {
+    const committed = commands.slipItem(id, Number(plan.appliedDeltaInFrames));
+    if (!committed.ok) return slipFailureToOpResult(committed);
+    return {
+      ...plan,
+      srcInFrame: committed.srcInFrame,
+      sourceWindow: committed.sourceWindow,
+      status: plan.clamped ? 'clamped' : 'applied',
+    };
   }
   if (plan.plan === 'genericDelete') {
     if (plan.ripple === true) commands.rippleDeleteItem(id);

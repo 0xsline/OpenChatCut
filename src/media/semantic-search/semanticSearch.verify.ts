@@ -132,6 +132,13 @@ const validIds = new Set(['kept']);
 assert.equal(shouldPruneVector({ scopeId: 'other', modelVersion: 'old', assetId: 'gone' }, 'project-a', validIds), false);
 assert.equal(shouldPruneVector({ scopeId: 'project-a', modelVersion: 'old', assetId: 'kept' }, 'project-a', validIds), true);
 assert.equal(shouldPruneVector({ scopeId: 'project-a', modelVersion: SEMANTIC_MODEL_VERSION, assetId: 'gone' }, 'project-a', validIds), true);
+const revisions = new Map([['kept', 'rev-current']]);
+assert.equal(shouldPruneVector({
+  scopeId: 'project-a', modelVersion: SEMANTIC_MODEL_VERSION, assetId: 'kept', sourceRevision: 'rev-old',
+}, 'project-a', validIds, revisions), true, 'old-source semantic vectors are stale even when the asset id still exists');
+assert.equal(shouldPruneVector({
+  scopeId: 'project-a', modelVersion: SEMANTIC_MODEL_VERSION, assetId: 'kept', sourceRevision: 'rev-current',
+}, 'project-a', validIds, revisions), false);
 
 const panelBounds = { top: 40, bottom: 700, left: 320, right: 700, width: 380 };
 assert.deepEqual(

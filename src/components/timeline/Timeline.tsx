@@ -6,6 +6,7 @@ import {
   type TimelineItem, type TimelineState, type TrackId,
 } from '../../editor/types';
 import type { EditorCommands } from '../../editor/store';
+import { slipPreview as buildSlipPreview, type SlipPreview } from '../../editor/slip';
 import { usePersistedState } from '../../hooks/usePersistedState';
 import { ClipContextMenu, type FxClip } from './ClipContextMenu';
 import { Icon } from '../icons';
@@ -48,12 +49,15 @@ interface TimelineProps {
   /** Filled by Timeline so Editor can bind the global shortcut dispatcher. */
   shortcutApiRef?: RefObject<TimelineShortcutApi | null>;
   onReviewItem?: (request: { itemId: string; frame: number; clientX: number; clientY: number }) => void;
+  onSlipPreview?: (preview: SlipPreview | null) => void;
 }
 
-export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceover, shortcutApiRef, onReviewItem }: TimelineProps) {
+export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceover, shortcutApiRef, onReviewItem, onSlipPreview }: TimelineProps) {
   const t = useT();
   const locale = getLocale();
   const empty = state.items.length === 0;
+  const liveStateRef = useRef(state);
+  liveStateRef.current = state;
   const total = empty ? 0 : timelineDuration(state);
   const trackIds = timelineTrackIds(state);
   const indexes = useMemo(
@@ -64,7 +68,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   const scrollRef = useRef<HTMLDivElement>(null);
   const timelineId = (state as { id?: string }).id;
   const { zoom, setZoom, zoomBy, fitToView, pixelsPerFrame: px, trackScale } =
-    useTimelineZoomController({ scrollRef, totalFrames: total, fps: state.fps, timelineId });
+    useTimelineZoomController({ scrollRef, totalFrames: total, fps: state.fps, projectId, timelineId });
   const metaOf = (id: TrackId) => {
     const kind = trackKind(state, id);
     const color = kind === 'caption' ? theme.trackCaption
@@ -74,7 +78,7 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   };
   // Playhead drawing machine: rAF frame direct drawing + Player watchdog + breakpoint resume (usePlayheadPaint)
   const { playheadRef, playheadLineRef, toolbarTimecodeRef, rulerTimecodeRef, paintPlayhead, playing } =
-    usePlayheadPaint({ playerRef, projectId, fps: state.fps, total, px });
+    usePlayheadPaint({ playerRef, projectId, timelineId, fps: state.fps, total, px });
   // editing mode (Selection V / Blade B / Trim N / Pen P). selection =
   // drag/move; blade = click a clip to cut it there; trim = edge-trim ripples
   // following clips; pen = draw opacity keyframes on the selected clip.
@@ -252,7 +256,15 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     state, commands, editMode, snapping, pickMode, px,
     playheadRef, scrollRef, frameFromClientX, trackFromClientY, itemsInMarquee,
   });
-  const { drag, marquee, pickDrag, startPick, onPointerMove, onPointerUp } = pointer;
+  const { drag, marquee, pickDrag, startPick, onPointerMove, onPointerUp, onPointerCancel } = pointer;
+  const activeSlipPreview = useMemo(
+    () => drag?.mode === 'slip' ? buildSlipPreview(state, drag.id, drag.deltaF) : null,
+    [drag, state],
+  );
+  useEffect(() => {
+    onSlipPreview?.(activeSlipPreview);
+  }, [activeSlipPreview, onSlipPreview]);
+  useEffect(() => () => onSlipPreview?.(null), [onSlipPreview]);
 
   /** library resource dropped on a clip (fx/lut/zoom/transition) or track (sound/mg) */
   const [libDropTarget, setLibDropTarget] = useState<string | null>(null);
@@ -263,11 +275,17 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     window.setTimeout(() => setClipJob((cur) => (cur && cur.msg === msg && !cur.error ? null : cur)), 3000);
   };
 
-  const dropCtx = { state, commands, notice: dropNotice };
+  const dropCtx = {
+    state,
+    commands,
+    notice: dropNotice,
+    getState: () => liveStateRef.current,
+    getAssets: () => liveStateRef.current.assets ?? [],
+  };
   const applyLibraryToClip = (payload: LibraryDragPayload, item: TimelineItem): boolean =>
     applyToClip(dropCtx, payload, item);
   const applyLibraryToTrack = (payload: LibraryDragPayload, trackId: TrackId, startFrame: number): boolean =>
-    applyToTrack(dropCtx, payload, trackId, startFrame, placeMode === 'insert');
+    applyToTrack(dropCtx, payload, trackId, startFrame, placeMode === 'insert', placeMode === 'overwrite');
 
   const seekTo = (clientX: number) => {
     const f = Math.max(0, Math.min(frameFromClientX(clientX), total - 1));
@@ -330,7 +348,8 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
 
       {/* scrollable ruler + tracks (playhead spans both). Ctrl/⌘+wheel = time
           zoom at cursor, Alt+wheel = track-height zoom (native listener above). */}
-      <div ref={scrollRef} style={{ overflow: 'auto', flex: 1, minHeight: 0 }} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+      <div ref={scrollRef} style={{ overflow: 'auto', flex: 1, minHeight: 0 }}
+        onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
         title={t('Ctrl/⌘+滚轮 缩放时间轴 · Alt+滚轮 缩放轨道高度')}>
         <div ref={innerRef} style={{ position: 'relative', width: innerW }}>
           {/* ruler (click to seek, hold to scrub; selection mode: click = timepoint, drag = timerange).
@@ -396,6 +415,8 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
                   pinnedItemIds={pinnedItemIds}
                   libDropTarget={libDropTarget} setLibDropTarget={setLibDropTarget}
                   applyLibraryToClip={applyLibraryToClip} applyLibraryToTrack={applyLibraryToTrack}
+                  rippleOnDrop={placeMode === 'insert'}
+                  overwriteOnDrop={placeMode === 'overwrite'}
                   frameFromClientX={frameFromClientX} onContextMenu={setCtxMenu} scrollRef={scrollRef}
                 />}
               </div>

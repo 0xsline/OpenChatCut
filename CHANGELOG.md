@@ -14,8 +14,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   新增 Ollama 与 LM Studio Agent 厂商：支持配置本地端点、可选 API Key、模型发现，并仅在明确保存模型后激活。
 - Added validated 4K video export across browser and server render paths, producing a 2160-pixel short edge (`3840×2160` for 16:9 projects) with matching bitrate and quality-check expectations.
   新增经校验的 4K 成片导出，覆盖浏览器与服务端渲染链路；短边输出 2160 像素（16:9 工程为 `3840×2160`），并同步适配码率与质量检查预期。
+- Added professional timeline workflows: slip and rate-stretch modes, insert/overwrite placement, atomic multi-clip Inspector edits, nested sequences, source timecode, sync-lock groups, and persistent multicam range switching.
+  新增专业时间线工作流：滑移与比率拉伸模式、插入/覆盖落轨、多片段属性原子编辑、嵌套序列、源时间码、同步锁定组，以及可持久化的多机位区间切换。
+- Added durable generation and export jobs with refresh recovery, exact-first reruns, provider/reference preflight, editor-level background export state, cancellation, and structured terminal failures.
+  新增可恢复的生成与导出任务：支持刷新续跑、精确优先重跑、厂商/引用预检、编辑器级后台导出状态、取消及结构化终态错误。
+- Added scene-aware visual and spoken media search, source-versioned semantic artifacts, cached VAD evidence, immutable voice-isolation artifacts, and resumable AssemblyAI jobs.
+  新增镜头感知的视觉/口语素材搜索、按源版本管理的语义产物、VAD 证据缓存、不可变人声分离产物，以及可恢复的 AssemblyAI 任务。
 
 ### Changed / 变更
+- Unified timeline geometry around playback-rate-aware source-time/source-window helpers, with one transition-reconciliation pass shared by move, retime, split, trim, ripple, and overwrite operations.
+  统一采用感知播放速度的源时间/源窗口计算，并让移动、重定时、切分、裁剪、波纹和覆盖操作共用同一转场校正流程。
+- Made selected effect and transition previews use the same deterministic GL frame, progress, uniform, aspect, and color pipeline as export, with explicit fallback states when full parity is unavailable.
+  选中特效与转场的预览现在与导出共用确定性的 GL 帧、进度、uniform、画幅和色彩管线；无法完整对齐时会明确显示回退状态。
 
 - Virtualized large resource, media-pool, and timeline surfaces; thumbnails and media previews now activate only near the viewport or on hover, while timeline pointer work is frame-coalesced and magnetic snap points are cached for each gesture.
   对大型资源库、素材池与时间线实施窗口化；缩略图和媒体预览仅在接近视口或悬停时激活，时间线指针更新按帧合并，磁吸点也按单次手势缓存。
@@ -38,8 +48,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed / 修复
 
+- Made browser/server export cancellation reach the encoder, renderer, and destination writer while preserving an already committed success; restored jobs now terminalize safely and use registered cleanup policies instead of unlinking untrusted result paths.
+  让浏览器端与服务端导出取消信号贯穿编码器、渲染器和目标写入器，同时不再用迟到取消覆盖已提交成功；恢复任务会安全进入终态，并只通过已注册清理策略处理结果，不再删除不可信路径。
+- Made linked audio/video overwrite and split operations atomic, preserved transitions outside punched holes, validated transitions as unique binary seams, and corrected edited-transcript audio slip coordinates.
+  将关联音视频的覆盖与切分改为原子操作，保留切洞外侧转场，把转场限制为唯一二元接缝，并修正编辑式转录音频的滑移坐标域。
+- Hardened asynchronous voice isolation, multicam sync, generation, and media-derivative commits with live project/item/source revision checks and durable semantic operation IDs.
+  为异步人声分离、多机位同步、生成和媒体派生提交加入实时工程、片段、源版本复核及持久语义 operation ID，避免重链或并发编辑后迟到结果回写。
+- Made project-package publication transactional across browser and server storage, rejected HTML media fallbacks and cross-frame-rate nested sequences before export, and isolated a single MCP call cancellation from unrelated bridge calls.
+  将工程包发布改为跨浏览器与服务端存储的事务流程；在导出前拒绝 HTML 媒体回退及跨帧率嵌套序列；单个 MCP 调用取消也不再级联终止同一桥上的无关调用。
+- Restored cloud-only upload media from R2 before export, serialized concurrent hydrations, rejected HTML/non-media responses, and routed all remote probes through DNS/IP/redirect-pinned public fetches to block SSRF and rebinding.
+  导出前可从 R2 恢复仅存在云端的上传素材，并串行合并同名并发回源；同时拒绝 HTML/非媒体响应，且所有远程探测都经过 DNS、IP、重定向与地址固定校验，阻断 SSRF 与 DNS 重绑定。
+- Made ASR jobs unique by asset/revision/generation, prevented progressive import callbacks from double-submitting paid transcription, and kept stale transcripts reviewable without letting them drive playback, export, search, or edits.
+  按素材、源版本和 generation 唯一协调 ASR，避免渐进导入回调重复提交付费转录；旧转录仍可审阅，但不再参与播放、导出、搜索或编辑。
+- Corrected rational source-timecode conversion, playback-rate-aware multicam sync, and GL transition endpoint sampling; multicam now rejects mixed rates atomically and transition progress deterministically reaches both 0 and 1.
+  修正有理数源时间码换算、感知播放速度的多机位同步及 GL 转场端点采样；多机位会原子拒绝混合速度，转场进度也确定性覆盖 0 与 1。
+- Hardened project-index writes, MCP runtime hydration, durable open-job retention, and multi-result generation checkpoints so metadata cannot be lost, old bridges cannot overwrite new state, resumable work is never evicted, and partial Seedance/Mureka outputs cannot be published as complete.
+  加固工程索引写入、MCP runtime hydration、未结束任务保留及多结果生成检查点，避免元数据丢失、旧桥覆盖新状态、可恢复任务被淘汰，以及 Seedance/Mureka 部分结果被误判为完成。
+
 - Fixed Chromium export destination selection by using the save-file picker for single-file exports, reserving the directory picker for multi-file bundles, and invalidating stale file handles when the output filename changes.
   修复 Chromium 导出位置选择：单文件导出改用文件保存选择器，多文件打包才使用目录选择器，并在输出文件名变化时清除旧文件句柄。
+- Serialized project saves through immutable snapshots, added close/switch flush barriers, and blocked destructive navigation after persistence failures.
+  通过不可变快照串行化工程保存，加入关闭/切换前 flush 屏障，并在持久化失败后阻止破坏性导航。
+- Rejected stale derived-media commits after relink, bound semantic/blob/ASR/generation outputs to source revisions, and staged project-package publication so failed imports never expose half-written projects.
+  重链后拒绝旧派生产物回写，将语义、Blob、ASR 和生成结果绑定到源版本，并通过工程包分阶段发布避免失败导入暴露半成品。
+- Bound MCP sessions to project/editor revisions, canceled queued and in-flight calls on timeout or transport close, and pruned expired sessions before request dispatch.
+  将 MCP 会话绑定到工程/编辑器版本；超时或传输关闭时同时取消排队与执行中的调用，并在请求分发前清理过期会话。
+- Preserved the committed revision across deferred React state updates so external MCP clients can observe `applied`, and rejected every cross-transport tool call carrying another client's `editSessionId`.
+  在 React 延迟提交工程状态时保留真实已提交 revision，使外部 MCP 客户端可正确读到 `applied`；同时拒绝所有携带其他客户端 `editSessionId` 的跨传输工具调用。
+- Added browser and server export-media preflight so missing media, invalid blob/local references, and nested-sequence errors fail before queueing or rendering.
+  新增浏览器端与服务端导出媒体预检，使缺失素材、无效 Blob/本地引用及嵌套序列错误在排队或渲染前失败。
 - Fixed preview stalls at transition boundaries by preserving the incoming media element after the transition completes instead of remounting and re-seeking it.
   修复预览在转场边界卡顿的问题：转场结束后保留已在播放的入场媒体元素，不再重新挂载并跳转。
 - Balanced fixed-size resource-grid columns across the available panel width instead of leaving a large unused strip at the right edge.

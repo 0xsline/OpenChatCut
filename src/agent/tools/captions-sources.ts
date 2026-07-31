@@ -6,6 +6,7 @@ import { buildTranslation } from '../../captions/translate';
 import { findVariantByLang } from '../../transcript/variants';
 import { resolveTrackId, trackAlias, type TimelineItem, type TimelineState } from '../../editor/types';
 import { moveCaptionSourceEntry, normalizeCaptionSourceEntries, orderedCaptionSourceEntries } from '../../captions/sourceOrder';
+import { hasOperationalTranscript } from '../../transcript/types';
 
 // edit_captions multi-source + language cluster (actions: source_list /
 // source_set / source_add / source_remove / language_mode / bilingual). The
@@ -22,9 +23,9 @@ const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 /** Resolve a source selector ({trackId|itemId|assetId}) to a transcribed item id. */
 function selectorToItemId(sel: Record<string, unknown>, s: TimelineState): string | null {
   const itemId = str(sel.itemId) || str(sel.id);
-  if (itemId) { const it = s.items.find((x) => x.id === itemId || x.id.startsWith(itemId)); return it?.id ?? null; }
+  if (itemId) { const it = s.items.find((x) => x.id === itemId || x.id.startsWith(itemId)); return hasOperationalTranscript(it) ? it.id : null; }
   const assetId = str(sel.assetId);
-  if (assetId) { const it = s.items.find((x) => x.src === assetId || x.templateId === assetId); return it?.id ?? null; }
+  if (assetId) { const it = s.items.find((x) => x.src === assetId || x.templateId === assetId); return hasOperationalTranscript(it) ? it.id : null; }
   const track = str(sel.trackId) || str(sel.track);
   if (track) return firstTranscribedOnTrack(s, track)?.id ?? null;
   return null;
@@ -33,10 +34,10 @@ function selectorToItemId(sel: Record<string, unknown>, s: TimelineState): strin
 /** First item on a track (alias V1/A1 or id) that carries a transcript. */
 export function firstTranscribedOnTrack(s: TimelineState, trackAliasOrId: string): TimelineItem | null {
   const tid = resolveTrackId(s, trackAliasOrId) ?? trackAliasOrId;
-  return s.items.find((it) => it.track === tid && (it.transcript?.length ?? 0) > 0) ?? null;
+  return s.items.find((it) => it.track === tid && hasOperationalTranscript(it)) ?? null;
 }
 
-const transcribedItems = (s: TimelineState) => s.items.filter((it) => (it.transcript?.length ?? 0) > 0);
+const transcribedItems = (s: TimelineState) => s.items.filter((it) => hasOperationalTranscript(it));
 
 /** One selector → a rich CaptionSourceEntry (variant/label/priority/slotId ride along). */
 function selectorToEntry(sel: Record<string, unknown>, s: TimelineState): CaptionSourceEntry | { error: string } {

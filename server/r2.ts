@@ -9,7 +9,10 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { S3Client, PutObjectCommand, GetObjectCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, HeadObjectCommand,
+  PutObjectCommand, S3Client,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { HttpsProxyAgent } from 'https-proxy-agent';
@@ -62,34 +65,116 @@ function clientFor(cfg: R2Config): S3Client {
 
 export type UploadBody = Buffer | Uint8Array | Readable;
 
-/** Upload writethrough:PUT uploads/<name> to R2. Body can be a Buffer or a readable stream (stream for large files). */
+export type PutUploadObjectResult = 'stored' | 'exists' | 'off';
+export interface PutUploadObjectIfAbsentOptions {
+  ifAbsent: true;
+  rollbackToken: string;
+}
+
+function isPreconditionFailed(error: unknown): boolean {
+  const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+  const code = (error as { name?: string }).name ?? '';
+  return status === 409 || status === 412 || code === 'ConditionalRequestConflict' || code === 'PreconditionFailed';
+}
+
+/** Upload writethrough: PUT uploads/<name> to R2, optionally without replacing an existing object. */
+export function putUploadObject(
+  name: string,
+  body: UploadBody,
+  contentType?: string,
+  contentLength?: number,
+): Promise<void>;
+export function putUploadObject(
+  name: string,
+  body: UploadBody,
+  contentType: string | undefined,
+  contentLength: number | undefined,
+  options: PutUploadObjectIfAbsentOptions,
+): Promise<PutUploadObjectResult>;
 export async function putUploadObject(
   name: string,
   body: UploadBody,
   contentType?: string,
   contentLength?: number,
-): Promise<void> {
+  options?: PutUploadObjectIfAbsentOptions,
+): Promise<void | PutUploadObjectResult> {
   const cfg = r2Config();
-  if (!cfg) return;
-  await clientFor(cfg).send(new PutObjectCommand({
-    Bucket: cfg.bucket,
-    Key: `uploads/${name}`,
-    Body: body,
-    ContentType: contentType || 'application/octet-stream',
-    ...(typeof contentLength === 'number' && contentLength >= 0
-      ? { ContentLength: contentLength }
-      : {}),
-  }));
+  if (!cfg) return options ? 'off' : undefined;
+  try {
+    await clientFor(cfg).send(new PutObjectCommand({
+      Bucket: cfg.bucket,
+      Key: `uploads/${name}`,
+      Body: body,
+      ContentType: contentType || 'application/octet-stream',
+      ...(typeof contentLength === 'number' && contentLength >= 0
+        ? { ContentLength: contentLength }
+        : {}),
+      ...(options ? { IfNoneMatch: '*' } : {}),
+      ...(options ? { Metadata: { 'openchatcut-import-token': options.rollbackToken } } : {}),
+    }));
+    return options ? 'stored' : undefined;
+  } catch (error) {
+    if (options && isPreconditionFailed(error)) return 'exists';
+    throw error;
+  }
 }
 
-/** Streaming write-through from local file to R2 (large video path).*/
+/** Streaming write-through from local file to R2 (large video path). */
+export function putUploadFile(name: string, filePath: string, contentType?: string): Promise<void>;
+export function putUploadFile(
+  name: string,
+  filePath: string,
+  contentType: string | undefined,
+  options: PutUploadObjectIfAbsentOptions,
+): Promise<PutUploadObjectResult>;
 export async function putUploadFile(
   name: string,
   filePath: string,
   contentType?: string,
-): Promise<void> {
+  options?: PutUploadObjectIfAbsentOptions,
+): Promise<void | PutUploadObjectResult> {
   const info = await stat(filePath);
+  if (options) {
+    return putUploadObject(name, createReadStream(filePath), contentType, info.size, options);
+  }
   await putUploadObject(name, createReadStream(filePath), contentType, info.size);
+}
+
+/** Delete one upload from R2. Returns false when R2 is not configured. */
+export async function deleteUploadObject(name: string, rollbackToken?: string): Promise<boolean> {
+  const cfg = r2Config();
+  if (!cfg) return false;
+  if (!rollbackToken) {
+    await clientFor(cfg).send(new DeleteObjectCommand({
+      Bucket: cfg.bucket,
+      Key: `uploads/${name}`,
+    }));
+    return true;
+  }
+  let etag: string | undefined;
+  try {
+    const head = await clientFor(cfg).send(new HeadObjectCommand({
+      Bucket: cfg.bucket,
+      Key: `uploads/${name}`,
+    }));
+    if (head.Metadata?.['openchatcut-import-token'] !== rollbackToken) return false;
+    etag = head.ETag;
+    if (!etag) return false;
+  } catch (error) {
+    if (isNotFound(error)) return false;
+    throw error;
+  }
+  try {
+    await clientFor(cfg).send(new DeleteObjectCommand({
+      Bucket: cfg.bucket,
+      Key: `uploads/${name}`,
+      IfMatch: etag,
+    }));
+    return true;
+  } catch (error) {
+    if (isNotFound(error) || isPreconditionFailed(error)) return false;
+    throw error;
+  }
 }
 
 export interface R2Object {

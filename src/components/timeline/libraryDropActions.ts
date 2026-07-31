@@ -3,9 +3,10 @@
 // Silent return false, the user only sees "No response after dragging".
 import {
   CSS_TRANSITION_TYPES, TRANSITION_LABELS, defaultTrackId, timelineTrackIds, trackKind,
-  type TimelineItem, type TimelineState, type TrackId, type TransitionType, type ZoomShape,
+  type MediaAsset, type TimelineItem, type TimelineState, type TrackId, type TransitionType, type ZoomShape,
 } from '../../editor/types';
 import type { EditorCommands } from '../../editor/store';
+import { applyLibraryDropIsolation } from './libraryDropIsolation';
 import type { LibraryDragPayload } from '../../library/drag';
 import { asPluginTpl, asPluginZoom } from '../../library/pluginResources';
 import { isPluginAssetId } from '../../plugins/types';
@@ -13,16 +14,18 @@ import { customTransitionUniforms, getCustomTransition } from '../../gl/customTr
 import { ALL_FX, serializableDefsFor } from '../../gl/fx/effects';
 import { TEMPLATES } from '../../editor/initial';
 import { t } from '../../i18n/locale';
-import { isolateVoiceOnSrc, isIsolateAudioFxId, strengthFromAudioFxId } from '../../audio/isolateVoice';
+import { isIsolateAudioFxId, strengthFromAudioFxId } from '../../audio/isolateVoice';
 import { showAppToast } from '../../ui/appToast';
 
 interface DropCtx {
   state: TimelineState;
+  getState: () => TimelineState;
+  getAssets: () => readonly MediaAsset[];
   commands: EditorCommands;
   notice: (msg: string) => void;
 }
 
-export function applyLibraryToClip({ state, commands, notice }: DropCtx, payload: LibraryDragPayload, item: TimelineItem): boolean {
+export function applyLibraryToClip({ state, commands, notice, getState, getAssets }: DropCtx, payload: LibraryDragPayload, item: TimelineItem): boolean {
   const visual = item.kind !== 'audio';
   if (payload.kind === 'fx' || payload.kind === 'lut') {
     // GIF does not enter the GL pipeline (MediaFill/ClipFx only textures video/image), and will not be rendered if accepted - honest rejection
@@ -65,9 +68,20 @@ export function applyLibraryToClip({ state, commands, notice }: DropCtx, payload
     commands.selectItem(item.id);
     // Async denoise — accept drop immediately; toast progress / result.
     showAppToast(t('人声隔离处理中…'), { ms: 60_000 });
-    void isolateVoiceOnSrc(item.src, strength, { force: true })
-      .then((r) => {
-        commands.setItemDenoise(item.id, r.path, r.strength);
+    void applyLibraryDropIsolation(item, strength, {
+      getState,
+      getAssets,
+      setItemDenoise: (itemId, denoisedSrc, denoiseStrength) => {
+        commands.setItemDenoise(itemId, denoisedSrc, denoiseStrength);
+      },
+    })
+      .then((result) => {
+        if (result.status === 'stale') {
+          const msg = t('源素材已变化，旧的人声隔离结果已丢弃。请重试。');
+          showAppToast(msg, { error: true });
+          notice(msg);
+          return;
+        }
         showAppToast(t('人声隔离已应用'));
       })
       .catch((err: unknown) => {
@@ -113,6 +127,7 @@ export function applyLibraryToTrack(
   trackId: TrackId,
   startFrame: number,
   ripple: boolean,
+  overwrite = false,
 ): boolean {
   const trackIds = timelineTrackIds(state);
   if (payload.kind === 'sound') {
@@ -131,7 +146,7 @@ export function applyLibraryToTrack(
         src: payload.src ?? `/sound-effects/${payload.id}.mp3`,
         durationInFrames: dur,
       },
-      { track: trackId, startFrame, ripple },
+      { track: trackId, startFrame, ripple, overwrite },
     );
     return true;
   }
@@ -144,7 +159,7 @@ export function applyLibraryToTrack(
     if (trackKind(state, t) !== 'video') {
       t = trackIds.find((id) => trackKind(state, id) === 'video') ?? defaultTrackId(state, 'video') ?? trackId;
     }
-    commands.addMotionGraphic(tpl, { track: t, startFrame, ripple });
+    commands.addMotionGraphic(tpl, { track: t, startFrame, ripple, overwrite });
     return true;
   }
   return false;

@@ -4,10 +4,10 @@ export const MULTICAM_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'multicam_sync',
     description: [
-      'Audio-based multicam alignment. Pass 2+ video/audio itemIds from the same take;',
-      'optionally set referenceItemId (defaults to first video). Repositions each follower so its picture matches',
-      'the reference audio. Runs in the editor only — no cloud job. After a cut in the reference, split cutaways',
-      'first then sync each piece. Returns synced/skipped ids and lag diagnostics.',
+      'Persistent multicam alignment. Prefers normalized source timecode, then capture clock, and falls back to',
+      'audio correlation per angle. Creates or updates a durable group with its reference/master, source snapshots,',
+      'offsets, confidence and sync evidence; all placements and metadata commit as one undoable state change.',
+      'Every selected angle must use the same playback rate; unify rates before retrying a rejected sync.',
     ].join(' '),
     input_schema: {
       type: 'object',
@@ -21,6 +21,14 @@ export const MULTICAM_TOOL_SCHEMAS: AgentToolSchema[] = [
           type: 'string',
           description: 'Optional reference angle id (must be in itemIds). Defaults to first video clip.',
         },
+        groupId: {
+          type: 'string',
+          description: 'Existing multicam group id to update. Omit to create or discover one from the selected items.',
+        },
+        masterItemId: {
+          type: 'string',
+          description: 'Optional program/master angle item id. Defaults to referenceItemId.',
+        },
       },
       required: ['itemIds'],
     },
@@ -28,26 +36,49 @@ export const MULTICAM_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'change_cam',
     description: [
-      'Multicam camera switch: within [fromSeconds,toSeconds) make targetItemId the visible angle by removing',
-      'the overlapping segments of the OTHER listed angle clips (split at the range bounds, remove without ripple —',
-      'nothing else on the timeline moves; ONE undoable batch). Angles must be video clips, aligned first via',
-      'multicam_sync; clips sharing the target\'s source file count as the target angle. Audio tracks are untouched,',
-      'so keep the program/reference audio on its own audio track. Call once per switch point to assemble a program.',
-      'toSeconds defaults to the end of the listed group. Warns when the target does not cover the whole range.',
+      'Persistent multicam range switch. Pass groupId + targetAngleId and [fromSeconds,toSeconds); the editor',
+      'uses the rippleless split/remove planner, restores source coverage when a prior decision removed that angle,',
+      'and saves a replaceable right-open angle decision. The complete result commits once; failures commit nothing.',
+      'Legacy itemIds + targetItemId remain accepted for a group created by multicam_sync.',
     ].join(' '),
     input_schema: {
       type: 'object',
       properties: {
+        groupId: {
+          type: 'string',
+          description: 'Persistent multicam group id. Preferred over itemIds.',
+        },
+        targetAngleId: {
+          type: 'string',
+          description: 'Persistent angle id (or its original item id) to show.',
+        },
         itemIds: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Current clip ids of ALL angles in the multicam group (target + others). At least 2.',
+          description: 'Legacy group lookup: current/original ids of angles previously passed to multicam_sync.',
         },
-        targetItemId: { type: 'string', description: 'The angle to show in the range (must be in itemIds).' },
+        targetItemId: { type: 'string', description: 'Legacy alias for targetAngleId.' },
         fromSeconds: { type: 'number', description: 'Switch start, timeline seconds.' },
-        toSeconds: { type: 'number', description: 'Switch end (exclusive), timeline seconds. Default: end of the group.' },
+        toSeconds: { type: 'number', description: 'Switch end (exclusive), timeline seconds. Default: end of target source.' },
       },
-      required: ['itemIds', 'targetItemId', 'fromSeconds'],
+      required: ['fromSeconds'],
+    },
+  },
+  {
+    name: 'manage_link_group',
+    description: [
+      'Create or remove persistent timeline edit relationships as one undoable change.',
+      'action=link couples A/V move, trim and remove; action=sync_lock preserves group timing through direct moves',
+      'and ripple edits; action=unlink removes the selected memberships. Pass 2+ itemIds for link/sync_lock.',
+    ].join(' '),
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['link', 'sync_lock', 'unlink'] },
+        itemIds: { type: 'array', items: { type: 'string' } },
+        anchorItemId: { type: 'string', description: 'Optional anchor; defaults to the first resolved item.' },
+      },
+      required: ['action', 'itemIds'],
     },
   },
 ];

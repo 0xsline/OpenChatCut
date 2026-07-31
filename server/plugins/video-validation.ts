@@ -3,6 +3,7 @@ export type VideoResolution = '480p' | '512p' | '720p' | '1080p' | '4k';
 export type KlingVideoReferType = 'feature' | 'base';
 
 export interface VideoRequest {
+  operationId?: string;
   model?: 'seedance2' | 'kling' | 'hailuo';
   prompt?: string;
   name?: string;
@@ -15,6 +16,9 @@ export interface VideoRequest {
   refImagePaths?: string[];
   refVideoPaths?: string[];
   refAudioPaths?: string[];
+  /** Versioned reference descriptors; server derives provider paths from these. */
+  generationReferences?: unknown[];
+  sourceRevisions?: string[];
   refVideoMode?: KlingVideoReferType;
   promptOptimizer?: boolean;
   fastPretreatment?: boolean;

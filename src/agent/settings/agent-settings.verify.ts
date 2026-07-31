@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import {
   DEFAULT_AGENT_SETTINGS, loadAgentSettings, saveAgentSettings, agentSettingsPrompt,
-  createInlineThinkingExtractor, MG_TIERS,
+  createInlineThinkingExtractor, generationSkillForTool, HIGH_COST_TOOLS, MG_TIERS,
 } from './agentSettings';
 
 // ── Default value (node has no localStorage → load uses catch/empty storage, return to default in both cases) ──
@@ -13,6 +13,16 @@ assert.strictEqual(DEFAULT_AGENT_SETTINGS.skillGuard, true);
 assert.strictEqual(DEFAULT_AGENT_SETTINGS.mgTier, 'balance', 'mgTier 默认 balance');
 assert.strictEqual(DEFAULT_AGENT_SETTINGS.planMode, false, 'planMode 默认 false');
 assert.deepStrictEqual([...MG_TIERS], ['speed', 'balance', 'quality']);
+for (const toolName of Object.keys(HIGH_COST_TOOLS)) {
+  assert.notEqual(
+    generationSkillForTool(toolName),
+    null,
+    `${toolName} must be covered by the shared pre-execution runtime guard`,
+  );
+}
+assert.equal(generationSkillForTool('submit_music'), 'audio-gen');
+assert.equal(generationSkillForTool('submit_export'), 'irreversible-export');
+assert.equal(generationSkillForTool('create_motion_graphic_from_code'), 'motion-graphic-gen');
 
 // ── Persistence roundtrip (map version localStorage mock) ──
 const store = new Map<string, string>();

@@ -16,6 +16,7 @@ export const MAX_ROW = 72;
 export const CLIP_COLOR: Record<TimelineItem['kind'], string> = {
   video: theme.clipVideo, image: theme.clipVideo, gif: theme.clipVideo, svg: theme.clipVideo,
   solid: '#4a5568',
+  sequence: '#5b4b8a',
   audio: theme.clipAudio,
   'motion-graphic': theme.clipMg, text: theme.clipText,
 };
@@ -236,8 +237,8 @@ export function fmtRuler(frames: number, fps: number): string {
   return `${mm}:${String(ss).padStart(2, '0')}`;
 }
 
-export type DragMode = 'move' | 'trim-left' | 'trim-right';
-export type EditMode = 'selection' | 'blade' | 'trim' | 'pen' | 'rate-stretch';
+export type DragMode = 'move' | 'trim-left' | 'trim-right' | 'slip';
+export type EditMode = 'selection' | 'blade' | 'trim' | 'slip' | 'pen' | 'rate-stretch';
 export interface Drag {
   id: string; mode: DragMode; baseStart: number; baseDur: number; baseTrack: TrackId;
   baseSrcIn: number; startX: number; deltaF: number; targetTrack: TrackId; snapAt: number | null;

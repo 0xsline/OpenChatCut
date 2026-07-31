@@ -8,13 +8,15 @@
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { rename, stat, unlink } from 'node:fs/promises';
+import { constants, existsSync } from 'node:fs';
+import { copyFile, stat, unlink } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { basename, join } from 'node:path';
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
 
 const MAX_JSON = 8 * 1024;
 const FFMPEG_TIMEOUT_MS = 30 * 60_000;
+export const VOICE_ISOLATION_ENGINE_VERSION = 'ffmpeg-afftdn-v2';
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
@@ -55,7 +57,28 @@ function uploadNameFromSrc(src: string): string | null {
 
 function denoiseStem(sourceName: string): string {
   const stem = sourceName.replace(/\.[^.]+$/, '') || sourceName;
-  return (stem.replace(/[^a-zA-Z0-9_\u4e00-\u9fff-]+/g, '_').slice(0, 80) || 'media') + '.voice';
+  return stem.replace(/[^a-zA-Z0-9_\u4e00-\u9fff-]+/g, '_').slice(0, 72) || 'media';
+}
+
+const artifactSegment = (value: string): string => (
+  value.replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 80) || 'unknown'
+);
+
+export function voiceIsolationArtifactName(
+  sourceName: string,
+  sourceRevision: string,
+  strength: number,
+  forceNonce?: string,
+): string {
+  const identity = [
+    denoiseStem(sourceName),
+    'voice',
+    artifactSegment(sourceRevision),
+    artifactSegment(VOICE_ISOLATION_ENGINE_VERSION),
+    `s${Math.round(Math.max(0, Math.min(100, strength)))}`,
+    forceNonce ? artifactSegment(forceNonce) : undefined,
+  ].filter((part): part is string => part !== undefined);
+  return `${identity.join('.')}.m4a`;
 }
 
 function runFfmpeg(args: string[], timeoutMs: number): Promise<void> {
@@ -111,8 +134,7 @@ async function isolateToFile(
   finalPath: string,
   strength: number,
 ): Promise<number> {
-  const partPath = finalPath.replace(/(\.(m4a|mp3|ogg|wav))$/i, '.tmp$1');
-  await unlink(partPath).catch(() => {});
+  const partPath = finalPath.replace(/(\.(m4a|mp3|ogg|wav))$/i, `.${randomUUID()}.tmp$1`);
   let lastErr: Error | null = null;
   for (const af of filterChains(strength)) {
     try {
@@ -128,7 +150,13 @@ async function isolateToFile(
         ],
         FFMPEG_TIMEOUT_MS,
       );
-      await rename(partPath, finalPath);
+      try {
+        await copyFile(partPath, finalPath, constants.COPYFILE_EXCL);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      } finally {
+        await unlink(partPath).catch(() => {});
+      }
       return (await stat(finalPath)).size;
     } catch (err) {
       lastErr = err instanceof Error ? err : new Error(String(err));
@@ -152,6 +180,7 @@ export function isolateVoicePlugin(): Plugin {
             src?: string;
             strength?: number;
             force?: boolean;
+            sourceRevision?: string;
           };
           const src = String(body.src ?? '').trim();
           const name = uploadNameFromSrc(src);
@@ -168,10 +197,17 @@ export function isolateVoicePlugin(): Plugin {
           const strength = Number.isFinite(Number(body.strength))
             ? Math.max(0, Math.min(100, Number(body.strength)))
             : 70;
-          const stem = denoiseStem(name);
-          const outName = `${stem}.m4a`;
-          const dir = uploadDir();
-          const finalPath = join(dir, outName);
+          const sourceInfo = await stat(inputPath);
+          const sourceRevision = typeof body.sourceRevision === 'string' && body.sourceRevision.trim()
+            ? body.sourceRevision.trim()
+            : `legacy-${sourceInfo.size}-${Math.round(sourceInfo.mtimeMs)}`;
+          const outName = voiceIsolationArtifactName(
+            name,
+            sourceRevision,
+            strength,
+            body.force ? randomUUID() : undefined,
+          );
+          const finalPath = join(uploadDir(), outName);
 
           if (!body.force && existsSync(finalPath)) {
             try {
@@ -183,7 +219,8 @@ export function isolateVoicePlugin(): Plugin {
                   bytes: info.size,
                   cached: true,
                   strength,
-                  engine: 'ffmpeg-open-box',
+                  engine: VOICE_ISOLATION_ENGINE_VERSION,
+                  sourceRevision,
                   source: src,
                 });
                 return;
@@ -191,7 +228,7 @@ export function isolateVoicePlugin(): Plugin {
             } catch { /* re-run */ }
           }
 
-          const bytes = await isolateToFile(inputPath, finalPath, strength);
+          const bytes = await isolateToFile(inputPath, finalPath, 100);
           if (bytes <= 0) {
             sendJson(res, 422, { error: 'isolated audio is empty (source may have no audio track)' });
             return;
@@ -205,8 +242,9 @@ export function isolateVoicePlugin(): Plugin {
             bytes,
             cached: false,
             strength,
-            engine: 'ffmpeg-open-box',
-            note: 'Open-box ffmpeg spectral denoise (not DeepFilterNet3). Playback uses denoisedSrc; master src unchanged.',
+            engine: VOICE_ISOLATION_ENGINE_VERSION,
+            sourceRevision,
+            note: 'Immutable full-wet ffmpeg isolation artifact. Playback applies strength as a dry/wet mix; master src is unchanged.',
             source: src,
           });
         } catch (err) {

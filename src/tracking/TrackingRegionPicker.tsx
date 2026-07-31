@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { TimelineItem } from '../editor/types';
+import { sourceFrameAt } from '../editor/sourceLimit';
 import type { TrackingPoint, TrackingRegion } from './types';
 import { INITIAL_TRACKING_ZOOM, nextTrackingZoom } from './zoom';
 
@@ -59,7 +60,7 @@ export function TrackingRegionPicker({ item, fps, region, points, disabled, onCh
   const { pickerRef, zoom, origin } = useTrackingZoom();
   const aspectRatio = (item.width ?? 16) / (item.height ?? 9);
   const seekToStart = () => {
-    if (videoRef.current) videoRef.current.currentTime = Math.max(FIRST_RENDERABLE_TIME, (item.srcInFrame ?? 0) / fps);
+    if (videoRef.current) videoRef.current.currentTime = Math.max(FIRST_RENDERABLE_TIME, sourceFrameAt(item, 0) / fps);
   };
   const pointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (disabled) return;

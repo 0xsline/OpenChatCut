@@ -1,4 +1,5 @@
 import { scaleItemKeyframes } from './keyframes';
+import { timelineFramesToSourceFrames } from './sourceLimit';
 import type { TimelineItem, TimelineState } from './types';
 
 export type RateStretchEdge = 'left' | 'right';
@@ -11,7 +12,7 @@ export function rateStretchGeometry(
   edge: RateStretchEdge,
   deltaFrames: number,
 ): Pick<TimelineItem, 'startFrame' | 'durationInFrames' | 'playbackRate'> {
-  const sourceSpan = item.durationInFrames * (item.playbackRate ?? 1);
+  const sourceSpan = timelineFramesToSourceFrames(item, item.durationInFrames);
   const endFrame = item.startFrame + item.durationInFrames;
   const minDuration = Math.max(1, Math.ceil(sourceSpan / MAX_RATE));
   const maxByRate = Math.max(minDuration, Math.floor(sourceSpan / MIN_RATE));

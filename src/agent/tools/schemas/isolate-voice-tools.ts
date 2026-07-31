@@ -5,7 +5,7 @@ export const ISOLATE_VOICE_TOOL_SCHEMAS: AgentToolSchema[] = [
     name: 'isolate_voice',
     description:
       'AI Voice Isolation: reduce background noise on a video/audio clip so speech is clearer. ' +
-      'action=apply (default) runs an open-box ffmpeg spectral denoise on the clip source and attaches the result as denoisedSrc (master src stays intact; playback uses the isolated track). ' +
+      'action=apply (default) creates an immutable full-wet ffmpeg isolation artifact and attaches it as denoisedSrc; strength controls non-destructive dry/wet playback while the master src stays unchanged. ' +
       'action=attach points the clip at an existing audio asset after validating denoisedAssetId and sourceAssetId. ' +
       'action=clear removes isolation and restores original audio. ' +
       'strength 0..100 (default 70). Requires /media/uploads source (upload/finalize first).',
@@ -30,7 +30,11 @@ export const ISOLATE_VOICE_TOOL_SCHEMAS: AgentToolSchema[] = [
           type: 'number',
           minimum: 0,
           maximum: 100,
-          description: 'Denoise strength 0..100 (default 70). Higher = more aggressive NR.',
+          description: 'Dry/wet isolation mix 0..100 (default 70). 0 keeps the master dry; 100 uses the isolated artifact.',
+        },
+        force: {
+          type: 'boolean',
+          description: 'apply: create a new immutable artifact even when the same revision/engine/strength artifact already exists.',
         },
       },
       required: ['itemId'],

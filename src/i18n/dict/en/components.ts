@@ -15,6 +15,10 @@ export default {
   // ---- Editor.tsx ("Generated with AI" chat pre-fill) ----
   '参考模板「{name}」，用 create_motion_graphic 生成一个类似风格的动画： @{name} ':
     'Using template "{name}" as a style reference, generate a similar animation with create_motion_graphic: @{name} ',
+  '工程保存失败。请重试；在保存成功前不会关闭或切换工程。':
+    'Project save failed. Retry before closing or switching projects.',
+  '工程仍未保存，已阻止离开。请继续编辑以重试保存。':
+    'The project is still unsaved, so navigation was blocked. Keep editing to retry.',
 
   // ---- Relative time (shared by Dashboard / ExportHistory / VersionHistory) ----
   '刚刚': 'Just now',
@@ -33,7 +37,7 @@ export default {
   '工程': 'Projects',
   '清理所有工程都不引用的上传素材(测试/已删工程残留)': 'Clean up uploaded assets no project references (leftovers from tests/deleted projects)',
   '清理素材': 'Clean Up Media',
-  '导入 .ccproj.json 工程文件(含素材;可来自浏览器版/其它机器)': 'Import a .ccproj.json project file (with assets; from the browser version or another machine)',
+  '导入 .ccproj 工程文件(兼容旧 .ccproj.json)': 'Import a .ccproj project file (legacy .ccproj.json is also supported)',
   '导入工程': 'Import Project',
   '{n} 个': '{n} total',
   '{n} / {total} 个': '{n} of {total}',
@@ -48,7 +52,7 @@ export default {
   '已永久删除「{name}」': 'Permanently deleted “{name}”',
   '重命名': 'Rename',
   '复制': 'Duplicate',
-  '导出为 .ccproj.json(含素材,可在桌面版/其它机器导入)': 'Export as .ccproj.json (with assets; importable in the desktop version or on another machine)',
+  '导出为流式 .ccproj(含素材,可在桌面版/其它机器导入)': 'Export as streaming .ccproj (with assets; importable on another machine)',
   '删除': 'Delete',
 
   // ---- ExportHistory ----

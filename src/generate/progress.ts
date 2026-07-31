@@ -7,7 +7,7 @@ export interface TrackGenerationProgressArgs {
   timeoutSeconds?: number;
 }
 
-interface GenerationJobResult {
+export interface GenerationJobResult {
   assetId?: string;
   kind?: 'audio' | 'video' | 'image';
   name?: string;
@@ -19,7 +19,27 @@ interface GenerationJobResult {
 
 export interface GenerationJobReport extends JobReportBase<'queued' | 'running' | 'succeeded' | 'failed' | 'not_found'> {
   jobId: string;
+  operationId?: string;
   params?: Record<string, unknown>;
+  label?: string;
+  toolName?: string;
+  submitArgsVersion?: 1;
+  submitArgs?: Record<string, unknown>;
+  provider?: string;
+  model?: string;
+  sourceRevisions?: string[];
+  providerTaskId?: string;
+  resultUrls?: string[];
+  retryClass?: 'none' | 'provider-retryable' | 'provider-terminal' | 'download-retryable' | 'restart-recoverable' | 'legacy-unknown';
+  timestamps?: {
+    createdAt?: number;
+    submittedAt?: number;
+    acceptedAt?: number;
+    startedAt?: number;
+    succeededAt?: number;
+    failedAt?: number;
+    updatedAt?: number;
+  };
   result?: GenerationJobResult;
   results?: GenerationJobResult[];
   pendingDownloadUrl?: string;
