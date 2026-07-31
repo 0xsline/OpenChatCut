@@ -132,9 +132,15 @@ try {
 
   const denied = await fetch(`http://127.0.0.1:${proxyPort}/llm/unauthorized`);
   assert.equal(denied.status, 401);
+  assert.match(denied.headers.get('x-openchatcut-request-id') ?? '', /^llm_/);
   assert.deepEqual(await denied.json(), {
-    error: { message: 'Friendly provider error (401). Check Agent settings.' },
-  }, 'raw provider JSON is replaced with one actionable message');
+    error: {
+      message: 'Friendly provider error (401). Check Agent settings.',
+      requestId: denied.headers.get('x-openchatcut-request-id'),
+      kind: 'upstream-http',
+      retryable: false,
+    },
+  }, 'raw provider JSON is replaced with a safe, correlated error envelope');
 } finally {
   await close(proxy);
   await close(upstream);

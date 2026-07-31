@@ -66,7 +66,7 @@ export function llmProxyPlugin(): Plugin {
         },
         onTrace: (event, detail) => {
           console.info(
-            `[llm-proxy] ${event} config=${detail.label ?? 'unknown'} method=${detail.method} path=${detail.path} status=${detail.status ?? '-'} elapsedMs=${detail.elapsedMs}${detail.error ? ` error=${detail.error}` : ''}`,
+            `[llm-proxy] ${event} requestId=${detail.requestId} config=${detail.label ?? 'unknown'} method=${detail.method} path=${detail.path} status=${detail.status ?? '-'} elapsedMs=${detail.elapsedMs}${detail.errorKind ? ` kind=${detail.errorKind}` : ''}${detail.error ? ` error=${detail.error}` : ''}`,
           );
         },
       }));

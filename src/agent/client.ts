@@ -76,20 +76,33 @@ const proxyHeaders = (provider: LlmProvider): Record<string, string> => ({
   'x-openchatcut-provider': provider,
 });
 
+const proxyFetch: typeof fetch = (input, init) => {
+  const request = input instanceof Request ? new Request(input, init) : new Request(input, init);
+  const requestId = typeof window !== 'undefined'
+    ? (window as Window & { __openchatcutChatContext?: { requestId: string } }).__openchatcutChatContext?.requestId
+    : undefined;
+  if (!requestId) return fetch(request);
+  const headers = new Headers(request.headers);
+  headers.set('x-openchatcut-request-id', requestId);
+  return fetch(new Request(request, { headers }));
+};
+
 const anthropicProvider = createAnthropic({
   baseURL: PROXY_API_BASE,
   apiKey: PROXY_KEY,
+  fetch: proxyFetch,
   headers: proxyHeaders('anthropic'),
 });
 const openaiProvider = createOpenAI({
   baseURL: PROXY_API_BASE,
   apiKey: PROXY_KEY,
+  fetch: proxyFetch,
   headers: proxyHeaders('openai'),
 });
 // 有官方专属包的厂商一律用官方包(厂商特有语义 — 如 Gemini thought_signature —
 // 由官方 provider 处理);其余走 openai-compatible。都经 /llm 代理注入真实密钥。
-const proxied = <T>(provider: LlmProvider, create: (o: { baseURL: string; apiKey: string; headers: Record<string, string> }) => T): T =>
-  create({ baseURL: PROXY_API_BASE, apiKey: PROXY_KEY, headers: proxyHeaders(provider) });
+const proxied = <T>(provider: LlmProvider, create: (o: { baseURL: string; apiKey: string; fetch: typeof fetch; headers: Record<string, string> }) => T): T =>
+  create({ baseURL: PROXY_API_BASE, apiKey: PROXY_KEY, fetch: proxyFetch, headers: proxyHeaders(provider) });
 const DEDICATED_PROVIDERS: Partial<Record<LlmProvider, (model: string) => ConfiguredLanguageModel>> = {
   gemini: proxied('gemini', createGoogleGenerativeAI),
   kimi: proxied('kimi', createMoonshotAI),
@@ -107,6 +120,7 @@ function compatibleProvider(provider: LlmProvider): ReturnType<typeof createOpen
     name: provider,
     baseURL: PROXY_API_BASE,
     apiKey: PROXY_KEY,
+    fetch: proxyFetch,
     headers: proxyHeaders(provider),
   });
   compatibleProviders.set(provider, created);

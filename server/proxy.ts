@@ -18,8 +18,24 @@ export interface ProxyRoute {
   /** Replace upstream error bodies with one actionable message. */
   errorMessage?: (status: number, req: IncomingMessage) => string;
   /** Observability hook; must not receive request bodies or secret header values. */
-  onTrace?: (event: 'start' | 'complete' | 'error', detail: { label?: string; method: string; path: string; status?: number; elapsedMs: number; error?: string }) => void;
+  onTrace?: (event: 'start' | 'complete' | 'error', detail: { label?: string; requestId: string; method: string; path: string; status?: number; elapsedMs: number; error?: string; errorKind?: string }) => void;
   traceLabel?: (req: IncomingMessage) => string;
+}
+
+function proxyErrorKind(error: NodeJS.ErrnoException): string {
+  if (error.code === 'EAI_AGAIN') return 'dns-temporary';
+  if (error.code === 'ENOTFOUND') return 'dns-not-found';
+  if (error.code === 'ETIMEDOUT') return 'connect-timeout';
+  if (error.code === 'ECONNREFUSED') return 'connection-refused';
+  if (error.code === 'ECONNRESET') return 'connection-reset';
+  return 'upstream-network';
+}
+
+function requestIdFor(req: IncomingMessage): string {
+  const incoming = req.headers['x-openchatcut-request-id'];
+  return typeof incoming === 'string' && /^[a-zA-Z0-9_-]{8,80}$/.test(incoming)
+    ? incoming
+    : `llm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export function proxyMiddleware(route: ProxyRoute): Middleware {
@@ -27,6 +43,7 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
     const startedAt = Date.now();
     const tracePath = (req.url ?? '/').split('?')[0];
     const traceLabel = route.traceLabel?.(req);
+    const requestId = requestIdFor(req);
     let target: URL;
     try {
       target = new URL(route.target(req));
@@ -34,8 +51,8 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
         throw new Error('unsupported proxy protocol');
       }
     } catch {
-      res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'proxy target is not a valid URL' }));
+      res.writeHead(502, { 'Content-Type': 'application/json', 'x-openchatcut-request-id': requestId });
+      res.end(JSON.stringify({ error: { message: 'proxy target is not a valid URL', requestId, kind: 'proxy-config', retryable: false } }));
       return;
     }
     const headers: Record<string, string | string[]> = {};
@@ -46,7 +63,7 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
     }
     headers.host = target.host;
     for (const [k, v] of Object.entries(route.headers(req))) if (v) headers[k] = v;
-    route.onTrace?.('start', { label: traceLabel, method: req.method ?? 'GET', path: tracePath, elapsedMs: 0 });
+    route.onTrace?.('start', { label: traceLabel, requestId, method: req.method ?? 'GET', path: tracePath, elapsedMs: 0 });
 
     const basePath = target.pathname.replace(/\/$/, '');
     const rawUrl = req.url ?? '/';
@@ -68,11 +85,11 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
       headers,
     }, (upRes) => {
       const status = upRes.statusCode ?? 502;
-      route.onTrace?.('complete', { label: traceLabel, method: req.method ?? 'GET', path: tracePath, status, elapsedMs: Date.now() - startedAt });
+      route.onTrace?.('complete', { label: traceLabel, requestId, method: req.method ?? 'GET', path: tracePath, status, elapsedMs: Date.now() - startedAt });
       if (status >= 400 && route.errorMessage) {
         upRes.resume();
-        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ error: { message: route.errorMessage(status, req) } }));
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'x-openchatcut-request-id': requestId });
+        res.end(JSON.stringify({ error: { message: route.errorMessage(status, req), requestId, kind: 'upstream-http', retryable: status >= 500 || status === 429 } }));
         return;
       }
       const outHeaders: Record<string, string | string[]> = {};
@@ -89,11 +106,12 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
       upRes.pipe(res);
     });
 
-    upstream.on('error', (err) => {
-      route.onTrace?.('error', { label: traceLabel, method: req.method ?? 'GET', path: tracePath, elapsedMs: Date.now() - startedAt, error: err.message });
+    upstream.on('error', (err: NodeJS.ErrnoException) => {
+      const kind = proxyErrorKind(err);
+      route.onTrace?.('error', { label: traceLabel, requestId, method: req.method ?? 'GET', path: tracePath, elapsedMs: Date.now() - startedAt, error: err.message, errorKind: kind });
       if (!res.headersSent) {
-        res.writeHead(502, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: `upstream request failed: ${err.message}` }));
+        res.writeHead(502, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'x-openchatcut-request-id': requestId });
+        res.end(JSON.stringify({ error: { message: `upstream ${kind} failure`, requestId, kind, retryable: true } }));
       } else if (!res.writableEnded) {
         res.end();
       }

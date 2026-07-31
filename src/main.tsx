@@ -18,6 +18,23 @@ void hydratePlugins().catch(() => {});
 
 const root = document.getElementById('root');
 if (!root) throw new Error('no #root');
+
+type ChatFailureContext = { projectId: string; provider: string; model: string; requestId: string };
+declare global { interface Window { __openchatcutChatContext?: ChatFailureContext; } }
+
+const errorDetail = (error: unknown) => error instanceof Error
+  ? { name: error.name, message: error.message, stack: error.stack }
+  : { value: String(error) };
+
+if (import.meta.env.DEV) {
+  window.addEventListener('error', (event) => {
+    console.error('[error-boundary]', 'window-error', { chat: window.__openchatcutChatContext, ...errorDetail(event.error) });
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('[error-boundary]', 'unhandled-rejection', { chat: window.__openchatcutChatContext, ...errorDetail(event.reason) });
+  });
+}
+
 createRoot(root).render(
   <StrictMode>
     <App />

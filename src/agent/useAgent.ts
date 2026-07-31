@@ -148,6 +148,8 @@ export function useAgent(ctx: AgentContext, projectId: string) {
       const trimmed = text.trim();
       if (!trimmed || running || proposalRef.current) return; // resolve a pending proposal first
       setMessages((m) => [...m, { role: 'user', text: trimmed }]);
+      const requestId = `chat_${crypto.randomUUID().replaceAll('-', '')}`;
+      window.__openchatcutChatContext = { projectId, provider: PROVIDER, model: MODEL, requestId };
       const contextEntries = resolveAgentReferences(ctxRef.current, opts?.references ?? []);
       const content = contextEntries.length
         ? `${trimmed}\n\n${JSON.stringify({ type: 'chat_context_entry', entries: contextEntries })}`
@@ -163,6 +165,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
       llmRef.current.push({ role: 'user', content });
       const startedAt = performance.now();
       if (import.meta.env.DEV) console.info('[chat]', 'request-start', {
+        requestId,
         projectId,
         provider: PROVIDER,
         model: MODEL,
@@ -250,6 +253,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
             setMessages((m) => [...m, { role: 'continue', text: String(ev.turns) }]);
           } else {
             if (import.meta.env.DEV) console.error('[chat]', 'agent-error', {
+              requestId,
               projectId,
               provider: PROVIDER,
               model: MODEL,
@@ -317,6 +321,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
           }
         }
         if (import.meta.env.DEV) console.info('[chat]', 'request-complete', {
+          requestId,
           projectId,
           provider: PROVIDER,
           model: MODEL,
