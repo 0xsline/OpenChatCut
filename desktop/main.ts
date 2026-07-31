@@ -17,6 +17,7 @@ const PRELOAD_PATH = join(dirname(fileURLToPath(import.meta.url)), 'preload.cjs'
 const SMOKE = process.env.CC_SMOKE === '1';
 const SMOKE_RENDER = process.env.CC_SMOKE_RENDER === '1';
 const SMOKE_TIMEOUT_MS = SMOKE_RENDER ? 240_000 : 90_000;
+let mainWindow: BrowserWindow | null = null;
 
 function registerDesktopHandlers(): void {
   ipcMain.handle('openchatcut:select-directory', async (event, requestedPath: unknown) => {
@@ -102,6 +103,10 @@ async function boot(): Promise<void> {
       nodeIntegration: false,
       spellcheck: false,
     },
+  });
+  mainWindow = win;
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
   });
   await win.loadURL(`${origin}/`);
 
