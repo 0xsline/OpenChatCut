@@ -172,7 +172,11 @@ export function ChatComposer(props: ChatComposerProps) {
       return p;
     });
   };
-  const canSend = !!value.trim() && !running;
+  // Provider configuration arrives asynchronously from /api/keys. Until it has
+  // loaded, the client module would otherwise use its Anthropic default even when
+  // this installation is configured for a different provider.
+  const modelReady = modelState.loaded && !!activeModel;
+  const canSend = !!value.trim() && !running && modelReady;
   const refList = (kind: 'asset' | 'template') =>
     references.filter((r) => (kind === 'template' ? r.kind === 'template' : r.kind !== 'template'));
 
@@ -373,7 +377,7 @@ export function ChatComposer(props: ChatComposerProps) {
             <span style={{ width: 10, height: 10, background: theme.onAccent, borderRadius: 2 }} />
           </button>
         ) : (
-          <button title={t('发送 (Enter)')} onClick={onSubmit} disabled={!canSend} className="cc-chat-send-btn"
+          <button title={modelReady ? t('发送 (Enter)') : (modelState.loaded ? t('请先配置模型') : t('正在读取模型配置…'))} onClick={onSubmit} disabled={!canSend} className="cc-chat-send-btn"
             style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: canSend ? theme.accent : theme.border, color: canSend ? theme.onAccent : theme.textDim, cursor: canSend ? 'pointer' : 'default', display: 'grid', placeItems: 'center', lineHeight: 0, flexShrink: 0 }}>
             <Icon name="arrowUp" size={16} strokeWidth={2.2} />
           </button>

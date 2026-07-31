@@ -10,6 +10,7 @@ import { ExternalProposalCard } from './ExternalProposalCard';
 import { thinkingPhrase } from './thinkingPhrases';
 import { onSelectionRef, refPromptToken, setSelectionRefMode } from '../../agent/selection-refs';
 import { shouldBlockAutoApply } from '../../agent/skills/skillGuard';
+import { getAgentModelSnapshot } from '../../agent/model-selection';
 import { ProposalCard } from './ProposalCard';
 import { ChatMessage } from './ChatMessage';
 import { ToolGroupRow } from './ToolGroupRow';
@@ -168,7 +169,9 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   }, [proposal, autoApply, applyProposal]);
 
   const submit = () => {
-    if (!input.trim() || running) return;
+    // ChatComposer disables its send control until this is true; keep the same
+    // invariant here for Enter/key-command submission paths.
+    if (!input.trim() || running || !getAgentModelSnapshot().loaded || !getAgentModelSnapshot().activeId) return;
     send(input, { askOnly: mode === 'ask', references: selectedRefs });
     setInput('');
     setSelectedRefs([]);
