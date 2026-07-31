@@ -1,15 +1,4 @@
-import {
-  DEFAULT_LLM_PROVIDER,
-  DEFAULT_OPENAI_API_MODE,
-  defaultModelForProvider,
-  normalizeLlmProvider,
-  normalizeOpenAiApiMode,
-  protocolForProvider,
-  providerApiPath,
-  type LlmProvider,
-  type OpenAiApiMode,
-} from '../../shared/llm-providers';
-
+// Compatibility export for older imports. LLM state lives only in client.ts.
 export {
   DEFAULT_LLM_PROVIDER,
   DEFAULT_OPENAI_API_MODE,
@@ -18,38 +7,11 @@ export {
   normalizeOpenAiApiMode,
   protocolForProvider,
   providerApiPath,
-};
-export type { LlmProvider, OpenAiApiMode };
-
-export let PROVIDER: LlmProvider = DEFAULT_LLM_PROVIDER;
-export let MODEL = defaultModelForProvider(PROVIDER);
-export let OPENAI_API_MODE: OpenAiApiMode = DEFAULT_OPENAI_API_MODE;
-
-const chatTrace = (event: string, detail: Record<string, unknown> = {}) => {
-  if (import.meta.env.DEV) console.info('[chat]', event, detail);
-};
-
-export function setLlmConfig(
-  provider: unknown,
-  model: unknown,
-  openAiApiMode: unknown = OPENAI_API_MODE,
-): void {
-  PROVIDER = normalizeLlmProvider(provider);
-  MODEL = typeof model === 'string' && model.trim()
-    ? model.trim()
-    : defaultModelForProvider(PROVIDER);
-  OPENAI_API_MODE = normalizeOpenAiApiMode(openAiApiMode);
-  chatTrace('model-config-applied', {
-    provider: PROVIDER,
-    model: MODEL,
-    openAiApiMode: OPENAI_API_MODE,
-  });
-}
-
-export function setLlmModel(model: string): void {
-  setLlmConfig(PROVIDER, model);
-}
-
-export function setLlmProvider(provider: unknown): void {
-  setLlmConfig(provider, '');
-}
+  PROVIDER,
+  MODEL,
+  OPENAI_API_MODE,
+  setLlmConfig,
+  setLlmModel,
+  setLlmProvider,
+} from './client';
+export type { LlmProvider, OpenAiApiMode } from './client';

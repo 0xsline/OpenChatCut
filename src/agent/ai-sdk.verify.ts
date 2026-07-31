@@ -4,6 +4,7 @@ import {
   defaultModelForProvider,
   getLanguageModel,
   getLanguageModelProviderOptions,
+  setLlmConfig,
   normalizeLlmProvider,
   normalizeOpenAiApiMode,
   providerApiPath,
@@ -38,6 +39,9 @@ assert.equal(normalizeOpenAiApiMode('unexpected'), 'responses');
 assert.equal((await getLanguageModel('anthropic', 'test-model')).provider, 'anthropic.messages');
 assert.equal((await getLanguageModel('openai', 'test-model')).provider, 'openai.responses');
 assert.equal((await getLanguageModel('openai', 'test-model', 'chat')).provider, 'openai.chat');
+setLlmConfig('openai', 'gpt-5.6-terra', 'chat');
+assert.equal((await getLanguageModel()).provider, 'openai.chat');
+setLlmConfig('anthropic', 'claude-fable-5', 'responses');
 assert.equal((await getLanguageModel('kimi', 'test-model')).provider, 'moonshotai.chat');
 assert.equal((await getLanguageModel('gemini', 'test-model')).provider, 'google.generative-ai');
 assert.equal((await getLanguageModel('openrouter', 'openrouter/auto')).provider, 'openrouter.chat');

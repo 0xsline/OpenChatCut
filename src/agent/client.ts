@@ -36,6 +36,10 @@ export let PROVIDER: LlmProvider = DEFAULT_LLM_PROVIDER;
 export let MODEL = defaultModelForProvider(PROVIDER);
 export let OPENAI_API_MODE: OpenAiApiMode = DEFAULT_OPENAI_API_MODE;
 
+const chatTrace = (event: string, detail: Record<string, unknown> = {}) => {
+  if (import.meta.env?.DEV) console.info('[chat]', event, detail);
+};
+
 export function setLlmConfig(
   provider: unknown,
   model: unknown,
@@ -46,6 +50,11 @@ export function setLlmConfig(
     ? model.trim()
     : defaultModelForProvider(PROVIDER);
   OPENAI_API_MODE = normalizeOpenAiApiMode(openAiApiMode);
+  chatTrace('model-config-applied', {
+    provider: PROVIDER,
+    model: MODEL,
+    openAiApiMode: OPENAI_API_MODE,
+  });
 }
 
 export function setLlmModel(model: string): void {

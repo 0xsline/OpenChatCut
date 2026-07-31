@@ -5,7 +5,7 @@ import {
   normalizeLlmProvider,
   type LlmProvider,
 } from '../../shared/llm-providers';
-import { setLlmConfig } from './providerConfig';
+import { setLlmConfig } from './client';
 
 interface KeyStateLike {
   readonly configured: boolean;
