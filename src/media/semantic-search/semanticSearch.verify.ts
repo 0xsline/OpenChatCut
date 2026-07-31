@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { SemanticClient } from './semanticClient';
+import { resolveSemanticPanelRect } from './semanticPanelPosition';
 import {
   SEMANTIC_MODEL_VERSION, type WorkerRequest, type WorkerResponse,
 } from './types';
@@ -112,8 +113,41 @@ const disposedPromise = client.findDuplicateAssets(exactRecords);
 client.dispose();
 await assert.rejects(disposedPromise, { name: 'AbortError' });
 assert.equal(fakeWorker.terminated, true, 'disposal terminates the worker and rejects pending requests');
+const resumedPromise = client.findDuplicateAssets(exactRecords);
+const resumedRequest = fakeWorker.requests[3] as Extract<WorkerRequest, { type: 'find-duplicates' }>;
+fakeWorker.respond({
+  id: resumedRequest.id,
+  type: 'result',
+  result: {
+    type: 'duplicates',
+    matches: findDuplicateAssetsPacked(resumedRequest.vectors, resumedRequest.threshold),
+  },
+});
+assert.deepEqual(await resumedPromise, exactExpected, 'StrictMode cleanup can restart the semantic worker');
 
 const validIds = new Set(['kept']);
 assert.equal(shouldPruneVector({ scopeId: 'other', modelVersion: 'old', assetId: 'gone' }, 'project-a', validIds), false);
 assert.equal(shouldPruneVector({ scopeId: 'project-a', modelVersion: 'old', assetId: 'kept' }, 'project-a', validIds), true);
 assert.equal(shouldPruneVector({ scopeId: 'project-a', modelVersion: SEMANTIC_MODEL_VERSION, assetId: 'gone' }, 'project-a', validIds), true);
+
+const panelBounds = { top: 40, bottom: 700, left: 320, right: 700, width: 380 };
+assert.deepEqual(
+  resolveSemanticPanelRect(
+    { top: 80, bottom: 108, left: 520, right: 548, width: 28 },
+    panelBounds,
+    { width: 1280, height: 800 },
+    280,
+  ),
+  { top: 114, left: 330, width: 340 },
+  'the floating panel stays inside the media library instead of being clipped by it',
+);
+assert.equal(
+  resolveSemanticPanelRect(
+    { top: 720, bottom: 748, left: 520, right: 548, width: 28 },
+    panelBounds,
+    { width: 1280, height: 800 },
+    280,
+  ).top,
+  434,
+  'the floating panel opens above the trigger near the viewport edge',
+);

@@ -58,8 +58,8 @@ export function validateVideoParams(
 ): void {
   if (body?.resolution !== undefined) {
     if (format !== 'video') throw new ExportRequestError('resolution applies to video exports only');
-    if (typeof body.resolution !== 'string' || !(body.resolution in EXPORT_RESOLUTIONS)) {
-      throw new ExportRequestError('resolution must be 480p, 720p, or 1080p');
+    if (typeof body.resolution !== 'string' || !Object.hasOwn(EXPORT_RESOLUTIONS, body.resolution)) {
+      throw new ExportRequestError('resolution must be 480p, 720p, 1080p, or 4k');
     }
   }
   if (body?.fps !== undefined) {

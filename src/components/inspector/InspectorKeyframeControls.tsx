@@ -1,5 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type PropsWithChildren, type CSSProperties } from 'react';
-import { theme } from '../../theme';
+import { createContext, useContext, useEffect, useRef, useState, type PropsWithChildren } from 'react';
 import type { ClipTransform, Keyframe, KeyframeEasing, KeyframeProp, TimelineItem } from '../../editor/types';
 import { sampleKeyframes } from '../../editor/keyframes';
 import { KEYFRAME_PROPS, getKeyframePropertyDefinition } from '../../editor/keyframeRegistry';
@@ -166,32 +165,39 @@ function KfCell({ kfs, localFrame, inRange, punchValue, onSet, onRemove, onSeekL
   const prev = inRange && kfs ? [...kfs].reverse().find((k) => k.frame < localFrame) : undefined;
   const next = inRange ? kfs?.find((k) => k.frame > localFrame) : undefined;
   const outside = t('把播放头移进这个片段才能打关键帧');
-  const btn: CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, width: 13, height: 16, display: 'grid', placeItems: 'center', fontSize: 10, color: theme.textDim, lineHeight: 1 };
-  const off: CSSProperties = { ...btn, opacity: 0.3, cursor: 'default' };
+  const previousTitle = prev ? t('上一关键帧') : t('没有更早的关键帧');
+  const nextTitle = next ? t('下一关键帧') : t('没有更晚的关键帧');
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-      <button type="button" style={prev ? btn : off} disabled={!prev} title={t('上一关键帧')} onClick={() => prev && onSeekLocal(prev.frame)}>‹</button>
+    <span className="cc-insp-kf">
+      <button className="cc-insp-kf-btn" type="button" disabled={!prev} title={previousTitle} aria-label={previousTitle} onClick={() => prev && onSeekLocal(prev.frame)}>
+        <Icon name="prev" size={10} />
+      </button>
       <button
+        className={`cc-insp-kf-btn key${at ? ' active' : kfs?.length ? ' keyed' : ''}`}
         type="button"
         disabled={!inRange}
-        style={inRange
-          ? { ...btn, fontSize: 11, color: at ? theme.accent : kfs?.length ? theme.textMuted : theme.textDim }
-          : { ...off, fontSize: 11 }}
         title={!inRange ? outside : at ? t('更新播放头处的关键帧') : t('在播放头打关键帧')}
+        aria-label={!inRange ? outside : at ? t('更新播放头处的关键帧') : t('在播放头打关键帧')}
         onClick={() => inRange && onSet(localFrame, punchValue, at?.easing)}
-      >{at ? '◆' : '◇'}</button>
-      <button type="button" style={next ? btn : off} disabled={!next} title={t('下一关键帧')} onClick={() => next && onSeekLocal(next.frame)}>›</button>
-      <button type="button" style={at ? btn : off} disabled={!at} title={t('删除播放头处的关键帧')} onClick={() => at && onRemove(localFrame)}>×</button>
+      >
+        <Icon name="diamond" size={9} filled={!!at} />
+      </button>
+      <button className="cc-insp-kf-btn" type="button" disabled={!next} title={nextTitle} aria-label={nextTitle} onClick={() => next && onSeekLocal(next.frame)}>
+        <Icon name="next" size={10} />
+      </button>
+      <button className="cc-insp-kf-btn danger" type="button" disabled={!at} title={t('删除播放头处的关键帧')} aria-label={t('删除播放头处的关键帧')} onClick={() => at && onRemove(localFrame)}>
+        <Icon name="trash" size={10} />
+      </button>
       {at && (
         <select
+          className="cc-insp-kf-easing"
           value={Array.isArray(at.easing) ? 'bezier' : at.easing ?? 'linear'}
           title={t('缓动（此关键帧到下一帧的曲线）')}
           onChange={(e) => {
             const v = e.target.value;
-            if (v === 'bezier') return; // custom tuples are agent-authored; keep as-is
+            if (v === 'bezier') return;
             onSet(localFrame, at.value, v === 'linear' ? undefined : (v as KeyframeEasing));
           }}
-          style={{ background: theme.bg, color: theme.textDim, border: `0.5px solid ${theme.borderLight}`, borderRadius: 3, fontSize: 9, padding: '0 1px', maxWidth: 50 }}
         >
           {EASING_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
           {Array.isArray(at.easing) && <option value="bezier">{t('贝塞尔')}</option>}
@@ -224,7 +230,7 @@ export function TransformControl({
         const value = kfs?.length ? sampleKeyframes(kfs, kf.localFrame) : r.getBaseValue(item);
         const [min, max] = r.editorRange;
         return (
-          <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div key={r.id} className="cc-insp-control-line">
             <div style={{ flex: 1, minWidth: 0 }}>
               <SliderRow label={t(r.label)} val={value} min={min} max={max} step={r.step} fmt={r.format(value)}
                 inputScale={r.id === 'scale' || r.id === 'opacity' ? 100 : 1}
@@ -303,4 +309,3 @@ export function VolumeControl({
     </div>
   );
 }
-

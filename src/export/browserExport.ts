@@ -2,7 +2,7 @@ import type { RenderMediaOnWebProgress } from '@remotion/web-renderer';
 import type { ComponentType } from 'react';
 import type { TimelineCompositionProps } from '../editor/TimelineComposition';
 import { GLSL_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, timelineDuration, type TimelineState } from '../editor/types';
-import { scaledExportDimensions, type ExportResolution } from './mediaSettings';
+import { webScaledExportDimensions, type ExportResolution } from './mediaSettings';
 
 export type BrowserVideoCodec = 'h264' | 'vp8';
 
@@ -59,70 +59,37 @@ export function browserTimelineBlocker(state: TimelineState): string | null {
   return hasGlTransition ? '包含 WebGL 转场' : null;
 }
 
-/**
- * WebCodecs encoders commonly require even frame dimensions. Remotion's layer
- * canvas uses `Math.ceil(source * scale)`, so find the nearest scale whose
- * actual canvas width and height are both even. Capability detection must use
- * those same dimensions or it can pass while the real encoder still rejects.
- */
+/** Use the shared codec-safe dimensions for capability checks and rendering. */
 export function browserScaledExportDimensions(
   state: Pick<TimelineState, 'width' | 'height'>,
   resolution: ExportResolution,
 ): { width: number; height: number; scale: number } {
-  const sourceWidth = Math.max(1, Number(state.width) || 1920);
-  const sourceHeight = Math.max(1, Number(state.height) || 1080);
-  const base = scaledExportDimensions(state, resolution);
-  const baseWidth = Math.max(2, Math.ceil(sourceWidth * base.scale));
-  const baseHeight = Math.max(2, Math.ceil(sourceHeight * base.scale));
-  if (baseWidth % 2 === 0 && baseHeight % 2 === 0) {
-    return { width: baseWidth, height: baseHeight, scale: base.scale };
-  }
-
-  const nearestEvenWidth = Math.max(2, Math.round(baseWidth / 2) * 2);
-  const nearestEvenHeight = Math.max(2, Math.round(baseHeight / 2) * 2);
-  let best: { width: number; height: number; scale: number; distance: number } | null = null;
-  for (let widthOffset = -32; widthOffset <= 32; widthOffset += 2) {
-    const width = nearestEvenWidth + widthOffset;
-    if (width < 2) continue;
-    for (let heightOffset = -32; heightOffset <= 32; heightOffset += 2) {
-      const height = nearestEvenHeight + heightOffset;
-      if (height < 2) continue;
-      const lower = Math.max((width - 1) / sourceWidth, (height - 1) / sourceHeight);
-      const upper = Math.min(width / sourceWidth, height / sourceHeight);
-      if (lower >= upper || upper < 0.1 || lower > 4) continue;
-      const scale = base.scale > lower && base.scale <= upper
-        ? base.scale
-        : base.scale > upper ? upper : (lower + upper) / 2;
-      if (Math.ceil(sourceWidth * scale) !== width || Math.ceil(sourceHeight * scale) !== height) continue;
-      const distance = Math.abs(scale - base.scale);
-      if (!best || distance < best.distance) best = { width, height, scale, distance };
-    }
-  }
-
-  if (best) return { width: best.width, height: best.height, scale: best.scale };
-  return base;
+  return webScaledExportDimensions(state, resolution);
 }
 
-export async function renderTimelineInBrowser(options: BrowserExportOptions): Promise<BrowserExportAttempt> {
-  const { state, codec, resolution, fps, videoBitrate, signal, onProgress } = options;
-  if (signal?.aborted) throw abortError();
-  if (fps !== state.fps) {
-    return {
-      status: 'unsupported',
-      reason: '浏览器快导暂不转换时间线帧率',
-      issues: [`timeline=${state.fps}fps, requested=${fps}fps`],
-    };
-  }
-  const blocker = browserTimelineBlocker(state);
-  if (blocker) return { status: 'unsupported', reason: blocker, issues: [blocker] };
+interface BrowserRenderConfig {
+  renderer: WebRendererModule;
+  container: 'mp4' | 'webm';
+  audioCodec: 'aac' | 'opus';
+  scale: number;
+  videoBitrate: number | 'high';
+  issues: string[];
+}
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw abortError();
+}
+
+async function loadBrowserRenderConfig(
+  options: BrowserExportOptions,
+): Promise<BrowserRenderConfig | Extract<BrowserExportAttempt, { status: 'unsupported' }>> {
+  const { state, codec, resolution, videoBitrate, signal } = options;
   const { width, height, scale } = browserScaledExportDimensions(state, resolution);
   const container = codec === 'h264' ? 'mp4' : 'webm';
   const audioCodec = codec === 'h264' ? 'aac' : 'opus';
   const resolvedVideoBitrate = videoBitrate ?? 'high';
   const renderer = await (options.loadRenderer ?? (() => import('@remotion/web-renderer')))();
-  if (signal?.aborted) throw abortError();
-
+  throwIfAborted(signal);
   const capability = await renderer.canRenderMediaOnWeb({
     container,
     videoCodec: codec,
@@ -134,19 +101,21 @@ export async function renderTimelineInBrowser(options: BrowserExportOptions): Pr
   });
   const issues = capability.issues.map((issue) => issue.message);
   if (!capability.canRender) {
-    return {
-      status: 'unsupported',
-      reason: issues[0] ?? '当前浏览器不支持此编码配置',
-      issues,
-    };
+    return { status: 'unsupported', reason: issues[0] ?? '当前浏览器不支持此编码配置', issues };
   }
-  if (signal?.aborted) throw abortError();
+  return { renderer, container, audioCodec, scale, videoBitrate: resolvedVideoBitrate, issues };
+}
 
+async function executeBrowserRender(
+  options: BrowserExportOptions,
+  config: BrowserRenderConfig,
+): Promise<Extract<BrowserExportAttempt, { status: 'rendered' }>> {
+  const { state, codec, signal, onProgress } = options;
   const props: TimelineCompositionProps = { state, transparent: false, browserRenderer: true };
   try {
     const { TimelineComposition } = await (options.loadComposition ?? (() => import('../editor/TimelineComposition')))();
-    if (signal?.aborted) throw abortError();
-    const result = await renderer.renderMediaOnWeb({
+    throwIfAborted(signal);
+    const result = await config.renderer.renderMediaOnWeb({
       composition: {
         id: 'openchatcut-timeline-browser',
         component: TimelineComposition,
@@ -157,26 +126,44 @@ export async function renderTimelineInBrowser(options: BrowserExportOptions): Pr
         defaultProps: props,
       },
       inputProps: props,
-      container,
+      container: config.container,
       videoCodec: codec,
-      audioCodec,
-      scale,
+      audioCodec: config.audioCodec,
+      scale: config.scale,
       signal,
       onProgress,
       hardwareAcceleration: 'prefer-hardware',
       pageResponsiveness: 'medium',
-      videoBitrate: resolvedVideoBitrate,
+      videoBitrate: config.videoBitrate,
       audioBitrate: 'high',
       transparent: false,
     });
-    if (signal?.aborted) throw abortError();
+    throwIfAborted(signal);
     const blob = await result.getBlob();
-    if (signal?.aborted) throw abortError();
-    return { status: 'rendered', blob, issues };
+    throwIfAborted(signal);
+    return { status: 'rendered', blob, issues: config.issues };
   } catch (error) {
-    if (signal?.aborted) throw abortError();
+    throwIfAborted(signal);
     throw error;
   }
+}
+
+export async function renderTimelineInBrowser(options: BrowserExportOptions): Promise<BrowserExportAttempt> {
+  const { state, fps, signal } = options;
+  throwIfAborted(signal);
+  if (fps !== state.fps) {
+    return {
+      status: 'unsupported',
+      reason: '浏览器快导暂不转换时间线帧率',
+      issues: [`timeline=${state.fps}fps, requested=${fps}fps`],
+    };
+  }
+  const blocker = browserTimelineBlocker(state);
+  if (blocker) return { status: 'unsupported', reason: blocker, issues: [blocker] };
+  const config = await loadBrowserRenderConfig(options);
+  if ('status' in config) return config;
+  throwIfAborted(signal);
+  return executeBrowserRender(options, config);
 }
 
 /** Keep fallback policy in one testable place: abort never starts a server job. */

@@ -47,7 +47,10 @@ function InspectorHeader({ panel }: { panel: InspectorPanelProps }) {
       className="cc-insp-header"
     >
       <span className={`cc-insp-chevron${panel.collapsed ? ' closed' : ''}`}><Icon name="chevronDown" size={12} /></span>
-      <span className="cc-insp-title">{t('属性')}{item ? ` · ${item.name}` : ''}</span>
+      <span className="cc-insp-heading">
+        <span className="cc-insp-title">{t('片段属性')}</span>
+        {item && <span className="cc-insp-title-name" title={item.name}>{item.name}</span>}
+      </span>
       {item?.denoisedSrc && <span className="cc-insp-pill">{t('人声隔离')}</span>}
     </button>
   );

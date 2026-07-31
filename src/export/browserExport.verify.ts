@@ -23,16 +23,37 @@ const state: TimelineState = {
   }],
 };
 
-assert.deepEqual(browserScaledExportDimensions(state, '480p'), {
-  width: 854,
-  height: 480,
-  scale: 480 / 1080,
-});
-assert.deepEqual(browserScaledExportDimensions({ width: 1080, height: 1920 }, '480p'), {
-  width: 480,
-  height: 854,
-  scale: 480 / 1080,
-});
+function assertBrowserDimensions(
+  source: { width: number; height: number },
+  resolution: Parameters<typeof browserScaledExportDimensions>[1],
+  expected: { width: number; height: number },
+): void {
+  const actual = browserScaledExportDimensions(source, resolution);
+  assert.deepEqual({ width: actual.width, height: actual.height }, expected);
+  assert.equal(Math.ceil(source.width * actual.scale), expected.width);
+  assert.equal(Math.ceil(source.height * actual.scale), expected.height);
+}
+
+assertBrowserDimensions(state, '480p', { width: 854, height: 480 });
+assertBrowserDimensions({ width: 1080, height: 1920 }, '480p', { width: 480, height: 854 });
+assertBrowserDimensions(state, '4k', { width: 3840, height: 2160 });
+assertBrowserDimensions({ width: 1080, height: 1920 }, '4k', { width: 2160, height: 3840 });
+const upscaled480p = browserScaledExportDimensions({ width: 854, height: 480 }, '4k');
+assert.equal(upscaled480p.height, 2160);
+assert.equal(upscaled480p.width % 2, 0);
+assert.equal(Math.ceil(854 * upscaled480p.scale), upscaled480p.width);
+assert.equal(Math.ceil(480 * upscaled480p.scale), upscaled480p.height);
+const portraitCustom = browserScaledExportDimensions({ width: 100, height: 138 }, '4k');
+assert.deepEqual({ width: portraitCustom.width, height: portraitCustom.height }, { width: 2160, height: 2980 });
+assert.equal(Math.ceil(100 * portraitCustom.scale), portraitCustom.width);
+assert.equal(Math.ceil(138 * portraitCustom.scale), portraitCustom.height);
+const narrowCustom = browserScaledExportDimensions({ width: 25, height: 45 }, '4k');
+assert.deepEqual({ width: narrowCustom.width, height: narrowCustom.height }, { width: 2160, height: 3888 });
+assert.equal(Math.ceil(25 * narrowCustom.scale), narrowCustom.width);
+assert.equal(Math.ceil(45 * narrowCustom.scale), narrowCustom.height);
+
+
+
 
 let loaderCalls = 0;
 const retimed = await renderTimelineInBrowser({
@@ -115,7 +136,7 @@ assert.deepEqual(capabilityCalls[0], {
   audioBitrate: 'high',
 });
 assert.equal(renderCalls[0].container, 'mp4');
-assert.equal(renderCalls[0].scale, 720 / 1080);
+assert.equal(renderCalls[0].scale, browserScaledExportDimensions(state, '720p').scale);
 assert.equal((renderCalls[0].inputProps as { browserRenderer: boolean }).browserRenderer, true);
 
 await renderTimelineInBrowser({

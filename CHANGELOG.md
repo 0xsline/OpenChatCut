@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased] / [未发布]
 
+### Added / 新增
+
+- Added validated 4K video export across browser and server render paths, producing a 2160-pixel short edge (`3840×2160` for 16:9 projects) with matching bitrate and quality-check expectations.
+  新增经校验的 4K 成片导出，覆盖浏览器与服务端渲染链路；短边输出 2160 像素（16:9 工程为 `3840×2160`），并同步适配码率与质量检查预期。
+
 ### Changed / 变更
 
 - Virtualized large resource, media-pool, and timeline surfaces; thumbnails and media previews now activate only near the viewport or on hover, while timeline pointer work is frame-coalesced and magnetic snap points are cached for each gesture.
@@ -24,6 +29,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   新增去重且有保留上限的自动工程版本：编辑空闲后、每五分钟以及 Agent 应用改动前自动留档；手动命名版本不受自动保留上限影响。
 - Added Auto, smaller-file, recommended, high-quality, and bounded custom video-bitrate controls across browser and server export paths.
   为浏览器与服务端导出链路新增自动、小文件、推荐、高质量及带边界校验的自定义视频码率控制。
+- Clarified that inspector controls affect the selected timeline clip rather than its source media, and improved property hierarchy, numeric-field affordances, and keyframe-control states.
+  明确属性面板编辑的是当前时间线片段而非源素材，并优化属性层级、数值输入辨识度与关键帧控件状态。
+- Refined the export workbench with aligned parameter rows, restrained selected states, clearer format/codec language, and an output summary covering codec, dimensions, frame rate, bitrate, and filename.
+  优化导出工作台：统一参数行对齐与选中态，澄清格式/编码语义，并在输出摘要中展示编码、尺寸、帧率、码率与文件名。
 
 ### Fixed / 修复
 

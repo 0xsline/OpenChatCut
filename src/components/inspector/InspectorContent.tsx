@@ -219,14 +219,22 @@ function MotionGraphicFields({ item, schema, onChange }: {
 function InspectorHint({ item }: { item: TimelineItem }) {
   const t = useT();
   const labels: Partial<Record<TimelineItem['kind'], string>> = {
-    audio: t('音频片段。可在时间线上拖动位置、裁剪首尾。'),
-    video: t('视频片段。可在时间线上拖动位置、裁剪首尾（左裁剪推进源入点）。'),
-    image: t('图片片段。'),
-    gif: t('GIF 片段。'),
-    svg: t('SVG 片段。'),
-    solid: t('纯色片段。'),
-    text: t('文字片段。'),
+    audio: '音频',
+    video: '视频',
+    image: '图片',
+    gif: 'GIF',
+    svg: 'SVG',
+    solid: '纯色',
+    text: '文字',
+    'motion-graphic': '动效图形',
   };
-  const label = labels[item.kind];
-  return label ? <div className="cc-insp-hint">{label}</div> : null;
+  const sourceBacked = ['audio', 'video', 'image', 'gif', 'svg'].includes(item.kind);
+  return (
+    <div className="cc-insp-scope">
+      <span className="cc-insp-scope-kind">{t(labels[item.kind] ?? '片段')}</span>
+      <span>{sourceBacked
+        ? t('仅作用于当前时间线片段，不修改媒体池中的源文件。')
+        : t('仅作用于当前时间线片段。')}</span>
+    </div>
+  );
 }
