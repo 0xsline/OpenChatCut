@@ -21,6 +21,8 @@ import {
   EXPORT_RESOLUTIONS,
   type ExportResolution,
 } from './mediaSettings';
+import type { ExportDestination } from './exportDestination';
+import type { ExportEngineInfo, ExportEngineReason } from './exportWorkflowTypes';
 import {
   useExportWorkflow,
   type ExportProgress,
@@ -76,7 +78,12 @@ export interface ExportSubtitleSettings {
 export interface ExportWorkflowModel {
   autoQaEnabled: boolean;
   busy: string | null;
-  cancelBrowserExport: () => void;
+  cancelExport: () => void;
+  chooseDestination: () => Promise<void>;
+  choosingDestination: boolean;
+  destination: ExportDestination;
+  engineInfo: ExportEngineInfo | null;
+  engineReason: ExportEngineReason;
   clock: number;
   error: string | null;
   progress: ExportProgress | null;
@@ -113,9 +120,8 @@ function defaultResolution(state: TimelineState): ExportResolution {
 }
 
 function useVideoSettings(state: TimelineState): ExportVideoSettings {
-  const initialResolution = useMemo(() => defaultResolution(state), [state.width, state.height]);
   const [codec, setCodec] = useState<'h264' | 'vp8'>('h264');
-  const [resolution, setResolution] = useState<ExportResolution>(initialResolution);
+  const [resolution, setResolution] = useState<ExportResolution>(() => defaultResolution(state));
   const initialFps = EXPORT_FPS.some((candidate) => candidate === state.fps) ? state.fps : 30;
   const [fps, setFps] = useState(initialFps);
   const [bitrateMode, setBitrateMode] = useState<VideoBitrateMode>('auto');

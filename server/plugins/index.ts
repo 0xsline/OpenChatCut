@@ -8,6 +8,8 @@ import { projectStorePlugin } from "./project-store.ts";
 import { extensionStorePlugin } from "./extension-store.ts";
 import { exportPlugin } from "./export.ts";
 import { exportQaPlugin } from "./export-qa.ts";
+import { exportDestinationPlugin } from "./export-destination.ts";
+import { exportStagePlugin } from "./export-stage.ts";
 import { uploadPlugin } from "./upload.ts";
 import { mobileUploadPlugin } from "./mobile-upload.ts";
 import { uploadMultipartPlugin } from "./upload-multipart.ts";
@@ -46,7 +48,9 @@ export function serverPlugins(): Plugin[] {
     extensionStorePlugin(),
     externalAgentPlugin(),
     settingsPlugin(),
+    exportStagePlugin(),
     exportPlugin(),
+    exportDestinationPlugin(),
     exportQaPlugin(),
     uploadMultipartPlugin(),
     uploadPlugin(),

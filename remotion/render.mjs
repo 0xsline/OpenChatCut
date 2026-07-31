@@ -4,16 +4,17 @@
 // at render time in headless Chrome exactly as the Player does, so audio muxes
 // natively and no template porting is needed.
 import { bundle } from '@remotion/bundler';
-import { selectComposition, renderMedia, renderStill } from '@remotion/renderer';
+import { makeCancelSignal, RenderInternals, selectComposition, renderMedia, renderStill } from '@remotion/renderer';
 import path from 'node:path';
 import { cp, mkdir, rm, symlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import {
+  h264FfmpegOverride,
   remotionHardwareAcceleration,
   resolveH264VideoBitrate,
   resolveOffthreadVideoThreads,
   resolveRenderConcurrency,
-  withHardwareEncoderFallback,
+  withEncoderProfileFallback,
 } from './performance.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -25,6 +26,29 @@ const PUBLIC_DIR = path.join(REPO_ROOT, 'public');
 const UPLOAD_DIR = path.join(PUBLIC_DIR, 'media', 'uploads');
 const COMPOSITION_ID = 'timeline';
 
+const H264_PROFILE_LABELS = {
+  h264_videotoolbox: 'Apple VideoToolbox',
+  h264_nvenc: 'NVIDIA NVENC',
+  h264_qsv: 'Intel Quick Sync Video',
+  h264_amf: 'AMD AMF',
+  h264_vaapi: 'Linux VA-API',
+  libx264: 'Software (libx264)',
+};
+
+function normalizeH264Profile(codec, profile) {
+  if (codec !== 'h264') return undefined;
+  const id = profile?.id;
+  if (typeof id !== 'string' || !Object.hasOwn(H264_PROFILE_LABELS, id)) {
+    return { id: 'libx264', label: H264_PROFILE_LABELS.libx264, hardware: false, transport: 'server' };
+  }
+  return {
+    id,
+    label: H264_PROFILE_LABELS[id],
+    hardware: id !== 'libx264',
+    transport: 'server',
+  };
+}
+
 // Bundling is expensive (webpack over the whole app + @babel/standalone), so we
 // build the serve bundle once and reuse the serveUrl across every render.
 let bundlePromise;
@@ -35,45 +59,73 @@ let bundlePromise;
 // (Default undefined = Remotion self-seeking/self-downloading, dev behavior remains unchanged).
 const browserExecutable = () => process.env.CC_BROWSER_EXECUTABLE || undefined;
 
-const renderConcurrency = () => resolveRenderConcurrency();
-const offthreadVideoThreads = () => resolveOffthreadVideoThreads();
+export function currentRenderConcurrency() {
+  return resolveRenderConcurrency();
+}
 
-/**
- * Prefer the platform encoder, but retry with software when the encoder exists
- * in FFmpeg yet the actual GPU/driver is unavailable (common on Windows VMs and
- * systems without an NVIDIA device). Remotion's own probe only checks whether
- * the encoder is listed in the bundled FFmpeg build.
- */
+export function remotionFfmpegPath() {
+  return RenderInternals.getExecutablePath({
+    type: 'ffmpeg',
+    indent: false,
+    logLevel: 'error',
+    binariesDirectory: null,
+  });
+}
+
+const offthreadVideoThreads = () => resolveOffthreadVideoThreads();
+function remotionCancelSignal(signal) {
+  if (!signal) return undefined;
+  const cancellation = makeCancelSignal();
+  if (signal.aborted) cancellation.cancel();
+  else signal.addEventListener('abort', cancellation.cancel, { once: true });
+  return cancellation.cancelSignal;
+}
+
+
+/** Render with the selected probed engine, then make a truthful software retry. */
 async function renderMediaOptimized(options) {
-  const hardwareAcceleration = remotionHardwareAcceleration(options.codec);
-  const automaticHardwareBitrate = hardwareAcceleration !== 'disable' && !options.videoBitrate
+  const { h264Profile, vaapiDevice, ...renderOptions } = options;
+  const profile = normalizeH264Profile(renderOptions.codec, h264Profile);
+  const hardwareAcceleration = remotionHardwareAcceleration(renderOptions.codec, {
+    encoder: profile?.id,
+  });
+  const customOverride = profile?.hardware && hardwareAcceleration === 'disable'
+    ? h264FfmpegOverride(profile.id, { vaapiDevice })
+    : undefined;
+  const automaticBitrate = profile?.hardware && !renderOptions.videoBitrate
     ? resolveH264VideoBitrate({
-      width: options.composition.width,
-      height: options.composition.height,
-      fps: options.composition.fps,
-      scale: options.scale ?? 1,
+      width: renderOptions.composition.width,
+      height: renderOptions.composition.height,
+      fps: renderOptions.composition.fps,
+      scale: renderOptions.scale ?? 1,
     })
     : null;
-  const optimized = {
-    ...options,
-    concurrency: renderConcurrency(),
+  const hardwareOptions = {
+    ...renderOptions,
+    concurrency: currentRenderConcurrency(),
     offthreadVideoThreads: offthreadVideoThreads(),
     hardwareAcceleration,
-    ...(automaticHardwareBitrate ? { videoBitrate: automaticHardwareBitrate } : {}),
+    ...(customOverride ? { ffmpegOverride: customOverride } : {}),
+    ...(automaticBitrate ? { videoBitrate: automaticBitrate } : {}),
   };
-  return withHardwareEncoderFallback({
+  if (!profile) return { result: await renderMedia(hardwareOptions), encoder: undefined };
+  return withEncoderProfileFallback({
     render: renderMedia,
-    hardwareOptions: optimized,
+    hardwareOptions,
     softwareOptions: {
-      ...optimized,
+      ...hardwareOptions,
       hardwareAcceleration: 'disable',
-      ...(automaticHardwareBitrate ? { videoBitrate: null } : {}),
+      ffmpegOverride: undefined,
+      ...(automaticBitrate ? { videoBitrate: null } : {}),
     },
+    hardwareProfile: profile,
     cleanup: async () => {
-      if (options.outputLocation) await rm(options.outputLocation, { force: true }).catch(() => {});
+      if (renderOptions.outputLocation) {
+        await rm(renderOptions.outputLocation, { force: true }).catch(() => {});
+      }
     },
     onFallback: () => {
-      console.warn(`[render] hardware encoder unavailable; retrying ${options.codec} with software encoding`);
+      console.warn(`[render] ${profile.label} failed; retrying ${renderOptions.codec} with software encoding`);
     },
   });
 }
@@ -177,8 +229,10 @@ async function getServeUrl() {
  * @param {'h264'|'vp8'|'mp3'|'wav'} [args.codec]
  * @param {[number, number]} [args.frameRange] inclusive Remotion frame range
  * @param {number} [args.videoBitrate] video bitrate in bits per second
+ * @param {{id:string,label:string,hardware:boolean,transport:'server'}} [args.h264Profile]
+ * @param {string} [args.vaapiDevice]
  * @param {(progress: number) => void} [args.onProgress]  0..1
- * @returns {Promise<string>} the outputLocation
+ * @param {AbortSignal} [args.signal]
  */
 export async function renderTimeline({
   state,
@@ -188,37 +242,48 @@ export async function renderTimeline({
   frameRange,
   scale,
   videoBitrate,
+  h264Profile,
+  vaapiDevice,
+  signal,
 }) {
   if (!state || typeof state !== 'object' || !Array.isArray(state.items)) {
     throw new Error('renderTimeline: a valid TimelineState (with items[]) is required');
   }
   if (!outputLocation) throw new Error('renderTimeline: outputLocation is required');
+  signal?.throwIfAborted();
+  const cancelSignal = remotionCancelSignal(signal);
 
   const serveUrl = await getServeUrl();
   const inputProps = { state };
-
-  const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps, browserExecutable: browserExecutable() });
-
-  await renderMediaOptimized({
+  const composition = await selectComposition({
+    serveUrl, id: COMPOSITION_ID, inputProps, browserExecutable: browserExecutable(),
+  });
+  signal?.throwIfAborted();
+  const rendered = await renderMediaOptimized({
     serveUrl,
     composition,
     codec,
     frameRange,
     inputProps,
     outputLocation,
-    // Resolution export: scale by short side (1080p timeline select 720p → scale 2/3); default 1 does not scale
+    h264Profile,
+    vaapiDevice,
     scale: scale && Number.isFinite(scale) && scale > 0 ? scale : 1,
     videoBitrate: Number.isFinite(videoBitrate) && videoBitrate > 0
       ? `${Math.round(videoBitrate / 1000)}k`
       : undefined,
-    // GLSL transitions need WebGL2 in headless Chrome; 'angle' uses the native
-    // GPU backend (Metal on macOS). Swap to 'swangle' (SwiftShader) on servers.
     chromiumOptions: { gl: 'angle' },
     browserExecutable: browserExecutable(),
     onProgress: onProgress ? ({ progress }) => onProgress(progress) : undefined,
+    cancelSignal,
   });
-
-  return outputLocation;
+  return {
+    outputLocation,
+    ...(rendered.encoder ? { encoder: rendered.encoder } : {}),
+    ...(rendered.encoderFallbackReason
+      ? { encoderFallbackReason: rendered.encoderFallbackReason }
+      : {}),
+  };
 }
 
 /**
@@ -231,24 +296,31 @@ export async function renderTimeline({
  * @param {'prores'|'vp8'|'h264'} [args.codec]
  * @param {boolean} [args.transparent]  render over transparency + carry alpha
  */
-export async function renderClip({ state, outputLocation, codec = 'vp8', transparent = true }) {
+export async function renderClip({
+  state,
+  outputLocation,
+  codec = 'vp8',
+  transparent = true,
+  h264Profile,
+  vaapiDevice,
+}) {
   if (!state || !Array.isArray(state.items) || !state.items.length) {
     throw new Error('renderClip: a single-item TimelineState is required');
   }
   if (!outputLocation) throw new Error('renderClip: outputLocation is required');
   const serveUrl = await getServeUrl();
   const inputProps = { state, transparent };
-  const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps, browserExecutable: browserExecutable() });
+  const composition = await selectComposition({
+    serveUrl, id: COMPOSITION_ID, inputProps, browserExecutable: browserExecutable(),
+  });
   await renderMediaOptimized({
     serveUrl,
     composition,
     codec,
     inputProps,
     outputLocation,
-    // alpha: png intermediate carries the alpha channel; ProRes 4444 needs the
-    // explicit yuva444 pixel format (without it, it falls back to opaque 422).
-    // (vp8/vp9 alpha webm doesn't work in this ffmpeg build, so convert to video uses
-    // opaque h264 — see clipExport.ts.)
+    h264Profile,
+    vaapiDevice,
     ...(transparent && codec === 'prores'
       ? { proResProfile: '4444', imageFormat: 'png', pixelFormat: 'yuva444p10le' }
       : {}),

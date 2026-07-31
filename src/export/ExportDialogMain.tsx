@@ -1,26 +1,34 @@
 import type { TimelineState } from '../editor/types';
 import { useT } from '../i18n/locale';
+import { ExportDestinationBar } from './ExportDestinationBar';
 import { ExportFooter } from './ExportDialogFooter';
 import { ExportTabContent } from './ExportDialogTabs';
 import { EXPORT_TABS, type ExportDialogModel } from './useExportDialogModel';
 import type { ExportTab, RenderEngine } from './useExportWorkflow';
+import type { ExportEngineInfo } from './exportWorkflowTypes';
 
-function RenderBadge({ tab, renderEngine }: { tab: ExportTab; renderEngine: RenderEngine }) {
+function RenderBadge({ tab, renderEngine, engine, reason }: {
+  tab: ExportTab;
+  renderEngine: RenderEngine;
+  engine: ExportEngineInfo | null;
+  reason: string | null;
+}) {
   const t = useT();
   const label = tab !== 'video' ? t('本机渲染')
-    : renderEngine === 'server' ? t('兼容渲染')
-      : renderEngine === 'browser' ? t('浏览器加速')
-        : renderEngine === 'checking' ? t('检测浏览器') : t('浏览器优先');
-  return <span className="cc-export-local-badge"><i />{label}</span>;
+    : engine ? t(engine.label)
+      : renderEngine === 'checking' ? t('正在检测本机') : t('本机自适应');
+  const accelerated = tab !== 'video' || engine?.hardware;
+  return <span className={`cc-export-local-badge${accelerated ? ' accelerated' : ''}`} title={reason ? t(reason) : undefined}><i />{label}</span>;
 }
 
-function ExportMainHeader({ tab, renderEngine }: { tab: ExportTab; renderEngine: RenderEngine }) {
+function ExportMainHeader({ model }: { model: ExportDialogModel }) {
   const t = useT();
-  const activeTab = EXPORT_TABS.find((entry) => entry.key === tab) ?? EXPORT_TABS[0];
+  const activeTab = EXPORT_TABS.find((entry) => entry.key === model.tab) ?? EXPORT_TABS[0];
   return (
     <div className="cc-export-main-header">
       <div><h3>{t(activeTab.label)}</h3><p>{activeTab.summary}</p></div>
-      <RenderBadge tab={tab} renderEngine={renderEngine} />
+      <RenderBadge tab={model.tab} renderEngine={model.workflow.renderEngine}
+        engine={model.workflow.engineInfo} reason={model.workflow.engineReason} />
     </div>
   );
 }
@@ -29,7 +37,7 @@ export function ExportDialogMain({ state, model }: { state: TimelineState; model
   const { workflow } = model;
   return (
     <main className="cc-export-main">
-      <ExportMainHeader tab={model.tab} renderEngine={workflow.renderEngine} />
+      <ExportMainHeader model={model} />
       <div className="cc-export-content" role="tabpanel" id={`cc-export-content-${model.tab}`}
         aria-labelledby={`cc-export-tab-${model.tab}`}>
         <ExportTabContent
@@ -41,6 +49,8 @@ export function ExportDialogMain({ state, model }: { state: TimelineState; model
         />
         {workflow.error && <p className="cc-export-error">{workflow.error}</p>}
       </div>
+      <ExportDestinationBar busy={!!workflow.busy} choosing={workflow.choosingDestination}
+        destination={workflow.destination} onChoose={workflow.chooseDestination} />
       <ExportFooter tab={model.tab} outputName={model.outputName} videoSummary={model.videoSummary}
         disabled={model.disabled} workflow={workflow} />
     </main>

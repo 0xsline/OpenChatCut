@@ -1,9 +1,12 @@
 import './chdir-first.ts';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from 'electron';
 import { startEmbeddedServer } from './embedded-server.ts';
 import { preparePackagedRuntime } from './packaged-runtime.ts';
+import { createExportDirectoryGrant } from '../server/export-destinations.ts';
 
 // Electron main process entry. dev mode: esbuild hits desktop-dist/main.mjs,dist/ in the codebase root;
 // Packaging form: dist/, resonance-bundle, chrome-headless-shell use extraResources.
@@ -17,6 +20,49 @@ const PRELOAD_PATH = join(dirname(fileURLToPath(import.meta.url)), 'preload.cjs'
 const SMOKE = process.env.CC_SMOKE === '1';
 const SMOKE_RENDER = process.env.CC_SMOKE_RENDER === '1';
 const SMOKE_TIMEOUT_MS = SMOKE_RENDER ? 240_000 : 90_000;
+
+interface StoredExportDirectory {
+  version: 1;
+  path: string;
+}
+
+async function validatedDirectory(value: unknown): Promise<string | null> {
+  if (typeof value !== 'string' || !isAbsolute(value)) return null;
+  const path = await realpath(value).catch(() => null);
+  if (!path) return null;
+  const info = await stat(path).catch(() => null);
+  return info?.isDirectory() ? path : null;
+}
+
+async function persistExportDirectory(statePath: string, path: string): Promise<void> {
+  const temporary = `${statePath}.${randomUUID()}.tmp`;
+  const value: StoredExportDirectory = { version: 1, path };
+  await mkdir(dirname(statePath), { recursive: true });
+  try {
+    await writeFile(temporary, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 });
+    await rename(temporary, statePath);
+  } catch (error) {
+    await unlink(temporary).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function restorePersistedExportDirectory(statePath: string): Promise<string | null> {
+  try {
+    const info = await stat(statePath);
+    if (!info.isFile() || info.size > 4_096) throw new Error('invalid export destination state');
+    const stored = JSON.parse(await readFile(statePath, 'utf8')) as unknown;
+    if (typeof stored !== 'object' || stored === null) throw new Error('invalid export destination');
+    const value = stored as Partial<StoredExportDirectory>;
+    if (value.version !== 1) throw new Error('unsupported export destination version');
+    const directory = await validatedDirectory(value.path);
+    if (directory) return directory;
+  } catch {
+    // Missing, malformed, and stale persistence all restore as no destination.
+  }
+  await unlink(statePath).catch(() => undefined);
+  return null;
+}
 
 function registerDesktopHandlers(): void {
   ipcMain.handle('openchatcut:select-directory', async (event, requestedPath: unknown) => {
@@ -33,6 +79,27 @@ function registerDesktopHandlers(): void {
       ? await dialog.showOpenDialog(parent, options)
       : await dialog.showOpenDialog(options);
     return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+  const exportStatePath = join(app.getPath('userData'), 'export-destination.json');
+  ipcMain.handle('openchatcut:select-export-directory', async (event) => {
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    const options: OpenDialogOptions = {
+      title: '选择导出目录',
+      defaultPath: app.getPath('videos'),
+      properties: ['openDirectory', 'createDirectory'],
+    };
+    const result = parent
+      ? await dialog.showOpenDialog(parent, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths[0]) return null;
+    const directory = await validatedDirectory(result.filePaths[0]);
+    if (!directory) throw new Error('所选导出目录不可用');
+    await persistExportDirectory(exportStatePath, directory);
+    return createExportDirectoryGrant(directory);
+  });
+  ipcMain.handle('openchatcut:restore-export-directory', async () => {
+    const directory = await restorePersistedExportDirectory(exportStatePath);
+    return directory ? createExportDirectoryGrant(directory) : null;
   });
 }
 

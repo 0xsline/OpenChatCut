@@ -640,8 +640,19 @@ button, input, select { font: inherit; }
 .cc-export-main-header h3 { margin:0; color:var(--cc-text-strong); font-size:13px; }
 .cc-export-main-header p { margin:3px 0 0; color:var(--cc-text-dim); font:10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cc-export-local-badge { margin-left:auto; display:flex; align-items:center; gap:5px; color:var(--cc-text-muted); font-size:10px; }
-.cc-export-local-badge i { width:5px; height:5px; border-radius:50%; background:var(--cc-success); }
+.cc-export-local-badge i { width:5px; height:5px; border-radius:50%; background:var(--cc-gold); }
+.cc-export-local-badge.accelerated i { background:var(--cc-success); }
 .cc-export-content { min-height:0; flex:1; display:flex; flex-direction:column; gap:11px; padding:14px 16px; overflow-y:auto; }
+.cc-export-destination { min-width:0; display:grid; grid-template-columns:auto minmax(0, 1fr) auto; align-items:center; gap:9px; padding:9px 16px; border-top:0.5px solid var(--cc-border); background:var(--cc-bg); }
+.cc-export-destination-icon { width:28px; height:28px; display:grid; place-items:center; border:0.5px solid var(--cc-border-light); border-radius:4px; color:var(--cc-accent); background:var(--cc-panel); }
+.cc-export-destination-copy { min-width:0; display:block; }
+.cc-export-destination-copy small,.cc-export-destination-copy strong,.cc-export-destination-copy i { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cc-export-destination-copy small { color:var(--cc-text-dim); font-size:9.5px; }
+.cc-export-destination-copy strong { margin-top:1px; color:var(--cc-text-strong); font:10.5px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.cc-export-destination-copy i { margin-top:2px; color:var(--cc-text-dim); font-size:9.5px; font-style:normal; }
+.cc-export-destination button { height:30px; padding:0 10px; border:0.5px solid var(--cc-border-light); border-radius:4px; background:var(--cc-panel); color:var(--cc-text); font-size:10.5px; cursor:pointer; }
+.cc-export-destination button:hover:not(:disabled) { border-color:var(--cc-text-dim); background:var(--cc-hover); }
+.cc-export-destination button:disabled { cursor:default; opacity:.5; }
 .cc-export-field { display:grid; grid-template-columns:78px minmax(0, 1fr); align-items:start; gap:8px; }
 .cc-export-field > span { padding-top:9px; color:var(--cc-text-muted); font-size:11px; font-weight:600; }
 .cc-export-select { width:100%; height:34px; padding:0 9px; border:0.5px solid var(--cc-border-light); border-radius:4px; background:var(--cc-bg); color:var(--cc-text); font:12px inherit; cursor:pointer; }
@@ -705,7 +716,7 @@ button, input, select { font: inherit; }
 .cc-export-cta:hover:not(:disabled) { background:var(--cc-accent-deep); }
 .cc-export-cta:disabled { cursor:default; opacity:.5; }
 .cc-export-tab:disabled { cursor:default; }
-.cc-export-close:focus-visible,.cc-export-tab:focus-visible,.cc-export-select:focus-visible,.cc-export-bitrate-custom:focus-within,.cc-export-seg:focus-visible,.cc-export-cancel:focus-visible,.cc-export-cta:focus-visible { outline:2px solid var(--cc-accent); outline-offset:2px; }
+.cc-export-close:focus-visible,.cc-export-tab:focus-visible,.cc-export-select:focus-visible,.cc-export-bitrate-custom:focus-within,.cc-export-seg:focus-visible,.cc-export-destination button:focus-visible,.cc-export-cancel:focus-visible,.cc-export-cta:focus-visible { outline:2px solid var(--cc-accent); outline-offset:2px; }
 @media (max-width:720px) {
   .cc-export-overlay { padding:8px; }
   .cc-export-panel { width:calc(100vw - 16px); max-height:calc(100vh - 16px); overflow-y:auto; }

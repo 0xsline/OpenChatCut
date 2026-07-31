@@ -71,9 +71,35 @@ function ModelSetupCard({ onOpen }: { onOpen: () => void }) {
   );
 }
 
+function ProjectSearch({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const t = useT();
+  return (
+    <label style={searchBox}>
+      <span style={searchIcon}><Icon name="search" size={13} /></span>
+      <input
+        type="search"
+        aria-label={t('搜索工程')}
+        placeholder={t('搜索工程')}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => { if (event.key === 'Escape') onChange(''); }}
+        autoComplete="off"
+        spellCheck={false}
+        style={searchInput}
+      />
+      {value && (
+        <button type="button" onClick={() => onChange('')} aria-label={t('清除搜索')} style={searchClear}>
+          <Icon name="x" size={12} />
+        </button>
+      )}
+    </label>
+  );
+}
+
 export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDelete, onExport, onImport }: DashboardProps) {
   const t = useT();
   const modelSnapshot = useSyncExternalStore(subscribeAgentModels, getAgentModelSnapshot);
+  const [query, setQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -84,6 +110,10 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
   const [note, setNote] = useState<string | null>(null);  // Light tips for importing/exporting results
   const [busy, setBusy] = useState(false);                // Base64 conversion of large assets is time-consuming and prevents connection points
   const fileRef = useRef<HTMLInputElement>(null);
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleProjects = normalizedQuery
+    ? projects.filter((project) => project.name.toLocaleLowerCase().includes(normalizedQuery))
+    : projects;
 
   // Project card poster frame: first display the cache in parallel (the expired cache is also used first), and then refresh it with two background tasks.
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
@@ -174,10 +204,11 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
         {modelSnapshot.loaded && modelSnapshot.choices.length === 0 && (
           <ModelSetupCard onOpen={() => setSettingsOpen(true)} />
         )}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em' }}>{t('工程')}</h1>
           {note && <span style={{ color: theme.textDim, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{note}</span>}
           <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+            <ProjectSearch value={query} onChange={setQuery} />
             <button onClick={() => setCleanupOpen(true)} style={importBtn} title={t('清理所有工程都不引用的上传素材(测试/已删工程残留)')}>
               <Icon name="trash" size={13} /> {t('清理素材')}
             </button>
@@ -185,7 +216,11 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
               <Icon name="upload" size={13} /> {t('导入工程')}
             </button>
             <input ref={fileRef} type="file" accept=".json,application/json" onChange={pickImport} style={{ display: 'none' }} />
-            <span style={{ color: theme.textDim, fontSize: 12.5 }}>{t('{n} 个', { n: projects.length })}</span>
+            <span style={{ color: theme.textDim, fontSize: 12.5 }}>
+              {normalizedQuery
+                ? t('{n} / {total} 个', { n: visibleProjects.length, total: projects.length })
+                : t('{n} 个', { n: projects.length })}
+            </span>
           </span>
         </div>
 
@@ -195,7 +230,7 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
             <span style={{ fontSize: 13, color: theme.textDim }}>{t('新建工程')}</span>
           </button>
 
-          {projects.map((m) => (
+          {visibleProjects.map((m) => (
             <div key={m.id} style={card}>
               <button onClick={() => onOpen(m.id)} style={thumb} title={t('打开 {name}', { name: m.name })}>
                 {thumbs[m.id] ? (
@@ -246,6 +281,12 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
             </div>
           ))}
         </div>
+        {normalizedQuery && visibleProjects.length === 0 && (
+          <div role="status" style={searchEmpty}>
+            <Icon name="search" size={14} />
+            {t('没有找到匹配“{query}”的工程', { query: query.trim() })}
+          </div>
+        )}
 
        </div>
       </main>
@@ -286,4 +327,23 @@ const modelSetupButton: React.CSSProperties = {
 const importBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: theme.text,
   background: 'none', border: `0.5px solid ${theme.border}`, borderRadius: 6, padding: '4px 10px', cursor: 'pointer',
+};
+const searchBox: React.CSSProperties = {
+  width: 216, position: 'relative', display: 'inline-flex', alignItems: 'center',
+};
+const searchIcon: React.CSSProperties = {
+  position: 'absolute', left: 9, display: 'inline-flex', color: theme.textDim, pointerEvents: 'none',
+};
+const searchInput: React.CSSProperties = {
+  width: '100%', height: 28, boxSizing: 'border-box', padding: '0 30px 0 28px',
+  border: `0.5px solid ${theme.border}`, borderRadius: 4, background: theme.bg, color: theme.text,
+  fontSize: 12, WebkitAppearance: 'none',
+};
+const searchClear: React.CSSProperties = {
+  position: 'absolute', right: 2, width: 24, height: 24, display: 'grid', placeItems: 'center',
+  padding: 0, border: 0, borderRadius: 4, background: 'transparent', color: theme.textDim, cursor: 'pointer',
+};
+const searchEmpty: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 7, marginTop: 16,
+  color: theme.textDim, fontSize: 12,
 };

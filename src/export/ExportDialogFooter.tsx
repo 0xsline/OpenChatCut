@@ -72,8 +72,12 @@ interface ExportFooterProps {
 
 export function ExportFooter({ tab, outputName, videoSummary, disabled, workflow }: ExportFooterProps) {
   const t = useT();
-  const { busy, cancelBrowserExport, clock, progress, renderEngine, run } = workflow;
-  const cancellable = !!busy && (renderEngine === 'checking' || renderEngine === 'browser');
+  const { busy, cancelExport, clock, progress, renderEngine, run } = workflow;
+  const cancellablePhase = progress?.phase === 'queued'
+    || progress?.phase === 'preparing'
+    || progress?.phase === 'rendering';
+  const cancellable = !!busy && cancellablePhase
+    && (renderEngine === 'checking' || renderEngine === 'browser' || renderEngine === 'server');
   return (
     <footer className={`cc-export-footer${progress ? ' has-progress' : ''}`}>
       {progress && <ExportProgressView progress={progress} clock={clock} />}
@@ -83,7 +87,7 @@ export function ExportFooter({ tab, outputName, videoSummary, disabled, workflow
         {tab === 'video' && <small title={outputName}>{outputName}</small>}
       </div>
       {cancellable && (
-        <button type="button" className="cc-export-cancel" onClick={cancelBrowserExport}>{t('取消')}</button>
+        <button type="button" className="cc-export-cancel" onClick={cancelExport}>{t('取消')}</button>
       )}
       <button type="button" className="cc-export-cta" onClick={() => void run()} disabled={disabled}>
         {!busy && <Icon name={progress?.phase === 'completed' ? 'check' : 'download'} size={17} />}

@@ -3,6 +3,8 @@ import type { ComponentType } from 'react';
 import type { TimelineCompositionProps } from '../editor/TimelineComposition';
 import { GLSL_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, timelineDuration, type TimelineState } from '../editor/types';
 import { webScaledExportDimensions, type ExportResolution } from './mediaSettings';
+const DEFAULT_CAPABILITY_BITRATE_BPS = 12_000_000;
+
 
 export type BrowserVideoCodec = 'h264' | 'vp8';
 
@@ -23,6 +25,10 @@ export interface BrowserExportOptions {
 export type BrowserExportAttempt =
   | { status: 'rendered'; blob: Blob; issues: string[] }
   | { status: 'unsupported'; reason: string; issues: string[] };
+export type BrowserExportInspection =
+  | { status: 'supported'; issues: string[]; powerEfficient?: boolean }
+  | Extract<BrowserExportAttempt, { status: 'unsupported' }>;
+
 
 export type VideoExportWithFallback<T> =
   | { engine: 'browser'; attempt: Extract<BrowserExportAttempt, { status: 'rendered' }> }
@@ -105,6 +111,57 @@ async function loadBrowserRenderConfig(
   }
   return { renderer, container, audioCodec, scale, videoBitrate: resolvedVideoBitrate, issues };
 }
+function staticBrowserBlocker(
+  options: BrowserExportOptions,
+): Extract<BrowserExportAttempt, { status: 'unsupported' }> | null {
+  if (options.fps !== options.state.fps) {
+    return {
+      status: 'unsupported',
+      reason: '浏览器快导暂不转换时间线帧率',
+      issues: [`timeline=${options.state.fps}fps, requested=${options.fps}fps`],
+    };
+  }
+  const blocker = browserTimelineBlocker(options.state);
+  return blocker ? { status: 'unsupported', reason: blocker, issues: [blocker] } : null;
+}
+
+async function isBrowserEncodingPowerEfficient(options: BrowserExportOptions): Promise<boolean | undefined> {
+  const capabilities = globalThis.navigator?.mediaCapabilities;
+  if (!capabilities?.encodingInfo) return undefined;
+  const { width, height } = browserScaledExportDimensions(options.state, options.resolution);
+  const contentType = options.codec === 'h264'
+    ? 'video/mp4; codecs="avc1.640028"'
+    : 'video/webm; codecs="vp8"';
+  try {
+    const info = await capabilities.encodingInfo({
+      type: 'record',
+      video: {
+        contentType,
+        width,
+        height,
+        bitrate: options.videoBitrate ?? DEFAULT_CAPABILITY_BITRATE_BPS,
+        framerate: options.fps,
+      },
+    });
+    return info.powerEfficient;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function inspectBrowserExport(options: BrowserExportOptions): Promise<BrowserExportInspection> {
+  throwIfAborted(options.signal);
+  const blocker = staticBrowserBlocker(options);
+  if (blocker) return blocker;
+  const config = await loadBrowserRenderConfig(options);
+  if ('status' in config) return config;
+  return {
+    status: 'supported',
+    issues: config.issues,
+    powerEfficient: await isBrowserEncodingPowerEfficient(options),
+  };
+}
+
 
 async function executeBrowserRender(
   options: BrowserExportOptions,
@@ -149,20 +206,12 @@ async function executeBrowserRender(
 }
 
 export async function renderTimelineInBrowser(options: BrowserExportOptions): Promise<BrowserExportAttempt> {
-  const { state, fps, signal } = options;
-  throwIfAborted(signal);
-  if (fps !== state.fps) {
-    return {
-      status: 'unsupported',
-      reason: '浏览器快导暂不转换时间线帧率',
-      issues: [`timeline=${state.fps}fps, requested=${fps}fps`],
-    };
-  }
-  const blocker = browserTimelineBlocker(state);
-  if (blocker) return { status: 'unsupported', reason: blocker, issues: [blocker] };
+  throwIfAborted(options.signal);
+  const blocker = staticBrowserBlocker(options);
+  if (blocker) return blocker;
   const config = await loadBrowserRenderConfig(options);
   if ('status' in config) return config;
-  throwIfAborted(signal);
+  throwIfAborted(options.signal);
   return executeBrowserRender(options, config);
 }
 

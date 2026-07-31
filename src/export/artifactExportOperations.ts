@@ -1,8 +1,8 @@
 import { captionsToSrt, captionsToTxt } from '../captions/exportCaptions';
 import type { TimelineItem } from '../editor/types';
-import { exportClipMov, renderClipMovBlob } from '../media/clipExport';
+import { renderClipMovBlob } from '../media/clipExport';
 import { recordExport } from '../persist/exportHistoryStore';
-import { downloadBlob, selectExportDirectory, writeExportFile, type ExportDirectoryHandle } from './exportFiles';
+import { writeBlobToDestination, type ExportDestination } from './exportDestination';
 import { timelineToFcpxml } from './fcpxml';
 import { exportMediaDir } from './mediaDir';
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
@@ -14,6 +14,7 @@ import type {
 } from './exportWorkflowTypes';
 
 interface ArtifactExportContext {
+  destination: ExportDestination;
   options: UseExportWorkflowOptions;
   setBusy: StateSetter<string | null>;
   setProgress: StateSetter<ExportProgress | null>;
@@ -32,12 +33,13 @@ async function exportMgBatch(context: ArtifactExportContext): Promise<void> {
       percent: Math.round((index / mgItems.length) * 95),
       detail: context.t('正在渲染第 {i}/{n} 个动态图层', { i: index + 1, n: mgItems.length }),
     } : current);
-    await exportClipMov(state, item);
+    const rendered = await renderClipMovBlob(state, item);
+    await writeBlobToDestination(context.destination, rendered.filename, rendered.blob);
   }
   void recordExport({ name: `${mgItems.length} 个 MG · ProRes 4444`, format: 'video', codec: 'prores', createdAt: Date.now() });
 }
 
-function exportSubtitles(context: ArtifactExportContext): void {
+async function exportSubtitles(context: ArtifactExportContext): Promise<void> {
   const { subtitleCaptions, subtitleFormat, state, base } = context.options;
   if (!subtitleCaptions) throw new Error(context.t('请先开启字幕'));
   const text = subtitleFormat === 'srt'
@@ -45,7 +47,7 @@ function exportSubtitles(context: ArtifactExportContext): void {
     : captionsToTxt(subtitleCaptions, state.items, state.fps);
   if (!text) throw new Error(context.t('当前字幕轨没有可导出的内容'));
   const filename = `${base}.${subtitleFormat}`;
-  downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), filename);
+  await writeBlobToDestination(context.destination, filename, new Blob([text], { type: 'text/plain;charset=utf-8' }));
   void recordExport({ name: filename, format: 'subtitles', createdAt: Date.now() });
 }
 
@@ -55,7 +57,7 @@ function uniqueMgItems(items: TimelineItem[]): Array<[string, TimelineItem]> {
 
 async function renderXmlMgItems(
   context: ArtifactExportContext,
-  directory: ExportDirectoryHandle | null,
+  destination: ExportDestination,
   successfulRenderKeys: string[],
   failedRenderNames: string[],
 ): Promise<void> {
@@ -71,8 +73,7 @@ async function renderXmlMgItems(
     } : current);
     try {
       const rendered = await renderClipMovBlob(context.options.state, item, { filename: motionGraphicRenderFilename(renderKey) });
-      if (directory) await writeExportFile(directory, rendered.filename, rendered.blob);
-      else downloadBlob(rendered.blob, rendered.filename);
+      await writeBlobToDestination(destination, rendered.filename, rendered.blob);
       successfulRenderKeys.push(renderKey);
     } catch {
       failedRenderNames.push(item.name);
@@ -80,7 +81,7 @@ async function renderXmlMgItems(
   }
 }
 
-async function writeXml(context: ArtifactExportContext, directory: ExportDirectoryHandle | null, keys: string[]): Promise<string> {
+async function writeXml(context: ArtifactExportContext, destination: ExportDestination, keys: string[]): Promise<string> {
   const { state, projectName, nleFormat, base } = context.options;
   const xml = timelineToFcpxml(state, {
     title: projectName,
@@ -91,19 +92,18 @@ async function writeXml(context: ArtifactExportContext, directory: ExportDirecto
   const suffix = nleFormat === 'fcp_xml_resolve' ? 'resolve' : 'premiere';
   const filename = `${base}-${suffix}.fcpxml`;
   const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
-  if (directory) await writeExportFile(directory, filename, blob);
-  else downloadBlob(blob, filename);
+  await writeBlobToDestination(destination, filename, blob);
   return filename;
 }
 
 async function exportXml(context: ArtifactExportContext): Promise<void> {
-  const directory = context.options.includeMg ? await selectExportDirectory() : null;
+  const destination = context.destination;
   const successfulRenderKeys: string[] = [];
   const failedRenderNames: string[] = [];
   if (context.options.includeMg) {
-    await renderXmlMgItems(context, directory, successfulRenderKeys, failedRenderNames);
+    await renderXmlMgItems(context, destination, successfulRenderKeys, failedRenderNames);
   }
-  const filename = await writeXml(context, directory, successfulRenderKeys);
+  const filename = await writeXml(context, destination, successfulRenderKeys);
   void recordExport({ name: filename, format: 'xml', createdAt: Date.now() });
   if (failedRenderNames.length) {
     context.setProgress((current) => current ? {

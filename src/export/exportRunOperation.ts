@@ -1,4 +1,5 @@
 import { isAbortError } from './browserExport';
+import { exportDestinationErrorMessage } from './exportDestination';
 import type {
   ExportProgress,
   ExportQaUiState,
@@ -12,6 +13,7 @@ interface ExportRunContext {
   busy: string | null;
   operations: WorkflowOperations;
   options: UseExportWorkflowOptions;
+  prepareDestination: () => Promise<void>;
   progress: ExportProgress | null;
   setBusy: StateSetter<string | null>;
   setClock: StateSetter<number>;
@@ -34,7 +36,7 @@ function markCancelled(context: ExportRunContext): void {
     ...current,
     phase: 'cancelled',
     finishedAt: Date.now(),
-    detail: context.t('已取消浏览器渲染'),
+    detail: context.t('已取消导出'),
   } : current);
 }
 
@@ -51,7 +53,8 @@ async function runExport(context: ExportRunContext): Promise<void> {
   context.setProgress({ phase: 'preparing', percent: 0, startedAt });
   context.setBusy(context.t('准备导出…'));
   try {
-    if (context.options.tab === 'subtitles') context.operations.exportSubtitles();
+    await context.prepareDestination();
+    if (context.options.tab === 'subtitles') await context.operations.exportSubtitles();
     else await executeAsyncSelected(context);
     const finishedAt = Date.now();
     context.setClock(finishedAt);
@@ -61,7 +64,7 @@ async function runExport(context: ExportRunContext): Promise<void> {
       markCancelled(context);
       return;
     }
-    context.setError(reason instanceof Error ? reason.message : context.t('导出失败'));
+    context.setError(exportDestinationErrorMessage(reason, context.t));
     context.setProgress((current) => current ? { ...current, phase: 'failed', finishedAt: Date.now() } : current);
   } finally {
     context.setBusy(null);

@@ -9,6 +9,14 @@ export type ExportPhase = 'queued' | 'preparing' | 'rendering' | 'finalizing' | 
 export type RenderEngine = 'idle' | 'checking' | 'browser' | 'server';
 export type Translate = (zh: string, params?: Record<string, string | number>) => string;
 export type StateSetter<Value> = Dispatch<SetStateAction<Value>>;
+export interface ExportEngineInfo {
+  id: string;
+  label: string;
+  hardware: boolean;
+  transport: 'browser' | 'server';
+}
+export type ExportEngineReason = string | null;
+
 
 export interface ExportProgress {
   phase: ExportPhase;
@@ -48,6 +56,8 @@ export interface ExportJobResult {
   height?: number;
   fps?: number;
   sourceStartSeconds?: number;
+  encoder?: ExportEngineInfo;
+  encoderFallbackReason?: string;
 }
 
 export interface UseExportWorkflowOptions {
@@ -74,12 +84,14 @@ export interface WorkflowStateSetters {
   setProgress: StateSetter<ExportProgress | null>;
   setQa: StateSetter<ExportQaUiState | null>;
   setRenderEngine: StateSetter<RenderEngine>;
+  setEngineInfo: StateSetter<ExportEngineInfo | null>;
+  setEngineReason: StateSetter<ExportEngineReason>;
 }
 
 export interface WorkflowOperations {
   exportAudio: () => Promise<void>;
   exportMg: () => Promise<void>;
-  exportSubtitles: () => void;
+  exportSubtitles: () => Promise<void>;
   exportVideo: () => Promise<void>;
   exportXml: () => Promise<void>;
 }
