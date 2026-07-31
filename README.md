@@ -480,6 +480,19 @@ Third-party components and assets remain subject to their respective licenses.
 
 ---
 
+## Contributors
+
+Thank you to all the contributors who help build and improve OpenChatCut!
+
+<a href="https://github.com/0xsline/OpenChatCut/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=0xsline/OpenChatCut" alt="OpenChatCut Contributors" />
+</a>
+
+- [@0xsline](https://github.com/0xsline)
+- [@namana843-bit](https://github.com/namana843-bit)
+
+---
+
 ## Contributing
 
 1. Create a branch from `main`.
