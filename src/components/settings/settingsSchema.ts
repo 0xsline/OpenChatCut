@@ -7,6 +7,7 @@
 import { t } from '../../i18n/locale';
 import {
   LLM_PROVIDER_PRESETS,
+  isLocalLlmProvider,
   llmProviderConfigNames,
 } from '../../../shared/llm-providers';
 import type { IconName } from '../icons';
@@ -104,7 +105,7 @@ const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorP
         defaultLabel: preset.baseUrl,
         note: '填写完整 API 前缀；可使用官方地址、自建网关或兼容中转。',
       },
-      secret(names.apiKey, 'API Key'),
+      secret(names.apiKey, isLocalLlmProvider(preset.id) ? 'API Key（可选）' : 'API Key'),
       ...(preset.id === 'openai' ? [{
         name: 'LLM_OPENAI_API_MODE',
         label: '接口格式',
@@ -331,6 +332,10 @@ export function modelValue(status: KeyStatusResponse | null, name: string): stri
  * Pages without secret (local disk) to see if any field has been set.*/
 export function vendorConfigured(status: KeyStatusResponse | null, page: SettingsVendorPage): boolean {
   if (!status) return false;
+  if (isLocalLlmProvider(page.vendor)) {
+    const names = llmProviderConfigNames(page.vendor);
+    return Boolean(status.models[names.model]?.trim());
+  }
   const secrets = page.fields.filter((f) => f.kind === 'secret');
   if (secrets.length === 0) return page.fields.some((f) => Boolean(status.keys[f.name]?.configured));
   return secrets.every((f) => Boolean(status.keys[f.name]?.configured));

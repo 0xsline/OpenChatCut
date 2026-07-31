@@ -63,7 +63,7 @@ function ModelSetupCard({ onOpen }: { onOpen: () => void }) {
       <span style={{ flex: 1, minWidth: 0 }}>
         <strong style={{ display: 'block', color: theme.textStrong, fontSize: 13.5 }}>{t('配置模型后开始使用 Agent')}</strong>
         <span style={{ display: 'block', marginTop: 3, color: theme.textDim, fontSize: 11.5, lineHeight: 1.5 }}>
-          {t('添加任一模型厂商的 API 密钥，即可在编辑器中使用对话式剪辑。')}
+          {t('配置任一云端或本地模型，即可在编辑器中使用对话式剪辑。')}
         </span>
       </span>
       <button type="button" onClick={onOpen} style={modelSetupButton}>{t('配置模型')}</button>

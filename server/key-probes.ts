@@ -13,6 +13,7 @@ import {
 } from './llm-config.ts';
 import {
   LLM_PROVIDER_PRESETS,
+  isLocalLlmProvider,
   llmProviderConfigNames,
   protocolForProvider,
   type LlmProvider,
@@ -49,15 +50,16 @@ function llmProbe(provider: LlmProvider): ProbeDef {
   const protocol = protocolForProvider(provider);
   const apiKeyName = names.apiKey as KeyName;
   const baseUrlName = names.baseUrl as KeyName;
+  const isLocal = isLocalLlmProvider(provider);
   return {
-    needs: [[apiKeyName]],
+    needs: isLocal ? [[]] : [[apiKeyName]],
     run: (get) => {
       const key = get(apiKeyName);
       const headers = protocol === 'anthropic'
         ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
         : protocol === 'google'
           ? { 'x-goog-api-key': key }
-          : bearer(key);
+          : key ? bearer(key) : {};
       const root = resolveLlmBaseUrl(provider, get(baseUrlName), AI_SDK_BASE_URL_FORMAT);
       return fetch(`${root}/models`, { signal: t(), headers });
     },

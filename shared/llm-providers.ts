@@ -90,6 +90,20 @@ export const LLM_PROVIDER_PRESETS = [
     baseUrl: 'https://openrouter.ai/api/v1',
     defaultModel: 'openrouter/auto',
   },
+  {
+    id: 'ollama',
+    label: 'Ollama (Local)',
+    protocol: 'openai-compatible',
+    baseUrl: 'http://localhost:11434/v1',
+    defaultModel: 'qwen2.5-coder:7b',
+  },
+  {
+    id: 'lmstudio',
+    label: 'LM Studio (Local)',
+    protocol: 'openai-compatible',
+    baseUrl: 'http://localhost:1234/v1',
+    defaultModel: 'qwen2.5-coder-7b-instruct',
+  },
 ] as const satisfies readonly LlmProviderPreset[];
 
 export type LlmProvider = (typeof LLM_PROVIDER_PRESETS)[number]['id'];
@@ -109,6 +123,11 @@ const PRESETS = new Map<string, (typeof LLM_PROVIDER_PRESETS)[number]>(
 export function normalizeLlmProvider(value: unknown): LlmProvider {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
   return PRESETS.has(normalized) ? normalized as LlmProvider : DEFAULT_LLM_PROVIDER;
+}
+
+export function isLocalLlmProvider(provider: unknown): boolean {
+  const normalized = normalizeLlmProvider(provider);
+  return normalized === 'ollama' || normalized === 'lmstudio';
 }
 
 export function llmProviderPreset(provider: unknown): (typeof LLM_PROVIDER_PRESETS)[number] {
