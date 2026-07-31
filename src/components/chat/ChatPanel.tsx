@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { theme } from '../../theme';
 import { useT } from '../../i18n/locale';
 import type { AgentContext } from '../../agent/context';
@@ -15,6 +16,7 @@ import { ChatMessage } from './ChatMessage';
 import { ToolGroupRow } from './ToolGroupRow';
 import { groupMessages } from './message-groups';
 import { ChatComposer, type ChatMode, type RefItem } from './ChatComposer';
+import { AgentChangeLogMenu } from './AgentChangeLogMenu';
 import { BrandMark, Icon, OpenChatCutWordmark } from '../icons';
 import {
   clearComposerDraft,
@@ -103,6 +105,10 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   const [enhancing, setEnhancing] = useState(false);
   const [selectedRefs, setSelectedRefs] = useState<RefItem[]>([]);
   const [visibleMessageCount, setVisibleMessageCount] = useState(MESSAGE_WINDOW_SIZE);
+  const [changeLogSlot, setChangeLogSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setChangeLogSlot(document.getElementById('cc-agent-change-log-slot'));
+  }, []);
   // Restore composer draft / mode when switching projects (session continuity).
   useEffect(() => {
     setInput(loadComposerDraft(projectId));
@@ -228,17 +234,32 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
     }
   };
 
+  const changeLogMenu = changeLogSlot && createPortal(
+    <AgentChangeLogMenu
+      changeLog={changeLog}
+      running={running}
+      canRollback={canRollbackChangeSession}
+      onRollback={rollbackChangeSession}
+    />,
+    changeLogSlot,
+  );
+
   if (collapsed) {
     return (
-      <aside className="cc-chat-panel collapsed" style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '10px 0', borderRight: `0.5px solid ${theme.border}`, background: theme.panel }}>
-        <button onClick={onToggleCollapse} title={t('展开 OpenChatCut Agent')} style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14 }}><span style={{ transform: 'rotate(-90deg)', display: 'inline-flex' }}><Icon name="chevronDown" size={14} /></span></button>
-        <div className="cc-chat-collapsed-brand">OpenChatCut</div>
-      </aside>
+      <>
+        {changeLogMenu}
+        <aside className="cc-chat-panel collapsed" style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '10px 0', borderRight: `0.5px solid ${theme.border}`, background: theme.panel }}>
+          <button onClick={onToggleCollapse} title={t('展开 OpenChatCut Agent')} style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14 }}><span style={{ transform: 'rotate(-90deg)', display: 'inline-flex' }}><Icon name="chevronDown" size={14} /></span></button>
+          <div className="cc-chat-collapsed-brand">OpenChatCut</div>
+        </aside>
+      </>
     );
   }
 
   return (
-    <aside className="cc-chat-panel" style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', borderRight: `0.5px solid ${theme.border}`, background: theme.panel, minHeight: 0, minWidth: 0 }}>
+    <>
+      {changeLogMenu}
+      <aside className="cc-chat-panel" style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', borderRight: `0.5px solid ${theme.border}`, background: theme.panel, minHeight: 0, minWidth: 0 }}>
       <div className="cc-chat-header">
         <div className="cc-chat-brand">
           <BrandMark size={20} />
@@ -255,38 +276,6 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
         )}
         <button onClick={onToggleCollapse} title={t('收起 OpenChatCut Agent')} style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 13 }}><span style={{ transform: 'rotate(90deg)', display: 'inline-flex' }}><Icon name="chevronDown" size={14} /></span></button>
       </div>
-
-      {changeLog.length > 0 && (
-        <details style={{ borderBottom: `0.5px solid ${theme.border}`, padding: '7px 12px', fontSize: 12 }}>
-          <summary style={{ cursor: 'pointer', color: theme.textDim }}>
-            {t('Agent 修改记录')}（{changeLog.length}）
-          </summary>
-          <div style={{ display: 'grid', gap: 8, maxHeight: 180, overflow: 'auto', paddingTop: 8 }}>
-            {[...changeLog].reverse().map((session) => {
-              const canRollback = !running && canRollbackChangeSession(session.id);
-              return (
-                <div key={session.id} style={{ border: `0.5px solid ${theme.border}`, borderRadius: 6, padding: 8 }}>
-                  <div style={{ color: theme.text, lineHeight: 1.4 }}>{session.summary}</div>
-                  <div style={{ color: theme.textDim, fontSize: 11, marginTop: 2 }}>
-                    {new Date(session.createdAt).toLocaleString()} · {session.operations.length} {t('项操作')}
-                  </div>
-                  {session.operations.map((operation, index) => (
-                    <div key={`${session.id}:${index}`} style={{ color: theme.textDim, marginTop: 4 }}>
-                      {operation.action} · {operation.target} · {operation.impact}
-                    </div>
-                  ))}
-                  <button type="button" disabled={!canRollback}
-                    title={canRollback ? t('恢复到这次 Agent 修改前') : t('工程后来已有其他修改')}
-                    onClick={() => rollbackChangeSession(session.id)}
-                    style={{ marginTop: 7, border: `0.5px solid ${theme.border}`, borderRadius: 5, padding: '4px 8px', background: 'transparent', color: canRollback ? theme.text : theme.textDim, cursor: canRollback ? 'pointer' : 'default', opacity: canRollback ? 1 : 0.5 }}>
-                    {t('回滚此会话')}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </details>
-      )}
 
       {/* messages */}
       <div ref={scrollRef} className={`cc-chat-messages${messages.length === 0 ? ' empty' : ''}`}>
@@ -416,6 +405,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
           taRef={taRef}
           placeholder={messages.length === 0 ? t('描述你想要创建的内容...') : t('告诉 AI 要做哪些修改 - @ 引用素材')} />
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

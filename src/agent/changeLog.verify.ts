@@ -26,6 +26,16 @@ const session = createAgentChangeSession(
 );
 assert.equal(rollbackAgentChange(session, after)?.timelines[0].width, before.timelines[0].width);
 assert.equal(rollbackAgentChange(session, doc(720)), null, 'later edits make the rollback stale');
+assert.equal(
+  rollbackAgentChange(session, doc(720), true)?.timelines[0].width,
+  before.timelines[0].width,
+  'confirmed rollback restores the saved snapshot despite later edits',
+);
+assert.equal(
+  rollbackAgentChange({ ...session, rollbackable: false }, after, true),
+  null,
+  'non-rollbackable sessions stay protected',
+);
 assert.equal(parseAgentChangeLog([{ broken: true }, session]).length, 1, 'corrupt persisted rows are ignored');
 
 let capped = [session];

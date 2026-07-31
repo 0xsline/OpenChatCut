@@ -197,4 +197,8 @@ export default {
   '重新提案': 'Re-propose',
   '外部 Agent：{message}': 'External agent: {message}',
   '加载更早消息': 'Load earlier messages',
+  '更多工具': 'More tools',
+  '选择引用': 'Select reference',
+  '工程后来已有其他修改，回滚前会再次确认': 'The project has newer edits. You will be asked to confirm before rollback.',
+  '工程后来已有其他修改，继续回滚会覆盖后续修改。确定继续吗？': 'The project has newer edits. Rolling back will overwrite them. Continue?',
 } as Record<string, string>;

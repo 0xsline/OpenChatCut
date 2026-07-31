@@ -9,7 +9,11 @@ import {
   SETTINGS_CATEGORIES,
   vendorConfigured,
 } from '../components/settings/settingsSchema.ts';
-import { applyAgentModelStatus, getAgentModelSnapshot } from './model-selection.ts';
+import {
+  applyAgentModelStatus,
+  getAgentModelSnapshot,
+  selectAgentModel,
+} from './model-selection.ts';
 
 assert.equal(normalizeLlmProvider('ollama'), 'ollama');
 assert.equal(normalizeLlmProvider('lmstudio'), 'lmstudio');
@@ -53,5 +57,22 @@ assert.equal(vendorConfigured({
 
 applyAgentModelStatus({ LLM_ANTHROPIC_API_KEY: { configured: true } }, {});
 assert.equal(getAgentModelSnapshot().choices[0]?.provider, 'anthropic');
+
+let persistenceCalls = 0;
+const originalFetch = globalThis.fetch;
+globalThis.fetch = (async () => {
+  persistenceCalls += 1;
+  return new Response('{}', { status: 200 });
+}) as typeof fetch;
+applyAgentModelStatus({
+  LLM_OPENAI_API_KEY: { configured: true },
+  LLM_GEMINI_API_KEY: { configured: true },
+}, { LLM_PROVIDER: 'openai' });
+const gemini = getAgentModelSnapshot().choices.find((choice) => choice.provider === 'gemini');
+assert.ok(gemini);
+selectAgentModel(gemini.id);
+assert.equal(getAgentModelSnapshot().activeId, gemini.id);
+assert.equal(persistenceCalls, 0, 'conversation model switching must not rewrite server settings');
+globalThis.fetch = originalFetch;
 
 console.log('local model verification passed');

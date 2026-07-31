@@ -71,11 +71,4 @@ export function selectAgentModel(id: string): void {
   if (!active || active.id === snapshot.activeId) return;
   setLlmConfig(active.provider, active.model);
   emit({ ...snapshot, activeId: active.id });
-  void fetch('/api/keys', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ LLM_PROVIDER: active.provider }),
-  }).catch(() => {
-    // The in-memory selection remains usable for this session if persistence fails.
-  });
 }

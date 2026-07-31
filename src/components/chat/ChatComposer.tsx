@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { theme, themeAlpha } from '../../theme';
 import { getLocale, useT } from '../../i18n/locale';
 import type { AgentReference } from '../../agent/context';
@@ -13,6 +13,7 @@ import {
   selectAgentModel,
   subscribeAgentModels,
 } from '../../agent/model-selection';
+import { ComposerMoreMenu, ComposerToolbar, type ComposerPopover } from './ComposerToolbar';
 
 /** composer shell height (includes textarea + toolbar); drag the top handle to resize */
 const COMPOSER_H_MIN = 88;
@@ -56,25 +57,6 @@ interface ChatComposerProps {
   onDismissPasteError?: () => void;
   taRef: RefObject<HTMLTextAreaElement | null>;
   placeholder?: string;
-}
-
-type Pop = 'mode' | 'model' | 'skill' | 'settings' | 'assets' | 'templates' | null;
-
-// one bottom-bar icon button (monochrome, hover-lit)
-function BarBtn({ icon, title, onClick, active, disabled, chevron }: {
-  icon: IconName; title: string;
-  onClick?: (e: ReactMouseEvent<HTMLButtonElement>) => void;
-  active?: boolean; disabled?: boolean; chevron?: boolean;
-}) {
-  return (
-    <button type="button" title={title} onClick={onClick} disabled={disabled}
-      style={{ background: active ? theme.panelAlt : 'none', border: 'none', cursor: disabled ? 'default' : 'pointer', padding: '4px 5px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 2, lineHeight: 0, color: disabled ? theme.textDim : active ? theme.text : theme.textDim, opacity: disabled ? 0.45 : 1, flexShrink: 0 }}
-      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.color = theme.text; }}
-      onMouseLeave={(e) => { e.currentTarget.style.color = disabled ? theme.textDim : active ? theme.text : theme.textDim; }}>
-      <Icon name={icon} size={16} />
-      {chevron && <Icon name="chevronDown" size={12} />}
-    </button>
-  );
 }
 
 // Popover above the bar — fixed positioning so parent overflow never clips menus.
@@ -153,7 +135,7 @@ export function ChatComposer(props: ChatComposerProps) {
   );
   const activeModel = modelState.choices.find((choice) => choice.id === modelState.activeId);
   const builtinIds = new Set(CREATIVE_SKILLS.map((s) => s.id));
-  const [pop, setPop] = useState<Pop>(null);
+  const [pop, setPop] = useState<ComposerPopover>(null);
   const [popAnchor, setPopAnchor] = useState<HTMLElement | null>(null);
   const [agentSettings, setAgentSettings] = useState<AgentSettings>(() => loadAgentSettings());
   const patchAgent = (patch: Partial<AgentSettings>) => {
@@ -164,7 +146,7 @@ export function ChatComposer(props: ChatComposerProps) {
     });
   };
   const closePop = () => { setPop(null); setPopAnchor(null); };
-  const toggle = (p: Pop, el?: EventTarget | null) => {
+  const toggle = (p: ComposerPopover, el?: EventTarget | null) => {
     const node = el instanceof HTMLElement ? el : null;
     setPop((cur) => {
       if (cur === p) { setPopAnchor(null); return null; }
@@ -324,61 +306,12 @@ export function ChatComposer(props: ChatComposerProps) {
           color: theme.text, fontSize: 13, fontFamily: 'inherit', lineHeight: 1.45,
         }}
       />
-      <div className="cc-chat-composer-bar">
-        <div className="cc-chat-composer-bar-tools">
-          <button title={t('模式')} onClick={(e) => toggle('mode', e.currentTarget)}
-            className="cc-chat-mode-btn"
-            style={{ height: 28, display: 'flex', alignItems: 'center', gap: 3, padding: '0 3px', border: 0, borderRadius: 6, background: pop === 'mode' ? theme.panelAlt : 'transparent', color: theme.text, cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>
-            <Icon name="sparkles" size={15} /><span className="cc-chat-mode-label">{mode === 'agent' ? 'Agent' : 'Ask'}</span><Icon name="chevronDown" size={11} />
-          </button>
-          <button
-            type="button"
-            title={activeModel
-              ? t('当前模型：{name}', { name: `${activeModel.providerLabel} · ${activeModel.model}` })
-              : t('选择模型')}
-            onClick={(event) => toggle('model', event.currentTarget)}
-            style={{
-              height: 28,
-              minWidth: 0,
-              maxWidth: 132,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '0 6px',
-              border: 0,
-              borderRadius: 4,
-              background: pop === 'model' ? theme.panel : 'transparent',
-              color: activeModel ? theme.textDim : theme.textDim,
-              cursor: 'pointer',
-              fontSize: 11,
-              flexShrink: 1,
-            }}
-          >
-            <Icon name="cloud" size={13} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {activeModel?.model ?? t('模型')}
-            </span>
-            <Icon name="chevronDown" size={10} />
-          </button>
-          <BarBtn icon="sliders" title={t('设置')} active={pop === 'settings'} onClick={(e) => toggle('settings', e.currentTarget)} />
-          <BarBtn icon="cursor" title={t('选择模式：点片段 / 拖画布 / 选文字稿作为引用')} active={selecting} onClick={onToggleSelecting} />
-          <BarBtn icon="plus" title={t('引用媒体池素材')} active={pop === 'assets'} onClick={(e) => toggle('assets', e.currentTarget)} />
-          <BarBtn icon="wand" title={activeSkill ? t('创作模式：{name}', { name: skillName(activeSkill) }) : t('创作模式')} active={pop === 'skill' || !!activeSkill} onClick={(e) => toggle('skill', e.currentTarget)} />
-          <BarBtn icon="bookOpen" title={t('引用模板库')} active={pop === 'templates'} onClick={(e) => toggle('templates', e.currentTarget)} />
-          <BarBtn icon="sparkles" title={enhancing ? t('增强中…') : t('增强提示词')} disabled={enhancing || !value.trim() || running} onClick={onEnhance} />
-        </div>
-        {running ? (
-          <button title={t('停止')} onClick={onStop} className="cc-chat-send-btn"
-            style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: theme.accent, cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-            <span style={{ width: 10, height: 10, background: theme.onAccent, borderRadius: 2 }} />
-          </button>
-        ) : (
-          <button title={t('发送 (Enter)')} onClick={onSubmit} disabled={!canSend} className="cc-chat-send-btn"
-            style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: canSend ? theme.accent : theme.border, color: canSend ? theme.onAccent : theme.textDim, cursor: canSend ? 'pointer' : 'default', display: 'grid', placeItems: 'center', lineHeight: 0, flexShrink: 0 }}>
-            <Icon name="arrowUp" size={16} strokeWidth={2.2} />
-          </button>
-        )}
-      </div>
+      <ComposerToolbar
+        mode={mode} activeModel={activeModel} activeSkillName={activeSkill ? skillName(activeSkill) : undefined}
+        pop={pop} selecting={selecting} enhancing={enhancing} running={running}
+        hasPrompt={!!value.trim()} canSend={canSend}
+        onTogglePop={toggle} onToggleSelecting={onToggleSelecting} onEnhance={onEnhance}
+        onSubmit={onSubmit} onStop={onStop} />
 
       {/* menus rendered fixed — never clipped by composer bounds */}
       {pop === 'mode' && (
@@ -511,6 +444,15 @@ export function ChatComposer(props: ChatComposerProps) {
       {pop === 'templates' && (
         <Popover anchor={popAnchor} onClose={closePop}>
           {refPopoverBody('template', t('暂无模板'))}
+        </Popover>
+      )}
+      {pop === 'more' && (
+        <Popover anchor={popAnchor} onClose={closePop}>
+          <ComposerMoreMenu
+            selecting={selecting} activeSkillName={activeSkill ? skillName(activeSkill) : undefined}
+            canEnhance={!!value.trim() && !enhancing && !running} enhancing={enhancing}
+            onChoosePopover={setPop} onToggleSelecting={onToggleSelecting}
+            onEnhance={onEnhance} onClose={closePop} />
         </Popover>
       )}
     </div>

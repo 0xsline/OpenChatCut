@@ -82,6 +82,7 @@ export function TopBar({ projectName, canUndo, canRedo, exporting, onHome, onRen
       <TBtn icon="redo" title={t('重做')} onClick={() => invokeAction('redo', undefined, 'toolbar')} disabled={!canRedo} />
       <TBtn icon="keyboard" title={t('编辑快捷键')} onClick={() => invokeAction('keyboard-shortcuts', undefined, 'toolbar')} />
       <TBtn icon="plug" title={t('外部 Agent 接入 (MCP)')} onClick={() => setMcpOpen(true)} />
+      <span id="cc-agent-change-log-slot" style={{ display: 'contents' }} />
       <TBtn icon="palette" title={t('设计风格(品牌)')} onClick={() => invokeAction('open-design', undefined, 'toolbar')} />
       <SkinPicker />
       <TBtn icon="history" title={t('历史版本')} onClick={() => invokeAction('open-history', undefined, 'toolbar')} />

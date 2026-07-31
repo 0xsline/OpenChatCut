@@ -83,6 +83,11 @@ export function canRollbackAgentChange(session: AgentChangeSession, currentDoc: 
   return session.rollbackable && revisionOf(currentDoc) === session.afterRevision;
 }
 
-export function rollbackAgentChange(session: AgentChangeSession, currentDoc: ProjectDoc): ProjectDoc | null {
-  return canRollbackAgentChange(session, currentDoc) ? migrateProjectDoc(session.beforeDoc) : null;
+export function rollbackAgentChange(
+  session: AgentChangeSession,
+  currentDoc: ProjectDoc,
+  force = false,
+): ProjectDoc | null {
+  if (!session.rollbackable || (!force && !canRollbackAgentChange(session, currentDoc))) return null;
+  return migrateProjectDoc(session.beforeDoc);
 }

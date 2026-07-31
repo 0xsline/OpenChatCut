@@ -420,10 +420,10 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     void clearProposal(projectId);
   }, [running, projectId]);
 
-  const rollbackChangeSession = useCallback((id: string): boolean => {
+  const rollbackChangeSession = useCallback((id: string, force = false): boolean => {
     const session = changeLog.find((item) => item.id === id);
     if (!session) return false;
-    const previous = rollbackAgentChange(session, ctxRef.current.getDoc());
+    const previous = rollbackAgentChange(session, ctxRef.current.getDoc(), force);
     if (!previous) return false;
     ctxRef.current.commands.applyDoc(previous);
     return true;

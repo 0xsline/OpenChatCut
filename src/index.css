@@ -111,6 +111,23 @@ button, input, select { font: inherit; }
 .cc-chat-composer-bar-tools {
   display:flex; align-items:center; gap:0; flex:1 1 auto; min-width:0;
 }
+.cc-composer-secondary { display:contents; }
+.cc-composer-more-btn { display:none !important; }
+.cc-composer-more-menu { display:flex; flex-direction:column; gap:1px; }
+.cc-composer-more-item {
+  width:100%; min-height:32px; display:grid; grid-template-columns:20px minmax(0,1fr) 14px;
+  align-items:center; gap:7px; padding:0 8px; border:0; border-radius:3px;
+  background:transparent; color:var(--cc-text-muted); cursor:pointer; text-align:left; font-size:12px;
+}
+.cc-composer-more-item:hover:not(:disabled) { background:var(--cc-hover); color:var(--cc-text); }
+.cc-composer-more-item:disabled { opacity:.4; cursor:default; }
+.cc-composer-more-item > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@container composer (max-width:390px) {
+  .cc-chat-composer-bar-tools { gap:2px; }
+  .cc-chat-model-btn { flex:1 1 auto !important; max-width:none !important; }
+  .cc-composer-secondary { display:none; }
+  .cc-composer-more-btn { display:flex !important; }
+}
 .cc-chat-send-btn { flex:0 0 28px; }
 .cc-chat-messages.empty { display:flex; align-items:center; justify-content:center; overflow:hidden; }
 .cc-chat-header { min-height:48px; display:flex; align-items:center; gap:8px; padding:6px 12px; box-sizing:border-box; border-bottom:0.5px solid var(--cc-border); }
@@ -1385,8 +1402,8 @@ button, input, select { font: inherit; }
   border-bottom:0.5px solid var(--cc-border); cursor:pointer; flex-shrink:0;
 }
 .cc-insp-header:hover { color:var(--cc-text); background:var(--cc-hover); }
-.cc-insp-chevron { display:inline-flex; transition:transform 0.12s; }
-.cc-insp-chevron.closed { transform:rotate(-90deg); }
+.cc-insp-chevron { display:inline-flex; transform:rotate(-90deg); transition:transform 0.12s; }
+.cc-insp-chevron.closed { transform:rotate(90deg); }
 .cc-insp-heading { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
 .cc-insp-title { color:var(--cc-text-strong); font-size:11.5px; font-weight:650; line-height:14px; }
 .cc-insp-title-name {
