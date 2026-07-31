@@ -1,4 +1,6 @@
-import { createContext, useContext, useEffect, useRef, useState, type PropsWithChildren } from 'react';
+import {
+  createContext, useContext, useEffect, useRef, useState, type CSSProperties, type PropsWithChildren,
+} from 'react';
 import type { ClipTransform, Keyframe, KeyframeEasing, KeyframeProp, TimelineItem } from '../../editor/types';
 import { sampleKeyframes } from '../../editor/keyframes';
 import { KEYFRAME_PROPS, getKeyframePropertyDefinition } from '../../editor/keyframeRegistry';
@@ -85,12 +87,14 @@ export function SliderRow({
 }: SliderRowProps) {
   const t = useT();
   const gesture = useHistoryGesture();
+  const progress = Math.min(100, Math.max(0, ((val - min) / (max - min)) * 100));
   return (
     <div className="cc-insp-row" title={disabled ? disabledReason : undefined} style={disabled ? { opacity: 0.45 } : undefined}>
       <span className="cc-insp-label">{label}</span>
       <input
         aria-label={label}
         className="cc-insp-range"
+        style={{ '--cc-insp-range-fill': `${progress}%` } as CSSProperties}
         type="range" min={min} max={max} step="any" value={val}
         disabled={disabled}
         onChange={(e) => onChange(snapScalar(Number(e.target.value), min, max, step))}
