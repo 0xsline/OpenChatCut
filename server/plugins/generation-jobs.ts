@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { ResultDownloadError } from './result-download.ts';
+import type { H264EncoderProfile } from '../media-acceleration.ts';
 
 export type GenerationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
@@ -19,6 +20,8 @@ export interface GenerationResult {
   // Export/rendering job reuses the same queue: Optional field, allowing the rendering product to self-describe the size and encoding (left blank for generated jobs).
   sizeBytes?: number;
   codec?: string;
+  encoder?: H264EncoderProfile;
+  encoderFallbackReason?: string;
 }
 
 interface GenerationJob {
@@ -83,6 +86,8 @@ export interface GenerationJobOptions {
   cleanupResult?: (result: GenerationResult) => Promise<void> | void;
   /** Terminal-job retention window. Override only for focused tests. */
   retentionMs?: number;
+  /** Release caller-owned cancellation or telemetry state after the job becomes terminal. */
+  onSettled?: (jobId: string) => void;
 }
 
 const jobs = new Map<string, GenerationJob>();
@@ -186,6 +191,7 @@ async function runGenerationJob(
     job.updatedAt = Date.now();
     release?.();
     scheduleExpiry(job);
+    options.onSettled?.(job.id);
   }
 }
 

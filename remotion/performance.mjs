@@ -49,17 +49,23 @@ export function resolveOffthreadVideoThreads({ cores = availableParallelism() } 
 }
 
 /**
- * Remotion maps this to VideoToolbox on both Intel and Apple Silicon Macs, and
- * NVENC on Windows. We require it for the first attempt so a missing device is
- * surfaced to our explicit software retry. Alpha ProRes stays on software to
- * avoid platform-dependent alpha loss.
+ * Remotion natively maps H.264 to VideoToolbox on macOS and NVENC on Windows
+ * and Linux. Other probed engines are selected through a narrow FFmpeg override.
  */
 export function remotionHardwareAcceleration(codec, {
   platform = process.platform,
   disabled = /^(?:1|true|yes)$/i.test(process.env.OPENCHATCUT_DISABLE_HARDWARE_ENCODING ?? ''),
+  encoder,
 } = {}) {
-  if (disabled || codec !== 'h264') return 'disable';
-  return platform === 'darwin' || platform === 'win32' ? 'required' : 'disable';
+  if (disabled || codec !== 'h264' || encoder === 'libx264') return 'disable';
+  if (encoder === 'h264_videotoolbox') return platform === 'darwin' ? 'required' : 'disable';
+  if (encoder === 'h264_nvenc') {
+    return platform === 'win32' || platform === 'linux' ? 'required' : 'disable';
+  }
+  if (encoder) return 'disable';
+  return platform === 'darwin' || platform === 'win32' || platform === 'linux'
+    ? 'required'
+    : 'disable';
 }
 
 /** Stable, high-quality H.264 bitrate scaled by output pixels and frame rate. */
@@ -79,10 +85,100 @@ export function isHardwareEncoderFailure(error) {
   const message = error instanceof Error
     ? `${error.message}\n${error.cause instanceof Error ? error.cause.message : String(error.cause ?? '')}`
     : String(error ?? '');
-  return /videotoolbox|nvenc|nvcuda|libcuda|no (?:nvenc )?capable devices|no device|device setup failed|hardware encoder|failed to open encoder|could not open encoder|error initializing output stream/i.test(message);
+  return /videotoolbox|nvenc|nvcuda|libcuda|qsv|quick sync|mfx|amf|vaapi|va-api|renderD\d+|no (?:nvenc )?capable devices|no device|device setup failed|hardware encoder|failed to open encoder|could not open encoder|error initializing output stream/i.test(message);
 }
 
-/** Execute one hardware attempt and retry only recognized encoder failures. */
+export function hardwareEncoderFailureClass(error) {
+  const message = error instanceof Error
+    ? `${error.message}\n${error.cause instanceof Error ? error.cause.message : String(error.cause ?? '')}`
+    : String(error ?? '');
+  if (/no (?:nvenc )?capable devices|no device|device unavailable|renderD\d+|cannot load|not available/i.test(message)) {
+    return 'device-unavailable';
+  }
+  if (/unsupported|unknown encoder|encoder not found|not implemented/i.test(message)) {
+    return 'unsupported';
+  }
+  if (/initializ|failed to open|could not open|device setup/i.test(message)) {
+    return 'initialization-failed';
+  }
+  return 'runtime-failure';
+}
+
+const SOFTWARE_H264_PROFILE = Object.freeze({
+  id: 'libx264',
+  label: 'Software (libx264)',
+  hardware: false,
+  transport: 'server',
+});
+const DIRECT_H264_ENCODERS = {
+  h264_videotoolbox: true,
+  h264_nvenc: true,
+  h264_qsv: true,
+  h264_amf: true,
+  h264_vaapi: true,
+};
+const VAAPI_DEVICE_PATTERN = /^\/dev\/dri\/renderD\d+$/;
+
+function overrideH264Args(args, encoder, vaapiDevice) {
+  const next = [...args];
+  const codecIndex = next.findIndex((arg, index) => arg === '-c:v' && index + 1 < next.length);
+  if (codecIndex < 0 || next[codecIndex + 1] === 'copy') return next;
+  next[codecIndex + 1] = encoder;
+  const pixelFormat = encoder === 'h264_vaapi'
+    ? 'vaapi'
+    : encoder === 'h264_qsv' || encoder === 'h264_amf' ? 'nv12' : 'yuv420p';
+  const pixelIndex = next.indexOf('-pix_fmt');
+  if (pixelIndex >= 0 && pixelIndex + 1 < next.length) next[pixelIndex + 1] = pixelFormat;
+  else next.splice(codecIndex, 0, '-pix_fmt', pixelFormat);
+  if (encoder !== 'h264_vaapi') return next;
+
+  const deviceIndex = next.indexOf('-i');
+  next.splice(Math.max(0, deviceIndex), 0, '-vaapi_device', vaapiDevice);
+  const filterIndex = next.indexOf('-vf');
+  if (filterIndex >= 0 && filterIndex + 1 < next.length) {
+    next[filterIndex + 1] = `${next[filterIndex + 1]},format=nv12,hwupload`;
+  } else {
+    const outputCodecIndex = next.indexOf('-c:v');
+    next.splice(outputCodecIndex, 0, '-vf', 'format=nv12,hwupload');
+  }
+  return next;
+}
+
+/** Override only H.264 encoding steps; final copy/mux steps stay untouched. */
+export function h264FfmpegOverride(encoder, {
+  vaapiDevice = process.env.OPENCHATCUT_VAAPI_DEVICE,
+} = {}) {
+  if (!Object.hasOwn(DIRECT_H264_ENCODERS, encoder)) {
+    throw new Error(`unsupported direct H.264 encoder: ${String(encoder)}`);
+  }
+  const rawDevice = String(vaapiDevice ?? '').trim();
+  const device = VAAPI_DEVICE_PATTERN.test(rawDevice) ? rawDevice : '/dev/dri/renderD128';
+  return ({ args }) => overrideH264Args(args, encoder, device);
+}
+
+/** A declared hardware attempt always reports the profile that actually completed. */
+export async function withEncoderProfileFallback({
+  render,
+  hardwareOptions,
+  softwareOptions,
+  hardwareProfile,
+  softwareProfile = SOFTWARE_H264_PROFILE,
+  cleanup = async () => {},
+  onFallback = () => {},
+}) {
+  try {
+    return { result: await render(hardwareOptions), encoder: hardwareProfile };
+  } catch (error) {
+    if (!hardwareProfile.hardware || !isHardwareEncoderFailure(error)) throw error;
+    const encoderFallbackReason = `${hardwareProfile.id}: ${hardwareEncoderFailureClass(error)}`;
+    await cleanup();
+    onFallback(error);
+    const result = await render(softwareOptions);
+    return { result, encoder: softwareProfile, encoderFallbackReason };
+  }
+}
+
+/** Backward-compatible fallback helper for Remotion's native hardware mode. */
 export async function withHardwareEncoderFallback({
   render,
   hardwareOptions,

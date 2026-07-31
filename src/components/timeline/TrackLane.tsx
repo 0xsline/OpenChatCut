@@ -148,9 +148,10 @@ export function TrackLane({
     : 0;
   return (
     <div
+      className="cc-track-lane"
       style={{
         // locked lane: slightly dimmed (the background color of the locked lane is dimmed; the lock icon is highlighted at the same time)
-        flex: 1, position: 'relative', background: locked ? `color-mix(in srgb, ${theme.bg} 70%, ${themeAlpha.shadow(1)})` : theme.bg, opacity: hidden ? 0.4 : locked ? 0.75 : 1,
+        flex: 1, position: 'relative', background: locked ? `color-mix(in srgb, ${theme.bg} 70%, ${themeAlpha.shadow(1)})` : undefined, opacity: hidden ? 0.4 : locked ? 0.75 : 1,
         outline: libDropTarget === `track:${trackId}` ? '0.5px dashed #6a9fd8' : undefined,
         outlineOffset: -2,
         cursor: pickMode ? 'crosshair' : undefined,
@@ -217,7 +218,9 @@ export function TrackLane({
         return (
           <div
             key={it.id}
+            className={`cc-timeline-clip${selected ? ' is-selected' : ''}${isLibOver ? ' is-library-over' : ''}`}
             title={it.name}
+            data-clip-kind={it.kind}
             onPointerDown={(e) => {
               if (pickMode) { // selection mode: click → item ref, drag → timerange (no editing)
                 commands.selectItem(it.id);
@@ -282,10 +285,6 @@ export function TrackLane({
               backgroundSize: 'auto 100%', backgroundRepeat: 'no-repeat',
               borderRadius: 3, color: '#fff', fontSize: 11,
               display: 'flex', alignItems: 'flex-end', padding: '0 8px 5px', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap',
-              border: isLibOver
-                ? '2px solid #6a9fd8'
-                : selected ? `2px solid ${theme.textStrong}` : '0.5px solid rgba(255,255,255,.08)',
-              boxShadow: isLibOver ? 'inset 0 0 0 0.5px #6a9fd855, 0 0 0 0.5px #6a9fd844' : undefined,
               transform: dragging && dragOffsetY ? `translate3d(0, ${dragOffsetY}px, 0)` : undefined,
               zIndex: dragging ? 10 : undefined,
               cursor: pickMode ? 'copy' : locked ? 'not-allowed' : editMode === 'blade' || editMode === 'pen' ? 'crosshair' : 'grab', userSelect: 'none', touchAction: 'none',

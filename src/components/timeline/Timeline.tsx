@@ -404,7 +404,7 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
 
           {/* snap guide — appears while a drag edge is locked onto a target */}
           {drag && drag.snapAt !== null && (
-            <div style={{ position: 'absolute', top: 0, left: HEADER_W + drag.snapAt * px, width: 1, height: RULER_H + tracksHeight, background: '#4fd1ff', pointerEvents: 'none', boxShadow: '0 0 4px #4fd1ff' }} />
+            <div className="cc-snap-guide" style={{ position: 'absolute', top: 0, left: HEADER_W + drag.snapAt * px, height: RULER_H + tracksHeight }} />
           )}
 
           {/* selection-mode timerange marquee (time-marked drag) */}
@@ -426,14 +426,13 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             style={{
               position: 'absolute', top: 0, left: 0,
               transform: `translate3d(${HEADER_W + playheadRef.current * px}px,0,0)`,
-              width: 1, height: RULER_H + tracksHeight,
-              background: theme.textStrong, pointerEvents: 'none',
-              boxShadow: '0 0 0 0.5px #0006',
+              height: RULER_H + tracksHeight,
+              pointerEvents: 'none',
               willChange: 'transform',
               zIndex: 30,
             }}
           >
-            <div className="cc-playhead-handle" style={{ transform: 'translateX(-6px)', width: 13, height: 11, background: theme.textStrong, clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
+            <div className="cc-playhead-handle" style={{ transform: 'translateX(-6px)', width: 13, height: 11, clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
           </div>
         </div>
       </div>

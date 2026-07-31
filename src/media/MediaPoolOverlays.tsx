@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import type { CSSProperties, RefObject } from 'react';
+import { useEffect, useRef, type CSSProperties, type RefObject } from 'react';
 import type { MediaAsset, MediaFolder } from '../editor/types';
 import { useT } from '../i18n/locale';
 import { theme } from '../theme';
@@ -25,11 +25,28 @@ interface AssetMenuPortalProps {
 }
 
 export function AssetMenuPortal(props: AssetMenuPortalProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const t = useT();
+  useEffect(() => {
+    if (!props.asset || !props.position) return;
+    menuRef.current?.querySelector<HTMLElement>('button:not(:disabled), select')?.focus();
+  }, [props.asset, props.position]);
   if (!props.asset || !props.position) return null;
   return createPortal(
     <>
       <div className="cc-asset-menu-backdrop" onClick={props.onClose} />
-      <div className="cc-media-popover cc-asset-menu-portal" style={props.position} onClick={(event) => event.stopPropagation()}>
+      <div
+        ref={menuRef}
+        className="cc-media-popover cc-asset-menu-portal"
+        style={props.position}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('管理 {name}', { name: props.asset.name })}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) props.onClose();
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
         <AssetMenuActions {...props} asset={props.asset} />
       </div>
     </>,
@@ -55,6 +72,29 @@ function AssetMenuActions(props: AssetMenuPortalProps & { asset: MediaAsset }) {
         </select>
       </label>
     </>
+  );
+}
+
+export function MissingMediaBanner({ count, onOpen }: { count: number; onOpen: () => void }) {
+  const t = useT();
+  if (count === 0) return null;
+  return (
+    <div className="cc-media-missing-banner" style={{
+      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+      margin: '0 10px 8px', padding: '8px 10px', borderRadius: 4,
+      background: theme.panelAlt, border: `0.5px solid ${theme.border}`,
+      borderLeft: `2px solid ${theme.accent}`, fontSize: 12, color: theme.textMuted,
+    }}>
+      <span style={{ flex: 1, minWidth: 140 }}>
+        {t('有 {n} 个素材丢失或无法加载。选择文件夹搜索，或从行内重新链接。', { n: count })}
+      </span>
+      <button type="button" onClick={onOpen} style={{
+        background: theme.hover, color: theme.text, border: `0.5px solid ${theme.border}`, borderRadius: 3,
+        padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+      }}>
+        {t('重新链接离线素材')}
+      </button>
+    </div>
   );
 }
 

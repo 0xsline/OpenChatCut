@@ -128,7 +128,7 @@ export function SceneDetectionDialog({ state, commands, item, onClose }: SceneDe
             <h2 id="cc-scene-title">{t('场景检测')}</h2>
             <p>{item.name} · {t('本机分析，不上传素材')}</p>
           </div>
-          <button type="button" className="cc-scene-icon-button" onClick={close} aria-label={t('关闭')}>
+          <button type="button" autoFocus className="cc-scene-icon-button" onClick={close} aria-label={t('关闭')}>
             <Icon name="x" size={17} />
           </button>
         </header>

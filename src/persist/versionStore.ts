@@ -5,11 +5,14 @@ import { kvGet as idbGet, kvSet as idbSet } from './sharedKv';
 import type { ProjectDoc } from '../editor/types';
 
 const versionsKey = (projectId: string) => `versions:${projectId}`;
+export const MAX_AUTOMATIC_VERSIONS = 30;
+const mutationQueues = new Map<string, Promise<unknown>>();
 
 export interface ProjectVersion {
   id: string;
   name: string;
   createdAt: number;
+  automatic?: boolean;
   doc: ProjectDoc;
 }
 
@@ -21,7 +24,16 @@ function toValidVersion(v: unknown): { version: ProjectVersion; migrated: boolea
   let migrated = false;
   const doc = migrateProjectDoc(raw.doc, { onProgress: () => { migrated = true; } });
   if (!doc) return null;
-  return { version: { id: raw.id, name: raw.name, createdAt: raw.createdAt, doc }, migrated };
+  return {
+    version: {
+      id: raw.id,
+      name: raw.name,
+      createdAt: raw.createdAt,
+      automatic: raw.automatic === true,
+      doc,
+    },
+    migrated,
+  };
 }
 
 async function readAll(projectId: string): Promise<ProjectVersion[]> {
@@ -54,15 +66,68 @@ const newId = () =>
     ? crypto.randomUUID()
     : `v_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
 
-/** Save the current project document as a named snapshot (pre-insert, latest first).*/
-export async function saveVersion(projectId: string, name: string, doc: ProjectDoc): Promise<ProjectVersion> {
-  const version: ProjectVersion = { id: newId(), name: name.trim() || '未命名版本', createdAt: Date.now(), doc };
+function sameDocument(left: ProjectDoc, right: ProjectDoc): boolean {
+  const normalizedLeft = migrateProjectDoc(left);
+  const normalizedRight = migrateProjectDoc(right);
+  return normalizedLeft !== null
+    && normalizedRight !== null
+    && JSON.stringify(normalizedLeft) === JSON.stringify(normalizedRight);
+}
+function serializeMutation<T>(projectId: string, operation: () => Promise<T>): Promise<T> {
+  const previous = mutationQueues.get(projectId) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(operation);
+  mutationQueues.set(projectId, current);
+  return current.finally(() => {
+    if (mutationQueues.get(projectId) === current) mutationQueues.delete(projectId);
+  });
+}
+
+async function persistVersion(
+  projectId: string,
+  name: string,
+  doc: ProjectDoc,
+  automatic: boolean,
+): Promise<ProjectVersion> {
+  const version: ProjectVersion = {
+    id: newId(),
+    name: name.trim() || (automatic ? '自动保存' : '未命名版本'),
+    createdAt: Date.now(),
+    automatic,
+    doc,
+  };
   const current = await readAll(projectId);
-  await idbSet(versionsKey(projectId), [version, ...current]);
+  const next = [version, ...current];
+  const retainedAutomaticIds = new Set(
+    next.filter((item) => item.automatic).slice(0, MAX_AUTOMATIC_VERSIONS).map((item) => item.id),
+  );
+  await idbSet(
+    versionsKey(projectId),
+    next.filter((item) => !item.automatic || retainedAutomaticIds.has(item.id)),
+  );
   return version;
 }
 
-export async function deleteVersion(projectId: string, id: string): Promise<void> {
-  const current = await readAll(projectId);
-  await idbSet(versionsKey(projectId), current.filter((v) => v.id !== id));
+/** Save the current project document as a named snapshot (pre-insert, latest first).*/
+export function saveVersion(projectId: string, name: string, doc: ProjectDoc): Promise<ProjectVersion> {
+  return serializeMutation(projectId, () => persistVersion(projectId, name, doc, false));
+}
+
+/** Save a deduplicated automatic snapshot while preserving every manual version. */
+export function saveAutomaticVersion(
+  projectId: string,
+  name: string,
+  doc: ProjectDoc,
+): Promise<ProjectVersion | null> {
+  return serializeMutation(projectId, async () => {
+    const latest = (await readAll(projectId)).sort((a, b) => b.createdAt - a.createdAt)[0];
+    if (latest && sameDocument(latest.doc, doc)) return null;
+    return persistVersion(projectId, name, doc, true);
+  });
+}
+
+export function deleteVersion(projectId: string, id: string): Promise<void> {
+  return serializeMutation(projectId, async () => {
+    const current = await readAll(projectId);
+    await idbSet(versionsKey(projectId), current.filter((v) => v.id !== id));
+  });
 }

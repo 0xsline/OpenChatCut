@@ -22,7 +22,7 @@ interface MediaAssetCardProps {
   onFocusChange: (id: string | null) => void;
   onLoadError: (id: string) => void;
   onLoadSuccess: (id: string) => void;
-  onOpenMenu: (id: string, anchor: HTMLElement) => void;
+  onOpenMenu: (id: string, anchor: HTMLElement, point?: { x: number; y: number }) => void;
   onRelink: (id: string) => void;
   onToggleSelected: (id: string) => void;
 }
@@ -122,6 +122,14 @@ export const MediaAssetCard = memo(function MediaAssetCard(props: MediaAssetCard
   return (
     <div
       className={`cc-asset-card${props.selected ? ' selected' : ''}${missing ? ' missing' : ''}`}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        const target = event.target instanceof Element
+          ? event.target.closest<HTMLElement>('button, input, [tabindex]')
+          : null;
+        const point = event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : undefined;
+        props.onOpenMenu(asset.id, target ?? event.currentTarget, point);
+      }}
       onPointerEnter={() => { if (view === 'grid' && !missing && previewable(asset)) onPointerChange(asset.id); }}
       onPointerLeave={() => onPointerChange(null)}
       onFocusCapture={() => {

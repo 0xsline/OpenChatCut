@@ -142,6 +142,7 @@ async function submitRenderJob(args: Args, ctx: AgentContext): Promise<unknown> 
     const body: Record<string, unknown> = { state: ctx.getState(), format };
     if (typeof args.resolution === 'string') body.resolution = args.resolution;
     if (typeof args.fps === 'number') body.fps = args.fps;
+    if (typeof args.videoBitrate === 'number') body.videoBitrate = args.videoBitrate;
     if (typeof args.codec === 'string') body.codec = args.codec;
     if (typeof args.name === 'string') body.name = args.name;
     if (typeof args.startFrame === 'number') body.startFrame = args.startFrame;
