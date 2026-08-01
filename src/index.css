@@ -88,6 +88,19 @@ button, input, select { font: inherit; }
 
 .cc-chat-panel { container:chat-panel / inline-size; }
 .cc-chat-messages { flex:1; min-height:0; overflow-y:auto; padding:4px 14px; color:var(--cc-text); font-size:13.5px; }
+@supports not selector(::-webkit-scrollbar) {
+  .cc-agent-change-log-list {
+    scrollbar-width:thin;
+    scrollbar-color:rgba(var(--cc-ink-rgb),0.22) transparent;
+  }
+}
+.cc-agent-change-log-list::-webkit-scrollbar { width:6px; }
+.cc-agent-change-log-list::-webkit-scrollbar-track { background:transparent; }
+.cc-agent-change-log-list::-webkit-scrollbar-thumb {
+  background:rgba(var(--cc-ink-rgb),0.22);
+  border-radius:999px;
+}
+.cc-agent-change-log-list::-webkit-scrollbar-thumb:hover { background:rgba(var(--cc-ink-rgb),0.38); }
 /* chat composer: top-edge drag handle to grow/shrink input area */
 .cc-chat-composer { container-type:inline-size; container-name:composer; }
 .cc-chat-composer-resize {
@@ -183,10 +196,20 @@ button, input, select { font: inherit; }
 }
 
 /* Editor asset panel. */
-.cc-library-panel { display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; background:var(--cc-panel); border-right:0.5px solid var(--cc-border); container:library-panel / inline-size; }
+.cc-library-panel { display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; background:var(--cc-panel); border-right:0.5px solid var(--cc-border); container:library-panel / inline-size; font-family:system-ui,-apple-system,sans-serif; }
 .cc-main-tabs { display:flex; align-items:center; gap:12px; min-height:30px; padding:0 12px; overflow-x:auto; flex-shrink:0; scrollbar-width:none; }
-.cc-main-tab { padding:0; border:0; background:none; color:var(--cc-text-dim); cursor:pointer; font-size:13px; line-height:30px; white-space:nowrap; }
-.cc-main-tab.selected { color:var(--cc-text); font-weight:400; }
+.cc-main-tab { height:30px; padding:0; border:0; border-bottom:1px solid transparent; background:transparent; color:var(--cc-text-dim); cursor:pointer; font-size:12px; font-weight:500; line-height:29px; white-space:nowrap; transition:border-color 120ms ease-out,color 120ms ease-out; }
+.cc-main-tab:hover,.cc-main-tab:focus-visible { color:var(--cc-text); }
+.cc-main-tab.selected { border-bottom-color:var(--cc-accent); color:var(--cc-text); }
+
+.cc-sequence-panel { flex:1; min-height:0; overflow-y:auto; padding:8px 10px 12px; border-top:0.5px solid var(--cc-border); }
+.cc-sequence-hint { margin:0 2px 8px; color:var(--cc-text-dim); font-size:11px; line-height:16px; }
+.cc-sequence-list { display:flex; flex-direction:column; }
+.cc-sequence-row { width:100%; min-width:0; min-height:36px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 4px; border:0; border-bottom:0.5px solid var(--cc-border); border-radius:0; background:transparent; color:var(--cc-text); cursor:pointer; text-align:left; transition:background-color 120ms ease-out,color 120ms ease-out; }
+.cc-sequence-row:hover:not(:disabled) { background:rgba(var(--cc-ink-rgb),0.04); }
+.cc-sequence-row:disabled { color:var(--cc-text-dim); cursor:not-allowed; opacity:0.55; }
+.cc-sequence-name { min-width:0; flex:1; overflow:hidden; color:inherit; font-size:12px; font-weight:500; line-height:16px; text-overflow:ellipsis; white-space:nowrap; }
+.cc-sequence-duration { flex:0 0 auto; color:var(--cc-text-dim); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; font-variant-numeric:tabular-nums; line-height:14px; white-space:nowrap; }
 
 /* Resource library transition card grid. */
 .cc-transition-browser { display:flex; flex-direction:column; gap:10px; min-height:0; }

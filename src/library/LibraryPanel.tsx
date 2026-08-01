@@ -172,11 +172,11 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
           <TranscriptPanel playerRef={playerRef} fps={fps} items={items} trackOptions={trackOptions} onSetItemTranscript={onSetItemTranscript} onToggleWord={onToggleWord} onCleanScript={onCleanScript} onSetGapCap={onSetGapCap} onSetTranscriptPlayOrder={onSetTranscriptPlayOrder} onReorderTrackItems={onReorderTrackItems} onClearEdits={onClearEdits} onImportSrt={(file) => { void importSrt(file); }} onOpenCaptionStyles={openCaptionStyles} />
         </div>
       ) : isSequences ? (
-        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, borderTop: `0.5px solid ${theme.border}`, padding: 10 }}>
-          <div style={{ color: theme.textDim, fontSize: 11, lineHeight: 1.5, margin: '0 2px 8px' }}>
+        <div className="cc-sequence-panel">
+          <div className="cc-sequence-hint">
             {t('点击把序列作为引用实例加入当前时间线；修改子序列会同步到所有实例。')}
           </div>
-          <div style={{ display: 'grid', gap: 6 }}>
+          <div className="cc-sequence-list">
             {sequenceOptions.map((option) => (
               <button
                 key={option.id}
@@ -184,22 +184,10 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
                 disabled={!!option.disabledReason}
                 title={option.disabledReason}
                 onClick={() => onAddSequence(option.id)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 8,
-                  border: `0.5px solid ${theme.border}`,
-                  borderRadius: 6,
-                  background: theme.panelAlt,
-                  color: option.disabledReason ? theme.textDim : theme.text,
-                  padding: '9px 10px',
-                  cursor: option.disabledReason ? 'not-allowed' : 'pointer',
-                  textAlign: 'left',
-                }}
+                className="cc-sequence-row"
               >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{option.name}</span>
-                <span style={{ flex: '0 0 auto', color: theme.textDim, fontSize: 10 }}>{(option.durationInFrames / fps).toFixed(1)}s</span>
+                <span className="cc-sequence-name">{option.name}</span>
+                <span className="cc-sequence-duration">{(option.durationInFrames / fps).toFixed(1)}s</span>
               </button>
             ))}
           </div>

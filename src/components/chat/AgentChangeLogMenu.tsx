@@ -53,7 +53,7 @@ export function AgentChangeLogMenu({
                 <Icon name="x" size={15} />
               </button>
             </div>
-            <div style={list}>
+            <div className="cc-agent-change-log-list" style={list}>
               {[...changeLog].reverse().map((session) => {
                 const current = canRollback(session.id);
                 const disabled = running || !session.rollbackable;
@@ -105,16 +105,17 @@ const backdrop: CSSProperties = {
   justifyContent: 'center', padding: 20, background: themeAlpha.shadow(0.55),
 };
 const card: CSSProperties = {
-  width: 520, maxWidth: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+  width: 520, maxWidth: '100%', maxHeight: 'min(680px, calc(100dvh - 40px))', display: 'flex', flexDirection: 'column',
   background: theme.panel, color: theme.text, border: `0.5px solid ${theme.border}`,
   borderRadius: 6, boxShadow: `0 20px 60px ${themeAlpha.shadow(0.5)}`,
 };
 const header: CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 8, padding: '13px 16px',
+  display: 'flex', flex: '0 0 auto', alignItems: 'center', gap: 8, padding: '13px 16px',
   borderBottom: `0.5px solid ${theme.border}`,
 };
 const list: CSSProperties = {
-  padding: 12, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8,
+  padding: 12, flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain',
+  scrollbarGutter: 'stable', display: 'flex', flexDirection: 'column', gap: 8,
 };
 const row: CSSProperties = {
   padding: 10, background: theme.panelAlt, border: `0.5px solid ${theme.border}`, borderRadius: 4,
