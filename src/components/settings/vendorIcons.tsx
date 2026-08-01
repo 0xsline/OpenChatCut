@@ -1,7 +1,7 @@
-// Official icon of the provider, vendored from @lobehub/icons-static-svg v1.93.0(MIT), simple-icons(CC0:
-// Pexels/Pixabay/Unsplash/Cloudflare) and Freesound site safari-pinned-tab branding.
-// SVG is a static asset of this codebase (not user input), inline rendering for size/mono coloring inheritance; color version path
-// Comes with official brand colors. Mureka/E2B/local disk is still a monogram.
+// Provider marks are vendored from official brand assets where available, plus
+// @lobehub/icons-static-svg v1.93.0 (MIT) and simple-icons (CC0). Static SVGs
+// render inline for consistent sizing; monochrome marks inherit the active skin.
+// Mureka/E2B/local disk remain monograms because they have no suitable provider mark here.
 import type { CSSProperties } from 'react';
 import { theme } from '../../theme';
 import claudeSvg from '../../../assets/vendor-icons/claude-color.svg?raw';
@@ -25,6 +25,9 @@ import pixabaySvg from '../../../assets/vendor-icons/pixabay.svg?raw';
 import unsplashSvg from '../../../assets/vendor-icons/unsplash.svg?raw';
 import freesoundSvg from '../../../assets/vendor-icons/freesound.svg?raw';
 import cloudflareSvg from '../../../assets/vendor-icons/cloudflare.svg?raw';
+import openrouterSvg from '../../../assets/vendor-icons/openrouter.svg?raw';
+import ollamaSvg from '../../../assets/vendor-icons/ollama.svg?raw';
+import lmstudioSvg from '../../../assets/vendor-icons/lmstudio-color.svg?raw';
 
 export type VendorId =
   | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter'
@@ -60,14 +63,14 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
   unsplash: { svg: unsplashSvg, tint: theme.text }, // simple-icons single color, ink color according to skin
   freesound: { svg: freesoundSvg, tint: '#E85D4C' }, // Site pin + brand red and orange
   r2: { svg: cloudflareSvg, tint: '#F6821F' },      // R2 = Cloudflare product, use Cloudflare official logo
+  openrouter: { svg: openrouterSvg, tint: '#7624F4' }, // Official OpenRouter mark + primary purple
+  ollama: { svg: ollamaSvg, tint: theme.text },        // Official llama mark, adapted for skin contrast
+  lmstudio: { svg: lmstudioSvg },                      // Official LM Studio color app icon
 };
 
 // Official SVG not included / Non-provider brand → monogram
 const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: string }>> = {
   llm: { bg: '#34363c', mono: 'AI', fg: '#f7f7f8' },
-  openrouter: { bg: '#5B5BD6', mono: 'OR' },
-  ollama: { bg: '#111111', mono: 'OL', fg: '#ffffff' },
-  lmstudio: { bg: '#2B5B84', mono: 'LM', fg: '#ffffff' },
   xiaomi: { bg: '#FF6900', mono: 'MI' }, // Xiaomi brand orange, official SVG not vendored before monogram cover
   mureka: { bg: '#7C5CFF', mono: 'μ' },
   e2b: { bg: '#FF8800', mono: 'E2', fg: '#40230a' },
