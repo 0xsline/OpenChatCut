@@ -71,6 +71,52 @@ export interface ExternalProposalController {
 
 const retryDelay = () => new Promise<void>((resolve) => setTimeout(resolve, 1_000));
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+const EDITOR_BRIDGE_CREDENTIAL_HEADER = 'X-OpenChatCut-Editor-Credential';
+const EDITOR_BRIDGE_BOOTSTRAP_HEADER = 'X-OpenChatCut-Editor-Bootstrap';
+let editorBridgeCredential: string | null = null;
+
+class EditorBridgeRequestError extends Error {
+  readonly status: number;
+
+  constructor(operation: string, status: number) {
+    super(`${operation} failed: HTTP ${status}`);
+    this.name = 'EditorBridgeRequestError';
+    this.status = status;
+  }
+}
+
+function editorBridgeHeaders(credential: string, json = false): Record<string, string> {
+  const headers: Record<string, string> = {
+    [EDITOR_BRIDGE_CREDENTIAL_HEADER]: credential,
+  };
+  if (json) headers['Content-Type'] = 'application/json';
+  return headers;
+}
+
+async function bootstrapEditorBridge(signal: AbortSignal): Promise<string> {
+  const response = await fetch('/api/external-agent/bootstrap', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [EDITOR_BRIDGE_BOOTSTRAP_HEADER]: '1',
+    },
+    body: '{}',
+    signal,
+  });
+  if (!response.ok) throw new EditorBridgeRequestError('editor bootstrap', response.status);
+  const value: unknown = await response.json();
+  if (
+    !value
+    || typeof value !== 'object'
+    || Array.isArray(value)
+    || !('credential' in value)
+    || typeof value.credential !== 'string'
+    || !value.credential
+  ) {
+    throw new Error('editor bootstrap returned an invalid credential');
+  }
+  return value.credential;
+}
 
 function isFailureOutcome(
   value: unknown,
@@ -142,15 +188,17 @@ async function sendResult(
   outcome: ExternalEditSessionTerminalStatus,
   value: unknown,
   signal: AbortSignal,
+  credential = editorBridgeCredential,
 ): Promise<void> {
+  if (!credential) throw new Error('editor bridge credential is unavailable');
   const response = await fetch('/api/external-agent/result', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: editorBridgeHeaders(credential, true),
     body: JSON.stringify({ id, outcome, value }),
     signal,
   });
   if (!response.ok && response.status !== 404) {
-    throw new Error(`result failed: HTTP ${response.status}`);
+    throw new EditorBridgeRequestError('result', response.status);
   }
 }
 
@@ -203,6 +251,7 @@ async function pollEditor(
   projectId: string,
   runtime: ExternalBridgeRuntime,
   cancellations: ExternalCallCancellationRegistry,
+  credential: string,
   signal: AbortSignal,
 ): Promise<void> {
   while (!signal.aborted) {
@@ -212,10 +261,21 @@ async function pollEditor(
       editorId: binding.editorInstanceId,
       baseRevision: binding.baseRevision,
     });
-    const response = await fetch(`/api/external-agent/poll?${query}`, { signal });
+    const response = await fetch(`/api/external-agent/poll?${query}`, {
+      headers: editorBridgeHeaders(credential),
+      signal,
+    });
     if (response.status === 204) continue;
-    if (!response.ok) throw new Error(`poll failed: HTTP ${response.status}`);
-    await executeExternalCall(parseExternalCall(await response.json()), runtime, signal, cancellations);
+    if (!response.ok) throw new EditorBridgeRequestError('poll', response.status);
+    await executeExternalCall(
+      parseExternalCall(await response.json()),
+      runtime,
+      signal,
+      cancellations,
+      (id, outcome, value, resultSignal) => (
+        sendResult(id, outcome, value, resultSignal, credential)
+      ),
+    );
   }
 }
 
@@ -223,22 +283,31 @@ async function pollCancellations(
   projectId: string,
   editorInstanceId: string,
   cancellations: ExternalCallCancellationRegistry,
+  credential: string,
   signal: AbortSignal,
 ): Promise<void> {
   const query = new URLSearchParams({ projectId, editorId: editorInstanceId });
   while (!signal.aborted) {
-    const response = await fetch(`/api/external-agent/cancellation?${query}`, { signal });
+    const response = await fetch(`/api/external-agent/cancellation?${query}`, {
+      headers: editorBridgeHeaders(credential),
+      signal,
+    });
     if (response.status === 204) continue;
-    if (!response.ok) throw new Error(`cancellation poll failed: HTTP ${response.status}`);
+    if (!response.ok) throw new EditorBridgeRequestError('cancellation poll', response.status);
     const cancellation = parseCancellation(await response.json());
     cancellations.cancel(cancellation.id, cancellation.message);
   }
 }
 
-async function unregisterBridge(projectId: string, editorInstanceId: string): Promise<void> {
+async function unregisterBridge(
+  projectId: string,
+  editorInstanceId: string,
+  credential = editorBridgeCredential,
+): Promise<void> {
+  if (!credential) return;
   await fetch('/api/external-agent/unregister', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: editorBridgeHeaders(credential, true),
     body: JSON.stringify({ projectId, editorId: editorInstanceId }),
     keepalive: true,
   }).catch(() => undefined);
@@ -255,13 +324,19 @@ async function runBridge(
     const cancellations = new ExternalCallCancellationRegistry();
     const controller = new AbortController();
     const cancel = () => controller.abort(signal.reason);
+    let credential = editorBridgeCredential;
+    let refreshCredential = false;
     if (signal.aborted) controller.abort(signal.reason);
     else signal.addEventListener('abort', cancel, { once: true });
     try {
+      if (!credential) {
+        credential = await bootstrapEditorBridge(controller.signal);
+        editorBridgeCredential = credential;
+      }
       const binding = runtime.binding();
       const response = await fetch('/api/external-agent/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: editorBridgeHeaders(credential, true),
         body: JSON.stringify({
           projectId,
           editorId: editorInstanceId,
@@ -270,19 +345,29 @@ async function runBridge(
         }),
         signal: controller.signal,
       });
-      if (!response.ok) throw new Error(`registration failed: HTTP ${response.status}`);
+      if (!response.ok) throw new EditorBridgeRequestError('registration', response.status);
       onError(null);
       await Promise.all([
-        pollEditor(projectId, runtime, cancellations, controller.signal),
-        pollCancellations(projectId, editorInstanceId, cancellations, controller.signal),
+        pollEditor(projectId, runtime, cancellations, credential, controller.signal),
+        pollCancellations(
+          projectId,
+          editorInstanceId,
+          cancellations,
+          credential,
+          controller.signal,
+        ),
       ]);
     } catch (error) {
+      refreshCredential = error instanceof EditorBridgeRequestError && error.status === 401;
       if (!signal.aborted) onError(errorMessage(error));
     } finally {
       controller.abort();
       signal.removeEventListener('abort', cancel);
       cancellations.abortAll(controller.signal.reason);
-      await unregisterBridge(projectId, editorInstanceId);
+      await unregisterBridge(projectId, editorInstanceId, credential);
+      if (refreshCredential && editorBridgeCredential === credential) {
+        editorBridgeCredential = null;
+      }
     }
     if (!signal.aborted) await retryDelay();
   }

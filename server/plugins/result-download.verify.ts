@@ -31,6 +31,18 @@ function scriptedFetch(script: Array<Response | Error>) {
   return { fetchImpl, sleep, calls, waits };
 }
 
+async function settleWithin<T>(operation: Promise<T>, timeoutMs = 500): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`verification deadline exceeded after ${timeoutMs}ms`)), timeoutMs);
+  });
+  try {
+    return await Promise.race([operation, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ── Backoff and retry determination ──
 {
   assert.deepEqual([downloadBackoffMs(1), downloadBackoffMs(2)], [400, 800], '指数退避');
@@ -72,6 +84,29 @@ function scriptedFetch(script: Array<Response | Error>) {
   const s = scriptedFetch([new Error('ECONNRESET'), ok()]);
   assert.equal((await fetchGeneratedResult(URL_, 'video', s)).status, 200);
   assert.equal(s.calls.length, 2);
+}
+
+// ── Each pre-header attempt has a fresh deadline, even when fetch ignores AbortSignal ──
+{
+  const signals: AbortSignal[] = [];
+  let attempts = 0;
+  const stalled = fetchGeneratedResult(URL_, 'video', {
+    fetchImpl: (_url, init) => {
+      attempts += 1;
+      signals.push(init.signal);
+      return new Promise<Response>(() => undefined);
+    },
+    sleep: () => Promise.resolve(),
+    headerDeadlineMs: 5,
+  });
+  const error = await settleWithin(stalled, 250).then(() => null, (e: unknown) => e);
+  assert.ok(error instanceof ResultDownloadError);
+  assert.equal(error.url, URL_);
+  assert.equal(error.retryable, true);
+  assert.match(error.message, /response headers deadline/);
+  assert.equal(attempts, 3, 'a stalled pre-header request still consumes exactly three attempts');
+  assert.equal(new Set(signals).size, 3, 'every attempt owns a fresh AbortSignal');
+  assert.ok(signals.every((signal) => signal.aborted), 'each expired attempt aborts its transport signal');
 }
 
 // ── Retry exhausted: throw ResultDownloadError with URL ──
@@ -142,6 +177,73 @@ function scriptedFetch(script: Array<Response | Error>) {
   assert.equal(cancels, 1, 'the upstream stream must be terminated as soon as the cap is crossed');
 }
 
+// ── Body reads use a resettable idle deadline and preserve recoverable URL semantics ──
+{
+  let cancels = 0;
+  const stalledBody = new ReadableStream<Uint8Array>({
+    pull() {
+      return new Promise<void>(() => undefined);
+    },
+    cancel() {
+      cancels += 1;
+      return new Promise<void>(() => undefined);
+    },
+  });
+  const response = await fetchGeneratedResult(URL_, 'video', {
+    ...scriptedFetch([ok(stalledBody)]),
+    bodyIdleDeadlineMs: 5,
+  });
+  const error = await settleWithin(response.arrayBuffer(), 250).then(() => null, (e: unknown) => e);
+  assert.ok(error instanceof ResultDownloadError);
+  assert.equal(error.url, URL_);
+  assert.equal(error.retryable, true);
+  assert.match(error.message, /body idle deadline/);
+  assert.equal(cancels, 1, 'timeout reports before a non-settling upstream cancellation');
+}
+
+// ── Network failures after headers remain retryable result-download failures ──
+{
+  const brokenBody = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.error(new Error('ECONNRESET while reading body'));
+    },
+  });
+  const response = await fetchGeneratedResult(URL_, 'video', scriptedFetch([ok(brokenBody)]));
+  const error = await response.arrayBuffer().then(() => null, (e: unknown) => e);
+  assert.ok(error instanceof ResultDownloadError);
+  assert.equal(error.url, URL_);
+  assert.equal(error.retryable, true);
+  assert.match(error.message, /ECONNRESET while reading body/);
+}
+
+// ── A stream may take longer than one idle window overall when every chunk makes progress ──
+{
+  let emitted = 0;
+  let headerSignal: AbortSignal | undefined;
+  const progressingBody = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      await new Promise<void>((resolve) => { setTimeout(resolve, 25); });
+      if (emitted === 6) {
+        controller.close();
+        return;
+      }
+      emitted += 1;
+      controller.enqueue(Uint8Array.of(emitted));
+    },
+  });
+  const response = await fetchGeneratedResult(URL_, 'video', {
+    fetchImpl: (_url, init) => {
+      headerSignal = init.signal;
+      return Promise.resolve(ok(progressingBody));
+    },
+    headerDeadlineMs: 5,
+    bodyIdleDeadlineMs: 100,
+  });
+  const bytes = new Uint8Array(await settleWithin(response.arrayBuffer()));
+  assert.deepEqual([...bytes], [1, 2, 3, 4, 5, 6]);
+  assert.equal(headerSignal?.aborted, false, 'the header timer is cleared before a long body download');
+}
+
 // ── The generated-result entry point retains safePublicFetch DNS/IP/redirect pinning ──
 {
   const publicAddress = '93.184.216.34';
@@ -151,8 +253,9 @@ function scriptedFetch(script: Array<Response | Error>) {
     return ok();
   };
   const guarded = (resolver: PublicUrlResolver, redirecting = false) => (
-    async (input: string | URL) => safePublicFetch(input, {
+    async (input: string | URL, init: { signal: AbortSignal }) => safePublicFetch(input, {
       resolver,
+      signal: init.signal,
       transport: redirecting
         ? async () => {
           transports += 1;
@@ -191,4 +294,4 @@ function scriptedFetch(script: Array<Response | Error>) {
   assert.equal(resolutions, 2, 'every redirect hop must resolve and validate again');
 }
 
-console.log('result-download.verify: ok (退避/可重试判定/瞬时恢复/网络异常/带 URL 的失败/4xx 不重试)');
+console.log('result-download.verify: ok (retry/status policy/header deadline/body idle deadline/MIME/size/URL semantics)');

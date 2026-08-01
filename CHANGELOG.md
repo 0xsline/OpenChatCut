@@ -48,6 +48,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed / 修复
 
+- Moved rendered frame files out of Chat Completions tool-result text and into native vision messages across OpenAI and compatible providers, preventing base64 payloads from exhausting the model context window during multi-step Agent edits; compatible models that reject visual input retry once with bounded text-only metadata.
+  OpenAI 及兼容 Provider 的 Chat Completions 模式下，渲染帧文件不再作为工具结果文本传递，而会转换为原生视觉消息，避免多步 Agent 编辑因 Base64 内容撑爆模型上下文窗口；兼容模型若拒绝视觉输入，会使用有界纯文本元数据安全重试一次。
+- Aligned server-export media materialization with the renderer-visible timeline closure, isolated the browser editor bridge behind a process-local credential, and bounded generated-result header and idle-body waits so stalled providers remain recoverable.
+  服务端导出媒体物化现与渲染器可见时间线闭包一致；浏览器编辑器桥改用进程内独立凭据；生成结果下载也加入响应头与正文空闲截止时间，使厂商卡死时任务仍可恢复。
 - Made browser/server export cancellation reach the encoder, renderer, and destination writer while preserving an already committed success; restored jobs now terminalize safely and use registered cleanup policies instead of unlinking untrusted result paths.
   让浏览器端与服务端导出取消信号贯穿编码器、渲染器和目标写入器，同时不再用迟到取消覆盖已提交成功；恢复任务会安全进入终态，并只通过已注册清理策略处理结果，不再删除不可信路径。
 - Made linked audio/video overwrite and split operations atomic, preserved transitions outside punched holes, validated transitions as unique binary seams, and corrected edited-transcript audio slip coordinates.

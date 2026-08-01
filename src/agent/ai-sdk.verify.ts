@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
-import { generateText, jsonSchema } from 'ai';
+import {
+  UnsupportedFunctionalityError,
+  generateText,
+  jsonSchema,
+  type ModelMessage,
+  type ToolResultPart,
+} from 'ai';
 import {
   defaultModelForProvider,
   getLanguageModel,
@@ -13,7 +19,13 @@ import {
   makeMessagesPortable,
   normalizeLlmMessages,
   prepareMessagesForProvider,
+  prepareChatCompletionsMediaMessages,
 } from './messages';
+import {
+  isCompatibleMediaFallbackError,
+  shouldRetryCompatibleMediaRequest,
+  streamPartStartsCompatibleMediaOutput,
+} from './runtime';
 
 assert.equal(normalizeLlmProvider('openai'), 'openai');
 assert.equal(normalizeLlmProvider('KIMI'), 'kimi');
@@ -182,6 +194,312 @@ assert.deepEqual(makeMessagesPortable([
 ]), [
   { role: 'assistant', content: [{ type: 'text', text: 'visible' }] },
 ]);
+
+// OpenAI Chat Completions only supports vision input on user messages. If a
+// tool-result file stays inside the tool message, the provider serializes its
+// base64 bytes as plain text and can exhaust the model context window.
+const chatVisionHistory = makeMessagesPortable([
+  {
+    role: 'assistant',
+    content: [{
+      type: 'tool-call',
+      toolCallId: 'frame_call',
+      toolName: 'view_asset_frames',
+      input: { assetId: 'asset-a' },
+    }],
+  },
+  {
+    role: 'tool',
+    content: [{
+      type: 'tool-result',
+      toolCallId: 'frame_call',
+      toolName: 'view_asset_frames',
+      output: {
+        type: 'content',
+        value: [
+          {
+            type: 'file',
+            data: { type: 'data', data: 'jpeg-base64' },
+            mediaType: 'image/jpeg',
+            filename: 'frame-0.jpg',
+          },
+          { type: 'text', text: 'frame 0 metadata' },
+        ],
+      },
+    }],
+  },
+], 'chat');
+assert.deepEqual(chatVisionHistory, [
+  {
+    role: 'assistant',
+    content: [{
+      type: 'tool-call',
+      toolCallId: 'frame_call',
+      toolName: 'view_asset_frames',
+      input: { assetId: 'asset-a' },
+    }],
+  },
+  {
+    role: 'tool',
+    content: [{
+      type: 'tool-result',
+      toolCallId: 'frame_call',
+      toolName: 'view_asset_frames',
+      output: { type: 'text', value: 'frame 0 metadata' },
+    }],
+  },
+  {
+    role: 'user',
+    content: [
+      { type: 'text', text: 'Rendered media returned by the preceding tool calls:' },
+      {
+        type: 'file',
+        data: { type: 'data', data: 'jpeg-base64' },
+        mediaType: 'image/jpeg',
+        filename: 'frame-0.jpg',
+      },
+    ],
+  },
+]);
+
+const compatibleAssistant: ModelMessage = {
+  role: 'assistant',
+  providerOptions: { moonshotai: { history: 'keep' } },
+  content: [{
+    type: 'reasoning',
+    text: 'provider reasoning',
+    providerOptions: { moonshotai: { reasoningContent: 'keep' } },
+  }],
+};
+const compatibleTextResult: ToolResultPart = {
+  type: 'tool-result',
+  toolCallId: 'text_call',
+  toolName: 'inspect_metadata',
+  providerOptions: { moonshotai: { result: 'keep' } },
+  output: {
+    type: 'text',
+    value: 'metadata only',
+    providerOptions: { moonshotai: { output: 'keep' } },
+  },
+};
+const compatibleTextTool: ModelMessage = {
+  role: 'tool',
+  providerOptions: { moonshotai: { message: 'keep' } },
+  content: [compatibleTextResult],
+};
+const compatibleFileResultA: ToolResultPart = {
+  type: 'tool-result',
+  toolCallId: 'frame_call_a',
+  toolName: 'view_asset_frames',
+  providerOptions: { moonshotai: { result: 'keep-a' } },
+  output: {
+    type: 'content',
+    value: [{
+      type: 'file',
+      data: { type: 'data', data: 'compatible-jpeg-a' },
+      mediaType: 'image/jpeg',
+      filename: 'frame-a.jpg',
+      providerOptions: { moonshotai: { file: 'keep-a' } },
+    }],
+  },
+};
+const compatibleFileResultB: ToolResultPart = {
+  type: 'tool-result',
+  toolCallId: 'frame_call_b',
+  toolName: 'view_asset_frames',
+  providerOptions: { moonshotai: { result: 'keep-b' } },
+  output: {
+    type: 'content',
+    value: [
+      { type: 'text', text: 'frame b metadata', providerOptions: { moonshotai: { text: 'keep-b' } } },
+      {
+        type: 'file',
+        data: { type: 'data', data: 'compatible-jpeg-b' },
+        mediaType: 'image/jpeg',
+      },
+    ],
+  },
+};
+const compatibleFileToolA: ModelMessage = {
+  role: 'tool',
+  providerOptions: { moonshotai: { message: 'keep-a' } },
+  content: [compatibleFileResultA],
+};
+const compatibleFileToolB: ModelMessage = {
+  role: 'tool',
+  providerOptions: { moonshotai: { message: 'keep-b' } },
+  content: [compatibleFileResultB],
+};
+const compatibleMediaPreparation = prepareChatCompletionsMediaMessages([
+  compatibleAssistant,
+  compatibleTextTool,
+  compatibleFileToolA,
+  compatibleFileToolB,
+]);
+const compatibleChatHistory = compatibleMediaPreparation.messages;
+assert.equal(compatibleMediaPreparation.movedMedia, true);
+assert.equal(compatibleChatHistory.length, 5);
+assert.strictEqual(compatibleChatHistory[0], compatibleAssistant);
+assert.strictEqual(compatibleChatHistory[1], compatibleTextTool);
+assert.strictEqual(
+  (compatibleChatHistory[1] as Extract<ModelMessage, { role: 'tool' }>).content[0],
+  compatibleTextResult,
+);
+assert.deepEqual(compatibleChatHistory.slice(2), [
+  {
+    ...compatibleFileToolA,
+    content: [{
+      ...compatibleFileResultA,
+      output: {
+        type: 'text',
+        value: 'Rendered media is attached in the following user message.',
+      },
+    }],
+  },
+  {
+    ...compatibleFileToolB,
+    content: [{
+      ...compatibleFileResultB,
+      output: {
+        type: 'text',
+        value: 'frame b metadata',
+        providerOptions: { moonshotai: { text: 'keep-b' } },
+      },
+    }],
+  },
+  {
+    role: 'user',
+    content: [
+      { type: 'text', text: 'Rendered media returned by the preceding tool calls:' },
+      {
+        type: 'file',
+        data: { type: 'data', data: 'compatible-jpeg-a' },
+        mediaType: 'image/jpeg',
+        filename: 'frame-a.jpg',
+        providerOptions: { moonshotai: { file: 'keep-a' } },
+      },
+      {
+        type: 'file',
+        data: { type: 'data', data: 'compatible-jpeg-b' },
+        mediaType: 'image/jpeg',
+      },
+    ],
+  },
+]);
+
+const compatibleTextOnlyHistory = compatibleMediaPreparation.messagesWithoutMedia;
+assert.equal(compatibleTextOnlyHistory.length, 4);
+assert.strictEqual(compatibleTextOnlyHistory[0], compatibleAssistant);
+assert.strictEqual(compatibleTextOnlyHistory[1], compatibleTextTool);
+assert.deepEqual(compatibleTextOnlyHistory.slice(2), [
+  {
+    ...compatibleFileToolA,
+    content: [{
+      ...compatibleFileResultA,
+      output: {
+        type: 'text',
+        value: 'Rendered media was omitted because the selected model does not accept visual attachments.',
+      },
+    }],
+  },
+  {
+    ...compatibleFileToolB,
+    content: [{
+      ...compatibleFileResultB,
+      output: {
+        type: 'text',
+        value: 'frame b metadata',
+        providerOptions: { moonshotai: { text: 'keep-b' } },
+      },
+    }],
+  },
+]);
+for (const message of compatibleTextOnlyHistory) {
+  if (message.role === 'user' && Array.isArray(message.content)) {
+    assert.equal(message.content.some((part) => part.type === 'file'), false);
+  }
+  if (message.role === 'tool') {
+    for (const part of message.content) {
+      if (part.type === 'tool-result') assert.notEqual(part.output.type, 'content');
+    }
+  }
+}
+
+const compatibleNoMediaPreparation = prepareChatCompletionsMediaMessages([
+  compatibleAssistant,
+  compatibleTextTool,
+]);
+assert.equal(compatibleNoMediaPreparation.movedMedia, false);
+assert.strictEqual(compatibleNoMediaPreparation.messages[0], compatibleAssistant);
+assert.strictEqual(compatibleNoMediaPreparation.messages[1], compatibleTextTool);
+assert.strictEqual(compatibleNoMediaPreparation.messagesWithoutMedia[0], compatibleAssistant);
+assert.strictEqual(compatibleNoMediaPreparation.messagesWithoutMedia[1], compatibleTextTool);
+
+const retryable400 = {
+  protocol: 'openai-compatible',
+  movedMedia: true,
+  retryAttempted: false,
+  outputStarted: false,
+  aborted: false,
+  error: { statusCode: 400 },
+};
+const unsupportedImageInput = new UnsupportedFunctionalityError({
+  functionality: 'image input',
+});
+assert.equal(streamPartStartsCompatibleMediaOutput('error'), false);
+assert.equal(streamPartStartsCompatibleMediaOutput('abort'), false);
+assert.equal(streamPartStartsCompatibleMediaOutput('text-start'), true);
+assert.equal(streamPartStartsCompatibleMediaOutput('reasoning-delta'), true);
+assert.equal(streamPartStartsCompatibleMediaOutput('tool-input-start'), true);
+assert.equal(isCompatibleMediaFallbackError(unsupportedImageInput), true);
+assert.equal(isCompatibleMediaFallbackError({ status: 400 }), true);
+assert.equal(shouldRetryCompatibleMediaRequest(retryable400), true);
+assert.equal(shouldRetryCompatibleMediaRequest({
+  ...retryable400,
+  error: unsupportedImageInput,
+}), true);
+assert.equal(shouldRetryCompatibleMediaRequest({ ...retryable400, retryAttempted: true }), false);
+for (const statusCode of [401, 403, 404, 429, 500, 503]) {
+  assert.equal(shouldRetryCompatibleMediaRequest({
+    ...retryable400,
+    error: { statusCode },
+  }), false);
+}
+assert.equal(shouldRetryCompatibleMediaRequest({
+  ...retryable400,
+  error: Object.assign(new Error('aborted'), { name: 'AbortError', statusCode: 400 }),
+}), false);
+assert.equal(shouldRetryCompatibleMediaRequest({ ...retryable400, aborted: true }), false);
+assert.equal(shouldRetryCompatibleMediaRequest({ ...retryable400, outputStarted: true }), false);
+assert.equal(shouldRetryCompatibleMediaRequest({ ...retryable400, movedMedia: false }), false);
+for (const protocol of ['openai', 'anthropic', 'google']) {
+  assert.equal(shouldRetryCompatibleMediaRequest({ ...retryable400, protocol }), false);
+}
+
+assert.deepEqual(makeMessagesPortable([compatibleFileToolA], 'responses'), [{
+  role: 'tool',
+  content: [{
+    type: 'tool-result',
+    toolCallId: 'frame_call_a',
+    toolName: 'view_asset_frames',
+    output: {
+      type: 'content',
+      value: [{
+        type: 'file',
+        data: { type: 'data', data: 'compatible-jpeg-a' },
+        mediaType: 'image/jpeg',
+        filename: 'frame-a.jpg',
+      }],
+    },
+  }],
+}]);
+const nativeMediaHistory = prepareMessagesForProvider(
+  [compatibleFileToolA],
+  'gemini',
+  'gemini',
+);
+assert.equal(nativeMediaHistory.length, 1);
+assert.strictEqual(nativeMediaHistory[0], compatibleFileToolA);
 
 // ── Gemini (official @ai-sdk/google, native API) thought_signature full loop regression (#6):
 // The first hop native response carries parts[].thoughtSignature → captured into response messages →

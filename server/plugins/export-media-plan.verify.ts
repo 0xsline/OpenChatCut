@@ -3,7 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ExportFailureError } from '../../src/export/exportFailure';
-import { validateServerExportMedia } from './export-media-plan';
+import { materializeServerExportMedia, validateServerExportMedia } from './export-media-plan';
 import { acceptExportSubmission } from './export-submission';
 // @ts-expect-error — plain .mjs render pipeline has no .d.ts
 import { assertMaterializedRenderSnapshot } from '../../remotion/render.mjs';
@@ -215,6 +215,81 @@ try {
     /external media .* was not materialized/,
     'the headless renderer must refuse an unmaterialized second load',
   );
+
+  const inactiveRemote = 'https://inactive-media.example/broken.mp4';
+  const unusedAssetRemote = 'https://unused-media.example/library.mp4';
+  const inactiveProject = {
+    activeTimelineId: 'timeline-active',
+    assets: [{ id: 'unused-remote-asset', src: unusedAssetRemote }],
+    timelines: [
+      {
+        id: 'timeline-active',
+        items: [{ id: 'active-local', kind: 'video', src: '/media/uploads/readable.mp4' }],
+      },
+      {
+        id: 'timeline-inactive',
+        items: [{ id: 'inactive-remote', kind: 'video', src: inactiveRemote }],
+      },
+    ],
+  };
+  assert.doesNotThrow(
+    () => assertMaterializedRenderSnapshot(inactiveProject, 'inactive-timeline-export'),
+    'inactive timelines and unused assets are outside the renderer-visible closure',
+  );
+  let inactiveFetchCalls = 0;
+  const inactiveMaterialized = await materializeServerExportMedia(inactiveProject, {
+    ...options,
+    fetcher: async () => {
+      inactiveFetchCalls += 1;
+      throw new Error('inactive media must not be fetched');
+    },
+  });
+  assert.equal(inactiveFetchCalls, 0, 'inactive timelines and unused assets must not trigger a remote fetch');
+  assert.equal(inactiveMaterialized.localPaths.length, 0);
+  assert.equal(inactiveMaterialized.snapshot.timelines[1]?.items[0]?.src, inactiveRemote);
+  assert.equal(inactiveMaterialized.snapshot.assets[0]?.src, unusedAssetRemote);
+  assertMaterializedRenderSnapshot(inactiveMaterialized.snapshot, 'inactive-timeline-export');
+  await inactiveMaterialized.cleanup();
+
+  const nestedRemote = 'https://nested-media.example/reachable.mp4';
+  const nestedProject = {
+    activeTimelineId: 'timeline-root',
+    assets: [],
+    timelines: [
+      {
+        id: 'timeline-root',
+        items: [{ id: 'nested-sequence', kind: 'sequence', timelineId: 'timeline-child' }],
+      },
+      {
+        id: 'timeline-child',
+        items: [{ id: 'nested-remote', kind: 'video', src: nestedRemote }],
+      },
+    ],
+  };
+  assert.throws(
+    () => assertMaterializedRenderSnapshot(nestedProject, 'nested-sequence-export'),
+    /external media .* was not materialized/,
+    'reachable nested sequence media must remain behind the renderer guard',
+  );
+  const nestedFetchSources: string[] = [];
+  const nestedMaterialized = await materializeServerExportMedia(nestedProject, {
+    ...options,
+    fetcher: async (input) => {
+      nestedFetchSources.push(String(input));
+      return new Response(Uint8Array.from([4, 5, 6]), {
+        status: 200,
+        headers: { 'content-type': 'video/mp4', 'content-length': '3' },
+      });
+    },
+  });
+  assert.deepEqual(nestedFetchSources, [nestedRemote]);
+  assert.match(
+    nestedMaterialized.snapshot.timelines[1]?.items[0]?.src ?? '',
+    /^\/media\/uploads\/openchatcut-render-media-[0-9a-f-]+\.mp4$/,
+  );
+  assertMaterializedRenderSnapshot(nestedMaterialized.snapshot, 'nested-sequence-export');
+  await nestedMaterialized.cleanup();
+
   for (const entrypoint of ['render-still', 'render-clip', 'export-job']) {
     let resolverCalls = 0;
     let transportCalls = 0;

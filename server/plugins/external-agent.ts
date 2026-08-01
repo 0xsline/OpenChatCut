@@ -1,4 +1,6 @@
+import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { TLSSocket } from 'node:tls';
 import type { Plugin } from 'vite';
 import {
   nextEditorCall,
@@ -12,6 +14,14 @@ import {
 import { handleMcpRequest, mcpTools } from '../external-agent/mcp.ts';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
+const EDITOR_BRIDGE_CREDENTIAL_HEADER = 'x-openchatcut-editor-credential';
+const EDITOR_BRIDGE_BOOTSTRAP_HEADER = 'x-openchatcut-editor-bootstrap';
+const EDITOR_BRIDGE_CREDENTIAL = randomBytes(32).toString('base64url');
+const LOCAL_EDITOR_HOSTS: Record<string, true> = {
+  localhost: true,
+  '127.0.0.1': true,
+  '[::1]': true,
+};
 
 export interface BridgeOperations {
   registerEditor: typeof registerEditor;
@@ -79,17 +89,72 @@ function validOutcome(value: unknown): value is ExternalCallTerminalOutcome {
     || value === 'failed';
 }
 
-function authorized(req: IncomingMessage): boolean {
+
+export function externalMcpAuthorized(req: IncomingMessage): boolean {
   const token = process.env.OPENCHATCUT_MCP_TOKEN?.trim();
   return !token || req.headers.authorization === `Bearer ${token}`;
 }
 
-function requestBaseUrl(req: IncomingMessage): string {
+function headerValue(req: IncomingMessage, name: string): string | null {
+  const value = req.headers[name];
+  return typeof value === 'string' && value ? value : null;
+}
+
+function configuredEditorOrigin(): string | null {
   const configured = process.env.OPENCHATCUT_EDITOR_URL?.trim();
+  if (!configured) return null;
+  try {
+    const url = new URL(configured);
+    if (
+      (url.protocol !== 'http:' && url.protocol !== 'https:')
+      || url.username
+      || url.password
+    ) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function requestEditorOrigin(req: IncomingMessage): string | null {
+  const host = headerValue(req, 'host');
+  if (!host || /[\/\\@?#,\s]/.test(host)) return null;
+  const configured = process.env.OPENCHATCUT_EDITOR_URL?.trim();
+  const expected = configuredEditorOrigin();
+  if (configured && !expected) return null;
+  const protocol = expected
+    ? new URL(expected).protocol
+    : req.socket instanceof TLSSocket
+      ? 'https:'
+      : 'http:';
+  try {
+    const actual = new URL(`${protocol}//${host}`);
+    if (expected) return actual.origin === expected ? expected : null;
+    return LOCAL_EDITOR_HOSTS[actual.hostname.toLowerCase()] === true ? actual.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+function trustedEditorRequest(req: IncomingMessage, requireOrigin: boolean): boolean {
+  const expected = requestEditorOrigin(req);
+  if (!expected) return false;
+  const origin = headerValue(req, 'origin');
+  if (!origin) return !requireOrigin;
+  try {
+    return new URL(origin).origin === origin && origin === expected;
+  } catch {
+    return false;
+  }
+}
+
+
+
+function requestBaseUrl(req: IncomingMessage): string {
+  const configured = configuredEditorOrigin();
   if (configured) return configured;
-  const proto = String(req.headers['x-forwarded-proto'] ?? 'http').split(',')[0].trim();
-  const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '127.0.0.1:5199').split(',')[0].trim();
-  return `${proto}://${host}`;
+  const protocol = req.socket instanceof TLSSocket ? 'https:' : 'http:';
+  return `${protocol}//${headerValue(req, 'host') ?? '127.0.0.1:5199'}`;
 }
 
 export async function handleExternalAgentBridge(
@@ -97,11 +162,40 @@ export async function handleExternalAgentBridge(
   res: ServerResponse,
   operations: BridgeOperations = bridgeOperations,
 ): Promise<void> {
-  if (!authorized(req)) {
-    sendJson(res, 401, { error: 'invalid OpenChatCut MCP token' });
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  if (req.method === 'POST' && url.pathname === '/bootstrap') {
+    if (!trustedEditorRequest(req, true)) {
+      sendJson(res, 403, { error: 'untrusted editor origin' });
+      return;
+    }
+    const contentType = headerValue(req, 'content-type');
+    if (
+      contentType?.split(';', 1)[0].trim().toLowerCase() !== 'application/json'
+      || headerValue(req, EDITOR_BRIDGE_BOOTSTRAP_HEADER) !== '1'
+    ) {
+      sendJson(res, 415, { error: 'editor bootstrap requires JSON and bootstrap header' });
+      return;
+    }
+    await readJson(req);
+    sendJson(res, 200, { credential: EDITOR_BRIDGE_CREDENTIAL });
     return;
   }
-  const url = new URL(req.url ?? '/', 'http://localhost');
+  if (!trustedEditorRequest(req, req.method === 'POST')) {
+    sendJson(res, 403, { error: 'untrusted editor origin' });
+    return;
+  }
+  if (headerValue(req, EDITOR_BRIDGE_CREDENTIAL_HEADER) !== EDITOR_BRIDGE_CREDENTIAL) {
+    sendJson(res, 401, { error: 'invalid editor bridge credential' });
+    return;
+  }
+  const contentType = headerValue(req, 'content-type');
+  if (
+    req.method === 'POST'
+    && contentType?.split(';', 1)[0].trim().toLowerCase() !== 'application/json'
+  ) {
+    sendJson(res, 415, { error: 'editor bridge writes require JSON' });
+    return;
+  }
   if (req.method === 'POST' && url.pathname === '/register') {
     const body = await readJson(req);
     if (
@@ -204,7 +298,7 @@ export function externalAgentPlugin(): Plugin {
         });
       });
       server.middlewares.use('/api/external-mcp/mcp', (req, res) => {
-        if (!authorized(req)) {
+        if (!externalMcpAuthorized(req)) {
           sendJson(res, 401, { error: 'invalid OpenChatCut MCP token' });
           return;
         }

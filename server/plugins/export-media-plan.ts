@@ -257,30 +257,6 @@ async function checkLocalReference(
     : issueFor(reference, 'missing_source', `Public media source is missing or unreadable: ${reference.source}`);
 }
 
-function collectExternalMediaFields(snapshot: unknown): ExportMediaReference[] {
-  const references: ExportMediaReference[] = [];
-  const seen = new WeakSet<object>();
-  const visit = (value: unknown, fieldPrefix: string): void => {
-    if (value === null || typeof value !== 'object' || seen.has(value)) return;
-    seen.add(value);
-    if (Array.isArray(value)) {
-      value.forEach((child, index) => visit(child, `${fieldPrefix}[${index}]`));
-      return;
-    }
-    for (const [key, child] of Object.entries(value)) {
-      const field = fieldPrefix ? `${fieldPrefix}.${key}` : key;
-      if (typeof child === 'string'
-        && /^https?:\/\//i.test(child)
-        && (/(?:^|_)(?:src|url|path|cube|lut)$/i.test(key) || /(?:Src|Url|Path)$/.test(key))) {
-        references.push({ source: child, owner: 'item', field });
-      } else if (child && typeof child === 'object') {
-        visit(child, field);
-      }
-    }
-  };
-  visit(snapshot, '');
-  return references;
-}
 
 function replaceMaterializedSources(value: unknown, replacements: ReadonlyMap<string, string>, seen: WeakSet<object>): void {
   if (value === null || typeof value !== 'object' || seen.has(value)) return;
@@ -348,10 +324,7 @@ export async function materializeServerExportMedia<Value>(
   const plan = collectExportMediaPlan(snapshot);
   if (plan.issues.length > 0) throw preflightFailure(plan.issues);
   const resolved = resolvedOptions(options);
-  const remoteReferences = [
-    ...plan.references.filter((reference) => /^https?:\/\//i.test(reference.source)),
-    ...collectExternalMediaFields(snapshot),
-  ];
+  const remoteReferences = plan.references.filter((reference) => /^https?:\/\//i.test(reference.source));
   const localReferences = plan.references.filter((reference) => !/^https?:\/\//i.test(reference.source));
   const localIssues = (await Promise.all(localReferences.map((reference) => checkLocalReference(reference, resolved))))
     .filter((issue): issue is ExportMediaIssue => issue !== null);

@@ -5,9 +5,10 @@ import type {
   ToolResultPart,
   UserContent,
 } from 'ai';
-import type { LlmProvider } from './providerConfig';
+import type { LlmProvider, OpenAiApiMode } from './providerConfig';
 
 type UnknownRecord = Record<string, unknown>;
+type UserContentParts = Exclude<UserContent, string>;
 type ToolResultOutput = ToolResultPart['output'];
 
 function record(value: unknown): UnknownRecord | null {
@@ -167,10 +168,111 @@ function withoutProviderOptions<T extends object>(value: T): T {
   return portable as T;
 }
 
+const CHAT_MEDIA_INTRO = 'Rendered media returned by the preceding tool calls:';
+const CHAT_MEDIA_ATTACHED_FALLBACK = 'Rendered media is attached in the following user message.';
+const CHAT_MEDIA_OMITTED_FALLBACK =
+  'Rendered media was omitted because the selected model does not accept visual attachments.';
+
+export interface ChatCompletionsMediaPreparation {
+  messages: ModelMessage[];
+  messagesWithoutMedia: ModelMessage[];
+  movedMedia: boolean;
+}
+
+function chatToolOutputs(
+  output: ToolResultOutput,
+  attachments: UserContentParts,
+): { withMedia: ToolResultOutput; withoutMedia: ToolResultOutput } | null {
+  if (output.type !== 'content') return null;
+  const files = output.value.filter((part) => part.type === 'file');
+  if (!files.length) return null;
+  for (const file of files) {
+    attachments.push({
+      type: 'file',
+      data: file.data,
+      mediaType: file.mediaType,
+      ...(file.filename ? { filename: file.filename } : {}),
+      ...(file.providerOptions ? { providerOptions: file.providerOptions } : {}),
+    });
+  }
+  const textParts = output.value.filter((part) => part.type === 'text');
+  const text = textParts.map((part) => part.text).join('\n');
+  const providerOptions = textParts.length === 1 && textParts[0]!.providerOptions
+    ? { providerOptions: textParts[0]!.providerOptions }
+    : {};
+  return {
+    withMedia: {
+      type: 'text',
+      value: text || CHAT_MEDIA_ATTACHED_FALLBACK,
+      ...providerOptions,
+    },
+    withoutMedia: {
+      type: 'text',
+      value: text || CHAT_MEDIA_OMITTED_FALLBACK,
+      ...providerOptions,
+    },
+  };
+}
+
+// Chat Completions accepts media as user input, not inside tool results.
+// Build the attachment and text-only forms together so callers never inspect
+// opaque file bytes to decide whether a safe retry is available.
+export function prepareChatCompletionsMediaMessages(
+  messages: readonly ModelMessage[],
+): ChatCompletionsMediaPreparation {
+  const prepared: ModelMessage[] = [];
+  const withoutMedia: ModelMessage[] = [];
+  let movedMedia = false;
+  for (let index = 0; index < messages.length;) {
+    const message = messages[index]!;
+    if (message.role !== 'tool') {
+      prepared.push(message);
+      withoutMedia.push(message);
+      index += 1;
+      continue;
+    }
+    const attachments: UserContentParts = [];
+    while (index < messages.length && messages[index]!.role === 'tool') {
+      const toolMessage = messages[index] as Extract<ModelMessage, { role: 'tool' }>;
+      let changed = false;
+      const withMediaContent: ToolContent = [];
+      const withoutMediaContent: ToolContent = [];
+      for (const part of toolMessage.content) {
+        if (part.type !== 'tool-result') {
+          withMediaContent.push(part);
+          withoutMediaContent.push(part);
+          continue;
+        }
+        const outputs = chatToolOutputs(part.output, attachments);
+        if (!outputs) {
+          withMediaContent.push(part);
+          withoutMediaContent.push(part);
+          continue;
+        }
+        changed = true;
+        movedMedia = true;
+        withMediaContent.push({ ...part, output: outputs.withMedia });
+        withoutMediaContent.push({ ...part, output: outputs.withoutMedia });
+      }
+      prepared.push(changed ? { ...toolMessage, content: withMediaContent } : toolMessage);
+      withoutMedia.push(changed ? { ...toolMessage, content: withoutMediaContent } : toolMessage);
+      index += 1;
+    }
+    if (attachments.length) {
+      prepared.push({
+        role: 'user',
+        content: [{ type: 'text', text: CHAT_MEDIA_INTRO }, ...attachments],
+      });
+    }
+  }
+  return { messages: prepared, messagesWithoutMedia: withoutMedia, movedMedia };
+}
+
 export function makeMessagesPortable(
   messages: readonly ModelMessage[],
+  openAiApiMode?: OpenAiApiMode,
 ): ModelMessage[] {
-  return messages.flatMap((message): ModelMessage[] => {
+  const portable = messages.flatMap((message): ModelMessage[] => {
     if (message.role === 'system') return [{ role: 'system', content: message.content }];
     if (message.role === 'user') {
       if (typeof message.content === 'string') return [{ role: 'user', content: message.content }];
@@ -186,11 +288,11 @@ export function makeMessagesPortable(
         if (part.type === 'reasoning'
           || part.type === 'reasoning-file'
           || part.type === 'custom') continue;
-        const portable = withoutProviderOptions(part);
-        if (portable.type === 'tool-result') {
-          content.push({ ...portable, output: portableOutput(portable.output) });
+        const portablePart = withoutProviderOptions(part);
+        if (portablePart.type === 'tool-result') {
+          content.push({ ...portablePart, output: portableOutput(portablePart.output) });
         } else {
-          content.push(portable);
+          content.push(portablePart);
         }
       }
       return content.length ? [{ role: 'assistant', content }] : [];
@@ -198,13 +300,16 @@ export function makeMessagesPortable(
     return [{
       role: 'tool',
       content: message.content.map((part) => {
-        const portable = withoutProviderOptions(part);
-        return portable.type === 'tool-result'
-          ? { ...portable, output: portableOutput(portable.output) }
-          : portable;
+        const portablePart = withoutProviderOptions(part);
+        return portablePart.type === 'tool-result'
+          ? { ...portablePart, output: portableOutput(portablePart.output) }
+          : portablePart;
       }),
     }];
   });
+  return openAiApiMode === 'chat'
+    ? prepareChatCompletionsMediaMessages(portable).messages
+    : portable;
 }
 
 export function prepareMessagesForProvider(
