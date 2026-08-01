@@ -25,6 +25,7 @@ import {
   isCompatibleMediaFallbackError,
   shouldRetryCompatibleMediaRequest,
   streamPartStartsCompatibleMediaOutput,
+  shouldRetryTransientAgentRequest,
 } from './runtime';
 
 assert.equal(normalizeLlmProvider('openai'), 'openai');
@@ -609,4 +610,40 @@ assert.strictEqual(nativeMediaHistory[0], compatibleFileToolA);
   }
 }
 
+assert.equal(shouldRetryTransientAgentRequest({
+  retryAttempted: false,
+  outputStarted: false,
+  aborted: false,
+  error: Object.assign(new Error('temporary gateway failure'), { statusCode: 502 }),
+}), true, 'retry one transient gateway failure before output starts');
+assert.equal(shouldRetryTransientAgentRequest({
+  retryAttempted: false,
+  outputStarted: false,
+  aborted: false,
+  error: new TypeError('Failed to fetch'),
+}), true, 'retry a canonical browser fetch failure before output starts');
+assert.equal(shouldRetryTransientAgentRequest({
+  retryAttempted: false,
+  outputStarted: false,
+  aborted: false,
+  error: Object.assign(new Error('request aborted'), { name: 'AbortError' }),
+}), false, 'never retry an aborted browser request');
+assert.equal(shouldRetryTransientAgentRequest({
+  retryAttempted: false,
+  outputStarted: false,
+  aborted: false,
+  error: Object.assign(new Error('bad request'), { statusCode: 400 }),
+}), false, 'do not retry permanent request failures');
+assert.equal(shouldRetryTransientAgentRequest({
+  retryAttempted: false,
+  outputStarted: true,
+  aborted: false,
+  error: Object.assign(new Error('late gateway failure'), { statusCode: 502 }),
+}), false, 'do not duplicate a request after visible output starts');
+assert.equal(shouldRetryTransientAgentRequest({
+  retryAttempted: true,
+  outputStarted: false,
+  aborted: false,
+  error: Object.assign(new Error('second gateway failure'), { statusCode: 503 }),
+}), false, 'a transient request retries at most once');
 console.log('ai-sdk checks passed');

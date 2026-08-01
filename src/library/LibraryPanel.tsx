@@ -12,6 +12,7 @@ import type { AudioAsset } from '../audio/library';
 import { FX_EFFECTS, FX_IDS, LUT_EFFECTS, LUT_IDS } from '../gl/fx/effects';
 import { TranscriptPanel, type TranscriptTrackOption } from '../transcript/TranscriptPanel';
 import { CaptionsPanel } from '../captions/CaptionsPanel';
+import { newManualCaptions } from '../captions/manualCaptions';
 import { MediaPoolPanel } from '../media/MediaPoolPanel';
 import { TemplateBrowser } from './TemplateBrowser';
 import { ResourceBrowser, type ResourceItem } from './ResourceBrowser';
@@ -26,6 +27,7 @@ import { isPluginAssetId } from '../plugins/types';
 import { customTransitionUniforms, getCustomTransition } from '../gl/customTransitions';
 import type { ZoomEffect } from '../editor/types';
 import { Icon } from '../components/icons';
+import { parseSrt } from '../captions/srt';
 
 // Two built-in LUTs implemented with published camera-log transfer functions.
 // They apply through the same pipeline as other effects.
@@ -64,6 +66,7 @@ interface LibraryPanelProps {
   trackOptions: TranscriptTrackOption[];
   captionTracks: Array<TranscriptTrackOption & { captions: CaptionsData | null }>;
   onSetCaptions: (c: CaptionsData | null, track?: TrackId) => void;
+  onCreateCaptionTrack: (captions: CaptionsData, opts?: { name?: string; order?: number }) => TrackId;
   onUpdateCaptions: (patch: Partial<CaptionsData>, track?: TrackId) => void;
   onSetItemTranscript: (id: string, words: TranscriptWord[]) => void;
   onToggleWord: (id: string, idx: number) => void;
@@ -101,7 +104,7 @@ interface LibraryPanelProps {
 
 const MAIN_TABS = ['我的素材', '序列', '资源库', '文字稿', '字幕'] as const;
 const SUB_TABS = ['MG 动画', '音效', '转场', '特效', '缩放', 'LUT'] as const;
-export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, sequenceOptions, onAddSequence, trackOptions, captionTracks, onSetCaptions, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, offlineAssetIds, onAssetLoadError, onImportMedia, onImportMobileMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onRemoveMediaAsset, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
+export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, sequenceOptions, onAddSequence, trackOptions, captionTracks, onSetCaptions, onCreateCaptionTrack, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, offlineAssetIds, onAssetLoadError, onImportMedia, onImportMobileMedia, onAddMediaItem, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onSetMediaAssetFavorite, onRemoveMediaAsset, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
   const t = useT();
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
@@ -132,11 +135,24 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
   const isSequences = mainTab === '序列';
   const openCaptionStyles = (sourceItemIds: string[]) => {
     const target = captionTracks[0];
-    if (!target) return;
-    if (!target.captions && sourceItemIds.length) {
-      onSetCaptions({ enabled: true, template: 'black-bar', pacing: 'phrase', sourceItemId: sourceItemIds[0]!, sources: sourceItemIds.length > 1 ? sourceItemIds : undefined, sourceMode: sourceItemIds.length > 1 ? 'item' : undefined, bilingual: false }, target.id);
+    if (!target?.captions && sourceItemIds.length) {
+      onSetCaptions({ enabled: true, template: 'black-bar', pacing: 'phrase', sourceItemId: sourceItemIds[0]!, sources: sourceItemIds.length > 1 ? sourceItemIds : undefined, sourceMode: sourceItemIds.length > 1 ? 'item' : undefined, bilingual: false }, target?.id);
     }
     setMainTab('字幕');
+  };
+  const importSrt = async (file: File) => {
+    try {
+      const words = parseSrt(await file.text());
+      const entryId = `srt_${crypto.randomUUID()}`;
+      onCreateCaptionTrack({
+        ...newManualCaptions(),
+        sourceEntries: [{ id: entryId, itemId: `manual:${entryId}`, label: file.name, words }],
+      }, { name: file.name.replace(/\.srt$/i, '') || file.name });
+      setMainTab('字幕');
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      window.alert(`${t('SRT 导入失败')}：${t(detail)}`);
+    }
   };
 
   return (
@@ -153,7 +169,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
         <CaptionsPanel playerRef={playerRef} fps={fps} items={items} captionTracks={captionTracks} onSetCaptions={onSetCaptions} onUpdateCaptions={onUpdateCaptions} />
       ) : isTranscript ? (
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, borderTop: `0.5px solid ${theme.border}` }}>
-          <TranscriptPanel playerRef={playerRef} fps={fps} items={items} trackOptions={trackOptions} onSetItemTranscript={onSetItemTranscript} onToggleWord={onToggleWord} onCleanScript={onCleanScript} onSetGapCap={onSetGapCap} onSetTranscriptPlayOrder={onSetTranscriptPlayOrder} onReorderTrackItems={onReorderTrackItems} onClearEdits={onClearEdits} onOpenCaptionStyles={captionTracks.length ? openCaptionStyles : undefined} />
+          <TranscriptPanel playerRef={playerRef} fps={fps} items={items} trackOptions={trackOptions} onSetItemTranscript={onSetItemTranscript} onToggleWord={onToggleWord} onCleanScript={onCleanScript} onSetGapCap={onSetGapCap} onSetTranscriptPlayOrder={onSetTranscriptPlayOrder} onReorderTrackItems={onReorderTrackItems} onClearEdits={onClearEdits} onImportSrt={(file) => { void importSrt(file); }} onOpenCaptionStyles={openCaptionStyles} />
         </div>
       ) : isSequences ? (
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, borderTop: `0.5px solid ${theme.border}`, padding: 10 }}>

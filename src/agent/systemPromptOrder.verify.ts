@@ -5,7 +5,7 @@
 // Can run up to MAX_TOOL_TURNS rounds. So the invariant observed here is: **The variable section is always the last section**,
 // As long as the stable section does not change between calls, the public prefix must be covered all the way to the beginning of the volatile section.
 import assert from 'node:assert/strict';
-import { assembleSystemPrompt, designStylePrompt, editorStatePrompt, SYSTEM_PROMPT } from './systemPrompt';
+import { agentLanguagePrompt, assembleSystemPrompt, designStylePrompt, editorStatePrompt, SYSTEM_PROMPT } from './systemPrompt';
 import type { AgentContext } from './context';
 import type { ProjectDoc, TimelineItem, TimelineState } from '../editor/types';
 
@@ -32,6 +32,13 @@ const commonPrefixLength = (a: string, b: string): number => {
     stable.join('').length,
     '公共前缀必须覆盖全部稳定段——短一个字节就意味着有易变内容混进了前缀',
   );
+}
+
+{
+  assert.match(agentLanguagePrompt('zh'), /interface language is Chinese/);
+  assert.match(agentLanguagePrompt('zh'), /in Chinese/);
+  assert.match(agentLanguagePrompt('en'), /interface language is English/);
+  assert.match(agentLanguagePrompt('en'), /in English/);
 }
 
 // ── Go through it with the real editorStatePrompt: you cannot change the prefix when changing the timeline ──

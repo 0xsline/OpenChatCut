@@ -4,6 +4,7 @@ import { GENERATE_WORKFLOW } from './tools/generate-tools';
 import { timelineTrackIds, trackAlias, trackKind, type DesignStyle } from '../editor/types';
 import type { SkillDefinition } from './skills/skill-types';
 import type { AgentContext } from './context';
+import type { Locale } from '../i18n/locale';
 
 // <editor_state>: Timeline snapshot of each message, spelled into system,
 // The agent will see the timeline when it starts, there is no need to adjust read_timeline first. Keep it compact: no props/transition details,
@@ -22,6 +23,11 @@ const EDITOR_STATE_MAX_ITEMS = 60;
  */
 export function assembleSystemPrompt(stable: readonly string[], volatilePart: string): string {
   return stable.join('') + volatilePart;
+}
+
+export function agentLanguagePrompt(locale: Locale): string {
+  const language = locale === 'zh' ? 'Chinese' : 'English';
+  return `\n\n# Response Language\nThe interface language is ${language}. Write all user-facing responses, questions, summaries, and generated editing instructions in ${language}.`;
 }
 
 export function editorStatePrompt(ctx: AgentContext): string {

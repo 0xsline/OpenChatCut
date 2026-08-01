@@ -559,6 +559,11 @@ button, input, select { font: inherit; }
   .cc-tip:hover::after { opacity:1; visibility:visible; }
 }
 
+.cc-panel-divider:focus-visible {
+  outline:2px solid var(--cc-accent);
+  outline-offset:-2px;
+}
+
 /* Timeline chrome. */
 .cc-timeline { container:timeline / inline-size; }
 .cc-timeline-toolbar {

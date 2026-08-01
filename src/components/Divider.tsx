@@ -14,6 +14,11 @@ export function Divider({ onResize, orientation = 'vertical' }: { onResize: (del
 
   return (
     <div
+      className="cc-panel-divider"
+      role="separator"
+      tabIndex={0}
+      aria-orientation={horiz ? 'horizontal' : 'vertical'}
+      aria-label={t('拖动调整大小')}
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         last.current = axis(e);
@@ -31,11 +36,20 @@ export function Divider({ onResize, orientation = 'vertical' }: { onResize: (del
         setActive(false);
         e.currentTarget.releasePointerCapture(e.pointerId);
       }}
+      onKeyDown={(event) => {
+        const step = event.shiftKey ? 32 : 8;
+        const delta = horiz
+          ? event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0
+          : event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
+        if (!delta) return;
+        event.preventDefault();
+        onResize(delta);
+      }}
       title={t('拖动调整大小')}
       style={{
         position: 'relative', zIndex: 20,
-        width: horiz ? '100%' : 5, height: horiz ? 5 : '100%',
-        left: horiz ? 0 : -2, top: horiz ? -2 : 0,
+        width: horiz ? '100%' : 9, height: horiz ? 9 : '100%',
+        left: horiz ? 0 : -4, top: horiz ? -4 : 0,
         cursor: horiz ? 'row-resize' : 'col-resize',
       }}
       onMouseEnter={() => setHovered(true)}
@@ -43,8 +57,9 @@ export function Divider({ onResize, orientation = 'vertical' }: { onResize: (del
     >
       <span style={{
         position: 'absolute', pointerEvents: 'none',
-        left: horiz ? 0 : 2, top: horiz ? 2 : 0,
-        // Visible line goes 0.5px hair (1 physical pixel on Retina); 5px hit area unchanged
+        left: horiz ? 0 : 4, top: horiz ? 4 : 0,
+        // Visible line stays 0.5px (one physical pixel on Retina); the hit area
+        // is deliberately wider for touchpads and high-density screens.
         width: horiz ? '100%' : 0.5, height: horiz ? 0.5 : '100%',
         background: active ? theme.accent : hovered ? theme.borderLight : theme.border,
       }} />

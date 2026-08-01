@@ -15,8 +15,9 @@ interface ToolbarProps {
   selecting: boolean;
   enhancing: boolean;
   running: boolean;
-  hasPrompt: boolean;
+  canEnhance: boolean;
   canSend: boolean;
+  sendTitle: string;
   onTogglePop: (pop: ComposerPopover, anchor: HTMLElement) => void;
   onToggleSelecting: () => void;
   onEnhance: () => void;
@@ -48,7 +49,7 @@ function BarBtn({ icon, title, onClick, active, disabled, className, expanded, h
 
 export function ComposerToolbar({
   mode, activeModel, activeSkillName, pop, selecting, enhancing, running,
-  hasPrompt, canSend, onTogglePop, onToggleSelecting, onEnhance, onSubmit, onStop,
+  canEnhance, canSend, sendTitle, onTogglePop, onToggleSelecting, onEnhance, onSubmit, onStop,
 }: ToolbarProps) {
   const t = useT();
   const secondaryActive = selecting || !!activeSkillName
@@ -75,7 +76,7 @@ export function ComposerToolbar({
           <BarBtn icon="plus" title={t('引用媒体池素材')} active={pop === 'assets'} onClick={(event) => onTogglePop('assets', event.currentTarget)} />
           <BarBtn icon="wand" title={activeSkillName ? t('创作模式：{name}', { name: activeSkillName }) : t('创作模式')} active={pop === 'skill' || !!activeSkillName} onClick={(event) => onTogglePop('skill', event.currentTarget)} />
           <BarBtn icon="bookOpen" title={t('引用模板库')} active={pop === 'templates'} onClick={(event) => onTogglePop('templates', event.currentTarget)} />
-          <BarBtn icon="sparkles" title={enhancing ? t('增强中…') : t('增强提示词')} disabled={enhancing || !hasPrompt || running} onClick={onEnhance} />
+          <BarBtn icon="sparkles" title={enhancing ? t('增强中…') : t('增强提示词')} disabled={!canEnhance} onClick={onEnhance} />
         </span>
         <BarBtn icon="more" title={t('更多工具')} className="cc-composer-more-btn"
           active={pop === 'more' || secondaryActive}
@@ -88,7 +89,7 @@ export function ComposerToolbar({
           <span style={{ width: 10, height: 10, background: theme.onAccent, borderRadius: 2 }} />
         </button>
       ) : (
-        <button title={t('发送 (Enter)')} onClick={onSubmit} disabled={!canSend} className="cc-chat-send-btn"
+        <button title={sendTitle} onClick={onSubmit} disabled={!canSend} className="cc-chat-send-btn"
           style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: canSend ? theme.accent : theme.border, color: canSend ? theme.onAccent : theme.textDim, cursor: canSend ? 'pointer' : 'default', display: 'grid', placeItems: 'center', lineHeight: 0, flexShrink: 0 }}>
           <Icon name="arrowUp" size={16} strokeWidth={2.2} />
         </button>

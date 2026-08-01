@@ -14,6 +14,7 @@ import { uploadPlugin } from "./upload.ts";
 import { mobileUploadPlugin } from "./mobile-upload.ts";
 import { uploadMultipartPlugin } from "./upload-multipart.ts";
 import { extractAudioPlugin } from "./extract-audio.ts";
+import { assemblyAiUploadPlugin } from "./assemblyai-upload.ts";
 import { extractFramesPlugin } from "./extract-frames.ts";
 import { sceneDetectionPlugin } from "./scene-detection.ts";
 import { autoGradePlugin } from "./auto-grade.ts";
@@ -56,6 +57,7 @@ export function serverPlugins(): Plugin[] {
     uploadPlugin(),
     mobileUploadPlugin(),
     extractAudioPlugin(),
+    assemblyAiUploadPlugin(),
     extractFramesPlugin(),
     sceneDetectionPlugin(),
     autoGradePlugin(),
