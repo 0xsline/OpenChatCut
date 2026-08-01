@@ -44,6 +44,15 @@ try {
 
   assert.equal(pluginFiles.PLUGIN_SKILLS.length, 23);
   assert.deepEqual(catalog.CREATIVE_SKILLS.map((skill) => skill.slug), expectedCreativeSlugs);
+  for (const skill of pluginFiles.PLUGIN_SKILLS) {
+    for (const match of skill.body.matchAll(/\]\((?:\.\/)?([^)\s#?]+\.md)(?:[?#][^)]*)?\)/g)) {
+      const reference = match[1];
+      assert(
+        skill.files.includes(reference),
+        `${skill.slug} references missing support file ${reference}`,
+      );
+    }
+  }
   for (const skill of catalog.CREATIVE_SKILLS) {
     assert(skill.description.length > 0);
     assert(skill.body.trimStart().startsWith('# '));
