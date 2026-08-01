@@ -25,6 +25,12 @@ export interface AgentModelSnapshot {
   readonly loaded: boolean;
 }
 
+export function isAgentModelReady(state: AgentModelSnapshot): boolean {
+  return state.loaded
+    && state.activeId.length > 0
+    && state.choices.some((choice) => choice.id === state.activeId);
+}
+
 const EMPTY: AgentModelSnapshot = { activeId: '', choices: [], loaded: false };
 let snapshot = EMPTY;
 const listeners = new Set<() => void>();

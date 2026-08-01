@@ -9,10 +9,11 @@ import {
 } from 'ai';
 import type { AgentContext } from './context';
 import { TOOL_SCHEMAS, executeTool } from './tools';
-import { SYSTEM_PROMPT, assembleSystemPrompt, creativeModePrompt, designStylePrompt, editorStatePrompt } from './systemPrompt';
+import { SYSTEM_PROMPT, agentLanguagePrompt, assembleSystemPrompt, creativeModePrompt, designStylePrompt, editorStatePrompt } from './systemPrompt';
 import { capabilitiesPrompt } from './capabilities';
 import { findSkill } from './skills/skills-catalog';
 import { PLUGIN_SKILLS_INDEX } from './skills/plugin-skills';
+import { getLocale } from '../i18n/locale';
 import {
   getLanguageModel,
   getLanguageModelProviderOptions,
@@ -147,6 +148,63 @@ export function shouldRetryCompatibleMediaRequest({
     && !outputStarted
     && !aborted
     && isCompatibleMediaFallbackError(error);
+}
+
+export interface TransientAgentRetryContext {
+  retryAttempted: boolean;
+  outputStarted: boolean;
+  aborted: boolean;
+  error: unknown;
+}
+
+function isTransientAgentRequestError(error: unknown): boolean {
+  if (error == null || (typeof error !== 'object' && typeof error !== 'function')) return false;
+  const shaped = error as {
+    name?: unknown;
+    statusCode?: unknown;
+    status?: unknown;
+    code?: unknown;
+    cause?: unknown;
+    message?: unknown;
+    isRetryable?: unknown;
+  };
+  const cause = shaped.cause && typeof shaped.cause === 'object'
+    ? shaped.cause as {
+      name?: unknown;
+      statusCode?: unknown;
+      status?: unknown;
+      code?: unknown;
+      message?: unknown;
+      isRetryable?: unknown;
+    }
+    : null;
+  if (shaped.name === 'AbortError' || cause?.name === 'AbortError') return false;
+  const status = shaped.statusCode ?? shaped.status ?? cause?.statusCode ?? cause?.status;
+  if (status === 502 || status === 503 || status === 504) return true;
+  if (status != null) return false;
+  if (shaped.isRetryable === true || cause?.isRetryable === true) return true;
+
+  const signal = [shaped.code, shaped.message, cause?.code, cause?.message].map(String).join(' ');
+  if (/\b(?:ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|UND_ERR_SOCKET)\b|upstream request failed/i.test(signal)) {
+    return true;
+  }
+  const browserNetworkFailure = /^(?:failed to fetch|fetch failed|load failed|networkerror(?: when attempting to fetch resource\.?)?)$/i;
+  return [shaped, cause].some((candidate) => (
+    candidate?.name === 'TypeError'
+    && browserNetworkFailure.test(String(candidate.message ?? '').trim())
+  ));
+}
+
+export function shouldRetryTransientAgentRequest({
+  retryAttempted,
+  outputStarted,
+  aborted,
+  error,
+}: TransientAgentRetryContext): boolean {
+  return !retryAttempted
+    && !outputStarted
+    && !aborted
+    && isTransientAgentRequestError(error);
 }
 
 export function streamPartStartsCompatibleMediaOutput(type: string): boolean {
@@ -294,6 +352,7 @@ export async function runAgent(
   // editorStatePrompt is a real-time timeline snapshot and must be placed in the last paragraph; new paragraphs are always added in front of it.
   const system = assembleSystemPrompt([
     SYSTEM_PROMPT,
+    agentLanguagePrompt(getLocale()),
     capabilitiesPrompt(),
     PLUGIN_SKILLS_INDEX,
     agentSettingsPrompt(settings),
@@ -351,6 +410,7 @@ export async function runAgent(
       const providerOptions = getLanguageModelProviderOptions();
       const model = await getLanguageModel();
       let retriedWithoutMedia = false;
+      let retriedTransientRequest = false;
       let aborted = false;
       let responseMessages: ModelMessage[] = [];
 
@@ -384,6 +444,15 @@ export async function runAgent(
             requestCarriesMedia = false;
             retriedWithoutMedia = true;
             compatibleMediaFallbackRequired = true;
+            continue requestAttempt;
+          }
+          if (shouldRetryTransientAgentRequest({
+            retryAttempted: retriedTransientRequest,
+            outputStarted,
+            aborted,
+            error: started.error,
+          })) {
+            retriedTransientRequest = true;
             continue requestAttempt;
           }
           throw started.error;
@@ -426,6 +495,14 @@ export async function runAgent(
             retriedWithoutMedia = true;
             compatibleMediaFallbackRequired = true;
             continue requestAttempt;
+          } else if (shouldRetryTransientAgentRequest({
+            retryAttempted: retriedTransientRequest,
+            outputStarted,
+            aborted,
+            error,
+          })) {
+            retriedTransientRequest = true;
+            continue requestAttempt;
           } else {
             throw error;
           }
@@ -452,6 +529,14 @@ export async function runAgent(
             requestCarriesMedia = false;
             retriedWithoutMedia = true;
             compatibleMediaFallbackRequired = true;
+            continue requestAttempt;
+          } else if (shouldRetryTransientAgentRequest({
+            retryAttempted: retriedTransientRequest,
+            outputStarted,
+            aborted,
+            error,
+          })) {
+            retriedTransientRequest = true;
             continue requestAttempt;
           } else {
             throw error;

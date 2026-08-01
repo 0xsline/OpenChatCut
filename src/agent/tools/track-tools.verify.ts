@@ -73,8 +73,11 @@ captionDraft.commands.updateTrack(captionTracks[0], { hidden: true });
 assert.equal(captionDraft.getState().captions?.enabled, false, 'caption track visibility uses captions.enabled');
 captionDraft.commands.toggleTrackFlag(captionTracks[0], 'hidden');
 assert.equal(captionDraft.getState().captions?.enabled, true, 'caption eye toggles the rendered overlay');
-const second = captionDraft.commands.createTrack('caption');
-captionDraft.commands.setCaptions({ enabled: true, template: 'netflix', pacing: 'word', words: [] }, second);
+const second = captionDraft.commands.createCaptionTrack(
+  { enabled: true, template: 'netflix', pacing: 'word', words: [] },
+  { name: 'Imported subtitles' },
+);
+assert.equal(captionDraft.getState().tracks?.[second]?.name, 'Imported subtitles');
 captionDraft.commands.updateCaptions({ enabled: false }, second);
 assert.equal(captionsOnTrack(captionDraft.getState(), captionTracks[0])?.enabled, true, 'C1 stays independent');
 assert.equal(captionsOnTrack(captionDraft.getState(), second)?.enabled, false, 'C2 owns independent captions');

@@ -48,6 +48,31 @@ async function uploadBlob(blob: Blob): Promise<string> {
   return upload_url;
 }
 
+async function uploadLocalPath(path: string): Promise<string> {
+  const response = await serviceFetch('/api/assemblyai-upload', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ src: path }),
+  });
+  const responseText = await response.text();
+  if (response.status === 404) {
+    throw new TranscriptionError('source-unavailable', responseText.slice(0, 300));
+  }
+  if (!response.ok) {
+    throw new Error(`AssemblyAI server upload failed: HTTP ${response.status}${responseText ? `: ${responseText.slice(0, 300)}` : ''}`);
+  }
+  let body: { uploadUrl?: unknown };
+  try {
+    body = JSON.parse(responseText) as { uploadUrl?: unknown };
+  } catch {
+    throw new Error('AssemblyAI server upload returned invalid JSON');
+  }
+  if (typeof body.uploadUrl !== 'string' || !body.uploadUrl) {
+    throw new Error('AssemblyAI server upload returned no upload URL');
+  }
+  return body.uploadUrl;
+}
+
 export interface TranscribeOptions {
   /**
    * ISO-639-1. Default `zh` for this product (Chinese oral broadcast).
@@ -217,21 +242,39 @@ async function shouldExtractForAsr(path: string): Promise<boolean> {
  * small ASR track server-side; then only that small blob is sent to AssemblyAI.
  * Pass opts.asrPath when extract already raced ahead of normalize/finalize.
  */
-async function transcriptionBlobForPath(path: string, opts: TranscribeOptions): Promise<Blob> {
-  let source = path;
-  if (opts.asrPath && opts.asrPath.startsWith('/media/')) {
-    source = opts.asrPath;
-  } else if (await shouldExtractForAsr(path)) {
+async function transcriptionSourceForPath(path: string, opts: TranscribeOptions): Promise<string> {
+  if (opts.asrPath && opts.asrPath.startsWith('/media/')) return opts.asrPath;
+  if (await shouldExtractForAsr(path)) {
     const extracted = await extractAudioForAsr(path);
-    if (extracted) source = extracted;
+    if (extracted) return extracted;
   }
+  return path;
+}
+
+async function uploadTranscriptionSource(path: string): Promise<string> {
+  if (path.startsWith('/media/uploads/')) {
+    try {
+      return await uploadLocalPath(path);
+    } catch (error) {
+      if (!(error instanceof TranscriptionError) || error.code !== 'source-unavailable') throw error;
+    }
+  }
+  return uploadBlob(await loadTranscriptionSource(path));
+}
+
+async function uploadTranscriptionPath(path: string, opts: TranscribeOptions): Promise<string> {
+  const source = await transcriptionSourceForPath(path, opts);
   try {
-    return await loadTranscriptionSource(source);
+    return await uploadTranscriptionSource(source);
   } catch (error) {
     // A raced-ahead ASR extract can disappear independently of the original.
     // Fall back to the original media (or its IndexedDB copy) before failing.
-    if (source === path) throw error;
-    return loadTranscriptionSource(path);
+    if (
+      source === path
+      || !(error instanceof TranscriptionError)
+      || error.code !== 'source-unavailable'
+    ) throw error;
+    return uploadTranscriptionSource(path);
   }
 }
 
@@ -251,7 +294,7 @@ export async function transcribePathResumable(
   if (!providerJobId) {
     let uploadUrl = checkpoint.uploadUrl;
     if (!uploadUrl) {
-      uploadUrl = await uploadBlob(await transcriptionBlobForPath(path, opts));
+      uploadUrl = await uploadTranscriptionPath(path, opts);
       checkpoint = { ...checkpoint, uploadUrl, providerStatus: 'uploaded' };
       await onCheckpoint(checkpoint);
     }

@@ -49,10 +49,10 @@ try {
   let pollCount = 0;
   globalThis.fetch = async (input, init) => {
     const url = String(input);
-    if (url === '/media/uploads/asr.wav') return new Response(new Blob(['audio']), { status: 200 });
-    if (url.endsWith('/upload')) {
+    if (url === '/api/assemblyai-upload') {
       uploadCount += 1;
-      return Response.json({ upload_url: 'https://assembly.example/upload/once' });
+      assert.equal(JSON.parse(String(init?.body)).src, '/media/uploads/asr.wav');
+      return Response.json({ uploadUrl: 'https://assembly.example/upload/once', bytes: 5 });
     }
     if (url.endsWith('/transcript') && init?.method === 'POST') {
       createCount += 1;
@@ -122,8 +122,10 @@ try {
   let completedCallbacks = 0;
   globalThis.fetch = async (input, init) => {
     const url = String(input);
-    if (url === '/media/uploads/stale-asr.wav') return new Response(new Blob(['audio']), { status: 200 });
-    if (url.endsWith('/upload')) return Response.json({ upload_url: 'https://assembly.example/upload/stale' });
+    if (url === '/api/assemblyai-upload') {
+      assert.equal(JSON.parse(String(init?.body)).src, '/media/uploads/stale-asr.wav');
+      return Response.json({ uploadUrl: 'https://assembly.example/upload/stale', bytes: 5 });
+    }
     if (url.endsWith('/transcript') && init?.method === 'POST') return Response.json({ id: 'provider-job-stale' });
     if (url.endsWith('/transcript/provider-job-stale')) return Response.json({
       status: 'completed', text: 'old bytes', words: [{ text: 'old', start: 0, end: 200 }], utterances: [],
@@ -160,10 +162,10 @@ try {
   let readyCompleteCount = 0;
   globalThis.fetch = async (input, init) => {
     const url = String(input);
-    if (url === '/media/uploads/live-asr.wav') return new Response(new Blob(['audio']), { status: 200 });
-    if (url.endsWith('/upload')) {
+    if (url === '/api/assemblyai-upload') {
       liveUploadCount += 1;
-      return Response.json({ upload_url: `https://assembly.example/upload/live-${liveUploadCount}` });
+      assert.equal(JSON.parse(String(init?.body)).src, '/media/uploads/live-asr.wav');
+      return Response.json({ uploadUrl: `https://assembly.example/upload/live-${liveUploadCount}`, bytes: 5 });
     }
     if (url.endsWith('/transcript') && init?.method === 'POST') {
       liveCreateCount += 1;
@@ -265,9 +267,9 @@ try {
   let reloadCompleteCount = 0;
   globalThis.fetch = async (input, init) => {
     const url = String(input);
-    if (url.endsWith('/upload')) {
+    if (url === '/api/assemblyai-upload') {
       reloadUploadCount += 1;
-      return Response.json({ upload_url: 'https://assembly.example/upload/unexpected' });
+      return Response.json({ uploadUrl: 'https://assembly.example/upload/unexpected', bytes: 5 });
     }
     if (url.endsWith('/transcript') && init?.method === 'POST') {
       reloadCreateCount += 1;
@@ -318,13 +320,13 @@ try {
   const publishedRevisions: string[] = [];
   globalThis.fetch = async (input, init) => {
     const url = String(input);
-    if (url === '/media/uploads/generation-old.wav' || url === '/media/uploads/generation-new.wav') {
-      return new Response(new Blob(['audio']), { status: 200 });
-    }
-    if (url.endsWith('/upload')) {
+    if (url === '/api/assemblyai-upload') {
       generationUploadCount += 1;
+      const src = JSON.parse(String(init?.body)).src as string;
+      const generation = src.includes('generation-old') ? 'old' : 'new';
       return Response.json({
-        upload_url: `https://assembly.example/upload/generation-${generationUploadCount === 1 ? 'old' : 'new'}`,
+        uploadUrl: `https://assembly.example/upload/generation-${generation}`,
+        bytes: 5,
       });
     }
     if (url.endsWith('/transcript') && init?.method === 'POST') {

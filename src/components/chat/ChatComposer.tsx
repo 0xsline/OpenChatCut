@@ -10,6 +10,7 @@ import { loadAgentSettings, saveAgentSettings, MG_TIERS, type AgentSettings, typ
 import { usePersistedState } from '../../hooks/usePersistedState';
 import {
   getAgentModelSnapshot,
+  isAgentModelReady,
   selectAgentModel,
   subscribeAgentModels,
 } from '../../agent/model-selection';
@@ -154,7 +155,14 @@ export function ChatComposer(props: ChatComposerProps) {
       return p;
     });
   };
-  const canSend = !!value.trim() && !running;
+  const modelReady = isAgentModelReady(modelState);
+  const canSend = !!value.trim() && !running && modelReady;
+  const canEnhance = !!value.trim() && !enhancing && !running && modelReady;
+  const sendTitle = modelReady
+    ? t('发送 (Enter)')
+    : modelState.loaded
+      ? t('请先在设置中配置一个模型厂商。')
+      : t('正在读取模型配置…');
   const refList = (kind: 'asset' | 'template') =>
     references.filter((r) => (kind === 'template' ? r.kind === 'template' : r.kind !== 'template'));
 
@@ -309,7 +317,7 @@ export function ChatComposer(props: ChatComposerProps) {
       <ComposerToolbar
         mode={mode} activeModel={activeModel} activeSkillName={activeSkill ? skillName(activeSkill) : undefined}
         pop={pop} selecting={selecting} enhancing={enhancing} running={running}
-        hasPrompt={!!value.trim()} canSend={canSend}
+        canEnhance={canEnhance} canSend={canSend} sendTitle={sendTitle}
         onTogglePop={toggle} onToggleSelecting={onToggleSelecting} onEnhance={onEnhance}
         onSubmit={onSubmit} onStop={onStop} />
 
@@ -450,7 +458,7 @@ export function ChatComposer(props: ChatComposerProps) {
         <Popover anchor={popAnchor} onClose={closePop}>
           <ComposerMoreMenu
             selecting={selecting} activeSkillName={activeSkill ? skillName(activeSkill) : undefined}
-            canEnhance={!!value.trim() && !enhancing && !running} enhancing={enhancing}
+            canEnhance={canEnhance} enhancing={enhancing}
             onChoosePopover={setPop} onToggleSelecting={onToggleSelecting}
             onEnhance={onEnhance} onClose={closePop} />
         </Popover>

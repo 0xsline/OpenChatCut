@@ -11,6 +11,8 @@ import { isSkillAllowed, rememberSkillAllowed, type GuardDecision } from './skil
 import { loadChat, saveChat } from '../persist/projectStore';
 import { loadProposal, saveProposal, clearProposal } from '../persist/proposalStore';
 import { saveAutomaticVersion } from '../persist/versionStore';
+import { getLocale } from '../i18n/locale';
+import { getAgentModelSnapshot, isAgentModelReady } from './model-selection';
 import {
   appendAgentChange,
   canRollbackAgentChange,
@@ -142,7 +144,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   const send = useCallback(
     async (text: string, opts?: { askOnly?: boolean; references?: AgentReference[] }) => {
       const trimmed = text.trim();
-      if (!trimmed || running || proposalRef.current) return; // resolve a pending proposal first
+      if (!trimmed || running || proposalRef.current || !isAgentModelReady(getAgentModelSnapshot())) return; // resolve a pending proposal and require a configured model
       setMessages((m) => [...m, { role: 'user', text: trimmed }]);
       const contextEntries = resolveAgentReferences(ctxRef.current, opts?.references ?? []);
       const content = contextEntries.length
@@ -321,9 +323,10 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     try {
       // The enhancer is another first-send boundary and must not make client.ts eager.
       const { generateAgentText } = await import('./client');
+      const language = getLocale() === 'zh' ? 'Chinese' : 'English';
       const out = (await generateAgentText({
         maxOutputTokens: 400,
-        system: 'You improve prompts for a video-editing assistant. Rewrite the user\'s rough or conversational editing intent as one clear, specific, directly executable instruction in the user\'s language. Output only the rewritten instruction, with no explanation, quotation marks, or line breaks.',
+        system: `You improve rough or conversational video-editing requests into one clear, specific, directly executable instruction. Write the instruction in ${language}, matching the selected interface language. Output only the rewritten instruction without explanation, quotation marks, or line breaks.`,
         prompt: t,
       })).trim();
       return out || draft;

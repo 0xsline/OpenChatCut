@@ -11,6 +11,7 @@ import { ExternalProposalCard } from './ExternalProposalCard';
 import { thinkingPhrase } from './thinkingPhrases';
 import { onSelectionRef, refPromptToken, setSelectionRefMode } from '../../agent/selection-refs';
 import { shouldBlockAutoApply } from '../../agent/skills/skillGuard';
+import { getAgentModelSnapshot, isAgentModelReady } from '../../agent/model-selection';
 import { ProposalCard } from './ProposalCard';
 import { ChatMessage } from './ChatMessage';
 import { ToolGroupRow } from './ToolGroupRow';
@@ -177,14 +178,16 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   }, [proposal, autoApply, applyProposal]);
 
   const submit = () => {
-    if (!input.trim() || running) return;
+    const modelReady = isAgentModelReady(getAgentModelSnapshot());
+    if (!input.trim() || running || !modelReady) return;
     send(input, { askOnly: mode === 'ask', references: selectedRefs });
     setInput('');
     setSelectedRefs([]);
     clearComposerDraft(projectId);
   };
   const runEnhance = async () => {
-    if (!input.trim() || enhancing || running) return;
+    const modelReady = isAgentModelReady(getAgentModelSnapshot());
+    if (!input.trim() || enhancing || running || !modelReady) return;
     setEnhancing(true);
     try { const improved = await enhance(input); setInput(improved); taRef.current?.focus(); }
     finally { setEnhancing(false); }

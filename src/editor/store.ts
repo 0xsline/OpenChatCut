@@ -98,6 +98,7 @@ export interface EditorCommands {
   setAspect: (width: number, height: number, fit?: AspectFit) => void;
   toggleTrackFlag: (track: TrackId, flag: 'hidden' | 'muted' | 'collapsed' | 'locked') => void;
   createTrack: (kind: TrackKind, opts?: { name?: string; role?: TrackFlags['role']; order?: number; audioRouting?: TrackFlags['audioRouting'] }) => TrackId;
+  createCaptionTrack: (captions: CaptionsData, opts?: { name?: string; order?: number }) => TrackId;
   updateTrack: (track: TrackId, patch: TrackUpdate) => void;
   deleteTracks: (tracks: TrackId[]) => void;
   tightenTrack: (track: TrackId) => void;
@@ -461,6 +462,18 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       createTrack: (kind, opts) => {
         const id = uid('track');
         dispatch({ type: 'track.create', track: { id, kind, name: opts?.name, role: opts?.role, audioRouting: opts?.audioRouting }, order: opts?.order });
+        return id;
+      },
+      createCaptionTrack: (captions, opts) => {
+        const id = uid('track');
+        dispatch({
+          type: 'batch',
+          label: 'Create caption track',
+          actions: [
+            { type: 'track.create', track: { id, kind: 'caption', name: opts?.name }, order: opts?.order },
+            { type: 'setCaptions', captions, track: id },
+          ],
+        });
         return id;
       },
       updateTrack: (track, patch) => dispatch({ type: 'track.update', track, patch }),
