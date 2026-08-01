@@ -7,6 +7,7 @@
 import { getKey, KEY_NAMES, type KeyName } from './keystore.ts';
 import { r2Probe } from './r2.ts';
 import { mediaDirProbe, mediaDirPostCheck, mediaDirOkText } from './media-dir.ts';
+import { fasterWhisperOkText, fasterWhisperPostCheck, fasterWhisperProbe } from './plugins/faster-whisper.ts';
 import {
   AI_SDK_BASE_URL_FORMAT,
   resolveLlmBaseUrl,
@@ -212,6 +213,12 @@ export const PROBES: Record<string, ProbeDef> = {
     run: (get) => fetch('https://api.assemblyai.com/v2/transcript?limit=1', {
       signal: t(), headers: { authorization: get('ASSEMBLYAI_API_KEY') },
     }),
+  },
+  'transcription/faster-whisper': {
+    needs: [[]],
+    run: (get) => Promise.resolve(fasterWhisperProbe(get('FASTER_WHISPER_MODEL'))),
+    postCheck: fasterWhisperPostCheck,
+    okText: fasterWhisperOkText,
   },
   'sandbox/e2b': {
     needs: [['E2B_API_KEY']],

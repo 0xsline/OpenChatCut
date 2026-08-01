@@ -3,7 +3,7 @@ import { theme, themeAlpha } from '../../theme';
 import { t, useT } from '../../i18n/locale';
 import { Icon } from '../icons';
 import { VendorIcon } from './vendorIcons';
-import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from '../../agent/capabilities';
+import { applyLiveAsrStatus, applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from '../../agent/capabilities';
 import { applyAgentModelStatus } from '../../agent/model-selection';
 import { FieldRow, ON, VendorPane, WARN, type FieldCtx } from './settingsVendorPane';
 import {
@@ -129,6 +129,7 @@ function useTreeSelection(): {
 function applySavedToAgent(next: KeyStatusResponse): void {
   applyLiveCaps(next.caps);
   applyLiveKeyStatus(next.keys);
+  applyLiveAsrStatus(next.asr);
   if (next.models) applyLiveModels(next.models);
   if (next.models) applyAgentModelStatus(next.keys, next.models);
 }
@@ -165,6 +166,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     modelOptions,
     onModelsDiscovered: (name, models) => {
       setModelOptions((previous) => ({ ...previous, [name]: [...new Set(models)] }));
+    },
+    onStatusRefresh: async () => {
+      const next = await fetch('/api/keys').then((r) => r.json() as Promise<KeyStatusResponse>);
+      setStatus(next);
+      applySavedToAgent(next);
     },
   };
 

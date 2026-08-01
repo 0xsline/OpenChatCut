@@ -3,6 +3,7 @@
 export default {
   '素材文件不可用，请在“我的素材”中重新链接后再转写': 'The media file is unavailable. Relink it in My Media before transcribing.',
   '无法连接转写服务，请检查网络和 AssemblyAI 配置后重试': 'Cannot reach the transcription service. Check the network and AssemblyAI settings, then try again.',
+  '无法连接转写服务，请检查设置中的转写服务配置后重试': 'Cannot reach the transcription service. Check the transcription provider settings, then try again.',
   // TranscriptPanel — Toolbar and pause pop-up layer
   '停顿': 'Pauses',
   '段落视图': 'Paragraph view',

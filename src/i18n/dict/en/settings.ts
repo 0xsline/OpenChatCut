@@ -56,6 +56,7 @@ export default {
 
   // ── Field label ──
   '默认厂商': 'Default vendor',
+  '默认转写服务': 'Default transcription service',
   '接口格式': 'API format',
   'Responses API（推荐）': 'Responses API (recommended)',
   'Chat Completions API': 'Chat Completions API',
@@ -70,6 +71,8 @@ export default {
   '音色资源 ID': 'Voice resource ID',
   '视频模型': 'Video model',
   '音乐模型': 'Music model',
+  '转写模型': 'Transcription model',
+  '计算精度': 'Compute type',
   '素材保存目录': 'Media storage directory',
   '云同步': 'Cloud sync',
   'Bucket 名': 'Bucket name',
@@ -77,8 +80,10 @@ export default {
 
   // ── routing options ──
   '每次询问（默认）': 'Ask every time (default)',
+  'AssemblyAI（默认）': 'AssemblyAI (default)',
   '豆包': 'Doubao',
   '可灵': 'Kling',
+  'faster-whisper': 'faster-whisper',
   '{name}（未配置）': '{name} (not configured)',
   '选中未配置的厂商时，Agent 会回退为先询问。': 'If the chosen vendor is not configured, the Agent falls back to asking first.',
 
@@ -103,6 +108,8 @@ export default {
   '云端隔离 Linux 沙箱，不触碰本机文件。Agent 用它跑 run_code：ffprobe 探测素材时长 / 尺寸编码、ffmpeg 转码 / 抽帧 / 加工音视频、执行 node / python 技能脚本，结果回传后由本地工具应用到时间线。未配置只影响这些工具，剪辑与预览不受影响。':
     'An isolated Linux sandbox in the cloud — never touches local files. The Agent uses it for run_code: ffprobe to probe media duration / dimensions / codecs, ffmpeg to transcode / extract frames / process AV, and node / python skill scripts; results come back and local tools apply them to the timeline. Leaving it unset only affects these tools — editing and preview are unaffected.',
   '默认模板不带 ffmpeg；转码 / 抽帧类任务需自建含 ffmpeg 的模板并填其 ID。': 'The default template has no ffmpeg; for transcode / frame-extraction tasks, build a template with ffmpeg and enter its ID.',
+  '本地语音转文本。支持词级时间戳；不做说话人分离，多人访谈请继续使用 AssemblyAI。':
+    'Local speech-to-text. Supports word-level timestamps; speaker diarization is not included, so keep using AssemblyAI for multi-speaker interviews.',
 
   // ──Provider page status/test connection/field rendering──
   '已配置': 'Configured',
@@ -111,8 +118,18 @@ export default {
   '测试连接': 'Test connection',
   '测试并读取模型': 'Test & load models',
   '验证地址与密钥，并读取该接口可用的模型': 'Verifies the endpoint and key, then loads the models available from that API',
+  '检查本机 faster-whisper 安装状态': 'Checks local faster-whisper installation status',
   '选择模型': 'Choose model',
   '测试请求失败 ({n})': 'Test request failed ({n})',
+  '准备安装 faster-whisper…': 'Preparing faster-whisper install…',
+  '安装': 'Install',
+  '重新安装': 'Reinstall',
+  '安装中…': 'Installing…',
+  '安装完成': 'Install complete',
+  '安装失败': 'Install failed',
+  '安装启动失败': 'Could not start install',
+  '安装状态读取失败': 'Could not read install status',
+  'faster-whisper 尚未安装': 'faster-whisper is not installed',
   '（按当前输入测试，记得保存）': ' (tested with current input — remember to save)',
   '发一条最小请求验证 Key 与地址可用': 'Sends one minimal request to verify the key and endpoint',
   '本次设置': 'This session',

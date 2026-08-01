@@ -6,8 +6,9 @@
 // routing are configuration, not credentials: the explicit NON_SECRET_NAMES whitelist
 // lets keyStatus() echo their raw values (keyStatus().models) so the settings UI can
 // show and edit them.
+import { existsSync, readdirSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { AI_SDK_BASE_URL_FORMAT, resolveLlmBaseUrl } from "./llm-config.ts";
 import {
   LLM_PROVIDER_PRESETS,
@@ -80,6 +81,8 @@ export const KEY_NAMES = [
   "UNSPLASH_ACCESS_KEY",
   "FREESOUND_API_KEY",
   "ASSEMBLYAI_API_KEY",
+  "FASTER_WHISPER_MODEL",
+  "FASTER_WHISPER_COMPUTE_TYPE",
   "E2B_API_KEY",
   "E2B_TEMPLATE",
   "FIRECRAWL_API_KEY",
@@ -110,6 +113,7 @@ export const KEY_NAMES = [
   "PREFERRED_VOICE_VENDOR",
   "PREFERRED_VIDEO_VENDOR",
   "PREFERRED_MUSIC_VENDOR",
+  "PREFERRED_TRANSCRIPTION_VENDOR",
 ] as const;
 export type KeyName = (typeof KEY_NAMES)[number];
 const SETTABLE = new Set<string>(KEY_NAMES);
@@ -132,10 +136,13 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   "MINIMAX_VIDEO_MODEL",
   "MINIMAX_MUSIC_MODEL",
   "MINIMAX_IMAGE_MODEL",
+  "FASTER_WHISPER_MODEL",
+  "FASTER_WHISPER_COMPUTE_TYPE",
   "PREFERRED_IMAGE_VENDOR",
   "PREFERRED_VOICE_VENDOR",
   "PREFERRED_VIDEO_VENDOR",
   "PREFERRED_MUSIC_VENDOR",
+  "PREFERRED_TRANSCRIPTION_VENDOR",
   "R2_ENABLED", // Cloud synchronization switch ('' default = enabled, '0' = disabled) - configuration is not credentials
   "R2_PRESIGN", // Browser pre-signed direct transmission ('' default = enabled, '0' = server-side write-through only)
   "MEDIA_DIR", // Asset saving directory (local path, '' = default public/media/uploads) - configuration is not credentials
@@ -205,6 +212,20 @@ export function getKey(name: KeyName): string {
   return store.get(name) ?? "";
 }
 
+function fasterWhisperInstalledSync(): boolean {
+  const root = resolve(process.env.OPENCHATCUT_RUNTIME_DIR?.trim() || join(process.cwd(), ".openchatcut"), "faster-whisper");
+  const python = process.platform === "win32"
+    ? join(root, "venv", "Scripts", "python.exe")
+    : join(root, "venv", "bin", "python");
+  if (!existsSync(python)) return false;
+  const modelDir = join(root, "models");
+  try {
+    return readdirSync(modelDir).some((name) => name.endsWith(".ready.json"));
+  } catch {
+    return false;
+  }
+}
+
 // Capability booleans derived from current key presence — SAME logic as the vite.config
 // `define` snapshot, but computed live so the agent perceives runtime key changes.
 export interface Caps {
@@ -241,7 +262,7 @@ export function computeCaps(): Caps {
       has("UNSPLASH_ACCESS_KEY") ||
       has("FREESOUND_API_KEY") ||
       has("FIRECRAWL_API_KEY"),
-    transcription: has("ASSEMBLYAI_API_KEY"),
+    transcription: has("ASSEMBLYAI_API_KEY") || fasterWhisperInstalledSync(),
     sandbox: has("E2B_API_KEY"),
     web: has("FIRECRAWL_API_KEY"),
     storage:

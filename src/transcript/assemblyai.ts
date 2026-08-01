@@ -1,6 +1,7 @@
-// AssemblyAI transcription client. All calls go through the Vite proxy
+// Provider-neutral transcription client. AssemblyAI calls go through the Vite proxy
 // (/assemblyai → api.assemblyai.com) which injects the API key server-side, so
-// the key never reaches the browser. Word-level timestamps are on by default.
+// the key never reaches the browser. faster-whisper calls stay on the local
+// backend and return the same TranscriptResult shape.
 //
 // Large video masters: before uploading to AssemblyAI we ask the dev server to
 // extract a 64kbps mono ASR track (POST /api/extract-audio) so a 1GB clip does
@@ -15,6 +16,14 @@ const VIDEO_EXT = /\.(mp4|mov|webm|mkv|m4v|avi|mpeg|mpg)$/i;
 const AUDIO_EXT = /\.(mp3|wav|m4a|aac|ogg|flac|opus)$/i;
 /** Pure audio above this still gets re-encoded smaller for ASR. */
 const LARGE_AUDIO_BYTES = 40 * 1024 * 1024;
+
+type TranscriptionProvider = 'assemblyai' | 'faster-whisper';
+
+interface KeyStatus {
+  keys?: Record<string, { configured?: boolean }>;
+  models?: Record<string, string>;
+  asr?: { fasterWhisper?: { installed?: boolean } };
+}
 
 export class TranscriptionError extends Error {
   readonly code: 'source-unavailable' | 'service-unavailable';
@@ -132,6 +141,36 @@ export async function transcribeBlob(
   return poll(id, onWait);
 }
 
+async function preferredTranscriptionProvider(): Promise<{
+  provider: TranscriptionProvider;
+  model: string;
+  computeType: string;
+  fasterWhisperInstalled: boolean;
+}> {
+  try {
+    const res = await serviceFetch('/api/keys', { cache: 'no-store' });
+    const status = await res.json() as KeyStatus;
+    const preferred = status.models?.PREFERRED_TRANSCRIPTION_VENDOR;
+    const fasterWhisperInstalled = Boolean(status.asr?.fasterWhisper?.installed);
+    const assemblyConfigured = Boolean(status.keys?.ASSEMBLYAI_API_KEY?.configured);
+    const provider = preferred === 'faster-whisper'
+      ? 'faster-whisper'
+      : preferred === 'assemblyai'
+        ? 'assemblyai'
+        : !assemblyConfigured && fasterWhisperInstalled
+          ? 'faster-whisper'
+          : 'assemblyai';
+    return {
+      provider,
+      model: status.models?.FASTER_WHISPER_MODEL || 'small',
+      computeType: status.models?.FASTER_WHISPER_COMPUTE_TYPE || 'int8',
+      fasterWhisperInstalled,
+    };
+  } catch {
+    return { provider: 'assemblyai', model: 'small', computeType: 'int8', fasterWhisperInstalled: false };
+  }
+}
+
 /** Read a media source, falling back to the local-first IndexedDB copy. */
 export async function loadTranscriptionSource(path: string): Promise<Blob> {
   let responseError: Error | null = null;
@@ -197,12 +236,17 @@ export async function transcribePath(
   onWait?: () => void,
   opts: TranscribeOptions = {},
 ): Promise<TranscriptResult> {
+  const route = await preferredTranscriptionProvider();
   let source = path;
   if (opts.asrPath && opts.asrPath.startsWith('/media/')) {
     source = opts.asrPath;
   } else if (await shouldExtractForAsr(path)) {
     const extracted = await extractAudioForAsr(path);
     if (extracted) source = extracted;
+  }
+  if (route.provider === 'faster-whisper') {
+    onWait?.();
+    return transcribePathWithFasterWhisper(source, opts, route);
   }
   let blob: Blob;
   try {
@@ -213,5 +257,46 @@ export async function transcribePath(
     if (source === path) throw error;
     blob = await loadTranscriptionSource(path);
   }
-  return transcribeBlob(blob, onWait, { languageCode: opts.languageCode });
+  try {
+    return await transcribeBlob(blob, onWait, { languageCode: opts.languageCode });
+  } catch (error) {
+    if (route.fasterWhisperInstalled && /HTTP (401|403)|upload failed|create failed/i.test(error instanceof Error ? error.message : String(error))) {
+      onWait?.();
+      return transcribePathWithFasterWhisper(source, opts, route);
+    }
+    throw error;
+  }
+}
+
+async function transcribePathWithFasterWhisper(
+  source: string,
+  opts: TranscribeOptions,
+  route: { model: string; computeType: string },
+): Promise<TranscriptResult> {
+  try {
+    const res = await serviceFetch('/api/asr/transcribe', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        src: source,
+        languageCode: opts.languageCode ?? 'zh',
+        model: route.model,
+        computeType: route.computeType,
+      }),
+    });
+    const body = await res.json().catch(() => ({})) as Partial<TranscriptResult> & { error?: string };
+    if (!res.ok) {
+      const code = res.status === 404 ? 'source-unavailable' : 'service-unavailable';
+      throw new TranscriptionError(code, body.error || `HTTP ${res.status}`);
+    }
+    return {
+      text: typeof body.text === 'string' ? body.text : '',
+      words: Array.isArray(body.words) ? body.words : [],
+      utterances: Array.isArray(body.utterances) ? body.utterances : [],
+    };
+  } catch (error) {
+    if (error instanceof TranscriptionError) throw error;
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new TranscriptionError('service-unavailable', detail);
+  }
 }

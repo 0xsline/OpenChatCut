@@ -30,7 +30,7 @@ export type VendorId =
   | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter'
   | 'xiaomi' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
-  | 'assemblyai' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk';
+  | 'assemblyai' | 'faster-whisper' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk';
 
 interface SvgIcon {
   readonly svg: string;
@@ -68,6 +68,7 @@ const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: strin
   openrouter: { bg: '#5B5BD6', mono: 'OR' },
   xiaomi: { bg: '#FF6900', mono: 'MI' }, // Xiaomi brand orange, official SVG not vendored before monogram cover
   mureka: { bg: '#7C5CFF', mono: 'μ' },
+  'faster-whisper': { bg: '#2F7C66', mono: 'FW', fg: '#eefbf6' },
   e2b: { bg: '#FF8800', mono: 'E2', fg: '#40230a' },
   localdisk: { bg: '#5f6b7a', mono: 'HD', fg: '#eef2f7' }, // Local disk (non-vendor, neutral gray)
 };

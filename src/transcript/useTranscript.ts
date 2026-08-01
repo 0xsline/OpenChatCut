@@ -7,7 +7,7 @@ function transcriptErrorMessage(error: unknown): string {
   if (error instanceof TranscriptionError) {
     return error.code === 'source-unavailable'
       ? t('素材文件不可用，请在“我的素材”中重新链接后再转写')
-      : t('无法连接转写服务，请检查网络和 AssemblyAI 配置后重试');
+      : t('无法连接转写服务，请检查设置中的转写服务配置后重试');
   }
   return error instanceof Error ? error.message : String(error);
 }

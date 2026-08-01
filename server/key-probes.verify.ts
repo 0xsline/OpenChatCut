@@ -1,8 +1,11 @@
 // checks:key-probes pure logic - detection table coverage, override whitelist, status classification,
 // MiniMax base_resp post-check, runProbe does not hit the network early exit. There are no real network requests in the whole process.
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { PROBES, classifyStatus, makeGetter, minimaxPostCheck, networkMessage, runProbe } from './key-probes.ts';
 import { LLM_PROVIDER_PRESETS } from '../shared/llm-providers.ts';
+
+process.env.OPENCHATCUT_RUNTIME_DIR = join('/tmp', `openchatcut-fw-probe-${process.pid}`);
 
 // 1. One-to-one correspondence with the provider page of settingsSchema (the page key has the same name); the llm page is derived from the preset,
 // Synchronize this list when adding other capability pages.
@@ -13,7 +16,7 @@ const EXPECTED_PAGES = [
   'video/seedance', 'video/kling', 'video/hailuo',
   'music/mureka', 'music/minimax',
   'stock/pexels', 'stock/pixabay', 'stock/unsplash', 'stock/freesound',
-  'transcription/assemblyai',
+  'transcription/assemblyai', 'transcription/faster-whisper',
   'sandbox/e2b',
   'web/firecrawl',
   'storage/r2', 'storage/local',
@@ -76,6 +79,14 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   assert.equal(relative.ok, false);
   assert.match(relative.message, /绝对路径/);
   assert.doesNotMatch(relative.message, /HTTP/);
+}
+
+// 8. faster-whisper probe is local-only: it never requires an API key and reports install state as the connection result.
+{
+  const localAsr = await runProbe('transcription/faster-whisper', {});
+  assert.equal(localAsr.ok, false);
+  assert.match(localAsr.message, /faster-whisper/);
+  assert.doesNotMatch(localAsr.message, /API Key/);
 }
 
 console.log('key-probes.verify OK');

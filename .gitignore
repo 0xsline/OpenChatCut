@@ -48,6 +48,7 @@ public/media/uploads/*
 # DeepFilterNet3 local venv
 .venv-df/
 .venv/
+.openchatcut/
 
 # Local Wrangler CLI cache used for R2 bucket setup
 .wrangler/

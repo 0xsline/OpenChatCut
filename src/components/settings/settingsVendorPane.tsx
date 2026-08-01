@@ -23,6 +23,7 @@ export interface FieldCtx {
   onToggleClear: (name: string) => void;
   modelOptions: Record<string, readonly string[]>;
   onModelsDiscovered: (name: string, models: readonly string[]) => void;
+  onStatusRefresh: () => Promise<void>;
 }
 
 // ──Provider configuration page ────────────────────────────────────────────────────────
@@ -48,7 +49,83 @@ export function VendorPane({ page, hint, ctx }: {
           {page.fields.map((f) => <FieldRow key={f.name} field={f} ctx={ctx} />)}
         </div>
       </section>
+      {page.localStatus === 'fasterWhisper' && <FasterWhisperInstallRow page={page} ctx={ctx} />}
       <TestConnectionRow page={page} ctx={ctx} />
+    </div>
+  );
+}
+
+interface InstallResponse {
+  id?: string;
+  status?: 'running' | 'succeeded' | 'failed';
+  message?: string;
+  log?: string[];
+  error?: string;
+}
+
+function configuredFieldValue(page: SettingsVendorPage, ctx: FieldCtx, name: string): string {
+  const field = page.fields.find((f) => f.name === name);
+  if (!field) return '';
+  return ctx.values[name] ?? modelValue(ctx.status, name) ?? '';
+}
+
+function FasterWhisperInstallRow({ page, ctx }: { page: SettingsVendorPage; ctx: FieldCtx }) {
+  const t = useT();
+  const current = ctx.status?.asr?.fasterWhisper;
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const model = configuredFieldValue(page, ctx, 'FASTER_WHISPER_MODEL') || 'small';
+  const computeType = configuredFieldValue(page, ctx, 'FASTER_WHISPER_COMPUTE_TYPE') || 'int8';
+
+  const pollJob = async (id: string): Promise<void> => {
+    for (;;) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+      const res = await fetch(`/api/asr/faster-whisper/install/${encodeURIComponent(id)}`);
+      const body = await res.json().catch(() => ({})) as InstallResponse;
+      if (!res.ok) throw new Error(body.error || t('安装状态读取失败'));
+      setMessage(body.message ?? null);
+      if (body.status && body.status !== 'running') {
+        if (body.status === 'failed') throw new Error(body.message || t('安装失败'));
+        await ctx.onStatusRefresh();
+        setMessage(body.message ?? t('安装完成'));
+        return;
+      }
+    }
+  };
+
+  const install = async (): Promise<void> => {
+    setBusy(true);
+    setMessage(t('准备安装 faster-whisper…'));
+    try {
+      const res = await fetch('/api/asr/faster-whisper/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, computeType }),
+      });
+      const body = await res.json().catch(() => ({})) as InstallResponse;
+      if (!res.ok || !body.id) throw new Error(body.error || t('安装启动失败'));
+      setMessage(body.message ?? t('安装中…'));
+      await pollJob(body.id);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={installBox}>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 11.5, color: current?.installed ? ON : theme.textDim }}>
+          {current?.message ?? t('faster-whisper 尚未安装')}
+        </div>
+        <div style={fieldHint} title={current?.runtimeDir}>{current?.runtimeDir ?? ''}</div>
+        {message && <div style={{ ...fieldHint, color: message.includes('失败') || message.includes('Error') ? WARN : theme.textDim }}>{message}</div>}
+      </div>
+      <button type="button" onClick={() => { void install(); }} disabled={busy || current?.installing}
+        style={{ ...testBtn, opacity: busy || current?.installing ? 0.6 : 1, cursor: busy || current?.installing ? 'default' : 'pointer' }}>
+        {busy || current?.installing ? t('安装中…') : current?.installed ? t('重新安装') : t('安装')}
+      </button>
     </div>
   );
 }
@@ -113,6 +190,8 @@ function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: Field
         <span style={{ ...testMsg, color: theme.textDim }}>
           {page.key.startsWith('llm/')
             ? t('验证地址与密钥，并读取该接口可用的模型')
+            : page.localStatus === 'fasterWhisper'
+              ? t('检查本机 faster-whisper 安装状态')
             : t('发一条最小请求验证 Key 与地址可用')}
         </span>
       )}
@@ -336,6 +415,10 @@ const browseBtn: React.CSSProperties = {
   cursor: 'pointer', flex: '0 0 auto', whiteSpace: 'nowrap',
 };
 const fieldHint: React.CSSProperties = { fontSize: 10.5, color: theme.textDim };
+const installBox: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 10,
+  background: theme.bg, border: `0.5px solid ${theme.border}`, borderRadius: 4, padding: '9px 11px',
+};
 const testRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, minHeight: 26 };
 const testBtn: React.CSSProperties = {
   font: 'inherit', fontSize: 11.5, background: 'transparent', color: theme.text,

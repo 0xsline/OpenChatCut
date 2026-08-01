@@ -48,10 +48,15 @@ export function applyLiveModels(models: Record<string, string>): void {
   liveModels = models;
 }
 
+let liveAsr: { fasterWhisper?: { installed: boolean } } | null = null;
+export function applyLiveAsrStatus(asr: { fasterWhisper?: { installed: boolean } } | undefined): void {
+  liveAsr = asr ?? null;
+}
+
 // Which vendors light up a capability: `arg` is the EXACT tool-arg value that selects
 // the vendor (and what PREFERRED_*_VENDOR stores); `need` = OR of AND-groups of key
 // names (mirrors keystore computeCaps).
-interface ProviderRow { label: string; arg: string; argKey: 'model' | 'provider'; need: string[][] }
+interface ProviderRow { label: string; arg: string; argKey: 'model' | 'provider'; need: string[][]; local?: 'fasterWhisper' }
 const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
   image: [
     { label: 'gpt-image', arg: 'gpt-image-2', argKey: 'model', need: [['IMAGE_API_KEY'], ['OPENAI_API_KEY']] },
@@ -78,11 +83,16 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'Unsplash', arg: 'unsplash', argKey: 'provider', need: [['UNSPLASH_ACCESS_KEY']] },
     { label: 'Freesound', arg: 'freesound', argKey: 'provider', need: [['FREESOUND_API_KEY']] },
   ],
+  transcription: [
+    { label: 'AssemblyAI', arg: 'assemblyai', argKey: 'provider', need: [['ASSEMBLYAI_API_KEY']] },
+    { label: 'faster-whisper', arg: 'faster-whisper', argKey: 'provider', need: [[]], local: 'fasterWhisper' },
+  ],
 };
 
 const PREFERRED_KEY: Partial<Record<CapabilityKey, string>> = {
   image: 'PREFERRED_IMAGE_VENDOR', voice: 'PREFERRED_VOICE_VENDOR',
   video: 'PREFERRED_VIDEO_VENDOR', music: 'PREFERRED_MUSIC_VENDOR',
+  transcription: 'PREFERRED_TRANSCRIPTION_VENDOR',
 };
 
 const rowTag = (r: ProviderRow): string => `${r.label}(${r.argKey}=${r.arg})`;
@@ -93,12 +103,19 @@ function providerSuffix(cap: CapabilityKey): string {
   const rows = CAP_PROVIDERS[cap];
   if (!rows || !liveKeys) return '';
   const has = (n: string): boolean => Boolean(liveKeys?.[n]?.configured);
-  const on = rows.filter((r) => r.need.some((group) => group.every(has)));
+  const on = rows.filter((r) => {
+    if (r.local === 'fasterWhisper') return Boolean(liveAsr?.fasterWhisper?.installed);
+    return r.need.some((group) => group.every(has));
+  });
   if (on.length === 0) return '';
   const prefKey = PREFERRED_KEY[cap];
   const pref = prefKey ? (liveModels?.[prefKey] ?? '').trim() : '';
   const chosen = pref ? on.find((r) => r.arg === pref) : undefined;
   if (chosen) return ` · user default: ${rowTag(chosen)} — use it without asking again`;
+  if (cap === 'transcription') {
+    const assembly = on.find((r) => r.arg === 'assemblyai');
+    if (assembly) return ` · default: ${rowTag(assembly)} — use it without asking unless the user selected faster-whisper`;
+  }
   if (on.length === 1) return ` · available: ${rowTag(on[0])} — use it directly`;
   const names = on.map(rowTag).join(', ');
   if (!prefKey) return ` · available: ${names}`;

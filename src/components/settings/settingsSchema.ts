@@ -41,6 +41,7 @@ export interface SettingsVendorPage {
   readonly title: string;
   /** Page-level small notes (rendered at the top of the field card, such as MiniMax shared Key, ElevenLabs and sound effects) */
   readonly note?: string;
+  readonly localStatus?: 'fasterWhisper';
   readonly fields: readonly SettingsField[];
 }
 
@@ -68,6 +69,16 @@ export interface KeyStatusResponse {
   keys: Record<string, KeyState>;
   caps: Record<string, boolean>;
   models: Record<string, string>;
+  asr?: {
+    fasterWhisper?: {
+      installed: boolean;
+      installing: boolean;
+      model: string;
+      computeType: string;
+      runtimeDir: string;
+      message: string;
+    };
+  };
 }
 
 const secret = (name: string, label: string): SettingsField => ({ name, label, kind: 'secret' });
@@ -83,10 +94,15 @@ const modelSelect = (name: string, label: string, defaultLabel: string, values: 
   ({ name, label, kind: 'select', defaultLabel, options: values.map((v) => ({ value: v, label: v })) });
 
 /** Capability routing select:'' = asked every time; the remaining values are consistent with the agent tool parameters/PREFERRED_* stored values. */
-const routeSelect = (name: string, options: readonly SelectOption[]): SettingsField => ({
-  name, label: '默认厂商', kind: 'select',
+const routeSelect = (
+  name: string,
+  options: readonly SelectOption[],
+  label = '默认厂商',
+  defaultOptionLabel = '每次询问（默认）',
+): SettingsField => ({
+  name, label, kind: 'select',
   note: '选中未配置的厂商时，Agent 会回退为先询问。',
-  options: [{ value: '', label: '每次询问（默认）' }, ...options],
+  options: [{ value: '', label: defaultOptionLabel }, ...options],
 });
 
 const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorPage => {
@@ -238,9 +254,22 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { key: 'stock/freesound', vendor: 'freesound', title: 'Freesound', fields: [secret('FREESOUND_API_KEY', 'API Key')] },
         ] },
       { key: 'transcription', title: '转写 / 口播剪辑', hint: 'transcribe_track · 词级字幕、清口水、删词。',
+        route: routeSelect('PREFERRED_TRANSCRIPTION_VENDOR', [
+          { value: 'assemblyai', label: 'AssemblyAI' },
+          { value: 'faster-whisper', label: 'faster-whisper' },
+        ], '默认转写服务', 'AssemblyAI（默认）'),
         vendors: [
           { key: 'transcription/assemblyai', vendor: 'assemblyai', title: 'AssemblyAI',
             fields: [secret('ASSEMBLYAI_API_KEY', 'API Key')] },
+          { key: 'transcription/faster-whisper', vendor: 'faster-whisper', title: 'faster-whisper',
+            localStatus: 'fasterWhisper',
+            note: '本地语音转文本。支持词级时间戳；不做说话人分离，多人访谈请继续使用 AssemblyAI。',
+            fields: [
+              modelSelect('FASTER_WHISPER_MODEL', '转写模型', 'small',
+                ['tiny', 'base', 'small', 'medium', 'large-v3-turbo', 'large-v3', 'turbo', 'distil-large-v3']),
+              modelSelect('FASTER_WHISPER_COMPUTE_TYPE', '计算精度', 'int8',
+                ['int8', 'int8_float16', 'float16', 'float32']),
+            ] },
         ] },
     ],
   },
@@ -331,6 +360,7 @@ export function modelValue(status: KeyStatusResponse | null, name: string): stri
  * Pages without secret (local disk) to see if any field has been set.*/
 export function vendorConfigured(status: KeyStatusResponse | null, page: SettingsVendorPage): boolean {
   if (!status) return false;
+  if (page.localStatus === 'fasterWhisper') return Boolean(status.asr?.fasterWhisper?.installed);
   const secrets = page.fields.filter((f) => f.kind === 'secret');
   if (secrets.length === 0) return page.fields.some((f) => Boolean(status.keys[f.name]?.configured));
   return secrets.every((f) => Boolean(status.keys[f.name]?.configured));
@@ -379,6 +409,8 @@ const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
   kling: [['KLING_API_KEY']],
   hailuo: [['MINIMAX_API_KEY']],
   mureka: [['MUREKA_API_KEY']],
+  assemblyai: [['ASSEMBLYAI_API_KEY']],
+  'faster-whisper': [[]],
 };
 
 /** Routing drop-down option copy: Add the "(not configured)" suffix when the provider has not configured it, and it is still optional (there is a fallback inquiry guardrail on the Agent side).
@@ -387,6 +419,9 @@ export function selectOptionLabel(
   status: KeyStatusResponse | null, field: SettingsField, opt: SelectOption,
 ): string {
   if (!field.name.startsWith('PREFERRED_') || opt.value === '') return t(opt.label);
+  if (opt.value === 'faster-whisper') {
+    return status?.asr?.fasterWhisper?.installed ? t(opt.label) : t('{name}（未配置）', { name: t(opt.label) });
+  }
   const needs = ROUTE_NEEDS[opt.value];
   const has = (n: string): boolean => Boolean(status?.keys[n]?.configured);
   const ok = Boolean(needs?.some((group) => group.every(has)));

@@ -18,7 +18,7 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'transcribe_track',
-    description: 'Transcribe the audio clip on a track (word-level + speaker labels, via AssemblyAI) and attach the transcript. Required before find_transcript / clean_script / delete_text / captions when the clip has no transcript yet.',
+    description: 'Transcribe the audio/video clips on a track with the configured transcription provider and attach word-level transcripts. AssemblyAI can include speaker labels; faster-whisper is local and uses word timestamps without diarization. Required before find_transcript / clean_script / delete_text / captions when the clip has no transcript yet.',
     input_schema: { type: 'object', properties: { track: { type: 'string', description: 'Track alias or stable id whose audio to transcribe (default A1).' } } },
   },
   {

@@ -8,7 +8,7 @@ import {
 import type { ProjectDoc, TimelineState } from './editor/types';
 import { applyProjectImport, buildProjectExport, parseProjectEnvelope } from './persist/projectTransfer';
 import { purgeProjectCascade } from './persist/mediaCleanup';
-import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from './agent/capabilities';
+import { applyLiveAsrStatus, applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from './agent/capabilities';
 import { applyAgentModelStatus } from './agent/model-selection';
 import { useT } from './i18n/locale';
 
@@ -71,10 +71,16 @@ export default function App() {
   // keys (booleans only) refine the manifest to vendor granularity.
   useEffect(() => {
     fetch('/api/keys')
-      .then((r) => r.json() as Promise<{ caps?: Record<string, boolean>; keys?: Record<string, { configured: boolean }>; models?: Record<string, string> }>)
+      .then((r) => r.json() as Promise<{
+        caps?: Record<string, boolean>;
+        keys?: Record<string, { configured: boolean }>;
+        models?: Record<string, string>;
+        asr?: { fasterWhisper?: { installed: boolean } };
+      }>)
       .then((d) => {
         if (d?.caps) applyLiveCaps(d.caps);
         if (d?.keys) applyLiveKeyStatus(d.keys);
+        applyLiveAsrStatus(d?.asr);
         if (d?.models) {
           applyLiveModels(d.models);              // per-vendor models + PREFERRED_* routing
           applyAgentModelStatus(d.keys ?? {}, d.models);

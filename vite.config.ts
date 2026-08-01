@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { serverPlugins } from './server/plugins/index.ts';
-import { seedKeystore, getKey } from './server/keystore.ts';
+import { seedKeystore, getKey, computeCaps } from './server/keystore.ts';
 import { productAssetsPlugin } from './server/product-assets.ts';
 
 // https://vite.dev/config/
@@ -14,24 +14,7 @@ export default defineConfig(({ mode }) => {
   // takes effect on the next request with no restart. The `const`s below are only the
   // startup snapshot for the `define` (initial agent capability manifest).
   seedKeystore(env);
-  const aaiKey = env.ASSEMBLYAI_API_KEY || '';
-  const imageKey = env.IMAGE_API_KEY || env.OPENAI_API_KEY || '';
-  const geminiKey = env.GEMINI_API_KEY || '';
-  const elevenKey = env.ELEVENLABS_API_KEY || '';
-  const doubaoAppId = env.DOUBAO_TTS_APP_ID || '';
-  const doubaoAccessKey = env.DOUBAO_TTS_ACCESS_KEY || '';
-  const murekaKey = env.MUREKA_API_KEY || '';
-  // MiniMax domestic open platform — one key gates TTS / Hailuo video / music / image.
-  const minimaxKey = env.MINIMAX_API_KEY || '';
-  const seedanceKey = env.SEEDANCE_API_KEY || '';
-  const klingKey = env.KLING_API_KEY || '';
-  const pexelsKey = env.PEXELS_API_KEY || '';
-  const pixabayKey = env.PIXABAY_API_KEY || '';
-  const unsplashKey = env.UNSPLASH_ACCESS_KEY || '';
-  const freesoundKey = env.FREESOUND_API_KEY || '';
-  // Firecrawl (web_browser tool): .env.local or shell export (e.g. search-apis.env)
-  const firecrawlKey = env.FIRECRAWL_API_KEY || process.env.FIRECRAWL_API_KEY || '';
-  const e2bKey = env.E2B_API_KEY || process.env.E2B_API_KEY || '';
+  const caps = computeCaps();
   // E2B_TEMPLATE (+ its process.env fallback) is now read live via the keystore getter below.
 
   return {
@@ -40,15 +23,15 @@ export default defineConfig(({ mode }) => {
     // ONLY — no key value is ever exposed to the browser.
     define: {
       __CONFIGURED_CAPS__: JSON.stringify({
-        image: Boolean(imageKey || geminiKey || minimaxKey),
-        voice: Boolean((doubaoAppId && doubaoAccessKey) || elevenKey || minimaxKey),
-        video: Boolean(seedanceKey || klingKey || minimaxKey),
-        music: Boolean(murekaKey || minimaxKey),
-        sound: Boolean(elevenKey),
-        stock: Boolean(pexelsKey || pixabayKey || unsplashKey || freesoundKey),
-        transcription: Boolean(aaiKey),
-        sandbox: Boolean(e2bKey),
-        web: Boolean(firecrawlKey),
+        image: caps.image,
+        voice: caps.voice,
+        video: caps.video,
+        music: caps.music,
+        sound: caps.sound,
+        stock: caps.stock,
+        transcription: caps.transcription,
+        sandbox: caps.sandbox,
+        web: caps.web,
       }),
     },
     // public/ = user runtime only (media/uploads). Product static files live in assets/
@@ -66,7 +49,7 @@ export default defineConfig(({ mode }) => {
           rewrite: (p) => p.replace(/^\/assemblyai/, ''),
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
-              const ak = getKey('ASSEMBLYAI_API_KEY') || aaiKey;  // live override
+              const ak = getKey('ASSEMBLYAI_API_KEY');  // live override
               if (ak) proxyReq.setHeader('authorization', ak);
             });
           },

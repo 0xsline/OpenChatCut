@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { keyStatus, setKeys } from '../keystore.ts';
 import { runProbe } from '../key-probes.ts';
+import { fasterWhisperStatusSync } from './faster-whisper.ts';
 import {
   checkMediaDir,
   DEFAULT_UPLOAD_DIR,
@@ -45,7 +46,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
  * Convert to real disk path, otherwise every asset in NLE will be offline; the directory changes with MEDIA_DIR,
  * Only the server knows, so it is returned to the front-end along with the settings (non-key, can be disclosed). */
 function settingsBody() {
-  return { ...keyStatus(), mediaDir: uploadDir() };
+  return { ...keyStatus(), mediaDir: uploadDir(), asr: { fasterWhisper: fasterWhisperStatusSync() } };
 }
 
 export function settingsPlugin(): Plugin {
