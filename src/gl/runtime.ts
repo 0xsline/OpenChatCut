@@ -25,8 +25,9 @@ export type UniformValue = number | number[];
 export interface FxPass {
   frag: string;
   uniforms?: Record<string, UniformValue>;
-  /** read u_input from an earlier pass instead of the immediately previous one */
-  inputFrom?: number;
+  /** read u_input from an earlier pass instead of the immediately previous one;
+   * the special value 'cover' reads from extraStagings.cover (blur-fill cover background). */
+  inputFrom?: number | 'cover';
   /** bind named sampler uniforms to earlier pass outputs */
   samplers?: Record<string, number>;
   /** 3D LUT bound to the `u_lut` sampler3D uniform. */
@@ -52,10 +53,12 @@ export interface GlRuntime {
     lut3d?: CubeLut,
   ) => void;
   /** run a multi-pass effect; pass 0 reads `input`, later passes default to the
-   * previous output and may also reference earlier outputs (ASCII bloom). */
+   * previous output and may also reference earlier outputs (ASCII bloom).
+   * extraStagings provides named alternate inputs (e.g. `cover` for blur-fill). */
   renderFxChain: (
     passes: FxPass[],
     input: TexImageSource,
+    extraStagings?: Record<string, TexImageSource>,
   ) => void;
   dispose: () => void;
 }
@@ -292,7 +295,7 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     },
-    renderFxChain(passes, input) {
+    renderFxChain(passes, input, extraStagings) {
       if (passes.length === 0) return;
       const rt = ensureFbos(Math.max(0, passes.length - 1));
       // upload the source once (flip: DOM sources are top-down)
@@ -300,6 +303,21 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
       gl.bindTexture(gl.TEXTURE_2D, texFx);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, input);
+      // upload extra staging canvases (named alternate inputs, e.g. cover for blur-fill)
+      const extraTextures: Record<string, WebGLTexture> = {};
+      if (extraStagings) {
+        for (const [name, src] of Object.entries(extraStagings)) {
+          const tex = makeTexture(gl);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+          // re-bind to a free unit so we don't clobber the staging uploads
+          const unit = 10 + Object.keys(extraTextures).length;
+          gl.activeTexture(gl.TEXTURE0 + unit);
+          extraTextures[name] = tex;
+        }
+      }
       for (let i = 0; i < passes.length; i++) {
         const last = i === passes.length - 1;
         gl.bindFramebuffer(gl.FRAMEBUFFER, last ? null : rt[i].fb);
@@ -307,9 +325,15 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
         const prog = getProgram(passes[i].frag);
         gl.useProgram(prog);
         bindQuad(prog);
-        // Intermediate FBO textures are already GL-oriented — bind without re-upload/flip.
+        // Resolve input source: 'cover' → extraStagings texture; number → FBO index
         const inputFrom = passes[i].inputFrom ?? i - 1;
-        const inputTex = i === 0 ? texFx : rt[inputFrom]?.tex;
+        let inputTex: WebGLTexture | undefined;
+        if (inputFrom === 'cover') {
+          inputTex = extraTextures.cover;
+          if (!inputTex) throw new Error(`FX pass ${i}: extraStaging 'cover' not provided`);
+        } else if (typeof inputFrom === 'number') {
+          inputTex = i === 0 ? texFx : rt[inputFrom]?.tex;
+        }
         if (!inputTex) throw new Error(`invalid FX input pass ${inputFrom} at ${i}`);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, inputTex);

@@ -30,6 +30,8 @@ import fisheyeFrag from './fisheye.frag?raw';
 import kaleidoscopeFrag from './kaleidoscope.frag?raw';
 import edgeGlowFrag from './edge-glow.frag?raw';
 import softBlurFrag from './soft-blur.frag?raw';
+import blurFillPass1Frag from './blur-fill-pass1.frag?raw';
+import blurFillPass2Frag from './blur-fill-pass2.frag?raw';
 import lightLeakFrag from './light-leak.frag?raw';
 import lookTealOrangeFrag from './look-teal-orange.frag?raw';
 import lookMonoFrag from './look-mono.frag?raw';
@@ -407,6 +409,19 @@ export const FX_EFFECTS: Record<string, FxDef> = {
       { key: 'amount', label: '模糊量', default: 2.5, min: 0, max: 12, step: 0.1 },
     ],
   },
+  'builtin:fx-blur-fill': {
+    id: 'builtin:fx-blur-fill',
+    name: '模糊填充',
+    desc: '用裁切后模糊的自身画面填充画面以外的区域(CapCut 风格画布模糊)。',
+    frag: blurFillPass2Frag,
+    props: [
+      { key: 'intensity', label: '强度', default: 8, min: 1, max: 32, step: 1 },
+    ],
+    pipeline: (uniforms) => [
+      { frag: blurFillPass1Frag, uniforms, inputFrom: 'cover' },
+      { frag: blurFillPass2Frag, uniforms, inputFrom: 0 },
+    ],
+  },
   'builtin:fx-light-leak': {
     id: 'builtin:fx-light-leak',
     name: '漏光',
@@ -491,6 +506,7 @@ export const FX_ORDER = [
   'builtin:fx-kaleidoscope',
   'builtin:fx-edge-glow',
   'builtin:fx-soft-blur',
+  'builtin:fx-blur-fill',
   'builtin:fx-light-leak',
   'builtin:fx-sepia',
   'builtin:fx-invert',

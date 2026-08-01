@@ -55,6 +55,15 @@ export function ClipFx({ item, fit, width, height }: ClipFxProps) {
     return c;
   }, [width, height]);
 
+  // cover-fitted staging for blur-fill: the same clip zoomed to fill the canvas
+  // (used as the blurred background). Created once per layout change.
+  const coverStaging = useMemo(() => {
+    const c = document.createElement('canvas');
+    c.width = width;
+    c.height = height;
+    return c;
+  }, [width, height]);
+
   const active = glEffects(item);
 
   useEffect(() => {
@@ -76,11 +85,15 @@ export function ClipFx({ item, fit, width, height }: ClipFxProps) {
         const ctx = staging.getContext('2d');
         if (!ctx) throw new Error('2d context unavailable');
         drawFit(ctx, el, fit);
+        // cover staging for blur-fill: same clip zoomed to fill the canvas
+        const coverCtx = coverStaging.getContext('2d');
+        if (coverCtx) drawFit(coverCtx, el, 'cover');
         // u_time (seconds, clip-local) drives animated fx (CRT wobble/noise,
         // camera shake); static fx ignore it.
         runtimeRef.current.renderFxChain(
           fxPasses(active.map(({ fx, def }) => ({ def, overrides: fx.overrides })), frame / fps),
           staging,
+          { cover: coverStaging },
         );
       } catch (e) {
         // WebGL unavailable / compile failure → leave canvas empty; the media
@@ -93,7 +106,7 @@ export function ClipFx({ item, fit, width, height }: ClipFxProps) {
     tick();
     return () => { cancelAnimationFrame(raf); finish(); };
     // re-run each frame (animated fx need u_time) + when params/layout change.
-  }, [active, fit, staging, item, frame, fps]);
+  }, [active, fit, staging, coverStaging, item, frame, fps]);
 
   useEffect(() => () => { runtimeRef.current?.dispose(); runtimeRef.current = null; }, []);
 

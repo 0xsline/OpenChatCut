@@ -98,7 +98,9 @@ export function fxPasses(
     for (const pass of local) {
       out.push({
         ...pass,
-        inputFrom: pass.inputFrom == null ? undefined : pass.inputFrom + offset,
+        inputFrom: pass.inputFrom == null ? undefined
+          : typeof pass.inputFrom === 'number' ? pass.inputFrom + offset
+          : pass.inputFrom, // keep string/named extra staging references as-is
         samplers: pass.samplers
           ? Object.fromEntries(Object.entries(pass.samplers).map(([name, index]) => [name, index + offset]))
           : undefined,

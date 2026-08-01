@@ -26,6 +26,7 @@ export default {
   '万花筒': 'Kaleidoscope',
   '边缘发光': 'Edge Glow',
   '柔焦模糊': 'Soft Blur',
+  '模糊填充': 'Blur Fill',
   '漏光': 'Light Leak',
   '棕褐色': 'Sepia',
   '反色': 'Invert',
