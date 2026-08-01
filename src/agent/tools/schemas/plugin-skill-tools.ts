@@ -5,7 +5,7 @@ export const PLUGIN_SKILL_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'load_skill',
     description:
-      'Load the full verbatim guidance of one plugin skill (its SKILL.md) from the skill library listed in the system prompt. Call this when the task matches a skill\'s description, before doing the work. Pass file= to load a support doc under the skill instead of SKILL.md. Available skills: '
+      'Load the full guidance body of one bundled or selected custom skill. Call this when a task matches a skill description, before doing the work. Pass file= to load a bundled support doc instead of SKILL.md. Bundled skills: '
       + PLUGIN_SKILLS.map((skill: { slug: string }) => skill.slug).join(', ') + '.',
     input_schema: {
       type: 'object',

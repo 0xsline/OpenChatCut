@@ -1,15 +1,12 @@
 export { SKILL_TOOL_SCHEMAS, SKILL_TOOL_NAMES } from './schemas/skill-tools';
 import type { AgentContext } from '../context';
-import { CREATIVE_SKILLS, findSkill, setCustomSkills, type CreativeSkill } from '../skills/skills-catalog';
+import { CREATIVE_SKILLS, findSkill, setCustomSkills } from '../skills/skills-catalog';
+import { parseSkillFrontmatter } from '../skills/skill-frontmatter';
+import type { SkillDefinition } from '../skills/skill-types';
 import { listCustomSkills, saveCustomSkill, deleteCustomSkill, type CustomSkill } from '../../persist/skillStore';
 
-// manage_skill — Custom creation skills (in-app agent unique tool,
-// parallel to track_progress). Skill = a creative mode guide (bodyMarkdown), which injects system prompts after selection.
-// action: list (built-in + custom columns)/ get (view the text of a skill)/ create (new custom)/
-// update (change customization)/delete (delete customization).
-// Boundary: LLM input is not trustworthy - name/body non-empty verification; only customization can be changed/delete, and built-in skills are read-only.
-// After mutation, setCustomSkills(await listCustomSkills()) synchronizes the memory registry and lets findSkill/drop-down
-// See changes immediately within the session. Determination and undo are driven by UI selections, and the tool itself only maintains a library of skills.
+// manage_skill maintains selectable custom skills. Skill bodies are resolved by
+// load_skill after selection; built-in skills remain read-only.
 
 type Args = Record<string, unknown>;
 
@@ -17,7 +14,14 @@ const strArg = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 const strArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter(Boolean) : [];
 const isBuiltin = (id: string): boolean => CREATIVE_SKILLS.some((s) => s.id === id);
-const brief = (s: CreativeSkill) => ({ id: s.id, name: s.name, nameZh: s.nameZh, summary: s.summary, scenarios: s.scenarios });
+const brief = (skill: SkillDefinition) => ({
+  id: skill.id,
+  slug: skill.slug,
+  name: skill.name,
+  nameZh: skill.nameZh,
+  summary: skill.summary,
+  scenarios: skill.scenarios,
+});
 
 /** Reread custom skills from the IDB and synchronize the in-memory registry, making them immediately fresh within findSkill/drop sessions. */
 async function refresh(): Promise<CustomSkill[]> {
@@ -31,10 +35,10 @@ async function doList(ctx: AgentContext): Promise<unknown> {
   return { builtin: CREATIVE_SKILLS.map(brief), custom: custom.map(brief), activeSkillId: ctx.getCreativeMode() };
 }
 
-/** Currently activated creative mode (dump): The text has been injected into the system prompts. Here is the introduction for self-examination/continuation of chat positioning. */
+/** Currently activated creative mode. Its body is loaded separately through load_skill. */
 async function doCurrent(ctx: AgentContext): Promise<unknown> {
   const id = ctx.getCreativeMode();
-  if (!id) return { active: null, note: '当前未选创作模式(系统提示无技能指引注入)。' };
+  if (!id) return { active: null, note: '当前未选创作模式。' };
   await refresh().catch(() => []); // Custom skills need to re-read the registry; node checks the environment and skips silently if there is no IDB.
   const s = findSkill(id);
   if (!s) return { active: { id }, note: '该技能定义已被删除,模式仍挂着旧 id;可 activate 换一个或传空串清除。' };
@@ -53,7 +57,7 @@ async function doActivate(args: Args, ctx: AgentContext): Promise<unknown> {
   const s = findSkill(id);
   if (!s) return { error: `no skill "${id}"; use list to see available ids` };
   ctx.setCreativeMode(id);
-  return { ok: true, active: { ...brief(s), builtin: isBuiltin(id) }, note: '已切换;该模式的指引正文自下一条消息起注入系统提示。' };
+  return { ok: true, active: { ...brief(s), builtin: isBuiltin(id) }, note: '已切换;下一条消息会先按需加载该技能正文。' };
 }
 
 async function doGet(args: Args): Promise<unknown> {
@@ -70,14 +74,20 @@ async function doCreate(args: Args): Promise<unknown> {
   const body = strArg(args.body);
   if (!name) return { error: 'create requires a non-empty "name"' };
   if (!body) return { error: 'create requires a non-empty "body"' };
+  const id = `skill_${crypto.randomUUID()}`;
+  const summary = strArg(args.summary) || name;
+  const parsed = parseSkillFrontmatter(body);
   const skill: CustomSkill = {
-    id: `skill_${crypto.randomUUID()}`,
+    id,
+    slug: /^[A-Za-z0-9_-]+$/.test(parsed.name) ? parsed.name : id,
     name,
-    nameZh: name, // Custom skills have the same name in Chinese and English (the user only gives one name)
-    summary: strArg(args.summary) || name,
+    nameZh: name,
+    description: summary,
+    summary,
     scenarios: strArr(args.scenarios),
     body,
-    builtin: false,
+    files: [],
+    source: 'custom',
     createdAt: Date.now(),
   };
   await saveCustomSkill(skill);
@@ -94,12 +104,16 @@ async function doUpdate(args: Args): Promise<unknown> {
   const name = strArg(args.name);
   const body = strArg(args.body);
   const summary = strArg(args.summary);
+  const parsed = body ? parseSkillFrontmatter(body) : undefined;
+  const slug = parsed && /^[A-Za-z0-9_-]+$/.test(parsed.name)
+    ? parsed.name
+    : existing.slug;
   // Immutable: Returns a new object, overwriting only explicitly given fields
   const next: CustomSkill = {
     ...existing,
     ...(name ? { name, nameZh: name } : {}),
-    ...(body ? { body } : {}),
-    ...(summary ? { summary } : {}),
+    ...(body ? { body, slug } : {}),
+    ...(summary ? { summary, description: summary } : {}),
     ...(args.scenarios !== undefined ? { scenarios: strArr(args.scenarios) } : {}),
   };
   await saveCustomSkill(next);

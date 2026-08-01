@@ -1,0 +1,106 @@
+import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+import { createServer } from 'vite';
+import type { CustomSkill } from '../../persist/skillStore';
+import type { SkillFile } from './plugin-skills';
+import type { SkillDefinition } from './skill-types';
+
+const expectedCreativeSlugs = [
+  'long-video-to-shorts',
+  'multi-clips-to-reels',
+  'ai-cinematic-short-film',
+  'product-ad-video-script',
+  'explainer-video',
+  'motion-graphic-placement',
+  'storyboard-shot-breakdown',
+  'video-thumbnail-generator',
+];
+const root = fileURLToPath(new URL('../../../', import.meta.url));
+const vite = await createServer({
+  root,
+  configFile: false,
+  logLevel: 'silent',
+  appType: 'custom',
+  server: { middlewareMode: true },
+});
+
+try {
+  const pluginFiles = await vite.ssrLoadModule('/src/agent/skills/plugin-skills.ts') as {
+    PLUGIN_SKILLS: SkillFile[];
+  };
+  const catalog = await vite.ssrLoadModule('/src/agent/skills/skills-catalog.ts') as {
+    CREATIVE_SKILLS: SkillDefinition[];
+    setCustomSkills: (skills: SkillDefinition[]) => void;
+  };
+  const loader = await vite.ssrLoadModule('/src/agent/tools/plugin-skill-tools.ts') as {
+    execPluginSkillTool: (name: string, args: Record<string, unknown>) => unknown;
+  };
+  const prompts = await vite.ssrLoadModule('/src/agent/systemPrompt.ts') as {
+    creativeModePrompt: (skill: SkillDefinition | undefined) => string;
+  };
+  const store = await vite.ssrLoadModule('/src/persist/skillStore.ts') as {
+    normalizeStoredCustomSkill: (value: unknown) => CustomSkill | undefined;
+  };
+
+  assert.equal(pluginFiles.PLUGIN_SKILLS.length, 23);
+  assert.deepEqual(catalog.CREATIVE_SKILLS.map((skill) => skill.slug), expectedCreativeSlugs);
+  for (const skill of catalog.CREATIVE_SKILLS) {
+    assert(skill.description.length > 0);
+    assert(skill.body.trimStart().startsWith('# '));
+    const loaded = loader.execPluginSkillTool('load_skill', { name: skill.slug });
+    assert(loaded && typeof loaded === 'object' && 'content' in loaded);
+    assert.equal(loaded.content, skill.body);
+    const prompt = prompts.creativeModePrompt(skill);
+    assert.match(prompt, new RegExp(`name=\"${skill.slug}\"`));
+    assert(!prompt.includes(skill.body));
+  }
+
+  const withSupport = pluginFiles.PLUGIN_SKILLS.find((skill) => skill.files.length > 0);
+  assert(withSupport, 'at least one bundled skill must expose a support file');
+  const support = loader.execPluginSkillTool('load_skill', {
+    name: withSupport.slug,
+    file: withSupport.files[0],
+  });
+  assert(support && typeof support === 'object' && 'content' in support);
+  assert.equal(typeof support.content, 'string');
+
+  const custom: SkillDefinition = {
+    id: 'skill_contract_check',
+    slug: 'explainer-video',
+    name: 'Prompt Contract Check',
+    nameZh: '提示词契约检查',
+    description: 'Verify progressive skill disclosure.',
+    summary: 'Verify progressive skill disclosure.',
+    scenarios: ['verification'],
+    body: '# Workflow\n\nPRIVATE_SKILL_BODY_SENTINEL',
+    files: [],
+    source: 'custom',
+  };
+  catalog.setCustomSkills([custom]);
+  const customPrompt = prompts.creativeModePrompt(custom);
+  assert.match(customPrompt, /name=\"skill_contract_check\"/);
+  assert(!customPrompt.includes('PRIVATE_SKILL_BODY_SENTINEL'));
+  const customLoaded = loader.execPluginSkillTool('load_skill', { name: custom.id });
+  assert(customLoaded && typeof customLoaded === 'object' && 'content' in customLoaded);
+  assert.equal(customLoaded.content, custom.body);
+  catalog.setCustomSkills([]);
+
+  const migrated = store.normalizeStoredCustomSkill({
+    id: 'skill_legacy',
+    name: 'Legacy Skill',
+    nameZh: '旧技能',
+    summary: 'Legacy summary',
+    scenarios: ['legacy'],
+    body: '---\nname: legacy-skill\ndescription: Legacy route\n---\n\n# Workflow',
+    builtin: false,
+    createdAt: 1,
+  });
+  assert(migrated);
+  assert.equal(migrated.slug, 'legacy-skill');
+  assert.equal(migrated.description, 'Legacy route');
+  assert.equal(migrated.source, 'custom');
+} finally {
+  await vite.close();
+}
+
+console.log('skill loading checks passed');

@@ -25,7 +25,7 @@ import {
 } from './broker.ts';
 import { createExternalProject, listExternalProjects } from './projects.ts';
 
-export const OPENCHATCUT_SKILL_BASELINE = '2026-07-27.1';
+export const OPENCHATCUT_SKILL_BASELINE = '2026-08-01.1';
 export const MCP_SESSION_IDLE_LIMIT_MS = 60 * 60 * 1000;
 export const MCP_SESSION_COUNT_LIMIT = 64;
 
@@ -297,7 +297,8 @@ function makeServer(baseUrl: string, session: McpSession): Server {
       instructions: [
         `OpenChatCut external skill baseline: ${OPENCHATCUT_SKILL_BASELINE}. Update with npx skills update openchatcut when the installed skill is older.`,
         'Bind this MCP transport with target_project before editing; the project, editor instance, and base revision cannot change within the session.',
-        'Call begin_edit_session first with approvalMode manual (default) or auto, then pass its editSessionId to every editor tool.',
+        'After target_project, load_skill is read-only and can be called without begin_edit_session or editSessionId.',
+        'Call begin_edit_session first with approvalMode manual (default) or auto, then pass its editSessionId to every draft-safe editor tool.',
         'Call review_edit_session when the draft is ready.',
         'Manual sessions wait for approval in OpenChatCut; auto sessions apply the complete draft during review_edit_session. Do not claim success until status is applied.',
         'If a session becomes stale, cancelled, or failed, start a new MCP session instead of reusing it.',

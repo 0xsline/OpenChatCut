@@ -1,6 +1,10 @@
 import type { AgentToolSchema } from './tool-schema';
 import { TOOL_SCHEMAS } from './tools';
-import { isExternalDraftTool, isExternalReadTool } from './external-tool-policy';
+import {
+  isExternalDraftTool,
+  isExternalGlobalReadTool,
+  isExternalReadTool,
+} from './external-tool-policy';
 
 interface ExternalToolAnnotation {
   readOnlyHint?: boolean;
@@ -74,8 +78,20 @@ function requiredWithSession(required: string[] | undefined): string[] {
   return [...new Set([...(required ?? []), 'editSessionId'])];
 }
 
-/** MCP-facing catalog: lifecycle controls plus session-bound editor tools. */
+
+/** MCP-facing catalog: stateless reads, lifecycle controls, then session-bound editor tools. */
 export function externalToolSchemas(): ExternalRegisteredTool[] {
+  const globalReadTools = TOOL_SCHEMAS
+    .filter((tool) => isExternalGlobalReadTool(tool.name))
+    .map((tool): ExternalRegisteredTool => ({
+      ...tool,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    }));
   const editorTools = TOOL_SCHEMAS.filter((tool) => isExternalDraftTool(tool.name)).map((tool): ExternalRegisteredTool => ({
     ...tool,
     description: `${tool.description ?? tool.name} ${isExternalReadTool(tool.name) ? 'Reads' : 'Edits'} the edit-session draft; pass editSessionId.`,
@@ -91,5 +107,5 @@ export function externalToolSchemas(): ExternalRegisteredTool[] {
       openWorldHint: false,
     },
   }));
-  return [...SESSION_TOOLS, ...editorTools];
+  return [...globalReadTools, ...SESSION_TOOLS, ...editorTools];
 }

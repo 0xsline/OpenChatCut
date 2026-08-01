@@ -5,15 +5,17 @@
 1. Call `openchatcut_status`.
 2. Call `list_projects` when the project is not already identified.
 3. Call `target_project` with the selected project ID.
-4. Call `begin_edit_session` and keep the returned `editSessionId`.
-5. Call `read_project` with that session ID before the first mutation.
+4. When specialized guidance applies, call `load_skill`; it requires no edit
+   session or `editSessionId`.
+5. Call `begin_edit_session` and keep the returned `editSessionId`.
+6. Call `read_project` with that session ID before the first mutation.
 
 Use `approvalMode: "manual"` by default. Use `"auto"` only when the user asks
 for an unattended, atomic application.
 
 ## Load specialized guidance
 
-Call `load_skill` before specialized work. Common skill names include:
+Call `load_skill` after targeting the project and before specialized work. Common skill names include:
 
 - `talking-head-guide`
 - `transcription`

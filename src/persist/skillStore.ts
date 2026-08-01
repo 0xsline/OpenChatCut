@@ -1,43 +1,56 @@
-// Custom creative skill library, managed by manage_skill.
-// Custom skills = creative mode skills created by user/agent, and 8 built-in read-only skills (skills-catalog.ts)
-// The juxtaposition appears in the "Creative Mode" drop-down list and can be selected to inject system prompts. Cross-project sharing (like templates/my design styles
-// It is also a global library, not divided by project), and shares the local server KV with projectStore.
-// Always verify when reading (persistent data is not trustworthy).
-//
-// CustomSkill meets the CreativeSkill interface (id/name/nameZh/summary/scenarios/body), so
-// systemPrompt.creativeModePrompt can inject custom skills without modification; additionally with builtin:false/
-// createdAt tag to distinguish built-ins.
-import type { CreativeSkill } from '../agent/skills/skills-catalog';
+// Custom skills are a global library shared across projects. Persisted data is
+// untrusted and normalized into the same runtime model as bundled skills.
+import { parseSkillFrontmatter } from '../agent/skills/skill-frontmatter';
+import type { SkillDefinition } from '../agent/skills/skill-types';
 import { kvGet as idbGet, kvSet as idbSet } from './sharedKv';
 
-export interface CustomSkill extends CreativeSkill {
-  builtin: false;
+export interface CustomSkill extends SkillDefinition {
+  source: 'custom';
   createdAt: number;
 }
 
-// Global single key: Custom skills are shared across projects (without projectId), the same idea as owned design styles / templates.
 const SKILLS_KEY = 'skills:custom';
-// Boundary verification: Persistent data is not trustworthy (old version/damaged/written by other tabs), verify it first and then use it.
-function isCustomSkill(v: unknown): v is CustomSkill {
-  if (!v || typeof v !== 'object') return false;
-  const s = v as Partial<CustomSkill>;
-  return typeof s.id === 'string'
-    && typeof s.name === 'string'
-    && typeof s.nameZh === 'string'
-    && typeof s.summary === 'string'
-    && typeof s.body === 'string'
-    && s.builtin === false
-    && typeof s.createdAt === 'number'
-    && Array.isArray(s.scenarios) && s.scenarios.every((x) => typeof x === 'string');
+const SAFE_SLUG = /^[A-Za-z0-9_-]+$/;
+
+export function normalizeStoredCustomSkill(value: unknown): CustomSkill | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const stored = value as Record<string, unknown>;
+  if (stored.source !== 'custom' && stored.builtin !== false) return undefined;
+  if (typeof stored.id !== 'string' || !SAFE_SLUG.test(stored.id)) return undefined;
+  if (typeof stored.name !== 'string' || typeof stored.body !== 'string') return undefined;
+  if (typeof stored.summary !== 'string' || typeof stored.createdAt !== 'number') return undefined;
+  if (!Array.isArray(stored.scenarios) || !stored.scenarios.every((item) => typeof item === 'string')) {
+    return undefined;
+  }
+  const parsed = parseSkillFrontmatter(stored.body);
+  const candidate = typeof stored.slug === 'string' ? stored.slug.trim() : parsed.name;
+  const slug = SAFE_SLUG.test(candidate) ? candidate : stored.id;
+  const description = typeof stored.description === 'string' && stored.description.trim()
+    ? stored.description.trim()
+    : (parsed.description || stored.summary);
+  return {
+    id: stored.id,
+    slug,
+    name: stored.name,
+    nameZh: typeof stored.nameZh === 'string' ? stored.nameZh : stored.name,
+    description,
+    summary: stored.summary,
+    scenarios: stored.scenarios,
+    body: stored.body,
+    files: [],
+    source: 'custom',
+    createdAt: stored.createdAt,
+  };
 }
 
 async function readAll(): Promise<CustomSkill[]> {
   const raw = await idbGet<unknown>(SKILLS_KEY);
   if (!Array.isArray(raw)) return [];
-  return raw.filter(isCustomSkill);
+  return raw
+    .map(normalizeStoredCustomSkill)
+    .filter((skill): skill is CustomSkill => Boolean(skill));
 }
 
-/** All saved custom skills (insertion order). On failure, an empty array is returned (persistent data is not trusted). */
 export async function loadCustomSkills(): Promise<CustomSkill[]> {
   try {
     return await readAll();
@@ -46,19 +59,18 @@ export async function loadCustomSkills(): Promise<CustomSkill[]> {
   }
 }
 
-// ponytail: listCustomSkills and loadCustomSkills are read at the same time (the former is used for tool hydration and the UI mounting
-// The latter), implement the same guide to avoid duplication of logic.
 export const listCustomSkills = loadCustomSkills;
 
-/** upsert: If the id exists, replace it in place, otherwise append it (immutable: map/expand a new array, not change it in place). */
 export async function saveCustomSkill(skill: CustomSkill): Promise<CustomSkill> {
   const current = await readAll();
-  const existing = current.some((s) => s.id === skill.id);
-  const next = existing ? current.map((s) => (s.id === skill.id ? skill : s)) : [...current, skill];
+  const existing = current.some((saved) => saved.id === skill.id);
+  const next = existing
+    ? current.map((saved) => (saved.id === skill.id ? skill : saved))
+    : [...current, skill];
   try {
     await idbSet(SKILLS_KEY, next);
   } catch {
-    /* ignore persist failures; caller still gets the entry back for in-session use */
+    // Persistence failure keeps the in-session result usable.
   }
   return skill;
 }
@@ -66,8 +78,8 @@ export async function saveCustomSkill(skill: CustomSkill): Promise<CustomSkill> 
 export async function deleteCustomSkill(id: string): Promise<void> {
   try {
     const current = await readAll();
-    await idbSet(SKILLS_KEY, current.filter((s) => s.id !== id));
+    await idbSet(SKILLS_KEY, current.filter((skill) => skill.id !== id));
   } catch {
-    /* ignore */
+    // Deletion is best-effort when local persistence is unavailable.
   }
 }

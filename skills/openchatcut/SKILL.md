@@ -23,20 +23,20 @@ running editor and is loaded on demand with `load_skill`.
    `http://localhost:5199/api/external-mcp/mcp`.
 2. Call `openchatcut_status`, then `list_projects`. Select a project only when
    the user names it or the current context identifies it.
-3. Before project reads or edits, call `begin_edit_session`. Keep its
+3. Call `load_skill` before specialized work. It is read-only and requires
+   neither `begin_edit_session` nor `editSessionId`; available names and support
+   files come from the live MCP tool description.
+4. Before project reads or edits, call `begin_edit_session`. Keep its
    `editSessionId` and pass it to every draft-safe editor tool.
-4. Use `approvalMode: "manual"` unless the user explicitly asks for unattended
+5. Use `approvalMode: "manual"` unless the user explicitly asks for unattended
    application. In manual mode, the user approves the complete proposal in
    OpenChatCut. In auto mode, `review_edit_session` applies the complete draft.
-5. Call `load_skill` before a specialized workflow. Its available names and
-   support files come from the live MCP tool description; do not duplicate or
-   guess them here.
 6. Finish with `review_edit_session`. Report success only after
    `get_edit_session` returns `applied`.
 
 ## Skill version
 
-`2026-07-27.1`
+`2026-08-01.1`
 
 The OpenChatCut MCP server announces its required skill baseline. If the server
 baseline is newer, run:

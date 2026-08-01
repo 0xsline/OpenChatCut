@@ -16,7 +16,12 @@ import {
   reviewExternalEditSession,
   revisionOf,
 } from './external-edit-session';
-import { isExternalDraftTool, isExternalReadTool } from './external-tool-policy';
+import {
+  isExternalDraftTool,
+  isExternalGlobalReadTool,
+  isExternalReadTool,
+} from './external-tool-policy';
+import { externalToolSchemas } from './external-tool-schemas';
 import {
   executeExternalCall,
   externalBridgeReadinessMatches,
@@ -366,6 +371,18 @@ const runtimeBinding = {
   editorInstanceId: 'runtime-editor',
   baseRevision: revisionOf(base),
 };
+const missingSkill = await runtime.execute(
+  'load_skill',
+  { name: 'missing-skill-check' },
+  runtimeBinding,
+);
+assert(
+  missingSkill
+    && typeof missingSkill === 'object'
+    && 'error' in missingSkill
+    && String(missingSkill.error).includes('no such skill'),
+  'stateless skill reads execute without an edit session',
+);
 const begun = await runtime.execute('begin_edit_session', {}, runtimeBinding);
 assert(begun && typeof begun === 'object' && 'editSessionId' in begun);
 const draftingInfo = await runtime.execute(
@@ -695,5 +712,12 @@ assert(isExternalDraftTool('set_aspect_ratio'));
 assert(isExternalReadTool('read_project'));
 assert(!isExternalDraftTool('delete_project'));
 assert(!isExternalDraftTool('submit_render_job'));
+assert(isExternalGlobalReadTool('load_skill'));
+assert(!isExternalDraftTool('load_skill'));
+const externalLoadSkill = externalToolSchemas().find((tool) => tool.name === 'load_skill');
+assert(externalLoadSkill, 'load_skill is exposed to external agents');
+assert.equal(externalLoadSkill.annotations?.readOnlyHint, true);
+assert(!('editSessionId' in (externalLoadSkill.input_schema.properties ?? {})));
+assert(!externalLoadSkill.input_schema.required?.includes('editSessionId'));
 
 console.log('external edit session checks passed');

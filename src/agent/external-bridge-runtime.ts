@@ -14,7 +14,7 @@ import {
   type ExternalEditSessionTerminalStatus,
 } from './external-edit-session';
 import { executeTool } from './tools';
-import { isExternalDraftTool } from './external-tool-policy';
+import { isExternalDraftTool, isExternalGlobalReadTool } from './external-tool-policy';
 import { isProposalStale, type Proposal } from './proposal';
 import { replayActions } from '../editor/store';
 import { saveProject } from '../persist/projectStore';
@@ -158,6 +158,11 @@ export class ExternalBridgeRuntime {
       await this.validateBinding(binding);
       throwIfCancelled(signal);
       return this.begin(args.clientName, args.approvalMode);
+    }
+    if (isExternalGlobalReadTool(name)) {
+      await this.validateBinding(binding);
+      throwIfCancelled(signal);
+      return executeTool(name, args, this.getContext());
     }
     const sessionId = requiredSessionId(args);
     const session = this.sessions.get(sessionId);

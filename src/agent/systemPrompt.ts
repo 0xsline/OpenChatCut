@@ -2,7 +2,7 @@
 // Authored in-house, grounded in the bundled skills + tool model.
 import { GENERATE_WORKFLOW } from './tools/generate-tools';
 import { timelineTrackIds, trackAlias, trackKind, type DesignStyle } from '../editor/types';
-import { type CreativeSkill } from './skills/skills-catalog';
+import type { SkillDefinition } from './skills/skill-types';
 import type { AgentContext } from './context';
 
 // <editor_state>: Timeline snapshot of each message, spelled into system,
@@ -57,20 +57,18 @@ export function editorStatePrompt(ctx: AgentContext): string {
   ].join('\n');
 }
 
-// A selected creative mode injects that skill's instructions
-// (bodyMarkdown) into the system prompt so the agent plans/executes per the skill.
-// No skill selected → empty string (general agent).
-export function creativeModePrompt(skill: CreativeSkill | undefined): string {
+// A selected skill contributes only a stable loader instruction. Its body remains
+// out of the cached system prompt and is disclosed through load_skill on demand.
+export function creativeModePrompt(skill: SkillDefinition | undefined): string {
   if (!skill) return '';
-  // Skill attachment plus body injection.
+  const reference = skill.source === 'custom' ? skill.id : skill.slug;
   return [
     '',
-    `The user explicitly selected the Skill "${skill.name}" (${skill.id}) for this message. Load this Skill before handling the user's request.`,
-    '',
-    `# Creative mode: ${skill.name} (${skill.nameZh})`,
-    'The user selected this creative mode for the project. Plan and execute according to the skill instructions below. They guide your reasoning and workflow without changing the available tools:',
-    '',
-    skill.body,
+    '<selected_skill>',
+    `The user explicitly selected Skill "${reference}" for this message.`,
+    `Before taking action, call load_skill with name="${reference}" and follow the returned workflow.`,
+    'Do not infer the workflow from the skill name or prior messages.',
+    '</selected_skill>',
   ].join('\n');
 }
 

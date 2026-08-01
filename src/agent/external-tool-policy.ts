@@ -1,3 +1,7 @@
+const GLOBAL_READ_TOOL_NAMES: Record<string, true> = {
+  load_skill: true,
+};
+
 const READ_ONLY_TOOL_NAMES = new Set([
   'read_timeline', 'list_templates', 'search_templates', 'list_audio',
   'read_script', 'view_timeline_frames', 'view_asset_frames', 'browse_library',
@@ -12,6 +16,10 @@ const DRAFT_EDIT_TOOL_NAMES = new Set([
   'edit_item', 'manage_effects', 'edit_captions', 'update_watermark',
   'manage_markers',
 ]);
+export function isExternalGlobalReadTool(name: string): boolean {
+  return GLOBAL_READ_TOOL_NAMES[name] === true;
+}
+
 
 export function isExternalReadTool(name: string): boolean {
   return READ_ONLY_TOOL_NAMES.has(name);
