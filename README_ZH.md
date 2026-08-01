@@ -262,6 +262,13 @@ http://localhost:5199
 
 `.env.local` 中只需填写你实际使用的模型或素材服务。没有配置的第三方能力会明确提示缺少对应 Key，不影响本地时间线编辑、内置素材和已配置的其他能力。
 
+### 内置 Agent 登录方式
+
+- **API Key**：打开**设置 → Agent 模型**，选择厂商并保存 API Key 与模型；密钥始终留在服务端。
+- **ChatGPT 订阅**：先安装官方 Codex CLI 0.146.0 或更高版本，再进入**设置 → Agent 模型 → OpenAI · Codex**。可使用浏览器或设备代码登录、读取账号可用模型，并在聊天区的模型选择器中切换到 Codex。OpenChatCut 使用独立的 Codex 配置目录；凭据存储、令牌续期与退出均由官方 CLI 负责，OAuth 令牌不会暴露给浏览器。
+- **Claude 订阅**：OpenChatCut 不接收 Claude OAuth 凭据；请通过下文的本机 MCP 连接使用 Claude Code。内置 Agent 仍可通过 Anthropic API Key 使用 Claude。
+
+
 本地 H.264 导出会在 macOS 上优先使用 VideoToolbox，在兼容的 Windows 设备上优先使用 NVENC，失败时自动回退软件编码。可用 `OPENCHATCUT_RENDER_CONCURRENCY` 和 `OPENCHATCUT_MAX_ACTIVE_EXPORTS` 调整渲染并发及重型导出上限，用 `OPENCHATCUT_DISABLE_HARDWARE_ENCODING` 关闭硬件编码，或用 `OPENCHATCUT_H264_ENCODER` 覆盖 FFmpeg 侧的编码器选择；详见 [`.env.example`](.env.example)。
 
 ### 桌面端开发

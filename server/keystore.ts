@@ -100,6 +100,7 @@ export const KEY_NAMES = [
   // ── model ids (non-secret config; raw values echoed via keyStatus().models) ──
   "LLM_PROVIDER",
   "LLM_MODEL",
+  "CODEX_MODEL",
   "GEMINI_IMAGE_MODEL",
   "MINIMAX_IMAGE_MODEL",
   "ELEVENLABS_TTS_MODEL",
@@ -126,6 +127,7 @@ const SETTABLE = new Set<string>(KEY_NAMES);
 export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   "LLM_PROVIDER",
   "LLM_MODEL",
+  "CODEX_MODEL",
   "LLM_OPENAI_API_MODE",
   "GEMINI_IMAGE_MODEL",
   "ELEVENLABS_TTS_MODEL",

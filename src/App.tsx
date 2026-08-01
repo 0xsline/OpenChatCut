@@ -9,7 +9,8 @@ import type { ProjectDoc, TimelineState } from './editor/types';
 import { buildProjectExport, importProjectPackage } from './persist/projectTransfer';
 import { purgeProjectCascade } from './persist/mediaCleanup';
 import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from './agent/capabilities';
-import { applyAgentModelStatus } from './agent/model-selection';
+import { fetchCodexStatus } from './agent/codex/client';
+import { applyAgentModelStatus, applyCodexAgentStatus } from './agent/model-selection';
 import { useT } from './i18n/locale';
 
 const Editor = lazy(() => import('./Editor'));
@@ -33,6 +34,37 @@ function parseHash(): Route {
   return m ? { name: 'editor', id: m[1] } : { name: 'dashboard' };
 }
 const go = (hash: string) => { window.location.hash = hash; };
+
+interface LiveAgentStatus {
+  readonly caps?: Record<string, boolean>;
+  readonly keys?: Record<string, { readonly configured: boolean }>;
+  readonly models?: Record<string, string>;
+}
+
+async function syncAgentBackends(isActive: () => boolean): Promise<void> {
+  const [keyResult, codexResult] = await Promise.allSettled([
+    fetch('/api/keys').then(async (response): Promise<LiveAgentStatus> => {
+      if (!response.ok) throw new Error('Agent key status is unavailable.');
+      return response.json() as Promise<LiveAgentStatus>;
+    }),
+    fetchCodexStatus(),
+  ]);
+  if (!isActive()) return;
+  let savedCodexModel: string | undefined;
+  if (keyResult.status === 'fulfilled') {
+    const { caps, keys, models } = keyResult.value;
+    if (caps) applyLiveCaps(caps);
+    if (keys) applyLiveKeyStatus(keys);
+    if (models) {
+      applyLiveModels(models);
+      applyAgentModelStatus(keys ?? {}, models);
+      savedCodexModel = models.CODEX_MODEL;
+    }
+  }
+  if (codexResult.status === 'fulfilled') {
+    applyCodexAgentStatus(codexResult.value, savedCodexModel);
+  }
+}
 
 function Splash({ text }: { text: string }) {
   return (
@@ -66,21 +98,12 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
-  // Sync the agent's capability manifest with the server's live key state (corrects the
-  // build-time __CONFIGURED_CAPS__ snapshot after any key edited in a prior session).
-  // keys (booleans only) refine the manifest to vendor granularity.
+  // Resolve both server status channels before applying either one. API-backed settings
+  // are applied first so cold-start backend selection cannot depend on response timing.
   useEffect(() => {
-    fetch('/api/keys')
-      .then((r) => r.json() as Promise<{ caps?: Record<string, boolean>; keys?: Record<string, { configured: boolean }>; models?: Record<string, string> }>)
-      .then((d) => {
-        if (d?.caps) applyLiveCaps(d.caps);
-        if (d?.keys) applyLiveKeyStatus(d.keys);
-        if (d?.models) {
-          applyLiveModels(d.models);              // per-vendor models + PREFERRED_* routing
-          applyAgentModelStatus(d.keys ?? {}, d.models);
-        }
-      })
-      .catch(() => { /* dev endpoint absent (e.g. preview build) — keep the define snapshot */ });
+    let alive = true;
+    void syncAgentBackends(() => alive);
+    return () => { alive = false; };
   }, []);
 
   const refresh = useCallback(async () => { setProjects(await listProjects()); }, []);

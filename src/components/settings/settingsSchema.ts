@@ -10,6 +10,7 @@ import {
   isLocalLlmProvider,
   llmProviderConfigNames,
 } from '../../../shared/llm-providers';
+import type { CodexAgentStatus } from '../../../shared/codex-agent';
 import type { IconName } from '../icons';
 import type { VendorId } from './vendorIcons';
 
@@ -42,6 +43,8 @@ export interface SettingsVendorPage {
   readonly title: string;
   /** Page-level small notes (rendered at the top of the field card, such as MiniMax shared Key, ElevenLabs and sound effects) */
   readonly note?: string;
+  /** Non-HTTP connection flow rendered by the dedicated Codex account controls. */
+  readonly connection?: 'codex';
   readonly fields: readonly SettingsField[];
 }
 
@@ -96,7 +99,9 @@ const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorP
     key: `llm/${preset.id}`,
     vendor: preset.id as VendorId,
     title: preset.label,
-    note: '每个厂商独立保存地址、密钥与模型。先测试连接，成功后可从接口返回的模型中选择。',
+    note: preset.id === 'anthropic'
+      ? '内置 Agent 需要 Anthropic API Key。Claude Code 订阅用户请通过「外部 Agent 接入 (MCP)」连接；OpenChatCut 不接收 Claude OAuth。'
+      : '每个厂商独立保存地址、密钥与模型。先测试连接，成功后可从接口返回的模型中选择。',
     fields: [
       {
         name: names.baseUrl,
@@ -127,6 +132,27 @@ const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorP
   };
 };
 
+const CODEX_PAGE: SettingsVendorPage = {
+  key: 'llm/codex',
+  vendor: 'openai',
+  title: 'OpenAI · Codex',
+  connection: 'codex',
+  note: '使用 ChatGPT 订阅登录，由官方 Codex CLI 管理凭据、续期与退出。OpenChatCut 不会读取或显示 OAuth 凭据。',
+  fields: [{
+    name: 'CODEX_MODEL',
+    label: 'Codex 模型',
+    kind: 'text',
+    defaultLabel: 'Codex 默认模型',
+    discoverableModel: true,
+    note: '登录后可读取当前账号可用的模型，也可以手动填写模型 ID。',
+  }],
+};
+
+const AGENT_VENDOR_PAGES: readonly SettingsVendorPage[] = LLM_PROVIDER_PRESETS.flatMap((preset) => {
+  const page = llmPage(preset);
+  return preset.id === 'openai' ? [page, CODEX_PAGE] : [page];
+});
+
 // MiniMax serves 4 capabilities for the same Key/Base URL pair, and only the model fields of that capability are linked to the capability on the page.
 const MINIMAX_NOTE = 'MiniMax 同一个 Key，配置一次全能力（生图 / 配音 / 视频 / 音乐）通用。';
 const minimaxPage = (cap: string, modelField: SettingsField, title = 'MiniMax', vendor: VendorId = 'minimax'): SettingsVendorPage => ({
@@ -144,7 +170,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     groups: [
       { key: 'llm', title: 'Agent 大脑',
         hint: '对话与工具调用的核心，未配置无法对话。',
-        vendors: LLM_PROVIDER_PRESETS.map(llmPage) },
+        vendors: AGENT_VENDOR_PAGES },
     ],
   },
   {
@@ -330,7 +356,14 @@ export function modelValue(status: KeyStatusResponse | null, name: string): stri
 
 /** provider page "Configured": All secrets in the page are configured (doubao = double keys);
  * Pages without secret (local disk) to see if any field has been set.*/
-export function vendorConfigured(status: KeyStatusResponse | null, page: SettingsVendorPage): boolean {
+export function vendorConfigured(
+  status: KeyStatusResponse | null,
+  page: SettingsVendorPage,
+  codexStatus?: CodexAgentStatus | null,
+): boolean {
+  if (page.connection === 'codex') {
+    return Boolean(codexStatus?.installed && codexStatus.account?.type === 'chatgpt');
+  }
   if (!status) return false;
   if (isLocalLlmProvider(page.vendor)) {
     const names = llmProviderConfigNames(page.vendor);
@@ -342,18 +375,25 @@ export function vendorConfigured(status: KeyStatusResponse | null, page: Setting
 }
 
 /** Determination of "configured" capability group: llm depends on whether any provider page is fully configured, and the rest depends on the server capability Boolean (caps).*/
-export function groupConfigured(status: KeyStatusResponse | null, group: SettingsGroup): boolean {
-  if (!status) return false;
-  if (group.key === 'llm') return group.vendors.some((page) => vendorConfigured(status, page));
-  return Boolean(status.caps[group.key]);
+export function groupConfigured(
+  status: KeyStatusResponse | null,
+  group: SettingsGroup,
+  codexStatus?: CodexAgentStatus | null,
+): boolean {
+  if (group.key === 'llm') {
+    return group.vendors.some((page) => vendorConfigured(status, page, codexStatus));
+  }
+  return status ? Boolean(status.caps[group.key]) : false;
 }
 
 /** Classification logo: Number of configured capabilities/Total number of capabilities (capability level count).*/
 export function categoryGroupStats(
-  status: KeyStatusResponse | null, category: SettingsCategory,
+  status: KeyStatusResponse | null,
+  category: SettingsCategory,
+  codexStatus?: CodexAgentStatus | null,
 ): { done: number; total: number } {
   return {
-    done: category.groups.filter((g) => groupConfigured(status, g)).length,
+    done: category.groups.filter((group) => groupConfigured(status, group, codexStatus)).length,
     total: category.groups.length,
   };
 }

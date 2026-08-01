@@ -8,7 +8,8 @@ import {
   type ToolSet,
 } from 'ai';
 import type { AgentContext } from './context';
-import { TOOL_SCHEMAS, executeTool } from './tools';
+import type { CodexAgentToolSpec } from '../../shared/codex-agent';
+import { TOOL_SCHEMAS } from './tools';
 import { SYSTEM_PROMPT, agentLanguagePrompt, assembleSystemPrompt, creativeModePrompt, designStylePrompt, editorStatePrompt } from './systemPrompt';
 import { capabilitiesPrompt } from './capabilities';
 import { findSkill } from './skills/skills-catalog';
@@ -26,25 +27,30 @@ import {
   normalizeLlmMessages,
   prepareChatCompletionsMediaMessages,
 } from './messages';
-import { describeTimelineDelta, snapshotTimeline } from './timelineDelta';
 import {
   agentSettingsPrompt,
   createInlineThinkingExtractor,
   generationSkillForTool,
   loadAgentSettings,
+  type AgentSettings,
   type GenerationGuardSkill,
 } from './settings/agentSettings';
 import type { GuardDecision } from './skills/skillGuard';
 import { completeAbortedTurn } from './abortedTurn';
 import { resolveTrackedJobForProject } from '../persist/jobRegistryStore';
-
+import { getActiveAgentModelChoice } from './model-selection';
+import { executeOpenChatCutTool, runCodexAgent } from './codex/runtime';
 const MAX_OUTPUT_TOKENS = 64000;
 const MAX_TOOL_TURNS = 30;
 type ToolResultOutput = ToolResultPart['output'];
-
 export type LLMMessage = ModelMessage;
 export interface AgentRuntimeModule {
   runAgent: typeof runAgent;
+}
+export interface RunAgentOptions {
+  readonly askOnly?: boolean;
+  readonly signal?: AbortSignal;
+  readonly onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>;
 }
 
 export type AgentEvent =
@@ -274,7 +280,7 @@ function toolModelOutput(output: unknown): ToolResultOutput {
 function createAgentTools(
   ctx: AgentContext,
   onEvent: (event: AgentEvent) => void,
-  settings: ReturnType<typeof loadAgentSettings>,
+  settings: AgentSettings,
   onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>,
   onFollowup?: () => void,
 ): ToolSet {
@@ -285,45 +291,16 @@ function createAgentTools(
       inputSchema: jsonSchema<Record<string, unknown>>(
         schema.input_schema as Parameters<typeof jsonSchema<Record<string, unknown>>>[0],
       ),
-      execute: async (input) => {
-        const args = input ?? {};
-        try {
-          const guard = settings.skillGuard ? await runtimeGuardForTool(schema.name, args, ctx) : null;
-          if (guard) {
-            const decision = onSkillGuard ? await onSkillGuard(guard) : 'deny';
-            if (decision === 'deny') {
-              const denied = {
-                denied: true,
-                note: onSkillGuard
-                  ? 'User denied this high-cost or irreversible operation. Do not retry automatically; ask what to adjust instead.'
-                  : 'This high-cost or irreversible operation requires runtime confirmation, but no confirmation handler is available.',
-              };
-              onEvent({ type: 'tool', name: schema.name, args, result: denied });
-              return denied;
-            }
-          }
-          // Take a timeline snapshot before and after the tool: the modification tool directly brings back "what was actually changed"
-          // Model, omit a full read_project (the difference of read-only tools is null, no fields are added).
-          const before = snapshotTimeline(ctx.getState());
-          const result = await executeTool(schema.name, args, ctx);
-          const changed = describeTimelineDelta(before, ctx.getState());
-          const enriched = changed && result && typeof result === 'object' && !Array.isArray(result)
-            ? { ...(result as Record<string, unknown>), changed }
-            : result;
-          onEvent({ type: 'tool', name: schema.name, args, result: enriched });
-          const followup = (result as { __followup?: unknown } | null)?.__followup;
-          if (typeof followup === 'string') {
-            onEvent({ type: 'text-start' });
-            onEvent({ type: 'text-delta', delta: followup });
-            onFollowup?.();
-          }
-          return enriched;
-        } catch (error) {
-          const failed = { error: errorMessage(error) };
-          onEvent({ type: 'tool', name: schema.name, args, result: failed });
-          return failed;
-        }
-      },
+      execute: async (input) => (
+        await executeOpenChatCutTool(schema, input ?? {}, {
+          ctx,
+          onEvent,
+          settings,
+          resolveGuard: runtimeGuardForTool,
+          onSkillGuard,
+          onFollowup,
+        })
+      ).result,
       toModelOutput: ({ output }) => toolModelOutput(output),
     }),
   ]));
@@ -334,22 +311,61 @@ function responseUsedTools(messages: readonly ModelMessage[]): boolean {
     && Array.isArray(message.content)
     && message.content.some((part) => part.type === 'tool-call'));
 }
+const CODEX_TOOL_SPECS: readonly CodexAgentToolSpec[] = TOOL_SCHEMAS.map((schema) => ({
+  name: schema.name,
+  description: schema.description,
+  inputSchema: schema.input_schema,
+}));
+
+async function runCodexBackend(
+  messages: LLMMessage[],
+  ctx: AgentContext,
+  onEvent: (event: AgentEvent) => void,
+  model: string,
+  opts?: RunAgentOptions,
+): Promise<LLMMessage[]> {
+  const settings = loadAgentSettings();
+  const tools = opts?.askOnly ? [] : CODEX_TOOL_SPECS;
+  return runCodexAgent(messages, ctx, onEvent, {
+    askOnly: opts?.askOnly,
+    signal: opts?.signal,
+    model,
+    tools,
+    executeTool: async (name, args) => {
+      const schema = TOOL_SCHEMAS.find((candidate) => candidate.name === name);
+      if (!schema) return { success: false, result: { error: `Unknown Codex tool: ${name}` } };
+      return executeOpenChatCutTool(schema, args, {
+        ctx,
+        onEvent,
+        settings,
+        resolveGuard: runtimeGuardForTool,
+        onSkillGuard: opts?.onSkillGuard,
+      });
+    },
+  });
+}
 
 export async function runAgent(
   messages: LLMMessage[],
   ctx: AgentContext,
   onEvent: (event: AgentEvent) => void,
-  opts?: {
-    askOnly?: boolean;
-    signal?: AbortSignal;
-    onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>;
-  },
+  opts?: RunAgentOptions,
+): Promise<LLMMessage[]> {
+  const active = getActiveAgentModelChoice();
+  if (active?.backend === 'codex') {
+    return runCodexBackend(messages, ctx, onEvent, active.model, opts);
+  }
+  return runApiAgent(messages, ctx, onEvent, opts);
+}
+
+async function runApiAgent(
+  messages: LLMMessage[],
+  ctx: AgentContext,
+  onEvent: (event: AgentEvent) => void,
+  opts?: RunAgentOptions,
 ): Promise<LLMMessage[]> {
   let conv = normalizeLlmMessages(messages);
   const settings = loadAgentSettings();
-  // The order is "the more unchanged, the higher up" - the prompt word cache matches the byte-by-byte prefix, and inserts a paragraph in the middle that changes every round.
-  // Content, everything following it (the rest of the paragraphs, hundreds of tool schemas, the entire history) will be invalid.
-  // editorStatePrompt is a real-time timeline snapshot and must be placed in the last paragraph; new paragraphs are always added in front of it.
   const system = assembleSystemPrompt([
     SYSTEM_PROMPT,
     agentLanguagePrompt(getLocale()),

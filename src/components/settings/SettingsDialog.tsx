@@ -6,6 +6,8 @@ import { VendorIcon } from './vendorIcons';
 import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from '../../agent/capabilities';
 import { applyAgentModelStatus } from '../../agent/model-selection';
 import { FieldRow, ON, VendorPane, WARN, type FieldCtx } from './settingsVendorPane';
+import { useCodexSettings } from './useCodexSettings';
+import type { CodexAgentStatus } from '../../../shared/codex-agent';
 import {
   SETTINGS_CATEGORIES, buildPatch, categoryGroupStats, findGroup, groupConfigured,
   isModelField, modelValue, omitKey, savedMessage, vendorConfigured,
@@ -133,13 +135,39 @@ function applySavedToAgent(next: KeyStatusResponse): void {
   if (next.models) applyAgentModelStatus(next.keys, next.models);
 }
 
+function useFieldContext(
+  status: KeyStatusResponse | null,
+  values: Values,
+  setValues: React.Dispatch<React.SetStateAction<Values>>,
+  reveal: boolean,
+): FieldCtx {
+  const [modelOptions, setModelOptions] = useState<Record<string, readonly string[]>>({});
+  const codex = useCodexSettings(modelValue(status, 'CODEX_MODEL'));
+  const onStage = (field: SettingsField, raw: string): void => {
+    const baseline = isModelField(field) ? modelValue(status, field.name) : '';
+    setValues((previous) => raw === baseline
+      ? omitKey(previous, field.name)
+      : { ...previous, [field.name]: raw });
+  };
+  const onToggleClear = (name: string): void =>
+    setValues((previous) => previous[name] === ''
+      ? omitKey(previous, name)
+      : { ...previous, [name]: '' });
+  return {
+    status, values, reveal, onStage, onToggleClear, modelOptions, codex,
+    onModelsDiscovered: (name, models) => {
+      setModelOptions((previous) => ({ ...previous, [name]: [...new Set(models)] }));
+    },
+  };
+}
+
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
   const { status, setStatus, loadError } = useKeyStatus();
   const [values, setValues] = useState<Values>({});
-  const [modelOptions, setModelOptions] = useState<Record<string, readonly string[]>>({});
   const { group, page, selectGroup, selectVendor } = useTreeSelection();
   const [reveal, setReveal] = useState(false);
+  const ctx = useFieldContext(status, values, setValues, reveal);
   const { save, saving, msg, error } = useSaveKeys(values, (next) => {
     setStatus(next);
     applySavedToAgent(next);
@@ -149,24 +177,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { requestClose, warn } = useCloseGuard(dirty, onClose);
   useEscape(requestClose);
 
-  // Temporary storage: relative to the baseline (model field = current value of the server, the rest = ''), if there is no change, the temporary storage will be cancelled.
-  const stage = (field: SettingsField, raw: string): void => {
-    const baseline = isModelField(field) ? modelValue(status, field.name) : '';
-    setValues((prev) => raw === baseline ? omitKey(prev, field.name) : { ...prev, [field.name]: raw });
-  };
-  const toggleClear = (name: string): void =>
-    setValues((prev) => (prev[name] === '' ? omitKey(prev, name) : { ...prev, [name]: '' }));
-  const ctx: FieldCtx = {
-    status,
-    values,
-    reveal,
-    onStage: stage,
-    onToggleClear: toggleClear,
-    modelOptions,
-    onModelsDiscovered: (name, models) => {
-      setModelOptions((previous) => ({ ...previous, [name]: [...new Set(models)] }));
-    },
-  };
+  const codexStatus = ctx.codex.status;
 
   const shownError = error ?? loadError;
   const message = shownError ? { text: shownError, color: WARN }
@@ -181,10 +192,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <span style={{ color: theme.accent, display: 'inline-flex' }}><Icon name="sliders" size={15} /></span>
             <b style={{ fontSize: 14 }}>{t('设置 · API 密钥')}</b>
           </div>
-          <button onClick={onClose} title={t('关闭')} style={iconBtn}><Icon name="x" size={15} /></button>
+          <button type="button" onClick={onClose} title={t('关闭')} style={iconBtn}><Icon name="x" size={15} /></button>
         </header>
         <div style={bodyRow}>
-          <CapabilityTree status={status} activeGroup={group.key} onSelect={selectGroup} />
+          <CapabilityTree status={status} codexStatus={codexStatus} activeGroup={group.key} onSelect={selectGroup} />
           <VendorList group={group} activeVendor={page.key} onSelectVendor={selectVendor} ctx={ctx} />
           <VendorPane page={page} hint={group.hint} ctx={ctx} />
         </div>
@@ -197,8 +208,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 
 // ── Left column (categories can be folded → capabilities can be selected) ──────────────────────────────────────
 
-function CapabilityTree({ status, activeGroup, onSelect }: {
-  status: KeyStatusResponse | null; activeGroup: string; onSelect: (key: string) => void;
+function CapabilityTree({ status, codexStatus, activeGroup, onSelect }: {
+  status: KeyStatusResponse | null; codexStatus: CodexAgentStatus | null;
+  activeGroup: string; onSelect: (key: string) => void;
 }) {
   const t = useT();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -212,8 +224,9 @@ function CapabilityTree({ status, activeGroup, onSelect }: {
     <nav style={sidebar}>
       <div style={treeScroll}>
         {SETTINGS_CATEGORIES.map((cat) => (
-          <TreeCategory key={cat.key} category={cat} status={status} open={!collapsed.has(cat.key)}
-            activeGroup={activeGroup} onToggle={() => toggle(cat.key)} onSelect={onSelect} />
+          <TreeCategory key={cat.key} category={cat} status={status} codexStatus={codexStatus}
+            open={!collapsed.has(cat.key)} activeGroup={activeGroup}
+            onToggle={() => toggle(cat.key)} onSelect={onSelect} />
         ))}
       </div>
       <p style={sidebarNote}>
@@ -224,13 +237,13 @@ function CapabilityTree({ status, activeGroup, onSelect }: {
 }
 
 interface TreeCategoryProps {
-  category: SettingsCategory; status: KeyStatusResponse | null; open: boolean;
-  activeGroup: string; onToggle: () => void; onSelect: (key: string) => void;
+  category: SettingsCategory; status: KeyStatusResponse | null; codexStatus: CodexAgentStatus | null;
+  open: boolean; activeGroup: string; onToggle: () => void; onSelect: (key: string) => void;
 }
 
-function TreeCategory({ category, status, open, activeGroup, onToggle, onSelect }: TreeCategoryProps) {
+function TreeCategory({ category, status, codexStatus, open, activeGroup, onToggle, onSelect }: TreeCategoryProps) {
   const t = useT();
-  const { done, total } = categoryGroupStats(status, category);
+  const { done, total } = categoryGroupStats(status, category, codexStatus);
   return (
     <div>
       <button type="button" onClick={onToggle} title={open ? t('收起') : t('展开')} style={catRow}>
@@ -244,7 +257,7 @@ function TreeCategory({ category, status, open, activeGroup, onToggle, onSelect 
         </span>
       </button>
       {open && category.groups.map((g) => (
-        <GroupRow key={g.key} title={g.title} on={groupConfigured(status, g)}
+        <GroupRow key={g.key} title={g.title} on={groupConfigured(status, g, codexStatus)}
           active={g.key === activeGroup} onSelect={() => onSelect(g.key)} />
       ))}
     </div>
@@ -274,7 +287,7 @@ function VendorList({ group, activeVendor, onSelectVendor, ctx }: {
     <div style={vendorCol}>
       {group.route && <div style={routeBox}><FieldRow field={group.route} ctx={ctx} /></div>}
       {group.vendors.map((p) => (
-        <VendorRow key={p.key} page={p} on={vendorConfigured(ctx.status, p)}
+        <VendorRow key={p.key} page={p} on={vendorConfigured(ctx.status, p, ctx.codex.status)}
           active={p.key === activeVendor} onSelect={() => onSelectVendor(p.key)} />
       ))}
     </div>
@@ -310,8 +323,8 @@ function FooterBar({ reveal, onReveal, message, dirty, saving, onClose, onSave }
         {t('显示明文')}
       </label>
       <div style={{ ...footMsg, color: message?.color ?? ON }}>{message?.text ?? ''}</div>
-      <button onClick={onClose} style={btnGhost}>{t('关闭')}</button>
-      <button onClick={onSave} disabled={disabled}
+      <button type="button" onClick={onClose} style={btnGhost}>{t('关闭')}</button>
+      <button type="button" onClick={onSave} disabled={disabled}
         style={{ ...btnPrimary, opacity: disabled ? 0.5 : 1, cursor: disabled ? 'default' : 'pointer' }}>
         {saving ? t('保存中…') : t('保存')}
       </button>

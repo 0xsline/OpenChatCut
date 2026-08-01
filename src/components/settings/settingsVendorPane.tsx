@@ -6,6 +6,8 @@ import { useState } from 'react';
 import { theme, themeAlpha } from '../../theme';
 import { useT } from '../../i18n/locale';
 import { VendorIcon } from './vendorIcons';
+import { CodexAccountCard } from './CodexAccountCard';
+import type { CodexSettingsController } from './useCodexSettings';
 import {
   fieldPlaceholder, isModelField, modelValue, selectOptionLabel, selectOptions, vendorConfigured,
   type KeyStatusResponse, type SettingsField, type SettingsVendorPage, type StagedValues as Values,
@@ -23,6 +25,7 @@ export interface FieldCtx {
   onToggleClear: (name: string) => void;
   modelOptions: Record<string, readonly string[]>;
   onModelsDiscovered: (name: string, models: readonly string[]) => void;
+  codex: CodexSettingsController;
 }
 
 // ──Provider configuration page ────────────────────────────────────────────────────────
@@ -31,7 +34,8 @@ export function VendorPane({ page, hint, ctx }: {
   page: SettingsVendorPage; hint: string; ctx: FieldCtx;
 }) {
   const t = useT();
-  const on = vendorConfigured(ctx.status, page);
+  if (page.connection === 'codex') return <CodexVendorPane page={page} hint={hint} ctx={ctx} />;
+  const on = vendorConfigured(ctx.status, page, ctx.codex.status);
   return (
     <div style={pane}>
       <div>
@@ -49,6 +53,40 @@ export function VendorPane({ page, hint, ctx }: {
         </div>
       </section>
       <TestConnectionRow page={page} ctx={ctx} />
+    </div>
+  );
+}
+
+function CodexVendorPane({ page, hint, ctx }: {
+  page: SettingsVendorPage; hint: string; ctx: FieldCtx;
+}) {
+  const t = useT();
+  const status = ctx.codex.status;
+  const statusLabel = !status ? t('状态未知')
+    : !status.installed ? t('CLI 未安装')
+      : status.loginPending || ctx.codex.login ? t('登录中')
+        : status.account?.type === 'chatgpt' ? t('已登录')
+          : status.account ? t('API Key 模式')
+            : status.error || ctx.codex.error ? t('连接异常') : t('未登录');
+  const on = vendorConfigured(ctx.status, page, status);
+  return (
+    <div style={pane}>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <VendorIcon vendor={page.vendor} size={18} />
+          <b style={{ fontSize: 13 }}>{t(page.title)}</b>
+          <span style={{ fontSize: 11, color: on ? ON : theme.textDim }}>{statusLabel}</span>
+        </div>
+        <div style={{ fontSize: 11.5, color: theme.textDim, marginTop: 3, paddingLeft: 26 }}>{t(hint)}</div>
+      </div>
+      <CodexAccountCard controller={ctx.codex}
+        onModelsDiscovered={(models) => ctx.onModelsDiscovered('CODEX_MODEL', models)} />
+      <section style={fieldCardBox}>
+        {page.note && <div style={pageNote}>{t(page.note)}</div>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: page.note ? 9 : 0 }}>
+          {page.fields.map((field) => <FieldRow key={field.name} field={field} ctx={ctx} />)}
+        </div>
+      </section>
     </div>
   );
 }

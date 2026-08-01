@@ -15,7 +15,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "verify:media-drag": "tsx src/media/drag.verify.ts",
-    "pretest": "npm run verify:salvage && npm run verify:export-adaptive && npm run verify:production-contracts && tsx src/agent/local-models.verify.ts && npm run verify:skills",
+    "pretest": "npm run verify:salvage && npm run verify:export-adaptive && npm run verify:production-contracts && tsx src/agent/local-models.verify.ts && tsx server/codex/codex-agent.verify.ts && tsx src/agent/codex/runtime.verify.ts && npm run verify:skills",
     "verify:salvage": "tsx src/agent/model-selection.verify.ts && tsx src/captions/srt.verify.ts && tsx server/plugins/assemblyai-upload.verify.ts",
     "verify:skills": "tsx src/agent/skills/skill-loading.verify.ts",
     "verify:export-adaptive": "npx tsx src/export/exportDestination.verify.ts && npx tsx src/export/exportRoutePlanner.verify.ts && npx tsx src/export/serverExportOperation.verify.ts && npx tsx server/plugins/export-destination.verify.ts && npx tsx server/plugins/export-stage.verify.ts && npx tsx server/plugins/export-media-plan.verify.ts && npx tsx server/plugins/export-submission.verify.ts",

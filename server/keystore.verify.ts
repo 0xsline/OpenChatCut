@@ -75,7 +75,7 @@ assert.equal(getKey('LLM_API_KEY'), 'secret-abc', 'getKey returns the live value
 // Base URL/model name (derived with LLM_PROVIDER_PRESETS), the value is echoed by keyStatus().models —
 // The SECRET value still never appears in any response ──
 const MODEL_ROUTING_NAMES = [
-  'LLM_PROVIDER', 'LLM_MODEL', 'LLM_OPENAI_API_MODE',
+  'LLM_PROVIDER', 'LLM_MODEL', 'CODEX_MODEL', 'LLM_OPENAI_API_MODE',
   'GEMINI_IMAGE_MODEL', 'ELEVENLABS_TTS_MODEL', 'ELEVENLABS_SOUND_MODEL',
   'DOUBAO_TTS_RESOURCE_ID', 'SEEDANCE_VIDEO_MODEL', 'KLING_VIDEO_MODEL', 'MUREKA_MUSIC_MODEL',
   'MINIMAX_TTS_MODEL', 'MINIMAX_VIDEO_MODEL', 'MINIMAX_MUSIC_MODEL', 'MINIMAX_IMAGE_MODEL',

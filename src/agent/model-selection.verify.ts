@@ -6,6 +6,7 @@ const configured: AgentModelSnapshot = {
   activeId: 'openai:gpt-test',
   choices: [{
     id: 'openai:gpt-test',
+    backend: 'api',
     provider: 'openai',
     providerLabel: 'OpenAI',
     model: 'gpt-test',
