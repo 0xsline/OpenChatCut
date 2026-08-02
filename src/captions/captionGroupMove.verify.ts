@@ -42,7 +42,11 @@ assert.equal(clampTimelineSelectionDelta(state, ['clip-a'], selections, -90), -3
 
 const moved = moveTimelineSelectionByDelta(state, ['clip-a'], selections, 15);
 assert.equal(moved.items[0]?.startFrame, 75);
-assert.deepEqual(moved.captions?.sourceEntries?.[0]?.words?.map(({ text, start, end }) => [text, start, end]), [
+assert.deepEqual(moved.captions?.sourceEntries?.[0]?.words?.map((word: { text: string; start: number; end: number }) => [
+  word.text,
+  word.start,
+  word.end,
+]), [
   ['First', 1_500, 2_500],
   ['Second', 3_500, 4_500],
   ['Outside', 7_000, 8_000],
