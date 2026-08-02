@@ -56,6 +56,7 @@ export function WorkflowPickerContent({
             onClick={() => {
               activateWorkflowStarter(skill, {
                 translate: t,
+                locale: getLocale(),
                 onCreativeModeChange,
                 onPromptChange,
                 onRequestFocus,

@@ -1,6 +1,7 @@
 // EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
 // Override: components/chat/*. The chat message content ontology (LLM generated text) is not entered into the dictionary, but can only be translated into Chrome.
 export default {
+  '请按“{name}”工作流处理当前工程：{summary}。先检查素材和时间线，再执行并检查成片。': 'Follow the “{name}” workflow for the current project: {summary}. Inspect the media and timeline first, then execute and verify the result.',
   // ── ChatPanel shell ──
   '展开 OpenChatCut Agent': 'Expand OpenChatCut Agent',
   '收起 OpenChatCut Agent': 'Collapse OpenChatCut Agent',

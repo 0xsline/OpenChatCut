@@ -58,6 +58,16 @@ assert.match(workflowPromptForSkill(customSkill), /客户故事工作流/);
 assert.match(workflowPromptForSkill(customSkill), /访谈和产品素材/);
 assert.ok([...workflowPromptForSkill(customSkill).replace(/\s/g, '')].length <= 68);
 
+const localizedCustomPrompt = workflowPromptForSkill(
+  customSkill,
+  (value, params) => value === '请按“{name}”工作流处理当前工程：{summary}。先检查素材和时间线，再执行并检查成片。'
+    ? `Follow the “${params?.name}” workflow: ${params?.summary}. Inspect the media and timeline first, then execute and verify the result.`
+    : value,
+  'en',
+);
+assert.match(localizedCustomPrompt, /Customer Story Workflow/);
+assert.doesNotMatch(localizedCustomPrompt, /客户故事工作流|请按/);
+
 const selectedId = builtInSkills[1]!.id;
 const localeModuleId = '\0workflow-picker-test-locale';
 const vite = await createServer({

@@ -1,4 +1,5 @@
 import type { SkillDefinition } from '../../agent/skills/skill-types';
+import type { Locale } from '../../i18n/locale';
 
 const BUILTIN_WORKFLOW_PROMPTS = new Map<string, string>([
   ['11111111-1240-4000-8000-000000000004', '请分析当前长视频，挑选最有传播力的高光片段，剪成节奏紧凑的竖屏短视频，并完成字幕、标题和发布前检查。'],
@@ -18,14 +19,33 @@ function compactWorkflowSummary(summary: string): string {
   return `${characters.slice(0, 15).join('')}…`;
 }
 
-export function workflowPromptForSkill(skill: SkillDefinition): string {
+type WorkflowTranslate = (value: string, params?: Record<string, string | number>) => string;
+
+const interpolateWorkflowPrompt: WorkflowTranslate = (value, params) => (
+  params
+    ? value.replace(/\{(\w+)\}/g, (match, key: string) => (key in params ? String(params[key]) : match))
+    : value
+);
+
+export function workflowPromptForSkill(
+  skill: SkillDefinition,
+  translate: WorkflowTranslate = interpolateWorkflowPrompt,
+  locale: Locale = 'zh',
+): string {
   const builtinPrompt = BUILTIN_WORKFLOW_PROMPTS.get(skill.id);
-  if (builtinPrompt) return builtinPrompt;
-  return `请按“${skill.nameZh}”工作流处理当前工程：${compactWorkflowSummary(skill.summary)}。先检查素材和时间线，再执行并检查成片。`;
+  if (builtinPrompt) return translate(builtinPrompt);
+  return translate(
+    '请按“{name}”工作流处理当前工程：{summary}。先检查素材和时间线，再执行并检查成片。',
+    {
+      name: locale === 'en' ? skill.name : skill.nameZh,
+      summary: compactWorkflowSummary(locale === 'en' ? (skill.description || skill.summary) : skill.summary),
+    },
+  );
 }
 
 export interface WorkflowStarterActions {
-  translate: (value: string) => string;
+  translate: WorkflowTranslate;
+  locale?: Locale;
   onCreativeModeChange: (id: string) => void;
   onPromptChange: (value: string) => void;
   onRequestFocus: () => void;
@@ -36,6 +56,6 @@ export function activateWorkflowStarter(
   actions: WorkflowStarterActions,
 ): void {
   actions.onCreativeModeChange(skill.id);
-  actions.onPromptChange(actions.translate(workflowPromptForSkill(skill)));
+  actions.onPromptChange(workflowPromptForSkill(skill, actions.translate, actions.locale));
   actions.onRequestFocus();
 }
