@@ -224,7 +224,7 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
                   <label key={role} style={colorRow}>
                     <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : '#000000'} onChange={(e) => setColor(role, e.target.value)}
                       style={{ width: 24, height: 24, padding: 0, border: 'none', background: value || 'none', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }} />
-                    <span title={role} style={{ fontSize: 11, color: theme.textDim, minWidth: 40, flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{localizeDesignRole(COLOR_LABEL[role] ?? role, locale)}</span>
+                    <span title={role} style={{ fontSize: 11, color: theme.textDim, minWidth: 40, flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{COLOR_LABEL[role] ? t(COLOR_LABEL[role]) : localizeDesignRole(role, locale)}</span>
                     <input value={value} placeholder="#—" onChange={(e) => setColor(role, e.target.value)} style={hexInput} />
                   </label>
                 );
@@ -237,7 +237,7 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
             <div style={sectionTitle}>{t('字体')}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
               {fontRoles.map((role) => (
-                <FontField key={role} label={localizeDesignFontRole(FONT_LABEL[role] ?? role, locale)} role={role}
+                <FontField key={role} label={FONT_LABEL[role] ? t(FONT_LABEL[role]) : localizeDesignFontRole(role, locale)} role={role}
                   value={fontOf(draft, role) ?? ''} onChange={(v) => setFont(role, v)} />
               ))}
             </div>

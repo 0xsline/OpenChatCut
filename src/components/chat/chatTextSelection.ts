@@ -8,7 +8,7 @@ export interface ChatTextShortcutEvent {
 
 export type ChatTextShortcut = 'select-all';
 
-const CHAT_TEXT_SELECTION_EXCLUSIONS = 'a, button, input, textarea, select, [contenteditable="true"], [role="textbox"], [data-cc-shortcut-surface="agent-input"]';
+const CHAT_TEXT_SELECTION_EXCLUSIONS = 'a, button, input, textarea, select, [contenteditable="true"], [role="textbox"]';
 
 export function resolveChatTextShortcut(event: ChatTextShortcutEvent): ChatTextShortcut | null {
   if (event.altKey || event.shiftKey) return null;
