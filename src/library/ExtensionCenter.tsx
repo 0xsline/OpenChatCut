@@ -142,6 +142,7 @@ export function ExtensionCenter({ onClose }: ExtensionCenterProps) {
   const [category, setCategory] = useState<Category>('全部');
   const [query, setQuery] = useState('');
   const [showLocalInstall, setShowLocalInstall] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const registry = useRegistry(query, category, locale);
   const actions = useExtensionActions(() => {
@@ -159,10 +160,15 @@ export function ExtensionCenter({ onClose }: ExtensionCenterProps) {
           <ExtensionInstalled
             packs={packs}
             busyId={actions.busyId}
+            expandedId={expandedId}
             confirmId={confirmId}
+            onExpand={setExpandedId}
             onConfirm={setConfirmId}
             onToggle={(pack) => actions.runAction(pack.id, setPackEnabled(pack.id, !pack.enabled), pack.enabled ? t('已停用「{name}」', { name: pack.name }) : t('已启用「{name}」', { name: pack.name }))}
-            onRemove={(pack) => actions.runAction(pack.id, removePack(pack.id), t('已卸载「{name}」', { name: pack.name }), () => setConfirmId(null))}
+            onRemove={(pack) => actions.runAction(pack.id, removePack(pack.id), t('已卸载「{name}」', { name: pack.name }), () => {
+              setConfirmId(null);
+              setExpandedId(null);
+            })}
           />
         )}
       </div>
