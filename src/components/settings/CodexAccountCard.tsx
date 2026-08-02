@@ -27,20 +27,16 @@ function accountState(controller: CodexSettingsController): AccountState {
   return 'signed-out';
 }
 
-export function CodexAccountCard({ controller, onModelsDiscovered }: {
+export function CodexAccountCard({ controller }: {
   controller: CodexSettingsController;
-  onModelsDiscovered: (models: readonly string[]) => void;
 }) {
   const state = accountState(controller);
-  const loadModels = async (): Promise<void> => {
-    const models = await controller.discoverModels();
-    if (models.length > 0) onModelsDiscovered(models);
-  };
   return (
     <section style={card} aria-live="polite">
       <StatusSummary state={state} controller={controller} />
       {state === 'pending' && <LoginDetails login={controller.login} />}
-      <ActionRow state={state} controller={controller} onLoadModels={() => { void loadModels(); }} />
+      <ActionRow state={state} controller={controller}
+        onLoadModels={() => { void controller.discoverModels(); }} />
       {state !== 'error' && (controller.error ?? controller.status?.error) && (
         <div role="alert" style={errorText}>{controller.error ?? controller.status?.error}</div>
       )}

@@ -2,7 +2,7 @@ import {
   useCallback, useEffect, useRef, useState, type RefObject,
 } from 'react';
 import type {
-  CodexAgentStatus, CodexLoginMode, CodexLoginStartResponse,
+  CodexAgentModel, CodexAgentStatus, CodexLoginMode, CodexLoginStartResponse,
 } from '../../../shared/codex-agent';
 import {
   cancelCodexLogin, fetchCodexModels, fetchCodexStatus, logoutCodex, startCodexLogin,
@@ -32,11 +32,12 @@ export interface CodexSettingsController {
   readonly logoutBusy: boolean;
   readonly modelBusy: boolean;
   readonly modelError: string | null;
+  readonly models: readonly CodexAgentModel[];
   readonly refresh: () => Promise<CodexAgentStatus | null>;
   readonly startLogin: (mode: CodexLoginMode) => Promise<void>;
   readonly cancelLogin: () => Promise<void>;
   readonly logout: () => Promise<void>;
-  readonly discoverModels: () => Promise<readonly string[]>;
+  readonly discoverModels: () => Promise<readonly CodexAgentModel[]>;
 }
 
 export function safeHttpsUrl(value: string): string | null {
@@ -57,7 +58,7 @@ function useMountedRef(): RefObject<boolean> {
   return mounted;
 }
 
-function useCodexStatusControl(savedModel?: string): RemoteStatusControl {
+function useCodexStatusControl(savedModel?: string, savedReasoningEffort?: string): RemoteStatusControl {
   const mounted = useMountedRef();
   const [state, setState] = useState<RemoteStatusState>({ status: null, loading: true, error: null });
   const refresh = useCallback(async (silent = false): Promise<CodexAgentStatus | null> => {
@@ -77,8 +78,8 @@ function useCodexStatusControl(savedModel?: string): RemoteStatusControl {
   }, [mounted]);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
-    if (state.status) applyCodexAgentStatus(state.status, savedModel);
-  }, [savedModel, state.status]);
+    if (state.status) applyCodexAgentStatus(state.status, savedModel, savedReasoningEffort);
+  }, [savedModel, savedReasoningEffort, state.status]);
   return { state, refresh };
 }
 
@@ -129,7 +130,7 @@ function usePendingLogin(remote: RemoteStatusControl) {
   return { login, busy, error, startLogin, cancelLogin };
 }
 
-function useCodexLogout(remote: RemoteStatusControl) {
+function useCodexLogout(remote: RemoteStatusControl, onLoggedOut: () => void) {
   const refresh = remote.refresh;
   const mounted = useMountedRef();
   const [busy, setBusy] = useState(false);
@@ -138,45 +139,71 @@ function useCodexLogout(remote: RemoteStatusControl) {
     setBusy(true); setError(null);
     try {
       await logoutCodex();
+      onLoggedOut();
       await refresh(true);
     } catch {
       if (mounted.current) setError(t('无法退出登录，请稍后重试。'));
     } finally {
       if (mounted.current) setBusy(false);
     }
-  }, [mounted, refresh]);
+  }, [mounted, onLoggedOut, refresh]);
   useEffect(() => setError(null), [remote.state.status]);
   return { busy, error, logout };
 }
 
-function useCodexModels() {
+function useCodexModels(autoDiscover: boolean) {
   const mounted = useMountedRef();
+  const autoStarted = useRef(false);
+  const requestGeneration = useRef(0);
+  const [models, setModels] = useState<readonly CodexAgentModel[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const discoverModels = useCallback(async (): Promise<readonly string[]> => {
+  const reset = useCallback((): void => {
+    requestGeneration.current += 1;
+    autoStarted.current = false;
+    if (!mounted.current) return;
+    setModels([]);
+    setBusy(false);
+    setError(null);
+  }, [mounted]);
+  const discoverModels = useCallback(async (): Promise<readonly CodexAgentModel[]> => {
+    const generation = ++requestGeneration.current;
     setBusy(true); setError(null);
     try {
       const response = await fetchCodexModels();
+      if (generation !== requestGeneration.current) return [];
       if (response.error) {
         if (mounted.current) setError(t('读取模型失败：{message}', { message: response.error }));
         return [];
       }
-      return response.models.map((model) => model.id);
+      if (mounted.current) setModels(response.models);
+      return response.models;
     } catch {
-      if (mounted.current) setError(t('无法读取 Codex 模型，请稍后重试。'));
+      if (generation === requestGeneration.current && mounted.current) {
+        setError(t('无法读取 Codex 模型，请稍后重试。'));
+      }
       return [];
     } finally {
-      if (mounted.current) setBusy(false);
+      if (generation === requestGeneration.current && mounted.current) setBusy(false);
     }
   }, [mounted]);
-  return { busy, error, discoverModels };
+  useEffect(() => {
+    if (!autoDiscover) {
+      reset();
+      return;
+    }
+    if (autoStarted.current) return;
+    autoStarted.current = true;
+    void discoverModels();
+  }, [autoDiscover, discoverModels, reset]);
+  return { models, busy, error, discoverModels, reset };
 }
 
-export function useCodexSettings(savedModel?: string): CodexSettingsController {
-  const remote = useCodexStatusControl(savedModel);
+export function useCodexSettings(savedModel?: string, savedReasoningEffort?: string): CodexSettingsController {
+  const remote = useCodexStatusControl(savedModel, savedReasoningEffort);
   const login = usePendingLogin(remote);
-  const logout = useCodexLogout(remote);
-  const models = useCodexModels();
+  const models = useCodexModels(remote.state.status?.account?.type === 'chatgpt');
+  const logout = useCodexLogout(remote, models.reset);
   return {
     status: remote.state.status,
     loading: remote.state.loading,
@@ -186,6 +213,7 @@ export function useCodexSettings(savedModel?: string): CodexSettingsController {
     logoutBusy: logout.busy,
     modelBusy: models.busy,
     modelError: models.error,
+    models: models.models,
     refresh: remote.refresh,
     startLogin: login.startLogin,
     cancelLogin: login.cancelLogin,

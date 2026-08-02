@@ -139,11 +139,12 @@ function threadStartParams(request: CodexTurnRequest): Record<string, unknown> {
   };
 }
 
-function turnStartParams(threadId: string, prompt: string): Record<string, unknown> {
+function turnStartParams(threadId: string, request: CodexTurnRequest): Record<string, unknown> {
   return {
     threadId,
-    input: [{ type: 'text', text: prompt, text_elements: [] }],
+    input: [{ type: 'text', text: request.prompt, text_elements: [] }],
     approvalPolicy: 'never',
+    ...(request.reasoningEffort?.trim() ? { effort: request.reasoningEffort.trim() } : {}),
   };
 }
 
@@ -243,7 +244,7 @@ export class CodexTurnManager {
     if (!session.threadId) throw new Error('Codex did not return a thread id.');
     const turnResponse = object(await session.client.request(
       'turn/start',
-      turnStartParams(session.threadId, request.prompt),
+      turnStartParams(session.threadId, request),
       { timeoutMs: TURN_START_TIMEOUT_MS, restartOnTimeout: true, signal },
     ));
     session.turnId = identifier(object(turnResponse?.turn)?.id) ?? session.turnId;

@@ -265,7 +265,7 @@ http://localhost:5199
 ### 内置 Agent 登录方式
 
 - **API Key**：打开**设置 → Agent 模型**，选择厂商并保存 API Key 与模型；密钥始终留在服务端。
-- **ChatGPT 订阅**：先安装官方 Codex CLI 0.146.0 或更高版本，再进入**设置 → Agent 模型 → OpenAI · Codex**。可使用浏览器或设备代码登录、读取账号可用模型，并在聊天区的模型选择器中切换到 Codex。OpenChatCut 使用独立的 Codex 配置目录；凭据存储、令牌续期与退出均由官方 CLI 负责，OAuth 令牌不会暴露给浏览器。
+- **ChatGPT 订阅**：先安装官方 Codex CLI 0.146.0 或更高版本，再进入**设置 → Agent 模型 → OpenAI · Codex**。可使用浏览器或设备代码登录、读取账号可用模型，并按模型选择推理强度（或保留模型默认值），再在聊天区的模型选择器中切换到 Codex。OpenChatCut 使用独立的 Codex 配置目录；凭据存储、令牌续期与退出均由官方 CLI 负责，OAuth 令牌不会暴露给浏览器。
 - **Claude 订阅**：OpenChatCut 不接收 Claude OAuth 凭据；请通过下文的本机 MCP 连接使用 Claude Code。内置 Agent 仍可通过 Anthropic API Key 使用 Claude。
 
 

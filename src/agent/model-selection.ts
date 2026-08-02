@@ -21,6 +21,7 @@ export interface AgentModelChoice {
   readonly provider: LlmProvider;
   readonly providerLabel: string;
   readonly model: string;
+  readonly reasoningEffort?: string;
 }
 
 export interface AgentModelSnapshot {
@@ -103,7 +104,11 @@ export function applyAgentModelStatus(
   emit({ activeId: active?.id ?? '', choices, loaded: true });
 }
 
-export function applyCodexAgentStatus(status: CodexAgentStatus, savedModel?: string): void {
+export function applyCodexAgentStatus(
+  status: CodexAgentStatus,
+  savedModel?: string,
+  savedReasoningEffort?: string,
+): void {
   const previous = currentChoice();
   const api = snapshot.choices.filter((choice) => choice.backend === 'api');
   const model = savedModel?.trim() ?? '';
@@ -114,6 +119,7 @@ export function applyCodexAgentStatus(status: CodexAgentStatus, savedModel?: str
         provider: 'openai',
         providerLabel: 'OpenAI Codex',
         model,
+        reasoningEffort: savedReasoningEffort?.trim() ?? '',
       }]
     : [];
   const choices = [...api, ...codex];

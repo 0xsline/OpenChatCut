@@ -182,7 +182,28 @@ async function codexStatus(): Promise<CodexAgentStatus> {
   }
 }
 
-function mapModels(value: unknown): CodexAgentModel[] {
+function reasoningEffort(value: unknown): string | null {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value) ? value : null;
+}
+
+function mapReasoningEfforts(value: unknown): CodexAgentModel['supportedReasoningEfforts'] {
+  if (!Array.isArray(value)) return [];
+  const efforts: Array<CodexAgentModel['supportedReasoningEfforts'][number]> = [];
+  const seen = new Set<string>();
+  for (const candidate of value) {
+    const effort = object(candidate);
+    const name = reasoningEffort(effort?.reasoningEffort);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const description = typeof effort?.description === 'string' && effort.description.length <= 512
+      ? effort.description.trim()
+      : '';
+    efforts.push({ reasoningEffort: name, description });
+  }
+  return efforts;
+}
+
+export function mapCodexModels(value: unknown): CodexAgentModel[] {
   const data = object(value)?.data;
   if (!Array.isArray(data)) throw new Error('invalid model response');
   const models: CodexAgentModel[] = [];
@@ -195,10 +216,14 @@ function mapModels(value: unknown): CodexAgentModel[] {
     const displayName = typeof model?.displayName === 'string' && model.displayName.length <= 512
       ? model.displayName.trim()
       : '';
+    const supportedReasoningEfforts = mapReasoningEfforts(model?.supportedReasoningEfforts);
+    const defaultReasoningEffort = reasoningEffort(model?.defaultReasoningEffort);
     models.push({
       id: rawId,
       label: displayName || rawId,
       isDefault: model?.isDefault === true,
+      defaultReasoningEffort,
+      supportedReasoningEfforts,
     });
   }
   return models;
@@ -212,7 +237,7 @@ async function codexModels(): Promise<CodexAgentModelsResponse> {
       { limit: 100, includeHidden: false },
       { timeoutMs: MODEL_LIST_TIMEOUT_MS, restartOnTimeout: true },
     );
-    return { models: mapModels(response) };
+    return { models: mapCodexModels(response) };
   } catch (error) {
     const message = error instanceof CodexTimeoutError
       ? 'Codex model discovery timed out. Try again after Codex finishes starting.'
@@ -301,12 +326,20 @@ function turnRequest(body: Record<string, unknown>): CodexTurnRequest {
   }
   const requestedModel = body.model === undefined ? '' : shortString(body.model, 'model', 256).trim();
   const savedModel = getKey('CODEX_MODEL').trim().slice(0, 256);
+  const requestedEffort = body.reasoningEffort === undefined
+    ? ''
+    : shortString(body.reasoningEffort, 'reasoningEffort', 64).trim();
+  if (requestedEffort && !reasoningEffort(requestedEffort)) {
+    throw new HttpError(400, 'reasoningEffort is invalid');
+  }
+  const savedEffort = reasoningEffort(getKey('CODEX_REASONING_EFFORT').trim()) ?? '';
   return {
     requestId: shortString(body.requestId, 'requestId', 128),
     system: shortString(body.system, 'system', 1024 * 1024),
     prompt: shortString(body.prompt, 'prompt', 2 * 1024 * 1024),
     projectId: shortString(body.projectId, 'projectId', 256),
     ...(requestedModel || savedModel ? { model: requestedModel || savedModel } : {}),
+    ...(requestedEffort || savedEffort ? { reasoningEffort: requestedEffort || savedEffort } : {}),
     askOnly: body.askOnly === true,
     tools: body.tools,
   };

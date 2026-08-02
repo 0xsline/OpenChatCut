@@ -81,9 +81,10 @@ const signedInCodex = {
   account: { type: 'chatgpt' as const, email: 'editor@example.com', planType: 'pro' },
   loginPending: false,
 };
-applyCodexAgentStatus(signedInCodex, 'gpt-5.4');
+applyCodexAgentStatus(signedInCodex, 'gpt-5.4', 'high');
 const codex = getAgentModelSnapshot().choices.find((choice) => choice.backend === 'codex');
 assert.ok(codex);
+assert.equal(codex.reasoningEffort, 'high');
 assert.equal(getAgentModelSnapshot().activeId, gemini.id, 'adding Codex must not replace the active API model');
 selectAgentModel(codex.id);
 applyAgentModelStatus({

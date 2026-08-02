@@ -43,6 +43,7 @@ export interface CodexRuntimeOptions {
   readonly askOnly?: boolean;
   readonly signal?: AbortSignal;
   readonly model?: string;
+  readonly reasoningEffort?: string;
   readonly tools: readonly CodexAgentToolSpec[];
   readonly executeTool: (name: string, args: Record<string, unknown>) => Promise<CodexToolExecution>;
 }
@@ -286,6 +287,7 @@ export async function runCodexAgent(
       projectId,
       tools: opts.askOnly ? [] : opts.tools,
       ...(opts.model?.trim() ? { model: opts.model.trim() } : {}),
+      ...(opts.reasoningEffort?.trim() ? { reasoningEffort: opts.reasoningEffort.trim() } : {}),
       ...(opts.askOnly ? { askOnly: true } : {}),
     }, async (event) => {
       state = await handleStreamEvent(event, state, requestId, opts, onEvent);

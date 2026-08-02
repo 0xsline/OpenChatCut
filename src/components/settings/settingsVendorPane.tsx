@@ -7,12 +7,14 @@ import { theme, themeAlpha } from '../../theme';
 import { useT } from '../../i18n/locale';
 import { VendorIcon } from './vendorIcons';
 import { CodexAccountCard } from './CodexAccountCard';
+import type { CodexAgentModel } from '../../../shared/codex-agent';
 import type { CodexSettingsController } from './useCodexSettings';
+import { shouldRenderModelPicker } from './codexReasoning';
 import {
   fieldPlaceholder, isModelField, modelValue, selectOptionLabel, selectOptions, vendorConfigured,
-  type KeyStatusResponse, type SettingsField, type SettingsVendorPage, type StagedValues as Values,
+  type KeyStatusResponse, type SelectOption, type SettingsField, type SettingsVendorPage,
+  type StagedValues as Values,
 } from './settingsSchema';
-
 export const ON = theme.success; // Status green → Semantic token (graphite value ≈ original #4caf7d, light skin automatically changes to dark green)
 export const WARN = '#f77';    // Error / Clear warning (retain the original panel error color)
 
@@ -22,7 +24,7 @@ export interface FieldCtx {
   values: Values;
   reveal: boolean;
   onStage: (field: SettingsField, raw: string) => void;
-  onToggleClear: (name: string) => void;
+  onToggleClear: (field: SettingsField) => void;
   modelOptions: Record<string, readonly string[]>;
   onModelsDiscovered: (name: string, models: readonly string[]) => void;
   codex: CodexSettingsController;
@@ -79,8 +81,7 @@ function CodexVendorPane({ page, hint, ctx }: {
         </div>
         <div style={{ fontSize: 11.5, color: theme.textDim, marginTop: 3, paddingLeft: 26 }}>{t(hint)}</div>
       </div>
-      <CodexAccountCard controller={ctx.codex}
-        onModelsDiscovered={(models) => ctx.onModelsDiscovered('CODEX_MODEL', models)} />
+      <CodexAccountCard controller={ctx.codex} />
       <section style={fieldCardBox}>
         {page.note && <div style={pageNote}>{t(page.note)}</div>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: page.note ? 9 : 0 }}>
@@ -160,6 +161,27 @@ function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: Field
 
 // ──Field rendering ────────────────────────────────────────────────────────
 
+function selectedCodexModel(ctx: FieldCtx): CodexAgentModel | undefined {
+  const selectedId = ctx.values.CODEX_MODEL ?? modelValue(ctx.status, 'CODEX_MODEL');
+  return ctx.codex.models.find((model) => model.id === selectedId)
+    ?? (selectedId ? undefined : ctx.codex.models.find((model) => model.isDefault));
+}
+
+function codexReasoningOptions(
+  ctx: FieldCtx,
+  formatDefault: (effort?: string) => string,
+): readonly SelectOption[] {
+  const model = selectedCodexModel(ctx);
+  return [
+    { value: '', label: formatDefault(model?.defaultReasoningEffort ?? undefined) },
+    ...(model?.supportedReasoningEfforts.map((option) => ({
+      value: option.reasoningEffort,
+      label: option.reasoningEffort,
+    })) ?? []),
+  ];
+}
+
+
 export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }) {
   const t = useT();
   const { status, reveal, onStage, onToggleClear } = ctx;
@@ -172,7 +194,14 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
   const shown = value ?? (isModelField(field) ? modelValue(status, field.name) : '');
   // Select uses the "default" option to clear; toggle's off/on itself is set/clear.
   const clearable = configured && field.kind !== 'select' && field.kind !== 'toggle';
-  const discovered = field.discoverableModel ? ctx.modelOptions[field.name] ?? [] : [];
+  const discovered = field.name === 'CODEX_MODEL'
+    ? ctx.codex.models.map((model) => model.id)
+    : field.discoverableModel ? ctx.modelOptions[field.name] ?? [] : [];
+  const options = field.name === 'CODEX_REASONING_EFFORT'
+    ? codexReasoningOptions(ctx, (effort) => effort
+      ? t('模型默认（{name}）', { name: effort })
+      : t('模型默认'))
+    : undefined;
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <span style={fieldHead}>
@@ -181,7 +210,7 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
           {configured && <span style={sourceTag}>{st?.source === 'env' ? '.env.local' : t('本次设置')}</span>}
         </span>
         {clearable && (
-          <button type="button" onClick={(e) => { e.preventDefault(); onToggleClear(field.name); }}
+          <button type="button" onClick={(e) => { e.preventDefault(); onToggleClear(field); }}
             style={{ ...clearBtn, color: stagedClear ? WARN : theme.textDim }}>
             {stagedClear ? t('取消清除') : t('清除')}
           </button>
@@ -189,11 +218,12 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
       </span>
       {field.kind === 'toggle'
         ? <ToggleSwitch field={field} shown={shown} onStage={onStage} />
-        : field.discoverableModel && discovered.length > 0
+        : shouldRenderModelPicker(field, discovered.length)
           ? <ModelInput field={field} shown={shown} models={discovered} reveal={reveal}
+              loading={field.name === 'CODEX_MODEL' && ctx.codex.modelBusy}
               configured={configured} stagedClear={stagedClear} onStage={onStage} />
           : field.kind === 'select'
-          ? <SelectInput field={field} status={status} shown={shown} onStage={onStage} />
+          ? <SelectInput field={field} status={status} shown={shown} options={options} onStage={onStage} />
           : field.kind === 'directory'
             ? <DirectoryInput field={field} shown={shown} stagedClear={stagedClear} onStage={onStage} />
             : <TextInput field={field} shown={shown} reveal={reveal} configured={configured}
@@ -203,11 +233,12 @@ export function FieldRow({ field, ctx }: { field: SettingsField; ctx: FieldCtx }
   );
 }
 
-function ModelInput({ field, shown, models, reveal, configured, stagedClear, onStage }: {
+function ModelInput({ field, shown, models, reveal, loading, configured, stagedClear, onStage }: {
   field: SettingsField;
   shown: string;
   models: readonly string[];
   reveal: boolean;
+  loading?: boolean;
   configured: boolean;
   stagedClear: boolean;
   onStage: (field: SettingsField, raw: string) => void;
@@ -223,12 +254,14 @@ function ModelInput({ field, shown, models, reveal, configured, stagedClear, onS
         value=""
         aria-label={t('选择模型')}
         title={t('选择模型')}
+        disabled={models.length === 0}
+        aria-busy={loading === true}
         onChange={(event) => {
           if (event.target.value) onStage(field, event.target.value);
         }}
         style={{ ...select, width: 118, flex: '0 0 118px' }}
       >
-        <option value="">{t('选择模型')}</option>
+        <option value="">{loading ? t('读取中…') : t('选择模型')}</option>
         {[...new Set(models)].map((model) => <option key={model} value={model}>{model}</option>)}
       </select>
     </div>
@@ -333,11 +366,12 @@ function DirectoryInput({ field, shown, stagedClear, onStage }: {
   );
 }
 
-function SelectInput({ field, status, shown, onStage }: {
+function SelectInput({ field, status, shown, options, onStage }: {
   field: SettingsField; status: KeyStatusResponse | null; shown: string;
+  options?: readonly SelectOption[];
   onStage: (field: SettingsField, raw: string) => void;
 }) {
-  const opts = selectOptions(field);
+  const opts = options ?? selectOptions(field);
   const unknown = shown !== '' && !opts.some((o) => o.value === shown);  // Manually changing the value of.env.local is also displayed faithfully
   return (
     <select value={shown} onChange={(e) => onStage(field, e.target.value)} style={select}>

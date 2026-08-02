@@ -138,14 +138,23 @@ const CODEX_PAGE: SettingsVendorPage = {
   title: 'OpenAI · Codex',
   connection: 'codex',
   note: '使用 ChatGPT 订阅登录，由官方 Codex CLI 管理凭据、续期与退出。OpenChatCut 不会读取或显示 OAuth 凭据。',
-  fields: [{
-    name: 'CODEX_MODEL',
-    label: 'Codex 模型',
-    kind: 'text',
-    defaultLabel: 'Codex 默认模型',
-    discoverableModel: true,
-    note: '登录后可读取当前账号可用的模型，也可以手动填写模型 ID。',
-  }],
+  fields: [
+    {
+      name: 'CODEX_MODEL',
+      label: 'Codex 模型',
+      kind: 'text',
+      defaultLabel: 'Codex 默认模型',
+      discoverableModel: true,
+      note: '登录后可读取当前账号可用的模型，也可以手动填写模型 ID。',
+    },
+    {
+      name: 'CODEX_REASONING_EFFORT',
+      label: '推理强度',
+      kind: 'select',
+      options: [{ value: '', label: '模型默认' }],
+      note: '读取模型后显示当前模型支持的档位；留空使用该模型的默认值。',
+    },
+  ],
 };
 
 const AGENT_VENDOR_PAGES: readonly SettingsVendorPage[] = LLM_PROVIDER_PRESETS.flatMap((preset) => {

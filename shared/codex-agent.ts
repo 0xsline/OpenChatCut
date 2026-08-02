@@ -11,11 +11,18 @@ export interface CodexAgentStatus {
   readonly loginPending: boolean;
   readonly error?: string;
 }
+export interface CodexReasoningEffort {
+  readonly reasoningEffort: string;
+  readonly description: string;
+}
+
 
 export interface CodexAgentModel {
   readonly id: string;
   readonly label: string;
   readonly isDefault: boolean;
+  readonly defaultReasoningEffort: string | null;
+  readonly supportedReasoningEfforts: readonly CodexReasoningEffort[];
 }
 
 export interface CodexAgentModelsResponse {
@@ -46,6 +53,7 @@ export interface CodexTurnRequest {
   readonly prompt: string;
   readonly projectId: string;
   readonly model?: string;
+  readonly reasoningEffort?: string;
   readonly askOnly?: boolean;
   readonly tools: readonly CodexAgentToolSpec[];
 }

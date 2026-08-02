@@ -108,6 +108,11 @@ export default {
   // ── OpenAI Codex account ──
   'Codex 模型': 'Codex model',
   'Codex 默认模型': 'Codex default model',
+  '推理强度': 'Reasoning effort',
+  '模型默认': 'Model default',
+  '模型默认（{name}）': 'Model default ({name})',
+  '读取模型后显示当前模型支持的档位；留空使用该模型的默认值。':
+    'Load models to see the effort levels supported by the current model. Leave this unset to use the model default.',
   '使用 ChatGPT 订阅登录，由官方 Codex CLI 管理凭据、续期与退出。OpenChatCut 不会读取或显示 OAuth 凭据。':
     'Sign in with a ChatGPT subscription. The official Codex CLI manages credentials, renewal, and logout; OpenChatCut never reads or displays OAuth credentials.',
   '登录后可读取当前账号可用的模型，也可以手动填写模型 ID。':

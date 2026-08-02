@@ -10,8 +10,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added / 新增
 
-- Added first-class ChatGPT subscription sign-in for the built-in Agent through the official Codex CLI, including isolated credential storage, browser/device-code OAuth, account and model discovery, model switching, and dynamic OpenChatCut tool calling. Claude Code subscriptions remain available through the existing local MCP connection without exposing Claude OAuth credentials.
-  新增基于官方 Codex CLI 的内置 Agent ChatGPT 订阅登录：支持隔离凭据存储、浏览器/设备代码 OAuth、账号与模型发现、模型切换及 OpenChatCut 动态工具调用。Claude Code 订阅继续通过既有本机 MCP 连接使用，无需向 OpenChatCut 暴露 Claude OAuth 凭据。
+- Added first-class ChatGPT subscription sign-in for the built-in Agent through the official Codex CLI, including isolated credential storage, browser/device-code OAuth, account and model discovery, model-specific reasoning-effort selection, model switching, and dynamic OpenChatCut tool calling. Claude Code subscriptions remain available through the existing local MCP connection without exposing Claude OAuth credentials.
+  新增基于官方 Codex CLI 的内置 Agent ChatGPT 订阅登录：支持隔离凭据存储、浏览器/设备代码 OAuth、账号与模型发现、按模型选择推理强度、模型切换及 OpenChatCut 动态工具调用。Claude Code 订阅继续通过既有本机 MCP 连接使用，无需向 OpenChatCut 暴露 Claude OAuth 凭据。
 - Added first-class Ollama and LM Studio Agent providers with configurable local endpoints, optional API keys, model discovery, and explicit model activation.
   新增 Ollama 与 LM Studio Agent 厂商：支持配置本地端点、可选 API Key、模型发现，并仅在明确保存模型后激活。
 - Added validated 4K video export across browser and server render paths, producing a 2160-pixel short edge (`3840×2160` for 16:9 projects) with matching bitrate and quality-check expectations.
@@ -56,6 +56,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed / 修复
 
+- Fixed the Codex model selector disappearing after reopening Settings by keeping its picker mounted and automatically refreshing the signed-in account's model catalog.
+  修复重新打开设置后 Codex 模型选择器消失的问题：选择器现在会持续显示，并自动刷新已登录账号的模型目录。
 - Blocked Agent submission until the configured model catalog is hydrated, and retried one transient gateway/network failure only before any model output is emitted.
   Agent 现在会等待模型目录加载并确认已有可用模型后才允许发送；仅在模型尚未输出任何内容时，对瞬时网关/网络故障安全重试一次。
 - Added BOM/CRLF-tolerant SRT import into independent named caption tracks, and streamed local ASR media from the server to AssemblyAI through a same-origin, JSON-only route without browser-side multi-gigabyte `Blob` materialization.

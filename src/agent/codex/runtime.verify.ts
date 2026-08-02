@@ -11,6 +11,7 @@ const events: AgentEvent[] = [];
 let streamCancelled = false;
 let followups = 0;
 const submittedResults: Record<string, unknown>[] = [];
+const submittedTurns: Record<string, unknown>[] = [];
 
 const context: AgentContext = {
   commands: {} as AgentContext['commands'],
@@ -25,6 +26,7 @@ const context: AgentContext = {
 globalThis.fetch = (async (input, init) => {
   const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   if (path === '/api/codex/turn') {
+    submittedTurns.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(encoder.encode(`${JSON.stringify({
@@ -53,6 +55,8 @@ try {
     context,
     (event) => events.push(event),
     {
+      model: 'gpt-5.6-sol',
+      reasoningEffort: 'xhigh',
       tools: [{
         name: 'ask_followup_questions',
         description: 'Ask for missing input',
@@ -68,6 +72,9 @@ try {
     },
   );
 
+  assert.equal(submittedTurns.length, 1);
+  assert.equal(submittedTurns[0].model, 'gpt-5.6-sol');
+  assert.equal(submittedTurns[0].reasoningEffort, 'xhigh');
   assert.equal(followups, 1);
   assert.equal(streamCancelled, true, 'follow-up must cancel the live Codex response stream');
   assert.equal(submittedResults.length, 1);

@@ -8,9 +8,10 @@ import { applyAgentModelStatus } from '../../agent/model-selection';
 import { FieldRow, ON, VendorPane, WARN, type FieldCtx } from './settingsVendorPane';
 import { useCodexSettings } from './useCodexSettings';
 import type { CodexAgentStatus } from '../../../shared/codex-agent';
+import { stageFieldValue } from './codexReasoning';
 import {
   SETTINGS_CATEGORIES, buildPatch, categoryGroupStats, findGroup, groupConfigured,
-  isModelField, modelValue, omitKey, savedMessage, vendorConfigured,
+  modelValue, omitKey, savedMessage, vendorConfigured,
   type KeyStatusResponse, type SettingsCategory, type SettingsField, type SettingsGroup,
   type SettingsVendorPage, type StagedValues as Values,
 } from './settingsSchema';
@@ -135,6 +136,7 @@ function applySavedToAgent(next: KeyStatusResponse): void {
   if (next.models) applyAgentModelStatus(next.keys, next.models);
 }
 
+
 function useFieldContext(
   status: KeyStatusResponse | null,
   values: Values,
@@ -142,17 +144,30 @@ function useFieldContext(
   reveal: boolean,
 ): FieldCtx {
   const [modelOptions, setModelOptions] = useState<Record<string, readonly string[]>>({});
-  const codex = useCodexSettings(modelValue(status, 'CODEX_MODEL'));
+  const [autoClearedEffort, setAutoClearedEffort] = useState<string | null>(null);
+  const codex = useCodexSettings(
+    modelValue(status, 'CODEX_MODEL'),
+    modelValue(status, 'CODEX_REASONING_EFFORT'),
+  );
   const onStage = (field: SettingsField, raw: string): void => {
-    const baseline = isModelField(field) ? modelValue(status, field.name) : '';
-    setValues((previous) => raw === baseline
-      ? omitKey(previous, field.name)
-      : { ...previous, [field.name]: raw });
+    const staged = stageFieldValue(values, field, raw, status, codex.models, autoClearedEffort);
+    setValues(staged.values);
+    setAutoClearedEffort(staged.autoClearedEffort);
   };
-  const onToggleClear = (name: string): void =>
-    setValues((previous) => previous[name] === ''
-      ? omitKey(previous, name)
-      : { ...previous, [name]: '' });
+  useEffect(() => {
+    if (!('CODEX_MODEL' in values) && !('CODEX_REASONING_EFFORT' in values)) {
+      setAutoClearedEffort(null);
+    }
+  }, [values]);
+  const onToggleClear = (field: SettingsField): void => {
+    if (field.name === 'CODEX_MODEL') {
+      onStage(field, values[field.name] === '' ? modelValue(status, field.name) : '');
+      return;
+    }
+    setValues((previous) => previous[field.name] === ''
+      ? omitKey(previous, field.name)
+      : { ...previous, [field.name]: '' });
+  };
   return {
     status, values, reveal, onStage, onToggleClear, modelOptions, codex,
     onModelsDiscovered: (name, models) => {

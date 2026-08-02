@@ -7,6 +7,7 @@ import type { CodexTurnStreamEvent } from '../../shared/codex-agent.ts';
 import { CODEX_DISABLED_FEATURES, CodexAppServerClient } from './app-server.ts';
 import { codexCommand } from './command.ts';
 import { CodexTurnManager } from './turn-manager.ts';
+import { mapCodexModels } from '../plugins/codex-agent.ts';
 
 const windowsShim = codexCommand(
   'C:\\Program Files\\Open&AI\\codex.cmd',
@@ -91,11 +92,13 @@ lines.on('line', (line) => {
   }
   if (message.method === 'test/hang') return;
   if (message.method === 'thread/start') {
+    if (message.params.model !== 'gpt-5.4') process.exit(77);
     activeThread = 'thread-1';
     send({ id: message.id, result: { thread: { id: activeThread } } });
     return;
   }
   if (message.method === 'turn/start') {
+    if (message.params.effort !== 'high') process.exit(78);
     activeTurn = 'turn-1';
     send({ id: message.id, result: { turn: { id: activeTurn } } });
     send({
@@ -144,6 +147,27 @@ process.env.CODEX_ACCESS_TOKEN = 'must-not-reach-codex';
 await writeFile(scriptPath, FAKE_APP_SERVER, 'utf8');
 
 const client = new CodexAppServerClient(process.execPath, [scriptPath]);
+assert.deepEqual(mapCodexModels({
+  data: [{
+    id: 'gpt-5.6-sol',
+    displayName: 'GPT-5.6-Sol',
+    isDefault: true,
+    defaultReasoningEffort: 'low',
+    supportedReasoningEfforts: [
+      { reasoningEffort: 'low', description: 'Fast responses.' },
+      { reasoningEffort: 'high', description: 'Deep reasoning.' },
+    ],
+  }],
+}), [{
+  id: 'gpt-5.6-sol',
+  label: 'GPT-5.6-Sol',
+  isDefault: true,
+  defaultReasoningEffort: 'low',
+  supportedReasoningEfforts: [
+    { reasoningEffort: 'low', description: 'Fast responses.' },
+    { reasoningEffort: 'high', description: 'Deep reasoning.' },
+  ],
+}]);
 try {
   const account = await client.request('account/read', { refreshToken: false });
   assert.deepEqual(account, {
@@ -175,6 +199,7 @@ try {
     prompt: 'Read the current project.',
     projectId: 'project-1',
     model: 'gpt-5.4',
+    reasoningEffort: 'high',
     tools: [{
       name: 'read_project',
       description: 'Read project state',

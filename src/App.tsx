@@ -51,6 +51,7 @@ async function syncAgentBackends(isActive: () => boolean): Promise<void> {
   ]);
   if (!isActive()) return;
   let savedCodexModel: string | undefined;
+  let savedCodexReasoningEffort: string | undefined;
   if (keyResult.status === 'fulfilled') {
     const { caps, keys, models } = keyResult.value;
     if (caps) applyLiveCaps(caps);
@@ -59,10 +60,11 @@ async function syncAgentBackends(isActive: () => boolean): Promise<void> {
       applyLiveModels(models);
       applyAgentModelStatus(keys ?? {}, models);
       savedCodexModel = models.CODEX_MODEL;
+      savedCodexReasoningEffort = models.CODEX_REASONING_EFFORT;
     }
   }
   if (codexResult.status === 'fulfilled') {
-    applyCodexAgentStatus(codexResult.value, savedCodexModel);
+    applyCodexAgentStatus(codexResult.value, savedCodexModel, savedCodexReasoningEffort);
   }
 }
 

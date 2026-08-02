@@ -322,6 +322,7 @@ async function runCodexBackend(
   ctx: AgentContext,
   onEvent: (event: AgentEvent) => void,
   model: string,
+  reasoningEffort: string,
   opts?: RunAgentOptions,
 ): Promise<LLMMessage[]> {
   const settings = loadAgentSettings();
@@ -329,8 +330,7 @@ async function runCodexBackend(
   return runCodexAgent(messages, ctx, onEvent, {
     askOnly: opts?.askOnly,
     signal: opts?.signal,
-    model,
-    tools,
+    model, reasoningEffort, tools,
     executeTool: async (name, args) => {
       const schema = TOOL_SCHEMAS.find((candidate) => candidate.name === name);
       if (!schema) return { success: false, result: { error: `Unknown Codex tool: ${name}` } };
@@ -353,7 +353,7 @@ export async function runAgent(
 ): Promise<LLMMessage[]> {
   const active = getActiveAgentModelChoice();
   if (active?.backend === 'codex') {
-    return runCodexBackend(messages, ctx, onEvent, active.model, opts);
+    return runCodexBackend(messages, ctx, onEvent, active.model, active.reasoningEffort ?? '', opts);
   }
   return runApiAgent(messages, ctx, onEvent, opts);
 }
