@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { theme, themeAlpha } from '../../theme';
-import { getLocale, useT } from '../../i18n/locale';
+import { getLocale, tData, useT } from '../../i18n/locale';
 import type { AgentReference } from '../../agent/context';
 import { isSelectionRefKind } from '../../agent/selection-refs';
 import { Icon, type IconName } from '../icons';
@@ -109,6 +109,12 @@ const REF_ICON: Record<RefItem['kind'], IconName> = {
   item: 'film', timepoint: 'clock', timerange: 'clock',
   'canvas-region': 'aspect', 'transcript-selection': 'text',
 };
+
+function referenceChipText(reference: RefItem): string {
+  if (isSelectionRefKind(reference.kind)) return reference.name;
+  const displayName = reference.kind === 'template' ? tData(reference.name) : reference.name;
+  return `@${displayName}`;
+}
 
 export function ChatComposer(props: ChatComposerProps) {
   const t = useT();
@@ -261,7 +267,7 @@ export function ChatComposer(props: ChatComposerProps) {
               }}
             >
               <Icon name={REF_ICON[r.kind]} size={12} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{isSelectionRefKind(r.kind) ? r.name : `@${r.name}`}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{referenceChipText(r)}</span>
               {onRemoveRef && (
                 <button
                   type="button"
