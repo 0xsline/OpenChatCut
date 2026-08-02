@@ -24,6 +24,7 @@ interface MediaPoolPanelProps {
   onImport: (file: File, onProgress?: (ratio: number) => void) => Promise<MediaAsset>;
   onImportMobile: (record: MobileUploadRecord) => Promise<void>;
   onAddAsset: (asset: MediaAsset) => void;
+  onAddAssetToChat?: (asset: MediaAsset) => void;
   onCreateFolder: (name: string, parentId?: string) => string;
   onRenameFolder: (id: string, name: string) => void;
   onDeleteFolder: (id: string) => void;
@@ -43,7 +44,7 @@ type DeleteState = { id: string; name: string; parentId?: string };
 type AssetDeleteState = { id: string; name: string };
 export function MediaPoolPanel({
   semanticScopeId, assets, folders, fps, usedAssetIds, offlineAssetIds, onAssetLoadError,
-  onImport, onImportMobile, onAddAsset, onCreateFolder, onRenameFolder,
+  onImport, onImportMobile, onAddAsset, onAddAssetToChat, onCreateFolder, onRenameFolder,
   onDeleteFolder, onMoveAssets, onRenameAsset, onSetFavorite, onRemoveAsset, onRelinkAsset, onAddSolid,
 }: MediaPoolPanelProps) {
   const t = useT();
@@ -380,6 +381,8 @@ export function MediaPoolPanel({
           setConfirmDeleteId(null);
         }}
         onMove={(folderId) => { if (menuAsset) onMoveAssets([menuAsset.id], folderId); closeAssetMenu(true); }}
+        onAddTimeline={() => { if (menuAsset) onAddAsset(menuAsset); closeAssetMenu(true); }}
+        onAddChat={() => { if (menuAsset) onAddAssetToChat?.(menuAsset); closeAssetMenu(true); }}
       />
 
       {promptState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t(promptState.title)}>

@@ -5,6 +5,7 @@ import { useT } from '../i18n/locale';
 import { theme } from '../theme';
 import { AssetExportButton } from './AssetExportButton';
 import { folderPath } from './mediaPoolFormat';
+import { AssetMenuDestinations } from './AssetMenuDestinations';
 
 interface AssetMenuPortalProps {
   asset?: MediaAsset;
@@ -22,6 +23,8 @@ interface AssetMenuPortalProps {
   onRelink: () => void;
   onRemove: () => void;
   onMove: (folderId?: string) => void;
+  onAddTimeline: () => void;
+  onAddChat: () => void;
 }
 
 export function AssetMenuPortal(props: AssetMenuPortalProps) {
@@ -71,6 +74,7 @@ function AssetMenuActions(props: AssetMenuPortalProps & { asset: MediaAsset }) {
           {props.folders.map((folder) => <option key={folder.id} value={folder.id}>{folderPath(folder, props.folders)}</option>)}
         </select>
       </label>
+      <AssetMenuDestinations assetName={asset.name} onAddTimeline={props.onAddTimeline} onAddChat={props.onAddChat} />
     </>
   );
 }
