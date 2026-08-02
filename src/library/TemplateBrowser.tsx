@@ -9,6 +9,7 @@ import { Icon } from '../components/icons';
 import { setLibraryDrag } from './drag';
 import { loadRecentTemplateIds, pushRecentTemplateId } from '../persist/sessionPrefs';
 import { useFixedVirtualGrid } from '../hooks/useFixedVirtualGrid';
+import { LIBRARY_CARD_GRID_METRICS } from './libraryCardGrid';
 
 // MG animation browser: a horizontal chip row
 // [Collection, recent, popular, <categories by count>] filters the card grid; cards show a
@@ -131,11 +132,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
   }, [draggedId, focusedId, menuFor, shown]);
   const virtualGrid = useFixedVirtualGrid({
     itemCount: shown.length,
-    cardWidth: 120,
-    rowHeight: 97,
-    columnGap: 10,
-    rowGap: 10,
-    overscanRows: 1,
+    ...LIBRARY_CARD_GRID_METRICS,
     pinnedIndexes,
   });
 
