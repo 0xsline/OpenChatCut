@@ -10,6 +10,8 @@ declare global {
       selectDirectory(defaultPath?: string): Promise<string | null>;
       selectExportDirectory(): Promise<DesktopExportDirectoryGrant | null>;
       restoreExportDirectory(): Promise<DesktopExportDirectoryGrant | null>;
+      importLocalMedia(file: File): Promise<{ src: string; storedName: string } | null>;
+      prepareTransparentMovProxy(storedName: string): Promise<{ src: string } | null>;
     };
   }
 }

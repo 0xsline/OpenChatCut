@@ -1,11 +1,12 @@
 import './chdir-first.ts';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, dialog, ipcMain, Menu, screen, type OpenDialogOptions } from 'electron';
 import { buildTextContextMenuTemplate } from './context-menu.ts';
 import { startEmbeddedServer } from './embedded-server.ts';
+import { createTransparentMovProxy, importLocalMedia } from './local-media-import.ts';
 import { resolveDesktopDevOrigin } from './page-origin.ts';
 import { preparePackagedRuntime } from './packaged-runtime.ts';
 import { installResponsiveWindowScale, resolveInitialDesktopWindowBounds } from './window-scale.ts';
@@ -103,6 +104,19 @@ function registerDesktopHandlers(): void {
   ipcMain.handle('openchatcut:restore-export-directory', async () => {
     const directory = await restorePersistedExportDirectory(exportStatePath);
     return directory ? createExportDirectoryGrant(directory) : null;
+  });
+  ipcMain.handle('openchatcut:import-local-media', async (_event, sourcePath: unknown, originalName: unknown) => {
+    if (typeof sourcePath !== 'string' || !isAbsolute(sourcePath)) {
+      throw new Error('local media source must be an absolute path');
+    }
+    if (typeof originalName !== 'string' || !originalName || basename(originalName) !== originalName) {
+      throw new Error('invalid local media filename');
+    }
+    return importLocalMedia(sourcePath, originalName);
+  });
+  ipcMain.handle('openchatcut:transparent-mov-proxy', async (_event, storedName: unknown) => {
+    if (typeof storedName !== 'string') throw new Error('invalid local media name');
+    return createTransparentMovProxy(storedName);
   });
 }
 
