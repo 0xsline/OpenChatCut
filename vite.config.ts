@@ -1,8 +1,12 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import { readFileSync } from 'node:fs';
 import { serverPlugins } from './server/plugins/index.ts';
 import { seedKeystore, getKey } from './server/keystore.ts';
 import { productAssetsPlugin } from './server/product-assets.ts';
+
+const appPackage = JSON.parse(readFileSync('package.json', 'utf8')) as { version?: unknown };
+if (typeof appPackage.version !== 'string') throw new Error('package.json is missing a valid version');
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -39,6 +43,7 @@ export default defineConfig(({ mode }) => {
     // injected for the agent's system prompt (src/agent/capabilities.ts). BOOLEANS
     // ONLY — no key value is ever exposed to the browser.
     define: {
+      __APP_VERSION__: JSON.stringify(appPackage.version),
       __CONFIGURED_CAPS__: JSON.stringify({
         image: Boolean(imageKey || geminiKey || minimaxKey),
         voice: Boolean((doubaoAppId && doubaoAccessKey) || elevenKey || minimaxKey),
