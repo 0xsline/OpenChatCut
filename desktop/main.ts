@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, dialog, ipcMain, Menu, screen, type OpenDialogOptions } from 'electron';
 import { buildTextContextMenuTemplate } from './context-menu.ts';
 import { startEmbeddedServer } from './embedded-server.ts';
+import { resolveDesktopDevOrigin } from './page-origin.ts';
 import { preparePackagedRuntime } from './packaged-runtime.ts';
 import { installResponsiveWindowScale, resolveInitialDesktopWindowBounds } from './window-scale.ts';
 import { createExportDirectoryGrant } from '../server/export-destinations.ts';
@@ -156,8 +157,13 @@ async function boot(): Promise<void> {
       version: app.getVersion(),
     });
   }
-  const { origin } = await startEmbeddedServer(DIST_DIR);
-  console.log(`[desktop] embedded server at ${origin}`);
+  const devOrigin = resolveDesktopDevOrigin({
+    configuredDevUrl: process.env.CC_DESKTOP_DEV_URL,
+    packaged: app.isPackaged,
+    smoke: SMOKE,
+  });
+  const origin = devOrigin ?? (await startEmbeddedServer(DIST_DIR)).origin;
+  console.log(`[desktop] ${devOrigin ? 'live source' : 'embedded server'} at ${origin}`);
 
   const initialBounds = resolveInitialDesktopWindowBounds(screen.getPrimaryDisplay().workArea);
   const win = new BrowserWindow({
