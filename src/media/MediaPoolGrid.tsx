@@ -4,8 +4,11 @@ import type { MediaAsset, MediaFolder } from '../editor/types';
 import { useFixedVirtualGrid } from '../hooks/useFixedVirtualGrid';
 import { useT } from '../i18n/locale';
 import { MediaAssetCard, MediaFolderCard } from './MediaPoolCard';
+import { AddSolidCanvasCard } from './AddSolidCanvasCard';
 
 export type MediaGridEntry =
+  | { kind: 'solid' }
+  | { kind: 'favorites' }
   | { kind: 'folder'; folder: MediaFolder }
   | { kind: 'asset'; asset: MediaAsset };
 
@@ -20,6 +23,9 @@ interface MediaPoolGridProps {
   assetMenu: string | null;
   canRelink: boolean;
   onOpenFolder: (id: string) => void;
+  onOpenFavorites: () => void;
+  onAddSolid?: () => void;
+  onSetFavorite: (id: string, favorite: boolean) => void;
   onAddAsset: (asset: MediaAsset) => void;
   onLoadError: (id: string) => void;
   onLoadSuccess: (id: string) => void;
@@ -80,6 +86,7 @@ export function MediaPoolGrid(props: MediaPoolGridProps) {
 }
 
 function MediaVirtualRows(props: MediaPoolGridProps & ReturnType<typeof useMediaGridWindow>) {
+  const t = useT();
   return (
     <div ref={props.grid.containerRef} className="cc-media-virtual-canvas" style={{ height: props.grid.totalHeight }}>
       {props.grid.rows.map((row) => <div
@@ -92,9 +99,15 @@ function MediaVirtualRows(props: MediaPoolGridProps & ReturnType<typeof useMedia
           columnGap: props.view === 'grid' ? 12 : 0,
         }}
       >
-        {props.entries.slice(row.startIndex, row.endIndex).map((entry) => entry.kind === 'folder'
-          ? <MediaFolderCard key={`folder:${entry.folder.id}`} folder={entry.folder} onOpen={props.onOpenFolder} onFocusChange={props.setFocusedFolderId} />
-          : <MediaAssetCard
+        {props.entries.slice(row.startIndex, row.endIndex).map((entry) => entry.kind === 'solid'
+          ? <AddSolidCanvasCard key="solid" label={t('添加纯色背景/画布')} onAdd={() => props.onAddSolid?.()} />
+          : entry.kind === 'favorites'
+            ? <button key="favorites" type="button" className="cc-folder-card cc-favorites-folder" onClick={props.onOpenFavorites}>
+                <span><Icon name="star" size={22} /></span><strong>{t('收藏夹')}</strong>
+              </button>
+            : entry.kind === 'folder'
+              ? <MediaFolderCard key={`folder:${entry.folder.id}`} folder={entry.folder} onOpen={props.onOpenFolder} onFocusChange={props.setFocusedFolderId} />
+              : <MediaAssetCard
               key={`asset:${entry.asset.id}`}
               asset={entry.asset}
               fps={props.fps}
@@ -113,6 +126,7 @@ function MediaVirtualRows(props: MediaPoolGridProps & ReturnType<typeof useMedia
               onOpenMenu={props.onOpenMenu}
               onRelink={props.onRelink}
               onToggleSelected={props.onToggleSelected}
+              onSetFavorite={props.onSetFavorite}
             />)}
       </div>)}
     </div>

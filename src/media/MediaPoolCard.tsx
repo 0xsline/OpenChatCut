@@ -26,6 +26,7 @@ interface MediaAssetCardProps {
   onOpenMenu: (id: string, anchor: HTMLElement, point?: { x: number; y: number }) => void;
   onRelink: (id: string) => void;
   onToggleSelected: (id: string) => void;
+  onSetFavorite: (id: string, favorite: boolean) => void;
 }
 
 interface AssetPreviewProps {
@@ -123,6 +124,12 @@ export const MediaAssetCard = memo(function MediaAssetCard(props: MediaAssetCard
   return (
     <div
       className={`cc-asset-card${props.selected ? ' selected' : ''}${missing ? ' missing' : ''}`}
+      onClickCapture={(event) => {
+        if (!(event.metaKey || event.ctrlKey || event.shiftKey)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        props.onToggleSelected(asset.id);
+      }}
       onContextMenu={(event) => {
         event.preventDefault();
         const target = event.target instanceof Element
@@ -204,7 +211,17 @@ function AssetBadges(props: MediaAssetCardProps) {
       {props.used && <span className="cc-asset-used-dot" title={t('正在时间线中使用')} aria-label={t('正在时间线中使用')} />}
       {aspectLabel && <span className="cc-asset-ratio">{aspectLabel}</span>}
       <span className="cc-asset-duration">{durationLabel(asset.durationInFrames, props.fps)}</span>
-      <input className="cc-asset-check" aria-label={t('选择 {name}', { name: asset.name })} type="checkbox" checked={props.selected} onChange={() => props.onToggleSelected(asset.id)} />
+      <button
+        type="button"
+        className="cc-asset-favorite"
+        aria-pressed={!!asset.favorite}
+        aria-label={`${asset.favorite ? t('取消收藏') : t('收藏')}：${asset.name}`}
+        title={asset.favorite ? t('取消收藏') : t('收藏')}
+        onClick={(event) => {
+          event.stopPropagation();
+          props.onSetFavorite(asset.id, !asset.favorite);
+        }}
+      ><Icon name="star" size={15} filled={!!asset.favorite} /></button>
       <button className="cc-asset-more" aria-label={t('管理 {name}', { name: asset.name })} onClick={(event) => {
         event.stopPropagation();
         props.onOpenMenu(asset.id, event.currentTarget);

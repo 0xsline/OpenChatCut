@@ -256,12 +256,18 @@ export function MediaPoolPanel({
     return next;
   });
 
-  const showFolders = !q && !semanticResults;
+  const showFolders = !q && !semanticResults && !favoritesOnly;
   const gridEntries = useMemo<MediaGridEntry[]>(() => [
+    ...(showFolders && !currentFolderId && onAddSolid ? [{ kind: 'solid' as const }] : []),
+    ...(showFolders && !currentFolderId ? [{ kind: 'favorites' as const }] : []),
     ...(showFolders ? childFolders.map((folder) => ({ kind: 'folder' as const, folder })) : []),
     ...visible.map((asset) => ({ kind: 'asset' as const, asset })),
-  ], [childFolders, showFolders, visible]);
+  ], [childFolders, currentFolderId, onAddSolid, showFolders, visible]);
   const openFolder = useCallback((id: string) => setCurrentFolderId(id), []);
+  const openFavorites = useCallback(() => {
+    setCurrentFolderId(undefined);
+    setFavoritesOnly(true);
+  }, []);
   const openAssetMenu = useCallback((
     id: string,
     anchor: HTMLElement,
@@ -303,9 +309,12 @@ export function MediaPoolPanel({
 
       <MissingMediaBanner count={missingList.length} onOpen={() => setShowRelinkAll(true)} />
 
-      {(currentFolder || childFolders.length > 0) && <div className="cc-media-breadcrumb">
-        <button aria-label={t('返回上级文件夹')} disabled={!currentFolder} onClick={() => setCurrentFolderId(currentFolder?.parentId)}>←</button>
-        <span>Master{currentFolder ? ` / ${folderPath(currentFolder, folders)}` : ''}</span>
+      {(currentFolder || favoritesOnly || childFolders.length > 0) && <div className="cc-media-breadcrumb">
+        <button aria-label={t('返回上级文件夹')} disabled={!currentFolder && !favoritesOnly} onClick={() => {
+          if (favoritesOnly) setFavoritesOnly(false);
+          else setCurrentFolderId(currentFolder?.parentId);
+        }}>←</button>
+        <span>{t('我的素材')}{favoritesOnly ? ` / ${t('收藏夹')}` : currentFolder ? ` / ${folderPath(currentFolder, folders)}` : ''}</span>
         {currentFolder && <button aria-label={t('重命名文件夹')} onClick={renameFolder}>{t('重命名')}</button>}
         {currentFolder && <button aria-label={t('删除空文件夹')} disabled={assets.some((asset) => asset.folderId === currentFolder.id) || folders.some((folder) => folder.parentId === currentFolder.id)} onClick={deleteFolder}>{t('删除')}</button>}
       </div>}
@@ -333,12 +342,15 @@ export function MediaPoolPanel({
         assetMenu={assetMenu}
         canRelink={!!onRelinkAsset}
         onOpenFolder={openFolder}
+        onOpenFavorites={openFavorites}
+        onAddSolid={onAddSolid}
         onAddAsset={onAddAsset}
         onLoadError={markMissing}
         onLoadSuccess={clearMissing}
         onOpenMenu={openAssetMenu}
         onRelink={startRelink}
         onToggleSelected={toggleSelected}
+        onSetFavorite={onSetFavorite}
       />
 
       <AssetMenuPortal

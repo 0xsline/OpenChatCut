@@ -448,6 +448,9 @@ button, input, select { font: inherit; }
 .cc-folder-card:hover { background:var(--cc-hover); border-color:var(--cc-border); }
 .cc-folder-card span { color:var(--cc-text-muted); }
 .cc-folder-card strong { max-width:90%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:500; }
+.cc-add-solid-canvas-card { min-width:0; height:96px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; padding:7px; border:0.5px dashed var(--cc-border-light); border-radius:6px; background:transparent; color:var(--cc-text-muted); cursor:pointer; text-align:center; }
+.cc-add-solid-canvas-card:hover { border-color:var(--cc-accent); background:color-mix(in srgb,var(--cc-accent) 7%,transparent); color:var(--cc-text); }
+.cc-add-solid-canvas-card span { max-width:100%; font-size:10.5px; font-weight:500; line-height:1.3; }
 .cc-asset-thumb-wrap { position:relative; aspect-ratio:16/9; overflow:hidden; border:0.5px solid var(--cc-hover); border-radius:6px; background:var(--cc-hover); }
 .cc-asset-card.selected .cc-asset-thumb-wrap { border-color:var(--cc-text); box-shadow:0 0 0 0.5px var(--cc-text); }
 .cc-asset-thumb { width:100%; height:100%; display:grid; place-items:center; padding:0; border:0; background:var(--cc-hover); color:var(--cc-text-muted); cursor:pointer; overflow:hidden; }
@@ -455,12 +458,14 @@ button, input, select { font: inherit; }
 .cc-asset-duration { position:absolute; right:4px; bottom:4px; padding:2px 4px; border:0.5px solid var(--cc-border); border-radius:4px; background:color-mix(in srgb, var(--cc-panel-alt) 91%, transparent); color:var(--cc-text); font-size:10px; line-height:1.25; font-variant-numeric:tabular-nums; pointer-events:none; }
 .cc-asset-ratio { position:absolute; left:4px; bottom:4px; padding:2px 4px; border:0.5px solid var(--cc-border); border-radius:4px; background:color-mix(in srgb, var(--cc-panel-alt) 91%, transparent); color:var(--cc-text); font-size:10px; line-height:1.25; font-variant-numeric:tabular-nums; pointer-events:none; }
 .cc-asset-audio-mark { position:absolute; top:5px; left:5px; color:var(--cc-text); pointer-events:none; }
-.cc-asset-check { position:absolute; top:6px; left:6px; width:15px; height:15px; margin:0; accent-color:var(--cc-accent); opacity:0; cursor:pointer; }
+.cc-asset-favorite { position:absolute; top:4px; left:4px; z-index:2; width:24px; height:24px; display:grid; place-items:center; padding:0; border:0; border-radius:50%; background:color-mix(in srgb,var(--cc-panel) 79%,transparent); color:var(--cc-text-muted); opacity:.76; cursor:pointer; }
+.cc-asset-favorite:hover { color:var(--cc-text); background:var(--cc-panel); opacity:1; }
+.cc-asset-favorite[aria-pressed="true"] { color:var(--cc-accent); opacity:1; }
 .cc-asset-more { position:absolute; top:4px; right:4px; width:24px; height:24px; display:grid; place-items:center; padding:0; border:0; border-radius:4px; background:color-mix(in srgb, var(--cc-panel) 79%, transparent); color:var(--cc-text); opacity:0; cursor:pointer; }
 .cc-asset-used-dot { position:absolute; top:6px; right:6px; width:8px; height:8px; border:1px solid var(--cc-panel); border-radius:50%; background:var(--cc-accent); box-shadow:0 0 0 1px color-mix(in srgb, var(--cc-accent) 32%, transparent); pointer-events:none; }
-.cc-asset-card:hover .cc-asset-check, .cc-asset-card:hover .cc-asset-more, .cc-asset-card.selected .cc-asset-check { opacity:1; }
+.cc-asset-card:hover .cc-asset-more { opacity:1; }
 .cc-asset-card:hover .cc-asset-used-dot { opacity:0; }
-.cc-asset-card:has(.cc-asset-audio-mark) .cc-asset-check { left:24px; }
+.cc-asset-card:has(.cc-asset-audio-mark) .cc-asset-favorite { left:24px; }
 .cc-asset-name { width:100%; display:block; padding:7px 4px 0; overflow:hidden; border:0; background:transparent; color:var(--cc-text-muted); cursor:pointer; text-align:left; text-overflow:ellipsis; white-space:nowrap; font-size:12px; line-height:1.25; }
 .cc-asset-name:hover { color:var(--cc-text); }
 /* portal menu (avoids overflow clip from .cc-media-grid) */
@@ -493,7 +498,7 @@ button, input, select { font: inherit; }
 .cc-media-grid.list .cc-asset-thumb img,.cc-media-grid.list .cc-asset-thumb video { display:none; }
 .cc-media-grid.list .cc-asset-duration,.cc-media-grid.list .cc-asset-ratio,.cc-media-grid.list .cc-asset-audio-mark { display:none; }
 .cc-media-grid.list .cc-asset-name { min-width:0; flex:1; margin-right:86px; padding:0; color:var(--cc-text-muted); font-size:13px; font-weight:500; line-height:20px; }
-.cc-media-grid.list .cc-asset-check { top:6px; left:auto; right:30px; }
+.cc-media-grid.list .cc-asset-favorite { top:2px; left:auto; right:30px; background:transparent; }
 .cc-media-grid.list .cc-asset-more { top:2px; right:2px; background:transparent; }
 .cc-media-grid.list .cc-asset-used-dot { top:10px; right:60px; }
 .cc-asset-delete-detail { margin:0; line-height:1.5; }
