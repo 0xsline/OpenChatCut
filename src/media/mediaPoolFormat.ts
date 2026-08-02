@@ -1,4 +1,4 @@
-import type { MediaFolder } from '../editor/types';
+import { ratioLabel, type MediaFolder } from '../editor/types';
 
 export function folderPath(folder: MediaFolder, folders: MediaFolder[]): string {
   const parts = [folder.name];
@@ -17,4 +17,9 @@ export function folderPath(folder: MediaFolder, folders: MediaFolder[]): string 
 export function durationLabel(frames: number, fps: number): string {
   const seconds = Math.max(0, Math.round(frames / fps));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+export function mediaRatioLabel(width?: number, height?: number): string | null {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || !width || !height || width <= 0 || height <= 0) return null;
+  return ratioLabel(Math.round(width), Math.round(height));
 }

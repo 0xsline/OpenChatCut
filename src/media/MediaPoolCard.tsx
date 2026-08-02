@@ -4,7 +4,7 @@ import type { MediaAsset, MediaFolder } from '../editor/types';
 import { useT } from '../i18n/locale';
 import { theme } from '../theme';
 import { setMediaAssetDrag } from './drag';
-import { durationLabel } from './mediaPoolFormat';
+import { durationLabel, mediaRatioLabel } from './mediaPoolFormat';
 import { MgThumb } from './MgThumb';
 import { usePreviewMediaSource } from './previewMedia';
 
@@ -196,11 +196,13 @@ function MissingMedia() {
 function AssetBadges(props: MediaAssetCardProps) {
   const { asset } = props;
   const t = useT();
+  const aspectLabel = mediaRatioLabel(asset.width, asset.height);
   return (
     <>
       {asset.kind === 'audio' && <span className="cc-asset-audio-mark"><Icon name="volume" size={14} /></span>}
       {(asset.kind === 'gif' || asset.kind === 'svg') && <span className="cc-asset-audio-mark cc-asset-kind-mark">{asset.kind.toUpperCase()}</span>}
       {props.used && <span className="cc-asset-used-dot" title={t('正在时间线中使用')} aria-label={t('正在时间线中使用')} />}
+      {aspectLabel && <span className="cc-asset-ratio">{aspectLabel}</span>}
       <span className="cc-asset-duration">{durationLabel(asset.durationInFrames, props.fps)}</span>
       <input className="cc-asset-check" aria-label={t('选择 {name}', { name: asset.name })} type="checkbox" checked={props.selected} onChange={() => props.onToggleSelected(asset.id)} />
       <button className="cc-asset-more" aria-label={t('管理 {name}', { name: asset.name })} onClick={(event) => {

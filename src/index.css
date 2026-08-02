@@ -453,6 +453,7 @@ button, input, select { font: inherit; }
 .cc-asset-thumb { width:100%; height:100%; display:grid; place-items:center; padding:0; border:0; background:var(--cc-hover); color:var(--cc-text-muted); cursor:pointer; overflow:hidden; }
 .cc-asset-thumb img, .cc-asset-thumb video { width:100%; height:100%; display:block; object-fit:cover; }
 .cc-asset-duration { position:absolute; right:4px; bottom:4px; padding:2px 4px; border:0.5px solid var(--cc-border); border-radius:4px; background:color-mix(in srgb, var(--cc-panel-alt) 91%, transparent); color:var(--cc-text); font-size:10px; line-height:1.25; font-variant-numeric:tabular-nums; pointer-events:none; }
+.cc-asset-ratio { position:absolute; left:4px; bottom:4px; padding:2px 4px; border:0.5px solid var(--cc-border); border-radius:4px; background:color-mix(in srgb, var(--cc-panel-alt) 91%, transparent); color:var(--cc-text); font-size:10px; line-height:1.25; font-variant-numeric:tabular-nums; pointer-events:none; }
 .cc-asset-audio-mark { position:absolute; top:5px; left:5px; color:var(--cc-text); pointer-events:none; }
 .cc-asset-check { position:absolute; top:6px; left:6px; width:15px; height:15px; margin:0; accent-color:var(--cc-accent); opacity:0; cursor:pointer; }
 .cc-asset-more { position:absolute; top:4px; right:4px; width:24px; height:24px; display:grid; place-items:center; padding:0; border:0; border-radius:4px; background:color-mix(in srgb, var(--cc-panel) 79%, transparent); color:var(--cc-text); opacity:0; cursor:pointer; }
@@ -490,7 +491,7 @@ button, input, select { font: inherit; }
 .cc-media-grid.list .cc-asset-thumb-wrap { width:20px; height:20px; flex:0 0 20px; margin:0; overflow:visible; border:0; border-radius:0; background:transparent; }
 .cc-media-grid.list .cc-asset-thumb { background:transparent; color:var(--cc-text-muted); }
 .cc-media-grid.list .cc-asset-thumb img,.cc-media-grid.list .cc-asset-thumb video { display:none; }
-.cc-media-grid.list .cc-asset-duration,.cc-media-grid.list .cc-asset-audio-mark { display:none; }
+.cc-media-grid.list .cc-asset-duration,.cc-media-grid.list .cc-asset-ratio,.cc-media-grid.list .cc-asset-audio-mark { display:none; }
 .cc-media-grid.list .cc-asset-name { min-width:0; flex:1; margin-right:86px; padding:0; color:var(--cc-text-muted); font-size:13px; font-weight:500; line-height:20px; }
 .cc-media-grid.list .cc-asset-check { top:6px; left:auto; right:30px; }
 .cc-media-grid.list .cc-asset-more { top:2px; right:2px; background:transparent; }
