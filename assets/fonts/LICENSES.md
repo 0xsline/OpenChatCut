@@ -16,3 +16,9 @@ The other bundled fonts use their publishers' free-commercial-use terms and
 are not open-source fonts: HarmonyOS Sans, Huxiaobo Nanshen Ti,
 Huxiaobo Saobao Ti, Huxiaobo Zhenshuai Ti, Pangmen Zhengdao Biaoti Ti and
 Pangmen Zhengdao Qingsong Ti.
+
+## HarmonyOS Sans notice
+
+This software uses and bundles unmodified HarmonyOS Sans Fonts. Copyright 2021
+Huawei Device Co., Ltd. The complete agreement retained with the font copies is
+in [`HarmonyOS-Sans-License.txt`](HarmonyOS-Sans-License.txt).
