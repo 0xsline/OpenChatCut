@@ -105,6 +105,7 @@ interface TrackLaneProps {
   pickMode: boolean;
   locked: boolean;
   hidden: boolean;
+  muted: boolean;
   px: number;
   rowHeight: number;
   visibleWindow: TimelineFrameWindow;
@@ -121,7 +122,7 @@ interface TrackLaneProps {
 }
 
 export function TrackLane({
-  trackId, state, commands, pointer, editMode, pickMode, locked, hidden, px, rowHeight,
+  trackId, state, commands, pointer, editMode, pickMode, locked, hidden, muted, px, rowHeight,
   visibleWindow, pinnedItemIds, indexes, libDropTarget, setLibDropTarget,
   applyLibraryToClip, applyLibraryToTrack, rippleOnDrop, overwriteOnDrop, frameFromClientX, onContextMenu, scrollRef,
 }: TrackLaneProps) {
@@ -236,16 +237,20 @@ export function TrackLane({
         const renderPlaybackRate = stretch?.playbackRate ?? (it.playbackRate ?? 1);
         const canRateStretch = it.kind === 'video' || it.kind === 'audio';
         const canSlip = it.kind === 'video' || it.kind === 'audio';
+        const audioMuted = muted && (it.kind === 'audio' || it.kind === 'video');
         const showHandles = !pickMode && editMode !== 'blade' && editMode !== 'pen' && editMode !== 'slip'
           && (editMode !== 'rate-stretch' || canRateStretch);
         const isLibOver = libDropTarget === it.id;
         const itemIndex = itemIndexById.get(it.id) ?? 0;
         const overlapSpans = topClipOverlapSpans(start, dur, items.slice(0, itemIndex));
+        let clipTitle = it.name;
+        if (editMode === 'slip' && !canSlip) clipTitle = t('此类型没有可滑移的源区间');
+        else if (audioMuted) clipTitle = `${it.name} · ${t('轨道已静音')}`;
         return (
           <div
             key={it.id}
-            className={`cc-timeline-clip${selected ? ' is-selected' : ''}${isLibOver ? ' is-library-over' : ''}`}
-            title={editMode === 'slip' && !canSlip ? t('此类型没有可滑移的源区间') : it.name}
+            className={`cc-timeline-clip${selected ? ' is-selected' : ''}${isLibOver ? ' is-library-over' : ''}${audioMuted ? ' is-audio-muted' : ''}`}
+            title={clipTitle}
             data-clip-kind={it.kind}
             onPointerDown={(e) => {
               if (pickMode) { // selection mode: click → item ref, drag → timerange (no editing)
@@ -344,6 +349,11 @@ export function TrackLane({
                 }}
               />
             ))}
+            {audioMuted && (
+              <span className="cc-clip-muted-indicator" title={t('轨道已静音')} aria-label={t('轨道已静音')}>
+                <Icon name="volumeOff" size={11} />
+              </span>
+            )}
             {it.kind === 'audio' && !isPreviewable(it.src) && mediaIntersection && (() => {
               const left = (mediaIntersection.startFrame - start) * px + 3;
               const width = Math.max(1, (mediaIntersection.endFrame - mediaIntersection.startFrame) * px - 6);

@@ -67,6 +67,19 @@ button, input, select { font: inherit; }
   border:1px solid var(--cc-accent); background:var(--cc-panel);
   box-shadow:0 4px 14px rgba(var(--cc-shadow-rgb),0.24);
 }
+.cc-timeline-clip.is-audio-muted::after {
+  content:""; position:absolute; inset:0; z-index:1; pointer-events:none;
+  background:color-mix(in srgb,var(--cc-bg) 56%,transparent);
+}
+.cc-timeline-clip.is-audio-muted .cc-clip-wave,
+.cc-timeline-clip.is-audio-muted .cc-audio-waveform { opacity:.28; filter:saturate(.25); }
+.cc-timeline-clip.is-audio-muted .cc-clip-label { opacity:.58; }
+.cc-clip-muted-indicator {
+  position:absolute; top:4px; left:5px; z-index:4; width:18px; height:18px;
+  display:grid; place-items:center; border:0.5px solid color-mix(in srgb,var(--cc-text-strong) 38%,transparent);
+  border-radius:4px; background:color-mix(in srgb,var(--cc-bg) 78%,transparent);
+  color:var(--cc-text-strong); pointer-events:none;
+}
 
 /* Shared editor surface typography: dialogs, popovers, and inspector use one baseline. */
 :where(.cc-semantic-panel, .cc-export-panel, .cc-inspector) {

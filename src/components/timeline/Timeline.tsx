@@ -503,7 +503,7 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
                   onMove={(move) => moveCaptionCue(trackId, move)}
                   onDelete={(laneId, index) => trackCaptions && commands.updateCaptions(removeManualCue(trackCaptions, laneId, index), trackId)} /> : <TrackLane
                   trackId={trackId} indexes={indexes} state={state} commands={commands} pointer={pointer}
-                  editMode={editMode} pickMode={pickMode} locked={locked} hidden={hidden}
+                  editMode={editMode} pickMode={pickMode} locked={locked} hidden={hidden} muted={config.muted ?? false}
                   px={px} rowHeight={rowHeightOf(trackId)} visibleWindow={visibleWindow}
                   pinnedItemIds={pinnedItemIds}
                   libDropTarget={libDropTarget} setLibDropTarget={setLibDropTarget}

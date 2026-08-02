@@ -138,6 +138,7 @@ export default {
   '隐藏轨道': 'Hide track',
   '取消静音': 'Unmute',
   '静音轨道': 'Mute track',
+  '轨道已静音': 'Track muted',
   '解锁轨道': 'Unlock track',
   '锁定轨道（禁止移动 / 裁剪 / 删除 / 落轨）': 'Lock track (no moving / trimming / deleting / dropping)',
   '关闭字幕': 'Hide captions',
