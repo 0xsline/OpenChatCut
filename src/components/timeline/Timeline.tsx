@@ -29,6 +29,7 @@ import { useTimelinePointer } from './useTimelinePointer';
 import { usePlayheadPaint } from './usePlayheadPaint';
 import { useTimelineZoomController } from './useTimelineZoomController';
 import { timelineFitTotalFrames } from './timelineFitRange';
+import { trackDeletePlan } from './trackDelete';
 import { applyLibraryToClip as applyToClip, applyLibraryToTrack as applyToTrack } from './libraryDropActions';
 import {
   HEADER_W, MAX_ROW, MIN_ROW, RULER_H, TRACK_ROW, buildTimelineIndexes,
@@ -371,7 +372,6 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             const alias = trackAlias(state, trackId);
             const config = state.tracks?.[trackId] ?? {};
             const trackCaptions = meta.kind === 'caption' ? captionsOnTrack(state, trackId) : null;
-            const items = indexes.itemsByTrack.get(trackId) ?? [];
             const dragIsAudio = drag ? indexes.itemById.get(drag.id)?.kind === 'audio' : false;
             const isDropTarget = drag?.mode === 'move' && drag.targetTrack === trackId && meta.kind === (dragIsAudio ? 'audio' : 'video') && !state.tracks?.[trackId]?.locked;
             const hidden = meta.kind === 'caption' ? !trackCaptions?.enabled : config.hidden ?? false;
@@ -379,13 +379,18 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             const locked = config.locked ?? false;
             const kindLabel = meta.kind === 'video' ? '视频' : meta.kind === 'audio' ? '音频' : '字幕';
             const trackName = config.name || (locale === 'en' ? alias : `${t(kindLabel)}${alias.slice(1)}`);
-            const busy = items.length > 0 || !!trackCaptions
-              || (indexes.transitionsByTrack.get(trackId)?.length ?? 0) > 0;
+            const deletePlan = trackDeletePlan(state, trackId);
             return (
               <div key={trackId} className="cc-track-row" style={{ height: rowHeightOf(trackId), background: isDropTarget ? `color-mix(in srgb, ${theme.success} 15%, ${theme.bg})` : undefined }}>
                 <TrackHead
                   trackId={trackId} kind={meta.kind} trackName={trackName} config={headConfig}
-                  busy={busy} menuElevated={captionMenu?.id === trackId || duckMenu?.id === trackId}
+                  deleteBlockedReason={deletePlan.blockedReason}
+                  onDelete={() => {
+                    if (deletePlan.requiresConfirmation
+                      && !window.confirm(t('删除轨道会同时删除其中的片段、字幕和转场，确认继续吗？'))) return;
+                    if (deletePlan.actions.length) commands.batch(deletePlan.actions, t('删除轨道'));
+                  }}
+                  menuElevated={captionMenu?.id === trackId || duckMenu?.id === trackId}
                   width={HEADER_W} commands={commands}
                   onToggleCaptions={() => toggleCaptions(trackId)}
                   // Both menus are attached with trigger buttons, top clamping margin = maximum menu height + margin (captions 420, dodge ≈ 300);

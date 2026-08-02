@@ -7,6 +7,7 @@ import { Icon } from '../icons';
 import type { EditorCommands } from '../../editor/store';
 import type { TrackFlags, TrackId, TrackKind } from '../../editor/types';
 import { useT } from '../../i18n/locale';
+import type { TrackDeletePlan } from './trackDelete';
 
 const flagBtn = (active: boolean): React.CSSProperties => ({
   width: 20, height: 20, display: 'grid', placeItems: 'center',
@@ -19,8 +20,8 @@ interface TrackHeadProps {
   kind: TrackKind;
   trackName: string;
   config: TrackFlags;
-  /** non-empty track (or has transitions) — delete disabled */
-  busy: boolean;
+  deleteBlockedReason: TrackDeletePlan['blockedReason'];
+  onDelete: () => void;
   /** caption menu open on this track → raise head above neighbors */
   menuElevated: boolean;
   width: number;
@@ -35,7 +36,7 @@ interface TrackHeadProps {
 }
 
 export function TrackHead({
-  trackId, kind, trackName, config, busy, menuElevated, width,
+  trackId, kind, trackName, config, deleteBlockedReason, onDelete, menuElevated, width,
   commands, onToggleCaptions, onToggleCaptionMenu, onToggleDuckMenu, duckMenuPos, onCloseDuckMenu, children,
 }: TrackHeadProps) {
   const t = useT();
@@ -43,6 +44,11 @@ export function TrackHead({
   const muted = config.muted ?? false;
   const locked = config.locked ?? false;
   const isCaption = kind === 'caption';
+  const deleteTitle = deleteBlockedReason === 'last-video'
+    ? t('至少保留一条视频轨道')
+    : deleteBlockedReason === 'locked'
+      ? t('请先解锁轨道')
+      : t('删除轨道');
   const tagColor = kind === 'video' ? theme.trackVideo : kind === 'audio' ? theme.trackAudioA1 : theme.trackCaption;
   const nameTitle = config.role === 'anchor' ? `${trackName} · ${t('主轨（闪避）')}`
     : config.role === 'follower' ? `${trackName} · ${t('跟随（闪避）')}`
@@ -59,9 +65,9 @@ export function TrackHead({
         <button
           type="button"
           className="cc-track-fixed-action"
-          disabled={busy}
-          title={busy ? t('只能删除空轨道') : t('删除轨道')}
-          onClick={() => commands.deleteTracks([trackId])}
+          disabled={deleteBlockedReason !== null}
+          title={deleteTitle}
+          onClick={onDelete}
         >
           <Icon name="trash" size={13} />
         </button>
