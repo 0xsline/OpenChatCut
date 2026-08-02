@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { theme, themeAlpha } from '../theme';
 import { tData, useT } from '../i18n/locale';
@@ -10,6 +10,11 @@ import { setLibraryDrag } from './drag';
 import { loadRecentTemplateIds, pushRecentTemplateId } from '../persist/sessionPrefs';
 import { useFixedVirtualGrid } from '../hooks/useFixedVirtualGrid';
 import { LIBRARY_CARD_GRID_METRICS } from './libraryCardGrid';
+import {
+  createHorizontalTabDrag,
+  getHorizontalTabRevealDirection,
+  revealHorizontalTab,
+} from './resourceTabDrag';
 
 // MG animation browser: a horizontal chip row
 // [Collection, recent, popular, <categories by count>] filters the card grid; cards show a
@@ -57,12 +62,16 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
   /** Template id removed from the resource library list (soft deletion, persistence; does not affect the inserted clips in the timeline) */
   const [hidden, setHidden] = usePersistedState<string[]>('cc.hiddenTemplates', []);
   const [recents, setRecents] = useState<string[]>(() => loadRecentTemplateIds());
+  const recentsRef = useRef(recents);
   const [chip, setChip] = usePersistedState<string>('cc.templateChip', POPULAR);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const chipScrollRef = useRef<HTMLDivElement | null>(null);
+  const chipDragRef = useRef<ReturnType<typeof createHorizontalTabDrag> | null>(null);
+  const suppressChipClickRef = useRef(false);
   const favSet = useMemo(() => new Set(favs), [favs]);
   const hiddenSet = useMemo(() => new Set(hidden), [hidden]);
   const toggleFav = useCallback((id: string) => {
@@ -74,7 +83,13 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
     setHidden((current) => current.includes(id) ? current : [...current, id]);
     setFavs((current) => current.filter((candidate) => candidate !== id));
   }, [setFavs, setHidden]);
-  const remember = useCallback((tpl: Tpl) => setRecents(pushRecentTemplateId(tpl.id)), []);
+  const remember = useCallback((tpl: Tpl) => {
+    const current = recentsRef.current;
+    const next = pushRecentTemplateId(tpl.id, current);
+    if (next === current) return;
+    recentsRef.current = next;
+    setRecents(next);
+  }, []);
   const addAndRemember = useCallback((tpl: Tpl) => {
     remember(tpl);
     onAdd(tpl);
@@ -164,9 +179,72 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
   return (
     <>
       {/* chip row (horizontally scrollable) */}
-      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 10, marginBottom: 4 }}>
+      <div
+        ref={chipScrollRef}
+        className="cc-resource-tertiary-tabs cc-template-category-tabs"
+        role="tablist"
+        aria-label={t('MG 动画')}
+        onDragStart={(event) => event.preventDefault()}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          chipDragRef.current = createHorizontalTabDrag(event, event.currentTarget);
+        }}
+        onPointerMove={(event) => {
+          if (!chipDragRef.current?.move(event)) return;
+          if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+          event.currentTarget.dataset.dragging = 'true';
+        }}
+        onPointerUp={(event) => {
+          const didDrag = chipDragRef.current?.end() ?? false;
+          chipDragRef.current = null;
+          delete event.currentTarget.dataset.dragging;
+          suppressChipClickRef.current = didDrag;
+          requestAnimationFrame(() => { suppressChipClickRef.current = false; });
+        }}
+        onPointerCancel={(event) => {
+          chipDragRef.current = null;
+          suppressChipClickRef.current = false;
+          delete event.currentTarget.dataset.dragging;
+        }}
+        onClickCapture={(event) => {
+          if (!suppressChipClickRef.current) return;
+          event.preventDefault();
+          event.stopPropagation();
+          suppressChipClickRef.current = false;
+        }}
+        style={{
+          display: 'flex',
+          gap: 8,
+          overflowX: 'auto',
+          paddingBottom: 10,
+          marginBottom: 4,
+          cursor: 'grab',
+          touchAction: 'pan-y',
+        }}
+      >
         {chips.map((c) => (
-          <button key={c} onClick={() => { setChip(c); closeMenu(); }} style={chipStyle(chip === c)}>
+          <button
+            key={c}
+            type="button"
+            role="tab"
+            aria-selected={chip === c}
+            onClick={(event) => {
+              const currentChipIndex = chips.indexOf(chip);
+              const nextChipIndex = chips.indexOf(c);
+              setChip(c);
+              closeMenu();
+              if (chipScrollRef.current) {
+                revealHorizontalTab(
+                  chipScrollRef.current,
+                  event.currentTarget,
+                  getHorizontalTabRevealDirection(currentChipIndex, nextChipIndex),
+                );
+              }
+            }}
+            style={chipStyle(chip === c)}
+          >
             {c === FAV ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="star" size={12} />{t('收藏')}</span> : c === RECENT ? t('最近') : c === POPULAR ? t('热门') : t(catLabel(c))}
           </button>
         ))}

@@ -135,8 +135,9 @@ export function loadRecentTemplateIds(): string[] {
   }
 }
 
-export function pushRecentTemplateId(id: string): string[] {
-  const next = [id, ...loadRecentTemplateIds().filter((x) => x !== id)].slice(0, MAX_RECENT);
+export function pushRecentTemplateId(id: string, current = loadRecentTemplateIds()): string[] {
+  if (current.includes(id)) return current;
+  const next = [id, ...current].slice(0, MAX_RECENT);
   writeRaw(RECENT_TEMPLATES_KEY, JSON.stringify(next));
   return next;
 }
