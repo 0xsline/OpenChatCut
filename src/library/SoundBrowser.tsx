@@ -230,7 +230,7 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
         </div>
       )}
 
-      <div className="cc-sound-hint">{t('单击试听 · 双击/点 + 或拖到时间线音轨 · 共 {n} 个音效', { n: SOUND_EFFECTS.length })}</div>
+      <div className="cc-sound-hint">{t('单击试听 · 双击/点 + 或拖到时间线音轨 · 共 {n} 个音效', { n: list.length })}</div>
     </div>
   );
 });
