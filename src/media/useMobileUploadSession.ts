@@ -7,6 +7,7 @@ import {
   type MobileUploadRecord,
   type MobileUploadSession,
 } from './mobileUploadApi';
+import { mediaImportErrorMessage } from './mediaImportConflict';
 
 const POLL_INTERVAL_MS = 800;
 
@@ -14,7 +15,7 @@ type SetSession = Dispatch<SetStateAction<MobileUploadSession | null>>;
 type SetError = Dispatch<SetStateAction<string | null>>;
 
 function messageOf(reason: unknown): string {
-  return reason instanceof Error ? reason.message : String(reason);
+  return mediaImportErrorMessage(reason);
 }
 
 function useCreatedSession(setError: SetError): [MobileUploadSession | null, SetSession] {

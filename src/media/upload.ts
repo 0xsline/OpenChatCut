@@ -188,7 +188,7 @@ async function putPart(uploadId: string, part: number, blob: Blob): Promise<void
 }
 
 /** Multipart upload with per-part retry (local stand-in for S3 multipart). */
-async function uploadFileMultipart(file: File, onProgress?: UploadProgress): Promise<string> {
+async function uploadFileMultipartAttempt(file: File, onProgress?: UploadProgress): Promise<string> {
   const initRes = await fetch('/upload/multipart/init', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -247,6 +247,29 @@ async function uploadFileMultipart(file: File, onProgress?: UploadProgress): Pro
   if (!doneBody.path) throw new Error(t('上传失败 ({status})', { status: completeRes.status }));
   onProgress?.(1);
   return doneBody.path;
+}
+
+export function isExpiredMultipartSessionError(error: unknown): boolean {
+  return error instanceof Error && /upload session not found or expired/i.test(error.message);
+}
+
+/** Retry once with a fresh multipart session after an embedded-server restart. */
+export async function retryExpiredMultipartSession<T>(attempt: () => Promise<T>): Promise<T> {
+  try {
+    return await attempt();
+  } catch (error) {
+    if (!isExpiredMultipartSessionError(error)) throw error;
+  }
+  try {
+    return await attempt();
+  } catch (error) {
+    if (isExpiredMultipartSessionError(error)) throw new Error(t('上传会话已失效，请重新导入'));
+    throw error;
+  }
+}
+
+async function uploadFileMultipart(file: File, onProgress?: UploadProgress): Promise<string> {
+  return retryExpiredMultipartSession(() => uploadFileMultipartAttempt(file, onProgress));
 }
 
 async function uploadFile(file: File, onProgress?: UploadProgress): Promise<string> {
