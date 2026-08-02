@@ -124,6 +124,7 @@ export const MediaAssetCard = memo(function MediaAssetCard(props: MediaAssetCard
   const { asset, missing, onFocusChange, onPointerChange, view } = props;
   return (
     <div
+      data-cc-media-asset-id={asset.id}
       className={`cc-asset-card${props.selected ? ' selected' : ''}${missing ? ' missing' : ''}`}
       onClickCapture={(event) => {
         if (!(event.metaKey || event.ctrlKey || event.shiftKey)) return;

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Icon } from '../components/icons';
 import type { MediaAsset, MediaFolder } from '../editor/types';
 import { useFixedVirtualGrid } from '../hooks/useFixedVirtualGrid';
 import { useT } from '../i18n/locale';
 import { MediaAssetCard, MediaFolderCard } from './MediaPoolCard';
 import { AddSolidCanvasCard } from './AddSolidCanvasCard';
+import { marqueeAssetIds, marqueeRect, type MarqueePoint } from './mediaMarquee';
 
 export type MediaGridEntry =
   | { kind: 'solid' }
@@ -34,7 +35,15 @@ interface MediaPoolGridProps {
   onOpenMenu: (id: string, anchor: HTMLElement, point?: { x: number; y: number }) => void;
   onRelink: (id: string) => void;
   onToggleSelected: (id: string) => void;
+  onSetSelected: (ids: string[]) => void;
 }
+
+type MarqueeState = {
+  pointerId: number;
+  start: MarqueePoint;
+  end: MarqueePoint;
+  initialSelected: Set<string>;
+};
 
 function useMediaGridWindow(props: Pick<MediaPoolGridProps, 'entries' | 'view' | 'selected' | 'assetMenu'>) {
   const [pointerId, setPointerId] = useState<string | null>(null);
@@ -75,8 +84,69 @@ function useMediaGridWindow(props: Pick<MediaPoolGridProps, 'entries' | 'view' |
 export function MediaPoolGrid(props: MediaPoolGridProps) {
   const windowState = useMediaGridWindow(props);
   const t = useT();
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [marquee, setMarquee] = useState<MarqueeState | null>(null);
+  const updateMarquee = (state: MarqueeState, end: MarqueePoint) => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const cards = Array.from(grid.querySelectorAll<HTMLElement>('[data-cc-media-asset-id]')).flatMap((card) => {
+      const id = card.dataset.ccMediaAssetId;
+      if (!id) return [];
+      const rect = card.getBoundingClientRect();
+      return [{ id, rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom } }];
+    });
+    props.onSetSelected([...state.initialSelected, ...marqueeAssetIds(marqueeRect(state.start, end), cards)]);
+  };
+  const startMarquee = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('[data-cc-media-asset-id], button, input, select, textarea')) return;
+    const state: MarqueeState = {
+      pointerId: event.pointerId,
+      start: { x: event.clientX, y: event.clientY },
+      end: { x: event.clientX, y: event.clientY },
+      initialSelected: event.metaKey || event.ctrlKey ? new Set(props.selected) : new Set(),
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    props.onSetSelected([...state.initialSelected]);
+    setMarquee(state);
+    event.preventDefault();
+  };
+  const moveMarquee = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!marquee || marquee.pointerId !== event.pointerId) return;
+    const end = { x: event.clientX, y: event.clientY };
+    updateMarquee(marquee, end);
+    setMarquee({ ...marquee, end });
+    event.preventDefault();
+  };
+  const finishMarquee = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!marquee || marquee.pointerId !== event.pointerId) return;
+    updateMarquee(marquee, { x: event.clientX, y: event.clientY });
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    setMarquee(null);
+  };
+  const marqueeStyle = (() => {
+    const grid = gridRef.current;
+    if (!marquee || !grid) return undefined;
+    const selection = marqueeRect(marquee.start, marquee.end);
+    const bounds = grid.getBoundingClientRect();
+    return {
+      left: selection.left - bounds.left + grid.scrollLeft,
+      top: selection.top - bounds.top + grid.scrollTop,
+      width: selection.right - selection.left,
+      height: selection.bottom - selection.top,
+    };
+  })();
   return (
-    <div className={`cc-media-grid ${props.view}`}>
+    <div
+      ref={gridRef}
+      className={`cc-media-grid ${props.view}${marquee ? ' is-marquee-selecting' : ''}`}
+      onPointerDown={startMarquee}
+      onPointerMove={moveMarquee}
+      onPointerUp={finishMarquee}
+      onPointerCancel={finishMarquee}
+    >
+      {marqueeStyle && <div className="cc-media-marquee" aria-hidden="true" style={marqueeStyle} />}
       <MediaVirtualRows {...props} {...windowState} />
       {props.entries.length === 0 && <div className="cc-media-empty">
         {props.assetsCount === 0

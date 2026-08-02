@@ -455,6 +455,7 @@ export function MediaPoolPanel({
         onOpenMenu={openAssetMenu}
         onRelink={startRelink}
         onToggleSelected={toggleSelected}
+        onSetSelected={(ids) => setSelected(new Set(ids))}
         onSetFavorite={onSetFavorite}
       />
 

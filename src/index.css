@@ -434,6 +434,8 @@ button, input, select { font: inherit; }
 .cc-media-error { color:#e27f75; }
 .cc-media-export-guide { margin:-4px 0 9px; padding:6px 8px; border:0.5px solid var(--cc-border); border-radius:5px; background:var(--cc-panel-alt); color:var(--cc-text-dim); font-size:10.5px; line-height:1.45; }
 .cc-media-grid { position:relative; flex:1; min-height:0; overflow-y:auto; padding:0 0 28px; }
+.cc-media-grid.is-marquee-selecting { user-select:none; cursor:crosshair; }
+.cc-media-marquee { position:absolute; z-index:4; box-sizing:border-box; pointer-events:none; border:1px solid var(--cc-accent); border-radius:2px; background:color-mix(in srgb,var(--cc-accent) 12%,transparent); }
 .cc-media-grid.list { display:block; }
 .cc-media-virtual-canvas { position:relative; width:100%; }
 .cc-media-virtual-row { position:absolute; left:0; width:100%; display:grid; }
