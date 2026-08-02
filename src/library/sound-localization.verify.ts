@@ -18,6 +18,12 @@ const browserSource = readFileSync(new URL('./SoundBrowser.tsx', import.meta.url
 assert.match(browserSource, /tData\(s\.name\)/, 'Chinese sound names must participate in search');
 assert.match(browserSource, /const displayName = tData\(sound\.name\)/, 'sound rows must derive a localized display name');
 assert.match(browserSource, /cc-sound-name[^>]*>\{displayName\}/, 'sound rows must render the localized display name');
+assert.match(browserSource, /\{ n: list\.length \}/, 'the footer must report the active search/category result count');
+assert.doesNotMatch(
+  browserSource,
+  /\{ n: SOUND_EFFECTS\.length \}/,
+  'the filtered result footer must not keep reporting the full library size',
+);
 
 assert.match(
   browserSource,
