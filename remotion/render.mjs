@@ -16,6 +16,7 @@ import {
   resolveRenderConcurrency,
   withEncoderProfileFallback,
 } from './performance.mjs';
+import { resolveRenderTimeout } from './render-timeout.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ENTRY_POINT = path.join(REPO_ROOT, 'remotion', 'index.ts');
@@ -25,6 +26,7 @@ const ASSETS_DIR = path.join(REPO_ROOT, 'assets');
 const PUBLIC_DIR = path.join(REPO_ROOT, 'public');
 const UPLOAD_DIR = path.join(PUBLIC_DIR, 'media', 'uploads');
 const COMPOSITION_ID = 'timeline';
+const renderTimeoutInMilliseconds = () => resolveRenderTimeout();
 
 const H264_PROFILE_LABELS = {
   h264_videotoolbox: 'Apple VideoToolbox',
@@ -415,6 +417,7 @@ export async function renderTimeline({
   const inputProps = { state, project, timelineId };
   const composition = await selectComposition({
     serveUrl, id: COMPOSITION_ID, inputProps, browserExecutable: browserExecutable(),
+    timeoutInMilliseconds: renderTimeoutInMilliseconds(),
   });
   signal?.throwIfAborted();
   const rendered = await renderMediaOptimized({
@@ -434,6 +437,7 @@ export async function renderTimeline({
     browserExecutable: browserExecutable(),
     onProgress: onProgress ? ({ progress }) => onProgress(progress) : undefined,
     cancelSignal,
+    timeoutInMilliseconds: renderTimeoutInMilliseconds(),
   });
   return {
     outputLocation,
@@ -461,16 +465,20 @@ export async function renderClip({
   transparent = true,
   h264Profile,
   vaapiDevice,
+  signal,
 }) {
   if (!state || !Array.isArray(state.items) || !state.items.length) {
     throw new Error('renderClip: a single-item TimelineState is required');
   }
   if (!outputLocation) throw new Error('renderClip: outputLocation is required');
+  signal?.throwIfAborted();
   assertMaterializedRenderSnapshot(state, 'renderClip');
+  const cancelSignal = remotionCancelSignal(signal);
   const serveUrl = await getServeUrl();
   const inputProps = { state, transparent };
   const composition = await selectComposition({
     serveUrl, id: COMPOSITION_ID, inputProps, browserExecutable: browserExecutable(),
+    timeoutInMilliseconds: renderTimeoutInMilliseconds(),
   });
   await renderMediaOptimized({
     serveUrl,
@@ -485,6 +493,8 @@ export async function renderClip({
       : {}),
     chromiumOptions: { gl: 'angle' },
     browserExecutable: browserExecutable(),
+    timeoutInMilliseconds: renderTimeoutInMilliseconds(),
+    cancelSignal,
   });
   return outputLocation;
 }
@@ -521,6 +531,7 @@ export async function renderTimelineStills({ state, project, timelineId, frames,
       serveUrl, id: COMPOSITION_ID, inputProps,
       puppeteerInstance: browser,
       browserExecutable: browserExecutable(),
+      timeoutInMilliseconds: renderTimeoutInMilliseconds(),
     });
     const out = [];
     const list = frames.slice(0, STILL_MAX_FRAMES);
@@ -536,6 +547,7 @@ export async function renderTimelineStills({ state, project, timelineId, frames,
         offthreadVideoThreads: offthreadVideoThreads(),
         output: null,
         puppeteerInstance: browser,
+        timeoutInMilliseconds: renderTimeoutInMilliseconds(),
       });
       out.push({ frame: f, base64: buffer.toString('base64') });
     }
