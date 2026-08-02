@@ -161,7 +161,7 @@ export interface Keyframe {
 }
 
 /** keyframable properties (PRD §4.5: Position/scale/transparency/rotation can be K frames; volume is the audio/video volume envelope) */
-export type KeyframeProp = 'x' | 'y' | 'scale' | 'rotation' | 'opacity' | 'volume';
+export type KeyframeProp = 'x' | 'y' | 'scale' | 'rotation' | 'opacity' | 'borderRadius' | 'volume';
 /** per-prop sparse keyframe curves on an item (sorted by frame — reducer invariant) */
 export type ItemKeyframes = Partial<Record<KeyframeProp, Keyframe[]>>;
 

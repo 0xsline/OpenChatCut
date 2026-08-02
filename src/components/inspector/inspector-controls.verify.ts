@@ -23,7 +23,7 @@ assert.equal(group.label, 'Reset transform');
 assert.deepEqual(group.actions.at(-1), {
   type: 'setTransform',
   id: 'clip-1',
-  patch: { scale: 1, x: 0, y: 0, rotation: 0 },
+  patch: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 },
 });
 
 console.log('inspector-controls.verify: ok');

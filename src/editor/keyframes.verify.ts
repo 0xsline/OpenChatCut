@@ -49,6 +49,15 @@ assert.ok(supportsKeyframeProperty(item({ kind: 'audio' }), 'volume'), 'audio �
 assert.ok(supportsKeyframeProperty(item({ kind: 'video' }), 'volume'), 'video 支持 volume');
 assert.ok(!supportsKeyframeProperty(item({ kind: 'image' }), 'volume'), 'image 不支持 volume');
 assert.ok(!supportsKeyframeProperty(item({ kind: 'audio' }), 'opacity'), 'audio 仍不支持 opacity');
+const opacityDef = getKeyframePropertyDefinition('opacity');
+assert.equal(opacityDef.getBaseValue(item({ kind: 'image', transform: { opacity: 0.45 } })), 0.45, 'opacity 读取静态 transform');
+assert.deepEqual(opacityDef.toTransformPatch?.(0.6), { opacity: 0.6 }, 'opacity 可写回静态 transform');
+const radiusDef = getKeyframePropertyDefinition('borderRadius');
+assert.ok(KEYFRAME_PROPS.includes('borderRadius'), 'KEYFRAME_PROPS 含 borderRadius');
+assert.ok(supportsKeyframeProperty(item({ kind: 'image' }), 'borderRadius'), '图片支持圆角');
+assert.ok(!supportsKeyframeProperty(item({ kind: 'text' }), 'borderRadius'), '文字不开放圆角');
+assert.deepEqual(radiusDef.toTransformPatch?.(24), { borderRadius: 24 }, '圆角可写回静态 transform');
+assert.equal(coerceKeyframeValue('borderRadius', 1200), 1000, '圆角关键帧按范围钳制');
 assert.equal(coerceKeyframeValue('volume', 9), 2, 'coerce 上钳 2');
 assert.equal(coerceKeyframeValue('volume', -1), 0, 'coerce 下钳 0');
 
