@@ -32,8 +32,8 @@ export function SemanticSearchControls({ scopeId, assets, onResultsChange, openR
     if (openRequest > 0) setOpen(true);
   }, [openRequest]);
   return <div ref={anchorRef} className="cc-semantic-anchor">
-    <button type="button" className={`cc-media-icon cc-semantic-trigger${open || searchedQuery ? ' active' : ''}`}
-      aria-label={t('语义搜索')} title={t('本地语义搜索')} aria-haspopup="dialog" aria-expanded={open}
+    <button type="button" className={`cc-media-icon cc-semantic-trigger cc-tip${open || searchedQuery ? ' active' : ''}`}
+      aria-label={t('语义搜索')} data-tip={t('本地语义搜索')} aria-haspopup="dialog" aria-expanded={open}
       onClick={() => setOpen((value) => !value)}>
       <Icon name="sparkles" size={17} />
     </button>

@@ -129,9 +129,9 @@ export function MediaPoolToolbar(props: MediaPoolToolbarProps) {
         <input aria-label={t('搜索素材')} value={props.query} onChange={(event) => props.onQueryChange(event.target.value)} placeholder={t('搜索')} />
       </label>
       <SemanticSearchControls scopeId={props.scopeId} assets={props.assets} onResultsChange={props.onSemanticResults} openRequest={props.semanticOpenRequest} />
-      <button className="cc-media-icon" aria-label={t('上传素材')} title={t('上传素材')} disabled={props.busy} onClick={props.onUpload}><Icon name="upload" size={19} /></button>
+      <button className="cc-media-icon cc-tip" aria-label={t('上传素材')} data-tip={t('上传素材')} disabled={props.busy} onClick={props.onUpload}><Icon name="upload" size={19} /></button>
       {props.busy && props.uploadRatio != null && <span className="cc-media-upload-pct" title={t('上传中')}>{Math.round(props.uploadRatio * 100)}%</span>}
-      <button className="cc-media-icon" aria-label={t(mediaViewToggleLabel(props.view))} title={t(mediaViewToggleLabel(props.view))} onClick={props.onViewChange}><Icon name={props.view === 'grid' ? 'list' : 'grid'} size={19} /></button>
+      <button className="cc-media-icon cc-tip" aria-label={t(mediaViewToggleLabel(props.view))} data-tip={t(mediaViewToggleLabel(props.view))} onClick={props.onViewChange}><Icon name={props.view === 'grid' ? 'list' : 'grid'} size={19} /></button>
       <SortMenu {...props} lifecycle={lifecycle} />
       <FilterMenu {...props} lifecycle={lifecycle} />
       <ActionsMenu {...props} lifecycle={lifecycle} />
@@ -159,7 +159,7 @@ function SortMenu(props: MenuProps) {
   </div>;
   return (
     <div className="cc-media-menu-anchor">
-      <button className={`cc-media-icon${open ? ' active' : ''}`} aria-label={t('素材排序')} title={t('排序')} aria-haspopup="dialog" aria-expanded={open} onClick={(event) => props.lifecycle.toggle('sort', event.currentTarget)}><Icon name="sort" size={19} /></button>
+      <button className={`cc-media-icon cc-tip${open ? ' active' : ''}`} aria-label={t('素材排序')} data-tip={t('排序')} aria-haspopup="dialog" aria-expanded={open} onClick={(event) => props.lifecycle.toggle('sort', event.currentTarget)}><Icon name="sort" size={19} /></button>
       {portalToolbarPopover(popover)}
     </div>
   );
@@ -180,7 +180,7 @@ function FilterMenu(props: MenuProps) {
   </div>;
   return (
     <div className="cc-media-menu-anchor">
-      <button className={`cc-media-icon${open || props.type !== 'all' || props.favoritesOnly ? ' active' : ''}`} aria-label={t('筛选素材')} title={t('筛选')} aria-haspopup="dialog" aria-expanded={open} onClick={(event) => props.lifecycle.toggle('filter', event.currentTarget)}><Icon name="filter" size={19} /></button>
+      <button className={`cc-media-icon cc-tip${open || props.type !== 'all' || props.favoritesOnly ? ' active' : ''}`} aria-label={t('筛选素材')} data-tip={t('筛选')} aria-haspopup="dialog" aria-expanded={open} onClick={(event) => props.lifecycle.toggle('filter', event.currentTarget)}><Icon name="filter" size={19} /></button>
       {portalToolbarPopover(popover)}
     </div>
   );
@@ -204,7 +204,7 @@ function ActionsMenu(props: MenuProps) {
   </div>;
   return (
     <div className="cc-media-menu-anchor">
-      <button className={`cc-media-icon${open ? ' active' : ''}`} aria-label={t('更多操作')} title={t('更多操作')} aria-haspopup="dialog" aria-expanded={open} onClick={(event) => props.lifecycle.toggle('actions', event.currentTarget)}><Icon name="more" size={19} /></button>
+      <button className={`cc-media-icon cc-tip cc-tip-r${open ? ' active' : ''}`} aria-label={t('更多操作')} data-tip={t('更多操作')} aria-haspopup="dialog" aria-expanded={open} onClick={(event) => props.lifecycle.toggle('actions', event.currentTarget)}><Icon name="more" size={19} /></button>
       {portalToolbarPopover(popover)}
     </div>
   );
