@@ -4,6 +4,12 @@ export const DESKTOP_MIN_SCALE = 2 / 3;
 export const DESKTOP_INITIAL_WINDOW_RATIO = 0.7;
 export const DESKTOP_INITIAL_WINDOW_ASPECT_RATIO = 3 / 2;
 export const DESKTOP_INITIAL_WINDOW_MAX_HEIGHT_RATIO = 0.9;
+// The expanded editor gives Preview 30% of content width. Preserve a complete
+// 9:16 preview plus editor/preview headers and four standard Timeline rows.
+const DESKTOP_PREVIEW_WIDTH_RATIO = 3 / 10;
+const DESKTOP_EDITOR_HEADER_HEIGHT = 41;
+const DESKTOP_PREVIEW_HEADER_HEIGHT = 30;
+const DESKTOP_TIMELINE_MIN_HEIGHT = 288;
 
 interface DesktopWindowScaleInput {
   baselineContentWidth: number;
@@ -70,11 +76,19 @@ export function resolveDesktopWindowScale({
     ? DESKTOP_MIN_SCALE
     : Math.round(fittedScale * 1_000) / 1_000;
 
+  const portraitPreviewWidth = baselineWidth * DESKTOP_PREVIEW_WIDTH_RATIO;
+  const portraitMinimumContentHeight = DESKTOP_EDITOR_HEADER_HEIGHT
+    + DESKTOP_PREVIEW_HEADER_HEIGHT
+    + DESKTOP_TIMELINE_MIN_HEIGHT
+    + Math.ceil(portraitPreviewWidth * 16 / 9);
+
   return {
     zoomFactor,
     minimumWindowSize: {
       width: Math.ceil(baselineWidth * DESKTOP_MIN_SCALE) + Math.max(0, Math.round(frameWidth)),
-      height: Math.ceil(baselineHeight * DESKTOP_MIN_SCALE) + Math.max(0, Math.round(frameHeight)),
+      height: Math.ceil(
+        Math.max(baselineHeight, portraitMinimumContentHeight) * DESKTOP_MIN_SCALE,
+      ) + Math.max(0, Math.round(frameHeight)),
     },
   };
 }

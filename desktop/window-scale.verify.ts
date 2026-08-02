@@ -51,8 +51,22 @@ const baseline = resolveDesktopWindowScale({
 assert.equal(baseline.zoomFactor, 1, 'the authored desktop size renders at 100%');
 assert.deepEqual(
   baseline.minimumWindowSize,
-  { width: 1067, height: 644 },
-  'the native minimum preserves the complete authored canvas at two-thirds scale',
+  { width: 1067, height: 839 },
+  'minimum window preserves two-thirds scale and a full 30%-wide 9:16 preview',
+);
+
+const liveScreenBaseline = resolveDesktopWindowScale({
+  baselineContentWidth: 1210,
+  baselineContentHeight: 676,
+  contentWidth: 1210,
+  contentHeight: 676,
+  frameWidth: 0,
+  frameHeight: 28,
+});
+assert.deepEqual(
+  liveScreenBaseline.minimumWindowSize,
+  { width: 807, height: 698 },
+  'portrait-preview minimum remains below the 1210x704 startup window',
 );
 
 assert.equal(
