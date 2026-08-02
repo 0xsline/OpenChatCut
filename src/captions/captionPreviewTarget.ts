@@ -134,20 +134,6 @@ export function captionPreviewStylePatch(
   };
 }
 
-export function captionPreviewStyleResetPatch(
-  captions: CaptionsData,
-  target: CaptionPreviewTarget,
-): Partial<CaptionsData> {
-  if (target.kind === 'single') return { styleOverride: undefined };
-  return {
-    sourceEntries: captions.sourceEntries?.map((entry) => {
-      if (entry.id !== target.laneId) return entry;
-      const { style: _style, ...rest } = entry;
-      return rest;
-    }),
-  };
-}
-
 export function captionPreviewLayoutPatch(
   captions: CaptionsData,
   target: CaptionPreviewTarget,
@@ -167,28 +153,6 @@ export function captionPreviewLayoutPatch(
           opacity: nextLayout.opacity,
         }
       : entry),
-  };
-}
-
-export function captionPreviewLayoutResetPatch(
-  captions: CaptionsData,
-  target: CaptionPreviewTarget,
-): Partial<CaptionsData> {
-  if (target.kind === 'single') return { layout: undefined };
-  return {
-    sourceEntries: captions.sourceEntries?.map((entry) => {
-      if (entry.id !== target.laneId) return entry;
-      const {
-        anchor: _anchor,
-        offsetXRatio: _offsetXRatio,
-        offsetYRatio: _offsetYRatio,
-        scale: _scale,
-        rotation: _rotation,
-        opacity: _opacity,
-        ...rest
-      } = entry;
-      return rest;
-    }),
   };
 }
 

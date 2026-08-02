@@ -14,9 +14,7 @@ import {
 } from './renderStyles';
 import {
   captionPreviewLayoutPatch,
-  captionPreviewLayoutResetPatch,
   captionPreviewNudgePatch,
-  captionPreviewStyleResetPatch,
   captionPreviewStylePatch,
   captionPreviewTextPatch,
   findCaptionPreviewTarget,
@@ -138,12 +136,6 @@ assert.equal(textPatch?.sourceEntries?.[0]?.words?.[0]?.text, '预览已改字')
 
 const stylePatch = captionPreviewStylePatch(captions, target!, { color: '#ff0000' });
 assert.equal(stylePatch.sourceEntries?.[0]?.style?.color, '#ff0000');
-const styledCaptions = { ...captions, ...stylePatch };
-assert.equal(
-  captionPreviewStyleResetPatch(styledCaptions, findCaptionPreviewTarget(styledCaptions, [], 30, 1_500)!).sourceEntries?.[0]?.style,
-  undefined,
-  'style reset removes only the selected lane override',
-);
 
 const layoutPatch = captionPreviewLayoutPatch(captions, target!, {
   anchor: 'bottom-center', offsetXRatio: 0.1, offsetYRatio: 0.2,
@@ -158,10 +150,6 @@ const transformedCaptions = {
 };
 const transformedTarget = findCaptionPreviewTarget(transformedCaptions, [], 30, 1_500)!;
 assert.equal(transformedTarget.layout?.scale, 1.5, 'manual preview targets retain render transforms');
-const resetLayout = captionPreviewLayoutResetPatch(transformedCaptions, transformedTarget).sourceEntries?.[0];
-assert.equal(resetLayout?.anchor, undefined);
-assert.equal(resetLayout?.scale, undefined);
-assert.equal(resetLayout?.words?.[0]?.text, '画面里可编辑', 'layout reset preserves cue content');
 
 const positionedCaptions = { ...captions, ...layoutPatch };
 const positionedTarget = findCaptionPreviewTarget(positionedCaptions, [], 30, 1_500)!;

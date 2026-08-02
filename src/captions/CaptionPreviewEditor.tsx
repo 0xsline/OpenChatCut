@@ -111,7 +111,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
     onAutoEditHandled?.();
   }, [autoEditLaneId, cue, onAutoEditHandled, playerRef, target]);
   useEffect(() => {
-    if (!selected || (!editing && pop === null)) return;
+    if (!selected) return;
     const onDown = (event: PointerEvent) => {
       const node = event.target instanceof Node ? event.target : null;
       const action = captionPreviewOutsideClickAction({
