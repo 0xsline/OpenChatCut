@@ -15,7 +15,8 @@ export function LocaleToggle() {
   const locale = getLocale();
   return (
     <button
-      title={t('切换界面语言')}
+      className="cc-tip cc-tip-r"
+      data-tip={t('切换界面语言')}
       aria-label={t('切换界面语言')}
       onClick={() => setLocale(locale === 'zh' ? 'en' : 'zh')}
       style={{ minWidth: 30, height: 22, background: 'none', border: `0.5px solid ${theme.border}`, borderRadius: 4, cursor: 'pointer', padding: '0 5px', fontSize: 11, fontWeight: 600, letterSpacing: 0.3, color: theme.textDim, display: 'grid', placeItems: 'center' }}
@@ -41,7 +42,7 @@ interface TopBarProps {
 // one right-side icon button (monochrome lucide, hover-lit)
 function TBtn({ icon, title, onClick, disabled }: { icon: IconName; title: string; onClick?: () => void; disabled?: boolean }) {
   return (
-    <button title={title} onClick={onClick} disabled={disabled}
+    <button className="cc-tip cc-tip-r" data-tip={title} aria-label={title} onClick={onClick} disabled={disabled}
       style={{ width: 28, height: 28, background: 'none', border: 'none', cursor: disabled ? 'default' : 'pointer', padding: 0, borderRadius: 4, lineHeight: 0, display: 'grid', placeItems: 'center', color: theme.textDim, opacity: disabled ? 0.35 : 1 }}
       onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.color = theme.text; e.currentTarget.style.background = theme.panelAlt; } }}
       onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; e.currentTarget.style.background = 'none'; }}>
@@ -60,7 +61,7 @@ export function TopBar({ projectId, projectName, canUndo, canRedo, exporting, ex
   return (
     <header className="cc-topbar" style={{ gridColumn: '1 / -1', gridRow: 1, position: 'relative', height: '100%', display: 'flex', alignItems: 'center', padding: '0 6px', borderBottom: `0.5px solid ${theme.border}`, background: theme.panel, gap: 4 }}>
       {/* home in a rounded chip + a vertical divider */}
-      <button title={t('返回工程列表')} onClick={onHome}
+      <button className="cc-tip" data-tip={t('返回工程列表')} aria-label={t('返回工程列表')} onClick={onHome}
         style={{ width: 28, height: 28, background: 'none', border: 'none', borderRadius: 4, cursor: onHome ? 'pointer' : 'default', padding: 0, lineHeight: 0, display: 'grid', placeItems: 'center', color: theme.textDim }}
         onMouseEnter={(e) => { if (onHome) { e.currentTarget.style.color = theme.text; e.currentTarget.style.background = theme.panelAlt; } }}
         onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; e.currentTarget.style.background = 'none'; }}>
@@ -96,7 +97,8 @@ export function TopBar({ projectId, projectName, canUndo, canRedo, exporting, ex
       <LocaleToggle />
       <TBtn icon="layoutPanel" title={t('切换面板布局')} onClick={() => invokeAction('toggle-layout', undefined, 'toolbar')} />
       <button onClick={() => invokeAction('open-export', undefined, 'toolbar')}
-        title={exporting ? t('查看后台导出任务') : t('导出 MP4')}
+        className="cc-tip cc-tip-r"
+        data-tip={exporting ? t('查看后台导出任务') : t('导出 MP4')}
         aria-label={exporting ? t('查看后台导出任务') : t('导出 MP4')}
         style={{ minWidth: 58, height: 26, background: theme.accent, color: theme.onAccent, border: 'none', borderRadius: 2, padding: '0 8px', fontSize: 12, fontWeight: 600, cursor: 'pointer', marginLeft: 4 }}>
         {exporting ? t('{n} 个导出', { n: Math.max(1, exportJobCount) }) : t('导出')}

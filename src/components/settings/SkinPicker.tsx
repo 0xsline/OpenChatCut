@@ -15,19 +15,20 @@ export function SkinPicker() {
 
   return (
     <div style={{ position: 'relative', display: 'inline-flex' }}>
-      <button type="button" title={t('皮肤')} className="cc-header-btn" onClick={() => setOpen((o) => !o)}
+      <button type="button" data-tip={t('皮肤')} aria-label={t('皮肤')}
+        aria-haspopup="menu" aria-expanded={open} className="cc-header-btn cc-tip cc-tip-r" onClick={() => setOpen((o) => !o)}
         style={{ ...trigger, color: open ? theme.text : theme.textDim, background: open ? theme.panelAlt : 'none' }}>
         <Icon name="brush" size={16} />
       </button>
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 120 }} />
-          <div style={pop}>
+          <div role="menu" aria-label={t('皮肤')} style={pop}>
             <div style={head}>{t('皮肤')}</div>
             {SKINS.map((s) => {
               const active = current === s.id;
               return (
-                <button key={s.id} type="button" onClick={() => pick(s.id)}
+                <button key={s.id} type="button" role="menuitemradio" aria-checked={active} onClick={() => pick(s.id)}
                   style={{ ...row, background: active ? theme.panel : 'none' }}
                   onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = theme.panel; }}
                   onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'none'; }}>
