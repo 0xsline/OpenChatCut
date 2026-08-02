@@ -15,6 +15,22 @@ import {
   resizedManualCueTiming,
   type ManualCueEdge,
 } from './manualCaptions';
+import { findCaptionPreviewTarget } from './captionPreviewTarget';
+import {
+  captionSelectionKey,
+  captionSelectionRef,
+  resolveCaptionSelection,
+  type CaptionSelectOptions,
+  type CaptionSelectionRef,
+} from './captionSelection';
+import { captionContextMenuIntent, updateCaptionSelections } from './captionSelectionInteraction';
+import { CAPTION_CUE_TRANSLATION_LANGS, captionCueAgentSeed, captionCueText } from './captionCueMenu';
+import {
+  appendCaptionClipboardToTrack,
+  createCaptionTimelineClipboard,
+  type CaptionTimelineClipboard,
+} from './captionTimelineClipboard';
+import { translateLines } from './translate';
 
 const SNAP_PX = 8;
 
@@ -190,12 +206,14 @@ function useCaptionMove(options: {
   return { drag, start, cancel: () => updateDrag(null) };
 }
 
-function CaptionCueBlock({ page, index, target, locked, selected, px, fps, moveOffsetY, trim, move, onSelect, onDelete, onMenu }: {
-  page: CaptionPage; index: number; target?: ManualCueTarget; locked: boolean; selected: boolean; px: number; fps: number;
+function CaptionCueBlock({ page, index, target, selectionRef, locked, selected, px, fps, moveOffsetY, trim, move, onSelect, onDelete, onMenu }: {
+  page: CaptionPage; index: number; target?: ManualCueTarget; selectionRef: CaptionSelectionRef | null;
+  locked: boolean; selected: boolean; px: number; fps: number;
   moveOffsetY: number;
   trim: ReturnType<typeof useCaptionTrim>; move: ReturnType<typeof useCaptionMove>;
-  onSelect: (key: string | null) => void; onDelete: (target: ManualCueTarget) => void;
-  onMenu: (event: ReactMouseEvent, target: ManualCueTarget) => void;
+  onSelect: (selection: CaptionSelectionRef | null, options?: CaptionSelectOptions) => void;
+  onDelete: (target: ManualCueTarget) => void;
+  onMenu: (event: ReactMouseEvent, target: ManualCueTarget, selection: CaptionSelectionRef) => void;
 }) {
   const t = useT();
   const key = target ? `${target.laneId}:${target.index}` : `${page.start}:${index}`;
@@ -225,13 +243,29 @@ function CaptionCueBlock({ page, index, target, locked, selected, px, fps, moveO
     }}
   /> : null;
   return (
-    <div className={`cc-caption-track-cue${selected ? ' selected' : ''}`} title={text} tabIndex={target && !locked ? 0 : undefined}
+    <div className={`cc-caption-track-cue${selected ? ' selected' : ''}`} data-caption-selection-owner="timeline-cue"
+      title={text} tabIndex={selectionRef && !locked ? 0 : undefined}
       style={{ left: startFrame * px, width: Math.max(18, durationFrames * px),
         transform: move.drag?.key === key && moveOffsetY ? `translate3d(0, ${moveOffsetY}px, 0)` : undefined,
         zIndex: move.drag?.key === key ? 10 : undefined }}
-      onPointerDown={(event) => { if (!target) return; onSelect(key); event.currentTarget.focus(); move.start(event, key, target); }}
+      onPointerDown={(event) => {
+        if (!selectionRef || locked) return;
+        const additive = event.metaKey || event.ctrlKey;
+        onSelect(selectionRef, additive
+          ? { additive: true, preserveWithItems: true, toggle: true }
+          : undefined);
+        event.currentTarget.focus();
+        if (target && !additive) move.start(event, key, target);
+      }}
       onPointerCancel={move.cancel}
-      onContextMenu={(event) => { if (!target || locked) return; event.preventDefault(); onSelect(key); onMenu(event, target); }}
+      onContextMenu={(event) => {
+        if (!target || locked || !selectionRef) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (captionContextMenuIntent(event.ctrlKey) === 'ignore-after-toggle') return;
+        if (!selected) onSelect(selectionRef);
+        onMenu(event, target, selectionRef);
+      }}
       onKeyDown={(event) => {
         if (!target || (event.key !== 'Delete' && event.key !== 'Backspace')) return;
         event.preventDefault();
@@ -242,20 +276,60 @@ function CaptionCueBlock({ page, index, target, locked, selected, px, fps, moveO
   );
 }
 
-export function CaptionTrackLane({ state, captions, trackId, playheadFrame, px, rowHeight, hidden, locked, snapping, trackFromClientY, onUpdate, onMove, onDelete }: {
+export function CaptionTrackLane({
+  state, captions, trackId, playheadFrame, px, rowHeight, hidden, locked, snapping, trackFromClientY,
+  selectedCaptions: controlledSelectedCaptions, onSelectCaption, onUpdate, onMove, onDelete,
+  onCopyCue, onPasteCue, onSeedChat, onTranslateCue,
+}: {
   state: TimelineState; captions: CaptionsData | null; trackId: TrackId; playheadFrame: number; px: number;
   hidden: boolean; locked: boolean; snapping: boolean; rowHeight: number; trackFromClientY: (clientY: number) => TrackId;
+  selectedCaptions?: CaptionSelectionRef[];
+  onSelectCaption?: (selection: CaptionSelectionRef | null, options?: CaptionSelectOptions) => void;
   onUpdate: (patch: Partial<CaptionsData>) => void; onMove: (move: CaptionCueMove) => void;
   onDelete: (laneId: string, index: number) => void;
+  onCopyCue?: (selection: CaptionSelectionRef) => void;
+  onPasteCue?: () => boolean;
+  onSeedChat?: (text: string) => void;
+  onTranslateCue?: (text: string, start: number, end: number) => void;
 }) {
   const t = useT();
-  const [selected, setSelected] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ x: number; y: number; target: ManualCueTarget } | null>(null);
+  const [localSelections, setLocalSelections] = useState<CaptionSelectionRef[]>([]);
+  const selectedCaptions = controlledSelectedCaptions ?? localSelections;
+  const selectCaption = (selection: CaptionSelectionRef | null, options?: CaptionSelectOptions) => {
+    if (onSelectCaption) {
+      onSelectCaption(selection, options);
+      return;
+    }
+    if (!selection) {
+      setLocalSelections([]);
+      return;
+    }
+    if (!options?.additive) {
+      setLocalSelections([selection]);
+      return;
+    }
+    setLocalSelections((current) => updateCaptionSelections(current, selection, options.toggle ? 'toggle' : 'add'));
+  };
+  const [timelineClipboard, setTimelineClipboard] = useState<CaptionTimelineClipboard | null>(null);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    target: ManualCueTarget;
+    selection: CaptionSelectionRef;
+  } | null>(null);
+  const [translationOpen, setTranslationOpen] = useState(false);
+  const [menuBusy, setMenuBusy] = useState(false);
+  const [menuError, setMenuError] = useState<string | null>(null);
+  const closeMenu = () => {
+    setMenu(null);
+    setTranslationOpen(false);
+    setMenuBusy(false);
+    setMenuError(null);
+  };
   useEffect(() => {
     if (!menu) return;
-    const close = () => setMenu(null);
-    window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
+    window.addEventListener('pointerdown', closeMenu);
+    return () => window.removeEventListener('pointerdown', closeMenu);
   }, [menu]);
   const pages = captions ? captionPages(captions, state.items, state.fps) : [];
   const targets = manualCueTargets(captions);
@@ -267,9 +341,72 @@ export function CaptionTrackLane({ state, captions, trackId, playheadFrame, px, 
     && !state.tracks?.[move.drag.targetTrackId]?.locked
     ? (trackIds.indexOf(move.drag.targetTrackId) - trackIds.indexOf(trackId)) * rowHeight
     : 0;
-  const remove = (target: ManualCueTarget) => { setSelected(null); setMenu(null); onDelete(target.laneId, target.index); };
+  const remove = (target: ManualCueTarget) => {
+    selectCaption(null);
+    closeMenu();
+    onDelete(target.laneId, target.index);
+  };
+  const copyCue = async (selection: CaptionSelectionRef) => {
+    const selectionIsActive = selectedCaptions.some(
+      (candidate) => captionSelectionKey(candidate) === captionSelectionKey(selection),
+    );
+    const selections = selectionIsActive ? selectedCaptions : [selection];
+    const cues = selections.flatMap((candidate) => {
+      const resolved = resolveCaptionSelection(state, candidate)?.target.cue;
+      return resolved ? [{ text: resolved.text, start: resolved.start, end: resolved.end }] : [];
+    });
+    const clipboard = createCaptionTimelineClipboard(cues);
+    if (!clipboard) return;
+    setTimelineClipboard(clipboard);
+    onCopyCue?.(selection);
+    try {
+      await navigator.clipboard.writeText(clipboard.cues.map((cue) => cue.text).join('\n'));
+    } catch {
+      // The structured in-app clipboard remains available when OS permission is denied.
+    }
+    closeMenu();
+  };
+  const pasteCue = () => {
+    if (onPasteCue?.()) {
+      closeMenu();
+      return;
+    }
+    if (!captions || !timelineClipboard) {
+      setMenuError(t('剪贴板里没有可粘贴的文字'));
+      return;
+    }
+    const patch = appendCaptionClipboardToTrack(
+      captions,
+      state.items,
+      timelineClipboard,
+      Math.round(playheadFrame * 1000 / state.fps),
+    );
+    if (!patch) {
+      setMenuError(t('剪贴板里没有可粘贴的文字'));
+      return;
+    }
+    onUpdate(patch);
+    closeMenu();
+  };
+  const translateCue = async (target: ManualCueTarget, language: string) => {
+    if (!onTranslateCue || menuBusy) return;
+    const cue = target.words[target.index];
+    if (!cue) return;
+    setMenuBusy(true);
+    setMenuError(null);
+    try {
+      const [translated] = await translateLines([captionCueText(target)], language);
+      const text = translated?.trim();
+      if (!text) throw new Error(t('字幕翻译没有返回文字'));
+      onTranslateCue(text, cue.start, cue.end);
+      closeMenu();
+    } catch (cause) {
+      setMenuBusy(false);
+      setMenuError(cause instanceof Error ? cause.message : t('字幕翻译失败'));
+    }
+  };
   return (
-    <div className="cc-caption-track-lane" style={{
+    <div className="cc-caption-track-lane" data-caption-selection-region="timeline" style={{
       background: locked ? `color-mix(in srgb, ${theme.bg} 70%, ${themeAlpha.shadow(1)})` : theme.bg,
       opacity: hidden ? 0.4 : locked ? 0.75 : 1,
       overflow: move.drag ? 'visible' : undefined,
@@ -279,12 +416,50 @@ export function CaptionTrackLane({ state, captions, trackId, playheadFrame, px, 
       {pages.map((page, index) => {
         const target = page.words.length === 1 ? targets.get(page.words[0]!) : undefined;
         const key = target ? `${target.laneId}:${target.index}` : `${page.start}:${index}`;
-        return <CaptionCueBlock key={key} page={page} index={index} target={target} locked={locked} selected={selected === key}
-          px={px} fps={state.fps} moveOffsetY={moveOffsetY} trim={trim} move={move} onSelect={setSelected} onDelete={remove}
-          onMenu={(event, cue) => setMenu({ x: event.clientX, y: event.clientY, target: cue })} />;
+        const previewTarget = !target && captions
+          ? findCaptionPreviewTarget(captions, state.items, state.fps, (page.start + page.end) / 2)
+          : null;
+        const selectionRef = target
+          ? { trackId, kind: 'manual' as const, laneId: target.laneId, cueIndex: target.index }
+          : previewTarget ? captionSelectionRef(trackId, previewTarget) : null;
+        const selected = selectedCaptions.some(
+          (selection) => captionSelectionKey(selection) === captionSelectionKey(selectionRef),
+        );
+        return <CaptionCueBlock key={key} page={page} index={index} target={target} selectionRef={selectionRef}
+          locked={locked} selected={selected} px={px} fps={state.fps} moveOffsetY={moveOffsetY}
+          trim={trim} move={move} onSelect={selectCaption} onDelete={remove}
+          onMenu={(event, cue, selection) => {
+            setTranslationOpen(false);
+            setMenuError(null);
+            setMenu({
+              x: Math.max(8, Math.min(event.clientX, window.innerWidth - 180)),
+              y: Math.max(8, Math.min(event.clientY, window.innerHeight - 300)),
+              target: cue,
+              selection,
+            });
+          }} />;
       })}
-      {menu && <div className="cc-caption-cue-menu" role="menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
-        <button type="button" role="menuitem" onClick={() => remove(menu.target)}>{t('删除')}</button>
+      {menu && <div className="cc-caption-cue-menu" data-caption-selection-owner="cue-menu" role="menu"
+        style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
+        {translationOpen ? <>
+          <button type="button" role="menuitem" onClick={() => setTranslationOpen(false)}>{t('翻译')}</button>
+          {CAPTION_CUE_TRANSLATION_LANGS.map((language) => <button key={language.label} type="button" role="menuitem"
+            disabled={menuBusy} onClick={() => void translateCue(menu.target, language.label)}>
+            {language.flag} {language.label}
+          </button>)}
+        </> : <>
+          <button type="button" role="menuitem" onClick={() => void copyCue(menu.selection)}>{t('复制')}</button>
+          <button type="button" role="menuitem" onClick={pasteCue}>{t('粘贴')}</button>
+          {onTranslateCue && <button type="button" role="menuitem" aria-haspopup="menu"
+            onClick={() => setTranslationOpen(true)}>{t('翻译')} ›</button>}
+          {onSeedChat && <button type="button" role="menuitem" onClick={() => {
+            onSeedChat(captionCueAgentSeed(captionCueText(menu.target)));
+            closeMenu();
+          }}>{t('添加到 AI 对话框')}</button>}
+          <button type="button" role="menuitem" onClick={() => remove(menu.target)}>{t('删除')}</button>
+        </>}
+        {menuBusy && <div role="status">{t('翻译中...')}</div>}
+        {menuError && <div role="alert">{menuError}</div>}
       </div>}
     </div>
   );

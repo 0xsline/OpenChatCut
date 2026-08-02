@@ -91,6 +91,13 @@ export default {
   '结束秒数': 'End time in seconds',
   '字幕文字': 'Caption text',
   '删除': 'Delete',
+  '复制': 'Copy',
+  '粘贴': 'Paste',
+  '添加到 AI 对话框': 'Add to AI composer',
+  '无法复制字幕，请检查剪贴板权限': 'Could not copy the caption. Check clipboard permission.',
+  '无法读取剪贴板，请检查剪贴板权限': 'Could not read the clipboard. Check clipboard permission.',
+  '剪贴板里没有可粘贴的文字': 'The clipboard has no text to paste.',
+  '字幕翻译没有返回文字': 'Caption translation returned no text.',
   // CaptionsControls — Language variants/bilingual translations
   '字幕语言（文本变体）': 'Caption language (text variant)',
   '原文（source）': 'Original (source)',
