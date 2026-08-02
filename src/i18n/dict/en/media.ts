@@ -63,6 +63,10 @@ export default {
   '这个文件夹是空的': 'This folder is empty',
   '导入媒体或把素材拖到这里。': 'Import media or drag files here.',
   '当前筛选下没有素材': 'No assets match the current filter',
+  '正在时间线中使用': 'Used on a timeline',
+  '删除正在使用的素材': 'Delete In-Use Media',
+  '此素材正在剪辑中，确定删除吗？': 'This media is used in the edit. Delete it?',
+  '删除「{name}」会同时从所有时间线移除对应片段。': 'Deleting “{name}” will also remove its clips from every timeline.',
   '取消收藏': 'Unfavorite',
   '确认删除': 'Confirm Delete', // Same key and same value as components.ts
   '取消': 'Cancel',

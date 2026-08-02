@@ -16,6 +16,7 @@ interface MediaPoolGridProps {
   view: 'grid' | 'list';
   selected: ReadonlySet<string>;
   missing: ReadonlySet<string>;
+  usedAssetIds: ReadonlySet<string>;
   assetMenu: string | null;
   canRelink: boolean;
   onOpenFolder: (id: string) => void;
@@ -101,6 +102,7 @@ function MediaVirtualRows(props: MediaPoolGridProps & ReturnType<typeof useMedia
               active={props.activePreviewId === entry.asset.id}
               selected={props.selected.has(entry.asset.id)}
               missing={props.missing.has(entry.asset.id)}
+              used={props.usedAssetIds.has(entry.asset.id)}
               canRelink={props.canRelink}
               onAdd={props.onAddAsset}
               onPointerChange={props.setPointerId}

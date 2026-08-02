@@ -51,6 +51,7 @@ export function isTimelineItem(value: unknown): value is TimelineItem {
     && optionalFinite(item.srcInFrame) && (item.srcInFrame === undefined || item.srcInFrame >= 0)
     && optionalFinite(item.playbackRate) && (item.playbackRate === undefined || item.playbackRate > 0)
     && optionalFinite(item.volume) && (item.volume === undefined || (item.volume >= 0 && item.volume <= 2))
+    && (item.sourceAssetId === undefined || typeof item.sourceAssetId === 'string')
     && (item.kind !== 'sequence' || (typeof item.timelineId === 'string' && item.timelineId.length > 0));
 }
 

@@ -18,6 +18,7 @@ interface MediaPoolPanelProps {
   assets: MediaAsset[];
   folders: MediaFolder[];
   fps: number;
+  usedAssetIds: ReadonlySet<string>;
   offlineAssetIds: ReadonlySet<string>;
   onAssetLoadError: (asset: MediaAsset) => void;
   onImport: (file: File, onProgress?: (ratio: number) => void) => Promise<MediaAsset>;
@@ -39,8 +40,9 @@ interface MediaPoolPanelProps {
 
 type PromptState = { title: string; initialValue: string; rejectSlash?: boolean; onSubmit: (value: string) => void };
 type DeleteState = { id: string; name: string; parentId?: string };
+type AssetDeleteState = { id: string; name: string };
 export function MediaPoolPanel({
-  semanticScopeId, assets, folders, fps, offlineAssetIds, onAssetLoadError,
+  semanticScopeId, assets, folders, fps, usedAssetIds, offlineAssetIds, onAssetLoadError,
   onImport, onImportMobile, onAddAsset, onCreateFolder, onRenameFolder,
   onDeleteFolder, onMoveAssets, onRenameAsset, onSetFavorite, onRemoveAsset, onRelinkAsset, onAddSolid,
 }: MediaPoolPanelProps) {
@@ -70,6 +72,7 @@ export function MediaPoolPanel({
   const [promptState, setPromptState] = useState<PromptState | null>(null);
   const [promptValue, setPromptValue] = useState('');
   const [deleteState, setDeleteState] = useState<DeleteState | null>(null);
+  const [assetDeleteState, setAssetDeleteState] = useState<AssetDeleteState | null>(null);
   const [mediaErrors, setMediaErrors] = useState<Set<string>>(() => new Set());
   const missing = useMemo(
     () => new Set([...offlineAssetIds, ...mediaErrors]),
@@ -326,6 +329,7 @@ export function MediaPoolPanel({
         view={view}
         selected={selected}
         missing={missing}
+        usedAssetIds={usedAssetIds}
         assetMenu={assetMenu}
         canRelink={!!onRelinkAsset}
         onOpenFolder={openFolder}
@@ -351,7 +355,18 @@ export function MediaPoolPanel({
         onFavorite={() => { if (menuAsset) onSetFavorite(menuAsset.id, !menuAsset.favorite); closeAssetMenu(true); }}
         onRename={() => { if (menuAsset) openPrompt({ title: '素材显示名称', initialValue: menuAsset.name, onSubmit: (name) => onRenameAsset(menuAsset.id, name) }); modalFocus.remember(() => closeAssetMenu(true)); closeAssetMenu(); }}
         onRelink={() => { if (menuAsset) startRelink(menuAsset.id); closeAssetMenu(); }}
-        onRemove={() => { if (!menuAsset || !onRemoveAsset) return; if (confirmDeleteId !== menuAsset.id) { setConfirmDeleteId(menuAsset.id); return; } onRemoveAsset(menuAsset.id); closeAssetMenu(true); setConfirmDeleteId(null); }}
+        onRemove={() => {
+          if (!menuAsset || !onRemoveAsset) return;
+          if (usedAssetIds.has(menuAsset.id)) {
+            setAssetDeleteState({ id: menuAsset.id, name: menuAsset.name });
+            closeAssetMenu();
+            return;
+          }
+          if (confirmDeleteId !== menuAsset.id) { setConfirmDeleteId(menuAsset.id); return; }
+          onRemoveAsset(menuAsset.id);
+          closeAssetMenu(true);
+          setConfirmDeleteId(null);
+        }}
         onMove={(folderId) => { if (menuAsset) onMoveAssets([menuAsset.id], folderId); closeAssetMenu(true); }}
       />
 
@@ -364,6 +379,19 @@ export function MediaPoolPanel({
       </div>}
       {deleteState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('删除空文件夹')}>
         <div className="cc-modal"><strong>{t('删除空文件夹「{name}」？', { name: deleteState.name })}</strong><div><button onClick={() => setDeleteState(null)}>{t('取消')}</button><button className="danger" onClick={() => { onDeleteFolder(deleteState.id); setCurrentFolderId(deleteState.parentId); setDeleteState(null); }}>{t('删除')}</button></div></div>
+      </div>}
+      {assetDeleteState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('删除正在使用的素材')} onClick={() => setAssetDeleteState(null)}>
+        <div className="cc-modal" onClick={(event) => event.stopPropagation()}>
+          <strong>{t('此素材正在剪辑中，确定删除吗？')}</strong>
+          <p className="cc-asset-delete-detail">{t('删除「{name}」会同时从所有时间线移除对应片段。', { name: assetDeleteState.name })}</p>
+          <div>
+            <button type="button" onClick={() => setAssetDeleteState(null)}>{t('取消')}</button>
+            <button type="button" className="danger" onClick={() => {
+              onRemoveAsset?.(assetDeleteState.id);
+              setAssetDeleteState(null);
+            }}>{t('确认删除')}</button>
+          </div>
+        </div>
       </div>}
 
       <RelinkAllDialog

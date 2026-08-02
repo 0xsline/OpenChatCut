@@ -217,6 +217,8 @@ export interface TimelineItem {
   height?: number;
   // audio / video / image / gif / svg source:
   src?: string;
+  /** Stable media-pool identity; unlike src, this remains unambiguous across duplicates and relinks. */
+  sourceAssetId?: string;
   /** Revision copied from the pool asset when this clip was placed or relinked. */
   sourceRevision?: string;
   /** Nested sequence reference. Required when kind='sequence'; absent on legacy items. */

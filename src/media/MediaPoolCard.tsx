@@ -14,6 +14,7 @@ interface MediaAssetCardProps {
   active: boolean;
   selected: boolean;
   missing: boolean;
+  used: boolean;
   view: 'grid' | 'list';
   canRelink: boolean;
   onAdd: (asset: MediaAsset) => void;
@@ -199,6 +200,7 @@ function AssetBadges(props: MediaAssetCardProps) {
     <>
       {asset.kind === 'audio' && <span className="cc-asset-audio-mark"><Icon name="volume" size={14} /></span>}
       {(asset.kind === 'gif' || asset.kind === 'svg') && <span className="cc-asset-audio-mark cc-asset-kind-mark">{asset.kind.toUpperCase()}</span>}
+      {props.used && <span className="cc-asset-used-dot" title={t('正在时间线中使用')} aria-label={t('正在时间线中使用')} />}
       <span className="cc-asset-duration">{durationLabel(asset.durationInFrames, props.fps)}</span>
       <input className="cc-asset-check" aria-label={t('选择 {name}', { name: asset.name })} type="checkbox" checked={props.selected} onChange={() => props.onToggleSelected(asset.id)} />
       <button className="cc-asset-more" aria-label={t('管理 {name}', { name: asset.name })} onClick={(event) => {

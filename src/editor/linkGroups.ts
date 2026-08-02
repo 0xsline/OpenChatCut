@@ -1,5 +1,5 @@
-import type { TimelineItem, TimelineLinkGroup, TimelineLinkMode, TimelineState, TrackId } from './types';
-import { sourceFramesToTimelineFrames, timelineFramesToSourceFrames } from './sourceLimit';
+import type { TimelineItem, TimelineLinkGroup, TimelineLinkMode, TimelineState, TrackId } from './types.js';
+import { sourceFramesToTimelineFrames, timelineFramesToSourceFrames } from './sourceLimit.js';
 
 const unique = (ids: readonly string[]): string[] => [...new Set(ids)];
 const LINKED_MODES: ReadonlySet<TimelineLinkMode> = new Set(['linked']);

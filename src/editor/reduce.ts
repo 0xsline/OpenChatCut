@@ -12,6 +12,11 @@ import { planSlip } from './slip';
 import { sequenceGraphError, sequenceReferencesTo } from './sequenceGraph';
 import { createMediaSourceRevision, revisionAfterRelink, sourceRevisionOf, withMediaSourceRevision } from './mediaSourceRevision';
 import {
+  mapTimelineAssetItems,
+  removeAssetFromTimeline,
+  timelineItemUsesAsset,
+} from './mediaAssetUsage';
+import {
   applyRippleShifts,
   linkedItemIds,
   moveItemWithGroups,
@@ -1189,7 +1194,19 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
         const updated = sourceChanged
           ? { ...next, sourceRevision: revisionAfterRelink(asset, { ...next, sourceRevision: undefined }) }
           : next;
-        return { ...p, assets: p.assets.map((item) => item.id === a.id ? updated : item) };
+        const timelines = a.patch.name === undefined || a.patch.name === asset.name
+          ? p.timelines
+          : p.timelines.map((timeline) => mapTimelineAssetItems(
+              timeline,
+              asset,
+              p.assets,
+              (item) => ({ ...item, sourceAssetId: asset.id, name: a.patch.name! }),
+            ));
+        return {
+          ...p,
+          assets: p.assets.map((item) => item.id === a.id ? updated : item),
+          timelines,
+        };
       }
       case 'pool.setTranscription': {
         // Ingest ASR result → pool asset. Objects (words[]) always
@@ -1209,7 +1226,6 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
         // Relink File / Relink Missing Media updates the pool asset and every clip using its old src.
         const asset = p.assets.find((item) => item.id === a.id);
         if (!asset) return p;
-        const oldSrc = asset.src;
         const replacement = {
           ...asset,
           src: a.src,
@@ -1231,14 +1247,12 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
           transcriptStale: asset.transcript?.length ? true : asset.transcriptStale,
         };
         type RelinkableTimelineItem = TimelineItem & {
-          assetId?: string;
           sourceTimecode?: MediaAsset['sourceTimecode'];
           captureClock?: MediaAsset['captureClock'];
         };
         const usesRelinkedAsset = (item: TimelineItem): boolean => {
           if (item.kind === 'motion-graphic' && item.templateId === a.id) return false;
-          const linked = item as RelinkableTimelineItem;
-          return linked.assetId !== undefined ? linked.assetId === a.id : item.src === oldSrc;
+          return timelineItemUsesAsset(item, asset, p.assets);
         };
         const relinkTimelineItem = (item: TimelineItem): TimelineItem => {
           const {
@@ -1250,6 +1264,7 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
           } = item as RelinkableTimelineItem;
           return {
             ...sourceIndependent,
+            sourceAssetId: asset.id,
             src: a.src,
             sourceRevision: nextAsset.sourceRevision,
             name: a.name ?? item.name,
@@ -1262,24 +1277,23 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
         return {
           ...p,
           assets: p.assets.map((item) => (item.id === a.id ? nextAsset : item)),
-          timelines: p.timelines.map((tl) => ({
-            ...tl,
-            items: tl.items.map((item) => usesRelinkedAsset(item) ? relinkTimelineItem(item) : item),
-            multicamGroups: tl.multicamGroups?.map((group) => {
-              let changed = false;
-              const angles = group.angles.map((angle) => {
-                if (!usesRelinkedAsset(angle.source)) return angle;
-                changed = true;
-                return { ...angle, source: relinkTimelineItem(angle.source) };
-              });
-              return changed ? { ...group, angles } : group;
-            }),
-          })),
+          timelines: p.timelines.map((timeline) => mapTimelineAssetItems(
+            timeline,
+            asset,
+            p.assets,
+            (item) => usesRelinkedAsset(item) ? relinkTimelineItem(item) : item,
+          )),
         };
       }
-      case 'pool.removeAsset':
-        if (!p.assets.some((item) => item.id === a.id)) return p;
-        return { ...p, assets: p.assets.filter((item) => item.id !== a.id) };
+      case 'pool.removeAsset': {
+        const asset = p.assets.find((item) => item.id === a.id);
+        if (!asset) return p;
+        return {
+          ...p,
+          assets: p.assets.filter((item) => item.id !== a.id),
+          timelines: p.timelines.map((timeline) => removeAssetFromTimeline(timeline, asset, p.assets)),
+        };
+      }
       // Design style represents the project's brand.
       case 'design.set':
         return { ...p, designStyle: a.style ?? undefined };
