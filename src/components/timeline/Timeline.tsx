@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme, themeAlpha } from '../../theme';
 import {
@@ -30,6 +30,11 @@ import { usePlayheadPaint } from './usePlayheadPaint';
 import { useTimelineZoomController } from './useTimelineZoomController';
 import { timelineFitTotalFrames } from './timelineFitRange';
 import { trackDeletePlan } from './trackDelete';
+import {
+  timelineGestureHasDragged,
+  timelinePointerShouldSeek,
+  timelineSeekFrameAtClientX,
+} from './timelineSeek';
 import { applyLibraryToClip as applyToClip, applyLibraryToTrack as applyToTrack } from './libraryDropActions';
 import {
   HEADER_W, MAX_ROW, MIN_ROW, RULER_H, TRACK_ROW, buildTimelineIndexes,
@@ -52,9 +57,14 @@ interface TimelineProps {
   shortcutApiRef?: RefObject<TimelineShortcutApi | null>;
   onReviewItem?: (request: { itemId: string; frame: number; clientX: number; clientY: number }) => void;
   onSlipPreview?: (preview: SlipPreview | null) => void;
+  /** Read-only frame under the pointer; never mutates the formal playhead. */
+  onHoverPreviewFrameChange?: (frame: number | null) => void;
 }
 
-export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceover, shortcutApiRef, onReviewItem, onSlipPreview }: TimelineProps) {
+export function Timeline({
+  state, commands, playerRef, projectId, onRecordVoiceover, shortcutApiRef,
+  onReviewItem, onSlipPreview, onHoverPreviewFrameChange,
+}: TimelineProps) {
   const t = useT();
   const locale = getLocale();
   const total = useMemo(() => timelineFitTotalFrames(state), [state]);
@@ -68,6 +78,14 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   );
   const innerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const seekGestureRef = useRef<{
+    pointerId: number;
+    button: number;
+    startX: number;
+    startY: number;
+    dragged: boolean;
+  } | null>(null);
+  const [hoverPreviewFrame, setHoverPreviewFrame] = useState<number | null>(null);
   const timelineId = (state as { id?: string }).id;
   const { zoom, setZoom, zoomBy, fitToView, pixelsPerFrame: px, trackScale } =
     useTimelineZoomController({ scrollRef, totalFrames: total, fps: state.fps, projectId, timelineId });
@@ -79,7 +97,10 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     return { kind, color };
   };
   // Playhead drawing machine: rAF frame direct drawing + Player watchdog + breakpoint resume (usePlayheadPaint)
-  const { playheadRef, playheadLineRef, toolbarTimecodeRef, rulerTimecodeRef, paintPlayhead, playing } =
+  const {
+    playheadRef, playheadLineRef, toolbarTimecodeRef, rulerTimecodeRef,
+    paintPlayhead, setTimecodePreviewFrame, playing,
+  } =
     usePlayheadPaint({ playerRef, projectId, timelineId, fps: state.fps, total, px });
   // editing mode (Selection V / Blade B / Trim N / Pen P). selection =
   // drag/move; blade = click a clip to cut it there; trim = edge-trim ripples
@@ -301,6 +322,64 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
     paintPlayhead(c);
   };
 
+  const frameAtClientX = (clientX: number) => {
+    const rect = innerRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return timelineSeekFrameAtClientX(clientX, {
+      contentLeft: rect.left,
+      headerWidth: HEADER_W,
+      pixelsPerFrame: px,
+      totalFrames: total,
+    });
+  };
+  const clearHoverPreview = () => {
+    if (hoverPreviewFrame === null) return;
+    setHoverPreviewFrame(null);
+    setTimecodePreviewFrame(null);
+    onHoverPreviewFrameChange?.(null);
+  };
+  const updateHoverPreview = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (playing || event.buttons !== 0 || drag || marquee || pickDrag) {
+      clearHoverPreview();
+      return;
+    }
+    const frame = frameAtClientX(event.clientX);
+    if (frame === hoverPreviewFrame) return;
+    setHoverPreviewFrame(frame);
+    setTimecodePreviewFrame(frame);
+    onHoverPreviewFrameChange?.(frame);
+  };
+  const startSeekGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target?.closest('[data-timeline-track-lane], .cc-caption-track-lane')) return;
+    seekGestureRef.current = {
+      pointerId: event.pointerId,
+      button: event.button,
+      startX: event.clientX,
+      startY: event.clientY,
+      dragged: false,
+    };
+  };
+  const updateSeekGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const gesture = seekGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId || gesture.dragged) return;
+    gesture.dragged = timelineGestureHasDragged(
+      gesture.startX,
+      gesture.startY,
+      event.clientX,
+      event.clientY,
+    );
+  };
+  const finishSeekGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const gesture = seekGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    seekGestureRef.current = null;
+    if (!timelinePointerShouldSeek(gesture.button, pickMode, gesture.dragged)) return;
+    const frame = frameAtClientX(event.clientX);
+    if (frame !== null) seekFrame(frame);
+  };
+  useEffect(() => () => onHoverPreviewFrameChange?.(null), [onHoverPreviewFrameChange]);
+
   // blade (B): split the selected clip at the playhead. splitItem no-ops if the
   // playhead is outside the clip, so no guard needed here.
   const bladeSelected = () => { if (state.selectedId) commands.splitItem(state.selectedId, playheadRef.current); };
@@ -351,6 +430,14 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
       {/* scrollable ruler + tracks (playhead spans both). Ctrl/⌘+wheel = time
           zoom at cursor, Alt+wheel = track-height zoom (native listener above). */}
       <div ref={scrollRef} style={{ overflow: 'auto', flex: 1, minHeight: 0 }}
+        onPointerDownCapture={startSeekGesture}
+        onPointerMoveCapture={(event) => { updateSeekGesture(event); updateHoverPreview(event); }}
+        onPointerUpCapture={finishSeekGesture}
+        onPointerCancelCapture={(event) => {
+          if (seekGestureRef.current?.pointerId === event.pointerId) seekGestureRef.current = null;
+          clearHoverPreview();
+        }}
+        onPointerLeave={clearHoverPreview}
         onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
         title={t('Ctrl/⌘+滚轮 缩放时间轴 · Alt+滚轮 缩放轨道高度')}>
         <div ref={innerRef} style={{ position: 'relative', width: innerW }}>
@@ -432,6 +519,14 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
           {/* snap guide — appears while a drag edge is locked onto a target */}
           {drag && drag.snapAt !== null && (
             <div className="cc-snap-guide" style={{ position: 'absolute', top: 0, left: HEADER_W + drag.snapAt * px, height: RULER_H + tracksHeight }} />
+          )}
+
+          {hoverPreviewFrame !== null && (
+            <div
+              aria-hidden
+              className="cc-timeline-hover-guide"
+              style={{ left: HEADER_W + hoverPreviewFrame * px, height: RULER_H + tracksHeight }}
+            />
           )}
 
           {/* selection-mode timerange marquee (time-marked drag) */}

@@ -31,6 +31,7 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
   const playheadLineRef = useRef<HTMLDivElement | null>(null);
   const toolbarTimecodeRef = useRef<HTMLSpanElement | null>(null);
   const rulerTimecodeRef = useRef<HTMLSpanElement | null>(null);
+  const timecodePreviewFrameRef = useRef<number | null>(null);
   const [playing, setPlaying] = useState(false);
   // coalesce frameupdate → one paint per animation frame (smoother playhead)
   const pendingFrameRef = useRef<number | null>(null);
@@ -47,10 +48,16 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
     const now = performance.now();
     if (forceTc || now - lastTcPaintRef.current > 80) {
       lastTcPaintRef.current = now;
-      const f = Math.round(current);
+      const f = Math.round(timecodePreviewFrameRef.current ?? current);
       if (toolbarTimecodeRef.current) toolbarTimecodeRef.current.textContent = `${fmt(f, fps)} / ${fmt(total, fps)}`;
       if (rulerTimecodeRef.current) rulerTimecodeRef.current.textContent = fmtClock(f, fps);
     }
+  };
+  const setTimecodePreviewFrame = (frame: number | null) => {
+    timecodePreviewFrameRef.current = frame;
+    const f = Math.round(frame ?? playheadRef.current);
+    if (toolbarTimecodeRef.current) toolbarTimecodeRef.current.textContent = `${fmt(f, fps)} / ${fmt(total, fps)}`;
+    if (rulerTimecodeRef.current) rulerTimecodeRef.current.textContent = fmtClock(f, fps);
   };
   const paintPlayheadRef = useRef(paintPlayhead);
   paintPlayheadRef.current = paintPlayhead;
@@ -161,5 +168,13 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
   }, [playerRef, projectId, timelineId]);
   useEffect(() => { paintPlayheadRef.current(playheadRef.current, true); }, [px, fps, total]);
 
-  return { playheadRef, playheadLineRef, toolbarTimecodeRef, rulerTimecodeRef, paintPlayhead, playing };
+  return {
+    playheadRef,
+    playheadLineRef,
+    toolbarTimecodeRef,
+    rulerTimecodeRef,
+    paintPlayhead,
+    setTimecodePreviewFrame,
+    playing,
+  };
 }

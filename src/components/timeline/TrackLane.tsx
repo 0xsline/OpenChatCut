@@ -155,6 +155,7 @@ export function TrackLane({
     : 0;
   return (
     <div
+      data-timeline-track-lane
       className="cc-track-lane"
       style={{
         // locked lane: slightly dimmed (the background color of the locked lane is dimmed; the lock icon is highlighted at the same time)

@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
-import { Player, type CallbackListener, type PlayerRef } from '@remotion/player';
+import { Player, Thumbnail, type CallbackListener, type PlayerRef } from '@remotion/player';
 import { theme, themeAlpha } from '../theme';
 import { TimelineComposition } from '../editor/TimelineComposition';
 import type { SelectedPreviewStatus, SelectedPreviewStatusListener } from '../gl/previewAdapter';
@@ -46,12 +46,14 @@ interface PreviewPanelProps {
   selectedPreviewStatuses?: readonly SelectedPreviewStatus[];
   onSelectedPreviewStatus?: SelectedPreviewStatusListener;
   slipPreview?: SlipPreview | null;
+  hoverPreviewFrame?: number | null;
 }
 
 export const PreviewPanel = memo(function PreviewPanel({
   state, project, playerRef, onImport, offlineSrcs, onUpdateCaptions, onSeedChat,
   projectId, timelineId, reviewState, selectedItem, reviewRequest, inspectorOpen, onToggleInspector,
   selectedPreviewStatuses, onSelectedPreviewStatus, slipPreview,
+  hoverPreviewFrame = null,
 }: PreviewPanelProps) {
   const t = useT();
   const renderProject = useMemo<ProjectDoc>(() => ({
@@ -213,6 +215,20 @@ export const PreviewPanel = memo(function PreviewPanel({
               spaceKeyToPlayOrPause={false}
               loop
             />
+            {!fullscreen && hoverPreviewFrame !== null && (
+              <div className="cc-preview-hover-frame" aria-label={t('时间线悬停预览')}>
+                <Thumbnail
+                  component={TimelineComposition}
+                  inputProps={{ state: preview.state, project: preview.project, timelineId }}
+                  frameToDisplay={hoverPreviewFrame}
+                  durationInFrames={duration}
+                  fps={state.fps}
+                  compositionWidth={state.width}
+                  compositionHeight={state.height}
+                  style={{ display: 'block', width: '100%', aspectRatio: `${state.width} / ${state.height}` }}
+                />
+              </div>
+            )}
             {slipPreview && <SlipTwoUpPreview preview={slipPreview} />}
             {offlineNames.length > 0 && (
               <div role="status" style={{
