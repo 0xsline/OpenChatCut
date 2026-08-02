@@ -152,7 +152,6 @@ const GUIDE_ZH_BY_SOURCE = new Map(
 export function localizeDesignPresetName(name: string, locale: Locale): string {
   return locale === 'zh' ? (PRESET_NAME_ZH[name] ?? name) : name;
 }
-
 export function localizeDesignRole(role: string, locale: Locale): string {
   return locale === 'zh' ? (ROLE_ZH[role] ?? role) : role;
 }
@@ -164,4 +163,3 @@ export function localizeDesignFontRole(role: string, locale: Locale): string {
 export function localizeDesignStyleGuide(guide: string, locale: Locale): string {
   return locale === 'zh' ? (GUIDE_ZH_BY_SOURCE.get(guide) ?? guide) : guide;
 }
-

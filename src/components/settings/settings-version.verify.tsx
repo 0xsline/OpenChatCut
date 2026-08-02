@@ -34,4 +34,3 @@ button.props.onClick();
 assert.equal(requested, true, '点击检查更新必须触发上游查询');
 
 console.log('settings-version.verify: current version and manual check control OK');
-

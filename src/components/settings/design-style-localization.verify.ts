@@ -35,4 +35,3 @@ for (const preset of DESIGN_STYLE_PRESETS) {
 }
 
 console.log('design-style-localization.verify: preset names, roles and guides localize to Chinese');
-
