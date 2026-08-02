@@ -31,6 +31,11 @@ globalThis.fetch = (async (input, init) => {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(encoder.encode(`${JSON.stringify({
+          type: 'context-usage',
+          inputTokens: 30_000,
+          contextWindowTokens: 400_000,
+        })}\n`));
+        controller.enqueue(encoder.encode(`${JSON.stringify({
           type: 'tool-start',
           callId: 'followup-call',
           name: 'ask_followup_questions',
