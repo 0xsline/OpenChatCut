@@ -94,6 +94,8 @@ export interface CaptionWordOverride {
   hidden?: boolean;
   text?: string;
   forceBreak?: boolean;
+  /** Display-only timing shift for moving generated cues independently of source media. */
+  timingOffsetMs?: number;
 }
 
 // ──Multi-lane captions (edit_captions three brothers positions / layout_policy / source_update)──
