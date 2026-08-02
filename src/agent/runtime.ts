@@ -10,7 +10,7 @@ import {
 import type { AgentContext } from './context';
 import type { CodexAgentToolSpec } from '../../shared/codex-agent';
 import { TOOL_SCHEMAS } from './tools';
-import { SYSTEM_PROMPT, agentLanguagePrompt, assembleSystemPrompt, creativeModePrompt, designStylePrompt, editorStatePrompt } from './systemPrompt';
+import { PRODUCT_IDENTITY_PROMPT, SYSTEM_PROMPT, agentLanguagePrompt, assembleSystemPrompt, creativeModePrompt, designStylePrompt, editorStatePrompt } from './systemPrompt';
 import { capabilitiesPrompt } from './capabilities';
 import { findSkill } from './skills/skills-catalog';
 import { PLUGIN_SKILLS_INDEX } from './skills/plugin-skills';
@@ -374,6 +374,7 @@ async function runApiAgent(
     agentSettingsPrompt(settings),
     designStylePrompt(ctx.getDoc().designStyle),
     creativeModePrompt(findSkill(ctx.getCreativeMode())),
+    PRODUCT_IDENTITY_PROMPT,
   ], editorStatePrompt(ctx));
 
   let toolTurns = 0;
