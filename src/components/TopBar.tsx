@@ -7,6 +7,7 @@ import { SkinPicker } from './settings/SkinPicker';
 import { McpGuideDialog } from './settings/McpGuide';
 import { getLocale, setLocale, useT } from '../i18n/locale';
 import { invokeAction } from '../shortcuts/actionRegistry';
+import { DesktopWindowControls } from './DesktopWindowControls';
 
 // Language switching: The text pill displays the current language, click to switch between Chinese and English.
 // The editor top bar is shared with the Dashboard top bar (exported from here).
@@ -52,13 +53,15 @@ function TBtn({ icon, title, onClick, disabled }: { icon: IconName; title: strin
 
 export function TopBar({ projectId, projectName, canUndo, canRedo, exporting, exportJobCount = 0, onHome, onRename, onResumeGeneration }: TopBarProps) {
   const t = useT();
+  const isMacDesktop = window.openChatCutDesktop?.platform === 'darwin';
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(projectName);
   const [mcpOpen, setMcpOpen] = useState(false);
   const commit = () => { setEditing(false); if (onRename && draft.trim() && draft.trim() !== projectName) onRename(draft.trim()); };
 
   return (
-    <header className="cc-topbar" style={{ gridColumn: '1 / -1', gridRow: 1, position: 'relative', height: '100%', display: 'flex', alignItems: 'center', padding: '0 6px', borderBottom: `0.5px solid ${theme.border}`, background: theme.panel, gap: 4 }}>
+    <header className={`cc-topbar cc-window-titlebar${isMacDesktop ? ' cc-window-titlebar--mac' : ''}`} style={{ gridColumn: '1 / -1', gridRow: 1, position: 'relative', height: '100%', display: 'flex', alignItems: 'center', padding: '0 6px', borderBottom: `0.5px solid ${theme.border}`, background: theme.panel, gap: 4 }}>
+      <DesktopWindowControls />
       {/* home in a rounded chip + a vertical divider */}
       <button title={t('返回工程列表')} onClick={onHome}
         style={{ width: 28, height: 28, background: 'none', border: 'none', borderRadius: 4, cursor: onHome ? 'pointer' : 'default', padding: 0, lineHeight: 0, display: 'grid', placeItems: 'center', color: theme.textDim }}

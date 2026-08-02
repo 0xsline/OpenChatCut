@@ -10,6 +10,7 @@ import { LocaleToggle } from './TopBar';
 import { MediaCleanupDialog } from '../media/MediaCleanupDialog';
 import { t, useT } from '../i18n/locale';
 import { ShortcutsDialog } from '../shortcuts/ShortcutsDialog';
+import { DesktopWindowControls } from './DesktopWindowControls';
 
 interface DashboardProps {
   projects: ProjectMeta[];
@@ -98,6 +99,7 @@ function ProjectSearch({ value, onChange }: { value: string; onChange: (value: s
 
 export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDelete, onExport, onImport }: DashboardProps) {
   const t = useT();
+  const isMacDesktop = window.openChatCutDesktop?.platform === 'darwin';
   const modelSnapshot = useSyncExternalStore(subscribeAgentModels, getAgentModelSnapshot);
   const [query, setQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -180,7 +182,8 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
     // The global html/body/#root is overflow:hidden (required by the editor), and the dashboard scrolls by itself:
     // The header is fixed, main is the only vertical scrolling container, and the last line can be scrolled out even if the project is long.
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: theme.bg, color: theme.text, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-      <header style={{ height: 48, flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10, padding: '0 24px', borderBottom: `0.5px solid ${theme.border}`, background: theme.panel }}>
+      <header className={`cc-window-titlebar${isMacDesktop ? ' cc-window-titlebar--mac' : ''}`} style={{ position: 'relative', height: 48, flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10, padding: '0 24px', borderBottom: `0.5px solid ${theme.border}`, background: theme.panel }}>
+        <DesktopWindowControls />
         <BrandMark size={20} />
         <OpenChatCutWordmark />
         <span style={{ color: theme.textDim, fontSize: 13 }}>{t('· 我的工程')}</span>

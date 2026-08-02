@@ -6,14 +6,17 @@ export interface DesktopExportDirectoryGrant {
 }
 
 export interface OpenChatCutDesktopApi {
+  platform: NodeJS.Platform;
   selectDirectory(defaultPath?: string): Promise<string | null>;
   selectExportDirectory(): Promise<DesktopExportDirectoryGrant | null>;
   restoreExportDirectory(): Promise<DesktopExportDirectoryGrant | null>;
   importLocalMedia(file: File): Promise<{ src: string; storedName: string } | null>;
   prepareTransparentMovProxy(storedName: string): Promise<{ src: string } | null>;
+  windowAction(action: 'close' | 'minimize' | 'toggle-maximize'): Promise<void>;
 }
 
 const api: OpenChatCutDesktopApi = {
+  platform: process.platform,
   selectDirectory: (defaultPath) =>
     ipcRenderer.invoke('openchatcut:select-directory', defaultPath) as Promise<string | null>,
   selectExportDirectory: () =>
@@ -37,6 +40,8 @@ const api: OpenChatCutDesktopApi = {
   },
   prepareTransparentMovProxy: (storedName) =>
     ipcRenderer.invoke('openchatcut:transparent-mov-proxy', storedName) as Promise<{ src: string } | null>,
+  windowAction: (action) =>
+    ipcRenderer.invoke('openchatcut:window-action', action) as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld('openChatCutDesktop', api);

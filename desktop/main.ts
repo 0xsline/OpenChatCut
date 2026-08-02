@@ -9,6 +9,7 @@ import { startEmbeddedServer } from './embedded-server.ts';
 import { createTransparentMovProxy, importLocalMedia } from './local-media-import.ts';
 import { resolveDesktopDevOrigin } from './page-origin.ts';
 import { preparePackagedRuntime } from './packaged-runtime.ts';
+import { applyDesktopWindowFrame, desktopWindowFrameOptions } from './window-frame.ts';
 import { installResponsiveWindowScale, resolveInitialDesktopWindowBounds } from './window-scale.ts';
 import { createExportDirectoryGrant } from '../server/export-destinations.ts';
 
@@ -118,6 +119,16 @@ function registerDesktopHandlers(): void {
     if (typeof storedName !== 'string') throw new Error('invalid local media name');
     return createTransparentMovProxy(storedName);
   });
+  ipcMain.handle('openchatcut:window-action', (event, action: unknown) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || typeof action !== 'string') return;
+    if (action === 'close') win.close();
+    else if (action === 'minimize') win.minimize();
+    else if (action === 'toggle-maximize') {
+      if (win.isMaximized()) win.unmaximize();
+      else win.maximize();
+    }
+  });
 }
 
 async function smokeProbe(origin: string, win: BrowserWindow): Promise<void> {
@@ -185,6 +196,7 @@ async function boot(): Promise<void> {
     show: !SMOKE,
     backgroundColor: '#111111',
     title: 'OpenChatCut',
+    ...desktopWindowFrameOptions(),
     webPreferences: {
       preload: PRELOAD_PATH,
       contextIsolation: true,
@@ -192,6 +204,7 @@ async function boot(): Promise<void> {
       spellcheck: false,
     },
   });
+  applyDesktopWindowFrame(win);
   installResponsiveWindowScale(win);
   win.webContents.on('context-menu', (_event, params) => {
     const template = buildTextContextMenuTemplate(params);
