@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { theme } from '../../theme';
 import { useT } from '../../i18n/locale';
@@ -18,6 +24,8 @@ import { ToolGroupRow } from './ToolGroupRow';
 import { groupMessages } from './message-groups';
 import { ChatComposer, type ChatMode, type RefItem } from './ChatComposer';
 import { AgentChangeLogMenu } from './AgentChangeLogMenu';
+import { resolveChatScrollTarget, type ChatScrollTarget } from './chatScrollNavigation';
+import { selectChatMessageContents, shouldHandleChatTextSelection } from './chatTextSelection';
 import { BrandMark, Icon, OpenChatCutWordmark } from '../icons';
 import {
   clearComposerDraft,
@@ -47,6 +55,7 @@ const QUICK_ACTIONS = [
   { label: '横转竖', prompt: '将当前工程转换为 9:16 竖屏，并调整主要画面构图' },
 ];
 const MESSAGE_WINDOW_SIZE = 40;
+const CHAT_SCROLL_NAV_IDLE_MS = 900;
 
 interface ChatPanelProps {
   ctx: AgentContext;
@@ -134,6 +143,51 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   const [pasteError, setPasteError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const [chatScrollTarget, setChatScrollTarget] = useState<ChatScrollTarget | null>(null);
+  const chatScrollSampleRef = useRef({ top: 0, time: 0 });
+  const chatScrollHideTimerRef = useRef<number | null>(null);
+  const suppressChatScrollNavigationUntilRef = useRef(0);
+  const hideChatScrollNavigation = useCallback(() => {
+    if (chatScrollHideTimerRef.current !== null) {
+      window.clearTimeout(chatScrollHideTimerRef.current);
+      chatScrollHideTimerRef.current = null;
+    }
+    setChatScrollTarget(null);
+  }, []);
+  const onChatScroll = useCallback(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    const current = { top: node.scrollTop, time: performance.now() };
+    const target = resolveChatScrollTarget({
+      previous: chatScrollSampleRef.current,
+      current,
+      scrollHeight: node.scrollHeight,
+      clientHeight: node.clientHeight,
+      suppressUntil: suppressChatScrollNavigationUntilRef.current,
+    });
+    chatScrollSampleRef.current = current;
+    if (!target) return;
+    setChatScrollTarget(target);
+    if (chatScrollHideTimerRef.current !== null) window.clearTimeout(chatScrollHideTimerRef.current);
+    chatScrollHideTimerRef.current = window.setTimeout(() => {
+      chatScrollHideTimerRef.current = null;
+      setChatScrollTarget(null);
+    }, CHAT_SCROLL_NAV_IDLE_MS);
+  }, []);
+  const scrollChatTo = useCallback((target: ChatScrollTarget) => {
+    const node = scrollRef.current;
+    if (!node) return;
+    suppressChatScrollNavigationUntilRef.current = performance.now() + 1200;
+    hideChatScrollNavigation();
+    node.scrollTo({ top: target === 'top' ? 0 : node.scrollHeight, behavior: 'smooth' });
+  }, [hideChatScrollNavigation]);
+  const onChatKeyDown = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement;
+    if (!shouldHandleChatTextSelection(event, target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectChatMessageContents(scrollRef.current);
+  }, []);
   // one film-crew "thinking…" phrase per running turn
   const runSeedRef = useRef(0);
   if (running && runSeedRef.current === 0) runSeedRef.current = messages.length + 1;
@@ -152,8 +206,20 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   ];
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages, running, proposal]);
+    const node = scrollRef.current;
+    if (!node) return;
+    suppressChatScrollNavigationUntilRef.current = performance.now() + 120;
+    hideChatScrollNavigation();
+    node.scrollTo({ top: node.scrollHeight });
+    const frame = requestAnimationFrame(() => {
+      chatScrollSampleRef.current = { top: node.scrollTop, time: performance.now() };
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [messages, running, proposal, hideChatScrollNavigation]);
+
+  useEffect(() => () => {
+    if (chatScrollHideTimerRef.current !== null) window.clearTimeout(chatScrollHideTimerRef.current);
+  }, []);
 
   // library "generated with AI" seeds the composer (attaches the template as a chat ref)
   useEffect(() => {
@@ -265,7 +331,18 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   return (
     <>
       {changeLogMenu}
-      <aside className="cc-chat-panel" style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', borderRight: `0.5px solid ${theme.border}`, background: theme.panel, minHeight: 0, minWidth: 0 }}>
+      <aside
+        className="cc-chat-panel"
+        data-cc-shortcut-surface="agent-chat"
+        tabIndex={-1}
+        onKeyDown={onChatKeyDown}
+        onPointerDownCapture={(event) => {
+          if (!(event.target as HTMLElement).closest('button, input, select, textarea, [contenteditable="true"]')) {
+            event.currentTarget.focus({ preventScroll: true });
+          }
+        }}
+        style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', borderRight: `0.5px solid ${theme.border}`, background: theme.panel, minHeight: 0, minWidth: 0 }}
+      >
       <div className="cc-chat-header">
         <div className="cc-chat-brand">
           <BrandMark size={20} />
@@ -284,7 +361,8 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
       </div>
 
       {/* messages */}
-      <div ref={scrollRef} className={`cc-chat-messages${messages.length === 0 ? ' empty' : ''}`}>
+      <div className="cc-chat-messages-shell">
+      <div ref={scrollRef} onScroll={onChatScroll} className={`cc-chat-messages${messages.length === 0 ? ' empty' : ''}`}>
         {messages.length === 0 && (
           <div className="cc-chat-onboarding">
             <div className="cc-chat-onboarding-kicker">{t('从这里开工')}</div>
@@ -388,6 +466,20 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
             </div>
           </div>
         )}
+      </div>
+      {chatScrollTarget && (
+        <div className={`cc-chat-scroll-navigation cc-chat-scroll-navigation--${chatScrollTarget}`} aria-label={t('聊天滚动快捷操作')}>
+          <button
+            type="button"
+            className={`cc-chat-scroll-navigation-button cc-tip${chatScrollTarget === 'bottom' ? ' cc-chat-scroll-navigation-button--bottom cc-tip-up' : ''}`}
+            data-tip={t(chatScrollTarget === 'top' ? '快速到顶部' : '快速到底部')}
+            aria-label={t(chatScrollTarget === 'top' ? '快速到顶部' : '快速到底部')}
+            onClick={() => scrollChatTo(chatScrollTarget)}
+          >
+            <Icon name="arrowUp" size={14} />
+          </button>
+        </div>
+      )}
       </div>
 
       {/* composer — minWidth:0 so narrow chat column can't force send-btn overflow */}
