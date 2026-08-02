@@ -82,6 +82,13 @@ export function ExportHistory() {
                       <div style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
                       <div style={{ fontSize: 11, color: theme.textDim }}>{meta(r)} · {relTime(r.createdAt)}</div>
                     </div>
+                    {window.openChatCutDesktop?.revealExport && (
+                      <button type="button" onClick={() => { void window.openChatCutDesktop?.revealExport(r.name).catch(() => undefined); }}
+                        aria-label={t('打开文件夹')} title={t('打开文件夹')} style={folderBtn}>
+                        <Icon name="folder" size={14} />
+                        <span>{t('打开文件夹')}</span>
+                      </button>
+                    )}
                   </div>
                 ))
               )}
@@ -117,4 +124,9 @@ const iconBtn: React.CSSProperties = { background: 'none', border: 'none', color
 const ghostBtn: React.CSSProperties = {
   background: 'none', border: `0.5px solid ${theme.border}`, color: theme.text,
     borderRadius: 4, padding: '5px 12px', fontSize: 12.5, whiteSpace: 'nowrap',
+};
+const folderBtn: React.CSSProperties = {
+  height: 28, flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 5,
+  padding: '0 9px', border: `0.5px solid ${theme.border}`, borderRadius: 4,
+  background: 'transparent', color: theme.textDim, cursor: 'pointer', fontSize: 11.5,
 };

@@ -9,6 +9,7 @@ export interface OpenChatCutDesktopApi {
   selectDirectory(defaultPath?: string): Promise<string | null>;
   selectExportDirectory(): Promise<DesktopExportDirectoryGrant | null>;
   restoreExportDirectory(): Promise<DesktopExportDirectoryGrant | null>;
+  revealExport(filename: string): Promise<void>;
 }
 
 const api: OpenChatCutDesktopApi = {
@@ -18,6 +19,8 @@ const api: OpenChatCutDesktopApi = {
     ipcRenderer.invoke('openchatcut:select-export-directory') as Promise<DesktopExportDirectoryGrant | null>,
   restoreExportDirectory: () =>
     ipcRenderer.invoke('openchatcut:restore-export-directory') as Promise<DesktopExportDirectoryGrant | null>,
+  revealExport: (filename) =>
+    ipcRenderer.invoke('openchatcut:reveal-export', filename) as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld('openChatCutDesktop', api);

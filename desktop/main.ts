@@ -1,12 +1,14 @@
 import './chdir-first.ts';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell, type OpenDialogOptions } from 'electron';
 import { startEmbeddedServer } from './embedded-server.ts';
 import { preparePackagedRuntime } from './packaged-runtime.ts';
 import { createExportDirectoryGrant } from '../server/export-destinations.ts';
+import { exportRevealCandidate } from './export-reveal.ts';
 
 // Electron main process entry. dev mode: esbuild hits desktop-dist/main.mjs,dist/ in the codebase root;
 // Packaging form: dist/, resonance-bundle, chrome-headless-shell use extraResources.
@@ -100,6 +102,16 @@ function registerDesktopHandlers(): void {
   ipcMain.handle('openchatcut:restore-export-directory', async () => {
     const directory = await restorePersistedExportDirectory(exportStatePath);
     return directory ? createExportDirectoryGrant(directory) : null;
+  });
+  ipcMain.handle('openchatcut:reveal-export', async (_event, filename: unknown) => {
+    const directory = await restorePersistedExportDirectory(exportStatePath) ?? app.getPath('downloads');
+    const candidate = exportRevealCandidate(directory, filename);
+    if (candidate && existsSync(candidate)) {
+      shell.showItemInFolder(candidate);
+      return;
+    }
+    const error = await shell.openPath(directory);
+    if (error) throw new Error(error);
   });
 }
 
