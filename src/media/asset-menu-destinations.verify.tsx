@@ -32,7 +32,7 @@ try {
   const { runAssetDestinationAction } = await vite.ssrLoadModule(
     '/src/media/assetDestination.ts',
   ) as typeof import('./assetDestination');
-  const { assetMenuSelectionIds, assetMenuFavoriteValue, batchAssetRename } = await vite.ssrLoadModule(
+  const { assetMenuSelectionIds, assetMenuFavoriteValue, batchAssetRename, duplicateAssetName } = await vite.ssrLoadModule(
     '/src/media/assetMenuSelection.ts',
   ) as typeof import('./assetMenuSelection');
 
@@ -50,6 +50,8 @@ try {
     ['asset-a', 'asset-b'],
     '右键已选素材必须保留整个多选集',
   );
+  assert.equal(duplicateAssetName('桂林行程.mp4', 'copy'), '桂林行程 copy.mp4');
+  assert.equal(duplicateAssetName('无扩展名', 'copy'), '无扩展名 copy');
   assert.deepEqual(
     assetMenuSelectionIds('asset-c', new Set(['asset-a', 'asset-b']), ['asset-a', 'asset-b', 'asset-c']),
     ['asset-c'],

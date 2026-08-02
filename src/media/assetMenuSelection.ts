@@ -21,6 +21,13 @@ function fileExtension(name: string): string {
   return dot > 0 ? name.slice(dot) : '';
 }
 
+/** Keep the real extension at the end so pasted copies remain exportable and renameable. */
+export function duplicateAssetName(name: string, suffix: string): string {
+  const extension = fileExtension(name);
+  if (!extension) return `${name} ${suffix}`;
+  return `${name.slice(0, -extension.length)} ${suffix}${extension}`;
+}
+
 /** Apply one shared display-name root while keeping each media file's extension distinct. */
 export function batchAssetRename(
   assets: readonly { id: string; name: string }[],
