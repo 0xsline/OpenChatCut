@@ -22,9 +22,12 @@ export function useShortcutDispatcher(
     const onKeyDown = (e: KeyboardEvent) => {
       const nk = normalizeKey(e.key);
       if (!['shift', 'control', 'alt', 'meta'].includes(nk)) held.add(nk);
+      if (e.defaultPrevented) return;
 
       // Shift+Backspace is ripple-delete — special case: still match delete with shift
-      const id = matchShortcut(e, effectiveCatalog(), { held });
+      const selection = window.getSelection();
+      const hasTextSelection = selection?.isCollapsed === false;
+      const id = matchShortcut(e, effectiveCatalog(), { held, hasTextSelection });
       if (!id) return;
 
       // Tab in non-typing: ask-ai; don't steal tab in inputs
