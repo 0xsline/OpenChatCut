@@ -9,6 +9,7 @@ import { startEmbeddedServer } from './embedded-server.ts';
 import { createTransparentMovProxy, importLocalMedia } from './local-media-import.ts';
 import { resolveDesktopDevOrigin } from './page-origin.ts';
 import { preparePackagedRuntime } from './packaged-runtime.ts';
+import { focusExistingWindow } from './single-instance.ts';
 import { applyDesktopWindowFrame, desktopWindowFrameOptions } from './window-frame.ts';
 import { installResponsiveWindowScale, resolveInitialDesktopWindowBounds } from './window-scale.ts';
 import { createExportDirectoryGrant } from '../server/export-destinations.ts';
@@ -25,6 +26,7 @@ const PRELOAD_PATH = join(dirname(fileURLToPath(import.meta.url)), 'preload.cjs'
 const SMOKE = process.env.CC_SMOKE === '1';
 const SMOKE_RENDER = process.env.CC_SMOKE_RENDER === '1';
 const SMOKE_TIMEOUT_MS = SMOKE_RENDER ? 240_000 : 90_000;
+let mainWindow: BrowserWindow | null = null;
 
 interface StoredExportDirectory {
   version: 1;
@@ -206,6 +208,10 @@ async function boot(): Promise<void> {
   });
   applyDesktopWindowFrame(win);
   installResponsiveWindowScale(win);
+  mainWindow = win;
+  win.once('closed', () => {
+    mainWindow = null;
+  });
   win.webContents.on('context-menu', (_event, params) => {
     const template = buildTextContextMenuTemplate(params);
     if (!template.length) return;
@@ -222,6 +228,15 @@ async function boot(): Promise<void> {
 
 app.on('window-all-closed', () => app.quit());
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) focusExistingWindow(mainWindow);
+  });
+}
+
 if (SMOKE) {
   setTimeout(() => {
     console.error('smoke timed out');
@@ -229,7 +244,9 @@ if (SMOKE) {
   }, SMOKE_TIMEOUT_MS).unref();
 }
 
-boot().catch((err) => {
-  console.error('[desktop] boot failed:', err instanceof Error ? err.stack ?? err.message : err);
-  app.exit(1);
-});
+if (hasSingleInstanceLock) {
+  boot().catch((err) => {
+    console.error('[desktop] boot failed:', err instanceof Error ? err.stack ?? err.message : err);
+    app.exit(1);
+  });
+}
