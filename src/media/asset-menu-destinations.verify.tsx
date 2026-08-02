@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
@@ -29,6 +30,9 @@ try {
   const { AssetMenuDestinations } = await vite.ssrLoadModule(
     '/src/media/AssetMenuDestinations.tsx',
   ) as typeof import('./AssetMenuDestinations');
+  const { BlankMediaMenuActions } = await vite.ssrLoadModule(
+    '/src/media/MediaPoolOverlays.tsx',
+  ) as typeof import('./MediaPoolOverlays');
   const { runAssetDestinationAction } = await vite.ssrLoadModule(
     '/src/media/assetDestination.ts',
   ) as typeof import('./assetDestination');
@@ -91,6 +95,36 @@ try {
   assert.ok(markup.indexOf('>AI 对话框<') < markup.indexOf('>时间线<'), 'AI 对话框应位于左侧，时间线应位于右侧');
   assert.match(markup, /aria-label="添加 7月7日.mp4 到时间线"/);
   assert.match(markup, /aria-label="添加 7月7日.mp4 到 AI 对话框"/);
+
+  const blankMenuMarkup = renderToStaticMarkup(createElement(BlankMediaMenuActions, {
+    clipboardCount: 2,
+    visibleCount: 3,
+    allVisibleSelected: false,
+    view: 'grid',
+    sort: 'newest',
+    type: 'all',
+    onPaste: () => undefined,
+    onSelectAll: () => undefined,
+    onUpload: () => undefined,
+    onSemanticSearch: () => undefined,
+    onMobileUpload: () => undefined,
+    onCreateFolder: () => undefined,
+    onViewToggle: () => undefined,
+    onSort: () => undefined,
+    onType: () => undefined,
+  }));
+  assert.match(blankMenuMarkup, /粘贴副本 \(2\)/);
+  assert.match(blankMenuMarkup, />全选</);
+  assert.match(blankMenuMarkup, />上传素材</);
+  assert.match(blankMenuMarkup, />本地语义搜索</);
+  assert.match(blankMenuMarkup, />手机传素材</);
+  assert.match(blankMenuMarkup, />新建文件夹</);
+  assert.match(blankMenuMarkup, /aria-label="素材排序"/);
+  assert.match(blankMenuMarkup, /aria-label="筛选素材"/);
+
+  const overlaySource = await readFile(new URL('./MediaPoolOverlays.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(overlaySource, /className="cc-asset-menu-backdrop"/, '素材菜单不应使用全屏遮罩阻断直接右键另一素材');
+  assert.match(overlaySource, /document\.addEventListener\('pointerdown', closeOutside, true\)/, '素材菜单应通过外部点击关闭');
 } finally {
   await vite.close();
 }

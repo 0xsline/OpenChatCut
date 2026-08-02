@@ -32,6 +32,7 @@ interface MediaPoolToolbarProps {
   busy: boolean;
   uploadRatio: number | null;
   canAddSolid: boolean;
+  semanticOpenRequest?: number;
   onQueryChange: (value: string) => void;
   onSemanticResults: (matches: SemanticMatch[] | null) => void;
   onUpload: () => void;
@@ -127,7 +128,7 @@ export function MediaPoolToolbar(props: MediaPoolToolbarProps) {
         <Icon name="search" size={16} />
         <input aria-label={t('搜索素材')} value={props.query} onChange={(event) => props.onQueryChange(event.target.value)} placeholder={t('搜索')} />
       </label>
-      <SemanticSearchControls scopeId={props.scopeId} assets={props.assets} onResultsChange={props.onSemanticResults} />
+      <SemanticSearchControls scopeId={props.scopeId} assets={props.assets} onResultsChange={props.onSemanticResults} openRequest={props.semanticOpenRequest} />
       <button className="cc-media-icon" aria-label={t('上传素材')} title={t('上传素材')} disabled={props.busy} onClick={props.onUpload}><Icon name="upload" size={19} /></button>
       {props.busy && props.uploadRatio != null && <span className="cc-media-upload-pct" title={t('上传中')}>{Math.round(props.uploadRatio * 100)}%</span>}
       <button className="cc-media-icon" aria-label={t(mediaViewToggleLabel(props.view))} title={t(mediaViewToggleLabel(props.view))} onClick={props.onViewChange}><Icon name={props.view === 'grid' ? 'list' : 'grid'} size={19} /></button>

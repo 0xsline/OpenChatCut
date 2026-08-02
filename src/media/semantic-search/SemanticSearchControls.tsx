@@ -13,9 +13,10 @@ interface SemanticSearchControlsProps {
   scopeId: string;
   assets: MediaAsset[];
   onResultsChange: (matches: SemanticMatch[] | null) => void;
+  openRequest?: number;
 }
 
-export function SemanticSearchControls({ scopeId, assets, onResultsChange }: SemanticSearchControlsProps) {
+export function SemanticSearchControls({ scopeId, assets, onResultsChange, openRequest = 0 }: SemanticSearchControlsProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -27,6 +28,9 @@ export function SemanticSearchControls({ scopeId, assets, onResultsChange }: Sem
   useEffect(() => {
     onResultsChange(searchedQuery ? semantic.state.matches : null);
   }, [onResultsChange, searchedQuery, semantic.state.matches]);
+  useEffect(() => {
+    if (openRequest > 0) setOpen(true);
+  }, [openRequest]);
   return <div ref={anchorRef} className="cc-semantic-anchor">
     <button type="button" className={`cc-media-icon cc-semantic-trigger${open || searchedQuery ? ' active' : ''}`}
       aria-label={t('语义搜索')} title={t('本地语义搜索')} aria-haspopup="dialog" aria-expanded={open}

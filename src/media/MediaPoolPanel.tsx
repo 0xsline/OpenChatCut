@@ -10,7 +10,7 @@ import type { SemanticMatch } from './semantic-search/types';
 import { filterMediaAssets, type MediaSortKey, type MediaTypeFilter } from './mediaPoolFilter';
 import { MobileUploadDialog } from './MobileUploadDialog';
 import type { MobileUploadRecord } from './mobileUploadApi';
-import { AssetMenuPortal, MissingMediaBanner, RelinkAllDialog } from './MediaPoolOverlays';
+import { AssetMenuPortal, BlankMediaMenuPortal, MissingMediaBanner, RelinkAllDialog } from './MediaPoolOverlays';
 import { MediaPoolGrid, type MediaGridEntry } from './MediaPoolGrid';
 import { useAssetMenu } from './useAssetMenu';
 import { assetMenuFavoriteValue, assetMenuSelectionIds, batchAssetRename } from './assetMenuSelection';
@@ -80,6 +80,7 @@ export function MediaPoolPanel({
   const [currentFolderId, setCurrentFolderId] = useState<string>();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [assetClipboard, setAssetClipboard] = useState<MediaAsset[]>([]);
+  const [blankMenuPos, setBlankMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [promptState, setPromptState] = useState<PromptState | null>(null);
   const [promptValue, setPromptValue] = useState('');
   const [deleteState, setDeleteState] = useState<DeleteState | null>(null);
@@ -95,6 +96,7 @@ export function MediaPoolPanel({
   const [relinkMsg, setRelinkMsg] = useState<string | null>(null);
   const [showRelinkAll, setShowRelinkAll] = useState(false);
   const [semanticResults, setSemanticResults] = useState<SemanticMatch[] | null>(null);
+  const [semanticOpenRequest, setSemanticOpenRequest] = useState(0);
   const [mobileUploadOpen, setMobileUploadOpen] = useState(false);
   const onSemanticResults = useCallback((matches: SemanticMatch[] | null) => setSemanticResults(matches), []);
   const modalFocus = useFocusReturn();
@@ -373,6 +375,16 @@ export function MediaPoolPanel({
       }}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => { event.preventDefault(); void onPick(event.dataTransfer.files, currentFolderId); }}
+      onContextMenuCapture={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest('[data-cc-media-asset-id], .cc-folder-card, button, input, select, textarea, label')) return;
+        event.preventDefault();
+        setSelected(new Set());
+        setBlankMenuPos({
+          left: Math.max(8, Math.min(event.clientX, window.innerWidth - 228)),
+          top: Math.max(8, Math.min(event.clientY, window.innerHeight - 292)),
+        });
+      }}
     >
       <input ref={inputRef} type="file" accept="video/*,image/*,audio/*,.gif,.svg,image/gif,image/svg+xml" multiple hidden onChange={(event) => onPick(event.target.files)} />
       <input ref={relinkInputRef} type="file" accept="video/*,image/*,audio/*,.gif,.svg,image/gif,image/svg+xml" hidden onChange={(event) => void onRelinkPick(event.target.files)} />
@@ -388,6 +400,7 @@ export function MediaPoolPanel({
         busy={busy}
         uploadRatio={uploadRatio}
         canAddSolid={!!onAddSolid}
+        semanticOpenRequest={semanticOpenRequest}
         onQueryChange={setQuery}
         onSemanticResults={onSemanticResults}
         onUpload={() => inputRef.current?.click()}
@@ -491,6 +504,26 @@ export function MediaPoolPanel({
         onAddTimeline={() => { menuAssets.forEach(onAddAsset); closeAssetMenu(true); }}
         onAddChat={() => { menuAssets.forEach((asset) => onAddAssetToChat?.(asset)); closeAssetMenu(true); }}
       />
+
+      {blankMenuPos && <BlankMediaMenuPortal
+        position={blankMenuPos}
+        clipboardCount={assetClipboard.length}
+        visibleCount={visibleIds.length}
+        allVisibleSelected={allVisibleAssetsSelected(selected, visibleIds)}
+        view={view}
+        sort={sort}
+        type={type}
+        onClose={() => setBlankMenuPos(null)}
+        onPaste={() => { onPasteAssets?.(assetClipboard, currentFolderId); setBlankMenuPos(null); }}
+        onSelectAll={() => { setSelected((current) => toggleVisibleAssetSelection(current, visibleIds)); setBlankMenuPos(null); }}
+        onSemanticSearch={() => { setSemanticOpenRequest((value) => value + 1); setBlankMenuPos(null); }}
+        onMobileUpload={() => { setMobileUploadOpen(true); setBlankMenuPos(null); }}
+        onUpload={() => { inputRef.current?.click(); setBlankMenuPos(null); }}
+        onCreateFolder={() => { createFolder(() => undefined); setBlankMenuPos(null); }}
+        onViewToggle={() => { setView(toggleMediaView); setBlankMenuPos(null); }}
+        onSort={(value) => { setSort(value); setBlankMenuPos(null); }}
+        onType={(value) => { setType(value); setBlankMenuPos(null); }}
+      />}
 
       {promptState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t(promptState.title)}>
         <form className="cc-modal" onSubmit={(event) => { event.preventDefault(); submitPrompt(); }}>
