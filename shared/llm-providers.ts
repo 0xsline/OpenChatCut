@@ -3,6 +3,8 @@
 export type LlmProtocol = 'anthropic' | 'openai' | 'google' | 'openai-compatible';
 export type OpenAiApiMode = 'responses' | 'chat';
 export const DEFAULT_OPENAI_API_MODE: OpenAiApiMode = 'responses';
+const MIN_CONTEXT_WINDOW_TOKENS = 4_096;
+const MAX_CONTEXT_WINDOW_TOKENS = 4_000_000;
 
 interface LlmProviderPreset {
   readonly id: string;
@@ -10,6 +12,8 @@ interface LlmProviderPreset {
   readonly protocol: LlmProtocol;
   readonly baseUrl: string;
   readonly defaultModel: string;
+  readonly contextWindowTokens: number;
+  readonly contextWindowEstimated?: boolean;
 }
 
 export const LLM_PROVIDER_PRESETS = [
@@ -19,6 +23,7 @@ export const LLM_PROVIDER_PRESETS = [
     protocol: 'anthropic',
     baseUrl: 'https://api.anthropic.com/v1',
     defaultModel: 'claude-fable-5',
+    contextWindowTokens: 200_000,
   },
   {
     id: 'openai',
@@ -26,6 +31,7 @@ export const LLM_PROVIDER_PRESETS = [
     protocol: 'openai',
     baseUrl: 'https://api.openai.com/v1',
     defaultModel: 'gpt-5',
+    contextWindowTokens: 400_000,
   },
   {
     id: 'gemini',
@@ -33,6 +39,7 @@ export const LLM_PROVIDER_PRESETS = [
     protocol: 'google',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     defaultModel: 'gemini-3.5-flash',
+    contextWindowTokens: 1_048_576,
   },
   {
     id: 'kimi',
@@ -40,6 +47,7 @@ export const LLM_PROVIDER_PRESETS = [
     protocol: 'openai-compatible',
     baseUrl: 'https://api.moonshot.ai/v1',
     defaultModel: 'kimi-k3',
+    contextWindowTokens: 262_144,
   },
   {
     id: 'qwen',
@@ -47,6 +55,7 @@ export const LLM_PROVIDER_PRESETS = [
     protocol: 'openai-compatible',
     baseUrl: 'https://dashscope-us.aliyuncs.com/compatible-mode/v1',
     defaultModel: 'qwen-plus',
+    contextWindowTokens: 131_072,
   },
   {
     id: 'glm',
@@ -54,6 +63,7 @@ export const LLM_PROVIDER_PRESETS = [
     protocol: 'openai-compatible',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     defaultModel: 'glm-5.2',
+    contextWindowTokens: 131_072,
   },
   {
     id: 'deepseek',
@@ -61,6 +71,7 @@ export const LLM_PROVIDER_PRESETS = [
     protocol: 'openai-compatible',
     baseUrl: 'https://api.deepseek.com',
     defaultModel: 'deepseek-v4-pro',
+    contextWindowTokens: 131_072,
   },
   {
     id: 'minimax',
@@ -68,6 +79,7 @@ export const LLM_PROVIDER_PRESETS = [
     protocol: 'openai-compatible',
     baseUrl: 'https://api.minimaxi.com/v1',
     defaultModel: 'MiniMax-M3',
+    contextWindowTokens: 204_800,
   },
   {
     id: 'xiaomi',
@@ -75,6 +87,7 @@ export const LLM_PROVIDER_PRESETS = [
     protocol: 'openai-compatible',
     baseUrl: 'https://api.xiaomimimo.com/v1',
     defaultModel: 'mimo-v2.5-pro',
+    contextWindowTokens: 131_072,
   },
   {
     id: 'mistral',
@@ -82,6 +95,7 @@ export const LLM_PROVIDER_PRESETS = [
     protocol: 'openai-compatible',
     baseUrl: 'https://api.mistral.ai/v1',
     defaultModel: 'mistral-large-latest',
+    contextWindowTokens: 131_072,
   },
   {
     id: 'openrouter',
@@ -89,6 +103,8 @@ export const LLM_PROVIDER_PRESETS = [
     protocol: 'openai-compatible',
     baseUrl: 'https://openrouter.ai/api/v1',
     defaultModel: 'openrouter/auto',
+    contextWindowTokens: 131_072,
+    contextWindowEstimated: true,
   },
   {
     id: 'ollama',
@@ -96,6 +112,8 @@ export const LLM_PROVIDER_PRESETS = [
     protocol: 'openai-compatible',
     baseUrl: 'http://localhost:11434/v1',
     defaultModel: 'qwen2.5-coder:7b',
+    contextWindowTokens: 32_768,
+    contextWindowEstimated: true,
   },
   {
     id: 'lmstudio',
@@ -103,6 +121,8 @@ export const LLM_PROVIDER_PRESETS = [
     protocol: 'openai-compatible',
     baseUrl: 'http://localhost:1234/v1',
     defaultModel: 'qwen2.5-coder-7b-instruct',
+    contextWindowTokens: 32_768,
+    contextWindowEstimated: true,
   },
 ] as const satisfies readonly LlmProviderPreset[];
 
@@ -114,6 +134,7 @@ export interface LlmProviderConfigNames {
   readonly apiKey: string;
   readonly baseUrl: string;
   readonly model: string;
+  readonly contextWindow: string;
 }
 
 const PRESETS = new Map<string, (typeof LLM_PROVIDER_PRESETS)[number]>(
@@ -130,7 +151,7 @@ export function isLocalLlmProvider(provider: unknown): boolean {
   return normalized === 'ollama' || normalized === 'lmstudio';
 }
 
-export function llmProviderPreset(provider: unknown): (typeof LLM_PROVIDER_PRESETS)[number] {
+export function llmProviderPreset(provider: unknown): LlmProviderPreset {
   return PRESETS.get(normalizeLlmProvider(provider)) ?? LLM_PROVIDER_PRESETS[0];
 }
 
@@ -141,11 +162,41 @@ export function llmProviderConfigNames(provider: unknown): LlmProviderConfigName
     apiKey: `LLM_${token}_API_KEY`,
     baseUrl: `LLM_${token}_BASE_URL`,
     model: `LLM_${token}_MODEL`,
+    contextWindow: `LLM_${token}_CONTEXT_WINDOW`,
   };
 }
 
 export function defaultModelForProvider(provider: unknown): string {
   return llmProviderPreset(provider).defaultModel;
+}
+
+export function defaultContextWindowForProvider(provider: unknown): number {
+  return llmProviderPreset(provider).contextWindowTokens;
+}
+
+export interface ModelContextWindow {
+  readonly tokens: number;
+  readonly estimated: boolean;
+}
+
+export function contextWindowForModel(
+  provider: unknown,
+  model: string,
+  configured: unknown,
+): ModelContextWindow {
+  const override = typeof configured === 'string' ? Number(configured.trim()) : Number.NaN;
+  if (Number.isSafeInteger(override)
+    && override >= MIN_CONTEXT_WINDOW_TOKENS
+    && override <= MAX_CONTEXT_WINDOW_TOKENS) {
+    return { tokens: override, estimated: false };
+  }
+  const preset = llmProviderPreset(provider);
+  const normalizedModel = model.trim();
+  return {
+    tokens: preset.contextWindowTokens,
+    estimated: preset.contextWindowEstimated === true
+      || (normalizedModel.length > 0 && normalizedModel !== preset.defaultModel),
+  };
 }
 
 export function protocolForProvider(provider: unknown): LlmProtocol {

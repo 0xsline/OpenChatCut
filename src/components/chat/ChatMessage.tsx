@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { theme } from '../../theme';
 import { Icon } from '../icons';
 import { useT } from '../../i18n/locale';
-import type { DisplayMessage } from '../../agent/useAgent';
+import type { DisplayMessage } from '../../agent/agent-session';
 import { parseWidgets } from './widget-parse';
 import { WidgetCard } from './WidgetCard';
 import { Markdown } from './Markdown';

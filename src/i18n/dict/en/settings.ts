@@ -61,6 +61,7 @@ export default {
   'Chat Completions API': 'Chat Completions API',
   '模型厂商': 'Model provider',
   '模型': 'Model',
+  '上下文窗口（tokens）': 'Context window (tokens)',
   'API Base URL': 'API Base URL',
   'API Key（gpt-image）': 'API Key (gpt-image)',
   'API Key（Nano Banana）': 'API Key (Nano Banana)',
@@ -93,6 +94,8 @@ export default {
   '选择服务实际支持的协议；OpenAI 使用 Responses API，兼容服务使用 Chat Completions API。': 'Choose the protocol your service actually supports. OpenAI uses the Responses API; compatible services use Chat Completions.',
   '选择厂商后会自动使用官方 API 地址、接口格式和推荐模型，也可以在下方覆盖。': 'Choose a provider to use its official endpoint, protocol, and recommended model automatically, or override them below.',
   '填写完整 API 前缀（可含 /v1、/v1beta/openai 等路径）；切换厂商会重置地址与模型，并立即生效。': 'Enter the full API prefix, including paths such as /v1 or /v1beta/openai. Switching providers resets the Base URL and model and takes effect immediately.',
+  '默认值仅对内置模型准确；自定义、OpenRouter 或本地模型请填写模型实际上限（4,096–4,000,000）。':
+    'The default is exact only for the built-in model. For custom, OpenRouter, or local models, enter the model’s actual limit (4,096–4,000,000).',
   '桌面端默认把素材存入系统应用数据目录，浏览器开发版默认使用 public/media/uploads/。可选择任意本机目录或外置硬盘；保存后旧目录中的素材会复制到新目录（原文件保留），工程里的素材地址不变，预览与渲染导出都会跟随新目录。':
     'The desktop app stores media in its system application-data directory by default; browser development uses public/media/uploads/. Choose any local folder or external drive. Saving copies media from the old directory to the new one (originals kept); project URLs stay unchanged, and preview, render, and export follow the new directory.',
   '桌面端点击“选择目录”；浏览器中也可手动输入绝对路径。清除后回到当前运行环境的默认目录。':

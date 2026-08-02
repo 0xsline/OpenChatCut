@@ -1,4 +1,4 @@
-import type { DisplayMessage } from '../../agent/useAgent';
+import type { DisplayMessage } from '../../agent/agent-session';
 
 // Collapse a run of consecutive SAME-name tool messages into one group so the chat
 // doesn't spam 20 identical `edit_gap` rows — repeats render as one compact activity line.

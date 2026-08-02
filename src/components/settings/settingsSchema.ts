@@ -128,6 +128,13 @@ const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorP
         note: '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。',
         options: [{ value: preset.defaultModel, label: preset.defaultModel }],
       },
+      {
+        name: names.contextWindow,
+        label: '上下文窗口（tokens）',
+        kind: 'text',
+        defaultLabel: String(preset.contextWindowTokens),
+        note: '默认值仅对内置模型准确；自定义、OpenRouter 或本地模型请填写模型实际上限（4,096–4,000,000）。',
+      },
     ],
   };
 };

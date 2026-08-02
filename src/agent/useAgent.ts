@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { resolveAgentReferences } from './context';
 import type { AgentContext, AgentReference } from './context';
-import type { AgentRuntimeModule, LLMMessage, RuntimeGuardRequest } from './runtime';
+import type { LLMMessage } from './runtime';
 import { normalizeLlmProvider, PROVIDER } from './providerConfig';
 import type { LlmProvider } from './providerConfig';
 import { normalizeLlmMessages, prepareMessagesForProvider } from './messages';
@@ -11,8 +11,17 @@ import { isSkillAllowed, rememberSkillAllowed, type GuardDecision } from './skil
 import { loadChat, saveChat } from '../persist/projectStore';
 import { loadProposal, saveProposal, clearProposal } from '../persist/proposalStore';
 import { saveAutomaticVersion } from '../persist/versionStore';
-import { getLocale } from '../i18n/locale';
 import { getAgentModelSnapshot, isAgentModelReady } from './model-selection';
+import {
+  appendRejectedProposal,
+  enhanceAgentPrompt,
+  initialAgentMessages,
+  preloadAgentRuntime,
+  type DisplayMessage,
+  type LiveTool,
+  type PendingGuard,
+} from './agent-session';
+import { useAgentContextUsage } from './context-usage';
 import {
   appendAgentChange,
   canRollbackAgentChange,
@@ -22,43 +31,6 @@ import {
   type AgentChangeSession,
 } from './changeLog';
 
-export interface DisplayMessage {
-  // 'continue' = maxTurns Pause card (click "Continue" to continue running; persistent, can continue after refreshing)
-  role: 'user' | 'assistant' | 'tool' | 'error' | 'continue';
-  text: string;
-  /** Reasoning flow (native thinking_delta or inline <thinking> extraction), rendered as a collapsed "thinking process" block */
-  thinking?: string;
-  tool?: { name: string; args: unknown; result: unknown };
-}
-
-/** Prepend skill_guard pending requests (rendered as cards waiting for user confirmation). */
-export interface PendingGuard extends RuntimeGuardRequest {
-  resolve: (d: GuardDecision) => void;
-}
-
-/** Real-time rows in tool parameter streaming writing (temporary, not persistent). */
-export interface LiveTool {
-  name: string;
-  partial: string;
-}
-
-// Runtime boundary: the editor may mount the chat shell while it is collapsed.
-// A literal import keeps the Vite chunk statically discoverable without eagerly
-// evaluating the AI SDK, tool registry, or provider client.
-const importAgentRuntime = async (): Promise<AgentRuntimeModule> => import('./runtime');
-let agentRuntimePromise: Promise<AgentRuntimeModule> | null = null;
-
-export function preloadAgentRuntime(): Promise<AgentRuntimeModule> {
-  if (!agentRuntimePromise) {
-    agentRuntimePromise = importAgentRuntime().catch((error: unknown) => {
-      agentRuntimePromise = null;
-      throw error;
-    });
-  }
-  return agentRuntimePromise;
-}
-
-const initialMessages = (): LLMMessage[] => [];
 
 export function useAgent(ctx: AgentContext, projectId: string) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -76,7 +48,13 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   const [liveTool, setLiveTool] = useState<LiveTool | null>(null);
   const pendingGuardRef = useRef<PendingGuard | null>(null);
   pendingGuardRef.current = pendingGuard;
-  const llmRef = useRef<LLMMessage[]>(initialMessages());
+  const llmRef = useRef<LLMMessage[]>(initialAgentMessages());
+  const {
+    usage: contextUsage,
+    usageRef: contextUsageRef,
+    replace: replaceContextUsage,
+    refreshEstimate: refreshEstimatedContextUsage,
+  } = useAgentContextUsage(llmRef);
   const llmProviderRef = useRef<LlmProvider>(PROVIDER);
   const ctxRef = useRef(ctx);
   ctxRef.current = ctx; // always use the latest editor context
@@ -110,8 +88,9 @@ export function useAgent(ctx: AgentContext, projectId: string) {
           PROVIDER,
         );
       } else {
-        llmRef.current = initialMessages();
+        llmRef.current = initialAgentMessages();
       }
+      refreshEstimatedContextUsage();
       llmProviderRef.current = PROVIDER;
       // Drop stale proposals (user edited the project after the snapshot, or
       // corrupt/partial IDB). Clear disk so we don't re-offer a dead card.
@@ -124,7 +103,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
       setHydrated(true);
     })();
     return () => { alive = false; };
-  }, [projectId]);
+  }, [projectId, refreshEstimatedContextUsage]);
 
   // persist on turn / proposal boundaries — never mid-stream (running) so IDB
   // isn't hammered per token; `proposal` dep captures apply/reject (they push to llmRef).
@@ -159,6 +138,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
         llmProviderRef.current = PROVIDER;
       }
       llmRef.current.push({ role: 'user', content });
+      refreshEstimatedContextUsage();
       setRunning(true);
       // Faithful propose→apply: run the agent's tools against a DRAFT copy of the
       // PROJECT (so it sees its own pending edits, incl. timeline switches)
@@ -238,12 +218,15 @@ export function useAgent(ctx: AgentContext, projectId: string) {
             if (proposed.length) ops.push(buildOperation(ev.name, (ev.args ?? {}) as Record<string, unknown>, proposed));
           } else if (ev.type === 'max-turns') {
             setMessages((m) => [...m, { role: 'continue', text: String(ev.turns) }]);
+          } else if (ev.type === 'context-usage') {
+            replaceContextUsage(ev.usage);
           } else {
             setMessages((m) => [...m, { role: 'error', text: ev.message }]);
           }
         }, {
           askOnly: opts?.askOnly,
           signal: ac.signal,
+          previousContextUsage: contextUsageRef.current ?? undefined,
           // Pre-skill_guard: Authorization has been remembered and released directly; otherwise, the pending card will be hung up to wait for the user.
           onSkillGuard: (guard) => {
             if (isSkillAllowed(guard.skill, projectId)) return Promise.resolve<GuardDecision>('allow-once');
@@ -304,7 +287,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
         setRunning(false);
       }
     },
-    [running, projectId],
+    [running, projectId, refreshEstimatedContextUsage, replaceContextUsage],
   );
 
   // Stop the in-flight turn (Send button switches to stop in flight).
@@ -314,26 +297,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     abortRef.current?.abort();
   }, []);
 
-  // Enhanced prompt word (✨ wand): one-shot LLM rewrite of the composer draft into a
-  // clearer, executable editing instruction. No tools, no state change; returns
-  // the improved text (or the original on any failure).
-  const enhance = useCallback(async (draft: string): Promise<string> => {
-    const t = draft.trim();
-    if (!t) return draft;
-    try {
-      // The enhancer is another first-send boundary and must not make client.ts eager.
-      const { generateAgentText } = await import('./client');
-      const language = getLocale() === 'zh' ? 'Chinese' : 'English';
-      const out = (await generateAgentText({
-        maxOutputTokens: 400,
-        system: `You improve rough or conversational video-editing requests into one clear, specific, directly executable instruction. Write the instruction in ${language}, matching the selected interface language. Output only the rewritten instruction without explanation, quotation marks, or line breaks.`,
-        prompt: t,
-      })).trim();
-      return out || draft;
-    } catch {
-      return draft;
-    }
-  }, []);
+  const enhance = useCallback(enhanceAgentPrompt, []);
 
   // Apply the selected operations atomically (one undo step). A proposal is
   // rejected if the project changed after it was generated: replaying index- or
@@ -358,6 +322,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
       const session = createAgentChangeSession(p.summary, chosen, currentDoc, result);
       setChangeLog((current) => appendAgentChange(current, session));
       llmRef.current.push({ role: 'user', content: `（已应用提案：${chosen.length}/${p.options[0].operations.length} 项操作。）` });
+      refreshEstimatedContextUsage();
       setProposalStale(false);
       setProposal(null);
     } catch {
@@ -368,7 +333,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
     } finally {
       applyingProposalRef.current = false;
     }
-  }, [projectId]);
+  }, [projectId, refreshEstimatedContextUsage]);
 
   const applyProposal = useCallback((selected: Set<number>) => {
     const p = proposalRef.current;
@@ -396,28 +361,20 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   const rejectProposal = useCallback(() => {
     if (!proposalRef.current) return;
     setProposalStale(false);
-    // skill_guard Deny follow-up: agent must not auto-retry generation.
-    llmRef.current.push({
-      role: 'user',
-      content: [
-        'User clicked Deny and rejected this generation task. They may want adjustments; do not retry automatically.',
-        '（用户拒绝了上述提案，未应用任何改动。不要自动重试生成。）',
-      ].join('\n'),
-    });
+    llmRef.current = appendRejectedProposal(llmRef.current);
+    refreshEstimatedContextUsage();
     setProposal(null);
-  }, []);
+  }, [refreshEstimatedContextUsage]);
 
-  // Clear the conversation: drop the rendered rows + the LLM history +
-  // the persisted copy + any pending proposal, so a fresh conversation starts
-  // (does NOT touch the timeline).
   const clearHistory = useCallback(() => {
     if (running) return;
-    llmRef.current = initialMessages();
+    llmRef.current = initialAgentMessages();
     llmProviderRef.current = PROVIDER;
     setProposal(null);
     setMessages([]);
+    replaceContextUsage(null);
     void clearProposal(projectId);
-  }, [running, projectId]);
+  }, [running, projectId, replaceContextUsage]);
 
   const rollbackChangeSession = useCallback((id: string, force = false): boolean => {
     const session = changeLog.find((item) => item.id === id);
@@ -434,7 +391,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   }, [changeLog]);
 
   return {
-    messages, running, hydrated, send, stop, enhance, clearHistory,
+    messages, running, hydrated, send, stop, enhance, clearHistory, contextUsage,
     proposal, applyProposal, rejectProposal, proposalStale, forceApplyProposal, reProposeStale,
     pendingGuard, liveTool, changeLog, rollbackChangeSession, canRollbackChangeSession,
   };

@@ -121,6 +121,17 @@ lines.on('line', (line) => {
   if (message.id === 'dynamic-1') {
     if (message.result?.success !== true) process.exit(74);
     send({
+      method: 'thread/tokenUsage/updated',
+      params: {
+        threadId: activeThread,
+        turnId: activeTurn,
+        tokenUsage: {
+          total: { inputTokens: 321, outputTokens: 89, totalTokens: 410 },
+          modelContextWindow: 272000,
+        },
+      },
+    });
+    send({
       method: 'item/agentMessage/delta',
       params: { threadId: activeThread, turnId: activeTurn, delta: 'Tool confirmed.' },
     });
@@ -219,8 +230,13 @@ try {
 
   assert.equal(manager.hasRequest('request-1'), false);
   assert.deepEqual(events.map((event) => event.type), [
-    'tool-start', 'tool-end', 'text-delta', 'done',
+    'tool-start', 'tool-end', 'context-usage', 'text-delta', 'done',
   ]);
+  assert.deepEqual(events.find((event) => event.type === 'context-usage'), {
+    type: 'context-usage',
+    inputTokens: 321,
+    contextWindowTokens: 272_000,
+  });
   assert.equal(events.find((event) => event.type === 'text-delta')?.delta, 'Tool confirmed.');
 } finally {
   client.stop();

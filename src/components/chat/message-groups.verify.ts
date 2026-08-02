@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import type { DisplayMessage } from '../../agent/useAgent';
+import type { DisplayMessage } from '../../agent/agent-session';
 import { groupMessages } from './message-groups';
 
 const messages = [

@@ -1,6 +1,7 @@
 import type { CodexAgentStatus } from '../../shared/codex-agent';
 import {
   LLM_PROVIDER_PRESETS,
+  contextWindowForModel,
   defaultModelForProvider,
   isLocalLlmProvider,
   llmProviderConfigNames,
@@ -8,6 +9,8 @@ import {
   type LlmProvider,
 } from '../../shared/llm-providers';
 import { setLlmConfig } from './providerConfig';
+
+const CODEX_CONTEXT_WINDOW_TOKENS = 272_000;
 
 interface KeyStateLike {
   readonly configured: boolean;
@@ -22,6 +25,8 @@ export interface AgentModelChoice {
   readonly providerLabel: string;
   readonly model: string;
   readonly reasoningEffort?: string;
+  readonly contextWindowTokens: number;
+  readonly contextWindowEstimated: boolean;
 }
 
 export interface AgentModelSnapshot {
@@ -58,12 +63,19 @@ function apiChoices(
     const savedModel = models[names.model]?.trim();
     if (isLocalLlmProvider(preset.id) ? !savedModel : !keys[names.apiKey]?.configured) return [];
     const model = savedModel || defaultModelForProvider(preset.id);
+    const contextWindow = contextWindowForModel(
+      preset.id,
+      model,
+      models[names.contextWindow],
+    );
     return [{
       id: `${preset.id}:${model}`,
       backend: 'api',
       provider: preset.id,
       providerLabel: preset.label,
       model,
+      contextWindowTokens: contextWindow.tokens,
+      contextWindowEstimated: contextWindow.estimated,
     }];
   });
 }
@@ -120,6 +132,8 @@ export function applyCodexAgentStatus(
         providerLabel: 'OpenAI Codex',
         model,
         reasoningEffort: savedReasoningEffort?.trim() ?? '',
+        contextWindowTokens: CODEX_CONTEXT_WINDOW_TOKENS,
+        contextWindowEstimated: true,
       }]
     : [];
   const choices = [...api, ...codex];

@@ -11,6 +11,7 @@ import type { AgentSettings } from '../settings/agentSettings';
 import { getLocale } from '../../i18n/locale';
 import { capabilitiesPrompt } from '../capabilities';
 import { normalizeLlmMessages } from '../messages';
+import { estimateTextTokens, serializeMessagesForPrompt } from '../context-compaction';
 import { findSkill } from '../skills/skills-catalog';
 import { PLUGIN_SKILLS_INDEX } from '../skills/plugin-skills';
 import { agentSettingsPrompt, loadAgentSettings } from '../settings/agentSettings';
@@ -26,11 +27,8 @@ import {
 } from '../systemPrompt';
 import { runCodexTurn, submitCodexToolResult } from './client';
 
-const MAX_TRANSCRIPT_CHARS = 120_000;
-const MAX_MESSAGE_CHARS = 32_000;
 const MAX_TOOL_TURNS = 30;
 
-type MessagePart = { readonly type?: unknown; readonly text?: unknown; readonly toolName?: unknown };
 type ToolStartEvent = Extract<CodexTurnStreamEvent, { type: 'tool-start' }>;
 
 export interface CodexToolExecution {
@@ -44,6 +42,11 @@ export interface CodexRuntimeOptions {
   readonly signal?: AbortSignal;
   readonly model?: string;
   readonly reasoningEffort?: string;
+  readonly modelId?: string;
+  readonly contextWindowTokens?: number;
+  readonly requestMessageCount?: number;
+  readonly contextWasCompacted?: boolean;
+  readonly system?: string;
   readonly tools: readonly CodexAgentToolSpec[];
   readonly executeTool: (name: string, args: Record<string, unknown>) => Promise<CodexToolExecution>;
 }
@@ -67,6 +70,7 @@ interface StreamState {
   readonly done: boolean;
   readonly toolTurns: number;
   readonly handledCallIds: ReadonlySet<string>;
+  readonly toolHistory: readonly ModelMessage[];
 }
 
 class MaxToolTurnsError extends Error {}
@@ -81,43 +85,6 @@ class CodexFollowupPause extends Error {
   }
 }
 
-function truncateMiddle(text: string, limit: number): string {
-  if (text.length <= limit) return text;
-  const marker = '\n[… earlier content omitted …]\n';
-  const remaining = Math.max(0, limit - marker.length);
-  const head = Math.ceil(remaining / 2);
-  return `${text.slice(0, head)}${marker}${text.slice(text.length - (remaining - head))}`;
-}
-
-function messageContentText(message: ModelMessage): string {
-  if (typeof message.content === 'string') return message.content;
-  if (!Array.isArray(message.content)) return '';
-  return (message.content as readonly MessagePart[]).flatMap((part): string[] => {
-    if (typeof part.text === 'string') return [part.text];
-    const name = typeof part.toolName === 'string' ? part.toolName : 'unknown';
-    if (part.type === 'tool-call') return [`[tool call: ${name}]`];
-    if (part.type === 'tool-result') return [`[tool result: ${name}]`];
-    return [];
-  }).join('\n');
-}
-
-function transcriptEntry(message: ModelMessage): string {
-  const content = truncateMiddle(messageContentText(message).trim(), MAX_MESSAGE_CHARS);
-  return `${message.role.toUpperCase()}:\n${content || '[no text content]'}`;
-}
-
-function serializeTranscript(messages: readonly ModelMessage[]): string {
-  const entries = messages.map(transcriptEntry);
-  const selected: string[] = [];
-  let remaining = MAX_TRANSCRIPT_CHARS;
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const separator = selected.length ? 2 : 0;
-    if (entries[index].length + separator > remaining) break;
-    selected.unshift(entries[index]);
-    remaining -= entries[index].length + separator;
-  }
-  return selected.join('\n\n');
-}
 
 function buildSystemPrompt(ctx: AgentContext): string {
   const settings = loadAgentSettings();
@@ -138,6 +105,24 @@ function toolInput(args: unknown): string {
   } catch {
     return '[unserializable tool input]';
   }
+}
+
+function resultForHistory(result: unknown): unknown {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
+  const record = result as Record<string, unknown>;
+  if (!Array.isArray(record.__images)) return result;
+  const { __images, ...rest } = record;
+  return { ...rest, __images: `[${__images.length} image payloads omitted]` };
+}
+
+function toolHistoryEntry(event: ToolStartEvent, execution: CodexToolExecution): ModelMessage {
+  return {
+    role: 'assistant',
+    content: [
+      `[tool call: ${event.name}] ${toolInput(event.args)}`,
+      `[tool result: ${event.name}] ${toolInput(resultForHistory(execution.result))}`,
+    ].join('\n'),
+  };
 }
 
 function failedTool(message: string): CodexToolExecution {
@@ -235,6 +220,7 @@ async function handleToolStart(
     ...state,
     toolTurns: state.toolTurns + 1,
     handledCallIds: new Set([...state.handledCallIds, event.callId]),
+    toolHistory: [...state.toolHistory, toolHistoryEntry(event, execution)],
   };
 }
 
@@ -253,9 +239,22 @@ async function handleStreamEvent(
     return { ...state, textStarted: true, text: state.text + event.delta };
   }
   if (event.type === 'thinking-delta') onEvent({ type: 'thinking-delta', delta: event.delta });
-  else if (event.type === 'error') throw new Error(event.message);
+  else if (event.type === 'context-usage') {
+    onEvent({
+      type: 'context-usage',
+      usage: {
+        inputTokens: event.inputTokens,
+        contextWindowTokens: event.contextWindowTokens || opts.contextWindowTokens || 272_000,
+        contextWindowEstimated: false,
+        isEstimated: false,
+        modelId: opts.modelId ?? `codex:${opts.model || 'default'}`,
+        compacted: opts.contextWasCompacted === true,
+        messageCount: opts.requestMessageCount ?? 0,
+      },
+    });
+  } else if (event.type === 'error') throw new Error(event.message);
   else if (event.type === 'done') return { ...state, done: true };
-  else if (!event.success && !state.handledCallIds.has(event.callId)) {
+  else if (event.type === 'tool-end' && !event.success && !state.handledCallIds.has(event.callId)) {
     onEvent({ type: 'tool', name: event.name, args: event.args, result: event.result });
   }
   return state;
@@ -278,12 +277,19 @@ export async function runCodexAgent(
   const forwardAbort = () => turnAbort.abort(opts.signal?.reason);
   if (opts.signal?.aborted) forwardAbort();
   else opts.signal?.addEventListener('abort', forwardAbort, { once: true });
-  let state: StreamState = { text: '', textStarted: false, done: false, toolTurns: 0, handledCallIds: new Set() };
+  let state: StreamState = {
+    text: '',
+    textStarted: false,
+    done: false,
+    toolTurns: 0,
+    handledCallIds: new Set(),
+    toolHistory: [],
+  };
   try {
     await runCodexTurn({
       requestId,
-      system: buildSystemPrompt(ctx),
-      prompt: serializeTranscript(conv),
+      system: opts.system ?? buildSystemPrompt(ctx),
+      prompt: serializeMessagesForPrompt(conv),
       projectId,
       tools: opts.askOnly ? [] : opts.tools,
       ...(opts.model?.trim() ? { model: opts.model.trim() } : {}),
@@ -293,20 +299,70 @@ export async function runCodexAgent(
       state = await handleStreamEvent(event, state, requestId, opts, onEvent);
     }, turnAbort.signal);
     if (!state.done) throw new Error('Codex stream ended before the done event.');
-    return [...conv, { role: 'assistant', content: state.text }];
+    return [
+      ...conv,
+      ...state.toolHistory,
+      { role: 'assistant', content: state.text },
+    ];
   } catch (error) {
     turnAbort.abort(error);
     if (error instanceof CodexFollowupPause) {
       const content = [state.text, error.text].filter(Boolean).join('\n\n');
-      return content ? [...conv, { role: 'assistant', content }] : conv;
+      return content
+        ? [...conv, ...state.toolHistory, { role: 'assistant', content }]
+        : [...conv, ...state.toolHistory];
     }
     if (error instanceof MaxToolTurnsError) {
-      return state.text ? [...conv, { role: 'assistant', content: state.text }] : conv;
+      return state.text
+        ? [...conv, ...state.toolHistory, { role: 'assistant', content: state.text }]
+        : [...conv, ...state.toolHistory];
     }
-    if (opts.signal?.aborted) return state.text ? [...conv, { role: 'assistant', content: state.text }] : conv;
+    if (opts.signal?.aborted) {
+      return state.text
+        ? [...conv, ...state.toolHistory, { role: 'assistant', content: state.text }]
+        : [...conv, ...state.toolHistory];
+    }
     onEvent({ type: 'error', message: error instanceof Error ? error.message.trim() : String(error) });
-    return conv;
+    return [...conv, ...state.toolHistory];
   } finally {
     opts.signal?.removeEventListener('abort', forwardAbort);
   }
+}
+
+
+export interface CodexSummaryRequest {
+  readonly system: string;
+  readonly prompt: string;
+  readonly projectId: string;
+  readonly model?: string;
+  readonly reasoningEffort?: string;
+  readonly maxOutputTokens: number;
+  readonly signal?: AbortSignal;
+}
+
+export async function runCodexSummary(request: CodexSummaryRequest): Promise<string> {
+  let text = '';
+  let done = false;
+  await runCodexTurn({
+    requestId: crypto.randomUUID(),
+    system: request.system,
+    prompt: request.prompt,
+    projectId: request.projectId,
+    tools: [],
+    askOnly: true,
+    ...(request.model?.trim() ? { model: request.model.trim() } : {}),
+    ...(request.reasoningEffort?.trim() ? { reasoningEffort: request.reasoningEffort.trim() } : {}),
+  }, (event) => {
+    if (event.type === 'text-delta') {
+      const candidate = text + event.delta;
+      if (estimateTextTokens(candidate) > request.maxOutputTokens) {
+        throw new Error('Codex context summary exceeded its output limit.');
+      }
+      text = candidate;
+    }
+    else if (event.type === 'error') throw new Error(event.message);
+    else if (event.type === 'done') done = true;
+  }, request.signal);
+  if (!done) throw new Error('Codex context summary ended before completion.');
+  return text.trim();
 }

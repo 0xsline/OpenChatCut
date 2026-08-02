@@ -95,12 +95,12 @@ const EXPECTED_NON_SECRET = new Set<string>([
     for (const name of Object.values(names)) {
       assert.ok((KEY_NAMES as readonly string[]).includes(name), `${name} is whitelisted`);
     }
-    return [names.baseUrl, names.model];
+    return [names.baseUrl, names.model, names.contextWindow];
   }),
 ]);
 assert.deepStrictEqual(
   new Set(NON_SECRET_NAMES), EXPECTED_NON_SECRET,
-  'NON_SECRET_NAMES = 显式路由/开关/路径名 + 每厂商 Base URL/模型名,不多不少(API Key 永不入内)',
+  'NON_SECRET_NAMES = 显式路由/开关/路径名 + 每厂商 Base URL/模型名/上下文上限,不多不少(API Key 永不入内)',
 );
 
 // seed one SECRET + one non-secret on top of the state above (seeds accumulate in-process)

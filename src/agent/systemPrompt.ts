@@ -5,6 +5,15 @@ import { timelineTrackIds, trackAlias, trackKind, type DesignStyle } from '../ed
 import type { SkillDefinition } from './skills/skill-types';
 import type { AgentContext } from './context';
 import type { Locale } from '../i18n/locale';
+import { capabilitiesPrompt } from './capabilities';
+import { getLocale } from '../i18n/locale';
+import { findSkill } from './skills/skills-catalog';
+import { PLUGIN_SKILLS_INDEX } from './skills/plugin-skills';
+import {
+  agentSettingsPrompt,
+  loadAgentSettings,
+  type AgentSettings,
+} from './settings/agentSettings';
 
 // <editor_state>: Timeline snapshot of each message, spelled into system,
 // The agent will see the timeline when it starts, there is no need to adjust read_timeline first. Keep it compact: no props/transition details,
@@ -297,3 +306,18 @@ Required pattern: **browse_library to discover an id, then edit_item to place it
 # Style
 Be concise and direct. Reply in the user's language. Do not repeat raw tool JSON; summarize results in natural language.
 ${GENERATE_WORKFLOW}`;
+
+export function buildAgentSystemPrompt(
+  ctx: AgentContext,
+  settings: AgentSettings = loadAgentSettings(),
+): string {
+  return assembleSystemPrompt([
+    SYSTEM_PROMPT,
+    agentLanguagePrompt(getLocale()),
+    capabilitiesPrompt(),
+    PLUGIN_SKILLS_INDEX,
+    agentSettingsPrompt(settings),
+    designStylePrompt(ctx.getDoc().designStyle),
+    creativeModePrompt(findSkill(ctx.getCreativeMode())),
+  ], editorStatePrompt(ctx));
+}

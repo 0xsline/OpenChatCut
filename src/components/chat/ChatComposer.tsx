@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
-import { theme, themeAlpha } from '../../theme';
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { theme } from '../../theme';
 import { getLocale, useT } from '../../i18n/locale';
 import type { AgentReference } from '../../agent/context';
+import type { AgentContextUsage } from '../../agent/context-compaction';
 import { isSelectionRefKind } from '../../agent/selection-refs';
 import { Icon, type IconName } from '../icons';
 import { CREATIVE_SKILLS, allCreativeSkills, findSkill, setCustomSkills } from '../../agent/skills/skills-catalog';
@@ -9,12 +10,12 @@ import { loadCustomSkills } from '../../persist/skillStore';
 import { loadAgentSettings, saveAgentSettings, MG_TIERS, type AgentSettings, type MgTier } from '../../agent/settings/agentSettings';
 import { usePersistedState } from '../../hooks/usePersistedState';
 import {
-  getAgentModelSnapshot,
-  isAgentModelReady,
-  selectAgentModel,
-  subscribeAgentModels,
-} from '../../agent/model-selection';
-import { ComposerMoreMenu, ComposerToolbar, type ComposerPopover } from './ComposerToolbar';
+  ComposerMoreMenu,
+  ComposerToolbar,
+  type ComposerPopover as ComposerPopoverName,
+} from './ComposerToolbar';
+import { ComposerPopover } from './ComposerPopover';
+import { ComposerModelPicker, useComposerModelView } from './ComposerModelPicker';
 
 /** composer shell height (includes textarea + toolbar); drag the top handle to resize */
 const COMPOSER_H_MIN = 88;
@@ -22,6 +23,7 @@ const COMPOSER_H_MAX = 420;
 const COMPOSER_H_DEFAULT = 112;
 
 export type ChatMode = 'agent' | 'ask';
+
 export type RefItem = AgentReference;
 
 interface ChatComposerProps {
@@ -35,6 +37,7 @@ interface ChatComposerProps {
   mode: ChatMode;
   onModeChange: (m: ChatMode) => void;
   autoApply: boolean;
+  contextUsage: AgentContextUsage | null;
   onAutoApplyChange: (v: boolean) => void;
   /** Select mode: pick clips / canvas regions / transcript
    * spans / ruler times as structured references for the next message. */
@@ -60,44 +63,6 @@ interface ChatComposerProps {
   placeholder?: string;
 }
 
-// Popover above the bar — fixed positioning so parent overflow never clips menus.
-function Popover({ children, onClose, w, anchor }: {
-  children: ReactNode; onClose: () => void; w?: number; anchor: HTMLElement | null;
-}) {
-  const [box, setBox] = useState<{ left: number; bottom: number } | null>(null);
-  useLayoutEffect(() => {
-    if (!anchor) return;
-    const place = () => {
-      const r = anchor.getBoundingClientRect();
-      const width = w ?? 220;
-      // keep menu on-screen horizontally
-      const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
-      const bottom = Math.max(8, window.innerHeight - r.top + 8);
-      setBox({ left, bottom });
-    };
-    place();
-    window.addEventListener('resize', place);
-    window.addEventListener('scroll', place, true);
-    return () => {
-      window.removeEventListener('resize', place);
-      window.removeEventListener('scroll', place, true);
-    };
-  }, [anchor, w]);
-  if (!box) return null;
-  return (
-    <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80 }} />
-      <div style={{
-        position: 'fixed', left: box.left, bottom: box.bottom, zIndex: 81,
-        minWidth: w ?? 220, maxWidth: 300, maxHeight: Math.min(280, window.innerHeight - box.bottom - 16),
-        overflowY: 'auto', background: theme.panelAlt, border: `0.5px solid ${theme.borderLight}`,
-    borderRadius: 6, boxShadow: `0 12px 40px ${themeAlpha.shadow(0.5)}`, padding: 6,
-      }}>
-        {children}
-      </div>
-    </>
-  );
-}
 
 // MG three-level quality label (speed|balance|quality)
 const TIER_LABELS: Record<MgTier, string> = { speed: '速度', balance: '均衡', quality: '质量' };
@@ -117,7 +82,7 @@ export function ChatComposer(props: ChatComposerProps) {
     (getLocale() === 'en' ? s.name : s.nameZh);
   const {
     value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange,
-    autoApply, onAutoApplyChange, selecting, onToggleSelecting,
+    autoApply, onAutoApplyChange, contextUsage, selecting, onToggleSelecting,
     creativeMode, onCreativeModeChange, references, onInsertRef,
     selectedRefs = [], onRemoveRef, onPasteFiles, pasting, pasteError, onDismissPasteError,
     taRef, placeholder,
@@ -129,14 +94,10 @@ export function ChatComposer(props: ChatComposerProps) {
     loadCustomSkills().then((list) => { setCustomSkills(list); bumpCustom((n) => n + 1); });
   }, []);
   const activeSkill = findSkill(creativeMode);
-  const modelState = useSyncExternalStore(
-    subscribeAgentModels,
-    getAgentModelSnapshot,
-    getAgentModelSnapshot,
-  );
-  const activeModel = modelState.choices.find((choice) => choice.id === modelState.activeId);
+  const modelView = useComposerModelView(contextUsage);
+  const { activeModel, contextLabel, contextTitle, modelReady, modelState } = modelView;
   const builtinIds = new Set(CREATIVE_SKILLS.map((s) => s.id));
-  const [pop, setPop] = useState<ComposerPopover>(null);
+  const [pop, setPop] = useState<ComposerPopoverName>(null);
   const [popAnchor, setPopAnchor] = useState<HTMLElement | null>(null);
   const [agentSettings, setAgentSettings] = useState<AgentSettings>(() => loadAgentSettings());
   const patchAgent = (patch: Partial<AgentSettings>) => {
@@ -147,7 +108,7 @@ export function ChatComposer(props: ChatComposerProps) {
     });
   };
   const closePop = () => { setPop(null); setPopAnchor(null); };
-  const toggle = (p: ComposerPopover, el?: EventTarget | null) => {
+  const toggle = (p: ComposerPopoverName, el?: EventTarget | null) => {
     const node = el instanceof HTMLElement ? el : null;
     setPop((cur) => {
       if (cur === p) { setPopAnchor(null); return null; }
@@ -155,7 +116,6 @@ export function ChatComposer(props: ChatComposerProps) {
       return p;
     });
   };
-  const modelReady = isAgentModelReady(modelState);
   const canSend = !!value.trim() && !running && modelReady;
   const canEnhance = !!value.trim() && !enhancing && !running && modelReady;
   const sendTitle = modelReady
@@ -316,6 +276,7 @@ export function ChatComposer(props: ChatComposerProps) {
       />
       <ComposerToolbar
         mode={mode} activeModel={activeModel} activeSkillName={activeSkill ? skillName(activeSkill) : undefined}
+        contextLabel={contextLabel} contextTitle={contextTitle}
         pop={pop} selecting={selecting} enhancing={enhancing} running={running}
         canEnhance={canEnhance} canSend={canSend} sendTitle={sendTitle}
         onTogglePop={toggle} onToggleSelecting={onToggleSelecting} onEnhance={onEnhance}
@@ -323,58 +284,16 @@ export function ChatComposer(props: ChatComposerProps) {
 
       {/* menus rendered fixed — never clipped by composer bounds */}
       {pop === 'mode' && (
-        <Popover w={172} anchor={popAnchor} onClose={closePop}>
+        <ComposerPopover width={172} anchor={popAnchor} onClose={closePop}>
           {modeRow('agent', t('代理模式'), t('可编辑时间线，改动可撤销'))}
           {modeRow('ask', t('问答模式'), t('只回答，不动时间线'))}
-        </Popover>
+        </ComposerPopover>
       )}
       {pop === 'model' && (
-        <Popover w={278} anchor={popAnchor} onClose={closePop}>
-          <div style={{ fontSize: 10.5, color: theme.textDim, padding: '4px 8px 6px' }}>
-            {t('本条对话使用的模型')}
-          </div>
-          {modelState.choices.length === 0 && (
-            <div style={{ padding: '7px 9px 9px', color: theme.textDim, fontSize: 11.5, lineHeight: 1.5 }}>
-              {modelState.loaded ? t('请先在设置中配置一个模型厂商。') : t('正在读取模型配置…')}
-            </div>
-          )}
-          {modelState.choices.map((choice) => {
-            const active = choice.id === modelState.activeId;
-            return (
-              <button
-                type="button"
-                key={choice.id}
-                onClick={() => { selectAgentModel(choice.id); closePop(); }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 9,
-                  width: '100%',
-                  padding: '7px 9px',
-                  border: 0,
-                  borderRadius: 3,
-                  background: active ? theme.panel : 'transparent',
-                  color: theme.text,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                }}
-              >
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <strong style={{ display: 'block', fontSize: 11.5, fontWeight: 600 }}>
-                    {choice.providerLabel}
-                  </strong>
-                  <small style={{ display: 'block', color: theme.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {choice.model}
-                  </small>
-                </span>
-                {active && <span style={{ color: theme.accent, lineHeight: 0 }}><Icon name="check" size={13} /></span>}
-              </button>
-            );
-          })}
-        </Popover>
+        <ComposerModelPicker anchor={popAnchor} onClose={closePop} view={modelView} />
       )}
       {pop === 'settings' && (
-        <Popover anchor={popAnchor} onClose={closePop}>
+        <ComposerPopover anchor={popAnchor} onClose={closePop}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
             <input type="checkbox" checked={autoApply} onChange={(e) => onAutoApplyChange(e.target.checked)} style={{ accentColor: theme.accent }} />
             {t('自动应用 AI 提案')}
@@ -406,15 +325,15 @@ export function ChatComposer(props: ChatComposerProps) {
           <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 10px' }}>
             {t('先出编号计划，确认后再动手。')}
           </div>
-        </Popover>
+        </ComposerPopover>
       )}
       {pop === 'assets' && (
-        <Popover anchor={popAnchor} onClose={closePop}>
+        <ComposerPopover anchor={popAnchor} onClose={closePop}>
           {refPopoverBody('asset', t('媒体池暂无素材'))}
-        </Popover>
+        </ComposerPopover>
       )}
       {pop === 'skill' && (
-        <Popover w={300} anchor={popAnchor} onClose={closePop}>
+        <ComposerPopover width={300} anchor={popAnchor} onClose={closePop}>
           <div className="cc-creative-picker-head">
             <span><Icon name="wand" size={15} /></span>
             <div>
@@ -447,21 +366,21 @@ export function ChatComposer(props: ChatComposerProps) {
               {creativeMode === s.id && <span className="cc-creative-mode-check"><Icon name="check" size={13} strokeWidth={2.4} /></span>}
             </button>
           ))}
-        </Popover>
+        </ComposerPopover>
       )}
       {pop === 'templates' && (
-        <Popover anchor={popAnchor} onClose={closePop}>
+        <ComposerPopover anchor={popAnchor} onClose={closePop}>
           {refPopoverBody('template', t('暂无模板'))}
-        </Popover>
+        </ComposerPopover>
       )}
       {pop === 'more' && (
-        <Popover anchor={popAnchor} onClose={closePop}>
+        <ComposerPopover anchor={popAnchor} onClose={closePop}>
           <ComposerMoreMenu
             selecting={selecting} activeSkillName={activeSkill ? skillName(activeSkill) : undefined}
             canEnhance={canEnhance} enhancing={enhancing}
             onChoosePopover={setPop} onToggleSelecting={onToggleSelecting}
             onEnhance={onEnhance} onClose={closePop} />
-        </Popover>
+        </ComposerPopover>
       )}
     </div>
   );

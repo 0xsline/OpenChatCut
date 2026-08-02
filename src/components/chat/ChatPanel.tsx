@@ -5,7 +5,8 @@ import { useT } from '../../i18n/locale';
 import type { AgentContext } from '../../agent/context';
 import type { MediaAsset, TimelineState } from '../../editor/types';
 import { kindOf } from '../../media/upload';
-import { preloadAgentRuntime, useAgent } from '../../agent/useAgent';
+import { preloadAgentRuntime } from '../../agent/agent-session';
+import { useAgent } from '../../agent/useAgent';
 import { useExternalAgentBridge } from '../../agent/useExternalAgentBridge';
 import { ExternalProposalCard } from './ExternalProposalCard';
 import { thinkingPhrase } from './thinkingPhrases';
@@ -96,7 +97,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   const t = useT();
   const {
     messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal, clearHistory,
-    proposalStale, forceApplyProposal, reProposeStale, pendingGuard, liveTool,
+    proposalStale, forceApplyProposal, reProposeStale, pendingGuard, liveTool, contextUsage,
     changeLog, rollbackChangeSession, canRollbackChangeSession,
   } = useAgent(ctx, projectId);
   useEffect(() => {
@@ -412,6 +413,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
           onEnhance={runEnhance} enhancing={enhancing} running={running}
           mode={mode} onModeChange={setMode}
           autoApply={autoApply} onAutoApplyChange={setAutoApply}
+          contextUsage={contextUsage}
           selecting={selecting} onToggleSelecting={() => setSelecting((v) => !v)}
           creativeMode={creativeMode} onCreativeModeChange={onCreativeModeChange}
           references={references} onInsertRef={insertRef}

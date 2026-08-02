@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { theme } from '../../theme';
 import { useT } from '../../i18n/locale';
 import { ChatMessage } from './ChatMessage';
-import type { DisplayMessage } from '../../agent/useAgent';
+import type { DisplayMessage } from '../../agent/agent-session';
 
 const GREEN = theme.success;
 

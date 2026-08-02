@@ -22,6 +22,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   新增可恢复的生成与导出任务：支持刷新续跑、精确优先重跑、厂商/引用预检、编辑器级后台导出状态、取消及结构化终态错误。
 - Added scene-aware visual and spoken media search, source-versioned semantic artifacts, cached VAD evidence, immutable voice-isolation artifacts, and resumable AssemblyAI jobs.
   新增镜头感知的视觉/口语素材搜索、按源版本管理的语义产物、VAD 证据缓存、不可变人声分离产物，以及可恢复的 AssemblyAI 任务。
+- Added a model-aware Agent context meter and automatic semantic conversation compaction: older complete turns are reduced through bounded factual checkpoints near each model's reserve, recent turns and Codex tool evidence stay available, model switches keep the conversation, custom/local context limits are configurable, and API/Codex usage replaces estimates when providers report it.
+  新增感知模型上限的 Agent 上下文计量与自动语义压缩：接近各模型预留边界时，通过有界的事实检查点压缩较早完整轮次，近期轮次与 Codex 工具证据保持可用；切换模型继续沿用当前对话，自定义/本地模型可配置上下文上限，并在 API/Codex 返回用量后以实测值替换估算值。
 
 ### Changed / 变更
 - Unified selectable creative workflows and bundled Agent skills around `SKILL.md` + `load_skill` progressive disclosure. External MCP clients can now load guidance without an edit session, and selected workflow bodies no longer occupy the cached system prompt.

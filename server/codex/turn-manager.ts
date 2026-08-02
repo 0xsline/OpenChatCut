@@ -50,6 +50,22 @@ function identifier(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 && value.length <= 256 ? value : null;
 }
 
+function tokenCount(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function contextUsageEvent(
+  params: Record<string, unknown>,
+): Extract<CodexTurnStreamEvent, { type: 'context-usage' }> | null {
+  const usage = object(params.tokenUsage);
+  const total = object(usage?.total);
+  const inputTokens = tokenCount(total?.inputTokens);
+  const contextWindowTokens = tokenCount(usage?.modelContextWindow);
+  return inputTokens !== null && contextWindowTokens !== null
+    ? { type: 'context-usage', inputTokens, contextWindowTokens }
+    : null;
+}
+
 function sessionError(error: unknown): string {
   if (error instanceof CodexTimeoutError) return 'Codex took too long to start the turn. Try again.';
   if (error instanceof CodexRpcError) return 'Codex could not start this turn. Sign in or choose another model.';
@@ -265,6 +281,11 @@ export class CodexTurnManager {
     if ((notification.method === 'item/reasoning/summaryTextDelta' || notification.method === 'item/reasoning/textDelta')
       && typeof params.delta === 'string') {
       session.emit({ type: 'thinking-delta', delta: params.delta });
+      return;
+    }
+    if (notification.method === 'thread/tokenUsage/updated') {
+      const usage = contextUsageEvent(params);
+      if (usage) session.emit(usage);
       return;
     }
     if (notification.method === 'error' && params.willRetry !== true) {
