@@ -56,6 +56,7 @@ assert.deepEqual(revealOptions, { behavior: 'smooth', left: 108 });
 
 const source = await readFile(new URL('./TemplateBrowser.tsx', import.meta.url), 'utf8');
 assert.match(source, /createHorizontalTabDrag\(event, event\.currentTarget\)/);
+assert.match(source, /\(event\.buttons & 1\) === 0/, 'a pointer released outside the row should not leave a stale drag gesture');
 assert.match(source, /aria-selected=\{chip === c\}/);
 assert.match(source, /revealHorizontalTab\(/);
 

@@ -199,6 +199,11 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
           chipDragRef.current = createHorizontalTabDrag(event, event.currentTarget);
         }}
         onPointerMove={(event) => {
+          if ((event.buttons & 1) === 0) {
+            chipDragRef.current = null;
+            delete event.currentTarget.dataset.dragging;
+            return;
+          }
           if (!chipDragRef.current?.move(event)) return;
           if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
             event.currentTarget.setPointerCapture(event.pointerId);
