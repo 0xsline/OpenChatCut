@@ -21,13 +21,14 @@ import { ZOOM_SHAPE_LABELS } from '../../editor/types';
 import { useT } from '../../i18n/locale';
 import { hasOperationalTranscript } from '../../transcript/types';
 import {
-  CLIP_COLOR, intersectFrameRange, visibleTimelineItems, waveformPath,
+  CLIP_COLOR, fmt, intersectFrameRange, visibleTimelineItems, waveformPath,
   type EditMode, type TimelineFrameWindow, type TimelineIndexes,
 } from './timelineUtil';
 import { ClipMediaLayers } from './ClipMediaLayers';
 import { isPreviewable } from '../../media/clipPreview';
 import { canDropMediaAsset, hasCompatibleMediaDrag, parseMediaAssetDrag } from '../../media/drag';
 import type { useTimelinePointer } from './useTimelinePointer';
+import { topClipOverlapSpans } from './trackOverlap';
 
 /** corner chips so applied fx / lut / zoom / denoise / transition are visible on the clip */
 function ClipEffectBadges({
@@ -128,6 +129,7 @@ export function TrackLane({
   const { drag, penDrag, setPenDrag, startDrag, startPick, startMarquee } = pointer;
   const trackIds = timelineTrackIds(state);
   const items = indexes.itemsByTrack.get(trackId) ?? [];
+  const itemIndexById = new Map(items.map((item, index) => [item.id, index]));
   const renderedItems = useMemo(() => visibleTimelineItems(
     indexes.itemWindowsByTrack.get(trackId),
     visibleWindow,
@@ -236,6 +238,8 @@ export function TrackLane({
         const showHandles = !pickMode && editMode !== 'blade' && editMode !== 'pen' && editMode !== 'slip'
           && (editMode !== 'rate-stretch' || canRateStretch);
         const isLibOver = libDropTarget === it.id;
+        const itemIndex = itemIndexById.get(it.id) ?? 0;
+        const overlapSpans = topClipOverlapSpans(start, dur, items.slice(0, itemIndex));
         return (
           <div
             key={it.id}
@@ -328,6 +332,17 @@ export function TrackLane({
                 visibleWindow={visibleWindow}
               />
             )}
+            {overlapSpans.map((span) => (
+              <span
+                key={`${span.startFrame}:${span.endFrame}`}
+                className="cc-clip-overlap-region"
+                aria-hidden="true"
+                style={{
+                  left: (span.startFrame - start) * px,
+                  width: (span.endFrame - span.startFrame) * px,
+                }}
+              />
+            ))}
             {it.kind === 'audio' && !isPreviewable(it.src) && mediaIntersection && (() => {
               const left = (mediaIntersection.startFrame - start) * px + 3;
               const width = Math.max(1, (mediaIntersection.endFrame - mediaIntersection.startFrame) * px - 6);
@@ -338,6 +353,7 @@ export function TrackLane({
                 </svg>
               );
             })()}
+            <span className="cc-clip-duration" data-cc-live-duration={dur}>{fmt(dur, state.fps)}</span>
             <ClipEffectBadges item={it} inTransition={indexes.transitionByIncomingId.get(it.id) ?? null} />
             {/* pen mode: keyframe rubber band on the selected clip (vertical = value; audio = volume 0..2, rest = transparency 0..1)*/}
             {editMode === 'pen' && selected && (() => {

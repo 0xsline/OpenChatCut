@@ -666,6 +666,20 @@ button, input, select { font: inherit; }
   border-color:var(--cc-select);
   box-shadow:inset 0 0 0 0.5px var(--cc-select);
 }
+.cc-clip-overlap-region {
+  position:absolute; top:0; bottom:0; z-index:1; pointer-events:none;
+  background:
+    repeating-linear-gradient(135deg, rgba(var(--cc-ink-rgb),.28) 0 2px, transparent 2px 8px),
+    rgba(var(--cc-shadow-rgb),.3);
+  box-shadow:inset 1px 0 rgba(var(--cc-ink-rgb),.22), inset -1px 0 rgba(var(--cc-ink-rgb),.22);
+}
+.cc-clip-duration {
+  position:absolute; top:3px; left:50%; transform:translateX(-50%); z-index:3;
+  max-width:calc(100% - 18px); overflow:hidden; padding:1px 4px; border-radius:3px;
+  background:color-mix(in srgb, var(--cc-bg) 72%, transparent); color:var(--cc-text-strong);
+  font-size:9.5px; line-height:13px; font-variant-numeric:tabular-nums; white-space:nowrap;
+  pointer-events:none;
+}
 .cc-caption-track-lane { flex:1; position:relative; overflow:hidden; }
 .cc-caption-track-cue { position:absolute; top:8px; bottom:8px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; overflow:hidden; padding:5px 7px; border:0.5px solid color-mix(in srgb, var(--cc-track-caption) 78%, white); border-radius:4px; background:color-mix(in srgb, var(--cc-track-caption) 76%, var(--cc-panel)); color:var(--cc-text-strong); font-size:11px; line-height:1.35; white-space:nowrap; text-align:center; touch-action:none; cursor:grab; }
 .cc-caption-track-cue > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }

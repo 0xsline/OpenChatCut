@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject }
 import type { PlayerRef } from '@remotion/player';
 import { theme, themeAlpha } from '../../theme';
 import {
-  captionTrackEntries, captionsOnTrack, defaultTrackId, selectedIdsOf, timelineDuration, timelineTrackIds, trackAlias, trackKind,
+  captionTrackEntries, captionsOnTrack, defaultTrackId, selectedIdsOf, timelineTrackIds, trackAlias, trackKind,
   type TimelineItem, type TimelineState, type TrackId,
 } from '../../editor/types';
 import type { EditorCommands } from '../../editor/store';
@@ -28,6 +28,7 @@ import { useTimelineShortcuts } from './useTimelineShortcuts';
 import { useTimelinePointer } from './useTimelinePointer';
 import { usePlayheadPaint } from './usePlayheadPaint';
 import { useTimelineZoomController } from './useTimelineZoomController';
+import { timelineFitTotalFrames } from './timelineFitRange';
 import { applyLibraryToClip as applyToClip, applyLibraryToTrack as applyToTrack } from './libraryDropActions';
 import {
   HEADER_W, MAX_ROW, MIN_ROW, RULER_H, TRACK_ROW, buildTimelineIndexes,
@@ -55,10 +56,10 @@ interface TimelineProps {
 export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceover, shortcutApiRef, onReviewItem, onSlipPreview }: TimelineProps) {
   const t = useT();
   const locale = getLocale();
-  const empty = state.items.length === 0;
+  const total = useMemo(() => timelineFitTotalFrames(state), [state]);
+  const empty = total === 0;
   const liveStateRef = useRef(state);
   liveStateRef.current = state;
-  const total = empty ? 0 : timelineDuration(state);
   const trackIds = timelineTrackIds(state);
   const indexes = useMemo(
     () => buildTimelineIndexes(state),
