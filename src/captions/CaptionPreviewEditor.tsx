@@ -8,9 +8,11 @@ import { captionPreviewTextColor, captionPreviewTextColorPatch, containerStyle, 
 import { buildCues, fmtCueMs } from './captionCues';
 import {
   captionPreviewLayoutPatch,
+  captionPreviewNudgePatch,
   captionPreviewStylePatch,
   captionPreviewTextPatch,
   findCaptionPreviewTarget,
+  type CaptionPreviewNudgeDirection,
 } from './captionPreviewTarget';
 import { Icon } from '../components/icons';
 import { useT } from '../i18n/locale';
@@ -36,6 +38,12 @@ interface CaptionPreviewEditorProps {
 const FONT_STEP = 1.12;
 const clampFont = (v: number): number => Math.min(0.14, Math.max(0.02, v));
 const DRAG_THRESHOLD = 4;
+const ARROW_NUDGE_DIRECTION: Partial<Record<string, CaptionPreviewNudgeDirection>> = {
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+};
 /** Text color quick color palette (white/black + common accent colors) */
 const COLOR_SWATCHES = ['#ffffff', '#0a0a0a', '#FFD84A', '#FF5A5A', '#6EE7F9', '#7CFF9B', '#FF8FD1', '#FFA94D'];
 
@@ -150,6 +158,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
     // frames; waiting for pointerup allowed the active cue to change first.
     setSelected(true);
     playerRef.current?.pause();
+    (e.currentTarget as HTMLElement).focus({ preventScroll: true });
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     dragRef.current = {
       startX: e.clientX, startY: e.clientY,
@@ -190,6 +199,15 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
     }
     setDrag(null);
   };
+  const onHitKeyDown = (e: React.KeyboardEvent) => {
+    if (!selected || editing || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const direction = ARROW_NUDGE_DIRECTION[e.key];
+    if (!direction) return;
+    e.preventDefault();
+    e.stopPropagation();
+    playerRef.current?.pause();
+    onUpdateCaptions(captionPreviewNudgePatch(captions, target, direction));
+  };
 
   const curColor = currentTextColor;
 
@@ -218,10 +236,12 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
             <div
               className="cc-capedit-hit"
               role="button"
+              tabIndex={0}
               title={t('点击选中字幕；拖动移动位置；双击直接改文字')}
               onPointerDown={onHitPointerDown}
               onPointerMove={onHitPointerMove}
               onPointerUp={onHitPointerUp}
+              onKeyDown={onHitKeyDown}
               onDoubleClick={() => { setSelected(true); setEditing(true); setDraft(cue.text); playerRef.current?.pause(); }}
               style={drag
                 ? { ...textCss, opacity: 0.92, cursor: 'grabbing', touchAction: 'none', userSelect: 'none' }

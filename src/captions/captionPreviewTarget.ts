@@ -34,6 +34,16 @@ export interface ManualCaptionPreviewTarget extends BaseTarget {
 }
 
 export type CaptionPreviewTarget = SingleCaptionPreviewTarget | ManualCaptionPreviewTarget;
+export type CaptionPreviewNudgeDirection = 'left' | 'right' | 'up' | 'down';
+
+const NUDGE_DELTAS: Record<CaptionPreviewNudgeDirection, { x: number; y: number }> = {
+  left: { x: -1, y: 0 },
+  right: { x: 1, y: 0 },
+  up: { x: 0, y: -1 },
+  down: { x: 0, y: 1 },
+};
+
+const roundedRatio = (value: number): number => Math.round(value * 10_000) / 10_000;
 
 function activeCueIndex(rows: CueRow[], ms: number): number {
   for (let index = rows.length - 1; index >= 0; index -= 1) {
@@ -128,4 +138,21 @@ export function captionPreviewLayoutPatch(
       ? { ...entry, anchor: layout.anchor, offsetXRatio: layout.offsetXRatio, offsetYRatio: layout.offsetYRatio }
       : entry),
   };
+}
+
+export function captionPreviewNudgePatch(
+  captions: CaptionsData,
+  target: CaptionPreviewTarget,
+  direction: CaptionPreviewNudgeDirection,
+  stepRatio = 0.01,
+): Partial<CaptionsData> {
+  const anchor = target.layout?.anchor ?? 'bottom-center';
+  const delta = NUDGE_DELTAS[direction];
+  const verticalStorageSign = anchor.startsWith('bottom') || anchor === 'bottom' ? -1 : 1;
+  return captionPreviewLayoutPatch(captions, target, {
+    ...target.layout,
+    anchor,
+    offsetXRatio: roundedRatio((target.layout?.offsetXRatio ?? 0) + delta.x * stepRatio),
+    offsetYRatio: roundedRatio((target.layout?.offsetYRatio ?? 0) + delta.y * stepRatio * verticalStorageSign),
+  });
 }

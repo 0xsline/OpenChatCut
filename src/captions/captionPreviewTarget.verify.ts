@@ -4,6 +4,7 @@ import { captionTemplatePatch } from './captionTemplatePatch';
 import { captionPreviewTextColor, captionPreviewTextColorPatch, effectivePreset } from './renderStyles';
 import {
   captionPreviewLayoutPatch,
+  captionPreviewNudgePatch,
   captionPreviewStylePatch,
   captionPreviewTextPatch,
   findCaptionPreviewTarget,
@@ -60,6 +61,30 @@ const layoutPatch = captionPreviewLayoutPatch(captions, target!, {
 });
 assert.equal(layoutPatch.sourceEntries?.[0]?.offsetXRatio, 0.1);
 assert.equal(layoutPatch.sourceEntries?.[0]?.offsetYRatio, 0.2);
+
+const positionedCaptions = { ...captions, ...layoutPatch };
+const positionedTarget = findCaptionPreviewTarget(positionedCaptions, [], 30, 1_500)!;
+assert.equal(
+  captionPreviewNudgePatch(positionedCaptions, positionedTarget, 'left').sourceEntries?.[0]?.offsetXRatio,
+  0.09,
+  'left arrow moves the caption one percent of the composition width',
+);
+assert.equal(
+  captionPreviewNudgePatch(positionedCaptions, positionedTarget, 'up').sourceEntries?.[0]?.offsetYRatio,
+  0.21,
+  'bottom anchors store upward movement as a positive vertical offset',
+);
+
+const topLayoutPatch = captionPreviewLayoutPatch(captions, target!, {
+  anchor: 'top-center', offsetXRatio: 0, offsetYRatio: 0.2,
+});
+const topCaptions = { ...captions, ...topLayoutPatch };
+const topTarget = findCaptionPreviewTarget(topCaptions, [], 30, 1_500)!;
+assert.equal(
+  captionPreviewNudgePatch(topCaptions, topTarget, 'up').sourceEntries?.[0]?.offsetYRatio,
+  0.19,
+  'top anchors store upward movement as a negative vertical delta',
+);
 
 const deletePatch = captionPreviewTextPatch(captions, target!, '');
 assert.equal(deletePatch?.sourceEntries?.[0]?.words?.length, 0);
