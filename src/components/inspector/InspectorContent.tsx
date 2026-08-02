@@ -10,6 +10,7 @@ import { FadeControl, IsolateVoiceControl, SpeedControl, TextControl, Transition
 import { EffectsControl, FilterControl, SectionLabel } from './InspectorVisualControls';
 import type { InspectorPanelProps } from './InspectorTypes';
 import { InspectorSlipControl } from './InspectorSlipControl';
+import { groupInspectorPropSchema } from './inspectorPropSchemaLayout';
 
 export type InspectorTab = 'basic' | 'video' | 'audio' | 'animation';
 
@@ -234,13 +235,23 @@ function MotionGraphicFields({ item, schema, mixed, onChange }: {
   if (schema.length === 0) return <div className="cc-insp-muted">{t('该模板无可编辑属性。')}</div>;
   return (
     <div className="cc-insp-mg-grid">
-      {schema.map((field, index) => <PropSchemaField
-        key={`${index}:${field.key}`}
-        spec={field}
-        mixed={mixed?.(field.key)}
-        value={item.props?.[field.key]}
-        onChange={(value) => onChange(field.key, value)}
-      />)}
+      {groupInspectorPropSchema(schema).map((group, groupIndex) => group.kind === 'color-row'
+        ? <div className="cc-insp-color-row" key={`color-row:${groupIndex}`}>
+          {group.fields.map((field) => <PropSchemaField
+            key={field.key}
+            spec={field}
+            mixed={mixed?.(field.key)}
+            value={item.props?.[field.key]}
+            onChange={(value) => onChange(field.key, value)}
+          />)}
+        </div>
+        : group.fields.map((field) => <PropSchemaField
+          key={field.key}
+          spec={field}
+          mixed={mixed?.(field.key)}
+          value={item.props?.[field.key]}
+          onChange={(value) => onChange(field.key, value)}
+        />))}
     </div>
   );
 }

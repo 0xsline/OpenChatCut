@@ -35,6 +35,15 @@ interface TrackHeadProps {
   children?: ReactNode;
 }
 
+function trackDeleteTitle(
+  blockedReason: TrackDeletePlan['blockedReason'],
+  t: ReturnType<typeof useT>,
+): string {
+  if (blockedReason === 'last-video') return t('至少保留一条视频轨道');
+  if (blockedReason === 'locked') return t('请先解锁轨道');
+  return t('删除轨道');
+}
+
 export function TrackHead({
   trackId, kind, trackName, config, deleteBlockedReason, onDelete, menuElevated, width,
   commands, onToggleCaptions, onToggleCaptionMenu, onToggleDuckMenu, duckMenuPos, onCloseDuckMenu, children,
@@ -44,11 +53,7 @@ export function TrackHead({
   const muted = config.muted ?? false;
   const locked = config.locked ?? false;
   const isCaption = kind === 'caption';
-  const deleteTitle = deleteBlockedReason === 'last-video'
-    ? t('至少保留一条视频轨道')
-    : deleteBlockedReason === 'locked'
-      ? t('请先解锁轨道')
-      : t('删除轨道');
+  const deleteTitle = trackDeleteTitle(deleteBlockedReason, t);
   const tagColor = kind === 'video' ? theme.trackVideo : kind === 'audio' ? theme.trackAudioA1 : theme.trackCaption;
   const nameTitle = config.role === 'anchor' ? `${trackName} · ${t('主轨（闪避）')}`
     : config.role === 'follower' ? `${trackName} · ${t('跟随（闪避）')}`

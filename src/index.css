@@ -1658,10 +1658,28 @@ button, input, select { font: inherit; }
 .cc-auto-grade-result { color:var(--cc-text-muted); font-size:9.5px; line-height:1.45; }
 .cc-auto-grade-result b { color:var(--cc-text); }
 .cc-insp-mg-grid {
-  display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:8px;
+  display:flex; flex-direction:column; gap:8px;
 }
 .cc-insp-mg-field {
-  display:flex; flex-direction:column; gap:3px; font-size:10.5px; color:var(--cc-text-dim);
+  min-width:0; display:flex; flex-direction:column; gap:3px; font-size:10.5px; color:var(--cc-text-dim);
+}
+.cc-insp-textarea {
+  box-sizing:border-box; min-height:29px; max-height:96px;
+  field-sizing:content; overflow-y:auto; line-height:16px;
+}
+.cc-insp-color-row {
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(64px, 1fr)); gap:8px;
+}
+.cc-insp-color-row input[type="color"] {
+  width:100%; height:28px; min-width:0; padding:2px;
+  border:0.5px solid var(--cc-border); border-radius:4px;
+  background:var(--cc-inset); cursor:pointer;
+}
+.cc-insp-color-row input[type="color"]::-webkit-color-swatch-wrapper {
+  padding:1px;
+}
+.cc-insp-color-row input[type="color"]::-webkit-color-swatch {
+  border:0; border-radius:2px;
 }
 .cc-insp-mg-field input[type="text"],
 .cc-insp-mg-field input[type="number"] {
