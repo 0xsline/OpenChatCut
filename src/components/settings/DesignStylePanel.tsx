@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { theme, themeAlpha } from '../../theme';
-import { useT } from '../../i18n/locale';
+import { getLocale, useT } from '../../i18n/locale';
 import { Icon } from '../icons';
 import {
   COLOR_ROLES, FONT_ROLES, colorOf, fontOf, type DesignStyle,
@@ -11,6 +11,12 @@ import {
 } from '../../persist/projectStore';
 import { FONT_CATALOG, searchFontCatalog } from '../../fonts/googleFontCatalog';
 import { DesignStyleTransferButtons } from './DesignStyleTransferButtons';
+import {
+  localizeDesignFontRole,
+  localizeDesignPresetName,
+  localizeDesignRole,
+  localizeDesignStyleGuide,
+} from './designStyleLocalization';
 
 interface DesignStylePanelProps {
   style: DesignStyle | undefined;
@@ -42,6 +48,7 @@ const pick = (s: DesignStyle, roles: string[]): string | undefined => {
  * Real-time preview of local drafts, "Apply to project" one-time submission (single history). */
 export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelProps) {
   const t = useT();
+  const locale = getLocale();
   const [draft, setDraft] = useState<DesignStyle>(style ?? EMPTY);
 
   // "My style" — the user's own saved-style library (a GLOBAL personal
@@ -156,7 +163,8 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
             <div style={{ ...sectionTitle, marginTop: 12 }}>{t('预设')}</div>
             <div style={styleList}>
               {DESIGN_STYLE_PRESETS.map((p) => (
-                <StyleRow key={p.id} name={p.name} title={p.style.styleGuide}
+                <StyleRow key={p.id} name={localizeDesignPresetName(p.name, locale)}
+                  title={localizeDesignStyleGuide(p.style.styleGuide ?? '', locale)}
                   colors={p.style.colors.map((c) => c.value)}
                   thumbnailUrl={p.thumbnailUrl}
                   selected={sameStyle(draft, p.style)} onClick={() => { setDraft(p.style); setSelectedOwnedId(null); }} />
@@ -216,7 +224,7 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
                   <label key={role} style={colorRow}>
                     <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : '#000000'} onChange={(e) => setColor(role, e.target.value)}
                       style={{ width: 24, height: 24, padding: 0, border: 'none', background: value || 'none', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }} />
-                    <span title={role} style={{ fontSize: 11, color: theme.textDim, minWidth: 40, flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t(COLOR_LABEL[role] ?? role)}</span>
+                    <span title={role} style={{ fontSize: 11, color: theme.textDim, minWidth: 40, flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{localizeDesignRole(COLOR_LABEL[role] ?? role, locale)}</span>
                     <input value={value} placeholder="#—" onChange={(e) => setColor(role, e.target.value)} style={hexInput} />
                   </label>
                 );
@@ -229,7 +237,7 @@ export function DesignStylePanel({ style, onApply, onClose }: DesignStylePanelPr
             <div style={sectionTitle}>{t('字体')}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
               {fontRoles.map((role) => (
-                <FontField key={role} label={FONT_LABEL[role] ?? role} role={role}
+                <FontField key={role} label={localizeDesignFontRole(FONT_LABEL[role] ?? role, locale)} role={role}
                   value={fontOf(draft, role) ?? ''} onChange={(v) => setFont(role, v)} />
               ))}
             </div>
