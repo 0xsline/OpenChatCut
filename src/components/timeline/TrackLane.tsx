@@ -29,6 +29,11 @@ import { isPreviewable } from '../../media/clipPreview';
 import { canDropMediaAsset, hasCompatibleMediaDrag, parseMediaAssetDrag } from '../../media/drag';
 import type { useTimelinePointer } from './useTimelinePointer';
 import { topClipOverlapSpans } from './trackOverlap';
+import {
+  selectionMovePreviewDeltaForItem,
+  type TimelineSelectionMovePreview,
+} from '../../captions/captionGroupMove';
+import { droppedFiles, hasExternalFiles } from '../../media/externalFileDrop';
 
 /** corner chips so applied fx / lut / zoom / denoise / transition are visible on the clip */
 function ClipEffectBadges({
@@ -119,12 +124,16 @@ interface TrackLaneProps {
   frameFromClientX: (clientX: number) => number;
   onContextMenu: (menu: { id: string; x: number; y: number }) => void;
   scrollRef: RefObject<HTMLDivElement | null>;
+  selectionMovePreview: TimelineSelectionMovePreview | null;
+  onDropExternalFiles?: (files: File[], trackId: TrackId, startFrame: number) => void;
 }
 
 export function TrackLane({
   trackId, state, commands, pointer, editMode, pickMode, locked, hidden, muted, px, rowHeight,
   visibleWindow, pinnedItemIds, indexes, libDropTarget, setLibDropTarget,
   applyLibraryToClip, applyLibraryToTrack, rippleOnDrop, overwriteOnDrop, frameFromClientX, onContextMenu, scrollRef,
+  selectionMovePreview,
+  onDropExternalFiles,
 }: TrackLaneProps) {
   const t = useT();
   const { drag, penDrag, setPenDrag, startDrag, startPick, startMarquee } = pointer;
@@ -171,13 +180,24 @@ export function TrackLane({
         if (editMode === 'selection' && !locked) startMarquee(e);
       }}
       onDragOver={(e) => {
-        if (locked || (!hasLibraryDrag(e) && !hasCompatibleMediaDrag(e, laneKind))) return;
+        if (locked || (!hasLibraryDrag(e)
+          && !hasCompatibleMediaDrag(e, laneKind)
+          && !hasExternalFiles(e.dataTransfer))) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
         setLibDropTarget(`track:${trackId}`);
       }}
       onDragLeave={() => setLibDropTarget((t) => (t === `track:${trackId}` ? null : t))}
       onDrop={(e) => {
+        const files = droppedFiles(e.dataTransfer);
+        if (files.length) {
+          setLibDropTarget(null);
+          if (locked || !onDropExternalFiles) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onDropExternalFiles(files, trackId, frameFromClientX(e.clientX));
+          return;
+        }
         const mediaAssetId = parseMediaAssetDrag(e);
         if (mediaAssetId) {
           setLibDropTarget(null);
@@ -211,13 +231,20 @@ export function TrackLane({
     >
       {renderedItems.map((it) => {
         const selected = isItemSelected(state, it.id);
+        const captionInitiatedDelta = selectionMovePreviewDeltaForItem(it.id, selectionMovePreview);
+        const captionInitiatedMove = captionInitiatedDelta !== 0;
         // Group-move preview: every selected clip rides the same delta as the grab handle
-        const groupMove = !!drag && drag.mode === 'move' && isItemSelected(state, drag.id) && selected;
+        const groupMove = captionInitiatedMove || (!!drag
+          && drag.mode === 'move'
+          && pointer.dragSelection.itemIds.includes(it.id));
         const dragging = drag?.id === it.id || groupMove;
         const stretchEdge = drag?.mode === 'trim-left' ? 'left' : drag?.mode === 'trim-right' ? 'right' : null;
         const stretch = editMode === 'rate-stretch' && drag?.id === it.id && stretchEdge
           ? rateStretchGeometry(it, stretchEdge, drag.deltaF) : null;
-        const start = stretch?.startFrame ?? (it.startFrame + (dragging && drag && (drag.mode === 'move' || drag.mode === 'trim-left') ? drag.deltaF : 0));
+        const moveDelta = captionInitiatedMove
+          ? captionInitiatedDelta
+          : dragging && drag && (drag.mode === 'move' || drag.mode === 'trim-left') ? drag.deltaF : 0;
+        const start = stretch?.startFrame ?? (it.startFrame + moveDelta);
         const durTrim = drag?.id === it.id && drag.mode === 'trim-left' ? -drag.deltaF
           : drag?.id === it.id && drag.mode === 'trim-right' ? drag.deltaF : 0;
         const dur = stretch?.durationInFrames ?? Math.max(1, it.durationInFrames + durTrim);

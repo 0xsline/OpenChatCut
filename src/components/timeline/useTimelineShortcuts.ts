@@ -34,13 +34,15 @@ interface ShortcutDeps {
   setEditMarker: (id: string | null) => void;
   fxClip: FxClip | null;
   setFxClip: (fx: FxClip | null) => void;
+  copySelectedCaptions: () => boolean;
+  pasteCaptionClipboard: () => boolean;
 }
 
 export function useTimelineShortcuts(deps: ShortcutDeps): { zoneIn: number | null; zoneOut: number | null } {
   const {
     shortcutApiRef, state, commands, playerRef, playheadRef, total,
     seekFrame, paintPlayhead, setEditMode, setSnapping, fitToView, zoomBy,
-    bladeSelected, setEditMarker, fxClip, setFxClip,
+    bladeSelected, setEditMarker, fxClip, setFxClip, copySelectedCaptions, pasteCaptionClipboard,
   } = deps;
 
   // ── I/O marks + shuttle + clipboard ─────────────────────────────────────
@@ -257,6 +259,7 @@ export function useTimelineShortcuts(deps: ShortcutDeps): { zoneIn: number | nul
         }
       },
       copySelected: () => {
+        if (copySelectedCaptions()) return;
         const ids = selectedIdsOf(state);
         const items = ids.map((id) => state.items.find((x) => x.id === id)).filter(Boolean) as TimelineItem[];
         if (!items.length) return;
@@ -297,6 +300,7 @@ export function useTimelineShortcuts(deps: ShortcutDeps): { zoneIn: number | nul
         });
       },
       pasteClipboard: () => {
+        if (pasteCaptionClipboard()) return;
         const clip = itemClipRef.current;
         if (!clip || clip.kind !== 'item') return;
         const batch = clip.multi?.length ? clip.multi : [clip.item];

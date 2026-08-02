@@ -16,8 +16,23 @@ import { CaptionStyleMenu } from '../../captions/CaptionStyleMenu';
 import { CaptionTrackLane, type CaptionCueMove } from '../../captions/CaptionTrackLane';
 import { captionsForTrack } from '../../captions/captionTrack';
 import {
+  captionSelectionsInFrameRange,
+  resolveCaptionSelection,
+  type CaptionSelectOptions,
+  type CaptionSelectionRef,
+} from '../../captions/captionSelection';
+import {
+  moveTimelineSelectionByDelta,
+  type TimelineSelectionMovePreview,
+} from '../../captions/captionGroupMove';
+import {
+  createCaptionTimelineClipboard,
+  createCaptionTrackFromClipboard,
+  type CaptionTimelineClipboard,
+} from '../../captions/captionTimelineClipboard';
+import {
   appendManualCueToFirstLane, isManualCaptionEntry, newManualCaptions, placeManualCueTiming,
-  promoteCaptionEntries, removeManualCue, updateManualCue,
+  promoteCaptionEntries, removeManualCue,
 } from '../../captions/manualCaptions';
 import { TrackHead } from './TrackHead';
 import { TrackLane } from './TrackLane';
@@ -59,11 +74,20 @@ interface TimelineProps {
   onSlipPreview?: (preview: SlipPreview | null) => void;
   /** Read-only frame under the pointer; never mutates the formal playhead. */
   onHoverPreviewFrameChange?: (frame: number | null) => void;
+  selectedCaptions?: CaptionSelectionRef[];
+  onSelectCaption?: (selection: CaptionSelectionRef | null, options?: CaptionSelectOptions) => void;
+  onMarqueeCaptionSelect?: (
+    selections: CaptionSelectionRef[],
+    options: { additive: boolean; preserveWithItems: boolean },
+  ) => void;
+  onDropExternalFiles?: (files: File[], trackId: TrackId, startFrame: number) => void;
 }
 
 export function Timeline({
   state, commands, playerRef, projectId, onRecordVoiceover, shortcutApiRef,
   onReviewItem, onSlipPreview, onHoverPreviewFrameChange,
+  selectedCaptions = [], onSelectCaption = () => {}, onMarqueeCaptionSelect = () => {},
+  onDropExternalFiles,
 }: TimelineProps) {
   const t = useT();
   const locale = getLocale();
@@ -86,6 +110,8 @@ export function Timeline({
     dragged: boolean;
   } | null>(null);
   const [hoverPreviewFrame, setHoverPreviewFrame] = useState<number | null>(null);
+  const [captionSelectionMovePreview, setCaptionSelectionMovePreview] = useState<TimelineSelectionMovePreview | null>(null);
+  const captionClipboardRef = useRef<CaptionTimelineClipboard | null>(null);
   const timelineId = (state as { id?: string }).id;
   const { zoom, setZoom, zoomBy, fitToView, pixelsPerFrame: px, trackScale } =
     useTimelineZoomController({ scrollRef, totalFrames: total, fps: state.fps, projectId, timelineId });
@@ -119,17 +145,23 @@ export function Timeline({
     if (!source) return;
     const targetTrackId = trackKind(state, move.targetTrackId) === 'caption'
       && !state.tracks?.[move.targetTrackId]?.locked ? move.targetTrackId : sourceTrackId;
-    const sourceLane = source.sourceEntries?.find((entry) => entry.id === move.laneId);
-    const sourceCue = sourceLane?.words?.[move.index];
-    // Dragging and placing will not cause overlap in the lane: if it is pressed to the neighbor's edge, and the gap cannot fit the entire cue, it will spring back to its original position.
-    if (targetTrackId === sourceTrackId) {
-      const others = (sourceLane?.words ?? []).filter((_, i) => i !== move.index);
-      const placed = placeManualCueTiming(others, move.startMs, move.endMs - move.startMs);
-      if (!placed || (sourceCue?.start === placed.start && sourceCue.end === placed.end)) return;
-      const patch = updateManualCue(source, move.laneId, move.index, move.text, placed.start, placed.end);
-      if (patch) commands.updateCaptions(patch, sourceTrackId);
+    if (targetTrackId === sourceTrackId
+      || move.selection.kind === 'single'
+      || move.captionSelections.length + move.itemIds.length > 1) {
+      const next = moveTimelineSelectionByDelta(
+        state,
+        move.itemIds,
+        move.captionSelections,
+        move.deltaFrames,
+      );
+      if (next !== state) commands.applyState(next);
       return;
     }
+    if (move.selection.kind !== 'manual') return;
+    const manualSelection = move.selection;
+    const sourceLane = source.sourceEntries?.find((entry) => entry.id === manualSelection.laneId);
+    const sourceCue = sourceLane?.words?.[manualSelection.cueIndex];
+    if (!sourceCue) return;
     const target = captionsOnTrack(state, targetTrackId) ?? newManualCaptions();
     const targetWords = promoteCaptionEntries(target, state.items).find(isManualCaptionEntry)?.words ?? [];
     const placed = placeManualCueTiming(targetWords, move.startMs, move.endMs - move.startMs);
@@ -137,9 +169,13 @@ export function Timeline({
     const targetPatch = appendManualCueToFirstLane(target, state.items, move.text, placed.start, placed.end);
     if (!targetPatch) return;
     commands.batch([
-      { type: 'updateCaptions', patch: removeManualCue(source, move.laneId, move.index), track: sourceTrackId },
+      {
+        type: 'updateCaptions',
+        patch: removeManualCue(source, manualSelection.laneId, manualSelection.cueIndex),
+        track: sourceTrackId,
+      },
       { type: 'setCaptions', captions: { ...target, ...targetPatch }, track: targetTrackId },
-    ]);
+    ], t('移动字幕'));
   };
   useEffect(() => {
     if (!captionMenu) return;
@@ -176,14 +212,14 @@ export function Timeline({
   // instead of editing — clip click → item ref, ruler click → timepoint, drag
   // over ruler/lanes → timerange. Editing gestures are untouched when off.
   const pickMode = useSelectionRefMode();
-  /** Clips whose time range + track lane intersect the client-space marquee rect. */
-  const itemsInMarquee = (left: number, top: number, right: number, bottom: number): string[] => {
+  /** Clips and caption cues whose range + track lane intersect the marquee. */
+  const selectionInMarquee = (left: number, top: number, right: number, bottom: number) => {
     const f0 = frameFromClientX(left);
     const f1 = frameFromClientX(right);
     const lo = Math.min(f0, f1);
     const hi = Math.max(f0, f1);
     const r = innerRef.current?.getBoundingClientRect();
-    if (!r) return [];
+    if (!r) return { itemIds: [], captionSelections: [] };
     const hitTracks = new Set<TrackId>();
     let y = r.top + RULER_H;
     for (const t of trackIds) {
@@ -191,7 +227,7 @@ export function Timeline({
       if (bottom >= y && top <= y + h) hitTracks.add(t);
       y += h;
     }
-    return state.items
+    const itemIds = state.items
       .filter((it) => {
         if (!hitTracks.has(it.track)) return false;
         if (state.tracks?.[it.track]?.locked) return false;
@@ -199,6 +235,14 @@ export function Timeline({
         return end > lo && it.startFrame < hi;
       })
       .map((it) => it.id);
+    const captionSelections = [...hitTracks].flatMap((trackId) => {
+      if (trackKind(state, trackId) !== 'caption' || state.tracks?.[trackId]?.locked) return [];
+      const captions = captionsOnTrack(state, trackId);
+      return captions
+        ? captionSelectionsInFrameRange(trackId, captions, state.items, state.fps, lo, hi)
+        : [];
+    });
+    return { itemIds, captionSelections };
   };
   // clip right-click menu + effect clipboard (copy effect/paste effect)
   const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -274,10 +318,34 @@ export function Timeline({
     return trackIds[trackIds.length - 1] ?? '';
   };
 
+  const copyCaptionSelections = (selections = selectedCaptions): boolean => {
+    const clipboard = createCaptionTimelineClipboard(selections.flatMap((selection) => {
+      const cue = resolveCaptionSelection(state, selection)?.target.cue;
+      return cue ? [{ text: cue.text, start: cue.start, end: cue.end }] : [];
+    }));
+    if (!clipboard) return false;
+    captionClipboardRef.current = clipboard;
+    return true;
+  };
+  const pasteCaptionClipboard = (): boolean => {
+    const captions = createCaptionTrackFromClipboard(
+      captionClipboardRef.current,
+      playheadRef.current * 1000 / state.fps,
+    );
+    if (!captions) return false;
+    const trackId = `track_${crypto.randomUUID()}`;
+    commands.batch([
+      { type: 'track.create', track: { id: trackId, kind: 'caption', name: t('复制字幕') } },
+      { type: 'setCaptions', captions, track: trackId },
+    ], t('粘贴字幕'));
+    return true;
+  };
+
   // Pointer state machine: fragment drag/crop, blank frame selection, pen point drag, reference picking (useTimelinePointer)
   const pointer = useTimelinePointer({
     state, commands, editMode, snapping, pickMode, px,
-    playheadRef, scrollRef, frameFromClientX, trackFromClientY, itemsInMarquee,
+    playheadRef, scrollRef, frameFromClientX, trackFromClientY, selectionInMarquee,
+    selectedCaptions, onMarqueeCaptionSelect,
   });
   const { drag, marquee, pickDrag, startPick, onPointerMove, onPointerUp, onPointerCancel } = pointer;
   const activeSlipPreview = useMemo(
@@ -391,6 +459,7 @@ export function Timeline({
     shortcutApiRef, state, commands, playerRef, playheadRef, total,
     seekFrame, paintPlayhead, setEditMode, setSnapping, fitToView, zoomBy,
     bladeSelected, setEditMarker, fxClip, setFxClip,
+    copySelectedCaptions: copyCaptionSelections, pasteCaptionClipboard,
   });
 
   const editing = markers.find((m) => m.id === editMarker) ?? null;
@@ -500,7 +569,19 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
                 {meta.kind === 'caption' ? <CaptionTrackLane state={state} captions={trackCaptions} trackId={trackId}
                   playheadFrame={playheadRef.current} px={px} rowHeight={rowHeightOf(trackId)} locked={locked} hidden={hidden} snapping={snapping}
                   trackFromClientY={trackFromClientY} onUpdate={(patch) => commands.updateCaptions(patch, trackId)}
+                  selectedCaptions={selectedCaptions}
+                  onSelectCaption={onSelectCaption}
+                  externalDeltaFrames={captionSelectionMovePreview?.captionSelections.length
+                    ? captionSelectionMovePreview.deltaFrames
+                    : drag?.mode === 'move' && pointer.dragSelection.captionSelections.length > 0
+                      ? drag.deltaF
+                      : 0}
+                  onSelectionMovePreview={setCaptionSelectionMovePreview}
                   onMove={(move) => moveCaptionCue(trackId, move)}
+                  onDropExternalFiles={onDropExternalFiles}
+                  frameFromClientX={frameFromClientX}
+                  onCopyCue={() => { copyCaptionSelections(); }}
+                  onPasteCue={pasteCaptionClipboard}
                   onDelete={(laneId, index) => trackCaptions && commands.updateCaptions(removeManualCue(trackCaptions, laneId, index), trackId)} /> : <TrackLane
                   trackId={trackId} indexes={indexes} state={state} commands={commands} pointer={pointer}
                   editMode={editMode} pickMode={pickMode} locked={locked} hidden={hidden} muted={config.muted ?? false}
@@ -510,7 +591,9 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
                   applyLibraryToClip={applyLibraryToClip} applyLibraryToTrack={applyLibraryToTrack}
                   rippleOnDrop={placeMode === 'insert'}
                   overwriteOnDrop={placeMode === 'overwrite'}
+                  onDropExternalFiles={onDropExternalFiles}
                   frameFromClientX={frameFromClientX} onContextMenu={setCtxMenu} scrollRef={scrollRef}
+                  selectionMovePreview={captionSelectionMovePreview}
                 />}
               </div>
             );

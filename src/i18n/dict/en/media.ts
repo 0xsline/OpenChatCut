@@ -139,4 +139,5 @@ export default {
   '有 {n} 个素材无法解码，已跳过': '{n} assets could not be decoded and were skipped',
   '语义结果 {n} 个': '{n} semantic results',
   '疑似重复素材': 'Possible duplicate media',
+  '不支持导入「{name}」': 'Unsupported file: “{name}”',
 } as Record<string, string>;

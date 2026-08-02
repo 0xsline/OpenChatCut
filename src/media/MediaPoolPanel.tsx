@@ -23,6 +23,7 @@ interface MediaPoolPanelProps {
   onImport: (file: File, onProgress?: (ratio: number) => void) => Promise<MediaAsset>;
   onImportMobile: (record: MobileUploadRecord) => Promise<void>;
   onAddAsset: (asset: MediaAsset) => void;
+  onAddAssets?: (assets: MediaAsset[]) => void;
   onCreateFolder: (name: string, parentId?: string) => string;
   onRenameFolder: (id: string, name: string) => void;
   onDeleteFolder: (id: string) => void;
@@ -41,7 +42,7 @@ type PromptState = { title: string; initialValue: string; rejectSlash?: boolean;
 type DeleteState = { id: string; name: string; parentId?: string };
 export function MediaPoolPanel({
   semanticScopeId, assets, folders, fps, offlineAssetIds, onAssetLoadError,
-  onImport, onImportMobile, onAddAsset, onCreateFolder, onRenameFolder,
+  onImport, onImportMobile, onAddAsset, onAddAssets, onCreateFolder, onRenameFolder,
   onDeleteFolder, onMoveAssets, onRenameAsset, onSetFavorite, onRemoveAsset, onRelinkAsset, onAddSolid,
 }: MediaPoolPanelProps) {
   const t = useT();
@@ -312,7 +313,12 @@ export function MediaPoolPanel({
 
       {selectedAssets.length > 0 && <div className="cc-media-selection">
         <button onClick={toggleAll}>{visible.every((asset) => selected.has(asset.id)) ? t('清除选择') : t('全选')}</button>
-        <button onClick={() => selectedAssets.forEach(onAddAsset)}>{t('加到时间线')}</button>
+        <button onClick={() => {
+          if (onAddAssets) onAddAssets(selectedAssets);
+          else selectedAssets.forEach(onAddAsset);
+        }}>
+          {t('加到时间线')}
+        </button>
         <select aria-label={t('移动所选素材')} defaultValue="" onChange={(event) => { onMoveAssets(selectedAssets.map((asset) => asset.id), event.target.value === '__root__' ? undefined : event.target.value); setSelected(new Set()); event.target.value = ''; }}>
           <option value="" disabled>{t('移动到…')}</option><option value="__root__">Master</option>
           {folders.map((folder) => <option key={folder.id} value={folder.id}>{folderPath(folder, folders)}</option>)}

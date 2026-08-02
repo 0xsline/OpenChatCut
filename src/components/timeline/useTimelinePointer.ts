@@ -17,6 +17,12 @@ import {
   type SnapHold, type SnapPoint,
 } from '../../editor/snap';
 import type { EditorCommands } from '../../editor/store';
+import type { CaptionSelectionRef } from '../../captions/captionSelection';
+import {
+  clampTimelineSelectionDelta,
+  moveTimelineSelectionByDelta,
+  resolveItemDragSelection,
+} from '../../captions/captionGroupMove';
 import { emitSelectionRef, resolveTimelinePick, type TimelinePickDrag } from '../../agent/selection-refs';
 import { hasOperationalTranscript } from '../../transcript/types';
 import { SNAP_PX, type Drag, type DragMode, type EditMode } from './timelineUtil';
@@ -26,6 +32,10 @@ export interface PenDrag {
   laneTop: number; laneHeight: number;
 }
 export interface Marquee { x0: number; y0: number; x1: number; y1: number; additive: boolean }
+export interface TimelineMarqueeSelection {
+  itemIds: string[];
+  captionSelections: CaptionSelectionRef[];
+}
 
 type PointerStateSetter<T> = (next: SetStateAction<T>, publish?: boolean) => void;
 
@@ -53,43 +63,13 @@ interface PointerDeps {
   scrollRef: RefObject<HTMLDivElement | null>;
   frameFromClientX: (clientX: number) => number;
   trackFromClientY: (clientY: number) => TrackId;
-  /** clips whose time range + track lane intersect a client-space rect (marquee commit) */
-  itemsInMarquee: (left: number, top: number, right: number, bottom: number) => string[];
-}
-
-function selectForDrag(
-  state: TimelineState,
-  commands: EditorCommands,
-  id: string,
-  event: React.PointerEvent,
-): string[] {
-  const selected = selectedIdsOf(state);
-  if (event.metaKey || event.ctrlKey) {
-    commands.selectItem(id, { mode: 'toggle' });
-    return selected.includes(id) ? [id] : [...selected, id];
-  }
-  if (event.shiftKey && state.selectedId) {
-    const anchor = state.items.find((item) => item.id === state.selectedId);
-    const target = state.items.find((item) => item.id === id);
-    if (anchor && target && anchor.track === target.track) {
-      const lo = Math.min(anchor.startFrame, target.startFrame);
-      const hi = Math.max(anchor.startFrame, target.startFrame);
-      const range = state.items
-        .filter((item) => item.track === anchor.track
-          && item.startFrame >= lo && item.startFrame <= hi)
-        .map((item) => item.id);
-      commands.selectItems(range);
-      return range;
-    }
-    commands.selectItem(id);
-    return [id];
-  }
-  if (!isItemSelected(state, id)) {
-    commands.selectItem(id);
-    return [id];
-  }
-  commands.selectItem(id, { mode: 'add' });
-  return selected;
+  /** clips and caption cues intersecting a client-space marquee rect */
+  selectionInMarquee: (left: number, top: number, right: number, bottom: number) => TimelineMarqueeSelection;
+  onMarqueeCaptionSelect: (
+    selections: CaptionSelectionRef[],
+    options: { additive: boolean; preserveWithItems: boolean },
+  ) => void;
+  selectedCaptions: CaptionSelectionRef[];
 }
 
 function commitMoveGesture(state: TimelineState, commands: EditorCommands, drag: Drag) {
@@ -178,7 +158,8 @@ export function commitTimelineDragGesture(
 export function useTimelinePointer(deps: PointerDeps) {
   const {
     state, commands, editMode, snapping, pickMode, px,
-    playheadRef, scrollRef, frameFromClientX, trackFromClientY, itemsInMarquee,
+    playheadRef, scrollRef, frameFromClientX, trackFromClientY, selectionInMarquee,
+    onMarqueeCaptionSelect, selectedCaptions,
   } = deps;
   const [drag, setDrag, dragRef] = usePointerState<Drag | null>(null);
   // pen mode: one opacity keyframe dot being dragged (live preview, atomic commit on release)
@@ -186,6 +167,8 @@ export function useTimelinePointer(deps: PointerDeps) {
   /** Rubber-band multi-select on empty lane (selection mode). Client coords. */
   const [marquee, setMarquee, marqueeRef] = usePointerState<Marquee | null>(null);
   const [pickDrag, setPickDrag, pickDragRef] = usePointerState<TimelinePickDrag | null>(null);
+  /** Complete mixed selection frozen at pointer-down. */
+  const dragSelectionRef = useRef<TimelineMarqueeSelection>({ itemIds: [], captionSelections: [] });
   /** The currently sucked target is held (hysteresis) across pointermove within one drag, and cleared when released. */
   const snapHold = useRef<SnapHold | null>(null);
   const gestureSnapPoints = useRef<SnapPoint[]>([]);
@@ -203,25 +186,55 @@ export function useTimelinePointer(deps: PointerDeps) {
   /** Start rubber-band on empty track body (clips stopPropagation so they never hit this). */
   const startMarquee = (e: React.PointerEvent) => {
     if (pickMode || editMode !== 'selection' || e.button !== 0) return;
+    e.preventDefault();
     e.stopPropagation();
+    const additive = e.shiftKey || e.metaKey || e.ctrlKey;
+    if (!additive) {
+      commands.selectItem(null);
+      onMarqueeCaptionSelect([], { additive: false, preserveWithItems: false });
+    }
     // Capture on the scroll container so move/up keep firing (same target as handlers).
     scrollRef.current?.setPointerCapture?.(e.pointerId);
     setMarquee({
       x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY,
-      additive: e.shiftKey || e.metaKey || e.ctrlKey,
+      additive,
     });
   };
 
   const startDrag = (e: React.PointerEvent, id: string, mode: DragMode, baseStart: number, baseDur: number, baseTrack: TrackId, baseSrcIn = 0) => {
     if (state.tracks?.[baseTrack]?.locked) return;
+    const wasSelected = isItemSelected(state, id);
+    const additive = e.metaKey || e.ctrlKey;
+    const resolvedSelection = resolveItemDragSelection(
+      id,
+      selectedIdsOf(state),
+      selectedCaptions,
+      { shiftKey: e.shiftKey, anchorItemId: state.selectedId, items: state.items },
+    );
+    dragSelectionRef.current = mode === 'move'
+      ? additive && !wasSelected
+        ? { itemIds: [...new Set([...selectedIdsOf(state), id])], captionSelections: [...selectedCaptions] }
+        : resolvedSelection
+      : { itemIds: [id], captionSelections: [] };
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
+    if (!wasSelected && !additive && !e.shiftKey) {
+      onMarqueeCaptionSelect([], { additive: false, preserveWithItems: false });
+    }
     // Multi-select: ⌘/Ctrl toggle, ⇧ range on same track; plain click replaces.
-    const selectedForGesture = selectForDrag(state, commands, id, e);
+    if (additive) {
+      onMarqueeCaptionSelect([], { additive: true, preserveWithItems: true });
+      commands.selectItem(id, { mode: 'toggle' });
+    } else if (e.shiftKey && state.selectedId) {
+      if (resolvedSelection.itemIds.length > 1) commands.selectItems(resolvedSelection.itemIds);
+      else commands.selectItem(id);
+    } else if (!wasSelected) {
+      commands.selectItem(id);
+    }
     // Only start move drag when not pure multi-toggle without drag intent — still allow drag
     snapHold.current = null;
-    const excluded = mode === 'move' && selectedForGesture.includes(id)
-      ? selectedForGesture
+    const excluded = mode === 'move' && dragSelectionRef.current.itemIds.includes(id)
+      ? dragSelectionRef.current.itemIds
       : [id];
     gestureSnapPoints.current = sortTimelineSnapPoints(
       collectTimelineSnapPoints(state, { excludeItemIds: excluded }),
@@ -292,7 +305,15 @@ export function useTimelinePointer(deps: PointerDeps) {
     const cap = currentDrag.mode === 'trim-right'
       ? trimRightCap(currentDrag.id, currentDrag.baseDur)
       : Infinity;
-    const deltaF = Math.min(snapped.deltaF, cap);
+    const selectionDelta = currentDrag.mode === 'move'
+      ? clampTimelineSelectionDelta(
+        state,
+        dragSelectionRef.current.itemIds,
+        dragSelectionRef.current.captionSelections,
+        snapped.deltaF,
+      )
+      : snapped.deltaF;
+    const deltaF = Math.min(selectionDelta, cap);
     const snapAt = deltaF === snapped.deltaF ? snapped.snapAt : null;
     const targetTrack = currentDrag.mode === 'move'
       ? trackFromClientY(clientY)
@@ -318,6 +339,7 @@ export function useTimelinePointer(deps: PointerDeps) {
     pendingMove.current = null;
     snapHold.current = null;
     gestureSnapPoints.current = [];
+    dragSelectionRef.current = { itemIds: [], captionSelections: [] };
     setDrag(null);
     setPenDrag(null);
     setMarquee(null);
@@ -348,19 +370,22 @@ export function useTimelinePointer(deps: PointerDeps) {
       const dx = Math.abs(currentMarquee.x1 - currentMarquee.x0);
       const dy = Math.abs(currentMarquee.y1 - currentMarquee.y0);
       if (dx < 4 && dy < 4) {
-        if (!currentMarquee.additive) commands.selectItem(null);
         return;
       }
-      const ids = itemsInMarquee(
+      const selection = selectionInMarquee(
         Math.min(currentMarquee.x0, currentMarquee.x1),
         Math.min(currentMarquee.y0, currentMarquee.y1),
         Math.max(currentMarquee.x0, currentMarquee.x1),
         Math.max(currentMarquee.y0, currentMarquee.y1),
       );
+      onMarqueeCaptionSelect(selection.captionSelections, {
+        additive: currentMarquee.additive,
+        preserveWithItems: selection.itemIds.length > 0,
+      });
       if (currentMarquee.additive) {
-        commands.selectItems([...new Set([...selectedIdsOf(state), ...ids])]);
+        commands.selectItems([...new Set([...selectedIdsOf(state), ...selection.itemIds])]);
       } else {
-        commands.selectItems(ids);
+        commands.selectItems(selection.itemIds);
       }
       return;
     }
@@ -400,12 +425,41 @@ export function useTimelinePointer(deps: PointerDeps) {
     }
     const currentDrag = dragRef.current;
     if (!currentDrag) return;
-    commitTimelineDragGesture(state, commands, currentDrag, editMode);
+    if (currentDrag.mode === 'move') {
+      const validTrack = !!currentDrag.targetTrack
+        && trackKind(state, currentDrag.targetTrack) === trackKind(state, currentDrag.baseTrack)
+        && !state.tracks?.[currentDrag.targetTrack]?.locked;
+      const track = validTrack ? currentDrag.targetTrack : currentDrag.baseTrack;
+      const next = moveTimelineSelectionByDelta(
+        state,
+        dragSelectionRef.current.itemIds,
+        dragSelectionRef.current.captionSelections,
+        currentDrag.deltaF,
+        track !== currentDrag.baseTrack ? { from: currentDrag.baseTrack, to: track } : null,
+      );
+      if (next !== state) commands.applyState(next);
+    } else {
+      commitTimelineDragGesture(state, commands, currentDrag, editMode);
+    }
     snapHold.current = null;
     gestureSnapPoints.current = [];
+    dragSelectionRef.current = { itemIds: [], captionSelections: [] };
     setDrag(null);
   };
   const onPointerCancel = () => cancelPointerGesture();
 
-  return { drag, penDrag, setPenDrag, marquee, pickDrag, startDrag, startPick, startMarquee, onPointerMove, onPointerUp, onPointerCancel };
+  return {
+    drag,
+    dragSelection: dragSelectionRef.current,
+    penDrag,
+    setPenDrag,
+    marquee,
+    pickDrag,
+    startDrag,
+    startPick,
+    startMarquee,
+    onPointerMove,
+    onPointerUp,
+    onPointerCancel,
+  };
 }

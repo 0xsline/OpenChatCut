@@ -17,8 +17,8 @@ import { VersionHistory } from './components/VersionHistory';
 import { usePersistedState } from './hooks/usePersistedState';
 import { useEditorPanelLayout } from './hooks/useEditorPanelLayout';
 import { useEditor } from './editor/store';
-import type { ProjectDoc, TimelineItem, TimelineState } from './editor/types';
-import { captionsOnTrack, selectedIdsOf, timelineTrackIds, trackAlias, trackKind } from './editor/types';
+import type { ProjectDoc, TimelineItem, TimelineState, TrackId } from './editor/types';
+import { captionsOnTrack, defaultTrackId, selectedIdsOf, timelineTrackIds, trackAlias, trackKind } from './editor/types';
 import { TEMPLATES } from './editor/initial';
 import { sourceWindowForTimelineRange } from './editor/sourceLimit';
 import { planSlip, type SlipPreview } from './editor/slip';
@@ -67,6 +67,17 @@ import { analyzeClipLoudness, gainForTarget } from './audio/loudness';
 import { analyzeAutoGrade, type AutoGradeResponse } from './color/autoGrade';
 import { useOfflineMedia } from './media/useOfflineMedia';
 import { keyframeResetBatch } from './editor/keyframeReset';
+import { classifyExternalFile, parseDroppedCaptions } from './media/externalFileDrop';
+import { appendManualLane, isManualCaptionEntry, newManualCaptions } from './captions/manualCaptions';
+import { placeMediaAssets } from './editor/mediaAssetPlacement';
+import {
+  allCaptionSelections,
+  captionSelectionKey,
+  resolveCaptionSelection,
+  type CaptionSelectOptions,
+  type CaptionSelectionRef,
+} from './captions/captionSelection';
+import { updateCaptionSelections } from './captions/captionSelectionInteraction';
 
 interface EditorProps {
   initial: ProjectDoc;
@@ -100,6 +111,66 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const selectedIds = selectedIdsOf(state);
   const selectedItems = selectedInspectorItems(state, selectedIds);
   const selectedTransition = state.transitions?.find((transition) => transition.incomingItemId === state.selectedId) ?? null;
+  const [captionSelections, setCaptionSelections] = useState<CaptionSelectionRef[]>([]);
+  const preserveCaptionWithItemsRef = useRef(false);
+  const selectedItemIdsKey = selectedIdsOf(state).join('\u0000');
+  const [timelineHoverPreviewFrame, setTimelineHoverPreviewFrame] = useState<number | null>(null);
+  useEffect(() => {
+    if (!state.selectedId) {
+      preserveCaptionWithItemsRef.current = false;
+      return;
+    }
+    if (preserveCaptionWithItemsRef.current) {
+      preserveCaptionWithItemsRef.current = false;
+      return;
+    }
+    setCaptionSelections([]);
+  }, [selectedItemIdsKey, state.selectedId]);
+  useEffect(() => {
+    setCaptionSelections((current) => {
+      const valid = current.filter((selection) => resolveCaptionSelection(state, selection));
+      return valid.length === current.length ? current : valid;
+    });
+  }, [state]);
+  const selectCaption = useCallback((
+    selection: CaptionSelectionRef | null,
+    options: CaptionSelectOptions = {},
+  ) => {
+    if (!selection) {
+      setCaptionSelections([]);
+      return;
+    }
+    if (options.additive) {
+      preserveCaptionWithItemsRef.current = options.preserveWithItems === true;
+      setCaptionSelections((current) => updateCaptionSelections(
+        current,
+        selection,
+        options.toggle ? 'toggle' : 'add',
+      ));
+      return;
+    }
+    setCaptionSelections([selection]);
+    commands.selectItem(null);
+  }, [commands]);
+  const selectAllTimelineContent = useCallback(() => {
+    const selections = allCaptionSelections(state);
+    preserveCaptionWithItemsRef.current = selections.length > 0 && state.items.length > 0;
+    setCaptionSelections(selections);
+    commands.selectAll();
+  }, [commands, state]);
+  const selectMarqueeCaptions = useCallback((
+    selections: CaptionSelectionRef[],
+    options: { additive: boolean; preserveWithItems: boolean },
+  ) => {
+    preserveCaptionWithItemsRef.current = options.preserveWithItems
+      && (selections.length > 0 || (options.additive && captionSelections.length > 0));
+    setCaptionSelections((current) => {
+      if (!options.additive) return selections;
+      const byKey = new Map(current.map((selection) => [captionSelectionKey(selection), selection]));
+      for (const selection of selections) byKey.set(captionSelectionKey(selection), selection);
+      return [...byKey.values()];
+    });
+  }, [captionSelections.length]);
   const [reviewRequest, setReviewRequest] = useState<{
     itemId: string; frame: number; clientX: number; clientY: number; nonce: number;
   } | null>(null);
@@ -548,6 +619,79 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     }
   }, [commands, startAssetTranscription]);
 
+  const dropExternalFilesToTimeline = useCallback(async (
+    files: File[],
+    trackId: TrackId,
+    startFrame: number,
+  ) => {
+    const starts = { video: Math.max(0, Math.round(startFrame)), audio: Math.max(0, Math.round(startFrame)) };
+    const addedIds: string[] = [];
+    for (const file of files) {
+      const target = classifyExternalFile(file);
+      if (!target) {
+        showAppToast(t('不支持导入「{name}」', { name: file.name }), { error: true });
+        continue;
+      }
+      if (target.type === 'caption') {
+        try {
+          const snapshot = stateRef.current;
+          const captionTrackId = trackKind(snapshot, trackId) === 'caption'
+            ? trackId
+            : defaultTrackId(snapshot, 'caption');
+          if (!captionTrackId) throw new Error(t('请先创建字幕轨道'));
+          const words = parseDroppedCaptions(
+            file.name,
+            await file.text(),
+            Math.max(0, startFrame) * 1000 / snapshot.fps,
+          );
+          if (!words.length) throw new Error(t('字幕文件没有可用内容'));
+          const current = captionsOnTrack(snapshot, captionTrackId) ?? newManualCaptions();
+          const withLane = current.sourceEntries?.some(isManualCaptionEntry)
+            ? current
+            : { ...current, ...appendManualLane(current, snapshot.items) };
+          const lane = withLane.sourceEntries?.find(isManualCaptionEntry);
+          if (!lane) throw new Error(t('无法创建字幕轨道'));
+          commands.setCaptions({
+            ...withLane,
+            enabled: true,
+            sourceEntries: withLane.sourceEntries?.map((entry) => entry.id === lane.id
+              ? { ...entry, words: [...(entry.words ?? []), ...words] }
+              : entry),
+          }, captionTrackId);
+        } catch (error) {
+          showAppToast(error instanceof Error ? error.message : t('读取字幕文件失败'), { error: true });
+        }
+        continue;
+      }
+      try {
+        const asset = await importToPool(file);
+        const kind = target.mediaKind === 'audio' ? 'audio' : 'video';
+        const snapshot = stateRef.current;
+        const destination = trackKind(snapshot, trackId) === kind
+          ? trackId
+          : defaultTrackId(snapshot, kind);
+        const itemId = commands.addMediaItem(asset, {
+          track: destination ?? undefined,
+          startFrame: starts[kind],
+        });
+        addedIds.push(itemId);
+        starts[kind] += Math.max(1, asset.durationInFrames);
+      } catch (error) {
+        showAppToast(error instanceof Error ? error.message : t('导入失败'), { error: true });
+      }
+    }
+    if (addedIds.length) commands.selectItems(addedIds);
+  }, [commands, importToPool, t]);
+  const addMediaAssetsToTimeline = useCallback((assets: MediaAsset[]) => {
+    placeMediaAssets({
+      assetIds: assets.map((asset) => asset.id),
+      assets,
+      startFrame: getPlayhead(),
+      add: (asset, frame) => commands.addMediaItem(asset, { startFrame: frame }),
+      select: commands.selectItems,
+    });
+  }, [commands, getPlayhead]);
+
   const importToCanvas = useCallback(async (file: File, onProgress?: (ratio: number) => void) => {
     let placeholderId: string | null = null;
     let placeholderSrc: string | null = null;
@@ -628,6 +772,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         document.querySelector<HTMLTextAreaElement>('[data-cc-chat-composer]')?.focus();
       });
     },
+    selectAll: selectAllTimelineContent,
   });
 
   return (
@@ -686,7 +831,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       </div>
 
       <div style={{ gridColumn: 3, gridRow: 2, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} offlineAssetIds={offlineAssetIds} onAssetLoadError={(asset) => markMediaOffline(asset.src)} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onRemoveMediaAsset={commands.removeMediaAsset}
+        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} offlineAssetIds={offlineAssetIds} onAssetLoadError={(asset) => markMediaOffline(asset.src)} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onAddMediaItems={addMediaAssetsToTimeline} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onRemoveMediaAsset={commands.removeMediaAsset}
           onCreateCaptionTrack={commands.createCaptionTrack}
           sequenceOptions={sequenceOptions}
           onAddSequence={(timelineId) => {
@@ -717,6 +862,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       </div>
       <div className="cc-preview-workspace" style={{ gridColumn: 5, gridRow: 2 }}>
         <PreviewPanel state={autoGradePreviewState ?? previewState ?? state} project={doc} playerRef={playerRef} onImport={importToCanvas}
+          hoverPreviewFrame={timelineHoverPreviewFrame}
           projectId={project.id} timelineId={doc.activeTimelineId} reviewState={state} selectedItem={selectedItem}
           reviewRequest={reviewRequest}
           offlineSrcs={offlineSrcs}
@@ -915,6 +1061,11 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         <Timeline state={state} commands={commands} playerRef={playerRef}
           projectId={project.id}
           shortcutApiRef={shortcutApiRef}
+          selectedCaptions={captionSelections}
+          onSelectCaption={selectCaption}
+          onMarqueeCaptionSelect={selectMarqueeCaptions}
+          onHoverPreviewFrameChange={setTimelineHoverPreviewFrame}
+          onDropExternalFiles={dropExternalFilesToTimeline}
           onReviewItem={(request) => setReviewRequest({ ...request, nonce: Date.now() })}
           onSlipPreview={setActiveSlipPreview}
           onRecordVoiceover={async (blob) => {

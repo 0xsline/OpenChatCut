@@ -159,4 +159,8 @@ export default {
   '点击编辑这句字幕': 'Click to edit this caption line',
   '这句不再显示（词与时间线不受影响）': 'Hide this line (transcript words and timeline stay untouched)',
   '删除这句': 'Remove line',
+  '请先创建字幕轨道': 'Create a caption track first',
+  '字幕文件没有可用内容': 'The caption file has no usable content',
+  '无法创建字幕轨道': 'Could not create a caption track',
+  '读取字幕文件失败': 'Failed to read the caption file',
 } as Record<string, string>;

@@ -19,6 +19,7 @@ interface EditorActionDeps {
   openShortcuts: () => void;
   toggleLayout: () => void;
   focusAgent: () => void;
+  selectAll: () => void;
 }
 
 const timeline = (ref: RefObject<TimelineShortcutApi | null>) => ref.current;
@@ -61,7 +62,7 @@ function editingActions(deps: EditorActionDeps): ActionBindings {
     'nudge-right': ({ shift }) => tl()?.nudgeSelected(shift ? 5 : 1),
     'trim-start': () => tl()?.trimSelectedToPlayhead('start'),
     'trim-end': () => tl()?.trimSelectedToPlayhead('end'),
-    'select-all': () => deps.commands.selectAll(),
+    'select-all': () => deps.selectAll(),
     'select-after': () => tl()?.selectAfterPlayhead(),
     'move-up': () => tl()?.moveSelectedTrack(-1),
     'move-down': () => tl()?.moveSelectedTrack(1),
