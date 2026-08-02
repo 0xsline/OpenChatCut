@@ -24,8 +24,7 @@ import { ReviewCommentsButton, type ReviewOpenRequest } from '../review/ReviewCo
 import { usePreviewProjectDoc } from '../media/previewMedia';
 import type { SlipPreview } from '../editor/slip';
 import { SlipTwoUpPreview } from './SlipTwoUpPreview';
-
-const SHARED_AUDIO_TAGS = 8;
+import { PREVIEW_SHARED_AUDIO_TAGS } from './previewAudioPool';
 
 interface PreviewPanelProps {
   state: TimelineState;
@@ -202,7 +201,7 @@ export const PreviewPanel = memo(function PreviewPanel({
               fps={state.fps}
               compositionWidth={state.width}
               compositionHeight={state.height}
-              numberOfSharedAudioTags={SHARED_AUDIO_TAGS}
+              numberOfSharedAudioTags={PREVIEW_SHARED_AUDIO_TAGS}
               // Full screen black: WebKit legacy full screen div does not automatically blacken the background, and the page checkerboard will be revealed on both sides.
               style={{ width: '100%', height: '100%', backgroundColor: fullscreen ? '#000' : undefined }}
               controls={fullscreen}
