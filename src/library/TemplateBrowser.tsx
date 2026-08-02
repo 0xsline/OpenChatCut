@@ -18,7 +18,7 @@ import {
 
 // MG animation browser: a horizontal chip row
 // [Collection, recent, popular, <categories by count>] filters the card grid; cards show a
-// ⭐ favorite toggle + a ⋮ menu (add to timeline / generate with AI / delete) on hover.
+// ⭐ favorite toggle, an explicit add action, and a keyboard-accessible management menu.
 // Data model: collection = per-user collected (persisted to localStorage),
 // recent = last-added template ids (local), popular = full gallery default.
 // Delete = soft delete (local hidden list), used clips in the timeline are not affected; built-in/plugin entries can be removed from the list.
@@ -176,6 +176,15 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
     setMenuPos({ top, left });
   }, [closeMenu, menuFor]);
 
+  const openMenuAtPoint = useCallback((tpId: string, clientX: number, clientY: number) => {
+    setConfirmDelete(false);
+    setMenuFor(tpId);
+    setMenuPos({
+      left: Math.max(8, Math.min(window.innerWidth - MENU_W - 8, clientX)),
+      top: Math.max(8, Math.min(window.innerHeight - MENU_H - 8, clientY)),
+    });
+  }, []);
+
   return (
     <>
       {/* chip row (horizontally scrollable) */}
@@ -253,7 +262,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
       {chip === FAV && shown.length === 0 ? (
         <div style={{ color: theme.textDim, fontSize: 12, padding: '20px 8px', textAlign: 'center' }}>{t('还没有收藏的模板。将鼠标移到卡片上点 ★ 收藏。')}</div>
       ) : chip === RECENT && shown.length === 0 ? (
-        <div style={{ color: theme.textDim, fontSize: 12, padding: '20px 8px', textAlign: 'center' }}>{t('还没有最近使用的模板。点卡片或拖到时间线后会出现在这里。')}</div>
+        <div style={{ color: theme.textDim, fontSize: 12, padding: '20px 8px', textAlign: 'center' }}>{t('还没有最近使用的模板。点卡片右上角＋或拖到时间线后会出现在这里。')}</div>
       ) : (
         /* Fixed-size rows keep scroll geometry stable while only viewport rows are mounted. */
         <div
@@ -286,6 +295,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
                   onRemember={remember}
                   onToggleFavorite={toggleFav}
                   onOpenMenu={openMenu}
+                  onOpenMenuAtPoint={openMenuAtPoint}
                   onFocusChange={setFocusedId}
                   onDragChange={setDraggedId}
                 />
@@ -378,6 +388,7 @@ interface TemplateCardProps {
   onRemember: (template: Tpl) => void;
   onToggleFavorite: (id: string) => void;
   onOpenMenu: (id: string, anchor: HTMLElement) => void;
+  onOpenMenuAtPoint: (id: string, clientX: number, clientY: number) => void;
   onFocusChange: (id: string | null) => void;
   onDragChange: (id: string | null) => void;
 }
@@ -390,6 +401,7 @@ const TemplateCard = memo(function TemplateCard({
   onRemember,
   onToggleFavorite,
   onOpenMenu,
+  onOpenMenuAtPoint,
   onFocusChange,
   onDragChange,
 }: TemplateCardProps) {
@@ -410,15 +422,18 @@ const TemplateCard = memo(function TemplateCard({
         });
       }}
       onDragEnd={() => onDragChange(null)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onOpenMenuAtPoint(template.id, event.clientX, event.clientY);
+      }}
       onFocusCapture={() => onFocusChange(template.id)}
       onBlurCapture={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onFocusChange(null);
       }}
     >
-      <button
+      <div
         className="cc-template-add"
-        onClick={() => onAdd(template)}
-        title={t('点击或拖到时间线：{name}', { name: template.name })}
+        title={t('拖到时间线，或使用添加按钮：{name}', { name: template.name })}
       >
         <div className="cc-template-thumb">
           {template.thumb ? (
@@ -449,7 +464,7 @@ const TemplateCard = memo(function TemplateCard({
           <span className="cc-template-name">{tData(template.name)}</span>
           <span className="cc-template-ratio">{ratioLabel(template.width, template.height)}</span>
         </div>
-      </button>
+      </div>
       <button
         type="button"
         className="cc-template-favorite"
@@ -464,6 +479,19 @@ const TemplateCard = memo(function TemplateCard({
       <button
         type="button"
         className="cc-template-more"
+        onClick={(event) => {
+          event.stopPropagation();
+          onAdd(template);
+        }}
+        title={t('添加到时间线：{name}', { name: template.name })}
+        aria-label={t('添加到时间线：{name}', { name: template.name })}
+      >
+        <Icon name="plus" size={14} />
+      </button>
+      <button
+        type="button"
+        className="cc-template-more"
+        style={{ top: 32 }}
         onClick={(event) => {
           event.stopPropagation();
           onOpenMenu(template.id, event.currentTarget);
