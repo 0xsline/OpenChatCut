@@ -10,6 +10,7 @@ import { LocaleToggle } from './TopBar';
 import { MediaCleanupDialog } from '../media/MediaCleanupDialog';
 import { t, useT } from '../i18n/locale';
 import { ShortcutsDialog } from '../shortcuts/ShortcutsDialog';
+import { UpstreamUpdateNotice } from '../ui/UpstreamUpdateNotice';
 
 interface DashboardProps {
   projects: ProjectMeta[];
@@ -180,6 +181,7 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
     // The global html/body/#root is overflow:hidden (required by the editor), and the dashboard scrolls by itself:
     // The header is fixed, main is the only vertical scrolling container, and the last line can be scrolled out even if the project is long.
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: theme.bg, color: theme.text, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <UpstreamUpdateNotice />
       <header style={{ height: 48, flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10, padding: '0 24px', borderBottom: `0.5px solid ${theme.border}`, background: theme.panel }}>
         <BrandMark size={20} />
         <OpenChatCutWordmark />

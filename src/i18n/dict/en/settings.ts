@@ -1,6 +1,9 @@
 // EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
 // Override: components/settings/* + shortcuts/ShortcutsDialog + media/MediaCleanupDialog.
 export default {
+  '当前版本号：{version}': 'Current version: {version}',
+  '检查更新': 'Check for updates',
+  '检查中…': 'Checking…',
   // ── SettingsDialog shell ──
   '设置 · API 密钥': 'Settings · API Keys',
   '关闭': 'Close',
