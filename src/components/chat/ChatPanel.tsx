@@ -27,6 +27,11 @@ import { AgentChangeLogMenu } from './AgentChangeLogMenu';
 import { resolveChatScrollTarget, type ChatScrollTarget } from './chatScrollNavigation';
 import { selectChatMessageContents, shouldHandleChatTextSelection } from './chatTextSelection';
 import { BrandMark, Icon, OpenChatCutWordmark } from '../icons';
+import { editorDragReferences } from './editorDragReference';
+import {
+  removeChatAttachmentReference,
+  upsertChatAttachmentReference,
+} from './chatAttachmentLifecycle';
 import {
   clearComposerDraft,
   loadChatAutoApply,
@@ -71,7 +76,14 @@ interface ChatPanelProps {
   creativeMode: string | null;
   onCreativeModeChange: (id: string | null) => void;
   /** Import a pasted/attached file into the media pool (same pipeline as my asset upload). */
-  onImportMedia: (file: File) => Promise<MediaAsset>;
+  onImportMedia: (
+    file: File,
+    lifecycle?: {
+      onPlaceholder?: (asset: MediaAsset) => void;
+      onReady?: (asset: MediaAsset) => void;
+      onFailure?: (asset: MediaAsset | null, error: unknown) => void;
+    },
+  ) => Promise<MediaAsset>;
 }
 
 // Run time: The number of seconds of real-time jumps during AI thinking/execution (keep two decimal places). Mount and start the table,
@@ -261,7 +273,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   // Mention chips mirror into the text as their prompt token:
   // pool assets stay `@name`; selection picks use `@t[…]`/`@r[…]`/`@q[…]`/`@[…]`.
   const insertRef = (reference: RefItem) => {
-    setSelectedRefs((current) => current.some((item) => item.id === reference.id) ? current : [...current, reference]);
+    setSelectedRefs((current) => upsertChatAttachmentReference(current, reference));
     const token = refPromptToken(reference);
     setInput((v) => v.includes(token) ? v : `${v}${v && !v.endsWith(' ') ? ' ' : ''}${token} `);
   };
@@ -272,7 +284,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
         const escaped = refPromptToken(gone).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         setInput((v) => v.replace(new RegExp(`${escaped}\\s?`, 'g'), '').trimStart());
       }
-      return current.filter((r) => r.id !== id);
+      return removeChatAttachmentReference(current, id);
     });
   };
   // Keep the cross-panel pick mode in sync with the toggle; force it off when
@@ -293,17 +305,35 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   const importPastedFiles = async (files: File[]) => {
     const supported = files.filter((f) => kindOf(f) !== null);
     setPasteError(supported.length < files.length ? t('已忽略不支持的文件（仅支持 视频 / 图片 / 音频 / GIF / SVG）') : null);
-    for (const file of supported) {
+    await Promise.all(supported.map(async (file) => {
+      let placeholderId: string | null = null;
       setPasting((n) => n + 1);
       try {
-        const asset = await onImportMedia(file);
-        insertRef({ id: asset.id, name: asset.name, kind: asset.kind });
+        await onImportMedia(file, {
+          onPlaceholder: (asset) => {
+            placeholderId = asset.id;
+            insertRef({ id: asset.id, name: asset.name, kind: asset.kind });
+          },
+          onReady: (asset) => {
+            setSelectedRefs((current) => upsertChatAttachmentReference(current, {
+              id: asset.id,
+              name: asset.name,
+              kind: asset.kind,
+            }));
+          },
+          onFailure: (asset, reason) => {
+            const id = asset?.id ?? placeholderId;
+            if (id) removeRef(id);
+            setPasteError(reason instanceof Error ? reason.message : t('导入失败'));
+          },
+        });
       } catch (reason) {
+        if (placeholderId) removeRef(placeholderId);
         setPasteError(reason instanceof Error ? reason.message : t('导入失败'));
       } finally {
         setPasting((n) => n - 1);
       }
-    }
+    }));
   };
 
   const changeLogMenu = changeLogSlot && createPortal(
@@ -320,7 +350,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
     return (
       <>
         {changeLogMenu}
-        <aside className="cc-chat-panel collapsed" style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '10px 0', borderRight: `0.5px solid ${theme.border}`, background: theme.panel }}>
+        <aside className="cc-chat-panel collapsed" data-cc-shortcut-surface="agent-chat" tabIndex={-1} style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '10px 0', borderRight: `0.5px solid ${theme.border}`, background: theme.panel }}>
           <button onClick={onToggleCollapse} title={t('展开 OpenChatCut Agent')} style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14 }}><span style={{ transform: 'rotate(-90deg)', display: 'inline-flex' }}><Icon name="chevronDown" size={14} /></span></button>
           <div className="cc-chat-collapsed-brand">OpenChatCut</div>
         </aside>
@@ -334,6 +364,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
       <aside
         className="cc-chat-panel"
         data-cc-chat-popover-boundary
+        data-cc-shortcut-surface="agent-chat"
         tabIndex={-1}
         onKeyDown={onChatKeyDown}
         onPointerDownCapture={(event) => {
@@ -508,8 +539,11 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
           creativeMode={creativeMode} onCreativeModeChange={onCreativeModeChange}
           references={references} onInsertRef={insertRef}
           selectedRefs={selectedRefs} onRemoveRef={removeRef}
-          onPasteFiles={importPastedFiles} pasting={pasting > 0}
+          onPasteFiles={importPastedFiles} onDropFiles={importPastedFiles} pasting={pasting > 0}
           pasteError={pasteError} onDismissPasteError={() => setPasteError(null)}
+          onDropEditorItem={(payload) => {
+            editorDragReferences(payload, ctx.getDoc().assets ?? []).forEach(insertRef);
+          }}
           taRef={taRef}
           placeholder={messages.length === 0 ? t('描述你想要创建的内容...') : t('告诉 AI 要做哪些修改 - @ 引用素材')} />
       </div>

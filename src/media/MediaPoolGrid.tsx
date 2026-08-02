@@ -100,6 +100,7 @@ function MediaVirtualRows(props: MediaPoolGridProps & ReturnType<typeof useMedia
               view={props.view}
               active={props.activePreviewId === entry.asset.id}
               selected={props.selected.has(entry.asset.id)}
+              selectedAssetIds={[...props.selected]}
               missing={props.missing.has(entry.asset.id)}
               canRelink={props.canRelink}
               onAdd={props.onAddAsset}

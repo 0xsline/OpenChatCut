@@ -13,6 +13,7 @@ interface MediaAssetCardProps {
   fps: number;
   active: boolean;
   selected: boolean;
+  selectedAssetIds: readonly string[];
   missing: boolean;
   view: 'grid' | 'list';
   canRelink: boolean;
@@ -156,7 +157,10 @@ function AssetThumbArea(props: MediaAssetCardProps) {
         title={missing ? t('点击重新链接') : t('点击加入时间线，或拖到指定轨道：{name}', { name: asset.name })}
         draggable={!missing}
         style={missing ? undefined : { cursor: 'grab' }}
-        onDragStart={(event) => { props.onDragChange(asset.id); setMediaAssetDrag(event, asset); }}
+        onDragStart={(event) => {
+          props.onDragChange(asset.id);
+          setMediaAssetDrag(event, asset, props.selected ? props.selectedAssetIds : [asset.id]);
+        }}
         onDragEnd={() => props.onDragChange(null)}
         onClick={() => missing && props.canRelink ? props.onRelink(asset.id) : props.onAdd(asset)}
       >

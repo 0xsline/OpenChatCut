@@ -270,7 +270,18 @@ export function MediaPoolPanel({
   const menuAsset = assetMenu ? assets.find((asset) => asset.id === assetMenu) : undefined;
 
   return (
-    <div className="cc-media-pool" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void onPick(event.dataTransfer.files); }}>
+    <div
+      className="cc-media-pool"
+      data-cc-shortcut-surface="media-pool"
+      tabIndex={-1}
+      onPointerDownCapture={(event) => {
+        if (!(event.target as HTMLElement).closest('button, input, select, textarea, [contenteditable="true"]')) {
+          event.currentTarget.focus({ preventScroll: true });
+        }
+      }}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => { event.preventDefault(); void onPick(event.dataTransfer.files); }}
+    >
       <input ref={inputRef} type="file" accept="video/*,image/*,audio/*,.gif,.svg,image/gif,image/svg+xml" multiple hidden onChange={(event) => onPick(event.target.files)} />
       <input ref={relinkInputRef} type="file" accept="video/*,image/*,audio/*,.gif,.svg,image/gif,image/svg+xml" hidden onChange={(event) => void onRelinkPick(event.target.files)} />
       <MediaPoolToolbar

@@ -70,7 +70,16 @@ export function InspectorPanel(panel: InspectorPanelProps) {
   };
   return (
     <HistoryGestureProvider value={panel.historyGesture}>
-      <section className={`cc-inspector${panel.collapsed ? ' collapsed' : ''}`}>
+      <section
+        className={`cc-inspector${panel.collapsed ? ' collapsed' : ''}`}
+        data-cc-shortcut-surface="inspector"
+        tabIndex={-1}
+        onPointerDownCapture={(event) => {
+          if (!(event.target as HTMLElement).closest('button, input, select, textarea, [contenteditable="true"]')) {
+            event.currentTarget.focus({ preventScroll: true });
+          }
+        }}
+      >
         <InspectorHeader panel={panel} />
         {!panel.collapsed && (item
           ? <InspectorContent panel={panel} item={item} schema={schema} playheadLocal={playheadLocal} activeTab={activeTab} onTabChange={setActiveTab} />

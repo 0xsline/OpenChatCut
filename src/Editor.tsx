@@ -87,6 +87,12 @@ interface AutoGradeSession {
   failedCount: number;
 }
 
+interface PoolImportLifecycle {
+  onPlaceholder?: (asset: MediaAsset) => void;
+  onReady?: (asset: MediaAsset) => void;
+  onFailure?: (asset: MediaAsset | null, error: unknown) => void;
+}
+
 function isAutoGradeTarget(item: TimelineItem, state: TimelineState): boolean {
   if (item.kind !== 'video' && item.kind !== 'image' && item.kind !== 'gif') return false;
   if (state.tracks?.[item.track]?.locked) return false;
@@ -511,16 +517,24 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   }, [ingestToPool]);
 
   // Progressive import: blob placeholder → upload → (ASR extract || normalize race) → relink.
-  const importToPool = useCallback(async (file: File, onProgress?: (ratio: number) => void) => {
+  const importToPool = useCallback(async (
+    file: File,
+    onProgressOrLifecycle?: ((ratio: number) => void) | PoolImportLifecycle,
+  ) => {
+    const onProgress = typeof onProgressOrLifecycle === 'function' ? onProgressOrLifecycle : undefined;
+    const lifecycle = typeof onProgressOrLifecycle === 'function' ? undefined : onProgressOrLifecycle;
     let placeholderId: string | null = null;
+    let placeholderAsset: MediaAsset | null = null;
     try {
       return await importMedia(file, stateRef.current.fps, {
         onProgress,
         onPlaceholder: (asset) => {
           placeholderId = asset.id;
+          placeholderAsset = asset;
           // A live blob preview is not a resumable ASR job. Mark it running only
           // after the authoritative uploaded descriptor is available.
           commands.addAsset(asset);
+          lifecycle?.onPlaceholder?.(asset);
         },
         onUploaded: (info) => {
           // Start ASR as soon as master lands — don't wait for normalize.
@@ -540,10 +554,12 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           });
           // onUploaded owns ASR startup; onReady only relinks the same revision.
           if (asset.kind !== 'audio') refreshVisualAnalysis(asset);
+          lifecycle?.onReady?.(asset);
         },
       });
     } catch (err) {
       if (placeholderId) commands.removeMediaAsset(placeholderId);
+      lifecycle?.onFailure?.(placeholderAsset, err);
       throw err;
     }
   }, [commands, startAssetTranscription]);

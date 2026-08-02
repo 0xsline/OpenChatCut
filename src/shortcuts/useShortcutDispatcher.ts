@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { matchShortcut, normalizeKey, isTypingTarget } from './match';
 import { effectiveCatalog } from './keymap';
 import { invokeAction } from './actionRegistry';
+import { shortcutAllowedForSurface, shortcutSurfaceFromTarget } from './shortcutScope';
 
 export type ShortcutHandler = (ctx: { shift: boolean; alt: boolean; mod: boolean }) => void;
 
@@ -29,6 +30,7 @@ export function useShortcutDispatcher(
       const hasTextSelection = selection?.isCollapsed === false;
       const id = matchShortcut(e, effectiveCatalog(), { held, hasTextSelection });
       if (!id) return;
+      if (!shortcutAllowedForSurface(id, shortcutSurfaceFromTarget(e.target))) return;
 
       // Tab in non-typing: ask-ai; don't steal tab in inputs
       if (id === 'ask-ai' && isTypingTarget(e.target)) return;

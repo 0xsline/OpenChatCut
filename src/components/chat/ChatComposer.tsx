@@ -17,6 +17,8 @@ import {
 import { ComposerMoreMenu, ComposerToolbar, type ComposerPopover } from './ComposerToolbar';
 import { WorkflowPickerContent } from './WorkflowPickerContent';
 import { ChatPopover as Popover } from './ChatPopover';
+import { hasEditorDrag, parseEditorDrag, type EditorDragPayload } from '../../editor/editorDrag';
+import { droppedFiles, hasExternalFiles } from '../../media/externalFileDrop';
 
 /** composer shell height (includes textarea + toolbar); drag the top handle to resize */
 const COMPOSER_H_MIN = 88;
@@ -53,11 +55,15 @@ interface ChatComposerProps {
   /** Paste supported files (video/image/audio/gif/svg) straight into the chat.
    * Semantics: Files attached to the chat box are first imported into the media pool and then automatically attached to @ref (not directly uploaded to the timeline). */
   onPasteFiles?: (files: File[]) => void;
+  /** Finder drops use the same progressive import-and-attach path as paste. */
+  onDropFiles?: (files: File[]) => void;
   /** true while a pasted file is importing into the pool */
   pasting?: boolean;
   /** last paste import error, or null */
   pasteError?: string | null;
   onDismissPasteError?: () => void;
+  /** Editor cards become structured references; sending remains explicit. */
+  onDropEditorItem?: (payload: EditorDragPayload) => void;
   taRef: RefObject<HTMLTextAreaElement | null>;
   placeholder?: string;
 }
@@ -68,6 +74,7 @@ const TIER_LABELS: Record<MgTier, string> = { speed: '速度', balance: '均衡'
 const REF_ICON: Record<RefItem['kind'], IconName> = {
   video: 'filePlay', image: 'filePlay', gif: 'image', svg: 'image',
   audio: 'fileHeadphone', 'motion-graphic': 'sparkles', template: 'sparkles',
+  'library-resource': 'sparkles',
   // selection-mode picks (item / time / region / transcript references)
   item: 'film', timepoint: 'clock', timerange: 'clock',
   'canvas-region': 'aspect', 'transcript-selection': 'text',
@@ -88,9 +95,12 @@ export function ChatComposer(props: ChatComposerProps) {
     value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange,
     autoApply, onAutoApplyChange, selecting, onToggleSelecting,
     creativeMode, onCreativeModeChange, references, onInsertRef,
-    selectedRefs = [], onRemoveRef, onPasteFiles, pasting, pasteError, onDismissPasteError,
+    selectedRefs = [], onRemoveRef, onPasteFiles, onDropFiles, pasting, pasteError, onDismissPasteError,
+    onDropEditorItem,
     taRef, placeholder,
   } = props;
+  const [editorDragOver, setEditorDragOver] = useState(false);
+  const editorDragDepth = useRef(0);
   // Hydration custom skill (manage_skill): read IDB → memory registry when mounting, bump triggers re-rendering
   // Make allCreativeSkills()/findSkill reflect custom skills. The real source is IDB, and the manage_skill tool is also the same.
   const [, bumpCustom] = useState(0);
@@ -194,6 +204,42 @@ export function ChatComposer(props: ChatComposerProps) {
   return (
     <div
       className="cc-chat-composer"
+      data-cc-shortcut-surface="agent-input"
+      data-editor-drag-over={editorDragOver ? 'true' : undefined}
+      onDragEnter={(event) => {
+        if (!hasEditorDrag(event) && !hasExternalFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        editorDragDepth.current += 1;
+        setEditorDragOver(true);
+      }}
+      onDragOver={(event) => {
+        if (!hasEditorDrag(event) && !hasExternalFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      }}
+      onDragLeave={(event) => {
+        if (!hasEditorDrag(event) && !hasExternalFiles(event.dataTransfer)) return;
+        editorDragDepth.current = Math.max(0, editorDragDepth.current - 1);
+        if (editorDragDepth.current === 0) setEditorDragOver(false);
+      }}
+      onDrop={(event) => {
+        const files = droppedFiles(event.dataTransfer);
+        const payload = parseEditorDrag(event);
+        editorDragDepth.current = 0;
+        setEditorDragOver(false);
+        if (files.length > 0 && onDropFiles) {
+          event.preventDefault();
+          event.stopPropagation();
+          onDropFiles(files);
+          taRef.current?.focus();
+          return;
+        }
+        if (!payload || !onDropEditorItem) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onDropEditorItem(payload);
+        taRef.current?.focus();
+      }}
       style={{
         position: 'relative', display: 'flex', flexDirection: 'column',
         height: shellH, minHeight: COMPOSER_H_MIN, maxHeight: COMPOSER_H_MAX,
@@ -201,6 +247,8 @@ export function ChatComposer(props: ChatComposerProps) {
         boxSizing: 'border-box', background: theme.panelAlt,
     border: `0.5px solid ${theme.borderLight}`, borderRadius: 4,
         padding: '10px 6px 5px',
+        boxShadow: editorDragOver ? `inset 0 0 0 1px ${theme.accent}` : undefined,
+        transition: 'box-shadow 120ms ease',
       }}
     >
       {/* top edge drag handle — pull up to expand, down to shrink */}
