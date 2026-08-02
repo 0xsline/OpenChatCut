@@ -10,6 +10,9 @@ import { CodexAccountCard } from './CodexAccountCard';
 import type { CodexAgentModel } from '../../../shared/codex-agent';
 import type { CodexSettingsController } from './useCodexSettings';
 import { shouldRenderModelPicker } from './codexReasoning';
+import { llmProviderConfigNames, normalizeLlmProvider } from '../../../shared/llm-providers';
+import { MODEL_CAPABILITY_OVERRIDES_KEY } from '../../../shared/model-capabilities';
+import { ModelCapabilityEditor } from './ModelCapabilityEditor';
 import {
   fieldPlaceholder, isModelField, modelValue, selectOptionLabel, selectOptions, vendorConfigured,
   type KeyStatusResponse, type SelectOption, type SettingsField, type SettingsVendorPage,
@@ -28,6 +31,24 @@ export interface FieldCtx {
   modelOptions: Record<string, readonly string[]>;
   onModelsDiscovered: (name: string, models: readonly string[]) => void;
   codex: CodexSettingsController;
+}
+
+const CAPABILITY_OVERRIDE_FIELD: SettingsField = {
+  name: MODEL_CAPABILITY_OVERRIDES_KEY,
+  label: '模型能力',
+  kind: 'text',
+  defaultLabel: '',
+};
+
+function capabilityOverridesValue(ctx: FieldCtx): string {
+  return ctx.values[MODEL_CAPABILITY_OVERRIDES_KEY]
+    ?? modelValue(ctx.status, MODEL_CAPABILITY_OVERRIDES_KEY);
+}
+
+function apiModelId(page: SettingsVendorPage, ctx: FieldCtx): string {
+  const names = llmProviderConfigNames(page.vendor);
+  const field = page.fields.find((candidate) => candidate.name === names.model);
+  return (ctx.values[names.model] ?? modelValue(ctx.status, names.model)) || field?.defaultLabel || '';
 }
 
 // ──Provider configuration page ────────────────────────────────────────────────────────
@@ -53,6 +74,11 @@ export function VendorPane({ page, hint, ctx }: {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: page.note ? 9 : 0 }}>
           {page.fields.map((f) => <FieldRow key={f.name} field={f} ctx={ctx} />)}
         </div>
+        {page.key.startsWith('llm/') && (
+          <ModelCapabilityEditor backend="api" provider={normalizeLlmProvider(page.vendor)}
+            modelId={apiModelId(page, ctx)} rawOverrides={capabilityOverridesValue(ctx)}
+            onChange={(value) => ctx.onStage(CAPABILITY_OVERRIDE_FIELD, value)} />
+        )}
       </section>
       <TestConnectionRow page={page} ctx={ctx} />
     </div>
@@ -71,6 +97,9 @@ function CodexVendorPane({ page, hint, ctx }: {
           : status.account ? t('API Key 模式')
             : status.error || ctx.codex.error ? t('连接异常') : t('未登录');
   const on = vendorConfigured(ctx.status, page, status);
+  const capabilityModelId = (ctx.values.CODEX_MODEL ?? modelValue(ctx.status, 'CODEX_MODEL'))
+    || ctx.codex.models.find((model) => model.isDefault)?.id
+    || '';
   return (
     <div style={pane}>
       <div>
@@ -87,6 +116,12 @@ function CodexVendorPane({ page, hint, ctx }: {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: page.note ? 9 : 0 }}>
           {page.fields.map((field) => <FieldRow key={field.name} field={field} ctx={ctx} />)}
         </div>
+        {capabilityModelId && (
+          <ModelCapabilityEditor backend="codex" provider="openai"
+            modelId={capabilityModelId}
+            rawOverrides={capabilityOverridesValue(ctx)}
+            onChange={(value) => ctx.onStage(CAPABILITY_OVERRIDE_FIELD, value)} />
+        )}
       </section>
     </div>
   );

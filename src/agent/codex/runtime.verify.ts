@@ -83,6 +83,9 @@ try {
     {
       model: 'gpt-5.6-sol',
       reasoningEffort: 'xhigh',
+      contextWindowTokens: 272_000,
+      contextWindowEstimated: false,
+      maxOutputTokens: 64_000,
       tools: [{
         name: 'ask_followup_questions',
         description: 'Ask for missing input',
@@ -125,6 +128,9 @@ let normalController: ReadableStreamDefaultController<Uint8Array> | null = null;
 globalThis.fetch = (async (input, init) => {
   const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   if (path === '/api/codex/turn') {
+    const submittedTurn = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    assert.equal(submittedTurn.reasoningEffort, null,
+      'an omitted resolved effort explicitly suppresses the server-side saved fallback');
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         normalController = controller;
@@ -146,19 +152,29 @@ globalThis.fetch = (async (input, init) => {
     normalController.enqueue(encoder.encode(`${JSON.stringify({
       type: 'text-delta',
       delta: 'Project inspected.',
+    })}\n${JSON.stringify({
+      type: 'context-usage',
+      inputTokens: 1_000,
+      contextWindowTokens: 1_000_000,
     })}\n${JSON.stringify({ type: 'done' })}\n`));
     normalController.close();
     return new Response(null, { status: 200 });
   }
   throw new Error(`Unexpected fetch: ${path}`);
 }) as typeof fetch;
+const normalEvents: AgentEvent[] = [];
 
 try {
   const result = await runCodexAgent(
     [{ role: 'user', content: 'Inspect the project.' }],
     context,
-    () => undefined,
+    (event) => normalEvents.push(event),
     {
+      modelId: 'codex:custom',
+      contextWindowTokens: 64_000,
+      contextWindowEstimated: false,
+      contextWindowOverride: true,
+      maxOutputTokens: 64_000,
       tools: [{ name: 'read_project', inputSchema: { type: 'object' } }],
       executeTool: async () => ({ success: true, result: { duration: 42 } }),
     },
@@ -166,9 +182,47 @@ try {
   assert.match(String(result.at(-2)?.content), /"projectId":"project-1"/);
   assert.match(String(result.at(-2)?.content), /"duration":42/);
   assert.equal(result.at(-1)?.content, 'Project inspected.');
+  const usageEvent = normalEvents.find((event) => event.type === 'context-usage');
+  assert.equal(usageEvent?.type === 'context-usage' ? usageEvent.usage.contextWindowTokens : 0, 64_000,
+    'Codex provider usage cannot replace an explicit context override');
 } finally {
   globalThis.fetch = originalFetch;
 }
+globalThis.fetch = (async (input) => {
+  const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  if (path !== '/api/codex/turn') throw new Error(`Unexpected fetch: ${path}`);
+  const payload = [
+    { type: 'text-delta', delta: 'abcd' },
+    { type: 'text-delta', delta: 'X'.repeat(40) },
+    { type: 'done' },
+  ].map((event) => JSON.stringify(event)).join('\n');
+  return new Response(`${payload}\n`, {
+    status: 200,
+    headers: { 'content-type': 'application/x-ndjson' },
+  });
+}) as typeof fetch;
+try {
+  const cappedEvents: AgentEvent[] = [];
+  const capped = await runCodexAgent(
+    [{ role: 'user', content: 'Keep the answer short.' }],
+    context,
+    (event) => cappedEvents.push(event),
+    {
+      askOnly: true,
+      contextWindowTokens: 64_000,
+      contextWindowEstimated: false,
+      maxOutputTokens: 10,
+      tools: [],
+      executeTool: async () => ({ success: true, result: null }),
+    },
+  );
+  assert.equal(capped.at(-1)?.content, 'abcd',
+    'Codex Agent stops before a delta would exceed its effective output ceiling');
+  assert.equal(cappedEvents.some((event) => event.type === 'error'), false);
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
 
 globalThis.fetch = (async (input) => {
   const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;

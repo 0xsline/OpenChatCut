@@ -43,7 +43,11 @@ export interface CodexRuntimeOptions {
   readonly model?: string;
   readonly reasoningEffort?: string;
   readonly modelId?: string;
-  readonly contextWindowTokens?: number;
+  readonly contextWindowTokens: number;
+  readonly contextWindowEstimated: boolean;
+  readonly contextWindowOverride?: boolean;
+  readonly maxOutputTokens: number;
+  readonly supportsImages?: boolean;
   readonly requestMessageCount?: number;
   readonly contextWasCompacted?: boolean;
   readonly system?: string;
@@ -68,12 +72,15 @@ interface StreamState {
   readonly text: string;
   readonly textStarted: boolean;
   readonly done: boolean;
+  readonly outputTokens: number;
   readonly toolTurns: number;
   readonly handledCallIds: ReadonlySet<string>;
   readonly toolHistory: readonly ModelMessage[];
 }
 
 class MaxToolTurnsError extends Error {}
+class MaxOutputTokensError extends Error {}
+
 
 class CodexFollowupPause extends Error {
   readonly text: string;
@@ -139,6 +146,22 @@ async function submitToolExecution(
     success: execution.success,
     result: execution.result ?? null,
   });
+}
+
+function withoutToolImages(execution: CodexToolExecution): CodexToolExecution {
+  if (!execution.result || typeof execution.result !== 'object' || Array.isArray(execution.result)) return execution;
+  const result = execution.result as Record<string, unknown>;
+  if (!Array.isArray(result.__images)) return execution;
+  const { __images: _images, ...rest } = result;
+  return {
+    ...execution,
+    result: {
+      ...rest,
+      note: typeof rest.note === 'string'
+        ? rest.note
+        : 'Image output omitted because the selected model does not support image input.',
+    },
+  };
 }
 
 
@@ -212,7 +235,11 @@ async function handleToolStart(
   if (!known || !isToolArgs(event.args)) {
     onEvent({ type: 'tool', name: event.name, args: event.args, result: execution.result });
   }
-  await submitToolExecution(requestId, event.callId, execution);
+  await submitToolExecution(
+    requestId,
+    event.callId,
+    opts.supportsImages === false ? withoutToolImages(execution) : execution,
+  );
   if (execution.followupText !== undefined) {
     throw new CodexFollowupPause(execution.followupText);
   }
@@ -233,19 +260,35 @@ async function handleStreamEvent(
 ): Promise<StreamState> {
   if (state.done) throw new Error('Malformed Codex stream: event received after done.');
   if (event.type === 'tool-start') return handleToolStart(event, state, requestId, opts, onEvent);
-  if (event.type === 'text-delta') {
+  if (event.type === 'text-delta' || event.type === 'thinking-delta') {
+    const outputTokens = state.outputTokens + estimateTextTokens(event.delta);
+    if (outputTokens > opts.maxOutputTokens) throw new MaxOutputTokensError();
+    if (event.type === 'thinking-delta') {
+      onEvent({ type: 'thinking-delta', delta: event.delta });
+      return { ...state, outputTokens };
+    }
     if (!state.textStarted) onEvent({ type: 'text-start' });
     onEvent({ type: 'text-delta', delta: event.delta });
-    return { ...state, textStarted: true, text: state.text + event.delta };
+    return {
+      ...state,
+      textStarted: true,
+      text: state.text + event.delta,
+      outputTokens,
+    };
   }
-  if (event.type === 'thinking-delta') onEvent({ type: 'thinking-delta', delta: event.delta });
-  else if (event.type === 'context-usage') {
+  if (event.type === 'context-usage') {
     onEvent({
       type: 'context-usage',
       usage: {
         inputTokens: event.inputTokens,
-        contextWindowTokens: event.contextWindowTokens || opts.contextWindowTokens || 272_000,
-        contextWindowEstimated: false,
+        contextWindowTokens: opts.contextWindowOverride
+          ? opts.contextWindowTokens
+          : event.contextWindowTokens || opts.contextWindowTokens,
+        contextWindowEstimated: opts.contextWindowOverride
+          ? opts.contextWindowEstimated
+          : event.contextWindowTokens
+            ? false
+            : opts.contextWindowEstimated,
         isEstimated: false,
         modelId: opts.modelId ?? `codex:${opts.model || 'default'}`,
         compacted: opts.contextWasCompacted === true,
@@ -281,6 +324,7 @@ export async function runCodexAgent(
     text: '',
     textStarted: false,
     done: false,
+    outputTokens: 0,
     toolTurns: 0,
     handledCallIds: new Set(),
     toolHistory: [],
@@ -293,7 +337,7 @@ export async function runCodexAgent(
       projectId,
       tools: opts.askOnly ? [] : opts.tools,
       ...(opts.model?.trim() ? { model: opts.model.trim() } : {}),
-      ...(opts.reasoningEffort?.trim() ? { reasoningEffort: opts.reasoningEffort.trim() } : {}),
+      reasoningEffort: opts.reasoningEffort?.trim() || null,
       ...(opts.askOnly ? { askOnly: true } : {}),
     }, async (event) => {
       state = await handleStreamEvent(event, state, requestId, opts, onEvent);
@@ -312,7 +356,7 @@ export async function runCodexAgent(
         ? [...conv, ...state.toolHistory, { role: 'assistant', content }]
         : [...conv, ...state.toolHistory];
     }
-    if (error instanceof MaxToolTurnsError) {
+    if (error instanceof MaxToolTurnsError || error instanceof MaxOutputTokensError) {
       return state.text
         ? [...conv, ...state.toolHistory, { role: 'assistant', content: state.text }]
         : [...conv, ...state.toolHistory];
@@ -351,7 +395,7 @@ export async function runCodexSummary(request: CodexSummaryRequest): Promise<str
     tools: [],
     askOnly: true,
     ...(request.model?.trim() ? { model: request.model.trim() } : {}),
-    ...(request.reasoningEffort?.trim() ? { reasoningEffort: request.reasoningEffort.trim() } : {}),
+    reasoningEffort: request.reasoningEffort?.trim() || null,
   }, (event) => {
     if (event.type === 'text-delta') {
       const candidate = text + event.delta;

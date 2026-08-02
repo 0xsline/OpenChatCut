@@ -58,7 +58,7 @@ function useMountedRef(): RefObject<boolean> {
   return mounted;
 }
 
-function useCodexStatusControl(savedModel?: string, savedReasoningEffort?: string): RemoteStatusControl {
+function useCodexStatusControl(): RemoteStatusControl {
   const mounted = useMountedRef();
   const [state, setState] = useState<RemoteStatusState>({ status: null, loading: true, error: null });
   const refresh = useCallback(async (silent = false): Promise<CodexAgentStatus | null> => {
@@ -77,9 +77,6 @@ function useCodexStatusControl(savedModel?: string, savedReasoningEffort?: strin
     }
   }, [mounted]);
   useEffect(() => { void refresh(); }, [refresh]);
-  useEffect(() => {
-    if (state.status) applyCodexAgentStatus(state.status, savedModel, savedReasoningEffort);
-  }, [savedModel, savedReasoningEffort, state.status]);
   return { state, refresh };
 }
 
@@ -200,9 +197,19 @@ function useCodexModels(autoDiscover: boolean) {
 }
 
 export function useCodexSettings(savedModel?: string, savedReasoningEffort?: string): CodexSettingsController {
-  const remote = useCodexStatusControl(savedModel, savedReasoningEffort);
+  const remote = useCodexStatusControl();
   const login = usePendingLogin(remote);
   const models = useCodexModels(remote.state.status?.account?.type === 'chatgpt');
+  useEffect(() => {
+    if (remote.state.status) {
+      applyCodexAgentStatus(
+        remote.state.status,
+        savedModel,
+        savedReasoningEffort,
+        models.models,
+      );
+    }
+  }, [models.models, remote.state.status, savedModel, savedReasoningEffort]);
   const logout = useCodexLogout(remote, models.reset);
   return {
     status: remote.state.status,

@@ -53,7 +53,7 @@ export interface CodexTurnRequest {
   readonly prompt: string;
   readonly projectId: string;
   readonly model?: string;
-  readonly reasoningEffort?: string;
+  readonly reasoningEffort?: string | null;
   readonly askOnly?: boolean;
   readonly tools: readonly CodexAgentToolSpec[];
 }
@@ -85,7 +85,7 @@ export type CodexTurnStreamEvent =
   | {
       readonly type: 'context-usage';
       readonly inputTokens: number;
-      readonly contextWindowTokens: number;
+      readonly contextWindowTokens?: number;
     }
   | { readonly type: 'error'; readonly message: string }
   | { readonly type: 'done' };

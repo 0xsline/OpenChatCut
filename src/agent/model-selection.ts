@@ -1,83 +1,192 @@
-import type { CodexAgentStatus } from '../../shared/codex-agent';
+import type { CodexAgentModel, CodexAgentStatus } from '../../shared/codex-agent';
 import {
   LLM_PROVIDER_PRESETS,
-  contextWindowForModel,
   defaultModelForProvider,
   isLocalLlmProvider,
   llmProviderConfigNames,
   normalizeLlmProvider,
   type LlmProvider,
+  type OpenAiApiMode,
 } from '../../shared/llm-providers';
+import {
+  MODEL_CAPABILITY_OVERRIDES_KEY,
+  parseModelCapabilityOverrides,
+  resolveModelCapabilities,
+  type ModelCapabilities,
+  type ModelCapabilityOverride,
+  type ModelIdentity,
+} from '../../shared/model-capabilities';
 import { setLlmConfig } from './providerConfig';
-
-const CODEX_CONTEXT_WINDOW_TOKENS = 272_000;
 
 interface KeyStateLike {
   readonly configured: boolean;
 }
 
-export type AgentModelBackend = 'api' | 'codex';
-
 export interface AgentModelChoice {
   readonly id: string;
-  readonly backend: AgentModelBackend;
+  readonly backend: 'api' | 'codex';
   readonly provider: LlmProvider;
   readonly providerLabel: string;
   readonly model: string;
+  readonly requestModel?: string;
+  readonly openAiApiMode?: OpenAiApiMode;
   readonly reasoningEffort?: string;
-  readonly contextWindowTokens: number;
-  readonly contextWindowEstimated: boolean;
+  readonly capabilities: ModelCapabilities;
 }
 
 export interface AgentModelSnapshot {
-  readonly activeId: string;
   readonly choices: readonly AgentModelChoice[];
+  readonly activeId: string;
   readonly loaded: boolean;
 }
 
-export function isAgentModelReady(state: AgentModelSnapshot): boolean {
-  return state.loaded
-    && state.activeId.length > 0
-    && state.choices.some((choice) => choice.id === state.activeId);
-}
-
-const EMPTY: AgentModelSnapshot = { activeId: '', choices: [], loaded: false };
-let snapshot = EMPTY;
+let snapshot: AgentModelSnapshot = { choices: [], activeId: '', loaded: false };
+let apiModelChoices: readonly AgentModelChoice[] = [];
+let codexModelChoices: readonly AgentModelChoice[] = [];
+let capabilityOverrides: readonly ModelCapabilityOverride[] = [];
+let codexStatus: CodexAgentStatus | null = null;
+let codexSavedModel = '';
+let codexSavedReasoningEffort = '';
+let codexDiscoveredModels: readonly CodexAgentModel[] = [];
 const listeners = new Set<() => void>();
 
-function emit(next: AgentModelSnapshot): void {
-  snapshot = next;
+function emit(): void {
   for (const listener of listeners) listener();
 }
 
-function currentChoice(): AgentModelChoice | undefined {
-  return snapshot.choices.find((choice) => choice.id === snapshot.activeId);
+function commit(choices: readonly AgentModelChoice[], activeId: string, loaded = snapshot.loaded): void {
+  snapshot = { choices, activeId, loaded };
+  emit();
+}
+
+function commitChoices(
+  choices: readonly AgentModelChoice[],
+  activeId: string,
+  loaded = snapshot.loaded,
+  fallbackApi?: AgentModelChoice,
+): void {
+  const active = choices.find((choice) => choice.id === activeId);
+  const runtimeApi = active?.backend === 'api' ? active : fallbackApi;
+  if (runtimeApi) {
+    setLlmConfig(runtimeApi.provider, runtimeApi.model, runtimeApi.openAiApiMode);
+  }
+  commit(choices, activeId, loaded);
+}
+
+function safeOverrides(raw: unknown): readonly ModelCapabilityOverride[] {
+  try { return parseModelCapabilityOverrides(raw); } catch { return []; }
+}
+
+function modelCapabilities(identity: ModelIdentity): ModelCapabilities {
+  return resolveModelCapabilities(identity, capabilityOverrides);
 }
 
 function apiChoices(
   keys: Record<string, KeyStateLike>,
   models: Record<string, string>,
-): AgentModelChoice[] {
+): readonly AgentModelChoice[] {
   return LLM_PROVIDER_PRESETS.flatMap((preset): AgentModelChoice[] => {
     const names = llmProviderConfigNames(preset.id);
-    const savedModel = models[names.model]?.trim();
+    const savedModel = models[names.model]?.trim() ?? '';
     if (isLocalLlmProvider(preset.id) ? !savedModel : !keys[names.apiKey]?.configured) return [];
     const model = savedModel || defaultModelForProvider(preset.id);
-    const contextWindow = contextWindowForModel(
-      preset.id,
-      model,
-      models[names.contextWindow],
-    );
+    const identity: ModelIdentity = { backend: 'api', provider: preset.id, modelId: model };
     return [{
       id: `${preset.id}:${model}`,
       backend: 'api',
       provider: preset.id,
       providerLabel: preset.label,
       model,
-      contextWindowTokens: contextWindow.tokens,
-      contextWindowEstimated: contextWindow.estimated,
+      ...(preset.id === 'openai'
+        ? { openAiApiMode: models.LLM_OPENAI_API_MODE === 'chat' ? 'chat' : 'responses' }
+        : {}),
+      capabilities: modelCapabilities(identity),
     }];
   });
+}
+
+function chooseInitialApiId(
+  choices: readonly AgentModelChoice[],
+  models: Record<string, string>,
+): string {
+  const preferred = normalizeLlmProvider(models.LLM_PROVIDER);
+  return choices.find((choice) => choice.provider === preferred)?.id ?? choices[0]?.id ?? '';
+}
+
+function allChoices(): readonly AgentModelChoice[] {
+  return [...apiModelChoices, ...codexModelChoices];
+}
+function rebuildCodexChoices(): void {
+  const requestedModel = codexSavedModel.trim();
+  const discoveredModel = requestedModel
+    ? codexDiscoveredModels.find((model) => model.id === requestedModel)
+    : codexDiscoveredModels.find((model) => model.isDefault);
+  const model = requestedModel || discoveredModel?.id || '';
+  if (!codexStatus?.installed || codexStatus.account?.type !== 'chatgpt' || !model) {
+    codexModelChoices = [];
+    return;
+  }
+  const identity: ModelIdentity = { backend: 'codex', provider: 'openai', modelId: model };
+  const capabilities = modelCapabilities(identity);
+  codexModelChoices = [{
+    id: `codex:${model}`,
+    backend: 'codex',
+    provider: 'openai',
+    providerLabel: 'OpenAI Codex',
+    model,
+    ...(requestedModel ? { requestModel: requestedModel } : {}),
+    reasoningEffort: selectedReasoningEffort(codexSavedReasoningEffort, capabilities),
+    capabilities,
+  }];
+}
+
+
+
+export function applyAgentModelStatus(
+  keys: Record<string, KeyStateLike>,
+  models: Record<string, string>,
+): void {
+  capabilityOverrides = safeOverrides(models[MODEL_CAPABILITY_OVERRIDES_KEY]);
+  apiModelChoices = apiChoices(keys, models);
+  codexSavedModel = models.CODEX_MODEL?.trim() ?? codexSavedModel;
+  codexSavedReasoningEffort = models.CODEX_REASONING_EFFORT?.trim() ?? codexSavedReasoningEffort;
+  rebuildCodexChoices();
+  const choices = allChoices();
+  const initialApiId = chooseInitialApiId(apiModelChoices, models);
+  const preserved = choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId : '';
+  commitChoices(choices, preserved || initialApiId || choices[0]?.id || '', true,
+    apiModelChoices.find((choice) => choice.id === initialApiId));
+}
+
+function selectedReasoningEffort(requested: string | undefined, capabilities: ModelCapabilities): string {
+  const effort = requested?.trim() ?? '';
+  if (!effort) return '';
+  if (!capabilities.supportsReasoning.estimated && !capabilities.supportsReasoning.value) return '';
+  const supported = capabilities.reasoningEfforts.value;
+  return supported.length === 0 || supported.includes(effort)
+    ? effort
+    : capabilities.defaultReasoningEffort?.value ?? '';
+}
+
+
+export function applyCodexAgentStatus(
+  status: CodexAgentStatus,
+  savedModel?: string,
+  savedReasoningEffort?: string,
+  discoveredModels?: readonly CodexAgentModel[],
+): void {
+  codexStatus = status;
+  codexSavedModel = savedModel?.trim() ?? codexSavedModel;
+  codexSavedReasoningEffort = savedReasoningEffort?.trim() ?? codexSavedReasoningEffort;
+  if (discoveredModels) codexDiscoveredModels = discoveredModels;
+  rebuildCodexChoices();
+  const choices = allChoices();
+  const preserved = choices.some((choice) => choice.id === snapshot.activeId) ? snapshot.activeId : '';
+  commitChoices(choices, preserved || choices[0]?.id || '', true);
+}
+
+export function getAgentModelSnapshot(): AgentModelSnapshot {
+  return snapshot;
 }
 
 export function subscribeAgentModels(listener: () => void): () => void {
@@ -85,68 +194,18 @@ export function subscribeAgentModels(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-export function getAgentModelSnapshot(): AgentModelSnapshot {
-  return snapshot;
+export function isAgentModelReady(state: AgentModelSnapshot = snapshot): boolean {
+  return state.loaded
+    && Boolean(state.activeId)
+    && state.choices.some((choice) => choice.id === state.activeId);
 }
 
 export function getActiveAgentModelChoice(): AgentModelChoice | undefined {
-  return currentChoice();
-}
-
-export function applyAgentModelStatus(
-  keys: Record<string, KeyStateLike>,
-  models: Record<string, string>,
-): void {
-  const previous = currentChoice();
-  const choices = [
-    ...apiChoices(keys, models),
-    ...snapshot.choices.filter((choice) => choice.backend === 'codex'),
-  ];
-  const savedProvider = normalizeLlmProvider(models.LLM_PROVIDER);
-  const configuredApi = choices.find(
-    (choice) => choice.backend === 'api' && choice.provider === savedProvider,
-  ) ?? choices.find((choice) => choice.backend === 'api');
-  const preferred = previous?.backend === 'codex'
-    ? choices.find((choice) => choice.id === previous.id)
-    : configuredApi;
-  const active = preferred ?? choices[0];
-  if (configuredApi) {
-    setLlmConfig(configuredApi.provider, configuredApi.model, models.LLM_OPENAI_API_MODE);
-  }
-  emit({ activeId: active?.id ?? '', choices, loaded: true });
-}
-
-export function applyCodexAgentStatus(
-  status: CodexAgentStatus,
-  savedModel?: string,
-  savedReasoningEffort?: string,
-): void {
-  const previous = currentChoice();
-  const api = snapshot.choices.filter((choice) => choice.backend === 'api');
-  const model = savedModel?.trim() ?? '';
-  const codex: AgentModelChoice[] = status.installed && status.account?.type === 'chatgpt'
-    ? [{
-        id: `codex:${model || 'default'}`,
-        backend: 'codex',
-        provider: 'openai',
-        providerLabel: 'OpenAI Codex',
-        model,
-        reasoningEffort: savedReasoningEffort?.trim() ?? '',
-        contextWindowTokens: CODEX_CONTEXT_WINDOW_TOKENS,
-        contextWindowEstimated: true,
-      }]
-    : [];
-  const choices = [...api, ...codex];
-  const active = choices.find((choice) => choice.id === previous?.id)
-    ?? (previous?.backend === 'codex' ? codex[0] : undefined)
-    ?? choices[0];
-  if (active?.backend === 'api') setLlmConfig(active.provider, active.model);
-  emit({ activeId: active?.id ?? '', choices, loaded: true });
+  return snapshot.choices.find((choice) => choice.id === snapshot.activeId);
 }
 
 export function selectAgentModel(id: string): void {
-  const active = snapshot.choices.find((choice) => choice.id === id);
-  if (!active || active.id === snapshot.activeId) return;
-  if (active.backend === 'api') setLlmConfig(active.provider, active.model);
-  emit({ ...snapshot, activeId: active.id });
+  const choice = snapshot.choices.find((candidate) => candidate.id === id);
+  if (!choice) return;
+  commitChoices(snapshot.choices, choice.id);
 }

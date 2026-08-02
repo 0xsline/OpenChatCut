@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import { delimiter, isAbsolute, join, resolve, sep } from 'node:path';
 import { codexCommand } from './command.ts';
 
-const VERSION_TIMEOUT_MS = 2_000;
+const VERSION_TIMEOUT_MS = 10_000;
 const VERSION_OUTPUT_LIMIT = 16 * 1024;
 export const MINIMUM_CODEX_VERSION = '0.146.0';
 

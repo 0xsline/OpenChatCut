@@ -6,6 +6,8 @@ const IMAGE_TOKEN_ESTIMATE = 1_200;
 const COMPACTION_RESERVE_TOKENS = 16_384;
 const RECENT_CONTEXT_TARGET_TOKENS = 20_000;
 const CONTEXT_FRACTION = 0.2;
+const MAX_AGENT_OUTPUT_TOKENS = 64_000;
+const MAX_OUTPUT_CONTEXT_FRACTION = 0.5;
 const SUMMARY_VALUE_MAX_CHARS = 12_000;
 
 export interface AgentContextUsage {
@@ -29,6 +31,7 @@ export interface ContextPreparationOptions {
   readonly modelId: string;
   readonly contextWindowTokens: number;
   readonly contextWindowEstimated: boolean;
+  readonly maxOutputTokens: number;
   readonly requestOverheadTokens?: number;
   readonly previousUsage?: AgentContextUsage;
   readonly summarize: (messages: readonly ModelMessage[]) => Promise<string>;
@@ -90,6 +93,14 @@ export function estimateContextTokens(
   );
   return estimateTextTokens(system) + messageTokens + requestOverheadTokens;
 }
+export function effectiveOutputTokenBudget(
+  capabilityLimit: number,
+  contextWindowTokens: number,
+): number {
+  const contextLimit = Math.max(1, Math.floor(contextWindowTokens * MAX_OUTPUT_CONTEXT_FRACTION));
+  return Math.max(1, Math.min(capabilityLimit, MAX_AGENT_OUTPUT_TOKENS, contextLimit));
+}
+
 
 function summaryPartText(part: ContentPart): string | null {
   if (typeof part.text === 'string') return part.text;
@@ -194,9 +205,13 @@ export async function prepareContext(
     options.requestOverheadTokens,
   );
   const currentTokens = Math.max(localTokens, previousInputFloor(options));
-  const reserve = Math.min(
+  const policyReserve = Math.min(
     COMPACTION_RESERVE_TOKENS,
     Math.floor(options.contextWindowTokens * CONTEXT_FRACTION),
+  );
+  const reserve = Math.min(
+    options.contextWindowTokens - 1,
+    Math.max(policyReserve, options.maxOutputTokens),
   );
   const triggerTokens = options.contextWindowTokens - reserve;
   if (currentTokens <= triggerTokens) {

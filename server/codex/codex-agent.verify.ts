@@ -7,7 +7,24 @@ import type { CodexTurnStreamEvent } from '../../shared/codex-agent.ts';
 import { CODEX_DISABLED_FEATURES, CodexAppServerClient } from './app-server.ts';
 import { codexCommand } from './command.ts';
 import { CodexTurnManager } from './turn-manager.ts';
-import { mapCodexModels } from '../plugins/codex-agent.ts';
+import { mapCodexModels, parseCodexTurnRequest } from '../plugins/codex-agent.ts';
+import { KEY_NAMES, seedKeystore } from '../keystore.ts';
+
+seedKeystore({
+  ...Object.fromEntries(KEY_NAMES.map((name) => [name, ''])),
+  CODEX_REASONING_EFFORT: 'high',
+});
+const turnBody = {
+  requestId: 'reasoning-precedence',
+  system: 'System',
+  prompt: 'Prompt',
+  projectId: 'project-1',
+  tools: [],
+};
+assert.equal(parseCodexTurnRequest(turnBody).reasoningEffort, 'high',
+  'legacy callers without an effort still use the saved setting');
+assert.equal(parseCodexTurnRequest({ ...turnBody, reasoningEffort: null }).reasoningEffort, undefined,
+  'an explicit model capability decision suppresses the saved effort');
 
 const windowsShim = codexCommand(
   'C:\\Program Files\\Open&AI\\codex.cmd',

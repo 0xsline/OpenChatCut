@@ -67,17 +67,24 @@ async function runCodexBackend(
   choice: AgentModelChoice,
   system: string,
   contextWasCompacted: boolean,
+  contextWindowTokens: number,
+  contextWindowEstimated: boolean,
+  maxOutputTokens: number,
   opts?: RunAgentOptions,
 ): Promise<LLMMessage[]> {
   const settings = loadAgentSettings();
-  const tools = opts?.askOnly ? [] : CODEX_TOOL_SPECS;
+  const tools = opts?.askOnly || !choice.capabilities.supportsTools.value ? [] : CODEX_TOOL_SPECS;
   return runCodexAgent(messages, ctx, onEvent, {
     askOnly: opts?.askOnly,
     signal: opts?.signal,
-    model: choice.model,
+    model: choice.requestModel,
     reasoningEffort: choice.reasoningEffort,
     modelId: choice.id,
-    contextWindowTokens: choice.contextWindowTokens,
+    contextWindowTokens,
+    contextWindowEstimated,
+    contextWindowOverride: choice.capabilities.contextWindowTokens.source === 'settings-override',
+    maxOutputTokens,
+    supportsImages: choice.capabilities.supportsImages.value,
     requestMessageCount: messages.length,
     system,
     contextWasCompacted,
@@ -109,13 +116,14 @@ export async function runAgent(
     return conv;
   }
   const system = buildAgentSystemPrompt(ctx);
+  const toolSchemas = opts?.askOnly || !active.capabilities.supportsTools.value ? [] : TOOL_SCHEMAS;
   try {
     const prepared = await prepareAgentContext({
       messages: conv,
       system,
       choice: active,
       ctx,
-      tools: opts?.askOnly ? [] : TOOL_SCHEMAS,
+      tools: toolSchemas,
       previousUsage: opts?.previousContextUsage,
       signal: opts?.signal,
     });
@@ -128,6 +136,9 @@ export async function runAgent(
           active,
           system,
           prepared.usage.compacted,
+          prepared.usage.contextWindowTokens,
+          prepared.usage.contextWindowEstimated,
+          prepared.maxOutputTokens,
           opts,
         )
       : runApiAgent(
@@ -137,6 +148,7 @@ export async function runAgent(
           active,
           system,
           prepared.usage.compacted,
+          prepared.maxOutputTokens,
           opts,
         );
   } catch (error) {

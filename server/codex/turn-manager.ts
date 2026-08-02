@@ -61,9 +61,11 @@ function contextUsageEvent(
   const total = object(usage?.total);
   const inputTokens = tokenCount(total?.inputTokens);
   const contextWindowTokens = tokenCount(usage?.modelContextWindow);
-  return inputTokens !== null && contextWindowTokens !== null
-    ? { type: 'context-usage', inputTokens, contextWindowTokens }
-    : null;
+  return inputTokens === null ? null : {
+    type: 'context-usage',
+    inputTokens,
+    ...(contextWindowTokens && contextWindowTokens > 0 ? { contextWindowTokens } : {}),
+  };
 }
 
 function sessionError(error: unknown): string {

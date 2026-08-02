@@ -7,7 +7,9 @@ import {
   protocolForProvider,
 } from './providerConfig';
 import type { LlmProvider, OpenAiApiMode } from './providerConfig';
-import { normalizeLlmMessages } from './messages';
+import { normalizeLlmMessages, withoutModelImages } from './messages';
+import { getActiveAgentModelChoice, getAgentModelSnapshot, type AgentModelChoice } from './model-selection';
+import { effectiveOutputTokenBudget } from './context-compaction';
 
 export {
   MODEL,
@@ -126,27 +128,44 @@ export function getLanguageModelProviderOptions(
     : undefined;
 }
 
+function generationChoice(): AgentModelChoice | undefined {
+  const active = getActiveAgentModelChoice();
+  if (active?.backend === 'api') return active;
+  return getAgentModelSnapshot().choices.find((choice) => (
+    choice.backend === 'api' && choice.provider === PROVIDER && choice.model === MODEL
+  ));
+}
+
 export async function generateAgentText(options: {
   system?: string;
   prompt?: string;
   messages?: readonly unknown[];
   maxOutputTokens: number;
 }): Promise<string> {
-  const providerOptions = getLanguageModelProviderOptions();
+  const choice = generationChoice();
+  const provider = choice?.provider ?? PROVIDER;
+  const model = choice?.model ?? MODEL;
+  const apiMode = choice?.openAiApiMode ?? OPENAI_API_MODE;
+  const providerOptions = getLanguageModelProviderOptions(provider, apiMode);
+  const modelOutputLimit = choice
+    ? effectiveOutputTokenBudget(
+        choice.capabilities.maxOutputTokens.value,
+        choice.capabilities.contextWindowTokens.value,
+      )
+    : options.maxOutputTokens;
+  const maxOutputTokens = Math.min(options.maxOutputTokens, modelOutputLimit);
   const base = {
-    model: await getLanguageModel(),
+    model: await getLanguageModel(provider, model, apiMode),
     system: options.system,
-    maxOutputTokens: options.maxOutputTokens,
+    maxOutputTokens,
     ...(providerOptions ? { providerOptions } : {}),
   };
-  const result = options.messages
-    ? await generateText({
-        ...base,
-        messages: normalizeLlmMessages(options.messages),
-      })
-    : await generateText({
-        ...base,
-        prompt: options.prompt ?? '',
-      });
+  const normalized = options.messages ? normalizeLlmMessages(options.messages) : null;
+  const messages = normalized && choice?.capabilities.supportsImages.value === false
+    ? withoutModelImages(normalized)
+    : normalized;
+  const result = messages
+    ? await generateText({ ...base, messages })
+    : await generateText({ ...base, prompt: options.prompt ?? '' });
   return result.text;
 }

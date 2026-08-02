@@ -43,13 +43,14 @@ export function useComposerModelView(
   const activeModel = modelState.choices.find((choice) => choice.id === modelState.activeId);
   const usageMatchesModel = contextUsage?.modelId === activeModel?.id;
   const used = contextUsage && usageMatchesModel ? contextUsage.inputTokens : 0;
+  const resolvedContext = activeModel?.capabilities.contextWindowTokens;
   const limit = contextUsage && usageMatchesModel
     ? contextUsage.contextWindowTokens
-    : activeModel?.contextWindowTokens ?? 0;
+    : resolvedContext?.value ?? 0;
   const usedEstimated = !usageMatchesModel || contextUsage?.isEstimated !== false;
   const limitEstimated = usageMatchesModel
     ? contextUsage?.contextWindowEstimated !== false
-    : activeModel?.contextWindowEstimated !== false;
+    : resolvedContext?.estimated !== false;
   const contextLabel = activeModel
     ? `${usedEstimated ? '~' : ''}${compactTokens(used)} / ${limitEstimated ? '~' : ''}${compactTokens(limit)}`
     : '';

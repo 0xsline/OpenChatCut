@@ -32,12 +32,12 @@ function isStreamEvent(value: unknown): value is CodexTurnStreamEvent {
       && typeof value.success === 'boolean';
   }
   if (value.type === 'context-usage') {
+    const contextWindow = value.contextWindowTokens;
     return typeof value.inputTokens === 'number'
       && Number.isFinite(value.inputTokens)
       && value.inputTokens >= 0
-      && typeof value.contextWindowTokens === 'number'
-      && Number.isFinite(value.contextWindowTokens)
-      && value.contextWindowTokens > 0;
+      && (contextWindow === undefined
+        || (typeof contextWindow === 'number' && Number.isFinite(contextWindow) && contextWindow > 0));
   }
   if (value.type === 'error') return typeof value.message === 'string';
   return value.type === 'done';

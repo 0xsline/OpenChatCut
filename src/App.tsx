@@ -9,7 +9,7 @@ import type { ProjectDoc, TimelineState } from './editor/types';
 import { buildProjectExport, importProjectPackage } from './persist/projectTransfer';
 import { purgeProjectCascade } from './persist/mediaCleanup';
 import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from './agent/capabilities';
-import { fetchCodexStatus } from './agent/codex/client';
+import { fetchCodexModels, fetchCodexStatus } from './agent/codex/client';
 import { applyAgentModelStatus, applyCodexAgentStatus } from './agent/model-selection';
 import { useT } from './i18n/locale';
 
@@ -64,7 +64,16 @@ async function syncAgentBackends(isActive: () => boolean): Promise<void> {
     }
   }
   if (codexResult.status === 'fulfilled') {
-    applyCodexAgentStatus(codexResult.value, savedCodexModel, savedCodexReasoningEffort);
+    const modelResult = codexResult.value.account?.type === 'chatgpt'
+      ? await fetchCodexModels().catch(() => null)
+      : null;
+    if (!isActive()) return;
+    applyCodexAgentStatus(
+      codexResult.value,
+      savedCodexModel,
+      savedCodexReasoningEffort,
+      modelResult && !modelResult.error ? modelResult.models : [],
+    );
   }
 }
 

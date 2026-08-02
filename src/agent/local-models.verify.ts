@@ -15,6 +15,8 @@ import {
   getAgentModelSnapshot,
   selectAgentModel,
 } from './model-selection.ts';
+import { MODEL_CAPABILITY_OVERRIDES_KEY } from '../../shared/model-capabilities.ts';
+import { MODEL, PROVIDER } from './providerConfig.ts';
 
 assert.equal(normalizeLlmProvider('ollama'), 'ollama');
 assert.equal(normalizeLlmProvider('lmstudio'), 'lmstudio');
@@ -69,10 +71,22 @@ applyAgentModelStatus({
   LLM_OPENAI_API_KEY: { configured: true },
   LLM_GEMINI_API_KEY: { configured: true },
 }, { LLM_PROVIDER: 'openai' });
+assert.equal(PROVIDER, 'openai', 'preferred configured provider synchronizes runtime fallback');
+assert.equal(MODEL, 'gpt-5', 'preferred configured model synchronizes runtime fallback');
 const gemini = getAgentModelSnapshot().choices.find((choice) => choice.provider === 'gemini');
 assert.ok(gemini);
 selectAgentModel(gemini.id);
 assert.equal(getAgentModelSnapshot().activeId, gemini.id);
+assert.equal(PROVIDER, 'gemini', 'manual API selection synchronizes runtime metadata');
+applyAgentModelStatus({
+  LLM_OPENAI_API_KEY: { configured: true },
+  LLM_GEMINI_API_KEY: { configured: true },
+}, {
+  LLM_PROVIDER: 'openai',
+  [MODEL_CAPABILITY_OVERRIDES_KEY]: '[]',
+});
+assert.equal(getAgentModelSnapshot().activeId, gemini.id, 'override refresh preserves the active API model');
+assert.equal(PROVIDER, 'gemini', 'refresh synchronizes the preserved API model, not the preferred fallback');
 assert.equal(persistenceCalls, 0, 'conversation model switching must not rewrite server settings');
 
 const signedInCodex = {
@@ -92,6 +106,33 @@ applyAgentModelStatus({
   LLM_GEMINI_API_KEY: { configured: true },
 }, { LLM_PROVIDER: 'openai' });
 assert.equal(getAgentModelSnapshot().activeId, codex.id, 'key refresh must preserve an active Codex model');
+assert.equal(PROVIDER, 'openai', 'Codex-active refresh synchronizes a valid API fallback');
+assert.equal(MODEL, 'gpt-5');
+applyAgentModelStatus({
+  LLM_OPENAI_API_KEY: { configured: true },
+}, {
+  LLM_PROVIDER: 'openai',
+  CODEX_MODEL: 'gpt-5.4',
+  [MODEL_CAPABILITY_OVERRIDES_KEY]: JSON.stringify([{
+    backend: 'codex',
+    provider: 'openai',
+    modelId: 'gpt-5.4',
+    supportsTools: false,
+  }]),
+});
+const overriddenCodex = getAgentModelSnapshot().choices.find((choice) => choice.backend === 'codex');
+assert.equal(overriddenCodex?.capabilities.supportsTools.value, false,
+  'saving a Codex override rebuilds the live Codex choice');
+applyCodexAgentStatus(signedInCodex, '', '', [{
+  id: 'gpt-5.6-sol',
+  label: 'GPT-5.6 Sol',
+  isDefault: true,
+  defaultReasoningEffort: 'medium',
+  supportedReasoningEfforts: [],
+}]);
+const defaultCodex = getAgentModelSnapshot().choices.find((choice) => choice.backend === 'codex');
+assert.equal(defaultCodex?.model, 'gpt-5.6-sol');
+assert.equal(defaultCodex?.requestModel, undefined, 'unset CODEX_MODEL keeps the request model omitted');
 
 const codexPage = llmGroup.vendors.find((page) => page.connection === 'codex');
 assert.ok(codexPage);

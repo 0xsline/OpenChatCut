@@ -20,6 +20,7 @@ import {
   normalizeLlmMessages,
   prepareMessagesForProvider,
   prepareChatCompletionsMediaMessages,
+  withoutModelImages,
 } from './messages';
 import {
   isCompatibleMediaFallbackError,
@@ -46,6 +47,22 @@ assert.equal(providerApiPath('openai', 'chat'), '/chat/completions');
 assert.equal(providerApiPath('kimi'), '/chat/completions');
 assert.equal(providerApiPath('gemini'), '/models');
 assert.equal(providerApiPath('openrouter'), '/chat/completions');
+
+const strippedVisualMessages = withoutModelImages([{
+  role: 'user',
+  content: [
+    { type: 'text', text: 'inspect this' },
+    { type: 'file', data: new URL('https://example.invalid/frame.png'), mediaType: 'image/png' },
+    { type: 'file', data: new URL('https://example.invalid/notes.pdf'), mediaType: 'application/pdf' },
+  ],
+}]);
+const strippedVisualContent = strippedVisualMessages[0]!.content as Array<Record<string, unknown>>;
+assert.equal(strippedVisualContent.some((part) => part.mediaType === 'image/png'), false,
+  'models without image input never receive visual attachments');
+assert.equal(strippedVisualContent.some((part) => part.mediaType === 'application/pdf'), true,
+  'non-image files are not conflated with image capability');
+assert.equal(strippedVisualContent.some((part) => String(part.text).includes('omitted')), true,
+  'the model receives an explicit omission notice');
 assert.equal(normalizeOpenAiApiMode('chat'), 'chat');
 assert.equal(normalizeOpenAiApiMode('unexpected'), 'responses');
 assert.equal((await getLanguageModel('anthropic', 'test-model')).provider, 'anthropic.messages');

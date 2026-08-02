@@ -26,13 +26,12 @@ import {
   getLanguageModel,
   getLanguageModelProviderOptions,
   protocolForProvider,
-  PROVIDER,
-  OPENAI_API_MODE,
 } from './client';
 import {
   makeMessagesPortable,
   normalizeLlmMessages,
   prepareChatCompletionsMediaMessages,
+  withoutModelImages,
 } from './messages';
 import {
   createInlineThinkingExtractor,
@@ -52,7 +51,6 @@ import type {
   RunAgentOptions,
 } from './runtime';
 
-const MAX_OUTPUT_TOKENS = 64_000;
 const MAX_TOOL_TURNS = 30;
 type ToolResultOutput = ToolResultPart['output'];
 
@@ -127,6 +125,7 @@ export async function runApiAgent(
   choice: AgentModelChoice,
   system: string,
   contextWasCompacted: boolean,
+  maxOutputTokens: number,
   opts?: RunAgentOptions,
 ): Promise<LLMMessage[]> {
   let conv = normalizeLlmMessages(messages);
@@ -148,7 +147,7 @@ export async function runApiAgent(
       visibleText += delta;
       onEvent({ type: 'text-delta', delta });
     };
-    const tools = opts?.askOnly
+    const tools = opts?.askOnly || !choice.capabilities.supportsTools.value
       ? {}
       : createAgentTools(
           ctx,
@@ -166,21 +165,23 @@ export async function runApiAgent(
       // tool-result media into a supported user attachment message. A provider
       // that rejects the attachment before producing output gets one text-only
       // retry; the original conversation and tool instances stay unchanged.
-      const protocol = protocolForProvider(PROVIDER);
-      const mediaPreparation = protocol === 'openai-compatible'
-        ? prepareChatCompletionsMediaMessages(conv)
-        : null;
-      let requestCarriesMedia =
-        (mediaPreparation?.movedMedia ?? false) && !compatibleMediaFallbackRequired;
+      const protocol = protocolForProvider(choice.provider);
+      const mediaPreparation = prepareChatCompletionsMediaMessages(conv);
+      const supportsImages = choice.capabilities.supportsImages.value;
+      const textOnlyMessages = supportsImages ? conv : withoutModelImages(conv);
+      let requestCarriesMedia = protocol === 'openai-compatible'
+        && supportsImages
+        && !compatibleMediaFallbackRequired
+        && mediaPreparation.movedMedia;
       let requestMessages = protocol === 'openai'
-        ? makeMessagesPortable(conv, OPENAI_API_MODE)
-        : mediaPreparation
-          ? compatibleMediaFallbackRequired
-            ? mediaPreparation.messagesWithoutMedia
-            : mediaPreparation.messages
-          : conv;
-      const providerOptions = getLanguageModelProviderOptions();
-      const model = await getLanguageModel();
+        ? makeMessagesPortable(textOnlyMessages, choice.openAiApiMode)
+        : protocol === 'openai-compatible'
+          ? supportsImages && !compatibleMediaFallbackRequired
+            ? mediaPreparation.messages
+            : textOnlyMessages
+          : textOnlyMessages;
+      const providerOptions = getLanguageModelProviderOptions(choice.provider, choice.openAiApiMode);
+      const model = await getLanguageModel(choice.provider, choice.model, choice.openAiApiMode);
       let retriedWithoutMedia = false;
       let retriedTransientRequest = false;
       let aborted = false;
@@ -194,7 +195,7 @@ export async function runApiAgent(
           system,
           messages: requestMessages,
           tools,
-          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          maxOutputTokens,
           maxRetries: 0,
           abortSignal: opts?.signal,
           ...(providerOptions ? { providerOptions } : {}),
@@ -253,8 +254,8 @@ export async function runApiAgent(
                   type: 'context-usage',
                   usage: {
                     inputTokens,
-                    contextWindowTokens: choice.contextWindowTokens,
-                    contextWindowEstimated: choice.contextWindowEstimated,
+                    contextWindowTokens: choice.capabilities.contextWindowTokens.value,
+                    contextWindowEstimated: choice.capabilities.contextWindowTokens.estimated,
                     isEstimated: false,
                     modelId: choice.id,
                     compacted: contextWasCompacted,

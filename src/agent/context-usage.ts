@@ -15,10 +15,11 @@ function estimatedUsage(messages: readonly LLMMessage[]): AgentContextUsage | nu
   const snapshot = getAgentModelSnapshot();
   const active = snapshot.choices.find((choice) => choice.id === snapshot.activeId);
   if (!active) return null;
+  const contextWindow = active.capabilities.contextWindowTokens;
   return {
     inputTokens: estimateContextTokens(messages),
-    contextWindowEstimated: active.contextWindowEstimated,
-    contextWindowTokens: active.contextWindowTokens,
+    contextWindowEstimated: contextWindow.estimated,
+    contextWindowTokens: contextWindow.value,
     messageCount: messages.length,
     isEstimated: true,
     modelId: active.id,
@@ -31,11 +32,13 @@ export function usageNeedsChoiceRefresh(
   active: AgentModelChoice,
 ): boolean {
   if (current?.modelId !== active.id) return true;
+  const contextWindow = active.capabilities.contextWindowTokens;
   if (active.backend === 'codex'
     && current.isEstimated === false
-    && current.contextWindowEstimated === false) return false;
-  return current.contextWindowTokens !== active.contextWindowTokens
-    || current.contextWindowEstimated !== active.contextWindowEstimated;
+    && current.contextWindowEstimated === false
+    && contextWindow.source !== 'settings-override') return false;
+  return current.contextWindowTokens !== contextWindow.value
+    || current.contextWindowEstimated !== contextWindow.estimated;
 }
 
 export function useAgentContextUsage(messages: MessageRef) {

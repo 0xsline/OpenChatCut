@@ -315,7 +315,7 @@ function validTool(value: unknown): value is CodexTurnRequest['tools'][number] {
   );
 }
 
-function turnRequest(body: Record<string, unknown>): CodexTurnRequest {
+export function parseCodexTurnRequest(body: Record<string, unknown>): CodexTurnRequest {
   if (!Array.isArray(body.tools) || body.tools.length > 512 || !body.tools.every(validTool)) {
     throw new HttpError(400, 'tools are invalid');
   }
@@ -326,20 +326,22 @@ function turnRequest(body: Record<string, unknown>): CodexTurnRequest {
   }
   const requestedModel = body.model === undefined ? '' : shortString(body.model, 'model', 256).trim();
   const savedModel = getKey('CODEX_MODEL').trim().slice(0, 256);
-  const requestedEffort = body.reasoningEffort === undefined
+  const hasRequestedEffort = body.reasoningEffort !== undefined;
+  const requestedEffort = body.reasoningEffort === null || body.reasoningEffort === undefined
     ? ''
     : shortString(body.reasoningEffort, 'reasoningEffort', 64).trim();
   if (requestedEffort && !reasoningEffort(requestedEffort)) {
     throw new HttpError(400, 'reasoningEffort is invalid');
   }
   const savedEffort = reasoningEffort(getKey('CODEX_REASONING_EFFORT').trim()) ?? '';
+  const resolvedEffort = hasRequestedEffort ? requestedEffort : savedEffort;
   return {
     requestId: shortString(body.requestId, 'requestId', 128),
     system: shortString(body.system, 'system', 1024 * 1024),
     prompt: shortString(body.prompt, 'prompt', 2 * 1024 * 1024),
     projectId: shortString(body.projectId, 'projectId', 256),
     ...(requestedModel || savedModel ? { model: requestedModel || savedModel } : {}),
-    ...(requestedEffort || savedEffort ? { reasoningEffort: requestedEffort || savedEffort } : {}),
+    ...(resolvedEffort ? { reasoningEffort: resolvedEffort } : {}),
     askOnly: body.askOnly === true,
     tools: body.tools,
   };
@@ -367,7 +369,7 @@ function ndjsonWriter(res: ServerResponse): (event: CodexTurnStreamEvent) => voi
 }
 
 async function streamTurn(req: IncomingMessage, res: ServerResponse, body: Record<string, unknown>): Promise<void> {
-  const request = turnRequest(body);
+  const request = parseCodexTurnRequest(body);
   if (codexTurnManager.hasRequest(request.requestId)) throw new HttpError(409, 'requestId is already active');
   const { client } = await requireClient();
   res.statusCode = 200;

@@ -2,6 +2,7 @@ import { generateText, type ModelMessage } from 'ai';
 import type { AgentContext } from './context';
 import type { AgentModelChoice } from './model-selection';
 import {
+  effectiveOutputTokenBudget,
   estimateTextTokens,
   prepareContext,
   serializeMessagesForSummary,
@@ -48,16 +49,17 @@ function summaryPrompt(messages: readonly ModelMessage[]): string {
   ].join('\n\n');
 }
 
-function summaryOutputTokens(contextWindowTokens: number): number {
-  return Math.max(256, Math.min(
+function summaryOutputTokens(contextWindowTokens: number, modelMaxOutputTokens: number): number {
+  return Math.max(1, Math.min(
     SUMMARY_MAX_OUTPUT_TOKENS,
+    modelMaxOutputTokens,
     Math.floor(contextWindowTokens * 0.1),
   ));
 }
 
-function summaryInputBudget(contextWindowTokens: number): number {
+function summaryInputBudget(contextWindowTokens: number, modelMaxOutputTokens: number): number {
   return contextWindowTokens
-    - summaryOutputTokens(contextWindowTokens)
+    - summaryOutputTokens(contextWindowTokens, modelMaxOutputTokens)
     - SUMMARY_INPUT_SAFETY_TOKENS;
 }
 
@@ -112,10 +114,11 @@ function checkpointFragments(summaries: readonly string[]): ModelMessage[] {
 export async function summarizeConversation(
   messages: readonly ModelMessage[],
   contextWindowTokens: number,
+  modelMaxOutputTokens: number,
   summarize: PromptSummarizer,
 ): Promise<string> {
-  const inputBudget = summaryInputBudget(contextWindowTokens);
-  const maxOutputTokens = summaryOutputTokens(contextWindowTokens);
+  const inputBudget = summaryInputBudget(contextWindowTokens, modelMaxOutputTokens);
+  const maxOutputTokens = summaryOutputTokens(contextWindowTokens, modelMaxOutputTokens);
   let units: readonly (readonly ModelMessage[])[] = conversationTurns(messages);
   for (let round = 0; round < MAX_SUMMARY_ROUNDS; round += 1) {
     const summaries: string[] = [];
@@ -133,11 +136,12 @@ export async function summarizeConversation(
 async function summarizeWithApi(
   prompt: string,
   maxOutputTokens: number,
+  choice: AgentModelChoice,
   signal?: AbortSignal,
 ): Promise<string> {
-  const providerOptions = getLanguageModelProviderOptions();
+  const providerOptions = getLanguageModelProviderOptions(choice.provider, choice.openAiApiMode);
   const result = await generateText({
-    model: await getLanguageModel(),
+    model: await getLanguageModel(choice.provider, choice.model, choice.openAiApiMode),
     system: SUMMARY_SYSTEM_PROMPT,
     prompt,
     maxOutputTokens,
@@ -157,7 +161,7 @@ async function summarizeWithCodex(
     system: `${SUMMARY_SYSTEM_PROMPT}\nThe response must not exceed ${maxOutputTokens} tokens.`,
     prompt,
     projectId: options.ctx.getProjectId?.().trim() || 'unsaved-project',
-    model: options.choice.model,
+    model: options.choice.requestModel,
     reasoningEffort: options.choice.reasoningEffort,
     signal: options.signal,
     maxOutputTokens,
@@ -168,35 +172,45 @@ export function contextWindowForPreparation(
   choice: AgentModelChoice,
   previous?: AgentContextUsage,
 ): { readonly tokens: number; readonly estimated: boolean } {
+  const resolved = choice.capabilities.contextWindowTokens;
   const reportedCodexWindow = choice.backend === 'codex'
+    && resolved.source !== 'settings-override'
     && previous?.modelId === choice.id
     && previous.contextWindowEstimated === false;
   return reportedCodexWindow
     ? { tokens: previous.contextWindowTokens, estimated: false }
-    : { tokens: choice.contextWindowTokens, estimated: choice.contextWindowEstimated };
+    : { tokens: resolved.value, estimated: resolved.estimated };
 }
+
 
 export async function prepareAgentContext(
   options: AgentContextPreparationOptions,
-): Promise<ContextPreparation> {
+): Promise<ContextPreparation & { readonly maxOutputTokens: number }> {
   const contextWindow = contextWindowForPreparation(options.choice, options.previousUsage);
   const contextWindowTokens = contextWindow.tokens;
   const contextWindowEstimated = contextWindow.estimated;
+  const maxOutputTokens = effectiveOutputTokenBudget(
+    options.choice.capabilities.maxOutputTokens.value,
+    contextWindowTokens,
+  );
   const requestOverheadTokens = estimateTextTokens(JSON.stringify(options.tools));
-  return prepareContext({
+  const prepared = await prepareContext({
     messages: options.messages,
     system: options.system,
     modelId: options.choice.id,
     contextWindowTokens,
     contextWindowEstimated,
+    maxOutputTokens,
     requestOverheadTokens,
     previousUsage: options.previousUsage,
     summarize: (messages) => summarizeConversation(
       messages,
       contextWindowTokens,
-      (prompt, maxOutputTokens) => options.choice.backend === 'codex'
-        ? summarizeWithCodex(prompt, maxOutputTokens, options)
-        : summarizeWithApi(prompt, maxOutputTokens, options.signal),
+      maxOutputTokens,
+      (prompt, summaryMaxOutputTokens) => options.choice.backend === 'codex'
+        ? summarizeWithCodex(prompt, summaryMaxOutputTokens, options)
+        : summarizeWithApi(prompt, summaryMaxOutputTokens, options.choice, options.signal),
     ),
   });
+  return { ...prepared, maxOutputTokens };
 }

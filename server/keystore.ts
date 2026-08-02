@@ -9,11 +9,19 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { AI_SDK_BASE_URL_FORMAT, resolveLlmBaseUrl } from "./llm-config.ts";
+import { decodePersistedEnvValue, mergeEnvText } from "./env-text.ts";
+export { mergeEnvText } from "./env-text.ts";
 import {
   LLM_PROVIDER_PRESETS,
   llmProviderConfigNames,
   normalizeLlmProvider,
 } from "../shared/llm-providers.ts";
+import {
+  MODEL_CAPABILITY_OVERRIDES_KEY,
+  parseModelCapabilityOverrides,
+  serializeModelCapabilityOverrides,
+  type ModelCapabilityOverride,
+} from "../shared/model-capabilities.ts";
 
 const ENV_PATH = resolve(process.cwd(), ".env.local");
 
@@ -26,56 +34,43 @@ export const KEY_NAMES = [
   "LLM_ANTHROPIC_API_KEY",
   "LLM_ANTHROPIC_BASE_URL",
   "LLM_ANTHROPIC_MODEL",
-  "LLM_ANTHROPIC_CONTEXT_WINDOW",
   "LLM_OPENAI_API_KEY",
   "LLM_OPENAI_BASE_URL",
   "LLM_OPENAI_MODEL",
-  "LLM_OPENAI_CONTEXT_WINDOW",
   "LLM_OPENAI_API_MODE",
   "LLM_GEMINI_API_KEY",
   "LLM_GEMINI_BASE_URL",
   "LLM_GEMINI_MODEL",
-  "LLM_GEMINI_CONTEXT_WINDOW",
   "LLM_KIMI_API_KEY",
   "LLM_KIMI_BASE_URL",
   "LLM_KIMI_MODEL",
-  "LLM_KIMI_CONTEXT_WINDOW",
   "LLM_QWEN_API_KEY",
   "LLM_QWEN_BASE_URL",
   "LLM_QWEN_MODEL",
-  "LLM_QWEN_CONTEXT_WINDOW",
   "LLM_GLM_API_KEY",
   "LLM_GLM_BASE_URL",
   "LLM_GLM_MODEL",
-  "LLM_GLM_CONTEXT_WINDOW",
   "LLM_DEEPSEEK_API_KEY",
   "LLM_DEEPSEEK_BASE_URL",
   "LLM_DEEPSEEK_MODEL",
-  "LLM_DEEPSEEK_CONTEXT_WINDOW",
   "LLM_MINIMAX_API_KEY",
   "LLM_MINIMAX_BASE_URL",
   "LLM_MINIMAX_MODEL",
-  "LLM_MINIMAX_CONTEXT_WINDOW",
   "LLM_XIAOMI_API_KEY",
   "LLM_XIAOMI_BASE_URL",
   "LLM_XIAOMI_MODEL",
-  "LLM_XIAOMI_CONTEXT_WINDOW",
   "LLM_MISTRAL_API_KEY",
   "LLM_MISTRAL_BASE_URL",
   "LLM_MISTRAL_MODEL",
-  "LLM_MISTRAL_CONTEXT_WINDOW",
   "LLM_OPENROUTER_API_KEY",
   "LLM_OPENROUTER_BASE_URL",
   "LLM_OPENROUTER_MODEL",
-  "LLM_OPENROUTER_CONTEXT_WINDOW",
   "LLM_OLLAMA_API_KEY",
   "LLM_OLLAMA_BASE_URL",
   "LLM_OLLAMA_MODEL",
-  "LLM_OLLAMA_CONTEXT_WINDOW",
   "LLM_LMSTUDIO_API_KEY",
   "LLM_LMSTUDIO_BASE_URL",
   "LLM_LMSTUDIO_MODEL",
-  "LLM_LMSTUDIO_CONTEXT_WINDOW",
   "IMAGE_API_KEY",
   "OPENAI_API_KEY",
   "IMAGE_BASE_URL",
@@ -115,6 +110,7 @@ export const KEY_NAMES = [
   "LLM_MODEL",
   "CODEX_MODEL",
   "CODEX_REASONING_EFFORT",
+  MODEL_CAPABILITY_OVERRIDES_KEY,
   "GEMINI_IMAGE_MODEL",
   "MINIMAX_IMAGE_MODEL",
   "ELEVENLABS_TTS_MODEL",
@@ -144,6 +140,7 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   "CODEX_MODEL",
   "CODEX_REASONING_EFFORT",
   "LLM_OPENAI_API_MODE",
+  MODEL_CAPABILITY_OVERRIDES_KEY,
   "GEMINI_IMAGE_MODEL",
   "ELEVENLABS_TTS_MODEL",
   "ELEVENLABS_SOUND_MODEL",
@@ -164,20 +161,56 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   "MEDIA_DIR", // Asset saving directory (local path, '' = default public/media/uploads) - configuration is not credentials
   ...LLM_PROVIDER_PRESETS.flatMap((preset) => {
     const names = llmProviderConfigNames(preset.id);
-    return [names.baseUrl, names.model, names.contextWindow];
+    return [names.baseUrl, names.model];
   }),
 ]);
 
 const store = new Map<string, string>(); // current value per key (seed + runtime overrides)
 const envSeeded = new Set<string>(); // which keys came from .env.local / process.env at startup
 
+function normalizeStoredValue(name: string, raw: unknown): string {
+  const value = String(raw ?? "").trim();
+  return name === MODEL_CAPABILITY_OVERRIDES_KEY && value
+    ? serializeModelCapabilityOverrides(parseModelCapabilityOverrides(decodePersistedEnvValue(value)))
+    : value;
+}
+
+function seedLegacyModelCapabilities(env: Record<string, string>): void {
+  if (store.has(MODEL_CAPABILITY_OVERRIDES_KEY)) return;
+  const records: ModelCapabilityOverride[] = [];
+  for (const preset of LLM_PROVIDER_PRESETS) {
+    const names = llmProviderConfigNames(preset.id);
+    const raw = (env[names.legacyContextWindow] ?? process.env[names.legacyContextWindow] ?? "").trim();
+    const contextWindowTokens = Number(raw);
+    if (!Number.isSafeInteger(contextWindowTokens)
+      || contextWindowTokens < 4_096
+      || contextWindowTokens > 4_000_000) continue;
+    records.push({
+      backend: "api",
+      provider: preset.id,
+      modelId: store.get(names.model) || preset.defaultModel,
+      contextWindowTokens,
+    });
+  }
+  if (records.length === 0) return;
+  store.set(MODEL_CAPABILITY_OVERRIDES_KEY, serializeModelCapabilityOverrides(records));
+  envSeeded.add(MODEL_CAPABILITY_OVERRIDES_KEY);
+}
+
 /** Seed the store from Vite's loaded env (+ process.env fallback). Call once at startup. */
 export function seedKeystore(env: Record<string, string>): void {
   for (const name of KEY_NAMES) {
-    const v = (env[name] ?? process.env[name] ?? "").trim();
-    if (v) {
-      store.set(name, v);
+    const raw = env[name] ?? process.env[name] ?? "";
+    try {
+      const value = normalizeStoredValue(name, raw);
+      if (!value) continue;
+      store.set(name, value);
       envSeeded.add(name);
+    } catch {
+      if (name === MODEL_CAPABILITY_OVERRIDES_KEY) {
+        store.delete(name);
+        envSeeded.delete(name);
+      }
     }
   }
   for (const [target, value] of planLegacyLlmMigration(
@@ -187,6 +220,7 @@ export function seedKeystore(env: Record<string, string>): void {
     store.set(target, value);
     envSeeded.add(target);
   }
+  seedLegacyModelCapabilities(env);
 }
 
 /**
@@ -307,18 +341,13 @@ export function keyStatus(): KeyStatus {
 /** Apply key edits from the settings UI: validate, update memory, persist to .env.local.
  * Empty value clears a key. Values containing newlines are rejected. Unknown names ignored. */
 export async function setKeys(patch: Record<string, unknown>): Promise<void> {
-  let clean = new Map<string, string>();
+  const clean = new Map<string, string>();
   for (const [name, raw] of Object.entries(patch)) {
     if (!SETTABLE.has(name)) continue; // whitelist
     const v = String(raw ?? "");
     if (/[\r\n]/.test(v))
       throw new Error(`invalid value for ${name}: no newlines allowed`);
-    const t = v.trim();
-    if (t.includes('"') && t.includes("'"))
-      throw new Error(
-        `invalid value for ${name}: cannot contain both quote types`,
-      );
-    clean.set(name, t);
+    clean.set(name, normalizeStoredValue(name, v));
   }
   if (clean.size === 0) return;
   if (clean.has("LLM_BASE_URL") && !clean.has("LLM_BASE_URL_FORMAT")) {
@@ -327,6 +356,14 @@ export async function setKeys(patch: Record<string, unknown>): Promise<void> {
       clean.get("LLM_BASE_URL") ? AI_SDK_BASE_URL_FORMAT : "",
     );
   }
+  const existing = await readFile(ENV_PATH, "utf8").catch(
+    (err: NodeJS.ErrnoException) => {
+      if (err.code === "ENOENT") return "";
+      throw err;
+    },
+  );
+  const merged = mergeEnvText(existing, clean);
+  await writeFile(ENV_PATH, merged, "utf8");
   for (const [name, v] of clean) {
     if (v) {
       store.set(name, v);
@@ -334,53 +371,5 @@ export async function setKeys(patch: Record<string, unknown>): Promise<void> {
     } // now a runtime value
     else store.delete(name);
   }
-  const existing = await readFile(ENV_PATH, "utf8").catch(
-    (err: NodeJS.ErrnoException) => {
-      if (err.code === "ENOENT") return "";
-      throw err;
-    },
-  );
-  await writeFile(ENV_PATH, mergeEnvText(existing, clean), "utf8");
 }
 
-/** One .env line. dotenv treats an unquoted `#` as an inline comment and strips a fully
- * quote-wrapped value's quotes on read — so values containing `#` or fully wrapped in
- * quotes must be re-quoted (with whichever quote char the value doesn't contain; both at
- * once is rejected in setKeys) or they'd silently degrade across a dev-server restart. */
-function envLine(name: string, v: string): string {
-  const needsQuote =
-    v.includes("#") ||
-    (v.length >= 2 &&
-      ((v.startsWith('"') && v.endsWith('"')) ||
-        (v.startsWith("'") && v.endsWith("'"))));
-  if (!needsQuote) return `${name}=${v}`;
-  const q = v.includes('"') ? "'" : '"';
-  return `${name}=${q}${v}${q}`;
-}
-
-/** Merge `patch` into a .env file's text: update lines whose key matches, drop lines whose
- * new value is empty (cleared), append genuinely-new keys, and preserve every other line
- * (comments, blanks, unrelated vars). Pure — the IO in setKeys wraps this. */
-export function mergeEnvText(
-  existing: string,
-  patch: Map<string, string>,
-): string {
-  const lines = existing.split("\n");
-  if (lines.length && lines[lines.length - 1] === "") lines.pop(); // drop split's trailing '' from final newline
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const line of lines) {
-    const m = /^\s*([A-Z][A-Z0-9_]*)\s*=/.exec(line);
-    if (m && patch.has(m[1])) {
-      seen.add(m[1]);
-      const v = patch.get(m[1])!;
-      if (v) out.push(envLine(m[1], v)); // empty → drop the line (cleared)
-    } else {
-      out.push(line);
-    }
-  }
-  for (const [name, v] of patch) {
-    if (!seen.has(name) && v) out.push(envLine(name, v));
-  }
-  return out.join("\n") + "\n";
-}

@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { isAgentModelReady, type AgentModelSnapshot } from './model-selection';
-import { contextWindowForModel, defaultContextWindowForProvider } from '../../shared/llm-providers';
+import {
+  parseModelCapabilityOverrides,
+  resolveModelCapabilities,
+  serializeModelCapabilityOverrides,
+} from '../../shared/model-capabilities';
 
+const unknownCapabilities = resolveModelCapabilities({
+  backend: 'api', provider: 'openai', modelId: 'custom/model:v2',
+});
 const configured: AgentModelSnapshot = {
   loaded: true,
   activeId: 'openai:gpt-test',
@@ -11,8 +18,7 @@ const configured: AgentModelSnapshot = {
     provider: 'openai',
     providerLabel: 'OpenAI',
     model: 'gpt-test',
-    contextWindowTokens: 128_000,
-    contextWindowEstimated: true,
+    capabilities: unknownCapabilities,
   }],
 };
 
@@ -22,25 +28,55 @@ assert.equal(isAgentModelReady({ ...configured, activeId: '' }), false, 'missing
 assert.equal(isAgentModelReady({ ...configured, activeId: 'openai:missing' }), false, 'stale selection blocks send');
 assert.equal(isAgentModelReady({ ...configured, choices: [] }), false, 'unconfigured providers block send');
 
-assert.equal(defaultContextWindowForProvider('anthropic'), 200_000);
-assert.equal(defaultContextWindowForProvider('openai'), 400_000);
-assert.equal(defaultContextWindowForProvider('gemini'), 1_048_576);
-assert.equal(defaultContextWindowForProvider('ollama'), 32_768);
-assert.equal(defaultContextWindowForProvider('unknown-provider'), 200_000);
-assert.deepEqual(
-  contextWindowForModel('openai', 'custom-model', '65536'),
-  { tokens: 65_536, estimated: false },
-  'a valid per-model override is exact',
+const known = resolveModelCapabilities({ backend: 'api', provider: 'openai', modelId: 'gpt-5' });
+assert.deepEqual(known.contextWindowTokens, { value: 400_000, estimated: false, source: 'catalog' });
+assert.deepEqual(known.maxOutputTokens, { value: 128_000, estimated: false, source: 'catalog' });
+assert.deepEqual(known.supportsTools, { value: true, estimated: false, source: 'catalog' });
+assert.deepEqual(known.supportsImages, { value: true, estimated: false, source: 'catalog' });
+
+assert.deepEqual(unknownCapabilities.contextWindowTokens, {
+  value: 8_192, estimated: true, source: 'provider-fallback',
+});
+assert.deepEqual(unknownCapabilities.maxOutputTokens, {
+  value: 2_048, estimated: true, source: 'provider-fallback',
+});
+assert.deepEqual(unknownCapabilities.supportsImages, {
+  value: false, estimated: true, source: 'provider-fallback',
+});
+assert.deepEqual(unknownCapabilities.supportsTools, {
+  value: false, estimated: true, source: 'provider-fallback',
+});
+
+const overrides = parseModelCapabilityOverrides(JSON.stringify([{
+  backend: 'api',
+  provider: 'openai',
+  modelId: ' custom/model:v2 ',
+  contextWindowTokens: 65_536,
+  maxOutputTokens: 4_096,
+  supportsTools: false,
+  supportsImages: true,
+}]));
+const overridden = resolveModelCapabilities(
+  { backend: 'api', provider: 'openai', modelId: 'custom/model:v2' },
+  overrides,
 );
-assert.deepEqual(
-  contextWindowForModel('openai', 'custom-model', ''),
-  { tokens: 400_000, estimated: true },
-  'custom model fallback limits stay visibly estimated',
-);
-assert.deepEqual(
-  contextWindowForModel('openai', 'custom-model', 'not-a-number'),
-  { tokens: 400_000, estimated: true },
-  'invalid overrides cannot replace a safe provider fallback',
-);
+assert.deepEqual(overridden.contextWindowTokens, {
+  value: 65_536, estimated: false, source: 'settings-override',
+});
+assert.deepEqual(overridden.maxOutputTokens, {
+  value: 4_096, estimated: false, source: 'settings-override',
+});
+assert.equal(overridden.supportsTools.value, false);
+assert.equal(overridden.supportsImages.value, true);
+assert.equal(serializeModelCapabilityOverrides(overrides).includes(' custom/model:v2 '), false);
+
+assert.throws(() => parseModelCapabilityOverrides('[{"backend":"api","provider":"openai","modelId":"x","apiKey":"secret"}]'), /Unknown/);
+assert.throws(() => parseModelCapabilityOverrides(JSON.stringify([
+  { backend: 'api', provider: 'openai', modelId: 'x', supportsTools: true },
+  { backend: 'api', provider: 'openai', modelId: 'x', supportsImages: true },
+])), /Duplicate/);
+assert.throws(() => parseModelCapabilityOverrides(JSON.stringify([{
+  backend: 'api', provider: 'openai', modelId: 'x', supportsReasoning: false, reasoningEfforts: ['high'],
+}])), /Disabled reasoning/);
 
 console.log('model-selection.verify: ok');

@@ -172,6 +172,8 @@ const CHAT_MEDIA_INTRO = 'Rendered media returned by the preceding tool calls:';
 const CHAT_MEDIA_ATTACHED_FALLBACK = 'Rendered media is attached in the following user message.';
 const CHAT_MEDIA_OMITTED_FALLBACK =
   'Rendered media was omitted because the selected model does not accept visual attachments.';
+const USER_MEDIA_OMITTED_FALLBACK =
+  'Visual attachment omitted because the selected model does not support image input.';
 
 export interface ChatCompletionsMediaPreparation {
   messages: ModelMessage[];
@@ -266,6 +268,27 @@ export function prepareChatCompletionsMediaMessages(
     }
   }
   return { messages: prepared, messagesWithoutMedia: withoutMedia, movedMedia };
+}
+
+export function withoutModelImages(messages: readonly ModelMessage[]): ModelMessage[] {
+  return prepareChatCompletionsMediaMessages(messages).messagesWithoutMedia.map((message) => {
+    if (message.role !== 'user' || !Array.isArray(message.content)) return message;
+    let removed = false;
+    const content = message.content.filter((part) => {
+      const value = record(part);
+      const isImage = value?.type === 'image'
+        || (value?.type === 'file'
+          && typeof value.mediaType === 'string'
+          && value.mediaType.toLowerCase().startsWith('image/'));
+      removed ||= isImage;
+      return !isImage;
+    });
+    if (!removed) return message;
+    return {
+      ...message,
+      content: [...content, { type: 'text', text: USER_MEDIA_OMITTED_FALLBACK }],
+    } as ModelMessage;
+  });
 }
 
 export function makeMessagesPortable(
