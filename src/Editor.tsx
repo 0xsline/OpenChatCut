@@ -70,6 +70,7 @@ import { analyzeAutoGrade, type AutoGradeResponse } from './color/autoGrade';
 import { useOfflineMedia } from './media/useOfflineMedia';
 import { duplicateAssetName } from './media/assetMenuSelection';
 import { keyframeResetBatch } from './editor/keyframeReset';
+import { placeMediaAssets } from './editor/mediaAssetPlacement';
 
 interface EditorProps {
   initial: ProjectDoc;
@@ -515,22 +516,33 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   }, [ingestToPool]);
 
   // Progressive import: blob placeholder → upload → (ASR extract || normalize race) → relink.
-  const importToPool = useCallback(async (file: File, onProgress?: (ratio: number) => void) => {
+  const importToPool = useCallback(async (
+    file: File,
+    onProgress?: (ratio: number) => void,
+    lifecycle?: {
+      onPlaceholder?: (asset: MediaAsset) => void;
+      onAssetUpdated?: (asset: MediaAsset) => void;
+      onFailure?: (asset: MediaAsset | null, error: unknown) => void;
+    },
+  ) => {
     const existing = findMediaNameConflict(stateRef.current.assets ?? [], file.name);
     if (existing && !window.confirm(t('素材「{name}」已存在。覆盖会同步替换已在时间线中使用的该素材。', { name: existing.name }))) {
       throw new MediaImportCancelledError();
     }
     const targetId = existing?.id;
     let placeholderId: string | null = null;
+    let placeholder: MediaAsset | null = null;
     try {
       const imported = await importMedia(file, stateRef.current.fps, {
         onProgress,
         onPlaceholder: (asset) => {
           if (targetId) return;
           placeholderId = asset.id;
+          placeholder = asset;
           // A live blob preview is not a resumable ASR job. Mark it running only
           // after the authoritative uploaded descriptor is available.
           commands.addAsset(asset);
+          lifecycle?.onPlaceholder?.(asset);
         },
         onUploaded: (info) => {
           // Start ASR as soon as master lands — don't wait for normalize.
@@ -553,9 +565,12 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           if (ready.kind !== 'audio') refreshVisualAnalysis(ready);
         },
       });
-      return targetId ? { ...imported, id: targetId } : imported;
+      const ready = targetId ? { ...imported, id: targetId } : imported;
+      lifecycle?.onAssetUpdated?.(ready);
+      return ready;
     } catch (err) {
       if (placeholderId) commands.removeMediaAsset(placeholderId);
+      lifecycle?.onFailure?.(placeholder, err);
       throw err;
     }
   }, [commands, startAssetTranscription, t]);
@@ -564,6 +579,13 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     const asset = await importToPool(file, onProgress);
     commands.addMediaItem(asset);
   }, [commands, importToPool]);
+  const addMediaAssetsToTimeline = useCallback((assets: MediaAsset[]) => placeMediaAssets({
+    assetIds: assets.map((asset) => asset.id),
+    assets,
+    startFrame: getPlayhead(),
+    add: (asset, startFrame) => commands.addMediaItem(asset, { startFrame }),
+    select: commands.selectItems,
+  }), [commands, getPlayhead]);
   const pasteMediaAssets = useCallback((assets: MediaAsset[], folderId?: string) => {
     if (!assets.length) return;
     commands.batch(assets.map((asset) => ({
@@ -672,7 +694,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       </div>
 
       <div style={{ gridColumn: 3, gridRow: 2, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} usedAssetIds={usedAssetIds} offlineAssetIds={offlineAssetIds} onAssetLoadError={(asset) => markMediaOffline(asset.src)} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onUseMediaAI={(asset) => setChatSeed({ text: `@${asset.name} `, nonce: Date.now(), reference: { id: asset.id, name: asset.name, kind: asset.kind } })} onPasteMediaAssets={pasteMediaAssets} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onRenameMediaAssets={commands.renameMediaAssets} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onSetMediaAssetsFavorite={commands.setMediaAssetsFavorite} onRemoveMediaAsset={commands.removeMediaAsset} onRemoveMediaAssets={commands.removeMediaAssets}
+        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} usedAssetIds={usedAssetIds} offlineAssetIds={offlineAssetIds} onAssetLoadError={(asset) => markMediaOffline(asset.src)} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onAddMediaAssetsToTimeline={addMediaAssetsToTimeline} onUseMediaAI={(asset) => setChatSeed({ text: `@${asset.name} `, nonce: Date.now(), reference: { id: asset.id, name: asset.name, kind: asset.kind } })} onPasteMediaAssets={pasteMediaAssets} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onRenameMediaAssets={commands.renameMediaAssets} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onSetMediaAssetsFavorite={commands.setMediaAssetsFavorite} onRemoveMediaAsset={commands.removeMediaAsset} onRemoveMediaAssets={commands.removeMediaAssets}
           onCreateCaptionTrack={commands.createCaptionTrack}
           sequenceOptions={sequenceOptions}
           onAddSequence={(timelineId) => {

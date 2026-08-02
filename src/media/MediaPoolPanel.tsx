@@ -26,9 +26,18 @@ interface MediaPoolPanelProps {
   usedAssetIds: ReadonlySet<string>;
   offlineAssetIds: ReadonlySet<string>;
   onAssetLoadError: (asset: MediaAsset) => void;
-  onImport: (file: File, onProgress?: (ratio: number) => void) => Promise<MediaAsset>;
+  onImport: (
+    file: File,
+    onProgress?: (ratio: number) => void,
+    lifecycle?: {
+      onPlaceholder?: (asset: MediaAsset) => void;
+      onAssetUpdated?: (asset: MediaAsset) => void;
+      onFailure?: (asset: MediaAsset | null, error: unknown) => void;
+    },
+  ) => Promise<MediaAsset>;
   onImportMobile: (record: MobileUploadRecord) => Promise<void>;
   onAddAsset: (asset: MediaAsset) => void;
+  onAddAssetsToTimeline?: (assets: MediaAsset[]) => void;
   onAddAssetToChat?: (asset: MediaAsset) => void;
   onCreateFolder: (name: string, parentId?: string) => string;
   onRenameFolder: (id: string, name: string) => void;
@@ -53,7 +62,7 @@ type DeleteState = { id: string; name: string; parentId?: string };
 type AssetDeleteState = { ids: string[]; names: string[]; usedCount: number };
 export function MediaPoolPanel({
   semanticScopeId, assets, folders, fps, usedAssetIds, offlineAssetIds, onAssetLoadError,
-  onImport, onImportMobile, onAddAsset, onAddAssetToChat, onCreateFolder, onRenameFolder,
+  onImport, onImportMobile, onAddAsset, onAddAssetsToTimeline, onAddAssetToChat, onCreateFolder, onRenameFolder,
   onDeleteFolder, onMoveAssets, onRenameAsset, onRenameAssets, onSetFavorite, onSetAssetsFavorite, onRemoveAsset, onRemoveAssets, onPasteAssets, onRelinkAsset, onAddSolid,
 }: MediaPoolPanelProps) {
   const t = useT();
@@ -212,19 +221,53 @@ export function MediaPoolPanel({
     setUploadRatio(0);
     try {
       const list = Array.from(files);
+      const completions: Promise<void>[] = [];
+      const completionErrors: unknown[] = [];
       for (let i = 0; i < list.length; i += 1) {
         const file = list[i]!;
         try {
-          const imported = await onImport(file, (ratio) => {
-            // Multi-file: map each file's progress into a global 0..1 band.
-            setUploadRatio((i + ratio) / list.length);
+          let settled = false;
+          let resolveStarted!: () => void;
+          let rejectStarted!: (reason: unknown) => void;
+          const started = new Promise<void>((resolve, reject) => {
+            resolveStarted = resolve;
+            rejectStarted = reject;
           });
-          if (targetFolderId) onMoveAssets([imported.id], targetFolderId);
+          const markStarted = (asset: MediaAsset) => {
+            if (settled) return;
+            settled = true;
+            if (targetFolderId) onMoveAssets([asset.id], targetFolderId);
+            resolveStarted();
+          };
+          const completion = onImport(file, (ratio) => {
+            // Multi-file: map each file's progress into a global 0..1 band.
+            setUploadRatio((current) => Math.max(current ?? 0, (i + ratio) / list.length));
+          }, {
+            onPlaceholder: markStarted,
+            onAssetUpdated: markStarted,
+            onFailure: (_asset, reason) => {
+              if (settled) return;
+              settled = true;
+              rejectStarted(reason);
+            },
+          }).then((asset) => {
+            markStarted(asset);
+          }).catch((reason) => {
+            if (!settled) {
+              settled = true;
+              rejectStarted(reason);
+            }
+            if (!isMediaImportCancelled(reason)) completionErrors.push(reason);
+          });
+          completions.push(completion);
+          await started;
         } catch (reason) {
           if (isMediaImportCancelled(reason)) continue;
           throw reason;
         }
       }
+      await Promise.all(completions);
+      if (completionErrors.length) throw completionErrors[0];
       setUploadRatio(1);
     } catch (reason) {
       setError(mediaImportErrorMessage(reason));
@@ -440,7 +483,10 @@ export function MediaPoolPanel({
           else selectedAssets.forEach((asset) => onSetFavorite(asset.id, favorite));
         }}>{selectedAssets.every((asset) => asset.favorite) ? t('取消收藏') : t('收藏')}</button>
         {(onRemoveAsset || onRemoveAssets) && <button className="danger" onClick={() => requestRemoveAssets(selectedAssets)}>{t('删除')}</button>}
-        <button onClick={() => selectedAssets.forEach(onAddAsset)}>{t('加到时间线')}</button>
+        <button onClick={() => {
+          if (onAddAssetsToTimeline) onAddAssetsToTimeline(selectedAssets);
+          else selectedAssets.forEach(onAddAsset);
+        }}>{t('加到时间线')}</button>
         <select aria-label={t('移动所选素材')} defaultValue="" onChange={(event) => { onMoveAssets(selectedAssets.map((asset) => asset.id), event.target.value === '__root__' ? undefined : event.target.value); setSelected(new Set()); event.target.value = ''; }}>
           <option value="" disabled>{t('移动到…')}</option><option value="__root__">Master</option>
           {folders.map((folder) => <option key={folder.id} value={folder.id}>{folderPath(folder, folders)}</option>)}
@@ -501,7 +547,11 @@ export function MediaPoolPanel({
           removeAssets(menuAssetIds);
         }}
         onMove={(folderId) => { if (menuAssetIds.length) onMoveAssets(menuAssetIds, folderId); closeAssetMenu(true); }}
-        onAddTimeline={() => { menuAssets.forEach(onAddAsset); closeAssetMenu(true); }}
+        onAddTimeline={() => {
+          if (onAddAssetsToTimeline) onAddAssetsToTimeline(menuAssets);
+          else menuAssets.forEach(onAddAsset);
+          closeAssetMenu(true);
+        }}
         onAddChat={() => { menuAssets.forEach((asset) => onAddAssetToChat?.(asset)); closeAssetMenu(true); }}
       />
 
