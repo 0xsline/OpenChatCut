@@ -4,7 +4,7 @@ import type { PlayerRef } from '@remotion/player';
 import type { TimelineState } from '../editor/types';
 import type { CaptionsData } from './types';
 import { CAPTION_STYLES } from './styles';
-import { captionPreviewTextColor, captionPreviewTextColorPatch, containerStyle, wordStyle } from './renderStyles';
+import { captionBoxStyle, captionPreviewTextColor, captionPreviewTextColorPatch, containerStyle, wordStyle } from './renderStyles';
 import { buildCues, fmtCueMs } from './captionCues';
 import {
   captionPreviewLayoutPatch,
@@ -146,9 +146,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
   const block = containerStyle(preset, captions.template, box.w, box.h, target.layout);
   const textCss = {
     ...wordStyle(preset, !preset.wholeLine),
-    background: preset.wholeLine && preset.background ? preset.background : 'transparent',
-    borderRadius: 6,
-    padding: preset.wholeLine && preset.background ? '0.1em 0.42em' : 0,
+    ...captionBoxStyle(preset, !preset.wholeLine, Boolean(preset.wholeLine)),
     whiteSpace: 'pre-wrap' as const,
   };
 
@@ -206,6 +204,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
       const dx = e.clientX - d.startX;
       const dy = e.clientY - d.startY;
       onUpdateCaptions(captionPreviewLayoutPatch(captions, target, {
+          ...target.layout,
           anchor: target.layout?.anchor ?? 'bottom-center',
           offsetXRatio: d.baseX + dx / box.w,
           offsetYRatio: d.baseY + d.ySign * (dy / box.h),

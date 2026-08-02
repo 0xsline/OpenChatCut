@@ -15,6 +15,9 @@ export interface CaptionLayout {
   anchor?: CaptionAnchor;
   offsetXRatio?: number;
   offsetYRatio?: number;
+  scale?: number;
+  rotation?: number;
+  opacity?: number;
 }
 
 // Captions = a styled singleton overlay burned onto the video, separate
@@ -121,6 +124,9 @@ export interface CaptionSourceEntry {
   anchor?: CaptionAnchor;
   offsetXRatio?: number;
   offsetYRatio?: number;
+  scale?: number;
+  rotation?: number;
+  opacity?: number;
   widthRatio?: number;
   heightRatio?: number;
   /** per-source style overrides layered over template+styleOverride (source_update.style) */

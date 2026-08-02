@@ -75,7 +75,14 @@ function manualTarget(captions: CaptionsData, items: TimelineItem[], fps: number
       const cueIndex = manualCueIndex(cue, lane.entry.words ?? []);
       if (cueIndex < 0) continue;
       const layout = group.anchor
-        ? { anchor: group.anchor, offsetXRatio: group.offsetXRatio, offsetYRatio: group.offsetYRatio }
+        ? {
+            anchor: group.anchor,
+            offsetXRatio: group.offsetXRatio,
+            offsetYRatio: group.offsetYRatio,
+            scale: group.scale,
+            rotation: group.rotation,
+            opacity: group.opacity,
+          }
         : captions.layout;
       return {
         kind: 'manual', laneId: lane.entry.id, cueIndex, cue, layout,
@@ -127,16 +134,61 @@ export function captionPreviewStylePatch(
   };
 }
 
+export function captionPreviewStyleResetPatch(
+  captions: CaptionsData,
+  target: CaptionPreviewTarget,
+): Partial<CaptionsData> {
+  if (target.kind === 'single') return { styleOverride: undefined };
+  return {
+    sourceEntries: captions.sourceEntries?.map((entry) => {
+      if (entry.id !== target.laneId) return entry;
+      const { style: _style, ...rest } = entry;
+      return rest;
+    }),
+  };
+}
+
 export function captionPreviewLayoutPatch(
   captions: CaptionsData,
   target: CaptionPreviewTarget,
   layout: CaptionLayout,
 ): Partial<CaptionsData> {
-  if (target.kind === 'single') return { layout };
+  const nextLayout = { ...target.layout, ...layout };
+  if (target.kind === 'single') return { layout: nextLayout };
   return {
     sourceEntries: captions.sourceEntries?.map((entry) => entry.id === target.laneId
-      ? { ...entry, anchor: layout.anchor, offsetXRatio: layout.offsetXRatio, offsetYRatio: layout.offsetYRatio }
+      ? {
+          ...entry,
+          anchor: nextLayout.anchor,
+          offsetXRatio: nextLayout.offsetXRatio,
+          offsetYRatio: nextLayout.offsetYRatio,
+          scale: nextLayout.scale,
+          rotation: nextLayout.rotation,
+          opacity: nextLayout.opacity,
+        }
       : entry),
+  };
+}
+
+export function captionPreviewLayoutResetPatch(
+  captions: CaptionsData,
+  target: CaptionPreviewTarget,
+): Partial<CaptionsData> {
+  if (target.kind === 'single') return { layout: undefined };
+  return {
+    sourceEntries: captions.sourceEntries?.map((entry) => {
+      if (entry.id !== target.laneId) return entry;
+      const {
+        anchor: _anchor,
+        offsetXRatio: _offsetXRatio,
+        offsetYRatio: _offsetYRatio,
+        scale: _scale,
+        rotation: _rotation,
+        opacity: _opacity,
+        ...rest
+      } = entry;
+      return rest;
+    }),
   };
 }
 

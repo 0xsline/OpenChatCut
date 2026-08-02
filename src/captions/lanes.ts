@@ -23,6 +23,9 @@ export interface LaneGroup {
   anchor?: CaptionAnchor;
   offsetXRatio?: number;
   offsetYRatio?: number;
+  scale?: number;
+  rotation?: number;
+  opacity?: number;
   /** lanes to render at this position, top-to-bottom */
   lanes: LanePage[];
 }
@@ -31,12 +34,19 @@ const policyOf = (c: CaptionsData): CaptionLayoutPolicy =>
   c.layoutPolicy ?? { mode: 'auto-stack' };
 
 /** Entry's placement point: slotId of manual-slots → slot geometry; otherwise entry's own anchor; none → shared block. */
-function placementOf(entry: CaptionSourceEntry, policy: CaptionLayoutPolicy): { anchor?: CaptionAnchor; offsetXRatio?: number; offsetYRatio?: number } {
+function placementOf(entry: CaptionSourceEntry, policy: CaptionLayoutPolicy): Omit<LaneGroup, 'lanes'> {
   if (policy.mode === 'manual-slots' && entry.slotId) {
     const slot = policy.slots.find((s) => s.id === entry.slotId);
     if (slot) return { anchor: slot.anchor, offsetXRatio: slot.offsetXRatio, offsetYRatio: slot.offsetYRatio };
   }
-  if (entry.anchor) return { anchor: entry.anchor, offsetXRatio: entry.offsetXRatio, offsetYRatio: entry.offsetYRatio };
+  if (entry.anchor) return {
+    anchor: entry.anchor,
+    offsetXRatio: entry.offsetXRatio,
+    offsetYRatio: entry.offsetYRatio,
+    scale: entry.scale,
+    rotation: entry.rotation,
+    opacity: entry.opacity,
+  };
   return {};
 }
 
@@ -81,7 +91,9 @@ export function buildLaneGroups(captions: CaptionsData, items: TimelineItem[], f
   const groups = new Map<string, LaneGroup>();
   for (const { entry, lane } of capped) {
     const place = placementOf(entry, policy);
-    const key = place.anchor ? `${place.anchor}|${place.offsetXRatio ?? 0}|${place.offsetYRatio ?? 0}` : '__block__';
+    const key = place.anchor
+      ? `${place.anchor}|${place.offsetXRatio ?? 0}|${place.offsetYRatio ?? 0}|${place.scale ?? 1}|${place.rotation ?? 0}|${place.opacity ?? 1}`
+      : '__block__';
     let g = groups.get(key);
     if (!g) { g = { ...place, lanes: [] }; groups.set(key, g); }
     g.lanes.push(lane);
