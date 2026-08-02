@@ -192,6 +192,7 @@ button, input, select { font: inherit; }
 .cc-creative-picker-head strong { color:var(--cc-text); font-size:12.5px; font-weight:650; line-height:16px; }
 .cc-creative-picker-head small { color:var(--cc-text-dim); font-size:10.5px; line-height:14px; }
 .cc-creative-picker-section { margin:4px 2px 2px; padding:8px 6px 4px; border-top:0.5px solid var(--cc-border); color:var(--cc-text-dim); font-size:10.5px; }
+.cc-creative-mode-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; padding-bottom:2px; }
 .cc-creative-mode-row { width:100%; min-width:0; display:grid; grid-template-columns:30px minmax(0,1fr) 16px; align-items:center; gap:9px; padding:7px 6px; border:0; border-radius:3px; background:transparent; color:var(--cc-text); cursor:pointer; text-align:left; }
 .cc-creative-mode-row:hover { background:rgba(var(--cc-ink-rgb),0.05); }
 .cc-creative-mode-row:focus-visible { outline:1px solid var(--cc-accent); outline-offset:-1px; }
@@ -204,6 +205,11 @@ button, input, select { font: inherit; }
 .cc-creative-mode-copy small { overflow:hidden; color:var(--cc-text-dim); font-size:10.5px; line-height:14px; text-overflow:ellipsis; white-space:nowrap; }
 .cc-creative-mode-title em { flex-shrink:0; padding:0 4px; border:0.5px solid var(--cc-border-light); border-radius:4px; color:var(--cc-text-dim); font-size:9px; font-style:normal; line-height:14px; }
 .cc-creative-mode-check { display:grid; place-items:center; color:var(--cc-accent); }
+.cc-creative-mode-card { min-height:76px; align-items:start; gap:6px; padding:8px 7px; border:0.5px solid var(--cc-border); border-radius:6px; }
+.cc-creative-mode-card:hover { border-color:var(--cc-border-light); }
+.cc-creative-mode-card[data-active="true"] { border-color:rgba(var(--cc-accent-rgb),0.55); }
+.cc-creative-mode-card .cc-creative-mode-copy strong { font-size:11.5px; }
+.cc-creative-mode-card .cc-creative-mode-copy small { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:3; text-overflow:ellipsis; white-space:normal; }
 
 @media (prefers-reduced-motion: reduce) {
   .cc-chat-starter-icon,

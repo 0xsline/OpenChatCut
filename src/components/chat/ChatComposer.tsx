@@ -4,7 +4,7 @@ import { getLocale, tData, useT } from '../../i18n/locale';
 import type { AgentReference } from '../../agent/context';
 import { isSelectionRefKind } from '../../agent/selection-refs';
 import { Icon, type IconName } from '../icons';
-import { CREATIVE_SKILLS, allCreativeSkills, findSkill, setCustomSkills } from '../../agent/skills/skills-catalog';
+import { findSkill, setCustomSkills } from '../../agent/skills/skills-catalog';
 import { loadCustomSkills } from '../../persist/skillStore';
 import { loadAgentSettings, saveAgentSettings, MG_TIERS, type AgentSettings, type MgTier } from '../../agent/settings/agentSettings';
 import { usePersistedState } from '../../hooks/usePersistedState';
@@ -15,6 +15,7 @@ import {
   subscribeAgentModels,
 } from '../../agent/model-selection';
 import { ComposerMoreMenu, ComposerToolbar, type ComposerPopover } from './ComposerToolbar';
+import { WorkflowPickerContent } from './WorkflowPickerContent';
 
 /** composer shell height (includes textarea + toolbar); drag the top handle to resize */
 const COMPOSER_H_MIN = 88;
@@ -89,7 +90,7 @@ function Popover({ children, onClose, w, anchor }: {
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80 }} />
       <div style={{
         position: 'fixed', left: box.left, bottom: box.bottom, zIndex: 81,
-        minWidth: w ?? 220, maxWidth: 300, maxHeight: Math.min(280, window.innerHeight - box.bottom - 16),
+        minWidth: w ?? 220, maxWidth: w ?? 300, maxHeight: Math.min(280, window.innerHeight - box.bottom - 16),
         overflowY: 'auto', background: theme.panelAlt, border: `0.5px solid ${theme.borderLight}`,
     borderRadius: 6, boxShadow: `0 12px 40px ${themeAlpha.shadow(0.5)}`, padding: 6,
       }}>
@@ -141,7 +142,6 @@ export function ChatComposer(props: ChatComposerProps) {
     getAgentModelSnapshot,
   );
   const activeModel = modelState.choices.find((choice) => choice.id === modelState.activeId);
-  const builtinIds = new Set(CREATIVE_SKILLS.map((s) => s.id));
   const [pop, setPop] = useState<ComposerPopover>(null);
   const [popAnchor, setPopAnchor] = useState<HTMLElement | null>(null);
   const [agentSettings, setAgentSettings] = useState<AgentSettings>(() => loadAgentSettings());
@@ -420,39 +420,14 @@ export function ChatComposer(props: ChatComposerProps) {
         </Popover>
       )}
       {pop === 'skill' && (
-        <Popover w={300} anchor={popAnchor} onClose={closePop}>
-          <div className="cc-creative-picker-head">
-            <span><Icon name="wand" size={15} /></span>
-            <div>
-              <strong>{t('选择创作工作流')}</strong>
-              <small>{t('工作流会约束 Agent 的规划与工具调用。')}</small>
-            </div>
-          </div>
-          <button onClick={() => { onCreativeModeChange(null); closePop(); }}
-            className="cc-creative-mode-row" data-active={!creativeMode} aria-pressed={!creativeMode}>
-            <span className="cc-creative-mode-icon"><Icon name="sparkles" size={15} /></span>
-            <span className="cc-creative-mode-copy">
-              <strong>{t('自由创作')}</strong>
-              <small>{t('不限定工作流，根据当前目标灵活执行。')}</small>
-            </span>
-            {!creativeMode && <span className="cc-creative-mode-check"><Icon name="check" size={13} strokeWidth={2.4} /></span>}
-          </button>
-          <div className="cc-creative-picker-section">{t('专业工作流')}</div>
-          {allCreativeSkills().map((s) => (
-            <button key={s.id} onClick={() => { onCreativeModeChange(s.id); closePop(); }}
-              className="cc-creative-mode-row" data-active={creativeMode === s.id}
-              aria-pressed={creativeMode === s.id} title={t(s.summary)}>
-              <span className="cc-creative-mode-icon"><Icon name="wand" size={15} /></span>
-              <span className="cc-creative-mode-copy">
-                <span className="cc-creative-mode-title">
-                  <strong>{skillName(s)}</strong>
-                  {!builtinIds.has(s.id) && <em>{t('自定义')}</em>}
-                </span>
-                <small>{t(s.summary)}</small>
-              </span>
-              {creativeMode === s.id && <span className="cc-creative-mode-check"><Icon name="check" size={13} strokeWidth={2.4} /></span>}
-            </button>
-          ))}
+        <Popover w={400} anchor={popAnchor} onClose={closePop}>
+          <WorkflowPickerContent
+            creativeMode={creativeMode}
+            onCreativeModeChange={onCreativeModeChange}
+            onPromptChange={onChange}
+            onRequestFocus={() => taRef.current?.focus()}
+            onClose={closePop}
+          />
         </Popover>
       )}
       {pop === 'templates' && (

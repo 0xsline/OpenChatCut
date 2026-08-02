@@ -144,6 +144,14 @@ export default {
   '在合适时机添加动效，强化表达且不遮挡内容。': 'Add motion graphics at the right moments — reinforcing the message without blocking content.',
   '逐镜拆解镜头语言，并生成分镜参考图。': 'Break down shot language shot by shot and generate storyboard reference images.',
   '基于视频内容和真实画面生成适合平台的封面图。': 'Generate platform-ready thumbnails from the video content and real frames.',
+  '请分析当前长视频，挑选最有传播力的高光片段，剪成节奏紧凑的竖屏短视频，并完成字幕、标题和发布前检查。': 'Analyze the current long video, select its strongest shareable moments, cut a tight vertical short, and finish captions, titles, and pre-publish QA.',
+  '请梳理当前素材，选出最有表现力的镜头，按钩子、推进、高潮和收尾重组为一支竖屏 Reels，并完成配乐与节奏优化。': 'Review the current media, select the strongest shots, shape them into a vertical reel with hook, build, climax, and ending, then refine music and pacing.',
+  '请根据当前主题规划一支电影感短片，先确定故事结构和视觉风格，再生成连贯镜头，完成声音、节奏和成片检查。': 'Plan a cinematic short from the current theme, define its story and visual style, generate coherent shots, and finish sound, pacing, and final QA.',
+  '请提炼产品核心卖点和目标人群，设计有吸引力的开头、分镜、字幕与行动引导，并整理成可直接制作的短视频脚本。': 'Extract the product’s key value and audience, then create a strong hook, storyboard, captions, CTA, and a production-ready short-video script.',
+  '请把当前主题或资料整理成清晰的解说视频，完成内容结构、旁白、画面匹配、字幕与节奏设计，并检查信息是否准确。': 'Turn the current topic or source material into a clear explainer with structure, narration, matched visuals, captions, pacing, and fact checks.',
+  '请分析当前时间线，在不遮挡主体和字幕的前提下，为重点信息添加克制的标题、强调动效与转场，并统一节奏和视觉风格。': 'Review the current timeline and add restrained titles, emphasis motion, and transitions without covering subjects or captions, keeping pacing and style consistent.',
+  '请逐镜分析参考视频的构图、景别、运镜、节奏和转场，整理成可复用的分镜表，并为关键镜头生成清晰的画面参考。': 'Analyze the reference shot by shot—composition, framing, camera motion, pacing, and transitions—then create a reusable storyboard and key-shot references.',
+  '请根据当前视频内容筛选真实高质量画面，设计适合发布平台的封面构图、标题和视觉层级，并输出可直接使用的封面方案。': 'Select strong real frames from the current video and design a platform-ready cover with clear composition, title, visual hierarchy, and usable output.',
 
   // ── ChatMessage ──
   '收起思考过程': 'Collapse thinking',
