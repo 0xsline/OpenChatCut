@@ -186,6 +186,10 @@ export interface ClipTransform {
   y?: number;
   /** rotation in degrees */
   rotation?: number;
+  /** static layer opacity (0..1); keyframed opacity overrides this value */
+  opacity?: number;
+  /** clipped layer corner radius in composition pixels */
+  borderRadius?: number;
   /** crop the full-canvas layer to a sub-rect (split-screen / for PiP) */
   crop?: ClipCrop;
 }

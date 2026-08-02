@@ -61,7 +61,9 @@ function ClipWrapper({ item, frameOffset = 0, children }: { item: TimelineItem; 
   const clipPath = c && ((c.left ?? 0) > 0 || (c.top ?? 0) > 0 || (c.right ?? 0) > 0 || (c.bottom ?? 0) > 0)
     ? `inset(${cropPct(c.top)} ${cropPct(c.right)} ${cropPct(c.bottom)} ${cropPct(c.left)})`
     : undefined;
-  const opacity = ko === undefined ? o : o * Math.max(0, Math.min(1, ko));
+  const baseOpacity = Math.max(0, Math.min(1, t?.opacity ?? 1));
+  const opacity = o * Math.max(0, Math.min(1, ko ?? baseOpacity));
+  const borderRadius = Math.max(0, t?.borderRadius ?? 0);
   const fl = item.filters;
   const filter = fl
     ? `brightness(${fl.brightness ?? 1}) contrast(${fl.contrast ?? 1}) saturate(${fl.saturate ?? 1}) blur(${fl.blur ?? 0}px)`
@@ -76,7 +78,14 @@ function ClipWrapper({ item, frameOffset = 0, children }: { item: TimelineItem; 
       </AbsoluteFill>
     );
   }
-  return <AbsoluteFill style={{ opacity, transform, filter, clipPath }}>{inner}</AbsoluteFill>;
+  return <AbsoluteFill style={{
+    opacity,
+    transform,
+    filter,
+    clipPath,
+    overflow: borderRadius ? 'hidden' : undefined,
+    borderRadius: borderRadius ? `${borderRadius}px` : undefined,
+  }}>{inner}</AbsoluteFill>;
 }
 
 // One audio clip. With a transcript attached it renders the KEPT segments

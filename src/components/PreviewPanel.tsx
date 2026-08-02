@@ -6,12 +6,15 @@ import type { SelectedPreviewStatus, SelectedPreviewStatusListener } from '../gl
 import {
   captionTrackEntries,
   type ProjectDoc,
+  type ClipTransform,
+  type KeyframeProp,
   type TimelineItem,
   type TimelineState,
   type TrackId,
 } from '../editor/types';
 import { canvasRegionRef, emitSelectionRef, regionFromDrag, useSelectionRefMode } from '../agent/selection-refs';
 import { CaptionPreviewEditor } from '../captions/CaptionPreviewEditor';
+import type { CaptionSelectionRef } from '../captions/captionSelection';
 import type { CaptionsData } from '../captions/types';
 import {
   onCaptionStylePointerDrop,
@@ -26,6 +29,8 @@ import type { SlipPreview } from '../editor/slip';
 import { SlipTwoUpPreview } from './SlipTwoUpPreview';
 import { PREVIEW_SHARED_AUDIO_TAGS } from './previewAudioPool';
 import { SafeZoneOverlay } from './SafeZoneOverlay';
+import { PreviewTransformOverlay } from './preview/PreviewTransformOverlay';
+import { fitPreviewCanvasSize, type PreviewCanvasSize } from './preview/previewCanvasGeometry';
 
 interface PreviewPanelProps {
   state: TimelineState;
@@ -35,7 +40,14 @@ interface PreviewPanelProps {
   offlineSrcs?: ReadonlySet<string>;
   /** Direct editing of canvas captions (check box + floating toolbar). If it has not been transmitted (such as proposal preview status), it is read-only. */
   onUpdateCaptions?: (patch: Partial<CaptionsData>, track?: TrackId) => void;
+  onSelectCaption?: (selection: CaptionSelectionRef | null) => void;
+  activeCaptionSelection?: CaptionSelectionRef | null;
   onSeedChat?: (text: string) => void;
+  onSelectItem?: (id: string | null) => void;
+  onSetItemTransform?: (id: string, patch: ClipTransform) => void;
+  onSetItemKeyframe?: (id: string, prop: KeyframeProp, localFrame: number, value: number) => void;
+  onBeginHistoryGesture?: () => void;
+  onEndHistoryGesture?: () => void;
   projectId: string;
   timelineId: string;
   reviewState: TimelineState;
@@ -50,7 +62,8 @@ interface PreviewPanelProps {
 }
 
 export const PreviewPanel = memo(function PreviewPanel({
-  state, project, playerRef, onImport, offlineSrcs, onUpdateCaptions, onSeedChat,
+  state, project, playerRef, onImport, offlineSrcs, onUpdateCaptions, onSelectCaption, activeCaptionSelection, onSeedChat,
+  onSelectItem, onSetItemTransform, onSetItemKeyframe, onBeginHistoryGesture, onEndHistoryGesture,
   projectId, timelineId, reviewState, selectedItem, reviewRequest, inspectorOpen, onToggleInspector,
   selectedPreviewStatuses, onSelectedPreviewStatus, slipPreview,
   hoverPreviewFrame = null,
@@ -66,6 +79,8 @@ export const PreviewPanel = memo(function PreviewPanel({
   const duration = preview.plan.durationInFrames;
   const inputRef = useRef<HTMLInputElement>(null);
   const videoBoxRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageSize, setStageSize] = useState<PreviewCanvasSize>({ width: 0, height: 0 });
   const [busy, setBusy] = useState(false);
   const [showSafe, setShowSafe] = useState(false);
   const [autoEditCaption, setAutoEditCaption] = useState<{ trackId: TrackId; laneId: string } | null>(null);
@@ -74,7 +89,15 @@ export const PreviewPanel = memo(function PreviewPanel({
   // Must listen to Remotion's own fullscreenchange: it walks the webkit legacy API in Chrome,
   // The document standard event is not guaranteed to be triggered, the SDK emitter is the real source.
   const [fullscreen, setFullscreen] = useState(false);
+  const transformApi = onSelectItem && onSetItemTransform && onSetItemKeyframe
+    && onBeginHistoryGesture && onEndHistoryGesture
+    ? { onSelectItem, onSetItemTransform, onSetItemKeyframe, onBeginHistoryGesture, onEndHistoryGesture }
+    : null;
   const hasItems = state.items.length > 0;
+  const previewCanvasSize = fitPreviewCanvasSize(stageSize, {
+    width: state.width,
+    height: state.height,
+  });
   const failedProxies = preview.proxies.filter(({ proxy }) => proxy.status === 'failed');
   const pendingProxies = preview.proxies.filter(({ proxy }) => proxy.status === 'loading').length;
   const shaderFallback = selectedPreviewStatuses?.find((status) => status.phase === 'fallback');
@@ -90,6 +113,20 @@ export const PreviewPanel = memo(function PreviewPanel({
     player.addEventListener('fullscreenchange', onChange);
     return () => player.removeEventListener('fullscreenchange', onChange);
   }, [playerRef, hasItems]);
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage || typeof ResizeObserver === 'undefined') return undefined;
+    const measure = () => {
+      const next = { width: stage.clientWidth, height: stage.clientHeight };
+      setStageSize((current) => (
+        current.width === next.width && current.height === next.height ? current : next
+      ));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(stage);
+    measure();
+    return () => observer.disconnect();
+  }, []);
   // Selection mode (canvas-region-marked): drag a marquee → region reference
   const pickMode = useSelectionRefMode();
   const importFiles = async (files: FileList | File[]) => {
@@ -164,7 +201,7 @@ export const PreviewPanel = memo(function PreviewPanel({
           )}
         </div>
       </div>
-      <div className="cc-preview-stage"
+      <div ref={stageRef} className="cc-preview-stage"
         // Suppress the browser's native <video> context menu (download / picture-in-picture
         // / loop) because the preview is a canvas, not an exposed HTML5 video element.
         onContextMenu={(event) => event.preventDefault()}
@@ -181,9 +218,10 @@ export const PreviewPanel = memo(function PreviewPanel({
         ) : (
           // Wrapper carries the sizing so the safe-zone overlay lines up exactly
           // on the video rect (Player fills the wrapper).
-          <div ref={videoBoxRef} style={{
-            position: 'relative', width: 'auto', height: '100%',
-            maxWidth: '100%', maxHeight: '100%',
+          <div ref={videoBoxRef} className="cc-preview-canvas" style={{
+            position: 'relative',
+            width: previewCanvasSize.width || (state.width >= state.height ? '100%' : 'auto'),
+            height: previewCanvasSize.height || (state.width >= state.height ? 'auto' : '100%'),
             aspectRatio: `${state.width} / ${state.height}`,
           }} onErrorCapture={(event) => {
             if (!(event.target instanceof HTMLVideoElement)) return;
@@ -267,13 +305,19 @@ export const PreviewPanel = memo(function PreviewPanel({
             )}
             {showSafe && <SafeZoneOverlay />}
             {pickMode && <RegionPickOverlay state={state} playerRef={playerRef} />}
+            {!pickMode && !fullscreen && transformApi && (
+              <PreviewTransformOverlay state={state} playerRef={playerRef} {...transformApi} />
+            )}
             {!pickMode && !fullscreen && onUpdateCaptions && captionTrackEntries(state).map(({ id, captions }) => captions?.enabled ? (
               <CaptionPreviewEditor
                 key={id}
+                trackId={id}
                 state={state}
                 captions={captions}
                 playerRef={playerRef}
                 onUpdateCaptions={(patch) => onUpdateCaptions(patch, id)}
+                onSelectCaption={onSelectCaption}
+                activeSelection={activeCaptionSelection}
                 onSeedChat={onSeedChat}
                 autoEditLaneId={autoEditCaption?.trackId === id ? autoEditCaption.laneId : undefined}
                 onAutoEditHandled={() => setAutoEditCaption(null)}

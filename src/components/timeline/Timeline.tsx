@@ -12,11 +12,12 @@ import { ClipContextMenu, type FxClip } from './ClipContextMenu';
 import { Icon } from '../icons';
 import { useRecorder } from '../../audio/recorder';
 import { exportClipMov, bakeClipToVideo } from '../../media/clipExport';
+import { importMedia } from '../../media/upload';
 import { CaptionStyleMenu } from '../../captions/CaptionStyleMenu';
 import { CaptionTrackLane, type CaptionCueMove } from '../../captions/CaptionTrackLane';
 import { captionsForTrack } from '../../captions/captionTrack';
 import {
-  captionSelectionsInFrameRange,
+  captionSelectionKey, captionSelectionsInFrameRange,
   resolveCaptionSelection,
   type CaptionSelectOptions,
   type CaptionSelectionRef,
@@ -45,18 +46,21 @@ import { usePlayheadPaint } from './usePlayheadPaint';
 import { useTimelineZoomController } from './useTimelineZoomController';
 import { timelineFitTotalFrames } from './timelineFitRange';
 import { trackDeletePlan } from './trackDelete';
+import { TrackContextMenu } from './TrackContextMenu';
+import { closeCaptionTrackGaps, trackClearPlan } from './trackContextOperations';
 import {
   timelineGestureHasDragged,
   timelinePointerShouldSeek,
   timelineSeekFrameAtClientX,
 } from './timelineSeek';
 import { applyLibraryToClip as applyToClip, applyLibraryToTrack as applyToTrack } from './libraryDropActions';
+import { isTimelineDragOverChat } from './timelineChatDrop';
 import {
   HEADER_W, MAX_ROW, MIN_ROW, RULER_H, TRACK_ROW, buildTimelineIndexes,
   rulerMajorSeconds, rulerMinorCount, timelineFrameWindow, timelinePinnedItemIds, type EditMode,
 } from './timelineUtil';
 import type { LibraryDragPayload } from '../../library/drag';
-import { useSelectionRefMode } from '../../agent/selection-refs';
+import { emitSelectionRef, itemRef, timerangeRef, useSelectionRefMode } from '../../agent/selection-refs';
 import { getLocale, useT } from '../../i18n/locale';
 import type { TimelineShortcutApi } from '../../shortcuts/timelineApi';
 
@@ -102,6 +106,10 @@ export function Timeline({
   );
   const innerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const relinkInputRef = useRef<HTMLInputElement>(null);
+  const relinkItemRef = useRef<TimelineItem | null>(null);
+  const trackInsertInputRef = useRef<HTMLInputElement>(null);
+  const trackInsertTargetRef = useRef<{ trackId: TrackId; frame: number } | null>(null);
   const seekGestureRef = useRef<{
     pointerId: number;
     button: number;
@@ -110,6 +118,7 @@ export function Timeline({
     dragged: boolean;
   } | null>(null);
   const [hoverPreviewFrame, setHoverPreviewFrame] = useState<number | null>(null);
+  const hoverPreviewFrameRef = useRef<number | null>(null);
   const [captionSelectionMovePreview, setCaptionSelectionMovePreview] = useState<TimelineSelectionMovePreview | null>(null);
   const captionClipboardRef = useRef<CaptionTimelineClipboard | null>(null);
   const timelineId = (state as { id?: string }).id;
@@ -137,7 +146,9 @@ export function Timeline({
   // magnetic snapping (Snapping toggle, S). On = edges lock to guides.
   const [snapping, setSnapping] = usePersistedState('cc.snapping', true);
   const captionsVisible = captionTrackEntries(state).some((entry) => entry.captions?.enabled);
-  const [captionMenu, setCaptionMenu] = useState<{ id: TrackId; left: number; top: number } | null>(null);
+  const [captionMenu, setCaptionMenu] = useState<{ id: TrackId; left: number; top: number; translate?: boolean } | null>(null);
+  const [trackMenu, setTrackMenu] = useState<{ trackId: TrackId; x: number; y: number; frame: number } | null>(null);
+  const [trackMenuReturn, setTrackMenuReturn] = useState<{ trackId: TrackId; x: number; y: number; frame: number } | null>(null);
   // Error line return Timeline: The "Turn on captions" button outside the menu will also write it (there is no text script for this track), and it will be displayed in the menu
   const [captionError, setCaptionError] = useState<string | null>(null);
   const moveCaptionCue = (sourceTrackId: TrackId, move: CaptionCueMove) => {
@@ -180,11 +191,15 @@ export function Timeline({
   useEffect(() => {
     if (!captionMenu) return;
     const close = (event: PointerEvent) => {
-      const target = event.target as Element;
-      if (!target.closest('.cc-caption-style-menu') && !target.closest('[data-caption-menu-trigger]')) setCaptionMenu(null);
+      if (!(event.target instanceof Element)) return;
+      const target = event.target;
+      if (!target.closest('.cc-caption-style-menu') && !target.closest('[data-caption-menu-trigger]')) {
+        setCaptionMenu(null);
+        setTrackMenuReturn(null);
+      }
     };
-    document.addEventListener('pointerdown', close);
-    return () => document.removeEventListener('pointerdown', close);
+    document.addEventListener('pointerdown', close, true);
+    return () => document.removeEventListener('pointerdown', close, true);
   }, [captionMenu]);
   // Duck (auto-dodge) role menu is a track-head menu item, not a
   // permanent widget. Sets the per-track role (anchor speech / follower music) + duck depth;
@@ -193,12 +208,62 @@ export function Timeline({
   useEffect(() => {
     if (!duckMenu) return;
     const close = (event: PointerEvent) => {
-      const target = event.target as Element;
-      if (!target.closest('.cc-duck-menu') && !target.closest('[data-duck-menu-trigger]')) setDuckMenu(null);
+      if (!(event.target instanceof Element)) return;
+      const target = event.target;
+      if (!target.closest('.cc-duck-menu') && !target.closest('[data-duck-menu-trigger]')) {
+        setDuckMenu(null);
+        setTrackMenuReturn(null);
+      }
     };
-    document.addEventListener('pointerdown', close);
-    return () => document.removeEventListener('pointerdown', close);
+    document.addEventListener('pointerdown', close, true);
+    return () => document.removeEventListener('pointerdown', close, true);
   }, [duckMenu]);
+  const openCaptionTrackMenu = (
+    trackId: TrackId,
+    rect: DOMRect,
+    translate = false,
+    returnMenu: typeof trackMenuReturn = null,
+    replace = false,
+  ) => {
+    setCaptionError(null);
+    setDuckMenu(null);
+    setTrackMenuReturn(returnMenu);
+    setCaptionMenu({
+      id: trackId,
+      left: replace
+        ? Math.max(8, Math.min(rect.left, window.innerWidth - 212 - 8))
+        : Math.min(rect.right + 5, window.innerWidth - 350),
+      top: Math.max(8, Math.min(rect.top, window.innerHeight - 430)),
+      translate,
+    });
+  };
+  const openDuckTrackMenu = (
+    trackId: TrackId,
+    rect: DOMRect,
+    returnMenu: typeof trackMenuReturn = null,
+    replace = false,
+  ) => {
+    setCaptionMenu(null);
+    setTrackMenuReturn(returnMenu);
+    setDuckMenu({
+      id: trackId,
+      left: replace
+        ? Math.max(8, Math.min(rect.left, window.innerWidth - 160 - 8))
+        : Math.min(rect.right + 5, window.innerWidth - 226),
+      top: Math.max(8, Math.min(rect.top, window.innerHeight - 310)),
+    });
+  };
+  const closeTrackDrillMenu = () => {
+    setCaptionMenu(null);
+    setDuckMenu(null);
+    setTrackMenuReturn(null);
+  };
+  const backFromTrackDrillMenu = () => {
+    setCaptionMenu(null);
+    setDuckMenu(null);
+    if (trackMenuReturn) setTrackMenu(trackMenuReturn);
+    setTrackMenuReturn(null);
+  };
   // mic voiceover recording (recording narration). Toggle to start/stop; the blob
   // is uploaded + dropped on an audio track by the parent.
   const recorder = useRecorder(onRecordVoiceover ?? (() => {}));
@@ -249,6 +314,89 @@ export function Timeline({
   const [fxClip, setFxClip] = useState<FxClip | null>(null);
   // single-clip render (export MG animation / convert to video) status toast
   const [clipJob, setClipJob] = useState<{ msg: string; error?: boolean } | null>(null);
+  const addSelectionToChat = (selection: { items: TimelineItem[]; captions: CaptionSelectionRef[] }) => {
+    const references = [
+      ...selection.items.map((item) => itemRef(item, state)),
+      ...selection.captions.flatMap((captionSelection) => {
+        const resolved = resolveCaptionSelection(state, captionSelection);
+        if (!resolved) return [];
+        const cue = resolved.target.cue;
+        const startFrame = Math.max(0, Math.round(cue.start * state.fps / 1000));
+        const endFrame = Math.max(startFrame + 1, Math.round(cue.end * state.fps / 1000));
+        const base = timerangeRef(startFrame, endFrame, state, { trackId: resolved.trackId });
+        return [{ ...base, id: `caption:${captionSelectionKey(captionSelection) ?? base.id}`, name: `字幕：${cue.text}` }];
+      }),
+    ];
+    for (const reference of references) emitSelectionRef(reference);
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('[data-cc-chat-composer]')?.focus());
+  };
+  const beginRelink = (item: TimelineItem) => {
+    relinkItemRef.current = item;
+    requestAnimationFrame(() => relinkInputRef.current?.click());
+  };
+  const relinkFile = async (files: FileList | null) => {
+    const file = files?.[0];
+    const item = relinkItemRef.current;
+    relinkItemRef.current = null;
+    if (relinkInputRef.current) relinkInputRef.current.value = '';
+    if (!file || !item) return;
+    try {
+      const media = await importMedia(file, state.fps);
+      if (media.kind !== item.kind) throw new Error(t('请重新选择同类型文件'));
+      const poolAsset = state.assets?.find((asset) => asset.src === item.src);
+      if (poolAsset) {
+        commands.relinkMediaAsset(poolAsset.id, {
+          src: media.src,
+          name: media.name,
+          durationInFrames: media.durationInFrames,
+          width: media.width,
+          height: media.height,
+          kind: media.kind,
+          sourceRevision: media.sourceRevision,
+          sourceSize: media.sourceSize,
+          sourceModifiedAt: media.sourceModifiedAt,
+        });
+      } else {
+        commands.applyState({
+          ...state,
+          items: state.items.map((candidate) => candidate.id === item.id ? {
+            ...candidate,
+            src: media.src,
+            name: media.name,
+            durationInFrames: media.durationInFrames,
+            width: media.width ?? candidate.width,
+            height: media.height ?? candidate.height,
+            sourceRevision: media.sourceRevision,
+            denoisedSrc: undefined,
+            denoiseStrength: undefined,
+            transcriptStale: candidate.transcript?.length ? true : candidate.transcriptStale,
+          } : candidate),
+        });
+      }
+      const msg = t('已重新链接文件');
+      setClipJob({ msg });
+      window.setTimeout(() => setClipJob((current) => current?.msg === msg && !current.error ? null : current), 5_000);
+    } catch (error) {
+      setClipJob({ msg: error instanceof Error ? error.message : t('重新链接文件失败'), error: true });
+    }
+  };
+  const beginTrackInsert = (trackId: TrackId, frame: number) => {
+    const input = trackInsertInputRef.current;
+    if (!input || !onDropExternalFiles) return;
+    const kind = trackKind(state, trackId);
+    input.accept = kind === 'audio' ? 'audio/*'
+      : kind === 'caption' ? '.srt,.vtt,.txt,text/plain'
+        : 'video/*,image/*,.gif,.svg';
+    trackInsertTargetRef.current = { trackId, frame };
+    requestAnimationFrame(() => input.click());
+  };
+  const insertTrackFiles = (files: FileList | null) => {
+    const target = trackInsertTargetRef.current;
+    trackInsertTargetRef.current = null;
+    if (trackInsertInputRef.current) trackInsertInputRef.current.value = '';
+    if (!target || !files?.length || !onDropExternalFiles) return;
+    onDropExternalFiles(Array.from(files), target.trackId, target.frame);
+  };
   const exportMg = async (it: TimelineItem) => {
     setClipJob({ msg: t('导出 MG 动画中（ProRes 4444）…') });
     try { await exportClipMov(state, it); setClipJob(null); }
@@ -346,6 +494,20 @@ export function Timeline({
     state, commands, editMode, snapping, pickMode, px,
     playheadRef, scrollRef, frameFromClientX, trackFromClientY, selectionInMarquee,
     selectedCaptions, onMarqueeCaptionSelect,
+    isOverChatComposer: (clientX, clientY) => {
+      const composer = document.querySelector<HTMLElement>('[data-cc-chat-composer]');
+      return composer ? isTimelineDragOverChat(clientX, clientY, composer.getBoundingClientRect()) : false;
+    },
+    onDropSelectionToChat: (selection) => {
+      const itemsById = new Map(state.items.map((item) => [item.id, item]));
+      addSelectionToChat({
+        items: selection.itemIds.flatMap((id) => {
+          const item = itemsById.get(id);
+          return item ? [item] : [];
+        }),
+        captions: selection.captionSelections,
+      });
+    },
   });
   const { drag, marquee, pickDrag, startPick, onPointerMove, onPointerUp, onPointerCancel } = pointer;
   const activeSlipPreview = useMemo(
@@ -401,7 +563,8 @@ export function Timeline({
     });
   };
   const clearHoverPreview = () => {
-    if (hoverPreviewFrame === null) return;
+    if (hoverPreviewFrameRef.current === null) return;
+    hoverPreviewFrameRef.current = null;
     setHoverPreviewFrame(null);
     setTimecodePreviewFrame(null);
     onHoverPreviewFrameChange?.(null);
@@ -412,11 +575,15 @@ export function Timeline({
       return;
     }
     const frame = frameAtClientX(event.clientX);
-    if (frame === hoverPreviewFrame) return;
+    if (frame === hoverPreviewFrameRef.current) return;
+    hoverPreviewFrameRef.current = frame;
     setHoverPreviewFrame(frame);
     setTimecodePreviewFrame(frame);
     onHoverPreviewFrameChange?.(frame);
   };
+  useEffect(() => {
+    if (playing || drag || marquee || pickDrag) clearHoverPreview();
+  }, [playing, drag, marquee, pickDrag]);
   const startSeekGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
     const target = event.target instanceof Element ? event.target : null;
     if (!target?.closest('[data-timeline-track-lane], .cc-caption-track-lane')) return;
@@ -552,17 +719,23 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
                   // Both menus are attached with trigger buttons, top clamping margin = maximum menu height + margin (captions 420, dodge ≈ 300);
                   // When the caption menu is clipped to the left, space should be reserved for the translation submenu that pops to the right (212+4+128)
                   onToggleCaptionMenu={(rect) => {
-                    setCaptionError(null);
-                    setCaptionMenu((open) => open?.id === trackId ? null : { id: trackId, left: Math.min(rect.right + 5, window.innerWidth - 350), top: Math.max(8, Math.min(rect.top, window.innerHeight - 430)) });
+                    if (captionMenu?.id === trackId) closeTrackDrillMenu();
+                    else openCaptionTrackMenu(trackId, rect);
                   }}
-                  onToggleDuckMenu={(rect) => setDuckMenu((open) => open?.id === trackId ? null : { id: trackId, left: Math.min(rect.right + 5, window.innerWidth - 226), top: Math.max(8, Math.min(rect.top, window.innerHeight - 310)) })}
+                  onToggleDuckMenu={(rect) => {
+                    if (duckMenu?.id === trackId) closeTrackDrillMenu();
+                    else openDuckTrackMenu(trackId, rect);
+                  }}
                   duckMenuPos={duckMenu?.id === trackId ? duckMenu : null}
-                  onCloseDuckMenu={() => setDuckMenu(null)}
+                  onCloseDuckMenu={closeTrackDrillMenu}
+                  onBackDuckMenu={backFromTrackDrillMenu}
                 >
                   {captionMenu?.id === trackId && (
                     <CaptionStyleMenu
                       state={state} commands={commands} trackId={trackId} pos={captionMenu}
-                      error={captionError} onError={setCaptionError} onClose={() => setCaptionMenu(null)}
+                      error={captionError} onError={setCaptionError} onClose={closeTrackDrillMenu}
+                      onBack={backFromTrackDrillMenu}
+                      initialTranslateOpen={captionMenu.translate}
                     />
                   )}
                 </TrackHead>
@@ -580,6 +753,26 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
                   onMove={(move) => moveCaptionCue(trackId, move)}
                   onDropExternalFiles={onDropExternalFiles}
                   frameFromClientX={frameFromClientX}
+                  isOverChatComposer={(clientX, clientY) => {
+                    const composer = document.querySelector<HTMLElement>('[data-cc-chat-composer]');
+                    return composer ? isTimelineDragOverChat(clientX, clientY, composer.getBoundingClientRect()) : false;
+                  }}
+                  onAddSelectionToChat={(selection) => {
+                    const itemsById = new Map(state.items.map((item) => [item.id, item]));
+                    addSelectionToChat({
+                      items: selection.itemIds.flatMap((id) => {
+                        const item = itemsById.get(id);
+                        return item ? [item] : [];
+                      }),
+                      captions: selection.captionSelections,
+                    });
+                  }}
+                  onTrackContextMenu={(menu) => {
+                    setCtxMenu(null);
+                    setCaptionMenu(null);
+                    setDuckMenu(null);
+                    setTrackMenu(menu);
+                  }}
                   onCopyCue={() => { copyCaptionSelections(); }}
                   onPasteCue={pasteCaptionClipboard}
                   onDelete={(laneId, index) => trackCaptions && commands.updateCaptions(removeManualCue(trackCaptions, laneId, index), trackId)} /> : <TrackLane
@@ -592,7 +785,13 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
                   rippleOnDrop={placeMode === 'insert'}
                   overwriteOnDrop={placeMode === 'overwrite'}
                   onDropExternalFiles={onDropExternalFiles}
-                  frameFromClientX={frameFromClientX} onContextMenu={setCtxMenu} scrollRef={scrollRef}
+                  frameFromClientX={frameFromClientX} onContextMenu={(menu) => { setTrackMenu(null); setCtxMenu(menu); }}
+                  onTrackContextMenu={(menu) => {
+                    setCtxMenu(null);
+                    setCaptionMenu(null);
+                    setDuckMenu(null);
+                    setTrackMenu(menu);
+                  }} scrollRef={scrollRef}
                   selectionMovePreview={captionSelectionMovePreview}
                 />}
               </div>
@@ -666,6 +865,94 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
         );
       })()}
 
+      <input
+        ref={relinkInputRef}
+        type="file"
+        accept="video/*,audio/*,image/*,.gif,.svg"
+        hidden
+        onChange={(event) => { void relinkFile(event.currentTarget.files); }}
+      />
+      <input
+        ref={trackInsertInputRef}
+        type="file"
+        multiple
+        hidden
+        onChange={(event) => insertTrackFiles(event.currentTarget.files)}
+      />
+
+      {/* blank-track right-click menu */}
+      {trackMenu && (() => {
+        const trackId = trackMenu.trackId;
+        if (!trackIds.includes(trackId)) return null;
+        const kind = trackKind(state, trackId);
+        const config = state.tracks?.[trackId] ?? {};
+        const captions = kind === 'caption' ? captionsOnTrack(state, trackId) : null;
+        const items = state.items.filter((item) => item.track === trackId);
+        const captionSelections = captions
+          ? captionSelectionsInFrameRange(trackId, captions, state.items, state.fps, 0, Number.MAX_SAFE_INTEGER)
+          : [];
+        const sortedItems = [...items].sort((a, b) => a.startFrame - b.startFrame);
+        const captionTighten = captions ? closeCaptionTrackGaps(captions) : null;
+        const canTighten = kind === 'caption'
+          ? !!captionTighten?.changed
+          : sortedItems.some((item, index) => index > 0
+            && item.startFrame > sortedItems[index - 1]!.startFrame + sortedItems[index - 1]!.durationInFrames);
+        const clearPlan = trackClearPlan(state, trackId);
+        const deletePlan = trackDeletePlan(state, trackId);
+        const hidden = kind === 'caption' ? !captions?.enabled : !!config.hidden;
+        return (
+          <TrackContextMenu
+            kind={kind}
+            x={trackMenu.x}
+            y={trackMenu.y}
+            hidden={hidden}
+            muted={!!config.muted}
+            locked={!!config.locked}
+            canTighten={canTighten}
+            hasContents={clearPlan.hasContents}
+            hasSelectable={kind === 'caption' ? captionSelections.length > 0 : items.length > 0}
+            deleteBlockedReason={deletePlan.blockedReason}
+            onInsert={() => beginTrackInsert(trackId, trackMenu.frame)}
+            onTighten={() => {
+              if (kind === 'caption' && captionTighten?.changed) commands.setCaptions(captionTighten.captions, trackId);
+              else if (kind !== 'caption') commands.tightenTrack(trackId);
+            }}
+            onSelectAll={() => {
+              if (kind === 'caption') {
+                commands.selectItems([]);
+                onMarqueeCaptionSelect(captionSelections, { additive: false, preserveWithItems: false });
+              } else {
+                onMarqueeCaptionSelect([], { additive: false, preserveWithItems: false });
+                commands.selectItems(items.map((item) => item.id));
+              }
+            }}
+            onClear={() => {
+              if (clearPlan.blockedReason || !clearPlan.hasContents) return;
+              if (!window.confirm(t('清空轨道会删除其中的片段、字幕和转场，确认继续吗？'))) return;
+              commands.batch(clearPlan.actions, t('清空轨道'));
+              onMarqueeCaptionSelect([], { additive: false, preserveWithItems: false });
+            }}
+            onToggleHidden={() => {
+              if (kind === 'caption') toggleCaptions(trackId);
+              else commands.toggleTrackFlag(trackId, 'hidden');
+            }}
+            onToggleMuted={() => commands.toggleTrackFlag(trackId, 'muted')}
+            onToggleLocked={() => commands.toggleTrackFlag(trackId, 'locked')}
+            onOpenDuck={(rect) => openDuckTrackMenu(trackId, rect, trackMenu, true)}
+            onOpenCaptionStyle={(rect) => openCaptionTrackMenu(trackId, rect, false, trackMenu, true)}
+            onOpenTranslate={(rect) => openCaptionTrackMenu(trackId, rect, true, trackMenu, true)}
+            onDelete={() => {
+              if (deletePlan.blockedReason) return;
+              if (deletePlan.requiresConfirmation
+                && !window.confirm(t('删除轨道会同时删除其中的片段、字幕和转场，确认继续吗？'))) return;
+              commands.batch(deletePlan.actions, t('删除轨道'));
+              onMarqueeCaptionSelect([], { additive: false, preserveWithItems: false });
+            }}
+            onClose={() => setTrackMenu(null)}
+          />
+        );
+      })()}
+
       {/* clip right-click menu */}
       {ctxMenu && (() => {
         const item = state.items.find((it) => it.id === ctxMenu.id);
@@ -680,7 +967,9 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             onAddComment={(target, frame, clientX, clientY) => {
               playerRef.current?.seekTo(frame);
               onReviewItem?.({ itemId: target.id, frame, clientX, clientY });
-            }} />
+            }}
+            onAddToChat={(items) => addSelectionToChat({ items, captions: [] })}
+            onRelinkFile={beginRelink} />
         );
       })()}
 

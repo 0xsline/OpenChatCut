@@ -123,6 +123,7 @@ interface TrackLaneProps {
   overwriteOnDrop: boolean;
   frameFromClientX: (clientX: number) => number;
   onContextMenu: (menu: { id: string; x: number; y: number }) => void;
+  onTrackContextMenu: (menu: { trackId: TrackId; x: number; y: number; frame: number }) => void;
   scrollRef: RefObject<HTMLDivElement | null>;
   selectionMovePreview: TimelineSelectionMovePreview | null;
   onDropExternalFiles?: (files: File[], trackId: TrackId, startFrame: number) => void;
@@ -131,7 +132,7 @@ interface TrackLaneProps {
 export function TrackLane({
   trackId, state, commands, pointer, editMode, pickMode, locked, hidden, muted, px, rowHeight,
   visibleWindow, pinnedItemIds, indexes, libDropTarget, setLibDropTarget,
-  applyLibraryToClip, applyLibraryToTrack, rippleOnDrop, overwriteOnDrop, frameFromClientX, onContextMenu, scrollRef,
+  applyLibraryToClip, applyLibraryToTrack, rippleOnDrop, overwriteOnDrop, frameFromClientX, onContextMenu, onTrackContextMenu, scrollRef,
   selectionMovePreview,
   onDropExternalFiles,
 }: TrackLaneProps) {
@@ -178,6 +179,13 @@ export function TrackLane({
         if (pickMode) { startPick(e, 'lane'); return; }
         // selection mode: empty-lane drag → marquee multi-select
         if (editMode === 'selection' && !locked) startMarquee(e);
+      }}
+      onContextMenu={(e) => {
+        const target = e.target instanceof Element ? e.target : null;
+        if (target?.closest('[data-timeline-clip], .cc-transition-marker')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onTrackContextMenu({ trackId, x: e.clientX, y: e.clientY, frame: frameFromClientX(e.clientX) });
       }}
       onDragOver={(e) => {
         if (locked || (!hasLibraryDrag(e)

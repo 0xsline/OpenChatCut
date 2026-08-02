@@ -13,6 +13,7 @@ import { useT } from '../i18n/locale';
 import { captionsForTrack } from './captionTrack';
 import { newManualCaptions } from './manualCaptions';
 import { captionTemplatePatch } from './captionTemplatePatch';
+import { MenuDrillHeader } from '../components/timeline/MenuDrillHeader';
 
 const CAPTION_LANGS = ['English', '日本語', '한국어', 'Español', 'Français', 'Deutsch', 'Português'];
 
@@ -24,14 +25,16 @@ interface CaptionStyleMenuProps {
   error: string | null;
   onError: (msg: string | null) => void;
   onClose: () => void;
+  onBack?: () => void;
+  initialTranslateOpen?: boolean;
 }
 
-export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError, onClose }: CaptionStyleMenuProps) {
+export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError, onClose, onBack, initialTranslateOpen = false }: CaptionStyleMenuProps) {
   const t = useT();
   const [presets, setPresets] = useState<CaptionPreset[]>([]);
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [translateOpen, setTranslateOpen] = useState(false);
+  const [translateOpen, setTranslateOpen] = useState(initialTranslateOpen);
   const current = captionsOnTrack(state, trackId);
   useEffect(() => {
     void listCaptionPresets().then(setPresets).catch(() => {});
@@ -104,9 +107,21 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
     } finally { setBusy(false); }
   };
 
+  const backToParent = onBack ?? onClose;
+  if (translateOpen) return (
+    <div className="cc-caption-style-menu" style={{ position: 'fixed', left: pos.left, top: pos.top }} onPointerDown={(e) => e.stopPropagation()}>
+      <MenuDrillHeader title={t('翻译')} onBack={() => initialTranslateOpen ? backToParent() : setTranslateOpen(false)} />
+      <div className="cc-caption-language-menu is-drill">
+        {CAPTION_LANGS.map((lang) => <button type="button" key={lang} disabled={busy} onClick={() => void translate(lang)}>{lang}</button>)}
+      </div>
+      {busy && <div className="cc-caption-style-status">{t('翻译中...')}</div>}
+      {error && <div className="cc-caption-style-error">{error}</div>}
+    </div>
+  );
+
   return (
     <div className="cc-caption-style-menu" style={{ position: 'fixed', left: pos.left, top: pos.top }} onPointerDown={(e) => e.stopPropagation()}>
-      <div className="cc-caption-style-title">{t('样式')}</div>
+      <MenuDrillHeader title={t('字幕样式')} onBack={backToParent} />
       <div className="cc-caption-style-list">
         {CAPTION_STYLES.map((style) => {
           return (
@@ -161,14 +176,9 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
         </button>
       )}
       <div className="cc-caption-translate-wrap">
-        <button type="button" className="cc-caption-translate" disabled={busy} onClick={() => setTranslateOpen((open) => !open)} aria-expanded={translateOpen}>
+        <button type="button" className="cc-caption-translate" disabled={busy} onClick={() => setTranslateOpen(true)} aria-expanded={translateOpen}>
           <span>{t('文A')}</span><span>{busy ? t('翻译中...') : t('翻译字幕')}</span><span>›</span>
         </button>
-        {translateOpen && (
-          <div className="cc-caption-language-menu">
-            {CAPTION_LANGS.map((lang) => <button type="button" key={lang} onClick={() => void translate(lang)}>{lang}</button>)}
-          </div>
-        )}
       </div>
       {error && <div className="cc-caption-style-error">{error}</div>}
     </div>

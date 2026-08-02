@@ -69,7 +69,7 @@ import { useOfflineMedia } from './media/useOfflineMedia';
 import { keyframeResetBatch } from './editor/keyframeReset';
 import { classifyExternalFile, parseDroppedCaptions } from './media/externalFileDrop';
 import { appendManualLane, isManualCaptionEntry, newManualCaptions } from './captions/manualCaptions';
-import { placeMediaAssets } from './editor/mediaAssetPlacement';
+import { placeMediaAssets, reflowPlacedMediaItems } from './editor/mediaAssetPlacement';
 import {
   allCaptionSelections,
   captionSelectionKey,
@@ -112,6 +112,11 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   const selectedItems = selectedInspectorItems(state, selectedIds);
   const selectedTransition = state.transitions?.find((transition) => transition.incomingItemId === state.selectedId) ?? null;
   const [captionSelections, setCaptionSelections] = useState<CaptionSelectionRef[]>([]);
+  const captionSelection = captionSelections.at(-1) ?? null;
+  const selectedCaption = useMemo(
+    () => resolveCaptionSelection(state, captionSelection),
+    [state, captionSelection],
+  );
   const preserveCaptionWithItemsRef = useRef(false);
   const selectedItemIdsKey = selectedIdsOf(state).join('\u0000');
   const [timelineHoverPreviewFrame, setTimelineHoverPreviewFrame] = useState<number | null>(null);
@@ -624,7 +629,60 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     trackId: TrackId,
     startFrame: number,
   ) => {
-    const starts = { video: Math.max(0, Math.round(startFrame)), audio: Math.max(0, Math.round(startFrame)) };
+    const batchStartFrame = Math.max(0, Math.round(startFrame));
+    const placedItems: Array<{ assetId: string; itemId: string; kind: 'video' | 'audio'; startFrame: number; durationInFrames: number }> = [];
+    const pendingDurations = new Map<string, number>();
+    const nextStartForKind = (kind: 'video' | 'audio') => placedItems
+      .filter((item) => item.kind === kind)
+      .reduce((frame, item) => frame + Math.max(1, item.durationInFrames), batchStartFrame);
+    const reflowPlacedBatch = () => {
+      for (const placement of reflowPlacedMediaItems(placedItems, batchStartFrame)) {
+        const item = placedItems.find((candidate) => candidate.itemId === placement.itemId);
+        if (!item || item.startFrame === placement.startFrame) continue;
+        item.startFrame = placement.startFrame;
+        commands.setItemTiming(item.itemId, { startFrame: placement.startFrame });
+      }
+    };
+    const updatePlacedAsset = (asset: MediaAsset) => {
+      pendingDurations.set(asset.id, asset.durationInFrames);
+      const item = placedItems.find((candidate) => candidate.assetId === asset.id);
+      if (!item) return;
+      item.durationInFrames = Math.max(1, asset.durationInFrames);
+      reflowPlacedBatch();
+    };
+    const removePlacedAsset = (assetId: string) => {
+      const index = placedItems.findIndex((candidate) => candidate.assetId === assetId);
+      if (index < 0) return;
+      const [{ itemId }] = placedItems.splice(index, 1);
+      commands.removeItem(itemId);
+      commands.removeMediaAsset(assetId);
+      reflowPlacedBatch();
+    };
+    const awaitTimelinePlaceholder = (file: File) => new Promise<MediaAsset>((resolve, reject) => {
+      let placeholderId: string | null = null;
+      void importMedia(file, stateRef.current.fps, {
+        onPlaceholder: (asset) => {
+          placeholderId = asset.id;
+          commands.addAsset(asset);
+          resolve(asset);
+        },
+        onUploaded: (info) => startAssetTranscription(info, info.asrPath),
+        onReady: (asset) => {
+          commands.relinkMediaAsset(asset.id, {
+            src: asset.src, name: asset.name, durationInFrames: asset.durationInFrames,
+            width: asset.width, height: asset.height, kind: asset.kind,
+            sourceRevision: asset.sourceRevision, sourceSize: asset.sourceSize,
+            sourceModifiedAt: asset.sourceModifiedAt,
+          });
+          if (asset.kind !== 'audio') refreshVisualAnalysis(asset);
+          updatePlacedAsset(asset);
+        },
+      }).catch((error) => {
+        if (!placeholderId) reject(error);
+        else removePlacedAsset(placeholderId);
+        showAppToast(error instanceof Error ? error.message : t('导入失败'), { error: true });
+      });
+    });
     const addedIds: string[] = [];
     for (const file of files) {
       const target = classifyExternalFile(file);
@@ -664,7 +722,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         continue;
       }
       try {
-        const asset = await importToPool(file);
+        const asset = await awaitTimelinePlaceholder(file);
         const kind = target.mediaKind === 'audio' ? 'audio' : 'video';
         const snapshot = stateRef.current;
         const destination = trackKind(snapshot, trackId) === kind
@@ -672,16 +730,21 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           : defaultTrackId(snapshot, kind);
         const itemId = commands.addMediaItem(asset, {
           track: destination ?? undefined,
-          startFrame: starts[kind],
+          startFrame: nextStartForKind(kind),
         });
         addedIds.push(itemId);
-        starts[kind] += Math.max(1, asset.durationInFrames);
+        placedItems.push({
+          assetId: asset.id, itemId, kind,
+          startFrame: nextStartForKind(kind),
+          durationInFrames: pendingDurations.get(asset.id) ?? asset.durationInFrames,
+        });
+        reflowPlacedBatch();
       } catch (error) {
         showAppToast(error instanceof Error ? error.message : t('导入失败'), { error: true });
       }
     }
     if (addedIds.length) commands.selectItems(addedIds);
-  }, [commands, importToPool, t]);
+  }, [commands, refreshVisualAnalysis, startAssetTranscription, t]);
   const addMediaAssetsToTimeline = useCallback((assets: MediaAsset[]) => {
     placeMediaAssets({
       assetIds: assets.map((asset) => asset.id),
@@ -867,18 +930,29 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           reviewRequest={reviewRequest}
           offlineSrcs={offlineSrcs}
           onUpdateCaptions={previewState || autoGradePreviewState ? undefined : commands.updateCaptions}
+          onSelectCaption={previewState || autoGradePreviewState ? undefined : selectCaption}
+          activeCaptionSelection={captionSelection}
+          {...(!previewState && !autoGradePreviewState ? {
+            onSelectItem: commands.selectItem,
+            onSetItemTransform: commands.setItemTransform,
+            onSetItemKeyframe: commands.setItemKeyframe,
+            onBeginHistoryGesture: commands.beginHistoryGesture,
+            onEndHistoryGesture: commands.endHistoryGesture,
+          } : {})}
           onSeedChat={(text) => setChatSeed({ text, nonce: Date.now() })}
-          inspectorOpen={!!selectedItem && !inspectorCollapsed}
+          inspectorOpen={!!(selectedItem || selectedCaption) && !inspectorCollapsed}
           selectedPreviewStatuses={selectedPreviewStatuses}
           onSelectedPreviewStatus={handleSelectedPreviewStatus}
           slipPreview={activeSlipPreview}
           onToggleInspector={() => setInspectorCollapsed((collapsed) => !collapsed)} />
-        {selectedItem && !inspectorCollapsed && (
+        {(selectedItem || selectedCaption) && !inspectorCollapsed && (
           <InspectorPanel
             playerRef={playerRef}
             historyGesture={historyGesture}
             templates={allTemplates}
             selectedItem={selectedItem}
+            selectedCaption={selectedCaption}
+            onCaptionUpdate={(patch) => selectedCaption && commands.updateCaptions(patch, selectedCaption.trackId)}
             selectedIds={selectedIds}
             selectedItems={selectedItems}
             fps={state.fps}
@@ -886,7 +960,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             onCollapsedChange={setInspectorCollapsed}
             onItemPropChange={(key, value) => applyInspectorSelection(
               (item) => ({ type: 'updateProps', id: item.id, patch: { [key]: value } }),
-              (item) => item.kind === selectedItem.kind,
+              (item) => selectedItem ? item.kind === selectedItem.kind : false,
             )}
             onItemVolumeChange={(volume) => applyInspectorSelection(
               (item) => ({ type: 'setVolume', id: item.id, volume }),
@@ -937,7 +1011,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
               (item) => item.kind === 'video' || item.kind === 'audio',
             )}
             slipPlan={selectedSlipPlan}
-            onItemSlip={selectedSlipPlan ? (deltaInFrames) => commands.slipItem(selectedItem.id, deltaInFrames) : undefined}
+            onItemSlip={selectedSlipPlan && selectedItem ? (deltaInFrames) => commands.slipItem(selectedItem.id, deltaInFrames) : undefined}
             onNormalizeLoudness={async () => {
               const ids = [...selectedIds];
               const items = [...selectedItems];

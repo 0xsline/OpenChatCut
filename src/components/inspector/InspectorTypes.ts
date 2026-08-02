@@ -14,6 +14,8 @@ import type {
   TransitionType,
   ZoomEffect,
 } from '../../editor/types';
+import type { SelectedCaptionInspector } from '../../captions/captionSelection';
+import type { CaptionsData } from '../../captions/types';
 
 export interface FadePatch {
   fadeInFrames?: number;
@@ -38,6 +40,8 @@ export interface AutoGradeControlProps {
 export interface InspectorPanelProps {
   templates: Tpl[];
   selectedItem: TimelineItem | null;
+  selectedCaption?: SelectedCaptionInspector | null;
+  onCaptionUpdate?: (patch: Partial<CaptionsData>) => void;
   selectedIds: readonly string[];
   selectedItems: readonly TimelineItem[];
   fps: number;

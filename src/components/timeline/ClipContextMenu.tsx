@@ -8,6 +8,7 @@ import { TRANSITION_LABELS, ZOOM_SHAPE_LABELS, type TimelineItem, type TimelineS
 import { ALL_FX, LUT_EFFECTS } from '../../gl/fx/effects';
 import { Icon, type IconName } from '../icons';
 import { useT } from '../../i18n/locale';
+import { contextReferenceItems } from './clipContextSelection';
 
 // speed presets for the variable speed submenu
 const SPEED_PRESETS = [0.25, 0.5, 1, 1.5, 2, 4] as const;
@@ -52,17 +53,22 @@ interface ClipContextMenuProps {
   /** Turn to video → bake to a video clip in place */
   onConvertToVideo: (item: TimelineItem) => void;
   onAddComment: (item: TimelineItem, frame: number, clientX: number, clientY: number) => void;
+  /** Add the clicked clip or its complete multi-selection as structured AI references. */
+  onAddToChat: (items: TimelineItem[]) => void;
+  /** Pick a local replacement for this media clip. */
+  onRelinkFile: (item: TimelineItem) => void;
 }
 
 const PASTE_HINT = '⌘⌥V';
 
-export function ClipContextMenu({ item, transitions, x, y, playhead, commands, timeline, selectedIds, fxClip, onCopyFx, onClose, onExportMg, onConvertToVideo, onAddComment }: ClipContextMenuProps) {
+export function ClipContextMenu({ item, transitions, x, y, playhead, commands, timeline, selectedIds, fxClip, onCopyFx, onClose, onExportMg, onConvertToVideo, onAddComment, onAddToChat, onRelinkFile }: ClipContextMenuProps) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   // Right-click on a multi-selected clip → batch ops on the whole set (NLE convention).
   const batchIds = selectedIds.includes(item.id) && selectedIds.length > 1 ? selectedIds : [item.id];
+  const referenceItems = contextReferenceItems(item.id, selectedIds, timeline.items);
   const batchN = batchIds.length;
   // Multicam: need ≥2 selected video/audio with media
   const multicamIds = (batchN > 1 ? batchIds : selectedIds.length > 1 ? selectedIds : [])
@@ -174,6 +180,7 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
   const isVisual = item.kind !== 'audio';
   const isDom = item.kind === 'motion-graphic' || item.kind === 'text'; // DOM clips → alpha MG export
   const canSpeed = item.kind === 'video' || item.kind === 'audio' || item.kind === 'sequence';
+  const canRelink = !!item.src && ['video', 'audio', 'image', 'gif', 'svg'].includes(item.kind);
   const rate = item.playbackRate ?? 1;
   const displayedRate = displaySpeedRate(rate);
   const reviewFrame = Math.max(item.startFrame, Math.min(playhead, item.startFrame + item.durationInFrames - 1));
@@ -274,6 +281,13 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
           })}
         </div>
       )}
+      <Sep />
+      <Item
+        label={batchN > 1 ? t('添加到 AI 对话框（{n}）', { n: batchN }) : t('添加到 AI 对话框')}
+        icon="sparkles"
+        onClick={run(() => onAddToChat(referenceItems))}
+      />
+      <Item label={t('重新链接文件')} icon="folder" disabled={!canRelink} onClick={run(() => onRelinkFile(item))} />
       <Sep />
       <Item label={t('导出 MG 动画')} icon="download" disabled={!isDom} onClick={run(() => onExportMg(item))} />
       <Item label={t('转为视频')} icon="film" disabled={item.kind === 'audio'} onClick={run(() => onConvertToVideo(item))} />

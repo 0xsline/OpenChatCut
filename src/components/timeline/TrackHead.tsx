@@ -8,6 +8,7 @@ import type { EditorCommands } from '../../editor/store';
 import type { TrackFlags, TrackId, TrackKind } from '../../editor/types';
 import { useT } from '../../i18n/locale';
 import type { TrackDeletePlan } from './trackDelete';
+import { MenuDrillHeader } from './MenuDrillHeader';
 
 const flagBtn = (active: boolean): React.CSSProperties => ({
   width: 20, height: 20, display: 'grid', placeItems: 'center',
@@ -31,6 +32,7 @@ interface TrackHeadProps {
   onToggleDuckMenu: (rect: DOMRect) => void;
   duckMenuPos: { left: number; top: number } | null;
   onCloseDuckMenu: () => void;
+  onBackDuckMenu?: () => void;
   /** the open CaptionStyleMenu (fixed-positioned), when this track owns it */
   children?: ReactNode;
 }
@@ -46,7 +48,7 @@ function trackDeleteTitle(
 
 export function TrackHead({
   trackId, kind, trackName, config, deleteBlockedReason, onDelete, menuElevated, width,
-  commands, onToggleCaptions, onToggleCaptionMenu, onToggleDuckMenu, duckMenuPos, onCloseDuckMenu, children,
+  commands, onToggleCaptions, onToggleCaptionMenu, onToggleDuckMenu, duckMenuPos, onCloseDuckMenu, onBackDuckMenu, children,
 }: TrackHeadProps) {
   const t = useT();
   const hidden = config.hidden ?? false;
@@ -79,7 +81,7 @@ export function TrackHead({
       </div>
       {children}
       {duckMenuPos && (
-        <DuckMenu trackId={trackId} config={config} pos={duckMenuPos} commands={commands} onClose={onCloseDuckMenu} />
+        <DuckMenu trackId={trackId} config={config} pos={duckMenuPos} commands={commands} onClose={onCloseDuckMenu} onBack={onBackDuckMenu ?? onCloseDuckMenu} />
       )}
     </div>
   );
@@ -88,17 +90,18 @@ export function TrackHead({
 // Duck (auto-dodge) role menu is a track-head menu item, not a
 // permanent widget. Sets the per-track role (anchor speech / follower music) + duck depth;
 // the engine (TimelineComposition duckGain) already reacts to it.
-function DuckMenu({ trackId, config, pos, commands, onClose }: {
+function DuckMenu({ trackId, config, pos, commands, onClose, onBack }: {
   trackId: TrackId;
   config: TrackFlags;
   pos: { left: number; top: number };
   commands: EditorCommands;
   onClose: () => void;
+  onBack: () => void;
 }) {
   const t = useT();
   return (
     <div className="cc-caption-style-menu cc-duck-menu" style={{ position: 'fixed', left: pos.left, top: pos.top }} onPointerDown={(e) => e.stopPropagation()}>
-      <div className="cc-caption-style-title">{t('自动闪避 · 混音角色')}</div>
+      <MenuDrillHeader title={t('自动闪避')} onBack={onBack} />
       <div className="cc-caption-style-list">
         {([
           { role: null, label: '关闭', hint: '不参与自动闪避' },

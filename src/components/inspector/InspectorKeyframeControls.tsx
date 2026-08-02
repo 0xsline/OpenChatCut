@@ -24,7 +24,7 @@ export function HistoryGestureProvider({ value, children }: PropsWithChildren<{ 
 }
 
 /** The gesture starts when the pointer is pressed and ends when the pointer is released (no matter where it is released). The same goes for pressing the arrow keys on the keyboard.*/
-function useHistoryGesture(): {
+export function useHistoryGesture(): {
   onPointerDown: () => void;
   onKeyDown: () => void;
   onKeyUp: () => void;

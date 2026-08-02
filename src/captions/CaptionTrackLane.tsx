@@ -171,10 +171,12 @@ function useCaptionMove(options: {
   state: TimelineState; trackId: TrackId; playheadFrame: number; px: number; snapping: boolean; locked: boolean;
   trackFromClientY: (clientY: number) => TrackId; onMove: (move: CaptionCueMove) => void;
   onSelectionMovePreview: (preview: TimelineSelectionMovePreview | null) => void;
+  isOverChatComposer?: (clientX: number, clientY: number) => boolean;
+  onDropSelectionToChat?: (selection: { itemIds: string[]; captionSelections: CaptionSelectionRef[] }) => void;
 }) {
   const {
     state, trackId, playheadFrame, px, snapping, locked, trackFromClientY, onMove,
-    onSelectionMovePreview,
+    onSelectionMovePreview, isOverChatComposer, onDropSelectionToChat,
   } = options;
   const [drag, setDrag] = useState<MoveDrag | null>(null);
   const dragRef = useRef<MoveDrag | null>(null);
@@ -226,6 +228,12 @@ function useCaptionMove(options: {
   const finish = (event: ReactPointerEvent, key: string) => {
     const current = dragRef.current;
     if (!current || current.key !== key) return;
+    if (onDropSelectionToChat && isOverChatComposer?.(event.clientX, event.clientY)) {
+      onDropSelectionToChat({ itemIds: current.itemIds, captionSelections: current.captionSelections });
+      updateDrag(null);
+      onSelectionMovePreview(null);
+      return;
+    }
     const deltaFrames = delta(current, event.clientX);
     const deltaMs = deltaFrames * 1000 / state.fps;
     const targetTrackId = trackFromClientY(event.clientY);
@@ -345,8 +353,8 @@ export function CaptionTrackLane({
   state, captions, trackId, playheadFrame, px, rowHeight, hidden, locked, snapping, trackFromClientY,
   selectedCaptions: controlledSelectedCaptions, externalDeltaFrames = 0, onSelectCaption,
   onUpdate, onMove, onSelectionMovePreview, onDelete,
-  onCopyCue, onPasteCue, onSeedChat, onTranslateCue,
-  onDropExternalFiles, frameFromClientX,
+  onCopyCue, onPasteCue, onSeedChat, onAddSelectionToChat, isOverChatComposer, onTranslateCue,
+  onDropExternalFiles, frameFromClientX, onTrackContextMenu,
 }: {
   state: TimelineState; captions: CaptionsData | null; trackId: TrackId; playheadFrame: number; px: number;
   hidden: boolean; locked: boolean; snapping: boolean; rowHeight: number; trackFromClientY: (clientY: number) => TrackId;
@@ -359,9 +367,12 @@ export function CaptionTrackLane({
   onCopyCue?: (selection: CaptionSelectionRef) => void;
   onPasteCue?: () => boolean;
   onSeedChat?: (text: string) => void;
+  onAddSelectionToChat?: (selection: { itemIds: string[]; captionSelections: CaptionSelectionRef[] }) => void;
+  isOverChatComposer?: (clientX: number, clientY: number) => boolean;
   onTranslateCue?: (text: string, start: number, end: number) => void;
   onDropExternalFiles?: (files: File[], trackId: TrackId, startFrame: number) => void;
   frameFromClientX?: (clientX: number) => number;
+  onTrackContextMenu?: (menu: { trackId: TrackId; x: number; y: number; frame: number }) => void;
 }) {
   const t = useT();
   const [localSelections, setLocalSelections] = useState<CaptionSelectionRef[]>([]);
@@ -409,6 +420,8 @@ export function CaptionTrackLane({
   const move = useCaptionMove({
     state, trackId, playheadFrame, px, snapping, locked, trackFromClientY, onMove,
     onSelectionMovePreview: onSelectionMovePreview ?? (() => {}),
+    isOverChatComposer,
+    onDropSelectionToChat: onAddSelectionToChat,
   });
   const trackIds = timelineTrackIds(state);
   const moveOffsetY = move.drag
@@ -500,6 +513,13 @@ export function CaptionTrackLane({
         event.preventDefault();
         event.stopPropagation();
         onDropExternalFiles(files, trackId, frameFromClientX(event.clientX));
+      }}
+      onContextMenu={(event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest('[data-caption-selection-owner]') || !frameFromClientX || !onTrackContextMenu) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onTrackContextMenu({ trackId, x: event.clientX, y: event.clientY, frame: frameFromClientX(event.clientX) });
       }}>
       {!pages.length && <span className="cc-caption-track-empty">{t('字幕轨道为空')}</span>}
       {pages.map((page, index) => {
@@ -543,8 +563,18 @@ export function CaptionTrackLane({
           <button type="button" role="menuitem" onClick={pasteCue}>{t('粘贴')}</button>
           {onTranslateCue && <button type="button" role="menuitem" aria-haspopup="menu"
             onClick={() => setTranslationOpen(true)}>{t('翻译')} ›</button>}
-          {onSeedChat && <button type="button" role="menuitem" onClick={() => {
-            onSeedChat(captionCueAgentSeed(captionCueText(menu.target)));
+          {(onAddSelectionToChat || onSeedChat) && <button type="button" role="menuitem" onClick={() => {
+            if (onAddSelectionToChat) {
+              const selected = selectedCaptions.some((selection) => captionSelectionKey(selection) === captionSelectionKey(menu.selection));
+              const selection = resolveCaptionDragSelection(
+                menu.selection,
+                selected ? selectedCaptions : [menu.selection],
+                selected ? selectedItemIds : [],
+              );
+              onAddSelectionToChat(selection);
+            } else {
+              onSeedChat?.(captionCueAgentSeed(captionCueText(menu.target)));
+            }
             closeMenu();
           }}>{t('添加到 AI 对话框')}</button>}
           <button type="button" role="menuitem" onClick={() => remove(menu.target)}>{t('删除')}</button>

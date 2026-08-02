@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
-import type { ProjectDoc } from '../editor/types';
+import { activeEditorState, type ProjectDoc } from '../editor/types';
 import type { EditorCommands } from '../editor/store';
+import { keyboardPreviewNudgePlan, type PreviewNudgeDirection } from '../components/preview/previewTransform';
 import { saveVersion } from '../persist/versionStore';
 import type { TimelineShortcutApi } from './timelineApi';
 import type { ActionBindings } from './useActionBindings';
@@ -24,12 +25,42 @@ interface EditorActionDeps {
 
 const timeline = (ref: RefObject<TimelineShortcutApi | null>) => ref.current;
 
+function previewCanvasHasKeyboardFocus(): boolean {
+  if (typeof document === 'undefined') return false;
+  const active = document.activeElement;
+  return active instanceof HTMLElement && !!active.closest('.cc-preview-transform-overlay');
+}
+
+function nudgeSelectedPreview(deps: EditorActionDeps, direction: PreviewNudgeDirection): boolean {
+  if (!previewCanvasHasKeyboardFocus()) return false;
+  const state = activeEditorState(deps.docRef.current);
+  const item = state.selectedId ? state.items.find((candidate) => candidate.id === state.selectedId) : null;
+  if (!item || state.tracks?.[item.track]?.locked || state.tracks?.[item.track]?.hidden) return false;
+  const plan = keyboardPreviewNudgePlan(
+    item,
+    timeline(deps.timelineRef)?.getPlayhead() ?? item.startFrame,
+    direction,
+  );
+  if (!plan) return false;
+  if ('transform' in plan) deps.commands.setItemTransform(plan.itemId, plan.transform);
+  else deps.commands.setItemKeyframe(plan.itemId, plan.keyframe.prop, plan.keyframe.localFrame, plan.keyframe.value);
+  return true;
+}
+
 function playbackActions(deps: EditorActionDeps): ActionBindings {
   const tl = () => timeline(deps.timelineRef);
   return {
     'play-pause': () => tl()?.playPause(),
-    'seek-back': () => { const api = tl(); if (api) api.seekTo(api.getPlayhead() - 1); },
-    'seek-fwd': () => { const api = tl(); if (api) api.seekTo(api.getPlayhead() + 1); },
+    'seek-back': () => {
+      if (nudgeSelectedPreview(deps, 'left')) return;
+      const api = tl();
+      if (api) api.seekTo(api.getPlayhead() - 1);
+    },
+    'seek-fwd': () => {
+      if (nudgeSelectedPreview(deps, 'right')) return;
+      const api = tl();
+      if (api) api.seekTo(api.getPlayhead() + 1);
+    },
     'seek-back-sec': () => { const api = tl(); if (api) api.seekTo(api.getPlayhead() - deps.fps); },
     'seek-fwd-sec': () => { const api = tl(); if (api) api.seekTo(api.getPlayhead() + deps.fps); },
     'shuttle-back': () => tl()?.shuttle(-1),
@@ -74,8 +105,12 @@ function editingActions(deps: EditorActionDeps): ActionBindings {
 function navigationActions(deps: EditorActionDeps): ActionBindings {
   const tl = () => timeline(deps.timelineRef);
   return {
-    'prev-edit': () => tl()?.gotoEdit(-1),
-    'next-edit': () => tl()?.gotoEdit(1),
+    'prev-edit': () => {
+      if (!nudgeSelectedPreview(deps, 'up')) tl()?.gotoEdit(-1);
+    },
+    'next-edit': () => {
+      if (!nudgeSelectedPreview(deps, 'down')) tl()?.gotoEdit(1);
+    },
     'zone-in': () => tl()?.setZoneIn(),
     'zone-out': () => tl()?.setZoneOut(),
     'zone-clear': () => tl()?.clearZone(),
