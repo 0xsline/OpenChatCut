@@ -1,4 +1,5 @@
 import { moveItemsByDelta } from '../editor/multiSelect';
+import { moveLockedItemIds } from '../editor/linkGroups';
 import {
   captionsOnTrack,
   defaultTrackId,
@@ -187,7 +188,12 @@ export function clampTimelineSelectionDelta(
   captionSelections: readonly CaptionSelectionRef[],
   requestedDeltaFrames: number,
 ): number {
-  const ids = new Set(itemIds);
+  const expandedItemIds = moveLockedItemIds(state, itemIds);
+  const ids = new Set(expandedItemIds);
+  if (expandedItemIds.some((id) => {
+    const item = state.items.find((candidate) => candidate.id === id);
+    return item ? state.tracks?.[item.track]?.locked : false;
+  })) return 0;
   const manualLocations = selectedManualCueLocations(state, captionSelections);
   const automaticLocations = selectedAutomaticCueLocations(state, captionSelections);
   let minDelta = Number.NEGATIVE_INFINITY;

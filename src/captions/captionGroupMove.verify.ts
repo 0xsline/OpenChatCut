@@ -52,6 +52,27 @@ assert.deepEqual(moved.captions?.sourceEntries?.[0]?.words?.map((word: { text: s
   ['Outside', 7_000, 8_000],
 ], 'mixed clip/caption selections should move with one shared delta');
 
+const linkedState: TimelineState = {
+  ...state,
+  items: [
+    state.items[0]!,
+    { id: 'clip-linked', track: 'V1', startFrame: 10, durationInFrames: 30, kind: 'video', name: 'Linked', src: '/linked.mp4' },
+  ],
+  linkGroups: [{
+    id: 'link-a',
+    itemIds: ['clip-a', 'clip-linked'],
+    anchorItemId: 'clip-a',
+    mode: 'linked',
+  }],
+};
+const linkedClamped = moveTimelineSelectionByDelta(linkedState, ['clip-a'], selections, -30);
+assert.deepEqual(linkedClamped.items.map((item: { startFrame: number }) => item.startFrame), [50, 0]);
+assert.equal(
+  linkedClamped.captions?.sourceEntries?.[0]?.words?.[0]?.start,
+  667,
+  'linked clips and captions must use the same clamped delta at frame zero',
+);
+
 const automaticCaptions = {
   enabled: true,
   template: 'plain' as const,
