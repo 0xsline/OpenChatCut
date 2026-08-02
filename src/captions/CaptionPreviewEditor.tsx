@@ -17,6 +17,7 @@ import {
 import { Icon } from '../components/icons';
 import { useT } from '../i18n/locale';
 import { captionTemplatePatch } from './captionTemplatePatch';
+import { captionPreviewOutsideClickAction } from './captionPreviewToolbar';
 
 // Preview the caption direct editing layer on the canvas: click on the screen caption → check box + floating toolbar (AI Edit/Style/Font Size).
 // Editor side overlay, no synthesis: geometry is recalculated by passing "display area px size" to containerStyle,
@@ -57,6 +58,8 @@ interface DragRef {
 export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCaptions, onSeedChat, autoEditLaneId, onAutoEditHandled }: CaptionPreviewEditorProps) {
   const t = useT();
   const rootRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<{ w: number; h: number } | null>(null);
   const [frame, setFrame] = useState(0);
   const [selected, setSelected] = useState(false);
@@ -108,15 +111,31 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
     onAutoEditHandled?.();
   }, [autoEditLaneId, cue, onAutoEditHandled, playerRef, target]);
   useEffect(() => {
-    if (!selected) return;
-    const onDown = (e: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setSelected(false); setEditing(false); setPop(null);
+    if (!selected || (!editing && pop === null)) return;
+    const onDown = (event: PointerEvent) => {
+      const node = event.target instanceof Node ? event.target : null;
+      const action = captionPreviewOutsideClickAction({
+        editing,
+        popoverOpen: pop !== null,
+        insideEditor: Boolean(node && editorRef.current?.contains(node)),
+        insideToolbar: Boolean(node && toolbarRef.current?.contains(node)),
+        draftChanged: Boolean(target && draft !== target.cue.text),
+      });
+      if (action.commitDraft && target) {
+        const patch = captionPreviewTextPatch(captions, target, draft);
+        if (patch) onUpdateCaptions(patch);
+      }
+      if (action.closeEditor) setEditing(false);
+      if (action.closePopover) setPop(null);
+      if (node && rootRef.current && !rootRef.current.contains(node)) {
+        setSelected(false);
+        setEditing(false);
+        setPop(null);
       }
     };
     window.addEventListener('pointerdown', onDown, true);
     return () => window.removeEventListener('pointerdown', onDown, true);
-  }, [selected]);
+  }, [captions, draft, editing, onUpdateCaptions, pop, selected, target]);
 
   if (!target || !cue || !box) {
     return <div ref={rootRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />;
@@ -217,6 +236,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
         <div style={{ position: 'relative', pointerEvents: 'auto', maxWidth: '100%', transform: drag ? `translate(${drag.dx}px, ${drag.dy}px)` : undefined }}>
           {editing ? (
             <textarea
+              ref={editorRef}
               value={draft}
               autoFocus
               rows={2}
@@ -242,7 +262,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
               onPointerMove={onHitPointerMove}
               onPointerUp={onHitPointerUp}
               onKeyDown={onHitKeyDown}
-              onDoubleClick={() => { setSelected(true); setEditing(true); setDraft(cue.text); playerRef.current?.pause(); }}
+              onDoubleClick={() => { setSelected(true); setPop(null); setEditing(true); setDraft(cue.text); playerRef.current?.pause(); }}
               style={drag
                 ? { ...textCss, opacity: 0.92, cursor: 'grabbing', touchAction: 'none', userSelect: 'none' }
                 : { ...textCss, color: 'transparent', WebkitTextStroke: undefined, textShadow: 'none', background: 'transparent', cursor: 'grab', touchAction: 'none', userSelect: 'none' }}
@@ -256,7 +276,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
 
           {/* Floating toolbar (AI editing | text/style/color | font size | delete)*/}
           {selected && !drag && (
-            <div className="cc-capedit-bar" onPointerDown={(e) => e.stopPropagation()}>
+            <div ref={toolbarRef} className="cc-capedit-bar" onPointerDown={(e) => e.stopPropagation()}>
               {onSeedChat && (
                 <>
                   <button type="button" className="cc-capedit-btn ai" title={t('让 AI 改写这句')}
@@ -266,7 +286,13 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
                   <span className="cc-capedit-divider" aria-hidden />
                 </>
               )}
-              <button type="button" className="cc-capedit-btn" title={t('编辑文字')} onClick={() => { setEditing(true); setDraft(cue.text); }}>
+              <button type="button" className="cc-capedit-btn" title={t('编辑文字')} onClick={() => {
+                setPop(null);
+                if (!editing) {
+                  setEditing(true);
+                  setDraft(cue.text);
+                }
+              }}>
                 <Icon name="pencil" size={12} />{t('文字')}
               </button>
               <button type="button" className={`cc-capedit-btn${pop === 'styles' ? ' on' : ''}`} title={t('字幕样式')} onClick={() => setPop(pop === 'styles' ? null : 'styles')}>Aa</button>

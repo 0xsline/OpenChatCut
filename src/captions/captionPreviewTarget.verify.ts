@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { appendManualCue, newManualCaptions } from './manualCaptions';
 import { captionTemplatePatch } from './captionTemplatePatch';
+import { captionPreviewOutsideClickAction } from './captionPreviewToolbar';
 import { captionPreviewTextColor, captionPreviewTextColorPatch, effectivePreset } from './renderStyles';
 import {
   captionPreviewLayoutPatch,
@@ -44,6 +45,29 @@ assert.equal(
   captionPreviewTextColor({ ...karaokePreset, wholeLine: true }),
   '#ffffff',
   'whole-line captions expose their normal text color',
+);
+
+assert.deepEqual(
+  captionPreviewOutsideClickAction({
+    editing: true,
+    popoverOpen: false,
+    insideEditor: false,
+    insideToolbar: false,
+    draftChanged: true,
+  }),
+  { closeEditor: true, commitDraft: true, closePopover: false },
+  'clicking canvas space commits a changed direct-edit draft before closing the editor',
+);
+assert.deepEqual(
+  captionPreviewOutsideClickAction({
+    editing: true,
+    popoverOpen: true,
+    insideEditor: false,
+    insideToolbar: true,
+    draftChanged: true,
+  }),
+  { closeEditor: false, commitDraft: false, closePopover: false },
+  'toolbar pointerdown must not cancel the toolbar click or close the active editor',
 );
 
 const target = findCaptionPreviewTarget(captions, [], 30, 1_500);
