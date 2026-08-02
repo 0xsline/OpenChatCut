@@ -50,7 +50,7 @@ try {
     ['asset-a', 'asset-b'],
     '右键已选素材必须保留整个多选集',
   );
-  assert.equal(duplicateAssetName('桂林行程.mp4', 'copy'), '桂林行程 copy.mp4');
+  assert.equal(duplicateAssetName('项目素材.mp4', 'copy'), '项目素材 copy.mp4');
   assert.equal(duplicateAssetName('无扩展名', 'copy'), '无扩展名 copy');
   assert.deepEqual(
     assetMenuSelectionIds('asset-c', new Set(['asset-a', 'asset-b']), ['asset-a', 'asset-b', 'asset-c']),
@@ -71,10 +71,10 @@ try {
     batchAssetRename([
       { id: 'asset-a', name: '原片.mp4' },
       { id: 'asset-b', name: '封面.png' },
-    ], '桂林行程'),
+    ], '项目素材'),
     [
-      { id: 'asset-a', name: '桂林行程.mp4' },
-      { id: 'asset-b', name: '桂林行程 2.png' },
+      { id: 'asset-a', name: '项目素材.mp4' },
+      { id: 'asset-b', name: '项目素材 2.png' },
     ],
     '批量重命名必须保留各素材扩展名，并给后续素材添加稳定序号',
   );
