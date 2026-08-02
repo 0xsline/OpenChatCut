@@ -84,15 +84,15 @@ button, input, select { font: inherit; }
 .cc-window-control {
   appearance:none; position:relative; width:12px; height:12px; min-width:12px; padding:0;
   box-sizing:border-box; flex:0 0 12px; align-self:center; margin:0;
-  border:0.5px solid rgba(0,0,0,0.18); border-radius:50%; cursor:pointer;
-  box-shadow:inset 0 0 0 0.25px rgba(0,0,0,0.2);
+  border:0.5px solid rgba(var(--cc-shadow-rgb),0.18); border-radius:50%; cursor:pointer;
+  box-shadow:inset 0 0 0 0.25px rgba(var(--cc-shadow-rgb),0.2);
 }
-.cc-window-control--close { background:#ff5f57; }
-.cc-window-control--minimize { background:#febc2e; }
-.cc-window-control--maximize { background:#28c840; }
+.cc-window-control--close { background:var(--cc-danger); }
+.cc-window-control--minimize { background:var(--cc-gold); }
+.cc-window-control--maximize { background:var(--cc-success); }
 .cc-window-control-glyph {
   position:absolute; left:50%; top:50%; width:6px; height:6px;
-  transform:translate(-50%, -50%); color:rgba(0,0,0,0.72); font-size:0;
+  transform:translate(-50%, -50%); color:rgba(var(--cc-shadow-rgb),0.72); font-size:0;
   opacity:0; pointer-events:none; transition:opacity 100ms ease;
 }
 .cc-window-control-glyph::before,
