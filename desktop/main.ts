@@ -3,9 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen, type OpenDialogOptions } from 'electron';
 import { startEmbeddedServer } from './embedded-server.ts';
 import { preparePackagedRuntime } from './packaged-runtime.ts';
+import { installResponsiveWindowScale, resolveInitialDesktopWindowBounds } from './window-scale.ts';
 import { createExportDirectoryGrant } from '../server/export-destinations.ts';
 
 // Electron main process entry. dev mode: esbuild hits desktop-dist/main.mjs,dist/ in the codebase root;
@@ -157,9 +158,9 @@ async function boot(): Promise<void> {
   const { origin } = await startEmbeddedServer(DIST_DIR);
   console.log(`[desktop] embedded server at ${origin}`);
 
+  const initialBounds = resolveInitialDesktopWindowBounds(screen.getPrimaryDisplay().workArea);
   const win = new BrowserWindow({
-    width: 1600,
-    height: 950,
+    ...initialBounds,
     show: !SMOKE,
     backgroundColor: '#111111',
     title: 'OpenChatCut',
@@ -170,6 +171,7 @@ async function boot(): Promise<void> {
       spellcheck: false,
     },
   });
+  installResponsiveWindowScale(win);
   await win.loadURL(`${origin}/`);
 
   if (SMOKE) {
