@@ -16,6 +16,7 @@ import { useAssetMenu } from './useAssetMenu';
 import { assetMenuFavoriteValue, assetMenuSelectionIds } from './assetMenuSelection';
 import { allVisibleAssetsSelected, toggleVisibleAssetSelection } from './mediaSelectionActions';
 import { toggleMediaView } from './mediaView';
+import { isMediaImportCancelled, mediaImportErrorMessage } from './mediaImportConflict';
 interface MediaPoolPanelProps {
   semanticScopeId: string;
   assets: MediaAsset[];
@@ -205,15 +206,20 @@ export function MediaPoolPanel({
       const list = Array.from(files);
       for (let i = 0; i < list.length; i += 1) {
         const file = list[i]!;
-        const imported = await onImport(file, (ratio) => {
-          // Multi-file: map each file's progress into a global 0..1 band.
-          setUploadRatio((i + ratio) / list.length);
-        });
-        if (targetFolderId) onMoveAssets([imported.id], targetFolderId);
+        try {
+          const imported = await onImport(file, (ratio) => {
+            // Multi-file: map each file's progress into a global 0..1 band.
+            setUploadRatio((i + ratio) / list.length);
+          });
+          if (targetFolderId) onMoveAssets([imported.id], targetFolderId);
+        } catch (reason) {
+          if (isMediaImportCancelled(reason)) continue;
+          throw reason;
+        }
       }
       setUploadRatio(1);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      setError(mediaImportErrorMessage(reason));
     } finally {
       setBusy(false);
       setUploadRatio(null);
