@@ -52,6 +52,7 @@ export const EXPORT_ACTION_LABELS: Record<ExportTab, string> = {
 
 export const EXPORT_FPS = [...EXPORT_FPS_OPTIONS];
 export const EXPORT_RESOLUTION_OPTIONS = Object.keys(EXPORT_RESOLUTIONS) as ExportResolution[];
+export const DEFAULT_INCLUDE_MG = true;
 
 export interface ExportVideoSettings {
   codec: 'h264' | 'vp8';
@@ -182,7 +183,7 @@ export function useExportDialogModel({ state, project, projectId, projectName, e
   const video = useVideoSettings(state);
   const subtitles = useSubtitleSettings(state);
   const [nleFormat, setNleFormat] = useState<'fcp_xml' | 'fcp_xml_resolve'>('fcp_xml');
-  const [includeMg, setIncludeMg] = useState(false);
+  const [includeMg, setIncludeMg] = useState(DEFAULT_INCLUDE_MG);
   const mgItems = useMemo(() => state.items.filter((item) => item.kind === 'motion-graphic'), [state.items]);
   const base = sanitizeFileName(projectName, 'export');
   const workflow = useExportWorkflow({
