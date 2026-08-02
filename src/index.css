@@ -254,6 +254,8 @@ button, input, select { font: inherit; }
 .cc-template-card.favorite .cc-template-favorite { color:var(--cc-gold); }
 
 .cc-resource-browser { display:flex; flex-direction:column; gap:6px; min-height:0; }
+.cc-resource-tertiary-tabs,.cc-sound-chips { position:sticky; top:-10px; z-index:3; background:var(--cc-panel); }
+.cc-template-category-tabs { margin-top:-10px; padding-top:10px; }
 .cc-resource-hint { font-size:10.5px; line-height:1.35; margin-bottom:2px; }
 /* Compact 3-col grid — thumbs smaller than earlier 16/10 full-bleed cards */
 .cc-resource-grid { position:relative; width:100%; min-height:0; }
@@ -304,7 +306,7 @@ button, input, select { font: inherit; }
 }
 .cc-sound-search-clear:hover { background:var(--cc-hover); color:var(--cc-text); }
 .cc-sound-chips {
-  display:flex; gap:6px; overflow-x:auto; padding-bottom:2px;
+  display:flex; gap:6px; overflow-x:auto; margin-top:-10px; padding-top:10px; padding-bottom:2px;
 }
 .cc-sound-chip {
   flex-shrink:0; cursor:pointer; font-size:11.5px; padding:4px 11px; border-radius:999px;
