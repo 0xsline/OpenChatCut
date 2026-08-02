@@ -333,6 +333,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
       {changeLogMenu}
       <aside
         className="cc-chat-panel"
+        data-cc-chat-popover-boundary
         data-cc-shortcut-surface="agent-chat"
         tabIndex={-1}
         onKeyDown={onChatKeyDown}

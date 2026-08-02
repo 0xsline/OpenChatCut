@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
-import { theme, themeAlpha } from '../../theme';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { theme } from '../../theme';
 import { getLocale, tData, useT } from '../../i18n/locale';
 import type { AgentReference } from '../../agent/context';
 import { isSelectionRefKind } from '../../agent/selection-refs';
@@ -16,6 +16,7 @@ import {
 } from '../../agent/model-selection';
 import { ComposerMoreMenu, ComposerToolbar, type ComposerPopover } from './ComposerToolbar';
 import { WorkflowPickerContent } from './WorkflowPickerContent';
+import { ChatPopover as Popover } from './ChatPopover';
 
 /** composer shell height (includes textarea + toolbar); drag the top handle to resize */
 const COMPOSER_H_MIN = 88;
@@ -59,45 +60,6 @@ interface ChatComposerProps {
   onDismissPasteError?: () => void;
   taRef: RefObject<HTMLTextAreaElement | null>;
   placeholder?: string;
-}
-
-// Popover above the bar — fixed positioning so parent overflow never clips menus.
-function Popover({ children, onClose, w, anchor }: {
-  children: ReactNode; onClose: () => void; w?: number; anchor: HTMLElement | null;
-}) {
-  const [box, setBox] = useState<{ left: number; bottom: number } | null>(null);
-  useLayoutEffect(() => {
-    if (!anchor) return;
-    const place = () => {
-      const r = anchor.getBoundingClientRect();
-      const width = w ?? 220;
-      // keep menu on-screen horizontally
-      const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
-      const bottom = Math.max(8, window.innerHeight - r.top + 8);
-      setBox({ left, bottom });
-    };
-    place();
-    window.addEventListener('resize', place);
-    window.addEventListener('scroll', place, true);
-    return () => {
-      window.removeEventListener('resize', place);
-      window.removeEventListener('scroll', place, true);
-    };
-  }, [anchor, w]);
-  if (!box) return null;
-  return (
-    <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80 }} />
-      <div style={{
-        position: 'fixed', left: box.left, bottom: box.bottom, zIndex: 81,
-        minWidth: w ?? 220, maxWidth: w ?? 300, maxHeight: Math.min(280, window.innerHeight - box.bottom - 16),
-        overflowY: 'auto', background: theme.panelAlt, border: `0.5px solid ${theme.borderLight}`,
-    borderRadius: 6, boxShadow: `0 12px 40px ${themeAlpha.shadow(0.5)}`, padding: 6,
-      }}>
-        {children}
-      </div>
-    </>
-  );
 }
 
 // MG three-level quality label (speed|balance|quality)
@@ -329,13 +291,13 @@ export function ChatComposer(props: ChatComposerProps) {
 
       {/* menus rendered fixed — never clipped by composer bounds */}
       {pop === 'mode' && (
-        <Popover w={172} anchor={popAnchor} onClose={closePop}>
+        <Popover width={172} anchor={popAnchor} onClose={closePop}>
           {modeRow('agent', t('代理模式'), t('可编辑时间线，改动可撤销'))}
           {modeRow('ask', t('问答模式'), t('只回答，不动时间线'))}
         </Popover>
       )}
       {pop === 'model' && (
-        <Popover w={278} anchor={popAnchor} onClose={closePop}>
+        <Popover width={278} anchor={popAnchor} onClose={closePop}>
           <div style={{ fontSize: 10.5, color: theme.textDim, padding: '4px 8px 6px' }}>
             {t('本条对话使用的模型')}
           </div>
@@ -420,7 +382,7 @@ export function ChatComposer(props: ChatComposerProps) {
         </Popover>
       )}
       {pop === 'skill' && (
-        <Popover w={400} anchor={popAnchor} onClose={closePop}>
+        <Popover width={400} className="cc-chat-popover--workflow" ariaLabel={t('选择创作工作流')} anchor={popAnchor} onClose={closePop}>
           <WorkflowPickerContent
             creativeMode={creativeMode}
             onCreativeModeChange={onCreativeModeChange}

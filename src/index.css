@@ -210,6 +210,8 @@ button, input, select { font: inherit; }
 .cc-creative-mode-card[data-active="true"] { border-color:rgba(var(--cc-accent-rgb),0.55); }
 .cc-creative-mode-card .cc-creative-mode-copy strong { font-size:11.5px; }
 .cc-creative-mode-card .cc-creative-mode-copy small { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:3; text-overflow:ellipsis; white-space:normal; }
+.cc-chat-popover-backdrop { position:fixed; inset:0; z-index:80; }
+.cc-chat-popover { position:fixed; z-index:81; overflow-y:auto; padding:6px; border:0.5px solid; border-radius:6px; }
 
 @media (prefers-reduced-motion: reduce) {
   .cc-chat-starter-icon,
