@@ -4,7 +4,7 @@ import type { PlayerRef } from '@remotion/player';
 import type { TimelineState } from '../editor/types';
 import type { CaptionsData } from './types';
 import { CAPTION_STYLES } from './styles';
-import { containerStyle, wordStyle } from './renderStyles';
+import { captionPreviewTextColor, captionPreviewTextColorPatch, containerStyle, wordStyle } from './renderStyles';
 import { buildCues, fmtCueMs } from './captionCues';
 import {
   captionPreviewLayoutPatch,
@@ -14,6 +14,7 @@ import {
 } from './captionPreviewTarget';
 import { Icon } from '../components/icons';
 import { useT } from '../i18n/locale';
+import { captionTemplatePatch } from './captionTemplatePatch';
 
 // Preview the caption direct editing layer on the canvas: click on the screen caption → check box + floating toolbar (AI Edit/Style/Font Size).
 // Editor side overlay, no synthesis: geometry is recalculated by passing "display area px size" to containerStyle,
@@ -114,9 +115,10 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
   }
 
   const preset = target.preset;
+  const currentTextColor = captionPreviewTextColor(preset);
   const block = containerStyle(preset, captions.template, box.w, box.h, target.layout);
   const textCss = {
-    ...wordStyle(preset, false),
+    ...wordStyle(preset, !preset.wholeLine),
     background: preset.wholeLine && preset.background ? preset.background : 'transparent',
     borderRadius: 6,
     padding: preset.wholeLine && preset.background ? '0.1em 0.42em' : 0,
@@ -133,7 +135,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
     onUpdateCaptions(captionPreviewStylePatch(captions, target, { fontSize: next }));
   };
   const setColor = (hex: string) => {
-    onUpdateCaptions(captionPreviewStylePatch(captions, target, { color: hex }));
+    onUpdateCaptions(captionPreviewStylePatch(captions, target, captionPreviewTextColorPatch(preset, hex)));
   };
   // ── Drag and move (bottom anchor offsetYRatio positive upward, containerStyle takes the negative sign) ──
   const anchorV = (() => {
@@ -189,7 +191,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
     setDrag(null);
   };
 
-  const curColor = preset.color;
+  const curColor = currentTextColor;
 
   return (
     <div ref={rootRef} style={{ position: 'absolute', inset: 0, zIndex: 4, pointerEvents: 'none', overflow: 'visible' }}>
@@ -206,7 +208,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
                 if (e.key === 'Escape') { e.stopPropagation(); setEditing(false); }
               }}
               style={{
-                ...textCss, background: '#000000d9', color: preset.color, font: 'inherit', fontSize: 'inherit',
+                ...textCss, background: '#000000d9', color: currentTextColor, font: 'inherit', fontSize: 'inherit',
                 width: 'max(220px, 100%)', textAlign: 'center', border: '1.5px solid var(--cc-accent)',
                 outline: 'none', resize: 'none', lineHeight: 1.25,
               }}
@@ -264,7 +266,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
                   {CAPTION_STYLES.map((st) => (
                     <button key={st.id} type="button"
                       className={`cc-capedit-styleitem${st.id === captions.template ? ' on' : ''}`}
-                      onClick={() => { onUpdateCaptions({ template: st.id }); setPop(null); }}>
+                      onClick={() => { onUpdateCaptions(captionTemplatePatch(captions, st.id)); setPop(null); }}>
                       {t(st.labelZh)}
                     </button>
                   ))}

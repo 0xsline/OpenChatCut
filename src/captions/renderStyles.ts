@@ -1,11 +1,24 @@
 import type { CSSProperties } from 'react';
 import type { CaptionLayout, CaptionsData, CaptionTemplate } from './types';
-import { CAPTION_STYLE_BY_ID, type CaptionStyle } from './styles';
+import { CAPTION_STYLE_BY_ID, type CaptionStyle, type CaptionStyleOverride } from './styles';
 
 /** Template preset merged with the caption's explicit style override. */
 export function effectivePreset(captions: CaptionsData): CaptionStyle {
   const preset = CAPTION_STYLE_BY_ID[captions.template];
   return captions.styleOverride ? { ...preset, ...captions.styleOverride } : preset;
+}
+
+/** Color currently painted by the direct-edit preview. */
+export function captionPreviewTextColor(preset: CaptionStyle): string {
+  return preset.wholeLine ? preset.color : preset.highlightColor;
+}
+
+/** Keep active and inactive karaoke words consistent after a color edit. */
+export function captionPreviewTextColorPatch(
+  preset: CaptionStyle,
+  color: string,
+): CaptionStyleOverride {
+  return preset.wholeLine ? { color } : { color, highlightColor: color };
 }
 
 /** Per-word look; active marks the word currently being spoken. */
