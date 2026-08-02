@@ -14,6 +14,7 @@ import { useT } from '../i18n/locale';
 import { SemanticSearchControls } from './semantic-search/SemanticSearchControls';
 import type { SemanticMatch } from './semantic-search/types';
 import type { MediaSortKey, MediaTypeFilter } from './mediaPoolFilter';
+import { mediaViewToggleLabel } from './mediaView';
 
 export type MediaToolbarMenu = 'sort' | 'filter' | 'actions' | null;
 const SORT_OPTIONS = [['newest', '最新导入'], ['name', '名称 A–Z'], ['duration', '时长']] as const;
@@ -129,7 +130,7 @@ export function MediaPoolToolbar(props: MediaPoolToolbarProps) {
       <SemanticSearchControls scopeId={props.scopeId} assets={props.assets} onResultsChange={props.onSemanticResults} />
       <button className="cc-media-icon" aria-label={t('上传素材')} title={t('上传素材')} disabled={props.busy} onClick={props.onUpload}><Icon name="upload" size={19} /></button>
       {props.busy && props.uploadRatio != null && <span className="cc-media-upload-pct" title={t('上传中')}>{Math.round(props.uploadRatio * 100)}%</span>}
-      <button className="cc-media-icon" aria-label={t('切换网格列表')} title={t('切换网格/列表')} onClick={props.onViewChange}><Icon name={props.view === 'grid' ? 'list' : 'grid'} size={19} /></button>
+      <button className="cc-media-icon" aria-label={t(mediaViewToggleLabel(props.view))} title={t(mediaViewToggleLabel(props.view))} onClick={props.onViewChange}><Icon name={props.view === 'grid' ? 'list' : 'grid'} size={19} /></button>
       <SortMenu {...props} lifecycle={lifecycle} />
       <FilterMenu {...props} lifecycle={lifecycle} />
       <ActionsMenu {...props} lifecycle={lifecycle} />

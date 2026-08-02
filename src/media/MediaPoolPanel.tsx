@@ -13,6 +13,9 @@ import type { MobileUploadRecord } from './mobileUploadApi';
 import { AssetMenuPortal, MissingMediaBanner, RelinkAllDialog } from './MediaPoolOverlays';
 import { MediaPoolGrid, type MediaGridEntry } from './MediaPoolGrid';
 import { useAssetMenu } from './useAssetMenu';
+import { assetMenuFavoriteValue, assetMenuSelectionIds } from './assetMenuSelection';
+import { allVisibleAssetsSelected, toggleVisibleAssetSelection } from './mediaSelectionActions';
+import { toggleMediaView } from './mediaView';
 interface MediaPoolPanelProps {
   semanticScopeId: string;
   assets: MediaAsset[];
@@ -250,12 +253,8 @@ export function MediaPoolPanel({
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   }), []);
-  const toggleAll = () => setSelected((old) => {
-    const next = new Set(old);
-    const allSelected = visible.length > 0 && visible.every((asset) => next.has(asset.id));
-    for (const asset of visible) { if (allSelected) next.delete(asset.id); else next.add(asset.id); }
-    return next;
-  });
+  const visibleIds = visible.map((asset) => asset.id);
+  const toggleAll = () => setSelected((old) => toggleVisibleAssetSelection(old, visibleIds));
 
   const showFolders = !q && !semanticResults && !favoritesOnly;
   const gridEntries = useMemo<MediaGridEntry[]>(() => [
@@ -274,10 +273,13 @@ export function MediaPoolPanel({
     anchor: HTMLElement,
     point?: { x: number; y: number },
   ) => {
+    setSelected((current) => current.has(id) ? current : new Set([id]));
     setConfirmDeleteId(null);
     openAssetMenuAt(id, anchor, point);
   }, [openAssetMenuAt]);
   const menuAsset = assetMenu ? assets.find((asset) => asset.id === assetMenu) : undefined;
+  const menuAssetIds = menuAsset ? assetMenuSelectionIds(menuAsset.id, selected, assets.map((asset) => asset.id)) : [];
+  const menuAssets = assets.filter((asset) => menuAssetIds.includes(asset.id));
 
   return (
     <div className="cc-media-pool" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void onPick(event.dataTransfer.files); }}>
@@ -301,7 +303,7 @@ export function MediaPoolPanel({
         onMobileUpload={(restoreFocus) => { modalFocus.remember(restoreFocus); setMobileUploadOpen(true); }}
         onAddSolid={() => onAddSolid?.()}
         onCreateFolder={createFolder}
-        onViewChange={() => setView((value) => value === 'grid' ? 'list' : 'grid')}
+        onViewChange={() => setView(toggleMediaView)}
         onMenuChange={setMenu}
         onSortChange={setSort}
         onTypeChange={setType}
@@ -324,7 +326,7 @@ export function MediaPoolPanel({
       {assets.length > 0 && <div className="cc-media-export-guide">{t('点击素材右上角“⋯”：图片、视频和音频可下载原文件，MG 可导出透明 MOV。')}</div>}
 
       {selectedAssets.length > 0 && <div className="cc-media-selection">
-        <button onClick={toggleAll}>{visible.every((asset) => selected.has(asset.id)) ? t('清除选择') : t('全选')}</button>
+        <button onClick={toggleAll}>{allVisibleAssetsSelected(selected, visibleIds) ? t('清除选择') : t('全选')}</button>
         <button onClick={() => selectedAssets.forEach(onAddAsset)}>{t('加到时间线')}</button>
         <select aria-label={t('移动所选素材')} defaultValue="" onChange={(event) => { onMoveAssets(selectedAssets.map((asset) => asset.id), event.target.value === '__root__' ? undefined : event.target.value); setSelected(new Set()); event.target.value = ''; }}>
           <option value="" disabled>{t('移动到…')}</option><option value="__root__">Master</option>
@@ -365,7 +367,7 @@ export function MediaPoolPanel({
         canRemove={!!onRemoveAsset}
         onClose={() => closeAssetMenu(true)}
         onError={setError}
-        onFavorite={() => { if (menuAsset) onSetFavorite(menuAsset.id, !menuAsset.favorite); closeAssetMenu(true); }}
+        onFavorite={() => { const favorite = assetMenuFavoriteValue(menuAssets); menuAssets.forEach((asset) => onSetFavorite(asset.id, favorite)); closeAssetMenu(true); }}
         onRename={() => { if (menuAsset) openPrompt({ title: '素材显示名称', initialValue: menuAsset.name, onSubmit: (name) => onRenameAsset(menuAsset.id, name) }); modalFocus.remember(() => closeAssetMenu(true)); closeAssetMenu(); }}
         onRelink={() => { if (menuAsset) startRelink(menuAsset.id); closeAssetMenu(); }}
         onRemove={() => {
@@ -380,9 +382,9 @@ export function MediaPoolPanel({
           closeAssetMenu(true);
           setConfirmDeleteId(null);
         }}
-        onMove={(folderId) => { if (menuAsset) onMoveAssets([menuAsset.id], folderId); closeAssetMenu(true); }}
-        onAddTimeline={() => { if (menuAsset) onAddAsset(menuAsset); closeAssetMenu(true); }}
-        onAddChat={() => { if (menuAsset) onAddAssetToChat?.(menuAsset); closeAssetMenu(true); }}
+        onMove={(folderId) => { if (menuAssetIds.length) onMoveAssets(menuAssetIds, folderId); closeAssetMenu(true); }}
+        onAddTimeline={() => { menuAssets.forEach(onAddAsset); closeAssetMenu(true); }}
+        onAddChat={() => { menuAssets.forEach((asset) => onAddAssetToChat?.(asset)); closeAssetMenu(true); }}
       />
 
       {promptState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t(promptState.title)}>
