@@ -265,6 +265,21 @@ async function uploadFile(file: File, onProgress?: UploadProgress): Promise<stri
   return uploadFileSimple(file, onProgress);
 }
 
+interface DesktopLocalMediaApi {
+  importLocalMedia(file: File): Promise<{ src: string; storedName: string } | null>;
+  prepareTransparentMovProxy(storedName: string): Promise<{ src: string } | null>;
+}
+
+async function importDesktopLocalMedia(file: File): Promise<{ src: string; storedName: string } | null> {
+  const api = (globalThis as typeof globalThis & { openChatCutDesktop?: DesktopLocalMediaApi }).openChatCutDesktop;
+  if (!api?.importLocalMedia) return null;
+  const imported = await api.importLocalMedia(file);
+  if (!imported) return null;
+  if (!/\.mov$/i.test(imported.storedName) || !api.prepareTransparentMovProxy) return imported;
+  const proxy = await api.prepareTransparentMovProxy(imported.storedName).catch(() => null);
+  return proxy ? { ...imported, src: proxy.src } : imported;
+}
+
 const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `a_${Date.now()}`;
 
 /** Post-upload conditional compress (server ffmpeg). No-op for already-efficient sources. */
@@ -356,7 +371,8 @@ export async function importMedia(
       : Promise.resolve(null);
 
     // Upload fills 0..0.9; optional video normalize uses 0.9..1.
-    const srcRaw = await uploadFile(file, hooks.onProgress
+    const desktopImport = await importDesktopLocalMedia(file);
+    const srcRaw = desktopImport?.src ?? await uploadFile(file, hooks.onProgress
       ? (r) => hooks.onProgress!(r * 0.9)
       : undefined);
     hooks.onProgress?.(0.92);
@@ -374,7 +390,7 @@ export async function importMedia(
     let width = meta.width;
     let height = meta.height;
     let durationInFrames = meta.durationInFrames;
-    if (kind === 'video') {
+    if (kind === 'video' && !desktopImport) {
       const norm = await normalizeUploadedVideo(srcRaw, fps);
       src = norm.src;
       if (norm.width) width = norm.width;
@@ -385,7 +401,7 @@ export async function importMedia(
     }
     hooks.onProgress?.(1);
 
-    if (src === srcRaw) {
+    if (src === srcRaw && !desktopImport) {
       void putMediaBlob(src, file, {
         name: file.name,
         mime: file.type,
