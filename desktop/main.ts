@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, dialog, ipcMain, screen, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen, type OpenDialogOptions } from 'electron';
+import { buildTextContextMenuTemplate } from './context-menu.ts';
 import { startEmbeddedServer } from './embedded-server.ts';
 import { preparePackagedRuntime } from './packaged-runtime.ts';
 import { installResponsiveWindowScale, resolveInitialDesktopWindowBounds } from './window-scale.ts';
@@ -172,6 +173,11 @@ async function boot(): Promise<void> {
     },
   });
   installResponsiveWindowScale(win);
+  win.webContents.on('context-menu', (_event, params) => {
+    const template = buildTextContextMenuTemplate(params);
+    if (!template.length) return;
+    Menu.buildFromTemplate(template).popup({ window: win });
+  });
   await win.loadURL(`${origin}/`);
 
   if (SMOKE) {
