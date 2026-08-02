@@ -75,7 +75,6 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
     return true;
   };
   useEffect(() => {
-    let raf = 0;
     let detach: (() => void) | null = null;
     let attached: unknown = null; // Which Player instance the listener is currently hung on
     const attachTo = (player: NonNullable<typeof playerRef.current>) => {
@@ -137,7 +136,8 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
     };
     // Instance watchdog: Player will rehang with preview (empty timeline → placeholder → more content = new instance),
     // A one-time attach will leave the monitoring on the dead instance → the hand movement/timecode/playback state will not move during playback.
-    // Compare the instance identity every frame and reset it if it changes (the root cause of playhead repair).
+    // Check identity at low frequency while paused; frameupdate already drives
+    // painting during playback, so a permanent 60fps watchdog only wastes CPU.
     const tick = () => {
       const player = playerRef.current;
       if (player !== attached) {
@@ -145,10 +145,10 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
         attached = player;
         detach = player ? attachTo(player) : null;
       }
-      raf = requestAnimationFrame(tick);
     };
     tick();
-    return () => { cancelAnimationFrame(raf); detach?.(); };
+    const watchdog = setInterval(tick, 100);
+    return () => { clearInterval(watchdog); detach?.(); };
   }, [playerRef]);
   useEffect(() => {
     const player = playerRef.current;
