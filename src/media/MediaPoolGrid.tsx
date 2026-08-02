@@ -23,6 +23,8 @@ interface MediaPoolGridProps {
   assetMenu: string | null;
   canRelink: boolean;
   onOpenFolder: (id: string) => void;
+  onDropFiles: (files: FileList, folderId: string) => void;
+  onMoveAsset: (id: string, folderId: string) => void;
   onOpenFavorites: () => void;
   onAddSolid?: () => void;
   onSetFavorite: (id: string, favorite: boolean) => void;
@@ -106,7 +108,7 @@ function MediaVirtualRows(props: MediaPoolGridProps & ReturnType<typeof useMedia
                 <span><Icon name="star" size={22} /></span><strong>{t('收藏夹')}</strong>
               </button>
             : entry.kind === 'folder'
-              ? <MediaFolderCard key={`folder:${entry.folder.id}`} folder={entry.folder} onOpen={props.onOpenFolder} onFocusChange={props.setFocusedFolderId} />
+              ? <MediaFolderCard key={`folder:${entry.folder.id}`} folder={entry.folder} onOpen={props.onOpenFolder} onFocusChange={props.setFocusedFolderId} onDropFiles={props.onDropFiles} onMoveAsset={props.onMoveAsset} />
               : <MediaAssetCard
               key={`asset:${entry.asset.id}`}
               asset={entry.asset}

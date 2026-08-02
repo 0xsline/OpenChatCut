@@ -196,7 +196,7 @@ export function MediaPoolPanel({
   });
   const selectedAssets = assets.filter((asset) => selected.has(asset.id));
 
-  const onPick = async (files: FileList | null) => {
+  const onPick = async (files: FileList | null, targetFolderId = currentFolderId) => {
     if (!files?.length) return;
     setBusy(true);
     setError(null);
@@ -205,10 +205,11 @@ export function MediaPoolPanel({
       const list = Array.from(files);
       for (let i = 0; i < list.length; i += 1) {
         const file = list[i]!;
-        await onImport(file, (ratio) => {
+        const imported = await onImport(file, (ratio) => {
           // Multi-file: map each file's progress into a global 0..1 band.
           setUploadRatio((i + ratio) / list.length);
         });
+        if (targetFolderId) onMoveAssets([imported.id], targetFolderId);
       }
       setUploadRatio(1);
     } catch (reason) {
@@ -282,7 +283,7 @@ export function MediaPoolPanel({
   const menuAssets = assets.filter((asset) => menuAssetIds.includes(asset.id));
 
   return (
-    <div className="cc-media-pool" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void onPick(event.dataTransfer.files); }}>
+    <div className="cc-media-pool" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void onPick(event.dataTransfer.files, currentFolderId); }}>
       <input ref={inputRef} type="file" accept="video/*,image/*,audio/*,.gif,.svg,image/gif,image/svg+xml" multiple hidden onChange={(event) => onPick(event.target.files)} />
       <input ref={relinkInputRef} type="file" accept="video/*,image/*,audio/*,.gif,.svg,image/gif,image/svg+xml" hidden onChange={(event) => void onRelinkPick(event.target.files)} />
       <MediaPoolToolbar
@@ -345,6 +346,8 @@ export function MediaPoolPanel({
         assetMenu={assetMenu}
         canRelink={!!onRelinkAsset}
         onOpenFolder={openFolder}
+        onDropFiles={(files, folderId) => void onPick(files, folderId)}
+        onMoveAsset={(id, folderId) => onMoveAssets([id], folderId)}
         onOpenFavorites={openFavorites}
         onAddSolid={onAddSolid}
         onAddAsset={onAddAsset}

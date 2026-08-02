@@ -7,6 +7,7 @@ import { setMediaAssetDrag } from './drag';
 import { durationLabel, mediaRatioLabel } from './mediaPoolFormat';
 import { MgThumb } from './MgThumb';
 import { usePreviewMediaSource } from './previewMedia';
+import { parseMediaAssetDrag } from './drag';
 
 interface MediaAssetCardProps {
   asset: MediaAsset;
@@ -234,15 +235,27 @@ interface MediaFolderCardProps {
   folder: MediaFolder;
   onOpen: (id: string) => void;
   onFocusChange: (id: string | null) => void;
+  onDropFiles: (files: FileList, folderId: string) => void;
+  onMoveAsset: (id: string, folderId: string) => void;
 }
 
-export const MediaFolderCard = memo(function MediaFolderCard({ folder, onOpen, onFocusChange }: MediaFolderCardProps) {
+export const MediaFolderCard = memo(function MediaFolderCard({ folder, onOpen, onFocusChange, onDropFiles, onMoveAsset }: MediaFolderCardProps) {
   return (
     <button
       className="cc-folder-card"
       onClick={() => onOpen(folder.id)}
       onFocus={() => onFocusChange(folder.id)}
       onBlur={() => onFocusChange(null)}
+      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = event.dataTransfer.files.length ? 'copy' : 'move'; }}
+      onDrop={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.dataTransfer.files.length) onDropFiles(event.dataTransfer.files, folder.id);
+        else {
+          const assetId = parseMediaAssetDrag(event);
+          if (assetId) onMoveAsset(assetId, folder.id);
+        }
+      }}
     >
       <span><Icon name="folder" size={34} /></span>
       <strong>{folder.name}</strong>
