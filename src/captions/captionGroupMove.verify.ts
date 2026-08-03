@@ -7,9 +7,12 @@ import type { CaptionsData, CaptionSourceEntry } from './types';
 
 const modulePath = './captionGroupMove';
 const {
+  captionDragMoveMode,
   clampTimelineSelectionDelta,
   moveTimelineSelectionByDelta,
   resolveCaptionDragSelection,
+  selectionMovePreviewDeltaForCaption,
+  selectionMovePreviewDeltaForItem,
 } = await import(modulePath).catch(() => {
   assert.fail('caption group movement must have a shared state transformation');
 });
@@ -40,6 +43,14 @@ assert.deepEqual(resolveCaptionDragSelection(selections[0], selections, ['clip-a
   captionSelections: selections,
   itemIds: ['clip-a'],
 });
+const preview = { itemIds: ['clip-a'], captionSelections: selections, deltaFrames: 15 };
+assert.equal(captionDragMoveMode(selections[0], { captionSelections: selections, itemIds: ['clip-a'] }), 'timeline-selection');
+assert.equal(selectionMovePreviewDeltaForItem('clip-a', preview), 15);
+assert.equal(selectionMovePreviewDeltaForCaption(selections[1], preview), 15);
+assert.equal(selectionMovePreviewDeltaForItem('clip-a', null), 0, 'cancelled previews must clear clip offsets');
+assert.equal(selectionMovePreviewDeltaForCaption(selections[1], null), 0, 'cancelled previews must clear cue offsets');
+const soloManual = resolveCaptionDragSelection(selections[0], [selections[0]], []);
+assert.equal(captionDragMoveMode(selections[0], soloManual), 'manual-cue', 'a single manual cue keeps vertical lane movement');
 assert.equal(clampTimelineSelectionDelta(state, ['clip-a'], selections, -90), -30);
 
 const moved = moveTimelineSelectionByDelta(state, ['clip-a'], selections, 15);

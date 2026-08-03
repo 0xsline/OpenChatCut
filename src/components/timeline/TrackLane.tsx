@@ -28,6 +28,10 @@ import { ClipMediaLayers } from './ClipMediaLayers';
 import { isPreviewable } from '../../media/clipPreview';
 import { canDropMediaAsset, hasCompatibleMediaDrag, parseMediaAssetDrag } from '../../media/drag';
 import type { useTimelinePointer } from './useTimelinePointer';
+import {
+  selectionMovePreviewDeltaForItem,
+  type TimelineSelectionMovePreview,
+} from '../../captions/captionGroupMove';
 
 /** corner chips so applied fx / lut / zoom / denoise / transition are visible on the clip */
 function ClipEffectBadges({
@@ -108,6 +112,7 @@ interface TrackLaneProps {
   rowHeight: number;
   visibleWindow: TimelineFrameWindow;
   pinnedItemIds: ReadonlySet<string>;
+  selectionMovePreview: TimelineSelectionMovePreview | null;
   libDropTarget: string | null;
   setLibDropTarget: Dispatch<SetStateAction<string | null>>;
   applyLibraryToClip: (payload: LibraryDragPayload, item: TimelineItem) => boolean;
@@ -121,30 +126,34 @@ interface TrackLaneProps {
 
 export function TrackLane({
   trackId, state, commands, pointer, editMode, pickMode, locked, hidden, px, rowHeight,
-  visibleWindow, pinnedItemIds, indexes, libDropTarget, setLibDropTarget,
+  visibleWindow, pinnedItemIds, selectionMovePreview, indexes, libDropTarget, setLibDropTarget,
   applyLibraryToClip, applyLibraryToTrack, rippleOnDrop, overwriteOnDrop, frameFromClientX, onContextMenu, scrollRef,
 }: TrackLaneProps) {
   const t = useT();
   const { drag, penDrag, setPenDrag, startDrag, startPick, startMarquee } = pointer;
   const trackIds = timelineTrackIds(state);
   const items = indexes.itemsByTrack.get(trackId) ?? [];
+  const previewPinnedItemIds = useMemo(() => {
+    if (!selectionMovePreview?.itemIds.length) return pinnedItemIds;
+    return new Set([...pinnedItemIds, ...selectionMovePreview.itemIds]);
+  }, [pinnedItemIds, selectionMovePreview]);
   const renderedItems = useMemo(() => visibleTimelineItems(
     indexes.itemWindowsByTrack.get(trackId),
     visibleWindow,
-    pinnedItemIds,
+    previewPinnedItemIds,
     indexes.itemById,
     indexes.itemOrderById,
     trackId,
-  ), [indexes, pinnedItemIds, trackId, visibleWindow]);
+  ), [indexes, previewPinnedItemIds, trackId, visibleWindow]);
   const transitions = indexes.transitionsByTrack.get(trackId) ?? [];
   const visibleTransitions = useMemo(() => transitions.filter((transition) => {
     const incoming = indexes.itemById.get(transition.incomingItemId);
     if (!incoming) return false;
     const transitionStart = incoming.startFrame - Math.floor(transition.durationInFrames / 2);
-    return pinnedItemIds.has(transition.incomingItemId)
-      || pinnedItemIds.has(transition.outgoingItemId)
+    return previewPinnedItemIds.has(transition.incomingItemId)
+      || previewPinnedItemIds.has(transition.outgoingItemId)
       || !!intersectFrameRange(transitionStart, transition.durationInFrames, visibleWindow);
-  }), [indexes, pinnedItemIds, transitions, visibleWindow]);
+  }), [indexes, previewPinnedItemIds, transitions, visibleWindow]);
   const laneKind = trackKind(state, trackId);
   const dragOffsetY = drag?.mode === 'move'
     && trackKind(state, drag.targetTrack) === trackKind(state, drag.baseTrack)
@@ -154,6 +163,7 @@ export function TrackLane({
   return (
     <div
       className="cc-track-lane"
+      data-caption-selection-region="timeline"
       style={{
         // locked lane: slightly dimmed (the background color of the locked lane is dimmed; the lock icon is highlighted at the same time)
         flex: 1, position: 'relative', background: locked ? `color-mix(in srgb, ${theme.bg} 70%, ${themeAlpha.shadow(1)})` : undefined, opacity: hidden ? 0.4 : locked ? 0.75 : 1,
@@ -207,13 +217,19 @@ export function TrackLane({
     >
       {renderedItems.map((it) => {
         const selected = isItemSelected(state, it.id);
-        // Group-move preview: every selected clip rides the same delta as the grab handle
+        // Group-move preview: every selected clip rides the same delta as the grabbed caption cue.
         const groupMove = !!drag && drag.mode === 'move' && isItemSelected(state, drag.id) && selected;
-        const dragging = drag?.id === it.id || groupMove;
+        const selectionMoveDelta = selectionMovePreviewDeltaForItem(it.id, selectionMovePreview);
+        const selectionMoveDragging = selectionMovePreview?.itemIds.includes(it.id) ?? false;
+        const dragging = drag?.id === it.id || groupMove || selectionMoveDragging;
         const stretchEdge = drag?.mode === 'trim-left' ? 'left' : drag?.mode === 'trim-right' ? 'right' : null;
         const stretch = editMode === 'rate-stretch' && drag?.id === it.id && stretchEdge
           ? rateStretchGeometry(it, stretchEdge, drag.deltaF) : null;
-        const start = stretch?.startFrame ?? (it.startFrame + (dragging && drag && (drag.mode === 'move' || drag.mode === 'trim-left') ? drag.deltaF : 0));
+        const start = stretch?.startFrame ?? (
+          it.startFrame
+          + (dragging && drag && (drag.mode === 'move' || drag.mode === 'trim-left') ? drag.deltaF : 0)
+          + selectionMoveDelta
+        );
         const durTrim = drag?.id === it.id && drag.mode === 'trim-left' ? -drag.deltaF
           : drag?.id === it.id && drag.mode === 'trim-right' ? drag.deltaF : 0;
         const dur = stretch?.durationInFrames ?? Math.max(1, it.durationInFrames + durTrim);
@@ -240,6 +256,7 @@ export function TrackLane({
           <div
             key={it.id}
             className={`cc-timeline-clip${selected ? ' is-selected' : ''}${isLibOver ? ' is-library-over' : ''}`}
+            data-timeline-clip
             title={editMode === 'slip' && !canSlip ? t('此类型没有可滑移的源区间') : it.name}
             data-clip-kind={it.kind}
             onPointerDown={(e) => {

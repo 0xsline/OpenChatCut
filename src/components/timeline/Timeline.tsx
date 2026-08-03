@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import { theme, themeAlpha } from '../../theme';
 import {
@@ -37,6 +37,24 @@ import type { LibraryDragPayload } from '../../library/drag';
 import { useSelectionRefMode } from '../../agent/selection-refs';
 import { getLocale, useT } from '../../i18n/locale';
 import type { TimelineShortcutApi } from '../../shortcuts/timelineApi';
+import {
+  captionSelectionKey,
+  resolveCaptionSelection,
+  type CaptionSelectOptions,
+  type CaptionSelectionRef,
+} from '../../captions/captionSelection';
+import {
+  CAPTION_SELECTION_OWNER_SELECTOR,
+  CAPTION_SELECTION_TIMELINE_CLIP_SELECTOR,
+  CAPTION_SELECTION_TIMELINE_HEAD_SELECTOR,
+  CAPTION_SELECTION_TIMELINE_REGION_SELECTOR,
+  shouldClearCaptionSelectionFromPointer,
+  updateCaptionSelections,
+} from '../../captions/captionSelectionInteraction';
+import {
+  moveTimelineSelectionByDelta,
+  type TimelineSelectionMovePreview,
+} from '../../captions/captionGroupMove';
 
 interface TimelineProps {
   state: TimelineState;
@@ -67,6 +85,67 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   const innerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const timelineId = (state as { id?: string }).id;
+  const [selectedCaptions, setSelectedCaptions] = useState<CaptionSelectionRef[]>([]);
+  const [selectionMovePreview, setSelectionMovePreview] = useState<TimelineSelectionMovePreview | null>(null);
+  const selectionScope = `${projectId ?? ''}\u0000${timelineId ?? ''}`;
+  const selectionScopeRef = useRef(selectionScope);
+  useEffect(() => {
+    const scopeChanged = selectionScopeRef.current !== selectionScope;
+    selectionScopeRef.current = selectionScope;
+    setSelectedCaptions((current) => {
+      const next = scopeChanged
+        ? []
+        : current.filter((selection) => !!resolveCaptionSelection(state, selection));
+      return next.length === current.length
+        && next.every((selection, index) => captionSelectionKey(selection) === captionSelectionKey(current[index]!))
+        ? current
+        : next;
+    });
+    setSelectionMovePreview((current) => {
+      if (!current || scopeChanged) return scopeChanged ? null : current;
+      const itemIds = current.itemIds.filter((id) => state.items.some((item) => item.id === id));
+      const captionSelections = current.captionSelections.filter(
+        (selection) => !!resolveCaptionSelection(state, selection),
+      );
+      if (itemIds.length === current.itemIds.length
+        && captionSelections.length === current.captionSelections.length) return current;
+      if (!itemIds.length && !captionSelections.length) return null;
+      return { ...current, itemIds, captionSelections };
+    });
+  }, [selectionScope, state]);
+  const selectCaption = useCallback((
+    selection: CaptionSelectionRef | null,
+    options?: CaptionSelectOptions,
+  ) => {
+    if (!selection) {
+      setSelectedCaptions([]);
+      return;
+    }
+    if (!options?.additive) {
+      setSelectedCaptions([selection]);
+    } else {
+      setSelectedCaptions((current) => updateCaptionSelections(
+        current,
+        selection,
+        options.toggle ? 'toggle' : 'add',
+      ));
+    }
+    if ((!options?.additive || !options.preserveWithItems)
+      && selectedIdsOf(liveStateRef.current).length) {
+      commands.selectItem(null);
+    }
+  }, [commands]);
+  const commitTimelineSelectionMove = useCallback((
+    itemIds: readonly string[],
+    captionSelections: readonly CaptionSelectionRef[],
+    deltaFrames: number,
+  ) => {
+    setSelectionMovePreview(null);
+    if (!deltaFrames) return;
+    const current = liveStateRef.current;
+    const next = moveTimelineSelectionByDelta(current, itemIds, captionSelections, deltaFrames);
+    if (next !== current) commands.applyState(next);
+  }, [commands]);
   const { zoom, setZoom, zoomBy, fitToView, pixelsPerFrame: px, trackScale } =
     useTimelineZoomController({ scrollRef, totalFrames: total, fps: state.fps, projectId, timelineId });
   const metaOf = (id: TrackId) => {
@@ -331,6 +410,16 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
         if (!(event.target as HTMLElement).closest('button, input, select, textarea, [contenteditable="true"]')) {
           event.currentTarget.focus({ preventScroll: true });
         }
+        const target = event.target as HTMLElement;
+        if (!target.closest(CAPTION_SELECTION_OWNER_SELECTOR)
+          && shouldClearCaptionSelectionFromPointer({
+            insideTimelineClip: !!target.closest(CAPTION_SELECTION_TIMELINE_CLIP_SELECTOR),
+            insideTimelineBlank: !!target.closest(CAPTION_SELECTION_TIMELINE_REGION_SELECTOR),
+            insideTimelineHead: !!target.closest(CAPTION_SELECTION_TIMELINE_HEAD_SELECTOR),
+            additive: event.metaKey || event.ctrlKey,
+          })) {
+          setSelectedCaptions([]);
+        }
       }}
       style={{ flex: 1, borderLeft: `0.5px solid ${theme.border}`, background: theme.bg, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}
     >
@@ -416,13 +505,19 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
                 </TrackHead>
                 {meta.kind === 'caption' ? <CaptionTrackLane state={state} captions={trackCaptions} trackId={trackId}
                   playheadFrame={playheadRef.current} px={px} rowHeight={rowHeightOf(trackId)} locked={locked} hidden={hidden} snapping={snapping}
-                  trackFromClientY={trackFromClientY} onUpdate={(patch) => commands.updateCaptions(patch, trackId)}
+                  trackFromClientY={trackFromClientY}
+                  selectedCaptions={selectedCaptions} selectedItemIds={selectedIdsOf(state)}
+                  selectionMovePreview={selectionMovePreview}
+                  onSelectCaption={selectCaption} onSelectionMovePreview={setSelectionMovePreview}
+                  onMoveTimelineSelection={commitTimelineSelectionMove}
+                  onUpdate={(patch) => commands.updateCaptions(patch, trackId)}
                   onMove={(move) => moveCaptionCue(trackId, move)}
                   onDelete={(laneId, index) => trackCaptions && commands.updateCaptions(removeManualCue(trackCaptions, laneId, index), trackId)} /> : <TrackLane
                   trackId={trackId} indexes={indexes} state={state} commands={commands} pointer={pointer}
                   editMode={editMode} pickMode={pickMode} locked={locked} hidden={hidden}
                   px={px} rowHeight={rowHeightOf(trackId)} visibleWindow={visibleWindow}
                   pinnedItemIds={pinnedItemIds}
+                  selectionMovePreview={selectionMovePreview}
                   libDropTarget={libDropTarget} setLibDropTarget={setLibDropTarget}
                   applyLibraryToClip={applyLibraryToClip} applyLibraryToTrack={applyLibraryToTrack}
                   rippleOnDrop={placeMode === 'insert'}

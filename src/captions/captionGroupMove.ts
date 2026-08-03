@@ -35,17 +35,23 @@ export interface TimelineSelectionMovePreview {
   deltaFrames: number;
 }
 
-export function captionSelectionMovePreviewUpdateMode(
-  preview: TimelineSelectionMovePreview | null,
-): 'sync' | 'batched' {
-  return preview ? 'sync' : 'batched';
-}
 
 export function selectionMovePreviewDeltaForItem(
   itemId: string,
   preview: TimelineSelectionMovePreview | null,
 ): number {
   return preview?.itemIds.includes(itemId) ? preview.deltaFrames : 0;
+}
+
+export function selectionMovePreviewDeltaForCaption(
+  selection: CaptionSelectionRef | null,
+  preview: TimelineSelectionMovePreview | null,
+): number {
+  if (!selection || !preview) return 0;
+  const key = captionSelectionKey(selection);
+  return preview.captionSelections.some(
+    (candidate) => captionSelectionKey(candidate) === key,
+  ) ? preview.deltaFrames : 0;
 }
 
 export function resolveCaptionDragSelection(
@@ -60,6 +66,17 @@ export function resolveCaptionDragSelection(
   return insideSelection
     ? { captionSelections: [...captionSelections], itemIds: [...itemIds] }
     : { captionSelections: [primary], itemIds: [] };
+}
+
+export function captionDragMoveMode(
+  primary: CaptionSelectionRef,
+  selection: { captionSelections: readonly CaptionSelectionRef[]; itemIds: readonly string[] },
+): 'timeline-selection' | 'manual-cue' {
+  return primary.kind === 'single'
+    || selection.captionSelections.length > 1
+    || selection.itemIds.length > 0
+    ? 'timeline-selection'
+    : 'manual-cue';
 }
 
 export function captionSelectionsForItemDrag(

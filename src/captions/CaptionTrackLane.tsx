@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { captionPages } from './exportCaptions';
 import { captionTrackEntries, timelineTrackIds, trackKind, type TimelineState, type TrackId } from '../editor/types';
 import {
@@ -31,6 +31,13 @@ import {
   type CaptionTimelineClipboard,
 } from './captionTimelineClipboard';
 import { translateLines } from './translate';
+import {
+  captionDragMoveMode,
+  clampTimelineSelectionDelta,
+  resolveCaptionDragSelection,
+  selectionMovePreviewDeltaForCaption,
+  type TimelineSelectionMovePreview,
+} from './captionGroupMove';
 
 const SNAP_PX = 8;
 
@@ -53,14 +60,17 @@ export interface CaptionCueMove {
   targetTrackId: TrackId;
 }
 
-interface CueDrag {
+interface CueTimingDrag {
   key: string;
-  target: ManualCueTarget;
   startX: number;
   baseStartMs: number;
   baseEndMs: number;
   deltaFrames: number;
   snapPoints: SnapPoint[];
+}
+
+interface CueDrag extends CueTimingDrag {
+  target: ManualCueTarget;
 }
 
 interface TrimDrag extends CueDrag {
@@ -69,6 +79,11 @@ interface TrimDrag extends CueDrag {
 
 interface MoveDrag extends CueDrag {
   targetTrackId: TrackId;
+}
+
+interface SelectionMoveDrag extends CueTimingDrag {
+  itemIds: string[];
+  captionSelections: CaptionSelectionRef[];
 }
 
 function manualCueTargets(captions: CaptionsData | null): Map<TranscriptWord, ManualCueTarget> {
@@ -94,7 +109,7 @@ function captionSnapPoints(state: TimelineState, sourceTrackId: TrackId): SnapPo
 }
 
 function cueDeltaFrames(
-  drag: CueDrag,
+  drag: CueTimingDrag,
   clientX: number,
   mode: SnapDraggedEdgesOptions['mode'],
   state: TimelineState,
@@ -206,11 +221,127 @@ function useCaptionMove(options: {
   return { drag, start, cancel: () => updateDrag(null) };
 }
 
-function CaptionCueBlock({ page, index, target, selectionRef, locked, selected, px, fps, moveOffsetY, trim, move, onSelect, onDelete, onMenu }: {
+function useCaptionSelectionMove(options: {
+  state: TimelineState;
+  trackId: TrackId;
+  playheadFrame: number;
+  px: number;
+  snapping: boolean;
+  locked: boolean;
+  selectedCaptions: readonly CaptionSelectionRef[];
+  selectedItemIds: readonly string[];
+  onPreview: (preview: TimelineSelectionMovePreview | null) => void;
+  onCommit: (
+    itemIds: readonly string[],
+    captionSelections: readonly CaptionSelectionRef[],
+    deltaFrames: number,
+  ) => void;
+}) {
+  const {
+    state, trackId, playheadFrame, px, snapping, locked, selectedCaptions, selectedItemIds,
+    onPreview, onCommit,
+  } = options;
+  const [drag, setDrag] = useState<SelectionMoveDrag | null>(null);
+  const dragRef = useRef<SelectionMoveDrag | null>(null);
+  const updateDrag = useCallback((next: SelectionMoveDrag | null) => {
+    dragRef.current = next;
+    setDrag(next);
+  }, []);
+  const preview = useCallback((next: SelectionMoveDrag) => {
+    onPreview({
+      itemIds: next.itemIds,
+      captionSelections: next.captionSelections,
+      deltaFrames: next.deltaFrames,
+    });
+  }, [onPreview]);
+  const delta = useCallback((current: SelectionMoveDrag, clientX: number) => {
+    const requested = cueDeltaFrames(
+      current, clientX, 'move', state, playheadFrame, px, snapping,
+    );
+    return clampTimelineSelectionDelta(
+      state,
+      current.itemIds,
+      current.captionSelections,
+      requested,
+    );
+  }, [state, playheadFrame, px, snapping]);
+  const start = (
+    event: ReactPointerEvent,
+    key: string,
+    page: CaptionPage,
+    selection: CaptionSelectionRef,
+  ): boolean => {
+    if (locked || event.button !== 0) return false;
+    const resolved = resolveCaptionDragSelection(
+      selection,
+      selectedCaptions,
+      selectedItemIds,
+    );
+    const usesTimelineSelectionMove = captionDragMoveMode(selection, resolved) === 'timeline-selection';
+    if (!usesTimelineSelectionMove) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    const next: SelectionMoveDrag = {
+      key,
+      startX: event.clientX,
+      baseStartMs: page.start,
+      baseEndMs: page.end,
+      deltaFrames: 0,
+      snapPoints: captionSnapPoints(state, trackId),
+      itemIds: resolved.itemIds,
+      captionSelections: resolved.captionSelections,
+    };
+    updateDrag(next);
+    preview(next);
+    return true;
+  };
+  const cancel = useCallback(() => {
+    if (!dragRef.current) return;
+    updateDrag(null);
+    onPreview(null);
+  }, [onPreview, updateDrag]);
+  useEffect(() => {
+    if (!dragRef.current) return;
+    const move = (event: PointerEvent) => {
+      const current = dragRef.current;
+      if (!current) return;
+      const next = { ...current, deltaFrames: delta(current, event.clientX) };
+      updateDrag(next);
+      preview(next);
+    };
+    const finish = (event: PointerEvent) => {
+      const current = dragRef.current;
+      if (!current) return;
+      const deltaFrames = delta(current, event.clientX);
+      updateDrag(null);
+      onPreview(null);
+      if (deltaFrames) onCommit(current.itemIds, current.captionSelections, deltaFrames);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish, { once: true });
+    window.addEventListener('pointercancel', cancel, { once: true });
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', cancel);
+    };
+  }, [drag?.key, delta, updateDrag, preview, cancel, onPreview, onCommit]);
+  useEffect(() => () => {
+    if (dragRef.current) onPreview(null);
+  }, [onPreview]);
+  return { drag, start, cancel };
+}
+
+function CaptionCueBlock({
+  page, index, target, selectionRef, locked, selected, px, fps, moveOffsetY,
+  selectionMovePreview, trim, move, selectionMove, onSelect, onDelete, onMenu,
+}: {
   page: CaptionPage; index: number; target?: ManualCueTarget; selectionRef: CaptionSelectionRef | null;
   locked: boolean; selected: boolean; px: number; fps: number;
-  moveOffsetY: number;
-  trim: ReturnType<typeof useCaptionTrim>; move: ReturnType<typeof useCaptionMove>;
+  moveOffsetY: number; selectionMovePreview: TimelineSelectionMovePreview | null;
+  trim: ReturnType<typeof useCaptionTrim>;
+  move: ReturnType<typeof useCaptionMove>;
+  selectionMove: ReturnType<typeof useCaptionSelectionMove>;
   onSelect: (selection: CaptionSelectionRef | null, options?: CaptionSelectOptions) => void;
   onDelete: (target: ManualCueTarget) => void;
   onMenu: (event: ReactMouseEvent, target: ManualCueTarget, selection: CaptionSelectionRef) => void;
@@ -220,7 +351,9 @@ function CaptionCueBlock({ page, index, target, selectionRef, locked, selected, 
   const timing = target && trim.drag?.key === key
     ? resizedManualCueTiming(target.words, target.index, trim.drag.edge, trim.drag.deltaFrames * 1000 / fps)
     : null;
-  const moveMs = move.drag?.key === key ? move.drag.deltaFrames * 1000 / fps : 0;
+  const legacyMoveFrames = move.drag?.key === key ? move.drag.deltaFrames : 0;
+  const selectionMoveFrames = selectionMovePreviewDeltaForCaption(selectionRef, selectionMovePreview);
+  const moveMs = (legacyMoveFrames + selectionMoveFrames) * 1000 / fps;
   const startMs = timing?.start ?? page.start + moveMs;
   const endMs = timing?.end ?? page.end + moveMs;
   const startFrame = Math.max(0, Math.round(startMs * fps / 1000));
@@ -247,17 +380,24 @@ function CaptionCueBlock({ page, index, target, selectionRef, locked, selected, 
       title={text} tabIndex={selectionRef && !locked ? 0 : undefined}
       style={{ left: startFrame * px, width: Math.max(18, durationFrames * px),
         transform: move.drag?.key === key && moveOffsetY ? `translate3d(0, ${moveOffsetY}px, 0)` : undefined,
-        zIndex: move.drag?.key === key ? 10 : undefined }}
+        zIndex: move.drag?.key === key || selectionMoveFrames ? 10 : undefined }}
       onPointerDown={(event) => {
         if (!selectionRef || locked) return;
         const additive = event.metaKey || event.ctrlKey;
-        onSelect(selectionRef, additive
-          ? { additive: true, preserveWithItems: true, toggle: true }
-          : undefined);
+        if (additive) {
+          onSelect(selectionRef, { additive: true, preserveWithItems: true, toggle: true });
+          event.currentTarget.focus();
+          return;
+        }
+        const groupStarted = selectionMove.start(event, key, page, selectionRef);
+        if (!selected) onSelect(selectionRef);
         event.currentTarget.focus();
-        if (target && !additive) move.start(event, key, target);
+        if (!groupStarted && target) move.start(event, key, target);
       }}
-      onPointerCancel={move.cancel}
+      onPointerCancel={() => {
+        move.cancel();
+        selectionMove.cancel();
+      }}
       onContextMenu={(event) => {
         if (!target || locked || !selectionRef) return;
         event.preventDefault();
@@ -278,13 +418,22 @@ function CaptionCueBlock({ page, index, target, selectionRef, locked, selected, 
 
 export function CaptionTrackLane({
   state, captions, trackId, playheadFrame, px, rowHeight, hidden, locked, snapping, trackFromClientY,
-  selectedCaptions: controlledSelectedCaptions, onSelectCaption, onUpdate, onMove, onDelete,
-  onCopyCue, onPasteCue, onSeedChat, onTranslateCue,
+  selectedCaptions: controlledSelectedCaptions, selectedItemIds = [], selectionMovePreview = null,
+  onSelectCaption, onSelectionMovePreview = () => {}, onMoveTimelineSelection = () => {},
+  onUpdate, onMove, onDelete, onCopyCue, onPasteCue, onSeedChat, onTranslateCue,
 }: {
   state: TimelineState; captions: CaptionsData | null; trackId: TrackId; playheadFrame: number; px: number;
   hidden: boolean; locked: boolean; snapping: boolean; rowHeight: number; trackFromClientY: (clientY: number) => TrackId;
   selectedCaptions?: CaptionSelectionRef[];
+  selectedItemIds?: readonly string[];
+  selectionMovePreview?: TimelineSelectionMovePreview | null;
   onSelectCaption?: (selection: CaptionSelectionRef | null, options?: CaptionSelectOptions) => void;
+  onSelectionMovePreview?: (preview: TimelineSelectionMovePreview | null) => void;
+  onMoveTimelineSelection?: (
+    itemIds: readonly string[],
+    captionSelections: readonly CaptionSelectionRef[],
+    deltaFrames: number,
+  ) => void;
   onUpdate: (patch: Partial<CaptionsData>) => void; onMove: (move: CaptionCueMove) => void;
   onDelete: (laneId: string, index: number) => void;
   onCopyCue?: (selection: CaptionSelectionRef) => void;
@@ -335,6 +484,18 @@ export function CaptionTrackLane({
   const targets = manualCueTargets(captions);
   const trim = useCaptionTrim({ state, captions, trackId, playheadFrame, px, snapping, locked, onUpdate });
   const move = useCaptionMove({ state, trackId, playheadFrame, px, snapping, locked, trackFromClientY, onMove });
+  const selectionMove = useCaptionSelectionMove({
+    state,
+    trackId,
+    playheadFrame,
+    px,
+    snapping,
+    locked,
+    selectedCaptions,
+    selectedItemIds,
+    onPreview: onSelectionMovePreview,
+    onCommit: onMoveTimelineSelection,
+  });
   const trackIds = timelineTrackIds(state);
   const moveOffsetY = move.drag
     && trackKind(state, move.drag.targetTrackId) === 'caption'
@@ -409,8 +570,8 @@ export function CaptionTrackLane({
     <div className="cc-caption-track-lane" data-caption-selection-region="timeline" style={{
       background: locked ? `color-mix(in srgb, ${theme.bg} 70%, ${themeAlpha.shadow(1)})` : theme.bg,
       opacity: hidden ? 0.4 : locked ? 0.75 : 1,
-      overflow: move.drag ? 'visible' : undefined,
-      zIndex: move.drag ? 20 : undefined,
+      overflow: move.drag || selectionMove.drag ? 'visible' : undefined,
+      zIndex: move.drag || selectionMove.drag ? 20 : undefined,
     }}>
       {!pages.length && <span className="cc-caption-track-empty">{t('字幕轨道为空')}</span>}
       {pages.map((page, index) => {
@@ -427,7 +588,8 @@ export function CaptionTrackLane({
         );
         return <CaptionCueBlock key={key} page={page} index={index} target={target} selectionRef={selectionRef}
           locked={locked} selected={selected} px={px} fps={state.fps} moveOffsetY={moveOffsetY}
-          trim={trim} move={move} onSelect={selectCaption} onDelete={remove}
+          selectionMovePreview={selectionMovePreview}
+          trim={trim} move={move} selectionMove={selectionMove} onSelect={selectCaption} onDelete={remove}
           onMenu={(event, cue, selection) => {
             setTranslationOpen(false);
             setMenuError(null);
