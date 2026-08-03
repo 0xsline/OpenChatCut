@@ -1,11 +1,17 @@
 import './chdir-first.ts';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen, type OpenDialogOptions } from 'electron';
+import { buildTextContextMenuTemplate } from './context-menu.ts';
 import { startEmbeddedServer } from './embedded-server.ts';
+import { createTransparentMovProxy, importLocalMedia } from './local-media-import.ts';
+import { resolveDesktopDevOrigin } from './page-origin.ts';
 import { preparePackagedRuntime } from './packaged-runtime.ts';
+import { focusExistingWindow } from './single-instance.ts';
+import { applyDesktopWindowFrame, desktopWindowFrameOptions } from './window-frame.ts';
+import { installResponsiveWindowScale, resolveInitialDesktopWindowBounds } from './window-scale.ts';
 import { createExportDirectoryGrant } from '../server/export-destinations.ts';
 
 // Electron main process entry. dev mode: esbuild hits desktop-dist/main.mjs,dist/ in the codebase root;
@@ -20,6 +26,7 @@ const PRELOAD_PATH = join(dirname(fileURLToPath(import.meta.url)), 'preload.cjs'
 const SMOKE = process.env.CC_SMOKE === '1';
 const SMOKE_RENDER = process.env.CC_SMOKE_RENDER === '1';
 const SMOKE_TIMEOUT_MS = SMOKE_RENDER ? 240_000 : 90_000;
+let mainWindow: BrowserWindow | null = null;
 
 interface StoredExportDirectory {
   version: 1;
@@ -101,6 +108,29 @@ function registerDesktopHandlers(): void {
     const directory = await restorePersistedExportDirectory(exportStatePath);
     return directory ? createExportDirectoryGrant(directory) : null;
   });
+  ipcMain.handle('openchatcut:import-local-media', async (_event, sourcePath: unknown, originalName: unknown) => {
+    if (typeof sourcePath !== 'string' || !isAbsolute(sourcePath)) {
+      throw new Error('local media source must be an absolute path');
+    }
+    if (typeof originalName !== 'string' || !originalName || basename(originalName) !== originalName) {
+      throw new Error('invalid local media filename');
+    }
+    return importLocalMedia(sourcePath, originalName);
+  });
+  ipcMain.handle('openchatcut:transparent-mov-proxy', async (_event, storedName: unknown) => {
+    if (typeof storedName !== 'string') throw new Error('invalid local media name');
+    return createTransparentMovProxy(storedName);
+  });
+  ipcMain.handle('openchatcut:window-action', (event, action: unknown) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || typeof action !== 'string') return;
+    if (action === 'close') win.close();
+    else if (action === 'minimize') win.minimize();
+    else if (action === 'toggle-maximize') {
+      if (win.isMaximized()) win.unmaximize();
+      else win.maximize();
+    }
+  });
 }
 
 async function smokeProbe(origin: string, win: BrowserWindow): Promise<void> {
@@ -154,21 +184,38 @@ async function boot(): Promise<void> {
       version: app.getVersion(),
     });
   }
-  const { origin } = await startEmbeddedServer(DIST_DIR);
-  console.log(`[desktop] embedded server at ${origin}`);
+  const devOrigin = resolveDesktopDevOrigin({
+    configuredDevUrl: process.env.CC_DESKTOP_DEV_URL,
+    packaged: app.isPackaged,
+    smoke: SMOKE,
+  });
+  const origin = devOrigin ?? (await startEmbeddedServer(DIST_DIR)).origin;
+  console.log(`[desktop] ${devOrigin ? 'live source' : 'embedded server'} at ${origin}`);
 
+  const initialBounds = resolveInitialDesktopWindowBounds(screen.getPrimaryDisplay().workArea);
   const win = new BrowserWindow({
-    width: 1600,
-    height: 950,
+    ...initialBounds,
     show: !SMOKE,
     backgroundColor: '#111111',
     title: 'OpenChatCut',
+    ...desktopWindowFrameOptions(),
     webPreferences: {
       preload: PRELOAD_PATH,
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: false,
     },
+  });
+  applyDesktopWindowFrame(win);
+  installResponsiveWindowScale(win);
+  mainWindow = win;
+  win.once('closed', () => {
+    mainWindow = null;
+  });
+  win.webContents.on('context-menu', (_event, params) => {
+    const template = buildTextContextMenuTemplate(params);
+    if (!template.length) return;
+    Menu.buildFromTemplate(template).popup({ window: win });
   });
   await win.loadURL(`${origin}/`);
 
@@ -181,6 +228,15 @@ async function boot(): Promise<void> {
 
 app.on('window-all-closed', () => app.quit());
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) focusExistingWindow(mainWindow);
+  });
+}
+
 if (SMOKE) {
   setTimeout(() => {
     console.error('smoke timed out');
@@ -188,7 +244,9 @@ if (SMOKE) {
   }, SMOKE_TIMEOUT_MS).unref();
 }
 
-boot().catch((err) => {
-  console.error('[desktop] boot failed:', err instanceof Error ? err.stack ?? err.message : err);
-  app.exit(1);
-});
+if (hasSingleInstanceLock) {
+  boot().catch((err) => {
+    console.error('[desktop] boot failed:', err instanceof Error ? err.stack ?? err.message : err);
+    app.exit(1);
+  });
+}

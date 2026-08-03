@@ -68,6 +68,51 @@ button, input, select { font: inherit; }
 .cc-header-btn { transition: color 0.12s, background 0.12s; }
 .cc-header-btn:hover { color: var(--cc-text) !important; background: rgba(var(--cc-ink-rgb), 0.06); }
 
+/* macOS custom titlebar: retain native placement and behavior at renderer scale. */
+.cc-window-titlebar--mac {
+  padding-left:84px !important;
+  position:relative;
+  app-region:drag;
+  user-select:none;
+}
+.cc-window-controls {
+  position:absolute; left:12px; top:50%; z-index:2;
+  display:flex; align-items:center; gap:8px; height:12px;
+  transform:translateY(-50%);
+  app-region:no-drag;
+}
+.cc-window-control {
+  appearance:none; position:relative; width:12px; height:12px; min-width:12px; padding:0;
+  box-sizing:border-box; flex:0 0 12px; align-self:center; margin:0;
+  border:0.5px solid rgba(var(--cc-shadow-rgb),0.18); border-radius:50%; cursor:pointer;
+  box-shadow:inset 0 0 0 0.25px rgba(var(--cc-shadow-rgb),0.2);
+}
+.cc-window-control--close { background:var(--cc-danger); }
+.cc-window-control--minimize { background:var(--cc-gold); }
+.cc-window-control--maximize { background:var(--cc-success); }
+.cc-window-control-glyph {
+  position:absolute; left:50%; top:50%; width:6px; height:6px;
+  transform:translate(-50%, -50%); color:rgba(var(--cc-shadow-rgb),0.72); font-size:0;
+  opacity:0; pointer-events:none; transition:opacity 100ms ease;
+}
+.cc-window-control-glyph::before,
+.cc-window-control-glyph::after {
+  content:""; position:absolute; left:50%; top:50%; width:6px; height:1px;
+  border-radius:1px; background:currentColor; transform:translate(-50%, -50%);
+}
+.cc-window-control--close .cc-window-control-glyph::before { transform:translate(-50%, -50%) rotate(45deg); }
+.cc-window-control--close .cc-window-control-glyph::after { transform:translate(-50%, -50%) rotate(-45deg); }
+.cc-window-control--minimize .cc-window-control-glyph::after { display:none; }
+.cc-window-control--maximize .cc-window-control-glyph::after { transform:translate(-50%, -50%) rotate(90deg); }
+.cc-window-controls:hover .cc-window-control-glyph { opacity:1; }
+.cc-window-control:focus-visible { outline:1.5px solid var(--cc-text); outline-offset:2px; }
+.cc-window-titlebar--mac button,
+.cc-window-titlebar--mac input,
+.cc-window-titlebar--mac select,
+.cc-window-titlebar--mac [data-cc-titlebar-control="true"] {
+  app-region:no-drag;
+}
+
 /* Editor chrome keeps its actions reachable while the centered project title yields first. */
 .cc-topbar { min-width:0; }
 .cc-topbar-title { max-width:40vw; min-width:0; }

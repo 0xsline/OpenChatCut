@@ -13,4 +13,8 @@ export default {
   '导出中…': 'Exporting…',
   '导出': 'Export',
   '账户': 'Account',
+  '窗口控制': 'Window controls',
+  '关闭窗口': 'Close window',
+  '最小化窗口': 'Minimize window',
+  '缩放窗口': 'Zoom window',
 } as Record<string, string>;
