@@ -101,6 +101,49 @@ assert.equal(
   'a fresh transcript records the exact source revision it describes',
 );
 
+// Source relinking distinguishes an omitted metadata key (preserve) from an
+// explicitly undefined desktop path (clear after a Web/Agent replacement).
+{
+  const sourceDoc: ProjectDoc = {
+    ...doc,
+    assets: doc.assets.map((asset) => ({
+      ...asset,
+      sourceFilename: 'original-interview.mov',
+      originalFilePath: '/Users/editor/original-interview.mov',
+    })),
+    timelines: doc.timelines.map((timeline) => ({
+      ...timeline,
+      items: timeline.items.map((item) => ({
+        ...item,
+        sourceFilename: 'original-interview.mov',
+        originalFilePath: '/Users/editor/original-interview.mov',
+      })),
+    })),
+  };
+  const preserved = projectReduce(sourceDoc, {
+    type: 'pool.relinkAsset',
+    id: legacyAsset.id,
+    src: '/media/uploads/relinked-local.mov',
+    sourceRevision: 'relinked-local-revision',
+  });
+  assert.equal(preserved.assets[0]?.sourceFilename, 'original-interview.mov');
+  assert.equal(preserved.assets[0]?.originalFilePath, '/Users/editor/original-interview.mov');
+  assert.equal(preserved.timelines[0]?.items[0]?.originalFilePath, '/Users/editor/original-interview.mov');
+
+  const cleared = projectReduce(preserved, {
+    type: 'pool.relinkAsset',
+    id: legacyAsset.id,
+    src: '/media/uploads/relinked-web.mov',
+    sourceFilename: 'relinked-web.mov',
+    originalFilePath: undefined,
+    sourceRevision: 'relinked-web-revision',
+  });
+  assert.equal(cleared.assets[0]?.sourceFilename, 'relinked-web.mov');
+  assert.equal(cleared.assets[0]?.originalFilePath, undefined);
+  assert.equal(cleared.timelines[0]?.items[0]?.sourceFilename, 'relinked-web.mov');
+  assert.equal(cleared.timelines[0]?.items[0]?.originalFilePath, undefined);
+}
+
 // A relinked audio clip retains old words for review, but every operational
 // consumer treats it as continuous media until current-source ASR replaces it.
 {

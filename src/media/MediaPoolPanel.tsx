@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../i18n/locale';
-import type { MediaAsset, MediaFolder } from '../editor/types';
+import type { MediaAsset, MediaAssetRelinkPatch, MediaFolder } from '../editor/types';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { useFocusReturn } from '../hooks/useFocusReturn';
 import { importMedia } from './upload';
@@ -32,7 +32,7 @@ interface MediaPoolPanelProps {
   /** Delete from the asset pool (two-step confirmation); the tracked clips have their own data copies and will not be affected */
   onRemoveAsset?: (id: string) => void;
   /** Relink File replaces an offline/missing asset and its clip srcs. */
-  onRelinkAsset?: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind']; sourceRevision?: string; sourceSize?: number; sourceModifiedAt?: number }) => void;
+  onRelinkAsset?: (id: string, next: MediaAssetRelinkPatch) => void;
   /** Add a solid-color clip. */
   onAddSolid?: () => void;
 }
@@ -126,6 +126,8 @@ export function MediaPoolPanel({
         sourceRevision: next.sourceRevision,
         sourceSize: next.sourceSize,
         sourceModifiedAt: next.sourceModifiedAt,
+        sourceFilename: next.sourceFilename,
+        originalFilePath: next.originalFilePath,
       });
       clearMissing(id);
     } catch (reason) {
@@ -148,7 +150,7 @@ export function MediaPoolPanel({
       for (const f of Array.from(files)) if (!byName.has(f.name)) byName.set(f.name, f);
       let relinked = 0;
       for (const asset of missingList) {
-        const f = byName.get(asset.name);
+        const f = byName.get(asset.sourceFilename ?? asset.name);
         if (!f) continue;
         const next = await importMedia(f, fps);
         onRelinkAsset(asset.id, {
@@ -161,6 +163,8 @@ export function MediaPoolPanel({
           sourceRevision: next.sourceRevision,
           sourceSize: next.sourceSize,
           sourceModifiedAt: next.sourceModifiedAt,
+          sourceFilename: next.sourceFilename,
+          originalFilePath: next.originalFilePath,
         });
         clearMissing(asset.id);
         relinked++;

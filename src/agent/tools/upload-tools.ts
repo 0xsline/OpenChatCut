@@ -5,6 +5,7 @@ import { enqueueTranscription, shouldTranscribe } from '../../transcript/transcr
 import { extractAudioForAsr } from '../../transcript/assemblyai';
 import { hasOperationalTranscript } from '../../transcript/types';
 import { createMediaSourceRevision } from '../../editor/mediaSourceRevision';
+import { safeSourceFilename } from '../../media/sourceFilename';
 
 // Local-development upload flow:
 //   request_asset_upload_url → finalize_uploaded_asset → request_asset_download
@@ -79,7 +80,7 @@ export async function execUploadTool(name: string, args: Args, ctx: AgentContext
 }
 
 /** Server-side video compatibility normalization (same as UI importMedia). */
-async function normalizeVideoSrc(src: string, targetFps: number): Promise<{
+async function normalizeVideoSrc(src: string): Promise<{
   src: string;
   width?: number;
   height?: number;
@@ -93,7 +94,7 @@ async function normalizeVideoSrc(src: string, targetFps: number): Promise<{
     const res = await fetch('/api/normalize-media', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ src, targetFps }),
+      body: JSON.stringify({ src }),
     });
     const data = (await res.json()) as {
       path?: string;
@@ -175,8 +176,8 @@ function execRegisterPlaceholder(args: Args, ctx: AgentContext): unknown {
   if (!isSourceType(args.assetType)) {
     return { error: 'register_placeholder requires assetType: audio|gif|image|svg|video' };
   }
-  const filename = String(args.filename ?? '').trim();
-  if (!filename) return { error: 'filename is required' };
+  const filename = safeSourceFilename(args.filename);
+  if (!filename) return { error: 'filename must be a safe basename' };
   const contentType = String(args.contentType ?? '').trim() || 'application/octet-stream';
   const kind = mapKind(args.assetType);
   if (!kind) return { error: `unsupported assetType ${args.assetType}` };
@@ -207,6 +208,7 @@ function execRegisterPlaceholder(args: Args, ctx: AgentContext): unknown {
   const asset: MediaAsset = {
     id: assetId,
     name: filename,
+    sourceFilename: filename,
     kind,
     src: readUrl,
     durationInFrames,
@@ -252,9 +254,9 @@ function execRequestUpload(args: Args): unknown {
     return { error: 'assetType must be audio|gif|image|svg|video' };
   }
   const contentType = String(args.contentType ?? '').trim();
-  const filename = String(args.filename ?? '').trim();
+  const filename = safeSourceFilename(args.filename);
   if (!contentType) return { error: 'contentType is required' };
-  if (!filename) return { error: 'filename is required' };
+  if (!filename) return { error: 'filename must be a safe basename' };
 
   const assetId = newId();
   const ext = extOf(filename, contentType);
@@ -292,14 +294,14 @@ function execRequestUpload(args: Args): unknown {
 async function execFinalize(args: Args, ctx: AgentContext): Promise<unknown> {
   const assetId = String(args.assetId ?? '').trim();
   const fileKey = String(args.fileKey ?? '').trim();
-  const filename = String(args.filename ?? '').trim();
+  const filename = safeSourceFilename(args.filename);
   const readUrl = String(args.readUrl ?? '').trim();
   const size = typeof args.size === 'number' ? args.size : Number(args.size);
   const type = args.type;
 
   if (!assetId) return { error: 'assetId is required' };
   if (!fileKey) return { error: 'fileKey is required' };
-  if (!filename) return { error: 'filename is required' };
+  if (!filename) return { error: 'filename must be a safe basename' };
   if (!readUrl) return { error: 'readUrl is required' };
   if (!Number.isFinite(size) || size <= 0) return { error: 'size must be a positive integer' };
   if (!isSourceType(type)) return { error: 'type must be audio|gif|image|svg|video' };
@@ -346,7 +348,7 @@ async function execFinalize(args: Args, ctx: AgentContext): Promise<unknown> {
   let finalSize = size;
   let normalized = false;
   if (kind === 'video' && readUrl.startsWith('/media/uploads/')) {
-    const norm = await normalizeVideoSrc(readUrl, fps);
+    const norm = await normalizeVideoSrc(readUrl);
     src = norm.src;
     if (norm.width) width = norm.width;
     if (norm.height) height = norm.height;
@@ -371,10 +373,13 @@ async function execFinalize(args: Args, ctx: AgentContext): Promise<unknown> {
     // Complete a register_placeholder row (or re-finalize after re-upload).
     if (src !== existing.src || width !== existing.width || height !== existing.height
       || durationInFrames !== existing.durationInFrames || filename !== existing.name
+      || filename !== existing.sourceFilename || existing.originalFilePath !== undefined
       || sourceRevision !== existing.sourceRevision) {
       ctx.commands.relinkMediaAsset(existing.id, {
         src,
         name: filename,
+        sourceFilename: filename,
+        originalFilePath: undefined,
         durationInFrames,
         width: width ?? existing.width,
         height: height ?? existing.height,
@@ -429,6 +434,7 @@ async function execFinalize(args: Args, ctx: AgentContext): Promise<unknown> {
   const asset: MediaAsset = {
     id: assetId,
     name: filename,
+    sourceFilename: filename,
     kind,
     src,
     durationInFrames,

@@ -14,6 +14,7 @@ import { itemEditOpts, itemWindow, keptSegments } from '../transcript/edit';
 import { hasOperationalTranscript } from '../transcript/types';
 import { sourceWindowForTimelineRange } from '../editor/sourceLimit';
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
+import { safeSourceFilename, stripInvalidXml10Characters } from '../media/sourceFilename';
 
 /** Asset URL prefix: it is in mediaDir on the disk and has the same name. */
 const UPLOAD_PREFIX = '/media/uploads/';
@@ -22,6 +23,10 @@ const UPLOAD_PREFIX = '/media/uploads/';
  * Encoding (Chinese/space file names cannot be parsed by NLE if they are not encoded), and the colon in the drive letter must remain intact. */
 function toFileUrl(absPath: string): string {
   const slashed = absPath.replace(/\\/g, '/');
+  if (slashed.startsWith('//')) {
+    const encoded = slashed.slice(2).split('/').map(encodeURIComponent).join('/');
+    return `file://${encoded}`;
+  }
   const rooted = /^[A-Za-z]:/.test(slashed) ? `/${slashed}` : slashed;
   const encoded = rooted
     .split('/')
@@ -37,6 +42,7 @@ function toFileUrl(absPath: string): string {
  */
 export function resolveAssetSrc(src: string, mediaDir?: string): string {
   if (/^(?:https?|file|data|blob):/i.test(src)) return src;
+  if (/^(?:[A-Za-z]:[\\/]|\\\\)/.test(src)) return toFileUrl(src);
   if (mediaDir && src.startsWith(UPLOAD_PREFIX)) {
     const name = decodeURIComponent(src.slice(UPLOAD_PREFIX.length));
     return toFileUrl(`${mediaDir.replace(/[/\\]+$/, '')}/${name}`);
@@ -62,9 +68,9 @@ function transcriptSegments(
   });
 }
 
-/** XML attribute/text escape (5 reserved characters). */
+/** XML 1.0 character filtering plus attribute/text escaping. */
 function escapeXml(raw: string): string {
-  return raw
+  return stripInvalidXml10Characters(raw)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -74,7 +80,7 @@ function escapeXml(raw: string): string {
 
 /** XML comments cannot contain "--"; the placeholder description is for human viewing, so it is easiest to replace the hyphen directly. */
 function xmlComment(text: string): string {
-  return `<!-- ${text.replace(/-/g, '_')} -->`;
+  return `<!-- ${stripInvalidXml10Characters(text).replace(/-/g, '_')} -->`;
 }
 
 /** FCPXML resource/element id must be legal NCName: illegal character replacement + fixed prefix guaranteed not to start with a number.*/
@@ -133,6 +139,9 @@ interface AssetInfo {
   id: string;
   kind: TimelineItem['kind'];
   durationFrames: number;
+  name: string;
+  sourceFilename?: string;
+  originalFilePath?: string;
 }
 
 interface RenderedMotionGraphicInfo {
@@ -152,16 +161,52 @@ function collectAssets(state: TimelineState): Map<string, AssetInfo> {
     const usedTo = segs?.length
       ? Math.max(...segs.map((seg) => seg.srcEndFrame))
       : sourceWindowForTimelineRange(item, 0, item.durationInFrames).endFrame;
-    const libraryAsset = state.assets?.find((a) => a.src === item.src);
+    const libraryAsset = state.assets?.find((asset) => asset.src === item.src);
     const full = Math.max(usedTo, libraryAsset?.durationInFrames ?? 0);
     const existing = bySrc.get(item.src);
     if (existing) {
       existing.durationFrames = Math.max(existing.durationFrames, full);
     } else {
-      bySrc.set(item.src, { id: sanitizeId(item.id), kind: item.kind, durationFrames: full });
+      const sourceFilename = safeSourceFilename(libraryAsset?.sourceFilename)
+        ?? safeSourceFilename(item.sourceFilename);
+      bySrc.set(item.src, {
+        id: sanitizeId(libraryAsset?.id ?? item.id),
+        kind: item.kind,
+        durationFrames: full,
+        name: sourceFilename ?? libraryAsset?.name ?? decodedBasename(item.src),
+        sourceFilename,
+        originalFilePath: libraryAsset?.originalFilePath ?? item.originalFilePath,
+      });
     }
   }
   return bySrc;
+}
+
+function decodedBasename(src: string): string {
+  const basename = src.replace(/\\/g, '/').split('/').pop() || src;
+  try {
+    return decodeURIComponent(basename);
+  } catch {
+    return basename;
+  }
+}
+
+function finalExtensionStem(filename: string): string {
+  const basename = safeSourceFilename(filename);
+  if (!basename) return '';
+  const dot = basename.lastIndexOf('.');
+  return dot > 0 ? basename.slice(0, dot) : basename;
+}
+
+
+function mediaRepXml(
+  kind: 'original-media' | 'proxy-media',
+  src: string,
+  filename: string,
+): string {
+  const suggested = finalExtensionStem(filename);
+  const suggestedAttr = suggested ? ` suggestedFilename="${escapeXml(suggested)}"` : '';
+  return `<media-rep kind="${kind}" src="${escapeXml(src)}"${suggestedAttr}/>`;
 }
 
 function assetResourceXml(
@@ -173,10 +218,21 @@ function assetResourceXml(
 ): string {
   const hasVideo = info.kind !== 'audio';
   const hasAudio = info.kind === 'audio' || info.kind === 'video';
-  const name = escapeXml(decodeURIComponent(src.split('/').pop() || src));
+  const name = escapeXml(info.name || decodedBasename(src));
   const formatAttr = hasVideo ? ` format="${formatId}"` : '';
-  const href = escapeXml(resolveAssetSrc(src, mediaDir));
-  return `<asset id="${info.id}" name="${name}" src="${href}" start="0s" duration="${rationalTime(info.durationFrames, fps)}" hasVideo="${hasVideo ? 1 : 0}" hasAudio="${hasAudio ? 1 : 0}"${formatAttr}/>`;
+  const internalHref = resolveAssetSrc(src, mediaDir);
+  const originalHref = typeof info.originalFilePath === 'string' && info.originalFilePath
+    ? toFileUrl(info.originalFilePath)
+    : undefined;
+  const representations = originalHref
+    ? [
+        mediaRepXml('original-media', originalHref, info.sourceFilename ?? info.name),
+        ...(originalHref === internalHref
+          ? []
+          : [mediaRepXml('proxy-media', internalHref, info.sourceFilename ?? info.name)]),
+      ]
+    : [mediaRepXml('original-media', internalHref, info.sourceFilename ?? info.name)];
+  return `<asset id="${info.id}" name="${name}" start="0s" duration="${rationalTime(info.durationFrames, fps)}" hasVideo="${hasVideo ? 1 : 0}" hasAudio="${hasAudio ? 1 : 0}"${formatAttr}>\n      ${representations.join('\n      ')}\n    </asset>`;
 }
 
 function collectRenderedMotionGraphics(
@@ -210,7 +266,8 @@ function motionGraphicResourceXml(
   fps: number,
   formatId: string,
 ): string {
-  return `<asset id="${info.id}" name="${escapeXml(info.filename)}" src="file:./${escapeXml(info.filename)}" start="0s" duration="${rationalTime(info.durationFrames, fps)}" hasVideo="1" hasAudio="0" format="${formatId}"/>`;
+  const href = `file:./${encodeURIComponent(info.filename)}`;
+  return `<asset id="${info.id}" name="${escapeXml(info.filename)}" start="0s" duration="${rationalTime(info.durationFrames, fps)}" hasVideo="1" hasAudio="0" format="${formatId}">\n      ${mediaRepXml('original-media', href, info.filename)}\n    </asset>`;
 }
 
 /** Entries with src (video/audio/image/gif) → asset-clip; entries without src

@@ -2,6 +2,7 @@
 // validated once, then each media blob is encoded/decoded in bounded chunks.
 // Legacy openchatcut-project@1 JSON remains readable for cross-version transfer.
 import type { ProjectDoc } from '../editor/types';
+import { parseAgentChangeLog } from '../agent/changeLog';
 import {
   createProject, isPersistedChat, loadChat, loadCreativeMode, loadProject,
   migrateProjectDoc, saveChat, saveCreativeMode,
@@ -13,6 +14,7 @@ import {
   type StagedMediaBlobImportEntry,
 } from './mediaBlobStore';
 import { sanitizeFileName } from '../media/fileName';
+import { sanitizePortableProjectDoc } from './portableProject';
 
 export const PROJECT_EXPORT_FORMAT = 'openchatcut-project@1';
 export const PROJECT_STREAM_FORMAT = 'openchatcut-project@2';
@@ -182,12 +184,13 @@ export function parseProjectEnvelope(
     return { error: `格式不识别(需要 ${PROJECT_EXPORT_FORMAT})` };
   }
   if (typeof r.name !== 'string' || !r.name.trim()) return { error: '缺工程名' };
-  const doc = migrateProjectDoc(r.doc, migrationOptions);
-  if (!doc) return { error: '工程数据(doc)校验不通过' };
+  const migratedDoc = migrateProjectDoc(r.doc, migrationOptions);
+  if (!migratedDoc) return { error: '工程数据(doc)校验不通过' };
+  const doc = sanitizePortableProjectDoc(migratedDoc);
   if (!Array.isArray(r.media)) return { error: '工程包缺媒体清单' };
   if (!r.media.every(isMediaEntry)) return { error: '工程包媒体条目校验不通过' };
   const media = r.media;
-  const chat = isPersistedChat(r.chat) ? r.chat : undefined;
+  const chat = isPersistedChat(r.chat) ? sanitizePortableChat(r.chat) : undefined;
   const creativeMode = typeof r.creativeMode === 'string' && r.creativeMode ? r.creativeMode : undefined;
   return {
     envelope: {
@@ -373,19 +376,32 @@ export interface ProjectExportResult {
   mediaMissing: string[];
 }
 
+function sanitizePortableChat(chat: PersistedChat): PersistedChat {
+  const changeLog = parseAgentChangeLog(chat.changeLog).map((session) => ({
+    ...session,
+    beforeDoc: sanitizePortableProjectDoc(session.beforeDoc),
+  }));
+  return {
+    ...chat,
+    ...(chat.changeLog === undefined ? {} : { changeLog }),
+  };
+}
+
 export async function buildProjectExport(id: string, name: string): Promise<ProjectExportResult> {
   const doc = await loadProject(id);
   if (!doc) throw new Error('工程不存在或已损坏');
-  const chat = await loadChat(id);
+  const exportDoc = sanitizePortableProjectDoc(doc);
+  const loadedChat = await loadChat(id);
+  const chat = loadedChat ? sanitizePortableChat(loadedChat) : undefined;
   const creativeMode = await loadCreativeMode(id);
-  const srcs = collectUploadSrcs(doc);
+  const srcs = collectUploadSrcs(exportDoc);
   const mediaMissing: string[] = [];
   const manifest: ProjectStreamManifest = {
     format: PROJECT_STREAM_FORMAT,
     type: 'manifest',
     name,
     exportedAt: new Date().toISOString(),
-    doc,
+    doc: exportDoc,
     ...(chat ? { chat } : {}),
     ...(creativeMode ? { creativeMode } : {}),
   };
@@ -465,8 +481,8 @@ async function stageLegacyEnvelope(envelope: ProjectEnvelope): Promise<StagedPro
     const carriedSrcs = [...new Set(replacements.values())];
     return {
       name: envelope.name,
-      doc: rewriteProjectMediaSrcs(envelope.doc, replacements),
-      ...(envelope.chat ? { chat: envelope.chat } : {}),
+      doc: sanitizePortableProjectDoc(rewriteProjectMediaSrcs(envelope.doc, replacements)),
+      ...(envelope.chat ? { chat: sanitizePortableChat(envelope.chat) } : {}),
       ...(envelope.creativeMode ? { creativeMode: envelope.creativeMode } : {}),
       carriedSrcs,
       mediaRestored,
@@ -492,15 +508,16 @@ function streamManifest(
     throw new Error(`格式不识别(需要 ${PROJECT_STREAM_FORMAT})`);
   }
   if (typeof manifest.name !== 'string' || !manifest.name.trim()) throw new Error('缺工程名');
-  const doc = migrateProjectDoc(manifest.doc, migrationOptions);
-  if (!doc) throw new Error('工程数据(doc)校验不通过');
+  const migratedDoc = migrateProjectDoc(manifest.doc, migrationOptions);
+  if (!migratedDoc) throw new Error('工程数据(doc)校验不通过');
+  const doc = sanitizePortableProjectDoc(migratedDoc);
   return {
     format: PROJECT_STREAM_FORMAT,
     type: 'manifest',
     name: manifest.name.trim(),
     exportedAt: typeof manifest.exportedAt === 'string' ? manifest.exportedAt : '',
     doc,
-    ...(isPersistedChat(manifest.chat) ? { chat: manifest.chat } : {}),
+    ...(isPersistedChat(manifest.chat) ? { chat: sanitizePortableChat(manifest.chat) } : {}),
     ...(typeof manifest.creativeMode === 'string' && manifest.creativeMode
       ? { creativeMode: manifest.creativeMode }
       : {}),
@@ -613,7 +630,13 @@ export async function applyProjectImport(
   envelope: ProjectEnvelope,
   options: ProjectImportOptions = {},
 ): Promise<ProjectImportResult> {
-  const staged = await stageLegacyEnvelope(envelope);
+  const migratedDoc = migrateProjectDoc(envelope.doc, options.migrationOptions);
+  if (!migratedDoc) throw new Error('工程数据(doc)校验不通过');
+  const staged = await stageLegacyEnvelope({
+    ...envelope,
+    doc: sanitizePortableProjectDoc(migratedDoc),
+    ...(envelope.chat ? { chat: sanitizePortableChat(envelope.chat) } : {}),
+  });
   return enqueueStreamPublication(() => publishStreamProjectImport(staged, options));
 }
 

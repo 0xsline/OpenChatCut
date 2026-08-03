@@ -1,13 +1,13 @@
-// POST /api/normalize-media — conditional video re-encode for local masters.
-// Uses a ≤1920px long edge, browser-friendly codecs, and an ~8Mbps cap.
-// Runs *after* stream upload so large files never sit in RAM.
-// Skips when source is already efficient. Replaces bytes under the same /media/uploads
-// path when possible; if container must become mp4, returns a new path and deletes the old.
+// POST /api/normalize-media — compatibility normalization with opt-in media optimization.
+// Compatibility-only conversions preserve source dimensions and bitrate. optimize:true
+// also applies the existing dimension, bitrate, and file-size thresholds.
+// Runs after stream upload so large files never sit in RAM.
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { rename, stat, unlink } from 'node:fs/promises';
+import { realpath, rename, stat, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import {
@@ -27,6 +27,124 @@ const TARGET_FLOOR_BITRATE_BPS = 1_500_000;
 const REFERENCE_PIXELS = 1920 * 1080;
 const VIDEO_AUDIO_BITRATE = '160k';
 const FFMPEG_TIMEOUT_MS = 60 * 60_000; // long masters
+
+const NORMALIZE_CONCURRENCY = 2;
+const NORMALIZE_MAX_QUEUED = 8;
+
+export type ReleaseNormalizePermit = () => void;
+
+export interface NormalizeAdmission {
+  acquire: (key: string) => Promise<ReleaseNormalizePermit>;
+  snapshot: () => { active: number; queued: number };
+}
+
+interface WaitingNormalizePermit {
+  key: string;
+  resolve: (release: ReleaseNormalizePermit) => void;
+}
+
+export class NormalizeAdmissionFullError extends Error {
+  constructor() {
+    super('media normalization queue is full');
+    this.name = 'NormalizeAdmissionFullError';
+  }
+}
+
+export function createNormalizeAdmission(
+  concurrency = NORMALIZE_CONCURRENCY,
+  maxQueued = NORMALIZE_MAX_QUEUED,
+): NormalizeAdmission {
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new RangeError('normalize concurrency must be a positive integer');
+  }
+  if (!Number.isInteger(maxQueued) || maxQueued < 0) {
+    throw new RangeError('normalize queue limit must be a non-negative integer');
+  }
+
+  let active = 0;
+  const activeKeys = new Set<string>();
+  const waiting: WaitingNormalizePermit[] = [];
+
+  function drain(): void {
+    while (active < concurrency) {
+      const nextIndex = waiting.findIndex(({ key }) => !activeKeys.has(key));
+      if (nextIndex < 0) return;
+      const [next] = waiting.splice(nextIndex, 1);
+      active += 1;
+      activeKeys.add(next.key);
+      next.resolve(releaseOnce(next.key));
+    }
+  }
+
+  function releaseOnce(key: string): ReleaseNormalizePermit {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      active -= 1;
+      activeKeys.delete(key);
+      drain();
+    };
+  }
+
+  return {
+    acquire(key) {
+      if (active < concurrency && !activeKeys.has(key)) {
+        active += 1;
+        activeKeys.add(key);
+        return Promise.resolve(releaseOnce(key));
+      }
+      if (waiting.length >= maxQueued) {
+        return Promise.reject(new NormalizeAdmissionFullError());
+      }
+      const { promise, resolve } = Promise.withResolvers<ReleaseNormalizePermit>();
+      waiting.push({ key, resolve });
+      return promise;
+    },
+    snapshot: () => ({ active, queued: waiting.length }),
+  };
+}
+
+export function createNormalizeTempPath(
+  outputPath: string,
+  createId: () => string = randomUUID,
+): string {
+  const outputName = basename(outputPath, extname(outputPath));
+  return join(dirname(outputPath), `.${outputName}.norm-${createId()}.tmp.mp4`);
+}
+
+export function resolveNormalizeOutputPath(inputPath: string): string {
+  const inputName = basename(inputPath);
+  const stem = basename(inputName, extname(inputName));
+  return join(dirname(inputPath), `${stem}.mp4`);
+}
+
+type ResolveRealpath = (path: string) => Promise<string>;
+
+function normalizeFilesystemIdentity(path: string, platform: NodeJS.Platform): string {
+  if (platform === 'darwin' || platform === 'win32') {
+    return path.normalize('NFC').toLowerCase();
+  }
+  return path;
+}
+
+export async function resolveNormalizeTargetKey(
+  outputPath: string,
+  platform: NodeJS.Platform = process.platform,
+  resolveRealpath: ResolveRealpath = realpath,
+): Promise<string> {
+  let targetIdentity: string;
+  try {
+    targetIdentity = await resolveRealpath(outputPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    const parentIdentity = await resolveRealpath(dirname(outputPath));
+    targetIdentity = join(parentIdentity, basename(outputPath));
+  }
+  return normalizeFilesystemIdentity(targetIdentity, platform);
+}
+
+const normalizeAdmission = createNormalizeAdmission();
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
@@ -139,11 +257,12 @@ export function resolveTargetFps(
   requested: unknown,
   avgFrameRate?: number,
   nominalFrameRate?: number,
+  allowRequested = false,
 ): number {
   const explicit = Number(requested);
-  if (Number.isFinite(explicit) && explicit >= 1 && explicit <= 120) return explicit;
+  if (allowRequested && Number.isFinite(explicit) && explicit >= 1 && explicit <= 120) return explicit;
   const detected = avgFrameRate ?? nominalFrameRate;
-  if (detected && Number.isFinite(detected)) return Math.max(1, Math.min(120, Math.round(detected)));
+  if (detected && Number.isFinite(detected)) return Math.max(1, Math.min(120, detected));
   return 30;
 }
 
@@ -202,7 +321,7 @@ async function probeVideo(path: string): Promise<ProbeMeta> {
 }
 
 function compatibleVideoCodec(codec: string): boolean {
-  return ['h264', 'avc', 'avc1', 'vp8', 'vp9', 'av1'].includes(codec.toLowerCase());
+  return ['h264', 'avc', 'avc1', 'hevc', 'h265', 'hev1', 'hvc1', 'vp8', 'vp9', 'av1'].includes(codec.toLowerCase());
 }
 
 function compatibleAudioCodec(codec: string): boolean {
@@ -210,11 +329,27 @@ function compatibleAudioCodec(codec: string): boolean {
   return ['aac', 'flac', 'mp3', 'mp4a', 'opus', 'vorbis'].includes(codec.toLowerCase());
 }
 
-function targetDimension(width: number, height: number): { w: number; h: number } {
+export interface NormalizeStreamPlan {
+  transcodeVideo: boolean;
+  transcodeAudio: boolean;
+}
+
+export function resolveStreamPlan(
+  meta: Pick<ProbeMeta, 'videoCodec' | 'audioCodec' | 'hasAudio'>,
+  optimizeOutput: boolean,
+  convertToCfr: boolean,
+): NormalizeStreamPlan {
+  return {
+    transcodeVideo: optimizeOutput || convertToCfr || !compatibleVideoCodec(meta.videoCodec),
+    transcodeAudio: meta.hasAudio && (optimizeOutput || !compatibleAudioCodec(meta.audioCodec)),
+  };
+}
+
+function targetDimension(width: number, height: number, optimize: boolean): { w: number; h: number } {
   const longest = Math.max(width, height);
   let w = width;
   let h = height;
-  if (longest > MAX_DIMENSION) {
+  if (optimize && longest > MAX_DIMENSION) {
     const scale = MAX_DIMENSION / longest;
     w = Math.round(width * scale);
     h = Math.round(height * scale);
@@ -230,7 +365,12 @@ function recommendedBitrate(width: number, height: number): number {
   return Math.ceil(clamped / 1000) * 1000;
 }
 
-function normalizeReason(meta: ProbeMeta, targetBitrate: number, forceCfr: boolean): string | null {
+function normalizeReason(
+  meta: ProbeMeta,
+  targetBitrate: number,
+  forceCfr: boolean,
+  optimize: boolean,
+): string | null {
   if (forceCfr || meta.variableFrameRate) {
     const avg = meta.avgFrameRate?.toFixed(3) ?? 'unknown';
     const nominal = meta.nominalFrameRate?.toFixed(3) ?? 'unknown';
@@ -242,6 +382,7 @@ function normalizeReason(meta: ProbeMeta, targetBitrate: number, forceCfr: boole
   if (meta.hasAudio && !compatibleAudioCodec(meta.audioCodec)) {
     return `audio codec ${meta.audioCodec || 'unknown'} is not browser-aligned`;
   }
+  if (!optimize) return null;
   if (meta.width > MAX_DIMENSION || meta.height > MAX_DIMENSION) {
     return `dimensions ${meta.width}x${meta.height} exceed ${MAX_DIMENSION}px`;
   }
@@ -263,21 +404,37 @@ async function encodeNormalized(
   targetBitrate: number,
   targetFps: number,
   convertToCfr: boolean,
+  streamPlan: NormalizeStreamPlan,
 ): Promise<void> {
+  const ffmpeg = ffmpegBin();
+  const commonArgs = [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    '-i', inputPath,
+    '-map', '0:v:0',
+    ...(meta.hasAudio ? ['-map', '0:a:0?'] : ['-an']),
+  ];
+  const audioArgs = !meta.hasAudio
+    ? []
+    : streamPlan.transcodeAudio
+      ? ['-c:a', 'aac', '-b:a', VIDEO_AUDIO_BITRATE]
+      : ['-c:a', 'copy'];
+  const outputArgs = ['-avoid_negative_ts', 'make_zero', '-movflags', '+faststart', outputPath];
+
+  if (!streamPlan.transcodeVideo) {
+    await run(ffmpeg, [...commonArgs, '-c:v', 'copy', ...audioArgs, ...outputArgs], FFMPEG_TIMEOUT_MS);
+    return;
+  }
+
   const filters = [`scale=${targetW}:${targetH}:flags=lanczos`];
   if (convertToCfr) {
     const fps = String(Math.round(targetFps * 1000) / 1000);
     filters.push(`fps=fps=${fps}:start_time=0:round=near`);
   }
-  const ffmpeg = ffmpegBin();
   const preferred = await resolveH264Encoder(ffmpeg);
   let lastError: unknown;
   for (const encoder of h264EncoderAttempts(preferred)) {
     const args = [
-      '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-      '-i', inputPath,
-      '-map', '0:v:0',
-      ...(meta.hasAudio ? ['-map', '0:a:0?'] : ['-an']),
+      ...commonArgs,
       '-vf', filters.join(','),
       ...h264EncodingArgs({
         encoder,
@@ -288,11 +445,9 @@ async function encodeNormalized(
       }),
       '-profile:v', 'high',
       ...(convertToCfr ? ['-fps_mode', 'cfr'] : []),
-      '-avoid_negative_ts', 'make_zero',
-      '-movflags', '+faststart',
+      ...audioArgs,
+      ...outputArgs,
     ];
-    if (meta.hasAudio) args.push('-c:a', 'aac', '-b:a', VIDEO_AUDIO_BITRATE);
-    args.push(outputPath);
     try {
       await run(ffmpeg, args, FFMPEG_TIMEOUT_MS);
       return;
@@ -306,7 +461,22 @@ async function encodeNormalized(
   throw lastError instanceof Error ? lastError : new Error('media normalization failed');
 }
 
-export function normalizeMediaPlugin(): Plugin {
+export interface NormalizeEncodeContext {
+  inputPath: string;
+  outputPath: string;
+  tempPath: string;
+}
+
+export interface NormalizeMediaPluginOptions {
+  admission?: NormalizeAdmission;
+  encoderHook?: (
+    context: NormalizeEncodeContext,
+    encode: () => Promise<void>,
+  ) => Promise<void>;
+}
+
+export function normalizeMediaPlugin(options: NormalizeMediaPluginOptions = {}): Plugin {
+  const admission = options.admission ?? normalizeAdmission;
   return {
     name: 'openchatcut-normalize-media',
     configureServer(server) {
@@ -316,10 +486,12 @@ export function normalizeMediaPlugin(): Plugin {
           return;
         }
         let tempOutput: string | null = null;
+        let releasePermit: ReleaseNormalizePermit | null = null;
         try {
           const body = (await readJson(req)) as {
             src?: string;
             force?: boolean;
+            optimize?: boolean;
             forceCfr?: boolean;
             targetFps?: number;
           };
@@ -334,6 +506,10 @@ export function normalizeMediaPlugin(): Plugin {
             sendJson(res, 404, { error: `media not found: ${name}` });
             return;
           }
+          const outPath = resolveNormalizeOutputPath(inputPath);
+          const outName = basename(outPath);
+          const stem = basename(outName, extname(outName));
+          releasePermit = await admission.acquire(await resolveNormalizeTargetKey(outPath));
 
           const ext = extname(name).toLowerCase();
           // Images / pure audio / already-asr: no-op
@@ -360,11 +536,21 @@ export function normalizeMediaPlugin(): Plugin {
             return;
           }
 
-          const { w: targetW, h: targetH } = targetDimension(meta.width, meta.height);
-          const targetBitrate = recommendedBitrate(targetW, targetH);
+          const optimizeOutput = Boolean(body.force) || body.optimize === true;
+          const { w: targetW, h: targetH } = targetDimension(meta.width, meta.height, optimizeOutput);
+          const recommendedTargetBitrate = recommendedBitrate(targetW, targetH);
+          const targetBitrate = optimizeOutput
+            ? recommendedTargetBitrate
+            : Math.max(recommendedTargetBitrate, meta.sourceBitrate);
           const forceCfr = Boolean(body.forceCfr);
-          const targetFps = resolveTargetFps(body.targetFps, meta.avgFrameRate, meta.nominalFrameRate);
-          const reason = body.force ? 'force' : normalizeReason(meta, targetBitrate, forceCfr);
+          const allowRequestedFps = forceCfr || optimizeOutput;
+          const targetFps = resolveTargetFps(
+            body.targetFps,
+            meta.avgFrameRate,
+            meta.nominalFrameRate,
+            allowRequestedFps,
+          );
+          const reason = body.force ? 'force' : normalizeReason(meta, targetBitrate, forceCfr, body.optimize === true);
           if (!reason) {
             sendJson(res, 200, {
               ok: true,
@@ -382,18 +568,28 @@ export function normalizeMediaPlugin(): Plugin {
             return;
           }
 
-          const dir = dirname(inputPath);
-          const stem = basename(name, extname(name));
-          // Always land on .mp4 for browser + remotion friendliness
-          const outName = `${stem}.mp4`;
-          const outPath = join(dir === uploadDir() ? uploadDir() : dir, outName);
-          const tmpPath = join(dirname(outPath), `${stem}.norm.tmp.mp4`);
+          const tmpPath = createNormalizeTempPath(outPath);
           tempOutput = tmpPath;
-          await unlink(tmpPath).catch(() => {});
 
           server.config.logger.info(`[normalize-media] ${name}: ${reason}`);
           const convertToCfr = forceCfr || meta.variableFrameRate;
-          await encodeNormalized(inputPath, tmpPath, meta, targetW, targetH, targetBitrate, targetFps, convertToCfr);
+          const streamPlan = resolveStreamPlan(meta, optimizeOutput, convertToCfr);
+          const encode = () => encodeNormalized(
+            inputPath,
+            tmpPath,
+            meta,
+            targetW,
+            targetH,
+            targetBitrate,
+            targetFps,
+            convertToCfr,
+            streamPlan,
+          );
+          if (options.encoderHook) {
+            await options.encoderHook({ inputPath, outputPath: outPath, tempPath: tmpPath }, encode);
+          } else {
+            await encode();
+          }
 
           // Publish: if same path, atomic replace; if new .mp4 name, swap and drop old
           if (outPath === inputPath || basename(outPath) === name) {
@@ -451,12 +647,17 @@ export function normalizeMediaPlugin(): Plugin {
             variableFrameRate: finalMeta.variableFrameRate,
           });
         } catch (err) {
+          if (err instanceof NormalizeAdmissionFullError) {
+            sendJson(res, 429, { error: err.message, code: 'NORMALIZE_QUEUE_FULL' });
+            return;
+          }
           const message = err instanceof Error ? err.message : String(err);
           server.config.logger.error(`[normalize-media] ${message}`);
           const status = /ENOENT|spawn .*ffmpeg|spawn .*ffprobe/i.test(message) ? 503 : 500;
           sendJson(res, status, { error: message });
         } finally {
           if (tempOutput) await unlink(tempOutput).catch(() => {});
+          releasePermit?.();
         }
       });
     },

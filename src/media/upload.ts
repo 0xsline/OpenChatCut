@@ -270,13 +270,12 @@ const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypt
 /** Post-upload conditional compress (server ffmpeg). No-op for already-efficient sources. */
 export async function normalizeUploadedVideo(
   src: string,
-  targetFps: number,
 ): Promise<{ src: string; width?: number; height?: number; durationSeconds?: number; fps?: number }> {
   try {
     const res = await fetch('/api/normalize-media', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ src, targetFps }),
+      body: JSON.stringify({ src }),
     });
     const data = (await res.json()) as {
       path?: string;
@@ -314,6 +313,16 @@ export async function importMedia(
   onProgressOrHooks?: UploadProgress | ImportMediaHooks,
 ): Promise<MediaAsset> {
   const hooks = hooksOf(onProgressOrHooks);
+  const sourceFilename = file.name;
+  let originalFilePath: string | undefined;
+  try {
+    originalFilePath = typeof window === 'undefined'
+      ? undefined
+      : window.openChatCutDesktop?.getPathForFile(file);
+  } catch {
+    // A synthetic/browser-only File has no backing path; import still works without NLE relink metadata.
+    originalFilePath = undefined;
+  }
   const kind = kindOf(file);
   if (!kind) throw new Error(t('不支持的文件类型（视频 / 图片 / 音频 / GIF / SVG）'));
   const meta = await probeMediaFile(file, kind, fps);
@@ -321,8 +330,8 @@ export async function importMedia(
   const sourceSize = file.size;
   const sourceModifiedAt = file.lastModified;
   const sourceRevision = createMediaSourceRevision({
-    src: `file:${file.name}`,
-    name: file.name,
+    src: `file:${sourceFilename}`,
+    name: sourceFilename,
     kind: kind as MediaAssetKind,
     sourceSize,
     sourceModifiedAt,
@@ -335,7 +344,9 @@ export async function importMedia(
   const blobUrl = URL.createObjectURL(file);
   const placeholder: MediaAsset = {
     id,
-    name: file.name,
+    name: sourceFilename,
+    sourceFilename,
+    originalFilePath,
     kind: kind as MediaAssetKind,
     src: blobUrl,
     durationInFrames: meta.durationInFrames,
@@ -368,14 +379,14 @@ export async function importMedia(
         extractAudioForAsr(srcRaw).then((p) => { if (!p) throw new Error('server-asr-miss'); return p; }),
       ]).catch(() => null)
       : Promise.resolve(null);
-    hooks.onUploaded?.({ id, src: srcRaw, kind, name: file.name, sourceRevision, asrPath });
+    hooks.onUploaded?.({ id, src: srcRaw, kind, name: sourceFilename, sourceRevision, asrPath });
 
     let src = srcRaw;
     let width = meta.width;
     let height = meta.height;
     let durationInFrames = meta.durationInFrames;
     if (kind === 'video') {
-      const norm = await normalizeUploadedVideo(srcRaw, fps);
+      const norm = await normalizeUploadedVideo(srcRaw);
       src = norm.src;
       if (norm.width) width = norm.width;
       if (norm.height) height = norm.height;
@@ -387,7 +398,7 @@ export async function importMedia(
 
     if (src === srcRaw) {
       void putMediaBlob(src, file, {
-        name: file.name,
+        name: sourceFilename,
         mime: file.type,
         sourceRevision,
         sourceSize,
@@ -397,7 +408,9 @@ export async function importMedia(
 
     const ready: MediaAsset = {
       id,
-      name: file.name,
+      name: sourceFilename,
+      sourceFilename,
+      originalFilePath,
       kind: kind as MediaAssetKind,
       src,
       durationInFrames,

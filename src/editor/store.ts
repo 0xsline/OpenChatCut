@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useReducer, useRef } from 'react';
-import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
+import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, MediaAssetRelinkPatch, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeEditorState, activeTimeline, defaultTrackId, resolveTrackId } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
@@ -56,7 +56,7 @@ export interface EditorCommands {
    * Relink missing or offline media.
    * Updates the pool asset and every timeline clip that still points at the old src.
    */
-  relinkMediaAsset: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind']; sourceRevision?: string; sourceSize?: number; sourceModifiedAt?: number }) => void;
+  relinkMediaAsset: (id: string, next: MediaAssetRelinkPatch) => void;
   /** Solid-color item on a video track. */
   addSolidItem: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number; color?: string; name?: string }) => void;
   addTextClip: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number; ripple?: boolean }) => void;
@@ -351,6 +351,8 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
               kind: asset.kind as Exclude<typeof asset.kind, 'motion-graphic'>,
               name: asset.name,
               src: asset.src,
+              sourceFilename: asset.sourceFilename,
+              originalFilePath: asset.originalFilePath,
               sourceRevision: sourceRevisionOf(asset),
               volume: asset.kind === 'audio' || asset.kind === 'video' ? 1 : undefined,
               width: asset.width,

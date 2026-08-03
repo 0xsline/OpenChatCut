@@ -38,6 +38,10 @@ export interface SourceClockMetadata {
 export interface MediaAsset {
   id: string;
   name: string;
+  /** Immutable filename captured from the source before internal UUID renaming. */
+  readonly sourceFilename?: string;
+  /** Desktop-only absolute source path used for NLE relinking; absent on web/mobile/generated media. */
+  readonly originalFilePath?: string;
   kind: MediaAssetKind;
   src: string; // same-origin path under /media/uploads
   durationInFrames: number;
@@ -69,6 +73,21 @@ export interface MediaAsset {
   transcribeStatus?: AssetTranscribeStatus;
   /** last ASR failure reason (transcribeStatus='failed'), for the pool badge tooltip. */
   transcribeError?: string;
+}
+
+/** Source replacement metadata. Presence of optional keys distinguishes preserve from explicit clearing. */
+export interface MediaAssetRelinkPatch {
+  src: string;
+  name?: string;
+  durationInFrames?: number;
+  width?: number;
+  height?: number;
+  kind?: MediaAsset['kind'];
+  sourceRevision?: string;
+  sourceSize?: number;
+  sourceModifiedAt?: number;
+  sourceFilename?: string;
+  originalFilePath?: string;
 }
 
 /** user-created media-pool bin (manage_media_pool). Root is implicit. */
@@ -217,6 +236,10 @@ export interface TimelineItem {
   height?: number;
   // audio / video / image / gif / svg source:
   src?: string;
+  /** Immutable source identity copied from the pool asset so clips survive pool removal. */
+  readonly sourceFilename?: string;
+  /** Desktop-only absolute source path; never exposed through agent read APIs or portable packages. */
+  readonly originalFilePath?: string;
   /** Revision copied from the pool asset when this clip was placed or relinked. */
   sourceRevision?: string;
   /** Nested sequence reference. Required when kind='sequence'; absent on legacy items. */

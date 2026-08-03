@@ -3,7 +3,7 @@ import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import { useT } from '../i18n/locale';
 import type { Tpl } from '../types';
-import type { MediaAsset, MediaFolder, TimelineItem, TrackId, TransitionType, ZoomShape } from '../editor/types';
+import type { MediaAsset, MediaAssetRelinkPatch, MediaFolder, TimelineItem, TrackId, TransitionType, ZoomShape } from '../editor/types';
 import type { MobileUploadRecord } from '../media/mobileUploadApi';
 import { AUDIO_TRANSITION_ORDER, TRANSITION_LABELS, TRANSITION_ORDER, ZOOM_SHAPE_LABELS, ZOOM_SHAPE_ORDER } from '../editor/types';
 import type { CaptionsData } from '../captions/types';
@@ -89,7 +89,7 @@ interface LibraryPanelProps {
   onRenameMediaAsset: (id: string, name: string) => void;
   onSetMediaAssetFavorite: (id: string, favorite: boolean) => void;
   onRemoveMediaAsset: (id: string) => void;
-  onRelinkMediaAsset?: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind']; sourceRevision?: string; sourceSize?: number; sourceModifiedAt?: number }) => void;
+  onRelinkMediaAsset?: (id: string, next: MediaAssetRelinkPatch) => void;
   onAddSolid?: () => void;
   /** ⋮ menu「Generated with AI」: seed the chat with this template as a reference */
   onUseTemplateAI: (tpl: Tpl) => void;

@@ -537,6 +537,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             sourceRevision: asset.sourceRevision,
             sourceSize: asset.sourceSize,
             sourceModifiedAt: asset.sourceModifiedAt,
+            sourceFilename: asset.sourceFilename,
+            originalFilePath: asset.originalFilePath,
           });
           // onUploaded owns ASR startup; onReady only relinks the same revision.
           if (asset.kind !== 'audio') refreshVisualAnalysis(asset);
@@ -575,6 +577,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             sourceRevision: a.sourceRevision,
             sourceSize: a.sourceSize,
             sourceModifiedAt: a.sourceModifiedAt,
+            sourceFilename: a.sourceFilename,
+            originalFilePath: a.originalFilePath,
           });
           // onUploaded owns ASR startup; onReady only relinks the same revision.
           if (a.kind !== 'audio') refreshVisualAnalysis(a);

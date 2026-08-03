@@ -1,7 +1,7 @@
 // Pure reducer layer: the per-timeline reducer (`reduce`) + the project reducer
 // (`projectReduce`, routing per-timeline actions to the active timeline) + the
 // undo/redo history wrapper. The command set + React hook live in store.ts.
-import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
+import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, MediaAssetRelinkPatch, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeTimeline, captionsOnTrack, DEFAULT_WATERMARK, defaultTrackId, isAudioTransition, selectedIdsOf, timelineTrackIds, trackEnd, trackKind } from './types';
 import { scaleItemKeyframes, splitItemKeyframes, upsertKeyframe } from './keyframes';
 import { capFade, fitItemToDuration, fitTimelineItems } from './clipFit';
@@ -134,7 +134,7 @@ export type ProjectAction =
   | { type: 'pool.moveAssets'; ids: string[]; folderId?: string }
   | { type: 'pool.updateAsset'; id: string; patch: Partial<Pick<MediaAsset, 'name' | 'favorite' | 'code' | 'props' | 'sourceTimecode' | 'captureClock'>> }
   | { type: 'pool.setTranscription'; id: string; patch: Partial<Pick<MediaAsset, 'transcript' | 'transcriptSourceRevision' | 'transcriptStale' | 'transcribeStatus' | 'transcribeError'>> }
-  | { type: 'pool.relinkAsset'; id: string; src: string; name?: string; durationInFrames?: number; width?: number; height?: number; kind?: MediaAsset['kind']; sourceRevision?: string; sourceSize?: number; sourceModifiedAt?: number }
+  | ({ type: 'pool.relinkAsset'; id: string } & MediaAssetRelinkPatch)
   | { type: 'pool.removeAsset'; id: string }
   | { type: 'design.set'; style: DesignStyle | null }
   | { type: 'design.patch'; patch: Partial<DesignStyle> };
@@ -1221,6 +1221,8 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
           sourceRevision: a.sourceRevision,
           sourceSize: a.sourceSize,
           sourceModifiedAt: a.sourceModifiedAt,
+          sourceFilename: 'sourceFilename' in a ? a.sourceFilename : asset.sourceFilename,
+          originalFilePath: 'originalFilePath' in a ? a.originalFilePath : asset.originalFilePath,
           // Exact clocks belong to the old source bytes and must be re-probed.
           sourceTimecode: undefined,
           captureClock: undefined,
@@ -1252,6 +1254,8 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
             ...sourceIndependent,
             src: a.src,
             sourceRevision: nextAsset.sourceRevision,
+            sourceFilename: 'sourceFilename' in a ? a.sourceFilename : item.sourceFilename,
+            originalFilePath: 'originalFilePath' in a ? a.originalFilePath : item.originalFilePath,
             name: a.name ?? item.name,
             width: a.width ?? item.width,
             height: a.height ?? item.height,

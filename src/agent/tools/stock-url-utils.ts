@@ -1,3 +1,4 @@
+import { safeSourceFilename } from '../../media/sourceFilename';
 import type { MediaAsset } from '../../editor/types';
 
 // Pure URL/media detection assistance for the stock/download tool (unpacked from stock-tools.ts, subject to the 500-line file limit).
@@ -24,12 +25,12 @@ export function sniffKind(url: string): PoolKind | null {
 
 export function nameFromUrl(url: string): string {
   const clean = url.split('?')[0].split('#')[0];
-  const base = clean.split('/').filter(Boolean).pop();
-  if (!base) return url;
+  const encodedBasename = clean.replaceAll('\\', '/').split('/').pop();
+  if (!encodedBasename) return 'remote-media';
   try {
-    return decodeURIComponent(base);
+    return safeSourceFilename(decodeURIComponent(encodedBasename)) ?? 'remote-media';
   } catch {
-    return base;
+    return safeSourceFilename(encodedBasename) ?? 'remote-media';
   }
 }
 

@@ -50,6 +50,7 @@ async function importServerMedia(record: MobileUploadRecord, fps: number): Promi
     return {
       id: crypto.randomUUID(),
       name: record.name,
+      sourceFilename: record.name,
       kind: kind as MediaAssetKind,
       src: record.path,
       sourceRevision,
@@ -58,10 +59,10 @@ async function importServerMedia(record: MobileUploadRecord, fps: number): Promi
       ...metadata,
     };
   }
-  const normalized = await normalizeUploadedVideo(record.path, fps);
+  const normalized = await normalizeUploadedVideo(record.path);
   return {
-    id: crypto.randomUUID(), name: record.name, kind, src: normalized.src,
-    sourceRevision, sourceSize, sourceModifiedAt,
+    id: crypto.randomUUID(), name: record.name, sourceFilename: record.name,
+    kind, src: normalized.src, sourceRevision, sourceSize, sourceModifiedAt,
     durationInFrames: normalized.durationSeconds
       ? Math.max(1, Math.round(normalized.durationSeconds * fps)) : metadata.durationInFrames,
     width: normalized.width ?? metadata.width,
@@ -69,8 +70,15 @@ async function importServerMedia(record: MobileUploadRecord, fps: number): Promi
   };
 }
 
+export function preserveMobileSourceIdentity(asset: MediaAsset, sourceFilename: string): MediaAsset {
+  return { ...asset, sourceFilename, originalFilePath: undefined };
+}
+
 /** Build a project asset from a file already written by the phone-upload server. */
 export async function importUploadedMedia(record: MobileUploadRecord, fps: number): Promise<MediaAsset> {
-  if (isHeic(record)) return importMedia(await convertHeic(record), fps);
+  if (isHeic(record)) {
+    const converted = await importMedia(await convertHeic(record), fps);
+    return preserveMobileSourceIdentity(converted, record.name);
+  }
   return importServerMedia(record, fps);
 }

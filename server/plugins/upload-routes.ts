@@ -12,8 +12,8 @@ import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { Readable, Transform } from 'node:stream';
 import {
-  deleteUploadObject, presignGetUpload, presignPutUpload,
-  putUploadFile, r2Config, r2PresignEnabled,
+  configuredUploadMaxBytes, deleteUploadObject, presignGetUpload, presignPutUpload,
+  putUploadFile, r2Config, r2PresignEnabled, UploadTooLargeError,
 } from '../r2.ts';
 import {
   DEFAULT_UPLOAD_DIR, enqueueUploadMutation, isCustomUploadDir, isSafeUploadName,
@@ -26,29 +26,25 @@ const MAX_JSON_BYTES = 64 * 1024;
 const IMPORT_TIMEOUT_MS = 30 * 60_000;
 const MEDIA_AUTHORITY_HEADER = 'X-OpenChatCut-Media-Authority';
 type Logger = ViteDevServer['config']['logger'];
+
+export interface UploadRouteDependencies {
+  resolveUpload: typeof resolveOrHydrateUploadFile;
+  syncLegacy: typeof syncLegacyUploads;
+}
+
+const defaultUploadRouteDependencies: UploadRouteDependencies = {
+  resolveUpload: resolveOrHydrateUploadFile,
+  syncLegacy: syncLegacyUploads,
+};
 type CloudState = 'ok' | 'off' | 'failed' | 'exists';
 
 export function maxUploadBytes(): number {
-  const raw = process.env.UPLOAD_MAX_BYTES?.trim();
-  if (raw) {
-    const value = Number(raw);
-    if (Number.isFinite(value) && value > 0) return Math.floor(value);
-  }
-  return 10 * 1024 * 1024 * 1024;
+  return configuredUploadMaxBytes() ?? Number.MAX_SAFE_INTEGER;
 }
 
-class UploadTooLargeError extends Error {
-  constructor(max: number) {
-    super(`file too large (max ${formatBytes(max)})`);
-    this.name = 'UploadTooLargeError';
-  }
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(bytes % (1024 ** 3) === 0 ? 0 : 1)}GB`;
-  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)}MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)}KB`;
-  return `${bytes}B`;
+/** Direct R2 PUT cannot enforce an application byte cap, so capped uploads stay on the proxy route. */
+export function directR2UploadAllowed(presignEnabled = r2PresignEnabled()): boolean {
+  return presignEnabled && configuredUploadMaxBytes() === null;
 }
 
 function readBody(req: IncomingMessage, max = MAX_JSON_BYTES): Promise<Buffer> {
@@ -77,8 +73,8 @@ async function streamToFile(
   let size = 0;
   const counter = new Transform({
     transform(chunk: Buffer, _encoding, done) {
+      if (chunk.length > maxBytes - size) { done(new UploadTooLargeError(maxBytes)); return; }
       size += chunk.length;
-      if (size > maxBytes) { done(new UploadTooLargeError(maxBytes)); return; }
       done(null, chunk);
     },
   });
@@ -149,9 +145,10 @@ async function serveR2Media(
   req: IncomingMessage,
   res: ServerResponse,
   logger: Logger,
+  dependencies: UploadRouteDependencies,
 ): Promise<void> {
   try {
-    const resolved = await resolveOrHydrateUploadFile(name);
+    const resolved = await dependencies.resolveUpload(name);
     if (!resolved) {
       sendError(res, 404, `media not found: ${name}`);
       return;
@@ -162,8 +159,10 @@ async function serveR2Media(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`[R2 回源] ${name}: ${message}`);
-    if (!res.headersSent) sendError(res, 502, `R2 read failed: ${message}`);
-    else res.end();
+    if (!res.headersSent) {
+      if (error instanceof UploadTooLargeError) sendError(res, 413, message);
+      else sendError(res, 502, `R2 read failed: ${message}`);
+    } else res.end();
   }
 }
 
@@ -172,12 +171,13 @@ function handleMediaRead(
   res: ServerResponse,
   next: () => void,
   logger: Logger,
+  dependencies: UploadRouteDependencies,
 ): void {
   if (req.method !== 'GET' && req.method !== 'HEAD') { next(); return; }
   const name = mediaName(req);
   if (!name) { next(); return; }
   const local = diskUpload(name);
-  if (!local) { void serveR2Media(name, req, res, logger); return; }
+  if (!local) { void serveR2Media(name, req, res, logger, dependencies); return; }
   res.setHeader(MEDIA_AUTHORITY_HEADER, 'server');
   void serveDiskFile(req, res, local).catch((error: unknown) => {
     logger.error(`[media-dir] ${name}: ${error instanceof Error ? error.message : String(error)}`);
@@ -213,13 +213,18 @@ function hydrateName(body: { name?: string; path?: string }): string {
   return name.replace(/^.*\//, '');
 }
 
-async function handleHydrate(req: IncomingMessage, res: ServerResponse, logger: Logger): Promise<void> {
+async function handleHydrate(
+  req: IncomingMessage,
+  res: ServerResponse,
+  logger: Logger,
+  dependencies: UploadRouteDependencies,
+): Promise<void> {
   if (req.method !== 'POST') { sendError(res, 405, 'method not allowed — use POST'); return; }
   try {
     const body = JSON.parse((await readBody(req)).toString('utf8') || '{}') as { name?: string; path?: string };
     const name = hydrateName(body);
     if (!isSafeUploadName(name)) { sendError(res, 400, 'unsafe or missing name'); return; }
-    const resolved = await resolveOrHydrateUploadFile(name);
+    const resolved = await dependencies.resolveUpload(name);
     if (!resolved) {
       sendError(res, 404, r2Config()
         ? `R2 object not found: ${name}`
@@ -234,7 +239,8 @@ async function handleHydrate(req: IncomingMessage, res: ServerResponse, logger: 
       cached: resolved.cached,
     });
   } catch (error) {
-    sendError(res, 500, error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    sendError(res, error instanceof UploadTooLargeError ? 413 : 500, message);
   }
 }
 
@@ -277,7 +283,7 @@ async function handlePresignPost(req: IncomingMessage, res: ServerResponse): Pro
   };
   const slot = uploadSlot(body);
   const proxyUrl = `/upload?name=${encodeURIComponent(slot.name)}&assetId=${encodeURIComponent(slot.base)}`;
-  if (r2PresignEnabled()) {
+  if (directR2UploadAllowed()) {
     const signed = await presignPutUpload(slot.name, slot.contentType);
     if (signed) {
       sendJson(res, 200, {
@@ -899,12 +905,17 @@ async function handleImportUrl(req: IncomingMessage, res: ServerResponse, logger
   }
 }
 
-export function registerUploadRoutes(server: ViteDevServer): void {
+export function registerUploadRoutes(
+  server: ViteDevServer,
+  dependencies: UploadRouteDependencies = defaultUploadRouteDependencies,
+): void {
   const logger = server.config.logger;
-  void syncLegacyUploads((message) => logger.info(message));
-  server.middlewares.use('/media/uploads', (req, res, next) => handleMediaRead(req, res, next, logger));
+  void dependencies.syncLegacy((message) => logger.info(message));
+  server.middlewares.use('/media/uploads', (req, res, next) => (
+    handleMediaRead(req, res, next, logger, dependencies)
+  ));
   server.middlewares.use('/upload/list', handleUploadList);
-  server.middlewares.use('/upload/hydrate', (req, res) => handleHydrate(req, res, logger));
+  server.middlewares.use('/upload/hydrate', (req, res) => handleHydrate(req, res, logger, dependencies));
   server.middlewares.use('/upload/presign', handlePresign);
   server.middlewares.use('/upload', (req, res) => handleUpload(req, res, logger));
   server.middlewares.use('/api/import-url', (req, res) => handleImportUrl(req, res, logger));

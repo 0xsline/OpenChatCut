@@ -6,6 +6,7 @@
 import { migrateProjectDoc } from './projectStore';
 import { kvGet as idbGet, kvSet as idbSet } from './sharedKv';
 import type { ProjectDoc } from '../editor/types';
+import { projectDocHasOriginalFilePath, sanitizePortableProjectDoc } from './portableProject';
 
 // Global single key: templates are shared across projects (without projectId), the same idea as owned design styles.
 const TEMPLATES_KEY = 'templates:all';
@@ -27,10 +28,15 @@ function toValidTemplate(v: unknown): { template: ProjectTemplate; migrated: boo
   const raw = v as Partial<ProjectTemplate>;
   if (typeof raw.id !== 'string' || typeof raw.name !== 'string' || typeof raw.createdAt !== 'number') return null;
   let migrated = false;
-  const doc = migrateProjectDoc(raw.doc, { onProgress: () => { migrated = true; } });
-  if (!doc) return null;
+  const migratedDoc = migrateProjectDoc(raw.doc, { onProgress: () => { migrated = true; } });
+  if (!migratedDoc) return null;
+  const hadOriginalFilePath = projectDocHasOriginalFilePath(migratedDoc);
+  const doc = sanitizePortableProjectDoc(migratedDoc);
   const assetIds = Array.isArray(raw.assetIds) ? raw.assetIds.filter((x): x is string => typeof x === 'string') : [];
-  return { template: { id: raw.id, name: raw.name, createdAt: raw.createdAt, doc, assetIds }, migrated };
+  return {
+    template: { id: raw.id, name: raw.name, createdAt: raw.createdAt, doc, assetIds },
+    migrated: migrated || hadOriginalFilePath,
+  };
 }
 
 async function readAll(): Promise<ProjectTemplate[]> {
@@ -78,11 +84,18 @@ const newId = () =>
 export async function saveTemplate(name: string, doc: ProjectDoc): Promise<ProjectTemplate> {
   const trimmed = name.trim() || '未命名模板';
   // ponytail: Carrying the entire asset pool instead of just selecting the referenced assets; tailoring to only referenced assets is additional logic, YAGNI.
-  const assetIds = doc.assets.map((a) => a.id);
+  const portableDoc = sanitizePortableProjectDoc(doc);
+  const assetIds = portableDoc.assets.map((asset) => asset.id);
   const current = await readAll();
-  const existing = current.find((t) => t.name === trimmed);
+  const existing = current.find((template) => template.name === trimmed);
   // ponytail: createdAt is only metadata, the list is not sorted by it (insertion order is used), so using Date.now() does not destroy determinism.
-  const entry: ProjectTemplate = { id: existing?.id ?? newId(), name: trimmed, createdAt: Date.now(), doc, assetIds };
+  const entry: ProjectTemplate = {
+    id: existing?.id ?? newId(),
+    name: trimmed,
+    createdAt: Date.now(),
+    doc: portableDoc,
+    assetIds,
+  };
   const next = existing ? current.map((t) => (t.id === entry.id ? entry : t)) : [...current, entry];
   try {
     await idbSet(TEMPLATES_KEY, next);

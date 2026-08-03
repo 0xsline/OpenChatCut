@@ -1,6 +1,7 @@
 export { STOCK_TOOL_SCHEMAS, STOCK_TOOL_NAMES } from './schemas/stock-tools';
 import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
+import { safeSourceFilename } from '../../media/sourceFilename';
 import { fallbackDuration, isHttpUrl, nameFromUrl, probeUrl, sniffKind, type PoolKind } from './stock-url-utils';
 
 // Stock and URL ingest tools:
@@ -68,13 +69,12 @@ interface ImportUrlResponse {
 /** Server-side fetch → /media/uploads; falls back to remote URL on any failure. */
 async function materializeUrl(
   url: string,
-  nameHint?: string,
 ): Promise<{ src: string; filename?: string; local: boolean; note?: string }> {
   try {
     const res = await fetch('/api/import-url', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, name: nameHint }),
+      body: JSON.stringify({ url }),
     });
     const body = (await res.json().catch(() => ({}))) as ImportUrlResponse;
     if (body.ok && typeof body.path === 'string' && body.path.startsWith('/media/')) {
@@ -137,7 +137,7 @@ async function registerMediaUrl(
   let filename: string | undefined;
 
   if (kind !== 'motion-graphic' && !opts.forceRemote) {
-    const mat = await materializeUrl(url, opts.name);
+    const mat = await materializeUrl(url);
     src = mat.src;
     local = mat.local;
     note = mat.note;
@@ -162,11 +162,13 @@ async function registerMediaUrl(
     }
   }
 
-  const displayName = (opts.name?.trim() || filename || nameFromUrl(url)).trim();
+  const sourceFilename = safeSourceFilename(filename) ?? nameFromUrl(url);
+  const displayName = opts.name?.trim() || sourceFilename;
 
   const asset: MediaAsset = {
     id: newId(),
     name: displayName,
+    sourceFilename,
     kind,
     src,
     durationInFrames,

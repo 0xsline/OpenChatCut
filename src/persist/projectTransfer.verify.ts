@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 import type { ProjectDoc } from '../editor/types';
-import { createProject, resetProjectStoreMemory, type ProjectMeta } from './projectStore';
+import {
+  createProject, resetProjectStoreMemory, saveChat, type PersistedChat, type ProjectMeta,
+} from './projectStore';
 import {
   getMediaBlob, mediaBlobStoreUsage, putMediaBlob, resetMediaBlobMemory,
 } from './mediaBlobStore';
@@ -309,7 +311,63 @@ try {
 {
   resetProjectStoreMemory();
   resetMediaBlobMemory();
-  const project = await createProject('Stream export', doc);
+  const originalFilePath = '/Users/private-editor/旅行/源文件.bin';
+  const exportDoc = structuredClone(doc);
+  exportDoc.assets[0] = {
+    ...exportDoc.assets[0]!,
+    sourceFilename: '源文件.bin',
+    originalFilePath,
+  };
+  const sourceItem = {
+    ...exportDoc.timelines[0]!.items[0]!,
+    sourceFilename: '源文件.bin',
+    originalFilePath,
+  };
+  exportDoc.timelines[0]!.items[0] = sourceItem;
+  exportDoc.timelines[0]!.multicamGroups = [{
+    id: 'group_1',
+    referenceAngleId: 'angle_1',
+    masterAngleId: 'angle_1',
+    syncMethod: 'audio',
+    angles: [
+      {
+        id: 'angle_1',
+        itemId: sourceItem.id,
+        source: { ...sourceItem },
+        label: 'Source',
+        offsetFrames: 0,
+        confidence: 1,
+      },
+      {
+        id: 'angle_2',
+        itemId: sourceItem.id,
+        source: { ...sourceItem },
+        label: 'Source backup',
+        offsetFrames: 0,
+        confidence: 1,
+      },
+    ],
+    evidence: [
+      { angleId: 'angle_1', method: 'audio', confidence: 1, offsetFrames: 0 },
+      { angleId: 'angle_2', method: 'audio', confidence: 1, offsetFrames: 0 },
+    ],
+    decisions: [],
+  }];
+  const project = await createProject('Stream export', exportDoc);
+  const exportChat: PersistedChat = {
+    messages: [],
+    llm: [],
+    changeLog: [{
+      id: 'change_1',
+      createdAt: 1,
+      summary: 'Imported source',
+      operations: [],
+      beforeDoc: exportDoc,
+      afterRevision: 'after',
+      rollbackable: true,
+    }],
+  };
+  await saveChat(project.id, exportChat);
   await putMediaBlob('/media/uploads/source.bin', new Blob(['abc'], { type: 'application/octet-stream' }), {
     name: 'source.bin',
     mime: 'application/octet-stream',
@@ -319,7 +377,133 @@ try {
   assert.equal(lines[0]?.format, PROJECT_STREAM_FORMAT);
   assert.equal(lines[0]?.type, 'manifest');
   assert.equal('media' in (lines[0] ?? {}), false, 'manifest never aggregates media base64 beside ProjectDoc');
+  assert.equal(JSON.stringify(lines[0]).includes(originalFilePath), false, 'portable manifests never expose desktop absolute paths');
+  const manifestDoc = lines[0]?.doc as ProjectDoc;
+  assert.equal(manifestDoc.assets[0]?.sourceFilename, '源文件.bin', 'portable original filenames remain available');
+  assert.equal(manifestDoc.assets[0]?.originalFilePath, undefined);
+  assert.equal(manifestDoc.timelines[0]?.items[0]?.sourceFilename, '源文件.bin');
+  assert.equal(manifestDoc.timelines[0]?.items[0]?.originalFilePath, undefined);
+  assert.equal(manifestDoc.timelines[0]?.multicamGroups?.[0]?.angles[0]?.source.originalFilePath, undefined);
+  assert.equal(manifestDoc.timelines[0]?.multicamGroups?.[0]?.angles[0]?.source.sourceFilename, '源文件.bin');
+  const manifestChat = lines[0]?.chat as PersistedChat;
+  const manifestBeforeDoc = (manifestChat.changeLog?.[0] as { beforeDoc?: ProjectDoc } | undefined)?.beforeDoc;
+  assert.ok(manifestBeforeDoc);
+  assert.equal(manifestBeforeDoc.assets[0]?.originalFilePath, undefined);
+  assert.equal(manifestBeforeDoc.timelines[0]?.items[0]?.originalFilePath, undefined);
+  assert.equal(manifestBeforeDoc.timelines[0]?.multicamGroups?.[0]?.angles[0]?.source.originalFilePath, undefined);
+  assert.equal(manifestBeforeDoc.assets[0]?.sourceFilename, '源文件.bin');
+  assert.equal(exportDoc.assets[0]?.originalFilePath, originalFilePath, 'export sanitization never mutates the live document');
+  const liveBeforeDoc = (exportChat.changeLog?.[0] as { beforeDoc?: ProjectDoc } | undefined)?.beforeDoc;
+  assert.ok(liveBeforeDoc);
+  assert.equal(
+    liveBeforeDoc.assets[0]?.originalFilePath,
+    originalFilePath,
+    'chat export sanitization never mutates the saved snapshot',
+  );
   assert.deepEqual(lines.slice(1).map((line) => line.type), ['media-start', 'media-chunk', 'media-end']);
+}
+
+// Both legacy and streamed portable imports sanitize the migrated document and
+// nested rollback snapshots before the project publish boundary.
+{
+  resetMediaBlobMemory();
+  const originalFilePath = '/Users/attacker/private/source.bin';
+  const maliciousDoc = structuredClone(doc);
+  maliciousDoc.assets[0] = {
+    ...maliciousDoc.assets[0]!,
+    sourceFilename: 'source.bin',
+    originalFilePath,
+  };
+  maliciousDoc.timelines[0]!.items[0] = {
+    ...maliciousDoc.timelines[0]!.items[0]!,
+    sourceFilename: 'source.bin',
+    originalFilePath,
+  };
+  Object.assign(maliciousDoc.timelines[0]!.items[0]!, { sourceFilename: ['private.mov'] });
+  const maliciousItem = maliciousDoc.timelines[0]!.items[0]!;
+  maliciousDoc.timelines[0]!.multicamGroups = [{
+    id: 'group_untrusted',
+    referenceAngleId: 'angle_untrusted_1',
+    masterAngleId: 'angle_untrusted_1',
+    syncMethod: 'audio',
+    angles: [
+      {
+        id: 'angle_untrusted_1',
+        itemId: maliciousItem.id,
+        source: { ...maliciousItem },
+        label: 'Untrusted',
+        offsetFrames: 0,
+        confidence: 1,
+      },
+      {
+        id: 'angle_untrusted_2',
+        itemId: maliciousItem.id,
+        source: { ...maliciousItem },
+        label: 'Untrusted backup',
+        offsetFrames: 0,
+        confidence: 1,
+      },
+    ],
+    evidence: [
+      { angleId: 'angle_untrusted_1', method: 'audio', confidence: 1, offsetFrames: 0 },
+      { angleId: 'angle_untrusted_2', method: 'audio', confidence: 1, offsetFrames: 0 },
+    ],
+    decisions: [],
+  }];
+  const maliciousChat: PersistedChat = {
+    messages: [],
+    llm: [],
+    changeLog: [{
+      id: 'change_untrusted',
+      createdAt: 1,
+      summary: 'Untrusted snapshot',
+      operations: [],
+      beforeDoc: maliciousDoc,
+      afterRevision: 'after',
+      rollbackable: true,
+    }],
+  };
+  const assertPublishedPortable = async (staged: {
+    doc: ProjectDoc;
+    chat?: PersistedChat;
+  }): Promise<ProjectMeta> => {
+    assert.equal(staged.doc.assets[0]?.originalFilePath, undefined);
+    assert.equal(staged.doc.timelines[0]?.items[0]?.originalFilePath, undefined);
+    assert.equal(staged.doc.timelines[0]?.items[0]?.sourceFilename, undefined);
+    assert.equal(staged.doc.timelines[0]?.multicamGroups?.[0]?.angles[0]?.source.originalFilePath, undefined);
+    assert.equal(staged.doc.timelines[0]?.multicamGroups?.[0]?.angles[0]?.source.sourceFilename, undefined);
+    const beforeDoc = (staged.chat?.changeLog?.[0] as { beforeDoc?: ProjectDoc } | undefined)?.beforeDoc;
+    assert.ok(beforeDoc);
+    assert.equal(beforeDoc.assets[0]?.originalFilePath, undefined);
+    assert.equal(beforeDoc.timelines[0]?.items[0]?.originalFilePath, undefined);
+    assert.equal(beforeDoc.timelines[0]?.items[0]?.sourceFilename, undefined);
+    assert.equal(beforeDoc.timelines[0]?.multicamGroups?.[0]?.angles[0]?.source.originalFilePath, undefined);
+    assert.equal(beforeDoc.timelines[0]?.multicamGroups?.[0]?.angles[0]?.source.sourceFilename, undefined);
+    assert.equal(beforeDoc.assets[0]?.sourceFilename, 'source.bin');
+    return importedMeta;
+  };
+  await importProjectPackage(new Blob([JSON.stringify({
+    format: PROJECT_EXPORT_FORMAT,
+    name: 'Untrusted v1',
+    exportedAt: '',
+    doc: maliciousDoc,
+    chat: maliciousChat,
+    media: [],
+  })]), { publish: assertPublishedPortable });
+  await importProjectPackage(new Blob([`${JSON.stringify({
+    format: PROJECT_STREAM_FORMAT,
+    type: 'manifest',
+    name: 'Untrusted v2',
+    exportedAt: '',
+    doc: maliciousDoc,
+    chat: maliciousChat,
+  })}\n`]), { publish: assertPublishedPortable });
+  assert.equal(maliciousDoc.assets[0]?.originalFilePath, originalFilePath, 'import sanitization does not mutate parsed input');
+  assert.equal(
+    maliciousDoc.timelines[0]?.multicamGroups?.[0]?.angles[0]?.source.originalFilePath,
+    originalFilePath,
+    'import sanitization leaves nested live sources untouched',
+  );
 }
 
 console.log('projectTransfer.verify: isolated media identities, hash dedupe, and rollback contracts OK');

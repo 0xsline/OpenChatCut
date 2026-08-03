@@ -14,17 +14,25 @@ const MAX_PARTS = 10_000;
 const DEFAULT_IDLE_TTL_MS = 2 * 60 * 60_000, DEFAULT_ABSOLUTE_TTL_MS = 24 * 60 * 60_000;
 const DEFAULT_ACTIVE_GRACE_MS = 2 * 60_000, DEFAULT_GC_INTERVAL_MS = 5 * 60_000;
 const DEFAULT_ROUTE_GC_MS = 30_000;
+const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
 function envLimit(name: string, fallback: number): number {
-  const value = Number(process.env[name]);
-  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+  const value = Math.floor(Number(process.env[name]));
+  return Number.isFinite(value) && value > 0 ? Math.min(value, MAX_SAFE_BYTES) : fallback;
+}
+function byteCount(value: number): bigint {
+  return BigInt(Math.max(0, Math.min(MAX_SAFE_BYTES, Math.floor(value))));
 }
 function multipartLimits(): MultipartGcLimits {
+  const perFileMax = maxUploadBytes();
+  const defaultMaxBytes = perFileMax > Math.floor(MAX_SAFE_BYTES / 2)
+    ? MAX_SAFE_BYTES
+    : perFileMax * 2;
   return {
     idleTtlMs: envLimit('UPLOAD_MULTIPART_IDLE_TTL_MS', DEFAULT_IDLE_TTL_MS),
     absoluteTtlMs: envLimit('UPLOAD_MULTIPART_ABSOLUTE_TTL_MS', DEFAULT_ABSOLUTE_TTL_MS),
     activeGraceMs: envLimit('UPLOAD_MULTIPART_ACTIVE_GRACE_MS', DEFAULT_ACTIVE_GRACE_MS),
     maxSessions: envLimit('UPLOAD_MULTIPART_MAX_SESSIONS', 32),
-    maxBytes: envLimit('UPLOAD_MULTIPART_MAX_BYTES', maxUploadBytes() * 2),
+    maxBytes: envLimit('UPLOAD_MULTIPART_MAX_BYTES', defaultMaxBytes),
   };
 }
 interface MultipartMeta {
@@ -47,13 +55,14 @@ export function selectMultipartGcVictims(
     .map((session) => session.uploadId));
   const kept = sessions.filter((session) => !victims.has(session.uploadId));
   let count = kept.length;
-  let bytes = kept.reduce((total, session) => total + session.bytes, 0);
+  let bytes = kept.reduce((total, session) => total + byteCount(session.bytes), 0n);
+  const maxBytes = byteCount(limits.maxBytes);
   for (const session of [...kept].sort((a, b) => a.updatedAt - b.updatedAt)) {
-    if (count <= limits.maxSessions && bytes <= limits.maxBytes) break;
+    if (count <= limits.maxSessions && bytes <= maxBytes) break;
     if (protectedSession(session)) continue;
     victims.add(session.uploadId);
     count -= 1;
-    bytes -= session.bytes;
+    bytes -= byteCount(session.bytes);
   }
   return victims;
 }
@@ -137,11 +146,11 @@ async function streamBodyToFile(
   let size = 0;
   const counter = new Transform({
     transform(chunk: Buffer, _enc, cb) {
-      size += chunk.length;
-      if (size > maxBytes) {
+      if (chunk.length > maxBytes - size) {
         cb(new Error(`part exceeds max ${maxBytes} bytes`));
         return;
       }
+      size += chunk.length;
       cb(null, chunk);
     },
   });
@@ -162,6 +171,7 @@ async function concatParts(meta: MultipartMeta, destPath: string): Promise<numbe
       const pp = partPath(meta.uploadId, p);
       if (!existsSync(pp)) throw new Error(`missing part ${p}`);
       const info = await stat(pp);
+      if (info.size > MAX_SAFE_BYTES - total) throw new Error('multipart file exceeds safe byte accounting range');
       total += info.size;
       await pipeline(createReadStream(pp), out, { end: false });
     }
@@ -181,7 +191,8 @@ async function sessionBytes(uploadId: string): Promise<number> {
   let bytes = 0;
   for (const name of names) {
     if (!/^part-\d{5}$/.test(name)) continue;
-    bytes += (await stat(join(sessionDir(uploadId), name)).catch(() => null))?.size ?? 0;
+    const partBytes = (await stat(join(sessionDir(uploadId), name)).catch(() => null))?.size ?? 0;
+    bytes = partBytes > MAX_SAFE_BYTES - bytes ? MAX_SAFE_BYTES : bytes + partBytes;
   }
   return bytes;
 }
@@ -209,7 +220,12 @@ async function gcMultipartSessions(
     } catch { /* keep it counted so admission remains bounded */ }
   }));
   const kept = rows.filter((row) => !removed.has(row.uploadId));
-  return { bytes: kept.reduce((total, row) => total + row.bytes, 0), sessions: kept.length };
+  return {
+    bytes: kept.reduce((total, row) => (
+      row.bytes > MAX_SAFE_BYTES - total ? MAX_SAFE_BYTES : total + row.bytes
+    ), 0),
+    sessions: kept.length,
+  };
 }
 async function loadLiveMeta(uploadId: string, limits: MultipartGcLimits): Promise<MultipartMeta | null> {
   const meta = await loadMeta(uploadId);
@@ -273,7 +289,9 @@ export function uploadMultipartPlugin(): Plugin {
             return;
           }
           if (size > limits.maxBytes || usage.sessions + pendingSessions >= limits.maxSessions
-            || usage.bytes + pendingBytes + size > limits.maxBytes) {
+            || usage.bytes > limits.maxBytes
+            || pendingBytes > limits.maxBytes - usage.bytes
+            || size > limits.maxBytes - usage.bytes - pendingBytes) {
             sendError(res, 429, 'multipart storage capacity is currently in use');
             return;
           }

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 export interface DesktopExportDirectoryGrant {
   readonly grantId: string;
@@ -6,12 +6,14 @@ export interface DesktopExportDirectoryGrant {
 }
 
 export interface OpenChatCutDesktopApi {
+  getPathForFile(file: File): string | undefined;
   selectDirectory(defaultPath?: string): Promise<string | null>;
   selectExportDirectory(): Promise<DesktopExportDirectoryGrant | null>;
   restoreExportDirectory(): Promise<DesktopExportDirectoryGrant | null>;
 }
 
 const api: OpenChatCutDesktopApi = {
+  getPathForFile: (file) => webUtils.getPathForFile(file) || undefined,
   selectDirectory: (defaultPath) =>
     ipcRenderer.invoke('openchatcut:select-directory', defaultPath) as Promise<string | null>,
   selectExportDirectory: () =>

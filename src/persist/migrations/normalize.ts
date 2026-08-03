@@ -14,6 +14,7 @@ import {
 } from '../../editor/types.js';
 import { isSourceClockMetadata } from '../../editor/timecode.js';
 import { withMediaSourceRevision } from '../../editor/mediaSourceRevision.js';
+import { safeSourceFilename } from '../../media/sourceFilename.js';
 
 export type LooseProjectShape = {
   version?: unknown;
@@ -38,6 +39,31 @@ const ITEM_KINDS: Record<TimelineItem['kind'], true> = {
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const optionalFinite = (value: unknown): boolean => value === undefined || finite(value);
+function normalizeSourceFilename<T extends { readonly sourceFilename?: string }>(value: T): T {
+  if (!Object.hasOwn(value, 'sourceFilename')) return value;
+  const sourceFilename: unknown = Reflect.get(value, 'sourceFilename');
+  const safeFilename = safeSourceFilename(sourceFilename);
+  if (safeFilename === sourceFilename) return value;
+  const { sourceFilename: _sourceFilename, ...rest } = value;
+  return (safeFilename === undefined ? rest : { ...rest, sourceFilename: safeFilename }) as T;
+}
+
+function normalizeTimelineSourceFilenames(timeline: Timeline): Timeline {
+  const items = timeline.items.map(normalizeSourceFilename);
+  const multicamGroups = timeline.multicamGroups?.map((group) => ({
+    ...group,
+    angles: group.angles.map((angle) => ({
+      ...angle,
+      source: normalizeSourceFilename(angle.source),
+    })),
+  }));
+  return {
+    ...timeline,
+    items,
+    ...(timeline.multicamGroups === undefined ? {} : { multicamGroups }),
+  };
+}
+
 
 export function isTimelineItem(value: unknown): value is TimelineItem {
   if (!value || typeof value !== 'object') return false;
@@ -102,7 +128,7 @@ export function dedupeAssets(values: readonly unknown[]): MediaAsset[] {
   const unique = new Map<string, MediaAsset>();
   for (const value of values) {
     if (isMediaAsset(value) && !unique.has(value.id)) {
-      unique.set(value.id, withMediaSourceRevision(normalizeAssetClocks(value)));
+      unique.set(value.id, withMediaSourceRevision(normalizeSourceFilename(normalizeAssetClocks(value))));
     }
   }
   return [...unique.values()];
@@ -248,7 +274,7 @@ export function normalizeTimelineGroups(timeline: Timeline): Timeline {
 
 /** V3 uses stable track ids instead of display aliases such as V1/A1. */
 export function normalizeTimelineTracks(timeline: Timeline): Timeline {
-  const clean = stripTimelineAssets(timeline);
+  const clean = stripTimelineAssets(normalizeTimelineSourceFilenames(timeline));
   const ids = timelineTrackIds(clean);
   const alreadyStable = !!clean.trackOrder?.length
     && !ids.some((id) => /^[CVA]\d+$/i.test(id))

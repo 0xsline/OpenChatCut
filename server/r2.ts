@@ -6,8 +6,8 @@
 // Proxy: R2 endpoint domestic direct connection is sometimes good or bad - respect the HTTPS_PROXY/https_proxy environment variable (Clash).
 // Large files: put/get is streamed to avoid 1GB+ asset being packed into the Node heap.
 import { createReadStream, createWriteStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
-import type { Readable } from 'node:stream';
+import { stat, unlink } from 'node:fs/promises';
+import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import {
   DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, HeadObjectCommand,
@@ -17,6 +17,30 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { getKey, type KeyName } from './keystore.ts';
+
+const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
+
+/** A positive UPLOAD_MAX_BYTES is an explicit application cap; unset/invalid means no configured cap. */
+export function configuredUploadMaxBytes(): number | null {
+  const raw = process.env.UPLOAD_MAX_BYTES?.trim();
+  if (!raw) return null;
+  const value = Math.floor(Number(raw));
+  return Number.isFinite(value) && value > 0 ? Math.min(value, MAX_SAFE_BYTES) : null;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(bytes % (1024 ** 3) === 0 ? 0 : 1)}GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)}MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)}KB`;
+  return `${bytes}B`;
+}
+
+export class UploadTooLargeError extends Error {
+  constructor(max: number) {
+    super(`file too large (max ${formatBytes(max)})`);
+    this.name = 'UploadTooLargeError';
+  }
+}
 
 type Get = (name: KeyName) => string;
 const fromKeystore: Get = (name) => getKey(name);
@@ -183,6 +207,11 @@ export interface R2Object {
   bytes: number;
 }
 
+export interface R2DownloadOptions {
+  config?: R2Config;
+  client?: Pick<S3Client, 'send'>;
+}
+
 /** Read back from source to memory (only suitable for small objects/tests; please use getUploadObjectToFile for large files).*/
 export async function getUploadObject(name: string): Promise<R2Object | null> {
   const cfg = r2Config();
@@ -198,22 +227,123 @@ export async function getUploadObject(name: string): Promise<R2Object | null> {
     throw err;
   }
 }
+/** Stream an R2 upload body to disk while enforcing the configured application byte limit. */
+export async function writeBoundedUploadStream(
+  source: Readable,
+  destPath: string,
+  maxBytes: number,
+): Promise<number> {
+  let bytes = 0;
+  const counter = new Transform({
+    transform(chunk: Buffer, _encoding, done) {
+      if (chunk.length > maxBytes - bytes) {
+        done(new UploadTooLargeError(maxBytes));
+        return;
+      }
+      bytes += chunk.length;
+      done(null, chunk);
+    },
+  });
+  try {
+    await pipeline(source, counter, createWriteStream(destPath));
+    return bytes;
+  } catch (error) {
+    await unlink(destPath).catch(() => undefined);
+    throw error;
+  }
+}
 
-/** Read back to the source and stream to the disk (large file back to the source cache). Return contentType + bytes; does not exist → null.*/
+async function deleteOversizedUploadObject(
+  cfg: R2Config,
+  name: string,
+  maxBytes: number,
+  expectedEtag?: string,
+  options?: R2DownloadOptions,
+): Promise<boolean> {
+  let etag = expectedEtag;
+  if (!etag) {
+    try {
+      const head = await (options?.client ?? clientFor(cfg)).send(new HeadObjectCommand({
+        Bucket: cfg.bucket,
+        Key: `uploads/${name}`,
+      }));
+      if (typeof head.ContentLength === 'number' && head.ContentLength <= maxBytes) return false;
+      etag = head.ETag;
+    } catch (error) {
+      if (isNotFound(error)) return false;
+      throw error;
+    }
+  }
+  if (!etag) return false;
+  try {
+    await (options?.client ?? clientFor(cfg)).send(new DeleteObjectCommand({
+      Bucket: cfg.bucket,
+      Key: `uploads/${name}`,
+      IfMatch: etag,
+    }));
+    return true;
+  } catch (error) {
+    if (isNotFound(error) || isPreconditionFailed(error)) return false;
+    throw error;
+  }
+}
+
+async function rejectOversizedUploadObject(
+  cfg: R2Config,
+  name: string,
+  destPath: string,
+  maxBytes: number,
+  etag: string | undefined,
+  body: Readable,
+  options?: R2DownloadOptions,
+): Promise<never> {
+  body.destroy();
+  await unlink(destPath).catch(() => undefined);
+  try {
+    await deleteOversizedUploadObject(cfg, name, maxBytes, etag, options);
+  } catch (cleanupError) {
+    const error = new UploadTooLargeError(maxBytes) as UploadTooLargeError & { cause?: unknown };
+    error.cause = cleanupError;
+    throw error;
+  }
+  throw new UploadTooLargeError(maxBytes);
+}
+
+
+/** Read through to disk, enforcing an explicit UPLOAD_MAX_BYTES against actual streamed bytes. */
 export async function getUploadObjectToFile(
   name: string,
   destPath: string,
+  options?: R2DownloadOptions,
 ): Promise<{ contentType: string; bytes: number } | null> {
-  const cfg = r2Config();
+  const cfg = options?.config ?? r2Config();
   if (!cfg) return null;
   try {
-    const res = await clientFor(cfg).send(new GetObjectCommand({ Bucket: cfg.bucket, Key: `uploads/${name}` }));
+    const res = await (options?.client ?? clientFor(cfg)).send(new GetObjectCommand({ Bucket: cfg.bucket, Key: `uploads/${name}` }));
     if (!res.Body) return null;
     const body = res.Body as Readable;
-    await pipeline(body, createWriteStream(destPath));
-    const bytes = typeof res.ContentLength === 'number'
-      ? res.ContentLength
-      : (await stat(destPath)).size;
+    const maxBytes = configuredUploadMaxBytes();
+    if (maxBytes !== null && typeof res.ContentLength === 'number' && res.ContentLength > maxBytes) {
+      return await rejectOversizedUploadObject(cfg, name, destPath, maxBytes, res.ETag, body, options);
+    }
+    let bytes: number;
+    try {
+      if (maxBytes === null) {
+        await pipeline(body, createWriteStream(destPath));
+        bytes = (await stat(destPath)).size;
+      } else {
+        bytes = await writeBoundedUploadStream(body, destPath, maxBytes);
+      }
+    } catch (error) {
+      if (error instanceof UploadTooLargeError && maxBytes !== null) {
+        try {
+          await deleteOversizedUploadObject(cfg, name, maxBytes, res.ETag, options);
+        } catch (cleanupError) {
+          error.cause = cleanupError;
+        }
+      }
+      throw error;
+    }
     return {
       contentType: res.ContentType || 'application/octet-stream',
       bytes,
