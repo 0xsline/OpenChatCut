@@ -65,6 +65,29 @@ assert.deepEqual(moved.captions?.sourceEntries?.[0]?.words?.map((word: { text: s
   ['Outside', 7_000, 8_000],
 ], 'mixed clip/caption selections should move with one shared delta');
 
+assert.equal(
+  clampTimelineSelectionDelta(state, [], selections, 120),
+  90,
+  'manual caption groups must stop at the nearest unselected cue',
+);
+assert.equal(
+  clampTimelineSelectionDelta(state, ['clip-a'], [selections[1]!], -120),
+  -30,
+  'mixed selections must stop a manual cue at the nearest unselected cue on the left',
+);
+const collisionClamped = moveTimelineSelectionByDelta(state, [], selections, 120);
+assert.deepEqual(
+  collisionClamped.captions?.sourceEntries?.[0]?.words?.map(
+    (word: { text: string; start: number; end: number }) => [word.text, word.start, word.end],
+  ),
+  [
+    ['First', 4_000, 5_000],
+    ['Second', 6_000, 7_000],
+    ['Outside', 7_000, 8_000],
+  ],
+  'group movement must preserve one shared delta without overlapping an unselected cue',
+);
+
 const linkedState: TimelineState = {
   ...state,
   items: [

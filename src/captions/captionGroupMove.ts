@@ -21,6 +21,7 @@ interface ManualCueLocation {
   laneId: string;
   cueIndex: number;
   startMs: number;
+  endMs: number;
 }
 
 interface AutomaticCueLocation {
@@ -129,6 +130,7 @@ function selectedCueLocations(
         laneId: resolved.target.laneId,
         cueIndex: resolved.target.cueIndex,
         startMs: resolved.target.cue.start,
+        endMs: resolved.target.cue.end,
       });
     } else {
       const cue = resolved.target.rows[resolved.target.cueIndex];
@@ -200,6 +202,50 @@ function earliestPersistableDeltaFrames(startMs: number, fps: number): number {
   return deltaFrames;
 }
 
+function latestPersistableDeltaFrames(deltaMs: number, fps: number): number {
+  let deltaFrames = Math.floor(Math.max(0, deltaMs) * fps / 1000);
+  while (Math.round((deltaFrames + 1) * 1000 / fps) <= deltaMs) deltaFrames += 1;
+  while (Math.round(deltaFrames * 1000 / fps) > deltaMs) deltaFrames -= 1;
+  return deltaFrames;
+}
+
+function manualSelectionDeltaBounds(
+  state: TimelineState,
+  locations: readonly ManualCueLocation[],
+): { minFrames: number; maxFrames: number } {
+  const selectedByLane = selectedCueIndexesByLane(locations);
+  let minDeltaMs = Number.NEGATIVE_INFINITY;
+  let maxDeltaMs = Number.POSITIVE_INFINITY;
+
+  for (const location of locations) {
+    const laneKey = `${location.trackId}\u0000${location.laneId}`;
+    const selectedIndexes = selectedByLane.get(laneKey);
+    const captions = captionsOnTrack(state, location.trackId);
+    const lane = captions?.sourceEntries?.find(
+      (entry) => entry.id === location.laneId && isManualCaptionEntry(entry),
+    );
+    if (!selectedIndexes || !lane?.words) continue;
+    for (const [index, word] of lane.words.entries()) {
+      if (selectedIndexes.has(index)) continue;
+      if (word.end <= location.startMs) {
+        minDeltaMs = Math.max(minDeltaMs, word.end - location.startMs);
+      }
+      if (word.start >= location.endMs) {
+        maxDeltaMs = Math.min(maxDeltaMs, word.start - location.endMs);
+      }
+    }
+  }
+
+  return {
+    minFrames: Number.isFinite(minDeltaMs)
+      ? earliestPersistableDeltaFrames(-minDeltaMs, state.fps)
+      : Number.NEGATIVE_INFINITY,
+    maxFrames: Number.isFinite(maxDeltaMs)
+      ? latestPersistableDeltaFrames(maxDeltaMs, state.fps)
+      : Number.POSITIVE_INFINITY,
+  };
+}
+
 /** Clamp a mixed selection with one shared delta at frame zero. */
 export function clampTimelineSelectionDelta(
   state: TimelineState,
@@ -214,9 +260,11 @@ export function clampTimelineSelectionDelta(
     return item ? state.tracks?.[item.track]?.locked : false;
   })) return 0;
   const locations = selectedCueLocations(state, captionSelections);
+  const manualBounds = manualSelectionDeltaBounds(state, locations.manual);
   const manualLocations = locations.manual;
   const automaticLocations = locations.automatic;
-  let minDelta = Number.NEGATIVE_INFINITY;
+  let minDelta = manualBounds.minFrames;
+  let maxDelta = manualBounds.maxFrames;
   let hasMovableSelection = false;
 
   for (const item of state.items) {
@@ -228,7 +276,9 @@ export function clampTimelineSelectionDelta(
     hasMovableSelection = true;
     minDelta = Math.max(minDelta, earliestPersistableDeltaFrames(location.startMs, state.fps));
   }
-  return hasMovableSelection ? Math.max(minDelta, Math.round(requestedDeltaFrames)) : 0;
+  return hasMovableSelection
+    ? Math.min(maxDelta, Math.max(minDelta, Math.round(requestedDeltaFrames)))
+    : 0;
 }
 
 function moveAutomaticCaptionSelections(
