@@ -3,11 +3,16 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell, type OpenDialogOptions } from 'electron';
 import { buildTextContextMenuTemplate } from './context-menu.ts';
 import { startEmbeddedServer } from './embedded-server.ts';
 import { createTransparentMovProxy, importLocalMedia } from './local-media-import.ts';
-import { resolveDesktopDevOrigin } from './page-origin.ts';
+import {
+  assertTrustedDesktopSenderUrl,
+  resolveDesktopDevOrigin,
+  resolveDesktopPageUrlDecision,
+} from './page-origin.ts';
+import type { DesktopPageUrlDecision, DesktopPageUrlSurface } from './page-origin.ts';
 import { preparePackagedRuntime } from './packaged-runtime.ts';
 import { focusExistingWindow } from './single-instance.ts';
 import { applyDesktopWindowFrame, desktopWindowFrameOptions } from './window-frame.ts';
@@ -31,6 +36,45 @@ let mainWindow: BrowserWindow | null = null;
 interface StoredExportDirectory {
   version: 1;
   path: string;
+}
+
+type DesktopIpcHandler = Parameters<typeof ipcMain.handle>[1];
+
+function trustedDesktopHandler(
+  trustedOrigin: string,
+  handler: DesktopIpcHandler,
+): DesktopIpcHandler {
+  return (event, ...args) => {
+    assertTrustedDesktopSenderUrl(event.senderFrame.url, trustedOrigin);
+    return handler(event, ...args);
+  };
+}
+
+function handOffExternalUrl(decision: DesktopPageUrlDecision): void {
+  if (decision.action !== 'open-external') return;
+  void shell.openExternal(decision.url).catch((error: unknown) => {
+    console.error('[desktop] failed to open external URL:', error);
+  });
+}
+
+function installDesktopPageGuards(win: BrowserWindow, trustedOrigin: string): void {
+  const guardNavigation = (surface: Extract<DesktopPageUrlSurface, 'navigation' | 'redirect'>) => (
+    event: { preventDefault(): void },
+    requestedUrl: string,
+  ): void => {
+    const decision = resolveDesktopPageUrlDecision(requestedUrl, trustedOrigin, surface);
+    if (decision.action === 'allow') return;
+    event.preventDefault();
+    handOffExternalUrl(decision);
+  };
+
+  win.webContents.on('will-navigate', guardNavigation('navigation'));
+  win.webContents.on('will-redirect', guardNavigation('redirect'));
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    const decision = resolveDesktopPageUrlDecision(url, trustedOrigin, 'popup');
+    handOffExternalUrl(decision);
+    return { action: 'deny' };
+  });
 }
 
 async function validatedDirectory(value: unknown): Promise<string | null> {
@@ -71,8 +115,8 @@ async function restorePersistedExportDirectory(statePath: string): Promise<strin
   return null;
 }
 
-function registerDesktopHandlers(): void {
-  ipcMain.handle('openchatcut:select-directory', async (event, requestedPath: unknown) => {
+function registerDesktopHandlers(trustedOrigin: string): void {
+  ipcMain.handle('openchatcut:select-directory', trustedDesktopHandler(trustedOrigin, async (event, requestedPath: unknown) => {
     const parent = BrowserWindow.fromWebContents(event.sender);
     const requested = typeof requestedPath === 'string' && isAbsolute(requestedPath)
       ? requestedPath
@@ -86,9 +130,9 @@ function registerDesktopHandlers(): void {
       ? await dialog.showOpenDialog(parent, options)
       : await dialog.showOpenDialog(options);
     return result.canceled ? null : (result.filePaths[0] ?? null);
-  });
+  }));
   const exportStatePath = join(app.getPath('userData'), 'export-destination.json');
-  ipcMain.handle('openchatcut:select-export-directory', async (event) => {
+  ipcMain.handle('openchatcut:select-export-directory', trustedDesktopHandler(trustedOrigin, async (event) => {
     const parent = BrowserWindow.fromWebContents(event.sender);
     const options: OpenDialogOptions = {
       title: '选择导出目录',
@@ -103,12 +147,12 @@ function registerDesktopHandlers(): void {
     if (!directory) throw new Error('所选导出目录不可用');
     await persistExportDirectory(exportStatePath, directory);
     return createExportDirectoryGrant(directory);
-  });
-  ipcMain.handle('openchatcut:restore-export-directory', async () => {
+  }));
+  ipcMain.handle('openchatcut:restore-export-directory', trustedDesktopHandler(trustedOrigin, async () => {
     const directory = await restorePersistedExportDirectory(exportStatePath);
     return directory ? createExportDirectoryGrant(directory) : null;
-  });
-  ipcMain.handle('openchatcut:import-local-media', async (_event, sourcePath: unknown, originalName: unknown) => {
+  }));
+  ipcMain.handle('openchatcut:import-local-media', trustedDesktopHandler(trustedOrigin, async (_event, sourcePath: unknown, originalName: unknown) => {
     if (typeof sourcePath !== 'string' || !isAbsolute(sourcePath)) {
       throw new Error('local media source must be an absolute path');
     }
@@ -116,12 +160,12 @@ function registerDesktopHandlers(): void {
       throw new Error('invalid local media filename');
     }
     return importLocalMedia(sourcePath, originalName);
-  });
-  ipcMain.handle('openchatcut:transparent-mov-proxy', async (_event, storedName: unknown) => {
+  }));
+  ipcMain.handle('openchatcut:transparent-mov-proxy', trustedDesktopHandler(trustedOrigin, async (_event, storedName: unknown) => {
     if (typeof storedName !== 'string') throw new Error('invalid local media name');
     return createTransparentMovProxy(storedName);
-  });
-  ipcMain.handle('openchatcut:window-action', (event, action: unknown) => {
+  }));
+  ipcMain.handle('openchatcut:window-action', trustedDesktopHandler(trustedOrigin, (event, action: unknown) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || typeof action !== 'string') return;
     if (action === 'close') win.close();
@@ -130,7 +174,7 @@ function registerDesktopHandlers(): void {
       if (win.isMaximized()) win.unmaximize();
       else win.maximize();
     }
-  });
+  }));
 }
 
 async function smokeProbe(origin: string, win: BrowserWindow): Promise<void> {
@@ -176,7 +220,6 @@ async function smokeProbe(origin: string, win: BrowserWindow): Promise<void> {
 
 async function boot(): Promise<void> {
   await app.whenReady();
-  registerDesktopHandlers();
   if (app.isPackaged) {
     await preparePackagedRuntime({
       resourcesPath: process.resourcesPath,
@@ -190,6 +233,7 @@ async function boot(): Promise<void> {
     smoke: SMOKE,
   });
   const origin = devOrigin ?? (await startEmbeddedServer(DIST_DIR)).origin;
+  registerDesktopHandlers(origin);
   console.log(`[desktop] ${devOrigin ? 'live source' : 'embedded server'} at ${origin}`);
 
   const initialBounds = resolveInitialDesktopWindowBounds(screen.getPrimaryDisplay().workArea);
@@ -212,6 +256,7 @@ async function boot(): Promise<void> {
   win.once('closed', () => {
     mainWindow = null;
   });
+  installDesktopPageGuards(win, origin);
   win.webContents.on('context-menu', (_event, params) => {
     const template = buildTextContextMenuTemplate(params);
     if (!template.length) return;

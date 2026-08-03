@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { copyFile, link, mkdir, stat } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { copyFile, mkdir, stat } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { ffmpegBin, ffprobeBin } from '../server/media-binaries.ts';
 import { uploadDir } from '../server/media-dir.ts';
@@ -52,10 +53,11 @@ export function isTransparentMovProbe(stream: ProbeStream | undefined): boolean 
 export function transparentMovProxyArgs(source: string, destination: string): string[] {
   return [
     '-y', '-i', source,
-    '-map', '0:v:0', '-an',
+    '-map', '0:v:0', '-map', '0:a?',
     '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p',
     '-metadata:s:v:0', 'alpha_mode=1', '-auto-alt-ref', '0',
     '-deadline', 'good', '-cpu-used', '4', '-row-mt', '1',
+    '-c:a', 'libopus',
     destination,
   ];
 }
@@ -65,14 +67,13 @@ export async function importLocalMedia(sourcePath: string, originalName: string)
   if (!sourceInfo.isFile()) throw new Error('local media source must be a file');
   const extension = extname(originalName).toLowerCase();
   const storedName = `${randomUUID()}${extension}`;
-  const destination = join(uploadDir(), storedName);
-  await mkdir(uploadDir(), { recursive: true });
-  try {
-    // Same-volume imports are metadata-only; cross-volume imports copy once.
-    await link(sourcePath, destination);
-  } catch {
-    await copyFile(sourcePath, destination);
-  }
+  const directory = uploadDir();
+  const destination = join(directory, storedName);
+  await mkdir(directory, { recursive: true });
+  // COPYFILE_FICLONE attempts a copy-on-write clone and transparently falls
+  // back to a regular copy when the filesystem does not support cloning.
+  // Either path creates an inode independent from the source.
+  await copyFile(sourcePath, destination, constants.COPYFILE_FICLONE);
   return { src: `/media/uploads/${storedName}`, storedName };
 }
 
