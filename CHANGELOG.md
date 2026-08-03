@@ -60,10 +60,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed / 修复
 
+- Prevented API and Codex Agents from claiming an edit succeeded after a tool returned or threw an unresolved failure; failed result envelopes now stay explicit, same-tool retries can recover, and uncorrected completion text is replaced with the real failure.
+  修复 API 与 Codex Agent 在工具返回或抛出未解决错误后仍声称编辑成功的问题；失败结果现在会保持明确，同一工具可通过正确重试恢复，未纠正的完成话术则会替换为真实错误。
 - Exported valid FCPXML 1.10 media representations with immutable original filenames and desktop source paths beside internal working copies, while removing absolute paths from portable project packages.
   FCPXML 1.10 现在会输出合规的媒体表示，在内部工作副本旁保留不可变的原始文件名与桌面端源路径；可移植工程包则会移除绝对路径。
 - Removed the default 10 GiB application-layer upload cap and stopped automatically optimizing compatible media solely for file size, dimensions, or bitrate; explicit upload limits and opt-in optimization remain available.
   移除默认 10 GiB 应用层上传上限，并停止仅因文件大小、分辨率或码率自动优化兼容素材；仍可显式配置上传上限或按需启用优化。
+- Routed Electron local-media imports through a native filesystem bridge, so files larger than the HTTP body limit are copied directly into managed storage without buffering the entire source in the renderer.
+  Electron 本地素材导入现改走原生文件系统桥接，超过 HTTP 请求体限制的大文件会直接复制到托管存储，无需在渲染进程中缓冲完整源文件。
 - Fixed the Codex model selector disappearing after reopening Settings by keeping its picker mounted and automatically refreshing the signed-in account's model catalog.
   修复重新打开设置后 Codex 模型选择器消失的问题：选择器现在会持续显示，并自动刷新已登录账号的模型目录。
 - Blocked Agent submission until the configured model catalog is hydrated, and retried one transient gateway/network failure only before any model output is emitted.

@@ -11,6 +11,16 @@ export interface LocalMediaImport {
   storedName: string;
 }
 
+export interface LocalMediaImportDependencies {
+  stat(path: string): Promise<{ isFile(): boolean; size: number }>;
+  copyFile(source: string, destination: string, mode: number): Promise<void>;
+}
+
+const DEFAULT_LOCAL_MEDIA_IMPORT_DEPENDENCIES: LocalMediaImportDependencies = {
+  stat: (path) => stat(path),
+  copyFile: (source, destination, mode) => copyFile(source, destination, mode),
+};
+
 type ProbeStream = {
   codec_name?: unknown;
   profile?: unknown;
@@ -62,8 +72,12 @@ export function transparentMovProxyArgs(source: string, destination: string): st
   ];
 }
 
-export async function importLocalMedia(sourcePath: string, originalName: string): Promise<LocalMediaImport> {
-  const sourceInfo = await stat(sourcePath);
+export async function importLocalMedia(
+  sourcePath: string,
+  originalName: string,
+  dependencies: LocalMediaImportDependencies = DEFAULT_LOCAL_MEDIA_IMPORT_DEPENDENCIES,
+): Promise<LocalMediaImport> {
+  const sourceInfo = await dependencies.stat(sourcePath);
   if (!sourceInfo.isFile()) throw new Error('local media source must be a file');
   const extension = extname(originalName).toLowerCase();
   const storedName = `${randomUUID()}${extension}`;
@@ -73,7 +87,7 @@ export async function importLocalMedia(sourcePath: string, originalName: string)
   // COPYFILE_FICLONE attempts a copy-on-write clone and transparently falls
   // back to a regular copy when the filesystem does not support cloning.
   // Either path creates an inode independent from the source.
-  await copyFile(sourcePath, destination, constants.COPYFILE_FICLONE);
+  await dependencies.copyFile(sourcePath, destination, constants.COPYFILE_FICLONE);
   return { src: `/media/uploads/${storedName}`, storedName };
 }
 

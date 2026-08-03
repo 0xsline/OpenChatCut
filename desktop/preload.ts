@@ -1,4 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import {
+  importLocalMediaFromFile,
+  type LocalMediaPreloadDependencies,
+} from './local-media-bridge.ts';
 
 export interface DesktopExportDirectoryGrant {
   readonly grantId: string;
@@ -22,6 +26,11 @@ export interface OpenChatCutDesktopApi {
   revealExport(destinationId: string, filename: string): Promise<void>;
 }
 
+const localMediaPreloadDependencies: LocalMediaPreloadDependencies<File> = {
+  getPathForFile: webUtils.getPathForFile.bind(webUtils),
+  invoke: ipcRenderer.invoke.bind(ipcRenderer),
+};
+
 const api: OpenChatCutDesktopApi = {
   getPathForFile: (file) => webUtils.getPathForFile(file) || undefined,
   platform: process.platform,
@@ -33,21 +42,7 @@ const api: OpenChatCutDesktopApi = {
     ipcRenderer.invoke('openchatcut:select-export-file', suggestedFilename) as Promise<DesktopExportFileGrant | null>,
   restoreExportDirectory: () =>
     ipcRenderer.invoke('openchatcut:restore-export-directory') as Promise<DesktopExportDirectoryGrant | null>,
-  importLocalMedia: (file) => {
-    let sourcePath = '';
-    try {
-      sourcePath = webUtils.getPathForFile(file);
-    } catch {
-      // Clipboard-created blobs have no native path and retain the browser fallback.
-      return Promise.resolve(null);
-    }
-    if (!sourcePath) return Promise.resolve(null);
-    return ipcRenderer.invoke(
-      'openchatcut:import-local-media',
-      sourcePath,
-      file.name,
-    ) as Promise<{ src: string; storedName: string }>;
-  },
+  importLocalMedia: (file) => importLocalMediaFromFile(file, localMediaPreloadDependencies),
   prepareTransparentMovProxy: (storedName) =>
     ipcRenderer.invoke('openchatcut:transparent-mov-proxy', storedName) as Promise<{ src: string } | null>,
   windowAction: (action) =>

@@ -22,6 +22,7 @@ import {
   type PendingGuard,
 } from './agent-session';
 import { useAgentContextUsage } from './context-usage';
+import { ToolFailureTracker } from './toolFailure';
 import {
   appendAgentChange,
   canRollbackAgentChange,
@@ -66,11 +67,13 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   // in-flight turn's abort controller (aborted by the Stop button)
   const abortRef = useRef<AbortController | null>(null);
   const applyingProposalRef = useRef(false);
+  const toolFailuresRef = useRef(new ToolFailureTracker());
 
   // hydrate chat + pending proposal on mount / project switch
   useEffect(() => {
     let alive = true;
     hydratedRef.current = false;
+    toolFailuresRef.current.clear();
     setHydrated(false);
     setChangeLog([]);
     setProposal(null);
@@ -90,6 +93,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
       } else {
         llmRef.current = initialAgentMessages();
       }
+      toolFailuresRef.current.restore(saved?.toolFailures);
       refreshEstimatedContextUsage();
       llmProviderRef.current = PROVIDER;
       // Drop stale proposals (user edited the project after the snapshot, or
@@ -115,6 +119,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
       changeLog,
       llmFormat: 'ai-sdk-v1',
       llmProvider: llmProviderRef.current,
+      toolFailures: toolFailuresRef.current.snapshot(),
     });
     if (proposal) void saveProposal(projectId, proposal);
     else void clearProposal(projectId);
@@ -227,6 +232,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
           askOnly: opts?.askOnly,
           signal: ac.signal,
           previousContextUsage: contextUsageRef.current ?? undefined,
+          toolFailures: toolFailuresRef.current,
           // Pre-skill_guard: Authorization has been remembered and released directly; otherwise, the pending card will be hung up to wait for the user.
           onSkillGuard: (guard) => {
             if (isSkillAllowed(guard.skill, projectId)) return Promise.resolve<GuardDecision>('allow-once');
@@ -294,6 +300,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   // The pending skill_guard card will be settled by pressing "Reject" when stopped to avoid Promise hanging.
   const stop = useCallback(() => {
     pendingGuardRef.current?.resolve('deny');
+    toolFailuresRef.current.clear();
     abortRef.current?.abort();
   }, []);
 
@@ -369,6 +376,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   const clearHistory = useCallback(() => {
     if (running) return;
     llmRef.current = initialAgentMessages();
+    toolFailuresRef.current.clear();
     llmProviderRef.current = PROVIDER;
     setProposal(null);
     setMessages([]);

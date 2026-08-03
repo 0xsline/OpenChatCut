@@ -339,6 +339,7 @@ export interface PersistedChat {
   changeLog?: unknown[];
   llmFormat?: 'ai-sdk-v1';
   llmProvider?: LlmProvider;
+  toolFailures?: unknown;
 }
 
 export function isPersistedChat(v: unknown): v is PersistedChat {

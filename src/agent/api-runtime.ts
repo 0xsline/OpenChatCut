@@ -2,6 +2,7 @@ import {
   jsonSchema,
   streamText,
   tool,
+  type LanguageModel,
   type ModelMessage,
   type ToolResultPart,
   type ToolSet,
@@ -40,7 +41,8 @@ import {
 } from './settings/agentSettings';
 import type { GuardDecision } from './skills/skillGuard';
 import { completeAbortedTurn } from './abortedTurn';
-import { executeOpenChatCutTool } from './codex/runtime';
+import { executeOpenChatCutTool, type CodexToolExecution } from './codex/runtime';
+import { toolFailureReason, ToolFailureTracker } from './toolFailure';
 import {
   runtimeGuardForTool,
   type RuntimeGuardRequest,
@@ -83,6 +85,11 @@ function toolModelOutput(output: unknown): ToolResultOutput {
   const value = JSON.stringify(output ?? null);
   return { type: 'text', value };
 }
+export function apiToolExecutionOutput(execution: CodexToolExecution): unknown {
+  if (!execution.success) throw new Error(toolFailureReason(execution.result));
+  return execution.result;
+}
+
 
 function createAgentTools(
   ctx: AgentContext,
@@ -98,16 +105,17 @@ function createAgentTools(
       inputSchema: jsonSchema<Record<string, unknown>>(
         schema.input_schema as Parameters<typeof jsonSchema<Record<string, unknown>>>[0],
       ),
-      execute: async (input) => (
-        await executeOpenChatCutTool(schema, input ?? {}, {
+      execute: async (input) => {
+        const execution = await executeOpenChatCutTool(schema, input ?? {}, {
           ctx,
           onEvent,
           settings,
           resolveGuard: runtimeGuardForTool,
           onSkillGuard,
           onFollowup,
-        })
-      ).result,
+        });
+        return apiToolExecutionOutput(execution);
+      },
       toModelOutput: ({ output }) => toolModelOutput(output),
     }),
   ]));
@@ -118,6 +126,19 @@ function responseUsedTools(messages: readonly ModelMessage[]): boolean {
     && Array.isArray(message.content)
     && message.content.some((part) => part.type === 'tool-call'));
 }
+
+function withoutAssistantText(messages: readonly ModelMessage[]): ModelMessage[] {
+  return messages.flatMap((message): ModelMessage[] => {
+    if (message.role !== 'assistant') return [message];
+    if (typeof message.content === 'string') return [];
+    const content = message.content.filter((part) => part.type !== 'text');
+    return content.length ? [{ ...message, content } as ModelMessage] : [];
+  });
+}
+export interface ApiRuntimeDependencies {
+  readonly model?: LanguageModel;
+}
+
 export async function runApiAgent(
   messages: LLMMessage[],
   ctx: AgentContext,
@@ -127,9 +148,11 @@ export async function runApiAgent(
   contextWasCompacted: boolean,
   maxOutputTokens: number,
   opts?: RunAgentOptions,
+  dependencies: ApiRuntimeDependencies = {},
 ): Promise<LLMMessage[]> {
   let conv = normalizeLlmMessages(messages);
   const settings = loadAgentSettings();
+  const toolFailures = opts?.toolFailures ?? new ToolFailureTracker();
 
   let toolTurns = 0;
   let compatibleMediaFallbackRequired = false;
@@ -138,14 +161,31 @@ export async function runApiAgent(
     const extract = createInlineThinkingExtractor();
     let textStarted = false;
     let visibleText = '';
+    let bufferedText = '';
     let askedFollowup = false;
-    const emitText = (delta: string) => {
+    const emitVisibleText = (delta: string) => {
       if (!textStarted) {
         onEvent({ type: 'text-start' });
         textStarted = true;
       }
       visibleText += delta;
       onEvent({ type: 'text-delta', delta });
+    };
+    const emitText = (delta: string) => {
+      bufferedText += delta;
+    };
+    const flushBufferedText = () => {
+      if (!bufferedText) return;
+      const pending = bufferedText;
+      bufferedText = '';
+      emitVisibleText(pending);
+    };
+    const emitFailureCompletion = (): ModelMessage => {
+      bufferedText = '';
+      const report = toolFailures.report();
+      toolFailures.clear();
+      emitVisibleText(report);
+      return { role: 'assistant', content: report };
     };
     const tools = opts?.askOnly || !choice.capabilities.supportsTools.value
       ? {}
@@ -181,7 +221,8 @@ export async function runApiAgent(
             : textOnlyMessages
           : textOnlyMessages;
       const providerOptions = getLanguageModelProviderOptions(choice.provider, choice.openAiApiMode);
-      const model = await getLanguageModel(choice.provider, choice.model, choice.openAiApiMode);
+      const model = dependencies.model
+        ?? await getLanguageModel(choice.provider, choice.model, choice.openAiApiMode);
       let retriedWithoutMedia = false;
       let retriedTransientRequest = false;
       let aborted = false;
@@ -245,6 +286,10 @@ export async function runApiAgent(
               onEvent({ type: 'tool-input-start', name: part.toolName });
             } else if (part.type === 'tool-input-delta') {
               if (part.delta) onEvent({ type: 'tool-input-delta', delta: part.delta });
+            } else if (part.type === 'tool-result') {
+              toolFailures.record(part.toolName, { success: true, result: part.output });
+            } else if (part.type === 'tool-error') {
+              toolFailures.record(part.toolName, { success: false, result: part.error });
             } else if (part.type === 'error') {
               throw part.error;
             } else if (part.type === 'finish') {
@@ -335,24 +380,48 @@ export async function runApiAgent(
       }
 
       if (aborted || opts?.signal?.aborted) {
+        const abortedWithFailure = toolFailures.hasUnresolved;
+        if (abortedWithFailure) {
+          bufferedText = '';
+          responseMessages = withoutAssistantText(responseMessages);
+        } else {
+          flushBufferedText();
+        }
+        toolFailures.clear();
         const persisted = responseMessages.length || !visibleText
           ? responseMessages
           : [{ role: 'assistant', content: [{ type: 'text', text: visibleText }] } as ModelMessage];
         return completeAbortedTurn(conv, persisted);
       }
+      const unresolved = toolFailures.hasUnresolved;
+      if (unresolved) {
+        bufferedText = '';
+        responseMessages = withoutAssistantText(responseMessages);
+      } else {
+        flushBufferedText();
+      }
+      const usedTools = responseUsedTools(responseMessages);
+      if (askedFollowup) return [...conv, ...responseMessages];
+      if (!usedTools && unresolved) return [...conv, emitFailureCompletion()];
       conv = [...conv, ...responseMessages];
-      if (askedFollowup) return conv;
-      if (!responseUsedTools(responseMessages)) return conv;
+      if (!usedTools) return conv;
 
       if (++toolTurns >= MAX_TOOL_TURNS) {
         onEvent({ type: 'max-turns', turns: toolTurns });
-        return conv;
+        return toolFailures.hasUnresolved
+          ? [...conv, emitFailureCompletion()]
+          : conv;
       }
     } catch (error) {
-      if (opts?.signal?.aborted) return conv;
+      if (opts?.signal?.aborted) {
+        toolFailures.clear();
+        return conv;
+      }
+      const failureMessage = toolFailures.hasUnresolved ? emitFailureCompletion() : null;
+      if (!failureMessage) flushBufferedText();
       const message = errorMessage(error).trim();
       onEvent({ type: 'error', message });
-      return conv;
+      return failureMessage ? [...conv, failureMessage] : conv;
     }
   }
 }

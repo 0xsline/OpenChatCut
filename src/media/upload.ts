@@ -288,25 +288,46 @@ async function uploadFile(file: File, onProgress?: UploadProgress): Promise<stri
   return uploadFileSimple(file, onProgress);
 }
 
-interface DesktopLocalMediaApi {
-  importLocalMedia(file: File): Promise<{ src: string; storedName: string } | null>;
-  prepareTransparentMovProxy(storedName: string): Promise<{ src: string } | null>;
-}
-
 export interface DesktopLocalMediaImport {
   src: string;
   storedName: string;
   proxyKind?: 'alpha-webm';
 }
 
-async function importDesktopLocalMedia(file: File): Promise<DesktopLocalMediaImport | null> {
-  const api = (globalThis as typeof globalThis & { openChatCutDesktop?: DesktopLocalMediaApi }).openChatCutDesktop;
+export interface DesktopLocalMediaApi {
+  importLocalMedia?(file: File): Promise<DesktopLocalMediaImport | null>;
+  prepareTransparentMovProxy?(storedName: string): Promise<{ src: string } | null>;
+}
+
+export interface DesktopLocalMediaTransfer {
+  src: string;
+  desktopImport: DesktopLocalMediaImport | null;
+}
+
+type DesktopUploadFallback = (file: File, onProgress?: UploadProgress) => Promise<string>;
+
+async function importDesktopLocalMedia(
+  file: File,
+  api: DesktopLocalMediaApi | undefined,
+): Promise<DesktopLocalMediaImport | null> {
   if (!api?.importLocalMedia) return null;
   const imported = await api.importLocalMedia(file);
   if (!imported) return null;
   if (!/\.mov$/i.test(imported.storedName) || !api.prepareTransparentMovProxy) return imported;
   const proxy = await api.prepareTransparentMovProxy(imported.storedName).catch(() => null);
   return proxy ? { ...imported, src: proxy.src, proxyKind: 'alpha-webm' } : imported;
+}
+
+/** Prefer the native desktop bridge; only absent/pathless bridges use HTTP. */
+export async function transferDesktopLocalMedia(
+  file: File,
+  api: DesktopLocalMediaApi | undefined,
+  uploadFallback: DesktopUploadFallback,
+  onProgress?: UploadProgress,
+): Promise<DesktopLocalMediaTransfer> {
+  const desktopImport = await importDesktopLocalMedia(file, api);
+  if (desktopImport) return { src: desktopImport.src, desktopImport };
+  return { src: await uploadFallback(file, onProgress), desktopImport: null };
 }
 
 export function shouldNormalizeImportedVideo(
@@ -473,10 +494,12 @@ export async function importMedia(
       : Promise.resolve(null);
 
     // Upload fills 0..0.9; optional video normalize uses 0.9..1.
-    const desktopImport = await importDesktopLocalMedia(file);
-    const srcRaw = desktopImport?.src ?? await uploadFile(file, hooks.onProgress
-      ? (r) => hooks.onProgress!(r * 0.9)
-      : undefined);
+    const { desktopImport, src: srcRaw } = await transferDesktopLocalMedia(
+      file,
+      (globalThis as typeof globalThis & { openChatCutDesktop?: DesktopLocalMediaApi }).openChatCutDesktop,
+      uploadFile,
+      hooks.onProgress ? (ratio) => hooks.onProgress!(ratio * 0.9) : undefined,
+    );
     hooks.onProgress?.(0.92);
 
     // First successful path wins: client race (started pre-upload) vs server extract.

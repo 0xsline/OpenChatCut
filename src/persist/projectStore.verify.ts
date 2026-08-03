@@ -6,11 +6,13 @@ import {
   deleteProject,
   hasProjectHistory,
   listProjects,
+  loadChat,
   purgeProject,
   ProjectIndexCoordinator,
   renameProject,
   resetProjectStoreMemory,
   SaveCoordinator,
+  saveChat,
   updateProjectMeta,
   type ProjectMeta,
 } from './projectStore';
@@ -50,6 +52,16 @@ assert.equal(await hasProjectHistory(), false, 'brand-new store has no project h
 
 const project = await createProject('仅有工程', emptyDoc);
 assert.equal(await hasProjectHistory(), true, 'creating a project initializes the store');
+await saveChat(project.id, {
+  messages: [],
+  llm: [],
+  toolFailures: [{ name: 'edit_item', reason: 'item not found' }],
+});
+assert.deepEqual(
+  (await loadChat(project.id))?.toolFailures,
+  [{ name: 'edit_item', reason: 'item not found' }],
+  'unresolved Agent tool failures survive chat reloads',
+);
 
 const clearedScopes: string[] = [];
 await purgeProject(project.id, { semanticCleanup: async (scopeId) => { clearedScopes.push(scopeId); } });

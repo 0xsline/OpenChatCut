@@ -3,9 +3,12 @@ import {
   UnsupportedFunctionalityError,
   generateText,
   jsonSchema,
+  simulateReadableStream,
+  tool,
   type ModelMessage,
   type ToolResultPart,
 } from 'ai';
+import { MockLanguageModelV4 } from 'ai/test';
 import {
   defaultModelForProvider,
   getLanguageModel,
@@ -23,11 +26,19 @@ import {
   withoutModelImages,
 } from './messages';
 import {
+  apiToolExecutionOutput,
   isCompatibleMediaFallbackError,
   shouldRetryCompatibleMediaRequest,
-  streamPartStartsCompatibleMediaOutput,
   shouldRetryTransientAgentRequest,
+  streamPartStartsCompatibleMediaOutput,
 } from './runtime';
+import type { AgentEvent } from './runtime';
+import { runApiAgent } from './api-runtime';
+import { resolveModelCapabilities } from '../../shared/model-capabilities';
+import type { AgentContext } from './context';
+import { INITIAL } from '../editor/initial';
+import { docFromTimeline } from '../persist/projectStore';
+import { isFailedToolResult, ToolFailureTracker } from './toolFailure';
 
 assert.equal(normalizeLlmProvider('openai'), 'openai');
 assert.equal(normalizeLlmProvider('KIMI'), 'kimi');
@@ -663,4 +674,247 @@ assert.equal(shouldRetryTransientAgentRequest({
   aborted: false,
   error: Object.assign(new Error('second gateway failure'), { statusCode: 503 }),
 }), false, 'a transient request retries at most once');
+
+assert.equal(isFailedToolResult({ ok: false, error: 'unknown item' }), true);
+assert.equal(isFailedToolResult({ error: 'invalid edit_item input' }), true);
+assert.equal(isFailedToolResult({ ok: true, error: 'non-fatal diagnostic' }), false);
+assert.equal(isFailedToolResult({ success: true, result: null }), false);
+assert.throws(
+  () => apiToolExecutionOutput({
+    success: false,
+    result: { ok: false, error: 'updates[0]: item not found' },
+  }),
+  /updates\[0\]: item not found/,
+  'API tools must surface rejected result envelopes as AI SDK tool errors',
+);
+assert.deepEqual(
+  apiToolExecutionOutput({ success: true, result: { ok: true, changed: 1 } }),
+  { ok: true, changed: 1 },
+);
+
+const sdkToolFailure = await generateText({
+  model: new MockLanguageModelV4({
+    doGenerate: {
+      content: [{
+        type: 'tool-call',
+        toolCallId: 'failed-edit',
+        toolName: 'edit_item',
+        input: '{"updates":[{"itemId":"missing"}]}',
+      }],
+      finishReason: { unified: 'tool-calls', raw: undefined },
+      usage: {
+        inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
+        outputTokens: { total: 1, text: 1, reasoning: undefined },
+      },
+      warnings: [],
+    },
+  }),
+  prompt: 'Edit a missing clip.',
+  tools: {
+    edit_item: tool({
+      inputSchema: jsonSchema({ type: 'object' }),
+      execute: async () => apiToolExecutionOutput({
+        success: false,
+        result: { ok: false, error: 'updates[0]: item not found' },
+      }),
+    }),
+  },
+  maxRetries: 0,
+});
+assert.equal(
+  sdkToolFailure.steps[0]?.content.some((part) => part.type === 'tool-error'),
+  true,
+  'AI SDK must preserve rejected OpenChatCut results as tool-error parts',
+);
+
+const apiContext: AgentContext = {
+  commands: {} as AgentContext['commands'],
+  getState: () => INITIAL,
+  getDoc: () => docFromTimeline(INITIAL),
+  getCreativeMode: () => null,
+  templates: [],
+  audio: [],
+  getProjectId: () => 'project-1',
+};
+const apiChoice = {
+  id: 'openai:gpt-5',
+  backend: 'api',
+  provider: 'openai',
+  providerLabel: 'OpenAI',
+  model: 'gpt-5',
+  capabilities: resolveModelCapabilities({
+    backend: 'api',
+    provider: 'openai',
+    modelId: 'gpt-5',
+  }),
+} as const;
+const usage = {
+  inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
+  outputTokens: { total: 1, text: 1, reasoning: undefined },
+};
+const apiFailureModel = new MockLanguageModelV4({
+  doStream: [
+    {
+      stream: simulateReadableStream({
+        chunks: [
+          { type: 'text-start', id: 'premature-success' },
+          { type: 'text-delta', id: 'premature-success', delta: 'Removed the clip successfully.' },
+          { type: 'text-end', id: 'premature-success' },
+          {
+            type: 'tool-call',
+            toolCallId: 'remove-missing',
+            toolName: 'remove_item',
+            input: '{"itemId":"missing"}',
+          },
+          {
+            type: 'finish',
+            finishReason: { unified: 'tool-calls', raw: undefined },
+            usage,
+          },
+        ],
+      }),
+    },
+    {
+      stream: simulateReadableStream({
+        chunks: [
+          { type: 'text-start', id: 'different-tool-success' },
+          { type: 'text-delta', id: 'different-tool-success', delta: 'The operation is now fixed.' },
+          { type: 'text-end', id: 'different-tool-success' },
+          {
+            type: 'tool-call',
+            toolCallId: 'read-after-failure',
+            toolName: 'read_project',
+            input: '{}',
+          },
+          {
+            type: 'finish',
+            finishReason: { unified: 'tool-calls', raw: undefined },
+            usage,
+          },
+        ],
+      }),
+    },
+    {
+      stream: simulateReadableStream({
+        chunks: [
+          { type: 'text-start', id: 'false-success' },
+          { type: 'text-delta', id: 'false-success', delta: 'Removed the clip successfully.' },
+          { type: 'text-end', id: 'false-success' },
+          {
+            type: 'finish',
+            finishReason: { unified: 'stop', raw: undefined },
+            usage,
+          },
+        ],
+      }),
+    },
+  ],
+});
+const apiFailureEvents: AgentEvent[] = [];
+const apiFailureResult = await runApiAgent(
+  [{ role: 'user', content: 'Remove a missing clip.' }],
+  apiContext,
+  (event) => apiFailureEvents.push(event),
+  apiChoice,
+  'Test system prompt.',
+  false,
+  1_000,
+  undefined,
+  { model: apiFailureModel },
+);
+assert.doesNotMatch(
+  JSON.stringify(apiFailureResult),
+  /Removed the clip successfully|operation is now fixed/,
+  'API history must discard assistant text before and after an unresolved tool error',
+);
+assert.match(String(apiFailureResult.at(-1)?.content), /couldn't complete the requested operation/);
+assert.doesNotMatch(
+  apiFailureEvents
+    .filter((event): event is Extract<AgentEvent, { type: 'text-delta' }> => event.type === 'text-delta')
+    .map((event) => event.delta)
+    .join(''),
+  /Removed the clip successfully|operation is now fixed/,
+);
+
+const maxTurnModel = new MockLanguageModelV4({
+  doStream: Array.from({ length: 30 }, (_, index) => ({
+    stream: simulateReadableStream({
+      chunks: [
+        {
+          type: 'tool-call' as const,
+          toolCallId: `remove-missing-${index}`,
+          toolName: 'remove_item',
+          input: '{"itemId":"missing"}',
+        },
+        {
+          type: 'finish' as const,
+          finishReason: { unified: 'tool-calls' as const, raw: undefined },
+          usage,
+        },
+      ],
+    }),
+  })),
+});
+const maxTurnFailures = new ToolFailureTracker();
+const maxTurnEvents: AgentEvent[] = [];
+const maxTurnResult = await runApiAgent(
+  [{ role: 'user', content: 'Keep removing the missing clip.' }],
+  apiContext,
+  (event) => maxTurnEvents.push(event),
+  apiChoice,
+  'Test system prompt.',
+  false,
+  1_000,
+  { toolFailures: maxTurnFailures },
+  { model: maxTurnModel },
+);
+assert.equal(
+  maxTurnEvents.some((event) => event.type === 'max-turns'),
+  true,
+  'repeated failed tools must terminate at the tool-turn limit',
+);
+assert.match(String(maxTurnResult.at(-1)?.content), /couldn't complete the requested operation/);
+assert.equal(maxTurnFailures.hasUnresolved, false, 'max-turn failure reporting must close the tracker');
+
+const abortFailures = new ToolFailureTracker();
+abortFailures.record('edit_item', { success: false, result: { error: 'pending failure' } });
+const abortController = new AbortController();
+abortController.abort();
+const abortResult = await runApiAgent(
+  [{ role: 'user', content: 'Stop this turn.' }],
+  apiContext,
+  () => undefined,
+  apiChoice,
+  'Test system prompt.',
+  false,
+  1_000,
+  { signal: abortController.signal, toolFailures: abortFailures },
+  {
+    model: new MockLanguageModelV4({
+      doStream: async () => {
+        throw new DOMException('Stopped', 'AbortError');
+      },
+    }),
+  },
+);
+assert.equal(abortResult.length, 1);
+assert.equal(abortFailures.hasUnresolved, false, 'aborting a turn must discard its failure state');
+
+const toolFailures = new ToolFailureTracker();
+toolFailures.record('edit_item', { success: false, result: { error: 'bad item id' } });
+toolFailures.record('read_project', { success: true, result: { ok: true } });
+assert.equal(toolFailures.hasUnresolved, true, 'another tool cannot erase an edit failure');
+assert.match(toolFailures.report(), /edit_item: bad item id/);
+toolFailures.record('edit_item', { success: true, result: { ok: true } });
+assert.equal(toolFailures.hasUnresolved, false, 'a successful same-tool retry resolves the failure');
+
+toolFailures.record('edit_item', { success: false, result: { error: 'retry failed' } });
+toolFailures.record('edit_item', { success: true, result: { denied: true } });
+assert.equal(toolFailures.hasUnresolved, true, 'a denied retry cannot resolve an earlier failure');
+const persistedFailures = toolFailures.snapshot();
+const restoredFailures = new ToolFailureTracker();
+restoredFailures.restore(persistedFailures);
+assert.match(restoredFailures.report(), /edit_item: retry failed/);
+restoredFailures.clear();
+assert.equal(restoredFailures.hasUnresolved, false);
 console.log('ai-sdk checks passed');

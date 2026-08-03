@@ -4,7 +4,10 @@ import type { AgentContext } from '../context.ts';
 import type { AgentEvent } from '../runtime.ts';
 import { INITIAL } from '../../editor/initial.ts';
 import { docFromTimeline } from '../../persist/projectStore.ts';
-import { runCodexAgent, runCodexSummary } from './runtime.ts';
+import { executeOpenChatCutTool, runCodexAgent, runCodexSummary } from './runtime.ts';
+import { TOOL_SCHEMAS } from '../tools.ts';
+import { DEFAULT_AGENT_SETTINGS } from '../settings/agentSettings.ts';
+import { ToolFailureTracker } from '../toolFailure.ts';
 
 const encoder = new TextEncoder();
 const originalFetch = globalThis.fetch;
@@ -23,6 +26,27 @@ const context: AgentContext = {
   audio: [],
   getProjectId: () => 'project-1',
 };
+
+const removeItemSchema = TOOL_SCHEMAS.find((schema) => schema.name === 'remove_item');
+assert.ok(removeItemSchema);
+const rejectedMutation = await executeOpenChatCutTool(
+  removeItemSchema,
+  { itemId: 'missing' },
+  {
+    ctx: context,
+    onEvent: () => undefined,
+    settings: DEFAULT_AGENT_SETTINGS,
+    resolveGuard: async () => null,
+  },
+);
+assert.equal(rejectedMutation.success, false);
+assert.match(JSON.stringify(rejectedMutation.result), /no item missing/);
+
+const followupFailures = new ToolFailureTracker();
+followupFailures.record('edit_item', {
+  success: false,
+  result: { error: 'updates[0]: item not found: missing' },
+});
 
 globalThis.fetch = (async (input, init) => {
   const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -86,6 +110,7 @@ try {
       contextWindowTokens: 272_000,
       contextWindowEstimated: false,
       maxOutputTokens: 64_000,
+      toolFailures: followupFailures,
       tools: [{
         name: 'ask_followup_questions',
         description: 'Ask for missing input',
@@ -120,6 +145,49 @@ try {
   assert.equal(result.at(-1)?.content, 'Which editing style should I use?');
   assert.equal(events.some((event) => event.type === 'error'), false);
   assert.equal(events.filter((event) => event.type === 'tool-input-start').length, 1);
+  assert.equal(followupFailures.hasUnresolved, true, 'follow-up must preserve earlier tool failures');
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+globalThis.fetch = (async (input) => {
+  const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  if (path !== '/api/codex/turn') throw new Error(`Unexpected fetch: ${path}`);
+  const payload = [
+    { type: 'text-delta', delta: 'The edit was completed successfully.' },
+    { type: 'done' },
+  ].map((event) => JSON.stringify(event)).join('\n');
+  return new Response(`${payload}\n`, {
+    status: 200,
+    headers: { 'content-type': 'application/x-ndjson' },
+  });
+}) as typeof fetch;
+try {
+  const resumedEvents: AgentEvent[] = [];
+  const resumed = await runCodexAgent(
+    [{ role: 'user', content: 'Continue after the follow-up.' }],
+    context,
+    (event) => resumedEvents.push(event),
+    {
+      askOnly: true,
+      contextWindowTokens: 64_000,
+      contextWindowEstimated: false,
+      maxOutputTokens: 64_000,
+      toolFailures: followupFailures,
+      tools: [],
+      executeTool: async () => ({ success: true, result: null }),
+    },
+  );
+  assert.match(String(resumed.at(-1)?.content), /couldn't complete the requested operation/);
+  assert.doesNotMatch(String(resumed.at(-1)?.content), /completed successfully/);
+  assert.equal(followupFailures.hasUnresolved, false, 'terminal failure reporting closes the carried failure');
+  assert.doesNotMatch(
+    resumedEvents
+      .filter((event): event is Extract<AgentEvent, { type: 'text-delta' }> => event.type === 'text-delta')
+      .map((event) => event.delta)
+      .join(''),
+    /completed successfully/,
+  );
 } finally {
   globalThis.fetch = originalFetch;
 }
@@ -163,6 +231,8 @@ globalThis.fetch = (async (input, init) => {
   throw new Error(`Unexpected fetch: ${path}`);
 }) as typeof fetch;
 const normalEvents: AgentEvent[] = [];
+const normalFailures = new ToolFailureTracker();
+normalFailures.record('read_project', { success: false, result: { error: 'stale read' } });
 
 try {
   const result = await runCodexAgent(
@@ -175,6 +245,7 @@ try {
       contextWindowEstimated: false,
       contextWindowOverride: true,
       maxOutputTokens: 64_000,
+      toolFailures: normalFailures,
       tools: [{ name: 'read_project', inputSchema: { type: 'object' } }],
       executeTool: async () => ({ success: true, result: { duration: 42 } }),
     },
@@ -182,9 +253,122 @@ try {
   assert.match(String(result.at(-2)?.content), /"projectId":"project-1"/);
   assert.match(String(result.at(-2)?.content), /"duration":42/);
   assert.equal(result.at(-1)?.content, 'Project inspected.');
+  assert.equal(normalFailures.hasUnresolved, false, 'a successful same-tool retry must restore normal output');
   const usageEvent = normalEvents.find((event) => event.type === 'context-usage');
   assert.equal(usageEvent?.type === 'context-usage' ? usageEvent.usage.contextWindowTokens : 0, 64_000,
     'Codex provider usage cannot replace an explicit context override');
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+let failureController: ReadableStreamDefaultController<Uint8Array> | null = null;
+const failureSubmissions: Record<string, unknown>[] = [];
+globalThis.fetch = (async (input, init) => {
+  const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  if (path === '/api/codex/turn') {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        failureController = controller;
+        controller.enqueue(encoder.encode(`${JSON.stringify({
+          type: 'text-delta',
+          delta: 'Updated the volume successfully.',
+        })}\n`));
+        controller.enqueue(encoder.encode(`${JSON.stringify({
+          type: 'tool-start',
+          callId: 'failed-edit',
+          name: 'edit_item',
+          args: { updates: [{ itemId: 'missing', volume: 0.42 }] },
+        })}\n`));
+      },
+    });
+    return new Response(stream, { status: 200, headers: { 'content-type': 'application/x-ndjson' } });
+  }
+  if (path === '/api/codex/tool-result') {
+    failureSubmissions.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    assert.ok(failureController);
+    failureController.enqueue(encoder.encode(`${JSON.stringify({ type: 'done' })}\n`));
+    failureController.close();
+    return new Response(null, { status: 200 });
+  }
+  throw new Error(`Unexpected fetch: ${path}`);
+}) as typeof fetch;
+
+try {
+  const failureEvents: AgentEvent[] = [];
+  const result = await runCodexAgent(
+    [{ role: 'user', content: 'Set the missing clip volume.' }],
+    context,
+    (event) => failureEvents.push(event),
+    {
+      contextWindowTokens: 64_000,
+      contextWindowEstimated: false,
+      maxOutputTokens: 64_000,
+      tools: [{ name: 'edit_item', inputSchema: { type: 'object' } }],
+      executeTool: async () => ({
+        success: false,
+        result: { ok: false, error: 'updates[0]: item not found: missing' },
+      }),
+    },
+  );
+  assert.equal(failureSubmissions[0]?.success, false);
+  assert.match(String(result.at(-2)?.content), /success=false/);
+  assert.match(String(result.at(-1)?.content), /couldn't complete the requested operation/);
+  assert.match(String(result.at(-1)?.content), /updates\[0\]: item not found: missing/);
+  assert.doesNotMatch(String(result.at(-1)?.content), /successfully/);
+  const displayed = failureEvents
+    .filter((event): event is Extract<AgentEvent, { type: 'text-delta' }> => event.type === 'text-delta')
+    .map((event) => event.delta)
+    .join('');
+  assert.match(displayed, /couldn't complete the requested operation/);
+  assert.doesNotMatch(displayed, /Updated the volume successfully/);
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+globalThis.fetch = (async (input) => {
+  const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  if (path !== '/api/codex/turn') throw new Error(`Unexpected fetch: ${path}`);
+  const payload = [
+    { type: 'text-delta', delta: 'The unavailable tool completed successfully.' },
+    {
+      type: 'tool-end',
+      callId: 'rejected:request:1',
+      name: 'unknown_tool',
+      args: { value: 1 },
+      result: { error: 'This OpenChatCut tool call is unavailable.' },
+      success: false,
+    },
+    { type: 'done' },
+  ].map((event) => JSON.stringify(event)).join('\n');
+  return new Response(`${payload}\n`, {
+    status: 200,
+    headers: { 'content-type': 'application/x-ndjson' },
+  });
+}) as typeof fetch;
+try {
+  const rejectedEvents: AgentEvent[] = [];
+  const rejected = await runCodexAgent(
+    [{ role: 'user', content: 'Use an unavailable tool.' }],
+    context,
+    (event) => rejectedEvents.push(event),
+    {
+      askOnly: true,
+      contextWindowTokens: 64_000,
+      contextWindowEstimated: false,
+      maxOutputTokens: 64_000,
+      tools: [],
+      executeTool: async () => ({ success: true, result: null }),
+    },
+  );
+  assert.match(String(rejected.at(-1)?.content), /couldn't complete the requested operation/);
+  assert.doesNotMatch(JSON.stringify(rejected), /completed successfully/);
+  assert.doesNotMatch(
+    rejectedEvents
+      .filter((event): event is Extract<AgentEvent, { type: 'text-delta' }> => event.type === 'text-delta')
+      .map((event) => event.delta)
+      .join(''),
+    /completed successfully/,
+  );
 } finally {
   globalThis.fetch = originalFetch;
 }

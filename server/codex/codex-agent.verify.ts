@@ -247,8 +247,16 @@ try {
 
   assert.equal(manager.hasRequest('request-1'), false);
   assert.deepEqual(events.map((event) => event.type), [
-    'tool-start', 'tool-end', 'context-usage', 'text-delta', 'done',
+    'tool-end', 'tool-start', 'tool-end', 'context-usage', 'text-delta', 'done',
   ]);
+  assert.deepEqual(events[0], {
+    type: 'tool-end',
+    callId: 'rejected:request-1:1',
+    name: 'google_drive_search',
+    args: { query: 'private files' },
+    result: { error: 'This OpenChatCut tool call is unavailable.' },
+    success: false,
+  });
   assert.deepEqual(events.find((event) => event.type === 'context-usage'), {
     type: 'context-usage',
     inputTokens: 321,

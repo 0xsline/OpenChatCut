@@ -19,6 +19,10 @@ import { buildTextContextMenuTemplate } from './context-menu.ts';
 import { startEmbeddedServer } from './embedded-server.ts';
 import { createTransparentMovProxy, importLocalMedia } from './local-media-import.ts';
 import {
+  createLocalMediaImportHandler,
+  LOCAL_MEDIA_IMPORT_CHANNEL,
+} from './local-media-bridge.ts';
+import {
   assertTrustedDesktopSenderUrl,
   resolveDesktopDevOrigin,
   resolveDesktopPageUrlDecision,
@@ -290,15 +294,10 @@ function registerDesktopHandlers(trustedOrigin: string): void {
     await persistExportDirectory(exportStatePath, restored.directory, grant.grantId, restored.state);
     return grant;
   }));
-  ipcMain.handle('openchatcut:import-local-media', trustedDesktopHandler(trustedOrigin, async (_event, sourcePath: unknown, originalName: unknown) => {
-    if (typeof sourcePath !== 'string' || !isAbsolute(sourcePath)) {
-      throw new Error('local media source must be an absolute path');
-    }
-    if (typeof originalName !== 'string' || !originalName || basename(originalName) !== originalName) {
-      throw new Error('invalid local media filename');
-    }
-    return importLocalMedia(sourcePath, originalName);
-  }));
+  ipcMain.handle(
+    LOCAL_MEDIA_IMPORT_CHANNEL,
+    trustedDesktopHandler(trustedOrigin, createLocalMediaImportHandler(importLocalMedia)),
+  );
   ipcMain.handle('openchatcut:transparent-mov-proxy', trustedDesktopHandler(trustedOrigin, async (_event, storedName: unknown) => {
     if (typeof storedName !== 'string') throw new Error('invalid local media name');
     return createTransparentMovProxy(storedName);

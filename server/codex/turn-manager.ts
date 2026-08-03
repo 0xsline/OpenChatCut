@@ -38,6 +38,7 @@ interface TurnSession {
   turnId: string | null;
   clientAlive: boolean;
   terminal: boolean;
+  rejectedToolCalls: number;
 }
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -180,6 +181,7 @@ function createSession(request: CodexTurnRequest, client: CodexAppServerClient, 
     turnId: null,
     clientAlive: true,
     terminal: false,
+    rejectedToolCalls: 0,
     finish: (event) => {
       if (session.terminal) return false;
       session.terminal = true;
@@ -318,8 +320,18 @@ export class CodexTurnManager {
     const callId = identifier(request.params.callId);
     const name = identifier(request.params.tool);
     if (!callId || !name || !session.toolNames.has(name) || session.pendingTools.has(callId)) {
+      const message = 'This OpenChatCut tool call is unavailable.';
+      session.rejectedToolCalls += 1;
+      session.emit({
+        type: 'tool-end',
+        callId: `rejected:${session.requestId}:${session.rejectedToolCalls}`,
+        name: name || 'unknown_tool',
+        args: request.params.arguments ?? {},
+        result: { error: message },
+        success: false,
+      });
       request.respond({
-        contentItems: [{ type: 'inputText', text: 'This OpenChatCut tool call is unavailable.' }],
+        contentItems: [{ type: 'inputText', text: message }],
         success: false,
       });
       return true;

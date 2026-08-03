@@ -18,8 +18,10 @@ import { executeOpenChatCutTool, runCodexAgent } from './codex/runtime';
 import { prepareAgentContext } from './context-management';
 import type { AgentContextUsage } from './context-compaction';
 import { runApiAgent } from './api-runtime';
+import type { ToolFailureTracker } from './toolFailure';
 
 export {
+  apiToolExecutionOutput,
   isCompatibleMediaFallbackError,
   shouldRetryCompatibleMediaRequest,
   shouldRetryTransientAgentRequest,
@@ -36,6 +38,7 @@ export interface RunAgentOptions {
   readonly signal?: AbortSignal;
   readonly onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>;
   readonly previousContextUsage?: AgentContextUsage;
+  readonly toolFailures?: ToolFailureTracker;
 }
 
 export type AgentEvent =
@@ -88,6 +91,7 @@ async function runCodexBackend(
     requestMessageCount: messages.length,
     system,
     contextWasCompacted,
+    toolFailures: opts?.toolFailures,
     tools,
     executeTool: async (name, args) => {
       const schema = TOOL_SCHEMAS.find((candidate) => candidate.name === name);
