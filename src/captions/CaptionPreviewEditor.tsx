@@ -4,7 +4,7 @@ import type { PlayerRef } from '@remotion/player';
 import type { TimelineState } from '../editor/types';
 import type { CaptionsData } from './types';
 import { CAPTION_STYLES } from './styles';
-import { captionBoxStyle, captionPreviewTextColor, captionPreviewTextColorPatch, containerStyle, wordStyle } from './renderStyles';
+import { captionPreviewTextColor, captionPreviewTextColorPatch, captionTextStyle, containerStyle } from './renderStyles';
 import { buildCues, fmtCueMs } from './captionCues';
 import {
   captionPreviewLayoutPatch,
@@ -145,8 +145,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
   const currentTextColor = captionPreviewTextColor(preset);
   const block = containerStyle(preset, captions.template, box.w, box.h, target.layout);
   const textCss = {
-    ...wordStyle(preset, !preset.wholeLine),
-    ...captionBoxStyle(preset, !preset.wholeLine, Boolean(preset.wholeLine)),
+    ...captionTextStyle(preset, box.h, !preset.wholeLine, Boolean(preset.wholeLine)),
     whiteSpace: 'pre-wrap' as const,
   };
 
@@ -245,9 +244,9 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
                 if (e.key === 'Escape') { e.stopPropagation(); setEditing(false); }
               }}
               style={{
-                ...textCss, background: '#000000d9', color: currentTextColor, font: 'inherit', fontSize: 'inherit',
-                width: 'max(220px, 100%)', textAlign: 'center', border: '1.5px solid var(--cc-accent)',
-                outline: 'none', resize: 'none', lineHeight: 1.25,
+                ...textCss, background: '#000000d9', color: currentTextColor,
+                width: 'max(220px, 100%)', border: '1.5px solid var(--cc-accent)',
+                outline: 'none', resize: 'none',
               }}
             />
           ) : (
@@ -264,7 +263,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
               onDoubleClick={() => { setSelected(true); setPop(null); setEditing(true); setDraft(cue.text); playerRef.current?.pause(); }}
               style={drag
                 ? { ...textCss, opacity: 0.92, cursor: 'grabbing', touchAction: 'none', userSelect: 'none' }
-                : { ...textCss, color: 'transparent', WebkitTextStroke: undefined, textShadow: 'none', background: 'transparent', cursor: 'grab', touchAction: 'none', userSelect: 'none' }}
+                : { ...textCss, color: 'transparent', WebkitTextStroke: '0px transparent', textShadow: 'none', background: 'transparent', cursor: 'grab', touchAction: 'none', userSelect: 'none' }}
             >
               {cue.text}
             </div>

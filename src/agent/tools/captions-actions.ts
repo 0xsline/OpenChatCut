@@ -39,7 +39,7 @@ const isTemplate = (id: string): id is CaptionTemplate => id in CAPTION_STYLE_BY
 
 const ANCHORS = new Set<CaptionAnchor>(['top', 'center', 'bottom', 'top-left', 'top-center', 'top-right', 'middle-left', 'middle-center', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right']);
 
-/** action=layout json → CaptionLayout (anchor preset + ratio offsets; px top/left → ratio). */
+/** action=layout json → CaptionLayout, including serializable visual transforms. */
 function toLayout(json: Record<string, unknown>, width: number, height: number): CaptionLayout | null {
   const l: CaptionLayout = {};
   const preset = str(json.preset) || str(json.anchor);
@@ -49,6 +49,15 @@ function toLayout(json: Record<string, unknown>, width: number, height: number):
   // pixel top/left → approximate anchor + offset from the top-left
   const top = num(json.top); if (top !== undefined && height > 0) { l.anchor = l.anchor ?? 'top-center'; l.offsetYRatio = top / height; }
   const left = num(json.left); if (left !== undefined && width > 0) { l.offsetXRatio = (left - width / 2) / width; }
+  const transforms = json.transforms && typeof json.transforms === 'object'
+    ? json.transforms as Record<string, unknown>
+    : {};
+  const scale = num(json.scale) ?? num(transforms.scale);
+  const rotation = num(json.rotation) ?? num(transforms.rotation);
+  const opacity = num(json.opacity) ?? num(transforms.opacity);
+  if (scale !== undefined) l.scale = Math.max(0.01, scale);
+  if (rotation !== undefined) l.rotation = rotation;
+  if (opacity !== undefined) l.opacity = Math.max(0, Math.min(1, opacity));
   return Object.keys(l).length ? l : null;
 }
 

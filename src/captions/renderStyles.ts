@@ -21,7 +21,15 @@ export function captionPreviewTextColorPatch(
   return preset.wholeLine ? { color } : { color, highlightColor: color };
 }
 
-const clampedOpacity = (value: number | undefined): number => Math.max(0, Math.min(1, value ?? 1));
+const finiteNumber = (value: number | undefined, fallback: number): number => (
+  typeof value === 'number' && Number.isFinite(value) ? value : fallback
+);
+const nonNegativeNumber = (value: number | undefined, fallback = 0): number => Math.max(0, finiteNumber(value, fallback));
+const positiveNumber = (value: number | undefined, fallback: number): number => {
+  const normalized = finiteNumber(value, fallback);
+  return normalized > 0 ? normalized : fallback;
+};
+const clampedOpacity = (value: number | undefined): number => Math.max(0, Math.min(1, finiteNumber(value, 1)));
 
 function colorWithOpacity(color: string, opacity: number | undefined): string {
   const amount = clampedOpacity(opacity);
@@ -75,16 +83,17 @@ export function shadowBlurSize(shadow: string | undefined): number {
 }
 
 function shadowWithBlurSize(shadow: string | undefined, size: number | undefined, fallback: string): string {
-  if (size === undefined) return shadow ?? 'none';
-  const blur = Math.max(0, size);
+  const source = typeof shadow === 'string' && shadow.trim() ? shadow.trim() : 'none';
+  if (size === undefined || !Number.isFinite(size)) return source;
+  const blur = nonNegativeNumber(size);
   if (blur === 0) return 'none';
-  const layers = splitShadowLayers(!shadow || shadow.trim().toLowerCase() === 'none' ? fallback : shadow);
+  const layers = splitShadowLayers(source.toLowerCase() === 'none' ? fallback : source);
   let targetIndex = -1;
   let largest = -1;
   layers.forEach((layer, index) => {
     const match = SHADOW_BLUR_RE.exec(layer);
     if (!match) return;
-    const current = Math.max(0, Number.parseFloat(match[2]!));
+    const current = nonNegativeNumber(Number.parseFloat(match[2]!));
     if (current >= largest) {
       largest = current;
       targetIndex = index;
@@ -97,33 +106,95 @@ function shadowWithBlurSize(shadow: string | undefined, size: number | undefined
 
 /** Per-word look; active marks the word currently being spoken. */
 export function wordStyle(preset: CaptionStyle, active: boolean): CSSProperties {
+  const strokeWidth = nonNegativeNumber(preset.strokeWidth);
   return {
     color: active ? preset.highlightColor : preset.color,
     textShadow: shadowWithBlurSize(preset.textShadow, preset.textShadowSize, '0 3px 8px #000000aa'),
     paintOrder: 'stroke fill',
-    WebkitTextStroke: preset.strokeWidth
-      ? `${preset.strokeWidth}px ${colorWithOpacity(preset.strokeColor, preset.strokeOpacity)}`
-      : undefined,
+    WebkitTextStroke: strokeWidth > 0
+      ? `${strokeWidth}px ${colorWithOpacity(preset.strokeColor, preset.strokeOpacity)}`
+      : '0px transparent',
   };
 }
 
 export function captionBoxStyle(preset: CaptionStyle, active: boolean, wholeLine = false): CSSProperties {
-  const visible = wholeLine || active;
-  const background = wholeLine ? preset.background : (active ? preset.highlightBackground : undefined);
-  const borderWidth = preset.boxBorderWidth ?? 0;
+  const visible = wholeLine || active || Boolean(preset.background);
+  const background = wholeLine
+    ? preset.background
+    : (active ? (preset.highlightBackground ?? preset.background) : preset.background);
+  const borderWidth = nonNegativeNumber(preset.boxBorderWidth);
   const boxShadow = shadowWithBlurSize(preset.boxShadow, preset.boxShadowSize, '0 4px 12px #00000088');
-  const hasConfiguredBox = wholeLine
-    ? Boolean(preset.background || borderWidth || boxShadow !== 'none')
-    : Boolean(preset.highlightBackground || borderWidth || boxShadow !== 'none');
+  const hasConfiguredBox = Boolean(background || borderWidth || boxShadow !== 'none');
   return {
-    background: background ?? 'transparent',
+    background: background ? colorWithOpacity(background, preset.backgroundOpacity) : 'transparent',
     border: visible && borderWidth > 0
       ? `${borderWidth}px solid ${colorWithOpacity(preset.boxBorderColor ?? preset.strokeColor, preset.boxBorderOpacity)}`
-      : undefined,
-    borderRadius: hasConfiguredBox ? (preset.boxBorderRadius ?? 6) : 0,
-    boxShadow: visible && boxShadow !== 'none' ? boxShadow : undefined,
+      : '0px solid transparent',
+    borderRadius: hasConfiguredBox ? nonNegativeNumber(preset.boxBorderRadius, 6) : 0,
+    boxShadow: visible && boxShadow !== 'none' ? boxShadow : 'none',
     boxSizing: 'border-box',
     padding: wholeLine ? (hasConfiguredBox ? '0.1em 0.42em' : 0) : (hasConfiguredBox ? '0 .14em' : 0),
+  };
+}
+
+function normalizedTextAlign(
+  value: CaptionStyle['textAlign'],
+  fallback: NonNullable<CaptionStyle['textAlign']> = 'center',
+): NonNullable<CaptionStyle['textAlign']> {
+  return value === 'left' || value === 'right' || value === 'center' ? value : fallback;
+}
+
+/** Serializable typography consumed by both the editor overlay and Remotion. */
+export function captionTypographyStyle(
+  preset: CaptionStyle,
+  height: number,
+  fallbackTextAlign: NonNullable<CaptionStyle['textAlign']> = 'center',
+): CSSProperties {
+  const fontStyle = preset.fontStyle === 'italic' || preset.fontStyle === 'oblique' ? preset.fontStyle : 'normal';
+  const decoration = [
+    preset.underline ? 'underline' : '',
+    preset.strike ? 'line-through' : '',
+  ].filter(Boolean).join(' ') || 'none';
+  const fontFamily = preset.fontFamily.trim() || 'system-ui';
+  return {
+    fontFamily: `${fontFamily}, system-ui, sans-serif`,
+    fontSize: nonNegativeNumber(height) * positiveNumber(preset.fontSize, 0.04),
+    fontWeight: Math.max(1, Math.min(1000, finiteNumber(preset.fontWeight, 400))),
+    fontStyle,
+    textAlign: normalizedTextAlign(preset.textAlign, fallbackTextAlign),
+    textDecorationLine: decoration,
+    letterSpacing: finiteNumber(preset.letterSpacing, 0),
+    lineHeight: positiveNumber(preset.lineHeight, 1.25),
+    textTransform: preset.textTransform === 'uppercase' ? 'uppercase' : 'none',
+  };
+}
+
+/** Complete text/paint box contract used for both Player preview and export. */
+export function captionTextStyle(
+  preset: CaptionStyle,
+  height: number,
+  active: boolean,
+  wholeLine = false,
+): CSSProperties {
+  return {
+    ...captionTypographyStyle(preset, height),
+    ...wordStyle(preset, active),
+    ...captionBoxStyle(preset, active, wholeLine),
+  };
+}
+
+/** Word flow honors the same alignment in both single- and multi-lane rendering. */
+export function captionFlowStyle(preset: CaptionStyle): CSSProperties {
+  const align = normalizedTextAlign(preset.textAlign);
+  const edge = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
+  const stacked = preset.displayMode === 'stacked';
+  return {
+    display: 'flex',
+    flexDirection: stacked ? 'column' : 'row',
+    flexWrap: 'wrap',
+    justifyContent: stacked ? 'flex-start' : edge,
+    alignItems: stacked ? edge : 'baseline',
+    gap: '0.2em',
   };
 }
 
@@ -153,17 +224,13 @@ export function containerStyle(
     flexDirection: 'column',
     gap: '0.1em',
     padding: '0 10%',
-    lineHeight: 1.25,
-    fontFamily: `${preset.fontFamily}, system-ui, sans-serif`,
-    fontWeight: preset.fontWeight,
-    fontSize: height * preset.fontSize,
-    textTransform: preset.textTransform,
+    ...captionTypographyStyle(preset, height),
   };
   if (!hasLayout(layout)) {
     return {
       ...base,
       alignItems: 'center',
-      textAlign: 'center',
+      textAlign: normalizedTextAlign(preset.textAlign),
       bottom: template === 'netflix' ? '9%' : '8%',
     };
   }
@@ -172,13 +239,15 @@ export function containerStyle(
     ? 'top'
     : (anchor.startsWith('middle') || anchor === 'center') ? 'middle' : 'bottom';
   const horizontal = anchor.endsWith('left') ? 'left' : anchor.endsWith('right') ? 'right' : 'center';
-  const offsetX = (layout.offsetXRatio ?? 0) * width;
-  const offsetY = (layout.offsetYRatio ?? 0) * height;
-  const visualTransform = `rotate(${layout.rotation ?? 0}deg) scale(${layout.scale ?? 1})`;
+  const offsetX = finiteNumber(layout.offsetXRatio, 0) * finiteNumber(width, 0);
+  const offsetY = finiteNumber(layout.offsetYRatio, 0) * finiteNumber(height, 0);
+  const rotation = finiteNumber(layout.rotation, 0);
+  const scale = positiveNumber(layout.scale, 1);
+  const visualTransform = `rotate(${rotation}deg) scale(${scale})`;
   const placed: CSSProperties = {
     ...base,
     alignItems: horizontal === 'left' ? 'flex-start' : horizontal === 'right' ? 'flex-end' : 'center',
-    textAlign: horizontal,
+    textAlign: normalizedTextAlign(preset.textAlign, horizontal),
     opacity: clampedOpacity(layout.opacity),
     transformOrigin: 'center',
   };
@@ -186,7 +255,7 @@ export function containerStyle(
     return { ...placed, top: '50%', transform: `translateY(-50%) translate(${offsetX}px, ${offsetY}px) ${visualTransform}` };
   }
   if (vertical === 'top') {
-    return { ...placed, top: height * 0.08, transform: `translate(${offsetX}px, ${offsetY}px) ${visualTransform}` };
+    return { ...placed, top: finiteNumber(height, 0) * 0.08, transform: `translate(${offsetX}px, ${offsetY}px) ${visualTransform}` };
   }
-  return { ...placed, bottom: height * 0.08, transform: `translate(${offsetX}px, ${-offsetY}px) ${visualTransform}` };
+  return { ...placed, bottom: finiteNumber(height, 0) * 0.08, transform: `translate(${offsetX}px, ${-offsetY}px) ${visualTransform}` };
 }

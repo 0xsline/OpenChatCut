@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { captionBoxStyle, captionPreviewTextColor, wordStyle } from './renderStyles';
+import { captionBoxStyle, captionPreviewTextColor, captionTextStyle, containerStyle, wordStyle } from './renderStyles';
 import type { CaptionStyle } from './styles';
+import { mapCaptionStyle } from './styleMap';
 
 const preset: CaptionStyle = {
   id: 'plain',
@@ -37,6 +38,75 @@ assert.equal(activeBox.background, '#ff2e63');
 assert.equal(activeBox.border, '3px solid rgba(171, 205, 239, 0.25)');
 assert.equal(activeBox.borderRadius, 12);
 assert.equal(activeBox.boxShadow, '0 4px 12px #00000088');
-assert.equal(captionBoxStyle({ ...preset, boxShadowSize: 0 }, true).boxShadow, undefined);
+assert.equal(captionBoxStyle({ ...preset, boxShadowSize: 0 }, true).boxShadow, 'none');
+
+const mapped = mapCaptionStyle({
+  fontFamily: 'Noto Sans SC',
+  fontSize: 0.064,
+  fontWeight: 650,
+  fontStyle: 'italic',
+  textAlign: 'left',
+  underline: true,
+  strike: true,
+  letterSpacing: 1.75,
+  lineHeight: 1.45,
+  strokeColor: '#445566',
+  strokeWidth: 2,
+  shadow: '1px 2px 3px #000000aa',
+  background: '#112233',
+  backgroundOpacity: 0.5,
+  borderRadius: 18,
+}, 1_000);
+assert.deepEqual(mapped.ignored, [], 'all serialized high-impact style fields map into the caption model');
+const serializedOverride = JSON.parse(JSON.stringify(mapped.styleOverride)) as typeof mapped.styleOverride;
+const rendered = captionTextStyle({ ...preset, ...serializedOverride }, 1_000, false);
+assert.deepEqual(
+  {
+    fontFamily: rendered.fontFamily,
+    fontSize: rendered.fontSize,
+    fontWeight: rendered.fontWeight,
+    fontStyle: rendered.fontStyle,
+    textAlign: rendered.textAlign,
+    textDecorationLine: rendered.textDecorationLine,
+    letterSpacing: rendered.letterSpacing,
+    lineHeight: rendered.lineHeight,
+    WebkitTextStroke: rendered.WebkitTextStroke,
+    textShadow: rendered.textShadow,
+    background: rendered.background,
+    borderRadius: rendered.borderRadius,
+  },
+  {
+    fontFamily: 'Noto Sans SC, system-ui, sans-serif',
+    fontSize: 64,
+    fontWeight: 650,
+    fontStyle: 'italic',
+    textAlign: 'left',
+    textDecorationLine: 'underline line-through',
+    letterSpacing: 1.75,
+    lineHeight: 1.45,
+    WebkitTextStroke: '2px rgba(68, 85, 102, 0.5)',
+    textShadow: '1px 2px 3px #000000aa',
+    background: 'rgba(17, 34, 51, 0.5)',
+    borderRadius: 18,
+  },
+  'the shared preview/export consumer receives every serialized typography and paint property',
+);
+const transformed = containerStyle(
+  { ...preset, ...serializedOverride },
+  'plain',
+  1_920,
+  1_080,
+  { anchor: 'middle-right', offsetXRatio: Number.NaN, scale: Number.NaN, rotation: Number.NaN, opacity: Number.NaN },
+);
+assert.equal(transformed.textAlign, 'left');
+assert.match(String(transformed.transform), /translate\(0px, 0px\) rotate\(0deg\) scale\(1\)/);
+assert.equal(transformed.opacity, 1);
+assert.equal(
+  [...Object.values(rendered), ...Object.values(transformed)].some(
+    (value) => value === undefined || (typeof value === 'number' && !Number.isFinite(value)),
+  ),
+  false,
+  'shared render output contains neither undefined nor non-finite numeric values',
+);
 
 console.log('renderStyles.verify: caption render style controls remain aligned');

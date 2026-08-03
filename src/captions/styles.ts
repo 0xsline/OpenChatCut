@@ -11,6 +11,15 @@ export interface CaptionStyle {
   fontFamily: string;
   fontSize: number;
   fontWeight: number;
+  /** Serializable typographic controls shared by preview and Remotion export. */
+  fontStyle?: 'normal' | 'italic' | 'oblique';
+  textAlign?: 'left' | 'center' | 'right';
+  underline?: boolean;
+  strike?: boolean;
+  /** CSS pixel spacing between glyphs. */
+  letterSpacing?: number;
+  /** Unitless CSS line-height multiplier. */
+  lineHeight?: number;
   color: string;
   highlightColor: string;
   highlightBackground?: string;
@@ -30,12 +39,14 @@ export interface CaptionStyle {
   /** Dominant box-shadow blur radius. Zero disables the shadow. */
   boxShadowSize?: number;
   textTransform?: 'none' | 'uppercase';
-  displayMode?: 'stacked';
+  displayMode?: 'stacked' | 'inline';
   wordsPerPage?: number;
   /** Continuous rendering of the entire sentence: one page is spelled into one text (no word gaps, no word-by-word highlighting), and the background wraps the entire line */
   wholeLine?: boolean;
   /** The whole line background color of wholeLine (such as the classic black caption strip) */
   background?: string;
+  /** Opacity applied to the configured caption background only. */
+  backgroundOpacity?: number;
 }
 
 // The first 9 presets follow PRD §4.17 (bundle only evidences "Bubble Pop" —

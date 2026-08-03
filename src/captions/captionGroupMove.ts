@@ -8,8 +8,11 @@ import {
 } from '../editor/types';
 import type { CaptionsData, CaptionSourceEntry } from './types';
 import { isManualCaptionEntry } from './manualCaptions';
-import { captionSelectionKey, type CaptionSelectionRef } from './captionSelection';
-import { buildCues } from './captionCues';
+import {
+  captionSelectionKey,
+  resolveOrderedCaptionSelections,
+  type CaptionSelectionRef,
+} from './captionSelection';
 import { resolveEntryWords } from './resolve';
 import { orderedCaptionSourceEntries } from './sourceOrder';
 
@@ -95,40 +98,32 @@ export function resolveItemDragSelection(
     : { captionSelections: [], itemIds: [primaryItemId] };
 }
 
-function selectedManualCueLocations(
+function selectedCueLocations(
   state: TimelineState,
   selections: readonly CaptionSelectionRef[],
-): ManualCueLocation[] {
-  return selections.flatMap((selection) => {
-    if (selection.kind !== 'manual' || state.tracks?.[selection.trackId]?.locked) return [];
-    const captions = captionsOnTrack(state, selection.trackId);
-    const lane = captions?.sourceEntries?.find(
-      (entry) => entry.id === selection.laneId && isManualCaptionEntry(entry),
-    );
-    const cue = lane?.words?.[selection.cueIndex];
-    return cue ? [{
-      trackId: selection.trackId,
-      laneId: selection.laneId,
-      cueIndex: selection.cueIndex,
-      startMs: cue.start,
-    }] : [];
-  });
-}
-
-function selectedAutomaticCueLocations(
-  state: TimelineState,
-  selections: readonly CaptionSelectionRef[],
-): AutomaticCueLocation[] {
-  return selections.flatMap((selection) => {
-    if (selection.kind !== 'single' || state.tracks?.[selection.trackId]?.locked) return [];
-    const captions = captionsOnTrack(state, selection.trackId);
-    const cue = captions ? buildCues(captions, state.items, state.fps)[selection.cueIndex] : null;
-    return cue?.srcIdxs.length ? [{
-      trackId: selection.trackId,
-      startMs: cue.start,
-      srcIdxs: [...cue.srcIdxs],
-    }] : [];
-  });
+): { manual: ManualCueLocation[]; automatic: AutomaticCueLocation[] } {
+  const manual: ManualCueLocation[] = [];
+  const automatic: AutomaticCueLocation[] = [];
+  for (const resolved of resolveOrderedCaptionSelections(state, selections)) {
+    if (state.tracks?.[resolved.trackId]?.locked) continue;
+    if (resolved.target.kind === 'manual') {
+      manual.push({
+        trackId: resolved.trackId,
+        laneId: resolved.target.laneId,
+        cueIndex: resolved.target.cueIndex,
+        startMs: resolved.target.cue.start,
+      });
+    } else {
+      const cue = resolved.target.rows[resolved.target.cueIndex];
+      if (!cue?.srcIdxs.length) continue;
+      automatic.push({
+        trackId: resolved.trackId,
+        startMs: resolved.target.cue.start,
+        srcIdxs: [...cue.srcIdxs],
+      });
+    }
+  }
+  return { manual, automatic };
 }
 
 function selectedCueIndexesByLane(locations: readonly ManualCueLocation[]): Map<string, Set<number>> {
@@ -181,6 +176,13 @@ function automaticCaptionSourceByOverrideIndex(
   return new Map(words.map((word, index) => [index, word.itemId]));
 }
 
+function earliestPersistableDeltaFrames(startMs: number, fps: number): number {
+  let deltaFrames = -Math.ceil(Math.max(0, startMs) * fps / 1000);
+  while (startMs + Math.round(deltaFrames * 1000 / fps) < 0) deltaFrames += 1;
+  while (startMs + Math.round((deltaFrames - 1) * 1000 / fps) >= 0) deltaFrames -= 1;
+  return deltaFrames;
+}
+
 /** Clamp a mixed selection with one shared delta at frame zero. */
 export function clampTimelineSelectionDelta(
   state: TimelineState,
@@ -194,8 +196,9 @@ export function clampTimelineSelectionDelta(
     const item = state.items.find((candidate) => candidate.id === id);
     return item ? state.tracks?.[item.track]?.locked : false;
   })) return 0;
-  const manualLocations = selectedManualCueLocations(state, captionSelections);
-  const automaticLocations = selectedAutomaticCueLocations(state, captionSelections);
+  const locations = selectedCueLocations(state, captionSelections);
+  const manualLocations = locations.manual;
+  const automaticLocations = locations.automatic;
   let minDelta = Number.NEGATIVE_INFINITY;
   let hasMovableSelection = false;
 
@@ -206,7 +209,7 @@ export function clampTimelineSelectionDelta(
   }
   for (const location of [...manualLocations, ...automaticLocations]) {
     hasMovableSelection = true;
-    minDelta = Math.max(minDelta, Math.ceil(-location.startMs * state.fps / 1000));
+    minDelta = Math.max(minDelta, earliestPersistableDeltaFrames(location.startMs, state.fps));
   }
   return hasMovableSelection ? Math.max(minDelta, Math.round(requestedDeltaFrames)) : 0;
 }
@@ -226,17 +229,17 @@ function moveAutomaticCaptionSelections(
     if (!captions) continue;
     const sourceByOverrideIndex = automaticCaptionSourceByOverrideIndex(captions, state);
     const wordOverrides = { ...(captions.wordOverrides ?? {}) };
-    for (const location of locations) {
-      if (location.trackId !== trackId) continue;
-      for (const sourceIndex of location.srcIdxs) {
-        const sourceItemId = sourceByOverrideIndex.get(sourceIndex);
-        if (sourceItemId && selectedItemIds.has(sourceItemId)) continue;
-        const current = wordOverrides[sourceIndex] ?? {};
-        wordOverrides[sourceIndex] = {
-          ...current,
-          timingOffsetMs: (current.timingOffsetMs ?? 0) + deltaMs,
-        };
-      }
+    const sourceIndexes = new Set(locations
+      .filter((location) => location.trackId === trackId)
+      .flatMap((location) => location.srcIdxs));
+    for (const sourceIndex of sourceIndexes) {
+      const sourceItemId = sourceByOverrideIndex.get(sourceIndex);
+      if (sourceItemId && selectedItemIds.has(sourceItemId)) continue;
+      const current = wordOverrides[sourceIndex] ?? {};
+      wordOverrides[sourceIndex] = {
+        ...current,
+        timingOffsetMs: (current.timingOffsetMs ?? 0) + deltaMs,
+      };
     }
     next = withCaptionTrack(next, trackId, { ...captions, wordOverrides });
   }
@@ -286,17 +289,19 @@ export function moveTimelineSelectionByDelta(
   requestedDeltaFrames: number,
   itemTrackShift: { from: TrackId; to: TrackId } | null = null,
 ): TimelineState {
-  const deltaFrames = clampTimelineSelectionDelta(state, itemIds, captionSelections, requestedDeltaFrames);
-  const itemsMoved = moveItemsByDelta(state, [...itemIds], deltaFrames, itemTrackShift);
+  const expandedItemIds = moveLockedItemIds(state, itemIds);
+  const locations = selectedCueLocations(state, captionSelections);
+  const deltaFrames = clampTimelineSelectionDelta(state, expandedItemIds, captionSelections, requestedDeltaFrames);
+  const itemsMoved = moveItemsByDelta(state, expandedItemIds, deltaFrames, itemTrackShift);
   const manualMoved = moveManualCaptionSelections(
     itemsMoved,
-    selectedManualCueLocations(state, captionSelections),
+    locations.manual,
     deltaFrames,
   );
   return moveAutomaticCaptionSelections(
     manualMoved,
-    selectedAutomaticCueLocations(state, captionSelections),
-    itemIds,
+    locations.automatic,
+    expandedItemIds,
     deltaFrames,
   );
 }

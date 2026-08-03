@@ -64,7 +64,7 @@ assert.equal(
 assert.deepEqual(
   captionBoxStyle({ ...karaokePreset, highlightBackground: '#000000', boxBorderColor: '#ffffff', boxBorderWidth: 2, boxBorderRadius: 10 }, true),
   {
-    background: '#000000', border: '2px solid #ffffff', borderRadius: 10, boxShadow: undefined,
+    background: '#000000', border: '2px solid #ffffff', borderRadius: 10, boxShadow: 'none',
     boxSizing: 'border-box', padding: '0 .14em',
   },
   'caption box fields are converted into paintable CSS',

@@ -1,7 +1,9 @@
-import { buildCues } from './captionCues';
-import { findCaptionPreviewTarget, type CaptionPreviewTarget } from './captionPreviewTarget';
-import { captionPages } from './exportCaptions';
+import { buildCues, type CueRow } from './captionCues';
+import type { CaptionPreviewTarget } from './captionPreviewTarget';
+import { isManualCaptionEntry } from './manualCaptions';
+import { resolveEntryWords } from './resolve';
 import { effectivePreset } from './renderStyles';
+import { orderedCaptionSourceEntries } from './sourceOrder';
 import {
   captionsOnTrack,
   timelineTrackIds,
@@ -10,7 +12,7 @@ import {
   type TimelineState,
   type TrackId,
 } from '../editor/types';
-import type { CaptionsData } from './types';
+import type { CaptionsData, CaptionWordOverride } from './types';
 
 export type CaptionSelectionRef =
   | { trackId: TrackId; kind: 'single'; cueIndex: number }
@@ -26,6 +28,48 @@ export interface SelectedCaptionInspector {
   trackId: TrackId;
   captions: CaptionsData;
   target: CaptionPreviewTarget;
+}
+
+export interface ResolvedCaptionSelection extends SelectedCaptionInspector {
+  selection: CaptionSelectionRef;
+}
+
+/**
+ * Build only generated cues when structured manual lanes coexist with linked
+ * sources. Cue source indexes are mapped back into the caption track's full
+ * wordOverrides index space.
+ */
+function selectableAutomaticCues(
+  captions: CaptionsData,
+  items: TimelineItem[],
+  fps: number,
+): CueRow[] {
+  if (!captions.sourceEntries?.some(isManualCaptionEntry)) return buildCues(captions, items, fps);
+
+  const orderedEntries = orderedCaptionSourceEntries(captions.sourceEntries)
+    .filter((entry) => entry.visible !== false);
+  const indexedWords = orderedEntries
+    .flatMap((entry) => resolveEntryWords(entry, items, fps)
+      .map((word) => ({ word, manual: isManualCaptionEntry(entry) })))
+    .sort((a, b) => a.word.start - b.word.start || a.word.end - b.word.end);
+  const fullIndexes = indexedWords.flatMap((entry, index) => entry.manual ? [] : [index]);
+  const automaticEntries = captions.sourceEntries.filter((entry) => !isManualCaptionEntry(entry));
+  if (!automaticEntries.length) return [];
+
+  const automaticOverrides: Record<number, CaptionWordOverride> = {};
+  for (let index = 0; index < fullIndexes.length; index += 1) {
+    const override = captions.wordOverrides?.[fullIndexes[index]!];
+    if (override) automaticOverrides[index] = override;
+  }
+  return buildCues({
+    ...captions,
+    sourceEntries: automaticEntries,
+    wordOverrides: automaticOverrides,
+  }, items, fps).map((cue) => ({
+    ...cue,
+    srcIdxs: cue.srcIdxs.map((sourceIndex) => fullIndexes[sourceIndex]!)
+      .filter((sourceIndex) => sourceIndex !== undefined),
+  }));
 }
 
 export function captionSelectionRef(trackId: TrackId, target: CaptionPreviewTarget): CaptionSelectionRef {
@@ -53,22 +97,50 @@ export function captionSelectionsInFrameRange(
   if (!captions.enabled) return [];
   const lo = Math.min(rangeStartFrame, rangeEndFrame);
   const hi = Math.max(rangeStartFrame, rangeEndFrame);
-  const seen = new Set<string>();
-  const selections: CaptionSelectionRef[] = [];
+  const candidates: Array<{
+    selection: CaptionSelectionRef;
+    start: number;
+    end: number;
+    laneOrder: number;
+  }> = [];
 
-  for (const page of captionPages(captions, items, fps)) {
-    const startFrame = Math.max(0, Math.round(page.start * fps / 1000));
-    const endFrame = Math.max(startFrame + 1, Math.round(page.end * fps / 1000));
-    if (endFrame <= lo || startFrame >= hi) continue;
-    const target = findCaptionPreviewTarget(captions, items, fps, (page.start + page.end) / 2);
-    if (!target) continue;
-    const selection = captionSelectionRef(trackId, target);
-    const key = captionSelectionKey(selection);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    selections.push(selection);
+  for (const [cueIndex, cue] of selectableAutomaticCues(captions, items, fps).entries()) {
+    candidates.push({
+      selection: { trackId, kind: 'single', cueIndex },
+      start: cue.start,
+      end: cue.end,
+      laneOrder: -1,
+    });
   }
-  return selections;
+  for (const [laneOrder, entry] of orderedCaptionSourceEntries(captions.sourceEntries ?? []).entries()) {
+    if (!isManualCaptionEntry(entry) || entry.visible === false) continue;
+    for (const [cueIndex, cue] of (entry.words ?? []).entries()) {
+      candidates.push({
+        selection: { trackId, kind: 'manual', laneId: entry.id, cueIndex },
+        start: cue.start,
+        end: cue.end,
+        laneOrder,
+      });
+    }
+  }
+
+  const seen = new Set<string>();
+  return candidates
+    .filter(({ start, end }) => {
+      const startFrame = Math.max(0, Math.round(start * fps / 1000));
+      const endFrame = Math.max(startFrame + 1, Math.round(end * fps / 1000));
+      return endFrame > lo && startFrame < hi;
+    })
+    .sort((a, b) => a.start - b.start
+      || a.end - b.end
+      || a.laneOrder - b.laneOrder
+      || captionSelectionKey(a.selection)!.localeCompare(captionSelectionKey(b.selection)!))
+    .flatMap(({ selection }) => {
+      const key = captionSelectionKey(selection)!;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [selection];
+    });
 }
 
 /** Select every visible cue on unlocked caption tracks. */
@@ -92,7 +164,7 @@ export function resolveCaptionSelection(
   const preset = effectivePreset(captions);
 
   if (selection.kind === 'single') {
-    const rows = buildCues(captions, state.items, state.fps);
+    const rows = selectableAutomaticCues(captions, state.items, state.fps);
     const cue = rows[selection.cueIndex];
     return cue ? {
       trackId: selection.trackId,
@@ -133,4 +205,28 @@ export function resolveCaptionSelection(
       },
     },
   };
+}
+
+/** Resolve valid selections once, in canonical timeline track/time order. */
+export function resolveOrderedCaptionSelections(
+  state: TimelineState,
+  selections: readonly CaptionSelectionRef[],
+): ResolvedCaptionSelection[] {
+  const trackOrder = new Map(timelineTrackIds(state).map((trackId, index) => [trackId, index]));
+  const seen = new Set<string>();
+  const resolved = selections.flatMap((selection) => {
+    const key = captionSelectionKey(selection)!;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    const inspector = resolveCaptionSelection(state, selection);
+    return inspector ? [{ ...inspector, selection }] : [];
+  });
+  return resolved.sort((a, b) => {
+    const aTrack = trackOrder.get(a.trackId) ?? Number.MAX_SAFE_INTEGER;
+    const bTrack = trackOrder.get(b.trackId) ?? Number.MAX_SAFE_INTEGER;
+    return aTrack - bTrack
+      || a.target.cue.start - b.target.cue.start
+      || a.target.cue.end - b.target.cue.end
+      || captionSelectionKey(a.selection)!.localeCompare(captionSelectionKey(b.selection)!);
+  });
 }
