@@ -57,6 +57,22 @@ assert.equal(inflatedDefaults.outputCompression, undefined, 'PNG does not receiv
 assert.equal(inflatedDefaults.seed, undefined);
 assert.equal(inflatedDefaults.promptOptimizer, undefined);
 
+const waveSpeed = buildSubmitImageArgs({
+  model: 'wavespeed', prompt: 'octopus vs crab chess', name: 'chess', imageSize: '2K',
+  width: 1024, height: 1024, promptOptimizer: true, quality: 'high',
+});
+assert.equal(waveSpeed.imageSize, '2K');
+assert.equal(waveSpeed.promptOptimizer, undefined, 'WaveSpeed must not receive MiniMax-only options');
+assert.equal(waveSpeed.quality, undefined, 'WaveSpeed must not receive GPT-only options');
+
+const byteplusImage = buildSubmitImageArgs({
+  model: 'byteplus', prompt: 'neon city street', name: 'city', imageSize: '2K',
+  width: 1024, height: 1024, promptOptimizer: true, quality: 'high',
+});
+assert.equal(byteplusImage.imageSize, '2K');
+assert.equal(byteplusImage.promptOptimizer, undefined, 'BytePlus must not receive MiniMax-only options');
+assert.equal(byteplusImage.quality, undefined, 'BytePlus must not receive GPT-only options');
+
 const hailuo = buildSubmitVideoArgs({
   model: 'hailuo', prompt: 'camera orbit', durationSeconds: 6, ratio: '16:9', resolution: '720p',
   refImages: [], mode: 'std', promptOptimizer: false, generateAudio: true, seed: 4,
@@ -73,6 +89,15 @@ const seedance = buildSubmitVideoArgs({
 assert.equal(seedance.refImages, undefined, 'blank reference defaults are removed');
 assert.equal(seedance.promptOptimizer, undefined, 'Seedance must not receive MiniMax controls');
 assert.equal(seedance.mode, undefined, 'Seedance must not receive Kling mode');
+
+const byteplusVideo = buildSubmitVideoArgs({
+  model: 'byteplus', prompt: 'wide shot', durationSeconds: 5, ratio: '16:9',
+  refImages: ['', '  '], promptOptimizer: false, fastPretreatment: false, mode: 'std',
+});
+assert.equal(byteplusVideo.model, 'byteplus');
+assert.equal(byteplusVideo.refImages, undefined, 'blank reference defaults are removed');
+assert.equal(byteplusVideo.promptOptimizer, undefined, 'BytePlus must not receive MiniMax controls');
+assert.equal(byteplusVideo.mode, undefined, 'BytePlus must not receive Kling mode');
 
 const minimaxMusic = buildSubmitMusicArgs({
   provider: 'minimax', mode: 't2m', prompt: 'ambient', isInstrumental: true,
@@ -111,5 +136,24 @@ assert.equal(minimaxVoice.subtitleType, undefined, 'disabled subtitles must not 
 assert.equal(minimaxVoice.stability, undefined, 'MiniMax must not receive ElevenLabs controls');
 assert.equal(minimaxVoice.speedRatio, undefined, 'MiniMax must not receive Doubao controls');
 assert.equal(minimaxVoice.timbreWeights, undefined, 'an explicit voiceId wins over Agent-invented timbre mixing');
+
+const inworldVoice = buildSubmitVoiceArgs({
+  provider: 'inworld', text: 'Hello', voiceId: 'Dennis', modelId: 'inworld-tts-2', pitch: 1, speed: 1,
+});
+assert.equal(inworldVoice.modelId, 'inworld-tts-2');
+assert.equal(inworldVoice.pitch, undefined, 'Inworld must not receive Doubao/MiniMax controls');
+assert.equal(inworldVoice.speed, undefined, 'Inworld must not receive ElevenLabs/MiniMax controls');
+
+const fishAudioVoice = buildSubmitVoiceArgs({
+  provider: 'fishaudio', text: 'Hello', voiceId: 'ref-123', emotion: 'calm',
+});
+assert.equal(fishAudioVoice.provider, 'fishaudio');
+assert.equal(fishAudioVoice.emotion, undefined, 'Fish Audio must not receive Doubao/MiniMax controls');
+
+const speechifyVoice = buildSubmitVoiceArgs({
+  provider: 'speechify', text: 'Hello', voiceId: 'george', modelId: 'simba-english', volume: 2,
+});
+assert.equal(speechifyVoice.modelId, 'simba-english');
+assert.equal(speechifyVoice.volume, undefined, 'Speechify must not receive MiniMax controls');
 
 console.log('generation-tool-input.verify: ok');

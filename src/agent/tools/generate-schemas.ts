@@ -5,11 +5,11 @@ import { MINIMAX_LANGUAGE_BOOSTS } from '../../../shared/media-provider-params';
 export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'submit_image',
-    description: 'Generate one or more AI images (gpt-image-2, nano-banana, or MiniMax image-01), save them to the project media pool, and optionally propose adding them to the active timeline. Call only when the user explicitly requested the generation.',
+    description: 'Generate one or more AI images (gpt-image-2, nano-banana, MiniMax image-01, WaveSpeed, or BytePlus Seedream), save them to the project media pool, and optionally propose adding them to the active timeline. Call only when the user explicitly requested the generation.',
     input_schema: {
       type: 'object',
       properties: {
-        model: { type: 'string', enum: ['gpt-image-2', 'nano-banana', 'image-01'], description: 'gpt-image-2 is the default; nano-banana is best for reference-heavy work; image-01 is MiniMax (at most 9 outputs; one subject reference when R2 is configured).' },
+        model: { type: 'string', enum: ['gpt-image-2', 'nano-banana', 'image-01', 'wavespeed', 'byteplus'], description: 'gpt-image-2 is the default; nano-banana is best for reference-heavy work; image-01 is MiniMax (at most 9 outputs; one subject reference when R2 is configured); wavespeed is WaveSpeed AI (fast generic image models, no references); byteplus is BytePlus ModelArk Seedream (no references yet).' },
         prompt: { type: 'string', description: 'Detailed description of the image to generate.' },
         name: { type: 'string', description: 'Short descriptive asset name shown in the media pool.' },
         addToTimeline: { type: 'boolean', description: 'Defaults to true. Set false when the user asks to keep the result in the media pool/library only or says not to modify the timeline.' },
@@ -34,14 +34,14 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'submit_voice',
-    description: 'Generate one TTS audio asset with ElevenLabs, Doubao, or MiniMax. Creates an asset only; it does not place or replace timeline items. Confirm a provider and voice; MiniMax timbreWeights may mix voices with an empty voiceId.',
+    description: 'Generate one TTS audio asset with ElevenLabs, Doubao, MiniMax, Inworld, Fish Audio, or Speechify. Creates an asset only; it does not place or replace timeline items. Confirm a provider and voice; MiniMax timbreWeights may mix voices with an empty voiceId.',
     input_schema: {
       type: 'object',
       properties: {
-        provider: { type: 'string', enum: ['elevenlabs', 'doubao', 'minimax'], description: 'elevenlabs for multilingual/non-Chinese; doubao for Chinese-optimized speech; minimax for MiniMax Chinese TTS.' }, // minimax: provider enum
+        provider: { type: 'string', enum: ['elevenlabs', 'doubao', 'minimax', 'inworld', 'fishaudio', 'speechify'], description: 'elevenlabs for multilingual/non-Chinese; doubao for Chinese-optimized speech; minimax for MiniMax Chinese TTS; inworld, fishaudio, and speechify are general multilingual TTS (text + voiceId + optional modelId only).' }, // minimax: provider enum
         text: { type: 'string', minLength: 1, description: 'Text to synthesize.' },
         voiceId: { type: 'string', description: 'Provider-specific voice ID. Required except MiniMax timbreWeights mixing, where it must be empty. MiniMax defaults to female-yujie when omitted without mixing.' },
-        modelId: { type: 'string', description: 'ElevenLabs only. Defaults to the configured current model.' },
+        modelId: { type: 'string', description: 'ElevenLabs, Inworld, Fish Audio, or Speechify only. Defaults to the configured current model.' },
         stability: { type: 'number', minimum: 0, maximum: 1, description: 'ElevenLabs only. Defaults to 0.5.' },
         speed: { type: 'number', minimum: 0.5, maximum: 2, description: 'ElevenLabs (0.7–1.2) or MiniMax (0.5–2). Defaults to 1.' }, // minimax: widened range, server enforces per provider
         similarityBoost: { type: 'number', minimum: 0, maximum: 1, description: 'ElevenLabs voice_settings.similarity_boost.' },
@@ -144,11 +144,11 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'submit_video',
-    description: 'Submit a Seedance 2.0, Kling, or MiniMax Hailuo video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.',
+    description: 'Submit a Seedance 2.0, Kling, MiniMax Hailuo, or BytePlus Seedance video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.',
     input_schema: {
       type: 'object',
       properties: {
-        model: { type: 'string', enum: ['seedance2', 'kling', 'hailuo'], description: 'hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only.' }, // minimax: hailuo enum
+        model: { type: 'string', enum: ['seedance2', 'kling', 'hailuo', 'byteplus'], description: 'hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2.' }, // minimax: hailuo enum
         prompt: { type: 'string', description: 'Required for normal generation and Kling intelligence; omit for Kling customize.' },
         name: { type: 'string' },
         durationSeconds: { anyOf: [{ type: 'number' }, { type: 'string' }], description: 'Integer seconds, 2–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo (Hailuo 1080p → 6 only).' }, // minimax: hailuo durations
@@ -163,13 +163,13 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
         refVideoMode: { type: 'string', enum: ['feature', 'base'], description: 'Kling only with refVideos. feature (default)=motion/camera/style guide; base=edit that source clip (keep_original_sound).' },
         promptOptimizer: { type: 'boolean', description: 'Hailuo only. MiniMax prompt_optimizer; default true. Set false for more literal prompts.' },
         fastPretreatment: { type: 'boolean', description: 'Hailuo only. MiniMax fast_pretreatment when promptOptimizer is true; default false.' },
-        generateAudio: { type: 'boolean', description: 'Seedance only. Generate synchronized audio; official default true.' },
-        seed: { type: 'integer', description: 'Seedance only. Deterministic random seed.' },
-        cameraFixed: { type: 'boolean', description: 'Seedance only. Lock camera motion; default false.' },
-        watermark: { type: 'boolean', description: 'Seedance only. Add provider watermark; default false.' },
-        returnLastFrame: { type: 'boolean', description: 'Seedance only. Save the returned last frame as an additional image asset.' },
-        executionExpiresAfter: { type: 'integer', minimum: 3600, maximum: 259200, description: 'Seedance only. Task expiry in seconds.' },
-        priority: { type: 'integer', minimum: 0, maximum: 9, description: 'Seedance only. Queue priority.' },
+        generateAudio: { type: 'boolean', description: 'Seedance/BytePlus only. Generate synchronized audio; official default true.' },
+        seed: { type: 'integer', description: 'Seedance/BytePlus only. Deterministic random seed.' },
+        cameraFixed: { type: 'boolean', description: 'Seedance/BytePlus only. Lock camera motion; default false.' },
+        watermark: { type: 'boolean', description: 'Seedance/BytePlus only. Add provider watermark; default false.' },
+        returnLastFrame: { type: 'boolean', description: 'Seedance/BytePlus only. Save the returned last frame as an additional image asset.' },
+        executionExpiresAfter: { type: 'integer', minimum: 3600, maximum: 259200, description: 'Seedance/BytePlus only. Task expiry in seconds.' },
+        priority: { type: 'integer', minimum: 0, maximum: 9, description: 'Seedance/BytePlus only. Queue priority.' },
         multiPrompts: {
           type: 'array', minItems: 2, maxItems: 6,
           items: { type: 'object', properties: { prompt: { type: 'string' }, duration: { anyOf: [{ type: 'number' }, { type: 'string' }] }, index: { type: 'integer', minimum: 1 } }, required: ['prompt', 'duration', 'index'] },

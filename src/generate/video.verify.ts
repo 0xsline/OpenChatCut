@@ -87,4 +87,15 @@ assert.throws(
   'unsupported provider/model/role combinations must fail before fetch',
 );
 
+// byteplus (BytePlus ModelArk Seedance) shares seedance2's reference limits.
+assert.throws(
+  () => preflightGenerationReferences('byteplus', [
+    { kind: 'asset-master', role: 'last-frame', assetId: 'img-1', path: '/media/uploads/last.jpg' },
+    { kind: 'asset-master', role: 'reference-image', assetId: 'img-2', path: '/media/uploads/ref.jpg' },
+  ]),
+  (error: unknown) => error instanceof GenerationReferencePreflightError
+    && error.issues.some((issue) => issue.code === 'seedance_last_frame_conflict'),
+  'byteplus lastFrame cannot combine with reference arrays, same as seedance2',
+);
+
 console.log('video generation reference checks passed');

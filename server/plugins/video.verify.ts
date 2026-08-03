@@ -118,6 +118,19 @@ assert.equal(seedBody.priority, 9);
 assert.equal(expectedVideoResultCount(seed), 1);
 assert.equal(expectedVideoResultCount(seedControls), 2);
 assert.equal(expectedVideoResultCount({ model: 'kling' }), 1);
+
+// byteplus (BytePlus ModelArk) is the same Ark Seedance API/limits as seedance2.
+const byteplus = validateVideoRequest({ model: 'byteplus', prompt: 'wide shot', durationSeconds: 5 });
+assert.equal(byteplus.model, 'byteplus');
+const byteplusControls = validateVideoRequest({
+  model: 'byteplus', prompt: 'controlled shot', generateAudio: false, seed: 42, returnLastFrame: true,
+});
+assert.equal(expectedVideoResultCount(byteplus), 1);
+assert.equal(expectedVideoResultCount(byteplusControls), 2);
+assert.throws(
+  () => validateVideoRequest({ model: 'byteplus', prompt: 'x', durationSeconds: 20 }),
+  /byteplus durationSeconds must be between 2 and 15/,
+);
 assert.deepEqual(generationResultCheckpoint([], 2), { urls: [], complete: false });
 assert.deepEqual(
   generationResultCheckpoint(['https://cdn/video.mp4'], 2, 'seedance-task'),
@@ -164,7 +177,7 @@ assert.throws(
 );
 assert.throws(
   () => validateVideoRequest({ model: 'kling', prompt: 'x', seed: 1 }),
-  /supported by seedance2 only/,
+  /supported by seedance2\/byteplus only/,
 );
 const hailuoDraft = validateVideoRequest({
   model: 'hailuo', prompt: 'draft', durationSeconds: 10, resolution: '512p', firstFramePath: '/media/uploads/a.jpg',

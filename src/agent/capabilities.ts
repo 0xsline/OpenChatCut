@@ -57,16 +57,22 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'gpt-image', arg: 'gpt-image-2', argKey: 'model', need: [['IMAGE_API_KEY'], ['OPENAI_API_KEY']] },
     { label: 'Nano Banana', arg: 'nano-banana', argKey: 'model', need: [['GEMINI_API_KEY']] },
     { label: 'MiniMax', arg: 'image-01', argKey: 'model', need: [['MINIMAX_API_KEY']] },
+    { label: 'WaveSpeed', arg: 'wavespeed', argKey: 'model', need: [['WAVESPEED_API_KEY']] },
+    { label: 'BytePlus', arg: 'byteplus', argKey: 'model', need: [['BYTEPLUS_API_KEY']] },
   ],
   voice: [
     { label: 'ElevenLabs', arg: 'elevenlabs', argKey: 'provider', need: [['ELEVENLABS_API_KEY']] },
     { label: 'Doubao', arg: 'doubao', argKey: 'provider', need: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']] },
     { label: 'MiniMax', arg: 'minimax', argKey: 'provider', need: [['MINIMAX_API_KEY']] },
+    { label: 'Inworld', arg: 'inworld', argKey: 'provider', need: [['INWORLD_TTS_API_KEY']] },
+    { label: 'Fish Audio', arg: 'fishaudio', argKey: 'provider', need: [['FISHAUDIO_TTS_API_KEY']] },
+    { label: 'Speechify', arg: 'speechify', argKey: 'provider', need: [['SPEECHIFY_TTS_API_KEY']] },
   ],
   video: [
     { label: 'Seedance', arg: 'seedance2', argKey: 'model', need: [['SEEDANCE_API_KEY']] },
     { label: 'Kling', arg: 'kling', argKey: 'model', need: [['KLING_API_KEY']] },
     { label: 'Hailuo', arg: 'hailuo', argKey: 'model', need: [['MINIMAX_API_KEY']] },
+    { label: 'BytePlus', arg: 'byteplus', argKey: 'model', need: [['BYTEPLUS_API_KEY']] },
   ],
   music: [
     { label: 'Mureka', arg: 'mureka', argKey: 'provider', need: [['MUREKA_API_KEY']] },

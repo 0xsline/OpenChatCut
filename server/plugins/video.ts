@@ -37,6 +37,9 @@ interface VideoOptions {
   minimaxBaseUrl: string;
   minimaxApiKey: string;
   minimaxModel: string;
+  byteplusBaseUrl: string;
+  byteplusApiKey: string;
+  byteplusModel: string;
 }
 
 async function readJson(req: IncomingMessage): Promise<VideoRequest> {
@@ -82,7 +85,7 @@ const wait = (milliseconds: number) => new Promise((resolvePromise) => setTimeou
 interface SeedanceResult { videoUrl: string; lastFrameUrl?: string }
 
 export function expectedVideoResultCount(input: Pick<ValidVideoRequest, 'model' | 'returnLastFrame'>): number {
-  return input.model === 'seedance2' && input.returnLastFrame ? 2 : 1;
+  return (input.model === 'seedance2' || input.model === 'byteplus') && input.returnLastFrame ? 2 : 1;
 }
 
 export function seedanceRequestBody(
@@ -103,15 +106,25 @@ export function seedanceRequestBody(
   return body;
 }
 
+interface SeedanceConfig {
+  providerId: 'seedance2' | 'byteplus';
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  missingKeyHint: string;
+}
+
+/** seedance2 (Volcengine) and byteplus (BytePlus ModelArk) are the same Ark video-generation API
+ * under different accounts/regions — one implementation, config-driven. */
 async function generateSeedance(
   input: ValidVideoRequest,
-  options: VideoOptions,
+  config: SeedanceConfig,
   registerProviderTask: RegisterGenerationProviderTask,
   existingTaskId?: string,
 ): Promise<SeedanceResult> {
-  if (!options.seedanceApiKey) throw new Error('Seedance generation is not configured. Set SEEDANCE_API_KEY in .env.local.');
-  const baseUrl = options.seedanceBaseUrl.replace(/\/$/, '');
-  const headers = { Authorization: `Bearer ${options.seedanceApiKey}`, 'Content-Type': 'application/json' };
+  if (!config.apiKey) throw new Error(config.missingKeyHint);
+  const baseUrl = config.baseUrl.replace(/\/$/, '');
+  const headers = { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' };
   let taskId = existingTaskId;
   let current: Record<string, unknown>;
   if (taskId) {
@@ -126,26 +139,38 @@ async function generateSeedance(
     current = await requestJson(`${baseUrl}/contents/generations/tasks`, {
       method: 'POST',
       headers,
-      body: JSON.stringify(seedanceRequestBody(input, options.seedanceModel, content)),
+      body: JSON.stringify(seedanceRequestBody(input, config.model, content)),
     });
     taskId = String(current.id ?? '');
-    if (!taskId) throw new Error('seedance2 did not return a task id');
-    await registerProviderTask('seedance2', taskId);
+    if (!taskId) throw new Error(`${config.providerId} did not return a task id`);
+    await registerProviderTask(config.providerId, taskId);
   }
-  if (!taskId) throw new Error('seedance2 provider task id is unavailable');
+  if (!taskId) throw new Error(`${config.providerId} provider task id is unavailable`);
   const deadline = Date.now() + 10 * 60_000;
   while (Date.now() < deadline) {
     const status = String(current.status ?? '');
     if (status === 'succeeded') {
       const result = current.content as { video_url?: string; last_frame_url?: string } | undefined;
-      if (!result?.video_url) throw new Error('seedance2 succeeded without a video URL');
+      if (!result?.video_url) throw new Error(`${config.providerId} succeeded without a video URL`);
       return { videoUrl: result.video_url, lastFrameUrl: result.last_frame_url };
     }
-    if (VIDEO_FAILURES.has(status)) throw new Error(String((current.error as { message?: string } | undefined)?.message ?? `seedance2 generation ${status}`));
+    if (VIDEO_FAILURES.has(status)) throw new Error(String((current.error as { message?: string } | undefined)?.message ?? `${config.providerId} generation ${status}`));
     await wait(2_000);
     current = await requestJson(`${baseUrl}/contents/generations/tasks/${encodeURIComponent(taskId)}`, { headers });
   }
-  throw new Error('seedance2 generation timed out');
+  throw new Error(`${config.providerId} generation timed out`);
+}
+
+function seedanceConfig(model: 'seedance2' | 'byteplus', options: VideoOptions): SeedanceConfig {
+  return model === 'seedance2'
+    ? {
+        providerId: 'seedance2', baseUrl: options.seedanceBaseUrl, apiKey: options.seedanceApiKey, model: options.seedanceModel,
+        missingKeyHint: 'Seedance generation is not configured. Set SEEDANCE_API_KEY in .env.local.',
+      }
+    : {
+        providerId: 'byteplus', baseUrl: options.byteplusBaseUrl, apiKey: options.byteplusApiKey, model: options.byteplusModel,
+        missingKeyHint: 'BytePlus generation is not configured. Set BYTEPLUS_API_KEY in .env.local.',
+      };
 }
 
 /** Map agent @ImageN / @VideoN (and image/video) to Kling Omni <<<image_n>>> / <<<video_n>>> tokens.*/
@@ -374,8 +399,8 @@ async function runVideoOperation(
   const checkpoint = generationResultCheckpoint(storedResultUrls, expectedResultCount, providerTaskId);
   let urls = checkpoint.urls;
   if (!checkpoint.complete) {
-    if (input.model === 'seedance2') {
-      const generated = await generateSeedance(input, options, registerProviderTask, providerTaskId);
+    if (input.model === 'seedance2' || input.model === 'byteplus') {
+      const generated = await generateSeedance(input, seedanceConfig(input.model, options), registerProviderTask, providerTaskId);
       if (input.returnLastFrame && !generated.lastFrameUrl) {
         throw new IncompleteGenerationResultError(expectedResultCount, 1);
       }
@@ -395,14 +420,14 @@ async function runVideoOperation(
     operationId,
     name,
     urls[0],
-    input.model === 'seedance2' && input.returnLastFrame ? urls[1] : undefined,
+    (input.model === 'seedance2' || input.model === 'byteplus') && input.returnLastFrame ? urls[1] : undefined,
   );
   for (const [index, url] of urls.entries()) await registerDownload(url, download, index);
   return download();
 }
 
 export function videoGenerationPlugin(options: VideoOptions): Plugin {
-  for (const provider of ['seedance2', 'kling', 'hailuo'] as const) {
+  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus'] as const) {
     registerGenerationJobResumer('submit_video', provider, async (
       snapshot: GenerationJobSnapshot,
       _update,

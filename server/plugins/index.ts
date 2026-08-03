@@ -94,6 +94,24 @@ export function serverPlugins(): Plugin[] {
       get minimaxModel() {
         return getKey("MINIMAX_IMAGE_MODEL") || "image-01";
       },
+      get waveSpeedBaseUrl() {
+        return getKey("WAVESPEED_BASE_URL") || "https://api.wavespeed.ai";
+      },
+      get waveSpeedApiKey() {
+        return getKey("WAVESPEED_API_KEY");
+      },
+      get waveSpeedModel() {
+        return getKey("WAVESPEED_IMAGE_MODEL") || "wavespeed-ai/flux-dev";
+      },
+      get byteplusBaseUrl() {
+        return getKey("BYTEPLUS_BASE_URL") || "https://ark.ap-southeast.bytepluses.com/api/v3";
+      },
+      get byteplusApiKey() {
+        return getKey("BYTEPLUS_API_KEY");
+      },
+      get byteplusModel() {
+        return getKey("BYTEPLUS_IMAGE_MODEL") || "seedream-4-5-251128";
+      },
     }),
     voiceGenerationPlugin({
       get elevenBaseUrl() {
@@ -127,6 +145,33 @@ export function serverPlugins(): Plugin[] {
       },
       get minimaxModel() {
         return getKey("MINIMAX_TTS_MODEL") || "speech-2.6-hd";
+      },
+      get inworldBaseUrl() {
+        return getKey("INWORLD_TTS_BASE_URL") || "https://api.inworld.ai";
+      },
+      get inworldApiKey() {
+        return getKey("INWORLD_TTS_API_KEY");
+      },
+      get inworldModel() {
+        return getKey("INWORLD_TTS_MODEL") || "inworld-tts-2";
+      },
+      get fishAudioBaseUrl() {
+        return getKey("FISHAUDIO_TTS_BASE_URL") || "https://api.fish.audio";
+      },
+      get fishAudioApiKey() {
+        return getKey("FISHAUDIO_TTS_API_KEY");
+      },
+      get fishAudioModel() {
+        return getKey("FISHAUDIO_TTS_MODEL") || "speech-1.6";
+      },
+      get speechifyBaseUrl() {
+        return getKey("SPEECHIFY_TTS_BASE_URL") || "https://api.sws.speechify.com";
+      },
+      get speechifyApiKey() {
+        return getKey("SPEECHIFY_TTS_API_KEY");
+      },
+      get speechifyModel() {
+        return getKey("SPEECHIFY_TTS_MODEL") || "simba-multilingual";
       },
     }),
     soundGenerationPlugin({
@@ -190,6 +235,15 @@ export function serverPlugins(): Plugin[] {
       },
       get minimaxModel() {
         return getKey("MINIMAX_VIDEO_MODEL") || "MiniMax-Hailuo-02";
+      },
+      get byteplusBaseUrl() {
+        return getKey("BYTEPLUS_BASE_URL") || "https://ark.ap-southeast.bytepluses.com/api/v3";
+      },
+      get byteplusApiKey() {
+        return getKey("BYTEPLUS_API_KEY");
+      },
+      get byteplusModel() {
+        return getKey("BYTEPLUS_VIDEO_MODEL") || "seedance-1-5-pro-251215";
       },
     }),
     generationProgressPlugin(),

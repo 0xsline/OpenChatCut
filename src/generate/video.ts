@@ -3,7 +3,7 @@ import { sourceWindowForTimelineRange } from '../editor/sourceLimit';
 
 export interface SubmitVideoArgs {
   operationId?: string;
-  model: 'seedance2' | 'kling' | 'hailuo';
+  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus';
   prompt?: string;
   name?: string;
   durationSeconds?: number | string;
@@ -184,15 +184,15 @@ export function preflightGenerationReferences(
   if (model === 'hailuo' && (images || videos || audios)) {
     issues.push({ code: 'hailuo_reference_role', model, message: 'hailuo does not support reference arrays; use firstFrame and optional lastFrame' });
   }
-  if (model === 'seedance2') {
+  if (model === 'seedance2' || model === 'byteplus') {
     if (lastFrames && (images || videos || audios)) {
-      issues.push({ code: 'seedance_last_frame_conflict', model, role: 'last-frame', message: 'seedance2 lastFrame cannot be combined with reference arrays' });
+      issues.push({ code: 'seedance_last_frame_conflict', model, role: 'last-frame', message: `${model} lastFrame cannot be combined with reference arrays` });
     }
     if (images > 9 || videos > 3 || audios > 3) {
-      issues.push({ code: 'seedance_reference_limit', model, message: 'seedance2 supports at most 9 images, 3 videos, and 3 audio references' });
+      issues.push({ code: 'seedance_reference_limit', model, message: `${model} supports at most 9 images, 3 videos, and 3 audio references` });
     }
     if (audios && !firstFrames && !images && !videos) {
-      issues.push({ code: 'seedance_audio_requires_visual', model, role: 'reference-audio', message: 'seedance2 audio references require a visual reference' });
+      issues.push({ code: 'seedance_audio_requires_visual', model, role: 'reference-audio', message: `${model} audio references require a visual reference` });
     }
   }
   if (model === 'kling') {
