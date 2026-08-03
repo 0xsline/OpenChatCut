@@ -19,6 +19,7 @@ export interface ModelCapability<T> {
 
 export interface ModelCapabilities {
   readonly contextWindowTokens: ModelCapability<number>;
+  readonly maxInputTokens: ModelCapability<number>;
   readonly maxOutputTokens: ModelCapability<number>;
   readonly supportsTools: ModelCapability<boolean>;
   readonly supportsImages: ModelCapability<boolean>;
@@ -29,6 +30,7 @@ export interface ModelCapabilities {
 
 export interface ModelCapabilityOverride extends ModelIdentity {
   readonly contextWindowTokens?: number;
+  readonly maxInputTokens?: number;
   readonly maxOutputTokens?: number;
   readonly supportsTools?: boolean;
   readonly supportsImages?: boolean;
@@ -39,6 +41,7 @@ export interface ModelCapabilityOverride extends ModelIdentity {
 
 interface CatalogModel {
   readonly contextWindowTokens: number | null;
+  readonly maxInputTokens: number | null;
   readonly maxOutputTokens: number | null;
   readonly input: readonly string[];
   readonly supportsTools: boolean | null;
@@ -52,8 +55,8 @@ const MIN_CONTEXT_TOKENS = 4_096;
 const MAX_CAPABILITY_TOKENS = 4_000_000;
 const EFFORT_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const CAPABILITY_FIELDS = [
-  'contextWindowTokens', 'maxOutputTokens', 'supportsTools', 'supportsImages',
-  'supportsReasoning', 'reasoningEfforts', 'defaultReasoningEffort',
+  'contextWindowTokens', 'maxInputTokens', 'maxOutputTokens', 'supportsTools',
+  'supportsImages', 'supportsReasoning', 'reasoningEfforts', 'defaultReasoningEffort',
 ] as const;
 const ALLOWED_FIELDS = new Set(['backend', 'provider', 'modelId', ...CAPABILITY_FIELDS]);
 const PROVIDERS = new Set<string>(LLM_PROVIDER_PRESETS.map((preset) => preset.id));
@@ -115,9 +118,12 @@ function parseOverride(value: unknown): ModelCapabilityOverride {
   if (Object.keys(record).some((key) => !ALLOWED_FIELDS.has(key))) throw new Error('Unknown model capability field.');
   const identity = parseIdentity(record);
   const context = record.contextWindowTokens === undefined ? undefined : positiveInteger(record.contextWindowTokens, MIN_CONTEXT_TOKENS);
+  const input = record.maxInputTokens === undefined ? undefined : positiveInteger(record.maxInputTokens);
   const output = record.maxOutputTokens === undefined ? undefined : positiveInteger(record.maxOutputTokens);
   if (record.contextWindowTokens !== undefined && context === undefined) throw new Error('Invalid model context window.');
+  if (record.maxInputTokens !== undefined && input === undefined) throw new Error('Invalid model input limit.');
   if (record.maxOutputTokens !== undefined && output === undefined) throw new Error('Invalid model output limit.');
+  if (context !== undefined && input !== undefined && input > context) throw new Error('Model input limit exceeds its context window.');
   if (context !== undefined && output !== undefined && output > context) throw new Error('Model output limit exceeds its context window.');
   const supportsTools = optionalBoolean(record.supportsTools, 'supportsTools');
   const supportsImages = optionalBoolean(record.supportsImages, 'supportsImages');
@@ -132,6 +138,7 @@ function parseOverride(value: unknown): ModelCapabilityOverride {
   const override: ModelCapabilityOverride = {
     ...identity,
     ...(context ? { contextWindowTokens: context } : {}),
+    ...(input ? { maxInputTokens: input } : {}),
     ...(output ? { maxOutputTokens: output } : {}),
     ...(supportsTools !== undefined ? { supportsTools } : {}),
     ...(supportsImages !== undefined ? { supportsImages } : {}),
@@ -203,6 +210,16 @@ export function resolveModelCapabilities(
     : catalogOutput
       ? exact(outputValue, 'catalog')
       : fallback(outputValue);
+  const catalogInput = positiveInteger(model?.maxInputTokens);
+  const inputValue = Math.min(
+    override?.maxInputTokens ?? catalogInput ?? Math.max(1, context.value - output.value),
+    context.value,
+  );
+  const input = override?.maxInputTokens !== undefined
+    ? exact(inputValue, 'settings-override')
+    : catalogInput
+      ? exact(inputValue, 'catalog')
+      : fallback(inputValue);
   const tools = override?.supportsTools !== undefined ? exact(override.supportsTools, 'settings-override')
     : typeof model?.supportsTools === 'boolean' ? exact(model.supportsTools, 'catalog') : fallback(false);
   const images = override?.supportsImages !== undefined ? exact(override.supportsImages, 'settings-override')
@@ -213,7 +230,8 @@ export function resolveModelCapabilities(
     : model ? exact(model.reasoningEfforts, 'catalog') : fallback([]);
   const defaultEffort = override?.defaultReasoningEffort
     ? exact(override.defaultReasoningEffort, 'settings-override') : undefined;
-  return { contextWindowTokens: context, maxOutputTokens: output, supportsTools: tools,
-    supportsImages: images, supportsReasoning: reasoning, reasoningEfforts: efforts,
+  return { contextWindowTokens: context, maxInputTokens: input, maxOutputTokens: output,
+    supportsTools: tools, supportsImages: images, supportsReasoning: reasoning,
+    reasoningEfforts: efforts,
     ...(defaultEffort ? { defaultReasoningEffort: defaultEffort } : {}) };
 }

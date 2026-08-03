@@ -57,10 +57,17 @@ function summaryOutputTokens(contextWindowTokens: number, modelMaxOutputTokens: 
   ));
 }
 
-function summaryInputBudget(contextWindowTokens: number, modelMaxOutputTokens: number): number {
-  return contextWindowTokens
-    - summaryOutputTokens(contextWindowTokens, modelMaxOutputTokens)
-    - SUMMARY_INPUT_SAFETY_TOKENS;
+function summaryInputBudget(
+  contextWindowTokens: number,
+  modelMaxInputTokens: number,
+  modelMaxOutputTokens: number,
+): number {
+  return Math.min(
+    modelMaxInputTokens,
+    contextWindowTokens
+      - summaryOutputTokens(contextWindowTokens, modelMaxOutputTokens)
+      - SUMMARY_INPUT_SAFETY_TOKENS,
+  );
 }
 
 function summaryInputTokens(messages: readonly ModelMessage[]): number {
@@ -114,10 +121,15 @@ function checkpointFragments(summaries: readonly string[]): ModelMessage[] {
 export async function summarizeConversation(
   messages: readonly ModelMessage[],
   contextWindowTokens: number,
+  modelMaxInputTokens: number,
   modelMaxOutputTokens: number,
   summarize: PromptSummarizer,
 ): Promise<string> {
-  const inputBudget = summaryInputBudget(contextWindowTokens, modelMaxOutputTokens);
+  const inputBudget = summaryInputBudget(
+    contextWindowTokens,
+    modelMaxInputTokens,
+    modelMaxOutputTokens,
+  );
   const maxOutputTokens = summaryOutputTokens(contextWindowTokens, modelMaxOutputTokens);
   let units: readonly (readonly ModelMessage[])[] = conversationTurns(messages);
   for (let round = 0; round < MAX_SUMMARY_ROUNDS; round += 1) {
@@ -193,6 +205,10 @@ export async function prepareAgentContext(
     options.choice.capabilities.maxOutputTokens.value,
     contextWindowTokens,
   );
+  const resolvedMaxInput = options.choice.capabilities.maxInputTokens;
+  const maxInputTokens = resolvedMaxInput.estimated
+    ? Math.max(1, contextWindowTokens - maxOutputTokens)
+    : resolvedMaxInput.value;
   const requestOverheadTokens = estimateTextTokens(JSON.stringify(options.tools));
   const prepared = await prepareContext({
     messages: options.messages,
@@ -200,12 +216,14 @@ export async function prepareAgentContext(
     modelId: options.choice.id,
     contextWindowTokens,
     contextWindowEstimated,
+    maxInputTokens,
     maxOutputTokens,
     requestOverheadTokens,
     previousUsage: options.previousUsage,
     summarize: (messages) => summarizeConversation(
       messages,
       contextWindowTokens,
+      maxInputTokens,
       maxOutputTokens,
       (prompt, summaryMaxOutputTokens) => options.choice.backend === 'codex'
         ? summarizeWithCodex(prompt, summaryMaxOutputTokens, options)

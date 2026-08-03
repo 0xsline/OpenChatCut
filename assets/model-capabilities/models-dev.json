@@ -5,6 +5,7 @@
     "anthropic": {
       "claude-fable-5": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -23,6 +24,7 @@
       },
       "claude-haiku-4-5": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 64000,
         "input": [
           "text",
@@ -35,6 +37,7 @@
       },
       "claude-haiku-4-5-20251001": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 64000,
         "input": [
           "text",
@@ -47,6 +50,7 @@
       },
       "claude-opus-4-1": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 32000,
         "input": [
           "text",
@@ -59,6 +63,7 @@
       },
       "claude-opus-4-1-20250805": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 32000,
         "input": [
           "text",
@@ -71,6 +76,7 @@
       },
       "claude-opus-4-5": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 64000,
         "input": [
           "text",
@@ -87,6 +93,7 @@
       },
       "claude-opus-4-5-20251101": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 64000,
         "input": [
           "text",
@@ -103,6 +110,7 @@
       },
       "claude-opus-4-6": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -120,6 +128,7 @@
       },
       "claude-opus-4-7": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -138,6 +147,7 @@
       },
       "claude-opus-4-8": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -156,6 +166,7 @@
       },
       "claude-opus-5": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -174,6 +185,7 @@
       },
       "claude-sonnet-4-5": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 64000,
         "input": [
           "text",
@@ -186,6 +198,7 @@
       },
       "claude-sonnet-4-5-20250929": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 64000,
         "input": [
           "text",
@@ -198,6 +211,7 @@
       },
       "claude-sonnet-4-6": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -215,6 +229,7 @@
       },
       "claude-sonnet-5": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -235,6 +250,7 @@
     "openai": {
       "chatgpt-image-latest": {
         "contextWindowTokens": null,
+        "maxInputTokens": null,
         "maxOutputTokens": null,
         "input": [
           "text",
@@ -246,6 +262,7 @@
       },
       "gpt-3.5-turbo": {
         "contextWindowTokens": 16385,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text"
@@ -256,6 +273,7 @@
       },
       "gpt-4": {
         "contextWindowTokens": 8192,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -266,6 +284,7 @@
       },
       "gpt-4-turbo": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text",
@@ -277,6 +296,7 @@
       },
       "gpt-4.1": {
         "contextWindowTokens": 1047576,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -289,6 +309,7 @@
       },
       "gpt-4.1-mini": {
         "contextWindowTokens": 1047576,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -301,6 +322,7 @@
       },
       "gpt-4.1-nano": {
         "contextWindowTokens": 1047576,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -312,6 +334,7 @@
       },
       "gpt-4o": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -324,6 +347,7 @@
       },
       "gpt-4o-2024-05-13": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text",
@@ -335,6 +359,7 @@
       },
       "gpt-4o-2024-08-06": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -346,6 +371,7 @@
       },
       "gpt-4o-2024-11-20": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -357,6 +383,7 @@
       },
       "gpt-4o-mini": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -369,6 +396,7 @@
       },
       "gpt-5": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -385,6 +413,7 @@
       },
       "gpt-5-mini": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -401,6 +430,7 @@
       },
       "gpt-5-nano": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -417,6 +447,7 @@
       },
       "gpt-5-pro": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 272000,
         "input": [
           "text",
@@ -430,6 +461,7 @@
       },
       "gpt-5.1": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -446,6 +478,7 @@
       },
       "gpt-5.2": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -463,6 +496,7 @@
       },
       "gpt-5.2-chat-latest": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -476,6 +510,7 @@
       },
       "gpt-5.2-pro": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -491,6 +526,7 @@
       },
       "gpt-5.3-chat-latest": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -502,6 +538,7 @@
       },
       "gpt-5.3-codex": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -520,6 +557,7 @@
       },
       "gpt-5.3-codex-spark": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": 100000,
         "maxOutputTokens": 32000,
         "input": [
           "text",
@@ -538,6 +576,7 @@
       },
       "gpt-5.4": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -556,6 +595,7 @@
       },
       "gpt-5.4-mini": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -573,6 +613,7 @@
       },
       "gpt-5.4-nano": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -590,6 +631,7 @@
       },
       "gpt-5.4-pro": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -605,6 +647,7 @@
       },
       "gpt-5.5": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -623,6 +666,7 @@
       },
       "gpt-5.5-pro": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -639,6 +683,7 @@
       },
       "gpt-5.6": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -658,6 +703,7 @@
       },
       "gpt-5.6-luna": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -677,6 +723,7 @@
       },
       "gpt-5.6-sol": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -696,6 +743,7 @@
       },
       "gpt-5.6-terra": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -715,6 +763,7 @@
       },
       "gpt-image-1": {
         "contextWindowTokens": null,
+        "maxInputTokens": null,
         "maxOutputTokens": null,
         "input": [
           "text",
@@ -726,6 +775,7 @@
       },
       "gpt-image-1-mini": {
         "contextWindowTokens": null,
+        "maxInputTokens": null,
         "maxOutputTokens": null,
         "input": [
           "text",
@@ -737,6 +787,7 @@
       },
       "gpt-image-1.5": {
         "contextWindowTokens": null,
+        "maxInputTokens": null,
         "maxOutputTokens": null,
         "input": [
           "text",
@@ -748,6 +799,7 @@
       },
       "gpt-image-2": {
         "contextWindowTokens": null,
+        "maxInputTokens": null,
         "maxOutputTokens": null,
         "input": [
           "text",
@@ -759,6 +811,7 @@
       },
       "gpt-realtime-2.1": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": 96000,
         "maxOutputTokens": 32000,
         "input": [
           "text",
@@ -777,6 +830,7 @@
       },
       "o1": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 100000,
         "input": [
           "text",
@@ -793,6 +847,7 @@
       },
       "o1-pro": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 100000,
         "input": [
           "text",
@@ -808,6 +863,7 @@
       },
       "o3": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 100000,
         "input": [
           "text",
@@ -824,6 +880,7 @@
       },
       "o3-mini": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 100000,
         "input": [
           "text"
@@ -838,6 +895,7 @@
       },
       "o3-pro": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 100000,
         "input": [
           "text",
@@ -853,6 +911,7 @@
       },
       "o4-mini": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 100000,
         "input": [
           "text",
@@ -868,6 +927,7 @@
       },
       "text-embedding-3-large": {
         "contextWindowTokens": 8191,
+        "maxInputTokens": null,
         "maxOutputTokens": 3072,
         "input": [
           "text"
@@ -878,6 +938,7 @@
       },
       "text-embedding-3-small": {
         "contextWindowTokens": 8191,
+        "maxInputTokens": null,
         "maxOutputTokens": 1536,
         "input": [
           "text"
@@ -888,6 +949,7 @@
       },
       "text-embedding-ada-002": {
         "contextWindowTokens": 8192,
+        "maxInputTokens": null,
         "maxOutputTokens": 1536,
         "input": [
           "text"
@@ -900,6 +962,7 @@
     "gemini": {
       "deep-research-max-preview-04-2026": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -914,6 +977,7 @@
       },
       "deep-research-preview-04-2026": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -928,6 +992,7 @@
       },
       "gemini-2.0-flash": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text",
@@ -942,6 +1007,7 @@
       },
       "gemini-2.0-flash-lite": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text",
@@ -956,6 +1022,7 @@
       },
       "gemini-2.5-computer-use-preview-10-2025": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -967,6 +1034,7 @@
       },
       "gemini-2.5-flash": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -981,6 +1049,7 @@
       },
       "gemini-2.5-flash-image": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -992,6 +1061,7 @@
       },
       "gemini-2.5-flash-lite": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1006,6 +1076,7 @@
       },
       "gemini-2.5-flash-preview-tts": {
         "contextWindowTokens": 8192,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -1016,6 +1087,7 @@
       },
       "gemini-2.5-pro": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1030,6 +1102,7 @@
       },
       "gemini-2.5-pro-preview-tts": {
         "contextWindowTokens": 8192,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -1040,6 +1113,7 @@
       },
       "gemini-3-flash-preview": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1059,6 +1133,7 @@
       },
       "gemini-3-pro-image": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -1073,6 +1148,7 @@
       },
       "gemini-3-pro-image-preview": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -1084,6 +1160,7 @@
       },
       "gemini-3-pro-preview": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1101,6 +1178,7 @@
       },
       "gemini-3.1-flash-image": {
         "contextWindowTokens": 65536,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1117,6 +1195,7 @@
       },
       "gemini-3.1-flash-image-preview": {
         "contextWindowTokens": 65536,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1132,6 +1211,7 @@
       },
       "gemini-3.1-flash-lite": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1151,6 +1231,7 @@
       },
       "gemini-3.1-flash-lite-image": {
         "contextWindowTokens": 65536,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1165,6 +1246,7 @@
       },
       "gemini-3.1-flash-lite-preview": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1184,6 +1266,7 @@
       },
       "gemini-3.1-flash-live-preview": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1202,6 +1285,7 @@
       },
       "gemini-3.1-flash-tts-preview": {
         "contextWindowTokens": 8192,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -1212,6 +1296,7 @@
       },
       "gemini-3.1-pro-preview": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1230,6 +1315,7 @@
       },
       "gemini-3.1-pro-preview-customtools": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1248,6 +1334,7 @@
       },
       "gemini-3.5-flash": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1267,6 +1354,7 @@
       },
       "gemini-3.5-flash-lite": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1286,6 +1374,7 @@
       },
       "gemini-3.5-live-translate-preview": {
         "contextWindowTokens": 16384,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "audio"
@@ -1296,6 +1385,7 @@
       },
       "gemini-3.6-flash": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1315,6 +1405,7 @@
       },
       "gemini-embedding-001": {
         "contextWindowTokens": 2048,
+        "maxInputTokens": null,
         "maxOutputTokens": 1,
         "input": [
           "text"
@@ -1325,6 +1416,7 @@
       },
       "gemini-embedding-2": {
         "contextWindowTokens": 8192,
+        "maxInputTokens": null,
         "maxOutputTokens": 1,
         "input": [
           "text",
@@ -1339,6 +1431,7 @@
       },
       "gemini-flash-latest": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1358,6 +1451,7 @@
       },
       "gemini-flash-lite-latest": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1377,6 +1471,7 @@
       },
       "gemini-omni-flash-preview": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1389,6 +1484,7 @@
       },
       "gemini-robotics-er-1.6-preview": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1402,6 +1498,7 @@
       },
       "gemma-4-26b-a4b-it": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -1413,6 +1510,7 @@
       },
       "gemma-4-31b-it": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -1424,6 +1522,7 @@
       },
       "lyria-3-clip-preview": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1435,6 +1534,7 @@
       },
       "lyria-3-pro-preview": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -1446,6 +1546,7 @@
       },
       "veo-3.1-fast-generate-preview": {
         "contextWindowTokens": 480,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text",
@@ -1458,6 +1559,7 @@
       },
       "veo-3.1-generate-preview": {
         "contextWindowTokens": 480,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text",
@@ -1469,6 +1571,7 @@
       },
       "veo-3.1-lite-generate-preview": {
         "contextWindowTokens": 480,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text",
@@ -1482,6 +1585,7 @@
     "kimi": {
       "kimi-k2-0711-preview": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -1492,6 +1596,7 @@
       },
       "kimi-k2-0905-preview": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -1502,6 +1607,7 @@
       },
       "kimi-k2-thinking": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -1512,6 +1618,7 @@
       },
       "kimi-k2-thinking-turbo": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -1522,6 +1629,7 @@
       },
       "kimi-k2-turbo-preview": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -1532,6 +1640,7 @@
       },
       "kimi-k2.5": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -1544,6 +1653,7 @@
       },
       "kimi-k2.6": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -1556,6 +1666,7 @@
       },
       "kimi-k2.7-code": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -1568,6 +1679,7 @@
       },
       "kimi-k2.7-code-highspeed": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -1580,6 +1692,7 @@
       },
       "kimi-k3": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text",
@@ -1598,6 +1711,7 @@
     "qwen": {
       "qvq-max": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text",
@@ -1609,6 +1723,7 @@
       },
       "qwen-flash": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -1619,6 +1734,7 @@
       },
       "qwen-max": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -1629,6 +1745,7 @@
       },
       "qwen-mt-plus": {
         "contextWindowTokens": 16384,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -1639,6 +1756,7 @@
       },
       "qwen-mt-turbo": {
         "contextWindowTokens": 16384,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -1649,6 +1767,7 @@
       },
       "qwen-omni-turbo": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 2048,
         "input": [
           "text",
@@ -1662,6 +1781,7 @@
       },
       "qwen-omni-turbo-realtime": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 2048,
         "input": [
           "text",
@@ -1674,6 +1794,7 @@
       },
       "qwen-plus": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -1684,6 +1805,7 @@
       },
       "qwen-plus-character-ja": {
         "contextWindowTokens": 8192,
+        "maxInputTokens": null,
         "maxOutputTokens": 512,
         "input": [
           "text"
@@ -1694,6 +1816,7 @@
       },
       "qwen-turbo": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -1704,6 +1827,7 @@
       },
       "qwen-vl-max": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text",
@@ -1715,6 +1839,7 @@
       },
       "qwen-vl-ocr": {
         "contextWindowTokens": 34096,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text",
@@ -1726,6 +1851,7 @@
       },
       "qwen-vl-plus": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text",
@@ -1737,6 +1863,7 @@
       },
       "qwen2-5-14b-instruct": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -1747,6 +1874,7 @@
       },
       "qwen2-5-32b-instruct": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -1757,6 +1885,7 @@
       },
       "qwen2-5-72b-instruct": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -1767,6 +1896,7 @@
       },
       "qwen2-5-7b-instruct": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -1777,6 +1907,7 @@
       },
       "qwen2-5-omni-7b": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 2048,
         "input": [
           "text",
@@ -1790,6 +1921,7 @@
       },
       "qwen2-5-vl-72b-instruct": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text",
@@ -1801,6 +1933,7 @@
       },
       "qwen2-5-vl-7b-instruct": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text",
@@ -1812,6 +1945,7 @@
       },
       "qwen3-14b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -1822,6 +1956,7 @@
       },
       "qwen3-235b-a22b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -1832,6 +1967,7 @@
       },
       "qwen3-32b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -1842,6 +1978,7 @@
       },
       "qwen3-8b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -1852,6 +1989,7 @@
       },
       "qwen3-asr-flash": {
         "contextWindowTokens": 53248,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "audio"
@@ -1862,6 +2000,7 @@
       },
       "qwen3-coder-30b-a3b-instruct": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -1872,6 +2011,7 @@
       },
       "qwen3-coder-480b-a35b-instruct": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -1882,6 +2022,7 @@
       },
       "qwen3-coder-flash": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -1892,6 +2033,7 @@
       },
       "qwen3-coder-plus": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -1902,6 +2044,7 @@
       },
       "qwen3-livetranslate-flash-realtime": {
         "contextWindowTokens": 53248,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text",
@@ -1915,6 +2058,7 @@
       },
       "qwen3-max": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -1925,6 +2069,7 @@
       },
       "qwen3-next-80b-a3b-instruct": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -1935,6 +2080,7 @@
       },
       "qwen3-next-80b-a3b-thinking": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -1945,6 +2091,7 @@
       },
       "qwen3-omni-flash": {
         "contextWindowTokens": 65536,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -1958,6 +2105,7 @@
       },
       "qwen3-omni-flash-realtime": {
         "contextWindowTokens": 65536,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -1971,6 +2119,7 @@
       },
       "qwen3-vl-235b-a22b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -1982,6 +2131,7 @@
       },
       "qwen3-vl-30b-a3b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -1993,6 +2143,7 @@
       },
       "qwen3-vl-plus": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -2004,6 +2155,7 @@
       },
       "qwen3.5-122b-a10b": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -2017,6 +2169,7 @@
       },
       "qwen3.5-27b": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -2030,6 +2183,7 @@
       },
       "qwen3.5-35b-a3b": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -2043,6 +2197,7 @@
       },
       "qwen3.5-397b-a17b": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -2056,6 +2211,7 @@
       },
       "qwen3.5-plus": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -2068,6 +2224,7 @@
       },
       "qwen3.6-27b": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -2081,6 +2238,7 @@
       },
       "qwen3.6-35b-a3b": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -2094,6 +2252,7 @@
       },
       "qwen3.6-flash": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -2106,6 +2265,7 @@
       },
       "qwen3.6-max-preview": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -2116,6 +2276,7 @@
       },
       "qwen3.6-plus": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -2128,6 +2289,7 @@
       },
       "qwen3.7-max": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -2138,6 +2300,7 @@
       },
       "qwen3.7-plus": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -2150,6 +2313,7 @@
       },
       "qwq-plus": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -2162,6 +2326,7 @@
     "glm": {
       "glm-4.5": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 98304,
         "input": [
           "text"
@@ -2172,6 +2337,7 @@
       },
       "glm-4.5-air": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 98304,
         "input": [
           "text"
@@ -2182,6 +2348,7 @@
       },
       "glm-4.5-flash": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 98304,
         "input": [
           "text"
@@ -2192,6 +2359,7 @@
       },
       "glm-4.5v": {
         "contextWindowTokens": 64000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -2204,6 +2372,7 @@
       },
       "glm-4.6": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2214,6 +2383,7 @@
       },
       "glm-4.6v": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -2226,6 +2396,7 @@
       },
       "glm-4.7": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2236,6 +2407,7 @@
       },
       "glm-4.7-flash": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2246,6 +2418,7 @@
       },
       "glm-4.7-flashx": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2256,6 +2429,7 @@
       },
       "glm-5": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2266,6 +2440,7 @@
       },
       "glm-5.1": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2276,6 +2451,7 @@
       },
       "glm-5.2": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2289,6 +2465,7 @@
       },
       "glm-5v-turbo": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text",
@@ -2304,6 +2481,7 @@
     "deepseek": {
       "deepseek-chat": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 384000,
         "input": [
           "text"
@@ -2314,6 +2492,7 @@
       },
       "deepseek-reasoner": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 384000,
         "input": [
           "text"
@@ -2324,6 +2503,7 @@
       },
       "deepseek-v4-flash": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 384000,
         "input": [
           "text"
@@ -2337,6 +2517,7 @@
       },
       "deepseek-v4-pro": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 384000,
         "input": [
           "text"
@@ -2352,6 +2533,7 @@
     "minimax": {
       "MiniMax-M2": {
         "contextWindowTokens": 196608,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -2362,6 +2544,7 @@
       },
       "MiniMax-M2.1": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2372,6 +2555,7 @@
       },
       "MiniMax-M2.5": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2382,6 +2566,7 @@
       },
       "MiniMax-M2.5-highspeed": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2392,6 +2577,7 @@
       },
       "MiniMax-M2.7": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2402,6 +2588,7 @@
       },
       "MiniMax-M2.7-highspeed": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2412,6 +2599,7 @@
       },
       "MiniMax-M3": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -2426,6 +2614,7 @@
     "xiaomi": {
       "mimo-v2-flash": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -2436,6 +2625,7 @@
       },
       "mimo-v2-omni": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text",
@@ -2450,6 +2640,7 @@
       },
       "mimo-v2-pro": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2460,6 +2651,7 @@
       },
       "mimo-v2.5": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text",
@@ -2473,6 +2665,7 @@
       },
       "mimo-v2.5-pro": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2483,6 +2676,7 @@
       },
       "mimo-v2.5-pro-ultraspeed": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -2495,6 +2689,7 @@
     "mistral": {
       "codestral-latest": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text"
@@ -2505,6 +2700,7 @@
       },
       "devstral-2512": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -2515,6 +2711,7 @@
       },
       "devstral-latest": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -2525,6 +2722,7 @@
       },
       "devstral-medium-2507": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -2535,6 +2733,7 @@
       },
       "devstral-medium-latest": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -2545,6 +2744,7 @@
       },
       "devstral-small-2505": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -2555,6 +2755,7 @@
       },
       "devstral-small-2507": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -2565,6 +2766,7 @@
       },
       "labs-devstral-small-2512": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 256000,
         "input": [
           "text",
@@ -2576,6 +2778,7 @@
       },
       "magistral-medium-latest": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -2586,6 +2789,7 @@
       },
       "magistral-small": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -2596,6 +2800,7 @@
       },
       "ministral-3b-latest": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -2606,6 +2811,7 @@
       },
       "ministral-8b-latest": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -2616,6 +2822,7 @@
       },
       "mistral-embed": {
         "contextWindowTokens": 8000,
+        "maxInputTokens": null,
         "maxOutputTokens": 3072,
         "input": [
           "text"
@@ -2626,6 +2833,7 @@
       },
       "mistral-large-2411": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -2636,6 +2844,7 @@
       },
       "mistral-large-2512": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -2647,6 +2856,7 @@
       },
       "mistral-large-latest": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -2658,6 +2868,7 @@
       },
       "mistral-medium-2505": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text",
@@ -2669,6 +2880,7 @@
       },
       "mistral-medium-2508": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -2680,6 +2892,7 @@
       },
       "mistral-medium-2604": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -2694,6 +2907,7 @@
       },
       "mistral-medium-latest": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -2708,6 +2922,7 @@
       },
       "mistral-nemo": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -2718,6 +2933,7 @@
       },
       "mistral-small-2506": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -2729,6 +2945,7 @@
       },
       "mistral-small-2603": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 256000,
         "input": [
           "text",
@@ -2743,6 +2960,7 @@
       },
       "mistral-small-latest": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 256000,
         "input": [
           "text",
@@ -2757,6 +2975,7 @@
       },
       "open-mistral-7b": {
         "contextWindowTokens": 8000,
+        "maxInputTokens": null,
         "maxOutputTokens": 8000,
         "input": [
           "text"
@@ -2767,6 +2986,7 @@
       },
       "open-mistral-nemo": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -2777,6 +2997,7 @@
       },
       "open-mixtral-8x22b": {
         "contextWindowTokens": 64000,
+        "maxInputTokens": null,
         "maxOutputTokens": 64000,
         "input": [
           "text"
@@ -2787,6 +3008,7 @@
       },
       "open-mixtral-8x7b": {
         "contextWindowTokens": 32000,
+        "maxInputTokens": null,
         "maxOutputTokens": 32000,
         "input": [
           "text"
@@ -2797,6 +3019,7 @@
       },
       "pixtral-12b": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -2808,10 +3031,45 @@
       },
       "pixtral-large-latest": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
           "image"
+        ],
+        "supportsTools": true,
+        "reasoning": false,
+        "reasoningEfforts": []
+      },
+      "voxtral-mini-latest": {
+        "contextWindowTokens": null,
+        "maxInputTokens": null,
+        "maxOutputTokens": null,
+        "input": [
+          "audio"
+        ],
+        "supportsTools": false,
+        "reasoning": false,
+        "reasoningEfforts": []
+      },
+      "voxtral-mini-tts-latest": {
+        "contextWindowTokens": null,
+        "maxInputTokens": null,
+        "maxOutputTokens": null,
+        "input": [
+          "text"
+        ],
+        "supportsTools": false,
+        "reasoning": false,
+        "reasoningEfforts": []
+      },
+      "voxtral-small-latest": {
+        "contextWindowTokens": 32000,
+        "maxInputTokens": null,
+        "maxOutputTokens": 32000,
+        "input": [
+          "text",
+          "audio"
         ],
         "supportsTools": true,
         "reasoning": false,
@@ -2821,6 +3079,7 @@
     "openrouter": {
       "~anthropic/claude-fable-latest": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -2839,6 +3098,7 @@
       },
       "~anthropic/claude-haiku-latest": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 64000,
         "input": [
           "text",
@@ -2851,6 +3111,7 @@
       },
       "~anthropic/claude-opus-latest": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -2869,6 +3130,7 @@
       },
       "~anthropic/claude-sonnet-latest": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -2887,6 +3149,7 @@
       },
       "~deepseek/deepseek-v4-flash-latest": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -2901,6 +3164,7 @@
       },
       "~google/gemini-flash-latest": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -2920,6 +3184,7 @@
       },
       "~google/gemini-pro-latest": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "audio",
@@ -2938,6 +3203,7 @@
       },
       "~moonshotai/kimi-latest": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 1048576,
         "input": [
           "text",
@@ -2953,6 +3219,7 @@
       },
       "~openai/gpt-latest": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "pdf",
@@ -2972,6 +3239,7 @@
       },
       "~openai/gpt-mini-latest": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "pdf",
@@ -2990,6 +3258,7 @@
       },
       "~x-ai/grok-latest": {
         "contextWindowTokens": 500000,
+        "maxInputTokens": null,
         "maxOutputTokens": 1000000,
         "input": [
           "text",
@@ -3006,6 +3275,7 @@
       },
       "ai21/jamba-large-1.7": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text"
@@ -3016,6 +3286,7 @@
       },
       "aion-labs/aion-2.0": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -3026,6 +3297,7 @@
       },
       "aion-labs/aion-3.0": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -3036,6 +3308,7 @@
       },
       "aion-labs/aion-3.0-mini": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -3046,6 +3319,7 @@
       },
       "aion-labs/aion-rp-llama-3.1-8b": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -3056,6 +3330,7 @@
       },
       "allenai/olmo-3-32b-think": {
         "contextWindowTokens": 65536,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -3066,6 +3341,7 @@
       },
       "amazon/nova-2-lite-v1": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65535,
         "input": [
           "text",
@@ -3079,6 +3355,7 @@
       },
       "amazon/nova-lite-v1": {
         "contextWindowTokens": 300000,
+        "maxInputTokens": null,
         "maxOutputTokens": 5120,
         "input": [
           "text",
@@ -3090,6 +3367,7 @@
       },
       "amazon/nova-micro-v1": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 5120,
         "input": [
           "text"
@@ -3100,6 +3378,7 @@
       },
       "amazon/nova-premier-v1": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 32000,
         "input": [
           "text",
@@ -3111,6 +3390,7 @@
       },
       "amazon/nova-pro-v1": {
         "contextWindowTokens": 300000,
+        "maxInputTokens": null,
         "maxOutputTokens": 5120,
         "input": [
           "text",
@@ -3122,6 +3402,7 @@
       },
       "anthracite-org/magnum-v4-72b": {
         "contextWindowTokens": 16384,
+        "maxInputTokens": null,
         "maxOutputTokens": 2048,
         "input": [
           "text"
@@ -3132,6 +3413,7 @@
       },
       "anthropic/claude-3-haiku": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text",
@@ -3143,6 +3425,7 @@
       },
       "anthropic/claude-fable-5": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -3161,6 +3444,7 @@
       },
       "anthropic/claude-haiku-4.5": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 64000,
         "input": [
           "text",
@@ -3173,6 +3457,7 @@
       },
       "anthropic/claude-opus-4": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 32000,
         "input": [
           "image",
@@ -3185,6 +3470,7 @@
       },
       "anthropic/claude-opus-4.1": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 32000,
         "input": [
           "text",
@@ -3197,6 +3483,7 @@
       },
       "anthropic/claude-opus-4.5": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 64000,
         "input": [
           "text",
@@ -3213,6 +3500,7 @@
       },
       "anthropic/claude-opus-4.6": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -3230,6 +3518,7 @@
       },
       "anthropic/claude-opus-4.7": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -3248,6 +3537,7 @@
       },
       "anthropic/claude-opus-4.7-fast": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -3266,6 +3556,7 @@
       },
       "anthropic/claude-opus-4.8": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -3284,6 +3575,7 @@
       },
       "anthropic/claude-opus-4.8-fast": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -3302,6 +3594,7 @@
       },
       "anthropic/claude-opus-5": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -3320,6 +3613,7 @@
       },
       "anthropic/claude-opus-5-fast": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -3338,6 +3632,7 @@
       },
       "anthropic/claude-sonnet-4": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 64000,
         "input": [
           "image",
@@ -3350,6 +3645,7 @@
       },
       "anthropic/claude-sonnet-4.5": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 64000,
         "input": [
           "text",
@@ -3362,6 +3658,7 @@
       },
       "anthropic/claude-sonnet-4.6": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -3379,6 +3676,7 @@
       },
       "anthropic/claude-sonnet-5": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -3397,6 +3695,7 @@
       },
       "arcee-ai/trinity-large-thinking": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -3407,6 +3706,7 @@
       },
       "arcee-ai/virtuoso-large": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 64000,
         "input": [
           "text"
@@ -3417,6 +3717,7 @@
       },
       "baidu/ernie-4.5-vl-424b-a47b": {
         "contextWindowTokens": 123000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16000,
         "input": [
           "image",
@@ -3428,6 +3729,7 @@
       },
       "bytedance-seed/seed-1.6": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "image",
@@ -3440,6 +3742,7 @@
       },
       "bytedance-seed/seed-1.6-flash": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "image",
@@ -3452,6 +3755,7 @@
       },
       "bytedance-seed/seed-2.0-lite": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text",
@@ -3469,6 +3773,7 @@
       },
       "bytedance-seed/seed-2.0-mini": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text",
@@ -3486,6 +3791,7 @@
       },
       "bytedance/ui-tars-1.5-7b": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 2048,
         "input": [
           "image",
@@ -3497,6 +3803,7 @@
       },
       "cognitivecomputations/dolphin-mistral-24b-venice-edition": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -3507,6 +3814,7 @@
       },
       "cohere/command-a": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -3517,6 +3825,7 @@
       },
       "cohere/command-r-08-2024": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 4000,
         "input": [
           "text"
@@ -3527,6 +3836,7 @@
       },
       "cohere/command-r-plus-08-2024": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 4000,
         "input": [
           "text"
@@ -3537,6 +3847,7 @@
       },
       "cohere/command-r7b-12-2024": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 4000,
         "input": [
           "text"
@@ -3547,6 +3858,7 @@
       },
       "cohere/north-mini-code:free": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 64000,
         "input": [
           "text"
@@ -3557,6 +3869,7 @@
       },
       "deepcogito/cogito-v2.1-671b": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -3567,6 +3880,7 @@
       },
       "deepseek/deepseek-chat": {
         "contextWindowTokens": 163840,
+        "maxInputTokens": null,
         "maxOutputTokens": 16000,
         "input": [
           "text"
@@ -3577,6 +3891,7 @@
       },
       "deepseek/deepseek-chat-v3-0324": {
         "contextWindowTokens": 163840,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -3587,6 +3902,7 @@
       },
       "deepseek/deepseek-chat-v3.1": {
         "contextWindowTokens": 163840,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -3597,6 +3913,7 @@
       },
       "deepseek/deepseek-r1": {
         "contextWindowTokens": 163840,
+        "maxInputTokens": null,
         "maxOutputTokens": 16000,
         "input": [
           "text"
@@ -3607,6 +3924,7 @@
       },
       "deepseek/deepseek-r1-0528": {
         "contextWindowTokens": 163840,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -3617,6 +3935,7 @@
       },
       "deepseek/deepseek-r1-distill-llama-70b": {
         "contextWindowTokens": 8192,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -3627,6 +3946,7 @@
       },
       "deepseek/deepseek-v3.1-terminus": {
         "contextWindowTokens": 163840,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -3637,6 +3957,7 @@
       },
       "deepseek/deepseek-v3.2": {
         "contextWindowTokens": 163840,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -3647,6 +3968,7 @@
       },
       "deepseek/deepseek-v3.2-exp": {
         "contextWindowTokens": 163840,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -3657,6 +3979,7 @@
       },
       "deepseek/deepseek-v4-flash": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 393216,
         "input": [
           "text"
@@ -3670,6 +3993,7 @@
       },
       "deepseek/deepseek-v4-flash-0731": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -3684,6 +4008,7 @@
       },
       "deepseek/deepseek-v4-pro": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 384000,
         "input": [
           "text"
@@ -3697,6 +4022,7 @@
       },
       "google/gemini-2.5-flash": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65535,
         "input": [
           "text",
@@ -3711,6 +4037,7 @@
       },
       "google/gemini-2.5-flash-image": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text",
@@ -3722,6 +4049,7 @@
       },
       "google/gemini-2.5-flash-lite": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65535,
         "input": [
           "text",
@@ -3736,6 +4064,7 @@
       },
       "google/gemini-2.5-pro": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -3750,6 +4079,7 @@
       },
       "google/gemini-2.5-pro-preview": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "pdf",
@@ -3763,6 +4093,7 @@
       },
       "google/gemini-2.5-pro-preview-05-06": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65535,
         "input": [
           "text",
@@ -3777,6 +4108,7 @@
       },
       "google/gemini-3-flash-preview": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65535,
         "input": [
           "text",
@@ -3796,6 +4128,7 @@
       },
       "google/gemini-3-pro-image": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -3807,6 +4140,7 @@
       },
       "google/gemini-3-pro-image-preview": {
         "contextWindowTokens": 65536,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -3818,6 +4152,7 @@
       },
       "google/gemini-3.1-flash-image": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -3832,6 +4167,7 @@
       },
       "google/gemini-3.1-flash-image-preview": {
         "contextWindowTokens": 65536,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "image",
@@ -3846,6 +4182,7 @@
       },
       "google/gemini-3.1-flash-lite": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -3865,6 +4202,7 @@
       },
       "google/gemini-3.1-flash-lite-image": {
         "contextWindowTokens": 65536,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -3879,6 +4217,7 @@
       },
       "google/gemini-3.1-flash-lite-preview": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -3898,6 +4237,7 @@
       },
       "google/gemini-3.1-pro-preview": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -3916,6 +4256,7 @@
       },
       "google/gemini-3.1-pro-preview-customtools": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -3934,6 +4275,7 @@
       },
       "google/gemini-3.5-flash": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -3953,6 +4295,7 @@
       },
       "google/gemini-3.5-flash-lite": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -3972,6 +4315,7 @@
       },
       "google/gemini-3.6-flash": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -3991,6 +4335,7 @@
       },
       "google/gemma-2-27b-it": {
         "contextWindowTokens": 8192,
+        "maxInputTokens": null,
         "maxOutputTokens": 2048,
         "input": [
           "text"
@@ -4001,6 +4346,7 @@
       },
       "google/gemma-3-12b-it": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -4012,6 +4358,7 @@
       },
       "google/gemma-3-27b-it": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text",
@@ -4023,6 +4370,7 @@
       },
       "google/gemma-3-4b-it": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -4034,6 +4382,7 @@
       },
       "google/gemma-3n-e4b-it": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -4044,6 +4393,7 @@
       },
       "google/gemma-4-26b-a4b-it": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "image",
@@ -4056,6 +4406,7 @@
       },
       "google/gemma-4-26b-a4b-it:free": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "image",
@@ -4068,6 +4419,7 @@
       },
       "google/gemma-4-31b-it": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "image",
@@ -4080,6 +4432,7 @@
       },
       "google/gemma-4-31b-it:free": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "image",
@@ -4092,6 +4445,7 @@
       },
       "google/lyria-3-clip-preview": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -4103,6 +4457,7 @@
       },
       "google/lyria-3-pro-preview": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -4114,6 +4469,7 @@
       },
       "gryphe/mythomax-l2-13b": {
         "contextWindowTokens": 8192,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text"
@@ -4124,6 +4480,7 @@
       },
       "ibm-granite/granite-4.0-h-micro": {
         "contextWindowTokens": 131000,
+        "maxInputTokens": null,
         "maxOutputTokens": 131000,
         "input": [
           "text"
@@ -4134,6 +4491,7 @@
       },
       "ibm-granite/granite-4.1-8b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -4144,6 +4502,7 @@
       },
       "inception/mercury-2": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 50000,
         "input": [
           "text"
@@ -4159,6 +4518,7 @@
       },
       "inclusionai/ling-2.6-1t": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -4169,6 +4529,7 @@
       },
       "inclusionai/ling-2.6-flash": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -4179,6 +4540,7 @@
       },
       "inclusionai/ling-3.0-flash:free": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -4193,6 +4555,7 @@
       },
       "inclusionai/ring-2.6-1t": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -4206,6 +4569,7 @@
       },
       "kwaipilot/kat-coder-air-v2.5": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 80000,
         "input": [
           "text"
@@ -4216,6 +4580,7 @@
       },
       "kwaipilot/kat-coder-pro-v2": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 80000,
         "input": [
           "text"
@@ -4226,6 +4591,7 @@
       },
       "kwaipilot/kat-coder-pro-v2.5": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 80000,
         "input": [
           "text"
@@ -4236,6 +4602,7 @@
       },
       "mancer/weaver": {
         "contextWindowTokens": 8000,
+        "maxInputTokens": null,
         "maxOutputTokens": 2000,
         "input": [
           "text"
@@ -4246,6 +4613,7 @@
       },
       "meituan/longcat-2.0": {
         "contextWindowTokens": 1048756,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -4256,6 +4624,7 @@
       },
       "meta-llama/llama-3.1-70b-instruct": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -4266,6 +4635,7 @@
       },
       "meta-llama/llama-3.1-8b-instruct": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -4276,6 +4646,7 @@
       },
       "meta-llama/llama-3.2-1b-instruct": {
         "contextWindowTokens": 60000,
+        "maxInputTokens": null,
         "maxOutputTokens": 60000,
         "input": [
           "text"
@@ -4286,6 +4657,7 @@
       },
       "meta-llama/llama-3.2-3b-instruct": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -4296,6 +4668,7 @@
       },
       "meta-llama/llama-3.3-70b-instruct": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -4306,6 +4679,7 @@
       },
       "meta-llama/llama-4-maverick": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -4317,6 +4691,7 @@
       },
       "meta-llama/llama-4-scout": {
         "contextWindowTokens": 1310720,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -4328,6 +4703,7 @@
       },
       "meta-llama/llama-guard-4-12b": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "image",
@@ -4339,6 +4715,7 @@
       },
       "meta/muse-spark-1.1": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 1048576,
         "input": [
           "text",
@@ -4359,6 +4736,7 @@
       },
       "microsoft/phi-4": {
         "contextWindowTokens": 16384,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -4369,6 +4747,7 @@
       },
       "microsoft/wizardlm-2-8x22b": {
         "contextWindowTokens": 65535,
+        "maxInputTokens": null,
         "maxOutputTokens": 8000,
         "input": [
           "text"
@@ -4379,6 +4758,7 @@
       },
       "minimax/minimax-01": {
         "contextWindowTokens": 1000192,
+        "maxInputTokens": null,
         "maxOutputTokens": 1000192,
         "input": [
           "text",
@@ -4390,6 +4770,7 @@
       },
       "minimax/minimax-m1": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 40000,
         "input": [
           "text"
@@ -4400,6 +4781,7 @@
       },
       "minimax/minimax-m2": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -4410,6 +4792,7 @@
       },
       "minimax/minimax-m2-her": {
         "contextWindowTokens": 65536,
+        "maxInputTokens": null,
         "maxOutputTokens": 2048,
         "input": [
           "text"
@@ -4420,6 +4803,7 @@
       },
       "minimax/minimax-m2.1": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -4430,6 +4814,7 @@
       },
       "minimax/minimax-m2.5": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 196608,
         "input": [
           "text"
@@ -4440,6 +4825,7 @@
       },
       "minimax/minimax-m2.7": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -4450,6 +4836,7 @@
       },
       "minimax/minimax-m3": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 512000,
         "input": [
           "text",
@@ -4462,6 +4849,7 @@
       },
       "mistralai/codestral-2508": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 256000,
         "input": [
           "text",
@@ -4473,6 +4861,7 @@
       },
       "mistralai/ministral-14b-2512": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -4484,6 +4873,7 @@
       },
       "mistralai/ministral-3b-2512": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text",
@@ -4495,6 +4885,7 @@
       },
       "mistralai/ministral-8b-2512": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -4506,6 +4897,7 @@
       },
       "mistralai/mistral-large": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -4517,6 +4909,7 @@
       },
       "mistralai/mistral-large-2407": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text",
@@ -4528,6 +4921,7 @@
       },
       "mistralai/mistral-large-2512": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -4540,6 +4934,7 @@
       },
       "mistralai/mistral-medium-3": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text",
@@ -4552,6 +4947,7 @@
       },
       "mistralai/mistral-medium-3-5": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -4567,6 +4963,7 @@
       },
       "mistralai/mistral-medium-3.1": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -4579,6 +4976,7 @@
       },
       "mistralai/mistral-nemo": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -4589,6 +4987,7 @@
       },
       "mistralai/mistral-saba": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -4600,6 +4999,7 @@
       },
       "mistralai/mistral-small-24b-instruct-2501": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -4610,6 +5010,7 @@
       },
       "mistralai/mistral-small-2603": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -4624,6 +5025,7 @@
       },
       "mistralai/mistral-small-3.1-24b-instruct": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -4635,6 +5037,7 @@
       },
       "mistralai/mistral-small-3.2-24b-instruct": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "image",
@@ -4646,6 +5049,7 @@
       },
       "mistralai/mixtral-8x22b-instruct": {
         "contextWindowTokens": 65536,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -4657,6 +5061,7 @@
       },
       "mistralai/voxtral-small-24b-2507": {
         "contextWindowTokens": 32000,
+        "maxInputTokens": null,
         "maxOutputTokens": 32000,
         "input": [
           "text",
@@ -4669,6 +5074,7 @@
       },
       "moonshotai/kimi-k2": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 100352,
         "input": [
           "text"
@@ -4679,6 +5085,7 @@
       },
       "moonshotai/kimi-k2-0905": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 100352,
         "input": [
           "text"
@@ -4689,6 +5096,7 @@
       },
       "moonshotai/kimi-k2-thinking": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 100352,
         "input": [
           "text"
@@ -4699,6 +5107,7 @@
       },
       "moonshotai/kimi-k2.5": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -4710,6 +5119,7 @@
       },
       "moonshotai/kimi-k2.6": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -4721,6 +5131,7 @@
       },
       "moonshotai/kimi-k2.7-code": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -4732,6 +5143,7 @@
       },
       "moonshotai/kimi-k3": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 1048576,
         "input": [
           "text",
@@ -4747,6 +5159,7 @@
       },
       "morph/morph-v3-fast": {
         "contextWindowTokens": 81920,
+        "maxInputTokens": null,
         "maxOutputTokens": 38000,
         "input": [
           "text"
@@ -4757,6 +5170,7 @@
       },
       "morph/morph-v3-large": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -4767,6 +5181,7 @@
       },
       "nex-agi/nex-n2-mini": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -4778,6 +5193,7 @@
       },
       "nex-agi/nex-n2-pro": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -4789,6 +5205,7 @@
       },
       "nousresearch/hermes-3-llama-3.1-405b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -4799,6 +5216,7 @@
       },
       "nousresearch/hermes-3-llama-3.1-70b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -4809,6 +5227,7 @@
       },
       "nousresearch/hermes-4-405b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -4819,6 +5238,7 @@
       },
       "nousresearch/hermes-4-70b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -4829,6 +5249,7 @@
       },
       "nvidia/nemotron-3-nano-30b-a3b": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -4839,6 +5260,7 @@
       },
       "nvidia/nemotron-3-nano-30b-a3b:free": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 256000,
         "input": [
           "text"
@@ -4849,6 +5271,7 @@
       },
       "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -4862,6 +5285,7 @@
       },
       "nvidia/nemotron-3-super-120b-a12b": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -4875,6 +5299,7 @@
       },
       "nvidia/nemotron-3-super-120b-a12b:free": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -4888,6 +5313,7 @@
       },
       "nvidia/nemotron-3-ultra-550b-a55b": {
         "contextWindowTokens": 512288,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -4901,6 +5327,7 @@
       },
       "nvidia/nemotron-3-ultra-550b-a55b:free": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -4914,6 +5341,7 @@
       },
       "nvidia/nemotron-3.5-content-safety:free": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text",
@@ -4925,6 +5353,7 @@
       },
       "nvidia/nemotron-nano-12b-v2-vl:free": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -4937,6 +5366,7 @@
       },
       "nvidia/nemotron-nano-9b-v2:free": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -4947,6 +5377,7 @@
       },
       "openai/gpt-3.5-turbo": {
         "contextWindowTokens": 16385,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text"
@@ -4957,6 +5388,7 @@
       },
       "openai/gpt-3.5-turbo-0613": {
         "contextWindowTokens": 4095,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text"
@@ -4967,6 +5399,7 @@
       },
       "openai/gpt-3.5-turbo-16k": {
         "contextWindowTokens": 16385,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text"
@@ -4977,6 +5410,7 @@
       },
       "openai/gpt-3.5-turbo-instruct": {
         "contextWindowTokens": 4095,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text"
@@ -4987,6 +5421,7 @@
       },
       "openai/gpt-4": {
         "contextWindowTokens": 8191,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text"
@@ -4997,6 +5432,7 @@
       },
       "openai/gpt-4-turbo": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text",
@@ -5008,6 +5444,7 @@
       },
       "openai/gpt-4-turbo-preview": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text"
@@ -5018,6 +5455,7 @@
       },
       "openai/gpt-4.1": {
         "contextWindowTokens": 1047576,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -5030,6 +5468,7 @@
       },
       "openai/gpt-4.1-mini": {
         "contextWindowTokens": 1047576,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -5042,6 +5481,7 @@
       },
       "openai/gpt-4.1-nano": {
         "contextWindowTokens": 1047576,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "image",
@@ -5054,6 +5494,7 @@
       },
       "openai/gpt-4o": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -5066,6 +5507,7 @@
       },
       "openai/gpt-4o-2024-05-13": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 4096,
         "input": [
           "text",
@@ -5078,6 +5520,7 @@
       },
       "openai/gpt-4o-2024-08-06": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -5090,6 +5533,7 @@
       },
       "openai/gpt-4o-2024-11-20": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -5102,6 +5546,7 @@
       },
       "openai/gpt-4o-mini": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -5114,6 +5559,7 @@
       },
       "openai/gpt-4o-mini-2024-07-18": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -5126,6 +5572,7 @@
       },
       "openai/gpt-5": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5143,6 +5590,7 @@
       },
       "openai/gpt-5-image": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "image",
@@ -5155,6 +5603,7 @@
       },
       "openai/gpt-5-image-mini": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "pdf",
@@ -5167,6 +5616,7 @@
       },
       "openai/gpt-5-mini": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5184,6 +5634,7 @@
       },
       "openai/gpt-5-nano": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5201,6 +5652,7 @@
       },
       "openai/gpt-5-pro": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "image",
@@ -5215,6 +5667,7 @@
       },
       "openai/gpt-5.1": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "image",
@@ -5232,6 +5685,7 @@
       },
       "openai/gpt-5.1-codex": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5247,6 +5701,7 @@
       },
       "openai/gpt-5.1-codex-max": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5263,6 +5718,7 @@
       },
       "openai/gpt-5.1-codex-mini": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5278,6 +5734,7 @@
       },
       "openai/gpt-5.2": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "pdf",
@@ -5296,6 +5753,7 @@
       },
       "openai/gpt-5.2-chat": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "pdf",
@@ -5308,6 +5766,7 @@
       },
       "openai/gpt-5.2-codex": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5324,6 +5783,7 @@
       },
       "openai/gpt-5.2-pro": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "image",
@@ -5340,6 +5800,7 @@
       },
       "openai/gpt-5.3-chat": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -5352,6 +5813,7 @@
       },
       "openai/gpt-5.3-codex": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5370,6 +5832,7 @@
       },
       "openai/gpt-5.4": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5388,6 +5851,7 @@
       },
       "openai/gpt-5.4-image-2": {
         "contextWindowTokens": 272000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "image",
@@ -5406,6 +5870,7 @@
       },
       "openai/gpt-5.4-mini": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "pdf",
@@ -5424,6 +5889,7 @@
       },
       "openai/gpt-5.4-nano": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": 272000,
         "maxOutputTokens": 128000,
         "input": [
           "pdf",
@@ -5442,6 +5908,7 @@
       },
       "openai/gpt-5.4-pro": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5458,6 +5925,7 @@
       },
       "openai/gpt-5.5": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5476,6 +5944,7 @@
       },
       "openai/gpt-5.5-pro": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5492,6 +5961,7 @@
       },
       "openai/gpt-5.6-luna": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5511,6 +5981,7 @@
       },
       "openai/gpt-5.6-luna-pro": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5530,6 +6001,7 @@
       },
       "openai/gpt-5.6-sol": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5549,6 +6021,7 @@
       },
       "openai/gpt-5.6-sol-pro": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5568,6 +6041,7 @@
       },
       "openai/gpt-5.6-terra": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5587,6 +6061,7 @@
       },
       "openai/gpt-5.6-terra-pro": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": 922000,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5606,6 +6081,7 @@
       },
       "openai/gpt-audio": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -5617,6 +6093,7 @@
       },
       "openai/gpt-audio-mini": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -5628,6 +6105,7 @@
       },
       "openai/gpt-chat-latest": {
         "contextWindowTokens": 400000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5640,6 +6118,7 @@
       },
       "openai/gpt-oss-120b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -5654,6 +6133,7 @@
       },
       "openai/gpt-oss-20b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -5668,6 +6148,7 @@
       },
       "openai/gpt-oss-20b:free": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -5682,6 +6163,7 @@
       },
       "openai/gpt-oss-safeguard-20b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -5696,6 +6178,7 @@
       },
       "openai/o1": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 100000,
         "input": [
           "text",
@@ -5712,6 +6195,7 @@
       },
       "openai/o1-pro": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 100000,
         "input": [
           "text",
@@ -5724,6 +6208,7 @@
       },
       "openai/o3": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 100000,
         "input": [
           "text",
@@ -5740,6 +6225,7 @@
       },
       "openai/o3-mini": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 100000,
         "input": [
           "text",
@@ -5755,6 +6241,7 @@
       },
       "openai/o3-mini-high": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 100000,
         "input": [
           "text",
@@ -5768,6 +6255,7 @@
       },
       "openai/o3-pro": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 100000,
         "input": [
           "text",
@@ -5784,6 +6272,7 @@
       },
       "openai/o4-mini": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 100000,
         "input": [
           "image",
@@ -5800,6 +6289,7 @@
       },
       "openai/o4-mini-high": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 100000,
         "input": [
           "image",
@@ -5814,6 +6304,7 @@
       },
       "openrouter/auto": {
         "contextWindowTokens": 2000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 2000000,
         "input": [
           "text",
@@ -5828,6 +6319,7 @@
       },
       "openrouter/bodybuilder": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -5838,6 +6330,7 @@
       },
       "openrouter/free": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": 200000,
         "maxOutputTokens": 8000,
         "input": [
           "text",
@@ -5849,6 +6342,7 @@
       },
       "openrouter/fusion": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -5859,6 +6353,7 @@
       },
       "openrouter/pareto-code": {
         "contextWindowTokens": 2000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 200000,
         "input": [
           "text"
@@ -5869,6 +6364,7 @@
       },
       "perceptron/perceptron-mk1": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text",
@@ -5881,6 +6377,7 @@
       },
       "perplexity/sonar": {
         "contextWindowTokens": 127072,
+        "maxInputTokens": null,
         "maxOutputTokens": 127072,
         "input": [
           "text",
@@ -5892,6 +6389,7 @@
       },
       "perplexity/sonar-deep-research": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -5902,6 +6400,7 @@
       },
       "perplexity/sonar-pro": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 8000,
         "input": [
           "text",
@@ -5913,6 +6412,7 @@
       },
       "perplexity/sonar-pro-search": {
         "contextWindowTokens": 200000,
+        "maxInputTokens": null,
         "maxOutputTokens": 8000,
         "input": [
           "text",
@@ -5924,6 +6424,7 @@
       },
       "perplexity/sonar-reasoning-pro": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -5935,6 +6436,7 @@
       },
       "poolside/laguna-s-2.1": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -5945,6 +6447,7 @@
       },
       "poolside/laguna-s-2.1:free": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -5955,6 +6458,7 @@
       },
       "poolside/laguna-xs-2.1": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -5965,6 +6469,7 @@
       },
       "poolside/laguna-xs-2.1:free": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -5975,6 +6480,7 @@
       },
       "qwen/qwen-2.5-72b-instruct": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -5985,6 +6491,7 @@
       },
       "qwen/qwen-2.5-7b-instruct": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -5995,6 +6502,7 @@
       },
       "qwen/qwen-2.5-coder-32b-instruct": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -6005,6 +6513,7 @@
       },
       "qwen/qwen-plus": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -6015,6 +6524,7 @@
       },
       "qwen/qwen-plus-2025-07-28": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -6025,6 +6535,7 @@
       },
       "qwen/qwen-plus-2025-07-28:thinking": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -6035,6 +6546,7 @@
       },
       "qwen/qwen2.5-vl-72b-instruct": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -6046,6 +6558,7 @@
       },
       "qwen/qwen3-14b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -6056,6 +6569,7 @@
       },
       "qwen/qwen3-235b-a22b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -6066,7 +6580,8 @@
       },
       "qwen/qwen3-235b-a22b-2507": {
         "contextWindowTokens": 262144,
-        "maxOutputTokens": 16384,
+        "maxInputTokens": null,
+        "maxOutputTokens": 32768,
         "input": [
           "text"
         ],
@@ -6076,6 +6591,7 @@
       },
       "qwen/qwen3-235b-a22b-thinking-2507": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -6086,6 +6602,7 @@
       },
       "qwen/qwen3-30b-a3b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -6096,6 +6613,7 @@
       },
       "qwen/qwen3-30b-a3b-instruct-2507": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32000,
         "input": [
           "text"
@@ -6106,6 +6624,7 @@
       },
       "qwen/qwen3-30b-a3b-thinking-2507": {
         "contextWindowTokens": 81920,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -6116,6 +6635,7 @@
       },
       "qwen/qwen3-32b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -6126,6 +6646,7 @@
       },
       "qwen/qwen3-8b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -6136,6 +6657,7 @@
       },
       "qwen/qwen3-coder": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -6146,6 +6668,7 @@
       },
       "qwen/qwen3-coder-30b-a3b-instruct": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -6156,6 +6679,7 @@
       },
       "qwen/qwen3-coder-flash": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -6166,6 +6690,7 @@
       },
       "qwen/qwen3-coder-next": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -6176,6 +6701,7 @@
       },
       "qwen/qwen3-coder-plus": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -6186,6 +6712,7 @@
       },
       "qwen/qwen3-max": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -6196,6 +6723,7 @@
       },
       "qwen/qwen3-max-thinking": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -6206,6 +6734,7 @@
       },
       "qwen/qwen3-next-80b-a3b-instruct": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -6216,6 +6745,7 @@
       },
       "qwen/qwen3-next-80b-a3b-thinking": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -6226,6 +6756,7 @@
       },
       "qwen/qwen3-vl-235b-a22b-instruct": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -6237,6 +6768,7 @@
       },
       "qwen/qwen3-vl-235b-a22b-thinking": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -6248,6 +6780,7 @@
       },
       "qwen/qwen3-vl-30b-a3b-instruct": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -6259,6 +6792,7 @@
       },
       "qwen/qwen3-vl-30b-a3b-thinking": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -6270,6 +6804,7 @@
       },
       "qwen/qwen3-vl-32b-instruct": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -6281,6 +6816,7 @@
       },
       "qwen/qwen3-vl-8b-instruct": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "image",
@@ -6292,6 +6828,7 @@
       },
       "qwen/qwen3-vl-8b-thinking": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "image",
@@ -6303,6 +6840,7 @@
       },
       "qwen/qwen3.5-122b-a10b": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -6315,6 +6853,7 @@
       },
       "qwen/qwen3.5-27b": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -6327,6 +6866,7 @@
       },
       "qwen/qwen3.5-35b-a3b": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -6339,6 +6879,7 @@
       },
       "qwen/qwen3.5-397b-a17b": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -6351,6 +6892,7 @@
       },
       "qwen/qwen3.5-9b": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -6363,6 +6905,7 @@
       },
       "qwen/qwen3.5-flash-02-23": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -6375,6 +6918,7 @@
       },
       "qwen/qwen3.5-plus-02-15": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -6387,6 +6931,7 @@
       },
       "qwen/qwen3.5-plus-20260420": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -6399,7 +6944,8 @@
       },
       "qwen/qwen3.6-27b": {
         "contextWindowTokens": 262144,
-        "maxOutputTokens": 65536,
+        "maxInputTokens": null,
+        "maxOutputTokens": 131072,
         "input": [
           "text",
           "image",
@@ -6411,6 +6957,7 @@
       },
       "qwen/qwen3.6-35b-a3b": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -6423,6 +6970,7 @@
       },
       "qwen/qwen3.6-flash": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -6435,6 +6983,7 @@
       },
       "qwen/qwen3.6-max-preview": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -6445,6 +6994,7 @@
       },
       "qwen/qwen3.6-plus": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -6457,6 +7007,7 @@
       },
       "qwen/qwen3.7-flash": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": 991000,
         "maxOutputTokens": 65536,
         "input": [
           "text",
@@ -6469,6 +7020,7 @@
       },
       "qwen/qwen3.7-max": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -6479,6 +7031,7 @@
       },
       "qwen/qwen3.7-plus": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text",
@@ -6488,8 +7041,28 @@
         "reasoning": true,
         "reasoningEfforts": []
       },
+      "qwen/qwen3.8-max": {
+        "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
+        "maxOutputTokens": 131072,
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": [
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
       "rekaai/reka-edge": {
         "contextWindowTokens": 16384,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "image",
@@ -6502,6 +7075,7 @@
       },
       "rekaai/reka-flash-3": {
         "contextWindowTokens": 65536,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -6512,6 +7086,7 @@
       },
       "relace/relace-apply-3": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -6522,6 +7097,7 @@
       },
       "relace/relace-search": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -6532,6 +7108,7 @@
       },
       "sakana/fugu-ultra": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text",
@@ -6547,6 +7124,7 @@
       },
       "sao10k/l3-lunaris-8b": {
         "contextWindowTokens": 8192,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -6557,6 +7135,7 @@
       },
       "sao10k/l3.1-euryale-70b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -6567,6 +7146,7 @@
       },
       "sao10k/l3.3-euryale-70b": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -6577,6 +7157,7 @@
       },
       "stepfun/step-3.5-flash": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -6587,6 +7168,7 @@
       },
       "stepfun/step-3.7-flash": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": 256000,
         "maxOutputTokens": 256000,
         "input": [
           "text",
@@ -6603,6 +7185,7 @@
       },
       "tencent/hunyuan-a13b-instruct": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -6613,6 +7196,7 @@
       },
       "tencent/hy3": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -6627,6 +7211,7 @@
       },
       "tencent/hy3-preview": {
         "contextWindowTokens": 262144,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text"
@@ -6641,6 +7226,7 @@
       },
       "thedrummer/cydonia-24b-v4.1": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -6651,6 +7237,7 @@
       },
       "thedrummer/rocinante-12b": {
         "contextWindowTokens": 65536,
+        "maxInputTokens": null,
         "maxOutputTokens": 65536,
         "input": [
           "text"
@@ -6661,6 +7248,7 @@
       },
       "thedrummer/skyfall-36b-v2": {
         "contextWindowTokens": 32768,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text"
@@ -6671,7 +7259,8 @@
       },
       "thedrummer/unslopnemo-12b": {
         "contextWindowTokens": 1024000,
-        "maxOutputTokens": 32768,
+        "maxInputTokens": null,
+        "maxOutputTokens": 1024000,
         "input": [
           "text"
         ],
@@ -6681,6 +7270,7 @@
       },
       "thinkingmachines/inkling": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 1048576,
         "input": [
           "text",
@@ -6700,6 +7290,7 @@
       },
       "thinkingmachines/inkling-small": {
         "contextWindowTokens": 524288,
+        "maxInputTokens": null,
         "maxOutputTokens": 262144,
         "input": [
           "text",
@@ -6719,6 +7310,7 @@
       },
       "undi95/remm-slerp-l2-13b": {
         "contextWindowTokens": 6144,
+        "maxInputTokens": null,
         "maxOutputTokens": 2048,
         "input": [
           "text"
@@ -6729,6 +7321,7 @@
       },
       "upstage/solar-pro-3": {
         "contextWindowTokens": 128000,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -6739,6 +7332,7 @@
       },
       "writer/palmyra-x5": {
         "contextWindowTokens": 1040000,
+        "maxInputTokens": null,
         "maxOutputTokens": 8192,
         "input": [
           "text"
@@ -6749,6 +7343,7 @@
       },
       "x-ai/grok-4.20": {
         "contextWindowTokens": 2000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 2000000,
         "input": [
           "text",
@@ -6761,6 +7356,7 @@
       },
       "x-ai/grok-4.20-multi-agent": {
         "contextWindowTokens": 2000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 2000000,
         "input": [
           "text",
@@ -6778,6 +7374,7 @@
       },
       "x-ai/grok-4.3": {
         "contextWindowTokens": 1000000,
+        "maxInputTokens": null,
         "maxOutputTokens": 1000000,
         "input": [
           "text",
@@ -6795,6 +7392,7 @@
       },
       "x-ai/grok-4.5": {
         "contextWindowTokens": 500000,
+        "maxInputTokens": null,
         "maxOutputTokens": 500000,
         "input": [
           "text",
@@ -6811,6 +7409,7 @@
       },
       "x-ai/grok-build-0.1": {
         "contextWindowTokens": 256000,
+        "maxInputTokens": null,
         "maxOutputTokens": 256000,
         "input": [
           "text",
@@ -6823,6 +7422,7 @@
       },
       "xiaomi/mimo-v2.5": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text",
@@ -6836,6 +7436,7 @@
       },
       "xiaomi/mimo-v2.5-pro": {
         "contextWindowTokens": 1050000,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -6846,6 +7447,7 @@
       },
       "z-ai/glm-4.5": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 98304,
         "input": [
           "text"
@@ -6856,6 +7458,7 @@
       },
       "z-ai/glm-4.5-air": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 98304,
         "input": [
           "text"
@@ -6866,6 +7469,7 @@
       },
       "z-ai/glm-4.5v": {
         "contextWindowTokens": 65536,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text",
@@ -6877,6 +7481,7 @@
       },
       "z-ai/glm-4.6": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -6887,6 +7492,7 @@
       },
       "z-ai/glm-4.6v": {
         "contextWindowTokens": 131072,
+        "maxInputTokens": null,
         "maxOutputTokens": 32768,
         "input": [
           "text",
@@ -6899,6 +7505,7 @@
       },
       "z-ai/glm-4.7": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -6909,6 +7516,7 @@
       },
       "z-ai/glm-4.7-flash": {
         "contextWindowTokens": 202752,
+        "maxInputTokens": null,
         "maxOutputTokens": 16384,
         "input": [
           "text"
@@ -6919,6 +7527,7 @@
       },
       "z-ai/glm-5": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -6929,6 +7538,7 @@
       },
       "z-ai/glm-5-turbo": {
         "contextWindowTokens": 202752,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -6939,6 +7549,7 @@
       },
       "z-ai/glm-5.1": {
         "contextWindowTokens": 204800,
+        "maxInputTokens": null,
         "maxOutputTokens": 128000,
         "input": [
           "text"
@@ -6949,6 +7560,7 @@
       },
       "z-ai/glm-5.2": {
         "contextWindowTokens": 1048576,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "text"
@@ -6962,6 +7574,7 @@
       },
       "z-ai/glm-5v-turbo": {
         "contextWindowTokens": 202752,
+        "maxInputTokens": null,
         "maxOutputTokens": 131072,
         "input": [
           "image",

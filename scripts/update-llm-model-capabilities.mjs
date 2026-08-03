@@ -43,6 +43,7 @@ function normalizeModel(model) {
   }
   return {
     contextWindowTokens: positiveInteger(model.limit?.context),
+    maxInputTokens: positiveInteger(model.limit?.input),
     maxOutputTokens: positiveInteger(model.limit?.output),
     input: stringList(model.modalities?.input),
     supportsTools: typeof model.tool_call === 'boolean' ? model.tool_call : null,
@@ -62,7 +63,9 @@ for (const [localId, upstreamId] of Object.entries(PROVIDERS)) {
     throw new Error(`models.dev provider is missing: ${upstreamId}`);
   }
   providers[localId] = Object.fromEntries(
-    Object.entries(models).map(([modelId, model]) => [modelId, normalizeModel(model)]),
+    Object.entries(models)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([modelId, model]) => [modelId, normalizeModel(model)]),
   );
 }
 

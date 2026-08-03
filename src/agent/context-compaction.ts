@@ -31,6 +31,7 @@ export interface ContextPreparationOptions {
   readonly modelId: string;
   readonly contextWindowTokens: number;
   readonly contextWindowEstimated: boolean;
+  readonly maxInputTokens: number;
   readonly maxOutputTokens: number;
   readonly requestOverheadTokens?: number;
   readonly previousUsage?: AgentContextUsage;
@@ -152,13 +153,27 @@ export function serializeMessagesForPrompt(messages: readonly ModelMessage[]): s
   }).join('\n\n');
 }
 
-function recentMessageStart(messages: readonly ModelMessage[], targetTokens: number): number {
+function recentMessageStart(
+  messages: readonly ModelMessage[],
+  targetTokens: number,
+  maximumTokens: number,
+): number {
   let tokens = 0;
+  let candidate = 0;
+  let newestTurn = 0;
+  let foundTurn = false;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     tokens += contentTokens(messages[index]!.content) + 4;
-    if (tokens >= targetTokens && messages[index]!.role === 'user') return index;
+    if (messages[index]!.role !== 'user') continue;
+    if (!foundTurn) {
+      newestTurn = index;
+      foundTurn = true;
+    }
+    if (tokens > maximumTokens) return candidate;
+    candidate = index;
+    if (tokens >= targetTokens) return index;
   }
-  return 0;
+  return candidate > 0 ? candidate : newestTurn;
 }
 
 function previousInputFloor(options: ContextPreparationOptions): number {
@@ -213,16 +228,23 @@ export async function prepareContext(
     options.contextWindowTokens - 1,
     Math.max(policyReserve, options.maxOutputTokens),
   );
-  const triggerTokens = options.contextWindowTokens - reserve;
+  const triggerTokens = Math.min(
+    options.maxInputTokens,
+    options.contextWindowTokens - reserve,
+  );
   if (currentTokens <= triggerTokens) {
     return { messages: [...options.messages], usage: usage(currentTokens, options, false) };
   }
 
+  const availableMessageTokens = Math.max(
+    1,
+    triggerTokens - estimateTextTokens(options.system) - (options.requestOverheadTokens ?? 0),
+  );
   const recentTarget = Math.min(
     RECENT_CONTEXT_TARGET_TOKENS,
     Math.floor(options.contextWindowTokens * CONTEXT_FRACTION),
   );
-  const start = recentMessageStart(options.messages, recentTarget);
+  const start = recentMessageStart(options.messages, recentTarget, availableMessageTokens);
   if (start <= 0) {
     throw new Error('The current request is too large for this model context window. Remove large attachments or choose a model with a larger context window.');
   }

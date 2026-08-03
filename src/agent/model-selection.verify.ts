@@ -30,12 +30,20 @@ assert.equal(isAgentModelReady({ ...configured, choices: [] }), false, 'unconfig
 
 const known = resolveModelCapabilities({ backend: 'api', provider: 'openai', modelId: 'gpt-5' });
 assert.deepEqual(known.contextWindowTokens, { value: 400_000, estimated: false, source: 'catalog' });
+assert.deepEqual(known.maxInputTokens, { value: 272_000, estimated: false, source: 'catalog' });
 assert.deepEqual(known.maxOutputTokens, { value: 128_000, estimated: false, source: 'catalog' });
 assert.deepEqual(known.supportsTools, { value: true, estimated: false, source: 'catalog' });
 assert.deepEqual(known.supportsImages, { value: true, estimated: false, source: 'catalog' });
+const gpt56 = resolveModelCapabilities({ backend: 'api', provider: 'openai', modelId: 'gpt-5.6-sol' });
+assert.deepEqual(gpt56.contextWindowTokens, { value: 1_050_000, estimated: false, source: 'catalog' });
+assert.deepEqual(gpt56.maxInputTokens, { value: 922_000, estimated: false, source: 'catalog' });
+assert.deepEqual(gpt56.maxOutputTokens, { value: 128_000, estimated: false, source: 'catalog' });
 
 assert.deepEqual(unknownCapabilities.contextWindowTokens, {
   value: 8_192, estimated: true, source: 'provider-fallback',
+});
+assert.deepEqual(unknownCapabilities.maxInputTokens, {
+  value: 6_144, estimated: true, source: 'provider-fallback',
 });
 assert.deepEqual(unknownCapabilities.maxOutputTokens, {
   value: 2_048, estimated: true, source: 'provider-fallback',
@@ -52,6 +60,7 @@ const overrides = parseModelCapabilityOverrides(JSON.stringify([{
   provider: 'openai',
   modelId: ' custom/model:v2 ',
   contextWindowTokens: 65_536,
+  maxInputTokens: 60_000,
   maxOutputTokens: 4_096,
   supportsTools: false,
   supportsImages: true,
@@ -62,6 +71,9 @@ const overridden = resolveModelCapabilities(
 );
 assert.deepEqual(overridden.contextWindowTokens, {
   value: 65_536, estimated: false, source: 'settings-override',
+});
+assert.deepEqual(overridden.maxInputTokens, {
+  value: 60_000, estimated: false, source: 'settings-override',
 });
 assert.deepEqual(overridden.maxOutputTokens, {
   value: 4_096, estimated: false, source: 'settings-override',
@@ -78,5 +90,8 @@ assert.throws(() => parseModelCapabilityOverrides(JSON.stringify([
 assert.throws(() => parseModelCapabilityOverrides(JSON.stringify([{
   backend: 'api', provider: 'openai', modelId: 'x', supportsReasoning: false, reasoningEfforts: ['high'],
 }])), /Disabled reasoning/);
+assert.throws(() => parseModelCapabilityOverrides(JSON.stringify([{
+  backend: 'api', provider: 'openai', modelId: 'x', contextWindowTokens: 8_192, maxInputTokens: 8_193,
+}])), /input limit exceeds/);
 
 console.log('model-selection.verify: ok');

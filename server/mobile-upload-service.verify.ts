@@ -16,7 +16,7 @@ const service = new MobileUploadService({
   addresses: () => ['127.0.0.1'],
   uploadDirectory: () => tempDir,
   maxBytes: 16,
-  sessionTtlMs: 200,
+  sessionTtlMs: 2_000,
 });
 
 try {
@@ -91,7 +91,7 @@ try {
   assert.equal(service.getSession(session.id), null);
   assert.equal((await fetch(session.urls[0]!)).status, 404);
 
-  await new Promise((resolve) => setTimeout(resolve, 230));
+  await new Promise((resolve) => setTimeout(resolve, 2_030));
   assert.equal(service.getSession(englishSession.id), null);
 } finally {
   await service.stop();
