@@ -5,6 +5,8 @@ import { useT } from '../i18n/locale';
 import { theme } from '../theme';
 import { AssetExportButton } from './AssetExportButton';
 import { folderPath } from './mediaPoolFormat';
+import { AssetMenuDestinations } from './AssetMenuDestinations';
+import type { MediaSortKey, MediaTypeFilter } from './mediaPoolFilter';
 
 interface AssetMenuPortalProps {
   asset?: MediaAsset;
@@ -22,6 +24,64 @@ interface AssetMenuPortalProps {
   onRelink: () => void;
   onRemove: () => void;
   onMove: (folderId?: string) => void;
+  onAddTimeline: () => void;
+  onAddChat: () => void;
+}
+
+interface BlankMediaMenuActionsProps {
+  clipboardCount: number;
+  visibleCount: number;
+  allVisibleSelected: boolean;
+  view: 'grid' | 'list';
+  sort: MediaSortKey;
+  type: MediaTypeFilter;
+  onPaste: () => void;
+  onSelectAll: () => void;
+  onUpload: () => void;
+  onSemanticSearch: () => void;
+  onMobileUpload: () => void;
+  onCreateFolder: () => void;
+  onViewToggle: () => void;
+  onSort: (value: MediaSortKey) => void;
+  onType: (value: MediaTypeFilter) => void;
+}
+
+export function BlankMediaMenuActions(props: BlankMediaMenuActionsProps) {
+  const t = useT();
+  return <>
+    <button type="button" disabled={!props.clipboardCount} onClick={props.onPaste}>{t('粘贴副本')}{props.clipboardCount > 1 ? ` (${props.clipboardCount})` : ''}</button>
+    <button type="button" disabled={!props.visibleCount} onClick={props.onSelectAll}>{t(props.allVisibleSelected ? '取消全选' : '全选')}</button>
+    <hr />
+    <button type="button" onClick={props.onSemanticSearch}>{t('本地语义搜索')}</button>
+    <button type="button" onClick={props.onMobileUpload}>{t('手机传素材')}</button>
+    <button type="button" onClick={props.onUpload}>{t('上传素材')}</button>
+    <button type="button" onClick={props.onCreateFolder}>{t('新建文件夹')}</button>
+    <button type="button" onClick={props.onViewToggle}>{t(props.view === 'grid' ? '切换到列表视图' : '切换到网格视图')}</button>
+    <label><span>{t('排序')}</span><select aria-label={t('素材排序')} value={props.sort} onChange={(event) => props.onSort(event.target.value as MediaSortKey)}>
+      <option value="newest">{t('最新导入')}</option><option value="name">{t('名称 A–Z')}</option><option value="duration">{t('时长')}</option>
+    </select></label>
+    <label><span>{t('筛选')}</span><select aria-label={t('筛选素材')} value={props.type} onChange={(event) => props.onType(event.target.value as MediaTypeFilter)}>
+      <option value="all">{t('全部')}</option><option value="video">{t('视频')}</option><option value="image">{t('图片')}</option><option value="audio">{t('音频')}</option>
+    </select></label>
+  </>;
+}
+
+export function BlankMediaMenuPortal(props: BlankMediaMenuActionsProps & { position: { top: number; left: number }; onClose: () => void }) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const t = useT();
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) props.onClose();
+    };
+    document.addEventListener('pointerdown', closeOutside, true);
+    return () => document.removeEventListener('pointerdown', closeOutside, true);
+  }, [props.onClose]);
+  return createPortal(
+    <div ref={menuRef} className="cc-media-popover cc-media-blank-menu" style={props.position} role="menu" aria-label={t('素材池空白区域菜单')} onClick={(event) => event.stopPropagation()}>
+      <BlankMediaMenuActions {...props} />
+    </div>,
+    document.body,
+  );
 }
 
 export function AssetMenuPortal(props: AssetMenuPortalProps) {
@@ -31,16 +91,21 @@ export function AssetMenuPortal(props: AssetMenuPortalProps) {
     if (!props.asset || !props.position) return;
     menuRef.current?.querySelector<HTMLElement>('button:not(:disabled), select')?.focus();
   }, [props.asset, props.position]);
+  useEffect(() => {
+    if (!props.asset || !props.position) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) props.onClose();
+    };
+    document.addEventListener('pointerdown', closeOutside, true);
+    return () => document.removeEventListener('pointerdown', closeOutside, true);
+  }, [props.asset, props.onClose, props.position]);
   if (!props.asset || !props.position) return null;
   return createPortal(
-    <>
-      <div className="cc-asset-menu-backdrop" onClick={props.onClose} />
       <div
         ref={menuRef}
         className="cc-media-popover cc-asset-menu-portal"
         style={props.position}
-        role="dialog"
-        aria-modal="true"
+        role="menu"
         aria-label={t('管理 {name}', { name: props.asset.name })}
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) props.onClose();
@@ -48,8 +113,7 @@ export function AssetMenuPortal(props: AssetMenuPortalProps) {
         onClick={(event) => event.stopPropagation()}
       >
         <AssetMenuActions {...props} asset={props.asset} />
-      </div>
-    </>,
+      </div>,
     document.body,
   );
 }
@@ -71,6 +135,7 @@ function AssetMenuActions(props: AssetMenuPortalProps & { asset: MediaAsset }) {
           {props.folders.map((folder) => <option key={folder.id} value={folder.id}>{folderPath(folder, props.folders)}</option>)}
         </select>
       </label>
+      <AssetMenuDestinations assetName={asset.name} onAddTimeline={props.onAddTimeline} onAddChat={props.onAddChat} />
     </>
   );
 }

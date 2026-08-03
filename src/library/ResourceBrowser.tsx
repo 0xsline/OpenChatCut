@@ -14,6 +14,7 @@ import { theme } from '../theme';
 import { t as translate, useT } from '../i18n/locale';
 import { setLibraryDrag, type LibraryDragKind } from './drag';
 import { useFixedVirtualGrid } from '../hooks/useFixedVirtualGrid';
+import { LIBRARY_CARD_GRID_METRICS } from './libraryCardGrid';
 
 // Generic resource-library category browser (Transition/Special Effects/Scale/LUT).
 // `layout="grid"` uses cards with a thumbnail and label;
@@ -146,11 +147,7 @@ function ResourceGrid({ items, activeId, draggedId, ...cardProps }: ResourceGrid
   }, [activeId, draggedId, items]);
   const virtualGrid = useFixedVirtualGrid({
     itemCount: items.length,
-    cardWidth: 118,
-    rowHeight: 98,
-    columnGap: 8,
-    rowGap: 10,
-    overscanRows: 1,
+    ...LIBRARY_CARD_GRID_METRICS,
     pinnedIndexes,
   });
   useEffect(() => {

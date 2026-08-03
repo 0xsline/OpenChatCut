@@ -188,7 +188,7 @@ async function putPart(uploadId: string, part: number, blob: Blob): Promise<void
 }
 
 /** Multipart upload with per-part retry (local stand-in for S3 multipart). */
-async function uploadFileMultipart(file: File, onProgress?: UploadProgress): Promise<string> {
+async function uploadFileMultipartAttempt(file: File, onProgress?: UploadProgress): Promise<string> {
   const initRes = await fetch('/upload/multipart/init', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -249,6 +249,29 @@ async function uploadFileMultipart(file: File, onProgress?: UploadProgress): Pro
   return doneBody.path;
 }
 
+export function isExpiredMultipartSessionError(error: unknown): boolean {
+  return error instanceof Error && /upload session not found or expired/i.test(error.message);
+}
+
+/** Retry once with a fresh multipart session after an embedded-server restart. */
+export async function retryExpiredMultipartSession<T>(attempt: () => Promise<T>): Promise<T> {
+  try {
+    return await attempt();
+  } catch (error) {
+    if (!isExpiredMultipartSessionError(error)) throw error;
+  }
+  try {
+    return await attempt();
+  } catch (error) {
+    if (isExpiredMultipartSessionError(error)) throw new Error(t('上传会话已失效，请重新导入'));
+    throw error;
+  }
+}
+
+async function uploadFileMultipart(file: File, onProgress?: UploadProgress): Promise<string> {
+  return retryExpiredMultipartSession(() => uploadFileMultipartAttempt(file, onProgress));
+}
+
 async function uploadFile(file: File, onProgress?: UploadProgress): Promise<string> {
   if (file.size >= MULTIPART_THRESHOLD) {
     try {
@@ -263,6 +286,21 @@ async function uploadFile(file: File, onProgress?: UploadProgress): Promise<stri
     }
   }
   return uploadFileSimple(file, onProgress);
+}
+
+interface DesktopLocalMediaApi {
+  importLocalMedia(file: File): Promise<{ src: string; storedName: string } | null>;
+  prepareTransparentMovProxy(storedName: string): Promise<{ src: string } | null>;
+}
+
+async function importDesktopLocalMedia(file: File): Promise<{ src: string; storedName: string } | null> {
+  const api = (globalThis as typeof globalThis & { openChatCutDesktop?: DesktopLocalMediaApi }).openChatCutDesktop;
+  if (!api?.importLocalMedia) return null;
+  const imported = await api.importLocalMedia(file);
+  if (!imported) return null;
+  if (!/\.mov$/i.test(imported.storedName) || !api.prepareTransparentMovProxy) return imported;
+  const proxy = await api.prepareTransparentMovProxy(imported.storedName).catch(() => null);
+  return proxy ? { ...imported, src: proxy.src } : imported;
 }
 
 const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `a_${Date.now()}`;
@@ -367,7 +405,8 @@ export async function importMedia(
       : Promise.resolve(null);
 
     // Upload fills 0..0.9; optional video normalize uses 0.9..1.
-    const srcRaw = await uploadFile(file, hooks.onProgress
+    const desktopImport = await importDesktopLocalMedia(file);
+    const srcRaw = desktopImport?.src ?? await uploadFile(file, hooks.onProgress
       ? (r) => hooks.onProgress!(r * 0.9)
       : undefined);
     hooks.onProgress?.(0.92);
@@ -396,7 +435,7 @@ export async function importMedia(
     }
     hooks.onProgress?.(1);
 
-    if (src === srcRaw) {
+    if (src === srcRaw && !desktopImport) {
       void putMediaBlob(src, file, {
         name: sourceFilename,
         mime: file.type,

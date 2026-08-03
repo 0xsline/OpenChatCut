@@ -4,9 +4,10 @@ import type { MediaAsset, MediaFolder } from '../editor/types';
 import { useT } from '../i18n/locale';
 import { theme } from '../theme';
 import { setMediaAssetDrag } from './drag';
-import { durationLabel } from './mediaPoolFormat';
+import { durationLabel, mediaRatioLabel } from './mediaPoolFormat';
 import { MgThumb } from './MgThumb';
 import { usePreviewMediaSource } from './previewMedia';
+import { parseMediaAssetDrag } from './drag';
 
 interface MediaAssetCardProps {
   asset: MediaAsset;
@@ -14,6 +15,7 @@ interface MediaAssetCardProps {
   active: boolean;
   selected: boolean;
   missing: boolean;
+  used: boolean;
   view: 'grid' | 'list';
   canRelink: boolean;
   onAdd: (asset: MediaAsset) => void;
@@ -25,6 +27,7 @@ interface MediaAssetCardProps {
   onOpenMenu: (id: string, anchor: HTMLElement, point?: { x: number; y: number }) => void;
   onRelink: (id: string) => void;
   onToggleSelected: (id: string) => void;
+  onSetFavorite: (id: string, favorite: boolean) => void;
 }
 
 interface AssetPreviewProps {
@@ -121,7 +124,14 @@ export const MediaAssetCard = memo(function MediaAssetCard(props: MediaAssetCard
   const { asset, missing, onFocusChange, onPointerChange, view } = props;
   return (
     <div
+      data-cc-media-asset-id={asset.id}
       className={`cc-asset-card${props.selected ? ' selected' : ''}${missing ? ' missing' : ''}`}
+      onClickCapture={(event) => {
+        if (!(event.metaKey || event.ctrlKey || event.shiftKey)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        props.onToggleSelected(asset.id);
+      }}
       onContextMenu={(event) => {
         event.preventDefault();
         const target = event.target instanceof Element
@@ -195,12 +205,25 @@ function MissingMedia() {
 function AssetBadges(props: MediaAssetCardProps) {
   const { asset } = props;
   const t = useT();
+  const aspectLabel = mediaRatioLabel(asset.width, asset.height);
   return (
     <>
       {asset.kind === 'audio' && <span className="cc-asset-audio-mark"><Icon name="volume" size={14} /></span>}
       {(asset.kind === 'gif' || asset.kind === 'svg') && <span className="cc-asset-audio-mark cc-asset-kind-mark">{asset.kind.toUpperCase()}</span>}
+      {props.used && <span className="cc-asset-used-dot" title={t('正在时间线中使用')} aria-label={t('正在时间线中使用')} />}
+      {aspectLabel && <span className="cc-asset-ratio">{aspectLabel}</span>}
       <span className="cc-asset-duration">{durationLabel(asset.durationInFrames, props.fps)}</span>
-      <input className="cc-asset-check" aria-label={t('选择 {name}', { name: asset.name })} type="checkbox" checked={props.selected} onChange={() => props.onToggleSelected(asset.id)} />
+      <button
+        type="button"
+        className="cc-asset-favorite"
+        aria-pressed={!!asset.favorite}
+        aria-label={`${asset.favorite ? t('取消收藏') : t('收藏')}：${asset.name}`}
+        title={asset.favorite ? t('取消收藏') : t('收藏')}
+        onClick={(event) => {
+          event.stopPropagation();
+          props.onSetFavorite(asset.id, !asset.favorite);
+        }}
+      ><Icon name="star" size={15} filled={!!asset.favorite} /></button>
       <button className="cc-asset-more" aria-label={t('管理 {name}', { name: asset.name })} onClick={(event) => {
         event.stopPropagation();
         props.onOpenMenu(asset.id, event.currentTarget);
@@ -213,15 +236,27 @@ interface MediaFolderCardProps {
   folder: MediaFolder;
   onOpen: (id: string) => void;
   onFocusChange: (id: string | null) => void;
+  onDropFiles: (files: FileList, folderId: string) => void;
+  onMoveAsset: (id: string, folderId: string) => void;
 }
 
-export const MediaFolderCard = memo(function MediaFolderCard({ folder, onOpen, onFocusChange }: MediaFolderCardProps) {
+export const MediaFolderCard = memo(function MediaFolderCard({ folder, onOpen, onFocusChange, onDropFiles, onMoveAsset }: MediaFolderCardProps) {
   return (
     <button
       className="cc-folder-card"
       onClick={() => onOpen(folder.id)}
       onFocus={() => onFocusChange(folder.id)}
       onBlur={() => onFocusChange(null)}
+      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = event.dataTransfer.files.length ? 'copy' : 'move'; }}
+      onDrop={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.dataTransfer.files.length) onDropFiles(event.dataTransfer.files, folder.id);
+        else {
+          const assetId = parseMediaAssetDrag(event);
+          if (assetId) onMoveAsset(assetId, folder.id);
+        }
+      }}
     >
       <span><Icon name="folder" size={34} /></span>
       <strong>{folder.name}</strong>

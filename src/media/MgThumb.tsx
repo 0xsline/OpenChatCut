@@ -7,6 +7,7 @@ import { Player, type PlayerRef } from '@remotion/player';
 import { prepareTemplate, type MgComponent } from '../template-host';
 import type { MediaAsset } from '../editor/types';
 import { Icon } from '../components/icons';
+import { motionGraphicPreviewFrame } from './mgPreview';
 
 interface MgThumbProps {
   asset: MediaAsset;
@@ -55,9 +56,11 @@ export function MgThumb({ asset, fps, active, posterSrc }: MgThumbProps) {
       compositionWidth={width}
       compositionHeight={height}
       fps={fps}
-      initialFrame={Math.floor(duration / 2)}
+      initialFrame={motionGraphicPreviewFrame(duration)}
       loop
       autoPlay
+      initiallyMuted
+      numberOfSharedAudioTags={0}
       controls={false}
       clickToPlay={false}
       style={{ width: '100%', height: '100%', pointerEvents: 'none' }}

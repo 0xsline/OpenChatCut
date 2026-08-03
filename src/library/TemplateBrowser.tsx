@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { theme, themeAlpha } from '../theme';
 import { tData, useT } from '../i18n/locale';
@@ -9,10 +9,16 @@ import { Icon } from '../components/icons';
 import { setLibraryDrag } from './drag';
 import { loadRecentTemplateIds, pushRecentTemplateId } from '../persist/sessionPrefs';
 import { useFixedVirtualGrid } from '../hooks/useFixedVirtualGrid';
+import { LIBRARY_CARD_GRID_METRICS } from './libraryCardGrid';
+import {
+  createHorizontalTabDrag,
+  getHorizontalTabRevealDirection,
+  revealHorizontalTab,
+} from './resourceTabDrag';
 
 // MG animation browser: a horizontal chip row
 // [Collection, recent, popular, <categories by count>] filters the card grid; cards show a
-// ⭐ favorite toggle + a ⋮ menu (add to timeline / generate with AI / delete) on hover.
+// ⭐ favorite toggle, an explicit add action, and a keyboard-accessible management menu.
 // Data model: collection = per-user collected (persisted to localStorage),
 // recent = last-added template ids (local), popular = full gallery default.
 // Delete = soft delete (local hidden list), used clips in the timeline are not affected; built-in/plugin entries can be removed from the list.
@@ -56,12 +62,16 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
   /** Template id removed from the resource library list (soft deletion, persistence; does not affect the inserted clips in the timeline) */
   const [hidden, setHidden] = usePersistedState<string[]>('cc.hiddenTemplates', []);
   const [recents, setRecents] = useState<string[]>(() => loadRecentTemplateIds());
+  const recentsRef = useRef(recents);
   const [chip, setChip] = usePersistedState<string>('cc.templateChip', POPULAR);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const chipScrollRef = useRef<HTMLDivElement | null>(null);
+  const chipDragRef = useRef<ReturnType<typeof createHorizontalTabDrag> | null>(null);
+  const suppressChipClickRef = useRef(false);
   const favSet = useMemo(() => new Set(favs), [favs]);
   const hiddenSet = useMemo(() => new Set(hidden), [hidden]);
   const toggleFav = useCallback((id: string) => {
@@ -73,7 +83,13 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
     setHidden((current) => current.includes(id) ? current : [...current, id]);
     setFavs((current) => current.filter((candidate) => candidate !== id));
   }, [setFavs, setHidden]);
-  const remember = useCallback((tpl: Tpl) => setRecents(pushRecentTemplateId(tpl.id)), []);
+  const remember = useCallback((tpl: Tpl) => {
+    const current = recentsRef.current;
+    const next = pushRecentTemplateId(tpl.id, current);
+    if (next === current) return;
+    recentsRef.current = next;
+    setRecents(next);
+  }, []);
   const addAndRemember = useCallback((tpl: Tpl) => {
     remember(tpl);
     onAdd(tpl);
@@ -131,11 +147,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
   }, [draggedId, focusedId, menuFor, shown]);
   const virtualGrid = useFixedVirtualGrid({
     itemCount: shown.length,
-    cardWidth: 120,
-    rowHeight: 97,
-    columnGap: 10,
-    rowGap: 10,
-    overscanRows: 1,
+    ...LIBRARY_CARD_GRID_METRICS,
     pinnedIndexes,
   });
 
@@ -164,12 +176,89 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
     setMenuPos({ top, left });
   }, [closeMenu, menuFor]);
 
+  const openMenuAtPoint = useCallback((tpId: string, clientX: number, clientY: number) => {
+    setConfirmDelete(false);
+    setMenuFor(tpId);
+    setMenuPos({
+      left: Math.max(8, Math.min(window.innerWidth - MENU_W - 8, clientX)),
+      top: Math.max(8, Math.min(window.innerHeight - MENU_H - 8, clientY)),
+    });
+  }, []);
+
   return (
     <>
       {/* chip row (horizontally scrollable) */}
-      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 10, marginBottom: 4 }}>
+      <div
+        ref={chipScrollRef}
+        className="cc-resource-tertiary-tabs cc-template-category-tabs"
+        role="tablist"
+        aria-label={t('MG 动画')}
+        onDragStart={(event) => event.preventDefault()}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          chipDragRef.current = createHorizontalTabDrag(event, event.currentTarget);
+        }}
+        onPointerMove={(event) => {
+          if ((event.buttons & 1) === 0) {
+            chipDragRef.current = null;
+            delete event.currentTarget.dataset.dragging;
+            return;
+          }
+          if (!chipDragRef.current?.move(event)) return;
+          if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+          event.currentTarget.dataset.dragging = 'true';
+        }}
+        onPointerUp={(event) => {
+          const didDrag = chipDragRef.current?.end() ?? false;
+          chipDragRef.current = null;
+          delete event.currentTarget.dataset.dragging;
+          suppressChipClickRef.current = didDrag;
+          requestAnimationFrame(() => { suppressChipClickRef.current = false; });
+        }}
+        onPointerCancel={(event) => {
+          chipDragRef.current = null;
+          suppressChipClickRef.current = false;
+          delete event.currentTarget.dataset.dragging;
+        }}
+        onClickCapture={(event) => {
+          if (!suppressChipClickRef.current) return;
+          event.preventDefault();
+          event.stopPropagation();
+          suppressChipClickRef.current = false;
+        }}
+        style={{
+          display: 'flex',
+          gap: 8,
+          overflowX: 'auto',
+          paddingBottom: 10,
+          marginBottom: 4,
+          cursor: 'grab',
+          touchAction: 'pan-y',
+        }}
+      >
         {chips.map((c) => (
-          <button key={c} onClick={() => { setChip(c); closeMenu(); }} style={chipStyle(chip === c)}>
+          <button
+            key={c}
+            type="button"
+            role="tab"
+            aria-selected={chip === c}
+            onClick={(event) => {
+              const currentChipIndex = chips.indexOf(chip);
+              const nextChipIndex = chips.indexOf(c);
+              setChip(c);
+              closeMenu();
+              if (chipScrollRef.current) {
+                revealHorizontalTab(
+                  chipScrollRef.current,
+                  event.currentTarget,
+                  getHorizontalTabRevealDirection(currentChipIndex, nextChipIndex),
+                );
+              }
+            }}
+            style={chipStyle(chip === c)}
+          >
             {c === FAV ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="star" size={12} />{t('收藏')}</span> : c === RECENT ? t('最近') : c === POPULAR ? t('热门') : t(catLabel(c))}
           </button>
         ))}
@@ -178,7 +267,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
       {chip === FAV && shown.length === 0 ? (
         <div style={{ color: theme.textDim, fontSize: 12, padding: '20px 8px', textAlign: 'center' }}>{t('还没有收藏的模板。将鼠标移到卡片上点 ★ 收藏。')}</div>
       ) : chip === RECENT && shown.length === 0 ? (
-        <div style={{ color: theme.textDim, fontSize: 12, padding: '20px 8px', textAlign: 'center' }}>{t('还没有最近使用的模板。点卡片或拖到时间线后会出现在这里。')}</div>
+        <div style={{ color: theme.textDim, fontSize: 12, padding: '20px 8px', textAlign: 'center' }}>{t('还没有最近使用的模板。点卡片右上角＋或拖到时间线后会出现在这里。')}</div>
       ) : (
         /* Fixed-size rows keep scroll geometry stable while only viewport rows are mounted. */
         <div
@@ -211,6 +300,7 @@ export const TemplateBrowser = memo(function TemplateBrowser({ templates, onAdd,
                   onRemember={remember}
                   onToggleFavorite={toggleFav}
                   onOpenMenu={openMenu}
+                  onOpenMenuAtPoint={openMenuAtPoint}
                   onFocusChange={setFocusedId}
                   onDragChange={setDraggedId}
                 />
@@ -303,6 +393,7 @@ interface TemplateCardProps {
   onRemember: (template: Tpl) => void;
   onToggleFavorite: (id: string) => void;
   onOpenMenu: (id: string, anchor: HTMLElement) => void;
+  onOpenMenuAtPoint: (id: string, clientX: number, clientY: number) => void;
   onFocusChange: (id: string | null) => void;
   onDragChange: (id: string | null) => void;
 }
@@ -315,6 +406,7 @@ const TemplateCard = memo(function TemplateCard({
   onRemember,
   onToggleFavorite,
   onOpenMenu,
+  onOpenMenuAtPoint,
   onFocusChange,
   onDragChange,
 }: TemplateCardProps) {
@@ -335,15 +427,18 @@ const TemplateCard = memo(function TemplateCard({
         });
       }}
       onDragEnd={() => onDragChange(null)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onOpenMenuAtPoint(template.id, event.clientX, event.clientY);
+      }}
       onFocusCapture={() => onFocusChange(template.id)}
       onBlurCapture={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onFocusChange(null);
       }}
     >
-      <button
+      <div
         className="cc-template-add"
-        onClick={() => onAdd(template)}
-        title={t('点击或拖到时间线：{name}', { name: template.name })}
+        title={t('拖到时间线，或使用添加按钮：{name}', { name: template.name })}
       >
         <div className="cc-template-thumb">
           {template.thumb ? (
@@ -374,7 +469,7 @@ const TemplateCard = memo(function TemplateCard({
           <span className="cc-template-name">{tData(template.name)}</span>
           <span className="cc-template-ratio">{ratioLabel(template.width, template.height)}</span>
         </div>
-      </button>
+      </div>
       <button
         type="button"
         className="cc-template-favorite"
@@ -389,6 +484,19 @@ const TemplateCard = memo(function TemplateCard({
       <button
         type="button"
         className="cc-template-more"
+        onClick={(event) => {
+          event.stopPropagation();
+          onAdd(template);
+        }}
+        title={t('添加到时间线：{name}', { name: template.name })}
+        aria-label={t('添加到时间线：{name}', { name: template.name })}
+      >
+        <Icon name="plus" size={14} />
+      </button>
+      <button
+        type="button"
+        className="cc-template-more"
+        style={{ top: 32 }}
         onClick={(event) => {
           event.stopPropagation();
           onOpenMenu(template.id, event.currentTarget);

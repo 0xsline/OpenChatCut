@@ -18,6 +18,49 @@ export function SourceLabel({ pack }: { pack: InstalledPack }) {
   return <span>{label}</span>;
 }
 
+export function ExtensionToggle({
+  checked,
+  disabled,
+  onChange,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  onChange: () => void;
+}) {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={checked ? t('停用扩展') : t('启用扩展')}
+      disabled={disabled}
+      onClick={onChange}
+      style={{
+        width: 32,
+        height: 20,
+        flex: '0 0 auto',
+        border: `0.5px solid ${checked ? theme.accent : theme.border}`,
+        borderRadius: 10,
+        padding: 2,
+        background: checked ? `color-mix(in srgb, ${theme.accent} 28%, ${theme.panelAlt})` : theme.panelAlt,
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.55 : 1,
+      }}
+    >
+      <span style={{
+        display: 'block',
+        width: 14,
+        height: 14,
+        borderRadius: '50%',
+        background: checked ? theme.accent : theme.textDim,
+        transform: checked ? 'translateX(12px)' : 'translateX(0)',
+        transition: 'transform 140ms ease-out',
+      }} />
+    </button>
+  );
+}
+
 export function ExtensionGlyph({ label }: { label: string }) {
   return (
     <div style={{

@@ -11,7 +11,7 @@ interface MobileUploadDialogProps {
   onImport: (record: MobileUploadRecord) => Promise<void>;
 }
 
-const QR_SIZE_PX = 240;
+const QR_SIZE_PX = 192;
 const CLOCK_INTERVAL_MS = 1000;
 
 function useQrDataUrl(url: string): { dataUrl: string; error: boolean } {

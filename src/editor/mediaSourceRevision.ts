@@ -1,4 +1,5 @@
 import type { MediaAsset, TimelineItem } from './types.js';
+import { timelineItemAssetId } from './mediaAssetUsage.js';
 
 export type MediaSourceRevision = string;
 
@@ -123,7 +124,10 @@ export function sourceRevisionForTimelineItem(
   assets: readonly MediaAsset[],
 ): MediaSourceRevision {
   const src = item.src ?? '';
-  const sourceAsset = assets.find((asset) => asset.src === src);
+  const sourceAssetId = timelineItemAssetId(item, assets);
+  const sourceAsset = sourceAssetId
+    ? assets.find((asset) => asset.id === sourceAssetId)
+    : assets.find((asset) => asset.src === src);
   const mediaKind = item.kind === 'text' || item.kind === 'solid' || item.kind === 'sequence'
     ? undefined
     : item.kind;

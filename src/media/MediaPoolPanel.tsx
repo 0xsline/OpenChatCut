@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useT } from '../i18n/locale';
 import type { MediaAsset, MediaAssetRelinkPatch, MediaFolder } from '../editor/types';
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -10,27 +10,47 @@ import type { SemanticMatch } from './semantic-search/types';
 import { filterMediaAssets, type MediaSortKey, type MediaTypeFilter } from './mediaPoolFilter';
 import { MobileUploadDialog } from './MobileUploadDialog';
 import type { MobileUploadRecord } from './mobileUploadApi';
-import { AssetMenuPortal, MissingMediaBanner, RelinkAllDialog } from './MediaPoolOverlays';
+import { AssetMenuPortal, BlankMediaMenuPortal, MissingMediaBanner, RelinkAllDialog } from './MediaPoolOverlays';
 import { MediaPoolGrid, type MediaGridEntry } from './MediaPoolGrid';
 import { useAssetMenu } from './useAssetMenu';
+import { assetMenuFavoriteValue, assetMenuSelectionIds, batchAssetRename } from './assetMenuSelection';
+import { allVisibleAssetsSelected, toggleVisibleAssetSelection } from './mediaSelectionActions';
+import { toggleMediaView } from './mediaView';
+import { isMediaImportCancelled, mediaImportErrorMessage } from './mediaImportConflict';
+import { resolveMediaPoolShortcut } from './mediaPoolShortcutScope';
 interface MediaPoolPanelProps {
   semanticScopeId: string;
   assets: MediaAsset[];
   folders: MediaFolder[];
   fps: number;
+  usedAssetIds: ReadonlySet<string>;
   offlineAssetIds: ReadonlySet<string>;
   onAssetLoadError: (asset: MediaAsset) => void;
-  onImport: (file: File, onProgress?: (ratio: number) => void) => Promise<MediaAsset>;
+  onImport: (
+    file: File,
+    onProgress?: (ratio: number) => void,
+    lifecycle?: {
+      onPlaceholder?: (asset: MediaAsset) => void;
+      onAssetUpdated?: (asset: MediaAsset) => void;
+      onFailure?: (asset: MediaAsset | null, error: unknown) => void;
+    },
+  ) => Promise<MediaAsset>;
   onImportMobile: (record: MobileUploadRecord) => Promise<void>;
   onAddAsset: (asset: MediaAsset) => void;
+  onAddAssetsToTimeline?: (assets: MediaAsset[]) => void;
+  onAddAssetToChat?: (asset: MediaAsset) => void;
   onCreateFolder: (name: string, parentId?: string) => string;
   onRenameFolder: (id: string, name: string) => void;
   onDeleteFolder: (id: string) => void;
   onMoveAssets: (ids: string[], folderId?: string) => void;
   onRenameAsset: (id: string, name: string) => void;
+  onRenameAssets?: (entries: Array<{ id: string; name: string }>) => void;
   onSetFavorite: (id: string, favorite: boolean) => void;
-  /** Delete from the asset pool (two-step confirmation); the tracked clips have their own data copies and will not be affected */
+  onSetAssetsFavorite?: (ids: string[], favorite: boolean) => void;
+  /** Delete from the asset pool; linked timeline clips are removed by the project reducer. */
   onRemoveAsset?: (id: string) => void;
+  onRemoveAssets?: (ids: string[]) => void;
+  onPasteAssets?: (assets: MediaAsset[], folderId?: string) => void;
   /** Relink File replaces an offline/missing asset and its clip srcs. */
   onRelinkAsset?: (id: string, next: MediaAssetRelinkPatch) => void;
   /** Add a solid-color clip. */
@@ -39,10 +59,11 @@ interface MediaPoolPanelProps {
 
 type PromptState = { title: string; initialValue: string; rejectSlash?: boolean; onSubmit: (value: string) => void };
 type DeleteState = { id: string; name: string; parentId?: string };
+type AssetDeleteState = { ids: string[]; names: string[]; usedCount: number };
 export function MediaPoolPanel({
-  semanticScopeId, assets, folders, fps, offlineAssetIds, onAssetLoadError,
-  onImport, onImportMobile, onAddAsset, onCreateFolder, onRenameFolder,
-  onDeleteFolder, onMoveAssets, onRenameAsset, onSetFavorite, onRemoveAsset, onRelinkAsset, onAddSolid,
+  semanticScopeId, assets, folders, fps, usedAssetIds, offlineAssetIds, onAssetLoadError,
+  onImport, onImportMobile, onAddAsset, onAddAssetsToTimeline, onAddAssetToChat, onCreateFolder, onRenameFolder,
+  onDeleteFolder, onMoveAssets, onRenameAsset, onRenameAssets, onSetFavorite, onSetAssetsFavorite, onRemoveAsset, onRemoveAssets, onPasteAssets, onRelinkAsset, onAddSolid,
 }: MediaPoolPanelProps) {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -67,9 +88,12 @@ export function MediaPoolPanel({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [currentFolderId, setCurrentFolderId] = useState<string>();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [assetClipboard, setAssetClipboard] = useState<MediaAsset[]>([]);
+  const [blankMenuPos, setBlankMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [promptState, setPromptState] = useState<PromptState | null>(null);
   const [promptValue, setPromptValue] = useState('');
   const [deleteState, setDeleteState] = useState<DeleteState | null>(null);
+  const [assetDeleteState, setAssetDeleteState] = useState<AssetDeleteState | null>(null);
   const [mediaErrors, setMediaErrors] = useState<Set<string>>(() => new Set());
   const missing = useMemo(
     () => new Set([...offlineAssetIds, ...mediaErrors]),
@@ -81,6 +105,7 @@ export function MediaPoolPanel({
   const [relinkMsg, setRelinkMsg] = useState<string | null>(null);
   const [showRelinkAll, setShowRelinkAll] = useState(false);
   const [semanticResults, setSemanticResults] = useState<SemanticMatch[] | null>(null);
+  const [semanticOpenRequest, setSemanticOpenRequest] = useState(0);
   const [mobileUploadOpen, setMobileUploadOpen] = useState(false);
   const onSemanticResults = useCallback((matches: SemanticMatch[] | null) => setSemanticResults(matches), []);
   const modalFocus = useFocusReturn();
@@ -193,23 +218,63 @@ export function MediaPoolPanel({
   });
   const selectedAssets = assets.filter((asset) => selected.has(asset.id));
 
-  const onPick = async (files: FileList | null) => {
+  const onPick = async (files: FileList | null, targetFolderId = currentFolderId) => {
     if (!files?.length) return;
     setBusy(true);
     setError(null);
     setUploadRatio(0);
     try {
       const list = Array.from(files);
+      const completions: Promise<void>[] = [];
+      const completionErrors: unknown[] = [];
       for (let i = 0; i < list.length; i += 1) {
         const file = list[i]!;
-        await onImport(file, (ratio) => {
-          // Multi-file: map each file's progress into a global 0..1 band.
-          setUploadRatio((i + ratio) / list.length);
-        });
+        try {
+          let settled = false;
+          let resolveStarted!: () => void;
+          let rejectStarted!: (reason: unknown) => void;
+          const started = new Promise<void>((resolve, reject) => {
+            resolveStarted = resolve;
+            rejectStarted = reject;
+          });
+          const markStarted = (asset: MediaAsset) => {
+            if (settled) return;
+            settled = true;
+            if (targetFolderId) onMoveAssets([asset.id], targetFolderId);
+            resolveStarted();
+          };
+          const completion = onImport(file, (ratio) => {
+            // Multi-file: map each file's progress into a global 0..1 band.
+            setUploadRatio((current) => Math.max(current ?? 0, (i + ratio) / list.length));
+          }, {
+            onPlaceholder: markStarted,
+            onAssetUpdated: markStarted,
+            onFailure: (_asset, reason) => {
+              if (settled) return;
+              settled = true;
+              rejectStarted(reason);
+            },
+          }).then((asset) => {
+            markStarted(asset);
+          }).catch((reason) => {
+            if (!settled) {
+              settled = true;
+              rejectStarted(reason);
+            }
+            if (!isMediaImportCancelled(reason)) completionErrors.push(reason);
+          });
+          completions.push(completion);
+          await started;
+        } catch (reason) {
+          if (isMediaImportCancelled(reason)) continue;
+          throw reason;
+        }
       }
+      await Promise.all(completions);
+      if (completionErrors.length) throw completionErrors[0];
       setUploadRatio(1);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      setError(mediaImportErrorMessage(reason));
     } finally {
       setBusy(false);
       setUploadRatio(null);
@@ -250,31 +315,124 @@ export function MediaPoolPanel({
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   }), []);
-  const toggleAll = () => setSelected((old) => {
-    const next = new Set(old);
-    const allSelected = visible.length > 0 && visible.every((asset) => next.has(asset.id));
-    for (const asset of visible) { if (allSelected) next.delete(asset.id); else next.add(asset.id); }
-    return next;
-  });
+  const visibleIds = visible.map((asset) => asset.id);
+  const toggleAll = () => setSelected((old) => toggleVisibleAssetSelection(old, visibleIds));
 
-  const showFolders = !q && !semanticResults;
+  const renameAssets = (targets: MediaAsset[]) => {
+    if (!targets.length) return;
+    openPrompt({
+      title: targets.length > 1 ? '批量重命名素材' : '素材显示名称',
+      initialValue: targets.length > 1 ? '' : targets[0]!.name,
+      onSubmit: (name) => {
+        const entries = batchAssetRename(targets, name);
+        if (onRenameAssets) onRenameAssets(entries);
+        else entries.forEach((entry) => onRenameAsset(entry.id, entry.name));
+      },
+    });
+  };
+
+  const removeAssets = useCallback((ids: string[]) => {
+    if (onRemoveAssets) onRemoveAssets(ids);
+    else ids.forEach((id) => onRemoveAsset?.(id));
+    setSelected((current) => {
+      const next = new Set(current);
+      ids.forEach((id) => next.delete(id));
+      return next;
+    });
+    setAssetDeleteState(null);
+    closeAssetMenu(true);
+    setConfirmDeleteId(null);
+  }, [closeAssetMenu, onRemoveAsset, onRemoveAssets]);
+
+  const requestRemoveAssets = useCallback((targets: MediaAsset[]) => {
+    if (!targets.length || (!onRemoveAsset && !onRemoveAssets)) return;
+    setAssetDeleteState({
+      ids: targets.map((asset) => asset.id),
+      names: targets.map((asset) => asset.name),
+      usedCount: targets.filter((asset) => usedAssetIds.has(asset.id)).length,
+    });
+    closeAssetMenu();
+  }, [closeAssetMenu, onRemoveAsset, onRemoveAssets, usedAssetIds]);
+
+  const handleMediaPoolKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    const shortcut = resolveMediaPoolShortcut(event);
+    if (!shortcut) return;
+    let handled = true;
+    if (shortcut === 'select-all') setSelected(new Set(visibleIds));
+    else if (shortcut === 'copy') {
+      if (selectedAssets.length) setAssetClipboard(selectedAssets);
+      else handled = false;
+    } else if (shortcut === 'paste') {
+      if (assetClipboard.length && onPasteAssets) onPasteAssets(assetClipboard, currentFolderId);
+      else handled = false;
+    } else if (shortcut === 'delete') {
+      if (selectedAssets.length) requestRemoveAssets(selectedAssets);
+      else handled = false;
+    } else setSelected(new Set());
+    if (handled) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, [assetClipboard, currentFolderId, onPasteAssets, requestRemoveAssets, selectedAssets, visibleIds]);
+
+  const showFolders = !q && !semanticResults && !favoritesOnly;
   const gridEntries = useMemo<MediaGridEntry[]>(() => [
+    ...(showFolders && !currentFolderId && onAddSolid ? [{ kind: 'solid' as const }] : []),
+    ...(showFolders && !currentFolderId ? [{ kind: 'favorites' as const }] : []),
     ...(showFolders ? childFolders.map((folder) => ({ kind: 'folder' as const, folder })) : []),
     ...visible.map((asset) => ({ kind: 'asset' as const, asset })),
-  ], [childFolders, showFolders, visible]);
+  ], [childFolders, currentFolderId, onAddSolid, showFolders, visible]);
   const openFolder = useCallback((id: string) => setCurrentFolderId(id), []);
+  const openFavorites = useCallback(() => {
+    setCurrentFolderId(undefined);
+    setFavoritesOnly(true);
+  }, []);
   const openAssetMenu = useCallback((
     id: string,
     anchor: HTMLElement,
     point?: { x: number; y: number },
   ) => {
+    setSelected((current) => current.has(id) ? current : new Set([id]));
     setConfirmDeleteId(null);
     openAssetMenuAt(id, anchor, point);
   }, [openAssetMenuAt]);
   const menuAsset = assetMenu ? assets.find((asset) => asset.id === assetMenu) : undefined;
+  const menuAssetIds = menuAsset ? assetMenuSelectionIds(menuAsset.id, selected, assets.map((asset) => asset.id)) : [];
+  const menuAssets = assets.filter((asset) => menuAssetIds.includes(asset.id));
+  let assetDeleteTitle = '';
+  if (assetDeleteState?.usedCount) {
+    assetDeleteTitle = assetDeleteState.ids.length === 1
+      ? t('此素材正在剪辑中，确定删除吗？')
+      : t('所选素材中有正在剪辑的内容，确定删除吗？');
+  } else if (assetDeleteState) {
+    assetDeleteTitle = t('确定删除所选素材吗？');
+  }
 
   return (
-    <div className="cc-media-pool" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void onPick(event.dataTransfer.files); }}>
+    <div
+      className="cc-media-pool"
+      data-cc-shortcut-surface="media-pool"
+      tabIndex={-1}
+      onKeyDown={handleMediaPoolKeyDown}
+      onPointerDown={(event) => {
+        const target = event.target as HTMLElement;
+        if (!target.closest('button, input, select, textarea, [contenteditable="true"]')) event.currentTarget.focus();
+      }}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => { event.preventDefault(); void onPick(event.dataTransfer.files, currentFolderId); }}
+      onContextMenuCapture={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest('[data-cc-media-asset-id], .cc-folder-card, button, input, select, textarea, label')) return;
+        event.preventDefault();
+        setSelected(new Set());
+        setBlankMenuPos({
+          left: Math.max(8, Math.min(event.clientX, window.innerWidth - 228)),
+          top: Math.max(8, Math.min(event.clientY, window.innerHeight - 292)),
+        });
+      }}
+    >
       <input ref={inputRef} type="file" accept="video/*,image/*,audio/*,.gif,.svg,image/gif,image/svg+xml" multiple hidden onChange={(event) => onPick(event.target.files)} />
       <input ref={relinkInputRef} type="file" accept="video/*,image/*,audio/*,.gif,.svg,image/gif,image/svg+xml" hidden onChange={(event) => void onRelinkPick(event.target.files)} />
       <MediaPoolToolbar
@@ -289,13 +447,14 @@ export function MediaPoolPanel({
         busy={busy}
         uploadRatio={uploadRatio}
         canAddSolid={!!onAddSolid}
+        semanticOpenRequest={semanticOpenRequest}
         onQueryChange={setQuery}
         onSemanticResults={onSemanticResults}
         onUpload={() => inputRef.current?.click()}
         onMobileUpload={(restoreFocus) => { modalFocus.remember(restoreFocus); setMobileUploadOpen(true); }}
         onAddSolid={() => onAddSolid?.()}
         onCreateFolder={createFolder}
-        onViewChange={() => setView((value) => value === 'grid' ? 'list' : 'grid')}
+        onViewChange={() => setView(toggleMediaView)}
         onMenuChange={setMenu}
         onSortChange={setSort}
         onTypeChange={setType}
@@ -304,9 +463,12 @@ export function MediaPoolPanel({
 
       <MissingMediaBanner count={missingList.length} onOpen={() => setShowRelinkAll(true)} />
 
-      {(currentFolder || childFolders.length > 0) && <div className="cc-media-breadcrumb">
-        <button aria-label={t('返回上级文件夹')} disabled={!currentFolder} onClick={() => setCurrentFolderId(currentFolder?.parentId)}>←</button>
-        <span>Master{currentFolder ? ` / ${folderPath(currentFolder, folders)}` : ''}</span>
+      {(currentFolder || favoritesOnly || childFolders.length > 0) && <div className="cc-media-breadcrumb">
+        <button aria-label={t('返回上级文件夹')} disabled={!currentFolder && !favoritesOnly} onClick={() => {
+          if (favoritesOnly) setFavoritesOnly(false);
+          else setCurrentFolderId(currentFolder?.parentId);
+        }}>←</button>
+        <span>{t('我的素材')}{favoritesOnly ? ` / ${t('收藏夹')}` : currentFolder ? ` / ${folderPath(currentFolder, folders)}` : ''}</span>
         {currentFolder && <button aria-label={t('重命名文件夹')} onClick={renameFolder}>{t('重命名')}</button>}
         {currentFolder && <button aria-label={t('删除空文件夹')} disabled={assets.some((asset) => asset.folderId === currentFolder.id) || folders.some((folder) => folder.parentId === currentFolder.id)} onClick={deleteFolder}>{t('删除')}</button>}
       </div>}
@@ -315,8 +477,20 @@ export function MediaPoolPanel({
       {assets.length > 0 && <div className="cc-media-export-guide">{t('点击素材右上角“⋯”：图片、视频和音频可下载原文件，MG 可导出透明 MOV。')}</div>}
 
       {selectedAssets.length > 0 && <div className="cc-media-selection">
-        <button onClick={toggleAll}>{visible.every((asset) => selected.has(asset.id)) ? t('清除选择') : t('全选')}</button>
-        <button onClick={() => selectedAssets.forEach(onAddAsset)}>{t('加到时间线')}</button>
+        <button onClick={toggleAll}>{allVisibleAssetsSelected(selected, visibleIds) ? t('清除选择') : t('全选')}</button>
+        <button onClick={() => setAssetClipboard(selectedAssets)}>{t('复制所选')}</button>
+        <button disabled={!assetClipboard.length || !onPasteAssets} onClick={() => onPasteAssets?.(assetClipboard, currentFolderId)}>{t('粘贴副本')}</button>
+        <button onClick={() => renameAssets(selectedAssets)}>{selectedAssets.length > 1 ? t('批量重命名') : t('重命名')}</button>
+        <button onClick={() => {
+          const favorite = assetMenuFavoriteValue(selectedAssets);
+          if (onSetAssetsFavorite) onSetAssetsFavorite(selectedAssets.map((asset) => asset.id), favorite);
+          else selectedAssets.forEach((asset) => onSetFavorite(asset.id, favorite));
+        }}>{selectedAssets.every((asset) => asset.favorite) ? t('取消收藏') : t('收藏')}</button>
+        {(onRemoveAsset || onRemoveAssets) && <button className="danger" onClick={() => requestRemoveAssets(selectedAssets)}>{t('删除')}</button>}
+        <button onClick={() => {
+          if (onAddAssetsToTimeline) onAddAssetsToTimeline(selectedAssets);
+          else selectedAssets.forEach(onAddAsset);
+        }}>{t('加到时间线')}</button>
         <select aria-label={t('移动所选素材')} defaultValue="" onChange={(event) => { onMoveAssets(selectedAssets.map((asset) => asset.id), event.target.value === '__root__' ? undefined : event.target.value); setSelected(new Set()); event.target.value = ''; }}>
           <option value="" disabled>{t('移动到…')}</option><option value="__root__">Master</option>
           {folders.map((folder) => <option key={folder.id} value={folder.id}>{folderPath(folder, folders)}</option>)}
@@ -330,15 +504,22 @@ export function MediaPoolPanel({
         view={view}
         selected={selected}
         missing={missing}
+        usedAssetIds={usedAssetIds}
         assetMenu={assetMenu}
         canRelink={!!onRelinkAsset}
         onOpenFolder={openFolder}
+        onDropFiles={(files, folderId) => void onPick(files, folderId)}
+        onMoveAsset={(id, folderId) => onMoveAssets([id], folderId)}
+        onOpenFavorites={openFavorites}
+        onAddSolid={onAddSolid}
         onAddAsset={onAddAsset}
         onLoadError={markMissing}
         onLoadSuccess={clearMissing}
         onOpenMenu={openAssetMenu}
         onRelink={startRelink}
         onToggleSelected={toggleSelected}
+        onSetSelected={(ids) => setSelected(new Set(ids))}
+        onSetFavorite={onSetFavorite}
       />
 
       <AssetMenuPortal
@@ -349,15 +530,54 @@ export function MediaPoolPanel({
         missing={menuAsset ? missing.has(menuAsset.id) : false}
         confirmDelete={menuAsset?.id === confirmDeleteId}
         canRelink={!!onRelinkAsset}
-        canRemove={!!onRemoveAsset}
+        canRemove={!!onRemoveAsset || !!onRemoveAssets}
         onClose={() => closeAssetMenu(true)}
         onError={setError}
-        onFavorite={() => { if (menuAsset) onSetFavorite(menuAsset.id, !menuAsset.favorite); closeAssetMenu(true); }}
-        onRename={() => { if (menuAsset) openPrompt({ title: '素材显示名称', initialValue: menuAsset.name, onSubmit: (name) => onRenameAsset(menuAsset.id, name) }); modalFocus.remember(() => closeAssetMenu(true)); closeAssetMenu(); }}
+        onFavorite={() => {
+          const favorite = assetMenuFavoriteValue(menuAssets);
+          if (onSetAssetsFavorite) onSetAssetsFavorite(menuAssetIds, favorite);
+          else menuAssets.forEach((asset) => onSetFavorite(asset.id, favorite));
+          closeAssetMenu(true);
+        }}
+        onRename={() => { if (menuAssets.length) renameAssets(menuAssets); modalFocus.remember(() => closeAssetMenu(true)); closeAssetMenu(); }}
         onRelink={() => { if (menuAsset) startRelink(menuAsset.id); closeAssetMenu(); }}
-        onRemove={() => { if (!menuAsset || !onRemoveAsset) return; if (confirmDeleteId !== menuAsset.id) { setConfirmDeleteId(menuAsset.id); return; } onRemoveAsset(menuAsset.id); closeAssetMenu(true); setConfirmDeleteId(null); }}
-        onMove={(folderId) => { if (menuAsset) onMoveAssets([menuAsset.id], folderId); closeAssetMenu(true); }}
+        onRemove={() => {
+          if (!menuAssets.length || (!onRemoveAsset && !onRemoveAssets)) return;
+          if (menuAssets.some((asset) => usedAssetIds.has(asset.id))) {
+            requestRemoveAssets(menuAssets);
+            return;
+          }
+          if (confirmDeleteId !== menuAsset?.id) { setConfirmDeleteId(menuAsset?.id ?? null); return; }
+          removeAssets(menuAssetIds);
+        }}
+        onMove={(folderId) => { if (menuAssetIds.length) onMoveAssets(menuAssetIds, folderId); closeAssetMenu(true); }}
+        onAddTimeline={() => {
+          if (onAddAssetsToTimeline) onAddAssetsToTimeline(menuAssets);
+          else menuAssets.forEach(onAddAsset);
+          closeAssetMenu(true);
+        }}
+        onAddChat={() => { menuAssets.forEach((asset) => onAddAssetToChat?.(asset)); closeAssetMenu(true); }}
       />
+
+      {blankMenuPos && <BlankMediaMenuPortal
+        position={blankMenuPos}
+        clipboardCount={assetClipboard.length}
+        visibleCount={visibleIds.length}
+        allVisibleSelected={allVisibleAssetsSelected(selected, visibleIds)}
+        view={view}
+        sort={sort}
+        type={type}
+        onClose={() => setBlankMenuPos(null)}
+        onPaste={() => { onPasteAssets?.(assetClipboard, currentFolderId); setBlankMenuPos(null); }}
+        onSelectAll={() => { setSelected((current) => toggleVisibleAssetSelection(current, visibleIds)); setBlankMenuPos(null); }}
+        onSemanticSearch={() => { setSemanticOpenRequest((value) => value + 1); setBlankMenuPos(null); }}
+        onMobileUpload={() => { setMobileUploadOpen(true); setBlankMenuPos(null); }}
+        onUpload={() => { inputRef.current?.click(); setBlankMenuPos(null); }}
+        onCreateFolder={() => { createFolder(() => undefined); setBlankMenuPos(null); }}
+        onViewToggle={() => { setView(toggleMediaView); setBlankMenuPos(null); }}
+        onSort={(value) => { setSort(value); setBlankMenuPos(null); }}
+        onType={(value) => { setType(value); setBlankMenuPos(null); }}
+      />}
 
       {promptState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t(promptState.title)}>
         <form className="cc-modal" onSubmit={(event) => { event.preventDefault(); submitPrompt(); }}>
@@ -368,6 +588,19 @@ export function MediaPoolPanel({
       </div>}
       {deleteState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('删除空文件夹')}>
         <div className="cc-modal"><strong>{t('删除空文件夹「{name}」？', { name: deleteState.name })}</strong><div><button onClick={() => setDeleteState(null)}>{t('取消')}</button><button className="danger" onClick={() => { onDeleteFolder(deleteState.id); setCurrentFolderId(deleteState.parentId); setDeleteState(null); }}>{t('删除')}</button></div></div>
+      </div>}
+      {assetDeleteState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('删除正在使用的素材')} onClick={() => setAssetDeleteState(null)}>
+        <div className="cc-modal" onClick={(event) => event.stopPropagation()}>
+          <strong>{assetDeleteTitle}</strong>
+          <p className="cc-asset-delete-detail">{assetDeleteState.usedCount > 0
+            ? t('将删除 {count} 个素材，并从所有时间线移除其中 {used} 个素材对应的片段。', { count: assetDeleteState.ids.length, used: assetDeleteState.usedCount })
+            : t('将从素材池删除 {count} 个素材。', { count: assetDeleteState.ids.length })}</p>
+          <p className="cc-asset-delete-detail" title={assetDeleteState.names.join('\n')}>{assetDeleteState.names.join('、')}</p>
+          <div>
+            <button type="button" onClick={() => setAssetDeleteState(null)}>{t('取消')}</button>
+            <button type="button" className="danger" onClick={() => removeAssets(assetDeleteState.ids)}>{t('确认删除')}</button>
+          </div>
+        </div>
       </div>}
 
       <RelinkAllDialog

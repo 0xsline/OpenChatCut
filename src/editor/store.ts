@@ -47,11 +47,15 @@ export interface EditorCommands {
   deleteMediaFolder: (id: string) => void;
   moveMediaAssets: (ids: string[], folderId?: string) => void;
   renameMediaAsset: (id: string, name: string) => void;
+  renameMediaAssets: (entries: Array<{ id: string; name: string }>) => void;
   setMediaAssetFavorite: (id: string, favorite: boolean) => void;
+  setMediaAssetsFavorite: (ids: string[], favorite: boolean) => void;
   /** Edit library metadata, code defaults, or exact ingest clocks. */
   editMediaAsset: (id: string, patch: Partial<Pick<MediaAsset, 'name' | 'code' | 'props' | 'favorite' | 'sourceTimecode' | 'captureClock'>>) => void;
   /** Remove a library asset from the media pool. */
   removeMediaAsset: (id: string) => void;
+  /** Remove selected assets and all linked timeline references as one undoable action. */
+  removeMediaAssets: (ids: string[]) => void;
   /**
    * Relink missing or offline media.
    * Updates the pool asset and every timeline clip that still points at the old src.
@@ -263,9 +267,24 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       deleteMediaFolder: (id) => dispatch({ type: 'pool.deleteFolder', id }),
       moveMediaAssets: (ids, folderId) => dispatch({ type: 'pool.moveAssets', ids, folderId }),
       renameMediaAsset: (id, name) => dispatch({ type: 'pool.updateAsset', id, patch: { name } }),
+      renameMediaAssets: (entries) => dispatch({
+        type: 'batch',
+        actions: entries.map(({ id, name }) => ({ type: 'pool.updateAsset', id, patch: { name } })),
+        label: 'Rename media',
+      }),
       setMediaAssetFavorite: (id, favorite) => dispatch({ type: 'pool.updateAsset', id, patch: { favorite } }),
+      setMediaAssetsFavorite: (ids, favorite) => dispatch({
+        type: 'batch',
+        actions: ids.map((id) => ({ type: 'pool.updateAsset', id, patch: { favorite } })),
+        label: favorite ? 'Favorite media' : 'Unfavorite media',
+      }),
       editMediaAsset: (id, patch) => dispatch({ type: 'pool.updateAsset', id, patch }),
       removeMediaAsset: (id) => dispatch({ type: 'pool.removeAsset', id }),
+      removeMediaAssets: (ids) => dispatch({
+        type: 'batch',
+        actions: ids.map((id) => ({ type: 'pool.removeAsset', id })),
+        label: 'Delete media',
+      }),
       relinkMediaAsset: (id, next) => dispatch({ type: 'pool.relinkAsset', id, ...next }),
       addSolidItem: (at) => {
         dispatch({
@@ -337,6 +356,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
               durationInFrames: asset.durationInFrames,
               kind: 'motion-graphic' as const,
               templateId: asset.id,
+              sourceAssetId: asset.id,
               name: asset.name,
               sourceRevision: sourceRevisionOf(asset),
               code: asset.code,
@@ -349,6 +369,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
               track: pickTrack(at?.track, asset.kind === 'audio' ? 'audio' : 'video'),
               durationInFrames: asset.durationInFrames,
               kind: asset.kind as Exclude<typeof asset.kind, 'motion-graphic'>,
+              sourceAssetId: asset.id,
               name: asset.name,
               src: asset.src,
               sourceFilename: asset.sourceFilename,

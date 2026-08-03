@@ -25,6 +25,7 @@ import { planSlip, type SlipPreview } from './editor/slip';
 import { resolveTimelineRenderPlan, sequenceReferenceError } from './editor/sequenceGraph';
 import { planInspectorBatch, selectedInspectorItems } from './editor/inspectorBatch';
 import { captureTimelineItemSource, sourceRevisionOf, validateTimelineItemSourceBatch } from './editor/mediaSourceRevision';
+import { usedMediaAssetIds } from './editor/mediaAssetUsage';
 import { supportsKeyframeProperty } from './editor/keyframeRegistry';
 import {
   flushProjectSaves,
@@ -39,6 +40,7 @@ import {
 import { recoverFailedAutosave } from './persist/autosaveRecovery';
 import { useAutomaticVersions } from './persist/useAutomaticVersions';
 import { importMedia } from './media/upload';
+import { findMediaNameConflict, MediaImportCancelledError } from './media/mediaImportConflict';
 import { importUploadedMedia } from './media/mobileImport';
 import type { MobileUploadRecord } from './media/mobileUploadApi';
 import { acknowledgeIngestedGenerationResults, resumeOpenGenerationJobs } from './persist/jobRegistryStore';
@@ -66,7 +68,9 @@ import { isolateVoiceOnSrc } from './audio/isolateVoice';
 import { analyzeClipLoudness, gainForTarget } from './audio/loudness';
 import { analyzeAutoGrade, type AutoGradeResponse } from './color/autoGrade';
 import { useOfflineMedia } from './media/useOfflineMedia';
+import { duplicateAssetName } from './media/assetMenuSelection';
 import { keyframeResetBatch } from './editor/keyframeReset';
+import { placeMediaAssets } from './editor/mediaAssetPlacement';
 
 interface EditorProps {
   initial: ProjectDoc;
@@ -133,6 +137,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
         disabledReason: referenceError?.message,
       };
     }), [doc]);
+  const usedAssetIds = useMemo(() => usedMediaAssetIds(doc), [doc]);
 
   // keep live refs so agent tools always read the latest timeline/project
   // All changes made during dragging of the slider/color picker are merged into an undo record (see gesture of historyReduce).
@@ -511,89 +516,90 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   }, [ingestToPool]);
 
   // Progressive import: blob placeholder → upload → (ASR extract || normalize race) → relink.
-  const importToPool = useCallback(async (file: File, onProgress?: (ratio: number) => void) => {
+  const importToPool = useCallback(async (
+    file: File,
+    onProgress?: (ratio: number) => void,
+    lifecycle?: {
+      onPlaceholder?: (asset: MediaAsset) => void;
+      onAssetUpdated?: (asset: MediaAsset) => void;
+      onFailure?: (asset: MediaAsset | null, error: unknown) => void;
+    },
+  ) => {
+    const existing = findMediaNameConflict(stateRef.current.assets ?? [], file.name);
+    if (existing && !window.confirm(t('素材「{name}」已存在。覆盖会同步替换已在时间线中使用的该素材。', { name: existing.name }))) {
+      throw new MediaImportCancelledError();
+    }
+    const targetId = existing?.id;
     let placeholderId: string | null = null;
+    let placeholder: MediaAsset | null = null;
     try {
-      return await importMedia(file, stateRef.current.fps, {
+      const imported = await importMedia(file, stateRef.current.fps, {
         onProgress,
         onPlaceholder: (asset) => {
+          if (targetId) return;
           placeholderId = asset.id;
+          placeholder = asset;
           // A live blob preview is not a resumable ASR job. Mark it running only
           // after the authoritative uploaded descriptor is available.
           commands.addAsset(asset);
+          lifecycle?.onPlaceholder?.(asset);
         },
         onUploaded: (info) => {
           // Start ASR as soon as master lands — don't wait for normalize.
-          startAssetTranscription(info, info.asrPath);
+          startAssetTranscription(targetId ? { ...info, id: targetId } : info, info.asrPath);
         },
         onReady: (asset) => {
-          commands.relinkMediaAsset(asset.id, {
-            src: asset.src,
-            name: asset.name,
-            durationInFrames: asset.durationInFrames,
-            width: asset.width,
-            height: asset.height,
-            kind: asset.kind,
-            sourceRevision: asset.sourceRevision,
-            sourceSize: asset.sourceSize,
-            sourceModifiedAt: asset.sourceModifiedAt,
-            sourceFilename: asset.sourceFilename,
-            originalFilePath: asset.originalFilePath,
+          const ready = targetId ? { ...asset, id: targetId } : asset;
+          commands.relinkMediaAsset(ready.id, {
+            src: ready.src,
+            name: ready.name,
+            durationInFrames: ready.durationInFrames,
+            width: ready.width,
+            height: ready.height,
+            kind: ready.kind,
+            sourceRevision: ready.sourceRevision,
+            sourceSize: ready.sourceSize,
+            sourceModifiedAt: ready.sourceModifiedAt,
+            sourceFilename: ready.sourceFilename,
+            originalFilePath: ready.originalFilePath,
           });
           // onUploaded owns ASR startup; onReady only relinks the same revision.
-          if (asset.kind !== 'audio') refreshVisualAnalysis(asset);
+          if (ready.kind !== 'audio') refreshVisualAnalysis(ready);
         },
       });
+      const ready = targetId ? { ...imported, id: targetId } : imported;
+      lifecycle?.onAssetUpdated?.(ready);
+      return ready;
     } catch (err) {
       if (placeholderId) commands.removeMediaAsset(placeholderId);
+      lifecycle?.onFailure?.(placeholder, err);
       throw err;
     }
-  }, [commands, startAssetTranscription]);
+  }, [commands, startAssetTranscription, t]);
 
   const importToCanvas = useCallback(async (file: File, onProgress?: (ratio: number) => void) => {
-    let placeholderId: string | null = null;
-    let placeholderSrc: string | null = null;
-    try {
-      await importMedia(file, stateRef.current.fps, {
-        onProgress,
-        onPlaceholder: (a) => {
-          placeholderId = a.id;
-          placeholderSrc = a.src;
-          // Keep progressive preview state separate from persisted interrupted jobs.
-          commands.addAsset(a);
-          commands.addMediaItem(a); // timeline preview via blob: during upload
-        },
-        onUploaded: (info) => {
-          startAssetTranscription(info, info.asrPath);
-        },
-        onReady: (a) => {
-          commands.relinkMediaAsset(a.id, {
-            src: a.src,
-            name: a.name,
-            durationInFrames: a.durationInFrames,
-            width: a.width,
-            height: a.height,
-            kind: a.kind,
-            sourceRevision: a.sourceRevision,
-            sourceSize: a.sourceSize,
-            sourceModifiedAt: a.sourceModifiedAt,
-            sourceFilename: a.sourceFilename,
-            originalFilePath: a.originalFilePath,
-          });
-          // onUploaded owns ASR startup; onReady only relinks the same revision.
-          if (a.kind !== 'audio') refreshVisualAnalysis(a);
-        },
-      });
-    } catch (err) {
-      if (placeholderId) commands.removeMediaAsset(placeholderId);
-      if (placeholderSrc) {
-        for (const it of stateRef.current.items) {
-          if (it.src === placeholderSrc) commands.removeItem(it.id);
-        }
-      }
-      throw err;
-    }
-  }, [commands, startAssetTranscription]);
+    const asset = await importToPool(file, onProgress);
+    commands.addMediaItem(asset);
+  }, [commands, importToPool]);
+  const addMediaAssetsToTimeline = useCallback((assets: MediaAsset[]) => placeMediaAssets({
+    assetIds: assets.map((asset) => asset.id),
+    assets,
+    startFrame: getPlayhead(),
+    add: (asset, startFrame) => commands.addMediaItem(asset, { startFrame }),
+    select: commands.selectItems,
+  }), [commands, getPlayhead]);
+  const pasteMediaAssets = useCallback((assets: MediaAsset[], folderId?: string) => {
+    if (!assets.length) return;
+    commands.batch(assets.map((asset) => ({
+      type: 'addAsset' as const,
+      asset: {
+        ...asset,
+        id: `asset_${crypto.randomUUID()}`,
+        name: duplicateAssetName(asset.name, t('副本')),
+        folderId,
+      },
+    })), t('粘贴素材'));
+  }, [commands, t]);
   const useTemplateAI = useCallback((tpl: Tpl) => {
     setChatCollapsed(false);
     setChatSeed({ text: t('参考模板「{name}」，用 create_motion_graphic 生成一个类似风格的动画： @{name} ', { name: tpl.name }), nonce: Date.now(), reference: { id: tpl.id, name: tpl.name, kind: 'template' } });
@@ -690,7 +696,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       </div>
 
       <div style={{ gridColumn: 3, gridRow: 2, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} offlineAssetIds={offlineAssetIds} onAssetLoadError={(asset) => markMediaOffline(asset.src)} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onRemoveMediaAsset={commands.removeMediaAsset}
+        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} usedAssetIds={usedAssetIds} offlineAssetIds={offlineAssetIds} onAssetLoadError={(asset) => markMediaOffline(asset.src)} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onAddMediaAssetsToTimeline={addMediaAssetsToTimeline} onUseMediaAI={(asset) => setChatSeed({ text: `@${asset.name} `, nonce: Date.now(), reference: { id: asset.id, name: asset.name, kind: asset.kind } })} onPasteMediaAssets={pasteMediaAssets} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onRenameMediaAssets={commands.renameMediaAssets} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onSetMediaAssetsFavorite={commands.setMediaAssetsFavorite} onRemoveMediaAsset={commands.removeMediaAsset} onRemoveMediaAssets={commands.removeMediaAssets}
           onCreateCaptionTrack={commands.createCaptionTrack}
           sequenceOptions={sequenceOptions}
           onAddSequence={(timelineId) => {

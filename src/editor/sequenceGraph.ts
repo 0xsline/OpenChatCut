@@ -1,4 +1,5 @@
 import type { MediaAsset, ProjectDoc, Timeline, TimelineItem } from './types.js';
+import { timelineItemAssetId } from './mediaAssetUsage.js';
 
 export const DEFAULT_SEQUENCE_GRAPH_LIMITS = {
   maxDepth: 16,
@@ -347,15 +348,14 @@ export function resolveTimelineRenderPlan(
   const assetIds = new Set<string>();
   const sources = new Set<string>();
   const assetsById = new Map(doc.assets.map((asset) => [asset.id, asset]));
-  const assetsBySource = new Map(doc.assets.map((asset) => [asset.src, asset]));
   const traversal = createSequenceTraversal(resolvedLimits);
 
   const collectItemAsset = (item: TimelineItem): void => {
     if (item.src) {
       sources.add(item.src);
-      const asset = assetsBySource.get(item.src);
-      if (asset) assetIds.add(asset.id);
     }
+    const assetId = timelineItemAssetId(item, doc.assets);
+    if (assetId) assetIds.add(assetId);
     if (item.templateId && assetsById.has(item.templateId)) assetIds.add(item.templateId);
   };
 

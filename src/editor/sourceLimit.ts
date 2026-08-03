@@ -6,7 +6,7 @@
 import type { MediaAsset, TimelineItem } from './types.js';
 import { hasOperationalTranscript } from '../transcript/types.js';
 
-type SourceItem = Pick<TimelineItem, 'kind' | 'src' | 'playbackRate' | 'transcript' | 'transcriptStale'>;
+type SourceItem = Pick<TimelineItem, 'kind' | 'src' | 'sourceAssetId' | 'playbackRate' | 'transcript' | 'transcriptStale'>;
 export type SourceTimingItem = Pick<TimelineItem, 'srcInFrame' | 'playbackRate'>;
 export interface SourceFrameWindow {
   startFrame: number;
@@ -54,7 +54,10 @@ export function remainingSourceFrames(
   if (item.kind !== 'video' && item.kind !== 'audio') return null;
   if (item.kind === 'audio' && hasOperationalTranscript(item)) return null;
   if (!item.src || !assets?.length) return null;
-  const total = assets.find((asset) => asset.src === item.src)?.durationInFrames ?? 0;
+  const sourceAsset = item.sourceAssetId
+    ? assets.find((asset) => asset.id === item.sourceAssetId)
+    : assets.find((asset) => asset.src === item.src);
+  const total = sourceAsset?.durationInFrames ?? 0;
   if (!(total > 0)) return null;
   return Math.max(1, Math.floor(sourceFramesToTimelineFrames(item, total - Math.max(0, srcInFrame))));
 }

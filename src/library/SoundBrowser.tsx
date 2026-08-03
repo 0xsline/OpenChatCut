@@ -11,7 +11,7 @@ import {
   type SoundEffect,
 } from '../audio/soundLibrary';
 import { Icon } from '../components/icons';
-import { useT } from '../i18n/locale';
+import { tData, useT } from '../i18n/locale';
 import { setLibraryDrag } from './drag';
 import { useFixedVirtualGrid } from '../hooks/useFixedVirtualGrid';
 
@@ -40,6 +40,7 @@ function matchesQuery(s: SoundEffect, q: string): boolean {
   if (!tokens.length) return true;
   const hay = [
     s.name,
+    tData(s.name),
     s.desc,
     s.group,
     ...s.keywords,
@@ -229,7 +230,7 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
         </div>
       )}
 
-      <div className="cc-sound-hint">{t('单击试听 · 双击/点 + 或拖到时间线音轨 · 共 {n} 个音效', { n: SOUND_EFFECTS.length })}</div>
+      <div className="cc-sound-hint">{t('单击试听 · 双击/点 + 或拖到时间线音轨 · 共 {n} 个音效', { n: list.length })}</div>
     </div>
   );
 });
@@ -254,6 +255,7 @@ const SoundRow = memo(function SoundRow({
   onDragChange,
 }: SoundRowProps) {
   const t = useT();
+  const displayName = tData(sound.name);
   const tone = SOUND_GROUP_TONE[sound.group] ?? SOUND_GROUP_TONE['ui-motion-feedback']!;
   const path = useMemo(
     () => peaksToPath(resamplePeaks(sound.peaks, WAVE_BINS), WAVE_W, WAVE_H),
@@ -293,12 +295,12 @@ const SoundRow = memo(function SoundRow({
           event.stopPropagation();
           onAudition(sound);
         }}
-        aria-label={playing ? t('暂停 {name}', { name: sound.name }) : t('试听 {name}', { name: sound.name })}
+        aria-label={playing ? t('暂停 {name}', { name: displayName }) : t('试听 {name}', { name: displayName })}
       >
         <Icon name={playing ? 'pause' : 'play'} size={12} />
       </button>
       <div className="cc-sound-meta">
-        <div className="cc-sound-name">{sound.name}</div>
+        <div className="cc-sound-name">{displayName}</div>
       </div>
       <div className="cc-sound-wave" aria-hidden>
         <svg viewBox={`0 0 ${WAVE_W} ${WAVE_H}`} preserveAspectRatio="none">
@@ -313,8 +315,8 @@ const SoundRow = memo(function SoundRow({
       <button
         type="button"
         className="cc-sound-add"
-        title={t('添加到时间线：{name}', { name: sound.name })}
-        aria-label={t('添加 {name}', { name: sound.name })}
+        title={t('添加到时间线：{name}', { name: displayName })}
+        aria-label={t('添加 {name}', { name: displayName })}
         onClick={(event) => {
           event.stopPropagation();
           onAdd(sound);
