@@ -573,6 +573,45 @@ try {
   assert.equal(retryDownloads, 2, 'a failed hydration must leave no stale in-flight entry');
   assert.ok(retryHydration);
   assert.equal(await readFile(retryHydration.file, 'utf8'), completeRetryMedia);
+
+  const queuedAbortName = 'queued-abort-preserves-upload.mp4';
+  const queuedAbortPath = join(directory, queuedAbortName);
+  const priorUploadStarted = Promise.withResolvers<void>();
+  const priorUploadMayFinish = Promise.withResolvers<void>();
+  const priorUpload = enqueueUploadMutation(queuedAbortName, async () => {
+    await writeFile(queuedAbortPath, 'prior-upload');
+    priorUploadStarted.resolve();
+    await priorUploadMayFinish.promise;
+  });
+  await priorUploadStarted.promise;
+  const queuedAbort = new AbortController();
+  const queuedAbortReason = new DOMException('disconnect while hydration is queued', 'AbortError');
+  let queuedAbortDownloads = 0;
+  try {
+    const queuedHydration = resolveOrHydrateUploadFile(queuedAbortName, {
+      resolveLocal: () => null,
+      cloudAvailable: () => true,
+      uploadDirectory: () => directory,
+      downloadToFile: async () => {
+        queuedAbortDownloads += 1;
+        return { contentType: 'video/mp4', bytes: 0 };
+      },
+    }, queuedAbort.signal);
+    queuedAbort.abort(queuedAbortReason);
+    await assert.rejects(
+      () => queuedHydration,
+      (error: unknown) => error === queuedAbortReason,
+    );
+    assert.equal(
+      await readFile(queuedAbortPath, 'utf8'),
+      'prior-upload',
+      'aborting a queued hydration must not delete the preceding upload publication',
+    );
+    assert.equal(queuedAbortDownloads, 0);
+  } finally {
+    priorUploadMayFinish.resolve();
+    await priorUpload;
+  }
   const hydrationAbort = new AbortController();
   const hydrationAbortReason = new DOMException('disconnect during hydration', 'AbortError');
   const hydrationAbortName = 'abort-hydration.mp4';
@@ -589,6 +628,9 @@ try {
         assert.strictEqual(downloadOptions?.signal, hydrationAbort.signal);
         await writeFile(destination, 'partial-hydration');
         hydrationAbort.abort(hydrationAbortReason);
+        const stalledDownload = Promise.withResolvers<void>();
+        setTimeout(stalledDownload.resolve, 50);
+        await stalledDownload.promise;
         return { contentType: 'video/mp4', bytes: 17 };
       },
     }, hydrationAbort.signal),

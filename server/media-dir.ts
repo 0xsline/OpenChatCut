@@ -91,6 +91,7 @@ async function resolveOrHydrateUploadFileOnce(
   name: string,
   dependencies: UploadHydrationDependencies,
   signal?: AbortSignal,
+  onHydrationPaths?: (partPath: string, finalPath: string) => void,
 ): Promise<ResolvedUploadFile | null> {
   signal?.throwIfAborted();
   const local = dependencies.resolveLocal(name);
@@ -113,6 +114,7 @@ async function resolveOrHydrateUploadFileOnce(
   signal?.throwIfAborted();
   const partPath = join(directory, `.${name}.part`);
   const finalPath = join(directory, name);
+  onHydrationPaths?.(partPath, finalPath);
   let published = false;
   try {
     const object = await dependencies.downloadToFile(name, partPath, { signal });
@@ -144,15 +146,36 @@ export function resolveOrHydrateUploadFile(
   if (!isSafeUploadName(name)) return Promise.resolve(null);
   signal?.throwIfAborted();
   if (signal) {
+    let hydrationPaths: { partPath: string; finalPath: string } | null = null;
     const queued = enqueueUploadMutation(
       name,
-      () => resolveOrHydrateUploadFileOnce(name, dependencies, signal),
+      () => resolveOrHydrateUploadFileOnce(
+        name,
+        dependencies,
+        signal,
+        (partPath, finalPath) => {
+          hydrationPaths = { partPath, finalPath };
+        },
+      ),
     );
     const deferred = Promise.withResolvers<ResolvedUploadFile | null>();
     const cleanup = () => signal.removeEventListener('abort', onAbort);
+    const rejectAfterAbortCleanup = async () => {
+      try {
+        const paths = hydrationPaths as { partPath: string; finalPath: string } | null;
+        if (paths) {
+          await Promise.all([
+            unlink(paths.partPath).catch(() => undefined),
+            unlink(paths.finalPath).catch(() => undefined),
+          ]);
+        }
+      } finally {
+        deferred.reject(signal.reason);
+      }
+    };
     const onAbort = () => {
       cleanup();
-      deferred.reject(signal.reason);
+      void rejectAfterAbortCleanup();
     };
     signal.addEventListener('abort', onAbort, { once: true });
     queued.then(
