@@ -1,17 +1,44 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import type { MediaAsset } from '../editor/types';
+import { MediaImportCancelledError } from './mediaImportConflict';
+import { importMediaBatch } from './mediaPoolImport';
 
-const [pool, editor] = await Promise.all([
-  readFile(new URL('./MediaPoolPanel.tsx', import.meta.url), 'utf8'),
-  readFile(new URL('../Editor.tsx', import.meta.url), 'utf8'),
-]);
+const failedProbe = new Error('unsupported media type');
+const starts: string[] = [];
+const successful = { id: 'good', name: 'good.mov' } as MediaAsset;
+const firstBatchErrors = await importMediaBatch({
+  files: [{ name: 'bad.txt' } as File, { name: 'good.mov' } as File],
+  targetFolderId: 'folder-a',
+  onImport: async (file, _onProgress, lifecycle) => {
+    starts.push(file.name);
+    if (file.name === 'bad.txt') throw failedProbe;
+    lifecycle?.onPlaceholder?.(successful);
+    return successful;
+  },
+  onMoveAssets: () => undefined,
+  onProgress: () => undefined,
+});
 
-assert.match(pool, /onPlaceholder\?: \(asset: MediaAsset\) => void/, 'imports expose their placeholder lifecycle');
-assert.match(pool, /const completions: Promise<void>\[\] = \[\]/, 'ready work is tracked independently from placeholder placement');
-assert.match(pool, /onPlaceholder: markStarted/, 'a pool placeholder immediately enters the current folder');
-assert.match(pool, /await started;[\s\S]*?await Promise\.all\(completions\)/, 'the next file starts after a placeholder while final readiness is still awaited');
-assert.match(editor, /lifecycle\?\.onPlaceholder\?\.\(asset\)/, 'the editor forwards placeholder readiness');
-assert.match(editor, /lifecycle\?\.onAssetUpdated\?\.\(ready\)/, 'the editor forwards authoritative asset readiness');
-assert.match(editor, /lifecycle\?\.onFailure\?\.\(placeholder, err\)/, 'failed placeholders are reported and removed');
+assert.deepEqual(starts, ['bad.txt', 'good.mov'], '单文件在 placeholder 前失败后仍须继续导入后续文件');
+assert.deepEqual(firstBatchErrors, [failedProbe], '批次结束后只汇总实际导入失败');
 
-console.log('media-pool-progressive-import.verify: lifecycle wiring OK');
+const conflictStarts: string[] = [];
+const conflictPlacements: string[] = [];
+const overwritten = { id: 'overwrite', name: 'same-name.mov' } as MediaAsset;
+const conflictErrors = await importMediaBatch({
+  files: [{ name: 'cancel.mov' } as File, { name: 'same-name.mov' } as File],
+  targetFolderId: 'folder-b',
+  onImport: async (file) => {
+    conflictStarts.push(file.name);
+    if (file.name === 'cancel.mov') throw new MediaImportCancelledError();
+    return overwritten;
+  },
+  onMoveAssets: (ids, folderId) => conflictPlacements.push(`${ids[0]}:${folderId}`),
+  onProgress: () => undefined,
+});
+
+assert.deepEqual(conflictStarts, ['cancel.mov', 'same-name.mov'], '无 placeholder 的取消不能阻断后续覆盖导入');
+assert.deepEqual(conflictErrors, [], '用户取消不应显示为批次失败');
+assert.deepEqual(conflictPlacements, ['overwrite:folder-b'], '无 placeholder 的覆盖结果仍须进入目标文件夹');
+
+console.log('media-pool-progressive-import.verify: failures and conflict choices preserve batch progress');

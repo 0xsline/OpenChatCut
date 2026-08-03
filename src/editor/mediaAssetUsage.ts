@@ -81,6 +81,7 @@ export function removeAssetFromTimeline(
     .filter((item) => timelineItemUsesAsset(item, asset, assets))
     .map((item) => item.id));
   let removedMulticamAngle = false;
+  const collapsedMulticamGroupIds = new Set<string>();
   const multicamGroups = timeline.multicamGroups?.flatMap((group) => {
     const angles = group.angles.filter((angle) => (
       !removedIds.has(angle.itemId)
@@ -88,7 +89,10 @@ export function removeAssetFromTimeline(
     ));
     if (angles.length !== group.angles.length) removedMulticamAngle = true;
     if (angles.length === group.angles.length) return [group];
-    if (angles.length < 2) return [];
+    if (angles.length < 2) {
+      collapsedMulticamGroupIds.add(group.id);
+      return [];
+    }
     const angleIds = new Set(angles.map((angle) => angle.id));
     const firstAngleId = angles[0]!.id;
     return [{
@@ -101,14 +105,20 @@ export function removeAssetFromTimeline(
     }];
   });
   if (removedIds.size === 0 && !removedMulticamAngle) return timeline;
-  const remainingIds = new Set(timeline.items
-    .filter((item) => !removedIds.has(item.id))
-    .map((item) => item.id));
+  const items = timeline.items.flatMap((item) => {
+    if (removedIds.has(item.id)) return [];
+    if (!item.multicamGroupId || !collapsedMulticamGroupIds.has(item.multicamGroupId)) return [item];
+    const next = { ...item };
+    delete next.multicamGroupId;
+    delete next.multicamAngleId;
+    return [next];
+  });
+  const remainingIds = new Set(items.map((item) => item.id));
   const selectedIds = (timeline.selectedIds ?? (timeline.selectedId ? [timeline.selectedId] : []))
     .filter((id) => remainingIds.has(id));
   return {
     ...timeline,
-    items: timeline.items.filter((item) => !removedIds.has(item.id)),
+    items,
     transitions: timeline.transitions?.filter((transition) => (
       !removedIds.has(transition.incomingItemId)
       && !removedIds.has(transition.outgoingItemId)

@@ -39,7 +39,12 @@ import {
 } from './persist/projectStore';
 import { recoverFailedAutosave } from './persist/autosaveRecovery';
 import { useAutomaticVersions } from './persist/useAutomaticVersions';
-import { importMedia } from './media/upload';
+import {
+  createMediaAssetsChatSeed,
+  createImportTranscriptionGate,
+  importMedia,
+  readyMediaAssetsForPaste,
+} from './media/upload';
 import { findMediaNameConflict, MediaImportCancelledError } from './media/mediaImportConflict';
 import { importUploadedMedia } from './media/mobileImport';
 import type { MobileUploadRecord } from './media/mobileUploadApi';
@@ -323,7 +328,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   }, [autoGradeSession, state]);
   const selectedAutoGrade = autoGradeSession?.recommendations.find((entry) => entry.itemId === state.selectedId) ?? null;
   // library「Generated with AI」→ prefill the chat composer (nonce forces re-seed of the same text)
-  const [chatSeed, setChatSeed] = useState<{ text: string; nonce: number; reference?: AgentReference } | null>(null);
+  const [chatSeed, setChatSeed] = useState<{ text: string; nonce: number; references?: AgentReference[] } | null>(null);
   // Design style (brand) editor pop-up window.
   const [showDesign, setShowDesign] = useState(false);
   // Version history pop-up window.
@@ -532,6 +537,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     const targetId = existing?.id;
     let placeholderId: string | null = null;
     let placeholder: MediaAsset | null = null;
+    const transcriptionGate = createImportTranscriptionGate(targetId);
     try {
       const imported = await importMedia(file, stateRef.current.fps, {
         onProgress,
@@ -545,8 +551,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           lifecycle?.onPlaceholder?.(asset);
         },
         onUploaded: (info) => {
-          // Start ASR as soon as master lands — don't wait for normalize.
-          startAssetTranscription(targetId ? { ...info, id: targetId } : info, info.asrPath);
+          const start = transcriptionGate.uploaded(info);
+          if (start) startAssetTranscription(start.asset, start.asrPath);
         },
         onReady: (asset) => {
           const ready = targetId ? { ...asset, id: targetId } : asset;
@@ -563,7 +569,9 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             sourceFilename: ready.sourceFilename,
             originalFilePath: ready.originalFilePath,
           });
-          // onUploaded owns ASR startup; onReady only relinks the same revision.
+          // Replacements start ASR only after the new ready source has relinked.
+          const start = transcriptionGate.ready(ready);
+          if (start) startAssetTranscription(start.asset, start.asrPath);
           if (ready.kind !== 'audio') refreshVisualAnalysis(ready);
         },
       });
@@ -589,8 +597,9 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     select: commands.selectItems,
   }), [commands, getPlayhead]);
   const pasteMediaAssets = useCallback((assets: MediaAsset[], folderId?: string) => {
-    if (!assets.length) return;
-    commands.batch(assets.map((asset) => ({
+    const readyAssets = readyMediaAssetsForPaste(assets, stateRef.current.assets ?? []);
+    if (!readyAssets.length) return;
+    commands.batch(readyAssets.map((asset) => ({
       type: 'addAsset' as const,
       asset: {
         ...asset,
@@ -600,9 +609,15 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       },
     })), t('粘贴素材'));
   }, [commands, t]);
+  const useMediaAI = useCallback((assets: MediaAsset[]) => {
+    const seed = createMediaAssetsChatSeed(assets);
+    if (!seed) return;
+    setChatCollapsed(false);
+    setChatSeed(seed);
+  }, [setChatCollapsed]);
   const useTemplateAI = useCallback((tpl: Tpl) => {
     setChatCollapsed(false);
-    setChatSeed({ text: t('参考模板「{name}」，用 create_motion_graphic 生成一个类似风格的动画： @{name} ', { name: tpl.name }), nonce: Date.now(), reference: { id: tpl.id, name: tpl.name, kind: 'template' } });
+    setChatSeed({ text: t('参考模板「{name}」，用 create_motion_graphic 生成一个类似风格的动画： @{name} ', { name: tpl.name }), nonce: Date.now(), references: [{ id: tpl.id, name: tpl.name, kind: 'template' }] });
   }, [setChatCollapsed, t]);
 
   // Export: POST the current timeline to the dev-server /export endpoint (which
@@ -696,7 +711,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       </div>
 
       <div style={{ gridColumn: 3, gridRow: 2, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} usedAssetIds={usedAssetIds} offlineAssetIds={offlineAssetIds} onAssetLoadError={(asset) => markMediaOffline(asset.src)} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onAddMediaAssetsToTimeline={addMediaAssetsToTimeline} onUseMediaAI={(asset) => setChatSeed({ text: `@${asset.name} `, nonce: Date.now(), reference: { id: asset.id, name: asset.name, kind: asset.kind } })} onPasteMediaAssets={pasteMediaAssets} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onRenameMediaAssets={commands.renameMediaAssets} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onSetMediaAssetsFavorite={commands.setMediaAssetsFavorite} onRemoveMediaAsset={commands.removeMediaAsset} onRemoveMediaAssets={commands.removeMediaAssets}
+        <LibraryPanel semanticScopeId={project.id} templates={allTemplates} onAddTemplate={addTemplate} onAddAudio={(a) => commands.addAudio(a)} playerRef={playerRef} fps={state.fps} items={state.items} trackOptions={trackOptions} captionTracks={captionTracks} onSetCaptions={commands.setCaptions} onUpdateCaptions={commands.updateCaptions} onSetItemTranscript={commands.setItemTranscript} onToggleWord={commands.toggleWord} onCleanScript={commands.cleanScript} onSetGapCap={commands.setGapCap} onSetTranscriptPlayOrder={commands.setTranscriptPlayOrder} onReorderTrackItems={commands.reorderTrackItems} onClearEdits={commands.clearEdits} assets={state.assets ?? []} mediaFolders={doc.mediaFolders} usedAssetIds={usedAssetIds} offlineAssetIds={offlineAssetIds} onAssetLoadError={(asset) => markMediaOffline(asset.src)} onImportMedia={importToPool} onImportMobileMedia={importMobileUpload} onAddMediaItem={(asset) => commands.addMediaItem(asset)} onAddMediaAssetsToTimeline={addMediaAssetsToTimeline} onUseMediaAI={useMediaAI} onPasteMediaAssets={pasteMediaAssets} onCreateMediaFolder={commands.createMediaFolder} onRenameMediaFolder={commands.renameMediaFolder} onDeleteMediaFolder={commands.deleteMediaFolder} onMoveMediaAssets={commands.moveMediaAssets} onRenameMediaAsset={commands.renameMediaAsset} onRenameMediaAssets={commands.renameMediaAssets} onSetMediaAssetFavorite={commands.setMediaAssetFavorite} onSetMediaAssetsFavorite={commands.setMediaAssetsFavorite} onRemoveMediaAsset={commands.removeMediaAsset} onRemoveMediaAssets={commands.removeMediaAssets}
           onCreateCaptionTrack={commands.createCaptionTrack}
           sequenceOptions={sequenceOptions}
           onAddSequence={(timelineId) => {

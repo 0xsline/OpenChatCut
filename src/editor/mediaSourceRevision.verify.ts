@@ -118,6 +118,25 @@ assert.equal(
         sourceFilename: 'original-interview.mov',
         originalFilePath: '/Users/editor/original-interview.mov',
       })),
+      multicamGroups: [{
+        id: 'group-source-metadata',
+        referenceAngleId: 'angle-source-metadata',
+        masterAngleId: 'angle-source-metadata',
+        angles: [{
+          id: 'angle-source-metadata',
+          itemId: timeline.items[0]!.id,
+          source: {
+            ...timeline.items[0]!,
+            sourceFilename: 'original-interview.mov',
+            originalFilePath: '/Users/editor/original-interview.mov',
+          },
+          label: 'Camera A',
+          offsetFrames: 0,
+          confidence: 1,
+        }],
+        syncMethod: 'source-timecode',
+        evidence: [],
+      }],
     })),
   };
   const preserved = projectReduce(sourceDoc, {
@@ -129,6 +148,10 @@ assert.equal(
   assert.equal(preserved.assets[0]?.sourceFilename, 'original-interview.mov');
   assert.equal(preserved.assets[0]?.originalFilePath, '/Users/editor/original-interview.mov');
   assert.equal(preserved.timelines[0]?.items[0]?.originalFilePath, '/Users/editor/original-interview.mov');
+  assert.equal(
+    preserved.timelines[0]?.multicamGroups?.[0]?.angles[0]?.source.originalFilePath,
+    '/Users/editor/original-interview.mov',
+  );
 
   const cleared = projectReduce(preserved, {
     type: 'pool.relinkAsset',
@@ -142,6 +165,14 @@ assert.equal(
   assert.equal(cleared.assets[0]?.originalFilePath, undefined);
   assert.equal(cleared.timelines[0]?.items[0]?.sourceFilename, 'relinked-web.mov');
   assert.equal(cleared.timelines[0]?.items[0]?.originalFilePath, undefined);
+  const clearedAsset = cleared.assets[0]!;
+  const clearedItem = cleared.timelines[0]!.items[0]!;
+  const clearedMulticamSource = cleared.timelines[0]!.multicamGroups![0]!.angles[0]!.source;
+  assert.equal(clearedMulticamSource.sourceFilename, 'relinked-web.mov');
+  assert.equal(clearedMulticamSource.originalFilePath, undefined);
+  assert.equal(clearedItem.sourceRevision, clearedAsset.sourceRevision);
+  assert.equal(clearedMulticamSource.sourceRevision, clearedAsset.sourceRevision,
+    'ordinary items and persistent multicam sources receive the same replacement revision');
 }
 
 // A relinked audio clip retains old words for review, but every operational

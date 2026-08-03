@@ -14,10 +14,11 @@ import { AssetMenuPortal, BlankMediaMenuPortal, MissingMediaBanner, RelinkAllDia
 import { MediaPoolGrid, type MediaGridEntry } from './MediaPoolGrid';
 import { useAssetMenu } from './useAssetMenu';
 import { assetMenuFavoriteValue, assetMenuSelectionIds, batchAssetRename } from './assetMenuSelection';
-import { allVisibleAssetsSelected, toggleVisibleAssetSelection } from './mediaSelectionActions';
+import { addAssetsToChat, allVisibleAssetsSelected, toggleVisibleAssetSelection } from './mediaSelectionActions';
 import { toggleMediaView } from './mediaView';
-import { isMediaImportCancelled, mediaImportErrorMessage } from './mediaImportConflict';
+import { mediaImportErrorMessage } from './mediaImportConflict';
 import { resolveMediaPoolShortcut } from './mediaPoolShortcutScope';
+import { importMediaBatch } from './mediaPoolImport';
 interface MediaPoolPanelProps {
   semanticScopeId: string;
   assets: MediaAsset[];
@@ -38,7 +39,7 @@ interface MediaPoolPanelProps {
   onImportMobile: (record: MobileUploadRecord) => Promise<void>;
   onAddAsset: (asset: MediaAsset) => void;
   onAddAssetsToTimeline?: (assets: MediaAsset[]) => void;
-  onAddAssetToChat?: (asset: MediaAsset) => void;
+  onAddAssetsToChat?: (assets: MediaAsset[]) => void;
   onCreateFolder: (name: string, parentId?: string) => string;
   onRenameFolder: (id: string, name: string) => void;
   onDeleteFolder: (id: string) => void;
@@ -62,7 +63,7 @@ type DeleteState = { id: string; name: string; parentId?: string };
 type AssetDeleteState = { ids: string[]; names: string[]; usedCount: number };
 export function MediaPoolPanel({
   semanticScopeId, assets, folders, fps, usedAssetIds, offlineAssetIds, onAssetLoadError,
-  onImport, onImportMobile, onAddAsset, onAddAssetsToTimeline, onAddAssetToChat, onCreateFolder, onRenameFolder,
+  onImport, onImportMobile, onAddAsset, onAddAssetsToTimeline, onAddAssetsToChat, onCreateFolder, onRenameFolder,
   onDeleteFolder, onMoveAssets, onRenameAsset, onRenameAssets, onSetFavorite, onSetAssetsFavorite, onRemoveAsset, onRemoveAssets, onPasteAssets, onRelinkAsset, onAddSolid,
 }: MediaPoolPanelProps) {
   const t = useT();
@@ -224,53 +225,13 @@ export function MediaPoolPanel({
     setError(null);
     setUploadRatio(0);
     try {
-      const list = Array.from(files);
-      const completions: Promise<void>[] = [];
-      const completionErrors: unknown[] = [];
-      for (let i = 0; i < list.length; i += 1) {
-        const file = list[i]!;
-        try {
-          let settled = false;
-          let resolveStarted!: () => void;
-          let rejectStarted!: (reason: unknown) => void;
-          const started = new Promise<void>((resolve, reject) => {
-            resolveStarted = resolve;
-            rejectStarted = reject;
-          });
-          const markStarted = (asset: MediaAsset) => {
-            if (settled) return;
-            settled = true;
-            if (targetFolderId) onMoveAssets([asset.id], targetFolderId);
-            resolveStarted();
-          };
-          const completion = onImport(file, (ratio) => {
-            // Multi-file: map each file's progress into a global 0..1 band.
-            setUploadRatio((current) => Math.max(current ?? 0, (i + ratio) / list.length));
-          }, {
-            onPlaceholder: markStarted,
-            onAssetUpdated: markStarted,
-            onFailure: (_asset, reason) => {
-              if (settled) return;
-              settled = true;
-              rejectStarted(reason);
-            },
-          }).then((asset) => {
-            markStarted(asset);
-          }).catch((reason) => {
-            if (!settled) {
-              settled = true;
-              rejectStarted(reason);
-            }
-            if (!isMediaImportCancelled(reason)) completionErrors.push(reason);
-          });
-          completions.push(completion);
-          await started;
-        } catch (reason) {
-          if (isMediaImportCancelled(reason)) continue;
-          throw reason;
-        }
-      }
-      await Promise.all(completions);
+      const completionErrors = await importMediaBatch({
+        files: Array.from(files),
+        targetFolderId,
+        onImport,
+        onMoveAssets,
+        onProgress: (ratio) => setUploadRatio((current) => Math.max(current ?? 0, ratio)),
+      });
       if (completionErrors.length) throw completionErrors[0];
       setUploadRatio(1);
     } catch (reason) {
@@ -556,7 +517,7 @@ export function MediaPoolPanel({
           else menuAssets.forEach(onAddAsset);
           closeAssetMenu(true);
         }}
-        onAddChat={() => { menuAssets.forEach((asset) => onAddAssetToChat?.(asset)); closeAssetMenu(true); }}
+        onAddChat={() => { addAssetsToChat(menuAssets, onAddAssetsToChat); closeAssetMenu(true); }}
       />
 
       {blankMenuPos && <BlankMediaMenuPortal

@@ -1,14 +1,32 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import type { MediaAsset } from '../editor/types';
+import { importMediaBatch } from './mediaPoolImport';
 
-const panel = readFileSync(new URL('./MediaPoolPanel.tsx', import.meta.url), 'utf8');
-const grid = readFileSync(new URL('./MediaPoolGrid.tsx', import.meta.url), 'utf8');
-const card = readFileSync(new URL('./MediaPoolCard.tsx', import.meta.url), 'utf8');
+const targetFolderId = 'folder-travel';
+const placeholder = { id: 'asset-1', name: 'trip.mov' } as MediaAsset;
+const ready = { ...placeholder, src: '/media/trip.mov' } as MediaAsset;
+const placements: Array<{ ids: string[]; folderId?: string }> = [];
 
-assert.match(panel, /onPick\(event\.dataTransfer\.files, currentFolderId\)/, '素材池空白处拖入文件必须进入当前文件夹');
-assert.match(panel, /onMoveAssets\(\[imported\.id\], targetFolderId\)/, '上传完成后必须把素材归入目标文件夹');
-assert.match(grid, /onDropFiles=\{props\.onDropFiles\}/, '虚拟网格必须把文件拖放处理传给文件夹卡片');
-assert.match(card, /event\.dataTransfer\.files\.length[\s\S]*onDropFiles\(event\.dataTransfer\.files, folder\.id\)/, '拖到文件夹的本机文件必须导入该文件夹');
-assert.match(card, /parseMediaAssetDrag\(event\)[\s\S]*onMoveAsset\(assetId, folder\.id\)/, '拖到文件夹的池内素材必须移动到该文件夹');
+const errors = await importMediaBatch({
+  files: [{ name: 'trip.mov' } as File],
+  targetFolderId,
+  onImport: async (_file, _onProgress, lifecycle) => {
+    lifecycle?.onPlaceholder?.(placeholder);
+    assert.deepEqual(placements.at(-1), { ids: ['asset-1'], folderId: targetFolderId },
+      'placeholder 必须立即归入拖放目标文件夹');
+    lifecycle?.onAssetUpdated?.(ready);
+    assert.deepEqual(placements.at(-1), { ids: ['asset-1'], folderId: targetFolderId },
+      'ready 素材必须再次确认拖放目标文件夹');
+    return ready;
+  },
+  onMoveAssets: (ids, folderId) => placements.push({ ids, folderId }),
+  onProgress: () => undefined,
+});
 
-console.log('media-folder-drop.verify: imports and pool assets route to the target folder');
+assert.deepEqual(errors, [], '成功导入不应产生批次错误');
+assert.deepEqual(placements, [
+  { ids: ['asset-1'], folderId: targetFolderId },
+  { ids: ['asset-1'], folderId: targetFolderId },
+], 'placeholder 与 ready 两个阶段必须归入同一个拖放目标文件夹');
+
+console.log('media-folder-drop.verify: placeholder and ready preserve the target folder');

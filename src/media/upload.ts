@@ -293,14 +293,82 @@ interface DesktopLocalMediaApi {
   prepareTransparentMovProxy(storedName: string): Promise<{ src: string } | null>;
 }
 
-async function importDesktopLocalMedia(file: File): Promise<{ src: string; storedName: string } | null> {
+export interface DesktopLocalMediaImport {
+  src: string;
+  storedName: string;
+  proxyKind?: 'alpha-webm';
+}
+
+async function importDesktopLocalMedia(file: File): Promise<DesktopLocalMediaImport | null> {
   const api = (globalThis as typeof globalThis & { openChatCutDesktop?: DesktopLocalMediaApi }).openChatCutDesktop;
   if (!api?.importLocalMedia) return null;
   const imported = await api.importLocalMedia(file);
   if (!imported) return null;
   if (!/\.mov$/i.test(imported.storedName) || !api.prepareTransparentMovProxy) return imported;
   const proxy = await api.prepareTransparentMovProxy(imported.storedName).catch(() => null);
-  return proxy ? { ...imported, src: proxy.src } : imported;
+  return proxy ? { ...imported, src: proxy.src, proxyKind: 'alpha-webm' } : imported;
+}
+
+export function shouldNormalizeImportedVideo(
+  kind: MediaKind,
+  desktopImport: DesktopLocalMediaImport | null,
+): boolean {
+  return kind === 'video' && desktopImport?.proxyKind !== 'alpha-webm';
+}
+
+type ImportUploadedInfo = Parameters<NonNullable<ImportMediaHooks['onUploaded']>>[0];
+
+export interface ImportTranscriptionStart {
+  asset: Pick<MediaAsset, 'id' | 'src' | 'kind' | 'sourceRevision'> & { name?: string };
+  asrPath: Promise<string | null>;
+}
+
+/**
+ * New assets can start ASR from the uploaded master immediately. A replacement
+ * must wait until its ready descriptor has relinked the existing master, so a
+ * failed normalize cannot overwrite the old master's transcription state/job.
+ */
+export function createImportTranscriptionGate(relinkAssetId?: string) {
+  let pending: ImportUploadedInfo | null = null;
+  return {
+    uploaded(info: ImportUploadedInfo): ImportTranscriptionStart | null {
+      if (relinkAssetId) {
+        pending = info;
+        return null;
+      }
+      return { asset: info, asrPath: info.asrPath };
+    },
+    ready(asset: MediaAsset): ImportTranscriptionStart | null {
+      if (!relinkAssetId || !pending) return null;
+      const asrPath = pending.asrPath;
+      pending = null;
+      return { asset: { ...asset, id: relinkAssetId }, asrPath };
+    },
+  };
+}
+
+/**
+ * Resolve clipboard snapshots against the live pool. A placeholder copied
+ * during ingest becomes pasteable once its master is ready; until then its
+ * short-lived blob URL is never persisted into a duplicate asset.
+ */
+export function readyMediaAssetsForPaste(
+  copied: MediaAsset[],
+  current: MediaAsset[],
+): MediaAsset[] {
+  const currentById = new Map(current.map((asset) => [asset.id, asset]));
+  return copied
+    .map((asset) => currentById.get(asset.id) ?? asset)
+    .filter((asset) => !asset.src.startsWith('blob:'));
+}
+
+export function createMediaAssetsChatSeed(assets: MediaAsset[], nonce = Date.now()) {
+  if (!assets.length) return null;
+  return {
+    text: `${assets.map((asset) => `@${asset.name}`).join(' ')} `,
+    nonce,
+    references: assets.map((asset) => ({ id: asset.id, name: asset.name, kind: asset.kind })),
+  };
 }
 
 const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `a_${Date.now()}`;
@@ -424,7 +492,7 @@ export async function importMedia(
     let width = meta.width;
     let height = meta.height;
     let durationInFrames = meta.durationInFrames;
-    if (kind === 'video') {
+    if (shouldNormalizeImportedVideo(kind, desktopImport)) {
       const norm = await normalizeUploadedVideo(srcRaw);
       src = norm.src;
       if (norm.width) width = norm.width;

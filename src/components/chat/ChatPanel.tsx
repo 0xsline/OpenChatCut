@@ -58,7 +58,7 @@ interface ChatPanelProps {
   /** show a proposal's draft result in the player (null = show committed state) */
   onPreviewState: (state: TimelineState | null) => void;
   /** prefill the composer (library "generated with AI"); bump the number to re-seed */
-  seed?: { text: string; nonce: number; reference?: RefItem } | null;
+  seed?: { text: string; nonce: number; references?: RefItem[] } | null;
   /** active creative-mode skill id (agent_skill), or null */
   creativeMode: string | null;
   onCreativeModeChange: (id: string | null) => void;
@@ -160,7 +160,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   useEffect(() => {
     if (seed && !collapsed) {
       setInput(seed.text);
-      setSelectedRefs(seed.reference ? [seed.reference] : []);
+      setSelectedRefs(seed.references ?? []);
       taRef.current?.focus();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

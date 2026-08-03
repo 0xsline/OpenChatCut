@@ -92,7 +92,7 @@ interface LibraryPanelProps {
   onImportMobileMedia: (record: MobileUploadRecord) => Promise<void>;
   onAddMediaItem: (asset: MediaAsset) => void;
   onAddMediaAssetsToTimeline: (assets: MediaAsset[]) => void;
-  onUseMediaAI: (asset: MediaAsset) => void;
+  onUseMediaAI: (assets: MediaAsset[]) => void;
   onCreateMediaFolder: (name: string, parentId?: string) => string;
   onRenameMediaFolder: (id: string, name: string) => void;
   onDeleteMediaFolder: (id: string) => void;
@@ -209,7 +209,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
         </div>
       ) : isMyAssets ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, borderTop: `0.5px solid ${theme.border}` }}>
-          <MediaPoolPanel semanticScopeId={semanticScopeId} assets={assets} folders={mediaFolders} fps={fps} usedAssetIds={usedAssetIds} offlineAssetIds={offlineAssetIds} onAssetLoadError={onAssetLoadError} onImport={onImportMedia} onImportMobile={onImportMobileMedia} onAddAsset={onAddMediaItem} onAddAssetsToTimeline={onAddMediaAssetsToTimeline} onAddAssetToChat={onUseMediaAI}
+          <MediaPoolPanel semanticScopeId={semanticScopeId} assets={assets} folders={mediaFolders} fps={fps} usedAssetIds={usedAssetIds} offlineAssetIds={offlineAssetIds} onAssetLoadError={onAssetLoadError} onImport={onImportMedia} onImportMobile={onImportMobileMedia} onAddAsset={onAddMediaItem} onAddAssetsToTimeline={onAddMediaAssetsToTimeline} onAddAssetsToChat={onUseMediaAI}
             onCreateFolder={onCreateMediaFolder} onRenameFolder={onRenameMediaFolder} onDeleteFolder={onDeleteMediaFolder}
             onMoveAssets={onMoveMediaAssets} onRenameAsset={onRenameMediaAsset} onRenameAssets={onRenameMediaAssets} onSetFavorite={onSetMediaAssetFavorite} onSetAssetsFavorite={onSetMediaAssetsFavorite} onRemoveAsset={onRemoveMediaAsset} onRemoveAssets={onRemoveMediaAssets} onPasteAssets={onPasteMediaAssets}
             onRelinkAsset={onRelinkMediaAsset} onAddSolid={onAddSolid} />
