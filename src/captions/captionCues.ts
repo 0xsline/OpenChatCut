@@ -30,7 +30,15 @@ export function buildCues(captions: CaptionsData, items: TimelineItem[], fps: nu
     const override = overrides[indices[index] ?? -1];
     if (override?.hidden) continue;
     if (override?.forceBreak && visible.length > 0) breakBefore.add(visible.length);
-    const word = override?.text ? { ...words[index]!, text: override.text } : words[index]!;
+    const timingOffsetMs = override?.timingOffsetMs ?? 0;
+    const word = override?.text || timingOffsetMs
+      ? {
+          ...words[index]!,
+          ...(override?.text ? { text: override.text } : {}),
+          start: words[index]!.start + timingOffsetMs,
+          end: words[index]!.end + timingOffsetMs,
+        }
+      : words[index]!;
     visible.push({ text: word.text, src: indices[index] ?? -1 });
     visibleWords.push(word);
   }

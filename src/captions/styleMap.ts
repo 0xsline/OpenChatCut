@@ -20,7 +20,7 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim
 
 /** Style fields with no representable target → reported, not applied. */
 const UNSUPPORTED = new Set([
-  'opacity', 'align', 'variant', 'strokeOpacity', 'maxLines', 'maxCharactersPerLine', 'maxCharsPerLine',
+  'opacity', 'align', 'variant', 'maxLines', 'maxCharactersPerLine', 'maxCharsPerLine',
   'lineHeight', 'letterSpacing', 'direction', 'highlightUnit', 'hidePunctuation',
   'backgroundColor', 'backgroundOpacity', 'backgroundRadius', 'backgroundOff',
 ]);
@@ -55,6 +55,8 @@ export function mapCaptionStyle(json: Record<string, unknown>, canvasHeight: num
   if (strokeColor) o.strokeColor = strokeColor;
   if (json.strokeOff === true) o.strokeWidth = 0;
   else { const sw = num(json.strokeWidth); if (sw !== undefined) o.strokeWidth = sw; }
+  const strokeOpacity = num(json.strokeOpacity);
+  if (strokeOpacity !== undefined) o.strokeOpacity = Math.max(0, Math.min(1, strokeOpacity));
 
   // current-word highlight
   const highlightColor = str(json.highlightColor);
@@ -73,6 +75,21 @@ export function mapCaptionStyle(json: Record<string, unknown>, canvasHeight: num
     const a = Math.max(0, Math.min(100, shadowStrength)) / 100;
     o.textShadow = a === 0 ? 'none' : `0 2px 8px rgba(0,0,0,${a.toFixed(2)})`;
   }
+  const textShadowSize = num(json.textShadowSize);
+  if (textShadowSize !== undefined) o.textShadowSize = Math.max(0, textShadowSize);
+
+  const boxBorderColor = str(json.boxBorderColor);
+  if (boxBorderColor) o.boxBorderColor = boxBorderColor;
+  const boxBorderWidth = num(json.boxBorderWidth);
+  if (boxBorderWidth !== undefined) o.boxBorderWidth = Math.max(0, boxBorderWidth);
+  const boxBorderOpacity = num(json.boxBorderOpacity);
+  if (boxBorderOpacity !== undefined) o.boxBorderOpacity = Math.max(0, Math.min(1, boxBorderOpacity));
+  const boxBorderRadius = num(json.boxBorderRadius);
+  if (boxBorderRadius !== undefined) o.boxBorderRadius = Math.max(0, boxBorderRadius);
+  const boxShadow = str(json.boxShadow);
+  if (boxShadow) o.boxShadow = boxShadow;
+  const boxShadowSize = num(json.boxShadowSize);
+  if (boxShadowSize !== undefined) o.boxShadowSize = Math.max(0, boxShadowSize);
 
   // typography / display
   const tt = str(json.textTransform);
@@ -86,7 +103,14 @@ export function mapCaptionStyle(json: Record<string, unknown>, canvasHeight: num
   const pacing = mapPacing(json.pacing);
 
   // Report any input fields this build cannot represent.
-  const applied = new Set(['font', 'sizePx', 'fontSizeRatio', 'weight', 'fontWeight', 'color', 'strokeColor', 'strokeWidth', 'strokeOff', 'highlightColor', 'highlightBackground', 'highlightOff', 'shadow', 'shadowStrength', 'shadowOff', 'textTransform', 'displayMode', 'wordsPerPage', 'pacing']);
+  const applied = new Set([
+    'font', 'sizePx', 'fontSizeRatio', 'weight', 'fontWeight', 'color',
+    'strokeColor', 'strokeWidth', 'strokeOff', 'strokeOpacity',
+    'highlightColor', 'highlightBackground', 'highlightOff',
+    'shadow', 'shadowStrength', 'shadowOff', 'textShadowSize',
+    'boxBorderColor', 'boxBorderWidth', 'boxBorderOpacity', 'boxBorderRadius', 'boxShadow', 'boxShadowSize',
+    'textTransform', 'displayMode', 'wordsPerPage', 'pacing',
+  ]);
   for (const k of Object.keys(json)) if (!applied.has(k)) ignored.push(k + (UNSUPPORTED.has(k) ? '' : '?'));
 
   return { styleOverride: o, pacing, ignored };

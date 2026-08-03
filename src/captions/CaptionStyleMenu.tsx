@@ -12,6 +12,7 @@ import type { EditorCommands } from '../editor/store';
 import { useT } from '../i18n/locale';
 import { captionsForTrack } from './captionTrack';
 import { newManualCaptions } from './manualCaptions';
+import { captionTemplatePatch } from './captionTemplatePatch';
 
 const CAPTION_LANGS = ['English', '日本語', '한국어', 'Español', 'Français', 'Deutsch', 'Português'];
 
@@ -38,8 +39,9 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
 
   const applyStyle = (template: CaptionTemplate) => {
     const captions = captionsForTrack(state, trackId) ?? newManualCaptions();
-    if (current) commands.updateCaptions({ enabled: true, template }, trackId);
-    else commands.setCaptions({ ...captions, template }, trackId);
+    const patch = { enabled: true, ...captionTemplatePatch(captions, template) };
+    if (current) commands.updateCaptions(patch, trackId);
+    else commands.setCaptions({ ...captions, ...patch }, trackId);
     onError(null);
     onClose();
   };
@@ -77,9 +79,8 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
     const captions = captionsForTrack(state, trackId) ?? newManualCaptions();
     const patch: Partial<CaptionsData> = {
       enabled: true,
-      ...(preset.template ? { template: preset.template } : {}),
+      ...captionTemplatePatch(captions, preset.template ?? captions.template, preset.styleOverride),
       ...(preset.pacing ? { pacing: preset.pacing } : {}),
-      ...(preset.styleOverride ? { styleOverride: preset.styleOverride } : {}),
     };
     if (current) commands.updateCaptions(patch, trackId);
     else commands.setCaptions({ ...captions, ...patch }, trackId);

@@ -16,7 +16,19 @@ export interface CaptionStyle {
   highlightBackground?: string;
   strokeColor: string;
   strokeWidth: number;
+  /** Opacity of the text stroke, independent from the fill. Defaults to 1. */
+  strokeOpacity?: number;
   textShadow: string;
+  /** Dominant text-shadow blur radius. Zero disables the shadow. */
+  textShadowSize?: number;
+  /** Optional border, radius and shadow for the active/whole-line caption box. */
+  boxBorderColor?: string;
+  boxBorderWidth?: number;
+  boxBorderOpacity?: number;
+  boxBorderRadius?: number;
+  boxShadow?: string;
+  /** Dominant box-shadow blur radius. Zero disables the shadow. */
+  boxShadowSize?: number;
   textTransform?: 'none' | 'uppercase';
   displayMode?: 'stacked';
   wordsPerPage?: number;

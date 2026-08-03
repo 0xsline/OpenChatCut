@@ -6,7 +6,7 @@ import { paginate, activePage, currentWordIndex, activeTranslation, joinCaptionW
 import type { TimelineItem } from '../editor/types';
 import { buildLaneGroups, type LanePage } from './lanes';
 import { resolveCaptionWords, resolveCaptionWordIndices, applyWordOverrides } from './resolve';
-import { containerStyle, effectivePreset, wordStyle } from './renderStyles';
+import { captionBoxStyle, containerStyle, effectivePreset, wordStyle } from './renderStyles';
 
 const CAPTION_OVERLAY_STYLE = { pointerEvents: 'none', zIndex: 1 } as const;
 
@@ -42,13 +42,13 @@ function SingleStreamCaptions({ captions, items, ms, width, height, fps }: { cap
       <div style={containerStyle(preset, captions.template, width, height, captions.layout)}>
         {preset.wholeLine ? (
           // The entire sentence is continuous: one text per page (no word gaps, no word-by-word highlighting), and the background covers the entire line (classic black captions).
-          <div style={{ ...wordStyle(preset, false), background: preset.background ?? 'transparent', borderRadius: 6, padding: preset.background ? '0.1em 0.42em' : 0, whiteSpace: 'pre-wrap' }}>
+          <div style={{ ...wordStyle(preset, false), ...captionBoxStyle(preset, false, true), whiteSpace: 'pre-wrap' }}>
             {joinCaptionWords(page.words)}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: preset.displayMode === 'stacked' ? 'column' : 'row', flexWrap: 'wrap', justifyContent: 'center', gap: '0.2em' }}>
             {page.words.map((w, i) => (
-              <span key={i} style={{ position: 'relative', ...wordStyle(preset, i === curIdx) }}>{w.text}</span>
+              <span key={i} style={{ position: 'relative', ...wordStyle(preset, i === curIdx), ...captionBoxStyle(preset, i === curIdx) }}>{w.text}</span>
             ))}
           </div>
         )}
@@ -81,7 +81,14 @@ function MultiLaneCaptions({ captions, items, ms, width, height }: { captions: C
     <AbsoluteFill style={CAPTION_OVERLAY_STYLE}>
       {groups.map((g, gi) => {
         const layout: CaptionLayout | undefined = g.anchor
-          ? { anchor: g.anchor, offsetXRatio: g.offsetXRatio, offsetYRatio: g.offsetYRatio }
+          ? {
+              anchor: g.anchor,
+              offsetXRatio: g.offsetXRatio,
+              offsetYRatio: g.offsetYRatio,
+              scale: g.scale,
+              rotation: g.rotation,
+              opacity: g.opacity,
+            }
           : captions.layout;
         return (
           <div key={gi} style={containerStyle(basePreset, captions.template, width, height, layout)}>
@@ -105,7 +112,7 @@ function LaneCaption({ lane, basePreset, height }: { lane: LanePage; basePreset:
   } as const;
   if (preset.wholeLine) {
     return (
-      <div style={{ ...typography, ...wordStyle(preset, false), background: preset.background ?? 'transparent', borderRadius: 6, padding: preset.background ? '0.1em 0.42em' : 0, whiteSpace: 'pre-wrap' }}>
+      <div style={{ ...typography, ...wordStyle(preset, false), ...captionBoxStyle(preset, false, true), whiteSpace: 'pre-wrap' }}>
         {joinCaptionWords(lane.page.words)}
       </div>
     );
@@ -113,7 +120,7 @@ function LaneCaption({ lane, basePreset, height }: { lane: LanePage; basePreset:
   return (
     <div style={{ ...typography, display: 'flex', flexDirection: preset.displayMode === 'stacked' ? 'column' : 'row', flexWrap: 'wrap', justifyContent: 'center', gap: '0.2em' }}>
       {lane.page.words.map((word, index) => (
-        <span key={index} style={{ position: 'relative', ...wordStyle(preset, index === lane.curIdx) }}>{word.text}</span>
+        <span key={index} style={{ position: 'relative', ...wordStyle(preset, index === lane.curIdx), ...captionBoxStyle(preset, index === lane.curIdx) }}>{word.text}</span>
       ))}
     </div>
   );

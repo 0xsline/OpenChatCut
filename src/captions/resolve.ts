@@ -152,7 +152,15 @@ export function applyWordOverrides(
     const ov = overrides[indices[j]];
     if (ov?.hidden) continue;
     if (ov?.forceBreak && out.length > 0) breakBefore.add(out.length);
-    out.push(ov?.text ? { ...words[j], text: ov.text } : words[j]);
+    const timingOffsetMs = ov?.timingOffsetMs ?? 0;
+    out.push(ov?.text || timingOffsetMs
+      ? {
+          ...words[j],
+          ...(ov?.text ? { text: ov.text } : {}),
+          start: words[j]!.start + timingOffsetMs,
+          end: words[j]!.end + timingOffsetMs,
+        }
+      : words[j]);
   }
   return { words: out, breakBefore };
 }

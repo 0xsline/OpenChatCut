@@ -4,16 +4,20 @@ import type { PlayerRef } from '@remotion/player';
 import type { TimelineState } from '../editor/types';
 import type { CaptionsData } from './types';
 import { CAPTION_STYLES } from './styles';
-import { containerStyle, wordStyle } from './renderStyles';
+import { captionBoxStyle, captionPreviewTextColor, captionPreviewTextColorPatch, containerStyle, wordStyle } from './renderStyles';
 import { buildCues, fmtCueMs } from './captionCues';
 import {
   captionPreviewLayoutPatch,
+  captionPreviewNudgePatch,
   captionPreviewStylePatch,
   captionPreviewTextPatch,
   findCaptionPreviewTarget,
+  type CaptionPreviewNudgeDirection,
 } from './captionPreviewTarget';
 import { Icon } from '../components/icons';
 import { useT } from '../i18n/locale';
+import { captionTemplatePatch } from './captionTemplatePatch';
+import { captionPreviewOutsideClickAction } from './captionPreviewToolbar';
 
 // Preview the caption direct editing layer on the canvas: click on the screen caption → check box + floating toolbar (AI Edit/Style/Font Size).
 // Editor side overlay, no synthesis: geometry is recalculated by passing "display area px size" to containerStyle,
@@ -35,6 +39,12 @@ interface CaptionPreviewEditorProps {
 const FONT_STEP = 1.12;
 const clampFont = (v: number): number => Math.min(0.14, Math.max(0.02, v));
 const DRAG_THRESHOLD = 4;
+const ARROW_NUDGE_DIRECTION: Partial<Record<string, CaptionPreviewNudgeDirection>> = {
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+};
 /** Text color quick color palette (white/black + common accent colors) */
 const COLOR_SWATCHES = ['#ffffff', '#0a0a0a', '#FFD84A', '#FF5A5A', '#6EE7F9', '#7CFF9B', '#FF8FD1', '#FFA94D'];
 
@@ -48,6 +58,8 @@ interface DragRef {
 export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCaptions, onSeedChat, autoEditLaneId, onAutoEditHandled }: CaptionPreviewEditorProps) {
   const t = useT();
   const rootRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<{ w: number; h: number } | null>(null);
   const [frame, setFrame] = useState(0);
   const [selected, setSelected] = useState(false);
@@ -100,26 +112,41 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
   }, [autoEditLaneId, cue, onAutoEditHandled, playerRef, target]);
   useEffect(() => {
     if (!selected) return;
-    const onDown = (e: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setSelected(false); setEditing(false); setPop(null);
+    const onDown = (event: PointerEvent) => {
+      const node = event.target instanceof Node ? event.target : null;
+      const action = captionPreviewOutsideClickAction({
+        editing,
+        popoverOpen: pop !== null,
+        insideEditor: Boolean(node && editorRef.current?.contains(node)),
+        insideToolbar: Boolean(node && toolbarRef.current?.contains(node)),
+        draftChanged: Boolean(target && draft !== target.cue.text),
+      });
+      if (action.commitDraft && target) {
+        const patch = captionPreviewTextPatch(captions, target, draft);
+        if (patch) onUpdateCaptions(patch);
+      }
+      if (action.closeEditor) setEditing(false);
+      if (action.closePopover) setPop(null);
+      if (node && rootRef.current && !rootRef.current.contains(node)) {
+        setSelected(false);
+        setEditing(false);
+        setPop(null);
       }
     };
     window.addEventListener('pointerdown', onDown, true);
     return () => window.removeEventListener('pointerdown', onDown, true);
-  }, [selected]);
+  }, [captions, draft, editing, onUpdateCaptions, pop, selected, target]);
 
   if (!target || !cue || !box) {
     return <div ref={rootRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />;
   }
 
   const preset = target.preset;
+  const currentTextColor = captionPreviewTextColor(preset);
   const block = containerStyle(preset, captions.template, box.w, box.h, target.layout);
   const textCss = {
-    ...wordStyle(preset, false),
-    background: preset.wholeLine && preset.background ? preset.background : 'transparent',
-    borderRadius: 6,
-    padding: preset.wholeLine && preset.background ? '0.1em 0.42em' : 0,
+    ...wordStyle(preset, !preset.wholeLine),
+    ...captionBoxStyle(preset, !preset.wholeLine, Boolean(preset.wholeLine)),
     whiteSpace: 'pre-wrap' as const,
   };
 
@@ -133,7 +160,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
     onUpdateCaptions(captionPreviewStylePatch(captions, target, { fontSize: next }));
   };
   const setColor = (hex: string) => {
-    onUpdateCaptions(captionPreviewStylePatch(captions, target, { color: hex }));
+    onUpdateCaptions(captionPreviewStylePatch(captions, target, captionPreviewTextColorPatch(preset, hex)));
   };
   // ── Drag and move (bottom anchor offsetYRatio positive upward, containerStyle takes the negative sign) ──
   const anchorV = (() => {
@@ -148,6 +175,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
     // frames; waiting for pointerup allowed the active cue to change first.
     setSelected(true);
     playerRef.current?.pause();
+    (e.currentTarget as HTMLElement).focus({ preventScroll: true });
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     dragRef.current = {
       startX: e.clientX, startY: e.clientY,
@@ -176,6 +204,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
       const dx = e.clientX - d.startX;
       const dy = e.clientY - d.startY;
       onUpdateCaptions(captionPreviewLayoutPatch(captions, target, {
+          ...target.layout,
           anchor: target.layout?.anchor ?? 'bottom-center',
           offsetXRatio: d.baseX + dx / box.w,
           offsetYRatio: d.baseY + d.ySign * (dy / box.h),
@@ -188,8 +217,17 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
     }
     setDrag(null);
   };
+  const onHitKeyDown = (e: React.KeyboardEvent) => {
+    if (!selected || editing || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const direction = ARROW_NUDGE_DIRECTION[e.key];
+    if (!direction) return;
+    e.preventDefault();
+    e.stopPropagation();
+    playerRef.current?.pause();
+    onUpdateCaptions(captionPreviewNudgePatch(captions, target, direction));
+  };
 
-  const curColor = preset.color;
+  const curColor = currentTextColor;
 
   return (
     <div ref={rootRef} style={{ position: 'absolute', inset: 0, zIndex: 4, pointerEvents: 'none', overflow: 'visible' }}>
@@ -197,6 +235,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
         <div style={{ position: 'relative', pointerEvents: 'auto', maxWidth: '100%', transform: drag ? `translate(${drag.dx}px, ${drag.dy}px)` : undefined }}>
           {editing ? (
             <textarea
+              ref={editorRef}
               value={draft}
               autoFocus
               rows={2}
@@ -206,7 +245,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
                 if (e.key === 'Escape') { e.stopPropagation(); setEditing(false); }
               }}
               style={{
-                ...textCss, background: '#000000d9', color: preset.color, font: 'inherit', fontSize: 'inherit',
+                ...textCss, background: '#000000d9', color: currentTextColor, font: 'inherit', fontSize: 'inherit',
                 width: 'max(220px, 100%)', textAlign: 'center', border: '1.5px solid var(--cc-accent)',
                 outline: 'none', resize: 'none', lineHeight: 1.25,
               }}
@@ -216,11 +255,13 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
             <div
               className="cc-capedit-hit"
               role="button"
+              tabIndex={0}
               title={t('点击选中字幕；拖动移动位置；双击直接改文字')}
               onPointerDown={onHitPointerDown}
               onPointerMove={onHitPointerMove}
               onPointerUp={onHitPointerUp}
-              onDoubleClick={() => { setSelected(true); setEditing(true); setDraft(cue.text); playerRef.current?.pause(); }}
+              onKeyDown={onHitKeyDown}
+              onDoubleClick={() => { setSelected(true); setPop(null); setEditing(true); setDraft(cue.text); playerRef.current?.pause(); }}
               style={drag
                 ? { ...textCss, opacity: 0.92, cursor: 'grabbing', touchAction: 'none', userSelect: 'none' }
                 : { ...textCss, color: 'transparent', WebkitTextStroke: undefined, textShadow: 'none', background: 'transparent', cursor: 'grab', touchAction: 'none', userSelect: 'none' }}
@@ -234,7 +275,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
 
           {/* Floating toolbar (AI editing | text/style/color | font size | delete)*/}
           {selected && !drag && (
-            <div className="cc-capedit-bar" onPointerDown={(e) => e.stopPropagation()}>
+            <div ref={toolbarRef} className="cc-capedit-bar" onPointerDown={(e) => e.stopPropagation()}>
               {onSeedChat && (
                 <>
                   <button type="button" className="cc-capedit-btn ai" title={t('让 AI 改写这句')}
@@ -244,7 +285,13 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
                   <span className="cc-capedit-divider" aria-hidden />
                 </>
               )}
-              <button type="button" className="cc-capedit-btn" title={t('编辑文字')} onClick={() => { setEditing(true); setDraft(cue.text); }}>
+              <button type="button" className="cc-capedit-btn" title={t('编辑文字')} onClick={() => {
+                setPop(null);
+                if (!editing) {
+                  setEditing(true);
+                  setDraft(cue.text);
+                }
+              }}>
                 <Icon name="pencil" size={12} />{t('文字')}
               </button>
               <button type="button" className={`cc-capedit-btn${pop === 'styles' ? ' on' : ''}`} title={t('字幕样式')} onClick={() => setPop(pop === 'styles' ? null : 'styles')}>Aa</button>
@@ -264,7 +311,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
                   {CAPTION_STYLES.map((st) => (
                     <button key={st.id} type="button"
                       className={`cc-capedit-styleitem${st.id === captions.template ? ' on' : ''}`}
-                      onClick={() => { onUpdateCaptions({ template: st.id }); setPop(null); }}>
+                      onClick={() => { onUpdateCaptions(captionTemplatePatch(captions, st.id)); setPop(null); }}>
                       {t(st.labelZh)}
                     </button>
                   ))}

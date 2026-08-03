@@ -8,6 +8,7 @@ import { theme } from '../theme';
 import { useT } from '../i18n/locale';
 import { ManualCaptionEditor } from './ManualCaptionEditor';
 import { beginCaptionStylePointerDrag } from './captionStyleDrag';
+import { captionTemplatePatch } from './captionTemplatePatch';
 
 interface CaptionsControlsProps {
   captionTrackId?: TrackId;
@@ -123,7 +124,7 @@ export function CaptionsControls({
                     aria-selected={active}
                     className={`cc-cap-style${active ? ' selected' : ''}`}
                     title={`${t(s.labelZh)} — ${t(s.hint)} · ${t('拖到预览画面任意位置新建字幕')}`}
-                    onClick={() => onUpdate({ template: s.id as CaptionTemplate })}
+                    onClick={() => onUpdate(captionTemplatePatch(captions, s.id as CaptionTemplate))}
                     onPointerDown={(event) => {
                       if (!captionTrackId) return;
                       beginCaptionStylePointerDrag(event.nativeEvent, { trackId: captionTrackId, template: s.id });
