@@ -4,6 +4,7 @@ import { trackAlias } from '../editor/types';
 import { sourceWindowForTimelineRange } from '../editor/sourceLimit';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
+import type { LibraryDragKind } from '../library/drag';
 import {
   SELECTION_REF_CATEGORY, isSelectionRefKind, timelineIdOf,
   type AssetRefKind, type SelectionReference,
@@ -17,10 +18,19 @@ export interface AssetReference {
   metadata?: undefined;
 }
 
+export interface LibraryResourceReference {
+  id: string;
+  name: string;
+  kind: 'library-resource';
+  resourceId: string;
+  resourceKind: LibraryDragKind;
+  metadata?: undefined;
+}
+
 /** Everything the composer can attach to a message: pool assets/templates plus
  * the five selection-mode reference types (item / timepoint / timerange
  * / canvas-region / transcript-selection). Discriminated on `kind`. */
-export type AgentReference = AssetReference | SelectionReference;
+export type AgentReference = AssetReference | LibraryResourceReference | SelectionReference;
 
 export function isSelectionReference(ref: AgentReference): ref is SelectionReference {
   return isSelectionRefKind(ref.kind);
@@ -121,6 +131,13 @@ export function resolveAgentReferences(ctx: AgentContext, references: AgentRefer
     seen.add(reference.id);
     if (isSelectionReference(reference)) {
       entries.push(resolveSelectionReference(ctx, reference));
+    } else if (reference.kind === 'library-resource') {
+      entries.push({
+        type: 'library_resource',
+        id: reference.resourceId,
+        name: reference.name,
+        kind: reference.resourceKind,
+      });
     } else if (reference.kind === 'template') {
       const template = ctx.templates.find((item) => item.id === reference.id);
       if (template) entries.push({ type: 'template', id: template.id, name: template.name, category: template.category, width: template.width, height: template.height, durationInFrames: template.durationInFrames, propKeys: template.propSchema.map((prop) => prop.key) });

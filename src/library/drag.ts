@@ -1,6 +1,7 @@
 // Shared drag payload between resource library cards and the timeline.
 // MIME is private so OS file drops still work on other surfaces.
 import { t } from '../i18n/locale';
+import { setEditorDrag } from '../editor/editorDrag';
 
 export const LIBRARY_DRAG_MIME = 'application/x-openchatcut-library';
 
@@ -33,6 +34,12 @@ export function setLibraryDrag(
 ): void {
   const full: LibraryDragPayload = { v: 1, ...payload };
   const json = JSON.stringify(full);
+  setEditorDrag(e, {
+    source: 'library',
+    id: payload.id,
+    name: payload.name,
+    resourceKind: payload.kind,
+  });
   e.dataTransfer.setData(LIBRARY_DRAG_MIME, json);
   // Fallback for environments that strip custom MIME types
   e.dataTransfer.setData('text/plain', json);

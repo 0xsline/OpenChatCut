@@ -5,7 +5,7 @@
 // Can run up to MAX_TOOL_TURNS rounds. So the invariant observed here is: **The variable section is always the last section**,
 // As long as the stable section does not change between calls, the public prefix must be covered all the way to the beginning of the volatile section.
 import assert from 'node:assert/strict';
-import { agentLanguagePrompt, assembleSystemPrompt, designStylePrompt, editorStatePrompt, SYSTEM_PROMPT } from './systemPrompt';
+import { PRODUCT_IDENTITY_PROMPT, agentLanguagePrompt, assembleSystemPrompt, designStylePrompt, editorStatePrompt, SYSTEM_PROMPT } from './systemPrompt';
 import type { AgentContext } from './context';
 import type { ProjectDoc, TimelineItem, TimelineState } from '../editor/types';
 
@@ -39,6 +39,23 @@ const commonPrefixLength = (a: string, b: string): number => {
   assert.match(agentLanguagePrompt('zh'), /in Chinese/);
   assert.match(agentLanguagePrompt('en'), /interface language is English/);
   assert.match(agentLanguagePrompt('en'), /in English/);
+}
+
+// ── Public product identity must override stale names in workflows or conversation memory ──
+{
+  const workflow = '\n<selected_skill>A legacy workflow calls this product AnotherChatCut.</selected_skill>';
+  const system = assembleSystemPrompt([
+    SYSTEM_PROMPT,
+    workflow,
+    PRODUCT_IDENTITY_PROMPT,
+  ], '<editor_state/>');
+
+  assert.match(PRODUCT_IDENTITY_PROMPT, /official product name is OpenChatCut/);
+  assert.match(PRODUCT_IDENTITY_PROMPT, /Do not inherit product identity/);
+  assert.ok(
+    system.indexOf(PRODUCT_IDENTITY_PROMPT) > system.indexOf(workflow),
+    'product identity should follow selected workflow instructions so stale names cannot override it',
+  );
 }
 
 // ── Go through it with the real editorStatePrompt: you cannot change the prefix when changing the timeline ──

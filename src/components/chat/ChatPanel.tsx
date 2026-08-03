@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { theme } from '../../theme';
 import { useT } from '../../i18n/locale';
@@ -19,7 +25,14 @@ import { ToolGroupRow } from './ToolGroupRow';
 import { groupMessages } from './message-groups';
 import { ChatComposer, type ChatMode, type RefItem } from './ChatComposer';
 import { AgentChangeLogMenu } from './AgentChangeLogMenu';
+import { resolveChatScrollTarget, type ChatScrollTarget } from './chatScrollNavigation';
+import { selectChatMessageContents, shouldHandleChatTextSelection } from './chatTextSelection';
 import { BrandMark, Icon, OpenChatCutWordmark } from '../icons';
+import { editorDragReferences } from './editorDragReference';
+import {
+  removeChatAttachmentReference,
+  upsertChatAttachmentReference,
+} from './chatAttachmentLifecycle';
 import {
   clearComposerDraft,
   loadChatAutoApply,
@@ -48,6 +61,7 @@ const QUICK_ACTIONS = [
   { label: '横转竖', prompt: '将当前工程转换为 9:16 竖屏，并调整主要画面构图' },
 ];
 const MESSAGE_WINDOW_SIZE = 40;
+const CHAT_SCROLL_NAV_IDLE_MS = 900;
 
 interface ChatPanelProps {
   ctx: AgentContext;
@@ -63,7 +77,14 @@ interface ChatPanelProps {
   creativeMode: string | null;
   onCreativeModeChange: (id: string | null) => void;
   /** Import a pasted/attached file into the media pool (same pipeline as my asset upload). */
-  onImportMedia: (file: File) => Promise<MediaAsset>;
+  onImportMedia: (
+    file: File,
+    lifecycle?: {
+      onPlaceholder?: (asset: MediaAsset) => void;
+      onReady?: (asset: MediaAsset) => void;
+      onFailure?: (asset: MediaAsset | null, error: unknown) => void;
+    },
+  ) => Promise<MediaAsset>;
 }
 
 // Run time: The number of seconds of real-time jumps during AI thinking/execution (keep two decimal places). Mount and start the table,
@@ -135,6 +156,51 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   const [pasteError, setPasteError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const [chatScrollTarget, setChatScrollTarget] = useState<ChatScrollTarget | null>(null);
+  const chatScrollSampleRef = useRef({ top: 0, time: 0 });
+  const chatScrollHideTimerRef = useRef<number | null>(null);
+  const suppressChatScrollNavigationUntilRef = useRef(0);
+  const hideChatScrollNavigation = useCallback(() => {
+    if (chatScrollHideTimerRef.current !== null) {
+      window.clearTimeout(chatScrollHideTimerRef.current);
+      chatScrollHideTimerRef.current = null;
+    }
+    setChatScrollTarget(null);
+  }, []);
+  const onChatScroll = useCallback(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    const current = { top: node.scrollTop, time: performance.now() };
+    const target = resolveChatScrollTarget({
+      previous: chatScrollSampleRef.current,
+      current,
+      scrollHeight: node.scrollHeight,
+      clientHeight: node.clientHeight,
+      suppressUntil: suppressChatScrollNavigationUntilRef.current,
+    });
+    chatScrollSampleRef.current = current;
+    if (!target) return;
+    setChatScrollTarget(target);
+    if (chatScrollHideTimerRef.current !== null) window.clearTimeout(chatScrollHideTimerRef.current);
+    chatScrollHideTimerRef.current = window.setTimeout(() => {
+      chatScrollHideTimerRef.current = null;
+      setChatScrollTarget(null);
+    }, CHAT_SCROLL_NAV_IDLE_MS);
+  }, []);
+  const scrollChatTo = useCallback((target: ChatScrollTarget) => {
+    const node = scrollRef.current;
+    if (!node) return;
+    suppressChatScrollNavigationUntilRef.current = performance.now() + 1200;
+    hideChatScrollNavigation();
+    node.scrollTo({ top: target === 'top' ? 0 : node.scrollHeight, behavior: 'smooth' });
+  }, [hideChatScrollNavigation]);
+  const onChatKeyDown = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement;
+    if (!shouldHandleChatTextSelection(event, target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectChatMessageContents(scrollRef.current);
+  }, []);
   // one film-crew "thinking…" phrase per running turn
   const runSeedRef = useRef(0);
   if (running && runSeedRef.current === 0) runSeedRef.current = messages.length + 1;
@@ -153,8 +219,20 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   ];
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages, running, proposal]);
+    const node = scrollRef.current;
+    if (!node) return;
+    suppressChatScrollNavigationUntilRef.current = performance.now() + 120;
+    hideChatScrollNavigation();
+    node.scrollTo({ top: node.scrollHeight });
+    const frame = requestAnimationFrame(() => {
+      chatScrollSampleRef.current = { top: node.scrollTop, time: performance.now() };
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [messages, running, proposal, hideChatScrollNavigation]);
+
+  useEffect(() => () => {
+    if (chatScrollHideTimerRef.current !== null) window.clearTimeout(chatScrollHideTimerRef.current);
+  }, []);
 
   // library "generated with AI" seeds the composer (attaches the template as a chat ref)
   useEffect(() => {
@@ -196,7 +274,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   // Mention chips mirror into the text as their prompt token:
   // pool assets stay `@name`; selection picks use `@t[…]`/`@r[…]`/`@q[…]`/`@[…]`.
   const insertRef = (reference: RefItem) => {
-    setSelectedRefs((current) => current.some((item) => item.id === reference.id) ? current : [...current, reference]);
+    setSelectedRefs((current) => upsertChatAttachmentReference(current, reference));
     const token = refPromptToken(reference);
     setInput((v) => v.includes(token) ? v : `${v}${v && !v.endsWith(' ') ? ' ' : ''}${token} `);
   };
@@ -207,7 +285,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
         const escaped = refPromptToken(gone).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         setInput((v) => v.replace(new RegExp(`${escaped}\\s?`, 'g'), '').trimStart());
       }
-      return current.filter((r) => r.id !== id);
+      return removeChatAttachmentReference(current, id);
     });
   };
   // Keep the cross-panel pick mode in sync with the toggle; force it off when
@@ -228,17 +306,35 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   const importPastedFiles = async (files: File[]) => {
     const supported = files.filter((f) => kindOf(f) !== null);
     setPasteError(supported.length < files.length ? t('已忽略不支持的文件（仅支持 视频 / 图片 / 音频 / GIF / SVG）') : null);
-    for (const file of supported) {
+    await Promise.all(supported.map(async (file) => {
+      let placeholderId: string | null = null;
       setPasting((n) => n + 1);
       try {
-        const asset = await onImportMedia(file);
-        insertRef({ id: asset.id, name: asset.name, kind: asset.kind });
+        await onImportMedia(file, {
+          onPlaceholder: (asset) => {
+            placeholderId = asset.id;
+            insertRef({ id: asset.id, name: asset.name, kind: asset.kind });
+          },
+          onReady: (asset) => {
+            setSelectedRefs((current) => upsertChatAttachmentReference(current, {
+              id: asset.id,
+              name: asset.name,
+              kind: asset.kind,
+            }));
+          },
+          onFailure: (asset, reason) => {
+            const id = asset?.id ?? placeholderId;
+            if (id) removeRef(id);
+            setPasteError(reason instanceof Error ? reason.message : t('导入失败'));
+          },
+        });
       } catch (reason) {
+        if (placeholderId) removeRef(placeholderId);
         setPasteError(reason instanceof Error ? reason.message : t('导入失败'));
       } finally {
         setPasting((n) => n - 1);
       }
-    }
+    }));
   };
 
   const changeLogMenu = changeLogSlot && createPortal(
@@ -255,7 +351,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
     return (
       <>
         {changeLogMenu}
-        <aside className="cc-chat-panel collapsed" style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '10px 0', borderRight: `0.5px solid ${theme.border}`, background: theme.panel }}>
+        <aside className="cc-chat-panel collapsed" data-cc-shortcut-surface="agent-chat" tabIndex={-1} style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '10px 0', borderRight: `0.5px solid ${theme.border}`, background: theme.panel }}>
           <button onClick={onToggleCollapse} title={t('展开 OpenChatCut Agent')} style={{ background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', fontSize: 14 }}><span style={{ transform: 'rotate(-90deg)', display: 'inline-flex' }}><Icon name="chevronDown" size={14} /></span></button>
           <div className="cc-chat-collapsed-brand">OpenChatCut</div>
         </aside>
@@ -266,7 +362,19 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   return (
     <>
       {changeLogMenu}
-      <aside className="cc-chat-panel" style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', borderRight: `0.5px solid ${theme.border}`, background: theme.panel, minHeight: 0, minWidth: 0 }}>
+      <aside
+        className="cc-chat-panel"
+        data-cc-chat-popover-boundary
+        data-cc-shortcut-surface="agent-chat"
+        tabIndex={-1}
+        onKeyDown={onChatKeyDown}
+        onPointerDownCapture={(event) => {
+          if (!(event.target as HTMLElement).closest('button, input, select, textarea, [contenteditable="true"]')) {
+            event.currentTarget.focus({ preventScroll: true });
+          }
+        }}
+        style={{ gridColumn: 1, gridRow: '2 / 5', display: 'flex', flexDirection: 'column', borderRight: `0.5px solid ${theme.border}`, background: theme.panel, minHeight: 0, minWidth: 0 }}
+      >
       <div className="cc-chat-header">
         <div className="cc-chat-brand">
           <BrandMark size={20} />
@@ -285,7 +393,8 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
       </div>
 
       {/* messages */}
-      <div ref={scrollRef} className={`cc-chat-messages${messages.length === 0 ? ' empty' : ''}`}>
+      <div className="cc-chat-messages-shell">
+      <div ref={scrollRef} onScroll={onChatScroll} className={`cc-chat-messages${messages.length === 0 ? ' empty' : ''}`}>
         {messages.length === 0 && (
           <div className="cc-chat-onboarding">
             <div className="cc-chat-onboarding-kicker">{t('从这里开工')}</div>
@@ -390,6 +499,20 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
           </div>
         )}
       </div>
+      {chatScrollTarget && (
+        <div className={`cc-chat-scroll-navigation cc-chat-scroll-navigation--${chatScrollTarget}`} aria-label={t('聊天滚动快捷操作')}>
+          <button
+            type="button"
+            className={`cc-chat-scroll-navigation-button cc-tip${chatScrollTarget === 'bottom' ? ' cc-chat-scroll-navigation-button--bottom cc-tip-up' : ''}`}
+            data-tip={t(chatScrollTarget === 'top' ? '快速到顶部' : '快速到底部')}
+            aria-label={t(chatScrollTarget === 'top' ? '快速到顶部' : '快速到底部')}
+            onClick={() => scrollChatTo(chatScrollTarget)}
+          >
+            <Icon name="arrowUp" size={14} />
+          </button>
+        </div>
+      )}
+      </div>
 
       {/* composer — minWidth:0 so narrow chat column can't force send-btn overflow */}
       <div style={{ padding: '12px 12px 12px 12px', borderTop: `0.5px solid ${theme.border}`, minWidth: 0, flexShrink: 0, boxSizing: 'border-box' }}>
@@ -418,8 +541,11 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
           creativeMode={creativeMode} onCreativeModeChange={onCreativeModeChange}
           references={references} onInsertRef={insertRef}
           selectedRefs={selectedRefs} onRemoveRef={removeRef}
-          onPasteFiles={importPastedFiles} pasting={pasting > 0}
+          onPasteFiles={importPastedFiles} onDropFiles={importPastedFiles} pasting={pasting > 0}
           pasteError={pasteError} onDismissPasteError={() => setPasteError(null)}
+          onDropEditorItem={(payload) => {
+            editorDragReferences(payload, ctx.getDoc().assets ?? []).forEach(insertRef);
+          }}
           taRef={taRef}
           placeholder={messages.length === 0 ? t('描述你想要创建的内容...') : t('告诉 AI 要做哪些修改 - @ 引用素材')} />
       </div>

@@ -1,6 +1,9 @@
 // EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
 // Cover partition: App.tsx / Editor.tsx / components root directory shell / reframe.
 export default {
+  '发现 OpenChatCut 新版本 {latest}，当前版本 {current}。请前往项目仓库查看更新。': 'OpenChatCut {latest} is available; current version: {current}. Visit the project repository to review the update.',
+  '当前已是最新版本 {version}': 'You are using the latest version, {version}.',
+  '暂时无法检查更新，请稍后重试': 'Unable to check for updates. Please try again later.',
   // ---- App.tsx (startup/project import and export prompt) ----
   '加载工程…': 'Loading project…',
   '加载编辑器…': 'Loading editor…',

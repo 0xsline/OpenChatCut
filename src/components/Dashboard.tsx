@@ -11,6 +11,7 @@ import { MediaCleanupDialog } from '../media/MediaCleanupDialog';
 import { t, useT } from '../i18n/locale';
 import { ShortcutsDialog } from '../shortcuts/ShortcutsDialog';
 import { DesktopWindowControls } from './DesktopWindowControls';
+import { UpstreamUpdateNotice } from '../ui/UpstreamUpdateNotice';
 
 interface DashboardProps {
   projects: ProjectMeta[];
@@ -182,21 +183,22 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
     // The global html/body/#root is overflow:hidden (required by the editor), and the dashboard scrolls by itself:
     // The header is fixed, main is the only vertical scrolling container, and the last line can be scrolled out even if the project is long.
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: theme.bg, color: theme.text, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <UpstreamUpdateNotice />
       <header className={`cc-window-titlebar${isMacDesktop ? ' cc-window-titlebar--mac' : ''}`} style={{ position: 'relative', height: 48, flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10, padding: '0 24px', borderBottom: `0.5px solid ${theme.border}`, background: theme.panel }}>
         <DesktopWindowControls />
         <BrandMark size={20} />
         <OpenChatCutWordmark />
         <span style={{ color: theme.textDim, fontSize: 13 }}>{t('· 我的工程')}</span>
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-          <button onClick={() => setMcpOpen(true)} title={t('外部 Agent 接入 (MCP)')} className="cc-header-btn" style={settingsBtn}>
+          <button onClick={() => setMcpOpen(true)} data-tip={t('外部 Agent 接入 (MCP)')} aria-label={t('外部 Agent 接入 (MCP)')} className="cc-header-btn cc-tip cc-tip-r" style={settingsBtn}>
             <Icon name="plug" size={16} />
           </button>
-          <button onClick={() => setShortcutsOpen(true)} title={t('编辑快捷键')} className="cc-header-btn" style={settingsBtn}>
+          <button onClick={() => setShortcutsOpen(true)} data-tip={t('编辑快捷键')} aria-label={t('编辑快捷键')} className="cc-header-btn cc-tip cc-tip-r" style={settingsBtn}>
             <Icon name="keyboard" size={16} />
           </button>
           <LocaleToggle />
           <SkinPicker />
-          <button onClick={() => setSettingsOpen(true)} title={t('设置 · API 密钥')} className="cc-header-btn" style={settingsBtn}>
+          <button onClick={() => setSettingsOpen(true)} data-tip={t('设置 · API 密钥')} aria-label={t('设置 · API 密钥')} className="cc-header-btn cc-tip cc-tip-r" style={settingsBtn}>
             <Icon name="sliders" size={16} />
           </button>
         </span>

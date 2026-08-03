@@ -323,7 +323,17 @@ export function Timeline({ state, commands, playerRef, projectId, onRecordVoiceo
   ]);
 
   return (
-    <section className="cc-timeline" style={{ flex: 1, borderLeft: `0.5px solid ${theme.border}`, background: theme.bg, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+    <section
+      className="cc-timeline"
+      data-cc-shortcut-surface="timeline"
+      tabIndex={-1}
+      onPointerDownCapture={(event) => {
+        if (!(event.target as HTMLElement).closest('button, input, select, textarea, [contenteditable="true"]')) {
+          event.currentTarget.focus({ preventScroll: true });
+        }
+      }}
+      style={{ flex: 1, borderLeft: `0.5px solid ${theme.border}`, background: theme.bg, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}
+    >
       {/* marker note editor (click a pin → note popup) */}
       {editing && <MarkerEditor editing={editing} fps={state.fps} commands={commands} onClose={() => setEditMarker(null)} />}
       <TimelineToolbar

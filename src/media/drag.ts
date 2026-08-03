@@ -1,5 +1,6 @@
 import type { DragEvent } from 'react';
 import type { MediaAsset, TrackKind } from '../editor/types';
+import { setEditorDrag } from '../editor/editorDrag';
 
 const MEDIA_DRAG_MIME = 'application/x-openchatcut-media-asset';
 const MEDIA_DRAG_KIND_MIME: Record<'video' | 'audio', string> = {
@@ -17,8 +18,19 @@ export function mediaAssetTrackKind(asset: Pick<MediaAsset, 'kind'>): 'video' | 
   return asset.kind === 'audio' ? 'audio' : 'video';
 }
 
-export function setMediaAssetDrag(event: DragEvent, asset: Pick<MediaAsset, 'id' | 'kind'>): void {
+export function setMediaAssetDrag(
+  event: DragEvent,
+  asset: Pick<MediaAsset, 'id' | 'kind' | 'name'>,
+  assetIds?: readonly string[],
+): void {
   const kind = mediaAssetTrackKind(asset);
+  setEditorDrag(event, {
+    source: 'media',
+    id: asset.id,
+    assetIds: assetIds ? [...assetIds] : undefined,
+    name: asset.name,
+    assetKind: asset.kind,
+  });
   event.dataTransfer.setData(MEDIA_DRAG_MIME, JSON.stringify({ v: 1, assetId: asset.id }));
   event.dataTransfer.setData(MEDIA_DRAG_KIND_MIME[kind], '1');
   event.dataTransfer.effectAllowed = 'copy';

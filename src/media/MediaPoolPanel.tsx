@@ -377,9 +377,10 @@ export function MediaPoolPanel({
       data-cc-shortcut-surface="media-pool"
       tabIndex={-1}
       onKeyDown={handleMediaPoolKeyDown}
-      onPointerDown={(event) => {
-        const target = event.target as HTMLElement;
-        if (!target.closest('button, input, select, textarea, [contenteditable="true"]')) event.currentTarget.focus();
+      onPointerDownCapture={(event) => {
+        if (!(event.target as HTMLElement).closest('button, input, select, textarea, [contenteditable="true"]')) {
+          event.currentTarget.focus({ preventScroll: true });
+        }
       }}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => { event.preventDefault(); void onPick(event.dataTransfer.files, currentFolderId); }}

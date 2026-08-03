@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { theme, themeAlpha } from '../../theme';
 import { t, useT } from '../../i18n/locale';
 import { Icon } from '../icons';
@@ -9,6 +9,14 @@ import { FieldRow, ON, VendorPane, WARN, type FieldCtx } from './settingsVendorP
 import { useCodexSettings } from './useCodexSettings';
 import type { CodexAgentStatus } from '../../../shared/codex-agent';
 import { stageFieldValue } from './codexReasoning';
+import { SettingsVersionControl } from './SettingsVersionControl';
+import {
+  CURRENT_APP_VERSION,
+  formatDisplayVersion,
+  getUpstreamUpdateState,
+  requestUpstreamUpdateCheck,
+  subscribeUpstreamUpdate,
+} from '../../ui/upstreamUpdate';
 import {
   SETTINGS_CATEGORIES, buildPatch, categoryGroupStats, findGroup, groupConfigured,
   modelValue, omitKey, savedMessage, vendorConfigured,
@@ -178,6 +186,11 @@ function useFieldContext(
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
+  const updateState = useSyncExternalStore(
+    subscribeUpstreamUpdate,
+    getUpstreamUpdateState,
+    getUpstreamUpdateState,
+  );
   const { status, setStatus, loadError } = useKeyStatus();
   const [values, setValues] = useState<Values>({});
   const { group, page, selectGroup, selectVendor } = useTreeSelection();
@@ -207,7 +220,16 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <span style={{ color: theme.accent, display: 'inline-flex' }}><Icon name="sliders" size={15} /></span>
             <b style={{ fontSize: 14 }}>{t('设置 · API 密钥')}</b>
           </div>
-          <button type="button" onClick={onClose} title={t('关闭')} style={iconBtn}><Icon name="x" size={15} /></button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <SettingsVersionControl
+              versionLabel={t('当前版本号：{version}', { version: formatDisplayVersion(CURRENT_APP_VERSION) })}
+              checkLabel={t('检查更新')}
+              checkingLabel={t('检查中…')}
+              checking={updateState.phase === 'checking'}
+              onCheck={() => { void requestUpstreamUpdateCheck('manual'); }}
+            />
+            <button type="button" onClick={requestClose} title={t('关闭')} style={iconBtn}><Icon name="x" size={15} /></button>
+          </div>
         </header>
         <div style={bodyRow}>
           <CapabilityTree status={status} codexStatus={codexStatus} activeGroup={group.key} onSelect={selectGroup} />

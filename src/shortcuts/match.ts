@@ -107,6 +107,8 @@ export interface MatchContext {
   /** Currently held non-modifier keys (lowercase normalized). */
   held: ReadonlySet<string>;
   isMac?: boolean;
+  /** Preserve the browser's native Copy command when visible text is selected. */
+  hasTextSelection?: boolean;
 }
 
 /**
@@ -131,6 +133,7 @@ export function matchShortcut(
   const cands: Cand[] = [];
 
   for (const action of catalog) {
+    if (action.id === 'copy' && ctx.hasTextSelection) continue;
     if ((action.disabledWhenTyping !== false) && typing) continue;
     const alts = parseBindingAlts(action.keys);
     for (const chord of alts) {

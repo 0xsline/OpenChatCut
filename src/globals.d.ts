@@ -5,3 +5,4 @@
 // declaration would make esbuild skip it. Undefined outside Vite (tsx checks) — always
 // read behind a `typeof … !== 'undefined'` guard. See src/agent/capabilities.ts.
 declare const __CONFIGURED_CAPS__: Record<string, boolean> | undefined;
+declare const __APP_VERSION__: string | undefined;

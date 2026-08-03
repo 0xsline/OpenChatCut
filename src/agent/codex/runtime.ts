@@ -18,6 +18,7 @@ import { agentSettingsPrompt, loadAgentSettings } from '../settings/agentSetting
 import { executeTool as executeEditorTool } from '../tools';
 import { describeTimelineDelta, snapshotTimeline } from '../timelineDelta';
 import {
+  PRODUCT_IDENTITY_PROMPT,
   SYSTEM_PROMPT,
   agentLanguagePrompt,
   assembleSystemPrompt,
@@ -103,6 +104,7 @@ function buildSystemPrompt(ctx: AgentContext): string {
     agentSettingsPrompt(settings),
     designStylePrompt(ctx.getDoc().designStyle),
     creativeModePrompt(findSkill(ctx.getCreativeMode())),
+    PRODUCT_IDENTITY_PROMPT,
   ], editorStatePrompt(ctx));
 }
 
