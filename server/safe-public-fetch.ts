@@ -283,6 +283,7 @@ export async function safePublicFetch(input: string | URL, init: SafePublicFetch
   const resolver = init.resolver ?? defaultResolver;
   const transport = init.transport ?? defaultTransport;
   const maxRedirects = Math.min(5, Math.max(0, Math.trunc(init.maxRedirects ?? 5)));
+  init.signal?.throwIfAborted();
   let url: URL;
   try {
     url = input instanceof URL ? new URL(input.href) : new URL(input);
@@ -291,11 +292,20 @@ export async function safePublicFetch(input: string | URL, init: SafePublicFetch
   }
 
   for (let redirects = 0; ; redirects += 1) {
+    init.signal?.throwIfAborted();
     const target = await resolvePublicTarget(url, resolver, init.signal);
+    init.signal?.throwIfAborted();
     const response = await abortable(transport(requestFor(url, target, init)), init.signal);
+    try {
+      init.signal?.throwIfAborted();
+    } catch (error) {
+      await response.body?.cancel(error).catch(() => undefined);
+      throw error;
+    }
     const location = response.headers.get('location');
     if (!REDIRECT_STATUSES.has(response.status) || !location) return response;
     await response.body?.cancel().catch(() => undefined);
+    init.signal?.throwIfAborted();
     if (redirects >= maxRedirects) throw new UnsafePublicUrlError('too many redirects');
     try {
       url = new URL(location, url);

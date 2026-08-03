@@ -337,6 +337,9 @@ function FooterBar({ reveal, onReveal, message, dirty, saving, onClose, onSave }
         <input type="checkbox" checked={reveal} onChange={(e) => onReveal(e.target.checked)} />
         {t('显示明文')}
       </label>
+      <a href="/fonts/LICENSES.md" target="_blank" rel="noopener noreferrer" style={licenseLink}>
+        {t('第三方字体许可')}
+      </a>
       <div style={{ ...footMsg, color: message?.color ?? ON }}>{message?.text ?? ''}</div>
       <button type="button" onClick={onClose} style={btnGhost}>{t('关闭')}</button>
       <button type="button" onClick={onSave} disabled={disabled}
@@ -409,6 +412,9 @@ const footMsg: React.CSSProperties = {
 };
 const revealLabel: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: theme.textDim, cursor: 'pointer', userSelect: 'none',
+};
+const licenseLink: React.CSSProperties = {
+  color: theme.textDim, fontSize: 11.5, textDecoration: 'underline', textUnderlineOffset: 2,
 };
 const iconBtn: React.CSSProperties = { background: 'none', border: 'none', color: theme.textDim, cursor: 'pointer', padding: 4, borderRadius: 5, display: 'inline-flex' };
   const btnGhost: React.CSSProperties = { font: 'inherit', fontSize: 12.5, background: 'transparent', color: theme.text, border: `0.5px solid ${theme.border}`, borderRadius: 4, padding: '6px 13px', cursor: 'pointer' };

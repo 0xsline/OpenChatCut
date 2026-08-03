@@ -100,6 +100,25 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
     req.on('error', reject);
   });
 }
+function bindRequestAbort(req: IncomingMessage, res: ServerResponse): {
+  controller: AbortController;
+  dispose(): void;
+} {
+  const controller = new AbortController();
+  const abort = () => {
+    if (!res.writableFinished) controller.abort(new DOMException('Client disconnected', 'AbortError'));
+  };
+  req.once('aborted', abort);
+  res.once('close', abort);
+  if (req.aborted) abort();
+  return {
+    controller,
+    dispose() {
+      req.removeListener('aborted', abort);
+      res.removeListener('close', abort);
+    },
+  };
+}
 
 function sendError(res: ServerResponse, status: number, message: string): void {
   res.statusCode = status;
@@ -157,11 +176,13 @@ async function renderExportPlan(
   update: UpdateGenerationJob,
   signal?: AbortSignal,
 ): Promise<H264EncoderOutcome | undefined> {
+  signal?.throwIfAborted();
   const retimed = plan.retimeFps ? `${filepath}.retimed.${plan.media.ext}` : null;
   let failureStage: ExportFailureStage = 'render';
   try {
     update({ phase: 'preparing', progress: 4, processedFrames: 0, totalFrames: plan.totalFrames });
     await mkdir(dirname(filepath), { recursive: true });
+    signal?.throwIfAborted();
     update({ phase: 'rendering', progress: 8 });
     const rendered = await renderTimeline({
       state: plan.state,
@@ -176,6 +197,7 @@ async function renderExportPlan(
       onProgress: createRenderProgress(update, plan.totalFrames, plan.retimeFps ? 84 : 90),
       signal,
     }) as Partial<H264EncoderOutcome>;
+    signal?.throwIfAborted();
     let outcome = rendered.encoder ? { encoder: rendered.encoder, ...(rendered.encoderFallbackReason ? { encoderFallbackReason: rendered.encoderFallbackReason } : {}) } : undefined;
     if (retimed && plan.retimeFps) {
       failureStage = 'encode';
@@ -189,8 +211,10 @@ async function renderExportPlan(
         plan.videoBitrate ?? resolveH264TargetBitrate({ ...outputSize, fps: plan.retimeFps }),
         signal,
       ));
+      signal?.throwIfAborted();
       await unlink(filepath).catch(() => {});
       await rename(retimed, filepath);
+      signal?.throwIfAborted();
     }
     update({ phase: 'finalizing', progress: 99, processedFrames: plan.totalFrames });
     return outcome;
@@ -259,6 +283,7 @@ export function exportPlugin(): Plugin {
           return;
         }
         let cleanupRenderMedia: (() => Promise<void>) | undefined;
+        const requestAbort = bindRequestAbort(req, res);
         try {
           const body = (await readJsonBody(req)) as {
             state?: unknown;
@@ -268,6 +293,7 @@ export function exportPlugin(): Plugin {
             grid?: boolean;
             fps?: number;
           } | null;
+          requestAbort.controller.signal.throwIfAborted();
           const frames = body?.frames;
           if (!Array.isArray(frames) || !frames.length || !frames.every((frame) => typeof frame === 'number')) {
             sendError(res, 400, 'frames must be a non-empty number[]');
@@ -279,10 +305,11 @@ export function exportPlugin(): Plugin {
               state: body?.state,
               project: body?.project,
               timelineId: body?.timelineId,
-            });
+            }, { signal: requestAbort.controller.signal });
             plan = accepted.plan;
             cleanupRenderMedia = accepted.cleanup;
           } catch (error) {
+            if (requestAbort.controller.signal.aborted) throw error;
             if (!sendSequenceGraphFailure(res, error)) {
               const failure = exportFailureFrom(error);
               if (failure) sendExportFailure(res, failure.stage === 'preflight' ? 422 : 500, failure);
@@ -295,6 +322,7 @@ export function exportPlugin(): Plugin {
             project: plan.project,
             timelineId: plan.timelineId,
             frames,
+            signal: requestAbort.controller.signal,
           }) as Array<{ frame: number; base64: string }>;
           const fps = typeof body?.fps === 'number' && body.fps > 0 ? body.fps : plan.state.fps;
           const wantGrid = body?.grid !== false && rendered.length >= 2;
@@ -308,6 +336,7 @@ export function exportPlugin(): Plugin {
                 })),
                 { cellWidth: rendered.length > 9 ? 280 : 320 },
               );
+              requestAbort.controller.signal.throwIfAborted();
               gridBase64 = sheet.toString('base64');
             } catch (gridErr) {
               server.config.logger.info(
@@ -315,6 +344,7 @@ export function exportPlugin(): Plugin {
               );
             }
           }
+          requestAbort.controller.signal.throwIfAborted();
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({
@@ -323,12 +353,14 @@ export function exportPlugin(): Plugin {
             renderedBy: 'remotion',
           }));
         } catch (err) {
+          if (requestAbort.controller.signal.aborted) return;
           const message = err instanceof Error ? err.message : String(err);
           server.config.logger.error(`[render-still] ${message}`);
           if (!res.headersSent) sendError(res, 500, message);
           else res.end();
         } finally {
           await cleanupRenderMedia?.();
+          requestAbort.dispose();
         }
       });
       server.middlewares.use('/render-clip', async (req, res) => {
@@ -336,18 +368,19 @@ export function exportPlugin(): Plugin {
         let tmpOut: string | null = null;
         let bakeOut: string | null = null;
         let cleanupRenderMedia: (() => Promise<void>) | undefined;
-        const controller = new AbortController();
-        const cancel = () => controller.abort();
-        req.once('aborted', cancel);
-        res.once('close', cancel);
+        const requestAbort = bindRequestAbort(req, res);
         try {
           const body = (await readJsonBody(req)) as { state?: unknown; codec?: string; transparent?: boolean; mode?: string; filename?: string } | null;
+          requestAbort.controller.signal.throwIfAborted();
           const state = body?.state;
           if (!state || typeof state !== 'object' || !('items' in state) || !Array.isArray(state.items)) {
             sendError(res, 400, 'body must be { state, codec, mode }'); return;
           }
           const codec = typeof body?.codec === 'string' && body.codec in CLIP_EXT ? body.codec : 'h264';
-          const accepted = await acceptExportSubmission({ state });
+          const accepted = await acceptExportSubmission(
+            { state },
+            { signal: requestAbort.controller.signal },
+          );
           cleanupRenderMedia = accepted.cleanup;
           const renderState = accepted.plan.state;
           const ext = CLIP_EXT[codec];
@@ -364,12 +397,14 @@ export function exportPlugin(): Plugin {
               codec,
               transparent,
               ...await h264RenderOptions(codec),
-              signal: controller.signal,
-            }));
-            bakeOut = null;
+              signal: requestAbort.controller.signal,
+            }), requestAbort.controller.signal);
+            requestAbort.controller.signal.throwIfAborted();
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ path: `/media/uploads/${fname}` }));
+            requestAbort.controller.signal.throwIfAborted();
+            bakeOut = null;
           } else {
             tmpOut = join(tmpdir(), `openchatcut-clip-${randomUUID()}.${ext}`);
             await withExportPermit(async () => renderClip({
@@ -378,9 +413,11 @@ export function exportPlugin(): Plugin {
               codec,
               transparent,
               ...await h264RenderOptions(codec),
-              signal: controller.signal,
-            }));
-            const buf = await readFile(tmpOut);
+              signal: requestAbort.controller.signal,
+            }), requestAbort.controller.signal);
+            requestAbort.controller.signal.throwIfAborted();
+            const buf = await readFile(tmpOut, { signal: requestAbort.controller.signal });
+            requestAbort.controller.signal.throwIfAborted();
             const safe = sanitizeFileName(body?.filename ?? 'clip', 'clip');
             res.statusCode = 200;
             res.setHeader('Content-Type', CLIP_MIME[ext] ?? 'application/octet-stream');
@@ -389,7 +426,7 @@ export function exportPlugin(): Plugin {
             res.end(buf);
           }
         } catch (err) {
-          if (controller.signal.aborted) return;
+          if (requestAbort.controller.signal.aborted) return;
           const message = err instanceof Error ? err.message : String(err);
           server.config.logger.error(`[render-clip] ${message}`);
           const failure = exportFailureFrom(err);
@@ -401,8 +438,7 @@ export function exportPlugin(): Plugin {
           if (tmpOut) await unlink(tmpOut).catch(() => {});
           if (bakeOut) await unlink(bakeOut).catch(() => {});
           await cleanupRenderMedia?.();
-          req.removeListener('aborted', cancel);
-          res.removeListener('close', cancel);
+          requestAbort.dispose();
         }
       });
 
@@ -437,12 +473,15 @@ export function exportPlugin(): Plugin {
         }
         if (req.method !== 'POST') { sendError(res, 405, 'method not allowed — POST to enqueue, GET to inspect, DELETE to clean up'); return; }
         if (id) { sendError(res, 404, 'unknown export job route'); return; }
+        const requestAbort = bindRequestAbort(req, res);
+        const controller = requestAbort.controller;
 
         let acceptedSubmission: AcceptedExportSubmission | undefined;
         let queued = false;
         try {
           const body = (await readJsonBody(req)) as ExportRequest | null;
-          acceptedSubmission = await acceptExportSubmission(body);
+          controller.signal.throwIfAborted();
+          acceptedSubmission = await acceptExportSubmission(body, { signal: controller.signal });
           const { plan } = acceptedSubmission;
           const cleanupRenderMedia = acceptedSubmission.cleanup;
           const uuid = randomUUID();
@@ -450,7 +489,7 @@ export function exportPlugin(): Plugin {
           const filename = exportJobFilename(uuid, plan.media.ext);
           const filepath = join(outDir, filename);
           const publicPath = `/media/uploads/${filename}`;
-          const controller = new AbortController();
+          controller.signal.throwIfAborted();
           const jobParams: Record<string, unknown> = {
             kind: 'export',
             format: plan.format,
@@ -465,6 +504,7 @@ export function exportPlugin(): Plugin {
               try {
                 const encoding = await renderExportPlan(plan, filepath, update, controller.signal);
                 const { size } = await stat(filepath);
+                controller.signal.throwIfAborted();
                 const sourceFps = plan.state.fps;
                 const outputSize = plan.format === 'video' ? exportOutputSize(plan.state, plan.scale) : undefined;
                 return {
@@ -526,13 +566,18 @@ export function exportPlugin(): Plugin {
           );
           queued = true;
           trackExportJobController(jobId, controller);
+          controller.signal.throwIfAborted();
+          requestAbort.dispose();
           sendJson(res, 200, { renderId: jobId });
         } catch (err) {
           if (acceptedSubmission && !queued) await acceptedSubmission.cleanup().catch(() => undefined);
+          if (controller.signal.aborted) return;
           if (sendSequenceGraphFailure(res, err)) return;
           const failure = exportFailureFrom(err);
           if (failure) sendExportFailure(res, failure.stage === 'preflight' ? 422 : 500, failure);
           else sendError(res, 400, err instanceof Error ? err.message : String(err));
+        } finally {
+          requestAbort.dispose();
         }
       });
 
@@ -549,17 +594,23 @@ export function exportPlugin(): Plugin {
           sendError(res, 405, 'method not allowed — use POST');
           return;
         }
+        const requestAbort = bindRequestAbort(req, res);
 
         let outputLocation: string | null = null;
         let retimedOutput: string | null = null;
         let acceptedSubmission: AcceptedExportSubmission | undefined;
         try {
           const body = await readJsonBody(req) as ExportRequest | null;
+          requestAbort.controller.signal.throwIfAborted();
           let plan: ExportPlan;
           try {
-            acceptedSubmission = await acceptExportSubmission(body);
+            acceptedSubmission = await acceptExportSubmission(
+              body,
+              { signal: requestAbort.controller.signal },
+            );
             plan = acceptedSubmission.plan;
           } catch (error) {
+            if (requestAbort.controller.signal.aborted) throw error;
             if (sendSequenceGraphFailure(res, error)) return;
             const failure = exportFailureFrom(error);
             if (failure) sendExportFailure(res, failure.stage === 'preflight' ? 422 : 500, failure);
@@ -580,7 +631,9 @@ export function exportPlugin(): Plugin {
               scale,
               videoBitrate: plan.videoBitrate,
               ...await h264RenderOptions(media.codec),
+              signal: requestAbort.controller.signal,
             });
+            requestAbort.controller.signal.throwIfAborted();
             if (format === 'video' && plan.retimeFps !== undefined) {
               retimedOutput = `${finalOutput}.retimed.${media.ext}`;
               const outputSize = exportOutputSize(state, scale);
@@ -590,14 +643,20 @@ export function exportPlugin(): Plugin {
                 plan.retimeFps,
                 media.codec as 'h264' | 'vp8',
                 plan.videoBitrate ?? resolveH264TargetBitrate({ ...outputSize, fps: plan.retimeFps }),
+                requestAbort.controller.signal,
               );
+              requestAbort.controller.signal.throwIfAborted();
               await unlink(finalOutput).catch(() => {});
+              requestAbort.controller.signal.throwIfAborted();
               await rename(retimedOutput, finalOutput);
+              requestAbort.controller.signal.throwIfAborted();
               retimedOutput = null;
             }
-          });
+          }, requestAbort.controller.signal);
+          requestAbort.controller.signal.throwIfAborted();
 
-          const buf = await readFile(finalOutput);
+          const buf = await readFile(finalOutput, { signal: requestAbort.controller.signal });
+          requestAbort.controller.signal.throwIfAborted();
           res.statusCode = 200;
           res.setHeader('Content-Type', media.mime);
           res.setHeader('Content-Length', String(buf.length));
@@ -607,6 +666,7 @@ export function exportPlugin(): Plugin {
           const cleanupStatus = await cleanupExportOutputs([outputLocation, retimedOutput]);
           outputLocation = null;
           retimedOutput = null;
+          if (requestAbort.controller.signal.aborted) return;
           const existing = exportFailureFrom(err);
           const failure = existing ?? createExportFailure({
             stage: 'render',
@@ -622,6 +682,7 @@ export function exportPlugin(): Plugin {
           if (outputLocation) await unlink(outputLocation).catch(() => {});
           if (retimedOutput) await unlink(retimedOutput).catch(() => {});
           await acceptedSubmission?.cleanup();
+          requestAbort.dispose();
         }
       });
     },

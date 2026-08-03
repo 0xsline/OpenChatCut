@@ -2,7 +2,12 @@ import { captionsToSrt, captionsToTxt } from '../captions/exportCaptions';
 import type { TimelineItem } from '../editor/types';
 import { renderClipMovBlob } from '../media/clipExport';
 import { recordExport } from '../persist/exportHistoryStore';
-import { writeBlobToDestination, type ExportDestination } from './exportDestination';
+import {
+  exportDestinationFilename,
+  exportHistoryDestinationId,
+  writeBlobToDestination,
+  type ExportDestination,
+} from './exportDestination';
 import { timelineToFcpxml } from './fcpxml';
 import { exportMediaDir } from './mediaDir';
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
@@ -71,7 +76,14 @@ async function exportMgBatch(context: ArtifactExportContext, signal?: AbortSigna
       signal,
     );
   }
-  void recordExport({ name: `${mgItems.length} 个 MG · ProRes 4444`, format: 'video', codec: 'prores', createdAt: Date.now() });
+  const destinationId = exportHistoryDestinationId(context.destination);
+  void recordExport({
+    name: `${mgItems.length} 个 MG · ProRes 4444`,
+    format: 'video',
+    codec: 'prores',
+    createdAt: Date.now(),
+    ...(destinationId ? { destinationId } : {}),
+  });
 }
 
 async function exportSubtitles(context: ArtifactExportContext, signal?: AbortSignal): Promise<void> {
@@ -92,7 +104,14 @@ async function exportSubtitles(context: ArtifactExportContext, signal?: AbortSig
     true,
     signal,
   );
-  void recordExport({ name: filename, format: 'subtitles', createdAt: Date.now() });
+  const destinationId = exportHistoryDestinationId(context.destination);
+  const historyName = exportDestinationFilename(context.destination, filename);
+  void recordExport({
+    name: historyName,
+    format: 'subtitles',
+    createdAt: Date.now(),
+    ...(destinationId ? { destinationId } : {}),
+  });
 }
 
 function uniqueMgItems(items: TimelineItem[]): Array<[string, TimelineItem]> {
@@ -169,7 +188,14 @@ async function exportXml(context: ArtifactExportContext, signal?: AbortSignal): 
   }
   signal?.throwIfAborted();
   const filename = await writeXml(context, destination, successfulRenderKeys, signal);
-  void recordExport({ name: filename, format: 'xml', createdAt: Date.now() });
+  const destinationId = exportHistoryDestinationId(context.destination);
+  const historyName = exportDestinationFilename(context.destination, filename);
+  void recordExport({
+    name: historyName,
+    format: 'xml',
+    createdAt: Date.now(),
+    ...(destinationId ? { destinationId } : {}),
+  });
   if (failedRenderNames.length) {
     context.setProgress((current) => current ? {
       ...current,

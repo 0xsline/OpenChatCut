@@ -11,8 +11,11 @@ export function exportDestinationMatchesFilename(
   selectedFilename: string | undefined,
   suggestedFilename: string | undefined,
 ): boolean {
-  if (destination.type === 'browser-file') return selectedFilename === suggestedFilename;
-  return destination.type !== 'browser-directory' || suggestedFilename === undefined;
+  if (destination.type === 'browser-file' || destination.type === 'desktop-file') {
+    return selectedFilename === suggestedFilename;
+  }
+  const directory = destination.type === 'browser-directory' || destination.type === 'desktop-directory';
+  return !directory || suggestedFilename === undefined;
 }
 
 export function useExportDestination(suggestedFilename?: string) {
@@ -25,9 +28,8 @@ export function useExportDestination(suggestedFilename?: string) {
     let active = true;
     void restoreExportDestination().then((restored) => {
       if (!active || interactedRef.current) return;
-      const compatible = suggestedFilename && restored.type === 'browser-directory'
-        ? DEFAULT_EXPORT_DESTINATION
-        : restored;
+      const directory = restored.type === 'browser-directory' || restored.type === 'desktop-directory';
+      const compatible = suggestedFilename && directory ? DEFAULT_EXPORT_DESTINATION : restored;
       setDestination(compatible);
     }).catch(() => undefined);
     return () => {
@@ -51,7 +53,8 @@ export function useExportDestination(suggestedFilename?: string) {
     try {
       const selected = await chooseExportDestination(suggestedFilename);
       if (selected) {
-        fileSelectionKeyRef.current = selected.type === 'browser-file' ? suggestedFilename : undefined;
+        const fileDestination = selected.type === 'browser-file' || selected.type === 'desktop-file';
+        fileSelectionKeyRef.current = fileDestination ? suggestedFilename : undefined;
         setDestination(selected);
       }
     } finally {

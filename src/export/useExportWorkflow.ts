@@ -41,6 +41,13 @@ export type {
 
 const COMMITTED_EXPORT = Object.freeze({ targetCommitted: true }) satisfies ExportOperationResult;
 
+export function effectiveIncludeMg(
+  includeMg: boolean,
+  mgItems: ReadonlyArray<unknown>,
+): boolean {
+  return includeMg && mgItems.length > 0;
+}
+
 function createWorkflowOperations(
   options: UseExportWorkflowOptions,
   autoQaEnabled: boolean,
@@ -80,11 +87,11 @@ function createWorkflowOperations(
   };
 }
 
-function suggestedExportFilename(options: UseExportWorkflowOptions): string | undefined {
+export function suggestedExportFilename(options: UseExportWorkflowOptions): string | undefined {
   if (options.tab === 'video') return `${options.base}.${options.codec === 'vp8' ? 'webm' : 'mp4'}`;
   if (options.tab === 'audio') return `${options.base}.mp3`;
   if (options.tab === 'subtitles') return `${options.base}.${options.subtitleFormat}`;
-  if (options.tab === 'xml' && !options.includeMg) {
+  if (options.tab === 'xml' && !effectiveIncludeMg(options.includeMg, options.mgItems)) {
     const suffix = options.nleFormat === 'fcp_xml_resolve' ? 'resolve' : 'premiere';
     return `${options.base}-${suffix}.fcpxml`;
   }
@@ -94,6 +101,7 @@ function suggestedExportFilename(options: UseExportWorkflowOptions): string | un
 function snapshotWorkflowOptions(options: UseExportWorkflowOptions): UseExportWorkflowOptions {
   return Object.freeze({
     ...options,
+    includeMg: effectiveIncludeMg(options.includeMg, options.mgItems),
     state: immutableExportSnapshot(options.state),
     ...(options.project ? { project: immutableExportSnapshot(options.project) } : {}),
     subtitleCaptions: immutableExportSnapshot(options.subtitleCaptions),

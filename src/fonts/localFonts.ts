@@ -27,26 +27,23 @@ export interface LocalCjkFont {
   /** Chinese alias. */
   aliasZh: string[];
   /** weight → same-origin URL (/fonts/… ← assets/fonts product static). */
-  files: Record<number, string>;
+  files?: Record<number, string>;
+  /** Same-origin stylesheet for unicode-range variable-font shards. */
+  stylesheet?: string;
+  /** Inclusive CSS variable-font weight range. */
+  weightRange?: readonly [number, number];
 }
 
 // License by style (all are public and free licensed fonts):
 export const LOCAL_CJK_FONTS: readonly LocalCjkFont[] = [
-  // Offline compatibility face for existing projects and built-in templates.
-  // The Google Fonts Noto Sans SC subset expands into many remote shards, which
-  // can hold Remotion's initial render open on slow or disconnected machines.
-  // Reuse the already-bundled HarmonyOS Sans bytes under the historical family
-  // name so those projects render without migration or network access.
+  // Noto Sans SC v40 — SIL Open Font License 1.1. The Fontsource package
+  // preserves Google Fonts' unicode-range variable WOFF2 shards, so existing
+  // project weights from 100 through 900 stay offline without synthetic aliases.
   { family: 'Noto Sans SC', importName: 'NotoSansSC', aliasZh: ['Noto Sans CJK SC', '思源黑体'],
-    files: { 400: '/fonts/harmonyos-sans/HarmonyOS_Sans_SC_Regular.woff2',
-             700: '/fonts/harmonyos-sans/HarmonyOS_Sans_SC_Bold.woff2' } },
+    stylesheet: '/fonts/noto-sans-sc/noto-sans-sc.css', weightRange: [100, 900] },
   // Deyihei — SIL Open Font License 1.1(github.com/atelier-anchor/smiley-sans, v2.0.1)
   { family: 'Smiley Sans', importName: 'SmileySans', aliasZh: ['得意黑'],
     files: { 400: '/fonts/smiley-sans/SmileySans-Oblique.woff2' } },
-  // HarmonyOS Sans Fonts License Agreement (Huawei, free for commercial use)
-  { family: 'HarmonyOS Sans', importName: 'HarmonyOSSans', aliasZh: ['鸿蒙黑体', '鸿蒙字体', '鸿蒙'],
-    files: { 400: '/fonts/harmonyos-sans/HarmonyOS_Sans_SC_Regular.woff2',
-             700: '/fonts/harmonyos-sans/HarmonyOS_Sans_SC_Bold.woff2' } },
   // Easy Handwriting 1 — Free for commercial use (Easy Handwriting Series; subject to the original publisher’s authorization page)
   { family: 'Qingsong Shouxie Ti Yi', importName: 'QingsongShouxieTiYi', aliasZh: ['轻松手写体一', '轻松手写体'],
     files: { 400: '/fonts/qingsong-shouxieti-yi/QingsongShouxietiYi-Regular.woff2' } },
@@ -94,7 +91,7 @@ const registeredFaces = new Map<string, FontFace[]>();
 function facesOf(font: LocalCjkFont): FontFace[] {
   let faces = registeredFaces.get(font.family);
   if (!faces) {
-    faces = Object.entries(font.files).map(
+    faces = Object.entries(font.files ?? {}).map(
       ([weight, url]) =>
         new FontFace(font.family, `url(${url}) format('woff2')`, {
           weight,
@@ -108,13 +105,53 @@ function facesOf(font: LocalCjkFont): FontFace[] {
   return faces;
 }
 
+const stylesheetPromises = new Map<string, Promise<void>>();
+
+function registerStylesheet(font: LocalCjkFont): Promise<void> {
+  if (!font.stylesheet) return Promise.resolve();
+  const cached = stylesheetPromises.get(font.family);
+  if (cached) return cached;
+  const promise = new Promise<void>((resolve, reject) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = font.stylesheet!;
+    link.dataset.localFontFamily = font.family;
+    link.addEventListener('load', () => resolve(), { once: true });
+    link.addEventListener('error', () => {
+      link.remove();
+      reject(new Error(`font stylesheet failed: ${font.family}`));
+    }, { once: true });
+    document.head.append(link);
+  });
+  stylesheetPromises.set(font.family, promise);
+  void promise.catch(() => { stylesheetPromises.delete(font.family); });
+  return promise;
+}
+
+async function loadFaces(font: LocalCjkFont): Promise<void> {
+  if (!font.stylesheet) {
+    await Promise.all(facesOf(font).map((face) => face.load()));
+    return;
+  }
+  await registerStylesheet(font);
+  const faces: FontFace[] = [];
+  document.fonts.forEach((face) => {
+    if (face.family === font.family) faces.push(face);
+  });
+  if (faces.length === 0) throw new Error(`font stylesheet registered no faces: ${font.family}`);
+  await Promise.all(faces.map((face) => face.load()));
+}
+
 /**
  * Register all local fonts (unloaded FontFace, the browser pulls bytes on demand). Idempotent.
  * Called by googleFonts.loadProjectFonts() → The preview and headless rendering take effect in the same path.
  */
 export function registerLocalFonts(): void {
   if (!hasDom()) return;
-  for (const font of LOCAL_CJK_FONTS) facesOf(font);
+  for (const font of LOCAL_CJK_FONTS) {
+    if (font.stylesheet) void registerStylesheet(font).catch(() => undefined);
+    else facesOf(font);
+  }
 }
 
 // family → Explicit loading in progress/completed (Promise cache, idempotent).
@@ -131,13 +168,10 @@ export function ensureLocalFont(family: string): Promise<void> {
   const cached = loadPromises.get(font.family);
   if (cached) return cached;
   const promise = hasDom()
-    ? Promise.all(facesOf(font).map((face) => face.load())).then(
-        () => undefined,
-        (err: unknown) => {
-          loadPromises.delete(font.family);
-          throw err instanceof Error ? err : new Error(`font load failed: ${font.family}`);
-        },
-      )
+    ? loadFaces(font).catch((err: unknown) => {
+        loadPromises.delete(font.family);
+        throw err instanceof Error ? err : new Error(`font load failed: ${font.family}`);
+      })
     : Promise.resolve();
   loadPromises.set(font.family, promise);
   return promise;

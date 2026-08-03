@@ -18,6 +18,7 @@ export async function acceptExportSubmission(
   body: ExportRequest | null,
   mediaOptions: ServerExportMediaOptions = {},
 ): Promise<AcceptedExportSubmission> {
+  mediaOptions.signal?.throwIfAborted();
   let plan: ExportPlan;
   try {
     plan = planExport(body);
@@ -25,26 +26,31 @@ export async function acceptExportSubmission(
     if (!isSequenceGraphError(error)) throw error;
     throw new ExportFailureError(createSequenceGraphExportFailure(error), { cause: error });
   }
+  mediaOptions.signal?.throwIfAborted();
   const mediaSnapshot = plan.project && plan.timelineId
     ? { ...plan.project, activeTimelineId: plan.timelineId }
     : plan.state;
   const materialized = await materializeServerExportMedia(mediaSnapshot, mediaOptions);
-  let state: TimelineState;
-  let project: ProjectDoc | undefined;
-  if (plan.project && plan.timelineId) {
-    project = materialized.snapshot as ProjectDoc;
-    const selected = project.timelines.find((timeline) => timeline.id === plan.timelineId);
-    if (!selected) {
-      await materialized.cleanup();
-      throw new Error(`materialized timeline ${plan.timelineId} not found in project`);
+  try {
+    mediaOptions.signal?.throwIfAborted();
+    let state: TimelineState;
+    let project: ProjectDoc | undefined;
+    if (plan.project && plan.timelineId) {
+      project = materialized.snapshot as ProjectDoc;
+      const selected = project.timelines.find((timeline) => timeline.id === plan.timelineId);
+      if (!selected) throw new Error(`materialized timeline ${plan.timelineId} not found in project`);
+      state = selected;
+    } else {
+      state = materialized.snapshot as TimelineState;
     }
-    state = selected;
-  } else {
-    state = materialized.snapshot as TimelineState;
+    mediaOptions.signal?.throwIfAborted();
+    return Object.freeze({
+      plan: Object.freeze({ ...plan, state, project }),
+      materializedPaths: materialized.localPaths,
+      cleanup: materialized.cleanup,
+    });
+  } catch (error) {
+    await materialized.cleanup();
+    throw error;
   }
-  return Object.freeze({
-    plan: Object.freeze({ ...plan, state, project }),
-    materializedPaths: materialized.localPaths,
-    cleanup: materialized.cleanup,
-  });
 }

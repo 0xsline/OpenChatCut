@@ -82,8 +82,10 @@ export function ExportHistory() {
                       <div style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
                       <div style={{ fontSize: 11, color: theme.textDim }}>{meta(r)} · {relTime(r.createdAt)}</div>
                     </div>
-                    {window.openChatCutDesktop?.revealExport && (
-                      <button type="button" onClick={() => { void window.openChatCutDesktop?.revealExport(r.name).catch(() => undefined); }}
+                    {r.destinationId && window.openChatCutDesktop?.revealExport && (
+                      <button type="button" onClick={() => {
+                        void window.openChatCutDesktop?.revealExport(r.destinationId!, r.name).catch(() => undefined);
+                      }}
                         aria-label={t('打开文件夹')} title={t('打开文件夹')} style={folderBtn}>
                         <Icon name="folder" size={14} />
                         <span>{t('打开文件夹')}</span>

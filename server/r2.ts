@@ -210,6 +210,7 @@ export interface R2Object {
 export interface R2DownloadOptions {
   config?: R2Config;
   client?: Pick<S3Client, 'send'>;
+  signal?: AbortSignal;
 }
 
 /** Read back from source to memory (only suitable for small objects/tests; please use getUploadObjectToFile for large files).*/
@@ -232,20 +233,28 @@ export async function writeBoundedUploadStream(
   source: Readable,
   destPath: string,
   maxBytes: number,
+  signal?: AbortSignal,
 ): Promise<number> {
   let bytes = 0;
   const counter = new Transform({
     transform(chunk: Buffer, _encoding, done) {
-      if (chunk.length > maxBytes - bytes) {
-        done(new UploadTooLargeError(maxBytes));
-        return;
+      try {
+        signal?.throwIfAborted();
+        if (chunk.length > maxBytes - bytes) {
+          done(new UploadTooLargeError(maxBytes));
+          return;
+        }
+        bytes += chunk.length;
+        done(null, chunk);
+      } catch (error) {
+        done(error instanceof Error ? error : new Error(String(error)));
       }
-      bytes += chunk.length;
-      done(null, chunk);
     },
   });
   try {
-    await pipeline(source, counter, createWriteStream(destPath));
+    signal?.throwIfAborted();
+    await pipeline(source, counter, createWriteStream(destPath), { signal });
+    signal?.throwIfAborted();
     return bytes;
   } catch (error) {
     await unlink(destPath).catch(() => undefined);
@@ -318,8 +327,14 @@ export async function getUploadObjectToFile(
 ): Promise<{ contentType: string; bytes: number } | null> {
   const cfg = options?.config ?? r2Config();
   if (!cfg) return null;
+  const signal = options?.signal;
   try {
-    const res = await (options?.client ?? clientFor(cfg)).send(new GetObjectCommand({ Bucket: cfg.bucket, Key: `uploads/${name}` }));
+    signal?.throwIfAborted();
+    const res = await (options?.client ?? clientFor(cfg)).send(
+      new GetObjectCommand({ Bucket: cfg.bucket, Key: `uploads/${name}` }),
+      { abortSignal: signal },
+    );
+    signal?.throwIfAborted();
     if (!res.Body) return null;
     const body = res.Body as Readable;
     const maxBytes = configuredUploadMaxBytes();
@@ -329,12 +344,15 @@ export async function getUploadObjectToFile(
     let bytes: number;
     try {
       if (maxBytes === null) {
-        await pipeline(body, createWriteStream(destPath));
+        await pipeline(body, createWriteStream(destPath), { signal });
+        signal?.throwIfAborted();
         bytes = (await stat(destPath)).size;
+        signal?.throwIfAborted();
       } else {
-        bytes = await writeBoundedUploadStream(body, destPath, maxBytes);
+        bytes = await writeBoundedUploadStream(body, destPath, maxBytes, signal);
       }
     } catch (error) {
+      await unlink(destPath).catch(() => undefined);
       if (error instanceof UploadTooLargeError && maxBytes !== null) {
         try {
           await deleteOversizedUploadObject(cfg, name, maxBytes, res.ETag, options);
@@ -344,6 +362,7 @@ export async function getUploadObjectToFile(
       }
       throw error;
     }
+    signal?.throwIfAborted();
     return {
       contentType: res.ContentType || 'application/octet-stream',
       bytes,

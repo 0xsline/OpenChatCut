@@ -9,7 +9,12 @@ import {
   type BrowserExportOptions,
 } from './browserExport';
 import { removeStagedBrowserExport, stageBrowserExport } from './browserExportStage';
-import { writeBlobToDestination, type ExportDestination } from './exportDestination';
+import {
+  exportDestinationFilename,
+  exportHistoryDestinationId,
+  writeBlobToDestination,
+  type ExportDestination,
+} from './exportDestination';
 import { planVideoExportRoute, recordExportPerformance, type ExportRoutePlan } from './exportRoutePlanner';
 import { isServerRenderError } from './serverExportOperation';
 import { createSequenceGraphExportFailure, ExportFailureError } from './exportFailure';
@@ -208,7 +213,16 @@ export async function saveBrowserResult(
     frames: Math.max(1, Math.round(timelineDuration(state) * context.options.fps / state.fps)),
     elapsedMs: performance.now() - startedAt,
   });
-  void recordExport({ name: filename, format: 'video', codec, sizeBytes: attempt.blob.size, createdAt: Date.now() });
+  const destinationId = exportHistoryDestinationId(context.destination);
+  const historyName = exportDestinationFilename(context.destination, filename);
+  void recordExport({
+    name: historyName,
+    format: 'video',
+    codec,
+    sizeBytes: attempt.blob.size,
+    createdAt: Date.now(),
+    ...(destinationId ? { destinationId } : {}),
+  });
 }
 
 async function runBrowserRoute(

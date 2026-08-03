@@ -5,6 +5,8 @@ import {
   ensureExportDestinationWritable,
   ExportDestinationError,
   exportDestinationErrorMessage,
+  exportDestinationFilename,
+  exportHistoryDestinationId,
   writeUrlToDestination,
   type ExportDestination,
 } from './exportDestination';
@@ -283,7 +285,16 @@ async function saveCompleted(
     throw error;
   }
   context.setProgress((current) => current ? { ...current, outputSize: completed.sizeBytes } : current);
-  void recordExport({ name: filename, format, codec, sizeBytes: completed.sizeBytes, createdAt: Date.now() });
+  const destinationId = exportHistoryDestinationId(context.destination);
+  const historyName = exportDestinationFilename(context.destination, filename);
+  void recordExport({
+    name: historyName,
+    format,
+    codec,
+    sizeBytes: completed.sizeBytes,
+    createdAt: Date.now(),
+    ...(destinationId ? { destinationId } : {}),
+  });
 }
 
 function recordServerPerformance(context: ServerExportContext, completed: ExportJobResult, startedAt: number): void {

@@ -27,6 +27,7 @@ import {
 import type { ExportDestination } from './exportDestination';
 import type { ExportEngineInfo, ExportEngineReason } from './exportWorkflowTypes';
 import {
+  effectiveIncludeMg,
   useExportWorkflow,
   type ExportProgress,
   type ExportQaUiState,
@@ -185,12 +186,13 @@ export function useExportDialogModel({ state, project, projectId, projectName, e
   const [nleFormat, setNleFormat] = useState<'fcp_xml' | 'fcp_xml_resolve'>('fcp_xml');
   const [includeMg, setIncludeMg] = useState(DEFAULT_INCLUDE_MG);
   const mgItems = useMemo(() => state.items.filter((item) => item.kind === 'motion-graphic'), [state.items]);
+  const includeAvailableMg = effectiveIncludeMg(includeMg, mgItems);
   const base = sanitizeFileName(projectName, 'export');
   const workflow = useExportWorkflow({
     state, project, timelineId: project.activeTimelineId, projectId, projectName, base, tab, codec: video.codec, resolution: video.resolution,
     fps: video.fps, requestedVideoBitrate: video.requestedBitrate,
     subtitleFormat: subtitles.format, subtitleCaptions: subtitles.captions,
-    nleFormat, includeMg, mgItems, onClose,
+    nleFormat, includeMg: includeAvailableMg, mgItems, onClose,
   }, exportJobs);
   const name = outputName(base, tab, video, subtitles, nleFormat, t('{n} 个透明 MOV 文件', { n: mgItems.length }));
   const videoSummary = `${video.codec === 'h264' ? 'MP4 · H.264' : 'WebM · VP8'} · ${video.dimensions.width}×${video.dimensions.height} · ${video.fps} fps · ${(video.resolvedBitrate / 1_000_000).toFixed(1)} Mbps`;

@@ -198,6 +198,14 @@ function verifyDestinationCompatibility(): void {
   assert.equal(exportDestinationMatchesFilename(file, 'clip.mp4', 'clip.mp4'), true);
   assert.equal(exportDestinationMatchesFilename(file, 'clip.mp4', 'clip.webm'), false);
   assert.equal(exportDestinationMatchesFilename(file, 'clip.mp4', undefined), false);
+  const desktopFile: ExportDestination = {
+    type: 'desktop-file',
+    grantId: 'a'.repeat(43),
+    label: 'chosen.fcpxml',
+    filename: 'chosen.fcpxml',
+  };
+  assert.equal(exportDestinationMatchesFilename(desktopFile, 'project.fcpxml', 'project.fcpxml'), true);
+  assert.equal(exportDestinationMatchesFilename(desktopFile, 'project.fcpxml', 'other.fcpxml'), false);
   const directory: ExportDestination = {
     type: 'browser-directory',
     label: 'Exports',
@@ -258,15 +266,26 @@ async function verifyBrowserStreamCancellationAbortsWritable(): Promise<void> {
 
 async function verifyDesktopRestoreAndStreaming(): Promise<void> {
   const grant = { grantId: 'a'.repeat(43), label: 'Exports' };
+  const fileGrant = { ...grant, label: 'chosen.fcpxml', filename: 'chosen.fcpxml' };
+  let suggestedFilename = '';
   installWindow({
     location: { href: 'http://localhost:5199/' },
     openChatCutDesktop: {
       restoreExportDirectory: async () => grant,
       selectExportDirectory: async () => grant,
+      selectExportFile: async (suggested: string) => {
+        suggestedFilename = suggested;
+        return fileGrant;
+      },
     },
   });
   assert.deepEqual(await restoreExportDestination(), { type: 'desktop-directory', ...grant });
   assert.deepEqual(await chooseExportDestination(), { type: 'desktop-directory', ...grant });
+  assert.deepEqual(
+    await chooseExportDestination('project.fcpxml'),
+    { type: 'desktop-file', ...fileGrant },
+  );
+  assert.equal(suggestedFilename, 'project.fcpxml');
   const requests: string[] = [];
   let uploaded = '';
   let failDestination = false;
@@ -297,6 +316,14 @@ async function verifyDesktopRestoreAndStreaming(): Promise<void> {
     `/api/export-destinations/${grant.grantId}/clip.mp4`,
   ]);
   assert.equal(uploaded, 'streamed-video');
+  requests.length = 0;
+  const fileDestination: ExportDestination = { type: 'desktop-file', ...fileGrant };
+  await writeBlobToDestination(fileDestination, 'project.fcpxml', new Blob(['xml']));
+  assert.deepEqual(
+    requests,
+    [`/api/export-destinations/${grant.grantId}/chosen.fcpxml`],
+    'desktop single-file saves must honor the native picker filename',
+  );
   await assert.rejects(() => writeBlobToDestination(destination, '../clip.mp4', new Blob()), /导出文件名无效/);
   failDestination = true;
   await assert.rejects(

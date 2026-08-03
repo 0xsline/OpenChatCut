@@ -46,7 +46,8 @@ export type ExportDestination =
   | { readonly type: 'downloads'; readonly label: string }
   | { readonly type: 'browser-directory'; readonly label: string; readonly handle: BrowserExportDirectoryHandle }
   | { readonly type: 'browser-file'; readonly label: string; readonly handle: BrowserExportFileHandle }
-  | { readonly type: 'desktop-directory'; readonly label: string; readonly grantId: string };
+  | { readonly type: 'desktop-directory'; readonly label: string; readonly grantId: string }
+  | { readonly type: 'desktop-file'; readonly label: string; readonly grantId: string; readonly filename: string };
 export class ExportDestinationError extends Error {
   readonly key: string;
   readonly params?: Record<string, string | number>;
@@ -57,6 +58,22 @@ export class ExportDestinationError extends Error {
     this.key = key;
     this.params = params;
   }
+}
+
+export function exportHistoryDestinationId(destination: ExportDestination): string | undefined {
+  return destination.type === 'desktop-directory' || destination.type === 'desktop-file'
+    ? destination.grantId
+    : undefined;
+}
+
+export function exportDestinationFilename(destination: ExportDestination, filename: string): string {
+  const target = checkedDestination(destination);
+  checkedFilename(filename);
+  return target.type === 'browser-file'
+    ? target.handle.name
+    : target.type === 'desktop-file'
+      ? target.filename
+      : filename;
 }
 
 export function exportDestinationErrorMessage(
@@ -74,9 +91,9 @@ export const DEFAULT_EXPORT_DESTINATION: ExportDestination = Object.freeze({
 
 export function exportDestinationTargetPath(destination: ExportDestination, filename: string): string {
   const target = checkedDestination(destination);
-  const safeName = checkedFilename(filename);
-  if (target.type === 'browser-file') return target.handle.name;
-  return `${target.label.replace(/[\\/]$/, '')}/${safeName}`;
+  const outputFilename = exportDestinationFilename(target, filename);
+  if (target.type === 'browser-file' || target.type === 'desktop-file') return outputFilename;
+  return `${target.label.replace(/[\\/]$/, '')}/${outputFilename}`;
 }
 const DATABASE_NAME = 'openchatcut-export-destinations';
 const STORE_NAME = 'destinations';
@@ -134,10 +151,21 @@ function validDestinationLabel(value: unknown): value is string {
 
 function desktopDestination(value: unknown): ExportDestination | null {
   if (typeof value !== 'object' || value === null) return null;
-  const grant = value as { grantId?: unknown; label?: unknown };
-  if (typeof grant.grantId !== 'string' || !DESKTOP_GRANT_ID.test(grant.grantId)) return null;
-  if (!validDestinationLabel(grant.label)) return null;
-  return Object.freeze({ type: 'desktop-directory', grantId: grant.grantId, label: grant.label });
+  const grantId = 'grantId' in value ? value.grantId : undefined;
+  const label = 'label' in value ? value.label : undefined;
+  if (typeof grantId !== 'string' || !DESKTOP_GRANT_ID.test(grantId)) return null;
+  if (!validDestinationLabel(label)) return null;
+  if ('filename' in value) {
+    const filename = value.filename;
+    if (typeof filename !== 'string' || !validFilename(filename) || label !== filename) return null;
+    return Object.freeze({
+      type: 'desktop-file',
+      grantId,
+      label,
+      filename,
+    });
+  }
+  return Object.freeze({ type: 'desktop-directory', grantId, label });
 }
 
 function checkedDestination(value: unknown): ExportDestination {
@@ -156,6 +184,12 @@ function checkedDestination(value: unknown): ExportDestination {
   }
   if (destination.type === 'desktop-directory' && validDestinationLabel(destination.label)
     && typeof destination.grantId === 'string' && DESKTOP_GRANT_ID.test(destination.grantId)) {
+    return value as ExportDestination;
+  }
+  if (destination.type === 'desktop-file' && validDestinationLabel(destination.label)
+    && typeof destination.grantId === 'string' && DESKTOP_GRANT_ID.test(destination.grantId)
+    && typeof destination.filename === 'string' && validFilename(destination.filename)
+    && destination.label === destination.filename) {
     return value as ExportDestination;
   }
   throw new ExportDestinationError('导出目录授权无效');
@@ -309,7 +343,12 @@ export async function chooseExportDestination(
   suggestedFilename?: string,
 ): Promise<ExportDestination | null> {
   const desktop = window.openChatCutDesktop;
-  if (desktop) return desktopDestination(await desktop.selectExportDirectory());
+  if (desktop) {
+    const selected = suggestedFilename
+      ? await desktop.selectExportFile(checkedFilename(suggestedFilename))
+      : await desktop.selectExportDirectory();
+    return desktopDestination(selected);
+  }
   try {
     if (suggestedFilename) {
       const savePicker = savePickerFunction();
@@ -381,7 +420,7 @@ function desktopWriteError(status: number): ExportDestinationError {
 }
 
 async function putDesktopBody(
-  destination: Extract<ExportDestination, { type: 'desktop-directory' }>,
+  destination: Extract<ExportDestination, { type: 'desktop-directory' | 'desktop-file' }>,
   filename: string,
   body: Blob | ReadableStream<Uint8Array>,
   signal?: AbortSignal,
@@ -496,20 +535,21 @@ export async function writeBlobToDestination(
   signal?.throwIfAborted();
   const target = checkedDestination(destination);
   const safeName = checkedFilename(filename);
-  const targetPath = exportDestinationTargetPath(target, safeName);
+  const outputFilename = exportDestinationFilename(target, safeName);
+  const targetPath = exportDestinationTargetPath(target, outputFilename);
   try {
     signal?.throwIfAborted();
     if (!(blob instanceof Blob)) throw new ExportDestinationError('导出文件内容无效');
     if (target.type === 'downloads') {
       signal?.throwIfAborted();
-      downloadBlob(blob, safeName);
+      downloadBlob(blob, outputFilename);
       return;
     }
     if (target.type === 'browser-directory' || target.type === 'browser-file') {
-      await writeBrowserBlob(target.handle, safeName, blob, signal);
+      await writeBrowserBlob(target.handle, outputFilename, blob, signal);
       return;
     }
-    await putDesktopBody(target, safeName, blob, signal);
+    await putDesktopBody(target, outputFilename, blob, signal);
   } catch (error) {
     signal?.throwIfAborted();
     throw destinationWriteFailure(error, targetPath);
@@ -525,7 +565,8 @@ export async function writeUrlToDestination(
   signal?.throwIfAborted();
   const target = checkedDestination(destination);
   const safeName = checkedFilename(filename);
-  const targetPath = exportDestinationTargetPath(target, safeName);
+  const outputFilename = exportDestinationFilename(target, safeName);
+  const targetPath = exportDestinationTargetPath(target, outputFilename);
   let response: Response;
   try {
     signal?.throwIfAborted();
@@ -549,16 +590,16 @@ export async function writeUrlToDestination(
   try {
     signal?.throwIfAborted();
     if (target.type === 'browser-directory' || target.type === 'browser-file') {
-      await writeBrowserResponse(target.handle, safeName, response, signal);
+      await writeBrowserResponse(target.handle, outputFilename, response, signal);
       return;
     }
-    if (target.type === 'desktop-directory') {
-      await putDesktopBody(target, safeName, response.body ?? new Blob(), signal);
+    if (target.type === 'desktop-directory' || target.type === 'desktop-file') {
+      await putDesktopBody(target, outputFilename, response.body ?? new Blob(), signal);
       return;
     }
     const blob = await response.blob();
     signal?.throwIfAborted();
-    downloadBlob(blob, safeName);
+    downloadBlob(blob, outputFilename);
   } catch (error) {
     await response.body?.cancel().catch(() => undefined);
     signal?.throwIfAborted();

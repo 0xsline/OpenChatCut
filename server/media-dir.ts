@@ -90,15 +90,19 @@ export function enqueueUploadMutation<T>(name: string, work: () => Promise<T>): 
 async function resolveOrHydrateUploadFileOnce(
   name: string,
   dependencies: UploadHydrationDependencies,
+  signal?: AbortSignal,
 ): Promise<ResolvedUploadFile | null> {
+  signal?.throwIfAborted();
   const local = dependencies.resolveLocal(name);
   if (local) {
     try {
       const info = await stat(local);
+      signal?.throwIfAborted();
       if (info.isFile()) {
         return { file: local, contentType: mimeFor(name), bytes: info.size, cached: true };
       }
-    } catch {
+    } catch (error) {
+      signal?.throwIfAborted();
       // A concurrent removal is a cache miss; let the R2 read-through restore it.
     }
   }
@@ -106,14 +110,19 @@ async function resolveOrHydrateUploadFileOnce(
   if (!dependencies.cloudAvailable()) return null;
   const directory = dependencies.uploadDirectory();
   await mkdir(directory, { recursive: true });
+  signal?.throwIfAborted();
   const partPath = join(directory, `.${name}.part`);
   const finalPath = join(directory, name);
+  let published = false;
   try {
-    const object = await dependencies.downloadToFile(name, partPath);
+    const object = await dependencies.downloadToFile(name, partPath, { signal });
+    signal?.throwIfAborted();
     if (!object) return null;
     const contentType = object.contentType.split(';', 1)[0]?.trim().toLowerCase();
     if (contentType === 'text/html') return null;
     await rename(partPath, finalPath);
+    signal?.throwIfAborted();
+    published = true;
     return {
       file: finalPath,
       contentType: object.contentType,
@@ -122,6 +131,7 @@ async function resolveOrHydrateUploadFileOnce(
     };
   } finally {
     await unlink(partPath).catch(() => undefined);
+    if (!published && signal?.aborted) await unlink(finalPath).catch(() => undefined);
   }
 }
 
@@ -129,8 +139,34 @@ async function resolveOrHydrateUploadFileOnce(
 export function resolveOrHydrateUploadFile(
   name: string,
   dependencies: UploadHydrationDependencies = defaultUploadHydrationDependencies,
+  signal?: AbortSignal,
 ): Promise<ResolvedUploadFile | null> {
   if (!isSafeUploadName(name)) return Promise.resolve(null);
+  signal?.throwIfAborted();
+  if (signal) {
+    const queued = enqueueUploadMutation(
+      name,
+      () => resolveOrHydrateUploadFileOnce(name, dependencies, signal),
+    );
+    const deferred = Promise.withResolvers<ResolvedUploadFile | null>();
+    const cleanup = () => signal.removeEventListener('abort', onAbort);
+    const onAbort = () => {
+      cleanup();
+      deferred.reject(signal.reason);
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    queued.then(
+      (value) => {
+        cleanup();
+        deferred.resolve(value);
+      },
+      (error: unknown) => {
+        cleanup();
+        deferred.reject(error);
+      },
+    );
+    return deferred.promise;
+  }
   const inFlight = uploadHydrations.get(name);
   if (inFlight) return inFlight;
 

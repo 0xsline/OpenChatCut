@@ -8,10 +8,11 @@ const KEY = 'export:history';
 // ponytail: cap so the list can't grow unbounded across a long session; a
 // single-user clone won't realistically exceed this. Raise if it ever matters.
 const MAX_RECORDS = 200;
+const DESKTOP_DESTINATION_ID = /^[A-Za-z0-9_-]{32,128}$/;
 
 export interface ExportRecord {
   id: string;
-  /** download filename */
+  /** exported filename or multi-file export label */
   name: string;
   /** 'video' | 'audio' | 'subtitles' | 'xml' */
   format: string;
@@ -21,6 +22,8 @@ export interface ExportRecord {
   frameRange?: { start: number; end: number };
   /** caller-supplied timestamp (ms epoch) */
   createdAt: number;
+  /** Opaque desktop capability identity used by this export; absent records cannot be revealed. */
+  destinationId?: string;
 }
 
 // Boundary validation: drop corrupt/partial persisted entries rather than trust them.
@@ -35,6 +38,9 @@ function toValidRecord(v: unknown): ExportRecord | null {
     ...(typeof r.codec === 'string' ? { codec: r.codec } : {}),
     ...(typeof r.sizeBytes === 'number' ? { sizeBytes: r.sizeBytes } : {}),
     ...(range ? { frameRange: range } : {}),
+    ...(typeof r.destinationId === 'string' && DESKTOP_DESTINATION_ID.test(r.destinationId)
+      ? { destinationId: r.destinationId }
+      : {}),
   };
 }
 

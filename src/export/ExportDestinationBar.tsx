@@ -17,13 +17,14 @@ export function ExportDestinationBar({
 }: ExportDestinationBarProps) {
   const t = useT();
   const downloads = destination.type === 'downloads';
+  const file = destination.type === 'browser-file' || destination.type === 'desktop-file';
   return (
     <div className="cc-export-destination">
       <span className="cc-export-destination-icon"><Icon name="folder" size={16} /></span>
       <span className="cc-export-destination-copy">
         <small>{t('保存到')}</small>
         <strong title={destination.label}>{downloads ? t('浏览器下载目录') : destination.label}</strong>
-        {destination.type !== 'browser-file' && (
+        {!file && (
           <i>{downloads ? t('保存位置由浏览器下载设置决定') : t('文件将直接写入所选文件夹')}</i>
         )}
       </span>

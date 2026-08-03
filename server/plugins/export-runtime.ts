@@ -168,8 +168,17 @@ export async function cancelActiveExportJob(jobId: string): Promise<boolean> {
 }
 
 
-export function withExportPermit<T>(task: () => Promise<T>): Promise<T> {
-  return exportLimiter.run(task);
+export async function withExportPermit<T>(
+  task: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  const release = await acquireExportPermit(signal);
+  try {
+    signal?.throwIfAborted();
+    return await task();
+  } finally {
+    release();
+  }
 }
 
 function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {

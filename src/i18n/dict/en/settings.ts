@@ -7,6 +7,7 @@ export default {
   '收起': 'Collapse',
   '展开': 'Expand',
   '显示明文': 'Show values',
+  '第三方字体许可': 'Third-party font licenses',
   '保存中…': 'Saving…',
   '保存': 'Save',
   '无法读取配置（dev 服务未就绪？）': 'Could not load config (dev server not ready?)',

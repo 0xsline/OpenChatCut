@@ -6,12 +6,16 @@ import { ExportFailureError } from '../../src/export/exportFailure';
 import { materializeServerExportMedia, validateServerExportMedia } from './export-media-plan';
 import { acceptExportSubmission } from './export-submission';
 // @ts-expect-error — plain .mjs render pipeline has no .d.ts
-import { assertMaterializedRenderSnapshot } from '../../remotion/render.mjs';
+import {
+  assertMaterializedRenderSnapshot,
+  withAbortableCompositionSelection,
+} from '../../remotion/render.mjs';
 import {
   enqueueUploadMutation,
   resolveOrHydrateUploadFile,
   type UploadHydrationDependencies,
 } from '../media-dir';
+import type { R2DownloadOptions } from '../r2';
 import {
   safePublicFetch,
   type PinnedPublicRequest,
@@ -387,6 +391,41 @@ try {
     [],
     'failed materialization must remove both partial and published files',
   );
+  const materializationAbort = new AbortController();
+  const materializationAbortReason = new DOMException('disconnect during materialization', 'AbortError');
+  let materializationFetchSignalAborted = false;
+  await assert.rejects(
+    () => materializeServerExportMedia({
+      ...remoteRenderState,
+      items: [{ ...remoteRenderState.items[0], src: 'https://public-media.example/abort.mp4' }],
+    }, {
+      ...options,
+      signal: materializationAbort.signal,
+      fetcher: async (_input, init) => {
+        const fetchSignal = init?.signal;
+        assert.ok(fetchSignal);
+        fetchSignal.addEventListener('abort', () => {
+          materializationFetchSignalAborted = true;
+        }, { once: true });
+        return new Response(new ReadableStream<Uint8Array>({
+          pull(controller) {
+            controller.enqueue(Uint8Array.of(1, 2, 3));
+            materializationAbort.abort(materializationAbortReason);
+          },
+        }, { highWaterMark: 0 }), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        });
+      },
+    }),
+    (error: unknown) => error === materializationAbortReason,
+  );
+  assert.equal(materializationFetchSignalAborted, true, 'request abort must reach safePublicFetch');
+  assert.deepEqual(
+    (await readdir(directory)).filter((name) => name.startsWith('openchatcut-render-media-')),
+    [],
+    'aborted materialization must remove its partial file',
+  );
   const cloudHydrateCalls: string[] = [];
   await validateServerExportMedia({
     items: [{ id: 'cloud-ready', kind: 'video', src: '/media/uploads/cloud-ready.mp4' }],
@@ -534,6 +573,62 @@ try {
   assert.equal(retryDownloads, 2, 'a failed hydration must leave no stale in-flight entry');
   assert.ok(retryHydration);
   assert.equal(await readFile(retryHydration.file, 'utf8'), completeRetryMedia);
+  const hydrationAbort = new AbortController();
+  const hydrationAbortReason = new DOMException('disconnect during hydration', 'AbortError');
+  const hydrationAbortName = 'abort-hydration.mp4';
+  await assert.rejects(
+    () => resolveOrHydrateUploadFile(hydrationAbortName, {
+      resolveLocal: () => null,
+      cloudAvailable: () => true,
+      uploadDirectory: () => directory,
+      downloadToFile: async (
+        _name: string,
+        destination: string,
+        downloadOptions?: R2DownloadOptions,
+      ) => {
+        assert.strictEqual(downloadOptions?.signal, hydrationAbort.signal);
+        await writeFile(destination, 'partial-hydration');
+        hydrationAbort.abort(hydrationAbortReason);
+        return { contentType: 'video/mp4', bytes: 17 };
+      },
+    }, hydrationAbort.signal),
+    (error: unknown) => error === hydrationAbortReason,
+  );
+  const hydrationAbortEntries = await readdir(directory);
+  assert.equal(hydrationAbortEntries.includes(`.${hydrationAbortName}.part`), false);
+  assert.equal(hydrationAbortEntries.includes(hydrationAbortName), false);
+
+  const selectionAbort = new AbortController();
+  const selectionAbortReason = new DOMException('disconnect during composition selection', 'AbortError');
+  let browserCloseCalls = 0;
+  let renderMediaCalls = 0;
+  const fakeBrowser = {
+    async close() {
+      browserCloseCalls += 1;
+    },
+  };
+  await assert.rejects(
+    () => withAbortableCompositionSelection({
+      signal: selectionAbort.signal,
+      selectionOptions: {
+        serveUrl: '/fake-bundle',
+        id: 'timeline',
+        inputProps: {},
+      },
+      openBrowserImpl: async () => fakeBrowser,
+      selectCompositionImpl: async ({ puppeteerInstance }: { puppeteerInstance: unknown }) => {
+        assert.strictEqual(puppeteerInstance, fakeBrowser);
+        selectionAbort.abort(selectionAbortReason);
+        return { id: 'timeline' };
+      },
+      run: async () => {
+        renderMediaCalls += 1;
+      },
+    }),
+    (error: unknown) => error === selectionAbortReason,
+  );
+  assert.equal(browserCloseCalls, 1, 'selection abort must close the owned browser boundary');
+  assert.equal(renderMediaCalls, 0, 'selection abort must not enter renderMedia');
   console.log('server export media preflight verification passed');
 } finally {
   await rm(directory, { recursive: true, force: true });

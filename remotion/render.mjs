@@ -4,7 +4,7 @@
 // at render time in headless Chrome exactly as the Player does, so audio muxes
 // natively and no template porting is needed.
 import { bundle } from '@remotion/bundler';
-import { makeCancelSignal, RenderInternals, selectComposition, renderMedia, renderStill } from '@remotion/renderer';
+import { makeCancelSignal, openBrowser, RenderInternals, selectComposition, renderMedia, renderStill } from '@remotion/renderer';
 import path from 'node:path';
 import { cp, mkdir, rm, symlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -81,6 +81,39 @@ function remotionCancelSignal(signal) {
   if (signal.aborted) cancellation.cancel();
   else signal.addEventListener('abort', cancellation.cancel, { once: true });
   return cancellation.cancelSignal;
+}
+/**
+ * Own one browser across composition selection and the render which consumes it.
+ * Closing that browser is the supported cancellation boundary for selectComposition.
+ */
+export async function withAbortableCompositionSelection({
+  signal,
+  selectionOptions,
+  run,
+  openBrowserImpl = openBrowser,
+  selectCompositionImpl = selectComposition,
+}) {
+  signal?.throwIfAborted();
+  const browser = await openBrowserImpl('chrome', {
+    browserExecutable: browserExecutable(),
+    chromiumOptions: { gl: 'angle' },
+  });
+  let closePromise;
+  const closeBrowser = () => closePromise ??= Promise.resolve(browser.close({ silent: true })).catch(() => undefined);
+  const onAbort = () => { void closeBrowser(); };
+  signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    signal?.throwIfAborted();
+    const composition = await selectCompositionImpl({
+      ...selectionOptions,
+      puppeteerInstance: browser,
+    });
+    signal?.throwIfAborted();
+    return await run(composition, browser);
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+    await closeBrowser();
+  }
 }
 const RENDER_MEDIA_FIELD = /(?:^|_)(?:src|url|path|cube|lut)$/i;
 const RENDER_MEDIA_FIELD_SUFFIX = /(?:Src|Url|Path)$/;
@@ -414,31 +447,39 @@ export async function renderTimeline({
   const cancelSignal = remotionCancelSignal(signal);
 
   const serveUrl = await getServeUrl();
+  signal?.throwIfAborted();
   const inputProps = { state, project, timelineId };
-  const composition = await selectComposition({
-    serveUrl, id: COMPOSITION_ID, inputProps, browserExecutable: browserExecutable(),
-    timeoutInMilliseconds: renderTimeoutInMilliseconds(),
+  const rendered = await withAbortableCompositionSelection({
+    signal,
+    selectionOptions: {
+      serveUrl,
+      id: COMPOSITION_ID,
+      inputProps,
+      browserExecutable: browserExecutable(),
+      timeoutInMilliseconds: renderTimeoutInMilliseconds(),
+    },
+    run: (composition, browser) => renderMediaOptimized({
+      serveUrl,
+      composition,
+      codec,
+      frameRange,
+      inputProps,
+      outputLocation,
+      h264Profile,
+      vaapiDevice,
+      scale: scale && Number.isFinite(scale) && scale > 0 ? scale : 1,
+      videoBitrate: Number.isFinite(videoBitrate) && videoBitrate > 0
+        ? `${Math.round(videoBitrate / 1000)}k`
+        : undefined,
+      chromiumOptions: { gl: 'angle' },
+      browserExecutable: browserExecutable(),
+      puppeteerInstance: browser,
+      onProgress: onProgress ? ({ progress }) => onProgress(progress) : undefined,
+      cancelSignal,
+      timeoutInMilliseconds: renderTimeoutInMilliseconds(),
+    }),
   });
   signal?.throwIfAborted();
-  const rendered = await renderMediaOptimized({
-    serveUrl,
-    composition,
-    codec,
-    frameRange,
-    inputProps,
-    outputLocation,
-    h264Profile,
-    vaapiDevice,
-    scale: scale && Number.isFinite(scale) && scale > 0 ? scale : 1,
-    videoBitrate: Number.isFinite(videoBitrate) && videoBitrate > 0
-      ? `${Math.round(videoBitrate / 1000)}k`
-      : undefined,
-    chromiumOptions: { gl: 'angle' },
-    browserExecutable: browserExecutable(),
-    onProgress: onProgress ? ({ progress }) => onProgress(progress) : undefined,
-    cancelSignal,
-    timeoutInMilliseconds: renderTimeoutInMilliseconds(),
-  });
   return {
     outputLocation,
     ...(rendered.encoder ? { encoder: rendered.encoder } : {}),
@@ -475,27 +516,36 @@ export async function renderClip({
   assertMaterializedRenderSnapshot(state, 'renderClip');
   const cancelSignal = remotionCancelSignal(signal);
   const serveUrl = await getServeUrl();
+  signal?.throwIfAborted();
   const inputProps = { state, transparent };
-  const composition = await selectComposition({
-    serveUrl, id: COMPOSITION_ID, inputProps, browserExecutable: browserExecutable(),
-    timeoutInMilliseconds: renderTimeoutInMilliseconds(),
+  await withAbortableCompositionSelection({
+    signal,
+    selectionOptions: {
+      serveUrl,
+      id: COMPOSITION_ID,
+      inputProps,
+      browserExecutable: browserExecutable(),
+      timeoutInMilliseconds: renderTimeoutInMilliseconds(),
+    },
+    run: (composition, browser) => renderMediaOptimized({
+      serveUrl,
+      composition,
+      codec,
+      inputProps,
+      outputLocation,
+      h264Profile,
+      vaapiDevice,
+      ...(transparent && codec === 'prores'
+        ? { proResProfile: '4444', imageFormat: 'png', pixelFormat: 'yuva444p10le' }
+        : {}),
+      chromiumOptions: { gl: 'angle' },
+      browserExecutable: browserExecutable(),
+      puppeteerInstance: browser,
+      timeoutInMilliseconds: renderTimeoutInMilliseconds(),
+      cancelSignal,
+    }),
   });
-  await renderMediaOptimized({
-    serveUrl,
-    composition,
-    codec,
-    inputProps,
-    outputLocation,
-    h264Profile,
-    vaapiDevice,
-    ...(transparent && codec === 'prores'
-      ? { proResProfile: '4444', imageFormat: 'png', pixelFormat: 'yuva444p10le' }
-      : {}),
-    chromiumOptions: { gl: 'angle' },
-    browserExecutable: browserExecutable(),
-    timeoutInMilliseconds: renderTimeoutInMilliseconds(),
-    cancelSignal,
-  });
+  signal?.throwIfAborted();
   return outputLocation;
 }
 
@@ -507,35 +557,51 @@ export async function renderClip({
  * @param {number[]} args.frames  frame numbers to render
  * @param {unknown} [args.puppeteerInstance] Reused headless browser (when rendering thumbnails in batches
  *   Every cold start of Chrome is too slow); the caller passes in openBrowser once and closes it after use.
+ * @param {AbortSignal} [args.signal]
  */
 /** Cap stills per call (contact-sheet path further compresses into one image). */
 const STILL_MAX_FRAMES = 16;
 
-export async function renderTimelineStills({ state, project, timelineId, frames, puppeteerInstance }) {
+export async function renderTimelineStills({
+  state,
+  project,
+  timelineId,
+  frames,
+  puppeteerInstance,
+  signal,
+}) {
   if (!state || !Array.isArray(state.items)) throw new Error('renderTimelineStills: state.items required');
   if (!Array.isArray(frames) || !frames.length) throw new Error('renderTimelineStills: frames[] required');
+  signal?.throwIfAborted();
   assertMaterializedRenderSnapshot(state, 'renderTimelineStills');
   if (project) assertMaterializedRenderSnapshot(project, 'renderTimelineStills', timelineId);
   const serveUrl = await getServeUrl();
+  signal?.throwIfAborted();
   const inputProps = { state, project, timelineId };
   // Reuse one browser for the batch when caller doesn't pass one — opening Chrome
   // per frame was the dominant cost of view_*_frames.
-  const { openBrowser } = await import('@remotion/renderer');
   const ownBrowser = !puppeteerInstance;
   const browser = puppeteerInstance ?? await openBrowser('chrome', {
     browserExecutable: browserExecutable(),
     chromiumOptions: { gl: 'angle' },
   });
+  const closeOnAbort = () => {
+    if (ownBrowser) void browser.close({ silent: true }).catch(() => undefined);
+  };
+  signal?.addEventListener('abort', closeOnAbort, { once: true });
   try {
+    signal?.throwIfAborted();
     const composition = await selectComposition({
       serveUrl, id: COMPOSITION_ID, inputProps,
       puppeteerInstance: browser,
       browserExecutable: browserExecutable(),
       timeoutInMilliseconds: renderTimeoutInMilliseconds(),
     });
+    signal?.throwIfAborted();
     const out = [];
     const list = frames.slice(0, STILL_MAX_FRAMES);
     for (const frame of list) {
+      signal?.throwIfAborted();
       const f = Math.max(0, Math.min(composition.durationInFrames - 1, Math.round(frame)));
       const { buffer } = await renderStill({
         serveUrl, composition, inputProps, frame: f,
@@ -549,10 +615,12 @@ export async function renderTimelineStills({ state, project, timelineId, frames,
         puppeteerInstance: browser,
         timeoutInMilliseconds: renderTimeoutInMilliseconds(),
       });
+      signal?.throwIfAborted();
       out.push({ frame: f, base64: buffer.toString('base64') });
     }
     return out;
   } finally {
+    signal?.removeEventListener('abort', closeOnAbort);
     if (ownBrowser) {
       try { await browser.close({ silent: true }); } catch { /* ignore */ }
     }

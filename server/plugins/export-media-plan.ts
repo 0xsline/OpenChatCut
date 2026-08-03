@@ -52,8 +52,9 @@ export interface ServerExportMediaOptions {
   uploadDirectory?: string;
   fetcher?: typeof safePublicFetch;
   resolveUpload?: (name: string) => string | null;
-  hydrateUpload?: (name: string) => Promise<ResolvedUploadFile | null>;
+  hydrateUpload?: (name: string, signal?: AbortSignal) => Promise<ResolvedUploadFile | null>;
   maxMaterializedBytes?: number;
+  signal?: AbortSignal;
 }
 
 export interface MaterializedServerExportMedia<Value> {
@@ -66,7 +67,7 @@ export interface MaterializedServerExportMedia<Value> {
 type ResolvedServerExportMediaOptions = Required<Pick<
   ServerExportMediaOptions,
   'publicDirectory' | 'uploadDirectory' | 'fetcher' | 'resolveUpload' | 'hydrateUpload' | 'maxMaterializedBytes'
->>;
+>> & Pick<ServerExportMediaOptions, 'signal'>;
 
 async function readableFile(path: string): Promise<boolean> {
   try {
@@ -123,12 +124,19 @@ async function materializeRemote(
   let partialPath: string | undefined;
   let finalPath: string | undefined;
   let handle: FileHandle | undefined;
+  let completed = false;
+  const timeoutSignal = AbortSignal.timeout(30 * 60_000);
+  const fetchSignal = options.signal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : timeoutSignal;
   try {
+    fetchSignal.throwIfAborted();
     response = await options.fetcher(reference.source, {
       method: 'GET',
       cache: 'no-store',
-      signal: AbortSignal.timeout(30 * 60_000),
+      signal: fetchSignal,
     });
+    fetchSignal.throwIfAborted();
     const contentType = response.headers.get('content-type');
     if (isHtmlContentType(contentType)) {
       return issueFor(
@@ -150,15 +158,19 @@ async function materializeRemote(
     }
 
     await mkdir(options.uploadDirectory, { recursive: true });
+    fetchSignal.throwIfAborted();
     const filename = `openchatcut-render-media-${randomUUID()}${extensionFor(reference.source, contentType)}`;
     finalPath = resolve(options.uploadDirectory, filename);
     partialPath = `${finalPath}.part`;
     handle = await open(partialPath, 'wx', 0o600);
+    fetchSignal.throwIfAborted();
     const reader = response.body.getReader();
     let bytes = 0;
     try {
       for (;;) {
+        fetchSignal.throwIfAborted();
         const { done, value } = await reader.read();
+        fetchSignal.throwIfAborted();
         if (done) break;
         bytes += value.byteLength;
         if (bytes > options.maxMaterializedBytes) {
@@ -166,7 +178,9 @@ async function materializeRemote(
         }
         let offset = 0;
         while (offset < value.byteLength) {
+          fetchSignal.throwIfAborted();
           const { bytesWritten } = await handle.write(value.subarray(offset));
+          fetchSignal.throwIfAborted();
           if (bytesWritten < 1) throw new Error(`Media source could not be written: ${reference.source}`);
           offset += bytesWritten;
         }
@@ -177,12 +191,17 @@ async function materializeRemote(
     }
     if (bytes < 1) throw new Error(`Media source returned an empty body: ${reference.source}`);
     await handle.sync();
+    fetchSignal.throwIfAborted();
     await handle.close();
     handle = undefined;
+    fetchSignal.throwIfAborted();
     await rename(partialPath, finalPath);
     partialPath = undefined;
+    fetchSignal.throwIfAborted();
+    completed = true;
     return { localPath: finalPath, publicPath: `/media/uploads/${filename}` };
   } catch (error) {
+    options.signal?.throwIfAborted();
     return issueFor(
       reference,
       'unreadable',
@@ -192,7 +211,7 @@ async function materializeRemote(
     await response?.body?.cancel().catch(() => undefined);
     await handle?.close().catch(() => undefined);
     if (partialPath) await unlink(partialPath).catch(() => undefined);
-    if (finalPath && !await readableFile(finalPath)) await unlink(finalPath).catch(() => undefined);
+    if (finalPath && !completed) await unlink(finalPath).catch(() => undefined);
   }
 }
 
@@ -200,6 +219,7 @@ async function checkLocalReference(
   reference: ExportMediaReference,
   options: ResolvedServerExportMediaOptions,
 ): Promise<ExportMediaIssue | null> {
+  options.signal?.throwIfAborted();
   if (reference.source.startsWith('data:')) return null;
   if (reference.source.startsWith('blob:')) {
     return issueFor(reference, 'unsupported_source', `Blob URL is not readable by the export server: ${reference.source}`);
@@ -222,14 +242,18 @@ async function checkLocalReference(
     }
     const local = options.resolveUpload(name);
     if (local) {
-      return await readableFile(local)
+      const readable = await readableFile(local);
+      options.signal?.throwIfAborted();
+      return readable
         ? null
         : issueFor(reference, 'unreadable', `Media upload is not readable: ${reference.source}`);
     }
     let hydrated: ResolvedUploadFile | null;
     try {
-      hydrated = await options.hydrateUpload(name);
+      hydrated = await options.hydrateUpload(name, options.signal);
+      options.signal?.throwIfAborted();
     } catch (error) {
+      options.signal?.throwIfAborted();
       return issueFor(
         reference,
         'unreadable',
@@ -240,7 +264,9 @@ async function checkLocalReference(
     if (isHtmlContentType(hydrated.contentType)) {
       return issueFor(reference, 'missing_source', `Media upload resolved to HTML instead of media: ${reference.source}`);
     }
-    return await readableFile(hydrated.file)
+    const readable = await readableFile(hydrated.file);
+    options.signal?.throwIfAborted();
+    return readable
       ? null
       : issueFor(reference, 'unreadable', `Restored media upload is not readable: ${reference.source}`);
   }
@@ -252,7 +278,9 @@ async function checkLocalReference(
   if (escaped === '..' || escaped.startsWith(`..${sep}`) || isAbsolute(escaped)) {
     return issueFor(reference, 'unsupported_source', `Media source escapes the public directory: ${reference.source}`);
   }
-  return await readableFile(candidate)
+  const readable = await readableFile(candidate);
+  options.signal?.throwIfAborted();
+  return readable
     ? null
     : issueFor(reference, 'missing_source', `Public media source is missing or unreadable: ${reference.source}`);
 }
@@ -297,8 +325,10 @@ function resolvedOptions(options: ServerExportMediaOptions): ResolvedServerExpor
     uploadDirectory: resolve(options.uploadDirectory ?? uploadDir()),
     fetcher: options.fetcher ?? safePublicFetch,
     resolveUpload: options.resolveUpload ?? resolveUploadFile,
-    hydrateUpload: options.hydrateUpload ?? resolveOrHydrateUploadFile,
+    hydrateUpload: options.hydrateUpload
+      ?? ((name, signal) => resolveOrHydrateUploadFile(name, undefined, signal)),
     maxMaterializedBytes,
+    signal: options.signal,
   };
 }
 
@@ -321,45 +351,56 @@ export async function materializeServerExportMedia<Value>(
   snapshot: Value,
   options: ServerExportMediaOptions = {},
 ): Promise<MaterializedServerExportMedia<Value>> {
+  options.signal?.throwIfAborted();
   const plan = collectExportMediaPlan(snapshot);
+  options.signal?.throwIfAborted();
   if (plan.issues.length > 0) throw preflightFailure(plan.issues);
   const resolved = resolvedOptions(options);
   const remoteReferences = plan.references.filter((reference) => /^https?:\/\//i.test(reference.source));
   const localReferences = plan.references.filter((reference) => !/^https?:\/\//i.test(reference.source));
-  const localIssues = (await Promise.all(localReferences.map((reference) => checkLocalReference(reference, resolved))))
-    .filter((issue): issue is ExportMediaIssue => issue !== null);
-  if (localIssues.length > 0) throw preflightFailure(localIssues);
-
   const replacements = new Map<string, string>();
   const localPaths: string[] = [];
-  const remoteIssues: ExportMediaIssue[] = [];
-  const attemptedRemoteSources = new Set<string>();
-  for (const reference of remoteReferences) {
-    if (attemptedRemoteSources.has(reference.source)) continue;
-    attemptedRemoteSources.add(reference.source);
-    const materialized = await materializeRemote(reference, resolved);
-    if ('code' in materialized) {
-      remoteIssues.push(materialized);
-      continue;
-    }
-    replacements.set(reference.source, materialized.publicPath);
-    localPaths.push(materialized.localPath);
-  }
-  if (remoteIssues.length > 0) {
-    await cleanupPaths(localPaths);
-    throw preflightFailure(remoteIssues);
-  }
+  try {
+    const localIssues = (await Promise.all(
+      localReferences.map((reference) => checkLocalReference(reference, resolved)),
+    )).filter((issue): issue is ExportMediaIssue => issue !== null);
+    resolved.signal?.throwIfAborted();
+    if (localIssues.length > 0) throw preflightFailure(localIssues);
 
-  const immutable = structuredClone(snapshot);
-  replaceMaterializedSources(immutable, replacements, new WeakSet());
-  freezeSnapshot(immutable, new WeakSet());
-  let cleanupPromise: Promise<void> | undefined;
-  return Object.freeze({
-    snapshot: immutable,
-    plan,
-    localPaths: Object.freeze([...localPaths]),
-    cleanup: () => cleanupPromise ??= cleanupPaths(localPaths),
-  });
+    const remoteIssues: ExportMediaIssue[] = [];
+    const attemptedRemoteSources = new Set<string>();
+    for (const reference of remoteReferences) {
+      resolved.signal?.throwIfAborted();
+      if (attemptedRemoteSources.has(reference.source)) continue;
+      attemptedRemoteSources.add(reference.source);
+      const materialized = await materializeRemote(reference, resolved);
+      if ('code' in materialized) {
+        resolved.signal?.throwIfAborted();
+        remoteIssues.push(materialized);
+        continue;
+      }
+      replacements.set(reference.source, materialized.publicPath);
+      localPaths.push(materialized.localPath);
+      resolved.signal?.throwIfAborted();
+    }
+    if (remoteIssues.length > 0) throw preflightFailure(remoteIssues);
+
+    resolved.signal?.throwIfAborted();
+    const immutable = structuredClone(snapshot);
+    replaceMaterializedSources(immutable, replacements, new WeakSet());
+    freezeSnapshot(immutable, new WeakSet());
+    resolved.signal?.throwIfAborted();
+    let cleanupPromise: Promise<void> | undefined;
+    return Object.freeze({
+      snapshot: immutable,
+      plan,
+      localPaths: Object.freeze([...localPaths]),
+      cleanup: () => cleanupPromise ??= cleanupPaths(localPaths),
+    });
+  } catch (error) {
+    await cleanupPaths(localPaths);
+    throw error;
+  }
 }
 
 export async function validateServerExportMedia(

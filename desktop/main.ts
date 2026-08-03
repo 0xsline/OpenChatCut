@@ -4,7 +4,17 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell, type OpenDialogOptions } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  screen,
+  shell,
+  type OpenDialogOptions,
+  type SaveDialogOptions,
+} from 'electron';
 import { buildTextContextMenuTemplate } from './context-menu.ts';
 import { startEmbeddedServer } from './embedded-server.ts';
 import { createTransparentMovProxy, importLocalMedia } from './local-media-import.ts';
@@ -18,8 +28,11 @@ import { preparePackagedRuntime } from './packaged-runtime.ts';
 import { focusExistingWindow } from './single-instance.ts';
 import { applyDesktopWindowFrame, desktopWindowFrameOptions } from './window-frame.ts';
 import { installResponsiveWindowScale, resolveInitialDesktopWindowBounds } from './window-scale.ts';
-import { createExportDirectoryGrant } from '../server/export-destinations.ts';
-import { exportRevealCandidate } from './export-reveal.ts';
+import {
+  createExportDirectoryGrant,
+  type ExportDirectoryGrantDescriptor,
+} from '../server/export-destinations.ts';
+import { resolveExportRevealTarget } from './export-reveal.ts';
 
 // Electron main process entry. dev mode: esbuild hits desktop-dist/main.mjs,dist/ in the codebase root;
 // Packaging form: dist/, resonance-bundle, chrome-headless-shell use extraResources.
@@ -36,9 +49,24 @@ const SMOKE_TIMEOUT_MS = SMOKE_RENDER ? 240_000 : 90_000;
 let mainWindow: BrowserWindow | null = null;
 
 interface StoredExportDirectory {
-  version: 1;
-  path: string;
+  version: 2;
+  currentDestinationId: string;
+  destinations: Array<{
+    destinationId: string;
+    path: string;
+  }>;
 }
+
+interface ExportDirectoryState {
+  currentPath: string | null;
+  destinations: StoredExportDirectory['destinations'];
+}
+
+const DESKTOP_DESTINATION_ID = /^[A-Za-z0-9_-]{32,128}$/;
+const MAX_STORED_EXPORT_DESTINATIONS = 256;
+const MAX_EXPORT_DESTINATION_STATE_BYTES = 512 * 1_024;
+const INVALID_DESKTOP_EXPORT_FILENAME = /[/\\:*?"<>|]/;
+const RESERVED_DESKTOP_EXPORT_FILENAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 
 type DesktopIpcHandler = Parameters<typeof ipcMain.handle>[1];
 
@@ -47,7 +75,7 @@ function trustedDesktopHandler(
   handler: DesktopIpcHandler,
 ): DesktopIpcHandler {
   return (event, ...args) => {
-    assertTrustedDesktopSenderUrl(event.senderFrame.url, trustedOrigin);
+    assertTrustedDesktopSenderUrl(event.senderFrame?.url ?? '', trustedOrigin);
     return handler(event, ...args);
   };
 }
@@ -87,9 +115,77 @@ async function validatedDirectory(value: unknown): Promise<string | null> {
   return info?.isDirectory() ? path : null;
 }
 
-async function persistExportDirectory(statePath: string, path: string): Promise<void> {
+function validDesktopExportFilename(value: unknown): value is string {
+  if (typeof value !== 'string' || !value || value !== value.trim()
+    || value === '.' || value === '..' || basename(value) !== value) return false;
+  if (new TextEncoder().encode(value).byteLength > 240
+    || INVALID_DESKTOP_EXPORT_FILENAME.test(value)
+    || /[. ]$/.test(value)
+    || RESERVED_DESKTOP_EXPORT_FILENAME.test(value)) return false;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 31 || code === 127) return false;
+  }
+  return true;
+}
+
+async function readExportDirectoryState(statePath: string): Promise<ExportDirectoryState | null> {
+  try {
+    const info = await stat(statePath);
+    if (!info.isFile() || info.size > MAX_EXPORT_DESTINATION_STATE_BYTES) {
+      throw new Error('invalid export destination state');
+    }
+    const stored = JSON.parse(await readFile(statePath, 'utf8')) as unknown;
+    if (typeof stored !== 'object' || stored === null) throw new Error('invalid export destination');
+    const version = 'version' in stored ? stored.version : undefined;
+    if (version === 1) {
+      const legacyPath = 'path' in stored ? stored.path : undefined;
+      return {
+        currentPath: typeof legacyPath === 'string' ? legacyPath : null,
+        destinations: [],
+      };
+    }
+    const currentDestinationId = 'currentDestinationId' in stored
+      ? stored.currentDestinationId
+      : undefined;
+    const rawDestinations = 'destinations' in stored ? stored.destinations : undefined;
+    if (version !== 2 || typeof currentDestinationId !== 'string'
+      || !Array.isArray(rawDestinations)) {
+      throw new Error('unsupported export destination version');
+    }
+    const destinations = rawDestinations.flatMap((entry): StoredExportDirectory['destinations'] => {
+      if (!entry || typeof entry !== 'object') return [];
+      const destinationId = 'destinationId' in entry ? entry.destinationId : undefined;
+      const path = 'path' in entry ? entry.path : undefined;
+      if (typeof destinationId !== 'string'
+        || !DESKTOP_DESTINATION_ID.test(destinationId)
+        || typeof path !== 'string'
+        || !isAbsolute(path)) return [];
+      return [{ destinationId, path }];
+    }).slice(0, MAX_STORED_EXPORT_DESTINATIONS);
+    const currentPath = destinations.find(
+      (entry) => entry.destinationId === currentDestinationId,
+    )?.path ?? null;
+    return { currentPath, destinations };
+  } catch {
+    return null;
+  }
+}
+
+async function persistExportDirectory(
+  statePath: string,
+  path: string,
+  destinationId: string,
+  previousState?: ExportDirectoryState | null,
+): Promise<void> {
+  if (!DESKTOP_DESTINATION_ID.test(destinationId)) throw new Error('invalid export destination identity');
+  const prior = previousState ?? await readExportDirectoryState(statePath);
+  const destinations = [
+    { destinationId, path },
+    ...(prior?.destinations ?? []).filter((entry) => entry.destinationId !== destinationId),
+  ].slice(0, MAX_STORED_EXPORT_DESTINATIONS);
   const temporary = `${statePath}.${randomUUID()}.tmp`;
-  const value: StoredExportDirectory = { version: 1, path };
+  const value: StoredExportDirectory = { version: 2, currentDestinationId: destinationId, destinations };
   await mkdir(dirname(statePath), { recursive: true });
   try {
     await writeFile(temporary, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 });
@@ -100,21 +196,23 @@ async function persistExportDirectory(statePath: string, path: string): Promise<
   }
 }
 
-async function restorePersistedExportDirectory(statePath: string): Promise<string | null> {
-  try {
-    const info = await stat(statePath);
-    if (!info.isFile() || info.size > 4_096) throw new Error('invalid export destination state');
-    const stored = JSON.parse(await readFile(statePath, 'utf8')) as unknown;
-    if (typeof stored !== 'object' || stored === null) throw new Error('invalid export destination');
-    const value = stored as Partial<StoredExportDirectory>;
-    if (value.version !== 1) throw new Error('unsupported export destination version');
-    const directory = await validatedDirectory(value.path);
-    if (directory) return directory;
-  } catch {
-    // Missing, malformed, and stale persistence all restore as no destination.
-  }
-  await unlink(statePath).catch(() => undefined);
-  return null;
+async function restorePersistedExportDirectory(
+  statePath: string,
+): Promise<{ directory: string; state: ExportDirectoryState } | null> {
+  const state = await readExportDirectoryState(statePath);
+  if (!state?.currentPath) return null;
+  const directory = await validatedDirectory(state.currentPath);
+  return directory ? { directory, state } : null;
+}
+
+async function resolvePersistedExportDestination(
+  statePath: string,
+  destinationId: string,
+): Promise<string | null> {
+  if (!DESKTOP_DESTINATION_ID.test(destinationId)) return null;
+  const state = await readExportDirectoryState(statePath);
+  const storedPath = state?.destinations.find((entry) => entry.destinationId === destinationId)?.path;
+  return storedPath ? validatedDirectory(storedPath) : null;
 }
 
 function registerDesktopHandlers(trustedOrigin: string): void {
@@ -134,6 +232,10 @@ function registerDesktopHandlers(trustedOrigin: string): void {
     return result.canceled ? null : (result.filePaths[0] ?? null);
   }));
   const exportStatePath = join(app.getPath('userData'), 'export-destination.json');
+  let activeExportDirectory: {
+    directory: string;
+    grant: ExportDirectoryGrantDescriptor;
+  } | null = null;
   ipcMain.handle('openchatcut:select-export-directory', trustedDesktopHandler(trustedOrigin, async (event) => {
     const parent = BrowserWindow.fromWebContents(event.sender);
     const options: OpenDialogOptions = {
@@ -147,12 +249,46 @@ function registerDesktopHandlers(trustedOrigin: string): void {
     if (result.canceled || !result.filePaths[0]) return null;
     const directory = await validatedDirectory(result.filePaths[0]);
     if (!directory) throw new Error('所选导出目录不可用');
-    await persistExportDirectory(exportStatePath, directory);
-    return createExportDirectoryGrant(directory);
+    const grant = createExportDirectoryGrant(directory);
+    activeExportDirectory = { directory, grant };
+    await persistExportDirectory(exportStatePath, directory, grant.grantId);
+    return grant;
+  }));
+  ipcMain.handle('openchatcut:select-export-file', trustedDesktopHandler(trustedOrigin, async (
+    event,
+    suggestedFilename: unknown,
+  ) => {
+    if (!validDesktopExportFilename(suggestedFilename)) {
+      throw new Error('invalid export filename');
+    }
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    const options: SaveDialogOptions = {
+      title: '选择导出文件',
+      defaultPath: join(app.getPath('videos'), suggestedFilename),
+    };
+    const result = parent
+      ? await dialog.showSaveDialog(parent, options)
+      : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return null;
+    const filename = basename(result.filePath);
+    if (!validDesktopExportFilename(filename)) throw new Error('导出文件名无效');
+    const directory = await validatedDirectory(dirname(result.filePath));
+    if (!directory) throw new Error('所选导出目录不可用');
+    const grant = createExportDirectoryGrant(directory);
+    activeExportDirectory = { directory, grant };
+    await persistExportDirectory(exportStatePath, directory, grant.grantId);
+    return { ...grant, label: filename, filename };
   }));
   ipcMain.handle('openchatcut:restore-export-directory', trustedDesktopHandler(trustedOrigin, async () => {
-    const directory = await restorePersistedExportDirectory(exportStatePath);
-    return directory ? createExportDirectoryGrant(directory) : null;
+    const restored = await restorePersistedExportDirectory(exportStatePath);
+    if (!restored) return null;
+    if (activeExportDirectory?.directory === restored.directory) {
+      return activeExportDirectory.grant;
+    }
+    const grant = createExportDirectoryGrant(restored.directory);
+    activeExportDirectory = { directory: restored.directory, grant };
+    await persistExportDirectory(exportStatePath, restored.directory, grant.grantId, restored.state);
+    return grant;
   }));
   ipcMain.handle('openchatcut:import-local-media', trustedDesktopHandler(trustedOrigin, async (_event, sourcePath: unknown, originalName: unknown) => {
     if (typeof sourcePath !== 'string' || !isAbsolute(sourcePath)) {
@@ -177,14 +313,22 @@ function registerDesktopHandlers(trustedOrigin: string): void {
       else win.maximize();
     }
   }));
-  ipcMain.handle('openchatcut:reveal-export', trustedDesktopHandler(trustedOrigin, async (_event, filename: unknown) => {
-    const directory = await restorePersistedExportDirectory(exportStatePath) ?? app.getPath('downloads');
-    const candidate = exportRevealCandidate(directory, filename);
-    if (candidate && existsSync(candidate)) {
-      shell.showItemInFolder(candidate);
+  ipcMain.handle('openchatcut:reveal-export', trustedDesktopHandler(trustedOrigin, async (
+    _event,
+    destinationId: unknown,
+    filename: unknown,
+  ) => {
+    const target = await resolveExportRevealTarget(
+      destinationId,
+      filename,
+      (identity) => resolvePersistedExportDestination(exportStatePath, identity),
+    );
+    if (!target) throw new Error('export destination is unavailable');
+    if (target.candidate && existsSync(target.candidate)) {
+      shell.showItemInFolder(target.candidate);
       return;
     }
-    const error = await shell.openPath(directory);
+    const error = await shell.openPath(target.directory);
     if (error) throw new Error(error);
   }));
 }

@@ -19,6 +19,27 @@ const state = {
     src: '/media/uploads/does-not-exist.mp4',
   }],
 };
+const admissionAbort = new AbortController();
+const admissionAbortReason = new DOMException('request disconnected during admission', 'AbortError');
+admissionAbort.abort(admissionAbortReason);
+let abortedAdmissionFetches = 0;
+await assert.rejects(
+  () => acceptExportSubmission({
+    state: {
+      ...state,
+      items: [{ ...state.items[0], src: 'https://media.example/expensive.mp4' }],
+    },
+  }, {
+    signal: admissionAbort.signal,
+    fetcher: async () => {
+      abortedAdmissionFetches += 1;
+      return new Response(Uint8Array.of(1));
+    },
+  }),
+  (error: unknown) => error === admissionAbortReason,
+);
+assert.equal(abortedAdmissionFetches, 0, 'an already disconnected admission must not start materialization');
+
 
 await assert.rejects(
   () => acceptExportSubmission({ state }),
