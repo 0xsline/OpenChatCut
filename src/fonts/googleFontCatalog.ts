@@ -9,7 +9,6 @@ export interface FontCatalogEntry {
 
 export interface GoogleFontCatalogEntry extends FontCatalogEntry {
   source: 'google';
-  weighted?: boolean;
 }
 
 export const GOOGLE_FONT_CATALOG: readonly GoogleFontCatalogEntry[] = [
@@ -31,7 +30,6 @@ export const GOOGLE_FONT_CATALOG: readonly GoogleFontCatalogEntry[] = [
   { family: 'Montserrat', aliases: [], loadable: true, source: 'google' },
   { family: 'Mulish', aliases: [], loadable: true, source: 'google' },
   { family: 'Newsreader', aliases: [], loadable: true, source: 'google' },
-  { family: 'Noto Sans SC', aliases: ['Noto Sans CJK SC'], loadable: true, source: 'google', weighted: true },
   { family: 'Noto Serif SC', aliases: [], loadable: true, source: 'google' },
   { family: 'Noto Serif TC', aliases: [], loadable: true, source: 'google' },
   { family: 'Nunito', aliases: [], loadable: true, source: 'google' },

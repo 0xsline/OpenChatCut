@@ -15,6 +15,7 @@ declare global {
       importLocalMedia(file: File): Promise<{ src: string; storedName: string } | null>;
       prepareTransparentMovProxy(storedName: string): Promise<{ src: string } | null>;
       windowAction(action: 'close' | 'minimize' | 'toggle-maximize'): Promise<void>;
+      revealExport(filename: string): Promise<void>;
     };
   }
 }

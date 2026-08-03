@@ -32,6 +32,14 @@ export interface LocalCjkFont {
 
 // License by style (all are public and free licensed fonts):
 export const LOCAL_CJK_FONTS: readonly LocalCjkFont[] = [
+  // Offline compatibility face for existing projects and built-in templates.
+  // The Google Fonts Noto Sans SC subset expands into many remote shards, which
+  // can hold Remotion's initial render open on slow or disconnected machines.
+  // Reuse the already-bundled HarmonyOS Sans bytes under the historical family
+  // name so those projects render without migration or network access.
+  { family: 'Noto Sans SC', importName: 'NotoSansSC', aliasZh: ['Noto Sans CJK SC', '思源黑体'],
+    files: { 400: '/fonts/harmonyos-sans/HarmonyOS_Sans_SC_Regular.woff2',
+             700: '/fonts/harmonyos-sans/HarmonyOS_Sans_SC_Bold.woff2' } },
   // Deyihei — SIL Open Font License 1.1(github.com/atelier-anchor/smiley-sans, v2.0.1)
   { family: 'Smiley Sans', importName: 'SmileySans', aliasZh: ['得意黑'],
     files: { 400: '/fonts/smiley-sans/SmileySans-Oblique.woff2' } },

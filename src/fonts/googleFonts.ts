@@ -20,13 +20,9 @@ interface FontLoadResult {
   waitUntilDone: () => Promise<void>;
 }
 
-type NotoSansSCWeight =
-  | '100' | '200' | '300' | '400' | '500'
-  | '600' | '700' | '800' | '900';
-
 // Runtime-selected, finite imports are intentional: Vite emits one discoverable
 // chunk per family instead of bundling every @remotion/google-fonts loader.
-async function loadGoogleFace(family: string, fontWeight = 400): Promise<FontLoadResult> {
+async function loadGoogleFace(family: string): Promise<FontLoadResult> {
   switch (family) {
     case 'Anton': return (await import('@remotion/google-fonts/Anton')).loadFont();
     case 'Archivo Black': return (await import('@remotion/google-fonts/ArchivoBlack')).loadFont();
@@ -59,15 +55,6 @@ async function loadGoogleFace(family: string, fontWeight = 400): Promise<FontLoa
     case 'Unbounded': return (await import('@remotion/google-fonts/Unbounded')).loadFont();
     case 'VT323': return (await import('@remotion/google-fonts/VT323')).loadFont();
     case 'ZCOOL QingKe HuangYou': return (await import('@remotion/google-fonts/ZCOOLQingKeHuangYou')).loadFont();
-    case 'Noto Sans SC': {
-      const rounded = Math.min(900, Math.max(100, Math.round(fontWeight / 100) * 100));
-      const weight = String(rounded) as NotoSansSCWeight;
-      return (await import('@remotion/google-fonts/NotoSansSC')).loadFont('normal', {
-        weights: [weight],
-        subsets: ['chinese-simplified', 'latin'],
-        ignoreTooManyRequestsWarning: true,
-      });
-    }
     default:
       throw new Error(`font loader unavailable: ${family}`);
   }
@@ -76,7 +63,7 @@ async function loadGoogleFace(family: string, fontWeight = 400): Promise<FontLoa
 const fontPromises = new Map<string, Promise<void>>();
 
 /** Load one referenced face and resolve only after browser/headless readiness. */
-export function ensureFont(family: string, fontWeight = 400): Promise<void> {
+export function ensureFont(family: string, _fontWeight = 400): Promise<void> {
   if (isGenericFontFamily(family)) return Promise.resolve();
   const canonical = resolveCanonicalFamily(family);
   if (!canonical) return Promise.resolve();
@@ -84,10 +71,10 @@ export function ensureFont(family: string, fontWeight = 400): Promise<void> {
   const metadata = GOOGLE_FONT_CATALOG.find((entry) => entry.family === canonical);
   if (!metadata) return Promise.resolve();
 
-  const faceKey = metadata.weighted ? `${canonical}:${fontWeight}` : canonical;
+  const faceKey = canonical;
   const cached = fontPromises.get(faceKey);
   if (cached) return cached;
-  const promise = loadGoogleFace(canonical, fontWeight)
+  const promise = loadGoogleFace(canonical)
     .then((font) => font.waitUntilDone())
     .catch((error: unknown) => {
       fontPromises.delete(faceKey);

@@ -59,6 +59,7 @@ export default {
   '导出历史': 'Export History',
   '关闭': 'Close',
   '还没有导出记录': 'No exports yet',
+  '打开文件夹': 'Open Folder',
   '清空历史': 'Clear History',
 
   // ---- VersionHistory ----

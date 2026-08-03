@@ -14,6 +14,7 @@ export interface OpenChatCutDesktopApi {
   importLocalMedia(file: File): Promise<{ src: string; storedName: string } | null>;
   prepareTransparentMovProxy(storedName: string): Promise<{ src: string } | null>;
   windowAction(action: 'close' | 'minimize' | 'toggle-maximize'): Promise<void>;
+  revealExport(filename: string): Promise<void>;
 }
 
 const api: OpenChatCutDesktopApi = {
@@ -44,6 +45,8 @@ const api: OpenChatCutDesktopApi = {
     ipcRenderer.invoke('openchatcut:transparent-mov-proxy', storedName) as Promise<{ src: string } | null>,
   windowAction: (action) =>
     ipcRenderer.invoke('openchatcut:window-action', action) as Promise<void>,
+  revealExport: (filename) =>
+    ipcRenderer.invoke('openchatcut:reveal-export', filename) as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld('openChatCutDesktop', api);

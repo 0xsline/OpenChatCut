@@ -1,5 +1,6 @@
 import './chdir-first.ts';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +19,7 @@ import { focusExistingWindow } from './single-instance.ts';
 import { applyDesktopWindowFrame, desktopWindowFrameOptions } from './window-frame.ts';
 import { installResponsiveWindowScale, resolveInitialDesktopWindowBounds } from './window-scale.ts';
 import { createExportDirectoryGrant } from '../server/export-destinations.ts';
+import { exportRevealCandidate } from './export-reveal.ts';
 
 // Electron main process entry. dev mode: esbuild hits desktop-dist/main.mjs,dist/ in the codebase root;
 // Packaging form: dist/, resonance-bundle, chrome-headless-shell use extraResources.
@@ -174,6 +176,16 @@ function registerDesktopHandlers(trustedOrigin: string): void {
       if (win.isMaximized()) win.unmaximize();
       else win.maximize();
     }
+  }));
+  ipcMain.handle('openchatcut:reveal-export', trustedDesktopHandler(trustedOrigin, async (_event, filename: unknown) => {
+    const directory = await restorePersistedExportDirectory(exportStatePath) ?? app.getPath('downloads');
+    const candidate = exportRevealCandidate(directory, filename);
+    if (candidate && existsSync(candidate)) {
+      shell.showItemInFolder(candidate);
+      return;
+    }
+    const error = await shell.openPath(directory);
+    if (error) throw new Error(error);
   }));
 }
 

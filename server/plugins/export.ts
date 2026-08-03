@@ -336,6 +336,10 @@ export function exportPlugin(): Plugin {
         let tmpOut: string | null = null;
         let bakeOut: string | null = null;
         let cleanupRenderMedia: (() => Promise<void>) | undefined;
+        const controller = new AbortController();
+        const cancel = () => controller.abort();
+        req.once('aborted', cancel);
+        res.once('close', cancel);
         try {
           const body = (await readJsonBody(req)) as { state?: unknown; codec?: string; transparent?: boolean; mode?: string; filename?: string } | null;
           const state = body?.state;
@@ -360,6 +364,7 @@ export function exportPlugin(): Plugin {
               codec,
               transparent,
               ...await h264RenderOptions(codec),
+              signal: controller.signal,
             }));
             bakeOut = null;
             res.statusCode = 200;
@@ -373,6 +378,7 @@ export function exportPlugin(): Plugin {
               codec,
               transparent,
               ...await h264RenderOptions(codec),
+              signal: controller.signal,
             }));
             const buf = await readFile(tmpOut);
             const safe = sanitizeFileName(body?.filename ?? 'clip', 'clip');
@@ -383,6 +389,7 @@ export function exportPlugin(): Plugin {
             res.end(buf);
           }
         } catch (err) {
+          if (controller.signal.aborted) return;
           const message = err instanceof Error ? err.message : String(err);
           server.config.logger.error(`[render-clip] ${message}`);
           const failure = exportFailureFrom(err);
@@ -394,6 +401,8 @@ export function exportPlugin(): Plugin {
           if (tmpOut) await unlink(tmpOut).catch(() => {});
           if (bakeOut) await unlink(bakeOut).catch(() => {});
           await cleanupRenderMedia?.();
+          req.removeListener('aborted', cancel);
+          res.removeListener('close', cancel);
         }
       });
 
