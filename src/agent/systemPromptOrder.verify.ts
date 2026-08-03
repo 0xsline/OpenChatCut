@@ -5,7 +5,17 @@
 // Can run up to MAX_TOOL_TURNS rounds. So the invariant observed here is: **The variable section is always the last section**,
 // As long as the stable section does not change between calls, the public prefix must be covered all the way to the beginning of the volatile section.
 import assert from 'node:assert/strict';
-import { PRODUCT_IDENTITY_PROMPT, agentLanguagePrompt, assembleSystemPrompt, designStylePrompt, editorStatePrompt, SYSTEM_PROMPT } from './systemPrompt';
+import {
+  PRODUCT_IDENTITY_PROMPT,
+  SYSTEM_PROMPT,
+  agentLanguagePrompt,
+  assembleSystemPrompt,
+  buildAgentSystemPrompt,
+  designStylePrompt,
+  editorStatePrompt,
+} from './systemPrompt';
+import { buildCodexSystemPrompt } from './codex/runtime';
+import { DEFAULT_AGENT_SETTINGS } from './settings/agentSettings';
 import type { AgentContext } from './context';
 import type { ProjectDoc, TimelineItem, TimelineState } from '../editor/types';
 
@@ -74,8 +84,25 @@ const commonPrefixLength = (a: string, b: string): number => {
       version: 3, assets: [], mediaFolders: [], activeTimelineId: 'tl1',
       timelines: [{ ...state, id: 'tl1', name: 'main', order: 0 }],
     } as unknown as ProjectDoc;
-    return { getState: () => state, getDoc: () => doc } as unknown as AgentContext;
+    return {
+      getState: () => state,
+      getDoc: () => doc,
+      getCreativeMode: () => null,
+    } as unknown as AgentContext;
   };
+
+  const promptContext = ctxOf([item('a', 0)]);
+  const apiPrompt = buildAgentSystemPrompt(promptContext, DEFAULT_AGENT_SETTINGS);
+  const codexPrompt = buildCodexSystemPrompt(promptContext);
+  assert.ok(
+    apiPrompt.includes(PRODUCT_IDENTITY_PROMPT),
+    'the central API prompt builder must include the product identity section',
+  );
+  assert.equal(
+    codexPrompt,
+    apiPrompt,
+    'Codex and API backends must share the central prompt builder',
+  );
 
   const stable = ['SYSTEM', 'CAPS', 'SKILLS'];
   const before = assembleSystemPrompt(stable, editorStatePrompt(ctxOf([item('a', 0)])));

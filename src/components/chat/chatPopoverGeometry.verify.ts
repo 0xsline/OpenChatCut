@@ -8,12 +8,12 @@ const placement = placeChatPopover({
   anchor: { left: 322, top: 900, right: 350, bottom: 928 },
   boundary: workspace,
   viewport,
-  requestedWidth: 300,
+  requestedWidth: 400,
 });
 
 assert.deepEqual(
   placement,
-  { left: 112, bottom: 108, width: 300, maxHeight: 280 },
+  { left: 12, bottom: 108, width: 400, maxHeight: 280 },
   'popover should open above its trigger while staying inside the Agent workspace',
 );
 

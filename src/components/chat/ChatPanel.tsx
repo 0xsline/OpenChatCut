@@ -30,8 +30,18 @@ import { selectChatMessageContents, shouldHandleChatTextSelection } from './chat
 import { BrandMark, Icon, OpenChatCutWordmark } from '../icons';
 import { editorDragReferences } from './editorDragReference';
 import {
+  attachChatAttachmentPlaceholder,
+  beginChatAttachmentImport,
+  cancelChatAttachmentImportByReference,
+  createChatAttachmentLifecycleState,
+  failChatAttachmentImport,
+  pendingChatAttachmentCount,
   removeChatAttachmentReference,
+  replaceChatAttachmentPromptToken,
+  resetChatAttachmentLifecycle,
+  resolveChatAttachmentImport,
   upsertChatAttachmentReference,
+  type ChatAttachmentLifecycleState,
 } from './chatAttachmentLifecycle';
 import {
   clearComposerDraft,
@@ -79,9 +89,10 @@ interface ChatPanelProps {
   /** Import a pasted/attached file into the media pool (same pipeline as my asset upload). */
   onImportMedia: (
     file: File,
+    onProgress?: (ratio: number) => void,
     lifecycle?: {
       onPlaceholder?: (asset: MediaAsset) => void;
-      onReady?: (asset: MediaAsset) => void;
+      onAssetUpdated?: (asset: MediaAsset) => void;
       onFailure?: (asset: MediaAsset | null, error: unknown) => void;
     },
   ) => Promise<MediaAsset>;
@@ -130,6 +141,26 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   const [autoApply, setAutoApply] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
   const [selectedRefs, setSelectedRefs] = useState<RefItem[]>([]);
+  const selectedRefsRef = useRef<RefItem[]>([]);
+  const [attachmentLifecycle, setAttachmentLifecycle] = useState<ChatAttachmentLifecycleState>(
+    createChatAttachmentLifecycleState,
+  );
+  const attachmentLifecycleRef = useRef(attachmentLifecycle);
+  const commitSelectedRefs = useCallback((references: RefItem[]) => {
+    selectedRefsRef.current = references;
+    setSelectedRefs(references);
+  }, []);
+  const commitAttachmentLifecycle = useCallback((next: ChatAttachmentLifecycleState) => {
+    if (attachmentLifecycleRef.current === next) return;
+    attachmentLifecycleRef.current = next;
+    setAttachmentLifecycle(next);
+  }, []);
+  const invalidateChatAttachmentDraft = useCallback(() => {
+    commitAttachmentLifecycle(resetChatAttachmentLifecycle(attachmentLifecycleRef.current));
+  }, [commitAttachmentLifecycle]);
+  const pendingAttachmentCount = pendingChatAttachmentCount(attachmentLifecycle);
+  const [selecting, setSelecting] = useState(false);
+  const [pasteError, setPasteError] = useState<string | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = useState(MESSAGE_WINDOW_SIZE);
   const [changeLogSlot, setChangeLogSlot] = useState<HTMLElement | null>(null);
   useEffect(() => {
@@ -137,12 +168,14 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   }, []);
   // Restore composer draft / mode when switching projects (session continuity).
   useEffect(() => {
+    invalidateChatAttachmentDraft();
     setInput(loadComposerDraft(projectId));
     setMode(loadChatMode(projectId));
     setAutoApply(loadChatAutoApply(projectId));
-    setSelectedRefs([]);
+    commitSelectedRefs([]);
+    setPasteError(null);
     setVisibleMessageCount(MESSAGE_WINDOW_SIZE);
-  }, [projectId]);
+  }, [commitSelectedRefs, invalidateChatAttachmentDraft, projectId]);
   // Debounced draft persist — empty clears the key.
   useEffect(() => {
     const id = window.setTimeout(() => saveComposerDraft(projectId, input), 350);
@@ -151,9 +184,6 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   useEffect(() => { saveChatMode(projectId, mode); }, [mode, projectId]);
   useEffect(() => { saveChatAutoApply(projectId, autoApply); }, [autoApply, projectId]);
   // Select mode: panels pick clips/regions/words as refs
-  const [selecting, setSelecting] = useState(false);
-  const [pasting, setPasting] = useState(0);
-  const [pasteError, setPasteError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [chatScrollTarget, setChatScrollTarget] = useState<ChatScrollTarget | null>(null);
@@ -236,11 +266,12 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
 
   // library "generated with AI" seeds the composer (attaches the template as a chat ref)
   useEffect(() => {
-    if (seed && !collapsed) {
-      setInput(seed.text);
-      setSelectedRefs(seed.references ?? []);
-      taRef.current?.focus();
-    }
+    if (!seed) return;
+    invalidateChatAttachmentDraft();
+    setPasteError(null);
+    setInput(seed.text);
+    commitSelectedRefs(seed.references ?? []);
+    if (!collapsed) taRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed?.nonce]);
 
@@ -258,15 +289,28 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
 
   const submit = () => {
     const modelReady = isAgentModelReady(getAgentModelSnapshot());
-    if (!input.trim() || running || !modelReady) return;
-    send(input, { askOnly: mode === 'ask', references: selectedRefs });
+    if (
+      !input.trim()
+      || running
+      || !modelReady
+      || pendingChatAttachmentCount(attachmentLifecycleRef.current) > 0
+    ) return;
+    const referencesForMessage = selectedRefsRef.current;
+    invalidateChatAttachmentDraft();
+    send(input, { askOnly: mode === 'ask', references: referencesForMessage });
     setInput('');
-    setSelectedRefs([]);
+    commitSelectedRefs([]);
     clearComposerDraft(projectId);
   };
   const runEnhance = async () => {
     const modelReady = isAgentModelReady(getAgentModelSnapshot());
-    if (!input.trim() || enhancing || running || !modelReady) return;
+    if (
+      !input.trim()
+      || enhancing
+      || running
+      || !modelReady
+      || pendingChatAttachmentCount(attachmentLifecycleRef.current) > 0
+    ) return;
     setEnhancing(true);
     try { const improved = await enhance(input); setInput(improved); taRef.current?.focus(); }
     finally { setEnhancing(false); }
@@ -274,19 +318,20 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   // Mention chips mirror into the text as their prompt token:
   // pool assets stay `@name`; selection picks use `@t[…]`/`@r[…]`/`@q[…]`/`@[…]`.
   const insertRef = (reference: RefItem) => {
-    setSelectedRefs((current) => upsertChatAttachmentReference(current, reference));
+    commitSelectedRefs(upsertChatAttachmentReference(selectedRefsRef.current, reference));
     const token = refPromptToken(reference);
-    setInput((v) => v.includes(token) ? v : `${v}${v && !v.endsWith(' ') ? ' ' : ''}${token} `);
+    setInput((value) =>
+      value.includes(token) ? value : `${value}${value && !value.endsWith(' ') ? ' ' : ''}${token} `);
   };
   const removeRef = (id: string) => {
-    setSelectedRefs((current) => {
-      const gone = current.find((r) => r.id === id);
-      if (gone) {
-        const escaped = refPromptToken(gone).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        setInput((v) => v.replace(new RegExp(`${escaped}\\s?`, 'g'), '').trimStart());
-      }
-      return removeChatAttachmentReference(current, id);
-    });
+    const gone = selectedRefsRef.current.find((reference) => reference.id === id);
+    if (!gone) return;
+    commitAttachmentLifecycle(
+      cancelChatAttachmentImportByReference(attachmentLifecycleRef.current, id),
+    );
+    commitSelectedRefs(removeChatAttachmentReference(selectedRefsRef.current, id));
+    const escaped = refPromptToken(gone).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    setInput((value) => value.replace(new RegExp(`${escaped}\\s?`, 'g'), '').trimStart());
   };
   // Keep the cross-panel pick mode in sync with the toggle; force it off when
   // the panel collapses/unmounts so no orphaned crosshair lingers (selection
@@ -304,35 +349,74 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   // media pool (same pipeline as my asset upload — probe + upload + auto-ASR) and
   // attach it as an @ reference so the agent can place it (chat_context_entry).
   const importPastedFiles = async (files: File[]) => {
-    const supported = files.filter((f) => kindOf(f) !== null);
-    setPasteError(supported.length < files.length ? t('已忽略不支持的文件（仅支持 视频 / 图片 / 音频 / GIF / SVG）') : null);
+    const supported = files.filter((file) => kindOf(file) !== null);
+    setPasteError(supported.length < files.length
+      ? t('已忽略不支持的文件（仅支持 视频 / 图片 / 音频 / GIF / SVG）')
+      : null);
     await Promise.all(supported.map(async (file) => {
-      let placeholderId: string | null = null;
-      setPasting((n) => n + 1);
-      try {
-        await onImportMedia(file, {
-          onPlaceholder: (asset) => {
-            placeholderId = asset.id;
-            insertRef({ id: asset.id, name: asset.name, kind: asset.kind });
-          },
-          onReady: (asset) => {
-            setSelectedRefs((current) => upsertChatAttachmentReference(current, {
-              id: asset.id,
-              name: asset.name,
-              kind: asset.kind,
-            }));
-          },
-          onFailure: (asset, reason) => {
-            const id = asset?.id ?? placeholderId;
-            if (id) removeRef(id);
-            setPasteError(reason instanceof Error ? reason.message : t('导入失败'));
-          },
-        });
-      } catch (reason) {
-        if (placeholderId) removeRef(placeholderId);
+      const started = beginChatAttachmentImport(attachmentLifecycleRef.current);
+      commitAttachmentLifecycle(started.state);
+
+      const handlePlaceholder = (asset: MediaAsset) => {
+        const reference = { id: asset.id, name: asset.name, kind: asset.kind };
+        const transition = attachChatAttachmentPlaceholder(
+          attachmentLifecycleRef.current,
+          selectedRefsRef.current,
+          started.token,
+          reference,
+        );
+        commitAttachmentLifecycle(transition.state);
+        if (!transition.accepted) return;
+        commitSelectedRefs(transition.references);
+        const promptToken = refPromptToken(reference);
+        setInput((value) => value.includes(promptToken)
+          ? value
+          : `${value}${value && !value.endsWith(' ') ? ' ' : ''}${promptToken} `);
+      };
+
+      const handleReady = (asset: MediaAsset) => {
+        const reference = { id: asset.id, name: asset.name, kind: asset.kind };
+        const transition = resolveChatAttachmentImport(
+          attachmentLifecycleRef.current,
+          selectedRefsRef.current,
+          started.token,
+          reference,
+        );
+        commitAttachmentLifecycle(transition.state);
+        if (!transition.accepted) return;
+        commitSelectedRefs(transition.references);
+        if (transition.previousReference) {
+          setInput((value) =>
+            replaceChatAttachmentPromptToken(value, transition.previousReference!, reference));
+        }
+      };
+
+      const handleFailure = (reason: unknown) => {
+        const transition = failChatAttachmentImport(
+          attachmentLifecycleRef.current,
+          selectedRefsRef.current,
+          started.token,
+        );
+        commitAttachmentLifecycle(transition.state);
+        if (!transition.accepted) return;
+        commitSelectedRefs(transition.references);
+        if (transition.previousReference) {
+          const escaped = refPromptToken(transition.previousReference)
+            .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          setInput((value) => value.replace(new RegExp(`${escaped}\\s?`, 'g'), '').trimStart());
+        }
         setPasteError(reason instanceof Error ? reason.message : t('导入失败'));
-      } finally {
-        setPasting((n) => n - 1);
+      };
+
+      try {
+        const ready = await onImportMedia(file, undefined, {
+          onPlaceholder: handlePlaceholder,
+          onAssetUpdated: handleReady,
+          onFailure: (_asset, reason) => handleFailure(reason),
+        });
+        handleReady(ready);
+      } catch (reason) {
+        handleFailure(reason);
       }
     }));
   };
@@ -531,7 +615,16 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
         <ChatComposer
           value={input} onChange={(value) => {
             setInput(value);
-            setSelectedRefs((current) => current.filter((reference) => value.includes(refPromptToken(reference))));
+            const current = selectedRefsRef.current;
+            const next = current.filter((reference) => value.includes(refPromptToken(reference)));
+            let nextLifecycle = attachmentLifecycleRef.current;
+            current.forEach((reference) => {
+              if (!next.some((candidate) => candidate.id === reference.id)) {
+                nextLifecycle = cancelChatAttachmentImportByReference(nextLifecycle, reference.id);
+              }
+            });
+            commitAttachmentLifecycle(nextLifecycle);
+            commitSelectedRefs(next);
           }} onSubmit={submit} onStop={stop}
           onEnhance={runEnhance} enhancing={enhancing} running={running}
           mode={mode} onModeChange={setMode}
@@ -541,7 +634,8 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
           creativeMode={creativeMode} onCreativeModeChange={onCreativeModeChange}
           references={references} onInsertRef={insertRef}
           selectedRefs={selectedRefs} onRemoveRef={removeRef}
-          onPasteFiles={importPastedFiles} onDropFiles={importPastedFiles} pasting={pasting > 0}
+          onPasteFiles={importPastedFiles} onDropFiles={importPastedFiles}
+          pasting={pendingAttachmentCount > 0} pendingAttachmentCount={pendingAttachmentCount}
           pasteError={pasteError} onDismissPasteError={() => setPasteError(null)}
           onDropEditorItem={(payload) => {
             editorDragReferences(payload, ctx.getDoc().assets ?? []).forEach(insertRef);

@@ -135,6 +135,7 @@ export default {
   '发送时以 chat_context_entry 结构化注入': 'Injected as structured chat_context_entry on send',
   '移除引用': 'Remove reference',
   '导入素材中…': 'Importing media…',
+  '请等待附件导入完成。': 'Wait for attachment imports to finish.',
   '关闭': 'Close',
 
   // ── Creation skill summary (the skill name is in the catalog and comes with its own English name, not in the dictionary) ──

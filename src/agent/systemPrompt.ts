@@ -325,5 +325,6 @@ export function buildAgentSystemPrompt(
     agentSettingsPrompt(settings),
     designStylePrompt(ctx.getDoc().designStyle),
     creativeModePrompt(findSkill(ctx.getCreativeMode())),
+    PRODUCT_IDENTITY_PROMPT,
   ], editorStatePrompt(ctx));
 }

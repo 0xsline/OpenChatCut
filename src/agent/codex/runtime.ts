@@ -8,24 +8,11 @@ import type { AgentEvent, LLMMessage, RuntimeGuardRequest } from '../runtime';
 import type { AgentToolSchema } from '../tool-schema';
 import type { GuardDecision } from '../skills/skillGuard';
 import type { AgentSettings } from '../settings/agentSettings';
-import { getLocale } from '../../i18n/locale';
-import { capabilitiesPrompt } from '../capabilities';
 import { normalizeLlmMessages } from '../messages';
 import { estimateTextTokens, serializeMessagesForPrompt } from '../context-compaction';
-import { findSkill } from '../skills/skills-catalog';
-import { PLUGIN_SKILLS_INDEX } from '../skills/plugin-skills';
-import { agentSettingsPrompt, loadAgentSettings } from '../settings/agentSettings';
 import { executeTool as executeEditorTool } from '../tools';
 import { describeTimelineDelta, snapshotTimeline } from '../timelineDelta';
-import {
-  PRODUCT_IDENTITY_PROMPT,
-  SYSTEM_PROMPT,
-  agentLanguagePrompt,
-  assembleSystemPrompt,
-  creativeModePrompt,
-  designStylePrompt,
-  editorStatePrompt,
-} from '../systemPrompt';
+import { buildAgentSystemPrompt } from '../systemPrompt';
 import { runCodexTurn, submitCodexToolResult } from './client';
 
 const MAX_TOOL_TURNS = 30;
@@ -94,18 +81,8 @@ class CodexFollowupPause extends Error {
 }
 
 
-function buildSystemPrompt(ctx: AgentContext): string {
-  const settings = loadAgentSettings();
-  return assembleSystemPrompt([
-    SYSTEM_PROMPT,
-    agentLanguagePrompt(getLocale()),
-    capabilitiesPrompt(),
-    PLUGIN_SKILLS_INDEX,
-    agentSettingsPrompt(settings),
-    designStylePrompt(ctx.getDoc().designStyle),
-    creativeModePrompt(findSkill(ctx.getCreativeMode())),
-    PRODUCT_IDENTITY_PROMPT,
-  ], editorStatePrompt(ctx));
+export function buildCodexSystemPrompt(ctx: AgentContext): string {
+  return buildAgentSystemPrompt(ctx);
 }
 
 function toolInput(args: unknown): string {
@@ -334,7 +311,7 @@ export async function runCodexAgent(
   try {
     await runCodexTurn({
       requestId,
-      system: opts.system ?? buildSystemPrompt(ctx),
+      system: opts.system ?? buildCodexSystemPrompt(ctx),
       prompt: serializeMessagesForPrompt(conv),
       projectId,
       tools: opts.askOnly ? [] : opts.tools,

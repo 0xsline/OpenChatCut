@@ -91,14 +91,46 @@ const vite = await createServer({
 });
 
 let pickerMarkup = '';
+let pendingComposerMarkup = '';
 try {
   const { WorkflowPickerContent } = await vite.ssrLoadModule('/src/components/chat/WorkflowPickerContent.tsx');
+  const {
+    ChatComposer,
+    WORKFLOW_POPOVER_WIDTH,
+    hasPendingComposerAttachment,
+    shouldSubmitComposerOnKeyDown,
+  } = await vite.ssrLoadModule('/src/components/chat/ChatComposer.tsx');
   pickerMarkup = renderToStaticMarkup(createElement(WorkflowPickerContent, {
     creativeMode: selectedId,
     onCreativeModeChange: () => undefined,
     onPromptChange: () => undefined,
     onRequestFocus: () => undefined,
     onClose: () => undefined,
+  }));
+  assert.equal(WORKFLOW_POPOVER_WIDTH, 400, 'workflow picker should request the wide composer popover geometry');
+  assert.equal(hasPendingComposerAttachment(false, 1), true, 'one pending attachment must close the submit gate');
+  assert.equal(shouldSubmitComposerOnKeyDown('Enter', false, false), false, 'Enter must not submit while the gate is closed');
+  pendingComposerMarkup = renderToStaticMarkup(createElement(ChatComposer, {
+    value: '请处理这个附件',
+    onChange: () => undefined,
+    onSubmit: () => undefined,
+    onStop: () => undefined,
+    onEnhance: () => undefined,
+    enhancing: false,
+    running: false,
+    mode: 'agent',
+    onModeChange: () => undefined,
+    autoApply: false,
+    contextUsage: null,
+    onAutoApplyChange: () => undefined,
+    selecting: false,
+    onToggleSelecting: () => undefined,
+    creativeMode: null,
+    onCreativeModeChange: () => undefined,
+    references: [],
+    onInsertRef: () => undefined,
+    pendingAttachmentCount: 1,
+    taRef: { current: null },
   }));
 } finally {
   await vite.close();
@@ -113,5 +145,10 @@ assert.equal(
 assert.equal((pickerMarkup.match(/aria-pressed="true"/g) ?? []).length, 1, 'exactly one workflow should expose selected state');
 assert.match(pickerMarkup, /长视频转短视频/);
 assert.match(pickerMarkup, /视频封面生成/);
+assert.match(pendingComposerMarkup, /请等待附件导入完成。/, 'pending attachment reason should be visible');
+assert.match(pendingComposerMarkup, /aria-describedby="cc-chat-composer-import-status"/, 'textarea should describe its pending gate');
+const pendingSubmitButton = pendingComposerMarkup.match(/<button[^>]*class="cc-chat-send-btn"[^>]*>/)?.[0];
+assert.ok(pendingSubmitButton, 'pending composer should render the submit button');
+assert.match(pendingSubmitButton, /\bdisabled(?:=""|(?=[\s>]))/, 'pending attachments should disable the submit button');
 
 console.log('workflow-starters.verify: workflow prompts, activation, and picker layout passed');

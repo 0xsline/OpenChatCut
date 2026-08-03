@@ -96,11 +96,6 @@ interface AutoGradeSession {
   failedCount: number;
 }
 
-interface PoolImportLifecycle {
-  onPlaceholder?: (asset: MediaAsset) => void;
-  onReady?: (asset: MediaAsset) => void;
-  onFailure?: (asset: MediaAsset | null, error: unknown) => void;
-}
 
 function isAutoGradeTarget(item: TimelineItem, state: TimelineState): boolean {
   if (item.kind !== 'video' && item.kind !== 'image' && item.kind !== 'gif') return false;

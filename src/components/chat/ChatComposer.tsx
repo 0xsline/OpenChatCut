@@ -16,6 +16,7 @@ import {
 } from './ComposerToolbar';
 import { ComposerPopover } from './ComposerPopover';
 import { ComposerModelPicker, useComposerModelView } from './ComposerModelPicker';
+import { WorkflowPickerContent } from './WorkflowPickerContent';
 import { hasEditorDrag, parseEditorDrag, type EditorDragPayload } from '../../editor/editorDrag';
 import { droppedFiles, hasExternalFiles } from '../../media/externalFileDrop';
 
@@ -23,6 +24,7 @@ import { droppedFiles, hasExternalFiles } from '../../media/externalFileDrop';
 const COMPOSER_H_MIN = 88;
 const COMPOSER_H_MAX = 420;
 const COMPOSER_H_DEFAULT = 112;
+export const WORKFLOW_POPOVER_WIDTH = 400;
 
 export type ChatMode = 'agent' | 'ask';
 
@@ -60,6 +62,8 @@ interface ChatComposerProps {
   onDropFiles?: (files: File[]) => void;
   /** true while a pasted file is importing into the pool */
   pasting?: boolean;
+  /** Number of attachment placeholders that have not resolved to ready pool assets. */
+  pendingAttachmentCount?: number;
   /** last paste import error, or null */
   pasteError?: string | null;
   onDismissPasteError?: () => void;
@@ -88,6 +92,21 @@ function referenceChipText(reference: RefItem): string {
   return `@${displayName}`;
 }
 
+export function hasPendingComposerAttachment(
+  pasting: boolean | undefined,
+  pendingAttachmentCount: number,
+): boolean {
+  return pasting === true || pendingAttachmentCount > 0;
+}
+
+export function shouldSubmitComposerOnKeyDown(
+  key: string,
+  shiftKey: boolean,
+  canSend: boolean,
+): boolean {
+  return key === 'Enter' && !shiftKey && canSend;
+}
+
 export function ChatComposer(props: ChatComposerProps) {
   const t = useT();
   // The skill catalog comes with its own official English name, which can be used directly in English without duplication in the dictionary; the summary is only in Chinese, so use t().
@@ -97,7 +116,8 @@ export function ChatComposer(props: ChatComposerProps) {
     value, onChange, onSubmit, onStop, onEnhance, enhancing, running, mode, onModeChange,
     autoApply, onAutoApplyChange, contextUsage, selecting, onToggleSelecting,
     creativeMode, onCreativeModeChange, references, onInsertRef,
-    selectedRefs = [], onRemoveRef, onPasteFiles, onDropFiles, pasting, pasteError, onDismissPasteError,
+    selectedRefs = [], onRemoveRef, onPasteFiles, onDropFiles, pasting, pendingAttachmentCount = 0,
+    pasteError, onDismissPasteError,
     onDropEditorItem,
     taRef, placeholder,
   } = props;
@@ -112,7 +132,6 @@ export function ChatComposer(props: ChatComposerProps) {
   const activeSkill = findSkill(creativeMode);
   const modelView = useComposerModelView(contextUsage);
   const { activeModel, contextLabel, contextTitle, modelReady, modelState } = modelView;
-  const builtinIds = new Set(CREATIVE_SKILLS.map((s) => s.id));
   const [pop, setPop] = useState<ComposerPopoverName>(null);
   const [popAnchor, setPopAnchor] = useState<HTMLElement | null>(null);
   const [agentSettings, setAgentSettings] = useState<AgentSettings>(() => loadAgentSettings());
@@ -132,13 +151,17 @@ export function ChatComposer(props: ChatComposerProps) {
       return p;
     });
   };
-  const canSend = !!value.trim() && !running && modelReady;
-  const canEnhance = !!value.trim() && !enhancing && !running && modelReady;
-  const sendTitle = modelReady
-    ? t('发送 (Enter)')
-    : modelState.loaded
-      ? t('请先在设置中配置一个模型厂商。')
-      : t('正在读取模型配置…');
+  const attachmentsPending = hasPendingComposerAttachment(pasting, pendingAttachmentCount);
+  const canSend = !!value.trim() && !running && !attachmentsPending && modelReady;
+  const canEnhance = !!value.trim() && !enhancing && !running && !attachmentsPending && modelReady;
+  const pendingReason = t('请等待附件导入完成。');
+  const sendTitle = attachmentsPending
+    ? pendingReason
+    : modelReady
+      ? t('发送 (Enter)')
+      : modelState.loaded
+        ? t('请先在设置中配置一个模型厂商。')
+        : t('正在读取模型配置…');
   const refList = (kind: 'asset' | 'template') =>
     references.filter((r) => (kind === 'template' ? r.kind === 'template' : r.kind !== 'template'));
 
@@ -290,11 +313,16 @@ export function ChatComposer(props: ChatComposerProps) {
           ))}
         </div>
       )}
-      {(pasting || pasteError) && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, fontSize: 11.5 }}>
-          {pasting && (
+      {(attachmentsPending || pasteError) && (
+        <div
+          id="cc-chat-composer-import-status"
+          role="status"
+          aria-live="polite"
+          style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, fontSize: 11.5 }}
+        >
+          {attachmentsPending && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: theme.accent }}>
-              <Icon name="sparkles" size={12} /> {t('导入素材中…')}
+              <Icon name="sparkles" size={12} /> {pendingReason}
             </span>
           )}
           {pasteError && (
@@ -315,12 +343,16 @@ export function ChatComposer(props: ChatComposerProps) {
         data-cc-chat-composer
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(); } }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.shiftKey) event.preventDefault();
+          if (shouldSubmitComposerOnKeyDown(event.key, event.shiftKey, canSend)) onSubmit();
+        }}
         onPaste={(e) => {
           const files = Array.from(e.clipboardData?.files ?? []);
           if (files.length > 0 && onPasteFiles) { e.preventDefault(); onPasteFiles(files); }
         }}
         placeholder={placeholder ?? t('告诉 AI 要做哪些修改 - @ 引用素材')}
+        aria-describedby={attachmentsPending ? 'cc-chat-composer-import-status' : undefined}
         rows={1}
         style={{
           flex: 1, width: '100%', minHeight: 28, minWidth: 0, resize: 'none',
@@ -387,39 +419,20 @@ export function ChatComposer(props: ChatComposerProps) {
         </ComposerPopover>
       )}
       {pop === 'skill' && (
-        <ComposerPopover width={300} anchor={popAnchor} onClose={closePop}>
-          <div className="cc-creative-picker-head">
-            <span><Icon name="wand" size={15} /></span>
-            <div>
-              <strong>{t('选择创作工作流')}</strong>
-              <small>{t('工作流会约束 Agent 的规划与工具调用。')}</small>
-            </div>
-          </div>
-          <button onClick={() => { onCreativeModeChange(null); closePop(); }}
-            className="cc-creative-mode-row" data-active={!creativeMode} aria-pressed={!creativeMode}>
-            <span className="cc-creative-mode-icon"><Icon name="sparkles" size={15} /></span>
-            <span className="cc-creative-mode-copy">
-              <strong>{t('自由创作')}</strong>
-              <small>{t('不限定工作流，根据当前目标灵活执行。')}</small>
-            </span>
-            {!creativeMode && <span className="cc-creative-mode-check"><Icon name="check" size={13} strokeWidth={2.4} /></span>}
-          </button>
-          <div className="cc-creative-picker-section">{t('专业工作流')}</div>
-          {allCreativeSkills().map((s) => (
-            <button key={s.id} onClick={() => { onCreativeModeChange(s.id); closePop(); }}
-              className="cc-creative-mode-row" data-active={creativeMode === s.id}
-              aria-pressed={creativeMode === s.id} title={t(s.summary)}>
-              <span className="cc-creative-mode-icon"><Icon name="wand" size={15} /></span>
-              <span className="cc-creative-mode-copy">
-                <span className="cc-creative-mode-title">
-                  <strong>{skillName(s)}</strong>
-                  {!builtinIds.has(s.id) && <em>{t('自定义')}</em>}
-                </span>
-                <small>{t(s.summary)}</small>
-              </span>
-              {creativeMode === s.id && <span className="cc-creative-mode-check"><Icon name="check" size={13} strokeWidth={2.4} /></span>}
-            </button>
-          ))}
+        <ComposerPopover
+          width={WORKFLOW_POPOVER_WIDTH}
+          className="cc-chat-popover--workflow"
+          ariaLabel={t('选择创作工作流')}
+          anchor={popAnchor}
+          onClose={closePop}
+        >
+          <WorkflowPickerContent
+            creativeMode={creativeMode}
+            onCreativeModeChange={onCreativeModeChange}
+            onPromptChange={onChange}
+            onRequestFocus={() => taRef.current?.focus()}
+            onClose={closePop}
+          />
         </ComposerPopover>
       )}
       {pop === 'templates' && (
