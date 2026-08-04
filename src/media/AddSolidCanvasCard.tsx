@@ -14,8 +14,10 @@ export function AddSolidCanvasCard({ label, onAdd }: AddSolidCanvasCardProps) {
       title={label}
       onClick={onAdd}
     >
-      <Icon name="image" size={21} />
-      <span>{label}</span>
+      <span className="cc-media-entry-thumb cc-add-solid-canvas-thumb">
+        <Icon name="image" size={20} strokeWidth={1.4} />
+      </span>
+      <span className="cc-media-entry-name">{label}</span>
     </button>
   );
 }

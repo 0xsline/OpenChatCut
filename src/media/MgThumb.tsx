@@ -39,9 +39,9 @@ export function MgThumb({ asset, fps, active, posterSrc }: MgThumbProps) {
   if (!active) {
     return posterSrc
       ? <img src={posterSrc} alt={asset.name} draggable={false} />
-      : <Icon name="sparkles" size={42} strokeWidth={2.2} />;
+      : <Icon name="sparkles" size={30} strokeWidth={0.9} />;
   }
-  if (!compiled) return <Icon name="sparkles" size={42} strokeWidth={2.2} />;
+  if (!compiled) return <Icon name="sparkles" size={30} strokeWidth={0.9} />;
 
   const width = asset.width ?? 1920;
   const height = asset.height ?? 1080;

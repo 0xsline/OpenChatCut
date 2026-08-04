@@ -114,7 +114,7 @@ function AssetPreview({ asset, fps, active, onLoadError, onLoadSuccess }: AssetP
     );
   }
   if (asset.kind === 'motion-graphic') return <MgThumb asset={asset} fps={fps} active={active} />;
-  return <Icon name="music" size={42} strokeWidth={2.2} />;
+  return <Icon name="music" size={32} strokeWidth={1.35} />;
 }
 
 function previewable(asset: MediaAsset): boolean {
@@ -212,7 +212,7 @@ function AssetBadges(props: MediaAssetCardProps) {
   const aspectLabel = mediaRatioLabel(asset.width, asset.height);
   return (
     <>
-      {asset.kind === 'audio' && <span className="cc-asset-audio-mark"><Icon name="volume" size={14} /></span>}
+      {asset.kind === 'audio' && <span className="cc-asset-audio-mark"><Icon name="volume" size={13} strokeWidth={1.4} /></span>}
       {(asset.kind === 'gif' || asset.kind === 'svg') && <span className="cc-asset-audio-mark cc-asset-kind-mark">{asset.kind.toUpperCase()}</span>}
       {props.used && <span className="cc-asset-used-dot" title={t('正在时间线中使用')} aria-label={t('正在时间线中使用')} />}
       {aspectLabel && <span className="cc-asset-ratio">{aspectLabel}</span>}
@@ -227,7 +227,7 @@ function AssetBadges(props: MediaAssetCardProps) {
           event.stopPropagation();
           props.onSetFavorite(asset.id, !asset.favorite);
         }}
-      ><Icon name="star" size={15} filled={!!asset.favorite} /></button>
+      ><Icon name="star" size={14} strokeWidth={1.35} filled={!!asset.favorite} /></button>
       <button className="cc-asset-more" aria-label={t('管理 {name}', { name: asset.name })} onClick={(event) => {
         event.stopPropagation();
         props.onOpenMenu(asset.id, event.currentTarget);
@@ -262,8 +262,8 @@ export const MediaFolderCard = memo(function MediaFolderCard({ folder, onOpen, o
         }
       }}
     >
-      <span><Icon name="folder" size={34} /></span>
-      <strong>{folder.name}</strong>
+      <span className="cc-media-entry-thumb"><Icon name="folder" size={28} strokeWidth={1.4} /></span>
+      <strong className="cc-media-entry-name">{folder.name}</strong>
     </button>
   );
 });

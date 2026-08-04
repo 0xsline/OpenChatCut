@@ -62,9 +62,9 @@ function useMediaGridWindow(props: Pick<MediaPoolGridProps, 'entries' | 'view' |
   const grid = useFixedVirtualGrid({
     itemCount: props.entries.length,
     cardWidth: props.view === 'grid' ? 104 : 1,
-    rowHeight: props.view === 'grid' ? 96 : 28,
+    rowHeight: props.view === 'grid' ? 84 : 28,
     columnGap: props.view === 'grid' ? 12 : 0,
-    rowGap: props.view === 'grid' ? 25 : 0,
+    rowGap: props.view === 'grid' ? 12 : 0,
     overscanRows: 2,
     fixedColumnCount: props.view === 'list' ? 1 : undefined,
     pinnedIndexes,
@@ -175,7 +175,8 @@ function MediaVirtualRows(props: MediaPoolGridProps & ReturnType<typeof useMedia
           ? <AddSolidCanvasCard key="solid" label={t('添加纯色背景/画布')} onAdd={() => props.onAddSolid?.()} />
           : entry.kind === 'favorites'
             ? <button key="favorites" type="button" className="cc-folder-card cc-favorites-folder" onClick={props.onOpenFavorites}>
-                <span><Icon name="star" size={22} /></span><strong>{t('收藏夹')}</strong>
+                <span className="cc-media-entry-thumb"><Icon name="star" size={20} strokeWidth={1.4} /></span>
+                <strong className="cc-media-entry-name">{t('收藏夹')}</strong>
               </button>
             : entry.kind === 'folder'
               ? <MediaFolderCard key={`folder:${entry.folder.id}`} folder={entry.folder} onOpen={props.onOpenFolder} onFocusChange={props.setFocusedFolderId} onDropFiles={props.onDropFiles} onMoveAsset={props.onMoveAsset} />
