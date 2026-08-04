@@ -65,6 +65,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   服务端导出现在会先取得与时间线精确对齐的解码视频帧，并对 30000/1001 等分数帧率素材采用帧中点定位，再执行 WebGL 特效，避免 AI 调色及其他片段特效导致旧帧、重复帧、错位帧或黑帧。
 - Prevented off-playhead selected effects and transitions from reporting perpetual shader loading; real transient media waits now appear only after 160 ms, while durable fallback errors remain immediate.
   修复播放头之外的已选特效或转场持续误报着色器加载的问题；真实的短暂媒体等待仅在超过 160 毫秒后显示，明确的回退错误仍会立即提示。
+- Preserved each clip's WebGL effects through transitions and removed per-frame fallback switching; the effect-aware timeline composition now remains visible while exact transition sources warm up.
+  转场现在会继续应用前后片段各自的 WebGL 特效，并移除逐帧回退画面切换；精确转场源预热期间会持续显示保留特效的时间线合成画面。
 
 - Prevented API and Codex Agents from claiming an edit succeeded after a tool returned or threw an unresolved failure; failed result envelopes now stay explicit, same-tool retries can recover, and uncorrected completion text is replaced with the real failure.
   修复 API 与 Codex Agent 在工具返回或抛出未解决错误后仍声称编辑成功的问题；失败结果现在会保持明确，同一工具可通过正确重试恢复，未纠正的完成话术则会替换为真实错误。

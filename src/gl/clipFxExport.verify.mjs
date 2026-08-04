@@ -29,16 +29,16 @@ const softwareH264 = {
 
 if (!ffmpegPath) throw new Error('ffmpeg-static binary unavailable');
 
-async function decodeRgb(path) {
+async function decodeRgb(path, expectedFrameCount = frameCount) {
   const { stdout } = await run(ffmpegPath, [
     '-v', 'error',
     '-i', path,
     '-f', 'rawvideo',
     '-pix_fmt', 'rgb24',
     'pipe:1',
-  ], { encoding: 'buffer', maxBuffer: frameBytes * frameCount * 2 });
-  assert.equal(stdout.length, frameBytes * frameCount, `unexpected decoded byte count for ${path}`);
-  return Array.from({ length: frameCount }, (_, index) =>
+  ], { encoding: 'buffer', maxBuffer: frameBytes * expectedFrameCount * 2 });
+  assert.equal(stdout.length, frameBytes * expectedFrameCount, `unexpected decoded byte count for ${path}`);
+  return Array.from({ length: expectedFrameCount }, (_, index) =>
     stdout.subarray(index * frameBytes, (index + 1) * frameBytes));
 }
 
@@ -160,6 +160,108 @@ try {
     );
     console.log(`clipFxExport.verify: ${frameCount}/${frameCount} ${label} fractional-rate effect frames are transformed and frame-accurate (max inverse MSE ${maximumSameFrameDistance.toFixed(2)})`);
   }
+
+  const transitionClipFrames = 45;
+  const transitionDurationFrames = 20;
+  const transitionFrameCount = transitionClipFrames * 2;
+  const transitionStartFrame = transitionClipFrames - Math.floor(transitionDurationFrames / 2);
+  const transitionItems = [
+    {
+      id: 'transition-outgoing',
+      name: 'outgoing.mp4',
+      kind: 'video',
+      src: '/media/uploads/source.mp4',
+      track: 'V1',
+      startFrame: 0,
+      durationInFrames: transitionClipFrames,
+      srcInFrame: 0,
+      width,
+      height,
+    },
+    {
+      id: 'transition-incoming',
+      name: 'incoming.mp4',
+      kind: 'video',
+      src: '/media/uploads/source.mp4',
+      track: 'V1',
+      startFrame: transitionClipFrames,
+      durationInFrames: transitionClipFrames,
+      srcInFrame: 0,
+      width,
+      height,
+    },
+  ];
+  const transitionState = {
+    id: 'clip-fx-transition-export-verification',
+    fps,
+    width,
+    height,
+    fit: 'contain',
+    items: transitionItems,
+    tracks: { V1: { kind: 'video' } },
+    trackOrder: ['V1'],
+    transitions: [{
+      id: 'transition-regression',
+      type: 'cross-dissolve',
+      durationInFrames: transitionDurationFrames,
+      outgoingItemId: transitionItems[0].id,
+      incomingItemId: transitionItems[1].id,
+      trackId: 'V1',
+      enabled: true,
+    }],
+    selectedId: null,
+    selectedIds: [],
+    assets: [],
+  };
+  const transitionBaselinePath = join(directory, 'transition-baseline.mp4');
+  const transitionEffectPath = join(directory, 'transition-effect.mp4');
+  await renderTimeline({
+    state: transitionState,
+    outputLocation: transitionBaselinePath,
+    codec: 'h264',
+    h264Profile: softwareH264,
+  });
+  await renderTimeline({
+    state: {
+      ...transitionState,
+      items: [{
+        ...transitionItems[0],
+        effects: [{ id: 'transition-invert-regression', assetId: 'builtin:fx-invert' }],
+      }, transitionItems[1]],
+    },
+    outputLocation: transitionEffectPath,
+    codec: 'h264',
+    h264Profile: softwareH264,
+  });
+  const [transitionBaselineFrames, transitionEffectFrames] = await Promise.all([
+    decodeRgb(transitionBaselinePath, transitionFrameCount),
+    decodeRgb(transitionEffectPath, transitionFrameCount),
+  ]);
+  assert.ok(
+    meanSquaredError(
+      transitionEffectFrames[transitionStartFrame - 1],
+      transitionBaselineFrames[transitionStartFrame - 1],
+    ) > 1_000,
+    'transition fixture must visibly apply the outgoing effect before the transition window',
+  );
+  const transitionStartDistance = meanSquaredError(
+    transitionEffectFrames[transitionStartFrame],
+    transitionBaselineFrames[transitionStartFrame],
+  );
+  assert.ok(
+    transitionStartDistance > 1_000,
+    `transition start dropped the outgoing effect (MSE ${transitionStartDistance})`,
+  );
+  const transitionStartInverseDistance = meanSquaredError(
+    transitionEffectFrames[transitionStartFrame],
+    transitionBaselineFrames[transitionStartFrame],
+    true,
+  );
+  assert.ok(
+    transitionStartInverseDistance < 500,
+    `transition start diverged from the filtered outgoing frame (inverse MSE ${transitionStartInverseDistance})`,
+  );
+  console.log(`clipFxExport.verify: transition start preserves the outgoing effect (MSE ${transitionStartDistance.toFixed(2)}, inverse MSE ${transitionStartInverseDistance.toFixed(2)})`);
 } finally {
   await rm(directory, { recursive: true, force: true });
 }

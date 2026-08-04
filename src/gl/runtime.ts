@@ -46,6 +46,16 @@ export interface GlRuntime {
     progress: number,
     extra?: Record<string, UniformValue>,
   ) => void;
+  /** Apply each clip's effect graph, then transition between both retained outputs. */
+  renderTransitionWithFx: (
+    frag: string,
+    outgoing: TexImageSource,
+    incoming: TexImageSource,
+    outgoingPasses: FxPass[],
+    incomingPasses: FxPass[],
+    progress: number,
+    extra?: Record<string, UniformValue>,
+  ) => void;
   /** Run a single-input per-clip effect pass using the builtin:fx-* uniforms:
    *  u_input + u_width/u_height/u_resolution + effect uniforms) */
   renderFx: (
@@ -250,6 +260,89 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
     return unit + 1;
   };
 
+  const drawTransitionFromTextures = (
+    frag: string,
+    outgoing: WebGLTexture,
+    incoming: WebGLTexture,
+    progress: number,
+    extra?: Record<string, UniformValue>,
+  ) => {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    const prog = getProgram(frag);
+    gl.useProgram(prog);
+    bindQuad(prog);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, outgoing);
+    const locOut = gl.getUniformLocation(prog, 'u_outgoing');
+    if (locOut) gl.uniform1i(locOut, 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, incoming);
+    const locIn = gl.getUniformLocation(prog, 'u_incoming');
+    if (locIn) gl.uniform1i(locIn, 1);
+
+    // Preserve exact 0/1 endpoints so the neighboring ordinary frames cannot snap.
+    setUniform(prog, 'u_progress', Math.max(0, Math.min(1, progress)));
+    setUniform(prog, 'u_resolution', [canvas.width, canvas.height]);
+    setUniform(prog, 'u_aspect', canvas.width / Math.max(1, canvas.height));
+    for (const [key, value] of Object.entries(extra ?? {})) setUniform(prog, key, value);
+
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  };
+
+  const renderFxPassesToTexture = (
+    passes: FxPass[],
+    source: WebGLTexture,
+    offset: number,
+  ): WebGLTexture => {
+    if (passes.length === 0) return source;
+    const targets = ensureFbos(offset + passes.length);
+    for (let index = 0; index < passes.length; index++) {
+      const pass = passes[index];
+      gl.bindFramebuffer(gl.FRAMEBUFFER, targets[offset + index].fb);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      const prog = getProgram(pass.frag);
+      gl.useProgram(prog);
+      bindQuad(prog);
+
+      const inputFrom = pass.inputFrom ?? index - 1;
+      const inputTexture = index === 0 ? source : targets[offset + inputFrom]?.tex;
+      if (!inputTexture) throw new Error(`invalid FX input pass ${inputFrom} at ${index}`);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, inputTexture);
+      const locIn = gl.getUniformLocation(prog, 'u_input');
+      if (locIn) gl.uniform1i(locIn, 0);
+
+      let unit = 1;
+      for (const [name, passIndex] of Object.entries(pass.samplers ?? {})) {
+        const texture = targets[offset + passIndex]?.tex;
+        if (!texture || passIndex >= index) {
+          throw new Error(`invalid FX sampler ${name}=${passIndex} at ${index}`);
+        }
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        const location = gl.getUniformLocation(prog, name);
+        if (location) gl.uniform1i(location, unit);
+        unit += 1;
+      }
+      bindLutIfUsed(prog, unit, pass.lut3d);
+      setUniform(prog, 'u_width', canvas.width);
+      setUniform(prog, 'u_height', canvas.height);
+      setUniform(prog, 'u_canvas_width', canvas.width);
+      setUniform(prog, 'u_canvas_height', canvas.height);
+      setUniform(prog, 'u_resolution', [canvas.width, canvas.height]);
+      setUniform(prog, 'u_aspect', canvas.width / Math.max(1, canvas.height));
+      for (const [key, value] of Object.entries(pass.uniforms ?? {})) setUniform(prog, key, value);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+    return targets[offset + passes.length - 1].tex;
+  };
+
   let disposed = false;
   activeGlRuntimes += 1;
   const assertContextAvailable = () => {
@@ -260,39 +353,35 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
     canvas,
     render(frag, outgoing, incoming, progress, extra) {
       assertContextAvailable();
-      let prog = programs.get(frag);
-      if (!prog) {
-        prog = link(gl, frag);
-        programs.set(frag, prog);
-      }
-      gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.useProgram(prog);
-
-      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-      const aPos = gl.getAttribLocation(prog, 'a_position');
-      gl.enableVertexAttribArray(aPos);
-      gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
-      const aTex = gl.getAttribLocation(prog, 'a_texCoord');
-      gl.enableVertexAttribArray(aTex);
-      gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 16, 8);
-
       upload(texOut, 0, outgoing);
       upload(texIn, 1, incoming);
-      const locOut = gl.getUniformLocation(prog, 'u_outgoing');
-      if (locOut) gl.uniform1i(locOut, 0);
-      const locIn = gl.getUniformLocation(prog, 'u_incoming');
-      if (locIn) gl.uniform1i(locIn, 1);
-
-      // The shared frame builder maps Remotion's first/last Sequence frames to
-      // exact shader endpoints. Preserve 0/1 so the following ordinary frame cannot snap.
-      setUniform(prog, 'u_progress', Math.max(0, Math.min(1, progress)));
-      setUniform(prog, 'u_resolution', [canvas.width, canvas.height]);
-      setUniform(prog, 'u_aspect', canvas.width / Math.max(1, canvas.height));
-      for (const [k, v] of Object.entries(extra ?? {})) setUniform(prog, k, v);
-
-      gl.clearColor(0, 0, 0, 0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      drawTransitionFromTextures(frag, texOut, texIn, progress, extra);
+    },
+    renderTransitionWithFx(
+      frag,
+      outgoing,
+      incoming,
+      outgoingPasses,
+      incomingPasses,
+      progress,
+      extra,
+    ) {
+      assertContextAvailable();
+      upload(texOut, 0, outgoing);
+      upload(texIn, 1, incoming);
+      const filteredOutgoing = renderFxPassesToTexture(outgoingPasses, texOut, 0);
+      const filteredIncoming = renderFxPassesToTexture(
+        incomingPasses,
+        texIn,
+        outgoingPasses.length,
+      );
+      drawTransitionFromTextures(
+        frag,
+        filteredOutgoing,
+        filteredIncoming,
+        progress,
+        extra,
+      );
     },
     renderFx(frag, input, extra, lut3d) {
       assertContextAvailable();

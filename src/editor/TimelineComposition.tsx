@@ -554,7 +554,7 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
   const entranceOf = new Map<string, PreviewEdge>();
   const extendBefore = new Map<string, number>();
   const extendAfter = new Map<string, number>();
-  interface GlWindow { key: string; type: GlslTransitionType | 'custom-shader'; direction: TransitionDirection; fallbackType: CssTransitionType; fallbackLine?: boolean; from: number; L: number; outgoing: TimelineItem; incoming: TimelineItem; trimOut: number; trimIn: number; customFrag?: string; customUniforms?: Record<string, number>; previewTargetId?: string }
+  interface GlWindow { key: string; type: GlslTransitionType | 'custom-shader'; direction: TransitionDirection; from: number; L: number; outgoing: TimelineItem; incoming: TimelineItem; trimOut: number; trimIn: number; customFrag?: string; customUniforms?: Record<string, number>; previewTargetId?: string }
   const glWindows: GlWindow[] = [];
   const staticPreviewStatuses: SelectedPreviewStatus[] = [];
   const selectedEffectItem = environment.isPlayer
@@ -585,12 +585,18 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
     });
     if (adapter.adapter === 'gl-transition') {
       const from = inc!.startFrame - half; // R = incoming.from - floor(L/2)
+      const fallbackType = previewTransitionType(t.type);
+      entranceOf.set(t.incomingItemId, {
+        type: fallbackType,
+        frames: t.durationInFrames,
+        dir: t.direction ?? 'left',
+        line: t.type === 'clean-line-wipe',
+        isolated: false,
+      });
       glWindows.push({
         key: t.id,
         type: t.type as GlslTransitionType | 'custom-shader',
         direction: t.direction ?? 'left',
-        fallbackType: previewTransitionType(t.type),
-        fallbackLine: t.type === 'clean-line-wipe',
         from,
         L: t.durationInFrames,
         outgoing: out!,
@@ -667,7 +673,6 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
             type={w.type} direction={w.direction} L={w.L} windowStart={w.from}
             outgoing={w.outgoing} incoming={w.incoming} trimOut={w.trimOut} trimIn={w.trimIn}
             width={state.width} height={state.height} fit={fit}
-            fallbackType={w.fallbackType} fallbackLine={w.fallbackLine}
             customFrag={w.customFrag} customUniforms={w.customUniforms}
             previewTargetId={w.previewTargetId} onPreviewStatus={w.previewTargetId ? onSelectedPreviewStatus : undefined}
           />
