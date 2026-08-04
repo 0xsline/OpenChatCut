@@ -110,6 +110,18 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
   );
   const presentation = glTransitionPresentation(renderedKey === renderKey);
 
+  useEffect(() => {
+    if (!onPreviewStatus || !previewTargetId) return;
+    const targetId = previewTargetId;
+    return () => {
+      onPreviewStatus({
+        kind: 'transition',
+        targetId,
+        adapter: 'gl-transition',
+        phase: 'inactive',
+      });
+    };
+  }, [onPreviewStatus, previewTargetId]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

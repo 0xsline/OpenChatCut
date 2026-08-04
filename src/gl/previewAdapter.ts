@@ -20,6 +20,16 @@ export interface SelectedPreviewStatus {
   fallbackReason?: SelectedPreviewFallbackReason;
 }
 
+export function staticPreviewFallbackStatus(input: {
+  kind: SelectedPreviewKind;
+  targetId: string;
+  adapter: SelectedPreviewAdapter;
+  fallbackReason?: SelectedPreviewFallbackReason;
+}): SelectedPreviewStatus | null {
+  if (!input.fallbackReason) return null;
+  return { ...input, phase: 'fallback' };
+}
+
 export type SelectedPreviewStatusListener = (status: SelectedPreviewStatus) => void;
 
 export interface TransitionPreviewAdapterPlan {
@@ -83,6 +93,25 @@ export function selectEffectPreviewAdapter(input: {
     fidelity: 'fallback',
     fallbackReason: input.texturable ? 'missing-shader' : 'unsupported-media',
   };
+}
+
+export function staticEffectPreviewStatus(input: {
+  targetId: string;
+  effects: readonly { assetId: string }[];
+  registeredEffects: Readonly<Record<string, unknown>>;
+  texturable: boolean;
+}): SelectedPreviewStatus | null {
+  if (input.effects.length === 0) return null;
+  const adapter = selectEffectPreviewAdapter({
+    declared: input.effects.every(({ assetId }) => Object.prototype.hasOwnProperty.call(input.registeredEffects, assetId)),
+    texturable: input.texturable,
+  });
+  return staticPreviewFallbackStatus({
+    kind: 'effect',
+    targetId: input.targetId,
+    adapter: adapter.adapter,
+    fallbackReason: adapter.fallbackReason,
+  });
 }
 
 export function glPreviewFailureReason(error: unknown): SelectedPreviewFallbackReason {

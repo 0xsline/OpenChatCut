@@ -32,6 +32,12 @@ import { SafeZoneOverlay } from './SafeZoneOverlay';
 import { PreviewTransformOverlay } from './preview/PreviewTransformOverlay';
 import { fitPreviewCanvasSize, type PreviewCanvasSize } from './preview/previewCanvasGeometry';
 
+const MEDIA_LOADING_NOTICE_DELAY_MS = 160;
+
+function previewStatusKey(status: Pick<SelectedPreviewStatus, 'kind' | 'targetId'>): string {
+  return `${status.kind}\u0000${status.targetId}`;
+}
+
 interface PreviewPanelProps {
   state: TimelineState;
   project: ProjectDoc;
@@ -100,7 +106,54 @@ export const PreviewPanel = memo(function PreviewPanel({
   });
   const failedProxies = preview.proxies.filter(({ proxy }) => proxy.status === 'failed');
   const pendingProxies = preview.proxies.filter(({ proxy }) => proxy.status === 'loading').length;
-  const shaderFallback = selectedPreviewStatuses?.find((status) => status.phase === 'fallback');
+  const shaderFallbacks = useMemo(
+    () => (selectedPreviewStatuses ?? []).filter((status) => status.phase === 'fallback'),
+    [selectedPreviewStatuses],
+  );
+  const durableShaderFallback = shaderFallbacks.find((status) => status.fallbackReason !== 'media-loading');
+  const mediaLoadingFallbacks = useMemo(
+    () => shaderFallbacks.filter((status) => status.fallbackReason === 'media-loading'),
+    [shaderFallbacks],
+  );
+  const mediaLoadingKeys = useMemo(
+    () => mediaLoadingFallbacks.map(previewStatusKey).sort(),
+    [mediaLoadingFallbacks],
+  );
+  const mediaLoadingStartedAtRef = useRef(new Map<string, number>());
+  const [visibleMediaLoading, setVisibleMediaLoading] = useState<{ key: string; startedAt: number } | null>(null);
+  useEffect(() => {
+    const startedAt = mediaLoadingStartedAtRef.current;
+    const activeKeys = new Set(mediaLoadingKeys);
+    for (const key of startedAt.keys()) {
+      if (!activeKeys.has(key)) startedAt.delete(key);
+    }
+    const now = Date.now();
+    for (const key of mediaLoadingKeys) {
+      if (!startedAt.has(key)) startedAt.set(key, now);
+    }
+    let nextKey: string | undefined;
+    let nextVisibleAt = Number.POSITIVE_INFINITY;
+    for (const key of mediaLoadingKeys) {
+      const visibleAt = startedAt.get(key)! + MEDIA_LOADING_NOTICE_DELAY_MS;
+      if (visibleAt < nextVisibleAt) {
+        nextKey = key;
+        nextVisibleAt = visibleAt;
+      }
+    }
+    if (!nextKey) return undefined;
+    const nextStartedAt = startedAt.get(nextKey)!;
+    const timeout = window.setTimeout(
+      () => setVisibleMediaLoading({ key: nextKey, startedAt: nextStartedAt }),
+      Math.max(0, nextVisibleAt - now),
+    );
+    return () => window.clearTimeout(timeout);
+  }, [mediaLoadingKeys]);
+  const visibleMediaLoadingFallback = mediaLoadingFallbacks.find((status) => {
+    const key = previewStatusKey(status);
+    if (!visibleMediaLoading || key !== visibleMediaLoading.key) return false;
+    return mediaLoadingStartedAtRef.current.get(key) === visibleMediaLoading.startedAt;
+  });
+  const visibleShaderFallback = durableShaderFallback ?? visibleMediaLoadingFallback;
   const offlineNames = [...new Set(renderProject.timelines
     .filter((timeline) => preview.plan.timelineIds.includes(timeline.id))
     .flatMap((timeline) => timeline.items)
@@ -289,16 +342,16 @@ export const PreviewPanel = memo(function PreviewPanel({
                   : t('正在准备 {n} 个预览代理…', { n: pendingProxies })}
               </div>
             )}
-            {shaderFallback && (
+            {visibleShaderFallback && (
               <div role="status" aria-live="polite" style={{
                 position: 'absolute', bottom: 8, right: 8, zIndex: 12,
                 maxWidth: 'calc(100% - 16px)', padding: '5px 8px', borderRadius: 4,
                 border: `0.5px solid ${theme.accent}`, background: themeAlpha.shadow(0.88),
                 color: theme.text, fontSize: 10,
               }}>
-                {shaderFallback.fallbackReason === 'media-loading'
-                  ? t('着色器资源未就绪；当前临时显示回退画面')
-                  : shaderFallback.adapter === 'css-transition'
+                {visibleShaderFallback.fallbackReason === 'media-loading'
+                  ? t('正在加载效果预览；暂时显示回退画面')
+                  : visibleShaderFallback.adapter === 'css-transition'
                     ? t('着色器预览已回退为 CSS 近似；当前画面不代表导出效果')
                     : t('着色器预览不可用；当前显示未处理源画面')}
               </div>

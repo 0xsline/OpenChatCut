@@ -111,6 +111,18 @@ export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewSta
     [fit, isRendering, renderKey, staging],
   );
 
+  useEffect(() => {
+    if (!onPreviewStatus) return;
+    const targetId = item.id;
+    return () => {
+      onPreviewStatus({
+        kind: 'effect',
+        targetId,
+        adapter: 'gl-effect',
+        phase: 'inactive',
+      });
+    };
+  }, [item.id, onPreviewStatus]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

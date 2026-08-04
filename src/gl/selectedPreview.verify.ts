@@ -4,6 +4,8 @@ import {
   glTransitionPresentation,
   selectEffectPreviewAdapter,
   selectTransitionPreviewAdapter,
+  staticEffectPreviewStatus,
+  staticPreviewFallbackStatus,
 } from './previewAdapter';
 import { buildEffectShaderFrame, buildTransitionShaderFrame, GL_COLOR_PIPELINE, transitionProgress } from './shaderFrame';
 import { disposeRuntimeSlot, ensureRuntimeSlot } from './runtimeSlot';
@@ -13,6 +15,12 @@ const selectedPlayer = selectTransitionPreviewAdapter({
   mode: 'player', selected: true, type: 'page-curl', texturable: true, hasShader: true,
 });
 assert.deepEqual(selectedPlayer, { adapter: 'gl-transition', fidelity: 'exact', fallbackAdapter: 'css-transition' });
+assert.equal(staticPreviewFallbackStatus({
+  kind: 'transition',
+  targetId: 'transition-exact',
+  adapter: selectedPlayer.adapter,
+  fallbackReason: selectedPlayer.fallbackReason,
+}), null, 'an exact transition has no static status');
 assert.deepEqual(selectTransitionPreviewAdapter({
   mode: 'render', selected: false, type: 'page-curl', texturable: true, hasShader: true,
 }), selectedPlayer, 'selected Player and export must select the same GL adapter');
@@ -22,17 +30,80 @@ const unselectedPlayer = selectTransitionPreviewAdapter({
 assert.deepEqual(unselectedPlayer, {
   adapter: 'css-transition', fidelity: 'approximate', fallbackAdapter: 'css-transition',
 }, 'non-selected Player transitions retain the existing CSS adapter');
-assert.deepEqual(selectTransitionPreviewAdapter({
+const unsupportedMediaPlayer = selectTransitionPreviewAdapter({
   mode: 'player', selected: true, type: 'page-curl', texturable: false, hasShader: true,
-}), { adapter: 'css-transition', fidelity: 'approximate', fallbackAdapter: 'css-transition', fallbackReason: 'unsupported-media' });
+});
+assert.deepEqual(unsupportedMediaPlayer, {
+  adapter: 'css-transition', fidelity: 'approximate', fallbackAdapter: 'css-transition', fallbackReason: 'unsupported-media',
+});
+assert.deepEqual(staticPreviewFallbackStatus({
+  kind: 'transition',
+  targetId: 'transition-unsupported-media',
+  adapter: unsupportedMediaPlayer.adapter,
+  fallbackReason: unsupportedMediaPlayer.fallbackReason,
+}), {
+  kind: 'transition',
+  targetId: 'transition-unsupported-media',
+  adapter: 'css-transition',
+  phase: 'fallback',
+  fallbackReason: 'unsupported-media',
+}, 'a declared fallback remains immediately reportable');
 assert.deepEqual(selectTransitionPreviewAdapter({
   mode: 'player', selected: true, type: 'custom-shader', texturable: true, hasShader: false,
 }), { adapter: 'css-transition', fidelity: 'approximate', fallbackAdapter: 'css-transition', fallbackReason: 'missing-shader' });
 assert.deepEqual(glTransitionPresentation(false), { showFallback: true, showGl: false }, 'waiting/failure frames show only CSS fallback');
 assert.deepEqual(glTransitionPresentation(true), { showFallback: false, showGl: true }, 'ready frames show only GL without fallback bleed');
-assert.deepEqual(selectEffectPreviewAdapter({ declared: true, texturable: true }), {
+const exactEffect = selectEffectPreviewAdapter({ declared: true, texturable: true });
+assert.deepEqual(exactEffect, {
   adapter: 'gl-effect', fidelity: 'exact',
 });
+assert.equal(staticPreviewFallbackStatus({
+  kind: 'effect',
+  targetId: 'effect-exact',
+  adapter: exactEffect.adapter,
+  fallbackReason: exactEffect.fallbackReason,
+}), null, 'an exact effect has no static status');
+
+const registeredEffects = {
+  'builtin:fx-a': {},
+  'builtin:fx-b': {},
+};
+assert.equal(staticEffectPreviewStatus({
+  targetId: 'effect-none',
+  effects: [],
+  registeredEffects,
+  texturable: false,
+}), null, 'a clip with no effects has no static effect status');
+assert.equal(staticEffectPreviewStatus({
+  targetId: 'effect-exact-stack',
+  effects: [{ assetId: 'builtin:fx-a' }, { assetId: 'builtin:fx-b' }],
+  registeredEffects,
+  texturable: true,
+}), null, 'a complete registered and texturable effect stack has no static status');
+assert.deepEqual(staticEffectPreviewStatus({
+  targetId: 'effect-missing-shader',
+  effects: [{ assetId: 'builtin:fx-a' }, { assetId: 'custom:missing' }],
+  registeredEffects,
+  texturable: true,
+}), {
+  kind: 'effect',
+  targetId: 'effect-missing-shader',
+  adapter: 'source-fallback',
+  phase: 'fallback',
+  fallbackReason: 'missing-shader',
+}, 'any unresolved effect shader produces a durable static fallback');
+assert.deepEqual(staticEffectPreviewStatus({
+  targetId: 'effect-unsupported-media',
+  effects: [{ assetId: 'custom:missing' }],
+  registeredEffects,
+  texturable: false,
+}), {
+  kind: 'effect',
+  targetId: 'effect-unsupported-media',
+  adapter: 'source-fallback',
+  phase: 'fallback',
+  fallbackReason: 'unsupported-media',
+}, 'unsupported media takes precedence over a missing shader');
 assert.equal(glPreviewFailureReason(new Error('WebGL2 not available')), 'webgl-unavailable');
 assert.equal(glPreviewFailureReason(new Error('WebGL context lost')), 'webgl-unavailable');
 assert.equal(glPreviewFailureReason(new Error('fragment shader compile failed')), 'shader-error');

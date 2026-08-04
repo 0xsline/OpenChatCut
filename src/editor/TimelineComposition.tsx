@@ -7,7 +7,7 @@ import { GlTransition } from '../gl/GlTransition';
 import { ClipFx } from '../gl/ClipFx';
 import { firstGlEffect } from '../gl/clipEffects';
 import { ALL_FX, registerCustomFx } from '../gl/fx/effects';
-import { selectEffectPreviewAdapter, selectTransitionPreviewAdapter } from '../gl/previewAdapter';
+import { selectEffectPreviewAdapter, selectTransitionPreviewAdapter, staticEffectPreviewStatus, staticPreviewFallbackStatus } from '../gl/previewAdapter';
 import type { SelectedPreviewStatus, SelectedPreviewStatusListener } from '../gl/previewAdapter';
 import { itemEditOpts, itemWindow, keptSegments } from '../transcript/edit';
 import { hasOperationalTranscript } from '../transcript/types';
@@ -560,20 +560,15 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
   const selectedEffectItem = environment.isPlayer
     ? state.items.find((item) => item.id === selectedItemId)
     : undefined;
-  const selectedEffect = selectedEffectItem ? firstGlEffect(selectedEffectItem) : null;
-  if (selectedEffectItem && selectedEffect) {
-    const adapter = selectEffectPreviewAdapter({
-      declared: true,
-      texturable: selectedEffectItem.kind === 'video' || selectedEffectItem.kind === 'image',
-    });
-    staticPreviewStatuses.push({
-      kind: 'effect',
-      targetId: selectedEffectItem.id,
-      adapter: adapter.adapter,
-      phase: 'fallback',
-      fallbackReason: adapter.fallbackReason ?? 'media-loading',
-    });
-  }
+  const selectedEffectStaticStatus = selectedEffectItem
+    ? staticEffectPreviewStatus({
+        targetId: selectedEffectItem.id,
+        effects: selectedEffectItem.effects ?? [],
+        registeredEffects: ALL_FX,
+        texturable: texturable(selectedEffectItem),
+      })
+    : null;
+  if (selectedEffectStaticStatus) staticPreviewStatuses.push(selectedEffectStaticStatus);
   for (const t of visualTransitions) {
     const half = Math.floor(t.durationInFrames / 2);
     const out = byId.get(t.outgoingItemId);
@@ -606,15 +601,6 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
         // custom-shader carries its GLSL + uniforms from the item to GlTransition
         ...(t.type === 'custom-shader' ? { customFrag: t.customFrag, customUniforms: t.customUniforms } : {}),
       });
-      if (selected) {
-        staticPreviewStatuses.push({
-          kind: 'transition',
-          targetId: t.id,
-          adapter: 'css-transition',
-          phase: 'fallback',
-          fallbackReason: 'media-loading',
-        });
-      }
       continue;
     }
     const cssType = environment.isPlayer
@@ -627,14 +613,14 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
       line: t.type === 'clean-line-wipe',
       isolated: false,
     });
-    if (selected && adapter.fallbackReason) {
-      staticPreviewStatuses.push({
+    if (selected) {
+      const status = staticPreviewFallbackStatus({
         kind: 'transition',
         targetId: t.id,
-        adapter: 'css-transition',
-        phase: 'fallback',
+        adapter: adapter.adapter,
         fallbackReason: adapter.fallbackReason,
       });
+      if (status) staticPreviewStatuses.push(status);
     }
   }
 
@@ -663,7 +649,7 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
               ? <TextLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
               : item.kind === 'solid'
               ? <SolidLayer item={item} canvasW={state.width} canvasH={state.height} borderRadius={borderRadius} />
-              : <MediaFill item={item} frameOffset={-eb} fit={fit} muted={isMuted(item.track)} groupedAudio={groupedVideoIds.has(item.id)} gainAt={(frame) => duckGain(item.track, frame)} canvasW={state.width} canvasH={state.height} borderRadius={borderRadius} browserRenderer={browserRenderer} onPreviewStatus={environment.isPlayer && item.id === selectedItemId ? onSelectedPreviewStatus : undefined} />}
+              : <MediaFill item={item} frameOffset={-eb} fit={fit} muted={isMuted(item.track)} groupedAudio={groupedVideoIds.has(item.id)} gainAt={(frame) => duckGain(item.track, frame)} canvasW={state.width} canvasH={state.height} borderRadius={borderRadius} browserRenderer={browserRenderer} onPreviewStatus={environment.isPlayer && item.id === selectedItemId && !selectedEffectStaticStatus ? onSelectedPreviewStatus : undefined} />}
           </ClipWrapper>
         );
         return (
