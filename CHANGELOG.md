@@ -59,6 +59,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   限制 Agent 修改记录弹窗的最大高度，并让记录列表在固定标题栏下独立滚动，同时提供仅作用于该列表的清晰滚动条。
 
 ### Fixed / 修复
+- Made server exports feed video effects from frame-accurate decoded media frames before running the WebGL pass, including midpoint-aligned seeks for fractional-rate footage such as 30000/1001, preventing stale, repeated, offset, or black frames after AI-applied color grading and other clip effects.
+  服务端导出现在会先取得与时间线精确对齐的解码视频帧，并对 30000/1001 等分数帧率素材采用帧中点定位，再执行 WebGL 特效，避免 AI 调色及其他片段特效导致旧帧、重复帧、错位帧或黑帧。
 
 - Prevented API and Codex Agents from claiming an edit succeeded after a tool returned or threw an unresolved failure; failed result envelopes now stay explicit, same-tool retries can recover, and uncorrected completion text is replaced with the real failure.
   修复 API 与 Codex Agent 在工具返回或抛出未解决错误后仍声称编辑成功的问题；失败结果现在会保持明确，同一工具可通过正确重试恢复，未纠正的完成话术则会替换为真实错误。

@@ -16,6 +16,7 @@
     "build": "tsc -b && vite build",
     "update:model-capabilities": "node --use-env-proxy scripts/update-llm-model-capabilities.mjs",
     "verify:media-drag": "tsx src/media/drag.verify.ts",
+    "verify:clip-fx-export": "node src/gl/clipFxExport.verify.mjs",
     "pretest": "npm run verify:salvage && npm run verify:export-adaptive && npm run verify:production-contracts && npm run verify:desktop-window && tsx src/agent/tools/upload-tools.verify.ts && tsx server/plugins/upload-routes.verify.ts && tsx src/agent/local-models.verify.ts && tsx server/codex/codex-agent.verify.ts && tsx src/agent/codex/runtime.verify.ts && tsx src/components/settings/codexReasoning.verify.ts && npm run verify:skills",
     "verify:salvage": "tsx src/agent/model-selection.verify.ts && tsx src/agent/context-compaction.verify.ts && tsx src/captions/srt.verify.ts && tsx server/plugins/assemblyai-upload.verify.ts",
     "verify:skills": "tsx src/agent/skills/skill-loading.verify.ts",
