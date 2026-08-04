@@ -21,6 +21,7 @@ import { nestedSequenceFrom, resolveTimelineRenderPlan, SequenceGraphError, type
 import { continuousVideoAudioGroups } from './transitionAudio';
 import { PreviewTransitionIn, previewTransitionType } from './transitionPreview';
 import { TimelineReadinessGate, timelineReadinessKey } from './TimelineReadinessGate';
+import { clampVisualBorderRadius, visibleVisualFrameRect } from './visualFrameGeometry';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
 // fadeIn, then 1→0 across fadeOut. Used for visual opacity + audio volume.
@@ -37,7 +38,7 @@ function fadeFactor(frame: number, dur: number, fadeIn = 0, fadeOut = 0): number
 // Generic keyframes (PRD §4.5): a keyframed prop overrides its static transform
 // value at the current local frame; keyframed opacity multiplies onto the fades.
 // Items WITHOUT keyframes take the exact pre-keyframe code path (regression red line).
-function ClipWrapper({ item, frameOffset = 0, children }: { item: TimelineItem; frameOffset?: number; children: React.ReactNode }) {
+function ClipWrapper({ item, frameOffset = 0, children }: { item: TimelineItem; frameOffset?: number; children: (borderRadius: number) => React.ReactNode }) {
   const frame = useCurrentFrame() + frameOffset;
   const o = fadeFactor(frame, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames);
   const kf = item.keyframes;
@@ -61,22 +62,29 @@ function ClipWrapper({ item, frameOffset = 0, children }: { item: TimelineItem; 
   const clipPath = c && ((c.left ?? 0) > 0 || (c.top ?? 0) > 0 || (c.right ?? 0) > 0 || (c.bottom ?? 0) > 0)
     ? `inset(${cropPct(c.top)} ${cropPct(c.right)} ${cropPct(c.bottom)} ${cropPct(c.left)})`
     : undefined;
-  const opacity = ko === undefined ? o : o * Math.max(0, Math.min(1, ko));
+  const baseOpacity = Math.max(0, Math.min(1, t?.opacity ?? 1));
+  const opacity = o * Math.max(0, Math.min(1, ko ?? baseOpacity));
+  const borderRadius = Math.max(0, kv('borderRadius') ?? t?.borderRadius ?? 0);
   const fl = item.filters;
   const filter = fl
     ? `brightness(${fl.brightness ?? 1}) contrast(${fl.contrast ?? 1}) saturate(${fl.saturate ?? 1}) blur(${fl.blur ?? 0}px)`
     : undefined;
   // animated zoom (builtin:zoom): scale content toward its focal point over time.
-  let inner = children;
+  let inner = children(borderRadius);
   if (item.zoom) {
     const z = zoomAt(item.zoom, frame, item.durationInFrames);
     inner = (
       <AbsoluteFill style={{ transform: `scale(${z.magnification})`, transformOrigin: `${z.focalX * 100}% ${z.focalY * 100}%` }}>
-        {children}
+        {inner}
       </AbsoluteFill>
     );
   }
-  return <AbsoluteFill style={{ opacity, transform, filter, clipPath }}>{inner}</AbsoluteFill>;
+  return <AbsoluteFill style={{
+    opacity,
+    transform,
+    filter,
+    clipPath,
+  }}>{inner}</AbsoluteFill>;
 }
 
 // One audio clip. With a transcript attached it renders the KEPT segments
@@ -163,6 +171,47 @@ function RuntimeVideo({ browserRenderer, ...props }: RuntimeVideoProps) {
     : <OffthreadVideo {...props} preservePitch />;
 }
 
+function VisualClipSurface({
+  item,
+  fit,
+  canvasW,
+  canvasH,
+  borderRadius,
+  children,
+}: {
+  item: TimelineItem;
+  fit: AspectFit;
+  canvasW: number;
+  canvasH: number;
+  borderRadius: number;
+  children: React.ReactNode;
+}) {
+  const sourceWidth = item.kind === 'solid' ? canvasW : item.width ?? canvasW;
+  const sourceHeight = item.kind === 'solid' ? canvasH : item.height ?? canvasH;
+  const frame = item.kind === 'solid'
+    ? { x: 0, y: 0, width: canvasW, height: canvasH }
+    : visibleVisualFrameRect(
+      { width: canvasW, height: canvasH },
+      { width: sourceWidth, height: sourceHeight },
+      fit,
+    );
+  const resolvedRadius = clampVisualBorderRadius(borderRadius, frame);
+  return (
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+      <div style={{
+        position: 'relative',
+        width: frame.width,
+        height: frame.height,
+        flexShrink: 0,
+        overflow: resolvedRadius ? 'hidden' : undefined,
+        borderRadius: resolvedRadius ? `${resolvedRadius}px` : undefined,
+      }}>
+        {children}
+      </div>
+    </AbsoluteFill>
+  );
+}
+
 function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, browserRenderer }: {
   item: TimelineItem; fps: number; muted: boolean;
   gainAt: (frame: number) => number;
@@ -230,7 +279,7 @@ function ContinuousVideoAudio({ items, muted, gainAt, premountFor, browserRender
 }
 
 // Imported image / video / gif / svg fills the canvas by the fit mode (objectFit).
-function MediaFill({ item, frameOffset, fit, muted, groupedAudio, canvasW, canvasH, gainAt, browserRenderer, onPreviewStatus }: { item: TimelineItem; frameOffset: number; fit: AspectFit; muted: boolean; groupedAudio: boolean; canvasW: number; canvasH: number; gainAt: (frame: number) => number; browserRenderer: boolean; onPreviewStatus?: SelectedPreviewStatusListener }) {
+function MediaFill({ item, frameOffset, fit, muted, groupedAudio, canvasW, canvasH, borderRadius, gainAt, browserRenderer, onPreviewStatus }: { item: TimelineItem; frameOffset: number; fit: AspectFit; muted: boolean; groupedAudio: boolean; canvasW: number; canvasH: number; borderRadius: number; gainAt: (frame: number) => number; browserRenderer: boolean; onPreviewStatus?: SelectedPreviewStatusListener }) {
   const objectFit = fit === 'cover' ? 'cover' : 'contain';
   const style: React.CSSProperties = { width: '100%', height: '100%', objectFit };
   const still = item.kind === 'image' || item.kind === 'gif' || item.kind === 'svg';
@@ -249,18 +298,32 @@ function MediaFill({ item, frameOffset, fit, muted, groupedAudio, canvasW, canva
   // clip carries a WebGL effect → render pixels through the GL pass; video keeps
   // its audio via a separate muted-visual <Audio> (the GL source video is muted).
   if (effectAdapter.adapter === 'gl-effect') {
+    const frame = visibleVisualFrameRect(
+      { width: canvasW, height: canvasH },
+      { width: item.width ?? canvasW, height: item.height ?? canvasH },
+      fit,
+    );
     return (
-      <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
-        <ClipFx item={item} fit={fit} width={canvasW} height={canvasH} frameOffset={frameOffset} onPreviewStatus={onPreviewStatus} />
+      <>
+        <VisualClipSurface item={item} fit={fit} canvasW={canvasW} canvasH={canvasH} borderRadius={borderRadius}>
+          <ClipFx
+            item={item}
+            fit={fit === 'contain' ? 'cover' : fit}
+            width={Math.max(1, Math.round(frame.width))}
+            height={Math.max(1, Math.round(frame.height))}
+            frameOffset={frameOffset}
+            onPreviewStatus={onPreviewStatus}
+          />
+        </VisualClipSurface>
         {item.kind !== 'image' && !groupedAudio && (
           <MixedRuntimeAudio item={item} browserRenderer={browserRenderer} trimBefore={trimBefore}
             playbackRate={item.playbackRate ?? 1} volume={volume} />
         )}
-      </AbsoluteFill>
+      </>
     );
   }
   return (
-    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+    <VisualClipSurface item={item} fit={fit} canvasW={canvasW} canvasH={canvasH} borderRadius={borderRadius}>
       {still
         ? <Img src={item.src!} style={style} />
         : item.denoisedSrc
@@ -276,14 +339,18 @@ function MediaFill({ item, frameOffset, fit, muted, groupedAudio, canvasW, canva
           )
           : <RuntimeVideo browserRenderer={browserRenderer} src={item.src!} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1}
               volume={groupedAudio ? 0 : volume} muted={groupedAudio || muted} style={style} />}
-    </AbsoluteFill>
+    </VisualClipSurface>
   );
 }
 
 /** Solid-color fill item. */
-function SolidLayer({ item }: { item: TimelineItem }) {
+function SolidLayer({ item, canvasW, canvasH, borderRadius }: { item: TimelineItem; canvasW: number; canvasH: number; borderRadius: number }) {
   const color = String(item.props?.color ?? '#1a1a1a');
-  return <AbsoluteFill style={{ background: color }} />;
+  return (
+    <VisualClipSurface item={item} fit="cover" canvasW={canvasW} canvasH={canvasH} borderRadius={borderRadius}>
+      <AbsoluteFill style={{ background: color }} />
+    </VisualClipSurface>
+  );
 }
 
 const GRID = 'repeating-conic-gradient(#242424 0% 25%, #1c1c1c 0% 50%) 50% / 40px 40px';
@@ -333,18 +400,20 @@ function TextLayer({ item, canvasW, canvasH, fit }: { item: TimelineItem; canvas
 // Render one MG in its DESIGN box (width×height), then scale+center it to the
 // canvas according to the timeline `fit` mode: contain letterboxes,
 // cover fills+crops. At 16:9 with 1920×1080 designs the scale is 1 (no change).
-function ItemLayer({ item, canvasW, canvasH, fit }: { item: TimelineItem; canvasW: number; canvasH: number; fit: AspectFit }) {
+function ItemLayer({ item, canvasW, canvasH, fit, borderRadius }: { item: TimelineItem; canvasW: number; canvasH: number; fit: AspectFit; borderRadius: number }) {
   const dw = item.width ?? 1920;
   const dh = item.height ?? 1080;
   const scale = fit === 'cover' ? Math.max(canvasW / dw, canvasH / dh) : Math.min(canvasW / dw, canvasH / dh);
   try {
     const Template = getCompiledTemplate(item.code ?? '');
     return (
-      <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-        <div style={{ width: dw, height: dh, position: 'relative', flexShrink: 0, transform: `scale(${scale})` }}>
-          <Template item={{ props: item.props ?? {}, width: dw, height: dh }} />
+      <VisualClipSurface item={item} fit={fit} canvasW={canvasW} canvasH={canvasH} borderRadius={borderRadius}>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ width: dw, height: dh, position: 'relative', flexShrink: 0, transform: `scale(${scale})` }}>
+            <Template item={{ props: item.props ?? {}, width: dw, height: dh }} />
+          </div>
         </div>
-      </AbsoluteFill>
+      </VisualClipSurface>
     );
   } catch (e) {
     return (
@@ -584,15 +653,17 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
         const entrance = entranceOf.get(item.id);
         const content = (
           <ClipWrapper item={item} frameOffset={-eb}>
-            {item.kind === 'sequence'
-              ? <NestedSequenceLayer item={item} project={project} parentWidth={state.width} parentHeight={state.height} fit={fit} frameOffset={-eb} browserRenderer={browserRenderer} sequenceLimits={sequenceLimits} muted={isMuted(item.track)} />
+            {(borderRadius) => item.kind === 'sequence'
+              ? <VisualClipSurface item={item} fit={fit} canvasW={state.width} canvasH={state.height} borderRadius={borderRadius}>
+                  <NestedSequenceLayer item={item} project={project} parentWidth={state.width} parentHeight={state.height} fit={fit} frameOffset={-eb} browserRenderer={browserRenderer} sequenceLimits={sequenceLimits} muted={isMuted(item.track)} />
+                </VisualClipSurface>
               : item.kind === 'motion-graphic'
-              ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
+              ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} borderRadius={borderRadius} />
               : item.kind === 'text'
               ? <TextLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
               : item.kind === 'solid'
-              ? <SolidLayer item={item} />
-              : <MediaFill item={item} frameOffset={-eb} fit={fit} muted={isMuted(item.track)} groupedAudio={groupedVideoIds.has(item.id)} gainAt={(frame) => duckGain(item.track, frame)} canvasW={state.width} canvasH={state.height} browserRenderer={browserRenderer} onPreviewStatus={environment.isPlayer && item.id === selectedItemId ? onSelectedPreviewStatus : undefined} />}
+              ? <SolidLayer item={item} canvasW={state.width} canvasH={state.height} borderRadius={borderRadius} />
+              : <MediaFill item={item} frameOffset={-eb} fit={fit} muted={isMuted(item.track)} groupedAudio={groupedVideoIds.has(item.id)} gainAt={(frame) => duckGain(item.track, frame)} canvasW={state.width} canvasH={state.height} borderRadius={borderRadius} browserRenderer={browserRenderer} onPreviewStatus={environment.isPlayer && item.id === selectedItemId ? onSelectedPreviewStatus : undefined} />}
           </ClipWrapper>
         );
         return (

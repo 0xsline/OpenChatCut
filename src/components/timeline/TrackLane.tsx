@@ -21,17 +21,19 @@ import { ZOOM_SHAPE_LABELS } from '../../editor/types';
 import { useT } from '../../i18n/locale';
 import { hasOperationalTranscript } from '../../transcript/types';
 import {
-  CLIP_COLOR, intersectFrameRange, visibleTimelineItems, waveformPath,
+  CLIP_COLOR, fmt, intersectFrameRange, visibleTimelineItems, waveformPath,
   type EditMode, type TimelineFrameWindow, type TimelineIndexes,
 } from './timelineUtil';
 import { ClipMediaLayers } from './ClipMediaLayers';
 import { isPreviewable } from '../../media/clipPreview';
 import { canDropMediaAsset, hasCompatibleMediaDrag, parseMediaAssetDrag } from '../../media/drag';
 import type { useTimelinePointer } from './useTimelinePointer';
+import { topClipOverlapSpans } from './trackOverlap';
 import {
   selectionMovePreviewDeltaForItem,
   type TimelineSelectionMovePreview,
 } from '../../captions/captionGroupMove';
+import { droppedFiles, hasExternalFiles } from '../../media/externalFileDrop';
 
 /** corner chips so applied fx / lut / zoom / denoise / transition are visible on the clip */
 function ClipEffectBadges({
@@ -108,6 +110,7 @@ interface TrackLaneProps {
   pickMode: boolean;
   locked: boolean;
   hidden: boolean;
+  muted: boolean;
   px: number;
   rowHeight: number;
   visibleWindow: TimelineFrameWindow;
@@ -121,13 +124,16 @@ interface TrackLaneProps {
   overwriteOnDrop: boolean;
   frameFromClientX: (clientX: number) => number;
   onContextMenu: (menu: { id: string; x: number; y: number }) => void;
+  onTrackContextMenu: (menu: { trackId: TrackId; x: number; y: number; frame: number }) => void;
   scrollRef: RefObject<HTMLDivElement | null>;
+  onDropExternalFiles?: (files: File[], trackId: TrackId, startFrame: number) => void;
 }
 
 export function TrackLane({
-  trackId, state, commands, pointer, editMode, pickMode, locked, hidden, px, rowHeight,
+  trackId, state, commands, pointer, editMode, pickMode, locked, hidden, muted, px, rowHeight,
   visibleWindow, pinnedItemIds, selectionMovePreview, indexes, libDropTarget, setLibDropTarget,
-  applyLibraryToClip, applyLibraryToTrack, rippleOnDrop, overwriteOnDrop, frameFromClientX, onContextMenu, scrollRef,
+  applyLibraryToClip, applyLibraryToTrack, rippleOnDrop, overwriteOnDrop,
+  frameFromClientX, onContextMenu, onTrackContextMenu, scrollRef, onDropExternalFiles,
 }: TrackLaneProps) {
   const t = useT();
   const { drag, penDrag, setPenDrag, startDrag, startPick, startMarquee } = pointer;
@@ -137,6 +143,7 @@ export function TrackLane({
     if (!selectionMovePreview?.itemIds.length) return pinnedItemIds;
     return new Set([...pinnedItemIds, ...selectionMovePreview.itemIds]);
   }, [pinnedItemIds, selectionMovePreview]);
+  const itemIndexById = new Map(items.map((item, index) => [item.id, index]));
   const renderedItems = useMemo(() => visibleTimelineItems(
     indexes.itemWindowsByTrack.get(trackId),
     visibleWindow,
@@ -162,6 +169,7 @@ export function TrackLane({
     : 0;
   return (
     <div
+      data-timeline-track-lane
       className="cc-track-lane"
       data-caption-selection-region="timeline"
       style={{
@@ -176,14 +184,32 @@ export function TrackLane({
         // selection mode: empty-lane drag → marquee multi-select
         if (editMode === 'selection' && !locked) startMarquee(e);
       }}
+      onContextMenu={(e) => {
+        const target = e.target instanceof Element ? e.target : null;
+        if (target?.closest('[data-timeline-clip], .cc-transition-marker')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onTrackContextMenu({ trackId, x: e.clientX, y: e.clientY, frame: frameFromClientX(e.clientX) });
+      }}
       onDragOver={(e) => {
-        if (locked || (!hasLibraryDrag(e) && !hasCompatibleMediaDrag(e, laneKind))) return;
+        if (locked || (!hasLibraryDrag(e)
+          && !hasCompatibleMediaDrag(e, laneKind)
+          && !hasExternalFiles(e.dataTransfer))) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
         setLibDropTarget(`track:${trackId}`);
       }}
       onDragLeave={() => setLibDropTarget((t) => (t === `track:${trackId}` ? null : t))}
       onDrop={(e) => {
+        const files = droppedFiles(e.dataTransfer);
+        if (files.length) {
+          setLibDropTarget(null);
+          if (locked || !onDropExternalFiles) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onDropExternalFiles(files, trackId, frameFromClientX(e.clientX));
+          return;
+        }
         const mediaAssetId = parseMediaAssetDrag(e);
         if (mediaAssetId) {
           setLibDropTarget(null);
@@ -217,19 +243,20 @@ export function TrackLane({
     >
       {renderedItems.map((it) => {
         const selected = isItemSelected(state, it.id);
-        // Group-move preview: every selected clip rides the same delta as the grabbed caption cue.
-        const groupMove = !!drag && drag.mode === 'move' && isItemSelected(state, drag.id) && selected;
-        const selectionMoveDelta = selectionMovePreviewDeltaForItem(it.id, selectionMovePreview);
-        const selectionMoveDragging = selectionMovePreview?.itemIds.includes(it.id) ?? false;
-        const dragging = drag?.id === it.id || groupMove || selectionMoveDragging;
+        const captionInitiatedDelta = selectionMovePreviewDeltaForItem(it.id, selectionMovePreview);
+        const captionInitiatedMove = selectionMovePreview?.itemIds.includes(it.id) ?? false;
+        // Group-move preview: every selected clip rides the same delta as the grab handle.
+        const groupMove = captionInitiatedMove || (!!drag
+          && drag.mode === 'move'
+          && pointer.dragSelection.itemIds.includes(it.id));
+        const dragging = drag?.id === it.id || groupMove;
         const stretchEdge = drag?.mode === 'trim-left' ? 'left' : drag?.mode === 'trim-right' ? 'right' : null;
         const stretch = editMode === 'rate-stretch' && drag?.id === it.id && stretchEdge
           ? rateStretchGeometry(it, stretchEdge, drag.deltaF) : null;
-        const start = stretch?.startFrame ?? (
-          it.startFrame
-          + (dragging && drag && (drag.mode === 'move' || drag.mode === 'trim-left') ? drag.deltaF : 0)
-          + selectionMoveDelta
-        );
+        const moveDelta = captionInitiatedMove
+          ? captionInitiatedDelta
+          : dragging && drag && (drag.mode === 'move' || drag.mode === 'trim-left') ? drag.deltaF : 0;
+        const start = stretch?.startFrame ?? (it.startFrame + moveDelta);
         const durTrim = drag?.id === it.id && drag.mode === 'trim-left' ? -drag.deltaF
           : drag?.id === it.id && drag.mode === 'trim-right' ? drag.deltaF : 0;
         const dur = stretch?.durationInFrames ?? Math.max(1, it.durationInFrames + durTrim);
@@ -249,15 +276,21 @@ export function TrackLane({
         const renderPlaybackRate = stretch?.playbackRate ?? (it.playbackRate ?? 1);
         const canRateStretch = it.kind === 'video' || it.kind === 'audio';
         const canSlip = it.kind === 'video' || it.kind === 'audio';
+        const audioMuted = muted && (it.kind === 'audio' || it.kind === 'video');
         const showHandles = !pickMode && editMode !== 'blade' && editMode !== 'pen' && editMode !== 'slip'
           && (editMode !== 'rate-stretch' || canRateStretch);
         const isLibOver = libDropTarget === it.id;
+        const itemIndex = itemIndexById.get(it.id) ?? 0;
+        const overlapSpans = topClipOverlapSpans(start, dur, items.slice(0, itemIndex));
+        let clipTitle = it.name;
+        if (editMode === 'slip' && !canSlip) clipTitle = t('此类型没有可滑移的源区间');
+        else if (audioMuted) clipTitle = `${it.name} · ${t('轨道已静音')}`;
         return (
           <div
             key={it.id}
-            className={`cc-timeline-clip${selected ? ' is-selected' : ''}${isLibOver ? ' is-library-over' : ''}`}
+            className={`cc-timeline-clip${selected ? ' is-selected' : ''}${isLibOver ? ' is-library-over' : ''}${audioMuted ? ' is-audio-muted' : ''}`}
             data-timeline-clip
-            title={editMode === 'slip' && !canSlip ? t('此类型没有可滑移的源区间') : it.name}
+            title={clipTitle}
             data-clip-kind={it.kind}
             onPointerDown={(e) => {
               if (pickMode) { // selection mode: click → item ref, drag → timerange (no editing)
@@ -345,6 +378,22 @@ export function TrackLane({
                 visibleWindow={visibleWindow}
               />
             )}
+            {overlapSpans.map((span) => (
+              <span
+                key={`${span.startFrame}:${span.endFrame}`}
+                className="cc-clip-overlap-region"
+                aria-hidden="true"
+                style={{
+                  left: (span.startFrame - start) * px,
+                  width: (span.endFrame - span.startFrame) * px,
+                }}
+              />
+            ))}
+            {audioMuted && (
+              <span className="cc-clip-muted-indicator" title={t('轨道已静音')} aria-label={t('轨道已静音')}>
+                <Icon name="volumeOff" size={11} />
+              </span>
+            )}
             {it.kind === 'audio' && !isPreviewable(it.src) && mediaIntersection && (() => {
               const left = (mediaIntersection.startFrame - start) * px + 3;
               const width = Math.max(1, (mediaIntersection.endFrame - mediaIntersection.startFrame) * px - 6);
@@ -355,6 +404,7 @@ export function TrackLane({
                 </svg>
               );
             })()}
+            <span className="cc-clip-duration" data-cc-live-duration={dur}>{fmt(dur, state.fps)}</span>
             <ClipEffectBadges item={it} inTransition={indexes.transitionByIncomingId.get(it.id) ?? null} />
             {/* pen mode: keyframe rubber band on the selected clip (vertical = value; audio = volume 0..2, rest = transparency 0..1)*/}
             {editMode === 'pen' && selected && (() => {

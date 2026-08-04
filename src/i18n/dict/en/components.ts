@@ -77,6 +77,7 @@ export default {
 
   // ---- PreviewPanel ----
   '预览': 'Preview',
+  '时间线悬停预览': 'Timeline hover preview',
   '选择模式：在画面上拖框选区作为引用': 'Select mode: drag a box on the frame to use the region as a reference',
   '切换标题/动作安全区参考框（竖屏成片构图辅助）': 'Toggle title/action safe-area guides (framing aid for vertical deliverables)',
   '安全框': 'Safe Area',

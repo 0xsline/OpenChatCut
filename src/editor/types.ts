@@ -180,7 +180,7 @@ export interface Keyframe {
 }
 
 /** keyframable properties (PRD §4.5: Position/scale/transparency/rotation can be K frames; volume is the audio/video volume envelope) */
-export type KeyframeProp = 'x' | 'y' | 'scale' | 'rotation' | 'opacity' | 'volume';
+export type KeyframeProp = 'x' | 'y' | 'scale' | 'rotation' | 'opacity' | 'borderRadius' | 'volume';
 /** per-prop sparse keyframe curves on an item (sorted by frame — reducer invariant) */
 export type ItemKeyframes = Partial<Record<KeyframeProp, Keyframe[]>>;
 
@@ -205,6 +205,10 @@ export interface ClipTransform {
   y?: number;
   /** rotation in degrees */
   rotation?: number;
+  /** static layer opacity (0..1); keyframed opacity overrides this value */
+  opacity?: number;
+  /** clipped layer corner radius in composition pixels */
+  borderRadius?: number;
   /** crop the full-canvas layer to a sub-rect (split-screen / for PiP) */
   crop?: ClipCrop;
 }

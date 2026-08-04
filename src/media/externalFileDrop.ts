@@ -56,6 +56,7 @@ function timedCaptionWords(text: string): TranscriptWord[] {
   return words;
 }
 
+/** Parse a Finder-dropped caption file and make its first cue begin at the drop frame. */
 export function parseDroppedCaptions(name: string, text: string, dropStartMs: number): TranscriptWord[] {
   const target = classifyExternalFile({ name, type: '' });
   const timed = target?.type === 'caption' && target.format !== 'txt' ? timedCaptionWords(text) : [];

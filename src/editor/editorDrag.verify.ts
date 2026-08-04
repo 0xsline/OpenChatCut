@@ -19,7 +19,7 @@ class FakeDataTransfer {
 const media = new FakeDataTransfer();
 setEditorDrag({ dataTransfer: media } as unknown as React.DragEvent, {
   source: 'media', id: 'asset-1', assetIds: ['asset-1', 'asset-2', 'asset-1'],
-  name: 'Interview.mp4', assetKind: 'video',
+  name: '旅行.mp4', assetKind: 'video',
 });
 assert.equal(hasEditorDrag({ dataTransfer: media } as unknown as React.DragEvent), true);
 const mediaPayload = parseEditorDrag({ dataTransfer: media } as unknown as React.DragEvent);
@@ -28,12 +28,12 @@ assert.deepEqual(mediaAssetIds(mediaPayload), ['asset-1', 'asset-2']);
 
 const library = new FakeDataTransfer();
 setLibraryDrag({ dataTransfer: library } as unknown as React.DragEvent, {
-  kind: 'fx', id: 'fx-1', name: 'Film Grain',
+  kind: 'fx', id: 'fx-1', name: '电影颗粒',
 });
 assert.equal(parseLibraryDrag({ dataTransfer: library } as unknown as React.DragEvent)?.id, 'fx-1');
 assert.deepEqual(
   parseEditorDrag({ dataTransfer: library } as unknown as React.DragEvent),
-  { v: 1, source: 'library', id: 'fx-1', name: 'Film Grain', resourceKind: 'fx' },
+  { v: 1, source: 'library', id: 'fx-1', name: '电影颗粒', resourceKind: 'fx' },
 );
 
 const invalid = new FakeDataTransfer();

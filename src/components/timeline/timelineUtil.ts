@@ -3,13 +3,17 @@
 // Ensure that geometry and copy have only one true source. All copied verbatim from the top of Timeline.tsx.
 import { theme } from '../../theme';
 import type { TimelineItem, TimelineState, TrackId, TransitionItem } from '../../editor/types';
+import {
+  TIMELINE_DEFAULT_TRACK_HEIGHT,
+  TIMELINE_RULER_HEIGHT,
+} from '../../../shared/timeline-geometry';
 
 /** sticky track-head: pad 16 + compact label + track actions + 4px gaps */
 export const HEADER_W = 212;
 export const MIN_ROW = 34;
-export const RULER_H = 28;
+export const RULER_H = TIMELINE_RULER_HEIGHT;
 /** Equal-height tracks without per-row duck controls. */
-export const TRACK_ROW = 56;
+export const TRACK_ROW = TIMELINE_DEFAULT_TRACK_HEIGHT;
 export const MAX_ROW = 72;
 // Clip fill by item kind: video/image=blue, audio=green,
 // motion-graphic=pink, text=amber). Video/image also render a media thumbnail on top.

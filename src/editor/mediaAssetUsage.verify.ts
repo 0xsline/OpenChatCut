@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { projectReduce } from './reduce';
+import { historyReduce, projectReduce } from './reduce';
 import { timelineItemAssetId, usedMediaAssetIds } from './mediaAssetUsage';
 import { sourceRevisionForTimelineItem } from './mediaSourceRevision';
 import { resolveTimelineRenderPlan } from './sequenceGraph';
 import { remainingSourceFrames } from './sourceLimit';
-import type { MediaAsset, ProjectDoc, Timeline, TimelineItem } from './types';
+import type { MediaAsset, MediaAssetRelinkPatch, ProjectDoc, Timeline, TimelineItem } from './types';
 
 const assetA: MediaAsset = {
   id: 'asset-a', name: 'A.mp4', kind: 'video', src: '/media/shared.mp4', durationInFrames: 90, sourceRevision: 'rev-a',
@@ -100,6 +100,128 @@ const relinked = projectReduce(doc, {
 assert.equal(relinked.timelines[0]!.items.find((item) => item.id === linkedA.id)?.src, '/media/relinked.mp4');
 assert.equal(relinked.timelines[0]!.items.find((item) => item.id === legacyA.id)?.sourceAssetId, assetA.id);
 assert.equal(relinked.timelines[0]!.items.find((item) => item.id === linkedB.id)?.src, assetB.src, 'same-source duplicate must remain independent');
+
+type TimelineRelinkItem = TimelineItem & Pick<MediaAssetRelinkPatch, 'sourceSize' | 'sourceModifiedAt'> & {
+  sourceTimecode?: MediaAsset['sourceTimecode'];
+  captureClock?: MediaAsset['captureClock'];
+};
+const sourceClock = {
+  frameCount: 900,
+  frameRate: { numerator: 30, denominator: 1 },
+  dropFrame: false,
+};
+const clipBeforeRelink = {
+  ...clip('clip-before-relink', 'Before.mp4', '/media/before.mp4', 'missing-pool-master'),
+  startFrame: 30,
+  durationInFrames: 30,
+  width: 1920,
+  height: 1080,
+  sourceRevision: 'clip-revision-before',
+  sourceSize: 100,
+  sourceModifiedAt: 200,
+  sourceFilename: 'original-before.mp4',
+  originalFilePath: '/Users/editor/original-before.mp4',
+  sourceTimecode: sourceClock,
+  captureClock: sourceClock,
+  denoisedSrc: '/media/before-denoised.wav',
+  denoiseStrength: 75,
+  transcript: [{ text: 'retained words', start: 0, end: 1_000 }],
+  transcriptStale: false,
+  props: { retained: 'top-level relink must not write here' },
+} satisfies TimelineRelinkItem;
+const clipBeforeRelinkPrior = {
+  ...clip('clip-before-relink-prior', 'Prior.mp4', '/media/prior.mp4'),
+  durationInFrames: 30,
+};
+const clipOnlyDoc: ProjectDoc = {
+  ...doc,
+  activeTimelineId: 'clip-only-timeline',
+  timelines: [{
+    ...doc.timelines[0]!,
+    id: 'clip-only-timeline',
+    items: [clipBeforeRelinkPrior, clipBeforeRelink],
+    tracks: { V1: { kind: 'video' } },
+    transitions: [{
+      id: 'clip-only-transition',
+      type: 'cross-dissolve',
+      durationInFrames: 12,
+      outgoingItemId: clipBeforeRelinkPrior.id,
+      incomingItemId: clipBeforeRelink.id,
+      trackId: 'V1',
+    }],
+    linkGroups: undefined,
+    selectedId: clipBeforeRelink.id,
+    selectedIds: [clipBeforeRelink.id],
+  }],
+};
+const clipOnlyRelinkAction = {
+  type: 'relinkTimelineItem',
+  id: clipBeforeRelink.id,
+  src: '/media/after.mp4',
+  name: 'After.mp4',
+  durationInFrames: 5,
+  sourceRevision: 'clip-revision-after',
+  sourceSize: 300,
+  sourceModifiedAt: 400,
+  originalFilePath: undefined,
+} as const;
+const clipOnlyRelinked = projectReduce(clipOnlyDoc, clipOnlyRelinkAction);
+const clipAfterRelink = clipOnlyRelinked.timelines[0]!.items.find(
+  (item) => item.id === clipBeforeRelink.id,
+) as TimelineRelinkItem;
+assert.equal(clipAfterRelink.src, '/media/after.mp4');
+assert.equal(clipAfterRelink.name, 'After.mp4');
+assert.equal(clipAfterRelink.durationInFrames, 5);
+assert.equal(clipAfterRelink.sourceRevision, 'clip-revision-after');
+assert.equal(clipAfterRelink.sourceSize, 300);
+assert.equal(clipAfterRelink.sourceModifiedAt, 400);
+assert.equal(clipAfterRelink.sourceAssetId, undefined, 'clip-only relink must detach the former pool master');
+assert.equal(clipAfterRelink.denoisedSrc, undefined, 'clip-only relink must invalidate denoised audio');
+assert.equal(clipAfterRelink.denoiseStrength, undefined, 'clip-only relink must invalidate denoise settings');
+assert.equal(clipAfterRelink.sourceTimecode, undefined, 'clip-only relink must discard the old source timecode');
+assert.equal(clipAfterRelink.captureClock, undefined, 'clip-only relink must discard the old capture clock');
+assert.equal(clipAfterRelink.transcript, clipBeforeRelink.transcript, 'relink retains the transcript for review');
+assert.equal(clipAfterRelink.transcriptStale, true, 'a retained transcript must be marked stale');
+assert.deepEqual(clipAfterRelink.props, clipBeforeRelink.props, 'media fields must not be written into item props');
+assert.equal(clipAfterRelink.width, 1920, 'omitted width must preserve the current value');
+assert.equal(clipAfterRelink.height, 1080, 'omitted height must preserve the current value');
+assert.equal(clipAfterRelink.kind, 'video', 'omitted kind must preserve the current value');
+assert.equal(clipAfterRelink.sourceFilename, 'original-before.mp4', 'omitted source filename must be preserved');
+assert.equal(clipAfterRelink.originalFilePath, undefined, 'explicitly undefined source metadata must be cleared');
+assert.equal(clipAfterRelink.id, clipBeforeRelink.id);
+assert.equal(clipAfterRelink.track, clipBeforeRelink.track);
+assert.equal(clipAfterRelink.startFrame, clipBeforeRelink.startFrame);
+assert.equal(
+  clipOnlyRelinked.timelines[0]!.transitions?.[0]?.durationInFrames,
+  5,
+  'duration-changing relinks must reconcile transition handles',
+);
+
+const clipOnlyHistory = historyReduce(
+  { past: [], present: clipOnlyDoc, future: [] },
+  clipOnlyRelinkAction,
+);
+assert.equal(clipOnlyHistory.past.length, 1, 'one relink must create one undo step');
+assert.equal(clipOnlyHistory.past[0], clipOnlyDoc);
+assert.equal(historyReduce(clipOnlyHistory, { type: 'undo' }).present, clipOnlyDoc);
+
+const lockedClipOnlyDoc: ProjectDoc = {
+  ...clipOnlyDoc,
+  timelines: clipOnlyDoc.timelines.map((timeline) => ({
+    ...timeline,
+    tracks: { ...timeline.tracks, V1: { ...timeline.tracks?.V1, kind: 'video', locked: true } },
+  })),
+};
+assert.deepEqual(
+  projectReduce(lockedClipOnlyDoc, clipOnlyRelinkAction),
+  lockedClipOnlyDoc,
+  'clip-only relink must no-op on a locked track',
+);
+assert.deepEqual(
+  projectReduce(clipOnlyDoc, { ...clipOnlyRelinkAction, id: 'missing-item' }),
+  clipOnlyDoc,
+  'clip-only relink must no-op when the item is missing',
+);
 
 const renamed = projectReduce(doc, {
   type: 'pool.updateAsset', id: assetA.id, patch: { name: 'Renamed.mp4' },

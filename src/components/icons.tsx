@@ -24,7 +24,7 @@ const P: Record<IconName, string> = {
   cursor: 'M5 3l6 15 2-6 6-2z',
   trim: 'M8 4v16M4 8h4M4 16h4 M16 4v16M16 8h4M16 16h4',
   rateStretch: 'M4 5v14 M20 5v14 M8 12h8 M11 9l-3 3 3 3 M13 9l3 3-3 3',
-  blade: 'M14 4L6 20 M9 9l7 3',
+  blade: 'M4 6h14l2 6-2 6H4l-2-6z M8 10h6v4H8z',
   scissors: 'M6 6m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0 M6 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0 M8.1 8.1L20 20 M14 14l6-10',
   magnet: 'M6 15l-3-3a8 8 0 0 1 11-11l3 3-7 7-3-3 M6 15l3 3 M14 7l3 3',
   tracking: 'M8 3H5a2 2 0 0 0-2 2v3 M16 3h3a2 2 0 0 1 2 2v3 M3 16v3a2 2 0 0 0 2 2h3 M21 16v3a2 2 0 0 1-2 2h-3 M12 8m-4 4a4 4 0 1 0 8 0a4 4 0 1 0-8 0',

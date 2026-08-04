@@ -4,6 +4,7 @@ import type { PropSpec } from '../../types';
 import { FONT_CATALOG } from '../../fonts/googleFonts';
 import { useT } from '../../i18n/locale';
 import { importMedia } from '../../media/upload';
+import { resolveInspectorTextAreaRows } from './inspectorTextArea';
 
 interface PropSchemaFieldProps {
   spec: PropSpec;
@@ -39,7 +40,7 @@ function PropControl({ spec, value, onChange }: PropSchemaFieldProps): ReactNode
   if (spec.type === 'font') return <FontField spec={spec} value={value} onChange={onChange} />;
   if (spec.type === 'select') return <SelectField spec={spec} value={value} onChange={onChange} />;
   if (spec.type === 'image' || spec.type === 'asset' || spec.type === 'video') return <MediaField spec={spec} value={value} onChange={onChange} />;
-  if (spec.type === 'text') return <textarea rows={2} value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} style={{ ...FIELD_STYLE, resize: 'vertical', fontFamily: 'inherit' }} />;
+  if (spec.type === 'text') return <textarea className="cc-insp-textarea" rows={resolveInspectorTextAreaRows(value)} value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} style={{ ...FIELD_STYLE, resize: 'vertical', fontFamily: 'inherit' }} />;
   return <input type="text" value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} style={FIELD_STYLE} />;
 }
 

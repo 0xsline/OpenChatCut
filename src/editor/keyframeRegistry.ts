@@ -14,6 +14,7 @@ export interface KeyframePropertyDefinition {
 }
 
 const visual = (item: TimelineItem) => item.kind !== 'audio';
+const roundableVisual = (item: TimelineItem) => item.kind !== 'audio' && item.kind !== 'text';
 const audible = (item: TimelineItem) => item.kind === 'audio' || item.kind === 'video';
 const compact = (value: number) => String(Number(value.toFixed(2)));
 const percent = (value: number) => `${compact(value)}%`;
@@ -48,8 +49,16 @@ export const KEYFRAME_PROPERTY_REGISTRY: Record<KeyframeProp, KeyframePropertyDe
   opacity: {
     id: 'opacity', label: '透明', valueRange: [0, 1], editorRange: [0, 1],
     step: 0.01, defaultValue: 1, supports: visual,
-    getBaseValue: () => 1,
+    getBaseValue: (item) => item.transform?.opacity ?? 1,
+    toTransformPatch: (opacity) => ({ opacity }),
     format: (value) => `${compact(value * 100)}%`,
+  },
+  borderRadius: {
+    id: 'borderRadius', label: '圆角', valueRange: [0, 1000], editorRange: [0, 500],
+    step: 1, defaultValue: 0, supports: roundableVisual,
+    getBaseValue: (item) => item.transform?.borderRadius ?? 0,
+    toTransformPatch: (borderRadius) => ({ borderRadius }),
+    format: (value) => `${compact(value)}px`,
   },
   volume: {
     id: 'volume', label: '音量', valueRange: [0, 2], editorRange: [0, 2],

@@ -61,6 +61,8 @@ export interface EditorCommands {
    * Updates the pool asset and every timeline clip that still points at the old src.
    */
   relinkMediaAsset: (id: string, next: MediaAssetRelinkPatch) => void;
+  /** Relink exactly one timeline item without changing its former pool master. */
+  relinkTimelineItem: (id: string, next: MediaAssetRelinkPatch) => void;
   /** Solid-color item on a video track. */
   addSolidItem: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number; color?: string; name?: string }) => void;
   addTextClip: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number; ripple?: boolean }) => void;
@@ -286,6 +288,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
         label: 'Delete media',
       }),
       relinkMediaAsset: (id, next) => dispatch({ type: 'pool.relinkAsset', id, ...next }),
+      relinkTimelineItem: (id, next) => dispatch({ type: 'relinkTimelineItem', id, ...next }),
       addSolidItem: (at) => {
         dispatch({
           type: 'add',

@@ -55,6 +55,7 @@ function withTrackCaptions(s: TimelineState, captions: CaptionsData | null, trac
 export type Action =
   | { type: 'add'; item: Omit<TimelineItem, 'startFrame'>; startFrame?: number; ripple?: boolean }
   | { type: 'updateProps'; id: string; patch: Record<string, unknown> }
+  | ({ type: 'relinkTimelineItem'; id: string } & MediaAssetRelinkPatch)
   | { type: 'move'; id: string; track?: TrackId; startFrame?: number }
   | { type: 'retime'; id: string; startFrame?: number; durationInFrames?: number; srcInFrame?: number; ripple?: boolean }
   | { type: 'slip'; id: string; deltaInFrames: number }
@@ -114,7 +115,7 @@ export type Action =
   | { type: 'setFullState'; state: TimelineState };
 
 const TRANSITION_RECONCILING_ACTIONS = new Set<Action['type']>([
-  'add', 'move', 'retime', 'slip', 'setSpeed', 'replaceMedia', 'duplicate', 'remove', 'split', 'clear',
+  'add', 'move', 'retime', 'slip', 'setSpeed', 'replaceMedia', 'relinkTimelineItem', 'duplicate', 'remove', 'split', 'clear',
   'track.tighten', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap',
   'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'addTransition',
   'setTransition', 'setFullState',
@@ -174,7 +175,7 @@ export type Dispatch = (a: Action | BatchAction | HistoryControlAction) => void;
 /** dispatch at the project level: per-timeline + project actions + history control */
 export type ProjectDispatch = (a: AnyAction | HistoryControlAction) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'move', 'retime', 'slip', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'setKeyframe', 'removeKeyframe', 'clearKeyframes', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
+const MUTATING = new Set(['add', 'updateProps', 'relinkTimelineItem', 'move', 'retime', 'slip', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'setKeyframe', 'removeKeyframe', 'clearKeyframes', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
   'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset', 'pool.setTranscription', 'pool.relinkAsset', 'pool.removeAsset']);
@@ -184,6 +185,11 @@ const EMPTY_CURVE = { version: 1, timebase: 'effect-frame', coordinateSpace: 'co
 /** True when the item sits on a locked track; modifications must no-op. */
 const lockedItem = (s: TimelineState, id: string): boolean =>
   s.items.some((it) => it.id === id && s.tracks?.[it.track]?.locked);
+
+type RelinkableTimelineItem = TimelineItem & Pick<MediaAssetRelinkPatch, 'sourceSize' | 'sourceModifiedAt'> & {
+  sourceTimecode?: MediaAsset['sourceTimecode'];
+  captureClock?: MediaAsset['captureClock'];
+};
 
 // recompute a transcript-edited clip's duration under its current edit state
 
@@ -459,6 +465,37 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
           it.id === a.id ? { ...it, props: { ...it.props, ...a.patch } } : it,
         ),
       };
+    case 'relinkTimelineItem': {
+      const target = s.items.find((item) => item.id === a.id);
+      if (!target || s.tracks?.[target.track]?.locked) return s;
+      const {
+        sourceAssetId: _sourceAssetId,
+        denoisedSrc: _denoisedSrc,
+        denoiseStrength: _denoiseStrength,
+        sourceTimecode: _sourceTimecode,
+        captureClock: _captureClock,
+        ...sourceIndependent
+      } = target as RelinkableTimelineItem;
+      const relinked: RelinkableTimelineItem = {
+        ...sourceIndependent,
+        src: a.src,
+        name: a.name ?? target.name,
+        durationInFrames: a.durationInFrames ?? target.durationInFrames,
+        width: a.width ?? target.width,
+        height: a.height ?? target.height,
+        kind: a.kind ?? target.kind,
+        sourceRevision: 'sourceRevision' in a ? a.sourceRevision : target.sourceRevision,
+        sourceSize: 'sourceSize' in a ? a.sourceSize : sourceIndependent.sourceSize,
+        sourceModifiedAt: 'sourceModifiedAt' in a ? a.sourceModifiedAt : sourceIndependent.sourceModifiedAt,
+        sourceFilename: 'sourceFilename' in a ? a.sourceFilename : target.sourceFilename,
+        originalFilePath: 'originalFilePath' in a ? a.originalFilePath : target.originalFilePath,
+        transcriptStale: target.transcript?.length ? true : target.transcriptStale,
+      };
+      return {
+        ...s,
+        items: s.items.map((item) => item.id === a.id ? relinked : item),
+      };
+    }
     case 'move': {
       const target = s.items.find((it) => it.id === a.id);
       if (!target) return s;

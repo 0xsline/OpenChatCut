@@ -7,6 +7,8 @@ import { Icon } from '../icons';
 import type { EditorCommands } from '../../editor/store';
 import type { TrackFlags, TrackId, TrackKind } from '../../editor/types';
 import { useT } from '../../i18n/locale';
+import type { TrackDeletePlan } from './trackDelete';
+import { MenuDrillHeader } from './MenuDrillHeader';
 
 const flagBtn = (active: boolean): React.CSSProperties => ({
   width: 20, height: 20, display: 'grid', placeItems: 'center',
@@ -19,8 +21,8 @@ interface TrackHeadProps {
   kind: TrackKind;
   trackName: string;
   config: TrackFlags;
-  /** non-empty track (or has transitions) — delete disabled */
-  busy: boolean;
+  deleteBlockedReason: TrackDeletePlan['blockedReason'];
+  onDelete: () => void;
   /** caption menu open on this track → raise head above neighbors */
   menuElevated: boolean;
   width: number;
@@ -30,19 +32,30 @@ interface TrackHeadProps {
   onToggleDuckMenu: (rect: DOMRect) => void;
   duckMenuPos: { left: number; top: number } | null;
   onCloseDuckMenu: () => void;
+  onBackDuckMenu?: () => void;
   /** the open CaptionStyleMenu (fixed-positioned), when this track owns it */
   children?: ReactNode;
 }
 
+function trackDeleteTitle(
+  blockedReason: TrackDeletePlan['blockedReason'],
+  t: ReturnType<typeof useT>,
+): string {
+  if (blockedReason === 'last-video') return t('至少保留一条视频轨道');
+  if (blockedReason === 'locked') return t('请先解锁轨道');
+  return t('删除轨道');
+}
+
 export function TrackHead({
-  trackId, kind, trackName, config, busy, menuElevated, width,
-  commands, onToggleCaptions, onToggleCaptionMenu, onToggleDuckMenu, duckMenuPos, onCloseDuckMenu, children,
+  trackId, kind, trackName, config, deleteBlockedReason, onDelete, menuElevated, width,
+  commands, onToggleCaptions, onToggleCaptionMenu, onToggleDuckMenu, duckMenuPos, onCloseDuckMenu, onBackDuckMenu, children,
 }: TrackHeadProps) {
   const t = useT();
   const hidden = config.hidden ?? false;
   const muted = config.muted ?? false;
   const locked = config.locked ?? false;
   const isCaption = kind === 'caption';
+  const deleteTitle = trackDeleteTitle(deleteBlockedReason, t);
   const tagColor = kind === 'video' ? theme.trackVideo : kind === 'audio' ? theme.trackAudioA1 : theme.trackCaption;
   const nameTitle = config.role === 'anchor' ? `${trackName} · ${t('主轨（闪避）')}`
     : config.role === 'follower' ? `${trackName} · ${t('跟随（闪避）')}`
@@ -59,16 +72,16 @@ export function TrackHead({
         <button
           type="button"
           className="cc-track-fixed-action"
-          disabled={busy}
-          title={busy ? t('只能删除空轨道') : t('删除轨道')}
-          onClick={() => commands.deleteTracks([trackId])}
+          disabled={deleteBlockedReason !== null}
+          title={deleteTitle}
+          onClick={onDelete}
         >
           <Icon name="trash" size={13} />
         </button>
       </div>
       {children}
       {duckMenuPos && (
-        <DuckMenu trackId={trackId} config={config} pos={duckMenuPos} commands={commands} onClose={onCloseDuckMenu} />
+        <DuckMenu trackId={trackId} config={config} pos={duckMenuPos} commands={commands} onClose={onCloseDuckMenu} onBack={onBackDuckMenu ?? onCloseDuckMenu} />
       )}
     </div>
   );
@@ -77,17 +90,18 @@ export function TrackHead({
 // Duck (auto-dodge) role menu is a track-head menu item, not a
 // permanent widget. Sets the per-track role (anchor speech / follower music) + duck depth;
 // the engine (TimelineComposition duckGain) already reacts to it.
-function DuckMenu({ trackId, config, pos, commands, onClose }: {
+function DuckMenu({ trackId, config, pos, commands, onClose, onBack }: {
   trackId: TrackId;
   config: TrackFlags;
   pos: { left: number; top: number };
   commands: EditorCommands;
   onClose: () => void;
+  onBack: () => void;
 }) {
   const t = useT();
   return (
     <div className="cc-caption-style-menu cc-duck-menu" style={{ position: 'fixed', left: pos.left, top: pos.top }} onPointerDown={(e) => e.stopPropagation()}>
-      <div className="cc-caption-style-title">{t('自动闪避 · 混音角色')}</div>
+      <MenuDrillHeader title={t('自动闪避')} onBack={onBack} />
       <div className="cc-caption-style-list">
         {([
           { role: null, label: '关闭', hint: '不参与自动闪避' },

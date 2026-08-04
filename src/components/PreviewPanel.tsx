@@ -1,17 +1,20 @@
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
-import { Player, type CallbackListener, type PlayerRef } from '@remotion/player';
+import { memo, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { Player, Thumbnail, type CallbackListener, type PlayerRef } from '@remotion/player';
 import { theme, themeAlpha } from '../theme';
 import { TimelineComposition } from '../editor/TimelineComposition';
 import type { SelectedPreviewStatus, SelectedPreviewStatusListener } from '../gl/previewAdapter';
 import {
   captionTrackEntries,
   type ProjectDoc,
+  type ClipTransform,
+  type KeyframeProp,
   type TimelineItem,
   type TimelineState,
   type TrackId,
 } from '../editor/types';
 import { canvasRegionRef, emitSelectionRef, regionFromDrag, useSelectionRefMode } from '../agent/selection-refs';
 import { CaptionPreviewEditor } from '../captions/CaptionPreviewEditor';
+import type { CaptionSelectionRef } from '../captions/captionSelection';
 import type { CaptionsData } from '../captions/types';
 import {
   onCaptionStylePointerDrop,
@@ -24,8 +27,10 @@ import { ReviewCommentsButton, type ReviewOpenRequest } from '../review/ReviewCo
 import { usePreviewProjectDoc } from '../media/previewMedia';
 import type { SlipPreview } from '../editor/slip';
 import { SlipTwoUpPreview } from './SlipTwoUpPreview';
-
-const SHARED_AUDIO_TAGS = 8;
+import { PREVIEW_SHARED_AUDIO_TAGS } from './previewAudioPool';
+import { SafeZoneOverlay } from './SafeZoneOverlay';
+import { PreviewTransformOverlay } from './preview/PreviewTransformOverlay';
+import { fitPreviewCanvasSize, type PreviewCanvasSize } from './preview/previewCanvasGeometry';
 
 interface PreviewPanelProps {
   state: TimelineState;
@@ -35,7 +40,14 @@ interface PreviewPanelProps {
   offlineSrcs?: ReadonlySet<string>;
   /** Direct editing of canvas captions (check box + floating toolbar). If it has not been transmitted (such as proposal preview status), it is read-only. */
   onUpdateCaptions?: (patch: Partial<CaptionsData>, track?: TrackId) => void;
+  onSelectCaption?: (selection: CaptionSelectionRef | null) => void;
+  activeCaptionSelection?: CaptionSelectionRef | null;
   onSeedChat?: (text: string) => void;
+  onSelectItem?: (id: string | null) => void;
+  onSetItemTransform?: (id: string, patch: ClipTransform) => void;
+  onSetItemKeyframe?: (id: string, prop: KeyframeProp, localFrame: number, value: number) => void;
+  onBeginHistoryGesture?: () => void;
+  onEndHistoryGesture?: () => void;
   projectId: string;
   timelineId: string;
   reviewState: TimelineState;
@@ -46,12 +58,15 @@ interface PreviewPanelProps {
   selectedPreviewStatuses?: readonly SelectedPreviewStatus[];
   onSelectedPreviewStatus?: SelectedPreviewStatusListener;
   slipPreview?: SlipPreview | null;
+  hoverPreviewFrame?: number | null;
 }
 
 export const PreviewPanel = memo(function PreviewPanel({
-  state, project, playerRef, onImport, offlineSrcs, onUpdateCaptions, onSeedChat,
+  state, project, playerRef, onImport, offlineSrcs, onUpdateCaptions, onSelectCaption, activeCaptionSelection, onSeedChat,
+  onSelectItem, onSetItemTransform, onSetItemKeyframe, onBeginHistoryGesture, onEndHistoryGesture,
   projectId, timelineId, reviewState, selectedItem, reviewRequest, inspectorOpen, onToggleInspector,
   selectedPreviewStatuses, onSelectedPreviewStatus, slipPreview,
+  hoverPreviewFrame = null,
 }: PreviewPanelProps) {
   const t = useT();
   const renderProject = useMemo<ProjectDoc>(() => ({
@@ -64,6 +79,8 @@ export const PreviewPanel = memo(function PreviewPanel({
   const duration = preview.plan.durationInFrames;
   const inputRef = useRef<HTMLInputElement>(null);
   const videoBoxRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageSize, setStageSize] = useState<PreviewCanvasSize>({ width: 0, height: 0 });
   const [busy, setBusy] = useState(false);
   const [showSafe, setShowSafe] = useState(false);
   const [autoEditCaption, setAutoEditCaption] = useState<{ trackId: TrackId; laneId: string } | null>(null);
@@ -72,7 +89,15 @@ export const PreviewPanel = memo(function PreviewPanel({
   // Must listen to Remotion's own fullscreenchange: it walks the webkit legacy API in Chrome,
   // The document standard event is not guaranteed to be triggered, the SDK emitter is the real source.
   const [fullscreen, setFullscreen] = useState(false);
+  const transformApi = onSelectItem && onSetItemTransform && onSetItemKeyframe
+    && onBeginHistoryGesture && onEndHistoryGesture
+    ? { onSelectItem, onSetItemTransform, onSetItemKeyframe, onBeginHistoryGesture, onEndHistoryGesture }
+    : null;
   const hasItems = state.items.length > 0;
+  const previewCanvasSize = fitPreviewCanvasSize(stageSize, {
+    width: state.width,
+    height: state.height,
+  });
   const failedProxies = preview.proxies.filter(({ proxy }) => proxy.status === 'failed');
   const pendingProxies = preview.proxies.filter(({ proxy }) => proxy.status === 'loading').length;
   const shaderFallback = selectedPreviewStatuses?.find((status) => status.phase === 'fallback');
@@ -88,6 +113,20 @@ export const PreviewPanel = memo(function PreviewPanel({
     player.addEventListener('fullscreenchange', onChange);
     return () => player.removeEventListener('fullscreenchange', onChange);
   }, [playerRef, hasItems]);
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage || typeof ResizeObserver === 'undefined') return undefined;
+    const measure = () => {
+      const next = { width: stage.clientWidth, height: stage.clientHeight };
+      setStageSize((current) => (
+        current.width === next.width && current.height === next.height ? current : next
+      ));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(stage);
+    measure();
+    return () => observer.disconnect();
+  }, []);
   // Selection mode (canvas-region-marked): drag a marquee → region reference
   const pickMode = useSelectionRefMode();
   const importFiles = async (files: FileList | File[]) => {
@@ -139,7 +178,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             onSeek={(frame) => playerRef.current?.seekTo(frame)}
           />
           {state.items.length > 0 && (
-            <button type="button" onClick={() => setShowSafe((v) => !v)}
+            <button type="button" onClick={() => setShowSafe((v) => !v)} aria-pressed={showSafe}
               title={t('切换标题/动作安全区参考框（竖屏成片构图辅助）')}
               style={{
                 fontSize: 11, lineHeight: 1, padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
@@ -162,7 +201,7 @@ export const PreviewPanel = memo(function PreviewPanel({
           )}
         </div>
       </div>
-      <div className="cc-preview-stage"
+      <div ref={stageRef} className="cc-preview-stage"
         // Suppress the browser's native <video> context menu (download / picture-in-picture
         // / loop) because the preview is a canvas, not an exposed HTML5 video element.
         onContextMenu={(event) => event.preventDefault()}
@@ -179,9 +218,10 @@ export const PreviewPanel = memo(function PreviewPanel({
         ) : (
           // Wrapper carries the sizing so the safe-zone overlay lines up exactly
           // on the video rect (Player fills the wrapper).
-          <div ref={videoBoxRef} style={{
-            position: 'relative', width: 'auto', height: '100%',
-            maxWidth: '100%', maxHeight: '100%',
+          <div ref={videoBoxRef} className="cc-preview-canvas" style={{
+            position: 'relative',
+            width: previewCanvasSize.width || (state.width >= state.height ? '100%' : 'auto'),
+            height: previewCanvasSize.height || (state.width >= state.height ? 'auto' : '100%'),
             aspectRatio: `${state.width} / ${state.height}`,
           }} onErrorCapture={(event) => {
             if (!(event.target instanceof HTMLVideoElement)) return;
@@ -200,7 +240,7 @@ export const PreviewPanel = memo(function PreviewPanel({
               fps={state.fps}
               compositionWidth={state.width}
               compositionHeight={state.height}
-              numberOfSharedAudioTags={SHARED_AUDIO_TAGS}
+              numberOfSharedAudioTags={PREVIEW_SHARED_AUDIO_TAGS}
               // Full screen black: WebKit legacy full screen div does not automatically blacken the background, and the page checkerboard will be revealed on both sides.
               style={{ width: '100%', height: '100%', backgroundColor: fullscreen ? '#000' : undefined }}
               controls={fullscreen}
@@ -213,6 +253,20 @@ export const PreviewPanel = memo(function PreviewPanel({
               spaceKeyToPlayOrPause={false}
               loop
             />
+            {!fullscreen && hoverPreviewFrame !== null && (
+              <div className="cc-preview-hover-frame" aria-label={t('时间线悬停预览')}>
+                <Thumbnail
+                  component={TimelineComposition}
+                  inputProps={{ state: preview.state, project: preview.project, timelineId }}
+                  frameToDisplay={hoverPreviewFrame}
+                  durationInFrames={duration}
+                  fps={state.fps}
+                  compositionWidth={state.width}
+                  compositionHeight={state.height}
+                  style={{ display: 'block', width: '100%', aspectRatio: `${state.width} / ${state.height}` }}
+                />
+              </div>
+            )}
             {slipPreview && <SlipTwoUpPreview preview={slipPreview} />}
             {offlineNames.length > 0 && (
               <div role="status" style={{
@@ -251,13 +305,19 @@ export const PreviewPanel = memo(function PreviewPanel({
             )}
             {showSafe && <SafeZoneOverlay />}
             {pickMode && <RegionPickOverlay state={state} playerRef={playerRef} />}
+            {!pickMode && !fullscreen && transformApi && (
+              <PreviewTransformOverlay state={state} playerRef={playerRef} {...transformApi} />
+            )}
             {!pickMode && !fullscreen && onUpdateCaptions && captionTrackEntries(state).map(({ id, captions }) => captions?.enabled ? (
               <CaptionPreviewEditor
                 key={id}
+                trackId={id}
                 state={state}
                 captions={captions}
                 playerRef={playerRef}
                 onUpdateCaptions={(patch) => onUpdateCaptions(patch, id)}
+                onSelectCaption={onSelectCaption}
+                activeSelection={activeCaptionSelection}
                 onSeedChat={onSeedChat}
                 autoEditLaneId={autoEditCaption?.trackId === id ? autoEditCaption.laneId : undefined}
                 onAutoEditHandled={() => setAutoEditCaption(null)}
@@ -326,24 +386,6 @@ function RegionPickOverlay({ state, playerRef }: { state: TimelineState; playerR
           pointerEvents: 'none',
         }} />
       )}
-    </div>
-  );
-}
-
-// Broadcast-style safe areas over the video rect: action-safe (~5% inset) +
-// title-safe (~10% inset) + center guides. A pure composition aid for framing
-// vertical/short-form cuts; overlay only, never burned into the export.
-function SafeZoneOverlay() {
-  const frame = (inset: string, opacity: number): CSSProperties => ({
-    position: 'absolute', inset, border: `0.5px dashed rgba(255,255,255,${opacity})`, borderRadius: 2,
-  });
-  const line: CSSProperties = { position: 'absolute', background: 'rgba(255,255,255,0.18)' };
-  return (
-    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-      <div style={frame('5%', 0.55)} />
-      <div style={frame('10%', 0.35)} />
-      <div style={{ ...line, left: '50%', top: '46%', width: 1, height: '8%' }} />
-      <div style={{ ...line, top: '50%', left: '46%', height: 1, width: '8%' }} />
     </div>
   );
 }

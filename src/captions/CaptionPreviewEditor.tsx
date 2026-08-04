@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import type { PlayerRef } from '@remotion/player';
-import type { TimelineState } from '../editor/types';
+import type { TimelineState, TrackId } from '../editor/types';
 import type { CaptionsData } from './types';
+import { captionSelectionKey, captionSelectionRef, type CaptionSelectionRef } from './captionSelection';
 import { CAPTION_STYLES } from './styles';
 import { captionPreviewTextColor, captionPreviewTextColorPatch, captionTextStyle, containerStyle } from './renderStyles';
 import { buildCues, fmtCueMs } from './captionCues';
@@ -27,10 +28,13 @@ import { captionPreviewOutsideClickAction } from './captionPreviewToolbar';
 // The ghost follows the hand, and the synthetic layer falls to the same position after letting go. All styles use cc-capedit-* classes (tokens, with skins).
 
 interface CaptionPreviewEditorProps {
+  trackId: TrackId;
   state: TimelineState;
   captions: CaptionsData;
   playerRef: RefObject<PlayerRef | null>;
   onUpdateCaptions: (patch: Partial<CaptionsData>) => void;
+  onSelectCaption?: (selection: CaptionSelectionRef) => void;
+  activeSelection?: CaptionSelectionRef | null;
   onSeedChat?: (text: string) => void;
   autoEditLaneId?: string;
   onAutoEditHandled?: () => void;
@@ -55,7 +59,7 @@ interface DragRef {
   moved: boolean;
 }
 
-export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCaptions, onSeedChat, autoEditLaneId, onAutoEditHandled }: CaptionPreviewEditorProps) {
+export function CaptionPreviewEditor({ trackId, state, captions, playerRef, onUpdateCaptions, onSelectCaption, activeSelection, onSeedChat, autoEditLaneId, onAutoEditHandled }: CaptionPreviewEditorProps) {
   const t = useT();
   const rootRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
@@ -99,6 +103,19 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
     [captions, state.items, state.fps, ms, rows],
   );
   const cue = target?.cue;
+  const targetSelectionKey = target ? captionSelectionKey(captionSelectionRef(trackId, target)) : null;
+  const activeSelectionKey = captionSelectionKey(activeSelection ?? null);
+  const controlledSelection = activeSelection !== undefined;
+
+  useEffect(() => {
+    if (!controlledSelection) return;
+    const matches = activeSelectionKey !== null && activeSelectionKey === targetSelectionKey;
+    setSelected(matches);
+    if (!matches) {
+      setEditing(false);
+      setPop(null);
+    }
+  }, [activeSelectionKey, controlledSelection, targetSelectionKey]);
 
   // In other words, exit the selection; click on overlay to exit also
   useEffect(() => { setSelected(false); setEditing(false); setPop(null); }, [target?.key]);
@@ -138,7 +155,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
   }, [captions, draft, editing, onUpdateCaptions, pop, selected, target]);
 
   if (!target || !cue || !box) {
-    return <div ref={rootRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />;
+    return <div ref={rootRef} data-caption-selection-owner="preview-caption" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />;
   }
 
   const preset = target.preset;
@@ -173,6 +190,7 @@ export function CaptionPreviewEditor({ state, captions, playerRef, onUpdateCapti
     // Freeze and select on press. A human click can span multiple playback
     // frames; waiting for pointerup allowed the active cue to change first.
     setSelected(true);
+    onSelectCaption?.(captionSelectionRef(trackId, target));
     playerRef.current?.pause();
     (e.currentTarget as HTMLElement).focus({ preventScroll: true });
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
