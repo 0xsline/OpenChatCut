@@ -1,5 +1,7 @@
 // Custom skills are a global library shared across projects. Persisted data is
 // untrusted and normalized into the same runtime model as bundled skills.
+// Storage: the server mirror (/api/skills → ~/.openchatcut/skills/<slug>/SKILL.md
+// + kv) when reachable; IndexedDB falls back when it isn't (static hosting).
 import { parseSkillFrontmatter } from '../agent/skills/skill-frontmatter';
 import type { SkillDefinition } from '../agent/skills/skill-types';
 import { kvGet as idbGet, kvSet as idbSet } from './sharedKv';
@@ -10,7 +12,14 @@ export interface CustomSkill extends SkillDefinition {
 }
 
 const SKILLS_KEY = 'skills:custom';
+const SKILLS_API = '/api/skills';
 const SAFE_SLUG = /^[A-Za-z0-9_-]+$/;
+
+const canReachServer = (): boolean =>
+  typeof window !== 'undefined'
+  && typeof location !== 'undefined'
+  && typeof fetch === 'function'
+  && (location.protocol === 'http:' || location.protocol === 'https:');
 
 export function normalizeStoredCustomSkill(value: unknown): CustomSkill | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -52,6 +61,22 @@ async function readAll(): Promise<CustomSkill[]> {
 }
 
 export async function loadCustomSkills(): Promise<CustomSkill[]> {
+  // Server mirror wins when reachable: kv skills + user-dropped SKILL.md files.
+  if (canReachServer()) {
+    try {
+      const response = await fetch(SKILLS_API, { headers: { Accept: 'application/json' } });
+      if (response.ok) {
+        const body = await response.json() as { skills?: unknown[] };
+        if (Array.isArray(body.skills)) {
+          return body.skills
+            .map(normalizeStoredCustomSkill)
+            .filter((skill): skill is CustomSkill => Boolean(skill));
+        }
+      }
+    } catch {
+      // fall through to IDB
+    }
+  }
   try {
     return await readAll();
   } catch {
@@ -72,6 +97,14 @@ export async function saveCustomSkill(skill: CustomSkill): Promise<CustomSkill> 
   } catch {
     // Persistence failure keeps the in-session result usable.
   }
+  // Best-effort mirror to ~/.openchatcut/skills/<slug>/SKILL.md.
+  if (canReachServer()) {
+    fetch(SKILLS_API, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skill }),
+    }).catch(() => undefined);
+  }
   return skill;
 }
 
@@ -81,5 +114,8 @@ export async function deleteCustomSkill(id: string): Promise<void> {
     await idbSet(SKILLS_KEY, current.filter((skill) => skill.id !== id));
   } catch {
     // Deletion is best-effort when local persistence is unavailable.
+  }
+  if (canReachServer()) {
+    fetch(`${SKILLS_API}/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => undefined);
   }
 }

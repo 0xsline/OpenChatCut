@@ -65,13 +65,8 @@ function providerOptions(provider: LlmProvider): ProviderOptions {
 async function createProviderFactory(provider: LlmProvider): Promise<ModelFactory> {
   const options = providerOptions(provider);
   switch (provider) {
-    case 'anthropic': {
-      const { createAnthropic } = await import('@ai-sdk/anthropic');
-      const provider = createAnthropic(options);
-      // Anthropic caches prompt prefixes automatically (5m TTL); the model
-      // setting extends the cache window to 1h so long sessions keep hitting.
-      return (model: string) => provider.chat(model, { cacheControl: { type: 'ephemeral', ttl: '1h' } });
-    }
+    case 'anthropic':
+      return (await import('@ai-sdk/anthropic')).createAnthropic(options);
     case 'gemini':
       return (await import('@ai-sdk/google')).createGoogleGenerativeAI(options);
     case 'kimi':
@@ -125,6 +120,11 @@ export function getLanguageModelProviderOptions(
   provider: LlmProvider = PROVIDER,
   openAiApiMode: OpenAiApiMode = OPENAI_API_MODE,
 ): Record<string, Record<string, boolean>> | undefined {
+  if (provider === 'anthropic') {
+    // Anthropic caches prompt prefixes automatically (5m TTL); the
+    // provider option extends the cache window to 1h for long sessions.
+    return { anthropic: { cacheControl: { type: 'ephemeral', ttl: '1h' } } as unknown as Record<string, boolean> };
+  }
   if (provider === 'minimax') {
     return { minimax: { reasoning_split: true } };
   }

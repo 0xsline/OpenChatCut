@@ -92,7 +92,12 @@ async function doCreate(args: Args): Promise<unknown> {
   };
   await saveCustomSkill(skill);
   await refresh();
-  return { ok: true, created: brief(skill) };
+  return {
+    ok: true,
+    created: brief(skill),
+    installedAt: `~/.openchatcut/skills/${skill.slug}`,
+    note: '自定义技能已保存到用户技能目录，可直接编辑 ~/.openchatcut/skills/<slug>/SKILL.md',
+  };
 }
 
 async function doUpdate(args: Args): Promise<unknown> {
@@ -118,7 +123,11 @@ async function doUpdate(args: Args): Promise<unknown> {
   };
   await saveCustomSkill(next);
   await refresh();
-  return { ok: true, updated: brief(next) };
+  return {
+    ok: true,
+    updated: brief(next),
+    installedAt: `~/.openchatcut/skills/${next.slug}`,
+  };
 }
 
 async function doDelete(args: Args): Promise<unknown> {
