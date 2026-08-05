@@ -15,6 +15,7 @@ import {
   h264EncodingArgs,
   isHardwareH264Encoder,
   resolveH264Encoder,
+  resolveHwDecodeArgs,
 } from '../media-acceleration.ts';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
 import { putUploadFile, r2Config } from '../r2.ts';
@@ -409,6 +410,7 @@ async function encodeNormalized(
   const ffmpeg = ffmpegBin();
   const commonArgs = [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    ...(await resolveHwDecodeArgs(ffmpeg, undefined)),
     '-i', inputPath,
     '-map', '0:v:0',
     ...(meta.hasAudio ? ['-map', '0:a:0?'] : ['-an']),

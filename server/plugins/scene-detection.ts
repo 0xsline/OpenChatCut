@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { isSafeUploadName, resolveUploadFile } from '../media-dir.ts';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
+import { resolveHwDecodeArgs } from '../media-acceleration.ts';
 import {
   DEFAULT_MAX_SCENES,
   DEFAULT_MIN_SCENE_MS,
@@ -210,7 +211,8 @@ export async function detectScenesInFile(
   let progressBuffer = '';
   let lastProcessedMs = 0;
   const output = await runCapture(ffmpegBin(), [
-    '-nostdin', '-hide_banner', '-loglevel', 'error', '-i', file,
+    '-nostdin', '-hide_banner', '-loglevel', 'error',
+    ...(await resolveHwDecodeArgs(ffmpegBin(), undefined)), '-i', file,
     '-filter_complex', filter,
     '-map', '[hits]', '-an', '-f', 'null', '-',
     '-map', '[analysis_clock]', '-an',
@@ -342,6 +344,7 @@ async function evidenceFrame(file: string, fileSize: number, timeMs: number): Pr
   if (cached) return cached;
   const pending = runBuffer(ffmpegBin(), [
     '-nostdin', '-hide_banner', '-loglevel', 'error',
+    ...(await resolveHwDecodeArgs(ffmpegBin(), undefined)),
     '-ss', String(Math.max(0, timeMs) / 1000), '-i', file,
     '-frames:v', '1', '-vf', 'scale=320:-2:flags=fast_bilinear',
     '-c:v', 'mjpeg', '-q:v', '5', '-f', 'image2pipe', 'pipe:1',

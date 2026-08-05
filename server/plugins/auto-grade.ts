@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
+import { resolveHwDecodeArgs } from '../media-acceleration.ts';
 import { isSafeUploadName, resolveUploadFile } from '../media-dir.ts';
 import {
   analyzeSignalFrames,
@@ -168,6 +169,7 @@ export async function analyzeColorInFile(file: string, options: AnalyzeColorOpti
   const sampleFps = autoGradeSampleFps(durationSeconds);
   const args = ['-nostdin', '-hide_banner', '-loglevel', 'error'];
   if (startSeconds > 0) args.push('-ss', startSeconds.toFixed(3));
+  args.push(...(await resolveHwDecodeArgs(ffmpegBin(), undefined)));
   args.push('-i', file);
   if (!isStill) args.push('-t', durationSeconds.toFixed(3));
   args.push(

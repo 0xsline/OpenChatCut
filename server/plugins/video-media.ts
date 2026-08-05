@@ -8,6 +8,7 @@ import { mkdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 
 import { ffmpegBin } from '../media-binaries.ts';
+import { resolveHwDecodeArgs } from '../media-acceleration.ts';
 import { isSafeUploadName, mimeFor, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import type { VideoRequest } from './video-validation.ts';
 import { presignGetUpload, putUploadFile } from '../r2.ts';
@@ -146,6 +147,7 @@ async function timelineSlicePath(reference: ServerGenerationReference): Promise<
       '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
       '-ss', String(sourceStartSeconds),
       '-t', String(sourceDurationSeconds),
+      ...(await resolveHwDecodeArgs(ffmpegBin(), undefined)),
       '-i', source.file,
     ];
     if (mediaKind === 'audio') {

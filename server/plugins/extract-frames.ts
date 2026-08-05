@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { isSafeUploadName, resolveUploadFile } from '../media-dir.ts';
 import { formatTimeLabel, tileContactSheet } from '../frame-grid.ts';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
+import { resolveHwDecodeArgs } from '../media-acceleration.ts';
 
 const MAX_JSON = 32 * 1024;
 const MAX_SAMPLES = 20;
@@ -117,10 +118,13 @@ const SCENE_ANALYSIS_TIMEOUT_MS = 20_000;
 
 /** The moment when the picture changes significantly (milliseconds, ascending order). Returns empty array on failure = caller falls back to uniform sampling.*/
 function sceneChangeTimesMs(input: string, fromMs: number, toMs: number): Promise<number[]> {
-  return new Promise((resolve) => {
-    const times: number[] = [];
+  return (async () => {
+    const hwDecode = await resolveHwDecodeArgs(ffmpegBin(), undefined);
+    return new Promise((resolve) => {
+      const times: number[] = [];
     const child = spawn(ffmpegBin(), [
       '-nostdin', '-hide_banner',
+      ...hwDecode,
       '-ss', String(Math.max(0, fromMs) / 1000),
       '-t', String(Math.max(0, toMs - fromMs) / 1000),
       '-i', input,
@@ -143,7 +147,8 @@ function sceneChangeTimesMs(input: string, fromMs: number, toMs: number): Promis
     });
     child.on('error', () => { clearTimeout(timer); resolve([]); });
     child.on('close', () => { clearTimeout(timer); resolve(times); });
-  });
+    });
+  })();
 }
 
 /**
@@ -186,6 +191,7 @@ export function frameSeekArgs(timeMs: number): string[] {
 async function extractOneFrame(input: string, timeMs: number, outPath: string): Promise<void> {
   await run(ffmpegBin(), [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    ...(await resolveHwDecodeArgs(ffmpegBin(), undefined)),
     ...frameSeekArgs(timeMs),
     '-i', input,
     '-frames:v', '1',

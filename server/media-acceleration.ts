@@ -54,6 +54,53 @@ const KNOWN_ENCODERS: Record<H264Encoder, true> = {
 };
 const encoderCache = new Map<string, Promise<H264Encoder>>();
 const compiledEncoderCache = new Map<string, Promise<boolean>>();
+const hwAccelsCache = new Map<string, Promise<Set<string>>>();
+
+/** 平台感知的解码硬加速参数。编码器已知时用同 API（解码/编码同硬件上下文），
+ * 否则按平台通用选择。内部 hwaccel 在流不支持时自动回退软件解码，无格式风险：
+ * 解码帧输出系统内存（nv12），与现有 CPU filter 链完全兼容。 */
+export function hwDecodeArgs(encoder?: H264Encoder): string[] {
+  if (encoder === 'h264_videotoolbox') return ['-hwaccel', 'videotoolbox'];
+  if (encoder === 'h264_nvenc') return ['-hwaccel', 'cuda'];
+  if (encoder === 'h264_qsv') return ['-hwaccel', 'qsv'];
+  if (encoder === 'h264_amf') return ['-hwaccel', 'd3d11va'];
+  if (encoder === 'h264_vaapi') return ['-hwaccel', 'vaapi'];
+  switch (process.platform) {
+    case 'darwin': return ['-hwaccel', 'videotoolbox'];
+    case 'win32': return ['-hwaccel', 'd3d11va'];
+    case 'linux': return ['-hwaccel', 'vaapi'];
+    default: return [];
+  }
+}
+
+async function availableHwAccels(ffmpeg: string): Promise<Set<string>> {
+  const key = ffmpeg;
+  const cached = hwAccelsCache.get(key);
+  if (cached) return cached;
+  const { promise, resolve } = promiseConstructor.withResolvers<Set<string>>();
+  const child = spawn(ffmpeg, ['-hide_banner', '-hwaccels'], {
+    cwd: dirname(ffmpeg),
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  let output = '';
+  child.stdout.on('data', (chunk: Buffer) => { output = `${output}${chunk}`.slice(0, 8192); });
+  const timer = setTimeout(() => child.kill('SIGKILL'), 5_000);
+  child.once('error', () => { clearTimeout(timer); resolve(new Set()); });
+  child.once('close', () => {
+    clearTimeout(timer);
+    resolve(new Set(output.split(/\s+/).filter(Boolean)));
+  });
+  hwAccelsCache.set(key, promise);
+  return promise;
+}
+
+/** 探测 ffmpeg 编译支持后返回解码硬加速参数；不支持时为空数组（软解）。 */
+export async function resolveHwDecodeArgs(ffmpeg: string, encoder?: H264Encoder): Promise<string[]> {
+  const candidate = hwDecodeArgs(encoder);
+  if (!candidate.length) return [];
+  const available = await availableHwAccels(ffmpeg);
+  return available.has(candidate[1]!) ? candidate : [];
+}
 
 export function h264HardwareCandidates(platform: NodeJS.Platform = process.platform): H264Encoder[] {
   if (platform === 'darwin') return ['h264_videotoolbox'];

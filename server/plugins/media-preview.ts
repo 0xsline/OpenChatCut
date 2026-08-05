@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { DEFAULT_UPLOAD_DIR, isSafeUploadName, resolveUploadFile, serveDiskFile, uploadDir } from '../media-dir.ts';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
+import { resolveHwDecodeArgs } from '../media-acceleration.ts';
 import { derivativeQueue, type DerivativeWork } from '../derivative-queue.ts';
 import { handlePreviewProxy, handlePreviewProxyFile, runPreviewProcess } from '../preview-proxy.ts';
 import { capturePreviewGenerationEpoch, invalidatePreviewGenerations, isPreviewGenerationCurrent } from '../preview-cache-epoch.ts';
@@ -276,6 +277,7 @@ async function buildFilmstrip(file: string, probeResult: Probe, out: string, sig
     for (const cell of cells) {
       await run(ffmpegBin(), [
         '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+        ...(await resolveHwDecodeArgs(ffmpegBin(), undefined)),
         '-ss', String(cell.time), '-i', file, '-frames:v', '1',
         '-vf', `scale=${cellWidth}:${STRIP_HEIGHT}:force_original_aspect_ratio=increase,crop=${cellWidth}:${STRIP_HEIGHT}`,
         '-q:v', '5', cell.path,
@@ -296,6 +298,7 @@ async function buildFilmstrip(file: string, probeResult: Probe, out: string, sig
 async function buildFrame(file: string, time: number, out: string, signal: AbortSignal): Promise<void> {
   await run(ffmpegBin(), [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    ...(await resolveHwDecodeArgs(ffmpegBin(), undefined)),
     '-ss', String(time), '-i', file, '-frames:v', '1', '-an',
     '-vf', 'scale=960:540:force_original_aspect_ratio=decrease',
     '-q:v', '3', out,
