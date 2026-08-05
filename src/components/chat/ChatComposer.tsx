@@ -172,17 +172,26 @@ export function ChatComposer(props: ChatComposerProps) {
     setSlashOpen(true);
     setSlashIndex((i) => (slashMatches.length > 0 ? Math.min(i, slashMatches.length - 1) : -1));
   }, [slashMatches.length, slashMatchQuery]);
-  const activateSlash = (skill: SkillDefinition) => {
+  const activateSlash = (skill: SkillDefinition, fillPrompt: boolean) => {
     setSlashOpen(false);
     setSlashIndex(-1);
     onChange('');
-    activateWorkflowStarter(skill, {
-      translate: t,
-      locale: getLocale(),
-      onCreativeModeChange,
-      onPromptChange: onChange,
-      onRequestFocus: () => taRef.current?.focus(),
-    });
+    if (fillPrompt) {
+      // Loose completion (/long): starter prompt makes it a one-key
+      // workflow launch, same as the wand picker.
+      activateWorkflowStarter(skill, {
+        translate: t,
+        locale: getLocale(),
+        onCreativeModeChange,
+        onPromptChange: onChange,
+        onRequestFocus: () => taRef.current?.focus(),
+      });
+    } else {
+      // Explicit /skill:<slug>: activate only, keep the input clean so
+      // the user types their own task.
+      onCreativeModeChange(skill.id);
+      taRef.current?.focus();
+    }
   };
   const [agentSettings, setAgentSettings] = useState<AgentSettings>(() => loadAgentSettings());
   const patchAgent = (patch: Partial<AgentSettings>) => {
@@ -479,7 +488,7 @@ export function ChatComposer(props: ChatComposerProps) {
             }
             if ((event.key === 'Enter' || event.key === 'Tab') && slashMatches.length) {
               event.preventDefault();
-              activateSlash(slashMatches[Math.max(0, slashIndex)]);
+              activateSlash(slashMatches[Math.max(0, slashIndex)], !slashExplicit);
               return;
             }
             if (event.key === 'Escape') {
@@ -643,7 +652,7 @@ export function ChatComposer(props: ChatComposerProps) {
               <button
                 key={s.id}
                 type="button"
-                onClick={() => activateSlash(s)}
+                onClick={() => activateSlash(s, !slashExplicit)}
                 onMouseEnter={() => setSlashIndex(index)}
                 onMouseLeave={() => { if (slashIndex === index) setSlashIndex(-1); }}
                 style={{
