@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import { Player, Thumbnail, type CallbackListener, type PlayerRef } from '@remotion/player';
 import { theme, themeAlpha } from '../theme';
 import { TimelineComposition } from '../editor/TimelineComposition';
@@ -25,6 +25,12 @@ import { Icon } from './icons';
 import { useT } from '../i18n/locale';
 import { ReviewCommentsButton, type ReviewOpenRequest } from '../review/ReviewCommentsButton';
 import { usePreviewProjectDoc } from '../media/previewMedia';
+import {
+  getPreviewSourceMode,
+  setPreviewSourceMode,
+  subscribeQualityMode,
+  type PreviewSourceMode,
+} from '../media/qualityPolicy';
 import type { SlipPreview } from '../editor/slip';
 import { SlipTwoUpPreview } from './SlipTwoUpPreview';
 import { PREVIEW_SHARED_AUDIO_TAGS } from './previewAudioPool';
@@ -34,8 +40,40 @@ import { fitPreviewCanvasSize, type PreviewCanvasSize } from './preview/previewC
 
 const MEDIA_LOADING_NOTICE_DELAY_MS = 160;
 
+const PREVIEW_SOURCE_CYCLE: readonly PreviewSourceMode[] = ['auto', 'original', 'proxy'];
+
 function previewStatusKey(status: Pick<SelectedPreviewStatus, 'kind' | 'targetId'>): string {
   return `${status.kind}\u0000${status.targetId}`;
+}
+
+function PreviewSourceToggle() {
+  const t = useT();
+  const mode = useSyncExternalStore(subscribeQualityMode, getPreviewSourceMode, getPreviewSourceMode);
+  const label = mode === 'original' ? t('原片') : mode === 'proxy' ? t('代理') : t('自动');
+  const title = mode === 'original'
+    ? t('预览使用原始素材（最高画质，可能更吃性能）')
+    : mode === 'proxy'
+      ? t('预览优先使用低分辨率代理（更流畅）')
+      : t('预览跟随画质策略（画质优先=原片，均衡=可用代理）');
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const index = PREVIEW_SOURCE_CYCLE.indexOf(mode);
+        setPreviewSourceMode(PREVIEW_SOURCE_CYCLE[(index + 1) % PREVIEW_SOURCE_CYCLE.length]!);
+      }}
+      title={title}
+      aria-label={title}
+      style={{
+        fontSize: 11, lineHeight: 1, padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
+        border: `0.5px solid ${theme.border}`,
+        background: mode === 'original' ? theme.panelAlt : 'transparent',
+        color: mode === 'auto' ? theme.textDim : theme.text,
+      }}
+    >
+      {t('预览源')}: {label}
+    </button>
+  );
 }
 
 interface PreviewPanelProps {
@@ -230,6 +268,9 @@ export const PreviewPanel = memo(function PreviewPanel({
             getCurrentFrame={() => playerRef.current?.getCurrentFrame() ?? 0}
             onSeek={(frame) => playerRef.current?.seekTo(frame)}
           />
+          {state.items.length > 0 && (
+            <PreviewSourceToggle />
+          )}
           {state.items.length > 0 && (
             <button type="button" onClick={() => setShowSafe((v) => !v)} aria-pressed={showSafe}
               title={t('切换标题/动作安全区参考框（竖屏成片构图辅助）')}

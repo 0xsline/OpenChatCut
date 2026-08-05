@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
+  getPreviewSourceMode,
   getQualityMode,
   shouldAutoRequestPreviewProxy,
+  shouldPreferMasterPreview,
   subscribeQualityMode,
 } from './qualityPolicy';
 import type { ProjectDoc, TimelineState } from '../editor/types';
@@ -143,28 +145,35 @@ function subscribe(sources: readonly string[], listener: () => void): () => void
   };
 }
 
+function useQualitySnapshot() {
+  return useSyncExternalStore(subscribeQualityMode, () => ({
+    mode: getQualityMode(),
+    preview: getPreviewSourceMode(),
+  }), () => ({ mode: getQualityMode() as ReturnType<typeof getQualityMode>, preview: getPreviewSourceMode() }));
+}
+
 function useProxySources(sources: readonly string[], sourceKey: string): number {
   const [revision, setRevision] = useState(0);
-  const qualityMode = useSyncExternalStore(subscribeQualityMode, getQualityMode, getQualityMode);
+  const quality = useQualitySnapshot();
   useEffect(() => {
     const bump = () => setRevision((value) => value + 1);
     const unsubscribe = subscribe(sources, bump);
-    // Master quality: keep original media for preview; only balanced eagerly fetches proxies.
-    if (shouldAutoRequestPreviewProxy(qualityMode)) {
+    // Only fetch proxies when policy/source mode expects them.
+    if (shouldAutoRequestPreviewProxy(quality.mode, quality.preview)) {
       for (const src of sources) void requestPreviewProxy(src);
     }
     return unsubscribe;
-  }, [sourceKey, qualityMode]);
+  }, [sourceKey, quality.mode, quality.preview]);
+  // Re-resolve preview src when quality/preview-source mode flips even if proxy cache is quiet.
+  useEffect(() => {
+    setRevision((value) => value + 1);
+  }, [quality.mode, quality.preview]);
   return revision;
 }
 
 function resolvePreviewSrc(src: string | undefined, proxy: PreviewProxyState): string | undefined {
-  if (qualityPolicyPreferMaster() && src) return src;
+  if (shouldPreferMasterPreview() && src) return src;
   return proxy.status === 'ready' ? proxy.previewSrc : src;
-}
-
-function qualityPolicyPreferMaster(): boolean {
-  return !shouldAutoRequestPreviewProxy(getQualityMode());
 }
 
 export function usePreviewMediaSource(src: string | undefined, enabled = true) {

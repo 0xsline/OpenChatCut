@@ -21,10 +21,15 @@ export interface QualityPolicy {
   readonly defaultBitrateMode: VideoBitrateMode;
 }
 
+/** How the preview player resolves media. auto follows QualityMode. */
+export type PreviewSourceMode = 'auto' | 'original' | 'proxy';
+
 const STORAGE_KEY = 'cc.qualityMode.v1';
+const PREVIEW_SOURCE_KEY = 'cc.previewSource.v1';
 const listeners = new Set<() => void>();
 
 let current: QualityMode = readInitial();
+let previewSource: PreviewSourceMode = readPreviewSourceInitial();
 
 function readInitial(): QualityMode {
   try {
@@ -32,6 +37,14 @@ function readInitial(): QualityMode {
     if (raw === 'master' || raw === 'balanced') return raw;
   } catch { /* private mode */ }
   return 'balanced';
+}
+
+function readPreviewSourceInitial(): PreviewSourceMode {
+  try {
+    const raw = localStorage.getItem(PREVIEW_SOURCE_KEY);
+    if (raw === 'auto' || raw === 'original' || raw === 'proxy') return raw;
+  } catch { /* private mode */ }
+  return 'auto';
 }
 
 function emit(): void {
@@ -47,6 +60,19 @@ export function setQualityMode(mode: QualityMode): void {
   current = mode;
   try {
     localStorage.setItem(STORAGE_KEY, mode);
+  } catch { /* ignore */ }
+  emit();
+}
+
+export function getPreviewSourceMode(): PreviewSourceMode {
+  return previewSource;
+}
+
+export function setPreviewSourceMode(mode: PreviewSourceMode): void {
+  if (mode === previewSource) return;
+  previewSource = mode;
+  try {
+    localStorage.setItem(PREVIEW_SOURCE_KEY, mode);
   } catch { /* ignore */ }
   emit();
 }
@@ -102,7 +128,25 @@ export function defaultBitrateModeForQuality(mode: QualityMode = current): Video
   return qualityPolicy(mode).defaultBitrateMode;
 }
 
-/** Master mode: do not eagerly create preview proxies. */
-export function shouldAutoRequestPreviewProxy(mode: QualityMode = current): boolean {
+/**
+ * Whether preview should resolve to master src (not proxy).
+ * Explicit previewSourceMode overrides QualityMode defaults.
+ */
+export function shouldPreferMasterPreview(
+  mode: QualityMode = current,
+  source: PreviewSourceMode = previewSource,
+): boolean {
+  if (source === 'original') return true;
+  if (source === 'proxy') return false;
+  return qualityPolicy(mode).previewPreferMaster;
+}
+
+/** Eagerly fetch proxies only when preview is allowed/expected to use them. */
+export function shouldAutoRequestPreviewProxy(
+  mode: QualityMode = current,
+  source: PreviewSourceMode = previewSource,
+): boolean {
+  if (source === 'original') return false;
+  if (source === 'proxy') return true;
   return !qualityPolicy(mode).previewPreferMaster;
 }

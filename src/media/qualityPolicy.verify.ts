@@ -4,6 +4,7 @@ import {
   exportResolutionForCanvas,
   qualityPolicy,
   shouldAutoRequestPreviewProxy,
+  shouldPreferMasterPreview,
 } from './qualityPolicy';
 
 assert.equal(qualityPolicy('master').allowOptimizeOnIngest, false);
@@ -23,7 +24,13 @@ assert.equal(exportResolutionForCanvas({ width: 854, height: 480 }, 'balanced'),
 
 assert.equal(defaultBitrateModeForQuality('master'), 'high');
 assert.equal(defaultBitrateModeForQuality('balanced'), 'auto');
-assert.equal(shouldAutoRequestPreviewProxy('master'), false);
-assert.equal(shouldAutoRequestPreviewProxy('balanced'), true);
+assert.equal(shouldAutoRequestPreviewProxy('master', 'auto'), false);
+assert.equal(shouldAutoRequestPreviewProxy('balanced', 'auto'), true);
+assert.equal(shouldAutoRequestPreviewProxy('master', 'proxy'), true);
+assert.equal(shouldAutoRequestPreviewProxy('balanced', 'original'), false);
+assert.equal(shouldPreferMasterPreview('master', 'auto'), true);
+assert.equal(shouldPreferMasterPreview('balanced', 'auto'), false);
+assert.equal(shouldPreferMasterPreview('balanced', 'original'), true);
+assert.equal(shouldPreferMasterPreview('master', 'proxy'), false);
 
 console.log('qualityPolicy.verify: ok');
