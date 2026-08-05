@@ -141,28 +141,37 @@ export function ChatComposer(props: ChatComposerProps) {
   type RefDrill = 'root' | 'assets' | 'timeline' | 'templates' | `track:${string}`;
   const [refDrill, setRefDrill] = useState<RefDrill>('root');
   const [refIndex, setRefIndex] = useState(-1);
-  // `/` skill command: value starting with `/` opens slug completion. The slash
-  // stays in the input as a command prefix; Tab/Enter completes to an activation.
+  // `/` skill command: value starting with `/` opens completion. Two shapes:
+  //   `/skill:<query>`  explicit skill command (matches slug/name strictly)
+  //   `/<query>`        loose completion (slug prefix, then slug/name/nameZh substring)
   const slashQuery = value.startsWith('/') ? value.slice(1) : null;
+  const slashExplicit = slashQuery !== null && slashQuery.startsWith('skill:');
+  const slashMatchQuery = slashExplicit && slashQuery !== null ? slashQuery.slice('skill:'.length) : slashQuery;
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashIndex, setSlashIndex] = useState(-1);
   const slashMatches = useMemo((): SkillDefinition[] => {
-    if (slashQuery === null) return [];
-    const q = slashQuery.toLowerCase().trim();
+    if (slashMatchQuery === null) return [];
+    const q = slashMatchQuery.toLowerCase().trim();
     const skills = allCreativeSkills();
     if (!q) return skills;
+    if (slashExplicit) {
+      const exact = skills.filter((s) => s.slug.toLowerCase() === q
+        || s.name.toLowerCase() === q || s.nameZh.toLowerCase() === q);
+      if (exact.length > 0) return exact;
+      return skills.filter((s) => s.slug.toLowerCase().includes(q) || s.name.toLowerCase().includes(q));
+    }
     const starts = skills.filter((s) => s.slug.toLowerCase().startsWith(q));
     const contains = skills.filter((s) => !starts.includes(s)
       && (s.slug.toLowerCase().includes(q)
         || s.name.toLowerCase().includes(q)
         || s.nameZh.includes(q)));
     return [...starts, ...contains];
-  }, [slashQuery]);
+  }, [slashExplicit, slashMatchQuery]);
   useEffect(() => {
-    if (slashQuery === null) { setSlashOpen(false); return; }
+    if (slashMatchQuery === null) { setSlashOpen(false); return; }
     setSlashOpen(true);
     setSlashIndex((i) => (slashMatches.length > 0 ? Math.min(i, slashMatches.length - 1) : -1));
-  }, [slashMatches.length, slashQuery]);
+  }, [slashMatches.length, slashMatchQuery]);
   const activateSlash = (skill: SkillDefinition) => {
     setSlashOpen(false);
     setSlashIndex(-1);
@@ -457,7 +466,7 @@ export function ChatComposer(props: ChatComposerProps) {
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.shiftKey) event.preventDefault();
-          if (slashOpen && slashQuery !== null) {
+          if (slashOpen && slashMatchQuery !== null) {
             if (event.key === 'ArrowDown' && slashMatches.length) {
               event.preventDefault();
               setSlashIndex((i) => (i + 1) % slashMatches.length);
@@ -609,7 +618,7 @@ export function ChatComposer(props: ChatComposerProps) {
           {refPopoverBody('template', t('暂无模板'))}
         </ComposerPopover>
       )}
-      {slashOpen && slashQuery !== null && (
+      {slashOpen && slashMatchQuery !== null && (
         <ComposerPopover
           width={WORKFLOW_POPOVER_WIDTH}
           className="cc-chat-popover--workflow"
@@ -619,13 +628,15 @@ export function ChatComposer(props: ChatComposerProps) {
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 12px 6px' }}>
             <Icon name="wand" size={14} />
-            <strong style={{ fontSize: 12.5 }}>{t('创作工作流')}</strong>
+            <strong style={{ fontSize: 12.5 }}>{slashExplicit ? t('技能命令') : t('创作工作流')}</strong>
             <code style={{ marginLeft: 'auto', fontSize: 10.5, color: theme.textDim }}>{value}</code>
           </div>
           <div style={{ maxHeight: 264, overflowY: 'auto', padding: '2px 6px 8px' }}>
             {slashMatches.length === 0 && (
               <div style={{ fontSize: 12, color: theme.textDim, padding: '6px 10px' }}>
-                {t('没有匹配“{query}”的创作工作流', { query: slashQuery.trim() })}
+                {slashExplicit
+                  ? t('未知技能“{query}”，按 / 查看全部创作工作流', { query: slashMatchQuery.trim() })
+                  : t('没有匹配“{query}”的创作工作流', { query: slashMatchQuery.trim() })}
               </div>
             )}
             {slashMatches.map((s, index) => (

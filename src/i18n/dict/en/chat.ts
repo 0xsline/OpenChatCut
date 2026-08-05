@@ -144,7 +144,9 @@ export default {
   '关闭': 'Close',
   '技能命令补全': 'Skill command completion',
   '创作工作流': 'Creative workflows',
+  '技能命令': 'Skill command',
   '没有匹配“{query}”的创作工作流': 'No creative workflow matches “{query}”',
+  '未知技能“{query}”，按 / 查看全部创作工作流': 'Unknown skill “{query}” — type / to see all creative workflows',
   'Tab / Enter 补全并激活 · Esc 退出': 'Tab / Enter completes and activates · Esc exits',
 
   // ── Creation skill summary (the skill name is in the catalog and comes with its own English name, not in the dictionary) ──
