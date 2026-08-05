@@ -1,5 +1,5 @@
 import type { AgentRuntimeModule, LLMMessage, RuntimeGuardRequest } from './runtime';
-import type { GuardDecision } from './skills/skillGuard';
+import type { GuardDecision } from './skills/costGuard';
 import { getLocale } from '../i18n/locale';
 
 export interface DisplayMessage {

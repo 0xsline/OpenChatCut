@@ -7,7 +7,7 @@ import type { LlmProvider } from './providerConfig';
 import { normalizeLlmMessages, prepareMessagesForProvider } from './messages';
 import { makeDraft, replayActions } from '../editor/store';
 import { buildOperation, buildProposal, isProposalStale, partitionProposalActions, type Operation, type Proposal } from './proposal';
-import { isSkillAllowed, rememberSkillAllowed, type GuardDecision } from './skills/skillGuard';
+import { isCostAllowed, rememberCostAllowed, type GuardDecision } from './skills/costGuard';
 import { loadChat, saveChat } from '../persist/projectStore';
 import { loadProposal, saveProposal, clearProposal } from '../persist/proposalStore';
 import { saveAutomaticVersion } from '../persist/versionStore';
@@ -44,7 +44,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   const [proposal, setProposal] = useState<Proposal | null>(null);
   // Proposal expired banner (three choices: still apply / re-propose / cancel)
   const [proposalStale, setProposalStale] = useState(false);
-  // Pre-skill_guard pending card + tool parameter real-time stream (all temporary)
+  // Pre-cost-guard pending card + tool parameter real-time stream (all temporary)
   const [pendingGuard, setPendingGuard] = useState<PendingGuard | null>(null);
   const [liveTool, setLiveTool] = useState<LiveTool | null>(null);
   const pendingGuardRef = useRef<PendingGuard | null>(null);
@@ -233,15 +233,15 @@ export function useAgent(ctx: AgentContext, projectId: string) {
           signal: ac.signal,
           previousContextUsage: contextUsageRef.current ?? undefined,
           toolFailures: toolFailuresRef.current,
-          // Pre-skill_guard: Authorization has been remembered and released directly; otherwise, the pending card will be hung up to wait for the user.
+          // Pre-cost-guard: Authorization has been remembered and released directly; otherwise, the pending card will be hung up to wait for the user.
           onSkillGuard: (guard) => {
-            if (isSkillAllowed(guard.skill, projectId)) return Promise.resolve<GuardDecision>('allow-once');
+            if (isCostAllowed(guard.skill, projectId)) return Promise.resolve<GuardDecision>('allow-once');
             return new Promise<GuardDecision>((resolve) => {
               setPendingGuard({
                 ...guard,
                 resolve: (decision) => {
                   setPendingGuard(null);
-                  if (decision === 'allow-scope') rememberSkillAllowed(guard.skill, projectId);
+                  if (decision === 'allow-scope') rememberCostAllowed(guard.skill, projectId);
                   resolve(decision);
                 },
               });
@@ -297,7 +297,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
   );
 
   // Stop the in-flight turn (Send button switches to stop in flight).
-  // The pending skill_guard card will be settled by pressing "Reject" when stopped to avoid Promise hanging.
+  // The pending cost-guard card will be settled by pressing "Reject" when stopped to avoid Promise hanging.
   const stop = useCallback(() => {
     pendingGuardRef.current?.resolve('deny');
     toolFailuresRef.current.clear();

@@ -1,12 +1,12 @@
 import type { AgentContext } from './context';
 import {
-  generationSkillForTool,
-  type GenerationGuardSkill,
+  costCategoryForTool,
+  type CostGuardCategory,
 } from './settings/agentSettings';
 import { resolveTrackedJobForProject } from '../persist/jobRegistryStore';
 
 export interface RuntimeGuardRequest {
-  readonly skill: GenerationGuardSkill;
+  readonly skill: CostGuardCategory;
   /** Actual provider/export tool whose execution is being confirmed. */
   readonly tool: string;
   readonly requestedTool?: string;
@@ -30,7 +30,7 @@ export async function runtimeGuardForTool(
   args: Record<string, unknown>,
   ctx: AgentContext,
 ): Promise<RuntimeGuardRequest | null> {
-  const defaultSkill = generationSkillForTool(toolName);
+  const defaultSkill = costCategoryForTool(toolName);
   if (!defaultSkill) return null;
   if (toolName !== 'rerun_generation') {
     return { skill: defaultSkill, tool: toolName, summary: summarizeGuardArgs(toolName, args) };
@@ -44,7 +44,7 @@ export async function runtimeGuardForTool(
     throw new Error(`generation operation ${original.operationId} is a legacy summary-only snapshot and cannot be rerun safely`);
   }
   return {
-    skill: generationSkillForTool(original.toolName) ?? 'high-cost-operation',
+    skill: costCategoryForTool(original.toolName) ?? 'high-cost-operation',
     tool: original.toolName,
     requestedTool: toolName,
     operationId: original.operationId,

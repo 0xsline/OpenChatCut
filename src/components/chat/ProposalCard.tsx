@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Proposal } from '../../agent/proposal';
 import { useT } from '../../i18n/locale';
 import { Icon } from '../icons';
-import { highCostOps } from '../../agent/skills/skillGuard';
+import { highCostOps } from '../../agent/skills/costGuard';
 
 export function ProposalCard({ proposal, onApply, onReject, onPreview, stale, onForceApply, onRePropose }: {
   proposal: Proposal;
@@ -59,7 +59,7 @@ export function ProposalCard({ proposal, onApply, onReject, onPreview, stale, on
             </div>
             {costly.length > 0 && (
               <p className="cc-proposal-summary costly">
-                {t('Skill guard：包含生成/导出等高成本操作，请确认后再应用。')}
+                {t('高成本操作：包含生成/导出等付费操作，请确认后再应用。')}
               </p>
             )}
             {proposal.summary ? (

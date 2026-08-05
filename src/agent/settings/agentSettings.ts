@@ -1,16 +1,12 @@
 // Agent settings that actually change code paths (not soft prompt hints).
-// skill_guard: high-cost tools never auto-apply even when "auto-apply" is on.
+// Cost guard: high-cost tools (generation/export/transcription/web/sandbox)
+// always confirm before execution and never auto-apply — not configurable.
 
 /** MG generates three levels of quality. */
 export type MgTier = 'speed' | 'balance' | 'quality';
 export const MG_TIERS: readonly MgTier[] = ['speed', 'balance', 'quality'];
 
 export interface AgentSettings {
-  /**
-   * skill_guard: high-cost tools never auto-apply — user must confirm
-   * via the existing proposal card even when "Auto-Apply" is on.
-   */
-  skillGuard: boolean;
   /** MG quality file (default balance), injected through <agent_settings>. */
   mgTier: MgTier;
   /** Plan mode (Agent Settings planMode switch): come up with the numbering plan first, and then start after the user confirms it. */
@@ -20,7 +16,6 @@ export interface AgentSettings {
 const KEY = 'cc.agentSettings.v1';
 
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
-  skillGuard: true,
   mgTier: 'balance',
   planMode: false,
 };
@@ -31,7 +26,6 @@ export function loadAgentSettings(): AgentSettings {
     if (!raw) return { ...DEFAULT_AGENT_SETTINGS };
     const parsed = JSON.parse(raw) as Partial<AgentSettings>;
     return {
-      skillGuard: parsed.skillGuard !== false,
       mgTier: MG_TIERS.includes(parsed.mgTier as MgTier) ? (parsed.mgTier as MgTier) : DEFAULT_AGENT_SETTINGS.mgTier,
       planMode: parsed.planMode === true,
     };
@@ -53,7 +47,7 @@ export function saveAgentSettings(next: AgentSettings): void {
  * `<agent_settings>motion_graphic_tier=${tier} … pass --tier ${tier}</agent_settings>`,
  * Appended to the end of the system assembly (runtime.runAgent). The English key remains unchanged.
  */
-export function agentSettingsPrompt(s: Pick<AgentSettings, 'mgTier' | 'planMode' | 'skillGuard'>): string {
+export function agentSettingsPrompt(s: Pick<AgentSettings, 'mgTier' | 'planMode'>): string {
   const lines = [
     `motion_graphic_tier=${s.mgTier}`,
     `When using the motion-graphic-gen skill for this request, pass --tier ${s.mgTier}.`,
@@ -62,10 +56,6 @@ export function agentSettingsPrompt(s: Pick<AgentSettings, 'mgTier' | 'planMode'
   ];
   if (s.planMode) {
     lines.push('plan_mode=on: output only a numbered plan first, wait for user confirmation, then call tools.');
-  }
-  if (s.skillGuard !== false) {
-    lines.push('skill_guard=true');
-    lines.push('High-cost submit_* / export tools need explicit user confirmation; if the user Denies, do not retry automatically.');
   }
   return `\n\n<agent_settings>\n${lines.join('\n')}\n</agent_settings>`;
 }
@@ -161,7 +151,11 @@ export function createInlineThinkingExtractor(): {
 }
 
 /** Tools that cost money / long GPU / irreversible export (gated at runtime).
- * Names match live TOOL_SCHEMAS plus persisted legacy aliases. */
+ * Names match live TOOL_SCHEMAS plus persisted legacy aliases.
+ * Keep this list exhaustive: every paid API surface must be here —
+ * generation (image/video/music/sound/voice/MG), shaders, export, reruns,
+ * paid transcription (AssemblyAI), paid web scraping (Firecrawl), and the
+ * paid sandbox (E2B). costGuard.verify.ts guards this invariant. */
 export const HIGH_COST_TOOLS: Readonly<Record<string, true>> = {
   submit_image: true,
   submit_video: true,
@@ -188,13 +182,23 @@ export const HIGH_COST_TOOLS: Readonly<Record<string, true>> = {
   generate_music: true,
   generate_voice: true,
   generate_sound: true,
+  // paid transcription (AssemblyAI, per-minute)
+  transcribe_track: true,
+  // paid web scraping (Firecrawl, per-page)
+  web_browser: true,
+  web_search: true,
+  web_map: true,
+  web_crawl: true,
+  web_batch_scrape: true,
+  // paid sandbox (E2B, per-second)
+  run_code: true,
 };
 
 export function isHighCostTool(name: string): boolean {
   return HIGH_COST_TOOLS[name] === true;
 }
 
-export type GenerationGuardSkill =
+export type CostGuardCategory =
   | 'image-gen'
   | 'motion-graphic-gen'
   | 'video-gen'
@@ -203,8 +207,8 @@ export type GenerationGuardSkill =
   | 'irreversible-export'
   | 'high-cost-operation';
 
-/** Every HIGH_COST_TOOLS entry has a runtime guard; known skills retain tailored copy. */
-export function generationSkillForTool(tool: string): GenerationGuardSkill | null {
+/** Every HIGH_COST_TOOLS entry has a runtime guard; known categories retain tailored copy. */
+export function costCategoryForTool(tool: string): CostGuardCategory | null {
   if (tool === 'submit_image' || tool === 'generate_image' || tool === 'submit_image_generation') return 'image-gen';
   if (
     tool === 'submit_motion_graphic' || tool === 'create_motion_graphic'

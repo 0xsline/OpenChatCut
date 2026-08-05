@@ -5,7 +5,7 @@ import { TOOL_SCHEMAS } from './tools';
 import { buildAgentSystemPrompt } from './systemPrompt';
 import { normalizeLlmMessages } from './messages';
 import { loadAgentSettings } from './settings/agentSettings';
-import type { GuardDecision } from './skills/skillGuard';
+import type { GuardDecision } from './skills/costGuard';
 import {
   runtimeGuardForTool,
   type RuntimeGuardRequest,

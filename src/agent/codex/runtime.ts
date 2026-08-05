@@ -6,7 +6,7 @@ import type {
 import type { AgentContext } from '../context';
 import type { AgentEvent, LLMMessage, RuntimeGuardRequest } from '../runtime';
 import type { AgentToolSchema } from '../tool-schema';
-import type { GuardDecision } from '../skills/skillGuard';
+import type { GuardDecision } from '../skills/costGuard';
 import type { AgentSettings } from '../settings/agentSettings';
 import { normalizeLlmMessages } from '../messages';
 import { estimateTextTokens, serializeMessagesForPrompt } from '../context-compaction';
@@ -186,7 +186,7 @@ export async function executeOpenChatCutTool(
 ): Promise<CodexToolExecution> {
   const { ctx, onEvent, settings, resolveGuard, onSkillGuard, onFollowup } = execution;
   try {
-    const guard = settings.skillGuard ? await resolveGuard(schema.name, args, ctx) : null;
+    const guard = await resolveGuard(schema.name, args, ctx);
     if (guard) {
       const decision = onSkillGuard ? await onSkillGuard(guard) : 'deny';
       if (decision === 'deny') {

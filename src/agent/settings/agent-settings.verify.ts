@@ -4,25 +4,24 @@
 import assert from 'node:assert/strict';
 import {
   DEFAULT_AGENT_SETTINGS, loadAgentSettings, saveAgentSettings, agentSettingsPrompt,
-  createInlineThinkingExtractor, generationSkillForTool, HIGH_COST_TOOLS, MG_TIERS,
+  createInlineThinkingExtractor, costCategoryForTool, HIGH_COST_TOOLS, MG_TIERS,
 } from './agentSettings';
 
 // ── Default value (node has no localStorage → load uses catch/empty storage, return to default in both cases) ──
 assert.deepStrictEqual(loadAgentSettings(), DEFAULT_AGENT_SETTINGS, '无存储 → 默认值');
-assert.strictEqual(DEFAULT_AGENT_SETTINGS.skillGuard, true);
 assert.strictEqual(DEFAULT_AGENT_SETTINGS.mgTier, 'balance', 'mgTier 默认 balance');
 assert.strictEqual(DEFAULT_AGENT_SETTINGS.planMode, false, 'planMode 默认 false');
 assert.deepStrictEqual([...MG_TIERS], ['speed', 'balance', 'quality']);
 for (const toolName of Object.keys(HIGH_COST_TOOLS)) {
   assert.notEqual(
-    generationSkillForTool(toolName),
+    costCategoryForTool(toolName),
     null,
     `${toolName} must be covered by the shared pre-execution runtime guard`,
   );
 }
-assert.equal(generationSkillForTool('submit_music'), 'audio-gen');
-assert.equal(generationSkillForTool('submit_export'), 'irreversible-export');
-assert.equal(generationSkillForTool('create_motion_graphic_from_code'), 'motion-graphic-gen');
+assert.equal(costCategoryForTool('submit_music'), 'audio-gen');
+assert.equal(costCategoryForTool('submit_export'), 'irreversible-export');
+assert.equal(costCategoryForTool('create_motion_graphic_from_code'), 'motion-graphic-gen');
 
 // ── Persistence roundtrip (map version localStorage mock) ──
 const store = new Map<string, string>();
@@ -34,17 +33,17 @@ Object.defineProperty(globalThis, 'localStorage', {
     setItem: (k: string, v: string) => { store.set(k, v); },
   },
 });
-saveAgentSettings({ skillGuard: false, mgTier: 'quality', planMode: true });
+saveAgentSettings({ mgTier: 'quality', planMode: true });
 assert.deepStrictEqual(
   loadAgentSettings(),
-  { skillGuard: false, mgTier: 'quality', planMode: true },
+  { mgTier: 'quality', planMode: true },
   'save→load roundtrip 保真',
 );
 // Removed settings from older storage must not leak back into the active settings shape.
 store.set('cc.agentSettings.v1', JSON.stringify({ skillGuard: true, thinkingEnabled: true, mgTier: 'speed', planMode: false }));
 assert.deepStrictEqual(
   loadAgentSettings(),
-  { skillGuard: true, mgTier: 'speed', planMode: false },
+  { mgTier: 'speed', planMode: false },
   '旧 thinkingEnabled 字段被忽略',
 );
 // Illegal tier / Missing fields fall back to default
@@ -52,12 +51,12 @@ store.set('cc.agentSettings.v1', JSON.stringify({ mgTier: 'ludicrous' }));
 assert.strictEqual(loadAgentSettings().mgTier, 'balance', '非法 tier 回落 balance');
 
 // ── <agent_settings> injection ──
-const off = agentSettingsPrompt({ mgTier: 'speed', planMode: false, skillGuard: true });
+const off = agentSettingsPrompt({ mgTier: 'speed', planMode: false });
 assert.ok(off.includes('<agent_settings>') && off.includes('</agent_settings>'), '有标签包裹');
 assert.ok(off.includes('motion_graphic_tier=speed'), '含 tier 键值');
 assert.ok(off.includes('--tier speed'), '包含 pass --tier 措辞');
 assert.ok(!off.includes('plan_mode'), 'planMode off → 无计划指令');
-const on = agentSettingsPrompt({ mgTier: 'quality', planMode: true, skillGuard: false });
+const on = agentSettingsPrompt({ mgTier: 'quality', planMode: true });
 assert.ok(on.includes('motion_graphic_tier=quality') && on.includes('--tier quality'), 'tier 跟随设置');
 assert.ok(on.includes('plan_mode=on') && on.includes('numbered plan'), 'planMode on → 先计划后动手指令');
 

@@ -17,7 +17,7 @@ import { useExternalAgentBridge } from '../../agent/useExternalAgentBridge';
 import { ExternalProposalCard } from './ExternalProposalCard';
 import { thinkingPhrase } from './thinkingPhrases';
 import { onSelectionRef, refPromptToken, setSelectionRefMode } from '../../agent/selection-refs';
-import { shouldBlockAutoApply } from '../../agent/skills/skillGuard';
+import { shouldBlockAutoApply } from '../../agent/skills/costGuard';
 import { getAgentModelSnapshot, isAgentModelReady } from '../../agent/model-selection';
 import { ProposalCard } from './ProposalCard';
 import { ChatMessage } from './ChatMessage';
@@ -279,7 +279,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   useEffect(() => { if (!proposal) onPreviewState(null); }, [proposal, onPreviewState]);
 
   // Settings·Auto-apply: when on, apply the proposal (all ops) as soon as it arrives.
-  // skill_guard: high-cost tools still require the proposal card.
+  // cost guard: high-cost tools still require the proposal card.
   useEffect(() => {
     if (!proposal || !autoApply) return;
     if (shouldBlockAutoApply(proposal, autoApply)) return;

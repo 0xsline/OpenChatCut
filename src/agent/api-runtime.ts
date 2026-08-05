@@ -39,7 +39,7 @@ import {
   loadAgentSettings,
   type AgentSettings,
 } from './settings/agentSettings';
-import type { GuardDecision } from './skills/skillGuard';
+import type { GuardDecision } from './skills/costGuard';
 import { completeAbortedTurn } from './abortedTurn';
 import { executeOpenChatCutTool, type CodexToolExecution } from './codex/runtime';
 import { toolFailureReason, ToolFailureTracker } from './toolFailure';
