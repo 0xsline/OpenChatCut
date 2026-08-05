@@ -127,6 +127,13 @@ export const MediaAssetCard = memo(function MediaAssetCard(props: MediaAssetCard
     <div
       data-cc-media-asset-id={asset.id}
       className={`cc-asset-card${props.selected ? ' selected' : ''}${missing ? ' missing' : ''}`}
+      draggable={!missing}
+      onDragStart={(event) => {
+        if (missing) return;
+        props.onDragChange(asset.id);
+        setMediaAssetDrag(event, asset, props.selected ? props.selectedAssetIds : [asset.id]);
+      }}
+      onDragEnd={() => props.onDragChange(null)}
       onClickCapture={(event) => {
         // Plain click selects and opens the asset menu beside the card;
         // Ctrl/Shift/meta toggles extra items. Clicking the selected card
@@ -179,13 +186,7 @@ function AssetThumbArea(props: MediaAssetCardProps) {
       <button
         className="cc-asset-thumb"
         title={missing ? t('点击重新链接') : t('单击选中，双击加入时间线，或拖到指定轨道：{name}', { name: asset.name })}
-        draggable={!missing}
         style={missing ? undefined : { cursor: 'grab' }}
-        onDragStart={(event) => {
-          props.onDragChange(asset.id);
-          setMediaAssetDrag(event, asset, props.selected ? props.selectedAssetIds : [asset.id]);
-        }}
-        onDragEnd={() => props.onDragChange(null)}
         onClick={() => { if (missing && props.canRelink) props.onRelink(asset.id); }}
       >
         {props.view === 'list'
