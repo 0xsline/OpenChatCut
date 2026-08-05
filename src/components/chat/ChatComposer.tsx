@@ -19,7 +19,6 @@ import {
 import { ComposerPopover } from './ComposerPopover';
 import { ComposerModelPicker, useComposerModelView } from './ComposerModelPicker';
 import { WorkflowPickerContent } from './WorkflowPickerContent';
-import { activateWorkflowStarter } from './workflowStarters';
 import { hasEditorDrag, parseEditorDrag, type EditorDragPayload } from '../../editor/editorDrag';
 import { droppedFiles, hasExternalFiles } from '../../media/externalFileDrop';
 
@@ -172,26 +171,14 @@ export function ChatComposer(props: ChatComposerProps) {
     setSlashOpen(true);
     setSlashIndex((i) => (slashMatches.length > 0 ? Math.min(i, slashMatches.length - 1) : -1));
   }, [slashMatches.length, slashMatchQuery]);
-  const activateSlash = (skill: SkillDefinition, fillPrompt: boolean) => {
+  const activateSlash = (skill: SkillDefinition) => {
+    // Skill selection never fills the composer: the user typed their own
+    // task. Activation = creative mode set + clean input + focus.
     setSlashOpen(false);
     setSlashIndex(-1);
     onChange('');
-    if (fillPrompt) {
-      // Loose completion (/long): starter prompt makes it a one-key
-      // workflow launch, same as the wand picker.
-      activateWorkflowStarter(skill, {
-        translate: t,
-        locale: getLocale(),
-        onCreativeModeChange,
-        onPromptChange: onChange,
-        onRequestFocus: () => taRef.current?.focus(),
-      });
-    } else {
-      // Explicit /skill:<slug>: activate only, keep the input clean so
-      // the user types their own task.
-      onCreativeModeChange(skill.id);
-      taRef.current?.focus();
-    }
+    onCreativeModeChange(skill.id);
+    taRef.current?.focus();
   };
   const [agentSettings, setAgentSettings] = useState<AgentSettings>(() => loadAgentSettings());
   const patchAgent = (patch: Partial<AgentSettings>) => {
@@ -488,7 +475,7 @@ export function ChatComposer(props: ChatComposerProps) {
             }
             if ((event.key === 'Enter' || event.key === 'Tab') && slashMatches.length) {
               event.preventDefault();
-              activateSlash(slashMatches[Math.max(0, slashIndex)], !slashExplicit);
+              activateSlash(slashMatches[Math.max(0, slashIndex)]);
               return;
             }
             if (event.key === 'Escape') {
@@ -616,7 +603,6 @@ export function ChatComposer(props: ChatComposerProps) {
           <WorkflowPickerContent
             creativeMode={creativeMode}
             onCreativeModeChange={onCreativeModeChange}
-            onPromptChange={onChange}
             onRequestFocus={() => taRef.current?.focus()}
             onClose={closePop}
           />
@@ -652,7 +638,7 @@ export function ChatComposer(props: ChatComposerProps) {
               <button
                 key={s.id}
                 type="button"
-                onClick={() => activateSlash(s, !slashExplicit)}
+                onClick={() => activateSlash(s)}
                 onMouseEnter={() => setSlashIndex(index)}
                 onMouseLeave={() => { if (slashIndex === index) setSlashIndex(-1); }}
                 style={{

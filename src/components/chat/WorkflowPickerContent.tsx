@@ -1,12 +1,10 @@
 import { getLocale, useT } from '../../i18n/locale';
 import { CREATIVE_SKILLS, allCreativeSkills } from '../../agent/skills/skills-catalog';
 import { Icon } from '../icons';
-import { activateWorkflowStarter } from './workflowStarters';
 
 interface WorkflowPickerContentProps {
   creativeMode: string | null;
   onCreativeModeChange: (id: string | null) => void;
-  onPromptChange: (value: string) => void;
   onRequestFocus: () => void;
   onClose: () => void;
 }
@@ -14,7 +12,6 @@ interface WorkflowPickerContentProps {
 export function WorkflowPickerContent({
   creativeMode,
   onCreativeModeChange,
-  onPromptChange,
   onRequestFocus,
   onClose,
 }: WorkflowPickerContentProps) {
@@ -54,13 +51,10 @@ export function WorkflowPickerContent({
             type="button"
             key={skill.id}
             onClick={() => {
-              activateWorkflowStarter(skill, {
-                translate: t,
-                locale: getLocale(),
-                onCreativeModeChange,
-                onPromptChange,
-                onRequestFocus,
-              });
+              // Selecting a workflow activates it without touching the
+              // composer text — the user writes their own task.
+              onCreativeModeChange(skill.id);
+              onRequestFocus();
               onClose();
             }}
             className="cc-creative-mode-row cc-creative-mode-card"
