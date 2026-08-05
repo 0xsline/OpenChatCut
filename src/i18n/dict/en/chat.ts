@@ -119,9 +119,11 @@ export default {
 
   // ── ChatComposer: Reference / Skill / Action Bar ──
   '选择模式：点片段 / 拖画布 / 选文字稿作为引用': 'Selection mode: click clips / drag canvas / select transcript as references',
-  '引用媒体池素材': 'Reference media-pool assets',
-  '媒体池暂无素材': 'No assets in the media pool yet',
+  '引用媒体池素材': 'Reference media-pool assets',  '媒体池暂无素材': 'No assets in the media pool yet',
   '引用模板库': 'Reference template library',
+  '引用': 'Reference',
+  '时间线': 'Timeline',
+  '时间线暂无片段': 'No timeline clips yet',
   '暂无模板': 'No templates yet',
   '创作模式': 'Creative mode',
   '创作模式：{name}': 'Creative mode: {name}',
