@@ -58,7 +58,7 @@ export default {
   '留边': 'Letterbox',
   '裁切': 'Crop',
   '字幕显示': 'Captions',
-  '字幕显示（当前还没有字幕，先转写或让 Agent 生成）': 'Captions (none yet — transcribe first or ask the Agent to generate them)',
+  '字幕显示（字幕轨暂无内容；画面上的文字素材不属于字幕轨，转写或让 Agent 生成后即可显示）': 'Captions (no caption-track data yet — on-screen text clips are not captions; transcribe or ask the Agent to generate them)',
   '开启': 'On',
   '未开启': 'Off',
   '关闭': 'Close',

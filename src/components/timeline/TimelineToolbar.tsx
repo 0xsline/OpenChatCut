@@ -220,7 +220,7 @@ export function TimelineToolbar({
           <optgroup label={t('内容适配')}><option value="__contain__">{t('留边')}</option><option value="__cover__">{t('裁切')}</option></optgroup>
         </select>
       </label>
-      <button className={`cc-caption-toggle cc-tip cc-tip-r${captionsVisible ? ' active' : ''}`} data-tip={captionTracks.length ? t('字幕显示') : t('字幕显示（当前还没有字幕，先转写或让 Agent 生成）')} aria-label={t('字幕显示')} disabled={!captionTracks.length} onClick={() => commands.batch(captionTracks.map((entry) => ({ type: 'updateCaptions', track: entry.id, patch: { enabled: !captionsVisible } })), 'Toggle captions')}><Icon name="captions" size={17} /><span>{captionsVisible ? t('开启') : t('未开启')}</span><Icon name="chevronDown" size={13} /></button>
+      <button className={`cc-caption-toggle cc-tip cc-tip-r${captionsVisible ? ' active' : ''}`} data-tip={captionTracks.length ? t('字幕显示') : t('字幕显示（字幕轨暂无内容；画面上的文字素材不属于字幕轨，转写或让 Agent 生成后即可显示）')} aria-label={t('字幕显示')} disabled={!captionTracks.length} onClick={() => commands.batch(captionTracks.map((entry) => ({ type: 'updateCaptions', track: entry.id, patch: { enabled: !captionsVisible } })), 'Toggle captions')}><Icon name="captions" size={17} /><span>{captionsVisible ? t('开启') : t('未开启')}</span><Icon name="chevronDown" size={13} /></button>
       <TB icon="fullscreen" title={t('全屏预览')} tipRight onClick={() => invokeAction('fullscreen', undefined, 'toolbar')} />
       </div>
       </div>
