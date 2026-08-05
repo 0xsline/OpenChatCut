@@ -138,6 +138,7 @@ export function ChatComposer(props: ChatComposerProps) {
   /** @ picker drill level: root → assets/timeline/templates → track items. */
   type RefDrill = 'root' | 'assets' | 'timeline' | 'templates' | `track:${string}`;
   const [refDrill, setRefDrill] = useState<RefDrill>('root');
+  const [refIndex, setRefIndex] = useState(-1);
   const [agentSettings, setAgentSettings] = useState<AgentSettings>(() => loadAgentSettings());
   const patchAgent = (patch: Partial<AgentSettings>) => {
     setAgentSettings((prev) => {
@@ -221,17 +222,46 @@ export function ChatComposer(props: ChatComposerProps) {
     <div style={{ fontSize: 10.5, color: theme.textDim, padding: '6px 8px 2px', letterSpacing: 0.4 }}>{text}</div>
   );
 
-  const refDrillRow = (icon: IconName, label: string, sub: string | null, onClick: () => void) => (
-    <button onClick={onClick}
-      style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', background: 'none', border: 'none', borderRadius: 3, padding: '7px 10px', cursor: 'pointer', color: theme.text }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = theme.panel; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
-      <span style={{ color: theme.textDim, lineHeight: 0 }}><Icon name={icon} size={15} /></span>
-      <span style={{ fontSize: 12.5, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-      {sub && <span style={{ fontSize: 10, color: theme.textDim }}>{sub}</span>}
-      <span style={{ color: theme.textDim }}>›</span>
-    </button>
-  );
+  interface RefEntry { key: string; icon: IconName; label: string; sub?: string; action: () => void }
+
+  const refEntries = (): RefEntry[] => {
+    const assets = references.filter((r) => r.kind !== 'template' && r.kind !== 'item');
+    const timelineItems = references.filter((r) => r.kind === 'item');
+    const trackOf = (r: RefItem): string => (r.kind === 'item' && r.metadata?.trackAlias ? r.metadata.trackAlias : '');
+    const tracks = [...new Set(timelineItems.map(trackOf))].filter(Boolean);
+    const go = (drill: RefDrill) => () => { setRefDrill(drill); setRefIndex(0); };
+    if (refDrill === 'assets') {
+      return assets.map((r) => ({ key: r.id, icon: REF_ICON[r.kind], label: r.name, action: () => insert(r) }));
+    }
+    if (refDrill === 'timeline') {
+      return tracks.map((alias) => ({
+        key: alias, icon: 'film', label: alias,
+        sub: `${timelineItems.filter((r) => trackOf(r) === alias).length}`,
+        action: go(`track:${alias}`),
+      }));
+    }
+    if (refDrill === 'templates') {
+      return refList('template').map((r) => ({ key: r.id, icon: REF_ICON[r.kind], label: r.name, action: () => insert(r) }));
+    }
+    if (refDrill.startsWith('track:')) {
+      const alias = refDrill.slice('track:'.length);
+      return timelineItems.filter((r) => trackOf(r) === alias)
+        .map((r) => ({ key: r.id, icon: REF_ICON[r.kind], label: r.name, action: () => insert(r) }));
+    }
+    return [
+      { key: 'assets', icon: 'filePlay', label: t('引用媒体池素材'), sub: `${assets.length}`, action: go('assets') },
+      { key: 'timeline', icon: 'film', label: t('时间线'), sub: `${tracks.length}`, action: go('timeline') },
+      { key: 'templates', icon: 'sparkles', label: t('引用模板库'), action: go('templates') },
+    ];
+  };
+
+  const refDrillTitle = (): { title: string; onBack: (() => void) | null } => {
+    if (refDrill === 'assets') return { title: t('引用媒体池素材'), onBack: () => { setRefDrill('root'); setRefIndex(0); } };
+    if (refDrill === 'timeline') return { title: t('时间线'), onBack: () => { setRefDrill('root'); setRefIndex(0); } };
+    if (refDrill === 'templates') return { title: t('引用模板库'), onBack: () => { setRefDrill('root'); setRefIndex(0); } };
+    if (refDrill.startsWith('track:')) return { title: refDrill.slice('track:'.length), onBack: () => { setRefDrill('timeline'); setRefIndex(0); } };
+    return { title: t('引用'), onBack: null };
+  };
 
   const refPopoverBody = (kind: 'asset' | 'template', empty: string) => {
     if (kind === 'template') {
@@ -244,58 +274,26 @@ export function ChatComposer(props: ChatComposerProps) {
         </>
       );
     }
-    const assets = references.filter((r) => r.kind !== 'template' && r.kind !== 'item');
-    const timelineItems = references.filter((r) => r.kind === 'item');
-    const trackOf = (r: RefItem): string => (r.kind === 'item' && r.metadata?.trackAlias ? r.metadata.trackAlias : '');
-    const tracks = [...new Set(timelineItems.map(trackOf))].filter(Boolean);
-
-    if (refDrill === 'assets') {
-      return (
-        <>
-          <MenuDrillHeader title={t('引用媒体池素材')} onBack={() => setRefDrill('root')} />
-          {assets.length === 0 && <div style={{ fontSize: 12, color: theme.textDim, padding: '6px 10px' }}>{empty}</div>}
-          {assets.map(refRow)}
-        </>
-      );
-    }
-    if (refDrill === 'timeline') {
-      return (
-        <>
-          <MenuDrillHeader title={t('时间线')} onBack={() => setRefDrill('root')} />
-          {tracks.length === 0 && <div style={{ fontSize: 12, color: theme.textDim, padding: '6px 10px' }}>{t('时间线暂无片段')}</div>}
-          {tracks.map((alias) => (
-            <div key={alias}>
-              {refDrillRow('film', alias, `${timelineItems.filter((r) => trackOf(r) === alias).length}`, () => setRefDrill(`track:${alias}`))}
-            </div>
-          ))}
-        </>
-      );
-    }
-    if (refDrill.startsWith('track:')) {
-      const alias = refDrill.slice('track:'.length);
-      const items = timelineItems.filter((r) => trackOf(r) === alias);
-      return (
-        <>
-          <MenuDrillHeader title={alias} onBack={() => setRefDrill('timeline')} />
-          {items.map(refRow)}
-        </>
-      );
-    }
-    // root: three entry points
+    const entries = refEntries();
+    const drillTitle = refDrillTitle();
     return (
       <>
-        {refGroupTitle(t('引用'))}
-        {assets.length === 0 && timelineItems.length === 0 && tracks.length === 0
+        {drillTitle.onBack
+          ? <MenuDrillHeader title={drillTitle.title} onBack={drillTitle.onBack} />
+          : refGroupTitle(drillTitle.title)}
+        {entries.length === 0
           && <div style={{ fontSize: 12, color: theme.textDim, padding: '6px 10px' }}>{empty}</div>}
-        {refDrillRow('filePlay', t('引用媒体池素材'), `${assets.length}`, () => setRefDrill('assets'))}
-        {refDrillRow('film', t('时间线'), `${tracks.length}`, () => setRefDrill('timeline'))}
-        {refDrillRow('sparkles', t('引用模板库'), null, () => setRefDrill('templates'))}
-        {refDrill === 'templates' && (
-          <>
-            <MenuDrillHeader title={t('引用模板库')} onBack={() => setRefDrill('root')} />
-            {refList('template').map(refRow)}
-          </>
-        )}
+        {entries.map((entry, index) => (
+          <button key={entry.key} onClick={entry.action}
+            style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', background: index === refIndex ? theme.panel : 'none', border: 'none', borderRadius: 3, padding: '7px 10px', cursor: 'pointer', color: theme.text }}
+            onMouseEnter={() => setRefIndex(index)}
+            onMouseLeave={() => { if (index === refIndex) setRefIndex(-1); }}>
+            <span style={{ color: theme.textDim, lineHeight: 0 }}><Icon name={entry.icon} size={15} /></span>
+            <span style={{ fontSize: 12.5, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.label}</span>
+            {entry.sub && <span style={{ fontSize: 10, color: theme.textDim }}>{entry.sub}</span>}
+            {drillTitle.onBack && <span style={{ color: theme.textDim }}>›</span>}
+          </button>
+        ))}
       </>
     );
   };
@@ -427,8 +425,27 @@ export function ChatComposer(props: ChatComposerProps) {
             // @ opens the asset/timeline reference picker (anchored to the input).
             setPopAnchor(taRef.current);
             setRefDrill('root');
+            setRefIndex(-1);
             setPop((cur) => (cur === 'assets' ? null : 'assets'));
             return;
+          }
+          if (pop === 'assets') {
+            const entries = refEntries();
+            if (event.key === 'ArrowDown' && entries.length) {
+              event.preventDefault();
+              setRefIndex((i) => (i + 1) % entries.length);
+              return;
+            }
+            if (event.key === 'ArrowUp' && entries.length) {
+              event.preventDefault();
+              setRefIndex((i) => (i <= 0 ? entries.length - 1 : i - 1));
+              return;
+            }
+            if (event.key === 'Enter' && entries.length) {
+              event.preventDefault();
+              entries[Math.max(0, refIndex)]?.action();
+              return;
+            }
           }
           if (shouldSubmitComposerOnKeyDown(event.key, event.shiftKey, canSend)) onSubmit();
         }}
