@@ -63,9 +63,11 @@ export const EXPORT_FPS = [...EXPORT_FPS_OPTIONS];
 export const EXPORT_RESOLUTION_OPTIONS = Object.keys(EXPORT_RESOLUTIONS) as ExportResolution[];
 export const DEFAULT_INCLUDE_MG = true;
 
+export type ExportVideoCodec = 'h264' | 'vp8' | 'prores';
+
 export interface ExportVideoSettings {
-  codec: 'h264' | 'vp8';
-  setCodec: Dispatch<SetStateAction<'h264' | 'vp8'>>;
+  codec: ExportVideoCodec;
+  setCodec: Dispatch<SetStateAction<ExportVideoCodec>>;
   resolution: ExportResolution;
   setResolution: Dispatch<SetStateAction<ExportResolution>>;
   fps: number;
@@ -132,7 +134,7 @@ export interface ExportDialogModel {
 }
 
 function useVideoSettings(state: TimelineState, qualityMode: QualityMode): ExportVideoSettings {
-  const [codec, setCodec] = useState<'h264' | 'vp8'>('h264');
+  const [codec, setCodec] = useState<ExportVideoCodec>('h264');
   const [resolution, setResolution] = useState<ExportResolution>(() => exportResolutionForCanvas(state, qualityMode));
   const initialFps = EXPORT_FPS.some((candidate) => candidate === state.fps) ? state.fps : 30;
   const [fps, setFps] = useState(initialFps);
@@ -142,14 +144,19 @@ function useVideoSettings(state: TimelineState, qualityMode: QualityMode): Expor
   useEffect(() => {
     setResolution(exportResolutionForCanvas(state, qualityMode));
     setBitrateMode(defaultBitrateModeForQuality(qualityMode));
+    // Master quality keeps ProRes available but does not force it (file size).
+    setCodec((current) => (qualityMode !== 'master' && current === 'prores' ? 'h264' : current));
   }, [qualityMode, state.width, state.height]);
   const dimensions = browserScaledExportDimensions(state, resolution);
   const bitrateInput = { mode: bitrateMode, ...dimensions, fps, customMbps: customBitrateMbps };
+  const resolvedBitrate = resolveVideoBitrateBps(bitrateInput);
+  // ProRes is mezzanine: remotion ignores bitrate; do not send a false target.
+  const requestedBitrate = codec === 'prores' ? undefined : requestedVideoBitrateBps(bitrateInput);
   return {
     codec, setCodec, resolution, setResolution, fps, setFps, bitrateMode, setBitrateMode,
     customBitrateMbps, setCustomBitrateMbps, dimensions,
-    resolvedBitrate: resolveVideoBitrateBps(bitrateInput),
-    requestedBitrate: requestedVideoBitrateBps(bitrateInput),
+    resolvedBitrate,
+    requestedBitrate,
   };
 }
 
@@ -171,7 +178,11 @@ function useSubtitleSettings(state: TimelineState): ExportSubtitleSettings {
 }
 
 function outputName(base: string, tab: ExportTab, video: ExportVideoSettings, subtitles: ExportSubtitleSettings, nleFormat: 'fcp_xml' | 'fcp_xml_resolve', mgOutput: string): string {
-  if (tab === 'video') return `${base}.${video.codec === 'vp8' ? 'webm' : 'mp4'}`;
+  if (tab === 'video') {
+    if (video.codec === 'vp8') return `${base}.webm`;
+    if (video.codec === 'prores') return `${base}.mov`;
+    return `${base}.mp4`;
+  }
   if (tab === 'audio') return `${base}.mp3`;
   if (tab === 'subtitles') return `${base}.${subtitles.format}`;
   if (tab === 'xml') return `${base}-${nleFormat === 'fcp_xml_resolve' ? 'resolve' : 'premiere'}.fcpxml`;
@@ -204,7 +215,13 @@ export function useExportDialogModel({ state, project, projectId, projectName, e
   }, exportJobs);
   const name = outputName(base, tab, video, subtitles, nleFormat, t('{n} 个透明 MOV 文件', { n: mgItems.length }));
   const qualityTag = qualityMode === 'master' ? ` · ${t('画质优先')}` : '';
-  const videoSummary = `${video.codec === 'h264' ? 'MP4 · H.264' : 'WebM · VP8'} · ${video.dimensions.width}×${video.dimensions.height} · ${video.fps} fps · ${(video.resolvedBitrate / 1_000_000).toFixed(1)} Mbps${qualityTag}`;
+  const codecLabel = video.codec === 'prores'
+    ? 'MOV · ProRes 422 HQ'
+    : video.codec === 'h264' ? 'MP4 · H.264' : 'WebM · VP8';
+  const rateLabel = video.codec === 'prores'
+    ? t('母带')
+    : `${(video.resolvedBitrate / 1_000_000).toFixed(1)} Mbps`;
+  const videoSummary = `${codecLabel} · ${video.dimensions.width}×${video.dimensions.height} · ${video.fps} fps · ${rateLabel}${qualityTag}`;
   const disabled = !!workflow.busy
     || (tab === 'subtitles' && !subtitles.captions)
     || (tab === 'mg' && mgItems.length === 0);

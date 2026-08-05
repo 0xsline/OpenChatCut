@@ -415,7 +415,7 @@ async function getServeUrl() {
  * @param {import('../src/editor/types').ProjectDoc} [args.project]
  * @param {string} [args.timelineId]
  * @param {string} args.outputLocation  absolute output path
- * @param {'h264'|'vp8'|'mp3'|'wav'} [args.codec]
+ * @param {'h264'|'vp8'|'prores'|'mp3'|'wav'} [args.codec]
  * @param {[number, number]} [args.frameRange] inclusive Remotion frame range
  * @param {number} [args.videoBitrate] video bitrate in bits per second
  * @param {{id:string,label:string,hardware:boolean,transport:'server'}} [args.h264Profile]
@@ -449,6 +449,10 @@ export async function renderTimeline({
   const serveUrl = await getServeUrl();
   signal?.throwIfAborted();
   const inputProps = { state, project, timelineId };
+  // Full-timeline mezzanine: ProRes 422 HQ (not 4444 alpha — that is clip/MG only).
+  const proresOptions = codec === 'prores'
+    ? { proResProfile: 'hq', imageFormat: 'png' }
+    : {};
   const rendered = await withAbortableCompositionSelection({
     signal,
     selectionOptions: {
@@ -468,9 +472,12 @@ export async function renderTimeline({
       h264Profile,
       vaapiDevice,
       scale: scale && Number.isFinite(scale) && scale > 0 ? scale : 1,
-      videoBitrate: Number.isFinite(videoBitrate) && videoBitrate > 0
-        ? `${Math.round(videoBitrate / 1000)}k`
-        : undefined,
+      videoBitrate: codec === 'prores'
+        ? undefined
+        : Number.isFinite(videoBitrate) && videoBitrate > 0
+          ? `${Math.round(videoBitrate / 1000)}k`
+          : undefined,
+      ...proresOptions,
       chromiumOptions: { gl: 'angle' },
       browserExecutable: browserExecutable(),
       puppeteerInstance: browser,

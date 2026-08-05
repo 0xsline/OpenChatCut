@@ -20,7 +20,7 @@ export type ExportRequest = {
   project?: unknown;
   timelineId?: unknown;
   format?: 'video' | 'audio';
-  codec?: 'h264' | 'vp8' | 'mp3' | 'wav';
+  codec?: 'h264' | 'vp8' | 'prores' | 'mp3' | 'wav';
   name?: string;
   startFrame?: number;
   endFrameExclusive?: number;
@@ -39,6 +39,8 @@ export type ExportTimeline = {
 export const EXPORT_MEDIA = {
   h264: { codec: 'h264', ext: 'mp4', mime: 'video/mp4' },
   vp8: { codec: 'vp8', ext: 'webm', mime: 'video/webm' },
+  /** Mezzanine master: ProRes 422 HQ (Remotion proResProfile hq). Server-only. */
+  prores: { codec: 'prores', ext: 'mov', mime: 'video/quicktime' },
   mp3: { codec: 'mp3', ext: 'mp3', mime: 'audio/mpeg' },
   wav: { codec: 'wav', ext: 'wav', mime: 'audio/wav' },
 } as const;
@@ -86,7 +88,7 @@ export function validateVideoParams(
 }
 
 export function exportFilename(name: string | undefined, ext: string): string {
-  const base = sanitizeFileName((name ?? 'export').replace(/\.(?:mp4|webm|mp3|wav)$/i, ''), 'export');
+  const base = sanitizeFileName((name ?? 'export').replace(/\.(?:mp4|webm|mov|mp3|wav)$/i, ''), 'export');
   return `${base}.${ext}`;
 }
 
@@ -150,7 +152,7 @@ export function planExport(body: ExportRequest | null): ExportPlan {
     throw new ExportRequestError('format must be video or audio');
   }
   if (body?.codec !== undefined && !Object.hasOwn(EXPORT_MEDIA, body.codec)) {
-    throw new ExportRequestError('codec must be h264, vp8, mp3, or wav');
+    throw new ExportRequestError('codec must be h264, vp8, prores, mp3, or wav');
   }
   if (body?.name !== undefined && typeof body.name !== 'string') throw new ExportRequestError('name must be a string');
   if ([body?.startSeconds, body?.endSeconds].some((value) => value !== undefined && (typeof value !== 'number' || !Number.isFinite(value)))) {
@@ -161,6 +163,9 @@ export function planExport(body: ExportRequest | null): ExportPlan {
   if ((format === 'audio') !== (codec === 'mp3' || codec === 'wav')) {
     throw new ExportRequestError(`${format} export does not support codec=${codec}`);
   }
+  if (format === 'video' && codec === 'prores' && body?.videoBitrate !== undefined) {
+    throw new ExportRequestError('prores mezzanine export does not accept videoBitrate');
+  }
   validateVideoParams(body, format);
   const totalFrames = nestedDuration === undefined
     ? exportDuration(state)
@@ -170,6 +175,11 @@ export function planExport(body: ExportRequest | null): ExportPlan {
   const frameRange = normalizeFrameRange(totalFrames, startFrame, endFrame);
   const frames = frameRange ? frameRange[1] - frameRange[0] + 1 : totalFrames;
   const media = EXPORT_MEDIA[codec];
+  // ProRes is mezzanine-only: no fps retime pass (that path is H.264/VP8).
+  const retimeFps = format === 'video' && codec !== 'prores'
+    && body?.fps !== undefined && body.fps !== fps
+    ? body.fps
+    : undefined;
   return {
     state,
     project,
@@ -181,7 +191,7 @@ export function planExport(body: ExportRequest | null): ExportPlan {
     filename: exportFilename(body?.name, media.ext),
     durationSeconds: frames / fps,
     scale: exportScale(state, body?.resolution),
-    retimeFps: format === 'video' && body?.fps !== undefined && body.fps !== fps ? body.fps : undefined,
-    videoBitrate: format === 'video' ? body?.videoBitrate : undefined,
+    retimeFps,
+    videoBitrate: format === 'video' && codec !== 'prores' ? body?.videoBitrate : undefined,
   };
 }

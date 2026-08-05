@@ -48,27 +48,40 @@ function VideoSettings({ video, busy, qualityMode, setQualityMode }: VideoSettin
           : t('平衡流畅与体积；预览可使用代理，导出默认自动码率。')}
       </p>
       <Row label={t('格式 / 编码')}>
-        <select className="cc-export-select" value={video.codec} onChange={(event) => video.setCodec(event.target.value as 'h264' | 'vp8')} disabled={busy}>
+        <select
+          className="cc-export-select"
+          value={video.codec}
+          onChange={(event) => video.setCodec(event.target.value as 'h264' | 'vp8' | 'prores')}
+          disabled={busy}
+        >
           <option value="h264">MP4 (H.264)</option>
           <option value="vp8">WebM (VP8)</option>
+          <option value="prores">{t('ProRes 422 HQ 母带 (.mov)')}</option>
         </select>
       </Row>
+      {video.codec === 'prores' && (
+        <p className="cc-export-footnote">
+          {t('ProRes 母带体积较大，仅本机渲染；适合调色或交给达芬奇继续剪。网发请用 H.264。')}
+        </p>
+      )}
       <Row label={t('分辨率')}>
         <Segmented options={EXPORT_RESOLUTION_OPTIONS.map((value) => ({ value, label: resolutionLabel(value) }))} value={video.resolution} onChange={video.setResolution} />
       </Row>
       <Row label={t('帧率')}>
         <Segmented options={EXPORT_FPS.map((value) => ({ value, label: `${value} fps` }))} value={video.fps} onChange={video.setFps} />
       </Row>
-      <Row label={t('码率')}>
-        <ExportBitrateControl
-          mode={video.bitrateMode}
-          customMbps={video.customBitrateMbps}
-          resolvedBps={video.resolvedBitrate}
-          disabled={busy}
-          onModeChange={video.setBitrateMode}
-          onCustomMbpsChange={(value) => video.setCustomBitrateMbps(clampBitrate(value))}
-        />
-      </Row>
+      {video.codec !== 'prores' && (
+        <Row label={t('码率')}>
+          <ExportBitrateControl
+            mode={video.bitrateMode}
+            customMbps={video.customBitrateMbps}
+            resolvedBps={video.resolvedBitrate}
+            disabled={busy}
+            onModeChange={video.setBitrateMode}
+            onCustomMbpsChange={(value) => video.setCustomBitrateMbps(clampBitrate(value))}
+          />
+        </Row>
+      )}
     </>
   );
 }

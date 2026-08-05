@@ -8,6 +8,8 @@ const DEFAULT_CAPABILITY_BITRATE_BPS = 12_000_000;
 
 
 export type BrowserVideoCodec = 'h264' | 'vp8';
+/** Server mezzanine codecs are accepted on the route planner, then forced off the browser path. */
+export type PlannedVideoCodec = BrowserVideoCodec | 'prores';
 
 type WebRendererModule = Pick<typeof import('@remotion/web-renderer'), 'canRenderMediaOnWeb' | 'renderMediaOnWeb'>;
 
@@ -15,7 +17,7 @@ export interface BrowserExportOptions {
   state: TimelineState;
   project?: ProjectDoc;
   timelineId?: string;
-  codec: BrowserVideoCodec;
+  codec: PlannedVideoCodec;
   resolution: ExportResolution;
   fps: number;
   videoBitrate?: number;
@@ -104,6 +106,9 @@ async function loadBrowserRenderConfig(
   options: BrowserExportOptions,
 ): Promise<BrowserRenderConfig | Extract<BrowserExportAttempt, { status: 'unsupported' }>> {
   const { state, codec, resolution, videoBitrate, signal } = options;
+  if (codec === 'prores') {
+    return { status: 'unsupported', reason: 'ProRes 母带仅支持本机渲染', issues: ['codec=prores'] };
+  }
   const { width, height, scale } = browserScaledExportDimensions(state, resolution);
   const container = codec === 'h264' ? 'mp4' : 'webm';
   const audioCodec = codec === 'h264' ? 'aac' : 'opus';
@@ -128,6 +133,13 @@ async function loadBrowserRenderConfig(
 function staticBrowserBlocker(
   options: BrowserExportOptions,
 ): Extract<BrowserExportAttempt, { status: 'unsupported' }> | null {
+  if (options.codec === 'prores') {
+    return {
+      status: 'unsupported',
+      reason: 'ProRes 母带仅支持本机渲染',
+      issues: ['codec=prores'],
+    };
+  }
   if (options.fps !== options.state.fps) {
     return {
       status: 'unsupported',

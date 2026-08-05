@@ -112,6 +112,23 @@ export async function planVideoExportRoute(options: BrowserExportOptions): Promi
   ]);
   const server = options.codec === 'h264' ? capabilities.h264 ?? unknownServerEngine() : unknownServerEngine();
   const browserEngineInfo = browserEngine(browser.status === 'supported' ? browser.powerEfficient : undefined);
+  // ProRes mezzanine is Remotion/server-only (not WebCodecs).
+  if (options.codec === 'prores') {
+    const mezzanine = {
+      id: 'prores-mezzanine',
+      label: 'ProRes 422 HQ · 本机母带',
+      hardware: false,
+      transport: 'server' as const,
+    };
+    return {
+      browser,
+      browserEngine: browserEngineInfo,
+      serverEngine: mezzanine,
+      route: 'server',
+      engine: mezzanine,
+      reason: 'ProRes 母带仅支持本机渲染',
+    };
+  }
   return {
     browser,
     browserEngine: browserEngineInfo,
