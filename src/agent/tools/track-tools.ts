@@ -123,7 +123,44 @@ export async function execTrackTool(name: string, args: Args, ctx: AgentContext)
       return { ok: true, track: describe(ctx.getState(), id) };
     }
 
+    case 'reorder_items': {
+      const id = resolveTrackId(state, args.trackId);
+      if (!id) return { error: `no track ${args.trackId}`, tracks: list(state) };
+      if (trackKind(state, id) === 'caption') return { error: 'caption tracks do not contain media clips' };
+      if (state.tracks?.[id]?.locked) return { error: 'track is locked' };
+      const data = payload(args.json);
+      if ('error' in data) return data;
+      const raw = data.itemIds ?? data.orderedIds;
+      const refs = Array.isArray(raw)
+        ? raw.map((v) => String(v ?? '').trim()).filter(Boolean)
+        : typeof raw === 'string'
+          ? raw.split(',').map((v) => v.trim()).filter(Boolean)
+          : [];
+      if (refs.length < 2) return { error: 'reorder_items needs json.itemIds with at least 2 clip ids' };
+      const onTrack = state.items.filter((item) => item.track === id);
+      const orderedIds: string[] = [];
+      for (const ref of refs) {
+        const hits = onTrack.filter((item) => item.id === ref || item.id.startsWith(ref));
+        if (hits.length !== 1) {
+          return {
+            error: hits.length === 0
+              ? `item ${ref} not on track ${trackAlias(state, id)}`
+              : `ambiguous item prefix ${ref}`,
+          };
+        }
+        orderedIds.push(hits[0]!.id);
+      }
+      const unique = new Set(orderedIds);
+      if (unique.size !== orderedIds.length) return { error: 'itemIds must be unique' };
+      ctx.commands.reorderTrackItems(id, orderedIds);
+      const after = ctx.getState().items
+        .filter((item) => item.track === id)
+        .sort((a, b) => a.startFrame - b.startFrame)
+        .map((item) => ({ id: item.id, startFrame: item.startFrame, durationInFrames: item.durationInFrames, name: item.name }));
+      return { ok: true, action: 'reorder_items', track: trackAlias(ctx.getState(), id), orderedIds, items: after };
+    }
+
     default:
-      return { error: `unknown action ${args.action}; use list/create/update/delete/tighten` };
+      return { error: `unknown action ${args.action}; use list/create/update/delete/tighten/reorder_items` };
   }
 }

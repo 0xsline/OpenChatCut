@@ -116,9 +116,10 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'manage_transcript',
-    description: 'Correct source transcripts and manage translation variants; most actions leave word timing and clip duration unchanged. Seven actions:\n'
+    description: 'Correct source transcripts and manage translation variants; most actions leave word timing and clip duration unchanged. Eight actions:\n'
       + '- fix: correct the source transcript. For a word, pass wordIndex or find with the incorrect source text plus text with the correction; only word.text changes. To rename or merge a speaker, pass from with an existing label such as "A" plus to with the new display name; passing another existing label merges them. Only word.speaker changes.\n'
       + '- clear_edits: restore the clip to the raw transcript by clearing deleted words, silence caps, gap overrides, and play-order overrides (same as the Transcript panel 「还原全部」). Retimes the clip to the full transcript duration.\n'
+      + '- set_play_order: reorder spoken playback via playOrder word-index array (same as dragging speech blocks in the Transcript panel). Pass playOrder:null or clearPlayOrder:true to restore chronological order. Retimes the clip.\n'
       + '- retry_transcription: force ASR to rerun for the clip and replace its transcript when transcription is stuck, failed, or needs refreshing.\n'
       + '- translation_create: translate the full transcript to lang and create or replace a word-level translation variant sharing the source timeline.\n'
       + '- translation_ensure: idempotently reuse an existing variant for lang or create it otherwise. Prefer this for ordinary translation requests.\n'
@@ -130,8 +131,11 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
       properties: {
         action: {
           type: 'string',
-          enum: ['fix', 'clear_edits', 'retry_transcription', 'translation_create', 'translation_ensure', 'translation_list', 'translation_read'],
-          description: 'See the tool description: correct words/speakers, restore word edits, rerun ASR, or create/ensure/list/read translation variants.',
+          enum: [
+            'fix', 'clear_edits', 'set_play_order', 'retry_transcription',
+            'translation_create', 'translation_ensure', 'translation_list', 'translation_read',
+          ],
+          description: 'See the tool description: correct words/speakers, restore edits, set speech play order, rerun ASR, or manage translations.',
         },
         itemId: { type: 'string', description: 'Target clip item id or unique prefix; omit to use the first transcribed audio/video clip on the track.' },
         track: { type: 'string', description: 'When itemId is omitted, locate by track alias or stable id; default A1.' },
@@ -140,6 +144,15 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
         text: { type: 'string', description: 'fix word: corrected text.' },
         from: { type: 'string', description: 'fix speaker: existing speaker label to rename, such as "A" or "B".' },
         to: { type: 'string', description: 'fix speaker: new display name; passing an existing label merges the speakers, for example "B" to "A".' },
+        playOrder: {
+          type: 'array',
+          items: { type: 'integer' },
+          description: 'set_play_order: word indices in playback order. null with clearPlayOrder clears the override.',
+        },
+        clearPlayOrder: {
+          type: 'boolean',
+          description: 'set_play_order: when true, clear transcriptPlayOrder and restore chronological speech.',
+        },
         lang: { type: 'string', description: 'translation_create/ensure: target language, such as English, Chinese, or Japanese; translation_read: variant language to read.' },
         targetLanguage: { type: 'string', description: 'translation_read: alias of lang for selecting the translated language.' },
       },

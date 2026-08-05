@@ -14,7 +14,9 @@ import { getKeyframePropertyDefinition, KEYFRAME_PROPS, supportsKeyframeProperty
 import { planSlip, type SlipFailure, type SlipResult } from '../../editor/slip';
 import { rejectUnknownFields } from './edit-item-fields';
 import { clampNum, parseFiltersArg, parseTransformArg } from './edit-item-visual';
+import { validateMediaSourceUpdate } from './edit-item-media-ops';
 export { didYouMean, rejectUnknownFields } from './edit-item-fields';
+export { validateMediaSourceUpdate } from './edit-item-media-ops';
 
 type OpResult = Record<string, unknown>;
 
@@ -69,6 +71,7 @@ const GENERIC_UPDATE_KEYS: Record<string, true> = {
   transform: true,
   speed: true,
   playbackRate: true,
+  clearKeyframes: true,
 };
 
 const GENERIC_ADD_KEYS: Record<string, true> = {
@@ -105,7 +108,6 @@ const SLIP_UPDATE_KEYS: Record<string, true> = {
   deltaInFrames: true,
 };
 
-
 /** Editor command subset the generic committer needs (satisfied by EditorCommands). */
 export interface GenericCommands {
   moveItem: (id: string, to: { track?: string; startFrame?: number }) => void;
@@ -118,6 +120,9 @@ export interface GenericCommands {
   setItemFilters: (id: string, patch: ClipFilters) => void;
   setItemTransform: (id: string, patch: ClipTransform) => void;
   setItemSpeed: (id: string, rate: number) => void;
+  clearItemKeyframes: (id: string, prop?: KeyframeProp) => void;
+  replaceItemMedia: (id: string, src: string) => void;
+  relinkTimelineItem: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; sourceRevision?: string; sourceFilename?: string }) => void;
   removeItem: (id: string) => void;
   rippleDeleteItem: (id: string) => void;
 }
@@ -223,14 +228,23 @@ export function validateGenericUpdate(state: TimelineState, entry: Record<string
     if (n === undefined) return { error: 'speed must be a finite number (0.1..8)' };
     plan.speed = clampNum(n, 0.1, 8);
   }
+  if (entry.clearKeyframes !== undefined) {
+    if (entry.clearKeyframes === true) {
+      plan.clearKeyframes = true;
+    } else if (typeof entry.clearKeyframes === 'string' && KEYFRAME_PROPS.includes(entry.clearKeyframes as KeyframeProp)) {
+      plan.clearKeyframes = entry.clearKeyframes as KeyframeProp;
+    } else {
+      return { error: `clearKeyframes must be true (all props) or one of ${KEYFRAME_PROPS.join('/')}` };
+    }
+  }
 
   const FIELDS = [
     'track', 'startFrame', 'durationInFrames', 'srcInFrame', 'props', 'volume',
-    'fadeInFrames', 'fadeOutFrames', 'keyframes', 'filters', 'transform', 'speed',
+    'fadeInFrames', 'fadeOutFrames', 'keyframes', 'filters', 'transform', 'speed', 'clearKeyframes',
   ];
   if (!FIELDS.some((k) => k in plan)) {
     return {
-      error: 'update needs at least one of: track/trackId, startFrame/fromFrame, durationInFrames, srcInFrame, props, volume, fadeInSeconds, fadeOutSeconds, keyframes, filters, transform, speed',
+      error: 'update needs at least one of: track/trackId, startFrame/fromFrame, durationInFrames, srcInFrame, props, volume, fadeInSeconds, fadeOutSeconds, keyframes, clearKeyframes, filters, transform, speed',
     };
   }
   return plan;
@@ -238,11 +252,14 @@ export function validateGenericUpdate(state: TimelineState, entry: Record<string
 
 export function validateSlipUpdate(state: TimelineState, entry: Record<string, unknown>): OpResult {
   if (entry.operation !== undefined && entry.operation !== 'slip') {
+    if (entry.operation === 'replace_media' || entry.operation === 'relink_media') {
+      return validateMediaSourceUpdate(state, entry);
+    }
     return {
       ok: false,
       error: `update operation not supported: ${String(entry.operation)}`,
       code: 'unknown-operation',
-      supported: ['slip'],
+      supported: ['slip', 'replace_media', 'relink_media'],
     };
   }
   const unknown = rejectUnknownFields(entry, SLIP_UPDATE_KEYS);
@@ -423,6 +440,10 @@ export function applyGeneric(plan: OpResult, commands: GenericCommands): OpResul
     if (plan.filters !== undefined) commands.setItemFilters(id, plan.filters as ClipFilters);
     if (plan.transform !== undefined) commands.setItemTransform(id, plan.transform as ClipTransform);
     if (plan.speed !== undefined) commands.setItemSpeed(id, plan.speed as number);
+    if (plan.clearKeyframes === true) commands.clearItemKeyframes(id);
+    else if (typeof plan.clearKeyframes === 'string') {
+      commands.clearItemKeyframes(id, plan.clearKeyframes as KeyframeProp);
+    }
     return { ok: true, kind: plan.kind, plan: 'genericUpdate', itemId: id };
   }
   if (plan.plan === 'slip') {
@@ -433,6 +454,29 @@ export function applyGeneric(plan: OpResult, commands: GenericCommands): OpResul
       srcInFrame: committed.srcInFrame,
       sourceWindow: committed.sourceWindow,
       status: plan.clamped ? 'clamped' : 'applied',
+    };
+  }
+  if (plan.plan === 'replaceMedia') {
+    commands.replaceItemMedia(id, String(plan.src));
+    return { ok: true, kind: 'video', plan: 'replaceMedia', itemId: id, src: plan.src };
+  }
+  if (plan.plan === 'relinkMedia') {
+    commands.relinkTimelineItem(id, {
+      src: String(plan.src),
+      name: plan.name as string | undefined,
+      durationInFrames: plan.durationInFrames as number | undefined,
+      width: plan.width as number | undefined,
+      height: plan.height as number | undefined,
+      sourceFilename: plan.sourceFilename as string | undefined,
+      originalFilePath: undefined,
+    });
+    return {
+      ok: true,
+      kind: plan.kind,
+      plan: 'relinkMedia',
+      itemId: id,
+      src: plan.src,
+      note: plan.note,
     };
   }
   if (plan.plan === 'genericDelete') {

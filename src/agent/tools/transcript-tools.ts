@@ -153,6 +153,38 @@ async function manageTranscript(args: Args, ctx: AgentContext, track: TrackId, a
     };
   }
 
+  if (action === 'set_play_order') {
+    if (args.clearPlayOrder === true || args.playOrder === null) {
+      ctx.commands.setTranscriptPlayOrder(it.id, null);
+      const after = ctx.getState().items.find((x) => x.id === it.id);
+      return {
+        ok: true,
+        action,
+        itemId: it.id,
+        playOrder: null,
+        durationInFrames: after?.durationInFrames ?? null,
+        note: 'Chronological word order restored.',
+      };
+    }
+    if (!Array.isArray(args.playOrder)) {
+      return { error: 'set_play_order needs playOrder:[wordIndex,…] or clearPlayOrder:true' };
+    }
+    const n = it.transcript.length;
+    const cleaned = args.playOrder
+      .map((v) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : NaN))
+      .filter((i) => Number.isInteger(i) && i >= 0 && i < n);
+    if (!cleaned.length) return { error: `playOrder must list word indices in 0..${n - 1}` };
+    ctx.commands.setTranscriptPlayOrder(it.id, cleaned);
+    const after = ctx.getState().items.find((x) => x.id === it.id);
+    return {
+      ok: true,
+      action,
+      itemId: it.id,
+      playOrder: after?.transcriptPlayOrder ?? cleaned,
+      durationInFrames: after?.durationInFrames ?? null,
+    };
+  }
+
   if (action === 'fix') {
     // fix supports ASR word correction or speaker rename/merge, routed by fields.
     if (typeof args.from === 'string' || typeof args.to === 'string') {
@@ -212,7 +244,7 @@ async function manageTranscript(args: Args, ctx: AgentContext, track: TrackId, a
     }
   }
 
-  return { error: `unsupported action "${action}"; use fix / clear_edits / retry_transcription / translation_create / translation_ensure / translation_list / translation_read` };
+  return { error: `unsupported action "${action}"; use fix / clear_edits / set_play_order / retry_transcription / translation_create / translation_ensure / translation_list / translation_read` };
 }
 
 // Execute a transcript/caption tool. Returns undefined if `name` isn't one of ours.

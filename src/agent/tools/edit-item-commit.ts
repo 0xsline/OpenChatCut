@@ -18,7 +18,8 @@ export function commitPlan(ctx: AgentContext, plan: OpResult, ripple = false): O
   if (name === 'addMedia') return commitMediaPlan(ctx, plan);
   if (name === 'addText') return commitTextPlan(ctx, plan, ripple);
   if (name === 'addSolid') return commitSolidPlan(ctx, plan, ripple);
-  if (name === 'genericUpdate' || name === 'genericDelete' || name === 'slip') {
+  if (name === 'genericUpdate' || name === 'genericDelete' || name === 'slip'
+    || name === 'replaceMedia' || name === 'relinkMedia') {
     return applyGeneric(plan, ctx.commands) ?? { error: `unknown plan ${name}` };
   }
   return { error: `unknown plan ${name}` };

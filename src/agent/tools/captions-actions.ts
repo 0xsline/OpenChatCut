@@ -153,6 +153,24 @@ export async function editCaptions(args: Args, ctx: AgentContext): Promise<Resul
     if (c) ctx.commands.updateCaptions({ enabled: false });
     return { ok: true, enabled: false };
   }
+  if (action === 'hide_overlay') {
+    ctx.commands.setCaptionsHidden(true);
+    return {
+      ok: true,
+      action,
+      captionsHidden: true,
+      note: 'Overlay hidden (captionsHidden). Caption track data is kept; use show_overlay to restore.',
+    };
+  }
+  if (action === 'show_overlay') {
+    ctx.commands.setCaptionsHidden(false);
+    return {
+      ok: true,
+      action,
+      captionsHidden: false,
+      note: 'Overlay visible. If a track was disabled via action=disable, enable it first.',
+    };
+  }
 
   if (!c) return { error: `captions are off; action=enable first (then ${action})` };
 

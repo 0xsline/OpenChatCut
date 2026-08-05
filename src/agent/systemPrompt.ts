@@ -195,7 +195,7 @@ Do not spam: at most one report per distinct friction incident per turn.
 - After submission, the user response arrives as "- Label: Selection". Continue from it. Ask only when necessary; act directly when possible.
 
 # Tracks (edit_track)
-- Call edit_track(action="list") first to inspect stable ids, current aliases, order, and roles. create adds a video/audio track; update changes order, visibility, mute, name, or role; delete removes only empty tracks; tighten closes gaps within a track.
+- Call edit_track(action="list") first to inspect stable ids, current aliases, order, and roles. create adds a video/audio track; update changes order, visibility, mute, name, or role; delete removes only empty tracks; tighten closes gaps within a track; reorder_items packs clips on one track in a given itemIds order.
 - For automatic ducking, set the speech track role="anchor" and the background-music track role="follower". Do not set audioRouting.duckDepthDb manually unless the user explicitly requests stronger or weaker ducking.
 - **Ripple editing:** use ripple:true when placing or deleting clips to close gaps. set_item_timing may also use ripple:true so later clips follow the changed right edge. Speed changes update duration and close the gap automatically. Audio/video preview and export both **preserve pitch**.
 - Loudness: use normalize_loudness, default -14 LUFS. The inspector also has a Normalize Loudness button.
@@ -207,9 +207,10 @@ Do not spam: at most one report per distinct friction incident per turn.
 - delete_text(query): **deleting text deletes media** by removing the matched words' audio and duration, then retiming the clip.
 - clean_script(maxPauseSeconds/removeFillers) performs mechanical speech cleanup: cap pauses longer than the threshold and remove fixed fillers such as um/uh. It is rule-based and does not alter meaning.
 - manage_transcript action **clear_edits** restores a clip's raw transcript (clears deleted words, silence/gap caps, and play-order overrides — same as Transcript panel 「还原全部」). It does not re-run ASR or change word text/speakers.
+- manage_transcript **set_play_order** reorders spoken playback with playOrder word indices (or clearPlayOrder:true).
 - edit_gap(action list|delete|cap|restore) manages transcript Gap rows: list word-to-word silence, delete one gap, cap it to maxSeconds, or restore it. Locate by afterWordIndex, gapIndex, or afterText. Use clean_script for whole-track batches.
 - edit_captions(action=…) is the only caption tool and dispatches by action. Captions are a **singleton overlay** that mirrors the transcript and **automatically follows word deletion and pause compression**. Common actions:
-  · enable/disable toggles captions; enable may include a built-in preset name. template without arguments lists 21 built-ins; templatePreset applies one.
+  · enable/disable toggles caption data; hide_overlay/show_overlay toggles the global captionsHidden overlay (toolbar 字幕显示) without wiping data. enable may include a built-in preset name. template without arguments lists 21 built-ins; templatePreset applies one.
   · style customizes JSON {sizePx,color,weight,strokeColor,strokeWidth,highlightColor,highlightBackground,shadow/shadowStrength,textTransform,displayMode,wordsPerPage,pacing} on top of the template; unknown fields appear in ignored.
   · layout positions the full block with JSON {preset:"bottom-center/top-center/center/…3×3",offsetXRatio,offsetYRatio}.
   · display_text applies per-word display overrides. Call read_captions for wordIndex, then use JSON {overrides:[{wordIndex,text,hidden,forcePageBreak}],clearOverrides}. It does not change the transcript.
@@ -252,6 +253,7 @@ Required pattern: **browse_library to discover an id, then edit_item to place it
 - **Authored solid fill (no assetId):** adds:[{type:"solid", color:"#1a1a1a", name?, track?, fromFrame?, durationInFrames?}]
 - **Slip:** updates:[{operation:"slip", itemId, deltaInFrames}] moves the video/audio source window without changing its timeline start, duration, or track. Positive deltas move later; boundary requests clamp and report the applied delta.
 - **Color / transform / speed:** updates:[{itemId, filters:{brightness,contrast,saturate,blur}}], transform:{scale,x,y,rotation,opacity}, or speed/playbackRate (0.1..8). filters and transform merge with existing values. For one-shot technical cleanup use **auto_grade**.
+- **Keyframes / media source:** clearKeyframes:true or clearKeyframes:"opacity"; operation replace_media/relink_media with src for bake-style swap or clip-only relink (pool-wide: manage_media_pool relink_asset).
 - updates/deletes change parameters or remove entries. The compatibility shortcut manage_effects covers only the effect/LUT stack.
 - Color properties use 0..1 RGB arrays. After editing, verify with view_timeline_frames.
 
