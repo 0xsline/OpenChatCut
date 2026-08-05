@@ -53,6 +53,13 @@ async function loadModel(request: Extract<WorkerRequest, { type: 'load' }>): Pro
     const pixelCount = MODEL_INPUT_EDGE * MODEL_INPUT_EDGE * RGBA_CHANNELS;
     const blank = new RawImage(new Uint8ClampedArray(pixelCount), MODEL_INPUT_EDGE, MODEL_INPUT_EDGE, RGBA_CHANNELS);
     return nextProcessor(blank).then((inputs: unknown) => { dummyImageInputs = inputs as ModelInputs; });
+  }).then(() => {
+    // Warm-up inference: WebGPU shader compilation happens on the first real
+    // call — run one dummy pass here so the first search is not janky.
+    if (model && tokenizer && dummyImageInputs && dummyTextInputs) {
+      return model({ ...dummyTextInputs, ...dummyImageInputs }).catch(() => undefined);
+    }
+    return undefined;
   }).finally(() => { loading = null; });
   return loading;
 }

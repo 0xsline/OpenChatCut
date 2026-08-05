@@ -94,6 +94,35 @@ async function availableHwAccels(ffmpeg: string): Promise<Set<string>> {
   return promise;
 }
 
+const qualityModeCache = new Map<string, Promise<boolean>>();
+
+/** Whether the ffmpeg build's hardware encoder accepts constant-quality mode
+ * (-q:v / -global_quality / rc_mode CQP / -qp). Cached per encoder. */
+export async function probeEncoderQualityMode(ffmpeg: string, encoder: H264Encoder): Promise<boolean> {
+  if (encoder === 'libx264') return false;
+  const key = `${ffmpeg}\0${encoder}`;
+  const cached = qualityModeCache.get(key);
+  if (cached) return cached;
+  const { promise, resolve } = promiseConstructor.withResolvers<boolean>();
+  const child = spawn(ffmpeg, ['-hide_banner', '-h', `encoder=${encoder}`], {
+    cwd: dirname(ffmpeg),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  const collect = (chunk: Buffer) => { output = `${output}${chunk}`.slice(0, 16_384); };
+  child.stdout.on('data', collect);
+  child.stderr.on('data', collect);
+  const timer = setTimeout(() => child.kill('SIGKILL'), 5_000);
+  child.once('error', () => { clearTimeout(timer); resolve(false); });
+  child.once('close', () => {
+    clearTimeout(timer);
+    const supported = /\b(?:q:v|global_quality|rc_mode|qp_i| -qp |qp)\b/i.test(output);
+    resolve(supported);
+  });
+  qualityModeCache.set(key, promise);
+  return promise;
+}
+
 /** 探测 ffmpeg 编译支持后返回解码硬加速参数；不支持时为空数组（软解）。 */
 export async function resolveHwDecodeArgs(ffmpeg: string, encoder?: H264Encoder): Promise<string[]> {
   const candidate = hwDecodeArgs(encoder);
@@ -312,6 +341,10 @@ export interface H264EncodingOptions {
   bufferSize?: number;
   softwareCrf?: number;
   softwarePreset?: 'ultrafast' | 'superfast' | 'veryfast' | 'faster' | 'fast' | 'medium' | 'slow';
+  /** Hardware constant-quality value (CQP / -q:v). When set and supported by
+   * the encoder build, replaces bitrate mode for proxy transcodes: same
+   * perceptual quality at lower bitrate and less rate-control CPU. */
+  hardwareQuality?: number;
 }
 
 /** High-quality average bitrate scaled by output pixels and frame rate (4K headroom up to 60 Mbps). */
@@ -339,6 +372,7 @@ export function h264EncodingArgs({
   bufferSize,
   softwareCrf = 18,
   softwarePreset = 'medium',
+  hardwareQuality,
 }: H264EncodingOptions): string[] {
   const pixelFormat = encoder === 'h264_vaapi'
     ? 'vaapi'
@@ -353,6 +387,15 @@ export function h264EncodingArgs({
       '-maxrate', String(ceiling),
       '-bufsize', String(bufferSize ?? ceiling * 2),
     ];
+  }
+  if (hardwareQuality !== undefined) {
+    const q = String(hardwareQuality);
+    if (encoder === 'h264_nvenc') return [...args, '-rc_mode', 'CQP', '-global_quality', q];
+    if (encoder === 'h264_qsv') return [...args, '-global_quality', q];
+    if (encoder === 'h264_videotoolbox') return [...args, '-q:v', q];
+    if (encoder === 'h264_amf') return [...args, '-rc', 'cqp', '-qp_i', q, '-qp_p', q];
+    if (encoder === 'h264_vaapi') return [...args, '-qp', q];
+    // fall through to bitrate mode for unknown hardware encoders
   }
   args.push('-b:v', String(targetBitrate ?? 12_000_000));
   if (maxBitrate) args.push('-maxrate', String(maxBitrate));

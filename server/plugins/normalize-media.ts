@@ -14,6 +14,7 @@ import {
   h264EncoderAttempts,
   h264EncodingArgs,
   isHardwareH264Encoder,
+  probeEncoderQualityMode,
   resolveH264Encoder,
   resolveHwDecodeArgs,
 } from '../media-acceleration.ts';
@@ -433,6 +434,9 @@ async function encodeNormalized(
     filters.push(`fps=fps=${fps}:start_time=0:round=near`);
   }
   const preferred = await resolveH264Encoder(ffmpeg);
+  // Proxy transcodes use constant-quality when the hardware encoder supports
+  // it: same perceptual quality, lower bitrate, less rate-control CPU.
+  const proxyQuality = await probeEncoderQualityMode(ffmpeg, preferred);
   let lastError: unknown;
   for (const encoder of h264EncoderAttempts(preferred)) {
     const args = [
@@ -444,6 +448,7 @@ async function encodeNormalized(
         maxBitrate: targetBitrate,
         bufferSize: targetBitrate * 2,
         softwarePreset: 'veryfast',
+        ...(proxyQuality ? { hardwareQuality: 23 } : {}),
       }),
       '-profile:v', 'high',
       ...(convertToCfr ? ['-fps_mode', 'cfr'] : []),
