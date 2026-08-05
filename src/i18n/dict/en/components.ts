@@ -172,6 +172,8 @@ export default {
   '预览中 · {n} 个片段': 'Previewing · {n} clip(s)',
   ' · {n} 个失败': ' · {n} failed',
   '应用校色': 'Apply correction',
+  '画面文字已烘焙，仅可整体缩放移动': 'On-screen text is baked in — only move/scale the whole clip',
+  '模板': 'Template',
   '取消预览': 'Cancel preview',
   '未获得可用的校色结果': 'No usable color-correction result was returned',
   '已预览 {n} 个片段，{failed} 个分析失败': 'Previewing {n} clip(s); {failed} analysis failed',

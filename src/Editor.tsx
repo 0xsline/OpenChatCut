@@ -1007,6 +1007,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             onSetItemKeyframe: commands.setItemKeyframe,
             onBeginHistoryGesture: commands.beginHistoryGesture,
             onEndHistoryGesture: commands.endHistoryGesture,
+            onItemPropChange: (id, key, value) => commands.updateItemProps(id, { [key]: value }),
           } : {})}
           onSeedChat={(text) => setChatSeed({ text, nonce: Date.now() })}
           inspectorOpen={!!(selectedItem || selectedCaption) && !inspectorCollapsed}

@@ -93,8 +93,10 @@ export function CaptionPreviewEditor({ trackId, state, captions, playerRef, onUp
     return () => player.removeEventListener('frameupdate', onFrame);
   }, [playerRef]);
 
+  // Always build flat cues when enabled so multi-lane auto tracks still get a
+  // preview hitbox (manual lanes are preferred inside findCaptionPreviewTarget).
   const rows = useMemo(
-    () => (captions.enabled && !captions.sourceEntries?.length ? buildCues(captions, state.items, state.fps) : []),
+    () => (captions.enabled ? buildCues(captions, state.items, state.fps) : []),
     [captions, state.items, state.fps],
   );
   const ms = (frame / state.fps) * 1000;

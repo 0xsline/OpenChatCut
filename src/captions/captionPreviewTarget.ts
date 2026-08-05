@@ -102,7 +102,12 @@ export function findCaptionPreviewTarget(
   singleRows?: CueRow[],
 ): CaptionPreviewTarget | null {
   if (!captions.enabled) return null;
-  if (captions.sourceEntries?.length) return manualTarget(captions, items, fps, ms);
+  // Manual multi-lane cues win first; otherwise fall through to the flat cue
+  // path so auto multi-lane / sourceEntries tracks stay clickable on preview.
+  if (captions.sourceEntries?.length) {
+    const manual = manualTarget(captions, items, fps, ms);
+    if (manual) return manual;
+  }
   const rows = singleRows ?? buildCues(captions, items, fps);
   const cueIndex = activeCueIndex(rows, ms);
   const cue = rows[cueIndex];
