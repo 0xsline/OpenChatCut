@@ -146,10 +146,11 @@ function subscribe(sources: readonly string[], listener: () => void): () => void
 }
 
 function useQualitySnapshot() {
-  return useSyncExternalStore(subscribeQualityMode, () => ({
-    mode: getQualityMode(),
-    preview: getPreviewSourceMode(),
-  }), () => ({ mode: getQualityMode() as ReturnType<typeof getQualityMode>, preview: getPreviewSourceMode() }));
+  // Separate stable snapshots: getSnapshot must return a cached value, or
+  // useSyncExternalStore re-renders forever on every new object literal.
+  const mode = useSyncExternalStore(subscribeQualityMode, getQualityMode, getQualityMode);
+  const preview = useSyncExternalStore(subscribeQualityMode, getPreviewSourceMode, getPreviewSourceMode);
+  return { mode, preview };
 }
 
 function useProxySources(sources: readonly string[], sourceKey: string): number {
