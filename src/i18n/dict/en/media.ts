@@ -39,6 +39,8 @@ export default {
   '没有待重链的素材': 'Nothing left to relink',
   // folder / selection / card
   '返回上级文件夹': 'Back to parent folder',
+  '上一层': 'Up one level',
+  '返回上级：{name}（可拖入素材移回）': 'Back to {name} (drop assets here to move them up)',
   '重命名': 'Rename',
   '重命名文件夹': 'Rename folder',
   '删除空文件夹': 'Delete empty folder',

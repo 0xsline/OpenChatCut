@@ -1,13 +1,13 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState, type DragEvent } from 'react';
 import { Icon, type IconName } from '../components/icons';
 import type { MediaAsset, MediaFolder } from '../editor/types';
 import { useT } from '../i18n/locale';
 import { theme } from '../theme';
-import { setMediaAssetDrag } from './drag';
+import { mediaAssetIds, parseEditorDrag } from '../editor/editorDrag';
+import { parseMediaAssetDrag, setMediaAssetDrag } from './drag';
 import { durationLabel, mediaRatioLabel } from './mediaPoolFormat';
 import { MgThumb } from './MgThumb';
 import { usePreviewMediaSource } from './previewMedia';
-import { parseMediaAssetDrag } from './drag';
 
 interface MediaAssetCardProps {
   asset: MediaAsset;
@@ -251,34 +251,140 @@ function AssetBadges(props: MediaAssetCardProps) {
   );
 }
 
+interface FolderDropTargetProps {
+  label: string;
+  ariaLabel: string;
+  className?: string;
+  icon: IconName;
+  /** undefined = media pool root */
+  targetFolderId?: string;
+  onActivate: () => void;
+  onFocusChange: (focused: boolean) => void;
+  onDropFiles: (files: FileList, folderId?: string) => void;
+  onMoveAsset: (id: string, folderId?: string) => void;
+  onMoveAssets?: (ids: string[], folderId?: string) => void;
+}
+
 interface MediaFolderCardProps {
   folder: MediaFolder;
   onOpen: (id: string) => void;
   onFocusChange: (id: string | null) => void;
-  onDropFiles: (files: FileList, folderId: string) => void;
-  onMoveAsset: (id: string, folderId: string) => void;
+  onDropFiles: (files: FileList, folderId?: string) => void;
+  onMoveAsset: (id: string, folderId?: string) => void;
+  onMoveAssets?: (ids: string[], folderId?: string) => void;
 }
 
-export const MediaFolderCard = memo(function MediaFolderCard({ folder, onOpen, onFocusChange, onDropFiles, onMoveAsset }: MediaFolderCardProps) {
+/** Resolve asset ids from a pool → folder drop (multi-select via editor drag payload). */
+export function assetIdsFromFolderDrop(event: Pick<DragEvent, 'dataTransfer'>): string[] {
+  const editor = parseEditorDrag(event as DragEvent);
+  if (editor?.source === 'media') return mediaAssetIds(editor);
+  const assetId = parseMediaAssetDrag(event as DragEvent);
+  return assetId ? [assetId] : [];
+}
+
+/** Shared droppable folder tile (child folder or "up one level"). */
+function FolderDropTarget({
+  label, ariaLabel, className, icon, targetFolderId,
+  onActivate, onFocusChange, onDropFiles, onMoveAsset, onMoveAssets,
+}: FolderDropTargetProps) {
+  // Use a div (not <button>): Chromium often refuses HTML5 drops onto buttons,
+  // so pool assets / OS files never land in the folder (issue #42).
   return (
-    <button
-      className="cc-folder-card"
-      onClick={() => onOpen(folder.id)}
-      onFocus={() => onFocusChange(folder.id)}
-      onBlur={() => onFocusChange(null)}
-      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = event.dataTransfer.files.length ? 'copy' : 'move'; }}
+    <div
+      role="button"
+      tabIndex={0}
+      className={className ?? 'cc-folder-card'}
+      aria-label={ariaLabel}
+      onClick={onActivate}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onActivate();
+        }
+      }}
+      onFocus={() => onFocusChange(true)}
+      onBlur={() => onFocusChange(false)}
+      onDragEnter={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget.classList.add('is-drop-target');
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        event.currentTarget.classList.remove('is-drop-target');
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        // Match setMediaAssetDrag effectAllowed "copyMove": external files copy, pool assets move.
+        event.dataTransfer.dropEffect = event.dataTransfer.files.length > 0 ? 'copy' : 'move';
+        event.currentTarget.classList.add('is-drop-target');
+      }}
       onDrop={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (event.dataTransfer.files.length) onDropFiles(event.dataTransfer.files, folder.id);
-        else {
-          const assetId = parseMediaAssetDrag(event);
-          if (assetId) onMoveAsset(assetId, folder.id);
+        event.currentTarget.classList.remove('is-drop-target');
+        if (event.dataTransfer.files.length) {
+          onDropFiles(event.dataTransfer.files, targetFolderId);
+          return;
         }
+        const ids = assetIdsFromFolderDrop(event);
+        if (!ids.length) return;
+        if (onMoveAssets) onMoveAssets(ids, targetFolderId);
+        else ids.forEach((id) => onMoveAsset(id, targetFolderId));
       }}
     >
-      <span className="cc-media-entry-thumb"><Icon name="folder" size={28} strokeWidth={1.4} /></span>
-      <strong className="cc-media-entry-name">{folder.name}</strong>
-    </button>
+      <span className="cc-media-entry-thumb"><Icon name={icon} size={28} strokeWidth={1.4} /></span>
+      <strong className="cc-media-entry-name">{label}</strong>
+    </div>
+  );
+}
+
+export const MediaFolderCard = memo(function MediaFolderCard({
+  folder, onOpen, onFocusChange, onDropFiles, onMoveAsset, onMoveAssets,
+}: MediaFolderCardProps) {
+  return (
+    <FolderDropTarget
+      label={folder.name}
+      ariaLabel={folder.name}
+      icon="folder"
+      targetFolderId={folder.id}
+      onActivate={() => onOpen(folder.id)}
+      onFocusChange={(focused) => onFocusChange(focused ? folder.id : null)}
+      onDropFiles={onDropFiles}
+      onMoveAsset={onMoveAsset}
+      onMoveAssets={onMoveAssets}
+    />
+  );
+});
+
+interface MediaParentFolderCardProps {
+  /** Parent folder id; undefined means pool root. */
+  parentId?: string;
+  parentName: string;
+  onOpen: () => void;
+  onDropFiles: (files: FileList, folderId?: string) => void;
+  onMoveAsset: (id: string, folderId?: string) => void;
+  onMoveAssets?: (ids: string[], folderId?: string) => void;
+}
+
+/** Inside a subfolder: open / drop back to the parent (or pool root). */
+export const MediaParentFolderCard = memo(function MediaParentFolderCard({
+  parentId, parentName, onOpen, onDropFiles, onMoveAsset, onMoveAssets,
+}: MediaParentFolderCardProps) {
+  const t = useT();
+  return (
+    <FolderDropTarget
+      label={t('上一层')}
+      ariaLabel={t('返回上级：{name}（可拖入素材移回）', { name: parentName })}
+      className="cc-folder-card cc-parent-folder"
+      icon="prev"
+      targetFolderId={parentId}
+      onActivate={onOpen}
+      onFocusChange={() => undefined}
+      onDropFiles={onDropFiles}
+      onMoveAsset={onMoveAsset}
+      onMoveAssets={onMoveAssets}
+    />
   );
 });

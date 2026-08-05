@@ -65,7 +65,8 @@ export function mediaAssetIds(payload: EditorMediaDragPayload): string[] {
 export function setEditorDrag(event: React.DragEvent, payload: EditorDragInput): void {
   const full: EditorDragPayload = { v: 1, ...payload } as EditorDragPayload;
   event.dataTransfer.setData(EDITOR_DRAG_MIME, JSON.stringify(full));
-  event.dataTransfer.effectAllowed = 'copy';
+  // Allow pool-folder "move" without blocking timeline "copy" drops.
+  event.dataTransfer.effectAllowed = 'copyMove';
 }
 
 export function parseEditorDrag(event: React.DragEvent): EditorDragPayload | null {

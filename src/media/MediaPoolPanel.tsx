@@ -339,13 +339,25 @@ export function MediaPoolPanel({
   }, [assetClipboard, currentFolderId, onPasteAssets, requestRemoveAssets, selectedAssets, visibleIds]);
 
   const showFolders = !q && !semanticResults && !favoritesOnly;
+  const parentFolder = currentFolder?.parentId
+    ? folders.find((folder) => folder.id === currentFolder.parentId)
+    : undefined;
   const gridEntries = useMemo<MediaGridEntry[]>(() => [
     ...(showFolders && !currentFolderId && onAddSolid ? [{ kind: 'solid' as const }] : []),
     ...(showFolders && !currentFolderId ? [{ kind: 'favorites' as const }] : []),
+    // Inside a subfolder: first tile is "上一层" so assets can be dragged back up.
+    ...(showFolders && currentFolder ? [{
+      kind: 'parent' as const,
+      parentId: currentFolder.parentId,
+      parentName: parentFolder?.name ?? t('我的素材'),
+    }] : []),
     ...(showFolders ? childFolders.map((folder) => ({ kind: 'folder' as const, folder })) : []),
     ...visible.map((asset) => ({ kind: 'asset' as const, asset })),
-  ], [childFolders, currentFolderId, onAddSolid, showFolders, visible]);
+  ], [childFolders, currentFolder, currentFolderId, onAddSolid, parentFolder?.name, showFolders, t, visible]);
   const openFolder = useCallback((id: string) => setCurrentFolderId(id), []);
+  const openParent = useCallback(() => {
+    setCurrentFolderId(currentFolder?.parentId);
+  }, [currentFolder?.parentId]);
   const openFavorites = useCallback(() => {
     setCurrentFolderId(undefined);
     setFavoritesOnly(true);
@@ -449,8 +461,10 @@ export function MediaPoolPanel({
         assetMenu={assetMenu}
         canRelink={!!onRelinkAsset}
         onOpenFolder={openFolder}
+        onOpenParent={openParent}
         onDropFiles={(files, folderId) => void onPick(files, folderId)}
         onMoveAsset={(id, folderId) => onMoveAssets([id], folderId)}
+        onMoveAssets={(ids, folderId) => onMoveAssets(ids, folderId)}
         onOpenFavorites={openFavorites}
         onAddSolid={onAddSolid}
         onAddAsset={onAddAsset}

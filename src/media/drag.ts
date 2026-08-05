@@ -33,7 +33,9 @@ export function setMediaAssetDrag(
   });
   event.dataTransfer.setData(MEDIA_DRAG_MIME, JSON.stringify({ v: 1, assetId: asset.id }));
   event.dataTransfer.setData(MEDIA_DRAG_KIND_MIME[kind], '1');
-  event.dataTransfer.effectAllowed = 'copy';
+  // copyMove: timeline drop uses copy; media-pool folder drop uses move.
+  // effectAllowed "copy" alone rejects folder dropEffect "move" in Chromium.
+  event.dataTransfer.effectAllowed = 'copyMove';
 }
 
 export function hasCompatibleMediaDrag(event: DragEvent, trackKind: TrackKind): boolean {

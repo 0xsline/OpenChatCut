@@ -564,6 +564,13 @@ button, input, select { font: inherit; }
 .cc-folder-card:hover .cc-media-entry-thumb {
   border-color:var(--cc-border); background:var(--cc-panel-alt); color:var(--cc-text-strong);
 }
+.cc-folder-card.is-drop-target .cc-media-entry-thumb {
+  border-color:var(--cc-accent); background:var(--cc-accent-soft); color:var(--cc-accent);
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--cc-accent) 35%, transparent);
+}
+.cc-parent-folder .cc-media-entry-thumb {
+  border-style:dashed;
+}
 .cc-add-solid-canvas-thumb { border-style:dashed; border-color:var(--cc-border); background:transparent; }
 .cc-add-solid-canvas-card:hover .cc-media-entry-thumb {
   border-color:var(--cc-accent); background:var(--cc-accent-soft); color:var(--cc-accent);

@@ -3,13 +3,14 @@ import { Icon } from '../components/icons';
 import type { MediaAsset, MediaFolder } from '../editor/types';
 import { useFixedVirtualGrid } from '../hooks/useFixedVirtualGrid';
 import { useT } from '../i18n/locale';
-import { MediaAssetCard, MediaFolderCard } from './MediaPoolCard';
+import { MediaAssetCard, MediaFolderCard, MediaParentFolderCard } from './MediaPoolCard';
 import { AddSolidCanvasCard } from './AddSolidCanvasCard';
 import { marqueeAssetIds, marqueeRect, type MarqueePoint } from './mediaMarquee';
 
 export type MediaGridEntry =
   | { kind: 'solid' }
   | { kind: 'favorites' }
+  | { kind: 'parent'; parentId?: string; parentName: string }
   | { kind: 'folder'; folder: MediaFolder }
   | { kind: 'asset'; asset: MediaAsset };
 
@@ -24,8 +25,10 @@ interface MediaPoolGridProps {
   assetMenu: string | null;
   canRelink: boolean;
   onOpenFolder: (id: string) => void;
-  onDropFiles: (files: FileList, folderId: string) => void;
-  onMoveAsset: (id: string, folderId: string) => void;
+  onOpenParent: () => void;
+  onDropFiles: (files: FileList, folderId?: string) => void;
+  onMoveAsset: (id: string, folderId?: string) => void;
+  onMoveAssets?: (ids: string[], folderId?: string) => void;
   onOpenFavorites: () => void;
   onAddSolid?: () => void;
   onSetFavorite: (id: string, favorite: boolean) => void;
@@ -100,7 +103,8 @@ export function MediaPoolGrid(props: MediaPoolGridProps) {
   const startMarquee = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     const target = event.target as HTMLElement;
-    if (target.closest('[data-cc-media-asset-id], button, input, select, textarea')) return;
+    // Include .cc-folder-card: folders are div[role=button] (for HTML5 drop), not <button>.
+    if (target.closest('[data-cc-media-asset-id], .cc-folder-card, button, input, select, textarea')) return;
     const state: MarqueeState = {
       pointerId: event.pointerId,
       start: { x: event.clientX, y: event.clientY },
@@ -178,8 +182,18 @@ function MediaVirtualRows(props: MediaPoolGridProps & ReturnType<typeof useMedia
                 <span className="cc-media-entry-thumb"><Icon name="star" size={20} strokeWidth={1.4} /></span>
                 <strong className="cc-media-entry-name">{t('收藏夹')}</strong>
               </button>
+            : entry.kind === 'parent'
+              ? <MediaParentFolderCard
+                  key="parent"
+                  parentId={entry.parentId}
+                  parentName={entry.parentName}
+                  onOpen={props.onOpenParent}
+                  onDropFiles={props.onDropFiles}
+                  onMoveAsset={props.onMoveAsset}
+                  onMoveAssets={props.onMoveAssets}
+                />
             : entry.kind === 'folder'
-              ? <MediaFolderCard key={`folder:${entry.folder.id}`} folder={entry.folder} onOpen={props.onOpenFolder} onFocusChange={props.setFocusedFolderId} onDropFiles={props.onDropFiles} onMoveAsset={props.onMoveAsset} />
+              ? <MediaFolderCard key={`folder:${entry.folder.id}`} folder={entry.folder} onOpen={props.onOpenFolder} onFocusChange={props.setFocusedFolderId} onDropFiles={props.onDropFiles} onMoveAsset={props.onMoveAsset} onMoveAssets={props.onMoveAssets} />
               : <MediaAssetCard
               key={`asset:${entry.asset.id}`}
               asset={entry.asset}
