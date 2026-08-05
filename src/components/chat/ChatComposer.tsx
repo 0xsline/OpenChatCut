@@ -148,6 +148,7 @@ export function ChatComposer(props: ChatComposerProps) {
   const slashMatchQuery = slashExplicit && slashQuery !== null ? slashQuery.slice('skill:'.length) : slashQuery;
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashIndex, setSlashIndex] = useState(-1);
+  const slashListRef = useRef<HTMLDivElement>(null);
   const slashMatches = useMemo((): SkillDefinition[] => {
     if (slashMatchQuery === null) return [];
     const q = slashMatchQuery.toLowerCase().trim();
@@ -166,6 +167,15 @@ export function ChatComposer(props: ChatComposerProps) {
         || s.nameZh.includes(q)));
     return [...starts, ...contains];
   }, [slashExplicit, slashMatchQuery]);
+  // Keyboard navigation scrolls the highlighted row into view — the list is
+  // taller than its maxHeight once there are 5+ skills. Lives after the
+  // useMemo: the dependency array evaluates immediately (TDZ).
+  useEffect(() => {
+    const list = slashListRef.current;
+    if (!list || slashIndex < 0) return;
+    const item = list.children[slashIndex] as HTMLElement | undefined;
+    item?.scrollIntoView({ block: 'nearest' });
+  }, [slashIndex, slashMatches.length]);
   useEffect(() => {
     if (slashMatchQuery === null) { setSlashOpen(false); return; }
     setSlashOpen(true);
@@ -650,7 +660,7 @@ export function ChatComposer(props: ChatComposerProps) {
             <strong style={{ fontSize: 12.5 }}>{slashExplicit ? t('技能命令') : t('创作工作流')}</strong>
             <code style={{ marginLeft: 'auto', fontSize: 10.5, color: theme.textDim }}>{value}</code>
           </div>
-          <div style={{ maxHeight: 264, overflowY: 'auto', padding: '2px 6px 8px' }}>
+          <div ref={slashListRef} style={{ maxHeight: 264, overflowY: 'auto', padding: '2px 6px 8px' }}>
             {slashMatches.length === 0 && (
               <div style={{ fontSize: 12, color: theme.textDim, padding: '6px 10px' }}>
                 {slashExplicit
