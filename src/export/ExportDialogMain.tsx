@@ -97,6 +97,7 @@ export function ExportDialogMain({ state, model }: { state: TimelineState; model
         <ExportTabContent
           tab={model.tab} state={state} video={model.video} subtitles={model.subtitles}
           busy={!!workflow.busy} enabled={workflow.autoQaEnabled} qa={workflow.qa}
+          qualityMode={model.qualityMode} setQualityMode={model.setQualityMode}
           onToggle={workflow.toggleAutoQa} nleFormat={model.nleFormat}
           setNleFormat={model.setNleFormat} includeMg={model.includeMg}
           setIncludeMg={model.setIncludeMg} mgCount={model.mgItems.length}

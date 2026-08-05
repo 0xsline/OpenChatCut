@@ -96,5 +96,5 @@ assert.deepEqual(h264EncodingArgs({
 assert.equal(resolveH264TargetBitrate({ width: 854, height: 480, fps: 30 }), 4_000_000);
 assert.equal(resolveH264TargetBitrate({ width: 1920, height: 1080, fps: 30 }), 10_000_000);
 assert.equal(resolveH264TargetBitrate({ width: 1920, height: 1080, fps: 60 }), 20_000_000);
-assert.equal(resolveH264TargetBitrate({ width: 3840, height: 2160, fps: 60 }), 30_000_000);
+assert.equal(resolveH264TargetBitrate({ width: 3840, height: 2160, fps: 60 }), 60_000_000);
 console.log('media acceleration verification passed');

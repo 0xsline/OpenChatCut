@@ -44,6 +44,11 @@ export default {
   // Parameter line
   '编码': 'Codec',
   '格式 / 编码': 'Format / codec',
+  '画质策略': 'Quality policy',
+  '均衡': 'Balanced',
+  '画质优先': 'Master quality',
+  '原片优先预览；导出默认高码率，不主动压缩导入素材。': 'Prefer original media for preview; export defaults to high bitrate and never optimizes imports for size.',
+  '平衡流畅与体积；预览可使用代理，导出默认自动码率。': 'Balance smoothness and size; preview may use proxies and export uses automatic bitrate.',
   '分辨率': 'Resolution',
   '帧率': 'Frame rate',
   '码率': 'Bitrate',

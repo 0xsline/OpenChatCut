@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import {
+  getQualityMode,
+  shouldAutoRequestPreviewProxy,
+  subscribeQualityMode,
+} from './qualityPolicy';
 import type { ProjectDoc, TimelineState } from '../editor/types';
 import { resolveTimelineRenderPlan } from '../editor/sequenceGraph';
 import { isPreviewable } from './clipPreview';
@@ -140,13 +145,26 @@ function subscribe(sources: readonly string[], listener: () => void): () => void
 
 function useProxySources(sources: readonly string[], sourceKey: string): number {
   const [revision, setRevision] = useState(0);
+  const qualityMode = useSyncExternalStore(subscribeQualityMode, getQualityMode, getQualityMode);
   useEffect(() => {
     const bump = () => setRevision((value) => value + 1);
     const unsubscribe = subscribe(sources, bump);
-    for (const src of sources) void requestPreviewProxy(src);
+    // Master quality: keep original media for preview; only balanced eagerly fetches proxies.
+    if (shouldAutoRequestPreviewProxy(qualityMode)) {
+      for (const src of sources) void requestPreviewProxy(src);
+    }
     return unsubscribe;
-  }, [sourceKey]);
+  }, [sourceKey, qualityMode]);
   return revision;
+}
+
+function resolvePreviewSrc(src: string | undefined, proxy: PreviewProxyState): string | undefined {
+  if (qualityPolicyPreferMaster() && src) return src;
+  return proxy.status === 'ready' ? proxy.previewSrc : src;
+}
+
+function qualityPolicyPreferMaster(): boolean {
+  return !shouldAutoRequestPreviewProxy(getQualityMode());
 }
 
 export function usePreviewMediaSource(src: string | undefined, enabled = true) {
@@ -154,7 +172,7 @@ export function usePreviewMediaSource(src: string | undefined, enabled = true) {
   const sources = useMemo(() => source ? [source] : [], [source]);
   const revision = useProxySources(sources, source);
   const proxy = stateFor(source || undefined);
-  const previewSrc = proxy.status === 'ready' ? proxy.previewSrc : src;
+  const previewSrc = resolvePreviewSrc(src, proxy);
   return {
     sourceSrc: src,
     previewSrc,
@@ -178,7 +196,8 @@ export function usePreviewTimelineState(state: TimelineState) {
     items: state.items.map((item) => {
       if (item.kind !== 'video' || !item.src) return item;
       const proxy = stateFor(item.src);
-      return proxy.status === 'ready' ? { ...item, src: proxy.previewSrc } : item;
+      const previewSrc = resolvePreviewSrc(item.src, proxy);
+      return previewSrc && previewSrc !== item.src ? { ...item, src: previewSrc } : item;
     }),
   }), [state, revision]);
   const proxies = sources.map((src) => ({ src, proxy: stateFor(src) }));
@@ -207,7 +226,8 @@ export function usePreviewProjectDoc(project: ProjectDoc, timelineId: string) {
       items: timeline.items.map((item) => {
         if (item.kind !== 'video' || !item.src) return item;
         const proxy = stateFor(item.src);
-        return proxy.status === 'ready' ? { ...item, src: proxy.previewSrc } : item;
+        const previewSrc = resolvePreviewSrc(item.src, proxy);
+        return previewSrc && previewSrc !== item.src ? { ...item, src: previewSrc } : item;
       }),
     })),
   }), [project, revision]);

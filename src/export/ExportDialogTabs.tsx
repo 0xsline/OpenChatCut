@@ -24,14 +24,31 @@ const clampBitrate = (value: number): number => Math.max(
 interface VideoSettingsProps {
   video: ExportVideoSettings;
   busy: boolean;
+  qualityMode: 'balanced' | 'master';
+  setQualityMode: (mode: 'balanced' | 'master') => void;
 }
 
-function VideoSettings({ video, busy }: VideoSettingsProps) {
+function VideoSettings({ video, busy, qualityMode, setQualityMode }: VideoSettingsProps) {
   const t = useT();
   return (
     <>
+      <Row label={t('画质策略')}>
+        <Segmented
+          options={[
+            { value: 'balanced', label: t('均衡') },
+            { value: 'master', label: t('画质优先') },
+          ]}
+          value={qualityMode}
+          onChange={setQualityMode}
+        />
+      </Row>
+      <p className="cc-export-footnote">
+        {qualityMode === 'master'
+          ? t('原片优先预览；导出默认高码率，不主动压缩导入素材。')
+          : t('平衡流畅与体积；预览可使用代理，导出默认自动码率。')}
+      </p>
       <Row label={t('格式 / 编码')}>
-        <select className="cc-export-select" value={video.codec} onChange={(event) => video.setCodec(event.target.value as 'h264' | 'vp8')}>
+        <select className="cc-export-select" value={video.codec} onChange={(event) => video.setCodec(event.target.value as 'h264' | 'vp8')} disabled={busy}>
           <option value="h264">MP4 (H.264)</option>
           <option value="vp8">WebM (VP8)</option>
         </select>
@@ -81,10 +98,10 @@ function QaSettings({ enabled, busy, qa, onToggle }: QaSettingsProps) {
 
 interface VideoTabProps extends VideoSettingsProps, QaSettingsProps {}
 
-function VideoTab({ video, busy, enabled, qa, onToggle }: VideoTabProps) {
+function VideoTab({ video, busy, qualityMode, setQualityMode, enabled, qa, onToggle }: VideoTabProps) {
   return (
     <>
-      <VideoSettings video={video} busy={busy} />
+      <VideoSettings video={video} busy={busy} qualityMode={qualityMode} setQualityMode={setQualityMode} />
       <QaSettings enabled={enabled} busy={busy} qa={qa} onToggle={onToggle} />
     </>
   );
