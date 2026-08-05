@@ -205,6 +205,8 @@ export function useEditor(initial: ProjectDoc): {
   /** The complete project snapshot of the previous step (undo target), null if there is no history. Agent's "undo" tool
    * Treat the proposal as an ordinary editor, rather than directly touching the history stack - the draft baseline will not become invalid.*/
   getUndoTarget: () => ProjectDoc | null;
+  /** Next redo snapshot (future[0]), null when there is nothing to redo. Agent redo_last_change applies it via applyDoc. */
+  getRedoTarget: () => ProjectDoc | null;
 } {
   const [h, dispatch] = useReducer(historyReduce, { past: [], present: initial, future: [] });
   const doc = h.present;
@@ -217,9 +219,20 @@ export function useEditor(initial: ProjectDoc): {
 
   const pastRef = useRef(h.past);
   pastRef.current = h.past;
+  const futureRef = useRef(h.future);
+  futureRef.current = h.future;
   const getUndoTarget = useCallback((): ProjectDoc | null => pastRef.current[pastRef.current.length - 1] ?? null, []);
+  const getRedoTarget = useCallback((): ProjectDoc | null => futureRef.current[0] ?? null, []);
 
-  return { state: activeEditorState(doc), doc, commands, canUndo: h.past.length > 0, canRedo: h.future.length > 0, getUndoTarget };
+  return {
+    state: activeEditorState(doc),
+    doc,
+    commands,
+    canUndo: h.past.length > 0,
+    canRedo: h.future.length > 0,
+    getUndoTarget,
+    getRedoTarget,
+  };
 }
 
 // The editor command set over a project dispatch fn — reused by the live store

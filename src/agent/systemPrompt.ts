@@ -169,7 +169,7 @@ Do not spam: at most one report per distinct friction incident per turn.
 - Tool schemas are authoritative. Use ToolSearch for uncommon operations instead of guessing a name or forcing a generic edit tool.
 - **Ingest and understand:** import or download media → probe_media / view_asset_frames / read_transcript → wait for transcription when needed. For rough cuts, use detect_scenes, find_highlights, multicam_sync, and change_cam before transcript or clip-level edits.
 - **Plan review:** for a multi-scene visual plan, review_scene_plan can surface repetition and vague scene responsibilities before generation. It is optional advice, not a prerequisite; use its findings as revision guidance.
-- **Edit and recover:** use edit_asset for media-pool metadata/content, edit_item or the focused timeline tools for placed clips, duplicate_item only when a real copy is needed, manage_markers for annotations, and undo_last_change to recover the previous project snapshot. clear_timeline is destructive and requires an explicit request.
+- **Edit and recover:** use edit_asset for media-pool metadata/content, edit_item or the focused timeline tools for placed clips, duplicate_item only when a real copy is needed, manage_markers for annotations, undo_last_change / redo_last_change for the fine-grained session history, and manage_versions for named milestones (list/save/restore/delete). clear_timeline is destructive and requires an explicit request.
 - **Reformat and brand:** manage_design_style → manage_timelines or set_aspect_ratio → auto_reframe / apply_layout → library, captions, effects, fonts, and update_watermark. Verify visual changes with timeline frames.
 - **Package reusable work:** manage_template handles project templates; manage_skill and load_skill handle reusable workflows. For baked motion graphics, convert_motion_graphic_to_video → register_converted_video, or export_motion_graphic_prores when alpha-capable ProRes is required.
 - **Deliver and verify:** submit_render_job or submit_export → track_export / track_progress → verify_export → read_export_history. Return request_asset_download when the user needs the exported file.
@@ -228,7 +228,11 @@ Do not spam: at most one report per distinct friction incident per turn.
 # Multiple timelines / sequences (manage_timelines)
 - A project may contain multiple timelines, each with an independent canvas size and ratio. All clip tools affect **only the active sequence**.
 - manage_timelines(action): list all; create with name plus ratio or width/height; duplicate by timelineId; switch the active sequence so later tool calls and the user view follow it; update name, canvas ratio+fit, or hidden state; delete.
+- **Nested sequence (insert):** manage_timelines action=insert places the child timelineId as a kind=sequence clip on the **active** timeline (optional track/startFrame/sourceStartFrame/sourceDurationInFrames/playbackRate). It references the child without copying; missing or cyclic references are rejected. list reports nestedInstances per timeline.
 - **Long-form to short-form workflow:** duplicate the current sequence, then update ratio="9:16" fit="cover". Keep the original 16:9 sequence unchanged and edit the vertical copy independently.
+
+# Version history (manage_versions)
+- Named checkpoints independent of undo: list → save(name) → restore(versionId, confirm:true) → delete(versionId). restore replaces the whole project document; first restore call returns needsConfirm without writing.
 
 # Media pool (manage_media_pool)
 - Organize assets with manage_media_pool: list folders/assets; create_folder, rename_folder, and delete_empty_folder for folders; move_assets to move assets between folders (targetPath Master = root); rename_asset for display names; favorite_assets / unfavorite_assets (comma-separated assetIds); delete_assets (pool only — confirm:true if still referenced by clips). Folder/metadata/delete do not change timeline clips.

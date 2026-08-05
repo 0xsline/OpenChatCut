@@ -116,7 +116,7 @@ function isAutoGradeTarget(item: TimelineItem, state: TimelineState): boolean {
 
 export default function Editor({ initial, project, onHome, onRename }: EditorProps) {
   const t = useT();
-  const { state, doc, commands, canUndo, canRedo, getUndoTarget } = useEditor(initial);
+  const { state, doc, commands, canUndo, canRedo, getUndoTarget, getRedoTarget } = useEditor(initial);
   const selectedItem = state.items.find((it) => it.id === state.selectedId) ?? null;
   const selectedIds = selectedIdsOf(state);
   const selectedItems = selectedInspectorItems(state, selectedIds);
@@ -301,6 +301,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       getOfflineMediaSrcs: () => offlineSrcsRef.current,
       getCreativeMode: () => creativeModeRef.current,
       getUndoTarget,
+      getRedoTarget,
       getApprovalMode: () => (loadChatAutoApply(project.id) ? 'auto' : 'manual'),
       setCreativeMode: changeCreativeMode,
       get templates() { return allTemplatesRef.current; },
@@ -316,7 +317,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       },
       onProjectRenamed: onRename,
     }),
-    [commands, project.id, onRename, changeCreativeMode, offlineSrcsRef, getUndoTarget],
+    [commands, project.id, onRename, changeCreativeMode, offlineSrcsRef, getUndoTarget, getRedoTarget],
   );
   // a pending proposal's draft result, previewed in the player (null = committed)
   const [previewState, setPreviewState] = useState<TimelineState | null>(null);
