@@ -379,8 +379,8 @@ export const PreviewPanel = memo(function PreviewPanel({
                 fontSize: 10,
               }}>
                 {failedProxies.length
-                  ? t('轻量副本生成失败，已切换为原画质播放：{list}', { list: failedProxies.map(({ src }) => src.split('/').pop()).join('、') })
-                  : t('正在准备 {n} 个轻量副本…', { n: pendingProxies })}
+                  ? t('流畅预览暂不可用，已自动使用原画质播放（画面正常，不影响导出）')
+                  : t('正在准备流畅预览…')}
               </div>
             )}
             {visibleShaderFallback && (
