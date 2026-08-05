@@ -8,6 +8,14 @@ type Middleware = (req: IncomingMessage, res: ServerResponse, next: () => void) 
 
 const HOP_BY_HOP = new Set(['host', 'connection', 'keep-alive', 'proxy-authorization', 'proxy-connection', 'transfer-encoding', 'upgrade', 'te', 'trailer']);
 
+// Browser-only headers that must never reach upstream. Cookies are shared across
+// every localhost port, so a large accumulated cookie jar on a dev machine would
+// otherwise be forwarded verbatim and rejected by provider gateways (431/400).
+const NEVER_FORWARD: Record<string, true> = {
+  'x-openchatcut-provider': true,
+  cookie: true,
+};
+
 export interface ProxyRoute {
   /** Target API prefix, evaluated per request. */
   target: (req: IncomingMessage) => string;
@@ -34,7 +42,7 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
     }
     const headers: Record<string, string | string[]> = {};
     for (const [k, v] of Object.entries(req.headers)) {
-      if (!HOP_BY_HOP.has(k.toLowerCase()) && k.toLowerCase() !== 'x-openchatcut-provider' && v !== undefined) {
+      if (!HOP_BY_HOP.has(k.toLowerCase()) && !NEVER_FORWARD[k.toLowerCase()] && v !== undefined) {
         headers[k] = v;
       }
     }

@@ -66,7 +66,7 @@ const explicit = expandLlmProviderPatch(new Map([
 assert.equal(explicit.get('LLM_MODEL'), 'gpt-custom');
 assert.equal(explicit.get('LLM_BASE_URL'), 'https://relay.test/v2');
 
-const seen: Array<{ url: string; authorization?: string; provider?: string; body: string }> = [];
+const seen: Array<{ url: string; authorization?: string; provider?: string; body: string; cookie?: string }> = [];
 const upstream = createServer(async (req, res) => {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(Buffer.from(chunk));
@@ -76,6 +76,7 @@ const upstream = createServer(async (req, res) => {
     provider: typeof req.headers['x-openchatcut-provider'] === 'string'
       ? req.headers['x-openchatcut-provider']
       : undefined,
+    cookie: typeof req.headers.cookie === 'string' ? req.headers.cookie : undefined,
     body: Buffer.concat(chunks).toString('utf8'),
   });
   if (req.url?.includes('/unauthorized')) {
@@ -115,17 +116,33 @@ try {
     body: '{"model":"openai"}',
   });
 
+  // Browser cookies (shared across every localhost port) must never reach upstream.
+  await fetch(`http://127.0.0.1:${proxyPort}/llm/responses`, {
+    method: 'POST',
+    headers: { 'x-openchatcut-provider': 'kimi', cookie: 'session=must-not-leak' },
+    body: '{"model":"openai"}',
+  });
+
   assert.deepEqual(seen, [
     {
       url: '/v1beta/openai/chat/completions?api-version=preview&stream=true',
       authorization: 'Bearer server-secret',
       provider: undefined,
+      cookie: undefined,
       body: '{"model":"compatible"}',
     },
     {
       url: '/v1/responses',
       authorization: 'Bearer server-secret',
       provider: undefined,
+      cookie: undefined,
+      body: '{"model":"openai"}',
+    },
+    {
+      url: '/v1/responses',
+      authorization: 'Bearer server-secret',
+      provider: undefined,
+      cookie: undefined,
       body: '{"model":"openai"}',
     },
   ]);
