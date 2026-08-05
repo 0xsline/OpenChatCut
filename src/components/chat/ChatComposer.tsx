@@ -380,17 +380,29 @@ export function ChatComposer(props: ChatComposerProps) {
       )}
       {pop === 'settings' && (
         <ComposerPopover anchor={popAnchor} onClose={closePop}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
-            <input type="checkbox" checked={autoApply} onChange={(e) => onAutoApplyChange(e.target.checked)} style={{ accentColor: theme.accent }} />
-            {t('自动应用 AI 提案')}
-          </label>
-          <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>{t('开启后 AI 的改动直接生效，无需手动确认（仍可撤销）。')}</div>
+          <div style={{ padding: '8px 10px 4px', color: theme.text, fontSize: 12.5 }}>{t('模式')}</div>
+          <div style={{ display: 'flex', gap: 4, padding: '0 10px' }}>
+            {(['ask', 'yolo'] as const).map((m) => {
+              const active = (m === 'yolo') === autoApply;
+              return (
+                <button key={m} onClick={() => onAutoApplyChange(m === 'yolo')}
+                  style={{ flex: 1, padding: '4px 0', fontSize: 11.5, borderRadius: 6, cursor: 'pointer', border: `0.5px solid ${active ? theme.accent : theme.borderLight}`, background: active ? theme.panel : 'none', color: active ? theme.text : theme.textDim }}>
+                  {m === 'ask' ? t('Ask 模式') : t('YOLO 模式')}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
+            {autoApply
+              ? t('YOLO 模式：AI 改动直接生效，无需逐条确认（仍可撤销）。')
+              : t('Ask 模式：AI 的改动先经你确认；有多个可选项时 AI 会先问你。')}
+          </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', color: theme.text, fontSize: 12.5 }}>
             <input type="checkbox" checked={agentSettings.skillGuard} onChange={(e) => patchAgent({ skillGuard: e.target.checked })} style={{ accentColor: theme.accent }} />
             {t('Skill guard · 高成本确认')}
           </label>
           <div style={{ fontSize: 11, color: theme.textDim, padding: '0 10px 6px' }}>
-            {t('生成/导出等昂贵工具即使开启自动应用，仍走提案卡二次确认。')}
+            {t('生成/导出等昂贵操作无论哪种模式都会先经你确认。')}
           </div>
           <div style={{ padding: '8px 10px 4px', color: theme.text, fontSize: 12.5 }}>{t('MG 质量')}</div>
           <div style={{ display: 'flex', gap: 4, padding: '0 10px' }}>

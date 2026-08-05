@@ -25,11 +25,11 @@ At the bottom of the panel:
 
 - **Mode switcher** — Two modes:
   - **Agent** — Full AI editing assistant. The AI reads your message, understands context, and performs editing tasks.
-  - **Ask** — Q&A only; does not edit the timeline.
+  - **Q&A** — Q&A only; does not edit the timeline.
 - **Agent Settings** — Open from the controls next to the mode selector. Settings include:
   - **Thinking Mode** — Turn the agent's extra reasoning on or off.
+  - **Ask / YOLO mode** — How AI changes are confirmed. **Ask Mode** (default): AI changes wait for your confirmation, and the AI asks you first when several options exist. **YOLO Mode**: ordinary timeline changes apply immediately (still undoable); generation / export tools still go through confirmation (skill guard).
   - **Motion Graphics Quality** — Choose Speed, Balance, or Quality for motion graphics generation.
-  - **Auto-apply proposals** — When on, ordinary timeline proposals may apply automatically; generation / export tools still go through confirmation (skill guard).
 - **Proposal / confirmation card** — Structural edits and generation tools may show a review card (apply / reject) before changes land.
 - **+ button** — Upload reference files (images, videos, etc.) to include in your message.
 - **Skills / 技能 (book icon)** — Open the Skills picker below the chat input. Users can choose a preset Skill or one of their saved Skills to guide the AI with a reusable workflow for the current message. Saved Skills are user-owned and can be reused across projects. The picker also includes **Save this editing process as a Skill**, which inserts a prompt asking the AI to help capture the current workflow.

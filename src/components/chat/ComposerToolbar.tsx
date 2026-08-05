@@ -62,7 +62,7 @@ export function ComposerToolbar({
         <button title={t('模式')} onClick={(event) => onTogglePop('mode', event.currentTarget)}
           className="cc-chat-mode-btn"
           style={{ height: 28, display: 'flex', alignItems: 'center', gap: 3, padding: '0 3px', border: 0, borderRadius: 6, background: pop === 'mode' ? theme.panelAlt : 'transparent', color: theme.text, cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>
-          <Icon name="sparkles" size={15} /><span className="cc-chat-mode-label">{mode === 'agent' ? 'Agent' : 'Ask'}</span><Icon name="chevronDown" size={11} />
+          <Icon name="sparkles" size={15} /><span className="cc-chat-mode-label">{mode === 'agent' ? 'Agent' : 'Q&A'}</span><Icon name="chevronDown" size={11} />
         </button>
         <button type="button" className="cc-chat-model-btn"
           disabled={running}
