@@ -66,4 +66,24 @@ assert.throws(
   /GPT Image options are not supported/,
 );
 
+const waveSpeed = validateImageRequest({ model: 'wavespeed', prompt: 'a mountain at sunset', aspectRatio: '1:1' });
+assert.equal(waveSpeed.model, 'wavespeed');
+assert.equal(waveSpeed.aspectRatio, '1:1');
+assert.throws(
+  () => validateImageRequest({ model: 'wavespeed', prompt: 'x', quality: 'high' }),
+  /GPT Image options are not supported/,
+);
+assert.throws(
+  () => validateImageRequest({ model: 'wavespeed', prompt: 'x', referencePaths: ['/media/uploads/a.jpg'] }),
+  /too many reference images/,
+);
+
+const byteplus = validateImageRequest({ model: 'byteplus', prompt: 'a neon city street', aspectRatio: '9:16' });
+assert.equal(byteplus.model, 'byteplus');
+assert.equal(byteplus.aspectRatio, '9:16');
+assert.throws(
+  () => validateImageRequest({ model: 'byteplus', prompt: 'x', referencePaths: ['/media/uploads/a.jpg'] }),
+  /too many reference images/,
+);
+
 console.log('image.check: ok (provider-specific official parameters)');

@@ -8,9 +8,9 @@ import { LLM_PROVIDER_PRESETS } from '../shared/llm-providers.ts';
 // Synchronize this list when adding other capability pages.
 const EXPECTED_PAGES = [
   ...LLM_PROVIDER_PRESETS.map((preset) => `llm/${preset.id}`),
-  'image/openai', 'image/gemini', 'image/minimax',
-  'voice/elevenlabs', 'voice/doubao', 'voice/minimax',
-  'video/seedance', 'video/kling', 'video/hailuo',
+  'image/openai', 'image/gemini', 'image/minimax', 'image/wavespeed', 'image/byteplus',
+  'voice/elevenlabs', 'voice/doubao', 'voice/minimax', 'voice/inworld', 'voice/fishaudio', 'voice/speechify',
+  'video/seedance', 'video/kling', 'video/hailuo', 'video/byteplus',
   'music/mureka', 'music/minimax',
   'stock/pexels', 'stock/pixabay', 'stock/unsplash', 'stock/freesound',
   'transcription/assemblyai',

@@ -115,6 +115,16 @@ const minimaxProbe: ProbeDef = {
   postCheck: minimaxPostCheck,
 };
 
+// BytePlus ModelArk: one account/key serves image (Seedream) and video (Seedance) alike —
+// both capability pages share this /models detection, same as minimaxProbe above.
+const byteplusProbe: ProbeDef = {
+  needs: [['BYTEPLUS_API_KEY']],
+  run: (get) => fetch(`${base(get, 'BYTEPLUS_BASE_URL', 'https://ark.ap-southeast.bytepluses.com/api/v3')}/models`, {
+    signal: t(), headers: bearer(get('BYTEPLUS_API_KEY')),
+  }),
+  models: parseModelCatalog,
+};
+
 /** page key (same name as the vendor page key of settingsSchema) → detection definition.*/
 export const PROBES: Record<string, ProbeDef> = {
   ...Object.fromEntries(LLM_PROVIDER_PRESETS.map((preset) => [
@@ -134,6 +144,13 @@ export const PROBES: Record<string, ProbeDef> = {
     }),
   },
   'image/minimax': minimaxProbe,
+  'image/byteplus': byteplusProbe,
+  'image/wavespeed': {
+    needs: [['WAVESPEED_API_KEY']],
+    run: (get) => fetch(`${base(get, 'WAVESPEED_BASE_URL', 'https://api.wavespeed.ai')}/api/v3/balance`, {
+      signal: t(), headers: bearer(get('WAVESPEED_API_KEY')),
+    }),
+  },
   'voice/elevenlabs': {
     needs: [['ELEVENLABS_API_KEY']],
     run: (get) => fetch(`${base(get, 'ELEVENLABS_BASE_URL', 'https://api.elevenlabs.io')}/v1/models`, {
@@ -158,6 +175,27 @@ export const PROBES: Record<string, ProbeDef> = {
     }),
   },
   'voice/minimax': minimaxProbe,
+  'voice/inworld': {
+    needs: [['INWORLD_TTS_API_KEY']],
+    run: (get) => fetch(`${base(get, 'INWORLD_TTS_BASE_URL', 'https://api.inworld.ai')}/tts/v1/voices`, {
+      signal: t(), headers: { Authorization: `Basic ${get('INWORLD_TTS_API_KEY')}` },
+    }),
+  },
+  'voice/fishaudio': {
+    needs: [['FISHAUDIO_TTS_API_KEY']],
+    run: (get) => fetch(`${base(get, 'FISHAUDIO_TTS_BASE_URL', 'https://api.fish.audio')}/model`, {
+      signal: t(), headers: bearer(get('FISHAUDIO_TTS_API_KEY')),
+    }),
+  },
+  // No free read-only endpoint is documented; synthesizing 1 word is the minimum real verification (negligible cost).
+  'voice/speechify': {
+    needs: [['SPEECHIFY_TTS_API_KEY']],
+    run: (get) => fetch(`${base(get, 'SPEECHIFY_TTS_BASE_URL', 'https://api.sws.speechify.com')}/v1/audio/speech`, {
+      method: 'POST', signal: t(),
+      headers: { 'Content-Type': 'application/json', ...bearer(get('SPEECHIFY_TTS_API_KEY')) },
+      body: JSON.stringify({ input: '测', voice_id: 'george', audio_format: 'mp3', model: get('SPEECHIFY_TTS_MODEL') || 'simba-multilingual' }),
+    }),
+  },
   'video/seedance': {
     needs: [['SEEDANCE_API_KEY']],
     run: (get) => fetch(`${base(get, 'SEEDANCE_BASE_URL', 'https://ark.cn-beijing.volces.com/api/v3')}/contents/generations/tasks?page_num=1&page_size=1`, {
@@ -171,6 +209,7 @@ export const PROBES: Record<string, ProbeDef> = {
     }),
   },
   'video/hailuo': minimaxProbe,
+  'video/byteplus': byteplusProbe,
   'music/mureka': {
     needs: [['MUREKA_API_KEY']],
     run: (get) => fetch(`${base(get, 'MUREKA_BASE_URL', 'https://api.mureka.ai')}/v1/account/billing`, {

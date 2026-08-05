@@ -78,8 +78,8 @@ const secret = (name: string, label: string): SettingsField => ({ name, label, k
 const text = (name: string, label: string, placeholder?: string, note?: string): SettingsField =>
   ({ name, label, kind: 'text', placeholder, note });
 /** Non-confidential model text field: value echo, placeholder="default xxx". */
-const modelText = (name: string, label: string, defaultLabel: string, note?: string): SettingsField =>
-  ({ name, label, kind: 'text', defaultLabel, note });
+const modelText = (name: string, label: string, defaultLabel: string, note?: string, discoverableModel?: boolean): SettingsField =>
+  ({ name, label, kind: 'text', defaultLabel, note, discoverableModel });
 const directory = (name: string, label: string, defaultLabel: string, note?: string): SettingsField =>
   ({ name, label, kind: 'directory', defaultLabel, note });
 /** Non-confidential model select: The first item automatically generates "default (xxx)" (value=''). */
@@ -173,6 +173,18 @@ const minimaxPage = (cap: string, modelField: SettingsField, title = 'MiniMax', 
   ],
 });
 
+// BytePlus ModelArk serves image (Seedream) and video (Seedance) from the same Key/Base URL,
+// separate from LLM_BYTEPLUS_* (Agent chat) — same sharing convention as MiniMax above.
+const BYTEPLUS_NOTE = 'BytePlus ModelArk 同一个 Key，图生 / 视频生成通用；与「Agent 大脑」的 BytePlus 配置各自独立。';
+const byteplusPage = (cap: string, modelField: SettingsField, title = 'BytePlus · ModelArk'): SettingsVendorPage => ({
+  key: `${cap}/byteplus`, vendor: 'byteplus', title, note: BYTEPLUS_NOTE,
+  fields: [
+    secret('BYTEPLUS_API_KEY', 'API Key'),
+    text('BYTEPLUS_BASE_URL', 'Base URL', '默认 https://ark.ap-southeast.bytepluses.com/api/v3'),
+    modelField,
+  ],
+});
+
 export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   {
     key: 'agent', title: 'Agent 模型', icon: 'sparkles',
@@ -190,6 +202,8 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'gpt-image-2', label: 'OpenAI gpt-image' },
           { value: 'nano-banana', label: 'Gemini Nano Banana' },
           { value: 'image-01', label: 'MiniMax' },
+          { value: 'wavespeed', label: 'WaveSpeed' },
+          { value: 'byteplus', label: 'BytePlus · Seedream' },
         ]),
         vendors: [
           { key: 'image/openai', vendor: 'openai', title: 'OpenAI', fields: [
@@ -202,12 +216,22 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             modelText('GEMINI_IMAGE_MODEL', '生图模型', 'gemini-3.1-flash-image'),
           ] },
           minimaxPage('image', modelSelect('MINIMAX_IMAGE_MODEL', '生图模型', 'image-01', ['image-01', 'image-01-live'])),
+          { key: 'image/wavespeed', vendor: 'wavespeed', title: 'WaveSpeed', fields: [
+            secret('WAVESPEED_API_KEY', 'API Key'),
+            text('WAVESPEED_BASE_URL', 'Base URL', '默认 https://api.wavespeed.ai'),
+            modelText('WAVESPEED_IMAGE_MODEL', '生图模型', 'wavespeed-ai/flux-dev'),
+          ] },
+          byteplusPage('image', modelText('BYTEPLUS_IMAGE_MODEL', '生图模型', 'seedream-4-5-251128',
+            '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true), 'BytePlus · Seedream'),
         ] },
       { key: 'voice', title: '配音 / TTS', hint: 'submit_voice · 文字转配音，任一厂商即可。',
         route: routeSelect('PREFERRED_VOICE_VENDOR', [
           { value: 'elevenlabs', label: 'ElevenLabs' },
           { value: 'doubao', label: '豆包' },
           { value: 'minimax', label: 'MiniMax' },
+          { value: 'inworld', label: 'Inworld' },
+          { value: 'fishaudio', label: 'Fish Audio' },
+          { value: 'speechify', label: 'Speechify' },
         ]),
         vendors: [
           { key: 'voice/elevenlabs', vendor: 'elevenlabs', title: 'ElevenLabs',
@@ -226,12 +250,29 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           ] },
           minimaxPage('voice', modelSelect('MINIMAX_TTS_MODEL', '配音模型', 'speech-2.6-hd',
             ['speech-2.6-hd', 'speech-2.8-hd', 'speech-2.8-turbo', 'speech-2.6-turbo', 'speech-02-hd', 'speech-02-turbo'])),
+          { key: 'voice/inworld', vendor: 'inworld', title: 'Inworld', fields: [
+            secret('INWORLD_TTS_API_KEY', 'API Key'),
+            text('INWORLD_TTS_BASE_URL', 'Base URL', '默认 https://api.inworld.ai'),
+            modelText('INWORLD_TTS_MODEL', '配音模型', 'inworld-tts-2'),
+          ] },
+          { key: 'voice/fishaudio', vendor: 'fishaudio', title: 'Fish Audio', fields: [
+            secret('FISHAUDIO_TTS_API_KEY', 'API Key'),
+            text('FISHAUDIO_TTS_BASE_URL', 'Base URL', '默认 https://api.fish.audio'),
+            modelText('FISHAUDIO_TTS_MODEL', '配音模型', 'speech-1.6'),
+          ] },
+          { key: 'voice/speechify', vendor: 'speechify', title: 'Speechify', fields: [
+            secret('SPEECHIFY_TTS_API_KEY', 'API Key'),
+            text('SPEECHIFY_TTS_BASE_URL', 'Base URL', '默认 https://api.sws.speechify.com'),
+            modelSelect('SPEECHIFY_TTS_MODEL', '配音模型', 'simba-multilingual',
+              ['simba-multilingual', 'simba-english', 'simba-3.2']),
+          ] },
         ] },
       { key: 'video', title: '生视频', hint: 'submit_video · 文 / 图生视频，任一厂商即可。',
         route: routeSelect('PREFERRED_VIDEO_VENDOR', [
           { value: 'seedance2', label: 'Seedance' },
           { value: 'kling', label: '可灵' },
           { value: 'hailuo', label: 'MiniMax 海螺' },
+          { value: 'byteplus', label: 'BytePlus · Seedance' },
         ]),
         vendors: [
           { key: 'video/seedance', vendor: 'seedance', title: 'Seedance · 火山', fields: [
@@ -246,6 +287,8 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           ] },
           minimaxPage('video', modelSelect('MINIMAX_VIDEO_MODEL', '视频模型', 'MiniMax-Hailuo-02',
             ['MiniMax-Hailuo-02', 'MiniMax-Hailuo-2.3', 'MiniMax-Hailuo-2.3-Fast', 'S2V-01']), 'MiniMax 海螺', 'hailuo'),
+          byteplusPage('video', modelText('BYTEPLUS_VIDEO_MODEL', '视频模型', 'seedance-1-5-pro-251215',
+            '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true), 'BytePlus · Seedance'),
         ] },
       { key: 'music', title: '生音乐', hint: 'submit_music · 文字生成配乐，任一厂商即可。',
         route: routeSelect('PREFERRED_MUSIC_VENDOR', [

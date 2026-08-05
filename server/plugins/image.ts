@@ -24,6 +24,12 @@ interface ImagePluginOptions {
   minimaxBaseUrl: string;
   minimaxApiKey: string;
   minimaxModel: string;
+  waveSpeedBaseUrl: string;
+  waveSpeedApiKey: string;
+  waveSpeedModel: string;
+  byteplusBaseUrl: string;
+  byteplusApiKey: string;
+  byteplusModel: string;
 }
 
 interface ImageRequest {
@@ -48,7 +54,7 @@ interface ImageRequest {
 }
 
 export interface ValidImageRequest {
-  model: 'gpt-image-2' | 'nano-banana' | 'image-01';
+  model: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus';
   prompt: string;
   aspectRatio?: string;
   imageSize: string;
@@ -114,7 +120,7 @@ function rejectForeignImageOptions(input: ImageRequest, model: ValidImageRequest
 /** Pure request validation — exported for unit checks. */
 export function validateImageRequest(input: ImageRequest): ValidImageRequest {
   const model = String(input.model ?? 'gpt-image-2');
-  if (model !== 'gpt-image-2' && model !== 'nano-banana' && model !== 'image-01') {
+  if (model !== 'gpt-image-2' && model !== 'nano-banana' && model !== 'image-01' && model !== 'wavespeed' && model !== 'byteplus') {
     throw new Error(`unsupported model ${model}`);
   }
   const prompt = String(input.prompt ?? '').trim();
@@ -129,7 +135,8 @@ export function validateImageRequest(input: ImageRequest): ValidImageRequest {
   if (!SIZES.has(imageSize)) throw new Error(`unsupported image size ${imageSize}`);
   if (!QUALITIES.has(quality)) throw new Error(`unsupported quality ${quality}`);
   const referencePaths = input.referencePaths ?? [];
-  const referenceLimit = model === 'nano-banana' ? 14 : model === 'gpt-image-2' ? 16 : 1;
+  const referenceLimit = model === 'nano-banana' ? 14 : model === 'gpt-image-2' ? 16 : model === 'image-01' ? 1 : 0;
+  // wavespeed and byteplus (Seedream) are text-to-image only in this integration; no reference-image support yet.
   if (referencePaths.length > referenceLimit) {
     throw new Error(`too many reference images for ${model}`);
   }
@@ -370,6 +377,79 @@ async function callMinimaxProvider(baseUrl: string, apiKey: string, model: strin
   return images;
 }
 
+interface WaveSpeedResult {
+  data?: { id?: string; status?: string; outputs?: string[]; error?: string };
+}
+
+async function waveSpeedError(response: Response): Promise<string> {
+  const body = await response.json().catch(() => null) as { message?: string; data?: { error?: string } } | null;
+  return body?.data?.error ?? body?.message ?? `WaveSpeed request failed (${response.status})`;
+}
+
+const WAVESPEED_TERMINAL_FAILURES = new Set(['failed', 'cancelled', 'timeout']);
+
+async function waveSpeedPollResult(baseUrl: string, apiKey: string, taskId: string): Promise<string> {
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    await new Promise((resolvePoll) => setTimeout(resolvePoll, 2_000));
+    const response = await fetch(`${baseUrl}/api/v3/predictions/${encodeURIComponent(taskId)}/result`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!response.ok) throw new Error(await waveSpeedError(response));
+    const result = await response.json() as WaveSpeedResult;
+    const status = result.data?.status ?? '';
+    if (status === 'completed') {
+      const url = result.data?.outputs?.[0];
+      if (!url) throw new Error('WaveSpeed completed without an output URL');
+      return url;
+    }
+    if (WAVESPEED_TERMINAL_FAILURES.has(status)) throw new Error(result.data?.error || `WaveSpeed generation ${status}`);
+  }
+  throw new Error('WaveSpeed generation timed out');
+}
+
+async function callWaveSpeedProvider(baseUrl: string, apiKey: string, model: string, body: {
+  prompt: string;
+  count: number;
+  width: number;
+  height: number;
+}): Promise<ProviderImage[]> {
+  const root = baseUrl.replace(/\/$/, '');
+  return Promise.all(Array.from({ length: body.count }, async () => {
+    const response = await fetch(`${root}/api/v3/${model}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ prompt: body.prompt, size: `${body.width}*${body.height}` }),
+    });
+    if (!response.ok) throw new Error(await waveSpeedError(response));
+    const submitted = await response.json() as WaveSpeedResult;
+    const taskId = submitted.data?.id;
+    if (!taskId) throw new Error('WaveSpeed did not return a task id');
+    return { url: await waveSpeedPollResult(root, apiKey, taskId) };
+  }));
+}
+
+/** BytePlus ModelArk (Seedream): OpenAI-images-compatible, but the endpoint hangs directly off
+ * the Ark base URL (no /v1 segment) unlike the default OpenAI path. */
+async function callByteplusImageProvider(baseUrl: string, apiKey: string, model: string, body: {
+  prompt: string;
+  count: number;
+  width: number;
+  height: number;
+}): Promise<ProviderImage[]> {
+  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/images/generations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model, prompt: body.prompt, n: body.count, size: `${body.width}x${body.height}`, response_format: 'url',
+    }),
+  });
+  if (!response.ok) throw new Error(await providerError(response));
+  const result = await response.json() as { data?: ProviderImage[] };
+  if (!result.data?.length) throw new Error('BytePlus returned no images');
+  return result.data;
+}
+
 async function minimaxSubjectUrl(path: string): Promise<string> {
   const file = localAssetPath(path);
   const name = path.slice('/media/uploads/'.length).split(/[?#]/, 1)[0];
@@ -433,6 +513,16 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
             images = await callMinimaxProvider(options.minimaxBaseUrl, options.minimaxApiKey, options.minimaxModel, {
               prompt, count, aspectRatio, width: input.width, height: input.height,
               seed, referencePaths, promptOptimizer,
+            });
+          } else if (model === 'wavespeed') {
+            if (!options.waveSpeedApiKey) throw new Error('WaveSpeed is not configured. Set WAVESPEED_API_KEY in .env.local.');
+            images = await callWaveSpeedProvider(options.waveSpeedBaseUrl, options.waveSpeedApiKey, options.waveSpeedModel, {
+              prompt, count, width, height,
+            });
+          } else if (model === 'byteplus') {
+            if (!options.byteplusApiKey) throw new Error('BytePlus is not configured. Set BYTEPLUS_API_KEY in .env.local.');
+            images = await callByteplusImageProvider(options.byteplusBaseUrl, options.byteplusApiKey, options.byteplusModel, {
+              prompt, count, width, height,
             });
           } else {
             if (!options.apiKey) throw new Error('Image generation is not configured. Set IMAGE_API_KEY or OPENAI_API_KEY in .env.local.');

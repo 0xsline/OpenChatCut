@@ -104,4 +104,30 @@ const doubao = validateVoiceRequest({
 });
 assert.equal(doubao.provider, 'doubao');
 
+const inworld = validateVoiceRequest({ provider: 'inworld', text: 'Hello', voiceId: 'Dennis', modelId: 'inworld-tts-2' });
+assert.equal(inworld.provider, 'inworld');
+assert.equal(inworld.modelId, 'inworld-tts-2');
+assert.throws(
+  () => validateVoiceRequest({ provider: 'inworld', text: 'x'.repeat(2_001), voiceId: 'Dennis' }),
+  /Inworld TTS text must be at most 2000 characters/,
+);
+assert.throws(
+  () => validateVoiceRequest({ provider: 'inworld', text: 'hi', voiceId: 'Dennis', pitch: 1 }),
+  /Inworld only accepts text, voiceId, and modelId/,
+);
+
+const fishAudio = validateVoiceRequest({ provider: 'fishaudio', text: 'Hello', voiceId: 'ref-123' });
+assert.equal(fishAudio.provider, 'fishaudio');
+assert.throws(
+  () => validateVoiceRequest({ provider: 'fishaudio', text: 'hi', voiceId: 'ref-123', emotion: 'calm' }),
+  /Fish Audio only accepts text, voiceId, and modelId/,
+);
+
+const speechify = validateVoiceRequest({ provider: 'speechify', text: 'Hello', voiceId: 'george', modelId: 'simba-english' });
+assert.equal(speechify.provider, 'speechify');
+assert.throws(
+  () => validateVoiceRequest({ provider: 'speechify', text: 'hi', voiceId: 'george', volume: 2 }),
+  /Speechify only accepts text, voiceId, and modelId/,
+);
+
 console.log('voice.check: ok (minimax pitch/volume + provider gates)');

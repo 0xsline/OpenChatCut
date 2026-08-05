@@ -2,8 +2,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 
 import { saveVoiceAudio, saveVoiceSubtitle } from './voice-media.ts';
-import { doubaoVoice, elevenLabsVoice, minimaxVoice } from './voice-providers.ts';
-import type { VoiceOptions, VoiceRequest } from './voice-types.ts';
+import { doubaoVoice, elevenLabsVoice, fishAudioVoice, inworldVoice, minimaxVoice, speechifyVoice } from './voice-providers.ts';
+import type { VoiceOptions, VoiceProvider, VoiceRequest } from './voice-types.ts';
 import { validateVoiceRequest } from './voice-validation.ts';
 
 export { validateVoiceRequest };
@@ -26,7 +26,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-function audioDescriptor(provider: 'elevenlabs' | 'doubao' | 'minimax', outputFormat: string, audioFormat: string, sampleRate: number) {
+function audioDescriptor(provider: VoiceProvider, outputFormat: string, audioFormat: string, sampleRate: number) {
   if (provider === 'elevenlabs') {
     const [codec, rate] = outputFormat.split('_');
     return { codec, sampleRate: Number(rate) };
@@ -43,12 +43,20 @@ export function voiceGenerationPlugin(options: VoiceOptions): Plugin {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         try {
           const input = validateVoiceRequest(await readJson(req));
-          const minimax = input.provider === 'minimax' ? await minimaxVoice(options, input) : undefined;
-          const bytes = input.provider === 'elevenlabs' ? await elevenLabsVoice(options, input)
-            : input.provider === 'doubao' ? await doubaoVoice(options, input) : minimax!.audio;
+          let bytes: Buffer;
+          let subtitleUrl: string | undefined;
+          if (input.provider === 'minimax') {
+            const result = await minimaxVoice(options, input);
+            bytes = result.audio;
+            subtitleUrl = result.subtitleUrl;
+          } else if (input.provider === 'elevenlabs') bytes = await elevenLabsVoice(options, input);
+          else if (input.provider === 'doubao') bytes = await doubaoVoice(options, input);
+          else if (input.provider === 'inworld') bytes = await inworldVoice(options, input);
+          else if (input.provider === 'fishaudio') bytes = await fishAudioVoice(options, input);
+          else bytes = await speechifyVoice(options, input);
           const audio = audioDescriptor(input.provider, input.outputFormat, input.audioFormat, input.sampleRate);
           const saved = await saveVoiceAudio(bytes, audio.codec, audio.sampleRate, input.provider === 'doubao' ? input.pitch ?? 0 : 0);
-          const subtitlePath = minimax?.subtitleUrl ? await saveVoiceSubtitle(minimax.subtitleUrl) : undefined;
+          const subtitlePath = subtitleUrl ? await saveVoiceSubtitle(subtitleUrl) : undefined;
           sendJson(res, 200, { ...saved, subtitlePath });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);

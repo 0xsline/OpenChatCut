@@ -172,11 +172,12 @@ function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: Field
     }
   };
 
+  const discoversModels = page.fields.some((field) => field.discoverableModel);
   return (
     <div style={testRow}>
       <button type="button" onClick={() => { void test(); }} disabled={busy}
         style={{ ...testBtn, opacity: busy ? 0.6 : 1, cursor: busy ? 'default' : 'pointer' }}>
-        {busy ? t('测试中…') : page.key.startsWith('llm/') ? t('测试并读取模型') : t('测试连接')}
+        {busy ? t('测试中…') : discoversModels ? t('测试并读取模型') : t('测试连接')}
       </button>
       {shown && (
         <span style={{ ...testMsg, color: shown.ok ? ON : WARN }} title={shown.message}>
@@ -185,7 +186,7 @@ function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx: Field
       )}
       {!shown && !busy && (
         <span style={{ ...testMsg, color: theme.textDim }}>
-          {page.key.startsWith('llm/')
+          {discoversModels
             ? t('验证地址与密钥，并读取该接口可用的模型')
             : t('发一条最小请求验证 Key 与地址可用')}
         </span>

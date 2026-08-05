@@ -62,7 +62,12 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
     }, (upRes) => {
       const status = upRes.statusCode ?? 502;
       if (status >= 400 && route.errorMessage) {
-        upRes.resume();
+        const chunks: Buffer[] = [];
+        upRes.on('data', (chunk) => chunks.push(chunk));
+        upRes.on('end', () => {
+          const body = Buffer.concat(chunks).toString('utf8').slice(0, 2000);
+          console.warn(`[proxy] upstream ${status} for ${target.host}${basePath}${requestPath} · ${body}`);
+        });
         res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
         res.end(JSON.stringify({ error: { message: route.errorMessage(status, req) } }));
         return;

@@ -10,6 +10,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added / 新增
 
+- Added StepFun and BytePlus ModelArk Agent LLM providers (BytePlus fronts DeepSeek, GLM, and Doubao-Seed models behind one Ark-compatible endpoint with a swappable model id), plus WaveSpeed and BytePlus Seedream image generation, BytePlus Seedance video generation (sharing the seedance2/Volcengine task API and reference limits), and Inworld, Fish Audio, and Speechify text-to-speech providers — each with settings-panel configuration and connection testing.
+  新增 StepFun 与 BytePlus ModelArk Agent 大脑厂商（BytePlus 通过同一个 Ark 兼容端点承载 DeepSeek、GLM、豆包 Seed 等模型，可切换模型 ID），以及 WaveSpeed 与 BytePlus Seedream 生图、BytePlus Seedance 生视频（复用 seedance2/火山引擎的任务接口与引用素材限制），以及 Inworld、Fish Audio、Speechify 配音厂商，均支持设置面板配置与连接测试。
 - Added first-class ChatGPT subscription sign-in for the built-in Agent through the official Codex CLI, including isolated credential storage, browser/device-code OAuth, account and model discovery, model-specific reasoning-effort selection, model switching, and dynamic OpenChatCut tool calling. Claude Code subscriptions remain available through the existing local MCP connection without exposing Claude OAuth credentials.
   新增基于官方 Codex CLI 的内置 Agent ChatGPT 订阅登录：支持隔离凭据存储、浏览器/设备代码 OAuth、账号与模型发现、按模型选择推理强度、模型切换及 OpenChatCut 动态工具调用。Claude Code 订阅继续通过既有本机 MCP 连接使用，无需向 OpenChatCut 暴露 Claude OAuth 凭据。
 - Added first-class Ollama and LM Studio Agent providers with configurable local endpoints, optional API keys, model discovery, and explicit model activation.

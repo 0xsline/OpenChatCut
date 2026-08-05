@@ -4,7 +4,7 @@ export type KlingVideoReferType = 'feature' | 'base';
 
 export interface VideoRequest {
   operationId?: string;
-  model?: 'seedance2' | 'kling' | 'hailuo';
+  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus';
   prompt?: string;
   name?: string;
   durationSeconds?: number | string;
@@ -34,7 +34,7 @@ export interface VideoRequest {
 }
 
 export interface ValidVideoRequest extends Omit<VideoRequest, 'model' | 'prompt' | 'durationSeconds' | 'ratio' | 'refImagePaths' | 'refVideoPaths' | 'refAudioPaths'> {
-  model: 'seedance2' | 'kling' | 'hailuo';
+  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus';
   prompt: string;
   durationSeconds: number;
   durationSpecified: boolean;
@@ -64,7 +64,7 @@ const SEEDANCE_KEYS = ['generateAudio', 'seed', 'cameraFixed', 'watermark', 'ret
 
 function rejectSeedanceOptions(input: VideoRequest): void {
   if (SEEDANCE_KEYS.some((key) => input[key] !== undefined)) {
-    throw new Error('generateAudio/seed/cameraFixed/watermark/returnLastFrame/executionExpiresAfter/priority are supported by seedance2 only');
+    throw new Error('generateAudio/seed/cameraFixed/watermark/returnLastFrame/executionExpiresAfter/priority are supported by seedance2/byteplus only');
   }
 }
 
@@ -112,14 +112,15 @@ function validateHailuo(input: ValidVideoRequest): ValidVideoRequest {
 }
 
 function validateSeedance(input: ValidVideoRequest): ValidVideoRequest {
+  const model = input.model; // seedance2 or byteplus — same Ark Seedance API/constraints
   if (!input.prompt) throw new Error('prompt is required');
-  if (input.durationSeconds < 2 || input.durationSeconds > 15) throw new Error('seedance2 durationSeconds must be between 2 and 15');
-  if (!['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'].includes(input.ratio)) throw new Error(`seedance2 does not support ratio ${input.ratio}`);
-  if (input.resolution && !['480p', '720p', '1080p', '4k'].includes(input.resolution)) throw new Error('seedance2 resolution must be 480p, 720p, 1080p, or 4k');
+  if (input.durationSeconds < 2 || input.durationSeconds > 15) throw new Error(`${model} durationSeconds must be between 2 and 15`);
+  if (!['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'].includes(input.ratio)) throw new Error(`${model} does not support ratio ${input.ratio}`);
+  if (input.resolution && !['480p', '720p', '1080p', '4k'].includes(input.resolution)) throw new Error(`${model} resolution must be 480p, 720p, 1080p, or 4k`);
   if (input.lastFramePath && !input.firstFramePath) throw new Error('lastFrame requires firstFrame');
-  if (input.lastFramePath && (input.refImagePaths.length || input.refVideoPaths.length || input.refAudioPaths.length)) throw new Error('seedance2 lastFrame mode cannot be combined with references');
-  if (input.refImagePaths.length > 9 || input.refVideoPaths.length > 3 || input.refAudioPaths.length > 3) throw new Error('seedance2 reference limit exceeded');
-  if (input.refAudioPaths.length && !input.firstFramePath && !input.refImagePaths.length && !input.refVideoPaths.length) throw new Error('seedance2 audio references require a visual reference');
+  if (input.lastFramePath && (input.refImagePaths.length || input.refVideoPaths.length || input.refAudioPaths.length)) throw new Error(`${model} lastFrame mode cannot be combined with references`);
+  if (input.refImagePaths.length > 9 || input.refVideoPaths.length > 3 || input.refAudioPaths.length > 3) throw new Error(`${model} reference limit exceeded`);
+  if (input.refAudioPaths.length && !input.firstFramePath && !input.refImagePaths.length && !input.refVideoPaths.length) throw new Error(`${model} audio references require a visual reference`);
   if (input.shotType || input.multiPrompts?.length) throw new Error('multi-shot parameters are supported by kling only');
   if (input.refVideoMode) throw new Error('refVideoMode is supported by kling only');
   if (input.promptOptimizer !== undefined || input.fastPretreatment !== undefined) throw new Error('promptOptimizer/fastPretreatment are supported by hailuo only');
@@ -170,9 +171,12 @@ function validateKling(input: ValidVideoRequest): ValidVideoRequest {
 }
 
 export function validateVideoRequest(input: VideoRequest): ValidVideoRequest {
-  if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo') throw new Error('model must be seedance2, kling, or hailuo');
+  if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo' && input.model !== 'byteplus') {
+    throw new Error('model must be seedance2, kling, hailuo, or byteplus');
+  }
   if (input.model === 'hailuo' && input.ratio !== undefined) throw new Error('hailuo does not accept ratio; framing follows the first frame when present');
   const normalized = common(input, input.model);
   if (normalized.model === 'hailuo') return validateHailuo(normalized);
-  return normalized.model === 'seedance2' ? validateSeedance(normalized) : validateKling(normalized);
+  if (normalized.model === 'kling') return validateKling(normalized);
+  return validateSeedance(normalized);
 }

@@ -33,6 +33,7 @@ export function buildSubmitImageArgs(args: GenerateArgs): SubmitImageArgs {
     return { ...shared, width, height, seed: num(args.seed), promptOptimizer: bool(args.promptOptimizer) };
   }
   if (model === 'nano-banana') return { ...shared, imageSize: args.imageSize as SubmitImageArgs['imageSize'] };
+  if (model === 'wavespeed' || model === 'byteplus') return { ...shared, imageSize: args.imageSize as SubmitImageArgs['imageSize'], width, height };
   const outputFormat = args.outputFormat as SubmitImageArgs['outputFormat'];
   return {
     ...shared, imageSize: args.imageSize as SubmitImageArgs['imageSize'], width, height,
@@ -91,9 +92,20 @@ function minimaxVoice(args: GenerateArgs): SubmitVoiceArgs {
   };
 }
 
-const VOICE_STRATEGIES = { elevenlabs: elevenVoice, doubao: doubaoVoice, minimax: minimaxVoice } as const;
+const minimalVoice = (provider: 'inworld' | 'fishaudio' | 'speechify') => (args: GenerateArgs): SubmitVoiceArgs => ({
+  ...voiceBase(args, provider), modelId: str(args.modelId),
+});
+const inworldVoice = minimalVoice('inworld');
+const fishAudioVoice = minimalVoice('fishaudio');
+const speechifyVoice = minimalVoice('speechify');
+
+const VOICE_STRATEGIES = {
+  elevenlabs: elevenVoice, doubao: doubaoVoice, minimax: minimaxVoice,
+  inworld: inworldVoice, fishaudio: fishAudioVoice, speechify: speechifyVoice,
+} as const;
 export function buildSubmitVoiceArgs(args: GenerateArgs): SubmitVoiceArgs {
-  const provider = args.provider === 'doubao' || args.provider === 'minimax' ? args.provider : 'elevenlabs';
+  const provider = args.provider === 'doubao' || args.provider === 'minimax' || args.provider === 'inworld'
+    || args.provider === 'fishaudio' || args.provider === 'speechify' ? args.provider : 'elevenlabs';
   return VOICE_STRATEGIES[provider](args);
 }
 
@@ -140,12 +152,15 @@ const videoBase = (args: GenerateArgs, model: SubmitVideoArgs['model']): SubmitV
   resolution: args.resolution as SubmitVideoArgs['resolution'], firstFrame: str(args.firstFrame), lastFrame: str(args.lastFrame),
 });
 
-const seedanceVideo = (args: GenerateArgs): SubmitVideoArgs => ({
-  ...videoBase(args, 'seedance2'), ratio: str(args.ratio), refImages: list(args.refImages), refVideos: list(args.refVideos),
+// seedance2 (Volcengine) and byteplus (BytePlus ModelArk) are the same Ark Seedance API/fields.
+const seedanceStyleVideo = (model: 'seedance2' | 'byteplus') => (args: GenerateArgs): SubmitVideoArgs => ({
+  ...videoBase(args, model), ratio: str(args.ratio), refImages: list(args.refImages), refVideos: list(args.refVideos),
   refAudios: list(args.refAudios), generateAudio: bool(args.generateAudio), seed: num(args.seed),
   cameraFixed: bool(args.cameraFixed), watermark: bool(args.watermark), returnLastFrame: bool(args.returnLastFrame),
   executionExpiresAfter: num(args.executionExpiresAfter), priority: num(args.priority),
 });
+const seedanceVideo = seedanceStyleVideo('seedance2');
+const byteplusVideo = seedanceStyleVideo('byteplus');
 const klingVideo = (args: GenerateArgs): SubmitVideoArgs => ({
   ...videoBase(args, 'kling'), ratio: str(args.ratio), mode: args.mode as SubmitVideoArgs['mode'],
   refImages: list(args.refImages), refVideos: list(args.refVideos),
@@ -157,9 +172,9 @@ const hailuoVideo = (args: GenerateArgs): SubmitVideoArgs => ({
   ...videoBase(args, 'hailuo'), promptOptimizer: bool(args.promptOptimizer), fastPretreatment: bool(args.fastPretreatment),
 });
 
-const VIDEO_STRATEGIES = { seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo } as const;
+const VIDEO_STRATEGIES = { seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo } as const;
 export function buildSubmitVideoArgs(args: GenerateArgs): SubmitVideoArgs {
-  const model = args.model === 'kling' || args.model === 'hailuo' ? args.model : 'seedance2';
+  const model = args.model === 'kling' || args.model === 'hailuo' || args.model === 'byteplus' ? args.model : 'seedance2';
   return VIDEO_STRATEGIES[model](args);
 }
 

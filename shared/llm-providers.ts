@@ -63,6 +63,23 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'deepseek-v4-pro',
   },
   {
+    id: 'stepfun',
+    label: 'StepFun',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://api.stepfun.com/v1',
+    defaultModel: 'step-3',
+  },
+  {
+    // BytePlus ModelArk: one Ark-compatible endpoint fronting many hosted
+    // models (DeepSeek, GLM, Doubao-Seed, ...). Swap LLM_BYTEPLUS_MODEL to
+    // any model id activated in the BytePlus console.
+    id: 'byteplus',
+    label: 'BytePlus · ModelArk',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://ark.ap-southeast.bytepluses.com/api/v3',
+    defaultModel: 'deepseek-v4-pro',
+  },
+  {
     id: 'minimax',
     label: 'MiniMax',
     protocol: 'openai-compatible',

@@ -2,7 +2,7 @@ import type { MediaAsset, TimelineState } from '../editor/types';
 import type { MinimaxLanguageBoost } from '../../shared/media-provider-params';
 
 export interface SubmitVoiceArgs {
-  provider: 'elevenlabs' | 'doubao' | 'minimax';
+  provider: 'elevenlabs' | 'doubao' | 'minimax' | 'inworld' | 'fishaudio' | 'speechify';
   text: string;
   voiceId: string;
   modelId?: string;

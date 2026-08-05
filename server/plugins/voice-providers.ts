@@ -157,6 +157,53 @@ export function minimaxVoiceBody(model: string, input: ValidVoiceRequest): Recor
   };
 }
 
+export async function inworldVoice(options: VoiceOptions, input: ValidVoiceRequest): Promise<Buffer> {
+  if (!options.inworldApiKey) throw new Error('Inworld is not configured. Set INWORLD_TTS_API_KEY in .env.local.');
+  const response = await fetch(`${options.inworldBaseUrl.replace(/\/$/, '')}/tts/v1/voice`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Basic ${options.inworldApiKey}` },
+    body: JSON.stringify({
+      text: input.text, voiceId: input.voiceId, modelId: input.modelId || options.inworldModel,
+      audioConfig: { audioEncoding: 'MP3', sampleRateHertz: 24_000 },
+    }),
+  });
+  if (!response.ok) throw new Error(await providerError(response));
+  const result = await response.json() as { audioContent?: string };
+  if (!result.audioContent) throw new Error('Inworld returned no audio');
+  return Buffer.from(result.audioContent, 'base64');
+}
+
+export async function fishAudioVoice(options: VoiceOptions, input: ValidVoiceRequest): Promise<Buffer> {
+  if (!options.fishAudioApiKey) throw new Error('Fish Audio is not configured. Set FISHAUDIO_TTS_API_KEY in .env.local.');
+  const response = await fetch(`${options.fishAudioBaseUrl.replace(/\/$/, '')}/v1/tts`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${options.fishAudioApiKey}`,
+      model: input.modelId || options.fishAudioModel,
+    },
+    body: JSON.stringify({ text: input.text, reference_id: input.voiceId, format: 'mp3' }),
+  });
+  if (!response.ok) throw new Error(await providerError(response));
+  return Buffer.from(await response.arrayBuffer());
+}
+
+export async function speechifyVoice(options: VoiceOptions, input: ValidVoiceRequest): Promise<Buffer> {
+  if (!options.speechifyApiKey) throw new Error('Speechify is not configured. Set SPEECHIFY_TTS_API_KEY in .env.local.');
+  const response = await fetch(`${options.speechifyBaseUrl.replace(/\/$/, '')}/v1/audio/speech`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${options.speechifyApiKey}` },
+    body: JSON.stringify({
+      input: input.text, voice_id: input.voiceId, audio_format: 'mp3',
+      model: input.modelId || options.speechifyModel,
+    }),
+  });
+  if (!response.ok) throw new Error(await providerError(response));
+  const result = await response.json() as { audio_data?: string };
+  if (!result.audio_data) throw new Error('Speechify returned no audio');
+  return Buffer.from(result.audio_data, 'base64');
+}
+
 export async function minimaxVoice(options: VoiceOptions, input: ValidVoiceRequest): Promise<MinimaxVoiceResult> {
   if (!options.minimaxApiKey) throw new Error('MiniMax is not configured. Set MINIMAX_API_KEY in .env.local or 设置面板.');
   const body = minimaxVoiceBody(options.minimaxModel, input);

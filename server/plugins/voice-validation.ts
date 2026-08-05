@@ -91,17 +91,38 @@ function validateMinimax(input: VoiceRequest, text: string): void {
     input.performancePrompt, input.explicitDialect], 'MiniMax does not accept ElevenLabs/Doubao-only voice parameters');
 }
 
+/** Inworld / Fish Audio / Speechify only take text, voiceId, and an optional modelId override. */
+function validateMinimalProvider(input: VoiceRequest, label: string): void {
+  reject([input.stability, input.speed, input.similarityBoost, input.style, input.useSpeakerBoost, input.languageCode,
+    input.seed, input.outputFormat, input.optimizeStreamingLatency, input.enableLogging, input.applyTextNormalization,
+    input.applyLanguageTextNormalization, input.pronunciationDictionaryLocators, input.previousText, input.nextText,
+    input.previousRequestIds, input.nextRequestIds, input.speedRatio, input.emotion, input.emotionScale, input.loudnessRatio,
+    input.pitch, input.volume, input.performancePrompt, input.explicitDialect, input.sampleRate, input.bitrate,
+    input.audioFormat, input.channel, input.forceCbr, input.stream, input.excludeAggregatedAudio, input.languageBoost,
+    input.textNormalization, input.latexRead, input.pronunciations, input.timbreWeights, input.voiceModify,
+    input.subtitleEnable, input.subtitleType],
+  `${label} only accepts text, voiceId, and modelId`);
+}
+
 export function validateVoiceRequest(input: VoiceRequest): ValidVoiceRequest {
-  if (input.provider !== 'elevenlabs' && input.provider !== 'doubao' && input.provider !== 'minimax') throw new Error('provider must be elevenlabs, doubao, or minimax');
+  const provider = input.provider;
+  if (provider !== 'elevenlabs' && provider !== 'doubao' && provider !== 'minimax'
+    && provider !== 'inworld' && provider !== 'fishaudio' && provider !== 'speechify') {
+    throw new Error('provider must be elevenlabs, doubao, minimax, inworld, fishaudio, or speechify');
+  }
   const text = String(input.text ?? '').trim();
   const requestedVoiceId = String(input.voiceId ?? '').trim();
-  const voiceId = requestedVoiceId || (input.provider === 'minimax' && !input.timbreWeights?.length ? 'female-yujie' : '');
+  const voiceId = requestedVoiceId || (provider === 'minimax' && !input.timbreWeights?.length ? 'female-yujie' : '');
   if (!text) throw new Error('text is required');
-  if (!voiceId && !(input.provider === 'minimax' && input.timbreWeights?.length)) throw new Error('voiceId is required');
-  if (input.provider === 'elevenlabs') validateEleven(input);
-  else if (input.provider === 'doubao') validateDoubao(input, voiceId);
-  else validateMinimax(input, text);
-  return { ...input, provider: input.provider, text, voiceId, outputFormat: input.outputFormat ?? 'mp3_44100_128',
+  if (!voiceId && !(provider === 'minimax' && input.timbreWeights?.length)) throw new Error('voiceId is required');
+  if (provider === 'elevenlabs') validateEleven(input);
+  else if (provider === 'doubao') validateDoubao(input, voiceId);
+  else if (provider === 'minimax') validateMinimax(input, text);
+  else {
+    if (provider === 'inworld' && text.length > 2_000) throw new Error('Inworld TTS text must be at most 2000 characters');
+    validateMinimalProvider(input, provider === 'inworld' ? 'Inworld' : provider === 'fishaudio' ? 'Fish Audio' : 'Speechify');
+  }
+  return { ...input, provider, text, voiceId, outputFormat: input.outputFormat ?? 'mp3_44100_128',
     sampleRate: input.sampleRate ?? 32_000,
     bitrate: input.bitrate ?? ((input.audioFormat ?? 'mp3') === 'mp3' ? 128_000 : undefined),
     audioFormat: input.audioFormat ?? 'mp3', channel: input.channel ?? 1 };
