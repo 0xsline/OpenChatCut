@@ -44,8 +44,8 @@ function VideoSettings({ video, busy, qualityMode, setQualityMode }: VideoSettin
       </Row>
       <p className="cc-export-footnote">
         {qualityMode === 'master'
-          ? t('原片优先预览；导出默认高码率，不主动压缩导入素材。')
-          : t('平衡流畅与体积；预览可使用代理，导出默认自动码率。')}
+          ? t('高清优先预览；导出默认高码率，不主动压缩导入素材。')
+          : t('平衡流畅与体积；预览可用轻量副本，导出默认自动码率。')}
       </p>
       <Row label={t('格式 / 编码')}>
         <select

@@ -49,12 +49,12 @@ function previewStatusKey(status: Pick<SelectedPreviewStatus, 'kind' | 'targetId
 function PreviewSourceToggle() {
   const t = useT();
   const mode = useSyncExternalStore(subscribeQualityMode, getPreviewSourceMode, getPreviewSourceMode);
-  const label = mode === 'original' ? t('原片') : mode === 'proxy' ? t('代理') : t('自动');
+  const label = mode === 'original' ? t('高清') : mode === 'proxy' ? t('流畅') : t('自动');
   const title = mode === 'original'
-    ? t('预览使用原始素材（最高画质，可能更吃性能）')
+    ? t('高清：显示原始素材，画质最好，可能更吃性能')
     : mode === 'proxy'
-      ? t('预览优先使用低分辨率代理（更流畅）')
-      : t('预览跟随画质策略（画质优先=原片，均衡=可用代理）');
+      ? t('流畅：使用轻量副本，播放更流畅')
+      : t('自动：跟随画质策略（画质优先=高清，均衡=流畅）');
   return (
     <button
       type="button"
@@ -71,7 +71,7 @@ function PreviewSourceToggle() {
         color: mode === 'auto' ? theme.textDim : theme.text,
       }}
     >
-      {t('预览源')}: {label}
+      {t('预览画质')}: {label}
     </button>
   );
 }
@@ -379,8 +379,8 @@ export const PreviewPanel = memo(function PreviewPanel({
                 fontSize: 10,
               }}>
                 {failedProxies.length
-                  ? t('预览代理失败，已回退原始媒体：{list}', { list: failedProxies.map(({ src }) => src.split('/').pop()).join('、') })
-                  : t('正在准备 {n} 个预览代理…', { n: pendingProxies })}
+                  ? t('轻量副本生成失败，已切换为原画质播放：{list}', { list: failedProxies.map(({ src }) => src.split('/').pop()).join('、') })
+                  : t('正在准备 {n} 个轻量副本…', { n: pendingProxies })}
               </div>
             )}
             {visibleShaderFallback && (
