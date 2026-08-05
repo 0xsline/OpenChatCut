@@ -468,7 +468,6 @@ export function applyGeneric(plan: OpResult, commands: GenericCommands): OpResul
       width: plan.width as number | undefined,
       height: plan.height as number | undefined,
       sourceFilename: plan.sourceFilename as string | undefined,
-      originalFilePath: undefined,
     });
     return {
       ok: true,

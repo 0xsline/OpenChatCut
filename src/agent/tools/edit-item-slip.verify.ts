@@ -117,7 +117,7 @@ const state: TimelineState = {
       code: unknownOperation.code,
       supported: unknownOperation.supported,
     },
-    { ok: false, code: 'unknown-operation', supported: ['slip'] },
+    { ok: false, code: 'unknown-operation', supported: ['slip', 'replace_media', 'relink_media'] },
   );
 }
 

@@ -53,7 +53,7 @@ const draft = makeDraft(docFromTimeline({
   items: [a1, v1, v2],
   trackOrder: ['V1', 'A1'],
   tracks: { V1: { kind: 'video' }, A1: { kind: 'audio' } },
-  captions: { enabled: true, template: 'plain' },
+  captions: { enabled: true, template: 'plain', pacing: 'phrase' },
 }));
 
 const ctx: AgentContext = {

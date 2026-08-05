@@ -193,7 +193,6 @@ export async function execMediaPoolTool(name: string, args: Args, ctx: AgentCont
         width,
         height,
         sourceRevision,
-        originalFilePath: undefined,
       });
       const next = ctx.getDoc().assets.find((row) => row.id === asset.id);
       return {
