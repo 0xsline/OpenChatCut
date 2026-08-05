@@ -109,13 +109,16 @@ export async function saveCustomSkill(skill: CustomSkill): Promise<CustomSkill> 
 }
 
 export async function deleteCustomSkill(id: string): Promise<void> {
+  let slug: string | undefined;
   try {
     const current = await readAll();
+    slug = current.find((skill) => skill.id === id)?.slug;
     await idbSet(SKILLS_KEY, current.filter((skill) => skill.id !== id));
   } catch {
     // Deletion is best-effort when local persistence is unavailable.
   }
+  // The server mirror is keyed by slug (directory name), not the id UUID.
   if (canReachServer()) {
-    fetch(`${SKILLS_API}/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => undefined);
+    fetch(`${SKILLS_API}/${encodeURIComponent(slug ?? id)}`, { method: 'DELETE' }).catch(() => undefined);
   }
 }
