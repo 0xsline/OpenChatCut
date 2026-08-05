@@ -523,6 +523,10 @@ button, input, select { font: inherit; }
 .cc-media-breadcrumb button, .cc-media-selection button, .cc-media-selection select { padding:4px 7px; border:0.5px solid var(--cc-border); border-radius:5px; background:var(--cc-panel-alt); color:var(--cc-text-muted); cursor:pointer; font-size:10px; }
 .cc-media-breadcrumb button:disabled { opacity:.35; cursor:default; }
 .cc-media-selection { min-height:34px; padding:0 6px; border:0.5px solid var(--cc-border); border-radius:6px; background:var(--cc-panel-alt); }
+.cc-media-selection.cc-media-selection-float {
+  position:fixed; z-index:40; margin:0; min-height:34px; padding:6px 8px;
+  border-radius:9px; background:var(--cc-panel-alt); box-shadow:0 8px 24px rgba(0,0,0,.4);
+}
 .cc-media-status, .cc-media-error { margin:-5px 0 8px; font-size:11px; }
 .cc-media-status { color:var(--cc-text-dim); }
 .cc-media-error { color:#e27f75; }

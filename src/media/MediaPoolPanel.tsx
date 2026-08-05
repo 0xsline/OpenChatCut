@@ -89,6 +89,27 @@ export function MediaPoolPanel({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [currentFolderId, setCurrentFolderId] = useState<string>();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  // Batch actions float beside the first selected card instead of a top bar.
+  const [selectionFloat, setSelectionFloat] = useState<{ left: number; top: number } | null>(null);
+  const selectionKey = [...selected].sort().join('\u0000');
+  useEffect(() => {
+    if (selected.size === 0) { setSelectionFloat(null); return; }
+    const update = () => {
+      const card = document.querySelector<HTMLElement>('.cc-asset-card.selected');
+      if (!card) return;
+      const rect = card.getBoundingClientRect();
+      const next = { left: rect.right + 10, top: rect.top };
+      setSelectionFloat((prev) =>
+        prev && prev.left === next.left && prev.top === next.top ? prev : next);
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [selectionKey, selected.size]);
   const [assetClipboard, setAssetClipboard] = useState<MediaAsset[]>([]);
   const [blankMenuPos, setBlankMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [promptState, setPromptState] = useState<PromptState | null>(null);
@@ -438,8 +459,14 @@ export function MediaPoolPanel({
       {busy && <div className="cc-media-status">{t('正在导入素材…')}</div>}
       {assets.length > 0 && <div className="cc-media-export-guide">{t('点击素材右上角“⋯”：图片、视频和音频可下载原文件，MG 可导出透明 MOV。')}</div>}
 
-      {selectedAssets.length > 0 && <div className="cc-media-selection">
-        <button onClick={toggleAll}>{allVisibleAssetsSelected(selected, visibleIds) ? t('清除选择') : t('全选')}</button>
+      {selectedAssets.length > 0 && selectionFloat && (
+        <div
+          className="cc-media-selection cc-media-selection-float"
+          role="toolbar"
+          aria-label={t('批量操作')}
+          style={{ left: selectionFloat.left, top: selectionFloat.top }}
+        >
+          <button onClick={toggleAll}>{allVisibleAssetsSelected(selected, visibleIds) ? t('清除选择') : t('全选')}</button>
         <button onClick={() => setAssetClipboard(selectedAssets)}>{t('复制所选')}</button>
         <button disabled={!assetClipboard.length || !onPasteAssets} onClick={() => onPasteAssets?.(assetClipboard, currentFolderId)}>{t('粘贴副本')}</button>
         <button onClick={() => renameAssets(selectedAssets)}>{selectedAssets.length > 1 ? t('批量重命名') : t('重命名')}</button>
@@ -457,7 +484,8 @@ export function MediaPoolPanel({
           <option value="" disabled>{t('移动到…')}</option><option value="__root__">Master</option>
           {folders.map((folder) => <option key={folder.id} value={folder.id}>{folderPath(folder, folders)}</option>)}
         </select>
-      </div>}
+        </div>
+      )}
 
       <MediaPoolGrid
         entries={gridEntries}
