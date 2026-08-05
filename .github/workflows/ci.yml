@@ -1,0 +1,43 @@
+# Release CI. Runs only when a v* tag is pushed (release time), never on
+# ordinary branch pushes. Validates the tag against package.json, then runs
+# lint, tests, the agent-skill contract, and the production build. Desktop
+# installers + GitHub Release publishing stay in desktop.yml (manual).
+name: ci
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --loglevel=error
+      - name: Verify release version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_REF_NAME" != "$expected" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $expected" >&2
+            exit 1
+          fi
+      - run: npm run lint
+      - run: npm test
+      - run: npm run verify:agent-skill
+      - run: npm run build
