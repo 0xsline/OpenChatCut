@@ -11,8 +11,10 @@ import { SOUND_EFFECTS, soundEffectSrc } from '../../audio/soundLibrary';
 import { getCustomTransition, customTransitionUniforms } from '../../gl/customTransitions';
 import { getCustomZoom, zoomFromCustomDef } from '../../editor/customZooms';
 import {
+  AUTHORED_ADD_KINDS,
   GENERIC_ADD_KINDS,
   GENERIC_ITEM_KINDS,
+  validateAuthoredAdd,
   validateGenericAdd,
   validateGenericDelete,
   validateGenericUpdate,
@@ -58,10 +60,11 @@ export function validateAdd(ctx: AgentContext, entry: Entry): OpResult {
     const unknown = rejectSpecializedUnknownFields('adds', type, entry);
     return unknown ? { error: unknown } : validateAudioAdd(ctx, entry);
   }
+  if (AUTHORED_ADD_KINDS.has(type)) return validateAuthoredAdd(ctx.getState(), entry);
   if (GENERIC_ADD_KINDS.has(type)) return validateGenericAdd(ctx.getState(), ctx.getDoc().assets ?? [], entry);
   return {
     error: `add type not supported: ${type}`,
-    supported: ['video', 'image', 'gif', 'svg', 'audio', 'effect', 'transition', 'motion-graphic'],
+    supported: ['video', 'image', 'gif', 'svg', 'audio', 'text', 'solid', 'effect', 'transition', 'motion-graphic'],
   };
 }
 

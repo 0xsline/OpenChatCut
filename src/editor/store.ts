@@ -63,9 +63,28 @@ export interface EditorCommands {
   relinkMediaAsset: (id: string, next: MediaAssetRelinkPatch) => void;
   /** Relink exactly one timeline item without changing its former pool master. */
   relinkTimelineItem: (id: string, next: MediaAssetRelinkPatch) => void;
-  /** Solid-color item on a video track. */
-  addSolidItem: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number; color?: string; name?: string }) => void;
-  addTextClip: (at?: { track?: TrackId; startFrame?: number; durationInFrames?: number; ripple?: boolean }) => void;
+  /** Solid-color item on a video track. Returns the new item id. */
+  addSolidItem: (at?: {
+    track?: TrackId;
+    startFrame?: number;
+    durationInFrames?: number;
+    color?: string;
+    name?: string;
+    ripple?: boolean;
+  }) => string;
+  /** Authored text clip. Returns the new item id. */
+  addTextClip: (at?: {
+    track?: TrackId;
+    startFrame?: number;
+    durationInFrames?: number;
+    ripple?: boolean;
+    name?: string;
+    text?: string;
+    fontSize?: number;
+    color?: string;
+    fontWeight?: number;
+    align?: 'left' | 'center' | 'right';
+  }) => string;
   updateItemProps: (id: string, patch: Record<string, unknown>) => void;
   moveItem: (id: string, to: { track?: TrackId; startFrame?: number }) => void;
   setItemTiming: (id: string, timing: { startFrame?: number; durationInFrames?: number; srcInFrame?: number; ripple?: boolean }) => void;
@@ -292,11 +311,13 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       relinkMediaAsset: (id, next) => dispatch({ type: 'pool.relinkAsset', id, ...next }),
       relinkTimelineItem: (id, next) => dispatch({ type: 'relinkTimelineItem', id, ...next }),
       addSolidItem: (at) => {
+        const id = uid('item');
         dispatch({
           type: 'add',
           startFrame: at?.startFrame,
+          ripple: at?.ripple,
           item: {
-            id: uid('item'),
+            id,
             track: pickTrack(at?.track, 'video'),
             durationInFrames: at?.durationInFrames ?? Math.round(5 * 30),
             kind: 'solid',
@@ -306,6 +327,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
             props: { color: at?.color ?? '#1a1a1a' },
           },
         });
+        return id;
       },
       setDesignStyle: (style) => dispatch({ type: 'design.set', style }),
       patchDesignStyle: (patch) => dispatch({ type: 'design.patch', patch }),
@@ -336,22 +358,32 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
         };
         placeItem(item, at);
       },
-      addTextClip: (at) =>
+      addTextClip: (at) => {
+        const id = uid('item');
+        const align = at?.align === 'left' || at?.align === 'right' ? at.align : 'center';
         dispatch({
           type: 'add',
           startFrame: at?.startFrame,
           ripple: at?.ripple,
           item: {
-            id: uid('item'),
+            id,
             track: pickTrack(at?.track ?? 'V2', 'video'), // titles default to the top video track
             durationInFrames: at?.durationInFrames ?? 90,
             kind: 'text',
-            name: '文字',
+            name: at?.name?.trim() || '文字',
             width: 1920,
             height: 1080,
-            props: { text: '双击编辑文字', fontSize: 96, color: '#ffffff', fontWeight: 700, align: 'center' },
+            props: {
+              text: at?.text?.trim() || '双击编辑文字',
+              fontSize: typeof at?.fontSize === 'number' && Number.isFinite(at.fontSize) ? at.fontSize : 96,
+              color: at?.color?.trim() || '#ffffff',
+              fontWeight: typeof at?.fontWeight === 'number' && Number.isFinite(at.fontWeight) ? at.fontWeight : 700,
+              align,
+            },
           },
-        }),
+        });
+        return id;
+      },
       addAsset: (asset: MediaAsset) => dispatch({ type: 'addAsset', asset }),
       addMediaItem: (asset, at) => {
         const item = asset.kind === 'motion-graphic'

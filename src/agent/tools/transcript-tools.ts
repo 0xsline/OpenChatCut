@@ -100,14 +100,22 @@ function resolveAfterWordIndex(
   return { error: 'provide afterWordIndex, gapIndex, or afterText to locate the gap' };
 }
 
-// manage_transcript has six actions (fix / retry_transcription /
-// translation_create / translation_ensure / translation_list / translation_read).
-// All actions preserve word timing, frame position, count, and clip length;
-// only word .text / .speaker or a translation VARIANT change.
+// manage_transcript: fix / clear_edits / retry_transcription / translation_*.
+// fix and translation_* keep word timing and clip length; clear_edits restores
+// the full transcript duration; only word .text / .speaker or a VARIANT change
+// for the non-retimes paths.
 async function manageTranscript(args: Args, ctx: AgentContext, track: TrackId, alias: string): Promise<unknown> {
   const action = String(args.action ?? '');
-  const it = args.itemId ? ctx.getState().items.find((x) => x.id === args.itemId) : trackClip(ctx, track, true);
-  if (!it) return { error: args.itemId ? `no item ${String(args.itemId)}` : `no transcribed clip on ${alias}; call transcribe_track first` };
+  const it = resolveClip(ctx, track, args.itemId, action !== 'retry_transcription');
+  if (!it) {
+    return {
+      error: args.itemId
+        ? `no item ${String(args.itemId)}`
+        : action === 'retry_transcription'
+          ? `no audio/video clip on ${alias}`
+          : `no transcribed clip on ${alias}; call transcribe_track first`,
+    };
+  }
 
   // retry_transcription: force a fresh ASR run (the only action that doesn't need an existing transcript).
   if (action === 'retry_transcription') {
@@ -122,6 +130,28 @@ async function manageTranscript(args: Args, ctx: AgentContext, track: TrackId, a
   }
 
   if (!hasOperationalTranscript(it)) return { error: `item ${it.id} has no current transcript; call transcribe_track first` };
+
+  if (action === 'clear_edits') {
+    const deletedWords = (it.deletedWordIdx ?? []).length;
+    const gapOverrides = Object.keys(it.gapCapsMs ?? {}).length;
+    const hadSilenceCap = it.silenceFrames !== undefined;
+    const hadPlayOrder = Array.isArray(it.transcriptPlayOrder) && it.transcriptPlayOrder.length > 0;
+    ctx.commands.clearEdits(it.id);
+    const after = ctx.getState().items.find((x) => x.id === it.id);
+    return {
+      ok: true,
+      action,
+      itemId: it.id,
+      restored: {
+        deletedWords,
+        gapOverrides,
+        silenceCap: hadSilenceCap,
+        playOrder: hadPlayOrder,
+      },
+      durationInFrames: after?.durationInFrames ?? null,
+      note: 'Restored raw transcript edits (deleted words, silence/gap caps, play order). ASR word text and speaker labels are unchanged.',
+    };
+  }
 
   if (action === 'fix') {
     // fix supports ASR word correction or speaker rename/merge, routed by fields.
@@ -182,7 +212,7 @@ async function manageTranscript(args: Args, ctx: AgentContext, track: TrackId, a
     }
   }
 
-  return { error: `unsupported action "${action}"; use fix / retry_transcription / translation_create / translation_ensure / translation_list / translation_read` };
+  return { error: `unsupported action "${action}"; use fix / clear_edits / retry_transcription / translation_create / translation_ensure / translation_list / translation_read` };
 }
 
 // Execute a transcript/caption tool. Returns undefined if `name` isn't one of ours.

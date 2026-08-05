@@ -116,8 +116,9 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'manage_transcript',
-    description: 'Correct source transcripts and manage translation variants without changing the timeline; word timing, frame positions, word count, and clip duration remain unchanged. Six actions:\n'
+    description: 'Correct source transcripts and manage translation variants; most actions leave word timing and clip duration unchanged. Seven actions:\n'
       + '- fix: correct the source transcript. For a word, pass wordIndex or find with the incorrect source text plus text with the correction; only word.text changes. To rename or merge a speaker, pass from with an existing label such as "A" plus to with the new display name; passing another existing label merges them. Only word.speaker changes.\n'
+      + '- clear_edits: restore the clip to the raw transcript by clearing deleted words, silence caps, gap overrides, and play-order overrides (same as the Transcript panel 「还原全部」). Retimes the clip to the full transcript duration.\n'
       + '- retry_transcription: force ASR to rerun for the clip and replace its transcript when transcription is stuck, failed, or needs refreshing.\n'
       + '- translation_create: translate the full transcript to lang and create or replace a word-level translation variant sharing the source timeline.\n'
       + '- translation_ensure: idempotently reuse an existing variant for lang or create it otherwise. Prefer this for ordinary translation requests.\n'
@@ -127,8 +128,12 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
     input_schema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['fix', 'retry_transcription', 'translation_create', 'translation_ensure', 'translation_list', 'translation_read'], description: 'See the tool description: correct words/speakers, rerun ASR, or create/ensure/list/read translation variants.' },
-        itemId: { type: 'string', description: 'Target clip item id; omit to use the first transcribed audio/video clip on the track.' },
+        action: {
+          type: 'string',
+          enum: ['fix', 'clear_edits', 'retry_transcription', 'translation_create', 'translation_ensure', 'translation_list', 'translation_read'],
+          description: 'See the tool description: correct words/speakers, restore word edits, rerun ASR, or create/ensure/list/read translation variants.',
+        },
+        itemId: { type: 'string', description: 'Target clip item id or unique prefix; omit to use the first transcribed audio/video clip on the track.' },
         track: { type: 'string', description: 'When itemId is omitted, locate by track alias or stable id; default A1.' },
         wordIndex: { type: 'number', description: 'fix word: index of the word to correct; mutually exclusive with find.' },
         find: { type: 'string', description: 'fix word: incorrect source text that must match exactly one word; mutually exclusive with wordIndex.' },
