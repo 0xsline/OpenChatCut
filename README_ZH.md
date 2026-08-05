@@ -298,7 +298,18 @@ npx skills add 0xsline/OpenChatCut
 ```
 
 然后对 Agent 说“设置 OpenChatCut”。安装的路由 Skill 会注册本地 MCP
-连接，并按需加载编辑器内置的 15 个专项 Skill，避免技能列表出现大量入口。
+连接，并按需加载编辑器内置的 24 个专项 Skill，避免技能列表出现大量入口。
+
+自定义技能存放在用户可见目录，与 `~/.codex/skills` / `~/.claude/skills` 布局一致：
+
+```text
+~/.openchatcut/skills/<slug>/SKILL.md     （Windows: %USERPROFILE%\.openchatcut\skills\...）
+```
+
+让 Agent 执行 `manage_skill create`（或使用内置的“技能创作器”工作流），
+它会把 SKILL.md 写到该目录——可直接编辑、复制分享。手动放入 SKILL.md 到
+该目录即可被 Agent 使用；在聊天的 `/` 命令或创作模式选择器中选中某个
+工作流，下一条消息就会按它执行。
 
 OpenChatCut 暴露 Streamable HTTP MCP：
 

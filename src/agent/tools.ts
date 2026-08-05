@@ -288,7 +288,7 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...READ_PROJECT_TOOL_SCHEMAS,
   // Inline JSX → MG asset
   ...MG_CODE_TOOL_SCHEMAS,
-  // Load 15 built-in SKILL.md on demand (load_skill · progressive disclosure)
+  // Load 24 built-in SKILL.md on demand (load_skill · progressive disclosure)
   ...PLUGIN_SKILL_TOOL_SCHEMAS,
   // Run skill-provided scripts, FFmpeg, Node, or Python through run_code in an isolated e2b sandbox.
   ...RUN_CODE_TOOL_SCHEMAS,

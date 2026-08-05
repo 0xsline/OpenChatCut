@@ -298,8 +298,21 @@ npx skills add 0xsline/OpenChatCut
 ```
 
 Then tell the agent `Set up OpenChatCut`. The installed router registers the
-local MCP connection and loads the editor's 15 specialized skills on demand,
+local MCP connection and loads the editor's 24 specialized skills on demand,
 so the agent's skill list stays compact.
+
+Custom skills live in a user-visible directory with the same layout as
+`~/.codex/skills` / `~/.claude/skills`:
+
+```text
+~/.openchatcut/skills/<slug>/SKILL.md     (Windows: %USERPROFILE%\.openchatcut\skills\...)
+```
+
+Ask the agent to `manage_skill create` (or use the bundled *skill-creator*
+workflow) and it writes the SKILL.md there — editable and shareable by hand.
+Dropping a SKILL.md into that directory makes it available to the agent, and
+selecting a workflow from the chat's `/` command or the creative-mode picker
+activates it for the next message.
 
 OpenChatCut exposes a Streamable HTTP MCP endpoint:
 
