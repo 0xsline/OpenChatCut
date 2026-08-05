@@ -67,15 +67,16 @@ export function BlankMediaMenuActions(props: BlankMediaMenuActionsProps) {
 }
 
 export function BlankMediaMenuPortal(props: BlankMediaMenuActionsProps & { position: { top: number; left: number }; onClose: () => void }) {
+  const { onClose } = props;
   const menuRef = useRef<HTMLDivElement>(null);
   const t = useT();
   useEffect(() => {
     const closeOutside = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) props.onClose();
+      if (!menuRef.current?.contains(event.target as Node)) onClose();
     };
     document.addEventListener('pointerdown', closeOutside, true);
     return () => document.removeEventListener('pointerdown', closeOutside, true);
-  }, [props.onClose]);
+  }, [onClose]);
   return createPortal(
     <div ref={menuRef} className="cc-media-popover cc-media-blank-menu" style={props.position} role="menu" aria-label={t('素材池空白区域菜单')} onClick={(event) => event.stopPropagation()}>
       <BlankMediaMenuActions {...props} />
@@ -85,20 +86,21 @@ export function BlankMediaMenuPortal(props: BlankMediaMenuActionsProps & { posit
 }
 
 export function AssetMenuPortal(props: AssetMenuPortalProps) {
+  const { asset, onClose, position } = props;
   const menuRef = useRef<HTMLDivElement>(null);
   const t = useT();
   useEffect(() => {
-    if (!props.asset || !props.position) return;
+    if (!asset || !position) return;
     menuRef.current?.querySelector<HTMLElement>('button:not(:disabled), select')?.focus();
-  }, [props.asset, props.position]);
+  }, [asset, position]);
   useEffect(() => {
-    if (!props.asset || !props.position) return;
+    if (!asset || !position) return;
     const closeOutside = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) props.onClose();
+      if (!menuRef.current?.contains(event.target as Node)) onClose();
     };
     document.addEventListener('pointerdown', closeOutside, true);
     return () => document.removeEventListener('pointerdown', closeOutside, true);
-  }, [props.asset, props.onClose, props.position]);
+  }, [asset, onClose, position]);
   if (!props.asset || !props.position) return null;
   return createPortal(
       <div

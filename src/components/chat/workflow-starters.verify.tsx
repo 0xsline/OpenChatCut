@@ -36,9 +36,11 @@ try {
   const {
     ChatComposer,
     WORKFLOW_POPOVER_WIDTH,
+  } = await vite.ssrLoadModule('/src/components/chat/ChatComposer.tsx');
+  const {
     hasPendingComposerAttachment,
     shouldSubmitComposerOnKeyDown,
-  } = await vite.ssrLoadModule('/src/components/chat/ChatComposer.tsx');
+  } = await vite.ssrLoadModule('/src/components/chat/composerSubmitGate.ts');
   pickerMarkup = renderToStaticMarkup(createElement(WorkflowPickerContent, {
     creativeMode: '11111111-1240-4000-8000-000000000004',
     onCreativeModeChange: () => undefined,

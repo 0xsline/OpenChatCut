@@ -1,10 +1,10 @@
-import { memo, useEffect, useRef, useState, type DragEvent } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Icon, type IconName } from '../components/icons';
 import type { MediaAsset, MediaFolder } from '../editor/types';
 import { useT } from '../i18n/locale';
 import { theme } from '../theme';
-import { mediaAssetIds, parseEditorDrag } from '../editor/editorDrag';
-import { parseMediaAssetDrag, setMediaAssetDrag } from './drag';
+import { setMediaAssetDrag } from './drag';
+import { assetIdsFromFolderDrop } from './folderDrop';
 import { durationLabel, mediaRatioLabel } from './mediaPoolFormat';
 import { MgThumb } from './MgThumb';
 import { usePreviewMediaSource } from './previewMedia';
@@ -273,14 +273,6 @@ interface MediaFolderCardProps {
   onDropFiles: (files: FileList, folderId?: string) => void;
   onMoveAsset: (id: string, folderId?: string) => void;
   onMoveAssets?: (ids: string[], folderId?: string) => void;
-}
-
-/** Resolve asset ids from a pool → folder drop (multi-select via editor drag payload). */
-export function assetIdsFromFolderDrop(event: Pick<DragEvent, 'dataTransfer'>): string[] {
-  const editor = parseEditorDrag(event as DragEvent);
-  if (editor?.source === 'media') return mediaAssetIds(editor);
-  const assetId = parseMediaAssetDrag(event as DragEvent);
-  return assetId ? [assetId] : [];
 }
 
 /** Shared droppable folder tile (child folder or "up one level"). */

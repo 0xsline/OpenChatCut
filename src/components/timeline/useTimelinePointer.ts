@@ -2,7 +2,7 @@
 // Marquee selection in blank space (marquee), pen keyframe point drag (penDrag), selection mode reference picking (pickDrag).
 // move/up are hung on the scroll container; each gesture setsPointerCapture to the appropriate target.
 // The applySnap and multi-select click semantics are also here - they are only used by this machine.
-import { useEffect, useRef, useState, type RefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject, type SetStateAction } from 'react';
 import {
   isItemSelected, selectedIdsOf, trackKind,
   type KeyframeEasing, type KeyframeProp, type TimelineItem, type TimelineState, type TrackId,
@@ -42,13 +42,13 @@ type PointerStateSetter<T> = (next: SetStateAction<T>, publish?: boolean) => voi
 function usePointerState<T>(initial: T) {
   const [value, publishValue] = useState(initial);
   const ref = useRef(value);
-  const setValue: PointerStateSetter<T> = (next, publish = true) => {
+  const setValue: PointerStateSetter<T> = useCallback((next, publish = true) => {
     const resolved = typeof next === 'function'
       ? (next as (current: T) => T)(ref.current)
       : next;
     ref.current = resolved;
     if (publish) publishValue(resolved);
-  };
+  }, [publishValue]);
   return [value, setValue, ref] as const;
 }
 
@@ -337,7 +337,7 @@ export function useTimelinePointer(deps: PointerDeps) {
     if (pointerMoveRaf.current) return;
     pointerMoveRaf.current = requestAnimationFrame(() => flushPointerMove(true));
   };
-  const cancelPointerGesture = () => {
+  const cancelPointerGesture = useCallback(() => {
     if (pointerMoveRaf.current) cancelAnimationFrame(pointerMoveRaf.current);
     pointerMoveRaf.current = 0;
     pendingMove.current = null;
@@ -348,7 +348,7 @@ export function useTimelinePointer(deps: PointerDeps) {
     setPenDrag(null);
     setMarquee(null);
     setPickDrag(null);
-  };
+  }, [setDrag, setMarquee, setPenDrag, setPickDrag]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || (
@@ -365,7 +365,7 @@ export function useTimelinePointer(deps: PointerDeps) {
       pointerMoveRaf.current = 0;
       pendingMove.current = null;
     };
-  }, []);
+  }, [cancelPointerGesture, dragRef, marqueeRef, penDragRef, pickDragRef]);
   const onPointerUp = (event: React.PointerEvent) => {
     flushPointerMove(false);
     const currentMarquee = marqueeRef.current;

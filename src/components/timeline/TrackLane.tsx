@@ -152,7 +152,7 @@ export function TrackLane({
     indexes.itemOrderById,
     trackId,
   ), [indexes, previewPinnedItemIds, trackId, visibleWindow]);
-  const transitions = indexes.transitionsByTrack.get(trackId) ?? [];
+  const transitions = useMemo(() => indexes.transitionsByTrack.get(trackId) ?? [], [indexes, trackId]);
   const visibleTransitions = useMemo(() => transitions.filter((transition) => {
     const incoming = indexes.itemById.get(transition.incomingItemId);
     if (!incoming) return false;

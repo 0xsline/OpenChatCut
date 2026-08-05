@@ -89,7 +89,10 @@ function parseIdentity(value: Record<string, unknown>): ModelIdentity {
   if (backend !== 'api' && backend !== 'codex') throw new Error('Invalid model capability backend.');
   if (typeof provider !== 'string' || !PROVIDERS.has(provider)) throw new Error('Invalid model capability provider.');
   if (backend === 'codex' && provider !== 'openai') throw new Error('Codex capabilities require the OpenAI provider.');
-  if (!modelId || modelId.length > 256 || /[\u0000-\u001f\u007f]/.test(modelId)) {
+  if (!modelId || modelId.length > 256 || [...modelId].some((ch) => {
+    const code = ch.charCodeAt(0);
+    return code < 0x20 || code === 0x7f;
+  })) {
     throw new Error('Invalid model capability model ID.');
   }
   return { backend, provider: provider as LlmProvider, modelId };

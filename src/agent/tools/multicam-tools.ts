@@ -237,7 +237,7 @@ export function execChangeCam(args: Args, ctx: Pick<AgentContext, 'getState' | '
       decision: plan.group.decisions?.find((decision) =>
         decision.angleId === angle.id && decision.fromFrame <= fromFrame && decision.toFrame >= toFrame),
       syncEvidence: plan.group.evidence.filter((evidence) => evidence.angleId === angle.id),
-      message: `switched persistent multicam angle \"${angle.label}\" for ${sec(fromFrame)}s–${sec(toFrame)}s`,
+      message: `switched persistent multicam angle "${angle.label}" for ${sec(fromFrame)}s–${sec(toFrame)}s`,
     };
   }
   if (rawIds.length < 2) return { error: 'itemIds needs at least 2 angle clips (target + others)' };

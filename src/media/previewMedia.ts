@@ -153,7 +153,7 @@ function useQualitySnapshot() {
   return { mode, preview };
 }
 
-function useProxySources(sources: readonly string[], sourceKey: string): number {
+function useProxySources(sources: readonly string[]): number {
   const [revision, setRevision] = useState(0);
   const quality = useQualitySnapshot();
   useEffect(() => {
@@ -164,7 +164,7 @@ function useProxySources(sources: readonly string[], sourceKey: string): number 
       for (const src of sources) void requestPreviewProxy(src);
     }
     return unsubscribe;
-  }, [sourceKey, quality.mode, quality.preview]);
+  }, [sources, quality.mode, quality.preview]);
   // Re-resolve preview src when quality/preview-source mode flips even if proxy cache is quiet.
   useEffect(() => {
     setRevision((value) => value + 1);
@@ -180,7 +180,7 @@ function resolvePreviewSrc(src: string | undefined, proxy: PreviewProxyState): s
 export function usePreviewMediaSource(src: string | undefined, enabled = true) {
   const source = enabled && isPreviewable(src) ? src : '';
   const sources = useMemo(() => source ? [source] : [], [source]);
-  const revision = useProxySources(sources, source);
+  const revision = useProxySources(sources);
   const proxy = stateFor(source || undefined);
   const previewSrc = resolvePreviewSrc(src, proxy);
   return {
@@ -199,17 +199,19 @@ export function usePreviewTimelineState(state: TimelineState) {
   const sources = useMemo(() => [...new Set(state.items
     .filter((item) => item.kind === 'video' && isPreviewable(item.src))
     .map((item) => item.src!))].sort(), [state.items]);
-  const sourceKey = sources.join('\u0000');
-  const revision = useProxySources(sources, sourceKey);
-  const previewState = useMemo<TimelineState>(() => ({
-    ...state,
-    items: state.items.map((item) => {
-      if (item.kind !== 'video' || !item.src) return item;
-      const proxy = stateFor(item.src);
-      const previewSrc = resolvePreviewSrc(item.src, proxy);
-      return previewSrc && previewSrc !== item.src ? { ...item, src: previewSrc } : item;
-    }),
-  }), [state, revision]);
+  const revision = useProxySources(sources);
+  const previewState = useMemo<TimelineState>(() => {
+    void revision; // recompute when the proxy cache bumps (proxies live in module state)
+    return {
+      ...state,
+      items: state.items.map((item) => {
+        if (item.kind !== 'video' || !item.src) return item;
+        const proxy = stateFor(item.src);
+        const previewSrc = resolvePreviewSrc(item.src, proxy);
+        return previewSrc && previewSrc !== item.src ? { ...item, src: previewSrc } : item;
+      }),
+    };
+  }, [state, revision]);
   const proxies = sources.map((src) => ({ src, proxy: stateFor(src) }));
   return {
     state: previewState,
@@ -227,20 +229,22 @@ export function usePreviewProjectDoc(project: ProjectDoc, timelineId: string) {
     .flatMap((timeline) => timeline.items)
     .filter((item) => item.kind === 'video' && isPreviewable(item.src))
     .map((item) => item.src!))].sort(), [project.timelines, reachable]);
-  const sourceKey = sources.join('\u0000');
-  const revision = useProxySources(sources, sourceKey);
-  const previewProject = useMemo<ProjectDoc>(() => ({
-    ...project,
-    timelines: project.timelines.map((timeline) => ({
-      ...timeline,
-      items: timeline.items.map((item) => {
-        if (item.kind !== 'video' || !item.src) return item;
-        const proxy = stateFor(item.src);
-        const previewSrc = resolvePreviewSrc(item.src, proxy);
-        return previewSrc && previewSrc !== item.src ? { ...item, src: previewSrc } : item;
-      }),
-    })),
-  }), [project, revision]);
+  const revision = useProxySources(sources);
+  const previewProject = useMemo<ProjectDoc>(() => {
+    void revision; // recompute when the proxy cache bumps (proxies live in module state)
+    return {
+      ...project,
+      timelines: project.timelines.map((timeline) => ({
+        ...timeline,
+        items: timeline.items.map((item) => {
+          if (item.kind !== 'video' || !item.src) return item;
+          const proxy = stateFor(item.src);
+          const previewSrc = resolvePreviewSrc(item.src, proxy);
+          return previewSrc && previewSrc !== item.src ? { ...item, src: previewSrc } : item;
+        }),
+      })),
+    };
+  }, [project, revision]);
   const state = previewProject.timelines.find((timeline) => timeline.id === timelineId)!;
   return {
     project: previewProject,

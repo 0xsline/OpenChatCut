@@ -118,7 +118,7 @@ function configuredEditorOrigin(): string | null {
 
 function requestEditorOrigin(req: IncomingMessage): string | null {
   const host = headerValue(req, 'host');
-  if (!host || /[\/\\@?#,\s]/.test(host)) return null;
+  if (!host || /[/\\@?#,\s]/.test(host)) return null;
   const configured = process.env.OPENCHATCUT_EDITOR_URL?.trim();
   const expected = configuredEditorOrigin();
   if (configured && !expected) return null;

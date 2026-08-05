@@ -56,10 +56,14 @@ export function InspectorContent(props: InspectorContentProps) {
     audio: selection.every((entry) => entry.kind === 'audio' || entry.kind === 'video'),
     animation: true,
   };
+  const activeAvailable =
+    activeTab === 'basic' ? available.basic
+    : activeTab === 'video' ? available.video
+    : activeTab === 'audio' ? available.audio
+    : available.animation;
   useEffect(() => {
-    const unavailable = !available[activeTab];
-    if (unavailable) onTabChange('basic');
-  }, [activeTab, available.audio, available.video, onTabChange]);
+    if (!activeAvailable) onTabChange('basic');
+  }, [activeAvailable, onTabChange]);
   const visibleTab = available[activeTab] ? activeTab : 'basic';
   return (
     <>

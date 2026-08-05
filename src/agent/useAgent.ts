@@ -294,7 +294,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
         setRunning(false);
       }
     },
-    [running, projectId, refreshEstimatedContextUsage, replaceContextUsage],
+    [running, projectId, refreshEstimatedContextUsage, replaceContextUsage, contextUsageRef],
   );
 
   // Stop the in-flight turn (Send button switches to stop in flight).

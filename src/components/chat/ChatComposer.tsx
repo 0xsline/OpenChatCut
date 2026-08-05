@@ -17,7 +17,9 @@ import {
   type ComposerPopover as ComposerPopoverName,
 } from './ComposerToolbar';
 import { ComposerPopover } from './ComposerPopover';
-import { ComposerModelPicker, useComposerModelView } from './ComposerModelPicker';
+import { ComposerModelPicker } from './ComposerModelPicker';
+import { useComposerModelView } from './useComposerModelView';
+import { hasPendingComposerAttachment, shouldSubmitComposerOnKeyDown } from './composerSubmitGate';
 import { WorkflowPickerContent } from './WorkflowPickerContent';
 import { hasEditorDrag, parseEditorDrag, type EditorDragPayload } from '../../editor/editorDrag';
 import { droppedFiles, hasExternalFiles } from '../../media/externalFileDrop';
@@ -92,21 +94,6 @@ function referenceChipText(reference: RefItem): string {
   if (isSelectionRefKind(reference.kind)) return reference.name;
   const displayName = reference.kind === 'template' ? tData(reference.name) : reference.name;
   return `@${displayName}`;
-}
-
-export function hasPendingComposerAttachment(
-  pasting: boolean | undefined,
-  pendingAttachmentCount: number,
-): boolean {
-  return pasting === true || pendingAttachmentCount > 0;
-}
-
-export function shouldSubmitComposerOnKeyDown(
-  key: string,
-  shiftKey: boolean,
-  canSend: boolean,
-): boolean {
-  return key === 'Enter' && !shiftKey && canSend;
 }
 
 export function ChatComposer(props: ChatComposerProps) {

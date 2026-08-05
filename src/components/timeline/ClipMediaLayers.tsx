@@ -1,7 +1,7 @@
 import type { TimelineItem } from '../../editor/types';
-import { sourceWindowForTimelineRange } from '../../editor/sourceLimit';
 import { filmstripBackground, peaksPath, useClipPreview } from '../../media/clipPreview';
-import { intersectFrameRange, type TimelineFrameWindow } from './timelineUtil';
+import type { TimelineFrameWindow } from './timelineUtil';
+import { clipMediaGeometry, type ClipMediaGeometry } from './clipMediaGeometry';
 
 // Media preview layer within the clip: The video track displays thumbnail frame bars and the sound waves of the clip's own audio track.
 // Data comes from /api/waveform, /api/filmstrip (see src/media/clipPreview.ts); geometry button
@@ -9,40 +9,6 @@ import { intersectFrameRange, type TimelineFrameWindow } from './timelineUtil';
 // The layer is under the label (z-index 0), the pointer is not blocked, and the drag/cropping feel remains unchanged.
 
 const STRIP_RATIO = 0.62; // Video with sound: upper 62% frame bar, lower 38% sound wave
-
-export interface ClipMediaGeometry {
-  leftPx: number;
-  widthPx: number;
-  durationInFrames: number;
-  srcInFrame: number;
-}
-
-export function clipMediaGeometry(options: {
-  clipStartFrame: number;
-  durationInFrames: number;
-  srcInFrame: number;
-  playbackRate: number;
-  px: number;
-  visibleWindow: TimelineFrameWindow;
-}): ClipMediaGeometry | null {
-  const intersection = intersectFrameRange(
-    options.clipStartFrame,
-    options.durationInFrames,
-    options.visibleWindow,
-  );
-  if (!intersection) return null;
-  const offsetFrames = intersection.startFrame - options.clipStartFrame;
-  return {
-    leftPx: offsetFrames * options.px,
-    widthPx: Math.max(1, (intersection.endFrame - intersection.startFrame) * options.px),
-    durationInFrames: intersection.endFrame - intersection.startFrame,
-    srcInFrame: sourceWindowForTimelineRange(
-      options,
-      offsetFrames,
-      intersection.endFrame - intersection.startFrame,
-    ).startFrame,
-  };
-}
 
 interface FilmstripStyle {
   backgroundImage: string;

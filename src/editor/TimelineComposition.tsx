@@ -22,7 +22,8 @@ import { nestedSequenceFrom, resolveTimelineRenderPlan, SequenceGraphError, type
 import { continuousVideoAudioGroups } from './transitionAudio';
 import { PreviewTransitionIn } from './transitionPreview.tsx';
 import { previewTransitionType } from './transitionPreview';
-import { TimelineReadinessGate, timelineReadinessKey } from './TimelineReadinessGate';
+import { TimelineReadinessGate } from './TimelineReadinessGate';
+import { timelineReadinessKey } from './timelineReadinessKey';
 import { clampVisualBorderRadius, visibleVisualFrameRect } from './visualFrameGeometry';
 
 // fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across

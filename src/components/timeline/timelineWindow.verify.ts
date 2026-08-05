@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import type { TimelineItem, TimelineState, TransitionItem } from '../../editor/types';
-import { clipMediaGeometry } from './ClipMediaLayers';
+import { clipMediaGeometry } from './clipMediaGeometry';
 import {
   MAX_RULER_TICKS,
   buildTimelineIndexes,

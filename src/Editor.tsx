@@ -833,7 +833,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       }
     }
     if (addedIds.length) commands.selectItems(addedIds);
-  }, [commands, refreshVisualAnalysis, startAssetTranscription, t]);
+  }, [commands, startAssetTranscription, t]);
   const addMediaAssetsToTimeline = useCallback((assets: MediaAsset[]) => {
     placeMediaAssets({
       assetIds: assets.map((asset) => asset.id),

@@ -113,7 +113,7 @@ export function Timeline({
   const trackIds = timelineTrackIds(state);
   const indexes = useMemo(
     () => buildTimelineIndexes(state),
-    [state.items, state.transitions],
+    [state],
   );
   const innerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -606,6 +606,8 @@ export function Timeline({
     setTimecodePreviewFrame(null);
     onHoverPreviewFrameChange?.(null);
   };
+  const clearHoverPreviewRef = useRef(clearHoverPreview);
+  clearHoverPreviewRef.current = clearHoverPreview;
   const updateHoverPreview = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (playing || event.buttons !== 0 || drag || marquee || pickDrag) {
       clearHoverPreview();
@@ -619,7 +621,7 @@ export function Timeline({
     onHoverPreviewFrameChange?.(frame);
   };
   useEffect(() => {
-    if (playing || drag || marquee || pickDrag) clearHoverPreview();
+    if (playing || drag || marquee || pickDrag) clearHoverPreviewRef.current();
   }, [playing, drag, marquee, pickDrag]);
   const startSeekGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
     const target = event.target instanceof Element ? event.target : null;
@@ -667,13 +669,14 @@ export function Timeline({
   });
 
   const editing = markers.find((m) => m.id === editMarker) ?? null;
+  const selectedIds = selectedIdsOf(state);
   const pinnedItemIds = useMemo(() => timelinePinnedItemIds(
-    selectedIdsOf(state),
+    selectedIds,
     [drag?.id, pointer.penDrag?.itemId, ctxMenu?.id, libDropTarget, pickDrag?.item?.id],
     state.transitions ?? [],
   ), [
     ctxMenu?.id, drag?.id, libDropTarget, pickDrag?.item?.id, pointer.penDrag?.itemId,
-    state.selectedId, state.selectedIds, state.transitions,
+    selectedIds, state.transitions,
   ]);
 
   return (

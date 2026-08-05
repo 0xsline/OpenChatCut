@@ -57,15 +57,16 @@ interface SemanticPanelProps {
 }
 
 function SemanticPanelPortal(props: SemanticPanelProps & { anchorRef: RefObject<HTMLDivElement | null> }) {
+  const { anchorRef, onClose } = props;
   const panelRef = useRef<HTMLElement>(null);
-  const position = useSemanticPanelPosition(props.anchorRef, panelRef);
+  const position = useSemanticPanelPosition(anchorRef, panelRef);
   useEffect(() => {
     const closeOnOutsidePress = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!panelRef.current?.contains(target) && !props.anchorRef.current?.contains(target)) props.onClose();
+      if (!panelRef.current?.contains(target) && !anchorRef.current?.contains(target)) onClose();
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') props.onClose();
+      if (event.key === 'Escape') onClose();
     };
     document.addEventListener('pointerdown', closeOnOutsidePress);
     document.addEventListener('keydown', closeOnEscape);
@@ -73,7 +74,7 @@ function SemanticPanelPortal(props: SemanticPanelProps & { anchorRef: RefObject<
       document.removeEventListener('pointerdown', closeOnOutsidePress);
       document.removeEventListener('keydown', closeOnEscape);
     };
-  }, [props.anchorRef, props.onClose]);
+  }, [anchorRef, onClose]);
   return createPortal(<SemanticPanel {...props} panelRef={panelRef} style={position} />, document.body);
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { AbsoluteFill, cancelRender, continueRender, delayRender } from 'remotion';
-import { collectReferencedFontFaces, loadTimelineFonts } from '../fonts/projectFonts';
+import { loadTimelineFonts } from '../fonts/projectFonts';
 import { prepareTemplate } from '../template-host';
 import type { TimelineState } from './types';
 
@@ -9,14 +9,6 @@ interface TimelineReadinessGateProps {
   state: TimelineState;
   dependencies?: readonly TimelineState[];
   children: () => ReactNode;
-}
-
-export function timelineReadinessKey(state: TimelineState, dependencies: readonly TimelineState[] = []): string {
-  const states = [state, ...dependencies];
-  const templates = states.flatMap((entry) => entry.items
-    .filter((item) => item.kind === 'motion-graphic' && item.code)
-    .map((item) => item.code as string));
-  return JSON.stringify([states.flatMap(collectReferencedFontFaces), templates]);
 }
 
 function prepareTimelineTemplates(state: TimelineState): Promise<void> {

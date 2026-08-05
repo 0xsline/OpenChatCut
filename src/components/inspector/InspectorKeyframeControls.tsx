@@ -1,6 +1,4 @@
-import {
-  createContext, useContext, useEffect, useRef, useState, type CSSProperties, type PropsWithChildren,
-} from 'react';
+import { useState, type CSSProperties, type PropsWithChildren } from 'react';
 import type { ClipTransform, Keyframe, KeyframeEasing, KeyframeProp, TimelineItem } from '../../editor/types';
 import { sampleKeyframes } from '../../editor/keyframes';
 import { KEYFRAME_PROPS, getKeyframePropertyDefinition } from '../../editor/keyframeRegistry';
@@ -9,54 +7,13 @@ import { Icon } from '../icons';
 import { ScalarControl } from './ScalarControl';
 import { snapScalar } from './scalarMath';
 
+import { HistoryGestureContext, useHistoryGesture } from './historyGesture';
+
 const rgbToHex = (rgb: number[]) => `#${rgb.slice(0, 3).map((n) => Math.round(Math.min(1, Math.max(0, n)) * 255).toString(16).padStart(2, '0')).join('')}`;
 const hexToRgb = (hex: string) => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255);
 
-/**
- * The boundaries of continuous gestures. The slider and color picker will be gradually dispatched during dragging (so that there is a real-time preview),
- * But those steps must be merged into **one** undo record - otherwise volume 0→2 in 0.05 steps will push in about 40 snapshots,
- * The upper limit of history is only 100. Dragging the slider twice will squeeze out the user's real editing history.
- * The purpose of passing context is to avoid adding parameters to each of the dozen slider call points.
- */
-const HistoryGestureContext = createContext<{ begin: () => void; end: () => void } | null>(null);
 export function HistoryGestureProvider({ value, children }: PropsWithChildren<{ value: { begin: () => void; end: () => void } }>) {
   return <HistoryGestureContext.Provider value={value}>{children}</HistoryGestureContext.Provider>;
-}
-
-/** The gesture starts when the pointer is pressed and ends when the pointer is released (no matter where it is released). The same goes for pressing the arrow keys on the keyboard.*/
-export function useHistoryGesture(): {
-  onPointerDown: () => void;
-  onKeyDown: () => void;
-  onKeyUp: () => void;
-} {
-  const gesture = useContext(HistoryGestureContext);
-  const active = useRef(false);
-  const end = () => {
-    if (!active.current) return;
-    active.current = false;
-    gesture?.end();
-  };
-  const begin = () => {
-    if (active.current) return;
-    active.current = true;
-    gesture?.begin();
-  };
-  // When the component is uninstalled (for example, the selected fragment is switched during dragging), it must also be finished to prevent the gesture from being turned on all the time.
-  useEffect(() => () => {
-    if (!active.current) return;
-    active.current = false;
-    gesture?.end();
-  }, [gesture]);
-  return {
-    onPointerDown: () => {
-      begin();
-      // The pointer may be released outside the control, so listen to window rather than the control itself
-      window.addEventListener('pointerup', end, { once: true });
-      window.addEventListener('pointercancel', end, { once: true });
-    },
-    onKeyDown: begin,
-    onKeyUp: end,
-  };
 }
 
 /** Color Picker: OnInput is triggered once when the mouse is moved in the color picker panel. Like the slider, it must be merged into an undo record.*/

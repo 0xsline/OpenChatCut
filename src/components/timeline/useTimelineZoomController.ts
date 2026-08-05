@@ -105,6 +105,7 @@ export function useTimelineZoomController(options: TimelineZoomControllerOptions
 
   useEffect(() => {
     const element = scrollRef.current;
+    const views = viewByKeyRef.current;
     if (!element) return;
     const saved = projectId && timelineId ? loadTimelineView(projectId, timelineId) : null;
     const nextZoom = saved?.zoom ?? (totalFramesRef.current > 0
@@ -115,7 +116,7 @@ export function useTimelineZoomController(options: TimelineZoomControllerOptions
     element.scrollLeft = saved?.scrollLeft ?? 0;
     return () => {
       if (projectId && timelineId) {
-        const previous = viewByKeyRef.current[key] ?? { zoom, trackScale };
+        const previous = views[key] ?? { zoom: nextZoom, trackScale: saved?.trackScale ?? 1 };
         saveTimelineView(projectId, timelineId, {
           zoom: previous.zoom,
           trackScale: previous.trackScale,

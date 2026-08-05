@@ -10,7 +10,7 @@ import { captionPreviewTextColor, shadowBlurSize } from '../../captions/renderSt
 import type { SelectedCaptionInspector } from '../../captions/captionSelection';
 import type { CaptionLayout, CaptionsData } from '../../captions/types';
 import { useT } from '../../i18n/locale';
-import { useHistoryGesture } from './InspectorKeyframeControls';
+import { useHistoryGesture } from './historyGesture';
 
 interface CaptionInspectorControlsProps {
   selection: SelectedCaptionInspector;

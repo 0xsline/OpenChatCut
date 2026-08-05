@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { setEditorDrag, type EditorMediaDragPayload } from '../editor/editorDrag';
-import { assetIdsFromFolderDrop } from './MediaPoolCard';
+import { assetIdsFromFolderDrop } from './folderDrop';
 import { setMediaAssetDrag } from './drag';
 
 function fakeDragEvent(initial: Record<string, string> = {}) {
