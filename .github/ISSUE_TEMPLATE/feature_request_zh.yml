@@ -1,0 +1,41 @@
+name: ✨ 功能建议 (中文)
+description: 新功能或改进建议
+title: "[Feature] 一句话描述"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: 提交前请先搜索历史 issues，避免重复。
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 使用场景与痛点 *
+      description: 你在什么场景需要它？现在缺什么？
+      placeholder: |
+        例如：口播精剪时，希望删除口误后能一键把停顿压到 0.3 秒内。
+    validations:
+      required: true
+
+  - type: textarea
+    id: expectation
+    attributes:
+      label: 期望的行为 *
+      placeholder: 你希望产品怎么表现？
+    validations:
+      required: true
+
+  - type: textarea
+    id: reference
+    attributes:
+      label: 参考实现（可选）
+      description: 剪映 / Premiere / 其他开源项目怎么做的？贴链接或描述
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准（可选）
+      description: 怎么算做完？列出可验证的点
+      placeholder: |
+        - [ ] 删除口误后停顿可一键压缩
+        - [ ] 支持撤销

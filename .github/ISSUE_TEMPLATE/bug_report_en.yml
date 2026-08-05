@@ -1,0 +1,105 @@
+name: 🐛 Bug Report (English)
+description: Crashes, errors, or unexpected behavior
+title: "[Bug] Short description"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Please search existing issues first** to avoid duplicates.
+        Fields marked * are required. Screenshots can be dropped into the input box.
+
+  - type: dropdown
+    id: version
+    attributes:
+      label: Version *
+      description: "Which version are you using? Desktop: Settings → About"
+      options:
+        - Latest GitHub Release (v0.1.x)
+        - From source (main)
+        - Desktop package
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform *
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Linux
+        - Web (browser)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area *
+      options:
+        - Timeline editing
+        - AI Agent chat editing
+        - Export (MP4 / audio / FCPXML / SRT)
+        - Transcription
+        - Captions
+        - Media import / media pool
+        - AI generation (image/video/voice/music/SFX)
+        - Preview / playback
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug *
+      placeholder: |
+        e.g. After AI color grading, the exported video stutters/freezes during playback.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce *
+      placeholder: |
+        1. Import "sample.mp4"
+        2. Ask the Agent to apply color grading
+        3. Export MP4 (1080p)
+        4. Playback stutters around second 15
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior *
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior *
+    validations:
+      required: true
+
+  - type: textarea
+    id: media
+    attributes:
+      label: Media info
+      description: Format, resolution, frame rate, codec of the media involved (VFR? HEIC?)
+      placeholder: |
+        MP4, 3840x2160, 29.97fps (30000/1001), H.264
+        (Pasting the output of `ffprobe <file>` here is ideal)
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Screenshots / logs / error messages
+      placeholder: |
+        Drop screenshots here. Web: copy the console error from DevTools (F12).
+        Desktop: paste the terminal startup log.

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 社区讨论 / Community (Discord)
+    url: https://discord.gg/bSGUAeWYkh
+    about: 使用疑问、教程与闲聊请去社区；issues 只放 bug 与功能建议 / Questions, tutorials and casual chat belong here; issues are for bugs and feature requests

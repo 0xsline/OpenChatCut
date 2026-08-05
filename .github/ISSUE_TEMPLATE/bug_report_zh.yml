@@ -1,0 +1,105 @@
+name: 🐛 Bug 报告 / Bug Report (中文)
+description: 崩溃、报错或行为异常时使用
+title: "[Bug] 一句话描述问题"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **提交前请先搜索是否已有相同问题**，避免重复。
+        带 * 的为必填；信息越全修得越快。截图可直接拖入输入框。
+
+  - type: dropdown
+    id: version
+    attributes:
+      label: 版本 *
+      description: 在哪个版本遇到？桌面版可在「设置 → 关于」查看
+      options:
+        - 最新 GitHub Release（v0.1.x）
+        - main 源码运行
+        - 桌面版安装包
+        - 不确定
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台 *
+      options:
+        - macOS（Apple Silicon）
+        - macOS（Intel）
+        - Windows
+        - Linux
+        - 网页版（浏览器）
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及功能 *
+      options:
+        - 时间线编辑
+        - AI Agent 对话剪辑
+        - 导出（MP4 / 音频 / FCPXML / SRT）
+        - 转写 / 文字稿
+        - 字幕
+        - 素材导入 / 素材池
+        - AI 生成（图/视频/语音/音乐/音效）
+        - 预览 / 播放
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述 *
+      placeholder: |
+        例如：AI 调色后导出视频，播放出现明显掉帧/抽搐。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤 *
+      placeholder: |
+        1. 导入素材「xxx.mp4」
+        2. 让 Agent 应用调色
+        3. 导出 MP4（1080p）
+        4. 播放到第 15 秒出现卡顿
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为 *
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为 *
+    validations:
+      required: true
+
+  - type: textarea
+    id: media
+    attributes:
+      label: 素材信息
+      description: 视频/图片格式、分辨率、帧率、编码。素材相关问题时是关键信息（VFR？HEIC？）
+      placeholder: |
+        MP4，3840×2160，29.97fps（30000/1001），H.264
+        （终端执行 ffprobe 素材路径 的输出粘贴在这里最佳）
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 截图 / 日志 / 报错
+      placeholder: |
+        截图可直接拖入。网页版按 F12 复制 console 报错；
+        桌面版贴启动终端日志。

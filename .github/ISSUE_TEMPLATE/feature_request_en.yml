@@ -1,0 +1,42 @@
+name: ✨ Feature Request (English)
+description: Suggest a new feature or improvement
+title: "[Feature] Short description"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: Please search existing issues first to avoid duplicates.
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Scenario & pain point *
+      description: What are you trying to do, and what is missing today?
+      placeholder: |
+        e.g. When cleaning up talking-head footage, I want a one-click way to
+        compress pauses to under 0.3s after deleting filler words.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expectation
+    attributes:
+      label: Expected behavior *
+      placeholder: How should the product behave?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reference
+    attributes:
+      label: Reference (optional)
+      description: How do CapCut / Premiere / other open-source projects do this? Link or describe
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria (optional)
+      description: What counts as done? List verifiable points
+      placeholder: |
+        - [ ] One-click pause compression after word deletion
+        - [ ] Undoable
