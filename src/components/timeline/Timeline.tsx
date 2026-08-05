@@ -752,13 +752,16 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             const hidden = meta.kind === 'caption' ? !trackCaptions?.enabled : config.hidden ?? false;
             const headConfig = meta.kind === 'caption' ? { ...config, hidden } : config;
             const locked = config.locked ?? false;
-            const kindLabel = meta.kind === 'video' ? '视频' : meta.kind === 'audio' ? '音频' : '字幕';
-            const trackName = config.name || (locale === 'en' ? alias : `${t(kindLabel)}${alias.slice(1)}`);
+            const kindLabel = meta.kind === 'video' ? '视频' : meta.kind === 'audio' ? '音乐' : '字幕';
+            // Stable title (类型+序号) plus optional custom name as a second row,
+            // so track naming never drifts when AI creates tracks with its own labels.
+            const titleName = locale === 'en' ? alias : `${t(kindLabel)}${alias.slice(1)}`;
+            const customName = config.name || undefined;
             const deletePlan = trackDeletePlan(state, trackId);
             return (
               <div key={trackId} className="cc-track-row" style={{ height: rowHeightOf(trackId), background: isDropTarget ? `color-mix(in srgb, ${theme.success} 15%, ${theme.bg})` : undefined }}>
                 <TrackHead
-                  trackId={trackId} kind={meta.kind} trackName={trackName} config={headConfig}
+                  trackId={trackId} kind={meta.kind} trackName={titleName} customName={customName} config={headConfig}
                   deleteBlockedReason={deletePlan.blockedReason}
                   onDelete={() => {
                     if (deletePlan.requiresConfirmation
@@ -988,6 +991,12 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             }}
             onToggleMuted={() => commands.toggleTrackFlag(trackId, 'muted')}
             onToggleLocked={() => commands.toggleTrackFlag(trackId, 'locked')}
+            onRename={() => {
+              const current = state.tracks?.[trackId]?.name ?? '';
+              const next = window.prompt(t('轨道名称（留空恢复默认）'), current) ?? null;
+              if (next === null) return;
+              commands.updateTrack(trackId, { name: next.trim() ? next.trim() : undefined });
+            }}
             onOpenDuck={(rect) => openDuckTrackMenu(trackId, rect, trackMenu, true)}
             onOpenCaptionStyle={(rect) => openCaptionTrackMenu(trackId, rect, false, trackMenu, true)}
             onOpenTranslate={(rect) => openCaptionTrackMenu(trackId, rect, true, trackMenu, true)}

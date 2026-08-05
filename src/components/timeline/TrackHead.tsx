@@ -19,7 +19,10 @@ const flagBtn = (active: boolean): React.CSSProperties => ({
 interface TrackHeadProps {
   trackId: TrackId;
   kind: TrackKind;
+  /** Stable title, e.g. 视频1 / V1 — never the custom name. */
   trackName: string;
+  /** Optional custom name rendered as a second row under the title. */
+  customName?: string;
   config: TrackFlags;
   deleteBlockedReason: TrackDeletePlan['blockedReason'];
   onDelete: () => void;
@@ -47,7 +50,7 @@ function trackDeleteTitle(
 }
 
 export function TrackHead({
-  trackId, kind, trackName, config, deleteBlockedReason, onDelete, menuElevated, width,
+  trackId, kind, trackName, customName, config, deleteBlockedReason, onDelete, menuElevated, width,
   commands, onToggleCaptions, onToggleCaptionMenu, onToggleDuckMenu, duckMenuPos, onCloseDuckMenu, onBackDuckMenu, children,
 }: TrackHeadProps) {
   const t = useT();
@@ -63,7 +66,10 @@ export function TrackHead({
   return (
     <div className="cc-track-head" style={{ width, ...(menuElevated ? { zIndex: 40 } : {}) }}>
       <div className="cc-track-head-controls">
-        <span className="cc-track-name" title={t('{name}（{id}）', { name: nameTitle, id: trackId })} style={{ background: tagColor }}>{trackName}</span>
+        <span className="cc-track-name" title={t('{name}（{id}）', { name: nameTitle, id: trackId })} style={{ background: tagColor }}>
+          <span className="cc-track-name-title">{trackName}</span>
+          {customName && <span className="cc-track-name-custom">{customName}</span>}
+        </span>
         <button style={flagBtn(hidden)} title={hidden ? t('显示轨道') : t('隐藏轨道')} onClick={isCaption ? onToggleCaptions : () => commands.toggleTrackFlag(trackId, 'hidden')}><Icon name={hidden ? 'eyeOff' : 'eye'} size={14} /></button>
         {!isCaption && <button style={flagBtn(muted)} title={muted ? t('取消静音') : t('静音轨道')} onClick={() => commands.toggleTrackFlag(trackId, 'muted')}><Icon name={muted ? 'volumeOff' : 'volume'} size={14} /></button>}
         <button style={{ ...flagBtn(false), color: locked ? theme.gold : theme.textMuted }} title={locked ? t('解锁轨道') : t('锁定轨道（禁止移动 / 裁剪 / 删除 / 落轨）')} onClick={() => commands.toggleTrackFlag(trackId, 'locked')}><Icon name={locked ? 'lock' : 'unlock'} size={14} /></button>
