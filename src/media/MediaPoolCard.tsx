@@ -128,11 +128,18 @@ export const MediaAssetCard = memo(function MediaAssetCard(props: MediaAssetCard
       data-cc-media-asset-id={asset.id}
       className={`cc-asset-card${props.selected ? ' selected' : ''}${missing ? ' missing' : ''}`}
       onClickCapture={(event) => {
-        if (!(event.metaKey || event.ctrlKey || event.shiftKey)) return;
+        // Plain click selects (single-select); Ctrl/Shift/meta toggles extra
+        // items — file-manager intuition. Double-click adds to the timeline.
+        if (missing) return;
         event.preventDefault();
         event.stopPropagation();
-        props.onToggleSelected(asset.id);
+        if (event.metaKey || event.ctrlKey || event.shiftKey) {
+          props.onToggleSelected(asset.id);
+        } else {
+          props.onSetSelected([asset.id]);
+        }
       }}
+      onDoubleClick={() => { if (!missing) props.onAdd(asset); }}
       onContextMenu={(event) => {
         event.preventDefault();
         const target = event.target instanceof Element
@@ -152,7 +159,7 @@ export const MediaAssetCard = memo(function MediaAssetCard(props: MediaAssetCard
       }}
     >
       <AssetThumbArea {...props} />
-      <button className="cc-asset-name" title={asset.name} onClick={() => props.onAdd(asset)}>{asset.name}</button>
+      <button className="cc-asset-name" title={asset.name} tabIndex={-1}>{asset.name}</button>
     </div>
   );
 });
@@ -164,7 +171,7 @@ function AssetThumbArea(props: MediaAssetCardProps) {
     <div className="cc-asset-thumb-wrap">
       <button
         className="cc-asset-thumb"
-        title={missing ? t('点击重新链接') : t('点击加入时间线，或拖到指定轨道：{name}', { name: asset.name })}
+        title={missing ? t('点击重新链接') : t('单击选中，双击加入时间线，或拖到指定轨道：{name}', { name: asset.name })}
         draggable={!missing}
         style={missing ? undefined : { cursor: 'grab' }}
         onDragStart={(event) => {
@@ -172,7 +179,7 @@ function AssetThumbArea(props: MediaAssetCardProps) {
           setMediaAssetDrag(event, asset, props.selected ? props.selectedAssetIds : [asset.id]);
         }}
         onDragEnd={() => props.onDragChange(null)}
-        onClick={() => missing && props.canRelink ? props.onRelink(asset.id) : props.onAdd(asset)}
+        onClick={() => { if (missing && props.canRelink) props.onRelink(asset.id); }}
       >
         {props.view === 'list'
           ? <AssetListIcon asset={asset} />

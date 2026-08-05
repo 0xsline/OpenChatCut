@@ -200,6 +200,7 @@ function MediaVirtualRows(props: MediaPoolGridProps & ReturnType<typeof useMedia
               onOpenMenu={props.onOpenMenu}
               onRelink={props.onRelink}
               onToggleSelected={props.onToggleSelected}
+              onSetSelected={props.onSetSelected}
               onSetFavorite={props.onSetFavorite}
             />)}
       </div>)}

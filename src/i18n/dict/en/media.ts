@@ -29,7 +29,7 @@ export default {
   '有 {n} 个素材丢失或无法加载。选择文件夹搜索，或从行内重新链接。': '{n} assets are missing or failed to load. Pick a folder to search, or relink from each row.',
   '重新链接离线素材': 'Relink Offline Media',
   '点击重新链接': 'Click to relink',
-  '点击加入时间线，或拖到指定轨道：{name}': 'Click to add to the timeline, or drag to a specific track: {name}',
+  '单击选中，双击加入时间线，或拖到指定轨道：{name}': 'Click to select, double-click to add to the timeline, or drag to a specific track: {name}',
   '重新链接文件': 'Relink file',
   '工程中的文件已移动或重命名。选一个文件夹按文件名批量重链，或从下方逐个重新链接。': 'Files in this project were moved or renamed. Pick a folder to batch-relink by filename, or relink each asset below.',
   '正在按文件名匹配…': 'Matching by filename…',
