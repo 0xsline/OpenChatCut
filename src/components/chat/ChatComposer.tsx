@@ -203,20 +203,53 @@ export function ChatComposer(props: ChatComposerProps) {
     );
   };
 
+  const refRow = (r: RefItem) => (
+    <button key={r.id} onClick={() => insert(r)}
+      style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', background: 'none', border: 'none', borderRadius: 3, padding: '7px 10px', cursor: 'pointer', color: theme.text }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = theme.panel; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
+      <span style={{ color: theme.textDim, lineHeight: 0 }}><Icon name={REF_ICON[r.kind]} size={15} /></span>
+      <span style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
+    </button>
+  );
+
+  const refGroupTitle = (text: string) => (
+    <div style={{ fontSize: 10.5, color: theme.textDim, padding: '6px 8px 2px', letterSpacing: 0.4 }}>{text}</div>
+  );
+
   const refPopoverBody = (kind: 'asset' | 'template', empty: string) => {
-    const list = refList(kind);
+    if (kind === 'template') {
+      const list = refList('template');
+      return (
+        <>
+          {refGroupTitle(t('引用模板库'))}
+          {list.length === 0 && <div style={{ fontSize: 12, color: theme.textDim, padding: '6px 10px' }}>{empty}</div>}
+          {list.map(refRow)}
+        </>
+      );
+    }
+    const assets = references.filter((r) => r.kind !== 'template' && r.kind !== 'item');
+    const timelineItems = references.filter((r) => r.kind === 'item');
+    const groups = new Map<string, RefItem[]>();
+    for (const r of timelineItems) {
+      const alias = r.kind === 'item' && r.metadata?.trackAlias ? r.metadata.trackAlias : '';
+      const key = alias || '时间线';
+      const arr = groups.get(key) ?? [];
+      if (arr.length < 30) arr.push(r);
+      groups.set(key, arr);
+    }
     return (
       <>
-        <div style={{ fontSize: 10.5, color: theme.textDim, padding: '4px 8px 6px', letterSpacing: 0.4 }}>{kind === 'template' ? t('引用模板库') : t('引用媒体池素材')}</div>
-        {list.length === 0 && <div style={{ fontSize: 12, color: theme.textDim, padding: '6px 10px' }}>{empty}</div>}
-        {list.map((r) => (
-          <button key={r.id} onClick={() => insert(r)}
-        style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', background: 'none', border: 'none', borderRadius: 3, padding: '7px 10px', cursor: 'pointer', color: theme.text }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = theme.panel; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
-            <span style={{ color: theme.textDim, lineHeight: 0 }}><Icon name={REF_ICON[r.kind]} size={15} /></span>
-            <span style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
-          </button>
+        {refGroupTitle(t('引用媒体池素材'))}
+        {assets.length === 0 && timelineItems.length === 0
+          && <div style={{ fontSize: 12, color: theme.textDim, padding: '6px 10px' }}>{empty}</div>}
+        {assets.map(refRow)}
+        {timelineItems.length > 0 && refGroupTitle(t('时间线'))}
+        {[...groups.entries()].map(([alias, items]) => (
+          <div key={alias}>
+            {refGroupTitle(alias)}
+            {items.map(refRow)}
+          </div>
         ))}
       </>
     );
@@ -345,6 +378,12 @@ export function ChatComposer(props: ChatComposerProps) {
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.shiftKey) event.preventDefault();
+          if (event.key === '@') {
+            // @ opens the asset/timeline reference picker (anchored to the input).
+            setPopAnchor(taRef.current);
+            setPop((cur) => (cur === 'assets' ? null : 'assets'));
+            return;
+          }
           if (shouldSubmitComposerOnKeyDown(event.key, event.shiftKey, canSend)) onSubmit();
         }}
         onPaste={(e) => {

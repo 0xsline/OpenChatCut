@@ -10,6 +10,7 @@ import { theme } from '../../theme';
 import { useT } from '../../i18n/locale';
 import type { AgentContext } from '../../agent/context';
 import type { MediaAsset, TimelineState } from '../../editor/types';
+import { trackAlias } from '../../editor/types';
 import { kindOf } from '../../media/upload';
 import { preloadAgentRuntime } from '../../agent/agent-session';
 import { useAgent } from '../../agent/useAgent';
@@ -242,10 +243,27 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   const visibleFrom = Math.max(0, messages.length - visibleMessageCount);
   const visibleMessages = messages.slice(visibleFrom);
 
-  // @-referenceable things: media-pool assets + template library
+  // @-referenceable things: media-pool assets, timeline items (grouped by
+  // track in the picker), and the template library.
+  const refState = ctx.getState();
   const references: RefItem[] = [
     ...ctx.getDoc().assets.map((a) => ({ id: a.id, name: a.name, kind: a.kind })),
     ...ctx.templates.slice(0, 40).map((tpl) => ({ id: tpl.id, name: tpl.name, kind: 'template' as const })),
+    ...refState.items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      kind: 'item' as const,
+      metadata: {
+        fps: refState.fps,
+        timelineId: ctx.getDoc().activeTimelineId,
+        itemId: item.id,
+        itemKind: item.kind,
+        trackId: item.track,
+        trackAlias: trackAlias(refState, item.track),
+        timelineFrameStart: item.startFrame,
+        timelineFrameEnd: item.startFrame + item.durationInFrames,
+      },
+    })),
   ];
 
   useEffect(() => {
