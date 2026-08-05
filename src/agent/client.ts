@@ -163,6 +163,7 @@ export async function generateAgentText(options: {
     model: await getLanguageModel(provider, model, apiMode),
     system: options.system,
     maxOutputTokens,
+    timeout: { totalMs: 60_000 },
     ...(providerOptions ? { providerOptions } : {}),
   };
   const normalized = options.messages ? normalizeLlmMessages(options.messages) : null;

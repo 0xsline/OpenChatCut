@@ -159,6 +159,7 @@ async function summarizeWithApi(
     maxOutputTokens,
     maxRetries: 0,
     abortSignal: signal,
+    timeout: { totalMs: 90_000 },
     ...(providerOptions ? { providerOptions } : {}),
   });
   return result.text.trim();

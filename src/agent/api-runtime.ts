@@ -239,6 +239,10 @@ export async function runApiAgent(
           maxOutputTokens,
           maxRetries: 0,
           abortSignal: opts?.signal,
+          // Guard against hanging model calls: first token within 30s, each
+          // step capped at 2min, tool executions at 30s (all local store ops
+          // finish in ms; media prep happens before the request).
+          timeout: { stepMs: 120_000, firstChunkMs: 30_000, toolMs: 30_000 },
           ...(providerOptions ? { providerOptions } : {}),
         }));
         if (!started.ok) {
