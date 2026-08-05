@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import type { Plugin } from 'vite';
+import { generateImage } from 'ai';
+import { createOpenAI } from '@ai-sdk/openai';
 
 import { isSafeUploadName, resolveUploadFile, uploadDir } from '../media-dir.ts';
 import { presignGetUpload, putUploadFile } from '../r2.ts';
@@ -255,8 +257,40 @@ async function appendImageFile(form: FormData, field: string, path: string, file
   form.append(field, new Blob([bytes], { type: imageMimeType(file) }), `${filename}.${ext}`);
 }
 
+/** OpenAI Images via the AI SDK for the plain text-to-image path — the SDK
+ * owns body construction and error shapes; gpt options map onto the openai
+ * provider metadata (quality/background/moderation/input_fidelity/
+ * output_format/output_compression). The edits path (reference images +
+ * mask) keeps the hand-rolled multipart call below. */
+async function callOpenaiViaSdk(baseUrl: string, apiKey: string, body: GptImageInput): Promise<ProviderImage[]> {
+  // The AI SDK appends the API path directly to baseURL (no implicit version
+  // segment). The legacy hand-rolled call always added /v1, and the official
+  // default baseURL carries it too — mirror that for custom endpoints.
+  const base = /\/v\d+\/?$/i.test(baseUrl) ? baseUrl : `${baseUrl.replace(/\/+$/, '')}/v1`;
+  const openai = createOpenAI({ apiKey, baseURL: base });
+  const { images } = await generateImage({
+    model: openai.image(body.model),
+    prompt: body.prompt,
+    n: body.count,
+    size: body.size as `${number}x${number}`,
+    maxRetries: 0,
+    providerOptions: {
+      openai: {
+        quality: body.quality,
+        ...(body.background ? { background: body.background } : {}),
+        ...(body.moderation ? { moderation: body.moderation } : {}),
+        ...(body.inputFidelity ? { inputFidelity: body.inputFidelity } : {}),
+        ...(body.outputFormat ? { outputFormat: body.outputFormat } : {}),
+        ...(body.outputCompression != null ? { outputCompression: body.outputCompression } : {}),
+      },
+    },
+  });
+  return images.map((image) => ({ b64_json: image.base64 }));
+}
+
 async function callProvider(baseUrl: string, apiKey: string, body: GptImageInput): Promise<ProviderImage[]> {
-  const endpoint = body.referencePaths.length ? '/v1/images/edits' : '/v1/images/generations';
+  if (!body.referencePaths.length) return callOpenaiViaSdk(baseUrl, apiKey, body);
+  const endpoint = '/v1/images/edits';
   let requestBody: string | FormData;
   let headers: Record<string, string> = { Authorization: `Bearer ${apiKey}` };
 
@@ -536,7 +570,10 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
           sendJson(res, 200, { paths, ...(reportDimensions ? { width, height } : {}) });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          server.config.logger.error(`[generate:image] ${message}`);
+          const detail = error instanceof Error && error.cause
+            ? ` cause=${error.cause instanceof Error ? `${error.cause.name}: ${error.cause.message}` : JSON.stringify(error.cause)}`
+            : '';
+          server.config.logger.error(`[generate:image] ${message}${detail}`);
           if (!res.headersSent) sendJson(res, 400, { error: message });
         }
       });
