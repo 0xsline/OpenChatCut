@@ -128,15 +128,22 @@ export const MediaAssetCard = memo(function MediaAssetCard(props: MediaAssetCard
       data-cc-media-asset-id={asset.id}
       className={`cc-asset-card${props.selected ? ' selected' : ''}${missing ? ' missing' : ''}`}
       onClickCapture={(event) => {
-        // Plain click selects (single-select); Ctrl/Shift/meta toggles extra
-        // items — file-manager intuition. Double-click adds to the timeline.
+        // Plain click selects and opens the asset menu beside the card;
+        // Ctrl/Shift/meta toggles extra items. Clicking the selected card
+        // again deselects it. Double-click adds to the timeline.
         if (missing) return;
         event.preventDefault();
         event.stopPropagation();
         if (event.metaKey || event.ctrlKey || event.shiftKey) {
           props.onToggleSelected(asset.id);
+          return;
+        }
+        if (props.selected) {
+          props.onToggleSelected(asset.id);
+          props.onOpenMenu(asset.id, event.currentTarget as HTMLElement);
         } else {
           props.onSetSelected([asset.id]);
+          props.onOpenMenu(asset.id, event.currentTarget as HTMLElement);
         }
       }}
       onDoubleClick={() => { if (!missing) props.onAdd(asset); }}
