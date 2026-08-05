@@ -225,15 +225,19 @@ async function renderExportPlan(
       throw new ExportFailureError({ ...existing, cleanupStatus, targetPath: filepath });
     }
     const aborted = signal?.aborted === true;
-    const timedOut = error instanceof Error && /(?:timed?\\s*out|timeout)/i.test(error.message);
+    const timedOut = error instanceof Error && /(?:timed?\s*out|timeout)/i.test(error.message);
+    const message = error instanceof Error ? error.message : String(error);
+    const oom = /(?:out of memory|heap|insufficient memory|memory)/i.test(message);
     throw new ExportFailureError(createExportFailure({
       stage: aborted ? 'cancel' : timedOut ? 'timeout' : failureStage,
       code: aborted ? 'export_cancelled' : timedOut ? 'export_timeout'
         : failureStage === 'encode' ? 'export_encode_failed' : 'export_render_failed',
-      retryable: !aborted,
+      retryable: !aborted && !oom,
       cleanupStatus,
       targetPath: filepath,
-      message: error instanceof Error ? error.message : String(error),
+      message: oom
+        ? '导出时内存不足。请关闭其他程序、缩短导出范围或降低分辨率后重试；若仍失败，重启应用后再试。'
+        : message,
     }));
   }
 }

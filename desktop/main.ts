@@ -45,6 +45,11 @@ const DIST_DIR = app.isPackaged
   : join(fileURLToPath(new URL('..', import.meta.url)), 'dist');
 const PRELOAD_PATH = join(dirname(fileURLToPath(import.meta.url)), 'preload.cjs');
 
+// Remotion renders export frames inside this process (main + headless tabs).
+// Raise the V8 heap ceiling so large/4K exports don't die with "out of memory"
+// (issue #40). Must run before app 'ready'; js-flags apply to every V8 instance.
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=6144');
+
 // CC_SMOKE=1: No window smoke - start the embedded server, load the page, explore /api/keys, and return the code 0/1 according to the result.
 // CC_SMOKE_RENDER=1 adds a true rendering probe (packaged version acceptance: pre-bundled + full browser link included in the package).
 const SMOKE = process.env.CC_SMOKE === '1';
