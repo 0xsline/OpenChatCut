@@ -2,7 +2,7 @@
 // (`projectReduce`, routing per-timeline actions to the active timeline) + the
 // undo/redo history wrapper. The command set + React hook live in store.ts.
 import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, MediaAssetRelinkPatch, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
-import { activeTimeline, captionsOnTrack, DEFAULT_WATERMARK, defaultTrackId, isAudioTransition, selectedIdsOf, timelineTrackIds, trackEnd, trackKind } from './types';
+import { activeTimeline, captionTrackEntries, captionsOnTrack, DEFAULT_WATERMARK, defaultTrackId, isAudioTransition, selectedIdsOf, timelineTrackIds, trackEnd, trackKind } from './types';
 import { scaleItemKeyframes, splitItemKeyframes, upsertKeyframe } from './keyframes';
 import { capFade, fitItemToDuration, fitTimelineItems } from './clipFit';
 import { remainingSourceFrames, sourceWindowForTimelineRange, timelineFramesToSourceFrames } from './sourceLimit';
@@ -92,6 +92,7 @@ export type Action =
   | { type: 'track.tighten'; track: TrackId }
   | { type: 'setCaptions'; captions: CaptionsData | null; track?: TrackId }
   | { type: 'updateCaptions'; patch: Partial<CaptionsData>; track?: TrackId }
+  | { type: 'setCaptionsHidden'; hidden: boolean }
   | { type: 'updateWatermark'; patch: Partial<Watermark> }
   | { type: 'setItemTranscript'; id: string; words: TranscriptWord[] }
   | { type: 'setItemVariants'; id: string; variants: TranscriptVariant[] }
@@ -175,7 +176,7 @@ export type Dispatch = (a: Action | BatchAction | HistoryControlAction) => void;
 /** dispatch at the project level: per-timeline + project actions + history control */
 export type ProjectDispatch = (a: AnyAction | HistoryControlAction) => void;
 
-const MUTATING = new Set(['add', 'updateProps', 'relinkTimelineItem', 'move', 'retime', 'slip', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'setKeyframe', 'removeKeyframe', 'clearKeyframes', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
+const MUTATING = new Set(['add', 'updateProps', 'relinkTimelineItem', 'move', 'retime', 'slip', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'setKeyframe', 'removeKeyframe', 'clearKeyframes', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'setCaptionsHidden', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
   'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset', 'pool.setTranscription', 'pool.relinkAsset', 'pool.removeAsset']);
@@ -866,6 +867,16 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
       const target = a.track ?? defaultTrackId(s, 'caption') ?? undefined;
       const captions = target ? captionsOnTrack(s, target) : s.captions;
       return captions ? withTrackCaptions(s, { ...captions, ...a.patch }, target) : s;
+    }
+    case 'setCaptionsHidden': {
+      // Global caption-system switch: captions off also hides on-screen text
+      // clips (render layer). Keep every caption track's enabled in sync.
+      let next = { ...s, captionsHidden: a.hidden };
+      const targets = captionTrackEntries(next);
+      if (targets.length) {
+        for (const { id } of targets) next = withTrackCaptions(next, { ...(captionsOnTrack(next, id) ?? { enabled: true }), enabled: !a.hidden }, id);
+      }
+      return next;
     }
     case 'updateWatermark': {
       // patch-merge over the current watermark (or defaults on first use); clamp

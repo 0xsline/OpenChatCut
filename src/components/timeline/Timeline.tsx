@@ -167,7 +167,12 @@ export function Timeline({
   const [placeMode, setPlaceMode] = usePersistedState<'insert' | 'overwrite'>('cc.placeMode', 'overwrite');
   // magnetic snapping (Snapping toggle, S). On = edges lock to guides.
   const [snapping, setSnapping] = usePersistedState('cc.snapping', true);
-  const captionsVisible = captionTrackEntries(state).some((entry) => entry.captions?.enabled);
+  const textClipCount = state.items.filter((item) => item.kind === 'text' || item.kind === 'motion-graphic').length;
+  const captionsVisible = state.captionsHidden === true
+    ? false
+    : state.captionsHidden === false
+      ? true
+      : captionTrackEntries(state).some((entry) => entry.captions?.enabled) || textClipCount > 0;
   const [captionMenu, setCaptionMenu] = useState<{ id: TrackId; left: number; top: number; translate?: boolean } | null>(null);
   const [trackMenu, setTrackMenu] = useState<{ trackId: TrackId; x: number; y: number; frame: number } | null>(null);
   const [trackMenuReturn, setTrackMenuReturn] = useState<{ trackId: TrackId; x: number; y: number; frame: number } | null>(null);

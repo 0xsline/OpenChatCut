@@ -15,6 +15,7 @@ import { voiceIsolationMix } from '../audio/voiceMix';
 import { zoomAt } from './zoom';
 import { sampleKeyframes, volumeAtFrame } from './keyframes';
 import { captionTrackEntries, CSS_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
+import { previewTextEditFields } from '../components/preview/previewTextEdit';
 import type { AspectFit, CssTransitionType, GlslTransitionType, KeyframeProp, ProjectDoc, Timeline, TimelineItem, TimelineState, TransitionDirection, TransitionItem, Watermark } from './types';
 import { sourceFrameAt } from './sourceLimit';
 import { nestedSequenceFrom, resolveTimelineRenderPlan, SequenceGraphError, type SequenceGraphLimits } from './sequenceGraph';
@@ -38,7 +39,7 @@ function fadeFactor(frame: number, dur: number, fadeIn = 0, fadeOut = 0): number
 // Generic keyframes (PRD §4.5): a keyframed prop overrides its static transform
 // value at the current local frame; keyframed opacity multiplies onto the fades.
 // Items WITHOUT keyframes take the exact pre-keyframe code path (regression red line).
-function ClipWrapper({ item, frameOffset = 0, children }: { item: TimelineItem; frameOffset?: number; children: (borderRadius: number) => React.ReactNode }) {
+function ClipWrapper({ item, frameOffset = 0, hiddenByCaptions = false, children }: { item: TimelineItem; frameOffset?: number; hiddenByCaptions?: boolean; children: (borderRadius: number) => React.ReactNode }) {
   const frame = useCurrentFrame() + frameOffset;
   const o = fadeFactor(frame, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames);
   const kf = item.keyframes;
@@ -62,7 +63,8 @@ function ClipWrapper({ item, frameOffset = 0, children }: { item: TimelineItem; 
   const clipPath = c && ((c.left ?? 0) > 0 || (c.top ?? 0) > 0 || (c.right ?? 0) > 0 || (c.bottom ?? 0) > 0)
     ? `inset(${cropPct(c.top)} ${cropPct(c.right)} ${cropPct(c.bottom)} ${cropPct(c.left)})`
     : undefined;
-  const baseOpacity = Math.max(0, Math.min(1, t?.opacity ?? 1));
+  // Captions off also hides on-screen text clips (render-layer only; item data untouched).
+  const baseOpacity = hiddenByCaptions ? 0 : Math.max(0, Math.min(1, t?.opacity ?? 1));
   const opacity = o * Math.max(0, Math.min(1, ko ?? baseOpacity));
   const borderRadius = Math.max(0, kv('borderRadius') ?? t?.borderRadius ?? 0);
   const fl = item.filters;
@@ -525,6 +527,7 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
     ? a.startFrame - b.startFrame
     : visualTracks.indexOf(b.track) - visualTracks.indexOf(a.track));
   const audio = state.items.filter((it) => it.kind === 'audio' && it.src && !isHidden(it.track));
+  const captionEntries = captionTrackEntries(state);
   const anchorRanges = state.items.filter((item) => state.tracks?.[item.track]?.role === 'anchor'
     && !isHidden(item.track) && !isMuted(item.track) && !!item.src)
     .map((item) => [item.startFrame, item.startFrame + item.durationInFrames] as const);
@@ -643,8 +646,12 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
         const eb = extendBefore.get(item.id) ?? 0;
         const ea = extendAfter.get(item.id) ?? 0;
         const entrance = entranceOf.get(item.id);
+        // Captions off hides on-screen text clips too (render-layer only).
+        const captionsOff = state.captionsHidden === true
+          || (state.captionsHidden === undefined && captionEntries.length > 0 && captionEntries.every((entry) => !entry.captions?.enabled));
+        const hiddenByCaptions = captionsOff && previewTextEditFields(item) !== null;
         const content = (
-          <ClipWrapper item={item} frameOffset={-eb}>
+          <ClipWrapper item={item} frameOffset={-eb} hiddenByCaptions={hiddenByCaptions}>
             {(borderRadius) => item.kind === 'sequence'
               ? <VisualClipSurface item={item} fit={fit} canvasW={state.width} canvasH={state.height} borderRadius={borderRadius}>
                   <NestedSequenceLayer item={item} project={project} parentWidth={state.width} parentHeight={state.height} fit={fit} frameOffset={-eb} browserRenderer={browserRenderer} sequenceLimits={sequenceLimits} muted={isMuted(item.track)} />
@@ -700,7 +707,7 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
           browserRenderer={browserRenderer}
         />
       ))}
-      {captionTrackEntries(state).map(({ id, captions }) => captions?.enabled
+      {captionEntries.map(({ id, captions }) => captions?.enabled
         ? <CaptionsLayer key={id} captions={captions} items={state.items} />
         : null)}
       {state.watermark?.enabled && state.watermark.text

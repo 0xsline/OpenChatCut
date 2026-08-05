@@ -664,8 +664,11 @@ export interface TimelineState {
   linkGroups?: TimelineLinkGroup[];
   /** Persistent multicam sources, sync evidence and range camera decisions. */
   multicamGroups?: MulticamGroup[];
-  /** derived compatibility view of ProjectDoc.assets; never persisted here */
+  /** Derived compatibility view of ProjectDoc.assets; never persisted here */
   assets?: MediaAsset[];
+  /** Global caption-system visibility (captions off also hides on-screen text
+   * clips). When absent, derive from caption tracks being all disabled. */
+  captionsHidden?: boolean;
   /** Primary selection (last clicked) — inspector / single-item ops. */
   selectedId: string | null;
   /**

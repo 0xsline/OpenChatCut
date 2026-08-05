@@ -110,6 +110,8 @@ export interface EditorCommands {
   tightenTrack: (track: TrackId) => void;
   setCaptions: (captions: CaptionsData | null, track?: TrackId) => void;
   updateCaptions: (patch: Partial<CaptionsData>, track?: TrackId) => void;
+  /** Global caption-system switch: captions off also hides on-screen text clips. */
+  setCaptionsHidden: (hidden: boolean) => void;
   /** Toggle/configure the text watermark overlay with a partial, undoable update. */
   updateWatermark: (patch: Partial<Watermark>) => void;
   setItemTranscript: (id: string, words: TranscriptWord[]) => void;
@@ -523,6 +525,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
         });
       },
       updateCaptions: (patch, track) => dispatch({ type: 'updateCaptions', patch, track }),
+      setCaptionsHidden: (hidden) => dispatch({ type: 'setCaptionsHidden', hidden }),
       updateWatermark: (patch) => dispatch({ type: 'updateWatermark', patch }),
       setItemTranscript: (id, words) => dispatch({ type: 'setItemTranscript', id, words }),
       setAssetTranscription: (id, patch) => dispatch({ type: 'pool.setTranscription', id, patch }),
