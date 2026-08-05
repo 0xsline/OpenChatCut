@@ -130,6 +130,23 @@ export const CREATIVE_SKILL_METADATA: CreativeSkillMetadata[] = [
       'thumbnail',
       'video-cover'
     ]
+  },
+  {
+    id: '11111111-1240-4000-8000-000000000013',
+    slug: 'skill-creator',
+    name: 'Skill Creator',
+    nameZh: '技能创作器',
+    summary: '把重复流程或想法做成可复用的自定义技能（SKILL.md），并安装到本机技能目录。',
+    scenarios: [
+      'create-skill',
+      'skill-creator',
+      'make-a-skill',
+      'new-skill',
+      'workflow-capture',
+      '创建技能',
+      '写技能',
+      '把流程做成技能'
+    ]
   }
 ];
 
