@@ -1,7 +1,5 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   memo,
   useRef,
@@ -13,6 +11,11 @@ import {
 import { theme } from '../theme';
 import { t as translate, useT } from '../i18n/locale';
 import { setLibraryDrag, type LibraryDragKind } from './drag';
+import {
+  PreviewCleanupContext,
+  type PreviewCleanup,
+  type RegisterPreviewCleanup,
+} from './ResourcePreviewContext';
 import { useFixedVirtualGrid } from '../hooks/useFixedVirtualGrid';
 import { LIBRARY_CARD_GRID_METRICS } from './libraryCardGrid';
 
@@ -59,17 +62,6 @@ interface ResourceBrowserProps {
 }
 
 type Translate = typeof translate;
-type PreviewCleanup = () => void;
-type RegisterPreviewCleanup = (cleanup: PreviewCleanup) => void;
-
-const PreviewCleanupContext = createContext<RegisterPreviewCleanup | null>(null);
-
-export function useResourcePreviewCleanup(cleanup: PreviewCleanup): void {
-  const register = useContext(PreviewCleanupContext);
-  useEffect(() => {
-    register?.(cleanup);
-  }, [cleanup, register]);
-}
 
 interface ActiveInteraction {
   scope: LibraryDragKind | undefined;

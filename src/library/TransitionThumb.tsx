@@ -23,7 +23,7 @@ import {
   THUMB_W,
   transitionThumbUrlAsync,
 } from '../gl/transitionThumb';
-import { useResourcePreviewCleanup } from './ResourceBrowser';
+import { useResourcePreviewCleanup } from './ResourcePreviewContext';
 import { schedulePreviewStill } from './thumbStillQueue';
 
 interface TransitionThumbProps {

@@ -18,7 +18,11 @@ export const DEFAULT_UPLOAD_DIR = join(process.cwd(), 'public', 'media', 'upload
  * `\w` Whitelisting will leak them to SPA false 200). */
 export function isSafeUploadName(name: string): boolean {
   if (!name || name.startsWith('.')) return false;
-  if (name.includes('/') || name.includes('\\') || /[\x00-\x1f\x7f]/.test(name)) return false;
+  if (name.includes('/') || name.includes('\\')) return false;
+  if ([...name].some((ch) => {
+    const code = ch.charCodeAt(0);
+    return code < 0x20 || code === 0x7f;
+  })) return false;
   return true;
 }
 
@@ -102,7 +106,7 @@ async function resolveOrHydrateUploadFileOnce(
       if (info.isFile()) {
         return { file: local, contentType: mimeFor(name), bytes: info.size, cached: true };
       }
-    } catch (error) {
+    } catch {
       signal?.throwIfAborted();
       // A concurrent removal is a cache miss; let the R2 read-through restore it.
     }

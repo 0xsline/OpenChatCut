@@ -20,7 +20,8 @@ import type { AspectFit, CssTransitionType, GlslTransitionType, KeyframeProp, Pr
 import { sourceFrameAt } from './sourceLimit';
 import { nestedSequenceFrom, resolveTimelineRenderPlan, SequenceGraphError, type SequenceGraphLimits } from './sequenceGraph';
 import { continuousVideoAudioGroups } from './transitionAudio';
-import { PreviewTransitionIn, previewTransitionType } from './transitionPreview';
+import { PreviewTransitionIn } from './transitionPreview.tsx';
+import { previewTransitionType } from './transitionPreview';
 import { TimelineReadinessGate, timelineReadinessKey } from './TimelineReadinessGate';
 import { clampVisualBorderRadius, visibleVisualFrameRect } from './visualFrameGeometry';
 
@@ -503,8 +504,15 @@ function SelectedPreviewStatusReporter({ status, listener }: {
 }) {
   useEffect(() => {
     if (!listener) return undefined;
-    listener(status);
-    return () => listener({ ...status, phase: 'inactive' });
+    const snapshot = {
+      kind: status.kind,
+      targetId: status.targetId,
+      adapter: status.adapter,
+      phase: status.phase,
+      fallbackReason: status.fallbackReason,
+    };
+    listener(snapshot);
+    return () => listener({ ...snapshot, phase: 'inactive' });
   }, [listener, status.kind, status.targetId, status.adapter, status.phase, status.fallbackReason]);
   return null;
 }

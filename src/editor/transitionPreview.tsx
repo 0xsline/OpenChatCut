@@ -1,24 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { AbsoluteFill, useCurrentFrame } from 'remotion';
-import { CSS_TRANSITION_TYPES } from './types';
-import type { CssTransitionType, TransitionDirection, TransitionItem } from './types';
-
-const PREVIEW_APPROXIMATION: Partial<Record<TransitionItem['type'], CssTransitionType>> = {
-  'clean-line-wipe': 'soft-wipe',
-  'page-curl': 'soft-wipe',
-  'impact-shake': 'whip-pan',
-  'rack-focus': 'luma-blend',
-  'organic-dissolve': 'luma-blend',
-  'anticipation-zoom': 'luma-blend',
-  'radial-blur': 'luma-blend',
-  'glitch-cut': 'flash',
-  'dip-to-color': 'dip-to-black',
-};
-
-export function previewTransitionType(type: TransitionItem['type']): CssTransitionType {
-  if (CSS_TRANSITION_TYPES.has(type)) return type as CssTransitionType;
-  return PREVIEW_APPROXIMATION[type] ?? 'cross-dissolve';
-}
+import type { CssTransitionType, TransitionDirection } from './types';
 
 interface Entrance {
   opacity: number;

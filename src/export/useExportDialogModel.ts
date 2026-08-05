@@ -142,7 +142,7 @@ function useVideoSettings(state: TimelineState, qualityMode: QualityMode): Expor
   const [customBitrateMbps, setCustomBitrateMbps] = useState(DEFAULT_CUSTOM_BITRATE_MBPS);
   // Re-apply quality defaults when the user toggles balanced ↔ master.
   useEffect(() => {
-    setResolution(exportResolutionForCanvas(state, qualityMode));
+    setResolution(exportResolutionForCanvas({ width: state.width, height: state.height }, qualityMode));
     setBitrateMode(defaultBitrateModeForQuality(qualityMode));
     // Master quality keeps ProRes available but does not force it (file size).
     setCodec((current) => (qualityMode !== 'master' && current === 'prores' ? 'h264' : current));

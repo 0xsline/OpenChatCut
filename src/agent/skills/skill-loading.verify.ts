@@ -61,7 +61,7 @@ try {
     assert(loaded && typeof loaded === 'object' && 'content' in loaded);
     assert.equal(loaded.content, skill.body);
     const prompt = prompts.creativeModePrompt(skill);
-    assert.match(prompt, new RegExp(`name=\"${skill.slug}\"`));
+    assert.match(prompt, new RegExp(`name="${skill.slug}"`));
     assert(!prompt.includes(skill.body));
   }
 
@@ -88,7 +88,7 @@ try {
   };
   catalog.setCustomSkills([custom]);
   const customPrompt = prompts.creativeModePrompt(custom);
-  assert.match(customPrompt, /name=\"skill_contract_check\"/);
+  assert.match(customPrompt, /name="skill_contract_check"/);
   assert(!customPrompt.includes('PRIVATE_SKILL_BODY_SENTINEL'));
   const customLoaded = loader.execPluginSkillTool('load_skill', { name: custom.id });
   assert(customLoaded && typeof customLoaded === 'object' && 'content' in customLoaded);
