@@ -4,6 +4,7 @@ import {
   rejectUnknownFields,
   resolveUpdateType,
   shouldCoerceEffectUpdateToClip,
+  stripEffectLocators,
 } from './edit-item-fields';
 import { GENERIC_ITEM_KINDS, validateGenericUpdate } from './edit-item-generic';
 import type { TimelineState } from '../../editor/types';
@@ -75,6 +76,46 @@ assert.equal(shouldCoerceEffectUpdateToClip(
   assert.match(String(msg ?? ''), /type:"audio"/);
   assert.match(String(msg ?? ''), /volume/);
   assert.match(String(msg ?? ''), /generic update/i);
+}
+
+// ── Coerced payload shape: effect-style rows must arrive at the generic
+// validator without the targetItemId locator (it is not a GENERIC_UPDATE_KEYS
+// field), pinned to the live item id. ──
+{
+  const coerced = stripEffectLocators(
+    { type: 'effect', targetItemId: 'v0_main', volume: 0.5 },
+    'video',
+    'v0_main',
+  );
+  assert.deepEqual(coerced, { type: 'video', volume: 0.5, itemId: 'v0_main' });
+  const r = validateGenericUpdate(state, coerced);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.kind, 'video');
+  assert.equal(r.volume, 0.5);
+}
+{
+  // Omitted type + effect-style locator: resolveUpdateType picks the clip kind,
+  // then stripEffectLocators rewrites it for the generic validator.
+  const type = resolveUpdateType({ targetItemId: 'a0_bgm', volume: 0.3 }, 'audio', GENERIC_ITEM_KINDS);
+  assert.equal(type, 'audio');
+  const coerced = stripEffectLocators({ targetItemId: 'a0_bgm', volume: 0.3 }, type, 'a0_bgm');
+  assert.deepEqual(coerced, { volume: 0.3, type: 'audio', itemId: 'a0_bgm' });
+  const r = validateGenericUpdate(state, coerced);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.kind, 'audio');
+  assert.equal(r.volume, 0.3);
+}
+{
+  // Real effect rows must NOT coerce — the effect-only signals keep them out.
+  assert.equal(
+    shouldCoerceEffectUpdateToClip(
+      { type: 'effect', targetItemId: 'v0_main', effectId: 'fx_1', propertyOverrides: { intensity: 1 }, volume: 0.5 },
+      'effect',
+      'video',
+      GENERIC_ITEM_KINDS,
+    ),
+    false,
+  );
 }
 
 console.log('edit-item-volume-hint.verify: ok');

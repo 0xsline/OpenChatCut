@@ -23,6 +23,7 @@ import {
   rejectSpecializedUnknownFields,
   resolveUpdateType,
   shouldCoerceEffectUpdateToClip,
+  stripEffectLocators,
 } from './edit-item-fields';
 import {
   cleanOverrides,
@@ -70,14 +71,18 @@ export function validateUpdate(ctx: AgentContext, entry: Entry): OpResult {
   const type = resolveUpdateType(entry, item?.kind, GENERIC_ITEM_KINDS);
   // Common LLM mistake: type:"effect" (or default effect) + volume/timing on a real clip.
   if (shouldCoerceEffectUpdateToClip(entry, type, item?.kind, GENERIC_ITEM_KINDS) && item) {
-    return validateGenericUpdate(ctx.getState(), { ...entry, type: item.kind, itemId: item.id });
+    return validateGenericUpdate(ctx.getState(), stripEffectLocators(entry, item.kind, item.id));
   }
   if (type === 'transition' || type === 'effect') {
     const unknown = rejectSpecializedUnknownFields('updates', type, entry);
     if (unknown) return { error: unknown };
     return type === 'transition' ? validateTransitionUpdate(ctx, entry) : validateEffectUpdate(ctx, entry);
   }
-  if (GENERIC_ITEM_KINDS.has(type)) return validateGenericUpdate(ctx.getState(), entry);
+  if (GENERIC_ITEM_KINDS.has(type)) {
+    // Effect-style locators (targetItemId) are not generic update fields: normalize
+    // when the live item resolved, so {volume, targetItemId} rows survive validation.
+    return validateGenericUpdate(ctx.getState(), item ? stripEffectLocators(entry, type, item.id) : entry);
+  }
   return { error: `update type not supported: ${type}` };
 }
 

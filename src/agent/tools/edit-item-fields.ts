@@ -105,6 +105,21 @@ export function hasEffectOnlyUpdateSignals(entry: Record<string, unknown>): bool
 }
 
 /**
+ * Rewrite an effect-style row for the generic clip validator: drop the
+ * targetItemId locator (not a generic update field) and pin the item id.
+ * Exported separately so verify can exercise the exact coerced payload shape.
+ */
+export function stripEffectLocators(
+  entry: Record<string, unknown>,
+  type: string,
+  itemId: string,
+): Record<string, unknown> {
+  const rest = { ...entry };
+  delete rest.targetItemId;
+  return { ...rest, type, itemId };
+}
+
+/**
  * When type is omitted, prefer the live clip kind if the payload looks like a
  * clip edit (volume/timing/…). Default remains "effect" for pure effect rows.
  */
