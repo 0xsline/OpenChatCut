@@ -19,7 +19,11 @@ import {
   validateSlipUpdate,
 } from './edit-item-generic';
 import { parseTransitionAssetId, parseZoomLibraryId } from './library-catalog';
-import { rejectSpecializedUnknownFields } from './edit-item-fields';
+import {
+  rejectSpecializedUnknownFields,
+  resolveUpdateType,
+  shouldCoerceEffectUpdateToClip,
+} from './edit-item-fields';
 import {
   cleanOverrides,
   envelopeFrom,
@@ -62,7 +66,12 @@ export function validateAdd(ctx: AgentContext, entry: Entry): OpResult {
 
 export function validateUpdate(ctx: AgentContext, entry: Entry): OpResult {
   if (entry.operation !== undefined) return validateSlipUpdate(ctx.getState(), entry);
-  const type = String(entry.type ?? 'effect');
+  const item = findItem(ctx.getState().items, entry.itemId ?? entry.id ?? entry.targetItemId);
+  const type = resolveUpdateType(entry, item?.kind, GENERIC_ITEM_KINDS);
+  // Common LLM mistake: type:"effect" (or default effect) + volume/timing on a real clip.
+  if (shouldCoerceEffectUpdateToClip(entry, type, item?.kind, GENERIC_ITEM_KINDS) && item) {
+    return validateGenericUpdate(ctx.getState(), { ...entry, type: item.kind, itemId: item.id });
+  }
   if (type === 'transition' || type === 'effect') {
     const unknown = rejectSpecializedUnknownFields('updates', type, entry);
     if (unknown) return { error: unknown };

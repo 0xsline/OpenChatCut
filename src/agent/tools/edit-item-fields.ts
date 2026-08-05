@@ -77,11 +77,71 @@ export function didYouMean(got: string, allowed: readonly string[]): string | nu
   return bestDistance <= 3 ? best : null;
 }
 
+/** Clip-level fields that belong on generic audio/video updates — not effect rows. */
+export const CLIP_LEVEL_UPDATE_KEYS = [
+  'volume', 'fadeInSeconds', 'fadeOutSeconds', 'keyframes',
+  'srcInFrame', 'fromFrame', 'startFrame', 'durationInFrames', 'props', 'track', 'trackId',
+] as const;
+
+const CLIP_UPDATE_HINT_FIELDS = [
+  ...CLIP_LEVEL_UPDATE_KEYS,
+  'itemId',
+] as const;
+
+export function hasClipLevelUpdateFields(entry: Record<string, unknown>): boolean {
+  return CLIP_LEVEL_UPDATE_KEYS.some((key) => entry[key] !== undefined);
+}
+
+export function hasEffectOnlyUpdateSignals(entry: Record<string, unknown>): boolean {
+  return entry.effectId !== undefined
+    || entry.propertyOverrides !== undefined
+    || (
+      entry.targetItemId !== undefined
+      && entry.volume === undefined
+      && entry.keyframes === undefined
+      && entry.fadeInSeconds === undefined
+      && entry.fadeOutSeconds === undefined
+    );
+}
+
+/**
+ * When type is omitted, prefer the live clip kind if the payload looks like a
+ * clip edit (volume/timing/…). Default remains "effect" for pure effect rows.
+ */
+export function resolveUpdateType(
+  entry: Record<string, unknown>,
+  itemKind: string | undefined,
+  genericKinds: ReadonlySet<string>,
+): string {
+  if (entry.type !== undefined && entry.type !== null && String(entry.type) !== '') {
+    return String(entry.type);
+  }
+  if (hasClipLevelUpdateFields(entry) && !hasEffectOnlyUpdateSignals(entry)
+    && itemKind && genericKinds.has(itemKind)) {
+    return itemKind;
+  }
+  return 'effect';
+}
+
+/** Whether an explicit type:"effect" row should be rewritten as a clip update. */
+export function shouldCoerceEffectUpdateToClip(
+  entry: Record<string, unknown>,
+  type: string,
+  itemKind: string | undefined,
+  genericKinds: ReadonlySet<string>,
+): boolean {
+  return type === 'effect'
+    && hasClipLevelUpdateFields(entry)
+    && !hasEffectOnlyUpdateSignals(entry)
+    && !!itemKind
+    && genericKinds.has(itemKind);
+}
+
 /** Reject keys not in the allowed set; optionally give the media-replacement guidance. */
 export function rejectUnknownFields(
   entry: Record<string, unknown>,
   allowed: AllowedFields,
-  options?: { banAssetId?: boolean },
+  options?: { banAssetId?: boolean; specializedType?: string },
 ): string | null {
   if (options?.banAssetId && entry.assetId !== undefined) {
     return (
@@ -96,6 +156,18 @@ export function rejectUnknownFields(
   const allowedList = Object.keys(allowed);
   for (const key of Object.keys(entry)) {
     if (allowed[key]) continue;
+    // Common LLM mix-up: set volume on type:"effect" (or defaulted effect updates).
+    if (
+      options?.specializedType === 'effect'
+      && (key === 'volume' || CLIP_UPDATE_HINT_FIELDS.includes(key as typeof CLIP_UPDATE_HINT_FIELDS[number]))
+    ) {
+      return (
+        `unknown field "${key}" on effect update.\n\n`
+        + 'To change clip volume/timing/fades, use a generic update with the clip kind — not type:"effect".\n'
+        + 'Example: updates:[{type:"audio", itemId:"…", volume:0.3}] or type:"video" for a video clip.\n'
+        + 'Effect updates only accept: type, targetItemId, id, effectId, assetId, propertyOverrides.'
+      );
+    }
     const hint = didYouMean(key, allowedList);
     return hint
       ? `unknown field "${key}". Did you mean "${hint}"?\n\nUse only supported fields from the edit_item schema. If this was a spelling variant, retry with the exact field name from the tool description.`
@@ -124,5 +196,7 @@ export function rejectSpecializedUnknownFields(
   } else if (type === 'transition') {
     allowed = TRANSITION_DELETE_KEYS;
   }
-  return allowed ? rejectUnknownFields(entry, allowed) : null;
+  return allowed
+    ? rejectUnknownFields(entry, allowed, type === 'effect' ? { specializedType: 'effect' } : undefined)
+    : null;
 }
