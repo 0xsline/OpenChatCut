@@ -403,6 +403,30 @@ export function ChatComposer(props: ChatComposerProps) {
       >
         <span className="cc-chat-composer-resize-grip" aria-hidden />
       </div>
+      {activeSkill && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }} title={t('当前创作工作流，随消息发送')}>
+          <span
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%',
+              fontSize: 11, lineHeight: 1.2, padding: '2px 6px', borderRadius: 999,
+              background: theme.panel, border: `0.5px solid ${theme.accent}`, color: theme.text,
+            }}
+          >
+            <Icon name="wand" size={12} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {t('创作模式：{name}', { name: skillName(activeSkill) })}
+            </span>
+            <button
+              type="button"
+              title={t('取消创作模式')}
+              onClick={() => onCreativeModeChange(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.textDim, padding: 0, lineHeight: 0, display: 'grid' }}
+            >
+              <Icon name="x" size={11} />
+            </button>
+          </span>
+        </div>
+      )}
       {selectedRefs.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }} title={t('发送时以 chat_context_entry 结构化注入')}>
           {selectedRefs.map((r) => (
