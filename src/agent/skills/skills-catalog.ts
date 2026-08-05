@@ -10,7 +10,7 @@ interface CreativeSkillMetadata {
   scenarios: string[];
 }
 
-const CREATIVE_SKILL_METADATA: CreativeSkillMetadata[] = [
+export const CREATIVE_SKILL_METADATA: CreativeSkillMetadata[] = [
   {
     id: '11111111-1240-4000-8000-000000000004',
     slug: 'long-video-to-shorts',
