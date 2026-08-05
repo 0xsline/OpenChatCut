@@ -315,7 +315,10 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
     ) return;
     const referencesForMessage = selectedRefsRef.current;
     invalidateChatAttachmentDraft();
-    send(input, { askOnly: mode === 'ask', references: referencesForMessage });
+    const sendText = referencesForMessage.length
+      ? `${input}${input && !input.endsWith(' ') ? ' ' : ''}${referencesForMessage.map((reference) => refPromptToken(reference)).join(' ')}`
+      : input;
+    send(sendText, { askOnly: mode === 'ask', references: referencesForMessage });
     setInput('');
     commitSelectedRefs([]);
     clearComposerDraft(projectId);
@@ -333,13 +336,10 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
     try { const improved = await enhance(input); setInput(improved); taRef.current?.focus(); }
     finally { setEnhancing(false); }
   };
-  // Mention chips mirror into the text as their prompt token:
-  // pool assets stay `@name`; selection picks use `@t[…]`/`@r[…]`/`@q[…]`/`@[…]`.
+  // The chip is the single visual affordance; the prompt token is appended to
+  // the message text only at send time (keeps message history self-describing).
   const insertRef = (reference: RefItem) => {
     commitSelectedRefs(upsertChatAttachmentReference(selectedRefsRef.current, reference));
-    const token = refPromptToken(reference);
-    setInput((value) =>
-      value.includes(token) ? value : `${value}${value && !value.endsWith(' ') ? ' ' : ''}${token} `);
   };
   const removeRef = (id: string) => {
     const gone = selectedRefsRef.current.find((reference) => reference.id === id);
@@ -348,8 +348,6 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
       cancelChatAttachmentImportByReference(attachmentLifecycleRef.current, id),
     );
     commitSelectedRefs(removeChatAttachmentReference(selectedRefsRef.current, id));
-    const escaped = refPromptToken(gone).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    setInput((value) => value.replace(new RegExp(`${escaped}\\s?`, 'g'), '').trimStart());
   };
   // Keep the cross-panel pick mode in sync with the toggle; force it off when
   // the panel collapses/unmounts so no orphaned crosshair lingers (selection
