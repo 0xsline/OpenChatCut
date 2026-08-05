@@ -23,6 +23,8 @@ import {
   type PreviewPoint,
   type PreviewSize,
 } from './previewTransform';
+import { previewTextEditFields } from './previewTextEdit';
+import { PreviewTextEditBar } from './PreviewTextEditBar';
 
 export interface PreviewTransformOverlayProps {
   state: TimelineState;
@@ -32,6 +34,8 @@ export interface PreviewTransformOverlayProps {
   onSetItemKeyframe: (id: string, prop: KeyframeProp, localFrame: number, value: number) => void;
   onBeginHistoryGesture: () => void;
   onEndHistoryGesture: () => void;
+  /** Live text style edits for text / text-like MG clips. */
+  onItemPropChange?: (id: string, key: string, value: unknown) => void;
 }
 
 type GestureMode = 'move' | 'scale' | 'rotate';
@@ -88,6 +92,7 @@ export function PreviewTransformOverlay({
   onSetItemKeyframe,
   onBeginHistoryGesture,
   onEndHistoryGesture,
+  onItemPropChange,
 }: PreviewTransformOverlayProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [frame, setFrame] = useState(() => Math.round(playerRef.current?.getCurrentFrame() ?? 0));
@@ -386,6 +391,17 @@ export function PreviewTransformOverlay({
             aria-label={t('旋转片段')}
             style={percentPosition(rotateHandle.handle)}
           />
+          {onItemPropChange
+            && selectedCandidate
+            && previewTextEditFields(selectedCandidate.item)
+            && (
+              <PreviewTextEditBar
+                item={selectedCandidate.item}
+                selection={selection}
+                composition={{ width: state.width, height: state.height }}
+                onPropChange={onItemPropChange}
+              />
+            )}
         </>
       )}
     </div>

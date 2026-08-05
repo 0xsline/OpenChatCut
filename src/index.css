@@ -1945,3 +1945,16 @@ button, input, select { font: inherit; }
 .cc-preview-transform-scale-1,.cc-preview-transform-scale-3 { cursor:nesw-resize; }
 .cc-preview-transform-rotate { border-radius:50%; cursor:grab; }
 .cc-preview-transform-rotate:active { cursor:grabbing; }
+/* Text / MG style bar above the transform outline (same chrome as caption edit). */
+.cc-preview-text-edit-bar {
+  position:absolute; z-index:6; pointer-events:auto;
+  bottom:auto; left:auto;
+}
+.cc-preview-text-edit-tag {
+  display:inline-flex; align-items:center; height:26px; padding:0 8px;
+  color:var(--cc-text-dim); font-size:11px; font-weight:600; letter-spacing:0.02em;
+}
+.cc-preview-text-edit-hint {
+  display:inline-flex; align-items:center; height:26px; padding:0 10px;
+  color:var(--cc-text-muted); font-size:11px; white-space:nowrap;
+}

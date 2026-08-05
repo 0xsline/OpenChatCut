@@ -19,6 +19,7 @@ import {
   captionPreviewTextPatch,
   findCaptionPreviewTarget,
 } from './captionPreviewTarget';
+import type { CaptionsData } from './types';
 
 let captions = newManualCaptions();
 const laneId = captions.sourceEntries![0]!.id;
@@ -177,5 +178,27 @@ assert.equal(
 
 const deletePatch = captionPreviewTextPatch(captions, target!, '');
 assert.equal(deletePatch?.sourceEntries?.[0]?.words?.length, 0);
+
+// Auto multi-lane (sourceEntries without words[]) must still produce a single-stream
+// preview target so the canvas hitbox is not empty.
+const autoItem = {
+  id: 'v1',
+  track: 'V1' as const,
+  startFrame: 0,
+  durationInFrames: 90,
+  kind: 'video' as const,
+  name: 'clip',
+  src: 'x.mp4',
+  transcript: [{ text: '海风', start: 0, end: 1_500 }],
+};
+const autoOnly: CaptionsData = {
+  enabled: true,
+  template: 'plain',
+  pacing: 'phrase',
+  sourceEntries: [{ id: 'src1', itemId: 'v1' }],
+};
+const autoTarget = findCaptionPreviewTarget(autoOnly, [autoItem], 30, 500);
+assert.equal(autoTarget?.kind, 'single', 'auto multi-lane falls back to a clickable single cue target');
+assert.match(autoTarget?.cue.text ?? '', /海风/);
 
 console.log('captionPreviewTarget.verify: ok');

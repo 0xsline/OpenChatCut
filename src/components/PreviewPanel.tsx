@@ -92,6 +92,7 @@ interface PreviewPanelProps {
   onSetItemKeyframe?: (id: string, prop: KeyframeProp, localFrame: number, value: number) => void;
   onBeginHistoryGesture?: () => void;
   onEndHistoryGesture?: () => void;
+  onItemPropChange?: (id: string, key: string, value: unknown) => void;
   projectId: string;
   timelineId: string;
   reviewState: TimelineState;
@@ -108,6 +109,7 @@ interface PreviewPanelProps {
 export const PreviewPanel = memo(function PreviewPanel({
   state, project, playerRef, onImport, offlineSrcs, onUpdateCaptions, onSelectCaption, activeCaptionSelection, onSeedChat,
   onSelectItem, onSetItemTransform, onSetItemKeyframe, onBeginHistoryGesture, onEndHistoryGesture,
+  onItemPropChange,
   projectId, timelineId, reviewState, selectedItem, reviewRequest, inspectorOpen, onToggleInspector,
   selectedPreviewStatuses, onSelectedPreviewStatus, slipPreview,
   hoverPreviewFrame = null,
@@ -135,7 +137,14 @@ export const PreviewPanel = memo(function PreviewPanel({
   const [fullscreen, setFullscreen] = useState(false);
   const transformApi = onSelectItem && onSetItemTransform && onSetItemKeyframe
     && onBeginHistoryGesture && onEndHistoryGesture
-    ? { onSelectItem, onSetItemTransform, onSetItemKeyframe, onBeginHistoryGesture, onEndHistoryGesture }
+    ? {
+      onSelectItem,
+      onSetItemTransform,
+      onSetItemKeyframe,
+      onBeginHistoryGesture,
+      onEndHistoryGesture,
+      onItemPropChange,
+    }
     : null;
   const hasItems = state.items.length > 0;
   const previewCanvasSize = fitPreviewCanvasSize(stageSize, {
