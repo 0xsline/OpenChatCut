@@ -61,6 +61,8 @@ export interface AgentContext {
   /** The complete project snapshot of the previous step (undo target), null if there is no history. undo_last_change Use it to
    * "Go back to the previous step" is expressed as a normal edit, and the proposal will be confirmed by the user as usual. */
   getUndoTarget?: () => ProjectDoc | null;
+  /** Next redo snapshot after an undo (history future[0]); redo_last_change applies it like undo. */
+  getRedoTarget?: () => ProjectDoc | null;
   /** Proposal confirmation mode (built-in chat: auto-apply setting; external: session approvalMode).
    * Drives provider routing: 'manual' asks the user once among several providers; 'auto' lets the agent pick. */
   getApprovalMode?: () => ApprovalMode;

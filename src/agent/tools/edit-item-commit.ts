@@ -16,7 +16,10 @@ export function commitPlan(ctx: AgentContext, plan: OpResult, ripple = false): O
   if (name === 'addAudio') return commitAudioPlan(ctx, plan, ripple);
   if (name === 'addMg') return commitMotionGraphicPlan(ctx, plan, ripple);
   if (name === 'addMedia') return commitMediaPlan(ctx, plan);
-  if (name === 'genericUpdate' || name === 'genericDelete' || name === 'slip') {
+  if (name === 'addText') return commitTextPlan(ctx, plan, ripple);
+  if (name === 'addSolid') return commitSolidPlan(ctx, plan, ripple);
+  if (name === 'genericUpdate' || name === 'genericDelete' || name === 'slip'
+    || name === 'replaceMedia' || name === 'relinkMedia') {
     return applyGeneric(plan, ctx.commands) ?? { error: `unknown plan ${name}` };
   }
   return { error: `unknown plan ${name}` };
@@ -151,5 +154,59 @@ function commitMediaPlan(ctx: AgentContext, plan: OpResult): OpResult {
       startFrame: plan.startFrame ?? 'appended',
       durationInFrames: placed.durationInFrames,
     },
+  };
+}
+
+function commitTextPlan(ctx: AgentContext, plan: OpResult, ripple: boolean): OpResult {
+  const itemId = ctx.commands.addTextClip({
+    track: plan.track as string | undefined,
+    startFrame: plan.startFrame as number | undefined,
+    durationInFrames: plan.durationInFrames as number | undefined,
+    ripple,
+    name: plan.name as string | undefined,
+    text: plan.text as string | undefined,
+    fontSize: plan.fontSize as number | undefined,
+    color: plan.color as string | undefined,
+    fontWeight: plan.fontWeight as number | undefined,
+    align: plan.align as 'left' | 'center' | 'right' | undefined,
+  });
+  return {
+    ok: true,
+    kind: 'text',
+    placed: {
+      itemId,
+      name: plan.name ?? '文字',
+      text: plan.text,
+      track: plan.track,
+      startFrame: plan.startFrame ?? 'appended',
+      durationInFrames: plan.durationInFrames ?? 90,
+      color: plan.color,
+      fontSize: plan.fontSize,
+    },
+    ripple,
+  };
+}
+
+function commitSolidPlan(ctx: AgentContext, plan: OpResult, ripple: boolean): OpResult {
+  const itemId = ctx.commands.addSolidItem({
+    track: plan.track as string | undefined,
+    startFrame: plan.startFrame as number | undefined,
+    durationInFrames: plan.durationInFrames as number | undefined,
+    color: plan.color as string | undefined,
+    name: plan.name as string | undefined,
+    ripple,
+  });
+  return {
+    ok: true,
+    kind: 'solid',
+    placed: {
+      itemId,
+      name: plan.name ?? '纯色',
+      color: plan.color ?? '#1a1a1a',
+      track: plan.track,
+      startFrame: plan.startFrame ?? 'appended',
+      durationInFrames: plan.durationInFrames ?? 150,
+    },
+    ripple,
   };
 }

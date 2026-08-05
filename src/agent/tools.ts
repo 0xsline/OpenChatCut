@@ -42,9 +42,11 @@ import { RUN_CODE_TOOL_NAMES, RUN_CODE_TOOL_SCHEMAS } from './tools/schemas/run-
 import { PROBE_TOOL_NAMES, PROBE_TOOL_SCHEMAS } from './tools/schemas/probe-tools';
 import { MULTICAM_TOOL_NAMES, MULTICAM_TOOL_SCHEMAS } from './tools/schemas/multicam-tools';
 import { UNDO_TOOL_NAMES, UNDO_TOOL_SCHEMAS } from './tools/schemas/undo-tools';
+import { VERSION_TOOL_NAMES, VERSION_TOOL_SCHEMAS } from './tools/schemas/version-tools';
 import { LAYOUT_TOOL_NAMES, LAYOUT_TOOL_SCHEMAS } from './tools/schemas/layout-tools';
 import { SILENCE_TOOL_NAMES, SILENCE_TOOL_SCHEMAS } from './tools/schemas/silence-tools';
 import { COLOR_SCOPE_TOOL_NAMES, COLOR_SCOPE_TOOL_SCHEMAS } from './tools/schemas/color-scope-tools';
+import { AUTO_GRADE_TOOL_NAMES, AUTO_GRADE_TOOL_SCHEMAS } from './tools/schemas/auto-grade-tools';
 import { BEAT_TOOL_NAMES, BEAT_TOOL_SCHEMAS } from './tools/schemas/beat-tools';
 import { withProgressTargets } from './tools/schemas/progress';
 
@@ -294,14 +296,18 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...PROBE_TOOL_SCHEMAS,
   // Professional timeline: persistent clock/audio multicam, range switches, and linked/sync-lock groups.
   ...MULTICAM_TOOL_SCHEMAS,
-  // Undo: undo_last_change submits the previous project snapshot as a normal edit.
+  // Undo/redo: undo_last_change / redo_last_change submit history snapshots as normal edits.
   ...UNDO_TOOL_SCHEMAS,
+  // Named version checkpoints: manage_versions list/save/restore/delete.
+  ...VERSION_TOOL_SCHEMAS,
   // Named layouts: apply_layout computes transform+crop for split screen, picture-in-picture, grid, or reset.
   ...LAYOUT_TOOL_SCHEMAS,
   // Remove dead air: local relative-level detection plus split/remove ripple closure.
   ...SILENCE_TOOL_SCHEMAS,
   // Numeric color scopes: inspect_color reports black/white points, clipping, casts, and hue histograms.
   ...COLOR_SCOPE_TOOL_SCHEMAS,
+  // Technical auto grade: auto_grade analyze|apply → setFilters on eligible pool media clips.
+  ...AUTO_GRADE_TOOL_SCHEMAS,
   // Beat detection: local DSP reports BPM, beats, and downbeats and can add timeline markers for beat cuts.
   ...BEAT_TOOL_SCHEMAS,
   // Optional advisory review of multi-scene plans; it has no runtime enforcement role.
@@ -376,9 +382,11 @@ const EXECUTOR_GROUPS: ReadonlyArray<readonly [ReadonlySet<string>, ToolExecutor
     const { execUndoTool } = await import('./tools/undo-tools');
     return (name, _args, ctx) => execUndoTool(name, ctx);
   }],
+  [VERSION_TOOL_NAMES, async () => (await import('./tools/version-tools')).execVersionTool],
   [LAYOUT_TOOL_NAMES, async () => (await import('./tools/layout-tools')).execLayoutTool],
   [SILENCE_TOOL_NAMES, async () => (await import('./tools/silence-tools')).execSilenceTool],
   [COLOR_SCOPE_TOOL_NAMES, async () => (await import('./tools/color-scope-tools')).execColorScopeTool],
+  [AUTO_GRADE_TOOL_NAMES, async () => (await import('./tools/auto-grade-tools')).execAutoGradeTool],
   [BEAT_TOOL_NAMES, async () => (await import('./tools/beat-tools')).execBeatTool],
   [AUDIO_ASSET_TOOL_NAMES, async () => (await import('./tools/audio-asset-tools')).execAudioAssetTool],
   [SCENE_QUALITY_TOOL_NAMES, async () => (await import('./tools/scene-quality-tools')).execSceneQualityTool],

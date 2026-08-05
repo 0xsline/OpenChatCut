@@ -1,5 +1,6 @@
 export { MEDIA_POOL_TOOL_SCHEMAS, MEDIA_POOL_TOOL_NAMES } from './schemas/media-pool-tools';
 import type { AgentContext } from '../context';
+import { createMediaSourceRevision } from '../../editor/mediaSourceRevision';
 import type { MediaAsset, MediaFolder, ProjectDoc } from '../../editor/types';
 
 type Args = Record<string, unknown>;
@@ -32,6 +33,23 @@ function findAsset(doc: ProjectDoc, ref: string): MediaAsset | null {
 function validName(value: unknown): string | null {
   const name = String(value ?? '').trim();
   return name && !name.includes('/') ? name : null;
+}
+
+function parseAssetRefs(args: Args): string[] {
+  return String(args.assetIds ?? '').split(',').map((id) => id.trim()).filter(Boolean);
+}
+
+function resolveAssets(doc: ProjectDoc, refs: string[]): { found: MediaAsset[]; missing: string[] } {
+  const found = refs.map((ref) => findAsset(doc, ref));
+  const missing = refs.filter((_, index) => !found[index]);
+  return { found: found.filter((asset): asset is MediaAsset => !!asset), missing };
+}
+
+function referencingClipCount(items: { templateId?: string; src?: string }[], asset: MediaAsset): number {
+  return items.filter((item) => (
+    (asset.kind === 'motion-graphic' && item.templateId === asset.id)
+    || (!!asset.src && item.src === asset.src)
+  )).length;
 }
 
 export async function execMediaPoolTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
@@ -75,27 +93,124 @@ export async function execMediaPoolTool(name: string, args: Args, ctx: AgentCont
       return { ok: true, deleted: pathOf(folder, doc) };
     }
     case 'move_assets': {
-      const refs = String(args.assetIds ?? '').split(',').map((id) => id.trim()).filter(Boolean);
+      const refs = parseAssetRefs(args);
       if (!refs.length) return { error: 'assetIds is required' };
-      const found = refs.map((ref) => findAsset(doc, ref));
-      const missing = refs.filter((_, index) => !found[index]);
+      const { found, missing } = resolveAssets(doc, refs);
       if (missing.length) return { error: `assets not found: ${missing.join(', ')}` };
       const target = findFolder(doc, args.targetPath);
       if (target === null) return { error: `target folder not found: ${args.targetPath}` };
-      const ids = found.map((asset) => asset!.id);
+      const ids = found.map((asset) => asset.id);
       ctx.commands.moveMediaAssets(ids, target?.id);
       return { ok: true, moved: ids, target: target ? pathOf(target, doc) : 'Master' };
     }
     case 'rename_asset': {
-      const refs = String(args.assetIds ?? '').split(',').map((id) => id.trim()).filter(Boolean);
+      const refs = parseAssetRefs(args);
       const newName = String(args.newName ?? '').trim();
       if (refs.length !== 1 || !newName) return { error: 'rename_asset requires one assetIds value and newName' };
-      const asset = findAsset(doc, refs[0]);
+      const asset = findAsset(doc, refs[0]!);
       if (!asset) return { error: `asset not found: ${refs[0]}` };
       ctx.commands.renameMediaAsset(asset.id, newName);
       return { ok: true, assetId: asset.id, name: newName };
     }
+    case 'favorite_assets':
+    case 'unfavorite_assets': {
+      const refs = parseAssetRefs(args);
+      if (!refs.length) return { error: 'assetIds is required' };
+      const { found, missing } = resolveAssets(doc, refs);
+      if (missing.length) return { error: `assets not found: ${missing.join(', ')}` };
+      const favorite = String(args.action) === 'favorite_assets';
+      const ids = found.map((asset) => asset.id);
+      if (ids.length === 1) ctx.commands.setMediaAssetFavorite(ids[0]!, favorite);
+      else ctx.commands.setMediaAssetsFavorite(ids, favorite);
+      return { ok: true, favorite, assetIds: ids };
+    }
+    case 'delete_assets': {
+      const refs = parseAssetRefs(args);
+      if (!refs.length) return { error: 'assetIds is required' };
+      const { found, missing } = resolveAssets(doc, refs);
+      if (missing.length) return { error: `assets not found: ${missing.join(', ')}` };
+      const items = ctx.getState().items;
+      const referenced = found
+        .map((asset) => ({ id: asset.id, name: asset.name, referencedBy: referencingClipCount(items, asset) }))
+        .filter((row) => row.referencedBy > 0);
+      if (referenced.length && args.confirm !== true) {
+        return {
+          needsConfirm: true,
+          referenced,
+          note: 'Deleting only removes pool entries; placed timeline clips keep their media. Resend with confirm:true to proceed.',
+        };
+      }
+      const ids = found.map((asset) => asset.id);
+      if (ids.length === 1) ctx.commands.removeMediaAsset(ids[0]!);
+      else ctx.commands.removeMediaAssets(ids);
+      return { ok: true, deleted: ids, wasReferenced: referenced };
+    }
+    case 'relink_asset': {
+      const refs = parseAssetRefs(args);
+      if (refs.length !== 1) return { error: 'relink_asset requires exactly one assetIds value' };
+      const asset = findAsset(doc, refs[0]!);
+      if (!asset) return { error: `asset not found: ${refs[0]}` };
+      if (asset.kind === 'motion-graphic') {
+        return { error: 'relink_asset is for file-backed media (video/audio/image); use edit_asset for motion graphics' };
+      }
+      const src = String(args.src ?? '').trim();
+      if (!src) {
+        return {
+          error: 'relink_asset requires src (replacement path under /media/uploads/… or another reachable media URL)',
+        };
+      }
+      if (src.startsWith('blob:') || src.startsWith('file:')) {
+        return { error: 'src must be a project media path or https URL, not a blob:/file: URL' };
+      }
+      const name = typeof args.name === 'string' && args.name.trim() ? args.name.trim() : undefined;
+      const sourceFilename = typeof args.sourceFilename === 'string' && args.sourceFilename.trim()
+        ? args.sourceFilename.trim()
+        : undefined;
+      const durationInFrames = typeof args.durationInFrames === 'number' && Number.isFinite(args.durationInFrames) && args.durationInFrames > 0
+        ? Math.round(args.durationInFrames)
+        : undefined;
+      const width = typeof args.width === 'number' && Number.isFinite(args.width) && args.width > 0
+        ? Math.round(args.width)
+        : undefined;
+      const height = typeof args.height === 'number' && Number.isFinite(args.height) && args.height > 0
+        ? Math.round(args.height)
+        : undefined;
+      const sourceRevision = createMediaSourceRevision({
+        src,
+        name: name ?? asset.name,
+        kind: asset.kind,
+        durationInFrames: durationInFrames ?? asset.durationInFrames,
+        width: width ?? asset.width,
+        height: height ?? asset.height,
+      });
+      const priorSrc = asset.src;
+      const clipsBefore = referencingClipCount(ctx.getState().items, asset);
+      ctx.commands.relinkMediaAsset(asset.id, {
+        src,
+        name,
+        sourceFilename,
+        durationInFrames,
+        width,
+        height,
+        sourceRevision,
+        originalFilePath: undefined,
+      });
+      const next = ctx.getDoc().assets.find((row) => row.id === asset.id);
+      return {
+        ok: true,
+        action: 'relink_asset',
+        assetId: asset.id,
+        priorSrc,
+        src: next?.src ?? src,
+        sourceRevision: next?.sourceRevision ?? sourceRevision,
+        transcriptStale: next?.transcriptStale ?? false,
+        clipsLinked: clipsBefore,
+        note: 'Pool master and linked timeline clips now point at the new source. Existing transcript is kept but may be marked stale; re-transcribe if the media content changed.',
+      };
+    }
     default:
-      return { error: `unknown action ${args.action}; use list/create_folder/rename_folder/delete_empty_folder/move_assets/rename_asset` };
+      return {
+        error: `unknown action ${args.action}; use list/create_folder/rename_folder/delete_empty_folder/move_assets/rename_asset/favorite_assets/unfavorite_assets/delete_assets/relink_asset`,
+      };
   }
 }

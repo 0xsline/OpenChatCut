@@ -4,13 +4,19 @@
 // `.frag` chain that edit-item-tools.ts drags in. Validation is pure; commit delegates to
 // the same editor commands the dedicated move_item / set_item_timing / remove_item tools
 // use — no logic duplication, just atomic-batch semantics.
-import type { ItemKeyframes, Keyframe, KeyframeProp, MediaAsset, TimelineItem, TimelineState } from '../../editor/types';
+import type {
+  ClipFilters, ClipTransform, ItemKeyframes, Keyframe, KeyframeProp,
+  MediaAsset, TimelineItem, TimelineState,
+} from '../../editor/types';
 import { defaultTrackId, resolveTrackId } from '../../editor/types';
 import { isValidEasing } from '../../editor/keyframes';
 import { getKeyframePropertyDefinition, KEYFRAME_PROPS, supportsKeyframeProperty } from '../../editor/keyframeRegistry';
 import { planSlip, type SlipFailure, type SlipResult } from '../../editor/slip';
 import { rejectUnknownFields } from './edit-item-fields';
+import { clampNum, parseFiltersArg, parseTransformArg } from './edit-item-visual';
+import { validateMediaSourceUpdate } from './edit-item-media-ops';
 export { didYouMean, rejectUnknownFields } from './edit-item-fields';
+export { validateMediaSourceUpdate } from './edit-item-media-ops';
 
 type OpResult = Record<string, unknown>;
 
@@ -30,8 +36,11 @@ export const GENERIC_ITEM_KINDS: ReadonlySet<string> = new Set([
 /** Pool-asset kinds that edit_item.adds can place as a clip.
  *  motion-graphic: pool assets from submit_motion_graphic / create_motion_graphic_from_code
  *  (library MG still uses library:motion-graphic:* via validateMgAdd).
- *  text/solid are authored, not pool media — excluded. */
+ *  text/solid are authored via validateAuthoredAdd (no assetId). */
 export const GENERIC_ADD_KINDS: ReadonlySet<string> = new Set(['video', 'image', 'gif', 'svg', 'audio', 'motion-graphic']);
+
+/** Authored non-pool clips agents can create without an assetId. */
+export const AUTHORED_ADD_KINDS: ReadonlySet<string> = new Set(['text', 'solid']);
 
 const finiteNum = (v: unknown): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) ? v : undefined;
@@ -58,7 +67,13 @@ const GENERIC_UPDATE_KEYS: Record<string, true> = {
   fadeInSeconds: true,
   fadeOutSeconds: true,
   keyframes: true,
+  filters: true,
+  transform: true,
+  speed: true,
+  playbackRate: true,
+  clearKeyframes: true,
 };
+
 const GENERIC_ADD_KEYS: Record<string, true> = {
   type: true,
   assetId: true,
@@ -68,6 +83,23 @@ const GENERIC_ADD_KEYS: Record<string, true> = {
   fromFrame: true,
   durationInFrames: true,
 };
+
+const AUTHORED_ADD_KEYS: Record<string, true> = {
+  type: true,
+  track: true,
+  trackId: true,
+  startFrame: true,
+  fromFrame: true,
+  durationInFrames: true,
+  name: true,
+  // text
+  text: true,
+  fontSize: true,
+  color: true,
+  fontWeight: true,
+  align: true,
+  // solid also uses color + name
+};
 const SLIP_UPDATE_KEYS: Record<string, true> = {
   type: true,
   itemId: true,
@@ -75,7 +107,6 @@ const SLIP_UPDATE_KEYS: Record<string, true> = {
   operation: true,
   deltaInFrames: true,
 };
-
 
 /** Editor command subset the generic committer needs (satisfied by EditorCommands). */
 export interface GenericCommands {
@@ -86,6 +117,12 @@ export interface GenericCommands {
   setItemVolume: (id: string, volume: number) => void;
   setItemFade: (id: string, fade: { fadeInFrames?: number; fadeOutFrames?: number }) => void;
   setItemKeyframe: (id: string, prop: KeyframeProp, frame: number, value: number, easing?: Keyframe['easing']) => void;
+  setItemFilters: (id: string, patch: ClipFilters) => void;
+  setItemTransform: (id: string, patch: ClipTransform) => void;
+  setItemSpeed: (id: string, rate: number) => void;
+  clearItemKeyframes: (id: string, prop?: KeyframeProp) => void;
+  replaceItemMedia: (id: string, src: string) => void;
+  relinkTimelineItem: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; sourceRevision?: string; sourceFilename?: string }) => void;
   removeItem: (id: string) => void;
   rippleDeleteItem: (id: string) => void;
 }
@@ -168,21 +205,61 @@ export function validateGenericUpdate(state: TimelineState, entry: Record<string
     }
     plan.keyframes = parsed.keyframes;
   }
+  if (entry.filters !== undefined) {
+    const visual = it.kind === 'video' || it.kind === 'image' || it.kind === 'gif' || it.kind === 'svg'
+      || it.kind === 'text' || it.kind === 'solid' || it.kind === 'motion-graphic';
+    if (!visual) return { error: `filters not supported on ${it.kind} clips` };
+    const parsed = parseFiltersArg(entry.filters);
+    if (parsed.error) return { error: parsed.error };
+    plan.filters = parsed.filters;
+  }
+  if (entry.transform !== undefined) {
+    if (it.kind === 'audio') return { error: 'transform is not supported on audio clips' };
+    const parsed = parseTransformArg(entry.transform);
+    if (parsed.error) return { error: parsed.error };
+    plan.transform = parsed.transform;
+  }
+  const speedRaw = entry.speed ?? entry.playbackRate;
+  if (speedRaw !== undefined) {
+    if (it.kind !== 'video' && it.kind !== 'audio' && it.kind !== 'gif') {
+      return { error: `speed/playbackRate only applies to video/audio/gif (got ${it.kind})` };
+    }
+    const n = finiteNum(speedRaw);
+    if (n === undefined) return { error: 'speed must be a finite number (0.1..8)' };
+    plan.speed = clampNum(n, 0.1, 8);
+  }
+  if (entry.clearKeyframes !== undefined) {
+    if (entry.clearKeyframes === true) {
+      plan.clearKeyframes = true;
+    } else if (typeof entry.clearKeyframes === 'string' && KEYFRAME_PROPS.includes(entry.clearKeyframes as KeyframeProp)) {
+      plan.clearKeyframes = entry.clearKeyframes as KeyframeProp;
+    } else {
+      return { error: `clearKeyframes must be true (all props) or one of ${KEYFRAME_PROPS.join('/')}` };
+    }
+  }
 
-  const FIELDS = ['track', 'startFrame', 'durationInFrames', 'srcInFrame', 'props', 'volume', 'fadeInFrames', 'fadeOutFrames', 'keyframes'];
+  const FIELDS = [
+    'track', 'startFrame', 'durationInFrames', 'srcInFrame', 'props', 'volume',
+    'fadeInFrames', 'fadeOutFrames', 'keyframes', 'filters', 'transform', 'speed', 'clearKeyframes',
+  ];
   if (!FIELDS.some((k) => k in plan)) {
-    return { error: 'update needs at least one of: track/trackId, startFrame/fromFrame, durationInFrames, srcInFrame, props, volume, fadeInSeconds, fadeOutSeconds, keyframes' };
+    return {
+      error: 'update needs at least one of: track/trackId, startFrame/fromFrame, durationInFrames, srcInFrame, props, volume, fadeInSeconds, fadeOutSeconds, keyframes, clearKeyframes, filters, transform, speed',
+    };
   }
   return plan;
 }
 
 export function validateSlipUpdate(state: TimelineState, entry: Record<string, unknown>): OpResult {
   if (entry.operation !== undefined && entry.operation !== 'slip') {
+    if (entry.operation === 'replace_media' || entry.operation === 'relink_media') {
+      return validateMediaSourceUpdate(state, entry);
+    }
     return {
       ok: false,
       error: `update operation not supported: ${String(entry.operation)}`,
       code: 'unknown-operation',
-      supported: ['slip'],
+      supported: ['slip', 'replace_media', 'relink_media'],
     };
   }
   const unknown = rejectUnknownFields(entry, SLIP_UPDATE_KEYS);
@@ -218,6 +295,73 @@ export function validateGenericDelete(state: TimelineState, entry: Record<string
   return { ok: true, kind: it.kind, plan: 'genericDelete', itemId: it.id, ripple: entry.ripple === true };
 }
 
+const isHexColor = (value: unknown): value is string => (
+  typeof value === 'string' && /^#([\da-f]{3}|[\da-f]{6}|[\da-f]{8})$/i.test(value.trim())
+);
+
+/**
+ * Authored text / solid adds — no pool assetId. Props land at creation so one
+ * edit_item.adds entry can place a titled lower-third or solid fill.
+ */
+export function validateAuthoredAdd(
+  state: TimelineState,
+  entry: Record<string, unknown>,
+): OpResult {
+  const type = String(entry.type ?? '');
+  if (!AUTHORED_ADD_KINDS.has(type)) {
+    return { error: `authored add type not supported: ${type}`, supported: [...AUTHORED_ADD_KINDS] };
+  }
+  const unknown = rejectUnknownFields(entry, AUTHORED_ADD_KEYS);
+  if (unknown) return { error: unknown };
+  if (entry.assetId !== undefined) {
+    return { error: `${type} is authored — do not pass assetId; set text/color/name props directly` };
+  }
+  const track = resolveTrackId(state, entry.track ?? entry.trackId ?? 'V1', 'video')
+    ?? defaultTrackId(state, 'video');
+  if (!track) return { error: 'no video track for placement — create one with edit_track first' };
+  const startFrame = finiteNum(entry.startFrame) ?? finiteNum(entry.fromFrame);
+  const durationInFrames = finiteNum(entry.durationInFrames);
+  const name = typeof entry.name === 'string' && entry.name.trim() ? entry.name.trim() : undefined;
+  if (type === 'solid') {
+    const color = isHexColor(entry.color) ? entry.color.trim() : '#1a1a1a';
+    return {
+      ok: true,
+      kind: 'solid',
+      plan: 'addSolid',
+      track,
+      color,
+      ...(name ? { name } : {}),
+      ...(startFrame !== undefined ? { startFrame: Math.max(0, Math.round(startFrame)) } : {}),
+      ...(durationInFrames !== undefined && durationInFrames > 0
+        ? { durationInFrames: Math.round(durationInFrames) }
+        : {}),
+    };
+  }
+  const text = typeof entry.text === 'string' && entry.text.trim() ? entry.text.trim() : '文字';
+  const color = isHexColor(entry.color) ? entry.color.trim() : '#ffffff';
+  const fontSize = finiteNum(entry.fontSize);
+  const fontWeight = finiteNum(entry.fontWeight);
+  const align = entry.align === 'left' || entry.align === 'right' || entry.align === 'center'
+    ? entry.align
+    : 'center';
+  return {
+    ok: true,
+    kind: 'text',
+    plan: 'addText',
+    track,
+    text,
+    color,
+    align,
+    ...(name ? { name } : {}),
+    ...(fontSize !== undefined && fontSize > 0 ? { fontSize } : {}),
+    ...(fontWeight !== undefined && fontWeight > 0 ? { fontWeight } : {}),
+    ...(startFrame !== undefined ? { startFrame: Math.max(0, Math.round(startFrame)) } : {}),
+    ...(durationInFrames !== undefined && durationInFrames > 0
+      ? { durationInFrames: Math.round(durationInFrames) }
+      : {}),
+  };
+}
+
 // Place an existing POOL asset (video/image/gif/svg/audio) onto a track as a clip.
 // submit_*/import only registers the asset; it's placed onto the timeline by a
 // separate edit_item. The library adds (effect/transition/mg/
@@ -231,8 +375,12 @@ export function validateGenericAdd(
   entry: Record<string, unknown>,
 ): OpResult {
   const type = String(entry.type ?? '');
+  if (AUTHORED_ADD_KINDS.has(type)) return validateAuthoredAdd(state, entry);
   if (!GENERIC_ADD_KINDS.has(type)) {
-    return { error: `add type not supported: ${type}`, supported: [...GENERIC_ADD_KINDS] };
+    return {
+      error: `add type not supported: ${type}`,
+      supported: [...GENERIC_ADD_KINDS, ...AUTHORED_ADD_KINDS],
+    };
   }
   // Pool media add: reject extra keys (live: unknown field "name" on adds[0]).
   const unknown = rejectUnknownFields(entry, GENERIC_ADD_KEYS);
@@ -289,6 +437,13 @@ export function applyGeneric(plan: OpResult, commands: GenericCommands): OpResul
         for (const k of kfs ?? []) commands.setItemKeyframe(id, prop as KeyframeProp, k.frame, k.value, k.easing);
       }
     }
+    if (plan.filters !== undefined) commands.setItemFilters(id, plan.filters as ClipFilters);
+    if (plan.transform !== undefined) commands.setItemTransform(id, plan.transform as ClipTransform);
+    if (plan.speed !== undefined) commands.setItemSpeed(id, plan.speed as number);
+    if (plan.clearKeyframes === true) commands.clearItemKeyframes(id);
+    else if (typeof plan.clearKeyframes === 'string') {
+      commands.clearItemKeyframes(id, plan.clearKeyframes as KeyframeProp);
+    }
     return { ok: true, kind: plan.kind, plan: 'genericUpdate', itemId: id };
   }
   if (plan.plan === 'slip') {
@@ -299,6 +454,29 @@ export function applyGeneric(plan: OpResult, commands: GenericCommands): OpResul
       srcInFrame: committed.srcInFrame,
       sourceWindow: committed.sourceWindow,
       status: plan.clamped ? 'clamped' : 'applied',
+    };
+  }
+  if (plan.plan === 'replaceMedia') {
+    commands.replaceItemMedia(id, String(plan.src));
+    return { ok: true, kind: 'video', plan: 'replaceMedia', itemId: id, src: plan.src };
+  }
+  if (plan.plan === 'relinkMedia') {
+    commands.relinkTimelineItem(id, {
+      src: String(plan.src),
+      name: plan.name as string | undefined,
+      durationInFrames: plan.durationInFrames as number | undefined,
+      width: plan.width as number | undefined,
+      height: plan.height as number | undefined,
+      sourceFilename: plan.sourceFilename as string | undefined,
+      originalFilePath: undefined,
+    });
+    return {
+      ok: true,
+      kind: plan.kind,
+      plan: 'relinkMedia',
+      itemId: id,
+      src: plan.src,
+      note: plan.note,
     };
   }
   if (plan.plan === 'genericDelete') {

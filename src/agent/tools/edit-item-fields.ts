@@ -79,8 +79,9 @@ export function didYouMean(got: string, allowed: readonly string[]): string | nu
 
 /** Clip-level fields that belong on generic audio/video updates — not effect rows. */
 export const CLIP_LEVEL_UPDATE_KEYS = [
-  'volume', 'fadeInSeconds', 'fadeOutSeconds', 'keyframes',
+  'volume', 'fadeInSeconds', 'fadeOutSeconds', 'keyframes', 'clearKeyframes',
   'srcInFrame', 'fromFrame', 'startFrame', 'durationInFrames', 'props', 'track', 'trackId',
+  'filters', 'transform', 'speed', 'playbackRate',
 ] as const;
 
 const CLIP_UPDATE_HINT_FIELDS = [
@@ -101,6 +102,11 @@ export function hasEffectOnlyUpdateSignals(entry: Record<string, unknown>): bool
       && entry.keyframes === undefined
       && entry.fadeInSeconds === undefined
       && entry.fadeOutSeconds === undefined
+      && entry.filters === undefined
+      && entry.transform === undefined
+      && entry.speed === undefined
+      && entry.playbackRate === undefined
+      && entry.clearKeyframes === undefined
     );
 }
 

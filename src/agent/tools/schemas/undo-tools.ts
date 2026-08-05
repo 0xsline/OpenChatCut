@@ -12,6 +12,16 @@ export const UNDO_TOOL_SCHEMAS: AgentToolSchema[] = [
     ].join(' '),
     input_schema: { type: 'object', properties: {}, required: [] },
   },
+  {
+    name: 'redo_last_change',
+    description: [
+      'Re-apply the project state that was undone by the most recent undo — use when the user asks to redo',
+      'or restore the change they just undid. Same proposal path as undo_last_change: user confirms, and the',
+      'redo itself becomes a normal history step. Only works when a redo target exists (after an undo, before',
+      'a new edit clears the redo stack). Call once per redo step.',
+    ].join(' '),
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
 ];
 
 export const UNDO_TOOL_NAMES = new Set(UNDO_TOOL_SCHEMAS.map((t) => t.name));

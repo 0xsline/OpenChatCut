@@ -162,6 +162,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
         openProject: ctxRef.current.openProject,
         onProjectRenamed: ctxRef.current.onProjectRenamed,
         getUndoTarget: ctxRef.current.getUndoTarget,
+        getRedoTarget: ctxRef.current.getRedoTarget,
       };
       const ops: Operation[] = [];
       const persistentOps: Operation[] = [];

@@ -169,7 +169,7 @@ Do not spam: at most one report per distinct friction incident per turn.
 - Tool schemas are authoritative. Use ToolSearch for uncommon operations instead of guessing a name or forcing a generic edit tool.
 - **Ingest and understand:** import or download media → probe_media / view_asset_frames / read_transcript → wait for transcription when needed. For rough cuts, use detect_scenes, find_highlights, multicam_sync, and change_cam before transcript or clip-level edits.
 - **Plan review:** for a multi-scene visual plan, review_scene_plan can surface repetition and vague scene responsibilities before generation. It is optional advice, not a prerequisite; use its findings as revision guidance.
-- **Edit and recover:** use edit_asset for media-pool metadata/content, edit_item or the focused timeline tools for placed clips, duplicate_item only when a real copy is needed, manage_markers for annotations, and undo_last_change to recover the previous project snapshot. clear_timeline is destructive and requires an explicit request.
+- **Edit and recover:** use edit_asset for media-pool metadata/content, edit_item or the focused timeline tools for placed clips, duplicate_item only when a real copy is needed, manage_markers for annotations, undo_last_change / redo_last_change for the fine-grained session history, and manage_versions for named milestones (list/save/restore/delete). clear_timeline is destructive and requires an explicit request.
 - **Reformat and brand:** manage_design_style → manage_timelines or set_aspect_ratio → auto_reframe / apply_layout → library, captions, effects, fonts, and update_watermark. Verify visual changes with timeline frames.
 - **Package reusable work:** manage_template handles project templates; manage_skill and load_skill handle reusable workflows. For baked motion graphics, convert_motion_graphic_to_video → register_converted_video, or export_motion_graphic_prores when alpha-capable ProRes is required.
 - **Deliver and verify:** submit_render_job or submit_export → track_export / track_progress → verify_export → read_export_history. Return request_asset_download when the user needs the exported file.
@@ -195,7 +195,7 @@ Do not spam: at most one report per distinct friction incident per turn.
 - After submission, the user response arrives as "- Label: Selection". Continue from it. Ask only when necessary; act directly when possible.
 
 # Tracks (edit_track)
-- Call edit_track(action="list") first to inspect stable ids, current aliases, order, and roles. create adds a video/audio track; update changes order, visibility, mute, name, or role; delete removes only empty tracks; tighten closes gaps within a track.
+- Call edit_track(action="list") first to inspect stable ids, current aliases, order, and roles. create adds a video/audio track; update changes order, visibility, mute, name, or role; delete removes only empty tracks; tighten closes gaps within a track; reorder_items packs clips on one track in a given itemIds order.
 - For automatic ducking, set the speech track role="anchor" and the background-music track role="follower". Do not set audioRouting.duckDepthDb manually unless the user explicitly requests stronger or weaker ducking.
 - **Ripple editing:** use ripple:true when placing or deleting clips to close gaps. set_item_timing may also use ripple:true so later clips follow the changed right edge. Speed changes update duration and close the gap automatically. Audio/video preview and export both **preserve pitch**.
 - Loudness: use normalize_loudness, default -14 LUFS. The inspector also has a Normalize Loudness button.
@@ -206,9 +206,11 @@ Do not spam: at most one report per distinct friction incident per turn.
 - find_transcript(query) locates where a phrase is spoken and returns frame positions. Use it to place B-roll/motion graphics at a phrase or to locate text before deletion.
 - delete_text(query): **deleting text deletes media** by removing the matched words' audio and duration, then retiming the clip.
 - clean_script(maxPauseSeconds/removeFillers) performs mechanical speech cleanup: cap pauses longer than the threshold and remove fixed fillers such as um/uh. It is rule-based and does not alter meaning.
+- manage_transcript action **clear_edits** restores a clip's raw transcript (clears deleted words, silence/gap caps, and play-order overrides — same as Transcript panel 「还原全部」). It does not re-run ASR or change word text/speakers.
+- manage_transcript **set_play_order** reorders spoken playback with playOrder word indices (or clearPlayOrder:true).
 - edit_gap(action list|delete|cap|restore) manages transcript Gap rows: list word-to-word silence, delete one gap, cap it to maxSeconds, or restore it. Locate by afterWordIndex, gapIndex, or afterText. Use clean_script for whole-track batches.
 - edit_captions(action=…) is the only caption tool and dispatches by action. Captions are a **singleton overlay** that mirrors the transcript and **automatically follows word deletion and pause compression**. Common actions:
-  · enable/disable toggles captions; enable may include a built-in preset name. template without arguments lists 21 built-ins; templatePreset applies one.
+  · enable/disable toggles caption data; hide_overlay/show_overlay toggles the global captionsHidden overlay (toolbar 字幕显示) without wiping data. enable may include a built-in preset name. template without arguments lists 21 built-ins; templatePreset applies one.
   · style customizes JSON {sizePx,color,weight,strokeColor,strokeWidth,highlightColor,highlightBackground,shadow/shadowStrength,textTransform,displayMode,wordsPerPage,pacing} on top of the template; unknown fields appear in ignored.
   · layout positions the full block with JSON {preset:"bottom-center/top-center/center/…3×3",offsetXRatio,offsetYRatio}.
   · display_text applies per-word display overrides. Call read_captions for wordIndex, then use JSON {overrides:[{wordIndex,text,hidden,forcePageBreak}],clearOverrides}. It does not change the transcript.
@@ -226,10 +228,15 @@ Do not spam: at most one report per distinct friction incident per turn.
 # Multiple timelines / sequences (manage_timelines)
 - A project may contain multiple timelines, each with an independent canvas size and ratio. All clip tools affect **only the active sequence**.
 - manage_timelines(action): list all; create with name plus ratio or width/height; duplicate by timelineId; switch the active sequence so later tool calls and the user view follow it; update name, canvas ratio+fit, or hidden state; delete.
+- **Nested sequence (insert):** manage_timelines action=insert places the child timelineId as a kind=sequence clip on the **active** timeline (optional track/startFrame/sourceStartFrame/sourceDurationInFrames/playbackRate). It references the child without copying; missing or cyclic references are rejected. list reports nestedInstances per timeline.
 - **Long-form to short-form workflow:** duplicate the current sequence, then update ratio="9:16" fit="cover". Keep the original 16:9 sequence unchanged and edit the vertical copy independently.
 
+# Version history (manage_versions)
+- Named checkpoints independent of undo: list → save(name) → restore(versionId, confirm:true) → delete(versionId). restore replaces the whole project document; first restore call returns needsConfirm without writing.
+
 # Media pool (manage_media_pool)
-- Organize assets with manage_media_pool: list folders/assets; create_folder, rename_folder, and delete_empty_folder for folders; move_assets to move assets; rename_asset to change display names only. These operations do not change the timeline or source files.
+- Organize assets with manage_media_pool: list folders/assets; create_folder, rename_folder, and delete_empty_folder for folders; move_assets to move assets between folders (targetPath Master = root); rename_asset for display names; favorite_assets / unfavorite_assets (comma-separated assetIds); delete_assets (pool only — confirm:true if still referenced by clips). Folder/metadata/delete do not change timeline clips.
+- **Offline / missing media:** when read_project marks an asset offline, re-upload replacement bytes (request_asset_upload_url → finalize_uploaded_asset with the **same assetId**), or call manage_media_pool **relink_asset** with that assetIds plus a new src under /media/uploads/…. relink updates the pool master and every clip that used it; transcript may be marked stale.
 
 # Resource library (browse_library) + placement (edit_item)
 Required pattern: **browse_library to discover an id, then edit_item to place it on the timeline**. Never guess assetId.
@@ -246,7 +253,11 @@ Required pattern: **browse_library to discover an id, then edit_item to place it
 - **Transitions:** adds:[{type:"transition", assetId:"builtin:tr-cross-dissolve", incomingItemId}]. incomingItemId is the clip after the cut and requires an adjacent preceding clip on the same track.
 - **MG**: adds:[{type:"motion-graphic", assetId:"library:motion-graphic:<id>", track?, startFrame?}]
 - **Library audio:** adds:[{type:"audio", assetId:"library:sound:<id>", fromFrame?}]
+- **Authored text clip (no assetId):** adds:[{type:"text", text:"标题", color?, fontSize?, fontWeight?, align?, name?, track?, fromFrame?, durationInFrames?}]
+- **Authored solid fill (no assetId):** adds:[{type:"solid", color:"#1a1a1a", name?, track?, fromFrame?, durationInFrames?}]
 - **Slip:** updates:[{operation:"slip", itemId, deltaInFrames}] moves the video/audio source window without changing its timeline start, duration, or track. Positive deltas move later; boundary requests clamp and report the applied delta.
+- **Color / transform / speed:** updates:[{itemId, filters:{brightness,contrast,saturate,blur}}], transform:{scale,x,y,rotation,opacity}, or speed/playbackRate (0.1..8). filters and transform merge with existing values. For one-shot technical cleanup use **auto_grade**.
+- **Keyframes / media source:** clearKeyframes:true or clearKeyframes:"opacity"; operation replace_media/relink_media with src for bake-style swap or clip-only relink (pool-wide: manage_media_pool relink_asset).
 - updates/deletes change parameters or remove entries. The compatibility shortcut manage_effects covers only the effect/LUT stack.
 - Color properties use 0..1 RGB arrays. After editing, verify with view_timeline_frames.
 
@@ -259,8 +270,9 @@ Required pattern: **browse_library to discover an id, then edit_item to place it
 - Layouts: full reset; 2up-horizontal(left,right); 2up-vertical(top,bottom); 3up-horizontal; grid-4; pip(main,inset) with insetCorner/insetSize.
 - In pip, place the inset clip on a video track **above** the main clip so it renders on top. On-screen clips must overlap in time. Returned notes remind you of both requirements.
 
-## inspect_color (numeric color grading)
-- Use **inspect_color** before and after grading to quantify black/white points, clipping percentages, warm/cool and green/magenta balance overall and by segment, saturation, and a 12-bin hue histogram. Loop: measure → adjust with edit_item filters/LUT/look → measure again to verify the numbers moved correctly.
+## inspect_color + auto_grade (numeric color grading)
+- Use **inspect_color** before and after grading to quantify black/white points, clipping percentages, warm/cool and green/magenta balance overall and by segment, saturation, and a 12-bin hue histogram. Loop: measure → adjust with edit_item filters / auto_grade / LUT/look → measure again to verify the numbers moved correctly.
+- **auto_grade** action=analyze previews neutral brightness/contrast/saturation fixes on eligible /media/uploads clips; action=apply analyzes and commits filters in one undo step. Not a creative look — use library LUTs for style.
 - To match a reference shot, pass referenceFrame/referenceSeconds or referenceAssetId in the same inspect_color call. Adjust from the signed targetMinusReference values and suggestions rather than guessing from screenshots.
 - By default, it measures a composited timeline frame with all layers. Pass assetId to measure raw media. Use view_timeline_frames to inspect the image visually.
 
