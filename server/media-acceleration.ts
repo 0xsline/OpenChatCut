@@ -267,7 +267,7 @@ export interface H264EncodingOptions {
   softwarePreset?: 'ultrafast' | 'superfast' | 'veryfast' | 'faster' | 'fast' | 'medium' | 'slow';
 }
 
-/** High-quality average bitrate scaled by output pixels and frame rate. */
+/** High-quality average bitrate scaled by output pixels and frame rate (4K headroom up to 60 Mbps). */
 export function resolveH264TargetBitrate({
   width,
   height,
@@ -279,7 +279,7 @@ export function resolveH264TargetBitrate({
 }): number {
   const raw = Number(width) * Number(height) * Number(fps) * 0.16;
   const clamped = Number.isFinite(raw)
-    ? Math.max(4_000_000, Math.min(30_000_000, raw))
+    ? Math.max(4_000_000, Math.min(60_000_000, raw))
     : 10_000_000;
   return Math.ceil(clamped / 500_000) * 500_000;
 }

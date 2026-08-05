@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react';
 import type { CaptionsData } from '../captions/types';
 import type { IconName } from '../components/icons';
 import {
@@ -24,6 +24,14 @@ import {
   EXPORT_RESOLUTIONS,
   type ExportResolution,
 } from './mediaSettings';
+import {
+  defaultBitrateModeForQuality,
+  exportResolutionForCanvas,
+  getQualityMode,
+  setQualityMode,
+  subscribeQualityMode,
+  type QualityMode,
+} from '../media/qualityPolicy';
 import type { ExportDestination } from './exportDestination';
 import type { ExportEngineInfo, ExportEngineReason } from './exportWorkflowTypes';
 import {
@@ -55,9 +63,11 @@ export const EXPORT_FPS = [...EXPORT_FPS_OPTIONS];
 export const EXPORT_RESOLUTION_OPTIONS = Object.keys(EXPORT_RESOLUTIONS) as ExportResolution[];
 export const DEFAULT_INCLUDE_MG = true;
 
+export type ExportVideoCodec = 'h264' | 'vp8' | 'prores';
+
 export interface ExportVideoSettings {
-  codec: 'h264' | 'vp8';
-  setCodec: Dispatch<SetStateAction<'h264' | 'vp8'>>;
+  codec: ExportVideoCodec;
+  setCodec: Dispatch<SetStateAction<ExportVideoCodec>>;
   resolution: ExportResolution;
   setResolution: Dispatch<SetStateAction<ExportResolution>>;
   fps: number;
@@ -119,30 +129,34 @@ export interface ExportDialogModel {
   videoSummary: string;
   workflow: ExportWorkflowModel;
   disabled: boolean;
+  qualityMode: QualityMode;
+  setQualityMode: (mode: QualityMode) => void;
 }
 
-function defaultResolution(state: TimelineState): ExportResolution {
-  const minSide = Math.min(state.width, state.height);
-  if (minSide <= 480) return '480p';
-  if (minSide <= 720) return '720p';
-  if (minSide >= 2160) return '4k';
-  return '1080p';
-}
-
-function useVideoSettings(state: TimelineState): ExportVideoSettings {
-  const [codec, setCodec] = useState<'h264' | 'vp8'>('h264');
-  const [resolution, setResolution] = useState<ExportResolution>(() => defaultResolution(state));
+function useVideoSettings(state: TimelineState, qualityMode: QualityMode): ExportVideoSettings {
+  const [codec, setCodec] = useState<ExportVideoCodec>('h264');
+  const [resolution, setResolution] = useState<ExportResolution>(() => exportResolutionForCanvas(state, qualityMode));
   const initialFps = EXPORT_FPS.some((candidate) => candidate === state.fps) ? state.fps : 30;
   const [fps, setFps] = useState(initialFps);
-  const [bitrateMode, setBitrateMode] = useState<VideoBitrateMode>('auto');
+  const [bitrateMode, setBitrateMode] = useState<VideoBitrateMode>(() => defaultBitrateModeForQuality(qualityMode));
   const [customBitrateMbps, setCustomBitrateMbps] = useState(DEFAULT_CUSTOM_BITRATE_MBPS);
+  // Re-apply quality defaults when the user toggles balanced ↔ master.
+  useEffect(() => {
+    setResolution(exportResolutionForCanvas(state, qualityMode));
+    setBitrateMode(defaultBitrateModeForQuality(qualityMode));
+    // Master quality keeps ProRes available but does not force it (file size).
+    setCodec((current) => (qualityMode !== 'master' && current === 'prores' ? 'h264' : current));
+  }, [qualityMode, state.width, state.height]);
   const dimensions = browserScaledExportDimensions(state, resolution);
   const bitrateInput = { mode: bitrateMode, ...dimensions, fps, customMbps: customBitrateMbps };
+  const resolvedBitrate = resolveVideoBitrateBps(bitrateInput);
+  // ProRes is mezzanine: remotion ignores bitrate; do not send a false target.
+  const requestedBitrate = codec === 'prores' ? undefined : requestedVideoBitrateBps(bitrateInput);
   return {
     codec, setCodec, resolution, setResolution, fps, setFps, bitrateMode, setBitrateMode,
     customBitrateMbps, setCustomBitrateMbps, dimensions,
-    resolvedBitrate: resolveVideoBitrateBps(bitrateInput),
-    requestedBitrate: requestedVideoBitrateBps(bitrateInput),
+    resolvedBitrate,
+    requestedBitrate,
   };
 }
 
@@ -164,7 +178,11 @@ function useSubtitleSettings(state: TimelineState): ExportSubtitleSettings {
 }
 
 function outputName(base: string, tab: ExportTab, video: ExportVideoSettings, subtitles: ExportSubtitleSettings, nleFormat: 'fcp_xml' | 'fcp_xml_resolve', mgOutput: string): string {
-  if (tab === 'video') return `${base}.${video.codec === 'vp8' ? 'webm' : 'mp4'}`;
+  if (tab === 'video') {
+    if (video.codec === 'vp8') return `${base}.webm`;
+    if (video.codec === 'prores') return `${base}.mov`;
+    return `${base}.mp4`;
+  }
   if (tab === 'audio') return `${base}.mp3`;
   if (tab === 'subtitles') return `${base}.${subtitles.format}`;
   if (tab === 'xml') return `${base}-${nleFormat === 'fcp_xml_resolve' ? 'resolve' : 'premiere'}.fcpxml`;
@@ -181,7 +199,8 @@ export function useExportDialogModel({ state, project, projectId, projectName, e
 }): ExportDialogModel {
   const t = useT();
   const [tab, setTab] = useState<ExportTab>('video');
-  const video = useVideoSettings(state);
+  const qualityMode = useSyncExternalStore(subscribeQualityMode, getQualityMode, getQualityMode);
+  const video = useVideoSettings(state, qualityMode);
   const subtitles = useSubtitleSettings(state);
   const [nleFormat, setNleFormat] = useState<'fcp_xml' | 'fcp_xml_resolve'>('fcp_xml');
   const [includeMg, setIncludeMg] = useState(DEFAULT_INCLUDE_MG);
@@ -195,12 +214,20 @@ export function useExportDialogModel({ state, project, projectId, projectName, e
     nleFormat, includeMg: includeAvailableMg, mgItems, onClose,
   }, exportJobs);
   const name = outputName(base, tab, video, subtitles, nleFormat, t('{n} 个透明 MOV 文件', { n: mgItems.length }));
-  const videoSummary = `${video.codec === 'h264' ? 'MP4 · H.264' : 'WebM · VP8'} · ${video.dimensions.width}×${video.dimensions.height} · ${video.fps} fps · ${(video.resolvedBitrate / 1_000_000).toFixed(1)} Mbps`;
+  const qualityTag = qualityMode === 'master' ? ` · ${t('画质优先')}` : '';
+  const codecLabel = video.codec === 'prores'
+    ? 'MOV · ProRes 422 HQ'
+    : video.codec === 'h264' ? 'MP4 · H.264' : 'WebM · VP8';
+  const rateLabel = video.codec === 'prores'
+    ? t('母带')
+    : `${(video.resolvedBitrate / 1_000_000).toFixed(1)} Mbps`;
+  const videoSummary = `${codecLabel} · ${video.dimensions.width}×${video.dimensions.height} · ${video.fps} fps · ${rateLabel}${qualityTag}`;
   const disabled = !!workflow.busy
     || (tab === 'subtitles' && !subtitles.captions)
     || (tab === 'mg' && mgItems.length === 0);
   return {
     tab, setTab, video, subtitles, nleFormat, setNleFormat, includeMg, setIncludeMg,
     mgItems, base, outputName: name, videoSummary, workflow, disabled,
+    qualityMode, setQualityMode,
   };
 }

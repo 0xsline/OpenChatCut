@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import {
+  getPreviewSourceMode,
+  getQualityMode,
+  shouldAutoRequestPreviewProxy,
+  shouldPreferMasterPreview,
+  subscribeQualityMode,
+} from './qualityPolicy';
 import type { ProjectDoc, TimelineState } from '../editor/types';
 import { resolveTimelineRenderPlan } from '../editor/sequenceGraph';
 import { isPreviewable } from './clipPreview';
@@ -138,15 +145,36 @@ function subscribe(sources: readonly string[], listener: () => void): () => void
   };
 }
 
+function useQualitySnapshot() {
+  // Separate stable snapshots: getSnapshot must return a cached value, or
+  // useSyncExternalStore re-renders forever on every new object literal.
+  const mode = useSyncExternalStore(subscribeQualityMode, getQualityMode, getQualityMode);
+  const preview = useSyncExternalStore(subscribeQualityMode, getPreviewSourceMode, getPreviewSourceMode);
+  return { mode, preview };
+}
+
 function useProxySources(sources: readonly string[], sourceKey: string): number {
   const [revision, setRevision] = useState(0);
+  const quality = useQualitySnapshot();
   useEffect(() => {
     const bump = () => setRevision((value) => value + 1);
     const unsubscribe = subscribe(sources, bump);
-    for (const src of sources) void requestPreviewProxy(src);
+    // Only fetch proxies when policy/source mode expects them.
+    if (shouldAutoRequestPreviewProxy(quality.mode, quality.preview)) {
+      for (const src of sources) void requestPreviewProxy(src);
+    }
     return unsubscribe;
-  }, [sourceKey]);
+  }, [sourceKey, quality.mode, quality.preview]);
+  // Re-resolve preview src when quality/preview-source mode flips even if proxy cache is quiet.
+  useEffect(() => {
+    setRevision((value) => value + 1);
+  }, [quality.mode, quality.preview]);
   return revision;
+}
+
+function resolvePreviewSrc(src: string | undefined, proxy: PreviewProxyState): string | undefined {
+  if (shouldPreferMasterPreview() && src) return src;
+  return proxy.status === 'ready' ? proxy.previewSrc : src;
 }
 
 export function usePreviewMediaSource(src: string | undefined, enabled = true) {
@@ -154,7 +182,7 @@ export function usePreviewMediaSource(src: string | undefined, enabled = true) {
   const sources = useMemo(() => source ? [source] : [], [source]);
   const revision = useProxySources(sources, source);
   const proxy = stateFor(source || undefined);
-  const previewSrc = proxy.status === 'ready' ? proxy.previewSrc : src;
+  const previewSrc = resolvePreviewSrc(src, proxy);
   return {
     sourceSrc: src,
     previewSrc,
@@ -178,7 +206,8 @@ export function usePreviewTimelineState(state: TimelineState) {
     items: state.items.map((item) => {
       if (item.kind !== 'video' || !item.src) return item;
       const proxy = stateFor(item.src);
-      return proxy.status === 'ready' ? { ...item, src: proxy.previewSrc } : item;
+      const previewSrc = resolvePreviewSrc(item.src, proxy);
+      return previewSrc && previewSrc !== item.src ? { ...item, src: previewSrc } : item;
     }),
   }), [state, revision]);
   const proxies = sources.map((src) => ({ src, proxy: stateFor(src) }));
@@ -207,7 +236,8 @@ export function usePreviewProjectDoc(project: ProjectDoc, timelineId: string) {
       items: timeline.items.map((item) => {
         if (item.kind !== 'video' || !item.src) return item;
         const proxy = stateFor(item.src);
-        return proxy.status === 'ready' ? { ...item, src: proxy.previewSrc } : item;
+        const previewSrc = resolvePreviewSrc(item.src, proxy);
+        return previewSrc && previewSrc !== item.src ? { ...item, src: previewSrc } : item;
       }),
     })),
   }), [project, revision]);

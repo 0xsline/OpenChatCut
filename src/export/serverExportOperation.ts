@@ -56,7 +56,7 @@ interface ServerExportContext {
 }
 
 type ExportFormat = 'video' | 'audio';
-type ExportCodec = 'h264' | 'vp8' | 'mp3';
+type ExportCodec = 'h264' | 'vp8' | 'prores' | 'mp3';
 function recoveryRecord(
   context: ServerExportContext,
   renderId: string,
@@ -64,7 +64,7 @@ function recoveryRecord(
   codec: ExportCodec,
 ): PersistedServerExportJob {
   const projectId = context.options.projectId;
-  const ext = format === 'audio' ? 'mp3' : codec === 'vp8' ? 'webm' : 'mp4';
+  const ext = format === 'audio' ? 'mp3' : codec === 'vp8' ? 'webm' : codec === 'prores' ? 'mov' : 'mp4';
   const now = Date.now();
   return {
     version: 1,

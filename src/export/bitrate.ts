@@ -14,9 +14,12 @@ interface VideoBitrateInput {
   customMbps: number;
 }
 
+/** Soft ceiling for auto bitrate: 4K needs headroom above the old 30 Mbps clamp. */
+const AUTO_BITRATE_MAX_BPS = 60_000_000;
+
 function automaticVideoBitrateBps(width: number, height: number, fps: number): number {
   const raw = Math.max(2, width) * Math.max(2, height) * Math.max(1, fps) * 0.16;
-  return Math.ceil(Math.max(4_000_000, Math.min(30_000_000, raw)) / 500_000) * 500_000;
+  return Math.ceil(Math.max(4_000_000, Math.min(AUTO_BITRATE_MAX_BPS, raw)) / 500_000) * 500_000;
 }
 
 function roundedBitrate(value: number): number {
