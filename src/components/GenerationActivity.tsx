@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { isTerminal } from '../agent/progress/job-model';
+import { isTerminal, normalizeStatus } from '../agent/progress/job-model';
 import { useT } from '../i18n/locale';
 import {
   listTrackedJobs,
@@ -8,22 +8,25 @@ import {
 } from '../persist/jobRegistryStore';
 import { theme } from '../theme';
 import { Icon } from './icons';
+import { TopBarIconButton } from './TopBarIconButton';
 
 interface GenerationActivityProps {
   projectId: string;
   onResume?: () => Promise<void>;
 }
 
-function operationSummary(job: TrackedJob): string {
+type Translate = ReturnType<typeof useT>;
+
+function operationSummary(job: TrackedJob, t: Translate): string {
   const args = job.submitArgs;
-  if (!args) return job.params ? '旧版参数摘要（不可安全重跑）' : '参数快照不可用';
+  if (!args) return job.params ? t('旧版参数摘要（不可安全重跑）') : t('参数快照不可用');
   const fields = ['provider', 'model', 'mode', 'durationSeconds', 'resolution', 'ratio']
     .flatMap((key) => args[key] === undefined ? [] : [`${key}=${String(args[key])}`]);
   if (typeof args.prompt === 'string' && args.prompt.trim()) {
     const prompt = args.prompt.trim();
     fields.push(prompt.length > 100 ? `${prompt.slice(0, 97)}…` : prompt);
   }
-  return fields.join(' · ') || job.toolName || '生成任务';
+  return fields.join(' · ') || job.toolName || t('生成任务');
 }
 function isResumable(job: TrackedJob): boolean {
   return !isTerminal(job.status)
@@ -33,12 +36,35 @@ function isResumable(job: TrackedJob): boolean {
 }
 
 
-function relativeTime(timestamp: number): string {
+function relativeTime(timestamp: number, t: Translate): string {
   const minutes = Math.floor(Math.max(0, Date.now() - timestamp) / 60_000);
-  if (minutes < 1) return '刚刚';
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 1) return t('刚刚');
+  if (minutes < 60) return t('{n} 分钟前', { n: minutes });
   const hours = Math.floor(minutes / 60);
-  return hours < 24 ? `${hours} 小时前` : `${Math.floor(hours / 24)} 天前`;
+  return hours < 24
+    ? t('{n} 小时前', { n: hours })
+    : t('{n} 天前', { n: Math.floor(hours / 24) });
+}
+
+function statusLabel(status: string, t: Translate): string {
+  return {
+    pending: t('等待中'),
+    running: t('进行中'),
+    complete: t('已完成'),
+    failed: t('失败'),
+    not_found: t('未找到'),
+  }[normalizeStatus(status)];
+}
+
+function retryClassLabel(retryClass: TrackedJob['retryClass'], t: Translate): string | null {
+  if (!retryClass || retryClass === 'none') return null;
+  return {
+    'download-retryable': t('可重试下载'),
+    'provider-retryable': t('可重试生成'),
+    'restart-recoverable': t('重启后可恢复'),
+    'provider-terminal': t('不可重试'),
+    'legacy-unknown': t('旧任务状态未知'),
+  }[retryClass];
 }
 
 export function GenerationActivity({ projectId, onResume }: GenerationActivityProps) {
@@ -72,20 +98,16 @@ export function GenerationActivity({ projectId, onResume }: GenerationActivityPr
 
   return (
     <>
-      <button
-        type="button"
-        title={t('生成任务')}
-        aria-label={t('生成任务')}
+      <TopBarIconButton
+        icon="sparkles"
+        label={t('生成任务')}
         onClick={() => setOpen(true)}
-        style={{ position: 'relative', width: 28, height: 28, border: 'none', borderRadius: 4, background: 'none', color: theme.textDim, cursor: 'pointer', display: 'grid', placeItems: 'center' }}
-      >
-        <Icon name="sparkles" size={16} />
-        {activeCount > 0 && (
+        badge={activeCount > 0 ? (
           <span style={{ position: 'absolute', right: 1, top: 1, minWidth: 13, height: 13, padding: '0 3px', borderRadius: 7, background: theme.accent, color: theme.onAccent, fontSize: 9, lineHeight: '13px', fontWeight: 700 }}>
             {activeCount}
           </span>
-        )}
-      </button>
+        ) : null}
+      />
       {open && (
         <div role="presentation" onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,0.28)' }}>
           <section
@@ -106,25 +128,26 @@ export function GenerationActivity({ projectId, onResume }: GenerationActivityPr
                     {resuming ? t('恢复中…') : t('继续任务')}
                   </button>
                 )}
-                <button type="button" onClick={() => setOpen(false)} style={iconButton}><Icon name="x" size={16} /></button>
+                <button type="button" aria-label={t('关闭')} onClick={() => setOpen(false)} style={iconButton}><Icon name="x" size={16} /></button>
               </div>
             </header>
             {loading && !jobs.length ? (
               <div style={emptyState}>{t('正在读取任务…')}</div>
             ) : !jobs.length ? (
               <div style={emptyState}>{t('暂无生成任务')}</div>
-            ) : jobs.map((job) => (
-              <article key={job.operationId} style={{ padding: '10px 0', borderTop: `0.5px solid ${theme.border}` }}>
+            ) : jobs.map((job) => {
+              const retryLabel = retryClassLabel(job.retryClass, t);
+              return <article key={job.operationId} style={{ padding: '10px 0', borderTop: `0.5px solid ${theme.border}` }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
                   <strong style={{ color: theme.text, fontSize: 12.5, fontWeight: 600 }}>{job.label || job.toolName || t('生成任务')}</strong>
-                  <span style={{ color: isTerminal(job.status) ? theme.textDim : theme.accent, fontSize: 11 }}>{job.status}</span>
+                  <span style={{ color: isTerminal(job.status) ? theme.textDim : theme.accent, fontSize: 11 }}>{statusLabel(job.status, t)}</span>
                 </div>
-                <div style={{ color: theme.textDim, fontSize: 11.5, lineHeight: 1.5, marginTop: 4, overflowWrap: 'anywhere' }}>{operationSummary(job)}</div>
+                <div style={{ color: theme.textDim, fontSize: 11.5, lineHeight: 1.5, marginTop: 4, overflowWrap: 'anywhere' }}>{operationSummary(job, t)}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 10px', color: theme.textDim, fontSize: 10.5, marginTop: 6 }}>
                   <code title={job.operationId} style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>{job.operationId}</code>
-                  <span>{relativeTime(job.updatedAt)}</span>
+                  <span>{relativeTime(job.updatedAt, t)}</span>
                   {job.providerTaskId && <span>{t('Provider 任务')} {job.providerTaskId}</span>}
-                  {job.retryClass && job.retryClass !== 'none' && <span>{job.retryClass}</span>}
+                  {retryLabel && <span>{retryLabel}</span>}
                 </div>
                 {job.error && <div style={{ color: theme.danger, fontSize: 11, lineHeight: 1.45, marginTop: 6 }}>{job.error}</div>}
                 {job.resultPath && (
@@ -137,8 +160,8 @@ export function GenerationActivity({ projectId, onResume }: GenerationActivityPr
                     {job.status === 'failed' ? t('重试可恢复任务') : t('检查进度')}
                   </button>
                 )}
-              </article>
-            ))}
+              </article>;
+            })}
           </section>
         </div>
       )}
