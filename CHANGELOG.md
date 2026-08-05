@@ -6,10 +6,18 @@ OpenChatCut 的重要变更记录在此。
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased] / [未发布]
+## [0.1.8] - 2026-08-06
 
 ### Added / 新增
 
+- Added a user-visible custom-skill directory mirroring `~/.codex/skills` / `~/.claude/skills`: `~/.openchatcut/skills/<slug>/SKILL.md` (Windows `%USERPROFILE%\.openchatcut\skills\...`). `manage_skill create` installs there, hand-dropped SKILL.md files are discovered automatically, and the bundled *skill-creator* workflow guides skill authoring.
+  新增用户可见的自定义技能目录，与 `~/.codex/skills` / `~/.claude/skills` 布局一致：`~/.openchatcut/skills/<slug>/SKILL.md`（Windows 为 `%USERPROFILE%\.openchatcut\skills\...`）。`manage_skill create` 安装到此目录，手动放入的 SKILL.md 会被自动发现，内置“技能创作器”工作流可引导技能编写。
+- Added slash-command skill selection in the agent chat: `/skill:<slug>` or `/<name>` opens a filtering picker, Tab/Enter activates the creative mode without touching the composer text, and the active workflow shows as a dismissible chip above the input.
+  在 Agent 聊天中新增斜杠命令选择技能：输入 `/skill:<slug>` 或 `/<name>` 弹出过滤选择器，Tab/Enter 激活创作模式且不改动输入框文字，当前工作流以可关闭的标签显示在输入框上方。
+- Added Agent redo (`redo_last_change`), named version history (`manage_versions` list/save/restore/delete), media-pool operations (favorite, delete with reference confirmation, relink), auto-grade analyze/apply, and track reorder — closing long-standing editor command gaps.
+  新增 Agent 重做（`redo_last_change`）、命名版本历史（`manage_versions` 列表/保存/恢复/删除）、素材池操作（收藏、带引用确认的删除、重链接）、自动调色分析与应用，以及轨道重排——补齐了长期缺失的编辑器命令面。
+- Routed OpenAI text-to-image through the AI SDK `generateImage` (plain generation path), with gpt options mapped to provider metadata; the edits path keeps its multipart implementation.
+  OpenAI 文生图主路径改走 AI SDK `generateImage`（gpt 专属参数映射到 provider metadata）；图生图/编辑路径保留原 multipart 实现。
 - Added StepFun and BytePlus ModelArk Agent LLM providers (BytePlus fronts DeepSeek, GLM, and Doubao-Seed models behind one Ark-compatible endpoint with a swappable model id), plus WaveSpeed and BytePlus Seedream image generation, BytePlus Seedance video generation (sharing the seedance2/Volcengine task API and reference limits), and Inworld, Fish Audio, and Speechify text-to-speech providers — each with settings-panel configuration and connection testing.
   新增 StepFun 与 BytePlus ModelArk Agent 大脑厂商（BytePlus 通过同一个 Ark 兼容端点承载 DeepSeek、GLM、豆包 Seed 等模型，可切换模型 ID），以及 WaveSpeed 与 BytePlus Seedream 生图、BytePlus Seedance 生视频（复用 seedance2/火山引擎的任务接口与引用素材限制），以及 Inworld、Fish Audio、Speechify 配音厂商，均支持设置面板配置与连接测试。
 - Added first-class ChatGPT subscription sign-in for the built-in Agent through the official Codex CLI, including isolated credential storage, browser/device-code OAuth, account and model discovery, model-specific reasoning-effort selection, model switching, and dynamic OpenChatCut tool calling. Claude Code subscriptions remain available through the existing local MCP connection without exposing Claude OAuth credentials.
@@ -30,6 +38,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   新增来源于 `models.dev` 的版本化 Agent 模型能力目录、精确到模型的覆盖配置，以及 API/Codex 后端统一的上下文/输入/输出上限、工具调用、图片输入与推理能力展示；当前解析值保持可见，并在主请求与摘要请求中强制执行厂商最大输入上限。
 
 ### Changed / 变更
+- Upgraded the AI SDK to 7.0.52: Anthropic prompt-cache TTL extended to 1h via provider options, SDK-native timeouts on every LLM call site (30s first chunk / 2min step / 30s tool, 60–90s caps on generateText), and the build chain now passes `tsc -b` strict checks.
+  AI SDK 升级到 7.0.52：Anthropic 提示词缓存 TTL 通过 provider options 延长到 1 小时，所有 LLM 调用点接入 SDK 原生超时（首块 30 秒/单步 2 分钟/工具 30 秒，问答与压缩 60–90 秒总上限），构建链通过 `tsc -b` 严格检查。
+- Selecting a creative workflow (slash command or picker) now only activates it — the composer text is never overwritten, and the active skill is shown as a chip; media asset cards are draggable from anywhere, not just the thumbnail.
+  选择创作工作流（斜杠命令或选择器）现在只做激活——不再改写输入框文字，当前技能以标签显示；素材卡片整体可拖拽（不再局限于缩略图）。
 - Unified selectable creative workflows and bundled Agent skills around `SKILL.md` + `load_skill` progressive disclosure. External MCP clients can now load guidance without an edit session, and selected workflow bodies no longer occupy the cached system prompt.
   统一可选创作工作流与内置 Agent Skill，改用 `SKILL.md` + `load_skill` 渐进披露；外部 MCP 客户端无需编辑会话即可加载指引，选中工作流的正文也不再占用系统提示缓存。
 - Unified timeline geometry around playback-rate-aware source-time/source-window helpers, with one transition-reconciliation pass shared by move, retime, split, trim, ripple, and overwrite operations.
@@ -61,6 +73,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   限制 Agent 修改记录弹窗的最大高度，并让记录列表在固定标题栏下独立滚动，同时提供仅作用于该列表的清晰滚动条。
 
 ### Fixed / 修复
+- Fixed agent skill deletion removing the kv entry but leaving the SKILL.md mirror (id-vs-slug mismatch); the mirror now deletes by slug. Also fixed dragging assets into subfolders (whole card draggable), the slash menu not scrolling with keyboard selection, and a white-screen crash on opening projects caused by a temporal-dead-zone reference.
+  修复 Agent 删除技能时仅移除 kv 记录而残留 SKILL.md 镜像的问题（id 与 slug 不一致，镜像现按 slug 删除）；同时修复拖拽素材进子文件夹（整卡可拖）、斜杠菜单不随键盘选择滚动，以及打开工程白屏（暂时性死区引用导致的崩溃）。
 - Corrected new provider defaults and probes against official API docs: Fish Audio's default model is now a valid catalog id (`s2.1-pro` instead of the unrecognized `speech-1.6`, which silently fell back), StepFun's default model is now the documented `step-3.7-flash`, and the Inworld connection probe uses the current Voice API (`/voices/v1/voices`) instead of the retired `/tts/v1/voices` path.
   按官方 API 文档修正新增供应商的默认值与连接探测：Fish Audio 默认模型改为有效目录 ID（`s2.1-pro`，原 `speech-1.6` 不被识别会静默回退），StepFun 默认模型改为文档中的 `step-3.7-flash`，Inworld 连接探测改用现行 Voice API（`/voices/v1/voices`）替代已退役的 `/tts/v1/voices`。
 - Made server exports feed video effects from frame-accurate decoded media frames before running the WebGL pass, including midpoint-aligned seeks for fractional-rate footage such as 30000/1001, preventing stale, repeated, offset, or black frames after AI-applied color grading and other clip effects.
