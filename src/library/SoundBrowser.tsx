@@ -186,7 +186,7 @@ export const SoundBrowser = memo(function SoundBrowser({ fps, onAdd }: SoundBrow
             className={`cc-sound-chip${chip === g.id ? ' selected' : ''}`}
             onClick={() => setChip(g.id)}
           >
-            {g.name}
+            {t(g.name)}
           </button>
         ))}
       </div>
