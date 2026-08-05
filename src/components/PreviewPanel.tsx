@@ -355,7 +355,8 @@ export const PreviewPanel = memo(function PreviewPanel({
               // double-toggle it to a no-op).
               clickToPlay={fullscreen}
               spaceKeyToPlayOrPause={false}
-              loop
+              // No loop: playback stops at the final frame (editor convention).
+              // Restart by pressing play again.
             />
             {!fullscreen && hoverPreviewFrame !== null && (
               <div className="cc-preview-hover-frame" aria-label={t('时间线悬停预览')}>
