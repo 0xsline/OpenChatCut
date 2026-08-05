@@ -28,9 +28,9 @@ const FFMPEG_TIMEOUT_MS = 60 * 60_000;
 export const EXPORT_JOB_RETENTION_MS = 60 * 60_000;
 const EXPORT_CANCEL_TIMEOUT_MS = 15_000;
 const EXPORT_JOB_FILE_PREFIX = 'openchatcut-export-job-';
-const EXPORT_JOB_EXTENSIONS = new Set(['mp4', 'webm', 'mp3', 'wav']);
+const EXPORT_JOB_EXTENSIONS = new Set(['mp4', 'webm', 'mov', 'mp3', 'wav']);
 const EXPORT_JOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const EXPORT_JOB_FILENAME = /^openchatcut-export-job-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(?:mp4|webm|mp3|wav)$/i;
+const EXPORT_JOB_FILENAME = /^openchatcut-export-job-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(?:mp4|webm|mov|mp3|wav)$/i;
 
 interface CleanupStaleExportOptions {
   now?: number;

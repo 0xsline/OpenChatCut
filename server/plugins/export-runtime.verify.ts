@@ -78,11 +78,13 @@ try {
   const now = Date.now();
   const staleName = exportJobFilename('00000000-0000-4000-8000-000000000001', 'mp4');
   const freshName = exportJobFilename('00000000-0000-4000-8000-000000000002', 'webm');
+  const proresName = exportJobFilename('00000000-0000-4000-8000-000000000003', 'mov');
   const unrelatedName = 'user-owned-video.mp4';
   const prefixedUserName = 'openchatcut-export-job-project.mp4';
   await Promise.all([
     writeFile(join(exportDir, staleName), 'stale export'),
     writeFile(join(exportDir, freshName), 'fresh export'),
+    writeFile(join(exportDir, proresName), 'fresh prores export'),
     writeFile(join(exportDir, unrelatedName), 'user media'),
     writeFile(join(exportDir, prefixedUserName), 'user media with reserved-looking prefix'),
   ]);
@@ -94,6 +96,7 @@ try {
   assert.equal(removed, 1);
   assert.equal(existsSync(join(exportDir, staleName)), false, 'stale temporary export should be removed');
   assert.equal(existsSync(join(exportDir, freshName)), true, 'fresh temporary export should be retained');
+  assert.equal(existsSync(join(exportDir, proresName)), true, 'fresh prores temporary export should be retained');
   assert.equal(existsSync(join(exportDir, unrelatedName)), true, 'user media must never be swept');
   assert.equal(existsSync(join(exportDir, prefixedUserName)), true, 'non-UUID user media must never be swept');
 } finally {
