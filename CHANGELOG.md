@@ -61,6 +61,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   限制 Agent 修改记录弹窗的最大高度，并让记录列表在固定标题栏下独立滚动，同时提供仅作用于该列表的清晰滚动条。
 
 ### Fixed / 修复
+- Corrected new provider defaults and probes against official API docs: Fish Audio's default model is now a valid catalog id (`s2.1-pro` instead of the unrecognized `speech-1.6`, which silently fell back), StepFun's default model is now the documented `step-3.7-flash`, and the Inworld connection probe uses the current Voice API (`/voices/v1/voices`) instead of the retired `/tts/v1/voices` path.
+  按官方 API 文档修正新增供应商的默认值与连接探测：Fish Audio 默认模型改为有效目录 ID（`s2.1-pro`，原 `speech-1.6` 不被识别会静默回退），StepFun 默认模型改为文档中的 `step-3.7-flash`，Inworld 连接探测改用现行 Voice API（`/voices/v1/voices`）替代已退役的 `/tts/v1/voices`。
 - Made server exports feed video effects from frame-accurate decoded media frames before running the WebGL pass, including midpoint-aligned seeks for fractional-rate footage such as 30000/1001, preventing stale, repeated, offset, or black frames after AI-applied color grading and other clip effects.
   服务端导出现在会先取得与时间线精确对齐的解码视频帧，并对 30000/1001 等分数帧率素材采用帧中点定位，再执行 WebGL 特效，避免 AI 调色及其他片段特效导致旧帧、重复帧、错位帧或黑帧。
 - Prevented off-playhead selected effects and transitions from reporting perpetual shader loading; real transient media waits now appear only after 160 ms, while durable fallback errors remain immediate.

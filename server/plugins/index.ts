@@ -162,7 +162,7 @@ export function serverPlugins(): Plugin[] {
         return getKey("FISHAUDIO_TTS_API_KEY");
       },
       get fishAudioModel() {
-        return getKey("FISHAUDIO_TTS_MODEL") || "speech-1.6";
+        return getKey("FISHAUDIO_TTS_MODEL") || "s2.1-pro";
       },
       get speechifyBaseUrl() {
         return getKey("SPEECHIFY_TTS_BASE_URL") || "https://api.sws.speechify.com";

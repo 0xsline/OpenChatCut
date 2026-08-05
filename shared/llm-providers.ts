@@ -67,7 +67,7 @@ export const LLM_PROVIDER_PRESETS = [
     label: 'StepFun',
     protocol: 'openai-compatible',
     baseUrl: 'https://api.stepfun.com/v1',
-    defaultModel: 'step-3',
+    defaultModel: 'step-3.7-flash',
   },
   {
     // BytePlus ModelArk: one Ark-compatible endpoint fronting many hosted

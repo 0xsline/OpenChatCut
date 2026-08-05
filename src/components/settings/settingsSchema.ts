@@ -258,7 +258,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { key: 'voice/fishaudio', vendor: 'fishaudio', title: 'Fish Audio', fields: [
             secret('FISHAUDIO_TTS_API_KEY', 'API Key'),
             text('FISHAUDIO_TTS_BASE_URL', 'Base URL', '默认 https://api.fish.audio'),
-            modelText('FISHAUDIO_TTS_MODEL', '配音模型', 'speech-1.6'),
+            modelText('FISHAUDIO_TTS_MODEL', '配音模型', 's2.1-pro'),
           ] },
           { key: 'voice/speechify', vendor: 'speechify', title: 'Speechify', fields: [
             secret('SPEECHIFY_TTS_API_KEY', 'API Key'),

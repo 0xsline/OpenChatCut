@@ -177,7 +177,7 @@ export const PROBES: Record<string, ProbeDef> = {
   'voice/minimax': minimaxProbe,
   'voice/inworld': {
     needs: [['INWORLD_TTS_API_KEY']],
-    run: (get) => fetch(`${base(get, 'INWORLD_TTS_BASE_URL', 'https://api.inworld.ai')}/tts/v1/voices`, {
+    run: (get) => fetch(`${base(get, 'INWORLD_TTS_BASE_URL', 'https://api.inworld.ai')}/voices/v1/voices`, {
       signal: t(), headers: { Authorization: `Basic ${get('INWORLD_TTS_API_KEY')}` },
     }),
   },
