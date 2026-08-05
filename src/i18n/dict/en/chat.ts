@@ -102,7 +102,6 @@ export default {
   '请先在设置中配置一个模型厂商。': 'Configure at least one model provider in Settings first.',
   '正在读取模型配置…': 'Loading model configuration…',
   '设置': 'Settings',
-  '模式': 'Mode',
   'Ask 模式': 'Ask Mode',
   'YOLO 模式': 'YOLO Mode',
   'Ask 模式：AI 的改动先经你确认；有多个可选项时 AI 会先问你。': 'Ask Mode: AI changes wait for your confirmation; when several options are available, the AI asks you first.',

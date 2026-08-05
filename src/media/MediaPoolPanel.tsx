@@ -277,7 +277,6 @@ export function MediaPoolPanel({
     return next;
   }), []);
   const visibleIds = visible.map((asset) => asset.id);
-  const toggleAll = () => setSelected((old) => toggleVisibleAssetSelection(old, visibleIds));
 
   const renameAssets = (targets: MediaAsset[]) => {
     if (!targets.length) return;

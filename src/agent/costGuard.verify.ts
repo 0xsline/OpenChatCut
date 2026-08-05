@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { HIGH_COST_TOOLS, isHighCostTool, costCategoryForTool } from './settings/agentSettings';
 import { shouldBlockAutoApply, isCostAllowed, rememberCostAllowed, highCostOps } from './skills/costGuard';
 import { TOOL_SCHEMAS } from './tools';
-import type { Proposal } from '../proposal';
+import type { Proposal } from './proposal';
 
 // ── 1. paid surfaces must all be registered (regression for the 2026-08-05
 // gap: transcribe_track / web_* / run_code were unguarded) ──
@@ -38,10 +38,11 @@ for (const name of Object.keys(HIGH_COST_TOOLS)) {
 
 // ── 2. auto-apply never swallows high-cost proposals ──
 const proposal = (ops: string[]): Proposal => ({
-  id: 'p1',
-  createdAt: 1,
-  options: [{ label: '', description: '', operations: ops.map((tool) => ({ tool, args: {}, type: 'op' as const })) }],
-  baseRevision: 'v0-00000000',
+  title: '',
+  summary: '',
+  totalImpact: '',
+  options: [{ id: 'o1', label: '', recommended: true, summary: '', totalImpact: '', operations: ops.map((tool) => ({ tool, args: {}, type: 'op' as const, actions: [], action: '', target: '', impact: '' })) }],
+  baseDoc: { version: 1, id: 'proj', name: 'p', timelineId: 't', timeline: { captionsHidden: false, fps: 30, width: 1920, height: 1080, items: [] } } as never,
   resultState: undefined as never,
 });
 assert.equal(shouldBlockAutoApply(proposal(['move_item']), true), false, 'ordinary edit auto-applies in YOLO mode');

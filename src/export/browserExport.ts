@@ -194,6 +194,8 @@ async function executeBrowserRender(
   config: BrowserRenderConfig,
 ): Promise<Extract<BrowserExportAttempt, { status: 'rendered' }>> {
   const { state, project, timelineId, codec, signal, onProgress } = options;
+  // Invariant: loadBrowserRenderConfig rejected prores before any render config existed.
+  if (codec === 'prores') throw new Error('prores must be rejected by loadBrowserRenderConfig');
   const props: TimelineCompositionProps = { state, project, timelineId, transparent: false, browserRenderer: true };
   try {
     const { TimelineComposition } = await (options.loadComposition ?? (() => import('../editor/TimelineComposition')))();

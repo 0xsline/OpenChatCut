@@ -871,10 +871,14 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
     case 'setCaptionsHidden': {
       // Global caption-system switch: captions off also hides on-screen text
       // clips (render layer). Keep every caption track's enabled in sync.
-      let next = { ...s, captionsHidden: a.hidden };
+      let next: TimelineState = { ...s, captionsHidden: a.hidden };
       const targets = captionTrackEntries(next);
       if (targets.length) {
-        for (const { id } of targets) next = withTrackCaptions(next, { ...(captionsOnTrack(next, id) ?? { enabled: true }), enabled: !a.hidden }, id);
+        for (const { id } of targets) {
+          const base = captionsOnTrack(next, id) ?? s.captions
+            ?? { enabled: true, template: 'plain' as const, pacing: 'phrase' as const };
+          next = withTrackCaptions(next, { ...base, enabled: !a.hidden }, id);
+        }
       }
       return next;
     }

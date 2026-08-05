@@ -28,6 +28,7 @@ interface MediaAssetCardProps {
   onOpenMenu: (id: string, anchor: HTMLElement, point?: { x: number; y: number }) => void;
   onRelink: (id: string) => void;
   onToggleSelected: (id: string) => void;
+  onSetSelected: (ids: string[]) => void;
   onSetFavorite: (id: string, favorite: boolean) => void;
 }
 

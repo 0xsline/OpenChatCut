@@ -184,7 +184,7 @@ export async function executeOpenChatCutTool(
   args: Record<string, unknown>,
   execution: LocalToolExecutionContext,
 ): Promise<CodexToolExecution> {
-  const { ctx, onEvent, settings, resolveGuard, onSkillGuard, onFollowup } = execution;
+  const { ctx, onEvent, resolveGuard, onSkillGuard, onFollowup } = execution;
   try {
     const guard = await resolveGuard(schema.name, args, ctx);
     if (guard) {
