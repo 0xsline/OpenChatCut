@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import { theme } from '../../theme';
 import { getLocale, tData, useT } from '../../i18n/locale';
 import type { AgentReference } from '../../agent/context';
@@ -6,7 +6,8 @@ import type { AgentContextUsage } from '../../agent/context-compaction';
 import { isSelectionRefKind } from '../../agent/selection-refs';
 import { Icon, type IconName } from '../icons';
 import { MenuDrillHeader } from '../timeline/MenuDrillHeader';
-import { findSkill, setCustomSkills } from '../../agent/skills/skills-catalog';
+import { findSkill, setCustomSkills, allCreativeSkills } from '../../agent/skills/skills-catalog';
+import type { SkillDefinition } from '../../agent/skills/skill-types';
 import { loadCustomSkills } from '../../persist/skillStore';
 import { loadAgentSettings, saveAgentSettings, MG_TIERS, type AgentSettings, type MgTier } from '../../agent/settings/agentSettings';
 import { usePersistedState } from '../../hooks/usePersistedState';
@@ -18,6 +19,7 @@ import {
 import { ComposerPopover } from './ComposerPopover';
 import { ComposerModelPicker, useComposerModelView } from './ComposerModelPicker';
 import { WorkflowPickerContent } from './WorkflowPickerContent';
+import { activateWorkflowStarter } from './workflowStarters';
 import { hasEditorDrag, parseEditorDrag, type EditorDragPayload } from '../../editor/editorDrag';
 import { droppedFiles, hasExternalFiles } from '../../media/externalFileDrop';
 
@@ -139,6 +141,40 @@ export function ChatComposer(props: ChatComposerProps) {
   type RefDrill = 'root' | 'assets' | 'timeline' | 'templates' | `track:${string}`;
   const [refDrill, setRefDrill] = useState<RefDrill>('root');
   const [refIndex, setRefIndex] = useState(-1);
+  // `/` skill command: value starting with `/` opens slug completion. The slash
+  // stays in the input as a command prefix; Tab/Enter completes to an activation.
+  const slashQuery = value.startsWith('/') ? value.slice(1) : null;
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashIndex, setSlashIndex] = useState(-1);
+  const slashMatches = useMemo((): SkillDefinition[] => {
+    if (slashQuery === null) return [];
+    const q = slashQuery.toLowerCase().trim();
+    const skills = allCreativeSkills();
+    if (!q) return skills;
+    const starts = skills.filter((s) => s.slug.toLowerCase().startsWith(q));
+    const contains = skills.filter((s) => !starts.includes(s)
+      && (s.slug.toLowerCase().includes(q)
+        || s.name.toLowerCase().includes(q)
+        || s.nameZh.includes(q)));
+    return [...starts, ...contains];
+  }, [slashQuery]);
+  useEffect(() => {
+    if (slashQuery === null) { setSlashOpen(false); return; }
+    setSlashOpen(true);
+    setSlashIndex((i) => (slashMatches.length > 0 ? Math.min(i, slashMatches.length - 1) : -1));
+  }, [slashMatches.length, slashQuery]);
+  const activateSlash = (skill: SkillDefinition) => {
+    setSlashOpen(false);
+    setSlashIndex(-1);
+    onChange('');
+    activateWorkflowStarter(skill, {
+      translate: t,
+      locale: getLocale(),
+      onCreativeModeChange,
+      onPromptChange: onChange,
+      onRequestFocus: () => taRef.current?.focus(),
+    });
+  };
   const [agentSettings, setAgentSettings] = useState<AgentSettings>(() => loadAgentSettings());
   const patchAgent = (patch: Partial<AgentSettings>) => {
     setAgentSettings((prev) => {
@@ -421,6 +457,29 @@ export function ChatComposer(props: ChatComposerProps) {
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.shiftKey) event.preventDefault();
+          if (slashOpen && slashQuery !== null) {
+            if (event.key === 'ArrowDown' && slashMatches.length) {
+              event.preventDefault();
+              setSlashIndex((i) => (i + 1) % slashMatches.length);
+              return;
+            }
+            if (event.key === 'ArrowUp' && slashMatches.length) {
+              event.preventDefault();
+              setSlashIndex((i) => (i <= 0 ? slashMatches.length - 1 : i - 1));
+              return;
+            }
+            if ((event.key === 'Enter' || event.key === 'Tab') && slashMatches.length) {
+              event.preventDefault();
+              activateSlash(slashMatches[Math.max(0, slashIndex)]);
+              return;
+            }
+            if (event.key === 'Escape') {
+              setSlashOpen(false);
+              setSlashIndex(-1);
+              onChange('');
+              return;
+            }
+          }
           if (event.key === '@') {
             // @ opens the asset/timeline reference picker (anchored to the input).
             setPopAnchor(taRef.current);
@@ -548,6 +607,57 @@ export function ChatComposer(props: ChatComposerProps) {
       {pop === 'templates' && (
         <ComposerPopover anchor={popAnchor} onClose={closePop}>
           {refPopoverBody('template', t('暂无模板'))}
+        </ComposerPopover>
+      )}
+      {slashOpen && slashQuery !== null && (
+        <ComposerPopover
+          width={WORKFLOW_POPOVER_WIDTH}
+          className="cc-chat-popover--workflow"
+          ariaLabel={t('技能命令补全')}
+          anchor={taRef.current}
+          onClose={() => { setSlashOpen(false); setSlashIndex(-1); }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 12px 6px' }}>
+            <Icon name="wand" size={14} />
+            <strong style={{ fontSize: 12.5 }}>{t('创作工作流')}</strong>
+            <code style={{ marginLeft: 'auto', fontSize: 10.5, color: theme.textDim }}>{value}</code>
+          </div>
+          <div style={{ maxHeight: 264, overflowY: 'auto', padding: '2px 6px 8px' }}>
+            {slashMatches.length === 0 && (
+              <div style={{ fontSize: 12, color: theme.textDim, padding: '6px 10px' }}>
+                {t('没有匹配“{query}”的创作工作流', { query: slashQuery.trim() })}
+              </div>
+            )}
+            {slashMatches.map((s, index) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => activateSlash(s)}
+                onMouseEnter={() => setSlashIndex(index)}
+                onMouseLeave={() => { if (slashIndex === index) setSlashIndex(-1); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
+                  background: index === slashIndex ? theme.panel : 'none', border: 'none', borderRadius: 3,
+                  padding: '7px 10px', cursor: 'pointer', color: theme.text,
+                }}
+              >
+                <span style={{ color: theme.textDim, lineHeight: 0 }}><Icon name="wand" size={15} /></span>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}>
+                    <strong style={{ fontSize: 12.5 }}>{skillName(s)}</strong>
+                    <code style={{ fontSize: 10, color: theme.textDim }}>/{s.slug}</code>
+                  </span>
+                  <span style={{ display: 'block', fontSize: 10.5, color: theme.textDim, lineHeight: 1.4, marginTop: 1 }}>
+                    {t(s.summary)}
+                  </span>
+                </span>
+                {creativeMode === s.id && <Icon name="check" size={12} strokeWidth={2.4} />}
+              </button>
+            ))}
+            <div style={{ fontSize: 10, color: theme.textDim, padding: '6px 10px 2px', letterSpacing: 0.4 }}>
+              {t('Tab / Enter 补全并激活 · Esc 退出')}
+            </div>
+          </div>
         </ComposerPopover>
       )}
       {pop === 'more' && (

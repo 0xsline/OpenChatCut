@@ -142,6 +142,10 @@ export default {
   '导入素材中…': 'Importing media…',
   '请等待附件导入完成。': 'Wait for attachment imports to finish.',
   '关闭': 'Close',
+  '技能命令补全': 'Skill command completion',
+  '创作工作流': 'Creative workflows',
+  '没有匹配“{query}”的创作工作流': 'No creative workflow matches “{query}”',
+  'Tab / Enter 补全并激活 · Esc 退出': 'Tab / Enter completes and activates · Esc exits',
 
   // ── Creation skill summary (the skill name is in the catalog and comes with its own English name, not in the dictionary) ──
   '把一条长播客、访谈、课程或直播剪成适合社媒发布的短视频和高光。': 'Cut one long podcast, interview, course, or livestream into social-ready shorts and highlights.',
