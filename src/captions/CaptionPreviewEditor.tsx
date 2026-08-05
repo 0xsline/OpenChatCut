@@ -281,8 +281,10 @@ export function CaptionPreviewEditor({ trackId, state, captions, playerRef, onUp
               onPointerUp={onHitPointerUp}
               onKeyDown={onHitKeyDown}
               onDoubleClick={() => { setSelected(true); setPop(null); setEditing(true); setDraft(cue.text); playerRef.current?.pause(); }}
-              style={drag
-                ? { ...textCss, opacity: 0.92, cursor: 'grabbing', touchAction: 'none', userSelect: 'none' }
+              style={drag || selected
+                // Selected / dragging: paint full styles so color, stroke and scale stay visible
+                // on the canvas (the Remotion layer underneath may sit slightly offset).
+                ? { ...textCss, opacity: drag ? 0.92 : 1, cursor: drag ? 'grabbing' : 'grab', touchAction: 'none', userSelect: 'none' }
                 : { ...textCss, color: 'transparent', WebkitTextStroke: '0px transparent', textShadow: 'none', background: 'transparent', cursor: 'grab', touchAction: 'none', userSelect: 'none' }}
             >
               {cue.text}
