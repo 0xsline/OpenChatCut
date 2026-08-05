@@ -8,6 +8,10 @@ export type CapabilityKey =
   | 'image' | 'voice' | 'video' | 'music' | 'sound'
   | 'stock' | 'transcription' | 'sandbox' | 'web';
 
+/** Proposal confirmation mode for provider routing: 'manual' asks the user
+ * before first use among several providers; 'auto' lets the agent pick. */
+export type ApprovalMode = 'manual' | 'auto';
+
 const ALL_OFF: Record<CapabilityKey, boolean> = {
   image: false, voice: false, video: false, music: false, sound: false,
   stock: false, transcription: false, sandbox: false, web: false,
@@ -93,9 +97,11 @@ const PREFERRED_KEY: Partial<Record<CapabilityKey, string>> = {
 
 const rowTag = (r: ProviderRow): string => `${r.label}(${r.argKey}=${r.arg})`;
 
-/** Routing suffix for an ON capability: user default → use it; single vendor → use it;
- * several & no default → agent must ask the user (once) before first use. */
-function providerSuffix(cap: CapabilityKey): string {
+/** Routing suffix for an ON capability, mode-aware:
+ * user default → use it; single vendor → use it;
+ * several & manual (every change confirmed) → ask once via ask_followup_questions;
+ * several & auto (user delegated) → agent picks and states the reason. */
+function providerSuffix(cap: CapabilityKey, mode: ApprovalMode): string {
   const rows = CAP_PROVIDERS[cap];
   if (!rows || !liveKeys) return '';
   const has = (n: string): boolean => Boolean(liveKeys?.[n]?.configured);
@@ -108,6 +114,7 @@ function providerSuffix(cap: CapabilityKey): string {
   if (on.length === 1) return ` · available: ${rowTag(on[0])} — use it directly`;
   const names = on.map(rowTag).join(', ');
   if (!prefKey) return ` · available: ${names}`;
+  if (mode === 'auto') return ` · available: ${names} — no user default; auto mode: pick the most suitable one yourself and state the reason`;
   return ` · available: ${names} — no user default: before the first use of this capability in the session, use ask_followup_questions to select one provider, then keep using that choice`;
 }
 
@@ -125,17 +132,26 @@ const CAP_ROWS: { key: CapabilityKey; label: string; tool: string; fallback: str
 ];
 
 /** System-prompt section listing which key-gated tools are on/off (local editing —
- * templates/effects/transitions/zoom/etc. — never needs a key and is always on). */
-export function capabilitiesPrompt(caps: Record<CapabilityKey, boolean> = currentCaps()): string {
+ * templates/effects/transitions/zoom/etc. — never needs a key and is always on).
+ * `mode` is the current proposal confirmation mode: 'manual' (default) asks the
+ * user once when several providers are configured; 'auto' lets the agent choose. */
+export function capabilitiesPrompt(
+  caps: Record<CapabilityKey, boolean> = currentCaps(),
+  mode: ApprovalMode = 'manual',
+): string {
   const on: string[] = [];
   const off: string[] = [];
   for (const r of CAP_ROWS) {
-    if (caps[r.key]) on.push(`${r.label}(${r.tool}${providerSuffix(r.key)})`);
+    if (caps[r.key]) on.push(`${r.label}(${r.tool}${providerSuffix(r.key, mode)})`);
     else off.push(`${r.label} (${r.tool}) — ${r.fallback}`);
   }
   return `\n\n# Available capabilities (based on configured API keys; local editing is always available without keys)\n`
     + `✅ Configured: ${on.length ? on.join(', ') : '(no key-gated capabilities)'}.\n`
     + `⬜ Not configured — do not promise these in a plan or call them; they return "not configured" and waste a turn:\n`
     + (off.length ? off.map((s) => `  - ${s}`).join('\n') : '  (none)')
-    + '\nWhen an unavailable capability is needed, follow its fallback above or tell the user that the capability is not configured.';
+    + '\nWhen an unavailable capability is needed, follow its fallback above or tell the user that the capability is not configured'
+    + ' (guide them to Settings → the matching capability page to add a provider).'
+    + '\nProvider choice: skill files only document per-provider usage details; the actual provider is decided by THIS list'
+    + ' and its routing suffix (user default → single provider → ask once in manual mode → pick freely in auto mode).'
+    + ' Never use a provider that is not in the list above.';
 }

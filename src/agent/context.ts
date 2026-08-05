@@ -5,6 +5,7 @@ import { sourceWindowForTimelineRange } from '../editor/sourceLimit';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
 import type { LibraryDragKind } from '../library/drag';
+import type { ApprovalMode } from './capabilities';
 import {
   SELECTION_REF_CATEGORY, isSelectionRefKind, timelineIdOf,
   type AssetRefKind, type SelectionReference,
@@ -60,6 +61,9 @@ export interface AgentContext {
   /** The complete project snapshot of the previous step (undo target), null if there is no history. undo_last_change Use it to
    * "Go back to the previous step" is expressed as a normal edit, and the proposal will be confirmed by the user as usual. */
   getUndoTarget?: () => ProjectDoc | null;
+  /** Proposal confirmation mode (built-in chat: auto-apply setting; external: session approvalMode).
+   * Drives provider routing: 'manual' asks the user once among several providers; 'auto' lets the agent pick. */
+  getApprovalMode?: () => ApprovalMode;
 }
 
 /** Source-media span of a placed clip in ms (srcIn → srcIn + duration·rate). */

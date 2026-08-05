@@ -5,7 +5,7 @@ import { timelineTrackIds, trackAlias, trackKind, type DesignStyle } from '../ed
 import type { SkillDefinition } from './skills/skill-types';
 import type { AgentContext } from './context';
 import type { Locale } from '../i18n/locale';
-import { capabilitiesPrompt } from './capabilities';
+import { capabilitiesPrompt, currentCaps } from './capabilities';
 import { getLocale } from '../i18n/locale';
 import { findSkill } from './skills/skills-catalog';
 import { PLUGIN_SKILLS_INDEX } from './skills/plugin-skills';
@@ -321,7 +321,7 @@ export function buildAgentSystemPrompt(
   return assembleSystemPrompt([
     SYSTEM_PROMPT,
     agentLanguagePrompt(getLocale()),
-    capabilitiesPrompt(),
+    capabilitiesPrompt(currentCaps(), ctx.getApprovalMode?.() ?? 'manual'),
     PLUGIN_SKILLS_INDEX,
     agentSettingsPrompt(settings),
     designStylePrompt(ctx.getDoc().designStyle),

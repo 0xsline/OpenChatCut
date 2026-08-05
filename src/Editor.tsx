@@ -38,6 +38,7 @@ import {
   type ProjectSaveResult,
 } from './persist/projectStore';
 import { recoverFailedAutosave } from './persist/autosaveRecovery';
+import { loadChatAutoApply } from './persist/sessionPrefs';
 import { useAutomaticVersions } from './persist/useAutomaticVersions';
 import {
   createMediaAssetsChatSeed,
@@ -300,6 +301,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
       getOfflineMediaSrcs: () => offlineSrcsRef.current,
       getCreativeMode: () => creativeModeRef.current,
       getUndoTarget,
+      getApprovalMode: () => (loadChatAutoApply(project.id) ? 'auto' : 'manual'),
       setCreativeMode: changeCreativeMode,
       get templates() { return allTemplatesRef.current; },
       audio: AUDIO_ASSETS,
