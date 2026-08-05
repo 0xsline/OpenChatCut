@@ -144,6 +144,7 @@ export const PreviewPanel = memo(function PreviewPanel({
       onBeginHistoryGesture,
       onEndHistoryGesture,
       onItemPropChange,
+      onSeedChat,
     }
     : null;
   const hasItems = state.items.length > 0;

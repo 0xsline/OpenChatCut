@@ -1950,11 +1950,22 @@ button, input, select { font: inherit; }
   position:absolute; z-index:6; pointer-events:auto;
   bottom:auto; left:auto;
 }
-.cc-preview-text-edit-tag {
-  display:inline-flex; align-items:center; height:26px; padding:0 8px;
-  color:var(--cc-text-dim); font-size:11px; font-weight:600; letter-spacing:0.02em;
-}
 .cc-preview-text-edit-hint {
   display:inline-flex; align-items:center; height:26px; padding:0 10px;
   color:var(--cc-text-muted); font-size:11px; white-space:nowrap;
+}
+.cc-preview-text-edit-draft {
+  position:absolute; top:calc(100% + 8px); left:50%; transform:translateX(-50%);
+  z-index:7; min-width:220px; max-width:min(420px, 70vw);
+  padding:6px; border-radius:4px; background:var(--cc-panel-alt); border:0.5px solid var(--cc-border);
+  box-shadow:0 10px 30px rgba(var(--cc-shadow-rgb), 0.4);
+}
+.cc-preview-text-edit-draft textarea {
+  display:block; width:100%; min-height:52px; box-sizing:border-box; resize:vertical;
+  padding:6px 8px; border:0.5px solid var(--cc-border-light); border-radius:3px;
+  background:var(--cc-bg); color:var(--cc-text); font:inherit; font-size:12px; line-height:1.4;
+  outline:none;
+}
+.cc-preview-text-edit-draft textarea:focus {
+  border-color:color-mix(in srgb, var(--cc-accent) 50%, var(--cc-border));
 }

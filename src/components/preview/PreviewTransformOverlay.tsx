@@ -23,7 +23,7 @@ import {
   type PreviewPoint,
   type PreviewSize,
 } from './previewTransform';
-import { previewTextEditFields } from './previewTextEdit';
+import { canPreviewTextEdit, previewTextEditFields } from './previewTextEdit';
 import { PreviewTextEditBar } from './PreviewTextEditBar';
 
 export interface PreviewTransformOverlayProps {
@@ -36,7 +36,10 @@ export interface PreviewTransformOverlayProps {
   onEndHistoryGesture: () => void;
   /** Live text style edits for text / text-like MG clips. */
   onItemPropChange?: (id: string, key: string, value: unknown) => void;
+  onSeedChat?: (text: string) => void;
 }
+
+const DOUBLE_CLICK_MS = 320;
 
 type GestureMode = 'move' | 'scale' | 'rotate';
 
@@ -93,10 +96,13 @@ export function PreviewTransformOverlay({
   onBeginHistoryGesture,
   onEndHistoryGesture,
   onItemPropChange,
+  onSeedChat,
 }: PreviewTransformOverlayProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [frame, setFrame] = useState(() => Math.round(playerRef.current?.getCurrentFrame() ?? 0));
   const [previewSize, setPreviewSize] = useState<PreviewSize>({ width: state.width, height: state.height });
+  const [textAutoEdit, setTextAutoEdit] = useState(false);
+  const lastClickRef = useRef<{ id: string; at: number } | null>(null);
   const cycleRef = useRef<ClickCycleState | null>(null);
   const gestureRef = useRef<GestureState | null>(null);
   const pendingRef = useRef<PendingValues | null>(null);
@@ -151,6 +157,11 @@ export function PreviewTransformOverlay({
   useEffect(() => {
     cycleRef.current = null;
   }, [frame, state.height, state.width]);
+
+  useEffect(() => {
+    setTextAutoEdit(false);
+    lastClickRef.current = null;
+  }, [state.selectedId]);
 
   const commitPending = useCallback(() => {
     if (commitRafRef.current) {
@@ -306,6 +317,18 @@ export function PreviewTransformOverlay({
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+    if (!moved && canPreviewTextEdit(gesture.item) && previewTextEditFields(gesture.item)?.textKey) {
+      const now = Date.now();
+      const prev = lastClickRef.current;
+      if (prev && prev.id === gesture.item.id && now - prev.at <= DOUBLE_CLICK_MS) {
+        lastClickRef.current = null;
+        setTextAutoEdit(true);
+      } else {
+        lastClickRef.current = { id: gesture.item.id, at: now };
+      }
+    } else {
+      lastClickRef.current = null;
+    }
     finishGesture(moved);
   };
 
@@ -400,6 +423,9 @@ export function PreviewTransformOverlay({
                 selection={selection}
                 composition={{ width: state.width, height: state.height }}
                 onPropChange={onItemPropChange}
+                onSeedChat={onSeedChat}
+                autoEdit={textAutoEdit}
+                onAutoEditHandled={() => setTextAutoEdit(false)}
               />
             )}
         </>
