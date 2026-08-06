@@ -204,7 +204,11 @@ export function ClipFx({ item, fit, width, height, frameOffset = 0, onPreviewSta
     disposeRuntimeSlot(runtimeRef);
   }, [width, height, definitionKey]);
 
-  const showingShaderFrame = renderedKey === renderKey;
+  // Once any GL frame has been drawn, keep the canvas visible across seeks:
+  // falling back to the raw source layer would flash the UNFILTERED frame for
+  // the 1-2 frames until the new frame's shader pass is ready. The first
+  // (never-drawn) load still falls back to the honest source while media loads.
+  const showingShaderFrame = renderedKey !== null;
   if (active.length === 0) return null;
   return (
     <AbsoluteFill>
