@@ -2,6 +2,8 @@ export { REFRAME_TOOL_SCHEMAS, REFRAME_TOOL_NAMES } from './schemas/reframe-tool
 import type { AgentContext } from '../context';
 import type { TimelineItem, TimelineState } from '../../editor/types';
 import { detectFocalPoints, magnificationForAspect } from '../../reframe/detect';
+import { focalFramesFromGeometry } from '../../reframe/geometry-focus';
+import { analyzeAssetGeometry } from '../../geometry/visual-geometry';
 
 // auto_reframe — Custom tool.
 // reframe originally only had the "write/render" infrastructure (builtin:zoom + reserved
@@ -82,19 +84,34 @@ export async function execReframeTool(name: string, args: Args, ctx: AgentContex
     const video = await loadVideo(item.src);
     const srcWidth = video.videoWidth || item.width || undefined;
     const srcHeight = video.videoHeight || item.height || undefined;
-    const keyframes = await detectFocalPoints(video, {
-      durationInFrames: item.durationInFrames,
-      fps: state.fps,
-      dstAspect,
-      srcInFrame: item.srcInFrame ?? 0,
-      playbackRate: item.playbackRate,
-      intervalFrames,
-      sensitivity,
-      smooth,
-      maxSamples,
-      srcWidth,
-      srcHeight,
-    });
+
+    // Geometry-first: when the visual-geometry cache (person/face segments) is
+    // available, focal points come from subject centers — no pixel sampling,
+    // robust on complex backgrounds. Falls back to the energy-grid heuristic.
+    const asset = item.src ? ctx.getDoc().assets.find((candidate) => candidate.src === item.src) : undefined;
+    const geometryResult = asset ? await analyzeAssetGeometry(asset) : undefined;
+    const geometry = geometryResult?.geometry;
+    const usedGeometry = Boolean(geometry && geometry.segments.some((segment) => segment.zone.subject || segment.zone.face));
+
+    const keyframes = usedGeometry
+      ? focalFramesFromGeometry(geometry!, item.durationInFrames, state.fps, {
+        srcInFrame: item.srcInFrame ?? 0,
+        playbackRate: item.playbackRate,
+        intervalFrames,
+      })
+      : await detectFocalPoints(video, {
+        durationInFrames: item.durationInFrames,
+        fps: state.fps,
+        dstAspect,
+        srcInFrame: item.srcInFrame ?? 0,
+        playbackRate: item.playbackRate,
+        intervalFrames,
+        sensitivity,
+        smooth,
+        maxSamples,
+        srcWidth,
+        srcHeight,
+      });
 
     if (!keyframes.length) {
       return { error: `auto_reframe: 未能从 clip ${item.id} 采到任何帧(视频可能不可读)`, keyframes: 0 };
@@ -111,9 +128,12 @@ export async function execReframeTool(name: string, args: Args, ctx: AgentContex
       magnification: mag,
       dstAspect: Number(dstAspect.toFixed(4)),
       smooth: smooth ?? 0.45,
-      note: mag <= 1.05
-        ? '画布与源画幅接近，裁切倍率≈1；关键帧已写入，换竖屏画布后更明显。'
-        : 'reframe 关键帧已写入；用 view_timeline_frames 自检裁切是否跟主体。',
+      source: usedGeometry ? 'geometry' : 'energy-grid',
+      note: usedGeometry
+        ? '基于人像/人脸几何生成焦点（无需像素采样）。'
+        : mag <= 1.05
+          ? '画布与源画幅接近，裁切倍率≈1；关键帧已写入，换竖屏画布后更明显。'
+          : 'reframe 关键帧已写入；用 view_timeline_frames 自检裁切是否跟主体。',
     };
   } catch (err: unknown) {
     return { error: err instanceof Error ? err.message : 'auto_reframe 失败' };

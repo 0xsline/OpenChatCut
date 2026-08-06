@@ -71,8 +71,11 @@ export async function sampleGeometryFrames(
     const samples: GeometrySample[] = [];
     for (const t of geometrySampleTimes(duration)) {
       signal.throwIfAborted();
-      video.currentTime = t;
-      await waitForMedia(video, 'seeked', signal);
+      // Seeking to the current position never fires `seeked`; skip it.
+      if (Math.abs(video.currentTime - t) > 0.01) {
+        video.currentTime = t;
+        await waitForMedia(video, 'seeked', signal);
+      }
       context.drawImage(video, 0, 0, width, height);
       const pixels = context.getImageData(0, 0, width, height);
       samples.push({ data: pixels.data, width, height, sampleTime: t });
