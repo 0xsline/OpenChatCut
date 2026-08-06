@@ -39,7 +39,10 @@ import { llmProxyPlugin } from "./llm-proxy.ts";
 import { resourcePreviewPlugin } from "./resource-preview.ts";
 import { getKey } from "../keystore.ts";
 
+import { installSystemProxy } from '../net.ts';
+
 export function serverPlugins(): Plugin[] {
+  installSystemProxy();
   return [
     llmProxyPlugin(),
     skillFilesPlugin(),
