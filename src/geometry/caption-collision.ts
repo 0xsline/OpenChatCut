@@ -7,7 +7,7 @@
  * the geometry cache is read asynchronously by the caller.
  */
 
-import { intersects, unionRect, type GeomRect } from './geometry-math';
+import { headZoneOf, intersects, unionRect, type GeomRect } from './geometry-math';
 import type { VisualGeometryAsset } from './visual-geometry';
 
 export interface CaptionLayoutLike {
@@ -43,12 +43,14 @@ export function captionBandFromLayout(layout: CaptionLayoutLike): GeomRect | nul
   };
 }
 
-/** Union of every face box across all geometry segments (source-seconds). */
+/** Union of every effective head zone across all geometry segments. Falls
+ * back to the subject's top band when a face is too small to detect. */
 export function faceUnionOf(geometry: VisualGeometryAsset): GeomRect | null {
   let union: GeomRect | null = null;
   for (const segment of geometry.segments) {
-    if (!segment.zone.face) continue;
-    union = union ? unionRect(union, segment.zone.face) : { ...segment.zone.face };
+    const head = headZoneOf(segment.zone);
+    if (!head) continue;
+    union = union ? unionRect(union, head) : { ...head };
   }
   return union;
 }

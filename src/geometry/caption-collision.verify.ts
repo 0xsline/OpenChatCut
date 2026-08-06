@@ -78,6 +78,21 @@ async function main(): Promise<void> {
   const fullConflict = captionFaceConflicts(fullFace, defaults)[0]!;
   assert.equal(suggestCaptionAvoidance(fullConflict), null, 'no room above or below');
 
+  // 10. No face detected → subject top band stands in (conservative avoidance).
+  const noFace = {
+    assetId: 'a', sourceRevision: 'r', algorithmVersion: 'v', durationSec: 10,
+    segments: [{
+      startSec: 0, endSec: 10, person: 'center',
+      zone: { rects: [], face: null, subject: { x: 0.3, y: 0.85, w: 0.4, h: 0.15 } },
+    }],
+  } as VisualGeometryAsset;
+  const headUnion = faceUnionOf(noFace)!;
+  assert.ok(headUnion, 'subject top band replaces the missing face');
+  assert.ok(Math.abs(headUnion.y - 0.85) < 1e-6, 'band starts at subject top');
+  assert.ok(Math.abs(headUnion.h - 0.0525) < 1e-6, 'band is the top 35% of the subject');
+  const noFaceConflicts = captionFaceConflicts(noFace, defaults);
+  assert.equal(noFaceConflicts.length, 1, 'bottom caption over the subject head band flags even without a face');
+
   console.log('caption-collision.verify: all assertions passed');
 }
 

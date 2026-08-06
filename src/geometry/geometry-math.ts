@@ -1,8 +1,13 @@
 /**
  * Safe-zone geometry (pure functions, no IO, headless-testable).
  *
+<<<<<<< HEAD
  * conventions. Occupancy grid → union over a time range → top-K largest empty
  * rects. All coordinates normalized [0..1], origin top-left.
+=======
+ * Occupancy grid → union over a time range → top-K largest empty rects. All
+ * coordinates normalized [0..1], origin top-left.
+>>>>>>> 031e3b0 (fix(geometry): head-zone fallback for undetected faces)
  *
  * Semantics: geometry only (where the person is, where it's empty). Content
  * understanding (what is on screen) stays in the vision/LLM path.
@@ -171,4 +176,21 @@ function occBBox(occ: Uint8Array): GeomRect | null {
 /** True when two normalized rects intersect (strictly positive overlap). */
 export function intersects(a: GeomRect, b: GeomRect): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+/**
+ * Effective head zone of a segment: the detected face, or — when the face is
+ * too small to detect (distant/wide shots) — the top 35% band of the subject
+ * bbox as a conservative stand-in. Graphics/captions avoid this zone either
+ * way; null only when neither face nor subject exists.
+ */
+export function headZoneOf(zone: { face: GeomRect | null; subject: GeomRect | null }): GeomRect | null {
+  if (zone.face) return zone.face;
+  if (!zone.subject || zone.subject.h <= 0) return null;
+  return {
+    x: zone.subject.x,
+    y: zone.subject.y,
+    w: zone.subject.w,
+    h: Math.max(0.02, zone.subject.h * 0.35),
+  };
 }

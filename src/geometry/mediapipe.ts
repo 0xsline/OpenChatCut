@@ -3,7 +3,12 @@
  *
  * Deliberately lazy: @mediapipe/tasks-vision is heavy, so it is only loaded on
  * first geometry analysis. CPU delegate first (XNNPACK): the WebGL GPU
+<<<<<<< HEAD
  * delegate often initializes fine but returns empty/garbage masks (observed in
+=======
+ * delegate often initializes fine but returns empty/garbage masks; offline
+ * 2fps×512px analysis does not need GPU.
+>>>>>>> 031e3b0 (fix(geometry): head-zone fallback for undetected faces)
  *
  * WASM and models are self-hosted under /mediapipe (scripts/sync-mediapipe.mjs)
  * so analysis works offline and same-origin. Any failure degrades to null —
