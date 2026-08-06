@@ -12,20 +12,19 @@ const MAX_AUDIO_SAMPLES = 60 * 60 * 16_000; // 60 min of 16 kHz mono
 const CHUNK_SECONDS = 30;
 const STRIDE_SECONDS = 5;
 const DEFAULT_DTYPE = 'q8'; // P0: verify q4 on webgpu; q8 is the stable baseline
-/** Fallback mirrors used when the primary host fails (same repo layout). */
-const HF_HOSTS = ['https://huggingface.co', 'https://hf-mirror.com'] as const;
+/**
+ * Model sources, tried in order. The local server proxy (/api/hf-proxy) is a
+ * same-origin curl download with a disk cache: no CORS restrictions (hf-mirror
+ * redirects are unusable in browsers) and reliable reachability where Node's
+ * fetch stack fails. The official host is the last-resort direct fallback.
+ */
+const OFFICIAL_HOST = 'https://huggingface.co';
 /** One model-load attempt may hang (webgpu on software renderers, dead peers);
  *  failing here lets the next host/device attempt proceed instead of stalling
- *  the whole transcription forever. */
-const LOAD_ATTEMPT_TIMEOUT_MS = 60_000;
-let hostIndex = (() => {
-  try {
-    const remembered = Number(globalThis.localStorage?.getItem('cc.asrMirror') ?? '0');
-    return Number.isInteger(remembered) && remembered >= 0 && remembered < HF_HOSTS.length ? remembered : 0;
-  } catch {
-    return 0;
-  }
-})();
+ *  the whole transcription forever. Long enough for a first-time model download
+ *  (parallel chunks at ~1.3 MB/s → ~2 min for whisper-small); progress events
+ *  keep firing while downloading, only a silent hang hits this bound. */
+const LOAD_ATTEMPT_TIMEOUT_MS = 15 * 60_000;
 
 type ProgressInfo = { progress?: number; file?: string };
 
@@ -34,10 +33,6 @@ let loading: Promise<void> | null = null;
 const workerScope = self as unknown as DedicatedWorkerGlobalScope;
 
 const post = (message: LocalAsrWorkerResponse) => workerScope.postMessage(message);
-
-function applyRemoteHost(): void {
-  env.remoteHost = HF_HOSTS[hostIndex] ?? HF_HOSTS[0];
-}
 
 function progressInfo(value: unknown): ProgressInfo {
   if (!value || typeof value !== 'object') return {};
@@ -56,16 +51,18 @@ async function loadModel(request: Extract<LocalAsrWorkerRequest, { type: 'load' 
   };
   loading = (async () => {
     let lastError: unknown;
-    for (let attempt = 0; attempt < HF_HOSTS.length; attempt += 1) {
-      applyRemoteHost();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      // attempt 0: local proxy; attempt 1: official host directly.
+      // transformers.js 3.x path template starts with "/" — no trailing slash.
+      env.remoteHost = attempt === 0 ? `${workerScope.location.origin}/api/hf-proxy` : OFFICIAL_HOST;
       try {
-        const attempt = (pipeline('automatic-speech-recognition', request.modelId, {
+        const attemptPromise = (pipeline('automatic-speech-recognition', request.modelId, {
           device: request.device,
           dtype: DEFAULT_DTYPE,
           progress_callback: progress,
         }) as Promise<unknown>);
         const next = await Promise.race([
-          attempt,
+          attemptPromise,
           new Promise<never>((_, reject) => {
             setTimeout(() => reject(new Error(`model load timed out after ${Math.round(LOAD_ATTEMPT_TIMEOUT_MS / 1000)}s`)), LOAD_ATTEMPT_TIMEOUT_MS);
           }),
@@ -74,12 +71,6 @@ async function loadModel(request: Extract<LocalAsrWorkerRequest, { type: 'load' 
         return;
       } catch (error) {
         lastError = error;
-        hostIndex = (hostIndex + 1) % HF_HOSTS.length;
-        try {
-          globalThis.localStorage?.setItem('cc.asrMirror', String(hostIndex));
-        } catch {
-          // Best-effort mirror memory; official host remains the default next time.
-        }
       }
     }
     throw lastError;

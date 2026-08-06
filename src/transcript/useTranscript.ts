@@ -46,9 +46,9 @@ export function useTranscript() {
     try {
       const r = await transcribePath(
         path,
-        () => {
+        (note) => {
           setStatus('processing');
-          setProgressNote(opts?.label ? t('转写 {label}…', { label: opts.label }) : t('转写中…'));
+          setProgressNote(note || (opts?.label ? t('转写 {label}…', { label: opts.label }) : t('转写中…')));
         },
         { languageCode: opts?.languageCode },
       );

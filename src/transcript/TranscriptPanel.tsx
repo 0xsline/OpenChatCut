@@ -3,6 +3,7 @@ import type { PlayerRef } from '@remotion/player';
 import type { TimelineItem, TrackId } from '../editor/types';
 import { emitSelectionRef, transcriptRefFromDomSelection, useSelectionRefMode } from '../agent/selection-refs';
 import { useTranscript } from './useTranscript';
+import { preferredTranscriptionProvider } from './provider';
 import { hasOperationalTranscript, msToFrame, type TranscriptWord } from './types';
 import { analyzeSilences } from './segment';
 import { ScriptView } from './TranscriptViews';
@@ -39,6 +40,7 @@ export function TranscriptPanel({
 }: TranscriptPanelProps) {
   const t = useT();
   const { status, error, progressNote, runMany, reset } = useTranscript();
+  const localProvider = preferredTranscriptionProvider() === 'local';
   const defaultId = useMemo(() => pickDefaultTrack(trackOptions, items), [trackOptions, items]);
   const [track, setTrack] = useState<TrackId | null>(defaultId);
   // Both views use ScriptView (speaker blocks + Gap rows). segment uses a lower
@@ -258,7 +260,9 @@ export function TranscriptPanel({
             <div className="cc-tx-empty-kicker">{aliasLabel}</div>
             <div className="cc-tx-empty-title">{t('转写词级文字稿')}</div>
             <p className="cc-tx-muted">
-              {t('中文词级转写 · 说话人分离 · 该轨共 {n} 段会逐段上传。转写后可点词删减（删词=剪音频）。', { n: clips.length })}
+              {localProvider
+                ? t('中文词级转写 · 本地模型 · 该轨共 {n} 段会逐段转写（免费、离线、素材不出本机）。转写后可点词删减（删词=剪音频）。', { n: clips.length })
+                : t('中文词级转写 · 说话人分离 · 该轨共 {n} 段会逐段上传。转写后可点词删减（删词=剪音频）。', { n: clips.length })}
             </p>
             {skippedMusic > 0 && (
               <label className="cc-tx-check music">
@@ -457,11 +461,18 @@ export function TranscriptPanel({
             {(status === 'error' || error) && <div className="cc-tx-error">{error}</div>}
             {busy && progressNote && <div className="cc-tx-muted" style={{ marginTop: 8 }}>{progressNote}</div>}
             {!busy && trackHasWords && (
-              <div className="cc-tx-muted" style={{ marginTop: 10 }}>
-                {t('已转写 {done}/{total} 段', { done: transcribed.length, total: clips.length })}
-                {transcribed.length < clips.length ? t(' · 可点「重新转写」补全失败段') : ''}
-                {clips.length > MANY_CLIPS && !showAllSections ? t(' · 正文仅显示当前段') : ''}
-              </div>
+              <>
+                <div className="cc-tx-muted" style={{ marginTop: 10 }}>
+                  {t('已转写 {done}/{total} 段', { done: transcribed.length, total: clips.length })}
+                  {transcribed.length < clips.length ? t(' · 可点「重新转写」补全失败段') : ''}
+                  {clips.length > MANY_CLIPS && !showAllSections ? t(' · 正文仅显示当前段') : ''}
+                </div>
+                {localProvider && (
+                  <div className="cc-tx-muted" style={{ marginTop: 4 }}>
+                    {t('本地转写未做说话人分离，全部内容归为同一说话人。')}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}

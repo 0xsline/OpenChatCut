@@ -22,6 +22,8 @@ type Pending = {
   reject: (reason?: unknown) => void;
 };
 
+type ProgressListener = (progress?: number, file?: string) => void;
+
 /** Local checkpoint reuses the cloud shape; uploadUrl is simply never written. */
 type LocalAsrCheckpoint = AssemblyAiResumeCheckpoint;
 type LocalAsrCheckpointWriter = AssemblyAiCheckpointWriter;
@@ -38,12 +40,21 @@ class LocalAsrClient {
   private pending = new Map<number, Pending>();
   private config: AsrConfig | null = null;
   private loading: Promise<void> | null = null;
+  private onProgress: ProgressListener = () => {};
+
+  attachProgress(listener: ProgressListener): void {
+    this.onProgress = listener;
+  }
 
   private ensureWorker(): Worker {
     if (this.worker) return this.worker;
     this.worker = new Worker(new URL('./local-asr.worker.ts', import.meta.url), { type: 'module' });
     this.worker.onmessage = (event: MessageEvent<LocalAsrWorkerResponse>) => {
       const message = event.data;
+      if (message.type === 'progress') {
+        this.onProgress(message.progress, message.file);
+        return;
+      }
       const pending = this.pending.get(message.id);
       if (!pending) return;
       this.pending.delete(message.id);
@@ -182,7 +193,7 @@ export async function localTranscribePathResumable(
   path: string,
   resume: LocalAsrCheckpoint = {},
   onCheckpoint: LocalAsrCheckpointWriter = () => {},
-  onWait?: () => void,
+  onWait?: (note?: string) => void,
   opts: TranscribeOptions = {},
 ): Promise<TranscriptResult> {
   const providerJobId = resume.providerJobId ?? `local:${Date.now().toString(36)}`;
@@ -193,6 +204,13 @@ export async function localTranscribePathResumable(
   const profile = await detectDeviceProfile();
   const config = chooseAsrConfig(profile);
   const client = getSharedClient();
+  client.attachProgress((progress, file) => {
+    if (progress != null) {
+      onWait?.(`模型下载 ${Math.min(100, Math.round(progress))}%`);
+    } else if (file) {
+      onWait?.(`加载模型 ${file.split('/').pop() ?? ''}`);
+    }
+  });
   await client.ensureLoaded(config);
   await onCheckpoint({ ...checkpoint, providerStatus: 'processing' });
 

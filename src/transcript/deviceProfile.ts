@@ -7,12 +7,15 @@ import type { AsrConfig, AsrDevice, AsrModelTier, DeviceProfile } from './local-
 export const WHISPER_MODELS: Record<AsrModelTier, string> = {
   tiny: 'Xenova/whisper-tiny',
   base: 'Xenova/whisper-base',
-  small: 'Xenova/whisper-small',
+  // NOTE: Xenova/whisper-small's current quantized ONNX files fail
+  // onnxruntime-web with INVALID_PROTOBUF (HF re-exported them in a format the
+  // web runtime cannot parse; tiny/base load fine). Until upstream files change,
+  // the "small" tier falls back to base.
+  small: 'Xenova/whisper-base',
 };
 
 const DEFAULT_MEMORY_GB = 8;
 const SMALL_TIER_MIN_GB = 6;
-const WASM_SMALL_TIER_MIN_GB = 8;
 
 function platformOf(): DeviceProfile['platform'] {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
@@ -55,10 +58,14 @@ export async function detectDeviceProfile(): Promise<DeviceProfile> {
   };
 }
 
-/** Backend + model tier per device strengths: GPU first, tier by memory. */
+/** Backend + model tier per device strengths. GPU first, tier by memory.
+ *  NOTE: onnxruntime-web's webgpu EP produces hallucinated output for these
+ *  quantized whisper models on both software renderers and real Metal (verified
+ *  M5/Chrome); wasm is the reliable default. WebGPU stays as an opt-in field
+ *  for future runtimes that fix quantized-inference correctness. */
 export function chooseAsrConfig(profile: DeviceProfile): AsrConfig {
-  const device: AsrDevice = profile.webgpu.available ? 'webgpu' : 'wasm';
-  const gpuMin = device === 'webgpu' ? SMALL_TIER_MIN_GB : WASM_SMALL_TIER_MIN_GB;
+  const device: AsrDevice = 'wasm';
+  const gpuMin = SMALL_TIER_MIN_GB;
   const tier: AsrModelTier = profile.deviceMemoryGB >= gpuMin ? 'small' : 'base';
   return { device, modelTier: tier, modelId: WHISPER_MODELS[tier] };
 }

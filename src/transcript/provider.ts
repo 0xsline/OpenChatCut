@@ -46,7 +46,7 @@ export async function transcribePathResumable(
   path: string,
   resume: AssemblyAiResumeCheckpoint,
   onCheckpoint: AssemblyAiCheckpointWriter,
-  onWait?: () => void,
+  onWait?: (note?: string) => void,
   opts: TranscribeOptions = {},
 ): Promise<TranscriptResult> {
   if (preferredTranscriptionProvider() === 'local') {
@@ -57,7 +57,7 @@ export async function transcribePathResumable(
 
 export async function transcribePath(
   path: string,
-  onWait?: () => void,
+  onWait?: (note?: string) => void,
   opts: TranscribeOptions = {},
 ): Promise<TranscriptResult> {
   return transcribePathResumable(path, {}, () => {}, onWait, opts);
