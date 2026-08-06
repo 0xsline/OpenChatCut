@@ -86,7 +86,11 @@ export function validateUpdate(ctx: AgentContext, entry: Entry): OpResult {
     // when the live item resolved, so {volume, targetItemId} rows survive validation.
     return validateGenericUpdate(ctx.getState(), item ? stripEffectLocators(entry, type, item.id) : entry);
   }
-  return { error: `update type not supported: ${type}` };
+  return {
+    error: `update type not supported: ${type}`,
+    supported: [...GENERIC_ITEM_KINDS, 'effect', 'transition'],
+    hint: 'type must be the item\'s actual kind (video/audio/image/gif/svg/text/solid/motion-graphic), never the literal "generic" or "clip"',
+  };
 }
 
 export function validateDelete(ctx: AgentContext, entry: Entry): OpResult {
