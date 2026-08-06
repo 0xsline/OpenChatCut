@@ -34,6 +34,8 @@ import {
   prepareChatCompletionsMediaMessages,
   withoutModelImages,
 } from './messages';
+import { describeImagesForTextModel } from './vision';
+import { resolveVisionModel } from './visionConfig';
 import {
   createInlineThinkingExtractor,
   loadAgentSettings,
@@ -208,7 +210,15 @@ export async function runApiAgent(
       const protocol = protocolForProvider(choice.provider);
       const mediaPreparation = prepareChatCompletionsMediaMessages(conv);
       const supportsImages = choice.capabilities.supportsImages.value;
-      const textOnlyMessages = supportsImages ? conv : withoutModelImages(conv);
+      let textOnlyMessages: ModelMessage[];
+      if (supportsImages) {
+        textOnlyMessages = conv;
+      } else {
+        const vision = resolveVisionModel(choice);
+        textOnlyMessages = vision
+          ? await describeImagesForTextModel(conv, vision, opts?.signal)
+          : withoutModelImages(conv);
+      }
       let requestCarriesMedia = protocol === 'openai-compatible'
         && supportsImages
         && !compatibleMediaFallbackRequired

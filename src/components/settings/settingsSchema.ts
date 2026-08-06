@@ -162,6 +162,17 @@ const AGENT_VENDOR_PAGES: readonly SettingsVendorPage[] = LLM_PROVIDER_PRESETS.f
   return preset.id === 'openai' ? [page, CODEX_PAGE] : [page];
 });
 
+// Vision bypass configuration: rendered by VisionModelPane (localStorage, not
+// a server key page). No fields — vendorConfigured stays false for it.
+const VISION_PAGE: SettingsVendorPage = {
+  key: 'llm/vision', vendor: 'llm', title: '视觉理解', fields: [],
+};
+
+const AGENT_VENDOR_PAGES_WITH_VISION: readonly SettingsVendorPage[] = [
+  ...AGENT_VENDOR_PAGES,
+  VISION_PAGE,
+];
+
 // MiniMax serves 4 capabilities for the same Key/Base URL pair, and only the model fields of that capability are linked to the capability on the page.
 const MINIMAX_NOTE = 'MiniMax 同一个 Key，配置一次全能力（生图 / 配音 / 视频 / 音乐）通用。';
 const minimaxPage = (cap: string, modelField: SettingsField, title = 'MiniMax', vendor: VendorId = 'minimax'): SettingsVendorPage => ({
@@ -191,7 +202,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     groups: [
       { key: 'llm', title: 'Agent 大脑',
         hint: '对话与工具调用的核心，未配置无法对话。',
-        vendors: AGENT_VENDOR_PAGES },
+        vendors: AGENT_VENDOR_PAGES_WITH_VISION },
     ],
   },
   {

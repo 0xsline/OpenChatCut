@@ -76,3 +76,4 @@ docs/
 # Local marketing assets and drafts
 /marketing/
 .pi-*
+node_modules

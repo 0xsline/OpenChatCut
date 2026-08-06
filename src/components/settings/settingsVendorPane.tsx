@@ -13,6 +13,7 @@ import { shouldRenderModelPicker } from './codexReasoning';
 import { llmProviderConfigNames, normalizeLlmProvider } from '../../../shared/llm-providers';
 import { MODEL_CAPABILITY_OVERRIDES_KEY } from '../../../shared/model-capabilities';
 import { ModelCapabilityEditor } from './ModelCapabilityEditor';
+import { VisionModelPane } from './VisionModelPane';
 import {
   fieldPlaceholder, isModelField, modelValue, selectOptionLabel, selectOptions, vendorConfigured,
   type KeyStatusResponse, type SelectOption, type SettingsField, type SettingsVendorPage,
@@ -58,6 +59,7 @@ export function VendorPane({ page, hint, ctx }: {
 }) {
   const t = useT();
   if (page.connection === 'codex') return <CodexVendorPane page={page} hint={hint} ctx={ctx} />;
+  if (page.key === 'llm/vision') return <VisionModelPane />;
   const on = vendorConfigured(ctx.status, page, ctx.codex.status);
   return (
     <div style={pane}>
