@@ -70,7 +70,9 @@ export function saveChatMode(projectId: string, mode: ChatModePref): void {
 }
 
 export function loadChatAutoApply(projectId: string): boolean {
-  return readRaw(autoApplyKey(projectId)) === '1';
+  // Default to YOLO mode unless the user explicitly turned it off for this
+  // project. Paid operations are still confirm-gated by the cost guard.
+  return readRaw(autoApplyKey(projectId)) !== '0';
 }
 
 export function saveChatAutoApply(projectId: string, on: boolean): void {
