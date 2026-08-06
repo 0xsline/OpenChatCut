@@ -72,6 +72,7 @@ docs/
 
 # Local development and verification scripts
 /scripts/
+!/scripts/sync-mediapipe.mjs
 
 # Local marketing assets and drafts
 /marketing/
