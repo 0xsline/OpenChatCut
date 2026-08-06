@@ -139,7 +139,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   const externalProposal = useExternalAgentBridge(ctx, projectId);
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<ChatMode>('agent');
-  const [autoApply, setAutoApply] = useState(false);
+  const [autoApply, setAutoApply] = useState<boolean>(() => loadChatAutoApply(projectId));
   const [enhancing, setEnhancing] = useState(false);
   const [selectedRefs, setSelectedRefs] = useState<RefItem[]>([]);
   const selectedRefsRef = useRef<RefItem[]>([]);
@@ -172,7 +172,6 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
     invalidateChatAttachmentDraft();
     setInput(loadComposerDraft(projectId));
     setMode(loadChatMode(projectId));
-    setAutoApply(loadChatAutoApply(projectId));
     commitSelectedRefs([]);
     setPasteError(null);
     setVisibleMessageCount(MESSAGE_WINDOW_SIZE);
