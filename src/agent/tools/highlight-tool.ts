@@ -375,7 +375,9 @@ export async function execHighlightTool(name: string, args: Args, ctx: AgentCont
   }
   if (!highlights.length) {
     ctx.commands.switchTimeline(originalActiveId);
-    return { error: '未能从转写里选出可用的高光片段(模型输出为空且启发式也无候选)。' };
+    return {
+      error: '转写内容不足以选出高光片段：模型与启发式都没有候选。请确认该片段的转写完整（可用 read_transcript 查看），或换一段口播内容更丰富的片段后再试。',
+    };
   }
 
   const shorts = assembleShorts(ctx, srcTimelineId, item, highlights, preset);
