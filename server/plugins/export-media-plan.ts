@@ -333,11 +333,12 @@ function resolvedOptions(options: ServerExportMediaOptions): ResolvedServerExpor
 }
 
 function preflightFailure(issues: readonly ExportMediaIssue[]): ExportFailureError {
+  const detail = issues.map((issue) => `${issue.code}: ${issue.source}${issue.message ? ` (${issue.message})` : ''}`).join('; ');
   return new ExportFailureError(createExportFailure({
     stage: 'preflight',
     code: 'export_media_preflight_failed',
     retryable: false,
-    message: `Export media preflight failed for ${issues.length} reference${issues.length === 1 ? '' : 's'}`,
+    message: `Export media preflight failed for ${issues.length} reference${issues.length === 1 ? '' : 's'}: ${detail}`,
     mediaIssues: [...issues],
   }));
 }

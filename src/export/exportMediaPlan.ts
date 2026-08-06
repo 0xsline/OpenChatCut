@@ -343,11 +343,12 @@ export async function assertExportMediaReadable(
   const checked = await Promise.all(plan.references.map((reference) => readableFromBrowser(reference, fetcher)));
   const issues = [...plan.issues, ...checked.filter((issue): issue is ExportMediaIssue => issue !== null)];
   if (issues.length > 0) {
+    const detail = issues.map((issue) => `${issue.code}: ${issue.source}${issue.message ? ` (${issue.message})` : ''}`).join('; ');
     throw new ExportFailureError(createExportFailure({
       stage: 'preflight',
       code: 'export_media_preflight_failed',
       retryable: false,
-      message: `Export media preflight failed for ${issues.length} reference${issues.length === 1 ? '' : 's'}`,
+      message: `Export media preflight failed for ${issues.length} reference${issues.length === 1 ? '' : 's'}: ${detail}`,
       mediaIssues: issues,
     }));
   }
