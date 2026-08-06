@@ -78,6 +78,7 @@ OpenChatCut is built for creators and developers who want AI to participate in t
 - 📝 **Transcript-driven editing**: word-level transcription, text-based cuts, pause handling, speakers, and linked captions.
 - ✨ **Generation and media**: images, video, speech, music, sound effects, and online media search.
 - 🧩 **Motion Graphics and WebGL**: editable motion templates, custom shaders, visual effects, and transitions.
+- 👁️ **Visual geometry**: in-browser person segmentation and face-safe zones — captions avoid the speaker automatically, reframe follows the subject, and overlay graphics land in empty space.
 - 📦 **Production-ready exports**: MP4, audio, captions, FCPXML, and complete project data.
 - 🖥️ **Local-first**: projects and media stay on your machine by default, while API keys remain server-side.
 
