@@ -1,3 +1,4 @@
+import { materializeBlobMedia } from '../export/materializeBlobMedia';
 import type { TimelineState } from '../editor/types';
 
 export interface SubmitMediaExportArgs {
@@ -60,7 +61,10 @@ export function applyExportGeometry(
 export async function submitMediaExport(args: SubmitMediaExportArgs, state: TimelineState): Promise<MediaExportResult> {
   const codec = args.codec ?? (args.format === 'video' ? 'h264' : 'mp3');
   const ext = codec === 'h264' ? 'mp4' : codec === 'vp8' ? 'webm' : codec;
-  const exportState = applyExportGeometry(state, { fps: args.fps, resolution: args.resolution });
+  let exportState = applyExportGeometry(state, { fps: args.fps, resolution: args.resolution });
+  // Blob placeholders cannot be read by the Node renderer — re-publish them first.
+  const materialized = await materializeBlobMedia(exportState, {});
+  exportState = materialized.snapshot;
   const response = await fetch('/export', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

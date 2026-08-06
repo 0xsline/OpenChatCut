@@ -15,6 +15,7 @@ import {
 } from './exportDestination';
 import type { ExportDestination } from './exportDestination';
 import { immutableExportSnapshot } from './exportMediaPlan';
+import { materializeBlobMedia } from './materializeBlobMedia';
 import { createServerExporter } from './serverExportOperation';
 import { createVideoExporter } from './videoExportOperation';
 import { useExportDestination } from './useExportDestination';
@@ -158,7 +159,16 @@ export function useExportWorkflow(options: UseExportWorkflowOptions, exportJobs:
       return;
     }
     setSetupError(null);
-    const capturedOptions = snapshotWorkflowOptions(options);
+    let capturedOptions = snapshotWorkflowOptions(options);
+    // Blob placeholders (incomplete imports) are invisible to the Node renderer;
+    // re-publish any still-readable blob media to the server before submitting.
+    try {
+      const materialized = await materializeBlobMedia(capturedOptions, {});
+      capturedOptions = materialized.snapshot;
+    } catch (error) {
+      setSetupError(exportDestinationErrorMessage(error, t));
+      return;
+    }
     const capturedDestination = destinationState.destination;
     const jobId = exportJobs.start({
       label: filename,
