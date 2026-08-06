@@ -105,7 +105,7 @@ export function VisionModelPane(): React.JSX.Element {
     <div style={pane}>
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <VendorIcon vendor="llm" size={18} />
+          <VendorIcon vendor="vision" size={18} />
           <b style={{ fontSize: 13 }}>{t('视觉理解')}</b>
           <span style={{ fontSize: 11, color: theme.textDim }}>
             {config.mode === 'custom' ? t('已指定') : config.mode === 'disabled' ? t('已禁用') : t('跟随主模型')}

@@ -32,13 +32,15 @@ import cloudflareSvg from '../../../assets/vendor-icons/cloudflare.svg?raw';
 import openrouterSvg from '../../../assets/vendor-icons/openrouter.svg?raw';
 import ollamaSvg from '../../../assets/vendor-icons/ollama.svg?raw';
 import lmstudioSvg from '../../../assets/vendor-icons/lmstudio-color.svg?raw';
+import visionSvg from '../../../assets/vendor-icons/vision.svg?raw';
 
 export type VendorId =
   | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter'
   | 'ollama' | 'lmstudio' | 'xiaomi' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
   | 'assemblyai' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk'
-  | 'stepfun' | 'byteplus' | 'inworld' | 'fishaudio' | 'speechify' | 'wavespeed';
+  | 'stepfun' | 'byteplus' | 'inworld' | 'fishaudio' | 'speechify' | 'wavespeed'
+  | 'vision';
 
 interface SvgIcon {
   readonly svg: string;
@@ -75,6 +77,7 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
   openrouter: { svg: openrouterSvg, tint: '#7624F4' }, // Official OpenRouter mark + primary purple
   ollama: { svg: ollamaSvg, tint: theme.text },        // Official llama mark, adapted for skin contrast
   lmstudio: { svg: lmstudioSvg },                      // Official LM Studio color app icon
+  vision: { svg: visionSvg },                          // Vision bypass feature mark (generated)
 };
 
 // Official SVG not included / Non-provider brand → monogram

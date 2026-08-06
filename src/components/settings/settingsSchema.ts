@@ -165,7 +165,7 @@ const AGENT_VENDOR_PAGES: readonly SettingsVendorPage[] = LLM_PROVIDER_PRESETS.f
 // Vision bypass configuration: rendered by VisionModelPane (localStorage, not
 // a server key page). No fields — vendorConfigured stays false for it.
 const VISION_PAGE: SettingsVendorPage = {
-  key: 'llm/vision', vendor: 'llm', title: '视觉理解', fields: [],
+  key: 'llm/vision', vendor: 'vision', title: '视觉理解', fields: [],
 };
 
 const AGENT_VENDOR_PAGES_WITH_VISION: readonly SettingsVendorPage[] = [
