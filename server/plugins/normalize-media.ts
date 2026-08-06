@@ -30,8 +30,8 @@ const REFERENCE_PIXELS = 1920 * 1080;
 const VIDEO_AUDIO_BITRATE = '160k';
 const FFMPEG_TIMEOUT_MS = 60 * 60_000; // long masters
 
-const NORMALIZE_CONCURRENCY = 4;
-const NORMALIZE_MAX_QUEUED = 16;
+export const NORMALIZE_CONCURRENCY = 2;
+export const NORMALIZE_MAX_QUEUED = 8;
 
 export type ReleaseNormalizePermit = () => void;
 
