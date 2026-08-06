@@ -3,6 +3,7 @@ import { useT } from '../i18n/locale';
 import type { MediaAsset, MediaAssetRelinkPatch, MediaFolder } from '../editor/types';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { useFocusReturn } from '../hooks/useFocusReturn';
+import { matchRelinkFile } from './mediaRelinkMatch';
 import { importMedia } from './upload';
 import { folderPath } from './mediaPoolFormat';
 import { MediaPoolToolbar, type MediaToolbarMenu } from './MediaPoolToolbar';
@@ -174,12 +175,15 @@ export function MediaPoolPanel({
     setError(null);
     setRelinkMsg(null);
     try {
-      const byName = new Map<string, File>();
-      for (const f of Array.from(files)) if (!byName.has(f.name)) byName.set(f.name, f);
+      const picked = Array.from(files);
       let relinked = 0;
+      const unmatched: string[] = [];
       for (const asset of missingList) {
-        const f = byName.get(asset.sourceFilename ?? asset.name);
-        if (!f) continue;
+        const f = matchRelinkFile(asset, picked);
+        if (!f) {
+          unmatched.push(asset.name);
+          continue;
+        }
         const next = await importMedia(f, fps);
         onRelinkAsset(asset.id, {
           src: next.src,
@@ -197,7 +201,13 @@ export function MediaPoolPanel({
         clearMissing(asset.id);
         relinked++;
       }
-      setRelinkMsg(relinked ? t('已从文件夹按文件名重链 {n} 个素材', { n: relinked }) : t('文件夹中没有与丢失素材同名的文件'));
+      if (relinked > 0 && unmatched.length === 0) {
+        setRelinkMsg(t('已从文件夹按文件名重链 {n} 个素材', { n: relinked }));
+      } else if (relinked > 0) {
+        setRelinkMsg(t('已重链 {n} 个素材；未找到匹配的文件：{list}', { n: relinked, list: unmatched.join('、') }));
+      } else {
+        setRelinkMsg(t('未找到与丢失素材匹配的文件：{list}', { list: unmatched.join('、') }));
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -206,11 +216,8 @@ export function MediaPoolPanel({
     }
   };
 
-  // <input webkitdirectory> is not in React's typed props — set it on the DOM node.
-  useEffect(() => {
-    const el = dirInputRef.current;
-    if (el) { el.setAttribute('webkitdirectory', ''); el.setAttribute('directory', ''); }
-  }, []);
+  // webkitdirectory is set inside RelinkAllDialog's input (this panel's
+  // dirInputRef is null at mount — the input only renders when the dialog opens).
 
   const missingList = assets.filter((a) => missing.has(a.id));
 
