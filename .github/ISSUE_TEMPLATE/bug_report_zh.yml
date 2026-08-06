@@ -13,11 +13,18 @@ body:
     id: version
     attributes:
       label: 版本 *
-      description: 在哪个版本遇到？桌面版可在「设置 → 关于」查看
+      description: |
+        请选择**具体版本号**，不要写「最新」：
+        - 桌面版：设置 → 关于，形如 v0.1.9
+        - 网页版：左下角「· 我的工程」旁或关于页
+        - main 源码运行：请附 commit（git log -1 --format=%h）
       options:
-        - 最新 GitHub Release（v0.1.x）
-        - main 源码运行
-        - 桌面版安装包
+        - v0.1.9（最新 Release）
+        - v0.1.8
+        - v0.1.7
+        - v0.1.6
+        - 更早版本
+        - main 源码（附 commit hash）
         - 不确定
     validations:
       required: true
