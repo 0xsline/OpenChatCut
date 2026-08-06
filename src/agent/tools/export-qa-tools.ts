@@ -1,4 +1,5 @@
 export { EXPORT_QA_TOOL_SCHEMAS, EXPORT_QA_TOOL_NAMES } from './schemas/export-qa-tools';
+import { captionFaceQaIssues } from '../../geometry/caption-qa';
 import type { AgentContext } from '../context';
 import {
   captionLayoutQaIssues,
@@ -86,11 +87,15 @@ async function verifyExport(args: Args, ctx: AgentContext): Promise<unknown> {
     }
 
     const report = mergeExportQaIssues(result.report, captionLayoutQaIssues(state));
+    // Geometry-aware caption check: warns when a caption band covers the
+    // speaker's face (visual geometry cache; first use analyzes the source).
+    const faceIssues = await captionFaceQaIssues(ctx.getDoc(), state);
+    const merged = faceIssues.length ? mergeExportQaIssues(report, faceIssues) : report;
     const evidence = result.evidence;
     return {
-      ok: report.ok,
+      ok: merged.ok,
       src: resolved.src,
-      report,
+      report: merged,
       cutCount: cutTimesSeconds.length,
       evidenceSamples: evidence?.samples ?? [],
       ...(evidence?.base64 ? { __images: [{ frame: 0, base64: evidence.base64 }] } : {}),

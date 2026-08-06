@@ -77,3 +77,4 @@ docs/
 /marketing/
 .pi-*
 node_modules
+public/mediapipe/
