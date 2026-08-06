@@ -124,10 +124,15 @@ export function mediaPosterUrl(src: string | undefined): string | undefined {
   return isPreviewable(src) ? `/api/media-poster?src=${encodeURIComponent(src)}` : undefined;
 }
 
-function stateFor(src: string | undefined): PreviewProxyState {
+function stateFor(src: string | undefined, autoRequest: boolean): PreviewProxyState {
   if (!isPreviewable(src)) return { status: 'unavailable', reason: 'non-local-source' };
   const entry = proxyEntry(src);
-  return entry.response?.proxy ?? { status: 'loading', reason: 'checking-source' };
+  if (!entry.response) {
+    return autoRequest
+      ? { status: 'loading', reason: 'checking-source' }
+      : { status: 'not-needed', reason: 'preview-source-original' };
+  }
+  return entry.response.proxy;
 }
 
 function subscribe(sources: readonly string[], listener: () => void): () => void {
@@ -181,7 +186,7 @@ export function usePreviewMediaSource(src: string | undefined, enabled = true) {
   const source = enabled && isPreviewable(src) ? src : '';
   const sources = useMemo(() => source ? [source] : [], [source]);
   const revision = useProxySources(sources);
-  const proxy = stateFor(source || undefined);
+  const proxy = stateFor(source || undefined, shouldAutoRequestPreviewProxy());
   const previewSrc = resolvePreviewSrc(src, proxy);
   return {
     sourceSrc: src,
@@ -206,13 +211,13 @@ export function usePreviewTimelineState(state: TimelineState) {
       ...state,
       items: state.items.map((item) => {
         if (item.kind !== 'video' || !item.src) return item;
-        const proxy = stateFor(item.src);
+        const proxy = stateFor(item.src, shouldAutoRequestPreviewProxy());
         const previewSrc = resolvePreviewSrc(item.src, proxy);
         return previewSrc && previewSrc !== item.src ? { ...item, src: previewSrc } : item;
       }),
     };
   }, [state, revision]);
-  const proxies = sources.map((src) => ({ src, proxy: stateFor(src) }));
+  const proxies = sources.map((src) => ({ src, proxy: stateFor(src, shouldAutoRequestPreviewProxy()) }));
   return {
     state: previewState,
     proxies,
@@ -238,7 +243,7 @@ export function usePreviewProjectDoc(project: ProjectDoc, timelineId: string) {
         ...timeline,
         items: timeline.items.map((item) => {
           if (item.kind !== 'video' || !item.src) return item;
-          const proxy = stateFor(item.src);
+          const proxy = stateFor(item.src, shouldAutoRequestPreviewProxy());
           const previewSrc = resolvePreviewSrc(item.src, proxy);
           return previewSrc && previewSrc !== item.src ? { ...item, src: previewSrc } : item;
         }),
@@ -250,7 +255,7 @@ export function usePreviewProjectDoc(project: ProjectDoc, timelineId: string) {
     project: previewProject,
     state,
     plan,
-    proxies: sources.map((src) => ({ src, proxy: stateFor(src) })),
+    proxies: sources.map((src) => ({ src, proxy: stateFor(src, shouldAutoRequestPreviewProxy()) })),
     requestFallback: (src: string) => { reportPreviewPlaybackFailure(src); },
   };
 }
