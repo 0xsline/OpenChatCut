@@ -17,11 +17,11 @@ const AUDIO_EXT = /\.(mp3|wav|m4a|aac|ogg|flac|opus)$/i;
 const LARGE_AUDIO_BYTES = 40 * 1024 * 1024;
 
 export class TranscriptionError extends Error {
-  readonly code: 'source-unavailable' | 'service-unavailable';
+  readonly code: 'source-unavailable' | 'service-unavailable' | 'no-audio';
   readonly detail?: string;
 
   constructor(
-    code: 'source-unavailable' | 'service-unavailable',
+    code: 'source-unavailable' | 'service-unavailable' | 'no-audio',
     detail?: string,
   ) {
     super(`${code}${detail ? `: ${detail}` : ''}`);
@@ -210,10 +210,15 @@ export async function extractAudioForAsr(src: string): Promise<string | null> {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ src }),
     });
+    if (res.status === 422) {
+      const data = (await res.json().catch(() => null)) as { noAudio?: boolean } | null;
+      if (data?.noAudio) throw new TranscriptionError('no-audio', `该片段没有音轨，无法转写：${src}`);
+    }
     if (!res.ok) return null;
     const data = (await res.json()) as { path?: string; ok?: boolean };
     return data.path && data.path.startsWith('/media/uploads/') ? data.path : null;
-  } catch {
+  } catch (error) {
+    if (error instanceof TranscriptionError) throw error;
     return null;
   }
 }

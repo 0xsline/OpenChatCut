@@ -154,6 +154,27 @@ export function extractAudioPlugin(): Plugin {
             sendJson(res, 404, { error: `media not found: ${name}` });
             return;
           }
+          // Fast-fail sources without an audio track instead of letting ffmpeg
+          // emit an opaque "output file does not contain any stream" error.
+          const { ffprobeBin } = await import('../media-binaries.ts');
+          const probe = spawn(ffprobeBin(), [
+            '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0',
+            inputPath,
+          ], { stdio: ['ignore', 'pipe', 'ignore'] });
+          let probeOut = '';
+          probe.stdout.on('data', (chunk: Buffer) => { probeOut += String(chunk); });
+          const hasAudio = await new Promise<boolean>((resolveProbe) => {
+            const timer = setTimeout(() => { probe.kill('SIGKILL'); resolveProbe(false); }, 10_000);
+            probe.once('error', () => { clearTimeout(timer); resolveProbe(false); });
+            probe.once('close', (code) => {
+              clearTimeout(timer);
+              resolveProbe(code === 0 && probeOut.trim().length > 0);
+            });
+          });
+          if (!hasAudio) {
+            sendJson(res, 422, { ok: false, noAudio: true, error: `source has no audio track: ${name}` });
+            return;
+          }
 
           const stem = asrStem(name);
           const dir = uploadDir();

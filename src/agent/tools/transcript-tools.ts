@@ -1,7 +1,7 @@
 export { TRANSCRIPT_TOOL_SCHEMAS, TRANSCRIPT_TOOL_NAMES } from './schemas/transcript-tools';
 import type { AgentContext } from '../context';
 import { defaultTrackId, resolveTrackId, trackAlias, type TimelineItem, type TrackId } from '../../editor/types';
-import { transcribePath } from '../../transcript/assemblyai';
+import { transcribePath, TranscriptionError } from '../../transcript/assemblyai';
 import { fillerIndices } from '../../transcript/edit';
 import { hasOperationalTranscript } from '../../transcript/types';
 import { translateLines } from '../../captions/translate';
@@ -262,16 +262,26 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
         .filter((it) => (it.kind === 'audio' || it.kind === 'video') && it.track === track && it.src)
         .sort((a, b) => a.startFrame - b.startFrame);
       if (!clips.length) return { error: `no audio/video clip on ${alias}` };
-      const results: { itemId: string; words: number; text: string; skipped?: boolean }[] = [];
+      const results: { itemId: string; words: number; text: string; skipped?: boolean; skippedReason?: string }[] = [];
       try {
         for (const it of clips) {
           if (hasOperationalTranscript(it)) {
-            results.push({ itemId: it.id, words: it.transcript.length, text: '', skipped: true });
+            results.push({ itemId: it.id, words: it.transcript.length, text: '', skipped: true, skippedReason: 'already-transcribed' });
             continue;
           }
-          const r = await transcribePath(it.src!, undefined, { languageCode: 'zh' });
-          ctx.commands.setItemTranscript(it.id, r.words);
-          results.push({ itemId: it.id, words: r.words.length, text: r.text.slice(0, 200) });
+          try {
+            const r = await transcribePath(it.src!, undefined, { languageCode: 'zh' });
+            ctx.commands.setItemTranscript(it.id, r.words);
+            results.push({ itemId: it.id, words: r.words.length, text: r.text.slice(0, 200) });
+          } catch (transcribeError) {
+            // Clips without an audio track are not transcription failures —
+            // skip and report them instead of failing the whole batch.
+            if (transcribeError instanceof TranscriptionError && transcribeError.code === 'no-audio') {
+              results.push({ itemId: it.id, words: 0, text: '', skipped: true, skippedReason: 'no-audio' });
+              continue;
+            }
+            throw transcribeError;
+          }
         }
         return { ok: true, track: alias, clips: results.length, results };
       } catch (e) {
