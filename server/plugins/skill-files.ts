@@ -72,6 +72,38 @@ async function kvSkills(): Promise<CustomSkillPayload[]> {
   });
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Mirror every write into the kv library: replace by slug/id, else append. */
+async function kvUpsertBySlug(payload: Partial<CustomSkillPayload> & { slug: string }): Promise<void> {
+  const { readStore, setStoredEntry } = await import('./project-store.ts');
+  const store = await readStore();
+  const raw = store.entries?.['skills:custom'];
+  const list = Array.isArray(raw) ? raw.filter(isRecord) : [];
+  const idx = list.findIndex((item) => item.slug === payload.slug || item.id === payload.slug);
+  const next = [...list];
+  const entry = {
+    ...payload,
+    id: typeof payload.id === 'string' ? payload.id : payload.slug,
+    source: 'custom' as const,
+  };
+  if (idx >= 0) next[idx] = entry;
+  else next.push(entry);
+  await setStoredEntry('skills:custom', next);
+}
+
+/** Remove the kv entry matching a slug or id. */
+async function kvDeleteBySlug(slug: string): Promise<void> {
+  const { readStore, setStoredEntry } = await import('./project-store.ts');
+  const store = await readStore();
+  const raw = store.entries?.['skills:custom'];
+  if (!Array.isArray(raw)) return;
+  const next = raw.filter((item) => !(isRecord(item) && (item.slug === slug || item.id === slug)));
+  if (next.length !== raw.length) await setStoredEntry('skills:custom', next);
+}
+
 export function skillFilesPlugin(): Plugin {
   return {
     name: 'openchatcut-skill-files',
@@ -126,12 +158,14 @@ async function handleSkillsRequest(
         sendJson(res, 400, { error: `invalid skill slug "${payload.slug}"` });
         return;
       }
+      await kvUpsertBySlug({ ...payload, slug: payload.slug });
       sendJson(res, 200, { ok: true, installedAt: displaySkillPath(payload.slug) });
       return;
     }
     if (req.method === 'DELETE') {
       const slug = String(req.url?.split('/').filter(Boolean).pop() ?? '');
       await removeSkillFile(root, slug);
+      await kvDeleteBySlug(slug);
       sendJson(res, 200, { ok: true });
       return;
     }

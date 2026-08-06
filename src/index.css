@@ -279,6 +279,18 @@ button, input, select { font: inherit; }
 .cc-creative-mode-card[data-active="true"] { border-color:rgba(var(--cc-accent-rgb),0.55); }
 .cc-creative-mode-card .cc-creative-mode-copy strong { font-size:11.5px; }
 .cc-creative-mode-card .cc-creative-mode-copy small { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:3; text-overflow:ellipsis; white-space:normal; }
+
+/* Compact skill-library cards (Skills tab) + per-card edit/delete actions. */
+.cc-skill-card-wrap { position:relative; min-width:0; }
+.cc-skill-card-wrap .cc-creative-mode-card { min-height:50px; padding:5px 7px; gap:5px; }
+.cc-skill-card-wrap .cc-creative-mode-icon { width:24px; height:24px; }
+.cc-skill-card-wrap .cc-creative-mode-icon svg { width:13px; height:13px; }
+.cc-skill-card-wrap .cc-creative-mode-copy small { -webkit-line-clamp:2; }
+.cc-skill-actions { position:absolute; top:4px; right:5px; display:flex; gap:2px; opacity:0; transition:opacity 0.12s ease; }
+.cc-skill-card-wrap:hover .cc-skill-actions { opacity:1; }
+.cc-skill-actions button { padding:0 5px; height:18px; border:0.5px solid var(--cc-border-light); border-radius:4px; background:var(--cc-panel); color:var(--cc-text-dim); font-size:10.5px; line-height:16px; cursor:pointer; }
+.cc-skill-actions button:hover { color:var(--cc-text); border-color:var(--cc-border); }
+.cc-skill-actions .cc-skill-delete-confirm { border-color:var(--cc-danger); background:var(--cc-danger); color:var(--cc-on-accent); }
 .cc-chat-popover-backdrop { position:fixed; inset:0; z-index:80; }
 .cc-chat-popover { position:fixed; z-index:81; overflow-y:auto; padding:6px; border:0.5px solid; border-radius:6px; }
 
