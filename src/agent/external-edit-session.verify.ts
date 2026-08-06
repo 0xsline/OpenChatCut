@@ -410,6 +410,7 @@ assert(!(released && typeof released === 'object' && (released as { needs_confir
   'confirmed real-project tool executes without asking again');
 runtime.confirmRealTool(guard!.id, false);
 assert(runtime.pendingGuard() === null, 'resolved guards leave the pending set');
+
 const draftingInfo = await runtime.execute(
   'get_edit_session',
   { editSessionId: begun.editSessionId },
@@ -751,5 +752,37 @@ const externalSubmitRender = externalToolSchemas().find((tool) => tool.name === 
 assert(externalSubmitRender, 'submit_render_job is exposed to external agents');
 assert.equal(externalSubmitRender.annotations?.readOnlyHint, false);
 assert(externalSubmitRender.input_schema.required?.includes('editSessionId'), 'real tools carry editSessionId for the confirmation gate');
+
+// approvalMode auto is the external YOLO: real-project tools run directly,
+// without a confirmation card (fresh runtime keeps the binding valid).
+const autoLive = makeDraft(base);
+const autoRuntime = new ExternalBridgeRuntime(
+  'runtime-project',
+  'runtime-editor',
+  () => ({
+    commands: autoLive.commands,
+    getState: autoLive.getState,
+    getDoc: autoLive.getDoc,
+    getCreativeMode: () => null,
+    templates: [],
+    audio: [],
+    getProjectId: () => 'runtime-project',
+  }),
+  () => undefined,
+);
+const autoBinding = {
+  projectId: 'runtime-project',
+  editorInstanceId: 'runtime-editor',
+  baseRevision: revisionOf(base),
+};
+const autoYoloSession = await autoRuntime.execute('begin_edit_session', { approvalMode: 'auto' }, autoBinding);
+assert(autoYoloSession && typeof autoYoloSession === 'object' && 'editSessionId' in autoYoloSession);
+const autoReleased = await autoRuntime.execute(
+  'read_export_history',
+  { editSessionId: autoYoloSession.editSessionId },
+  autoBinding,
+);
+assert(!(autoReleased && typeof autoReleased === 'object' && (autoReleased as { needs_confirmation?: boolean }).needs_confirmation),
+  'auto (YOLO) sessions run real-project tools without a confirmation card');
 
 console.log('external edit session checks passed');

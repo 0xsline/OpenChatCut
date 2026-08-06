@@ -216,7 +216,10 @@ export class ExternalBridgeRuntime {
     }
     throwIfCancelled(signal);
     const confirmed = this.confirmedRealTools.get(session.id);
-    if (confirmed?.has(name)) {
+    // approvalMode auto is the external YOLO: the user chose full automation
+    // for this session, so real-project tools (paid ones included) run
+    // directly. Manual sessions gate the first call per tool on a card.
+    if (session.approvalMode === 'auto' || confirmed?.has(name)) {
       return executeTool(name, args, this.getContext());
     }
     const guardId = `${session.id}:${name}:${crypto.randomUUID().slice(0, 8)}`;
