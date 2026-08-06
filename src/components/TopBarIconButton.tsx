@@ -20,7 +20,7 @@ export function TopBarIconButton({ icon, label, onClick, disabled = false, badge
       aria-label={label}
       onClick={onClick}
       disabled={disabled}
-      style={{ width: 28, height: 28, background: 'none', border: 'none', cursor: disabled ? 'default' : 'pointer', padding: 0, borderRadius: 4, lineHeight: 0, display: 'grid', placeItems: 'center', color: theme.textDim, opacity: disabled ? 0.35 : 1 }}
+      style={{ position: 'relative', width: 28, height: 28, background: 'none', border: 'none', cursor: disabled ? 'default' : 'pointer', padding: 0, borderRadius: 4, lineHeight: 0, display: 'grid', placeItems: 'center', color: theme.textDim, opacity: disabled ? 0.35 : 1 }}
       onMouseEnter={(event) => {
         if (!disabled) {
           event.currentTarget.style.color = theme.text;
