@@ -3,8 +3,34 @@
 // through the keystore take effect immediately without exposing keys to browser JS.
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http';
 import { request as httpsRequest } from 'node:https';
+import type { Agent as HttpAgent } from 'node:http';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 
 type Middleware = (req: IncomingMessage, res: ServerResponse, next: () => void) => unknown;
+
+// Optional outbound proxy (Clash etc.) for providers blocked by the network.
+// node:https does not read HTTPS_PROXY by itself, so we attach a CONNECT
+// tunnel agent when the environment asks for one. Lazily cached; disabled
+// for plain-http targets and when no proxy env is set.
+let proxyAgent: HttpAgent | null | undefined;
+
+function outboundProxyAgent(): HttpAgent | null {
+  if (proxyAgent !== undefined) return proxyAgent;
+  const proxyUrl = process.env.HTTPS_PROXY
+    ?? process.env.https_proxy
+    ?? process.env.HTTP_PROXY
+    ?? process.env.http_proxy;
+  if (!proxyUrl) {
+    proxyAgent = null;
+    return null;
+  }
+  try {
+    proxyAgent = new HttpsProxyAgent(proxyUrl);
+  } catch {
+    proxyAgent = null;
+  }
+  return proxyAgent;
+}
 
 const HOP_BY_HOP = new Set(['host', 'connection', 'keep-alive', 'proxy-authorization', 'proxy-connection', 'transfer-encoding', 'upgrade', 'te', 'trailer']);
 
@@ -61,12 +87,14 @@ export function proxyMiddleware(route: ProxyRoute): Middleware {
     }
     const query = search.size > 0 ? `?${search.toString()}` : '';
     const doRequest = target.protocol === 'http:' ? httpRequest : httpsRequest;
+    const agent = target.protocol === 'https:' ? outboundProxyAgent() : null;
     const upstream = doRequest({
       host: target.hostname,
       port: target.port || (target.protocol === 'http:' ? 80 : 443),
       method: req.method,
       path: basePath + requestPath + query,
       headers,
+      ...(agent ? { agent } : {}),
     }, (upRes) => {
       const status = upRes.statusCode ?? 502;
       if (status >= 400 && route.errorMessage) {
