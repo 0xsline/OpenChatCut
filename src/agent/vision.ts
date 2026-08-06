@@ -95,7 +95,13 @@ export async function describeImageWithVision(
     abortSignal: signal,
     timeout: { totalMs: VISION_TIMEOUT_MS },
   });
-  return text.trim();
+  // Some relay models (DeepSeek/MiniMax/MiMo) mix <think> blocks into the
+  // plain-text flow; the description must be clean for the main model.
+  return stripThinking(text).trim();
+}
+
+function stripThinking(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '');
 }
 
 /** Replace a single image with its description text (or a fallback). */
