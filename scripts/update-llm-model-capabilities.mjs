@@ -11,10 +11,53 @@ const PROVIDERS = {
   qwen: 'alibaba',
   glm: 'zhipuai',
   deepseek: 'deepseek',
+  stepfun: 'stepfun',
   minimax: 'minimax',
   xiaomi: 'xiaomi',
   mistral: 'mistral',
   openrouter: 'openrouter',
+};
+// BytePlus ModelArk has no models.dev provider. Hand-vendored from the
+// OpenRouter bytedance-seed entries (same Seed models behind ModelArk's
+// Ark-compatible endpoint) plus Volcano Engine docs; model ids use the
+// ModelArk naming users configure in LLM_BYTEPLUS_MODEL.
+const BYTEPLUS_MODELS = {
+  'doubao-seed-1.6-flash': {
+    contextWindowTokens: 262144,
+    maxInputTokens: null,
+    maxOutputTokens: 32768,
+    input: ['text', 'image', 'video'],
+    supportsTools: true,
+    reasoning: true,
+    reasoningEfforts: [],
+  },
+  'doubao-seed-1.6-thinking': {
+    contextWindowTokens: 262144,
+    maxInputTokens: null,
+    maxOutputTokens: 32768,
+    input: ['text', 'image', 'video'],
+    supportsTools: true,
+    reasoning: true,
+    reasoningEfforts: [],
+  },
+  'doubao-seed-1.6': {
+    contextWindowTokens: 262144,
+    maxInputTokens: null,
+    maxOutputTokens: 32768,
+    input: ['text', 'image', 'video'],
+    supportsTools: true,
+    reasoning: true,
+    reasoningEfforts: [],
+  },
+  'doubao-seed-2.0-lite': {
+    contextWindowTokens: 262144,
+    maxInputTokens: null,
+    maxOutputTokens: 131072,
+    input: ['text', 'image', 'video'],
+    supportsTools: true,
+    reasoning: true,
+    reasoningEfforts: ['minimal', 'low', 'medium', 'high'],
+  },
 };
 const OUTPUT_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -69,7 +112,11 @@ for (const [localId, upstreamId] of Object.entries(PROVIDERS)) {
   );
 }
 
-const catalog = { version: 1, source: SOURCE_URL, providers };
+const catalog = {
+  version: 1,
+  source: SOURCE_URL,
+  providers: { ...providers, byteplus: BYTEPLUS_MODELS },
+};
 await mkdir(dirname(OUTPUT_PATH), { recursive: true });
 await writeFile(OUTPUT_PATH, `${JSON.stringify(catalog, null, 2)}\n`, 'utf8');
 console.log(`Updated ${OUTPUT_PATH}`);
