@@ -7769,6 +7769,30 @@
           "medium",
           "high"
         ]
+      },
+      "deepseek-v3-2-251201": {
+        "contextWindowTokens": 131072,
+        "maxInputTokens": 98304,
+        "maxOutputTokens": 32768,
+        "input": [
+          "text"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": []
+      },
+      "seed-2-0-pro-260328": {
+        "contextWindowTokens": 262144,
+        "maxInputTokens": 262144,
+        "maxOutputTokens": 131072,
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "supportsTools": true,
+        "reasoning": true,
+        "reasoningEfforts": []
       }
     }
   }
