@@ -15,6 +15,8 @@ import mistralSvg from '../../../assets/vendor-icons/mistral-color.svg?raw';
 import minimaxSvg from '../../../assets/vendor-icons/minimax-color.svg?raw';
 import stepfunSvg from '../../../assets/vendor-icons/stepfun-color.svg?raw';
 import fishaudioSvg from '../../../assets/vendor-icons/fishaudio.svg?raw';
+import xiaomimimoSvg from '../../../assets/vendor-icons/xiaomimimo.svg?raw';
+import murekaSvg from '../../../assets/vendor-icons/mureka-color.svg?raw';
 import hailuoSvg from '../../../assets/vendor-icons/hailuo-color.svg?raw';
 import elevenlabsSvg from '../../../assets/vendor-icons/elevenlabs.svg?raw';
 import doubaoSvg from '../../../assets/vendor-icons/doubao-color.svg?raw';
@@ -56,6 +58,8 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
   minimax: { svg: minimaxSvg },
   stepfun: { svg: stepfunSvg },                         // Official StepFun (阶跃星辰) color mark
   fishaudio: { svg: fishaudioSvg, tint: '#0F9D8B' },    // Official single-color mark + brand teal
+  xiaomi: { svg: xiaomimimoSvg, tint: '#FF6900' },      // Official Xiaomi MiMo mark + brand orange
+  mureka: { svg: murekaSvg },                           // Official Mureka gradient mark
   hailuo: { svg: hailuoSvg },                       // MiniMax Conch Video exclusive logo
   elevenlabs: { svg: elevenlabsSvg, tint: theme.text },
   doubao: { svg: doubaoSvg },
@@ -76,8 +80,6 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
 // Official SVG not included / Non-provider brand → monogram
 const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: string }>> = {
   llm: { bg: '#34363c', mono: 'AI', fg: '#f7f7f8' },
-  xiaomi: { bg: '#FF6900', mono: 'MI' }, // Xiaomi brand orange, official SVG not vendored before monogram cover
-  mureka: { bg: '#7C5CFF', mono: 'μ' },
   e2b: { bg: '#FF8800', mono: 'E2', fg: '#40230a' },
   localdisk: { bg: '#5f6b7a', mono: 'HD', fg: '#eef2f7' }, // Local disk (non-vendor, neutral gray)
   byteplus: { bg: '#0055FF', mono: 'BP' }, // BytePlus ModelArk, no official SVG vendored yet
