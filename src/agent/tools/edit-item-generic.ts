@@ -82,6 +82,8 @@ const GENERIC_ADD_KEYS: Record<string, true> = {
   startFrame: true,
   fromFrame: true,
   durationInFrames: true,
+  sourceStartSeconds: true,
+  sourceEndSeconds: true,
 };
 
 const AUTHORED_ADD_KEYS: Record<string, true> = {
@@ -403,6 +405,44 @@ export function validateGenericAdd(
 
   const startFrame = finiteNum(entry.startFrame) ?? finiteNum(entry.fromFrame);
   const durationInFrames = finiteNum(entry.durationInFrames);
+  const sourceStart = finiteNum(entry.sourceStartSeconds);
+  const sourceEnd = finiteNum(entry.sourceEndSeconds);
+  if (sourceStart !== undefined || sourceEnd !== undefined) {
+    // search_media hits carry sourceStartMs/sourceEndMs; this source window
+    // (in SOURCE seconds) is converted here — the model never does fps math.
+    if (type !== 'video' && type !== 'audio' && type !== 'gif') {
+      return { error: `sourceStartSeconds/sourceEndSeconds only apply to video/audio/gif adds (got ${type})` };
+    }
+    if (durationInFrames !== undefined || entry.srcInFrame !== undefined) {
+      return { error: 'do not combine sourceStartSeconds/sourceEndSeconds with durationInFrames/srcInFrame — the source window derives the trim and length' };
+    }
+    const fps = state.fps || 30;
+    const assetFrames = asset.durationInFrames > 0 ? asset.durationInFrames : null;
+    const startSec = sourceStart ?? 0;
+    const startFrameIn = Math.max(0, Math.round(startSec * fps));
+    if (assetFrames !== null && startFrameIn >= assetFrames) {
+      return { error: `sourceStartSeconds ${startSec} is past the end of the asset (${(assetFrames / fps).toFixed(2)}s)` };
+    }
+    const endSec = sourceEnd ?? (assetFrames !== null ? assetFrames / fps : undefined);
+    if (endSec === undefined) {
+      return { error: 'sourceEndSeconds is required when the asset duration is unknown' };
+    }
+    const endFrameIn = Math.max(startFrameIn + 1, Math.round(endSec * fps));
+    if (assetFrames !== null && endFrameIn > assetFrames) {
+      return { error: `sourceEndSeconds ${endSec} exceeds the asset length (${(assetFrames / fps).toFixed(2)}s)` };
+    }
+    return {
+      ok: true,
+      kind: type,
+      plan: 'addMedia',
+      assetId: asset.id,
+      track,
+      srcInFrame: startFrameIn,
+      durationInFrames: endFrameIn - startFrameIn,
+      ...(startFrame !== undefined ? { startFrame: Math.max(0, Math.round(startFrame)) } : {}),
+      sourceRange: { startSeconds: startSec, endSeconds: endSec },
+    };
+  }
   return {
     ok: true,
     kind: type,

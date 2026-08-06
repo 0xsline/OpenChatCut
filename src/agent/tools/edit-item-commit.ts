@@ -136,7 +136,7 @@ function commitMediaPlan(ctx: AgentContext, plan: OpResult): OpResult {
   const asset = (ctx.getDoc().assets ?? []).find((item) => item.id === plan.assetId);
   if (!asset) return { error: `pool asset vanished: ${String(plan.assetId)}` };
   const placed = typeof plan.durationInFrames === 'number'
-    ? { ...asset, durationInFrames: Number(plan.durationInFrames) }
+    ? { ...asset, durationInFrames: Number(plan.durationInFrames), srcInFrame: plan.srcInFrame as number | undefined }
     : asset;
   const itemId = ctx.commands.addMediaItem(placed, {
     track: plan.track as string,
