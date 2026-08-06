@@ -88,7 +88,7 @@ export async function describeImageWithVision(
       role: 'user',
       content: [
         { type: 'text', text: purposePrompt(purpose) },
-        { type: 'image', image: `data:${image.mediaType};base64,${image.base64}` },
+        { type: 'file', data: { type: 'data', data: image.base64 }, mediaType: image.mediaType },
       ],
     }],
     maxOutputTokens: VISION_MAX_OUTPUT_TOKENS,
