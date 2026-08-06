@@ -13,6 +13,8 @@ import zhipuSvg from '../../../assets/vendor-icons/zhipu-color.svg?raw';
 import deepseekSvg from '../../../assets/vendor-icons/deepseek-color.svg?raw';
 import mistralSvg from '../../../assets/vendor-icons/mistral-color.svg?raw';
 import minimaxSvg from '../../../assets/vendor-icons/minimax-color.svg?raw';
+import stepfunSvg from '../../../assets/vendor-icons/stepfun-color.svg?raw';
+import fishaudioSvg from '../../../assets/vendor-icons/fishaudio.svg?raw';
 import hailuoSvg from '../../../assets/vendor-icons/hailuo-color.svg?raw';
 import elevenlabsSvg from '../../../assets/vendor-icons/elevenlabs.svg?raw';
 import doubaoSvg from '../../../assets/vendor-icons/doubao-color.svg?raw';
@@ -52,6 +54,8 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
   deepseek: { svg: deepseekSvg },
   mistral: { svg: mistralSvg },
   minimax: { svg: minimaxSvg },
+  stepfun: { svg: stepfunSvg },                         // Official StepFun (阶跃星辰) color mark
+  fishaudio: { svg: fishaudioSvg, tint: '#0F9D8B' },    // Official single-color mark + brand teal
   hailuo: { svg: hailuoSvg },                       // MiniMax Conch Video exclusive logo
   elevenlabs: { svg: elevenlabsSvg, tint: theme.text },
   doubao: { svg: doubaoSvg },
@@ -76,10 +80,8 @@ const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: strin
   mureka: { bg: '#7C5CFF', mono: 'μ' },
   e2b: { bg: '#FF8800', mono: 'E2', fg: '#40230a' },
   localdisk: { bg: '#5f6b7a', mono: 'HD', fg: '#eef2f7' }, // Local disk (non-vendor, neutral gray)
-  stepfun: { bg: '#6C5CE7', mono: 'SF' }, // StepFun (阶跃星辰), no official SVG vendored yet
   byteplus: { bg: '#0055FF', mono: 'BP' }, // BytePlus ModelArk, no official SVG vendored yet
   inworld: { bg: '#7A5CFF', mono: 'IW' }, // Inworld TTS, no official SVG vendored yet
-  fishaudio: { bg: '#0F9D8B', mono: 'FA' }, // Fish Audio, no official SVG vendored yet
   speechify: { bg: '#FF6A3D', mono: 'SP' }, // Speechify, no official SVG vendored yet
   wavespeed: { bg: '#00B8D9', mono: 'WS' }, // WaveSpeed AI, no official SVG vendored yet
 };
