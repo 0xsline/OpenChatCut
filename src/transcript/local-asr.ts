@@ -135,7 +135,9 @@ function getSharedClient(): LocalAsrClient {
 async function decodeSourceToSamples(path: string): Promise<Float32Array> {
   let response: Response;
   try {
-    response = await fetch(path);
+    // no-store: transcription must read the latest bytes on disk; a stale http
+    // cache entry would transcribe an outdated version of the source.
+    response = await fetch(path, { cache: 'no-store' });
   } catch (error) {
     throw new TranscriptionError('source-unavailable', error instanceof Error ? error.message : String(error));
   }
