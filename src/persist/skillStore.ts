@@ -46,7 +46,13 @@ export function normalizeStoredCustomSkill(value: unknown): CustomSkill | undefi
     summary: stored.summary,
     scenarios: stored.scenarios,
     body: stored.body,
-    files: [],
+    files: Array.isArray(stored.files) ? stored.files.filter((f): f is string => typeof f === 'string') : [],
+    fileContents: typeof stored.fileContents === 'object' && stored.fileContents !== null
+      ? Object.fromEntries(
+        Object.entries(stored.fileContents as Record<string, unknown>)
+          .filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+      )
+      : undefined,
     source: 'custom',
     createdAt: stored.createdAt,
   };

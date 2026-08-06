@@ -11,5 +11,7 @@ export interface SkillDefinition {
   scenarios: string[];
   body: string;
   files: string[];
+  /** Full contents of every skill file (SKILL.md + references/scripts/…), loaded without truncation. */
+  fileContents?: Record<string, string>;
   source: SkillSource;
 }

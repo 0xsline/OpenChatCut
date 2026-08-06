@@ -25,6 +25,8 @@ import { TEMPLATE_TOOL_NAMES, TEMPLATE_TOOL_SCHEMAS } from './tools/schemas/temp
 import { LOUDNESS_TOOL_NAMES, LOUDNESS_TOOL_SCHEMAS } from './tools/schemas/loudness-tools';
 import { ISOLATE_VOICE_TOOL_NAMES, ISOLATE_VOICE_TOOL_SCHEMAS } from './tools/schemas/isolate-voice-tools';
 import { SKILL_TOOL_NAMES, SKILL_TOOL_SCHEMAS } from './tools/schemas/skill-tools';
+import { INSTALL_SKILL_TOOL_NAMES, INSTALL_SKILL_TOOL_SCHEMAS } from './tools/schemas/install-skill-tools';
+import { RUN_SKILL_SCRIPT_TOOL_NAMES, RUN_SKILL_SCRIPT_TOOL_SCHEMAS } from './tools/schemas/skill-exec-tools';
 import { WATERMARK_TOOL_NAMES, WATERMARK_TOOL_SCHEMAS } from './tools/schemas/watermark-tools';
 import { MARKERS_TOOL_NAMES, MARKERS_TOOL_SCHEMAS } from './tools/schemas/markers-tools';
 import { MG_VIDEO_TOOL_NAMES, MG_VIDEO_TOOL_SCHEMAS } from './tools/schemas/mg-video-tools';
@@ -290,6 +292,10 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...MG_CODE_TOOL_SCHEMAS,
   // Load 24 built-in SKILL.md on demand (load_skill · progressive disclosure)
   ...PLUGIN_SKILL_TOOL_SCHEMAS,
+  // Install a GitHub skill repo into the user skill directory.
+  ...INSTALL_SKILL_TOOL_SCHEMAS,
+  // Run installed-skill scripts locally (whitelisted binaries, skill dir locked).
+  ...RUN_SKILL_SCRIPT_TOOL_SCHEMAS,
   // Run skill-provided scripts, FFmpeg, Node, or Python through run_code in an isolated e2b sandbox.
   ...RUN_CODE_TOOL_SCHEMAS,
   // Import probe: probe_media reads hasAudioTrack/fps/duration through ffprobe.
@@ -362,6 +368,8 @@ const EXECUTOR_GROUPS: ReadonlyArray<readonly [ReadonlySet<string>, ToolExecutor
   [LOUDNESS_TOOL_NAMES, async () => (await import('./tools/loudness-tools')).execLoudnessTool],
   [ISOLATE_VOICE_TOOL_NAMES, async () => (await import('./tools/isolate-voice-tools')).execIsolateVoiceTool],
   [SKILL_TOOL_NAMES, async () => (await import('./tools/skill-tools')).execSkillTool],
+  [INSTALL_SKILL_TOOL_NAMES, async () => (await import('./tools/install-skill-tools')).execInstallSkillTool],
+  [RUN_SKILL_SCRIPT_TOOL_NAMES, async () => (await import('./tools/skill-exec-tools')).execRunSkillScriptTool],
   [WATERMARK_TOOL_NAMES, async () => (await import('./tools/watermark-tools')).execWatermarkTool],
   [MARKERS_TOOL_NAMES, async () => (await import('./tools/markers-tools')).execMarkersTool],
   [MG_VIDEO_TOOL_NAMES, async () => (await import('./tools/mg-video-tools')).execMgVideoTool],

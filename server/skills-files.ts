@@ -31,6 +31,34 @@ export interface DiscoveredSkillFile {
   slug: string;
   body: string;
   description: string;
+  /** Every file under the skill directory (SKILL.md + references/scripts/…) — full load, no truncation. */
+  fileContents: Record<string, string>;
+}
+
+export async function readSkillDirFiles(dir: string): Promise<Record<string, string>> {
+  const contents: Record<string, string> = {};
+  const walk = async (relative: string): Promise<void> => {
+    let entries: Dirent[];
+    try {
+      entries = await readdir(join(dir, relative), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        await walk(join(relative, entry.name));
+      } else if (entry.isFile()) {
+        const name = join(relative, entry.name);
+        try {
+          contents[name] = await readFile(join(dir, name), 'utf8');
+        } catch {
+          // Unreadable support file is skipped; SKILL.md is handled by the caller.
+        }
+      }
+    }
+  };
+  await walk('');
+  return contents;
 }
 
 /** Scan ~/.openchatcut/skills/ for SKILL.md files (user-dropped or mirrored). */
@@ -50,7 +78,9 @@ export async function discoverSkillFiles(root: string): Promise<DiscoveredSkillF
       const raw = await readFile(join(dir, 'SKILL.md'), 'utf8');
       const parsed = parseSkillFrontmatter(raw);
       if (!parsed.body.trim()) continue;
-      found.push({ slug: entry.name, body: raw, description: parsed.description || parsed.name || entry.name });
+      const fileContents = await readSkillDirFiles(dir);
+      fileContents['SKILL.md'] = raw;
+      found.push({ slug: entry.name, body: raw, description: parsed.description || parsed.name || entry.name, fileContents });
     } catch {
       // Missing/unreadable SKILL.md is not a skill.
     }

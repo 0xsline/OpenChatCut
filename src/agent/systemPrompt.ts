@@ -8,6 +8,7 @@ import type { Locale } from '../i18n/locale';
 import { capabilitiesPrompt, currentCaps } from './capabilities';
 import { getLocale } from '../i18n/locale';
 import { findSkill } from './skills/skills-catalog';
+import { skillDependencyPrompt } from './skills/skill-deps';
 import { PLUGIN_SKILLS_INDEX } from './skills/plugin-skills';
 import {
   agentSettingsPrompt,
@@ -74,9 +75,16 @@ export function editorStatePrompt(ctx: AgentContext): string {
 
 // A selected skill contributes only a stable loader instruction. Its body remains
 // out of the cached system prompt and is disclosed through load_skill on demand.
+// Custom (externally installed) skills additionally get a dependency-adaptation
+// block: their foreign services are checked against configured local capabilities.
 export function creativeModePrompt(skill: SkillDefinition | undefined): string {
   if (!skill) return '';
   const reference = skill.source === 'custom' ? skill.id : skill.slug;
+  // Custom (externally installed) skills are checked for foreign-service
+  // dependencies across the FULL skill content (SKILL.md + support files).
+  const text = skill.source === 'custom'
+    ? [skill.description, skill.body, ...Object.values(skill.fileContents ?? {})].join('\n')
+    : '';
   return [
     '',
     '<selected_skill>',
@@ -84,7 +92,8 @@ export function creativeModePrompt(skill: SkillDefinition | undefined): string {
     `Before taking action, call load_skill with name="${reference}" and follow the returned workflow.`,
     'Do not infer the workflow from the skill name or prior messages.',
     '</selected_skill>',
-  ].join('\n');
+    skillDependencyPrompt(skill, text),
+  ].filter(Boolean).join('\n');
 }
 
 const isEmptyStyle = (s: DesignStyle) => s.colors.length === 0 && s.fonts.length === 0 && !s.styleGuide;

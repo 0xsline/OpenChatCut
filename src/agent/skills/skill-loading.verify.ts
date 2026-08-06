@@ -58,8 +58,10 @@ try {
     assert(skill.description.length > 0);
     assert(skill.body.trimStart().startsWith('# '));
     const loaded = loader.execPluginSkillTool('load_skill', { name: skill.slug });
-    assert(loaded && typeof loaded === 'object' && 'content' in loaded);
-    assert.equal(loaded.content, skill.body);
+    assert(loaded && typeof loaded === 'object' && 'contents' in loaded);
+    const contents = (loaded as { contents: Record<string, string> }).contents;
+    assert.equal(contents['SKILL.md'], skill.body);
+    assert(Object.keys(contents).length >= 1, 'full load must include every support file');
     const prompt = prompts.creativeModePrompt(skill);
     assert.match(prompt, new RegExp(`name="${skill.slug}"`));
     assert(!prompt.includes(skill.body));
@@ -71,8 +73,13 @@ try {
     name: withSupport.slug,
     file: withSupport.files[0],
   });
-  assert(support && typeof support === 'object' && 'content' in support);
-  assert.equal(typeof support.content, 'string');
+  assert(support && typeof support === 'object' && 'contents' in support);
+  const supportContents = (support as { contents: Record<string, string> }).contents;
+  assert(typeof supportContents[withSupport.files[0]], 'string');
+  // full load: every support file of a bundled skill is returned up front
+  for (const file of withSupport.files) {
+    assert(supportContents[file] !== undefined, `full load missing ${file}`);
+  }
 
   const custom: SkillDefinition = {
     id: 'skill_contract_check',
@@ -91,8 +98,8 @@ try {
   assert.match(customPrompt, /name="skill_contract_check"/);
   assert(!customPrompt.includes('PRIVATE_SKILL_BODY_SENTINEL'));
   const customLoaded = loader.execPluginSkillTool('load_skill', { name: custom.id });
-  assert(customLoaded && typeof customLoaded === 'object' && 'content' in customLoaded);
-  assert.equal(customLoaded.content, custom.body);
+  assert(customLoaded && typeof customLoaded === 'object' && 'contents' in customLoaded);
+  assert.equal((customLoaded as { contents: Record<string, string> }).contents['SKILL.md'], custom.body);
   catalog.setCustomSkills([]);
 
   const migrated = store.normalizeStoredCustomSkill({

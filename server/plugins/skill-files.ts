@@ -8,6 +8,8 @@ import type { Plugin } from 'vite';
 
 import {
   discoverSkillFiles,
+  readSkillDirFiles,
+  skillDirFor,
   displaySkillPath,
   mirrorSkillFile,
   removeSkillFile,
@@ -109,8 +111,9 @@ export function skillFilesPlugin(): Plugin {
     name: 'openchatcut-skill-files',
     configureServer(server) {
       server.middlewares.use('/api/skills', (req, res, next) => {
-        // /api/skills/install is owned by the skill-install plugin.
+        // /api/skills/install and /api/skills/<slug>/exec are owned by their own plugins.
         if (req.url?.startsWith('/install')) { next(); return; }
+        if (/^\/[A-Za-z0-9_-]{1,120}\/exec$/.test(req.url ?? '')) { next(); return; }
         void handleSkillsRequest(req, res, server);
       });
     },
@@ -127,6 +130,13 @@ async function handleSkillsRequest(
     if (req.method === 'GET') {
       const [kv, files] = await Promise.all([kvSkills(), discoverSkillFiles(root)]);
       const kvSlugs = new Set(kv.map((skill) => skill.slug));
+      // kv skills keep their mirror directory contents when present (full load).
+      const kvWithFiles = await Promise.all(kv.map(async (skill) => {
+        const dir = skillDirFor(root, skill.slug);
+        const fileContents = dir ? await readSkillDirFiles(dir) : {};
+        if (fileContents['SKILL.md'] === undefined && skill.body) fileContents['SKILL.md'] = skill.body;
+        return { ...skill, files: Object.keys(fileContents).sort(), fileContents };
+      }));
       // User-dropped files that are not in kv become ad-hoc custom skills.
       const discovered = files
         .filter((file) => !kvSlugs.has(file.slug))
@@ -139,11 +149,12 @@ async function handleSkillsRequest(
           summary: file.description,
           scenarios: [] as string[],
           body: file.body,
-          files: [] as string[],
+          files: Object.keys(file.fileContents).sort(),
+          fileContents: file.fileContents,
           source: 'custom' as const,
           createdAt: 0,
         }));
-      sendJson(res, 200, { skills: [...kv, ...discovered], root });
+      sendJson(res, 200, { skills: [...kvWithFiles, ...discovered], root });
       return;
     }
     if (req.method === 'PUT') {
