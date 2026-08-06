@@ -181,6 +181,18 @@ export class ExternalBridgeRuntime {
     }
     const sessionId = requiredSessionId(args);
     const session = this.sessions.get(sessionId);
+    if (name === 'discard_edit_session') {
+      // Cross-transport release: a client that lost its connection must be
+      // able to discard a stale session to unblock a new begin. Discard only
+      // abandons the draft — it never writes the project — so binding strictness
+      // is waived here.
+      if (!session) {
+        await this.validateBinding(binding);
+        throw new Error(`Unknown edit session ${sessionId}`);
+      }
+      throwIfCancelled(signal);
+      return this.discard(session);
+    }
     if (name === 'get_edit_session') {
       if (!session) {
         await this.validateBinding(binding);

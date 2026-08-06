@@ -395,10 +395,14 @@ export function invokeEditorTool(
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<unknown> {
   const allowRevisionDrift = name === 'get_edit_session';
-  if (name !== 'begin_edit_session' && 'editSessionId' in args) {
+  const discardAnyTransport = name === 'discard_edit_session';
+  // discard is a cross-transport release: a reconnecting client must be able
+  // to drop a stale session that blocks a new begin, even when it belongs to
+  // another transport. The editor-side discard never writes the project.
+  if (name !== 'begin_edit_session' && !discardAnyTransport && 'editSessionId' in args) {
     requireOwnedEditSession(ownerId, binding, args);
   }
-  const bindingMatches = allowRevisionDrift
+  const bindingMatches = allowRevisionDrift || discardAnyTransport
     ? editorBindingIdentityMatches(binding)
     : editorBindingMatches(binding);
   if (!bindingMatches) {
