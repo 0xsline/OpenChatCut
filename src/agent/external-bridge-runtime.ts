@@ -14,7 +14,7 @@ import {
   type ExternalEditSessionTerminalStatus,
 } from './external-edit-session';
 import { executeTool } from './tools';
-import { isExternalDraftTool, isExternalGlobalReadTool } from './external-tool-policy';
+import { isExternalDraftTool, isExternalGlobalReadTool, isExternalRealTool } from './external-tool-policy';
 import { isProposalStale, type Proposal } from './proposal';
 import { replayActions } from '../editor/store';
 import { saveProject } from '../persist/projectStore';
@@ -27,6 +27,15 @@ import {
 export interface ExternalProposalSnapshot {
   proposal: Proposal | null;
   stale: boolean;
+}
+
+/** Confirmation request for a real-project tool (generation/export/import/…)
+ * issued from an external session; the user decides in the OpenChatCut UI. */
+export interface ExternalGuardRequest {
+  id: string;
+  sessionId: string;
+  tool: string;
+  summary: string;
 }
 
 export interface ExternalBridgeBinding {
@@ -98,6 +107,12 @@ export class ExternalBridgeRuntime {
   private readonly getContext: () => AgentContext;
   private readonly publish: (snapshot: ExternalProposalSnapshot) => void;
   private readonly persistence: ExternalBridgePersistence;
+  /** sessionId → tools the user has confirmed for real-project execution. */
+  private readonly confirmedRealTools = new Map<string, Set<string>>();
+  /** pending confirmation id → tool name, so confirm/deny can resolve by id. */
+  private readonly pendingGuardById = new Map<string, { sessionId: string; tool: string }>();
+  /** UI hook: a real-project tool needs the user's confirmation. */
+  onGuardRequest: ((request: ExternalGuardRequest) => void) | null = null;
 
   constructor(
     projectId: string,
@@ -181,7 +196,65 @@ export class ExternalBridgeRuntime {
     delete args.editSessionId;
     if (name === 'discard_edit_session') return this.discard(requiredSession);
     if (name === 'review_edit_session') return this.review(requiredSession, args.summary, signal);
+    if (isExternalRealTool(name)) {
+      return this.runRealTool(requiredSession, name, args, signal);
+    }
     return this.runEditorTool(requiredSession, name, args, signal);
+  }
+
+  /** Real-project tools (generation/export/import/transcription/analysis) act on
+   * the live project. The first call per session asks the user to confirm in
+   * the OpenChatCut UI; once confirmed the tool runs like it does internally. */
+  private async runRealTool(
+    session: ExternalEditSession,
+    name: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    if (session.status !== 'drafting') {
+      throw new Error(`Edit session ${session.id} is ${session.status}; real-project tools require drafting status.`);
+    }
+    throwIfCancelled(signal);
+    const confirmed = this.confirmedRealTools.get(session.id);
+    if (confirmed?.has(name)) {
+      return executeTool(name, args, this.getContext());
+    }
+    const guardId = `${session.id}:${name}:${crypto.randomUUID().slice(0, 8)}`;
+    this.pendingGuardById.set(guardId, { sessionId: session.id, tool: name });
+    this.onGuardRequest?.({
+      id: guardId,
+      sessionId: session.id,
+      tool: name,
+      summary: typeof args.summary === 'string' && args.summary.trim()
+        ? args.summary.trim()
+        : name,
+    });
+    return {
+      needs_confirmation: true,
+      confirmationId: guardId,
+      tool: name,
+      note: '这个操作会作用于真实工程。请在 OpenChatCut 中确认后重试同一次调用。',
+    };
+  }
+
+  /** Resolve a pending real-tool confirmation (UI callback). */
+  confirmRealTool(guardId: string, allow: boolean): void {
+    const entry = this.pendingGuardById.get(guardId);
+    if (!entry) return;
+    this.pendingGuardById.delete(guardId);
+    if (allow) {
+      const set = this.confirmedRealTools.get(entry.sessionId) ?? new Set<string>();
+      set.add(entry.tool);
+      this.confirmedRealTools.set(entry.sessionId, set);
+    }
+  }
+
+  /** Current pending guard (UI display) plus a resolver. */
+  pendingGuard(): ExternalGuardRequest | null {
+    const first = this.pendingGuardById.entries().next().value as [string, { sessionId: string; tool: string }] | undefined;
+    if (!first) return null;
+    const [id, entry] = first;
+    return { id, sessionId: entry.sessionId, tool: entry.tool, summary: entry.tool };
   }
 
   async apply(

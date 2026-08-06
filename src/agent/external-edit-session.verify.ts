@@ -20,6 +20,7 @@ import {
   isExternalDraftTool,
   isExternalGlobalReadTool,
   isExternalReadTool,
+  isExternalRealTool,
 } from './external-tool-policy';
 import { externalToolSchemas } from './external-tool-schemas';
 import {
@@ -385,6 +386,30 @@ assert(
 );
 const begun = await runtime.execute('begin_edit_session', {}, runtimeBinding);
 assert(begun && typeof begun === 'object' && 'editSessionId' in begun);
+
+// Real-project tools are confirm-gated: the first call returns
+// needs_confirmation and queues a guard; confirming allows the next call.
+const guarded = await runtime.execute(
+  'read_export_history',
+  { editSessionId: begun.editSessionId },
+  runtimeBinding,
+);
+assert(
+  guarded && typeof guarded === 'object' && (guarded as { needs_confirmation?: boolean }).needs_confirmation === true,
+  'real-project tools ask for confirmation before the first call',
+);
+const guard = runtime.pendingGuard();
+assert(guard && guard.tool === 'read_export_history', 'pending guard surfaces the requested tool');
+runtime.confirmRealTool(guard!.id, true);
+const released = await runtime.execute(
+  'read_export_history',
+  { editSessionId: begun.editSessionId },
+  runtimeBinding,
+);
+assert(!(released && typeof released === 'object' && (released as { needs_confirmation?: boolean }).needs_confirmation),
+  'confirmed real-project tool executes without asking again');
+runtime.confirmRealTool(guard!.id, false);
+assert(runtime.pendingGuard() === null, 'resolved guards leave the pending set');
 const draftingInfo = await runtime.execute(
   'get_edit_session',
   { editSessionId: begun.editSessionId },
@@ -712,6 +737,9 @@ assert(isExternalDraftTool('set_aspect_ratio'));
 assert(isExternalReadTool('read_project'));
 assert(!isExternalDraftTool('delete_project'));
 assert(!isExternalDraftTool('submit_render_job'));
+assert(isExternalRealTool('submit_render_job'), 'real-project tools are exposed to external agents (confirm-gated)');
+assert(isExternalRealTool('submit_image'), 'generation is confirm-gated for external agents');
+assert(isExternalRealTool('import_media'), 'import is confirm-gated for external agents');
 assert(isExternalGlobalReadTool('load_skill'));
 assert(!isExternalDraftTool('load_skill'));
 const externalLoadSkill = externalToolSchemas().find((tool) => tool.name === 'load_skill');
@@ -719,5 +747,9 @@ assert(externalLoadSkill, 'load_skill is exposed to external agents');
 assert.equal(externalLoadSkill.annotations?.readOnlyHint, true);
 assert(!('editSessionId' in (externalLoadSkill.input_schema.properties ?? {})));
 assert(!externalLoadSkill.input_schema.required?.includes('editSessionId'));
+const externalSubmitRender = externalToolSchemas().find((tool) => tool.name === 'submit_render_job');
+assert(externalSubmitRender, 'submit_render_job is exposed to external agents');
+assert.equal(externalSubmitRender.annotations?.readOnlyHint, false);
+assert(externalSubmitRender.input_schema.required?.includes('editSessionId'), 'real tools carry editSessionId for the confirmation gate');
 
 console.log('external edit session checks passed');

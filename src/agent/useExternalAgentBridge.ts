@@ -3,6 +3,7 @@ import type { AgentContext } from './context';
 import {
   ExternalBridgeRuntime,
   type ExternalBridgeBinding,
+  type ExternalGuardRequest,
   type ExternalProposalSnapshot,
 } from './external-bridge-runtime';
 import {
@@ -67,6 +68,9 @@ export interface ExternalProposalController {
   applyProposal: (selected: Set<number>) => void;
   forceApplyProposal: (selected: Set<number>) => void;
   rejectProposal: () => void;
+  /** Pending real-project tool confirmation from an external session. */
+  pendingGuard: ExternalGuardRequest | null;
+  confirmGuard: (id: string, allow: boolean) => void;
 }
 
 const retryDelay = () => new Promise<void>((resolve) => setTimeout(resolve, 1_000));
@@ -401,6 +405,7 @@ export function useExternalAgentBridge(ctx: AgentContext, projectId: string): Ex
   const [snapshot, setSnapshot] = useState<ExternalProposalSnapshot>({ proposal: null, stale: false });
   const [error, setError] = useState<string | null>(null);
   const [readiness, setReadiness] = useState<ExternalBridgeReadinessToken | null>(null);
+  const [pendingGuard, setPendingGuard] = useState<ExternalGuardRequest | null>(null);
   const ctxRef = useRef(ctx);
   const runtimeRef = useRef<ExternalBridgeRuntimeSlot | null>(null);
   ctxRef.current = ctx;
@@ -474,6 +479,22 @@ export function useExternalAgentBridge(ctx: AgentContext, projectId: string): Ex
     [runAction],
   );
   const rejectProposal = useCallback(() => runAction(runtimeRef.current?.runtime.reject()), [runAction]);
+  const confirmGuard = useCallback((id: string, allow: boolean) => {
+    runtimeRef.current?.runtime.confirmRealTool(id, allow);
+    setPendingGuard((current) => (current && current.id === id ? null : current));
+  }, []);
+  useEffect(() => {
+    const slot = runtimeRef.current;
+    if (!slot) return undefined;
+    const refresh = () => setPendingGuard(slot.runtime.pendingGuard());
+    refresh();
+    slot.runtime.onGuardRequest = (request) => setPendingGuard(request);
+    const timer = window.setInterval(refresh, 800);
+    return () => {
+      slot.runtime.onGuardRequest = null;
+      window.clearInterval(timer);
+    };
+  }, [readiness, projectId]);
   return {
     proposal: snapshot.proposal,
     proposalStale: snapshot.stale,
@@ -481,5 +502,7 @@ export function useExternalAgentBridge(ctx: AgentContext, projectId: string): Ex
     applyProposal,
     forceApplyProposal,
     rejectProposal,
+    pendingGuard,
+    confirmGuard,
   };
 }

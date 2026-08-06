@@ -4,6 +4,7 @@ import {
   isExternalDraftTool,
   isExternalGlobalReadTool,
   isExternalReadTool,
+  isExternalRealTool,
 } from './external-tool-policy';
 
 interface ExternalToolAnnotation {
@@ -107,5 +108,23 @@ export function externalToolSchemas(): ExternalRegisteredTool[] {
       openWorldHint: false,
     },
   }));
-  return [...globalReadTools, ...SESSION_TOOLS, ...editorTools];
+  // Real-project tools (generation/export/import/transcription/analysis) —
+  // the same surface the internal agent sees. First call per session asks the
+  // user to confirm in the OpenChatCut UI, then executes on the live project.
+  const realTools = TOOL_SCHEMAS.filter((tool) => isExternalRealTool(tool.name)).map((tool): ExternalRegisteredTool => ({
+    ...tool,
+    description: `${tool.description ?? tool.name} Acts on the live project; the first call per session needs your confirmation in OpenChatCut. Pass editSessionId.`,
+    input_schema: {
+      ...tool.input_schema,
+      properties: { ...tool.input_schema.properties, editSessionId: SESSION_ID_PROPERTY },
+      required: requiredWithSession(tool.input_schema.required),
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+  }));
+  return [...globalReadTools, ...SESSION_TOOLS, ...editorTools, ...realTools];
 }

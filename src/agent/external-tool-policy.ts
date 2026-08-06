@@ -28,3 +28,12 @@ export function isExternalReadTool(name: string): boolean {
 export function isExternalDraftTool(name: string): boolean {
   return isExternalReadTool(name) || DRAFT_EDIT_TOOL_NAMES.has(name);
 }
+
+/** Real-project operations (generation, export, import, transcription, analysis
+ * writes) — not available in isolated draft sessions; they act on the live
+ * project and require the user to confirm the first call per session. Every
+ * tool outside the draft/global-read whitelist is real: internal and external
+ * agents see the same tool surface, only the confirmation gate differs. */
+export function isExternalRealTool(name: string): boolean {
+  return !isExternalDraftTool(name) && !isExternalGlobalReadTool(name);
+}
