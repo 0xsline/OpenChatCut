@@ -9,6 +9,9 @@ import type { AgentToolSchema } from '../tool-schema';
 import type { GuardDecision } from '../skills/costGuard';
 import type { AgentSettings } from '../settings/agentSettings';
 import { normalizeLlmMessages } from '../messages';
+import { describeImageWithVision } from '../vision';
+import { getActiveAgentModelChoice } from '../model-selection';
+import { resolveVisionModel } from '../visionConfig';
 import { estimateTextTokens, serializeMessagesForPrompt } from '../context-compaction';
 import { executeTool as executeEditorTool } from '../tools';
 import { describeTimelineDelta, snapshotTimeline } from '../timelineDelta';
@@ -175,6 +178,26 @@ function withoutToolImages(execution: CodexToolExecution): CodexToolExecution {
   };
 }
 
+/** Vision bypass for Codex tool results: describe __images with the configured vision model. */
+async function describeToolImages(execution: CodexToolExecution): Promise<CodexToolExecution> {
+  const result = execution.result as Record<string, unknown> | null;
+  if (!result || Array.isArray(result)) return withoutToolImages(execution);
+  const images = result.__images;
+  if (!Array.isArray(images) || !images.length) return withoutToolImages(execution);
+  const first = images[0] as { base64?: unknown } | null;
+  if (typeof first?.base64 !== 'string') return withoutToolImages(execution);
+  const vision = resolveVisionModel(getActiveAgentModelChoice());
+  if (!vision) return withoutToolImages(execution);
+  const description = await describeImageWithVision(
+    vision,
+    { base64: first.base64, mediaType: 'image/jpeg' },
+    'timeline-frames',
+  ).catch(() => null);
+  if (!description) return withoutToolImages(execution);
+  const { __images, ...rest } = result;
+  return { ...execution, result: { ...rest, visualSummary: description } };
+}
+
 
 function isToolArgs(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -256,10 +279,13 @@ async function handleToolStart(
     onEvent({ type: 'tool', name: event.name, args: event.args, result: execution.result });
   }
   state.toolFailures.record(event.name, execution);
+  const submitted = opts.supportsImages === false
+    ? await describeToolImages(execution)
+    : execution;
   await submitToolExecution(
     requestId,
     event.callId,
-    opts.supportsImages === false ? withoutToolImages(execution) : execution,
+    submitted,
   );
   if (execution.followupText !== undefined) {
     throw new CodexFollowupPause(execution.followupText);

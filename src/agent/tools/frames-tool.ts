@@ -7,6 +7,7 @@ import { sourceWindowForTimelineRange } from '../../editor/sourceLimit';
 import type { SourceFrameWindow } from '../../editor/sourceLimit';
 import { extractBlobContactSheet, extractBlobImagePreview, isBlobishSrc } from './blob-frames';
 import { resolveTimeline } from './timeline-target';
+import { maybeDescribeFramesResult } from '../vision';
 
 // view_timeline_frames + view_asset_frames provide visual inspection tools.
 //
@@ -463,7 +464,13 @@ async function viewAssetFrames(args: Args, ctx: AgentContext): Promise<unknown> 
 }
 
 export async function execFramesTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
-  if (name === 'view_timeline_frames') return viewTimelineFrames(args, ctx);
-  if (name === 'view_asset_frames') return viewAssetFrames(args, ctx);
-  return { error: `unknown tool ${name}` };
+  const result = name === 'view_timeline_frames'
+    ? await viewTimelineFrames(args, ctx)
+    : name === 'view_asset_frames'
+      ? await viewAssetFrames(args, ctx)
+      : { error: `unknown tool ${name}` };
+  return await maybeDescribeFramesResult(
+    result,
+    name === 'view_asset_frames' ? 'asset-frames' : 'timeline-frames',
+  );
 }

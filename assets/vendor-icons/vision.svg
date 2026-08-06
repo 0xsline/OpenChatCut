@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <defs>
+    <linearGradient id="vision-grad-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22D3EE"/>
+      <stop offset="100%" stop-color="#A78BFA"/>
+    </linearGradient>
+  </defs>
+  <rect x="2.5" y="2.5" width="19" height="19" rx="5" fill="none" stroke="#64748b" stroke-width="2"/>
+  <circle cx="12" cy="12" r="7.5" fill="url(#vision-grad-1)"/>
+  <circle cx="12" cy="12" r="3.5" fill="#0b0d10"/>
+</svg>

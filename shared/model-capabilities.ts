@@ -195,6 +195,25 @@ export function findModelCapabilityOverride(
   return records.find((record) => identityKey(record) === identityKey(identity));
 }
 
+/**
+ * Vision-capable model ids for a provider from the models.dev catalog,
+ * with the provider's currently configured model appended when it is not
+ * listed (custom/local model ids must stay selectable). Cloud providers
+ * with no vision models in the catalog yield an empty list; local providers
+ * (Ollama/LM Studio) keep their configured model so local vision models
+ * such as llava remain selectable.
+ */
+export function listVisionModels(
+  provider: LlmProvider,
+  configuredModel?: string,
+): readonly string[] {
+  const catalog = catalogProviders[provider] ?? {};
+  const ids = Object.keys(catalog).filter((id) => (catalog[id]?.input ?? []).includes('image'));
+  if (ids.length === 0 && provider !== 'ollama' && provider !== 'lmstudio') return [];
+  if (configuredModel && !ids.includes(configuredModel)) return [...ids, configuredModel];
+  return ids;
+}
+
 export function resolveModelCapabilities(
   identity: ModelIdentity,
   records: readonly ModelCapabilityOverride[] = [],
