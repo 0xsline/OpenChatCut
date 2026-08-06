@@ -14,6 +14,7 @@ import { TranscriptPanel, type TranscriptTrackOption } from '../transcript/Trans
 import { CaptionsPanel } from '../captions/CaptionsPanel';
 import { newManualCaptions } from '../captions/manualCaptions';
 import { MediaPoolPanel } from '../media/MediaPoolPanel';
+import { SkillsTabPanel } from './SkillsTabPanel';
 import { TemplateBrowser } from './TemplateBrowser';
 import { ResourceBrowser, type ResourceItem } from './ResourceBrowser';
 import { TransitionThumb } from './TransitionThumb';
@@ -105,6 +106,9 @@ interface LibraryPanelProps {
   onRemoveMediaAssets: (ids: string[]) => void;
   onPasteMediaAssets: (assets: MediaAsset[], folderId?: string) => void;
   onRelinkMediaAsset?: (id: string, next: MediaAssetRelinkPatch) => void;
+  /** Creative-mode skill selection (Skill tab): mirrors the chat composer state. */
+  creativeMode: string | null;
+  onCreativeModeChange: (id: string | null) => void;
   onAddSolid?: () => void;
   /** ⋮ menu「Generated with AI」: seed the chat with this template as a reference */
   onUseTemplateAI: (tpl: Tpl) => void;
@@ -117,9 +121,9 @@ interface LibraryPanelProps {
   onApplyZoom: (zoom: ZoomEffect) => void;
 }
 
-const MAIN_TABS = ['我的素材', '序列', '资源库', '文字稿', '字幕'] as const;
+const MAIN_TABS = ['我的素材', '序列', '资源库', '文字稿', '字幕', '技能'] as const;
 const SUB_TABS = ['MG 动画', '音效', '转场', '特效', '缩放', 'LUT'] as const;
-export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, sequenceOptions, onAddSequence, trackOptions, captionTracks, onSetCaptions, onCreateCaptionTrack, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, usedAssetIds, offlineAssetIds, onAssetLoadError, onImportMedia, onImportMobileMedia, onAddMediaItem, onAddMediaAssetsToTimeline, onUseMediaAI, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onRenameMediaAssets, onSetMediaAssetFavorite, onSetMediaAssetsFavorite, onRemoveMediaAsset, onRemoveMediaAssets, onPasteMediaAssets, onRelinkMediaAsset, onAddSolid, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
+export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, sequenceOptions, onAddSequence, trackOptions, captionTracks, onSetCaptions, onCreateCaptionTrack, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, usedAssetIds, offlineAssetIds, onAssetLoadError, onImportMedia, onImportMobileMedia, onAddMediaItem, onAddMediaAssetsToTimeline, onUseMediaAI, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onRenameMediaAssets, onSetMediaAssetFavorite, onSetMediaAssetsFavorite, onRemoveMediaAsset, onRemoveMediaAssets, onPasteMediaAssets, onRelinkMediaAsset, creativeMode, onCreativeModeChange, onAddSolid, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
   const t = useT();
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
@@ -148,6 +152,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
   const isCaptions = mainTab === '字幕';
   const isMyAssets = mainTab === '我的素材';
   const isSequences = mainTab === '序列';
+  const isSkills = mainTab === '技能';
   const openCaptionStyles = (sourceItemIds: string[]) => {
     const target = captionTracks[0];
     if (!target?.captions && sourceItemIds.length) {
@@ -213,6 +218,13 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
             onCreateFolder={onCreateMediaFolder} onRenameFolder={onRenameMediaFolder} onDeleteFolder={onDeleteMediaFolder}
             onMoveAssets={onMoveMediaAssets} onRenameAsset={onRenameMediaAsset} onRenameAssets={onRenameMediaAssets} onSetFavorite={onSetMediaAssetFavorite} onSetAssetsFavorite={onSetMediaAssetsFavorite} onRemoveAsset={onRemoveMediaAsset} onRemoveAssets={onRemoveMediaAssets} onPasteAssets={onPasteMediaAssets}
             onRelinkAsset={onRelinkMediaAsset} onAddSolid={onAddSolid} />
+        </div>
+      ) : isSkills ? (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, borderTop: `0.5px solid ${theme.border}` }}>
+          <SkillsTabPanel
+            creativeMode={creativeMode}
+            onCreativeModeChange={onCreativeModeChange}
+          />
         </div>
       ) : (
       <>

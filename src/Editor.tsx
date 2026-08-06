@@ -973,6 +973,8 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           }}
           onRelinkMediaAsset={(id, next) => commands.relinkMediaAsset(id, next)}
           onAddSolid={() => commands.addSolidItem({ startFrame: getPlayhead() })}
+          creativeMode={creativeMode}
+          onCreativeModeChange={changeCreativeMode}
           onUseTemplateAI={useTemplateAI}
           selectedItem={selectedItem}
           onApplyTransition={(type, custom) => state.selectedId && commands.addTransition(state.selectedId, type, undefined, custom)}

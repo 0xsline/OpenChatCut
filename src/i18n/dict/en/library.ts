@@ -164,4 +164,9 @@ export default {
   '已导出 {file}({n} 条内容)——可直接上传资源网站': 'Exported {file} ({n} items) — ready to upload to the resource website',
   '已保存到资源库({n} 条内容)，可在对应分类直接使用': 'Saved to the resource library ({n} items). They are now available in their categories.',
   '保存失败：{message}': 'Save failed: {message}',
+  '技能': 'Skills',
+  '选择创作工作流会约束 Agent 的规划与工具调用；激活后下一条消息按该工作流执行。': 'Choosing a creative workflow guides the Agent\'s planning and tool use; the next message runs under it.',
+  '当前：{name}': 'Active: {name}',
+  '点击取消创作模式，回到自由创作': 'Click to exit creative mode and return to freeform',
+  '提示：也可在聊天输入框用 /skill:名称 快速激活，或用「技能创作器」创建自己的技能。': 'Tip: type /skill:name in the chat box to activate quickly, or use Skill Creator to build your own.',
 } as Record<string, string>;
