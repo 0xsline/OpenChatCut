@@ -1,4 +1,5 @@
 import { kvDel, kvGet, kvSet } from './sharedKv';
+import type { TranscriptionProviderId } from '../transcript/types';
 
 export type TranscriptionProviderStatus =
   | 'preparing'
@@ -20,7 +21,7 @@ export interface TranscriptionCheckpoint {
   projectId: string;
   assetId: string;
   sourceRevision: string;
-  provider: 'assemblyai';
+  provider: TranscriptionProviderId;
   providerJobId?: string;
   providerStatus: TranscriptionProviderStatus;
   uploadUrl?: string;
@@ -61,7 +62,7 @@ function parseCheckpoint(value: unknown, expected: TranscriptionCheckpointKey): 
   if (item.projectId !== expected.projectId
     || item.assetId !== expected.assetId
     || item.sourceRevision !== expected.sourceRevision
-    || item.provider !== 'assemblyai'
+    || (item.provider !== 'assemblyai' && item.provider !== 'local')
     || !statuses.has(item.providerStatus as TranscriptionProviderStatus)
     || typeof item.languageCode !== 'string'
     || !item.retry

@@ -1,12 +1,17 @@
 import { useCallback, useState } from 'react';
-import { TranscriptionError, transcribePath, type TranscribeOptions } from './assemblyai';
+import {
+  TranscriptionError, preferredTranscriptionProvider, transcribePath, type TranscribeOptions,
+} from './provider';
 import type { TranscriptResult, TranscriptStatus } from './types';
 import { t } from '../i18n/locale';
 
 function transcriptErrorMessage(error: unknown): string {
   if (error instanceof TranscriptionError) {
-    return error.code === 'source-unavailable'
-      ? t('素材文件不可用，请在“我的素材”中重新链接后再转写')
+    if (error.code === 'source-unavailable') {
+      return t('素材文件不可用，请在“我的素材”中重新链接后再转写');
+    }
+    return preferredTranscriptionProvider() === 'local'
+      ? t('本地转写失败：模型未就绪或音频无法处理，请检查模型下载后重试')
       : t('无法连接转写服务，请检查网络和 AssemblyAI 配置后重试');
   }
   return error instanceof Error ? error.message : String(error);

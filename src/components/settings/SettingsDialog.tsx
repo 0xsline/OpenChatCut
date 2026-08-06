@@ -5,6 +5,7 @@ import { Icon } from '../icons';
 import { VendorIcon } from './vendorIcons';
 import { applyLiveCaps, applyLiveKeyStatus, applyLiveModels } from '../../agent/capabilities';
 import { applyAgentModelStatus } from '../../agent/model-selection';
+import { setPreferredTranscriptionProvider } from '../../transcript/provider';
 import { FieldRow, ON, VendorPane, WARN, type FieldCtx } from './settingsVendorPane';
 import { useCodexSettings } from './useCodexSettings';
 import type { CodexAgentStatus } from '../../../shared/codex-agent';
@@ -57,6 +58,13 @@ function useKeyStatus(): {
     return () => { alive = false; };
   }, []);
   return { status, setStatus, loadError };
+}
+
+/** Keep the provider router flag in sync with the saved setting ('' → default). */
+function syncTranscriptionProvider(saved: string | undefined): void {
+  setPreferredTranscriptionProvider(
+    saved === 'local' || saved === 'assemblyai' ? saved : 'assemblyai',
+  );
 }
 
 function useSaveKeys(values: Values, onSaved: (next: KeyStatusResponse) => void): {
@@ -199,6 +207,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { save, saving, msg, error } = useSaveKeys(values, (next) => {
     setStatus(next);
     applySavedToAgent(next);
+    syncTranscriptionProvider(next.models?.['PREFERRED_TRANSCRIPTION_PROVIDER']);
     setValues({});
   });
   const dirty = Object.keys(values).length > 0;

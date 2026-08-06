@@ -246,8 +246,9 @@ async function shouldExtractForAsr(path: string): Promise<boolean> {
  * Transcribe a same-origin media path. Videos (and large audio) first extract a
  * small ASR track server-side; then only that small blob is sent to AssemblyAI.
  * Pass opts.asrPath when extract already raced ahead of normalize/finalize.
+ * Shared with the local ASR provider — do not break its callers.
  */
-async function transcriptionSourceForPath(path: string, opts: TranscribeOptions): Promise<string> {
+export async function transcriptionSourceForPath(path: string, opts: TranscribeOptions): Promise<string> {
   if (opts.asrPath && opts.asrPath.startsWith('/media/')) return opts.asrPath;
   if (await shouldExtractForAsr(path)) {
     const extracted = await extractAudioForAsr(path);

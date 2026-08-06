@@ -2,7 +2,7 @@ export { UPLOAD_TOOL_SCHEMAS, UPLOAD_TOOL_NAMES } from './schemas/upload-tools';
 import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
 import { enqueueTranscription, shouldTranscribe } from '../../transcript/transcribe-jobs';
-import { extractAudioForAsr } from '../../transcript/assemblyai';
+import { extractAudioForAsr } from '../../transcript/provider';
 import { hasOperationalTranscript } from '../../transcript/types';
 import { createMediaSourceRevision } from '../../editor/mediaSourceRevision';
 import { safeSourceFilename } from '../../media/sourceFilename';

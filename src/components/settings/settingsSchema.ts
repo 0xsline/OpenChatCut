@@ -328,9 +328,18 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { key: 'stock/freesound', vendor: 'freesound', title: 'Freesound', fields: [secret('FREESOUND_API_KEY', 'API Key')] },
         ] },
       { key: 'transcription', title: '转写 / 口播剪辑', hint: 'transcribe_track · 词级字幕、清口水、删词。',
+        route: routeSelect('PREFERRED_TRANSCRIPTION_PROVIDER', [
+          { value: 'assemblyai', label: 'AssemblyAI（云端）' },
+          { value: 'local', label: '本地模型（免费 · 离线）' },
+        ]),
         vendors: [
           { key: 'transcription/assemblyai', vendor: 'assemblyai', title: 'AssemblyAI',
             fields: [secret('ASSEMBLYAI_API_KEY', 'API Key')] },
+          { key: 'transcription/local', vendor: 'localasr', title: '本地模型（whisper）',
+            note: '转写在本机完成：免费、离线、素材不出本机。首次使用自动下载模型（约 250-500MB）。'
+              + '自动选择设备优势后端：mac Metal / Windows DirectML / Linux Vulkan（WebGPU），不可用时回退 CPU。'
+              + '本地转写不含说话人分离（全部归为同一位说话人）。',
+            fields: [] },
         ] },
     ],
   },

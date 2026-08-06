@@ -198,6 +198,19 @@ export function isHighCostTool(name: string): boolean {
   return HIGH_COST_TOOLS[name] === true;
 }
 
+/**
+ * Local (on-device) transcription is free; only the cloud AssemblyAI path makes
+ * transcribe_track a paid tool. Reads the same flag the provider router uses
+ * (cc.transcriptionProvider); missing/unknown storage falls back to paid.
+ */
+export function transcriptionIsPaid(): boolean {
+  try {
+    return (globalThis.localStorage?.getItem('cc.transcriptionProvider') ?? 'assemblyai') !== 'local';
+  } catch {
+    return true;
+  }
+}
+
 export type CostGuardCategory =
   | 'image-gen'
   | 'motion-graphic-gen'
@@ -225,5 +238,7 @@ export function costCategoryForTool(tool: string): CostGuardCategory | null {
     tool === 'submit_export' || tool === 'submit_render_job' || tool === 'export_timeline'
     || tool === 'export_motion_graphic_prores' || tool === 'convert_motion_graphic_to_video'
   ) return 'irreversible-export';
+  // Local transcription is free — no confirmation card when the on-device model is active.
+  if (tool === 'transcribe_track' && !transcriptionIsPaid()) return null;
   return isHighCostTool(tool) ? 'high-cost-operation' : null;
 }

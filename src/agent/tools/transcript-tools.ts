@@ -1,7 +1,7 @@
 export { TRANSCRIPT_TOOL_SCHEMAS, TRANSCRIPT_TOOL_NAMES } from './schemas/transcript-tools';
 import type { AgentContext } from '../context';
 import { defaultTrackId, resolveTrackId, trackAlias, type TimelineItem, type TrackId } from '../../editor/types';
-import { transcribePath, TranscriptionError } from '../../transcript/assemblyai';
+import { transcribePath, TranscriptionError } from '../../transcript/provider';
 import { fillerIndices } from '../../transcript/edit';
 import { hasOperationalTranscript } from '../../transcript/types';
 import { translateLines } from '../../captions/translate';
