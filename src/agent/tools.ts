@@ -17,6 +17,7 @@ import { DESIGN_TOOL_NAMES, DESIGN_TOOL_SCHEMAS } from './tools/schemas/design-t
 import { STOCK_TOOL_NAMES, STOCK_TOOL_SCHEMAS } from './tools/schemas/stock-tools';
 import { CAPTIONS_TOOL_NAMES, CAPTIONS_TOOL_SCHEMAS } from './tools/schemas/captions-tools';
 import { CAPTION_AVOIDANCE_TOOL_NAMES, CAPTION_AVOIDANCE_TOOL_SCHEMAS } from './tools/caption-avoidance-tools';
+import { PLACE_GRAPHICS_TOOL_NAMES, PLACE_GRAPHICS_TOOL_SCHEMAS } from './tools/placement-tools';
 import { SHADER_TOOL_NAMES, SHADER_TOOL_SCHEMAS } from './tools/schemas/shader-tools';
 import { HIGHLIGHT_TOOL_NAMES, HIGHLIGHT_TOOL_SCHEMAS } from './tools/schemas/highlight-tool';
 import { REFRAME_TOOL_NAMES, REFRAME_TOOL_SCHEMAS } from './tools/schemas/reframe-tools';
@@ -251,6 +252,8 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...CAPTIONS_TOOL_SCHEMAS,
   // Auto-avoid captions that cover the speaker's face (visual geometry).
   ...CAPTION_AVOIDANCE_TOOL_SCHEMAS,
+  // Place overlay graphics in the geometry safe zone (avoid covering the speaker).
+  ...PLACE_GRAPHICS_TOOL_SCHEMAS,
   // Custom WebGL effects: generate → compile and verify → register → apply through manage_effects.
   ...SHADER_TOOL_SCHEMAS,
   // Smart clips: find highlights from the word-level transcript → duplicate a 9:16 timeline → trim while preserving word frames.
@@ -363,6 +366,7 @@ const EXECUTOR_GROUPS: ReadonlyArray<readonly [ReadonlySet<string>, ToolExecutor
   [STOCK_TOOL_NAMES, async () => (await import('./tools/stock-tools')).execStockTool],
   [CAPTIONS_TOOL_NAMES, async () => (await import('./tools/captions-tools')).execCaptionsTool],
   [CAPTION_AVOIDANCE_TOOL_NAMES, async () => (await import('./tools/caption-avoidance-tools')).execCaptionAvoidanceTool],
+  [PLACE_GRAPHICS_TOOL_NAMES, async () => (await import('./tools/placement-tools')).execPlaceGraphicsTool],
   [SHADER_TOOL_NAMES, async () => (await import('./tools/shader-tools')).execShaderTool],
   [HIGHLIGHT_TOOL_NAMES, async () => (await import('./tools/highlight-tool')).execHighlightTool],
   [REFRAME_TOOL_NAMES, async () => (await import('./tools/reframe-tools')).execReframeTool],
