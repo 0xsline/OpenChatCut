@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { theme } from '../theme';
-import { Icon, type IconName } from './icons';
+import { Icon } from './icons';
 import { ExportHistory } from './ExportHistory';
 import { GenerationActivity } from './GenerationActivity';
 import { SkinPicker } from './settings/SkinPicker';
@@ -8,6 +8,7 @@ import { McpGuideDialog } from './settings/McpGuide';
 import { getLocale, setLocale, useT } from '../i18n/locale';
 import { invokeAction } from '../shortcuts/actionRegistry';
 import { DesktopWindowControls } from './DesktopWindowControls';
+import { TopBarIconButton } from './TopBarIconButton';
 
 // Language switching: The text pill displays the current language, click to switch between Chinese and English.
 // The editor top bar is shared with the Dashboard top bar (exported from here).
@@ -38,18 +39,6 @@ interface TopBarProps {
   onResumeGeneration?: () => Promise<void>;
   onHome?: () => void;
   onRename?: (name: string) => void;
-}
-
-// one right-side icon button (monochrome lucide, hover-lit)
-function TBtn({ icon, title, onClick, disabled }: { icon: IconName; title: string; onClick?: () => void; disabled?: boolean }) {
-  return (
-    <button className="cc-tip cc-tip-r" data-tip={title} aria-label={title} onClick={onClick} disabled={disabled}
-      style={{ width: 28, height: 28, background: 'none', border: 'none', cursor: disabled ? 'default' : 'pointer', padding: 0, borderRadius: 4, lineHeight: 0, display: 'grid', placeItems: 'center', color: theme.textDim, opacity: disabled ? 0.35 : 1 }}
-      onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.color = theme.text; e.currentTarget.style.background = theme.panelAlt; } }}
-      onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; e.currentTarget.style.background = 'none'; }}>
-      <Icon name={icon} size={17} />
-    </button>
-  );
 }
 
 export function TopBar({ projectId, projectName, canUndo, canRedo, exporting, exportJobCount = 0, onHome, onRename, onResumeGeneration }: TopBarProps) {
@@ -86,19 +75,19 @@ export function TopBar({ projectId, projectName, canUndo, canRedo, exporting, ex
       <div className="cc-topbar-actions">
 
       {/* right: undo · redo · shortcuts · history · layout · export · avatar */}
-      <TBtn icon="undo" title={t('撤销')} onClick={() => invokeAction('undo', undefined, 'toolbar')} disabled={!canUndo} />
-      <TBtn icon="redo" title={t('重做')} onClick={() => invokeAction('redo', undefined, 'toolbar')} disabled={!canRedo} />
-      <TBtn icon="keyboard" title={t('编辑快捷键')} onClick={() => invokeAction('keyboard-shortcuts', undefined, 'toolbar')} />
-      <TBtn icon="plug" title={t('外部 Agent 接入 (MCP)')} onClick={() => setMcpOpen(true)} />
+      <TopBarIconButton icon="undo" label={t('撤销')} onClick={() => invokeAction('undo', undefined, 'toolbar')} disabled={!canUndo} />
+      <TopBarIconButton icon="redo" label={t('重做')} onClick={() => invokeAction('redo', undefined, 'toolbar')} disabled={!canRedo} />
+      <TopBarIconButton icon="keyboard" label={t('编辑快捷键')} onClick={() => invokeAction('keyboard-shortcuts', undefined, 'toolbar')} />
+      <TopBarIconButton icon="plug" label={t('外部 Agent 接入 (MCP)')} onClick={() => setMcpOpen(true)} />
       <span id="cc-agent-change-log-slot" style={{ display: 'contents' }} />
-      <TBtn icon="palette" title={t('设计风格(品牌)')} onClick={() => invokeAction('open-design', undefined, 'toolbar')} />
+      <TopBarIconButton icon="palette" label={t('设计风格(品牌)')} onClick={() => invokeAction('open-design', undefined, 'toolbar')} />
       <SkinPicker />
       <GenerationActivity projectId={projectId} onResume={onResumeGeneration} />
-      <TBtn icon="history" title={t('历史版本')} onClick={() => invokeAction('open-history', undefined, 'toolbar')} />
+      <TopBarIconButton icon="history" label={t('历史版本')} onClick={() => invokeAction('open-history', undefined, 'toolbar')} />
       {/* self-contained: trigger + popover, global export history, zero props */}
       <ExportHistory />
       <LocaleToggle />
-      <TBtn icon="layoutPanel" title={t('切换面板布局')} onClick={() => invokeAction('toggle-layout', undefined, 'toolbar')} />
+      <TopBarIconButton icon="layoutPanel" label={t('切换面板布局')} onClick={() => invokeAction('toggle-layout', undefined, 'toolbar')} />
       <button onClick={() => invokeAction('open-export', undefined, 'toolbar')}
         className="cc-tip cc-tip-r"
         data-tip={exporting ? t('查看后台导出任务') : t('导出 MP4')}
