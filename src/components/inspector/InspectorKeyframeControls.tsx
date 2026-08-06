@@ -197,7 +197,7 @@ export function TransformControl({
           <div key={r.id} className="cc-insp-control-line">
             <div style={{ flex: 1, minWidth: 0 }}>
               <SliderRow label={t(r.label)} val={value} min={min} max={max} step={r.step} fmt={r.format(value)}
-                inputScale={r.id === 'scale' || r.id === 'opacity' ? 100 : 1}
+                inputScale={r.id === 'scale' || r.id === 'scaleX' || r.id === 'scaleY' || r.id === 'opacity' ? 100 : 1}
                 mixed={mixed?.(r.id)}
                 disabled={!!kfs?.length && !kf.inRange}
                 disabledReason={t('把播放头移进这个片段才能改这里的关键帧')}

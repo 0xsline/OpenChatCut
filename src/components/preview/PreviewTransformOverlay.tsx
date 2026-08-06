@@ -8,19 +8,22 @@ import {
   type RefObject,
 } from 'react';
 import type { PlayerRef } from '@remotion/player';
-import type { ClipTransform, KeyframeProp, TimelineItem, TimelineState } from '../../editor/types';
+import type { ClipCrop, ClipTransform, KeyframeProp, TimelineItem, TimelineState } from '../../editor/types';
 import { t } from '../../i18n/locale';
 import {
   cyclePreviewCandidate,
+  edgeCropPreviewTransform,
   hitPreviewCandidates,
   movePreviewTransform,
   previewCandidateGeometry,
+  previewEdgeMidpoints,
   rotatePreviewTransform,
-  scalePreviewTransform,
+  uniformScaleAxesPreviewTransform,
   visiblePreviewCandidates,
   type ClickCycleState,
   type EffectivePreviewTransform,
   type PreviewPoint,
+  type PreviewScaleEdge,
   type PreviewSize,
 } from './previewTransform';
 import { canPreviewTextEdit, previewTextEditFields } from './previewTextEdit';
@@ -41,12 +44,16 @@ export interface PreviewTransformOverlayProps {
 
 const DOUBLE_CLICK_MS = 320;
 
-type GestureMode = 'move' | 'scale' | 'rotate';
+type GestureMode = 'move' | 'scale' | 'crop-edge' | 'rotate';
 
 interface GestureState {
   pointerId: number;
   item: TimelineItem;
   mode: GestureMode;
+  /** When mode is crop-edge, which edge is being dragged. */
+  edge?: PreviewScaleEdge;
+  /** Crop snapshot at pointer-down (edge crop keeps the opposite side fixed). */
+  startCrop?: ClipCrop;
   startUi: PreviewPoint;
   startComposition: PreviewPoint;
   center: PreviewPoint;
@@ -56,10 +63,15 @@ interface GestureState {
   moved: boolean;
 }
 
+type TransformWriteProp = 'x' | 'y' | 'scale' | 'scaleX' | 'scaleY' | 'rotation';
+
 interface PendingValues {
   item: TimelineItem;
   localFrame: number;
-  values: Partial<Record<'x' | 'y' | 'scale' | 'rotation', number>>;
+  values: Partial<Record<TransformWriteProp, number>>;
+  /** Edge crop writes the full crop object (or undefined to clear). */
+  crop?: ClipCrop | undefined;
+  cropTouched?: boolean;
 }
 
 const CLICK_TOLERANCE = 4;
@@ -79,11 +91,16 @@ const compositionPoint = (
   y: rect.height > 0 ? point.y / rect.height * state.height : 0,
 });
 
-const handleMode = (target: EventTarget | null): GestureMode | null => {
+const EDGE_HANDLES = new Set<string>(['crop-n', 'crop-s', 'crop-e', 'crop-w']);
+
+const handleMode = (target: EventTarget | null): { mode: GestureMode; edge?: PreviewScaleEdge } | null => {
   const handle = target instanceof Element ? target.closest<HTMLElement>('[data-preview-handle]') : null;
   const value = handle?.dataset.previewHandle;
-  if (value === 'rotate') return 'rotate';
-  if (value?.startsWith('scale-')) return 'scale';
+  if (value === 'rotate') return { mode: 'rotate' };
+  if (value && EDGE_HANDLES.has(value)) {
+    return { mode: 'crop-edge', edge: value.slice('crop-'.length) as PreviewScaleEdge };
+  }
+  if (value?.startsWith('scale-')) return { mode: 'scale' };
   return null;
 };
 
@@ -172,13 +189,14 @@ export function PreviewTransformOverlay({
     pendingRef.current = null;
     if (!pending) return;
     const patch: ClipTransform = {};
-    for (const [prop, value] of Object.entries(pending.values) as Array<['x' | 'y' | 'scale' | 'rotation', number]>) {
+    for (const [prop, value] of Object.entries(pending.values) as Array<[TransformWriteProp, number]>) {
       if (pending.item.keyframes?.[prop]?.length) {
         onSetItemKeyframe(pending.item.id, prop, pending.localFrame, value);
       } else {
         patch[prop] = value;
       }
     }
+    if (pending.cropTouched) patch.crop = pending.crop;
     if (Object.keys(patch).length) onSetItemTransform(pending.item.id, patch);
   }, [onSetItemKeyframe, onSetItemTransform]);
 
@@ -234,14 +252,27 @@ export function PreviewTransformOverlay({
       queueValues({
         item: gesture.item,
         localFrame: gesture.localFrame,
-        values: {
-          scale: scalePreviewTransform(
-            gesture.transform.scale,
-            gesture.center,
-            gesture.startComposition,
-            currentComposition,
-          ),
-        },
+        values: uniformScaleAxesPreviewTransform(
+          gesture.transform,
+          gesture.center,
+          gesture.startComposition,
+          currentComposition,
+        ),
+      });
+    } else if (gesture.mode === 'crop-edge' && gesture.edge) {
+      const { crop } = edgeCropPreviewTransform(
+        state,
+        gesture.transform,
+        gesture.startCrop,
+        currentComposition,
+        gesture.edge,
+      );
+      queueValues({
+        item: gesture.item,
+        localFrame: gesture.localFrame,
+        values: {},
+        crop,
+        cropTouched: true,
       });
     } else {
       queueValues({
@@ -270,7 +301,8 @@ export function PreviewTransformOverlay({
     const pointComposition = compositionPoint(pointUi, rect, state);
     const modeFromHandle = handleMode(event.target);
     let candidate = selectedCandidate;
-    let mode: GestureMode = modeFromHandle ?? 'move';
+    let mode: GestureMode = modeFromHandle?.mode ?? 'move';
+    let edge = modeFromHandle?.edge;
 
     if (!modeFromHandle) {
       const hits = hitPreviewCandidates(state, frame, pointComposition);
@@ -285,6 +317,7 @@ export function PreviewTransformOverlay({
       if (!candidate) return;
       onSelectItem(candidate.item.id);
       mode = 'move';
+      edge = undefined;
     }
 
     if (!candidate) return;
@@ -298,6 +331,8 @@ export function PreviewTransformOverlay({
       pointerId: event.pointerId,
       item: candidate.item,
       mode,
+      edge,
+      startCrop: candidate.item.transform?.crop,
       startUi: pointUi,
       startComposition: pointComposition,
       center: geometry.center,
@@ -358,6 +393,14 @@ export function PreviewTransformOverlay({
     top: `${point.y / state.height * 100}%`,
   });
 
+  const edgeMidpoints = selection ? previewEdgeMidpoints(selection.corners) : null;
+  const edgeHandles: Array<{ edge: PreviewScaleEdge; label: string; className: string }> = [
+    { edge: 'n', label: t('裁切上边（拖入则遮住上方）'), className: 'cc-preview-transform-crop-n' },
+    { edge: 's', label: t('裁切下边（拖入则遮住下方）'), className: 'cc-preview-transform-crop-s' },
+    { edge: 'e', label: t('裁切右边（拖入则遮住右侧）'), className: 'cc-preview-transform-crop-e' },
+    { edge: 'w', label: t('裁切左边（拖入则遮住左侧）'), className: 'cc-preview-transform-crop-w' },
+  ];
+
   return (
     <div
       ref={rootRef}
@@ -405,6 +448,16 @@ export function PreviewTransformOverlay({
               data-preview-handle={`scale-${index}`}
               aria-label={t('从角点 {n} 等比缩放片段', { n: index + 1 })}
               style={percentPosition(point)}
+            />
+          ))}
+          {edgeMidpoints && edgeHandles.map(({ edge, label, className }) => (
+            <button
+              key={edge}
+              type="button"
+              className={`cc-preview-transform-handle cc-preview-transform-crop ${className}`}
+              data-preview-handle={`crop-${edge}`}
+              aria-label={label}
+              style={percentPosition(edgeMidpoints[edge])}
             />
           ))}
           <button

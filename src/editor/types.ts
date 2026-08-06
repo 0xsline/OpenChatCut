@@ -180,7 +180,7 @@ export interface Keyframe {
 }
 
 /** keyframable properties (PRD §4.5: Position/scale/transparency/rotation can be K frames; volume is the audio/video volume envelope) */
-export type KeyframeProp = 'x' | 'y' | 'scale' | 'rotation' | 'opacity' | 'borderRadius' | 'volume';
+export type KeyframeProp = 'x' | 'y' | 'scale' | 'scaleX' | 'scaleY' | 'rotation' | 'opacity' | 'borderRadius' | 'volume';
 /** per-prop sparse keyframe curves on an item (sorted by frame — reducer invariant) */
 export type ItemKeyframes = Partial<Record<KeyframeProp, Keyframe[]>>;
 
@@ -197,8 +197,12 @@ export interface ClipCrop {
 
 /** per-clip visual transform (scale/position/rotation) — scale tab */
 export interface ClipTransform {
-  /** 1 = 100% */
+  /** Uniform scale 1 = 100%. Fallback when scaleX/scaleY are unset. */
   scale?: number;
+  /** Horizontal scale 1 = 100%. Overrides `scale` on the X axis when set. */
+  scaleX?: number;
+  /** Vertical scale 1 = 100%. Overrides `scale` on the Y axis when set. */
+  scaleY?: number;
   /** horizontal offset as percent of canvas width (-100..100) */
   x?: number;
   /** vertical offset as percent of canvas height (-100..100) */

@@ -10,9 +10,9 @@ import type { SemanticMatch } from './semantic-search/types';
 import { filterMediaAssets, type MediaSortKey, type MediaTypeFilter } from './mediaPoolFilter';
 import { MobileUploadDialog } from './MobileUploadDialog';
 import type { MobileUploadRecord } from './mobileUploadApi';
-import { AssetMenuPortal, BlankMediaMenuPortal, MissingMediaBanner, RelinkAllDialog } from './MediaPoolOverlays';
+import { AssetMenuPortal, BlankMediaMenuPortal, FolderMenuPortal, MissingMediaBanner, RelinkAllDialog } from './MediaPoolOverlays';
 import { MediaPoolGrid, type MediaGridEntry } from './MediaPoolGrid';
-import { useAssetMenu } from './useAssetMenu';
+import { useAssetMenu, type AssetMenuPosition } from './useAssetMenu';
 import { assetMenuFavoriteValue, assetMenuSelectionIds, batchAssetRename } from './assetMenuSelection';
 import { addAssetsToChat, allVisibleAssetsSelected, toggleVisibleAssetSelection } from './mediaSelectionActions';
 import { toggleMediaView } from './mediaView';
@@ -85,6 +85,8 @@ export function MediaPoolPanel({
     open: openAssetMenuAt,
     close: closeAssetMenu,
   } = useAssetMenu();
+  const [folderMenuId, setFolderMenuId] = useState<string | null>(null);
+  const [folderMenuPos, setFolderMenuPos] = useState<AssetMenuPosition | null>(null);
   // Two-step confirmation for deletion: Click "Confirm Delete" for the first time, and the menu will be reset when reopening
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [currentFolderId, setCurrentFolderId] = useState<string>();
@@ -261,16 +263,62 @@ export function MediaPoolPanel({
       onSubmit: (name) => setCurrentFolderId(onCreateFolder(name, currentFolderId)),
     });
   };
-  const renameFolder = () => currentFolder && openPrompt({
-    title: '重命名文件夹', initialValue: currentFolder.name, rejectSlash: true,
-    onSubmit: (name) => onRenameFolder(currentFolder.id, name),
-  });
-  const deleteFolder = () => {
-    if (currentFolder && !assets.some((asset) => asset.folderId === currentFolder.id)
-      && !folders.some((folder) => folder.parentId === currentFolder.id)) {
-      setDeleteState({ id: currentFolder.id, name: currentFolder.name, parentId: currentFolder.parentId });
-    }
+  const closeFolderMenu = useCallback(() => {
+    setFolderMenuId(null);
+    setFolderMenuPos(null);
+  }, []);
+  useEffect(() => {
+    if (!folderMenuId) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeFolderMenu();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [closeFolderMenu, folderMenuId]);
+  const folderIsEmpty = useCallback((folderId: string) => (
+    !assets.some((asset) => asset.folderId === folderId)
+    && !folders.some((folder) => folder.parentId === folderId)
+  ), [assets, folders]);
+  const renameFolderTarget = (folder: MediaFolder) => {
+    openPrompt({
+      title: '重命名文件夹', initialValue: folder.name, rejectSlash: true,
+      onSubmit: (name) => onRenameFolder(folder.id, name),
+    });
   };
+  const renameFolder = () => currentFolder && renameFolderTarget(currentFolder);
+  const requestDeleteFolder = useCallback((folder: MediaFolder) => {
+    if (!folderIsEmpty(folder.id)) {
+      setError(t('只能删除空文件夹，请先移出或删除其中的内容'));
+      return;
+    }
+    setDeleteState({ id: folder.id, name: folder.name, parentId: folder.parentId });
+  }, [folderIsEmpty, t]);
+  const deleteFolder = () => {
+    if (currentFolder) requestDeleteFolder(currentFolder);
+  };
+  const openFolderMenu = useCallback((
+    id: string,
+    anchor: HTMLElement,
+    point?: { x: number; y: number },
+  ) => {
+    closeAssetMenu();
+    setBlankMenuPos(null);
+    // Reuse asset-menu geometry: clamp within the media-pool panel.
+    const rect = anchor.getBoundingClientRect();
+    const panel = anchor.closest('.cc-media-pool')?.getBoundingClientRect();
+    const menuWidth = 152;
+    const anchorX = point?.x ?? rect.left;
+    const anchorTop = point?.y ?? rect.top;
+    const anchorBottom = point?.y ?? rect.bottom;
+    const left = Math.min(
+      (panel?.right ?? window.innerWidth) - menuWidth - 8,
+      Math.max((panel?.left ?? 0) + 8, anchorX),
+    );
+    setFolderMenuId(id);
+    setFolderMenuPos(anchorBottom > window.innerHeight / 2
+      ? { bottom: window.innerHeight - anchorTop + 4, left }
+      : { top: anchorBottom + 4, left });
+  }, [closeAssetMenu]);
   const toggleSelected = useCallback((id: string) => setSelected((old) => {
     const next = new Set(old);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -366,11 +414,13 @@ export function MediaPoolPanel({
     anchor: HTMLElement,
     point?: { x: number; y: number },
   ) => {
+    closeFolderMenu();
     setSelected((current) => current.has(id) ? current : new Set([id]));
     setConfirmDeleteId(null);
     openAssetMenuAt(id, anchor, point);
-  }, [openAssetMenuAt]);
+  }, [closeFolderMenu, openAssetMenuAt]);
   const menuAsset = assetMenu ? assets.find((asset) => asset.id === assetMenu) : undefined;
+  const menuFolder = folderMenuId ? folders.find((folder) => folder.id === folderMenuId) : undefined;
   const menuAssetIds = menuAsset ? assetMenuSelectionIds(menuAsset.id, selected, assets.map((asset) => asset.id)) : [];
   const menuAssets = assets.filter((asset) => menuAssetIds.includes(asset.id));
   let assetDeleteTitle = '';
@@ -470,10 +520,33 @@ export function MediaPoolPanel({
         onLoadError={markMissing}
         onLoadSuccess={clearMissing}
         onOpenMenu={openAssetMenu}
+        onOpenFolderMenu={openFolderMenu}
         onRelink={startRelink}
         onToggleSelected={toggleSelected}
         onSetSelected={(ids) => setSelected(new Set(ids))}
         onSetFavorite={onSetFavorite}
+      />
+
+      <FolderMenuPortal
+        folder={menuFolder}
+        position={folderMenuPos}
+        canDelete={menuFolder ? folderIsEmpty(menuFolder.id) : false}
+        onClose={closeFolderMenu}
+        onOpen={() => {
+          if (menuFolder) openFolder(menuFolder.id);
+          closeFolderMenu();
+        }}
+        onRename={() => {
+          if (!menuFolder) return;
+          modalFocus.remember(() => undefined);
+          renameFolderTarget(menuFolder);
+          closeFolderMenu();
+        }}
+        onDelete={() => {
+          if (!menuFolder) return;
+          requestDeleteFolder(menuFolder);
+          closeFolderMenu();
+        }}
       />
 
       <AssetMenuPortal
@@ -541,7 +614,12 @@ export function MediaPoolPanel({
         </form>
       </div>}
       {deleteState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('删除空文件夹')}>
-        <div className="cc-modal"><strong>{t('删除空文件夹「{name}」？', { name: deleteState.name })}</strong><div><button onClick={() => setDeleteState(null)}>{t('取消')}</button><button className="danger" onClick={() => { onDeleteFolder(deleteState.id); setCurrentFolderId(deleteState.parentId); setDeleteState(null); }}>{t('删除')}</button></div></div>
+        <div className="cc-modal"><strong>{t('删除空文件夹「{name}」？', { name: deleteState.name })}</strong><div><button onClick={() => setDeleteState(null)}>{t('取消')}</button><button className="danger" onClick={() => {
+          onDeleteFolder(deleteState.id);
+          // Only leave the folder if we were browsing inside the one being deleted.
+          if (currentFolderId === deleteState.id) setCurrentFolderId(deleteState.parentId);
+          setDeleteState(null);
+        }}>{t('删除')}</button></div></div>
       </div>}
       {assetDeleteState && <div className="cc-modal-backdrop" role="dialog" aria-modal="true" aria-label={t('删除正在使用的素材')} onClick={() => setAssetDeleteState(null)}>
         <div className="cc-modal" onClick={(event) => event.stopPropagation()}>

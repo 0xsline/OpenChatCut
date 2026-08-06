@@ -29,7 +29,7 @@ export function parseFiltersArg(raw: unknown): { filters?: ClipFilters; error?: 
 
 export function parseTransformArg(raw: unknown): { transform?: ClipTransform; error?: string } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return { error: 'transform must be an object {scale?,x?,y?,rotation?,opacity?,borderRadius?}' };
+    return { error: 'transform must be an object {scale?,scaleX?,scaleY?,x?,y?,rotation?,opacity?,borderRadius?}' };
   }
   const src = raw as Record<string, unknown>;
   const out: ClipTransform = {};
@@ -37,6 +37,12 @@ export function parseTransformArg(raw: unknown): { transform?: ClipTransform; er
     const n = finiteNum(src.scale);
     if (n === undefined || n < 0.05 || n > 16) return { error: 'transform.scale must be 0.05..16 (1 = 100%)' };
     out.scale = Math.round(n * 1000) / 1000;
+  }
+  for (const key of ['scaleX', 'scaleY'] as const) {
+    if (src[key] === undefined) continue;
+    const n = finiteNum(src[key]);
+    if (n === undefined || n < 0.05 || n > 16) return { error: `transform.${key} must be 0.05..16 (1 = 100%)` };
+    out[key] = Math.round(n * 1000) / 1000;
   }
   if (src.x !== undefined) {
     const n = finiteNum(src.x);
@@ -64,7 +70,7 @@ export function parseTransformArg(raw: unknown): { transform?: ClipTransform; er
     out.borderRadius = Math.round(n * 10) / 10;
   }
   if (!Object.keys(out).length) {
-    return { error: 'transform needs at least one of scale/x/y/rotation/opacity/borderRadius' };
+    return { error: 'transform needs at least one of scale/scaleX/scaleY/x/y/rotation/opacity/borderRadius' };
   }
   return { transform: out };
 }

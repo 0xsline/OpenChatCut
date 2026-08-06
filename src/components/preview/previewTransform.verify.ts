@@ -4,12 +4,14 @@ import type { TimelineItem, TimelineState } from '../../editor/types';
 import * as previewTransformModule from './previewTransform';
 import {
   cyclePreviewCandidate,
+  edgeCropPreviewTransform,
   effectivePreviewTransform,
   hitPreviewCandidates,
   movePreviewTransform,
   previewCandidateGeometry,
   rotatePreviewTransform,
   scalePreviewTransform,
+  uniformScaleAxesPreviewTransform,
   visiblePreviewCandidates,
   type PreviewPoint,
 } from './previewTransform';
@@ -132,7 +134,7 @@ const stateOf = (patch: Partial<TimelineState> = {}): TimelineState => ({
 {
   const item = visualItem('keyed', 'V1', {
     startFrame: 10,
-    transform: { x: 3, y: 4, scale: 1.2, rotation: 5 },
+    transform: { x: 3, y: 4, scale: 1.2, scaleX: 1.2, scaleY: 1.2, rotation: 5 },
     keyframes: {
       x: [{ frame: 0, value: 10 }, { frame: 20, value: 30 }],
       rotation: [{ frame: 0, value: 170 }, { frame: 20, value: 190 }],
@@ -142,6 +144,8 @@ const stateOf = (patch: Partial<TimelineState> = {}): TimelineState => ({
     x: 20,
     y: 4,
     scale: 1.2,
+    scaleX: 1.2,
+    scaleY: 1.2,
     rotation: 180,
   });
 }
@@ -161,8 +165,8 @@ const stateOf = (patch: Partial<TimelineState> = {}): TimelineState => ({
 // Repeated clicks within four UI pixels cycle through the unchanged hit stack.
 {
   const candidates = [
-    { item: visualItem('top', 'V2'), transform: { x: 0, y: 0, scale: 1, rotation: 0 }, localFrame: 0 },
-    { item: visualItem('bottom', 'V1'), transform: { x: 0, y: 0, scale: 1, rotation: 0 }, localFrame: 0 },
+    { item: visualItem('top', 'V2'), transform: { x: 0, y: 0, scale: 1, scaleX: 1, scaleY: 1, rotation: 0 }, localFrame: 0 },
+    { item: visualItem('bottom', 'V1'), transform: { x: 0, y: 0, scale: 1, scaleX: 1, scaleY: 1, rotation: 0 }, localFrame: 0 },
   ];
   const first = cyclePreviewCandidate(null, { x: 100, y: 100 }, candidates, 4)!;
   assert.equal(first.id, 'top');
@@ -177,7 +181,7 @@ const stateOf = (patch: Partial<TimelineState> = {}): TimelineState => ({
 // Pointer-space movement maps to composition percentages independently per axis.
 assert.deepEqual(
   movePreviewTransform(
-    { x: 5, y: -5, scale: 1, rotation: 0 },
+    { x: 5, y: -5, scale: 1, scaleX: 1, scaleY: 1, rotation: 0 },
     { x: 54, y: 96 },
     { width: 540, height: 960 },
   ),
@@ -188,6 +192,35 @@ assert.deepEqual(
 assert.equal(scalePreviewTransform(1, { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 20, y: 0 }), 2);
 assert.equal(scalePreviewTransform(1, { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 0 }), 0.05);
 assert.equal(scalePreviewTransform(9, { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 20, y: 0 }), 10);
+
+// Corner drag keeps both axes linked.
+assert.deepEqual(
+  uniformScaleAxesPreviewTransform({ scaleX: 1, scaleY: 1 }, { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 20, y: 0 }),
+  { scale: 2, scaleX: 2, scaleY: 2 },
+);
+// Edge drag crops (covers) — drag right edge from full frame to x=960 on 1920 canvas → right half hidden.
+{
+  const identity = { x: 0, y: 0, scale: 1, scaleX: 1, scaleY: 1, rotation: 0 };
+  const half = edgeCropPreviewTransform(
+    { width: 1920, height: 1080 },
+    identity,
+    undefined,
+    { x: 960, y: 540 },
+    'e',
+  );
+  assert.ok(half.crop, '右边内收应产生 crop');
+  assert.ok(Math.abs((half.crop?.right ?? 0) - 0.5) < 1e-6, '右半被遮住 right≈0.5');
+  assert.equal(half.crop?.left ?? 0, 0, '左边 inset 不变');
+  const leftIn = edgeCropPreviewTransform(
+    { width: 1920, height: 1080 },
+    identity,
+    undefined,
+    { x: 480, y: 540 },
+    'w',
+  );
+  assert.ok(Math.abs((leftIn.crop?.left ?? 0) - 0.25) < 1e-6, '左边内收 left≈0.25');
+  assert.equal(leftIn.crop?.right ?? 0, 0, '右边 inset 不变');
+}
 
 const pointAt = (degrees: number): PreviewPoint => {
   const radians = degrees * Math.PI / 180;

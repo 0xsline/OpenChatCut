@@ -95,6 +95,9 @@ export function placeInSlot(
     const scale = Math.min(slot.w, slot.h);
     return {
       scale: round(scale, 6),
+      // Clear non-uniform residue so layout slots stay unstretched.
+      scaleX: undefined,
+      scaleY: undefined,
       x: round((slotCx - 0.5) * 100, 4),
       y: round((slotCy - 0.5) * 100, 4),
       rotation: 0,
@@ -126,6 +129,8 @@ export function placeInSlot(
     : undefined;
   return {
     scale: round(scale, 6),
+    scaleX: undefined,
+    scaleY: undefined,
     x: round(tx * 100, 4),
     y: round(ty * 100, 4),
     rotation: 0,
@@ -139,8 +144,10 @@ export function visibleRectOf(t: ClipTransform): SlotRect {
   const top = t.crop?.top ?? 0;
   const wf = 1 - left - (t.crop?.right ?? 0);
   const hf = 1 - top - (t.crop?.bottom ?? 0);
-  const scale = t.scale ?? 1;
-  const cx = 0.5 + (left + wf / 2 - 0.5) * scale + (t.x ?? 0) / 100;
-  const cy = 0.5 + (top + hf / 2 - 0.5) * scale + (t.y ?? 0) / 100;
-  return { x: cx - (wf * scale) / 2, y: cy - (hf * scale) / 2, w: wf * scale, h: hf * scale };
+  // Layouts are uniform; axis overrides still count if a caller set them.
+  const scaleX = t.scaleX ?? t.scale ?? 1;
+  const scaleY = t.scaleY ?? t.scale ?? 1;
+  const cx = 0.5 + (left + wf / 2 - 0.5) * scaleX + (t.x ?? 0) / 100;
+  const cy = 0.5 + (top + hf / 2 - 0.5) * scaleY + (t.y ?? 0) / 100;
+  return { x: cx - (wf * scaleX) / 2, y: cy - (hf * scaleY) / 2, w: wf * scaleX, h: hf * scaleY };
 }

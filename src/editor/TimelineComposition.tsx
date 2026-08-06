@@ -53,10 +53,17 @@ function ClipWrapper({ item, frameOffset = 0, hiddenByCaptions = false, children
   const ky = kv('y');
   const kr = kv('rotation');
   const ks = kv('scale');
+  const ksx = kv('scaleX');
+  const ksy = kv('scaleY');
   const ko = kv('opacity');
   const t = item.transform;
-  const transform = (t || kx !== undefined || ky !== undefined || kr !== undefined || ks !== undefined)
-    ? `translate(${kx ?? t?.x ?? 0}%, ${ky ?? t?.y ?? 0}%) rotate(${kr ?? t?.rotation ?? 0}deg) scale(${ks ?? t?.scale ?? 1})`
+  // Axis-specific scale wins over uniform `scale` so edge-drag non-uniform sticks.
+  const scaleX = ksx ?? t?.scaleX ?? ks ?? t?.scale ?? 1;
+  const scaleY = ksy ?? t?.scaleY ?? ks ?? t?.scale ?? 1;
+  const hasScale = ks !== undefined || ksx !== undefined || ksy !== undefined
+    || t?.scale !== undefined || t?.scaleX !== undefined || t?.scaleY !== undefined;
+  const transform = (t || kx !== undefined || ky !== undefined || kr !== undefined || hasScale)
+    ? `translate(${kx ?? t?.x ?? 0}%, ${ky ?? t?.y ?? 0}%) rotate(${kr ?? t?.rotation ?? 0}deg) scale(${scaleX}, ${scaleY})`
     : undefined;
   // layer crop (split screen/PiP): clip-path cuts the layer first, and then moves it as a whole with transform. When there is no crop
   // This style is not produced at all (return to the red line: the old project DOM remains unchanged).

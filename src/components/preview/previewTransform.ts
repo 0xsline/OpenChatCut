@@ -1,3 +1,4 @@
+import { resolveClipScaleAxes } from '../../editor/clipTransformScale';
 import { coerceKeyframeValue } from '../../editor/keyframeRegistry';
 import { sampleKeyframes } from '../../editor/keyframes';
 import {
@@ -8,6 +9,7 @@ import {
   isVisualItemKind,
   timelineTrackIds,
   trackKind,
+  type ClipCrop,
   type ClipTransform,
   type KeyframeProp,
   type TimelineItem,
@@ -18,10 +20,41 @@ export interface PreviewPoint { x: number; y: number }
 export interface PreviewSize { width: number; height: number }
 export interface PreviewRect extends PreviewPoint, PreviewSize {}
 
+/** Edge of the selection box (local axes after rotation). */
+export type PreviewScaleEdge = 'n' | 's' | 'e' | 'w';
+
+/** Minimum remaining visible span while edge-cropping (canvas fraction). */
+export const PREVIEW_CROP_MIN_SPAN = 0.05;
+
+export function normalizedClipCrop(crop: ClipCrop | undefined): Required<ClipCrop> {
+  return {
+    left: crop?.left ?? 0,
+    top: crop?.top ?? 0,
+    right: crop?.right ?? 0,
+    bottom: crop?.bottom ?? 0,
+  };
+}
+
+/** Drop near-zero crops so the DOM stays free of no-op clip-path. */
+export function compactClipCrop(crop: Required<ClipCrop>): ClipCrop | undefined {
+  const round = (v: number) => Math.round(v * 1e6) / 1e6;
+  const next = {
+    left: round(Math.max(0, crop.left)),
+    top: round(Math.max(0, crop.top)),
+    right: round(Math.max(0, crop.right)),
+    bottom: round(Math.max(0, crop.bottom)),
+  };
+  if (next.left < 1e-6 && next.top < 1e-6 && next.right < 1e-6 && next.bottom < 1e-6) return undefined;
+  return next;
+}
+
 export interface EffectivePreviewTransform {
   x: number;
   y: number;
+  /** Uniform fallback (legacy / linked axes). */
   scale: number;
+  scaleX: number;
+  scaleY: number;
   rotation: number;
 }
 
@@ -58,10 +91,21 @@ const valueAtFrame = (item: TimelineItem, prop: KeyframeProp, localFrame: number
 
 export function effectivePreviewTransform(item: TimelineItem, absoluteFrame: number): EffectivePreviewTransform {
   const localFrame = Math.max(0, Math.round(absoluteFrame) - item.startFrame);
+  const keyframed = {
+    scale: valueAtFrame(item, 'scale', localFrame),
+    scaleX: valueAtFrame(item, 'scaleX', localFrame),
+    scaleY: valueAtFrame(item, 'scaleY', localFrame),
+  };
+  const { scaleX, scaleY } = resolveClipScaleAxes(item.transform, keyframed);
+  const uniform = Math.abs(scaleX - scaleY) < 1e-6
+    ? scaleX
+    : (keyframed.scale ?? item.transform?.scale ?? scaleX);
   return {
     x: valueAtFrame(item, 'x', localFrame) ?? item.transform?.x ?? 0,
     y: valueAtFrame(item, 'y', localFrame) ?? item.transform?.y ?? 0,
-    scale: valueAtFrame(item, 'scale', localFrame) ?? item.transform?.scale ?? 1,
+    scale: uniform,
+    scaleX,
+    scaleY,
     rotation: valueAtFrame(item, 'rotation', localFrame) ?? item.transform?.rotation ?? 0,
   };
 }
@@ -139,8 +183,8 @@ const applyTransform = (
 ): PreviewPoint => {
   const center = { x: state.width / 2, y: state.height / 2 };
   const scaled = {
-    x: center.x + (point.x - center.x) * transform.scale,
-    y: center.y + (point.y - center.y) * transform.scale,
+    x: center.x + (point.x - center.x) * transform.scaleX,
+    y: center.y + (point.y - center.y) * transform.scaleY,
   };
   const rotated = rotatePoint(scaled, center, transform.rotation);
   return {
@@ -173,10 +217,11 @@ const inverseTransform = (
     y: point.y - transform.y / 100 * state.height,
   };
   const rotated = rotatePoint(translated, center, -transform.rotation);
-  const safeScale = Math.abs(transform.scale) < 1e-6 ? 1e-6 : transform.scale;
+  const safeX = Math.abs(transform.scaleX) < 1e-6 ? 1e-6 : transform.scaleX;
+  const safeY = Math.abs(transform.scaleY) < 1e-6 ? 1e-6 : transform.scaleY;
   return {
-    x: center.x + (rotated.x - center.x) / safeScale,
-    y: center.y + (rotated.y - center.y) / safeScale,
+    x: center.x + (rotated.x - center.x) / safeX,
+    y: center.y + (rotated.y - center.y) / safeY,
   };
 };
 
@@ -260,6 +305,99 @@ export function scalePreviewTransform(
   return Math.max(0.05, coerceKeyframeValue('scale', startScale * distance / startDistance));
 }
 
+/** Corner drag: both axes grow by the same distance factor (keeps aspect). */
+export function uniformScaleAxesPreviewTransform(
+  start: Pick<EffectivePreviewTransform, 'scaleX' | 'scaleY'>,
+  center: PreviewPoint,
+  startPoint: PreviewPoint,
+  currentPoint: PreviewPoint,
+): Pick<ClipTransform, 'scale' | 'scaleX' | 'scaleY'> {
+  const startDistance = Math.hypot(startPoint.x - center.x, startPoint.y - center.y);
+  const factor = startDistance < 1e-6
+    ? 1
+    : Math.hypot(currentPoint.x - center.x, currentPoint.y - center.y) / startDistance;
+  const scaleX = Math.max(0.05, coerceKeyframeValue('scaleX', start.scaleX * factor));
+  const scaleY = Math.max(0.05, coerceKeyframeValue('scaleY', start.scaleY * factor));
+  const linked = Math.abs(scaleX - scaleY) < 1e-6;
+  return linked
+    ? { scale: scaleX, scaleX, scaleY }
+    : { scaleX, scaleY };
+}
+
+const projectOnAxis = (
+  center: PreviewPoint,
+  point: PreviewPoint,
+  axis: PreviewPoint,
+): number => {
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+  return dx * axis.x + dy * axis.y;
+};
+
+/**
+ * Edge drag: crop (cover/hide) the dragged-over region — not stretch.
+ * Pointer is inverse-transformed into layer space; that edge of the crop window
+ * snaps to the pointer while the opposite inset stays fixed.
+ * Example: drag right edge left → increase crop.right, right side is masked out.
+ */
+export function edgeCropPreviewTransform(
+  state: Pick<TimelineState, 'width' | 'height'>,
+  transform: EffectivePreviewTransform,
+  startCrop: ClipCrop | undefined,
+  currentPoint: PreviewPoint,
+  edge: PreviewScaleEdge,
+): { crop: ClipCrop | undefined } {
+  if (state.width <= 0 || state.height <= 0) {
+    return { crop: compactClipCrop(normalizedClipCrop(startCrop)) };
+  }
+  const start = normalizedClipCrop(startCrop);
+  const local = inverseTransform(state, currentPoint, transform);
+  const min = PREVIEW_CROP_MIN_SPAN;
+  let { left, top, right, bottom } = start;
+  if (edge === 'e') {
+    const fx = Math.min(1, Math.max(left + min, local.x / state.width));
+    right = 1 - fx;
+  } else if (edge === 'w') {
+    const fx = Math.min(1 - right - min, Math.max(0, local.x / state.width));
+    left = fx;
+  } else if (edge === 's') {
+    const fy = Math.min(1, Math.max(top + min, local.y / state.height));
+    bottom = 1 - fy;
+  } else {
+    const fy = Math.min(1 - bottom - min, Math.max(0, local.y / state.height));
+    top = fy;
+  }
+  return { crop: compactClipCrop({ left, top, right, bottom }) };
+}
+
+/** @deprecated Prefer edgeCropPreviewTransform — edge handles crop, they do not stretch. */
+export function edgeScalePreviewTransform(
+  start: Pick<EffectivePreviewTransform, 'scaleX' | 'scaleY' | 'rotation'>,
+  center: PreviewPoint,
+  startPoint: PreviewPoint,
+  currentPoint: PreviewPoint,
+  edge: PreviewScaleEdge,
+): Pick<ClipTransform, 'scaleX' | 'scaleY'> {
+  const rad = start.rotation * Math.PI / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const axisX = { x: cos, y: sin };
+  const axisY = { x: -sin, y: cos };
+  const horizontal = edge === 'e' || edge === 'w';
+  const axis = horizontal ? axisX : axisY;
+  const startProj = Math.abs(projectOnAxis(center, startPoint, axis));
+  if (startProj < 1e-6) {
+    return horizontal
+      ? { scaleX: Math.max(0.05, start.scaleX) }
+      : { scaleY: Math.max(0.05, start.scaleY) };
+  }
+  const factor = Math.abs(projectOnAxis(center, currentPoint, axis)) / startProj;
+  if (horizontal) {
+    return { scaleX: Math.max(0.05, coerceKeyframeValue('scaleX', start.scaleX * factor)) };
+  }
+  return { scaleY: Math.max(0.05, coerceKeyframeValue('scaleY', start.scaleY * factor)) };
+}
+
 const angle = (center: PreviewPoint, point: PreviewPoint): number => (
   Math.atan2(point.y - center.y, point.x - center.x) * 180 / Math.PI
 );
@@ -272,4 +410,20 @@ export function rotatePreviewTransform(
 ): number {
   const delta = ((angle(center, currentPoint) - angle(center, startPoint) + 540) % 360) - 180;
   return coerceKeyframeValue('rotation', startRotation + delta);
+}
+
+/** Midpoints of the four edges in composition space (after transform). */
+export function previewEdgeMidpoints(
+  corners: readonly [PreviewPoint, PreviewPoint, PreviewPoint, PreviewPoint],
+): Record<PreviewScaleEdge, PreviewPoint> {
+  const mid = (a: PreviewPoint, b: PreviewPoint): PreviewPoint => ({
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+  });
+  return {
+    n: mid(corners[0], corners[1]),
+    e: mid(corners[1], corners[2]),
+    s: mid(corners[2], corners[3]),
+    w: mid(corners[3], corners[0]),
+  };
 }

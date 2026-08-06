@@ -79,12 +79,13 @@ assert.match(
   '预览面板必须把 contain 后的同一画布尺寸交给播放器、字幕命中层和片段变换层',
 );
 
-// A selected editable clip exposes one compact transform frame and five handles.
+// A selected editable clip exposes one compact transform frame and nine handles.
 {
   const markup = renderToStaticMarkup(<PreviewTransformOverlay state={stateOf()} {...props} />);
   assert.match(markup, /aria-label="预览画布片段变换"/);
   assert.match(markup, /data-preview-selection="card"/);
-  assert.equal((markup.match(/data-preview-handle="scale-/g) ?? []).length, 4, '四个角都应可等比缩放');
+  assert.equal((markup.match(/data-preview-handle="scale-[0-3]"/g) ?? []).length, 4, '四个角都应可等比缩放');
+  assert.equal((markup.match(/data-preview-handle="crop-[nsew]"/g) ?? []).length, 4, '四边中点应可裁切遮盖');
   assert.equal((markup.match(/data-preview-handle="rotate"/g) ?? []).length, 1, '顶部应有一个旋转手柄');
   assert.match(markup, /var\(--cc-accent\)/, '控制框颜色跟随当前皮肤强调色');
 }
@@ -114,4 +115,4 @@ for (const trackPatch of [{ locked: true }, { hidden: true }]) {
   assert.doesNotMatch(markup, /data-preview-handle=/);
 }
 
-console.log('preview-transform-overlay.verify: ok (语义/皮肤/四角/旋转/锁定隐藏/帧范围)');
+console.log('preview-transform-overlay.verify: ok (语义/皮肤/四角/四边裁切/旋转/锁定隐藏/帧范围)');

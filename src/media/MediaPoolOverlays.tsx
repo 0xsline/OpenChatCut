@@ -85,22 +85,30 @@ export function BlankMediaMenuPortal(props: BlankMediaMenuActionsProps & { posit
   );
 }
 
-export function AssetMenuPortal(props: AssetMenuPortalProps) {
-  const { asset, onClose, position } = props;
-  const menuRef = useRef<HTMLDivElement>(null);
-  const t = useT();
+function usePopoverDismiss(
+  active: boolean,
+  onClose: () => void,
+  menuRef: RefObject<HTMLDivElement | null>,
+) {
   useEffect(() => {
-    if (!asset || !position) return;
+    if (!active) return;
     menuRef.current?.querySelector<HTMLElement>('button:not(:disabled), select')?.focus();
-  }, [asset, position]);
+  }, [active, menuRef]);
   useEffect(() => {
-    if (!asset || !position) return;
+    if (!active) return;
     const closeOutside = (event: PointerEvent) => {
       if (!menuRef.current?.contains(event.target as Node)) onClose();
     };
     document.addEventListener('pointerdown', closeOutside, true);
     return () => document.removeEventListener('pointerdown', closeOutside, true);
-  }, [asset, onClose, position]);
+  }, [active, menuRef, onClose]);
+}
+
+export function AssetMenuPortal(props: AssetMenuPortalProps) {
+  const { asset, onClose, position } = props;
+  const menuRef = useRef<HTMLDivElement>(null);
+  const t = useT();
+  usePopoverDismiss(!!asset && !!position, onClose, menuRef);
   if (!props.asset || !props.position) return null;
   return createPortal(
       <div
@@ -116,6 +124,51 @@ export function AssetMenuPortal(props: AssetMenuPortalProps) {
       >
         <AssetMenuActions {...props} asset={props.asset} />
       </div>,
+    document.body,
+  );
+}
+
+interface FolderMenuPortalProps {
+  folder?: MediaFolder;
+  position: CSSProperties | null;
+  /** Empty folders only — delete is disabled when the folder still has children. */
+  canDelete: boolean;
+  onClose: () => void;
+  onOpen: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+}
+
+export function FolderMenuPortal(props: FolderMenuPortalProps) {
+  const { folder, onClose, position } = props;
+  const menuRef = useRef<HTMLDivElement>(null);
+  const t = useT();
+  usePopoverDismiss(!!folder && !!position, onClose, menuRef);
+  if (!folder || !position) return null;
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="cc-media-popover cc-asset-menu-portal"
+      style={position}
+      role="menu"
+      aria-label={t('管理文件夹 {name}', { name: folder.name })}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) onClose();
+      }}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <button type="button" onClick={props.onOpen}>{t('打开')}</button>
+      <button type="button" onClick={props.onRename}>{t('重命名')}</button>
+      <button
+        type="button"
+        className="danger"
+        disabled={!props.canDelete}
+        title={props.canDelete ? undefined : t('只能删除空文件夹，请先移出或删除其中的内容')}
+        onClick={props.onDelete}
+      >
+        {t('删除')}
+      </button>
+    </div>,
     document.body,
   );
 }

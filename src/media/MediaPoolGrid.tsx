@@ -36,6 +36,7 @@ interface MediaPoolGridProps {
   onLoadError: (id: string) => void;
   onLoadSuccess: (id: string) => void;
   onOpenMenu: (id: string, anchor: HTMLElement, point?: { x: number; y: number }) => void;
+  onOpenFolderMenu?: (folderId: string, anchor: HTMLElement, point?: { x: number; y: number }) => void;
   onRelink: (id: string) => void;
   onToggleSelected: (id: string) => void;
   onSetSelected: (ids: string[]) => void;
@@ -193,7 +194,16 @@ function MediaVirtualRows(props: MediaPoolGridProps & ReturnType<typeof useMedia
                   onMoveAssets={props.onMoveAssets}
                 />
             : entry.kind === 'folder'
-              ? <MediaFolderCard key={`folder:${entry.folder.id}`} folder={entry.folder} onOpen={props.onOpenFolder} onFocusChange={props.setFocusedFolderId} onDropFiles={props.onDropFiles} onMoveAsset={props.onMoveAsset} onMoveAssets={props.onMoveAssets} />
+              ? <MediaFolderCard
+                  key={`folder:${entry.folder.id}`}
+                  folder={entry.folder}
+                  onOpen={props.onOpenFolder}
+                  onFocusChange={props.setFocusedFolderId}
+                  onDropFiles={props.onDropFiles}
+                  onMoveAsset={props.onMoveAsset}
+                  onMoveAssets={props.onMoveAssets}
+                  onOpenMenu={props.onOpenFolderMenu}
+                />
               : <MediaAssetCard
               key={`asset:${entry.asset.id}`}
               asset={entry.asset}

@@ -265,7 +265,7 @@ Required pattern: **browse_library to discover an id, then edit_item to place it
 - **Authored text clip (no assetId):** adds:[{type:"text", text:"标题", color?, fontSize?, fontWeight?, align?, name?, track?, fromFrame?, durationInFrames?}]
 - **Authored solid fill (no assetId):** adds:[{type:"solid", color:"#1a1a1a", name?, track?, fromFrame?, durationInFrames?}]
 - **Slip:** updates:[{operation:"slip", itemId, deltaInFrames}] moves the video/audio source window without changing its timeline start, duration, or track. Positive deltas move later; boundary requests clamp and report the applied delta.
-- **Color / transform / speed:** updates:[{itemId, filters:{brightness,contrast,saturate,blur}}], transform:{scale,x,y,rotation,opacity}, or speed/playbackRate (0.1..8). filters and transform merge with existing values. For one-shot technical cleanup use **auto_grade**.
+- **Color / transform / speed:** updates:[{itemId, filters:{brightness,contrast,saturate,blur}}], transform:{scale,scaleX,scaleY,x,y,rotation,opacity}, or speed/playbackRate (0.1..8). scale is uniform; scaleX/scaleY stretch axes (1=100%). filters and transform merge with existing values. For one-shot technical cleanup use **auto_grade**.
 - **Keyframes / media source:** clearKeyframes:true or clearKeyframes:"opacity"; operation replace_media/relink_media with src for bake-style swap or clip-only relink (pool-wide: manage_media_pool relink_asset).
 - updates/deletes change parameters or remove entries. The compatibility shortcut manage_effects covers only the effect/LUT stack.
 - Color properties use 0..1 RGB arrays. After editing, verify with view_timeline_frames.
