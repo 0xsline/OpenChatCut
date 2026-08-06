@@ -128,18 +128,18 @@ const GUARD_SKILL_LABELS = {
 
 export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPreviewState, seed, creativeMode, onCreativeModeChange, onImportMedia }: ChatPanelProps) {
   const t = useT();
+  const [autoApply, setAutoApply] = useState<boolean>(() => loadChatAutoApply(projectId));
   const {
     messages, running, send, stop, enhance, proposal, applyProposal, rejectProposal, clearHistory,
     proposalStale, forceApplyProposal, reProposeStale, pendingGuard, liveTool, contextUsage,
     changeLog, rollbackChangeSession, canRollbackChangeSession,
-  } = useAgent(ctx, projectId);
+  } = useAgent(ctx, projectId, autoApply);
   useEffect(() => {
     if (!collapsed) void preloadAgentRuntime().catch(() => undefined);
   }, [collapsed]);
   const externalProposal = useExternalAgentBridge(ctx, projectId);
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<ChatMode>('agent');
-  const [autoApply, setAutoApply] = useState<boolean>(() => loadChatAutoApply(projectId));
   const [enhancing, setEnhancing] = useState(false);
   const [selectedRefs, setSelectedRefs] = useState<RefItem[]>([]);
   const selectedRefsRef = useRef<RefItem[]>([]);
@@ -296,7 +296,8 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
   useEffect(() => { if (!proposal) onPreviewState(null); }, [proposal, onPreviewState]);
 
   // Settings·Auto-apply: when on, apply the proposal (all ops) as soon as it arrives.
-  // cost guard: high-cost tools still require the proposal card.
+  // cost guard: high-cost tools still require the proposal card — except in
+  // YOLO mode, where the user chose full automation for this project.
   useEffect(() => {
     if (!proposal || !autoApply) return;
     if (shouldBlockAutoApply(proposal, autoApply)) return;

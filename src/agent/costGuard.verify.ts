@@ -46,10 +46,11 @@ const proposal = (ops: string[]): Proposal => ({
   resultState: undefined as never,
 });
 assert.equal(shouldBlockAutoApply(proposal(['move_item']), true), false, 'ordinary edit auto-applies in YOLO mode');
-assert.equal(shouldBlockAutoApply(proposal(['submit_image']), true), true, 'generation never auto-applies');
-assert.equal(shouldBlockAutoApply(proposal(['transcribe_track']), true), true, 'paid transcription never auto-applies');
-assert.equal(shouldBlockAutoApply(proposal(['web_browser']), true), true, 'paid scraping never auto-applies');
-assert.equal(shouldBlockAutoApply(proposal(['run_code']), true), true, 'paid sandbox never auto-applies');
+assert.equal(shouldBlockAutoApply(proposal(['submit_image']), true), false, 'YOLO mode auto-applies paid generation (user chose full automation)');
+assert.equal(shouldBlockAutoApply(proposal(['transcribe_track']), true), false, 'YOLO mode auto-applies paid transcription');
+assert.equal(shouldBlockAutoApply(proposal(['web_browser']), true), false, 'YOLO mode auto-applies paid scraping');
+assert.equal(shouldBlockAutoApply(proposal(['run_code']), true), false, 'YOLO mode auto-applies paid sandbox');
+assert.equal(shouldBlockAutoApply(proposal(['submit_image']), false), true, 'Ask mode always shows the card');
 assert.equal(shouldBlockAutoApply(proposal(['submit_export']), false), true, 'manual mode always shows the card');
 assert.deepEqual(highCostOps(proposal(['edit_item', 'submit_voice', 'move_item'])), ['submit_voice'], 'highCostOps lists only paid ops');
 

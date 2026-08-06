@@ -51,9 +51,13 @@ export function rememberCostAllowed(category: string, projectId: string): void {
 
 /** True when auto-apply should be blocked so the proposal card can confirm.
  * High-cost tools are never auto-applied — this is not configurable. */
-export function shouldBlockAutoApply(proposal: Proposal, autoApply: boolean): boolean {
-  if (!autoApply) return true; // not auto-applying at all
-  return proposal.options[0].operations.some((op) => isHighCostTool(op.tool));
+/** Proposal auto-apply gate. Ask mode always shows the card; YOLO mode is the
+ * user's explicit full-automation choice for this project, so paid operations
+ * apply without a card too (the execution-time guard releases them the same
+ * way — see useAgent's yoloAutoApply). External MCP sessions keep their own
+ * confirmation gate regardless. */
+export function shouldBlockAutoApply(_proposal: Proposal, autoApply: boolean): boolean {
+  return !autoApply;
 }
 
 export function highCostOps(proposal: Proposal): string[] {

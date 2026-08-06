@@ -33,7 +33,7 @@ import {
 } from './changeLog';
 
 
-export function useAgent(ctx: AgentContext, projectId: string) {
+export function useAgent(ctx: AgentContext, projectId: string, yoloAutoApply = false) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [changeLog, setChangeLog] = useState<AgentChangeSession[]>([]);
   const [running, setRunning] = useState(false);
@@ -234,9 +234,11 @@ export function useAgent(ctx: AgentContext, projectId: string) {
           signal: ac.signal,
           previousContextUsage: contextUsageRef.current ?? undefined,
           toolFailures: toolFailuresRef.current,
-          // Pre-cost-guard: Authorization has been remembered and released directly; otherwise, the pending card will be hung up to wait for the user.
+          // Pre-cost-guard: YOLO mode releases paid tools without a card
+          // (explicit user choice); otherwise remembered authorizations
+          // release directly and the rest hang a confirmation card.
           onSkillGuard: (guard) => {
-            if (isCostAllowed(guard.skill, projectId)) return Promise.resolve<GuardDecision>('allow-once');
+            if (yoloAutoApply || isCostAllowed(guard.skill, projectId)) return Promise.resolve<GuardDecision>('allow-once');
             return new Promise<GuardDecision>((resolve) => {
               setPendingGuard({
                 ...guard,
@@ -294,7 +296,7 @@ export function useAgent(ctx: AgentContext, projectId: string) {
         setRunning(false);
       }
     },
-    [running, projectId, refreshEstimatedContextUsage, replaceContextUsage, contextUsageRef],
+    [running, projectId, refreshEstimatedContextUsage, replaceContextUsage, contextUsageRef, yoloAutoApply],
   );
 
   // Stop the in-flight turn (Send button switches to stop in flight).
