@@ -76,59 +76,69 @@ export function skillFilesPlugin(): Plugin {
   return {
     name: 'openchatcut-skill-files',
     configureServer(server) {
-      server.middlewares.use('/api/skills', async (req, res) => {
-        const root = skillFilesRoot();
-        try {
-          if (req.method === 'GET') {
-            const [kv, files] = await Promise.all([kvSkills(), discoverSkillFiles(root)]);
-            const kvSlugs = new Set(kv.map((skill) => skill.slug));
-            // User-dropped files that are not in kv become ad-hoc custom skills.
-            const discovered = files
-              .filter((file) => !kvSlugs.has(file.slug))
-              .map((file) => ({
-                id: file.slug,
-                slug: file.slug,
-                name: file.slug,
-                nameZh: file.slug,
-                description: file.description,
-                summary: file.description,
-                scenarios: [] as string[],
-                body: file.body,
-                files: [] as string[],
-                source: 'custom' as const,
-                createdAt: 0,
-              }));
-            sendJson(res, 200, { skills: [...kv, ...discovered], root });
-            return;
-          }
-          if (req.method === 'PUT') {
-            const body = await readJsonBody(req);
-            const payload = body.skill as Partial<CustomSkillPayload> | undefined;
-            if (!payload || typeof payload.slug !== 'string' || typeof payload.body !== 'string') {
-              sendJson(res, 400, { error: 'PUT requires skill.slug and skill.body' });
-              return;
-            }
-            const path = await mirrorSkillFile(root, payload.slug, payload.body);
-            if (!path) {
-              sendJson(res, 400, { error: `invalid skill slug "${payload.slug}"` });
-              return;
-            }
-            sendJson(res, 200, { ok: true, installedAt: displaySkillPath(payload.slug) });
-            return;
-          }
-          if (req.method === 'DELETE') {
-            const slug = String(req.url?.split('/').filter(Boolean).pop() ?? '');
-            await removeSkillFile(root, slug);
-            sendJson(res, 200, { ok: true });
-            return;
-          }
-          sendJson(res, 405, { error: 'method not allowed' });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          server.config.logger.error(`[api/skills] ${message}`);
-          if (!res.headersSent) sendJson(res, 400, { error: message });
-        }
+      server.middlewares.use('/api/skills', (req, res, next) => {
+        // /api/skills/install is owned by the skill-install plugin.
+        if (req.url?.startsWith('/install')) { next(); return; }
+        void handleSkillsRequest(req, res, server);
       });
     },
   };
+}
+
+async function handleSkillsRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  server: { config: { logger: { error: (msg: string) => void } } },
+): Promise<void> {
+  const root = skillFilesRoot();
+  try {
+    if (req.method === 'GET') {
+      const [kv, files] = await Promise.all([kvSkills(), discoverSkillFiles(root)]);
+      const kvSlugs = new Set(kv.map((skill) => skill.slug));
+      // User-dropped files that are not in kv become ad-hoc custom skills.
+      const discovered = files
+        .filter((file) => !kvSlugs.has(file.slug))
+        .map((file) => ({
+          id: file.slug,
+          slug: file.slug,
+          name: file.slug,
+          nameZh: file.slug,
+          description: file.description,
+          summary: file.description,
+          scenarios: [] as string[],
+          body: file.body,
+          files: [] as string[],
+          source: 'custom' as const,
+          createdAt: 0,
+        }));
+      sendJson(res, 200, { skills: [...kv, ...discovered], root });
+      return;
+    }
+    if (req.method === 'PUT') {
+      const body = await readJsonBody(req);
+      const payload = body.skill as Partial<CustomSkillPayload> | undefined;
+      if (!payload || typeof payload.slug !== 'string' || typeof payload.body !== 'string') {
+        sendJson(res, 400, { error: 'PUT requires skill.slug and skill.body' });
+        return;
+      }
+      const path = await mirrorSkillFile(root, payload.slug, payload.body);
+      if (!path) {
+        sendJson(res, 400, { error: `invalid skill slug "${payload.slug}"` });
+        return;
+      }
+      sendJson(res, 200, { ok: true, installedAt: displaySkillPath(payload.slug) });
+      return;
+    }
+    if (req.method === 'DELETE') {
+      const slug = String(req.url?.split('/').filter(Boolean).pop() ?? '');
+      await removeSkillFile(root, slug);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+    sendJson(res, 405, { error: 'method not allowed' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    server.config.logger.error(`[api/skills] ${message}`);
+    if (!res.headersSent) sendJson(res, 400, { error: message });
+  }
 }

@@ -33,6 +33,7 @@ import { stockSearchPlugin } from "./stock.ts";
 import { firecrawlPlugin } from "./firecrawl.ts";
 import { settingsPlugin } from "./settings.ts";
 import { skillFilesPlugin } from "./skill-files.ts";
+import { skillInstallPlugin } from "./skill-install.ts";
 import { externalAgentPlugin } from "./external-agent.ts";
 import { codexAgentPlugin } from "./codex-agent.ts";
 import { llmProxyPlugin } from "./llm-proxy.ts";
@@ -46,6 +47,7 @@ export function serverPlugins(): Plugin[] {
   return [
     llmProxyPlugin(),
     skillFilesPlugin(),
+    skillInstallPlugin(),
     resourcePreviewPlugin({
       get token() {
         return getKey("RESOURCE_PREVIEW_TOKEN");
