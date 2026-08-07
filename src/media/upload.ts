@@ -1,7 +1,7 @@
 import type { MediaAsset, MediaAssetKind } from '../editor/types';
 import { t } from '../i18n/locale';
 import { putMediaBlob } from '../persist/mediaBlobStore';
-import { extractAudioForAsr } from '../transcript/assemblyai';
+import { extractAudioForAsr } from '../transcript/provider';
 import { extractAsrFromFile } from '../transcript/client-asr-extract';
 import { kindOf, probeMediaFile, type MediaKind, type MediaMetadata } from './mediaProbe';
 import { createMediaSourceRevision } from '../editor/mediaSourceRevision';

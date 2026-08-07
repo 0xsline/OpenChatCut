@@ -2,7 +2,7 @@ import { editorCredentialHeaders } from '../editor-credential';
 import { createMediaSourceRevision } from '../../editor/mediaSourceRevision';
 import type { MediaAsset } from '../../editor/types';
 import { safeSourceFilename } from '../../media/sourceFilename';
-import { extractAudioForAsr } from '../../transcript/assemblyai';
+import { extractAudioForAsr } from '../../transcript/provider';
 import { enqueueTranscription, shouldTranscribe } from '../../transcript/transcribe-jobs';
 import { hasOperationalTranscript } from '../../transcript/types';
 import type { AgentContext } from '../context';

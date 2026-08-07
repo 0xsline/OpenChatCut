@@ -10,7 +10,7 @@
 // calls are paid surfaces, so even in auto/YOLO mode they require a
 // confirmation card (which may be remembered per scope).
 
-import { isHighCostTool } from '../settings/agentSettings';
+import { isHighCostTool, transcriptionIsPaid } from '../settings/agentSettings';
 import type { Proposal } from '../proposal';
 
 /** User-determined guard card. allow-scope = remember authorization (scope is determined by category, see rememberCostAllowed). */
@@ -62,6 +62,7 @@ export function shouldBlockAutoApply(_proposal: Proposal, autoApply: boolean): b
 
 export function highCostOps(proposal: Proposal): string[] {
   return proposal.options[0].operations
-    .filter((op) => isHighCostTool(op.tool))
+    .filter((op) => isHighCostTool(op.tool)
+      && !(op.tool === 'transcribe_track' && !transcriptionIsPaid()))
     .map((op) => op.tool);
 }

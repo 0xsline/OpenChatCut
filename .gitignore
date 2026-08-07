@@ -44,6 +44,8 @@ test-results/
 # user-imported / AI-generated media (dev upload endpoint) — product static lives in assets/
 public/media/uploads/*
 !public/media/uploads/.gitkeep
+# On-device ASR model cache — runtime downloads, never committed
+public/media/asr-models/
 
 # DeepFilterNet3 local venv
 .venv-df/

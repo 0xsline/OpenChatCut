@@ -38,7 +38,7 @@ export type VendorId =
   | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter'
   | 'ollama' | 'lmstudio' | 'xiaomi' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
-  | 'assemblyai' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk'
+  | 'assemblyai' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk' | 'localasr'
   | 'stepfun' | 'byteplus' | 'inworld' | 'fishaudio' | 'speechify' | 'wavespeed'
   | 'vision';
 
@@ -85,6 +85,7 @@ const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: strin
   llm: { bg: '#34363c', mono: 'AI', fg: '#f7f7f8' },
   e2b: { bg: '#FF8800', mono: 'E2', fg: '#40230a' },
   localdisk: { bg: '#5f6b7a', mono: 'HD', fg: '#eef2f7' }, // Local disk (non-vendor, neutral gray)
+  localasr: { bg: '#3a7d44', mono: 'ASR', fg: '#eaf5ec' }, // On-device ASR (whisper, non-vendor)
   byteplus: { bg: '#0055FF', mono: 'BP' }, // BytePlus ModelArk, no official SVG vendored yet
   inworld: { bg: '#7A5CFF', mono: 'IW' }, // Inworld TTS, no official SVG vendored yet
   speechify: { bg: '#FF6A3D', mono: 'SP' }, // Speechify, no official SVG vendored yet

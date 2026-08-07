@@ -9,9 +9,10 @@ import {
 } from '../editor/mediaSourceRevision';
 import { hasOperationalTranscript, type TranscriptWord } from './types';
 import {
+  preferredTranscriptionProvider,
   transcribePathResumable,
   type AssemblyAiProviderStatus,
-} from './assemblyai';
+} from './provider';
 import {
   loadTranscriptionCheckpoint,
   saveTranscriptionCheckpoint,
@@ -130,7 +131,7 @@ export function enqueueTranscription(
         projectId,
         assetId: asset.id,
         sourceRevision,
-        provider: 'assemblyai',
+        provider: preferredTranscriptionProvider(),
         providerJobId: existing?.providerJobId,
         providerStatus: existing?.providerStatus === 'completed'
           ? 'completed'

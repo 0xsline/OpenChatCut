@@ -66,7 +66,8 @@ function encodeWavMono(samples: Float32Array, sampleRate: number): Blob {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-function downsampleMono(buffer: AudioBuffer, targetSr: number): Float32Array {
+/** Mix to mono and resample (linear). Shared with the local ASR provider. */
+export function downsampleMono(buffer: AudioBuffer, targetSr: number): Float32Array {
   const ch = buffer.numberOfChannels;
   const len = buffer.length;
   const mix = new Float32Array(len);

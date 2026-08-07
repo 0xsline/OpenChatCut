@@ -3,6 +3,7 @@
 export default {
   '素材文件不可用，请在“我的素材”中重新链接后再转写': 'The media file is unavailable. Relink it in My Media before transcribing.',
   '无法连接转写服务，请检查网络和 AssemblyAI 配置后重试': 'Cannot reach the transcription service. Check the network and AssemblyAI settings, then try again.',
+  '本地转写失败：模型未就绪或音频无法处理，请检查模型下载后重试': 'Local transcription failed: the model is unavailable or the audio cannot be processed. Check the model download and try again.',
   // TranscriptPanel — Toolbar and pause pop-up layer
   '停顿': 'Pauses',
   '段落视图': 'Paragraph view',
@@ -29,6 +30,8 @@ export default {
   '还没有可转写的轨道': 'No transcribable tracks yet',
   '把口播 / 配音或带人声的视频加到时间线后，再打开文字稿。': 'Add narration / voiceover or a video with speech to the timeline, then open the transcript.',
   '转写词级文字稿': 'Transcribe word-level script',
+  '本地转写未做说话人分离，全部内容归为同一说话人。': 'Local transcription does not separate speakers — everything is one speaker.',
+  '中文词级转写 · 本地模型 · 该轨共 {n} 段会逐段转写（免费、离线、素材不出本机）。转写后可点词删减（删词=剪音频）。': 'Word-level Chinese transcription · on-device model · all {n} clips on this track transcribe one by one (free, offline, media stays on this machine). Then click words to cut them (delete a word = cut the audio).',
   '中文词级转写 · 说话人分离 · 该轨共 {n} 段会逐段上传。转写后可点词删减（删词=剪音频）。': 'Word-level Chinese transcription · speaker diarization · all {n} clips on this track upload one by one. Then click words to cut them (delete a word = cut the audio).',
   '包含疑似背景音乐（已跳过 {n} 段）': 'Include likely background music ({n} clips skipped)',
   '该轨只有背景音乐类素材。打开「包含疑似背景音乐」或换到配音轨。': 'This track only has background-music clips. Turn on "Include likely background music" or switch to a voiceover track.',

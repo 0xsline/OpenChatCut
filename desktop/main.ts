@@ -39,6 +39,7 @@ import {
   type ExportDirectoryGrantDescriptor,
 } from '../server/export-destinations.ts';
 import { resolveExportRevealTarget } from './export-reveal.ts';
+import { externalMcpToken } from '../server/editor-auth.ts';
 
 // Electron main process entry. dev mode: esbuild hits desktop-dist/main.mjs,dist/ in the codebase root;
 // Packaging form: dist/, resonance-bundle, chrome-headless-shell use extraResources.
@@ -342,11 +343,13 @@ function registerDesktopHandlers(trustedOrigin: string): void {
 async function smokeProbe(origin: string, win: BrowserWindow): Promise<void> {
   const res = await fetch(`${origin}/api/keys`);
   if (!res.ok) throw new Error(`/api/keys → HTTP ${res.status}`);
-  const body = (await res.json()) as Record<string, unknown>;
-  if (typeof body !== 'object' || body === null) throw new Error('/api/keys returned non-object');
   const mcp = await fetch(`${origin}/api/external-mcp/mcp`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+    headers: {
+      Authorization: `Bearer ${externalMcpToken()}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+    },
     body: JSON.stringify({
       jsonrpc: '2.0',
       id: 1,

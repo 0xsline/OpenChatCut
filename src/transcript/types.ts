@@ -63,6 +63,9 @@ export interface TranscriptVariant {
 
 export type TranscriptStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error';
 
+/** Transcription engine choice: cloud AssemblyAI or on-device whisper. */
+export type TranscriptionProviderId = 'assemblyai' | 'local';
+
 /** ms → frame at the given fps. */
 export function msToFrame(ms: number, fps: number): number {
   return Math.round((ms / 1000) * fps);

@@ -351,4 +351,26 @@ export default {
     'Could not load the MCP connection token. Retry from a trusted editor window.',
   'MCP 端点始终要求 Bearer 令牌。令牌只在当前受信任编辑器会话中显示，不写入工程、聊天或浏览器存储；服务重启后自动生成的令牌会变化，需要重新复制配置。OPENCHATCUT_MCP_TOKEN 可覆盖自动令牌。':
     'The MCP endpoint always requires a bearer token. The token is shown only in the current trusted editor session and is never written to the project, chat, or browser storage. An automatically generated token changes after a server restart, so copy the configuration again. OPENCHATCUT_MCP_TOKEN overrides the generated token.',
+  '设置 → 连接器 → 添加自定义连接器,粘贴上面的端点地址即可。':
+    'Settings → Connectors → Add custom connector, then paste the endpoint above.',
+  '端点默认仅监听本机;对外暴露时请配置 OPENCHATCUT_MCP_TOKEN 鉴权。桌面端 5199 端口被占用时会回退随机端口,以启动日志与本页地址为准。':
+    'The endpoint listens on localhost only by default; configure OPENCHATCUT_MCP_TOKEN before exposing it. If port 5199 is taken, the desktop app falls back to a random port — trust the startup log and the address shown here.',
+  // Local ASR model management (Settings → 转写 → 本地模型)
+  '下载中 {pct}%': 'Downloading {pct}%',
+  '下载失败': 'Download failed',
+  '已下载': 'Downloaded',
+  '未下载': 'Not downloaded',
+  '删除': 'Delete',
+  '下载': 'Download',
+  '模型按需下载到本机，不随应用打包。首次使用或下载模型时自动加速下载。':
+    'Models are downloaded to this machine on demand — they are not bundled with the app. Downloads use the accelerated pipeline automatically.',
+  '无法读取模型列表：{err}': 'Cannot load the model list: {err}',
+  '默认模型': 'Default model',
+  '自动（按设备内存选择）': 'Auto (by device memory)',
+  '选中的模型需已下载；未选择时按设备内存自动挑选（内存 ≥6GB 用 Small，否则 Base）。':
+    'The selected model must be downloaded first; when unset, the device memory picks automatically (≥6GB → Small, otherwise Base).',
+  'Whisper Tiny（约 100MB · 最快）': 'Whisper Tiny (~100MB · fastest)',
+  'Whisper Base（约 80MB · 均衡）': 'Whisper Base (~80MB · balanced)',
+  'Whisper Small（约 250MB · 推荐）': 'Whisper Small (~250MB · recommended)',
+  'Whisper Medium（约 1.1GB · 精度最高）': 'Whisper Medium (~1.1GB · highest accuracy)',
 } as Record<string, string>;
