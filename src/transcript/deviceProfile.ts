@@ -7,11 +7,7 @@ import type { AsrConfig, AsrDevice, AsrModelTier, DeviceProfile } from './local-
 export const WHISPER_MODELS: Record<AsrModelTier, string> = {
   tiny: 'Xenova/whisper-tiny',
   base: 'Xenova/whisper-base',
-  // NOTE: Xenova/whisper-small's current quantized ONNX files fail
-  // onnxruntime-web with INVALID_PROTOBUF (HF re-exported them in a format the
-  // web runtime cannot parse; tiny/base load fine). Until upstream files change,
-  // the "small" tier falls back to base.
-  small: 'Xenova/whisper-base',
+  small: 'Xenova/whisper-small',
 };
 
 const DEFAULT_MEMORY_GB = 8;

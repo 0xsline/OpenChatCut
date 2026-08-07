@@ -34,6 +34,13 @@ const workerScope = self as unknown as DedicatedWorkerGlobalScope;
 
 const post = (message: LocalAsrWorkerResponse) => workerScope.postMessage(message);
 
+// Bypass the browser Cache Storage entirely: transformers.js' own caching
+// corrupted large model files after partial/range interactions (observed
+// 93004745-byte "ghosts" instead of the real 92324809 → INVALID_PROTOBUF).
+// The server proxy disk cache serves the same bytes in milliseconds, so the
+// browser-side copy buys nothing but risk.
+env.useBrowserCache = false;
+
 function progressInfo(value: unknown): ProgressInfo {
   if (!value || typeof value !== 'object') return {};
   const record = value as Record<string, unknown>;
