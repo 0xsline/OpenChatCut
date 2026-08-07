@@ -150,6 +150,7 @@ export const KEY_NAMES = [
   "PREFERRED_VIDEO_VENDOR",
   "PREFERRED_MUSIC_VENDOR",
   "PREFERRED_TRANSCRIPTION_PROVIDER",
+  "LOCAL_ASR_MODEL",
   "OPENCHATCUT_SKILLS_DIR",
 ] as const;
 export type KeyName = (typeof KEY_NAMES)[number];
@@ -187,6 +188,7 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   "PREFERRED_VIDEO_VENDOR",
   "PREFERRED_MUSIC_VENDOR",
   "PREFERRED_TRANSCRIPTION_PROVIDER",
+  "LOCAL_ASR_MODEL",
   "R2_ENABLED", // Cloud synchronization switch ('' default = enabled, '0' = disabled) - configuration is not credentials
   "R2_PRESIGN", // Browser pre-signed direct transmission ('' default = enabled, '0' = server-side write-through only)
   "MEDIA_DIR", // Asset saving directory (local path, '' = default public/media/uploads) - configuration is not credentials

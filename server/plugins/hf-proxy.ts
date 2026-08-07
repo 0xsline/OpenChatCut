@@ -43,7 +43,7 @@ const SOURCES: ReadonlyArray<{ name: string; url: (target: ProxyTarget) => strin
 
 /** Cache lives in the user data dir — never inside the repo (public/ gets
  *  built into dist) and shared across projects. */
-function modelCacheDir(): string {
+export function modelCacheDir(): string {
   return join(homedir(), '.openchatcut', 'asr-models');
 }
 
@@ -64,14 +64,14 @@ function contentTypeOf(file: string): string {
   return 'application/octet-stream';
 }
 
-interface ProxyTarget {
+export interface ProxyTarget {
   modelId: string;
   revision: string;
   filePath: string;
 }
 
 /** Parse /Xenova/whisper-small/resolve/main/onnx/foo.onnx → safe target or null. */
-function parseTarget(rawPath: string): ProxyTarget | null {
+export function parseTarget(rawPath: string): ProxyTarget | null {
   const clean = decodeURIComponent(rawPath.split('?')[0] ?? '').replace(/^\/+/, '');
   const parts = clean.split('/');
   const resolveIdx = parts.indexOf('resolve');
@@ -85,7 +85,9 @@ function parseTarget(rawPath: string): ProxyTarget | null {
   return { modelId, revision, filePath: fileParts.join('/') };
 }
 
-async function cacheFile(target: ProxyTarget): Promise<string> {
+/** Download one model file into the disk cache (multi-source, verified).
+ *  Shared with the model-management endpoints. */
+export async function downloadModelFile(target: ProxyTarget): Promise<string> {
   const finalPath = join(modelCacheDir(), target.modelId, ...target.filePath.split('/'));
   if (existsSync(finalPath)) {
     const size = (await stat(finalPath)).size;
@@ -219,7 +221,7 @@ async function handleProxy(req: IncomingMessage, res: ServerResponse): Promise<v
     return;
   }
   try {
-    const file = await cacheFile(target);
+    const file = await downloadModelFile(target);
     const size = (await stat(file)).size;
     res.setHeader('Content-Type', contentTypeOf(file));
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');

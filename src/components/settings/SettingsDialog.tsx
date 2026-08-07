@@ -67,6 +67,17 @@ function syncTranscriptionProvider(saved: string | undefined): void {
   );
 }
 
+/** Keep the runtime ASR model tier in sync with the saved setting ('' → auto). */
+function syncLocalAsrModel(saved: string | undefined): void {
+  try {
+    if (saved === 'tiny' || saved === 'base' || saved === 'small' || saved === 'medium' || saved === '') {
+      localStorage.setItem('cc.asrModel', saved ?? '');
+    }
+  } catch {
+    // Best-effort; the auto tier stays in effect.
+  }
+}
+
 function useSaveKeys(values: Values, onSaved: (next: KeyStatusResponse) => void): {
   save: () => Promise<void>; saving: boolean; msg: string | null; error: string | null;
 } {
@@ -208,6 +219,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     setStatus(next);
     applySavedToAgent(next);
     syncTranscriptionProvider(next.models?.['PREFERRED_TRANSCRIPTION_PROVIDER']);
+    syncLocalAsrModel(next.models?.['LOCAL_ASR_MODEL']);
     setValues({});
   });
   const dirty = Object.keys(values).length > 0;

@@ -14,6 +14,7 @@ import { llmProviderConfigNames, normalizeLlmProvider } from '../../../shared/ll
 import { MODEL_CAPABILITY_OVERRIDES_KEY } from '../../../shared/model-capabilities';
 import { ModelCapabilityEditor } from './ModelCapabilityEditor';
 import { VisionModelPane } from './VisionModelPane';
+import { LocalAsrPane } from './LocalAsrPane';
 import {
   fieldPlaceholder, isModelField, modelValue, selectOptionLabel, selectOptions, vendorConfigured,
   type KeyStatusResponse, type SelectOption, type SettingsField, type SettingsVendorPage,
@@ -60,6 +61,7 @@ export function VendorPane({ page, hint, ctx }: {
   const t = useT();
   if (page.connection === 'codex') return <CodexVendorPane page={page} hint={hint} ctx={ctx} />;
   if (page.key === 'llm/vision') return <VisionModelPane />;
+  if (page.key === 'transcription/local') return <LocalAsrPane fields={page.fields} ctx={ctx} />;
   const on = vendorConfigured(ctx.status, page, ctx.codex.status);
   return (
     <div style={pane}>

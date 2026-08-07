@@ -336,10 +336,21 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { key: 'transcription/assemblyai', vendor: 'assemblyai', title: 'AssemblyAI',
             fields: [secret('ASSEMBLYAI_API_KEY', 'API Key')] },
           { key: 'transcription/local', vendor: 'localasr', title: '本地模型（whisper）',
-            note: '转写在本机完成：免费、离线、素材不出本机。首次使用自动下载模型（约 250-500MB）。'
-              + '自动选择设备优势后端：mac Metal / Windows DirectML / Linux Vulkan（WebGPU），不可用时回退 CPU。'
-              + '本地转写不含说话人分离（全部归为同一位说话人）。',
-            fields: [] },
+            note: '转写在本机完成：免费、离线、素材不出本机。模型按需下载（见下方列表），'
+              + '自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。',
+            fields: [
+              {
+                name: 'LOCAL_ASR_MODEL', label: '默认模型', kind: 'select',
+                defaultLabel: '自动（按设备内存选择）',
+                note: '选中的模型需已下载；未选择时按设备内存自动挑选（内存 ≥6GB 用 Small，否则 Base）。',
+                options: [
+                  { value: 'tiny', label: 'Whisper Tiny（约 100MB · 最快）' },
+                  { value: 'base', label: 'Whisper Base（约 80MB · 均衡）' },
+                  { value: 'small', label: 'Whisper Small（约 250MB · 推荐）' },
+                  { value: 'medium', label: 'Whisper Medium（约 1.1GB · 精度最高）' },
+                ],
+              },
+            ] },
         ] },
     ],
   },

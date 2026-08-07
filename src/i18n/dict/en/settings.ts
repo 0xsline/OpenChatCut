@@ -350,4 +350,22 @@ export default {
     'Settings → Connectors → Add custom connector, then paste the endpoint above.',
   '端点默认仅监听本机;对外暴露时请配置 OPENCHATCUT_MCP_TOKEN 鉴权。桌面端 5199 端口被占用时会回退随机端口,以启动日志与本页地址为准。':
     'The endpoint listens on localhost only by default; configure OPENCHATCUT_MCP_TOKEN before exposing it. If port 5199 is taken, the desktop app falls back to a random port — trust the startup log and the address shown here.',
+  // Local ASR model management (Settings → 转写 → 本地模型)
+  '下载中 {pct}%': 'Downloading {pct}%',
+  '下载失败': 'Download failed',
+  '已下载': 'Downloaded',
+  '未下载': 'Not downloaded',
+  '删除': 'Delete',
+  '下载': 'Download',
+  '模型按需下载到本机，不随应用打包。首次使用或下载模型时自动加速下载。':
+    'Models are downloaded to this machine on demand — they are not bundled with the app. Downloads use the accelerated pipeline automatically.',
+  '无法读取模型列表：{err}': 'Cannot load the model list: {err}',
+  '默认模型': 'Default model',
+  '自动（按设备内存选择）': 'Auto (by device memory)',
+  '选中的模型需已下载；未选择时按设备内存自动挑选（内存 ≥6GB 用 Small，否则 Base）。':
+    'The selected model must be downloaded first; when unset, the device memory picks automatically (≥6GB → Small, otherwise Base).',
+  'Whisper Tiny（约 100MB · 最快）': 'Whisper Tiny (~100MB · fastest)',
+  'Whisper Base（约 80MB · 均衡）': 'Whisper Base (~80MB · balanced)',
+  'Whisper Small（约 250MB · 推荐）': 'Whisper Small (~250MB · recommended)',
+  'Whisper Medium（约 1.1GB · 精度最高）': 'Whisper Medium (~1.1GB · highest accuracy)',
 } as Record<string, string>;
