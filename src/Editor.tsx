@@ -46,9 +46,11 @@ import {
   importMedia,
   readyMediaAssetsForPaste,
 } from './media/upload';
+import { mediaAssetRelinkPatch, uploadedMediaRelinkPatch } from './media/mediaAssetRelink';
 import { findMediaNameConflict, MediaImportCancelledError } from './media/mediaImportConflict';
 import { importUploadedMedia } from './media/mobileImport';
 import type { MobileUploadRecord } from './media/mobileUploadApi';
+import { createImportContentIdentityHooks } from './media/importContentIdentity';
 import { acknowledgeIngestedGenerationResults, resumeOpenGenerationJobs } from './persist/jobRegistryStore';
 import {
   enqueueTranscription,
@@ -77,7 +79,7 @@ import { useOfflineMedia } from './media/useOfflineMedia';
 import { duplicateAssetName } from './media/assetMenuSelection';
 import { keyframeResetBatch } from './editor/keyframeReset';
 import { classifyExternalFile, parseDroppedCaptions } from './media/externalFileDrop';
-import { appendManualLane, isManualCaptionEntry, newManualCaptions } from './captions/manualCaptions';
+import { appendManualLane, identifyManualCues, isManualCaptionEntry, newManualCaptions } from './captions/manualCaptions';
 import { placeMediaAssets, reflowPlacedMediaItems } from './editor/mediaAssetPlacement';
 import {
   allCaptionSelections,
@@ -553,7 +555,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
   // voiceover), so the voiceover is editable as soon as ASR lands.
   // Kick ASR. Prefer race-ahead asrPath (extract started right after master upload).
   const startAssetTranscription = useCallback((
-    asset: Pick<MediaAsset, 'id' | 'src' | 'kind' | 'sourceRevision'> & { name?: string },
+    asset: Pick<MediaAsset, 'id' | 'src' | 'kind' | 'sourceRevision' | 'sourceContentHash'> & { name?: string },
     asrPath?: string | null | Promise<string | null>,
     markRunning = true,
   ) => {
@@ -627,9 +629,17 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     let placeholderId: string | null = null;
     let placeholder: MediaAsset | null = null;
     const transcriptionGate = createImportTranscriptionGate(targetId);
+    let canonicalizedAsset: MediaAsset | null = null;
     try {
       const imported = await importMedia(file, stateRef.current.fps, {
         onProgress,
+        ...createImportContentIdentityHooks({
+          getAssets: () => stateRef.current.assets ?? [],
+          onCanonical: (canonical, duplicateId) => {
+            canonicalizedAsset = canonical;
+            commands.canonicalizeMediaAsset(targetId ?? duplicateId, canonical.id);
+          },
+        }),
         onPlaceholder: (asset) => {
           if (targetId) return;
           placeholderId = asset.id;
@@ -640,31 +650,20 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           lifecycle?.onPlaceholder?.(asset);
         },
         onUploaded: (info) => {
+          if (!targetId) commands.relinkMediaAsset(info.id, uploadedMediaRelinkPatch(info));
           const start = transcriptionGate.uploaded(info);
           if (start) startAssetTranscription(start.asset, start.asrPath);
         },
         onReady: (asset) => {
           const ready = targetId ? { ...asset, id: targetId } : asset;
-          commands.relinkMediaAsset(ready.id, {
-            src: ready.src,
-            name: ready.name,
-            durationInFrames: ready.durationInFrames,
-            width: ready.width,
-            height: ready.height,
-            kind: ready.kind,
-            sourceRevision: ready.sourceRevision,
-            sourceSize: ready.sourceSize,
-            sourceModifiedAt: ready.sourceModifiedAt,
-            sourceFilename: ready.sourceFilename,
-            originalFilePath: ready.originalFilePath,
-          });
+          commands.relinkMediaAsset(ready.id, mediaAssetRelinkPatch(ready));
           // Replacements start ASR only after the new ready source has relinked.
           const start = transcriptionGate.ready(ready);
           if (start) startAssetTranscription(start.asset, start.asrPath);
           if (ready.kind !== 'audio') refreshVisualAnalysis(ready);
         },
       });
-      const ready = targetId ? { ...imported, id: targetId } : imported;
+      const ready = canonicalizedAsset ?? (targetId ? { ...imported, id: targetId } : imported);
       lifecycle?.onAssetUpdated?.(ready);
       return ready;
     } catch (err) {
@@ -748,20 +747,26 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     const awaitTimelinePlaceholder = (file: File) => new Promise<MediaAsset>((resolve, reject) => {
       let placeholderId: string | null = null;
       void importMedia(file, stateRef.current.fps, {
+        ...createImportContentIdentityHooks({
+          getAssets: () => stateRef.current.assets ?? [],
+          onCanonical: (canonical, duplicateId) => {
+            const placement = placedItems.find((candidate) => candidate.assetId === duplicateId);
+            if (placement) placement.assetId = canonical.id;
+            commands.canonicalizeMediaAsset(duplicateId, canonical.id);
+            updatePlacedAsset(canonical);
+          },
+        }),
         onPlaceholder: (asset) => {
           placeholderId = asset.id;
           commands.addAsset(asset);
           resolve(asset);
         },
-        onUploaded: (info) => startAssetTranscription(info, info.asrPath),
+        onUploaded: (info) => {
+          commands.relinkMediaAsset(info.id, uploadedMediaRelinkPatch(info));
+          startAssetTranscription(info, info.asrPath);
+        },
         onReady: (asset) => {
-          commands.relinkMediaAsset(asset.id, {
-            src: asset.src, name: asset.name, durationInFrames: asset.durationInFrames,
-            width: asset.width, height: asset.height, kind: asset.kind,
-            sourceRevision: asset.sourceRevision, sourceSize: asset.sourceSize,
-            sourceModifiedAt: asset.sourceModifiedAt, sourceFilename: asset.sourceFilename,
-            originalFilePath: asset.originalFilePath,
-          });
+          commands.relinkMediaAsset(asset.id, mediaAssetRelinkPatch(asset));
           if (asset.kind !== 'audio') refreshVisualAnalysis(asset);
           updatePlacedAsset(asset);
         },
@@ -785,11 +790,11 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             ? trackId
             : defaultTrackId(snapshot, 'caption');
           if (!captionTrackId) throw new Error(t('请先创建字幕轨道'));
-          const words = parseDroppedCaptions(
+          const words = identifyManualCues(parseDroppedCaptions(
             file.name,
             await file.text(),
             Math.max(0, startFrame) * 1000 / snapshot.fps,
-          );
+          ));
           if (!words.length) throw new Error(t('字幕文件没有可用内容'));
           const current = captionsOnTrack(snapshot, captionTrackId) ?? newManualCaptions();
           const withLane = current.sourceEntries?.some(isManualCaptionEntry)

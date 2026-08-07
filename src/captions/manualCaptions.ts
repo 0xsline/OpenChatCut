@@ -1,6 +1,7 @@
 import type { TimelineItem } from '../editor/types';
 import type { TranscriptWord } from '../transcript/types';
 import { hasOperationalTranscript } from '../transcript/types';
+import { isStableIdentity, newManualCueIdentity } from '../transcript/identity';
 import { normalizeCaptionSourceEntries } from './sourceOrder';
 import { CAPTION_STYLE_BY_ID } from './styles';
 import type { CaptionLayout, CaptionsData, CaptionSourceEntry, CaptionTemplate } from './types';
@@ -19,6 +20,9 @@ const id = (): string => `lane_${crypto.randomUUID()}`;
 
 export function isManualCaptionEntry(entry: CaptionSourceEntry): boolean {
   return Array.isArray(entry.words);
+}
+export function identifyManualCues(words: readonly TranscriptWord[]): TranscriptWord[] {
+  return words.map((word) => ({ ...word, id: newManualCueIdentity() }));
 }
 
 export function newManualCaptions(): CaptionsData {
@@ -132,7 +136,9 @@ export function updateManualCue(
   startMs: number,
   endMs: number,
 ): Partial<CaptionsData> | null {
-  const cue = manualCue(text, startMs, endMs);
+  const current = captions.sourceEntries?.find((entry) => entry.id === laneId && isManualCaptionEntry(entry))?.words?.[index];
+  if (!current) return null;
+  const cue = manualCue(text, startMs, endMs, current.id);
   if (!cue) return null;
   return mapManualLane(captions, laneId, (words) =>
     words.map((word, i) => i === index ? cue : word).sort((a, b) => a.start - b.start),
@@ -197,12 +203,12 @@ export function removeManualCue(captions: CaptionsData, laneId: string, index: n
   return mapManualLane(captions, laneId, (words) => words.filter((_, i) => i !== index));
 }
 
-function manualCue(text: string, startMs: number, endMs: number): TranscriptWord | null {
+function manualCue(text: string, startMs: number, endMs: number, cueId?: string): TranscriptWord | null {
   const clean = text.trim();
   if (!clean || !Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
   const start = Math.max(0, Math.round(startMs));
   const end = Math.max(start + 1, Math.round(endMs));
-  return { text: clean, start, end };
+  return { id: isStableIdentity(cueId) ? cueId : newManualCueIdentity(), text: clean, start, end };
 }
 
 function mapManualLane(

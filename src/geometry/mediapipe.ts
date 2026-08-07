@@ -3,12 +3,8 @@
  *
  * Deliberately lazy: @mediapipe/tasks-vision is heavy, so it is only loaded on
  * first geometry analysis. CPU delegate first (XNNPACK): the WebGL GPU
-<<<<<<< HEAD
- * delegate often initializes fine but returns empty/garbage masks (observed in
-=======
  * delegate often initializes fine but returns empty/garbage masks; offline
  * 2fps×512px analysis does not need GPU.
->>>>>>> 031e3b0 (fix(geometry): head-zone fallback for undetected faces)
  *
  * WASM and models are self-hosted under /mediapipe (scripts/sync-mediapipe.mjs)
  * so analysis works offline and same-origin. Any failure degrades to null —
@@ -33,57 +29,170 @@ import { GEOM_GRID_H, GEOM_GRID_W, type GeomRect } from './geometry-math';
 import type { FrameGeom } from './geometry-math';
 import type { FaceDetector, ImageSegmenter } from '@mediapipe/tasks-vision';
 
-interface MediaPipeRuntime {
+export interface MediaPipeRuntime {
   segment: (canvas: HTMLCanvasElement) => { face: GeomRect | null; occ: Uint8Array };
   delegate: 'CPU' | 'GPU';
+  close: () => void;
 }
 
-let runtimePromise: Promise<MediaPipeRuntime | null> | null = null;
+type RuntimeLoader = (signal: AbortSignal) => Promise<MediaPipeRuntime | null>;
 
-async function loadRuntime(): Promise<MediaPipeRuntime | null> {
+interface RuntimeLoadState {
+  promise: Promise<MediaPipeRuntime | null>;
+  controller: AbortController;
+  runtime: MediaPipeRuntime | null;
+  settled: boolean;
+  waiters: number;
+}
+
+let runtimeState: RuntimeLoadState | null = null;
+let runtimeLoader: RuntimeLoader = loadRuntime;
+
+function closeTask(task: { close: () => void } | null): void {
+  try {
+    task?.close();
+  } catch {
+    // Best-effort release for an optional analysis runtime.
+  }
+}
+
+function closeRuntime(runtime: MediaPipeRuntime | null): void {
+  if (runtime) closeTask(runtime);
+}
+
+async function loadRuntime(signal: AbortSignal): Promise<MediaPipeRuntime | null> {
+  // Dynamic import preserves the feature's required lazy-loading boundary.
   const { FaceDetector, FilesetResolver, ImageSegmenter } = await import('@mediapipe/tasks-vision');
+  if (signal.aborted) return null;
   for (const delegate of ['CPU', 'GPU'] as const) {
+    let segmenter: ImageSegmenter | null = null;
+    let detector: FaceDetector | null = null;
+    const closeResources = (): void => {
+      const activeDetector = detector;
+      const activeSegmenter = segmenter;
+      detector = null;
+      segmenter = null;
+      closeTask(activeDetector);
+      closeTask(activeSegmenter);
+    };
+    signal.addEventListener('abort', closeResources, { once: true });
     try {
+      signal.throwIfAborted();
       const fileset = await FilesetResolver.forVisionTasks(WASM_PATH);
-      const segmenter = await ImageSegmenter.createFromOptions(fileset, {
+      signal.throwIfAborted();
+      segmenter = await ImageSegmenter.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: SEG_MODEL, delegate },
         runningMode: 'IMAGE',
         outputConfidenceMasks: true,
         outputCategoryMask: false,
       });
-      const detector = await FaceDetector.createFromOptions(fileset, {
+      signal.throwIfAborted();
+      detector = await FaceDetector.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: FACE_MODEL, delegate },
         runningMode: 'IMAGE',
       });
+      signal.throwIfAborted();
+      const activeSegmenter = segmenter;
+      const activeDetector = detector;
+      signal.removeEventListener('abort', closeResources);
       return {
         delegate,
-        segment: (canvas) => inferFrame(segmenter, detector, canvas),
+        segment: (canvas) => inferFrame(activeSegmenter, activeDetector, canvas),
+        close: () => {
+          closeTask(activeDetector);
+          closeTask(activeSegmenter);
+        },
       };
     } catch (error) {
+      signal.removeEventListener('abort', closeResources);
+      closeResources();
+      if (signal.aborted) return null;
       console.warn(`[geometry] MediaPipe ${delegate} delegate failed:`, error);
     }
   }
   return null;
 }
 
-/** Load (once) or reuse the MediaPipe runtime; a failed load is retried next call. */
-export function getMediaPipeRuntime(): Promise<MediaPipeRuntime | null> {
-  if (!runtimePromise) {
-    runtimePromise = loadRuntime().then(
-      (runtime) => runtime,
-      () => null,
-    );
-    // Do not pin a permanent failure: reset so the next call retries.
-    runtimePromise.then((runtime) => {
-      if (!runtime && runtimePromise) runtimePromise = null;
+function startRuntimeLoad(): RuntimeLoadState {
+  const loader = runtimeLoader;
+  const controller = new AbortController();
+  const state: RuntimeLoadState = {
+    promise: Promise.resolve(null),
+    controller,
+    runtime: null,
+    settled: false,
+    waiters: 0,
+  };
+  runtimeState = state;
+  state.promise = Promise.resolve()
+    .then(() => loader(controller.signal))
+    .catch(() => null)
+    .then((runtime) => {
+      state.settled = true;
+      if (runtimeState !== state) {
+        closeRuntime(runtime);
+        return null;
+      }
+      if (runtime) state.runtime = runtime;
+      else runtimeState = null;
+      return runtime;
     });
-  }
-  return runtimePromise;
+  return state;
 }
 
-/** Debug hook for tests/QA; forces a fresh load next time. */
+function abortReason(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException('The operation was aborted', 'AbortError');
+}
+
+function releaseWaiter(state: RuntimeLoadState): void {
+  state.waiters = Math.max(0, state.waiters - 1);
+  if (!state.settled && state.waiters === 0 && runtimeState === state) {
+    runtimeState = null;
+    state.controller.abort();
+  }
+}
+
+function waitForRuntime(
+  state: RuntimeLoadState,
+  signal?: AbortSignal,
+): Promise<MediaPipeRuntime | null> {
+  state.waiters += 1;
+  if (!signal) return state.promise.finally(() => releaseWaiter(state));
+  return new Promise<MediaPipeRuntime | null>((resolve, reject) => {
+    let done = false;
+    const finish = (callback: () => void): void => {
+      if (done) return;
+      done = true;
+      signal.removeEventListener('abort', onAbort);
+      callback();
+    };
+    const onAbort = (): void => finish(() => reject(abortReason(signal)));
+    signal.addEventListener('abort', onAbort, { once: true });
+    state.promise.then(
+      (runtime) => finish(() => resolve(runtime)),
+      (error) => finish(() => reject(error)),
+    );
+  }).finally(() => releaseWaiter(state));
+}
+
+/** Load or reuse MediaPipe; an aborted in-flight load is retired and may be retried. */
+export function getMediaPipeRuntime(signal?: AbortSignal): Promise<MediaPipeRuntime | null> {
+  if (signal?.aborted) return Promise.reject(abortReason(signal));
+  return waitForRuntime(runtimeState ?? startRuntimeLoad(), signal);
+}
+
+/** Debug hook for tests/QA; closes or retires the current runtime. */
 export function __resetMediaPipeRuntime(): void {
-  runtimePromise = null;
+  const state = runtimeState;
+  runtimeState = null;
+  if (state && !state.settled) state.controller.abort();
+  closeRuntime(state?.runtime ?? null);
+}
+
+/** Deterministic verifier seam; null restores the production lazy loader. */
+export function __setMediaPipeRuntimeLoaderForVerification(loader: RuntimeLoader | null): void {
+  __resetMediaPipeRuntime();
+  runtimeLoader = loader ?? loadRuntime;
 }
 
 function inferFrame(

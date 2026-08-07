@@ -293,6 +293,12 @@ assert.equal(session.status, 'drafting');
 assert.equal(session.approvalMode, 'manual');
 assert.match(session.baseRevision, /^v\d+-[0-9a-f]{8}$/);
 assert.equal(isExternalEditSessionStale(session, base), false);
+const reorderedBase = Object.fromEntries(Object.entries(base).reverse()) as typeof base;
+assert.equal(
+  revisionOf(reorderedBase),
+  revisionOf(base),
+  'semantic revisions are stable across JSON object-key order changes',
+);
 
 const autoSession = createExternalEditSession(base, 'Codex', 'auto');
 assert.equal(autoSession.approvalMode, 'auto');
@@ -736,6 +742,9 @@ const failedSaveInfo = await failedSaveRuntime.execute(
 assert.equal(sessionStatus(failedSaveInfo), 'awaiting_review');
 assert(isExternalDraftTool('set_aspect_ratio'));
 assert(isExternalReadTool('read_project'));
+assert(isExternalDraftTool('apply_caption_avoidance'));
+assert(isExternalDraftTool('place_graphics_in_safe_zone'));
+assert(isExternalDraftTool('auto_reframe'));
 assert(!isExternalDraftTool('delete_project'));
 assert(!isExternalDraftTool('submit_render_job'));
 assert(isExternalRealTool('submit_render_job'), 'real-project tools are exposed to external agents (confirm-gated)');

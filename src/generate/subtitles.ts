@@ -1,5 +1,6 @@
-import { activeTranslation, paginate } from '../captions/types';
-import { resolveCaptionWords, resolveCaptionWordIndices, applyWordOverrides } from '../captions/resolve';
+import { CAPTION_MAX_CHARS_PER_LINE, CAPTION_MAX_VISUAL_LINES, activeTranslation, paginate } from '../captions/types';
+import { resolveCaptionWords, resolveCaptionWordIndices, resolveCaptionWordRefs, applyWordOverrides } from '../captions/resolve';
+import { effectivePreset } from '../captions/renderStyles';
 import { captionsOnTrack, defaultTrackId, resolveTrackId, type TimelineState } from '../editor/types';
 
 export interface SubmitSubtitleExportArgs {
@@ -37,8 +38,16 @@ export async function submitSubtitleExport(args: SubmitSubtitleExportArgs, state
   // Word-by-word overwriting (hide/wrap text/force page break) also works on exported SRT/TXT - what you see on the screen,
   // The export is all about keeping the text consistent. When there is no override, displayWords === words, the behavior remains unchanged.
   const indices = resolveCaptionWordIndices(captions, state.items, state.fps);
-  const { words: displayWords, breakBefore } = applyWordOverrides(words, indices, captions.wordOverrides);
-  const pages = paginate(displayWords, captions.pacing, undefined, breakBefore);
+  const wordRefs = resolveCaptionWordRefs(captions, state.items, state.fps);
+  const { words: displayWords, breakBefore } = applyWordOverrides(words, indices, captions.wordOverrides, wordRefs);
+  const pages = paginate(
+    displayWords,
+    captions.pacing,
+    effectivePreset(captions).wordsPerPage,
+    breakBefore,
+    CAPTION_MAX_CHARS_PER_LINE,
+    CAPTION_MAX_VISUAL_LINES,
+  );
   const startMs = typeof args.startFrame === 'number' ? args.startFrame / state.fps * 1_000 : (args.startSeconds ?? 0) * 1_000;
   const endMs = typeof args.endFrameExclusive === 'number' ? args.endFrameExclusive / state.fps * 1_000 : typeof args.endSeconds === 'number' ? args.endSeconds * 1_000 : Number.POSITIVE_INFINITY;
   if (startMs < 0 || endMs <= startMs) throw new Error('invalid subtitle export range');

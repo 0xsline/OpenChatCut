@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import { ffmpegBin, ffprobeBin } from '../media-binaries.ts';
+import { EDITOR_CREDENTIAL_HEADER, editorBootstrapPayload } from '../editor-auth.ts';
+import { DEFAULT_UPLOAD_MAX_BYTES } from '../r2.ts';
 import { seedKeystore } from '../keystore.ts';
 import { maxUploadBytes } from './upload-routes.ts';
 import { uploadMultipartPlugin } from './upload-multipart.ts';
@@ -168,7 +170,7 @@ try {
   seedKeystore({ MEDIA_DIR: testDir });
   delete process.env.UPLOAD_MAX_BYTES;
   delete process.env.UPLOAD_MULTIPART_MAX_BYTES;
-  assert.equal(maxUploadBytes(), Number.MAX_SAFE_INTEGER, 'default upload policy has no 10GiB application cap');
+  assert.equal(maxUploadBytes(), DEFAULT_UPLOAD_MAX_BYTES, 'default upload policy is bounded at 20 GiB');
   process.env.UPLOAD_MAX_BYTES = '1024';
   assert.equal(maxUploadBytes(), 1024, 'an explicit positive upload limit remains authoritative');
   delete process.env.UPLOAD_MAX_BYTES;
@@ -330,20 +332,28 @@ try {
   assert.ok(Math.abs(vfr.durationSeconds - outputVfrProbe.duration) < 0.1);
 
 
+  const editorCredential = editorBootstrapPayload().credential;
   const multipartResponse = await fetch(`${origin}/upload/multipart/init`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      [EDITOR_CREDENTIAL_HEADER]: editorCredential,
+      origin,
+    },
     body: JSON.stringify({
-      name: '24GiB-original.mov',
-      size: 24 * 1024 ** 3,
+      name: '20GiB-boundary.mov',
+      size: DEFAULT_UPLOAD_MAX_BYTES,
       partSize: 64 * 1024 ** 2,
     }),
   });
   const multipartText = await multipartResponse.text();
   assert.equal(multipartResponse.status, 200, multipartText);
   const multipart = JSON.parse(multipartText) as { uploadId: string; maxBytes: number };
-  assert.equal(multipart.maxBytes, Number.MAX_SAFE_INTEGER, 'multipart must not reintroduce a 20GiB default cap');
-  const abortResponse = await fetch(`${origin}/upload/multipart?uploadId=${multipart.uploadId}`, { method: 'DELETE' });
+  assert.equal(multipart.maxBytes, DEFAULT_UPLOAD_MAX_BYTES);
+  const abortResponse = await fetch(`${origin}/upload/multipart?uploadId=${multipart.uploadId}`, {
+    method: 'DELETE',
+    headers: { [EDITOR_CREDENTIAL_HEADER]: editorCredential, origin },
+  });
   assert.equal(abortResponse.status, 200, await abortResponse.text());
 
   const acceptedResponse = await fetch(`${origin}/api/normalize-media`, {

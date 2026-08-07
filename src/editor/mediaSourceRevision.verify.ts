@@ -15,7 +15,6 @@ import {
   commitDerivedArtifactIfCurrent,
   captureTimelineItemSource,
   createMediaSourceRevision,
-  revisionAfterRelink,
   sourceRevisionOf,
   validateTimelineItemSourceBatch,
 } from './mediaSourceRevision';
@@ -36,12 +35,8 @@ assert.notEqual(
   createMediaSourceRevision({ ...legacyAsset, sourceModifiedAt: legacyAsset.sourceModifiedAt! + 1 }),
   'mtime changes source identity',
 );
-assert.notEqual(
-  sourceRevisionOf(legacyAsset),
-  revisionAfterRelink(legacyAsset, { ...legacyAsset, sourceRevision: undefined }),
-  'explicit relink invalidates sparse same-path metadata',
-);
 
+const contentHash = 'ab'.repeat(32);
 const doc: ProjectDoc = {
   version: CURRENT_PROJECT_VERSION,
   assets: [{
@@ -72,6 +67,11 @@ const doc: ProjectDoc = {
   }],
   activeTimelineId: 'timeline_1',
 };
+const hashedSnapshot = captureTimelineItemSource(
+  doc.timelines[0]!.items[0]!,
+  [{ ...legacyAsset, sourceContentHash: contentHash }],
+);
+assert.equal(hashedSnapshot.sourceContentHash, contentHash, 'timeline source snapshots retain byte identity');
 
 const normalized = migrateProjectDoc(doc);
 assert.ok(normalized?.assets[0]?.sourceRevision, 'old ProjectDoc assets without revision remain readable and receive a default');

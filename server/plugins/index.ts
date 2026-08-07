@@ -43,7 +43,7 @@ import { getKey } from "../keystore.ts";
 
 import { installSystemProxy } from '../net.ts';
 
-export function serverPlugins(): Plugin[] {
+export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plugin[] {
   installSystemProxy();
   return [
     llmProxyPlugin(),
@@ -55,7 +55,7 @@ export function serverPlugins(): Plugin[] {
         return getKey("RESOURCE_PREVIEW_TOKEN");
       },
     }),
-    projectStorePlugin(),
+    projectStorePlugin({ http: options.projectStoreHttp }),
     extensionStorePlugin(),
     externalAgentPlugin(),
     codexAgentPlugin(),

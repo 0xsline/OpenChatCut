@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { serverPlugins } from './server/plugins/index.ts';
 import { seedKeystore, getKey } from './server/keystore.ts';
 import { productAssetsPlugin } from './server/product-assets.ts';
+import { projectStoreLaunchToken } from './server/project-store-http-auth.ts';
 
 const appPackage = JSON.parse(readFileSync('package.json', 'utf8')) as { version?: unknown };
 if (typeof appPackage.version !== 'string') throw new Error('package.json is missing a valid version');
@@ -63,6 +64,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5199,
       strictPort: true,
+      open: `/#openchatcut-editor-token=${projectStoreLaunchToken()}`,
       proxy: {
         // AssemblyAI transcription — key injected server-side (never in browser).
         '/assemblyai': {

@@ -136,11 +136,12 @@ function commitMediaPlan(ctx: AgentContext, plan: OpResult): OpResult {
   const asset = (ctx.getDoc().assets ?? []).find((item) => item.id === plan.assetId);
   if (!asset) return { error: `pool asset vanished: ${String(plan.assetId)}` };
   const placed = typeof plan.durationInFrames === 'number'
-    ? { ...asset, durationInFrames: Number(plan.durationInFrames), srcInFrame: plan.srcInFrame as number | undefined }
+    ? { ...asset, durationInFrames: Number(plan.durationInFrames) }
     : asset;
   const itemId = ctx.commands.addMediaItem(placed, {
     track: plan.track as string,
     startFrame: plan.startFrame as number | undefined,
+    srcInFrame: plan.srcInFrame as number | undefined,
   });
   return {
     ok: true,
@@ -153,6 +154,7 @@ function commitMediaPlan(ctx: AgentContext, plan: OpResult): OpResult {
       track: plan.track,
       startFrame: plan.startFrame ?? 'appended',
       durationInFrames: placed.durationInFrames,
+      srcInFrame: plan.srcInFrame,
     },
   };
 }

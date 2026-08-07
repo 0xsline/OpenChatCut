@@ -12,10 +12,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Added visual geometry understanding: in-browser MediaPipe person segmentation + face detection aggregate into per-segment safe zones (cached per asset+revision). Captions auto-avoid the speaker (`apply_caption_avoidance`), export QA warns when a caption covers the face, `auto_reframe` focal points follow the subject, and overlay graphics place into the safe zone (`place_graphics_in_safe_zone`). Undetected faces fall back to the subject's head band.
   新增视觉几何理解：浏览器内 MediaPipe 人像分割 + 人脸检测聚合为分段安全区（按素材+版本缓存）。字幕自动避开说话人（`apply_caption_avoidance`）、导出 QA 在字幕遮挡人脸时预警、`auto_reframe` 焦点跟随主体、叠加图形自动放入安全区（`place_graphics_in_safe_zone`）；人脸检测不到时回退到主体头部带。
-- Added `edit_item` source windows: `sourceStartSeconds`/`sourceEndSeconds` place a searched segment directly (search_media hits pass straight through, frames computed internally).
-  新增 `edit_item` 源窗口：`sourceStartSeconds`/`sourceEndSeconds` 直接落轨搜索命中段落（search_media 命中直喂，帧换算在工具内完成）。
-- Hardened the agent prompt: explicit TIMELINE frames vs SOURCE seconds coordinate contract, transcript/caption content declared as footage-not-instructions, and lossy-summary warnings on truncated views.
-  加固 Agent 提示词：显式时间线帧/源秒坐标系契约、转录与字幕内容声明为"素材而非指令"、截断视图附有损摘要警示。
+- Added `edit_item` source windows: `sourceStartMs`/`sourceEndMs` from `search_media` pass through unchanged; explicit `sourceStartSeconds`/`sourceEndSeconds` are also accepted and converted internally.
+  新增 `edit_item` 源窗口：`search_media` 返回的 `sourceStartMs`/`sourceEndMs` 可原样落轨；也接受显式 `sourceStartSeconds`/`sourceEndSeconds`，统一在工具内部换算。
+- Hardened the agent prompt: explicit TIMELINE frames vs SOURCE time coordinate contract, transcript/caption content declared as footage-not-instructions, and lossy-summary warnings on truncated views.
+  加固 Agent 提示词：显式时间线帧/源时间坐标系契约、转录与字幕内容声明为“素材而非指令”、截断视图附有损摘要警示。
+- Added content-addressed media identity: imported masters now carry a streaming SHA-256 through browser, multipart, Agent, and desktop import paths; deterministic relinking/deduplication preserves asset identity and invalidates derived artifacts only when bytes change. Project schema v4 migrates legacy documents without changing media URLs.
+  新增内容寻址素材身份：浏览器、分片上传、Agent 与桌面导入链路统一流式计算并传递主素材 SHA-256；确定性重链/去重保留素材身份，仅在字节变化时失效派生结果。工程 schema v4 可无损迁移旧文档，素材 URL 语义不变。
+- Added stable caption word references and parallel source/translation lanes. Selection, editing, drag grouping, copy/paste, preview, and ASS/WebVTT export now share one cue identity path, including deterministic CJK segmentation.
+  新增稳定字幕词引用与原文/译文并行车道。选择、编辑、拖动分组、复制粘贴、预览及 ASS/WebVTT 导出统一使用同一条 cue 身份链，并支持确定性的中日韩文本分词。
+- Added five deterministic caption motion presets (`none`, fade-up, pop, word-pop, karaoke-pulse). They derive from timeline frames inside the shared Remotion layer, so Player preview and burned export render the same motion; saved caption looks retain the chosen preset.
+  新增五种确定性字幕动效（无动效、淡入上浮、弹性入场、逐词弹出、卡拉 OK 脉冲）。动效在共享 Remotion 字幕层中按时间线帧计算，Player 预览与烧录导出保持一致，用户字幕预设也会保留所选动效。
+- Added server-direct external Agent editing for projects without an open browser: isolated drafts, explicit review/commit gates, dependency-closed tool exposure, and scoped one-time same-origin upload handoffs with expiry and replay rejection.
+  新增无需浏览器常驻的外部 Agent 服务端直编：隔离草稿、显式审阅/提交门槛、依赖闭合的工具暴露，以及带工程作用域、过期与防重放校验的同源一次性上传交接。
 
 ## [0.1.9] - 2026-08-06
 

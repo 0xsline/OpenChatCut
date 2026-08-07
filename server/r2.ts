@@ -1,8 +1,8 @@
 // Cloudflare R2 storage layer (S3 compatible, server-only). Architecture: Upload Write Through (local disk = cache,
 // R2 = true source) + read back to the source (when the disk is missing files, it is retrieved from R2 via the dev server and dropped to the disk) - asset src
 // Keep the same origin /media/uploads/... path unchanged, the bucket remains private, and the key is only in keystore/.env.local.
-// S3 ingest(request_asset_upload_url); we use the server to read and write
-// Replace presigned direct transmission and avoid the CORS configuration of direct browser connection to R2.
+// Browser uploads are written through the authenticated server route; this avoids
+// exposing object-store credentials and does not require browser-to-R2 CORS.
 // Proxy: R2 endpoint domestic direct connection is sometimes good or bad - respect the HTTPS_PROXY/https_proxy environment variable (Clash).
 // Large files: put/get is streamed to avoid 1GB+ asset being packed into the Node heap.
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -19,13 +19,19 @@ import { HttpsProxyAgent } from 'https-proxy-agent';
 import { getKey, type KeyName } from './keystore.ts';
 
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
+/** Finite default: large enough for long-form source masters while bounding disk/R2 abuse. */
+export const DEFAULT_UPLOAD_MAX_BYTES = 20 * 1024 ** 3;
 
-/** A positive UPLOAD_MAX_BYTES is an explicit application cap; unset/invalid means no configured cap. */
+/** A positive UPLOAD_MAX_BYTES overrides the finite 20 GiB application default. */
 export function configuredUploadMaxBytes(): number | null {
   const raw = process.env.UPLOAD_MAX_BYTES?.trim();
   if (!raw) return null;
   const value = Math.floor(Number(raw));
   return Number.isFinite(value) && value > 0 ? Math.min(value, MAX_SAFE_BYTES) : null;
+}
+
+export function effectiveUploadMaxBytes(): number {
+  return configuredUploadMaxBytes() ?? DEFAULT_UPLOAD_MAX_BYTES;
 }
 
 function formatBytes(bytes: number): string {
@@ -319,7 +325,7 @@ async function rejectOversizedUploadObject(
 }
 
 
-/** Read through to disk, enforcing an explicit UPLOAD_MAX_BYTES against actual streamed bytes. */
+/** Read through to disk while enforcing the effective upload cap against streamed bytes. */
 export async function getUploadObjectToFile(
   name: string,
   destPath: string,
@@ -337,23 +343,16 @@ export async function getUploadObjectToFile(
     signal?.throwIfAborted();
     if (!res.Body) return null;
     const body = res.Body as Readable;
-    const maxBytes = configuredUploadMaxBytes();
-    if (maxBytes !== null && typeof res.ContentLength === 'number' && res.ContentLength > maxBytes) {
+    const maxBytes = effectiveUploadMaxBytes();
+    if (typeof res.ContentLength === 'number' && res.ContentLength > maxBytes) {
       return await rejectOversizedUploadObject(cfg, name, destPath, maxBytes, res.ETag, body, options);
     }
     let bytes: number;
     try {
-      if (maxBytes === null) {
-        await pipeline(body, createWriteStream(destPath), { signal });
-        signal?.throwIfAborted();
-        bytes = (await stat(destPath)).size;
-        signal?.throwIfAborted();
-      } else {
-        bytes = await writeBoundedUploadStream(body, destPath, maxBytes, signal);
-      }
+      bytes = await writeBoundedUploadStream(body, destPath, maxBytes, signal);
     } catch (error) {
       await unlink(destPath).catch(() => undefined);
-      if (error instanceof UploadTooLargeError && maxBytes !== null) {
+      if (error instanceof UploadTooLargeError) {
         try {
           await deleteOversizedUploadObject(cfg, name, maxBytes, res.ETag, options);
         } catch (cleanupError) {
@@ -381,8 +380,7 @@ function isNotFound(err: unknown): boolean {
 
 /**
  * Whether to allow browsers to directly connect to R2's pre-signed PUT/GET.
- * Enabled by default (when R2 is configured); set R2_PRESIGN=0 to only write through the server (to avoid CORS).
- * request_asset_upload_url → S3 presigned PUT.
+ * Enabled by default when R2 is configured; set R2_PRESIGN=0 to keep server-mediated writes.
  */
 export function r2PresignEnabled(get: Get = fromKeystore): boolean {
   if (!r2Config(get)) return false;

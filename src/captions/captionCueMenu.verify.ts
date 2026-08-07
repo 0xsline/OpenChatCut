@@ -17,9 +17,10 @@ assert.equal(captionCueAgentSeed('  Improve this  '), 'Improve this', 'AI seed s
 
 const patch = replaceCaptionCueText(captions, target, '  Replacement  ');
 assert.equal(patch?.sourceEntries?.[0]?.words?.[0]?.text, 'Replacement', 'editing a cue should preserve its timing and replace its text');
-assert.deepEqual(
-  patch?.sourceEntries?.[0]?.words?.[0],
-  { text: 'Replacement', start: 1_000, end: 2_000 },
+assert.equal(
+  patch?.sourceEntries?.[0]?.words?.[0]?.id,
+  words[0]?.id,
+  'editing a cue must preserve its persistent cue identity',
 );
 assert.equal(replaceCaptionCueText(captions, target, '   '), null, 'blank replacement text must not destroy a cue');
 

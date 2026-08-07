@@ -1,13 +1,8 @@
 /**
  * Safe-zone geometry (pure functions, no IO, headless-testable).
  *
-<<<<<<< HEAD
- * conventions. Occupancy grid → union over a time range → top-K largest empty
- * rects. All coordinates normalized [0..1], origin top-left.
-=======
  * Occupancy grid → union over a time range → top-K largest empty rects. All
  * coordinates normalized [0..1], origin top-left.
->>>>>>> 031e3b0 (fix(geometry): head-zone fallback for undetected faces)
  *
  * Semantics: geometry only (where the person is, where it's empty). Content
  * understanding (what is on screen) stays in the vision/LLM path.

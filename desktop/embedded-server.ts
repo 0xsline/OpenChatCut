@@ -57,7 +57,7 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
       },
     },
   } as unknown as ViteDevServer;
-  for (const plugin of serverPlugins()) {
+  for (const plugin of serverPlugins({ projectStoreHttp: false })) {
     const hook = plugin.configureServer;
     const fn = typeof hook === 'function' ? hook : hook?.handler;
     await fn?.call(plugin as never, fake);

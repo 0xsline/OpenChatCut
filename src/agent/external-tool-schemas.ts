@@ -1,130 +1,21 @@
-import type { AgentToolSchema } from './tool-schema';
-import { TOOL_SCHEMAS } from './tools';
+import { TOOL_SCHEMAS } from './tools.js';
+import { isExternalDraftTool } from './external-tool-policy.js';
 import {
-  isExternalDraftTool,
-  isExternalGlobalReadTool,
-  isExternalReadTool,
-  isExternalRealTool,
-} from './external-tool-policy';
-
-interface ExternalToolAnnotation {
-  readOnlyHint?: boolean;
-  destructiveHint?: boolean;
-  idempotentHint?: boolean;
-  openWorldHint?: boolean;
-}
-
-export interface ExternalRegisteredTool extends AgentToolSchema {
-  annotations?: ExternalToolAnnotation;
-}
-
-const SESSION_ID_PROPERTY = {
-  type: 'string',
-  description: 'Session id returned by begin_edit_session. All editor tools run against this draft.',
-};
-
-const SESSION_TOOLS: ExternalRegisteredTool[] = [
-  {
-    name: 'begin_edit_session',
-    description: 'Start an isolated OpenChatCut edit draft. Manual mode waits for project approval; auto mode applies all staged edits when review_edit_session is called.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        clientName: { type: 'string', description: 'Display name shown on the review card, such as Codex or Claude.' },
-        approvalMode: {
-          type: 'string',
-          enum: ['manual', 'auto'],
-          description: 'manual (default) requires approval in OpenChatCut; auto applies the full draft without human approval.',
-        },
-      },
-    },
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-  },
-  {
-    name: 'get_edit_session',
-    description: 'Read session status: drafting/awaiting_review or terminal applied/rejected/cancelled/stale/failed.',
-    input_schema: {
-      type: 'object',
-      properties: { editSessionId: SESSION_ID_PROPERTY },
-      required: ['editSessionId'],
-    },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  },
-  {
-    name: 'review_edit_session',
-    description: 'Finish drafting. Manual sessions show a review card; auto sessions immediately apply all staged edits.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        editSessionId: SESSION_ID_PROPERTY,
-        summary: { type: 'string', description: 'Short human-readable summary of the staged edit.' },
-      },
-      required: ['editSessionId'],
-    },
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-  },
-  {
-    name: 'discard_edit_session',
-    description: 'Cancel a draft or pending review without changing the live OpenChatCut project.',
-    input_schema: {
-      type: 'object',
-      properties: { editSessionId: SESSION_ID_PROPERTY },
-      required: ['editSessionId'],
-    },
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
-  },
-];
-
-function requiredWithSession(required: string[] | undefined): string[] {
-  return [...new Set([...(required ?? []), 'editSessionId'])];
-}
-
+  EXTERNAL_SESSION_TOOLS,
+  externalDraftSchemas,
+  externalGlobalReadSchemas,
+  externalRealSchemas,
+  type ExternalRegisteredTool,
+} from './external-tool-shape.js';
 
 /** MCP-facing catalog: stateless reads, lifecycle controls, then session-bound editor tools. */
 export function externalToolSchemas(): ExternalRegisteredTool[] {
-  const globalReadTools = TOOL_SCHEMAS
-    .filter((tool) => isExternalGlobalReadTool(tool.name))
-    .map((tool): ExternalRegisteredTool => ({
-      ...tool,
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false,
-      },
-    }));
-  const editorTools = TOOL_SCHEMAS.filter((tool) => isExternalDraftTool(tool.name)).map((tool): ExternalRegisteredTool => ({
-    ...tool,
-    description: `${tool.description ?? tool.name} ${isExternalReadTool(tool.name) ? 'Reads' : 'Edits'} the edit-session draft; pass editSessionId.`,
-    input_schema: {
-      ...tool.input_schema,
-      properties: { ...tool.input_schema.properties, editSessionId: SESSION_ID_PROPERTY },
-      required: requiredWithSession(tool.input_schema.required),
-    },
-    annotations: {
-      readOnlyHint: isExternalReadTool(tool.name),
-      destructiveHint: false,
-      idempotentHint: isExternalReadTool(tool.name),
-      openWorldHint: false,
-    },
-  }));
-  // Real-project tools (generation/export/import/transcription/analysis) —
-  // the same surface the internal agent sees. First call per session asks the
-  // user to confirm in the OpenChatCut UI, then executes on the live project.
-  const realTools = TOOL_SCHEMAS.filter((tool) => isExternalRealTool(tool.name)).map((tool): ExternalRegisteredTool => ({
-    ...tool,
-    description: `${tool.description ?? tool.name} Acts on the live project; the first call per session needs your confirmation in OpenChatCut. Pass editSessionId.`,
-    input_schema: {
-      ...tool.input_schema,
-      properties: { ...tool.input_schema.properties, editSessionId: SESSION_ID_PROPERTY },
-      required: requiredWithSession(tool.input_schema.required),
-    },
-    annotations: {
-      readOnlyHint: false,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
-  }));
-  return [...globalReadTools, ...SESSION_TOOLS, ...editorTools, ...realTools];
+  const globalReadTools = externalGlobalReadSchemas(TOOL_SCHEMAS);
+  const editorTools = externalDraftSchemas(
+    TOOL_SCHEMAS.filter((tool) => isExternalDraftTool(tool.name)),
+  );
+  const realTools = externalRealSchemas(TOOL_SCHEMAS);
+  return [...globalReadTools, ...EXTERNAL_SESSION_TOOLS, ...editorTools, ...realTools];
 }
+
+export type { ExternalRegisteredTool } from './external-tool-shape.js';

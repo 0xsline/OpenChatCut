@@ -1,7 +1,6 @@
-// External Agent Access Guide (MCP Discoverability, TODO F12): Displays the current actual endpoint + each client
-// Access the command and copy with one click. The endpoint is window.location.origin - web version/desktop version (including 5199
-// Occupied fallback random port) are automatically correct. Pure display component, does not touch any server state.
-import { useState } from 'react';
+// Trusted editor guide for the authenticated Streamable HTTP endpoint.
+import { useEffect, useState } from 'react';
+import { editorBootstrapInfo } from '../../agent/editor-credential';
 import { theme } from '../../theme';
 import { useT } from '../../i18n/locale';
 import { Icon } from '../icons';
@@ -11,13 +10,27 @@ interface Snippet {
   code: string;
 }
 
-function snippets(endpoint: string): Snippet[] {
+function snippets(endpoint: string, token: string): Snippet[] {
   return [
-    { label: 'Claude Code', code: `claude mcp add --transport http openchatcut ${endpoint}` },
-    { label: 'Codex', code: `codex mcp add openchatcut --url ${endpoint}` },
+    {
+      label: 'Claude Code',
+      code: `claude mcp add --transport http -H "Authorization: Bearer ${token}" openchatcut ${endpoint}`,
+    },
+    {
+      label: 'Codex',
+      code: `export OPENCHATCUT_MCP_TOKEN='${token}'\\ncodex mcp add openchatcut --url ${endpoint} --bearer-token-env-var OPENCHATCUT_MCP_TOKEN`,
+    },
     {
       label: 'Cursor (~/.cursor/mcp.json)',
-      code: JSON.stringify({ mcpServers: { openchatcut: { type: 'http', url: endpoint } } }, null, 2),
+      code: JSON.stringify({
+        mcpServers: {
+          openchatcut: {
+            type: 'http',
+            url: endpoint,
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        },
+      }, null, 2),
     },
   ];
 }
@@ -50,6 +63,16 @@ function CopyButton({ text }: { text: string }) {
 export function McpGuideDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
   const endpoint = `${window.location.origin}/api/external-mcp/mcp`;
+  const [mcpToken, setMcpToken] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void editorBootstrapInfo().then(
+      (info) => { if (active) setMcpToken(info.mcpToken); },
+      () => { if (active) setTokenError(true); },
+    );
+    return () => { active = false; };
+  }, []);
   const codeStyle: React.CSSProperties = {
     margin: 0, padding: '7px 9px', border: `0.5px solid ${theme.borderLight}`, borderRadius: 4,
     background: theme.inset, color: theme.text, fontSize: 11.5, lineHeight: 1.5,
@@ -94,7 +117,7 @@ export function McpGuideDialog({ onClose }: { onClose: () => void }) {
           <pre style={codeStyle}>{endpoint}</pre>
         </div>
 
-        {snippets(endpoint).map((snippet) => (
+        {mcpToken ? snippets(endpoint, mcpToken).map((snippet) => (
           <div key={snippet.label} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-start' }}>
               <span style={{ fontSize: 12, fontWeight: 600 }}>{snippet.label}</span>
@@ -102,17 +125,14 @@ export function McpGuideDialog({ onClose }: { onClose: () => void }) {
             </div>
             <pre style={codeStyle}>{snippet.code}</pre>
           </div>
-        ))}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 600 }}>Claude Desktop</span>
-          <div style={{ color: theme.textMuted, fontSize: 12, lineHeight: 1.55 }}>
-            {t('设置 → 连接器 → 添加自定义连接器,粘贴上面的端点地址即可。')}
+        )) : (
+          <div style={{ color: tokenError ? theme.danger : theme.textMuted, fontSize: 12 }}>
+            {tokenError ? t('无法读取 MCP 连接令牌，请从受信任的编辑器窗口重试。') : t('正在读取 MCP 连接令牌…')}
           </div>
-        </div>
+        )}
 
         <div style={{ color: theme.textDim, fontSize: 11.5, lineHeight: 1.55, borderTop: `0.5px solid ${theme.borderLight}`, paddingTop: 8 }}>
-          {t('端点默认仅监听本机;对外暴露时请配置 OPENCHATCUT_MCP_TOKEN 鉴权。桌面端 5199 端口被占用时会回退随机端口,以启动日志与本页地址为准。')}
+          {t('MCP 端点始终要求 Bearer 令牌。令牌只在当前受信任编辑器会话中显示，不写入工程、聊天或浏览器存储；服务重启后自动生成的令牌会变化，需要重新复制配置。OPENCHATCUT_MCP_TOKEN 可覆盖自动令牌。')}
         </div>
       </div>
     </div>

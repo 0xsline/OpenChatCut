@@ -31,6 +31,9 @@ export interface CaptionLayout {
 export type CaptionTemplate = 'plain' | 'black-bar' | 'persona' | 'off-the-wall' | 'the-french-dispatch' | 'dogme' | 'boyz-n-the-hood' | 'bubble-pop' | 'submagic' | 'story' | 'bili' | 'luxe' | 'noir' | 'atelier' | 'product' | 'signal' | 'studio' | 'white-card' | 'bold-outline' | 'deyi-card' | 'tiktok' | 'netflix';
 export type CaptionPacing = 'word' | 'phrase';
 
+/** Deterministic burn-in animation shared by Player preview and Remotion export. */
+export type CaptionMotionPreset = 'none' | 'fade-up' | 'pop' | 'word-pop' | 'karaoke-pulse';
+
 /** One translated caption phrase, timed on the (edited) timeline in ms. */
 export interface TranslatedCue {
   start: number;
@@ -42,6 +45,8 @@ export interface CaptionsData {
   enabled: boolean;
   template: CaptionTemplate;
   pacing: CaptionPacing;
+  /** Optional frame-derived motion. Missing and `none` both preserve the static legacy render. */
+  motionPreset?: CaptionMotionPreset;
   /** audio item whose (edited) transcript drives the captions */
   sourceItemId?: string | null;
   /** MULTI-source merge — Captions can summarize all transcribed tracks: item ids whose (edited) transcripts
@@ -67,13 +72,10 @@ export interface CaptionsData {
    * applies on the single-source path (`sourceItemId`); the multi-source merge
    * ignores it (no single transcript to key a variant off). Unset = show source. */
   captionVariantId?: string;
-  /** per-word DISPLAY overrides for the captions overlay (hide / retext / force
-   * a page break), WITHOUT touching the transcript or its timing. Keyed by the
-   * word's index in the source track transcript (or in the standalone `words`
-   * fallback) — see `read_captions`/`edit_caption_words` in src/agent. When
-   * MULTIPLE sources are merged (`sources`/`sourceMode:'timeline'`), the index
-   * space instead keys off the word's POSITION in the merged output (0..N-1) —
-   * see resolveCaptionWordIndices in resolve.ts. */
+  /** Per-word DISPLAY overrides for the captions overlay (hide / retext / force
+   * a page break), WITHOUT touching the transcript or its timing. Existing
+   * numeric keys remain readable; new writes also persist `wordRef` so edits
+   * continue to follow the same source word after regrouping or source reorder. */
   wordOverrides?: Record<number, CaptionWordOverride>;
   /** custom style fields layered OVER the template preset (edit_captions
    * action=style). Only what the user set; unset fields inherit the preset. */
@@ -91,6 +93,8 @@ export interface CaptionsData {
 }
 
 export interface CaptionWordOverride {
+  /** Opaque identity returned by read_captions for the source word this override targets. */
+  wordRef?: string;
   hidden?: boolean;
   text?: string;
   forceBreak?: boolean;
@@ -163,48 +167,43 @@ export interface CaptionPage {
   end: number; // ms
 }
 
-const SENTENCE_END = /[.!?。！?…,,]$/;
 const MAX_PHRASE_WORDS = 6;
-const GAP_MS = 700;
 const LINGER_MS = 1500;
-
-// Group words into display pages: one word each (word pacing), or short phrases
-// broken on punctuation / length / a big pause (phrase pacing). `breakBefore`
-// (positions into `words`) forces a page to start right there — used by
-// wordOverrides' forceBreak (src/captions/resolve.ts). Optional + defaults to
-// none, so existing callers (translate.ts, no-override render) stay unaffected.
-// `maxCharsPerLine` (optional) switches phrase pacing to the content-aware
-// segmenter (segmenter.ts, breakpoint scoring); unset → the old logic remains unchanged byte by byte.
-export function paginate(words: TranscriptWord[], pacing: CaptionPacing, maxPhraseWords = MAX_PHRASE_WORDS, breakBefore?: Set<number>, maxCharsPerLine?: number): CaptionPage[] {
+/** Shared preview/export contract: phrase pages fit at most two estimated visual lines. */
+export const CAPTION_MAX_VISUAL_LINES = 2;
+export const CAPTION_MAX_CHARS_PER_LINE = 24;
+// Group words into display pages. Phrase pacing always uses the content-aware
+// segmenter; `breakBefore` boundaries are cut first and therefore cannot be
+// crossed by semantic regrouping. The character budget is multiplied by the
+// clamped visual-line count, so overflow moves to another timed page rather
+// than being truncated.
+export function paginate(
+  words: TranscriptWord[],
+  pacing: CaptionPacing,
+  maxPhraseWords = MAX_PHRASE_WORDS,
+  breakBefore?: Set<number>,
+  maxCharsPerLine = CAPTION_MAX_CHARS_PER_LINE,
+  maxLines = CAPTION_MAX_VISUAL_LINES,
+): CaptionPage[] {
   if (pacing === 'word') return words.map((w) => ({ words: [w], start: w.start, end: w.end }));
-  if (maxCharsPerLine !== undefined) return paginateContentAware(words, maxPhraseWords, breakBefore, maxCharsPerLine);
-  const pages: CaptionPage[] = [];
-  let cur: TranscriptWord[] = [];
-  const flush = () => {
-    if (cur.length) pages.push({ words: cur, start: cur[0].start, end: cur[cur.length - 1].end });
-    cur = [];
-  };
-  for (let i = 0; i < words.length; i++) {
-    if (breakBefore?.has(i) && cur.length) flush(); // forceBreak: Start a new page before this word
-    cur.push(words[i]);
-    const next = words[i + 1];
-    const bigGap = next ? next.start - words[i].end > GAP_MS : false;
-    if (cur.length >= maxPhraseWords || SENTENCE_END.test(words[i].text) || bigGap) flush();
-  }
-  flush();
-  return pages;
+  const requestedLines = Number.isFinite(maxLines) ? Math.floor(maxLines) : CAPTION_MAX_VISUAL_LINES;
+  const lines = Math.max(1, Math.min(CAPTION_MAX_VISUAL_LINES, requestedLines));
+  const chars = Number.isFinite(maxCharsPerLine) && maxCharsPerLine > 0
+    ? maxCharsPerLine
+    : CAPTION_MAX_CHARS_PER_LINE;
+  return paginateContentAware(words, maxPhraseWords, breakBefore, chars * lines);
 }
 
-// Content-aware paging (P1-#3): forceBreak still has the highest priority - press breakBefore first to cut into hard pieces, and then
-// Run segmentWords (punctuation/end of sentence/CJK particle/orphan word scoring, fallback and line break) in each block. only if
-// The caller must explicitly provide maxCharsPerLine before going here; 21 presets are not passed by default, and the behavior remains unchanged (enabling presets one by one will be left for later).
-function paginateContentAware(words: TranscriptWord[], maxPhraseWords: number, breakBefore: Set<number> | undefined, maxCharsPerLine: number): CaptionPage[] {
+// Forced page breaks split the input into hard chunks before content-aware
+// segmentation. Intl.Segmenter enriches CJK word boundaries when available;
+// segmentWords has a deterministic scoring fallback when it is absent.
+function paginateContentAware(words: TranscriptWord[], maxPhraseWords: number, breakBefore: Set<number> | undefined, maxCharsPerPage: number): CaptionPage[] {
   const pages: CaptionPage[] = [];
   const cuts = [...(breakBefore ?? [])].filter((i) => i > 0 && i < words.length).sort((a, b) => a - b);
   let chunkStart = 0;
   for (const boundary of [...cuts, words.length]) {
     const chunk = words.slice(chunkStart, boundary);
-    const starts = segmentWords(chunk, { maxCharsPerLine, wordsPerPage: maxPhraseWords });
+    const starts = segmentWords(chunk, { maxCharsPerLine: maxCharsPerPage, wordsPerPage: maxPhraseWords });
     for (let s = 0; s < starts.length; s++) {
       const ws = chunk.slice(starts[s], starts[s + 1] ?? chunk.length);
       if (ws.length) pages.push({ words: ws, start: ws[0].start, end: ws[ws.length - 1].end });

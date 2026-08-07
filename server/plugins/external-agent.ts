@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { TLSSocket } from 'node:tls';
 import type { Plugin } from 'vite';
@@ -12,16 +11,20 @@ import {
   type ExternalToolSchema,
 } from '../external-agent/broker.ts';
 import { handleMcpRequest, mcpTools } from '../external-agent/mcp.ts';
-
+import {
+  EDITOR_BOOTSTRAP_HEADER,
+  configuredEditorOrigin,
+  editorBootstrapPayload,
+  editorCredentialAuthorized,
+  externalMcpAuthorized,
+  headerValue,
+  trustedEditorRequest,
+} from '../editor-auth.ts';
+import {
+  consumeUploadReceipt,
+  mintImportUpload,
+} from '../external-agent/import-token.ts';
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
-const EDITOR_BRIDGE_CREDENTIAL_HEADER = 'x-openchatcut-editor-credential';
-const EDITOR_BRIDGE_BOOTSTRAP_HEADER = 'x-openchatcut-editor-bootstrap';
-const EDITOR_BRIDGE_CREDENTIAL = randomBytes(32).toString('base64url');
-const LOCAL_EDITOR_HOSTS: Record<string, true> = {
-  localhost: true,
-  '127.0.0.1': true,
-  '[::1]': true,
-};
 
 export interface BridgeOperations {
   registerEditor: typeof registerEditor;
@@ -90,63 +93,6 @@ function validOutcome(value: unknown): value is ExternalCallTerminalOutcome {
 }
 
 
-export function externalMcpAuthorized(req: IncomingMessage): boolean {
-  const token = process.env.OPENCHATCUT_MCP_TOKEN?.trim();
-  return !token || req.headers.authorization === `Bearer ${token}`;
-}
-
-function headerValue(req: IncomingMessage, name: string): string | null {
-  const value = req.headers[name];
-  return typeof value === 'string' && value ? value : null;
-}
-
-function configuredEditorOrigin(): string | null {
-  const configured = process.env.OPENCHATCUT_EDITOR_URL?.trim();
-  if (!configured) return null;
-  try {
-    const url = new URL(configured);
-    if (
-      (url.protocol !== 'http:' && url.protocol !== 'https:')
-      || url.username
-      || url.password
-    ) return null;
-    return url.origin;
-  } catch {
-    return null;
-  }
-}
-
-function requestEditorOrigin(req: IncomingMessage): string | null {
-  const host = headerValue(req, 'host');
-  if (!host || /[/\\@?#,\s]/.test(host)) return null;
-  const configured = process.env.OPENCHATCUT_EDITOR_URL?.trim();
-  const expected = configuredEditorOrigin();
-  if (configured && !expected) return null;
-  const protocol = expected
-    ? new URL(expected).protocol
-    : req.socket instanceof TLSSocket
-      ? 'https:'
-      : 'http:';
-  try {
-    const actual = new URL(`${protocol}//${host}`);
-    if (expected) return actual.origin === expected ? expected : null;
-    return LOCAL_EDITOR_HOSTS[actual.hostname.toLowerCase()] === true ? actual.origin : null;
-  } catch {
-    return null;
-  }
-}
-
-function trustedEditorRequest(req: IncomingMessage, requireOrigin: boolean): boolean {
-  const expected = requestEditorOrigin(req);
-  if (!expected) return false;
-  const origin = headerValue(req, 'origin');
-  if (!origin) return !requireOrigin;
-  try {
-    return new URL(origin).origin === origin && origin === expected;
-  } catch {
-    return false;
-  }
-}
 
 
 
@@ -171,20 +117,24 @@ export async function handleExternalAgentBridge(
     const contentType = headerValue(req, 'content-type');
     if (
       contentType?.split(';', 1)[0].trim().toLowerCase() !== 'application/json'
-      || headerValue(req, EDITOR_BRIDGE_BOOTSTRAP_HEADER) !== '1'
+      || headerValue(req, EDITOR_BOOTSTRAP_HEADER) !== '1'
     ) {
       sendJson(res, 415, { error: 'editor bootstrap requires JSON and bootstrap header' });
       return;
     }
+    if (!editorCredentialAuthorized(req, true)) {
+      sendJson(res, 401, { error: 'invalid editor launch credential' });
+      return;
+    }
     await readJson(req);
-    sendJson(res, 200, { credential: EDITOR_BRIDGE_CREDENTIAL });
+    sendJson(res, 200, editorBootstrapPayload());
     return;
   }
   if (!trustedEditorRequest(req, req.method === 'POST')) {
     sendJson(res, 403, { error: 'untrusted editor origin' });
     return;
   }
-  if (headerValue(req, EDITOR_BRIDGE_CREDENTIAL_HEADER) !== EDITOR_BRIDGE_CREDENTIAL) {
+  if (!editorCredentialAuthorized(req, req.method === 'POST')) {
     sendJson(res, 401, { error: 'invalid editor bridge credential' });
     return;
   }
@@ -194,6 +144,20 @@ export async function handleExternalAgentBridge(
     && contentType?.split(';', 1)[0].trim().toLowerCase() !== 'application/json'
   ) {
     sendJson(res, 415, { error: 'editor bridge writes require JSON' });
+    return;
+  }
+  if (req.method === 'POST' && url.pathname === '/import-token') {
+    sendJson(res, 201, mintImportUpload(await readJson(req)));
+    return;
+  }
+  if (req.method === 'POST' && url.pathname === '/upload-receipt') {
+    const body = await readJson(req);
+    const receipt = consumeUploadReceipt(body.receipt, body.projectId);
+    if (!receipt) {
+      sendJson(res, 409, { error: 'upload receipt is invalid, expired, consumed, or outside this project' });
+      return;
+    }
+    sendJson(res, 200, receipt);
     return;
   }
   if (req.method === 'POST' && url.pathname === '/register') {

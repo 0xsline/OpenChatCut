@@ -188,6 +188,7 @@ export async function execMediaPoolTool(name: string, args: Args, ctx: AgentCont
       ctx.commands.relinkMediaAsset(asset.id, {
         src,
         name,
+        sourceContentHash: undefined,
         sourceFilename,
         durationInFrames,
         width,

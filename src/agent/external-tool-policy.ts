@@ -14,12 +14,47 @@ const DRAFT_EDIT_TOOL_NAMES = new Set([
   'duplicate_item', 'remove_item', 'split_item', 'add_audio', 'clear_timeline',
   'set_aspect_ratio', 'manage_timelines', 'edit_track', 'apply_script',
   'edit_item', 'manage_effects', 'edit_captions', 'update_watermark',
-  'manage_markers',
+  'manage_markers', 'apply_caption_avoidance', 'place_graphics_in_safe_zone', 'auto_reframe',
 ]);
+
+const SERVER_DIRECT_READ_TOOL_NAMES: Record<string, true> = {
+  read_timeline: true,
+  read_script: true,
+  read_captions: true,
+  read_project: true,
+  read_transcript: true,
+  find_transcript: true,
+};
+
+const SERVER_DIRECT_EDIT_TOOL_NAMES: Record<string, true> = {
+  update_item_props: true,
+  move_item: true,
+  set_item_timing: true,
+  duplicate_item: true,
+  remove_item: true,
+  split_item: true,
+  clear_timeline: true,
+  set_aspect_ratio: true,
+  manage_timelines: true,
+  edit_track: true,
+  apply_script: true,
+  edit_captions: true,
+  update_watermark: true,
+  manage_markers: true,
+};
+
+const SERVER_DIRECT_BROWSER_ACTIONS: Record<string, true> = {
+  preset_apply: true,
+  preset_delete: true,
+  preset_list: true,
+  preset_rename: true,
+  preset_save: true,
+  bilingual: true,
+};
+
 export function isExternalGlobalReadTool(name: string): boolean {
   return GLOBAL_READ_TOOL_NAMES[name] === true;
 }
-
 
 export function isExternalReadTool(name: string): boolean {
   return READ_ONLY_TOOL_NAMES.has(name);
@@ -27,6 +62,27 @@ export function isExternalReadTool(name: string): boolean {
 
 export function isExternalDraftTool(name: string): boolean {
   return isExternalReadTool(name) || DRAFT_EDIT_TOOL_NAMES.has(name);
+}
+
+/** Data-only tools that can execute against a server-side EditorCore draft.
+ * This is intentionally explicit: every newly added tool remains browser-only
+ * until its runtime dependencies and side effects are reviewed. */
+export function isExternalServerDirectTool(name: string): boolean {
+  return SERVER_DIRECT_READ_TOOL_NAMES[name] === true
+    || SERVER_DIRECT_EDIT_TOOL_NAMES[name] === true;
+}
+
+/** Some otherwise data-only tools multiplex browser-backed actions. */
+export function isExternalServerDirectCall(
+  name: string,
+  args: Readonly<Record<string, unknown>>,
+): boolean {
+  if (!isExternalServerDirectTool(name)) return false;
+  if (name !== 'edit_captions') return true;
+  const action = typeof args.action === 'string' ? args.action.trim() : '';
+  if (SERVER_DIRECT_BROWSER_ACTIONS[action] === true || action === 'bilingual') return false;
+  const mode = typeof args.mode === 'string' ? args.mode.trim() : '';
+  return action !== 'language_mode' || mode !== 'bilingual';
 }
 
 /** Real-project operations (generation, export, import, transcription, analysis

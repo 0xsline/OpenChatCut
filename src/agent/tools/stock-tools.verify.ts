@@ -23,6 +23,18 @@ const context: AgentContext = {
 };
 
 const originalFetch = globalThis.fetch;
+const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+Object.defineProperty(globalThis, 'window', {
+  configurable: true,
+  value: {
+    openChatCutDesktop: {
+      editorCredentials: async () => ({
+        credential: 'stock-tool-test',
+        mcpToken: 'stock-tool-test',
+      }),
+    },
+  },
+});
 const importRequests: Array<Record<string, unknown>> = [];
 globalThis.fetch = async (_input, init) => {
   const request = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
@@ -83,6 +95,8 @@ try {
   assert.equal(legacyAsset?.originalFilePath, undefined);
 } finally {
   globalThis.fetch = originalFetch;
+  if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+  else Reflect.deleteProperty(globalThis, 'window');
 }
 
 console.log('stock source identity verify: ok');

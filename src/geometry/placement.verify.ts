@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import {
   graphicOverlapsFace,
+  projectGeometryThroughItem,
   safeBoxForRange,
   transformFromSafeBox,
 } from './placement';
+import { canPlaceGraphic, pickUnderlyingVideo } from '../agent/tools/placement-tools';
+import type { TimelineItem, TimelineState } from '../editor/types';
 import type { VisualGeometryAsset } from './visual-geometry';
 
 const geometry: VisualGeometryAsset = {
@@ -59,6 +62,59 @@ async function main(): Promise<void> {
 
   // 6. Degenerate input → null.
   assert.equal(transformFromSafeBox({ x: 0, y: 0, w: 0, h: 0 }, 1.78), null);
+
+  // 7. Source geometry follows the underlay's transform and reframe zoom.
+  const video = {
+    id: 'video',
+    name: 'video',
+    kind: 'video',
+    track: 'V2',
+    startFrame: 0,
+    durationInFrames: 300,
+    width: 1000,
+    height: 1000,
+    transform: { x: 20, y: 0, scale: 0.5 },
+    zoom: { magnification: 2, focalPointX: 0.5, focalPointY: 0.5, shape: 'hold' },
+  } as TimelineItem;
+  const projectionState = {
+    width: 1000,
+    height: 1000,
+    fps: 30,
+    fit: 'contain',
+    items: [],
+    tracks: {},
+  } as unknown as TimelineState;
+  const projected = projectGeometryThroughItem(geometry, projectionState, video);
+  const projectedFace = projected.segments[0]!.zone.face!;
+  assert.ok(Math.abs(projectedFace.x - 0.3) < 1e-6);
+  assert.ok(Math.abs(projectedFace.w - 0.25) < 1e-6);
+
+  // 8. Non-axis-aligned underlays decline projection instead of treating
+  // the transformed polygon's unsafe bounding box as a safe rectangle.
+  const rotated = projectGeometryThroughItem(geometry, projectionState, {
+    ...video,
+    transform: { ...video.transform, rotation: 45 },
+  });
+  assert.deepEqual(rotated.segments[0]!.zone.rects, []);
+  assert.equal(rotated.segments[0]!.zone.face, null);
+  assert.equal(safeBoxForRange(rotated, 2, 8), null);
+
+  // 9. Underlay selection respects visual order and hidden tracks.
+  const graphic = { ...video, id: 'graphic', kind: 'text', track: 'V3' } as TimelineItem;
+  const hiddenVideo = { ...video, id: 'hidden', track: 'V2' } as TimelineItem;
+  const visibleVideo = { ...video, id: 'visible', track: 'V1' } as TimelineItem;
+  const layered = {
+    ...projectionState,
+    items: [graphic, hiddenVideo, visibleVideo],
+    trackOrder: ['V3', 'V2', 'V1'],
+    tracks: {
+      V3: { kind: 'video' },
+      V2: { kind: 'video', hidden: true },
+      V1: { kind: 'video' },
+    },
+  } as TimelineState;
+  assert.equal(pickUnderlyingVideo(layered, graphic, 0, 100)?.id, 'visible');
+  assert.equal(canPlaceGraphic({ ...layered, tracks: { ...layered.tracks, V3: { kind: 'video', locked: true } } }, graphic), false);
 
   console.log('placement.verify: all assertions passed');
 }

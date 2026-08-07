@@ -32,6 +32,18 @@ export interface ExternalEditSession {
   updatedAt: number;
   appliedOperationCount?: number;
 }
+export interface ExternalDraftCheckpoint {
+  version: 1;
+  sessionId: string;
+  clientName: string;
+  approvalMode: ExternalApprovalMode;
+  baseRevision: string;
+  draftDoc: ProjectDoc;
+  operations: Operation[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 
 export class ExternalEditSessionOutcomeError extends Error {
   readonly outcome: Exclude<ExternalEditSessionTerminalStatus, 'applied'>;
@@ -46,8 +58,16 @@ export class ExternalEditSessionOutcomeError extends Error {
   }
 }
 
+function canonicalProjectJson(doc: ProjectDoc): string {
+  return JSON.stringify(doc, (_key, value: unknown) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(Object.keys(record).sort().map((key) => [key, record[key]]));
+  });
+}
+
 export function revisionOf(doc: ProjectDoc): string {
-  const input = JSON.stringify(doc);
+  const input = canonicalProjectJson(doc);
   let hash = 0x811c9dc5;
   for (let index = 0; index < input.length; index += 1) {
     hash ^= input.charCodeAt(index);
@@ -91,6 +111,44 @@ export function createExternalEditSession(
     proposal: null,
     createdAt: now,
     updatedAt: now,
+  };
+}
+export function checkpointExternalEditSession(
+  session: ExternalEditSession,
+): ExternalDraftCheckpoint {
+  if (session.status !== 'drafting' || !session.draft) {
+    throw new Error(`Edit session ${session.id} is ${session.status}, not drafting.`);
+  }
+  return {
+    version: 1,
+    sessionId: session.id,
+    clientName: session.clientName,
+    approvalMode: session.approvalMode,
+    baseRevision: session.baseRevision,
+    draftDoc: session.draft.getDoc(),
+    operations: session.operations,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+  };
+}
+
+export function restoreDraftingExternalEditSession(
+  checkpoint: ExternalDraftCheckpoint,
+  baseDoc: ProjectDoc,
+): ExternalEditSession {
+  return {
+    id: checkpoint.sessionId,
+    clientName: normalizedClientName(checkpoint.clientName),
+    approvalMode: normalizedApprovalMode(checkpoint.approvalMode),
+    status: 'drafting',
+    baseRevision: checkpoint.baseRevision,
+    baseDoc,
+    draft: makeDraft(checkpoint.draftDoc),
+    operations: checkpoint.operations,
+    operationCount: checkpoint.operations.length,
+    proposal: null,
+    createdAt: checkpoint.createdAt,
+    updatedAt: checkpoint.updatedAt,
   };
 }
 

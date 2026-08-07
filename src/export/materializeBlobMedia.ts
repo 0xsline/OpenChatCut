@@ -1,5 +1,6 @@
 import { t } from '../i18n/locale';
 import { createExportFailure, ExportFailureError } from './exportFailure';
+import { editorCredentialHeaders } from '../agent/editor-credential';
 
 /**
  * Blob URLs only exist inside the browser tab that created them and are revoked
@@ -116,7 +117,9 @@ async function publishBlobSource(
   const name = safeUploadName(candidate, blob.type);
   const upload = await fetcher(`/upload?name=${encodeURIComponent(name)}`, {
     method: 'POST',
-    headers: blob.type ? { 'content-type': blob.type } : undefined,
+    headers: options.fetcher
+      ? (blob.type ? { 'content-type': blob.type } : undefined)
+      : await editorCredentialHeaders(blob.type ? { 'content-type': blob.type } : undefined),
     body: blob,
     signal: options.signal,
   });

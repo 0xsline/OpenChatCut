@@ -6,11 +6,11 @@ export const UPLOAD_TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'import_media',
     description: [
-      'Local media import helpers.',
-      'action=create_session: short session token + directUpload URL shape.',
-      'action=register_placeholder: register a media-pool row with a deterministic /media/uploads path',
-      'BEFORE bytes land so you can edit_item / organize immediately.',
-      'Then POST/PUT bytes to the returned uploadUrl, then finalize_uploaded_asset (normalize + ASR).',
+      'Create a formal external import session with one short-lived, single-use upload slot.',
+      'The slot is bound to session, project, asset, filename, POST method, MIME type, and exact byte size.',
+      'Upload the declared bytes, then pass only the opaque server receipt to finalize_uploaded_asset.',
+      'No media-pool asset is published before finalize succeeds.',
+      'Provide assetId only to replace an existing pool asset; omit it for a new asset.',
       'Prefer download_media for public URLs.',
     ].join(' '),
     input_schema: {
@@ -18,70 +18,38 @@ export const UPLOAD_TOOL_SCHEMAS: AgentToolSchema[] = [
       properties: {
         action: {
           type: 'string',
-          enum: ['create_session', 'register_placeholder'],
-          description: 'create_session | register_placeholder (early pool row before upload).',
+          enum: ['create_session'],
+          description: 'Must be create_session.',
         },
-        projectId: { type: 'string', description: 'Ignored; the active project is used.' },
-        // register_placeholder fields
+        assetId: {
+          type: 'string',
+          description: 'Optional existing media-pool asset id or unique prefix to replace.',
+        },
         assetType: {
           type: 'string',
           enum: [...ASSET_TYPES],
-          description: 'register_placeholder: audio|gif|image|svg|video.',
+          description: 'audio|gif|image|svg|video.',
         },
-        filename: { type: 'string', description: 'register_placeholder: original filename.' },
-        contentType: { type: 'string', description: 'register_placeholder: MIME type, e.g. video/mp4.' },
-        durationInSeconds: { type: 'number', description: 'register_placeholder: required for audio/video/gif.' },
-        width: { type: 'number' },
-        height: { type: 'number' },
-        hasAudioTrack: { type: 'boolean', description: 'register_placeholder: if false, skip later ASR.' },
-        size: { type: 'number', description: 'register_placeholder: optional known byte size.' },
-      },
-      required: ['action'],
-    },
-  },
-  {
-    name: 'request_asset_upload_url',
-    description: [
-      'Get a one-time local upload target to push media bytes into the project.',
-      'LOCAL-DEV: returns POST/PUT /upload?name=&assetId= (not real S3). Then upload bytes with Content-Type matching contentType,',
-      'then call finalize_uploaded_asset with the returned assetId/fileKey/readUrl/size/type.',
-      'Prefer download_media/push_asset for public URLs; use this when you already have local file bytes.',
-    ].join(' '),
-    input_schema: {
-      type: 'object',
-      properties: {
-        assetType: {
-          type: 'string',
-          enum: [...ASSET_TYPES],
-          description: 'File-backed asset type: audio, gif, image, svg, or video.',
-        },
-        contentType: {
-          type: 'string',
-          description: 'MIME type of the file you will upload, e.g. video/mp4. Header MUST match.',
-        },
-        filename: { type: 'string', description: 'Original filename, e.g. clip.mp4.' },
-        size: { type: 'number', description: 'Byte size if known.' },
+        filename: { type: 'string', description: 'Safe original filename used to scope the upload.' },
+        contentType: { type: 'string', description: 'MIME type, e.g. video/mp4.' },
+        size: { type: 'integer', minimum: 1, description: 'Required exact byte size of the upload.' },
         projectId: { type: 'string', description: 'Ignored; the active project is used.' },
       },
-      required: ['assetType', 'contentType', 'filename'],
+      required: ['action', 'assetType', 'filename', 'contentType', 'size'],
     },
   },
   {
     name: 'finalize_uploaded_asset',
     description: [
-      'Register an asset after bytes were uploaded via request_asset_upload_url.',
-      'Creates a media-pool row pointing at the local /media/uploads path. Do not call before upload completes.',
-      'gif/svg map to kind=image. durationInSeconds required for audio/video/gif; width/height for image/video.',
+      'Finalize bytes uploaded through an external upload handoff.',
+      'Pass only the opaque receipt from the successful upload response; path, hash, size, type, filename, and asset identity are resolved server-side.',
+      'The receipt is one-time and project-bound. Do not call before upload completes.',
+      'durationInSeconds is required for audio/video/gif; width/height may supply media metadata.',
     ].join(' '),
     input_schema: {
       type: 'object',
       properties: {
-        assetId: { type: 'string', description: 'assetId from request_asset_upload_url.' },
-        fileKey: { type: 'string', description: 'fileKey from request_asset_upload_url.' },
-        filename: { type: 'string' },
-        readUrl: { type: 'string', description: 'readUrl from request_asset_upload_url (local /media/uploads/…).' },
-        size: { type: 'number', description: 'Positive byte size of the uploaded file.' },
-        type: { type: 'string', enum: [...ASSET_TYPES] },
+        receipt: { type: 'string', description: 'Opaque one-time receipt from the successful upload response.' },
         durationInSeconds: { type: 'number', description: 'Required for audio, gif, video.' },
         width: { type: 'number' },
         height: { type: 'number' },
@@ -89,7 +57,7 @@ export const UPLOAD_TOOL_SCHEMAS: AgentToolSchema[] = [
         hasAudioTrack: { type: 'boolean' },
         projectId: { type: 'string' },
       },
-      required: ['assetId', 'fileKey', 'filename', 'readUrl', 'size', 'type'],
+      required: ['receipt'],
     },
   },
   {

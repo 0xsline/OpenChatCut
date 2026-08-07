@@ -19,12 +19,12 @@ const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 const clampMag = (x: number): number => Math.max(0.05, Math.min(16, x));
 
 // Default constants.
-const DEFAULT_INTERVAL = 15; // Sample every 15 frames, about 0.5 seconds at 30 fps.
+export const DEFAULT_REFRAME_INTERVAL_FRAMES = 15;
+export const DEFAULT_REFRAME_MAX_SAMPLES = 60;
+export const DEFAULT_REFRAME_SMOOTH = 0.45;
 const DEFAULT_GRID_COLS = 16;
 const DEFAULT_GRID_ROWS = 9;
-const DEFAULT_MAX_SAMPLES = 60; // Bound seeks while allowing longer talking-head footage.
-const DEFAULT_SENSITIVITY = 0.5; // 0..1; higher values pull focus toward the strongest energy region.
-const DEFAULT_SMOOTH = 0.45; // EMA smoothing: 0 disables smoothing and 1 is maximally sticky.
+const DEFAULT_SENSITIVITY = 0.5;
 const SAMPLE_CANVAS_W = 96; // Small samples retain enough energy detail while remaining fast.
 const SAMPLE_CANVAS_H = 54;
 
@@ -162,12 +162,14 @@ function emphasize(grid: number[][], sensitivity: number): number[][] {
 export function sampleFrames(durationInFrames: number, interval: number, maxSamples: number): number[] {
   const last = Math.max(0, Math.floor(durationInFrames) - 1);
   if (durationInFrames <= 0) return [];
+  const cap = Math.max(1, Math.floor(maxSamples));
+  if (cap === 1) return [0];
   let step = Math.max(1, Math.floor(interval));
   const count = Math.floor(last / step) + 1;
-  if (count > maxSamples && maxSamples > 1) step = Math.max(1, Math.ceil(last / (maxSamples - 1)));
+  if (count > cap) step = Math.max(1, Math.ceil(last / (cap - 1)));
   const frames: number[] = [];
-  for (let f = 0; f <= last; f += step) frames.push(f);
-  if (frames.length === 0 || frames[frames.length - 1] !== last) frames.push(last);
+  for (let frame = 0; frame <= last; frame += step) frames.push(frame);
+  if (frames[frames.length - 1] !== last) frames.push(last);
   return frames;
 }
 
@@ -264,8 +266,8 @@ export async function detectFocalPoints(source: HTMLVideoElement | FrameSampler,
   const cols = Math.max(2, Math.floor(opts.gridCols ?? DEFAULT_GRID_COLS));
   const rows = Math.max(2, Math.floor(opts.gridRows ?? DEFAULT_GRID_ROWS));
   const sensitivity = clamp01(opts.sensitivity ?? DEFAULT_SENSITIVITY);
-  const interval = Math.max(1, Math.floor(opts.intervalFrames ?? DEFAULT_INTERVAL));
-  const maxSamples = Math.max(1, Math.floor(opts.maxSamples ?? DEFAULT_MAX_SAMPLES));
+  const interval = Math.max(1, Math.floor(opts.intervalFrames ?? DEFAULT_REFRAME_INTERVAL_FRAMES));
+  const maxSamples = Math.max(1, Math.floor(opts.maxSamples ?? DEFAULT_REFRAME_MAX_SAMPLES));
 
   const isVideo = typeof HTMLVideoElement !== 'undefined' && source instanceof HTMLVideoElement;
   const srcW = opts.srcWidth ?? (isVideo ? (source as HTMLVideoElement).videoWidth : 0) ?? 0;
@@ -280,7 +282,7 @@ export async function detectFocalPoints(source: HTMLVideoElement | FrameSampler,
       };
 
   const frames = sampleFrames(opts.durationInFrames, interval, maxSamples);
-  const smooth = clamp01(opts.smooth ?? DEFAULT_SMOOTH);
+  const smooth = clamp01(opts.smooth ?? DEFAULT_REFRAME_SMOOTH);
   const out: DetectedKeyframe[] = [];
   let prevX: number | null = null;
   let prevY: number | null = null;

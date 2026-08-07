@@ -72,6 +72,19 @@ const mediaRows = (src: string, value: string, name = src.split('/').pop() ?? 'f
 ];
 
 const originalFetch = globalThis.fetch;
+const testGlobals = globalThis as unknown as {
+  window?: {
+    openChatCutDesktop?: {
+      editorCredentials(): Promise<{ credential: string; mcpToken: string }>;
+    };
+  };
+};
+const originalWindow = testGlobals.window;
+testGlobals.window = {
+  openChatCutDesktop: {
+    editorCredentials: async () => ({ credential: 'project-transfer-test', mcpToken: 'project-transfer-test' }),
+  },
+};
 try {
   const uploads: string[] = [];
   const serverDeletes: string[] = [];
@@ -303,6 +316,8 @@ try {
   }
 } finally {
   globalThis.fetch = originalFetch;
+  if (originalWindow === undefined) delete testGlobals.window;
+  else testGlobals.window = originalWindow;
   resetMediaBlobMemory();
 }
 

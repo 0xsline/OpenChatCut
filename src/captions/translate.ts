@@ -1,6 +1,6 @@
 import type { TimelineItem } from '../editor/types';
 import type { CaptionsData, TranslatedCue } from './types';
-import { paginate } from './types';
+import { CAPTION_MAX_CHARS_PER_LINE, CAPTION_MAX_VISUAL_LINES, paginate } from './types';
 import { resolveCaptionWords } from './resolve';
 import { CAPTION_STYLE_BY_ID } from './styles';
 
@@ -15,7 +15,14 @@ export async function buildTranslation(
   lang: string,
 ): Promise<TranslatedCue[]> {
   const words = resolveCaptionWords(captions, items, fps);
-  const pages = paginate(words, captions.pacing, CAPTION_STYLE_BY_ID[captions.template].wordsPerPage);
+  const pages = paginate(
+    words,
+    captions.pacing,
+    CAPTION_STYLE_BY_ID[captions.template].wordsPerPage,
+    undefined,
+    CAPTION_MAX_CHARS_PER_LINE,
+    CAPTION_MAX_VISUAL_LINES,
+  );
   const phrases = pages.map((p) => p.words.map((w) => w.text).join(' ').trim()).filter(Boolean);
   if (!phrases.length) return [];
   const translated = await translateLines(phrases, lang);

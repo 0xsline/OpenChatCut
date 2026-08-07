@@ -1,9 +1,18 @@
 import type { AgentContext } from '../context';
 import type { AgentToolSchema } from '../tool-schema';
-import type { TimelineItem } from '../../editor/types';
+import {
+  timelineTrackIds,
+  trackKind,
+  type TimelineItem,
+  type TimelineState,
+} from '../../editor/types';
 import { sourceFrameAt } from '../../editor/sourceLimit';
-import { analyzeAssetGeometry } from '../../geometry/visual-geometry';
-import { safeBoxForRange, transformFromSafeBox } from '../../geometry/placement';
+import {
+  safeBoxForRange,
+  projectGeometryThroughItem,
+  transformFromSafeBox,
+} from '../../geometry/placement';
+import { analyzeAssetGeometry, type VisualGeometryAsset } from '../../geometry/visual-geometry';
 
 type Args = Record<string, unknown>;
 
@@ -29,7 +38,11 @@ export const PLACE_GRAPHICS_TOOL_SCHEMAS: AgentToolSchema[] = [
 
 export const PLACE_GRAPHICS_TOOL_NAMES: ReadonlySet<string> = new Set(PLACE_GRAPHICS_TOOL_SCHEMAS.map((tool) => tool.name));
 
-const GRAPHIC_KINDS = new Set(['motion-graphic', 'text', 'solid']);
+const GRAPHIC_KINDS: Record<string, true> = {
+  'motion-graphic': true,
+  text: true,
+  solid: true,
+};
 const DEFAULT_GRAPHIC_ASPECT = 16 / 9;
 
 function findItem(items: TimelineItem[], id: unknown): TimelineItem | null {
@@ -41,21 +54,32 @@ function findItem(items: TimelineItem[], id: unknown): TimelineItem | null {
   return matches.length === 1 ? matches[0]! : null;
 }
 
-/** The video clip whose time window overlaps [fromFrame, toFrame) the most. */
-function underlyingVideo(state: { items: TimelineItem[] }, fromFrame: number, toFrame: number): TimelineItem | null {
+/** Pick the nearest visible video layer below the graphic with time overlap. */
+export function pickUnderlyingVideo(
+  state: TimelineState,
+  graphic: TimelineItem,
+  fromFrame: number,
+  toFrame: number,
+): TimelineItem | null {
+  const visualTracks = timelineTrackIds(state).filter((trackId) => trackKind(state, trackId) === 'video');
+  const graphicLayer = visualTracks.indexOf(graphic.track);
   let best: TimelineItem | null = null;
+  let bestLayer = Number.POSITIVE_INFINITY;
   let bestOverlap = 0;
   for (const item of state.items) {
-    if (item.kind !== 'video') continue;
-    const start = Math.max(fromFrame, item.startFrame);
-    const end = Math.min(toFrame, item.startFrame + item.durationInFrames);
-    const overlap = end - start;
-    if (overlap > bestOverlap) {
-      bestOverlap = overlap;
+    if (item.kind !== 'video' || state.tracks?.[item.track]?.hidden) continue;
+    const layer = visualTracks.indexOf(item.track);
+    if (layer < 0 || (graphicLayer >= 0 && layer <= graphicLayer)) continue;
+    const overlap = Math.min(toFrame, item.startFrame + item.durationInFrames)
+      - Math.max(fromFrame, item.startFrame);
+    if (overlap <= 0) continue;
+    if (layer < bestLayer || (layer === bestLayer && overlap > bestOverlap)) {
       best = item;
+      bestLayer = layer;
+      bestOverlap = overlap;
     }
   }
-  return bestOverlap > 0 ? best : null;
+  return best;
 }
 
 /** Source-seconds window of the video clip covered by the graphic's frames. */
@@ -77,13 +101,14 @@ function sourceWindowOf(
 }
 
 function graphicAspectOf(item: TimelineItem): number {
-  if (item.kind === 'motion-graphic') {
-    const template = undefined;
-    void template;
-    // Template dimensions are not available here; use a 16:9 default and let
-    // scale stay conservative (fits within the box either way).
-  }
-  return DEFAULT_GRAPHIC_ASPECT;
+  return item.width && item.height && item.width > 0 && item.height > 0
+    ? item.width / item.height
+    : DEFAULT_GRAPHIC_ASPECT;
+}
+
+export function canPlaceGraphic(state: TimelineState, item: TimelineItem): boolean {
+  const track = state.tracks?.[item.track];
+  return !track?.hidden && !track?.locked;
 }
 
 export async function execPlaceGraphicsTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
@@ -93,7 +118,7 @@ export async function execPlaceGraphicsTool(name: string, args: Args, ctx: Agent
   const fps = state.fps || 30;
 
   const requested = typeof args.itemId === 'string' && args.itemId.trim() ? args.itemId.trim() : null;
-  const graphics = state.items.filter((item) => GRAPHIC_KINDS.has(item.kind));
+  const graphics = state.items.filter((item) => GRAPHIC_KINDS[item.kind]);
   const targets = requested
     ? (() => {
       const item = findItem(graphics, requested);
@@ -107,13 +132,17 @@ export async function execPlaceGraphicsTool(name: string, args: Args, ctx: Agent
     return { ok: true, adjusted: 0, note: '时间线上没有可摆放的叠加图形（motion-graphic/text/solid）。' };
   }
 
-  const geometryBySrc = new Map<string, Awaited<ReturnType<typeof analyzeAssetGeometry>>['geometry']>();
+  const geometryBySrc = new Map<string, VisualGeometryAsset | null>();
   const placed: Array<{ itemId: string; name: string; x: number; y: number; scale: number }> = [];
   const skipped: string[] = [];
   for (const item of targets) {
+    if (!canPlaceGraphic(state, item)) {
+      skipped.push(`${item.name}（轨道已隐藏或锁定）`);
+      continue;
+    }
     const from = item.startFrame;
     const to = item.startFrame + item.durationInFrames;
-    const video = underlyingVideo(state, from, to);
+    const video = pickUnderlyingVideo(state, item, from, to);
     if (!video?.src) {
       skipped.push(`${item.name}（下方无视频素材）`);
       continue;
@@ -138,7 +167,8 @@ export async function execPlaceGraphicsTool(name: string, args: Args, ctx: Agent
       skipped.push(`${item.name}（与视频无时间重叠）`);
       continue;
     }
-    const box = safeBoxForRange(geometry, window.startSec, window.endSec);
+    const projectedGeometry = projectGeometryThroughItem(geometry, state, video);
+    const box = safeBoxForRange(projectedGeometry, window.startSec, window.endSec);
     const transform = box ? transformFromSafeBox(box, graphicAspectOf(item)) : null;
     if (!transform) {
       skipped.push(`${item.name}（安全区不足以容纳）`);

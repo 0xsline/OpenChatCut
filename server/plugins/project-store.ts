@@ -2,8 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { access, mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
+import { isProjectStoreEntries, isProjectStoreKey } from '../../shared/project-store-validation.ts';
+import {
+  exchangeProjectStoreLaunchToken,
+  projectStoreHttpAuthorized,
+} from '../project-store-http-auth.ts';
+import { handleProjectStoreRequest, sendProjectStoreJson } from '../project-store-http.ts';
 
 const ROOT_DIR = join(homedir(), '.openchatcut');
 const LEGACY_STORE_PATH = join(ROOT_DIR, 'project-store-v1.json');
@@ -12,12 +17,10 @@ const STORE_DIR = join(ROOT_DIR, 'project-store-v1');
 const READY_PATH = join(STORE_DIR, '.ready');
 const LOCK_PATH = join(ROOT_DIR, 'project-store-v1.lock');
 const DELETED_PROJECTS_PATH = join(ROOT_DIR, 'deleted-projects-v1.json');
-const MAX_BODY_BYTES = 64 * 1024 * 1024;
 const LOCK_STALE_MS = 10_000;
 const LOCK_RETRIES = 200;
 const PROJECT_SCOPED_KEY = /^(?:project|chat|creative-mode|thumb|proposal|versions|jobs):(.+)$/;
 const PROJECT_DOCUMENT_KEY = /^project:(.+)$/;
-const VALID_KEY = /^(?!__proto__$)(?!prototype$)(?!constructor$)[a-zA-Z0-9:_-]{1,200}$/;
 const VALID_PROJECT_ID = /^[a-zA-Z0-9_-]{1,160}$/;
 
 interface StoreFile {
@@ -25,6 +28,16 @@ interface StoreFile {
   entries: Record<string, unknown>;
 }
 
+export interface StoredEntryValue {
+  found: boolean;
+  value?: unknown;
+}
+
+export interface LockedProjectStore {
+  readEntry: (key: string) => Promise<StoredEntryValue>;
+  writeEntry: (key: string, value: unknown) => Promise<void>;
+  removeEntry: (key: string) => Promise<void>;
+}
 interface ProjectMeta {
   id: string;
   updatedAt: number;
@@ -33,10 +46,7 @@ interface ProjectMeta {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
-function validEntries(value: unknown): value is Record<string, unknown> {
-  if (!isRecord(value) || Object.keys(value).length > 20_000) return false;
-  return Object.keys(value).every((key) => VALID_KEY.test(key));
-}
+const validEntries = isProjectStoreEntries;
 
 function projectMetas(entries: Record<string, unknown>): Map<string, ProjectMeta> {
   const value = entries.projects;
@@ -202,7 +212,7 @@ async function readDirectoryEntries(): Promise<Record<string, unknown>> {
   for (const file of await readdir(STORE_DIR)) {
     if (!file.endsWith('.json')) continue;
     const key = decodeURIComponent(file.slice(0, -'.json'.length));
-    if (!VALID_KEY.test(key)) throw new Error('invalid project store entry filename');
+    if (!isProjectStoreKey(key)) throw new Error('invalid project store entry filename');
     entries[key] = JSON.parse(await readFile(join(STORE_DIR, file), 'utf8'));
   }
   return entries;
@@ -273,7 +283,8 @@ export async function readStore(): Promise<StoreFile> {
   return { version: 1, entries };
 }
 
-async function mergeStore(incoming: Record<string, unknown>): Promise<StoreFile> {
+export async function mergeStoredEntries(incoming: Record<string, unknown>): Promise<StoreFile> {
+  if (!isProjectStoreEntries(incoming)) throw new Error('invalid project store entries');
   await ensureStoreReady();
   const release = await acquireLock();
   try {
@@ -290,6 +301,7 @@ async function mergeStore(incoming: Record<string, unknown>): Promise<StoreFile>
 }
 
 export async function setStoredEntry(key: string, value: unknown): Promise<void> {
+  if (!isProjectStoreKey(key)) throw new Error('invalid project store entry key');
   await ensureStoreReady();
   const release = await acquireLock();
   try {
@@ -338,7 +350,8 @@ async function purgeProjectLocked(id: string): Promise<void> {
   await writeStoredEntry('projects', projects);
 }
 
-async function deleteStoredEntry(key: string): Promise<void> {
+export async function deleteStoredEntry(key: string): Promise<void> {
+  if (!isProjectStoreKey(key)) throw new Error('invalid project store entry key');
   await ensureStoreReady();
   const release = await acquireLock();
   try {
@@ -354,7 +367,7 @@ async function deleteStoredEntry(key: string): Promise<void> {
   }
 }
 
-async function readEntryFile(key: string): Promise<{ found: boolean; value?: unknown }> {
+async function readEntryFile(key: string): Promise<StoredEntryValue> {
   try {
     return { found: true, value: JSON.parse(await readFile(entryPath(key), 'utf8')) };
   } catch (error) {
@@ -363,91 +376,79 @@ async function readEntryFile(key: string): Promise<{ found: boolean; value?: unk
   }
 }
 
-async function getStoredEntry(key: string): Promise<{ found: boolean; value?: unknown }> {
+export async function getStoredEntry(key: string): Promise<StoredEntryValue> {
+  if (!isProjectStoreKey(key)) throw new Error('invalid project store entry key');
   await ensureStoreReady();
   const projectId = PROJECT_SCOPED_KEY.exec(key)?.[1];
   if (projectId && Object.hasOwn(await readDeletedProjects(), projectId)) return { found: false };
   return readEntryFile(key);
 }
 
-async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of req) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    total += buffer.length;
-    if (total > MAX_BODY_BYTES) throw new Error('request body too large');
-    chunks.push(buffer);
-  }
-  let parsed: unknown;
+export async function withProjectStoreLock<T>(
+  work: (store: LockedProjectStore) => Promise<T>,
+): Promise<T> {
+  await ensureStoreReady();
+  const release = await acquireLock();
   try {
-    parsed = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-  } catch {
-    throw new Error('invalid JSON body');
-  }
-  if (!isRecord(parsed)) throw new Error('body must be a JSON object');
-  return parsed;
-}
-
-function sendJson(res: ServerResponse, status: number, body: unknown): void {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Cache-Control', 'no-store');
-  res.end(JSON.stringify(body));
-}
-
-async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  if (req.method === 'GET' && (req.url === '/' || req.url === '')) {
-    sendJson(res, 200, await readStore());
-    return;
-  }
-  if (req.method === 'GET' && req.url?.startsWith('/entry?')) {
-    const key = new URL(req.url, 'http://localhost').searchParams.get('key');
-    if (!key || !VALID_KEY.test(key)) throw new Error('invalid entry key');
-    sendJson(res, 200, await getStoredEntry(key));
-    return;
-  }
-  if (req.method === 'POST' && req.url === '/merge') {
-    const body = await readBody(req);
-    if (!validEntries(body.entries)) throw new Error('invalid project store entries');
-    const merged = await mergeStore(body.entries as Record<string, unknown>);
-    const projects = merged.entries.projects;
-    sendJson(res, 200, {
-      version: 1,
-      entries: projects === undefined ? {} : { projects },
+    const deletedIds = new Set(Object.keys(await readDeletedProjects()));
+    const validateKey = (key: string): string | undefined => {
+      if (!isProjectStoreKey(key)) throw new Error('invalid project store entry key');
+      return PROJECT_SCOPED_KEY.exec(key)?.[1];
+    };
+    return await work({
+      readEntry: async (key) => {
+        const projectId = validateKey(key);
+        return projectId && deletedIds.has(projectId) ? { found: false } : readEntryFile(key);
+      },
+      writeEntry: async (key, value) => {
+        const projectId = validateKey(key);
+        if (projectId && deletedIds.has(projectId)) throw new Error('project was deleted');
+        await writeStoredEntry(key, value);
+      },
+      removeEntry: async (key) => {
+        validateKey(key);
+        await rm(entryPath(key), { force: true });
+      },
     });
-    return;
+  } finally {
+    await release();
   }
-  if (req.method === 'PUT' && req.url === '/entry') {
-    const body = await readBody(req);
-    if (typeof body.key !== 'string' || !VALID_KEY.test(body.key) || !('value' in body)) throw new Error('invalid entry');
-    // ponytail: same-project concurrent editors are last-write-wins. Add revisions/Zero
-    // only if real-time collaborative editing becomes a requirement.
-    await setStoredEntry(body.key, body.value);
-    sendJson(res, 200, { ok: true });
-    return;
-  }
-  if (req.method === 'DELETE' && req.url?.startsWith('/entry?')) {
-    const key = new URL(req.url, 'http://localhost').searchParams.get('key');
-    if (!key || !VALID_KEY.test(key)) throw new Error('invalid entry key');
-    await deleteStoredEntry(key);
-    sendJson(res, 200, { ok: true });
-    return;
-  }
-  sendJson(res, 405, { error: 'method not allowed' });
 }
 
-export function projectStorePlugin(): Plugin {
+
+const HTTP_OPERATIONS = {
+  deleteEntry: deleteStoredEntry,
+  getEntry: getStoredEntry,
+  mergeEntries: mergeStoredEntries,
+  readSnapshot: readStore,
+  setEntry: setStoredEntry,
+};
+
+export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {
   return {
     name: 'openchatcut-project-store',
     configureServer(server) {
+      if (options.http === false) return;
       server.middlewares.use('/api/project-store', async (req, res) => {
+        if (req.method === 'POST' && req.url === '/session') {
+          const session = exchangeProjectStoreLaunchToken(req);
+          sendProjectStoreJson(
+            res,
+            session ? 200 : 403,
+            session ?? { error: 'invalid or expired editor launch credential' },
+          );
+          return;
+        }
+        if (!projectStoreHttpAuthorized(req)) {
+          sendProjectStoreJson(res, 403, { error: 'invalid project store session' });
+          return;
+        }
         try {
-          await handleRequest(req, res);
+          await handleProjectStoreRequest(req, res, HTTP_OPERATIONS);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           server.config.logger.error(`[project-store] ${message}`);
-          if (!res.headersSent) sendJson(res, 400, { error: message });
+          if (!res.headersSent) sendProjectStoreJson(res, 400, { error: message });
         }
       });
     },

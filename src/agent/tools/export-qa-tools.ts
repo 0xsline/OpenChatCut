@@ -102,7 +102,7 @@ async function verifyExport(args: Args, ctx: AgentContext): Promise<unknown> {
       note: evidence?.base64
         ? 'Cut evidence is a two-column sheet: each row shows the frame immediately before and after one edit boundary.'
         : 'No adjacent edit boundaries were available for visual evidence; stream-level QA still completed.',
-      next: report.ok && report.summary.warnings === 0
+      next: merged.ok && merged.summary.warnings === 0
         ? 'Export passed automated QA.'
         : 'Inspect every issue and evidence row. Fix confirmed problems, export again, and rerun verify_export. Stop after three attempts and report any remaining issue to the user.',
     };

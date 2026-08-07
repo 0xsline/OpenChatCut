@@ -6,7 +6,14 @@
  */
 
 import { sourceFrameAt, type SourceTimingItem } from '../editor/sourceLimit';
-import type { DetectedKeyframe } from './detect';
+import {
+  DEFAULT_REFRAME_INTERVAL_FRAMES,
+  DEFAULT_REFRAME_MAX_SAMPLES,
+  DEFAULT_REFRAME_SMOOTH,
+  sampleFrames,
+  smoothFocalPath,
+  type DetectedKeyframe,
+} from './detect';
 import type { VisualGeometryAsset } from '../geometry/visual-geometry';
 
 export interface GeometryFocusOptions {
@@ -15,9 +22,14 @@ export interface GeometryFocusOptions {
   playbackRate?: number;
   /** Sample every N frames (default 15 ≈ 0.5s at 30fps). */
   intervalFrames?: number;
+  /** Hard cap for long clips. */
+  maxSamples?: number;
+  /** Temporal EMA on focal points (0 = raw, 1 = maximally sticky). */
+  smooth?: number;
+  /** Aspect-derived crop magnification applied to every keyframe. */
+  magnification?: number;
 }
 
-const DEFAULT_INTERVAL = 15;
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 
 /** Subject center of one geometry segment, or face center, or frame center. */
@@ -64,23 +76,24 @@ export function focalFramesFromGeometry(
   fps: number,
   options: GeometryFocusOptions = {},
 ): DetectedKeyframe[] {
-  const interval = Math.max(1, Math.floor(options.intervalFrames ?? DEFAULT_INTERVAL));
+  const interval = Math.max(1, Math.floor(options.intervalFrames ?? DEFAULT_REFRAME_INTERVAL_FRAMES));
+  const maxSamples = Math.max(1, Math.floor(options.maxSamples ?? DEFAULT_REFRAME_MAX_SAMPLES));
+  const frames = sampleFrames(durationInFrames, interval, maxSamples);
+  if (!frames.length) return [];
   const item: SourceTimingItem = {
     srcInFrame: options.srcInFrame ?? 0,
     playbackRate: options.playbackRate ?? 1,
   };
-  const keyframes: DetectedKeyframe[] = [];
-  for (let frame = 0; frame < durationInFrames; frame += interval) {
+  const raw = frames.map((frame) => {
     const sourceFrame = sourceFrameAt(item, frame);
-    const sourceSec = fps > 0 ? sourceFrame / fps : 0;
-    const focal = focalOf(geometry, sourceSec);
-    keyframes.push({ frame, focalPointX: focal.x, focalPointY: focal.y, magnification: 1 });
-  }
-  const last = Math.max(0, Math.floor(durationInFrames) - 1);
-  if (keyframes.length === 0 || keyframes[keyframes.length - 1]!.frame !== last) {
-    const sourceFrame = sourceFrameAt(item, last);
-    const focal = focalOf(geometry, fps > 0 ? sourceFrame / fps : 0);
-    keyframes.push({ frame: last, focalPointX: focal.x, focalPointY: focal.y, magnification: 1 });
-  }
-  return keyframes;
+    return focalOf(geometry, fps > 0 ? sourceFrame / fps : 0);
+  });
+  const points = smoothFocalPath(raw, options.smooth ?? DEFAULT_REFRAME_SMOOTH);
+  const magnification = Math.max(0.05, Math.min(16, options.magnification ?? 1));
+  return frames.map((frame, index) => ({
+    frame,
+    focalPointX: points[index]!.x,
+    focalPointY: points[index]!.y,
+    magnification,
+  }));
 }

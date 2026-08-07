@@ -92,7 +92,7 @@ function ManualCueList({ captions, lane, onUpdate, getPlayheadMs, onSeekMs }: Om
         <button type="button" className="cc-cap-btn primary sm" disabled={!text.trim()} onClick={add}>{t('添加字幕')}</button>
       </div>
       <div className="cc-cap-manual-list">
-        {(lane.words ?? []).map((cue, index) => <ManualCueRow key={`${lane.id}_${cue.start}_${cue.end}_${index}`} {...{ captions, lane, cue, index, onUpdate, onSeekMs }} />)}
+        {(lane.words ?? []).map((cue, index) => <ManualCueRow key={cue.id ?? `${lane.id}_${cue.start}_${cue.end}_${index}`} {...{ captions, lane, cue, index, onUpdate, onSeekMs }} />)}
       </div>
     </div>
   );

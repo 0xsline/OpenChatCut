@@ -75,6 +75,13 @@ export default {
   '一次显示一句话，适合纪录片口播': 'One sentence at a time — suits documentary voiceover',
   '逐词高亮': 'Word-by-word highlight',
   '当前说到的词会变色，像卡拉 OK': 'The word being spoken lights up, karaoke-style',
+  '字幕动效': 'Caption motion',
+  '无动效': 'None',
+  '淡入上浮': 'Fade up',
+  '弹性入场': 'Pop in',
+  '逐词弹出': 'Word pop',
+  '卡拉 OK 脉冲': 'Karaoke pulse',
+  '动效按时间线帧计算，预览与导出保持一致。': 'Motion is timeline-frame driven, so preview and export stay aligned.',
   // ManualCaptionEditor
   '手动字幕': 'Manual captions',
   '（{n} 车道）': ' ({n} lanes)',

@@ -1,11 +1,9 @@
 // Caption export (submit_export format=captions, subtitleFormat srt/txt):
 // Page into cue from the current caption track (CaptionsData → resolveCaptionWords rearranged word list),
 // Spit SubRip or plain text. Pure function, no DOM/fetch, same input and same output, shared by check and UI.
-import { paginate, type CaptionPage } from './types';
-import { resolveCaptionWords } from './resolve';
-import type { CaptionsData } from './types';
+import { joinCaptionWords, type CaptionPage, type CaptionsData } from './types';
 import type { TimelineItem } from '../editor/types';
-import { isManualCaptionEntry } from './manualCaptions';
+import { buildCaptionPages } from './captionPages';
 
 /** ms → SRT timecode `HH:MM:SS,mmm`. */
 export function srtTimestamp(ms: number): string {
@@ -20,34 +18,12 @@ export function srtTimestamp(ms: number): string {
 
 /** Chinese adjacent words are directly connected, including spaces between Western words (same spelling rules as CaptionsLayer rendering).*/
 function pageText(page: CaptionPage): string {
-  let out = '';
-  for (const word of page.words) {
-    const text = word.text.trim();
-    if (!text) continue;
-    if (out && !/[一-鿿　-〿]$/.test(out) && !/^[一-鿿　-〿]/.test(text)) out += ' ';
-    else if (out && (/[A-Za-z0-9]$/.test(out) || /^[A-Za-z0-9]/.test(text))) out += ' ';
-    out += text;
-  }
-  return out;
+  return joinCaptionWords(page.words);
 }
 
 /** caption cue list (common intermediate state between SRT and TXT). Empty vocabulary → [].*/
 export function captionPages(captions: CaptionsData, items: TimelineItem[], fps: number): CaptionPage[] {
-  if (captions.sourceEntries?.some(isManualCaptionEntry)) {
-    const manual = captions.sourceEntries
-      .filter((entry) => isManualCaptionEntry(entry) && entry.visible !== false)
-      .flatMap((entry) => entry.words ?? [])
-      .map((word) => ({ words: [word], start: word.start, end: word.end }));
-    const automaticEntries = captions.sourceEntries.filter((entry) => !isManualCaptionEntry(entry));
-    const automaticWords = automaticEntries.length
-      ? resolveCaptionWords({ ...captions, sourceEntries: automaticEntries }, items, fps)
-      : [];
-    return [...paginate(automaticWords, captions.pacing ?? 'phrase'), ...manual]
-      .sort((a, b) => a.start - b.start || a.end - b.end);
-  }
-  const words = resolveCaptionWords(captions, items, fps);
-  if (!words.length) return [];
-  return paginate(words, captions.pacing ?? 'phrase');
+  return buildCaptionPages(captions, items, fps).map((identity) => identity.page);
 }
 
 /** SubRip (.srt): sequence number + start and end time codes + single line text.*/

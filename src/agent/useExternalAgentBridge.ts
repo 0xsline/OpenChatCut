@@ -14,6 +14,7 @@ import { ExternalCallCancellationRegistry } from './external-call-cancellation';
 import { externalToolSchemas } from './external-tool-schemas';
 import type { Proposal } from './proposal';
 import { loadExternalProposal } from '../persist/externalProposalStore';
+import { editorBootstrapInfo } from './editor-credential';
 
 export interface ExternalCall {
   id: string;
@@ -76,7 +77,6 @@ export interface ExternalProposalController {
 const retryDelay = () => new Promise<void>((resolve) => setTimeout(resolve, 1_000));
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
 const EDITOR_BRIDGE_CREDENTIAL_HEADER = 'X-OpenChatCut-Editor-Credential';
-const EDITOR_BRIDGE_BOOTSTRAP_HEADER = 'X-OpenChatCut-Editor-Bootstrap';
 let editorBridgeCredential: string | null = null;
 
 class EditorBridgeRequestError extends Error {
@@ -98,28 +98,7 @@ function editorBridgeHeaders(credential: string, json = false): Record<string, s
 }
 
 async function bootstrapEditorBridge(signal: AbortSignal): Promise<string> {
-  const response = await fetch('/api/external-agent/bootstrap', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      [EDITOR_BRIDGE_BOOTSTRAP_HEADER]: '1',
-    },
-    body: '{}',
-    signal,
-  });
-  if (!response.ok) throw new EditorBridgeRequestError('editor bootstrap', response.status);
-  const value: unknown = await response.json();
-  if (
-    !value
-    || typeof value !== 'object'
-    || Array.isArray(value)
-    || !('credential' in value)
-    || typeof value.credential !== 'string'
-    || !value.credential
-  ) {
-    throw new Error('editor bootstrap returned an invalid credential');
-  }
-  return value.credential;
+  return (await editorBootstrapInfo(signal)).credential;
 }
 
 function isFailureOutcome(

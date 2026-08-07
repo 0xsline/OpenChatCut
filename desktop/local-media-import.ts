@@ -1,24 +1,29 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { copyFile, mkdir, stat } from 'node:fs/promises';
+import { copyFile, mkdir, stat, unlink } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { ffmpegBin, ffprobeBin } from '../server/media-binaries.ts';
 import { uploadDir } from '../server/media-dir.ts';
+import { normalizeSha256Hash } from '../shared/content-hash.ts';
+import { sha256File } from '../shared/node-content-hash.ts';
 
 export interface LocalMediaImport {
   src: string;
   storedName: string;
+  contentHash: string;
 }
 
 export interface LocalMediaImportDependencies {
   stat(path: string): Promise<{ isFile(): boolean; size: number }>;
   copyFile(source: string, destination: string, mode: number): Promise<void>;
+  hashFile(path: string): Promise<string>;
 }
 
 const DEFAULT_LOCAL_MEDIA_IMPORT_DEPENDENCIES: LocalMediaImportDependencies = {
   stat: (path) => stat(path),
   copyFile: (source, destination, mode) => copyFile(source, destination, mode),
+  hashFile: sha256File,
 };
 
 type ProbeStream = {
@@ -88,7 +93,14 @@ export async function importLocalMedia(
   // back to a regular copy when the filesystem does not support cloning.
   // Either path creates an inode independent from the source.
   await dependencies.copyFile(sourcePath, destination, constants.COPYFILE_FICLONE);
-  return { src: `/media/uploads/${storedName}`, storedName };
+  try {
+    const contentHash = normalizeSha256Hash(await dependencies.hashFile(destination));
+    if (!contentHash) throw new Error('local media hash must be a SHA-256 hex digest');
+    return { src: `/media/uploads/${storedName}`, storedName, contentHash };
+  } catch (error) {
+    await unlink(destination).catch(() => {});
+    throw error;
+  }
 }
 
 /** Return null for ordinary MOV files and never replace or remove the original. */

@@ -11,8 +11,9 @@ The default endpoint is:
 http://localhost:5199/api/external-mcp/mcp
 ```
 
-Start OpenChatCut first. If desktop port 5199 was occupied, use the endpoint
-shown in OpenChatCut under **Settings → MCP** or in its startup log.
+Start OpenChatCut first. Open **Settings → MCP** in the trusted editor window,
+copy the displayed bearer-token configuration, and use the endpoint shown there.
+If desktop port 5199 was occupied, that page reflects the active fallback port.
 
 ## 2. Register the MCP server
 
@@ -24,29 +25,35 @@ Check the existing entry:
 codex mcp get openchatcut
 ```
 
-If it is missing, register it:
+If it is missing, export the token copied from **Settings → MCP** and register it:
 
 ```bash
+export OPENCHATCUT_MCP_TOKEN='<token>'
 codex mcp add openchatcut \
-  --url http://localhost:5199/api/external-mcp/mcp
+  --url http://localhost:5199/api/external-mcp/mcp \
+  --bearer-token-env-var OPENCHATCUT_MCP_TOKEN
 ```
 
-If an existing URL is stale, replace only that entry:
+If an existing URL or token setting is stale, replace only that entry:
 
 ```bash
+export OPENCHATCUT_MCP_TOKEN='<token>'
 codex mcp remove openchatcut
 codex mcp add openchatcut \
-  --url http://localhost:5199/api/external-mcp/mcp
+  --url http://localhost:5199/api/external-mcp/mcp \
+  --bearer-token-env-var OPENCHATCUT_MCP_TOKEN
 ```
 
 ### Claude Code
 
 ```bash
-claude mcp add --transport http openchatcut \
-  http://localhost:5199/api/external-mcp/mcp
+claude mcp add --transport http \
+  -H "Authorization: Bearer <token>" \
+  openchatcut http://localhost:5199/api/external-mcp/mcp
 ```
 
-For another client, register the endpoint as a Streamable HTTP MCP server.
+For another client, register the endpoint as a Streamable HTTP MCP server and
+set its `Authorization` header to `Bearer <token>`.
 
 ## 3. Verify
 
@@ -73,10 +80,13 @@ Once the user has identified a project:
 2. Surface the URL returned by `get_editor_url`.
 3. Follow `editing-workflow.md`.
 
-## Remote endpoint
+## Token lifecycle
 
-Localhost needs no token by default. When the user exposes OpenChatCut over a
-network, use the URL and Bearer token they configured with
-`OPENCHATCUT_EDITOR_URL` and `OPENCHATCUT_MCP_TOKEN`. Keep the token in the MCP
-client's secret/environment configuration rather than writing it into a
-repository.
+The endpoint always requires a bearer token, including on localhost. By default,
+OpenChatCut generates it in private server memory and shows it only through the
+trusted editor's **Settings → MCP** page. A server restart changes that generated
+token, so reconnect clients using the newly displayed configuration.
+
+`OPENCHATCUT_MCP_TOKEN` overrides the generated token when a stable deployment
+secret is required. Keep it in the MCP client's secret/environment configuration;
+never write it into a repository, project document, chat, or browser storage.

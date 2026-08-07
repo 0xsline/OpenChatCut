@@ -1,7 +1,6 @@
 import { buildCues, type CueRow } from './captionCues';
 import type { CaptionPreviewTarget } from './captionPreviewTarget';
 import { isManualCaptionEntry } from './manualCaptions';
-import { resolveEntryWords } from './resolve';
 import { effectivePreset } from './renderStyles';
 import { orderedCaptionSourceEntries } from './sourceOrder';
 import {
@@ -12,11 +11,11 @@ import {
   type TimelineState,
   type TrackId,
 } from '../editor/types';
-import type { CaptionsData, CaptionWordOverride } from './types';
+import type { CaptionsData } from './types';
 
 export type CaptionSelectionRef =
-  | { trackId: TrackId; kind: 'single'; cueIndex: number }
-  | { trackId: TrackId; kind: 'manual'; laneId: string; cueIndex: number };
+  | { trackId: TrackId; kind: 'single'; pageId: string }
+  | { trackId: TrackId; kind: 'manual'; laneId: string; cueId: string };
 
 export interface CaptionSelectOptions {
   additive?: boolean;
@@ -44,45 +43,20 @@ function selectableAutomaticCues(
   items: TimelineItem[],
   fps: number,
 ): CueRow[] {
-  if (!captions.sourceEntries?.some(isManualCaptionEntry)) return buildCues(captions, items, fps);
-
-  const orderedEntries = orderedCaptionSourceEntries(captions.sourceEntries)
-    .filter((entry) => entry.visible !== false);
-  const indexedWords = orderedEntries
-    .flatMap((entry) => resolveEntryWords(entry, items, fps)
-      .map((word) => ({ word, manual: isManualCaptionEntry(entry) })))
-    .sort((a, b) => a.word.start - b.word.start || a.word.end - b.word.end);
-  const fullIndexes = indexedWords.flatMap((entry, index) => entry.manual ? [] : [index]);
-  const automaticEntries = captions.sourceEntries.filter((entry) => !isManualCaptionEntry(entry));
-  if (!automaticEntries.length) return [];
-
-  const automaticOverrides: Record<number, CaptionWordOverride> = {};
-  for (let index = 0; index < fullIndexes.length; index += 1) {
-    const override = captions.wordOverrides?.[fullIndexes[index]!];
-    if (override) automaticOverrides[index] = override;
-  }
-  return buildCues({
-    ...captions,
-    sourceEntries: automaticEntries,
-    wordOverrides: automaticOverrides,
-  }, items, fps).map((cue) => ({
-    ...cue,
-    srcIdxs: cue.srcIdxs.map((sourceIndex) => fullIndexes[sourceIndex]!)
-      .filter((sourceIndex) => sourceIndex !== undefined),
-  }));
+  return buildCues(captions, items, fps).filter((cue) => !cue.manual);
 }
 
 export function captionSelectionRef(trackId: TrackId, target: CaptionPreviewTarget): CaptionSelectionRef {
   return target.kind === 'single'
-    ? { trackId, kind: 'single', cueIndex: target.cueIndex }
-    : { trackId, kind: 'manual', laneId: target.laneId, cueIndex: target.cueIndex };
+    ? { trackId, kind: 'single', pageId: target.pageId }
+    : { trackId, kind: 'manual', laneId: target.laneId, cueId: target.cueId };
 }
 
 export function captionSelectionKey(selection: CaptionSelectionRef | null): string | null {
   if (!selection) return null;
   return selection.kind === 'single'
-    ? `${selection.trackId}:single:${selection.cueIndex}`
-    : `${selection.trackId}:manual:${selection.laneId}:${selection.cueIndex}`;
+    ? `${selection.trackId}:single:${selection.pageId}`
+    : `${selection.trackId}:manual:${selection.laneId}:${selection.cueId}`;
 }
 
 /** Resolve every visible caption cue whose frames intersect a marquee range. */
@@ -104,9 +78,9 @@ export function captionSelectionsInFrameRange(
     laneOrder: number;
   }> = [];
 
-  for (const [cueIndex, cue] of selectableAutomaticCues(captions, items, fps).entries()) {
+  for (const cue of selectableAutomaticCues(captions, items, fps)) {
     candidates.push({
-      selection: { trackId, kind: 'single', cueIndex },
+      selection: { trackId, kind: 'single', pageId: cue.id },
       start: cue.start,
       end: cue.end,
       laneOrder: -1,
@@ -114,9 +88,10 @@ export function captionSelectionsInFrameRange(
   }
   for (const [laneOrder, entry] of orderedCaptionSourceEntries(captions.sourceEntries ?? []).entries()) {
     if (!isManualCaptionEntry(entry) || entry.visible === false) continue;
-    for (const [cueIndex, cue] of (entry.words ?? []).entries()) {
+    for (const cue of (entry.words ?? [])) {
+      if (!cue.id) continue;
       candidates.push({
-        selection: { trackId, kind: 'manual', laneId: entry.id, cueIndex },
+        selection: { trackId, kind: 'manual', laneId: entry.id, cueId: cue.id },
         start: cue.start,
         end: cue.end,
         laneOrder,
@@ -165,14 +140,16 @@ export function resolveCaptionSelection(
 
   if (selection.kind === 'single') {
     const rows = selectableAutomaticCues(captions, state.items, state.fps);
-    const cue = rows[selection.cueIndex];
+    const cueIndex = rows.findIndex((candidate) => candidate.id === selection.pageId);
+    const cue = rows[cueIndex];
     return cue ? {
       trackId: selection.trackId,
       captions,
       target: {
         kind: 'single',
-        key: `single:${selection.cueIndex}:${cue.start}:${cue.end}`,
-        cueIndex: selection.cueIndex,
+        key: `single:${cue.id}`,
+        pageId: cue.id,
+        cueIndex,
         cue,
         rows,
         preset,
@@ -182,16 +159,18 @@ export function resolveCaptionSelection(
   }
 
   const entry = captions.sourceEntries?.find((candidate) => candidate.id === selection.laneId);
-  const cue = entry?.words?.[selection.cueIndex];
+  const cueIndex = entry?.words?.findIndex((candidate) => candidate.id === selection.cueId) ?? -1;
+  const cue = cueIndex >= 0 ? entry?.words?.[cueIndex] : undefined;
   if (!entry || !cue) return null;
   return {
     trackId: selection.trackId,
     captions,
     target: {
       kind: 'manual',
-      key: `manual:${entry.id}:${selection.cueIndex}:${cue.start}:${cue.end}`,
+      key: `manual:${entry.id}:${cue.id}`,
       laneId: entry.id,
-      cueIndex: selection.cueIndex,
+      cueId: cue.id!,
+      cueIndex,
       cue,
       preset: entry.style ? { ...preset, ...entry.style } : preset,
       layout: {

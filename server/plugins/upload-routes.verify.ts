@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { request } from 'node:http';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -15,9 +15,11 @@ import { seedKeystore } from '../keystore.ts';
 import { resolveOrHydrateUploadFile } from '../media-dir.ts';
 import {
   configuredUploadMaxBytes,
+  DEFAULT_UPLOAD_MAX_BYTES,
   getUploadObjectToFile,
   type R2Config,
 } from '../r2.ts';
+import { importUploadUrl, mintImportToken, type ImportTokenScope } from '../external-agent/import-token.ts';
 import { uploadMultipartPlugin } from './upload-multipart.ts';
 import {
   directR2UploadAllowed,
@@ -25,6 +27,14 @@ import {
   registerUploadRoutes,
   type UploadRouteDependencies,
 } from './upload-routes.ts';
+import {
+  abortMultipart,
+  chunkedHandoffPost,
+  chunkedPut,
+  editorFetch,
+  jsonResponse,
+  multipartInit,
+} from './upload-routes.verify-helpers.ts';
 
 const CAP = 8;
 const OLD_DEFAULT_BYTES = 10 * 1024 ** 3;
@@ -35,10 +45,6 @@ const previousEnv = Object.fromEntries(
   ENV_NAMES.map((name) => [name, process.env[name]]),
 ) as Record<EnvName, string | undefined>;
 
-interface HttpResult {
-  status: number;
-  body: string;
-}
 
 function restoreEnv(): void {
   for (const name of ENV_NAMES) {
@@ -48,33 +54,6 @@ function restoreEnv(): void {
   }
 }
 
-async function jsonResponse(response: Response): Promise<Record<string, unknown>> {
-  const text = await response.text();
-  assert.ok(response.ok, `unexpected ${response.status}: ${text}`);
-  return JSON.parse(text) as Record<string, unknown>;
-}
-
-function chunkedPut(origin: string, path: string, chunks: readonly Buffer[]): Promise<HttpResult> {
-  const { promise, resolve, reject } = Promise.withResolvers<HttpResult>();
-  const req = request(new URL(path, origin), {
-    method: 'PUT',
-    headers: {
-      'content-type': 'application/octet-stream',
-      'transfer-encoding': 'chunked',
-    },
-  }, (res) => {
-    const responseChunks: Buffer[] = [];
-    res.on('data', (chunk: Buffer) => responseChunks.push(chunk));
-    res.on('end', () => resolve({
-      status: res.statusCode ?? 0,
-      body: Buffer.concat(responseChunks).toString('utf8'),
-    }));
-  });
-  req.on('error', reject);
-  for (const chunk of chunks) req.write(chunk);
-  req.end();
-  return promise;
-}
 
 async function assertMissing(path: string, message: string): Promise<void> {
   await assert.rejects(
@@ -84,24 +63,6 @@ async function assertMissing(path: string, message: string): Promise<void> {
   );
 }
 
-async function multipartInit(
-  origin: string,
-  body: Record<string, unknown>,
-): Promise<{ response: Response; json: Record<string, unknown> }> {
-  const response = await fetch(`${origin}/upload/multipart/init`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  return { response, json: JSON.parse(await response.text()) as Record<string, unknown> };
-}
-
-async function abortMultipart(origin: string, uploadId: string): Promise<void> {
-  const response = await fetch(`${origin}/upload/multipart?uploadId=${encodeURIComponent(uploadId)}`, {
-    method: 'DELETE',
-  });
-  assert.equal(response.status, 200, await response.text());
-}
 
 const directory = await mkdtemp(join(tmpdir(), 'openchatcut-upload-routes-'));
 const r2Config: R2Config = {
@@ -190,9 +151,9 @@ try {
     assert.equal(
       configuredUploadMaxBytes(),
       null,
-      `invalid cap ${JSON.stringify(invalid)} must remain an uncapped policy`,
+      `invalid cap ${JSON.stringify(invalid)} must not become an explicit override`,
     );
-    assert.equal(directR2UploadAllowed(true), true);
+    assert.equal(directR2UploadAllowed(true), false);
   }
   process.env.UPLOAD_MAX_BYTES = String(CAP);
   process.env.UPLOAD_MULTIPART_MAX_BYTES = String(12 * 1024 ** 3);
@@ -222,8 +183,87 @@ try {
   const address = server.httpServer?.address();
   if (!address || typeof address === 'string') throw new Error('upload verification server has no TCP address');
   const origin = `http://127.0.0.1:${address.port}`;
+  const ordinaryUi = await editorFetch(`${origin}/upload?name=ui.bin&assetId=ordinary-ui`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/octet-stream' },
+    body: 'ui',
+  });
+  assert.equal(ordinaryUi.status, 200, await ordinaryUi.text());
+  assert.equal(await readFile(join(directory, 'ordinary-ui.bin'), 'utf8'), 'ui');
 
-  const declaredRaw = await fetch(`${origin}/upload?name=raw.bin&assetId=raw-declared`, {
+  const handoffScope: ImportTokenScope = {
+    sessionId: 'sess-upload-route',
+    assetId: 'handoff-valid',
+    assetType: 'image',
+    filename: 'ticket.html',
+    projectId: 'project-a',
+    method: 'POST',
+    contentType: 'image/png',
+    expectedBytes: 4,
+  };
+  const handoff = mintImportToken(handoffScope);
+  const handoffUrl = importUploadUrl(handoffScope, handoff.token);
+  const acceptedHandoff = await globalThis.fetch(`${origin}${handoffUrl}`, {
+    method: 'POST',
+    headers: { 'content-type': 'image/png' },
+    body: 'once',
+  });
+  assert.equal(acceptedHandoff.status, 200);
+  const acceptedUpload = await acceptedHandoff.json() as Record<string, unknown>;
+  assert.equal(typeof acceptedUpload.receipt, 'string');
+  assert.equal(acceptedUpload.sessionId, handoffScope.sessionId);
+  assert.equal(acceptedUpload.assetId, handoffScope.assetId);
+  assert.equal(acceptedUpload.contentHash, createHash('sha256').update('once').digest('hex'));
+  assert.equal(acceptedUpload.path, '/media/uploads/handoff-valid.png');
+  assert.equal(await readFile(join(directory, 'handoff-valid.png'), 'utf8'), 'once');
+
+  const replay = await globalThis.fetch(`${origin}${handoffUrl}`, { method: 'POST', body: 'again' });
+  const replayError = await replay.text();
+  assert.equal(replay.status, 401, replayError);
+  assert.equal(replayError.includes(handoff.token), false, 'replay errors must not echo ticket bytes');
+
+  const mismatchScope = { ...handoffScope, assetId: 'handoff-mismatch' };
+  const mismatch = mintImportToken(mismatchScope);
+  const mismatchedUrl = new URL(importUploadUrl(mismatchScope, mismatch.token), origin);
+  mismatchedUrl.searchParams.set('name', 'other.bin');
+  const mismatchedUpload = await globalThis.fetch(mismatchedUrl, { method: 'POST', body: 'no' });
+  const mismatchError = await mismatchedUpload.text();
+  assert.equal(mismatchedUpload.status, 401, mismatchError);
+  assert.equal(mismatchError.includes(mismatch.token), false, 'mismatch errors must not echo ticket bytes');
+  assert.equal(JSON.stringify(await readdir(directory)).includes(mismatch.token), false);
+
+  const shortScope = { ...handoffScope, sessionId: 'sess-short', assetId: 'handoff-short' };
+  const shortToken = mintImportToken(shortScope);
+  const shortUpload = await globalThis.fetch(`${origin}${importUploadUrl(shortScope, shortToken.token)}`, {
+    method: 'POST',
+    headers: { 'content-type': shortScope.contentType },
+    body: 'abc',
+  });
+  assert.equal(shortUpload.status, 400, await shortUpload.text());
+  await assertMissing(join(directory, 'handoff-short.png'), 'short handoff body must not publish a file');
+
+  const typeScope = { ...handoffScope, sessionId: 'sess-type', assetId: 'handoff-type' };
+  const typeToken = mintImportToken(typeScope);
+  const typeMismatch = await globalThis.fetch(`${origin}${importUploadUrl(typeScope, typeToken.token)}`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain' },
+    body: 'once',
+  });
+  assert.equal(typeMismatch.status, 401, await typeMismatch.text());
+  await assertMissing(join(directory, 'handoff-type.png'), 'wrong-MIME handoff must not publish a file');
+
+  const overflowScope = { ...handoffScope, sessionId: 'sess-overflow', assetId: 'handoff-overflow' };
+  const overflowToken = mintImportToken(overflowScope);
+  const externalOverflow = await chunkedHandoffPost(
+    origin,
+    importUploadUrl(overflowScope, overflowToken.token),
+    overflowScope.contentType,
+    [Buffer.from('abc'), Buffer.from('de')],
+  );
+  assert.equal(externalOverflow.status, 413, externalOverflow.body);
+  await assertMissing(join(directory, 'handoff-overflow.png'), 'overflow handoff must remove its partial file');
+
+  const declaredRaw = await editorFetch(`${origin}/upload?name=raw.bin&assetId=raw-declared`, {
     method: 'PUT',
     headers: {
       'content-type': 'application/octet-stream',
@@ -234,7 +274,7 @@ try {
   assert.equal(declaredRaw.status, 413, await declaredRaw.text());
   await assertMissing(join(directory, 'raw-declared.bin'), 'declared raw overflow must not publish a file');
 
-  const presign = await jsonResponse(await fetch(`${origin}/upload/presign`, {
+  const presign = await jsonResponse(await editorFetch(`${origin}/upload/presign`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ name: 'proxy.bin', assetId: 'proxy-overflow' }),
@@ -269,24 +309,22 @@ try {
   });
   assert.equal(declaredPartSession.response.status, 200, JSON.stringify(declaredPartSession.json));
   const declaredPartId = String(declaredPartSession.json.uploadId);
-  const declaredPart = await fetch(
-    `${origin}/upload/multipart/part?uploadId=${declaredPartId}&part=1`,
-    {
-      method: 'PUT',
-      headers: {
-        'content-type': 'application/octet-stream',
-        'content-length': String(CAP + 1),
-      },
-      body: Buffer.alloc(CAP + 1, 4),
+  const declaredPart = await editorFetch(`${origin}/upload/multipart/part?uploadId=${declaredPartId}&part=1`,
+  {
+    method: 'PUT',
+    headers: {
+      'content-type': 'application/octet-stream',
+      'content-length': String(CAP + 1),
     },
-  );
+    body: Buffer.alloc(CAP + 1, 4),
+  },);
   assert.ok(declaredPart.status >= 400, `declared over-slot part was accepted: ${await declaredPart.text()}`);
   assert.deepEqual(
     await readdir(join(directory, '.multipart', declaredPartId)),
     ['meta.json'],
     'declared over-slot part must remove its temporary file',
   );
-  const declaredComplete = await fetch(`${origin}/upload/multipart/complete`, {
+  const declaredComplete = await editorFetch(`${origin}/upload/multipart/complete`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ uploadId: declaredPartId }),
@@ -313,7 +351,7 @@ try {
     ['meta.json'],
     'streamed over-slot part must remove its temporary file',
   );
-  const streamedComplete = await fetch(`${origin}/upload/multipart/complete`, {
+  const streamedComplete = await editorFetch(`${origin}/upload/multipart/complete`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ uploadId: streamedPartId }),
@@ -323,6 +361,16 @@ try {
   await abortMultipart(origin, streamedPartId);
 
   seedKeystore({ R2_ENABLED: '0' });
+  const exactBytes = Buffer.alloc(CAP, 7);
+  const expectedContentHash = createHash('sha256').update(exactBytes).digest('hex');
+  const exactSingle = await jsonResponse(await editorFetch(`${origin}/upload?name=exact-single.bin&assetId=exact-single`,
+  {
+    method: 'PUT',
+    headers: { 'content-type': 'application/octet-stream' },
+    body: exactBytes,
+  },));
+  assert.equal(exactSingle.bytes, CAP);
+  assert.equal(exactSingle.contentHash, expectedContentHash, 'single-shot response returns streamed SHA-256');
   const exactMultipartSession = await multipartInit(origin, {
     name: 'exact-multipart.bin',
     assetId: 'exact-multipart',
@@ -330,25 +378,24 @@ try {
   });
   assert.equal(exactMultipartSession.response.status, 200, JSON.stringify(exactMultipartSession.json));
   const exactMultipartId = String(exactMultipartSession.json.uploadId);
-  const exactPart = await fetch(
-    `${origin}/upload/multipart/part?uploadId=${exactMultipartId}&part=1`,
-    {
-      method: 'PUT',
-      headers: { 'content-type': 'application/octet-stream' },
-      body: Buffer.alloc(CAP, 7),
-    },
-  );
+  const exactPart = await editorFetch(`${origin}/upload/multipart/part?uploadId=${exactMultipartId}&part=1`,
+  {
+    method: 'PUT',
+    headers: { 'content-type': 'application/octet-stream' },
+    body: exactBytes,
+  },);
   assert.equal(exactPart.status, 200, await exactPart.text());
-  const exactComplete = await jsonResponse(await fetch(`${origin}/upload/multipart/complete`, {
+  const exactComplete = await jsonResponse(await editorFetch(`${origin}/upload/multipart/complete`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ uploadId: exactMultipartId }),
   }));
   assert.equal(exactComplete.bytes, CAP, 'multipart completion must not publish beyond the configured cap');
+  assert.equal(exactComplete.contentHash, expectedContentHash, 'multipart response hashes assembled bytes');
   assert.equal((await stat(join(directory, 'exact-multipart.bin'))).size, CAP);
 
   for (const name of ['header-too-large.bin', 'chunked-too-large.bin']) {
-    const hydrated = await fetch(`${origin}/upload/hydrate`, {
+    const hydrated = await editorFetch(`${origin}/upload/hydrate`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -359,7 +406,7 @@ try {
     assert.ok(deletedR2Keys.includes(`uploads/${name}`), `${name} must invoke bounded R2 cleanup`);
   }
 
-  const exactHydrate = await jsonResponse(await fetch(`${origin}/upload/hydrate`, {
+  const exactHydrate = await jsonResponse(await editorFetch(`${origin}/upload/hydrate`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ name: 'exact-boundary.bin' }),
@@ -373,8 +420,8 @@ try {
 
   delete process.env.UPLOAD_MAX_BYTES;
   assert.equal(configuredUploadMaxBytes(), null);
-  assert.equal(maxUploadBytes(), Number.MAX_SAFE_INTEGER, 'unset policy must not restore the old 10 GiB cap');
-  assert.equal(directR2UploadAllowed(true), true, 'uncapped policy retains direct-R2 eligibility');
+  assert.equal(maxUploadBytes(), DEFAULT_UPLOAD_MAX_BYTES, 'unset policy keeps the finite 20 GiB default');
+  assert.equal(directR2UploadAllowed(true), false, 'bounded policy always uses the authenticated proxy');
   const largeDeclaration = await multipartInit(origin, {
     name: 'declared-over-old-default.mov',
     size: DECLARED_LARGE_BYTES,
@@ -383,8 +430,8 @@ try {
   assert.equal(largeDeclaration.response.status, 200, JSON.stringify(largeDeclaration.json));
   assert.equal(
     largeDeclaration.json.maxBytes,
-    Number.MAX_SAFE_INTEGER,
-    'multipart declaration must expose the uncapped application policy',
+    DEFAULT_UPLOAD_MAX_BYTES,
+    'multipart reports the finite application cap',
   );
   assert.ok(Number(largeDeclaration.json.size) > OLD_DEFAULT_BYTES);
   await abortMultipart(origin, String(largeDeclaration.json.uploadId));

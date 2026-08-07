@@ -3,6 +3,15 @@ import {
   importLocalMediaFromFile,
   type LocalMediaPreloadDependencies,
 } from './local-media-bridge.ts';
+import {
+  PROJECT_STORE_CHANNEL,
+  type ProjectStoreRequest,
+  type ProjectStoreResponse,
+} from '../shared/project-store-transport.ts';
+import {
+  EDITOR_CREDENTIALS_CHANNEL,
+  type EditorBootstrapInfo,
+} from '../shared/editor-auth-transport.ts';
 
 export interface DesktopExportDirectoryGrant {
   readonly grantId: string;
@@ -20,10 +29,12 @@ export interface OpenChatCutDesktopApi {
   selectExportDirectory(): Promise<DesktopExportDirectoryGrant | null>;
   selectExportFile(suggestedFilename: string): Promise<DesktopExportFileGrant | null>;
   restoreExportDirectory(): Promise<DesktopExportDirectoryGrant | null>;
-  importLocalMedia(file: File): Promise<{ src: string; storedName: string } | null>;
+  importLocalMedia(file: File): Promise<{ src: string; storedName: string; contentHash: string } | null>;
   prepareTransparentMovProxy(storedName: string): Promise<{ src: string } | null>;
   windowAction(action: 'close' | 'minimize' | 'toggle-maximize'): Promise<void>;
   revealExport(destinationId: string, filename: string): Promise<void>;
+  projectStore(request: ProjectStoreRequest): Promise<ProjectStoreResponse>;
+  editorCredentials(): Promise<EditorBootstrapInfo>;
 }
 
 const localMediaPreloadDependencies: LocalMediaPreloadDependencies<File> = {
@@ -49,6 +60,10 @@ const api: OpenChatCutDesktopApi = {
     ipcRenderer.invoke('openchatcut:window-action', action) as Promise<void>,
   revealExport: (destinationId, filename) =>
     ipcRenderer.invoke('openchatcut:reveal-export', destinationId, filename) as Promise<void>,
+  projectStore: (request) =>
+    ipcRenderer.invoke(PROJECT_STORE_CHANNEL, request) as Promise<ProjectStoreResponse>,
+  editorCredentials: () =>
+    ipcRenderer.invoke(EDITOR_CREDENTIALS_CHANNEL) as Promise<EditorBootstrapInfo>,
 };
 
 contextBridge.exposeInMainWorld('openChatCutDesktop', api);
