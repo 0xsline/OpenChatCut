@@ -2,9 +2,10 @@
 // Models are NOT bundled — users pick and download them on demand through the
 // local hf-proxy (multi-source accelerated download into the disk cache).
 // Whisper is OpenAI's open-source model, so the official OpenAI mark is used.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { theme } from '../../theme';
 import { useT } from '../../i18n/locale';
+import { warmUpLocalAsr } from '../../transcript/local-asr';
 import { VendorIcon } from './vendorIcons';
 import type { AsrDownloadStatus } from '../../../shared/asr-models';
 import { FieldRow, type FieldCtx } from './settingsVendorPane';
@@ -42,13 +43,23 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  const downloadingRef = useRef<ReadonlySet<string>>(new Set());
   const refresh = useCallback(async () => {
     try {
       const res = await fetch('/api/asr-models', { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as { models?: AsrModelState[] };
-      setModels(Array.isArray(body.models) ? body.models : null);
+      const models = Array.isArray(body.models) ? body.models : [];
+      setModels(models);
       setLoadError(null);
+      const current = new Set(models.filter((m) => m.task?.status === 'downloading').map((m) => m.id));
+      // A download just finished: warm the configured model with this catalog
+      // snapshot, avoiding a duplicate API request.
+      if (downloadingRef.current.size > 0 && current.size === 0) {
+        const downloadedIds = models.filter((model) => model.downloaded).map((model) => model.modelId);
+        void warmUpLocalAsr(downloadedIds);
+      }
+      downloadingRef.current = current;
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : String(error));
     }

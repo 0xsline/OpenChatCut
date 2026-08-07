@@ -13,6 +13,7 @@ import {
 import { localTranscribePathResumable } from './local-asr';
 
 export const TRANSCRIPTION_PROVIDER_KEY = 'cc.transcriptionProvider';
+export const TRANSCRIPTION_PROVIDER_CHANGE_EVENT = 'openchatcut:transcription-provider-change';
 
 export function preferredTranscriptionProvider(): TranscriptionProviderId {
   try {
@@ -27,6 +28,7 @@ export function preferredTranscriptionProvider(): TranscriptionProviderId {
 export function setPreferredTranscriptionProvider(provider: TranscriptionProviderId): void {
   try {
     localStorage.setItem(TRANSCRIPTION_PROVIDER_KEY, provider);
+    window.dispatchEvent(new Event(TRANSCRIPTION_PROVIDER_CHANGE_EVENT));
   } catch {
     // Best-effort; the default stays in effect.
   }

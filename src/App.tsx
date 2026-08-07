@@ -1,4 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { warmUpLocalAsr } from './transcript/local-asr';
+import {
+  preferredTranscriptionProvider,
+  TRANSCRIPTION_PROVIDER_CHANGE_EVENT,
+} from './transcript/provider';
 import { theme } from './theme';
 import { Dashboard } from './components/Dashboard';
 import {
@@ -116,6 +121,37 @@ export default function App() {
     void syncAgentBackends(() => alive);
     return () => { alive = false; };
   }, []);
+
+  // Web and desktop share the same renderer path. Warm only after a project is
+  // open; a dashboard-only session should not allocate model RAM.
+  useEffect(() => {
+    if (route.name !== 'editor') return;
+    let alive = true;
+    let timer: number | null = null;
+    const schedule = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      if (preferredTranscriptionProvider() !== 'local') return;
+      timer = window.setTimeout(() => {
+        void fetch('/api/asr-models', { cache: 'no-store' })
+          .then((response) => (response.ok ? response.json() : null))
+          .catch(() => null)
+          .then((body: { models?: { modelId?: string; downloaded?: boolean }[] } | null) => {
+            if (!alive || !Array.isArray(body?.models)) return;
+            const downloadedIds = body.models
+              .filter((model) => model.downloaded && typeof model.modelId === 'string')
+              .map((model) => model.modelId as string);
+            if (downloadedIds.length > 0) void warmUpLocalAsr(downloadedIds);
+          });
+      }, 4000);
+    };
+    schedule();
+    window.addEventListener(TRANSCRIPTION_PROVIDER_CHANGE_EVENT, schedule);
+    return () => {
+      alive = false;
+      if (timer !== null) window.clearTimeout(timer);
+      window.removeEventListener(TRANSCRIPTION_PROVIDER_CHANGE_EVENT, schedule);
+    };
+  }, [route.name]);
 
   const refresh = useCallback(async () => { setProjects(await listProjects()); }, []);
 

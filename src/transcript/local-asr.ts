@@ -96,11 +96,12 @@ class LocalAsrClient {
     });
   }
 
-  /** Load the model on a device, falling back webgpu → wasm on failure. */
+  /** Load the requested model after any in-flight warm-up finishes. */
   async ensureLoaded(config: AsrConfig): Promise<void> {
+    while (this.loading) await this.loading;
     if (this.config?.device === config.device && this.config.modelId === config.modelId) return;
-    if (this.loading) return this.loading;
-    this.loading = (async () => {
+
+    const loading = (async () => {
       try {
         await this.request(
           { type: 'load', device: config.device, modelId: config.modelId },
@@ -109,17 +110,19 @@ class LocalAsrClient {
         this.config = config;
       } catch (webgpuError) {
         if (config.device !== 'webgpu') throw webgpuError;
-        // GPU path failed (hang on software renderers, driver, dtype support).
-        // Drop the worker entirely: its half-initialized onnxruntime session would
-        // corrupt a second (wasm) session in the same worker. A fresh worker runs
-        // the wasm fallback clean.
+        // A half-initialized WebGPU session can corrupt the wasm fallback.
         this.dispose();
         const fallback: AsrConfig = { ...config, device: 'wasm' };
         await this.request({ type: 'load', device: 'wasm', modelId: fallback.modelId });
         this.config = fallback;
       }
-    })().finally(() => { this.loading = null; });
-    return this.loading;
+    })();
+    this.loading = loading;
+    try {
+      await loading;
+    } finally {
+      if (this.loading === loading) this.loading = null;
+    }
   }
 
   async transcribe(samples: Float32Array, language: string): Promise<AsrResult> {
@@ -233,4 +236,35 @@ export async function localTranscribePath(
 export function __resetLocalAsrClient(): void {
   sharedClient?.dispose();
   sharedClient = null;
+}
+
+interface DownloadedAsrModel {
+  modelId?: string;
+  downloaded?: boolean;
+}
+
+async function fetchDownloadedModelIds(): Promise<string[]> {
+  const body = await fetch('/api/asr-models', { cache: 'no-store' })
+    .then((response) => (response.ok ? response.json() : null))
+    .catch(() => null) as { models?: DownloadedAsrModel[] } | null;
+  if (!Array.isArray(body?.models)) return [];
+  return body.models
+    .filter((model) => model.downloaded && typeof model.modelId === 'string')
+    .map((model) => model.modelId as string);
+}
+
+/**
+ * Compile the ort wasm runtime and initialize an already-downloaded model in
+ * the background. Failures stay silent; a real transcription reports them.
+ */
+export async function warmUpLocalAsr(downloadedModelIds?: readonly string[]): Promise<void> {
+  try {
+    const profile = await detectDeviceProfile();
+    const config = chooseAsrConfig(profile);
+    const available = downloadedModelIds ?? await fetchDownloadedModelIds();
+    if (!available.includes(config.modelId)) return;
+    await getSharedClient().ensureLoaded(config);
+  } catch {
+    // Best-effort only.
+  }
 }

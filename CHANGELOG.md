@@ -44,6 +44,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Hardware-accelerated decoding on every video path; constant-quality proxy encoding; semantic model warm-up.
   全视频路径硬件加速解码；代理转码改为常量质量编码；语义模型预热。
+- Local Whisper models now warm in the background after opening a project on both web and desktop, and immediately after a model download or provider switch; only the selected downloaded model is loaded, so warm-up never triggers an implicit download.
+  本地 Whisper 模型在网页端与桌面端打开工程后后台预热，模型下载完成或切换转写 Provider 时也会立即安排预热；仅加载当前已下载的选中模型，预热不会偷偷触发下载。
 
 ## [0.1.8] - 2026-08-06
 
