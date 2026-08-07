@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { theme, themeAlpha } from '../theme';
 import { Icon } from './icons';
+import { TopBarIconButton } from './TopBarIconButton';
 import { listExportHistory, clearExportHistory, type ExportRecord } from '../persist/exportHistoryStore';
 import { t, useT } from '../i18n/locale';
 
@@ -53,12 +54,7 @@ export function ExportHistory() {
 
   return (
     <>
-      <button title={t('导出历史')} onClick={() => setOpen(true)}
-        style={{ width: 28, height: 28, background: 'none', border: 'none', cursor: 'pointer', padding: 0, borderRadius: 4, lineHeight: 0, display: 'grid', placeItems: 'center', color: theme.textDim }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = theme.text; e.currentTarget.style.background = theme.panelAlt; }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; e.currentTarget.style.background = 'none'; }}>
-        <Icon name="download" size={17} />
-      </button>
+      <TopBarIconButton icon="download" label={t('导出历史')} onClick={() => setOpen(true)} />
 
       {open && (
         <div onClick={() => setOpen(false)} style={backdrop}>
