@@ -14,7 +14,7 @@ const DRAFT_EDIT_TOOL_NAMES = new Set([
   'duplicate_item', 'remove_item', 'split_item', 'add_audio', 'clear_timeline',
   'set_aspect_ratio', 'manage_timelines', 'edit_track', 'apply_script',
   'edit_item', 'manage_effects', 'edit_captions', 'update_watermark',
-  'manage_markers',
+  'manage_markers', 'apply_caption_avoidance', 'place_graphics_in_safe_zone', 'auto_reframe',
 ]);
 export function isExternalGlobalReadTool(name: string): boolean {
   return GLOBAL_READ_TOOL_NAMES[name] === true;

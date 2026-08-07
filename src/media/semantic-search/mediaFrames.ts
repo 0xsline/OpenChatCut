@@ -113,7 +113,7 @@ export function sceneAwareSamplePlan(
   if (!Number.isFinite(duration) || duration <= MIN_VIDEO_DURATION_SECONDS) {
     return [{ sceneId: 'scene-0-0', sceneStart: 0, sceneEnd: Math.max(0, duration), sampleTime: 0 }];
   }
-  const cap = Math.max(1, Math.min(MAX_SCENE_SAMPLE_COUNT, Math.round(maxSamples)));
+  const cap = Math.max(1, Math.round(maxSamples));
   const cuts = [...new Set(boundaries
     .filter((time) => Number.isFinite(time) && time > 0 && time < duration)
     .map((time) => Number(time.toFixed(3))))]
@@ -146,12 +146,11 @@ export function sceneAwareSamplePlan(
   return [...selected].sort((left, right) => left.sampleTime - right.sampleTime);
 }
 
-async function scenePlanForLongVideo(
+export async function detectSceneBoundaries(
   asset: MediaAsset,
-  duration: number,
   signal: AbortSignal,
-): Promise<SceneSamplePlan[] | null> {
-  if (duration < LONG_VIDEO_SECONDS || !asset.src.startsWith('/media/uploads/')) return null;
+): Promise<number[] | null> {
+  if (!asset.src.startsWith('/media/uploads/')) return null;
   try {
     const response = await fetch('/api/detect-scenes', {
       method: 'POST',
@@ -160,17 +159,24 @@ async function scenePlanForLongVideo(
       signal,
     });
     if (!response.ok) return null;
-    const result = await response.json() as {
-      scenes?: Array<{ timeMs?: number }>;
-    };
-    const boundaries = (result.scenes ?? [])
+    const result = await response.json() as { scenes?: Array<{ timeMs?: number }> };
+    return (result.scenes ?? [])
       .map((scene) => Number(scene.timeMs) / 1000)
       .filter(Number.isFinite);
-    return sceneAwareSamplePlan(duration, boundaries);
   } catch (error) {
     if (signal.aborted) throw error;
     return null;
   }
+}
+
+async function scenePlanForLongVideo(
+  asset: MediaAsset,
+  duration: number,
+  signal: AbortSignal,
+): Promise<SceneSamplePlan[] | null> {
+  if (duration < LONG_VIDEO_SECONDS) return null;
+  const boundaries = await detectSceneBoundaries(asset, signal);
+  return boundaries ? sceneAwareSamplePlan(duration, boundaries) : null;
 }
 
 async function sampleVideo(asset: MediaAsset, signal: AbortSignal): Promise<FramePixels[]> {

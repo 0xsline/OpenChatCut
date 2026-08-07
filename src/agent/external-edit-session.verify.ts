@@ -736,6 +736,9 @@ const failedSaveInfo = await failedSaveRuntime.execute(
 assert.equal(sessionStatus(failedSaveInfo), 'awaiting_review');
 assert(isExternalDraftTool('set_aspect_ratio'));
 assert(isExternalReadTool('read_project'));
+assert(isExternalDraftTool('apply_caption_avoidance'));
+assert(isExternalDraftTool('place_graphics_in_safe_zone'));
+assert(isExternalDraftTool('auto_reframe'));
 assert(!isExternalDraftTool('delete_project'));
 assert(!isExternalDraftTool('submit_render_job'));
 assert(isExternalRealTool('submit_render_job'), 'real-project tools are exposed to external agents (confirm-gated)');

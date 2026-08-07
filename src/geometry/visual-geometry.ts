@@ -11,15 +11,20 @@
 import type { MediaAsset } from '../editor/types';
 import { sourceRevisionOf } from '../editor/mediaSourceRevision';
 import { safeZoneForRange, type FrameGeom, type GeomRect, type SafeZone } from './geometry-math';
-import { getMediaPipeRuntime, inferFrameFromPixels } from './mediapipe';
+import {
+  GEOM_MAX_FRAMES,
+  getMediaPipeRuntime,
+  inferFrameFromPixels,
+} from './mediapipe';
 import { sampleGeometryFrames } from './sample';
 
-export const GEOMETRY_ALGORITHM_VERSION = 'mediapipe-v1';
+export const GEOMETRY_ALGORITHM_VERSION = 'mediapipe-v2';
 
 /** Bottom caption-reserve band subtracted from every safe zone (hard no-go). */
 export const CAPTION_RESERVE = 0.16;
 /** Minimum segment length in seconds for a safe zone to be computed. */
 const MIN_SEGMENT_SEC = 0.4;
+const GEOMETRY_ANALYSIS_TIMEOUT_MS = 120_000;
 
 export type PersonSide = 'left' | 'center' | 'right' | 'none';
 
@@ -82,27 +87,44 @@ export interface AnalyzeResult {
 
 const CAPTION_BAND: GeomRect = { x: 0, y: 1 - CAPTION_RESERVE, w: 1, h: CAPTION_RESERVE };
 
-async function computeGeometry(asset: MediaAsset, signal: AbortSignal): Promise<VisualGeometryAsset | null> {
-  const runtime = await getMediaPipeRuntime();
+async function computeGeometry(
+  asset: MediaAsset,
+  signal: AbortSignal,
+  maxSamples: number,
+): Promise<VisualGeometryAsset | null> {
+  const runtime = await getMediaPipeRuntime(signal);
   if (!runtime) return null;
-  const samples = await sampleGeometryFrames(asset, signal);
-  if (!samples.length) return null;
-
   const frames: FrameGeom[] = [];
-  for (const sample of samples) {
-    signal?.throwIfAborted();
+  const samples: Array<{
+    sampleTime: number;
+    sceneStart?: number;
+    sceneEnd?: number;
+  }> = [];
+  let durationSec = 0;
+  for await (const sample of sampleGeometryFrames(asset, signal, maxSamples)) {
+    signal.throwIfAborted();
     const { face, occ } = inferFrameFromPixels(runtime, sample);
     frames.push({ t: sample.sampleTime, face, occ });
+    samples.push({
+      sampleTime: sample.sampleTime,
+      sceneStart: sample.sceneStart,
+      sceneEnd: sample.sceneEnd,
+    });
+    durationSec = sample.durationSec;
   }
-  const durationSec = samples[samples.length - 1]!.sampleTime + 1;
+  if (!frames.length || !(durationSec > 0)) return null;
   const boundaries = segmentBoundaries(samples, durationSec);
   const segments: VisualSegment[] = boundaries
-    .map((b) => {
-      const zone = safeZoneForRange(frames, b.startSec, b.endSec, [CAPTION_BAND]);
-      return { ...b, zone, person: personFromSubject(zone.subject) };
+    .map((boundary) => {
+      const zone = safeZoneForRange(
+        frames,
+        boundary.startSec,
+        boundary.endSec,
+        [CAPTION_BAND],
+      );
+      return { ...boundary, zone, person: personFromSubject(zone.subject) };
     })
     .filter((segment) => segment.zone.rects.length > 0 || segment.zone.subject !== null);
-
   if (!segments.length) return null;
   return {
     assetId: asset.id,
@@ -166,10 +188,16 @@ function cacheKey(asset: MediaAsset): string {
   return `${asset.id}:${sourceRevisionOf(asset)}:${GEOMETRY_ALGORITHM_VERSION}`;
 }
 
+
+export interface AnalyzeGeometryOptions {
+  /** Bound uncached decoding/inference work; reduced runs are not persisted. */
+  maxSamples?: number;
+}
 /** Analyze (or read from cache) the visual geometry of an asset. Never throws. */
 export async function analyzeAssetGeometry(
   asset: MediaAsset,
   signal?: AbortSignal,
+  options: AnalyzeGeometryOptions = {},
 ): Promise<AnalyzeResult> {
   if (asset.kind !== 'video' && asset.kind !== 'gif') {
     return { geometry: null, reason: 'unavailable' };
@@ -180,10 +208,20 @@ export async function analyzeAssetGeometry(
   const key = cacheKey(asset);
   const cached = await readCached(key);
   if (cached) return { geometry: cached, reason: 'cached' };
-  const geometry = await computeGeometry(asset, signal ?? new AbortController().signal);
-  if (!geometry) return { geometry: null, reason: 'empty' };
-  await writeCached(key, geometry);
-  return { geometry, reason: 'computed' };
+  const requestedSamples = Number.isFinite(options.maxSamples)
+    ? Math.floor(options.maxSamples!)
+    : GEOM_MAX_FRAMES;
+  const maxSamples = Math.max(1, Math.min(GEOM_MAX_FRAMES, requestedSamples));
+  const timeoutSignal = AbortSignal.timeout(GEOMETRY_ANALYSIS_TIMEOUT_MS);
+  const analysisSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+  try {
+    const geometry = await computeGeometry(asset, analysisSignal, maxSamples);
+    if (!geometry) return { geometry: null, reason: 'empty' };
+    if (maxSamples === GEOM_MAX_FRAMES) await writeCached(key, geometry);
+    return { geometry, reason: 'computed' };
+  } catch {
+    return { geometry: null, reason: 'unavailable' };
+  }
 }
 
 /** Drop a cached geometry for one asset (e.g. after a failed partial analysis). */

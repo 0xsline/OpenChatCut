@@ -32,7 +32,7 @@ export interface EditorCommands {
   addMotionGraphic: (tpl: Tpl, at?: { track?: TrackId; startFrame?: number; ripple?: boolean; overwrite?: boolean }) => void;
   addAudio: (asset: AudioAsset, at?: { track?: TrackId; startFrame?: number; ripple?: boolean; overwrite?: boolean }) => void;
   addAsset: (asset: MediaAsset) => void;
-  addMediaItem: (asset: MediaAsset, at?: { track?: TrackId; startFrame?: number; ripple?: boolean; overwrite?: boolean }) => string;
+  addMediaItem: (asset: MediaAsset, at?: { track?: TrackId; startFrame?: number; srcInFrame?: number; ripple?: boolean; overwrite?: boolean }) => string;
   /** Add an instance of another timeline without copying its contents. */
   addSequence: (timelineId: string, at?: {
     track?: TrackId;
@@ -425,6 +425,9 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
               sourceFilename: asset.sourceFilename,
               originalFilePath: asset.originalFilePath,
               sourceRevision: sourceRevisionOf(asset),
+              srcInFrame: typeof at?.srcInFrame === 'number'
+                ? Math.max(0, Math.round(at.srcInFrame))
+                : undefined,
               volume: asset.kind === 'audio' || asset.kind === 'video' ? 1 : undefined,
               width: asset.width,
               height: asset.height,

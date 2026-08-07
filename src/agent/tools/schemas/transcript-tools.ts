@@ -23,7 +23,7 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'search_media',
-    description: 'Search project media through one typed surface. Returns visual ChineseCLIP scene hits and spoken transcript hits with normalized per-modality scores, source time ranges, asset ids, and source revisions. Results are grouped by modality because cosine and transcript scores are not directly comparable; stale derived hits are excluded. Hit sourceStartMs/sourceEndMs can be passed straight into edit_item adds as sourceStartSeconds/sourceEndSeconds (seconds) — the tool converts; never multiply by fps yourself.',
+    description: 'Search project media through one typed surface. Returns visual ChineseCLIP scene hits and spoken transcript hits with normalized per-modality scores, source time ranges, asset ids, and source revisions. Results are grouped by modality because cosine and transcript scores are not directly comparable; stale derived hits are excluded. Pass hit sourceStartMs/sourceEndMs unchanged into edit_item adds using fields with the same names; edit_item converts milliseconds to source frames internally.',
     input_schema: {
       type: 'object',
       properties: {

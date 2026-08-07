@@ -12,7 +12,10 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "sync:mediapipe": "node scripts/sync-mediapipe.mjs",
+    "predev": "npm run sync:mediapipe",
     "dev": "vite",
+    "prebuild": "npm run sync:mediapipe",
     "build": "tsc -b && vite build",
     "update:model-capabilities": "node --use-env-proxy scripts/update-llm-model-capabilities.mjs",
     "verify:media-drag": "tsx src/media/drag.verify.ts",

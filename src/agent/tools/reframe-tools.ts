@@ -1,7 +1,11 @@
 export { REFRAME_TOOL_SCHEMAS, REFRAME_TOOL_NAMES } from './schemas/reframe-tools';
 import type { AgentContext } from '../context';
 import type { TimelineItem, TimelineState } from '../../editor/types';
-import { detectFocalPoints, magnificationForAspect } from '../../reframe/detect';
+import {
+  DEFAULT_REFRAME_SMOOTH,
+  detectFocalPoints,
+  magnificationForAspect,
+} from '../../reframe/detect';
 import { focalFramesFromGeometry } from '../../reframe/geometry-focus';
 import { analyzeAssetGeometry } from '../../geometry/visual-geometry';
 
@@ -89,15 +93,21 @@ export async function execReframeTool(name: string, args: Args, ctx: AgentContex
     // available, focal points come from subject centers — no pixel sampling,
     // robust on complex backgrounds. Falls back to the energy-grid heuristic.
     const asset = item.src ? ctx.getDoc().assets.find((candidate) => candidate.src === item.src) : undefined;
-    const geometryResult = asset ? await analyzeAssetGeometry(asset) : undefined;
+    const geometryResult = asset
+      ? await analyzeAssetGeometry(asset, undefined, { maxSamples })
+      : undefined;
     const geometry = geometryResult?.geometry;
     const usedGeometry = Boolean(geometry && geometry.segments.some((segment) => segment.zone.subject || segment.zone.face));
+    const magnification = magnificationForAspect(srcWidth ?? 0, srcHeight ?? 0, dstAspect);
 
     const keyframes = usedGeometry
       ? focalFramesFromGeometry(geometry!, item.durationInFrames, state.fps, {
         srcInFrame: item.srcInFrame ?? 0,
         playbackRate: item.playbackRate,
         intervalFrames,
+        maxSamples,
+        smooth,
+        magnification,
       })
       : await detectFocalPoints(video, {
         durationInFrames: item.durationInFrames,
@@ -120,18 +130,17 @@ export async function execReframeTool(name: string, args: Args, ctx: AgentContex
     clearReframe(ctx, item);
     for (const k of keyframes) ctx.commands.setReframeKeyframe(item.id, k.frame, k.focalPointX, k.focalPointY, k.magnification);
 
-    const mag = magnificationForAspect(srcWidth ?? 0, srcHeight ?? 0, dstAspect);
     return {
       ok: true,
       itemId: item.id,
       keyframes: keyframes.length,
-      magnification: mag,
+      magnification,
       dstAspect: Number(dstAspect.toFixed(4)),
-      smooth: smooth ?? 0.45,
+      smooth: smooth ?? DEFAULT_REFRAME_SMOOTH,
       source: usedGeometry ? 'geometry' : 'energy-grid',
       note: usedGeometry
         ? '基于人像/人脸几何生成焦点（无需像素采样）。'
-        : mag <= 1.05
+        : magnification <= 1.05
           ? '画布与源画幅接近，裁切倍率≈1；关键帧已写入，换竖屏画布后更明显。'
           : 'reframe 关键帧已写入；用 view_timeline_frames 自检裁切是否跟主体。',
     };

@@ -1,9 +1,6 @@
-// Generic (non-library) item ops for edit_item — the unified entry for
-// video/image/audio/gif/svg/motion-graphic/text/solid updates + deletes. Kept in its own
-// PURE module (imports only editor types) so it's unit-testable without pulling the GL
-// `.frag` chain that edit-item-tools.ts drags in. Validation is pure; commit delegates to
-// the same editor commands the dedicated move_item / set_item_timing / remove_item tools
-// use — no logic duplication, just atomic-batch semantics.
+// Pure validation for generic edit_item adds/updates/deletes; kept separate from
+// edit-item-tools.ts so unit checks avoid its GL .frag dependency.
+// Committers delegate to EditorCommands, preserving atomic-batch semantics.
 import type {
   ClipFilters, ClipTransform, ItemKeyframes, Keyframe, KeyframeProp,
   MediaAsset, TimelineItem, TimelineState,
@@ -15,6 +12,7 @@ import { planSlip, type SlipFailure, type SlipResult } from '../../editor/slip';
 import { rejectUnknownFields } from './edit-item-fields';
 import { clampNum, parseFiltersArg, parseTransformArg } from './edit-item-visual';
 import { validateMediaSourceUpdate } from './edit-item-media-ops';
+import { validateSourceWindow } from './edit-item-source-window';
 export { didYouMean, rejectUnknownFields } from './edit-item-fields';
 export { validateMediaSourceUpdate } from './edit-item-media-ops';
 
@@ -84,6 +82,8 @@ const GENERIC_ADD_KEYS: Record<string, true> = {
   durationInFrames: true,
   sourceStartSeconds: true,
   sourceEndSeconds: true,
+  sourceStartMs: true,
+  sourceEndMs: true,
 };
 
 const AUTHORED_ADD_KEYS: Record<string, true> = {
@@ -364,13 +364,9 @@ export function validateAuthoredAdd(
   };
 }
 
-// Place an existing POOL asset (video/image/gif/svg/audio) onto a track as a clip.
-// submit_*/import only registers the asset; it's placed onto the timeline by a
-// separate edit_item. The library adds (effect/transition/mg/
-// sfx) never covered pool media, so the agent previously had NO way to place B-roll — this
-// closes that. Pure: resolves asset (id/prefix, G2) + track + position; the committer calls
-// addMediaItem. Optional durationInFrames trims stills/clips at placement (applied as an
-// asset copy so the committer needs no post-placement item lookup).
+// Validate placement of an existing pool asset. submit/import only registers it;
+// this resolves asset, track, and timing for addMediaItem. Optional duration trims
+// a copied asset without requiring a post-placement lookup.
 export function validateGenericAdd(
   state: TimelineState,
   assets: readonly MediaAsset[],
@@ -384,63 +380,39 @@ export function validateGenericAdd(
       supported: [...GENERIC_ADD_KINDS, ...AUTHORED_ADD_KINDS],
     };
   }
-  // Pool media add: reject extra keys (live: unknown field "name" on adds[0]).
   const unknown = rejectUnknownFields(entry, GENERIC_ADD_KEYS);
   if (unknown) return { error: unknown };
   const q = String(entry.assetId ?? '').trim();
   if (!q) return { error: `${type} add needs assetId (a pool asset id/prefix; see manage_media_pool action=list)` };
-  const exact = assets.find((a) => a.id === q);
-  const hits = exact ? [exact] : assets.filter((a) => a.id.startsWith(q));
-  if (hits.length === 0) return { error: `no pool asset matching "${q}"`, hint: 'manage_media_pool action=list shows asset ids/names' };
+  const exact = assets.find((asset) => asset.id === q);
+  const hits = exact ? [exact] : assets.filter((asset) => asset.id.startsWith(q));
+  if (hits.length === 0) {
+    return { error: `no pool asset matching "${q}"`, hint: 'manage_media_pool action=list shows asset ids/names' };
+  }
   if (hits.length > 1) {
-    return { error: `ambiguous asset prefix "${q}"`, candidates: hits.slice(0, 6).map((a) => ({ id: a.id, name: a.name, kind: a.kind })) };
+    return { error: `ambiguous asset prefix "${q}"`, candidates: hits.slice(0, 6).map((asset) => ({ id: asset.id, name: asset.name, kind: asset.kind })) };
   }
   const asset = hits[0]!;
-  if (asset.kind !== type) return { error: `asset ${asset.id} is kind=${asset.kind}, not ${type} — pass type:"${asset.kind}"` };
-
+  if (asset.kind !== type) {
+    return { error: `asset ${asset.id} is kind=${asset.kind}, not ${type} — pass type:"${asset.kind}"` };
+  }
   const family = type === 'audio' ? 'audio' : 'video';
   const track = resolveTrackId(state, entry.track ?? entry.trackId ?? (family === 'audio' ? 'A1' : 'V1'), family)
     ?? defaultTrackId(state, family);
   if (!track) return { error: `no ${family} track for placement — create one with edit_track first` };
-
   const startFrame = finiteNum(entry.startFrame) ?? finiteNum(entry.fromFrame);
   const durationInFrames = finiteNum(entry.durationInFrames);
-  const sourceStart = finiteNum(entry.sourceStartSeconds);
-  const sourceEnd = finiteNum(entry.sourceEndSeconds);
-  if (sourceStart !== undefined || sourceEnd !== undefined) {
-    // search_media hits carry sourceStartMs/sourceEndMs; this source window
-    // (in SOURCE seconds) is converted here — the model never does fps math.
-    if (type !== 'video' && type !== 'audio' && type !== 'gif') {
-      return { error: `sourceStartSeconds/sourceEndSeconds only apply to video/audio/gif adds (got ${type})` };
-    }
-    if (durationInFrames !== undefined || entry.srcInFrame !== undefined) {
-      return { error: 'do not combine sourceStartSeconds/sourceEndSeconds with durationInFrames/srcInFrame — the source window derives the trim and length' };
-    }
-    const fps = state.fps || 30;
-    const assetFrames = asset.durationInFrames > 0 ? asset.durationInFrames : null;
-    const startSec = sourceStart ?? 0;
-    const startFrameIn = Math.max(0, Math.round(startSec * fps));
-    if (assetFrames !== null && startFrameIn >= assetFrames) {
-      return { error: `sourceStartSeconds ${startSec} is past the end of the asset (${(assetFrames / fps).toFixed(2)}s)` };
-    }
-    const endSec = sourceEnd ?? (assetFrames !== null ? assetFrames / fps : undefined);
-    if (endSec === undefined) {
-      return { error: 'sourceEndSeconds is required when the asset duration is unknown' };
-    }
-    const endFrameIn = Math.max(startFrameIn + 1, Math.round(endSec * fps));
-    if (assetFrames !== null && endFrameIn > assetFrames) {
-      return { error: `sourceEndSeconds ${endSec} exceeds the asset length (${(assetFrames / fps).toFixed(2)}s)` };
-    }
+  const sourceWindow = validateSourceWindow(type, asset, state.fps || 30, entry, durationInFrames);
+  if (sourceWindow?.error) return sourceWindow;
+  if (sourceWindow) {
     return {
       ok: true,
       kind: type,
       plan: 'addMedia',
       assetId: asset.id,
       track,
-      srcInFrame: startFrameIn,
-      durationInFrames: endFrameIn - startFrameIn,
+      ...sourceWindow,
       ...(startFrame !== undefined ? { startFrame: Math.max(0, Math.round(startFrame)) } : {}),
-      sourceRange: { startSeconds: startSec, endSeconds: endSec },
     };
   }
   return {

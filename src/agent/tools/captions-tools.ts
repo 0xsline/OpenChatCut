@@ -7,6 +7,7 @@ import { resolveCaptionWords, resolveCaptionWordIndices, applyWordOverrides } fr
 import { CAPTION_STYLE_BY_ID } from '../../captions/styles';
 import { editCaptions } from './captions-actions';
 import { sourceList } from './captions-sources';
+import { applyCaptionAvoidance } from './caption-avoidance-tools';
 
 // Captions tools: `read_captions` (read-only) + `edit_captions`
 // (ONE tool, 21-action dispatch — see captions-actions.ts). Word overrides
@@ -16,6 +17,12 @@ import { sourceList } from './captions-sources';
 
 
 type Args = Record<string, unknown>;
+
+const AUTO_AVOIDANCE_ACTIONS: Record<string, true> = {
+  enable: true,
+  source_set: true,
+  source_add: true,
+};
 
 export async function execCaptionsTool(name: string, args: Args, ctx: AgentContext): Promise<unknown | undefined> {
   const s = ctx.getState();
@@ -70,8 +77,13 @@ export async function execCaptionsTool(name: string, args: Args, ctx: AgentConte
         pages: pagesOut,
       };
     }
-    case 'edit_captions':
-      return editCaptions(args, ctx);
+    case 'edit_captions': {
+      const result = await editCaptions(args, ctx);
+      const action = String(args.action ?? '');
+      if (!AUTO_AVOIDANCE_ACTIONS[action] || 'error' in result) return result;
+      const automaticCaptionAvoidance = await applyCaptionAvoidance(ctx, { maxSamples: 60 });
+      return { ...result, automaticCaptionAvoidance };
+    }
     default:
       return undefined;
   }
