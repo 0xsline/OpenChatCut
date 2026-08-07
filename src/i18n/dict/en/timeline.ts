@@ -204,6 +204,7 @@ export default {
   '出点 (O)': 'Out point (O)',
   // ── TimelineTabs.tsx ──
   '单击切换 · 双击重命名': 'Click to switch · double-click to rename',
+  '序列 {n}': 'Sequence {n}',
   '删除该序列': 'Delete this sequence',
   '＋序列': '＋ Sequence',
   '复制当前序列': 'Duplicate current sequence',

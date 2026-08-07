@@ -2,8 +2,10 @@
 export default {
   // LibraryPanel main/sub tab
   '我的素材': 'My Media',
+  '序列': 'Sequences',
   '资源库': 'Library',
   '文字稿': 'Transcript',
+  '点击把序列作为引用实例加入当前时间线；修改子序列会同步到所有实例。': 'Click a sequence to add it to the current timeline as a linked instance. Changes to a child sequence sync to every instance.',
   'MG 动画': 'Motion Graphics',
   '音效': 'Sound Effects',
   '音频效果': 'Audio FX',

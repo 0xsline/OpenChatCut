@@ -123,6 +123,10 @@ interface LibraryPanelProps {
 
 const MAIN_TABS = ['我的素材', '序列', '资源库', '文字稿', '字幕', '技能'] as const;
 const SUB_TABS = ['MG 动画', '音效', '转场', '特效', '缩放', 'LUT'] as const;
+function localizeDefaultSequenceName(name: string, t: ReturnType<typeof useT>): string {
+  const match = /^序列 (\d+)$/.exec(name);
+  return match ? t('序列 {n}', { n: match[1]! }) : name;
+}
 export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, sequenceOptions, onAddSequence, trackOptions, captionTracks, onSetCaptions, onCreateCaptionTrack, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, usedAssetIds, offlineAssetIds, onAssetLoadError, onImportMedia, onImportMobileMedia, onAddMediaItem, onAddMediaAssetsToTimeline, onUseMediaAI, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onRenameMediaAssets, onSetMediaAssetFavorite, onSetMediaAssetsFavorite, onRemoveMediaAsset, onRemoveMediaAssets, onPasteMediaAssets, onRelinkMediaAsset, creativeMode, onCreativeModeChange, onAddSolid, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
   const t = useT();
   const selKind = selectedItem?.kind ?? null;
@@ -206,7 +210,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
                 onClick={() => onAddSequence(option.id)}
                 className="cc-sequence-row"
               >
-                <span className="cc-sequence-name">{option.name}</span>
+                <span className="cc-sequence-name">{localizeDefaultSequenceName(option.name, t)}</span>
                 <span className="cc-sequence-duration">{(option.durationInFrames / fps).toFixed(1)}s</span>
               </button>
             ))}
