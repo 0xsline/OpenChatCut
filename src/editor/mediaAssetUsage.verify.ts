@@ -1,3 +1,4 @@
+import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { historyReduce, projectReduce } from './reduce';
@@ -32,7 +33,7 @@ const linkedB = clip('linked-b', assetB.name, assetB.src, assetB.id);
 const other = clip('other', otherAsset.name, otherAsset.src, otherAsset.id);
 
 const doc: ProjectDoc = {
-  version: 3,
+  version: CURRENT_PROJECT_VERSION,
   assets: [assetA, assetB, otherAsset],
   mediaFolders: [],
   activeTimelineId: 'timeline-1',
@@ -96,9 +97,37 @@ const relinked = projectReduce(doc, {
   id: assetA.id,
   src: '/media/relinked.mp4',
   name: 'Relinked.mp4',
+  sourceContentHash: 'aa'.repeat(32),
 });
 assert.equal(relinked.timelines[0]!.items.find((item) => item.id === linkedA.id)?.src, '/media/relinked.mp4');
 assert.equal(relinked.timelines[0]!.items.find((item) => item.id === legacyA.id)?.sourceAssetId, assetA.id);
+assert.equal(
+  relinked.timelines[0]!.items.find((item) => item.id === linkedA.id)?.sourceContentHash,
+  'aa'.repeat(32),
+  'pool relink must copy content identity to linked timeline snapshots',
+);
+const preservedHash = projectReduce(relinked, {
+  type: 'pool.relinkAsset',
+  id: assetA.id,
+  src: '/media/relinked.mp4',
+  name: 'Renamed without replacing bytes.mp4',
+});
+assert.equal(
+  preservedHash.assets.find((item) => item.id === assetA.id)?.sourceContentHash,
+  'aa'.repeat(32),
+  'omitting sourceContentHash must preserve the current byte identity',
+);
+const clearedHash = projectReduce(relinked, {
+  type: 'pool.relinkAsset',
+  id: assetA.id,
+  src: '/media/relinked-without-server-hash.mp4',
+  sourceContentHash: undefined,
+});
+assert.equal(
+  clearedHash.assets.find((item) => item.id === assetA.id)?.sourceContentHash,
+  undefined,
+  'explicit undefined must clear stale identity for a legacy replacement',
+);
 assert.equal(relinked.timelines[0]!.items.find((item) => item.id === linkedB.id)?.src, assetB.src, 'same-source duplicate must remain independent');
 
 type TimelineRelinkItem = TimelineItem & Pick<MediaAssetRelinkPatch, 'sourceSize' | 'sourceModifiedAt'> & {
@@ -161,6 +190,7 @@ const clipOnlyRelinkAction = {
   name: 'After.mp4',
   durationInFrames: 5,
   sourceRevision: 'clip-revision-after',
+  sourceContentHash: 'bb'.repeat(32),
   sourceSize: 300,
   sourceModifiedAt: 400,
   originalFilePath: undefined,
@@ -173,6 +203,7 @@ assert.equal(clipAfterRelink.src, '/media/after.mp4');
 assert.equal(clipAfterRelink.name, 'After.mp4');
 assert.equal(clipAfterRelink.durationInFrames, 5);
 assert.equal(clipAfterRelink.sourceRevision, 'clip-revision-after');
+assert.equal(clipAfterRelink.sourceContentHash, 'bb'.repeat(32));
 assert.equal(clipAfterRelink.sourceSize, 300);
 assert.equal(clipAfterRelink.sourceModifiedAt, 400);
 assert.equal(clipAfterRelink.sourceAssetId, undefined, 'clip-only relink must detach the former pool master');

@@ -1,3 +1,4 @@
+import { CURRENT_PROJECT_VERSION } from '../../../shared/project-version';
 import assert from 'node:assert/strict';
 import type { AgentContext } from '../context.ts';
 import { historyReduce, type AtomicAction, type History } from '../../editor/reduce.ts';
@@ -31,7 +32,7 @@ const ranged = buildSilenceGapCaps(words, { mode: 'range', minMs: 300, maxMs: 80
 assert.deepEqual(ranged, { '2': 800 });
 
 const initial: ProjectDoc = {
-  version: 3,
+  version: CURRENT_PROJECT_VERSION,
   assets: [],
   mediaFolders: [],
   activeTimelineId: 'timeline_main',

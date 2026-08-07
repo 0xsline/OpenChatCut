@@ -15,8 +15,10 @@ import {
 import type { ProjectMigrationOptions, ProjectMigrationResult, ProjectMigrationStep } from './types.js';
 import { v1ToV2 } from './v1-to-v2.js';
 import { v2ToV3 } from './v2-to-v3.js';
+import { v3ToV4 } from './v3-to-v4.js';
+import { backfillProjectCaptionIdentity } from './captionIdentity.js';
 
-const migrations: readonly ProjectMigrationStep[] = [v1ToV2, v2ToV3];
+const migrations: readonly ProjectMigrationStep[] = [v1ToV2, v2ToV3, v3ToV4];
 const migrationByVersion = new Map(migrations.map((migration) => [migration.fromVersion, migration]));
 
 function startingDocument(value: unknown): { value: unknown; version: number } | null {
@@ -55,7 +57,8 @@ function finalize(value: unknown): ProjectDoc | null {
       : timelines[0].id,
     ...(isDesignStyle(value.designStyle) ? { designStyle: value.designStyle } : {}),
   };
-  return sequenceGraphError(doc) ? null : doc;
+  const enriched = backfillProjectCaptionIdentity(doc);
+  return sequenceGraphError(enriched) ? null : enriched;
 }
 
 /** Pure, ordered migration runner. It never mutates or persists the source value. */

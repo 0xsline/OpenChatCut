@@ -1,3 +1,4 @@
+import { CURRENT_PROJECT_VERSION } from '../../../shared/project-version';
 import assert from 'node:assert/strict';
 import type { AgentContext } from '../context';
 import { makeDraft } from '../../editor/store';
@@ -46,7 +47,7 @@ const timeline: Timeline = {
 };
 
 const doc: ProjectDoc = {
-  version: 3,
+  version: CURRENT_PROJECT_VERSION,
   assets: [],
   mediaFolders: [],
   timelines: [timeline],

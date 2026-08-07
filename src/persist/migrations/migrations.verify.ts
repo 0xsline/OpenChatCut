@@ -29,8 +29,8 @@ const v3 = fixture('project-v3.json');
   });
   assert.ok(migrated);
   assert.equal(migrated.doc.version, CURRENT_PROJECT_VERSION);
-  assert.deepEqual(migrated.appliedSteps, ['v1-to-v2', 'v2-to-v3']);
-  assert.deepEqual(progress, [[1, 2, 1, 2], [2, 3, 2, 2]]);
+  assert.deepEqual(migrated.appliedSteps, ['v1-to-v2', 'v2-to-v3', 'v3-to-v4']);
+  assert.deepEqual(progress, [[1, 2, 1, 3], [2, 3, 2, 3], [3, 4, 3, 3]]);
   assert.deepEqual(migrated.doc.assets.map((asset) => asset.id), ['asset_video', 'asset_audio']);
   assert.equal(migrated.doc.assets[0].name, 'interview.mp4', 'project-level asset wins duplicate ids');
   assert.equal(migrated.doc.assets[0].folderId, undefined, 'missing folders are detached');
@@ -52,15 +52,70 @@ const v3 = fixture('project-v3.json');
 {
   const migrated = runProjectMigrations(v2);
   assert.ok(migrated);
-  assert.deepEqual(migrated.appliedSteps, ['v2-to-v3']);
+  assert.deepEqual(migrated.appliedSteps, ['v2-to-v3', 'v3-to-v4']);
   assert.equal(migrated.doc.timelines[0].items[0].track, 'track_tl_fixture_2');
 }
 
 {
   const migrated = runProjectMigrations(v3);
   assert.ok(migrated);
-  assert.deepEqual(migrated.appliedSteps, []);
-  assert.deepEqual(migrated.doc, v3);
+  assert.deepEqual(migrated.appliedSteps, ['v3-to-v4']);
+  assert.deepEqual(migrated.doc, { ...(v3 as object), version: CURRENT_PROJECT_VERSION });
+}
+
+{
+  const legacyAsset = {
+    id: 'asset_v3_media',
+    name: 'Legacy interview.mov',
+    sourceFilename: 'Legacy interview.mov',
+    originalFilePath: '/Users/editor/Legacy interview.mov',
+    kind: 'video',
+    src: '/media/uploads/legacy-interview.mov',
+    durationInFrames: 90,
+    sourceSize: 8_192,
+    sourceModifiedAt: 123_456,
+  };
+  const legacyItem = {
+    id: 'item_v3_media',
+    track: 'track_tl_v3_media_1',
+    startFrame: 0,
+    durationInFrames: 90,
+    name: legacyAsset.name,
+    kind: 'video',
+    src: legacyAsset.src,
+    sourceAssetId: legacyAsset.id,
+    sourceFilename: legacyAsset.sourceFilename,
+    originalFilePath: legacyAsset.originalFilePath,
+  };
+  const legacyDoc = {
+    version: 3,
+    assets: [legacyAsset],
+    mediaFolders: [],
+    timelines: [{
+      id: 'tl_v3_media',
+      name: 'Legacy media',
+      order: 0,
+      fps: 30,
+      width: 1920,
+      height: 1080,
+      selectedId: null,
+      trackOrder: ['track_tl_v3_media_1'],
+      tracks: { track_tl_v3_media_1: { kind: 'video' } },
+      items: [legacyItem],
+    }],
+    activeTimelineId: 'tl_v3_media',
+  };
+  const migrated = runProjectMigrations(legacyDoc);
+  assert.ok(migrated);
+  const { sourceRevision: assetRevision, ...assetWithoutRevision } = migrated.doc.assets[0]!;
+  const { sourceRevision: itemRevision, ...itemWithoutRevision } = migrated.doc.timelines[0]!.items[0]!;
+  assert.deepEqual(assetWithoutRevision, legacyAsset, 'valid V3 asset data survives V4 migration unchanged');
+  assert.deepEqual(itemWithoutRevision, legacyItem, 'valid V3 item data survives V4 migration unchanged');
+  assert.ok(assetRevision);
+  assert.equal(itemRevision, assetRevision, 'V4 derives one shared source revision without inventing a content hash');
+  assert.equal(Object.hasOwn(migrated.doc.assets[0]!, 'sourceContentHash'), false);
+  assert.equal(Object.hasOwn(migrated.doc.timelines[0]!.items[0]!, 'sourceContentHash'), false);
+  assert.deepEqual(migrateProjectDoc(migrated.doc), migrated.doc, 'V3 media migration is idempotent');
 }
 
 {
@@ -106,13 +161,17 @@ const v3 = fixture('project-v3.json');
     kind: 'video',
     src: '/media/uploads/hostile.mov',
     sourceFilename: { attacker: true },
-    originalFilePath: privatePath,
+    originalFilePath: 'relative/private/interview.mov',
+    sourceRevision: 'bad\u0001revision',
+    sourceContentHash: 'not-a-sha256',
   };
   const validItem = {
     ...hostileItem,
     id: 'clip_valid',
     name: 'Valid',
     sourceFilename: '/Users/editor/采访/interview.final.mov',
+    originalFilePath: privatePath,
+    sourceContentHash: 'AB'.repeat(32),
   };
   const hostileDoc = {
     version: CURRENT_PROJECT_VERSION,
@@ -125,6 +184,12 @@ const v3 = fixture('project-v3.json');
         durationInFrames: 30,
         sourceFilename: 'bad\u0001.mov',
         originalFilePath: privatePath,
+        sourceRevision: 'bad\u0001revision',
+        sourceContentHash: 'not-a-sha256',
+        sourceSize: -1,
+        sourceModifiedAt: Number.POSITIVE_INFINITY,
+        sourceTimecode: { frameCount: -1, frameRate: { numerator: 0, denominator: 1 }, dropFrame: 'yes' },
+        captureClock: { frameCount: Number.NaN, frameRate: { numerator: 30, denominator: 1 }, dropFrame: false },
       },
       {
         id: 'asset_valid',
@@ -133,6 +198,10 @@ const v3 = fixture('project-v3.json');
         src: '/media/uploads/valid.mov',
         durationInFrames: 30,
         sourceFilename: 'D:\\capture\\interview.final.mov',
+        sourceContentHash: 'CD'.repeat(32),
+        sourceSize: 0,
+        sourceModifiedAt: 0,
+        sourceTimecode: { frameCount: 1_800, frameRate: { numerator: 30_000, denominator: 1_001 }, dropFrame: true },
       },
     ],
     mediaFolders: [],
@@ -191,6 +260,20 @@ const v3 = fixture('project-v3.json');
   assert.equal(migrated.timelines[0]?.multicamGroups?.[0]?.angles[1]?.source.sourceFilename, '机位.最终版.001.mov',
     'multicam UNC path becomes a basename without losing Chinese or multiple dots');
   assert.equal(migrated.assets[0]?.originalFilePath, privatePath, 'local migration retains desktop source paths');
+  assert.equal(migrated.assets[0]?.sourceContentHash, undefined);
+  assert.notEqual(migrated.assets[0]?.sourceRevision, 'bad\u0001revision');
+  assert.equal(migrated.assets[0]?.sourceSize, undefined);
+  assert.equal(migrated.assets[0]?.sourceModifiedAt, undefined);
+  assert.equal(migrated.assets[0]?.sourceTimecode, undefined);
+  assert.equal(migrated.assets[0]?.captureClock, undefined);
+  assert.equal(migrated.assets[1]?.sourceContentHash, 'cd'.repeat(32));
+  assert.equal(migrated.assets[1]?.sourceSize, 0);
+  assert.equal(migrated.assets[1]?.sourceModifiedAt, 0);
+  assert.equal(migrated.assets[1]?.sourceTimecode?.frameRate.numerator, 30_000);
+  assert.equal(migrated.timelines[0]?.items[0]?.sourceContentHash, undefined);
+  assert.equal(migrated.timelines[0]?.items[0]?.originalFilePath, undefined);
+  assert.equal(migrated.timelines[0]?.items[1]?.sourceContentHash, 'ab'.repeat(32));
+  assert.equal(migrated.timelines[0]?.items[1]?.originalFilePath, privatePath);
   assert.equal(hostileDoc.assets[0]?.sourceFilename, 'bad\u0001.mov', 'migration never mutates hostile input');
 
   resetProjectStoreMemory();
@@ -234,7 +317,7 @@ const v3 = fixture('project-v3.json');
   }), { onProgress: (event) => progress.push([event.fromVersion, event.toVersion]) });
   assert.ok('envelope' in parsed);
   if ('envelope' in parsed) assert.equal(parsed.envelope.doc.version, CURRENT_PROJECT_VERSION);
-  assert.deepEqual(progress, [[2, 3]]);
+  assert.deepEqual(progress, [[2, 3], [3, 4]]);
 }
 
 // Cache migration is atomic: save only the completed chain; invalid bytes remain untouched.
@@ -246,7 +329,7 @@ const v3 = fixture('project-v3.json');
     onProgress: (event) => progress.push([event.fromVersion, event.toVersion]),
   });
   assert.equal(loaded?.version, CURRENT_PROJECT_VERSION);
-  assert.deepEqual(progress, [[1, 2], [2, 3]]);
+  assert.deepEqual(progress, [[1, 2], [2, 3], [3, 4]]);
   assert.equal((await kvGet<{ version?: number }>('project:fixture-v1'))?.version, CURRENT_PROJECT_VERSION);
 
   const broken = { version: 2, timelines: [], activeTimelineId: '' };

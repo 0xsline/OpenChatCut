@@ -1,3 +1,4 @@
+import { CURRENT_PROJECT_VERSION } from '../../../shared/project-version';
 import assert from 'node:assert/strict';
 import type { ProjectDoc, Timeline, TimelineItem } from '../../editor/types';
 import type { ProjectTemplate } from '../../persist/templateStore';
@@ -80,7 +81,7 @@ assert.throws(
 );
 
 const currentDoc: ProjectDoc = {
-  version: 3,
+  version: CURRENT_PROJECT_VERSION,
   assets: [{ id: 'current_asset', name: 'Current', kind: 'image', src: '/media/current.png', durationInFrames: 1 }],
   mediaFolders: [],
   timelines: [active],
@@ -91,7 +92,7 @@ const template: ProjectTemplate = {
   name: 'Template',
   createdAt: 1,
   doc: {
-    version: 3,
+    version: CURRENT_PROJECT_VERSION,
     assets: [{ id: 'template_asset', name: 'Backdrop', kind: 'image', src: '/media/backdrop.png', durationInFrames: 1 }],
     mediaFolders: [],
     timelines: [templateTimeline],

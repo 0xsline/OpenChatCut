@@ -5,15 +5,14 @@
 // - manual-slots:slotId is nailed to the explicit slot; the entry with anchor is self-contained/merged into the anchor group
 // Multiple sources with the same anchor will form a normal stacking block on the anchor point.
 import type { CaptionAnchor, CaptionLayoutPolicy, CaptionPage, CaptionsData, CaptionSourceEntry } from './types';
-import { activePage, currentWordIndex, paginate } from './types';
+import { currentWordIndex } from './types';
 import type { TimelineItem } from '../editor/types';
-import { resolveEntryWords } from './resolve';
-import { orderedCaptionSourceEntries } from './sourceOrder';
-import { isManualCaptionEntry } from './manualCaptions';
+import { activeCaptionPages, buildCaptionPages } from './captionPages';
 
 export interface LanePage {
   entry: CaptionSourceEntry;
   page: CaptionPage;
+  pageId: string;
   /** index of the word being spoken inside page.words (karaoke), -1 = none */
   curIdx: number;
 }
@@ -127,37 +126,23 @@ export function resolveEffectiveCaptionLanes(
   return [...groups.values()];
 }
 
+
 /** Lane rendering model of the current frame (ms). No sourceEntries → null (the caller takes the old single-stream path). */
-export function buildLaneGroups(captions: CaptionsData, items: TimelineItem[], fps: number, ms: number, wordsPerPage: number | undefined): LaneGroup[] | null {
-  const entries = captions.sourceEntries ? orderedCaptionSourceEntries(captions.sourceEntries) : undefined;
-  if (!entries?.length) return null;
-  // Each visible lane: word flow → paging → current page (lanes without active pages do not occupy this frame)
-  const active: Array<{ entry: CaptionSourceEntry; lane: LanePage }> = [];
-  entries.forEach((entry) => {
-    if (entry.visible === false) return;
-    const words = resolveEntryWords(entry, items, fps);
-    if (!words.length) return;
-    const maxLines = captions.perSource?.[entry.id]?.maxLines;
-    const per = maxLines ? Math.max(1, (wordsPerPage ?? 6) * maxLines) : wordsPerPage;
-    const manual = isManualCaptionEntry(entry);
-    const pages = manual
-      ? words.map((word) => ({ words: [word], start: word.start, end: word.end }))
-      : paginate(words, captions.pacing, per);
-    const page = manual
-      ? [...pages].reverse().find((candidate) => ms >= candidate.start && ms < candidate.end) ?? null
-      : activePage(pages, ms);
-    if (!page) return;
-    active.push({ entry, lane: { entry, page, curIdx: currentWordIndex(page, ms) } });
-  });
+export function buildLaneGroups(captions: CaptionsData, items: TimelineItem[], fps: number, ms: number, _wordsPerPage: number | undefined): LaneGroup[] | null {
+  if (!captions.sourceEntries?.length) return null;
+  const active = activeCaptionPages(buildCaptionPages(captions, items, fps), ms)
+    .flatMap((identity) => identity.entry
+      ? [{ entry: identity.entry, lane: { entry: identity.entry, page: identity.page, pageId: identity.id, curIdx: currentWordIndex(identity.page, ms) } }]
+      : []);
   if (!active.length) return [];
 
   const resolved = resolveEffectiveCaptionLanes(captions, active.map(({ entry }) => entry));
-  const laneById = new Map(active.map(({ entry, lane }) => [entry.id, lane]));
+  const laneByEntry = new Map(active.map(({ entry, lane }) => [entry, lane]));
   return resolved.map((group) => ({
     ...group.layout,
     placementSources: group.placementSources,
     lanes: group.entries.flatMap((entry) => {
-      const lane = laneById.get(entry.id);
+      const lane = laneByEntry.get(entry);
       return lane ? [lane] : [];
     }),
   }));

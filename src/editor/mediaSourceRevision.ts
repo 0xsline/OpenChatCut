@@ -1,5 +1,6 @@
 import type { MediaAsset, TimelineItem } from './types.js';
 import { timelineItemAssetId } from './mediaAssetUsage.js';
+import { normalizeSha256Hash } from '../../shared/content-hash.js';
 
 export type MediaSourceRevision = string;
 
@@ -9,6 +10,8 @@ export interface MediaSourceDescriptor {
   kind?: MediaAsset['kind'];
   sourceSize?: number;
   sourceModifiedAt?: number;
+  /** Imported master-byte hash; unchanged when `src` is a normalized/proxy derivative. */
+  sourceContentHash?: string;
   durationInFrames?: number;
   width?: number;
   height?: number;
@@ -50,10 +53,12 @@ function hash32(value: string, seed: number): string {
 
 /**
  * Deterministic identity for the bytes or source representation behind an asset.
- * File-backed imports should provide size + mtime; legacy documents fall back to
- * the stable metadata already persisted in ProjectDoc.
+ * File-backed imports prefer a validated SHA-256 identity. Legacy documents and
+ * non-file representations fall back to their stable persisted metadata.
  */
 export function createMediaSourceRevision(source: MediaSourceDescriptor): MediaSourceRevision {
+  const contentHash = normalizeSha256Hash(source.sourceContentHash);
+  if (contentHash) return `source-sha256-${contentHash}`;
   const identity = [
     source.src,
     source.name ?? '',
@@ -69,22 +74,37 @@ export function createMediaSourceRevision(source: MediaSourceDescriptor): MediaS
   return `source-v1-${hash32(identity, 0x811c9dc5)}${hash32(identity, 0x9e3779b9)}`;
 }
 
-/** Existing revisions are authoritative; old projects receive a deterministic default. */
+/** A validated content hash wins; persisted revisions are fallback identity for legacy sources. */
 export function sourceRevisionOf(source: MediaSourceDescriptor): MediaSourceRevision {
+  const contentHash = normalizeSha256Hash(source.sourceContentHash);
+  if (contentHash) return createMediaSourceRevision({ ...source, sourceContentHash: contentHash });
   return typeof source.sourceRevision === 'string' && source.sourceRevision.length > 0
     ? source.sourceRevision
     : createMediaSourceRevision(source);
 }
 
-export function withMediaSourceRevision<T extends MediaSourceDescriptor>(source: T): T & { sourceRevision: MediaSourceRevision } {
-  return { ...source, sourceRevision: sourceRevisionOf(source) };
+export function withMediaSourceRevision<T extends MediaSourceDescriptor>(
+  source: T,
+): Omit<T, 'sourceRevision' | 'sourceContentHash'> & {
+  sourceContentHash?: string;
+  sourceRevision: MediaSourceRevision;
+} {
+  const sourceContentHash = normalizeSha256Hash(source.sourceContentHash);
+  const { sourceRevision: _sourceRevision, sourceContentHash: _rawContentHash, ...rest } = source;
+  return {
+    ...rest,
+    ...(sourceContentHash ? { sourceContentHash } : {}),
+    sourceRevision: sourceRevisionOf({ ...source, sourceContentHash }),
+  };
 }
+
 
 export interface TimelineItemSourceSnapshot {
   itemId: string;
   kind: TimelineItem['kind'];
   src: string;
   sourceRevision: MediaSourceRevision;
+  sourceContentHash?: string;
 }
 
 export type TimelineItemSourceStaleReason =
@@ -136,12 +156,24 @@ export function sourceRevisionForTimelineItem(
     name: item.name,
     kind: mediaKind,
     sourceRevision: item.sourceRevision,
+    sourceContentHash: item.sourceContentHash,
     durationInFrames: item.durationInFrames,
     width: item.width,
     height: item.height,
     code: item.code,
     props: item.props,
   });
+}
+
+export function sourceContentHashForTimelineItem(
+  item: TimelineItem,
+  assets: readonly MediaAsset[],
+): string | undefined {
+  const assetId = timelineItemAssetId(item, assets);
+  const asset = assetId
+    ? assets.find((candidate) => candidate.id === assetId)
+    : assets.find((candidate) => candidate.src === item.src);
+  return normalizeSha256Hash(asset?.sourceContentHash ?? item.sourceContentHash);
 }
 
 export function captureTimelineItemSource(
@@ -153,6 +185,7 @@ export function captureTimelineItemSource(
     kind: item.kind,
     src: item.src ?? '',
     sourceRevision: sourceRevisionForTimelineItem(item, assets),
+    sourceContentHash: sourceContentHashForTimelineItem(item, assets),
   };
 }
 
@@ -224,10 +257,7 @@ export function revisionAfterRelink(
   replacement: MediaSourceDescriptor,
 ): MediaSourceRevision {
   const prior = sourceRevisionOf(previous);
-  const explicit = typeof replacement.sourceRevision === 'string' && replacement.sourceRevision.length > 0
-    ? replacement.sourceRevision
-    : null;
-  const candidate = explicit ?? createMediaSourceRevision(replacement);
+  const candidate = sourceRevisionOf(replacement);
   if (candidate !== prior) return candidate;
   // Progressive local ingest swaps its blob preview for the uploaded path while
   // keeping the same source bytes and revision.

@@ -1,6 +1,8 @@
 // Word-level transcript (AssemblyAI shape, timestamps in milliseconds).
 
 export interface TranscriptWord {
+  /** Persistent identity within one transcript generation. */
+  id?: string;
   text: string;
   start: number; // ms
   end: number; // ms
@@ -9,6 +11,8 @@ export interface TranscriptWord {
 
 export interface TranscriptCarrier {
   transcript?: TranscriptWord[];
+  /** Changes on every retranscription; old word references must not retarget. */
+  transcriptGenerationId?: string;
   transcriptStale?: boolean;
 }
 

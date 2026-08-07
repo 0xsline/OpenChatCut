@@ -9,6 +9,7 @@
 //
 // Caps keep 1GB files from freezing the tab: skip decode for huge blobs, and
 // MediaRecorder path aborts after a wall-clock budget.
+import { editorCredentialHeaders } from '../agent/editor-credential';
 
 const MAX_WEBAUDIO_BYTES = 80 * 1024 * 1024; // decodeAudioData loads whole buffer
 const MAX_CAPTURE_WALL_MS = 90_000;
@@ -24,7 +25,7 @@ async function uploadAsrBlob(blob: Blob, name: string): Promise<string | null> {
   try {
     const res = await fetch(`/upload?name=${encodeURIComponent(name)}`, {
       method: 'POST',
-      headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+      headers: await editorCredentialHeaders({ 'Content-Type': blob.type || 'application/octet-stream' }),
       body: blob,
     });
     if (!res.ok) return null;

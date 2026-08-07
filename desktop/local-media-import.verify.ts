@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, stat, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -51,6 +52,7 @@ const testRoot = await mkdtemp(join(tmpdir(), 'openchatcut-local-import-'));
 const uploadDirectory = join(testRoot, 'uploads');
 const sourcePath = join(testRoot, 'source.mov');
 const originalContents = Buffer.from('independent local media snapshot');
+const expectedContentHash = createHash('sha256').update(originalContents).digest('hex');
 const largeSourcePath = join(testRoot, 'source-over-10gb.mp4');
 const overTenGigabytes = (10 * 1024 ** 3) + 1;
 
@@ -68,6 +70,7 @@ try {
   assert.notEqual(importedInfo.ino, sourceInfo.ino, 'imported media must not be a hard link');
   assert.equal(imported.src, `/media/uploads/${imported.storedName}`);
   assert.equal(imported.storedName.endsWith('.mov'), true);
+  assert.equal(imported.contentHash, expectedContentHash, 'native import must stream-hash the copied snapshot');
 
   await truncate(sourcePath, 0);
   await writeFile(sourcePath, 'replacement source bytes');
@@ -81,6 +84,7 @@ try {
   let simulatedCopy:
     | { source: string; destination: string; mode: number }
     | undefined;
+  let simulatedHashPath = '';
   const importedLarge = await importLocalMedia(
     largeSourcePath,
     'source-over-10gb.mp4',
@@ -92,6 +96,10 @@ try {
       copyFile: async (source, destination, mode) => {
         simulatedCopy = { source, destination, mode };
       },
+      hashFile: async (path) => {
+        simulatedHashPath = path;
+        return 'A'.repeat(64);
+      },
     },
   );
   assert.equal(simulatedStatPath, largeSourcePath, 'large imports must inspect the native source path');
@@ -101,12 +109,19 @@ try {
     mode: constants.COPYFILE_FICLONE,
   }, 'large imports must reach the copy operation without allocating a 10 GiB fixture');
   assert.equal(importedLarge.storedName.endsWith('.mp4'), true);
+  assert.equal(
+    simulatedHashPath,
+    join(uploadDirectory, importedLarge.storedName),
+    'large imports hash the copied destination through the injected streaming boundary',
+  );
+  assert.equal(importedLarge.contentHash, 'a'.repeat(64), 'injected SHA-256 is normalized to lowercase');
 
   const bridgeFile = { name: 'camera-original.mov' } as File;
   const bridgeSourcePath = join(testRoot, 'camera-original.mov');
   const bridgeImport = {
     src: '/media/uploads/bridge-camera.mov',
     storedName: 'bridge-camera.mov',
+    contentHash: expectedContentHash,
   };
   const ipcInvocations: Array<{
     channel: string;

@@ -22,10 +22,11 @@ const laneId = captions.sourceEntries![0]!.id;
 captions = { ...captions, ...appendManualCue(captions, laneId, 'First', 1_000, 2_000) };
 captions = { ...captions, ...appendManualCue(captions, laneId, 'Second', 3_000, 4_000) };
 captions = { ...captions, ...appendManualCue(captions, laneId, 'Outside', 7_000, 8_000) };
+const cueIds = captions.sourceEntries![0]!.words!.map((cue) => cue.id!);
 
 const selections = [
-  { trackId: 'C1', kind: 'manual' as const, laneId, cueIndex: 0 },
-  { trackId: 'C1', kind: 'manual' as const, laneId, cueIndex: 1 },
+  { trackId: 'C1', kind: 'manual' as const, laneId, cueId: cueIds[0]! },
+  { trackId: 'C1', kind: 'manual' as const, laneId, cueId: cueIds[1]! },
 ];
 const state: TimelineState = {
   fps: 30,
@@ -114,8 +115,8 @@ const automaticCaptions = {
   template: 'plain' as const,
   pacing: 'phrase' as const,
   words: [
-    { text: 'Auto', start: 1_000, end: 1_400 },
-    { text: 'caption', start: 1_450, end: 2_000 },
+    { id: 'auto-one', text: 'Auto', start: 1_000, end: 1_400 },
+    { id: 'auto-two', text: 'caption', start: 1_450, end: 2_000 },
   ],
 };
 const automaticState: TimelineState = {
@@ -128,10 +129,11 @@ const automaticState: TimelineState = {
   tracks: { C1: { kind: 'caption', captions: automaticCaptions } },
   captions: automaticCaptions,
 };
+const automaticPageId = buildCues(automaticCaptions, [], 30)[0]!.id;
 const movedAutomatic = moveTimelineSelectionByDelta(
   automaticState,
   [],
-  [{ trackId: 'C1', kind: 'single', cueIndex: 0 }],
+  [{ trackId: 'C1', kind: 'single', pageId: automaticPageId }],
   15,
 );
 assert.deepEqual(buildCues(movedAutomatic.captions!, [], 30).map(({ start, end }) => [start, end]), [
@@ -147,14 +149,14 @@ const linkedSourceCaptions: CaptionsData = {
       id: 'manual-a',
       itemId: 'manual:a',
       trackOrder: 0,
-      words: [{ text: 'Manual A', start: 100, end: 200 }],
+      words: [{ id: 'manual-a-cue', text: 'Manual A', start: 100, end: 200 }],
     },
     { id: 'automatic-linked', itemId: 'clip-linked', trackOrder: 1 },
     {
       id: 'manual-b',
       itemId: 'manual:b',
       trackOrder: 2,
-      words: [{ text: 'Manual B', start: 2_000, end: 2_400 }],
+      words: [{ id: 'manual-b-cue', text: 'Manual B', start: 2_000, end: 2_400 }],
     },
   ],
 };
@@ -172,7 +174,8 @@ const linkedSourceState: TimelineState = {
       kind: 'video',
       name: 'Linked source',
       src: '/linked-source.mp4',
-      transcript: [{ text: 'Linked automatic', start: 0, end: 400 }],
+      transcriptGenerationId: 'linked-generation',
+      transcript: [{ id: 'linked-word', text: 'Linked automatic', start: 0, end: 400 }],
     },
   ],
   selectedId: 'clip-seed',
@@ -187,7 +190,11 @@ const linkedSourceState: TimelineState = {
     mode: 'linked',
   }],
 };
-const automaticSelection = { trackId: 'C1', kind: 'single' as const, cueIndex: 0 };
+const automaticSelection = {
+  trackId: 'C1',
+  kind: 'single' as const,
+  pageId: buildCues(linkedSourceCaptions, linkedSourceState.items, 30).find((cue) => !cue.manual)!.id,
+};
 const linkedSourceMoved = moveTimelineSelectionByDelta(
   linkedSourceState,
   ['clip-seed'],
@@ -234,10 +241,10 @@ const duplicateManualMoved = moveTimelineSelectionByDelta(
   linkedSourceState,
   [],
   [
-    { trackId: 'C1', kind: 'manual', laneId: 'manual-b', cueIndex: 0 },
-    { trackId: 'C1', kind: 'manual', laneId: 'manual-a', cueIndex: 0 },
-    { trackId: 'C1', kind: 'manual', laneId: 'manual-a', cueIndex: 0 },
-    { trackId: 'C1', kind: 'manual', laneId: 'manual-b', cueIndex: 0 },
+    { trackId: 'C1', kind: 'manual', laneId: 'manual-b', cueId: 'manual-b-cue' },
+    { trackId: 'C1', kind: 'manual', laneId: 'manual-a', cueId: 'manual-a-cue' },
+    { trackId: 'C1', kind: 'manual', laneId: 'manual-a', cueId: 'manual-a-cue' },
+    { trackId: 'C1', kind: 'manual', laneId: 'manual-b', cueId: 'manual-b-cue' },
   ],
   15,
 );
@@ -253,7 +260,7 @@ const frameBoundaryCaptions: CaptionsData = {
   enabled: true,
   template: 'plain',
   pacing: 'phrase',
-  words: [{ text: 'One frame', start: 33, end: 66 }],
+  words: [{ id: 'frame-boundary-word', text: 'One frame', start: 33, end: 66 }],
 };
 const frameBoundaryState: TimelineState = {
   fps: 30,
@@ -265,19 +272,24 @@ const frameBoundaryState: TimelineState = {
   tracks: { C1: { kind: 'caption', captions: frameBoundaryCaptions } },
   captions: frameBoundaryCaptions,
 };
+const frameBoundarySelection = {
+  trackId: 'C1',
+  kind: 'single' as const,
+  pageId: buildCues(frameBoundaryCaptions, [], 30)[0]!.id,
+};
 assert.equal(
-  clampTimelineSelectionDelta(frameBoundaryState, [], [automaticSelection], -1),
+  clampTimelineSelectionDelta(frameBoundaryState, [], [frameBoundarySelection], -1),
   -1,
   'frame-zero clamp must use the same millisecond rounding as the persisted delta',
 );
 const frameBoundaryMoved = moveTimelineSelectionByDelta(
   frameBoundaryState,
   [],
-  [automaticSelection],
+  [frameBoundarySelection],
   -1,
 );
 assert.equal(
-  resolveCaptionSelection(frameBoundaryMoved, automaticSelection)?.target.cue.start,
+  resolveCaptionSelection(frameBoundaryMoved, frameBoundarySelection)?.target.cue.start,
   0,
   'a 33ms automatic cue at 30fps must land exactly on frame zero',
 );

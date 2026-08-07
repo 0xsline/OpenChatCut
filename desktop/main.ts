@@ -22,6 +22,8 @@ import {
   createLocalMediaImportHandler,
   LOCAL_MEDIA_IMPORT_CHANNEL,
 } from './local-media-bridge.ts';
+import { installProjectStoreIpc } from './project-store-ipc.ts';
+import { installEditorAuthIpc } from './editor-auth-ipc.ts';
 import {
   assertTrustedDesktopSenderUrl,
   resolveDesktopDevOrigin,
@@ -394,6 +396,8 @@ async function boot(): Promise<void> {
   });
   const origin = devOrigin ?? (await startEmbeddedServer(DIST_DIR)).origin;
   registerDesktopHandlers(origin);
+  installProjectStoreIpc(origin);
+  installEditorAuthIpc(origin);
   console.log(`[desktop] ${devOrigin ? 'live source' : 'embedded server'} at ${origin}`);
 
   const initialBounds = resolveInitialDesktopWindowBounds(screen.getPrimaryDisplay().workArea);

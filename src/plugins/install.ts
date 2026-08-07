@@ -7,6 +7,7 @@ import { listPacks, savePack, registerPack, unregisterPack, type InstalledPack }
 import type { PluginPack } from './types';
 import { createGlRuntime } from '../gl/runtime';
 import { prepareTemplate } from '../template-host';
+import { editorCredentialHeaders } from '../agent/editor-credential';
 
 export type InstallResult =
   | { ok: true; pack: InstalledPack }
@@ -76,7 +77,11 @@ async function uploadCubes(pack: PluginPack): Promise<{ cubeUrls: Record<string,
     if (item.type !== 'lut' || !item.cube) continue;
     const assetId = `plugin-${pack.id}-${item.id}-cube`.replace(/[^a-zA-Z0-9_-]/g, '-');
     try {
-      const res = await fetch(`/upload?name=${assetId}.cube&assetId=${assetId}`, { method: 'POST', body: item.cube });
+      const res = await fetch(`/upload?name=${assetId}.cube&assetId=${assetId}`, {
+        method: 'POST',
+        headers: await editorCredentialHeaders(),
+        body: item.cube,
+      });
       const body = (await res.json().catch(() => null)) as { path?: string; error?: string } | null;
       if (!res.ok || !body?.path) {
         errors.push(`「${item.name}」.cube 上传失败:${body?.error ?? `HTTP ${res.status}`}`);

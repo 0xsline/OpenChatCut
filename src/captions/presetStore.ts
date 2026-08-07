@@ -1,5 +1,5 @@
 import type { CaptionStyleOverride } from './styles';
-import type { CaptionTemplate, CaptionPacing } from './types';
+import type { CaptionMotionPreset, CaptionTemplate, CaptionPacing } from './types';
 
 // User-saved caption style presets (edit_captions preset_save/apply/list/rename/
 // delete). A tiny IndexedDB store of its own (isolated from the project DB so there's no
@@ -17,6 +17,7 @@ export interface CaptionPreset {
   template?: CaptionTemplate;
   styleOverride?: Partial<CaptionStyleOverride>;
   pacing?: CaptionPacing;
+  motionPreset?: CaptionMotionPreset;
   createdAt: number;
 }
 

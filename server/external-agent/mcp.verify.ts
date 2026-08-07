@@ -18,6 +18,7 @@ import {
 } from './broker.ts';
 import {
   handleMcpRequest,
+  MCP_POST_BODY_LIMIT_BYTES,
   MCP_SESSION_COUNT_LIMIT,
   MCP_SESSION_IDLE_LIMIT_MS,
   mcpSessionsForTest,
@@ -153,6 +154,18 @@ const mcpUrl = new URL(`http://127.0.0.1:${port}/mcp`);
 const clients: ConnectedClient[] = [];
 
 try {
+  const oversized = await fetch(mcpUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payload: 'x'.repeat(MCP_POST_BODY_LIMIT_BYTES) }),
+  });
+  assert.equal(oversized.status, 413, 'MCP POST bodies over 2 MiB fail before transport dispatch');
+  const invalidJson = await fetch(mcpUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{',
+  });
+  assert.equal(invalidJson.status, 400, 'MCP POST JSON is parsed before transport dispatch');
   const boundA = await connectClient(mcpUrl, 'openchatcut-mcp-binding-a');
   clients.push(boundA);
   let notify!: () => void;

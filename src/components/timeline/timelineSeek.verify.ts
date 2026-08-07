@@ -31,7 +31,8 @@ assert.equal(timelineGestureHasDragged(10, 10, 10, 14), true);
 
 const timelineSource = readFileSync(new URL('./Timeline.tsx', import.meta.url), 'utf8');
 assert.match(timelineSource, /onPointerDownCapture=\{startSeekGesture\}/);
-assert.match(timelineSource, /onHoverPreviewFrameChange\?\.\(frame\)/);
+const controllerSource = readFileSync(new URL('./useTimelineController.ts', import.meta.url), 'utf8');
+assert.match(controllerSource, /onHoverPreviewFrameChange\?\.\(frame\)/);
 assert.match(timelineSource, /className="cc-timeline-hover-guide"/);
 
 const previewSource = readFileSync(new URL('../PreviewPanel.tsx', import.meta.url), 'utf8');

@@ -17,11 +17,11 @@ The agent cannot read the user's filesystem. If the user gives you a `/Users/...
 
 Use `download_media` with up to 4 URLs per call. The server fetches, stores under `/media/uploads/`, and registers pool assets. Prefer this for stock/web media the user pointed at. After download, the asset behaves exactly like an upload (same transcode/ASR pipeline).
 
-## Path 3 — placeholder before bytes (timeline-first work)
+## Path 3 — external host transfer
 
-Call `import_media` with `{"action":"register_placeholder"}` to mint a deterministic `assetId` and pool row before bytes exist. Use it when you want to lay out the timeline (`edit_item` etc.) while an upload is still in flight; the asset relinks automatically when bytes land. Report progress precisely: once the placeholder is registered say the `assetId` is known; while bytes are still uploading say so — never claim a file is ready before `track_progress` (target=upload) confirms it.
+Call `import_media` with `{"action":"create_session", "assetType":..., "filename":..., "contentType":..., "size":...}`. It returns one short-lived upload slot bound to the current project, session, asset identity, basename, `POST`, MIME type, and exact byte count. A host-side script may upload to that exact URL with the declared headers. The agent sandbox cannot reach the user's localhost, so do not attempt the transfer from `run_code`.
 
-`import_media` with `{"action":"create_session"}` returns local direct-upload endpoints (`POST /upload?name=...&assetId=...`). This is for host-side scripts the *user* runs in their own terminal (e.g. `curl -T file '/upload?...'` against the dev server); the agent sandbox cannot reach localhost, so do not try to upload from `run_code`.
+The successful upload response returns an opaque receipt and uploaded path. Probe the uploaded path when exact duration, dimensions, fps, or audio presence are needed, then call `finalize_uploaded_asset` with only the receipt and measured media metadata. The server resolves the authoritative hash, path, size, filename, and asset id. The asset is not present or usable before finalize succeeds. For missing-media replacement, pass the existing `assetId` to `import_media`; omit it for a new asset. Never construct `/media/uploads/...` yourself and never claim bytes are ready before the upload response.
 
 ## Editing discipline
 

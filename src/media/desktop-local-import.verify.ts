@@ -30,6 +30,7 @@ const videoFile = { name: 'camera-original.mp4' } as File;
 const nativeImport = {
   src: '/media/uploads/native-camera.mp4',
   storedName: 'native-camera.mp4',
+  contentHash: 'AB'.repeat(32),
 };
 let nativeBridgeCalls = 0;
 let httpUploadCalls = 0;
@@ -49,6 +50,7 @@ const nativeTransfer = await transferDesktopLocalMedia(
 );
 assert.deepEqual(nativeTransfer, {
   src: nativeImport.src,
+  sourceContentHash: 'ab'.repeat(32),
   desktopImport: nativeImport,
 });
 assert.equal(nativeBridgeCalls, 1, 'renderer must invoke the available desktop bridge');

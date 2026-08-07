@@ -13,7 +13,8 @@ import {
   resolveOrderedCaptionSelections,
   type CaptionSelectionRef,
 } from './captionSelection';
-import { resolveEntryWords } from './resolve';
+import { resolveCaptionWordIndices, resolveEntryWords } from './resolve';
+import { captionWordOverride, setCaptionWordOverride } from './wordOverrides';
 import { orderedCaptionSourceEntries } from './sourceOrder';
 
 interface ManualCueLocation {
@@ -28,6 +29,7 @@ interface AutomaticCueLocation {
   trackId: TrackId;
   startMs: number;
   srcIdxs: number[];
+  wordRefs: string[];
 }
 
 export interface TimelineSelectionMovePreview {
@@ -139,6 +141,7 @@ function selectedCueLocations(
         trackId: resolved.trackId,
         startMs: resolved.target.cue.start,
         srcIdxs: [...cue.srcIdxs],
+        wordRefs: [...cue.wordRefs],
       });
     }
   }
@@ -295,18 +298,22 @@ function moveAutomaticCaptionSelections(
     const captions = captionsOnTrack(next, trackId);
     if (!captions) continue;
     const sourceByOverrideIndex = automaticCaptionSourceByOverrideIndex(captions, state);
-    const wordOverrides = { ...(captions.wordOverrides ?? {}) };
-    const sourceIndexes = new Set(locations
+    const indices = resolveCaptionWordIndices(captions, state.items, state.fps);
+    let wordOverrides = { ...(captions.wordOverrides ?? {}) };
+    const targets = locations
       .filter((location) => location.trackId === trackId)
-      .flatMap((location) => location.srcIdxs));
-    for (const sourceIndex of sourceIndexes) {
-      const sourceItemId = sourceByOverrideIndex.get(sourceIndex);
+      .flatMap((location) => location.srcIdxs.map((index, position) => ({
+        index,
+        wordRef: location.wordRefs[position]!,
+      })));
+    const uniqueTargets = new Map(targets.map((target) => [target.wordRef, target]));
+    for (const { index, wordRef } of uniqueTargets.values()) {
+      const sourceItemId = sourceByOverrideIndex.get(index);
       if (sourceItemId && selectedItemIds.has(sourceItemId)) continue;
-      const current = wordOverrides[sourceIndex] ?? {};
-      wordOverrides[sourceIndex] = {
-        ...current,
-        timingOffsetMs: (current.timingOffsetMs ?? 0) + deltaMs,
-      };
+      const current = captionWordOverride(wordOverrides, index, wordRef);
+      wordOverrides = setCaptionWordOverride(wordOverrides, indices, index, wordRef, {
+        timingOffsetMs: (current?.timingOffsetMs ?? 0) + deltaMs,
+      });
     }
     next = withCaptionTrack(next, trackId, { ...captions, wordOverrides });
   }

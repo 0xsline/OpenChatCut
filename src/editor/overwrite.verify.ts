@@ -1,3 +1,4 @@
+import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 import assert from 'node:assert/strict';
 import { historyReduce, reduce } from './reduce';
 import { planOverwrite } from './overwrite';
@@ -164,7 +165,7 @@ const nextId = () => `split-${sequence += 1}`;
   assertNoTrackOverlap(next);
 
   const timeline = { ...source, id: 'tl1', name: 'main', order: 0 };
-  const doc: ProjectDoc = { version: 3, assets: [], mediaFolders: [], timelines: [timeline], activeTimelineId: 'tl1' };
+  const doc: ProjectDoc = { version: CURRENT_PROJECT_VERSION, assets: [], mediaFolders: [], timelines: [timeline], activeTimelineId: 'tl1' };
   const committed = historyReduce({ past: [], present: doc, future: [] }, { type: 'batch', label: 'Overwrite clip', actions: plan.actions });
   assert.equal(committed.past.length, 1, 'overwrite 的所有 split/trim/remove/add 只占一个 undo step');
   const undone = historyReduce(committed, { type: 'undo' });

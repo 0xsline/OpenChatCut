@@ -3,6 +3,7 @@ import type { TimelineItem } from '../editor/types';
 import type { TranscriptWord } from '../transcript/types';
 import { itemEditOpts, itemWindow, keptWordIndices, mediaWindowKeptIndices, mediaWindowWords, retimeWords } from '../transcript/edit';
 import { hasOperationalTranscript } from '../transcript/types';
+import { isStableIdentity } from '../transcript/identity';
 import { findVariantByLang, resolveVariantText } from '../transcript/variants';
 import { orderedCaptionSourceEntries } from './sourceOrder';
 
@@ -19,6 +20,20 @@ function projectItemWords(item: TimelineItem, src: TranscriptWord[], del: Set<nu
 function projectItemIndices(item: TimelineItem, del: Set<number>, fps: number): number[] {
   if (item.kind !== 'audio') return mediaWindowKeptIndices(item.transcript ?? [], fps, item);
   return keptWordIndices(item.transcript ?? [], del, fps, { ...itemEditOpts(item), window: itemWindow(item) });
+}
+
+const encodeWordRef = (scope: readonly string[], generationId: string, wordId: string): string =>
+  `cw2.${encodeURIComponent(JSON.stringify([...scope, generationId, wordId]))}`;
+
+function itemWordRefs(item: TimelineItem, laneId: string | undefined, fps: number): string[] {
+  const indices = projectItemIndices(item, new Set(item.deletedWordIdx ?? []), fps);
+  const scope = laneId ? ['lane', laneId] : ['item', item.id];
+  return indices.map((index) => {
+    const wordId = item.transcript?.[index]?.id;
+    return isStableIdentity(item.transcriptGenerationId) && isStableIdentity(wordId)
+      ? encodeWordRef(scope, item.transcriptGenerationId, wordId)
+      : '';
+  });
 }
 
 // Items participating in a MULTI-source merge (`sourceMode:'timeline'` = every
@@ -54,6 +69,16 @@ export function resolveEntryWords(entry: CaptionSourceEntry, items: TimelineItem
     : undefined;
   const src = variant ? resolveVariantText(item.transcript, variant) : item.transcript;
   return projectItemWords(item, src, del, fps);
+}
+
+/** Stable refs aligned one-to-one with resolveEntryWords. */
+export function resolveEntryWordRefs(entry: CaptionSourceEntry, items: TimelineItem[], fps: number): string[] {
+  if (entry.words) return entry.words.map((word) =>
+    isStableIdentity(entry.id) && isStableIdentity(word.id)
+      ? encodeWordRef(['lane', entry.id], 'manual', word.id)
+      : '');
+  const item = items.find((candidate) => candidate.id === entry.itemId);
+  return hasOperationalTranscript(item) ? itemWordRefs(item, entry.id, fps) : [];
 }
 
 // Re-project + merge every participating item's transcript onto the timeline,
@@ -100,6 +125,45 @@ export function resolveCaptionWords(captions: CaptionsData, items: TimelineItem[
   return (captions.words ?? []).map((w) => ({ ...w, start: w.start + offMs, end: w.end + offMs }));
 }
 
+interface TimedWordRef {
+  word: TranscriptWord;
+  ref: string;
+}
+
+function mergedWordRefs(sourceItems: TimelineItem[], fps: number): string[] {
+  const pairs: TimedWordRef[] = [];
+  for (const item of sourceItems) {
+    const words = projectItemWords(item, item.transcript ?? [], new Set(item.deletedWordIdx ?? []), fps);
+    const refs = itemWordRefs(item, undefined, fps);
+    words.forEach((word, index) => pairs.push({ word, ref: refs[index]! }));
+  }
+  return pairs.sort((a, b) => a.word.start - b.word.start).map(({ ref }) => ref);
+}
+
+/** Opaque stable word identities aligned one-to-one with resolveCaptionWords. */
+export function resolveCaptionWordRefs(captions: CaptionsData, items: TimelineItem[], fps: number): string[] {
+  if (captions.sourceEntries?.length) {
+    const pairs = orderedCaptionSourceEntries(captions.sourceEntries)
+      .filter((entry) => entry.visible !== false)
+      .flatMap((entry) => {
+        const words = resolveEntryWords(entry, items, fps);
+        const refs = resolveEntryWordRefs(entry, items, fps);
+        return words.map((word, index) => ({ word, ref: refs[index]! }));
+      });
+    return pairs
+      .sort((a, b) => a.word.start - b.word.start || a.word.end - b.word.end)
+      .map(({ ref }) => ref);
+  }
+  const merged = mergedSourceItems(captions, items);
+  if (merged) return mergedWordRefs(merged, fps);
+  if (captions.sourceMode === 'timeline' || captions.sources?.length) return [];
+  const item = captions.sourceItemId ? items.find((candidate) => candidate.id === captions.sourceItemId) : undefined;
+  if (hasOperationalTranscript(item)) return itemWordRefs(item, undefined, fps);
+  if (captions.sourceItemId) return [];
+  return (captions.words ?? []).map((word) =>
+    isStableIdentity(word.id) ? encodeWordRef(['lane', 'standalone'], 'standalone', word.id) : '');
+}
+
 // The index each word `resolveCaptionWords` returns should be keyed by for
 // `wordOverrides`. Single-source (unchanged): the ORIGINAL track-transcript
 // index (same order + length — deleted words are dropped from both the same
@@ -134,33 +198,48 @@ export function resolveCaptionWordIndices(captions: CaptionsData, items: Timelin
   return (captions.words ?? []).map((_, i) => i);
 }
 
-// Apply per-word display overrides ahead of pagination: a hidden word is
-// dropped, a text override replaces the shown word (timing untouched), a
-// forceBreak word marks where a new page should start. Returns the words to
-// paginate + the positions (in the RETURNED array) to break before. No
-// overrides (or an empty map) is a no-op — same words reference, empty
-// breakBefore — so paginate's output stays byte-identical to today.
+export interface AppliedCaptionWords {
+  words: TranscriptWord[];
+  indices: number[];
+  wordRefs: string[];
+  overrides: Array<CaptionWordOverride | undefined>;
+  breakBefore: Set<number>;
+}
+
+// Apply display overrides before pagination. Stable refs take precedence; a
+// numeric fallback is used only for legacy values that have no wordRef metadata.
 export function applyWordOverrides(
   words: TranscriptWord[],
   indices: number[],
   overrides: Record<number, CaptionWordOverride> | undefined,
-): { words: TranscriptWord[]; breakBefore: Set<number> } {
-  if (!overrides || Object.keys(overrides).length === 0) return { words, breakBefore: new Set() };
-  const out: TranscriptWord[] = [];
-  const breakBefore = new Set<number>();
-  for (let j = 0; j < words.length; j++) {
-    const ov = overrides[indices[j]];
-    if (ov?.hidden) continue;
-    if (ov?.forceBreak && out.length > 0) breakBefore.add(out.length);
-    const timingOffsetMs = ov?.timingOffsetMs ?? 0;
-    out.push(ov?.text || timingOffsetMs
-      ? {
-          ...words[j],
-          ...(ov?.text ? { text: ov.text } : {}),
-          start: words[j]!.start + timingOffsetMs,
-          end: words[j]!.end + timingOffsetMs,
-        }
-      : words[j]);
+  wordRefs: string[] = [],
+): AppliedCaptionWords {
+  const refCounts = new Map<string, number>();
+  for (const ref of wordRefs) if (ref) refCounts.set(ref, (refCounts.get(ref) ?? 0) + 1);
+  const stable = new Map<string, CaptionWordOverride>();
+  for (const override of Object.values(overrides ?? {})) {
+    if (override.wordRef && !stable.has(override.wordRef)) stable.set(override.wordRef, override);
   }
-  return { words: out, breakBefore };
+  const out: TranscriptWord[] = [];
+  const outIndices: number[] = [];
+  const outRefs: string[] = [];
+  const applied: Array<CaptionWordOverride | undefined> = [];
+  const breakBefore = new Set<number>();
+  for (let position = 0; position < words.length; position++) {
+    const legacy = overrides?.[indices[position]!];
+    const ref = wordRefs[position];
+    const override = (ref && refCounts.get(ref) === 1 ? stable.get(ref) : undefined)
+      ?? (legacy?.wordRef ? undefined : legacy);
+    if (override?.hidden) continue;
+    if (override?.forceBreak && out.length > 0) breakBefore.add(out.length);
+    const timingOffsetMs = override?.timingOffsetMs ?? 0;
+    const word = words[position]!;
+    out.push(override?.text || timingOffsetMs
+      ? { ...word, ...(override?.text ? { text: override.text } : {}), start: word.start + timingOffsetMs, end: word.end + timingOffsetMs }
+      : word);
+    outIndices.push(indices[position]!);
+    outRefs.push(ref ?? '');
+    applied.push(override);
+  }
+  return { words: out, indices: outIndices, wordRefs: outRefs, overrides: applied, breakBefore };
 }

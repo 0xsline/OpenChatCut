@@ -11,6 +11,8 @@ import { reconcileTransitions } from './transitionReconcile';
 import { planSlip } from './slip';
 import { sequenceGraphError, sequenceReferencesTo } from './sequenceGraph';
 import { createMediaSourceRevision, revisionAfterRelink, sourceRevisionOf, withMediaSourceRevision } from './mediaSourceRevision';
+import { normalizeSha256Hash } from '../../shared/content-hash.js';
+import { canonicalizeMediaAsset } from './mediaContentIdentity.js';
 import {
   mapTimelineAssetItems,
   removeAssetFromTimeline,
@@ -28,6 +30,7 @@ import type { CaptionsData } from '../captions/types';
 import type { SerializableFxDef } from '../gl/fx/uniforms';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
 import { hasOperationalTranscript } from '../transcript/types';
+import { newTranscriptGeneration } from '../transcript/identity';
 import { editedFrames, fillerIndices, itemEditOpts, splitClipTranscript } from '../transcript/edit';
 
 const TRACK_KIND_ORDER: readonly TrackKind[] = ['caption', 'video', 'audio'];
@@ -142,6 +145,7 @@ export type ProjectAction =
   | { type: 'pool.updateAsset'; id: string; patch: Partial<Pick<MediaAsset, 'name' | 'favorite' | 'code' | 'props' | 'sourceTimecode' | 'captureClock'>> }
   | { type: 'pool.setTranscription'; id: string; patch: Partial<Pick<MediaAsset, 'transcript' | 'transcriptSourceRevision' | 'transcriptStale' | 'transcribeStatus' | 'transcribeError'>> }
   | ({ type: 'pool.relinkAsset'; id: string } & MediaAssetRelinkPatch)
+  | { type: 'pool.canonicalizeAsset'; duplicateId: string; canonicalId: string }
   | { type: 'pool.removeAsset'; id: string }
   | { type: 'design.set'; style: DesignStyle | null }
   | { type: 'design.patch'; patch: Partial<DesignStyle> };
@@ -179,7 +183,7 @@ export type ProjectDispatch = (a: AnyAction | HistoryControlAction) => void;
 const MUTATING = new Set(['add', 'updateProps', 'relinkTimelineItem', 'move', 'retime', 'slip', 'setVolume', 'setFade', 'setTransform', 'setFilters', 'setZoom', 'setEffects', 'setSpeed', 'replaceMedia', 'reframeKeyframe', 'removeReframeKeyframe', 'setKeyframe', 'removeKeyframe', 'clearKeyframes', 'addTransition', 'setTransition', 'removeTransition', 'addMarker', 'updateMarker', 'removeMarker', 'duplicate', 'remove', 'split', 'clear', 'addAsset', 'setCanvas', 'toggleTrack', 'track.create', 'track.update', 'track.delete', 'track.tighten', 'setCaptions', 'updateCaptions', 'setCaptionsHidden', 'updateWatermark', 'setItemTranscript', 'setItemVariants', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap', 'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'fixTranscriptWord', 'renameSpeaker', 'setItemDenoise', 'setFullState',
   // project-level (tl.switch is navigation → deliberately NOT here, so it makes no history step)
   'tl.create', 'tl.duplicate', 'tl.delete', 'tl.rename', 'tl.retarget', 'tl.setHidden', 'tl.setDoc',
-  'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset', 'pool.setTranscription', 'pool.relinkAsset', 'pool.removeAsset']);
+  'pool.createFolder', 'pool.renameFolder', 'pool.deleteFolder', 'pool.moveAssets', 'pool.updateAsset', 'pool.setTranscription', 'pool.relinkAsset', 'pool.canonicalizeAsset', 'pool.removeAsset']);
 
 const EMPTY_CURVE = { version: 1, timebase: 'effect-frame', coordinateSpace: 'composition-normalized', keyframes: [] } as const;
 
@@ -486,6 +490,9 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
         height: a.height ?? target.height,
         kind: a.kind ?? target.kind,
         sourceRevision: 'sourceRevision' in a ? a.sourceRevision : target.sourceRevision,
+        sourceContentHash: 'sourceContentHash' in a
+          ? normalizeSha256Hash(a.sourceContentHash)
+          : target.sourceContentHash,
         sourceSize: 'sourceSize' in a ? a.sourceSize : sourceIndependent.sourceSize,
         sourceModifiedAt: 'sourceModifiedAt' in a ? a.sourceModifiedAt : sourceIndependent.sourceModifiedAt,
         sourceFilename: 'sourceFilename' in a ? a.sourceFilename : target.sourceFilename,
@@ -889,21 +896,14 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
       return { ...s, watermark: { ...next, opacity: Math.max(0, Math.min(1, next.opacity)) } };
     }
     case 'setItemTranscript':
-      // Attach words only — keep media duration. Rewriting duration to ASR span
-      // collapsed long VO clips when AssemblyAI returned a short word range
-      // (looked like "only one incomplete segment"). Duration shrinks only via
-      // deleteWords / cleanScript (delete-text = delete-video).
       return {
         ...s,
         items: s.items.map((it) =>
           it.id === a.id
             ? {
                 ...it,
-                transcript: a.words,
+                ...newTranscriptGeneration(a.words),
                 transcriptStale: false,
-                // A retained stale transcript used a different source revision (and,
-                // while stale, media-frame coordinates). Its old trim cannot be
-                // reinterpreted as an offset into the new packed word stream.
                 srcInFrame: it.transcriptStale === true ? 0 : it.srcInFrame,
                 deletedWordIdx: [],
                 silenceFrames: undefined,
@@ -1268,6 +1268,7 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
         const patch = 'transcript' in a.patch
           ? {
               ...a.patch,
+              ...newTranscriptGeneration(a.patch.transcript ?? []),
               transcriptSourceRevision: a.patch.transcriptSourceRevision ?? sourceRevisionOf(asset),
               transcriptStale: false,
             }
@@ -1287,6 +1288,9 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
           height: a.height ?? asset.height,
           kind: a.kind ?? asset.kind,
           sourceRevision: a.sourceRevision,
+          sourceContentHash: 'sourceContentHash' in a
+            ? normalizeSha256Hash(a.sourceContentHash)
+            : asset.sourceContentHash,
           sourceSize: a.sourceSize,
           sourceModifiedAt: a.sourceModifiedAt,
           sourceFilename: 'sourceFilename' in a ? a.sourceFilename : asset.sourceFilename,
@@ -1295,10 +1299,12 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
           sourceTimecode: undefined,
           captureClock: undefined,
         };
+        const nextSourceRevision = revisionAfterRelink(asset, replacement);
+        const sourceChanged = nextSourceRevision !== sourceRevisionOf(asset);
         const nextAsset: MediaAsset = {
           ...replacement,
-          sourceRevision: revisionAfterRelink(asset, replacement),
-          transcriptStale: asset.transcript?.length ? true : asset.transcriptStale,
+          sourceRevision: nextSourceRevision,
+          transcriptStale: sourceChanged && asset.transcript?.length ? true : asset.transcriptStale,
         };
         type RelinkableTimelineItem = TimelineItem & {
           sourceTimecode?: MediaAsset['sourceTimecode'];
@@ -1321,13 +1327,14 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
             sourceAssetId: asset.id,
             src: a.src,
             sourceRevision: nextAsset.sourceRevision,
+            sourceContentHash: nextAsset.sourceContentHash,
             sourceFilename: 'sourceFilename' in a ? a.sourceFilename : item.sourceFilename,
             originalFilePath: 'originalFilePath' in a ? a.originalFilePath : item.originalFilePath,
             name: a.name ?? item.name,
             width: a.width ?? item.width,
             height: a.height ?? item.height,
             durationInFrames: a.durationInFrames ?? item.durationInFrames,
-            transcriptStale: item.transcript?.length ? true : item.transcriptStale,
+            transcriptStale: sourceChanged && item.transcript?.length ? true : item.transcriptStale,
           };
         };
         return {
@@ -1341,6 +1348,8 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
           )),
         };
       }
+      case 'pool.canonicalizeAsset':
+        return canonicalizeMediaAsset(p, a.duplicateId, a.canonicalId);
       case 'pool.removeAsset': {
         const asset = p.assets.find((item) => item.id === a.id);
         if (!asset) return p;

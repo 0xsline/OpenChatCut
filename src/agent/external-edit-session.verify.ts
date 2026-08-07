@@ -293,6 +293,12 @@ assert.equal(session.status, 'drafting');
 assert.equal(session.approvalMode, 'manual');
 assert.match(session.baseRevision, /^v\d+-[0-9a-f]{8}$/);
 assert.equal(isExternalEditSessionStale(session, base), false);
+const reorderedBase = Object.fromEntries(Object.entries(base).reverse()) as typeof base;
+assert.equal(
+  revisionOf(reorderedBase),
+  revisionOf(base),
+  'semantic revisions are stable across JSON object-key order changes',
+);
 
 const autoSession = createExternalEditSession(base, 'Codex', 'auto');
 assert.equal(autoSession.approvalMode, 'auto');

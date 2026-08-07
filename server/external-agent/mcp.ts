@@ -5,20 +5,14 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   CallToolRequestSchema,
-  GetPromptRequestSchema,
-  ListPromptsRequestSchema,
   ListToolsRequestSchema,
   type CallToolResult,
-  type Prompt,
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import {
   cancelEditorCallsForOwner,
   connectedProjectIds,
-  editorBinding,
-  editorBindingIdentityMatches,
   editSessionOwnerMatches,
-  editorBindingMatches,
   editorStatuses,
   ExternalEditorCallError,
   invokeEditorTool,
@@ -26,79 +20,38 @@ import {
   registeredTools,
   type EditorBinding,
 } from './broker.ts';
+import {
+  bindingMode,
+  bindBrowserForCall,
+  boundProjectId,
+  markMcpSessionStale,
+  projectForRead,
+  requestedProjectId,
+  targetMcpProject,
+  validateBrowserBinding,
+  validateOfflineBinding,
+  type McpBindingSession,
+} from './mcp-binding.ts';
+import { MCP_CONTROL_TOOL_NAMES, MCP_CONTROL_TOOLS } from './mcp-controls.ts';
+import { offlineExternalToolSchemas } from './offline-tools.ts';
+import type { OfflineEditorBinding } from './offline-runtime.ts';
 import { createExternalProject, listExternalProjects } from './projects.ts';
+import { registerMcpPrompts } from './mcp-prompts.ts';
 
 export const OPENCHATCUT_SKILL_BASELINE = '2026-08-01.1';
 export const MCP_SESSION_IDLE_LIMIT_MS = 60 * 60 * 1000;
 export const MCP_SESSION_COUNT_LIMIT = 64;
+export const MCP_POST_BODY_LIMIT_BYTES = 2 * 1024 * 1024;
 
 const PROJECT_SELECTOR = {
   type: 'string',
   description: 'OpenChatCut project id. It must match the project bound to this MCP transport session.',
 };
 
-const CONTROL_TOOLS: Tool[] = [
-  {
-    name: 'openchatcut_status',
-    description: 'Show connected OpenChatCut editors, this transport session binding, and capability status.',
-    inputSchema: { type: 'object', properties: {} },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  },
-  {
-    name: 'list_projects',
-    description: 'List OpenChatCut projects, newest first.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        includeDeleted: { type: 'boolean' },
-        editorBaseUrl: { type: 'string' },
-      },
-    },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  },
-  {
-    name: 'create_project',
-    description: 'Create an empty OpenChatCut project with one active timeline and one video track.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        name: { type: 'string' },
-        description: { type: 'string' },
-        compositionWidth: { type: 'number' },
-        compositionHeight: { type: 'number' },
-        fps: { type: 'number' },
-        editorBaseUrl: { type: 'string' },
-      },
-    },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  },
-  {
-    name: 'target_project',
-    description: 'Permanently bind this MCP transport session to one connected project/editor/revision.',
-    inputSchema: {
-      type: 'object',
-      properties: { projectId: { type: 'string' }, editorBaseUrl: { type: 'string' } },
-      required: ['projectId'],
-    },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  },
-  {
-    name: 'get_editor_url',
-    description: 'Return the OpenChatCut editor URL for this session project or an explicitly named project.',
-    inputSchema: {
-      type: 'object',
-      properties: { projectId: { type: 'string' }, editorBaseUrl: { type: 'string' } },
-    },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  },
-];
 
-interface McpSession {
-  id: string | null;
+interface McpSession extends McpBindingSession {
   server: Server | null;
   transport: StreamableHTTPServerTransport;
-  binding: EditorBinding | null;
-  staleReason: string | null;
   lastUsed: number;
 }
 
@@ -109,103 +62,42 @@ function editorUrl(args: Record<string, unknown>, projectId: string, fallbackBas
   return `${base.replace(/\/+$/, '')}/#/editor/${encodeURIComponent(projectId)}`;
 }
 
-export function mcpTools(): Tool[] {
-  const controls = new Set(CONTROL_TOOLS.map((tool) => tool.name));
-  const editorTools = registeredTools()
-    .filter((tool) => !controls.has(tool.name))
-    .map((tool): Tool => ({
-      name: tool.name,
-      description: tool.description,
-      annotations: tool.annotations,
-      inputSchema: {
-        ...tool.input_schema,
-        properties: {
-          ...tool.input_schema.properties,
-          editorProjectId: PROJECT_SELECTOR,
-        },
+export function mcpTools(session?: McpSession): Tool[] {
+  const browserTools = registeredTools();
+  const hasConnectedBrowser = connectedProjectIds().length > 0;
+  const catalog = session?.offline
+    ? offlineExternalToolSchemas()
+    : hasConnectedBrowser || session?.binding
+      ? browserTools
+      : offlineExternalToolSchemas();
+  const editorTools = catalog.filter((tool) => MCP_CONTROL_TOOL_NAMES[tool.name] !== true).map((tool): Tool => ({
+    name: tool.name,
+    description: tool.description,
+    annotations: tool.annotations,
+    inputSchema: {
+      ...tool.input_schema,
+      properties: {
+        ...tool.input_schema.properties,
+        editorProjectId: PROJECT_SELECTOR,
       },
-    }));
-  return [...CONTROL_TOOLS, ...editorTools];
+    },
+  }));
+  return [...MCP_CONTROL_TOOLS, ...editorTools];
 }
 
-function requestedProjectId(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
-function defaultProjectId(): string {
+function mcpStatus(session: McpSession): Record<string, unknown> {
+  const mode = bindingMode(session);
   const connected = connectedProjectIds();
-  if (connected.length === 1) return connected[0];
-  if (!connected.length) {
-    throw new ExternalEditorCallError(
-      'rejected',
-      'No OpenChatCut editor is connected. Open the target project in OpenChatCut first.',
-    );
-  }
-  throw new ExternalEditorCallError(
-    'rejected',
-    'Multiple OpenChatCut projects are open; call target_project with the intended project.',
-  );
-}
-
-function markSessionStale(session: McpSession, message: string): void {
-  if (!session.staleReason) session.staleReason = message;
-  if (session.id) cancelEditorCallsForOwner(session.id, 'stale', message);
-}
-
-function validateSessionBinding(
-  session: McpSession,
-  allowRevisionDrift = false,
-): EditorBinding | null {
-  if (session.staleReason) {
-    throw new ExternalEditorCallError('stale', session.staleReason);
-  }
-  if (!session.binding) return null;
-  const matches = allowRevisionDrift
-    ? editorBindingIdentityMatches(session.binding)
-    : editorBindingMatches(session.binding);
-  if (!matches) {
-    const message = `MCP session binding for project ${session.binding.projectId} is stale. Re-initialize the MCP session.`;
-    markSessionStale(session, message);
-    throw new ExternalEditorCallError('stale', message);
-  }
-  return session.binding;
-}
-
-function bindSession(
-  session: McpSession,
-  requested: unknown,
-  allowRevisionDrift = false,
-): EditorBinding {
-  const projectId = requestedProjectId(requested) ?? session.binding?.projectId ?? defaultProjectId();
-  if (session.binding) {
-    if (session.binding.projectId !== projectId) {
-      throw new ExternalEditorCallError(
-        'rejected',
-        `This MCP session is bound to project ${session.binding.projectId}; it cannot operate project ${projectId}.`,
-      );
-    }
-    return validateSessionBinding(session, allowRevisionDrift)!;
-  }
-  const binding = editorBinding(projectId);
-  if (!binding || !editorBindingMatches(binding)) {
-    throw new ExternalEditorCallError(
-      'rejected',
-      `Project ${projectId} is not open in a connected OpenChatCut editor.`,
-    );
-  }
-  session.binding = binding;
-  return binding;
-}
-
-function projectForRead(session: McpSession, requested: unknown): string {
-  const projectId = requestedProjectId(requested) ?? session.binding?.projectId ?? defaultProjectId();
-  if (session.binding && session.binding.projectId !== projectId) {
-    throw new ExternalEditorCallError(
-      'rejected',
-      `This MCP session is bound to project ${session.binding.projectId}; it cannot address project ${projectId}.`,
-    );
-  }
-  return projectId;
+  return {
+    connectedProjectIds: connected,
+    editors: editorStatuses(),
+    sessionBinding: session.binding ?? session.offline?.binding() ?? null,
+    bindingMode: mode,
+    availableToolTier: mode === 'offline' || (!mode && !connected.length) ? 'server-direct' : 'browser',
+    offlineFallback: 'Target an existing stored project with no browser owner, then begin with approvalMode="auto".',
+    browserRequiredFor: ['visual/canvas inspection', 'generation', 'upload', 'network', 'preset', 'render', 'export', 'manual approval'],
+    toolCount: mcpTools(session).length,
+  };
 }
 
 async function callControlTool(
@@ -214,14 +106,7 @@ async function callControlTool(
   args: Record<string, unknown>,
   baseUrl: string,
 ): Promise<unknown | undefined> {
-  if (name === 'openchatcut_status') {
-    return {
-      connectedProjectIds: connectedProjectIds(),
-      editors: editorStatuses(),
-      sessionBinding: session.binding,
-      toolCount: mcpTools().length,
-    };
-  }
+  if (name === 'openchatcut_status') return mcpStatus(session);
   if (name === 'list_projects') {
     const projects = await listExternalProjects(args.includeDeleted === true);
     return projects.map((project) => ({
@@ -230,7 +115,7 @@ async function callControlTool(
     }));
   }
   if (name === 'create_project') {
-    if (session.binding) {
+    if (boundProjectId(session)) {
       throw new ExternalEditorCallError(
         'rejected',
         'A project-bound MCP session cannot create or switch to another project. Start a new MCP session.',
@@ -242,8 +127,10 @@ async function callControlTool(
   if (name === 'target_project') {
     const projectId = requestedProjectId(args.projectId);
     if (!projectId) throw new ExternalEditorCallError('rejected', 'projectId is required');
-    const binding = bindSession(session, projectId);
-    return { ok: true, binding, editorUrl: editorUrl(args, binding.projectId, baseUrl) };
+    const url = editorUrl(args, projectId, baseUrl);
+    const binding = await targetMcpProject(session, projectId, url);
+    await session.server?.sendToolListChanged().catch(() => undefined);
+    return { ok: true, bindingMode: bindingMode(session), binding, editorUrl: url };
   }
   if (name === 'get_editor_url') {
     const projectId = projectForRead(session, args.projectId);
@@ -267,13 +154,25 @@ async function callTool(
       && session.binding
       && editSessionOwnerMatches(session.id, session.binding, args.editSessionId),
     );
-  validateSessionBinding(session, allowRevisionDrift);
+  if (session.offline) {
+    if (MCP_CONTROL_TOOL_NAMES[name] === true) {
+      await validateOfflineBinding(session);
+      return callControlTool(session, name, args, baseUrl);
+    }
+    if (!session.id) throw new ExternalEditorCallError('failed', 'MCP session initialization is incomplete.');
+    const requested = requestedProjectId(args.editorProjectId);
+    const projectId = session.offline.binding().projectId;
+    if (requested && requested !== projectId) {
+      throw new ExternalEditorCallError('rejected', `This MCP session is bound to project ${projectId}.`);
+    }
+    delete args.editorProjectId;
+    return session.offline.execute(name, args);
+  }
+  validateBrowserBinding(session, allowRevisionDrift);
   const control = await callControlTool(session, name, args, baseUrl);
   if (control !== undefined) return control;
-  if (!session.id) {
-    throw new ExternalEditorCallError('failed', 'MCP session initialization is incomplete.');
-  }
-  const binding = bindSession(session, args.editorProjectId, allowRevisionDrift);
+  if (!session.id) throw new ExternalEditorCallError('failed', 'MCP session initialization is incomplete.');
+  const binding = bindBrowserForCall(session, args.editorProjectId, allowRevisionDrift);
   delete args.editorProjectId;
   if ((name === 'track_progress' || name === 'track_export') && args.action === 'wait') {
     const requested = Number(args.timeoutSeconds);
@@ -299,79 +198,17 @@ function makeServer(baseUrl: string, session: McpSession): Server {
       capabilities: { tools: { listChanged: true }, prompts: {} },
       instructions: [
         `OpenChatCut external skill baseline: ${OPENCHATCUT_SKILL_BASELINE}. Update with npx skills update openchatcut when the installed skill is older.`,
-        'Bind this MCP transport with target_project before editing; the project, editor instance, and base revision cannot change within the session.',
-        'After target_project, load_skill is read-only and can be called without begin_edit_session or editSessionId.',
-        'Call begin_edit_session first with approvalMode manual (default) or auto, then pass its editSessionId to every draft-safe editor tool.',
-        'Call review_edit_session when the draft is ready.',
-        'Manual sessions wait for approval in OpenChatCut; auto sessions apply the complete draft during review_edit_session. Do not claim success until status is applied.',
+        'Bind this MCP transport with target_project before editing. A connected browser is preferred; an existing stored project can use the offline fallback when no browser owns it.',
+        'The target response and openchatcut_status report bindingMode. Offline bindings expose only server-direct data tools and require approvalMode="auto".',
+        'Call begin_edit_session first, pass editSessionId to every editor tool, then call review_edit_session. Do not claim success until status is applied.',
+        'Manual approval and visual/canvas inspection, generation, upload, network, preset, render, and export tools require opening the returned editorUrl.',
+        'Offline review atomically commits the complete draft. A browser takeover or stored-project change makes the session stale with no partial edit.',
         'If a session becomes stale, cancelled, or failed, start a new MCP session instead of reusing it.',
       ].join(' '),
     },
   );
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: mcpTools() }));
-  // MCP prompts: client-side selectable workflow starters (Claude Code /
-  // Codex / TUI all render these as a choice list). Each prompt expands to a
-  // message that routes the agent through the matching OpenChatCut skill.
-  const PROMPTS: Prompt[] = [
-    {
-      name: 'create-short-video',
-      description: '把当前工程剪成节奏紧凑的竖屏短视频（钩子、推进、高潮、收尾）。',
-      arguments: [{ name: 'topic', description: '主题/重点（可选）', required: false }],
-    },
-    {
-      name: 'transcribe-and-caption',
-      description: '转写时间线上的音频/视频片段并生成字幕（无音轨片段自动跳过）。',
-      arguments: [{ name: 'track', description: '轨道别名，默认音频轨', required: false }],
-    },
-    {
-      name: 'add-background-music',
-      description: '为当前时间线匹配并放置合适的背景音乐，做响度标准化。',
-      arguments: [{ name: 'mood', description: '情绪方向（可选）', required: false }],
-    },
-    {
-      name: 'generate-script',
-      description: '按当前素材写解说词/口播稿，并规划分镜。',
-      arguments: [{ name: 'topic', description: '主题', required: true }],
-    },
-    {
-      name: 'export-project',
-      description: '导出当前工程为成片（MP4），并报告导出历史。',
-      arguments: [{ name: 'format', description: 'mp4 / prores（默认 mp4）', required: false }],
-    },
-    {
-      name: 'clean-up-draft',
-      description: '检查时间线：删除填充词、静音停顿，收紧空隙。',
-      arguments: [],
-    },
-  ];
-  server.setRequestHandler(ListPromptsRequestSchema, async () => ({ prompts: PROMPTS }));
-  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
-    const name = request.params.name;
-    const args = request.params.arguments ?? {};
-    const topic = typeof args.topic === 'string' ? args.topic.trim() : '';
-    const track = typeof args.track === 'string' ? args.track.trim() : '';
-    const mood = typeof args.mood === 'string' ? args.mood.trim() : '';
-    const textFor = (body: string): string => {
-      const t = body.replace(/\{topic\}/g, topic || '当前素材').replace(/\{track\}/g, track || 'A1');
-      return mood ? `${t}（氛围：${mood}）` : t;
-    };
-    const templates: Record<string, string> = {
-      'create-short-video': '请把当前时间线剪成节奏紧凑的竖屏短视频：先梳理素材，确定钩子、推进、高潮和收尾，再执行剪辑、配乐、字幕与发布前检查。主题：{topic}。',
-      'transcribe-and-caption': '请转写 {track} 轨道的音频/视频片段并生成字幕；没有音轨的片段跳过即可，完成后汇报哪些片段跳过了。',
-      'add-background-music': '请为当前时间线选择并放置合适的背景音乐，标准化到约 -14 LUFS，并确保不与口播冲突。{topic}',
-      'generate-script': `请围绕「${topic}」写一段解说词/口播稿：先明确结构（开头钩子、主体要点、结尾行动引导），再规划与素材匹配的分镜。`,
-      'export-project': '请导出当前工程为成片（默认 MP4），导出前检查素材完整性，完成后报告导出历史与文件位置。',
-      'clean-up-draft': '请检查当前时间线：删除口播中的填充词、删除静音停顿并收紧空隙，保持字幕与画面同步。',
-    };
-    const template = templates[name];
-    if (!template) {
-      throw new Error(`Unknown prompt ${name}`);
-    }
-    return {
-      description: PROMPTS.find((p) => p.name === name)?.description,
-      messages: [{ role: 'user', content: { type: 'text', text: textFor(template) } }],
-    };
-  });
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: mcpTools(session) }));
+  registerMcpPrompts(server);
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
       const result = await callTool(session, request.params.name, request.params.arguments, baseUrl);
@@ -385,7 +222,7 @@ function makeServer(baseUrl: string, session: McpSession): Server {
         && error instanceof ExternalEditorCallError
         && error.outcome === 'stale'
       ) {
-        markSessionStale(session, error.message);
+        markMcpSessionStale(session, error.message);
       }
       const result = toolError(error);
       return {
@@ -403,6 +240,7 @@ function forgetSession(
   outcome: 'cancelled' | 'stale' | 'failed',
   message: string,
 ): void {
+  session.offline?.dispose();
   const id = session.id;
   if (!id) return;
   if (sessions.get(id) === session) sessions.delete(id);
@@ -438,8 +276,8 @@ export function pruneMcpSessions(now = Date.now()): void {
 setInterval(() => pruneMcpSessions(), 10 * 60 * 1000).unref?.();
 
 onRegisteredToolsChanged(() => {
-  for (const { server } of sessions.values()) {
-    if (server) void server.sendToolListChanged().catch(() => undefined);
+  for (const { server, offline } of sessions.values()) {
+    if (server && !offline) void server.sendToolListChanged().catch(() => undefined);
   }
 });
 
@@ -457,10 +295,32 @@ function sendSessionError(res: ServerResponse, status: number, message: string):
   }));
 }
 
+async function readMcpPostBody(req: IncomingMessage): Promise<unknown> {
+  const contentType = typeof req.headers['content-type'] === 'string'
+    ? req.headers['content-type'].split(';', 1)[0]!.trim().toLowerCase()
+    : '';
+  if (contentType !== 'application/json') throw new Error('MCP POST requires application/json');
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.length;
+    if (bytes > MCP_POST_BODY_LIMIT_BYTES) throw new Error('MCP request body exceeds 2 MiB');
+    chunks.push(buffer);
+  }
+  if (bytes === 0) throw new Error('MCP request body is empty');
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+  } catch {
+    throw new Error('MCP request body is invalid JSON');
+  }
+}
+
 async function startMcpSession(
   req: IncomingMessage,
   res: ServerResponse,
   baseUrl: string,
+  parsedBody: unknown,
 ): Promise<void> {
   let session: McpSession;
   const transport = new StreamableHTTPServerTransport({
@@ -477,6 +337,7 @@ async function startMcpSession(
     server: null,
     transport,
     binding: null,
+    offline: null,
     staleReason: null,
     lastUsed: Date.now(),
   };
@@ -490,7 +351,7 @@ async function startMcpSession(
     );
   };
   await server.connect(transport);
-  await transport.handleRequest(req, res);
+  await transport.handleRequest(req, res, parsedBody);
   if (!transport.sessionId) await server.close();
 }
 
@@ -543,13 +404,15 @@ export function toMcpContent(result: unknown): CallToolResult['content'] {
 export function mcpSessionsForTest(): Array<{
   id: string;
   lastUsed: number;
-  binding: EditorBinding | null;
+  binding: EditorBinding | OfflineEditorBinding | null;
+  bindingMode: 'browser' | 'offline' | null;
   staleReason: string | null;
 }> {
   return [...sessions.entries()].map(([id, session]) => ({
     id,
     lastUsed: session.lastUsed,
-    binding: session.binding ? { ...session.binding } : null,
+    binding: session.binding ? { ...session.binding } : session.offline?.binding() ?? null,
+    bindingMode: bindingMode(session),
     staleReason: session.staleReason,
   }));
 }
@@ -568,6 +431,16 @@ export async function handleMcpRequest(
   res: ServerResponse,
   baseUrl: string,
 ): Promise<void> {
+  let parsedBody: unknown;
+  if (req.method === 'POST') {
+    try {
+      parsedBody = await readMcpPostBody(req);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'invalid MCP request body';
+      sendSessionError(res, /exceeds/.test(message) ? 413 : 400, message);
+      return;
+    }
+  }
   const sessionId = sessionIdOf(req);
   if (sessionId) {
     const now = Date.now();
@@ -578,24 +451,18 @@ export async function handleMcpRequest(
       return;
     }
     if (req.method === 'DELETE') {
-      forgetSession(
-        session,
-        'cancelled',
-        'MCP transport session closed before the editor call completed.',
-      );
-      // Let the cancelled tool request flush its terminal response before the
-      // transport processes the session-termination request.
+      forgetSession(session, 'cancelled', 'MCP transport session closed before the editor call completed.');
       await delayImmediate();
       await session.transport.handleRequest(req, res);
       return;
     }
     session.lastUsed = now;
-    await session.transport.handleRequest(req, res);
+    await session.transport.handleRequest(req, res, parsedBody);
     return;
   }
   if (req.method !== 'POST') {
     sendSessionError(res, 400, 'MCP session id is required');
     return;
   }
-  await startMcpSession(req, res, baseUrl);
+  await startMcpSession(req, res, baseUrl, parsedBody);
 }

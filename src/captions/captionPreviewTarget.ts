@@ -9,6 +9,7 @@ import type { CaptionLayout, CaptionsData } from './types';
 const LINGER_MS = 1_500;
 
 interface PreviewCue {
+  id?: string;
   text: string;
   start: number;
   end: number;
@@ -23,6 +24,7 @@ interface BaseTarget {
 
 export interface SingleCaptionPreviewTarget extends BaseTarget {
   kind: 'single';
+  pageId: string;
   cueIndex: number;
   rows: CueRow[];
 }
@@ -30,6 +32,7 @@ export interface SingleCaptionPreviewTarget extends BaseTarget {
 export interface ManualCaptionPreviewTarget extends BaseTarget {
   kind: 'manual';
   laneId: string;
+  cueId: string;
   cueIndex: number;
 }
 
@@ -54,12 +57,8 @@ function activeCueIndex(rows: CueRow[], ms: number): number {
   return -1;
 }
 
-function manualCueIndex(target: PreviewCue, words: readonly PreviewCue[]): number {
-  for (let index = words.length - 1; index >= 0; index -= 1) {
-    const word = words[index]!;
-    if (word.start === target.start && word.end === target.end && word.text === target.text) return index;
-  }
-  return -1;
+function manualCueIndex(cueId: string, words: readonly PreviewCue[]): number {
+  return words.findIndex((word) => word.id === cueId);
 }
 
 function manualTarget(captions: CaptionsData, items: TimelineItem[], fps: number, ms: number): ManualCaptionPreviewTarget | null {
@@ -71,8 +70,8 @@ function manualTarget(captions: CaptionsData, items: TimelineItem[], fps: number
       const lane = group.lanes[laneIndex]!;
       if (!isManualCaptionEntry(lane.entry)) continue;
       const cue = lane.page.words[0];
-      if (!cue) continue;
-      const cueIndex = manualCueIndex(cue, lane.entry.words ?? []);
+      if (!cue?.id) continue;
+      const cueIndex = manualCueIndex(cue.id, lane.entry.words ?? []);
       if (cueIndex < 0) continue;
       const layout = group.anchor
         ? {
@@ -85,8 +84,8 @@ function manualTarget(captions: CaptionsData, items: TimelineItem[], fps: number
           }
         : captions.layout;
       return {
-        kind: 'manual', laneId: lane.entry.id, cueIndex, cue, layout,
-        key: `manual:${lane.entry.id}:${cueIndex}:${cue.start}:${cue.end}`,
+        kind: 'manual', laneId: lane.entry.id, cueId: cue.id, cueIndex, cue, layout,
+        key: `manual:${lane.entry.id}:${cue.id}`,
         preset: lane.entry.style ? { ...basePreset, ...lane.entry.style } : basePreset,
       };
     }
@@ -112,7 +111,7 @@ export function findCaptionPreviewTarget(
   const cueIndex = activeCueIndex(rows, ms);
   const cue = rows[cueIndex];
   return cue
-    ? { kind: 'single', key: `single:${cueIndex}:${cue.start}:${cue.end}`, cue, cueIndex, rows, preset: effectivePreset(captions), layout: captions.layout }
+    ? { kind: 'single', key: `single:${cue.id}`, pageId: cue.id, cue, cueIndex, rows, preset: effectivePreset(captions), layout: captions.layout }
     : null;
 }
 

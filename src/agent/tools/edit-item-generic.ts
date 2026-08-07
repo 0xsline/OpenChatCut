@@ -3,7 +3,7 @@
 // Committers delegate to EditorCommands, preserving atomic-batch semantics.
 import type {
   ClipFilters, ClipTransform, ItemKeyframes, Keyframe, KeyframeProp,
-  MediaAsset, TimelineItem, TimelineState,
+  MediaAsset, MediaAssetRelinkPatch, TimelineItem, TimelineState,
 } from '../../editor/types';
 import { defaultTrackId, resolveTrackId } from '../../editor/types';
 import { isValidEasing } from '../../editor/keyframes';
@@ -124,7 +124,7 @@ export interface GenericCommands {
   setItemSpeed: (id: string, rate: number) => void;
   clearItemKeyframes: (id: string, prop?: KeyframeProp) => void;
   replaceItemMedia: (id: string, src: string) => void;
-  relinkTimelineItem: (id: string, next: { src: string; name?: string; durationInFrames?: number; width?: number; height?: number; sourceRevision?: string; sourceFilename?: string }) => void;
+  relinkTimelineItem: (id: string, next: MediaAssetRelinkPatch) => void;
   removeItem: (id: string) => void;
   rippleDeleteItem: (id: string) => void;
 }
@@ -475,6 +475,7 @@ export function applyGeneric(plan: OpResult, commands: GenericCommands): OpResul
   if (plan.plan === 'relinkMedia') {
     commands.relinkTimelineItem(id, {
       src: String(plan.src),
+      sourceContentHash: undefined,
       name: plan.name as string | undefined,
       durationInFrames: plan.durationInFrames as number | undefined,
       width: plan.width as number | undefined,

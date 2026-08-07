@@ -1,3 +1,4 @@
+import { CURRENT_PROJECT_VERSION } from '../../../shared/project-version';
 import assert from 'node:assert/strict';
 import type { AgentContext } from '../context.ts';
 import {
@@ -36,7 +37,7 @@ const decodedAudio = {
 
 function projectDoc(): ProjectDoc {
   return {
-    version: 3,
+    version: CURRENT_PROJECT_VERSION,
     assets: [
       {
         id: 'asset_reference',

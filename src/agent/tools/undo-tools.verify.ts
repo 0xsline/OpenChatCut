@@ -1,3 +1,4 @@
+import { CURRENT_PROJECT_VERSION } from '../../../shared/project-version';
 // Runnable check: `npx tsx src/agent/tools/undo-tools.verify.ts`.
 import assert from 'node:assert/strict';
 import { execUndoTool, UNDO_TOOL_NAMES, UNDO_TOOL_SCHEMAS } from './undo-tools';
@@ -16,7 +17,7 @@ const timeline = (id: string, items: TimelineItem[]): Timeline => ({
 });
 
 const docOf = (items: TimelineItem[], activeTimelineId = 'tl1'): ProjectDoc => ({
-  version: 3, assets: [], mediaFolders: [],
+  version: CURRENT_PROJECT_VERSION, assets: [], mediaFolders: [],
   activeTimelineId,
   timelines: [timeline('tl1', items), timeline('tl2', [])],
 });

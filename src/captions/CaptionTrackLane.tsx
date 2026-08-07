@@ -88,12 +88,12 @@ interface SelectionMoveDrag extends CueTimingDrag {
   captionSelections: CaptionSelectionRef[];
 }
 
-function manualCueTargets(captions: CaptionsData | null): Map<TranscriptWord, ManualCueTarget> {
-  const targets = new Map<TranscriptWord, ManualCueTarget>();
+function manualCueTargets(captions: CaptionsData | null): Map<string, ManualCueTarget> {
+  const targets = new Map<string, ManualCueTarget>();
   captions?.sourceEntries?.forEach((entry) => {
     if (!isManualCaptionEntry(entry)) return;
     const words = entry.words ?? [];
-    words.forEach((word, index) => targets.set(word, { laneId: entry.id, index, words }));
+    words.forEach((word, index) => { if (word.id) targets.set(word.id, { laneId: entry.id, index, words }); });
   });
   return targets;
 }
@@ -652,13 +652,14 @@ export function CaptionTrackLane({
       }}>
       {!pages.length && <span className="cc-caption-track-empty">{t('字幕轨道为空')}</span>}
       {pages.map((page, index) => {
-        const target = page.words.length === 1 ? targets.get(page.words[0]!) : undefined;
-        const key = target ? `${target.laneId}:${target.index}` : `${page.start}:${index}`;
+        const target = page.words.length === 1 && page.words[0]?.id ? targets.get(page.words[0].id) : undefined;
+        const cueId = target ? page.words[0]?.id : undefined;
+        const key = target ? `${target.laneId}:${cueId ?? 'unresolved'}` : `${page.start}:${index}`;
         const previewTarget = !target && captions
           ? findCaptionPreviewTarget(captions, state.items, state.fps, (page.start + page.end) / 2)
           : null;
-        const selectionRef = target
-          ? { trackId, kind: 'manual' as const, laneId: target.laneId, cueIndex: target.index }
+        const selectionRef = target && cueId
+          ? { trackId, kind: 'manual' as const, laneId: target.laneId, cueId }
           : previewTarget ? captionSelectionRef(trackId, previewTarget) : null;
         const selected = selectedCaptions.some(
           (selection) => captionSelectionKey(selection) === captionSelectionKey(selectionRef),

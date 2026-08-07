@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { captionBoxStyle, captionPreviewTextColor, captionTextStyle, containerStyle, wordStyle } from './renderStyles';
-import type { CaptionStyle } from './styles';
+import { captionBoxStyle, captionPreviewTextColor, captionTextStyle, containerStyle, effectivePreset, wordStyle } from './renderStyles';
+import { CAPTION_STYLE_BY_ID, type CaptionStyle } from './styles';
 import { mapCaptionStyle } from './styleMap';
 
 const preset: CaptionStyle = {
@@ -108,5 +108,24 @@ assert.equal(
   false,
   'shared render output contains neither undefined nor non-finite numeric values',
 );
+
+const builtinIds = ['plain', 'black-bar', 'bubble-pop', 'signal'] as const;
+const builtinLooks = builtinIds.map((template) => {
+  const persisted = JSON.parse(JSON.stringify({ enabled: true, template, pacing: 'phrase' as const }));
+  const resolved = effectivePreset(persisted);
+  const painted = captionTextStyle(resolved, 1_080, false, resolved.wholeLine);
+  return {
+    template: persisted.template,
+    fontFamily: painted.fontFamily,
+    fontSize: painted.fontSize,
+    fontWeight: painted.fontWeight,
+    color: painted.color,
+    stroke: painted.WebkitTextStroke,
+    background: CAPTION_STYLE_BY_ID[template].background ?? CAPTION_STYLE_BY_ID[template].highlightBackground ?? '',
+    wordsPerPage: resolved.wordsPerPage ?? null,
+  };
+});
+assert.equal(new Set(builtinLooks.map((look) => JSON.stringify(look))).size, builtinIds.length,
+  'built-in preset ids persist and resolve to observably distinct render/layout fields');
 
 console.log('renderStyles.verify: caption render style controls remain aligned');

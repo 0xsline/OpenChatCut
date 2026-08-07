@@ -1,5 +1,5 @@
 import type { AgentContext } from '../context';
-import type { CaptionsData, CaptionTemplate, CaptionPacing, CaptionAnchor, CaptionLayout, CaptionWordOverride } from '../../captions/types';
+import type { CaptionsData, CaptionTemplate, CaptionPacing, CaptionAnchor, CaptionLayout, CaptionMotionPreset } from '../../captions/types';
 import { CAPTION_STYLES, CAPTION_STYLE_BY_ID } from '../../captions/styles';
 import { mapCaptionStyle } from '../../captions/styleMap';
 import { sourceList, sourceSet, sourceAdd, sourceRemove, languageMode, bilingual, firstTranscribedOnTrack } from './captions-sources';
@@ -7,8 +7,10 @@ import { execLayoutPolicy, execPositions, execSourceUpdate } from './captions-la
 import { listCaptionPresets, saveCaptionPreset, deleteCaptionPreset, resolveCaptionPreset, type CaptionPreset } from '../../captions/presetStore';
 import { captionsOnTrack, defaultTrackId, resolveTrackId, timelineTrackIds, trackAlias, type TimelineState } from '../../editor/types';
 import { hasOperationalTranscript } from '../../transcript/types';
+import { applyDisplayTextEntries } from './captions-word-overrides';
+import { isCaptionMotionPreset } from '../../captions/captionMotion';
 
-// edit_captions uses one tool with a 21-action dispatcher. Most action data
+// edit_captions uses one tool with a multi-action dispatcher. Most action data
 // arrives as a JSON string in `json`. Backed by OpenChatCut's captions overlay
 // (enable/template/style/layout/display overrides/multi-source/translation).
 // The three brothers of multi-lane (layout_policy / positions / source_update) are in captions-lanes.ts,
@@ -61,41 +63,28 @@ function toLayout(json: Record<string, unknown>, width: number, height: number):
   return Object.keys(l).length ? l : null;
 }
 
-/** display_text: per-word overrides (hide / retext / force break) + clearOverrides. */
+/** display_text: stable-ref-first per-word overrides + legacy numeric selectors. */
 function displayText(json: Record<string, unknown>, c: CaptionsData, ctx: AgentContext, s: TimelineState): Result {
   if (json.clearOverrides === true || json.clear_overrides === true) {
     ctx.commands.updateCaptions({ wordOverrides: {} });
     return { ok: true, cleared: true };
   }
   const raw = json.overrides;
-  if (!Array.isArray(raw) || raw.length === 0) return { error: 'display_text needs {overrides:[{wordIndex,...}]} or {clearOverrides:true}' };
-  const item = c.sourceItemId ? s.items.find((it) => it.id === c.sourceItemId) : undefined;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { error: 'display_text needs {overrides:[{wordRef,...}]} or {clearOverrides:true}' };
+  }
+  const item = c.sourceItemId ? s.items.find((candidate) => candidate.id === c.sourceItemId) : undefined;
   if (c.sourceItemId && !hasOperationalTranscript(item)) {
     return { error: `caption source ${c.sourceItemId} has no current transcript; transcribe it again` };
   }
-  const total = hasOperationalTranscript(item) ? item.transcript.length : c.words?.length ?? 0;
-  const next: Record<number, CaptionWordOverride> = { ...(c.wordOverrides ?? {}) };
-  const ignored: string[] = [];
-  const errors: string[] = [];
-  for (const entry of raw) {
-    if (!entry || typeof entry !== 'object') { errors.push('non-object entry'); continue; }
-    const e = entry as Record<string, unknown>;
-    if (e.key !== undefined && e.wordIndex === undefined) { ignored.push('key (this build keys word overrides by wordIndex from read_captions)'); continue; }
-    if ('keepWithPrevious' in e) ignored.push('keepWithPrevious');
-    const wi = e.wordIndex;
-    if (typeof wi !== 'number' || !Number.isInteger(wi) || wi < 0) { errors.push(`invalid wordIndex ${JSON.stringify(wi)}`); continue; }
-    if (total > 0 && wi >= total) { errors.push(`wordIndex ${wi} out of range (0..${total - 1})`); continue; }
-    if (e.clear === true) { delete next[wi]; continue; }
-    const patch: CaptionWordOverride = {};
-    if (typeof e.hidden === 'boolean') patch.hidden = e.hidden;
-    if (typeof e.text === 'string') patch.text = e.text;
-    if (e.text === null && next[wi]) delete next[wi].text; // clearing a never-overridden word is a no-op, not a crash
-    if (typeof e.forcePageBreak === 'boolean') patch.forceBreak = e.forcePageBreak;
-    else if (typeof e.forceBreak === 'boolean') patch.forceBreak = e.forceBreak;
-    if (Object.keys(patch).length) next[wi] = { ...next[wi], ...patch };
-  }
-  ctx.commands.updateCaptions({ wordOverrides: next });
-  return { ok: true, overrides: Object.keys(next).length, ...(ignored.length ? { ignored } : {}), ...(errors.length ? { errors } : {}) };
+  const result = applyDisplayTextEntries(raw, c, s.items, s.fps);
+  ctx.commands.updateCaptions({ wordOverrides: result.wordOverrides });
+  return {
+    ok: result.errors.length === 0,
+    overrides: Object.keys(result.wordOverrides).length,
+    ...(result.ignored.length ? { ignored: result.ignored } : {}),
+    ...(result.errors.length ? { errors: result.errors } : {}),
+  };
 }
 
 /** preset_apply/rename/delete resolve a saved preset by presetId (or presetName). */
@@ -183,6 +172,17 @@ export async function editCaptions(args: Args, ctx: AgentContext): Promise<Resul
     ctx.commands.updateCaptions(patch);
     return { ok: true, applied: Object.keys(styleOverride), ...(pacing ? { pacing } : {}), ...(ignored.length ? { ignored } : {}) };
   }
+  if (action === 'animation') {
+    const requestedPreset = str(args.motionPreset) || str(json.preset);
+    if (!isCaptionMotionPreset(requestedPreset)) {
+      return {
+        error: 'animation needs motionPreset: none|fade-up|pop|word-pop|karaoke-pulse',
+      };
+    }
+    const motionPreset: CaptionMotionPreset = requestedPreset;
+    ctx.commands.updateCaptions({ motionPreset });
+    return { ok: true, motionPreset };
+  }
   if (action === 'layout') {
     const layout = toLayout(json, s.width, s.height);
     if (!layout) return { error: 'layout 移动整块字幕,参数例:{"preset":"bottom-center"}(3×3 锚点/top/bottom/center)或 {"offsetXRatio":0.1,"offsetYRatio":-0.05} 微调;要把多条字幕分开摆(如英文上/中文下)用 action=positions,不是 layout' };
@@ -242,6 +242,7 @@ export async function editCaptions(args: Args, ctx: AgentContext): Promise<Resul
       styleOverride: c.styleOverride,
       pacing: c.pacing,
       createdAt: Date.now(),
+      motionPreset: c.motionPreset,
     };
     await saveCaptionPreset(preset);
     return { ok: true, presetId: preset.id, name, captured: { template: c.template, styleFields: Object.keys(c.styleOverride ?? {}) } };
@@ -257,6 +258,7 @@ export async function editCaptions(args: Args, ctx: AgentContext): Promise<Resul
       template: preset.template ?? c.template,
       styleOverride: preset.styleOverride ?? {},
       ...(preset.pacing ? { pacing: preset.pacing } : {}),
+      ...(preset.motionPreset ? { motionPreset: preset.motionPreset } : {}),
     });
     return { ok: true, applied: preset.name, presetId: preset.id, template: preset.template };
   }

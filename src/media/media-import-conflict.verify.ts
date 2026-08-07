@@ -12,6 +12,8 @@ import {
   createMediaAssetsChatSeed,
   readyMediaAssetsForPaste,
 } from './upload';
+import { uploadedMediaRelinkPatch } from './mediaAssetRelink';
+import { createImportContentIdentityHooks } from './importContentIdentity';
 
 assert.equal(normalizeMediaName('  旅行封面.PNG  '), '旅行封面.png');
 assert.equal(normalizeMediaName('ＡＢＣ.mp4'), 'abc.mp4');
@@ -39,8 +41,20 @@ const uploaded = {
   kind: 'video' as const,
   name: 'interview.mov',
   sourceRevision: 'revision-new',
+  sourceContentHash: 'ef'.repeat(32),
+  sourceSize: 4_096,
+  sourceModifiedAt: 42,
   asrPath,
 };
+assert.deepEqual(uploadedMediaRelinkPatch(uploaded), {
+  src: uploaded.src,
+  name: uploaded.name,
+  kind: uploaded.kind,
+  sourceRevision: uploaded.sourceRevision,
+  sourceContentHash: uploaded.sourceContentHash,
+  sourceSize: uploaded.sourceSize,
+  sourceModifiedAt: uploaded.sourceModifiedAt,
+});
 const replacementGate = createImportTranscriptionGate(oldMaster.id);
 assert.equal(
   replacementGate.uploaded(uploaded),
@@ -113,6 +127,42 @@ assert.deepEqual(mediaSeed, {
   ],
 }, 'one ordered chat seed contains every selected media reference');
 assert.equal(createMediaAssetsChatSeed([], 42), null, 'an empty media selection does not expand or reseed chat');
+
+const canonicalHash = 'aa'.repeat(32);
+const canonicalPoolAsset: MediaAsset = {
+  ...oldMaster,
+  id: 'canonical-pool-master',
+  name: 'canonical.mov',
+  sourceContentHash: canonicalHash,
+};
+let canonicalized: { canonicalId: string; duplicateId: string } | undefined;
+const identityHooks = createImportContentIdentityHooks({
+  getAssets: () => [canonicalPoolAsset],
+  onCanonical: (canonical, duplicateId) => {
+    canonicalized = { canonicalId: canonical.id, duplicateId };
+  },
+});
+assert.strictEqual(
+  identityHooks.resolveCanonicalAsset?.(canonicalHash.toUpperCase(), 'renamed-placeholder'),
+  canonicalPoolAsset,
+  'progressive import reuses existing bytes even when the incoming filename differs',
+);
+identityHooks.onCanonical?.(canonicalPoolAsset, 'renamed-placeholder');
+assert.deepEqual(canonicalized, {
+  canonicalId: canonicalPoolAsset.id,
+  duplicateId: 'renamed-placeholder',
+});
+const sameNameReplacement: MediaAsset = {
+  ...canonicalPoolAsset,
+  id: 'same-name-new-bytes',
+  sourceContentHash: 'bb'.repeat(32),
+};
+assert.equal(findMediaNameConflict([canonicalPoolAsset], sameNameReplacement.name)?.id, canonicalPoolAsset.id);
+assert.equal(
+  identityHooks.resolveCanonicalAsset?.(sameNameReplacement.sourceContentHash!, sameNameReplacement.id),
+  undefined,
+  'same-name different bytes remain on the explicit replacement path',
+);
 
 
 console.log('media-import-conflict.verify: shared conflict handling preserves asset identity');

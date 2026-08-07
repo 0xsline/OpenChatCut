@@ -15,10 +15,12 @@ assert.ok(added?.sourceEntries);
 captions = { ...captions, ...added };
 assert.equal(buildLaneGroups(captions, [], 30, 1_500, 6)?.[0]?.lanes[0]?.page.words[0]?.text, '第一句');
 assert.deepEqual(buildLaneGroups(captions, [], 30, 2_500, 6), [], 'manual cue ends exactly at endMs');
+const originalCueId = captions.sourceEntries![0]!.words![0]!.id;
 
 const updated = updateManualCue(captions, laneId, 0, '改过的字幕', 1_200, 2_400);
 assert.ok(updated?.sourceEntries);
 captions = { ...captions, ...updated };
+assert.equal(captions.sourceEntries![0]!.words![0]!.id, originalCueId, 'manual text/timing updates preserve cue identity');
 assert.equal(captionPages(captions, [], 30)[0]?.words[0]?.text, '改过的字幕');
 assert.match(captionsToSrt(captions, [], 30), /00:00:01,200 --> 00:00:02,400\n改过的字幕/);
 

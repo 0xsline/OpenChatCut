@@ -7,6 +7,7 @@ import { findVariantByLang } from '../../transcript/variants';
 import { resolveTrackId, type TimelineState } from '../../editor/types';
 import { moveCaptionSourceEntry, normalizeCaptionSourceEntries } from '../../captions/sourceOrder';
 import { hasOperationalTranscript } from '../../transcript/types';
+import { isStableIdentity } from '../../transcript/identity';
 
 // edit_captions Multi-lane tool set:
 // - positions puts multiple sources into place in one call (same anchor point = stacked in the same block)
@@ -51,17 +52,21 @@ export function ensureEntries(c: CaptionsData, s: TimelineState): CaptionSourceE
 
 /** Selector → Hit entry subscript (selector family: index/id/sourceId/itemId/trackId/assetId/label/variant/slotId).*/
 export function matchEntries(entries: CaptionSourceEntry[], sel: Json, s: TimelineState): number[] | { error: string } {
+  const id = str(sel.sourceId) || str(sel.id);
+  if (id) {
+    const hits = entries.flatMap((entry, index) => (entry.id === id ? [index] : []));
+    return hits.length === 1
+      ? hits
+      : { error: hits.length ? `ambiguous sourceId "${id}"` : `no source with id "${id}" (source_list 查 sourceId)` };
+  }
   const idx = num(sel.index);
   if (idx !== undefined) {
     if (idx < 0 || idx >= entries.length) return { error: `index ${idx} out of range (0..${entries.length - 1})` };
-    return [idx];
+    return isStableIdentity(entries[idx]?.id)
+      ? { error: `index ${idx} is legacy-only; use sourceId "${entries[idx]!.id}"` }
+      : [idx];
   }
   if (str(sel.speakerId)) return { error: 'speakerId selector 不支持:无 per-speaker 车道,请按轨/按 item 选择' };
-  const id = str(sel.sourceId) || str(sel.id);
-  if (id) {
-    const hits = entries.flatMap((e, i) => (e.id === id ? [i] : []));
-    return hits.length ? hits : { error: `no source with id "${id}" (source_list 查 sourceId)` };
-  }
   const slotId = str(sel.slotId);
   if (slotId) {
     const hits = entries.flatMap((e, i) => (e.slotId === slotId ? [i] : []));

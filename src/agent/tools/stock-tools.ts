@@ -3,6 +3,7 @@ import type { AgentContext } from '../context';
 import type { MediaAsset } from '../../editor/types';
 import { safeSourceFilename } from '../../media/sourceFilename';
 import { fallbackDuration, isHttpUrl, nameFromUrl, probeUrl, sniffKind, type PoolKind } from './stock-url-utils';
+import { editorCredentialHeaders } from '../editor-credential';
 
 // Stock and URL ingest tools:
 // - download_media — url | url[] ≤4 → local uploads + media pool
@@ -73,7 +74,7 @@ async function materializeUrl(
   try {
     const res = await fetch('/api/import-url', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await editorCredentialHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ url }),
     });
     const body = (await res.json().catch(() => ({}))) as ImportUrlResponse;

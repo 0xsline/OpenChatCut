@@ -1,7 +1,12 @@
+import {
+  projectStoreRemoteAvailable,
+  requestProjectStore,
+  resetProjectStoreTransport,
+} from './projectStoreTransport';
+
 const DB_NAME = 'openchatcut';
 const STORE = 'kv';
 const MIGRATION_KEY = '__openchatcut_shared_store_v1__';
-const API_PATH = '/api/project-store';
 const memoryStore = new Map<string, unknown>();
 
 interface StoreSnapshot {
@@ -19,11 +24,7 @@ const remoteKnown = new Set<string>();
 let readyPromise: Promise<void> | undefined;
 
 const hasIdb = (): boolean => typeof indexedDB !== 'undefined';
-const canSync = (): boolean =>
-  typeof window !== 'undefined'
-  && typeof location !== 'undefined'
-  && typeof fetch === 'function'
-  && (location.protocol === 'http:' || location.protocol === 'https:');
+const canSync = (): boolean => projectStoreRemoteAvailable();
 const isProjectDocumentKey = (key: string): boolean => /^project:[a-zA-Z0-9_-]{1,160}$/.test(key);
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
@@ -97,24 +98,24 @@ function validSnapshot(value: unknown): value is StoreSnapshot {
   return isRecord(value) && value.version === 1 && isRecord(value.entries);
 }
 
-async function requestSnapshot(path = '', init?: RequestInit): Promise<StoreSnapshot> {
-  const response = await fetch(`${API_PATH}${path}`, {
-    cache: 'no-store',
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-  });
-  if (!response.ok) throw new Error(`project store request failed: ${response.status}`);
-  const value: unknown = await response.json();
+async function requestSnapshot(): Promise<StoreSnapshot> {
+  const value = await requestProjectStore({ operation: 'snapshot' });
+  if (!validSnapshot(value)) throw new Error('invalid project store response');
+  return value;
+}
+
+async function requestMerge(entries: Record<string, unknown>): Promise<StoreSnapshot> {
+  const value = await requestProjectStore({ operation: 'merge', entries });
   if (!validSnapshot(value)) throw new Error('invalid project store response');
   return value;
 }
 
 async function requestEntry(key: string): Promise<EntryResponse> {
-  const response = await fetch(`${API_PATH}/entry?key=${encodeURIComponent(key)}`, { cache: 'no-store' });
-  if (!response.ok) throw new Error(`project index request failed: ${response.status}`);
-  const value: unknown = await response.json();
-  if (!isRecord(value) || typeof value.found !== 'boolean') throw new Error('invalid project index response');
-  return value as unknown as EntryResponse;
+  const value = await requestProjectStore({ operation: 'entry', key });
+  if (!('found' in value) || typeof value.found !== 'boolean') {
+    throw new Error('invalid project index response');
+  }
+  return value;
 }
 
 function cacheEntry(key: string, entry: EntryResponse): void {
@@ -138,10 +139,7 @@ async function bootstrap(): Promise<void> {
     let projects = await requestEntry('projects');
     if (!migrated || !projects.found) {
       const local = await localEntries();
-      const snapshot = await requestSnapshot('/merge', {
-        method: 'POST',
-        body: JSON.stringify({ entries: local }),
-      });
+      const snapshot = await requestMerge(local);
       projects = 'projects' in snapshot.entries
         ? { found: true, value: snapshot.entries.projects }
         : { found: false };
@@ -193,12 +191,7 @@ export async function kvSet(key: string, value: unknown): Promise<void> {
   remoteKnown.add(key);
   remoteCache = { ...remoteCache, [key]: value };
   try {
-    const response = await fetch(`${API_PATH}/entry`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, value }),
-    });
-    if (!response.ok) throw new Error(`project store write failed: ${response.status}`);
+    await requestProjectStore({ operation: 'set', key, value });
   } catch {
     await disableRemote();
   }
@@ -213,8 +206,7 @@ export async function kvDel(key: string): Promise<void> {
     return;
   }
   try {
-    const response = await fetch(`${API_PATH}/entry?key=${encodeURIComponent(key)}`, { method: 'DELETE' });
-    if (!response.ok) throw new Error(`project store delete failed: ${response.status}`);
+    await requestProjectStore({ operation: 'delete', key });
   } catch (error) {
     await disableRemote();
     if (requireSharedDelete) throw error;
@@ -248,4 +240,5 @@ export function resetSharedKvMemory(): void {
   remoteCache = null;
   remoteKnown.clear();
   readyPromise = undefined;
+  resetProjectStoreTransport();
 }

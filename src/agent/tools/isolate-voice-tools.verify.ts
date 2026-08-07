@@ -1,3 +1,4 @@
+import { CURRENT_PROJECT_VERSION } from '../../../shared/project-version';
 import assert from 'node:assert/strict';
 import type { AgentContext } from '../context.ts';
 import { activeEditorState, activeTimeline, type MediaAsset, type ProjectDoc } from '../../editor/types.ts';
@@ -29,7 +30,7 @@ const assets: MediaAsset[] = [
 ];
 
 const initial: ProjectDoc = {
-  version: 3,
+  version: CURRENT_PROJECT_VERSION,
   assets,
   mediaFolders: [],
   activeTimelineId: 'timeline_main',

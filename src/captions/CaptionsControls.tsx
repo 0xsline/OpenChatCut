@@ -9,6 +9,7 @@ import { useT } from '../i18n/locale';
 import { ManualCaptionEditor } from './ManualCaptionEditor';
 import { beginCaptionStylePointerDrag } from './captionStyleDrag';
 import { captionTemplatePatch } from './captionTemplatePatch';
+import { CaptionMotionControls } from './CaptionMotionControls';
 
 interface CaptionsControlsProps {
   captionTrackId?: TrackId;
@@ -165,6 +166,11 @@ export function CaptionsControls({
             </div>
             <p className="cc-cap-hint">{t(pacingMeta.hint)}</p>
           </div>
+
+          <CaptionMotionControls
+            value={captions.motionPreset}
+            onChange={(motionPreset) => onUpdate({ motionPreset })}
+          />
 
           <ManualCaptionEditor captions={captions} items={items} onUpdate={onUpdate} getPlayheadMs={getPlayheadMs} onSeekMs={onSeekMs} />
 

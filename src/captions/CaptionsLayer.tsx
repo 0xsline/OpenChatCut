@@ -1,12 +1,13 @@
 import { useMemo } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
-import type { CaptionLayout, CaptionsData, CaptionTemplate } from './types';
+import type { CaptionLayout, CaptionMotionPreset, CaptionPage, CaptionsData, CaptionTemplate } from './types';
 import type { CaptionStyle } from './styles';
-import { paginate, activePage, currentWordIndex, activeTranslation, joinCaptionWords } from './types';
+import { currentWordIndex, activeTranslation, joinCaptionWords } from './types';
 import type { TimelineItem } from '../editor/types';
 import { buildLaneGroups, type LanePage } from './lanes';
-import { resolveCaptionWords, resolveCaptionWordIndices, applyWordOverrides } from './resolve';
+import { activeCaptionPages, buildCaptionPages } from './captionPages';
 import { captionFlowStyle, captionTextStyle, containerStyle, effectivePreset } from './renderStyles';
+import { captionPageMotionStyle, captionWordMotionStyle } from './captionMotion';
 
 const CAPTION_OVERLAY_STYLE = { pointerEvents: 'none', zIndex: 1 } as const;
 
@@ -22,17 +23,10 @@ export function CaptionsLayer({ captions, items }: { captions: CaptionsData; ite
 }
 
 function SingleStreamCaptions({ captions, items, ms, width, height, fps }: { captions: CaptionsData; items: TimelineItem[]; ms: number; width: number; height: number; fps: number }) {
-
-  const words = useMemo(() => resolveCaptionWords(captions, items, fps), [captions, items, fps]);
-  const indices = useMemo(() => resolveCaptionWordIndices(captions, items, fps), [captions, items, fps]);
   const preset = useMemo(() => effectivePreset(captions), [captions]);
-  // Word-by-word coverage (hide/change text/force page change) takes effect before paging and does not change transcript/timing.
-  const { words: displayWords, breakBefore } = useMemo(
-    () => applyWordOverrides(words, indices, captions.wordOverrides),
-    [words, indices, captions.wordOverrides],
-  );
-  const pages = useMemo(() => paginate(displayWords, captions.pacing, preset.wordsPerPage, breakBefore), [displayWords, captions.pacing, preset.wordsPerPage, breakBefore]);
-  const page = activePage(pages, ms);
+
+  const pages = useMemo(() => buildCaptionPages(captions, items, fps), [captions, items, fps]);
+  const page = activeCaptionPages(pages, ms)[0]?.page;
   if (!page) return null;
   const curIdx = currentWordIndex(page, ms);
   const translated = captions.bilingual && captions.translation ? activeTranslation(captions.translation, ms) : null;
@@ -40,21 +34,63 @@ function SingleStreamCaptions({ captions, items, ms, width, height, fps }: { cap
   return (
     <AbsoluteFill style={CAPTION_OVERLAY_STYLE}>
       <div style={containerStyle(preset, captions.template, width, height, captions.layout)}>
-        {preset.wholeLine ? (
-          // The entire sentence is continuous: one text per page (no word gaps, no word-by-word highlighting), and the background covers the entire line (classic black captions).
-          <div style={{ ...captionTextStyle(preset, height, false, true), whiteSpace: 'pre-wrap' }}>
-            {joinCaptionWords(page.words)}
-          </div>
-        ) : (
-          <div style={captionFlowStyle(preset)}>
-            {page.words.map((w, i) => (
-              <span key={i} style={{ position: 'relative', ...captionTextStyle(preset, height, i === curIdx) }}>{w.text}</span>
-            ))}
-          </div>
-        )}
-        {translated?.text && <div style={translationStyle(captions.template)}>{translated.text}</div>}
+        <div style={captionPageMotionStyle(captions.motionPreset, page, ms)}>
+          {preset.wholeLine ? (
+            <WholeLineCaption
+              page={page}
+              preset={preset}
+              height={height}
+              motionPreset={captions.motionPreset}
+              ms={ms}
+            />
+          ) : (
+            <div style={captionFlowStyle(preset)}>
+              {page.words.map((w, i) => (
+                <span
+                  key={i}
+                  style={{
+                    position: 'relative',
+                    ...captionTextStyle(preset, height, i === curIdx),
+                    ...captionWordMotionStyle(captions.motionPreset, w, ms),
+                  }}
+                >
+                  {w.text}
+                </span>
+              ))}
+            </div>
+          )}
+          {translated?.text && <div style={translationStyle(captions.template)}>{translated.text}</div>}
+        </div>
       </div>
     </AbsoluteFill>
+  );
+}
+
+function WholeLineCaption({
+  page,
+  preset,
+  height,
+  motionPreset,
+  ms,
+}: {
+  page: CaptionPage;
+  preset: CaptionStyle;
+  height: number;
+  motionPreset: CaptionMotionPreset | undefined;
+  ms: number;
+}) {
+  return (
+    <div style={{ ...captionTextStyle(preset, height, false, true), whiteSpace: 'pre-wrap' }}>
+      {page.words.map((word, index) => {
+        const previous = page.words[index - 1];
+        const text = previous ? joinCaptionWords([previous, word]).slice(previous.text.length) : word.text;
+        return (
+          <span key={word.id ?? index} style={captionWordMotionStyle(motionPreset, word, ms)}>
+            {text}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -93,7 +129,14 @@ function MultiLaneCaptions({ captions, items, ms, width, height }: { captions: C
         return (
           <div key={gi} style={containerStyle(basePreset, captions.template, width, height, layout)}>
             {g.lanes.map((lane, li) => (
-              <LaneCaption key={lane.entry.id || li} lane={lane} basePreset={basePreset} height={height} />
+              <LaneCaption
+                key={lane.entry.id || li}
+                lane={lane}
+                basePreset={basePreset}
+                height={height}
+                motionPreset={captions.motionPreset}
+                ms={ms}
+              />
             ))}
           </div>
         );
@@ -102,21 +145,43 @@ function MultiLaneCaptions({ captions, items, ms, width, height }: { captions: C
   );
 }
 
-function LaneCaption({ lane, basePreset, height }: { lane: LanePage; basePreset: CaptionStyle; height: number }) {
+function LaneCaption({
+  lane,
+  basePreset,
+  height,
+  motionPreset,
+  ms,
+}: {
+  lane: LanePage;
+  basePreset: CaptionStyle;
+  height: number;
+  motionPreset: CaptionsData['motionPreset'];
+  ms: number;
+}) {
   const preset: CaptionStyle = lane.entry.style ? { ...basePreset, ...lane.entry.style } : basePreset;
-  const flowStyle = captionFlowStyle(preset);
-  if (preset.wholeLine) {
-    return (
-      <div style={{ ...captionTextStyle(preset, height, false, true), whiteSpace: 'pre-wrap' }}>
-        {joinCaptionWords(lane.page.words)}
-      </div>
-    );
-  }
-  return (
-    <div style={flowStyle}>
+  const content = preset.wholeLine ? (
+    <WholeLineCaption
+      page={lane.page}
+      preset={preset}
+      height={height}
+      motionPreset={motionPreset}
+      ms={ms}
+    />
+  ) : (
+    <div style={captionFlowStyle(preset)}>
       {lane.page.words.map((word, index) => (
-        <span key={index} style={{ position: 'relative', ...captionTextStyle(preset, height, index === lane.curIdx) }}>{word.text}</span>
+        <span
+          key={index}
+          style={{
+            position: 'relative',
+            ...captionTextStyle(preset, height, index === lane.curIdx),
+            ...captionWordMotionStyle(motionPreset, word, ms),
+          }}
+        >
+          {word.text}
+        </span>
       ))}
     </div>
   );
+  return <div style={captionPageMotionStyle(motionPreset, lane.page, ms)}>{content}</div>;
 }

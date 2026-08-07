@@ -1,3 +1,4 @@
+import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 import assert from 'node:assert/strict';
 import { inspectorMixedValue, planInspectorBatch } from './inspectorBatch';
 import { historyReduce, reduce } from './reduce';
@@ -44,7 +45,7 @@ assert.deepEqual(transformed.items.map((entry) => entry.transform?.scale), [1, 2
 assert.deepEqual(transformed.items.map((entry) => entry.filters?.brightness), [0.8, 1.2], '其他 mixed 字段完全不应进入 patch');
 
 const timeline = { ...state, id: 'tl1', name: 'main', order: 0 };
-const doc: ProjectDoc = { version: 3, assets: [], mediaFolders: [], timelines: [timeline], activeTimelineId: 'tl1' };
+const doc: ProjectDoc = { version: CURRENT_PROJECT_VERSION, assets: [], mediaFolders: [], timelines: [timeline], activeTimelineId: 'tl1' };
 const committed = historyReduce({ past: [], present: doc, future: [] }, {
   type: 'batch', label: 'Inspector multi-edit', actions: transformPlan.actions,
 });

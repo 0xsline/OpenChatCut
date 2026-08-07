@@ -1,6 +1,6 @@
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { createReadStream, createWriteStream, existsSync } from 'node:fs';
+import { createWriteStream, existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -9,6 +9,8 @@ import { Transform } from 'node:stream';
 import { putUploadFile, r2Config } from '../r2.ts';
 import { uploadDir } from '../media-dir.ts';
 import { maxUploadBytes } from './upload.ts';
+import { assembleHashedParts } from './upload-multipart-assembly.ts';
+import { editorCredentialAuthorized } from '../editor-auth.ts';
 const DEFAULT_PART_SIZE = 8 * 1024 * 1024;
 const MAX_PARTS = 10_000;
 const DEFAULT_IDLE_TTL_MS = 2 * 60 * 60_000, DEFAULT_ABSOLUTE_TTL_MS = 24 * 60 * 60_000;
@@ -70,6 +72,12 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(body));
 }
 function sendError(res: ServerResponse, status: number, message: string): void { sendJson(res, status, { error: message }); }
+function requireEditorCredential(req: IncomingMessage, res: ServerResponse): boolean {
+  if (editorCredentialAuthorized(req, req.method !== 'GET')) return true;
+  req.resume();
+  sendError(res, 401, 'editor credential required');
+  return false;
+}
 function readJson(req: IncomingMessage, max = 64 * 1024): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -162,30 +170,6 @@ async function streamBodyToFile(
   }
   return size;
 }
-async function concatParts(meta: MultipartMeta, destPath: string): Promise<number> {
-  await unlink(destPath).catch(() => {});
-  const out = createWriteStream(destPath);
-  let total = 0;
-  try {
-    for (let p = 1; p <= meta.partCount; p += 1) {
-      const pp = partPath(meta.uploadId, p);
-      if (!existsSync(pp)) throw new Error(`missing part ${p}`);
-      const info = await stat(pp);
-      if (info.size > MAX_SAFE_BYTES - total) throw new Error('multipart file exceeds safe byte accounting range');
-      total += info.size;
-      await pipeline(createReadStream(pp), out, { end: false });
-    }
-    await new Promise<void>((resolve, reject) => {
-      out.end(() => resolve());
-      out.on('error', reject);
-    });
-  } catch (err) {
-    out.destroy();
-    await unlink(destPath).catch(() => {});
-    throw err;
-  }
-  return total;
-}
 async function sessionBytes(uploadId: string): Promise<number> {
   const names = await readdir(sessionDir(uploadId)).catch(() => [] as string[]);
   let bytes = 0;
@@ -264,6 +248,7 @@ export function uploadMultipartPlugin(): Plugin {
       gcTimer.unref?.();
       server.httpServer?.once('close', () => clearInterval(gcTimer));
       server.middlewares.use('/upload/multipart/init', async (req, res) => {
+        if (!requireEditorCredential(req, res)) return;
         if (req.method !== 'POST') {
           sendError(res, 405, 'method not allowed — use POST');
           return;
@@ -335,6 +320,7 @@ export function uploadMultipartPlugin(): Plugin {
         }
       });
       server.middlewares.use('/upload/multipart/part', async (req, res) => {
+        if (!requireEditorCredential(req, res)) return;
         if (req.method !== 'PUT' && req.method !== 'POST') {
           sendError(res, 405, 'method not allowed — use PUT or POST');
           return;
@@ -385,6 +371,7 @@ export function uploadMultipartPlugin(): Plugin {
         }
       });
       server.middlewares.use('/upload/multipart/status', async (req, res) => {
+        if (!requireEditorCredential(req, res)) return;
         if (req.method !== 'GET') {
           sendError(res, 405, 'method not allowed — use GET');
           return;
@@ -421,6 +408,7 @@ export function uploadMultipartPlugin(): Plugin {
         }
       });
       server.middlewares.use('/upload/multipart/complete', async (req, res) => {
+        if (!requireEditorCredential(req, res)) return;
         if (req.method !== 'POST') {
           sendError(res, 405, 'method not allowed — use POST');
           return;
@@ -454,7 +442,11 @@ export function uploadMultipartPlugin(): Plugin {
           const fname = meta.assetId ? `${meta.assetId}${meta.ext}` : `${randomUUID()}${meta.ext}`;
           const partOut = join(dir, `.${fname}.part`);
           const finalPath = join(dir, fname);
-          const bytes = await concatParts(meta, partOut);
+          const partFiles = Array.from(
+            { length: meta.partCount },
+            (_, index) => partPath(meta.uploadId, index + 1),
+          );
+          const { bytes, contentHash } = await assembleHashedParts(partFiles, partOut);
           if (bytes === 0) {
             await unlink(partOut).catch(() => {});
             sendError(res, 400, 'assembled empty file');
@@ -482,6 +474,7 @@ export function uploadMultipartPlugin(): Plugin {
           sendJson(res, 200, {
             path: `/media/uploads/${fname}`,
             bytes,
+            contentHash,
             fileKey: `uploads/${fname}`,
             assetId: meta.assetId,
             cloud,
@@ -495,6 +488,7 @@ export function uploadMultipartPlugin(): Plugin {
         }
       });
       server.middlewares.use('/upload/multipart', async (req, res, next) => {
+        if (!requireEditorCredential(req, res)) return;
         if (req.method !== 'DELETE') {
           next();
           return;

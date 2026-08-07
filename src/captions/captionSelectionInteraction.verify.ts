@@ -5,8 +5,8 @@ const { captionContextMenuIntent, shouldClearCaptionSelectionFromPointer, update
   assert.fail('caption selection interaction rules must be independent of React event handlers');
 });
 
-const first = { trackId: 'C1', kind: 'single' as const, cueIndex: 0 };
-const second = { trackId: 'C1', kind: 'single' as const, cueIndex: 1 };
+const first = { trackId: 'C1', kind: 'single' as const, pageId: 'page-one' };
+const second = { trackId: 'C1', kind: 'single' as const, pageId: 'page-two' };
 assert.deepEqual(updateCaptionSelections([], first, 'add'), [first]);
 assert.deepEqual(updateCaptionSelections([first], second, 'add'), [first, second]);
 assert.deepEqual(updateCaptionSelections([first, second], first, 'toggle'), [second]);

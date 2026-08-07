@@ -1,3 +1,4 @@
+import { CURRENT_PROJECT_VERSION } from '../../shared/project-version';
 import assert from 'node:assert/strict';
 import { projectReduce } from '../editor/reduce';
 import type { ProjectDoc, Timeline } from '../editor/types';
@@ -42,7 +43,7 @@ assert.equal(separated.length, 3);
 
 const timeline = { id: 'tl-1', name: 'Timeline', order: 0 } as Timeline;
 const doc: ProjectDoc = {
-  version: 3,
+  version: CURRENT_PROJECT_VERSION,
   assets: [],
   mediaFolders: [],
   timelines: [timeline],
