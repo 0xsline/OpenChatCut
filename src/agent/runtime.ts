@@ -2,6 +2,7 @@ import type { ModelMessage } from 'ai';
 import type { AgentContext } from './context';
 import type { CodexAgentToolSpec } from '../../shared/codex-agent';
 import { TOOL_SCHEMAS } from './tools';
+import { ASK_MODE_TOOL_SCHEMAS } from './ask-mode-tools';
 import { buildAgentSystemPrompt } from './systemPrompt';
 import { normalizeLlmMessages } from './messages';
 import { loadAgentSettings } from './settings/agentSettings';
@@ -57,11 +58,13 @@ export function initialMessages(): LLMMessage[] {
 }
 
 
-const CODEX_TOOL_SPECS: readonly CodexAgentToolSpec[] = TOOL_SCHEMAS.map((schema) => ({
+const toCodexToolSpec = (schema: (typeof TOOL_SCHEMAS)[number]): CodexAgentToolSpec => ({
   name: schema.name,
   description: schema.description,
   inputSchema: schema.input_schema,
-}));
+});
+const CODEX_TOOL_SPECS: readonly CodexAgentToolSpec[] = TOOL_SCHEMAS.map(toCodexToolSpec);
+const ASK_MODE_CODEX_TOOL_SPECS: readonly CodexAgentToolSpec[] = ASK_MODE_TOOL_SCHEMAS.map(toCodexToolSpec);
 
 async function runCodexBackend(
   messages: LLMMessage[],
@@ -76,7 +79,9 @@ async function runCodexBackend(
   opts?: RunAgentOptions,
 ): Promise<LLMMessage[]> {
   const settings = loadAgentSettings();
-  const tools = opts?.askOnly || !choice.capabilities.supportsTools.value ? [] : CODEX_TOOL_SPECS;
+  const tools = !choice.capabilities.supportsTools.value
+    ? []
+    : opts?.askOnly ? ASK_MODE_CODEX_TOOL_SPECS : CODEX_TOOL_SPECS;
   return runCodexAgent(messages, ctx, onEvent, {
     askOnly: opts?.askOnly,
     signal: opts?.signal,
@@ -120,7 +125,9 @@ export async function runAgent(
     return conv;
   }
   const system = buildAgentSystemPrompt(ctx);
-  const toolSchemas = opts?.askOnly || !active.capabilities.supportsTools.value ? [] : TOOL_SCHEMAS;
+  const toolSchemas = !active.capabilities.supportsTools.value
+    ? []
+    : opts?.askOnly ? ASK_MODE_TOOL_SCHEMAS : TOOL_SCHEMAS;
   try {
     const prepared = await prepareAgentContext({
       messages: conv,

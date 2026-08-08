@@ -110,6 +110,8 @@ lines.on('line', (line) => {
   if (message.method === 'test/hang') return;
   if (message.method === 'thread/start') {
     if (message.params.model !== 'gpt-5.4') process.exit(77);
+    if (!message.params.dynamicTools?.some((tool) => tool.name === 'read_project')) process.exit(79);
+    if (!message.params.baseInstructions?.includes('without changing the project')) process.exit(80);
     activeThread = 'thread-1';
     send({ id: message.id, result: { thread: { id: activeThread } } });
     return;
@@ -228,6 +230,7 @@ try {
     projectId: 'project-1',
     model: 'gpt-5.4',
     reasoningEffort: 'high',
+    askOnly: true,
     tools: [{
       name: 'read_project',
       description: 'Read project state',

@@ -23,6 +23,8 @@ export {
 import type { AgentContext } from './context';
 import type { AgentModelChoice } from './model-selection';
 import { TOOL_SCHEMAS } from './tools';
+import { ASK_MODE_TOOL_SCHEMAS } from './ask-mode-tools';
+import type { AgentToolSchema } from './tool-schema';
 import {
   getLanguageModel,
   getLanguageModelProviderOptions,
@@ -94,13 +96,14 @@ export function apiToolExecutionOutput(execution: CodexToolExecution): unknown {
 
 
 function createAgentTools(
+  schemas: readonly AgentToolSchema[],
   ctx: AgentContext,
   onEvent: (event: AgentEvent) => void,
   settings: AgentSettings,
   onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>,
   onFollowup?: () => void,
 ): ToolSet {
-  return Object.fromEntries(TOOL_SCHEMAS.map((schema) => [
+  return Object.fromEntries(schemas.map((schema) => [
     schema.name,
     tool({
       description: schema.description,
@@ -155,6 +158,9 @@ export async function runApiAgent(
   let conv = normalizeLlmMessages(messages);
   const settings = loadAgentSettings();
   const toolFailures = opts?.toolFailures ?? new ToolFailureTracker();
+  const availableToolSchemas = !choice.capabilities.supportsTools.value
+    ? []
+    : opts?.askOnly ? ASK_MODE_TOOL_SCHEMAS : TOOL_SCHEMAS;
 
   let toolTurns = 0;
   let compatibleMediaFallbackRequired = false;
@@ -189,15 +195,14 @@ export async function runApiAgent(
       emitVisibleText(report);
       return { role: 'assistant', content: report };
     };
-    const tools = opts?.askOnly || !choice.capabilities.supportsTools.value
-      ? {}
-      : createAgentTools(
-          ctx,
-          onEvent,
-          settings,
-          opts?.onSkillGuard,
-          () => { askedFollowup = true; },
-        );
+    const tools = createAgentTools(
+      availableToolSchemas,
+      ctx,
+      onEvent,
+      settings,
+      opts?.onSkillGuard,
+      () => { askedFollowup = true; },
+    );
 
     try {
       // Responses relays do not consistently persist `rs_*` item IDs. Keep

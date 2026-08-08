@@ -113,8 +113,7 @@ function dynamicToolResult(body: CodexToolResultRequest): Record<string, unknown
   };
 }
 
-function dynamicTools(tools: readonly CodexAgentToolSpec[], askOnly: boolean): unknown[] {
-  if (askOnly) return [];
+function dynamicTools(tools: readonly CodexAgentToolSpec[]): unknown[] {
   return tools.map((tool) => ({
     type: 'function',
     name: tool.name,
@@ -125,7 +124,10 @@ function dynamicTools(tools: readonly CodexAgentToolSpec[], askOnly: boolean): u
 
 function baseInstructions(request: CodexTurnRequest): string {
   const mode = request.askOnly
-    ? 'Answer the user without calling tools. No OpenChatCut editor tools are available in this turn.'
+    ? [
+        'Answer the user without changing the project.',
+        'You may call the provided read-only OpenChatCut tools when current skill or project evidence is needed.',
+      ].join(' ')
     : [
         'Use only the provided OpenChatCut editor tools when the task needs project reads or changes.',
         'Their results come from the existing OpenChatCut proposal workflow; never claim a change succeeded before its tool result confirms success.',
@@ -147,7 +149,7 @@ function threadStartParams(request: CodexTurnRequest): Record<string, unknown> {
     sandbox: 'read-only',
     ephemeral: true,
     baseInstructions: baseInstructions(request),
-    dynamicTools: dynamicTools(request.tools, request.askOnly === true),
+    dynamicTools: dynamicTools(request.tools),
     config: {
       features: Object.fromEntries(
         CODEX_DISABLED_FEATURES.map((feature) => [feature, false]),

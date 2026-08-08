@@ -150,9 +150,13 @@ try {
   globalThis.fetch = originalFetch;
 }
 
-globalThis.fetch = (async (input) => {
+globalThis.fetch = (async (input, init) => {
   const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   if (path !== '/api/codex/turn') throw new Error(`Unexpected fetch: ${path}`);
+  const submitted = JSON.parse(String(init?.body)) as { askOnly?: boolean; tools?: Array<{ name?: string }> };
+  assert.equal(submitted.askOnly, true);
+  assert.deepEqual(submitted.tools?.map((tool) => tool.name), ['load_skill'],
+    'Q&A Codex turns retain the read-only tools selected by the shared runtime');
   const payload = [
     { type: 'text-delta', delta: 'The edit was completed successfully.' },
     { type: 'done' },
@@ -174,7 +178,11 @@ try {
       contextWindowEstimated: false,
       maxOutputTokens: 64_000,
       toolFailures: followupFailures,
-      tools: [],
+      tools: [{
+        name: 'load_skill',
+        description: 'Load the selected skill.',
+        inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+      }],
       executeTool: async () => ({ success: true, result: null }),
     },
   );

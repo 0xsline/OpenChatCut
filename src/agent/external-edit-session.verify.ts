@@ -23,6 +23,7 @@ import {
   isExternalRealTool,
 } from './external-tool-policy';
 import { externalToolSchemas } from './external-tool-schemas';
+import { ASK_MODE_TOOL_SCHEMAS } from './ask-mode-tools';
 import {
   executeExternalCall,
   externalBridgeReadinessMatches,
@@ -752,6 +753,17 @@ assert(isExternalRealTool('submit_image'), 'generation is confirm-gated for exte
 assert(isExternalRealTool('import_media'), 'import is confirm-gated for external agents');
 assert(isExternalGlobalReadTool('load_skill'));
 assert(!isExternalDraftTool('load_skill'));
+const askModeToolNames = new Set(ASK_MODE_TOOL_SCHEMAS.map((tool) => tool.name));
+assert(askModeToolNames.has('load_skill'), 'Q&A mode exposes the current skill reader');
+assert(askModeToolNames.has('read_project'), 'Q&A mode exposes project inspection');
+assert(!askModeToolNames.has('edit_captions'), 'Q&A mode excludes draft edits');
+assert(!askModeToolNames.has('submit_render_job'), 'Q&A mode excludes live side effects');
+assert(
+  ASK_MODE_TOOL_SCHEMAS.every(
+    (tool) => isExternalGlobalReadTool(tool.name) || isExternalReadTool(tool.name),
+  ),
+  'every Q&A mode tool is classified read-only',
+);
 const externalLoadSkill = externalToolSchemas().find((tool) => tool.name === 'load_skill');
 assert(externalLoadSkill, 'load_skill is exposed to external agents');
 assert.equal(externalLoadSkill.annotations?.readOnlyHint, true);

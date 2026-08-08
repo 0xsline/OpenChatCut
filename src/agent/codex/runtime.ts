@@ -390,7 +390,7 @@ export async function runCodexAgent(
       system: opts.system ?? buildCodexSystemPrompt(ctx),
       prompt: serializeMessagesForPrompt(conv),
       projectId,
-      tools: opts.askOnly ? [] : opts.tools,
+      tools: opts.tools,
       ...(opts.model?.trim() ? { model: opts.model.trim() } : {}),
       reasoningEffort: opts.reasoningEffort?.trim() || null,
       ...(opts.askOnly ? { askOnly: true } : {}),
