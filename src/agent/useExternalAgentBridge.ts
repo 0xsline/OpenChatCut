@@ -14,7 +14,12 @@ import { ExternalCallCancellationRegistry } from './external-call-cancellation';
 import { externalToolSchemas } from './external-tool-schemas';
 import type { Proposal } from './proposal';
 import { loadExternalProposal } from '../persist/externalProposalStore';
+import { projectStoreRemoteAvailable } from '../persist/projectStoreTransport';
 import { editorBootstrapInfo } from './editor-credential';
+import {
+  externalBridgeCanStart,
+  type ExternalBridgeReadinessToken,
+} from './external-bridge-readiness';
 
 export interface ExternalCall {
   id: string;
@@ -38,11 +43,6 @@ interface ExternalCancellation {
   outcome: Exclude<ExternalEditSessionTerminalStatus, 'applied'>;
   message: string;
 }
-export interface ExternalBridgeReadinessToken {
-  projectId: string;
-  editorInstanceId: string;
-  runtimeIdentity: object;
-}
 
 interface ExternalBridgeRuntimeSlot extends ExternalBridgeReadinessToken {
   runtime: ExternalBridgeRuntime;
@@ -51,16 +51,6 @@ interface ExternalBridgeHydrator {
   hydrate: ExternalBridgeRuntime['hydrate'];
 }
 
-export function externalBridgeReadinessMatches(
-  readiness: ExternalBridgeReadinessToken,
-  slot: ExternalBridgeReadinessToken,
-  projectId: string,
-): boolean {
-  return readiness.projectId === projectId
-    && slot.projectId === projectId
-    && readiness.editorInstanceId === slot.editorInstanceId
-    && readiness.runtimeIdentity === slot.runtimeIdentity;
-}
 
 export interface ExternalProposalController {
   proposal: Proposal | null;
@@ -428,11 +418,12 @@ export function useExternalAgentBridge(ctx: AgentContext, projectId: string): Ex
 
   useEffect(() => {
     const slot = runtimeRef.current;
-    if (
-      !readiness
-      || !slot
-      || !externalBridgeReadinessMatches(readiness, slot, projectId)
-    ) return undefined;
+    if (!readiness || !slot) return undefined;
+    const transportAvailable = projectStoreRemoteAvailable();
+    if (!externalBridgeCanStart(readiness, slot, projectId, transportAvailable)) {
+      if (!transportAvailable) setError(null);
+      return undefined;
+    }
     const controller = new AbortController();
     const close = () => { void unregisterBridge(projectId, readiness.editorInstanceId); };
     window.addEventListener('pagehide', close);

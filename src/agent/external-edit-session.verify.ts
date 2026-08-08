@@ -25,10 +25,12 @@ import {
 import { externalToolSchemas } from './external-tool-schemas';
 import { ASK_MODE_TOOL_SCHEMAS } from './ask-mode-tools';
 import {
-  executeExternalCall,
-  externalBridgeReadinessMatches,
-  hydrateExternalBridge,
+  externalBridgeCanStart,
   type ExternalBridgeReadinessToken,
+} from './external-bridge-readiness';
+import {
+  executeExternalCall,
+  hydrateExternalBridge,
   type ExternalResultSender,
 } from './useExternalAgentBridge';
 
@@ -181,16 +183,22 @@ const tokenB: ExternalBridgeReadinessToken = {
 let currentProjectId = tokenA.projectId;
 let currentRuntimeToken: ExternalBridgeReadinessToken | null = tokenA;
 let readyRuntimeToken: ExternalBridgeReadinessToken | null = tokenA;
+let transportAvailable = false;
 const bridgeStarts: string[] = [];
 const startReadyBridge = () => {
   if (
     readyRuntimeToken
     && currentRuntimeToken
-    && externalBridgeReadinessMatches(readyRuntimeToken, currentRuntimeToken, currentProjectId)
+    && externalBridgeCanStart(
+      readyRuntimeToken, currentRuntimeToken, currentProjectId, transportAvailable,
+    )
   ) {
     bridgeStarts.push(readyRuntimeToken.editorInstanceId);
   }
 };
+startReadyBridge();
+assert.deepEqual(bridgeStarts, [], 'an ordinary browser without transport must not start the bridge');
+transportAvailable = true;
 startReadyBridge();
 currentProjectId = tokenB.projectId;
 currentRuntimeToken = tokenB;
