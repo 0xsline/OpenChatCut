@@ -121,6 +121,15 @@ const stateOf = (patch: Partial<TimelineState> = {}): TimelineState => ({
   assert.deepEqual(cropGeometry.baseRect, { x: 270, y: 656.25, width: 540, height: 607.5 });
 }
 
+// Background fill renders a contained sharp foreground even when the timeline's normal fit is cover.
+// The transform outline must follow that foreground instead of disappearing against the canvas edge.
+{
+  const item = visualItem('background-fill', 'V1', { backgroundFill: true });
+  const state = stateOf({ fit: 'cover', items: [item] });
+  const geometry = previewCandidateGeometry(state, visiblePreviewCandidates(state, 0)[0]!);
+  assert.deepEqual(geometry.baseRect, { x: 0, y: 656.25, width: 1080, height: 607.5 });
+}
+
 // A transient zero-size canvas during window resize must not leak NaN geometry.
 {
   const item = visualItem('zero-canvas', 'V1');

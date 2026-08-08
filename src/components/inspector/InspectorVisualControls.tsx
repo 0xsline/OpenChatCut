@@ -8,6 +8,7 @@ import { useT } from '../../i18n/locale';
 import { ColorParamInput, SliderRow } from './InspectorKeyframeControls';
 import type { AutoGradeControlProps } from './InspectorTypes';
 import { PreviewFidelityStatus } from './PreviewFidelityStatus';
+export { BackgroundFillControl } from './BackgroundFillControl';
 
 const FX_IDS = Object.keys(FX_EFFECTS);
 const compactNumber = (value: number) => String(Number(value.toFixed(2)));
@@ -103,30 +104,6 @@ export function FilterControl({ item, mixed, onChange, autoGrade }: {
   );
 }
 
-export function BackgroundFillControl({ enabled, mixed = false, onChange }: {
-  enabled: boolean;
-  mixed?: boolean;
-  onChange: (enabled: boolean) => void;
-}) {
-  const t = useT();
-  return (
-    <label className="cc-insp-toggle-row">
-      <span>
-        <strong>{t('背景填充')}</strong>
-        <small>{t('用模糊的片段副本填满画布')}</small>
-      </span>
-      <input
-        ref={(element) => {
-          if (element) element.indeterminate = mixed;
-        }}
-        type="checkbox"
-        checked={enabled}
-        onChange={(event) => onChange(event.target.checked)}
-        aria-label={t('背景填充')}
-      />
-    </label>
-  );
-}
 
 
 // Per-clip WebGL effect stack (effects / builtin:fx-*). Order is render

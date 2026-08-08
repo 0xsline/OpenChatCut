@@ -4,6 +4,7 @@ import type { Tpl } from '../../types';
 import type { SelectedPreviewStatus } from '../../gl/previewAdapter';
 import type { SlipPlan, SlipResult } from '../../editor/slip';
 import type {
+  BackgroundFillPreset,
   ClipEffect,
   ClipFilters,
   ClipTransform,
@@ -53,7 +54,8 @@ export interface InspectorPanelProps {
   onItemTransformChange: (patch: ClipTransform) => void;
   onItemFiltersChange: (patch: ClipFilters) => void;
   backgroundFillAvailable?: boolean;
-  onItemBackgroundFillChange?: (enabled: boolean) => void;
+  onItemBackgroundFillChange?: (enabled: boolean, preset?: BackgroundFillPreset) => void;
+  onApplyBackgroundFillToAll?: (preset: BackgroundFillPreset) => void;
   autoGrade?: AutoGradeControlProps;
   onItemZoomChange: (patch: Partial<ZoomEffect> | null) => void;
   onItemEffectsChange: (effects: ClipEffect[]) => void;

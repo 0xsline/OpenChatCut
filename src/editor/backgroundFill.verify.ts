@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict';
-import { backgroundFillAppearance, backgroundFillFilter, isBackgroundFillActive, isBackgroundFillEligible } from './backgroundFill';
+import {
+  backgroundFillAppearance,
+  backgroundFillAppearanceFor,
+  backgroundFillFilter,
+  backgroundFillPresetOf,
+  isBackgroundFillActive,
+  isBackgroundFillEligible,
+} from './backgroundFill';
 import { clipOpacityAt } from './clipFade';
 import { isGlBaseHidden, updateReadyGlWindows } from './glTransitionVisibilityState';
 import { historyReduce, reduce, type History } from './reduce';
@@ -40,31 +47,64 @@ const enabled = reduce(state, { type: 'setBackgroundFill', id: 'main-video', ena
 assert.equal(enabled.items[0]?.backgroundFill, true);
 assert.equal(isBackgroundFillActive(enabled, enabled.items[0]!), true);
 assert.equal(state.items[0]?.backgroundFill, undefined, 'the reducer keeps the input immutable');
+const strong = reduce(enabled, {
+  type: 'setBackgroundFill',
+  id: 'main-video',
+  enabled: true,
+  preset: 'strong',
+});
+assert.equal(strong.items[0]?.backgroundFillPreset, 'strong');
+assert.equal(backgroundFillPresetOf(enabled.items[0]!), 'medium', 'legacy enabled fills use the medium preset');
+const resetToMedium = reduce(strong, {
+  type: 'setBackgroundFill',
+  id: 'main-video',
+  enabled: true,
+  preset: 'medium',
+});
+assert.equal(resetToMedium.items[0]?.backgroundFillPreset, undefined, 'default preset is omitted from persistence');
 
 const rejected = reduce(state, { type: 'setBackgroundFill', id: 'overlay-video', enabled: true });
 assert.equal(rejected, state, 'invalid overlay-track background fill is a reducer no-op');
-const disabled = reduce(enabled, { type: 'setBackgroundFill', id: 'main-video', enabled: false });
+const disabled = reduce(strong, { type: 'setBackgroundFill', id: 'main-video', enabled: false });
 assert.equal(disabled.items[0]?.backgroundFill, undefined, 'disabled state is omitted from persistence');
+assert.equal(disabled.items[0]?.backgroundFillPreset, undefined, 'disabling also clears the dormant preset');
 
-const split = reduce(enabled, { type: 'split', id: 'main-video', atFrame: 45, newId: 'main-video-right' });
-assert.equal(split.items.find((item) => item.id === 'main-video')?.backgroundFill, true);
-assert.equal(split.items.find((item) => item.id === 'main-video-right')?.backgroundFill, true);
-const duplicated = reduce(enabled, { type: 'duplicate', id: 'main-video', newId: 'main-video-copy' });
-assert.equal(duplicated.items.find((item) => item.id === 'main-video-copy')?.backgroundFill, true);
+const split = reduce(strong, { type: 'split', id: 'main-video', atFrame: 45, newId: 'main-video-right' });
+assert.equal(split.items.find((item) => item.id === 'main-video')?.backgroundFillPreset, 'strong');
+assert.equal(split.items.find((item) => item.id === 'main-video-right')?.backgroundFillPreset, 'strong');
+const duplicated = reduce(strong, { type: 'duplicate', id: 'main-video', newId: 'main-video-copy' });
+assert.equal(duplicated.items.find((item) => item.id === 'main-video-copy')?.backgroundFillPreset, 'strong');
 
 let history: History = { past: [], present: docFromTimeline(state), future: [] };
-history = historyReduce(history, { type: 'setBackgroundFill', id: 'main-video', enabled: true });
-assert.equal(history.present.timelines[0]?.items[0]?.backgroundFill, true);
+history = historyReduce(history, {
+  type: 'setBackgroundFill',
+  id: 'main-video',
+  enabled: true,
+  preset: 'maximum',
+});
+assert.equal(history.present.timelines[0]?.items[0]?.backgroundFillPreset, 'maximum');
 history = historyReduce(history, { type: 'undo' });
 assert.equal(history.present.timelines[0]?.items[0]?.backgroundFill, undefined);
 history = historyReduce(history, { type: 'redo' });
-assert.equal(history.present.timelines[0]?.items[0]?.backgroundFill, true);
+assert.equal(history.present.timelines[0]?.items[0]?.backgroundFillPreset, 'maximum');
 
 const portrait = backgroundFillAppearance(1080, 1920);
 const landscape = backgroundFillAppearance(1920, 1080);
 assert.deepEqual(portrait, landscape, 'blur strength follows the canvas short side, not orientation');
 assert.ok(portrait.blurPx >= 24 && portrait.blurPx <= 64);
 assert.ok(portrait.overscanScale > 1, 'blurred cover layer overscans to hide transparent blur edges');
+const soft = backgroundFillAppearance(1080, 1920, 'soft');
+const strongAppearance = backgroundFillAppearance(1080, 1920, 'strong');
+const maximum = backgroundFillAppearance(1080, 1920, 'maximum');
+const strongItemAppearance = backgroundFillAppearanceFor(
+  { backgroundFillPreset: 'strong' },
+  1080,
+  1920,
+);
+assert.deepEqual(strongItemAppearance, strongAppearance, 'every render path resolves the item preset');
+assert.ok(soft.blurPx < portrait.blurPx);
+assert.ok(portrait.blurPx < strongAppearance.blurPx);
+assert.ok(strongAppearance.blurPx < maximum.blurPx, 'the four presets increase blur monotonically');
 const filteredBackground = backgroundFillFilter(portrait, { brightness: 1.1, contrast: 0.9, saturate: 1.2, blur: 6 });
 assert.match(filteredBackground, new RegExp(`blur\\(${portrait.blurPx + 6}px\\)`), 'user blur is preserved on top of the cover blur');
 assert.match(filteredBackground, /contrast\(0\.9\)/);

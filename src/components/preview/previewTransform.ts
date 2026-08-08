@@ -1,3 +1,4 @@
+import { isBackgroundFillActive } from '../../editor/backgroundFill';
 import { resolveClipScaleAxes } from '../../editor/clipTransformScale';
 import { coerceKeyframeValue } from '../../editor/keyframeRegistry';
 import { sampleKeyframes } from '../../editor/keyframes';
@@ -152,7 +153,7 @@ function previewBaseRect(state: TimelineState, item: TimelineItem): PreviewRect 
     content = visibleVisualFrameRect(
       { width: state.width, height: state.height },
       { width: sourceWidth, height: sourceHeight },
-      state.fit ?? 'contain',
+      isBackgroundFillActive(state, item) ? 'contain' : (state.fit ?? 'contain'),
     );
   }
 

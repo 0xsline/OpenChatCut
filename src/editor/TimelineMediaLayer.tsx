@@ -12,7 +12,7 @@ import { selectEffectPreviewAdapter, type SelectedPreviewStatusListener } from '
 import { itemEditOpts, itemWindow, keptSegments } from '../transcript/edit';
 import { hasOperationalTranscript } from '../transcript/types';
 import { voiceIsolationMix } from '../audio/voiceMix';
-import { backgroundFillAppearance, backgroundFillFilter } from './backgroundFill';
+import { backgroundFillAppearanceFor, backgroundFillFilter } from './backgroundFill';
 import { clipFadeFactor, clipOpacityAt } from './clipFade';
 import { volumeAtFrame } from './keyframes';
 import { sourceFrameAt } from './sourceLimit';
@@ -174,7 +174,7 @@ export function BackgroundFillLayer({ item, frameOffset, canvasW, canvasH, brows
   canvasH: number;
   browserRenderer: boolean;
 }) {
-  const appearance = backgroundFillAppearance(canvasW, canvasH);
+  const appearance = backgroundFillAppearanceFor(item, canvasW, canvasH);
   const opacity = clipOpacityAt(item, useCurrentFrame() + frameOffset);
   const trimBefore = sourceFrameAt(item, frameOffset);
   const filters = item.filters;

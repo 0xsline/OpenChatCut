@@ -28,12 +28,26 @@ const state = {
   items: [item('main', 'V1'), item('overlay', 'V2')],
 } as TimelineState;
 
-const valid = validateGenericUpdate(state, { type: 'video', itemId: 'main', backgroundFill: true });
+const valid = validateGenericUpdate(state, {
+  type: 'video',
+  itemId: 'main',
+  backgroundFill: true,
+  backgroundFillPreset: 'strong',
+});
 assert.equal(valid.error, undefined, String(valid.error));
 assert.equal(valid.backgroundFill, true);
+assert.equal(valid.backgroundFillPreset, 'strong');
 assert.match(String(validateGenericUpdate(state, {
   type: 'video', itemId: 'main', backgroundFill: 'true',
 }).error), /must be a boolean/);
+assert.match(String(validateGenericUpdate(state, {
+  type: 'video', itemId: 'main', backgroundFillPreset: 'cinematic',
+}).error), /must be one of/);
+const presetOnly = validateGenericUpdate(state, {
+  type: 'video', itemId: 'main', backgroundFillPreset: 'maximum',
+});
+assert.equal(presetOnly.backgroundFill, true, 'selecting a preset enables the fill');
+assert.equal(presetOnly.backgroundFillPreset, 'maximum');
 assert.match(String(validateGenericUpdate(state, {
   type: 'video', itemId: 'overlay', backgroundFill: true,
 }).error), /bottom video track/);
@@ -48,16 +62,20 @@ const draft = makeDraft(docFromTimeline(state));
 const applied = applyGeneric(valid, draft.commands);
 assert.equal(applied?.ok, true);
 assert.equal(draft.getState().items.find((entry) => entry.id === 'main')?.backgroundFill, true);
+assert.equal(draft.getState().items.find((entry) => entry.id === 'main')?.backgroundFillPreset, 'strong');
 
 const readResult = await execReadProjectTool('read_project', { view: 'timeline', itemId: 'main' }, {
   getDoc: draft.getDoc,
   getState: draft.getState,
   getProjectId: () => 'background-fill-check',
-} as AgentContext) as { timeline?: { items?: Array<{ backgroundFill?: boolean }> } };
+} as AgentContext) as {
+  timeline?: { items?: Array<{ backgroundFill?: boolean; backgroundFillPreset?: string }> };
+};
 assert.equal(readResult.timeline?.items?.[0]?.backgroundFill, true, 'read_project exposes the applied flag');
+assert.equal(readResult.timeline?.items?.[0]?.backgroundFillPreset, 'strong', 'read_project exposes the selected preset');
 
 const editItemSchema = EDIT_ITEM_TOOL_SCHEMAS.find((schema) => schema.name === 'edit_item');
 const updatesSchema = editItemSchema?.input_schema.properties?.updates as { description?: string } | undefined;
-assert.match(String(updatesSchema?.description), /backgroundFill/);
+assert.match(String(updatesSchema?.description), /backgroundFillPreset/);
 
 console.log('edit-item-background-fill.verify: validation, EditorCommands apply, schema, and readback ok');

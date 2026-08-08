@@ -17,7 +17,7 @@ import { VersionHistory } from './components/VersionHistory';
 import { usePersistedState } from './hooks/usePersistedState';
 import { useEditorPanelLayout } from './hooks/useEditorPanelLayout';
 import { useEditor } from './editor/store';
-import type { ProjectDoc, TimelineItem, TimelineState, TrackId } from './editor/types';
+import type { BackgroundFillPreset, ProjectDoc, TimelineItem, TimelineState, TrackId } from './editor/types';
 import { captionsOnTrack, defaultTrackId, selectedIdsOf, timelineTrackIds, trackAlias, trackKind } from './editor/types';
 import { TEMPLATES } from './editor/initial';
 import { sourceWindowForTimelineRange } from './editor/sourceLimit';
@@ -1061,10 +1061,19 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             }}
             backgroundFillAvailable={selectedItems.length > 0
               && selectedItems.every((item) => isBackgroundFillEligible(state, item))}
-            onItemBackgroundFillChange={(enabled) => applyInspectorSelection(
-              (item) => ({ type: 'setBackgroundFill', id: item.id, enabled }),
+            onItemBackgroundFillChange={(enabled, preset) => applyInspectorSelection(
+              (item) => ({ type: 'setBackgroundFill', id: item.id, enabled, preset }),
               (item) => isBackgroundFillEligible(state, item),
             )}
+            onApplyBackgroundFillToAll={(preset: BackgroundFillPreset) => {
+              const snapshot = stateRef.current;
+              const actions = snapshot.items
+                .filter((item) => isBackgroundFillEligible(snapshot, item))
+                .map((item) => ({ type: 'setBackgroundFill' as const, id: item.id, enabled: true, preset }));
+              if (actions.length === 0) return;
+              commands.batch(actions, 'Apply background fill to all');
+              showAppToast(t('已将背景填充应用到 {n} 个片段', { n: actions.length }));
+            }}
             autoGrade={{
               busy: autoGradeBusy,
               targetCount: autoGradeTargets.length,

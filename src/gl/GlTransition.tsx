@@ -9,7 +9,7 @@ import type { SelectedPreviewFallbackReason, SelectedPreviewStatusListener } fro
 import { GLSL_TRANSITIONS } from './transitions';
 import { glEffects } from './clipEffects';
 import type { AspectFit, GlslTransitionType, TimelineItem, TransitionDirection } from '../editor/types';
-import { backgroundFillAppearance, backgroundFillFilter } from '../editor/backgroundFill';
+import { backgroundFillAppearanceFor, backgroundFillFilter } from '../editor/backgroundFill';
 import { clipOpacityAt } from '../editor/clipFade';
 
 // One GLSL transition window straddling the cut from R to R+L. A muted,
@@ -82,7 +82,7 @@ function drawMediaFrame(
     ctx.restore();
     return;
   }
-  const appearance = backgroundFillAppearance(ctx.canvas.width, ctx.canvas.height);
+  const appearance = backgroundFillAppearanceFor(item, ctx.canvas.width, ctx.canvas.height);
   const filters = item.filters;
   ctx.save();
   ctx.filter = backgroundFillFilter(appearance, filters);

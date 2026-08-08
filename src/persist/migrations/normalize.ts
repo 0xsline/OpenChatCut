@@ -12,6 +12,7 @@ import {
   type TimelineLinkGroup,
   type TimelineState,
 } from '../../editor/types.js';
+import { isBackgroundFillPreset } from '../../editor/backgroundFill.js';
 import { isSourceClockMetadata } from '../../editor/timecode.js';
 import { withMediaSourceRevision } from '../../editor/mediaSourceRevision.js';
 import { normalizeSha256Hash } from '../../../shared/content-hash.js';
@@ -140,6 +141,7 @@ export function isTimelineItem(value: unknown): value is TimelineItem {
     && optionalFinite(item.playbackRate) && (item.playbackRate === undefined || item.playbackRate > 0)
     && optionalFinite(item.volume) && (item.volume === undefined || (item.volume >= 0 && item.volume <= 2))
     && (item.backgroundFill === undefined || typeof item.backgroundFill === 'boolean')
+    && (item.backgroundFillPreset === undefined || isBackgroundFillPreset(item.backgroundFillPreset))
     && (item.sourceAssetId === undefined || typeof item.sourceAssetId === 'string')
     && (item.kind !== 'sequence' || (typeof item.timelineId === 'string' && item.timelineId.length > 0));
 }

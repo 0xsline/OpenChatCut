@@ -81,7 +81,7 @@ export function didYouMean(got: string, allowed: readonly string[]): string | nu
 export const CLIP_LEVEL_UPDATE_KEYS = [
   'volume', 'fadeInSeconds', 'fadeOutSeconds', 'keyframes', 'clearKeyframes',
   'srcInFrame', 'fromFrame', 'startFrame', 'durationInFrames', 'props', 'track', 'trackId',
-  'filters', 'transform', 'backgroundFill', 'speed', 'playbackRate',
+  'filters', 'transform', 'backgroundFill', 'backgroundFillPreset', 'speed', 'playbackRate',
 ] as const;
 
 const CLIP_UPDATE_HINT_FIELDS = [
@@ -105,6 +105,7 @@ export function hasEffectOnlyUpdateSignals(entry: Record<string, unknown>): bool
       && entry.filters === undefined
       && entry.transform === undefined
       && entry.backgroundFill === undefined
+      && entry.backgroundFillPreset === undefined
       && entry.speed === undefined
       && entry.playbackRate === undefined
       && entry.clearKeyframes === undefined
