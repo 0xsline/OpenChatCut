@@ -99,6 +99,8 @@ export default {
   '当前模型：{name}': 'Current model: {name}',
   '本条对话使用的模型': 'Model used for this chat',
   '上下文：{used} / {limit}': 'Context: {used} / {limit}',
+  '系统 {system} · 工具 {tools}（{toolCount} 个）· 历史 {history}': 'System {system} · tools {tools} ({toolCount}) · history {history}',
+  '缓存读取 {tokens}': 'Cache read {tokens}',
   '请先在设置中配置一个模型厂商。': 'Configure at least one model provider in Settings first.',
   '正在读取模型配置…': 'Loading model configuration…',
   '设置': 'Settings',

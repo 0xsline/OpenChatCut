@@ -142,7 +142,15 @@ try {
     result: { __followup: 'Which editing style should I use?' },
   });
   assert.equal(result.at(-1)?.role, 'assistant');
-  assert.equal(result.at(-1)?.content, 'Which editing style should I use?');
+  assert.deepEqual(result.at(-1)?.content, [{
+    type: 'text',
+    text: 'Which editing style should I use?',
+    providerOptions: {
+      openchatcut: { activatedTools: ['ask_followup_questions'] },
+    },
+  }]);
+  assert.ok(JSON.stringify(result).includes('__followup'),
+    'follow-up pause preserves the submitted tool result in history');
   assert.equal(events.some((event) => event.type === 'error'), false);
   assert.equal(events.filter((event) => event.type === 'tool-input-start').length, 1);
   assert.equal(followupFailures.hasUnresolved, true, 'follow-up must preserve earlier tool failures');

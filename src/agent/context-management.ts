@@ -4,6 +4,7 @@ import type { AgentModelChoice } from './model-selection';
 import {
   effectiveOutputTokenBudget,
   estimateTextTokens,
+  estimateContextTokens,
   prepareContext,
   serializeMessagesForSummary,
   type AgentContextUsage,
@@ -11,6 +12,7 @@ import {
 } from './context-compaction';
 import { getLanguageModel, getLanguageModelProviderOptions } from './client';
 import { runCodexSummary } from './codex/runtime';
+import { activatedToolNamesFromMessages, activationProviderOptions } from './tool-activation';
 
 const SUMMARY_MAX_OUTPUT_TOKENS = 4_000;
 const SUMMARY_INPUT_SAFETY_TOKENS = 1_024;
@@ -29,6 +31,9 @@ interface AgentContextPreparationOptions {
   readonly tools: readonly unknown[];
   readonly previousUsage?: AgentContextUsage;
   readonly signal?: AbortSignal;
+}
+export interface AgentContextPreparation extends ContextPreparation {
+  readonly maxOutputTokens: number;
 }
 
 type PromptSummarizer = (prompt: string, maxOutputTokens: number) => Promise<string>;
@@ -194,11 +199,30 @@ export function contextWindowForPreparation(
     ? { tokens: previous.contextWindowTokens, estimated: false }
     : { tokens: resolved.value, estimated: resolved.estimated };
 }
+async function summarizeForPreparation(
+  messages: readonly ModelMessage[],
+  options: AgentContextPreparationOptions,
+  contextWindowTokens: number,
+  maxInputTokens: number,
+  maxOutputTokens: number,
+): Promise<string> {
+  const summary = await summarizeConversation(
+    messages,
+    contextWindowTokens,
+    maxInputTokens,
+    maxOutputTokens,
+    (prompt, outputTokens) => options.choice.backend === 'codex'
+      ? summarizeWithCodex(prompt, outputTokens, options)
+      : summarizeWithApi(prompt, outputTokens, options.choice, options.signal),
+  );
+  return summary;
+}
+
 
 
 export async function prepareAgentContext(
   options: AgentContextPreparationOptions,
-): Promise<ContextPreparation & { readonly maxOutputTokens: number }> {
+): Promise<AgentContextPreparation> {
   const contextWindow = contextWindowForPreparation(options.choice, options.previousUsage);
   const contextWindowTokens = contextWindow.tokens;
   const contextWindowEstimated = contextWindow.estimated;
@@ -210,7 +234,7 @@ export async function prepareAgentContext(
   const maxInputTokens = resolvedMaxInput.estimated
     ? Math.max(1, contextWindowTokens - maxOutputTokens)
     : resolvedMaxInput.value;
-  const requestOverheadTokens = estimateTextTokens(JSON.stringify(options.tools));
+  const toolSchemaTokens = estimateTextTokens(JSON.stringify(options.tools));
   const prepared = await prepareContext({
     messages: options.messages,
     system: options.system,
@@ -219,17 +243,28 @@ export async function prepareAgentContext(
     contextWindowEstimated,
     maxInputTokens,
     maxOutputTokens,
-    requestOverheadTokens,
+    requestOverheadTokens: toolSchemaTokens,
     previousUsage: options.previousUsage,
-    summarize: (messages) => summarizeConversation(
+    checkpointProviderOptions: (messages) => (
+      activationProviderOptions(activatedToolNamesFromMessages(messages))
+    ),
+    summarize: (messages) => summarizeForPreparation(
       messages,
+      options,
       contextWindowTokens,
       maxInputTokens,
       maxOutputTokens,
-      (prompt, summaryMaxOutputTokens) => options.choice.backend === 'codex'
-        ? summarizeWithCodex(prompt, summaryMaxOutputTokens, options)
-        : summarizeWithApi(prompt, summaryMaxOutputTokens, options.choice, options.signal),
     ),
   });
-  return { ...prepared, maxOutputTokens };
+  return {
+    ...prepared,
+    usage: {
+      ...prepared.usage,
+      systemTokens: estimateTextTokens(options.system),
+      toolSchemaTokens,
+      historyTokens: estimateContextTokens(prepared.messages),
+      toolCount: options.tools.length,
+    },
+    maxOutputTokens,
+  };
 }

@@ -166,15 +166,15 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   {
     name: 'ToolSearch',
     description: [
-      'Search available agent tools by keyword (Claude Agent SDK ToolSearch style).',
-      'Returns matching tool names + short descriptions. Use when you need an uncommon tool name',
-      'or to confirm exact spelling before calling. Core edit tools stay always available.',
+      'Search the deferred agent-tool catalog by keyword and activate matching schemas.',
+      'Use this before an uncommon operation instead of guessing a tool name.',
+      'Results become callable on the next model step; essential tools are already active.',
     ].join(' '),
     input_schema: {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Keyword(s), e.g. "export", "caption", "stock", "shader".' },
-        limit: { type: 'number', description: 'Max results (default 12, max 30).' },
+        limit: { type: 'number', description: 'Max activated results (default 8, max 12).' },
       },
       required: ['query'],
     },
@@ -254,7 +254,12 @@ for (const [names, load] of EXECUTOR_GROUPS) {
 
 // Execute a tool call against the live editor. Schema validation remains in the
 // AI SDK tool wrapper; executor modules are selected only after a validated call.
-export async function executeTool(name: string, args: Args, ctx: AgentContext): Promise<unknown> {
+export async function executeTool(
+  name: string,
+  args: Args,
+  ctx: AgentContext,
+  searchCatalog: readonly AgentToolSchema[] = TOOL_SCHEMAS,
+): Promise<unknown> {
   if (name === 'track_progress') {
     const { execProgressTool } = await import('./tools/progress-tools');
     return execProgressTool(name, args, ctx);
@@ -262,5 +267,5 @@ export async function executeTool(name: string, args: Args, ctx: AgentContext): 
   const loadExecutor = EXECUTOR_BY_NAME.get(name);
   if (loadExecutor) return (await loadExecutor())(name, args, ctx);
   const { execCoreTool } = await import('./tools/core-tools');
-  return execCoreTool(name, args, ctx, TOOL_SCHEMAS);
+  return execCoreTool(name, args, ctx, searchCatalog);
 }

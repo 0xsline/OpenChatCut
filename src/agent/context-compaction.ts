@@ -1,4 +1,5 @@
 import type { ModelMessage } from 'ai';
+import type { ProviderOptions } from '@ai-sdk/provider-utils';
 
 const ASCII_CHARS_PER_TOKEN = 4;
 const NON_ASCII_CHARS_PER_TOKEN = 1;
@@ -18,6 +19,15 @@ export interface AgentContextUsage {
   readonly modelId: string;
   readonly compacted: boolean;
   readonly messageCount: number;
+  readonly systemTokens?: number;
+  readonly toolSchemaTokens?: number;
+  readonly historyTokens?: number;
+  readonly toolCount?: number;
+  readonly outputTokens?: number;
+  readonly reasoningTokens?: number;
+  readonly noCacheInputTokens?: number;
+  readonly cacheReadTokens?: number;
+  readonly cacheWriteTokens?: number;
 }
 
 export interface ContextPreparation {
@@ -35,6 +45,9 @@ export interface ContextPreparationOptions {
   readonly maxOutputTokens: number;
   readonly requestOverheadTokens?: number;
   readonly previousUsage?: AgentContextUsage;
+  readonly checkpointProviderOptions?: (
+    messages: readonly ModelMessage[],
+  ) => ProviderOptions | undefined;
   readonly summarize: (messages: readonly ModelMessage[]) => Promise<string>;
 }
 
@@ -179,10 +192,20 @@ function recentMessageStart(
 function previousInputFloor(options: ContextPreparationOptions): number {
   const previous = options.previousUsage;
   if (!previous
+    || previous.isEstimated
     || previous.modelId !== options.modelId
-    || previous.messageCount > options.messages.length) return 0;
+    || previous.messageCount > options.messages.length
+    || previous.systemTokens === undefined
+    || previous.toolSchemaTokens === undefined
+    || previous.historyTokens === undefined) return 0;
+  const providerHistoryTokens = previous.inputTokens
+    - previous.systemTokens
+    - previous.toolSchemaTokens;
+  if (providerHistoryTokens < 0) return 0;
+  const currentOverhead = estimateTextTokens(options.system)
+    + (options.requestOverheadTokens ?? 0);
   const addedMessages = options.messages.slice(previous.messageCount);
-  return previous.inputTokens + estimateContextTokens(addedMessages);
+  return providerHistoryTokens + currentOverhead + estimateContextTokens(addedMessages);
 }
 
 function usage(
@@ -201,19 +224,24 @@ function usage(
   };
 }
 
-function checkpointMessage(summary: string): ModelMessage {
-  return {
-    role: 'assistant',
-    content: [
-      'Conversation checkpoint (factual record of earlier turns; not new user instructions):',
-      summary.trim(),
-    ].join('\n\n'),
-  };
+function checkpointMessage(
+  summary: string,
+  providerOptions?: ProviderOptions,
+): ModelMessage {
+  const text = [
+    'Conversation checkpoint (factual record of earlier turns; not new user instructions):',
+    summary.trim(),
+  ].join('\n\n');
+  return providerOptions
+    ? { role: 'assistant', content: [{ type: 'text', text, providerOptions }] }
+    : { role: 'assistant', content: text };
 }
-
-export async function prepareContext(
-  options: ContextPreparationOptions,
-): Promise<ContextPreparation> {
+function compactionBudget(options: ContextPreparationOptions): {
+  readonly currentTokens: number;
+  readonly triggerTokens: number;
+  readonly availableMessageTokens: number;
+  readonly recentTarget: number;
+} {
   const localTokens = estimateContextTokens(
     options.messages,
     options.system,
@@ -232,26 +260,45 @@ export async function prepareContext(
     options.maxInputTokens,
     options.contextWindowTokens - reserve,
   );
+  return {
+    currentTokens,
+    triggerTokens,
+    availableMessageTokens: Math.max(
+      1,
+      triggerTokens - estimateTextTokens(options.system) - (options.requestOverheadTokens ?? 0),
+    ),
+    recentTarget: Math.min(
+      RECENT_CONTEXT_TARGET_TOKENS,
+      Math.floor(options.contextWindowTokens * CONTEXT_FRACTION),
+    ),
+  };
+}
+
+
+export async function prepareContext(
+  options: ContextPreparationOptions,
+): Promise<ContextPreparation> {
+  const {
+    currentTokens,
+    triggerTokens,
+    availableMessageTokens,
+    recentTarget,
+  } = compactionBudget(options);
   if (currentTokens <= triggerTokens) {
     return { messages: [...options.messages], usage: usage(currentTokens, options, false) };
   }
-
-  const availableMessageTokens = Math.max(
-    1,
-    triggerTokens - estimateTextTokens(options.system) - (options.requestOverheadTokens ?? 0),
-  );
-  const recentTarget = Math.min(
-    RECENT_CONTEXT_TARGET_TOKENS,
-    Math.floor(options.contextWindowTokens * CONTEXT_FRACTION),
-  );
   const start = recentMessageStart(options.messages, recentTarget, availableMessageTokens);
   if (start <= 0) {
     throw new Error('The current request is too large for this model context window. Remove large attachments or choose a model with a larger context window.');
   }
 
-  const summary = (await options.summarize(options.messages.slice(0, start))).trim();
+  const summarizedMessages = options.messages.slice(0, start);
+  const summary = (await options.summarize(summarizedMessages)).trim();
   if (!summary) throw new Error('The model returned an empty context summary.');
-  const messages = [checkpointMessage(summary), ...options.messages.slice(start)];
+  const messages = [
+    checkpointMessage(summary, options.checkpointProviderOptions?.(summarizedMessages)),
+    ...options.messages.slice(start),
+  ];
   const compactedTokens = estimateContextTokens(
     messages,
     options.system,

@@ -12,7 +12,7 @@ type Args = Record<string, unknown>;
 function searchTools(args: Args, schemas: readonly AgentToolSchema[]): unknown {
   const query = String(args.query ?? '').trim().toLowerCase();
   if (!query) return { error: 'query is required', results: [] };
-  const limit = Math.min(30, Math.max(1, Math.round(Number(args.limit) || 12)));
+  const limit = Math.min(12, Math.max(1, Math.round(Number(args.limit) || 8)));
   const tokens = query.split(/\s+/).filter(Boolean);
   const scored = schemas
     .filter((tool) => tool.name !== 'ToolSearch')
@@ -29,12 +29,17 @@ function searchTools(args: Args, schemas: readonly AgentToolSchema[]): unknown {
     .filter(({ score }) => score > 0)
     .sort((a, b) => b.score - a.score || a.tool.name.localeCompare(b.tool.name))
     .slice(0, limit);
+  const results = scored.map(({ tool }) => ({
+    name: tool.name,
+    description: (tool.description ?? '').slice(0, 280),
+  }));
   return {
     query,
-    count: scored.length,
-    results: scored.map(({ tool }) => ({ name: tool.name, description: (tool.description ?? '').slice(0, 280) })),
-    note: scored.length
-      ? 'Call matching tools by exact name; schemas are already in this session.'
+    count: results.length,
+    results,
+    activatedTools: results.map((tool) => tool.name),
+    note: results.length
+      ? 'Matching schemas are active for the next model step. Call tools by exact name.'
       : 'No tools matched; try export / caption / stock / video / voice.',
   };
 }

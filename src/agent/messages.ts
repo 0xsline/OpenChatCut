@@ -53,7 +53,8 @@ function isAiSdkMessage(message: UnknownRecord): boolean {
     return part?.type === 'tool-call'
       || part?.type === 'tool-result'
       || part?.type === 'reasoning'
-      || part?.type === 'file';
+      || part?.type === 'file'
+      || part?.providerOptions != null;
   });
 }
 
@@ -166,6 +167,24 @@ function withoutProviderOptions<T extends object>(value: T): T {
   const { providerOptions: _providerOptions, ...portable } =
     value as T & { providerOptions?: unknown };
   return portable as T;
+}
+function portableProviderOptions(value: unknown): UnknownRecord | undefined {
+  const options = record(value);
+  const openchatcut = record(options?.openchatcut);
+  const names = openchatcut?.activatedTools;
+  if (!Array.isArray(names)) return undefined;
+  const activatedTools = [...new Set(names.filter(
+    (name): name is string => typeof name === 'string' && name.length > 0,
+  ))];
+  return activatedTools.length ? { openchatcut: { activatedTools } } : undefined;
+}
+
+function withoutForeignProviderOptions<T extends object>(value: T): T {
+  const portable = withoutProviderOptions(value);
+  const providerOptions = portableProviderOptions(
+    (value as T & { providerOptions?: unknown }).providerOptions,
+  );
+  return providerOptions ? { ...portable, providerOptions } : portable;
 }
 
 const CHAT_MEDIA_INTRO = 'Rendered media returned by the preceding tool calls:';
@@ -301,7 +320,7 @@ export function makeMessagesPortable(
       if (typeof message.content === 'string') return [{ role: 'user', content: message.content }];
       return [{
         role: 'user',
-        content: message.content.map(withoutProviderOptions),
+        content: message.content.map(withoutForeignProviderOptions),
       }];
     }
     if (message.role === 'assistant') {
@@ -311,7 +330,7 @@ export function makeMessagesPortable(
         if (part.type === 'reasoning'
           || part.type === 'reasoning-file'
           || part.type === 'custom') continue;
-        const portablePart = withoutProviderOptions(part);
+        const portablePart = withoutForeignProviderOptions(part);
         if (portablePart.type === 'tool-result') {
           content.push({ ...portablePart, output: portableOutput(portablePart.output) });
         } else {
@@ -323,7 +342,7 @@ export function makeMessagesPortable(
     return [{
       role: 'tool',
       content: message.content.map((part) => {
-        const portablePart = withoutProviderOptions(part);
+        const portablePart = withoutForeignProviderOptions(part);
         return portablePart.type === 'tool-result'
           ? { ...portablePart, output: portableOutput(portablePart.output) }
           : portablePart;
