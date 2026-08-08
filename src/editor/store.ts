@@ -95,6 +95,7 @@ export interface EditorCommands {
   setItemFade: (id: string, fade: { fadeInFrames?: number; fadeOutFrames?: number }) => void;
   setItemTransform: (id: string, patch: ClipTransform) => void;
   setItemFilters: (id: string, patch: ClipFilters) => void;
+  setItemBackgroundFill: (id: string, enabled: boolean) => void;
   setItemZoom: (id: string, patch: Partial<ZoomEffect> | null) => void;
   /** Replace a clip's per-clip WebGL effect stack. */
   setItemEffects: (id: string, effects: ClipEffect[], defs?: SerializableFxDef[]) => void;
@@ -505,6 +506,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       setItemFade: (id, fade) => dispatch({ type: 'setFade', id, ...fade }),
       setItemTransform: (id, patch) => dispatch({ type: 'setTransform', id, patch }),
       setItemFilters: (id, patch) => dispatch({ type: 'setFilters', id, patch }),
+      setItemBackgroundFill: (id, enabled) => dispatch({ type: 'setBackgroundFill', id, enabled }),
       setItemZoom: (id, patch) => dispatch({ type: 'setZoom', id, patch }),
       setItemEffects: (id, effects, defs) => dispatch({ type: 'setEffects', id, effects, defs }),
       setItemSpeed: (id, rate) => dispatch({ type: 'setSpeed', id, rate }),

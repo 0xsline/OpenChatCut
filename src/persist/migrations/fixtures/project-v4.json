@@ -1,0 +1,47 @@
+{
+  "version": 4,
+  "assets": [
+    {
+      "id": "asset_v4_interview",
+      "name": "interview.mp4",
+      "kind": "video",
+      "src": "/media/uploads/interview.mp4",
+      "durationInFrames": 300,
+      "width": 1920,
+      "height": 1080,
+      "sourceRevision": "stat:1048576:1786060800000"
+    }
+  ],
+  "mediaFolders": [],
+  "timelines": [
+    {
+      "id": "tl_v4_fixture",
+      "name": "V4 edit",
+      "order": 0,
+      "fps": 30,
+      "width": 1080,
+      "height": 1920,
+      "selectedId": "clip_v4_interview",
+      "trackOrder": ["track_tl_v4_fixture_1"],
+      "tracks": {
+        "track_tl_v4_fixture_1": { "kind": "video" }
+      },
+      "items": [
+        {
+          "id": "clip_v4_interview",
+          "track": "track_tl_v4_fixture_1",
+          "startFrame": 0,
+          "durationInFrames": 300,
+          "name": "interview.mp4",
+          "kind": "video",
+          "src": "/media/uploads/interview.mp4",
+          "sourceAssetId": "asset_v4_interview",
+          "sourceRevision": "stat:1048576:1786060800000",
+          "width": 1920,
+          "height": 1080
+        }
+      ]
+    }
+  ],
+  "activeTimelineId": "tl_v4_fixture"
+}

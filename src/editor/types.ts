@@ -275,6 +275,7 @@ export interface TimelineItem extends TranscriptCarrier {
   keyframes?: ItemKeyframes;
   /** color/blur adjustments for visual clips (special effects/LUT) */
   filters?: ClipFilters;
+  backgroundFill?: boolean; // blurred, darkened cover copy behind the contained clip
   /** animated zoom (builtin:zoom) — shape curve or reframe keyframes */
   zoom?: ZoomEffect;
   /** per-clip WebGL effect stack (effects[]: builtin:fx-* / lut) */

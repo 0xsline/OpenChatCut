@@ -18,10 +18,11 @@ void main() {
   float outAlpha = 1.0 - smoothstep(0.0, outEnd, u_progress);
   float inAlpha = smoothstep(inStart, 1.0, u_progress);
 
-  vec3 outColor = texture(u_outgoing, v_texCoord).rgb;
-  vec3 inColor = texture(u_incoming, v_texCoord).rgb;
+  vec4 outColor = texture(u_outgoing, v_texCoord);
+  vec4 inColor = texture(u_incoming, v_texCoord);
 
-  vec3 finalColor = (outColor * outAlpha) + (inColor * inAlpha);
+  vec3 finalColor = (outColor.rgb * outAlpha) + (inColor.rgb * inAlpha);
+  float finalAlpha = mix(outColor.a, inColor.a, u_progress);
 
-  fragColor = vec4(finalColor, 1.0);
+  fragColor = vec4(finalColor, finalAlpha);
 }

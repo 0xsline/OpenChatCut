@@ -9,6 +9,8 @@ import type { SelectedPreviewFallbackReason, SelectedPreviewStatusListener } fro
 import { GLSL_TRANSITIONS } from './transitions';
 import { glEffects } from './clipEffects';
 import type { AspectFit, GlslTransitionType, TimelineItem, TransitionDirection } from '../editor/types';
+import { backgroundFillAppearance, backgroundFillFilter } from '../editor/backgroundFill';
+import { clipOpacityAt } from '../editor/clipFade';
 
 // One GLSL transition window straddling the cut from R to R+L. A muted,
 // frame-synced media pair feeds 2D staging canvases, each clip's ordered effect
@@ -35,7 +37,10 @@ interface GlTransitionProps {
   width: number;
   height: number;
   fit: AspectFit;
+  outgoingBackgroundFill?: boolean;
+  incomingBackgroundFill?: boolean;
   previewTargetId?: string;
+  onReadyChange?: (ready: boolean) => void;
   onPreviewStatus?: SelectedPreviewStatusListener;
 }
 
@@ -44,19 +49,50 @@ type MediaEl = HTMLVideoElement | HTMLImageElement;
 const isReady = (el: MediaEl): boolean =>
   el instanceof HTMLVideoElement ? el.readyState >= 2 && !el.seeking : el.complete;
 
-// draw a media element into the staging canvas with contain/cover placement
-// (same math as MediaFill's objectFit, so GL frames match the DOM rendering).
-function drawFit(ctx: CanvasRenderingContext2D, el: MediaEl, fit: AspectFit): void {
-  const W = ctx.canvas.width;
-  const H = ctx.canvas.height;
-  const nw = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth;
-  const nh = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight;
-  ctx.clearRect(0, 0, W, H);
-  if (!nw || !nh) return;
-  const scale = fit === 'cover' ? Math.max(W / nw, H / nh) : Math.min(W / nw, H / nh);
-  const dw = nw * scale;
-  const dh = nh * scale;
-  ctx.drawImage(el, (W - dw) / 2, (H - dh) / 2, dw, dh);
+function mediaSize(el: MediaEl): { width: number; height: number } {
+  return el instanceof HTMLVideoElement
+    ? { width: el.videoWidth, height: el.videoHeight }
+    : { width: el.naturalWidth, height: el.naturalHeight };
+}
+
+function drawPlaced(ctx: CanvasRenderingContext2D, el: MediaEl, fit: AspectFit, overscan = 1): void {
+  const source = mediaSize(el);
+  if (!source.width || !source.height) return;
+  const scale = (fit === 'cover'
+    ? Math.max(ctx.canvas.width / source.width, ctx.canvas.height / source.height)
+    : Math.min(ctx.canvas.width / source.width, ctx.canvas.height / source.height)) * overscan;
+  const width = source.width * scale;
+  const height = source.height * scale;
+  ctx.drawImage(el, (ctx.canvas.width - width) / 2, (ctx.canvas.height - height) / 2, width, height);
+}
+
+function drawMediaFrame(
+  ctx: CanvasRenderingContext2D,
+  el: MediaEl,
+  fit: AspectFit,
+  item: TimelineItem,
+  backgroundFill: boolean,
+  opacity: number,
+): void {
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  if (!backgroundFill) {
+    drawPlaced(ctx, el, fit);
+    ctx.restore();
+    return;
+  }
+  const appearance = backgroundFillAppearance(ctx.canvas.width, ctx.canvas.height);
+  const filters = item.filters;
+  ctx.save();
+  ctx.filter = backgroundFillFilter(appearance, filters);
+  drawPlaced(ctx, el, 'cover', appearance.overscanScale);
+  ctx.restore();
+  ctx.save();
+  ctx.filter = `brightness(${filters?.brightness ?? 1}) contrast(${filters?.contrast ?? 1}) saturate(${filters?.saturate ?? 1}) blur(${filters?.blur ?? 0}px)`;
+  drawPlaced(ctx, el, 'contain');
+  ctx.restore();
+  ctx.restore();
 }
 
 function MediaSource({ item, trim, fit, elRef }: { item: TimelineItem; trim: number; fit: AspectFit; elRef: React.MutableRefObject<MediaEl | null> }) {
@@ -69,7 +105,7 @@ function MediaSource({ item, trim, fit, elRef }: { item: TimelineItem; trim: num
   return <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={trim} playbackRate={item.playbackRate ?? 1} muted style={style} />;
 }
 
-export function GlTransition({ type, direction, L, windowStart, outgoing, incoming, trimOut, trimIn, width, height, fit, customFrag, customUniforms, previewTargetId, onPreviewStatus }: GlTransitionProps) {
+export function GlTransition({ type, direction, L, windowStart, outgoing, incoming, trimOut, trimIn, width, height, fit, outgoingBackgroundFill = false, incomingBackgroundFill = false, customFrag, customUniforms, previewTargetId, onPreviewStatus, onReadyChange }: GlTransitionProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -133,6 +169,7 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
     let done = false;
     let raf = 0;
     const report = (phase: 'waiting' | 'ready' | 'fallback', fallbackReason?: SelectedPreviewFallbackReason) => {
+      onReadyChange?.(phase === 'ready');
       if (!previewTargetId || !onPreviewStatus) return;
       onPreviewStatus({
         kind: 'transition',
@@ -189,8 +226,25 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
         const outgoingContext = staging.out.getContext('2d');
         const incomingContext = staging.in.getContext('2d');
         if (!outgoingContext || !incomingContext) throw new Error('2d context unavailable');
-        drawFit(outgoingContext, outgoingSource, fit);
-        drawFit(incomingContext, incomingSource, fit);
+        const absoluteFrame = windowStart + frame;
+        const outgoingOpacity = clipOpacityAt(outgoing, absoluteFrame - outgoing.startFrame);
+        const incomingOpacity = clipOpacityAt(incoming, absoluteFrame - incoming.startFrame);
+        drawMediaFrame(
+          outgoingContext,
+          outgoingSource,
+          fit,
+          outgoing,
+          outgoingBackgroundFill,
+          outgoingOpacity,
+        );
+        drawMediaFrame(
+          incomingContext,
+          incomingSource,
+          fit,
+          incoming,
+          incomingBackgroundFill,
+          incomingOpacity,
+        );
         const transitionFrame = buildTransitionShaderFrame(def, {
           sequenceFrame: frame,
           durationInFrames: L,
@@ -200,7 +254,6 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
           height,
           direction,
         });
-        const absoluteFrame = windowStart + frame;
         const outgoingFrame = buildEffectShaderFrame(
           outgoingEffects.map(({ fx, def: effect }) => ({ def: effect, overrides: fx.overrides })),
           absoluteFrame - outgoing.startFrame,
@@ -219,6 +272,7 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
           incomingFrame.passes,
           transitionFrame.progress,
           transitionFrame.uniforms,
+          { outgoing: outgoingOpacity, incoming: incomingOpacity },
         );
         canvas.style.opacity = '1';
         if (!hasRenderedFrameRef.current) {
@@ -242,8 +296,8 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
       finish();
     };
   }, [
-    definitionKey, def, direction, fit, fps, frame, height, incoming.startFrame,
-    incomingEffects, L, onPreviewStatus, outgoing.startFrame, outgoingEffects,
+    definitionKey, def, direction, fit, fps, frame, height, incoming, incomingBackgroundFill,
+    incomingEffects, L, onPreviewStatus, onReadyChange, outgoing, outgoingBackgroundFill, outgoingEffects,
     previewTargetId, staging, type, width, windowStart,
   ]);
 

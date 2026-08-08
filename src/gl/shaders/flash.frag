@@ -31,5 +31,5 @@ void main() {
     vec3 exposed = baseColor.rgb * (1.0 + flashAmount * u_overexposure);
     vec3 finalColor = mix(exposed, u_flashColor, flashAmount);
 
-    fragColor = vec4(finalColor, 1.0);
+    fragColor = vec4(finalColor, baseColor.a);
 }

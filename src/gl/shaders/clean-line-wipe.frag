@@ -27,5 +27,5 @@ void main() {
     float dist = abs(v_texCoord.x - pos);
     float line = smoothstep(u_lineWidth, u_lineWidth * 0.3, dist);
     vec3 finalColor = mix(baseColor.rgb, u_lineColor, line);
-    fragColor = vec4(finalColor, 1.0);
+    fragColor = vec4(finalColor, baseColor.a);
 }

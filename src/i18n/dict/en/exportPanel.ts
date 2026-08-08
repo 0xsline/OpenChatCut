@@ -81,6 +81,8 @@ export default {
   '开启字幕并确认内容后，即可下载字幕稿。': 'Turn captions on and confirm the content before downloading the caption file.',
   '可继续编辑的工程': 'Editable project',
   '生成带轨道与素材引用的 FCPXML，交给 Premiere Pro 或达芬奇继续制作。': 'Creates FCPXML with tracks and media references for continued work in Premiere Pro or DaVinci Resolve.',
+  'FCPXML 不包含背景填充效果': 'FCPXML does not include background fill',
+  '{n} 个片段会保留原始素材引用，但模糊背景不会写入 FCPXML；如需完全一致，请同时导出成片。': '{n} clip(s) keep their original media references, but the blurred background is not written to FCPXML. Export a video master as well for an exact visual match.',
   '同时打包动态图层': 'Bundle motion layers',
   '额外生成带透明通道的 ProRes 4444 MOV。': 'Also creates alpha ProRes 4444 MOV files.',
   '导出为 MP3 音频，视频轨道将被忽略。': 'Exports MP3 audio; video tracks are ignored.',

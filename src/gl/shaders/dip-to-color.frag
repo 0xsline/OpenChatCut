@@ -14,8 +14,8 @@ in vec2 v_texCoord;
 out vec4 fragColor;
 
 void main() {
-  vec3 outColor = texture(u_outgoing, v_texCoord).rgb;
-  vec3 inColor = texture(u_incoming, v_texCoord).rgb;
+  vec4 outColor = texture(u_outgoing, v_texCoord);
+  vec4 inColor = texture(u_incoming, v_texCoord);
   vec3 fill = u_color;
 
   // u_hold = fraction of timeline spent at solid color (0..0.5)
@@ -29,6 +29,6 @@ void main() {
   // residual = color flash between the two fades
   float colorAlpha = max(0.0, 1.0 - outAlpha - inAlpha);
 
-  vec3 finalColor = outColor * outAlpha + inColor * inAlpha + fill * colorAlpha;
-  fragColor = vec4(finalColor, 1.0);
+  vec3 finalColor = outColor.rgb * outAlpha + inColor.rgb * inAlpha + fill * colorAlpha;
+  fragColor = vec4(finalColor, mix(outColor.a, inColor.a, u_progress));
 }

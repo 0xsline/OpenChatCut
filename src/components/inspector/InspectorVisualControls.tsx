@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import './InspectorVisualControls.css';
 import { theme } from '../../theme';
 import type { ClipEffect, ClipEffectValue, ClipFilters, TimelineItem } from '../../editor/types';
 import { ALL_FX as FX_EFFECTS, LUT_EFFECTS } from '../../gl/fx/effects';
@@ -99,6 +100,31 @@ export function FilterControl({ item, mixed, onChange, autoGrade }: {
       <SliderRow label={t('模糊')} val={fl.blur ?? 0} min={0} max={30} step={1} fmt={`${compactNumber(fl.blur ?? 0)}px`} mixed={mixed?.blur}
         onReset={() => onChange({ blur: 0 })} resetDisabled={(fl.blur ?? 0) === 0} onChange={(v) => onChange({ blur: v })} />
     </div>
+  );
+}
+
+export function BackgroundFillControl({ enabled, mixed = false, onChange }: {
+  enabled: boolean;
+  mixed?: boolean;
+  onChange: (enabled: boolean) => void;
+}) {
+  const t = useT();
+  return (
+    <label className="cc-insp-toggle-row">
+      <span>
+        <strong>{t('背景填充')}</strong>
+        <small>{t('用模糊的片段副本填满画布')}</small>
+      </span>
+      <input
+        ref={(element) => {
+          if (element) element.indeterminate = mixed;
+        }}
+        type="checkbox"
+        checked={enabled}
+        onChange={(event) => onChange(event.target.checked)}
+        aria-label={t('背景填充')}
+      />
+    </label>
   );
 }
 

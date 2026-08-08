@@ -54,16 +54,19 @@ void main() {
   vec2 uv = (v_texCoord - 0.5) / scale + 0.5 + shakeOffset;
 
   vec3 color;
+  float sourceAlpha;
   float currentChrom = u_chromaticAmount * intensity;
 
   if (u_progress >= 0.5) {
     color = sampleWithChromaticAberration(u_incoming, uv, currentChrom);
+    sourceAlpha = texture(u_incoming, uv).a;
   } else {
     color = sampleWithChromaticAberration(u_outgoing, uv, currentChrom);
+    sourceAlpha = texture(u_outgoing, uv).a;
   }
 
   float flash = pow(intensity, 8.0) * 0.4;
   color += vec3(flash);
 
-  fragColor = vec4(color, 1.0);
+  fragColor = vec4(color, sourceAlpha);
 }
