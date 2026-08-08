@@ -1,4 +1,4 @@
-import { moveItemsByDelta } from '../editor/multiSelect';
+import { clampItemsMoveDelta, moveItemsByDelta } from '../editor/multiSelect';
 import { moveLockedItemIds } from '../editor/linkGroups';
 import {
   captionsOnTrack,
@@ -249,12 +249,13 @@ function manualSelectionDeltaBounds(
   };
 }
 
-/** Clamp a mixed selection with one shared delta at frame zero. */
+/** Clamp a mixed selection at frame zero, caption neighbors, and same-track clips. */
 export function clampTimelineSelectionDelta(
   state: TimelineState,
   itemIds: readonly string[],
   captionSelections: readonly CaptionSelectionRef[],
   requestedDeltaFrames: number,
+  itemTrackShift: { from: TrackId; to: TrackId } | null = null,
 ): number {
   const expandedItemIds = moveLockedItemIds(state, itemIds);
   const ids = new Set(expandedItemIds);
@@ -264,24 +265,29 @@ export function clampTimelineSelectionDelta(
   })) return 0;
   const locations = selectedCueLocations(state, captionSelections);
   const manualBounds = manualSelectionDeltaBounds(state, locations.manual);
-  const manualLocations = locations.manual;
-  const automaticLocations = locations.automatic;
+  const cueLocations = [...locations.manual, ...locations.automatic];
   let minDelta = manualBounds.minFrames;
-  let maxDelta = manualBounds.maxFrames;
-  let hasMovableSelection = false;
+  const maxDelta = manualBounds.maxFrames;
+  let hasMovableItems = false;
 
   for (const item of state.items) {
     if (!ids.has(item.id) || state.tracks?.[item.track]?.locked) continue;
-    hasMovableSelection = true;
+    hasMovableItems = true;
     minDelta = Math.max(minDelta, -item.startFrame);
   }
-  for (const location of [...manualLocations, ...automaticLocations]) {
-    hasMovableSelection = true;
+  for (const location of cueLocations) {
     minDelta = Math.max(minDelta, earliestPersistableDeltaFrames(location.startMs, state.fps));
   }
-  return hasMovableSelection
-    ? Math.min(maxDelta, Math.max(minDelta, Math.round(requestedDeltaFrames)))
-    : 0;
+  if (!hasMovableItems && cueLocations.length === 0) return 0;
+  const bounded = Math.min(maxDelta, Math.max(minDelta, Math.round(requestedDeltaFrames)));
+  if (!hasMovableItems) return bounded;
+  return clampItemsMoveDelta(
+    state,
+    expandedItemIds,
+    bounded,
+    itemTrackShift,
+    { min: minDelta, max: maxDelta },
+  ) ?? 0;
 }
 
 function moveAutomaticCaptionSelections(
@@ -365,7 +371,13 @@ export function moveTimelineSelectionByDelta(
 ): TimelineState {
   const expandedItemIds = moveLockedItemIds(state, itemIds);
   const locations = selectedCueLocations(state, captionSelections);
-  const deltaFrames = clampTimelineSelectionDelta(state, expandedItemIds, captionSelections, requestedDeltaFrames);
+  const deltaFrames = clampTimelineSelectionDelta(
+    state,
+    expandedItemIds,
+    captionSelections,
+    requestedDeltaFrames,
+    itemTrackShift,
+  );
   const itemsMoved = moveItemsByDelta(state, expandedItemIds, deltaFrames, itemTrackShift);
   const manualMoved = moveManualCaptionSelections(
     itemsMoved,

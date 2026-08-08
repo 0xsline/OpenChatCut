@@ -2,9 +2,10 @@
 // Used by timeline pointer (group drag), shortcuts (⌫), and clip context menu.
 import {
   selectedIdsOf, timelineTrackIds, trackKind,
-  type TimelineState, type TrackId,
+  type TimelineItem, type TimelineState, type TrackId,
 } from './types';
 import { moveLockedItemIds, removeItemsWithGroups } from './linkGroups';
+import { clampMoveDeltaToTrackGaps } from './trackCollision';
 
 /** Ids that should move together when dragging `primaryId` (the grab handle). */
 export function groupMoveIds(state: TimelineState, primaryId: string): string[] {
@@ -13,9 +14,64 @@ export function groupMoveIds(state: TimelineState, primaryId: string): string[] 
   return moveLockedItemIds(state, seeds);
 }
 
+interface PreparedItemMove {
+  ids: Set<string>;
+  moving: TimelineItem[];
+}
+
+function trackDelta(state: TimelineState, shift: { from: TrackId; to: TrackId } | null): number {
+  if (!shift) return 0;
+  const order = timelineTrackIds(state);
+  const from = order.indexOf(shift.from);
+  const to = order.indexOf(shift.to);
+  return from >= 0 && to >= 0 ? to - from : 0;
+}
+
+function shiftedTrack(state: TimelineState, item: TimelineItem, delta: number): TrackId {
+  if (delta === 0) return item.track;
+  const order = timelineTrackIds(state);
+  const sourceIndex = order.indexOf(item.track);
+  if (sourceIndex < 0) return item.track;
+  const candidate = order[sourceIndex + delta];
+  return candidate
+    && trackKind(state, candidate) === trackKind(state, item.track)
+    && !state.tracks?.[candidate]?.locked
+    ? candidate
+    : item.track;
+}
+
+function prepareItemMove(
+  state: TimelineState,
+  ids: readonly string[],
+  trackShift: { from: TrackId; to: TrackId } | null,
+): PreparedItemMove | null {
+  const expanded = new Set(moveLockedItemIds(state, ids));
+  const sourceItems = state.items.filter((item) => expanded.has(item.id));
+  if (!sourceItems.length || sourceItems.some((item) => state.tracks?.[item.track]?.locked)) return null;
+  const delta = trackDelta(state, trackShift);
+  const moving = sourceItems.map((item) => ({
+    ...item,
+    track: shiftedTrack(state, item, delta),
+  }));
+  return { ids: expanded, moving };
+}
+
+export function clampItemsMoveDelta(
+  state: TimelineState,
+  ids: readonly string[],
+  requestedDelta: number,
+  trackShift: { from: TrackId; to: TrackId } | null,
+  bounds: { min?: number; max?: number } = {},
+): number | null {
+  const prepared = prepareItemMove(state, ids, trackShift);
+  return prepared
+    ? clampMoveDeltaToTrackGaps(state, prepared.moving, prepared.ids, requestedDelta, bounds)
+    : null;
+}
+
 /**
- * Shift a set of clips by the same frame delta; optional track index shift from
- * the primary clip's base track → target track (same-kind lanes only, skip locked).
+ * Shift a set of clips by one non-overlapping frame delta; optional track index
+ * shift follows same-kind, unlocked lanes.
  */
 export function moveItemsByDelta(
   state: TimelineState,
@@ -23,36 +79,27 @@ export function moveItemsByDelta(
   deltaF: number,
   trackShift: { from: TrackId; to: TrackId } | null,
 ): TimelineState {
-  if (!ids.length) return state;
-  const order = timelineTrackIds(state);
-  const fromIdx = trackShift ? order.indexOf(trackShift.from) : -1;
-  const toIdx = trackShift ? order.indexOf(trackShift.to) : -1;
-  const dTrack = fromIdx >= 0 && toIdx >= 0 ? toIdx - fromIdx : 0;
-  if (deltaF === 0 && dTrack === 0) return state;
-
-  const idSet = new Set(moveLockedItemIds(state, ids));
-  const moving = state.items.filter((item) => idSet.has(item.id));
-  if (moving.some((item) => state.tracks?.[item.track]?.locked)) return state;
-  const earliest = Math.min(...moving.map((item) => item.startFrame));
-  const sharedDelta = Math.max(deltaF, -earliest);
-  const items = state.items.map((it) => {
-    if (!idSet.has(it.id)) return it;
-    let track = it.track;
-    if (dTrack !== 0) {
-      const ni = order.indexOf(it.track) + dTrack;
-      if (ni >= 0 && ni < order.length) {
-        const candidate = order[ni]!;
-        if (
-          trackKind(state, candidate) === trackKind(state, it.track)
-          && !state.tracks?.[candidate]?.locked
-        ) {
-          track = candidate;
-        }
-      }
-    }
-    return { ...it, startFrame: it.startFrame + sharedDelta, track };
-  });
-  return { ...state, items };
+  const prepared = prepareItemMove(state, ids, trackShift);
+  if (!prepared) return state;
+  const sharedDelta = clampMoveDeltaToTrackGaps(
+    state,
+    prepared.moving,
+    prepared.ids,
+    deltaF,
+  );
+  if (sharedDelta === null) return state;
+  const replacements = new Map(prepared.moving.map((item) => [
+    item.id,
+    { ...item, startFrame: item.startFrame + sharedDelta },
+  ]));
+  if ([...replacements.values()].every((item) => {
+    const current = state.items.find((candidate) => candidate.id === item.id);
+    return current?.track === item.track && current.startFrame === item.startFrame;
+  })) return state;
+  return {
+    ...state,
+    items: state.items.map((item) => replacements.get(item.id) ?? item),
+  };
 }
 
 /** Remove many clips; optional ripple close-gap per clip (reverse chrono so indices stay valid). */

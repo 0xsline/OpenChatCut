@@ -1,6 +1,8 @@
 import { coveredFrames, planCamSwitch } from '../editor/camSwitch';
 import { reduce, type Action } from '../editor/reduce';
 import { unlinkItems } from '../editor/linkGroups';
+import { sourceWindowForTimelineRange } from '../editor/sourceLimit';
+import { splitItemKeyframes } from '../editor/keyframes';
 import type { MulticamAngle, MulticamGroup, TimelineItem, TimelineState } from '../editor/types';
 import { multicamItemsForAngle, multicamItemsForGroup, replaceAngleDecision } from './groups';
 
@@ -36,6 +38,35 @@ function uncoveredRanges(
   return gaps;
 }
 
+function sliceSourceItem(
+  source: TimelineItem,
+  id: string,
+  fromFrame: number,
+  toFrame: number,
+): Omit<TimelineItem, 'startFrame'> {
+  const localStart = fromFrame - source.startFrame;
+  const durationInFrames = toFrame - fromFrame;
+  const sourceEnd = source.startFrame + source.durationInFrames;
+  const sourceWindow = sourceWindowForTimelineRange(source, localStart, durationInFrames);
+  let keyframes = source.keyframes;
+  if (keyframes && localStart > 0) keyframes = splitItemKeyframes(keyframes, localStart)[1];
+  if (keyframes && durationInFrames < source.durationInFrames - localStart) {
+    keyframes = splitItemKeyframes(keyframes, durationInFrames)[0];
+  }
+  const { startFrame: _startFrame, ...sourceWithoutStart } = source;
+  return {
+    ...sourceWithoutStart,
+    id,
+    durationInFrames,
+    ...((source.kind === 'video' || source.kind === 'audio')
+      ? { srcInFrame: sourceWindow.startFrame }
+      : {}),
+    fadeInFrames: fromFrame === source.startFrame ? source.fadeInFrames : undefined,
+    fadeOutFrames: toFrame === sourceEnd ? source.fadeOutFrames : undefined,
+    keyframes,
+  };
+}
+
 function restoreActions(
   source: TimelineItem,
   groupId: string,
@@ -44,31 +75,19 @@ function restoreActions(
   toFrame: number,
   makeId: () => string,
 ): { actions: Action[]; keptId: string } {
-  const sourceEnd = source.startFrame + source.durationInFrames;
-  const fullId = makeId();
-  const { startFrame: _sourceStart, ...sourceWithoutStart } = source;
-  const actions: Action[] = [{
-    type: 'add',
-    item: {
-      ...sourceWithoutStart,
-      id: fullId,
-      multicamGroupId: groupId,
-      multicamAngleId: angleId,
-    },
-    startFrame: source.startFrame,
-  }];
-  let keptId = fullId;
-  if (fromFrame > source.startFrame) {
-    keptId = makeId();
-    actions.push({ type: 'split', id: fullId, atFrame: fromFrame, newId: keptId });
-    actions.push({ type: 'remove', id: fullId });
-  }
-  if (toFrame < sourceEnd) {
-    const tailId = makeId();
-    actions.push({ type: 'split', id: keptId, atFrame: toFrame, newId: tailId });
-    actions.push({ type: 'remove', id: tailId });
-  }
-  return { actions, keptId };
+  const keptId = makeId();
+  return {
+    actions: [{
+      type: 'add',
+      item: {
+        ...sliceSourceItem(source, keptId, fromFrame, toFrame),
+        multicamGroupId: groupId,
+        multicamAngleId: angleId,
+      },
+      startFrame: fromFrame,
+    }],
+    keptId,
+  };
 }
 
 function plannedActionTracks(state: TimelineState, actions: readonly Action[]): Set<string> | null {

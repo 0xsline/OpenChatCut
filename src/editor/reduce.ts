@@ -26,6 +26,7 @@ import {
   retimeItemWithGroups,
   unlinkItems,
 } from './linkGroups';
+import { clampMoveDeltaToTrackGaps, introducesTrackOverlap } from './trackCollision';
 import type { CaptionsData } from '../captions/types';
 import type { SerializableFxDef } from '../gl/fx/uniforms';
 import type { TranscriptWord, TranscriptVariant } from '../transcript/types';
@@ -209,8 +210,9 @@ function editedDuration(it: TimelineItem, deleted: Set<number>, fps: number): nu
 }
 
 /**
- * Starting from `fromFrame`, the subsequent segment ids of the same track are connected end to end, and stop when encountering the first gap. Overlap counts as connected
- * (The same track allows overlapping placement), the end of the chain takes the largest right edge of the swept clip. exported for verify.
+ * Starting from `fromFrame`, collect the following same-track connected chain
+ * until the first gap. Legacy overlapping clips still count as connected so
+ * ripple edits can safely repair old project data.
  */
 export function contiguousFollowers(
   items: readonly TimelineItem[],
@@ -435,9 +437,19 @@ export function applyOverwriteLaneAction(
   }
 }
 
+const OVERLAP_GUARDED_ACTIONS: ReadonlySet<Action['type']> = new Set([
+  'add', 'relinkTimelineItem', 'move', 'retime', 'setSpeed', 'remove',
+  'track.tighten', 'toggleWord', 'deleteWords', 'cleanScript', 'setGapCap',
+  'setTranscriptPlayOrder', 'reorderTrackItems', 'clearEdits', 'setFullState',
+]);
+
+
 export function reduce(s: TimelineState, a: Action): TimelineState {
-  // Any changes may be changed to durationInFrames, which will be self-healed at the exit, eliminating the need to add guards to each case.
-  const next = fitTimelineItems(applyAction(s, a));
+  // Duration-derived values are self-healed before collision and transition checks.
+  const applied = fitTimelineItems(applyAction(s, a));
+  const next = OVERLAP_GUARDED_ACTIONS.has(a.type) && introducesTrackOverlap(s, applied)
+    ? s
+    : applied;
   if (!TRANSITION_RECONCILING_ACTIONS.has(a.type) || !next.transitions?.length) return next;
   return { ...next, transitions: reconcileTransitions(next.items, next.transitions) };
 }
@@ -446,21 +458,32 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
   switch (a.type) {
     case 'add': {
       if (s.tracks?.[a.item.track]?.locked) return s;
-      // compute placement from CURRENT state (correct for sequential adds)
-      const startFrame = a.startFrame ?? trackEnd(s, a.item.track);
-      const item: TimelineItem = { ...a.item, startFrame };
-      // Ripple insert: push same-track clips at/after the
-      // insertion point right by the new clip's duration to make room (no overwrite).
-      let base = s.items;
+      if (s.items.some((item) => item.id === a.item.id)) return s;
+      const requestedStart = a.startFrame ?? trackEnd(s, a.item.track);
+      let baseState = s;
       if (a.ripple) {
         const shifts = new Map(s.items
-          .filter((it) => it.track === item.track && it.startFrame >= startFrame)
-          .map((it) => [it.id, item.durationInFrames]));
+          .filter((item) => item.track === a.item.track && item.startFrame >= requestedStart)
+          .map((item) => [item.id, a.item.durationInFrames]));
         const shifted = applyRippleShifts(s, shifts);
         if (!shifted) return s;
-        base = shifted.items;
+        baseState = shifted;
       }
-      return { ...s, items: [...base, item], selectedId: item.id, selectedIds: [item.id] };
+      const requested: TimelineItem = { ...a.item, startFrame: requestedStart };
+      const delta = clampMoveDeltaToTrackGaps(
+        baseState,
+        [requested],
+        new Set([requested.id]),
+        0,
+      );
+      if (delta === null) return s;
+      const item = { ...requested, startFrame: requested.startFrame + delta };
+      return {
+        ...baseState,
+        items: [...baseState.items, item],
+        selectedId: item.id,
+        selectedIds: [item.id],
+      };
     }
     case 'updateProps':
       if (lockedItem(s, a.id)) return s;

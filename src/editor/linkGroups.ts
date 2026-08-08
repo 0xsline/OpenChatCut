@@ -1,5 +1,6 @@
 import type { TimelineItem, TimelineLinkGroup, TimelineLinkMode, TimelineState, TrackId } from './types.js';
 import { sourceFramesToTimelineFrames, timelineFramesToSourceFrames } from './sourceLimit.js';
+import { clampMoveDeltaToTrackGaps } from './trackCollision';
 
 const unique = (ids: readonly string[]): string[] => [...new Set(ids)];
 const LINKED_MODES: ReadonlySet<TimelineLinkMode> = new Set(['linked']);
@@ -91,7 +92,8 @@ function locked(state: TimelineState, ids: ReadonlySet<string>, destinationTrack
   return state.items.some((item) => ids.has(item.id) && state.tracks?.[item.track]?.locked);
 }
 
-/** Move a direct edit and every linked/sync-locked member by one shared delta. */
+
+/** Move a direct edit and every linked/sync-locked member by one shared, non-overlapping delta. */
 export function moveItemWithGroups(
   state: TimelineState,
   id: string,
@@ -103,18 +105,19 @@ export function moveItemWithGroups(
   const ids = new Set(moveLockedItemIds(state, [id]));
   if (locked(state, ids, destinationTrack)) return state;
   const requestedDelta = nextStartFrame - target.startFrame;
-  const earliest = Math.min(...state.items.filter((item) => ids.has(item.id)).map((item) => item.startFrame));
-  const delta = Math.max(requestedDelta, -earliest);
-  if (delta === 0 && (!destinationTrack || destinationTrack === target.track)) return state;
+  if (requestedDelta === 0 && (!destinationTrack || destinationTrack === target.track)) return state;
+  const moving = state.items
+    .filter((item) => ids.has(item.id))
+    .map((item) => item.id === id && destinationTrack ? { ...item, track: destinationTrack } : item);
+  const delta = clampMoveDeltaToTrackGaps(state, moving, ids, requestedDelta);
+  if (delta === null) return state;
+  const replacements = new Map(moving.map((item) => [
+    item.id,
+    { ...item, startFrame: item.startFrame + delta },
+  ]));
   return {
     ...state,
-    items: state.items.map((item) => ids.has(item.id)
-      ? {
-          ...item,
-          startFrame: item.startFrame + delta,
-          ...(item.id === id && destinationTrack ? { track: destinationTrack } : {}),
-        }
-      : item),
+    items: state.items.map((item) => replacements.get(item.id) ?? item),
   };
 }
 

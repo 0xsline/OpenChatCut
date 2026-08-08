@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import type { TimelineState } from '../editor/types';
+import { reduce } from '../editor/reduce';
 import { appendManualCue, newManualCaptions } from './manualCaptions';
 import { buildCues } from './captionCues';
 import { resolveCaptionSelection } from './captionSelection';
@@ -292,6 +293,51 @@ assert.equal(
   resolveCaptionSelection(frameBoundaryMoved, frameBoundarySelection)?.target.cue.start,
   0,
   'a 33ms automatic cue at 30fps must land exactly on frame zero',
+);
+
+const overlapState: TimelineState = {
+  fps: 30,
+  width: 1920,
+  height: 1080,
+  items: [
+    { id: 'left', track: 'V1', startFrame: 0, durationInFrames: 30, kind: 'video', name: 'Left', src: '/left.mp4' },
+    { id: 'right', track: 'V1', startFrame: 40, durationInFrames: 30, kind: 'video', name: 'Right', src: '/right.mp4' },
+  ],
+  selectedId: 'left',
+  selectedIds: ['left'],
+  trackOrder: ['V1'],
+  tracks: { V1: { kind: 'video' } },
+};
+const directMove = reduce(overlapState, { type: 'move', id: 'left', startFrame: 20 });
+assert.equal(
+  directMove.items.find((item) => item.id === 'left')?.startFrame,
+  10,
+  'a direct move must stop at the next same-track clip instead of overlapping it',
+);
+const selectionMove = moveTimelineSelectionByDelta(overlapState, ['left'], [], 20);
+assert.equal(
+  selectionMove.items.find((item: { id: string }) => item.id === 'left')?.startFrame,
+  10,
+  'a selection drag preview and commit must share the same non-overlap clamp',
+);
+const added = reduce(overlapState, {
+  type: 'add',
+  startFrame: 20,
+  item: { id: 'added', track: 'V1', durationInFrames: 20, kind: 'video', name: 'Added', src: '/added.mp4' },
+});
+assert.equal(
+  added.items.find((item) => item.id === 'added')?.startFrame,
+  70,
+  'adding into occupied time must use the nearest complete same-track gap',
+);
+const overlappingReplacement = {
+  ...overlapState,
+  items: overlapState.items.map((item) => item.id === 'left' ? { ...item, startFrame: 20 } : item),
+};
+assert.equal(
+  reduce(overlapState, { type: 'setFullState', state: overlappingReplacement }),
+  overlapState,
+  'atomic state replacement must reject newly introduced same-track overlap',
 );
 
 console.log('captionGroupMove.verify: unified caption selection movement OK');
