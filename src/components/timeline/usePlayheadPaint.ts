@@ -2,7 +2,7 @@
 // (GPU transform) timecode text with ~12fps throttling; Player instance watchdog (preview re-hang and re-subscribe monitoring,
 // Repair the root cause of needle freezing); resume playback at breakpoint (throttle persistence + one-time recovery after project attachment).
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import type { PlayerRef } from '@remotion/player';
+import type { CallbackListener, PlayerRef } from '@remotion/player';
 import { loadTimelineView, saveTimelineView } from '../../persist/sessionPrefs';
 import { HEADER_W, fmt, fmtClock } from './timelineUtil';
 
@@ -13,6 +13,41 @@ interface PlayheadDeps {
   fps: number;
   total: number;
   px: number;
+}
+
+interface MediaMetadataSyncPlayer {
+  getContainerNode(): EventTarget | null;
+  seekTo(frame: number): void;
+}
+
+function attachMediaMetadataSync(
+  player: MediaMetadataSyncPlayer | null,
+  getDesiredFrame: () => number,
+): () => void {
+  const target = player?.getContainerNode() ?? null;
+  if (!player || !target) return () => undefined;
+  const options = { capture: true };
+  const onLoadedMetadata = () => player.seekTo(getDesiredFrame());
+  target.addEventListener('loadedmetadata', onLoadedMetadata, options);
+  return () => target.removeEventListener('loadedmetadata', onLoadedMetadata, options);
+}
+
+interface PlayheadMediaSyncPlayer extends MediaMetadataSyncPlayer {
+  addEventListener(type: 'frameupdate', listener: CallbackListener<'frameupdate'>): void;
+  removeEventListener(type: 'frameupdate', listener: CallbackListener<'frameupdate'>): void;
+}
+
+export function attachPlayheadMediaSync(
+  player: PlayheadMediaSyncPlayer,
+  getDesiredFrame: () => number,
+  onFrame: CallbackListener<'frameupdate'>,
+): () => void {
+  const detachMetadataSync = attachMediaMetadataSync(player, getDesiredFrame);
+  player.addEventListener('frameupdate', onFrame);
+  return () => {
+    detachMetadataSync();
+    player.removeEventListener('frameupdate', onFrame);
+  };
 }
 
 export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total, px }: PlayheadDeps) {
@@ -85,6 +120,10 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
     let detach: (() => void) | null = null;
     let attached: unknown = null; // Which Player instance the listener is currently hung on
     const attachTo = (player: NonNullable<typeof playerRef.current>) => {
+      // A restored Player frame can precede HTML media metadata. Chrome then keeps
+      // the media tag at 0 until another seek; reassert the Player's synchronous
+      // current frame once the tag becomes seekable. Capture is required because
+      // loadedmetadata does not bubble.
       const flush = () => {
         paintRafRef.current = 0;
         if (pendingFrameRef.current != null) {
@@ -101,6 +140,7 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
       // The stream is throttled and saved once (~800ms), and it can be resumed after refresh wherever it is paused/draged.
       let lastHeadSave = 0;
       const onFrame = (event: { detail: { frame: number } }) => {
+        playheadRef.current = Math.max(0, event.detail.frame);
         pendingFrameRef.current = event.detail.frame;
         if (!paintRafRef.current) paintRafRef.current = requestAnimationFrame(flush);
         const now = performance.now();
@@ -109,6 +149,11 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
           persistHead(event.detail.frame);
         }
       };
+      const detachPlayheadSync = attachPlayheadMediaSync(
+        player,
+        () => playheadRef.current,
+        onFrame,
+      );
       const onPlay = () => setPlaying(true);
       const onPause = () => {
         setPlaying(false);
@@ -120,7 +165,6 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
         setPlaying(false);
         persistHead(player.getCurrentFrame());
       };
-      player.addEventListener('frameupdate', onFrame);
       player.addEventListener('play', onPlay);
       player.addEventListener('pause', onPause);
       player.addEventListener('ended', onEnded);
@@ -129,9 +173,9 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
         paintPlayheadRef.current(player.getCurrentFrame(), true);
       }
       return () => {
+        detachPlayheadSync();
         // Persist the last known frame before this Player instance detaches.
         try { persistHead(player.getCurrentFrame()); } catch { /* ignore */ }
-        player.removeEventListener('frameupdate', onFrame);
         player.removeEventListener('play', onPlay);
         player.removeEventListener('pause', onPause);
         player.removeEventListener('ended', onEnded);
