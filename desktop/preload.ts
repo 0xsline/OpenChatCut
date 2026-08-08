@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import {
   importLocalMediaFromFile,
   type LocalMediaPreloadDependencies,
@@ -12,6 +12,12 @@ import {
   EDITOR_CREDENTIALS_CHANNEL,
   type EditorBootstrapInfo,
 } from '../shared/editor-auth-transport.ts';
+import {
+  DESKTOP_UPDATE_CHANNELS,
+  isDesktopUpdateState,
+  type DesktopUpdateCheckSource,
+  type DesktopUpdateState,
+} from '../shared/desktop-update.ts';
 
 export interface DesktopExportDirectoryGrant {
   readonly grantId: string;
@@ -20,6 +26,14 @@ export interface DesktopExportDirectoryGrant {
 
 export interface DesktopExportFileGrant extends DesktopExportDirectoryGrant {
   readonly filename: string;
+}
+
+export interface DesktopUpdateApi {
+  getState(): Promise<DesktopUpdateState>;
+  check(source: DesktopUpdateCheckSource): Promise<DesktopUpdateState>;
+  download(): Promise<DesktopUpdateState>;
+  install(): Promise<DesktopUpdateState>;
+  subscribe(listener: (state: DesktopUpdateState) => void): () => void;
 }
 
 export interface OpenChatCutDesktopApi {
@@ -35,12 +49,22 @@ export interface OpenChatCutDesktopApi {
   revealExport(destinationId: string, filename: string): Promise<void>;
   projectStore(request: ProjectStoreRequest): Promise<ProjectStoreResponse>;
   editorCredentials(): Promise<EditorBootstrapInfo>;
+  updates: DesktopUpdateApi;
 }
 
 const localMediaPreloadDependencies: LocalMediaPreloadDependencies<File> = {
   getPathForFile: webUtils.getPathForFile.bind(webUtils),
   invoke: ipcRenderer.invoke.bind(ipcRenderer),
 };
+
+async function invokeDesktopUpdate(
+  channel: string,
+  ...args: unknown[]
+): Promise<DesktopUpdateState> {
+  const state: unknown = await ipcRenderer.invoke(channel, ...args);
+  if (!isDesktopUpdateState(state)) throw new Error('invalid desktop update state');
+  return state;
+}
 
 const api: OpenChatCutDesktopApi = {
   getPathForFile: (file) => webUtils.getPathForFile(file) || undefined,
@@ -64,6 +88,19 @@ const api: OpenChatCutDesktopApi = {
     ipcRenderer.invoke(PROJECT_STORE_CHANNEL, request) as Promise<ProjectStoreResponse>,
   editorCredentials: () =>
     ipcRenderer.invoke(EDITOR_CREDENTIALS_CHANNEL) as Promise<EditorBootstrapInfo>,
+  updates: {
+    getState: () => invokeDesktopUpdate(DESKTOP_UPDATE_CHANNELS.getState),
+    check: (source) => invokeDesktopUpdate(DESKTOP_UPDATE_CHANNELS.check, source),
+    download: () => invokeDesktopUpdate(DESKTOP_UPDATE_CHANNELS.download),
+    install: () => invokeDesktopUpdate(DESKTOP_UPDATE_CHANNELS.install),
+    subscribe: (listener) => {
+      const handleState = (_event: IpcRendererEvent, state: unknown): void => {
+        if (isDesktopUpdateState(state)) listener(state);
+      };
+      ipcRenderer.on(DESKTOP_UPDATE_CHANNELS.state, handleState);
+      return () => { ipcRenderer.removeListener(DESKTOP_UPDATE_CHANNELS.state, handleState); };
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('openChatCutDesktop', api);

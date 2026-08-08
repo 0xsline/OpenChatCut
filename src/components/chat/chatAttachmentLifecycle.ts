@@ -174,6 +174,27 @@ export function replaceChatAttachmentPromptToken(
   return input.replace(new RegExp(`${escaped}(?=\\s|$)`, 'g'), nextToken);
 }
 
+/**
+ * Chip-only references are independent from textarea text. References with an
+ * inline token are removed only when that token existed before this edit and
+ * the user deleted it.
+ */
+export function referencesAfterComposerTextEdit<T extends AgentReference>(
+  current: T[],
+  previousValue: string,
+  nextValue: string,
+): T[] {
+  const removed = current.some((reference) => {
+    const token = refPromptToken(reference);
+    return previousValue.includes(token) && !nextValue.includes(token);
+  });
+  if (!removed) return current;
+  return current.filter((reference) => {
+    const token = refPromptToken(reference);
+    return nextValue.includes(token) || !previousValue.includes(token);
+  });
+}
+
 export function upsertChatAttachmentReference(
   current: readonly AgentReference[],
   next: AgentReference,

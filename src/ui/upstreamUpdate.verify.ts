@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { formatDisplayVersion, queryLatestUpstreamRelease } from './upstreamUpdate';
+import { resolveUpstreamUpdateAction } from './upstreamUpdateAction';
+import { formatDisplayVersion, mapDesktopUpdateState, queryLatestUpstreamRelease } from './upstreamUpdate';
 
 assert.equal(formatDisplayVersion('0.1.7'), 'V0.1.7');
 assert.equal(formatDisplayVersion('v0.1.7'), 'V0.1.7');
@@ -30,5 +31,48 @@ await assert.rejects(
   /valid release version/i,
   'missing tag_name should fail instead of reporting a false update',
 );
+
+const availableState = mapDesktopUpdateState({
+  phase: 'available',
+  currentVersion: '0.1.9',
+  latestVersion: '0.2.0',
+  source: 'manual',
+});
+assert.deepEqual(availableState, {
+  phase: 'available',
+  visible: true,
+  currentVersion: '0.1.9',
+  latestVersion: '0.2.0',
+  source: 'manual',
+});
+assert.equal(resolveUpstreamUpdateAction(availableState, true).command, 'download');
+assert.equal(resolveUpstreamUpdateAction(availableState, false).command, 'view-release');
+
+const downloadingState = mapDesktopUpdateState({
+  phase: 'downloading',
+  currentVersion: '0.1.9',
+  latestVersion: '0.2.0',
+  source: 'manual',
+  percent: 142,
+});
+assert.equal(downloadingState.phase, 'downloading');
+assert.equal(downloadingState.phase === 'downloading' ? downloadingState.percent : -1, 100);
+assert.equal(resolveUpstreamUpdateAction(downloadingState, true).disabled, true);
+
+const failedInstallState = mapDesktopUpdateState({
+  phase: 'error',
+  currentVersion: '0.1.9',
+  latestVersion: '0.2.0',
+  source: 'manual',
+  failedOperation: 'install',
+});
+assert.equal(failedInstallState.phase, 'error');
+assert.equal(resolveUpstreamUpdateAction(failedInstallState, true).command, 'install');
+
+assert.deepEqual(mapDesktopUpdateState({
+  phase: 'unsupported',
+  currentVersion: '0.1.9',
+  source: 'auto',
+}), { phase: 'idle', visible: false });
 
 console.log('upstreamUpdate.verify: official release comparison passed');

@@ -4,6 +4,10 @@ import type {
   ProjectStoreResponse,
 } from '../shared/project-store-transport';
 import type { EditorBootstrapInfo } from '../shared/editor-auth-transport';
+import type {
+  DesktopUpdateCheckSource,
+  DesktopUpdateState,
+} from '../shared/desktop-update';
 interface DesktopExportDirectoryGrant {
   readonly grantId: string;
   readonly label: string;
@@ -12,6 +16,13 @@ interface DesktopExportFileGrant extends DesktopExportDirectoryGrant {
   readonly filename: string;
 }
 
+interface DesktopUpdateApi {
+  getState(): Promise<DesktopUpdateState>;
+  check(source: DesktopUpdateCheckSource): Promise<DesktopUpdateState>;
+  download(): Promise<DesktopUpdateState>;
+  install(): Promise<DesktopUpdateState>;
+  subscribe(listener: (state: DesktopUpdateState) => void): () => void;
+}
 declare global {
   interface Window {
     openChatCutDesktop?: {
@@ -27,6 +38,7 @@ declare global {
       revealExport(destinationId: string, filename: string): Promise<void>;
       projectStore(request: ProjectStoreRequest): Promise<ProjectStoreResponse>;
       editorCredentials(): Promise<EditorBootstrapInfo>;
+      updates: DesktopUpdateApi;
     };
   }
 }

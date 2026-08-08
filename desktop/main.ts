@@ -24,6 +24,7 @@ import {
 } from './local-media-bridge.ts';
 import { installProjectStoreIpc } from './project-store-ipc.ts';
 import { installEditorAuthIpc } from './editor-auth-ipc.ts';
+import { installDesktopUpdateIpc } from './update-ipc.ts';
 import {
   assertTrustedDesktopSenderUrl,
   resolveDesktopDevOrigin,
@@ -366,6 +367,11 @@ async function smokeProbe(origin: string, win: BrowserWindow): Promise<void> {
   ) as unknown;
   if (pickerType !== 'function') throw new Error('desktop directory picker preload is unavailable');
   console.log('[smoke] desktop directory picker preload ok');
+  const updaterType = await win.webContents.executeJavaScript(
+    'typeof window.openChatCutDesktop?.updates?.check',
+  ) as unknown;
+  if (updaterType !== 'function') throw new Error('desktop updater preload is unavailable');
+  console.log('[smoke] desktop updater preload ok');
   if (SMOKE_RENDER) {
     const state = { fps: 30, width: 640, height: 360, items: [], selectedId: null };
     const r = await fetch(`${origin}/render-still`, {
@@ -401,6 +407,7 @@ async function boot(): Promise<void> {
   registerDesktopHandlers(origin);
   installProjectStoreIpc(origin);
   installEditorAuthIpc(origin);
+  installDesktopUpdateIpc(origin, { enabled: app.isPackaged && !SMOKE });
   console.log(`[desktop] ${devOrigin ? 'live source' : 'embedded server'} at ${origin}`);
 
   const initialBounds = resolveInitialDesktopWindowBounds(screen.getPrimaryDisplay().workArea);

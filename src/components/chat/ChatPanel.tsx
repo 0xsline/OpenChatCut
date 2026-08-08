@@ -38,6 +38,7 @@ import {
   failChatAttachmentImport,
   pendingChatAttachmentCount,
   removeChatAttachmentReference,
+  referencesAfterComposerTextEdit,
   replaceChatAttachmentPromptToken,
   resetChatAttachmentLifecycle,
   resolveChatAttachmentImport,
@@ -632,7 +633,7 @@ export function ChatPanel({ ctx, projectId, collapsed, onToggleCollapse, onPrevi
           value={input} onChange={(value) => {
             setInput(value);
             const current = selectedRefsRef.current;
-            const next = current.filter((reference) => value.includes(refPromptToken(reference)));
+            const next = referencesAfterComposerTextEdit(current, input, value);
             let nextLifecycle = attachmentLifecycleRef.current;
             current.forEach((reference) => {
               if (!next.some((candidate) => candidate.id === reference.id)) {

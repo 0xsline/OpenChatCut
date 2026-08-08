@@ -5,12 +5,14 @@ import {
   beginChatAttachmentImport,
   cancelChatAttachmentImportByReference,
   createChatAttachmentLifecycleState,
+  referencesAfterComposerTextEdit,
   pendingChatAttachmentCount,
   removeChatAttachmentReference,
   replaceChatAttachmentPromptToken,
   resetChatAttachmentLifecycle,
   resolveChatAttachmentImport,
 } from './chatAttachmentLifecycle';
+import { refPromptToken } from '../../agent/selection-refs';
 
 const existing: AgentReference = { id: 'existing', name: 'Existing.mp4', kind: 'video' };
 const placeholder: AgentReference = { id: 'pending', name: 'Pending.mov', kind: 'video' };
@@ -94,6 +96,24 @@ assert.equal(
   pendingChatAttachmentCount(aSecond.state),
   0,
   'submission becomes eligible only after every associated import is ready',
+);
+
+const chipOnlyReferences = [existing];
+assert.equal(
+  referencesAfterComposerTextEdit(chipOnlyReferences, '先选引用', '先选引用，再输入需求'),
+  chipOnlyReferences,
+  'typing after selecting a chip-only reference must preserve the reference',
+);
+const inlineToken = refPromptToken(existing);
+assert.deepEqual(
+  referencesAfterComposerTextEdit(chipOnlyReferences, `${inlineToken} 需求`, '需求'),
+  [],
+  'deleting a previously embedded prompt token must still remove its reference',
+);
+assert.deepEqual(
+  referencesAfterComposerTextEdit(chipOnlyReferences, `${inlineToken} 需求`, `${inlineToken} 新需求`),
+  chipOnlyReferences,
+  'editing around an embedded prompt token must preserve its reference',
 );
 
 console.log('chatAttachmentLifecycle.verify: generation, removal, gating, and ordering invariants OK');

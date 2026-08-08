@@ -1,4 +1,10 @@
+import type {
+  DesktopUpdateOperation,
+  DesktopUpdateState,
+} from '../../shared/desktop-update';
+
 export const UPSTREAM_LATEST_RELEASE_URL = 'https://api.github.com/repos/0xsline/OpenChatCut/releases/latest';
+export const UPSTREAM_RELEASES_URL = 'https://github.com/0xsline/OpenChatCut/releases/latest';
 
 export const CURRENT_APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
@@ -6,22 +12,33 @@ export const CURRENT_APP_VERSION =
 type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type CheckSource = 'auto' | 'manual';
 
+type DesktopUpdateApi = NonNullable<Window['openChatCutDesktop']>['updates'];
 export interface UpstreamReleaseResult {
   latestVersion: string;
   updateAvailable: boolean;
 }
 
+interface VersionedUpdateState {
+  visible: boolean;
+  source: CheckSource;
+  currentVersion: string;
+  latestVersion: string;
+}
+
 export type UpstreamUpdateState =
   | { phase: 'idle'; visible: false }
   | { phase: 'checking'; visible: false; source: CheckSource }
+  | (VersionedUpdateState & { phase: 'available' | 'current' })
+  | (VersionedUpdateState & { phase: 'downloading'; percent: number })
+  | (VersionedUpdateState & { phase: 'downloaded' | 'installing' })
   | {
-    phase: 'available' | 'current';
+    phase: 'error';
     visible: boolean;
     source: CheckSource;
     currentVersion: string;
-    latestVersion: string;
-  }
-  | { phase: 'error'; visible: boolean; source: CheckSource };
+    latestVersion?: string;
+    failedOperation: DesktopUpdateOperation;
+  };
 
 interface ParsedVersion {
   core: readonly [number, number, number];
@@ -34,6 +51,9 @@ let state: UpstreamUpdateState = { phase: 'idle', visible: false };
 let requestSequence = 0;
 let autoCheckStarted = false;
 let activeController: AbortController | null = null;
+let unsubscribeDesktopUpdates: (() => void) | null = null;
+let desktopStateRevision = 0;
+let desktopUpdateSupported: boolean | null = null;
 
 function parseVersion(version: string): ParsedVersion | null {
   const match = version.trim().match(SEMVER);
@@ -99,11 +119,72 @@ export async function queryLatestUpstreamRelease(
 
 function publish(next: UpstreamUpdateState): void {
   state = next;
-  listeners.forEach((notify) => notify());
+  listeners.forEach((notify) => { notify(); });
+}
+
+export function mapDesktopUpdateState(update: DesktopUpdateState): UpstreamUpdateState {
+  const latestVersion = update.latestVersion ?? update.currentVersion;
+  if (update.phase === 'unsupported' || update.phase === 'idle') {
+    return { phase: 'idle', visible: false };
+  }
+  if (update.phase === 'checking') {
+    return { phase: 'checking', visible: false, source: update.source };
+  }
+  if (update.phase === 'error') {
+    return {
+      phase: 'error',
+      visible: update.source === 'manual',
+      source: update.source,
+      currentVersion: update.currentVersion,
+      latestVersion: update.latestVersion,
+      failedOperation: update.failedOperation ?? 'check',
+    };
+  }
+  const versioned = {
+    source: update.source,
+    currentVersion: update.currentVersion,
+    latestVersion,
+  };
+  if (update.phase === 'available') return { ...versioned, phase: 'available', visible: true };
+  if (update.phase === 'current') {
+    return { ...versioned, phase: 'current', visible: update.source === 'manual' };
+  }
+  if (update.phase === 'downloading') {
+    return { ...versioned, phase: 'downloading', visible: true, percent: Math.max(0, Math.min(100, update.percent ?? 0)) };
+  }
+  if (update.phase === 'downloaded') return { ...versioned, phase: 'downloaded', visible: true };
+  return { ...versioned, phase: 'installing', visible: true };
+}
+
+function desktopUpdateApi(): DesktopUpdateApi | null {
+  if (typeof window === 'undefined') return null;
+  return window.openChatCutDesktop?.updates ?? null;
+}
+
+function syncDesktopUpdate(update: DesktopUpdateState): void {
+  desktopUpdateSupported = update.phase !== 'unsupported';
+  desktopStateRevision += 1;
+  publish(mapDesktopUpdateState(update));
+}
+
+function ensureDesktopUpdateSubscription(): DesktopUpdateApi | null {
+  const desktop = desktopUpdateApi();
+  if (!desktop || unsubscribeDesktopUpdates) return desktop;
+  unsubscribeDesktopUpdates = desktop.subscribe(syncDesktopUpdate);
+  const revision = desktopStateRevision;
+  void desktop.getState().then((update) => {
+    if (desktopStateRevision === revision) syncDesktopUpdate(update);
+  }).catch(() => undefined);
+  return desktop;
+}
+
+export function hasDesktopUpdateSupport(): boolean {
+  return desktopUpdateApi() !== null && desktopUpdateSupported !== false;
 }
 
 export function subscribeUpstreamUpdate(notify: () => void): () => void {
   listeners.add(notify);
+  ensureDesktopUpdateSubscription();
   return () => { listeners.delete(notify); };
 }
 
@@ -115,10 +196,15 @@ export function dismissUpstreamUpdate(): void {
   requestSequence += 1;
   activeController?.abort();
   activeController = null;
-  if (state.phase !== 'idle') publish({ phase: 'idle', visible: false });
+  if (state.phase === 'idle') return;
+  if (state.phase === 'checking') {
+    publish({ phase: 'idle', visible: false });
+    return;
+  }
+  publish({ ...state, visible: false });
 }
 
-export async function requestUpstreamUpdateCheck(source: CheckSource = 'manual'): Promise<void> {
+async function requestWebUpdateCheck(source: CheckSource): Promise<void> {
   const sequence = ++requestSequence;
   activeController?.abort();
   const controller = new AbortController();
@@ -137,11 +223,81 @@ export async function requestUpstreamUpdateCheck(source: CheckSource = 'manual')
       latestVersion: result.latestVersion,
     });
   } catch {
-    if (sequence === requestSequence) publish({ phase: 'error', source, visible: source === 'manual' });
+    if (sequence === requestSequence) {
+      publish({
+        phase: 'error',
+        source,
+        visible: source === 'manual',
+        currentVersion: CURRENT_APP_VERSION,
+        failedOperation: 'check',
+      });
+    }
   } finally {
     globalThis.clearTimeout(timeout);
     if (sequence === requestSequence) activeController = null;
   }
+}
+
+export async function requestUpstreamUpdateCheck(source: CheckSource = 'manual'): Promise<void> {
+  const desktop = hasDesktopUpdateSupport() ? ensureDesktopUpdateSubscription() : null;
+  if (!desktop) return requestWebUpdateCheck(source);
+
+  publish({ phase: 'checking', source, visible: false });
+  try {
+    const update = await desktop.check(source);
+    syncDesktopUpdate(update);
+    if (update.phase === 'unsupported') await requestWebUpdateCheck(source);
+  } catch {
+    publish({
+      phase: 'error',
+      source,
+      visible: source === 'manual',
+      currentVersion: CURRENT_APP_VERSION,
+      failedOperation: 'check',
+    });
+  }
+}
+
+export async function requestUpstreamUpdateDownload(): Promise<void> {
+  const desktop = hasDesktopUpdateSupport() ? ensureDesktopUpdateSubscription() : null;
+  if (!desktop) {
+    openUpstreamReleasePage();
+    return;
+  }
+  try {
+    syncDesktopUpdate(await desktop.download());
+  } catch {
+    publish({
+      phase: 'error',
+      source: state.phase === 'idle' ? 'manual' : state.source,
+      visible: true,
+      currentVersion: CURRENT_APP_VERSION,
+      latestVersion: state.phase === 'idle' || state.phase === 'checking' ? undefined : state.latestVersion,
+      failedOperation: 'download',
+    });
+  }
+}
+
+export async function requestUpstreamUpdateInstall(): Promise<void> {
+  const desktop = hasDesktopUpdateSupport() ? ensureDesktopUpdateSubscription() : null;
+  if (!desktop) return;
+  try {
+    syncDesktopUpdate(await desktop.install());
+  } catch {
+    publish({
+      phase: 'error',
+      source: state.phase === 'idle' ? 'manual' : state.source,
+      visible: true,
+      currentVersion: CURRENT_APP_VERSION,
+      latestVersion: state.phase === 'idle' || state.phase === 'checking' ? undefined : state.latestVersion,
+      failedOperation: 'install',
+    });
+  }
+}
+
+export function openUpstreamReleasePage(): void {
+  if (typeof window === 'undefined') return;
+  window.open(UPSTREAM_RELEASES_URL, '_blank', 'noopener,noreferrer');
 }
 
 export function startAutomaticUpstreamUpdateCheck(): void {

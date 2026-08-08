@@ -24,6 +24,7 @@ const COMPOSITORS = [
 const TARGET_COMPOSITOR = { 'darwin-arm64': 'darwin-arm64', 'darwin-x64': 'darwin-x64', 'win32-x64': 'win32-x64-msvc', 'linux-x64': 'linux-x64-gnu' };
 const target = process.env.CC_EB_TARGET ?? `${process.platform}-${process.arch}`;
 const keep = TARGET_COMPOSITOR[target] ?? target;
+const updateChannel = target.includes('arm64') ? 'latest-arm64' : 'latest-x64';
 const hasMacSigningCertificate = Boolean(process.env.CSC_LINK || process.env.CSC_NAME);
 
 export default {
@@ -31,6 +32,12 @@ export default {
   productName: 'OpenChatCut',
   artifactName: '${productName}-${version}-${arch}.${ext}',
   directories: { output: 'release' },
+  publish: [{
+    provider: 'github',
+    owner: '0xsline',
+    repo: 'OpenChatCut',
+    channel: updateChannel,
+  }],
   files: [
     'desktop-dist/main.mjs',
     'desktop-dist/preload.cjs',
@@ -49,7 +56,7 @@ export default {
   ],
   npmRebuild: false,
   mac: {
-    target: ['dmg'],
+    target: ['dmg', 'zip'],
     category: 'public.app-category.video',
     icon: 'assets/branding/openchatcut-icon.icns',
     entitlements: 'desktop/entitlements.mac.plist',

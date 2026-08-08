@@ -15,9 +15,13 @@ import {
   CURRENT_APP_VERSION,
   formatDisplayVersion,
   getUpstreamUpdateState,
-  requestUpstreamUpdateCheck,
+  hasDesktopUpdateSupport,
   subscribeUpstreamUpdate,
 } from '../../ui/upstreamUpdate';
+import {
+  resolveUpstreamUpdateAction,
+  runUpstreamUpdateCommand,
+} from '../../ui/upstreamUpdateAction';
 import {
   SETTINGS_CATEGORIES, buildPatch, categoryGroupStats, findGroup, groupConfigured,
   modelValue, omitKey, savedMessage, vendorConfigured,
@@ -226,6 +230,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { requestClose, warn } = useCloseGuard(dirty, onClose);
   useEscape(requestClose);
 
+  const updateAction = resolveUpstreamUpdateAction(updateState, hasDesktopUpdateSupport());
+
   const codexStatus = ctx.codex.status;
 
   const shownError = error ?? loadError;
@@ -244,10 +250,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <SettingsVersionControl
               versionLabel={t('当前版本号：{version}', { version: formatDisplayVersion(CURRENT_APP_VERSION) })}
-              checkLabel={t('检查更新')}
-              checkingLabel={t('检查中…')}
-              checking={updateState.phase === 'checking'}
-              onCheck={() => { void requestUpstreamUpdateCheck('manual'); }}
+              actionLabel={updateAction.label}
+              disabled={updateAction.disabled}
+              onAction={() => { runUpstreamUpdateCommand(updateAction.command); }}
             />
             <button type="button" onClick={requestClose} title={t('关闭')} style={iconBtn}><Icon name="x" size={15} /></button>
           </div>
