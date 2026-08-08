@@ -117,7 +117,12 @@ assert.equal(htmlBodyState.reads, 0, 'HTML fallback response bodies must not be 
 
 const readableMedia = {
   items: [
-    { id: 'partial-video', kind: 'video', src: '/media/uploads/partial.mp4' },
+    {
+      id: 'partial-video',
+      kind: 'video',
+      src: '/media/uploads/partial.mp4',
+      originalFilePath: '/Users/editor/Masters/partial-video.mov',
+    },
     { id: 'image', kind: 'image', src: '/media/uploads/poster.png' },
     { id: 'remote-audio', kind: 'audio', src: 'https://cdn.example.test/audio.mp3' },
     { id: 'live-blob', kind: 'video', src: 'blob:https://app.openchatcut.test/live-video' },
@@ -140,6 +145,11 @@ const readablePlan = await assertExportMediaReadable(readableMedia, async (input
   return trackedProbeResponse(response.status, response.contentType, successfulBodyState);
 });
 assert.equal(readablePlan.issues.length, 0);
+assert.equal(
+  readablePlan.references.some((reference) => reference.field.endsWith('originalFilePath')),
+  false,
+  'desktop originalFilePath is NLE relink metadata, not a render-readable media source',
+);
 assert.equal(successfulRequests.length, 4, 'data URLs are readable without a network probe');
 for (const request of successfulRequests) {
   assert.equal(request.init.method, 'GET');
