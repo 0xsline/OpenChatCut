@@ -7,9 +7,16 @@ import type { TimelineItem } from '../editor/types';
 import { buildLaneGroups, type LanePage } from './lanes';
 import { activeCaptionPages, buildCaptionPages } from './captionPages';
 import { captionFlowStyle, captionTextStyle, containerStyle, effectivePreset } from './renderStyles';
+import { buildCaptionWordRuns } from './captionWordRuns';
 import { captionPageMotionStyle, captionWordMotionStyle } from './captionMotion';
 
 const CAPTION_OVERLAY_STYLE = { pointerEvents: 'none', zIndex: 1 } as const;
+const CAPTION_WORD_RUN_STYLE = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'baseline',
+  maxWidth: '100%',
+} as const;
 
 // Renders the active caption page for the current frame. Lives inside the
 // Remotion composition, so it shows in the Player preview AND burns into export.
@@ -44,20 +51,14 @@ function SingleStreamCaptions({ captions, items, ms, width, height, fps }: { cap
               ms={ms}
             />
           ) : (
-            <div style={captionFlowStyle(preset)}>
-              {page.words.map((w, i) => (
-                <span
-                  key={i}
-                  style={{
-                    position: 'relative',
-                    ...captionTextStyle(preset, height, i === curIdx),
-                    ...captionWordMotionStyle(captions.motionPreset, w, ms),
-                  }}
-                >
-                  {w.text}
-                </span>
-              ))}
-            </div>
+            <CaptionWordFlow
+              page={page}
+              preset={preset}
+              height={height}
+              currentIndex={curIdx}
+              motionPreset={captions.motionPreset}
+              ms={ms}
+            />
           )}
           {translated?.text && <div style={translationStyle(captions.template)}>{translated.text}</div>}
         </div>
@@ -90,6 +91,47 @@ function WholeLineCaption({
           </span>
         );
       })}
+    </div>
+  );
+}
+
+function CaptionWordFlow({
+  page,
+  preset,
+  height,
+  currentIndex,
+  motionPreset,
+  ms,
+}: {
+  page: CaptionPage;
+  preset: CaptionStyle;
+  height: number;
+  currentIndex: number;
+  motionPreset: CaptionMotionPreset | undefined;
+  ms: number;
+}) {
+  const runs = buildCaptionWordRuns(page.words, preset.displayMode === 'stacked');
+  return (
+    <div style={captionFlowStyle(preset)}>
+      {runs.map((run) => (
+        <span key={run.words[0]?.id ?? run.startIndex} style={CAPTION_WORD_RUN_STYLE}>
+          {run.words.map((word, runIndex) => {
+            const index = run.startIndex + runIndex;
+            return (
+              <span
+                key={word.id ?? index}
+                style={{
+                  position: 'relative',
+                  ...captionTextStyle(preset, height, index === currentIndex),
+                  ...captionWordMotionStyle(motionPreset, word, ms),
+                }}
+              >
+                {word.text}
+              </span>
+            );
+          })}
+        </span>
+      ))}
     </div>
   );
 }
@@ -168,20 +210,14 @@ function LaneCaption({
       ms={ms}
     />
   ) : (
-    <div style={captionFlowStyle(preset)}>
-      {lane.page.words.map((word, index) => (
-        <span
-          key={index}
-          style={{
-            position: 'relative',
-            ...captionTextStyle(preset, height, index === lane.curIdx),
-            ...captionWordMotionStyle(motionPreset, word, ms),
-          }}
-        >
-          {word.text}
-        </span>
-      ))}
-    </div>
+    <CaptionWordFlow
+      page={lane.page}
+      preset={preset}
+      height={height}
+      currentIndex={lane.curIdx}
+      motionPreset={motionPreset}
+      ms={ms}
+    />
   );
   return <div style={captionPageMotionStyle(motionPreset, lane.page, ms)}>{content}</div>;
 }

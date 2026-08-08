@@ -5,6 +5,7 @@ import { buildCaptionPages } from './captionPages';
 import { resolveEntryWordRefs } from './resolve';
 import { CAPTION_MAX_CHARS_PER_LINE, CAPTION_MAX_VISUAL_LINES, joinCaptionWords, paginate } from './types';
 import type { CaptionsData } from './types';
+import { buildCaptionWordRuns } from './captionWordRuns';
 
 const words = (texts: string[]) => texts.map((text, index) => ({
   text,
@@ -25,6 +26,23 @@ assert.deepEqual(
   pageText(['We', 'build', 'tools', 'for', 'the', 'future'], 4),
   ['We build tools', 'for the future'],
   'Latin function words are not orphaned at a page edge',
+);
+const cjkWords = words(['啊，', '这么', '大的', '太阳能', '拍', '好看', '吗？']);
+assert.deepEqual(
+  buildCaptionWordRuns(cjkWords, false).map((run) => run.words.map((word) => word.text)),
+  [['啊，', '这么', '大的', '太阳能', '拍', '好看', '吗？']],
+  'inline CJK tokens share one flex run without synthetic word gaps',
+);
+assert.deepEqual(
+  buildCaptionWordRuns(words(['OpenChatCut', '让', '剪辑', '更', '简单', 'today']), false)
+    .map((run) => run.words.map((word) => word.text)),
+  [['OpenChatCut'], ['让', '剪辑', '更', '简单'], ['today']],
+  'mixed-script captions preserve spacing only at script boundaries',
+);
+assert.equal(
+  buildCaptionWordRuns(cjkWords, true).length,
+  cjkWords.length,
+  'stacked captions keep one visual row per word',
 );
 
 const forced = paginate(words(['one', 'two', 'three', 'four']), 'phrase', 6, new Set([2]));
