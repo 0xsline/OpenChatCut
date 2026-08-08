@@ -12,6 +12,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Added in-app desktop updates: packaged macOS, Windows, and Linux builds can check, download, retry, and install the next GitHub Release from the dashboard notice or Settings, with per-platform update metadata published alongside installers.
   新增桌面端应用内更新：macOS、Windows 与 Linux 安装包可在首页提示或设置中检查、下载、重试并安装下一版 GitHub Release；各平台更新元数据与安装包一同发布。
+- Added opt-in blurred background fill for video and image clips: the Inspector and `edit_item` can enable a synchronized blurred/darkened cover layer, shared preview/export compositing preserves fades, effects, and GLSL transition alpha, and FCPXML export reports the unsupported layer explicitly.
+  新增视频与图片片段的可选模糊背景填充：可通过检查器或 `edit_item` 启用同步的模糊压暗铺满层；预览与导出共用合成链并保留淡化、特效和 GLSL 转场透明度，FCPXML 导出会显式报告该格式不支持的图层。
 - Added visual geometry understanding: in-browser MediaPipe person segmentation + face detection aggregate into per-segment safe zones (cached per asset+revision). Captions auto-avoid the speaker (`apply_caption_avoidance`), export QA warns when a caption covers the face, `auto_reframe` focal points follow the subject, and overlay graphics place into the safe zone (`place_graphics_in_safe_zone`). Undetected faces fall back to the subject's head band.
   新增视觉几何理解：浏览器内 MediaPipe 人像分割 + 人脸检测聚合为分段安全区（按素材+版本缓存）。字幕自动避开说话人（`apply_caption_avoidance`）、导出 QA 在字幕遮挡人脸时预警、`auto_reframe` 焦点跟随主体、叠加图形自动放入安全区（`place_graphics_in_safe_zone`）；人脸检测不到时回退到主体头部带。
 - Added `edit_item` source windows: `sourceStartMs`/`sourceEndMs` from `search_media` pass through unchanged; explicit `sourceStartSeconds`/`sourceEndSeconds` are also accepted and converted internally.
