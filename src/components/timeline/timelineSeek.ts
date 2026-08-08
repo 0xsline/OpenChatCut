@@ -5,6 +5,22 @@ export interface TimelineSeekGeometry {
   totalFrames: number;
 }
 
+export interface TimelinePointerSeekPlayer {
+  pause(): void;
+  seekTo(frame: number): void;
+}
+
+/** Pointer seeking is an editing action: pause first so the chosen frame stays put. */
+export function seekTimelineFromPointer(
+  player: TimelinePointerSeekPlayer | null,
+  frame: number,
+  paintPlayhead: (frame: number) => void,
+): void {
+  player?.pause();
+  player?.seekTo(frame);
+  paintPlayhead(frame);
+}
+
 /** Map a client coordinate to a real frame, excluding headers and empty tail space. */
 export function timelineSeekFrameAtClientX(
   clientX: number,

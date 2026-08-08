@@ -4,6 +4,7 @@ import {
   attachPlayheadMediaSync,
 } from './usePlayheadPaint';
 import {
+  seekTimelineFromPointer,
   timelineGestureHasDragged,
   timelinePointerShouldSeek,
   timelineSeekFrameAtClientX,
@@ -31,6 +32,25 @@ assert.equal(timelinePointerShouldSeek(0, false, true), false);
 assert.equal(timelineGestureHasDragged(10, 10, 13, 13), false);
 assert.equal(timelineGestureHasDragged(10, 10, 14, 10), true);
 assert.equal(timelineGestureHasDragged(10, 10, 10, 14), true);
+
+const pointerSeekCalls: string[] = [];
+seekTimelineFromPointer({
+  pause: () => pointerSeekCalls.push('pause'),
+  seekTo: (frame) => pointerSeekCalls.push(`seek:${frame}`),
+}, 42, (frame) => pointerSeekCalls.push(`paint:${frame}`));
+assert.deepEqual(
+  pointerSeekCalls,
+  ['pause', 'seek:42', 'paint:42'],
+  'pointer seeking must pause before moving and painting the playhead',
+);
+
+const detachedPointerPaints: number[] = [];
+seekTimelineFromPointer(null, 17, (frame) => detachedPointerPaints.push(frame));
+assert.deepEqual(
+  detachedPointerPaints,
+  [17],
+  'pointer seeking must still paint when the preview player is not mounted',
+);
 
 type FrameListener = (event: { detail: { frame: number } }) => void;
 

@@ -30,7 +30,8 @@ import { usePlayheadPaint } from './usePlayheadPaint';
 import { useTimelineZoomController } from './useTimelineZoomController';
 import { timelineFitTotalFrames } from './timelineFitRange';
 import {
-  timelineGestureHasDragged, timelinePointerShouldSeek, timelineSeekFrameAtClientX,
+  seekTimelineFromPointer, timelineGestureHasDragged, timelinePointerShouldSeek,
+  timelineSeekFrameAtClientX,
 } from './timelineSeek';
 import { isTimelineDragOverChat } from './timelineChatDrop';
 import {
@@ -317,10 +318,13 @@ export function useTimelineController({
     state, commands, liveStateRef, onDropExternalFiles, placeMode, t,
   });
 
+  const seekPointerFrame = (frame: number) => {
+    const clamped = Math.max(0, Math.min(frame, total - 1));
+    seekTimelineFromPointer(playerRef.current, clamped, paintPlayhead);
+  };
+
   const seekTo = (clientX: number) => {
-    const f = Math.max(0, Math.min(frameFromClientX(clientX), total - 1));
-    playerRef.current?.seekTo(f);
-    paintPlayhead(f);
+    seekPointerFrame(frameFromClientX(clientX));
   };
 
   const seekFrame = (f: number) => {
@@ -390,7 +394,7 @@ export function useTimelineController({
     seekGestureRef.current = null;
     if (!timelinePointerShouldSeek(gesture.button, pickMode, gesture.dragged)) return;
     const frame = frameAtClientX(event.clientX);
-    if (frame !== null) seekFrame(frame);
+    if (frame !== null) seekPointerFrame(frame);
   };
   useEffect(() => () => onHoverPreviewFrameChange?.(null), [onHoverPreviewFrameChange]);
 
