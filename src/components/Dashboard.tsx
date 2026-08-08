@@ -3,6 +3,7 @@ import { theme } from '../theme';
 import { getAgentModelSnapshot, subscribeAgentModels } from '../agent/model-selection';
 import { loadProject, loadProjectThumb, saveProjectThumb, type ProjectMeta } from '../persist/projectStore';
 import { BrandMark, Icon, OpenChatCutWordmark } from './icons';
+import { DashboardHeaderLinks } from './DashboardHeaderLinks';
 import { SettingsDialog } from './settings/SettingsDialog';
 import { McpGuideDialog } from './settings/McpGuide';
 import { SkinPicker } from './settings/SkinPicker';
@@ -98,6 +99,7 @@ function ProjectSearch({ value, onChange }: { value: string; onChange: (value: s
   );
 }
 
+
 export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDelete, onExport, onImport }: DashboardProps) {
   const t = useT();
   const isMacDesktop = window.openChatCutDesktop?.platform === 'darwin';
@@ -190,6 +192,7 @@ export function Dashboard({ projects, onOpen, onNew, onRename, onDuplicate, onDe
         <OpenChatCutWordmark />
         <span style={{ color: theme.textDim, fontSize: 13 }}>{t('· 我的工程')}</span>
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+          <DashboardHeaderLinks />
           <button onClick={() => setMcpOpen(true)} data-tip={t('外部 Agent 接入 (MCP)')} aria-label={t('外部 Agent 接入 (MCP)')} className="cc-header-btn cc-tip cc-tip-r" style={settingsBtn}>
             <Icon name="plug" size={16} />
           </button>

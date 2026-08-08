@@ -70,6 +70,8 @@ export default {
   // ---- Dashboard ----
   '· 我的工程': '· My Projects',
   '设置 · API 密钥': 'Settings · API Keys',
+  '联系作者': 'Contact author',
+  'GitHub 仓库': 'GitHub repository',
   '配置模型后开始使用 Agent': 'Configure a model to start using the Agent',
   '配置任一云端或本地模型，即可在编辑器中使用对话式剪辑。': 'Configure any cloud or local model to use conversational editing in the editor.',
   '配置模型': 'Configure Model',
