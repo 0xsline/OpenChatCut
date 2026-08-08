@@ -16,9 +16,10 @@ import type { ProjectMigrationOptions, ProjectMigrationResult, ProjectMigrationS
 import { v1ToV2 } from './v1-to-v2.js';
 import { v2ToV3 } from './v2-to-v3.js';
 import { v3ToV4 } from './v3-to-v4.js';
+import { v4ToV5 } from './v4-to-v5.js';
 import { backfillProjectCaptionIdentity } from './captionIdentity.js';
 
-const migrations: readonly ProjectMigrationStep[] = [v1ToV2, v2ToV3, v3ToV4];
+const migrations: readonly ProjectMigrationStep[] = [v1ToV2, v2ToV3, v3ToV4, v4ToV5];
 const migrationByVersion = new Map(migrations.map((migration) => [migration.fromVersion, migration]));
 
 function startingDocument(value: unknown): { value: unknown; version: number } | null {

@@ -1,0 +1,9 @@
+.cc-insp-toggle-row {
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:7px 8px; border:0.5px solid var(--cc-border); border-radius:5px;
+  color:var(--cc-text); cursor:pointer; background:var(--cc-inset);
+}
+.cc-insp-toggle-row > span { min-width:0; display:flex; flex-direction:column; gap:2px; }
+.cc-insp-toggle-row strong { font-size:11.5px; font-weight:600; }
+.cc-insp-toggle-row small { color:var(--cc-text-dim); font-size:10px; line-height:1.35; }
+.cc-insp-toggle-row input { flex:none; accent-color:var(--cc-accent); }

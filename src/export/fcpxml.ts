@@ -15,6 +15,7 @@ import { hasOperationalTranscript } from '../transcript/types';
 import { sourceWindowForTimelineRange } from '../editor/sourceLimit';
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
 import { safeSourceFilename, stripInvalidXml10Characters } from '../media/sourceFilename';
+import { isBackgroundFillActive } from '../editor/backgroundFill';
 
 /** Asset URL prefix: it is in mediaDir on the disk and has the same name. */
 const UPLOAD_PREFIX = '/media/uploads/';
@@ -328,6 +329,10 @@ export interface FcpxmlExportOptions {
   mediaDir?: string;
 }
 
+export function fcpxmlBackgroundFillCount(state: TimelineState): number {
+  return state.items.filter((item) => isBackgroundFillActive(state, item)).length;
+}
+
 export function timelineToFcpxml(
   state: TimelineState,
   opts: FcpxmlExportOptions = {},
@@ -357,9 +362,12 @@ export function timelineToFcpxml(
     const laneDiff = laneOf(b.track) - laneOf(a.track);
     return laneDiff !== 0 ? laneDiff : a.startFrame - b.startFrame;
   });
-  const spineChildren = sortedItems
-    .map((item) => itemToSpineElement(item, fps, laneOf(item.track), assets, renderedMotionGraphics))
-    .join('\n        ');
+  const backgroundFillWarning = fcpxmlBackgroundFillCount(state) > 0
+    ? xmlComment('WARNING: FCPXML cannot represent OpenChatCut backgroundFill; render a video master to preserve this appearance.')
+    : '';
+  const itemXml = sortedItems
+    .map((item) => itemToSpineElement(item, fps, laneOf(item.track), assets, renderedMotionGraphics));
+  const spineChildren = [backgroundFillWarning, ...itemXml].filter(Boolean).join('\n        ');
 
   const backgroundGap = `<gap name="Background" offset="${rationalTime(0, fps)}" duration="${rationalTime(total, fps)}">\n        ${spineChildren}\n      </gap>`;
   const eventName = nle === 'fcp_xml_resolve' ? 'OpenChatCut Export (Resolve)' : 'OpenChatCut Export';

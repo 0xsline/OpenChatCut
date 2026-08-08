@@ -27,6 +27,7 @@ import { planInspectorBatch, selectedInspectorItems } from './editor/inspectorBa
 import { captureTimelineItemSource, sourceRevisionOf, validateTimelineItemSourceBatch } from './editor/mediaSourceRevision';
 import { usedMediaAssetIds } from './editor/mediaAssetUsage';
 import { supportsKeyframeProperty } from './editor/keyframeRegistry';
+import { isBackgroundFillEligible } from './editor/backgroundFill';
 import {
   flushProjectSaves,
   hasPendingProjectSaves,
@@ -1058,6 +1059,12 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
                 (item) => item.kind !== 'audio',
               );
             }}
+            backgroundFillAvailable={selectedItems.length > 0
+              && selectedItems.every((item) => isBackgroundFillEligible(state, item))}
+            onItemBackgroundFillChange={(enabled) => applyInspectorSelection(
+              (item) => ({ type: 'setBackgroundFill', id: item.id, enabled }),
+              (item) => isBackgroundFillEligible(state, item),
+            )}
             autoGrade={{
               busy: autoGradeBusy,
               targetCount: autoGradeTargets.length,

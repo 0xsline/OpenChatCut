@@ -122,7 +122,7 @@ void main() {
 
         // Darken as it curves back down
         top_color_rgb *= mix(0.9, 0.5, normal_z);
-        vec4 top_color = vec4(top_color_rgb, 1.0);
+        vec4 top_color = vec4(top_color_rgb, flat_color.a);
 
         // Edge masking and thickness rim for top curl
         float edge_dist_t = min(min(uv_top.x, 1.0 - uv_top.x), min(uv_top.y, 1.0 - uv_top.y));

@@ -15,6 +15,7 @@ const fixture = (name: string): unknown => JSON.parse(
 const v1 = fixture('project-v1.json');
 const v2 = fixture('project-v2.json');
 const v3 = fixture('project-v3.json');
+const v4 = fixture('project-v4.json');
 
 {
   const sourceSnapshot = JSON.stringify(v1);
@@ -29,8 +30,8 @@ const v3 = fixture('project-v3.json');
   });
   assert.ok(migrated);
   assert.equal(migrated.doc.version, CURRENT_PROJECT_VERSION);
-  assert.deepEqual(migrated.appliedSteps, ['v1-to-v2', 'v2-to-v3', 'v3-to-v4']);
-  assert.deepEqual(progress, [[1, 2, 1, 3], [2, 3, 2, 3], [3, 4, 3, 3]]);
+  assert.deepEqual(migrated.appliedSteps, ['v1-to-v2', 'v2-to-v3', 'v3-to-v4', 'v4-to-v5']);
+  assert.deepEqual(progress, [[1, 2, 1, 4], [2, 3, 2, 4], [3, 4, 3, 4], [4, 5, 4, 4]]);
   assert.deepEqual(migrated.doc.assets.map((asset) => asset.id), ['asset_video', 'asset_audio']);
   assert.equal(migrated.doc.assets[0].name, 'interview.mp4', 'project-level asset wins duplicate ids');
   assert.equal(migrated.doc.assets[0].folderId, undefined, 'missing folders are detached');
@@ -52,15 +53,26 @@ const v3 = fixture('project-v3.json');
 {
   const migrated = runProjectMigrations(v2);
   assert.ok(migrated);
-  assert.deepEqual(migrated.appliedSteps, ['v2-to-v3', 'v3-to-v4']);
+  assert.deepEqual(migrated.appliedSteps, ['v2-to-v3', 'v3-to-v4', 'v4-to-v5']);
   assert.equal(migrated.doc.timelines[0].items[0].track, 'track_tl_fixture_2');
 }
 
 {
   const migrated = runProjectMigrations(v3);
   assert.ok(migrated);
-  assert.deepEqual(migrated.appliedSteps, ['v3-to-v4']);
+  assert.deepEqual(migrated.appliedSteps, ['v3-to-v4', 'v4-to-v5']);
   assert.deepEqual(migrated.doc, { ...(v3 as object), version: CURRENT_PROJECT_VERSION });
+}
+
+{
+  const sourceSnapshot = JSON.stringify(v4);
+  const migrated = runProjectMigrations(v4);
+  assert.ok(migrated);
+  assert.deepEqual(migrated.appliedSteps, ['v4-to-v5']);
+  assert.equal(migrated.doc.version, CURRENT_PROJECT_VERSION);
+  assert.equal(migrated.doc.timelines[0]?.items[0]?.backgroundFill, undefined,
+    'V4 clips retain the historical disabled appearance');
+  assert.equal(JSON.stringify(v4), sourceSnapshot, 'V4 migration never mutates source bytes');
 }
 
 {
@@ -317,7 +329,7 @@ const v3 = fixture('project-v3.json');
   }), { onProgress: (event) => progress.push([event.fromVersion, event.toVersion]) });
   assert.ok('envelope' in parsed);
   if ('envelope' in parsed) assert.equal(parsed.envelope.doc.version, CURRENT_PROJECT_VERSION);
-  assert.deepEqual(progress, [[2, 3], [3, 4]]);
+  assert.deepEqual(progress, [[2, 3], [3, 4], [4, 5]]);
 }
 
 // Cache migration is atomic: save only the completed chain; invalid bytes remain untouched.
@@ -329,7 +341,7 @@ const v3 = fixture('project-v3.json');
     onProgress: (event) => progress.push([event.fromVersion, event.toVersion]),
   });
   assert.equal(loaded?.version, CURRENT_PROJECT_VERSION);
-  assert.deepEqual(progress, [[1, 2], [2, 3], [3, 4]]);
+  assert.deepEqual(progress, [[1, 2], [2, 3], [3, 4], [4, 5]]);
   assert.equal((await kvGet<{ version?: number }>('project:fixture-v1'))?.version, CURRENT_PROJECT_VERSION);
 
   const broken = { version: 2, timelines: [], activeTimelineId: '' };

@@ -48,6 +48,7 @@ function slimItem(
     templateId: it.templateId ?? null,
     volume: it.volume ?? null,
     zoom: it.zoom ?? null,
+    backgroundFill: it.backgroundFill === true,
     effects: (it.effects ?? []).map((e) => ({
       effectId: e.id,
       assetId: e.assetId,

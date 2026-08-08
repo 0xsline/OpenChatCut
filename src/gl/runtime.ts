@@ -22,56 +22,9 @@ void main() { gl_Position = vec4(a_position, 0.0, 1.0); v_texCoord = a_texCoord;
 
 import { GL_COLOR_PIPELINE } from './colorPipeline.js';
 import type { CubeLut } from './fx/cube.js';
-
-export type UniformValue = number | number[];
-
-export interface FxPass {
-  frag: string;
-  uniforms?: Record<string, UniformValue>;
-  /** read u_input from an earlier pass instead of the immediately previous one */
-  inputFrom?: number;
-  /** bind named sampler uniforms to earlier pass outputs */
-  samplers?: Record<string, number>;
-  /** 3D LUT bound to the `u_lut` sampler3D uniform. */
-  lut3d?: CubeLut;
-}
-
-export interface GlRuntime {
-  canvas: HTMLCanvasElement;
-  /** draw one transition frame: mix outgoing→incoming at progress (0..1) */
-  render: (
-    frag: string,
-    outgoing: TexImageSource,
-    incoming: TexImageSource,
-    progress: number,
-    extra?: Record<string, UniformValue>,
-  ) => void;
-  /** Apply each clip's effect graph, then transition between both retained outputs. */
-  renderTransitionWithFx: (
-    frag: string,
-    outgoing: TexImageSource,
-    incoming: TexImageSource,
-    outgoingPasses: FxPass[],
-    incomingPasses: FxPass[],
-    progress: number,
-    extra?: Record<string, UniformValue>,
-  ) => void;
-  /** Run a single-input per-clip effect pass using the builtin:fx-* uniforms:
-   *  u_input + u_width/u_height/u_resolution + effect uniforms) */
-  renderFx: (
-    frag: string,
-    input: TexImageSource,
-    extra?: Record<string, UniformValue>,
-    lut3d?: CubeLut,
-  ) => void;
-  /** run a multi-pass effect; pass 0 reads `input`, later passes default to the
-   * previous output and may also reference earlier outputs (ASCII bloom). */
-  renderFxChain: (
-    passes: FxPass[],
-    input: TexImageSource,
-  ) => void;
-  dispose: () => void;
-}
+import { SOURCE_OPACITY_FRAG } from './sourceOpacity.js';
+import type { FxPass, GlRuntime, UniformValue } from './runtimeTypes.js';
+export type { FxPass, GlRuntime, UniformValue } from './runtimeTypes.js';
 
 let activeGlRuntimes = 0;
 
@@ -343,6 +296,28 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
     return targets[offset + passes.length - 1].tex;
   };
 
+  const applySourceOpacity = (
+    source: WebGLTexture,
+    targetIndex: number,
+    opacity: number,
+  ): WebGLTexture => {
+    const target = ensureFbos(targetIndex + 1)[targetIndex];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.fb);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    const prog = getProgram(SOURCE_OPACITY_FRAG);
+    gl.useProgram(prog);
+    bindQuad(prog);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, source);
+    const locIn = gl.getUniformLocation(prog, 'u_input');
+    if (locIn) gl.uniform1i(locIn, 0);
+    setUniform(prog, 'u_opacity', Math.max(0, Math.min(1, opacity)));
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    return target.tex;
+  };
+
   let disposed = false;
   activeGlRuntimes += 1;
   const assertContextAvailable = () => {
@@ -365,6 +340,7 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
       incomingPasses,
       progress,
       extra,
+      sourceOpacity,
     ) {
       assertContextAvailable();
       upload(texOut, 0, outgoing);
@@ -375,10 +351,21 @@ export function createGlRuntime(canvas: HTMLCanvasElement): GlRuntime {
         texIn,
         outgoingPasses.length,
       );
+      const opacityOffset = outgoingPasses.length + incomingPasses.length;
+      const compositedOutgoing = applySourceOpacity(
+        filteredOutgoing,
+        opacityOffset,
+        sourceOpacity?.outgoing ?? 1,
+      );
+      const compositedIncoming = applySourceOpacity(
+        filteredIncoming,
+        opacityOffset + 1,
+        sourceOpacity?.incoming ?? 1,
+      );
       drawTransitionFromTextures(
         frag,
-        filteredOutgoing,
-        filteredIncoming,
+        compositedOutgoing,
+        compositedIncoming,
         progress,
         extra,
       );

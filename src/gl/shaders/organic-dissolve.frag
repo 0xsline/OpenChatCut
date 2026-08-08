@@ -77,5 +77,5 @@ void main() {
 
     vec3 finalColor = baseColor.rgb + u_glowColor * glow * 2.5;
 
-    fragColor = vec4(finalColor, 1.0);
+    fragColor = vec4(finalColor, baseColor.a);
 }

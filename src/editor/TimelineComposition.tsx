@@ -1,22 +1,13 @@
-import { useEffect, useMemo } from 'react';
-import { Audio as BrowserAudio, Video as BrowserVideo, type AudioProps as BrowserAudioProps, type VideoProps as BrowserVideoProps } from '@remotion/media';
-import { AbsoluteFill, Audio as ServerAudio, Img, OffthreadVideo, Sequence, getRemotionEnvironment, useCurrentFrame } from 'remotion';
-import { getCompiledTemplate } from '../template-host';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AbsoluteFill, Sequence, getRemotionEnvironment, useCurrentFrame } from 'remotion';
 import { CaptionsLayer } from '../captions/CaptionsLayer';
 import { GlTransition } from '../gl/GlTransition';
-import { ClipFx } from '../gl/ClipFx';
-import { firstGlEffect } from '../gl/clipEffects';
 import { ALL_FX, registerCustomFx } from '../gl/fx/effects';
-import { selectEffectPreviewAdapter, selectTransitionPreviewAdapter, staticEffectPreviewStatus, staticPreviewFallbackStatus } from '../gl/previewAdapter';
+import { selectTransitionPreviewAdapter, staticEffectPreviewStatus, staticPreviewFallbackStatus } from '../gl/previewAdapter';
 import type { SelectedPreviewStatus, SelectedPreviewStatusListener } from '../gl/previewAdapter';
-import { itemEditOpts, itemWindow, keptSegments } from '../transcript/edit';
-import { hasOperationalTranscript } from '../transcript/types';
-import { voiceIsolationMix } from '../audio/voiceMix';
-import { zoomAt } from './zoom';
-import { sampleKeyframes, volumeAtFrame } from './keyframes';
 import { captionTrackEntries, CSS_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
 import { previewTextEditFields } from '../components/preview/previewTextEdit';
-import type { AspectFit, CssTransitionType, GlslTransitionType, KeyframeProp, ProjectDoc, Timeline, TimelineItem, TimelineState, TransitionDirection, TransitionItem, Watermark } from './types';
+import type { AspectFit, CssTransitionType, GlslTransitionType, ProjectDoc, Timeline, TimelineItem, TimelineState, TransitionDirection } from './types';
 import { sourceFrameAt } from './sourceLimit';
 import { nestedSequenceFrom, resolveTimelineRenderPlan, SequenceGraphError, type SequenceGraphLimits } from './sequenceGraph';
 import { continuousVideoAudioGroups } from './transitionAudio';
@@ -24,416 +15,15 @@ import { PreviewTransitionIn } from './transitionPreview.tsx';
 import { previewTransitionType } from './transitionPreview';
 import { TimelineReadinessGate } from './TimelineReadinessGate';
 import { timelineReadinessKey } from './timelineReadinessKey';
-import { clampVisualBorderRadius, visibleVisualFrameRect } from './visualFrameGeometry';
-
-// fade multiplier at a Sequence-relative frame (0..dur): ramps 0→1 across
-// fadeIn, then 1→0 across fadeOut. Used for visual opacity + audio volume.
-function fadeFactor(frame: number, dur: number, fadeIn = 0, fadeOut = 0): number {
-  let f = 1;
-  if (fadeIn > 0) f = Math.min(f, frame / fadeIn);
-  if (fadeOut > 0) f = Math.min(f, (dur - frame) / fadeOut);
-  return Math.max(0, Math.min(1, f));
-}
-
-// Wraps a visual clip: ramps opacity for fade in/out and applies its static
-// transform (scale / position / rotation). x/y are percent of canvas, so
-// translate(x%,y%) offsets by that fraction of the full-frame layer.
-// Generic keyframes (PRD §4.5): a keyframed prop overrides its static transform
-// value at the current local frame; keyframed opacity multiplies onto the fades.
-// Items WITHOUT keyframes take the exact pre-keyframe code path (regression red line).
-function ClipWrapper({ item, frameOffset = 0, hiddenByCaptions = false, children }: { item: TimelineItem; frameOffset?: number; hiddenByCaptions?: boolean; children: (borderRadius: number) => React.ReactNode }) {
-  const frame = useCurrentFrame() + frameOffset;
-  const o = fadeFactor(frame, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames);
-  const kf = item.keyframes;
-  const kv = (prop: KeyframeProp): number | undefined => {
-    const list = kf?.[prop];
-    return list?.length ? sampleKeyframes(list, frame) : undefined;
-  };
-  const kx = kv('x');
-  const ky = kv('y');
-  const kr = kv('rotation');
-  const ks = kv('scale');
-  const ksx = kv('scaleX');
-  const ksy = kv('scaleY');
-  const ko = kv('opacity');
-  const t = item.transform;
-  // Axis-specific scale wins over uniform `scale` so edge-drag non-uniform sticks.
-  const scaleX = ksx ?? t?.scaleX ?? ks ?? t?.scale ?? 1;
-  const scaleY = ksy ?? t?.scaleY ?? ks ?? t?.scale ?? 1;
-  const hasScale = ks !== undefined || ksx !== undefined || ksy !== undefined
-    || t?.scale !== undefined || t?.scaleX !== undefined || t?.scaleY !== undefined;
-  const transform = (t || kx !== undefined || ky !== undefined || kr !== undefined || hasScale)
-    ? `translate(${kx ?? t?.x ?? 0}%, ${ky ?? t?.y ?? 0}%) rotate(${kr ?? t?.rotation ?? 0}deg) scale(${scaleX}, ${scaleY})`
-    : undefined;
-  // layer crop (split screen/PiP): clip-path cuts the layer first, and then moves it as a whole with transform. When there is no crop
-  // This style is not produced at all (return to the red line: the old project DOM remains unchanged).
-  const c = t?.crop;
-  const cropPct = (v: number | undefined) => `${((v ?? 0) * 100).toFixed(3)}%`;
-  const clipPath = c && ((c.left ?? 0) > 0 || (c.top ?? 0) > 0 || (c.right ?? 0) > 0 || (c.bottom ?? 0) > 0)
-    ? `inset(${cropPct(c.top)} ${cropPct(c.right)} ${cropPct(c.bottom)} ${cropPct(c.left)})`
-    : undefined;
-  // Captions off also hides on-screen text clips (render-layer only; item data untouched).
-  const baseOpacity = hiddenByCaptions ? 0 : Math.max(0, Math.min(1, t?.opacity ?? 1));
-  const opacity = o * Math.max(0, Math.min(1, ko ?? baseOpacity));
-  const borderRadius = Math.max(0, kv('borderRadius') ?? t?.borderRadius ?? 0);
-  const fl = item.filters;
-  const filter = fl
-    ? `brightness(${fl.brightness ?? 1}) contrast(${fl.contrast ?? 1}) saturate(${fl.saturate ?? 1}) blur(${fl.blur ?? 0}px)`
-    : undefined;
-  // animated zoom (builtin:zoom): scale content toward its focal point over time.
-  let inner = children(borderRadius);
-  if (item.zoom) {
-    const z = zoomAt(item.zoom, frame, item.durationInFrames);
-    inner = (
-      <AbsoluteFill style={{ transform: `scale(${z.magnification})`, transformOrigin: `${z.focalX * 100}% ${z.focalY * 100}%` }}>
-        {inner}
-      </AbsoluteFill>
-    );
-  }
-  return <AbsoluteFill style={{
-    opacity,
-    transform,
-    filter,
-    clipPath,
-  }}>{inner}</AbsoluteFill>;
-}
-
-// One audio clip. With a transcript attached it renders the KEPT segments
-// (deleted words' source ranges are skipped, remaining ranges play back-to-back);
-// otherwise it plays the whole source.
-/** Voice isolation preserves the master source and mixes it with the immutable wet artifact. */
-
-/**
- * Audio cross-fade: at the seam, outgoing ramps 1→0
- * over the last L frames of its clip; incoming ramps 0→1 over the first L frames.
- */
-function audioCrossfadeMul(
-  item: TimelineItem,
-  localFrame: number,
-  transitions: TransitionItem[] | undefined,
-): number {
-  if (!transitions?.length) return 1;
-  let m = 1;
-  for (const t of transitions) {
-    if (t.enabled === false || !isAudioTransition(t.type)) continue;
-    const L = Math.max(1, t.durationInFrames);
-    if (t.outgoingItemId === item.id) {
-      // last L frames of outgoing: 1 → 0
-      const from = item.durationInFrames - L;
-      if (localFrame >= from) {
-        const p = Math.min(1, Math.max(0, (localFrame - from) / L));
-        m *= 1 - p;
-      }
-    }
-    if (t.incomingItemId === item.id) {
-      // first L frames of incoming: 0 → 1
-      if (localFrame < L) {
-        const p = Math.min(1, Math.max(0, localFrame / L));
-        m *= p;
-      }
-    }
-  }
-  return m;
-}
-
-function RuntimeAudio({ browserRenderer, ...props }: BrowserAudioProps & { browserRenderer: boolean }) {
-  return browserRenderer
-    ? <BrowserAudio {...props} />
-    : <ServerAudio {...props} preservePitch />;
-}
-
-function MixedRuntimeAudio({
-  item,
-  browserRenderer,
-  volume,
-  ...props
-}: Omit<BrowserAudioProps, 'src'> & {
-  item: TimelineItem;
-  browserRenderer: boolean;
-}) {
-  if (!item.denoisedSrc) {
-    return <RuntimeAudio browserRenderer={browserRenderer} {...props} src={item.src!} volume={volume} />;
-  }
-  const mix = voiceIsolationMix(item.denoiseStrength);
-  const scaledVolume = (gain: number): BrowserAudioProps['volume'] => (
-    typeof volume === 'function'
-      ? (frame) => volume(frame) * gain
-      : (volume ?? 1) * gain
-  );
-  return (
-    <>
-      {mix.dry > 0 && (
-        <RuntimeAudio browserRenderer={browserRenderer} {...props} src={item.src!} volume={scaledVolume(mix.dry)} />
-      )}
-      {mix.wet > 0 && (
-        <RuntimeAudio browserRenderer={browserRenderer} {...props} src={item.denoisedSrc} volume={scaledVolume(mix.wet)} />
-      )}
-    </>
-  );
-}
-
-type RuntimeVideoProps = Pick<BrowserVideoProps, 'src' | 'trimBefore' | 'trimAfter' | 'playbackRate' | 'volume' | 'style' | 'muted'> & {
-  browserRenderer: boolean;
-};
-
-function RuntimeVideo({ browserRenderer, ...props }: RuntimeVideoProps) {
-  return browserRenderer
-    ? <BrowserVideo {...props} />
-    : <OffthreadVideo {...props} preservePitch />;
-}
-
-function VisualClipSurface({
-  item,
-  fit,
-  canvasW,
-  canvasH,
-  borderRadius,
-  children,
-}: {
-  item: TimelineItem;
-  fit: AspectFit;
-  canvasW: number;
-  canvasH: number;
-  borderRadius: number;
-  children: React.ReactNode;
-}) {
-  const sourceWidth = item.kind === 'solid' ? canvasW : item.width ?? canvasW;
-  const sourceHeight = item.kind === 'solid' ? canvasH : item.height ?? canvasH;
-  const frame = item.kind === 'solid'
-    ? { x: 0, y: 0, width: canvasW, height: canvasH }
-    : visibleVisualFrameRect(
-      { width: canvasW, height: canvasH },
-      { width: sourceWidth, height: sourceHeight },
-      fit,
-    );
-  const resolvedRadius = clampVisualBorderRadius(borderRadius, frame);
-  return (
-    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
-      <div style={{
-        position: 'relative',
-        width: frame.width,
-        height: frame.height,
-        flexShrink: 0,
-        overflow: resolvedRadius ? 'hidden' : undefined,
-        borderRadius: resolvedRadius ? `${resolvedRadius}px` : undefined,
-      }}>
-        {children}
-      </div>
-    </AbsoluteFill>
-  );
-}
-
-function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, browserRenderer }: {
-  item: TimelineItem; fps: number; muted: boolean;
-  gainAt: (frame: number) => number;
-  transitions?: TransitionItem[];
-  premountFor: number;
-  browserRenderer: boolean;
-}) {
-  // volume keyframes override the static item.volume (item-local edited frames)
-  const volAt = (localFrame: number) => (muted ? 0 : volumeAtFrame(item, localFrame));
-  if (!item.src) return null;
-  if (hasOperationalTranscript(item)) {
-    const del = new Set(item.deletedWordIdx ?? []);
-    return (
-      <>
-        {keptSegments(item.transcript, del, fps, item.startFrame, {
-          ...itemEditOpts(item),
-          window: itemWindow(item), // trim handle's [srcIn, srcIn+dur) slice (word ↔ frame consistent)
-        }).map((seg, k) => (
-          <Sequence key={`${item.id}_${k}`} from={seg.fromFrame} durationInFrames={seg.durFrames} premountFor={premountFor} name={item.name}>
-            <MixedRuntimeAudio item={item} browserRenderer={browserRenderer} trimBefore={seg.srcStartFrame} trimAfter={seg.srcEndFrame}
-              volume={(f) => volAt(seg.fromFrame - item.startFrame + f) * gainAt(seg.fromFrame + f) * audioCrossfadeMul(item, seg.fromFrame - item.startFrame + f, transitions)} />
-          </Sequence>
-        ))}
-      </>
-    );
-  }
-  return (
-    <Sequence from={item.startFrame} durationInFrames={item.durationInFrames} premountFor={premountFor} name={item.name}>
-      <MixedRuntimeAudio item={item} browserRenderer={browserRenderer} trimBefore={item.srcInFrame ?? 0} playbackRate={item.playbackRate ?? 1}
-        volume={(f) => volAt(f)
-          * gainAt(item.startFrame + f)
-          * fadeFactor(f, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames)
-          * audioCrossfadeMul(item, f, transitions)} />
-    </Sequence>
-  );
-}
-
-function ContinuousVideoAudio({ items, muted, gainAt, premountFor, browserRenderer }: {
-  items: TimelineItem[];
-  muted: boolean;
-  gainAt: (frame: number) => number;
-  premountFor: number;
-  browserRenderer: boolean;
-}) {
-  const first = items[0];
-  const last = items.at(-1);
-  if (!first || !last) return null;
-  const duration = last.startFrame + last.durationInFrames - first.startFrame;
-  const volume = (frame: number) => {
-    const timelineFrame = first.startFrame + frame;
-    const item = items.find((candidate) => timelineFrame >= candidate.startFrame
-      && timelineFrame < candidate.startFrame + candidate.durationInFrames);
-    if (!item || muted) return 0;
-    const localFrame = timelineFrame - item.startFrame;
-    return volumeAtFrame(item, localFrame)
-      * gainAt(timelineFrame)
-      * fadeFactor(localFrame, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames);
-  };
-  return (
-    <Sequence from={first.startFrame} durationInFrames={duration} premountFor={premountFor} name={`${first.name}:audio`}>
-      <MixedRuntimeAudio item={first} browserRenderer={browserRenderer} trimBefore={first.srcInFrame ?? 0}
-        playbackRate={first.playbackRate ?? 1} volume={volume} />
-    </Sequence>
-  );
-}
-
-// Imported image / video / gif / svg fills the canvas by the fit mode (objectFit).
-function MediaFill({ item, frameOffset, fit, muted, groupedAudio, canvasW, canvasH, borderRadius, gainAt, browserRenderer, onPreviewStatus }: { item: TimelineItem; frameOffset: number; fit: AspectFit; muted: boolean; groupedAudio: boolean; canvasW: number; canvasH: number; borderRadius: number; gainAt: (frame: number) => number; browserRenderer: boolean; onPreviewStatus?: SelectedPreviewStatusListener }) {
-  const objectFit = fit === 'cover' ? 'cover' : 'contain';
-  const style: React.CSSProperties = { width: '100%', height: '100%', objectFit };
-  const still = item.kind === 'image' || item.kind === 'gif' || item.kind === 'svg';
-  const trimBefore = sourceFrameAt(item, frameOffset);
-  const volume = (frame: number) => {
-    const localFrame = frame + frameOffset;
-    if (localFrame < 0 || localFrame >= item.durationInFrames) return 0;
-    return (muted ? 0 : volumeAtFrame(item, localFrame))
-      * gainAt(item.startFrame + localFrame)
-      * fadeFactor(localFrame, item.durationInFrames, item.fadeInFrames, item.fadeOutFrames);
-  };
-  const effectAdapter = selectEffectPreviewAdapter({
-    declared: !!firstGlEffect(item),
-    texturable: item.kind === 'video' || item.kind === 'image',
-  });
-  // clip carries a WebGL effect → render pixels through the GL pass; video keeps
-  // its audio via a separate muted-visual <Audio> (the GL source video is muted).
-  if (effectAdapter.adapter === 'gl-effect') {
-    const frame = visibleVisualFrameRect(
-      { width: canvasW, height: canvasH },
-      { width: item.width ?? canvasW, height: item.height ?? canvasH },
-      fit,
-    );
-    return (
-      <>
-        <VisualClipSurface item={item} fit={fit} canvasW={canvasW} canvasH={canvasH} borderRadius={borderRadius}>
-          <ClipFx
-            item={item}
-            fit={fit === 'contain' ? 'cover' : fit}
-            width={Math.max(1, Math.round(frame.width))}
-            height={Math.max(1, Math.round(frame.height))}
-            frameOffset={frameOffset}
-            onPreviewStatus={onPreviewStatus}
-          />
-        </VisualClipSurface>
-        {item.kind !== 'image' && !groupedAudio && (
-          <MixedRuntimeAudio item={item} browserRenderer={browserRenderer} trimBefore={trimBefore}
-            playbackRate={item.playbackRate ?? 1} volume={volume} />
-        )}
-      </>
-    );
-  }
-  return (
-    <VisualClipSurface item={item} fit={fit} canvasW={canvasW} canvasH={canvasH} borderRadius={borderRadius}>
-      {still
-        ? <Img src={item.src!} style={style} />
-        : item.denoisedSrc
-          // visual from original video (muted) + isolated voice track
-          ? (
-            <>
-              <RuntimeVideo browserRenderer={browserRenderer} src={item.src!} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} volume={0} muted style={style} />
-              {!groupedAudio && (
-                <MixedRuntimeAudio item={item} browserRenderer={browserRenderer} trimBefore={trimBefore}
-                  playbackRate={item.playbackRate ?? 1} volume={volume} />
-              )}
-            </>
-          )
-          : <RuntimeVideo browserRenderer={browserRenderer} src={item.src!} trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1}
-              volume={groupedAudio ? 0 : volume} muted={groupedAudio || muted} style={style} />}
-    </VisualClipSurface>
-  );
-}
-
-/** Solid-color fill item. */
-function SolidLayer({ item, canvasW, canvasH, borderRadius }: { item: TimelineItem; canvasW: number; canvasH: number; borderRadius: number }) {
-  const color = String(item.props?.color ?? '#1a1a1a');
-  return (
-    <VisualClipSurface item={item} fit="cover" canvasW={canvasW} canvasH={canvasH} borderRadius={borderRadius}>
-      <AbsoluteFill style={{ background: color }} />
-    </VisualClipSurface>
-  );
-}
+import { isBackgroundFillActive } from './backgroundFill';
+import { ClipWrapper } from './TimelineClipWrapper';
+import { GlTransitionVisibility } from './GlTransitionVisibility';
+import { updateReadyGlWindows } from './glTransitionVisibilityState';
+import { AudioClip, BackgroundFillLayer, ContinuousVideoAudio, MediaFill, VisualClipSurface } from './TimelineMediaLayer';
+import { ItemLayer, SolidLayer, TextLayer, WatermarkLayer } from './TimelineGraphicLayers';
 
 const GRID = 'repeating-conic-gradient(#242424 0% 25%, #1c1c1c 0% 50%) 50% / 40px 40px';
 
-// Text watermark overlay: a single label pinned to one
-// corner, opacity 0..1. Sizes off canvas height so it scales with any ratio.
-function WatermarkLayer({ watermark, canvasH }: { watermark: Watermark; canvasH: number }) {
-  const style: React.CSSProperties = {
-    position: 'absolute',
-    color: '#ffffff',
-    opacity: Math.max(0, Math.min(1, watermark.opacity)),
-    fontSize: Math.round(canvasH * 0.035),
-    fontWeight: 700,
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    textShadow: '0 2px 8px rgba(0,0,0,0.6)',
-    whiteSpace: 'nowrap',
-  };
-  const pad = Math.round(canvasH * 0.04);
-  if (watermark.position[0] === 't') style.top = pad; else style.bottom = pad;
-  if (watermark.position[1] === 'l') style.left = pad; else style.right = pad;
-  return <AbsoluteFill style={{ pointerEvents: 'none' }}><div style={style}>{watermark.text}</div></AbsoluteFill>;
-}
-
-// Render a text clip in the 1920×1080 design box (so fontSize is resolution-
-// independent), scaled+aligned to the canvas. Props: text/fontSize/color/
-// fontWeight/align. Position/rotation come from the clip transform.
-function TextLayer({ item, canvasW, canvasH, fit }: { item: TimelineItem; canvasW: number; canvasH: number; fit: AspectFit }) {
-  const dw = item.width ?? 1920;
-  const dh = item.height ?? 1080;
-  const scale = fit === 'cover' ? Math.max(canvasW / dw, canvasH / dh) : Math.min(canvasW / dw, canvasH / dh);
-  const p = item.props ?? {};
-  const text = String(p.text ?? '文字');
-  const fontSize = Number(p.fontSize ?? 96);
-  const color = String(p.color ?? '#ffffff');
-  const fontWeight = Number(p.fontWeight ?? 700);
-  const align = (p.align === 'left' || p.align === 'right' ? p.align : 'center') as 'left' | 'center' | 'right';
-  const justify = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
-  return (
-    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-      <div style={{ width: dw, height: dh, flexShrink: 0, transform: `scale(${scale})`, display: 'flex', alignItems: 'center', justifyContent: justify, padding: '0 96px', boxSizing: 'border-box' }}>
-        <div style={{ color, fontSize, fontWeight, textAlign: align, width: '100%', fontFamily: 'system-ui, -apple-system, sans-serif', textShadow: '0 3px 16px rgba(0,0,0,0.55)', whiteSpace: 'pre-wrap', lineHeight: 1.2 }}>{text}</div>
-      </div>
-    </AbsoluteFill>
-  );
-}
-
-// Render one MG in its DESIGN box (width×height), then scale+center it to the
-// canvas according to the timeline `fit` mode: contain letterboxes,
-// cover fills+crops. At 16:9 with 1920×1080 designs the scale is 1 (no change).
-function ItemLayer({ item, canvasW, canvasH, fit, borderRadius }: { item: TimelineItem; canvasW: number; canvasH: number; fit: AspectFit; borderRadius: number }) {
-  const dw = item.width ?? 1920;
-  const dh = item.height ?? 1080;
-  const scale = fit === 'cover' ? Math.max(canvasW / dw, canvasH / dh) : Math.min(canvasW / dw, canvasH / dh);
-  try {
-    const Template = getCompiledTemplate(item.code ?? '');
-    return (
-      <VisualClipSurface item={item} fit={fit} canvasW={canvasW} canvasH={canvasH} borderRadius={borderRadius}>
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <div style={{ width: dw, height: dh, position: 'relative', flexShrink: 0, transform: `scale(${scale})` }}>
-            <Template item={{ props: item.props ?? {}, width: dw, height: dh }} />
-          </div>
-        </div>
-      </VisualClipSurface>
-    );
-  } catch (e) {
-    return (
-      <AbsoluteFill style={{ color: '#f88', fontFamily: 'monospace', fontSize: 20, padding: 40, whiteSpace: 'pre-wrap' }}>
-        {(item.name + ' — compile error:\n') + (e instanceof Error ? e.message : String(e))}
-      </AbsoluteFill>
-    );
-  }
-}
 function NestedSequenceLayer({ item, project, parentWidth, parentHeight, fit, frameOffset, browserRenderer, sequenceLimits, muted }: {
   item: TimelineItem;
   project?: ProjectDoc;
@@ -526,6 +116,10 @@ function SelectedPreviewStatusReporter({ status, listener }: {
 }
 
 function TimelineContent({ state, project, transparent, browserRenderer = false, selectedItemId, onSelectedPreviewStatus, sequenceLimits, forceMuted = false }: TimelineCompositionProps) {
+  const [readyGlWindows, setReadyGlWindows] = useState<Set<string>>(() => new Set());
+  const setGlWindowReady = useCallback((key: string, ready: boolean) => {
+    setReadyGlWindows((current) => updateReadyGlWindows(current, key, ready));
+  }, []);
   // Non-built-in fx (plugin/submit_shader)def is self-contained with state: synchronously registered into ALL_FX before rendering,
   // The first frame of the subcomponent (MediaFill's firstGlEffect route) is parsed - a fresh browser with headless export
   // There is no memory registry, it all depends on this. Idempotism is guarded; rendering external registries is the only deliberate exception here.
@@ -648,6 +242,12 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
       if (status) staticPreviewStatuses.push(status);
     }
   }
+  const glVisibilityWindows = glWindows.map((window) => ({
+    key: window.key,
+    from: window.from,
+    durationInFrames: window.L,
+    itemIds: [window.outgoing.id, window.incoming.id],
+  }));
 
   return (
     <AbsoluteFill style={{ background: transparent ? undefined : GRID }}>
@@ -666,7 +266,8 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
         const captionsOff = state.captionsHidden === true
           || (state.captionsHidden === undefined && captionEntries.length > 0 && captionEntries.every((entry) => !entry.captions?.enabled));
         const hiddenByCaptions = captionsOff && previewTextEditFields(item) !== null;
-        const content = (
+        const fillBackground = isBackgroundFillActive(state, item);
+        const foreground = (
           <ClipWrapper item={item} frameOffset={-eb} hiddenByCaptions={hiddenByCaptions}>
             {(borderRadius) => item.kind === 'sequence'
               ? <VisualClipSurface item={item} fit={fit} canvasW={state.width} canvasH={state.height} borderRadius={borderRadius}>
@@ -678,14 +279,29 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
               ? <TextLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
               : item.kind === 'solid'
               ? <SolidLayer item={item} canvasW={state.width} canvasH={state.height} borderRadius={borderRadius} />
-              : <MediaFill item={item} frameOffset={-eb} fit={fit} muted={isMuted(item.track)} groupedAudio={groupedVideoIds.has(item.id)} gainAt={(frame) => duckGain(item.track, frame)} canvasW={state.width} canvasH={state.height} borderRadius={borderRadius} browserRenderer={browserRenderer} onPreviewStatus={environment.isPlayer && item.id === selectedItemId && !selectedEffectStaticStatus ? onSelectedPreviewStatus : undefined} />}
+              : <MediaFill item={item} frameOffset={-eb} fit={fillBackground ? 'contain' : fit}
+                  muted={isMuted(item.track)} groupedAudio={groupedVideoIds.has(item.id)}
+                  gainAt={(frame) => duckGain(item.track, frame)} canvasW={state.width} canvasH={state.height}
+                  borderRadius={borderRadius} browserRenderer={browserRenderer}
+                  onPreviewStatus={environment.isPlayer && item.id === selectedItemId && !selectedEffectStaticStatus
+                    ? onSelectedPreviewStatus : undefined} />}
           </ClipWrapper>
+        );
+        const content = (
+          <>
+            {fillBackground && <BackgroundFillLayer item={item} frameOffset={-eb} canvasW={state.width}
+              canvasH={state.height} browserRenderer={browserRenderer} />}
+            {foreground}
+          </>
         );
         return (
           <Sequence key={item.id} from={item.startFrame - eb} durationInFrames={item.durationInFrames + eb + ea} premountFor={premountFrames} name={item.name}>
-            {entrance
-              ? <PreviewTransitionIn type={entrance.type} frames={entrance.frames} dir={entrance.dir} line={entrance.line} isolated={entrance.isolated}>{content}</PreviewTransitionIn>
-              : content}
+            <GlTransitionVisibility itemId={item.id} sequenceFrom={item.startFrame - eb}
+              windows={glVisibilityWindows} readyWindows={readyGlWindows}>
+              {entrance
+                ? <PreviewTransitionIn type={entrance.type} frames={entrance.frames} dir={entrance.dir} line={entrance.line} isolated={entrance.isolated}>{content}</PreviewTransitionIn>
+                : content}
+            </GlTransitionVisibility>
           </Sequence>
         );
       })}
@@ -696,8 +312,11 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
             type={w.type} direction={w.direction} L={w.L} windowStart={w.from}
             outgoing={w.outgoing} incoming={w.incoming} trimOut={w.trimOut} trimIn={w.trimIn}
             width={state.width} height={state.height} fit={fit}
+            outgoingBackgroundFill={isBackgroundFillActive(state, w.outgoing)}
+            incomingBackgroundFill={isBackgroundFillActive(state, w.incoming)}
             customFrag={w.customFrag} customUniforms={w.customUniforms}
             previewTargetId={w.previewTargetId} onPreviewStatus={w.previewTargetId ? onSelectedPreviewStatus : undefined}
+            onReadyChange={(ready) => setGlWindowReady(w.key, ready)}
           />
         </Sequence>
       ))}

@@ -100,5 +100,6 @@ void main() {
     // Slight exposure bump at peak blur
     col *= 1.0 + blurAmt * 0.2;
 
-    fragColor = vec4(col, 1.0);
+    float sourceAlpha = mix(texture(u_outgoing, v_texCoord).a, texture(u_incoming, v_texCoord).a, mixV);
+    fragColor = vec4(col, sourceAlpha);
 }
