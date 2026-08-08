@@ -17,6 +17,7 @@ const v2 = fixture('project-v2.json');
 const v3 = fixture('project-v3.json');
 const v4 = fixture('project-v4.json');
 const v5 = fixture('project-v5.json');
+const v6 = fixture('project-v6.json');
 
 {
   const sourceSnapshot = JSON.stringify(v1);
@@ -31,8 +32,8 @@ const v5 = fixture('project-v5.json');
   });
   assert.ok(migrated);
   assert.equal(migrated.doc.version, CURRENT_PROJECT_VERSION);
-  assert.deepEqual(migrated.appliedSteps, ['v1-to-v2', 'v2-to-v3', 'v3-to-v4', 'v4-to-v5', 'v5-to-v6']);
-  assert.deepEqual(progress, [[1, 2, 1, 5], [2, 3, 2, 5], [3, 4, 3, 5], [4, 5, 4, 5], [5, 6, 5, 5]]);
+  assert.deepEqual(migrated.appliedSteps, ['v1-to-v2', 'v2-to-v3', 'v3-to-v4', 'v4-to-v5', 'v5-to-v6', 'v6-to-v7']);
+  assert.deepEqual(progress, [[1, 2, 1, 6], [2, 3, 2, 6], [3, 4, 3, 6], [4, 5, 4, 6], [5, 6, 5, 6], [6, 7, 6, 6]]);
   assert.deepEqual(migrated.doc.assets.map((asset) => asset.id), ['asset_video', 'asset_audio']);
   assert.equal(migrated.doc.assets[0].name, 'interview.mp4', 'project-level asset wins duplicate ids');
   assert.equal(migrated.doc.assets[0].folderId, undefined, 'missing folders are detached');
@@ -54,14 +55,14 @@ const v5 = fixture('project-v5.json');
 {
   const migrated = runProjectMigrations(v2);
   assert.ok(migrated);
-  assert.deepEqual(migrated.appliedSteps, ['v2-to-v3', 'v3-to-v4', 'v4-to-v5', 'v5-to-v6']);
+  assert.deepEqual(migrated.appliedSteps, ['v2-to-v3', 'v3-to-v4', 'v4-to-v5', 'v5-to-v6', 'v6-to-v7']);
   assert.equal(migrated.doc.timelines[0].items[0].track, 'track_tl_fixture_2');
 }
 
 {
   const migrated = runProjectMigrations(v3);
   assert.ok(migrated);
-  assert.deepEqual(migrated.appliedSteps, ['v3-to-v4', 'v4-to-v5', 'v5-to-v6']);
+  assert.deepEqual(migrated.appliedSteps, ['v3-to-v4', 'v4-to-v5', 'v5-to-v6', 'v6-to-v7']);
   assert.deepEqual(migrated.doc, { ...(v3 as object), version: CURRENT_PROJECT_VERSION });
 }
 
@@ -69,7 +70,7 @@ const v5 = fixture('project-v5.json');
   const sourceSnapshot = JSON.stringify(v4);
   const migrated = runProjectMigrations(v4);
   assert.ok(migrated);
-  assert.deepEqual(migrated.appliedSteps, ['v4-to-v5', 'v5-to-v6']);
+  assert.deepEqual(migrated.appliedSteps, ['v4-to-v5', 'v5-to-v6', 'v6-to-v7']);
   assert.equal(migrated.doc.version, CURRENT_PROJECT_VERSION);
   assert.equal(migrated.doc.timelines[0]?.items[0]?.backgroundFill, undefined,
     'V4 clips retain the historical disabled appearance');
@@ -80,11 +81,23 @@ const v5 = fixture('project-v5.json');
   const sourceSnapshot = JSON.stringify(v5);
   const migrated = runProjectMigrations(v5);
   assert.ok(migrated);
-  assert.deepEqual(migrated.appliedSteps, ['v5-to-v6']);
+  assert.deepEqual(migrated.appliedSteps, ['v5-to-v6', 'v6-to-v7']);
   const clip = migrated.doc.timelines[0]?.items[0];
   assert.equal(clip?.backgroundFill, true, 'V5 enabled fills remain enabled');
-  assert.equal(clip?.backgroundFillPreset, undefined, 'V5 fills resolve to the compatible medium default');
+  assert.equal(clip?.backgroundFillStrength, undefined, 'V5 fills resolve to the compatible 50% default');
   assert.equal(JSON.stringify(v5), sourceSnapshot, 'V5 migration never mutates source bytes');
+}
+
+{
+  const sourceSnapshot = JSON.stringify(v6);
+  const migrated = runProjectMigrations(v6);
+  assert.ok(migrated);
+  assert.deepEqual(migrated.appliedSteps, ['v6-to-v7']);
+  const clip = migrated.doc.timelines[0]?.items[0];
+  assert.equal(clip?.backgroundFill, true, 'V6 enabled fills remain enabled');
+  assert.equal(clip?.backgroundFillStrength, 75, 'V6 strong presets migrate to 75%');
+  assert.equal(Object.hasOwn(clip ?? {}, 'backgroundFillPreset'), false, 'V7 removes the legacy preset field');
+  assert.equal(JSON.stringify(v6), sourceSnapshot, 'V6 migration never mutates source bytes');
 }
 
 {
@@ -341,7 +354,7 @@ const v5 = fixture('project-v5.json');
   }), { onProgress: (event) => progress.push([event.fromVersion, event.toVersion]) });
   assert.ok('envelope' in parsed);
   if ('envelope' in parsed) assert.equal(parsed.envelope.doc.version, CURRENT_PROJECT_VERSION);
-  assert.deepEqual(progress, [[2, 3], [3, 4], [4, 5], [5, 6]]);
+  assert.deepEqual(progress, [[2, 3], [3, 4], [4, 5], [5, 6], [6, 7]]);
 }
 
 // Cache migration is atomic: save only the completed chain; invalid bytes remain untouched.
@@ -353,7 +366,7 @@ const v5 = fixture('project-v5.json');
     onProgress: (event) => progress.push([event.fromVersion, event.toVersion]),
   });
   assert.equal(loaded?.version, CURRENT_PROJECT_VERSION);
-  assert.deepEqual(progress, [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6]]);
+  assert.deepEqual(progress, [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7]]);
   assert.equal((await kvGet<{ version?: number }>('project:fixture-v1'))?.version, CURRENT_PROJECT_VERSION);
 
   const broken = { version: 2, timelines: [], activeTimelineId: '' };

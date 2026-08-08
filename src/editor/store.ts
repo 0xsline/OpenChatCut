@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useReducer, useRef } from 'react';
-import type { AspectFit, BackgroundFillPreset, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, MediaAssetRelinkPatch, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
+import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, MediaAssetRelinkPatch, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeEditorState, activeTimeline, defaultTrackId, resolveTrackId } from './types';
 import type { Tpl } from '../types';
 import type { AudioAsset } from '../audio/library';
@@ -95,7 +95,7 @@ export interface EditorCommands {
   setItemFade: (id: string, fade: { fadeInFrames?: number; fadeOutFrames?: number }) => void;
   setItemTransform: (id: string, patch: ClipTransform) => void;
   setItemFilters: (id: string, patch: ClipFilters) => void;
-  setItemBackgroundFill: (id: string, enabled: boolean, preset?: BackgroundFillPreset) => void;
+  setItemBackgroundFill: (id: string, enabled: boolean, strength?: number) => void;
   setItemZoom: (id: string, patch: Partial<ZoomEffect> | null) => void;
   /** Replace a clip's per-clip WebGL effect stack. */
   setItemEffects: (id: string, effects: ClipEffect[], defs?: SerializableFxDef[]) => void;
@@ -506,7 +506,7 @@ function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDoc): Edi
       setItemFade: (id, fade) => dispatch({ type: 'setFade', id, ...fade }),
       setItemTransform: (id, patch) => dispatch({ type: 'setTransform', id, patch }),
       setItemFilters: (id, patch) => dispatch({ type: 'setFilters', id, patch }),
-      setItemBackgroundFill: (id, enabled, preset) => dispatch({ type: 'setBackgroundFill', id, enabled, preset }),
+      setItemBackgroundFill: (id, enabled, strength) => dispatch({ type: 'setBackgroundFill', id, enabled, strength }),
       setItemZoom: (id, patch) => dispatch({ type: 'setZoom', id, patch }),
       setItemEffects: (id, effects, defs) => dispatch({ type: 'setEffects', id, effects, defs }),
       setItemSpeed: (id, rate) => dispatch({ type: 'setSpeed', id, rate }),

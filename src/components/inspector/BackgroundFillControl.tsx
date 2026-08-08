@@ -1,59 +1,89 @@
-import { useState } from 'react';
-import type { BackgroundFillPreset } from '../../editor/types';
+import { useState, type CSSProperties } from 'react';
 import { useT } from '../../i18n/locale';
 import { Icon } from '../icons';
+import { ScalarControl } from './ScalarControl';
+import { useHistoryGesture } from './historyGesture';
 import { resolveBackgroundFillToggle } from './backgroundFillControlState';
 
-const PRESET_LABELS: Record<BackgroundFillPreset, string> = {
-  soft: '轻度',
-  medium: '标准',
-  strong: '强烈',
-  maximum: '极强',
-};
+const STRENGTH_PRESETS = [
+  { value: 25, label: '轻度', preview: 'soft' },
+  { value: 50, label: '标准', preview: 'medium' },
+  { value: 75, label: '强烈', preview: 'strong' },
+  { value: 100, label: '极强', preview: 'maximum' },
+] as const;
 
 type Translate = (key: string) => string;
 
 interface BackgroundFillControlProps {
   enabled: boolean;
   mixed?: boolean;
-  preset: BackgroundFillPreset;
-  presetMixed?: boolean;
-  onChange: (enabled: boolean, preset?: BackgroundFillPreset) => void;
-  onApplyToAll?: (preset: BackgroundFillPreset) => void;
+  strength: number;
+  strengthMixed?: boolean;
+  onChange: (enabled: boolean, strength?: number) => void;
+  onApplyToAll?: (strength: number) => void;
 }
 
-function BackgroundFillEffectPicker({
-  preset, mixed, onChange, translate,
+function BackgroundFillStrengthSlider({
+  strength, mixed, onChange, translate,
 }: {
-  preset: BackgroundFillPreset;
+  strength: number;
   mixed: boolean;
-  onChange: (preset: BackgroundFillPreset) => void;
+  onChange: (strength: number) => void;
+  translate: Translate;
+}) {
+  const gesture = useHistoryGesture();
+  return (
+    <div className="cc-insp-row">
+      <span className="cc-insp-label">{translate('强度')}</span>
+      <input aria-label={translate('背景填充强度')} className="cc-insp-range"
+        style={{ '--cc-insp-range-fill': `${strength}%` } as CSSProperties}
+        type="range" min={0} max={100} step="any" value={strength} disabled={mixed}
+        onChange={(event) => onChange(Math.round(Number(event.target.value)))} {...gesture} />
+      <span className="cc-insp-val">
+        <ScalarControl ariaLabel={translate('背景填充强度')} formatValue={`${Math.round(strength)}%`}
+          mixed={mixed} min={0} max={100} step={1} value={strength}
+          onChange={(value) => onChange(Math.round(value))}
+          onGestureStart={gesture.onKeyDown} onGestureEnd={gesture.onKeyUp}
+          title={translate('背景填充强度')} />
+      </span>
+    </div>
+  );
+}
+
+function BackgroundFillStrengthPicker({
+  strength, mixed, onChange, translate,
+}: {
+  strength: number;
+  mixed: boolean;
+  onChange: (strength: number) => void;
   translate: Translate;
 }) {
   return (
     <div className="cc-bg-fill-body">
-      <div className="cc-bg-fill-mode">
-        <strong>{translate('模糊')}</strong>
-        <span>{translate('选择背景模糊强度')}</span>
-      </div>
-      <div className="cc-bg-fill-presets" role="radiogroup" aria-label={translate('背景填充效果')}>
-        {(Object.keys(PRESET_LABELS) as BackgroundFillPreset[]).map((value) => (
+      <BackgroundFillStrengthSlider
+        strength={strength}
+        mixed={mixed}
+        onChange={onChange}
+        translate={translate}
+      />
+      <div className="cc-bg-fill-presets" role="radiogroup" aria-label={translate('背景填充强度')}>
+        {STRENGTH_PRESETS.map(({ value, label, preview }) => (
           <button key={value} type="button" role="radio"
-            aria-checked={!mixed && preset === value}
-            className={!mixed && preset === value ? 'selected' : ''}
+            aria-checked={!mixed && strength === value}
+            className={!mixed && strength === value ? 'selected' : ''}
             onClick={() => onChange(value)}>
-            <span className={`cc-bg-fill-preview ${value}`} aria-hidden />
-            <small>{translate(PRESET_LABELS[value])}</small>
+            <span className={`cc-bg-fill-preview ${preview}`} aria-hidden />
+            <small>{translate(label)} {value}%</small>
           </button>
         ))}
       </div>
-      {mixed && <div className="cc-insp-muted">{translate('所选片段使用不同的背景效果')}</div>}
+      {mixed && <div className="cc-insp-muted">{translate('所选片段使用不同的背景强度')}</div>}
     </div>
   );
 }
 
 export function BackgroundFillControlView({
-  enabled, mixed = false, preset, presetMixed = false, onChange, onApplyToAll, translate,
+  enabled, mixed = false, strength, strengthMixed = false, onChange, onApplyToAll, translate,
 }: BackgroundFillControlProps & { translate: Translate }) {
   const [expanded, setExpanded] = useState(true);
   const active = enabled || mixed;
@@ -64,15 +94,15 @@ export function BackgroundFillControlView({
           <input ref={(element) => { if (element) element.indeterminate = mixed; }}
             type="checkbox" checked={enabled}
             onChange={(event) => {
-              const next = resolveBackgroundFillToggle(mixed, event.target.checked, preset, presetMixed);
-              onChange(next.enabled, next.preset);
+              const next = resolveBackgroundFillToggle(mixed, event.target.checked, strength, strengthMixed);
+              onChange(next.enabled, next.strength);
             }}
             aria-label={translate('背景填充')} />
           <span><strong>{translate('背景填充')}</strong><small>{translate('用片段副本填满画布空白')}</small></span>
         </label>
         <div>
           {onApplyToAll && <button type="button" className="cc-bg-fill-apply"
-            disabled={!active || presetMixed} onClick={() => onApplyToAll(preset)}>{translate('全部应用')}</button>}
+            disabled={!active || strengthMixed} onClick={() => onApplyToAll(strength)}>{translate('全部应用')}</button>}
           <button type="button" className="cc-bg-fill-disclosure" disabled={!active}
             aria-expanded={active && expanded}
             aria-label={expanded ? translate('收起背景填充效果') : translate('展开背景填充效果')}
@@ -81,7 +111,7 @@ export function BackgroundFillControlView({
           </button>
         </div>
       </div>
-      {active && expanded && <BackgroundFillEffectPicker preset={preset} mixed={presetMixed}
+      {active && expanded && <BackgroundFillStrengthPicker strength={strength} mixed={strengthMixed}
         translate={translate} onChange={(value) => onChange(true, value)} />}
     </div>
   );

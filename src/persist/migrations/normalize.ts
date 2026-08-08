@@ -12,7 +12,7 @@ import {
   type TimelineLinkGroup,
   type TimelineState,
 } from '../../editor/types.js';
-import { isBackgroundFillPreset } from '../../editor/backgroundFill.js';
+import { isBackgroundFillStrength } from '../../editor/backgroundFill.js';
 import { isSourceClockMetadata } from '../../editor/timecode.js';
 import { withMediaSourceRevision } from '../../editor/mediaSourceRevision.js';
 import { normalizeSha256Hash } from '../../../shared/content-hash.js';
@@ -38,6 +38,12 @@ const ITEM_KINDS: Record<TimelineItem['kind'], true> = {
   solid: true,
   sequence: true,
 };
+const LEGACY_BACKGROUND_FILL_PRESETS = ['soft', 'medium', 'strong', 'maximum'] as const;
+
+function isLegacyBackgroundFillPreset(value: unknown): boolean {
+  return typeof value === 'string'
+    && LEGACY_BACKGROUND_FILL_PRESETS.includes(value as typeof LEGACY_BACKGROUND_FILL_PRESETS[number]);
+}
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const optionalFinite = (value: unknown): boolean => value === undefined || finite(value);
@@ -131,6 +137,7 @@ function normalizeTimelineSourceFilenames(timeline: Timeline): Timeline {
 export function isTimelineItem(value: unknown): value is TimelineItem {
   if (!value || typeof value !== 'object') return false;
   const item = value as Partial<TimelineItem>;
+  const legacyPreset = 'backgroundFillPreset' in value ? value.backgroundFillPreset : undefined;
   return typeof item.id === 'string' && !!item.id
     && typeof item.track === 'string' && !!item.track
     && typeof item.name === 'string'
@@ -141,7 +148,8 @@ export function isTimelineItem(value: unknown): value is TimelineItem {
     && optionalFinite(item.playbackRate) && (item.playbackRate === undefined || item.playbackRate > 0)
     && optionalFinite(item.volume) && (item.volume === undefined || (item.volume >= 0 && item.volume <= 2))
     && (item.backgroundFill === undefined || typeof item.backgroundFill === 'boolean')
-    && (item.backgroundFillPreset === undefined || isBackgroundFillPreset(item.backgroundFillPreset))
+    && (item.backgroundFillStrength === undefined || isBackgroundFillStrength(item.backgroundFillStrength))
+    && (legacyPreset === undefined || isLegacyBackgroundFillPreset(legacyPreset))
     && (item.sourceAssetId === undefined || typeof item.sourceAssetId === 'string')
     && (item.kind !== 'sequence' || (typeof item.timelineId === 'string' && item.timelineId.length > 0));
 }

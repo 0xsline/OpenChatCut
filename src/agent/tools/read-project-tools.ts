@@ -12,7 +12,7 @@ import {
   type MediaAsset,
   type TimelineState,
 } from '../../editor/types';
-import { backgroundFillPresetOf } from '../../editor/backgroundFill';
+import { backgroundFillStrengthOf } from '../../editor/backgroundFill';
 import { hasOperationalTranscript } from '../../transcript/types';
 import { resolveTimeline } from './timeline-target';
 
@@ -50,7 +50,7 @@ function slimItem(
     volume: it.volume ?? null,
     zoom: it.zoom ?? null,
     backgroundFill: it.backgroundFill === true,
-    backgroundFillPreset: it.backgroundFill === true ? backgroundFillPresetOf(it) : null,
+    backgroundFillStrength: it.backgroundFill === true ? backgroundFillStrengthOf(it) : null,
     effects: (it.effects ?? []).map((e) => ({
       effectId: e.id,
       assetId: e.assetId,

@@ -107,8 +107,6 @@ export interface ClipFilters {
   blur?: number;
 }
 
-export type BackgroundFillPreset = 'soft' | 'medium' | 'strong' | 'maximum';
-
 /** one sparse reframe keyframe (ReframeCurveV1: named scalar channels) */
 export interface ReframeKeyframe {
   /** effect-local frame */
@@ -277,9 +275,10 @@ export interface TimelineItem extends TranscriptCarrier {
   keyframes?: ItemKeyframes;
   /** color/blur adjustments for visual clips (special effects/LUT) */
   filters?: ClipFilters;
-  /** blurred cover copy behind the contained clip; medium is the default preset */
+  /** blurred cover copy behind the contained clip */
   backgroundFill?: boolean;
-  backgroundFillPreset?: BackgroundFillPreset;
+  /** user-selected background blur/dimming intensity, 0..100 percent */
+  backgroundFillStrength?: number;
   /** animated zoom (builtin:zoom) — shape curve or reframe keyframes */
   zoom?: ZoomEffect;
   /** per-clip WebGL effect stack (effects[]: builtin:fx-* / lut) */

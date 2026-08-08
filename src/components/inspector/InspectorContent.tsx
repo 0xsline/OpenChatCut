@@ -1,7 +1,7 @@
 import { useEffect, useId, type KeyboardEvent } from 'react';
 import type { PropSpec } from '../../types';
 import type { TimelineItem } from '../../editor/types';
-import { backgroundFillPresetOf } from '../../editor/backgroundFill';
+import { backgroundFillStrengthOf } from '../../editor/backgroundFill';
 import { KEYFRAME_PROPS, getKeyframePropertyDefinition } from '../../editor/keyframeRegistry';
 import { inspectorMixedValue } from '../../editor/inspectorBatch';
 import { useT } from '../../i18n/locale';
@@ -175,8 +175,8 @@ function VideoTab({ panel, item }: InspectorContentProps) {
           <BackgroundFillControl
             enabled={item.backgroundFill === true}
             mixed={isMixed(panel, (entry) => entry.backgroundFill === true)}
-            preset={backgroundFillPresetOf(item)}
-            presetMixed={isMixed(panel, (entry) => backgroundFillPresetOf(entry))}
+            strength={backgroundFillStrengthOf(item)}
+            strengthMixed={isMixed(panel, (entry) => backgroundFillStrengthOf(entry))}
             onChange={panel.onItemBackgroundFillChange}
             onApplyToAll={panel.onApplyBackgroundFillToAll}
           />

@@ -14,9 +14,6 @@
 .cc-bg-fill-disclosure span { display:inline-flex; transition:transform 140ms ease; }
 .cc-bg-fill-disclosure span.expanded { transform:rotate(180deg); }
 .cc-bg-fill-body { display:flex; flex-direction:column; gap:7px; padding:7px 8px 9px; border-top:0.5px solid var(--cc-border); background:var(--cc-panel); }
-.cc-bg-fill-mode { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
-.cc-bg-fill-mode strong { font-size:10.5px; font-weight:600; }
-.cc-bg-fill-mode span { color:var(--cc-text-dim); font-size:9.5px; }
 .cc-bg-fill-presets { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px; }
 .cc-bg-fill-presets button { min-width:0; min-height:54px; display:flex; flex-direction:column; gap:4px; align-items:stretch; padding:3px; border:1px solid transparent; border-radius:3px; background:transparent; color:var(--cc-text-dim); cursor:pointer; }
 .cc-bg-fill-presets button:hover { background:var(--cc-hover); color:var(--cc-text); }

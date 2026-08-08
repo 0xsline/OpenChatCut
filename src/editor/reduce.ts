@@ -1,7 +1,7 @@
 // Pure reducer layer: the per-timeline reducer (`reduce`) + the project reducer
 // (`projectReduce`, routing per-timeline actions to the active timeline) + the
 // undo/redo history wrapper. The command set + React hook live in store.ts.
-import type { AspectFit, BackgroundFillPreset, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, MediaAssetRelinkPatch, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
+import type { AspectFit, ClipEffect, ClipFilters, ClipTransform, DesignStyle, KeyframeEasing, KeyframeProp, Marker, MediaAsset, MediaAssetRelinkPatch, MediaFolder, ProjectDoc, Timeline, TimelineItem, TimelineState, TrackFlags, TrackId, TrackKind, TrackUpdate, TransitionItem, TransitionType, Watermark, ZoomEffect } from './types';
 import { activeTimeline, captionTrackEntries, captionsOnTrack, DEFAULT_WATERMARK, defaultTrackId, isAudioTransition, selectedIdsOf, timelineTrackIds, trackEnd, trackKind } from './types';
 import { scaleItemKeyframes, splitItemKeyframes, upsertKeyframe } from './keyframes';
 import { capFade, fitItemToDuration, fitTimelineItems } from './clipFit';
@@ -68,7 +68,7 @@ export type Action =
   | { type: 'setFade'; id: string; fadeInFrames?: number; fadeOutFrames?: number }
   | { type: 'setTransform'; id: string; patch: ClipTransform }
   | { type: 'setFilters'; id: string; patch: ClipFilters }
-  | { type: 'setBackgroundFill'; id: string; enabled: boolean; preset?: BackgroundFillPreset }
+  | { type: 'setBackgroundFill'; id: string; enabled: boolean; strength?: number }
   | { type: 'setZoom'; id: string; patch: Partial<ZoomEffect> | null }
   | { type: 'setEffects'; id: string; effects: ClipEffect[]; defs?: SerializableFxDef[] }
   | { type: 'setSpeed'; id: string; rate: number }
@@ -609,7 +609,7 @@ function applyAction(s: TimelineState, a: Action): TimelineState {
       };
     case 'setBackgroundFill':
       if (lockedItem(s, a.id)) return s;
-      return setBackgroundFillState(s, a.id, a.enabled, a.preset);
+      return setBackgroundFillState(s, a.id, a.enabled, a.strength);
     case 'setZoom':
       if (lockedItem(s, a.id)) return s;
       return {

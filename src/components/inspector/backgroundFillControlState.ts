@@ -1,14 +1,12 @@
-import type { BackgroundFillPreset } from '../../editor/types';
-
 export function resolveBackgroundFillToggle(
   mixed: boolean,
   checked: boolean,
-  preset: BackgroundFillPreset,
-  presetMixed: boolean,
-): { enabled: boolean; preset?: BackgroundFillPreset } {
+  strength: number,
+  strengthMixed: boolean,
+): { enabled: boolean; strength?: number } {
   const enabled = mixed || checked;
   return {
     enabled,
-    ...(enabled && !presetMixed ? { preset } : {}),
+    ...(enabled && !strengthMixed ? { strength } : {}),
   };
 }

@@ -2,7 +2,7 @@
 // edit-item-tools.ts so unit checks avoid its GL .frag dependency.
 // Committers delegate to EditorCommands, preserving atomic-batch semantics.
 import type {
-  BackgroundFillPreset, ClipFilters, ClipTransform, ItemKeyframes, Keyframe, KeyframeProp,
+  ClipFilters, ClipTransform, ItemKeyframes, Keyframe, KeyframeProp,
   MediaAsset, MediaAssetRelinkPatch, TimelineItem, TimelineState,
 } from '../../editor/types';
 import { defaultTrackId, resolveTrackId } from '../../editor/types';
@@ -69,7 +69,7 @@ const GENERIC_UPDATE_KEYS: Record<string, true> = {
   filters: true,
   transform: true,
   backgroundFill: true,
-  backgroundFillPreset: true,
+  backgroundFillStrength: true,
   speed: true,
   playbackRate: true,
   clearKeyframes: true,
@@ -124,7 +124,7 @@ export interface GenericCommands {
   setItemKeyframe: (id: string, prop: KeyframeProp, frame: number, value: number, easing?: Keyframe['easing']) => void;
   setItemFilters: (id: string, patch: ClipFilters) => void;
   setItemTransform: (id: string, patch: ClipTransform) => void;
-  setItemBackgroundFill: (id: string, enabled: boolean, preset?: BackgroundFillPreset) => void;
+  setItemBackgroundFill: (id: string, enabled: boolean, strength?: number) => void;
   setItemSpeed: (id: string, rate: number) => void;
   clearItemKeyframes: (id: string, prop?: KeyframeProp) => void;
   replaceItemMedia: (id: string, src: string) => void;
@@ -229,13 +229,13 @@ export function validateGenericUpdate(state: TimelineState, entry: Record<string
     state,
     it,
     entry.backgroundFill,
-    entry.backgroundFillPreset,
+    entry.backgroundFillStrength,
     typeof plan.track === 'string' ? plan.track : undefined,
   );
   if (backgroundFill && 'error' in backgroundFill) return backgroundFill;
   if (backgroundFill) {
     plan.backgroundFill = backgroundFill.enabled;
-    if (backgroundFill.preset) plan.backgroundFillPreset = backgroundFill.preset;
+    if (backgroundFill.strength !== undefined) plan.backgroundFillStrength = backgroundFill.strength;
   }
   const speedRaw = entry.speed ?? entry.playbackRate;
   if (speedRaw !== undefined) {
@@ -259,11 +259,11 @@ export function validateGenericUpdate(state: TimelineState, entry: Record<string
   const FIELDS = [
     'track', 'startFrame', 'durationInFrames', 'srcInFrame', 'props', 'volume',
     'fadeInFrames', 'fadeOutFrames', 'keyframes', 'filters', 'transform',
-    'backgroundFill', 'backgroundFillPreset', 'speed', 'clearKeyframes',
+    'backgroundFill', 'backgroundFillStrength', 'speed', 'clearKeyframes',
   ];
   if (!FIELDS.some((k) => k in plan)) {
     return {
-      error: 'update needs at least one of: track/trackId, startFrame/fromFrame, durationInFrames, srcInFrame, props, volume, fadeInSeconds, fadeOutSeconds, keyframes, clearKeyframes, filters, transform, backgroundFill, backgroundFillPreset, speed',
+      error: 'update needs at least one of: track/trackId, startFrame/fromFrame, durationInFrames, srcInFrame, props, volume, fadeInSeconds, fadeOutSeconds, keyframes, clearKeyframes, filters, transform, backgroundFill, backgroundFillStrength, speed',
     };
   }
   return plan;
@@ -472,7 +472,7 @@ export function applyGeneric(plan: OpResult, commands: GenericCommands): OpResul
       commands.setItemBackgroundFill(
         id,
         plan.backgroundFill as boolean,
-        plan.backgroundFillPreset as BackgroundFillPreset | undefined,
+        plan.backgroundFillStrength as number | undefined,
       );
     }
     if (plan.speed !== undefined) commands.setItemSpeed(id, plan.speed as number);
