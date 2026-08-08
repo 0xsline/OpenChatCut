@@ -13,7 +13,7 @@ const state = {
     {
       id: 'portrait', track: 'V1', kind: 'video', name: 'Portrait',
       src: '/media/uploads/portrait.mp4', startFrame: 0, durationInFrames: 90,
-      width: 1920, height: 1080, backgroundFill: true,
+      width: 1920, height: 1080, backgroundFill: true, backgroundFillStrength: 73,
     },
     {
       id: 'overlay', track: 'V2', kind: 'video', name: 'Overlay',
@@ -25,14 +25,18 @@ const state = {
 
 assert.equal(fcpxmlBackgroundFillCount(state), 1, 'only render-active V1 fills are reported');
 const xml = timelineToFcpxml(state);
-assert.match(xml, /WARNING: FCPXML cannot represent OpenChatCut backgroundFill/);
-assert.doesNotMatch(xml, /backgroundFill="true"/, 'unsupported private fields are not serialized as fake FCPXML');
+assert.match(xml, /backgroundFill settings are preserved as OpenChatCut metadata/);
+assert.match(xml, /key="com\.openchatcut\.backgroundFillStrength" value="73"/,
+  'the exact percentage survives in portable custom metadata');
+assert.equal((xml.match(/key="com\.openchatcut\.backgroundFill"/g) ?? []).length, 1,
+  'inactive overlay fills do not emit misleading metadata');
+assert.doesNotMatch(xml, /backgroundFill="true"/, 'private fields are not serialized as fake attributes');
 
 const withoutFill = {
   ...state,
   items: state.items.map((entry) => ({ ...entry, backgroundFill: undefined })),
 };
 assert.equal(fcpxmlBackgroundFillCount(withoutFill), 0);
-assert.doesNotMatch(timelineToFcpxml(withoutFill), /cannot represent OpenChatCut backgroundFill/);
+assert.doesNotMatch(timelineToFcpxml(withoutFill), /backgroundFill settings are preserved/);
 
-console.log('fcpxml-background-fill.verify: loss warning and inactive export behavior ok');
+console.log('fcpxml-background-fill.verify: metadata preservation, warning, and inactive behavior ok');

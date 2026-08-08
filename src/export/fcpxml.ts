@@ -15,7 +15,7 @@ import { hasOperationalTranscript } from '../transcript/types';
 import { sourceWindowForTimelineRange } from '../editor/sourceLimit';
 import { motionGraphicRenderFilename, motionGraphicRenderKey } from './motionGraphicRefs';
 import { safeSourceFilename, stripInvalidXml10Characters } from '../media/sourceFilename';
-import { isBackgroundFillActive } from '../editor/backgroundFill';
+import { backgroundFillStrengthOf, isBackgroundFillActive } from '../editor/backgroundFill';
 
 /** Asset URL prefix: it is in mediaDir on the disk and has the same name. */
 const UPLOAD_PREFIX = '/media/uploads/';
@@ -271,6 +271,13 @@ function motionGraphicResourceXml(
   return `<asset id="${info.id}" name="${escapeXml(info.filename)}" start="0s" duration="${rationalTime(info.durationFrames, fps)}" hasVideo="1" hasAudio="0" format="${formatId}">\n      ${mediaRepXml('original-media', href, info.filename)}\n    </asset>`;
 }
 
+
+function backgroundFillMetadataXml(item: TimelineItem): string {
+  return `<metadata>
+          <md key="com.openchatcut.backgroundFill" value="1" editable="1" type="boolean"/>
+          <md key="com.openchatcut.backgroundFillStrength" value="${backgroundFillStrengthOf(item)}" editable="1" type="integer"/>
+        </metadata>`;
+}
 /** Entries with src (video/audio/image/gif) → asset-clip; entries without src
  * (motion-graphic/text, MG does not have real media files) → placeholder gap with name + annotation,
  * The integrator can use export_motion_graphic_prores to render the transparent video and replace this gap.*/
@@ -280,6 +287,7 @@ function itemToSpineElement(
   lane: number,
   assets: Map<string, AssetInfo>,
   renderedMotionGraphics: Map<string, RenderedMotionGraphicInfo>,
+  backgroundFillActive: boolean,
 ): string {
   const offset = rationalTime(item.startFrame, fps);
   const duration = rationalTime(item.durationInFrames, fps);
@@ -293,8 +301,12 @@ function itemToSpineElement(
         .map((seg) => `<asset-clip ref="${ref}" lane="${lane}" offset="${rationalTime(seg.fromFrame, fps)}" duration="${rationalTime(seg.durFrames, fps)}" start="${rationalTime(seg.srcStartFrame, fps)}" name="${name}"/>`)
         .join('\n        ');
     }
-    const start = rationalTime(item.srcInFrame ?? 0, fps);
-    return `<asset-clip ref="${ref}" lane="${lane}" offset="${offset}" duration="${duration}" start="${start}" name="${name}"/>`;
+    const attributes = `ref="${ref}" lane="${lane}" offset="${offset}" duration="${duration}" start="${rationalTime(item.srcInFrame ?? 0, fps)}" name="${name}"`;
+    return backgroundFillActive
+      ? `<asset-clip ${attributes}>
+        ${backgroundFillMetadataXml(item)}
+      </asset-clip>`
+      : `<asset-clip ${attributes}/>`;
   }
   if (item.kind === 'motion-graphic') {
     const rendered = renderedMotionGraphics.get(motionGraphicRenderKey(item));
@@ -363,10 +375,12 @@ export function timelineToFcpxml(
     return laneDiff !== 0 ? laneDiff : a.startFrame - b.startFrame;
   });
   const backgroundFillWarning = fcpxmlBackgroundFillCount(state) > 0
-    ? xmlComment('WARNING: FCPXML cannot represent OpenChatCut backgroundFill; render a video master to preserve this appearance.')
+    ? xmlComment('WARNING: backgroundFill settings are preserved as OpenChatCut metadata, but this exporter does not synthesize a portable blurred layer; render a video master to preserve the exact appearance.')
     : '';
   const itemXml = sortedItems
-    .map((item) => itemToSpineElement(item, fps, laneOf(item.track), assets, renderedMotionGraphics));
+    .map((item) => itemToSpineElement(
+      item, fps, laneOf(item.track), assets, renderedMotionGraphics, isBackgroundFillActive(state, item),
+    ));
   const spineChildren = [backgroundFillWarning, ...itemXml].filter(Boolean).join('\n        ');
 
   const backgroundGap = `<gap name="Background" offset="${rationalTime(0, fps)}" duration="${rationalTime(total, fps)}">\n        ${spineChildren}\n      </gap>`;
