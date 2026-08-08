@@ -1,5 +1,6 @@
 const GLOBAL_READ_TOOL_NAMES: Record<string, true> = {
   load_skill: true,
+  ToolSearch: true,
 };
 
 const READ_ONLY_TOOL_NAMES = new Set([

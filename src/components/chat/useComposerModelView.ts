@@ -50,12 +50,24 @@ export function useComposerModelView(
   const contextLabel = activeModel
     ? `${usedEstimated ? '~' : ''}${compactTokens(used)} / ${limitEstimated ? '~' : ''}${compactTokens(limit)}`
     : '';
-  const contextTitle = activeModel
+  const breakdown = contextUsage && usageMatchesModel && contextUsage.systemTokens !== undefined
+    ? t('系统 {system} · 工具 {tools}（{toolCount} 个）· 历史 {history}', {
+        system: `≈${compactTokens(contextUsage.systemTokens)}`,
+        tools: `≈${compactTokens(contextUsage.toolSchemaTokens ?? 0)}`,
+        toolCount: String(contextUsage.toolCount ?? 0),
+        history: `≈${compactTokens(contextUsage.historyTokens ?? 0)}`,
+      })
+    : '';
+  const cache = contextUsage && usageMatchesModel && contextUsage.cacheReadTokens !== undefined
+    ? t('缓存读取 {tokens}', { tokens: compactTokens(contextUsage.cacheReadTokens) })
+    : '';
+  const contextSummary = activeModel
     ? t('上下文：{used} / {limit}', {
         used: `${usedEstimated ? '≈' : ''}${compactTokens(used)}`,
         limit: `${limitEstimated ? '≈' : ''}${compactTokens(limit)}`,
       })
     : t('选择模型');
+  const contextTitle = [contextSummary, breakdown, cache].filter(Boolean).join('\n');
   return {
     activeModel,
     contextLabel,

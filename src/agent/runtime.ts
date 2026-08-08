@@ -5,7 +5,7 @@ import { TOOL_SCHEMAS } from './tools';
 import { ASK_MODE_TOOL_SCHEMAS } from './ask-mode-tools';
 import { buildAgentSystemPrompt } from './systemPrompt';
 import { normalizeLlmMessages } from './messages';
-import { loadAgentSettings } from './settings/agentSettings';
+import { loadAgentSettings, type AgentSettings } from './settings/agentSettings';
 import type { GuardDecision } from './skills/costGuard';
 import {
   runtimeGuardForTool,
@@ -15,11 +15,12 @@ import {
   getActiveAgentModelChoice,
   type AgentModelChoice,
 } from './model-selection';
-import { executeOpenChatCutTool, runCodexAgent } from './codex/runtime';
-import { prepareAgentContext } from './context-management';
-import type { AgentContextUsage } from './context-compaction';
+import { executeOpenChatCutTool, runCodexAgent, type CodexToolExecution } from './codex/runtime';
+import { prepareAgentContext, type AgentContextPreparation } from './context-management';
+import { estimateContextTokens, estimateTextTokens, type AgentContextUsage } from './context-compaction';
 import { runApiAgent } from './api-runtime';
 import type { ToolFailureTracker } from './toolFailure';
+import { ToolActivation } from './tool-activation';
 
 export {
   apiToolExecutionOutput,
@@ -34,12 +35,23 @@ export type LLMMessage = ModelMessage;
 export interface AgentRuntimeModule {
   runAgent: typeof runAgent;
 }
+export interface RuntimeContextUpdate {
+  readonly messages: ModelMessage[];
+  readonly compacted: boolean;
+}
+export type RuntimeContextPreparer = (
+  messages: readonly ModelMessage[],
+  tools: readonly unknown[],
+) => Promise<RuntimeContextUpdate>;
 export interface RunAgentOptions {
   readonly askOnly?: boolean;
   readonly signal?: AbortSignal;
   readonly onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>;
   readonly previousContextUsage?: AgentContextUsage;
   readonly toolFailures?: ToolFailureTracker;
+  /** Internal per-request registry state; callers normally leave this unset. */
+  readonly toolActivation?: ToolActivation;
+  readonly prepareContextForTools?: RuntimeContextPreparer;
 }
 
 export type AgentEvent =
@@ -63,8 +75,66 @@ const toCodexToolSpec = (schema: (typeof TOOL_SCHEMAS)[number]): CodexAgentToolS
   description: schema.description,
   inputSchema: schema.input_schema,
 });
-const CODEX_TOOL_SPECS: readonly CodexAgentToolSpec[] = TOOL_SCHEMAS.map(toCodexToolSpec);
-const ASK_MODE_CODEX_TOOL_SPECS: readonly CodexAgentToolSpec[] = ASK_MODE_TOOL_SCHEMAS.map(toCodexToolSpec);
+function createContextRepreparer(
+  system: string,
+  choice: AgentModelChoice,
+  ctx: AgentContext,
+  initialUsage: AgentContextUsage,
+  onEvent: (event: AgentEvent) => void,
+  signal?: AbortSignal,
+): RuntimeContextPreparer {
+  let previousUsage = initialUsage;
+  return async (messages, tools) => {
+    const prepared = await prepareAgentContext({
+      messages, system, choice, ctx, tools, previousUsage, signal,
+    });
+    previousUsage = prepared.usage;
+    onEvent({ type: 'context-usage', usage: prepared.usage });
+    return { messages: prepared.messages, compacted: prepared.usage.compacted };
+  };
+}
+interface CodexToolRequest {
+  readonly name: string;
+  readonly args: Record<string, unknown>;
+  readonly activation: ToolActivation;
+  readonly ctx: AgentContext;
+  readonly onEvent: (event: AgentEvent) => void;
+  readonly settings: AgentSettings;
+  readonly onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>;
+}
+
+async function executeCodexTool(request: CodexToolRequest): Promise<{
+  readonly activation: ToolActivation;
+  readonly execution: CodexToolExecution;
+}> {
+  const { name, args, activation, ctx, onEvent, settings, onSkillGuard } = request;
+  const schema = activation.allSchemas().find((candidate) => candidate.name === name);
+  if (!schema) {
+    return {
+      activation,
+      execution: { success: false, result: { error: `Unknown Codex tool: ${name}` } },
+    };
+  }
+  const execution = await executeOpenChatCutTool(schema, args, {
+    ctx,
+    onEvent,
+    settings,
+    resolveGuard: runtimeGuardForTool,
+    onSkillGuard,
+    toolCatalog: activation.allSchemas(),
+  });
+  if (name !== 'ToolSearch' || !execution.success) return { activation, execution };
+  const activated = activation.withSearchResult(execution.result);
+  return {
+    activation: activated.activation,
+    execution: {
+      ...execution,
+      result: activated.result,
+      refreshTools: activated.activation.names().length > activation.names().length,
+    },
+  };
+}
+
 
 async function runCodexBackend(
   messages: LLMMessage[],
@@ -76,12 +146,12 @@ async function runCodexBackend(
   contextWindowTokens: number,
   contextWindowEstimated: boolean,
   maxOutputTokens: number,
+  activation: ToolActivation,
   opts?: RunAgentOptions,
 ): Promise<LLMMessage[]> {
   const settings = loadAgentSettings();
-  const tools = !choice.capabilities.supportsTools.value
-    ? []
-    : opts?.askOnly ? ASK_MODE_CODEX_TOOL_SPECS : CODEX_TOOL_SPECS;
+  let currentActivation = activation;
+  const resolveTools = () => currentActivation.schemas().map(toCodexToolSpec);
   return runCodexAgent(messages, ctx, onEvent, {
     askOnly: opts?.askOnly,
     signal: opts?.signal,
@@ -97,19 +167,54 @@ async function runCodexBackend(
     system,
     contextWasCompacted,
     toolFailures: opts?.toolFailures,
-    tools,
+    systemTokens: estimateTextTokens(system),
+    toolSchemaTokens: estimateTextTokens(JSON.stringify(currentActivation.schemas())),
+    historyTokens: estimateContextTokens(messages),
+    toolCount: currentActivation.schemas().length,
+    tools: resolveTools(),
+    resolveTools,
+    prepareContextForTools: opts?.prepareContextForTools,
     executeTool: async (name, args) => {
-      const schema = TOOL_SCHEMAS.find((candidate) => candidate.name === name);
-      if (!schema) return { success: false, result: { error: `Unknown Codex tool: ${name}` } };
-      return executeOpenChatCutTool(schema, args, {
-        ctx,
-        onEvent,
-        settings,
-        resolveGuard: runtimeGuardForTool,
+      const update = await executeCodexTool({
+        name, args, activation: currentActivation, ctx, onEvent, settings,
         onSkillGuard: opts?.onSkillGuard,
       });
+      currentActivation = update.activation;
+      return update.execution;
     },
   });
+}
+async function runPreparedAgent(
+  prepared: AgentContextPreparation,
+  ctx: AgentContext,
+  onEvent: (event: AgentEvent) => void,
+  active: AgentModelChoice,
+  system: string,
+  activation: ToolActivation,
+  opts?: RunAgentOptions,
+): Promise<LLMMessage[]> {
+  const runtimeOptions = {
+    ...opts,
+    toolActivation: activation,
+    prepareContextForTools: createContextRepreparer(
+      system, active, ctx, prepared.usage, onEvent, opts?.signal,
+    ),
+  };
+  if (active.backend !== 'codex') {
+    return runApiAgent(
+      prepared.messages, ctx, onEvent, active, system,
+      prepared.usage.compacted, prepared.maxOutputTokens, runtimeOptions,
+    );
+  }
+  return runCodexBackend(
+    prepared.messages, ctx, onEvent, active, system,
+    prepared.usage.compacted,
+    prepared.usage.contextWindowTokens,
+    prepared.usage.contextWindowEstimated,
+    prepared.maxOutputTokens,
+    activation,
+    runtimeOptions,
+  );
 }
 
 export async function runAgent(
@@ -125,43 +230,22 @@ export async function runAgent(
     return conv;
   }
   const system = buildAgentSystemPrompt(ctx);
-  const toolSchemas = !active.capabilities.supportsTools.value
+  const toolCatalog = !active.capabilities.supportsTools.value
     ? []
     : opts?.askOnly ? ASK_MODE_TOOL_SCHEMAS : TOOL_SCHEMAS;
+  const activation = new ToolActivation(toolCatalog, conv);
   try {
     const prepared = await prepareAgentContext({
       messages: conv,
       system,
       choice: active,
       ctx,
-      tools: toolSchemas,
+      tools: activation.schemas(),
       previousUsage: opts?.previousContextUsage,
       signal: opts?.signal,
     });
     onEvent({ type: 'context-usage', usage: prepared.usage });
-    return active.backend === 'codex'
-      ? runCodexBackend(
-          prepared.messages,
-          ctx,
-          onEvent,
-          active,
-          system,
-          prepared.usage.compacted,
-          prepared.usage.contextWindowTokens,
-          prepared.usage.contextWindowEstimated,
-          prepared.maxOutputTokens,
-          opts,
-        )
-      : runApiAgent(
-          prepared.messages,
-          ctx,
-          onEvent,
-          active,
-          system,
-          prepared.usage.compacted,
-          prepared.maxOutputTokens,
-          opts,
-        );
+    return runPreparedAgent(prepared, ctx, onEvent, active, system, activation, opts);
   } catch (error) {
     if (opts?.signal?.aborted) return conv;
     const message = error instanceof Error ? error.message : String(error);

@@ -15,6 +15,12 @@ import {
 } from './context-management';
 import { usageNeedsChoiceRefresh } from './context-usage';
 import { resolveModelCapabilities } from '../../shared/model-capabilities';
+import {
+  activatedToolNamesFromMessages,
+  activationProviderOptions,
+  ToolActivation,
+} from './tool-activation';
+import type { AgentToolSchema } from './tool-schema';
 
 const message = (role: 'user' | 'assistant', content: string): ModelMessage => ({ role, content });
 const options = (
@@ -54,6 +60,9 @@ const maxInputUsage = (inputTokens: number) => ({
   modelId: 'test:model',
   compacted: false,
   messageCount: 1,
+  systemTokens: estimateTextTokens('system'),
+  toolSchemaTokens: 0,
+  historyTokens: estimateContextTokens(small),
 });
 const atInputLimit = await prepareContext({
   ...options(small, async () => 'unused'),
@@ -70,6 +79,33 @@ await assert.rejects(
   /current request is too large/,
   'the model input ceiling triggers compaction independently of total context',
 );
+const missingBreakdown = await prepareContext({
+  ...options(small, async () => 'unused'),
+  maxInputTokens: 100,
+  previousUsage: {
+    inputTokens: 999,
+    contextWindowTokens: 1_000,
+    contextWindowEstimated: false,
+    isEstimated: false,
+    modelId: 'test:model',
+    compacted: false,
+    messageCount: 1,
+  },
+});
+assert.equal(missingBreakdown.usage.compacted, false,
+  'provider calibration without overhead breakdowns is not reused');
+const shrunkSchemas = await prepareContext({
+  ...options(small, async () => 'unused'),
+  maxInputTokens: 700,
+  requestOverheadTokens: 10,
+  previousUsage: {
+    ...maxInputUsage(850),
+    toolSchemaTokens: 400,
+  },
+});
+assert.equal(shrunkSchemas.usage.compacted, false,
+  'provider calibration rebases a prior large schema set onto current overhead');
+
 
 const history = [
   message('user', 'A'.repeat(1_600)),
@@ -88,6 +124,35 @@ assert.equal(compacted.messages.length, 3);
 assert.match(String(compacted.messages[0]?.content), /Conversation checkpoint/);
 assert.equal(compacted.messages[1], history[2], 'recent messages stay verbatim');
 assert.ok(compacted.usage.inputTokens < 800, 'compacted request restores the configured reserve');
+const activationHistory: ModelMessage[] = [
+  message('user', 'A'.repeat(1_600)),
+  {
+    role: 'tool',
+    content: [{
+      type: 'tool-result',
+      toolCallId: 'search-1',
+      toolName: 'ToolSearch',
+      output: { type: 'text', value: JSON.stringify({ activatedTools: ['web_crawl'] }) },
+    }],
+  },
+  message('user', 'C'.repeat(1_200)),
+  message('assistant', 'D'.repeat(400)),
+];
+const activationCheckpoint = await prepareContext({
+  ...options(activationHistory, async () => 'Earlier tools.'),
+  checkpointProviderOptions: (source) => (
+    activationProviderOptions(activatedToolNamesFromMessages(source))
+  ),
+});
+const activationCatalog: AgentToolSchema[] = ['ToolSearch', 'web_crawl'].map((name) => ({
+  name,
+  description: name,
+  input_schema: { type: 'object', properties: {} },
+}));
+const restoredAfterCompaction = new ToolActivation(activationCatalog, activationCheckpoint.messages);
+assert.equal(restoredAfterCompaction.names().includes('web_crawl'), false,
+  'completed-request activations expire before compaction');
+
 assert.equal(compacted.usage.messageCount, compacted.messages.length);
 const lowInputHistory = [
   message('user', 'A'.repeat(12_000)),
@@ -157,6 +222,9 @@ const calibrated = await prepareContext({
     modelId: 'test:model',
     compacted: false,
     messageCount: 2,
+    systemTokens: estimateTextTokens('system'),
+    toolSchemaTokens: 0,
+    historyTokens: estimateContextTokens(history.slice(0, 2)),
   },
 });
 assert.equal(calibrated.usage.compacted, true, 'provider usage calibrates the next compaction decision');
