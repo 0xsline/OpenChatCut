@@ -12,7 +12,8 @@ const BOOT_TOOL_NAMES: Record<string, true> = {
 };
 
 interface RoutingGroup {
-  readonly requestKeywords: readonly string[];
+  readonly requestKeywords?: readonly string[];
+  readonly requestContext?: readonly (readonly string[])[];
   readonly mutating?: boolean;
   readonly toolKeywords: readonly string[];
 }
@@ -22,6 +23,20 @@ const ROUTING_GROUPS: readonly RoutingGroup[] = [
     mutating: true,
     requestKeywords: ['edit', 'trim', 'split', 'move', 'delete', 'remove', 'add', 'insert', 'create', 'update', 'modify', 'adjust', 'apply', 'reorder', 'background fill', 'blur', '剪辑', '裁剪', '分割', '移动', '删除', '移除', '添加', '新增', '插入', '创建', '修改', '调整', '设置', '应用', '排列', '排序', '重排', '填充', '模糊', '虚化'],
     toolKeywords: ['edit_item', '_item', 'edit_track', 'manage_timelines', 'undo_', 'redo_', 'apply_layout'],
+  },
+  {
+    requestContext: [
+      ['elevenlabs', 'doubao', 'minimax', 'inworld', 'fish audio', 'fishaudio', 'speechify', 'openai', 'gemini', 'mistral', 'cartesia'],
+      ['tts', 'text-to-speech', 'speech synthesis', 'voice generation', 'voiceover generation', '配音', '语音合成'],
+    ],
+    toolKeywords: ['submit_voice'],
+  },
+  {
+    requestContext: [
+      ['assemblyai', 'local', 'openai', 'mistral', 'deepgram', 'groq', 'elevenlabs', 'cartesia'],
+      ['transcribe', 'transcription', 'speech-to-text', 'stt', 'asr', '转写', '语音识别'],
+    ],
+    toolKeywords: ['transcribe_track'],
   },
   {
     requestKeywords: ['transcript', 'caption', 'subtitle', 'script', 'speech', 'silence', 'voice', 'loudness', '文字稿', '字幕', '台词', '口播', '静音', '人声', '响度'],
@@ -183,10 +198,13 @@ function routedNames(catalog: readonly AgentToolSchema[], messages: readonly Mod
   const request = latestUserText(messages);
   if (!request) return [];
   const readOnly = isReadOnlyRequest(request);
-  const matchingGroups = ROUTING_GROUPS.filter((group) => (
-    (!group.mutating || !readOnly)
-      && group.requestKeywords.some((keyword) => request.includes(keyword))
-  )).slice(0, 2);
+  const matchingGroups = ROUTING_GROUPS.filter((group) => {
+    const directMatch = group.requestKeywords?.some((keyword) => request.includes(keyword)) ?? false;
+    const contextualMatch = group.requestContext?.every((alternatives) => (
+      alternatives.some((keyword) => request.includes(keyword))
+    )) ?? false;
+    return (!group.mutating || !readOnly) && (directMatch || contextualMatch);
+  }).slice(0, 2);
   return catalog
     .filter((schema) => matchingGroups.some((group) => (
       group.toolKeywords.some((keyword) => schema.name.includes(keyword))

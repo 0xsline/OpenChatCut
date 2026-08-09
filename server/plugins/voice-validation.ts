@@ -103,12 +103,37 @@ function validateMinimalProvider(input: VoiceRequest, label: string): void {
     input.subtitleEnable, input.subtitleType],
   `${label} only accepts text, voiceId, and modelId`);
 }
+function isAiProvider(provider: string | undefined): provider is 'openai' | 'gemini' | 'mistral' | 'cartesia' {
+  return provider === 'openai' || provider === 'gemini' || provider === 'mistral' || provider === 'cartesia';
+}
+
+function validateAiProvider(input: VoiceRequest, provider: 'openai' | 'gemini' | 'mistral' | 'cartesia'): void {
+  if (input.speed != null && provider !== 'openai' && provider !== 'cartesia') {
+    throw new Error(`${provider} does not support speed`);
+  }
+  range(input.speed, provider === 'cartesia' ? 0.6 : 0.25, provider === 'cartesia' ? 1.5 : 4, 'speed');
+  if (input.languageCode != null && provider !== 'cartesia') throw new Error(`${provider} does not support languageCode`);
+  if (input.languageCode != null && !/^(?:auto|[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*)$/.test(input.languageCode)) {
+    throw new Error('languageCode must be an ISO language code or auto');
+  }
+  if (input.instructions != null && provider !== 'openai' && provider !== 'gemini') {
+    throw new Error(`${provider} does not support instructions`);
+  }
+  reject([input.stability, input.similarityBoost, input.style, input.useSpeakerBoost, input.seed,
+    input.optimizeStreamingLatency, input.enableLogging, input.applyTextNormalization, input.applyLanguageTextNormalization,
+    input.pronunciationDictionaryLocators, input.previousText, input.nextText, input.previousRequestIds, input.nextRequestIds,
+    input.speedRatio, input.emotion, input.emotionScale, input.loudnessRatio, input.pitch, input.volume,
+    input.performancePrompt, input.explicitDialect, input.sampleRate, input.bitrate, input.audioFormat, input.channel,
+    input.forceCbr, input.stream, input.excludeAggregatedAudio, input.languageBoost, input.textNormalization,
+    input.latexRead, input.pronunciations, input.timbreWeights, input.voiceModify, input.subtitleEnable, input.subtitleType],
+  `${provider} only accepts text, voiceId, modelId, speed, languageCode, outputFormat, and instructions`);
+}
 
 export function validateVoiceRequest(input: VoiceRequest): ValidVoiceRequest {
   const provider = input.provider;
   if (provider !== 'elevenlabs' && provider !== 'doubao' && provider !== 'minimax'
-    && provider !== 'inworld' && provider !== 'fishaudio' && provider !== 'speechify') {
-    throw new Error('provider must be elevenlabs, doubao, minimax, inworld, fishaudio, or speechify');
+    && provider !== 'inworld' && provider !== 'fishaudio' && provider !== 'speechify' && !isAiProvider(provider)) {
+    throw new Error('unsupported voice provider');
   }
   const text = String(input.text ?? '').trim();
   const requestedVoiceId = String(input.voiceId ?? '').trim();
@@ -118,9 +143,14 @@ export function validateVoiceRequest(input: VoiceRequest): ValidVoiceRequest {
   if (provider === 'elevenlabs') validateEleven(input);
   else if (provider === 'doubao') validateDoubao(input, voiceId);
   else if (provider === 'minimax') validateMinimax(input, text);
+  else if (isAiProvider(provider)) validateAiProvider(input, provider);
   else {
     if (provider === 'inworld' && text.length > 2_000) throw new Error('Inworld TTS text must be at most 2000 characters');
     validateMinimalProvider(input, provider === 'inworld' ? 'Inworld' : provider === 'fishaudio' ? 'Fish Audio' : 'Speechify');
+  }
+  if (isAiProvider(provider)) {
+    return { ...input, provider, text, voiceId, outputFormat: input.outputFormat ?? (provider === 'gemini' ? 'wav' : 'mp3'),
+      sampleRate: 24_000, audioFormat: 'mp3', channel: 1 };
   }
   return { ...input, provider, text, voiceId, outputFormat: input.outputFormat ?? 'mp3_44100_128',
     sampleRate: input.sampleRate ?? 32_000,

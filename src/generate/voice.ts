@@ -1,8 +1,20 @@
 import type { MediaAsset, TimelineState } from '../editor/types';
 import type { MinimaxLanguageBoost } from '../../shared/media-provider-params';
 
+export type VoiceProvider =
+  | 'elevenlabs'
+  | 'doubao'
+  | 'minimax'
+  | 'inworld'
+  | 'fishaudio'
+  | 'speechify'
+  | 'openai'
+  | 'gemini'
+  | 'mistral'
+  | 'cartesia';
+
 export interface SubmitVoiceArgs {
-  provider: 'elevenlabs' | 'doubao' | 'minimax' | 'inworld' | 'fishaudio' | 'speechify';
+  provider: VoiceProvider;
   text: string;
   voiceId: string;
   modelId?: string;
@@ -14,6 +26,7 @@ export interface SubmitVoiceArgs {
   languageCode?: string;
   seed?: number;
   outputFormat?: string;
+  instructions?: string;
   optimizeStreamingLatency?: number;
   enableLogging?: boolean;
   applyTextNormalization?: 'auto' | 'on' | 'off';

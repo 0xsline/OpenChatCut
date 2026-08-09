@@ -40,27 +40,38 @@ TTS is needed.
 
 Use `submit_voice` to create a TTS audio asset. The current MCP tool contract is:
 
-- `provider` is required: `doubao` (Chinese-optimized), `elevenlabs` (English /
-  multilingual), or `minimax` (MiniMax TTS — see
-  [references/minimax-tts.md](references/minimax-tts.md)).
-- `voiceId` is required and provider-specific. The only exception is MiniMax
-  `timbreWeights` mixing, where `voiceId` must be empty. Do not mix catalogs.
+- `provider` is required. Configured choices may be `doubao`, `elevenlabs`,
+  `minimax`, `inworld`, `fishaudio`, `speechify`, `openai`, `gemini`,
+  `mistral`, or `cartesia`. All providers are opt-in; use only providers shown
+  as configured in the capabilities prompt.
+- `voiceId` is required, concrete, and provider-specific. The only exception is
+  deliberate MiniMax `timbreWeights` mixing, where `voiceId` must be empty. Do
+  not mix catalogs.
+- The curated catalog in [references/voices.md](references/voices.md) covers
+  only Doubao, ElevenLabs, and MiniMax. Other providers have no bundled preset
+  or sample catalog in OpenChatCut. Require a concrete voice ID from the user or
+  their provider account; never invent a preset or `/voice-samples/...` URL.
+- AI SDK-backed fields are provider-specific: OpenAI supports `modelId`,
+  `speed`, `outputFormat`, and `instructions`; Gemini supports `modelId`,
+  `outputFormat`, and `instructions`; Mistral supports `modelId` and
+  `outputFormat`; Cartesia supports `modelId`, `speed`, `languageCode`, and
+  `outputFormat`. Omit unsupported or unrequested fields.
+- Inworld, Fish Audio, and Speechify accept only `voiceId` plus optional
+  `modelId`. Do not pass expressive, speed, language, or output controls to
+  these providers.
 - `submit_voice` creates an audio asset only. Timeline placement, replacement,
   trimming, and alignment happen later with timeline tools.
 - For long narration, multiple `submit_voice` calls can be useful: split at
   natural pauses, sentence groups, or script beat boundaries when the workflow
-  benefits from separately timed or placed voice clips, such as storyboard beats,
-  scene-level ad segments, or a user request for separate assets.
-- For Doubao, `speedRatio`, `loudnessRatio`, `pitch`, `emotion`,
-  `emotionScale`, `performancePrompt`, and `explicitDialect` are supported
-  knobs, but not every Doubao voice supports every expressive control. Check
-  the `voiceId` guide or [references/voices.md](references/voices.md) before
-  using them.
-- For ElevenLabs, the tool supports the official voice settings, language,
-  seed, output formats, normalization, pronunciation dictionaries, continuity
-  text/request IDs, and logging/latency query controls. For `eleven_v3`, inline audio tags are available for expressive
-  delivery such as emotion, tone, nonverbal cues, accent hints, pauses, or
-  local pacing.
+  benefits from separately timed or placed voice clips.
+- Doubao supports `speedRatio`, `loudnessRatio`, `pitch`, `emotion`,
+  `emotionScale`, `performancePrompt`, and `explicitDialect`, but not every
+  voice supports every expressive control. Check
+  [references/voices.md](references/voices.md) before using them.
+- ElevenLabs retains its official voice settings, language, seed, output,
+  normalization, pronunciation-dictionary, continuity, logging, and latency
+  controls. MiniMax retains its dedicated controls documented in
+  [references/minimax-tts.md](references/minimax-tts.md).
 
 Doubao control support for current curated voices:
 
@@ -160,19 +171,36 @@ submit_voice({
   speed: 1,
   name: "VO · welcome",
 });
+
+// Cartesia shape after the user confirms the exact account voice ID.
+// confirmedCartesiaVoiceId represents that supplied value, not a preset.
+submit_voice({
+  provider: "cartesia",
+  text: "A concise product introduction.",
+  voiceId: confirmedCartesiaVoiceId,
+  modelId: "sonic-3",
+  speed: 1,
+  languageCode: "en",
+  outputFormat: "mp3",
+});
 ```
 
 ## Voice Audition Before Generation
 
-When the user needs TTS and has not already chosen a concrete preset, treat
-broad words like "middle-aged male", "warm female", or "professional" as
-requirements for filtering candidate voices.
+When the user needs TTS and has not already chosen a concrete voice, first
+separate providers with curated OpenChatCut choices from providers that require
+an account-specific voice ID.
 
-Before recommending, rendering, or submitting any TTS voice option, read
-[references/voices.md](references/voices.md). Use that file as the preset
-source for preset ids / `voiceId`, provider choice, display labels, tags, and
-sample URLs. Do not create voice options from memory, translated names, or
-broad user descriptions.
+For Doubao, ElevenLabs, or MiniMax, read
+[references/voices.md](references/voices.md) before recommending, rendering, or
+submitting an option. Use it as the only source for curated preset IDs,
+provider choice, display labels, tags, and bundled sample URLs. Do not create
+voice options from memory, translated names, or broad user descriptions.
+
+For Inworld, Fish Audio, Speechify, OpenAI, Gemini, Mistral, or Cartesia, do not
+offer an invented audition list or sample URL. Ask the user for the concrete
+voice ID from that configured provider. A broad description such as "warm
+female" is not a valid `voiceId`.
 
 First determine two separate languages:
 
@@ -192,32 +220,30 @@ English users see `submit_label="Submit"`, Chinese users see
 for Chinese narration, so the audition widget copy stays in English while the
 voice candidates come from Doubao.
 
-Instead:
+For a curated provider:
 
 1. Filter `references/voices.md` by target narration language / provider and
-   the user's explicit requirements such as gender, age range, tone, and use
-   case.
+   explicit requirements such as gender, age range, tone, and use case.
 2. If no preset matches all explicit requirements, say there is no exact match
    and offer the closest supported presets with a clear caveat.
 3. Pick 2-4 matching curated presets.
 4. Load `widget-forms`, then call `ask_followup_questions` with voice options
-   and audio samples.
+   and real bundled audio samples.
 5. Wait for the user to choose.
-6. Call `submit_voice` with the selected preset id as `voiceId`.
+6. Call `submit_voice` with the selected preset ID as `voiceId`.
 
-For each audition option, keep `value`, display label, `media`, and `summary`
-tied to the same preset row from `references/voices.md`. Use `sample=` URLs
-from the `submit_voice` `voiceId` guide. They are editor static files under
-`/voice-samples/...`. Keep `value` as the preset id and `media` as the matching
-sample URL. Write `name` and `summary` in the user's conversation language. The
-target narration language only decides the provider/voice catalog. For example,
-if the user asks in English for a Chinese voiceover, keep the widget copy in
-English and use English-friendly voice names/tags. If the user's message itself
-is Chinese, use Chinese widget copy and Doubao's official Chinese display
-names. For known `/voice-samples/...` presets, the editor can fill display text
-only when `name`/`summary` are omitted; authored widget text is the normal path
-for arbitrary languages. After the user submits, map the submitted display name
-back to the preset id from the same candidate list.
+For a provider without a curated OpenChatCut catalog, ask for a free-text,
+concrete provider voice ID instead. Do not add `media` or synthesize a
+`/voice-samples/...` path. Wait for the user to supply/confirm the exact ID
+before calling `submit_voice`.
+
+For each curated audition option, keep `value`, display label, `media`, and
+`summary` tied to the same preset row from `references/voices.md`. Use only the
+sample URLs recorded there. Keep `value` as the preset ID and `media` as its
+matching sample URL. Write `name` and `summary` in the user's conversation
+language. The target narration language only decides the provider/voice
+catalog. After submission, map the display name back to the preset ID from the
+same candidate list.
 
 English request for Chinese narration:
 
@@ -351,16 +377,18 @@ submit_sound({
 
 ### TTS
 
-| Field        | Description                            | Notes           |
-| ------------ | -------------------------------------- | --------------- |
-| `provider`   | TTS provider: `doubao`, `elevenlabs`, or `minimax` | Required |
-| `text`       | Text to synthesize                     | Required        |
-| `voiceId`    | Curated preset id or provider voice id | Required        |
-| `speedRatio` | Speech speed                           | Doubao only     |
-| `modelId`    | ElevenLabs model id                    | ElevenLabs only |
-| `stability`  | ElevenLabs stability                   | ElevenLabs only |
-| `speed`      | ElevenLabs speech speed                | ElevenLabs only |
-| `name`       | Asset name                             | Optional        |
+| Field | Description | Notes |
+| --- | --- | --- |
+| `provider` | `doubao`, `elevenlabs`, `minimax`, `inworld`, `fishaudio`, `speechify`, `openai`, `gemini`, `mistral`, or `cartesia` | Required; configured choices only |
+| `text` | Text to synthesize | Required |
+| `voiceId` | Concrete provider-specific voice ID | Required except MiniMax timbre mix |
+| `modelId` | Provider model override | ElevenLabs, Inworld, Fish Audio, Speechify, OpenAI, Gemini, Mistral, Cartesia |
+| `speed` | Speech speed | ElevenLabs, MiniMax, OpenAI, Cartesia |
+| `languageCode` | Language hint/code | ElevenLabs, Cartesia |
+| `outputFormat` | Provider-supported output format | ElevenLabs, OpenAI, Gemini, Mistral, Cartesia |
+| `instructions` | Natural-language delivery direction | OpenAI, Gemini |
+| `speedRatio` | Speech speed | Doubao only |
+| `name` | Media-pool asset name | Optional |
 
 ### Sound Effects
 
@@ -377,27 +405,34 @@ Use the `submit_voice` `voiceId` guide and
 [references/voices.md](references/voices.md) for the current curated preset
 list, display labels, tags, and sample URLs.
 
-### Voice presets are provider-specific — do NOT mix them
+### Voice IDs are provider-specific — do NOT mix them
 
-ElevenLabs, Doubao, and MiniMax have separate voice catalogs. `vivi` / `dayi`
-are only Doubao; `mark` / `amelia` / `james` are only ElevenLabs; MiniMax system
-voices (e.g. `female-yujie`) are only for `provider: "minimax"`.
+The curated catalog contains separate Doubao, ElevenLabs, and MiniMax IDs.
+`vivi` / `dayi` are only Doubao; `mark` / `amelia` / `james` are only
+ElevenLabs; `female-yujie` is only MiniMax. Inworld, Fish Audio, Speechify,
+OpenAI, Gemini, Mistral, and Cartesia require a concrete provider-specific ID
+confirmed by the user and have no bundled OpenChatCut samples.
 
-If you need a specific voice and a particular language:
+Provider choice:
 
-- For Chinese narration -> prefer `provider: "doubao"` (or `minimax` when that
-  is the configured / requested vendor) with a matching catalog voiceId.
-- For English / multilingual -> use `provider: "elevenlabs"` and an ElevenLabs
-  preset.
-- Only offer a provider that is **configured** (capabilities prompt).
+- Honor an explicit configured provider first.
+- For Chinese narration, prefer a matching curated Doubao voice (or MiniMax
+  when configured/requested). Use another provider only after the user chooses
+  it and confirms its voice ID.
+- For English / multilingual narration, prefer a curated ElevenLabs voice.
+  Use another provider only after the user chooses it and confirms its voice ID.
+- Never offer a provider that is not shown as configured in capabilities.
 
 ## Hard rules — what you must NOT do
 
-1. Never use a voice preset name from a different provider.
-2. Never submit TTS when the voice is only described broadly and the user has
-   not confirmed a concrete preset.
-3. Never recommend or render a TTS voice option before checking
+1. Never use a voice ID from a different provider.
+2. Never submit TTS while the voice is only described broadly; require a
+   concrete provider-specific ID confirmed by the user.
+3. Never recommend or render a curated TTS option before checking
    [references/voices.md](references/voices.md).
-4. Never claim stable age, regional accent, pronunciation dictionary, or exact
-   duration controls; the current tool does not expose those as reliable fields.
-5. Never replace original recorded speech with TTS unless the user asks.
+4. Never invent presets or sample URLs for Inworld, Fish Audio, Speechify,
+   OpenAI, Gemini, Mistral, or Cartesia.
+5. Never pass provider-specific fields to a provider that does not support them.
+6. Never claim stable age, regional accent, pronunciation dictionary, or exact
+   duration controls unless the selected provider exposes them.
+7. Never replace original recorded speech with TTS unless the user asks.

@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 
+import { generateAiVoice, isAiVoiceProvider } from './voice-ai-sdk.ts';
 import { saveVoiceAudio, saveVoiceSubtitle } from './voice-media.ts';
 import { doubaoVoice, elevenLabsVoice, fishAudioVoice, inworldVoice, minimaxVoice, speechifyVoice } from './voice-providers.ts';
 import type { VoiceOptions, VoiceProvider, VoiceRequest } from './voice-types.ts';
@@ -43,6 +44,12 @@ export function voiceGenerationPlugin(options: VoiceOptions): Plugin {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         try {
           const input = validateVoiceRequest(await readJson(req));
+          if (isAiVoiceProvider(input.provider)) {
+            const audio = await generateAiVoice(options, input);
+            const saved = await saveVoiceAudio(audio.bytes, audio.codec, audio.sampleRate);
+            sendJson(res, 200, saved);
+            return;
+          }
           let bytes: Buffer;
           let subtitleUrl: string | undefined;
           if (input.provider === 'minimax') {

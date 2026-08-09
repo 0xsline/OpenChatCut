@@ -18,6 +18,7 @@ import {
   protocolForProvider,
   type LlmProvider,
 } from '../shared/llm-providers.ts';
+import { versionedApiBaseUrl } from './plugins/media-provider-config.ts';
 
 export interface ProbeResult {
   ok: boolean;
@@ -125,6 +126,60 @@ const byteplusProbe: ProbeDef = {
   models: parseModelCatalog,
 };
 
+const openAiMediaProbe: ProbeDef = {
+  needs: [['OPENAI_API_KEY']],
+  run: (get) => fetch(`${versionedApiBaseUrl(base(get, 'IMAGE_BASE_URL', 'https://api.openai.com'), 'v1')}/models`, {
+    signal: t(), headers: bearer(get('OPENAI_API_KEY')),
+  }),
+};
+
+const geminiMediaProbe: ProbeDef = {
+  needs: [['GEMINI_API_KEY']],
+  run: (get) => fetch(`${versionedApiBaseUrl(base(get, 'GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com'), 'v1beta')}/models?pageSize=1`, {
+    signal: t(), headers: { 'x-goog-api-key': get('GEMINI_API_KEY') },
+  }),
+};
+
+const mistralMediaProbe: ProbeDef = {
+  needs: [['LLM_MISTRAL_API_KEY']],
+  run: (get) => fetch(`${versionedApiBaseUrl(base(get, 'LLM_MISTRAL_BASE_URL', 'https://api.mistral.ai/v1'), 'v1')}/models`, {
+    signal: t(), headers: bearer(get('LLM_MISTRAL_API_KEY')),
+  }),
+};
+
+const deepgramProbe: ProbeDef = {
+  needs: [['DEEPGRAM_API_KEY']],
+  run: (get) => fetch('https://api.deepgram.com/v1/projects', {
+    signal: t(), headers: { Authorization: `Token ${get('DEEPGRAM_API_KEY')}` },
+  }),
+};
+
+const groqProbe: ProbeDef = {
+  needs: [['GROQ_API_KEY']],
+  run: (get) => fetch(`${base(get, 'GROQ_BASE_URL', 'https://api.groq.com/openai/v1')}/models`, {
+    signal: t(), headers: bearer(get('GROQ_API_KEY')),
+  }),
+};
+
+const elevenLabsProbe: ProbeDef = {
+  needs: [['ELEVENLABS_API_KEY']],
+  run: (get) => fetch(`${base(get, 'ELEVENLABS_BASE_URL', 'https://api.elevenlabs.io')}/v1/models`, {
+    signal: t(), headers: { 'xi-api-key': get('ELEVENLABS_API_KEY') },
+  }),
+};
+
+const cartesiaProbe: ProbeDef = {
+  needs: [['CARTESIA_API_KEY']],
+  run: (get) => fetch('https://api.cartesia.ai/voices?limit=1', {
+    signal: t(),
+    headers: {
+      Authorization: `Bearer ${get('CARTESIA_API_KEY')}`,
+      'Cartesia-Version': '2026-03-01',
+    },
+  }),
+};
+
+
 /** page key (same name as the vendor page key of settingsSchema) → detection definition.*/
 export const PROBES: Record<string, ProbeDef> = {
   ...Object.fromEntries(LLM_PROVIDER_PRESETS.map((preset) => [
@@ -137,12 +192,7 @@ export const PROBES: Record<string, ProbeDef> = {
       signal: t(), headers: bearer(get('IMAGE_API_KEY') || get('OPENAI_API_KEY')),
     }),
   },
-  'image/gemini': {
-    needs: [['GEMINI_API_KEY']],
-    run: (get) => fetch(`${base(get, 'GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com')}/v1beta/models?pageSize=1`, {
-      signal: t(), headers: { 'x-goog-api-key': get('GEMINI_API_KEY') },
-    }),
-  },
+  'image/gemini': geminiMediaProbe,
   'image/minimax': minimaxProbe,
   'image/byteplus': byteplusProbe,
   'image/wavespeed': {
@@ -151,12 +201,11 @@ export const PROBES: Record<string, ProbeDef> = {
       signal: t(), headers: bearer(get('WAVESPEED_API_KEY')),
     }),
   },
-  'voice/elevenlabs': {
-    needs: [['ELEVENLABS_API_KEY']],
-    run: (get) => fetch(`${base(get, 'ELEVENLABS_BASE_URL', 'https://api.elevenlabs.io')}/v1/models`, {
-      signal: t(), headers: { 'xi-api-key': get('ELEVENLABS_API_KEY') },
-    }),
-  },
+  'voice/elevenlabs': elevenLabsProbe,
+  'voice/openai': openAiMediaProbe,
+  'voice/gemini': geminiMediaProbe,
+  'voice/mistral': mistralMediaProbe,
+  'voice/cartesia': cartesiaProbe,
   // openpeech does not have free probing endpoints, synthesizing 1 word is the minimum real verification (the cost is negligible).
   'voice/doubao': {
     needs: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']],
@@ -254,6 +303,12 @@ export const PROBES: Record<string, ProbeDef> = {
       signal: t(), headers: { authorization: get('ASSEMBLYAI_API_KEY') },
     }),
   },
+  'transcription/openai': openAiMediaProbe,
+  'transcription/mistral': mistralMediaProbe,
+  'transcription/deepgram': deepgramProbe,
+  'transcription/groq': groqProbe,
+  'transcription/elevenlabs': elevenLabsProbe,
+  'transcription/cartesia': cartesiaProbe,
   'sandbox/e2b': {
     needs: [['E2B_API_KEY']],
     run: (get) => fetch('https://api.e2b.dev/sandboxes', {

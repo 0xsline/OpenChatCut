@@ -10,6 +10,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added / 新增
 
+- Added opt-in AI SDK speech routing for OpenAI, Gemini, Mistral Voxtral, and Cartesia, plus cloud transcription through OpenAI, Mistral Voxtral, Deepgram, Groq, ElevenLabs Scribe, and Cartesia. AssemblyAI remains the default transcription route and on-device Whisper remains available; the Agent can discover configured providers and explicitly route to one without exposing credentials.
+  新增可选的 AI SDK 语音路由：OpenAI、Gemini、Mistral Voxtral 与 Cartesia 配音，以及 OpenAI、Mistral Voxtral、Deepgram、Groq、ElevenLabs Scribe、Cartesia 云端转写。AssemblyAI 仍是默认转写路径，本地 Whisper 继续可用；Agent 可发现已配置的供应商并显式路由，且不会接触密钥。
 - Added in-app desktop updates: packaged macOS, Windows, and Linux builds can check, download, retry, and install the next GitHub Release from the dashboard notice or Settings, with per-platform update metadata published alongside installers.
   新增桌面端应用内更新：macOS、Windows 与 Linux 安装包可在首页提示或设置中检查、下载、重试并安装下一版 GitHub Release；各平台更新元数据与安装包一同发布。
 - Added dashboard header shortcuts for contacting the author and opening the OpenChatCut GitHub repository; the contact disclosure shows a selectable email link without leaving the project list.
@@ -30,6 +32,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   新增五种确定性字幕动效（无动效、淡入上浮、弹性入场、逐词弹出、卡拉 OK 脉冲）。动效在共享 Remotion 字幕层中按时间线帧计算，Player 预览与烧录导出保持一致，用户字幕预设也会保留所选动效。
 - Added server-direct external Agent editing for projects without an open browser: isolated drafts, explicit review/commit gates, dependency-closed tool exposure, and scoped one-time same-origin upload handoffs with expiry and replay rejection.
   新增无需浏览器常驻的外部 Agent 服务端直编：隔离草稿、显式审阅/提交门槛、依赖闭合的工具暴露，以及带工程作用域、过期与防重放校验的同源一次性上传交接。
+- Added opt-in local music intelligence: downloadable, hash-verified Beat This and CLAP model packs analyze BPM, beats, downbeats, structure, energy, genre, mood, instrumentation, and usage entirely on-device. Media cards expose cached results, automatic analysis is user-controlled, and the Agent can inspect, plan, and atomically apply stale-safe beat-synced cuts through a dedicated skill.
+  新增可选的本地音乐智能：可下载并校验哈希的 Beat This 与 CLAP 模型包在端侧分析 BPM、节拍、强拍、段落、能量、流派、情绪、乐器与用途。素材卡展示缓存结果，自动分析由用户控制；Agent 可通过专项技能读取、规划并原子执行带防过期校验的卡点切分。
 
 ### Changed / 变更
 

@@ -156,4 +156,36 @@ const speechifyVoice = buildSubmitVoiceArgs({
 assert.equal(speechifyVoice.modelId, 'simba-english');
 assert.equal(speechifyVoice.volume, undefined, 'Speechify must not receive MiniMax controls');
 
+const genericVoiceInput = {
+  text: 'Configured provider voice',
+  voiceId: 'confirmed-provider-voice-id',
+  modelId: 'configured-model',
+  speed: 1.1,
+  languageCode: 'en',
+  outputFormat: 'mp3',
+  instructions: 'Warm and concise',
+  stability: 0.5,
+  pitch: 2,
+};
+
+const genericExpectations = [
+  { provider: 'openai', speed: true, languageCode: false, instructions: true },
+  { provider: 'gemini', speed: false, languageCode: false, instructions: true },
+  { provider: 'mistral', speed: false, languageCode: false, instructions: false },
+  { provider: 'cartesia', speed: true, languageCode: true, instructions: false },
+] as const;
+
+for (const expected of genericExpectations) {
+  const voice = buildSubmitVoiceArgs({ ...genericVoiceInput, provider: expected.provider });
+  assert.equal(voice.provider, expected.provider, `${expected.provider} must not fall back to ElevenLabs`);
+  assert.equal(voice.voiceId, genericVoiceInput.voiceId);
+  assert.equal(voice.modelId, genericVoiceInput.modelId);
+  assert.equal(voice.outputFormat, genericVoiceInput.outputFormat);
+  assert.equal(voice.speed, expected.speed ? genericVoiceInput.speed : undefined);
+  assert.equal(voice.languageCode, expected.languageCode ? genericVoiceInput.languageCode : undefined);
+  assert.equal(voice.instructions, expected.instructions ? genericVoiceInput.instructions : undefined);
+  assert.equal(voice.stability, undefined, `${expected.provider} must not receive ElevenLabs controls`);
+  assert.equal(voice.pitch, undefined, `${expected.provider} must not receive Doubao/MiniMax controls`);
+}
+
 console.log('generation-tool-input.verify: ok');

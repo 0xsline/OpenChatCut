@@ -2,7 +2,7 @@ import type { SubmitImageArgs } from '../../generate/image';
 import type { SubmitMusicArgs } from '../../generate/music';
 import type { SubmitSoundArgs } from '../../generate/sound';
 import type { SubmitVideoArgs } from '../../generate/video';
-import type { SubmitVoiceArgs } from '../../generate/voice';
+import type { SubmitVoiceArgs, VoiceProvider } from '../../generate/voice';
 
 export type GenerateArgs = Record<string, unknown>;
 export const shouldAddImageToTimeline = (args: GenerateArgs): boolean => args.addToTimeline !== false;
@@ -92,20 +92,46 @@ function minimaxVoice(args: GenerateArgs): SubmitVoiceArgs {
   };
 }
 
-const minimalVoice = (provider: 'inworld' | 'fishaudio' | 'speechify') => (args: GenerateArgs): SubmitVoiceArgs => ({
+type MinimalVoiceProvider = 'inworld' | 'fishaudio' | 'speechify';
+const minimalVoice = (provider: MinimalVoiceProvider) => (args: GenerateArgs): SubmitVoiceArgs => ({
   ...voiceBase(args, provider), modelId: str(args.modelId),
 });
-const inworldVoice = minimalVoice('inworld');
-const fishAudioVoice = minimalVoice('fishaudio');
-const speechifyVoice = minimalVoice('speechify');
+
+type GenericVoiceProvider = 'openai' | 'gemini' | 'mistral' | 'cartesia';
+function genericVoice(args: GenerateArgs, provider: GenericVoiceProvider): SubmitVoiceArgs {
+  const shared = {
+    ...voiceBase(args, provider),
+    modelId: str(args.modelId),
+    outputFormat: str(args.outputFormat),
+  };
+  if (provider === 'openai') {
+    return { ...shared, speed: num(args.speed), instructions: str(args.instructions) };
+  }
+  if (provider === 'gemini') return { ...shared, instructions: str(args.instructions) };
+  if (provider === 'cartesia') {
+    return { ...shared, speed: num(args.speed), languageCode: str(args.languageCode) };
+  }
+  return shared;
+}
 
 const VOICE_STRATEGIES = {
-  elevenlabs: elevenVoice, doubao: doubaoVoice, minimax: minimaxVoice,
-  inworld: inworldVoice, fishaudio: fishAudioVoice, speechify: speechifyVoice,
-} as const;
+  elevenlabs: elevenVoice,
+  doubao: doubaoVoice,
+  minimax: minimaxVoice,
+  inworld: minimalVoice('inworld'),
+  fishaudio: minimalVoice('fishaudio'),
+  speechify: minimalVoice('speechify'),
+  openai: (args) => genericVoice(args, 'openai'),
+  gemini: (args) => genericVoice(args, 'gemini'),
+  mistral: (args) => genericVoice(args, 'mistral'),
+  cartesia: (args) => genericVoice(args, 'cartesia'),
+} satisfies Record<VoiceProvider, (args: GenerateArgs) => SubmitVoiceArgs>;
+
 export function buildSubmitVoiceArgs(args: GenerateArgs): SubmitVoiceArgs {
-  const provider = args.provider === 'doubao' || args.provider === 'minimax' || args.provider === 'inworld'
-    || args.provider === 'fishaudio' || args.provider === 'speechify' ? args.provider : 'elevenlabs';
+  const requested = args.provider as VoiceProvider;
+  const provider = Object.prototype.hasOwnProperty.call(VOICE_STRATEGIES, requested)
+    ? requested
+    : 'elevenlabs';
   return VOICE_STRATEGIES[provider](args);
 }
 

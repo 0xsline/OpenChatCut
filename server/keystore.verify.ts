@@ -107,6 +107,8 @@ assert.equal(st.caps.music, false, 'no mureka key → music capability off');
 const serialized = JSON.stringify(st);
 assert.ok(!serialized.includes('secret-abc') && !serialized.includes('px-1'), 'status leaks NO key value to the browser');
 assert.equal(getKey('LLM_API_KEY'), 'secret-abc', 'getKey returns the live value server-side');
+seedKeystore({ ...isolatedSeed, PREFERRED_TRANSCRIPTION_PROVIDER: 'local' } as Record<string, string>);
+assert.equal(keyStatus().caps.transcription, true, 'selected local Whisper keeps keyless transcription available');
 seedKeystore({
   ...isolatedSeed,
   [MODEL_CAPABILITY_OVERRIDES_KEY]: '[{"backend":"api","provider":"openai","modelId":"x","apiKey":"secret"}]',
@@ -119,13 +121,17 @@ assert.equal(keyStatus().models[MODEL_CAPABILITY_OVERRIDES_KEY], '', 'invalid st
 const MODEL_ROUTING_NAMES = [
   'LLM_PROVIDER', 'LLM_MODEL', 'CODEX_MODEL', 'CODEX_REASONING_EFFORT', 'LLM_OPENAI_API_MODE',
   MODEL_CAPABILITY_OVERRIDES_KEY,
-  'GEMINI_IMAGE_MODEL', 'ELEVENLABS_TTS_MODEL', 'ELEVENLABS_SOUND_MODEL',
+  'GEMINI_IMAGE_MODEL', 'IMAGE_BASE_URL', 'GEMINI_BASE_URL',
+  'ELEVENLABS_TTS_MODEL', 'ELEVENLABS_SOUND_MODEL',
+  'OPENAI_TTS_MODEL', 'GEMINI_TTS_MODEL', 'MISTRAL_TTS_MODEL', 'CARTESIA_TTS_MODEL',
+  'OPENAI_TRANSCRIPTION_MODEL', 'MISTRAL_TRANSCRIPTION_MODEL', 'DEEPGRAM_TRANSCRIPTION_MODEL',
+  'GROQ_TRANSCRIPTION_MODEL', 'ELEVENLABS_TRANSCRIPTION_MODEL', 'CARTESIA_TRANSCRIPTION_MODEL', 'GROQ_BASE_URL',
   'DOUBAO_TTS_RESOURCE_ID', 'SEEDANCE_VIDEO_MODEL', 'KLING_VIDEO_MODEL', 'MUREKA_MUSIC_MODEL',
   'MINIMAX_TTS_MODEL', 'MINIMAX_VIDEO_MODEL', 'MINIMAX_MUSIC_MODEL', 'MINIMAX_IMAGE_MODEL',
   'WAVESPEED_IMAGE_MODEL', 'BYTEPLUS_IMAGE_MODEL', 'BYTEPLUS_VIDEO_MODEL',
   'INWORLD_TTS_MODEL', 'FISHAUDIO_TTS_MODEL', 'SPEECHIFY_TTS_MODEL',
   'PREFERRED_IMAGE_VENDOR', 'PREFERRED_VOICE_VENDOR', 'PREFERRED_VIDEO_VENDOR', 'PREFERRED_MUSIC_VENDOR',
-  'PREFERRED_TRANSCRIPTION_PROVIDER', // Transcription engine route: assemblyai | local
+  'PREFERRED_TRANSCRIPTION_PROVIDER', 'TRANSCRIPTION_LANGUAGE', 'TRANSCRIPTION_DIARIZATION',
   'LOCAL_ASR_MODEL', // On-device ASR model tier: '' | tiny | base | small | medium
   'R2_ENABLED', // Cloud synchronization switch (''=enable/'0'=disable)
   'R2_PRESIGN', // Browser pre-signed direct transmission (''=enabled/'0'=server-side write-through only)

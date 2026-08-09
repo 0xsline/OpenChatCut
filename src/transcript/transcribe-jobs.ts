@@ -1,14 +1,19 @@
-// Client-side ASR coordinator for upload-and-transcribe. Live status remains in
-// memory for track_progress, while upload URL, AssemblyAI job id/status, retries,
-// and source revision are checkpointed so a refreshed editor resumes polling
-// without uploading or submitting the same provider job again.
+// Client-side ASR coordinator. Live status remains in memory for
+// track_progress; durable checkpoints retain provider identity and source
+// revision. AssemblyAI additionally resumes upload and provider job ids.
 import type { MediaAsset } from '../editor/types';
 import {
   sourceRevisionOf,
   type MediaSourceDescriptor,
 } from '../editor/mediaSourceRevision';
-import { hasOperationalTranscript, type TranscriptWord } from './types';
 import {
+  hasOperationalTranscript,
+  type TranscriptWord,
+  type TranscriptionProviderId,
+} from './types';
+import {
+  preferredTranscriptionDiarization,
+  preferredTranscriptionLanguage,
   preferredTranscriptionProvider,
   transcribePathResumable,
   type AssemblyAiProviderStatus,
@@ -55,7 +60,6 @@ function isCurrentGeneration(
 }
 
 const POLL_MS = 1000;
-const DEFAULT_LANG = 'zh';
 
 interface EnqueueOptions {
   languageCode?: string;
@@ -88,6 +92,35 @@ export function shouldTranscribe(kind: MediaAsset['kind'], hasAudioTrack?: boole
   if (kind === 'video') return hasAudioTrack !== false;
   return false;
 }
+function checkpointForAttempt(
+  key: { projectId: string; assetId: string; sourceRevision: string },
+  provider: TranscriptionProviderId,
+  existing: TranscriptionCheckpoint | null,
+  explicitLanguage: string | undefined,
+  preferredLanguage: string,
+  preferredDiarize: boolean,
+  now: number,
+): TranscriptionCheckpoint {
+  const resumable = existing?.provider === provider ? existing : null;
+  return {
+    ...key,
+    provider,
+    providerJobId: resumable?.providerJobId,
+    providerStatus: resumable?.providerStatus === 'completed'
+      ? 'completed'
+      : resumable?.providerStatus ?? 'preparing',
+    uploadUrl: resumable?.uploadUrl,
+    languageCode: explicitLanguage ?? resumable?.languageCode ?? preferredLanguage,
+    diarize: resumable?.diarize ?? preferredDiarize,
+    retry: {
+      attempts: (resumable?.retry.attempts ?? 0) + 1,
+      lastAttemptAt: now,
+    },
+    createdAt: resumable?.createdAt ?? now,
+    updatedAt: now,
+  };
+}
+
 
 /** Start or resume ASR for one exact project, asset, and source revision. */
 export function enqueueTranscription(
@@ -101,6 +134,9 @@ export function enqueueTranscription(
   const prior = jobs.get(logicalJobKey);
   if (prior && prior.sourceRevision === sourceRevision && prior.status !== 'failed') return;
 
+  const provider = preferredTranscriptionProvider();
+  const languageCode = preferredTranscriptionLanguage();
+  const diarize = preferredTranscriptionDiarization();
   const generation = ++nextGeneration;
   jobs.set(logicalJobKey, {
     projectId,
@@ -127,24 +163,15 @@ export function enqueueTranscription(
       const existing = await loadTranscriptionCheckpoint(key);
       if (!isCurrentGeneration(projectId, asset.id, sourceRevision, generation)) return null;
 
-      checkpoint = {
-        projectId,
-        assetId: asset.id,
-        sourceRevision,
-        provider: preferredTranscriptionProvider(),
-        providerJobId: existing?.providerJobId,
-        providerStatus: existing?.providerStatus === 'completed'
-          ? 'completed'
-          : existing?.providerStatus ?? 'preparing',
-        uploadUrl: existing?.uploadUrl,
-        languageCode: opts.languageCode ?? existing?.languageCode ?? DEFAULT_LANG,
-        retry: {
-          attempts: (existing?.retry.attempts ?? 0) + 1,
-          lastAttemptAt: now,
-        },
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      };
+      checkpoint = checkpointForAttempt(
+        key,
+        provider,
+        existing,
+        opts.languageCode,
+        languageCode,
+        diarize,
+        now,
+      );
       await saveTranscriptionCheckpoint(checkpoint);
       if (!isCurrentGeneration(projectId, asset.id, sourceRevision, generation)) return null;
       jobs.set(logicalJobKey, {
@@ -198,8 +225,10 @@ export function enqueueTranscription(
         undefined,
         {
           languageCode: checkpoint.languageCode,
+          diarize: checkpoint.diarize ?? diarize,
           asrPath: asrPath || undefined,
         },
+        provider,
       );
 
       if (!isCurrentGeneration(projectId, asset.id, sourceRevision, generation)) return null;

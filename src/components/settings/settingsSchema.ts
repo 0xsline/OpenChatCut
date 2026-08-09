@@ -11,87 +11,37 @@ import {
   llmProviderConfigNames,
 } from '../../../shared/llm-providers';
 import type { CodexAgentStatus } from '../../../shared/codex-agent';
-import type { IconName } from '../icons';
 import type { VendorId } from './vendorIcons';
+import {
+  directory,
+  modelSelect,
+  modelText,
+  routeSelect,
+  secret,
+  text,
+  type KeyStatusResponse,
+  type SelectOption,
+  type SettingsCategory,
+  type SettingsField,
+  type SettingsGroup,
+  type SettingsVendorPage,
+} from './settingsFields';
+import {
+  ROUTE_NEEDS,
+  TRANSCRIPTION_SETTINGS_GROUP,
+  VOICE_SETTINGS_GROUP,
+} from './settingsMediaProviders';
 
-export type FieldKind = 'secret' | 'text' | 'select' | 'toggle' | 'directory';
-
-export interface SelectOption { readonly value: string; readonly label: string; }
-
-export interface SettingsField {
-  readonly name: string;
-  readonly label: string;
-  /** secret=key (mask, never backfill); text=plain text input; select=drop-down (always non-secret model/routing value);
-   * toggle=switch (non-secret, ''=on by default, '0'=disabled);directory=desktop native directory selection + manual input */
-  readonly kind: FieldKind;
-  /** Placeholder when not configured (only non-model text: official default address prompt); default to universal copy */
-  readonly placeholder?: string;
-  readonly note?: string;
-  /** Select option; text is used as datalist input suggestion (such as LLM_MODEL) */
-  readonly options?: readonly SelectOption[];
-  /** The default value name of the non-confidential model field: select renders the first item "default (xxx)", text renders "default xxx"
-   * placeholder. The text field takes it to the models value channel (select constant); clear = returns to default (''). */
-  readonly defaultLabel?: string;
-  /** Agent LLM field populated from the provider's /models response after a connection test. */
-  readonly discoverableModel?: boolean;
-}
-
-export interface SettingsVendorPage {
-  /** Selected identifier in the middle column, globally unique: 'capability/provider' such as 'video/hailuo' */
-  readonly key: string;
-  readonly vendor: VendorId;
-  readonly title: string;
-  /** Page-level small notes (rendered at the top of the field card, such as MiniMax shared Key, ElevenLabs and sound effects) */
-  readonly note?: string;
-  /** Non-HTTP connection flow rendered by the dedicated Codex account controls. */
-  readonly connection?: 'codex';
-  readonly fields: readonly SettingsField[];
-}
-
-export interface SettingsGroup {
-  /** Capability key (corresponding to server caps), or special case 'llm'; globally unique, it is the selection identifier of the left tree */
-  readonly key: string;
-  readonly title: string;
-  readonly hint: string;
-  /** Generate the "Default Vendor" routing field (PREFERRED_*) with four capabilities and render it at the top of the middle column; not rendered by default */
-  readonly route?: SettingsField;
-  readonly vendors: readonly SettingsVendorPage[];
-}
-
-export interface SettingsCategory {
-  readonly key: string;
-  readonly title: string;
-  readonly icon: IconName;
-  readonly groups: readonly SettingsGroup[];
-}
-
-// Response shape of GET/POST /api/keys — secret only returns Boolean and source; models are non-secret value channels
-// (Models, URLs and routes, not set = ''), never contains any key value.
-export interface KeyState { configured: boolean; source: 'env' | 'runtime' | 'none'; }
-export interface KeyStatusResponse {
-  keys: Record<string, KeyState>;
-  caps: Record<string, boolean>;
-  models: Record<string, string>;
-}
-
-const secret = (name: string, label: string): SettingsField => ({ name, label, kind: 'secret' });
-const text = (name: string, label: string, placeholder?: string, note?: string): SettingsField =>
-  ({ name, label, kind: 'text', placeholder, note });
-/** Non-confidential model text field: value echo, placeholder="default xxx". */
-const modelText = (name: string, label: string, defaultLabel: string, note?: string, discoverableModel?: boolean): SettingsField =>
-  ({ name, label, kind: 'text', defaultLabel, note, discoverableModel });
-const directory = (name: string, label: string, defaultLabel: string, note?: string): SettingsField =>
-  ({ name, label, kind: 'directory', defaultLabel, note });
-/** Non-confidential model select: The first item automatically generates "default (xxx)" (value=''). */
-const modelSelect = (name: string, label: string, defaultLabel: string, values: readonly string[]): SettingsField =>
-  ({ name, label, kind: 'select', defaultLabel, options: values.map((v) => ({ value: v, label: v })) });
-
-/** Capability routing select:'' = asked every time; the remaining values are consistent with the agent tool parameters/PREFERRED_* stored values. */
-const routeSelect = (name: string, options: readonly SelectOption[]): SettingsField => ({
-  name, label: '默认厂商', kind: 'select',
-  note: '选中未配置的厂商时，Agent 会回退为先询问。',
-  options: [{ value: '', label: '每次询问（默认）' }, ...options],
-});
+export type {
+  FieldKind,
+  KeyState,
+  KeyStatusResponse,
+  SelectOption,
+  SettingsCategory,
+  SettingsField,
+  SettingsGroup,
+  SettingsVendorPage,
+} from './settingsFields';
 
 const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorPage => {
   const names = llmProviderConfigNames(preset.id);
@@ -235,49 +185,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           byteplusPage('image', modelText('BYTEPLUS_IMAGE_MODEL', '生图模型', 'seedream-4-5-251128',
             '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true), 'BytePlus · Seedream'),
         ] },
-      { key: 'voice', title: '配音 / TTS', hint: 'submit_voice · 文字转配音，任一厂商即可。',
-        route: routeSelect('PREFERRED_VOICE_VENDOR', [
-          { value: 'elevenlabs', label: 'ElevenLabs' },
-          { value: 'doubao', label: '豆包' },
-          { value: 'minimax', label: 'MiniMax' },
-          { value: 'inworld', label: 'Inworld' },
-          { value: 'fishaudio', label: 'Fish Audio' },
-          { value: 'speechify', label: 'Speechify' },
-        ]),
-        vendors: [
-          { key: 'voice/elevenlabs', vendor: 'elevenlabs', title: 'ElevenLabs',
-            note: 'Key 同时用于音效生成（submit_sound）。', fields: [
-              secret('ELEVENLABS_API_KEY', 'API Key'),
-              text('ELEVENLABS_BASE_URL', 'Base URL', '默认 https://api.elevenlabs.io'),
-              modelSelect('ELEVENLABS_TTS_MODEL', '配音模型', 'eleven_multilingual_v2',
-                ['eleven_multilingual_v2', 'eleven_turbo_v2_5', 'eleven_flash_v2_5']),
-              modelText('ELEVENLABS_SOUND_MODEL', '音效模型', 'eleven_text_to_sound_v2'),
-            ] },
-          { key: 'voice/doubao', vendor: 'doubao', title: '豆包 TTS · 火山', fields: [
-            secret('DOUBAO_TTS_APP_ID', 'App ID'),
-            secret('DOUBAO_TTS_ACCESS_KEY', 'Access Key'),
-            text('DOUBAO_TTS_BASE_URL', 'Base URL', '默认 https://openspeech.bytedance.com'),
-            modelText('DOUBAO_TTS_RESOURCE_ID', '音色资源 ID', 'seed-tts-2.0'),
-          ] },
-          minimaxPage('voice', modelSelect('MINIMAX_TTS_MODEL', '配音模型', 'speech-2.6-hd',
-            ['speech-2.6-hd', 'speech-2.8-hd', 'speech-2.8-turbo', 'speech-2.6-turbo', 'speech-02-hd', 'speech-02-turbo'])),
-          { key: 'voice/inworld', vendor: 'inworld', title: 'Inworld', fields: [
-            secret('INWORLD_TTS_API_KEY', 'API Key'),
-            text('INWORLD_TTS_BASE_URL', 'Base URL', '默认 https://api.inworld.ai'),
-            modelText('INWORLD_TTS_MODEL', '配音模型', 'inworld-tts-2'),
-          ] },
-          { key: 'voice/fishaudio', vendor: 'fishaudio', title: 'Fish Audio', fields: [
-            secret('FISHAUDIO_TTS_API_KEY', 'API Key'),
-            text('FISHAUDIO_TTS_BASE_URL', 'Base URL', '默认 https://api.fish.audio'),
-            modelText('FISHAUDIO_TTS_MODEL', '配音模型', 's2.1-pro'),
-          ] },
-          { key: 'voice/speechify', vendor: 'speechify', title: 'Speechify', fields: [
-            secret('SPEECHIFY_TTS_API_KEY', 'API Key'),
-            text('SPEECHIFY_TTS_BASE_URL', 'Base URL', '默认 https://api.sws.speechify.com'),
-            modelSelect('SPEECHIFY_TTS_MODEL', '配音模型', 'simba-multilingual',
-              ['simba-multilingual', 'simba-english', 'simba-3.2']),
-          ] },
-        ] },
+      VOICE_SETTINGS_GROUP,
       { key: 'video', title: '生视频', hint: 'submit_video · 文 / 图生视频，任一厂商即可。',
         route: routeSelect('PREFERRED_VIDEO_VENDOR', [
           { value: 'seedance2', label: 'Seedance' },
@@ -327,31 +235,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { key: 'stock/unsplash', vendor: 'unsplash', title: 'Unsplash', fields: [secret('UNSPLASH_ACCESS_KEY', 'Access Key')] },
           { key: 'stock/freesound', vendor: 'freesound', title: 'Freesound', fields: [secret('FREESOUND_API_KEY', 'API Key')] },
         ] },
-      { key: 'transcription', title: '转写 / 口播剪辑', hint: 'transcribe_track · 词级字幕、清口水、删词。',
-        route: routeSelect('PREFERRED_TRANSCRIPTION_PROVIDER', [
-          { value: 'assemblyai', label: 'AssemblyAI（云端）' },
-          { value: 'local', label: '本地模型（免费 · 离线）' },
-        ]),
-        vendors: [
-          { key: 'transcription/assemblyai', vendor: 'assemblyai', title: 'AssemblyAI',
-            fields: [secret('ASSEMBLYAI_API_KEY', 'API Key')] },
-          { key: 'transcription/local', vendor: 'localasr', title: '本地模型（whisper）',
-            note: '转写在本机完成：免费、离线、素材不出本机。模型按需下载（见下方列表），'
-              + '自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。',
-            fields: [
-              {
-                name: 'LOCAL_ASR_MODEL', label: '默认模型', kind: 'select',
-                defaultLabel: '自动（按设备内存选择）',
-                note: '选中的模型需已下载；未选择时按设备内存自动挑选（内存 ≥6GB 用 Small，否则 Base）。',
-                options: [
-                  { value: 'tiny', label: 'Whisper Tiny（约 100MB · 最快）' },
-                  { value: 'base', label: 'Whisper Base（约 80MB · 均衡）' },
-                  { value: 'small', label: 'Whisper Small（约 250MB · 推荐）' },
-                  { value: 'medium', label: 'Whisper Medium（约 1.1GB · 精度最高）' },
-                ],
-              },
-            ] },
-        ] },
+      TRANSCRIPTION_SETTINGS_GROUP,
     ],
   },
   {
@@ -494,20 +378,8 @@ export function selectOptions(field: SettingsField): readonly SelectOption[] {
   return [{ value: '', label: t('默认（{name}）', { name: t(field.defaultLabel) }) }, ...base];
 }
 
-// Routing option value → AND group of keys required to determine "configured" (OR; mirror server computeCaps and
-// CAP_PROVIDERS of agent capabilities, do not change them separately).
-const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
-  'gpt-image-2': [['IMAGE_API_KEY'], ['OPENAI_API_KEY']],
-  'nano-banana': [['GEMINI_API_KEY']],
-  'image-01': [['MINIMAX_API_KEY']],
-  elevenlabs: [['ELEVENLABS_API_KEY']],
-  doubao: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']],
-  minimax: [['MINIMAX_API_KEY']],
-  seedance2: [['SEEDANCE_API_KEY']],
-  kling: [['KLING_API_KEY']],
-  hailuo: [['MINIMAX_API_KEY']],
-  mureka: [['MUREKA_API_KEY']],
-};
+// Routing requirements live beside the provider groups so settings and capability
+// expansion share one focused provider-data surface.
 
 /** Routing drop-down option copy: Add the "(not configured)" suffix when the provider has not configured it, and it is still optional (there is a fallback inquiry guardrail on the Agent side).
  * Non-routing select (model drop-down) returns unchanged.*/

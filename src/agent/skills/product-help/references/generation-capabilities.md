@@ -24,9 +24,37 @@ Short map of cloud generation tools → providers. Use this when guiding setup o
 
 | Provider | Notes |
 | --- | --- |
-| `doubao` | CN voices; speedRatio, emotion, emotionScale, pitch (ffmpeg), dialect, performancePrompt |
-| `elevenlabs` | Multilingual; complete voice settings, continuity/dictionaries, seed, normalization, logging/latency and official output formats |
-| `minimax` | voice/audio settings, language/normalization, pronunciation, timbre mix, voice modify/effects, subtitles |
+| `doubao` | CN curated voices; speedRatio, emotion, emotionScale, pitch (ffmpeg), dialect, performancePrompt |
+| `elevenlabs` | Curated multilingual voices; complete voice settings, continuity/dictionaries, seed, normalization, logging/latency and official output formats |
+| `minimax` | Curated system voices; voice/audio settings, language/normalization, pronunciation, timbre mix, voice modify/effects, subtitles |
+| `inworld`, `fishaudio`, `speechify` | Account/provider voice ID plus optional model ID only; no bundled OpenChatCut samples |
+| `openai` | AI SDK speech; configured model defaults to `gpt-4o-mini-tts`; model/speed/output/instructions |
+| `gemini` | AI SDK speech; configured model defaults to `gemini-2.5-flash-preview-tts`; model/output/instructions |
+| `mistral` | AI SDK speech; configured model defaults to `voxtral-mini-tts-2603`; model/output |
+| `cartesia` | AI SDK speech; configured model defaults to `sonic-3`; model/speed/language/output |
+
+Every provider is opt-in and requires a concrete provider-specific `voiceId`.
+Only Doubao, ElevenLabs, and MiniMax have curated choices in the voice skill;
+never invent samples for the other providers. `submit_voice` creates a media-pool
+asset only and does not place it on the timeline.
+
+## Transcription · `transcribe_track`
+
+`transcribe_track` uses the provider selected in Settings by default; AssemblyAI
+remains the default. Pass `provider` only when the user explicitly requests a
+configured override. Results are normalized before they are attached to clips,
+with word/speaker detail preserved when the provider supplies it.
+
+| Provider | Configuration/default |
+| --- | --- |
+| `assemblyai` | `ASSEMBLYAI_API_KEY`; existing upload/job resume path |
+| `local` | On-device model selected in Settings; no cloud key |
+| `openai` | `OPENAI_API_KEY`; `OPENAI_TRANSCRIPTION_MODEL` defaults to `gpt-4o-mini-transcribe` |
+| `mistral` | `LLM_MISTRAL_API_KEY`; optional `LLM_MISTRAL_BASE_URL`; `MISTRAL_TRANSCRIPTION_MODEL` defaults to `voxtral-mini-latest` |
+| `deepgram` | `DEEPGRAM_API_KEY`; `DEEPGRAM_TRANSCRIPTION_MODEL` defaults to `nova-3` |
+| `groq` | `GROQ_API_KEY`; optional `GROQ_BASE_URL`; `GROQ_TRANSCRIPTION_MODEL` defaults to `whisper-large-v3-turbo` |
+| `elevenlabs` | `ELEVENLABS_API_KEY`; `ELEVENLABS_TRANSCRIPTION_MODEL` defaults to `scribe_v2` |
+| `cartesia` | `CARTESIA_API_KEY`; `CARTESIA_TRANSCRIPTION_MODEL` defaults to batch-capable `ink-whisper` |
 
 ## Music · `submit_music`
 

@@ -79,6 +79,8 @@ export interface TranscribeOptions {
    * Pass `auto` to use AssemblyAI language_detection instead.
    */
   languageCode?: string | 'auto';
+  /** Enable provider speaker diarization. Defaults to the existing enabled behavior. */
+  diarize?: boolean;
   /**
    * Pre-extracted small ASR track path (from race-ahead extract-audio).
    * When set, skip another extract-audio call.
@@ -107,7 +109,7 @@ export type AssemblyAiCheckpointWriter = (
 async function createTranscript(audioUrl: string, opts: TranscribeOptions = {}): Promise<string> {
   const body: Record<string, unknown> = {
     audio_url: audioUrl,
-    speaker_labels: true,
+    speaker_labels: opts.diarize ?? true,
     // Word-level timestamps (default true for universal model; be explicit)
     punctuate: true,
     format_text: true,

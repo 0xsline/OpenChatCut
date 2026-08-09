@@ -23,6 +23,9 @@ import doubaoSvg from '../../../assets/vendor-icons/doubao-color.svg?raw';
 import volcengineSvg from '../../../assets/vendor-icons/volcengine-color.svg?raw';
 import klingSvg from '../../../assets/vendor-icons/kling-color.svg?raw';
 import assemblyaiSvg from '../../../assets/vendor-icons/assemblyai-color.svg?raw';
+import deepgramSvg from '../../../assets/vendor-icons/deepgram.svg?raw';
+import groqSvg from '../../../assets/vendor-icons/groq.svg?raw';
+import cartesiaSvg from '../../../assets/vendor-icons/cartesia-color.svg?raw';
 import firecrawlSvg from '../../../assets/vendor-icons/firecrawl-color.svg?raw';
 import pexelsSvg from '../../../assets/vendor-icons/pexels.svg?raw';
 import pixabaySvg from '../../../assets/vendor-icons/pixabay.svg?raw';
@@ -38,7 +41,7 @@ export type VendorId =
   | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter'
   | 'ollama' | 'lmstudio' | 'xiaomi' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
-  | 'assemblyai' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk' | 'localasr'
+  | 'assemblyai' | 'deepgram' | 'groq' | 'cartesia' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk' | 'localasr'
   | 'stepfun' | 'byteplus' | 'inworld' | 'fishaudio' | 'speechify' | 'wavespeed'
   | 'vision';
 
@@ -68,6 +71,9 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
   seedance: { svg: volcengineSvg },                 // Seedance = owned by Volcano Engine, using the official logo of Volcano
   kling: { svg: klingSvg },
   assemblyai: { svg: assemblyaiSvg },
+  deepgram: { svg: deepgramSvg },
+  groq: { svg: groqSvg, tint: '#F55036' },
+  cartesia: { svg: cartesiaSvg },
   firecrawl: { svg: firecrawlSvg },
   pexels: { svg: pexelsSvg, tint: '#05A081' },      // simple-icons single color + official green
   pixabay: { svg: pixabaySvg, tint: '#48A947' },

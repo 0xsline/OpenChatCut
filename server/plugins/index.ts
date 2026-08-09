@@ -17,6 +17,7 @@ import { extractAudioPlugin } from "./extract-audio.ts";
 import { hfProxyPlugin } from "./hf-proxy.ts";
 import { asrModelsPlugin } from "./asr-models.ts";
 import { assemblyAiUploadPlugin } from "./assemblyai-upload.ts";
+import { transcriptionPlugin } from "./transcription.ts";
 import { extractFramesPlugin } from "./extract-frames.ts";
 import { sceneDetectionPlugin } from "./scene-detection.ts";
 import { autoGradePlugin } from "./auto-grade.ts";
@@ -25,6 +26,7 @@ import { isolateVoicePlugin } from "./isolate-voice.ts";
 import { normalizeMediaPlugin } from "./normalize-media.ts";
 import { imageGenerationPlugin } from "./image.ts";
 import { voiceGenerationPlugin } from "./voice.ts";
+import { aiVoiceOptions, transcriptionOptions } from "./media-provider-config.ts";
 import { soundGenerationPlugin } from "./sound.ts";
 import { musicGenerationPlugin } from "./music.ts";
 import { videoGenerationPlugin } from "./video.ts";
@@ -73,6 +75,7 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
     hfProxyPlugin(),
     asrModelsPlugin(),
     assemblyAiUploadPlugin(),
+    transcriptionPlugin(transcriptionOptions()),
     extractFramesPlugin(),
     sceneDetectionPlugin(),
     autoGradePlugin(),
@@ -186,6 +189,7 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get speechifyModel() {
         return getKey("SPEECHIFY_TTS_MODEL") || "simba-multilingual";
       },
+      ai: aiVoiceOptions(),
     }),
     soundGenerationPlugin({
       get baseUrl() {

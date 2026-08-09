@@ -64,6 +64,7 @@ function extension(codec: string): string {
   if (codec === 'pcmu_wav' || codec === 'wav') return 'wav';
   if (codec === 'flac') return 'flac';
   if (codec === 'opus') return 'opus';
+  if (codec === 'aac') return 'aac';
   return 'mp3';
 }
 

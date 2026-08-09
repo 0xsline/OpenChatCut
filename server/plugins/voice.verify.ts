@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { minimaxVoiceBody, minimaxVoiceResult } from './voice-providers.ts';
 import { validateVoiceRequest } from './voice.ts';
+import { generateAiVoice } from './voice-ai-sdk.ts';
+import type { VoiceOptions } from './voice-types.ts';
 
 const mm = validateVoiceRequest({
   provider: 'minimax',
@@ -130,4 +132,58 @@ assert.throws(
   /Speechify only accepts text, voiceId, and modelId/,
 );
 
-console.log('voice.check: ok (minimax pitch/volume + provider gates)');
+const aiOptions: VoiceOptions = {
+  elevenBaseUrl: '', elevenApiKey: '', elevenModel: '',
+  doubaoBaseUrl: '', doubaoAppId: '', doubaoAccessKey: '', doubaoResourceId: '',
+  minimaxBaseUrl: '', minimaxApiKey: '', minimaxModel: '',
+  inworldBaseUrl: '', inworldApiKey: '', inworldModel: '',
+  fishAudioBaseUrl: '', fishAudioApiKey: '', fishAudioModel: '',
+  speechifyBaseUrl: '', speechifyApiKey: '', speechifyModel: '',
+  ai: {
+    openaiBaseUrl: 'https://api.openai.test',
+    openaiApiKey: 'openai-test-key',
+    openaiModel: 'gpt-4o-mini-tts',
+    geminiBaseUrl: 'https://generativelanguage.googleapis.test',
+    geminiApiKey: 'gemini-test-key',
+    geminiModel: 'gemini-2.5-flash-preview-tts',
+    mistralBaseUrl: 'https://api.mistral.test/v1',
+    mistralApiKey: 'mistral-test-key',
+    mistralModel: 'voxtral-mini-tts-2603',
+    cartesiaApiKey: 'cartesia-test-key',
+    cartesiaModel: 'sonic-3',
+  },
+};
+const openAiRequest = validateVoiceRequest({
+  provider: 'openai',
+  text: 'Hello from OpenChatCut',
+  voiceId: 'alloy',
+  instructions: 'Speak calmly',
+  speed: 1.1,
+  outputFormat: 'mp3',
+});
+const originalFetch = globalThis.fetch;
+try {
+  let requestSeen = false;
+  globalThis.fetch = async (input, init) => {
+    const url = input instanceof Request ? input.url : String(input);
+    assert.equal(url, 'https://api.openai.test/v1/audio/speech');
+    assert.equal(init?.method, 'POST');
+    assert.equal(typeof init?.body, 'string');
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    assert.equal(body.model, 'gpt-4o-mini-tts');
+    assert.equal(body.voice, 'alloy');
+    assert.equal(body.instructions, 'Speak calmly');
+    requestSeen = true;
+    return new Response(Buffer.from([1, 2, 3]), {
+      headers: { 'Content-Type': 'audio/mpeg' },
+    });
+  };
+  const generated = await generateAiVoice(aiOptions, openAiRequest);
+  assert.equal(requestSeen, true);
+  assert.deepEqual([...generated.bytes], [1, 2, 3]);
+  assert.equal(generated.codec, 'mp3');
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+console.log('voice.verify: ok (provider validation + OpenAI AI SDK request)');

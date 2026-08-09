@@ -7,6 +7,12 @@ Use tags as selection filters. Use descriptions as practical hints. Age,
 accent, pronunciation, and exact duration are not stable controls unless the
 TTS provider exposes explicit parameters for them.
 
+This curated snapshot covers Doubao, ElevenLabs, and MiniMax only. Inworld,
+Fish Audio, Speechify, OpenAI, Gemini, Mistral, and Cartesia have no bundled
+OpenChatCut preset/sample catalog. For those providers, require a concrete
+provider-specific `voiceId` from the user or their provider account; never
+invent a preset or `/voice-samples/...` URL.
+
 ## Doubao Chinese Voices
 
 Use Doubao for Chinese-optimized narration.
@@ -151,6 +157,7 @@ Examples:
 - `/voice-samples/elevenlabs-peter.mp3`
 - `/voice-samples/elevenlabs-sully.mp3`
 
-Prefer these samples when rendering a voice audition widget before calling
-`submit_voice`. MiniMax system voices may not ship local samples; offer by
-name/tags and confirm before `submit_voice`.
+Prefer these real samples when rendering a curated voice audition widget before
+calling `submit_voice`. MiniMax system voices may not ship local samples; offer
+only cataloged names/tags and confirm the exact ID before `submit_voice`. Never
+derive a sample path for a provider or voice absent from this file.

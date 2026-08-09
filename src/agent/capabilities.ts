@@ -54,7 +54,7 @@ export function applyLiveModels(models: Record<string, string>): void {
 
 // Which vendors light up a capability: `arg` is the EXACT tool-arg value that selects
 // the vendor (and what PREFERRED_*_VENDOR stores); `need` = OR of AND-groups of key
-// names (mirrors keystore computeCaps).
+// names (mirrors keystore computeCaps). An empty AND-group marks a keyless local provider.
 interface ProviderRow { label: string; arg: string; argKey: 'model' | 'provider'; need: string[][] }
 const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
   image: [
@@ -71,6 +71,10 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'Inworld', arg: 'inworld', argKey: 'provider', need: [['INWORLD_TTS_API_KEY']] },
     { label: 'Fish Audio', arg: 'fishaudio', argKey: 'provider', need: [['FISHAUDIO_TTS_API_KEY']] },
     { label: 'Speechify', arg: 'speechify', argKey: 'provider', need: [['SPEECHIFY_TTS_API_KEY']] },
+    { label: 'OpenAI', arg: 'openai', argKey: 'provider', need: [['OPENAI_API_KEY']] },
+    { label: 'Gemini', arg: 'gemini', argKey: 'provider', need: [['GEMINI_API_KEY']] },
+    { label: 'Mistral Voxtral', arg: 'mistral', argKey: 'provider', need: [['LLM_MISTRAL_API_KEY']] },
+    { label: 'Cartesia', arg: 'cartesia', argKey: 'provider', need: [['CARTESIA_API_KEY']] },
   ],
   video: [
     { label: 'Seedance', arg: 'seedance2', argKey: 'model', need: [['SEEDANCE_API_KEY']] },
@@ -88,11 +92,24 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'Unsplash', arg: 'unsplash', argKey: 'provider', need: [['UNSPLASH_ACCESS_KEY']] },
     { label: 'Freesound', arg: 'freesound', argKey: 'provider', need: [['FREESOUND_API_KEY']] },
   ],
+  transcription: [
+    { label: 'AssemblyAI', arg: 'assemblyai', argKey: 'provider', need: [['ASSEMBLYAI_API_KEY']] },
+    { label: 'Local Whisper', arg: 'local', argKey: 'provider', need: [[]] },
+    { label: 'OpenAI', arg: 'openai', argKey: 'provider', need: [['OPENAI_API_KEY']] },
+    { label: 'Mistral Voxtral', arg: 'mistral', argKey: 'provider', need: [['LLM_MISTRAL_API_KEY']] },
+    { label: 'Deepgram', arg: 'deepgram', argKey: 'provider', need: [['DEEPGRAM_API_KEY']] },
+    { label: 'Groq', arg: 'groq', argKey: 'provider', need: [['GROQ_API_KEY']] },
+    { label: 'ElevenLabs Scribe', arg: 'elevenlabs', argKey: 'provider', need: [['ELEVENLABS_API_KEY']] },
+    { label: 'Cartesia', arg: 'cartesia', argKey: 'provider', need: [['CARTESIA_API_KEY']] },
+  ],
 };
 
 const PREFERRED_KEY: Partial<Record<CapabilityKey, string>> = {
-  image: 'PREFERRED_IMAGE_VENDOR', voice: 'PREFERRED_VOICE_VENDOR',
-  video: 'PREFERRED_VIDEO_VENDOR', music: 'PREFERRED_MUSIC_VENDOR',
+  image: 'PREFERRED_IMAGE_VENDOR',
+  voice: 'PREFERRED_VOICE_VENDOR',
+  video: 'PREFERRED_VIDEO_VENDOR',
+  music: 'PREFERRED_MUSIC_VENDOR',
+  transcription: 'PREFERRED_TRANSCRIPTION_PROVIDER',
 };
 
 const rowTag = (r: ProviderRow): string => `${r.label}(${r.argKey}=${r.arg})`;
@@ -108,9 +125,13 @@ function providerSuffix(cap: CapabilityKey, mode: ApprovalMode): string {
   const on = rows.filter((r) => r.need.some((group) => group.every(has)));
   if (on.length === 0) return '';
   const prefKey = PREFERRED_KEY[cap];
-  const pref = prefKey ? (liveModels?.[prefKey] ?? '').trim() : '';
+  const savedPref = prefKey ? (liveModels?.[prefKey] ?? '').trim() : '';
+  const pref = savedPref || (cap === 'transcription' ? 'assemblyai' : '');
   const chosen = pref ? on.find((r) => r.arg === pref) : undefined;
-  if (chosen) return ` · user default: ${rowTag(chosen)} — use it without asking again`;
+  if (chosen) {
+    const source = savedPref ? 'user default' : 'default';
+    return ` · ${source}: ${rowTag(chosen)} — use it without asking again`;
+  }
   if (on.length === 1) return ` · available: ${rowTag(on[0])} — use it directly`;
   const names = on.map(rowTag).join(', ');
   if (!prefKey) return ` · available: ${names}`;

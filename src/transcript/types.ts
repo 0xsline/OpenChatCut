@@ -63,8 +63,24 @@ export interface TranscriptVariant {
 
 export type TranscriptStatus = 'idle' | 'uploading' | 'processing' | 'done' | 'error';
 
-/** Transcription engine choice: cloud AssemblyAI or on-device whisper. */
-export type TranscriptionProviderId = 'assemblyai' | 'local';
+/** Supported cloud and on-device transcription engines. */
+export const TRANSCRIPTION_PROVIDER_IDS = [
+  'assemblyai',
+  'local',
+  'openai',
+  'mistral',
+  'deepgram',
+  'groq',
+  'elevenlabs',
+  'cartesia',
+] as const;
+
+export type TranscriptionProviderId = (typeof TRANSCRIPTION_PROVIDER_IDS)[number];
+
+export function isTranscriptionProviderId(value: unknown): value is TranscriptionProviderId {
+  return typeof value === 'string'
+    && (TRANSCRIPTION_PROVIDER_IDS as readonly string[]).includes(value);
+}
 
 /** ms → frame at the given fps. */
 export function msToFrame(ms: number, fps: number): number {

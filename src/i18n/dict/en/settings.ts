@@ -94,6 +94,9 @@ export default {
   '云同步': 'Cloud sync',
   'Bucket 名': 'Bucket name',
   '模板 ID（可选）': 'Template ID (optional)',
+  '转写模型': 'Transcription model',
+  '转写语言': 'Transcription language',
+  '说话人分离': 'Speaker diarization',
 
   // ── routing options ──
   '每次询问（默认）': 'Ask every time (default)',
@@ -101,6 +104,27 @@ export default {
   '可灵': 'Kling',
   '{name}（未配置）': '{name} (not configured)',
   '选中未配置的厂商时，Agent 会回退为先询问。': 'If the chosen vendor is not configured, the Agent falls back to asking first.',
+  'AssemblyAI（云端）': 'AssemblyAI (cloud)',
+  'AssemblyAI（默认）': 'AssemblyAI (default)',
+  '本地模型（免费 · 离线）': 'Local model (free · offline)',
+  'OpenAI（云端）': 'OpenAI (cloud)',
+  'Mistral Voxtral（云端）': 'Mistral Voxtral (cloud)',
+  'Deepgram（云端）': 'Deepgram (cloud)',
+  'Groq（云端）': 'Groq (cloud)',
+  'ElevenLabs Scribe（云端）': 'ElevenLabs Scribe (cloud)',
+  'Cartesia（云端）': 'Cartesia (cloud)',
+  '中文（zh）': 'Chinese (zh)',
+  '英语（en）': 'English (en)',
+  '日语（ja）': 'Japanese (ja)',
+  '韩语（ko）': 'Korean (ko)',
+  '西班牙语（es）': 'Spanish (es)',
+  '法语（fr）': 'French (fr)',
+  '德语（de）': 'German (de)',
+  '启用': 'On',
+  '停用': 'Off',
+  '本地模型（whisper）': 'Local model (Whisper)',
+  '转写在本机完成：免费、离线、素材不出本机。模型按需下载（见下方列表），自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。':
+    'Transcription runs on this machine: free, offline, and private. Download models on demand below. OpenChatCut selects the best available backend and falls back to CPU when WebGPU is unavailable. Local transcription does not support speaker diarization.',
 
   // ──Page Note/Field Note──
   'MiniMax 同一个 Key，配置一次全能力（生图 / 配音 / 视频 / 音乐）通用。': 'One MiniMax key covers every capability (image / voice / video / music) — configure once.',
@@ -237,6 +261,8 @@ export default {
   '默认 https://api-singapore.klingai.com': 'Default https://api-singapore.klingai.com',
   '默认 https://api.mureka.ai': 'Default https://api.mureka.ai',
   '默认 https://api.minimaxi.com': 'Default https://api.minimaxi.com',
+  '默认 https://api.mistral.ai/v1': 'Default https://api.mistral.ai/v1',
+  '默认 https://api.groq.com/openai/v1': 'Default https://api.groq.com/openai/v1',
 
   // ── DesignStylePanel ──
   '设计风格': 'Design Style',

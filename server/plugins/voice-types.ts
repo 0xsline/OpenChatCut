@@ -1,8 +1,24 @@
 import type { MinimaxLanguageBoost } from '../../shared/media-provider-params.ts';
 
-export type VoiceProvider = 'elevenlabs' | 'doubao' | 'minimax' | 'inworld' | 'fishaudio' | 'speechify';
+export type VoiceProvider =
+  | 'elevenlabs' | 'doubao' | 'minimax' | 'inworld' | 'fishaudio' | 'speechify'
+  | 'openai' | 'gemini' | 'mistral' | 'cartesia';
 export type MinimaxVoiceFormat = 'mp3' | 'pcm' | 'flac' | 'wav' | 'pcmu_raw' | 'pcmu_wav' | 'opus';
 export type VoiceEffect = 'spacious_echo' | 'auditorium_echo' | 'lofi_telephone' | 'robotic';
+
+export interface AiVoiceOptions {
+  openaiBaseUrl: string;
+  openaiApiKey: string;
+  openaiModel: string;
+  geminiBaseUrl: string;
+  geminiApiKey: string;
+  geminiModel: string;
+  mistralBaseUrl: string;
+  mistralApiKey: string;
+  mistralModel: string;
+  cartesiaApiKey: string;
+  cartesiaModel: string;
+}
 
 export interface VoiceOptions {
   elevenBaseUrl: string;
@@ -24,6 +40,7 @@ export interface VoiceOptions {
   speechifyBaseUrl: string;
   speechifyApiKey: string;
   speechifyModel: string;
+  ai: AiVoiceOptions;
 }
 
 export interface VoiceRequest {
@@ -39,6 +56,7 @@ export interface VoiceRequest {
   languageCode?: string;
   seed?: number;
   outputFormat?: string;
+  instructions?: string;
   optimizeStreamingLatency?: number;
   enableLogging?: boolean;
   applyTextNormalization?: 'auto' | 'on' | 'off';

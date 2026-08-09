@@ -23,6 +23,8 @@ const catalog = [
   schema('verify_export'),
   schema('web_crawl'),
   schema('list_audio'),
+  schema('submit_voice'),
+  schema('transcribe_track'),
 ];
 
 const neutral = new ToolActivation(catalog, [{ role: 'user', content: '你好' }]);
@@ -34,6 +36,36 @@ assert.deepEqual(neutral.names(), [
   'ask_followup_questions',
   'report_user_friction',
 ]);
+
+for (const prompt of [
+  'Use OpenAI TTS with my selected voice.',
+  'Use Gemini TTS with my selected voice.',
+  'Use Mistral TTS with my selected voice.',
+  'Use Cartesia TTS with my selected voice.',
+]) {
+  const activation = new ToolActivation(catalog, [{ role: 'user', content: prompt }]);
+  assert.ok(activation.names().includes('submit_voice'), `${prompt} exposes submit_voice`);
+}
+
+for (const prompt of [
+  'Use Deepgram transcription for this track.',
+  'Use Groq ASR for this track.',
+  'Use ElevenLabs speech-to-text for this track.',
+  'Use Cartesia transcription for this track.',
+]) {
+  const activation = new ToolActivation(catalog, [{ role: 'user', content: prompt }]);
+  assert.ok(activation.names().includes('transcribe_track'), `${prompt} exposes transcribe_track`);
+}
+
+const providerOnly = new ToolActivation(catalog, [{
+  role: 'user',
+  content: 'Compare OpenAI, Gemini, Mistral, Cartesia, Deepgram, and Groq.',
+}]);
+assert.deepEqual(
+  providerOnly.names(),
+  neutral.names(),
+  'bare provider names do not activate speech tools without TTS/transcription intent',
+);
 
 const routed = new ToolActivation(catalog, [{ role: 'user', content: '把 V1 轨道片段移动并剪辑一下' }]);
 assert.ok(routed.names().includes('edit_item'));

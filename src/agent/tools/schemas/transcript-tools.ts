@@ -18,8 +18,11 @@ export const TRANSCRIPT_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'transcribe_track',
-    description: 'Transcribe the audio clip on a track (word-level + speaker labels, via AssemblyAI) and attach the transcript. Required before find_transcript / clean_script / delete_text / captions when the clip has no transcript yet.',
-    input_schema: { type: 'object', properties: { track: { type: 'string', description: 'Track alias or stable id whose audio to transcribe (default A1).' } } },
+    description: 'Transcribe the audio/video clips on a track, attach normalized transcript data, and include word/speaker detail when the provider returns it. Uses the provider selected in Settings (AssemblyAI by default) unless provider is explicitly supplied. Required before find_transcript / clean_script / delete_text / captions when a clip has no transcript yet.',
+    input_schema: { type: 'object', properties: {
+      track: { type: 'string', description: 'Track alias or stable id whose audio to transcribe (default A1).' },
+      provider: { type: 'string', enum: ['assemblyai', 'local', 'openai', 'mistral', 'deepgram', 'groq', 'elevenlabs', 'cartesia'], description: 'Optional configured provider override. Omit to use the provider selected in Settings.' },
+    } },
   },
   {
     name: 'search_media',

@@ -2,8 +2,8 @@ export { TRANSCRIPT_TOOL_SCHEMAS, TRANSCRIPT_TOOL_NAMES } from './schemas/transc
 import type { AgentContext } from '../context';
 import { defaultTrackId, resolveTrackId, trackAlias, type TimelineItem, type TrackId } from '../../editor/types';
 import { transcribePath, TranscriptionError } from '../../transcript/provider';
+import { hasOperationalTranscript, isTranscriptionProviderId } from '../../transcript/types';
 import { fillerIndices } from '../../transcript/edit';
-import { hasOperationalTranscript } from '../../transcript/types';
 import { translateLines } from '../../captions/translate';
 import { createVariant, findVariantByLang, upsertVariant } from '../../transcript/variants';
 import { buildSilenceGapCaps, parseCleanOnly, parseSilenceRule, type SilenceRule } from '../../transcript/clean';
@@ -121,7 +121,7 @@ async function manageTranscript(args: Args, ctx: AgentContext, track: TrackId, a
   if (action === 'retry_transcription') {
     if (!it.src) return { error: `item ${it.id} has no media to transcribe` };
     try {
-      const r = await transcribePath(it.src, undefined, { languageCode: 'zh' });
+      const r = await transcribePath(it.src);
       ctx.commands.setItemTranscript(it.id, r.words);
       return { ok: true, action, itemId: it.id, words: r.words.length, text: r.text.slice(0, 200), retried: true };
     } catch (e) {
@@ -257,6 +257,12 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
   const alias = trackAlias(state, track);
   switch (name) {
     case 'transcribe_track': {
+      const provider = args.provider === undefined
+        ? undefined
+        : isTranscriptionProviderId(args.provider) ? args.provider : undefined;
+      if (args.provider !== undefined && provider === undefined) {
+        return { error: `unsupported transcription provider: ${String(args.provider)}` };
+      }
       // Transcribe ALL audio/video clips on the track (not just the first).
       const clips = ctx.getState().items
         .filter((it) => (it.kind === 'audio' || it.kind === 'video') && it.track === track && it.src)
@@ -270,7 +276,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
             continue;
           }
           try {
-            const r = await transcribePath(it.src!, undefined, { languageCode: 'zh' });
+            const r = await transcribePath(it.src!, undefined, {}, provider);
             ctx.commands.setItemTranscript(it.id, r.words);
             results.push({ itemId: it.id, words: r.words.length, text: r.text.slice(0, 200) });
           } catch (transcribeError) {
@@ -283,7 +289,7 @@ export async function execTranscriptTool(name: string, args: Args, ctx: AgentCon
             throw transcribeError;
           }
         }
-        return { ok: true, track: alias, clips: results.length, results };
+        return { ok: true, track: alias, provider: provider ?? 'settings-default', clips: results.length, results };
       } catch (e) {
         return { error: `transcription failed: ${e instanceof Error ? e.message : String(e)}`, partial: results };
       }

@@ -365,13 +365,12 @@ export const GENERATE_WORKFLOW = `
 - Generated images are saved to the media pool. If the user says "media pool/library only" or asks not to change the timeline, set addToTimeline=false; otherwise propose timeline placement.
 
 ## TTS voice generation
-- Use submit_voice only for an explicitly requested TTS generation after the user has confirmed a concrete provider and voiceId.
-- Providers: doubao (Chinese-optimized), elevenlabs (English/multilingual), minimax (when configured). Never mix voice catalogs across providers.
-- MiniMax supports speed (0.5–2), pitch (-12–12), volume (0–10), and emotion natively. Doubao pitch is post-process; emotionScale/performancePrompt are Doubao-only.
-- Curated Doubao examples include vivi, xiaohe, yunzhou, dayi, liuchang, and morgan. Curated ElevenLabs examples include amelia, hope, peter, james, and sully. MiniMax examples include female-yujie, male-qn-qingse.
-- Voice samples are available at /voice-samples/<provider>-<voiceId>.mp3 when bundled. If the user has not chosen a concrete voice, offer a few matching samples before generating.
+- Use submit_voice only for explicitly requested TTS after the user confirms a configured provider and a concrete provider-specific voiceId. MiniMax timbre mixing is the only voiceId exception.
+- Providers: doubao, elevenlabs, minimax, inworld, fishaudio, speechify, openai, gemini, mistral, and cartesia. All are opt-in; use only choices listed as configured in the capabilities prompt, and never mix voice catalogs.
+- Curated choices exist only for Doubao, ElevenLabs, and MiniMax. Bundled samples exist only where references/voices.md lists one. For every other provider, do not invent a preset or sample URL; require a concrete voiceId from the user/provider account.
+- AI SDK-backed fields: OpenAI supports modelId/speed/outputFormat/instructions; Gemini supports modelId/outputFormat/instructions; Mistral supports modelId/outputFormat; Cartesia supports modelId/speed/languageCode/outputFormat. Inworld, Fish Audio, and Speechify accept only voiceId and optional modelId.
+- MiniMax supports speed (0.5–2), pitch (-12–12), volume (0–10), and emotion natively. Doubao pitch is post-process; emotionScale/performancePrompt are Doubao-only. ElevenLabs retains its dedicated delivery controls.
 - submit_voice creates one media-pool audio asset only. Do not claim it was placed on the timeline.
-- Only call providers whose keys are configured (capabilities prompt).
 
 ## Sound-effect generation
 - Use submit_sound only after the user explicitly requests a new/original/custom sound, or when the existing sound-effects library has no suitable result.

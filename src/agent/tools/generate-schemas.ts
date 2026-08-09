@@ -34,22 +34,23 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'submit_voice',
-    description: 'Generate one TTS audio asset with ElevenLabs, Doubao, MiniMax, Inworld, Fish Audio, or Speechify. Creates an asset only; it does not place or replace timeline items. Confirm a provider and voice; MiniMax timbreWeights may mix voices with an empty voiceId.',
+    description: 'Generate one TTS audio asset with ElevenLabs, Doubao, MiniMax, Inworld, Fish Audio, Speechify, OpenAI, Gemini, Mistral, or Cartesia. Creates a media-pool asset only; it does not place or replace timeline items. Confirm a configured provider and concrete provider-specific voice; MiniMax timbreWeights may mix voices with an empty voiceId.',
     input_schema: {
       type: 'object',
       properties: {
-        provider: { type: 'string', enum: ['elevenlabs', 'doubao', 'minimax', 'inworld', 'fishaudio', 'speechify'], description: 'elevenlabs for multilingual/non-Chinese; doubao for Chinese-optimized speech; minimax for MiniMax Chinese TTS; inworld, fishaudio, and speechify are general multilingual TTS (text + voiceId + optional modelId only).' }, // minimax: provider enum
+        provider: { type: 'string', enum: ['elevenlabs', 'doubao', 'minimax', 'inworld', 'fishaudio', 'speechify', 'openai', 'gemini', 'mistral', 'cartesia'], description: 'Required opt-in provider. Use only a provider listed as configured in capabilities. Voice IDs and catalogs are never interchangeable.' },
         text: { type: 'string', minLength: 1, description: 'Text to synthesize.' },
-        voiceId: { type: 'string', description: 'Provider-specific voice ID. Required except MiniMax timbreWeights mixing, where it must be empty. MiniMax defaults to female-yujie when omitted without mixing.' },
-        modelId: { type: 'string', description: 'ElevenLabs, Inworld, Fish Audio, or Speechify only. Defaults to the configured current model.' },
+        voiceId: { type: 'string', description: 'Concrete provider-specific voice ID confirmed by the user. Required except MiniMax timbreWeights mixing, where it must be empty. Do not invent a preset or reuse an ID from another provider.' },
+        modelId: { type: 'string', description: 'ElevenLabs, Inworld, Fish Audio, Speechify, OpenAI, Gemini, Mistral, or Cartesia only. Omit to use the configured model.' },
         stability: { type: 'number', minimum: 0, maximum: 1, description: 'ElevenLabs only. Defaults to 0.5.' },
-        speed: { type: 'number', minimum: 0.5, maximum: 2, description: 'ElevenLabs (0.7–1.2) or MiniMax (0.5–2). Defaults to 1.' }, // minimax: widened range, server enforces per provider
+        speed: { type: 'number', minimum: 0.5, maximum: 2, description: 'ElevenLabs (0.7–1.2), MiniMax (0.5–2), OpenAI, or Cartesia only. Defaults to 1; provider/model support is validated server-side.' },
         similarityBoost: { type: 'number', minimum: 0, maximum: 1, description: 'ElevenLabs voice_settings.similarity_boost.' },
         style: { type: 'number', minimum: 0, maximum: 1, description: 'ElevenLabs voice_settings.style.' },
         useSpeakerBoost: { type: 'boolean', description: 'ElevenLabs speaker boost.' },
-        languageCode: { type: 'string', description: 'ElevenLabs ISO 639-1 language code.' },
+        languageCode: { type: 'string', description: 'ElevenLabs or Cartesia only. Provider/model support is validated server-side.' },
         seed: { type: 'integer', minimum: 0, maximum: 4294967295, description: 'ElevenLabs reproducibility seed.' },
-        outputFormat: { type: 'string', description: 'ElevenLabs official output enum, e.g. mp3_44100_128, pcm_24000, opus_48000_128, wav_44100.' },
+        outputFormat: { type: 'string', description: 'ElevenLabs official output enum (for example mp3_44100_128) or OpenAI/Gemini/Mistral/Cartesia provider-supported output format.' },
+        instructions: { type: 'string', description: 'OpenAI or Gemini only. Optional natural-language delivery instructions; send only when requested and supported by the configured model.' },
         optimizeStreamingLatency: { type: 'integer', minimum: 0, maximum: 4, description: 'ElevenLabs latency optimization level.' },
         enableLogging: { type: 'boolean', description: 'ElevenLabs request logging query control.' },
         applyTextNormalization: { type: 'string', enum: ['auto', 'on', 'off'], description: 'ElevenLabs text normalization.' },

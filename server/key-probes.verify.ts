@@ -9,11 +9,13 @@ import { LLM_PROVIDER_PRESETS } from '../shared/llm-providers.ts';
 const EXPECTED_PAGES = [
   ...LLM_PROVIDER_PRESETS.map((preset) => `llm/${preset.id}`),
   'image/openai', 'image/gemini', 'image/minimax', 'image/wavespeed', 'image/byteplus',
-  'voice/elevenlabs', 'voice/doubao', 'voice/minimax', 'voice/inworld', 'voice/fishaudio', 'voice/speechify',
+  'voice/elevenlabs', 'voice/openai', 'voice/gemini', 'voice/mistral', 'voice/cartesia',
+  'voice/doubao', 'voice/minimax', 'voice/inworld', 'voice/fishaudio', 'voice/speechify',
   'video/seedance', 'video/kling', 'video/hailuo', 'video/byteplus',
   'music/mureka', 'music/minimax',
   'stock/pexels', 'stock/pixabay', 'stock/unsplash', 'stock/freesound',
-  'transcription/assemblyai',
+  'transcription/assemblyai', 'transcription/openai', 'transcription/mistral',
+  'transcription/deepgram', 'transcription/groq', 'transcription/elevenlabs', 'transcription/cartesia',
   'sandbox/e2b',
   'web/firecrawl',
   'storage/r2', 'storage/local',
@@ -66,7 +68,30 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   assert.match(half.message, /尚未填写 API Key/);
 }
 
-// 7. Local storage directory probe: empty group needs = can be tested if not filled in (not set = default directory); the relative path is configured
+// 7. Media probes normalize Base URLs exactly like the runtime: keep an existing version suffix and add a missing one.
+{
+  const originalFetch = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = async (input) => {
+    urls.push(String(input));
+    return Response.json({ data: [] });
+  };
+  try {
+    await runProbe('voice/openai', { OPENAI_API_KEY: 'test', IMAGE_BASE_URL: 'https://proxy.example/v1/' });
+    await runProbe('voice/gemini', { GEMINI_API_KEY: 'test', GEMINI_BASE_URL: 'https://proxy.example/v1beta' });
+    await runProbe('voice/mistral', { LLM_MISTRAL_API_KEY: 'test', LLM_MISTRAL_BASE_URL: 'https://proxy.example' });
+    assert.deepEqual(urls, [
+      'https://proxy.example/v1/models',
+      'https://proxy.example/v1beta/models?pageSize=1',
+      'https://proxy.example/v1/models',
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+
+// 8. Local storage directory probe: empty group needs = can be tested if not filled in (not set = default directory); the relative path is configured
 // Level failure (postCheck copy, no HTTP prefix); success copy goes to okText. Neither case touched the plate.
 {
   const unset = await runProbe('storage/local', {});
