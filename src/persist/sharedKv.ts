@@ -248,10 +248,9 @@ export function kvRemoteMode(): 'remote' | 'local' {
 }
 
 function isAuthError(error: unknown): error is Error & { status: number } {
-  return error instanceof Error
-    && typeof (error as { status?: unknown }).status === 'number'
-    && (error as { status: number }).status >= 400
-    && (error as { status: number }).status < 500;
+  if (!(error instanceof Error)) return false;
+  const status = Reflect.get(error, 'status');
+  return typeof status === 'number' && status >= 400 && status < 500;
 }
 
 export async function kvKeys(): Promise<string[]> {
