@@ -25,6 +25,9 @@ const catalog = [
   schema('list_audio'),
   schema('submit_voice'),
   schema('transcribe_track'),
+  schema('search_stock_media'),
+  schema('music_edit_plan'),
+  schema('sync_cuts_to_music'),
 ];
 
 const neutral = new ToolActivation(catalog, [{ role: 'user', content: '你好' }]);
@@ -103,6 +106,18 @@ const audioRouted = new ToolActivation(catalog, [
   { role: 'user', content: '看看当前可用音频条目有多少，只报数量' },
 ]);
 assert.ok(audioRouted.names().includes('list_audio'), 'natural-language audio requests expose the audio catalog');
+const stockMusicEdit = new ToolActivation(catalog, [
+  {
+    role: 'user',
+    content: '联网在 Pixabay 搜索视频，导入后按音乐每 2 拍卡点剪辑',
+  },
+]);
+assert.ok(
+  stockMusicEdit.names().includes('search_stock_media'),
+  'multi-domain stock-video edit requests keep the stock search schema active',
+);
+assert.ok(stockMusicEdit.names().includes('music_edit_plan'));
+assert.ok(stockMusicEdit.names().includes('sync_cuts_to_music'));
 const readOnlyTimeline = new ToolActivation(catalog, [
   { role: 'user', content: '查看当前时间线，只告诉我片段信息，不要修改' },
 ]);
@@ -110,6 +125,15 @@ assert.deepEqual(
   readOnlyTimeline.names(),
   neutral.names(),
   'read-only timeline requests do not expose editing schemas',
+);
+const readOnlyMusic = new ToolActivation(catalog, [
+  { role: 'user', content: '只读查看音乐分析，不要修改' },
+], ['sync_cuts_to_music']);
+assert.ok(readOnlyMusic.names().includes('music_edit_plan'));
+assert.equal(
+  readOnlyMusic.names().includes('sync_cuts_to_music'),
+  false,
+  'explicit read-only requests drop mutating tools even when routed or previously active',
 );
 const discoveryRouted = new ToolActivation(catalog, [
   { role: 'user', content: '先看看有哪些音频相关能力，只列出最匹配的三个能力名称' },

@@ -1,0 +1,115 @@
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { once } from 'node:events';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { ASR_MODELS, asrModelEntry, asrModelFile, type AsrModelEntry } from '../../shared/asr-models';
+import { EDITOR_CREDENTIAL_HEADER, editorBootstrapPayload } from '../editor-auth';
+import { __resetAsrTasks, handleAsrModelsRequest, inspectAsrModel } from './asr-models';
+
+const server = createServer((req, res) => {
+  const pathname = (req.url ?? '').split('?')[0] ?? '';
+  void handleAsrModelsRequest(req, res, pathname).catch((error) => {
+    res.statusCode = 500;
+    res.end(error instanceof Error ? error.message : String(error));
+  });
+});
+server.listen(0, '127.0.0.1');
+await once(server, 'listening');
+const address = server.address();
+assert(address && typeof address === 'object');
+const origin = `http://127.0.0.1:${address.port}`;
+const credential = editorBootstrapPayload().credential;
+const mutationPaths = ['/api/asr-models/download', '/api/asr-models/delete'] as const;
+
+async function post(path: string, headers: HeadersInit, id = 'not-in-fixed-catalog'): Promise<Response> {
+  return fetch(`${origin}${path}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ id }),
+  });
+}
+
+try {
+  for (const path of mutationPaths) {
+    assert.equal((await post(path, {
+      Origin: origin,
+      'Content-Type': 'application/json',
+    })).status, 401, `${path} must reject missing editor credentials`);
+    assert.equal((await post(path, {
+      'Content-Type': 'application/json',
+      [EDITOR_CREDENTIAL_HEADER]: credential,
+    })).status, 401, `${path} must require a trusted same-origin request`);
+    assert.equal((await post(path, {
+      Origin: origin,
+      'Content-Type': 'text/plain',
+      [EDITOR_CREDENTIAL_HEADER]: credential,
+    })).status, 415, `${path} must reject non-JSON content`);
+    assert.equal((await post(path, {
+      Origin: origin,
+      'Content-Type': 'application/json',
+      [EDITOR_CREDENTIAL_HEADER]: credential,
+    })).status, 400, `${path} must pass authorization and reject IDs outside the fixed catalog`);
+  }
+} finally {
+  server.close();
+  await once(server, 'close');
+}
+
+assert.deepEqual(ASR_MODELS.map((entry) => entry.revision), [
+  '5332fcc35e32a33b86612b9a57a89be7906102b1',
+  '64da57285918e20ea79ea5c88eed7197933abaa8',
+  '2d67713f236afa48a18992566e7647f6ca848e13',
+  '8c5b90880ab9f79487ab33613413431bf661d595',
+]);
+for (const model of ASR_MODELS) {
+  assert.equal(model.files.length, 7);
+  for (const file of model.files) {
+    assert(file.sizeBytes > 0);
+    assert.match(file.sha256, /^[a-f0-9]{64}$/);
+    assert.equal(asrModelFile(model.modelId, model.revision, file.path), file);
+  }
+}
+
+const tiny = asrModelEntry('tiny');
+assert(tiny);
+assert.equal(tiny.revision, '5332fcc35e32a33b86612b9a57a89be7906102b1');
+assert.equal(
+  asrModelFile(tiny.modelId, tiny.revision, 'config.json')?.sha256,
+  '2b2e4e519084e0ea028b19b153f95202735a971870d6844aa26e559edd292e94',
+);
+assert.equal(asrModelFile(tiny.modelId, 'main', 'config.json'), undefined);
+assert.equal(asrModelFile(tiny.modelId, tiny.revision, '../config.json'), undefined);
+
+const root = await mkdtemp(join(tmpdir(), 'openchatcut-asr-integrity-'));
+const expectedContent = Buffer.from('good');
+const entry: AsrModelEntry = {
+  id: 'tiny',
+  modelId: 'test/asr-integrity',
+  revision: 'a'.repeat(40),
+  files: [{
+    path: 'config.json',
+    sizeBytes: expectedContent.length,
+    sha256: createHash('sha256').update(expectedContent).digest('hex'),
+  }],
+  label: 'Test',
+  sizeLabel: '4B',
+  language: 'Test',
+  note: 'Test',
+};
+try {
+  const modelRoot = join(root, entry.modelId);
+  await mkdir(modelRoot, { recursive: true });
+  await writeFile(join(modelRoot, entry.files[0]!.path), 'baad');
+  assert.deepEqual(await inspectAsrModel(entry, root), { downloaded: false, bytes: 0 },
+    'same-size corrupted files must not count as downloaded');
+  await writeFile(join(modelRoot, entry.files[0]!.path), expectedContent);
+  __resetAsrTasks();
+  assert.deepEqual(await inspectAsrModel(entry, root), { downloaded: true, bytes: expectedContent.length });
+} finally {
+  await rm(root, { recursive: true, force: true });
+}
+
+console.log('asr-models.verify: mutation authorization and JSON contract OK');

@@ -8,16 +8,28 @@
 //   GET  /api/asr-models/download/:id → task status { status, progress, … }
 //   POST /api/asr-models/delete       → { id } remove cached files
 import type { Plugin } from 'vite';
+import { createHash } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { existsSync } from 'node:fs';
+import { createReadStream } from 'node:fs';
 import { rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ASR_MODEL_FILES, ASR_MODELS, asrModelEntry, type AsrDownloadTask } from '../../shared/asr-models.ts';
+import {
+  ASR_MODELS,
+  asrModelEntry,
+  type AsrDownloadTask,
+  type AsrModelEntry,
+  type AsrModelFile,
+} from '../../shared/asr-models.ts';
+import { editorCredentialAuthorized } from '../editor-auth.ts';
 import { downloadModelFile, modelCacheDir } from './hf-proxy.ts';
 
 const MAX_JSON = 8 * 1024;
 
 const tasks = new Map<string, AsrDownloadTask>();
+const inspections = new Map<string, {
+  fingerprint: string;
+  result: { downloaded: boolean; bytes: number };
+}>();
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   if (res.destroyed || res.writableEnded) return;
@@ -25,6 +37,19 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-store');
   res.end(JSON.stringify(body));
+}
+
+function requireAsrMutation(req: IncomingMessage, res: ServerResponse): boolean {
+  if (!editorCredentialAuthorized(req, true)) {
+    req.resume();
+    sendJson(res, 401, { error: 'editor credential required' });
+    return false;
+  }
+  const contentType = String(req.headers['content-type'] ?? '').split(';', 1)[0]!.trim().toLowerCase();
+  if (contentType === 'application/json') return true;
+  req.resume();
+  sendJson(res, 415, { error: 'content-type must be application/json' });
+  return false;
 }
 
 function readJson(req: IncomingMessage, max = MAX_JSON): Promise<Record<string, unknown>> {
@@ -51,17 +76,41 @@ function readJson(req: IncomingMessage, max = MAX_JSON): Promise<Record<string, 
   return promise;
 }
 
-/** True when every catalog file exists on disk and is non-empty. */
-async function modelDownloaded(modelId: string): Promise<{ downloaded: boolean; bytes: number }> {
-  let bytes = 0;
-  for (const file of ASR_MODEL_FILES) {
-    const path = join(modelCacheDir(), modelId, file);
-    if (!existsSync(path)) return { downloaded: false, bytes };
-    const size = (await stat(path)).size;
-    if (size <= 0) return { downloaded: false, bytes };
-    bytes += size;
+async function modelFileVerified(path: string, file: AsrModelFile): Promise<boolean> {
+  try {
+    if ((await stat(path)).size !== file.sizeBytes) return false;
+    const hash = createHash('sha256');
+    for await (const chunk of createReadStream(path)) hash.update(chunk);
+    return hash.digest('hex') === file.sha256;
+  } catch {
+    return false;
   }
-  return { downloaded: true, bytes };
+}
+export async function inspectAsrModel(
+  entry: AsrModelEntry,
+  cacheDir = modelCacheDir(),
+): Promise<{ downloaded: boolean; bytes: number }> {
+  const stats: string[] = [];
+  for (const file of entry.files) {
+    try {
+      const info = await stat(join(cacheDir, entry.modelId, file.path));
+      if (!info.isFile() || info.size !== file.sizeBytes) return { downloaded: false, bytes: 0 };
+      stats.push(`${file.path}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`);
+    } catch {
+      return { downloaded: false, bytes: 0 };
+    }
+  }
+  const key = `${cacheDir}\0${entry.modelId}`;
+  const fingerprint = stats.join('|');
+  const cached = inspections.get(key);
+  if (cached?.fingerprint === fingerprint) return cached.result;
+  const downloaded = (await Promise.all(entry.files.map((file) =>
+    modelFileVerified(join(cacheDir, entry.modelId, file.path), file)))).every(Boolean);
+  const result = { downloaded, bytes: downloaded ? entry.files.reduce(
+    (total, file) => total + file.sizeBytes, 0,
+  ) : 0 };
+  inspections.set(key, { fingerprint, result });
+  return result;
 }
 
 function catalogState(): Promise<Array<{
@@ -69,7 +118,7 @@ function catalogState(): Promise<Array<{
   downloaded: boolean; bytes: number; task?: AsrDownloadTask;
 }>> {
   return Promise.all(ASR_MODELS.map(async (entry) => {
-    const state = await modelDownloaded(entry.modelId);
+    const state = await inspectAsrModel(entry);
     return {
       id: entry.id,
       modelId: entry.modelId,
@@ -89,21 +138,32 @@ async function startDownload(id: string): Promise<AsrDownloadTask> {
   const existing = tasks.get(id);
   if (existing && existing.status === 'downloading') return existing;
   const task: AsrDownloadTask = {
-    id, status: 'downloading', bytesDone: 0, bytesTotal: 0, filesDone: 0, filesTotal: ASR_MODEL_FILES.length,
+    id,
+    status: 'downloading',
+    bytesDone: 0,
+    bytesTotal: entry.files.reduce((total, file) => total + file.sizeBytes, 0),
+    filesDone: 0,
+    filesTotal: entry.files.length,
   };
+  inspections.delete(`${modelCacheDir()}\0${entry.modelId}`);
   tasks.set(id, task);
   void (async () => {
     try {
-      for (const file of ASR_MODEL_FILES) {
-        const path = join(modelCacheDir(), entry.modelId, file);
-        if (existsSync(path) && (await stat(path)).size > 0) {
+      for (const file of entry.files) {
+        const path = join(modelCacheDir(), entry.modelId, file.path);
+        if (await modelFileVerified(path, file)) {
           task.filesDone += 1;
-          task.bytesDone += (await stat(path)).size;
+          task.bytesDone += file.sizeBytes;
           continue;
         }
-        await downloadModelFile({ modelId: entry.modelId, revision: 'main', filePath: file });
+        await rm(path, { force: true });
+        await downloadModelFile(
+          { modelId: entry.modelId, revision: entry.revision, filePath: file.path },
+          undefined,
+          { expectedBytes: file.sizeBytes, expectedSha256: file.sha256 },
+        );
         task.filesDone += 1;
-        task.bytesDone += (await stat(path)).size;
+        task.bytesDone += file.sizeBytes;
       }
       task.status = 'done';
     } catch (error) {
@@ -121,15 +181,21 @@ async function deleteModel(id: string): Promise<boolean> {
   if (task?.status === 'downloading') throw new Error(`model ${id} is downloading`);
   await rm(join(modelCacheDir(), entry.modelId), { recursive: true, force: true });
   tasks.delete(id);
+  inspections.delete(`${modelCacheDir()}\0${entry.modelId}`);
   return true;
 }
 
-async function handle(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<void> {
+export async function handleAsrModelsRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+): Promise<void> {
   if (pathname === '/api/asr-models' && req.method === 'GET') {
     sendJson(res, 200, { models: await catalogState() });
     return;
   }
   if (pathname === '/api/asr-models/download' && req.method === 'POST') {
+    if (!requireAsrMutation(req, res)) return;
     try {
       const body = await readJson(req);
       const id = String(body.id ?? '');
@@ -147,6 +213,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, pathname: strin
     return;
   }
   if (pathname === '/api/asr-models/delete' && req.method === 'POST') {
+    if (!requireAsrMutation(req, res)) return;
     try {
       const body = await readJson(req);
       await deleteModel(String(body.id ?? ''));
@@ -169,7 +236,7 @@ export function asrModelsPlugin(): Plugin {
           next();
           return;
         }
-        void handle(req, res, pathname).catch((error) => {
+        void handleAsrModelsRequest(req, res, pathname).catch((error) => {
           sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
         });
       });
@@ -177,7 +244,8 @@ export function asrModelsPlugin(): Plugin {
   };
 }
 
-/** Test seam: reset in-memory tasks. */
+/** Test seam: reset in-memory tasks and integrity inspections. */
 export function __resetAsrTasks(): void {
   tasks.clear();
+  inspections.clear();
 }

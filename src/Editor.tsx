@@ -24,7 +24,7 @@ import { sourceWindowForTimelineRange } from './editor/sourceLimit';
 import { planSlip, type SlipPreview } from './editor/slip';
 import { resolveTimelineRenderPlan, sequenceReferenceError } from './editor/sequenceGraph';
 import { planInspectorBatch, selectedInspectorItems } from './editor/inspectorBatch';
-import { captureTimelineItemSource, sourceRevisionOf, validateTimelineItemSourceBatch } from './editor/mediaSourceRevision';
+import { captureTimelineItemSource, revisionAfterRelink, sourceRevisionOf, validateTimelineItemSourceBatch } from './editor/mediaSourceRevision';
 import { usedMediaAssetIds } from './editor/mediaAssetUsage';
 import { supportsKeyframeProperty } from './editor/keyframeRegistry';
 import { isBackgroundFillEligible } from './editor/backgroundFill';
@@ -60,7 +60,8 @@ import {
   untranscribedTimelineItemIdsForRevision,
 } from './transcript/transcribe-jobs';
 import { enqueueVisualAnalysis, refreshVisualAnalysis } from './agent/progress/visual-analysis-jobs';
-import type { MediaAsset } from './editor/types';
+import { useAutoMusicAnalysis } from './audio/intelligence/useAutoMusicAnalysis';
+import type { MediaAsset, MediaAssetRelinkPatch } from './editor/types';
 import { AUDIO_ASSETS } from './audio/library';
 import type { Tpl } from './types';
 import type { AgentReference } from './agent/context';
@@ -120,6 +121,7 @@ function isAutoGradeTarget(item: TimelineItem, state: TimelineState): boolean {
 export default function Editor({ initial, project, onHome, onRename }: EditorProps) {
   const t = useT();
   const { state, doc, commands, canUndo, canRedo, getUndoTarget, getRedoTarget } = useEditor(initial);
+  useAutoMusicAnalysis(doc.assets);
   const selectedItem = state.items.find((it) => it.id === state.selectedId) ?? null;
   const selectedIds = selectedIdsOf(state);
   const selectedItems = selectedInspectorItems(state, selectedIds);
@@ -530,6 +532,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           // Avoid dup if agent already ingested before refresh.
           if ((docRef.current.assets ?? []).some((a) => a.id === asset.id || a.src === asset.src)) return;
           commands.addAsset(asset);
+          if (asset.kind !== 'audio') enqueueVisualAnalysis(asset);
         },
         timeoutSeconds: 180,
       });
@@ -913,6 +916,30 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
     },
     selectAll: selectAllTimelineContent,
   });
+  const relinkMediaAsset = useCallback((id: string, next: MediaAssetRelinkPatch) => {
+    const current = docRef.current.assets.find((asset) => asset.id === id);
+    commands.relinkMediaAsset(id, next);
+    if (!current) return;
+    const replacement: MediaAsset = {
+      ...current,
+      src: next.src,
+      name: next.name ?? current.name,
+      durationInFrames: next.durationInFrames ?? current.durationInFrames,
+      width: next.width ?? current.width,
+      height: next.height ?? current.height,
+      kind: next.kind ?? current.kind,
+      sourceRevision: next.sourceRevision,
+      sourceContentHash: 'sourceContentHash' in next ? next.sourceContentHash : current.sourceContentHash,
+      sourceSize: next.sourceSize,
+      sourceModifiedAt: next.sourceModifiedAt,
+      sourceFilename: 'sourceFilename' in next ? next.sourceFilename : current.sourceFilename,
+      originalFilePath: 'originalFilePath' in next ? next.originalFilePath : current.originalFilePath,
+      sourceTimecode: undefined,
+      captureClock: undefined,
+    };
+    const relinked = { ...replacement, sourceRevision: revisionAfterRelink(current, replacement) };
+    if (relinked.kind !== 'audio') refreshVisualAnalysis(relinked);
+  }, [commands]);
 
   return (
     <div
@@ -942,6 +969,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
           onAsset: (asset) => {
             if ((docRef.current.assets ?? []).some((item) => item.id === asset.id || item.src === asset.src)) return;
             commands.addAsset(asset);
+            if (asset.kind !== 'audio') enqueueVisualAnalysis(asset);
           },
           timeoutSeconds: 180,
         }).then(() => undefined)}
@@ -977,7 +1005,7 @@ export default function Editor({ initial, project, onHome, onRename }: EditorPro
             const result = commands.addSequence(timelineId, { startFrame: getPlayhead() });
             if (!result.ok) showAppToast(t(result.error), { error: true });
           }}
-          onRelinkMediaAsset={(id, next) => commands.relinkMediaAsset(id, next)}
+          onRelinkMediaAsset={relinkMediaAsset}
           onAddSolid={() => commands.addSolidItem({ startFrame: getPlayhead() })}
           creativeMode={creativeMode}
           onCreativeModeChange={changeCreativeMode}

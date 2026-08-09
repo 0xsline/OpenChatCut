@@ -20,6 +20,7 @@ export interface AsrConfig {
   device: AsrDevice;
   modelTier: AsrModelTier;
   modelId: string;
+  revision: string;
 }
 
 /** One word-level segment from the ASR worker (timestamps in seconds). */
@@ -35,7 +36,7 @@ export interface AsrResult {
 }
 
 export type LocalAsrWorkerRequest =
-  | { id: number; type: 'load'; device: AsrDevice; modelId: string }
+  | { id: number; type: 'load'; device: AsrDevice; modelId: string; revision: string }
   | { id: number; type: 'transcribe'; samples: Float32Array; language: string };
 
 export type LocalAsrWorkerResponse =

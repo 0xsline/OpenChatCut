@@ -10,6 +10,8 @@ import { VendorIcon } from './vendorIcons';
 import type { AsrDownloadStatus } from '../../../shared/asr-models';
 import { FieldRow, type FieldCtx } from './settingsVendorPane';
 import type { SettingsField } from './settingsSchema';
+import { LocalModelPackPane } from './LocalModelPackPane';
+import { mutateLocalAsrModel } from './local-asr-model-mutation';
 
 interface AsrModelState {
   id: string;
@@ -79,11 +81,7 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
   const startDownload = useCallback(async (id: string) => {
     setBusyId(id);
     try {
-      await fetch('/api/asr-models/download', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
+      await mutateLocalAsrModel('download', id);
       await refresh();
     } finally {
       setBusyId(null);
@@ -93,11 +91,7 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
   const deleteModel = useCallback(async (id: string) => {
     setBusyId(id);
     try {
-      await fetch('/api/asr-models/delete', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
+      await mutateLocalAsrModel('delete', id);
       await refresh();
     } finally {
       setBusyId(null);
@@ -163,6 +157,7 @@ export function LocalAsrPane({ fields, ctx }: { fields: readonly SettingsField[]
           );
         })}
       </div>
+      <LocalModelPackPane />
     </div>
   );
 }

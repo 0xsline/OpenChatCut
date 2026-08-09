@@ -32,8 +32,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   新增五种确定性字幕动效（无动效、淡入上浮、弹性入场、逐词弹出、卡拉 OK 脉冲）。动效在共享 Remotion 字幕层中按时间线帧计算，Player 预览与烧录导出保持一致，用户字幕预设也会保留所选动效。
 - Added server-direct external Agent editing for projects without an open browser: isolated drafts, explicit review/commit gates, dependency-closed tool exposure, and scoped one-time same-origin upload handoffs with expiry and replay rejection.
   新增无需浏览器常驻的外部 Agent 服务端直编：隔离草稿、显式审阅/提交门槛、依赖闭合的工具暴露，以及带工程作用域、过期与防重放校验的同源一次性上传交接。
-- Added opt-in local music intelligence: downloadable, hash-verified Beat This and CLAP model packs analyze BPM, beats, downbeats, structure, energy, genre, mood, instrumentation, and usage entirely on-device. Media cards expose cached results, automatic analysis is user-controlled, and the Agent can inspect, plan, and atomically apply stale-safe beat-synced cuts through a dedicated skill.
-  新增可选的本地音乐智能：可下载并校验哈希的 Beat This 与 CLAP 模型包在端侧分析 BPM、节拍、强拍、段落、能量、流派、情绪、乐器与用途。素材卡展示缓存结果，自动分析由用户控制；Agent 可通过专项技能读取、规划并原子执行带防过期校验的卡点切分。
+- Added opt-in local music intelligence: downloadable, hash-verified Beat This and CLAP model packs analyze BPM, beats, downbeats, structure, energy, genre, mood, instrumentation, and usage entirely on-device. Media cards expose cached results, automatic analysis is user-controlled, and the Agent can inspect, plan, and atomically apply stale-safe beat-synced cuts through a dedicated skill. Long tracks use bounded windowed rhythm preprocessing and representative semantic sampling.
+  新增可选的本地音乐智能：可下载并校验哈希的 Beat This 与 CLAP 模型包完全在端侧分析 BPM、节拍、强拍、段落、能量、流派、情绪、乐器与用途。素材卡可查看缓存结果，导入后自动分析由用户控制；Agent 通过专项技能检查分析、生成方案，并以单次可撤销操作安全执行带分析版本校验的卡点切分。长音频采用有界窗口节奏预处理与代表性语义采样。
 
 ### Changed / 变更
 

@@ -2,14 +2,8 @@
 // Each platform uses its own strengths (WebGPU on Metal/D3D12/Vulkan; model tier by
 // memory) — the shipped build is identical everywhere, the choice is made at runtime.
 // P0 note: thresholds are initial estimates; calibrate with real devices before release.
+import { asrModelEntry } from '../../shared/asr-models';
 import type { AsrConfig, AsrDevice, AsrModelTier, DeviceProfile } from './local-asr-types';
-
-export const WHISPER_MODELS: Record<AsrModelTier, string> = {
-  tiny: 'Xenova/whisper-tiny',
-  base: 'Xenova/whisper-base',
-  small: 'Xenova/whisper-small',
-  medium: 'Xenova/whisper-medium',
-};
 
 const DEFAULT_MEMORY_GB = 8;
 const SMALL_TIER_MIN_GB = 6;
@@ -72,5 +66,7 @@ export function chooseAsrConfig(profile: DeviceProfile): AsrConfig {
     || preferred === 'small' || preferred === 'medium'
     ? preferred
     : profile.deviceMemoryGB >= SMALL_TIER_MIN_GB ? 'small' : 'base';
-  return { device, modelTier: tier, modelId: WHISPER_MODELS[tier] };
+  const model = asrModelEntry(tier);
+  if (!model) throw new Error(`Unsupported local ASR model tier: ${tier}`);
+  return { device, modelTier: tier, modelId: model.modelId, revision: model.revision };
 }

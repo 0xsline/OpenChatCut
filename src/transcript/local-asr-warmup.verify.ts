@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
-import { __resetLocalAsrClient, warmUpLocalAsr } from './local-asr';
+import { __resetLocalAsrClient, LocalAsrClient, warmUpLocalAsr } from './local-asr';
+import type { AsrConfig } from './local-asr-types';
 
 interface LoadRequest {
   id: number;
   type: 'load';
   device: string;
   modelId: string;
+  revision: string;
 }
 
 class FakeWorker {
@@ -29,6 +31,14 @@ class FakeWorker {
     assert.ok(request, 'expected a pending worker request');
     queueMicrotask(() => this.onmessage?.({
       data: { id: request.id, type: 'result', result: { text: '', chunks: [] } },
+    }));
+  }
+
+  rejectNext(message = 'load failed'): void {
+    const request = this.pending.shift();
+    assert.ok(request, 'expected a pending worker request');
+    queueMicrotask(() => this.onmessage?.({
+      data: { id: request.id, type: 'error', message },
     }));
   }
 
@@ -77,6 +87,7 @@ try {
   await waitFor(() => FakeWorker.instances[0]?.requests.length === 1);
   const worker = FakeWorker.instances[0]!;
   assert.equal(worker.requests[0]?.modelId, 'Xenova/whisper-tiny');
+  assert.equal(worker.requests[0]?.revision, '5332fcc35e32a33b86612b9a57a89be7906102b1');
   worker.resolveNext();
   await tinyWarmup;
 
@@ -89,15 +100,67 @@ try {
   const first = warmUpLocalAsr(['Xenova/whisper-tiny']);
   await waitFor(() => FakeWorker.instances[0]?.requests.length === 1);
   const switchingWorker = FakeWorker.instances[0]!;
-
   storage.setItem('cc.asrModel', 'small');
   const second = warmUpLocalAsr(['Xenova/whisper-small']);
-  assert.equal(switchingWorker.requests.length, 1, 'model switch must wait for current load');
+  assert.equal(FakeWorker.instances.length, 1, 'model switch must wait for current load');
   switchingWorker.resolveNext();
-  await waitFor(() => switchingWorker.requests.length === 2);
-  assert.equal(switchingWorker.requests[1]?.modelId, 'Xenova/whisper-small');
-  switchingWorker.resolveNext();
+  await waitFor(() => FakeWorker.instances[1]?.requests.length === 1);
+  const smallWorker = FakeWorker.instances[1]!;
+  assert.equal(smallWorker.requests[0]?.modelId, 'Xenova/whisper-small');
+  assert.equal(smallWorker.requests[0]?.revision, '2d67713f236afa48a18992566e7647f6ca848e13');
+  smallWorker.resolveNext();
   await Promise.all([first, second]);
+
+  FakeWorker.instances.length = 0;
+  const client = new LocalAsrClient();
+  const base: AsrConfig = {
+    device: 'wasm',
+    modelTier: 'tiny',
+    modelId: 'Xenova/whisper-tiny',
+    revision: '5332fcc35e32a33b86612b9a57a89be7906102b1',
+  };
+  const initial = client.ensureLoaded(base);
+  await waitFor(() => FakeWorker.instances[0]?.requests.length === 1);
+  FakeWorker.instances[0]!.resolveNext();
+  await initial;
+  await client.ensureLoaded(base);
+  assert.equal(FakeWorker.instances.length, 1, 'same requested config must reuse its loaded worker');
+
+  const modelChangedConfig: AsrConfig = { ...base, modelId: 'Xenova/whisper-small' };
+  const modelChanged = client.ensureLoaded(modelChangedConfig);
+  await waitFor(() => FakeWorker.instances[1]?.requests.length === 1);
+  FakeWorker.instances[1]!.resolveNext();
+  await modelChanged;
+  const revisionChanged = client.ensureLoaded({ ...modelChangedConfig, revision: 'a'.repeat(40) });
+  await waitFor(() => FakeWorker.instances[2]?.requests.length === 1);
+  FakeWorker.instances[2]!.resolveNext();
+  await revisionChanged;
+  const deviceChanged = client.ensureLoaded({
+    ...modelChangedConfig,
+    revision: 'a'.repeat(40),
+    device: 'webgpu',
+  });
+  await waitFor(() => FakeWorker.instances[3]?.requests.length === 1);
+  FakeWorker.instances[3]!.resolveNext();
+  await deviceChanged;
+  assert.equal(FakeWorker.instances.length, 4,
+    'model, revision, and device changes must each recreate the worker');
+  client.dispose();
+
+  FakeWorker.instances.length = 0;
+  const fallbackClient = new LocalAsrClient();
+  const webgpuConfig: AsrConfig = { ...base, device: 'webgpu' };
+  const fallbackLoad = fallbackClient.ensureLoaded(webgpuConfig);
+  await waitFor(() => FakeWorker.instances[0]?.requests.length === 1);
+  FakeWorker.instances[0]!.rejectNext('webgpu unavailable');
+  await waitFor(() => FakeWorker.instances[1]?.requests.length === 1);
+  assert.equal(FakeWorker.instances[1]!.requests[0]?.device, 'wasm');
+  FakeWorker.instances[1]!.resolveNext();
+  await fallbackLoad;
+  await fallbackClient.ensureLoaded(webgpuConfig);
+  assert.equal(FakeWorker.instances.length, 2,
+    'a webgpu request already loaded through wasm fallback must reuse that worker');
+  fallbackClient.dispose();
 
   console.log('local-asr-warmup.verify: downloaded-only, reuse, and model switching passed');
 } finally {
