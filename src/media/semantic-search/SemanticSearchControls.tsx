@@ -1,4 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import {
+  useEffect, useLayoutEffect, useMemo, useRef, useState,
+  type CSSProperties, type RefObject,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../components/icons';
 import type { MediaAsset } from '../../editor/types';
@@ -7,6 +10,13 @@ import { isSemanticMedia } from './mediaFrames';
 import { resolveSemanticPanelRect } from './semanticPanelPosition';
 import { MAX_SEMANTIC_QUERY_LENGTH, type SemanticMatch } from './types';
 import { useSemanticSearch } from './useSemanticSearch';
+import {
+  DEFAULT_SAMPLING_CONFIG,
+  readSamplingConfig,
+  writeSamplingConfig,
+  type SemanticSamplingConfig,
+} from './samplingConfig';
+import { showAppToast } from '../../ui/appToast';
 import './semantic-search.css';
 
 interface SemanticSearchControlsProps {
@@ -182,6 +192,7 @@ function ReadyView(props: ReadyViewProps) {
       <button type="submit" className="primary" disabled={busy || !props.query.trim()}>{t('搜索')}</button>
     </form>
     <IndexStatus {...props} />
+    <SamplingSettings t={t} />
     <SearchResults state={state} names={props.names} t={t} />
     <DuplicateResults state={state} names={props.names} t={t} />
   </div>;
@@ -238,4 +249,45 @@ function DuplicateResults({ state, names, t }: ViewProps & { names: Map<string, 
 function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
+}
+
+function SamplingSettings({ t }: { t: Translate }) {
+  const [draft, setDraft] = useState<SemanticSamplingConfig>(() => readSamplingConfig());
+  const update = (field: keyof SemanticSamplingConfig) => (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    setDraft((current) => ({ ...current, [field]: Number(event.target.value) }));
+  };
+  const save = () => {
+    writeSamplingConfig(draft);
+    showAppToast(t('采样设置已保存，重建索引后生效。'));
+  };
+  const reset = () => {
+    writeSamplingConfig(DEFAULT_SAMPLING_CONFIG);
+    setDraft(DEFAULT_SAMPLING_CONFIG);
+    showAppToast(t('采样设置已恢复默认，重建索引后生效。'));
+  };
+  return <details className="cc-semantic-sampling">
+    <summary>{t('采样设置')}</summary>
+    <p className="cc-semantic-sampling-note">{t('索引帧采样密度，网页与桌面端通用。改动需重建索引生效。')}</p>
+    <label>
+      <span>{t('兜底间隔（秒）')}</span>
+      <input type="number" min={1} max={300} value={draft.intervalSeconds}
+        onChange={update('intervalSeconds')} />
+    </label>
+    <label>
+      <span>{t('兜底最大帧数')}</span>
+      <input type="number" min={1} max={480} value={draft.maxFallbackFrames}
+        onChange={update('maxFallbackFrames')} />
+    </label>
+    <label>
+      <span>{t('场景模式上限')}</span>
+      <input type="number" min={1} max={480} value={draft.maxSceneFrames}
+        onChange={update('maxSceneFrames')} />
+    </label>
+    <div className="cc-semantic-sampling-actions">
+      <button type="button" onClick={save}>{t('保存')}</button>
+      <button type="button" onClick={reset}>{t('恢复默认')}</button>
+    </div>
+  </details>;
 }
