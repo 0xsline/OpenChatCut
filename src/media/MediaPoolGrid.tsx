@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import type { MusicAnalysisCardState } from '../audio/intelligence/useMusicAnalysisCards';
 import { Icon } from '../components/icons';
 import type { MediaAsset, MediaFolder } from '../editor/types';
 import { useFixedVirtualGrid } from '../hooks/useFixedVirtualGrid';
@@ -22,6 +23,7 @@ interface MediaPoolGridProps {
   selected: ReadonlySet<string>;
   missing: ReadonlySet<string>;
   usedAssetIds: ReadonlySet<string>;
+  musicAnalysis: ReadonlyMap<string, MusicAnalysisCardState>;
   assetMenu: string | null;
   canRelink: boolean;
   onOpenFolder: (id: string) => void;
@@ -66,7 +68,7 @@ function useMediaGridWindow(props: Pick<MediaPoolGridProps, 'entries' | 'view' |
   const grid = useFixedVirtualGrid({
     itemCount: props.entries.length,
     cardWidth: props.view === 'grid' ? 104 : 1,
-    rowHeight: props.view === 'grid' ? 84 : 28,
+    rowHeight: props.view === 'grid' ? 104 : 28,
     columnGap: props.view === 'grid' ? 12 : 0,
     rowGap: props.view === 'grid' ? 12 : 0,
     overscanRows: 2,
@@ -214,6 +216,7 @@ function MediaVirtualRows(props: MediaPoolGridProps & ReturnType<typeof useMedia
               selectedAssetIds={[...props.selected]}
               missing={props.missing.has(entry.asset.id)}
               used={props.usedAssetIds.has(entry.asset.id)}
+              musicAnalysis={props.musicAnalysis.get(entry.asset.id)}
               canRelink={props.canRelink}
               onAdd={props.onAddAsset}
               onPointerChange={props.setPointerId}

@@ -1,6 +1,6 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
 import react from '@vitejs/plugin-react';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { serverPlugins } from './server/plugins/index.ts';
 import { seedKeystore, getKey } from './server/keystore.ts';
 import { productAssetsPlugin } from './server/product-assets.ts';
@@ -64,6 +64,11 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5199,
       strictPort: true,
+      fs: {
+        // Worktrees may symlink node_modules to the primary checkout. Keep
+        // imported runtime assets (for example ONNX Runtime WASM) readable.
+        allow: [searchForWorkspaceRoot(process.cwd()), realpathSync('node_modules')],
+      },
       open: `/#openchatcut-editor-token=${projectStoreLaunchToken()}`,
       proxy: {
         // AssemblyAI transcription — key injected server-side (never in browser).

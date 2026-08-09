@@ -29,15 +29,16 @@ type LocalAsrCheckpoint = AssemblyAiResumeCheckpoint;
 type LocalAsrCheckpointWriter = AssemblyAiCheckpointWriter;
 
 type ClientAsrRequest =
-  | { type: 'load'; device: AsrDevice; modelId: string }
+  | { type: 'load'; device: AsrDevice; modelId: string; revision: string }
   | { type: 'transcribe'; samples: Float32Array; language: string };
 
 let sharedClient: LocalAsrClient | null = null;
 
-class LocalAsrClient {
+export class LocalAsrClient {
   private worker: Worker | null = null;
   private nextId = 1;
   private pending = new Map<number, Pending>();
+  /** Requested load key; the actual backend may be wasm after a WebGPU fallback. */
   private config: AsrConfig | null = null;
   private loading: Promise<void> | null = null;
   private onProgress: ProgressListener = () => {};
@@ -99,12 +100,20 @@ class LocalAsrClient {
   /** Load the requested model after any in-flight warm-up finishes. */
   async ensureLoaded(config: AsrConfig): Promise<void> {
     while (this.loading) await this.loading;
-    if (this.config?.device === config.device && this.config.modelId === config.modelId) return;
+    if (this.config?.device === config.device
+      && this.config.modelId === config.modelId
+      && this.config.revision === config.revision) return;
+    if (this.worker) this.dispose();
 
     const loading = (async () => {
       try {
         await this.request(
-          { type: 'load', device: config.device, modelId: config.modelId },
+          {
+            type: 'load',
+            device: config.device,
+            modelId: config.modelId,
+            revision: config.revision,
+          },
           config.device === 'webgpu' ? WEBGPU_LOAD_TIMEOUT_MS : undefined,
         );
         this.config = config;
@@ -113,8 +122,13 @@ class LocalAsrClient {
         // A half-initialized WebGPU session can corrupt the wasm fallback.
         this.dispose();
         const fallback: AsrConfig = { ...config, device: 'wasm' };
-        await this.request({ type: 'load', device: 'wasm', modelId: fallback.modelId });
-        this.config = fallback;
+        await this.request({
+          type: 'load',
+          device: 'wasm',
+          modelId: fallback.modelId,
+          revision: fallback.revision,
+        });
+        this.config = config;
       }
     })();
     this.loading = loading;

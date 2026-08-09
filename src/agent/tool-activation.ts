@@ -1,6 +1,7 @@
 import type { ModelMessage } from 'ai';
 import type { ProviderOptions } from '@ai-sdk/provider-utils';
 import type { AgentToolSchema } from './tool-schema';
+import { isExternalGlobalReadTool, isExternalReadTool } from './external-tool-policy';
 
 const BOOT_TOOL_NAMES: Record<string, true> = {
   ToolSearch: true,
@@ -28,7 +29,7 @@ const ROUTING_GROUPS: readonly RoutingGroup[] = [
     toolKeywords: ['transcript', 'caption', 'script', 'silence', 'voice', 'loudness', 'text'],
   },
   {
-    requestKeywords: ['audio', 'music', 'sound', 'voice', 'loudness', '音频', '声音', '音乐', '音效', '人声', '响度', '配音'],
+    requestKeywords: ['audio', 'music', 'sound', 'voice', 'loudness', 'bgm', '音频', '声音', '音乐', '音效', '人声', '响度', '配音', '背景音乐'],
     toolKeywords: ['audio', 'music', 'sound', 'voice', 'loudness', 'transcribe'],
   },
   {
@@ -52,14 +53,16 @@ const ROUTING_GROUPS: readonly RoutingGroup[] = [
     toolKeywords: ['project', 'timeline', 'version', 'marker', 'design_style'],
   },
   {
-    requestKeywords: ['scene', 'highlight', 'beat', 'multicam', 'reframe', 'color', '镜头', '高光', '节拍', '多机位', '重构图', '调色', '分析'],
-    toolKeywords: ['scene', 'highlight', 'beat', 'multicam', 'reframe', 'color', 'grade', 'frame'],
+    requestKeywords: ['scene', 'highlight', 'beat', 'downbeat', 'rhythm', 'multicam', 'reframe', 'color', '镜头', '高光', '节拍', '卡点', '重拍', '节奏', '多机位', '重构图', '调色', '分析'],
+    toolKeywords: ['scene', 'highlight', 'beat', 'music', 'multicam', 'reframe', 'color', 'grade', 'frame'],
   },
   {
     requestKeywords: ['web', 'search', 'crawl', 'website', 'skill', 'code', '网页', '搜索', '抓取', '网站', '技能', '脚本'],
     toolKeywords: ['web_', 'skill', 'run_code', 'search_'],
   },
 ];
+// Composite requests can span edit, audio, generation, and import without needing the full catalog.
+const MAX_ROUTING_GROUPS = 4;
 const READ_ONLY_TERMS = ['不要修改', '不要编辑', '只读', 'read only', 'read-only', 'do not edit', "don't edit", 'without editing'];
 const CAPABILITY_TERMS = ['tool', 'tools', 'capability', 'capabilities', 'ability', 'abilities', '工具', '能力'];
 const DISCOVERY_TERMS = ['what', 'which', 'available', 'list', 'find', 'show', 'discover', '哪些', '什么', '可用', '列出', '查看', '看看', '查一下', '找一下'];
@@ -70,6 +73,11 @@ function isReadOnlyRequest(request: string): boolean {
 function isDomainToolDiscoveryRequest(request: string): boolean {
   return CAPABILITY_TERMS.some((term) => request.includes(term))
     && DISCOVERY_TERMS.some((term) => request.includes(term));
+}
+function isReadOnlyTool(name: string): boolean {
+  return BOOT_TOOL_NAMES[name] === true
+    || isExternalGlobalReadTool(name)
+    || isExternalReadTool(name);
 }
 
 
@@ -186,7 +194,7 @@ function routedNames(catalog: readonly AgentToolSchema[], messages: readonly Mod
   const matchingGroups = ROUTING_GROUPS.filter((group) => (
     (!group.mutating || !readOnly)
       && group.requestKeywords.some((keyword) => request.includes(keyword))
-  )).slice(0, 2);
+  )).slice(0, MAX_ROUTING_GROUPS);
   return catalog
     .filter((schema) => matchingGroups.some((group) => (
       group.toolKeywords.some((keyword) => schema.name.includes(keyword))
@@ -209,12 +217,16 @@ export class ToolActivation {
     this.byName = new Map(catalog.map((schema) => [schema.name, schema]));
     const routed = routedNames(catalog, messages);
     const searchAllowed = allowSearch && !toolSearchConsumed(messages);
+    const readOnly = isReadOnlyRequest(latestUserText(messages));
     const requested = [
       ...bootNames(messages, routed),
       ...activatedToolNamesFromMessages(messages),
       ...routed,
       ...activeNames,
-    ].filter((name) => searchAllowed || name !== 'ToolSearch');
+    ].filter((name) => (
+      (searchAllowed || name !== 'ToolSearch')
+      && (!readOnly || isReadOnlyTool(name))
+    ));
     this.activeNames = new Set(requested.filter((name) => this.byName.has(name)));
   }
 

@@ -373,4 +373,29 @@ export default {
   'Whisper Base（约 80MB · 均衡）': 'Whisper Base (~80MB · balanced)',
   'Whisper Small（约 250MB · 推荐）': 'Whisper Small (~250MB · recommended)',
   'Whisper Medium（约 1.1GB · 精度最高）': 'Whisper Medium (~1.1GB · highest accuracy)',
+  // Downloadable music intelligence model packs
+  '本地音乐智能模型': 'Local music intelligence models',
+  '模型不会自动安装。安装后，节拍与音乐语义分析只在本机运行。':
+    'Models are never installed automatically. Once installed, beat and music-semantic analysis runs locally.',
+  '无法读取模型包列表：{err}': 'Cannot load model packs: {err}',
+  '节奏分析轻量包': 'Rhythm Lite',
+  '音乐语义轻量包': 'Music Semantics Lite',
+  '本地分析节拍、下拍、速度、拍号与节拍能量。':
+    'Analyze beats, downbeats, tempo, meter, and beat energy locally.',
+  '在本机生成音乐语义向量，用于检索与相似度匹配。':
+    'Generate music-semantic embeddings locally for search and similarity matching.',
+  '节拍定位': 'Beat tracking',
+  '下拍定位': 'Downbeat tracking',
+  'BPM 与拍号': 'BPM and meter',
+  '节拍能量': 'Beat energy',
+  '音乐语义向量': 'Music-semantic embeddings',
+  '音乐相似度': 'Music similarity',
+  '建议内存 {memory}': 'Recommended memory {memory}',
+  '安装中 {pct}%（{done}/{total} 个文件）': 'Installing {pct}% ({done}/{total} files)',
+  '已安装': 'Installed',
+  '安装中': 'Installing',
+  '安装错误': 'Install error',
+  '未安装': 'Not installed',
+  '重新安装': 'Reinstall',
+  '安装': 'Install',
 } as Record<string, string>;

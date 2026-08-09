@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { MusicAutoAnalysisPreference } from '../audio/intelligence/MusicAnalysisBadge';
 import { Icon } from '../components/icons';
 import type { MediaAsset } from '../editor/types';
 import { useT } from '../i18n/locale';
@@ -201,6 +202,7 @@ function ActionsMenu(props: MenuProps) {
     <button onClick={() => runModal(props.onMobileUpload)}><Icon name="qrCode" size={15} />{t('手机传素材')}</button>
     {props.canAddSolid && <button onClick={() => run(props.onAddSolid, true)}><span className="cc-media-solid-icon">{t('色')}</span>{t('添加纯色')}</button>}
     <button onClick={() => runModal(props.onCreateFolder)}><Icon name="folderPlus" size={16} />{t('新建文件夹')}</button>
+    <MusicAutoAnalysisPreference />
   </div>;
   return (
     <div className="cc-media-menu-anchor">

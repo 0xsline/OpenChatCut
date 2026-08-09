@@ -16,6 +16,7 @@ import { uploadMultipartPlugin } from "./upload-multipart.ts";
 import { extractAudioPlugin } from "./extract-audio.ts";
 import { hfProxyPlugin } from "./hf-proxy.ts";
 import { asrModelsPlugin } from "./asr-models.ts";
+import { modelPacksPlugin } from "./model-packs.ts";
 import { assemblyAiUploadPlugin } from "./assemblyai-upload.ts";
 import { extractFramesPlugin } from "./extract-frames.ts";
 import { sceneDetectionPlugin } from "./scene-detection.ts";
@@ -72,6 +73,7 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
     extractAudioPlugin(),
     hfProxyPlugin(),
     asrModelsPlugin(),
+    modelPacksPlugin(),
     assemblyAiUploadPlugin(),
     extractFramesPlugin(),
     sceneDetectionPlugin(),

@@ -1,5 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Icon, type IconName } from '../components/icons';
+import { MusicAnalysisBadge } from '../audio/intelligence/MusicAnalysisBadge';
+import type { MusicAnalysisCardState } from '../audio/intelligence/useMusicAnalysisCards';
 import type { MediaAsset, MediaFolder } from '../editor/types';
 import { useT } from '../i18n/locale';
 import { theme } from '../theme';
@@ -18,6 +20,7 @@ interface MediaAssetCardProps {
   missing: boolean;
   used: boolean;
   view: 'grid' | 'list';
+  musicAnalysis?: MusicAnalysisCardState;
   canRelink: boolean;
   onAdd: (asset: MediaAsset) => void;
   onPointerChange: (id: string | null) => void;
@@ -136,6 +139,8 @@ export const MediaAssetCard = memo(function MediaAssetCard(props: MediaAssetCard
       }}
       onDragEnd={() => props.onDragChange(null)}
       onClickCapture={(event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest('[data-music-analysis-control]')) return;
         // Plain click selects and opens the asset menu beside the card;
         // Ctrl/Shift/meta toggles extra items. Clicking the selected card
         // again deselects it. Double-click adds to the timeline.
@@ -156,6 +161,7 @@ export const MediaAssetCard = memo(function MediaAssetCard(props: MediaAssetCard
       }}
       onDoubleClick={() => { if (!missing) props.onAdd(asset); }}
       onContextMenu={(event) => {
+        if (event.target instanceof Element && event.target.closest('[data-music-analysis-control]')) return;
         event.preventDefault();
         const target = event.target instanceof Element
           ? event.target.closest<HTMLElement>('button, input, [tabindex]')
@@ -175,6 +181,7 @@ export const MediaAssetCard = memo(function MediaAssetCard(props: MediaAssetCard
     >
       <AssetThumbArea {...props} />
       <button className="cc-asset-name" title={asset.name} tabIndex={-1}>{asset.name}</button>
+      {!missing && props.musicAnalysis && <MusicAnalysisBadge asset={asset} state={props.musicAnalysis} />}
     </div>
   );
 });

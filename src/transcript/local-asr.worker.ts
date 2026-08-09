@@ -1,29 +1,24 @@
 /// <reference lib="webworker" />
 // On-device whisper ASR worker (transformers.js). WebGPU backend where available
 // (Metal/D3D12/Vulkan), wasm fallback. Word-level timestamps via return_timestamps.
-// Model source: official Hugging Face first, auto-fallback to hf-mirror.com when
-// the LFS CDN is unreachable (common on CN networks).
+// Models are loaded only through the same-origin proxy from immutable catalog revisions.
 import { env, pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers';
 import type {
   AsrChunk, AsrResult, LocalAsrWorkerRequest, LocalAsrWorkerResponse,
 } from './local-asr-types';
+import { localAsrLoadError, localAsrModelHosts } from './local-asr-model-source';
 
 const MAX_AUDIO_SAMPLES = 60 * 60 * 16_000; // 60 min of 16 kHz mono
 const CHUNK_SECONDS = 30;
 const STRIDE_SECONDS = 5;
 const DEFAULT_DTYPE = 'q8'; // P0: verify q4 on webgpu; q8 is the stable baseline
 /**
- * Model sources, tried in order. The local server proxy (/api/hf-proxy) is a
- * same-origin curl download with a disk cache: no CORS restrictions (hf-mirror
- * redirects are unusable in browsers) and reliable reachability where Node's
- * fetch stack fails. The official host is the last-resort direct fallback.
+ * The proxy is the only model source. It enforces the pinned model/revision/file
+ * tuple and verifies size and SHA-256 before serving bytes.
  */
-const OFFICIAL_HOST = 'https://huggingface.co';
-/** One model-load attempt may hang (webgpu on software renderers, dead peers);
- *  failing here lets the next host/device attempt proceed instead of stalling
- *  the whole transcription forever. Long enough for a first-time model download
- *  (parallel chunks at ~1.3 MB/s → ~2 min for whisper-small); progress events
- *  keep firing while downloading, only a silent hang hits this bound. */
+/** A model-load attempt may hang on software renderers or dead peers. Fail
+ * explicitly instead of switching to any remote host. The long timeout still
+ * allows a first-time pinned model download to finish. */
 const LOAD_ATTEMPT_TIMEOUT_MS = 15 * 60_000;
 
 type ProgressInfo = { progress?: number; file?: string };
@@ -57,30 +52,27 @@ async function loadModel(request: Extract<LocalAsrWorkerRequest, { type: 'load' 
     post({ id: request.id, type: 'progress', ...progressInfo(value) });
   };
   loading = (async () => {
-    let lastError: unknown;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      // attempt 0: local proxy; attempt 1: official host directly.
-      // transformers.js 3.x path template starts with "/" — no trailing slash.
-      env.remoteHost = attempt === 0 ? `${workerScope.location.origin}/api/hf-proxy` : OFFICIAL_HOST;
-      try {
-        const attemptPromise = (pipeline('automatic-speech-recognition', request.modelId, {
-          device: request.device,
-          dtype: DEFAULT_DTYPE,
-          progress_callback: progress,
-        }) as Promise<unknown>);
-        const next = await Promise.race([
-          attemptPromise,
-          new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error(`model load timed out after ${Math.round(LOAD_ATTEMPT_TIMEOUT_MS / 1000)}s`)), LOAD_ATTEMPT_TIMEOUT_MS);
-          }),
-        ]);
-        asr = next as AutomaticSpeechRecognitionPipeline;
-        return;
-      } catch (error) {
-        lastError = error;
-      }
+    env.remoteHost = localAsrModelHosts(workerScope.location.origin)[0];
+    try {
+      // transformers.js forwards this revision to model, tokenizer, and processor loaders.
+      const attemptPromise = (pipeline('automatic-speech-recognition', request.modelId, {
+        revision: request.revision,
+        device: request.device,
+        dtype: DEFAULT_DTYPE,
+        progress_callback: progress,
+      }) as Promise<unknown>);
+      const next = await Promise.race([
+        attemptPromise,
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(
+            `model load timed out after ${Math.round(LOAD_ATTEMPT_TIMEOUT_MS / 1000)}s`,
+          )), LOAD_ATTEMPT_TIMEOUT_MS);
+        }),
+      ]);
+      asr = next as AutomaticSpeechRecognitionPipeline;
+    } catch (error) {
+      throw localAsrLoadError(error);
     }
-    throw lastError;
   })().finally(() => { loading = null; });
   return loading;
 }
@@ -137,7 +129,8 @@ function validateRequest(value: unknown): LocalAsrWorkerRequest {
   }
   if (request.type === 'load'
     && (request.device === 'webgpu' || request.device === 'wasm')
-    && typeof request.modelId === 'string' && request.modelId.length > 0) {
+    && typeof request.modelId === 'string' && request.modelId.length > 0
+    && typeof request.revision === 'string' && /^[a-f0-9]{40}$/.test(request.revision)) {
     return request as LocalAsrWorkerRequest;
   }
   if (request.type === 'transcribe'

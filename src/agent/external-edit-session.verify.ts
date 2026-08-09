@@ -743,6 +743,8 @@ const failedSaveInfo = await failedSaveRuntime.execute(
 assert.equal(sessionStatus(failedSaveInfo), 'awaiting_review');
 assert(isExternalDraftTool('set_aspect_ratio'));
 assert(isExternalReadTool('read_project'));
+assert(isExternalReadTool('search_stock_media'));
+assert(isExternalReadTool('search_media'));
 assert(isExternalDraftTool('apply_caption_avoidance'));
 assert(isExternalDraftTool('place_graphics_in_safe_zone'));
 assert(isExternalDraftTool('auto_reframe'));
@@ -756,6 +758,7 @@ assert(!isExternalDraftTool('load_skill'));
 const askModeToolNames = new Set(ASK_MODE_TOOL_SCHEMAS.map((tool) => tool.name));
 assert(askModeToolNames.has('load_skill'), 'Q&A mode exposes the current skill reader');
 assert(askModeToolNames.has('read_project'), 'Q&A mode exposes project inspection');
+assert(askModeToolNames.has('search_stock_media'), 'Q&A mode exposes read-only stock search');
 assert(!askModeToolNames.has('edit_captions'), 'Q&A mode excludes draft edits');
 assert(!askModeToolNames.has('submit_render_job'), 'Q&A mode excludes live side effects');
 assert(

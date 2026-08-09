@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useMusicAnalysisCards } from '../audio/intelligence/useMusicAnalysisCards';
 import { useT } from '../i18n/locale';
 import type { MediaAsset, MediaAssetRelinkPatch, MediaFolder } from '../editor/types';
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -68,6 +69,7 @@ export function MediaPoolPanel({
   onDeleteFolder, onMoveAssets, onRenameAsset, onRenameAssets, onSetFavorite, onSetAssetsFavorite, onRemoveAsset, onRemoveAssets, onPasteAssets, onRelinkAsset, onAddSolid,
 }: MediaPoolPanelProps) {
   const t = useT();
+  const musicAnalysis = useMusicAnalysisCards(assets);
   const inputRef = useRef<HTMLInputElement>(null);
   const relinkInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -371,7 +373,7 @@ export function MediaPoolPanel({
 
   const handleMediaPoolKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
-    if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    if (target.closest('input, textarea, select, [contenteditable="true"], [data-music-analysis-control]')) return;
     const shortcut = resolveMediaPoolShortcut(event);
     if (!shortcut) return;
     let handled = true;
@@ -446,7 +448,7 @@ export function MediaPoolPanel({
       tabIndex={-1}
       onKeyDown={handleMediaPoolKeyDown}
       onPointerDownCapture={(event) => {
-        if (!(event.target as HTMLElement).closest('button, input, select, textarea, [contenteditable="true"]')) {
+        if (!(event.target as HTMLElement).closest('button, input, select, textarea, [contenteditable="true"], [data-music-analysis-control]')) {
           event.currentTarget.focus({ preventScroll: true });
         }
       }}
@@ -454,7 +456,7 @@ export function MediaPoolPanel({
       onDrop={(event) => { event.preventDefault(); void onPick(event.dataTransfer.files, currentFolderId); }}
       onContextMenuCapture={(event) => {
         const target = event.target as HTMLElement;
-        if (target.closest('[data-cc-media-asset-id], .cc-folder-card, button, input, select, textarea, label')) return;
+        if (target.closest('[data-cc-media-asset-id], .cc-folder-card, button, input, select, textarea, label, [data-music-analysis-control]')) return;
         event.preventDefault();
         setSelected(new Set());
         setBlankMenuPos({
@@ -514,6 +516,7 @@ export function MediaPoolPanel({
         selected={selected}
         missing={missing}
         usedAssetIds={usedAssetIds}
+        musicAnalysis={musicAnalysis}
         assetMenu={assetMenu}
         canRelink={!!onRelinkAsset}
         onOpenFolder={openFolder}
