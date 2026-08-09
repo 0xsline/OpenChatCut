@@ -226,6 +226,7 @@ interface CodexToolRequest {
   readonly toolCallId?: string;
   readonly signal?: AbortSignal;
   readonly harness?: HarnessToolExecutionContext;
+  readonly onFollowup?: (text: string) => void;
 }
 
 async function executeCodexTool(request: CodexToolRequest): Promise<{
@@ -234,7 +235,7 @@ async function executeCodexTool(request: CodexToolRequest): Promise<{
 }> {
   const {
     name, args, activation, ctx, onEvent, settings, onSkillGuard, runRecorder,
-    toolCallId, signal, harness,
+    toolCallId, signal, harness, onFollowup,
   } = request;
   const schema = activation.allSchemas().find((candidate) => candidate.name === name);
   if (!schema) {
@@ -255,6 +256,7 @@ async function executeCodexTool(request: CodexToolRequest): Promise<{
     runRecorder,
     toolCallId,
     signal,
+    onFollowup,
   });
   if ((name !== 'ToolSearch' && name !== 'load_skill') || !execution.success) {
     return { activation, execution };
@@ -319,11 +321,11 @@ async function runCodexBackend(input: CodexBackendInput): Promise<LLMMessage[]> 
     tools: resolveTools(),
     resolveTools,
     prepareContextForTools: opts?.prepareContextForTools,
-    executeTool: async (name, args, toolCallId, signal, harness) => {
+    executeTool: async (name, args, toolCallId, signal, harness, onFollowup) => {
       const update = await executeCodexTool({
         name, args, activation: currentActivation, ctx, onEvent, settings,
         onSkillGuard: opts?.onSkillGuard, runRecorder: opts?.runRecorder,
-        toolCallId, signal, harness,
+        toolCallId, signal, harness, onFollowup,
       });
       currentActivation = update.activation;
       return update.execution;

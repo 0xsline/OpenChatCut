@@ -101,7 +101,7 @@ function createAgentTools(
   settings: AgentSettings,
   harness: HarnessToolExecutionContext,
   onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>,
-  onFollowup?: () => void,
+  onFollowup?: (text: string) => void,
   runRecorder?: AgentRunRecorder,
 ): ToolSet {
   return Object.fromEntries(schemas.map((schema) => [
@@ -271,7 +271,10 @@ class ApiAgentRunner {
     if (unresolved) output.discardBuffered();
     else output.flush();
     const usedTools = responseUsedTools(responseMessages);
-    if (output.askedFollowup) return [...this.conv, ...responseMessages];
+    if (output.askedFollowup) {
+      output.flushFollowup();
+      return [...this.conv, ...responseMessages];
+    }
     if (!usedTools && unresolved) return [...this.conv, output.failureCompletion()];
     this.conv = [...this.conv, ...responseMessages];
     if (!usedTools) return this.conv;

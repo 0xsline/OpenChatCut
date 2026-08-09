@@ -42,6 +42,26 @@ const rejectedMutation = await executeOpenChatCutTool(
 assert.equal(rejectedMutation.success, false);
 assert.match(JSON.stringify(rejectedMutation.result), /no item missing/);
 
+const followupSchema = TOOL_SCHEMAS.find((schema) => schema.name === 'ask_followup_questions');
+assert.ok(followupSchema);
+const settlementOrder: string[] = [];
+const settledFollowup = await executeOpenChatCutTool(
+  followupSchema,
+  { fields: [{ id: 'style', label: 'Which style?', type: 'text' }] },
+  {
+    ctx: context,
+    onEvent: (event) => {
+      if (event.type === 'tool') settlementOrder.push(`tool:${event.name}`);
+    },
+    settings: DEFAULT_AGENT_SETTINGS,
+    resolveGuard: async () => null,
+    onFollowup: () => settlementOrder.push('followup'),
+  },
+);
+assert.equal(settledFollowup.success, true);
+assert.deepEqual(settlementOrder, ['followup', 'tool:ask_followup_questions'],
+  'the real tool boundary exposes the follow-up before emitting its tool event');
+
 const followupFailures = new ToolFailureTracker();
 followupFailures.record('edit_item', {
   success: false,
@@ -58,6 +78,10 @@ globalThis.fetch = (async (input, init) => {
           type: 'context-usage',
           inputTokens: 30_000,
           contextWindowTokens: 400_000,
+        })}\n`));
+        controller.enqueue(encoder.encode(`${JSON.stringify({
+          type: 'text-delta',
+          delta: 'I need one choice before editing.',
         })}\n`));
         controller.enqueue(encoder.encode(`${JSON.stringify({
           type: 'tool-start',
@@ -116,10 +140,10 @@ try {
         description: 'Ask for missing input',
         inputSchema: { type: 'object', properties: {} },
       }],
-      executeTool: async () => {
-        const followupText = 'Which editing style should I use?';
-        events.push({ type: 'text-start' });
-        events.push({ type: 'text-delta', delta: followupText });
+      executeTool: async (_name, _args, _toolCallId, _signal, _harness, onFollowup) => {
+        const followupText = '<widget><form-text id="style" label="Which editing style?"/></widget>';
+        onFollowup?.(followupText);
+        events.push({ type: 'tool', name: 'ask_followup_questions', args: {}, result: { __followup: followupText } });
         followups += 1;
         return { success: true, result: { __followup: followupText }, followupText };
       },
@@ -139,12 +163,12 @@ try {
     requestId: submittedResults[0].requestId,
     callId: 'followup-call',
     success: true,
-    result: { __followup: 'Which editing style should I use?' },
+    result: { __followup: '<widget><form-text id="style" label="Which editing style?"/></widget>' },
   });
   assert.equal(result.at(-1)?.role, 'assistant');
   assert.deepEqual(result.at(-1)?.content, [{
     type: 'text',
-    text: 'Which editing style should I use?',
+    text: 'I need one choice before editing.\n\n<widget><form-text id="style" label="Which editing style?"/></widget>',
     providerOptions: {
       openchatcut: { activatedTools: ['ask_followup_questions'] },
     },
@@ -153,6 +177,14 @@ try {
     'follow-up pause preserves the submitted tool result in history');
   assert.equal(events.some((event) => event.type === 'error'), false);
   assert.equal(events.filter((event) => event.type === 'tool-input-start').length, 1);
+  const visibleOrder = events.flatMap((event) => event.type === 'text-delta'
+    ? [`text:${event.delta}`]
+    : event.type === 'tool' ? [`tool:${event.name}`] : []);
+  assert.deepEqual(visibleOrder, [
+    'text:I need one choice before editing.',
+    'tool:ask_followup_questions',
+    'text:<widget><form-text id="style" label="Which editing style?"/></widget>',
+  ], 'Codex renders the explanation, then the tool call, then the interaction card');
   assert.equal(followupFailures.hasUnresolved, true, 'follow-up must preserve earlier tool failures');
 } finally {
   globalThis.fetch = originalFetch;

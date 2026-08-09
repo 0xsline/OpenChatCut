@@ -76,6 +76,7 @@ export interface CodexRuntimeOptions {
     toolCallId?: string,
     signal?: AbortSignal,
     harness?: HarnessToolExecutionContext,
+    onFollowup?: (text: string) => void,
   ) => Promise<CodexToolExecution>;
 }
 
@@ -110,12 +111,14 @@ export class CodexToolRefresh extends Error {
 export class CodexFollowupPause extends Error {
   readonly text: string;
   readonly state: StreamState;
+  readonly prefaceFlushed: boolean;
 
-  constructor(text: string, state: StreamState) {
+  constructor(text: string, state: StreamState, prefaceFlushed = false) {
     super('Codex turn paused for user follow-up.');
     this.name = 'CodexFollowupPause';
     this.text = text;
     this.state = state;
+    this.prefaceFlushed = prefaceFlushed;
   }
 }
 
@@ -251,12 +254,17 @@ async function executeStreamTool(
 ): Promise<StreamState> {
   const known = currentCodexTools(opts).some((tool) => tool.name === event.name);
   const validArgs = isToolArgs(event.args);
+  let prefaceFlushed = false;
   const execution = !known
     ? failedTool(`Unknown Codex tool: ${event.name}`)
     : !validArgs
       ? failedTool(`Invalid arguments for Codex tool: ${event.name}`)
       : await opts.executeTool(
         event.name, event.args, event.callId, opts.signal, requestHarnessContext(opts),
+        () => {
+          prefaceFlushed = true;
+          flushBufferedCompletion(state, onEvent);
+        },
       );
   if (!known || !validArgs) {
     onEvent({ type: 'tool', name: event.name, args: event.args, result: execution.result });
@@ -279,7 +287,9 @@ async function executeStreamTool(
     toolHistory: [...state.toolHistory, codexToolHistoryEntry(event, submitted)],
   };
   if (execution.followupText !== undefined) {
-    throw new CodexFollowupPause(execution.followupText, nextState);
+    onEvent({ type: 'text-start' });
+    onEvent({ type: 'text-delta', delta: execution.followupText });
+    throw new CodexFollowupPause(execution.followupText, nextState, prefaceFlushed);
   }
   if (execution.refreshTools) throw new CodexToolRefresh(nextState);
   return nextState;

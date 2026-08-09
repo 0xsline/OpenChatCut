@@ -60,7 +60,7 @@ export interface LocalToolExecutionContext {
     ctx: AgentContext,
   ) => Promise<RuntimeGuardRequest | null>;
   readonly onSkillGuard?: (info: RuntimeGuardRequest) => Promise<GuardDecision>;
-  readonly onFollowup?: () => void;
+  readonly onFollowup?: (text: string) => void;
   readonly toolCatalog?: readonly AgentToolSchema[];
   readonly activeToolCatalog?: readonly AgentToolSchema[];
   readonly harness?: HarnessToolExecutionContext;
@@ -201,12 +201,10 @@ async function settleToolResult(
     artifactId: ref?.artifactId,
   }).catch(() => undefined);
   throwIfToolAborted(execution.signal, state);
-  execution.onEvent({ type: 'tool', name: schema.name, args, result });
   const followup = (rawResult as { __followup?: unknown } | null)?.__followup;
+  if (success && typeof followup === 'string') execution.onFollowup?.(followup);
+  execution.onEvent({ type: 'tool', name: schema.name, args, result });
   if (success && typeof followup === 'string') {
-    execution.onEvent({ type: 'text-start' });
-    execution.onEvent({ type: 'text-delta', delta: followup });
-    execution.onFollowup?.();
     return { success: true, result, followupText: followup };
   }
   return { success, result };
@@ -422,8 +420,11 @@ export async function runCodexAgent(
       if (error instanceof CodexFollowupPause) {
         state = error.state;
         const history = historyMessages(conv, state);
-        return error.text
-          ? [...history, followupMessage(error.text, currentCodexTools(opts))]
+        const preface = state.bufferedText.trim();
+        if (!error.prefaceFlushed) flushBufferedCompletion(state, onEvent);
+        const content = [preface, error.text.trim()].filter(Boolean).join('\n\n');
+        return content
+          ? [...history, followupMessage(content, currentCodexTools(opts))]
           : history;
       }
       if (error instanceof MaxToolTurnsError) state = error.state;

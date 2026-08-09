@@ -87,6 +87,8 @@ export function safeWidgetMediaUrl(raw: string | undefined, baseUrl?: string): s
 const WIDGET_RE = /<widget\b([^>]*)>([\s\S]*?)<\/widget>/g;
 const FIELD_TAG_RE = /<form-(single|multi|text|visual|voice|scenario)\b([^>]*?)(\/?)>/g;
 const ATTR_RE = /([\w-]+)\s*=\s*"([^"]*)"|([\w-]+)\s*=\s*'([^']*)'/g;
+const WIDGET_MARKUP_RE = /<\/?(?:widget|form-(?:single|multi|text|visual|voice|scenario))\b[^>]*>/g;
+const WIDGET_TAIL_RE = /<widget\b[\s\S]*$/;
 
 function decodeEntities(s: string): string {
   return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
@@ -183,6 +185,10 @@ function parseWidgetFields(content: string): WidgetField[] {
   }
   return fields;
 }
+function stripWidgetMarkup(text: string): string {
+  return text.replace(WIDGET_TAIL_RE, '').replace(WIDGET_MARKUP_RE, '').trim();
+}
+
 
 /** Parse untrusted model output without injecting HTML or executing code. */
 export function parseWidgets(text: string): MessageSegment[] {
@@ -192,7 +198,7 @@ export function parseWidgets(text: string): MessageSegment[] {
   let match: RegExpExecArray | null;
   while ((match = WIDGET_RE.exec(text))) {
     const before = text.slice(lastIndex, match.index);
-    if (before) segments.push({ type: 'text', text: before });
+    if (before.trim()) segments.push({ type: 'text', text: before });
     let fields: WidgetField[] = [];
     try {
       fields = parseWidgetFields(match[2]);
@@ -208,13 +214,11 @@ export function parseWidgets(text: string): MessageSegment[] {
         submitLabel: attrs.submit_label || undefined,
         messagePrefix: attrs.message_prefix || undefined,
       });
-    } else {
-      segments.push({ type: 'text', text: match[0] });
     }
     lastIndex = WIDGET_RE.lastIndex;
   }
-  const rest = text.slice(lastIndex);
-  if (rest || segments.length === 0) segments.push({ type: 'text', text: rest });
+  const rest = stripWidgetMarkup(text.slice(lastIndex));
+  if (rest) segments.push({ type: 'text', text: rest });
   return segments;
 }
 

@@ -117,6 +117,7 @@ overflowWrap:anywhere breaks long tokens - long errors/summaries are wrapped in 
   // The <widget> form block may be embedded in the assistant text and needs to be separated into paragraphs to render separately.
   // The plain text segment uses lightweight Markdown (**bold** / `code` / list / code block), and no longer spits out ** to the user as it is
   const segments = parseWidgets(msg.text);
+  if (!segments.length && !msg.thinking?.trim()) return null;
   return (
     <div style={{ margin: '16px 0' }}>
       {!!msg.thinking?.trim() && <ThinkingBlock text={msg.thinking} />}
@@ -134,7 +135,7 @@ overflowWrap:anywhere breaks long tokens - long errors/summaries are wrapped in 
           seg.text ? <Markdown key={i} text={seg.text} /> : null
         ),
       )}
-      {!streaming && msg.text.trim() && (
+      {!streaming && segments.some((segment) => segment.type === 'text' && !!segment.text.trim()) && (
         <div style={{ marginTop: 6, marginLeft: -5 }}>
           <button title={copied ? t('已复制') : t('复制文本')} onClick={copy}
             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 5, borderRadius: 6, lineHeight: 0, color: copied ? theme.text : theme.textDim, display: 'grid', placeItems: 'center' }}

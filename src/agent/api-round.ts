@@ -17,6 +17,7 @@ export class ApiRoundOutput {
   private textStarted = false;
   private bufferedText = '';
   private currentVisibleText = '';
+  private followupText: string | null = null;
   private followupRequested = false;
   private readonly onEvent: (event: AgentEvent) => void;
   private readonly toolFailures: ToolFailureTracker;
@@ -30,8 +31,10 @@ export class ApiRoundOutput {
     this.bufferedText += delta;
   };
 
-  readonly markFollowup = (): void => {
+  readonly markFollowup = (text: string): void => {
+    this.flush();
     this.followupRequested = true;
+    this.followupText = text;
   };
 
   get visibleText(): string {
@@ -51,6 +54,12 @@ export class ApiRoundOutput {
     const pending = this.bufferedText;
     this.bufferedText = '';
     this.emitVisible(pending);
+  }
+  flushFollowup(): void {
+    const followup = this.followupText?.trim() ?? '';
+    this.followupText = null;
+    if (!followup) return;
+    this.emitVisible(`${this.currentVisibleText.trim() ? '\n\n' : ''}${followup}`);
   }
 
   failureCompletion(): ModelMessage {
