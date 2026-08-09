@@ -33,10 +33,17 @@ export const WEB_TOOL_SCHEMAS: AgentToolSchema[] = [
         schema: { description: 'JSON schema for structured extraction.' },
         actions: {
           type: 'array',
-          description: 'Firecrawl page actions before scrape (click/wait/scroll/…), max 10.',
+          description: 'Firecrawl page actions before scrape (click/wait/scroll/…), max 10. '
+            + 'For type=executeJavascript, script MUST NOT contain a top-level return statement '
+            + '(Firecrawl rejects it with SyntaxError: Illegal return statement) — write the script '
+            + 'as a bare expression or wrap it in an IIFE like (() => { ... })().',
           items: {},
         },
-        execJs: { type: 'string', description: 'JS to run before extract (max 10000 chars).' },
+        execJs: {
+          type: 'string',
+          description: 'JS to run before extract (max 10000 chars). '
+            + 'No top-level return allowed — use a bare expression or an IIFE.',
+        },
       },
       required: ['url'],
     },

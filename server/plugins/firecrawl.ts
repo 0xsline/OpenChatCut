@@ -136,13 +136,34 @@ function mapFormats(
   return out;
 }
 
-function buildActions(
+/** Firecrawl executes executeJavascript scripts in a scope where a top-level
+ *  `return` is a SyntaxError ("Illegal return statement"). Models naturally
+ *  write `return expr` (or `return document.querySelector(...)`); wrapping
+ *  such scripts in an IIFE keeps the model's style valid. Scripts without a
+ *  top-level return pass through untouched. */
+export function wrapExecJs(script: string): string {
+  return /(^|\n)\s*return\b/m.test(script) ? `(() => {\n${script}\n})()` : script;
+}
+
+export function buildActions(
   actions: unknown[] | undefined,
   execJs: string | undefined,
 ): unknown[] | undefined {
-  const list: unknown[] = Array.isArray(actions) ? actions.slice(0, 10) : [];
+  const list: unknown[] = (Array.isArray(actions) ? actions.slice(0, 10) : []).map((action) => {
+    if (
+      action && typeof action === 'object'
+      && (action as { type?: unknown }).type === 'executeJavascript'
+      && typeof (action as { script?: unknown }).script === 'string'
+    ) {
+      return {
+        ...(action as Record<string, unknown>),
+        script: wrapExecJs((action as { script: string }).script),
+      };
+    }
+    return action;
+  });
   if (execJs?.trim()) {
-    list.push({ type: 'executeJavascript', script: execJs.slice(0, 10_000) });
+    list.push({ type: 'executeJavascript', script: wrapExecJs(execJs.slice(0, 10_000)) });
   }
   return list.length ? list : undefined;
 }
